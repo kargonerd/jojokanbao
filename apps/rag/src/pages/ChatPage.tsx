@@ -1,0 +1,85 @@
+import { useEffect, useRef, useState } from "react";
+import { useChatStore } from "../stores/chatStore";
+import { formatChatMarkdown } from "../utils/markdown";
+import { Button } from "@jojo/ui";
+
+export function ChatPage() {
+  const { notebooks, selectedNotebook, sources, selectedSourceIds, messages, streaming, streamContent, loadNotebooks, selectNotebook, toggleSource, sendMessage, clearConversation } = useChatStore();
+  const [input, setInput] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { loadNotebooks(); }, []);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, streamContent]);
+
+  const handleSend = () => { if (input.trim() && !streaming) { sendMessage(input); setInput(""); } };
+
+  return (
+    <div className="h-screen flex">
+      {/* Sidebar */}
+      <aside className="w-64 shrink-0 border-r border-rule overflow-y-auto bg-paper p-4 hidden md:block">
+        <h2 className="text-sm font-bold text-red tracking-wider mb-4">知识库</h2>
+        {notebooks.map((nb: any) => (
+          <button key={nb.id} onClick={() => selectNotebook(nb.id)} className={`block w-full text-left px-3 py-2 text-sm font-bold border-0 bg-transparent mb-1 transition-colors ${selectedNotebook === nb.id ? "text-red bg-red/5" : "text-ink hover:text-red"}`}>
+            {nb.title || nb.name}
+          </button>
+        ))}
+        {selectedNotebook && sources.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-rule">
+            <h3 className="text-xs font-bold text-muted tracking-wider mb-2">来源筛选</h3>
+            {sources.map((s: any) => (
+              <label key={s.id} className="flex items-center gap-2 py-1 text-xs text-ink cursor-pointer">
+                <input type="checkbox" checked={selectedSourceIds.includes(s.id)} onChange={() => toggleSource(s.id)} className="accent-[var(--color-red)]" />
+                <span className="truncate">{s.title || s.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </aside>
+
+      {/* Main chat area */}
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="h-12 flex items-center justify-between px-4 border-b border-rule shrink-0">
+          <h1 className="text-sm font-bold text-ink m-0">JOJO RAG</h1>
+          <button onClick={clearConversation} className="text-xs font-bold text-muted border-0 bg-transparent hover:text-red cursor-pointer">清空对话</button>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+          {messages.length === 0 && !streaming && (
+            <div className="text-center py-20">
+              <p className="text-2xl font-bold text-ink mb-2">有什么想问的？</p>
+              <p className="text-sm text-muted">基于知识库的 AI 问答</p>
+            </div>
+          )}
+          {messages.map((msg, i) => (
+            <div key={i} className={`max-w-[80%] ${msg.role === "user" ? "ml-auto" : ""}`}>
+              <div className={`px-4 py-3 text-sm leading-7 ${msg.role === "user" ? "bg-red text-cream" : "border border-rule bg-paper"}`} dangerouslySetInnerHTML={{ __html: msg.role === "assistant" ? formatChatMarkdown(msg.content) : msg.content }} />
+            </div>
+          ))}
+          {streaming && streamContent && (
+            <div className="max-w-[80%]">
+              <div className="px-4 py-3 text-sm leading-7 border border-rule bg-paper" dangerouslySetInnerHTML={{ __html: formatChatMarkdown(streamContent) }} />
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Composer */}
+        <div className="shrink-0 border-t border-rule p-4">
+          <div className="flex gap-3 max-w-3xl mx-auto">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+              placeholder="输入问题..."
+              rows={1}
+              className="flex-1 resize-none text-sm py-2.5 px-3 min-h-[40px] max-h-[120px]"
+            />
+            <Button onClick={handleSend} className={streaming ? "opacity-50 pointer-events-none" : ""}>发送</Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
