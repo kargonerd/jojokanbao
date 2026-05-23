@@ -1,0 +1,5 @@
+{
+  "extends": "@jojo/tsconfig/react-lib.json",
+  "compilerOptions": { "outDir": "./dist", "rootDir": "./src" },
+  "include": ["src"]
+}

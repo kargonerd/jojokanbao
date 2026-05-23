@@ -1,0 +1,45 @@
+/* editorial-preset/base.css
+   纯 CSS 变量 + 基础样式，不依赖 Tailwind。
+   适用于任何项目（React/Vue/纯 HTML）。
+*/
+
+:root {
+  --editorial-red: #8b1a1a;
+  --editorial-red-dark: #651212;
+  --editorial-ink: #202020;
+  --editorial-muted: #666;
+  --editorial-rule: #d8d8d8;
+  --editorial-rule-dark: #202020;
+  --editorial-paper: #fff;
+  --editorial-paper-soft: #fffaf2;
+  --editorial-cream: #f5efe6;
+  --editorial-soft: #f7f7f7;
+  --editorial-font-serif: "Noto Serif SC", "Songti SC", SimSun, "Microsoft YaHei", serif;
+  --editorial-font-sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+* { border-radius: 0 !important; }
+
+body {
+  font-family: var(--editorial-font-serif);
+  color: var(--editorial-ink);
+  background: var(--editorial-paper);
+}
+
+::selection {
+  background: var(--editorial-red);
+  color: var(--editorial-paper);
+}
+
+:focus-visible {
+  outline: 2px solid var(--editorial-red);
+  outline-offset: 2px;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--editorial-paper); }
+::-webkit-scrollbar-thumb { background: var(--editorial-rule); }
+::-webkit-scrollbar-thumb:hover { background: var(--editorial-red); }
+
+a { color: var(--editorial-red); text-decoration: none; transition: color .2s ease; }
+a:hover { color: var(--editorial-red-dark); }
