@@ -1,7 +1,12 @@
 node_modules
 dist
+dist-electron
 .next
 .turbo
 *.log
 .env
 .env.local
+.env.*.local
+*.tsbuildinfo
+coverage
+.vite
