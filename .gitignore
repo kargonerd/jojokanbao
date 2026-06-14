@@ -10,3 +10,5 @@ dist-electron
 *.tsbuildinfo
 coverage
 .vite
+.idea/
+.playwright-mcp/

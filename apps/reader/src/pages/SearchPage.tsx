@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import axios from "axios";
-import { Button, Tag, Pagination, LoadingSpinner } from "@jojo/ui";
+import { Button, Tag, Pagination, LoadingSpinner, DatePicker } from "@jojo/ui";
 
-const SEARCH_API = "https://search.jojokanbao.cn/api/search";
+const SEARCH_API = "https://s1.jojokanbao.cn/search";
 
 interface SearchResult {
   title: string;
@@ -57,12 +57,20 @@ export function SearchPage() {
     const query: Record<string, string> = { keyword: term };
     if (p > 1) query.page = String(p);
     if (sort) query.sort = sort;
-    if (startDate) query.startDate = startDate;
-    if (endDate) query.endDate = endDate;
+    if (startDate && endDate) {
+      query.startDate = startDate;
+      query.endDate = endDate;
+    }
     setParams(query);
 
     try {
-      const res = await axios.get(SEARCH_API, { params: { keyword: term, page: p, size: pageSize, sort: sort || undefined, startDate: startDate || undefined, endDate: endDate || undefined } });
+      const params: Record<string, any> = { keyword: term, page: p, size: pageSize };
+      if (sort) params.sort = sort;
+      if (startDate && endDate) {
+        params.startDate = startDate;
+        params.endDate = endDate;
+      }
+      const res = await axios.get(SEARCH_API, { params });
       const data = res.data.data;
       setResults(data.results.map((r: any) => ({ ...r, title: highlight(r.title, false, true), content: highlight(r.content, true, false), ellipsis: true })));
       setTotal(data.total);
@@ -101,12 +109,12 @@ export function SearchPage() {
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-4 p-3.5 border border-rule mb-6">
             <label className="flex items-center gap-2 text-xs font-bold text-muted">
-              从 <input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); }} className="h-8 text-xs" />
+              从 <DatePicker value={startDate} onChange={(v) => { setStartDate(v); if (v && endDate) handleSearch(); }} />
             </label>
             <label className="flex items-center gap-2 text-xs font-bold text-muted">
-              至 <input type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); handleSearch(); }} className="h-8 text-xs" />
+              至 <DatePicker value={endDate} onChange={(v) => { setEndDate(v); if (startDate && v) handleSearch(); }} />
             </label>
-            <select value={sort} onChange={(e) => { setSort(e.target.value); handleSearch(); }} className="h-8 text-xs px-2">
+            <select value={sort} onChange={(e) => { setSort(e.target.value); handleSearch(); }} className="h-8 text-xs px-2 min-w-[100px]">
               <option value="">默认排序</option>
               <option value="match">最佳匹配</option>
               <option value="timeAsc">时间升序</option>

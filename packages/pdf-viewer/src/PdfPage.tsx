@@ -2,6 +2,7 @@ import { useRef, useEffect, useState } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 
 interface PdfPageProps {
+  id?: string;
   document: PDFDocumentProxy;
   pageNumber: number;
   scale?: number;
@@ -10,7 +11,7 @@ interface PdfPageProps {
   onError?: (pageNumber: number, error: Error) => void;
 }
 
-export function PdfPage({ document, pageNumber, scale = 2, className = "", onRendered, onError }: PdfPageProps) {
+export function PdfPage({ id, document, pageNumber, scale = 2, className = "", onRendered, onError }: PdfPageProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [rendering, setRendering] = useState(false);
   const renderTask = useRef<any>(null);
@@ -51,11 +52,12 @@ export function PdfPage({ document, pageNumber, scale = 2, className = "", onRen
   }, [document, pageNumber, scale]);
 
   return (
-    <div className={`relative ${className}`}>
+    <div id={id} className={`relative ${className}`}>
       <canvas ref={canvasRef} />
       {rendering && (
-        <div className="absolute inset-0 flex items-center justify-center bg-paper/85">
+        <div className="absolute inset-0 flex items-center justify-center gap-2.5 bg-paper/85">
           <div className="w-4 h-4 border-2 border-red border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm text-ink">正在加载第 {pageNumber} 页</span>
         </div>
       )}
     </div>

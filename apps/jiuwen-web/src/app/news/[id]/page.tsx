@@ -38,37 +38,35 @@ type NewsDetail = {
 };
 
 async function fetchNews(id: string): Promise<NewsDetail | null> {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/news/${id}`, {
-    cache: "no-store"
-  });
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/news/${id}`, { cache: "no-store" });
   if (!res.ok) return null;
   return res.json();
 }
 
 export default async function NewsDetailPage({ params }: { params: { id: string } }) {
   const data = await fetchNews(params.id);
-  if (!data) return <div className="p-6">未找到新闻</div>;
+  if (!data) return <div className="p-6 text-muted font-bold">未找到新闻</div>;
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900">
-      <main className="mx-auto w-full max-w-4xl px-6 py-10">
-        <div className="text-xs text-zinc-500">{data.news.source?.name}</div>
-        <h1 className="mt-2 text-3xl font-semibold">{data.news.title}</h1>
-        <div className="mt-4 whitespace-pre-line text-sm text-zinc-700">
+    <div className="min-h-screen bg-paper text-ink">
+      <main className="max-w-4xl mx-auto px-6 py-10">
+        <div className="text-xs text-muted tracking-wider">{data.news.source?.name}</div>
+        <h1 className="mt-2 text-3xl font-bold tracking-wider">{data.news.title}</h1>
+        <div className="mt-6 whitespace-pre-line text-sm leading-8 text-ink/80">
           {data.news.content}
         </div>
 
         <section className="mt-10">
-          <h2 className="text-xl font-semibold">合订本</h2>
-          <div className="mt-4 grid gap-4">
+          <h2 className="text-xl font-bold text-ink border-t border-rule-dark pt-4">合订本</h2>
+          <div className="mt-4 space-y-3">
             {data.scrapbookItems.length === 0 && (
-              <div className="text-sm text-zinc-500">暂无合订本候选</div>
+              <div className="text-sm text-muted">暂无合订本候选</div>
             )}
             {data.scrapbookItems.map((item) => (
-              <div key={item.id} className="rounded-lg border border-zinc-200 bg-white p-4">
-                <div className="text-xs text-zinc-500">反差评分 {item.score.toFixed(2)}</div>
-                <div className="mt-2 text-sm font-semibold">{item.relatedNews.title}</div>
-                <div className="mt-2 text-sm text-zinc-600">{item.reason}</div>
+              <div key={item.id} className="border-2 border-red p-4">
+                <div className="text-xs text-muted tracking-wider">反差评分 {item.score.toFixed(2)}</div>
+                <div className="mt-2 text-sm font-bold text-red">{item.relatedNews.title}</div>
+                <div className="mt-2 text-sm text-ink/80">{item.reason}</div>
               </div>
             ))}
           </div>
