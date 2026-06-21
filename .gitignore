@@ -12,3 +12,31 @@ coverage
 .vite
 .idea/
 .playwright-mcp/
+
+# Service runtime data
+services/**/.env
+services/**/node_modules/
+services/**/dist/
+services/**/build/
+services/**/__pycache__/
+services/**/.pytest_cache/
+services/**/.venv/
+services/rag-backend/scf/data/*.db
+services/rag-backend/scf/data/*.db-*
+services/press-engine/projects/
+services/press-engine/exports/
+services/jiuwen-api/data/
+services/jiuwen-api/dev.sqlite
+services/jiuwen-news-reader/server/data/
+services/jiuwen-news-reader/data/
+references/**/node_modules/
+references/**/dist/
+references/**/.next/
+references/**/__pycache__/
+apps/press/*diagnostic*.png
+apps/press/*alignment*.png
+press-proofread*.png
+tmp/
+
+# Local scratch directories used during migration/cleanup
+.tmp-empty-delete/

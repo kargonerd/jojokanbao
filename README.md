@@ -8,8 +8,25 @@
 apps/
   reader/        PDF 报纸/杂志阅读器 (Vite + React 19)
   rag/           RAG 知识库问答 + 文档阅读器 (Vite + React 19)
-  press/         PDF 校对工具 (Electron + Vite + React 19)
+  press/         PDF 校对工具桌面端 (Electron + Vite + React 19)
   jiuwen-web/    新闻聚合 (Next.js 16 + React 19)
+  jiuwen-mobile/ 新闻聚合移动端 (Expo + React Native)
+
+services/
+  rag-backend/          JOJO-RAG Flask/SCF 后端
+  press-engine/         JOJO Press FastAPI 后端
+  jiuwen-api/           JOJO旧闻 FastAPI 后端
+  jiuwen-news-reader/   旧新闻阅读器前端原型；旧 Express 后端已归档
+  reader-search/        JOJO看报 Elasticsearch 搜索服务
+  jojo-pipe/            PDF 入库/批处理工具
+  notebooklm-py/        NotebookLM Python 客户端 vendored copy
+
+references/
+  jiuwen-folo-analysis/ Folo/Follow 上游参考工程归档，不参与本仓库构建
+  legacy-rag-frontend/  原 jojo-rag Vue 前端归档
+  legacy-reader-web/   原 WebstormProjects/web Vue reader 归档
+  legacy-press-root/   原 jojo-press 根目录旧 server/static/scripts 归档
+  legacy-jiuwen-root/  原 jojojiuwen 根目录 docs/demo/docker/scripts 归档
 
 packages/
   editorial-preset/   CSS 设计系统 (Tailwind v4 theme + base styles)
@@ -40,6 +57,13 @@ pnpm --filter @jojo/reader dev
 pnpm --filter @jojo/rag dev
 pnpm --filter @jojo/press dev
 pnpm --filter @jojo/jiuwen-web dev
+pnpm dev:jiuwen-mobile
+
+# 后端/服务（需先按各 service README 安装依赖）
+pnpm dev:rag-backend
+pnpm dev:press-engine
+pnpm dev:reader-search
+pnpm dev:jiuwen-api
 ```
 
 ## 技术栈
@@ -54,6 +78,13 @@ pnpm --filter @jojo/jiuwen-web dev
 | 测试 | Vitest + @testing-library/react |
 | 构建编排 | Turborepo |
 | 包管理 | pnpm workspaces |
+| 后端 | Python Flask / FastAPI services |
+
+## 迁移边界
+
+`apps/` 和 `packages/` 参与当前 pnpm/turbo 前端工作区；`services/` 保留当前 Python 后端和工具源码，但不加入 pnpm workspace，避免服务依赖污染前端工作区。服务各自独立安装依赖和运行。旧 Node/Nest/Express 后端归档在 `references/legacy-node-backends/`，不参与构建、测试或部署。
+
+迁移时刻意排除了 `.env`、数据库、运行输出、截图、日志、`node_modules`、构建产物等本地状态文件。配置只保留 `*.example.*` 或源码中的默认配置。
 
 ## 设计系统
 
@@ -74,3 +105,40 @@ pnpm --filter @jojo/jiuwen-web dev
 import { Button, Card, NavBar, Tag, Pagination, Modal, LoadingSpinner } from "@jojo/ui";
 import { PdfViewer, PdfPage, usePdfDocument } from "@jojo/pdf-viewer";
 ```
+
+## Reader PDF protection
+
+Reader can load JOJO-protected PDF bytes through HTTP Range requests while crawlers that fetch the raw `.pdf` object receive bytes that do not open as a normal PDF.
+
+Encode local PDF files before uploading them back to the reader CDN/object storage:
+
+```bash
+# one file, write to another path
+pnpm protect:reader-pdf encode input.pdf output.pdf
+
+# directory, update *.pdf in place
+pnpm protect:reader-pdf encode ./pdf-root --recursive
+
+# publish selected reader issues through qpdf linearization + protection
+# destination comes from services/jojo-pipe/config.json storage settings
+pnpm publish:reader-pdf -- --collection rmrb --source D:\PDF\RMRB --issue 19460515 --issue 19460516
+```
+
+Verify local files or published URLs after upload:
+
+```bash
+pnpm verify:reader-pdf ./pdf-root/RMRB/1946/19460515.pdf
+pnpm verify:reader-pdf https://blacknews.jojokanbao.cn/RMRB/1946/19460515.pdf
+```
+
+If `blacknews.jojokanbao.cn` still reports `state=plain` after the object storage copy is verified as protected, clear EdgeOne URL cache and verify again:
+
+```bash
+pnpm purge:reader-pdf -- --zone-id <edgeone-zone-id> https://blacknews.jojokanbao.cn/RMRB/1946/19460515.pdf
+pnpm verify:reader-pdf https://blacknews.jojokanbao.cn/RMRB/1946/19460515.pdf
+
+# or purge and poll until verification passes
+pnpm finalize:reader-pdf -- --zone-id <edgeone-zone-id> https://blacknews.jojokanbao.cn/RMRB/1946/19460515.pdf
+```
+
+Expected protected output is `PASS ... state=protected range=206 direct=fails decodedPages=N` for URLs. If the verifier reports `state=plain`, the object is still an ordinary PDF and must be encoded before publishing.

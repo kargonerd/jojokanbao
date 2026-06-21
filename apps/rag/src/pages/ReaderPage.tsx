@@ -4,6 +4,11 @@ import { catalogApi } from "../api";
 import { renderMarkdown } from "../utils/markdown";
 import { LoadingSpinner } from "@jojo/ui";
 
+export function resolveChapterText(payload: string | { text?: string } | null | undefined): string {
+  if (typeof payload === "string") return payload;
+  return payload?.text ?? "";
+}
+
 export function ReaderPage() {
   const { notebookId, sourceId } = useParams<{ notebookId: string; sourceId: string }>();
   const [doc, setDoc] = useState<any>(null);
@@ -26,10 +31,10 @@ export function ReaderPage() {
   useEffect(() => {
     if (!notebookId || !sourceId || !activeChapter) return;
     if (chapters[activeChapter]) return;
-    catalogApi.getSourceChapter(notebookId, sourceId, activeChapter).then((text) => {
-      setChapters((prev) => ({ ...prev, [activeChapter]: text }));
+    catalogApi.getSourceChapter(notebookId, sourceId, activeChapter).then((payload) => {
+      setChapters((prev) => ({ ...prev, [activeChapter]: resolveChapterText(payload) }));
     });
-  }, [activeChapter, notebookId, sourceId]);
+  }, [activeChapter, chapters, notebookId, sourceId]);
 
   if (loading) return <LoadingSpinner text="加载文档中" fullscreen />;
   if (!doc) return <div className="p-8 text-center text-muted">文档不存在</div>;

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuthStore } from "../../stores/authStore";
 import { adminApi } from "../../api";
-import { Button, Card } from "@jojo/ui";
+import { Button, Field, ListItem, PageHeader, TextInput } from "@jojo/ui";
 
 export function AdminAccounts() {
   const { token } = useAuthStore();
@@ -25,24 +25,29 @@ export function AdminAccounts() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-ink mb-6">账号管理</h1>
+      <PageHeader title="账号管理" />
       <div className="flex gap-3 mb-6">
-        <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="账号名称" className="h-9 text-sm w-40" />
-        <input value={newCookie} onChange={(e) => setNewCookie(e.target.value)} placeholder="Cookie" className="h-9 text-sm flex-1" />
+        <Field className="w-40">
+          <TextInput value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="账号名称" className="w-full" />
+        </Field>
+        <Field className="flex-1">
+          <TextInput value={newCookie} onChange={(e) => setNewCookie(e.target.value)} placeholder="Cookie" className="w-full" />
+        </Field>
         <Button onClick={handleAdd}>添加</Button>
       </div>
       <div className="space-y-3">
         {accounts.map((acc: any) => (
-          <Card key={acc.id} hover={false} className="p-4 flex items-center justify-between">
-            <div>
-              <p className="font-bold text-ink m-0">{acc.name}</p>
-              <p className="text-xs text-muted mt-1 m-0">{acc.notebooks?.length || 0} 个知识库</p>
-            </div>
-            <div className="flex gap-2">
+          <ListItem
+            key={acc.id}
+            title={acc.name}
+            meta={`${acc.notebooks?.length || 0} 个知识库`}
+            actions={
+              <>
               <Button variant="outline" onClick={() => handleRefresh(acc.id)}>刷新</Button>
               <button onClick={() => handleDelete(acc.id)} className="text-xs text-muted border-0 bg-transparent hover:text-red cursor-pointer">删除</button>
-            </div>
-          </Card>
+              </>
+            }
+          />
         ))}
       </div>
     </div>
