@@ -1,11 +1,28 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { MouseEvent } from "react";
 import { fetchPdfDownloadBytes, usePdfDocument, PdfViewer } from "@jojo/pdf-viewer";
 import { EmptyState, LoadingSpinner, DatePicker, Toolbar, YearPicker } from "@jojo/ui";
 import { PUBLICATIONS, type PublicationConfig } from "../publications";
 
 const NEWSPAPER_HOST = "https://blacknews.jojokanbao.cn";
+
+function DownloadIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M8 2v8m0 0 3-3m-3 3L5 7" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 13h10" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M6.5 4.5 5 6a3 3 0 0 0 4.2 4.2l1.5-1.5" strokeLinecap="round" />
+      <path d="M9.5 11.5 11 10a3 3 0 0 0-4.2-4.2L5.3 7.3" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 interface ReaderPageProps {
   type: "newspaper" | "magazine";
@@ -25,7 +42,9 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const [jumpToPageNum, setJumpToPageNum] = useState(1);
   const [showBackTop, setShowBackTop] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const shareResetTimer = useRef<number | null>(null);
 
   // ─── PDF URL construction (matches original getPdfPath) ───
   const getPdfPath = useCallback(() => {
@@ -120,8 +139,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     }
   };
 
-  const handleDownload = async (event: MouseEvent<HTMLAnchorElement>) => {
-    event.preventDefault();
+  const handleDownload = async () => {
     if (!pdfUrl || downloading) return;
 
     setDownloading(true);
@@ -140,6 +158,37 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       window.alert(String(downloadError instanceof Error ? downloadError.message : downloadError));
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const copyText = async (text: string) => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    document.body.append(textarea);
+    textarea.select();
+    const copied = document.execCommand("copy");
+    textarea.remove();
+    return copied;
+  };
+
+  const handleShare = async () => {
+    try {
+      const copied = await copyText(window.location.href);
+      if (!copied) throw new Error("Copy failed");
+
+      setShareCopied(true);
+      if (shareResetTimer.current) window.clearTimeout(shareResetTimer.current);
+      shareResetTimer.current = window.setTimeout(() => setShareCopied(false), 1600);
+    } catch {
+      window.alert("复制链接失败，请直接复制浏览器地址栏链接。");
     }
   };
 
@@ -165,6 +214,12 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     return () => el.removeEventListener("scroll", handleScroll);
   }, [handleScroll]);
 
+  useEffect(() => {
+    return () => {
+      if (shareResetTimer.current) window.clearTimeout(shareResetTimer.current);
+    };
+  }, []);
+
   // ─── Sync URL when date/seq changes ───
   const handleOptionChange = useCallback(() => {
     let id = date;
@@ -186,6 +241,30 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
 
   // ─── Date input validation ───
   const isDateDisabled = config?.disabledDate;
+  const toolbarActions = pdfUrl ? (
+    <div className="ml-4 flex items-center gap-2">
+      <button
+        type="button"
+        onClick={handleDownload}
+        disabled={downloading}
+        className="inline-flex h-8 items-center gap-1.5 border border-rule-dark bg-paper px-2.5 text-sm font-bold text-red transition-colors hover:border-red hover:text-red-dark disabled:cursor-wait disabled:opacity-60"
+        aria-label={downloading ? "下载中" : "下载 PDF"}
+      >
+        <DownloadIcon />
+        <span>{downloading ? "下载中" : "下载"}</span>
+      </button>
+      <button
+        type="button"
+        onClick={handleShare}
+        className="inline-flex h-8 items-center gap-1.5 border border-rule-dark bg-paper px-2.5 text-sm font-bold text-ink transition-colors hover:border-red hover:text-red"
+        aria-label={shareCopied ? "已复制阅读链接" : "复制阅读链接"}
+        title={shareCopied ? "已复制阅读链接" : "复制阅读链接"}
+      >
+        <ShareIcon />
+        <span>{shareCopied ? "已复制" : "分享"}</span>
+      </button>
+    </div>
+  ) : null;
 
   return (
     <div ref={containerRef} className="h-full overflow-y-auto bg-paper">
@@ -216,11 +295,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
               ))}
             </select>
           </div>
-          {pdfUrl && (
-            <a href={pdfUrl} onClick={handleDownload} aria-disabled={downloading} className="ml-4 text-sm font-bold text-red hover:text-red-dark">
-              {downloading ? "下载中" : "下载"}
-            </a>
-          )}
+          {toolbarActions}
         </Toolbar>
       ) : (
         /* Toolbar: Newspaper mode */
@@ -236,11 +311,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
           {numPages > 0 && (
             <span className="text-xs text-muted">共 {numPages} 页</span>
           )}
-          {pdfUrl && (
-            <a href={pdfUrl} onClick={handleDownload} aria-disabled={downloading} className="ml-4 text-sm font-bold text-red hover:text-red-dark">
-              {downloading ? "下载中" : "下载"}
-            </a>
-          )}
+          {toolbarActions}
         </Toolbar>
       )}
 
