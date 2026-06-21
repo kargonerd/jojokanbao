@@ -1,0 +1,89 @@
+{
+  "paths": {
+    "local_work": ".",
+    "output": "output",
+    "views": "../src/views"
+  },
+  "storage": {
+    "default_backend": "reader_r2",
+    "backends": {
+      "reader_r2": {
+        "type": "rclone",
+        "remote": "jojo-r2:reader-pdfs",
+        "processed_prefix": "{code}",
+        "split_prefix": "internal/{code}",
+        "manifest_prefix": "manifests",
+        "upload_workers": 4,
+        "immutable": true,
+        "retries": 5,
+        "low_level_retries": 10,
+        "rclone_args": [
+          "--s3-no-check-bucket"
+        ],
+        "upload_headers": {
+          "Content-Type": "application/pdf",
+          "Cache-Control": "public, max-age=31536000, immutable"
+        },
+        "manifest_headers": {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-cache"
+        }
+      },
+      "onedrive_local": {
+        "type": "local",
+        "root": "D:\\Cloud\\OneDrive - JOJOKanBao Tech",
+        "processed_prefix": "{code}",
+        "split_prefix": "internal/{code}",
+        "manifest_prefix": "manifests",
+        "upload_workers": 4
+      }
+    }
+  },
+  "publications": {
+    "CKXX": {
+      "name": "参考消息",
+      "type": "newspaper",
+      "vue_name": "ckxx",
+      "date_format": "yyyyMMdd",
+      "storage": {
+        "backend": "reader_r2"
+      }
+    },
+    "HQ": {
+      "name": "红旗",
+      "type": "journal",
+      "vue_name": "hq",
+      "date_format": "yyyyNN",
+      "storage": {
+        "backend": "reader_r2"
+      }
+    },
+    "RMHB": {
+      "name": "人民画报",
+      "type": "journal",
+      "vue_name": "rmhb",
+      "date_format": "yyyyNN",
+      "storage": {
+        "backend": "reader_r2"
+      }
+    },
+    "RMRB": {
+      "name": "人民日报",
+      "type": "newspaper",
+      "vue_name": "rmrb",
+      "date_format": "yyyyMMdd",
+      "storage": {
+        "backend": "reader_r2"
+      }
+    },
+    "SJZS": {
+      "name": "世界知识",
+      "type": "journal",
+      "vue_name": "sjzs",
+      "date_format": "yyyyNN",
+      "storage": {
+        "backend": "reader_r2"
+      }
+    }
+  }
+}
