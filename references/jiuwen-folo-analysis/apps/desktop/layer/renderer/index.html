@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="referrer" content="no-referrer" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=0, viewport-fit=cover"
+    />
+
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121212" />
+    <!-- favicon -->
+    <link rel="icon" href="/favicon.ico" sizes="48x48" type="image/x-icon" />
+    <link rel="icon" href="/icon.svg" sizes="any" type="image/svg+xml" />
+    <!-- FireFox -->
+    <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png" />
+
+    <title>Folo - AI Reader | Follow Everything</title>
+    <meta
+      name="description"
+      content="Folo organizes content into one timeline, keeping you updated on what matters, noise-free. AI reader with translation, summary, and dynamic content support. Available on iOS, Android, macOS, Windows, and Linux."
+    />
+    <meta
+      name="keywords"
+      content="AI reader, RSS reader, feed aggregator, AI, content curation, timeline, news reader, follow feeds, social media aggregator, distraction-free browsing, cross-platform, open source, Folo, Follow Everything, AI translation, AI summary, dynamic content, video feeds, audio feeds, image feeds, RSS subscription, feed management, news aggregator, content hub, information hub, RSSNext, electron app, mobile app, desktop app, web app, iOS app, Android app, macOS app, Windows app, Linux app, noise-free feeds, curated lists, share lists, explore collections, POWER token, ownership economy, tip creators, community-driven, GitHub trending"
+    />
+    <meta name="author" content="Follow Team" />
+    <meta name="robots" content="index, follow" />
+    <meta name="language" content="en" />
+    <link rel="canonical" href="https://app.folo.is" />
+
+    <!-- Apple Meta Tags -->
+    <meta name="apple-itunes-app" content="app-id=6739802604" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Folo" />
+
+    <!-- OpenGraph Meta Tags -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Folo" />
+    <meta property="og:title" content="Folo - AI Reader | Follow Everything" />
+    <meta property="og:url" content="https://app.folo.is" />
+    <meta property="og:image" content="https://app.folo.is/og-image.png" />
+    <meta property="og:image:alt" content="Folo - AI Reader" />
+    <meta
+      property="og:description"
+      content="Organize content into one timeline, keeping you updated on what matters, noise-free. AI-powered features like translation, summary, and more. Share lists, explore collections, and enjoy distraction-free browsing."
+    />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@folo_is" />
+    <meta name="twitter:creator" content="@folo_is" />
+    <meta name="twitter:title" content="Folo - AI Reader | Follow Everything" />
+    <meta
+      name="twitter:description"
+      content="Folo organizes content into one timeline, keeping you updated on what matters, noise-free. AI-powered RSS reader with translation, summary, and dynamic content support. Available on iOS, Android, macOS, Windows, and Linux."
+    />
+    <meta name="twitter:image" content="https://app.folo.is/og-image.png" />
+    <meta name="twitter:image:alt" content="Folo - AI Reader" />
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Folo",
+        "alternateName": "Follow Everything",
+        "description": "AI-driven, user-friendly RSS reader that organizes content into one timeline, keeping you updated on what matters, noise-free. Share lists, explore collections, and enjoy distraction-free browsing.",
+        "url": "https://app.folo.is",
+        "image": "https://app.folo.is/og-image.png",
+        "applicationCategory": "ProductivityApplication",
+        "operatingSystem": ["iOS", "Android", "macOS", "Windows", "Linux", "Web"],
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "RSSNext",
+          "url": "https://github.com/RSSNext"
+        },
+        "downloadUrl": [
+          "https://apps.apple.com/us/app/folo-follow-everything/id6739802604",
+          "https://play.google.com/store/apps/details?id=is.follow",
+          "https://apps.microsoft.com/detail/9nvfzpv0v0ht?mode=direct",
+          "https://github.com/RSSNext/Folo/releases/latest"
+        ],
+        "screenshot": [
+          "https://github.com/user-attachments/assets/11dc7d21-f5d8-4e41-9269-24fc352aa02b",
+          "https://github.com/user-attachments/assets/37cf4f2f-4c5e-4775-86e8-2fa1a1b2ecf5",
+          "https://github.com/user-attachments/assets/d1379fd6-8767-476e-b0dc-d61753715e26"
+        ],
+        "featureList": [
+          "Customized Information Hub",
+          "AI-powered translation and summary",
+          "Dynamic content support (articles, videos, images, audio)",
+          "Distraction-free browsing",
+          "Cross-platform availability",
+          "Open source community-driven"
+        ],
+        "aggregateRating": {
+          "@type": "AggregateRating",
+          "ratingValue": "4.8",
+          "ratingCount": "1000",
+          "bestRating": "5",
+          "worstRating": "1"
+        }
+      }
+    </script>
+    <!-- FOLLOW VITE BUILD INJECT -->
+    <!-- Check Browser Script Inject -->
+
+    <script>
+      function setTheme() {
+        let e = "follow:color-mode",
+          t = document.documentElement,
+          a = localStorage.getItem(e)
+        function h() {
+          return window.matchMedia
+            ? window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : window.matchMedia("(prefers-color-scheme: light)").matches
+                ? "light"
+                : void 0
+            : void 0
+        }
+        if (!a) {
+          t.dataset.theme = h() || "light"
+          return
+        }
+        switch ((a = JSON.parse(a))) {
+          case "dark":
+            t.dataset.theme = "dark"
+            break
+          case "light":
+            t.dataset.theme = "light"
+            break
+          case "system":
+            t.dataset.theme = h() || "light"
+        }
+      }
+      setTheme()
+      // Can not get window.electron so check userAgent
+      const isElectron = navigator.userAgent.includes("Electron")
+      document.documentElement.dataset.buildType = isElectron ? "electron" : "web"
+    </script>
+    <script>
+      const isMobile = window.innerWidth < 1024
+      document.documentElement.dataset.viewport = isMobile ? "mobile" : "desktop"
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <div id="app-skeleton" class="drag-region">
+      <!-- Skeleton -->
+      <style>
+        [data-build-type]:not([data-build-type="electron"]) #root {
+          background-color: hsl(var(--background));
+        }
+        html,
+        body {
+          height: 100%;
+          width: 100%;
+          margin: 0;
+          padding: 0;
+        }
+        #app-skeleton {
+          position: fixed;
+          inset: 0;
+          z-index: 1000;
+        }
+        [data-viewport="mobile"] #app-skeleton {
+          display: none;
+        }
+        [data-theme="light"] {
+          --background: 0 0% 100%;
+        }
+
+        [data-theme="dark"] {
+          --background: 0 0% 7.1%;
+        }
+        .skeleton {
+          display: flex;
+          height: 100%;
+          width: 100%;
+        }
+
+        .sidebar {
+          width: 16rem;
+          flex-shrink: 0;
+          height: 100%;
+          background-color: hsl(var(--fo-sidebar));
+        }
+        [data-build-type="electron"] .sidebar {
+          background-color: hsl(var(--fo-sidebar) / 0.3);
+        }
+        [data-build-type="electron"][data-theme="dark"] .sidebar {
+          background-color: hsl(var(--fo-sidebar) / 0.1);
+        }
+        .content {
+          flex-grow: 1;
+          width: 100%;
+          height: 100%;
+          background-color: hsl(var(--background));
+        }
+
+        [data-theme="light"] {
+          --fo-sidebar: 240 1.6% 87.6%;
+        }
+        [data-theme="dark"] {
+          --fo-sidebar: 30 1.7% 23.5%;
+        }
+
+        [data-build-type="web"] {
+          --fo-sidebar: 240 4.8% 95.9%;
+        }
+
+        [data-build-type="web"][data-theme="dark"] {
+          --fo-sidebar: 220 8.1% 14.5%;
+        }
+      </style>
+      <div class="skeleton">
+        <div class="sidebar"></div>
+        <div class="content"></div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>新闻合订本 Demo - JojoJiuwen</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: #f9fafb; }
+        .timeline-line {
+            position: absolute;
+            left: 15px;
+            top: 24px;
+            bottom: -24px;
+            width: 2px;
+            background-color: #e5e7eb;
+            z-index: 0;
+        }
+        .timeline-item:last-child .timeline-line { display: none; }
+    </style>
+</head>
+<body class="text-gray-800 antialiased p-4 md:p-8">
+
+<div class="max-w-5xl mx-auto bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col md:flex-row">
+    
+    <!-- 左侧：当前新闻 -->
+    <div class="w-full md:w-1/2 p-6 md:p-8 border-b md:border-b-0 md:border-r border-gray-200 bg-white">
+        <div class="text-xs font-semibold text-blue-600 tracking-wider uppercase mb-2">最新报道</div>
+        <h1 class="text-2xl md:text-3xl font-bold leading-tight mb-4 text-gray-900">
+            四名宇航员将搭乘 NASA 阿耳忒弥斯2号 飞往太空
+        </h1>
+        <div class="flex items-center text-sm text-gray-500 mb-6">
+            <span class="mr-3">来源：纽约时报</span>
+            <span>发布于：2026年4月2日</span>
+        </div>
+        
+        <div class="prose prose-gray max-w-none text-gray-700 leading-relaxed space-y-4">
+            <p>周三傍晚，一枚高大的橙白相间NASA火箭从佛罗里达州发射升空，将四名宇航员送往太空，同时也将围观者的思绪带向美国人可能再次登月的未来。</p>
+            <p>正如当年阿波罗计划鼎盛时期一样（当时人类首次登上月球表面），围观者挤满了佛罗里达中部太空海岸的海滩。当这枚强大的运载火箭于美国东部时间下午6点35分冲入澄澈的暮色天空时，人群爆发出欢呼。</p>
+            <p>火箭向东越过大西洋，执行一次绕月飞行但不登陆的任务。此行搭载的飞船名为“诚信号”，上面有里德·怀斯曼、维克多·格洛弗、克里斯蒂娜·科赫和杰里米·汉森四名宇航员...</p>
+            <p class="text-sm text-gray-400 italic mt-4">（正文截取）</p>
+        </div>
+    </div>
+
+    <!-- 右侧：AI 提取的历史合订本 (Timeline) -->
+    <div class="w-full md:w-1/2 p-6 md:p-8 bg-gray-50 relative">
+        <div class="flex items-center justify-between mb-6">
+            <h2 class="text-xl font-bold flex items-center text-gray-900">
+                <svg class="w-5 h-5 mr-2 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                AI 历史合订本
+            </h2>
+            <span class="px-2.5 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded-full border border-purple-200">
+                由 DuckDuckGo 搜索 + Claude 3.7 生成
+            </span>
+        </div>
+
+        <p class="text-sm text-gray-600 mb-8 leading-relaxed">
+            AI 自动全网搜索了 "NASA Artemis 登月 历史" 相关的过往新闻，为你提炼出该事件背后的<strong>反差、延期与历史脉络</strong>：
+        </p>
+
+        <!-- 时间线 -->
+        <div class="relative pl-2">
+            
+            <!-- 节点 1 -->
+            <div class="relative mb-8 timeline-item">
+                <div class="timeline-line"></div>
+                <div class="absolute left-0 top-1 w-8 h-8 bg-red-100 rounded-full border-2 border-white flex items-center justify-center z-10 shadow-sm" style="transform: translateX(-50%);">
+                    <span class="text-red-600 text-lg">⚠️</span>
+                </div>
+                <div class="ml-8">
+                    <div class="text-xs font-bold text-gray-400 mb-1">2024年1月 (2年前)</div>
+                    <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                        <h3 class="font-bold text-gray-900 mb-1">首次重大延期声明</h3>
+                        <p class="text-sm text-gray-700 mb-2">NASA 局长宣布，由于猎户座飞船的隔热罩问题，原定于 2024 年底的 Artemis II 绕月任务推迟至 2025 年 9 月。载人登月（Artemis III）推迟至 2026 年。</p>
+                        <div class="text-xs text-red-600 bg-red-50 p-2 rounded mt-2 border border-red-100">
+                            <strong>AI 洞察：</strong> 对比今日（2026年4月才发射绕月），说明 NASA 当年的延期承诺依然未能兑现，实际进度比 2024 年的悲观预测还要晚了半年。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 节点 2 -->
+            <div class="relative mb-8 timeline-item">
+                <div class="timeline-line"></div>
+                <div class="absolute left-0 top-1 w-8 h-8 bg-blue-100 rounded-full border-2 border-white flex items-center justify-center z-10 shadow-sm" style="transform: translateX(-50%);">
+                    <span class="text-blue-600 text-lg">💡</span>
+                </div>
+                <div class="ml-8">
+                    <div class="text-xs font-bold text-gray-400 mb-1">1969年7月 (57年前)</div>
+                    <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                        <h3 class="font-bold text-gray-900 mb-1">阿波罗 11 号的历史对照</h3>
+                        <p class="text-sm text-gray-700 mb-2">人类首次登月由全白人男性主导，是冷战太空竞赛的产物。</p>
+                        <div class="text-xs text-blue-700 bg-blue-50 p-2 rounded mt-2 border border-blue-100">
+                            <strong>AI 洞察：</strong> 本次 Artemis II 乘组包含了首位女性、首位黑人男性和首位非美国人。这不仅仅是一次技术复刻，更是 50 年后人类社会多元化价值观在航天领域的投射。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 节点 3 -->
+            <div class="relative timeline-item">
+                <div class="timeline-line"></div>
+                <div class="absolute left-0 top-1 w-8 h-8 bg-orange-100 rounded-full border-2 border-white flex items-center justify-center z-10 shadow-sm" style="transform: translateX(-50%);">
+                    <span class="text-orange-600 text-lg">🚀</span>
+                </div>
+                <div class="ml-8">
+                    <div class="text-xs font-bold text-gray-400 mb-1">2030年愿景 (背景冲突)</div>
+                    <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                        <h3 class="font-bold text-gray-900 mb-1">中美新一轮登月竞赛</h3>
+                        <p class="text-sm text-gray-700 mb-2">中国航天局确立了在 2030 年前实现中国人首次登陆月球的目标。</p>
+                        <div class="text-xs text-orange-700 bg-orange-50 p-2 rounded mt-2 border border-orange-100">
+                            <strong>AI 洞察：</strong> NASA 的屡次延期使其面临巨大的地缘政治压力。如果 Artemis III（原定2026）继续因 SpaceX 星舰进度而滑落至 2028-2029 年，NASA 将在与中国的“重返月球”竞赛中失去绝对的时间优势。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,408 @@
+import { useDroppable } from "@dnd-kit/core"
+import { useMobile } from "@follow/components/hooks/useMobile.js"
+import { MotionButtonBase } from "@follow/components/ui/button/index.js"
+import { LoadingCircle } from "@follow/components/ui/loading/index.jsx"
+import { useScrollViewElement } from "@follow/components/ui/scroll-area/hooks.js"
+import type { FeedViewType } from "@follow/constants"
+import { getViewList } from "@follow/constants"
+import { useRefValue } from "@follow/hooks"
+import { useOwnedListByView } from "@follow/store/list/hooks"
+import {
+  useSubscriptionByFeedId,
+  useSubscriptionCategoryExist,
+} from "@follow/store/subscription/hooks"
+import { subscriptionActions, subscriptionSyncService } from "@follow/store/subscription/store"
+import { getDefaultCategory } from "@follow/store/subscription/utils"
+import { useSortedIdsByUnread, useUnreadByIds } from "@follow/store/unread/hooks"
+import { unreadSyncService } from "@follow/store/unread/store"
+import { stopPropagation } from "@follow/utils/dom"
+import { cn } from "@follow/utils/utils"
+import { useMutation } from "@tanstack/react-query"
+import { AnimatePresence, m } from "motion/react"
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { useEventCallback } from "usehooks-ts"
+
+import type { MenuItemInput } from "~/atoms/context-menu"
+import { MenuItemSeparator, MenuItemText, useShowContextMenu } from "~/atoms/context-menu"
+import { useGeneralSettingSelector, useHideAllReadSubscriptions } from "~/atoms/settings/general"
+import { ROUTE_FEED_IN_FOLDER } from "~/constants"
+import { useAddFeedToFeedList } from "~/hooks/biz/useFeedActions"
+import { useNavigateEntry } from "~/hooks/biz/useNavigateEntry"
+import { getRouteParams, useRouteParamsSelector } from "~/hooks/biz/useRouteParams"
+import { useContextMenu } from "~/hooks/common/useContextMenu"
+
+import { useModalStack } from "../../components/ui/modal/stacked/hooks"
+import { ListCreationModalContent } from "../settings/tabs/lists/modals"
+import { CategoryRemoveDialogContent } from "./CategoryRemoveDialogContent"
+import { CategoryUnsubscribeDialogContent } from "./CategoryUnsubscribeDialogContent"
+import { RenameCategoryForm } from "./RenameCategoryForm"
+import { SortedFeedItems } from "./SortedFeedItems"
+import { feedColumnStyles } from "./styles"
+import { UnreadNumber } from "./UnreadNumber"
+
+type FeedId = string
+interface FeedCategoryProps {
+  data: FeedId[]
+  view: FeedViewType
+  categoryOpenStateData: Record<string, boolean>
+}
+
+function FeedCategoryImpl({
+  data: ids,
+  view: viewOnRoute,
+  categoryOpenStateData,
+}: FeedCategoryProps) {
+  const { t } = useTranslation()
+
+  const sortByUnreadFeedList = useSortedIdsByUnread(ids)
+
+  const navigate = useNavigateEntry()
+
+  const subscription = useSubscriptionByFeedId(ids[0]!)!
+
+  const { view } = subscription
+  const autoGroup = useGeneralSettingSelector((state) => state.autoGroup)
+  const folderName =
+    subscription?.category || (autoGroup ? getDefaultCategory(subscription) : subscription.feedId)
+
+  const isCategory = sortByUnreadFeedList.length > 1 || !!subscription?.category
+
+  const open = useMemo(() => {
+    if (!isCategory) return true
+    if (folderName && typeof categoryOpenStateData[folderName] === "boolean") {
+      return categoryOpenStateData[folderName]
+    }
+    return false
+  }, [categoryOpenStateData, folderName, isCategory])
+
+  const setOpen = useCallback(
+    (next: boolean) => {
+      if (viewOnRoute !== undefined && folderName) {
+        subscriptionActions.changeCategoryOpenState(viewOnRoute, folderName, next)
+      }
+    },
+    [folderName, viewOnRoute],
+  )
+
+  const shouldOpen = useRouteParamsSelector(
+    (s) => typeof s.feedId === "string" && ids.includes(s.feedId),
+  )
+
+  const scroller = useScrollViewElement()
+  const scrollerRef = useRefValue(scroller)
+  useEffect(() => {
+    if (shouldOpen) {
+      setOpen(true)
+
+      const $items = itemsRef.current
+
+      if (!$items) return
+      const $target = $items.querySelector(
+        `[data-feed-id="${getRouteParams().feedId}"]`,
+      ) as HTMLElement
+      if (!$target) return
+
+      const $scroller = scrollerRef.current
+      if (!$scroller) return
+
+      const scrollTop = $target.offsetTop - $scroller.clientHeight / 2
+      $scroller.scrollTo({
+        top: scrollTop,
+        behavior: "smooth",
+      })
+    }
+  }, [scrollerRef, setOpen, shouldOpen])
+
+  const itemsRef = useRef<HTMLDivElement>(null)
+
+  const isMobile = useMobile()
+  const toggleCategoryOpenState = useEventCallback(
+    (e: React.MouseEvent<HTMLButtonElement | HTMLDivElement>) => {
+      e.stopPropagation()
+      if (!isCategoryEditing && !isMobile) {
+        setCategoryActive()
+      }
+      if (view !== undefined && folderName) {
+        subscriptionActions.toggleCategoryOpenState(viewOnRoute, folderName)
+      }
+    },
+  )
+
+  const handleCollapseButtonClick = useEventCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation()
+    if (view !== undefined && folderName) {
+      subscriptionActions.toggleCategoryOpenState(viewOnRoute, folderName)
+    }
+  })
+
+  const setCategoryActive = () => {
+    if (view !== undefined) {
+      navigate({
+        entryId: null,
+        folderName,
+        view: viewOnRoute,
+      })
+    }
+  }
+
+  const unread = useUnreadByIds(ids)
+
+  const isActive = useRouteParamsSelector(
+    (routerParams) => routerParams.feedId === `${ROUTE_FEED_IN_FOLDER}${folderName}`,
+  )
+  const { present } = useModalStack()
+
+  const { mutateAsync: changeCategoryView, isPending: isChangePending } = useMutation({
+    mutationKey: ["changeCategoryView", folderName, view],
+    mutationFn: async (nextView: FeedViewType) => {
+      if (!folderName) return
+      if (typeof view !== "number") return
+      return subscriptionSyncService.changeCategoryView({
+        category: folderName,
+        currentView: view,
+        newView: nextView,
+      })
+    },
+  })
+
+  const [isCategoryEditing, setIsCategoryEditing] = useState(false)
+  const [isContextMenuOpen, setIsContextMenuOpen] = useState(false)
+  const isCategoryIsWaiting = isChangePending
+
+  const addMutation = useAddFeedToFeedList()
+
+  const listList = useOwnedListByView(view!)
+  const showContextMenu = useShowContextMenu()
+
+  const subscriptionCategoryExist = useSubscriptionCategoryExist(folderName)
+  const isAutoGroupedCategory = !!folderName && !subscriptionCategoryExist
+
+  const { isOver, setNodeRef } = useDroppable({
+    id: `category-${folderName}`,
+    disabled: isAutoGroupedCategory,
+    data: {
+      category: folderName,
+      view,
+    },
+  })
+
+  const contextMenuProps = useContextMenu({
+    onContextMenu: async (e) => {
+      setIsContextMenuOpen(true)
+      await showContextMenu(
+        [
+          new MenuItemText({
+            label: t("sidebar.feed_column.context_menu.mark_as_read"),
+            click: () => {
+              unreadSyncService.markFeedAsRead(ids)
+            },
+            requiresLogin: true,
+          }),
+          new MenuItemSeparator(),
+          new MenuItemText({
+            label: t("sidebar.feed_column.context_menu.add_feeds_to_list"),
+            requiresLogin: true,
+            submenu: listList
+              ?.map(
+                (list) =>
+                  new MenuItemText({
+                    label: list.title || "",
+                    click() {
+                      return addMutation.mutate({
+                        feedIds: ids,
+                        listId: list.id,
+                      })
+                    },
+                    requiresLogin: true,
+                  }) as MenuItemInput,
+              )
+              .concat(listList?.length > 0 ? [new MenuItemSeparator()] : [])
+              .concat([
+                new MenuItemText({
+                  label: t("sidebar.feed_actions.create_list"),
+                  click: () => {
+                    present({
+                      title: t("sidebar.feed_actions.create_list"),
+                      content: () => <ListCreationModalContent />,
+                    })
+                  },
+                  requiresLogin: true,
+                }),
+              ]),
+          }),
+          MenuItemSeparator.default,
+          new MenuItemText({
+            label: t("sidebar.feed_column.context_menu.change_to_other_view"),
+            submenu: getViewList()
+              .filter((v) => v.view !== view && v.switchable)
+              .map(
+                (v) =>
+                  new MenuItemText({
+                    label: t(v.name, { ns: "common" }),
+                    shortcut: (v.view + 1).toString(),
+                    icon: v.icon,
+                    click() {
+                      return changeCategoryView(v.view)
+                    },
+                    requiresLogin: true,
+                  }),
+              ),
+            requiresLogin: true,
+          }),
+          new MenuItemText({
+            label: t("sidebar.feed_column.context_menu.rename_category"),
+            click: () => {
+              setIsCategoryEditing(true)
+            },
+            requiresLogin: true,
+          }),
+          new MenuItemText({
+            label: t("sidebar.feed_column.context_menu.ungroup_category"),
+            hide: !folderName || isAutoGroupedCategory,
+            click: () => {
+              present({
+                title: t("sidebar.feed_column.context_menu.ungroup_category_confirmation", {
+                  folderName,
+                }),
+                content: () => <CategoryRemoveDialogContent category={folderName!} view={view} />,
+              })
+            },
+            requiresLogin: true,
+          }),
+          new MenuItemText({
+            label: t("sidebar.feed_column.context_menu.unsubscribe_category"),
+            hide: !folderName || isAutoGroupedCategory,
+            click: () => {
+              present({
+                title: t("sidebar.category_unsubscribe_dialog.title", {
+                  folderName,
+                }),
+                content: () => (
+                  <CategoryUnsubscribeDialogContent category={folderName!} view={view} />
+                ),
+              })
+            },
+            requiresLogin: true,
+          }),
+        ],
+        e,
+      )
+
+      setIsContextMenuOpen(false)
+    },
+  })
+  return (
+    <div tabIndex={-1} onClick={stopPropagation}>
+      {!!isCategory && (
+        <div
+          ref={setNodeRef}
+          data-active={isActive || isContextMenuOpen}
+          className={cn(
+            isOver && "border-folo bg-folo/60",
+
+            "my-px px-2.5",
+            feedColumnStyles.item,
+          )}
+          data-sub={`feed-category-${folderName}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            if (!isCategoryEditing) {
+              setCategoryActive()
+            }
+          }}
+          {...contextMenuProps}
+        >
+          <div
+            className={cn("flex w-full min-w-0 items-center")}
+            onDoubleClick={toggleCategoryOpenState}
+          >
+            <button
+              data-type="collapse"
+              type="button"
+              onClick={handleCollapseButtonClick}
+              data-state={open ? "open" : "close"}
+              className={cn(
+                "flex h-8 items-center [&_.i-mgc-right-cute-fi]:data-[state=open]:rotate-90",
+              )}
+              tabIndex={-1}
+            >
+              {isCategoryIsWaiting ? (
+                <LoadingCircle size="small" className="mr-2 size-[16px]" />
+              ) : isCategoryEditing ? (
+                <MotionButtonBase
+                  onClick={() => {
+                    setIsCategoryEditing(false)
+                  }}
+                  className="center -ml-1 flex size-5 shrink-0 rounded-lg hover:bg-material-ultra-thick"
+                >
+                  <i className="i-mgc-close-cute-re text-red" />
+                </MotionButtonBase>
+              ) : (
+                <div className="center mr-2 size-[16px]">
+                  <i className="i-mgc-right-cute-fi transition-transform" />
+                </div>
+              )}
+            </button>
+            {isCategoryEditing ? (
+              <RenameCategoryForm
+                currentCategory={folderName!}
+                view={view}
+                onFinished={() => setIsCategoryEditing(false)}
+              />
+            ) : (
+              <Fragment>
+                <span className="grow truncate">{folderName}</span>
+                <UnreadNumber unread={unread} className="ml-2" />
+              </Fragment>
+            )}
+          </div>
+        </div>
+      )}
+      <AnimatePresence initial={false}>
+        {open && (
+          <m.div
+            ref={itemsRef}
+            className="space-y-px"
+            initial={
+              !!isCategory && {
+                height: 0,
+                opacity: 0.01,
+              }
+            }
+            animate={{
+              height: "auto",
+              opacity: 1,
+            }}
+            exit={{
+              height: 0,
+              opacity: 0.01,
+            }}
+          >
+            <SortedFeedItems
+              ids={ids}
+              showCollapse={isCategory as boolean}
+              view={view as FeedViewType}
+            />
+          </m.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+function FilterReadFeedCategory(props: FeedCategoryProps) {
+  const unread = useUnreadByIds(props.data)
+  if (!unread) return null
+  return <FeedCategoryImpl {...props} />
+}
+
+export const FeedCategoryAutoHideUnread = memo(function FeedCategoryAutoHideUnread(
+  props: FeedCategoryProps,
+) {
+  const hideAllReadSubscriptions = useHideAllReadSubscriptions()
+  if (hideAllReadSubscriptions) {
+    return <FilterReadFeedCategory {...props} />
+  }
+  return <FeedCategoryImpl {...props} />
+})

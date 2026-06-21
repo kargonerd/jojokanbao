@@ -1,7 +1,8 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { usePdfDocument, PdfViewer } from "@jojo/pdf-viewer";
-import { LoadingSpinner, DatePicker, YearPicker } from "@jojo/ui";
+import type { MouseEvent } from "react";
+import { fetchPdfDownloadBytes, usePdfDocument, PdfViewer } from "@jojo/pdf-viewer";
+import { EmptyState, LoadingSpinner, DatePicker, Toolbar, YearPicker } from "@jojo/ui";
 import { PUBLICATIONS, type PublicationConfig } from "../publications";
 
 const NEWSPAPER_HOST = "https://blacknews.jojokanbao.cn";
@@ -23,6 +24,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [jumpToPageNum, setJumpToPageNum] = useState(1);
   const [showBackTop, setShowBackTop] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // ─── PDF URL construction (matches original getPdfPath) ───
@@ -37,7 +39,8 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   }, [date, seq, type, name]);
 
   const pdfUrl = date ? `${NEWSPAPER_HOST}${getPdfPath()}` : "";
-  const { document: pdfDoc, loading, error, numPages } = usePdfDocument({ url: pdfUrl });
+  const { document: pdfDoc, loading, error, numPages } = usePdfDocument({ url: pdfUrl, protectedPdf: "auto" });
+  const downloadFilename = `${name}-${type === "magazine" ? `${date}${String(seq).padStart(2, "0")}` : date}.pdf`;
 
   // ─── Route params → state ───
   useEffect(() => {
@@ -117,6 +120,29 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     }
   };
 
+  const handleDownload = async (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    if (!pdfUrl || downloading) return;
+
+    setDownloading(true);
+    try {
+      const { bytes } = await fetchPdfDownloadBytes(pdfUrl, "auto");
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = downloadFilename;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+    } catch (downloadError) {
+      window.alert(String(downloadError instanceof Error ? downloadError.message : downloadError));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   // ─── Scroll helpers ───
   const scrollToTop = () => containerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
 
@@ -168,7 +194,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
 
       {/* Toolbar: Magazine mode */}
       {type === "magazine" ? (
-        <div className="flex flex-wrap items-center gap-4 py-3.5 px-4 border-b border-rule sticky top-0 bg-paper z-10">
+        <Toolbar sticky>
           <div className="flex items-center gap-2.5">
             <span className="text-[13px] font-bold text-muted tracking-wide">日期</span>
             <YearPicker
@@ -191,12 +217,14 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             </select>
           </div>
           {pdfUrl && (
-            <a href={pdfUrl} target="_blank" rel="noreferrer" className="ml-4 text-sm font-bold text-red hover:text-red-dark">下载</a>
+            <a href={pdfUrl} onClick={handleDownload} aria-disabled={downloading} className="ml-4 text-sm font-bold text-red hover:text-red-dark">
+              {downloading ? "下载中" : "下载"}
+            </a>
           )}
-        </div>
+        </Toolbar>
       ) : (
         /* Toolbar: Newspaper mode */
-        <div className="flex flex-wrap items-center gap-4 py-3.5 px-4 border-b border-rule sticky top-0 bg-paper z-10">
+        <Toolbar sticky>
           <div className="flex items-center gap-2.5">
             <span className="text-[13px] font-bold text-muted tracking-wide">日期</span>
             <DatePicker
@@ -209,19 +237,18 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             <span className="text-xs text-muted">共 {numPages} 页</span>
           )}
           {pdfUrl && (
-            <a href={pdfUrl} target="_blank" rel="noreferrer" className="ml-4 text-sm font-bold text-red hover:text-red-dark">下载</a>
+            <a href={pdfUrl} onClick={handleDownload} aria-disabled={downloading} className="ml-4 text-sm font-bold text-red hover:text-red-dark">
+              {downloading ? "下载中" : "下载"}
+            </a>
           )}
-        </div>
+        </Toolbar>
       )}
 
       {/* Content */}
       <div className="px-4 py-4">
         {loading && <LoadingSpinner text="正在加载 PDF 文档" fullscreen />}
         {error && (
-          <div className="py-20 text-center">
-            <p className="text-muted font-bold">没有当天文档或数据缺失</p>
-            <p className="text-sm text-muted mt-2">{error}</p>
-          </div>
+          <EmptyState title="没有当天文档或数据缺失" description={error} />
         )}
         {pdfDoc && (
           <PdfViewer

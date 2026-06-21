@@ -1,0 +1,115 @@
+.mask-both {
+  mask-image: linear-gradient(
+    rgba(255, 255, 255, 0) 0%,
+    rgb(255, 255, 255) 20px,
+    rgb(255, 255, 255) calc(100% - 20px),
+    rgba(255, 255, 255, 0) 100%
+  );
+}
+.mask-both-lg {
+  mask-image: linear-gradient(
+    rgba(255, 255, 255, 0) 0%,
+    rgb(255, 255, 255) 50px,
+    rgb(255, 255, 255) calc(100% - 50px),
+    rgba(255, 255, 255, 0) 100%
+  );
+}
+
+.mask-b {
+  mask-image: linear-gradient(rgb(255, 255, 255) calc(100% - 20px), rgba(255, 255, 255, 0) 100%);
+}
+
+.mask-b-lg {
+  mask-image: linear-gradient(rgb(255, 255, 255) calc(100% - 50px), rgba(255, 255, 255, 0) 100%);
+}
+
+.mask-t {
+  mask-image: linear-gradient(rgba(255, 255, 255, 0) 0%, rgb(255, 255, 255) 20px);
+}
+
+.mask-t-lg {
+  mask-image: linear-gradient(rgba(255, 255, 255, 0) 0%, rgb(255, 255, 255) 50px);
+}
+
+.mask-horizontal {
+  mask-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 1) 14%,
+    rgba(255, 255, 255, 1) 86%,
+    rgba(255, 255, 255, 0) 100%
+  );
+}
+
+/* Sonner customize */
+
+@media (max-width: 600px) {
+  #root [data-sonner-toaster][data-y-position="bottom"] {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+  }
+
+  #root [data-sonner-toaster][data-y-position="top"] {
+    top: calc(env(safe-area-inset-top, 0px) + 20px);
+  }
+}
+
+[data-sonner-toast] {
+  background-image: linear-gradient(
+    to bottom right,
+    rgba(var(--color-background) / 0.98),
+    rgba(var(--color-background) / 0.95)
+  ) !important;
+}
+[data-sonner-toast]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 1rem;
+  background: linear-gradient(
+    to bottom right,
+    rgba(255, 92, 0, 0.05),
+    transparent,
+    rgba(255, 92, 0, 0.05)
+  );
+  z-index: -1;
+}
+[data-sonner-toast][data-type="success"]::before {
+  background: linear-gradient(
+    to bottom right,
+    rgba(40, 205, 65, 0.05),
+    transparent,
+    rgba(40, 205, 65, 0.05)
+  );
+}
+[data-sonner-toast][data-type="error"]::before {
+  background: linear-gradient(
+    to bottom right,
+    rgba(255, 69, 58, 0.05),
+    transparent,
+    rgba(255, 69, 58, 0.05)
+  );
+}
+[data-sonner-toast][data-type="warning"]::before {
+  background: linear-gradient(
+    to bottom right,
+    rgba(255, 149, 0, 0.05),
+    transparent,
+    rgba(255, 149, 0, 0.05)
+  );
+}
+[data-sonner-toast][data-type="info"]::before {
+  background: linear-gradient(
+    to bottom right,
+    rgba(0, 122, 255, 0.05),
+    transparent,
+    rgba(0, 122, 255, 0.05)
+  );
+}
+[data-sonner-toast][data-type="loading"]::before {
+  background: linear-gradient(
+    to bottom right,
+    rgba(142, 142, 147, 0.05),
+    transparent,
+    rgba(142, 142, 147, 0.05)
+  );
+}

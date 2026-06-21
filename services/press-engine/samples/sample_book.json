@@ -1,0 +1,121 @@
+{
+  "book_id": "sample-book",
+  "title": "JoJo Sample Book",
+  "language": "zh-CN",
+  "source": {
+    "source_uri": "file:///books/sample-book.pdf",
+    "page_count": 4
+  },
+  "content_list": [
+    {
+      "id": "toc-1",
+      "type": "toc",
+      "text": "目录",
+      "page": 1,
+      "proofread_status": "approved",
+      "source_page": 1,
+      "source_ocr_text": "目录"
+    },
+    {
+      "id": "heading-1",
+      "type": "heading",
+      "text": "第一章 开始",
+      "page": 2,
+      "proofread_status": "approved",
+      "source_page": 2,
+      "source_ocr_text": "第一章 开始"
+    },
+    {
+      "id": "paragraph-1",
+      "type": "paragraph",
+      "text": "这是正文第一段。",
+      "page": 2,
+      "proofread_status": "in_review",
+      "source_page": 2,
+      "source_ocr_text": "这是正文第一段。"
+    },
+    {
+      "id": "footnote-1",
+      "type": "footnote",
+      "text": "脚注内容。",
+      "page": 2,
+      "proofread_status": "pending",
+      "source_page": 2,
+      "source_ocr_text": "脚注内容。"
+    },
+    {
+      "id": "image-1",
+      "type": "image",
+      "text": "插图：人物立绘",
+      "page": 3,
+      "proofread_status": "approved",
+      "source_page": 3,
+      "source_ocr_text": "人物立绘"
+    },
+    {
+      "id": "table-1",
+      "type": "table",
+      "text": "角色信息表",
+      "page": 4,
+      "proofread_status": "approved",
+      "source_page": 4,
+      "source_ocr_text": "角色信息表"
+    },
+    {
+      "id": "page-number-4",
+      "type": "page_number",
+      "text": "4",
+      "page": 4,
+      "proofread_status": "approved",
+      "source_page": 4,
+      "source_ocr_text": "4"
+    }
+  ],
+  "layout": [
+    {
+      "page": 2,
+      "blocks": [
+        {
+          "content_id": "heading-1",
+          "kind": "text",
+          "bbox": [72, 96, 520, 140]
+        },
+        {
+          "content_id": "paragraph-1",
+          "kind": "text",
+          "bbox": [72, 156, 520, 320]
+        },
+        {
+          "content_id": "footnote-1",
+          "kind": "text",
+          "bbox": [72, 680, 520, 740]
+        }
+      ]
+    },
+    {
+      "page": 3,
+      "blocks": [
+        {
+          "content_id": "image-1",
+          "kind": "image",
+          "bbox": [96, 144, 496, 620]
+        }
+      ]
+    },
+    {
+      "page": 4,
+      "blocks": [
+        {
+          "content_id": "table-1",
+          "kind": "table",
+          "bbox": [72, 180, 520, 460]
+        },
+        {
+          "content_id": "page-number-4",
+          "kind": "text",
+          "bbox": [280, 760, 320, 790]
+        }
+      ]
+    }
+  ]
+}

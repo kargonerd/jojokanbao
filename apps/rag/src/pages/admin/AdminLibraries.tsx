@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 import { adminApi } from "../../api";
-import { Card } from "@jojo/ui";
+import { Card, EmptyState, PageHeader } from "@jojo/ui";
 
 export function AdminLibraries() {
   const { token } = useAuthStore();
@@ -13,7 +13,8 @@ export function AdminLibraries() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-ink mb-6">知识库管理</h1>
+      <PageHeader title="知识库管理" />
+      {notebooks.length === 0 && <EmptyState title="暂无知识库" description="同步账号后会显示可管理的知识库" />}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {notebooks.map((nb: any) => (
           <Card key={nb.id} className="cursor-pointer p-4" onClick={() => navigate(`/admin/libraries/${nb.id}`)}>

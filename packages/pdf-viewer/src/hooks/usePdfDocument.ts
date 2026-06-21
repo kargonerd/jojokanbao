@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { getDocument, type PDFDocumentProxy } from "pdfjs-dist";
+import { getDocument, type PDFDocumentLoadingTask, type PDFDocumentProxy } from "pdfjs-dist";
 import { GlobalWorkerOptions } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { resolvePdfSource, type ProtectedPdfMode } from "../protectedPdf";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -13,6 +14,7 @@ interface UsePdfDocumentOptions {
   url: string;
   cMapUrl?: string;
   wasmUrl?: string;
+  protectedPdf?: ProtectedPdfMode;
 }
 
 interface PdfDocumentState {
@@ -22,7 +24,7 @@ interface PdfDocumentState {
   error: string | null;
 }
 
-export function usePdfDocument({ url, cMapUrl = CMAP_URL, wasmUrl = WASM_URL }: UsePdfDocumentOptions): PdfDocumentState {
+export function usePdfDocument({ url, cMapUrl = CMAP_URL, wasmUrl = WASM_URL, protectedPdf = false }: UsePdfDocumentOptions): PdfDocumentState {
   const [state, setState] = useState<PdfDocumentState>({ document: null, numPages: 0, loading: true, error: null });
   const prevUrl = useRef("");
 
@@ -32,19 +34,55 @@ export function usePdfDocument({ url, cMapUrl = CMAP_URL, wasmUrl = WASM_URL }: 
 
     setState({ document: null, numPages: 0, loading: true, error: null });
 
-    const task = getDocument({ url, cMapUrl, cMapPacked: true, wasmUrl });
+    let cancelled = false;
+    let task: PDFDocumentLoadingTask | null = null;
 
-    task.promise
-      .then((doc) => {
-        setState({ document: doc, numPages: doc.numPages, loading: false, error: null });
-      })
-      .catch((err) => {
-        if (String(err).includes("Worker was destroyed")) return;
+    const load = async () => {
+      const commonParams = { cMapUrl, cMapPacked: true, wasmUrl };
+
+      if (protectedPdf) {
+        const source = await resolvePdfSource(url, protectedPdf);
+        if (cancelled) {
+          source.kind === "protected" && source.transport.abort();
+          return;
+        }
+
+        task =
+          source.kind === "protected"
+            ? getDocument({
+                ...commonParams,
+                range: source.transport,
+                rangeChunkSize: 65536,
+                disableStream: true,
+              })
+            : getDocument({ ...commonParams, url });
+      } else {
+        task = getDocument({ ...commonParams, url });
+      }
+
+      task.promise
+        .then((doc) => {
+          if (!cancelled) {
+            setState({ document: doc, numPages: doc.numPages, loading: false, error: null });
+          }
+        })
+        .catch((err) => {
+          if (cancelled || String(err).includes("Worker was destroyed")) return;
+          setState({ document: null, numPages: 0, loading: false, error: String(err?.message || err) });
+        });
+    };
+
+    load().catch((err) => {
+      if (!cancelled) {
         setState({ document: null, numPages: 0, loading: false, error: String(err?.message || err) });
-      });
+      }
+    });
 
-    return () => { task.destroy().catch(() => {}); };
-  }, [url, cMapUrl, wasmUrl]);
+    return () => {
+      cancelled = true;
+      task?.destroy().catch(() => {});
+    };
+  }, [url, cMapUrl, wasmUrl, protectedPdf]);
 
   return state;
 }

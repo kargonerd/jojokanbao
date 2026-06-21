@@ -5,6 +5,13 @@ import { Tag } from "../src/Tag";
 import { Card } from "../src/Card";
 import { Pagination } from "../src/Pagination";
 import { LoadingSpinner } from "../src/LoadingSpinner";
+import { AppShell } from "../src/AppShell";
+import { EmptyState } from "../src/EmptyState";
+import { Field, TextInput } from "../src/Form";
+import { ListItem } from "../src/ListItem";
+import { PageHeader } from "../src/PageHeader";
+import { Panel } from "../src/Panel";
+import { Toolbar } from "../src/Toolbar";
 
 describe("Button", () => {
   it("renders with primary variant by default", () => {
@@ -67,5 +74,49 @@ describe("LoadingSpinner", () => {
   it("renders text when provided", () => {
     render(<LoadingSpinner text="加载中" />);
     expect(screen.getByText("加载中")).toBeDefined();
+  });
+});
+
+describe("Layout primitives", () => {
+  it("renders app shell regions", () => {
+    render(<AppShell header="Header" sidebar="Side">Main</AppShell>);
+    expect(screen.getByText("Header")).toBeDefined();
+    expect(screen.getByText("Side")).toBeDefined();
+    expect(screen.getByText("Main")).toBeDefined();
+  });
+
+  it("renders page header actions", () => {
+    render(<PageHeader title="Title" description="Desc" actions={<Button>Act</Button>} />);
+    expect(screen.getByText("Title")).toBeDefined();
+    expect(screen.getByText("Desc")).toBeDefined();
+    expect(screen.getByText("Act")).toBeDefined();
+  });
+
+  it("renders empty state", () => {
+    render(<EmptyState title="Empty" description="Nothing here" />);
+    expect(screen.getByText("Empty")).toBeDefined();
+    expect(screen.getByText("Nothing here")).toBeDefined();
+  });
+
+  it("renders field and text input", () => {
+    render(<Field label="Name"><TextInput defaultValue="JOJO" /></Field>);
+    expect(screen.getByText("Name")).toBeDefined();
+    expect(screen.getByDisplayValue("JOJO")).toBeDefined();
+  });
+
+  it("renders list item actions", () => {
+    render(<ListItem title="Source" meta="RSS" actions={<Button>Delete</Button>} />);
+    expect(screen.getByText("Source")).toBeDefined();
+    expect(screen.getByText("RSS")).toBeDefined();
+    expect(screen.getByText("Delete")).toBeDefined();
+  });
+
+  it("renders panel and toolbar", () => {
+    render(
+      <Panel>
+        <Toolbar>Tools</Toolbar>
+      </Panel>
+    );
+    expect(screen.getByText("Tools")).toBeDefined();
   });
 });

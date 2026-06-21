@@ -1,0 +1,73 @@
+import { useEntry } from "@follow/store/entry/hooks"
+import { getSubscriptionById } from "@follow/store/subscription/getter"
+import { useCallback } from "react"
+
+import { disableShowAISummaryOnce } from "~/atoms/ai-summary"
+import { disableShowAITranslationOnce } from "~/atoms/ai-translation"
+import { resetShowSourceContent } from "~/atoms/source-content"
+import { PeekModal } from "~/components/ui/modal/inspire/PeekModal"
+import { PlainModal } from "~/components/ui/modal/stacked/custom-modal"
+import { useModalStack } from "~/components/ui/modal/stacked/hooks"
+import { EntryModalPreview } from "~/components/ui/peek-modal/EntryModalPreview"
+import { EntryMoreActions } from "~/components/ui/peek-modal/EntryMoreActions"
+import { EntryToastPreview } from "~/components/ui/peek-modal/EntryToastPreview"
+import { getRouteParams, getTimelineIdByView } from "~/hooks/biz/useRouteParams"
+
+export const usePeekModal = () => {
+  const { present } = useModalStack()
+  return useCallback(
+    (entryId: string, variant: "toast" | "modal") => {
+      const basePresentProps = {
+        clickOutsideToDismiss: true,
+        title: "Entry Preview",
+      }
+
+      if (variant === "toast") {
+        present({
+          ...basePresentProps,
+          CustomModalComponent: PlainModal,
+          content: () => <EntryToastPreview entryId={entryId} />,
+          overlay: false,
+          modal: false,
+          modalContainerClassName: "right-0 left-[auto]",
+        })
+      } else {
+        present({
+          ...basePresentProps,
+          autoFocus: false,
+          modalClassName:
+            "relative mx-auto mt-[10vh] scrollbar-none max-w-full overflow-auto px-2 lg:max-w-[65rem] lg:p-0",
+
+          CustomModalComponent: ({ children }) => {
+            const feedId = useEntry(entryId, (state) => state.feedId)
+            const subscription = feedId ? getSubscriptionById(feedId) : undefined
+            const view = subscription?.view ?? getRouteParams().view
+            const timelineId = getTimelineIdByView(view)
+            return (
+              <PeekModal
+                rightActions={[
+                  {
+                    onClick: () => {},
+                    label: "More Actions",
+                    icon: <EntryMoreActions entryId={entryId} />,
+                  },
+                ]}
+                to={feedId ? `/timeline/${timelineId}/${feedId}/${entryId}` : undefined}
+              >
+                {children}
+              </PeekModal>
+            )
+          },
+          content: () => <EntryModalPreview entryId={entryId} />,
+          overlay: true,
+          onClose: () => {
+            disableShowAISummaryOnce()
+            disableShowAITranslationOnce()
+            resetShowSourceContent()
+          },
+        })
+      }
+    },
+    [present],
+  )
+}

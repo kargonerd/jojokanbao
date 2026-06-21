@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { NavBar, type NavItem } from "@jojo/ui";
+import { AppShell, NavBar, type NavItem } from "@jojo/ui";
 
 const navItems: NavItem[] = [
   { label: "首页", href: "/" },
@@ -21,18 +21,18 @@ export function Layout() {
   const location = useLocation();
 
   return (
-    <div className="h-screen flex flex-col">
-      <header className="h-[58px] shrink-0 border-b border-rule-dark z-20">
+    <AppShell
+      header={
         <NavBar
           items={navItems}
           onNavigate={(href) => navigate(href)}
           isActive={(href) => location.pathname === href || location.pathname.startsWith(href + "/")}
           trailing={<p className="text-[13px] italic font-bold text-red opacity-80 tracking-wider truncate max-w-[44vw] m-0">如果要看前途，一定要看历史 —— 毛泽东</p>}
         />
-      </header>
-      <main className="flex-1 overflow-hidden">
-        <Outlet />
-      </main>
-    </div>
+      }
+      contentClassName="overflow-hidden"
+    >
+      <Outlet />
+    </AppShell>
   );
 }

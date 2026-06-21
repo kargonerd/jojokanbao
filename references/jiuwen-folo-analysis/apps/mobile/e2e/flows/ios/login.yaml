@@ -1,0 +1,56 @@
+appId: is.follow
+---
+- waitForAnimationToEnd:
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: login-provider-credential
+    timeout: 60000
+- extendedWaitUntil:
+    visible:
+      id: login-provider-google
+    timeout: 60000
+- extendedWaitUntil:
+    visible:
+      id: login-provider-github
+    timeout: 60000
+- runFlow:
+    when:
+      visible: Already have an account? Sign in
+    commands:
+      - tapOn:
+          id: auth-toggle-mode
+      - waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: login-provider-credential
+    timeout: 60000
+- extendedWaitUntil:
+    visible:
+      id: login-provider-google
+    timeout: 60000
+- extendedWaitUntil:
+    visible:
+      id: login-provider-github
+    timeout: 60000
+- tapOn:
+    id: login-provider-credential
+- extendedWaitUntil:
+    visible:
+      id: login-email-input
+    timeout: 15000
+- tapOn:
+    id: login-email-input
+- inputText: ${E2E_EMAIL}
+- tapOn:
+    id: login-password-input
+- eraseText
+- inputText: ${E2E_PASSWORD}
+- tapOn:
+    id: login-submit
+- extendedWaitUntil:
+    notVisible:
+      id: login-provider-credential
+    timeout: 30000
+- assertNotVisible:
+    id: login-provider-credential

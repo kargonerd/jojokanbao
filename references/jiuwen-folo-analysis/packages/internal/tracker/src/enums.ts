@@ -1,0 +1,36 @@
+export enum TrackerMapper {
+  Identify = 1000,
+  UserLogin = 1001,
+  UiRenderInit = 1002,
+  AppInit = 1003,
+  // Biz
+  NavigateEntry = 2000,
+  Integration = 2002,
+  DailyReportModal = 2003,
+  SwitchToMasonry = 2004,
+  WideMode = 2005,
+  EntryContentHeaderImageGalleryClick = 2006,
+  SearchOpen = 2007,
+  QuickAddFeed = 2008,
+  PlayerOpenDuration = 2009,
+  UpdateRestart = 2010,
+  FeedClaimed = 2012,
+  DailyRewardClaimed = 2013,
+  SubscribeModalOpened = 2015,
+  ReviewPromptEligible = 2016,
+  ReviewPromptShown = 2017,
+  ReviewPromptDismissed = 2018,
+  ReviewPromptPositive = 2019,
+  ReviewPromptNegative = 2020,
+  ReviewPromptFeedbackOpened = 2021,
+  ReviewPromptStoreOpened = 2022,
+  ReviewPromptNativeRequested = 2023,
+
+  // https://docs.google.com/spreadsheets/d/1XlUxTxiXWIQDHFYa2eoPBeuosR1t2h8VFIjXEOqmjhY/edit?gid=0#gid=0
+  Register = 3000,
+  OnBoarding = 3001,
+  Subscribe = 3002,
+
+  // AI
+  AIChatMessageSent = 4000,
+}

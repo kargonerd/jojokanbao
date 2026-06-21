@@ -1,0 +1,341 @@
+import os
+from flask import Flask, jsonify, request
+from elasticsearch import Elasticsearch
+import re
+from flask_cors import CORS
+from search_overlay import build_search_query, load_patch_state_file, merge_search_hits
+
+def create_elasticsearch_client():
+  url = os.environ.get('ELASTICSEARCH_URL')
+  username = os.environ.get('ELASTICSEARCH_USERNAME')
+  password = os.environ.get('ELASTICSEARCH_PASSWORD')
+
+  if not url:
+    return None
+
+  kwargs = {
+    'sniff_on_start': False,
+    'sniff_on_connection_fail': False,
+    'sniffer_timeout': None,
+  }
+  if username and password:
+    kwargs['http_auth'] = (username, password)
+
+  return Elasticsearch([url], **kwargs)
+
+
+es = create_elasticsearch_client()
+index_name = os.environ.get('ELASTICSEARCH_INDEX', 'jojo-67f10bu8')
+overlay_enabled = os.environ.get('SEARCH_OVERLAY', '').lower() in ('1', 'true', 'yes', 'on')
+base_index_name = os.environ.get('ELASTICSEARCH_BASE_INDEX')
+delta_index_name = os.environ.get('ELASTICSEARCH_DELTA_INDEX')
+patch_state_path = os.environ.get('SEARCH_PATCH_STATE_FILE')
+overfetch_multiplier = int(os.environ.get('SEARCH_OVERFETCH_MULTIPLIER', '5'))
+        
+IS_SERVERLESS = bool(os.environ.get('SERVERLESS'))
+
+app = Flask(__name__)
+app.config['DEFAULT_CONTENT_TYPE'] = 'application/json'  
+app.config['DEFAULT_CHARSET'] = 'utf-8'  
+CORS(app, origins=['https://reader.jojokanbao.cn', 'http://127.0.0.1:8080', 'http://localhost:8080'])
+
+
+@app.route("/health")
+def health():
+  return jsonify({
+    'status': 'ok',
+    'elasticsearch': 'configured' if es else 'not_configured',
+    'overlay': 'enabled' if overlay_enabled else 'disabled'
+  })
+
+def processKeyword(keyword):
+  keyword = re.sub(r'\band\b', 'AND', keyword, flags=re.IGNORECASE)
+  keyword = re.sub(r'\bor\b', 'OR', keyword, flags=re.IGNORECASE)
+  keyword = re.sub(r'\bnot\b', 'NOT', keyword, flags=re.IGNORECASE)
+  keyword = keyword.replace("“", "\"").replace("”", "\"").replace("‘", "\"").replace("’", "\"")
+  return keyword
+
+
+def is_quoted_only_query(query):
+  pattern = r'^"[^"]+"$'
+  return bool(re.match(pattern, query))
+
+
+def get_sort_query(sort_order):
+  if sort_order == 'timeAsc':
+    return {
+      "date": {
+        "order": "asc" 
+      }
+    }
+  elif sort_order == 'timeDesc':
+    return {
+      "date": {
+        "order": "desc" 
+      }
+    }
+  else:
+    return None
+
+
+def search_overlay_response():
+  if not base_index_name or not delta_index_name:
+    return jsonify({'error': 'overlay search index is not configured'}), 503
+
+  keyword = request.args.get('keyword')
+  if not keyword:
+    return jsonify({'error': '搜索词为空'})
+
+  page = request.args.get('page') or "1"
+  if page.isdigit():
+    page = int(page)
+  else:
+    return jsonify({"error": "参数错误"})
+
+  size = request.args.get('size') or "10"
+  if size.isdigit():
+    size = int(size)
+  else:
+    return jsonify({"error": "参数错误"})
+
+  from_num = (page - 1) * size
+  if from_num + size > 10000 or size > 50:
+    return jsonify({"error": "参数错误"})
+
+  fetch_size = min(max(page * size * overfetch_multiplier, size), 500)
+  query = build_search_query(
+    keyword,
+    from_num=0,
+    size=fetch_size,
+    source=request.args.get('source'),
+    start_date=request.args.get('startDate'),
+    end_date=request.args.get('endDate'),
+    sort_order=request.args.get('sort'),
+  )
+
+  base_data = es.search(index=base_index_name, body=query)
+  delta_data = es.search(index=delta_index_name, body=query)
+  if base_data.get('timed_out') or delta_data.get('timed_out'):
+    app.logger.error("overlay search timeout, base: %s, delta: %s", base_data, delta_data)
+    return jsonify({'error': '请求超时'})
+
+  base_hits = ((base_data.get('hits') or {}).get('hits')) or []
+  delta_hits = ((delta_data.get('hits') or {}).get('hits')) or []
+  patch_state = load_patch_state_file(patch_state_path)
+  total, results = merge_search_hits(base_hits, delta_hits, patch_state, offset=from_num, size=size)
+  return jsonify({'data': {'total': total, 'totalApproximate': True, 'results': results}})
+
+  
+@app.route("/search")
+def search():
+    try:
+      if es is None:
+        return jsonify({'error': 'search backend is not configured'}), 503
+      if overlay_enabled:
+        return search_overlay_response()
+
+      keyword = request.args.get('keyword')
+      if not keyword:
+        return jsonify({'error': '搜索词为空'})
+      keyword = processKeyword(keyword)
+      page = request.args.get('page')
+      if not page:
+        page = "1"
+      if page.isdigit():  
+        page = int(page)  
+      else:  
+        return jsonify({"error": "参数错误"})
+      size = request.args.get('size')
+      if not size:
+        size = "10"
+      if size.isdigit():  
+        size = int(size)  
+      else:  
+        return jsonify({"error": "参数错误"})
+      from_num = (page-1) * size
+      if from_num + size > 10000 or size > 50:
+        return jsonify({"error": "参数错误"})
+      source = request.args.get('source')
+      query_str = keyword
+      if source:
+        query_str += ' AND source:' + source
+      
+      startDate = request.args.get('startDate')
+      endDate = request.args.get('endDate')
+      if startDate and endDate:
+          date_range_query = {
+              "range": {
+                  "date": {
+                      "gte": startDate,
+                      "lte": endDate
+                  }
+              }
+          }
+          if is_quoted_only_query(query_str):
+              quoted_text = query_str[1:-1]
+              query = {
+                  "query": {
+                      "bool": {
+                          "should": [
+                              {
+                                  "wildcard": {
+                                      "title.keyword": f"*{quoted_text}*"
+                                  }
+                              },
+                              {
+                                  "wildcard": {
+                                      "content.keyword": f"*{quoted_text}*"
+                                  }
+                              }
+                          ],
+                          "minimum_should_match": 1
+                      }
+                  },
+                  "highlight": {
+                      "fields": {
+                          "title": {},
+                          "content": {}
+                      }, 
+                      "fragment_size": 2147483647,
+                      "pre_tags": "@highlight@",
+                      "post_tags": "@/highlight@"
+                  },
+                  "from": from_num,
+                  "size": size,
+              }
+          else:
+              query = {
+                  "query": {
+                      "bool": {
+                          "must": [
+                              {
+                                  "query_string": {
+                                    "query": query_str,
+                                    "fields": ["title^2", "content"]
+                                  }
+                              },
+                              date_range_query
+                          ]
+                      }
+                  },
+                  "highlight": {
+                      "fields": {
+                          "title": {},
+                          "content": {}
+                      }, 
+                      "fragment_size": 2147483647,
+                      "pre_tags": "@highlight@",
+                      "post_tags": "@/highlight@"
+                  },
+                  "from": from_num,
+                  "size": size,
+              }
+      else:
+          if is_quoted_only_query(query_str):
+              quoted_text = query_str[1:-1]
+              query = {
+                  "query": {
+                      "bool": {
+                          "should": [
+                              {
+                                  "wildcard": {
+                                      "title.keyword": f"*{quoted_text}*"
+                                  }
+                              },
+                              {
+                                  "wildcard": {
+                                      "content.keyword": f"*{quoted_text}*"
+                                  }
+                              }
+                          ],
+                          "minimum_should_match": 1
+                      }
+                  },
+                  "highlight": {
+                      "fields": {
+                          "title": {},
+                          "content": {}
+                      }, 
+                      "fragment_size": 2147483647,
+                      "pre_tags": "@highlight@",
+                      "post_tags": "@/highlight@"
+                  },
+                  "from": from_num,
+                  "size": size,
+              }
+          else:
+              query = {
+                  "query": {
+                       "query_string": {
+                            "query": query_str,
+                            "fields": ["title^2", "content"]                      
+                        }
+                  },
+                  "highlight": {
+                      "fields": {
+                          "title": {},
+                          "content": {}
+                      }, 
+                      "fragment_size": 2147483647,
+                      "pre_tags": "@highlight@",
+                      "post_tags": "@/highlight@"
+                  },
+                  "from": from_num,
+                  "size": size,
+              }
+
+      sort_order = request.args.get('sort')
+      sort_query = get_sort_query(sort_order)
+      
+      if sort_query:
+        query['sort'] = sort_query
+      data = es.search(index=index_name, body=query)
+      if not data:
+        app.logger.error("search from ES return no data, ret: %s", data)
+        return jsonify({"error": "服务端错误"})
+      timeout = data.get('timed_out')
+      if timeout:
+        app.logger.error("search from ES timeout, ret: %s", data)
+        return jsonify({'error': '请求超时'})
+      empty_res = {'data': {'total': 0, 'results': []}}
+      hits = data.get('hits')
+      if not hits:
+        app.logger.warn("search from ES no hits, ret: %s", data)
+        return jsonify(empty_res)
+      total = hits.get('total')
+      if not total:
+        app.logger.warn("search from ES no total, ret: %s", data)
+        return jsonify(empty_res)
+      total_num = total.get('value')
+      if not total_num:
+        app.logger.warn("search from ES no total number, ret: %s", data)
+        return jsonify(empty_res)
+      hits_list = hits.get('hits')
+      if not hits_list:
+        app.logger.warn("search from ES no hit list, ret: %s", data)
+        return jsonify(empty_res)
+      results = []
+      for hit in hits_list:
+        source = hit.get('_source')
+        if not source:
+          app.logger.warn("search from ES hit empty, hits list: %s", hits_list)
+          continue
+        source.pop('@timestamp', None)
+        highlight = hit.get('highlight')
+        if highlight:
+          title = highlight.get('title')
+          if title and len(title):
+            source['title'] = title[0]
+          content = highlight.get('content')
+          if content and len(content):
+            source['content'] = content[0]
+        results.append(source)
+      return jsonify({'data': {'total': total_num, 'results': results}})
+    except Exception as e:
+      app.logger.error("search from ES error:", e)
+      return jsonify({"error": "服务端错误"})
+
+
+if __name__ == '__main__':
+  # 启动服务，监听 9000 端口，监听地址为 0.0.0.0
+  app.run(debug=IS_SERVERLESS != True, port=9000, host='0.0.0.0')

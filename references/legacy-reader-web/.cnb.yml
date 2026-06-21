@@ -1,0 +1,18 @@
+$:
+  tag_push:
+    - imports: https://cnb.cool/jojokanbao/web/-/blob/master/config/env.yml
+      docker:
+        build: ./Dockerfile
+      stages:
+        - name: install
+          script: npm install
+        - name: compile
+          script: npm run build
+        - name: deploy
+          script:
+            - coscmd config -a ${COS_SECRET_ID} -s ${COS_SECRET_KEY} -b ${COS_BUCKET_NAME} -r ${COS_BUCKET_REGION}
+            - coscmd delete -rf css
+            - coscmd delete -rf fonts
+            - coscmd delete -rf js
+            - coscmd upload -r ${COS_UPLOAD_FROM_PATH} /
+            - echo "上传成功，访问 https://${COS_BUCKET_NAME}.cos-website.${COS_BUCKET_REGION}.myqcloud.com 预览效果"

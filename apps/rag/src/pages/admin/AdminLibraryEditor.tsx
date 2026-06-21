@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 import { adminApi } from "../../api";
-import { Button, Card } from "@jojo/ui";
+import { Button, Field, ListItem, PageHeader, TextInput } from "@jojo/ui";
 
 export function AdminLibraryEditor() {
   const { notebookId } = useParams<{ notebookId: string }>();
@@ -28,23 +28,25 @@ export function AdminLibraryEditor() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-ink mb-6">编辑知识库</h1>
+      <PageHeader title="编辑知识库" />
       {notebook && (
         <div className="space-y-4 max-w-lg">
-          <div>
-            <label className="block text-xs font-bold text-muted mb-1">标题</label>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full h-9 text-sm" />
-          </div>
+          <Field label="标题">
+            <TextInput value={title} onChange={(e) => setTitle(e.target.value)} className="w-full" />
+          </Field>
           <Button onClick={handleSave}>保存</Button>
         </div>
       )}
       <h2 className="text-lg font-bold text-ink mt-8 mb-4">来源列表</h2>
       <div className="space-y-2">
         {sources.map((s: any) => (
-          <Card key={s.id} hover={false} className="p-3 flex items-center justify-between cursor-pointer" onClick={() => navigate(`/admin/libraries/${notebookId}/sources/${s.id}`)}>
-            <span className="text-sm font-bold text-ink">{s.title || s.name}</span>
-            <span className="text-xs text-muted">{s.published ? "已发布" : "未发布"}</span>
-          </Card>
+          <ListItem
+            key={s.id}
+            title={s.title || s.name}
+            meta={s.published ? "已发布" : "未发布"}
+            className="cursor-pointer"
+            onClick={() => navigate(`/admin/libraries/${notebookId}/sources/${s.id}`)}
+          />
         ))}
       </div>
     </div>

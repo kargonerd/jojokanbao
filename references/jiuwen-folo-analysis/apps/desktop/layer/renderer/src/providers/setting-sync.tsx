@@ -1,0 +1,132 @@
+import { useMobile } from "@follow/components/hooks/useMobile.js"
+import { useIsDark } from "@follow/hooks"
+import { getAccentColorValue } from "@follow/shared/settings/constants"
+import type { UISettings } from "@follow/shared/settings/interface"
+import { useUnreadAll } from "@follow/store/unread/hooks"
+import { hexToHslString } from "@follow/utils"
+import i18next from "i18next"
+import { useEffect, useInsertionEffect, useLayoutEffect, useRef } from "react"
+
+import { useGeneralSettingKey } from "~/atoms/settings/general"
+import { useUISettingValue } from "~/atoms/settings/ui"
+import { useSubscriptionColumnShow } from "~/atoms/sidebar"
+import { I18N_LOCALE_KEY } from "~/constants"
+import { useReduceMotion } from "~/hooks/biz/useReduceMotion"
+import { useSyncTheme } from "~/hooks/common"
+import { langChain } from "~/i18n"
+import { ipcServices } from "~/lib/client"
+import { buildAppFontFamily } from "~/lib/font-family"
+import { loadLanguageAndApply } from "~/lib/load-language"
+
+const useUpdateDockBadge = (setting: UISettings) => {
+  const unreadCount = useUnreadAll()
+
+  useEffect(() => {
+    if (setting.showDockBadge) {
+      ipcServices?.dock.pollingUpdateUnreadCount()
+    } else {
+      ipcServices?.dock.cancelPollingUpdateUnreadCount().then(() => {
+        ipcServices?.dock.setDockBadge(0)
+      })
+    }
+    return
+  }, [setting.showDockBadge])
+
+  const prevCount = useRef<null | number>(null)
+  useEffect(() => {
+    if (!setting.showDockBadge) {
+      return
+    }
+    if (prevCount.current === unreadCount) {
+      return
+    }
+
+    ipcServices?.dock.setDockBadge(unreadCount).then(() => {
+      prevCount.current = unreadCount
+    })
+  }, [unreadCount, setting.showDockBadge])
+}
+const useUISettingSync = () => {
+  const setting = useUISettingValue()
+  const mobile = useMobile()
+  useSyncTheme()
+  useInsertionEffect(() => {
+    const root = document.documentElement
+    root.style.fontSize = `${setting.uiTextSize * (mobile ? 0.875 : 1)}px`
+  }, [setting.uiTextSize, mobile])
+
+  const isDark = useIsDark()
+  useInsertionEffect(() => {
+    const root = document.documentElement
+    // 21.6 100% 50%;
+    root.style.setProperty(
+      "--fo-a",
+      hexToHslString(getAccentColorValue(setting.accentColor)[isDark ? "dark" : "light"]),
+    )
+  }, [setting.accentColor, isDark])
+
+  useInsertionEffect(() => {
+    const root = document.documentElement
+    const fontCss = buildAppFontFamily(setting.uiFontFamily)
+
+    Object.assign(root.style, {
+      fontFamily: fontCss,
+    })
+    root.style.cssText += `\n--fo-font-family: ${fontCss}`
+    root.style.cssText += `\n--pointer: ${setting.usePointerCursor ? "pointer" : "default"}`
+    Object.assign(document.body.style, {
+      fontFamily: fontCss,
+    })
+  }, [setting.uiFontFamily, setting.usePointerCursor])
+
+  useUpdateDockBadge(setting)
+}
+
+const useDataAttrSync = () => {
+  const columnShow = useSubscriptionColumnShow()
+  useEffect(() => {
+    document.documentElement.dataset.leftColumnHidden = (!columnShow).toString()
+  }, [columnShow])
+}
+
+const useUXSettingSync = () => {
+  const reduceMotion = useReduceMotion()
+  useLayoutEffect(() => {
+    document.documentElement.dataset.motionReduce = reduceMotion ? "true" : "false"
+  }, [reduceMotion])
+}
+
+const useLanguageSync = () => {
+  const language = useGeneralSettingKey("language")
+  useEffect(() => {
+    let mounted = true
+
+    if (language === "zh-TW") {
+      loadLanguageAndApply("zh-CN")
+    }
+    loadLanguageAndApply(language as string).then(() => {
+      langChain.next(() => {
+        if (mounted) {
+          localStorage.setItem(I18N_LOCALE_KEY, language as string)
+          return i18next.changeLanguage(language as string)
+        }
+      })
+    })
+
+    return () => {
+      mounted = false
+    }
+  }, [language])
+}
+const useGeneralSettingSync = () => {
+  useGeneralSettingKey("voice")
+}
+
+export const SettingSync = () => {
+  useUISettingSync()
+  useUXSettingSync()
+  useLanguageSync()
+  useGeneralSettingSync()
+  useDataAttrSync()
+  return null
+}

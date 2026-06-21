@@ -7,6 +7,16 @@
     "build": "turbo build",
     "test": "turbo test",
     "lint": "turbo lint",
+    "dev:rag-backend": "cd services/rag-backend && python run_simple.py",
+    "dev:press-engine": "cd services/press-engine && python -m uvicorn jojo_press.app:app --host 127.0.0.1 --port 8765 --reload",
+    "dev:reader-search": "cd services/reader-search && python app.py",
+    "dev:jiuwen-api": "python services/jiuwen-api/run.py",
+    "dev:jiuwen-mobile": "pnpm --filter @jojo/jiuwen-mobile start",
+    "finalize:reader-pdf": "node tooling/finalize-reader-pdf-protection.mjs",
+    "protect:reader-pdf": "node tooling/protect-reader-pdf.mjs",
+    "publish:reader-pdf": "node tooling/publish-protected-reader-pdfs.mjs",
+    "purge:reader-pdf": "node tooling/purge-edgeone-reader-cache.mjs",
+    "verify:reader-pdf": "node tooling/verify-reader-pdf-protection.mjs",
     "clean": "turbo clean && rm -rf node_modules"
   },
   "devDependencies": {

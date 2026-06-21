@@ -1,0 +1,53 @@
+import { env } from "@follow/shared/env.desktop"
+import { setFirebaseTracker, setPostHogTracker, tracker } from "@follow/tracker"
+import { captureAttributionFromURL, getAttributionForAnalytics } from "@follow/utils"
+import type { AuthSessionResponse } from "@follow-app/client-sdk"
+import posthog from "posthog-js"
+
+import { QUERY_PERSIST_KEY } from "~/constants/app"
+
+import { ga4 } from "../lib/ga4"
+
+export const initAnalytics = async () => {
+  // Capture attribution data from URL (preserves first attribution)
+  captureAttributionFromURL()
+
+  // Get attribution data for analytics
+  const attributionData = getAttributionForAnalytics()
+
+  tracker.manager.appendUserProperties({
+    build: ELECTRON ? "electron" : "web",
+    version: APP_VERSION,
+    hash: GIT_COMMIT_SHA,
+    language: navigator.language,
+    ...attributionData,
+  })
+
+  setFirebaseTracker(ga4)
+
+  setPostHogTracker(
+    posthog.init(env.VITE_POSTHOG_KEY, {
+      api_host: env.VITE_POSTHOG_HOST,
+      person_profiles: "identified_only",
+      defaults: "2025-05-24",
+      capture_exceptions: {
+        capture_unhandled_errors: true,
+        capture_unhandled_rejections: true,
+        capture_console_errors: false,
+      },
+    }),
+  )
+
+  let session: AuthSessionResponse | undefined
+  try {
+    const queryData = JSON.parse(window.localStorage.getItem(QUERY_PERSIST_KEY) ?? "{}")
+    session = queryData.clientState.queries.find(
+      (query: any) => query.queryHash === JSON.stringify(["auth", "session"]),
+    )?.state.data.data
+  } catch {
+    // do nothing
+  }
+  if (session?.user) {
+    tracker.identify(session.user)
+  }
+}

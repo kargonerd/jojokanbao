@@ -1,0 +1,131 @@
+import { isNewUserQueryKey } from "@follow/store/user/constants"
+import { tracker } from "@follow/tracker"
+import { useCallback, useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { Pressable, View } from "react-native"
+import Animated, { FadeInRight, FadeOutLeft } from "react-native-reanimated"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
+
+import { Text } from "@/src/components/ui/typography/Text"
+import { useReadableContainerStyle } from "@/src/lib/responsive"
+
+import { useNavigation } from "../lib/navigation/hooks"
+import type { NavigationControllerView } from "../lib/navigation/types"
+import { markOnboardingFinished } from "../lib/onboarding"
+import { queryClient } from "../lib/query-client"
+import { StepFinished } from "../modules/onboarding/step-finished"
+import { StepInterests } from "../modules/onboarding/step-interests"
+import { StepPreferences } from "../modules/onboarding/step-preferences"
+import { StepWelcome } from "../modules/onboarding/step-welcome"
+
+const ONBOARDING_STEPS = [1, 2, 3, 4]
+
+export const OnboardingScreen: NavigationControllerView = () => {
+  const { t } = useTranslation("common")
+  const insets = useSafeAreaInsets()
+  const readableContentStyle = useReadableContainerStyle(680)
+  const [currentStep, setCurrentStep] = useState(1)
+  const totalSteps = ONBOARDING_STEPS.length
+  const navigation = useNavigation()
+  const handleNext = useCallback(() => {
+    if (currentStep < totalSteps) {
+      setCurrentStep(currentStep + 1)
+      tracker.onBoarding({
+        step: currentStep,
+        done: false,
+      })
+    } else {
+      // Complete onboarding
+      tracker.onBoarding({
+        step: currentStep,
+        done: true,
+      })
+      void markOnboardingFinished()
+      queryClient
+        .invalidateQueries({
+          queryKey: isNewUserQueryKey,
+        })
+        .then(() => {
+          navigation.back()
+        })
+    }
+  }, [currentStep, navigation, totalSteps])
+  useEffect(() => {
+    tracker.onBoarding({
+      step: 0,
+      done: false,
+    })
+  }, [])
+  return (
+    <View
+      className="flex-1 bg-system-grouped-background px-6"
+      style={{
+        paddingTop: insets.top,
+        paddingBottom: insets.bottom,
+      }}
+    >
+      <ProgressIndicator
+        currentStep={currentStep}
+        steps={ONBOARDING_STEPS}
+        setCurrentStep={setCurrentStep}
+      />
+
+      <Animated.View
+        className={"flex-1"}
+        key={`step-${currentStep}`}
+        exiting={FadeOutLeft}
+        entering={FadeInRight}
+        style={readableContentStyle}
+      >
+        {/* Content */}
+        {currentStep === 1 && <StepWelcome />}
+        {currentStep === 2 && <StepPreferences />}
+        {currentStep === 3 && <StepInterests />}
+        {currentStep === 4 && <StepFinished />}
+      </Animated.View>
+
+      {/* Navigation buttons */}
+      <View className="mb-6 px-6" style={readableContentStyle}>
+        <Pressable
+          testID="onboarding-next"
+          onPress={handleNext}
+          className="w-full items-center rounded-xl bg-accent py-4"
+        >
+          <Text className="text-lg font-bold text-white">
+            {currentStep < totalSteps - 1
+              ? t("words.next")
+              : currentStep === totalSteps - 1
+                ? t("words.finishSetup")
+                : t("words.letsGo")}
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  )
+}
+function ProgressIndicator({
+  currentStep,
+  steps,
+  setCurrentStep,
+}: {
+  currentStep: number
+  steps: number[]
+  setCurrentStep: (step: number) => void
+}) {
+  return (
+    <View className="mb-6 mt-4 flex flex-row justify-center gap-2">
+      {steps.map((step) => (
+        <Pressable
+          key={`step-${step}-indicator`}
+          onPress={() => {
+            setCurrentStep(step)
+          }}
+        >
+          <View
+            className={`mx-1 h-2 w-10 rounded-full ${currentStep >= step ? "bg-accent" : "bg-tertiary-system-fill"}`}
+          />
+        </Pressable>
+      ))}
+    </View>
+  )
+}

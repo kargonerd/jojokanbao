@@ -1,0 +1,70 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# Environment
+.env
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local debug artifacts
+*.stackdump
+nul
+browser-flow-requests-*.json
+create-project-*.json
+create-project-*.png
+homepage-*.png
+proofread-*.json
+proofread-*.png
+test-*.js
+tmp-*
+*.png
+*.stackdump
+.playwright-mcp/
+exports/
+desktop/dist-electron/
+desktop/jojo-press-engine.log
+desktop/test-*.mjs
+!desktop/test-proofread-pdfjs-alignment.mjs
+!desktop/test-proofread-electron-alignment.mjs
+desktop/tmp-*
+desktop/browser-flow-events.json
+convert-pdf.mjs
+parse-and-update.mjs
+desktop/convert-pdf.mjs
+desktop/check_*.py
+desktop/extract_*.py
+desktop/public/
+
+# Test outputs
+.pytest_cache/
+.pytest-red/
+.coverage
+
+# Electron
+.tmp/
+
+# Projects data
+projects/*/
+!projects/.gitkeep
+
+# Static files (except test.pdf)
+engine/static/*
+!engine/static/.gitkeep

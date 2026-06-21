@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "JOJO旧闻",
-  description: "看完新闻，自动生成合订本",
+  description: "AI 辅助阅读新闻，自动生成旧闻对照和追问线索",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

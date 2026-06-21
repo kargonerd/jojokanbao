@@ -1,0 +1,145 @@
+import { stripeClient } from "@better-auth/stripe/client"
+import { IN_ELECTRON } from "@follow/shared"
+import type { AuthPlugins } from "@follow-app/client-sdk/auth"
+import type { BetterAuthClientPlugin, BetterFetchOption } from "better-auth/client"
+import { createAuthClient } from "better-auth/client"
+import {
+  inferAdditionalFields,
+  lastLoginMethodClient,
+  magicLinkClient,
+  twoFactorClient,
+} from "better-auth/client/plugins"
+
+type AuthPlugin = AuthPlugins[number]
+
+export const baseAuthPlugins = [
+  {
+    id: "customGetProviders",
+    $InferServerPlugin: {} as Extract<AuthPlugin, { id: "customGetProviders" }>,
+  },
+  {
+    id: "getAccountInfo",
+    $InferServerPlugin: {} as Extract<AuthPlugin, { id: "getAccountInfo" }>,
+  },
+  {
+    id: "deleteUserCustom",
+    $InferServerPlugin: {} as Extract<AuthPlugin, { id: "deleteUserCustom" }>,
+  },
+  {
+    id: "oneTimeToken",
+    $InferServerPlugin: {} as Extract<AuthPlugin, { id: "oneTimeToken" }>,
+  },
+
+  inferAdditionalFields({
+    user: {
+      handle: {
+        type: "string",
+        required: false,
+      },
+      bio: {
+        type: "string",
+        required: false,
+      },
+      website: {
+        type: "string",
+        required: false,
+      },
+      socialLinks: {
+        type: "json",
+        required: false,
+      },
+    },
+  }),
+  twoFactorClient(),
+  stripeClient({ subscription: true }),
+  lastLoginMethodClient(),
+  magicLinkClient(),
+]
+
+export type AuthClient<ExtraPlugins extends BetterAuthClientPlugin[] = []> = ReturnType<
+  typeof createAuthClient<{
+    plugins: [...typeof baseAuthPlugins, ...ExtraPlugins]
+  }>
+>
+
+export type LoginRuntime = "browser" | "app"
+
+export class Auth {
+  authClient: AuthClient
+
+  constructor(
+    private readonly options: {
+      apiURL: string
+      webURL: string
+      fetchOptions?: BetterFetchOption
+    },
+  ) {
+    this.authClient = createAuthClient({
+      baseURL: `${this.options.apiURL}/better-auth`,
+      plugins: baseAuthPlugins,
+      fetchOptions: {
+        ...this.options.fetchOptions,
+        credentials: "include",
+        cache: "no-store",
+        onRequest: (context) => {
+          const referralCode = localStorage.getItem(getStorageNS("referral-code"))
+          if (referralCode) {
+            context.headers.set("folo-referral-code", referralCode)
+          }
+
+          this.options.fetchOptions?.onRequest?.(context)
+
+          return context
+        },
+      },
+    })
+  }
+
+  loginHandler = async (
+    provider: string,
+    runtime?: LoginRuntime,
+    args?: {
+      email?: string
+      password?: string
+      headers?: Record<string, string>
+    },
+  ) => {
+    const { email, password, headers } = args ?? {}
+    const callbackURL = runtime === "app" ? `${this.options.webURL}/login` : this.options.webURL
+    if (IN_ELECTRON && provider !== "credential" && provider !== "magicLink") {
+      window.open(`${this.options.webURL}/login?provider=${provider}`)
+    } else {
+      if (provider === "credential") {
+        if (!email || !password) {
+          window.location.href = "/login"
+          return
+        }
+        return this.authClient.signIn.email({ email, password }, { headers })
+      }
+
+      if (provider === "magicLink") {
+        if (!email) {
+          window.location.href = "/login"
+          return
+        }
+        return this.authClient.signIn.magicLink(
+          {
+            email,
+            name: email.split("@")[0]!,
+            callbackURL,
+          },
+          { headers },
+        )
+      }
+
+      this.authClient.signIn.social({
+        provider: provider as "google" | "github" | "apple",
+        callbackURL,
+      })
+    }
+  }
+}
+
+// copy from packages/internal/utils/src/ns.ts
+const ns = "follow"
+const getStorageNS = (key: string) => `${ns}:${key}`

@@ -1,0 +1,283 @@
+/* editorial-preset: 红色杂志设计系统 */
+/* 在子站的主 CSS 中 @import 此文件即可继承全部设计 token */
+
+@import "tailwindcss";
+
+@theme {
+  /* Colors */
+  --color-ink: #202020;
+  --color-muted: #666;
+  --color-rule: #d8d8d8;
+  --color-rule-dark: #202020;
+  --color-red: #8b1a1a;
+  --color-red-dark: #651212;
+  --color-paper: #fff;
+  --color-paper-soft: #fffaf2;
+  --color-cream: #f5efe6;
+  --color-soft: #f7f7f7;
+
+  /* Typography */
+  --font-serif: "Noto Serif SC", "Songti SC", SimSun, "Microsoft YaHei", serif;
+  --font-sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+
+  /* Spacing (supplement) */
+  --spacing-18: 4.5rem;
+  --spacing-22: 5.5rem;
+}
+
+/* === Base resets === */
+@layer base {
+  @keyframes dropIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  *, *::before, *::after {
+    border-radius: 0;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-serif);
+    color: var(--color-ink);
+    background: var(--color-paper);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background: var(--color-red);
+    color: var(--color-paper);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-red);
+    outline-offset: 2px;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--color-paper); }
+  ::-webkit-scrollbar-thumb { background: var(--color-rule); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--color-red); }
+
+  /* Links */
+  a {
+    color: var(--color-red);
+    text-decoration: none;
+    transition: color .2s ease;
+  }
+  a:hover { color: var(--color-red-dark); }
+
+  /* Inputs */
+  input, select, textarea {
+    border: 1px solid var(--color-rule-dark);
+    background: var(--color-paper);
+    color: var(--color-ink);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    font-family: inherit;
+    transition: border-color .2s ease;
+  }
+  input:hover, select:hover, textarea:hover { border-color: var(--color-red); }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--color-red);
+    outline: none;
+    box-shadow: 0 0 0 1px var(--color-red);
+  }
+  input::placeholder, textarea::placeholder { color: var(--color-muted); }
+
+  /* Buttons */
+  button, [role="button"] {
+    font-family: inherit;
+    cursor: pointer;
+  }
+}
+
+/* === Utility components === */
+@layer components {
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 2.25rem;
+    padding: 0 1.25rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    border: 1px solid var(--color-red);
+    color: var(--color-cream);
+    background: var(--color-red);
+    transition: color .2s ease, background-color .2s ease;
+  }
+  .btn:hover {
+    color: var(--color-red);
+    background: var(--color-paper);
+  }
+  .btn:active {
+    color: var(--color-cream);
+    background: var(--color-red-dark);
+    border-color: var(--color-red-dark);
+  }
+
+  .btn-outline {
+    color: var(--color-red);
+    background: var(--color-paper);
+  }
+  .btn-outline:hover {
+    color: var(--color-cream);
+    background: var(--color-red);
+  }
+
+  .tag {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    border: 1px solid var(--color-rule);
+    color: var(--color-muted);
+    background: var(--color-paper);
+  }
+
+  .kicker {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    color: var(--color-muted);
+    text-transform: uppercase;
+  }
+  .kicker::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--color-rule);
+  }
+}
+
+
+/* === Vue Datepicker editorial theme === */
+:root {
+  --dp-font-family: var(--font-serif);
+  --dp-border-radius: 0px;
+  --dp-cell-border-radius: 0px;
+  --dp-button-height: 36px;
+  --dp-month-year-row-height: 40px;
+  --dp-month-year-row-button-size: 28px;
+  --dp-font-size: 0.875rem;
+  --dp-preview-font-size: 0.8rem;
+  --dp-time-font-size: 0.85rem;
+  --dp-cell-size: 36px;
+  --dp-cell-padding: 4px;
+  --dp-input-padding: 8px 12px;
+  --dp-input-icon-padding: 36px;
+  --dp-menu-min-width: 260px;
+  --dp-action-buttons-padding: 8px 12px;
+  --dp-row-margin: 2px 0;
+
+  --dp-background-color: var(--color-paper);
+  --dp-text-color: var(--color-ink);
+  --dp-hover-color: rgba(139, 26, 26, .06);
+  --dp-hover-text-color: var(--color-red);
+  --dp-hover-icon-color: var(--color-red);
+  --dp-primary-color: var(--color-red);
+  --dp-primary-disabled-color: #c58d8d;
+  --dp-primary-text-color: var(--color-cream);
+  --dp-secondary-color: var(--color-rule);
+  --dp-border-color: var(--color-rule);
+  --dp-menu-border-color: var(--color-rule);
+  --dp-border-color-hover: var(--color-red);
+  --dp-disabled-color: var(--color-soft);
+  --dp-disabled-color-text: #bbb;
+  --dp-scroll-bar-background: var(--color-paper);
+  --dp-scroll-bar-color: var(--color-red);
+  --dp-success-color: var(--color-red);
+  --dp-success-color-disabled: #c58d8d;
+  --dp-icon-color: var(--color-muted);
+  --dp-danger-color: var(--color-red-dark);
+  --dp-marker-color: var(--color-red);
+  --dp-tooltip-color: var(--color-paper-soft);
+  --dp-highlight-color: rgba(139, 26, 26, .06);
+  --dp-range-between-dates-background-color: rgba(139, 26, 26, .06);
+  --dp-range-between-dates-text-color: var(--color-ink);
+  --dp-range-between-border-color: rgba(139, 26, 26, .06);
+}
+
+/* Input field */
+.dp__input {
+  border: 1px solid var(--color-rule) !important;
+  font-family: var(--font-serif) !important;
+  font-weight: 500;
+  font-size: 0.85rem;
+  height: 34px;
+  padding: 6px 12px 6px 34px;
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+
+.dp__input:hover {
+  border-color: var(--color-red) !important;
+}
+
+.dp__input:focus,
+.dp__input.dp__input_focus {
+  border-color: var(--color-red) !important;
+  box-shadow: 0 0 0 2px rgba(139, 26, 26, .1);
+}
+
+/* Calendar panel */
+.dp__menu {
+  border: 1px solid var(--color-rule) !important;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .08), 0 2px 8px rgba(0, 0, 0, .04);
+  padding: 8px;
+}
+
+/* Header (month/year navigation) */
+.dp__month_year_wrap {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.dp__inner_nav:hover {
+  color: var(--color-red);
+  background: rgba(139, 26, 26, .06);
+}
+
+/* Day cells */
+.dp__calendar_item {
+  font-weight: 500;
+}
+
+.dp__today {
+  border: 1px solid var(--color-red) !important;
+}
+
+.dp__active_date {
+  background: var(--color-red) !important;
+  color: var(--color-cream) !important;
+}
+
+.dp__overlay_cell_active {
+  background: var(--color-red) !important;
+  color: var(--color-cream) !important;
+}
+
+/* Week day header */
+.dp__calendar_header_item {
+  font-weight: 700;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  text-transform: uppercase;
+}
+
+/* Arrow/icon styling */
+.dp__input_icon {
+  color: var(--color-muted);
+}
+
+.dp__input_focus .dp__input_icon,
+.dp__input:hover ~ .dp__input_icon {
+  color: var(--color-red);
+}

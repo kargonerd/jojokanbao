@@ -1,0 +1,47 @@
+[
+  {
+    "page": 2,
+    "blocks": [
+      {
+        "content_id": "heading-1",
+        "kind": "text",
+        "bbox": [72, 96, 520, 140]
+      },
+      {
+        "content_id": "paragraph-1",
+        "kind": "text",
+        "bbox": [72, 156, 520, 320]
+      },
+      {
+        "content_id": "footnote-1",
+        "kind": "text",
+        "bbox": [72, 680, 520, 740]
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "blocks": [
+      {
+        "content_id": "image-1",
+        "kind": "image",
+        "bbox": [96, 144, 496, 620]
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "blocks": [
+      {
+        "content_id": "table-1",
+        "kind": "table",
+        "bbox": [72, 180, 520, 460]
+      },
+      {
+        "content_id": "page-number-4",
+        "kind": "text",
+        "bbox": [280, 760, 320, 790]
+      }
+    ]
+  }
+]

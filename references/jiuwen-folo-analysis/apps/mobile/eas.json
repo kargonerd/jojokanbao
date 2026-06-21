@@ -1,0 +1,70 @@
+{
+  "cli": {
+    "version": ">= 15.0.10",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "channel": "development",
+      "env": {
+        "PROFILE": "development"
+      }
+    },
+    "ios-simulator": {
+      "extends": "development",
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "PROFILE": "ios-simulator"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "channel": "preview",
+      "env": {
+        "PROFILE": "preview"
+      }
+    },
+    "e2e-android": {
+      "extends": "preview",
+      "env": {
+        "PROFILE": "e2e-android",
+        "EXPO_PUBLIC_E2E_ENV_PROFILE": "prod",
+        "EXPO_PUBLIC_E2E_LANGUAGE": "en"
+      }
+    },
+    "e2e-ios-simulator": {
+      "extends": "preview",
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "PROFILE": "e2e-ios-simulator",
+        "EXPO_PUBLIC_E2E_ENV_PROFILE": "prod",
+        "EXPO_PUBLIC_E2E_LANGUAGE": "en"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "channel": "production",
+      "env": {
+        "PROFILE": "production"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "diygod@rss3.io",
+        "ascAppId": "6739802604",
+        "appleTeamId": "492J8Q67PF"
+      },
+      "android": {
+        "releaseStatus": "draft"
+      }
+    }
+  }
+}

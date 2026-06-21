@@ -34,7 +34,7 @@ export function PdfPage({ id, document, pageNumber, scale = 2, className = "", o
         renderTask.current.cancel();
       }
 
-      renderTask.current = page.render({ canvasContext: ctx, viewport });
+      renderTask.current = page.render({ canvas, canvasContext: ctx, viewport });
       renderTask.current.promise
         .then(() => { setRendering(false); onRendered?.(pageNumber); })
         .catch((err: any) => {

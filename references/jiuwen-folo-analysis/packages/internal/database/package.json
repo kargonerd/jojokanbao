@@ -1,0 +1,49 @@
+{
+  "name": "@follow/database",
+  "type": "module",
+  "private": true,
+  "author": "Folo Team",
+  "license": "AGPL-3.0-only",
+  "homepage": "https://github.com/RSSNext",
+  "repository": {
+    "url": "https://github.com/RSSNext/follow",
+    "type": "git"
+  },
+  "sideEffects": false,
+  "exports": {
+    "./*": {
+      "types": "./src/*.ts",
+      "require": "./src/*.ts",
+      "import": "./src/*.ts"
+    },
+    "./schemas/*": {
+      "types": "./src/schemas/*.ts",
+      "require": "./src/schemas/*.ts",
+      "import": "./src/schemas/*.ts"
+    },
+    "./services/*": {
+      "types": "./src/services/*.ts",
+      "require": "./src/services/*.ts",
+      "import": "./src/services/*.ts"
+    }
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@follow-app/client-sdk": "catalog:",
+    "@follow/constants": "workspace:*",
+    "@follow/models": "workspace:*",
+    "@follow/shared": "workspace:*",
+    "ai": "6.0.85",
+    "drizzle-orm": "0.45.1",
+    "expo-sqlite": "55.0.15",
+    "sqlocal": "npm:@hyoban/sqlocal@0.14.1-fork.4",
+    "wa-sqlite": "git+https://github.com/rhashimoto/wa-sqlite.git#v1.0.8"
+  },
+  "devDependencies": {
+    "@follow/configs": "workspace:*",
+    "drizzle-kit": "0.31.9"
+  }
+}

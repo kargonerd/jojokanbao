@@ -1,0 +1,10 @@
+{
+  "name": "@jojo/editorial-preset",
+  "version": "0.1.0",
+  "description": "红色杂志设计系统 - Tailwind CSS preset",
+  "main": "editorial.css",
+  "exports": {
+    ".": "./editorial.css"
+  },
+  "license": "MIT"
+}

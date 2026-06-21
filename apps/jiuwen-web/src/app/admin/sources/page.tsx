@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
+import { Button, EmptyState, Field, ListItem, PageFrame, PageHeader, Panel, TextInput } from "@jojo/ui";
+import { API_BASE } from "../../api";
 
 type Source = {
   id: string;
@@ -54,57 +54,41 @@ export default function SourcesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900">
-      <main className="mx-auto w-full max-w-3xl px-6 py-10">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">RSS 源管理</h1>
-          <button className="rounded-md bg-zinc-900 px-3 py-2 text-xs text-white" onClick={triggerRss}>
-            拉取 RSS
-          </button>
-        </div>
-        <p className="mt-2 text-sm text-zinc-600">当前源（POST /sources, DELETE /sources/:id）</p>
+    <div className="min-h-screen bg-paper text-ink">
+      <PageFrame maxWidth="md">
+        <PageHeader
+          title="RSS 源管理"
+          description="当前源（POST /sources, DELETE /sources/:id）"
+          actions={<Button onClick={triggerRss}>拉取 RSS</Button>}
+        />
 
-        <div className="mt-6 rounded-lg border border-zinc-200 bg-white p-4">
-          <div className="text-sm font-medium">新增源</div>
+        <Panel className="p-4">
+          <div className="text-sm font-bold text-ink">新增源</div>
           <div className="mt-3 grid gap-2">
-            <input
-              className="rounded-md border border-zinc-200 px-3 py-2 text-sm"
-              placeholder="名称"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <input
-              className="rounded-md border border-zinc-200 px-3 py-2 text-sm"
-              placeholder="RSS URL"
-              value={rssUrl}
-              onChange={(e) => setRssUrl(e.target.value)}
-            />
-            <button className="rounded-md bg-zinc-900 px-3 py-2 text-xs text-white" onClick={createSource}>
-              创建
-            </button>
+            <Field>
+              <TextInput className="w-full" placeholder="名称" value={name} onChange={(e) => setName(e.target.value)} />
+            </Field>
+            <Field>
+              <TextInput className="w-full" placeholder="RSS URL" value={rssUrl} onChange={(e) => setRssUrl(e.target.value)} />
+            </Field>
+            <Button onClick={createSource}>创建</Button>
           </div>
-        </div>
+        </Panel>
 
-        <div className="mt-4 text-xs text-zinc-500">{status}</div>
+        <div className="mt-4 text-xs text-muted">{status}</div>
 
         <div className="mt-6 grid gap-3">
-          {sources.length === 0 && <div className="text-sm text-zinc-500">暂无源</div>}
+          {sources.length === 0 && <EmptyState title="暂无源" />}
           {sources.map((s) => (
-            <div key={s.id} className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white p-4">
-              <div>
-                <div className="text-sm font-medium">{s.name}</div>
-                <div className="mt-1 text-xs text-zinc-500">{s.rssUrl}</div>
-              </div>
-              <button
-                className="rounded-md border border-zinc-200 px-3 py-2 text-xs text-zinc-700"
-                onClick={() => removeSource(s.id)}
-              >
-                删除
-              </button>
-            </div>
+            <ListItem
+              key={s.id}
+              title={s.name}
+              meta={s.rssUrl}
+              actions={<Button variant="outline" onClick={() => removeSource(s.id)}>删除</Button>}
+            />
           ))}
         </div>
-      </main>
+      </PageFrame>
     </div>
   );
 }

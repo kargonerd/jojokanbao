@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useChatStore } from "../stores/chatStore";
 import { formatChatMarkdown } from "../utils/markdown";
-import { Button } from "@jojo/ui";
+import { AppShell, Button, EmptyState } from "@jojo/ui";
 
 export function ChatPage() {
   const { notebooks, selectedNotebook, sources, selectedSourceIds, messages, streaming, streamContent, loadNotebooks, selectNotebook, toggleSource, sendMessage, clearConversation } = useChatStore();
@@ -14,9 +14,9 @@ export function ChatPage() {
   const handleSend = () => { if (input.trim() && !streaming) { sendMessage(input); setInput(""); } };
 
   return (
-    <div className="h-screen flex">
-      {/* Sidebar */}
-      <aside className="w-64 shrink-0 border-r border-rule overflow-y-auto bg-paper p-4 hidden md:block">
+    <AppShell
+      sidebar={
+        <>
         <h2 className="text-sm font-bold text-red tracking-wider mb-4">知识库</h2>
         {notebooks.map((nb: any) => (
           <button key={nb.id} onClick={() => selectNotebook(nb.id)} className={`block w-full text-left px-3 py-2 text-sm font-bold border-0 bg-transparent mb-1 transition-colors ${selectedNotebook === nb.id ? "text-red bg-red/5" : "text-ink hover:text-red"}`}>
@@ -34,10 +34,14 @@ export function ChatPage() {
             ))}
           </div>
         )}
-      </aside>
+        </>
+      }
+      sidebarClassName="hidden md:block w-64"
+      contentClassName="flex flex-col"
+    >
 
       {/* Main chat area */}
-      <div className="flex-1 flex flex-col">
+      <div className="min-h-0 flex-1 flex flex-col">
         {/* Header */}
         <div className="h-12 flex items-center justify-between px-4 border-b border-rule shrink-0">
           <h1 className="text-sm font-bold text-ink m-0">JOJO RAG</h1>
@@ -47,10 +51,7 @@ export function ChatPage() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
           {messages.length === 0 && !streaming && (
-            <div className="text-center py-20">
-              <p className="text-2xl font-bold text-ink mb-2">有什么想问的？</p>
-              <p className="text-sm text-muted">基于知识库的 AI 问答</p>
-            </div>
+            <EmptyState title="有什么想问的？" description="基于知识库的 AI 问答" />
           )}
           {messages.map((msg, i) => (
             <div key={i} className={`max-w-[80%] ${msg.role === "user" ? "ml-auto" : ""}`}>
@@ -80,6 +81,6 @@ export function ChatPage() {
           </div>
         </div>
       </div>
-    </div>
+    </AppShell>
   );
 }

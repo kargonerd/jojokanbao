@@ -1,15 +1,21 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { HomePage } from "./pages/HomePage";
-import { ProofreadPage } from "./pages/ProofreadPage";
+import { useMemo } from 'react';
+import { RouterProvider } from 'react-router-dom';
 
-export function App() {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/project/:projectId/proofread" element={<ProofreadPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
-  );
+import { createAppRouter } from './router';
+
+function getHashInitialEntry() {
+  if (window.location.protocol !== 'file:' || !window.location.hash.startsWith('#')) {
+    return null;
+  }
+
+  return window.location.hash.slice(1) || '/';
+}
+
+export default function App() {
+  const router = useMemo(() => {
+    const hashInitialEntry = getHashInitialEntry();
+    return hashInitialEntry ? createAppRouter({ initialEntries: [hashInitialEntry] }) : createAppRouter();
+  }, []);
+
+  return <RouterProvider router={router} />;
 }
