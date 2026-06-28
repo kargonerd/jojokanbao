@@ -106,6 +106,30 @@ import { Button, Card, NavBar, Tag, Pagination, Modal, LoadingSpinner } from "@j
 import { PdfViewer, PdfPage, usePdfDocument } from "@jojo/pdf-viewer";
 ```
 
+## Reader release
+
+Reader deploys are isolated from the rest of the monorepo. Ordinary pushes to `master` run Reader CI only when reader-related paths change, and they do not deploy. Other apps can use their own tags without triggering reader deployment.
+
+`master` is protected by a repository ruleset and must be updated through pull requests. Reader release tags are also protected: only repository admins can create, update, or delete `reader-*` tags.
+
+Automatic reader deployment is triggered only by reader-specific tags:
+
+```bash
+git checkout master
+git pull
+git tag reader-vYYYYMMDD
+git push origin reader-vYYYYMMDD
+```
+
+For example:
+
+```bash
+git tag reader-v20260628
+git push origin reader-v20260628
+```
+
+The `Deploy reader web` workflow builds `@jojo/reader` and uploads `apps/reader/dist/` to Tencent COS. It is also available through manual `workflow_dispatch` in GitHub Actions.
+
 ## Reader PDF protection
 
 Reader can load JOJO-protected PDF bytes through HTTP Range requests while crawlers that fetch the raw `.pdf` object receive bytes that do not open as a normal PDF.
