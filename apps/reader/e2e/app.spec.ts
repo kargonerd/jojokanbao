@@ -20,8 +20,8 @@ test.describe("Reader App", () => {
 
   test("support page loads", async ({ page }) => {
     await page.goto("/support");
-    await expect(page.getByText("反馈")).toBeVisible();
-    await expect(page.getByText("数据下载")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "反馈" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "数据下载" })).toBeVisible();
   });
 
   test("404 page shows for unknown routes", async ({ page }) => {
