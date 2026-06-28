@@ -43,6 +43,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - run: pnpm --filter @jojo/reader... typecheck
       - run: pnpm --filter @jojo/reader... build
       - run: pnpm --filter @jojo/reader... test
 
