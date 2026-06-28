@@ -1,0 +1,216 @@
+from datetime import date
+from pathlib import Path
+import argparse
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+import requests
+from PyPDF2 import PdfMerger
+
+
+B2_BUCKET = os.environ.get("B2_BUCKET", "jojo-newspaper")
+B2_REMOTE = os.environ.get("B2_REMOTE", "jojo-b2")
+CACHE_CONTROL = "public, max-age=315360000, immutable"
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.79 Safari/537.36",
+}
+WORK_DIR = Path(os.environ.get("RMRB_SYNC_WORK_DIR", ".rmrb-sync-work"))
+
+
+def run(args):
+    print("$ " + " ".join(str(arg) for arg in args), flush=True)
+    subprocess.run(args, check=True)
+
+
+def capture(args, allow_warning=False):
+    result = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if result.returncode == 0 or (allow_warning and result.returncode == 3):
+        return result
+    raise subprocess.CalledProcessError(result.returncode, args, output=result.stdout, stderr=result.stderr)
+
+
+def configure_rclone():
+    if not os.environ.get("B2_KEY_ID") or not os.environ.get("B2_APPLICATION_KEY"):
+        raise RuntimeError("B2_KEY_ID and B2_APPLICATION_KEY are required")
+
+    print("[1/6] Configuring rclone...", flush=True)
+    run(
+        [
+            "rclone",
+            "config",
+            "create",
+            B2_REMOTE,
+            "b2",
+            "account",
+            os.environ["B2_KEY_ID"],
+            "key",
+            os.environ["B2_APPLICATION_KEY"],
+            "--non-interactive",
+        ]
+    )
+    print("[1/6] rclone configured.", flush=True)
+
+
+def remote_path(day):
+    compact = day.strftime("%Y%m%d")
+    return f"{B2_REMOTE}:{B2_BUCKET}/RMRB/{day:%Y}/{compact}.pdf"
+
+
+def remote_exists(day):
+    path = remote_path(day)
+    print(f"[2/6] Checking if {path} exists...", flush=True)
+    result = subprocess.run(
+        ["rclone", "lsjson", path],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(f"[2/6] File does not exist (returncode={result.returncode}).", flush=True)
+        return False
+    stdout = result.stdout.strip().replace("\n", "").replace(" ", "")
+    exists = stdout != "[]" and stdout != ""
+    print(f"[2/6] File exists: {exists}", flush=True)
+    return exists
+
+
+def get_text(session, url):
+    response = session.get(url, headers=HEADERS, timeout=30)
+    response.raise_for_status()
+    return response.text
+
+
+def new_layout_urls(session, day):
+    dated_path = day.strftime("%Y%m/%d")
+    cover_url = f"http://paper.people.com.cn/rmrb/pc/layout/{dated_path}/node_01.html"
+    print(f"[3/6] Fetching page list from {cover_url}...", flush=True)
+    text = get_text(session, cover_url)
+    page_count = len(re.findall("pageLink", text))
+    print(f"[3/6] Found {page_count} pages.", flush=True)
+    urls = []
+
+    for page in range(1, page_count + 1):
+        page_url = f"http://paper.people.com.cn/rmrb/pc/layout/{dated_path}/node_{page:02d}.html"
+        page_text = get_text(session, page_url)
+        matches = re.findall(r"attachement.*?\.pdf", page_text)
+        if matches:
+            pdf_url = "http://paper.people.com.cn/rmrb/pc/" + matches[0]
+            urls.append(pdf_url)
+            print(f"[3/6] Page {page:02d}: {pdf_url}", flush=True)
+        else:
+            print(f"[3/6] Page {page:02d}: no PDF found", flush=True)
+    return urls
+
+
+def get_page_urls(session, day):
+    return new_layout_urls(session, day)
+
+
+def download_pdf(session, url, output):
+    for attempt in range(1, 6):
+        try:
+            response = session.get(url, headers=HEADERS, timeout=60)
+            response.raise_for_status()
+            if len(response.content) > 1000:
+                output.write_bytes(response.content)
+                print(f"[4/6] Downloaded {output.name} ({len(response.content)} bytes)", flush=True)
+                return
+            print(f"[4/6] {output.name} too small on attempt {attempt}: {len(response.content)} bytes", flush=True)
+        except requests.RequestException as error:
+            print(f"[4/6] {output.name} failed on attempt {attempt}: {error}", file=sys.stderr)
+    raise RuntimeError(f"Failed to download {url}")
+
+
+def merge_pdfs(parts, output):
+    print(f"[5/6] Merging {len(parts)} PDFs...", flush=True)
+    merger = PdfMerger(strict=False)
+    try:
+        for part in parts:
+            if part.stat().st_size < 10:
+                print(f"[5/6] Skip unsupported page: {part.name}", flush=True)
+                continue
+            merger.append(str(part))
+        merger.write(str(output))
+        print(f"[5/6] Merged to {output.name} ({output.stat().st_size} bytes)", flush=True)
+    finally:
+        merger.close()
+
+
+def linearize_pdf(source, output):
+    print(f"[6/6] Linearizing {source.name}...", flush=True)
+    capture(["qpdf", "--linearize", str(source), str(output)], allow_warning=True)
+    check = capture(["qpdf", "--check-linearization", str(output)], allow_warning=True)
+    check_output = f"{check.stdout or ''}\n{check.stderr or ''}"
+    if "no linearization errors" not in check_output:
+        raise RuntimeError(f"qpdf linearization check failed for {output}")
+    print(f"[6/6] Linearized to {output.name} ({output.stat().st_size} bytes)", flush=True)
+
+
+def upload_pdf(day, linearized_pdf):
+    print(f"[6/6] Uploading to {remote_path(day)}...", flush=True)
+    run(
+        [
+            "rclone",
+            "copyto",
+            str(linearized_pdf),
+            remote_path(day),
+            "--header-upload",
+            f"Cache-Control: {CACHE_CONTROL}",
+            "--retries",
+            "5",
+            "--low-level-retries",
+            "10",
+        ]
+    )
+    print("[6/6] Upload complete.", flush=True)
+
+
+def sync_day(day):
+    configure_rclone()
+    if remote_exists(day):
+        print(f"{remote_path(day)} already exists, skip", flush=True)
+        return
+
+    compact = day.strftime("%Y%m%d")
+    day_dir = WORK_DIR / compact
+    parts_dir = day_dir / "parts"
+    merged_pdf = day_dir / f"{compact}.pdf"
+    linearized_pdf = day_dir / f"{compact}.linearized.pdf"
+    shutil.rmtree(day_dir, ignore_errors=True)
+    parts_dir.mkdir(parents=True, exist_ok=True)
+
+    session = requests.Session()
+    urls = get_page_urls(session, day)
+    if not urls:
+        raise RuntimeError(f"No RMRB pages found for {compact}")
+
+    parts = []
+    for index, url in enumerate(urls, start=1):
+        part = parts_dir / f"rmrb{compact}{index:02d}.pdf"
+        download_pdf(session, url, part)
+        parts.append(part)
+
+    merge_pdfs(parts, merged_pdf)
+    linearize_pdf(merged_pdf, linearized_pdf)
+    upload_pdf(day, linearized_pdf)
+    shutil.rmtree(day_dir, ignore_errors=True)
+    print(f"Done! {compact} synced successfully.", flush=True)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Fetch, linearize, and upload one RMRB daily PDF to B2.")
+    parser.add_argument("--date", help="Date as YYYYMMDD. Default: today in runner timezone.")
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    target_day = date.today() if not args.date else date.fromisoformat(f"{args.date[:4]}-{args.date[4:6]}-{args.date[6:8]}")
+    sync_day(target_day)
+
+
+if __name__ == "__main__":
+    main()
