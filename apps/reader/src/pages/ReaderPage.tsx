@@ -18,8 +18,17 @@ function DownloadIcon() {
 function ShareIcon() {
   return (
     <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <path d="M6.5 4.5 5 6a3 3 0 0 0 4.2 4.2l1.5-1.5" strokeLinecap="round" />
-      <path d="M9.5 11.5 11 10a3 3 0 0 0-4.2-4.2L5.3 7.3" strokeLinecap="round" />
+      <path d="M8 2.5v8" strokeLinecap="round" />
+      <path d="M4.8 5.7 8 2.5l3.2 3.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3.5 8.5v4.2c0 .5.4.8.8.8h7.4c.5 0 .8-.4.8-.8V8.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+      <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
     </svg>
   );
 }
@@ -242,27 +251,54 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   // ─── Date input validation ───
   const isDateDisabled = config?.disabledDate;
   const toolbarActions = pdfUrl ? (
-    <div className="ml-4 flex items-center gap-2">
+    <div className="relative ml-auto flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
       <button
         type="button"
         onClick={handleDownload}
         disabled={downloading}
-        className="inline-flex h-8 items-center gap-1.5 border border-rule-dark bg-paper px-2.5 text-sm font-bold text-red transition-colors hover:border-red hover:text-red-dark disabled:cursor-wait disabled:opacity-60"
+        className="inline-flex h-8 items-center gap-1.5 border border-rule-dark bg-paper px-2 text-sm font-bold text-red transition-colors hover:border-red hover:text-red-dark disabled:cursor-wait disabled:opacity-60 sm:px-2.5"
         aria-label={downloading ? "下载中" : "下载 PDF"}
       >
         <DownloadIcon />
-        <span>{downloading ? "下载中" : "下载"}</span>
+        <span className="hidden sm:inline">{downloading ? "下载中" : "下载"}</span>
       </button>
       <button
         type="button"
         onClick={handleShare}
-        className="inline-flex h-8 items-center gap-1.5 border border-rule-dark bg-paper px-2.5 text-sm font-bold text-ink transition-colors hover:border-red hover:text-red"
+        className="hidden h-8 items-center gap-1.5 border border-rule-dark bg-paper px-2.5 text-sm font-bold text-ink transition-colors hover:border-red hover:text-red sm:inline-flex"
         aria-label={shareCopied ? "已复制阅读链接" : "复制阅读链接"}
         title={shareCopied ? "已复制阅读链接" : "复制阅读链接"}
       >
         <ShareIcon />
         <span>{shareCopied ? "已复制" : "分享"}</span>
       </button>
+      <button
+        type="button"
+        onClick={() => setSettingsOpen(!settingsOpen)}
+        className="inline-flex h-8 items-center gap-1.5 border border-rule-dark bg-paper px-2 text-sm font-bold text-ink transition-colors hover:border-red hover:text-red sm:px-2.5"
+        aria-label="设置"
+        aria-expanded={settingsOpen}
+      >
+        <SettingsIcon />
+        <span className="hidden sm:inline">设置</span>
+      </button>
+      {settingsOpen && (
+        <div className="absolute right-0 top-10 z-[90] w-[min(220px,calc(100vw-24px))] border border-rule-dark bg-paper p-3 space-y-4 shadow-[4px_4px_0_rgba(139,26,26,.14)] sm:p-4">
+          <div>
+            <label className="block text-xs font-bold text-muted mb-2 tracking-wide">页面跳转</label>
+            <div className="flex gap-2">
+              <input type="number" value={jumpToPageNum} min={1} max={numPages || 1} className="h-8 w-16 text-sm text-center" onChange={(e) => setJumpToPageNum(Number(e.target.value))} />
+              <button className="btn text-xs h-8" onClick={handlePageJump}>跳转</button>
+            </div>
+          </div>
+          {config?.resolutionControl && (
+            <div>
+              <label className="block text-xs font-bold text-muted mb-2 tracking-wide">清晰度 ({resolutionRate})</label>
+              <input type="range" min={1} max={5} value={resolutionRate} onChange={(e) => setResolutionRate(Number(e.target.value))} className="w-full accent-red" />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   ) : null;
 
@@ -274,8 +310,8 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       {/* Toolbar: Magazine mode */}
       {type === "magazine" ? (
         <Toolbar sticky>
-          <div className="flex items-center gap-2.5">
-            <span className="text-[13px] font-bold text-muted tracking-wide">日期</span>
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:flex-none sm:gap-2.5">
+            <span className="shrink-0 text-xs font-bold text-muted tracking-wide sm:text-[13px]">日期</span>
             <YearPicker
               value={date}
               onChange={(y) => {
@@ -285,11 +321,12 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
               }}
               min={name === "sjzs" ? 1934 : name === "hq" ? 1958 : 1950}
               max={name === "hq" ? 1976 : name === "rmhb" ? 1976 : 2025}
+              className="min-w-0 flex-1 sm:flex-none"
             />
           </div>
-          <div className="flex items-center gap-2.5">
-            <span className="text-[13px] font-bold text-muted tracking-wide">期数</span>
-            <select value={seq} className="h-8 text-sm min-w-[120px]" onChange={handleSeqChange}>
+          <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2.5">
+            <span className="hidden text-xs font-bold text-muted tracking-wide min-[390px]:inline sm:text-[13px]">期数</span>
+            <select value={seq} className="h-8 min-w-[92px] text-xs sm:min-w-[120px] sm:text-sm" onChange={handleSeqChange}>
               {seqOptions.map((s) => (
                 <option key={s} value={s}>{config?.genSeqText?.(s) || `第${s}期`}</option>
               ))}
@@ -300,16 +337,17 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       ) : (
         /* Toolbar: Newspaper mode */
         <Toolbar sticky>
-          <div className="flex items-center gap-2.5">
-            <span className="text-[13px] font-bold text-muted tracking-wide">日期</span>
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:flex-none sm:gap-2.5">
+            <span className="shrink-0 text-xs font-bold text-muted tracking-wide sm:text-[13px]">日期</span>
             <DatePicker
               value={date}
               onChange={(ds) => navigate(`/${name}/${ds}`)}
               disabledDate={config?.disabledDate}
+              className="min-w-0 flex-1 sm:flex-none"
             />
           </div>
           {numPages > 0 && (
-            <span className="text-xs text-muted">共 {numPages} 页</span>
+            <span className="hidden whitespace-nowrap text-xs text-muted min-[390px]:inline">共 {numPages} 页</span>
           )}
           {toolbarActions}
         </Toolbar>
@@ -330,36 +368,6 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
               setJumpToPageNum(p);
             }}
           />
-        )}
-      </div>
-
-      {/* Settings button (fixed) */}
-      <div className="fixed right-10 top-[110px] z-50">
-        <button
-          className="w-9 h-9 flex items-center justify-center border border-rule-dark bg-paper text-ink hover:text-red hover:border-red transition-colors cursor-pointer"
-          onClick={() => setSettingsOpen(!settingsOpen)}
-          aria-label="设置"
-        >
-          <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
-          </svg>
-        </button>
-        {settingsOpen && (
-          <div className="absolute right-0 top-11 w-[220px] border border-rule-dark bg-paper p-4 space-y-4 shadow-none">
-            <div>
-              <label className="block text-xs font-bold text-muted mb-2 tracking-wide">页面跳转</label>
-              <div className="flex gap-2">
-                <input type="number" value={jumpToPageNum} min={1} max={numPages || 1} className="h-8 w-16 text-sm text-center" onChange={(e) => setJumpToPageNum(Number(e.target.value))} />
-                <button className="btn text-xs h-8" onClick={handlePageJump}>跳转</button>
-              </div>
-            </div>
-            {config?.resolutionControl && (
-              <div>
-                <label className="block text-xs font-bold text-muted mb-2 tracking-wide">清晰度 ({resolutionRate})</label>
-                <input type="range" min={1} max={5} value={resolutionRate} onChange={(e) => setResolutionRate(Number(e.target.value))} className="w-full accent-red" />
-              </div>
-            )}
-          </div>
         )}
       </div>
 
