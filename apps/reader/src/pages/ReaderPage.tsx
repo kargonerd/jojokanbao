@@ -41,7 +41,7 @@ interface ReaderPageProps {
 export function ReaderPage({ type, name }: ReaderPageProps) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const config: PublicationConfig = PUBLICATIONS[name];
+  const config: PublicationConfig = PUBLICATIONS[name] ?? PUBLICATIONS.rmrb!;
 
   // ─── State ───
   const [date, setDate] = useState("");
@@ -84,7 +84,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   // ─── Hash navigation ───
   const getHashPageNum = useCallback((): number => {
     const m = /^#page-(\d+)$/i.exec(window.location.hash);
-    return m ? parseInt(m[1]) : 0;
+    return m?.[1] ? parseInt(m[1], 10) : 0;
   }, []);
 
   useEffect(() => {
@@ -154,7 +154,8 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     setDownloading(true);
     try {
       const { bytes } = await fetchPdfDownloadBytes(pdfUrl, "auto");
-      const blob = new Blob([bytes], { type: "application/pdf" });
+      const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+      const blob = new Blob([arrayBuffer], { type: "application/pdf" });
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;

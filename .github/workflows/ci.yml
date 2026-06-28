@@ -1,10 +1,32 @@
-name: CI
+name: Reader CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
+    paths:
+      - "apps/reader/**"
+      - "packages/editorial-preset/**"
+      - "packages/pdf-viewer/**"
+      - "packages/ui/**"
+      - "tooling/tsconfig/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "turbo.json"
+      - ".github/workflows/ci.yml"
   pull_request:
-    branches: [main]
+    branches: [master]
+    paths:
+      - "apps/reader/**"
+      - "packages/editorial-preset/**"
+      - "packages/pdf-viewer/**"
+      - "packages/ui/**"
+      - "tooling/tsconfig/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "turbo.json"
+      - ".github/workflows/ci.yml"
 
 jobs:
   build-and-test:
@@ -13,8 +35,6 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - uses: actions/setup-node@v4
         with:
@@ -23,7 +43,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm turbo build test
+      - run: pnpm --filter @jojo/reader... typecheck
+      - run: pnpm --filter @jojo/reader... build
+      - run: pnpm --filter @jojo/reader... test
 
   e2e:
     runs-on: ubuntu-latest
@@ -32,8 +54,6 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - uses: actions/setup-node@v4
         with:
