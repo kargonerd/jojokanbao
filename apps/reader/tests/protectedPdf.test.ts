@@ -270,7 +270,7 @@ describe("protected reader PDFs", () => {
   it("keeps plain PDFs readable during migration when auto mode is used", async () => {
     const { resolvePdfSource } = await loadProtectionModule();
     const original = makePdf("Plain Migration Text");
-    const { fetchFn } = createRangeFetch(original);
+    const { fetchFn, ranges } = createRangeFetch(original);
 
     const source = await resolvePdfSource("https://cdn.example.test/plain.pdf", "auto", {
       fetchFn: fetchFn as unknown as typeof fetch,
@@ -278,6 +278,8 @@ describe("protected reader PDFs", () => {
     });
 
     expect(source.kind).toBe("plain");
+    expect(source.transport).toBeDefined();
+    expect(ranges).toEqual(["bytes=0-63"]);
   });
 
   it("downloads plain PDFs unchanged during migration when auto mode is used", async () => {
@@ -293,6 +295,7 @@ describe("protected reader PDFs", () => {
     expect(download.protected).toBe(false);
     expect(byteArray(download.bytes)).toEqual(byteArray(original));
     await expect(readPdfText(download.bytes)).resolves.toContain("PlainDownload");
-    expect(ranges).toEqual(["bytes=0-63", "full"]);
+    expect(ranges[0]).toBe("bytes=0-63");
+    expect(ranges.every((range) => range.startsWith("bytes="))).toBe(true);
   });
 });

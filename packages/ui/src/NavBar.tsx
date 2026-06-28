@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 export interface NavItem {
   label: string;
@@ -9,20 +9,43 @@ export interface NavItem {
 interface NavBarProps {
   items: NavItem[];
   trailing?: ReactNode;
+  mobileTitle?: string;
+  mobileTitleHref?: string;
   onNavigate: (href: string) => void;
   isActive: (href: string) => boolean;
 }
 
-export function NavBar({ items, trailing, onNavigate, isActive }: NavBarProps) {
+export function NavBar({ items, trailing, mobileTitle, mobileTitleHref = "/", onNavigate, isActive }: NavBarProps) {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  useEffect(() => {
+    if (!openDropdown) return;
+    const handler = (event: MouseEvent) => {
+      if (!(event.target as Element | null)?.closest("[data-nav-dropdown]")) {
+        setOpenDropdown(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [openDropdown]);
+
   return (
     <nav className="h-full flex items-center px-6 bg-paper font-serif relative" onMouseLeave={() => setOpenDropdown(null)}>
+      {mobileTitle && (
+        <a
+          href={mobileTitleHref}
+          onClick={(e) => { e.preventDefault(); onNavigate(mobileTitleHref); setMobileOpen(false); }}
+          className="md:hidden text-base font-bold tracking-wide text-red no-underline"
+        >
+          {mobileTitle}
+        </a>
+      )}
+
       {/* Desktop */}
       <ul className="hidden md:flex items-center h-full gap-0 list-none m-0 p-0">
         {items.map((item) => (
-          <li key={item.label} className="relative h-full flex items-center">
+          <li key={item.label} className="relative h-full flex items-center" data-nav-dropdown>
             {item.href ? (
               <a
                 href={item.href}
@@ -36,7 +59,6 @@ export function NavBar({ items, trailing, onNavigate, isActive }: NavBarProps) {
               <>
                 <button
                   className={`relative h-full flex items-center px-5 text-sm font-bold tracking-wide border-0 bg-transparent transition-colors hover:text-red cursor-pointer ${item.children?.some((c) => isActive(c.href)) ? "text-red" : "text-ink"}`}
-                  onMouseEnter={() => setOpenDropdown(item.label)}
                   onClick={() => setOpenDropdown(openDropdown === item.label ? null : item.label)}
                 >
                   {item.label}

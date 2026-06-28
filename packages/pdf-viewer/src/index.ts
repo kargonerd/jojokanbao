@@ -2,6 +2,7 @@ export { PdfPage } from "./PdfPage";
 export { PdfViewer } from "./PdfViewer";
 export { usePdfDocument } from "./hooks/usePdfDocument";
 export {
+  PlainPdfRangeTransport,
   ProtectedPdfRangeTransport,
   applyPdfByteMask,
   fetchPdfDownloadBytes,
