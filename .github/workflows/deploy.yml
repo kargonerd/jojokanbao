@@ -3,7 +3,8 @@ name: Deploy reader web
 on:
   push:
     tags:
-      - "*"
+      - "reader-v*"
+      - "reader-*"
   workflow_dispatch:
 
 jobs:
