@@ -25,6 +25,7 @@ export function Layout() {
       header={
         <NavBar
           items={navItems}
+          mobileTitle="JOJO看报"
           onNavigate={(href) => navigate(href)}
           isActive={(href) => location.pathname === href || location.pathname.startsWith(href + "/")}
           trailing={<p className="text-[13px] italic font-bold text-red opacity-80 tracking-wider truncate max-w-[44vw] m-0">如果要看前途，一定要看历史 —— 毛泽东</p>}

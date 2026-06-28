@@ -24,7 +24,7 @@ interface PdfDocumentState {
   error: string | null;
 }
 
-export function usePdfDocument({ url, cMapUrl = CMAP_URL, wasmUrl = WASM_URL, protectedPdf = false }: UsePdfDocumentOptions): PdfDocumentState {
+export function usePdfDocument({ url, cMapUrl = CMAP_URL, wasmUrl = WASM_URL, protectedPdf = "auto" }: UsePdfDocumentOptions): PdfDocumentState {
   const [state, setState] = useState<PdfDocumentState>({ document: null, numPages: 0, loading: true, error: null });
   const prevUrl = useRef("");
 
@@ -36,29 +36,28 @@ export function usePdfDocument({ url, cMapUrl = CMAP_URL, wasmUrl = WASM_URL, pr
 
     let cancelled = false;
     let task: PDFDocumentLoadingTask | null = null;
+    let abortSource: { abort: () => void } | null = null;
 
     const load = async () => {
       const commonParams = { cMapUrl, cMapPacked: true, wasmUrl };
 
-      if (protectedPdf) {
-        const source = await resolvePdfSource(url, protectedPdf);
-        if (cancelled) {
-          source.kind === "protected" && source.transport.abort();
-          return;
-        }
-
-        task =
-          source.kind === "protected"
-            ? getDocument({
-                ...commonParams,
-                range: source.transport,
-                rangeChunkSize: 65536,
-                disableStream: true,
-              })
-            : getDocument({ ...commonParams, url });
-      } else {
-        task = getDocument({ ...commonParams, url });
+      const source = await resolvePdfSource(url, protectedPdf);
+      if (cancelled) {
+        source.transport?.abort();
+        return;
       }
+      if (!source.transport) {
+        throw new Error("PDF range loading requires CDN byte-range support");
+      }
+
+      abortSource = source.transport;
+      task = getDocument({
+        ...commonParams,
+        range: source.transport,
+        rangeChunkSize: 65536,
+        disableStream: true,
+        disableAutoFetch: true,
+      });
 
       task.promise
         .then((doc) => {
@@ -80,6 +79,7 @@ export function usePdfDocument({ url, cMapUrl = CMAP_URL, wasmUrl = WASM_URL, pr
 
     return () => {
       cancelled = true;
+      abortSource?.abort();
       task?.destroy().catch(() => {});
     };
   }, [url, cMapUrl, wasmUrl, protectedPdf]);

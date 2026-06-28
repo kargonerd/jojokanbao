@@ -37,6 +37,7 @@ export function PdfViewer({ document, initialPage = 1, scale = 2, className = ""
 
   const addFailedPage = useCallback((pageNum: number) => {
     setFailedPages((prev) => {
+      if (prev.has(pageNum)) return prev;
       const next = new Set(prev);
       next.add(pageNum);
       return next;
@@ -45,21 +46,18 @@ export function PdfViewer({ document, initialPage = 1, scale = 2, className = ""
 
   const removeFailedPage = useCallback((pageNum: number) => {
     setFailedPages((prev) => {
+      if (!prev.has(pageNum)) return prev;
       const next = new Set(prev);
       next.delete(pageNum);
       return next;
     });
   }, []);
 
-  // Preload adjacent pages (forward AND backward, matching original)
-  const preloadAdjacent = useCallback((pageNum: number) => {
-    addPage(pageNum - 2);
-    addPage(pageNum - 1);
-    addPage(pageNum + 1);
-    addPage(pageNum + 2);
-  }, [addPage]);
+  useEffect(() => {
+    setRenderedPages(new Set([initialPage]));
+    setFailedPages(new Set());
+  }, [document, initialPage]);
 
-  // Lazy load pages as they enter viewport
   useEffect(() => {
     observerRef.current = new IntersectionObserver(
       (entries) => {
@@ -70,22 +68,27 @@ export function PdfViewer({ document, initialPage = 1, scale = 2, className = ""
           }
         });
       },
-      { rootMargin: "200px" }
+      { rootMargin: "240px" }
     );
-    return () => { observerRef.current?.disconnect(); };
+
+    return () => {
+      observerRef.current?.disconnect();
+      observerRef.current = null;
+    };
   }, [addPage]);
 
-  // Observe placeholder elements
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !observerRef.current) return;
+    const observer = observerRef.current;
+    if (!container || !observer) return;
+
+    observer.disconnect();
     container.querySelectorAll("[data-page-placeholder]").forEach((el) => {
-      observerRef.current!.observe(el);
+      observer.observe(el);
     });
-  }, [renderedPages]);
+  }, [renderedPages, failedPages]);
 
   const handlePageRendered = (pageNum: number) => {
-    preloadAdjacent(pageNum);
     onPageChange?.(pageNum);
   };
 
@@ -103,58 +106,30 @@ export function PdfViewer({ document, initialPage = 1, scale = 2, className = ""
     addPage(pageNum);
   };
 
-  const sortedPages = Array.from(renderedPages).sort((a, b) => a - b);
-  const sortedFailed = Array.from(failedPages).sort((a, b) => a - b);
-
-  // Build page items with spacers (matching original pageItems logic)
-  const allVisible = [...sortedPages, ...sortedFailed];
-  const pageNums = Array.from(new Set(allVisible)).sort((a, b) => a - b);
-
-  // Build items array with spacers
-  const items: Array<{ type: "spacer" | "page" | "failed"; pageNum?: number; key: string; height?: number }> = [];
   const PAGE_HEIGHT = 800;
-  const PAGE_GAP = 24;
-
-  let prev = 0;
-  for (const pageNum of pageNums) {
-    const skipped = pageNum - prev - 1;
-    if (skipped > 0) {
-      items.push({ type: "spacer", key: `spacer-${prev + 1}-${pageNum - 1}`, height: skipped * (PAGE_HEIGHT + PAGE_GAP) });
-    }
-    if (failedPages.has(pageNum)) {
-      items.push({ type: "failed", pageNum, key: `failed-${pageNum}` });
-    } else {
-      items.push({ type: "page", pageNum, key: `page-${pageNum}` });
-    }
-    prev = pageNum;
-  }
-
-  // Trailing spacer
-  const trailing = document.numPages - prev;
-  if (trailing > 0) {
-    items.push({ type: "spacer", key: `spacer-${prev + 1}-${document.numPages}`, height: trailing * (PAGE_HEIGHT + PAGE_GAP) });
-  }
+  const items = Array.from({ length: document.numPages }, (_, index) => {
+    const pageNum = index + 1;
+    if (failedPages.has(pageNum)) return { type: "failed" as const, pageNum, key: `failed-${pageNum}` };
+    if (renderedPages.has(pageNum)) return { type: "page" as const, pageNum, key: `page-${pageNum}` };
+    return { type: "placeholder" as const, pageNum, key: `placeholder-${pageNum}` };
+  });
 
   return (
     <div ref={containerRef} className={`w-full ${className}`}>
       {items.map((item) => {
-        if (item.type === "spacer") {
-          return <div key={item.key} className="w-full" style={{ height: item.height }} />;
-        }
-
-        if (item.type === "failed" && item.pageNum) {
+        if (item.type === "failed") {
           return (
             <div key={item.key} className="mb-6 flex items-center justify-center" style={{ height: PAGE_HEIGHT }}>
               <div className="text-center">
                 <p className="text-lg text-ink mb-2">第 {item.pageNum} 页加载失败</p>
                 <p className="text-sm text-muted mb-4">网络或渲染异常，可以单独重试本页</p>
-                <button className="btn btn-outline text-sm cursor-pointer" onClick={() => handleRetryPage(item.pageNum!)}>重试本页</button>
+                <button className="btn btn-outline text-sm cursor-pointer" onClick={() => handleRetryPage(item.pageNum)}>重试本页</button>
               </div>
             </div>
           );
         }
 
-        if (item.type === "page" && item.pageNum) {
+        if (item.type === "page") {
           return (
             <div key={item.key} className="mb-6">
               <div className="relative">
@@ -163,36 +138,31 @@ export function PdfViewer({ document, initialPage = 1, scale = 2, className = ""
                   document={document}
                   pageNumber={item.pageNum}
                   scale={scale}
-                  onRendered={() => handlePageRendered(item.pageNum!)}
-                  onError={() => handlePageError(item.pageNum!)}
+                  onRendered={() => handlePageRendered(item.pageNum)}
+                  onError={() => handlePageError(item.pageNum)}
                 />
               </div>
             </div>
           );
         }
 
-        return null;
-      })}
-
-      {/* Unrendered page placeholders */}
-      {Array.from({ length: document.numPages }, (_, i) => i + 1)
-        .filter((p) => !renderedPages.has(p) && !failedPages.has(p))
-        .map((pageNum) => (
+        return (
           <div
-            key={`placeholder-${pageNum}`}
-            data-page={pageNum}
+            key={item.key}
+            data-page={item.pageNum}
             data-page-placeholder
             className="mb-6 flex items-center justify-center border border-rule"
             style={{ height: PAGE_HEIGHT }}
-            id={`page-empty-${pageNum}`}
+            id={`page-empty-${item.pageNum}`}
           >
             <div className="text-center">
-              <p className="text-lg text-ink mb-2">第 {pageNum} 页</p>
+              <p className="text-lg text-ink mb-2">第 {item.pageNum} 页</p>
               <p className="text-sm text-muted mb-4">滚动到此处时加载</p>
-              <button className="btn btn-outline text-sm cursor-pointer" onClick={() => handleManualPageLoad(pageNum)}>加载本页</button>
+              <button className="btn btn-outline text-sm cursor-pointer" onClick={() => handleManualPageLoad(item.pageNum)}>加载本页</button>
             </div>
           </div>
-        ))}
+        );
+      })}
     </div>
   );
 }

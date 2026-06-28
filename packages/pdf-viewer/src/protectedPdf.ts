@@ -23,6 +23,8 @@ export interface ProtectedPdfSource {
 export interface PlainPdfSource {
   kind: "plain";
   length: number | null;
+  initialData?: Uint8Array;
+  transport?: PlainPdfRangeTransport;
 }
 
 export type PdfSource = ProtectedPdfSource | PlainPdfSource;
@@ -121,7 +123,7 @@ async function fetchRange(
   });
 
   if (response.status !== 206 && response.status !== 200) {
-    throw new Error(`Protected PDF range request failed with HTTP ${response.status}`);
+    throw new Error(`PDF range request failed with HTTP ${response.status}`);
   }
 
   const bytes = new Uint8Array(await response.arrayBuffer());
@@ -143,19 +145,6 @@ async function fetchHeadLength(url: string, options: ProtectedPdfFetchOptions): 
   return parseContentLength(response.headers.get("Content-Length"));
 }
 
-async function fetchFullBytes(url: string, options: ProtectedPdfFetchOptions, signal?: AbortSignal): Promise<Uint8Array> {
-  const fetchFn = getFetch(options);
-  const response = await fetchFn(url, {
-    headers: options.headers,
-    signal,
-    credentials: options.withCredentials ? "include" : "same-origin",
-  });
-  if (!response.ok) {
-    throw new Error(`PDF download failed with HTTP ${response.status}`);
-  }
-  return new Uint8Array(await response.arrayBuffer());
-}
-
 async function resolveTotalLength(
   url: string,
   rangeResult: Awaited<ReturnType<typeof fetchRange>>,
@@ -167,6 +156,30 @@ async function resolveTotalLength(
   if (headLength !== null) return headLength;
 
   throw new Error("Protected PDF loading requires Content-Range or HEAD Content-Length from the CDN");
+}
+
+async function fetchBytesByRanges(
+  url: string,
+  length: number,
+  initialData: Uint8Array,
+  rangeChunkSize: number,
+  options: ProtectedPdfFetchOptions,
+  signal: AbortSignal | undefined,
+  transformChunk: (bytes: Uint8Array, begin: number) => Uint8Array
+): Promise<Uint8Array> {
+  const bytes = new Uint8Array(length);
+  bytes.set(initialData.slice(0, Math.min(initialData.length, length)), 0);
+
+  for (let begin = initialData.length; begin < length; begin += rangeChunkSize) {
+    const end = Math.min(begin + rangeChunkSize, length);
+    const chunk = await fetchRange(url, begin, end, options, signal);
+    if (chunk.status !== 206) {
+      throw new Error("CDN did not honor the requested byte range");
+    }
+    bytes.set(transformChunk(chunk.bytes, begin), begin);
+  }
+
+  return bytes;
 }
 
 export class ProtectedPdfRangeTransport extends PDFDataRangeTransport {
@@ -215,13 +228,57 @@ export class ProtectedPdfRangeTransport extends PDFDataRangeTransport {
   }
 }
 
+export class PlainPdfRangeTransport extends PDFDataRangeTransport {
+  readonly url: string;
+
+  readonly options: ProtectedPdfFetchOptions;
+
+  readonly requestedRanges: Array<{ begin: number; end: number }> = [];
+
+  private readonly controllers = new Set<AbortController>();
+
+  constructor(url: string, length: number, initialData: Uint8Array, options: ProtectedPdfFetchOptions = {}) {
+    super(length, initialData, true);
+    this.url = url;
+    this.options = options;
+  }
+
+  requestDataRange(begin: number, end: number): void {
+    const controller = new AbortController();
+    this.controllers.add(controller);
+    this.requestedRanges.push({ begin, end });
+
+    fetchRange(this.url, begin, end, this.options, controller.signal)
+      .then(({ bytes, status }) => {
+        if (controller.signal.aborted) return;
+        if (status !== 206) {
+          throw new Error("CDN did not honor the requested byte range");
+        }
+        this.onDataRange(begin, bytes);
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          console.error("Plain PDF range request failed", error);
+        }
+      })
+      .finally(() => {
+        this.controllers.delete(controller);
+      });
+  }
+
+  abort(): void {
+    for (const controller of this.controllers) {
+      controller.abort();
+    }
+    this.controllers.clear();
+  }
+}
+
 export async function resolvePdfSource(
   url: string,
   mode: ProtectedPdfMode = "auto",
   options: ProtectedPdfFetchOptions = {}
 ): Promise<PdfSource> {
-  if (mode === false) return { kind: "plain", length: null };
-
   const rangeChunkSize = options.rangeChunkSize ?? DEFAULT_RANGE_CHUNK_SIZE;
   const initialRange = await fetchRange(url, 0, rangeChunkSize, options);
 
@@ -229,7 +286,20 @@ export async function resolvePdfSource(
     if (mode === true) {
       throw new Error("Expected a protected PDF, but the CDN returned a plain PDF");
     }
-    return { kind: "plain", length: initialRange.totalLength };
+    if (initialRange.status !== 206) {
+      throw new Error("PDF range loading requires CDN byte-range support");
+    }
+    const length = await resolveTotalLength(url, initialRange, options);
+    return {
+      kind: "plain",
+      length,
+      initialData: initialRange.bytes,
+      transport: new PlainPdfRangeTransport(url, length, initialRange.bytes, options),
+    };
+  }
+
+  if (mode === false) {
+    throw new Error("Expected a plain PDF, but the CDN returned a protected PDF");
   }
 
   const initialData = applyPdfByteMask(new Uint8Array(initialRange.bytes), 0);
@@ -255,10 +325,6 @@ export async function fetchPdfDownloadBytes(
   options: ProtectedPdfFetchOptions = {},
   signal?: AbortSignal
 ): Promise<PdfDownloadBytes> {
-  if (mode === false) {
-    return { bytes: await fetchFullBytes(url, options, signal), protected: false };
-  }
-
   const rangeChunkSize = options.rangeChunkSize ?? DEFAULT_RANGE_CHUNK_SIZE;
   const initialRange = await fetchRange(url, 0, rangeChunkSize, options, signal);
 
@@ -266,7 +332,26 @@ export async function fetchPdfDownloadBytes(
     if (mode === true) {
       throw new Error("Expected a protected PDF, but the CDN returned a plain PDF");
     }
-    return { bytes: await fetchFullBytes(url, options, signal), protected: false };
+    if (initialRange.status !== 206) {
+      throw new Error("PDF download requires CDN byte-range support");
+    }
+    const length = await resolveTotalLength(url, initialRange, options);
+    return {
+      bytes: await fetchBytesByRanges(
+        url,
+        length,
+        initialRange.bytes,
+        rangeChunkSize,
+        options,
+        signal,
+        (bytes) => bytes
+      ),
+      protected: false,
+    };
+  }
+
+  if (mode === false) {
+    throw new Error("Expected a plain PDF, but the CDN returned a protected PDF");
   }
 
   const initialData = applyPdfByteMask(new Uint8Array(initialRange.bytes), 0);
@@ -278,17 +363,8 @@ export async function fetchPdfDownloadBytes(
   }
 
   const length = await resolveTotalLength(url, initialRange, options);
-  const bytes = new Uint8Array(length);
-  bytes.set(initialData.slice(0, Math.min(initialData.length, length)), 0);
-
-  for (let begin = initialData.length; begin < length; begin += rangeChunkSize) {
-    const end = Math.min(begin + rangeChunkSize, length);
-    const chunk = await fetchRange(url, begin, end, options, signal);
-    if (chunk.status !== 206) {
-      throw new Error("CDN did not honor the requested byte range");
-    }
-    bytes.set(applyPdfByteMask(chunk.bytes, begin), begin);
-  }
-
-  return { bytes, protected: true };
+  return {
+    bytes: await fetchBytesByRanges(url, length, initialData, rangeChunkSize, options, signal, applyPdfByteMask),
+    protected: true,
+  };
 }
