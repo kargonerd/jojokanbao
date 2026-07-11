@@ -1,7 +1,7 @@
 import { PDFDataRangeTransport } from "pdfjs-dist";
 
 const PDF_MAGIC = "%PDF-";
-const DEFAULT_RANGE_CHUNK_SIZE = 65536;
+const DEFAULT_RANGE_CHUNK_SIZE = 262144;
 const MASK_SEED = 0x4a4f4a4f; // "JOJO"
 
 export type ProtectedPdfMode = boolean | "auto";
@@ -191,6 +191,10 @@ export class ProtectedPdfRangeTransport extends PDFDataRangeTransport {
 
   private readonly controllers = new Set<AbortController>();
 
+  private readonly queue: Array<{ begin: number; end: number; controller: AbortController }> = [];
+
+  private processing = false;
+
   constructor(url: string, length: number, initialData: Uint8Array, options: ProtectedPdfFetchOptions = {}) {
     super(length, initialData, true);
     this.url = url;
@@ -200,27 +204,50 @@ export class ProtectedPdfRangeTransport extends PDFDataRangeTransport {
   requestDataRange(begin: number, end: number): void {
     const controller = new AbortController();
     this.controllers.add(controller);
+    this.queue.push({ begin, end, controller });
     this.requestedRanges.push({ begin, end });
 
-    fetchRange(this.url, begin, end, this.options, controller.signal)
-      .then(({ bytes, status }) => {
-        if (controller.signal.aborted) return;
-        if (status !== 206) {
-          throw new Error("CDN did not honor the requested byte range");
+    void this.processQueue();
+  }
+
+  private async processQueue(): Promise<void> {
+    if (this.processing) return;
+    this.processing = true;
+
+    try {
+      while (this.queue.length > 0) {
+        this.queue.sort((a, b) => a.begin - b.begin);
+        const { begin, end, controller } = this.queue.shift()!;
+        if (controller.signal.aborted) {
+          this.controllers.delete(controller);
+          continue;
         }
-        this.onDataRange(begin, applyPdfByteMask(bytes, begin));
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted) {
-          console.error("Protected PDF range request failed", error);
+
+        try {
+          const { bytes, status } = await fetchRange(this.url, begin, end, this.options, controller.signal);
+          if (controller.signal.aborted) continue;
+          if (status !== 206) {
+            throw new Error("CDN did not honor the requested byte range");
+          }
+          this.onDataRange(begin, applyPdfByteMask(bytes, begin));
+        } catch (error) {
+          if (!controller.signal.aborted) {
+            console.error("Protected PDF range request failed", error);
+          }
+        } finally {
+          this.controllers.delete(controller);
         }
-      })
-      .finally(() => {
-        this.controllers.delete(controller);
-      });
+      }
+    } finally {
+      this.processing = false;
+      if (this.queue.length > 0) {
+        void this.processQueue();
+      }
+    }
   }
 
   abort(): void {
+    this.queue.length = 0;
     for (const controller of this.controllers) {
       controller.abort();
     }
@@ -237,6 +264,10 @@ export class PlainPdfRangeTransport extends PDFDataRangeTransport {
 
   private readonly controllers = new Set<AbortController>();
 
+  private readonly queue: Array<{ begin: number; end: number; controller: AbortController }> = [];
+
+  private processing = false;
+
   constructor(url: string, length: number, initialData: Uint8Array, options: ProtectedPdfFetchOptions = {}) {
     super(length, initialData, true);
     this.url = url;
@@ -246,27 +277,50 @@ export class PlainPdfRangeTransport extends PDFDataRangeTransport {
   requestDataRange(begin: number, end: number): void {
     const controller = new AbortController();
     this.controllers.add(controller);
+    this.queue.push({ begin, end, controller });
     this.requestedRanges.push({ begin, end });
 
-    fetchRange(this.url, begin, end, this.options, controller.signal)
-      .then(({ bytes, status }) => {
-        if (controller.signal.aborted) return;
-        if (status !== 206) {
-          throw new Error("CDN did not honor the requested byte range");
+    void this.processQueue();
+  }
+
+  private async processQueue(): Promise<void> {
+    if (this.processing) return;
+    this.processing = true;
+
+    try {
+      while (this.queue.length > 0) {
+        this.queue.sort((a, b) => a.begin - b.begin);
+        const { begin, end, controller } = this.queue.shift()!;
+        if (controller.signal.aborted) {
+          this.controllers.delete(controller);
+          continue;
         }
-        this.onDataRange(begin, bytes);
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted) {
-          console.error("Plain PDF range request failed", error);
+
+        try {
+          const { bytes, status } = await fetchRange(this.url, begin, end, this.options, controller.signal);
+          if (controller.signal.aborted) continue;
+          if (status !== 206) {
+            throw new Error("CDN did not honor the requested byte range");
+          }
+          this.onDataRange(begin, bytes);
+        } catch (error) {
+          if (!controller.signal.aborted) {
+            console.error("Plain PDF range request failed", error);
+          }
+        } finally {
+          this.controllers.delete(controller);
         }
-      })
-      .finally(() => {
-        this.controllers.delete(controller);
-      });
+      }
+    } finally {
+      this.processing = false;
+      if (this.queue.length > 0) {
+        void this.processQueue();
+      }
+    }
   }
 
   abort(): void {
+    this.queue.length = 0;
     for (const controller of this.controllers) {
       controller.abort();
     }
@@ -294,7 +348,6 @@ export async function resolvePdfSource(
       kind: "plain",
       length,
       initialData: initialRange.bytes,
-      transport: new PlainPdfRangeTransport(url, length, initialRange.bytes, options),
     };
   }
 

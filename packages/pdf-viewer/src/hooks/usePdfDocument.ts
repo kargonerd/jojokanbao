@@ -1,19 +1,18 @@
 import { useState, useEffect, useRef } from "react";
-import { getDocument, type PDFDocumentLoadingTask, type PDFDocumentProxy } from "pdfjs-dist";
+import { getDocument } from "pdfjs-dist";
 import { GlobalWorkerOptions } from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import type { PDFDocumentLoadingTask, PDFDocumentProxy } from "pdfjs-dist/types/display/api";
+import workerUrl from "pdfjs-dist/build/pdf.worker.min.js?url";
 import { resolvePdfSource, type ProtectedPdfMode } from "../protectedPdf";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
-const PDFJS_VERSION = "5.7.284";
+const PDFJS_VERSION = "2.9.359";
 const CMAP_URL = `https://unpkg.com/pdfjs-dist@${PDFJS_VERSION}/cmaps/`;
-const WASM_URL = `https://unpkg.com/pdfjs-dist@${PDFJS_VERSION}/wasm/`;
 
 interface UsePdfDocumentOptions {
   url: string;
   cMapUrl?: string;
-  wasmUrl?: string;
   protectedPdf?: ProtectedPdfMode;
 }
 
@@ -24,7 +23,7 @@ interface PdfDocumentState {
   error: string | null;
 }
 
-export function usePdfDocument({ url, cMapUrl = CMAP_URL, wasmUrl = WASM_URL, protectedPdf = "auto" }: UsePdfDocumentOptions): PdfDocumentState {
+export function usePdfDocument({ url, cMapUrl = CMAP_URL, protectedPdf = "auto" }: UsePdfDocumentOptions): PdfDocumentState {
   const [state, setState] = useState<PdfDocumentState>({ document: null, numPages: 0, loading: true, error: null });
   const prevUrl = useRef("");
 
@@ -39,25 +38,57 @@ export function usePdfDocument({ url, cMapUrl = CMAP_URL, wasmUrl = WASM_URL, pr
     let abortSource: { abort: () => void } | null = null;
 
     const load = async () => {
-      const commonParams = { cMapUrl, cMapPacked: true, wasmUrl };
+      const commonParams = { cMapUrl, cMapPacked: true };
+
+      if (protectedPdf === false) {
+        task = getDocument({
+          ...commonParams,
+          url,
+          rangeChunkSize: 262144,
+          disableRange: false,
+          disableStream: true,
+          disableAutoFetch: true,
+        });
+
+        task.promise
+          .then((doc) => {
+            if (!cancelled) {
+              setState({ document: doc, numPages: doc.numPages, loading: false, error: null });
+            }
+          })
+          .catch((err) => {
+            if (cancelled || String(err).includes("Worker was destroyed")) return;
+            setState({ document: null, numPages: 0, loading: false, error: String(err?.message || err) });
+          });
+        return;
+      }
 
       const source = await resolvePdfSource(url, protectedPdf);
       if (cancelled) {
         source.transport?.abort();
         return;
       }
-      if (!source.transport) {
-        throw new Error("PDF range loading requires CDN byte-range support");
+      if (source.kind === "plain" && !source.transport) {
+        task = getDocument({
+          ...commonParams,
+          url,
+          rangeChunkSize: 262144,
+          disableRange: false,
+          disableStream: true,
+          disableAutoFetch: true,
+        });
+      } else if (source.transport) {
+        abortSource = source.transport;
+        task = getDocument({
+          ...commonParams,
+          range: source.transport,
+          rangeChunkSize: 262144,
+          disableStream: true,
+          disableAutoFetch: true,
+        });
+      } else {
+        throw new Error("Protected PDF range loading requires CDN byte-range support");
       }
-
-      abortSource = source.transport;
-      task = getDocument({
-        ...commonParams,
-        range: source.transport,
-        rangeChunkSize: 65536,
-        disableStream: true,
-        disableAutoFetch: true,
-      });
 
       task.promise
         .then((doc) => {
@@ -82,7 +113,7 @@ export function usePdfDocument({ url, cMapUrl = CMAP_URL, wasmUrl = WASM_URL, pr
       abortSource?.abort();
       task?.destroy().catch(() => {});
     };
-  }, [url, cMapUrl, wasmUrl, protectedPdf]);
+  }, [url, cMapUrl, protectedPdf]);
 
   return state;
 }

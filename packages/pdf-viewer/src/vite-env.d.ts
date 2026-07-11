@@ -1,4 +1,4 @@
-declare module "*.mjs?url" {
+declare module "*?url" {
   const url: string;
   export default url;
 }

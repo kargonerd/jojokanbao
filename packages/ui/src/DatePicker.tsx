@@ -60,6 +60,7 @@ export function DatePicker({ value, onChange, disabledDate, className = "" }: Da
   const [viewMonth, setViewMonth] = useState(parsed?.month ?? today.getMonth());
   const [decadeStart, setDecadeStart] = useState(getDecadeStart(parsed?.year ?? today.getFullYear()));
   const ref = useRef<HTMLDivElement>(null);
+  const pendingChangeTimer = useRef<number | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -76,6 +77,14 @@ export function DatePicker({ value, onChange, disabledDate, className = "" }: Da
     setViewMonth(parsed.month);
     setDecadeStart(getDecadeStart(parsed.year));
   }, [value]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingChangeTimer.current) {
+        window.clearTimeout(pendingChangeTimer.current);
+      }
+    };
+  }, []);
 
   const switchPanel = (mode: PanelMode) => {
     setPanelMode(mode);
@@ -122,9 +131,13 @@ export function DatePicker({ value, onChange, disabledDate, className = "" }: Da
   const handleDayClick = (day: number) => {
     const dateStr = toDateStr(viewYear, viewMonth, day);
     if (disabledDate?.(dateStr)) return;
-    onChange(dateStr);
     setOpen(false);
     setPanelMode("date");
+
+    pendingChangeTimer.current = window.setTimeout(() => {
+      pendingChangeTimer.current = null;
+      onChange(dateStr);
+    }, 0);
   };
 
   const handleYearClick = (year: number) => {

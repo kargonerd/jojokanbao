@@ -89,9 +89,9 @@ export function SearchPage() {
       {/* Centered search */}
       {beforeSearch && (
         <div className="fixed inset-0 flex items-center justify-center z-10">
-          <div className="w-[90%] max-w-[600px] p-6 border-4 border-red shadow-[inset_0_0_0_8px_var(--color-paper),inset_0_0_0_10px_var(--color-red)]">
-            <div className="flex gap-3">
-              <input ref={inputRef} value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearch()} placeholder="在JOJO看报上搜索" className="flex-1 h-10 text-sm" />
+          <div className="w-[90%] max-w-[640px]">
+            <div className="flex items-center gap-3 border-2 border-rule-dark bg-paper p-2 pl-4 transition-all focus-within:border-red focus-within:shadow-[4px_4px_0_rgba(139,26,26,.14)]">
+              <input ref={inputRef} value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearch()} placeholder="在JOJO看报上搜索" className="h-10 flex-1 border-0 bg-transparent p-0 text-base focus:border-0 focus:shadow-none" />
               <Button onClick={handleSearch}>搜索</Button>
             </div>
           </div>

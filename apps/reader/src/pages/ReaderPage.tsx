@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { fetchPdfDownloadBytes, usePdfDocument, PdfViewer } from "@jojo/pdf-viewer";
+import { fetchPdfDownloadBytes, PdfViewer, usePdfDocument } from "@jojo/pdf-viewer";
 import { EmptyState, LoadingSpinner, DatePicker, Toolbar, YearPicker } from "@jojo/ui";
 import { PUBLICATIONS, type PublicationConfig } from "../publications";
 
@@ -48,11 +48,15 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const [seq, setSeq] = useState(1);
   const [resolutionRate, setResolutionRate] = useState(window.innerWidth < 768 ? 1 : 2);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [seqDropdownOpen, setSeqDropdownOpen] = useState(false);
   const [jumpToPageNum, setJumpToPageNum] = useState(1);
+  const [targetPageNum, setTargetPageNum] = useState(0);
   const [showBackTop, setShowBackTop] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const settingsRef = useRef<HTMLDivElement>(null);
+  const seqDropdownRef = useRef<HTMLDivElement>(null);
   const shareResetTimer = useRef<number | null>(null);
 
   // ─── PDF URL construction (matches original getPdfPath) ───
@@ -66,9 +70,13 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     return `/${name.toUpperCase()}/${year}/${docId}.pdf`;
   }, [date, seq, type, name]);
 
+  const issueId = type === "magazine" ? `${date}${String(seq).padStart(2, "0")}` : date;
   const pdfUrl = date ? `${NEWSPAPER_HOST}${getPdfPath()}` : "";
-  const { document: pdfDoc, loading, error, numPages } = usePdfDocument({ url: pdfUrl, protectedPdf: "auto" });
   const downloadFilename = `${name}-${type === "magazine" ? `${date}${String(seq).padStart(2, "0")}` : date}.pdf`;
+  const { document: pdfDocument, numPages, loading: pdfLoading, error: readerError } = usePdfDocument({
+    url: pdfUrl,
+    protectedPdf: false,
+  });
 
   // ─── Route params → state ───
   useEffect(() => {
@@ -90,34 +98,23 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   useEffect(() => {
     const handler = () => {
       const pageNum = getHashPageNum();
-      if (pageNum && pdfDoc) {
-        goToPage(pageNum);
+      if (pageNum) {
+        setJumpToPageNum(pageNum);
+        setTargetPageNum(pageNum);
       }
     };
     window.addEventListener("hashchange", handler);
     return () => window.removeEventListener("hashchange", handler);
-  }, [getHashPageNum, pdfDoc]);
+  }, [getHashPageNum]);
 
   // Determine initial page from hash (for PdfViewer to render first)
   const hashPage = typeof window !== "undefined" ? getHashPageNum() : 0;
   const initialPage = hashPage > 1 ? hashPage : 1;
 
-  // Scroll to hash page after PDF loads and page renders
   useEffect(() => {
-    if (!pdfDoc || initialPage <= 1) return;
-    // Retry scrolling until the target page element exists in DOM
-    let attempts = 0;
-    const tryScroll = () => {
-      const el = document.querySelector(`#page-${initialPage}`);
-      if (el) {
-        el.scrollIntoView();
-      } else if (attempts < 20) {
-        attempts++;
-        setTimeout(tryScroll, 200);
-      }
-    };
-    setTimeout(tryScroll, 300);
-  }, [pdfDoc]);
+    setTargetPageNum(initialPage > 1 ? initialPage : 0);
+    setJumpToPageNum(initialPage);
+  }, [name, issueId, initialPage]);
 
   // ─── Navigation handlers ───
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -134,16 +131,17 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     }
   };
 
-  const handleSeqChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newSeq = parseInt(e.target.value);
+  const handleSeqChange = (newSeq: number) => {
     setSeq(newSeq);
+    setSeqDropdownOpen(false);
     const seqStr = String(newSeq).padStart(2, '0');
     navigate(`/${name}/${date}${seqStr}`, { replace: true });
   };
 
   const handlePageJump = () => {
-    if (jumpToPageNum >= 1 && jumpToPageNum <= numPages) {
-      goToPage(jumpToPageNum);
+    const maxPage = numPages || 500;
+    if (jumpToPageNum >= 1 && jumpToPageNum <= maxPage) {
+      setTargetPageNum(jumpToPageNum);
       window.location.hash = `#page-${jumpToPageNum}`;
     }
   };
@@ -205,13 +203,6 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   // ─── Scroll helpers ───
   const scrollToTop = () => containerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
 
-  const goToPage = useCallback((pageNum: number) => {
-    const el = document.querySelector(`#page-${pageNum}`);
-    if (el) {
-      el.scrollIntoView();
-    }
-  }, []);
-
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
     if (el) setShowBackTop(el.scrollTop > 400);
@@ -229,6 +220,49 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       if (shareResetTimer.current) window.clearTimeout(shareResetTimer.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (!settingsRef.current?.contains(event.target as Node)) {
+        setSettingsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [settingsOpen]);
+
+  useEffect(() => {
+    if (!seqDropdownOpen) return;
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (!seqDropdownRef.current?.contains(event.target as Node)) {
+        setSeqDropdownOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSeqDropdownOpen(false);
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [seqDropdownOpen]);
+
+  useEffect(() => {
+    if (!seqDropdownOpen) return;
+
+    window.requestAnimationFrame(() => {
+      seqDropdownRef.current
+        ?.querySelector(`[data-seq-option="${seq}"]`)
+        ?.scrollIntoView({ block: "center" });
+    });
+  }, [seqDropdownOpen, seq]);
 
   // ─── Sync URL when date/seq changes ───
   const handleOptionChange = useCallback(() => {
@@ -248,11 +282,12 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
 
   // ─── Seq options for magazines ───
   const seqOptions = config?.seqConfig?.[date] || [];
+  const selectedSeqText = config?.genSeqText?.(seq) || `第${seq}期`;
 
   // ─── Date input validation ───
   const isDateDisabled = config?.disabledDate;
   const toolbarActions = pdfUrl ? (
-    <div className="relative ml-auto flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
+    <div ref={settingsRef} className="relative ml-auto flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
       <button
         type="button"
         onClick={handleDownload}
@@ -288,13 +323,13 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
           <div>
             <label className="block text-xs font-bold text-muted mb-2 tracking-wide">页面跳转</label>
             <div className="flex gap-2">
-              <input type="number" value={jumpToPageNum} min={1} max={numPages || 1} className="h-8 w-16 text-sm text-center" onChange={(e) => setJumpToPageNum(Number(e.target.value))} />
+              <input type="number" value={jumpToPageNum} min={1} max={numPages || 500} className="h-8 w-16 text-sm text-center" onChange={(e) => setJumpToPageNum(Number(e.target.value))} />
               <button className="btn text-xs h-8" onClick={handlePageJump}>跳转</button>
             </div>
           </div>
           {config?.resolutionControl && (
             <div>
-              <label className="block text-xs font-bold text-muted mb-2 tracking-wide">清晰度 ({resolutionRate})</label>
+              <label className="block text-xs font-bold text-muted mb-2 tracking-wide">清晰度</label>
               <input type="range" min={1} max={5} value={resolutionRate} onChange={(e) => setResolutionRate(Number(e.target.value))} className="w-full accent-red" />
             </div>
           )}
@@ -325,13 +360,52 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
               className="min-w-0 flex-1 sm:flex-none"
             />
           </div>
-          <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2.5">
+          <div ref={seqDropdownRef} className="relative flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2.5">
             <span className="hidden text-xs font-bold text-muted tracking-wide min-[390px]:inline sm:text-[13px]">期数</span>
-            <select value={seq} className="h-8 min-w-[92px] text-xs sm:min-w-[120px] sm:text-sm" onChange={handleSeqChange}>
-              {seqOptions.map((s) => (
-                <option key={s} value={s}>{config?.genSeqText?.(s) || `第${s}期`}</option>
-              ))}
-            </select>
+            <button
+              type="button"
+              className="flex h-8 min-w-[92px] items-center justify-between gap-3 border border-rule-dark bg-paper px-2.5 text-left text-xs text-ink transition-colors hover:border-red hover:text-red sm:min-w-[120px] sm:text-sm"
+              aria-haspopup="listbox"
+              aria-expanded={seqDropdownOpen}
+              onClick={() => setSeqDropdownOpen((open) => !open)}
+            >
+              <span className="truncate">{selectedSeqText}</span>
+              <svg
+                className={`h-3 w-3 shrink-0 transition-transform ${seqDropdownOpen ? "rotate-180" : ""}`}
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                aria-hidden="true"
+              >
+                <path d="m4 6 4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            {seqDropdownOpen && (
+              <div className="absolute left-0 top-full z-[90] mt-1 w-[160px] border-2 border-red bg-paper shadow-[4px_4px_0_rgba(139,26,26,.14)] min-[390px]:left-auto min-[390px]:right-0">
+                <div className="max-h-64 overflow-y-auto py-1" role="listbox" aria-label="期数">
+                  {seqOptions.map((s) => {
+                    const selected = s === seq;
+                    const label = config?.genSeqText?.(s) || `第${s}期`;
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        data-seq-option={s}
+                        className={`block h-9 w-full px-4 text-left text-sm transition-colors ${
+                          selected ? "bg-red text-paper" : "text-ink hover:bg-red/10 hover:text-red"
+                        }`}
+                        onClick={() => handleSeqChange(s)}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
           {toolbarActions}
         </Toolbar>
@@ -348,7 +422,9 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             />
           </div>
           {numPages > 0 && (
-            <span className="hidden whitespace-nowrap text-xs text-muted min-[390px]:inline">共 {numPages} 页</span>
+            <span className="hidden whitespace-nowrap text-xs text-muted min-[390px]:inline">
+              共 {numPages} 页
+            </span>
           )}
           {toolbarActions}
         </Toolbar>
@@ -356,15 +432,17 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
 
       {/* Content */}
       <div className="px-4 py-4">
-        {loading && <LoadingSpinner text="正在加载 PDF 文档" fullscreen />}
-        {error && (
-          <EmptyState title="没有当天文档或数据缺失" description={error} />
+        {!date && <LoadingSpinner text="正在加载 PDF 文档" fullscreen />}
+        {date && pdfLoading && !pdfDocument && !readerError && <LoadingSpinner text="正在加载 PDF 文档" fullscreen />}
+        {readerError && (
+          <EmptyState title="没有当天文档或数据缺失" description={readerError} />
         )}
-        {pdfDoc && (
+        {date && pdfDocument && !readerError && (
           <PdfViewer
-            document={pdfDoc}
+            document={pdfDocument}
             scale={resolutionRate * 2}
             initialPage={initialPage}
+            targetPage={targetPageNum || undefined}
             onPageChange={(p) => {
               setJumpToPageNum(p);
             }}

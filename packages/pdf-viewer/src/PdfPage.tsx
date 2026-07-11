@@ -1,19 +1,21 @@
 import { useRef, useEffect, useState } from "react";
-import type { PDFDocumentProxy } from "pdfjs-dist";
+import type { PDFDocumentProxy } from "pdfjs-dist/types/display/api";
 
 interface PdfPageProps {
   id?: string;
   document: PDFDocumentProxy;
   pageNumber: number;
   scale?: number;
+  placeholderHeight?: number;
   className?: string;
   onRendered?: (pageNumber: number) => void;
   onError?: (pageNumber: number, error: Error) => void;
 }
 
-export function PdfPage({ id, document, pageNumber, scale = 2, className = "", onRendered, onError }: PdfPageProps) {
+export function PdfPage({ id, document, pageNumber, scale = 2, placeholderHeight, className = "", onRendered, onError }: PdfPageProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [rendering, setRendering] = useState(false);
+  const [rendered, setRendered] = useState(false);
   const renderTask = useRef<any>(null);
 
   useEffect(() => {
@@ -21,6 +23,7 @@ export function PdfPage({ id, document, pageNumber, scale = 2, className = "", o
     if (!canvas || !document) return;
 
     setRendering(true);
+    setRendered(false);
 
     document.getPage(pageNumber).then((page) => {
       const viewport = page.getViewport({ scale });
@@ -34,9 +37,13 @@ export function PdfPage({ id, document, pageNumber, scale = 2, className = "", o
         renderTask.current.cancel();
       }
 
-      renderTask.current = page.render({ canvas, canvasContext: ctx, viewport });
+      renderTask.current = page.render({ canvasContext: ctx, viewport });
       renderTask.current.promise
-        .then(() => { setRendering(false); onRendered?.(pageNumber); })
+        .then(() => {
+          setRendering(false);
+          setRendered(true);
+          onRendered?.(pageNumber);
+        })
         .catch((err: any) => {
           if (err?.name !== "RenderingCancelledException") {
             setRendering(false);
@@ -52,7 +59,7 @@ export function PdfPage({ id, document, pageNumber, scale = 2, className = "", o
   }, [document, pageNumber, scale]);
 
   return (
-    <div id={id} className={`relative ${className}`}>
+    <div id={id} className={`relative ${className}`} style={!rendered && placeholderHeight ? { minHeight: placeholderHeight } : undefined}>
       <canvas ref={canvasRef} />
       {rendering && (
         <div className="absolute inset-0 flex items-center justify-center gap-2.5 bg-paper/85">

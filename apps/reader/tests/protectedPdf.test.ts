@@ -1,4 +1,7 @@
+import { createRequire } from "node:module";
 import { describe, expect, it, vi } from "vitest";
+
+const nodeRequire = createRequire(import.meta.url);
 
 function installPdfJsImportPolyfills() {
   if (!("DOMMatrix" in globalThis)) {
@@ -62,7 +65,7 @@ function byteArray(bytes: Uint8Array): number[] {
 }
 
 async function readPdfText(bytes: Uint8Array): Promise<string> {
-  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf");
   const task = getDocument({ data: new Uint8Array(bytes), disableFontFace: true });
   const doc = await task.promise;
   const page = await doc.getPage(1);
@@ -72,7 +75,7 @@ async function readPdfText(bytes: Uint8Array): Promise<string> {
 }
 
 async function expectPdfOpenFailure(bytes: Uint8Array): Promise<void> {
-  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf");
   const task = getDocument({ data: new Uint8Array(bytes), disableFontFace: true });
   await expect(task.promise).rejects.toThrow();
 }
@@ -149,6 +152,48 @@ function createRangeFetch(bytes: Uint8Array) {
   return { fetchFn, ranges };
 }
 
+function createDeferredRangeFetch(bytes: Uint8Array, immediateRange: string) {
+  const ranges: string[] = [];
+  const pending: Array<{ range: string; resolve: () => void }> = [];
+
+  const fetchFn = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === "HEAD") {
+      return new Response(null, {
+        status: 200,
+        headers: { "Content-Length": String(bytes.length) },
+      });
+    }
+
+    const headers = init?.headers as Record<string, string> | undefined;
+    const range = headers?.Range ?? headers?.range;
+    if (!range) throw new Error("Expected Range header");
+    ranges.push(range);
+
+    if (range !== immediateRange) {
+      await new Promise<void>((resolve) => {
+        pending.push({ range, resolve });
+      });
+    }
+
+    const match = /^bytes=(\d+)-(\d+)$/.exec(range);
+    if (!match) throw new Error(`Invalid Range header: ${range}`);
+
+    const begin = Number(match[1]);
+    const end = Math.min(Number(match[2]), bytes.length - 1);
+    const chunk = bytes.slice(begin, end + 1);
+
+    return new Response(chunk, {
+      status: 206,
+      headers: {
+        "Content-Length": String(chunk.length),
+        "Content-Range": `bytes ${begin}-${end}/${bytes.length}`,
+      },
+    });
+  });
+
+  return { fetchFn, ranges, pending };
+}
+
 async function waitForMicrotasks() {
   await Promise.resolve();
   await new Promise((resolve) => {
@@ -204,9 +249,10 @@ describe("protected reader PDFs", () => {
     expect(ranges[0]).toBe("bytes=0-63");
 
     const events: Array<{ type: string; begin: number; chunk: Uint8Array }> = [];
-    source.transport.transportReady((event: { type: string; begin: number; chunk: Uint8Array }) => {
-      events.push(event);
+    source.transport.addRangeListener((begin: number, chunk: Uint8Array) => {
+      events.push({ type: "range", begin, chunk });
     });
+    source.transport.transportReady();
     source.transport.requestDataRange(97, 181);
     await waitForMicrotasks();
 
@@ -215,6 +261,72 @@ describe("protected reader PDFs", () => {
     expect(events[0]?.type).toBe("range");
     expect(events[0]?.begin).toBe(97);
     expect(byteArray(events[0]?.chunk ?? new Uint8Array())).toEqual(byteArray(original.slice(97, 181)));
+  });
+
+  it("serializes protected transport range requests", async () => {
+    const { protectPdfBytes, resolvePdfSource } = await loadProtectionModule();
+    const original = makePdf("Serialized Transport Range Text", 2048);
+    const protectedPdf = protectPdfBytes(original);
+    const { fetchFn, ranges, pending } = createDeferredRangeFetch(protectedPdf, "bytes=0-63");
+
+    const source = await resolvePdfSource("https://cdn.example.test/RMRB/1946/19460515.pdf", "auto", {
+      fetchFn: fetchFn as unknown as typeof fetch,
+      rangeChunkSize: 64,
+    });
+
+    expect(source.kind).toBe("protected");
+    if (source.kind !== "protected") return;
+
+    const events: Array<{ type: string; begin: number; chunk: Uint8Array }> = [];
+    source.transport.addRangeListener((begin: number, chunk: Uint8Array) => {
+      events.push({ type: "range", begin, chunk });
+    });
+    source.transport.transportReady();
+
+    source.transport.requestDataRange(97, 181);
+    source.transport.requestDataRange(181, 245);
+    await waitForMicrotasks();
+
+    expect(ranges).toEqual(["bytes=0-63", "bytes=97-180"]);
+    expect(pending).toHaveLength(1);
+    pending.shift()?.resolve();
+    await waitForMicrotasks();
+
+    expect(ranges).toEqual(["bytes=0-63", "bytes=97-180", "bytes=181-244"]);
+    expect(pending).toHaveLength(1);
+    pending.shift()?.resolve();
+    await waitForMicrotasks();
+
+    expect(events).toHaveLength(2);
+    expect(events[0]?.begin).toBe(97);
+    expect(events[1]?.begin).toBe(181);
+  });
+
+  it("prioritizes earlier queued protected ranges", async () => {
+    const { protectPdfBytes, resolvePdfSource } = await loadProtectionModule();
+    const original = makePdf("Prioritized Transport Range Text", 2048);
+    const protectedPdf = protectPdfBytes(original);
+    const { fetchFn, ranges, pending } = createDeferredRangeFetch(protectedPdf, "bytes=0-63");
+
+    const source = await resolvePdfSource("https://cdn.example.test/RMRB/1946/19460515.pdf", "auto", {
+      fetchFn: fetchFn as unknown as typeof fetch,
+      rangeChunkSize: 64,
+    });
+
+    expect(source.kind).toBe("protected");
+    if (source.kind !== "protected") return;
+
+    source.transport.transportReady();
+    source.transport.requestDataRange(181, 245);
+    source.transport.requestDataRange(97, 181);
+    await waitForMicrotasks();
+
+    expect(ranges).toEqual(["bytes=0-63", "bytes=181-244"]);
+    expect(pending).toHaveLength(1);
+    pending.shift()?.resolve();
+    await waitForMicrotasks();
+
+    expect(ranges).toEqual(["bytes=0-63", "bytes=181-244", "bytes=97-180"]);
   });
 
   it("opens a protected range source through pdf.js", async () => {
@@ -231,7 +343,8 @@ describe("protected reader PDFs", () => {
     expect(source.kind).toBe("protected");
     if (source.kind !== "protected") return;
 
-    const { getDocument } = await import("pdfjs-dist");
+    const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist");
+    GlobalWorkerOptions.workerSrc = nodeRequire.resolve("pdfjs-dist/build/pdf.worker.min.js");
     const task = getDocument({
       range: source.transport,
       disableAutoFetch: true,
@@ -278,7 +391,7 @@ describe("protected reader PDFs", () => {
     });
 
     expect(source.kind).toBe("plain");
-    expect(source.transport).toBeDefined();
+    expect(source.transport).toBeUndefined();
     expect(ranges).toEqual(["bytes=0-63"]);
   });
 
