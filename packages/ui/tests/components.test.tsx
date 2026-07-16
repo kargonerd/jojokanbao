@@ -45,7 +45,7 @@ describe("Tag", () => {
 describe("Card", () => {
   it("renders with border-red class", () => {
     const { container } = render(<Card>Content</Card>);
-    expect(container.firstChild?.className).toContain("border-red");
+    expect((container.firstElementChild as HTMLElement | null)?.className).toContain("border-red");
   });
 });
 
@@ -66,7 +66,7 @@ describe("Pagination", () => {
     render(<Pagination current={2} total={5} onChange={(p) => { page = p; }} />);
     // Click the "next" button (›)
     const buttons = screen.getAllByRole("button");
-    fireEvent.click(buttons[buttons.length - 1]); // last button is ›
+    fireEvent.click(buttons.at(-1)!); // last button is ›
     expect(page).toBe(3);
   });
 });

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 const PAGE_COUNT = 6;
 const RANGE_CHUNK_SIZE = 256 * 1024;
@@ -87,6 +87,31 @@ function makeDemandLoadedPdf(pagePaddingLength = 300_000): Buffer {
   return Buffer.from(header + linearization + firstXref + body + mainXref, "ascii");
 }
 
+async function servePdfRanges(page: Page, pdf: Buffer): Promise<void> {
+  await page.route("https://blacknews.jojokanbao.cn/**/*.pdf", async (route) => {
+    const range = route.request().headers().range;
+    const match = range ? /^bytes=(\d+)-(\d+)$/.exec(range) : null;
+    if (!match) {
+      await route.fulfill({ status: 500, body: "Range header required" });
+      return;
+    }
+    const begin = Number(match[1]);
+    const end = Math.min(Number(match[2]), pdf.length - 1);
+    await route.fulfill({
+      status: 206,
+      headers: {
+        "Accept-Ranges": "bytes",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Expose-Headers": "Accept-Ranges, Content-Length, Content-Range",
+        "Content-Length": String(end - begin + 1),
+        "Content-Range": `bytes ${begin}-${end}/${pdf.length}`,
+        "Content-Type": "application/pdf",
+      },
+      body: pdf.subarray(begin, end + 1),
+    });
+  });
+}
+
 test("reader shows the first page before all PDF ranges return", async ({ page }) => {
   test.setTimeout(60_000);
   const pdf = makeDemandLoadedPdf();
@@ -158,6 +183,59 @@ test("switching from a newspaper to a magazine never requests a stale mixed docu
     "https://blacknews.jojokanbao.cn/HQ/1964/196419.pdf",
   ]);
   expect(pdfRequests.some((url) => url.endsWith("/HQ/1976/1976100901.pdf"))).toBe(false);
+});
+
+test("reader explains a server that ignores Range without hiding navigation controls", async ({ page }) => {
+  await page.route("https://blacknews.jojokanbao.cn/**/*.pdf", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/pdf",
+      body: makeDemandLoadedPdf(1_000),
+    });
+  });
+
+  await page.goto("/rmrb/19761009", { waitUntil: "domcontentloaded" });
+  await expect(page.getByText("没有当天文档或数据缺失")).toBeVisible();
+  await expect(page.getByText("PDF server ignored the Range header; refusing to download the complete file")).toBeVisible();
+  await expect(page.getByRole("button", { name: "1976年10月09日" })).toBeVisible();
+  await expect(page.locator("[data-pdf-page] canvas")).toHaveCount(0);
+});
+
+test("date and issue controls produce exact publication URLs", async ({ page }) => {
+  const requests: string[] = [];
+  await page.route("https://blacknews.jojokanbao.cn/**/*.pdf", async (route) => {
+    requests.push(route.request().url());
+    await route.fulfill({ status: 404, body: "UI navigation only" });
+  });
+
+  await page.goto("/rmrb/19761009", { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "1976年10月09日" }).click();
+  await page.getByRole("button", { name: "8", exact: true }).click();
+  await expect(page).toHaveURL(/\/rmrb\/19761008$/);
+  await expect.poll(() => requests.some((url) => url.endsWith("/RMRB/1976/19761008.pdf"))).toBe(true);
+
+  await page.goto("/hq/196419", { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "第19期" }).click();
+  await page.getByRole("option", { name: "增刊1" }).click();
+  await expect(page).toHaveURL(/\/hq\/196491$/);
+  await expect.poll(() => requests.some((url) => url.endsWith("/HQ/1964/196491.pdf"))).toBe(true);
+  expect(requests.some((url) => url.includes("/HQ/1976/1976100901.pdf"))).toBe(false);
+});
+
+test("browser download restores a readable PDF with the issue filename", async ({ page }) => {
+  const pdf = makeDemandLoadedPdf(1_000);
+  await servePdfRanges(page, pdf);
+  await page.goto("/rmrb/19761009", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#page-1 canvas")).toBeVisible({ timeout: 20_000 });
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "下载 PDF" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("rmrb-19761009.pdf");
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  expect(Buffer.concat(chunks).subarray(0, 5).toString("ascii")).toBe("%PDF-");
 });
 
 test("reader dropdowns stay above the toolbar and close consistently", async ({ page }) => {
@@ -268,14 +346,17 @@ test("mobile PDF slots keep their page ratio and evict distant canvases", async 
   const qualitySlider = page.getByRole("slider", { name: "清晰度" });
   await expect(qualitySlider).toHaveValue("3");
   await expect(qualitySlider).toHaveAttribute("max", "3");
-  const highQualityWidth = await page.locator("#page-6 canvas").evaluate((canvas) => canvas.width);
+  const highQualityWidth = await page.locator("#page-6 canvas").evaluate((canvas) => (canvas as HTMLCanvasElement).width);
   await qualitySlider.fill("1");
   await expect(page.getByText("清晰度 (1)")).toBeVisible();
-  await expect.poll(() => page.locator("#page-6 canvas").evaluate((canvas) => canvas.width)).toBeLessThan(highQualityWidth);
-  const lowQualityWidth = await page.locator("#page-6 canvas").evaluate((canvas) => canvas.width);
+  await expect.poll(() => page.locator("#page-6 canvas").evaluate((canvas) => (canvas as HTMLCanvasElement).width)).toBeLessThan(highQualityWidth);
+  const lowQualityWidth = await page.locator("#page-6 canvas").evaluate((canvas) => (canvas as HTMLCanvasElement).width);
   await qualitySlider.fill("3");
-  await expect.poll(() => page.locator("#page-6 canvas").evaluate((canvas) => canvas.width)).toBeGreaterThan(lowQualityWidth);
-  const highQualityPixels = await page.locator("#page-6 canvas").evaluate((canvas) => canvas.width * canvas.height);
+  await expect.poll(() => page.locator("#page-6 canvas").evaluate((canvas) => (canvas as HTMLCanvasElement).width)).toBeGreaterThan(lowQualityWidth);
+  const highQualityPixels = await page.locator("#page-6 canvas").evaluate((canvas) => {
+    const element = canvas as HTMLCanvasElement;
+    return element.width * element.height;
+  });
   expect(highQualityPixels).toBeLessThanOrEqual(32_000_000);
 });
 
