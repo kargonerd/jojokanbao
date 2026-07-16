@@ -270,6 +270,8 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const handleVisiblePageChange = useCallback((pageNumber: number) => {
     setJumpToPageNum(pageNumber);
   }, []);
+  // TODO: Replace the mode toggle with visible “− / current zoom / +” controls
+  // so users can discover and repeat zoom actions without relying on page clicks.
   const toolbarActions = pdfUrl ? (
     <div ref={settingsRef} className="relative ml-auto flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
       <button
