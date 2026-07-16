@@ -12,6 +12,7 @@ import { ListItem } from "../src/ListItem";
 import { PageHeader } from "../src/PageHeader";
 import { Panel } from "../src/Panel";
 import { Toolbar } from "../src/Toolbar";
+import { NavBar } from "../src/NavBar";
 
 describe("Button", () => {
   it("renders with primary variant by default", () => {
@@ -118,5 +119,23 @@ describe("Layout primitives", () => {
       </Panel>
     );
     expect(screen.getByText("Tools")).toBeDefined();
+  });
+
+  it("opens desktop nav dropdown on hover", () => {
+    render(
+      <NavBar
+        items={[
+          {
+            label: "Papers",
+            children: [{ label: "Daily", href: "/daily" }],
+          },
+        ]}
+        onNavigate={() => {}}
+        isActive={() => false}
+      />
+    );
+
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "Papers" }));
+    expect(screen.getByText("Daily")).toBeDefined();
   });
 });
