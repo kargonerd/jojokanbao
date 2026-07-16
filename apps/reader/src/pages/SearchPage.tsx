@@ -13,6 +13,19 @@ interface SearchResult {
   ellipsis: boolean;
 }
 
+interface SearchFilterOverrides {
+  sort?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+const SORT_OPTIONS = [
+  { value: "", label: "默认排序" },
+  { value: "match", label: "最佳匹配" },
+  { value: "timeAsc", label: "时间升序" },
+  { value: "timeDesc", label: "时间降序" },
+] as const;
+
 function highlight(str: string, replaceBreaks: boolean, strong: boolean): string {
   let out = replaceBreaks ? str.replace(/\n/g, "<br>") : str;
   const tag = strong ? "strong" : "span";
@@ -32,13 +45,36 @@ export function SearchPage() {
   const [endDate, setEndDate] = useState(params.get("endDate") || "");
   const [loading, setLoading] = useState(false);
   const [beforeSearch, setBeforeSearch] = useState(!params.get("keyword"));
+  const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const sortDropdownRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pageSize = 10;
 
   useEffect(() => {
     if (params.get("keyword")) fetchResults();
     else inputRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    if (!sortDropdownOpen) return;
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (!sortDropdownRef.current?.contains(event.target as Node)) {
+        setSortDropdownOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSortDropdownOpen(false);
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [sortDropdownOpen]);
 
   async function handleSearch() {
     if (!term.trim()) return;
@@ -49,26 +85,29 @@ export function SearchPage() {
   async function handlePageChange(p: number) {
     setPage(p);
     await fetchResults(p);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  async function fetchResults(p = page) {
+  async function fetchResults(p = page, overrides: SearchFilterOverrides = {}) {
+    const nextSort = overrides.sort ?? sort;
+    const nextStartDate = overrides.startDate ?? startDate;
+    const nextEndDate = overrides.endDate ?? endDate;
     setLoading(true);
     const query: Record<string, string> = { keyword: term };
     if (p > 1) query.page = String(p);
-    if (sort) query.sort = sort;
-    if (startDate && endDate) {
-      query.startDate = startDate;
-      query.endDate = endDate;
+    if (nextSort) query.sort = nextSort;
+    if (nextStartDate && nextEndDate) {
+      query.startDate = nextStartDate;
+      query.endDate = nextEndDate;
     }
     setParams(query);
 
     try {
       const params: Record<string, any> = { keyword: term, page: p, size: pageSize };
-      if (sort) params.sort = sort;
-      if (startDate && endDate) {
-        params.startDate = startDate;
-        params.endDate = endDate;
+      if (nextSort) params.sort = nextSort;
+      if (nextStartDate && nextEndDate) {
+        params.startDate = nextStartDate;
+        params.endDate = nextEndDate;
       }
       const res = await axios.get(SEARCH_API, { params });
       const data = res.data.data;
@@ -82,16 +121,39 @@ export function SearchPage() {
     }
   }
 
+  async function handleSortChange(nextSort: string) {
+    setSort(nextSort);
+    setSortDropdownOpen(false);
+    setPage(1);
+    await fetchResults(1, { sort: nextSort });
+  }
+
+  async function handleStartDateChange(nextStartDate: string) {
+    setStartDate(nextStartDate);
+    if (!nextStartDate || !endDate) return;
+    setPage(1);
+    await fetchResults(1, { startDate: nextStartDate });
+  }
+
+  async function handleEndDateChange(nextEndDate: string) {
+    setEndDate(nextEndDate);
+    if (!startDate || !nextEndDate) return;
+    setPage(1);
+    await fetchResults(1, { endDate: nextEndDate });
+  }
+
+  const selectedSortLabel = SORT_OPTIONS.find((option) => option.value === sort)?.label ?? "默认排序";
+
   return (
-    <div className="h-full overflow-y-auto bg-paper text-ink">
+    <div ref={scrollContainerRef} data-search-scroll-container className="h-full overflow-y-auto bg-paper text-ink">
       {loading && <LoadingSpinner text="搜索中" fullscreen />}
 
       {/* Centered search */}
       {beforeSearch && (
         <div className="fixed inset-0 flex items-center justify-center z-10">
-          <div className="w-[90%] max-w-[600px] p-6 border-4 border-red shadow-[inset_0_0_0_8px_var(--color-paper),inset_0_0_0_10px_var(--color-red)]">
-            <div className="flex gap-3">
-              <input ref={inputRef} value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearch()} placeholder="在JOJO看报上搜索" className="flex-1 h-10 text-sm" />
+          <div className="w-[90%] max-w-[640px]">
+            <div className="flex items-center gap-3 border-2 border-rule-dark bg-paper p-2 pl-4 transition-all focus-within:border-red focus-within:shadow-[4px_4px_0_rgba(139,26,26,.14)]">
+              <input ref={inputRef} value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearch()} placeholder="在JOJO看报上搜索" className="h-10 flex-1 border-0 bg-transparent p-0 text-base focus:border-0 focus:shadow-none" />
               <Button onClick={handleSearch}>搜索</Button>
             </div>
           </div>
@@ -109,17 +171,55 @@ export function SearchPage() {
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-4 p-3.5 border border-rule mb-6">
             <label className="flex items-center gap-2 text-xs font-bold text-muted">
-              从 <DatePicker value={startDate} onChange={(v) => { setStartDate(v); if (v && endDate) handleSearch(); }} />
+              从 <DatePicker value={startDate} onChange={handleStartDateChange} />
             </label>
             <label className="flex items-center gap-2 text-xs font-bold text-muted">
-              至 <DatePicker value={endDate} onChange={(v) => { setEndDate(v); if (startDate && v) handleSearch(); }} />
+              至 <DatePicker value={endDate} onChange={handleEndDateChange} />
             </label>
-            <select value={sort} onChange={(e) => { setSort(e.target.value); handleSearch(); }} className="h-8 text-xs px-2 min-w-[100px]">
-              <option value="">默认排序</option>
-              <option value="match">最佳匹配</option>
-              <option value="timeAsc">时间升序</option>
-              <option value="timeDesc">时间降序</option>
-            </select>
+            <div ref={sortDropdownRef} className="relative min-w-[120px]">
+              <button
+                type="button"
+                className="flex h-8 w-full items-center justify-between gap-3 border border-rule-dark bg-paper px-2.5 text-left text-xs text-ink transition-colors hover:border-red hover:text-red"
+                aria-haspopup="listbox"
+                aria-expanded={sortDropdownOpen}
+                onClick={() => setSortDropdownOpen((open) => !open)}
+              >
+                <span>{selectedSortLabel}</span>
+                <svg
+                  className={`h-3 w-3 shrink-0 transition-transform ${sortDropdownOpen ? "rotate-180" : ""}`}
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  aria-hidden="true"
+                >
+                  <path d="m4 6 4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              {sortDropdownOpen && (
+                <div className="absolute left-0 top-full z-[90] mt-1 w-full border-2 border-red bg-paper shadow-[4px_4px_0_rgba(139,26,26,.14)]">
+                  <div className="py-1" role="listbox" aria-label="排序">
+                    {SORT_OPTIONS.map((option) => {
+                      const selected = option.value === sort;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          role="option"
+                          aria-selected={selected}
+                          className={`block h-9 w-full px-4 text-left text-xs transition-colors ${
+                            selected ? "bg-red text-paper" : "text-ink hover:bg-red/10 hover:text-red"
+                          }`}
+                          onClick={() => handleSortChange(option.value)}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {results && (

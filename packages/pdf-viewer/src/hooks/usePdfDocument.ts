@@ -1,8 +1,12 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { getDocument, type PDFDocumentLoadingTask, type PDFDocumentProxy } from "pdfjs-dist";
 import { GlobalWorkerOptions } from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { resolvePdfSource, type ProtectedPdfMode } from "../protectedPdf";
+import workerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
+import {
+  DEFAULT_PDF_RANGE_CHUNK_SIZE,
+  resolvePdfSource,
+  type ProtectedPdfMode,
+} from "../protectedPdf";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -15,6 +19,7 @@ interface UsePdfDocumentOptions {
   cMapUrl?: string;
   wasmUrl?: string;
   protectedPdf?: ProtectedPdfMode;
+  rangeChunkSize?: number;
 }
 
 interface PdfDocumentState {
@@ -24,65 +29,83 @@ interface PdfDocumentState {
   error: string | null;
 }
 
-export function usePdfDocument({ url, cMapUrl = CMAP_URL, wasmUrl = WASM_URL, protectedPdf = "auto" }: UsePdfDocumentOptions): PdfDocumentState {
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export function usePdfDocument({
+  url,
+  cMapUrl = CMAP_URL,
+  wasmUrl = WASM_URL,
+  protectedPdf = "auto",
+  rangeChunkSize = DEFAULT_PDF_RANGE_CHUNK_SIZE,
+}: UsePdfDocumentOptions): PdfDocumentState {
   const [state, setState] = useState<PdfDocumentState>({ document: null, numPages: 0, loading: true, error: null });
-  const prevUrl = useRef("");
 
   useEffect(() => {
-    if (!url || url === prevUrl.current) return;
-    prevUrl.current = url;
+    if (!url) {
+      setState({ document: null, numPages: 0, loading: false, error: null });
+      return;
+    }
 
     setState({ document: null, numPages: 0, loading: true, error: null });
 
     let cancelled = false;
+    let failed = false;
     let task: PDFDocumentLoadingTask | null = null;
     let abortSource: { abort: () => void } | null = null;
 
-    const load = async () => {
-      const commonParams = { cMapUrl, cMapPacked: true, wasmUrl };
+    const fail = (error: unknown) => {
+      if (cancelled || failed) return;
+      failed = true;
+      abortSource?.abort();
+      void task?.destroy().catch(() => {});
+      setState({ document: null, numPages: 0, loading: false, error: errorMessage(error) });
+    };
 
-      const source = await resolvePdfSource(url, protectedPdf);
+    const load = async () => {
+      const commonParams = {
+        cMapUrl,
+        cMapPacked: true,
+        wasmUrl,
+        isEvalSupported: false,
+      };
+
+      const source = await resolvePdfSource(url, protectedPdf, {
+        rangeChunkSize,
+        onRangeError: fail,
+      });
       if (cancelled) {
-        source.transport?.abort();
+        source.transport.abort();
         return;
-      }
-      if (!source.transport) {
-        throw new Error("PDF range loading requires CDN byte-range support");
       }
 
       abortSource = source.transport;
       task = getDocument({
         ...commonParams,
         range: source.transport,
-        rangeChunkSize: 65536,
+        rangeChunkSize,
+        disableRange: false,
         disableStream: true,
         disableAutoFetch: true,
       });
 
-      task.promise
-        .then((doc) => {
-          if (!cancelled) {
-            setState({ document: doc, numPages: doc.numPages, loading: false, error: null });
-          }
-        })
-        .catch((err) => {
-          if (cancelled || String(err).includes("Worker was destroyed")) return;
-          setState({ document: null, numPages: 0, loading: false, error: String(err?.message || err) });
-        });
+      const doc = await task.promise;
+      if (cancelled || failed) {
+        await doc.destroy().catch(() => {});
+        return;
+      }
+      setState({ document: doc, numPages: doc.numPages, loading: false, error: null });
     };
 
-    load().catch((err) => {
-      if (!cancelled) {
-        setState({ document: null, numPages: 0, loading: false, error: String(err?.message || err) });
-      }
-    });
+    void load().catch(fail);
 
     return () => {
       cancelled = true;
       abortSource?.abort();
       task?.destroy().catch(() => {});
     };
-  }, [url, cMapUrl, wasmUrl, protectedPdf]);
+  }, [url, cMapUrl, wasmUrl, protectedPdf, rangeChunkSize]);
 
   return state;
 }

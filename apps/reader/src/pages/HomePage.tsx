@@ -20,7 +20,7 @@ export function HomePage() {
 
   return (
     <div className="h-full overflow-y-auto bg-paper">
-      <div className="max-w-5xl mx-auto px-6 py-12 md:py-20">
+      <div className="max-w-5xl mx-auto px-6 py-8 md:py-10">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {cards.map((card) => (
             <Card key={card.title} className="group cursor-pointer" onClick={() => navigate(card.route)}>
@@ -37,7 +37,6 @@ export function HomePage() {
             </Card>
           ))}
         </div>
-        <p className="text-center text-xs text-muted mt-12 tracking-wider">JOJO看报 · 原版影印 · 历史文献数字档案</p>
       </div>
     </div>
   );
