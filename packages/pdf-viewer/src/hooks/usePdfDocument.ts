@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { getDocument, type PDFDocumentLoadingTask, type PDFDocumentProxy } from "pdfjs-dist";
 import { GlobalWorkerOptions } from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
+import workerUrl from "pdfjs-dist/build/pdf.worker.mjs?worker&url";
 import {
   DEFAULT_PDF_RANGE_CHUNK_SIZE,
   resolvePdfSource,
