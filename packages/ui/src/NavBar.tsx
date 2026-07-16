@@ -49,6 +49,7 @@ export function NavBar({ items, trailing, mobileTitle, mobileTitleHref = "/", on
             {item.href ? (
               <a
                 href={item.href}
+                onMouseEnter={() => setOpenDropdown(null)}
                 onClick={(e) => { e.preventDefault(); onNavigate(item.href!); }}
                 className={`relative h-full flex items-center px-5 text-sm font-bold tracking-wide no-underline transition-colors hover:text-red ${isActive(item.href) ? "text-red" : "text-ink"}`}
               >
@@ -59,7 +60,11 @@ export function NavBar({ items, trailing, mobileTitle, mobileTitleHref = "/", on
               <>
                 <button
                   className={`relative h-full flex items-center px-5 text-sm font-bold tracking-wide border-0 bg-transparent transition-colors hover:text-red cursor-pointer ${item.children?.some((c) => isActive(c.href)) ? "text-red" : "text-ink"}`}
-                  onClick={() => setOpenDropdown(openDropdown === item.label ? null : item.label)}
+                  onMouseEnter={() => setOpenDropdown(item.label)}
+                  onFocus={() => setOpenDropdown(item.label)}
+                  onClick={() => setOpenDropdown(item.label)}
+                  aria-haspopup="menu"
+                  aria-expanded={openDropdown === item.label}
                 >
                   {item.label}
                   <svg className="ml-1 w-3 h-3 opacity-50" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 5l3 3 3-3" /></svg>

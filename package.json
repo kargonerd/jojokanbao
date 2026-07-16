@@ -22,5 +22,10 @@
   "devDependencies": {
     "@tailwindcss/oxide-win32-x64-msvc": "4.3.0",
     "turbo": "^2.4.0"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "pdfjs-dist@5.7.284": "patches/pdfjs-dist@5.7.284.patch"
+    }
   }
 }

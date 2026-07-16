@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  pdfjs-dist@5.7.284:
+    hash: zahbskxuqcrzag4gobt5x7k26i
+    path: patches/pdfjs-dist@5.7.284.patch
+
 importers:
 
   .:
@@ -105,7 +110,7 @@ importers:
         version: 17.4.2
       pdfjs-dist:
         specifier: ^5.7.0
-        version: 5.7.284
+        version: 5.7.284(patch_hash=zahbskxuqcrzag4gobt5x7k26i)
       react:
         specifier: ^19.0.0
         version: 19.2.6
@@ -302,7 +307,7 @@ importers:
     dependencies:
       pdfjs-dist:
         specifier: ^5.7.0
-        version: 5.7.284
+        version: 5.7.284(patch_hash=zahbskxuqcrzag4gobt5x7k26i)
     devDependencies:
       '@jojo/tsconfig':
         specifier: workspace:*
@@ -9924,7 +9929,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  pdfjs-dist@5.7.284:
+  pdfjs-dist@5.7.284(patch_hash=zahbskxuqcrzag4gobt5x7k26i):
     optionalDependencies:
       '@napi-rs/canvas': 0.1.100
 
