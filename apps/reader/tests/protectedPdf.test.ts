@@ -68,7 +68,7 @@ async function readPdfText(bytes: Uint8Array): Promise<string> {
   const page = await doc.getPage(1);
   const content = await page.getTextContent();
   await doc.destroy();
-  return content.items.map((item: { str?: string }) => item.str ?? "").join("");
+  return content.items.map((item) => ("str" in item ? item.str : "")).join("");
 }
 
 async function expectPdfOpenFailure(bytes: Uint8Array): Promise<void> {
@@ -80,36 +80,16 @@ async function expectPdfOpenFailure(bytes: Uint8Array): Promise<void> {
 function createRangeFetch(bytes: Uint8Array) {
   const ranges: string[] = [];
   const readRangeHeader = (source: RequestInfo | URL | HeadersInit | undefined): string | null => {
-    const maybeRequest = source as Request | undefined;
-    if (typeof maybeRequest?.headers?.get === "function") {
-      return maybeRequest.headers.get("Range") ?? maybeRequest.headers.get("range");
+    if (!source || typeof source === "string" || source instanceof URL) return null;
+    if (source instanceof Request) return source.headers.get("Range");
+    if (source instanceof Headers) return source.get("Range");
+    if (Array.isArray(source)) {
+      return source.find(([name]) => name.toLowerCase() === "range")?.[1] ?? null;
     }
-
-    const maybeHeaders = source as
-      | Headers
-      | Array<[string, string]>
-      | Record<string, string>
-      | { get?: (name: string) => string | null; forEach?: (callback: (value: string, key: string) => void) => void }
-      | undefined;
-
-    if (typeof maybeHeaders?.get === "function") {
-      const value = maybeHeaders.get("Range") ?? maybeHeaders.get("range");
-      if (value) return value;
+    for (const [name, value] of Object.entries(source)) {
+      if (name.toLowerCase() === "range" && typeof value === "string") return value;
     }
-
-    if (typeof maybeHeaders?.forEach === "function") {
-      let value: string | null = null;
-      maybeHeaders.forEach((headerValue, headerName) => {
-        if (headerName.toLowerCase() === "range") value = headerValue;
-      });
-      if (value) return value;
-    }
-
-    if (Array.isArray(maybeHeaders)) {
-      return maybeHeaders.find(([key]) => key.toLowerCase() === "range")?.[1] ?? null;
-    }
-
-    return maybeHeaders?.Range ?? maybeHeaders?.range ?? null;
+    return null;
   };
 
   const fetchFn = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
@@ -123,7 +103,7 @@ function createRangeFetch(bytes: Uint8Array) {
     const range = readRangeHeader(init?.headers) ?? readRangeHeader(url);
     if (!range) {
       ranges.push("full");
-      return new Response(bytes, {
+      return new Response(bytes.slice().buffer as ArrayBuffer, {
         status: 200,
         headers: { "Content-Length": String(bytes.length) },
       });
@@ -137,7 +117,7 @@ function createRangeFetch(bytes: Uint8Array) {
     const end = Math.min(Number(match[2]), bytes.length - 1);
     const chunk = bytes.slice(begin, end + 1);
 
-    return new Response(chunk, {
+    return new Response(chunk.buffer as ArrayBuffer, {
       status: 206,
       headers: {
         "Content-Length": String(chunk.length),
@@ -260,7 +240,7 @@ describe("protected reader PDFs", () => {
     const content = await page.getTextContent();
     await doc.destroy();
 
-    expect(content.items.map((item: { str?: string }) => item.str ?? "").join("")).toContain("PdfJsRange");
+    expect(content.items.map((item) => ("str" in item ? item.str : "")).join("")).toContain("PdfJsRange");
     expect(ranges.some((range) => range !== "bytes=0-63")).toBe(true);
   });
 
@@ -283,7 +263,6 @@ describe("protected reader PDFs", () => {
       disableAutoFetch: true,
       disableFontFace: true,
       disableStream: true,
-      isEvalSupported: false,
     });
     const doc = await task.promise;
     const page = await doc.getPage(1);
@@ -294,7 +273,7 @@ describe("protected reader PDFs", () => {
       const match = /^bytes=(\d+)-(\d+)$/.exec(range);
       return match ? total + Number(match[2]) - Number(match[1]) + 1 : total;
     }, 0);
-    expect(content.items.map((item: { str?: string }) => item.str ?? "").join(""))
+    expect(content.items.map((item) => ("str" in item ? item.str : "")).join(""))
       .toContain("DemandRange");
     expect(ranges).not.toContain("full");
     expect(transferredBytes).toBeLessThan(original.length);
