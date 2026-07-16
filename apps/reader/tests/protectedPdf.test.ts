@@ -163,6 +163,23 @@ const samples = [
 ];
 
 describe("protected reader PDFs", () => {
+  it("rejects a server that ignores Range without reading the full response body", async () => {
+    const { resolvePdfSource } = await loadProtectionModule();
+    const cancel = vi.fn(async () => {});
+    const arrayBuffer = vi.fn(async () => makePdf("Must Not Download").buffer);
+    const fetchFn = vi.fn(async () => ({
+      status: 200,
+      headers: new Headers({ "Content-Length": "999999" }),
+      body: { cancel },
+      arrayBuffer,
+    })) as unknown as typeof fetch;
+
+    await expect(resolvePdfSource("https://cdn.example.test/full.pdf", "auto", { fetchFn }))
+      .rejects.toThrow("refusing to download the complete file");
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(arrayBuffer).not.toHaveBeenCalled();
+  });
+
   it.each(samples)("protects and restores $name", async ({ text, padding }) => {
     const { hasPdfMagic, protectPdfBytes, unprotectPdfBytes } = await loadProtectionModule();
     const original = makePdf(text, padding);
@@ -247,6 +264,42 @@ describe("protected reader PDFs", () => {
     expect(ranges.some((range) => range !== "bytes=0-63")).toBe(true);
   });
 
+  it("opens a large plain PDF without transferring every byte", async () => {
+    const { resolvePdfSource } = await loadProtectionModule();
+    const original = makePdf("DemandRange", 1024 * 1024);
+    const { fetchFn, ranges } = createRangeFetch(original);
+    const rangeChunkSize = 64 * 1024;
+
+    const source = await resolvePdfSource("https://cdn.example.test/large.pdf", "auto", {
+      fetchFn: fetchFn as unknown as typeof fetch,
+      rangeChunkSize,
+    });
+
+    expect(source.kind).toBe("plain");
+    const { getDocument } = await import("pdfjs-dist");
+    const task = getDocument({
+      range: source.transport,
+      rangeChunkSize,
+      disableAutoFetch: true,
+      disableFontFace: true,
+      disableStream: true,
+      isEvalSupported: false,
+    });
+    const doc = await task.promise;
+    const page = await doc.getPage(1);
+    const content = await page.getTextContent();
+    await doc.destroy();
+
+    const transferredBytes = [...new Set(ranges)].reduce((total, range) => {
+      const match = /^bytes=(\d+)-(\d+)$/.exec(range);
+      return match ? total + Number(match[2]) - Number(match[1]) + 1 : total;
+    }, 0);
+    expect(content.items.map((item: { str?: string }) => item.str ?? "").join(""))
+      .toContain("DemandRange");
+    expect(ranges).not.toContain("full");
+    expect(transferredBytes).toBeLessThan(original.length);
+  });
+
   it.each(samples)("downloads a restored PDF for $name", async ({ text, padding }) => {
     const { fetchPdfDownloadBytes, protectPdfBytes } = await loadProtectionModule();
     const original = makePdf(text, padding);
@@ -280,6 +333,34 @@ describe("protected reader PDFs", () => {
     expect(source.kind).toBe("plain");
     expect(source.transport).toBeDefined();
     expect(ranges).toEqual(["bytes=0-63"]);
+  });
+
+  it("uses HEAD length when a valid partial response has an unknown total", async () => {
+    const { resolvePdfSource } = await loadProtectionModule();
+    const original = makePdf("Unknown Range Total");
+    const fetchFn = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "HEAD") {
+        return new Response(null, {
+          status: 200,
+          headers: { "Content-Length": String(original.length) },
+        });
+      }
+
+      const end = Math.min(63, original.length - 1);
+      return new Response(original.slice(0, end + 1), {
+        status: 206,
+        headers: { "Content-Range": `bytes 0-${end}/*` },
+      });
+    });
+
+    const source = await resolvePdfSource("https://cdn.example.test/unknown-total.pdf", "auto", {
+      fetchFn: fetchFn as unknown as typeof fetch,
+      rangeChunkSize: 64,
+    });
+
+    expect(source.kind).toBe("plain");
+    expect(source.length).toBe(original.length);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
   });
 
   it("downloads plain PDFs unchanged during migration when auto mode is used", async () => {

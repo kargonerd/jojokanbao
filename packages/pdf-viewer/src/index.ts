@@ -2,6 +2,7 @@ export { PdfPage } from "./PdfPage";
 export { PdfViewer } from "./PdfViewer";
 export { usePdfDocument } from "./hooks/usePdfDocument";
 export {
+  DEFAULT_PDF_RANGE_CHUNK_SIZE,
   PlainPdfRangeTransport,
   ProtectedPdfRangeTransport,
   applyPdfByteMask,

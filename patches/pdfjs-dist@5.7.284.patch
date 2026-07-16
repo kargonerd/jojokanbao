@@ -1,0 +1,82 @@
+diff --git a/build/pdf.worker.mjs b/build/pdf.worker.mjs
+index 7d85fb9b157e751bdf05d7a6d3a12d29f161bded..90bc1adbf2f5e1393a437033a25b44576cb019ed 100644
+--- a/build/pdf.worker.mjs
++++ b/build/pdf.worker.mjs
+@@ -40698,7 +40698,7 @@ class Catalog {
+       for (let last = kids.length - 1; last >= 0; last--) {
+         const lastKid = kids[last];
+         nodesToVisit.push(lastKid);
+-        if (currentNode === this.toplevelPagesDict && lastKid instanceof Ref && !pageDictCache.has(lastKid)) {
++        if (!this.pdfManager.disableAutoFetch && currentNode === this.toplevelPagesDict && lastKid instanceof Ref && !pageDictCache.has(lastKid)) {
+           pageDictCache.put(lastKid, xref.fetchAsync(lastKid));
+         }
+       }
+@@ -59197,6 +59197,7 @@ function parseDocBaseUrl(url) {
+ }
+ class BasePdfManager {
+   constructor({
++    disableAutoFetch,
+     docBaseUrl,
+     docId,
+     enableXfa,
+@@ -59204,6 +59205,7 @@ class BasePdfManager {
+     handler,
+     password
+   }) {
++    this.disableAutoFetch = disableAutoFetch === true;
+     this._docBaseUrl = parseDocBaseUrl(docBaseUrl);
+     this._docId = docId;
+     this._password = password;
+@@ -62490,7 +62492,10 @@ class WorkerMessageHandler {
+       await pdfManager.ensureDoc("parseStartXRef");
+       await pdfManager.ensureDoc("parse", [recoveryMode]);
+       await pdfManager.ensureDoc("checkFirstPage", [recoveryMode]);
+-      await pdfManager.ensureDoc("checkLastPage", [recoveryMode]);
++      const linearization = await pdfManager.ensureDoc("linearization");
++      if (!pdfManager.disableAutoFetch || !linearization) {
++        await pdfManager.ensureDoc("checkLastPage", [recoveryMode]);
++      }
+       const isPureXfa = await pdfManager.ensureDoc("isPureXfa");
+       if (isPureXfa) {
+         const task = new WorkerTask("loadXfaResources");
+diff --git a/legacy/build/pdf.worker.mjs b/legacy/build/pdf.worker.mjs
+index 40551cb445b5b7428cd2caf64e5d9d0c1ff4432c..5bad9069a572a7fb853834d79d3581a46e53fdb8 100644
+--- a/legacy/build/pdf.worker.mjs
++++ b/legacy/build/pdf.worker.mjs
+@@ -47105,7 +47105,7 @@ class Catalog {
+       for (let last = kids.length - 1; last >= 0; last--) {
+         const lastKid = kids[last];
+         nodesToVisit.push(lastKid);
+-        if (currentNode === this.toplevelPagesDict && lastKid instanceof Ref && !pageDictCache.has(lastKid)) {
++        if (!this.pdfManager.disableAutoFetch && currentNode === this.toplevelPagesDict && lastKid instanceof Ref && !pageDictCache.has(lastKid)) {
+           pageDictCache.put(lastKid, xref.fetchAsync(lastKid));
+         }
+       }
+@@ -65838,6 +65838,7 @@ function parseDocBaseUrl(url) {
+ }
+ class BasePdfManager {
+   constructor({
++    disableAutoFetch,
+     docBaseUrl,
+     docId,
+     enableXfa,
+@@ -65845,6 +65846,7 @@ class BasePdfManager {
+     handler,
+     password
+   }) {
++    this.disableAutoFetch = disableAutoFetch === true;
+     this._docBaseUrl = parseDocBaseUrl(docBaseUrl);
+     this._docId = docId;
+     this._password = password;
+@@ -69194,7 +69196,10 @@ class WorkerMessageHandler {
+       await pdfManager.ensureDoc("parseStartXRef");
+       await pdfManager.ensureDoc("parse", [recoveryMode]);
+       await pdfManager.ensureDoc("checkFirstPage", [recoveryMode]);
+-      await pdfManager.ensureDoc("checkLastPage", [recoveryMode]);
++      const linearization = await pdfManager.ensureDoc("linearization");
++      if (!pdfManager.disableAutoFetch || !linearization) {
++        await pdfManager.ensureDoc("checkLastPage", [recoveryMode]);
++      }
+       const isPureXfa = await pdfManager.ensureDoc("isPureXfa");
+       if (isPureXfa) {
+         const task = new WorkerTask("loadXfaResources");

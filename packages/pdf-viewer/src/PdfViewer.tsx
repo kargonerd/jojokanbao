@@ -1,4 +1,13 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
+  type WheelEvent as ReactWheelEvent,
+} from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { PdfPage } from "./PdfPage";
 
@@ -6,163 +15,344 @@ interface PdfViewerProps {
   document: PDFDocumentProxy;
   initialPage?: number;
   scale?: number;
+  quality?: number;
+  zoomEnabled?: boolean;
+  zoom?: number;
+  onZoomChange?: (zoom: number) => void;
   className?: string;
+  scrollContainerRef?: RefObject<HTMLElement | null>;
   onPageChange?: (page: number) => void;
 }
 
-export function PdfViewer({ document, initialPage = 1, scale = 2, className = "", onPageChange }: PdfViewerProps) {
-  const [renderedPages, setRenderedPages] = useState<Set<number>>(new Set([initialPage]));
-  const [failedPages, setFailedPages] = useState<Set<number>>(new Set());
-  const containerRef = useRef<HTMLDivElement>(null);
-  const observerRef = useRef<IntersectionObserver | null>(null);
+interface VisiblePage {
+  top: number;
+  bottom: number;
+}
 
-  const addPage = useCallback((pageNum: number) => {
-    if (pageNum < 1 || pageNum > document.numPages) return;
-    setRenderedPages((prev) => {
-      if (prev.has(pageNum)) return prev;
-      const next = new Set(prev);
-      next.add(pageNum);
+const DEFAULT_PAGE_ASPECT_RATIO = 210 / 297;
+const PAGE_PRELOAD_MARGIN = "25% 0px";
+const PAGE_GAP_CLASS = "mb-6";
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 3;
+const CLICK_ZOOM_STEP = 0.5;
+const WHEEL_ZOOM_STEP = 0.25;
+
+interface DragState {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  scrollLeft: number;
+  scrollTop: number;
+  moved: boolean;
+}
+
+function clampPage(page: number, numPages: number): number {
+  if (!Number.isFinite(page)) return 1;
+  return Math.min(Math.max(Math.trunc(page), 1), Math.max(numPages, 1));
+}
+
+function clampZoom(zoom: number): number {
+  return Math.min(Math.max(zoom, MIN_ZOOM), MAX_ZOOM);
+}
+
+export function PdfViewer({
+  document,
+  initialPage = 1,
+  scale,
+  quality,
+  zoomEnabled = false,
+  zoom = 1,
+  onZoomChange,
+  className = "",
+  scrollContainerRef,
+  onPageChange,
+}: PdfViewerProps) {
+  const normalizedInitialPage = clampPage(initialPage, document.numPages);
+  const [loadedPages, setLoadedPages] = useState<Set<number>>(() => new Set([normalizedInitialPage]));
+  const [failedPages, setFailedPages] = useState<Set<number>>(new Set());
+  const [pageAspectRatios, setPageAspectRatios] = useState<Map<number, number>>(new Map());
+  const [defaultPageAspectRatio, setDefaultPageAspectRatio] = useState(DEFAULT_PAGE_ASPECT_RATIO);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const zoomContentRef = useRef<HTMLDivElement>(null);
+  const currentPageRef = useRef(normalizedInitialPage);
+  const previousZoomRef = useRef(1);
+  const zoomAnchorRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const dragRef = useRef<DragState | null>(null);
+  const effectiveZoom = zoomEnabled ? clampZoom(zoom) : 1;
+
+  useLayoutEffect(() => {
+    const previousZoom = previousZoomRef.current;
+    if (previousZoom === effectiveZoom) return;
+
+    const scrollContainer = scrollContainerRef?.current;
+    const container = containerRef.current;
+    if (scrollContainer && container) {
+      const rootRect = scrollContainer.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      const anchor = zoomAnchorRef.current;
+      const focusX = anchor ? anchor.clientX - rootRect.left : scrollContainer.clientWidth / 2;
+      const focusY = anchor ? anchor.clientY - rootRect.top : scrollContainer.clientHeight / 2;
+      const containerLeft = scrollContainer.scrollLeft + containerRect.left - rootRect.left;
+      const containerTop = scrollContainer.scrollTop + containerRect.top - rootRect.top;
+      const localX = (scrollContainer.scrollLeft + focusX - containerLeft) / previousZoom;
+      const localY = (scrollContainer.scrollTop + focusY - containerTop) / previousZoom;
+      const ratio = effectiveZoom / previousZoom;
+
+      scrollContainer.scrollLeft = effectiveZoom === 1
+        ? 0
+        : containerLeft + localX * effectiveZoom - focusX;
+      scrollContainer.scrollTop = containerTop + localY * effectiveZoom - focusY;
+      if (!Number.isFinite(ratio)) scrollContainer.scrollLeft = 0;
+    }
+
+    previousZoomRef.current = effectiveZoom;
+    zoomAnchorRef.current = null;
+  }, [effectiveZoom, scrollContainerRef]);
+
+  const addPage = useCallback((pageNumber: number) => {
+    if (pageNumber < 1 || pageNumber > document.numPages) return;
+    setLoadedPages((previous) => {
+      if (previous.has(pageNumber)) return previous;
+      const next = new Set(previous);
+      next.add(pageNumber);
       return next;
     });
   }, [document.numPages]);
 
-  const removePage = useCallback((pageNum: number) => {
-    setRenderedPages((prev) => {
-      if (!prev.has(pageNum)) return prev;
-      const next = new Set(prev);
-      next.delete(pageNum);
-      return next;
-    });
-  }, []);
-
-  const addFailedPage = useCallback((pageNum: number) => {
-    setFailedPages((prev) => {
-      if (prev.has(pageNum)) return prev;
-      const next = new Set(prev);
-      next.add(pageNum);
-      return next;
-    });
-  }, []);
-
-  const removeFailedPage = useCallback((pageNum: number) => {
-    setFailedPages((prev) => {
-      if (!prev.has(pageNum)) return prev;
-      const next = new Set(prev);
-      next.delete(pageNum);
-      return next;
-    });
-  }, []);
-
   useEffect(() => {
-    setRenderedPages(new Set([initialPage]));
+    const pageNumber = clampPage(initialPage, document.numPages);
+    setLoadedPages(new Set([pageNumber]));
     setFailedPages(new Set());
-  }, [document, initialPage]);
-
-  useEffect(() => {
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            const pageNum = Number(entry.target.getAttribute("data-page"));
-            if (pageNum) addPage(pageNum);
-          }
-        });
-      },
-      { rootMargin: "240px" }
-    );
-
-    return () => {
-      observerRef.current?.disconnect();
-      observerRef.current = null;
-    };
-  }, [addPage]);
+    setPageAspectRatios(new Map());
+    setDefaultPageAspectRatio(DEFAULT_PAGE_ASPECT_RATIO);
+    currentPageRef.current = pageNumber;
+  }, [document, document.numPages, initialPage]);
 
   useEffect(() => {
     const container = containerRef.current;
-    const observer = observerRef.current;
-    if (!container || !observer) return;
+    if (!container) return;
 
-    observer.disconnect();
-    container.querySelectorAll("[data-page-placeholder]").forEach((el) => {
-      observer.observe(el);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        setLoadedPages((previous) => {
+          const next = new Set(previous);
+          for (const entry of entries) {
+            const pageNumber = Number(entry.target.getAttribute("data-page"));
+            if (!pageNumber) continue;
+            if (entry.isIntersecting) next.add(pageNumber);
+            else next.delete(pageNumber);
+          }
+          return next;
+        });
+      },
+      {
+        root: scrollContainerRef?.current ?? null,
+        rootMargin: PAGE_PRELOAD_MARGIN,
+      },
+    );
+
+    container.querySelectorAll("[data-pdf-page]").forEach((element) => observer.observe(element));
+    return () => observer.disconnect();
+  }, [addPage, document, scrollContainerRef]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !onPageChange) return;
+
+    const visiblePages = new Map<number, VisiblePage>();
+    const root = scrollContainerRef?.current ?? null;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const pageNumber = Number(entry.target.getAttribute("data-page"));
+          if (!pageNumber) continue;
+          if (entry.isIntersecting) {
+            visiblePages.set(pageNumber, {
+              top: entry.boundingClientRect.top,
+              bottom: entry.boundingClientRect.bottom,
+            });
+          } else {
+            visiblePages.delete(pageNumber);
+          }
+        }
+
+        if (visiblePages.size === 0) return;
+        const rootTop = root?.getBoundingClientRect().top ?? 0;
+        const focusLine = rootTop + 72;
+        const [pageNumber] = [...visiblePages.entries()].sort(([, a], [, b]) => {
+          const aContainsFocus = a.top <= focusLine && a.bottom > focusLine;
+          const bContainsFocus = b.top <= focusLine && b.bottom > focusLine;
+          if (aContainsFocus !== bContainsFocus) return aContainsFocus ? -1 : 1;
+          return Math.abs(a.top - focusLine) - Math.abs(b.top - focusLine);
+        })[0]!;
+
+        if (pageNumber !== currentPageRef.current) {
+          currentPageRef.current = pageNumber;
+          onPageChange(pageNumber);
+        }
+      },
+      {
+        root,
+        threshold: [0, 0.25, 0.5, 0.75, 1],
+      },
+    );
+
+    container.querySelectorAll("[data-pdf-page]").forEach((element) => observer.observe(element));
+    return () => observer.disconnect();
+  }, [document, onPageChange, scrollContainerRef]);
+
+  const handlePageError = (pageNumber: number) => {
+    setLoadedPages((previous) => {
+      const next = new Set(previous);
+      next.delete(pageNumber);
+      return next;
     });
-  }, [renderedPages, failedPages]);
-
-  const handlePageRendered = (pageNum: number) => {
-    onPageChange?.(pageNum);
+    setFailedPages((previous) => new Set(previous).add(pageNumber));
   };
 
-  const handlePageError = (pageNum: number) => {
-    removePage(pageNum);
-    addFailedPage(pageNum);
+  const handleRetryPage = (pageNumber: number) => {
+    setFailedPages((previous) => {
+      const next = new Set(previous);
+      next.delete(pageNumber);
+      return next;
+    });
+    addPage(pageNumber);
   };
 
-  const handleRetryPage = (pageNum: number) => {
-    removeFailedPage(pageNum);
-    addPage(pageNum);
+  const handlePageMetrics = useCallback((pageNumber: number, { width, height }: { width: number; height: number }) => {
+    if (!(width > 0) || !(height > 0)) return;
+    const aspectRatio = width / height;
+    setPageAspectRatios((previous) => {
+      if (previous.get(pageNumber) === aspectRatio) return previous;
+      const next = new Map(previous);
+      next.set(pageNumber, aspectRatio);
+      return next;
+    });
+    if (pageNumber === normalizedInitialPage) setDefaultPageAspectRatio(aspectRatio);
+  }, [normalizedInitialPage]);
+
+  const pages = Array.from({ length: document.numPages }, (_, index) => index + 1);
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!zoomEnabled || (event.pointerType === "mouse" && event.button !== 0)) return;
+    if ((event.target as Element).closest("button")) return;
+    const scrollContainer = scrollContainerRef?.current;
+    if (!scrollContainer) return;
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollLeft: scrollContainer.scrollLeft,
+      scrollTop: scrollContainer.scrollTop,
+      moved: false,
+    };
   };
 
-  const handleManualPageLoad = (pageNum: number) => {
-    addPage(pageNum);
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    const scrollContainer = scrollContainerRef?.current;
+    if (!drag || drag.pointerId !== event.pointerId || !scrollContainer) return;
+
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) drag.moved = true;
+    scrollContainer.scrollLeft = drag.scrollLeft - deltaX;
+    scrollContainer.scrollTop = drag.scrollTop - deltaY;
+    event.preventDefault();
   };
 
-  const PAGE_HEIGHT = 800;
-  const items = Array.from({ length: document.numPages }, (_, index) => {
-    const pageNum = index + 1;
-    if (failedPages.has(pageNum)) return { type: "failed" as const, pageNum, key: `failed-${pageNum}` };
-    if (renderedPages.has(pageNum)) return { type: "page" as const, pageNum, key: `page-${pageNum}` };
-    return { type: "placeholder" as const, pageNum, key: `placeholder-${pageNum}` };
-  });
+  const handlePointerEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    if (!drag.moved && onZoomChange) {
+      zoomAnchorRef.current = { clientX: event.clientX, clientY: event.clientY };
+      onZoomChange(clampZoom(effectiveZoom + (event.shiftKey ? -CLICK_ZOOM_STEP : CLICK_ZOOM_STEP)));
+    }
+    dragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  const handleWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    if (!zoomEnabled || !(event.ctrlKey || event.metaKey) || !onZoomChange) return;
+    event.preventDefault();
+    zoomAnchorRef.current = { clientX: event.clientX, clientY: event.clientY };
+    onZoomChange(clampZoom(effectiveZoom + (event.deltaY < 0 ? WHEEL_ZOOM_STEP : -WHEEL_ZOOM_STEP)));
+  };
 
   return (
-    <div ref={containerRef} className={`w-full ${className}`}>
-      {items.map((item) => {
-        if (item.type === "failed") {
-          return (
-            <div key={item.key} className="mb-6 flex items-center justify-center" style={{ height: PAGE_HEIGHT }}>
-              <div className="text-center">
-                <p className="text-lg text-ink mb-2">第 {item.pageNum} 页加载失败</p>
-                <p className="text-sm text-muted mb-4">网络或渲染异常，可以单独重试本页</p>
-                <button className="btn btn-outline text-sm cursor-pointer" onClick={() => handleRetryPage(item.pageNum)}>重试本页</button>
-              </div>
-            </div>
-          );
-        }
-
-        if (item.type === "page") {
-          return (
-            <div key={item.key} className="mb-6">
-              <div className="relative">
-                <PdfPage
-                  id={`page-${item.pageNum}`}
-                  document={document}
-                  pageNumber={item.pageNum}
-                  scale={scale}
-                  onRendered={() => handlePageRendered(item.pageNum)}
-                  onError={() => handlePageError(item.pageNum)}
-                />
-              </div>
-            </div>
-          );
-        }
+    <div ref={containerRef} data-pdf-viewer data-zoom={effectiveZoom} className={`relative w-full ${className}`}>
+      <div
+        ref={zoomContentRef}
+        data-pdf-zoom-content
+        className={zoomEnabled ? "cursor-grab active:cursor-grabbing" : ""}
+        style={{
+          width: `${effectiveZoom * 100}%`,
+          touchAction: zoomEnabled ? "none" : "pan-y pinch-zoom",
+          userSelect: zoomEnabled ? "none" : undefined,
+        }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
+        onWheel={handleWheel}
+        onDragStart={(event) => event.preventDefault()}
+      >
+        {pages.map((pageNumber) => {
+        const failed = failedPages.has(pageNumber);
+        const loaded = loadedPages.has(pageNumber);
+        const aspectRatio = pageAspectRatios.get(pageNumber) ?? defaultPageAspectRatio;
 
         return (
-          <div
-            key={item.key}
-            data-page={item.pageNum}
-            data-page-placeholder
-            className="mb-6 flex items-center justify-center border border-rule"
-            style={{ height: PAGE_HEIGHT }}
-            id={`page-empty-${item.pageNum}`}
+          <section
+            key={pageNumber}
+            id={`page-${pageNumber}`}
+            data-page={pageNumber}
+            data-pdf-page
+            data-page-state={failed ? "failed" : loaded ? "loaded" : "placeholder"}
+            className={`relative ${PAGE_GAP_CLASS}`}
+            style={{ aspectRatio: String(aspectRatio) }}
+            aria-label={`第 ${pageNumber} 页`}
           >
-            <div className="text-center">
-              <p className="text-lg text-ink mb-2">第 {item.pageNum} 页</p>
-              <p className="text-sm text-muted mb-4">滚动到此处时加载</p>
-              <button className="btn btn-outline text-sm cursor-pointer" onClick={() => handleManualPageLoad(item.pageNum)}>加载本页</button>
-            </div>
-          </div>
+            {failed ? (
+              <div className="absolute inset-0 flex items-center justify-center border border-rule bg-paper">
+                <div className="text-center">
+                  <p className="text-lg text-ink mb-2">第 {pageNumber} 页加载失败</p>
+                  <p className="text-sm text-muted mb-4">网络或渲染异常，可以单独重试本页</p>
+                  <button className="btn btn-outline text-sm cursor-pointer" onClick={() => handleRetryPage(pageNumber)}>
+                    重试本页
+                  </button>
+                </div>
+              </div>
+            ) : loaded ? (
+              <PdfPage
+                document={document}
+                pageNumber={pageNumber}
+                scale={scale}
+                quality={quality}
+                onPageMetrics={handlePageMetrics}
+                onError={() => handlePageError(pageNumber)}
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center border border-rule bg-paper">
+                <div className="text-center">
+                  <p className="text-lg text-ink mb-2">第 {pageNumber} 页</p>
+                  <p className="text-sm text-muted mb-4">滚动到此处时按需加载</p>
+                  <button className="btn btn-outline text-sm cursor-pointer" onClick={() => addPage(pageNumber)}>
+                    加载本页
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
         );
-      })}
+        })}
+      </div>
     </div>
   );
 }
