@@ -38,6 +38,15 @@ jobs:
       - name: Build reader
         run: pnpm --filter @jojo/reader build
 
+      - name: Verify deployable PDF worker
+        run: |
+          worker_path="$(find "$COS_UPLOAD_FROM_PATH/assets" -maxdepth 1 -type f -name 'pdf.worker-*' -print -quit)"
+          test -n "$worker_path"
+          case "$worker_path" in
+            *.js) ;;
+            *) echo "PDF worker must be emitted as .js so COS serves a JavaScript MIME type: $worker_path" >&2; exit 1 ;;
+          esac
+
       - name: Deploy to Tencent COS
         run: |
           coscmd config -a "$COS_SECRET_ID" -s "$COS_SECRET_KEY" -b "$COS_BUCKET_NAME" -r "$COS_BUCKET_REGION"
