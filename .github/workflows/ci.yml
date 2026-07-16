@@ -31,6 +31,7 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
 
@@ -45,11 +46,12 @@ jobs:
 
       - run: pnpm --filter @jojo/reader... typecheck
       - run: pnpm --filter @jojo/reader... build
+      - run: pnpm --filter @jojo/reader verify:build
       - run: pnpm --filter @jojo/reader... test
 
   e2e:
     runs-on: ubuntu-latest
-    needs: build-and-test
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
 
