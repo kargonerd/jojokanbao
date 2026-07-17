@@ -5,6 +5,8 @@ import { EmptyState, LoadingSpinner, DatePicker, Toolbar, YearPicker } from "@jo
 import { PUBLICATIONS, type PublicationConfig } from "../publications";
 
 const NEWSPAPER_HOST = "https://blacknews.jojokanbao.cn";
+const PAGE_SCROLL_GAP = 16;
+const READER_TOOLBAR_MAX_HEIGHT = 61;
 
 function isCalendarDate(value: string): boolean {
   if (!/^\d{8}$/.test(value)) return false;
@@ -96,6 +98,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const seqDropdownPanelRef = useRef<HTMLDivElement>(null);
   const seqListboxRef = useRef<HTMLDivElement>(null);
   const shareResetTimer = useRef<number | null>(null);
+  const alignedInitialPageRef = useRef<string | null>(null);
 
   const pdfUrl = routeId
     ? `${NEWSPAPER_HOST}/${name.toUpperCase()}/${routeId.slice(0, 4)}/${routeId}.pdf`
@@ -110,7 +113,16 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   }, []);
 
   const goToPage = useCallback((pageNum: number) => {
-    document.querySelector(`#page-${pageNum}`)?.scrollIntoView({ block: "start" });
+    const scrollContainer = containerRef.current;
+    const page = document.querySelector<HTMLElement>(`#page-${pageNum}`);
+    if (!scrollContainer || !page) return;
+
+    const toolbar = scrollContainer.querySelector<HTMLElement>("[data-reader-toolbar]");
+    const containerTop = scrollContainer.getBoundingClientRect().top;
+    const pageTop = page.getBoundingClientRect().top;
+    const toolbarHeight = toolbar?.getBoundingClientRect().height ?? 0;
+    const top = scrollContainer.scrollTop + pageTop - containerTop - toolbarHeight - PAGE_SCROLL_GAP;
+    scrollContainer.scrollTo({ top: Math.max(0, top) });
   }, []);
 
   const replacePageHash = useCallback((pageNum: number) => {
@@ -147,11 +159,20 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   // Every page has a stable slot, so deep links can scroll before the canvas renders.
   useEffect(() => {
     if (!pdfDoc) return;
+    alignedInitialPageRef.current = null;
     setCurrentPage(initialPage);
     setJumpToPageNum(initialPage);
     const frame = window.requestAnimationFrame(() => goToPage(initialPage));
     return () => window.cancelAnimationFrame(frame);
   }, [goToPage, initialPage, pdfDoc]);
+
+  const handleInitialPageRendered = useCallback((pageNumber: number) => {
+    const alignmentKey = `${pdfUrl}#${initialPage}`;
+    if (pageNumber !== initialPage || alignedInitialPageRef.current === alignmentKey) return;
+
+    alignedInitialPageRef.current = alignmentKey;
+    window.requestAnimationFrame(() => goToPage(pageNumber));
+  }, [goToPage, initialPage, pdfUrl]);
 
   // ─── Navigation handlers ───
   const handleSeqChange = (newSeq: number) => {
@@ -439,13 +460,18 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   ) : null;
 
   return (
-    <div ref={containerRef} data-reader-scroll-container className="h-full overflow-y-auto bg-paper">
+    <div
+      ref={containerRef}
+      data-reader-scroll-container
+      className="h-full overflow-y-auto bg-paper"
+      style={{ scrollPaddingTop: READER_TOOLBAR_MAX_HEIGHT + PAGE_SCROLL_GAP }}
+    >
       {/* SEO hidden heading */}
       <h1 className="hidden">{config?.label || name} - {id}</h1>
 
       {/* Toolbar: Magazine mode */}
       {type === "magazine" ? (
-        <Toolbar sticky>
+        <Toolbar sticky data-reader-toolbar>
           <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:flex-none sm:gap-2.5">
             <span className="hidden shrink-0 text-xs font-bold text-muted tracking-wide sm:inline sm:text-[13px]">日期</span>
             <YearPicker
@@ -520,7 +546,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
         </Toolbar>
       ) : (
         /* Toolbar: Newspaper mode */
-        <Toolbar sticky>
+        <Toolbar sticky data-reader-toolbar>
           <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:flex-none sm:gap-2.5">
             <span className="hidden shrink-0 text-xs font-bold text-muted tracking-wide sm:inline sm:text-[13px]">日期</span>
             <DatePicker
@@ -560,6 +586,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             initialPage={initialPage}
             scrollContainerRef={containerRef}
             onPageChange={handleVisiblePageChange}
+            onPageRendered={handleInitialPageRendered}
           />
         )}
       </div>
