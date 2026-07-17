@@ -122,7 +122,8 @@ describe("ReaderPage document states", () => {
     });
     expect(screen.getByText("人民日报 - 19761009")).toBeTruthy();
     expect(screen.getByRole("button", { name: "1976年10月09日" })).toBeTruthy();
-    expect(screen.getByText("共 6 页")).toBeTruthy();
+    expect(screen.getByText("1 / 6")).toBeTruthy();
+    expect(screen.getByLabelText("第 1 页，共 6 页")).toBeTruthy();
     expect(document.title).toBe("人民日报 19761009 - JOJO看报");
     expect(latestViewerProps()).toMatchObject({
       document: readyDocument,
@@ -352,9 +353,16 @@ describe("ReaderPage toolbar interactions", () => {
     expect(window.location.hash).toBe("#page-4");
   });
 
-  it("keeps the jump field synchronized with the visible page", () => {
+  it("keeps the toolbar, jump field, URL, and shared link synchronized with the visible page", async () => {
     renderReader("/rmrb/19761009");
     fireEvent.click(screen.getByRole("button", { name: "模拟看到第5页" }));
+
+    expect(screen.getByText("5 / 6")).toBeTruthy();
+    expect(window.location.hash).toBe("#page-5");
+
+    fireEvent.click(screen.getByRole("button", { name: "复制阅读链接" }));
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith("http://localhost:3000/rmrb/19761009#page-5"));
+
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
 
     expect((screen.getByRole("spinbutton") as HTMLInputElement).value).toBe("5");
