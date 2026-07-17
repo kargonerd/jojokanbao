@@ -5,6 +5,8 @@ import { EmptyState, LoadingSpinner, DatePicker, Toolbar, YearPicker } from "@jo
 import { PUBLICATIONS, type PublicationConfig } from "../publications";
 
 const NEWSPAPER_HOST = "https://blacknews.jojokanbao.cn";
+const PAGE_SCROLL_GAP = 16;
+const READER_TOOLBAR_MAX_HEIGHT = 61;
 
 function isCalendarDate(value: string): boolean {
   if (!/^\d{8}$/.test(value)) return false;
@@ -88,6 +90,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [showBackTop, setShowBackTop] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
@@ -95,6 +98,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const seqDropdownPanelRef = useRef<HTMLDivElement>(null);
   const seqListboxRef = useRef<HTMLDivElement>(null);
   const shareResetTimer = useRef<number | null>(null);
+  const alignedInitialPageRef = useRef<string | null>(null);
 
   const pdfUrl = routeId
     ? `${NEWSPAPER_HOST}/${name.toUpperCase()}/${routeId.slice(0, 4)}/${routeId}.pdf`
@@ -109,7 +113,16 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   }, []);
 
   const goToPage = useCallback((pageNum: number) => {
-    document.querySelector(`#page-${pageNum}`)?.scrollIntoView({ block: "start" });
+    const scrollContainer = containerRef.current;
+    const page = document.querySelector<HTMLElement>(`#page-${pageNum}`);
+    if (!scrollContainer || !page) return;
+
+    const toolbar = scrollContainer.querySelector<HTMLElement>("[data-reader-toolbar]");
+    const containerTop = scrollContainer.getBoundingClientRect().top;
+    const pageTop = page.getBoundingClientRect().top;
+    const toolbarHeight = toolbar?.getBoundingClientRect().height ?? 0;
+    const top = scrollContainer.scrollTop + pageTop - containerTop - toolbarHeight - PAGE_SCROLL_GAP;
+    scrollContainer.scrollTo({ top: Math.max(0, top) });
   }, []);
 
   const replacePageHash = useCallback((pageNum: number) => {
@@ -146,11 +159,20 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   // Every page has a stable slot, so deep links can scroll before the canvas renders.
   useEffect(() => {
     if (!pdfDoc) return;
+    alignedInitialPageRef.current = null;
     setCurrentPage(initialPage);
     setJumpToPageNum(initialPage);
     const frame = window.requestAnimationFrame(() => goToPage(initialPage));
     return () => window.cancelAnimationFrame(frame);
   }, [goToPage, initialPage, pdfDoc]);
+
+  const handleInitialPageRendered = useCallback((pageNumber: number) => {
+    const alignmentKey = `${pdfUrl}#${initialPage}`;
+    if (pageNumber !== initialPage || alignedInitialPageRef.current === alignmentKey) return;
+
+    alignedInitialPageRef.current = alignmentKey;
+    window.requestAnimationFrame(() => goToPage(pageNumber));
+  }, [goToPage, initialPage, pdfUrl]);
 
   // ─── Navigation handlers ───
   const handleSeqChange = (newSeq: number) => {
@@ -171,10 +193,14 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     if (!pdfUrl || downloading) return;
 
     setDownloading(true);
+    setDownloadProgress(0);
     try {
-      const { bytes } = await fetchPdfDownloadBytes(pdfUrl, "auto");
-      const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-      const blob = new Blob([arrayBuffer], { type: "application/pdf" });
+      const { bytes } = await fetchPdfDownloadBytes(pdfUrl, "auto", {
+        onDownloadProgress: (loadedBytes, totalBytes) => {
+          setDownloadProgress(Math.min(100, Math.round((loadedBytes / totalBytes) * 100)));
+        },
+      });
+      const blob = new Blob([bytes.buffer as ArrayBuffer], { type: "application/pdf" });
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
@@ -182,11 +208,12 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       document.body.append(anchor);
       anchor.click();
       anchor.remove();
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 250);
     } catch (downloadError) {
       window.alert(String(downloadError instanceof Error ? downloadError.message : downloadError));
     } finally {
       setDownloading(false);
+      setDownloadProgress(null);
     }
   };
 
@@ -339,6 +366,16 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   }, [replacePageHash]);
   // TODO: Replace the mode toggle with visible “− / current zoom / +” controls
   // so users can discover and repeat zoom actions without relying on page clicks.
+  const downloadStatus = downloading
+    ? downloadProgress
+      ? `${downloadProgress}%`
+      : "下载中"
+    : "下载";
+  const downloadAriaLabel = downloading
+    ? downloadProgress
+      ? `下载中 ${downloadProgress}%`
+      : "下载中"
+    : "下载 PDF";
   const toolbarActions = pdfUrl ? (
     <div ref={settingsRef} className="relative ml-auto flex shrink-0 items-center justify-end gap-1 sm:gap-2">
       <button
@@ -364,10 +401,10 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
         onClick={handleDownload}
         disabled={downloading}
         className="inline-flex h-8 items-center gap-1.5 border border-rule-dark bg-paper px-1.5 text-sm font-bold text-red transition-colors hover:border-red hover:text-red-dark disabled:cursor-wait disabled:opacity-60 sm:px-2.5"
-        aria-label={downloading ? "下载中" : "下载 PDF"}
+        aria-label={downloadAriaLabel}
       >
         <DownloadIcon />
-        <span className="hidden sm:inline">{downloading ? "下载中" : "下载"}</span>
+        <span className="hidden sm:inline">{downloadStatus}</span>
       </button>
       <button
         type="button"
@@ -423,13 +460,18 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   ) : null;
 
   return (
-    <div ref={containerRef} data-reader-scroll-container className="h-full overflow-y-auto bg-paper">
+    <div
+      ref={containerRef}
+      data-reader-scroll-container
+      className="h-full overflow-y-auto bg-paper"
+      style={{ scrollPaddingTop: READER_TOOLBAR_MAX_HEIGHT + PAGE_SCROLL_GAP }}
+    >
       {/* SEO hidden heading */}
       <h1 className="hidden">{config?.label || name} - {id}</h1>
 
       {/* Toolbar: Magazine mode */}
       {type === "magazine" ? (
-        <Toolbar sticky>
+        <Toolbar sticky data-reader-toolbar>
           <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:flex-none sm:gap-2.5">
             <span className="hidden shrink-0 text-xs font-bold text-muted tracking-wide sm:inline sm:text-[13px]">日期</span>
             <YearPicker
@@ -504,7 +546,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
         </Toolbar>
       ) : (
         /* Toolbar: Newspaper mode */
-        <Toolbar sticky>
+        <Toolbar sticky data-reader-toolbar>
           <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:flex-none sm:gap-2.5">
             <span className="hidden shrink-0 text-xs font-bold text-muted tracking-wide sm:inline sm:text-[13px]">日期</span>
             <DatePicker
@@ -544,6 +586,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             initialPage={initialPage}
             scrollContainerRef={containerRef}
             onPageChange={handleVisiblePageChange}
+            onPageRendered={handleInitialPageRendered}
           />
         )}
       </div>
