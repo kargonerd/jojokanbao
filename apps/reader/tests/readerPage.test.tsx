@@ -393,6 +393,7 @@ describe("ReaderPage toolbar interactions", () => {
     await waitFor(() => expect(pdfMocks.fetchPdfDownloadBytes).toHaveBeenCalledWith(
       "https://blacknews.jojokanbao.cn/RMRB/1976/19761009.pdf",
       "auto",
+      expect.objectContaining({ onDownloadProgress: expect.any(Function) }),
     ));
     expect(URL.createObjectURL).toHaveBeenCalledWith(expect.objectContaining({ type: "application/pdf" }));
     expect(clickedDownload).toEqual({ href: "blob:reader-pdf", download: "rmrb-19761009.pdf" });
@@ -412,6 +413,24 @@ describe("ReaderPage toolbar interactions", () => {
     rejectDownload(new Error("network unavailable"));
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith("network unavailable"));
     expect((screen.getByRole("button", { name: "下载 PDF" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("shows download progress while protected ranges are being restored", async () => {
+    let finishDownload!: (value: { bytes: Uint8Array; protected: boolean }) => void;
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    pdfMocks.fetchPdfDownloadBytes.mockImplementation(
+      (_url: string, _mode: string, options: { onDownloadProgress: (loaded: number, total: number) => void }) => {
+        options.onDownloadProgress(21, 100);
+        return new Promise((resolve) => { finishDownload = resolve; });
+      },
+    );
+    renderReader("/rmrb/19761009");
+
+    fireEvent.click(screen.getByRole("button", { name: "下载 PDF" }));
+    expect(await screen.findByRole("button", { name: "下载中 21%" })).toBeTruthy();
+
+    finishDownload({ bytes: new Uint8Array([37, 80, 68, 70]), protected: true });
+    await waitFor(() => expect(screen.getByRole("button", { name: "下载 PDF" })).toBeTruthy());
   });
 
   it("shows and operates back-to-top only after scrolling down", () => {
