@@ -2,6 +2,8 @@ import { PDFDataRangeTransport } from "pdfjs-dist";
 
 const PDF_MAGIC = "%PDF-";
 export const DEFAULT_PDF_RANGE_CHUNK_SIZE = 256 * 1024;
+const DEFAULT_PDF_DOWNLOAD_RANGE_CHUNK_SIZE = 1024 * 1024;
+const DEFAULT_PDF_DOWNLOAD_CONCURRENCY = 6;
 const MASK_SEED = 0x4a4f4a4f; // "JOJO"
 
 export type ProtectedPdfMode = boolean | "auto";
@@ -12,6 +14,8 @@ export interface ProtectedPdfFetchOptions {
   rangeChunkSize?: number;
   withCredentials?: boolean;
   onRangeError?: (error: Error) => void;
+  downloadConcurrency?: number;
+  onDownloadProgress?: (loadedBytes: number, totalBytes: number) => void;
 }
 
 export interface ProtectedPdfSource {
@@ -174,6 +178,11 @@ function getRangeChunkSize(value: number | undefined): number {
   return Number.isSafeInteger(value) && (value ?? 0) > 0 ? value! : DEFAULT_PDF_RANGE_CHUNK_SIZE;
 }
 
+function getDownloadConcurrency(value: number | undefined): number {
+  if (!Number.isSafeInteger(value) || (value ?? 0) <= 0) return DEFAULT_PDF_DOWNLOAD_CONCURRENCY;
+  return Math.min(value!, 8);
+}
+
 async function fetchHeadLength(
   url: string,
   options: ProtectedPdfFetchOptions,
@@ -211,16 +220,34 @@ async function fetchBytesByRanges(
   rangeChunkSize: number,
   options: ProtectedPdfFetchOptions,
   signal: AbortSignal | undefined,
-  transformChunk: (bytes: Uint8Array, begin: number) => Uint8Array
+  transformChunk: (bytes: Uint8Array, begin: number) => Uint8Array,
+  concurrency: number,
 ): Promise<Uint8Array> {
   const bytes = new Uint8Array(length);
-  bytes.set(initialData.slice(0, Math.min(initialData.length, length)), 0);
+  const initialLength = Math.min(initialData.length, length);
+  bytes.set(initialData.slice(0, initialLength), 0);
+  let loadedBytes = initialLength;
+  options.onDownloadProgress?.(loadedBytes, length);
 
-  for (let begin = initialData.length; begin < length; begin += rangeChunkSize) {
-    const end = Math.min(begin + rangeChunkSize, length);
-    const chunk = await fetchRange(url, begin, end, options, signal);
-    bytes.set(transformChunk(chunk.bytes, begin), begin);
+  const ranges: Array<{ begin: number; end: number }> = [];
+  for (let begin = initialLength; begin < length; begin += rangeChunkSize) {
+    ranges.push({ begin, end: Math.min(begin + rangeChunkSize, length) });
   }
+
+  let nextRange = 0;
+  const worker = async () => {
+    while (nextRange < ranges.length) {
+      const range = ranges[nextRange++];
+      if (!range) return;
+
+      const chunk = await fetchRange(url, range.begin, range.end, options, signal);
+      bytes.set(transformChunk(chunk.bytes, range.begin), range.begin);
+      loadedBytes += chunk.bytes.length;
+      options.onDownloadProgress?.(Math.min(loadedBytes, length), length);
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, ranges.length) }, worker));
 
   return bytes;
 }
@@ -341,7 +368,8 @@ export async function fetchPdfDownloadBytes(
   options: ProtectedPdfFetchOptions = {},
   signal?: AbortSignal
 ): Promise<PdfDownloadBytes> {
-  const rangeChunkSize = getRangeChunkSize(options.rangeChunkSize);
+  const rangeChunkSize = getRangeChunkSize(options.rangeChunkSize ?? DEFAULT_PDF_DOWNLOAD_RANGE_CHUNK_SIZE);
+  const downloadConcurrency = getDownloadConcurrency(options.downloadConcurrency);
   const initialRange = await fetchRange(url, 0, rangeChunkSize, options, signal);
 
   if (hasPdfMagic(initialRange.bytes)) {
@@ -357,7 +385,8 @@ export async function fetchPdfDownloadBytes(
         rangeChunkSize,
         options,
         signal,
-        (bytes) => bytes
+        (bytes) => bytes,
+        downloadConcurrency,
       ),
       protected: false,
     };
@@ -373,7 +402,16 @@ export async function fetchPdfDownloadBytes(
   }
   const length = await resolveTotalLength(url, initialRange, options, signal);
   return {
-    bytes: await fetchBytesByRanges(url, length, initialData, rangeChunkSize, options, signal, applyPdfByteMask),
+    bytes: await fetchBytesByRanges(
+      url,
+      length,
+      initialData,
+      rangeChunkSize,
+      options,
+      signal,
+      applyPdfByteMask,
+      downloadConcurrency,
+    ),
     protected: true,
   };
 }
