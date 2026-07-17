@@ -239,6 +239,33 @@ describe("ReaderPage magazine navigation", () => {
     expect(screen.queryByRole("listbox", { name: "期数" })).toBeNull();
   });
 
+  it("keeps wheel scrolling inside the issue dropdown", () => {
+    renderReader("/hq/196419", { type: "magazine", name: "hq" });
+    fireEvent.click(screen.getByRole("button", { name: "第19期" }));
+
+    const listbox = screen.getByRole("listbox", { name: "期数" });
+    const panel = listbox.parentElement!;
+    const reader = document.querySelector<HTMLElement>("[data-reader-scroll-container]")!;
+    const readerWheel = vi.fn();
+    reader.addEventListener("wheel", readerWheel);
+    Object.defineProperties(listbox, {
+      clientHeight: { configurable: true, value: 256 },
+      scrollHeight: { configurable: true, value: 600 },
+      scrollTop: { configurable: true, writable: true, value: 0 },
+    });
+
+    const scrollEvent = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 120 });
+    panel.dispatchEvent(scrollEvent);
+    expect(scrollEvent.defaultPrevented).toBe(true);
+    expect(readerWheel).not.toHaveBeenCalled();
+    expect(listbox.scrollTop).toBe(120);
+
+    const boundaryEvent = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 600 });
+    panel.dispatchEvent(boundaryEvent);
+    expect(listbox.scrollTop).toBe(344);
+    expect(listbox.className).toContain("overscroll-y-contain");
+  });
+
   it("selects the first available issue when changing magazine year", async () => {
     renderReader("/hq/196419", { type: "magazine", name: "hq" });
 
