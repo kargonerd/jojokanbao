@@ -14,7 +14,23 @@ async function fileCount(directory) {
   return (await readdir(directory, { withFileTypes: true })).filter((entry) => entry.isFile()).length;
 }
 
+async function pathExists(path) {
+  try {
+    await stat(path);
+    return true;
+  } catch (error) {
+    if (error?.code === "ENOENT") return false;
+    throw error;
+  }
+}
+
 try {
+  for (const legacyFolder of ["cmaps", "pdfjs"]) {
+    if (await pathExists(new URL(`${legacyFolder}/`, distDir))) {
+      await fail(`legacy /${legacyFolder} assets must not be included in the Reader build`);
+    }
+  }
+
   const assetNames = await readdir(assetsDir);
   const workers = assetNames.filter((name) => name.startsWith("pdf.worker-"));
 
