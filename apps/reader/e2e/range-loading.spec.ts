@@ -272,6 +272,18 @@ test("reader dropdowns stay above the toolbar and close consistently", async ({ 
   await expect(page.getByRole("option", { name: "第19期" })).toHaveAttribute("aria-selected", "true");
   expect(await listbox.evaluate((element) => getComputedStyle(element).overflowY)).toBe("auto");
 
+  const readerScrollContainer = page.locator("[data-reader-scroll-container]");
+  await readerScrollContainer.evaluate((element) => { element.scrollTop = 400; });
+  const readerScrollTop = await readerScrollContainer.evaluate((element) => element.scrollTop);
+  await listbox.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  const dropdownBounds = await listbox.locator("..").boundingBox();
+  if (!dropdownBounds) throw new Error("Issue dropdown has no visible bounds");
+  // The panel border is part of the issue control but not the scrollable list.
+  // Wheel input there must not fall through to the PDF reader.
+  await page.mouse.move(dropdownBounds.x + 1, dropdownBounds.y + 1);
+  await page.mouse.wheel(0, 600);
+  await expect.poll(() => readerScrollContainer.evaluate((element) => element.scrollTop)).toBe(readerScrollTop);
+
   await page.keyboard.press("Escape");
   await expect(listbox).toHaveCount(0);
 

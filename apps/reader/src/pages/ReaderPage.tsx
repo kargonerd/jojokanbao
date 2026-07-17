@@ -91,6 +91,8 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
   const seqDropdownRef = useRef<HTMLDivElement>(null);
+  const seqDropdownPanelRef = useRef<HTMLDivElement>(null);
+  const seqListboxRef = useRef<HTMLDivElement>(null);
   const shareResetTimer = useRef<number | null>(null);
 
   const pdfUrl = routeId
@@ -271,11 +273,35 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     if (!seqDropdownOpen) return;
 
     window.requestAnimationFrame(() => {
-      seqDropdownRef.current
-        ?.querySelector(`[data-seq-option="${seq}"]`)
-        ?.scrollIntoView({ block: "center" });
+      const listbox = seqListboxRef.current;
+      const selectedOption = listbox?.querySelector<HTMLElement>(`[data-seq-option="${seq}"]`);
+      if (!listbox || !selectedOption) return;
+
+      const centeredTop = selectedOption.offsetTop - (listbox.clientHeight - selectedOption.clientHeight) / 2;
+      const maxScrollTop = Math.max(0, listbox.scrollHeight - listbox.clientHeight);
+      listbox.scrollTop = Math.min(maxScrollTop, Math.max(0, centeredTop));
     });
   }, [seqDropdownOpen, seq]);
+
+  useEffect(() => {
+    if (!seqDropdownOpen) return;
+    const panel = seqDropdownPanelRef.current;
+    const listbox = seqListboxRef.current;
+    if (!panel || !listbox) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!event.deltaY) return;
+
+      const multiplier = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? listbox.clientHeight : 1;
+      const maxScrollTop = Math.max(0, listbox.scrollHeight - listbox.clientHeight);
+      listbox.scrollTop = Math.min(maxScrollTop, Math.max(0, listbox.scrollTop + event.deltaY * multiplier));
+    };
+
+    panel.addEventListener("wheel", handleWheel, { passive: false });
+    return () => panel.removeEventListener("wheel", handleWheel);
+  }, [seqDropdownOpen]);
 
   // ─── Document title ───
   useEffect(() => {
@@ -419,8 +445,8 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
               </svg>
             </button>
             {seqDropdownOpen && (
-              <div className="absolute left-0 top-full z-[90] mt-1 w-[160px] border-2 border-red bg-paper shadow-[4px_4px_0_rgba(139,26,26,.14)] min-[390px]:left-auto min-[390px]:right-0">
-                <div className="max-h-64 overflow-y-auto py-1" role="listbox" aria-label="期数">
+              <div ref={seqDropdownPanelRef} className="absolute left-0 top-full z-[90] mt-1 w-[160px] overscroll-y-contain border-2 border-red bg-paper shadow-[4px_4px_0_rgba(139,26,26,.14)] min-[390px]:left-auto min-[390px]:right-0">
+                <div ref={seqListboxRef} className="max-h-64 overflow-y-auto overscroll-y-contain py-1" role="listbox" aria-label="期数">
                   {seqOptions.map((option) => {
                     const selected = option === seq;
                     const label = config?.genSeqText?.(option) || `第${option}期`;
