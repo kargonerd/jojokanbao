@@ -26,6 +26,9 @@ vi.mock("@jojo/pdf-viewer", () => ({
         <button type="button" onClick={() => (props.onZoomChange as (zoom: number) => void)(2.75)}>
           模拟缩放
         </button>
+        <button type="button" onClick={() => (props.onPageRendered as (page: number) => void)(props.initialPage as number)}>
+          模拟初始页渲染完成
+        </button>
       </div>
     );
   },
@@ -83,10 +86,6 @@ beforeEach(() => {
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
   vi.stubGlobal("scrollTo", vi.fn());
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-    configurable: true,
-    value: vi.fn(),
-  });
   Object.defineProperty(HTMLElement.prototype, "scrollTo", {
     configurable: true,
     value: vi.fn(),
@@ -120,6 +119,7 @@ describe("ReaderPage document states", () => {
       url: "https://blacknews.jojokanbao.cn/RMRB/1976/19761009.pdf",
       protectedPdf: "auto",
     });
+    expect(document.querySelector<HTMLElement>("[data-reader-scroll-container]")!.style.scrollPaddingTop).toBe("77px");
     expect(screen.getByText("人民日报 - 19761009")).toBeTruthy();
     expect(screen.getByRole("button", { name: "1976年10月09日" })).toBeTruthy();
     expect(screen.getByText("1 / 6")).toBeTruthy();
@@ -338,19 +338,46 @@ describe("ReaderPage toolbar interactions", () => {
     renderReader("/rmrb/19761009");
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
     const pageInput = screen.getByRole("spinbutton") as HTMLInputElement;
-    const scrollIntoView = HTMLElement.prototype.scrollIntoView as ReturnType<typeof vi.fn>;
-    scrollIntoView.mockClear();
+    const reader = document.querySelector<HTMLElement>("[data-reader-scroll-container]")!;
+    const toolbar = reader.querySelector<HTMLElement>("[data-reader-toolbar]")!;
+    const page = document.querySelector<HTMLElement>("#page-4")!;
+    Object.defineProperty(reader, "scrollTop", { configurable: true, writable: true, value: 100 });
+    vi.spyOn(reader, "getBoundingClientRect").mockReturnValue({ top: 56 } as DOMRect);
+    vi.spyOn(toolbar, "getBoundingClientRect").mockReturnValue({ height: 61 } as DOMRect);
+    vi.spyOn(page, "getBoundingClientRect").mockReturnValue({ top: 1000 } as DOMRect);
+    const scrollTo = reader.scrollTo as ReturnType<typeof vi.fn>;
+    scrollTo.mockClear();
 
     fireEvent.change(pageInput, { target: { value: "4" } });
     fireEvent.click(screen.getByRole("button", { name: "跳转" }));
     expect(window.location.hash).toBe("#page-4");
-    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block: "start" }));
+    await waitFor(() => expect(scrollTo).toHaveBeenCalledWith({ top: 967 }));
     await new Promise((resolve) => window.setTimeout(resolve, 0));
     fireEvent.change(pageInput, { target: { value: "7" } });
     await new Promise((resolve) => window.setTimeout(resolve, 0));
     fireEvent.click(screen.getByRole("button", { name: "跳转" }));
     await new Promise((resolve) => window.setTimeout(resolve, 0));
     expect(window.location.hash).toBe("#page-4");
+  });
+
+  it("realigns a deep-linked page after its final PDF dimensions are known", async () => {
+    renderReader("/rmrb/19761009#page-5");
+    const reader = document.querySelector<HTMLElement>("[data-reader-scroll-container]")!;
+    const toolbar = reader.querySelector<HTMLElement>("[data-reader-toolbar]")!;
+    const page = document.querySelector<HTMLElement>("#page-5")!;
+    Object.defineProperty(reader, "scrollTop", { configurable: true, writable: true, value: 7200 });
+    vi.spyOn(reader, "getBoundingClientRect").mockReturnValue({ top: 56 } as DOMRect);
+    vi.spyOn(toolbar, "getBoundingClientRect").mockReturnValue({ height: 61 } as DOMRect);
+    vi.spyOn(page, "getBoundingClientRect").mockReturnValue({ top: 115 } as DOMRect);
+    const scrollTo = reader.scrollTo as ReturnType<typeof vi.fn>;
+    scrollTo.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "模拟初始页渲染完成" }));
+    await waitFor(() => expect(scrollTo).toHaveBeenCalledWith({ top: 7182 }));
+
+    scrollTo.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "模拟初始页渲染完成" }));
+    expect(scrollTo).not.toHaveBeenCalled();
   });
 
   it("keeps the toolbar, jump field, URL, and shared link synchronized with the visible page", async () => {

@@ -22,6 +22,7 @@ interface PdfViewerProps {
   className?: string;
   scrollContainerRef?: RefObject<HTMLElement | null>;
   onPageChange?: (page: number) => void;
+  onPageRendered?: (page: number) => void;
 }
 
 interface VisiblePage {
@@ -66,6 +67,7 @@ export function PdfViewer({
   className = "",
   scrollContainerRef,
   onPageChange,
+  onPageRendered,
 }: PdfViewerProps) {
   const normalizedInitialPage = clampPage(initialPage, document.numPages);
   const [loadedPages, setLoadedPages] = useState<Set<number>>(() => new Set([normalizedInitialPage]));
@@ -342,6 +344,7 @@ export function PdfViewer({
                 scale={scale}
                 quality={quality}
                 onPageMetrics={handlePageMetrics}
+                onRendered={onPageRendered}
                 onError={() => handlePageError(pageNumber)}
               />
             ) : (
