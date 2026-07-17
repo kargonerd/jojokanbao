@@ -40,10 +40,9 @@ export function getSafePdfRenderScale({
   const safePageWidth = Math.max(pageWidth, 1);
   const safePageHeight = Math.max(pageHeight, 1);
   const fitScale = containerWidth > 0 ? containerWidth / safePageWidth : 1;
-  const outputPixelRatio = Math.max(
-    Math.min(Math.max(devicePixelRatio, 1), MAX_AUTO_DEVICE_PIXEL_RATIO),
-    quality && quality > 0 ? quality : 1,
-  );
+  const outputPixelRatio = quality && quality > 0
+    ? quality
+    : Math.min(Math.max(devicePixelRatio, 1), MAX_AUTO_DEVICE_PIXEL_RATIO);
   const targetScale = requestedScale && requestedScale > 0 ? requestedScale : fitScale * outputPixelRatio;
   const pixelLimitScale = Math.sqrt(MAX_PDF_CANVAS_PIXELS / (safePageWidth * safePageHeight));
   const dimensionLimitScale = Math.min(

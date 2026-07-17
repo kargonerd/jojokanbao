@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import axios from "axios";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SearchPage } from "../src/pages/SearchPage";
 
@@ -25,7 +25,14 @@ const highlightedTitleName = /革命\s*历史\s*文献/;
 
 function LocationProbe() {
   const location = useLocation();
-  return <output data-testid="location">{location.pathname}{location.search}</output>;
+  const navigate = useNavigate();
+  return (
+    <>
+      <output data-testid="location">{location.pathname}{location.search}</output>
+      <button type="button" data-testid="navigate-second-search" onClick={() => navigate("/search?keyword=第二&sort=timeDesc")}>切换测试地址</button>
+      <button type="button" data-testid="navigate-back" onClick={() => navigate(-1)}>返回测试地址</button>
+    </>
+  );
 }
 
 function renderSearch(path = "/search") {
@@ -124,6 +131,23 @@ describe("SearchPage results", () => {
     expect(content.querySelector("span.text-red")?.textContent).toBe("重点内容");
   });
 
+  it("renders API HTML as inert text while preserving highlight markers", async () => {
+    vi.mocked(axios.get).mockImplementation(() => searchResponse([{
+      ...defaultResult,
+      title: "标题<img src=x onerror=alert(1)>@highlight@历史@/highlight@",
+      content: "<script>window.__searchXss = true</script>正文",
+    }]));
+    renderSearch("/search?keyword=历史");
+
+    const highlight = await screen.findByText("历史", { selector: "strong" });
+    const heading = highlight.closest("h3")!;
+    expect(heading.textContent).toBe("标题<img src=x onerror=alert(1)>历史");
+    expect(heading.querySelector("img")).toBeNull();
+    expect(document.querySelector("script")).toBeNull();
+    expect(heading.querySelector("strong")?.textContent).toBe("历史");
+    expect(screen.getByText(/<script>window.__searchXss = true<\/script>正文/)).toBeTruthy();
+  });
+
   it("expands a clamped result and removes the one-shot expand control", async () => {
     renderSearch("/search?keyword=历史");
     await screen.findByRole("heading", { name: highlightedTitleName });
@@ -152,9 +176,52 @@ describe("SearchPage results", () => {
 
     await waitFor(() => expect(axios.get).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("heading", { name: highlightedTitleName })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+    expect(screen.getByRole("alert").textContent).toContain("搜索失败");
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
     expect(await screen.findByRole("heading", { name: highlightedTitleName })).toBeTruthy();
     expect(axios.get).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores an older response that finishes after a newer filter request", async () => {
+    let resolveFirst!: (value: Awaited<ReturnType<typeof searchResponse>>) => void;
+    let resolveSecond!: (value: Awaited<ReturnType<typeof searchResponse>>) => void;
+    const first = new Promise<Awaited<ReturnType<typeof searchResponse>>>((resolve) => { resolveFirst = resolve; });
+    const second = new Promise<Awaited<ReturnType<typeof searchResponse>>>((resolve) => { resolveSecond = resolve; });
+    vi.mocked(axios.get)
+      .mockImplementationOnce(() => first)
+      .mockImplementationOnce(() => second);
+    renderSearch("/search?keyword=历史");
+    await waitFor(() => expect(axios.get).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "默认排序" }));
+    fireEvent.click(screen.getByRole("option", { name: "时间降序" }));
+    await waitFor(() => expect(axios.get).toHaveBeenCalledTimes(2));
+    resolveSecond(await searchResponse([{ ...defaultResult, title: "新的结果" }]));
+    expect(await screen.findByRole("heading", { name: "新的结果" })).toBeTruthy();
+
+    resolveFirst(await searchResponse([{ ...defaultResult, title: "过期结果" }]));
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(screen.queryByRole("heading", { name: "过期结果" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "新的结果" })).toBeTruthy();
+  });
+
+  it("resynchronizes controls and results after history navigation", async () => {
+    vi.mocked(axios.get).mockImplementation((_url, config) => {
+      const request = (config as { params: { keyword: string } }).params;
+      return searchResponse([{ ...defaultResult, title: `${request.keyword}结果` }], 25);
+    });
+    renderSearch("/search?keyword=第一&page=2");
+    await screen.findByRole("heading", { name: "第一结果" });
+
+    fireEvent.click(screen.getByTestId("navigate-second-search"));
+    await screen.findByRole("heading", { name: "第二结果" });
+    expect((screen.getByPlaceholderText("在JOJO看报上搜索") as HTMLInputElement).value).toBe("第二");
+    expect(getLastRequestParams()).toMatchObject({ keyword: "第二", page: 1, sort: "timeDesc" });
+
+    fireEvent.click(screen.getByTestId("navigate-back"));
+    await screen.findByRole("heading", { name: "第一结果" });
+    expect((screen.getByPlaceholderText("在JOJO看报上搜索") as HTMLInputElement).value).toBe("第一");
+    expect(getLastRequestParams()).toMatchObject({ keyword: "第一", page: 2 });
   });
 });
 

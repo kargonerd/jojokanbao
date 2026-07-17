@@ -141,6 +141,20 @@ describe("ReaderPage document states", () => {
     expect(screen.queryByTestId("pdf-viewer")).toBeNull();
     expect(screen.queryByRole("button", { name: "下载 PDF" })).toBeNull();
     expect(screen.getByRole("button", { name: "选择日期" })).toBeTruthy();
+    expect(screen.getByText("阅读链接无效")).toBeTruthy();
+    expect(screen.getByText("链接中的日期或期数格式不正确。")).toBeTruthy();
+  });
+
+  it("rejects impossible dates and unavailable magazine issues without a PDF request", () => {
+    setPdfState({ document: null, numPages: 0 });
+    const invalidDate = renderReader("/rmrb/19760231");
+    expect(pdfMocks.usePdfDocument).toHaveBeenLastCalledWith({ url: "", protectedPdf: "auto" });
+    expect(screen.getByText("链接中的日期不是有效日期。")).toBeTruthy();
+    invalidDate.unmount();
+
+    renderReader("/hq/196499", { type: "magazine", name: "hq" });
+    expect(pdfMocks.usePdfDocument).toHaveBeenLastCalledWith({ url: "", protectedPdf: "auto" });
+    expect(screen.getByText("该年份没有对应的杂志期数。")).toBeTruthy();
   });
 
   it("shows the loading overlay without rendering the viewer", () => {
