@@ -49,6 +49,15 @@ function normalizeSort(value: string | null): string {
   return SORT_OPTIONS.some((option) => option.value === value) ? value! : "";
 }
 
+function getTodayDateString(): string {
+  const today = new Date();
+  return [
+    String(today.getFullYear()).padStart(4, "0"),
+    String(today.getMonth() + 1).padStart(2, "0"),
+    String(today.getDate()).padStart(2, "0"),
+  ].join("");
+}
+
 function buildSearchParams({
   keyword,
   page,
@@ -92,6 +101,8 @@ export function SearchPage() {
   const requestIdRef = useRef(0);
   const pageSize = 10;
   const paramsKey = params.toString();
+  const todayDate = getTodayDateString();
+  const disableFutureDate = (date: string) => date > todayDate;
 
   useEffect(() => {
     const keyword = (params.get("keyword") || "").trim();
@@ -244,10 +255,10 @@ export function SearchPage() {
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-4 p-3.5 border border-rule mb-6">
             <label className="flex items-center gap-2 text-xs font-bold text-muted">
-              从 <DatePicker value={startDate} onChange={handleStartDateChange} />
+              从 <DatePicker value={startDate} onChange={handleStartDateChange} disabledDate={disableFutureDate} />
             </label>
             <label className="flex items-center gap-2 text-xs font-bold text-muted">
-              至 <DatePicker value={endDate} onChange={handleEndDateChange} />
+              至 <DatePicker value={endDate} onChange={handleEndDateChange} disabledDate={disableFutureDate} />
             </label>
             <div ref={sortDropdownRef} className="relative min-w-[120px]">
               <button
