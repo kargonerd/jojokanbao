@@ -3,17 +3,17 @@ import crypto from "node:crypto";
 
 const SERVICE = "teo";
 const VERSION = "2022-09-01";
-const ACTION = "CreatePurgeTask";
 const DEFAULT_ENDPOINT = process.env.EDGEONE_ENDPOINT ?? "teo.tencentcloudapi.com";
 
 function usage() {
   console.log(`Usage:
-  node tooling/purge-edgeone-reader-cache.mjs --zone-id zone-xxx <url> [url...]
+  node tooling/purge-edgeone-reader-cache.mjs [--zone-id zone-xxx] <url> [url...]
 
 Environment:
   TENCENTCLOUD_SECRET_ID or TENCENT_SECRET_ID
   TENCENTCLOUD_SECRET_KEY or TENCENT_SECRET_KEY
-  EDGEONE_ZONE_ID may be used instead of --zone-id
+  EDGEONE_ZONE_ID may be used instead of --zone-id. If neither is supplied, the
+  closest matching EdgeOne zone is discovered from the target URL hostname.
   EDGEONE_ENDPOINT may be used instead of --endpoint
 
 This submits an EdgeOne CreatePurgeTask with Type=purge_url for the supplied URLs.
@@ -42,7 +42,6 @@ function parseArgs(argv) {
     urls.push(arg);
   }
 
-  if (!zoneId) throw new Error("--zone-id or EDGEONE_ZONE_ID is required");
   if (urls.length === 0) throw new Error("At least one URL is required");
   for (const url of urls) {
     if (!/^https?:\/\//i.test(url)) throw new Error(`Purge target must be an absolute URL: ${url}`);
@@ -67,9 +66,9 @@ function getCredential() {
   return { secretId, secretKey };
 }
 
-function buildAuthorization({ endpoint, payload, secretId, secretKey, timestamp }) {
+function buildAuthorization({ action, endpoint, payload, secretId, secretKey, timestamp }) {
   const date = new Date(timestamp * 1000).toISOString().slice(0, 10);
-  const canonicalHeaders = `content-type:application/json; charset=utf-8\nhost:${endpoint}\nx-tc-action:${ACTION.toLowerCase()}\n`;
+  const canonicalHeaders = `content-type:application/json; charset=utf-8\nhost:${endpoint}\nx-tc-action:${action.toLowerCase()}\n`;
   const signedHeaders = "content-type;host;x-tc-action";
   const canonicalRequest = [
     "POST",
@@ -90,16 +89,17 @@ function buildAuthorization({ endpoint, payload, secretId, secretKey, timestamp 
   return `TC3-HMAC-SHA256 Credential=${secretId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 }
 
-async function main() {
-  const { endpoint, urls, zoneId } = parseArgs(process.argv.slice(2));
-  const { secretId, secretKey } = getCredential();
-  const payload = JSON.stringify({
-    Targets: urls,
-    Type: "purge_url",
-    ZoneId: zoneId,
-  });
+async function requestTencent({ action, credential, endpoint, payload }) {
+  const body = JSON.stringify(payload);
   const timestamp = Math.floor(Date.now() / 1000);
-  const authorization = buildAuthorization({ endpoint, payload, secretId, secretKey, timestamp });
+  const authorization = buildAuthorization({
+    action,
+    endpoint,
+    payload: body,
+    secretId: credential.secretId,
+    secretKey: credential.secretKey,
+    timestamp,
+  });
 
   const response = await fetch(`https://${endpoint}`, {
     method: "POST",
@@ -107,18 +107,68 @@ async function main() {
       Authorization: authorization,
       "Content-Type": "application/json; charset=utf-8",
       Host: endpoint,
-      "X-TC-Action": ACTION,
+      "X-TC-Action": action,
       "X-TC-Timestamp": String(timestamp),
       "X-TC-Version": VERSION,
     },
-    body: payload,
+    body,
   });
 
-  const body = await response.text();
+  const responseBody = await response.text();
   if (!response.ok) {
-    throw new Error(`EdgeOne purge failed with HTTP ${response.status}\n${body}`);
+    throw new Error(`EdgeOne ${action} failed with HTTP ${response.status}\n${responseBody}`);
   }
-  console.log(body);
+  const parsed = JSON.parse(responseBody);
+  if (parsed.Response?.Error) {
+    throw new Error(`EdgeOne ${action} failed: ${JSON.stringify(parsed.Response.Error)}`);
+  }
+  return parsed;
+}
+
+async function discoverZoneId({ credential, endpoint, urls }) {
+  const result = await requestTencent({
+    action: "DescribeZones",
+    credential,
+    endpoint,
+    payload: { Limit: 100, Offset: 0 },
+  });
+  const hostnames = urls.map((url) => new URL(url).hostname.toLowerCase());
+  const matches = (result.Response?.Zones ?? []).filter((zone) => {
+    const zoneName = zone.ZoneName?.toLowerCase();
+    return zoneName && hostnames.some((hostname) => hostname === zoneName || hostname.endsWith(`.${zoneName}`));
+  });
+  matches.sort((left, right) => right.ZoneName.length - left.ZoneName.length);
+  if (matches.length === 0) {
+    throw new Error(`No EdgeOne zone matches: ${hostnames.join(", ")}`);
+  }
+  const closestLength = matches[0].ZoneName.length;
+  const closest = matches.filter((zone) => zone.ZoneName.length === closestLength);
+  if (closest.length !== 1) {
+    throw new Error(`Multiple EdgeOne zones match equally: ${closest.map((zone) => zone.ZoneName).join(", ")}`);
+  }
+  console.log(`Discovered EdgeOne zone ${closest[0].ZoneName} (${closest[0].ZoneId})`);
+  return closest[0].ZoneId;
+}
+
+async function main() {
+  const options = parseArgs(process.argv.slice(2));
+  const credential = getCredential();
+  const zoneId = options.zoneId ?? await discoverZoneId({
+    credential,
+    endpoint: options.endpoint,
+    urls: options.urls,
+  });
+  const result = await requestTencent({
+    action: "CreatePurgeTask",
+    credential,
+    endpoint: options.endpoint,
+    payload: {
+      Targets: options.urls,
+      Type: "purge_url",
+      ZoneId: zoneId,
+    },
+  });
+  console.log(JSON.stringify(result));
 }
 
 main().catch((error) => {
