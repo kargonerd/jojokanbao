@@ -2,6 +2,7 @@ import { Fragment, useState, useEffect, useRef, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { Button, Tag, Pagination, LoadingSpinner, DatePicker } from "@jojo/ui";
+import { getLatestRmrbAvailableDate } from "../dateAvailability";
 
 const SEARCH_API = "https://s1.jojokanbao.cn/search";
 
@@ -92,6 +93,8 @@ export function SearchPage() {
   const requestIdRef = useRef(0);
   const pageSize = 10;
   const paramsKey = params.toString();
+  const latestAvailableDate = getLatestRmrbAvailableDate();
+  const disableUnavailableDate = (date: string) => date > latestAvailableDate;
 
   useEffect(() => {
     const keyword = (params.get("keyword") || "").trim();
@@ -244,10 +247,10 @@ export function SearchPage() {
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-4 p-3.5 border border-rule mb-6">
             <label className="flex items-center gap-2 text-xs font-bold text-muted">
-              从 <DatePicker value={startDate} onChange={handleStartDateChange} />
+              从 <DatePicker value={startDate} onChange={handleStartDateChange} disabledDate={disableUnavailableDate} />
             </label>
             <label className="flex items-center gap-2 text-xs font-bold text-muted">
-              至 <DatePicker value={endDate} onChange={handleEndDateChange} />
+              至 <DatePicker value={endDate} onChange={handleEndDateChange} disabledDate={disableUnavailableDate} />
             </label>
             <div ref={sortDropdownRef} className="relative min-w-[120px]">
               <button
