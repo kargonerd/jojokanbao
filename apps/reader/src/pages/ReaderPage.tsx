@@ -6,6 +6,15 @@ import { PUBLICATIONS, type PublicationConfig } from "../publications";
 
 const NEWSPAPER_HOST = "https://blacknews.jojokanbao.cn";
 
+function isCalendarDate(value: string): boolean {
+  if (!/^\d{8}$/.test(value)) return false;
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(4, 6));
+  const day = Number(value.slice(6, 8));
+  const parsed = new Date(year, month - 1, day);
+  return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day;
+}
+
 function DownloadIcon() {
   return (
     <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
@@ -54,7 +63,18 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
 
   // Route params are the source of truth. Deriving these synchronously avoids
   // issuing a PDF request with stale state while switching publications.
-  const routeId = id && (type === "magazine" ? /^\d{6}$/.test(id) : /^\d{8}$/.test(id)) ? id : "";
+  const rawId = id || "";
+  const hasExpectedShape = type === "magazine" ? /^\d{6}$/.test(rawId) : /^\d{8}$/.test(rawId);
+  const candidateYear = rawId.slice(0, 4);
+  const candidateSeq = Number(rawId.slice(4, 6));
+  const routeError = !hasExpectedShape
+    ? "链接中的日期或期数格式不正确。"
+    : type === "newspaper" && !isCalendarDate(rawId)
+      ? "链接中的日期不是有效日期。"
+      : type === "magazine" && !config.seqConfig?.[candidateYear]?.includes(candidateSeq)
+        ? "该年份没有对应的杂志期数。"
+        : null;
+  const routeId = routeError ? "" : rawId;
   const date = type === "magazine" ? routeId.slice(0, 4) : routeId;
   const seq = type === "magazine" ? Number(routeId.slice(4, 6)) || 1 : 1;
 
@@ -450,6 +470,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
 
       {/* Content */}
       <div className="px-4 py-4">
+        {routeError && <EmptyState title="阅读链接无效" description={routeError} />}
         {loading && <LoadingSpinner text="正在加载 PDF 文档" fullscreen />}
         {error && (
           <EmptyState title="没有当天文档或数据缺失" description={error} />

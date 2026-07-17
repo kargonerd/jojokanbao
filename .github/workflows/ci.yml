@@ -8,12 +8,14 @@ on:
       - "packages/editorial-preset/**"
       - "packages/pdf-viewer/**"
       - "packages/ui/**"
+      - "patches/**"
       - "tooling/tsconfig/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - "turbo.json"
       - ".github/workflows/ci.yml"
+      - ".github/workflows/reader-deploy.yml"
   pull_request:
     branches: [master]
     paths:
@@ -21,12 +23,14 @@ on:
       - "packages/editorial-preset/**"
       - "packages/pdf-viewer/**"
       - "packages/ui/**"
+      - "patches/**"
       - "tooling/tsconfig/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - "turbo.json"
       - ".github/workflows/ci.yml"
+      - ".github/workflows/reader-deploy.yml"
 
 jobs:
   build-and-test:
@@ -65,3 +69,26 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @jojo/reader exec playwright install --with-deps chromium
       - run: pnpm --filter @jojo/reader exec playwright test
+
+  cross-browser-e2e:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @jojo/reader exec playwright install --with-deps ${{ matrix.browser }}
+      # WebKit is reliable serially; the two browser matrix jobs still run in parallel.
+      - run: pnpm --filter @jojo/reader exec playwright test --browser=${{ matrix.browser }} --workers=1

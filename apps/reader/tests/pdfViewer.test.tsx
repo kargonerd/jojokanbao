@@ -167,4 +167,20 @@ describe("PdfViewer demand loading", () => {
     expect(highest).toBeGreaterThan(standard);
     expect(base.pageWidth * highest * base.pageHeight * highest).toBeLessThanOrEqual(MAX_PDF_CANVAS_PIXELS + 1);
   });
+
+  it("keeps all three explicit quality levels distinct on high-DPR screens", () => {
+    const base = {
+      pageWidth: 600,
+      pageHeight: 800,
+      containerWidth: 300,
+      devicePixelRatio: 3,
+    };
+
+    const qualityOne = getSafePdfRenderScale({ ...base, quality: 1 });
+    const qualityTwo = getSafePdfRenderScale({ ...base, quality: 2 });
+    const qualityThree = getSafePdfRenderScale({ ...base, quality: 3 });
+
+    expect(qualityTwo).toBeGreaterThan(qualityOne);
+    expect(qualityThree).toBeGreaterThan(qualityTwo);
+  });
 });
