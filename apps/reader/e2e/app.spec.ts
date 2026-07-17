@@ -1,6 +1,18 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("Reader App", () => {
+  test("serves PDF.js runtime assets from the Reader origin", async ({ request }) => {
+    for (const asset of [
+      "/assets/pdfjs/cmaps/Adobe-CNS1-UCS2.bcmap",
+      "/assets/pdfjs/wasm/openjpeg.wasm",
+      "/assets/pdfjs/standard_fonts/LiberationSans-Regular.ttf",
+    ]) {
+      const response = await request.get(asset);
+      expect(response.ok(), asset).toBe(true);
+      expect((await response.body()).byteLength, asset).toBeGreaterThan(1_000);
+    }
+  });
+
   test("homepage loads with cards", async ({ page }) => {
     await page.goto("/");
     await expect(page.locator("h2").first()).toBeVisible();

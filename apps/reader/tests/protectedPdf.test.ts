@@ -143,6 +143,28 @@ const samples = [
 ];
 
 describe("protected reader PDFs", () => {
+  it("cancels the initial range request before a transport exists", async () => {
+    const { resolvePdfSource } = await loadProtectionModule();
+    let receivedSignal: AbortSignal | null | undefined;
+    const fetchFn = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal;
+      receivedSignal = signal;
+      if (!signal) {
+        reject(new Error("AbortSignal was not provided"));
+        return;
+      }
+      signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+    })) as unknown as typeof fetch;
+    const controller = new AbortController();
+
+    const source = resolvePdfSource("https://cdn.example.test/slow.pdf", "auto", { fetchFn }, controller.signal);
+    controller.abort();
+
+    await expect(source).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchFn).toHaveBeenCalledOnce();
+    expect(receivedSignal).toBe(controller.signal);
+  });
+
   it("rejects a server that ignores Range without reading the full response body", async () => {
     const { resolvePdfSource } = await loadProtectionModule();
     const cancel = vi.fn(async () => {});

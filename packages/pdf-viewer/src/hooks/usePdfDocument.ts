@@ -10,14 +10,15 @@ import {
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
-const PDFJS_VERSION = "5.7.284";
-const CMAP_URL = `https://unpkg.com/pdfjs-dist@${PDFJS_VERSION}/cmaps/`;
-const WASM_URL = `https://unpkg.com/pdfjs-dist@${PDFJS_VERSION}/wasm/`;
+const CMAP_URL = "/assets/pdfjs/cmaps/";
+const WASM_URL = "/assets/pdfjs/wasm/";
+const STANDARD_FONT_URL = "/assets/pdfjs/standard_fonts/";
 
 interface UsePdfDocumentOptions {
   url: string;
   cMapUrl?: string;
   wasmUrl?: string;
+  standardFontDataUrl?: string;
   protectedPdf?: ProtectedPdfMode;
   rangeChunkSize?: number;
 }
@@ -37,10 +38,11 @@ export function usePdfDocument({
   url,
   cMapUrl = CMAP_URL,
   wasmUrl = WASM_URL,
+  standardFontDataUrl = STANDARD_FONT_URL,
   protectedPdf = "auto",
   rangeChunkSize = DEFAULT_PDF_RANGE_CHUNK_SIZE,
 }: UsePdfDocumentOptions): PdfDocumentState {
-  const [state, setState] = useState<PdfDocumentState>({ document: null, numPages: 0, loading: true, error: null });
+  const [state, setState] = useState<PdfDocumentState>({ document: null, numPages: 0, loading: Boolean(url), error: null });
 
   useEffect(() => {
     if (!url) {
@@ -54,10 +56,12 @@ export function usePdfDocument({
     let failed = false;
     let task: PDFDocumentLoadingTask | null = null;
     let abortSource: { abort: () => void } | null = null;
+    const initialRequest = new AbortController();
 
     const fail = (error: unknown) => {
       if (cancelled || failed) return;
       failed = true;
+      initialRequest.abort();
       abortSource?.abort();
       void task?.destroy().catch(() => {});
       setState({ document: null, numPages: 0, loading: false, error: errorMessage(error) });
@@ -68,13 +72,14 @@ export function usePdfDocument({
         cMapUrl,
         cMapPacked: true,
         wasmUrl,
+        standardFontDataUrl,
         isEvalSupported: false,
       };
 
       const source = await resolvePdfSource(url, protectedPdf, {
         rangeChunkSize,
         onRangeError: fail,
-      });
+      }, initialRequest.signal);
       if (cancelled) {
         source.transport.abort();
         return;
@@ -102,10 +107,11 @@ export function usePdfDocument({
 
     return () => {
       cancelled = true;
+      initialRequest.abort();
       abortSource?.abort();
       task?.destroy().catch(() => {});
     };
-  }, [url, cMapUrl, wasmUrl, protectedPdf, rangeChunkSize]);
+  }, [url, cMapUrl, wasmUrl, standardFontDataUrl, protectedPdf, rangeChunkSize]);
 
   return state;
 }
