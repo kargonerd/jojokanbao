@@ -177,14 +177,20 @@ export function PdfViewer({
         }
 
         if (visiblePages.size === 0) return;
+        const atDocumentEnd = root
+          ? Math.ceil(root.scrollTop + root.clientHeight) >= root.scrollHeight - 1
+          : Math.ceil(window.scrollY + window.innerHeight) >= window.document.documentElement.scrollHeight - 1;
+        const lastPageIsVisible = visiblePages.has(document.numPages);
         const rootTop = root?.getBoundingClientRect().top ?? 0;
         const focusLine = rootTop + 72;
-        const [pageNumber] = [...visiblePages.entries()].sort(([, a], [, b]) => {
-          const aContainsFocus = a.top <= focusLine && a.bottom > focusLine;
-          const bContainsFocus = b.top <= focusLine && b.bottom > focusLine;
-          if (aContainsFocus !== bContainsFocus) return aContainsFocus ? -1 : 1;
-          return Math.abs(a.top - focusLine) - Math.abs(b.top - focusLine);
-        })[0]!;
+        const pageNumber = atDocumentEnd && lastPageIsVisible
+          ? document.numPages
+          : [...visiblePages.entries()].sort(([, a], [, b]) => {
+              const aContainsFocus = a.top <= focusLine && a.bottom > focusLine;
+              const bContainsFocus = b.top <= focusLine && b.bottom > focusLine;
+              if (aContainsFocus !== bContainsFocus) return aContainsFocus ? -1 : 1;
+              return Math.abs(a.top - focusLine) - Math.abs(b.top - focusLine);
+            })[0]![0];
 
         if (pageNumber !== currentPageRef.current) {
           currentPageRef.current = pageNumber;
