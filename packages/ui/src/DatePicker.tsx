@@ -159,7 +159,7 @@ export function DatePicker({ value, onChange, disabledDate, className = "" }: Da
     <div ref={ref} className={`relative inline-block ${className}`}>
       <button
         type="button"
-        className="h-8 w-full px-2 text-xs border border-rule-dark bg-paper text-ink font-serif cursor-pointer hover:border-red transition-colors sm:w-auto sm:px-3 sm:text-sm"
+        className="h-8 w-full whitespace-nowrap px-2 text-xs border border-rule-dark bg-paper text-ink font-serif cursor-pointer hover:border-red transition-colors sm:w-auto sm:px-3 sm:text-sm"
         onClick={() => {
           setOpen((current) => !current);
           setPanelMode("date");
@@ -329,7 +329,7 @@ export function YearPicker({ value, onChange, min = 1930, max = 2030, className 
     <div ref={ref} className={`relative inline-block ${className}`}>
       <button
         type="button"
-        className="h-8 w-full px-2 text-xs border border-rule-dark bg-paper text-ink font-serif cursor-pointer hover:border-red transition-colors sm:w-auto sm:px-3 sm:text-sm"
+        className="h-8 w-full whitespace-nowrap px-2 text-xs border border-rule-dark bg-paper text-ink font-serif cursor-pointer hover:border-red transition-colors sm:w-auto sm:px-3 sm:text-sm"
         onClick={() => setOpen(!open)}
       >
         {value ? `${value}年` : "选择年份"}

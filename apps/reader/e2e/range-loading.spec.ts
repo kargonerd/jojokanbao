@@ -263,7 +263,7 @@ test("reader dropdowns stay above the toolbar and close consistently", async ({ 
     });
   });
   await page.goto("/hq/196419", { waitUntil: "domcontentloaded" });
-  await expect(page.getByText(`共 ${PAGE_COUNT} 页`)).toBeVisible();
+  await expect(page.locator("[data-reader-page-status]")).toHaveText(`1 / ${PAGE_COUNT}`);
 
   const issueButton = page.getByRole("button", { name: "第19期" });
   await issueButton.click();
@@ -333,6 +333,10 @@ test("mobile PDF slots keep their page ratio and evict distant canvases", async 
   const firstCanvas = page.locator("#page-1 canvas");
   await expect(firstCanvas).toBeVisible({ timeout: 20_000 });
   await expect(page.locator("#page-2 canvas")).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator("[data-reader-page-status]")).toHaveText(`1 / ${PAGE_COUNT}`);
+  await expect(page.getByRole("button", { name: "1976年10月09日" })).toHaveCSS("white-space", "nowrap");
+  await expect(page.getByRole("button", { name: "复制阅读链接" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   expect(await page.locator("[data-pdf-page] canvas").count()).toBeLessThanOrEqual(3);
   await expect(page.locator("#page-4")).toHaveAttribute("data-page-state", "placeholder");
 
@@ -350,6 +354,8 @@ test("mobile PDF slots keep their page ratio and evict distant canvases", async 
 
   await page.locator("#page-6").scrollIntoViewIfNeeded();
   await expect(page.locator("#page-6 canvas")).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator("[data-reader-page-status]")).toHaveText(`6 / ${PAGE_COUNT}`);
+  await expect(page).toHaveURL(/#page-6$/);
   await expect(page.locator("#page-1")).toHaveAttribute("data-page-state", "placeholder");
   await expect(page.locator("#page-1 canvas")).toHaveCount(0);
   expect(await page.locator("[data-pdf-page] canvas").count()).toBeLessThanOrEqual(3);
