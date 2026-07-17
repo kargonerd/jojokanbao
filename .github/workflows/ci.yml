@@ -10,12 +10,16 @@ on:
       - "packages/ui/**"
       - "patches/**"
       - "tooling/tsconfig/**"
+      - "tooling/protect-reader-pdf.mjs"
+      - "tooling/purge-edgeone-reader-cache.mjs"
+      - "upload/sync_rmrb_today.py"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - "turbo.json"
       - ".github/workflows/ci.yml"
       - ".github/workflows/reader-deploy.yml"
+      - ".github/workflows/sync-rmrb.yml"
   pull_request:
     branches: [master]
     paths:
@@ -25,12 +29,16 @@ on:
       - "packages/ui/**"
       - "patches/**"
       - "tooling/tsconfig/**"
+      - "tooling/protect-reader-pdf.mjs"
+      - "tooling/purge-edgeone-reader-cache.mjs"
+      - "upload/sync_rmrb_today.py"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - "turbo.json"
       - ".github/workflows/ci.yml"
       - ".github/workflows/reader-deploy.yml"
+      - ".github/workflows/sync-rmrb.yml"
 
 jobs:
   build-and-test:
