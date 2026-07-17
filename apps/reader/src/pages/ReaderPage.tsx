@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { fetchPdfDownloadBytes, PdfViewer, usePdfDocument } from "@jojo/pdf-viewer";
 import { EmptyState, LoadingSpinner, DatePicker, Toolbar, YearPicker } from "@jojo/ui";
 import { PUBLICATIONS, type PublicationConfig } from "../publications";
@@ -85,6 +85,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [seqDropdownOpen, setSeqDropdownOpen] = useState(false);
   const [jumpToPageNum, setJumpToPageNum] = useState(1);
+  const [currentPage, setCurrentPage] = useState(1);
   const [showBackTop, setShowBackTop] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
@@ -111,10 +112,23 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     document.querySelector(`#page-${pageNum}`)?.scrollIntoView({ block: "start" });
   }, []);
 
+  const replacePageHash = useCallback((pageNum: number) => {
+    const nextHash = `#page-${pageNum}`;
+    if (window.location.hash === nextHash) return;
+
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${window.location.search}${nextHash}`,
+    );
+  }, []);
+
   useEffect(() => {
     const handler = () => {
       const pageNum = getHashPageNum();
       if (pageNum >= 1 && pageNum <= numPages) {
+        setCurrentPage(pageNum);
+        setJumpToPageNum(pageNum);
         goToPage(pageNum);
       }
     };
@@ -123,12 +137,16 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   }, [getHashPageNum, goToPage, numPages]);
 
   // Determine initial page from hash (for PdfViewer to render first)
-  const hashPage = typeof window !== "undefined" ? getHashPageNum() : 0;
+  const hashPage = useMemo(
+    () => (typeof window !== "undefined" ? getHashPageNum() : 0),
+    [getHashPageNum, routeId],
+  );
   const initialPage = hashPage >= 1 && (numPages === 0 || hashPage <= numPages) ? hashPage : 1;
 
   // Every page has a stable slot, so deep links can scroll before the canvas renders.
   useEffect(() => {
     if (!pdfDoc) return;
+    setCurrentPage(initialPage);
     setJumpToPageNum(initialPage);
     const frame = window.requestAnimationFrame(() => goToPage(initialPage));
     return () => window.cancelAnimationFrame(frame);
@@ -143,8 +161,9 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
 
   const handlePageJump = () => {
     if (jumpToPageNum >= 1 && jumpToPageNum <= numPages) {
+      setCurrentPage(jumpToPageNum);
       goToPage(jumpToPageNum);
-      window.location.hash = `#page-${jumpToPageNum}`;
+      replacePageHash(jumpToPageNum);
     }
   };
 
@@ -314,19 +333,21 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const selectedSeqText = config?.genSeqText?.(seq) || `第${seq}期`;
 
   const handleVisiblePageChange = useCallback((pageNumber: number) => {
+    setCurrentPage(pageNumber);
     setJumpToPageNum(pageNumber);
-  }, []);
+    replacePageHash(pageNumber);
+  }, [replacePageHash]);
   // TODO: Replace the mode toggle with visible “− / current zoom / +” controls
   // so users can discover and repeat zoom actions without relying on page clicks.
   const toolbarActions = pdfUrl ? (
-    <div ref={settingsRef} className="relative ml-auto flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
+    <div ref={settingsRef} className="relative ml-auto flex shrink-0 items-center justify-end gap-1 sm:gap-2">
       <button
         type="button"
         onClick={() => {
           setZoomEnabled((enabled) => !enabled);
           setSettingsOpen(false);
         }}
-        className={`inline-flex h-8 items-center gap-1.5 border px-2 text-sm font-bold transition-colors sm:px-2.5 ${
+        className={`inline-flex h-8 items-center gap-1.5 border px-1.5 text-sm font-bold transition-colors sm:px-2.5 ${
           zoomEnabled
             ? "border-red bg-red text-paper"
             : "border-rule-dark bg-paper text-ink hover:border-red hover:text-red"
@@ -342,7 +363,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
         type="button"
         onClick={handleDownload}
         disabled={downloading}
-        className="inline-flex h-8 items-center gap-1.5 border border-rule-dark bg-paper px-2 text-sm font-bold text-red transition-colors hover:border-red hover:text-red-dark disabled:cursor-wait disabled:opacity-60 sm:px-2.5"
+        className="inline-flex h-8 items-center gap-1.5 border border-rule-dark bg-paper px-1.5 text-sm font-bold text-red transition-colors hover:border-red hover:text-red-dark disabled:cursor-wait disabled:opacity-60 sm:px-2.5"
         aria-label={downloading ? "下载中" : "下载 PDF"}
       >
         <DownloadIcon />
@@ -351,17 +372,17 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       <button
         type="button"
         onClick={handleShare}
-        className="hidden h-8 items-center gap-1.5 border border-rule-dark bg-paper px-2.5 text-sm font-bold text-ink transition-colors hover:border-red hover:text-red sm:inline-flex"
+        className="inline-flex h-8 items-center gap-1.5 border border-rule-dark bg-paper px-1.5 text-sm font-bold text-ink transition-colors hover:border-red hover:text-red sm:px-2.5"
         aria-label={shareCopied ? "已复制阅读链接" : "复制阅读链接"}
         title={shareCopied ? "已复制阅读链接" : "复制阅读链接"}
       >
         <ShareIcon />
-        <span>{shareCopied ? "已复制" : "分享"}</span>
+        <span className="hidden sm:inline">{shareCopied ? "已复制" : "分享"}</span>
       </button>
       <button
         type="button"
         onClick={() => setSettingsOpen(!settingsOpen)}
-        className="inline-flex h-8 items-center gap-1.5 border border-rule-dark bg-paper px-2 text-sm font-bold text-ink transition-colors hover:border-red hover:text-red sm:px-2.5"
+        className="inline-flex h-8 items-center gap-1.5 border border-rule-dark bg-paper px-1.5 text-sm font-bold text-ink transition-colors hover:border-red hover:text-red sm:px-2.5"
         aria-label="设置"
         aria-expanded={settingsOpen}
       >
@@ -410,7 +431,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       {type === "magazine" ? (
         <Toolbar sticky>
           <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:flex-none sm:gap-2.5">
-            <span className="shrink-0 text-xs font-bold text-muted tracking-wide sm:text-[13px]">日期</span>
+            <span className="hidden shrink-0 text-xs font-bold text-muted tracking-wide sm:inline sm:text-[13px]">日期</span>
             <YearPicker
               value={date}
               onChange={(y) => {
@@ -424,7 +445,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             />
           </div>
           <div ref={seqDropdownRef} className="relative flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2.5">
-            <span className="hidden text-xs font-bold text-muted tracking-wide min-[390px]:inline sm:text-[13px]">期数</span>
+            <span className="hidden text-xs font-bold text-muted tracking-wide sm:inline sm:text-[13px]">期数</span>
             <button
               type="button"
               className="flex h-8 min-w-[92px] items-center justify-between gap-3 border border-rule-dark bg-paper px-2.5 text-left text-xs text-ink transition-colors hover:border-red hover:text-red sm:min-w-[120px] sm:text-sm"
@@ -471,7 +492,13 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             )}
           </div>
           {numPages > 0 && (
-            <span className="hidden whitespace-nowrap text-xs text-muted min-[390px]:inline">共 {numPages} 页</span>
+            <span
+              className="hidden shrink-0 whitespace-nowrap text-[11px] text-muted min-[360px]:inline sm:text-xs"
+              data-reader-page-status
+              aria-label={`第 ${currentPage} 页，共 ${numPages} 页`}
+            >
+              {currentPage} / {numPages}
+            </span>
           )}
           {toolbarActions}
         </Toolbar>
@@ -479,7 +506,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
         /* Toolbar: Newspaper mode */
         <Toolbar sticky>
           <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:flex-none sm:gap-2.5">
-            <span className="shrink-0 text-xs font-bold text-muted tracking-wide sm:text-[13px]">日期</span>
+            <span className="hidden shrink-0 text-xs font-bold text-muted tracking-wide sm:inline sm:text-[13px]">日期</span>
             <DatePicker
               value={date}
               onChange={(ds) => navigate(`/${name}/${ds}`)}
@@ -488,7 +515,13 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             />
           </div>
           {numPages > 0 && (
-            <span className="hidden whitespace-nowrap text-xs text-muted min-[390px]:inline">共 {numPages} 页</span>
+            <span
+              className="hidden shrink-0 whitespace-nowrap text-[11px] text-muted min-[360px]:inline sm:text-xs"
+              data-reader-page-status
+              aria-label={`第 ${currentPage} 页，共 ${numPages} 页`}
+            >
+              {currentPage} / {numPages}
+            </span>
           )}
           {toolbarActions}
         </Toolbar>

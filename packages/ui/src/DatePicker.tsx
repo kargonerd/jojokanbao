@@ -140,12 +140,26 @@ export function DatePicker({ value, onChange, disabledDate, className = "" }: Da
     }, 0);
   };
 
+  const isMonthFullyDisabled = (year: number, month: number) => {
+    if (!disabledDate) return false;
+    return Array.from({ length: getDaysInMonth(year, month) }, (_, index) => index + 1)
+      .every((day) => disabledDate(toDateStr(year, month, day)));
+  };
+
+  const isYearFullyDisabled = (year: number) => {
+    if (!disabledDate) return false;
+    return Array.from({ length: 12 }, (_, month) => month)
+      .every((month) => isMonthFullyDisabled(year, month));
+  };
+
   const handleYearClick = (year: number) => {
+    if (isYearFullyDisabled(year)) return;
     setViewYear(year);
     setPanelMode("month");
   };
 
   const handleMonthClick = (month: number) => {
+    if (isMonthFullyDisabled(viewYear, month)) return;
     setViewMonth(month);
     setPanelMode("date");
   };
@@ -159,7 +173,7 @@ export function DatePicker({ value, onChange, disabledDate, className = "" }: Da
     <div ref={ref} className={`relative inline-block ${className}`}>
       <button
         type="button"
-        className="h-8 w-full px-2 text-xs border border-rule-dark bg-paper text-ink font-serif cursor-pointer hover:border-red transition-colors sm:w-auto sm:px-3 sm:text-sm"
+        className="h-8 w-full whitespace-nowrap px-2 text-xs border border-rule-dark bg-paper text-ink font-serif cursor-pointer hover:border-red transition-colors sm:w-auto sm:px-3 sm:text-sm"
         onClick={() => {
           setOpen((current) => !current);
           setPanelMode("date");
@@ -236,7 +250,7 @@ export function DatePicker({ value, onChange, disabledDate, className = "" }: Da
                     >
                       <span
                         className={`flex h-7 w-7 items-center justify-center rounded-[2px] transition-colors
-                          ${isSelected ? "bg-red text-cream" : isToday ? "text-red" : isDisabled ? "text-rule opacity-40" : "text-ink hover:bg-red/10 hover:text-red"}
+                          ${isDisabled ? "text-rule opacity-40" : isSelected ? "bg-red text-cream" : isToday ? "text-red" : "text-ink hover:bg-red/10 hover:text-red"}
                         `}
                       >
                         {day}
@@ -250,18 +264,22 @@ export function DatePicker({ value, onChange, disabledDate, className = "" }: Da
 
           {panelMode === "month" ? (
             <div className="grid grid-cols-4 gap-y-3 py-2">
-              {MONTH_LABELS.map((label, month) => (
-                <button
-                  key={label}
-                  type="button"
-                  className="flex h-10 items-center justify-center text-sm font-bold transition-colors"
-                  onClick={() => handleMonthClick(month)}
-                >
-                  <span className={`flex h-8 min-w-[48px] items-center justify-center rounded-[2px] px-2 transition-colors ${month === viewMonth ? "bg-red text-cream" : "text-ink hover:bg-red/10 hover:text-red"}`}>
-                    {label}
-                  </span>
-                </button>
-              ))}
+              {MONTH_LABELS.map((label, month) => {
+                const isDisabled = isMonthFullyDisabled(viewYear, month);
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    disabled={isDisabled}
+                    className={`flex h-10 items-center justify-center text-sm font-bold transition-colors ${isDisabled ? "cursor-not-allowed" : "cursor-pointer"}`}
+                    onClick={() => handleMonthClick(month)}
+                  >
+                    <span className={`flex h-8 min-w-[48px] items-center justify-center rounded-[2px] px-2 transition-colors ${isDisabled ? "text-rule opacity-40" : month === viewMonth ? "bg-red text-cream" : "text-ink hover:bg-red/10 hover:text-red"}`}>
+                      {label}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           ) : null}
 
@@ -269,16 +287,18 @@ export function DatePicker({ value, onChange, disabledDate, className = "" }: Da
             <div className="grid grid-cols-4 gap-y-3 py-2">
               {Array.from({ length: 12 }, (_, index) => decadeStart - 1 + index).map((year) => {
                 const isOuter = year < decadeStart || year > decadeStart + 9;
+                const isDisabled = isYearFullyDisabled(year);
                 return (
                   <button
                     key={year}
                     type="button"
-                    className="flex h-10 items-center justify-center text-sm font-bold transition-colors"
+                    disabled={isDisabled}
+                    className={`flex h-10 items-center justify-center text-sm font-bold transition-colors ${isDisabled ? "cursor-not-allowed" : "cursor-pointer"}`}
                     onClick={() => handleYearClick(year)}
                   >
                     <span
                       className={`flex h-8 min-w-[52px] items-center justify-center rounded-[2px] px-2 transition-colors
-                        ${year === viewYear ? "bg-red text-cream" : isOuter ? "text-rule opacity-60 hover:bg-red/10 hover:text-red hover:opacity-100" : "text-ink hover:bg-red/10 hover:text-red"}
+                        ${isDisabled ? "text-rule opacity-40" : year === viewYear ? "bg-red text-cream" : isOuter ? "text-rule opacity-60 hover:bg-red/10 hover:text-red hover:opacity-100" : "text-ink hover:bg-red/10 hover:text-red"}
                       `}
                     >
                       {year}
@@ -329,7 +349,7 @@ export function YearPicker({ value, onChange, min = 1930, max = 2030, className 
     <div ref={ref} className={`relative inline-block ${className}`}>
       <button
         type="button"
-        className="h-8 w-full px-2 text-xs border border-rule-dark bg-paper text-ink font-serif cursor-pointer hover:border-red transition-colors sm:w-auto sm:px-3 sm:text-sm"
+        className="h-8 w-full whitespace-nowrap px-2 text-xs border border-rule-dark bg-paper text-ink font-serif cursor-pointer hover:border-red transition-colors sm:w-auto sm:px-3 sm:text-sm"
         onClick={() => setOpen(!open)}
       >
         {value ? `${value}年` : "选择年份"}
