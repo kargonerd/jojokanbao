@@ -10,6 +10,10 @@ async function fail(message) {
   process.exitCode = 1;
 }
 
+async function fileCount(directory) {
+  return (await readdir(directory, { withFileTypes: true })).filter((entry) => entry.isFile()).length;
+}
+
 try {
   const assetNames = await readdir(assetsDir);
   const workers = assetNames.filter((name) => name.startsWith("pdf.worker-"));
@@ -38,6 +42,21 @@ try {
       }
       if (/pdf\.worker-[^"']+\.mjs/.test(entry)) {
         await fail("JavaScript entry still references an .mjs PDF worker");
+      }
+
+      const pdfjsAssets = [
+        { folder: "cmaps", minimum: 100 },
+        { folder: "wasm", minimum: 10 },
+        { folder: "standard_fonts", minimum: 10 },
+      ];
+      for (const { folder, minimum } of pdfjsAssets) {
+        const count = await fileCount(new URL(`pdfjs/${folder}/`, assetsDir));
+        if (count < minimum) {
+          await fail(`expected at least ${minimum} local PDF.js ${folder} files, found ${count}`);
+        }
+        if (!entry.includes(`/assets/pdfjs/${folder}/`)) {
+          await fail(`JavaScript entry does not reference local PDF.js ${folder}`);
+        }
       }
     }
 

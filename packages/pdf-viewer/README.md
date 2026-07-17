@@ -36,4 +36,4 @@ function MyReader() {
 - 测试环境需要 mock pdfjs-dist（jsdom 不支持 DOMMatrix/Canvas）
 - `quality` 表示相对显示尺寸的输出像素倍率，当前阅读器使用 1–3 档且默认最高档 3；画布仍受 3200 万像素和 8192 单边上限保护
 - 可选 `scale` 会覆盖自动分辨率，但仍受 canvas 像素和边长上限保护
-- cmap 默认从 unpkg CDN 加载，生产环境建议本地托管
+- Reader 构建会把 cmap、wasm 和 standard fonts 复制到 `/assets/pdfjs/`，运行时不依赖第三方 CDN
