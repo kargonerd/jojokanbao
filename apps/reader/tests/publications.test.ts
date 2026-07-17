@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PUBLICATIONS } from "../src/publications";
+import { getLatestRmrbAvailableDate, RMRB_DAILY_AVAILABLE_HOUR } from "../src/dateAvailability";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("publication catalog invariants", () => {
   it("keeps all five route keys, labels, types, and defaults stable", () => {
@@ -52,10 +57,24 @@ describe("人民日报 availability", () => {
   it.each([
     ["19460514", true],
     ["19460515", false],
-    ["20260514", false],
-    ["20260515", true],
   ])("applies the archive boundary for %s", (date, expected) => {
     expect(disabled(date)).toBe(expected);
+  });
+
+  it("exposes today's issue only after the daily sync completion window", () => {
+    expect(RMRB_DAILY_AVAILABLE_HOUR).toBe(19);
+    expect(getLatestRmrbAvailableDate(new Date("2026-07-17T10:59:59Z"))).toBe("20260716");
+    expect(getLatestRmrbAvailableDate(new Date("2026-07-17T11:00:00Z"))).toBe("20260717");
+    expect(getLatestRmrbAvailableDate(new Date("2026-01-01T02:00:00Z"))).toBe("20251231");
+
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-17T10:59:59Z"));
+    expect(disabled("20260716")).toBe(false);
+    expect(disabled("20260717")).toBe(true);
+
+    vi.setSystemTime(new Date("2026-07-17T11:00:00Z"));
+    expect(disabled("20260717")).toBe(false);
+    expect(disabled("20260718")).toBe(true);
   });
 
   it("blocks missing years without blocking adjacent archived years", () => {

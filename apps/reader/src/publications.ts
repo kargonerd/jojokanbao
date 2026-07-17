@@ -1,3 +1,5 @@
+import { getLatestRmrbAvailableDate } from "./dateAvailability";
+
 /**
  * 报刊配置数据 — 从原 Vue 项目迁移
  * 包含各报刊的期数选项、日期验证、默认 ID 等
@@ -201,7 +203,7 @@ export const PUBLICATIONS: Record<string, PublicationConfig> = {
     name: "rmrb", label: "人民日报", type: "newspaper", defaultId: "19761009",
     resolutionControl: true,
     disabledDate: (d) => isDateDisabled(d, {
-      minDate: "19460515", maxDate: "20260514",
+      minDate: "19460515", maxDate: getLatestRmrbAvailableDate(),
       missingYears: RMRB_MISSING_YEARS,
       blacklist: RMRB_MISSING_DATES,
     }),

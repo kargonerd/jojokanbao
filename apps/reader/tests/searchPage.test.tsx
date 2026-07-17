@@ -70,6 +70,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("SearchPage initial search", () => {
@@ -226,6 +227,32 @@ describe("SearchPage results", () => {
 });
 
 describe("SearchPage filters", () => {
+  it("enables today only after the daily archive sync cutoff", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-17T11:00:00Z"));
+    renderSearch("/search?keyword=历史&startDate=20260716&endDate=20260717");
+    await screen.findByRole("heading", { name: highlightedTitleName });
+
+    fireEvent.click(screen.getByText("2026年07月16日"));
+    fireEvent.click(screen.getByRole("button", { name: "2026 年" }));
+    expect((screen.getByRole("button", { name: "2026" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "2027" }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "2026" }));
+    expect((screen.getByRole("button", { name: "七月" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "八月" }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "七月" }));
+    expect((screen.getByRole("button", { name: "17" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "18" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "18" }));
+    expect(screen.getByText("2026年07月16日")).toBeTruthy();
+
+    fireEvent.mouseDown(document.body);
+    fireEvent.click(screen.getByText("2026年07月17日"));
+    expect((screen.getByRole("button", { name: "18" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("changes sort immediately, resets to page one, and closes the list", async () => {
     renderSearch("/search?keyword=历史&page=3");
     await screen.findByRole("heading", { name: highlightedTitleName });
