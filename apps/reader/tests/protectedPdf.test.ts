@@ -306,12 +306,14 @@ describe("protected reader PDFs", () => {
     const original = makePdf(text, padding);
     const protectedPdf = protectPdfBytes(original);
     const { fetchFn, ranges } = createRangeFetch(protectedPdf);
+    const progress = vi.fn();
 
     await expectPdfOpenFailure(protectedPdf);
 
     const download = await fetchPdfDownloadBytes("https://cdn.example.test/download.pdf", "auto", {
       fetchFn: fetchFn as unknown as typeof fetch,
       rangeChunkSize: 128,
+      onDownloadProgress: progress,
     });
 
     expect(download.protected).toBe(true);
@@ -319,6 +321,35 @@ describe("protected reader PDFs", () => {
     await expect(readPdfText(download.bytes)).resolves.toContain(text);
     expect(ranges[0]).toBe("bytes=0-127");
     expect(ranges.every((range) => range.startsWith("bytes="))).toBe(true);
+    expect(progress).toHaveBeenLastCalledWith(original.length, original.length);
+  });
+
+  it("downloads remaining ranges with bounded concurrency", async () => {
+    const { fetchPdfDownloadBytes, protectPdfBytes } = await loadProtectionModule();
+    const original = makePdf("ConcurrentDownload", 2048);
+    const protectedPdf = protectPdfBytes(original);
+    const rangeFetch = createRangeFetch(protectedPdf);
+    let activeRequests = 0;
+    let peakRequests = 0;
+    const fetchFn = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      activeRequests += 1;
+      peakRequests = Math.max(peakRequests, activeRequests);
+      await new Promise((resolve) => window.setTimeout(resolve, 1));
+      try {
+        return await rangeFetch.fetchFn(url, init);
+      } finally {
+        activeRequests -= 1;
+      }
+    });
+
+    const download = await fetchPdfDownloadBytes("https://cdn.example.test/concurrent.pdf", "auto", {
+      fetchFn: fetchFn as unknown as typeof fetch,
+      rangeChunkSize: 128,
+      downloadConcurrency: 3,
+    });
+
+    expect(byteArray(download.bytes)).toEqual(byteArray(original));
+    expect(peakRequests).toBe(3);
   });
 
   it("keeps plain PDFs readable during migration when auto mode is used", async () => {
