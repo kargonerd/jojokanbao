@@ -49,6 +49,10 @@ jobs:
           trap 'rm -rf "$DEPLOY_STATIC_PATH"' EXIT
           cp -R "${COS_UPLOAD_FROM_PATH}." "$DEPLOY_STATIC_PATH/"
           rm -f "$DEPLOY_STATIC_PATH/index.html"
+          # These root-level directories belonged to the retired standalone
+          # PDF.js viewer. Reader runtime assets now live under /assets/pdfjs/.
+          coscmd delete -rf pdfjs || true
+          coscmd delete -rf cmaps || true
           # Keep older files and upload the complete build before its entry.
           # This preserves favicon/robots/compatibility assets as well as
           # hashed assets needed by tabs opened before the release.
