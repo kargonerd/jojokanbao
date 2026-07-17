@@ -9,6 +9,11 @@ on:
         description: "Date to sync as YYYYMMDD. Empty means today."
         required: false
         type: string
+      force:
+        description: "Overwrite the remote PDF if it already exists."
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   sync-rmrb:
@@ -19,12 +24,19 @@ jobs:
       B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
       B2_BUCKET: ${{ secrets.B2_BUCKET || 'jojo-newspaper' }}
       B2_REMOTE: jojo-b2
+      TENCENTCLOUD_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
+      TENCENTCLOUD_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
     steps:
       - uses: actions/checkout@v5
 
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          package-manager-cache: false
 
       - name: Install system tools
         run: |
@@ -36,8 +48,46 @@ jobs:
 
       - name: Sync RMRB PDF
         run: |
+          args=()
           if [ -n "${{ inputs.date }}" ]; then
-            python upload/sync_rmrb_today.py --date "${{ inputs.date }}"
-          else
-            python upload/sync_rmrb_today.py
+            args+=(--date "${{ inputs.date }}")
           fi
+          if [ "${{ inputs.force }}" = "true" ]; then
+            args+=(--force)
+          fi
+          python upload/sync_rmrb_today.py "${args[@]}"
+
+      - name: Purge overwritten PDF from EdgeOne and verify
+        if: ${{ inputs.force }}
+        run: |
+          sync_date="${{ inputs.date }}"
+          if [ -z "$sync_date" ]; then
+            sync_date="$(date +%Y%m%d)"
+          fi
+          year="$sync_date"
+          year="${year:0:4}"
+          url="https://blacknews.jojokanbao.cn/RMRB/${year}/${sync_date}.pdf"
+          node tooling/purge-edgeone-reader-cache.mjs "$url"
+
+          for attempt in {1..18}; do
+            rm -f /tmp/rmrb-probe.pdf /tmp/rmrb-probe.decoded.pdf /tmp/rmrb-headers
+            if curl --silent --show-error --fail \
+              --header "Cache-Control: no-cache" \
+              --header "Range: bytes=0-65535" \
+              --dump-header /tmp/rmrb-headers \
+              --output /tmp/rmrb-probe.pdf \
+              "$url" \
+              && grep -Eq '^HTTP/[^ ]+ 206' /tmp/rmrb-headers; then
+              if [ "$(head -c 5 /tmp/rmrb-probe.pdf)" != "%PDF-" ] \
+                && node tooling/protect-reader-pdf.mjs decode /tmp/rmrb-probe.pdf /tmp/rmrb-probe.decoded.pdf \
+                && [ "$(head -c 5 /tmp/rmrb-probe.decoded.pdf)" = "%PDF-" ]; then
+                echo "Public URL serves protected byte ranges."
+                exit 0
+              fi
+            fi
+            echo "Attempt ${attempt}: EdgeOne still serves stale or invalid bytes; retrying..."
+            sleep 10
+          done
+
+          echo "Public URL did not switch to the protected PDF in time." >&2
+          exit 1
