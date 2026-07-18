@@ -24,6 +24,15 @@ async function loadProtectionModule() {
   return import("@jojo/pdf-viewer");
 }
 
+async function loadPdfJs() {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  // PDF.js does not publish a declaration file for the worker entry.
+  // @ts-expect-error worker module has runtime exports only
+  const worker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
+  (globalThis as typeof globalThis & { pdfjsWorker?: unknown }).pdfjsWorker = worker;
+  return pdfjs;
+}
+
 function makePdf(text: string, paddingLength = 0): Uint8Array {
   const encoder = new TextEncoder();
   const padding = paddingLength > 0 ? `% ${"x".repeat(paddingLength)}\n` : "";
@@ -62,7 +71,7 @@ function byteArray(bytes: Uint8Array): number[] {
 }
 
 async function readPdfText(bytes: Uint8Array): Promise<string> {
-  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const { getDocument } = await loadPdfJs();
   const task = getDocument({ data: new Uint8Array(bytes), disableFontFace: true });
   const doc = await task.promise;
   const page = await doc.getPage(1);
@@ -72,7 +81,7 @@ async function readPdfText(bytes: Uint8Array): Promise<string> {
 }
 
 async function expectPdfOpenFailure(bytes: Uint8Array): Promise<void> {
-  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const { getDocument } = await loadPdfJs();
   const task = getDocument({ data: new Uint8Array(bytes), disableFontFace: true });
   await expect(task.promise).rejects.toThrow();
 }
@@ -250,7 +259,7 @@ describe("protected reader PDFs", () => {
     expect(source.kind).toBe("protected");
     if (source.kind !== "protected") return;
 
-    const { getDocument } = await import("pdfjs-dist");
+    const { getDocument } = await loadPdfJs();
     const task = getDocument({
       range: source.transport,
       disableAutoFetch: true,
@@ -278,7 +287,8 @@ describe("protected reader PDFs", () => {
     });
 
     expect(source.kind).toBe("plain");
-    const { getDocument } = await import("pdfjs-dist");
+    if (source.kind !== "plain") return;
+    const { getDocument } = await loadPdfJs();
     const task = getDocument({
       range: source.transport,
       rangeChunkSize,
@@ -363,8 +373,57 @@ describe("protected reader PDFs", () => {
     });
 
     expect(source.kind).toBe("plain");
+    if (source.kind !== "plain") return;
     expect(source.transport).toBeDefined();
     expect(ranges).toEqual(["bytes=0-63"]);
+  });
+
+  it("falls back to a full protected PDF when an older browser rejects the Range request", async () => {
+    const { protectPdfBytes, resolvePdfSource } = await loadProtectionModule();
+    const original = makePdf("Legacy Browser Fallback", 256);
+    const protectedPdf = protectPdfBytes(original);
+    let requestCount = 0;
+    const fetchFn = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => {
+      requestCount += 1;
+      if (requestCount === 1) throw new TypeError("Failed to fetch");
+      return new Response(protectedPdf.slice().buffer as ArrayBuffer, {
+        status: 200,
+        headers: { "Content-Length": String(protectedPdf.length) },
+      });
+    });
+
+    const source = await resolvePdfSource("https://cdn.example.test/legacy.pdf", "auto", {
+      fetchFn: fetchFn as unknown as typeof fetch,
+      rangeChunkSize: 64,
+    });
+
+    expect(source.kind).toBe("buffered");
+    if (source.kind !== "buffered") return;
+    expect(source.protected).toBe(true);
+    expect(byteArray(source.data)).toEqual(byteArray(original));
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(new Headers(fetchFn.mock.calls[1]?.[1]?.headers).has("Range")).toBe(false);
+  });
+
+  it("uses the same full-fetch fallback for downloads", async () => {
+    const { fetchPdfDownloadBytes } = await loadProtectionModule();
+    const original = makePdf("Legacy Plain Download");
+    const progress = vi.fn();
+    let requestCount = 0;
+    const fetchFn = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => {
+      requestCount += 1;
+      if (requestCount === 1) throw new TypeError("Failed to fetch");
+      return new Response(original.slice().buffer as ArrayBuffer, { status: 200 });
+    });
+
+    const download = await fetchPdfDownloadBytes("https://cdn.example.test/legacy-download.pdf", "auto", {
+      fetchFn: fetchFn as unknown as typeof fetch,
+      onDownloadProgress: progress,
+    });
+
+    expect(download.protected).toBe(false);
+    expect(byteArray(download.bytes)).toEqual(byteArray(original));
+    expect(progress).toHaveBeenLastCalledWith(original.length, original.length);
   });
 
   it("uses HEAD length when a valid partial response has an unknown total", async () => {
