@@ -33,6 +33,18 @@ try {
 
   const assetNames = await readdir(assetsDir);
   const workers = assetNames.filter((name) => name.startsWith("pdf.worker-"));
+  const stylesheets = assetNames.filter((name) => name.endsWith(".css"));
+  const indexHtml = await readFile(new URL("index.html", distDir), "utf8");
+
+  for (const stylesheet of stylesheets) {
+    const css = await readFile(new URL(stylesheet, assetsDir), "utf8");
+    if (/@layer(?:\s+[-\w.]+)?\s*\{/.test(css)) {
+      await fail(`legacy browser compatibility requires flattened cascade layers: ${stylesheet}`);
+    }
+    if (!indexHtml.includes(`assets/${stylesheet}`)) {
+      await fail(`index.html does not reference the post-processed stylesheet: ${stylesheet}`);
+    }
+  }
 
   if (workers.length !== 1) {
     await fail(`expected exactly one PDF worker, found ${workers.length}: ${workers.join(", ") || "none"}`);
@@ -47,7 +59,11 @@ try {
       await fail(`PDF worker is unexpectedly small (${workerStats.size} bytes): ${worker}`);
     }
 
-    const indexHtml = await readFile(new URL("index.html", distDir), "utf8");
+    const workerSource = await readFile(new URL(worker, assetsDir), "utf8");
+    if (!workerSource.includes("toHex") || !workerSource.includes("ffffffffffffffff")) {
+      await fail("PDF worker is missing the legacy Uint8Array.toHex compatibility code");
+    }
+
     const entryMatch = /assets\/(index-[^"']+\.js)/.exec(indexHtml);
     if (!entryMatch?.[1]) {
       await fail("index.html does not reference a hashed JavaScript entry");

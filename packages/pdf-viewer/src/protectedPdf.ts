@@ -1,4 +1,4 @@
-import { PDFDataRangeTransport } from "pdfjs-dist";
+import { PDFDataRangeTransport } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 const PDF_MAGIC = "%PDF-";
 export const DEFAULT_PDF_RANGE_CHUNK_SIZE = 256 * 1024;
@@ -32,7 +32,14 @@ export interface PlainPdfSource {
   transport: PlainPdfRangeTransport;
 }
 
-export type PdfSource = ProtectedPdfSource | PlainPdfSource;
+export interface BufferedPdfSource {
+  kind: "buffered";
+  length: number;
+  data: Uint8Array;
+  protected: boolean;
+}
+
+export type PdfSource = ProtectedPdfSource | PlainPdfSource | BufferedPdfSource;
 
 export interface PdfDownloadBytes {
   bytes: Uint8Array;
@@ -130,6 +137,71 @@ function buildRangeHeaders(headers: HeadersInit | undefined, begin: number, end:
   }
 
   return { ...headers, Range: rangeHeader };
+}
+
+function removeRangeHeader(headers: HeadersInit | undefined): HeadersInit | undefined {
+  if (!headers) return undefined;
+
+  if (Array.isArray(headers)) {
+    return headers.filter(([key]) => key.toLowerCase() !== "range");
+  }
+
+  if (typeof headers.forEach === "function") {
+    const result: Record<string, string> = {};
+    headers.forEach((value, key) => {
+      if (key.toLowerCase() !== "range") result[key] = value;
+    });
+    return result;
+  }
+
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() !== "range") result[key] = value;
+  }
+  return result;
+}
+
+function decodeFullPdf(bytes: Uint8Array, mode: ProtectedPdfMode): PdfDownloadBytes {
+  if (hasPdfMagic(bytes)) {
+    if (mode === true) {
+      throw new Error("Expected a protected PDF, but the CDN returned a plain PDF");
+    }
+    return { bytes, protected: false };
+  }
+
+  if (mode === false) {
+    throw new Error("Expected a plain PDF, but the CDN returned a protected PDF");
+  }
+
+  const decoded = applyPdfByteMask(bytes, 0);
+  if (!hasPdfMagic(decoded)) {
+    throw new Error("CDN file is neither a plain PDF nor a JOJO protected PDF");
+  }
+  return { bytes: decoded, protected: true };
+}
+
+async function fetchFullPdf(
+  url: string,
+  mode: ProtectedPdfMode,
+  options: ProtectedPdfFetchOptions,
+  signal?: AbortSignal,
+): Promise<PdfDownloadBytes> {
+  const response = await getFetch(options)(url, {
+    headers: removeRangeHeader(options.headers),
+    signal,
+    credentials: options.withCredentials ? "include" : "same-origin",
+  });
+
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error(`PDF request failed with HTTP ${response.status}`);
+  }
+
+  return decodeFullPdf(new Uint8Array(await response.arrayBuffer()), mode);
+}
+
+function shouldFallBackToFullFetch(error: unknown, signal?: AbortSignal): boolean {
+  return !signal?.aborted && error instanceof TypeError;
 }
 
 async function fetchRange(
@@ -330,7 +402,19 @@ export async function resolvePdfSource(
   signal?: AbortSignal
 ): Promise<PdfSource> {
   const rangeChunkSize = getRangeChunkSize(options.rangeChunkSize);
-  const initialRange = await fetchRange(url, 0, rangeChunkSize, options, signal);
+  let initialRange: Awaited<ReturnType<typeof fetchRange>>;
+  try {
+    initialRange = await fetchRange(url, 0, rangeChunkSize, options, signal);
+  } catch (error) {
+    if (!shouldFallBackToFullFetch(error, signal)) throw error;
+    const fullPdf = await fetchFullPdf(url, mode, options, signal);
+    return {
+      kind: "buffered",
+      length: fullPdf.bytes.length,
+      data: fullPdf.bytes,
+      protected: fullPdf.protected,
+    };
+  }
 
   if (hasPdfMagic(initialRange.bytes)) {
     if (mode === true) {
@@ -370,7 +454,15 @@ export async function fetchPdfDownloadBytes(
 ): Promise<PdfDownloadBytes> {
   const rangeChunkSize = getRangeChunkSize(options.rangeChunkSize ?? DEFAULT_PDF_DOWNLOAD_RANGE_CHUNK_SIZE);
   const downloadConcurrency = getDownloadConcurrency(options.downloadConcurrency);
-  const initialRange = await fetchRange(url, 0, rangeChunkSize, options, signal);
+  let initialRange: Awaited<ReturnType<typeof fetchRange>>;
+  try {
+    initialRange = await fetchRange(url, 0, rangeChunkSize, options, signal);
+  } catch (error) {
+    if (!shouldFallBackToFullFetch(error, signal)) throw error;
+    const fullPdf = await fetchFullPdf(url, mode, options, signal);
+    options.onDownloadProgress?.(fullPdf.bytes.length, fullPdf.bytes.length);
+    return fullPdf;
+  }
 
   if (hasPdfMagic(initialRange.bytes)) {
     if (mode === true) {
