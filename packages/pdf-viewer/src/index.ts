@@ -14,6 +14,7 @@ export {
   resolvePdfSource,
   unprotectPdfBytes,
   type PdfSource,
+  type BufferedPdfSource,
   type PlainPdfSource,
   type ProtectedPdfFetchOptions,
   type ProtectedPdfMode,

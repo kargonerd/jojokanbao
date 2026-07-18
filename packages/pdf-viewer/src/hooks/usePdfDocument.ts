@@ -1,7 +1,11 @@
 import { useState, useEffect } from "react";
-import { getDocument, type PDFDocumentLoadingTask, type PDFDocumentProxy } from "pdfjs-dist";
-import { GlobalWorkerOptions } from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.mjs?worker&url";
+import {
+  getDocument,
+  GlobalWorkerOptions,
+  type PDFDocumentLoadingTask,
+  type PDFDocumentProxy,
+} from "pdfjs-dist/legacy/build/pdf.mjs";
+import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.mjs?worker&url";
 import {
   DEFAULT_PDF_RANGE_CHUNK_SIZE,
   resolvePdfSource,
@@ -81,19 +85,23 @@ export function usePdfDocument({
         onRangeError: fail,
       }, initialRequest.signal);
       if (cancelled) {
-        source.transport.abort();
+        if (source.kind !== "buffered") source.transport.abort();
         return;
       }
 
-      abortSource = source.transport;
-      task = getDocument({
-        ...commonParams,
-        range: source.transport,
-        rangeChunkSize,
-        disableRange: false,
-        disableStream: true,
-        disableAutoFetch: true,
-      });
+      if (source.kind === "buffered") {
+        task = getDocument({ ...commonParams, data: source.data });
+      } else {
+        abortSource = source.transport;
+        task = getDocument({
+          ...commonParams,
+          range: source.transport,
+          rangeChunkSize,
+          disableRange: false,
+          disableStream: true,
+          disableAutoFetch: true,
+        });
+      }
 
       const doc = await task.promise;
       if (cancelled || failed) {

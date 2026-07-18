@@ -162,6 +162,40 @@ test("reader shows the first page before all PDF ranges return", async ({ page }
   expect(transferredBytes, JSON.stringify(requests)).toBeLessThan(pdf.length);
 });
 
+test("reader falls back to a full PDF when the browser rejects Range transport", async ({ page }) => {
+  const pdf = makeDemandLoadedPdf(1_000);
+  let rangeRequests = 0;
+  let fullRequests = 0;
+
+  await page.route("https://blacknews.jojokanbao.cn/RMRB/1976/19761009.pdf", async (route) => {
+    if (route.request().headers().range) {
+      rangeRequests += 1;
+      await route.abort("failed");
+      return;
+    }
+
+    fullRequests += 1;
+    await route.fulfill({
+      status: 200,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Content-Length": String(pdf.length),
+        "Content-Type": "application/pdf",
+      },
+      body: pdf,
+    });
+  });
+
+  await page.goto("/rmrb/19761009", { waitUntil: "domcontentloaded" });
+  const canvas = page.locator("#page-1 canvas");
+  await expect(canvas).toBeVisible({ timeout: 20_000 });
+  await expect.poll(() => canvas.evaluate((element) => (element as HTMLCanvasElement).width)).toBeGreaterThan(0);
+  // React StrictMode may start and cancel an extra initial request in dev.
+  expect(rangeRequests).toBeGreaterThanOrEqual(1);
+  expect(fullRequests).toBe(1);
+  await expect(page.getByText("没有当天文档或数据缺失")).toHaveCount(0);
+});
+
 test("switching from a newspaper to a magazine never requests a stale mixed document id", async ({ page }) => {
   const pdfRequests: string[] = [];
   await page.route("https://blacknews.jojokanbao.cn/**/*.pdf", async (route) => {
