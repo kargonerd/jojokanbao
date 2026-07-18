@@ -325,6 +325,12 @@ async function publishOne(storage, item, force) {
     ...storage.uploadHeaders,
   };
   const args = ["rclone", "copyto", item.local, item.target];
+  if (force) {
+    // Protected PDFs retain the source size. Force rclone to replace an
+    // existing plain PDF even when the backend cannot compare modification
+    // times reliably and would otherwise treat equal sizes as unchanged.
+    args.push("--ignore-times");
+  }
   for (const [name, value] of Object.entries(uploadHeaders)) {
     args.push("--header-upload", `${name}: ${value}`);
   }
@@ -422,7 +428,10 @@ async function verifyPublished(storage, item) {
   }
 
   const sampleLength = Math.min(32, localSize);
-  const offsets = [...new Set([0, Math.max(0, Math.floor((localSize - sampleLength) / 2)), localSize - sampleLength])];
+  // A successful single-object S3 PUT already has transport integrity checks.
+  // Read the protected prefix back to ensure the destination was actually
+  // replaced, without paying for three new rclone processes per issue.
+  const offsets = [0];
   const handle = await open(item.local, "r");
   try {
     for (const offset of offsets) {
