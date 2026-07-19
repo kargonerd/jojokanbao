@@ -70,7 +70,16 @@ test("search date filters use the new value and pagination returns to the result
   await expect.poll(() => {
     const lastRequest = requests.at(-1);
     return lastRequest ? new URL(lastRequest).searchParams.get("startDate") : null;
-  }).toBe("20260715");
+  }).toBe("2026-07-15");
+
+  await page.getByRole("button", { name: "清除日期" }).click();
+  await expect.poll(() => {
+    const lastRequest = requests.at(-1);
+    if (!lastRequest) return "pending";
+    const params = new URL(lastRequest).searchParams;
+    return `${params.get("startDate")}:${params.get("endDate")}`;
+  }).toBe("null:null");
+  await expect(page.locator("button").filter({ hasText: "选择日期" })).toHaveCount(2);
 
   const scrollContainer = page.locator("[data-search-scroll-container]");
   await scrollContainer.evaluate((element) => { element.scrollTop = element.scrollHeight; });
