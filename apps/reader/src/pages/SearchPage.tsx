@@ -50,6 +50,10 @@ function normalizeSort(value: string | null): string {
   return SORT_OPTIONS.some((option) => option.value === value) ? value! : "";
 }
 
+function formatSearchApiDate(value: string): string {
+  return value.replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3");
+}
+
 function buildSearchParams({
   keyword,
   page,
@@ -125,8 +129,8 @@ export function SearchPage() {
     const requestParams: Record<string, string | number> = { keyword, page: nextPage, size: pageSize };
     if (nextSort) requestParams.sort = nextSort;
     if (nextStartDate && nextEndDate) {
-      requestParams.startDate = nextStartDate;
-      requestParams.endDate = nextEndDate;
+      requestParams.startDate = formatSearchApiDate(nextStartDate);
+      requestParams.endDate = formatSearchApiDate(nextEndDate);
     }
 
     setBeforeSearch(false);
@@ -218,6 +222,13 @@ export function SearchPage() {
     setParams(buildSearchParams({ keyword: term, page: 1, sort, startDate, endDate: nextEndDate }));
   }
 
+  function handleClearDates() {
+    setStartDate("");
+    setEndDate("");
+    setPage(1);
+    setParams(buildSearchParams({ keyword: term, page: 1, sort, startDate: "", endDate: "" }));
+  }
+
   const selectedSortLabel = SORT_OPTIONS.find((option) => option.value === sort)?.label ?? "默认排序";
 
   return (
@@ -252,6 +263,15 @@ export function SearchPage() {
             <label className="flex items-center gap-2 text-xs font-bold text-muted">
               至 <DatePicker value={endDate} onChange={handleEndDateChange} disabledDate={disableUnavailableDate} />
             </label>
+            {(startDate || endDate) && (
+              <button
+                type="button"
+                onClick={handleClearDates}
+                className="h-8 border border-rule-dark bg-paper px-3 text-xs font-bold text-red transition-colors hover:border-red hover:text-red-dark"
+              >
+                清除日期
+              </button>
+            )}
             <div ref={sortDropdownRef} className="relative min-w-[120px]">
               <button
                 type="button"
