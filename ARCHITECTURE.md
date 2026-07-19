@@ -4,6 +4,7 @@ JOJO Platform 按运行职责组织，不按历史项目或部署平台组织。
 
 ```text
 frontend/       Web、Homepage、Desktop、Mobile 以及前端共享包
+agent/          产品无关的 Node Agent 运行层与模型适配
 backend/        统一 Python 后端
 tools/          数据工作台与人工运维工具
 infrastructure/ EdgeOne、Supabase 等部署和基础设施配置
@@ -39,6 +40,12 @@ pnpm dev:backend
 EdgeOne 专有入口位于 `infrastructure/edgeone/functions`，只导入
 `backend/src/app/main.py` 创建的应用，不承载业务逻辑。部署脚本将 Web 静态文件、
 主 API 和平台入口组装到忽略的 `.edgeone/web-deploy`。
+
+## Agent
+
+- `agent/runtime`：产品无关的 Pi Agent 循环、工具预算、流式事件和 token/cost 聚合。
+- RAG、Olds 等业务分别注入提示词、工具、模型供应商和凭证。
+- 国内与海外模型可以使用不同部署入口，但共享同一运行层。
 
 ## Tools and infrastructure
 

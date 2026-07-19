@@ -3,6 +3,7 @@
 ## 项目结构
 
 - `frontend/`：所有用户界面及其共享 TypeScript/CSS 包。
+- `agent/`：产品无关的 Node Agent 运行层与模型适配。
 - `backend/`：统一 Python API 和尚未启用的业务模块。
 - `tools/`：内部工作台和人工运维工具。
 - `infrastructure/`：EdgeOne 与 Supabase 配置。
@@ -39,6 +40,11 @@ pnpm test:backend
 - 定时、批处理和人工运维代码放入 `tools/`，不伪装成 API。
 - Desktop 专属本地能力使用 TypeScript，位于 `frontend/desktop/engine`。
 - 后端公共、Olds 和 RAG 依赖分别由 `backend/requirements*.txt` 管理。
+
+## Agent 约定
+
+- 通用 Agent 循环位于 `agent/runtime`，不包含 RAG、Olds、HTTP 或部署逻辑。
+- 模型供应商、凭证、提示词和工具由具体产品或部署入口注入。
 
 ## 设计系统
 
