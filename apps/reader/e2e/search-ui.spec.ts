@@ -65,8 +65,10 @@ test("search date filters use the new value and pagination returns to the result
   await page.goto("/search?keyword=测试&startDate=20260716&endDate=20260717", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "测试标题 1", exact: true })).toBeVisible();
 
-  await page.locator("button").filter({ hasText: "2026年07月16日" }).click();
+  await page.getByRole("button", { name: "日期范围：2026-07-16 — 2026-07-17" }).click();
+  await page.getByRole("button", { name: "开始日期：打开日历" }).click();
   await page.getByRole("button", { name: "15", exact: true }).click();
+  await page.getByRole("button", { name: "应用" }).click();
   await expect.poll(() => {
     const lastRequest = requests.at(-1);
     return lastRequest ? new URL(lastRequest).searchParams.get("startDate") : null;
@@ -79,7 +81,29 @@ test("search date filters use the new value and pagination returns to the result
     const params = new URL(lastRequest).searchParams;
     return `${params.get("startDate")}:${params.get("endDate")}`;
   }).toBe("null:null");
-  await expect(page.locator("button").filter({ hasText: "选择日期" })).toHaveCount(2);
+  await expect(page.getByRole("button", { name: "日期范围：选择日期范围" })).toBeVisible();
+
+  await page.getByRole("button", { name: "日期范围：选择日期范围" }).click();
+  await page.getByRole("textbox", { name: "开始日期" }).fill("1946.9.25");
+  await page.getByRole("textbox", { name: "开始日期" }).press("Enter");
+  await page.getByRole("textbox", { name: "结束日期" }).fill("1960.5.6");
+  await page.getByRole("textbox", { name: "结束日期" }).press("Enter");
+  await page.getByRole("button", { name: "应用" }).click();
+  await expect.poll(() => {
+    const lastRequest = requests.at(-1);
+    if (!lastRequest) return "pending";
+    const params = new URL(lastRequest).searchParams;
+    return `${params.get("startDate")}:${params.get("endDate")}`;
+  }).toBe("1946-09-25:1960-05-06");
+
+  await page.getByRole("button", { name: "日期范围：1946-09-25 — 1960-05-06" }).click();
+  await page.getByRole("button", { name: "大跃进" }).click();
+  await expect.poll(() => {
+    const lastRequest = requests.at(-1);
+    if (!lastRequest) return "pending";
+    const params = new URL(lastRequest).searchParams;
+    return `${params.get("startDate")}:${params.get("endDate")}`;
+  }).toBe("1958-01-01:1960-12-31");
 
   const scrollContainer = page.locator("[data-search-scroll-container]");
   await scrollContainer.evaluate((element) => { element.scrollTop = element.scrollHeight; });
