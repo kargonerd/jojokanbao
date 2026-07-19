@@ -23,8 +23,7 @@ WORK_DIR = Path(os.environ.get("RMRB_SYNC_WORK_DIR", ".rmrb-sync-work"))
 STATE_FILE = WORK_DIR / "state.json"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PROTECT_SCRIPT = REPO_ROOT / "tooling" / "protect-reader-pdf.mjs"
-WINDOWS_QPDF = Path(r"C:\Program Files\qpdf 12.3.2\bin\qpdf.exe")
-QPDF_BIN = os.environ.get("QPDF_BIN") or shutil.which("qpdf") or (str(WINDOWS_QPDF) if WINDOWS_QPDF.exists() else "qpdf")
+QPDF_BIN = os.environ.get("QPDF_BIN") or shutil.which("qpdf") or "qpdf"
 
 
 def run(args):

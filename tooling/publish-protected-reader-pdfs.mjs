@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 const MASK_SEED = 0x4a4f4a4f;
 const PDF_MAGIC = "%PDF-";
 const CACHE_CONTROL = "public, max-age=315360000, immutable";
-const DEFAULT_QPDF = "C:\\Program Files\\qpdf 12.3.2\\bin\\qpdf.exe";
+const DEFAULT_QPDF = process.env.QPDF_BIN || "qpdf";
 const DEFAULT_PIPE_CONFIG = resolve("services", "jojo-pipe", "config.json");
 const WORK_DIR = resolve("tmp", "protected-reader-publish");
 
@@ -38,6 +38,9 @@ Options:
   --state <path>            Resume-state JSON path. Defaults under ${WORK_DIR}.
   --continue-on-error       Record a failure and continue with the next issue.
   --dry-run                 Prepare and verify files without uploading.
+
+Environment:
+  QPDF_BIN                  qpdf executable used when --qpdf is omitted.
 
 Flow:
   local source PDF -> qpdf --linearize -> JOJO byte mask -> verifier -> configured storage target
