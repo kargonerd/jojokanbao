@@ -1,0 +1,50 @@
+name: Purge reader PDF cache
+
+on:
+  workflow_dispatch:
+    inputs:
+      collection:
+        description: "PDF collection prefix to purge after a protected migration."
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - RMRB
+          - RMHB
+          - CKXX
+          - HQ
+          - SJZS
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    env:
+      TENCENTCLOUD_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
+      TENCENTCLOUD_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Purge protected PDF prefixes
+        shell: bash
+        run: |
+          if [ "${{ inputs.collection }}" = "all" ]; then
+            collections=(RMRB RMHB CKXX HQ SJZS)
+          else
+            collections=("${{ inputs.collection }}")
+          fi
+
+          targets=()
+          for collection in "${collections[@]}"; do
+            targets+=("https://blacknews.jojokanbao.cn/${collection}/")
+          done
+
+          node tooling/purge-edgeone-reader-cache.mjs \
+            --type purge_prefix \
+            --method delete \
+            "${targets[@]}"
