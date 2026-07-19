@@ -7,7 +7,11 @@ const DEFAULT_ENDPOINT = process.env.EDGEONE_ENDPOINT ?? "teo.tencentcloudapi.co
 
 function usage() {
   console.log(`Usage:
-  node tooling/purge-edgeone-reader-cache.mjs [--zone-id zone-xxx] <url> [url...]
+  node tooling/purge-edgeone-reader-cache.mjs [--zone-id zone-xxx] [--type purge_url|purge_prefix] <target> [target...]
+
+Options:
+  --type <type>       purge_url (default) or purge_prefix.
+  --method <method>   delete or invalidate. Used by purge_prefix.
 
 Environment:
   TENCENTCLOUD_SECRET_ID or TENCENT_SECRET_ID
@@ -16,13 +20,15 @@ Environment:
   closest matching EdgeOne zone is discovered from the target URL hostname.
   EDGEONE_ENDPOINT may be used instead of --endpoint
 
-This submits an EdgeOne CreatePurgeTask with Type=purge_url for the supplied URLs.
+This submits an EdgeOne CreatePurgeTask for the supplied URLs or prefixes.
 `);
 }
 
 function parseArgs(argv) {
   const urls = [];
   let endpoint = DEFAULT_ENDPOINT;
+  let method = null;
+  let type = "purge_url";
   let zoneId = process.env.EDGEONE_ZONE_ID ?? null;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -38,15 +44,32 @@ function parseArgs(argv) {
       endpoint = argv[++i];
       continue;
     }
+    if (arg === "--method") {
+      method = argv[++i];
+      continue;
+    }
+    if (arg === "--type") {
+      type = argv[++i];
+      continue;
+    }
     if (arg.startsWith("-")) throw new Error(`Unknown option: ${arg}`);
     urls.push(arg);
   }
 
-  if (urls.length === 0) throw new Error("At least one URL is required");
+  if (!new Set(["purge_url", "purge_prefix"]).has(type)) {
+    throw new Error("--type must be purge_url or purge_prefix");
+  }
+  if (method && !new Set(["delete", "invalidate"]).has(method)) {
+    throw new Error("--method must be delete or invalidate");
+  }
+  if (method && type !== "purge_prefix") {
+    throw new Error("--method is only supported with --type purge_prefix");
+  }
+  if (urls.length === 0) throw new Error("At least one purge target is required");
   for (const url of urls) {
     if (!/^https?:\/\//i.test(url)) throw new Error(`Purge target must be an absolute URL: ${url}`);
   }
-  return { endpoint, urls, zoneId };
+  return { endpoint, method, type, urls, zoneId };
 }
 
 function sha256(value, encoding = "hex") {
@@ -164,8 +187,9 @@ async function main() {
     endpoint: options.endpoint,
     payload: {
       Targets: options.urls,
-      Type: "purge_url",
+      Type: options.type,
       ZoneId: zoneId,
+      ...(options.method ? { Method: options.method } : {}),
     },
   });
   console.log(JSON.stringify(result));
