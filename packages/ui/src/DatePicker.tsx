@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 interface DatePickerProps {
   value: string; // yyyyMMdd
@@ -6,6 +6,8 @@ interface DatePickerProps {
   disabledDate?: (dateStr: string) => boolean;
   format?: string;
   className?: string;
+  editable?: boolean;
+  ariaLabel?: string;
 }
 
 const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"];
@@ -38,6 +40,22 @@ function formatDisplay(str: string): string {
   return `${str.slice(0, 4)}年${str.slice(4, 6)}月${str.slice(6, 8)}日`;
 }
 
+function formatEditableDate(str: string): string {
+  if (!parseDate(str)) return "";
+  return `${str.slice(0, 4)}-${str.slice(4, 6)}-${str.slice(6, 8)}`;
+}
+
+function parseEditableDate(value: string): string | null {
+  const trimmed = value.trim();
+  const compactMatch = /^(\d{4})(\d{2})(\d{2})$/.exec(trimmed);
+  const separatedMatch = /^(\d{4})\s*(?:[-/.]|年)\s*(\d{1,2})\s*(?:[-/.]|月)\s*(\d{1,2})\s*日?$/.exec(trimmed);
+  const match = compactMatch ?? separatedMatch;
+  if (!match) return null;
+
+  const normalized = `${match[1]}${match[2]!.padStart(2, "0")}${match[3]!.padStart(2, "0")}`;
+  return parseDate(normalized) ? normalized : null;
+}
+
 function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month + 1, 0).getDate();
 }
@@ -51,8 +69,10 @@ function getDecadeStart(year: number): number {
   return Math.floor(year / 10) * 10;
 }
 
-export function DatePicker({ value, onChange, disabledDate, className = "" }: DatePickerProps) {
+export function DatePicker({ value, onChange, disabledDate, className = "", editable = false, ariaLabel = "日期" }: DatePickerProps) {
   const [open, setOpen] = useState(false);
+  const [draftValue, setDraftValue] = useState(formatEditableDate(value));
+  const [inputError, setInputError] = useState(false);
   const parsed = parseDate(value);
   const today = new Date();
   const [panelMode, setPanelMode] = useState<PanelMode>("date");
@@ -61,6 +81,7 @@ export function DatePicker({ value, onChange, disabledDate, className = "" }: Da
   const [decadeStart, setDecadeStart] = useState(getDecadeStart(parsed?.year ?? today.getFullYear()));
   const ref = useRef<HTMLDivElement>(null);
   const pendingChangeTimer = useRef<number | null>(null);
+  const inputErrorId = useId();
 
   useEffect(() => {
     if (!open) return;
@@ -72,6 +93,8 @@ export function DatePicker({ value, onChange, disabledDate, className = "" }: Da
   }, [open]);
 
   useEffect(() => {
+    setDraftValue(formatEditableDate(value));
+    setInputError(false);
     if (!parsed) return;
     setViewYear(parsed.year);
     setViewMonth(parsed.month);
@@ -140,6 +163,25 @@ export function DatePicker({ value, onChange, disabledDate, className = "" }: Da
     }, 0);
   };
 
+  const commitEditableValue = () => {
+    const trimmed = draftValue.trim();
+    if (!trimmed) {
+      setInputError(false);
+      if (value) onChange("");
+      return;
+    }
+
+    const nextValue = parseEditableDate(trimmed);
+    if (!nextValue || disabledDate?.(nextValue)) {
+      setInputError(true);
+      return;
+    }
+
+    setDraftValue(formatEditableDate(nextValue));
+    setInputError(false);
+    if (nextValue !== value) onChange(nextValue);
+  };
+
   const isMonthFullyDisabled = (year: number, month: number) => {
     if (!disabledDate) return false;
     return Array.from({ length: getDaysInMonth(year, month) }, (_, index) => index + 1)
@@ -171,16 +213,69 @@ export function DatePicker({ value, onChange, disabledDate, className = "" }: Da
 
   return (
     <div ref={ref} className={`relative inline-block ${className}`}>
-      <button
-        type="button"
-        className="h-8 w-full whitespace-nowrap px-2 text-xs border border-rule-dark bg-paper text-ink font-serif cursor-pointer hover:border-red transition-colors sm:w-auto sm:px-3 sm:text-sm"
-        onClick={() => {
-          setOpen((current) => !current);
-          setPanelMode("date");
-        }}
-      >
-        {value ? formatDisplay(value) : "选择日期"}
-      </button>
+      {editable ? (
+        <div className={`flex h-8 w-[152px] border bg-paper transition-colors ${inputError ? "border-red" : "border-rule-dark focus-within:border-red"}`}>
+          <input
+            type="text"
+            inputMode="numeric"
+            aria-label={ariaLabel}
+            aria-invalid={inputError}
+            aria-describedby={inputError ? inputErrorId : undefined}
+            placeholder="YYYY-MM-DD"
+            value={draftValue}
+            onChange={(event) => {
+              setDraftValue(event.target.value);
+              setInputError(false);
+            }}
+            onBlur={commitEditableValue}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                commitEditableValue();
+              }
+              if (event.key === "Escape") {
+                setDraftValue(formatEditableDate(value));
+                setInputError(false);
+                event.currentTarget.blur();
+              }
+            }}
+            className="min-w-0 flex-1 border-0 bg-transparent px-2 font-serif text-xs text-ink outline-none focus:border-0 focus:shadow-none"
+          />
+          <button
+            type="button"
+            aria-label={`${ariaLabel}：打开日历`}
+            aria-expanded={open}
+            className="flex h-full w-8 shrink-0 items-center justify-center border-0 border-l border-rule-dark bg-paper text-muted transition-colors hover:text-red"
+            onClick={() => {
+              setInputError(false);
+              setOpen((current) => !current);
+              setPanelMode("date");
+            }}
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+              <path d="M2.5 4.5h11v9h-11zM5 2.5v4m6-4v4M2.5 7h11" />
+            </svg>
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          aria-label={ariaLabel === "日期" ? undefined : ariaLabel}
+          className="h-8 w-full whitespace-nowrap px-2 text-xs border border-rule-dark bg-paper text-ink font-serif cursor-pointer hover:border-red transition-colors sm:w-auto sm:px-3 sm:text-sm"
+          onClick={() => {
+            setOpen((current) => !current);
+            setPanelMode("date");
+          }}
+        >
+          {value ? formatDisplay(value) : "选择日期"}
+        </button>
+      )}
+
+      {editable && inputError ? (
+        <span id={inputErrorId} role="alert" className="absolute left-0 top-full z-[95] mt-1 whitespace-nowrap border border-red bg-paper px-2 py-1 text-[11px] font-bold text-red">
+          请输入有效日期
+        </span>
+      ) : null}
 
       {open && (
         <div className="fixed left-3 right-3 top-[96px] z-[80] border border-rule-dark bg-paper p-3 shadow-[4px_4px_0_rgba(139,26,26,.14)] sm:absolute sm:left-0 sm:right-auto sm:top-full sm:mt-1 sm:w-[320px]">
