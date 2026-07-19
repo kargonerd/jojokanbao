@@ -413,12 +413,13 @@ export function DatePicker({ value, onChange, disabledDate, className = "", edit
 interface YearPickerProps {
   value: string; // yyyy
   onChange: (year: string) => void;
+  disabledYear?: (year: string) => boolean;
   min?: number;
   max?: number;
   className?: string;
 }
 
-export function YearPicker({ value, onChange, min = 1930, max = 2030, className = "" }: YearPickerProps) {
+export function YearPicker({ value, onChange, disabledYear, min = 1930, max = 2030, className = "" }: YearPickerProps) {
   const [open, setOpen] = useState(false);
   const currentYear = Number(value) || max;
   const [decadeStart, setDecadeStart] = useState(getDecadeStart(currentYear));
@@ -478,7 +479,7 @@ export function YearPicker({ value, onChange, min = 1930, max = 2030, className 
           <div className="grid grid-cols-4 gap-y-3 py-2">
             {Array.from({ length: 12 }, (_, index) => decadeStart - 1 + index).map((year) => {
               const isOuter = year < decadeStart || year > decadeStart + 9;
-              const isDisabled = year < min || year > max;
+              const isDisabled = year < min || year > max || Boolean(disabledYear?.(String(year)));
               return (
                 <button
                   key={year}
