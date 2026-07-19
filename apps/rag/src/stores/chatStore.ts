@@ -1,83 +1,147 @@
 import { create } from "zustand";
-import { notebookApi, askStream } from "../api";
+import {
+  askStream,
+  documentApi,
+  type CitationReference,
+  type DocumentSummary,
+  type UsageSummary,
+} from "../api";
 
-interface Message { role: "user" | "assistant"; content: string; references?: any[] }
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  references?: CitationReference[];
+  usage?: UsageSummary;
+  traces?: string[];
+}
 
 interface ChatState {
-  notebooks: any[];
-  selectedNotebook: string | null;
-  sources: any[];
-  selectedSourceIds: string[];
-  messages: Message[];
+  documents: DocumentSummary[];
+  selectedDocumentIds: string[];
+  messages: ChatMessage[];
   streaming: boolean;
   streamContent: string;
-  conversationId: string | null;
-  loadNotebooks: () => Promise<void>;
-  selectNotebook: (id: string) => Promise<void>;
-  toggleSource: (id: string) => void;
+  streamStatus: string;
+  streamTraces: string[];
+  loadDocuments: () => Promise<void>;
+  toggleDocument: (id: string) => void;
   sendMessage: (question: string) => void;
   clearConversation: () => void;
 }
 
+const MESSAGES_KEY = "jojo-rag-agent-messages";
+const SELECTION_KEY = "jojo-rag-agent-documents";
+
+function storedMessages(): ChatMessage[] {
+  try {
+    return JSON.parse(localStorage.getItem(MESSAGES_KEY) || "[]") as ChatMessage[];
+  } catch {
+    return [];
+  }
+}
+
 export const useChatStore = create<ChatState>((set, get) => ({
-  notebooks: [],
-  selectedNotebook: null,
-  sources: [],
-  selectedSourceIds: [],
-  messages: [],
+  documents: [],
+  selectedDocumentIds: [],
+  messages: storedMessages(),
   streaming: false,
   streamContent: "",
-  conversationId: null,
+  streamStatus: "",
+  streamTraces: [],
 
-  loadNotebooks: async () => {
-    const notebooks = await notebookApi.list();
-    set({ notebooks });
-    const saved = localStorage.getItem("rag-last-notebook");
-    if (saved && notebooks.find((n: any) => n.id === saved)) get().selectNotebook(saved);
-    else if (notebooks.length) get().selectNotebook(notebooks[0].id);
+  loadDocuments: async () => {
+    const documents = await documentApi.list();
+    let savedIds: string[] = [];
+    try {
+      savedIds = JSON.parse(localStorage.getItem(SELECTION_KEY) || "[]") as string[];
+    } catch {
+      savedIds = [];
+    }
+    const availableIds = new Set(documents.map((document) => document.id));
+    const selectedDocumentIds = savedIds.filter((id) => availableIds.has(id));
+    if (selectedDocumentIds.length === 0 && documents[0]) selectedDocumentIds.push(documents[0].id);
+    localStorage.setItem(SELECTION_KEY, JSON.stringify(selectedDocumentIds));
+    set({ documents, selectedDocumentIds });
   },
 
-  selectNotebook: async (id) => {
-    set({ selectedNotebook: id, sources: [], selectedSourceIds: [], messages: [], conversationId: null });
-    localStorage.setItem("rag-last-notebook", id);
-    const sources = await notebookApi.getSources(id);
-    set({ sources, selectedSourceIds: sources.map((s: any) => s.id) });
-    // Restore messages from localStorage
-    const saved = localStorage.getItem(`rag-messages-${id}`);
-    if (saved) try { set({ messages: JSON.parse(saved) }); } catch {}
+  toggleDocument: (id) => {
+    const selected = get().selectedDocumentIds;
+    const selectedDocumentIds = selected.includes(id) ? selected.filter((item) => item !== id) : [...selected, id];
+    localStorage.setItem(SELECTION_KEY, JSON.stringify(selectedDocumentIds));
+    set({ selectedDocumentIds });
   },
-
-  toggleSource: (id) => set((s) => ({
-    selectedSourceIds: s.selectedSourceIds.includes(id)
-      ? s.selectedSourceIds.filter((x) => x !== id)
-      : [...s.selectedSourceIds, id],
-  })),
 
   sendMessage: (question) => {
-    const { selectedNotebook, selectedSourceIds, messages, conversationId } = get();
-    if (!selectedNotebook || !question.trim()) return;
-    const newMessages = [...messages, { role: "user" as const, content: question }];
-    set({ messages: newMessages, streaming: true, streamContent: "" });
+    const { selectedDocumentIds, messages } = get();
+    const trimmedQuestion = question.trim();
+    if (!trimmedQuestion || selectedDocumentIds.length === 0 || get().streaming) return;
 
+    const nextMessages: ChatMessage[] = [...messages, { role: "user", content: trimmedQuestion }];
     let content = "";
+    let usage: UsageSummary | undefined;
+    let references: CitationReference[] = [];
+    let traces: string[] = [];
+    let finalized = false;
+    set({
+      messages: nextMessages,
+      streaming: true,
+      streamContent: "",
+      streamStatus: "正在连接 Agent…",
+      streamTraces: [],
+    });
+
+    const finish = (error?: string) => {
+      if (finalized) return;
+      finalized = true;
+      const assistant: ChatMessage = error
+        ? { role: "assistant", content: `问答失败：${error}`, traces }
+        : {
+            role: "assistant",
+            content,
+            references,
+            traces,
+            ...(usage ? { usage } : {}),
+          };
+      const finalMessages = [...nextMessages, assistant];
+      localStorage.setItem(MESSAGES_KEY, JSON.stringify(finalMessages));
+      set({
+        messages: finalMessages,
+        streaming: false,
+        streamContent: "",
+        streamStatus: "",
+        streamTraces: [],
+      });
+    };
+
     askStream(
-      { notebook_id: selectedNotebook, question, conversation_id: conversationId || undefined, source_ids: selectedSourceIds },
-      (chunk) => { content += chunk; set({ streamContent: content }); },
-      (refs) => {
-        const final = [...newMessages, { role: "assistant" as const, content, references: refs }];
-        set({ messages: final, streaming: false, streamContent: "" });
-        localStorage.setItem(`rag-messages-${selectedNotebook}`, JSON.stringify(final));
+      {
+        question: trimmedQuestion,
+        documentIds: selectedDocumentIds,
+        history: messages.slice(-6).map(({ role, content: historyContent }) => ({ role, content: historyContent })),
       },
-      (err) => {
-        const final = [...newMessages, { role: "assistant" as const, content: `错误: ${err}` }];
-        set({ messages: final, streaming: false, streamContent: "" });
-      }
+      (event) => {
+        if (event.type === "status") set({ streamStatus: event.message });
+        if (event.type === "trace") {
+          traces = [...traces, event.message];
+          set({ streamTraces: traces, streamStatus: event.message });
+        }
+        if (event.type === "chunk") {
+          content += event.content;
+          set({ streamContent: content });
+        }
+        if (event.type === "usage") usage = event.usage;
+        if (event.type === "done") {
+          references = event.references;
+          finish();
+        }
+        if (event.type === "error") finish(event.message);
+      },
+      (error) => finish(error),
     );
   },
 
   clearConversation: () => {
-    const { selectedNotebook } = get();
-    set({ messages: [], conversationId: null, streamContent: "" });
-    if (selectedNotebook) localStorage.removeItem(`rag-messages-${selectedNotebook}`);
+    localStorage.removeItem(MESSAGES_KEY);
+    set({ messages: [], streamContent: "", streamStatus: "", streamTraces: [] });
   },
 }));

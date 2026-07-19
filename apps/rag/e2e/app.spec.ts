@@ -8,19 +8,19 @@ test.describe("RAG App", () => {
 
   test("chat page loads with sidebar and input", async ({ page }) => {
     await page.goto("/chat");
-    await expect(page.getByText("知识库")).toBeVisible();
-    await expect(page.getByPlaceholder("输入问题...")).toBeVisible();
-    await expect(page.getByText("发送")).toBeVisible();
+    await expect(page.getByText("本次查阅")).toBeVisible();
+    await expect(page.getByLabel("主导航").getByRole("link", { name: "文档管理" })).toBeVisible();
   });
 
   test("empty state shows prompt", async ({ page }) => {
+    await page.route("**/api/documents", (route) => route.fulfill({ json: { success: true, data: [] } }));
     await page.goto("/chat");
-    await expect(page.getByText("有什么想问的？")).toBeVisible();
+    await expect(page.getByText(/先放一份原文进来|不先切碎/)).toBeVisible();
   });
 
-  test("admin page shows login when unauthenticated", async ({ page }) => {
+  test("admin redirects to local document management", async ({ page }) => {
     await page.goto("/admin");
-    await expect(page.getByText("管理后台")).toBeVisible();
-    await expect(page.getByPlaceholder("输入密码")).toBeVisible();
+    await expect(page).toHaveURL("/documents");
+    await expect(page.getByText("登记一份原始文档")).toBeVisible();
   });
 });

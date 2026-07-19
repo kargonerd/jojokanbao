@@ -1,0 +1,6 @@
+data/documents/*
+data/documents.json
+!data/documents/.gitkeep
+.env
+auth.json
+dist/

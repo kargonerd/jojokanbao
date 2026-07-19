@@ -4,6 +4,7 @@
   "packageManager": "pnpm@9.12.2",
   "scripts": {
     "dev": "turbo dev",
+    "dev:rag-agent": "pnpm --filter @jojo/rag-agent dev",
     "build": "turbo build",
     "test": "turbo test",
     "lint": "turbo lint",

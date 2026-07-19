@@ -9,6 +9,8 @@ dist-electron
 .env.*.local
 *.tsbuildinfo
 coverage
+test-results/
+playwright-report/
 .vite
 .idea/
 .playwright-mcp/

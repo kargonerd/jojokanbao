@@ -1,5 +1,6 @@
 import { marked } from "marked";
 import hljs from "highlight.js";
+import DOMPurify from "dompurify";
 
 marked.setOptions({
   highlight: (code: string, lang: string) => {
@@ -9,12 +10,14 @@ marked.setOptions({
 } as any);
 
 export function renderMarkdown(text: string): string {
-  return marked.parse(text) as string;
+  return DOMPurify.sanitize(marked.parse(text) as string);
 }
 
 export function formatChatMarkdown(text: string): string {
-  let html = renderMarkdown(text);
-  // Replace [n] citation patterns with clickable badges
-  html = html.replace(/\[(\d+)\]/g, '<a class="inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold border border-red text-red hover:bg-red hover:text-cream transition-colors cursor-pointer" data-citation="$1">$1</a>');
-  return html;
+  let html = marked.parse(text) as string;
+  html = html.replace(
+    /【([a-zA-Z0-9-]+):L(\d+)-L(\d+)】/g,
+    '<span class="inline-flex items-center px-1.5 py-0.5 align-middle font-sans text-[10px] font-bold border border-red text-red bg-paper-soft" data-document-id="$1" data-start-line="$2" data-end-line="$3">L$2–$3</span>',
+  );
+  return DOMPurify.sanitize(html, { ADD_ATTR: ["data-document-id", "data-start-line", "data-end-line"] });
 }
