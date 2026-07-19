@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DatePicker, YearPicker } from "../src/DatePicker";
+import { DateRangePicker } from "../src/DateRangePicker";
 
 afterEach(() => {
   cleanup();
@@ -104,6 +105,98 @@ describe("DatePicker reader interactions", () => {
     expect(screen.getByText("1981 年")).toBeTruthy();
     expect(screen.getByText("3月")).toBeTruthy();
   });
+
+  it("accepts a directly typed date and normalizes its display", () => {
+    const onChange = vi.fn();
+    render(<DatePicker value="" onChange={onChange} editable ariaLabel="开始日期" />);
+    const input = screen.getByRole("textbox", { name: "开始日期" }) as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "1946.9.25" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onChange).toHaveBeenCalledWith("19460925");
+    expect(input.value).toBe("1946-09-25");
+  });
+
+  it("rejects invalid or disabled directly typed dates", () => {
+    const onChange = vi.fn();
+    render(<DatePicker value="" onChange={onChange} editable ariaLabel="结束日期" disabledDate={(date) => date > "19601231"} />);
+    const input = screen.getByRole("textbox", { name: "结束日期" }) as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "1946-02-31" } });
+    fireEvent.blur(input);
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByRole("alert").textContent).toContain("请输入有效日期");
+
+    fireEvent.change(input, { target: { value: "1961-01-01" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+  });
+});
+
+describe("DateRangePicker shortcuts", () => {
+  it("exposes reusable range shortcuts and their selected state", () => {
+    const onChange = vi.fn();
+    const shortcuts = [
+      { value: "great-leap-forward", label: "大跃进", startDate: "19580101", endDate: "19601231" },
+    ] as const;
+    const view = render(
+      <DateRangePicker startDate="" endDate="" onChange={onChange} shortcuts={shortcuts} editable />,
+    );
+    expect(screen.queryByRole("button", { name: "大跃进" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "日期范围：选择日期范围" }));
+    const shortcut = screen.getByRole("button", { name: "大跃进" });
+
+    expect(shortcut.getAttribute("title")).toBe("1958-01-01 至 1960-12-31");
+    fireEvent.click(shortcut);
+    expect(onChange).toHaveBeenCalledWith({ startDate: "19580101", endDate: "19601231" });
+    expect(screen.queryByRole("dialog", { name: "选择日期范围" })).toBeNull();
+
+    view.rerender(
+      <DateRangePicker startDate="19580101" endDate="19601231" onChange={onChange} shortcuts={shortcuts} editable />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "日期范围：1958-01-01 — 1960-12-31" }));
+    expect(screen.getByRole("button", { name: "大跃进" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "日期范围：1958-01-01 — 1960-12-31" }));
+    fireEvent.click(screen.getByRole("button", { name: "清除日期" }));
+    expect(onChange).toHaveBeenLastCalledWith({ startDate: "", endDate: "" });
+  });
+
+  it("keeps a custom range inside the popover until it is applied", () => {
+    const onChange = vi.fn();
+    render(<DateRangePicker startDate="" endDate="" onChange={onChange} editable />);
+    fireEvent.click(screen.getByRole("button", { name: "日期范围：选择日期范围" }));
+    const startInput = screen.getByRole("textbox", { name: "开始日期" });
+    const endInput = screen.getByRole("textbox", { name: "结束日期" });
+
+    fireEvent.change(startInput, { target: { value: "1946.9.25" } });
+    fireEvent.keyDown(startInput, { key: "Enter" });
+    fireEvent.change(endInput, { target: { value: "1960.5.6" } });
+    fireEvent.keyDown(endInput, { key: "Enter" });
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "应用" }));
+    expect(onChange).toHaveBeenCalledWith({ startDate: "19460925", endDate: "19600506" });
+  });
+
+  it("allows either end to be edited first and validates the completed range", () => {
+    const onChange = vi.fn();
+    render(<DateRangePicker startDate="19460925" endDate="19600506" onChange={onChange} editable />);
+    fireEvent.click(screen.getByRole("button", { name: "日期范围：1946-09-25 — 1960-05-06" }));
+    const startInput = screen.getByRole("textbox", { name: "开始日期" });
+    const endInput = screen.getByRole("textbox", { name: "结束日期" });
+
+    fireEvent.change(startInput, { target: { value: "1970-01-01" } });
+    fireEvent.keyDown(startInput, { key: "Enter" });
+    expect(screen.getByRole("alert").textContent).toContain("开始日期不能晚于结束日期");
+    expect((screen.getByRole("button", { name: "应用" }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(endInput, { target: { value: "1980-01-01" } });
+    fireEvent.keyDown(endInput, { key: "Enter" });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect((screen.getByRole("button", { name: "应用" }) as HTMLButtonElement).disabled).toBe(false);
+  });
 });
 
 describe("YearPicker reader interactions", () => {
@@ -125,6 +218,25 @@ describe("YearPicker reader interactions", () => {
     expect((screen.getByRole("button", { name: "1957" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "1958" }) as HTMLButtonElement).disabled).toBe(false);
     expect((screen.getByRole("button", { name: "上十年" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("disables unavailable years inside publication bounds", () => {
+    const onChange = vi.fn();
+    render(
+      <YearPicker
+        value="1974"
+        onChange={onChange}
+        disabledYear={(year) => year === "1975"}
+        min={1950}
+        max={1976}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "1974年" }));
+
+    const unavailableYear = screen.getByRole("button", { name: "1975" }) as HTMLButtonElement;
+    expect(unavailableYear.disabled).toBe(true);
+    fireEvent.click(unavailableYear);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("stops decade navigation at the maximum year", () => {
