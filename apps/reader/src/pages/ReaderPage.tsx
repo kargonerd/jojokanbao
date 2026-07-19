@@ -478,9 +478,11 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
               value={date}
               onChange={(y) => {
                 const options = config?.seqConfig?.[y];
-                const firstSeq = options?.[0] || 1;
+                if (!options?.length) return;
+                const firstSeq = options[0];
                 navigate(`/${name}/${y}${String(firstSeq).padStart(2, '0')}`);
               }}
+              disabledYear={(year) => !config?.seqConfig?.[year]?.length}
               min={name === "sjzs" ? 1934 : name === "hq" ? 1958 : 1950}
               max={name === "hq" ? 1976 : name === "rmhb" ? 1976 : 2025}
               className="min-w-0 flex-1 sm:flex-none"
