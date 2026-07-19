@@ -220,6 +220,25 @@ describe("YearPicker reader interactions", () => {
     expect((screen.getByRole("button", { name: "上十年" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("disables unavailable years inside publication bounds", () => {
+    const onChange = vi.fn();
+    render(
+      <YearPicker
+        value="1974"
+        onChange={onChange}
+        disabledYear={(year) => year === "1975"}
+        min={1950}
+        max={1976}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "1974年" }));
+
+    const unavailableYear = screen.getByRole("button", { name: "1975" }) as HTMLButtonElement;
+    expect(unavailableYear.disabled).toBe(true);
+    fireEvent.click(unavailableYear);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("stops decade navigation at the maximum year", () => {
     render(<YearPicker value="1976" onChange={() => {}} min={1958} max={1976} />);
     fireEvent.click(screen.getByRole("button", { name: "1976年" }));
