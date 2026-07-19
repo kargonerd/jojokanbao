@@ -98,20 +98,20 @@ describe("SearchPage initial search", () => {
   });
 
   it("restores all filters from the URL and requests the matching page", async () => {
-    renderSearch("/search?keyword=人民&page=2&sort=timeDesc&startDate=19660701&endDate=19660731");
+    renderSearch("/search?keyword=梁祝&page=2&sort=timeDesc&startDate=19600701&endDate=19940701");
 
     await waitFor(() => expect(axios.get).toHaveBeenCalledTimes(1));
     expect(getLastRequestParams()).toEqual({
-      keyword: "人民",
+      keyword: "梁祝",
       page: 2,
       size: 10,
       sort: "timeDesc",
-      startDate: "19660701",
-      endDate: "19660731",
+      startDate: "1960-07-01",
+      endDate: "1994-07-01",
     });
     expect(screen.getByRole("button", { name: "时间降序" })).toBeTruthy();
-    expect(screen.getByText("1966年07月01日")).toBeTruthy();
-    expect(screen.getByText("1966年07月31日")).toBeTruthy();
+    expect(screen.getByText("1960年07月01日")).toBeTruthy();
+    expect(screen.getByText("1994年07月01日")).toBeTruthy();
   });
 });
 
@@ -299,10 +299,26 @@ describe("SearchPage filters", () => {
       keyword: "历史",
       page: 1,
       size: 10,
-      startDate: "20260715",
-      endDate: "20260717",
+      startDate: "2026-07-15",
+      endDate: "2026-07-17",
     }));
     expect(screen.getByTestId("location").textContent).toContain("startDate=20260715");
+  });
+
+  it("clears both applied dates and immediately searches without a date range", async () => {
+    renderSearch("/search?keyword=梁祝&startDate=19600701&endDate=19940701");
+    await screen.findByRole("heading", { name: highlightedTitleName });
+
+    fireEvent.click(screen.getByRole("button", { name: "清除日期" }));
+
+    await waitFor(() => expect(getLastRequestParams()).toEqual({
+      keyword: "梁祝",
+      page: 1,
+      size: 10,
+    }));
+    expect(screen.getAllByText("选择日期")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "清除日期" })).toBeNull();
+    expect(screen.getByTestId("location").textContent).toBe("/search?keyword=%E6%A2%81%E7%A5%9D");
   });
 
   it("waits for both dates before applying a date range", async () => {
