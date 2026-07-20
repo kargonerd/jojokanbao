@@ -518,7 +518,19 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
     ],
   });
   await expect(viewer).toHaveAttribute("data-zoom", "2");
+  await touchClient.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [
+      { x: centerX - 50, y: centerY, id: 11 },
+      { x: centerX + 50, y: centerY, id: 12 },
+    ],
+  });
+  await expect(viewer).toHaveAttribute("data-zoom", "1");
   await touchClient.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  const reopenedZoomButton = page.getByRole("button", { name: "开启区域缩放" });
+  await expect(reopenedZoomButton).toHaveAttribute("aria-pressed", "false");
+  await reopenedZoomButton.click();
+  await expect(viewer).toHaveAttribute("data-zoom", "1.5");
 
   const scrollLeftBeforeTouchPan = await reader.evaluate((element) => element.scrollLeft);
   await touchClient.send("Input.dispatchTouchEvent", {
