@@ -1,7 +1,7 @@
 import { Fragment, useState, useEffect, useRef, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import axios from "axios";
-import { Button, Tag, Pagination, LoadingSpinner, DatePicker } from "@jojo/ui";
+import { Button, Tag, Pagination, LoadingSpinner, DateRangePicker, type DateRangeValue } from "@jojo/ui";
 import { getLatestRmrbAvailableDate } from "../dateAvailability";
 
 const SEARCH_API = "https://s1.jojokanbao.cn/search";
@@ -19,6 +19,16 @@ const SORT_OPTIONS = [
   { value: "match", label: "最佳匹配" },
   { value: "timeAsc", label: "时间升序" },
   { value: "timeDesc", label: "时间降序" },
+] as const;
+
+const EARLIEST_AVAILABLE_DATE = "19460515";
+const SEARCH_PERIODS = [
+  { value: "new-democratic", label: "新民主主义革命", startDate: "19460515", endDate: "19490930" },
+  { value: "socialist-construction", label: "社会主义革命和建设", startDate: "19491001", endDate: "19781217" },
+  { value: "great-leap-forward", label: "大跃进", startDate: "19580101", endDate: "19601231" },
+  { value: "cultural-revolution", label: "“文革”十年", startDate: "19660516", endDate: "19761006" },
+  { value: "reform-opening", label: "改革开放新时期", startDate: "19781218", endDate: "20121107" },
+  { value: "new-era", label: "新时代", startDate: "20121108", endDate: "" },
 ] as const;
 
 function renderHighlighted(value: string, replaceBreaks: boolean, strong: boolean): ReactNode[] {
@@ -48,6 +58,10 @@ function parsePage(value: string | null): number {
 
 function normalizeSort(value: string | null): string {
   return SORT_OPTIONS.some((option) => option.value === value) ? value! : "";
+}
+
+function formatSearchApiDate(value: string): string {
+  return value.replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3");
 }
 
 function buildSearchParams({
@@ -94,7 +108,7 @@ export function SearchPage() {
   const pageSize = 10;
   const paramsKey = params.toString();
   const latestAvailableDate = getLatestRmrbAvailableDate();
-  const disableUnavailableDate = (date: string) => date > latestAvailableDate;
+  const disableUnavailableDate = (date: string) => date < EARLIEST_AVAILABLE_DATE || date > latestAvailableDate;
 
   useEffect(() => {
     const keyword = (params.get("keyword") || "").trim();
@@ -125,8 +139,8 @@ export function SearchPage() {
     const requestParams: Record<string, string | number> = { keyword, page: nextPage, size: pageSize };
     if (nextSort) requestParams.sort = nextSort;
     if (nextStartDate && nextEndDate) {
-      requestParams.startDate = nextStartDate;
-      requestParams.endDate = nextEndDate;
+      requestParams.startDate = formatSearchApiDate(nextStartDate);
+      requestParams.endDate = formatSearchApiDate(nextEndDate);
     }
 
     setBeforeSearch(false);
@@ -204,18 +218,11 @@ export function SearchPage() {
     setParams(buildSearchParams({ keyword: term, page: 1, sort: nextSort, startDate, endDate }));
   }
 
-  function handleStartDateChange(nextStartDate: string) {
-    setStartDate(nextStartDate);
-    if (!nextStartDate || !endDate) return;
+  function handleDateRangeChange(nextRange: DateRangeValue) {
+    setStartDate(nextRange.startDate);
+    setEndDate(nextRange.endDate);
     setPage(1);
-    setParams(buildSearchParams({ keyword: term, page: 1, sort, startDate: nextStartDate, endDate }));
-  }
-
-  function handleEndDateChange(nextEndDate: string) {
-    setEndDate(nextEndDate);
-    if (!startDate || !nextEndDate) return;
-    setPage(1);
-    setParams(buildSearchParams({ keyword: term, page: 1, sort, startDate, endDate: nextEndDate }));
+    setParams(buildSearchParams({ keyword: term, page: 1, sort, ...nextRange }));
   }
 
   const selectedSortLabel = SORT_OPTIONS.find((option) => option.value === sort)?.label ?? "默认排序";
@@ -245,13 +252,20 @@ export function SearchPage() {
           </div>
 
           {/* Filters */}
-          <div className="flex flex-wrap items-center gap-4 p-3.5 border border-rule mb-6">
-            <label className="flex items-center gap-2 text-xs font-bold text-muted">
-              从 <DatePicker value={startDate} onChange={handleStartDateChange} disabledDate={disableUnavailableDate} />
-            </label>
-            <label className="flex items-center gap-2 text-xs font-bold text-muted">
-              至 <DatePicker value={endDate} onChange={handleEndDateChange} disabledDate={disableUnavailableDate} />
-            </label>
+          <div className="mb-6 flex flex-wrap items-center gap-4 border border-rule p-3.5">
+            <DateRangePicker
+              startDate={startDate}
+              endDate={endDate}
+              onChange={handleDateRangeChange}
+              disabledStartDate={disableUnavailableDate}
+              disabledEndDate={disableUnavailableDate}
+              editable
+              shortcutLabel="常用时期"
+              shortcuts={SEARCH_PERIODS.map((period) => ({
+                ...period,
+                endDate: period.endDate || latestAvailableDate,
+              }))}
+            />
             <div ref={sortDropdownRef} className="relative min-w-[120px]">
               <button
                 type="button"

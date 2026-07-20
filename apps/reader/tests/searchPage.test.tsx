@@ -98,20 +98,19 @@ describe("SearchPage initial search", () => {
   });
 
   it("restores all filters from the URL and requests the matching page", async () => {
-    renderSearch("/search?keyword=人民&page=2&sort=timeDesc&startDate=19660701&endDate=19660731");
+    renderSearch("/search?keyword=梁祝&page=2&sort=timeDesc&startDate=19600701&endDate=19940701");
 
     await waitFor(() => expect(axios.get).toHaveBeenCalledTimes(1));
     expect(getLastRequestParams()).toEqual({
-      keyword: "人民",
+      keyword: "梁祝",
       page: 2,
       size: 10,
       sort: "timeDesc",
-      startDate: "19660701",
-      endDate: "19660731",
+      startDate: "1960-07-01",
+      endDate: "1994-07-01",
     });
     expect(screen.getByRole("button", { name: "时间降序" })).toBeTruthy();
-    expect(screen.getByText("1966年07月01日")).toBeTruthy();
-    expect(screen.getByText("1966年07月31日")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "日期范围：1960-07-01 — 1994-07-01" })).toBeTruthy();
   });
 });
 
@@ -233,7 +232,8 @@ describe("SearchPage filters", () => {
     renderSearch("/search?keyword=历史&startDate=20260716&endDate=20260717");
     await screen.findByRole("heading", { name: highlightedTitleName });
 
-    fireEvent.click(screen.getByText("2026年07月16日"));
+    fireEvent.click(screen.getByRole("button", { name: "日期范围：2026-07-16 — 2026-07-17" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始日期：打开日历" }));
     fireEvent.click(screen.getByRole("button", { name: "2026 年" }));
     expect((screen.getByRole("button", { name: "2026" }) as HTMLButtonElement).disabled).toBe(false);
     expect((screen.getByRole("button", { name: "2027" }) as HTMLButtonElement).disabled).toBe(true);
@@ -246,10 +246,10 @@ describe("SearchPage filters", () => {
     expect((screen.getByRole("button", { name: "17" }) as HTMLButtonElement).disabled).toBe(false);
     expect((screen.getByRole("button", { name: "18" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "18" }));
-    expect(screen.getByText("2026年07月16日")).toBeTruthy();
+    expect((screen.getByRole("textbox", { name: "开始日期" }) as HTMLInputElement).value).toBe("2026-07-16");
 
-    fireEvent.mouseDown(document.body);
-    fireEvent.click(screen.getByText("2026年07月17日"));
+    fireEvent.click(screen.getByRole("button", { name: "开始日期：打开日历" }));
+    fireEvent.click(screen.getByRole("button", { name: "结束日期：打开日历" }));
     expect((screen.getByRole("button", { name: "18" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -292,17 +292,36 @@ describe("SearchPage filters", () => {
     renderSearch("/search?keyword=历史&startDate=20260716&endDate=20260717");
     await screen.findByRole("heading", { name: highlightedTitleName });
 
-    fireEvent.click(screen.getByText("2026年07月16日"));
+    fireEvent.click(screen.getByRole("button", { name: "日期范围：2026-07-16 — 2026-07-17" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始日期：打开日历" }));
     fireEvent.click(screen.getByRole("button", { name: "15" }));
+    await waitFor(() => expect((screen.getByRole("textbox", { name: "开始日期" }) as HTMLInputElement).value).toBe("2026-07-15"));
+    fireEvent.click(screen.getByRole("button", { name: "应用" }));
 
     await waitFor(() => expect(getLastRequestParams()).toEqual({
       keyword: "历史",
       page: 1,
       size: 10,
-      startDate: "20260715",
-      endDate: "20260717",
+      startDate: "2026-07-15",
+      endDate: "2026-07-17",
     }));
     expect(screen.getByTestId("location").textContent).toContain("startDate=20260715");
+  });
+
+  it("clears both applied dates and immediately searches without a date range", async () => {
+    renderSearch("/search?keyword=梁祝&startDate=19600701&endDate=19940701");
+    await screen.findByRole("heading", { name: highlightedTitleName });
+
+    fireEvent.click(screen.getByRole("button", { name: "清除日期" }));
+
+    await waitFor(() => expect(getLastRequestParams()).toEqual({
+      keyword: "梁祝",
+      page: 1,
+      size: 10,
+    }));
+    expect(screen.queryByRole("button", { name: "清除日期" })).toBeNull();
+    expect(screen.getByRole("button", { name: "日期范围：选择日期范围" })).toBeTruthy();
+    expect(screen.getByTestId("location").textContent).toBe("/search?keyword=%E6%A2%81%E7%A5%9D");
   });
 
   it("waits for both dates before applying a date range", async () => {
@@ -310,11 +329,61 @@ describe("SearchPage filters", () => {
     await screen.findByRole("heading", { name: highlightedTitleName });
     const callsBeforeDate = vi.mocked(axios.get).mock.calls.length;
 
-    const emptyDateButtons = screen.getAllByText("选择日期");
-    fireEvent.click(emptyDateButtons[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "日期范围：选择日期范围" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始日期：打开日历" }));
     fireEvent.click(screen.getByRole("button", { name: "1" }));
     await new Promise((resolve) => window.setTimeout(resolve, 0));
     expect(axios.get).toHaveBeenCalledTimes(callsBeforeDate);
+  });
+
+  it("accepts a directly typed historical date range without calendar navigation", async () => {
+    renderSearch("/search?keyword=历史");
+    await screen.findByRole("heading", { name: highlightedTitleName });
+    const callsBeforeDate = vi.mocked(axios.get).mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "日期范围：选择日期范围" }));
+    const startInput = screen.getByRole("textbox", { name: "开始日期" }) as HTMLInputElement;
+    const endInput = screen.getByRole("textbox", { name: "结束日期" }) as HTMLInputElement;
+
+    fireEvent.change(startInput, { target: { value: "1946.9.25" } });
+    fireEvent.keyDown(startInput, { key: "Enter" });
+    await waitFor(() => expect(startInput.value).toBe("1946-09-25"));
+    expect(axios.get).toHaveBeenCalledTimes(callsBeforeDate);
+
+    fireEvent.change(endInput, { target: { value: "1960.5.6" } });
+    fireEvent.keyDown(endInput, { key: "Enter" });
+    expect(axios.get).toHaveBeenCalledTimes(callsBeforeDate);
+    fireEvent.click(screen.getByRole("button", { name: "应用" }));
+
+    await waitFor(() => expect(getLastRequestParams()).toEqual({
+      keyword: "历史",
+      page: 1,
+      size: 10,
+      startDate: "1946-09-25",
+      endDate: "1960-05-06",
+    }));
+    expect(endInput.value).toBe("1960-05-06");
+    expect(screen.getByTestId("location").textContent).toContain("startDate=19460925&endDate=19600506");
+  });
+
+  it("applies a common historical period with one click", async () => {
+    renderSearch("/search?keyword=历史");
+    await screen.findByRole("heading", { name: highlightedTitleName });
+
+    expect(screen.queryByRole("button", { name: "大跃进" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "日期范围：选择日期范围" }));
+    const periodButton = screen.getByRole("button", { name: "大跃进" });
+    fireEvent.click(periodButton);
+
+    await waitFor(() => expect(getLastRequestParams()).toEqual({
+      keyword: "历史",
+      page: 1,
+      size: 10,
+      startDate: "1958-01-01",
+      endDate: "1960-12-31",
+    }));
+    fireEvent.click(screen.getByRole("button", { name: "日期范围：1958-01-01 — 1960-12-31" }));
+    expect(screen.getByRole("button", { name: "大跃进" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("location").textContent).toContain("startDate=19580101&endDate=19601231");
   });
 });
 
