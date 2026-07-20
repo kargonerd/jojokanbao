@@ -431,7 +431,7 @@ test("mobile PDF slots keep their page ratio and evict distant canvases", async 
   expect(maximumZoomDensity.pixelDensity).toBeGreaterThanOrEqual(2.8);
 });
 
-test("PDF region zooms in place, pans, and exits without a floating lens", async ({ page }) => {
+test("PDF region zooms in place, pans, and exits without a floating lens", async ({ page, browserName }) => {
   const pdf = makeDemandLoadedPdf(1_000);
   await page.route("https://blacknews.jojokanbao.cn/**/*.pdf", async (route) => {
     const range = route.request().headers().range;
@@ -491,6 +491,10 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
   await page.keyboard.press("Escape");
   await expect(viewer).toHaveAttribute("data-zoom", "1");
   await expect(page.getByRole("button", { name: "开启区域缩放" })).toHaveAttribute("aria-pressed", "false");
+
+  // Playwright exposes synthetic multi-touch through CDP only in Chromium.
+  // WebKit/Firefox still cover layout zoom above; pointer logic has unit coverage.
+  if (browserName !== "chromium") return;
 
   const zoomContent = page.locator("[data-pdf-zoom-content]");
   const zoomBox = await zoomContent.boundingBox();
