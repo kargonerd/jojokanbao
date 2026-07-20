@@ -16,7 +16,7 @@
 
 多页查看器，支持按真实页面比例占位、IntersectionObserver 懒加载和远页 canvas 回收。
 
-可选传入 `zoomEnabled`、`zoom` 和 `onZoomChange` 开启 PDF 区域原地缩放；点击放大、Shift+点击缩小，放大后可用鼠标或触控拖动查看。
+可选传入 `zoomEnabled`、`zoom` 和 `onZoomChange` 开启 PDF 区域原地缩放；点击放大、Shift+点击缩小，放大后可用鼠标或触控拖动查看。传入 `onZoomEnabledChange` 后，移动端也可直接用双指进入缩放并围绕手势中心连续放大。
 
 ## 使用
 
@@ -34,6 +34,6 @@ function MyReader() {
 ## 注意
 
 - 测试环境需要 mock pdfjs-dist（jsdom 不支持 DOMMatrix/Canvas）
-- `quality` 表示相对显示尺寸的输出像素倍率，当前阅读器使用 1–3 档且默认最高档 3；画布仍受 3200 万像素和 8192 单边上限保护
+- `quality` 表示相对显示尺寸的输出像素倍率，当前阅读器使用 1–3 档且默认最高档 3；支持缩放时会预先渲染最大缩放所需的清晰度，手势过程中只做即时变换，不重复调用 PDF.js。画布仍受 3200 万像素和 8192 单边上限保护
 - 可选 `scale` 会覆盖自动分辨率，但仍受 canvas 像素和边长上限保护
 - Reader 构建会把 cmap、wasm 和 standard fonts 复制到 `/assets/pdfjs/`，运行时不依赖第三方 CDN
