@@ -1,0 +1,71 @@
+---
+import { getCollection } from "astro:content";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import { estimateReadingTime, formatCompactDate, sortByDate } from "@/lib/blog";
+
+const posts = sortByDate(await getCollection("blog", ({ data }) => !data.draft));
+const [leadPost, ...otherPosts] = posts;
+---
+
+<BaseLayout>
+  <div class="site-container">
+    {leadPost && (
+      <section class="lead-section" aria-labelledby="lead-title">
+        <article class="lead-article">
+          <p class="section-kicker">最新文章</p>
+          <h1 id="lead-title"><a href={`/articles/${leadPost.id}/`}>{leadPost.data.title}</a></h1>
+          <p class="byline">JOJO</p>
+
+          <dl class="abstract-block">
+            <div>
+              <dt>摘要</dt>
+              <dd>{leadPost.data.description}</dd>
+            </div>
+            <div>
+              <dt>关键词</dt>
+              <dd>{leadPost.data.tags.join("；")}</dd>
+            </div>
+          </dl>
+
+          <div class="lead-footer">
+            <span>{formatCompactDate(leadPost.data.date)}　·　约 {estimateReadingTime(leadPost.body)} 分钟</span>
+            <a href={`/articles/${leadPost.id}/`}>阅读全文</a>
+          </div>
+        </article>
+
+        <aside class="editorial-note">
+          <h2>本站说明</h2>
+          <p>本站关注现实生活中的具体问题，尝试结合历史材料、技术变迁与社会关系进行分析。</p>
+          <p>文章由作者独立撰写，观点及疏漏由作者负责。</p>
+        </aside>
+      </section>
+    )}
+
+    <section class="catalog-section" aria-labelledby="catalog-title">
+      <header class="section-heading">
+        <div>
+          <p>CONTENTS</p>
+          <h2 id="catalog-title">近期文章</h2>
+        </div>
+        <a href="/articles/">查看全部文章</a>
+      </header>
+
+      <ol class="article-catalog">
+        {otherPosts.map((post) => (
+          <li>
+            <div class="catalog-meta">
+              <time datetime={post.data.date.toISOString()}>{formatCompactDate(post.data.date)}</time>
+              <span>{post.data.tags.join(" / ")}</span>
+            </div>
+            <div>
+              <h3><a href={`/articles/${post.id}/`}>{post.data.title}</a></h3>
+              <p>{post.data.description}</p>
+            </div>
+            <a class="catalog-link" href={`/articles/${post.id}/`} aria-label={`阅读《${post.data.title}》`}>全文</a>
+          </li>
+        ))}
+      </ol>
+    </section>
+
+  </div>
+</BaseLayout>
