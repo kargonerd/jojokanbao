@@ -26,6 +26,12 @@ vi.mock("@jojo/pdf-viewer", () => ({
         <button type="button" onClick={() => (props.onZoomChange as (zoom: number) => void)(2.75)}>
           模拟缩放
         </button>
+        <button type="button" onClick={() => {
+          (props.onZoomChange as (zoom: number) => void)(1);
+          (props.onZoomEnabledChange as (enabled: boolean) => void)(false);
+        }}>
+          模拟缩回适配
+        </button>
         <button type="button" onClick={() => (props.onPageRendered as (page: number) => void)(props.initialPage as number)}>
           模拟初始页渲染完成
         </button>
@@ -291,6 +297,19 @@ describe("ReaderPage toolbar interactions", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(latestViewerProps().zoomEnabled).toBe(false);
     expect(screen.getByRole("button", { name: "开启区域缩放" }).getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("restores the default zoom when reopening after a pinch returns to fit", () => {
+    renderReader("/rmrb/19761009");
+
+    fireEvent.click(screen.getByRole("button", { name: "开启区域缩放" }));
+    fireEvent.click(screen.getByRole("button", { name: "模拟缩回适配" }));
+    expect(latestViewerProps().zoom).toBe(1);
+    expect(latestViewerProps().zoomEnabled).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "开启区域缩放" }));
+    expect(latestViewerProps().zoom).toBe(1.5);
+    expect(latestViewerProps().zoomEnabled).toBe(true);
   });
 
   it("uses clarity 3 by default, limits it to 1-3, and forwards setting changes", () => {

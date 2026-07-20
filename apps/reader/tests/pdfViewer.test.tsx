@@ -248,11 +248,15 @@ describe("PdfViewer demand loading", () => {
       dispatchPointer(zoomContent, "pointerdown", { pointerId: 1, clientX: 100, clientY: 120 });
       dispatchPointer(zoomContent, "pointerdown", { pointerId: 2, clientX: 200, clientY: 120 });
       dispatchPointer(zoomContent, "pointermove", { pointerId: 2, clientX: 300, clientY: 120 });
+      dispatchPointer(zoomContent, "pointermove", { pointerId: 2, clientX: 200, clientY: 120 });
+      dispatchPointer(zoomContent, "pointerup", { pointerId: 2, clientX: 200, clientY: 120 });
     });
 
-    expect(onZoomEnabledChange).toHaveBeenCalledWith(true);
+    expect(onZoomEnabledChange).toHaveBeenNthCalledWith(1, true);
     expect(onZoomChange).toHaveBeenNthCalledWith(1, 1);
-    expect(onZoomChange).toHaveBeenLastCalledWith(2);
+    expect(onZoomChange).toHaveBeenNthCalledWith(2, 2);
+    expect(onZoomChange).toHaveBeenLastCalledWith(1);
+    expect(onZoomEnabledChange).toHaveBeenLastCalledWith(false);
 
     await act(async () => root.unmount());
     scrollContainer.remove();
