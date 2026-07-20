@@ -17,6 +17,7 @@ interface PdfPageProps {
   scale?: number;
   quality?: number;
   renderZoom?: number;
+  layoutZoom?: number;
   className?: string;
   onRendered?: (pageNumber: number) => void;
   onPageMetrics?: (pageNumber: number, metrics: PdfPageMetrics) => void;
@@ -66,6 +67,7 @@ export function PdfPage({
   scale,
   quality,
   renderZoom,
+  layoutZoom = 1,
   className = "",
   onRendered,
   onPageMetrics,
@@ -76,7 +78,9 @@ export function PdfPage({
   const [rendering, setRendering] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
   const renderTask = useRef<RenderTask | null>(null);
+  const layoutZoomRef = useRef(Math.max(layoutZoom, 1));
   const callbacksRef = useRef({ onRendered, onPageMetrics, onError });
+  layoutZoomRef.current = Math.max(layoutZoom, 1);
 
   useEffect(() => {
     callbacksRef.current = { onRendered, onPageMetrics, onError };
@@ -87,10 +91,12 @@ export function PdfPage({
     if (!container) return;
 
     const measure = () => {
-      // clientWidth is layout-based and intentionally ignores ancestor transforms.
-      // Viewer zoom can therefore stay instantaneous without retriggering PDF.js.
-      const width = container.clientWidth;
-      setContainerWidth(width > 0 ? width : -1);
+      // The viewer expands layout width so WebKit exposes the full scroll area.
+      // Normalize it back to the fit width so zoom never retriggers PDF.js.
+      const width = container.clientWidth / layoutZoomRef.current;
+      setContainerWidth((previous) => (
+        previous > 0 && Math.abs(previous - width) < 1 ? previous : width > 0 ? width : -1
+      ));
     };
     measure();
 

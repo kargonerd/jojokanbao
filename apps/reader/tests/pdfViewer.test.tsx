@@ -218,7 +218,7 @@ describe("PdfViewer demand loading", () => {
       .toBeLessThanOrEqual(MAX_PDF_CANVAS_PIXELS + 1);
   });
 
-  it("uses transform zoom and starts a continuous pinch gesture from reading mode", async () => {
+  it("uses zoom-ready layout and starts a continuous pinch gesture from reading mode", async () => {
     const { document } = createDocument(1);
     const scrollContainer = window.document.createElement("div");
     const host = window.document.createElement("div");
@@ -242,7 +242,6 @@ describe("PdfViewer demand loading", () => {
 
     const zoomContent = host.querySelector<HTMLElement>("[data-pdf-zoom-content]")!;
     expect(zoomContent.style.width).toBe("100%");
-    expect(zoomContent.style.transform).toBe("scale(1)");
     expect(zoomContent.style.touchAction).toBe("pan-y");
 
     await act(async () => {
