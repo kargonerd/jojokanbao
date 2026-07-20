@@ -372,6 +372,13 @@ export function PdfViewer({
         dragRef.current = null;
         releasePointer(event.currentTarget, event.pointerId);
 
+        if (effectiveZoom <= MIN_ZOOM && onZoomEnabledChange) {
+          for (const pointerId of activePointers.keys()) releasePointer(event.currentTarget, pointerId);
+          activePointers.clear();
+          onZoomEnabledChange(false);
+          return;
+        }
+
         const remainingPointer = activePointers.entries().next().value as [number, PointerPosition] | undefined;
         const scrollContainer = scrollContainerRef?.current;
         if (remainingPointer && scrollContainer) {
