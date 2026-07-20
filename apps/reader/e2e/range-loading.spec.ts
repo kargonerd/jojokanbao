@@ -380,10 +380,12 @@ test("mobile PDF slots keep their page ratio and evict distant canvases", async 
     const canvasRect = canvas.getBoundingClientRect();
     return {
       heightDifference: Math.abs(sectionRect.height - canvasRect.height),
+      pixelDensity: canvas.width / canvasRect.width,
       pixels: canvas.width * canvas.height,
     };
   });
   expect(geometry.heightDifference).toBeLessThan(2);
+  expect(geometry.pixelDensity).toBeGreaterThanOrEqual(8.5);
   expect(geometry.pixels).toBeLessThanOrEqual(32_000_000);
 
   await page.locator("#page-6").scrollIntoViewIfNeeded();
@@ -410,6 +412,23 @@ test("mobile PDF slots keep their page ratio and evict distant canvases", async 
     return element.width * element.height;
   });
   expect(highQualityPixels).toBeLessThanOrEqual(32_000_000);
+
+  const zoomSlider = page.getByRole("slider", { name: "页面缩放" });
+  await zoomSlider.fill("3");
+  const highQualityWidthBeforeZoom = await page.locator("#page-6 canvas").evaluate((canvas) => (
+    canvas as HTMLCanvasElement
+  ).width);
+  await page.getByRole("button", { name: "开启区域缩放" }).click();
+  await expect(page.locator("[data-pdf-viewer]")).toHaveAttribute("data-zoom", "3");
+  const maximumZoomDensity = await page.locator("[data-pdf-page][data-page-state='loaded'] canvas").first().evaluate((canvas) => {
+    const element = canvas as HTMLCanvasElement;
+    return {
+      canvasWidth: element.width,
+      pixelDensity: element.width / element.getBoundingClientRect().width,
+    };
+  });
+  expect(maximumZoomDensity.canvasWidth).toBe(highQualityWidthBeforeZoom);
+  expect(maximumZoomDensity.pixelDensity).toBeGreaterThanOrEqual(2.8);
 });
 
 test("PDF region zooms in place, pans, and exits without a floating lens", async ({ page }) => {
@@ -446,11 +465,17 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
   const viewer = page.locator("[data-pdf-viewer]");
   await expect(viewer).toHaveAttribute("data-zoom", "1.5");
   await expect(page.locator("[data-pdf-magnifier-lens]")).toHaveCount(0);
+  const canvasWidthBeforeZoom = await source.evaluate((canvas) => (canvas as HTMLCanvasElement).width);
+  const reader = page.locator("[data-reader-scroll-container]");
+  const scrollHeightBeforeZoom = await reader.evaluate((element) => element.scrollHeight);
 
   await source.click({ position: { x: 300, y: 300 } });
   await expect(viewer).toHaveAttribute("data-zoom", "2");
+  await page.waitForTimeout(300);
+  expect(await source.evaluate((canvas) => (canvas as HTMLCanvasElement).width)).toBe(canvasWidthBeforeZoom);
+  expect(await reader.evaluate((element) => element.scrollHeight)).toBeGreaterThan(scrollHeightBeforeZoom);
+  await expect(page.getByText("正在加载第 1 页")).toHaveCount(0);
 
-  const reader = page.locator("[data-reader-scroll-container]");
   const scrollLeftBefore = await reader.evaluate((element) => element.scrollLeft);
   await page.mouse.move(800, 400);
   await page.mouse.down();
@@ -466,4 +491,40 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
   await page.keyboard.press("Escape");
   await expect(viewer).toHaveAttribute("data-zoom", "1");
   await expect(page.getByRole("button", { name: "开启区域缩放" })).toHaveAttribute("aria-pressed", "false");
+
+  const zoomContent = page.locator("[data-pdf-zoom-content]");
+  const zoomBox = await zoomContent.boundingBox();
+  expect(zoomBox).not.toBeNull();
+  const touchClient = await page.context().newCDPSession(page);
+  await touchClient.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 2 });
+  const centerX = zoomBox!.x + zoomBox!.width / 2;
+  const centerY = zoomBox!.y + Math.min(320, zoomBox!.height / 2);
+  await touchClient.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [
+      { x: centerX - 50, y: centerY, id: 11 },
+      { x: centerX + 50, y: centerY, id: 12 },
+    ],
+  });
+  await touchClient.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [
+      { x: centerX - 100, y: centerY, id: 11 },
+      { x: centerX + 100, y: centerY, id: 12 },
+    ],
+  });
+  await expect(viewer).toHaveAttribute("data-zoom", "2");
+  await touchClient.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+
+  const scrollLeftBeforeTouchPan = await reader.evaluate((element) => element.scrollLeft);
+  await touchClient.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x: centerX + 80, y: centerY, id: 13 }],
+  });
+  await touchClient.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [{ x: centerX - 20, y: centerY, id: 13 }],
+  });
+  await touchClient.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  expect(await reader.evaluate((element) => element.scrollLeft)).toBeGreaterThan(scrollLeftBeforeTouchPan);
 });

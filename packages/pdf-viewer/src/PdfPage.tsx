@@ -16,6 +16,7 @@ interface PdfPageProps {
   pageNumber: number;
   scale?: number;
   quality?: number;
+  renderZoom?: number;
   className?: string;
   onRendered?: (pageNumber: number) => void;
   onPageMetrics?: (pageNumber: number, metrics: PdfPageMetrics) => void;
@@ -29,6 +30,7 @@ export function getSafePdfRenderScale({
   devicePixelRatio = 1,
   requestedScale,
   quality,
+  renderZoom = 1,
 }: {
   pageWidth: number;
   pageHeight: number;
@@ -36,6 +38,7 @@ export function getSafePdfRenderScale({
   devicePixelRatio?: number;
   requestedScale?: number;
   quality?: number;
+  renderZoom?: number;
 }): number {
   const safePageWidth = Math.max(pageWidth, 1);
   const safePageHeight = Math.max(pageHeight, 1);
@@ -43,7 +46,10 @@ export function getSafePdfRenderScale({
   const outputPixelRatio = quality && quality > 0
     ? quality
     : Math.min(Math.max(devicePixelRatio, 1), MAX_AUTO_DEVICE_PIXEL_RATIO);
-  const targetScale = requestedScale && requestedScale > 0 ? requestedScale : fitScale * outputPixelRatio;
+  const outputZoom = Math.max(renderZoom, 1);
+  const targetScale = requestedScale && requestedScale > 0
+    ? requestedScale
+    : fitScale * outputPixelRatio * outputZoom;
   const pixelLimitScale = Math.sqrt(MAX_PDF_CANVAS_PIXELS / (safePageWidth * safePageHeight));
   const dimensionLimitScale = Math.min(
     MAX_PDF_CANVAS_DIMENSION / safePageWidth,
@@ -59,6 +65,7 @@ export function PdfPage({
   pageNumber,
   scale,
   quality,
+  renderZoom,
   className = "",
   onRendered,
   onPageMetrics,
@@ -80,7 +87,9 @@ export function PdfPage({
     if (!container) return;
 
     const measure = () => {
-      const width = container.getBoundingClientRect().width;
+      // clientWidth is layout-based and intentionally ignores ancestor transforms.
+      // Viewer zoom can therefore stay instantaneous without retriggering PDF.js.
+      const width = container.clientWidth;
       setContainerWidth(width > 0 ? width : -1);
     };
     measure();
@@ -113,6 +122,7 @@ export function PdfPage({
           devicePixelRatio: window.devicePixelRatio,
           requestedScale: scale,
           quality,
+          renderZoom,
         });
         const viewport = page.getViewport({ scale: renderScale });
         canvas.width = Math.max(1, Math.floor(viewport.width));
@@ -147,7 +157,7 @@ export function PdfPage({
       canvas.width = 0;
       canvas.height = 0;
     };
-  }, [containerWidth, document, pageNumber, quality, scale]);
+  }, [containerWidth, document, pageNumber, quality, renderZoom, scale]);
 
   return (
     <div ref={containerRef} id={id} className={`relative ${className}`}>
