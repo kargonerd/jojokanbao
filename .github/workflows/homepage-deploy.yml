@@ -40,7 +40,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-deploy:
+  build-and-test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -70,6 +70,13 @@ jobs:
       - name: Build homepage
         run: pnpm --filter @jojo/homepage build
 
+      - name: Upload homepage build
+        uses: actions/upload-artifact@v4
+        with:
+          name: homepage-dist
+          path: apps/homepage/dist/
+          retention-days: 1
+
       - name: Verify deployment configuration
         if: github.event_name != 'pull_request'
         run: test -n "$EDGEONE_API_TOKEN" || (echo "EDGEONE_API_TOKEN is not configured" >&2 && exit 1)
@@ -82,3 +89,19 @@ jobs:
           --token "$EDGEONE_API_TOKEN"
           --env "$EDGEONE_DEPLOY_ENV"
           --area global
+
+  e2e:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download homepage build
+        uses: actions/download-artifact@v4
+        with:
+          name: homepage-dist
+          path: apps/homepage/dist/
+
+      - name: Verify generated site
+        run: node apps/homepage/scripts/verify-build.mjs
