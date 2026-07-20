@@ -1,0 +1,37 @@
+---
+const currentPath = Astro.url.pathname;
+
+const links = [
+  { href: "/", label: "首页", exact: true },
+  { href: "/articles/", label: "文章目录" },
+  { href: "/about/", label: "关于本站" },
+];
+
+const isActive = (href: string, exact = false) => exact ? currentPath === href : currentPath.startsWith(href);
+---
+
+<header class="site-header">
+  <div class="publication-head">
+    <a class="masthead" href="/" aria-label="JOJO 首页">
+      <strong>JOJO</strong>
+      <span>现实问题与生产关系观察</span>
+    </a>
+    <div class="issue-meta">
+      <span>个人写作与评论</span>
+      <span>不定期更新</span>
+    </div>
+  </div>
+  <nav class="site-nav" aria-label="主导航">
+    <div>
+      {links.map((link) => (
+        <a
+          href={link.href}
+          class:list={{ active: isActive(link.href, link.exact) }}
+          aria-current={isActive(link.href, link.exact) ? "page" : undefined}
+        >
+          {link.label}
+        </a>
+      ))}
+    </div>
+  </nav>
+</header>

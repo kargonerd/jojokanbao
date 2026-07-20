@@ -1,0 +1,52 @@
+---
+import { getCollection, render, type CollectionEntry } from "astro:content";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import { estimateReadingTime, formatDate } from "@/lib/blog";
+
+export async function getStaticPaths() {
+  const posts = await getCollection("blog", ({ data }) => !data.draft);
+
+  return posts.map((post) => ({
+    params: { id: post.id },
+    props: { post },
+  }));
+}
+
+interface Props {
+  post: CollectionEntry<"blog">;
+}
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+---
+
+<BaseLayout title={post.data.title} description={post.data.description}>
+  <article class="site-container article-page">
+    <a class="back-link" href="/articles/">返回文章目录</a>
+
+    <header class="paper-heading">
+      <p class="paper-category">{post.data.tags.join(" / ") || "未分类"}</p>
+      <h1>{post.data.title}</h1>
+      <p class="paper-author">JOJO</p>
+
+      <dl class="paper-abstract">
+        <div>
+          <dt>摘要</dt>
+          <dd>{post.data.description}</dd>
+        </div>
+        <div>
+          <dt>关键词</dt>
+          <dd>{post.data.tags.join("；")}</dd>
+        </div>
+      </dl>
+
+      <p class="paper-date">发表日期：{formatDate(post.data.date)}　　预计阅读：{estimateReadingTime(post.body)} 分钟</p>
+    </header>
+
+    <div class="paper-body"><Content /></div>
+
+    <footer class="paper-note">
+      <p>本文由作者独立撰写。</p>
+    </footer>
+  </article>
+</BaseLayout>
