@@ -45,7 +45,7 @@ jobs:
     timeout-minutes: 10
     env:
       EDGEONE_API_TOKEN: ${{ secrets.EDGEONE_API_TOKEN }}
-      EDGEONE_PROJECT_NAME: ${{ vars.EDGEONE_HOMEPAGE_PROJECT_NAME || 'jojo-platform' }}
+      EDGEONE_PROJECT_NAME: ${{ vars.EDGEONE_HOMEPAGE_PROJECT_NAME || 'jojo-homepage' }}
       EDGEONE_DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'production' }}
       EDGEONE_UPLOAD_FROM_PATH: ./apps/homepage/dist/
     steps:
