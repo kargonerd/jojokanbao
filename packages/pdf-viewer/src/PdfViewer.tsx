@@ -19,6 +19,7 @@ interface PdfViewerProps {
   zoomEnabled?: boolean;
   zoom?: number;
   onZoomChange?: (zoom: number) => void;
+  onZoomEnabledChange?: (enabled: boolean) => void;
   className?: string;
   scrollContainerRef?: RefObject<HTMLElement | null>;
   onPageChange?: (page: number) => void;
@@ -47,6 +48,17 @@ interface DragState {
   moved: boolean;
 }
 
+interface PointerPosition {
+  clientX: number;
+  clientY: number;
+}
+
+interface PinchState {
+  pointerIds: [number, number];
+  startDistance: number;
+  startZoom: number;
+}
+
 function clampPage(page: number, numPages: number): number {
   if (!Number.isFinite(page)) return 1;
   return Math.min(Math.max(Math.trunc(page), 1), Math.max(numPages, 1));
@@ -64,6 +76,7 @@ export function PdfViewer({
   zoomEnabled = false,
   zoom = 1,
   onZoomChange,
+  onZoomEnabledChange,
   className = "",
   scrollContainerRef,
   onPageChange,
@@ -77,9 +90,12 @@ export function PdfViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const zoomContentRef = useRef<HTMLDivElement>(null);
   const currentPageRef = useRef(normalizedInitialPage);
+  const pagesInLoadRangeRef = useRef<Set<number>>(new Set([normalizedInitialPage]));
   const previousZoomRef = useRef(1);
   const zoomAnchorRef = useRef<{ clientX: number; clientY: number } | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const activeTouchPointersRef = useRef<Map<number, PointerPosition>>(new Map());
+  const pinchRef = useRef<PinchState | null>(null);
   const effectiveZoom = zoomEnabled ? clampZoom(zoom) : 1;
 
   useLayoutEffect(() => {
@@ -128,6 +144,7 @@ export function PdfViewer({
     setPageAspectRatios(new Map());
     setDefaultPageAspectRatio(DEFAULT_PAGE_ASPECT_RATIO);
     currentPageRef.current = pageNumber;
+    pagesInLoadRangeRef.current = new Set([pageNumber]);
   }, [document, document.numPages, initialPage]);
 
   useEffect(() => {
@@ -136,16 +153,14 @@ export function PdfViewer({
 
     const observer = new IntersectionObserver(
       (entries) => {
-        setLoadedPages((previous) => {
-          const next = new Set(previous);
-          for (const entry of entries) {
-            const pageNumber = Number(entry.target.getAttribute("data-page"));
-            if (!pageNumber) continue;
-            if (entry.isIntersecting) next.add(pageNumber);
-            else next.delete(pageNumber);
-          }
-          return next;
-        });
+        const pagesInRange = pagesInLoadRangeRef.current;
+        for (const entry of entries) {
+          const pageNumber = Number(entry.target.getAttribute("data-page"));
+          if (!pageNumber) continue;
+          if (entry.isIntersecting) pagesInRange.add(pageNumber);
+          else pagesInRange.delete(pageNumber);
+        }
+        setLoadedPages(() => new Set([...pagesInRange, currentPageRef.current]));
       },
       {
         root: scrollContainerRef?.current ?? null,
@@ -195,7 +210,13 @@ export function PdfViewer({
             })[0]![0];
 
         if (pageNumber !== currentPageRef.current) {
+          const previousPage = currentPageRef.current;
           currentPageRef.current = pageNumber;
+          setLoadedPages((previous) => {
+            const next = new Set(previous).add(pageNumber);
+            if (!pagesInLoadRangeRef.current.has(previousPage)) next.delete(previousPage);
+            return next;
+          });
           onPageChange(pageNumber);
         }
       },
@@ -241,14 +262,60 @@ export function PdfViewer({
 
   const pages = Array.from({ length: document.numPages }, (_, index) => index + 1);
 
+  const capturePointer = (element: HTMLDivElement, pointerId: number) => {
+    if (typeof element.setPointerCapture === "function") element.setPointerCapture(pointerId);
+  };
+
+  const releasePointer = (element: HTMLDivElement, pointerId: number) => {
+    if (typeof element.hasPointerCapture === "function" && element.hasPointerCapture(pointerId)) {
+      element.releasePointerCapture(pointerId);
+    }
+  };
+
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!zoomEnabled || (event.pointerType === "mouse" && event.button !== 0)) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
     if ((event.target as Element).closest("button")) return;
     const scrollContainer = scrollContainerRef?.current;
     if (!scrollContainer) return;
 
+    if (event.pointerType === "touch") {
+      const activePointers = activeTouchPointersRef.current;
+      activePointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+
+      if (activePointers.size >= 2 && onZoomChange) {
+        const pointerEntries = [...activePointers.entries()];
+        const firstEntry = pointerEntries[0];
+        const secondEntry = pointerEntries[1];
+        if (!firstEntry || !secondEntry) return;
+        const [firstPointerId, first] = firstEntry;
+        const [secondPointerId, second] = secondEntry;
+        const startDistance = Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY);
+        if (startDistance > 0) {
+          event.preventDefault();
+          capturePointer(event.currentTarget, firstPointerId);
+          capturePointer(event.currentTarget, secondPointerId);
+          dragRef.current = null;
+          pinchRef.current = {
+            pointerIds: [firstPointerId, secondPointerId],
+            startDistance,
+            startZoom: effectiveZoom,
+          };
+          if (!zoomEnabled) {
+            onZoomChange(effectiveZoom);
+            onZoomEnabledChange?.(true);
+          }
+          return;
+        }
+      }
+
+      // Preserve native one-finger vertical scrolling until a pinch starts.
+      if (!zoomEnabled) return;
+    } else if (!zoomEnabled) {
+      return;
+    }
+
     event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
+    capturePointer(event.currentTarget, event.pointerId);
     dragRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -260,6 +327,29 @@ export function PdfViewer({
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") {
+      const activePointers = activeTouchPointersRef.current;
+      if (activePointers.has(event.pointerId)) {
+        activePointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+      }
+
+      const pinch = pinchRef.current;
+      if (pinch?.pointerIds.includes(event.pointerId) && onZoomChange) {
+        const first = activePointers.get(pinch.pointerIds[0]);
+        const second = activePointers.get(pinch.pointerIds[1]);
+        if (!first || !second) return;
+
+        const distance = Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY);
+        zoomAnchorRef.current = {
+          clientX: (first.clientX + second.clientX) / 2,
+          clientY: (first.clientY + second.clientY) / 2,
+        };
+        onZoomChange(clampZoom(pinch.startZoom * (distance / pinch.startDistance)));
+        event.preventDefault();
+        return;
+      }
+    }
+
     const drag = dragRef.current;
     const scrollContainer = scrollContainerRef?.current;
     if (!drag || drag.pointerId !== event.pointerId || !scrollContainer) return;
@@ -273,17 +363,41 @@ export function PdfViewer({
   };
 
   const handlePointerEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") {
+      const activePointers = activeTouchPointersRef.current;
+      activePointers.delete(event.pointerId);
+      const pinch = pinchRef.current;
+      if (pinch?.pointerIds.includes(event.pointerId)) {
+        pinchRef.current = null;
+        dragRef.current = null;
+        releasePointer(event.currentTarget, event.pointerId);
+
+        const remainingPointer = activePointers.entries().next().value as [number, PointerPosition] | undefined;
+        const scrollContainer = scrollContainerRef?.current;
+        if (remainingPointer && scrollContainer) {
+          const [pointerId, position] = remainingPointer;
+          dragRef.current = {
+            pointerId,
+            startX: position.clientX,
+            startY: position.clientY,
+            scrollLeft: scrollContainer.scrollLeft,
+            scrollTop: scrollContainer.scrollTop,
+            moved: true,
+          };
+        }
+        return;
+      }
+    }
+
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
 
-    if (!drag.moved && onZoomChange) {
+    if (!drag.moved && event.pointerType !== "touch" && event.type === "pointerup" && onZoomChange) {
       zoomAnchorRef.current = { clientX: event.clientX, clientY: event.clientY };
       onZoomChange(clampZoom(effectiveZoom + (event.shiftKey ? -CLICK_ZOOM_STEP : CLICK_ZOOM_STEP)));
     }
     dragRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
+    releasePointer(event.currentTarget, event.pointerId);
   };
 
   const handleWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
@@ -300,8 +414,10 @@ export function PdfViewer({
         data-pdf-zoom-content
         className={zoomEnabled ? "cursor-grab active:cursor-grabbing" : ""}
         style={{
-          width: `${effectiveZoom * 100}%`,
-          touchAction: zoomEnabled ? "none" : "pan-y pinch-zoom",
+          width: "100%",
+          transform: `scale(${effectiveZoom})`,
+          transformOrigin: "top left",
+          touchAction: zoomEnabled ? "none" : "pan-y",
           userSelect: zoomEnabled ? "none" : undefined,
         }}
         onPointerDown={handlePointerDown}
@@ -343,6 +459,7 @@ export function PdfViewer({
                 pageNumber={pageNumber}
                 scale={scale}
                 quality={quality}
+                renderZoom={onZoomChange ? MAX_ZOOM : 1}
                 onPageMetrics={handlePageMetrics}
                 onRendered={onPageRendered}
                 onError={() => handlePageError(pageNumber)}

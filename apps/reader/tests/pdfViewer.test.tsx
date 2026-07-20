@@ -54,6 +54,23 @@ async function renderViewer(document: PDFDocumentProxy, initialPage = 1) {
   };
 }
 
+function dispatchPointer(
+  element: Element,
+  type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel",
+  init: { pointerId: number; clientX: number; clientY: number; pointerType?: string },
+) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperties(event, {
+    pointerId: { value: init.pointerId },
+    pointerType: { value: init.pointerType ?? "touch" },
+    clientX: { value: init.clientX },
+    clientY: { value: init.clientY },
+    button: { value: 0 },
+    shiftKey: { value: false },
+  });
+  element.dispatchEvent(event);
+}
+
 beforeEach(() => {
   observers.length = 0;
   vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
@@ -182,5 +199,63 @@ describe("PdfViewer demand loading", () => {
 
     expect(qualityTwo).toBeGreaterThan(qualityOne);
     expect(qualityThree).toBeGreaterThan(qualityTwo);
+  });
+
+  it("renders ahead for smooth high-resolution zoom without exceeding canvas limits", () => {
+    const base = {
+      pageWidth: 600,
+      pageHeight: 800,
+      containerWidth: 300,
+      devicePixelRatio: 2,
+      quality: 3,
+    };
+
+    const fittedScale = getSafePdfRenderScale(base);
+    const zoomReadyScale = getSafePdfRenderScale({ ...base, renderZoom: 3 });
+
+    expect(zoomReadyScale).toBeGreaterThan(fittedScale);
+    expect(base.pageWidth * zoomReadyScale * base.pageHeight * zoomReadyScale)
+      .toBeLessThanOrEqual(MAX_PDF_CANVAS_PIXELS + 1);
+  });
+
+  it("uses transform zoom and starts a continuous pinch gesture from reading mode", async () => {
+    const { document } = createDocument(1);
+    const scrollContainer = window.document.createElement("div");
+    const host = window.document.createElement("div");
+    scrollContainer.append(host);
+    window.document.body.append(scrollContainer);
+    const root = createRoot(host);
+    const onZoomChange = vi.fn();
+    const onZoomEnabledChange = vi.fn();
+
+    await act(async () => {
+      root.render(
+        <PdfViewer
+          document={document}
+          zoom={1.5}
+          onZoomChange={onZoomChange}
+          onZoomEnabledChange={onZoomEnabledChange}
+          scrollContainerRef={{ current: scrollContainer }}
+        />,
+      );
+    });
+
+    const zoomContent = host.querySelector<HTMLElement>("[data-pdf-zoom-content]")!;
+    expect(zoomContent.style.width).toBe("100%");
+    expect(zoomContent.style.transform).toBe("scale(1)");
+    expect(zoomContent.style.touchAction).toBe("pan-y");
+
+    await act(async () => {
+      dispatchPointer(zoomContent, "pointerdown", { pointerId: 1, clientX: 100, clientY: 120 });
+      dispatchPointer(zoomContent, "pointerdown", { pointerId: 2, clientX: 200, clientY: 120 });
+      dispatchPointer(zoomContent, "pointermove", { pointerId: 2, clientX: 300, clientY: 120 });
+    });
+
+    expect(onZoomEnabledChange).toHaveBeenCalledWith(true);
+    expect(onZoomChange).toHaveBeenNthCalledWith(1, 1);
+    expect(onZoomChange).toHaveBeenLastCalledWith(2);
+
+    await act(async () => root.unmount());
+    scrollContainer.remove();
   });
 });
