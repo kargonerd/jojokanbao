@@ -281,6 +281,15 @@ describe("ReaderPage magazine navigation", () => {
 
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/hq/196501"));
   });
+
+  it("does not allow selecting a magazine year with no archived issues", () => {
+    renderReader("/rmhb/197292", { type: "magazine", name: "rmhb" });
+
+    fireEvent.click(screen.getByRole("button", { name: "1972年" }));
+
+    expect((screen.getByRole("button", { name: "1975" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId("location").textContent).toBe("/rmhb/197292");
+  });
 });
 
 describe("ReaderPage toolbar interactions", () => {

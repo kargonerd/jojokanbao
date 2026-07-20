@@ -2,6 +2,7 @@ node_modules
 dist
 dist-electron
 .next
+.astro
 .turbo
 *.log
 .env
@@ -12,6 +13,7 @@ coverage
 .vite
 .idea/
 .playwright-mcp/
+blog/.obsidian/
 
 # Service runtime data
 services/**/.env
