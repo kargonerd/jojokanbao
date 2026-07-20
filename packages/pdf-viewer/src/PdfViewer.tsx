@@ -414,9 +414,7 @@ export function PdfViewer({
         data-pdf-zoom-content
         className={zoomEnabled ? "cursor-grab active:cursor-grabbing" : ""}
         style={{
-          width: "100%",
-          transform: `scale(${effectiveZoom})`,
-          transformOrigin: "top left",
+          width: `${effectiveZoom * 100}%`,
           touchAction: zoomEnabled ? "none" : "pan-y",
           userSelect: zoomEnabled ? "none" : undefined,
         }}
@@ -460,6 +458,7 @@ export function PdfViewer({
                 scale={scale}
                 quality={quality}
                 renderZoom={onZoomChange ? MAX_ZOOM : 1}
+                layoutZoom={effectiveZoom}
                 onPageMetrics={handlePageMetrics}
                 onRendered={onPageRendered}
                 onError={() => handlePageError(pageNumber)}
