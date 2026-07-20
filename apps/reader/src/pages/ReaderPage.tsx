@@ -583,6 +583,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             zoomEnabled={zoomEnabled}
             zoom={zoom}
             onZoomChange={setZoom}
+            onZoomEnabledChange={setZoomEnabled}
             initialPage={initialPage}
             scrollContainerRef={containerRef}
             onPageChange={handleVisiblePageChange}
