@@ -7,6 +7,7 @@ import { PUBLICATIONS, type PublicationConfig } from "../publications";
 const NEWSPAPER_HOST = "https://blacknews.jojokanbao.cn";
 const PAGE_SCROLL_GAP = 16;
 const READER_TOOLBAR_MAX_HEIGHT = 61;
+const DEFAULT_ZOOM = 1.5;
 
 function isCalendarDate(value: string): boolean {
   if (!/^\d{8}$/.test(value)) return false;
@@ -83,7 +84,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   // ─── State ───
   const [resolutionRate, setResolutionRate] = useState(3);
   const [zoomEnabled, setZoomEnabled] = useState(false);
-  const [zoom, setZoom] = useState(1.5);
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [seqDropdownOpen, setSeqDropdownOpen] = useState(false);
   const [jumpToPageNum, setJumpToPageNum] = useState(1);
@@ -381,7 +382,12 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       <button
         type="button"
         onClick={() => {
-          setZoomEnabled((enabled) => !enabled);
+          if (zoomEnabled) {
+            setZoomEnabled(false);
+          } else {
+            setZoom((currentZoom) => currentZoom <= 1 ? DEFAULT_ZOOM : currentZoom);
+            setZoomEnabled(true);
+          }
           setSettingsOpen(false);
         }}
         className={`inline-flex h-8 items-center gap-1.5 border px-1.5 text-sm font-bold transition-colors sm:px-2.5 ${
