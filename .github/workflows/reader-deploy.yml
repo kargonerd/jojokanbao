@@ -6,16 +6,28 @@ on:
       - "reader-v*"
       - "reader-*"
   workflow_dispatch:
+    inputs:
+      environment:
+        description: EdgeOne Makers deployment environment
+        required: true
+        default: preview
+        type: choice
+        options:
+          - preview
+          - production
+      verify_base_url:
+        description: Optional deployed URL to verify (for example, a Makers preview URL)
+        required: false
+        type: string
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      COS_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
-      COS_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
-      COS_BUCKET_NAME: ${{ secrets.COS_BUCKET_NAME }}
-      COS_BUCKET_REGION: ${{ secrets.COS_BUCKET_REGION }}
-      COS_UPLOAD_FROM_PATH: ./apps/reader/dist/
+      EDGEONE_API_TOKEN: ${{ secrets.EDGEONE_API_TOKEN }}
+      EDGEONE_PROJECT_NAME: ${{ vars.EDGEONE_PROJECT_NAME || 'jojo-reader' }}
+      EDGEONE_DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'production' }}
+      EDGEONE_UPLOAD_FROM_PATH: ./apps/reader/dist/
     steps:
       - uses: actions/checkout@v5
 
@@ -23,17 +35,11 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22.11.0
           cache: pnpm
 
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-
       - name: Install dependencies
-        run: |
-          pnpm install --frozen-lockfile
-          pip install coscmd
+        run: pnpm install --frozen-lockfile
 
       - name: Build reader
         run: pnpm --filter @jojo/reader build
@@ -41,28 +47,25 @@ jobs:
       - name: Verify deployable PDF worker
         run: pnpm --filter @jojo/reader verify:build
 
-      - name: Deploy to Tencent COS
+      - name: Prepare Reader deployment
         run: |
-          coscmd config -a "$COS_SECRET_ID" -s "$COS_SECRET_KEY" -b "$COS_BUCKET_NAME" -r "$COS_BUCKET_REGION"
-          find "$COS_UPLOAD_FROM_PATH" -name "*.map" -delete
-          DEPLOY_STATIC_PATH="$(mktemp -d)"
-          trap 'rm -rf "$DEPLOY_STATIC_PATH"' EXIT
-          cp -R "${COS_UPLOAD_FROM_PATH}." "$DEPLOY_STATIC_PATH/"
-          rm -f "$DEPLOY_STATIC_PATH/index.html"
-          # These root-level directories belonged to the retired standalone
-          # PDF.js viewer. Reader runtime assets now live under /assets/pdfjs/.
-          coscmd delete -rf pdfjs || true
-          coscmd delete -rf cmaps || true
-          # Keep older files and upload the complete build before its entry.
-          # This preserves favicon/robots/compatibility assets as well as
-          # hashed assets needed by tabs opened before the release.
-          coscmd upload -r "$DEPLOY_STATIC_PATH/" /
-          # Publish the HTML entry last so it never references assets that are
-          # not available yet.
-          coscmd upload "${COS_UPLOAD_FROM_PATH}index.html" /index.html
+          test -n "$EDGEONE_API_TOKEN" || (echo "EDGEONE_API_TOKEN is not configured" >&2 && exit 1)
+          find "$EDGEONE_UPLOAD_FROM_PATH" -name "*.map" -delete
+
+      - name: Deploy to EdgeOne Makers
+        run: >-
+          pnpm dlx edgeone@1.6.14 makers deploy "$EDGEONE_UPLOAD_FROM_PATH"
+          --name "$EDGEONE_PROJECT_NAME"
+          --token "$EDGEONE_API_TOKEN"
+          --env "$EDGEONE_DEPLOY_ENV"
 
       - name: Verify deployed reader assets
+        if: ${{ (inputs.verify_base_url || vars.EDGEONE_READER_BASE_URL) != '' }}
         env:
-          READER_BASE_URL: https://reader.jojokanbao.cn
+          READER_BASE_URL: ${{ inputs.verify_base_url || vars.EDGEONE_READER_BASE_URL }}
           READER_DEPLOY_REVISION: ${{ github.sha }}
         run: node apps/reader/scripts/verify-deployment.mjs
+
+      - name: Report deferred deployment verification
+        if: ${{ (inputs.verify_base_url || vars.EDGEONE_READER_BASE_URL) == '' }}
+        run: echo "::notice::Deployment uploaded. Verify its Makers URL, then set EDGEONE_READER_BASE_URL for automatic verification."
