@@ -5,7 +5,11 @@
 ## 项目结构
 
 ```
+blog/
+  articles/      Obsidian 博客文章
+
 apps/
+  homepage/      博客静态站点渲染器 (Astro 5)
   reader/        PDF 报纸/杂志阅读器 (Vite + React 19)
   rag/           RAG 知识库问答 + 文档阅读器 (Vite + React 19)
   press/         PDF 校对工具桌面端 (Electron + Vite + React 19)
@@ -53,6 +57,7 @@ pnpm build
 pnpm test
 
 # 单独开发某个 app
+pnpm --filter @jojo/homepage dev
 pnpm --filter @jojo/reader dev
 pnpm --filter @jojo/rag dev
 pnpm --filter @jojo/press dev

@@ -1,0 +1,37 @@
+---
+import { getCollection } from "astro:content";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import { estimateReadingTime, formatCompactDate, sortByDate } from "@/lib/blog";
+
+const posts = sortByDate(await getCollection("blog", ({ data }) => !data.draft));
+---
+
+<BaseLayout title="文章目录" description="JOJO 全部文章目录。">
+  <div class="site-container">
+    <header class="page-heading">
+      <p>ARCHIVE</p>
+      <h1>文章目录</h1>
+      <span>依发表日期倒序排列</span>
+    </header>
+
+    <section class="archive-list" aria-label="全部文章">
+      {posts.map((post) => (
+        <article>
+          <div class="archive-meta">
+            <time datetime={post.data.date.toISOString()}>{formatCompactDate(post.data.date)}</time>
+            <span>约 {estimateReadingTime(post.body)} 分钟</span>
+          </div>
+          <div class="archive-copy">
+            <p>{post.data.tags.join(" / ")}</p>
+            <h2><a href={`/articles/${post.id}/`}>{post.data.title}</a></h2>
+            <dl>
+              <dt>摘要</dt>
+              <dd>{post.data.description}</dd>
+            </dl>
+          </div>
+          <a class="archive-link" href={`/articles/${post.id}/`}>阅读全文</a>
+        </article>
+      ))}
+    </section>
+  </div>
+</BaseLayout>

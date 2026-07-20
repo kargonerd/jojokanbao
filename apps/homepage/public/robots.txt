@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://jojokanbao.cn/sitemap-index.xml
+
+Sitemap: https://jojokanbao.cn/sitemap.xml

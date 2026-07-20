@@ -1,0 +1,84 @@
+name: Homepage CI and deploy
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "apps/homepage/**"
+      - "blog/**"
+      - "packages/editorial-preset/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/homepage-deploy.yml"
+  pull_request:
+    branches: [master]
+    paths:
+      - "apps/homepage/**"
+      - "blog/**"
+      - "packages/editorial-preset/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/homepage-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: EdgeOne Makers deployment environment
+        required: true
+        default: preview
+        type: choice
+        options:
+          - preview
+          - production
+
+permissions:
+  contents: read
+
+concurrency:
+  group: homepage-${{ github.event_name == 'workflow_dispatch' && inputs.environment || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      EDGEONE_API_TOKEN: ${{ secrets.EDGEONE_API_TOKEN }}
+      EDGEONE_PROJECT_NAME: ${{ vars.EDGEONE_HOMEPAGE_PROJECT_NAME || 'jojo-platform' }}
+      EDGEONE_DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'production' }}
+      EDGEONE_UPLOAD_FROM_PATH: ./apps/homepage/dist/
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.11.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test homepage
+        run: pnpm --filter @jojo/homepage test
+
+      - name: Type-check homepage
+        run: pnpm --filter @jojo/homepage typecheck
+
+      - name: Build homepage
+        run: pnpm --filter @jojo/homepage build
+
+      - name: Verify deployment configuration
+        if: github.event_name != 'pull_request'
+        run: test -n "$EDGEONE_API_TOKEN" || (echo "EDGEONE_API_TOKEN is not configured" >&2 && exit 1)
+
+      - name: Deploy to EdgeOne Makers
+        if: github.event_name != 'pull_request'
+        run: >-
+          pnpm dlx edgeone@1.6.14 makers deploy "$EDGEONE_UPLOAD_FROM_PATH"
+          --name "$EDGEONE_PROJECT_NAME"
+          --token "$EDGEONE_API_TOKEN"
+          --env "$EDGEONE_DEPLOY_ENV"
+          --area global
