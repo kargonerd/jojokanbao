@@ -24,6 +24,7 @@ interface PdfViewerProps {
   scrollContainerRef?: RefObject<HTMLElement | null>;
   onPageChange?: (page: number) => void;
   onPageRendered?: (page: number) => void;
+  onPageError?: (page: number, error: Error) => void;
   enableTextLayer?: boolean;
 }
 
@@ -82,6 +83,7 @@ export function PdfViewer({
   scrollContainerRef,
   onPageChange,
   onPageRendered,
+  onPageError,
   enableTextLayer = true,
 }: PdfViewerProps) {
   const normalizedInitialPage = clampPage(initialPage, document.numPages);
@@ -232,13 +234,14 @@ export function PdfViewer({
     return () => observer.disconnect();
   }, [document, onPageChange, scrollContainerRef]);
 
-  const handlePageError = (pageNumber: number) => {
+  const handlePageError = (pageNumber: number, error: Error) => {
     setLoadedPages((previous) => {
       const next = new Set(previous);
       next.delete(pageNumber);
       return next;
     });
     setFailedPages((previous) => new Set(previous).add(pageNumber));
+    onPageError?.(pageNumber, error);
   };
 
   const handleRetryPage = (pageNumber: number) => {
@@ -471,7 +474,7 @@ export function PdfViewer({
                 enableTextLayer={enableTextLayer}
                 onPageMetrics={handlePageMetrics}
                 onRendered={onPageRendered}
-                onError={() => handlePageError(pageNumber)}
+                onError={(_failedPage, error) => handlePageError(pageNumber, error)}
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center border border-rule bg-paper">

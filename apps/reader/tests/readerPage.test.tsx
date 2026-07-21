@@ -35,6 +35,9 @@ vi.mock("@jojo/pdf-viewer", () => ({
         <button type="button" onClick={() => (props.onPageRendered as (page: number) => void)(props.initialPage as number)}>
           模拟初始页渲染完成
         </button>
+        <button type="button" onClick={() => (props.onPageError as (page: number, error: Error) => void)(props.initialPage as number, new Error("render failed"))}>
+          模拟初始页加载失败
+        </button>
       </div>
     );
   },
@@ -186,6 +189,25 @@ describe("ReaderPage document states", () => {
 
     expect(screen.getByText("正在加载 PDF 文档")).toBeTruthy();
     expect(screen.queryByTestId("pdf-viewer")).toBeNull();
+  });
+
+  it("keeps one fullscreen loading overlay until the initial canvas renders", () => {
+    renderReader("/rmrb/19761009");
+
+    const pageLoadingText = screen.getByText("正在加载第 1 页");
+    expect(pageLoadingText.closest(".fixed")).toBeTruthy();
+    expect(screen.getAllByText(/正在加载/)).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "模拟初始页渲染完成" }));
+    expect(screen.queryByText("正在加载第 1 页")).toBeNull();
+  });
+
+  it("reveals the page error instead of leaving the initial loading overlay stuck", () => {
+    renderReader("/rmrb/19761009");
+    expect(screen.getByText("正在加载第 1 页")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "模拟初始页加载失败" }));
+    expect(screen.queryByText("正在加载第 1 页")).toBeNull();
   });
 
   it("shows the PDF error detail instead of the generic message alone", () => {
