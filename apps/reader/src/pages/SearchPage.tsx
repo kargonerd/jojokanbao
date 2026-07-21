@@ -46,8 +46,8 @@ function renderHighlighted(value: string, replaceBreaks: boolean, strong: boolea
     if (!part) return [];
     if (!highlighted) return [<Fragment key={`text-${index}`}>{part}</Fragment>];
     return strong
-      ? [<strong key={`highlight-${index}`} className="text-red">{part}</strong>]
-      : [<span key={`highlight-${index}`} className="text-red">{part}</span>];
+      ? [<strong key={`highlight-${index}`} className="search-highlight">{part}</strong>]
+      : [<span key={`highlight-${index}`} className="search-highlight">{part}</span>];
   });
 }
 
