@@ -6,7 +6,11 @@
   inset: 0;
   z-index: 1;
   overflow: clip;
+  /* Apply selection transparency once to the composited layer. The selected
+     spans use an opaque fill, so overlapping OCR boxes cannot become darker. */
+  opacity: 0.25;
   color-scheme: only light;
+  caret-color: CanvasText;
   line-height: 1;
   text-align: initial;
   transform-origin: 0 0;
@@ -42,6 +46,24 @@
   user-select: none;
 }
 
+.textLayer ::-moz-selection {
+  background: var(--color-red, #8b1a1a);
+  color: transparent;
+}
+
+.textLayer ::selection {
+  background: var(--color-red, #8b1a1a);
+  color: transparent;
+}
+
+.textLayer br::-moz-selection {
+  background: transparent;
+}
+
+.textLayer br::selection {
+  background: transparent;
+}
+
 .textLayer .endOfContent {
   position: absolute;
   display: block;
@@ -49,4 +71,8 @@
   z-index: 0;
   cursor: default;
   user-select: none;
+}
+
+.textLayer.selecting .endOfContent {
+  top: 0;
 }
