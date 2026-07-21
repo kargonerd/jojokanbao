@@ -117,7 +117,8 @@ describe("PdfViewer demand loading", () => {
     expect(view.host.querySelector("[data-pdf-page-content]")?.className).toContain("h-full");
     const loadingMessage = view.host.querySelector("[data-pdf-page-loading] > div");
     expect(loadingMessage?.className).toContain("sticky");
-    expect(loadingMessage?.className).toContain("top-20");
+    expect(loadingMessage?.className).toContain("top-[50vh]");
+    expect(loadingMessage?.className).toContain("-translate-y-1/2");
 
     await view.unmount();
   });
