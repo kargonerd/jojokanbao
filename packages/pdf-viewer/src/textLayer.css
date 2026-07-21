@@ -42,11 +42,6 @@
   user-select: none;
 }
 
-.textLayer ::selection {
-  background: #e8d1d1;
-  background: color-mix(in srgb, var(--color-red) 20%, var(--color-paper));
-}
-
 .textLayer .endOfContent {
   position: absolute;
   display: block;
