@@ -48,9 +48,9 @@ function makeDemandLoadedPdf(pagePaddingLength = 300_000): Buffer {
     const contentObject = pageObject + 1;
     addObject(
       pageObject,
-      `${pageObject} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 260] /Resources << >> /Contents ${contentObject} 0 R >>\nendobj\n`,
+      `${pageObject} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 260] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /Contents ${contentObject} 0 R >>\nendobj\n`,
     );
-    const stream = "q\nQ\n";
+    const stream = `BT\n/F1 12 Tf\n20 220 Td\n(Page ${index + 1} selectable text) Tj\nET\n`;
     addObject(
       contentObject,
       `${contentObject} 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}endstream\nendobj\n`,
@@ -339,6 +339,9 @@ test("reader dropdowns stay above the toolbar and close consistently", async ({ 
 
 test("mobile PDF slots keep their page ratio and evict distant canvases", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, "maxTouchPoints", { configurable: true, get: () => 5 });
+  });
   const pdf = makeDemandLoadedPdf(1_000);
   await page.route("https://blacknews.jojokanbao.cn/**/*.pdf", async (route) => {
     const range = route.request().headers().range;
@@ -367,6 +370,12 @@ test("mobile PDF slots keep their page ratio and evict distant canvases", async 
   const firstCanvas = page.locator("#page-1 canvas");
   await expect(firstCanvas).toBeVisible({ timeout: 20_000 });
   await expect(page.locator("#page-2 canvas")).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator("[data-pdf-text-layer]")).toHaveCount(1);
+  await expect(page.locator("#page-1 [data-pdf-text-layer]")).toHaveCount(1);
+  await expect(page.locator("#page-1 [data-pdf-text-layer]")).toContainText("Page 1 selectable text");
+  expect(await page.locator("#page-1 [data-pdf-text-layer] span").evaluate((element) => (
+    getComputedStyle(element).userSelect
+  ))).not.toBe("none");
   await expect(page.locator("[data-reader-page-status]")).toHaveText(`1 / ${PAGE_COUNT}`);
   await expect(page.getByRole("button", { name: "1976年10月09日" })).toHaveCSS("white-space", "nowrap");
   await expect(page.getByRole("button", { name: "复制阅读链接" })).toBeVisible();
@@ -420,6 +429,20 @@ test("mobile PDF slots keep their page ratio and evict distant canvases", async 
   ).width);
   await page.getByRole("button", { name: "开启区域缩放" }).click();
   await expect(page.locator("[data-pdf-viewer]")).toHaveAttribute("data-zoom", "3");
+  await expect(page.locator("[data-pdf-viewer]")).toHaveAttribute("data-touch-input", "true");
+  expect(await page.locator("[data-pdf-zoom-content]").evaluate((element) => (
+    (element as HTMLElement).style.userSelect
+  ))).toBe("");
+  await expect(page.locator("[data-pdf-text-layer]")).toHaveCount(1);
+  const selectedText = await page.locator("[data-pdf-text-layer] span").first().evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    return selection?.toString() ?? "";
+  });
+  expect(selectedText).toContain("selectable text");
   await expect(page.locator("[data-pdf-viewer]")).toHaveAttribute("data-render-zoom", "3");
   const upgradedCanvas = page.locator("[data-pdf-page][data-page-state='loaded'] canvas[data-pdf-render-zoom='3']").first();
   await expect(upgradedCanvas).toBeVisible();
