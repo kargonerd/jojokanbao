@@ -109,6 +109,16 @@ afterEach(() => {
 });
 
 describe("PdfViewer demand loading", () => {
+  it("shows a full-height page loading state before the first canvas resolves", async () => {
+    const { document } = createDocument(1);
+    const view = await renderViewer(document);
+
+    expect(view.host.textContent).toContain("正在加载第 1 页");
+    expect(view.host.querySelector("[data-pdf-page-content]")?.className).toContain("h-full");
+
+    await view.unmount();
+  });
+
   it("renders an aligned selectable text layer for loaded pages", async () => {
     const streamTextContent = vi.fn(() => new ReadableStream());
     const page = {

@@ -34,6 +34,10 @@ interface PdfDocumentState {
   error: string | null;
 }
 
+interface PdfDocumentInternalState extends PdfDocumentState {
+  sourceUrl: string;
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -46,15 +50,21 @@ export function usePdfDocument({
   protectedPdf = "auto",
   rangeChunkSize = DEFAULT_PDF_RANGE_CHUNK_SIZE,
 }: UsePdfDocumentOptions): PdfDocumentState {
-  const [state, setState] = useState<PdfDocumentState>({ document: null, numPages: 0, loading: Boolean(url), error: null });
+  const [state, setState] = useState<PdfDocumentInternalState>({
+    sourceUrl: url,
+    document: null,
+    numPages: 0,
+    loading: Boolean(url),
+    error: null,
+  });
 
   useEffect(() => {
     if (!url) {
-      setState({ document: null, numPages: 0, loading: false, error: null });
+      setState({ sourceUrl: url, document: null, numPages: 0, loading: false, error: null });
       return;
     }
 
-    setState({ document: null, numPages: 0, loading: true, error: null });
+    setState({ sourceUrl: url, document: null, numPages: 0, loading: true, error: null });
 
     let cancelled = false;
     let failed = false;
@@ -68,7 +78,7 @@ export function usePdfDocument({
       initialRequest.abort();
       abortSource?.abort();
       void task?.destroy().catch(() => {});
-      setState({ document: null, numPages: 0, loading: false, error: errorMessage(error) });
+      setState({ sourceUrl: url, document: null, numPages: 0, loading: false, error: errorMessage(error) });
     };
 
     const load = async () => {
@@ -108,7 +118,7 @@ export function usePdfDocument({
         await doc.destroy().catch(() => {});
         return;
       }
-      setState({ document: doc, numPages: doc.numPages, loading: false, error: null });
+      setState({ sourceUrl: url, document: doc, numPages: doc.numPages, loading: false, error: null });
     };
 
     void load().catch(fail);
@@ -121,5 +131,8 @@ export function usePdfDocument({
     };
   }, [url, cMapUrl, wasmUrl, standardFontDataUrl, protectedPdf, rangeChunkSize]);
 
+  if (state.sourceUrl !== url) {
+    return { document: null, numPages: 0, loading: Boolean(url), error: null };
+  }
   return state;
 }
