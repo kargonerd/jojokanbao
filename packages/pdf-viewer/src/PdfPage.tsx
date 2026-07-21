@@ -243,7 +243,11 @@ export function PdfPage({
       ) : null}
       {rendering && showLoading && (
         <div className="absolute inset-0 z-10 bg-paper/85" data-pdf-page-loading>
-          <div className="sticky top-[50vh] flex -translate-y-1/2 items-center justify-center gap-2.5 py-6">
+          <div
+            className="sticky left-0 top-[50vh] flex -translate-y-1/2 items-center justify-center gap-2.5 py-6"
+            style={{ width: `${100 / Math.max(layoutZoom, 1)}%` }}
+            data-pdf-page-loading-message
+          >
             <div className="w-4 h-4 border-2 border-red border-t-transparent rounded-full animate-spin" />
             <span className="text-sm text-ink">正在加载第 {pageNumber} 页</span>
           </div>
