@@ -458,7 +458,9 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
 
   await page.goto("/rmrb/19761009", { waitUntil: "domcontentloaded" });
   const source = page.locator("#page-1 canvas");
+  const interactionLayer = page.locator("#page-1 [data-pdf-text-layer]");
   await expect(source).toBeVisible({ timeout: 20_000 });
+  await expect(interactionLayer).toBeVisible({ timeout: 20_000 });
   const toggle = page.getByRole("button", { name: "开启区域缩放" });
   await toggle.click();
   await expect(page.getByRole("button", { name: "关闭区域缩放" })).toHaveAttribute("aria-pressed", "true");
@@ -469,7 +471,7 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
   const reader = page.locator("[data-reader-scroll-container]");
   const scrollHeightBeforeZoom = await reader.evaluate((element) => element.scrollHeight);
 
-  await source.click({ position: { x: 300, y: 300 } });
+  await interactionLayer.click({ position: { x: 300, y: 300 } });
   await expect(viewer).toHaveAttribute("data-zoom", "2");
   await page.waitForTimeout(300);
   expect(await source.evaluate((canvas) => (canvas as HTMLCanvasElement).width)).toBe(canvasWidthBeforeZoom);

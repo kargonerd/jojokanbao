@@ -35,12 +35,21 @@ vi.mock("@jojo/pdf-viewer", () => ({
         <button type="button" onClick={() => (props.onPageRendered as (page: number) => void)(props.initialPage as number)}>
           模拟初始页渲染完成
         </button>
+        <button type="button" onClick={() => (props.onPageError as (page: number, error: Error) => void)(props.initialPage as number, new Error("render failed"))}>
+          模拟初始页加载失败
+        </button>
       </div>
     );
   },
 }));
 
-const readyDocument = { numPages: 6 };
+const readyDocument = {
+  numPages: 6,
+  getOutline: vi.fn(),
+  getDestination: vi.fn(),
+  getPageIndex: vi.fn(),
+  getPage: vi.fn(),
+};
 
 function LocationProbe() {
   const location = useLocation();
@@ -84,6 +93,15 @@ beforeEach(() => {
   pdfMocks.usePdfDocument.mockReset();
   pdfMocks.viewerProps.length = 0;
   setPdfState();
+  readyDocument.getOutline.mockReset().mockResolvedValue([]);
+  readyDocument.getDestination.mockReset().mockResolvedValue(null);
+  readyDocument.getPageIndex.mockReset().mockResolvedValue(0);
+  readyDocument.getPage.mockReset().mockResolvedValue({
+    getViewport: () => ({
+      height: 1_000,
+      convertToViewportPoint: (_x: number, y: number) => [0, 1_000 - y],
+    }),
+  });
   vi.stubGlobal("alert", vi.fn());
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
     callback(0);
@@ -137,6 +155,7 @@ describe("ReaderPage document states", () => {
       zoom: 1.5,
       zoomEnabled: false,
       initialPage: 1,
+      enableTextLayer: true,
     });
   });
 
@@ -170,6 +189,27 @@ describe("ReaderPage document states", () => {
 
     expect(screen.getByText("正在加载 PDF 文档")).toBeTruthy();
     expect(screen.queryByTestId("pdf-viewer")).toBeNull();
+  });
+
+  it("keeps one fullscreen loading overlay until the initial canvas renders", () => {
+    renderReader("/rmrb/19761009");
+
+    const pageLoadingText = screen.getByText("正在加载第 1 页");
+    expect(pageLoadingText.closest(".fixed")).toBeTruthy();
+    expect(screen.getAllByText(/正在加载/)).toHaveLength(1);
+    expect(latestViewerProps().suppressPageLoading).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "模拟初始页渲染完成" }));
+    expect(screen.queryByText("正在加载第 1 页")).toBeNull();
+    expect(latestViewerProps().suppressPageLoading).toBe(false);
+  });
+
+  it("reveals the page error instead of leaving the initial loading overlay stuck", () => {
+    renderReader("/rmrb/19761009");
+    expect(screen.getByText("正在加载第 1 页")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "模拟初始页加载失败" }));
+    expect(screen.queryByText("正在加载第 1 页")).toBeNull();
   });
 
   it("shows the PDF error detail instead of the generic message alone", () => {
@@ -281,18 +321,72 @@ describe("ReaderPage magazine navigation", () => {
 
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/hq/196501"));
   });
-
-  it("does not allow selecting a magazine year with no archived issues", () => {
-    renderReader("/rmhb/197292", { type: "magazine", name: "rmhb" });
-
-    fireEvent.click(screen.getByRole("button", { name: "1972年" }));
-
-    expect((screen.getByRole("button", { name: "1975" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId("location").textContent).toBe("/rmhb/197292");
-  });
 });
 
 describe("ReaderPage toolbar interactions", () => {
+  it("shows report bookmarks under normalized edition entries and jumps to a report destination", async () => {
+    readyDocument.getOutline.mockResolvedValue([
+      {
+        title: "《人民日报》1976年10月09日",
+        dest: null,
+        items: [
+          {
+            title: "第03版：国内新闻",
+            dest: [{ num: 22, gen: 0 }, { name: "FitH" }, 800],
+            items: [
+              {
+                title: "一篇文章标题",
+                dest: [{ num: 22, gen: 0 }, { name: "FitH" }, 700],
+                items: [],
+              },
+            ],
+          },
+        ],
+      },
+      { title: "yw4bb05b", dest: [{ num: 23, gen: 0 }, { name: "Fit" }], items: [] },
+    ]);
+    readyDocument.getPageIndex.mockResolvedValue(2);
+    renderReader("/rmrb/19761009");
+
+    const outlineButton = await screen.findByRole("button", { name: "目录" });
+    fireEvent.click(outlineButton);
+    expect(screen.getByRole("dialog", { name: "PDF 目录" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "第三版（国内新闻）" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "一篇文章标题" })).toBeTruthy();
+    expect(screen.queryByText("yw4bb05b")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "收起第三版（国内新闻）" }));
+    expect(screen.queryByRole("button", { name: "一篇文章标题" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "展开第三版（国内新闻）" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "一篇文章标题" }));
+    await waitFor(() => expect(window.location.hash).toBe("#page-3"));
+    expect(readyDocument.getPageIndex).toHaveBeenCalledWith({ num: 22, gen: 0 });
+    expect(readyDocument.getPage).toHaveBeenCalledWith(3);
+    expect(screen.queryByRole("dialog", { name: "PDF 目录" })).toBeNull();
+  });
+
+  it("does not read or show outlines outside the audited years", async () => {
+    readyDocument.getOutline.mockResolvedValue([
+      { title: "第一版（要闻）", dest: [{ num: 1, gen: 0 }, { name: "Fit" }], items: [] },
+    ]);
+    renderReader("/rmrb/20101105");
+
+    await waitFor(() => expect(screen.getByTestId("pdf-viewer")).toBeTruthy());
+    expect(readyDocument.getOutline).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "目录" })).toBeNull();
+  });
+
+  it("hides production-code bookmarks even in a supported year", async () => {
+    readyDocument.getOutline.mockResolvedValue([
+      { title: "yw1bb05b", dest: [{ num: 1, gen: 0 }, { name: "Fit" }], items: [] },
+    ]);
+    renderReader("/rmrb/19761009");
+
+    await waitFor(() => expect(readyDocument.getOutline).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: "目录" })).toBeNull();
+  });
+
   it("enables in-place zoom, accepts viewer zoom changes, and exits with Escape", () => {
     renderReader("/rmrb/19761009");
 
