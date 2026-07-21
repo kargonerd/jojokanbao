@@ -115,6 +115,9 @@ describe("PdfViewer demand loading", () => {
 
     expect(view.host.textContent).toContain("正在加载第 1 页");
     expect(view.host.querySelector("[data-pdf-page-content]")?.className).toContain("h-full");
+    const loadingMessage = view.host.querySelector("[data-pdf-page-loading] > div");
+    expect(loadingMessage?.className).toContain("sticky");
+    expect(loadingMessage?.className).toContain("top-20");
 
     await view.unmount();
   });
