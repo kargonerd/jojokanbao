@@ -486,10 +486,12 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
     transform: getComputedStyle(element).transform,
     selectionColor: getComputedStyle(element, "::selection").color,
     selectionBackground: getComputedStyle(element, "::selection").backgroundColor,
+    textLayerOpacity: getComputedStyle(element.closest(".textLayer")!).opacity,
   }));
   expect(textPresentationBeforeSelection.rotate).not.toBe("");
   expect(textPresentationBeforeSelection.selectionColor).toMatch(/^(transparent|rgba\(0, 0, 0, 0\))$/);
   expect(textPresentationBeforeSelection.selectionBackground).toBe("rgb(139, 26, 26)");
+  expect(textPresentationBeforeSelection.textLayerOpacity).toBe("0.25");
 
   const copiedText = await rotatedText.evaluate((element) => {
     const range = document.createRange();
@@ -515,6 +517,7 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
     transform: getComputedStyle(element).transform,
     selectionColor: getComputedStyle(element, "::selection").color,
     selectionBackground: getComputedStyle(element, "::selection").backgroundColor,
+    textLayerOpacity: getComputedStyle(element.closest(".textLayer")!).opacity,
   }))).toEqual(textPresentationBeforeSelection);
   await page.evaluate(() => {
     window.getSelection()?.removeAllRanges();

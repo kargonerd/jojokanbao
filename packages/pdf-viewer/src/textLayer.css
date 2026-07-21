@@ -6,7 +6,9 @@
   inset: 0;
   z-index: 1;
   overflow: clip;
-  opacity: 1;
+  /* Apply selection transparency once to the composited layer. The selected
+     spans use an opaque fill, so overlapping OCR boxes cannot become darker. */
+  opacity: 0.25;
   color-scheme: only light;
   caret-color: CanvasText;
   line-height: 1;
