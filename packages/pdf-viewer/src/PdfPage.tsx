@@ -230,9 +230,11 @@ export function PdfPage({
         <div ref={textLayerRef} className="textLayer" data-pdf-text-layer />
       ) : null}
       {rendering && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center gap-2.5 bg-paper/85">
-          <div className="w-4 h-4 border-2 border-red border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm text-ink">正在加载第 {pageNumber} 页</span>
+        <div className="absolute inset-0 z-10 bg-paper/85" data-pdf-page-loading>
+          <div className="sticky top-20 flex items-center justify-center gap-2.5 py-6">
+            <div className="w-4 h-4 border-2 border-red border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm text-ink">正在加载第 {pageNumber} 页</span>
+          </div>
         </div>
       )}
     </div>
