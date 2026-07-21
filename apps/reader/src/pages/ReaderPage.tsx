@@ -104,28 +104,107 @@ function normalizePageOutlineTitle(title: string): string | null {
   return `第${pageNumber}版${section ? `（${section}）` : ""}`;
 }
 
+function navigableOutlineItems(items: PdfOutlineItem[]): PdfOutlineItem[] {
+  const result: PdfOutlineItem[] = [];
+  for (const item of items) {
+    const title = (item.title ?? "").trim();
+    const children = navigableOutlineItems(item.items ?? []);
+    if (title && (item.dest !== null || children.length > 0)) {
+      result.push({ ...item, title, items: children });
+    } else {
+      result.push(...children);
+    }
+  }
+  return result;
+}
+
 function pageOutlineItems(items: PdfOutlineItem[]): PdfOutlineItem[] {
   const result: PdfOutlineItem[] = [];
   for (const item of items) {
     const title = normalizePageOutlineTitle(item.title ?? "");
-    if (title && item.dest !== null) {
-      result.push({ ...item, title, items: [] });
+    const children = navigableOutlineItems(item.items ?? []);
+    if (title) {
+      if (item.dest !== null || children.length > 0) {
+        result.push({ ...item, title, items: children });
+      }
+      continue;
     }
     result.push(...pageOutlineItems(item.items ?? []));
   }
   return result;
 }
 
+function OutlineItem({
+  item,
+  depth,
+  defaultOpen,
+  onSelect,
+}: {
+  item: PdfOutlineItem;
+  depth: number;
+  defaultOpen?: boolean;
+  onSelect: (item: PdfOutlineItem) => void;
+}) {
+  const [open, setOpen] = useState(defaultOpen ?? false);
+  const hasChildren = item.items.length > 0;
+  const isEdition = depth === 0;
+
+  return (
+    <div>
+      <div
+        className={`flex min-h-9 items-stretch border-b border-rule ${isEdition ? "bg-red/5" : "bg-paper"}`}
+        style={{ paddingLeft: `${8 + depth * 14}px` }}
+      >
+        {hasChildren ? (
+          <button
+            type="button"
+            className="w-7 shrink-0 border-0 bg-transparent text-xs text-muted hover:text-red"
+            aria-label={`${open ? "收起" : "展开"}${item.title}`}
+            aria-expanded={open}
+            onClick={() => setOpen((value) => !value)}
+          >
+            {open ? "▾" : "▸"}
+          </button>
+        ) : (
+          <span className="w-7 shrink-0" aria-hidden="true" />
+        )}
+        {item.dest !== null ? (
+          <button
+            type="button"
+            className={`min-w-0 flex-1 border-0 bg-transparent py-2 pr-3 text-left text-xs leading-5 transition-colors hover:text-red ${isEdition ? "font-bold text-red" : "text-ink"}`}
+            onClick={() => onSelect(item)}
+          >
+            {item.title}
+          </button>
+        ) : (
+          <span className={`min-w-0 flex-1 py-2 pr-3 text-xs leading-5 ${isEdition ? "font-bold text-red" : "text-muted"}`}>
+            {item.title}
+          </span>
+        )}
+      </div>
+      {hasChildren && open
+        ? item.items.map((child, index) => (
+            <OutlineItem
+              key={`${depth + 1}-${index}-${child.title}`}
+              item={child}
+              depth={depth + 1}
+              onSelect={onSelect}
+            />
+          ))
+        : null}
+    </div>
+  );
+}
+
 function OutlineItems({ items, onSelect }: { items: PdfOutlineItem[]; onSelect: (item: PdfOutlineItem) => void }) {
   return items.map((item, index) => (
-    <button
+    <OutlineItem
       key={`${index}-${item.title}`}
-      type="button"
-      className="block w-full border-0 border-b border-rule bg-paper px-3 py-2 text-left text-xs leading-5 text-ink transition-colors hover:bg-red/5 hover:text-red"
-      onClick={() => onSelect(item)}
-    >
-      {item.title}
-    </button>
+      item={item}
+      depth={0}
+      defaultOpen={index === 0}
+      onSelect={onSelect}
+    />
   ));
 }
 

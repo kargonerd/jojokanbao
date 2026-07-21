@@ -300,7 +300,7 @@ describe("ReaderPage magazine navigation", () => {
 });
 
 describe("ReaderPage toolbar interactions", () => {
-  it("shows only normalized edition-level outline entries and jumps to their destination", async () => {
+  it("shows report bookmarks under normalized edition entries and jumps to a report destination", async () => {
     readyDocument.getOutline.mockResolvedValue([
       {
         title: "《人民日报》1976年10月09日",
@@ -328,10 +328,14 @@ describe("ReaderPage toolbar interactions", () => {
     fireEvent.click(outlineButton);
     expect(screen.getByRole("dialog", { name: "PDF 目录" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "第三版（国内新闻）" })).toBeTruthy();
-    expect(screen.queryByText("一篇文章标题")).toBeNull();
+    expect(screen.getByRole("button", { name: "一篇文章标题" })).toBeTruthy();
     expect(screen.queryByText("yw4bb05b")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "第三版（国内新闻）" }));
+    fireEvent.click(screen.getByRole("button", { name: "收起第三版（国内新闻）" }));
+    expect(screen.queryByRole("button", { name: "一篇文章标题" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "展开第三版（国内新闻）" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "一篇文章标题" }));
     await waitFor(() => expect(window.location.hash).toBe("#page-3"));
     expect(readyDocument.getPageIndex).toHaveBeenCalledWith({ num: 22, gen: 0 });
     expect(readyDocument.getPage).toHaveBeenCalledWith(3);
