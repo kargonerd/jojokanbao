@@ -6,7 +6,9 @@
   inset: 0;
   z-index: 1;
   overflow: clip;
+  opacity: 1;
   color-scheme: only light;
+  caret-color: CanvasText;
   line-height: 1;
   text-align: initial;
   transform-origin: 0 0;
@@ -42,6 +44,24 @@
   user-select: none;
 }
 
+.textLayer ::-moz-selection {
+  background: rgb(139 26 26 / 0.25);
+  color: transparent;
+}
+
+.textLayer ::selection {
+  background: rgb(139 26 26 / 0.25);
+  color: transparent;
+}
+
+.textLayer br::-moz-selection {
+  background: transparent;
+}
+
+.textLayer br::selection {
+  background: transparent;
+}
+
 .textLayer .endOfContent {
   position: absolute;
   display: block;
@@ -49,4 +69,8 @@
   z-index: 0;
   cursor: default;
   user-select: none;
+}
+
+.textLayer.selecting .endOfContent {
+  top: 0;
 }

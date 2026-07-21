@@ -50,7 +50,7 @@ function makeDemandLoadedPdf(pagePaddingLength = 300_000): Buffer {
       pageObject,
       `${pageObject} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 260] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /Contents ${contentObject} 0 R >>\nendobj\n`,
     );
-    const stream = `BT\n/F1 12 Tf\n20 220 Td\n(Page ${index + 1} selectable text) Tj\nET\n`;
+    const stream = `BT\n/F1 12 Tf\n20 220 Td\n(Page ${index + 1} selectable text) Tj\nET\nBT\n/F1 12 Tf\n0 1 -1 0 160 80 Tm\n(Rotated text) Tj\nET\n`;
     addObject(
       contentObject,
       `${contentObject} 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}endstream\nendobj\n`,
@@ -477,6 +477,47 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
   const interactionLayer = page.locator("#page-1 [data-pdf-text-layer]");
   await expect(source).toBeVisible({ timeout: 20_000 });
   await expect(interactionLayer).toBeVisible({ timeout: 20_000 });
+  const rotatedText = interactionLayer.getByText("Rotated text", { exact: true });
+  await expect(rotatedText).toBeVisible();
+  const textPresentationBeforeSelection = await rotatedText.evaluate((element) => ({
+    left: (element as HTMLElement).style.left,
+    top: (element as HTMLElement).style.top,
+    rotate: (element as HTMLElement).style.getPropertyValue("--rotate"),
+    transform: getComputedStyle(element).transform,
+    selectionColor: getComputedStyle(element, "::selection").color,
+  }));
+  expect(textPresentationBeforeSelection.rotate).not.toBe("");
+  expect(textPresentationBeforeSelection.selectionColor).toMatch(/^(transparent|rgba\(0, 0, 0, 0\))$/);
+
+  const copiedText = await rotatedText.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.dispatchEvent(new Event("selectionchange"));
+    let copied = "";
+    const event = new Event("copy", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", {
+      value: { setData: (_type: string, value: string) => { copied = value; } },
+    });
+    element.dispatchEvent(event);
+    return { copied, prevented: event.defaultPrevented };
+  });
+  expect(copiedText).toEqual({ copied: "Rotated text", prevented: true });
+  await expect(interactionLayer).toHaveClass(/selecting/);
+  expect(await rotatedText.evaluate((element) => ({
+    left: (element as HTMLElement).style.left,
+    top: (element as HTMLElement).style.top,
+    rotate: (element as HTMLElement).style.getPropertyValue("--rotate"),
+    transform: getComputedStyle(element).transform,
+    selectionColor: getComputedStyle(element, "::selection").color,
+  }))).toEqual(textPresentationBeforeSelection);
+  await page.evaluate(() => {
+    window.getSelection()?.removeAllRanges();
+    document.dispatchEvent(new Event("selectionchange"));
+  });
+  await expect(interactionLayer).not.toHaveClass(/selecting/);
   const canvasWidthBeforeZoom = await source.evaluate((canvas) => (canvas as HTMLCanvasElement).width);
   const toggle = page.getByRole("button", { name: "开启区域缩放" });
   await toggle.click();
