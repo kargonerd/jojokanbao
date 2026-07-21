@@ -15,6 +15,8 @@
 |-------|---|------|
 | `--color-red` | `#8b1a1a` | 主色 |
 | `--color-red-dark` | `#651212` | 主色深 |
+| `--color-search-highlight` | `#981b1b` | 搜索关键词文字 |
+| `--color-search-highlight-line` | `#d14a3f` | 搜索关键词校勘线 |
 | `--color-ink` | `#202020` | 正文色 |
 | `--color-muted` | `#666` | 辅助文字 |
 | `--color-paper` | `#fff` | 背景 |
