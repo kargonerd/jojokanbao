@@ -41,6 +41,8 @@ const MIN_ZOOM = 1;
 const MAX_ZOOM = 3;
 const CLICK_ZOOM_STEP = 0.5;
 const WHEEL_ZOOM_STEP = 0.25;
+const RENDER_ZOOM_SETTLE_MS = 180;
+const MAX_CONSTRAINED_RESIDENT_PAGES = 3;
 
 interface DragState {
   pointerId: number;
@@ -69,6 +71,27 @@ function clampPage(page: number, numPages: number): number {
 
 function clampZoom(zoom: number): number {
   return Math.min(Math.max(zoom, MIN_ZOOM), MAX_ZOOM);
+}
+
+function shouldConstrainPageResidency(): boolean {
+  const deviceMemory = (window.navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+  const narrowViewport = typeof window.matchMedia === "function"
+    && window.matchMedia("(max-width: 767px)").matches;
+  return narrowViewport || (typeof deviceMemory === "number" && deviceMemory <= 4);
+}
+
+function selectResidentPages(
+  pages: Iterable<number>,
+  currentPage: number,
+  constrained: boolean,
+): Set<number> {
+  const candidates = [...new Set([...pages, currentPage])].filter((page) => page > 0);
+  if (!constrained || candidates.length <= MAX_CONSTRAINED_RESIDENT_PAGES) return new Set(candidates);
+
+  candidates.sort((left, right) => (
+    Math.abs(left - currentPage) - Math.abs(right - currentPage) || left - right
+  ));
+  return new Set(candidates.slice(0, MAX_CONSTRAINED_RESIDENT_PAGES));
 }
 
 export function PdfViewer({
@@ -103,6 +126,15 @@ export function PdfViewer({
   const activeTouchPointersRef = useRef<Map<number, PointerPosition>>(new Map());
   const pinchRef = useRef<PinchState | null>(null);
   const effectiveZoom = zoomEnabled ? clampZoom(zoom) : 1;
+  const [renderZoom, setRenderZoom] = useState(effectiveZoom);
+  const [constrainedResidency] = useState(shouldConstrainPageResidency);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setRenderZoom((previous) => (previous === effectiveZoom ? previous : effectiveZoom));
+    }, RENDER_ZOOM_SETTLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [effectiveZoom]);
 
   useLayoutEffect(() => {
     const previousZoom = previousZoomRef.current;
@@ -166,17 +198,21 @@ export function PdfViewer({
           if (entry.isIntersecting) pagesInRange.add(pageNumber);
           else pagesInRange.delete(pageNumber);
         }
-        setLoadedPages(() => new Set([...pagesInRange, currentPageRef.current]));
+        setLoadedPages(() => selectResidentPages(
+          pagesInRange,
+          currentPageRef.current,
+          constrainedResidency,
+        ));
       },
       {
         root: scrollContainerRef?.current ?? null,
-        rootMargin: PAGE_PRELOAD_MARGIN,
+        rootMargin: constrainedResidency ? "5% 0px" : PAGE_PRELOAD_MARGIN,
       },
     );
 
     container.querySelectorAll("[data-pdf-page]").forEach((element) => observer.observe(element));
     return () => observer.disconnect();
-  }, [addPage, document, scrollContainerRef]);
+  }, [addPage, constrainedResidency, document, scrollContainerRef]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -221,7 +257,7 @@ export function PdfViewer({
           setLoadedPages((previous) => {
             const next = new Set(previous).add(pageNumber);
             if (!pagesInLoadRangeRef.current.has(previousPage)) next.delete(previousPage);
-            return next;
+            return selectResidentPages(next, pageNumber, constrainedResidency);
           });
           onPageChange(pageNumber);
         }
@@ -234,7 +270,7 @@ export function PdfViewer({
 
     container.querySelectorAll("[data-pdf-page]").forEach((element) => observer.observe(element));
     return () => observer.disconnect();
-  }, [document, onPageChange, scrollContainerRef]);
+  }, [constrainedResidency, document, onPageChange, scrollContainerRef]);
 
   const handlePageError = (pageNumber: number, error: Error) => {
     setLoadedPages((previous) => {
@@ -422,7 +458,13 @@ export function PdfViewer({
   };
 
   return (
-    <div ref={containerRef} data-pdf-viewer data-zoom={effectiveZoom} className={`relative w-full ${className}`}>
+    <div
+      ref={containerRef}
+      data-pdf-viewer
+      data-zoom={effectiveZoom}
+      data-render-zoom={renderZoom}
+      className={`relative w-full ${className}`}
+    >
       <div
         ref={zoomContentRef}
         data-pdf-zoom-content
@@ -471,7 +513,7 @@ export function PdfViewer({
                 pageNumber={pageNumber}
                 scale={scale}
                 quality={quality}
-                renderZoom={onZoomChange ? MAX_ZOOM : 1}
+                renderZoom={pageNumber === currentPageRef.current ? renderZoom : 1}
                 layoutZoom={effectiveZoom}
                 enableTextLayer={enableTextLayer}
                 showLoading={!suppressPageLoading}
