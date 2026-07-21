@@ -71,42 +71,61 @@ interface PdfOutlineItem {
   items: PdfOutlineItem[];
 }
 
-function navigableOutline(items: PdfOutlineItem[]): PdfOutlineItem[] {
-  return items
-    .map((item) => ({ ...item, items: navigableOutline(item.items ?? []) }))
-    .filter((item) => item.dest !== null || item.items.length > 0);
+const PAGE_OUTLINE_TITLE = /^第\s*([〇零一二三四五六七八九十百\d０-９]+)\s*版(?:([（(:：\s].*))?$/u;
+const CHINESE_DIGITS = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+
+function toChinesePageNumber(value: string): string {
+  const asciiValue = value.replace(/[０-９]/g, (digit) => String(digit.charCodeAt(0) - 0xfee0));
+  if (!/^\d+$/.test(asciiValue)) return value;
+
+  const pageNumber = Number(asciiValue);
+  if (pageNumber < 10) return CHINESE_DIGITS[pageNumber] ?? asciiValue;
+  if (pageNumber < 20) return `十${pageNumber === 10 ? "" : CHINESE_DIGITS[pageNumber % 10]}`;
+  if (pageNumber < 100) {
+    const ones = pageNumber % 10;
+    return `${CHINESE_DIGITS[Math.floor(pageNumber / 10)]}十${ones === 0 ? "" : CHINESE_DIGITS[ones]}`;
+  }
+  return asciiValue;
 }
 
-function OutlineItems({
-  items,
-  depth = 0,
-  onSelect,
-}: {
-  items: PdfOutlineItem[];
-  depth?: number;
-  onSelect: (item: PdfOutlineItem) => void;
-}) {
+function normalizePageOutlineTitle(title: string): string | null {
+  const match = PAGE_OUTLINE_TITLE.exec(title.trim());
+  if (!match?.[1]) return null;
+
+  const pageNumber = toChinesePageNumber(match[1]);
+  let section = (match[2] ?? "").trim();
+  if ((section.startsWith("（") && section.endsWith("）"))
+    || (section.startsWith("(") && section.endsWith(")"))) {
+    section = section.slice(1, -1).trim();
+  } else {
+    section = section.replace(/^[:：]\s*/, "").trim();
+  }
+
+  return `第${pageNumber}版${section ? `（${section}）` : ""}`;
+}
+
+function pageOutlineItems(items: PdfOutlineItem[]): PdfOutlineItem[] {
+  const result: PdfOutlineItem[] = [];
+  for (const item of items) {
+    const title = normalizePageOutlineTitle(item.title ?? "");
+    if (title && item.dest !== null) {
+      result.push({ ...item, title, items: [] });
+    }
+    result.push(...pageOutlineItems(item.items ?? []));
+  }
+  return result;
+}
+
+function OutlineItems({ items, onSelect }: { items: PdfOutlineItem[]; onSelect: (item: PdfOutlineItem) => void }) {
   return items.map((item, index) => (
-    <div key={`${depth}-${index}-${item.title}`}>
-      {item.dest !== null ? (
-        <button
-          type="button"
-          className="block w-full border-0 border-b border-rule bg-paper py-2 pr-3 text-left text-xs leading-5 text-ink transition-colors hover:bg-red/5 hover:text-red"
-          style={{ paddingLeft: `${12 + depth * 14}px` }}
-          onClick={() => onSelect(item)}
-        >
-          {item.title || "未命名目录项"}
-        </button>
-      ) : (
-        <div
-          className="border-b border-rule bg-paper py-2 pr-3 text-xs font-bold leading-5 text-muted"
-          style={{ paddingLeft: `${12 + depth * 14}px` }}
-        >
-          {item.title || "未命名目录项"}
-        </div>
-      )}
-      {item.items.length > 0 ? <OutlineItems items={item.items} depth={depth + 1} onSelect={onSelect} /> : null}
-    </div>
+    <button
+      key={`${index}-${item.title}`}
+      type="button"
+      className="block w-full border-0 border-b border-rule bg-paper px-3 py-2 text-left text-xs leading-5 text-ink transition-colors hover:bg-red/5 hover:text-red"
+      onClick={() => onSelect(item)}
+    >
+      {item.title}
+    </button>
   ));
 }
 
@@ -190,13 +209,13 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   useEffect(() => {
     setOutlineOpen(false);
     setOutlineItems([]);
-    if (!pdfDoc) return;
+    if (!pdfDoc || !config.pageOutlineAvailable?.(routeId)) return;
 
     let disposed = false;
     void pdfDoc.getOutline()
       .then((items) => {
         if (disposed) return;
-        const nextItems = navigableOutline((items ?? []) as PdfOutlineItem[]);
+        const nextItems = pageOutlineItems((items ?? []) as PdfOutlineItem[]);
         if (nextItems.length > 0) setOutlineItems(nextItems);
       })
       .catch(() => {});
@@ -204,7 +223,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     return () => {
       disposed = true;
     };
-  }, [pdfDoc]);
+  }, [config, pdfDoc, routeId]);
 
   const replacePageHash = useCallback((pageNum: number) => {
     const nextHash = `#page-${pageNum}`;
