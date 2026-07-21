@@ -1,5 +1,7 @@
 import { useRef, useEffect, useState } from "react";
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from "pdfjs-dist";
+import { TextLayer } from "pdfjs-dist/legacy/build/pdf.mjs";
+import "./textLayer.css";
 
 export const MAX_PDF_CANVAS_PIXELS = 32_000_000;
 export const MAX_PDF_CANVAS_DIMENSION = 8_192;
@@ -18,6 +20,8 @@ interface PdfPageProps {
   quality?: number;
   renderZoom?: number;
   layoutZoom?: number;
+  enableTextLayer?: boolean;
+  showLoading?: boolean;
   className?: string;
   onRendered?: (pageNumber: number) => void;
   onPageMetrics?: (pageNumber: number, metrics: PdfPageMetrics) => void;
@@ -68,6 +72,8 @@ export function PdfPage({
   quality,
   renderZoom,
   layoutZoom = 1,
+  enableTextLayer = true,
+  showLoading = true,
   className = "",
   onRendered,
   onPageMetrics,
@@ -75,9 +81,11 @@ export function PdfPage({
 }: PdfPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [rendering, setRendering] = useState(false);
+  const textLayerRef = useRef<HTMLDivElement>(null);
+  const [rendering, setRendering] = useState(true);
   const [containerWidth, setContainerWidth] = useState(0);
   const renderTask = useRef<RenderTask | null>(null);
+  const textLayerTask = useRef<{ cancel: () => void } | null>(null);
   const layoutZoomRef = useRef(Math.max(layoutZoom, 1));
   const callbacksRef = useRef({ onRendered, onPageMetrics, onError });
   layoutZoomRef.current = Math.max(layoutZoom, 1);
@@ -165,13 +173,84 @@ export function PdfPage({
     };
   }, [containerWidth, document, pageNumber, quality, renderZoom, scale]);
 
+  useEffect(() => {
+    const container = containerRef.current;
+    const textLayerContainer = textLayerRef.current;
+    if (!enableTextLayer || !container || !textLayerContainer || !document || containerWidth === 0) {
+      textLayerTask.current?.cancel();
+      textLayerTask.current = null;
+      textLayerContainer?.replaceChildren();
+      return;
+    }
+
+    let disposed = false;
+
+    const renderText = async () => {
+      try {
+        const page = await document.getPage(pageNumber);
+        if (disposed) return;
+
+        const baseViewport = page.getViewport({ scale: 1 });
+        const layoutWidth = Math.max(container.clientWidth, containerWidth * Math.max(layoutZoom, 1));
+        const viewport = page.getViewport({ scale: layoutWidth / Math.max(baseViewport.width, 1) });
+        textLayerTask.current?.cancel();
+        textLayerContainer.replaceChildren();
+        // PDF.js positions spans as percentages but sizes their fonts and layer
+        // dimensions through these page-level variables. Without the viewport
+        // scale, selectable text collapses into the wrong columns even though
+        // the canvas itself remains visually correct.
+        textLayerContainer.style.setProperty("--total-scale-factor", String(viewport.scale));
+        textLayerContainer.style.setProperty("--scale-round-x", "1px");
+        textLayerContainer.style.setProperty("--scale-round-y", "1px");
+        const task = new TextLayer({
+          textContentSource: page.streamTextContent({
+            includeMarkedContent: true,
+            disableNormalization: true,
+          }),
+          container: textLayerContainer,
+          viewport,
+        });
+        textLayerTask.current = task;
+        await task.render();
+        if (disposed) return;
+
+        const endOfContent = window.document.createElement("div");
+        endOfContent.className = "endOfContent";
+        textLayerContainer.append(endOfContent);
+      } catch (error) {
+        if (disposed || (error as { name?: string })?.name === "AbortException") return;
+        textLayerContainer.replaceChildren();
+      }
+    };
+
+    void renderText();
+    return () => {
+      disposed = true;
+      textLayerTask.current?.cancel();
+      textLayerTask.current = null;
+      textLayerContainer.replaceChildren();
+      textLayerContainer.style.removeProperty("--total-scale-factor");
+      textLayerContainer.style.removeProperty("--scale-round-x");
+      textLayerContainer.style.removeProperty("--scale-round-y");
+    };
+  }, [containerWidth, document, enableTextLayer, layoutZoom, pageNumber]);
+
   return (
-    <div ref={containerRef} id={id} className={`relative ${className}`}>
+    <div ref={containerRef} id={id} data-pdf-page-content className={`relative h-full ${className}`}>
       <canvas ref={canvasRef} className="block w-full h-auto" />
-      {rendering && (
-        <div className="absolute inset-0 flex items-center justify-center gap-2.5 bg-paper/85">
-          <div className="w-4 h-4 border-2 border-red border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm text-ink">正在加载第 {pageNumber} 页</span>
+      {enableTextLayer ? (
+        <div ref={textLayerRef} className="textLayer" data-pdf-text-layer />
+      ) : null}
+      {rendering && showLoading && (
+        <div className="absolute inset-0 z-10 bg-paper/85" data-pdf-page-loading>
+          <div
+            className="sticky left-0 top-[50vh] flex -translate-y-1/2 items-center justify-center gap-2.5 py-6"
+            style={{ width: `${100 / Math.max(layoutZoom, 1)}%` }}
+            data-pdf-page-loading-message
+          >
+            <div className="w-4 h-4 border-2 border-red border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm text-ink">正在加载第 {pageNumber} 页</span>
+          </div>
         </div>
       )}
     </div>

@@ -54,6 +54,160 @@ function MagnifierIcon() {
   );
 }
 
+function OutlineIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <path d="M5.5 3h8M5.5 8h8M5.5 13h8" strokeLinecap="round" />
+      <circle cx="2.5" cy="3" r=".75" fill="currentColor" stroke="none" />
+      <circle cx="2.5" cy="8" r=".75" fill="currentColor" stroke="none" />
+      <circle cx="2.5" cy="13" r=".75" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+interface PdfOutlineItem {
+  title: string;
+  dest: string | unknown[] | null;
+  items: PdfOutlineItem[];
+}
+
+const PAGE_OUTLINE_TITLE = /^第\s*([〇零一二三四五六七八九十百\d０-９]+)\s*版(?:([（(:：\s].*))?$/u;
+const CHINESE_DIGITS = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+
+function toChinesePageNumber(value: string): string {
+  const asciiValue = value.replace(/[０-９]/g, (digit) => String(digit.charCodeAt(0) - 0xfee0));
+  if (!/^\d+$/.test(asciiValue)) return value;
+
+  const pageNumber = Number(asciiValue);
+  if (pageNumber < 10) return CHINESE_DIGITS[pageNumber] ?? asciiValue;
+  if (pageNumber < 20) return `十${pageNumber === 10 ? "" : CHINESE_DIGITS[pageNumber % 10]}`;
+  if (pageNumber < 100) {
+    const ones = pageNumber % 10;
+    return `${CHINESE_DIGITS[Math.floor(pageNumber / 10)]}十${ones === 0 ? "" : CHINESE_DIGITS[ones]}`;
+  }
+  return asciiValue;
+}
+
+function normalizePageOutlineTitle(title: string): string | null {
+  const match = PAGE_OUTLINE_TITLE.exec(title.trim());
+  if (!match?.[1]) return null;
+
+  const pageNumber = toChinesePageNumber(match[1]);
+  let section = (match[2] ?? "").trim();
+  if ((section.startsWith("（") && section.endsWith("）"))
+    || (section.startsWith("(") && section.endsWith(")"))) {
+    section = section.slice(1, -1).trim();
+  } else {
+    section = section.replace(/^[:：]\s*/, "").trim();
+  }
+
+  return `第${pageNumber}版${section ? `（${section}）` : ""}`;
+}
+
+function navigableOutlineItems(items: PdfOutlineItem[]): PdfOutlineItem[] {
+  const result: PdfOutlineItem[] = [];
+  for (const item of items) {
+    const title = (item.title ?? "").trim();
+    const children = navigableOutlineItems(item.items ?? []);
+    if (title && (item.dest !== null || children.length > 0)) {
+      result.push({ ...item, title, items: children });
+    } else {
+      result.push(...children);
+    }
+  }
+  return result;
+}
+
+function pageOutlineItems(items: PdfOutlineItem[]): PdfOutlineItem[] {
+  const result: PdfOutlineItem[] = [];
+  for (const item of items) {
+    const title = normalizePageOutlineTitle(item.title ?? "");
+    const children = navigableOutlineItems(item.items ?? []);
+    if (title) {
+      if (item.dest !== null || children.length > 0) {
+        result.push({ ...item, title, items: children });
+      }
+      continue;
+    }
+    result.push(...pageOutlineItems(item.items ?? []));
+  }
+  return result;
+}
+
+function OutlineItem({
+  item,
+  depth,
+  defaultOpen,
+  onSelect,
+}: {
+  item: PdfOutlineItem;
+  depth: number;
+  defaultOpen?: boolean;
+  onSelect: (item: PdfOutlineItem) => void;
+}) {
+  const [open, setOpen] = useState(defaultOpen ?? false);
+  const hasChildren = item.items.length > 0;
+  const isEdition = depth === 0;
+
+  return (
+    <div>
+      <div
+        className={`flex min-h-9 items-stretch border-b border-rule ${isEdition ? "bg-red/5" : "bg-paper"}`}
+        style={{ paddingLeft: `${8 + depth * 14}px` }}
+      >
+        {hasChildren ? (
+          <button
+            type="button"
+            className="w-7 shrink-0 border-0 bg-transparent text-xs text-muted hover:text-red"
+            aria-label={`${open ? "收起" : "展开"}${item.title}`}
+            aria-expanded={open}
+            onClick={() => setOpen((value) => !value)}
+          >
+            {open ? "▾" : "▸"}
+          </button>
+        ) : (
+          <span className="w-7 shrink-0" aria-hidden="true" />
+        )}
+        {item.dest !== null ? (
+          <button
+            type="button"
+            className={`min-w-0 flex-1 border-0 bg-transparent py-2 pr-3 text-left text-xs leading-5 transition-colors hover:text-red ${isEdition ? "font-bold text-red" : "text-ink"}`}
+            onClick={() => onSelect(item)}
+          >
+            {item.title}
+          </button>
+        ) : (
+          <span className={`min-w-0 flex-1 py-2 pr-3 text-xs leading-5 ${isEdition ? "font-bold text-red" : "text-muted"}`}>
+            {item.title}
+          </span>
+        )}
+      </div>
+      {hasChildren && open
+        ? item.items.map((child, index) => (
+            <OutlineItem
+              key={`${depth + 1}-${index}-${child.title}`}
+              item={child}
+              depth={depth + 1}
+              onSelect={onSelect}
+            />
+          ))
+        : null}
+    </div>
+  );
+}
+
+function OutlineItems({ items, onSelect }: { items: PdfOutlineItem[]; onSelect: (item: PdfOutlineItem) => void }) {
+  return items.map((item, index) => (
+    <OutlineItem
+      key={`${index}-${item.title}`}
+      item={item}
+      depth={0}
+      defaultOpen={index === 0}
+      onSelect={onSelect}
+    />
+  ));
+}
+
 interface ReaderPageProps {
   type: "newspaper" | "magazine";
   name: string;
@@ -86,6 +240,9 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const [zoomEnabled, setZoomEnabled] = useState(false);
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  const [outlineItems, setOutlineItems] = useState<PdfOutlineItem[]>([]);
+  const [renderedInitialPageKey, setRenderedInitialPageKey] = useState("");
   const [seqDropdownOpen, setSeqDropdownOpen] = useState(false);
   const [jumpToPageNum, setJumpToPageNum] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
@@ -113,18 +270,40 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     return m?.[1] ? parseInt(m[1], 10) : 0;
   }, []);
 
-  const goToPage = useCallback((pageNum: number) => {
+  const goToPage = useCallback((pageNum: number, pageOffsetRatio = 0) => {
     const scrollContainer = containerRef.current;
     const page = document.querySelector<HTMLElement>(`#page-${pageNum}`);
     if (!scrollContainer || !page) return;
 
     const toolbar = scrollContainer.querySelector<HTMLElement>("[data-reader-toolbar]");
     const containerTop = scrollContainer.getBoundingClientRect().top;
-    const pageTop = page.getBoundingClientRect().top;
+    const pageRect = page.getBoundingClientRect();
+    const pageTop = pageRect.top;
     const toolbarHeight = toolbar?.getBoundingClientRect().height ?? 0;
-    const top = scrollContainer.scrollTop + pageTop - containerTop - toolbarHeight - PAGE_SCROLL_GAP;
+    const normalizedOffset = Math.min(Math.max(pageOffsetRatio, 0), 1);
+    const pageOffset = normalizedOffset > 0 ? (pageRect.height || 0) * normalizedOffset : 0;
+    const top = scrollContainer.scrollTop + pageTop - containerTop + pageOffset - toolbarHeight - PAGE_SCROLL_GAP;
     scrollContainer.scrollTo({ top: Math.max(0, top) });
   }, []);
+
+  useEffect(() => {
+    setOutlineOpen(false);
+    setOutlineItems([]);
+    if (!pdfDoc || !config.pageOutlineAvailable?.(routeId)) return;
+
+    let disposed = false;
+    void pdfDoc.getOutline()
+      .then((items) => {
+        if (disposed) return;
+        const nextItems = pageOutlineItems((items ?? []) as PdfOutlineItem[]);
+        if (nextItems.length > 0) setOutlineItems(nextItems);
+      })
+      .catch(() => {});
+
+    return () => {
+      disposed = true;
+    };
+  }, [config, pdfDoc, routeId]);
 
   const replacePageHash = useCallback((pageNum: number) => {
     const nextHash = `#page-${pageNum}`;
@@ -156,6 +335,10 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     [getHashPageNum, routeId],
   );
   const initialPage = hashPage >= 1 && (numPages === 0 || hashPage <= numPages) ? hashPage : 1;
+  const initialPageKey = pdfUrl ? `${pdfUrl}#${initialPage}` : "";
+  const waitingForInitialPage = Boolean(pdfDoc && renderedInitialPageKey !== initialPageKey);
+  const showInitialLoading = loading || waitingForInitialPage;
+  const initialLoadingText = loading ? "正在加载 PDF 文档" : `正在加载第 ${initialPage} 页`;
 
   // Every page has a stable slot, so deep links can scroll before the canvas renders.
   useEffect(() => {
@@ -169,11 +352,18 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
 
   const handleInitialPageRendered = useCallback((pageNumber: number) => {
     const alignmentKey = `${pdfUrl}#${initialPage}`;
-    if (pageNumber !== initialPage || alignedInitialPageRef.current === alignmentKey) return;
+    if (pageNumber !== initialPage) return;
+
+    setRenderedInitialPageKey(alignmentKey);
+    if (alignedInitialPageRef.current === alignmentKey) return;
 
     alignedInitialPageRef.current = alignmentKey;
     window.requestAnimationFrame(() => goToPage(pageNumber));
   }, [goToPage, initialPage, pdfUrl]);
+
+  const handleInitialPageError = useCallback((pageNumber: number) => {
+    if (pageNumber === initialPage) setRenderedInitialPageKey(`${pdfUrl}#${initialPage}`);
+  }, [initialPage, pdfUrl]);
 
   // ─── Navigation handlers ───
   const handleSeqChange = (newSeq: number) => {
@@ -187,6 +377,48 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       setCurrentPage(jumpToPageNum);
       goToPage(jumpToPageNum);
       replacePageHash(jumpToPageNum);
+    }
+  };
+
+  const handleOutlineSelect = async (item: PdfOutlineItem) => {
+    if (!pdfDoc || item.dest === null) return;
+
+    try {
+      const destination = typeof item.dest === "string"
+        ? await pdfDoc.getDestination(item.dest)
+        : item.dest;
+      if (!destination?.length) return;
+
+      const pageRef = destination[0];
+      const pageIndex = Number.isInteger(pageRef)
+        ? Number(pageRef)
+        : await pdfDoc.getPageIndex(pageRef as Parameters<typeof pdfDoc.getPageIndex>[0]);
+      const pageNumber = pageIndex + 1;
+      if (pageNumber < 1 || pageNumber > numPages) return;
+
+      let pageOffsetRatio = 0;
+      const mode = (destination[1] as { name?: string } | undefined)?.name;
+      const pdfTop = mode === "XYZ"
+        ? destination[3]
+        : mode === "FitH" || mode === "FitBH"
+          ? destination[2]
+          : mode === "FitR"
+            ? destination[5]
+            : null;
+      if (typeof pdfTop === "number") {
+        const page = await pdfDoc.getPage(pageNumber);
+        const viewport = page.getViewport({ scale: 1 });
+        const [, viewportTop] = viewport.convertToViewportPoint(0, pdfTop);
+        pageOffsetRatio = viewportTop / Math.max(viewport.height, 1);
+      }
+
+      setOutlineOpen(false);
+      setCurrentPage(pageNumber);
+      setJumpToPageNum(pageNumber);
+      goToPage(pageNumber, pageOffsetRatio);
+      replacePageHash(pageNumber);
+    } catch {
+      // Malformed destinations are ignored without breaking the reader.
     }
   };
 
@@ -284,17 +516,27 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   }, [zoomEnabled]);
 
   useEffect(() => {
-    if (!settingsOpen) return;
+    if (!settingsOpen && !outlineOpen) return;
 
     const handleOutsideClick = (event: MouseEvent) => {
       if (!settingsRef.current?.contains(event.target as Node)) {
         setSettingsOpen(false);
+        setOutlineOpen(false);
       }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setSettingsOpen(false);
+      setOutlineOpen(false);
     };
 
     document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, [settingsOpen]);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [outlineOpen, settingsOpen]);
 
   useEffect(() => {
     if (!seqDropdownOpen) return;
@@ -389,6 +631,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             setZoomEnabled(true);
           }
           setSettingsOpen(false);
+          setOutlineOpen(false);
         }}
         className={`inline-flex h-8 items-center gap-1.5 border px-1.5 text-sm font-bold transition-colors sm:px-2.5 ${
           zoomEnabled
@@ -402,6 +645,26 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
         <MagnifierIcon />
         <span className="hidden sm:inline">放大</span>
       </button>
+      {outlineItems.length > 0 ? (
+        <button
+          type="button"
+          onClick={() => {
+            setOutlineOpen((open) => !open);
+            setSettingsOpen(false);
+          }}
+          className={`inline-flex h-8 items-center gap-1.5 border px-1.5 text-sm font-bold transition-colors sm:px-2.5 ${
+            outlineOpen
+              ? "border-red bg-red text-paper"
+              : "border-rule-dark bg-paper text-ink hover:border-red hover:text-red"
+          }`}
+          aria-label="目录"
+          aria-expanded={outlineOpen}
+          aria-haspopup="dialog"
+        >
+          <OutlineIcon />
+          <span className="hidden sm:inline">目录</span>
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={handleDownload}
@@ -424,7 +687,10 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       </button>
       <button
         type="button"
-        onClick={() => setSettingsOpen(!settingsOpen)}
+        onClick={() => {
+          setSettingsOpen(!settingsOpen);
+          setOutlineOpen(false);
+        }}
         className="inline-flex h-8 items-center gap-1.5 border border-rule-dark bg-paper px-1.5 text-sm font-bold text-ink transition-colors hover:border-red hover:text-red sm:px-2.5"
         aria-label="设置"
         aria-expanded={settingsOpen}
@@ -432,6 +698,18 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
         <SettingsIcon />
         <span className="hidden sm:inline">设置</span>
       </button>
+      {outlineOpen ? (
+        <div
+          role="dialog"
+          aria-label="PDF 目录"
+          className="absolute right-0 top-10 z-[90] max-h-[min(65vh,560px)] w-[min(320px,calc(100vw-24px))] overflow-y-auto overscroll-y-contain border border-rule-dark bg-paper shadow-[4px_4px_0_rgba(139,26,26,.14)]"
+        >
+          <div className="sticky top-0 z-10 border-b border-rule-dark bg-paper px-3 py-2 text-xs font-bold tracking-wide text-red">
+            PDF 目录
+          </div>
+          <OutlineItems items={outlineItems} onSelect={(item) => void handleOutlineSelect(item)} />
+        </div>
+      ) : null}
       {settingsOpen && (
         <div className="absolute right-0 top-10 z-[90] w-[min(220px,calc(100vw-24px))] border border-rule-dark bg-paper p-3 space-y-4 shadow-[4px_4px_0_rgba(139,26,26,.14)] sm:p-4">
           <div>
@@ -580,7 +858,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       {/* Content */}
       <div className="px-4 py-4">
         {routeError && <EmptyState title="阅读链接无效" description={routeError} />}
-        {loading && <LoadingSpinner text="正在加载 PDF 文档" fullscreen />}
+        {showInitialLoading && <LoadingSpinner text={initialLoadingText} fullscreen />}
         {error && (
           <EmptyState title="没有当天文档或数据缺失" description={error} />
         )}
@@ -596,6 +874,9 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             scrollContainerRef={containerRef}
             onPageChange={handleVisiblePageChange}
             onPageRendered={handleInitialPageRendered}
+            onPageError={handleInitialPageError}
+            enableTextLayer={config.enableTextLayer ?? true}
+            suppressPageLoading={showInitialLoading}
           />
         )}
       </div>
