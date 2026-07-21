@@ -1,4 +1,4 @@
-import { useRef, useEffect, useLayoutEffect, useState } from "react";
+import { useRef, useEffect, useState } from "react";
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from "pdfjs-dist";
 import { TextLayer } from "pdfjs-dist/legacy/build/pdf.mjs";
 import "./textLayer.css";
@@ -88,7 +88,6 @@ export function PdfPage({
   const renderTask = useRef<RenderTask | null>(null);
   const textLayerTask = useRef<{ cancel: () => void } | null>(null);
   const hasRenderedRef = useRef(false);
-  const textLayerBaseScaleRef = useRef(0);
   const layoutZoomRef = useRef(Math.max(layoutZoom, 1));
   const callbacksRef = useRef({ onRendered, onPageMetrics, onError });
   layoutZoomRef.current = Math.max(layoutZoom, 1);
@@ -199,16 +198,6 @@ export function PdfPage({
     };
   }, [containerWidth, document, pageNumber, quality, renderZoom, scale]);
 
-  useLayoutEffect(() => {
-    const textLayerContainer = textLayerRef.current;
-    const baseScale = textLayerBaseScaleRef.current;
-    if (!textLayerContainer || !(baseScale > 0)) return;
-    textLayerContainer.style.setProperty(
-      "--total-scale-factor",
-      String(baseScale * Math.max(layoutZoom, 1)),
-    );
-  }, [layoutZoom]);
-
   useEffect(() => {
     const container = containerRef.current;
     const textLayerContainer = textLayerRef.current;
@@ -234,11 +223,7 @@ export function PdfPage({
         // dimensions through these page-level variables. Without the viewport
         // scale, selectable text collapses into the wrong columns even though
         // the canvas itself remains visually correct.
-        textLayerBaseScaleRef.current = viewport.scale;
-        textLayerContainer.style.setProperty(
-          "--total-scale-factor",
-          String(viewport.scale * layoutZoomRef.current),
-        );
+        textLayerContainer.style.setProperty("--total-scale-factor", String(viewport.scale));
         textLayerContainer.style.setProperty("--scale-round-x", "1px");
         textLayerContainer.style.setProperty("--scale-round-y", "1px");
         const task = new TextLayer({
@@ -267,7 +252,6 @@ export function PdfPage({
       disposed = true;
       textLayerTask.current?.cancel();
       textLayerTask.current = null;
-      textLayerBaseScaleRef.current = 0;
       textLayerContainer.replaceChildren();
       textLayerContainer.style.removeProperty("--total-scale-factor");
       textLayerContainer.style.removeProperty("--scale-round-x");
@@ -279,7 +263,17 @@ export function PdfPage({
     <div ref={containerRef} id={id} data-pdf-page-content className={`relative h-full ${className}`}>
       <canvas ref={canvasRef} className="block w-full h-auto" data-pdf-render-zoom={renderZoom ?? 1} />
       {enableTextLayer ? (
-        <div ref={textLayerRef} className="textLayer" data-pdf-text-layer />
+        <div
+          className="absolute left-0 top-0 origin-top-left will-change-transform"
+          style={{
+            width: `${100 / Math.max(layoutZoom, 1)}%`,
+            height: `${100 / Math.max(layoutZoom, 1)}%`,
+            transform: `scale(${Math.max(layoutZoom, 1)})`,
+          }}
+          data-pdf-text-layer-scale
+        >
+          <div ref={textLayerRef} className="textLayer" data-pdf-text-layer />
+        </div>
       ) : null}
       {rendering && showLoading && (
         <div className="absolute inset-0 z-10 bg-paper/85" data-pdf-page-loading>

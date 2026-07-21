@@ -108,7 +108,7 @@ function dispatchPointer(
   element: Element,
   type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel",
   init: { pointerId: number; clientX: number; clientY: number; pointerType?: string },
-) {
+): Event {
   const event = new Event(type, { bubbles: true, cancelable: true });
   Object.defineProperties(event, {
     pointerId: { value: init.pointerId },
@@ -119,6 +119,7 @@ function dispatchPointer(
     shiftKey: { value: false },
   });
   element.dispatchEvent(event);
+  return event;
 }
 
 beforeEach(() => {
@@ -209,7 +210,8 @@ describe("PdfViewer demand loading", () => {
     await act(async () => {
       await new Promise((resolve) => window.setTimeout(resolve, 220));
     });
-    expect(textLayerMocks.instances[0]?.container.style.getPropertyValue("--total-scale-factor")).toBe("1");
+    expect(textLayerMocks.instances[0]?.container.style.getPropertyValue("--total-scale-factor")).toBe("0.5");
+    expect(view.host.querySelector<HTMLElement>("[data-pdf-text-layer-scale]")?.style.transform).toBe("scale(2)");
     expect(view.host.querySelector("[data-pdf-viewer]")?.getAttribute("data-render-zoom")).toBe("2");
     expect(textLayerMocks.instances).toHaveLength(1);
     expect(streamTextContent).toHaveBeenCalledTimes(1);
@@ -315,6 +317,8 @@ describe("PdfViewer demand loading", () => {
     const loadedPages = [...view.host.querySelectorAll("[data-page-state='loaded']")]
       .map((element) => element.getAttribute("data-page"));
     expect(loadedPages).toEqual(["1", "2", "3"]);
+    expect(view.host.querySelectorAll("[data-pdf-text-layer]")).toHaveLength(1);
+    expect(view.host.querySelector("#page-1 [data-pdf-text-layer]")).not.toBeNull();
 
     await view.unmount();
   });
@@ -441,6 +445,60 @@ describe("PdfViewer demand loading", () => {
     expect(onZoomChange).toHaveBeenNthCalledWith(2, 2);
     expect(onZoomChange).toHaveBeenLastCalledWith(1);
     expect(onZoomEnabledChange).toHaveBeenLastCalledWith(false);
+
+    await act(async () => root.unmount());
+    scrollContainer.remove();
+  });
+
+  it("leaves a stationary touch available for native selection before panning a zoomed page", async () => {
+    vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
+      matches: query === "(pointer: coarse)",
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })));
+    const { document } = createDocument(1);
+    const scrollContainer = window.document.createElement("div");
+    const host = window.document.createElement("div");
+    scrollContainer.append(host);
+    window.document.body.append(scrollContainer);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <PdfViewer
+          document={document}
+          zoomEnabled
+          zoom={2}
+          onZoomChange={vi.fn()}
+          scrollContainerRef={{ current: scrollContainer }}
+        />,
+      );
+    });
+
+    const zoomContent = host.querySelector<HTMLElement>("[data-pdf-zoom-content]")!;
+    expect(zoomContent.style.userSelect).toBe("");
+    const down = dispatchPointer(zoomContent, "pointerdown", { pointerId: 1, clientX: 120, clientY: 160 });
+    const stationaryMove = dispatchPointer(zoomContent, "pointermove", { pointerId: 1, clientX: 122, clientY: 162 });
+    expect(down.defaultPrevented).toBe(false);
+    expect(stationaryMove.defaultPrevented).toBe(false);
+    expect(scrollContainer.scrollLeft).toBe(0);
+
+    const range = window.document.createRange();
+    range.selectNodeContents(zoomContent);
+    window.getSelection()?.addRange(range);
+    const selectingMove = dispatchPointer(zoomContent, "pointermove", { pointerId: 1, clientX: 70, clientY: 130 });
+    expect(selectingMove.defaultPrevented).toBe(false);
+    expect(scrollContainer.scrollLeft).toBe(0);
+    window.getSelection()?.removeAllRanges();
+
+    const panMove = dispatchPointer(zoomContent, "pointermove", { pointerId: 1, clientX: 70, clientY: 130 });
+    expect(panMove.defaultPrevented).toBe(true);
+    expect(scrollContainer.scrollLeft).toBe(50);
 
     await act(async () => root.unmount());
     scrollContainer.remove();
