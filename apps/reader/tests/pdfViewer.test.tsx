@@ -10,6 +10,11 @@ const textLayerMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({
+  normalizeUnicode: (value: string) => value.normalize("NFKC"),
+  stopEvent: (event: Event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  },
   TextLayer: class MockTextLayer {
     private readonly container: HTMLElement;
 

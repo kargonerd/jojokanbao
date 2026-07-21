@@ -2,6 +2,7 @@ import { useRef, useEffect, useState } from "react";
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from "pdfjs-dist";
 import { TextLayer } from "pdfjs-dist/legacy/build/pdf.mjs";
 import "./textLayer.css";
+import { bindPdfTextLayerSelection } from "./textLayerSelection";
 
 export const MAX_PDF_CANVAS_PIXELS = 32_000_000;
 export const MAX_PDF_CANVAS_DIMENSION = 8_192;
@@ -87,6 +88,7 @@ export function PdfPage({
   const [containerWidth, setContainerWidth] = useState(0);
   const renderTask = useRef<RenderTask | null>(null);
   const textLayerTask = useRef<{ cancel: () => void } | null>(null);
+  const textLayerSelectionCleanup = useRef<(() => void) | null>(null);
   const hasRenderedRef = useRef(false);
   const layoutZoomRef = useRef(Math.max(layoutZoom, 1));
   const callbacksRef = useRef({ onRendered, onPageMetrics, onError });
@@ -204,6 +206,8 @@ export function PdfPage({
     if (!enableTextLayer || !canvasReady || !container || !textLayerContainer || !document || containerWidth === 0) {
       textLayerTask.current?.cancel();
       textLayerTask.current = null;
+      textLayerSelectionCleanup.current?.();
+      textLayerSelectionCleanup.current = null;
       textLayerContainer?.replaceChildren();
       return;
     }
@@ -218,6 +222,8 @@ export function PdfPage({
         const baseViewport = page.getViewport({ scale: 1 });
         const viewport = page.getViewport({ scale: containerWidth / Math.max(baseViewport.width, 1) });
         textLayerTask.current?.cancel();
+        textLayerSelectionCleanup.current?.();
+        textLayerSelectionCleanup.current = null;
         textLayerContainer.replaceChildren();
         // PDF.js positions spans as percentages but sizes their fonts and layer
         // dimensions through these page-level variables. Without the viewport
@@ -241,6 +247,7 @@ export function PdfPage({
         const endOfContent = window.document.createElement("div");
         endOfContent.className = "endOfContent";
         textLayerContainer.append(endOfContent);
+        textLayerSelectionCleanup.current = bindPdfTextLayerSelection(textLayerContainer, endOfContent);
       } catch (error) {
         if (disposed || (error as { name?: string })?.name === "AbortException") return;
         textLayerContainer.replaceChildren();
@@ -252,6 +259,8 @@ export function PdfPage({
       disposed = true;
       textLayerTask.current?.cancel();
       textLayerTask.current = null;
+      textLayerSelectionCleanup.current?.();
+      textLayerSelectionCleanup.current = null;
       textLayerContainer.replaceChildren();
       textLayerContainer.style.removeProperty("--total-scale-factor");
       textLayerContainer.style.removeProperty("--scale-round-x");
