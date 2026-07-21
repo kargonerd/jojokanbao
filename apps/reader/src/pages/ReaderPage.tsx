@@ -242,6 +242,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const [outlineItems, setOutlineItems] = useState<PdfOutlineItem[]>([]);
+  const [renderedInitialPageKey, setRenderedInitialPageKey] = useState("");
   const [seqDropdownOpen, setSeqDropdownOpen] = useState(false);
   const [jumpToPageNum, setJumpToPageNum] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
@@ -334,6 +335,10 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     [getHashPageNum, routeId],
   );
   const initialPage = hashPage >= 1 && (numPages === 0 || hashPage <= numPages) ? hashPage : 1;
+  const initialPageKey = pdfUrl ? `${pdfUrl}#${initialPage}` : "";
+  const waitingForInitialPage = Boolean(pdfDoc && renderedInitialPageKey !== initialPageKey);
+  const showInitialLoading = loading || waitingForInitialPage;
+  const initialLoadingText = loading ? "正在加载 PDF 文档" : `正在加载第 ${initialPage} 页`;
 
   // Every page has a stable slot, so deep links can scroll before the canvas renders.
   useEffect(() => {
@@ -347,11 +352,18 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
 
   const handleInitialPageRendered = useCallback((pageNumber: number) => {
     const alignmentKey = `${pdfUrl}#${initialPage}`;
-    if (pageNumber !== initialPage || alignedInitialPageRef.current === alignmentKey) return;
+    if (pageNumber !== initialPage) return;
+
+    setRenderedInitialPageKey(alignmentKey);
+    if (alignedInitialPageRef.current === alignmentKey) return;
 
     alignedInitialPageRef.current = alignmentKey;
     window.requestAnimationFrame(() => goToPage(pageNumber));
   }, [goToPage, initialPage, pdfUrl]);
+
+  const handleInitialPageError = useCallback((pageNumber: number) => {
+    if (pageNumber === initialPage) setRenderedInitialPageKey(`${pdfUrl}#${initialPage}`);
+  }, [initialPage, pdfUrl]);
 
   // ─── Navigation handlers ───
   const handleSeqChange = (newSeq: number) => {
@@ -846,7 +858,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       {/* Content */}
       <div className="px-4 py-4">
         {routeError && <EmptyState title="阅读链接无效" description={routeError} />}
-        {loading && <LoadingSpinner text="正在加载 PDF 文档" fullscreen />}
+        {showInitialLoading && <LoadingSpinner text={initialLoadingText} fullscreen />}
         {error && (
           <EmptyState title="没有当天文档或数据缺失" description={error} />
         )}
@@ -862,6 +874,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             scrollContainerRef={containerRef}
             onPageChange={handleVisiblePageChange}
             onPageRendered={handleInitialPageRendered}
+            onPageError={handleInitialPageError}
             enableTextLayer={config.enableTextLayer ?? true}
           />
         )}
