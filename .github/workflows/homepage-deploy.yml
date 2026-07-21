@@ -75,7 +75,7 @@ jobs:
         run: printf '%s\n' "$GITHUB_SHA" > "$EDGEONE_UPLOAD_FROM_PATH/deployment.txt"
 
       - name: Upload homepage build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: homepage-dist
           path: apps/homepage/dist/
@@ -144,7 +144,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Download homepage build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: homepage-dist
           path: apps/homepage/dist/
