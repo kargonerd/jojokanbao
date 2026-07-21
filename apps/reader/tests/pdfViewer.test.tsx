@@ -5,6 +5,29 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
 import { PdfViewer } from "../../../packages/pdf-viewer/src/PdfViewer";
 import { getSafePdfRenderScale, MAX_PDF_CANVAS_PIXELS } from "../../../packages/pdf-viewer/src/PdfPage";
 
+const textLayerMocks = vi.hoisted(() => ({
+  instances: [] as Array<{ container: HTMLElement; viewport: unknown }>,
+}));
+
+vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({
+  TextLayer: class MockTextLayer {
+    private readonly container: HTMLElement;
+
+    constructor({ container, viewport }: { container: HTMLElement; viewport: unknown }) {
+      this.container = container;
+      textLayerMocks.instances.push({ container, viewport });
+    }
+
+    async render() {
+      const span = window.document.createElement("span");
+      span.textContent = "可复制文本";
+      this.container.append(span);
+    }
+
+    cancel() {}
+  },
+}));
+
 interface ObserverRecord {
   callback: IntersectionObserverCallback;
   options?: IntersectionObserverInit;
@@ -73,16 +96,51 @@ function dispatchPointer(
 
 beforeEach(() => {
   observers.length = 0;
+  textLayerMocks.instances.length = 0;
   vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({} as CanvasRenderingContext2D);
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   window.document.body.innerHTML = "";
 });
 
 describe("PdfViewer demand loading", () => {
+  it("renders an aligned selectable text layer for loaded pages", async () => {
+    const streamTextContent = vi.fn(() => new ReadableStream());
+    const page = {
+      getViewport: ({ scale }: { scale: number }) => ({
+        width: 600 * scale,
+        height: 800 * scale,
+        scale,
+        rotation: 0,
+        rawDims: { pageWidth: 600, pageHeight: 800, pageX: 0, pageY: 0 },
+      }),
+      render: vi.fn(() => ({ promise: Promise.resolve(), cancel: vi.fn() })),
+      streamTextContent,
+      cleanup: vi.fn(),
+    };
+    const document = {
+      numPages: 1,
+      getPage: vi.fn().mockResolvedValue(page),
+    } as unknown as PDFDocumentProxy;
+    const view = await renderViewer(document);
+
+    await vi.waitFor(() => {
+      expect(view.host.querySelector("[data-pdf-text-layer] span")?.textContent).toBe("可复制文本");
+    });
+    expect(streamTextContent).toHaveBeenCalledWith({
+      includeMarkedContent: true,
+      disableNormalization: true,
+    });
+    expect(textLayerMocks.instances).toHaveLength(1);
+
+    await view.unmount();
+  });
+
   it("keeps an observable lightweight slot for every page", async () => {
     const { document, getPage } = createDocument(100);
     const view = await renderViewer(document);

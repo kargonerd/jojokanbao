@@ -24,6 +24,7 @@ interface PdfViewerProps {
   scrollContainerRef?: RefObject<HTMLElement | null>;
   onPageChange?: (page: number) => void;
   onPageRendered?: (page: number) => void;
+  enableTextLayer?: boolean;
 }
 
 interface VisiblePage {
@@ -81,6 +82,7 @@ export function PdfViewer({
   scrollContainerRef,
   onPageChange,
   onPageRendered,
+  enableTextLayer = true,
 }: PdfViewerProps) {
   const normalizedInitialPage = clampPage(initialPage, document.numPages);
   const [loadedPages, setLoadedPages] = useState<Set<number>>(() => new Set([normalizedInitialPage]));
@@ -466,6 +468,7 @@ export function PdfViewer({
                 quality={quality}
                 renderZoom={onZoomChange ? MAX_ZOOM : 1}
                 layoutZoom={effectiveZoom}
+                enableTextLayer={enableTextLayer}
                 onPageMetrics={handlePageMetrics}
                 onRendered={onPageRendered}
                 onError={() => handlePageError(pageNumber)}
