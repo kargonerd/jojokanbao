@@ -15,6 +15,8 @@
   --color-rule-dark: #202020;
   --color-red: #8b1a1a;
   --color-red-dark: #651212;
+  --color-search-highlight: #981b1b;
+  --color-search-highlight-line: #d14a3f;
   --color-paper: #fff;
   --color-paper-soft: #fffaf2;
   --color-cream: #f5efe6;
@@ -142,6 +144,16 @@
     border: 1px solid var(--color-rule);
     color: var(--color-muted);
     background: var(--color-paper);
+  }
+
+  .search-highlight {
+    color: var(--color-search-highlight);
+    font-weight: 700;
+    text-decoration-line: underline;
+    text-decoration-color: var(--color-search-highlight-line);
+    text-decoration-thickness: 0.14em;
+    text-underline-offset: 0.14em;
+    text-decoration-skip-ink: none;
   }
 
   .kicker {
