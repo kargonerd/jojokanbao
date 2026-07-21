@@ -61,12 +61,26 @@ function createDocument(numPages: number) {
   };
 }
 
-async function renderViewer(document: PDFDocumentProxy, initialPage = 1, suppressPageLoading = false) {
+async function renderViewer(
+  document: PDFDocumentProxy,
+  initialPage = 1,
+  suppressPageLoading = false,
+  zoomEnabled = false,
+  zoom = 1,
+) {
   const host = window.document.createElement("div");
   window.document.body.append(host);
   const root = createRoot(host);
   await act(async () => {
-    root.render(<PdfViewer document={document} initialPage={initialPage} suppressPageLoading={suppressPageLoading} />);
+    root.render(
+      <PdfViewer
+        document={document}
+        initialPage={initialPage}
+        suppressPageLoading={suppressPageLoading}
+        zoomEnabled={zoomEnabled}
+        zoom={zoom}
+      />,
+    );
   });
   return {
     host,
@@ -128,6 +142,17 @@ describe("PdfViewer demand loading", () => {
     const view = await renderViewer(document, 1, true);
 
     expect(view.host.querySelector("[data-pdf-page-loading]")).toBeNull();
+
+    await view.unmount();
+  });
+
+  it("keeps the page loading prompt centered in the visible width after zooming", async () => {
+    const { document } = createDocument(1);
+    const view = await renderViewer(document, 1, false, true, 2);
+
+    const loadingMessage = view.host.querySelector<HTMLElement>("[data-pdf-page-loading-message]");
+    expect(loadingMessage?.className).toContain("left-0");
+    expect(loadingMessage?.style.width).toBe("50%");
 
     await view.unmount();
   });
