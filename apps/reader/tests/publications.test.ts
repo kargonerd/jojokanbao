@@ -77,19 +77,28 @@ describe("人民日报 availability", () => {
     expect(disabled("20260718")).toBe(true);
   });
 
-  it("blocks missing years without blocking adjacent archived years", () => {
-    expect(disabled("19990701")).toBe(true);
-    expect(disabled("20050701")).toBe(true);
+  it("keeps the newly published 1999–2007 archive selectable", () => {
+    expect(disabled("19990701")).toBe(false);
+    expect(disabled("20050701")).toBe(false);
     expect(disabled("19980701")).toBe(false);
     expect(disabled("20080701")).toBe(false);
   });
 
-  it("blocks known missing runs and permits the next available issue", () => {
+  it("blocks only known B2 gaps and permits adjacent uploaded issues", () => {
     expect(disabled("19460628")).toBe(true);
     expect(disabled("19460630")).toBe(true);
     expect(disabled("19460701")).toBe(false);
+    expect(disabled("19540101")).toBe(false);
+    expect(disabled("20030418")).toBe(true);
+    expect(disabled("20030420")).toBe(false);
+    expect(disabled("20041206")).toBe(true);
+    expect(disabled("20070101")).toBe(true);
+    expect(disabled("20070102")).toBe(false);
     expect(disabled("20100620")).toBe(true);
     expect(disabled("20100701")).toBe(false);
+    expect(disabled("20130701")).toBe(true);
+    expect(disabled("20140110")).toBe(true);
+    expect(disabled("20140111")).toBe(false);
   });
 });
 

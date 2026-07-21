@@ -54,6 +54,62 @@ function MagnifierIcon() {
   );
 }
 
+function OutlineIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <path d="M5.5 3h8M5.5 8h8M5.5 13h8" strokeLinecap="round" />
+      <circle cx="2.5" cy="3" r=".75" fill="currentColor" stroke="none" />
+      <circle cx="2.5" cy="8" r=".75" fill="currentColor" stroke="none" />
+      <circle cx="2.5" cy="13" r=".75" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+interface PdfOutlineItem {
+  title: string;
+  dest: string | unknown[] | null;
+  items: PdfOutlineItem[];
+}
+
+function navigableOutline(items: PdfOutlineItem[]): PdfOutlineItem[] {
+  return items
+    .map((item) => ({ ...item, items: navigableOutline(item.items ?? []) }))
+    .filter((item) => item.dest !== null || item.items.length > 0);
+}
+
+function OutlineItems({
+  items,
+  depth = 0,
+  onSelect,
+}: {
+  items: PdfOutlineItem[];
+  depth?: number;
+  onSelect: (item: PdfOutlineItem) => void;
+}) {
+  return items.map((item, index) => (
+    <div key={`${depth}-${index}-${item.title}`}>
+      {item.dest !== null ? (
+        <button
+          type="button"
+          className="block w-full border-0 border-b border-rule bg-paper py-2 pr-3 text-left text-xs leading-5 text-ink transition-colors hover:bg-red/5 hover:text-red"
+          style={{ paddingLeft: `${12 + depth * 14}px` }}
+          onClick={() => onSelect(item)}
+        >
+          {item.title || "未命名目录项"}
+        </button>
+      ) : (
+        <div
+          className="border-b border-rule bg-paper py-2 pr-3 text-xs font-bold leading-5 text-muted"
+          style={{ paddingLeft: `${12 + depth * 14}px` }}
+        >
+          {item.title || "未命名目录项"}
+        </div>
+      )}
+      {item.items.length > 0 ? <OutlineItems items={item.items} depth={depth + 1} onSelect={onSelect} /> : null}
+    </div>
+  ));
+}
+
 interface ReaderPageProps {
   type: "newspaper" | "magazine";
   name: string;
@@ -86,6 +142,8 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const [zoomEnabled, setZoomEnabled] = useState(false);
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  const [outlineItems, setOutlineItems] = useState<PdfOutlineItem[]>([]);
   const [seqDropdownOpen, setSeqDropdownOpen] = useState(false);
   const [jumpToPageNum, setJumpToPageNum] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
@@ -113,18 +171,40 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     return m?.[1] ? parseInt(m[1], 10) : 0;
   }, []);
 
-  const goToPage = useCallback((pageNum: number) => {
+  const goToPage = useCallback((pageNum: number, pageOffsetRatio = 0) => {
     const scrollContainer = containerRef.current;
     const page = document.querySelector<HTMLElement>(`#page-${pageNum}`);
     if (!scrollContainer || !page) return;
 
     const toolbar = scrollContainer.querySelector<HTMLElement>("[data-reader-toolbar]");
     const containerTop = scrollContainer.getBoundingClientRect().top;
-    const pageTop = page.getBoundingClientRect().top;
+    const pageRect = page.getBoundingClientRect();
+    const pageTop = pageRect.top;
     const toolbarHeight = toolbar?.getBoundingClientRect().height ?? 0;
-    const top = scrollContainer.scrollTop + pageTop - containerTop - toolbarHeight - PAGE_SCROLL_GAP;
+    const normalizedOffset = Math.min(Math.max(pageOffsetRatio, 0), 1);
+    const pageOffset = normalizedOffset > 0 ? (pageRect.height || 0) * normalizedOffset : 0;
+    const top = scrollContainer.scrollTop + pageTop - containerTop + pageOffset - toolbarHeight - PAGE_SCROLL_GAP;
     scrollContainer.scrollTo({ top: Math.max(0, top) });
   }, []);
+
+  useEffect(() => {
+    setOutlineOpen(false);
+    setOutlineItems([]);
+    if (!pdfDoc) return;
+
+    let disposed = false;
+    void pdfDoc.getOutline()
+      .then((items) => {
+        if (disposed) return;
+        const nextItems = navigableOutline((items ?? []) as PdfOutlineItem[]);
+        if (nextItems.length > 0) setOutlineItems(nextItems);
+      })
+      .catch(() => {});
+
+    return () => {
+      disposed = true;
+    };
+  }, [pdfDoc]);
 
   const replacePageHash = useCallback((pageNum: number) => {
     const nextHash = `#page-${pageNum}`;
@@ -187,6 +267,48 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       setCurrentPage(jumpToPageNum);
       goToPage(jumpToPageNum);
       replacePageHash(jumpToPageNum);
+    }
+  };
+
+  const handleOutlineSelect = async (item: PdfOutlineItem) => {
+    if (!pdfDoc || item.dest === null) return;
+
+    try {
+      const destination = typeof item.dest === "string"
+        ? await pdfDoc.getDestination(item.dest)
+        : item.dest;
+      if (!destination?.length) return;
+
+      const pageRef = destination[0];
+      const pageIndex = Number.isInteger(pageRef)
+        ? Number(pageRef)
+        : await pdfDoc.getPageIndex(pageRef as Parameters<typeof pdfDoc.getPageIndex>[0]);
+      const pageNumber = pageIndex + 1;
+      if (pageNumber < 1 || pageNumber > numPages) return;
+
+      let pageOffsetRatio = 0;
+      const mode = (destination[1] as { name?: string } | undefined)?.name;
+      const pdfTop = mode === "XYZ"
+        ? destination[3]
+        : mode === "FitH" || mode === "FitBH"
+          ? destination[2]
+          : mode === "FitR"
+            ? destination[5]
+            : null;
+      if (typeof pdfTop === "number") {
+        const page = await pdfDoc.getPage(pageNumber);
+        const viewport = page.getViewport({ scale: 1 });
+        const [, viewportTop] = viewport.convertToViewportPoint(0, pdfTop);
+        pageOffsetRatio = viewportTop / Math.max(viewport.height, 1);
+      }
+
+      setOutlineOpen(false);
+      setCurrentPage(pageNumber);
+      setJumpToPageNum(pageNumber);
+      goToPage(pageNumber, pageOffsetRatio);
+      replacePageHash(pageNumber);
+    } catch {
+      // Malformed destinations are ignored without breaking the reader.
     }
   };
 
@@ -284,17 +406,27 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   }, [zoomEnabled]);
 
   useEffect(() => {
-    if (!settingsOpen) return;
+    if (!settingsOpen && !outlineOpen) return;
 
     const handleOutsideClick = (event: MouseEvent) => {
       if (!settingsRef.current?.contains(event.target as Node)) {
         setSettingsOpen(false);
+        setOutlineOpen(false);
       }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setSettingsOpen(false);
+      setOutlineOpen(false);
     };
 
     document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, [settingsOpen]);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [outlineOpen, settingsOpen]);
 
   useEffect(() => {
     if (!seqDropdownOpen) return;
@@ -389,6 +521,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             setZoomEnabled(true);
           }
           setSettingsOpen(false);
+          setOutlineOpen(false);
         }}
         className={`inline-flex h-8 items-center gap-1.5 border px-1.5 text-sm font-bold transition-colors sm:px-2.5 ${
           zoomEnabled
@@ -402,6 +535,26 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
         <MagnifierIcon />
         <span className="hidden sm:inline">放大</span>
       </button>
+      {outlineItems.length > 0 ? (
+        <button
+          type="button"
+          onClick={() => {
+            setOutlineOpen((open) => !open);
+            setSettingsOpen(false);
+          }}
+          className={`inline-flex h-8 items-center gap-1.5 border px-1.5 text-sm font-bold transition-colors sm:px-2.5 ${
+            outlineOpen
+              ? "border-red bg-red text-paper"
+              : "border-rule-dark bg-paper text-ink hover:border-red hover:text-red"
+          }`}
+          aria-label="目录"
+          aria-expanded={outlineOpen}
+          aria-haspopup="dialog"
+        >
+          <OutlineIcon />
+          <span className="hidden sm:inline">目录</span>
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={handleDownload}
@@ -424,7 +577,10 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       </button>
       <button
         type="button"
-        onClick={() => setSettingsOpen(!settingsOpen)}
+        onClick={() => {
+          setSettingsOpen(!settingsOpen);
+          setOutlineOpen(false);
+        }}
         className="inline-flex h-8 items-center gap-1.5 border border-rule-dark bg-paper px-1.5 text-sm font-bold text-ink transition-colors hover:border-red hover:text-red sm:px-2.5"
         aria-label="设置"
         aria-expanded={settingsOpen}
@@ -432,6 +588,18 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
         <SettingsIcon />
         <span className="hidden sm:inline">设置</span>
       </button>
+      {outlineOpen ? (
+        <div
+          role="dialog"
+          aria-label="PDF 目录"
+          className="absolute right-0 top-10 z-[90] max-h-[min(65vh,560px)] w-[min(320px,calc(100vw-24px))] overflow-y-auto overscroll-y-contain border border-rule-dark bg-paper shadow-[4px_4px_0_rgba(139,26,26,.14)]"
+        >
+          <div className="sticky top-0 z-10 border-b border-rule-dark bg-paper px-3 py-2 text-xs font-bold tracking-wide text-red">
+            PDF 目录
+          </div>
+          <OutlineItems items={outlineItems} onSelect={(item) => void handleOutlineSelect(item)} />
+        </div>
+      ) : null}
       {settingsOpen && (
         <div className="absolute right-0 top-10 z-[90] w-[min(220px,calc(100vw-24px))] border border-rule-dark bg-paper p-3 space-y-4 shadow-[4px_4px_0_rgba(139,26,26,.14)] sm:p-4">
           <div>
@@ -596,6 +764,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             scrollContainerRef={containerRef}
             onPageChange={handleVisiblePageChange}
             onPageRendered={handleInitialPageRendered}
+            enableTextLayer={config.enableTextLayer ?? true}
           />
         )}
       </div>

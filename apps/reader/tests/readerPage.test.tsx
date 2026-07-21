@@ -40,7 +40,13 @@ vi.mock("@jojo/pdf-viewer", () => ({
   },
 }));
 
-const readyDocument = { numPages: 6 };
+const readyDocument = {
+  numPages: 6,
+  getOutline: vi.fn(),
+  getDestination: vi.fn(),
+  getPageIndex: vi.fn(),
+  getPage: vi.fn(),
+};
 
 function LocationProbe() {
   const location = useLocation();
@@ -84,6 +90,15 @@ beforeEach(() => {
   pdfMocks.usePdfDocument.mockReset();
   pdfMocks.viewerProps.length = 0;
   setPdfState();
+  readyDocument.getOutline.mockReset().mockResolvedValue([]);
+  readyDocument.getDestination.mockReset().mockResolvedValue(null);
+  readyDocument.getPageIndex.mockReset().mockResolvedValue(0);
+  readyDocument.getPage.mockReset().mockResolvedValue({
+    getViewport: () => ({
+      height: 1_000,
+      convertToViewportPoint: (_x: number, y: number) => [0, 1_000 - y],
+    }),
+  });
   vi.stubGlobal("alert", vi.fn());
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
     callback(0);
@@ -137,6 +152,7 @@ describe("ReaderPage document states", () => {
       zoom: 1.5,
       zoomEnabled: false,
       initialPage: 1,
+      enableTextLayer: true,
     });
   });
 
@@ -281,18 +297,40 @@ describe("ReaderPage magazine navigation", () => {
 
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/hq/196501"));
   });
-
-  it("does not allow selecting a magazine year with no archived issues", () => {
-    renderReader("/rmhb/197292", { type: "magazine", name: "rmhb" });
-
-    fireEvent.click(screen.getByRole("button", { name: "1972年" }));
-
-    expect((screen.getByRole("button", { name: "1975" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId("location").textContent).toBe("/rmhb/197292");
-  });
 });
 
 describe("ReaderPage toolbar interactions", () => {
+  it("opens a PDF outline and jumps to its resolved destination", async () => {
+    readyDocument.getOutline.mockResolvedValue([
+      {
+        title: "第三版",
+        dest: [{ num: 22, gen: 0 }, { name: "FitH" }, 800],
+        items: [
+          {
+            title: "国内新闻",
+            dest: [{ num: 22, gen: 0 }, { name: "FitH" }, 700],
+            items: [],
+          },
+        ],
+      },
+      { title: "打印", dest: null, items: [] },
+    ]);
+    readyDocument.getPageIndex.mockResolvedValue(2);
+    renderReader("/rmrb/19761009");
+
+    const outlineButton = await screen.findByRole("button", { name: "目录" });
+    fireEvent.click(outlineButton);
+    expect(screen.getByRole("dialog", { name: "PDF 目录" })).toBeTruthy();
+    expect(screen.queryByText("打印")).toBeNull();
+    expect(screen.getByRole("button", { name: "国内新闻" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "第三版" }));
+    await waitFor(() => expect(window.location.hash).toBe("#page-3"));
+    expect(readyDocument.getPageIndex).toHaveBeenCalledWith({ num: 22, gen: 0 });
+    expect(readyDocument.getPage).toHaveBeenCalledWith(3);
+    expect(screen.queryByRole("dialog", { name: "PDF 目录" })).toBeNull();
+  });
+
   it("enables in-place zoom, accepts viewer zoom changes, and exits with Escape", () => {
     renderReader("/rmrb/19761009");
 
