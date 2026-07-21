@@ -1,0 +1,37 @@
+# Backend
+
+JOJO 的统一 Python 后端。源码采用标准 `src` 布局，不依赖任何云平台的部署目录。
+
+```text
+src/app/
+  main.py       FastAPI 入口
+  core/         配置、认证、错误和 HTTP 中间件
+  account/      已启用的账号 API
+  olds/         未启用的 Olds 模块
+  rag/          未启用的 RAG 原型
+tests/
+```
+
+## 本地运行
+
+```bash
+python -m pip install -r backend/requirements-dev.txt
+pnpm dev:backend
+```
+
+接口：
+
+- `GET http://127.0.0.1:8088/v1/health`
+- `GET http://127.0.0.1:8088/v1/me`
+
+## 测试
+
+```bash
+pnpm test:backend
+```
+
+## 部署
+
+EdgeOne 薄入口位于 `infrastructure/edgeone/functions/api/index.py`。它只导入
+`app.main:app`。`pnpm prepare:web-deploy` 在部署时组装源码、依赖、平台入口和 Web
+静态产物。Olds 和 RAG 尚未加入公开路由，也不会随导入而启动独立服务。

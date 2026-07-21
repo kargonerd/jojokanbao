@@ -1,72 +1,58 @@
 # AGENTS.md
 
-## 项目概述
+## 项目结构
 
-JOJO Platform 是一个 pnpm monorepo，当前包含 Homepage、统一 Web 客户端、桌面端、移动端原型和 4 个共享包，统一使用红色杂志风格设计系统。Python 服务位于 `services/`，不加入 pnpm workspace。
+- `frontend/`：所有用户界面及其共享 TypeScript/CSS 包。
+- `backend/`：统一 Python API 和尚未启用的业务模块。
+- `tools/`：内部工作台和人工运维工具。
+- `infrastructure/`：EdgeOne 与 Supabase 配置。
+- `content/`：博客等内容。
+- `vendor/`、`references/`：不参与产品构建的第三方或历史参考代码。
 
-## 关键命令
+## 常用命令
 
 ```bash
-pnpm install          # 安装所有依赖
-pnpm build            # 构建所有 app（通过 Turborepo）
-pnpm test             # 运行所有测试
-pnpm dev              # 并行启动所有 dev server
-pnpm --filter @jojo/web dev      # 单独启动统一 Web
-pnpm dev:jojo-pipe               # 启动内部数据工作台前后端
-pnpm dev:desktop      # 启动 Desktop Electron 客户端
-pnpm dev:rag-backend  # 启动 RAG Python 后端
-pnpm dev:jiuwen-api   # 启动现有旧闻 Python 后端
+pnpm install
+pnpm build
+pnpm test
+pnpm dev
+pnpm dev:backend
+pnpm test:backend
 ```
 
-## 代码规范
+## 前端约定
 
-- 全局 TypeScript strict 模式
-- React 19 + 函数组件 + hooks
-- 样式用 Tailwind CSS v4 utility classes，颜色/字体引用 editorial-preset 的 token
-- 状态管理用 Zustand（不用 Redux/Context）
-- 测试用 Vitest + @testing-library/react
+- React 19、TypeScript strict、函数组件和 hooks。
+- 状态管理使用 Zustand。
+- 测试使用 Vitest 和 Testing Library。
+- `frontend/packages/ui` 同时提供 React 组件和 `@jojo/ui/styles` CSS 设计系统。
+- Web 一级业务模块位于 `frontend/web/src/account`、`archive`、`rag`、`olds`。
+- Archive 已上线，保持低风险演进。
 
-## 共享包使用
+## 后端约定
 
-```tsx
-// UI 组件
-import { Button, Card, NavBar, Tag, Pagination, Modal, LoadingSpinner } from "@jojo/ui";
+- 主 API 位于 `backend/src/app`，使用 FastAPI。
+- 公共能力位于 `app/core`；业务按 `app/account`、`olds`、`rag` 分模块。
+- Olds 和 RAG 尚未上线，默认不得加入公开路由或 EdgeOne 部署产物。
+- Reader Search 位于 `infrastructure/tencent-scf/search`，保持现有 Flask/SCF 行为。
+- EdgeOne 入口仅放在 `infrastructure/edgeone/functions`，不得包含业务逻辑。
+- 定时、批处理和人工运维代码放入 `tools/`，不伪装成 API。
+- Desktop 专属 Python 能力位于 `frontend/desktop/engine`。
+- 后端公共、Olds 和 RAG 依赖分别由 `backend/requirements*.txt` 管理。
 
-// PDF 渲染
-import { PdfViewer, PdfPage, usePdfDocument } from "@jojo/pdf-viewer";
+## 设计系统
 
-// 设计系统（在 CSS 中）
-@import "@jojo/editorial-preset";
-```
-
-## 设计系统 Token
-
-- 主色：`--color-red: #8b1a1a`（暗红）
+- 主色：`--color-red: #8b1a1a`
 - 文字：`--color-ink: #202020`
 - 背景：`--color-paper: #fff`
-- 字体：Noto Serif SC 衬线体
-- 圆角：全局 0（零圆角）
-- hover 效果：`translateY(-2px) + box-shadow: 4px 4px 0 rgba(139,26,26,.14)`
+- 字体：Noto Serif SC
+- 全局零圆角
+- hover：`translateY(-2px)` 与红色硬阴影
 
-## 文件结构约定
+```tsx
+import { Button, Card } from "@jojo/ui";
+```
 
-- `apps/web/src/archive/`、`account/`、`rag/`、`olds/` — 统一 Web 的一级业务模块，不再套 `features/`
-- `apps/desktop/src/press/` — 当前可运行的 Desktop Press 模块
-- `apps/desktop/src/archive/`、`account/`、`rag/`、`olds/` — Desktop 预留业务模块；接入前不注册路由
-- 业务模块内部可按 `pages/`、`components/`、`stores/`、`api.ts` 组织
-- `packages/*/src/` — 共享代码
-- `packages/*/tests/` — 包测试
-- `internal/data-workbench/web/` — 内部数据工作台 React 前端
-- `internal/data-workbench/server/` — 内部数据工作台 Flask 后端与 migration
-- `tooling/archive-pdf/` — 跨内容管线、对象存储、CDN 和 Archive 的 PDF 运维工具
-- `services/*/` — 独立 Python 后端及工具，每个服务维护自己的 README 和依赖
-
-## 注意事项
-
-- pdfjs-dist 在 jsdom 环境下需要 mock（DOMMatrix 不可用）
-- editorial-preset 是纯 CSS，不含 JS，通过 Tailwind v4 的 @import 机制加载
-- `apps/web` 是单个 Web 运行时：Archive、RAG、Olds 和 Account 共用路由与登录状态
-- 当前公开路由只有 `/archive/*`；Account、RAG、Olds 必须经 `src/rollout.ts` 的构建期开关显式发布
-- Homepage、桌面端和移动端仍是独立运行时，不直接共享浏览器内存状态
-- Pull request 检查统一维护在 `.github/workflows/ci.yml`；不要为 feature 或共享包新增独立 CI workflow
-- 部署、发版和定时运维 workflow 与 CI 分离，因为它们使用凭据或会修改外部状态
+```css
+@import "@jojo/ui/styles";
+```
