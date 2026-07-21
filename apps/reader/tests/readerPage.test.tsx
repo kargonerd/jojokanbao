@@ -300,20 +300,26 @@ describe("ReaderPage magazine navigation", () => {
 });
 
 describe("ReaderPage toolbar interactions", () => {
-  it("opens a PDF outline and jumps to its resolved destination", async () => {
+  it("shows only normalized edition-level outline entries and jumps to their destination", async () => {
     readyDocument.getOutline.mockResolvedValue([
       {
-        title: "第三版",
-        dest: [{ num: 22, gen: 0 }, { name: "FitH" }, 800],
+        title: "《人民日报》1976年10月09日",
+        dest: null,
         items: [
           {
-            title: "国内新闻",
-            dest: [{ num: 22, gen: 0 }, { name: "FitH" }, 700],
-            items: [],
+            title: "第03版：国内新闻",
+            dest: [{ num: 22, gen: 0 }, { name: "FitH" }, 800],
+            items: [
+              {
+                title: "一篇文章标题",
+                dest: [{ num: 22, gen: 0 }, { name: "FitH" }, 700],
+                items: [],
+              },
+            ],
           },
         ],
       },
-      { title: "打印", dest: null, items: [] },
+      { title: "yw4bb05b", dest: [{ num: 23, gen: 0 }, { name: "Fit" }], items: [] },
     ]);
     readyDocument.getPageIndex.mockResolvedValue(2);
     renderReader("/rmrb/19761009");
@@ -321,14 +327,36 @@ describe("ReaderPage toolbar interactions", () => {
     const outlineButton = await screen.findByRole("button", { name: "目录" });
     fireEvent.click(outlineButton);
     expect(screen.getByRole("dialog", { name: "PDF 目录" })).toBeTruthy();
-    expect(screen.queryByText("打印")).toBeNull();
-    expect(screen.getByRole("button", { name: "国内新闻" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "第三版（国内新闻）" })).toBeTruthy();
+    expect(screen.queryByText("一篇文章标题")).toBeNull();
+    expect(screen.queryByText("yw4bb05b")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "第三版" }));
+    fireEvent.click(screen.getByRole("button", { name: "第三版（国内新闻）" }));
     await waitFor(() => expect(window.location.hash).toBe("#page-3"));
     expect(readyDocument.getPageIndex).toHaveBeenCalledWith({ num: 22, gen: 0 });
     expect(readyDocument.getPage).toHaveBeenCalledWith(3);
     expect(screen.queryByRole("dialog", { name: "PDF 目录" })).toBeNull();
+  });
+
+  it("does not read or show outlines outside the audited years", async () => {
+    readyDocument.getOutline.mockResolvedValue([
+      { title: "第一版（要闻）", dest: [{ num: 1, gen: 0 }, { name: "Fit" }], items: [] },
+    ]);
+    renderReader("/rmrb/20101105");
+
+    await waitFor(() => expect(screen.getByTestId("pdf-viewer")).toBeTruthy());
+    expect(readyDocument.getOutline).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "目录" })).toBeNull();
+  });
+
+  it("hides production-code bookmarks even in a supported year", async () => {
+    readyDocument.getOutline.mockResolvedValue([
+      { title: "yw1bb05b", dest: [{ num: 1, gen: 0 }, { name: "Fit" }], items: [] },
+    ]);
+    renderReader("/rmrb/19761009");
+
+    await waitFor(() => expect(readyDocument.getOutline).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: "目录" })).toBeNull();
   });
 
   it("enables in-place zoom, accepts viewer zoom changes, and exits with Escape", () => {

@@ -213,6 +213,7 @@ export interface PublicationConfig {
   seqConfig?: Record<string, number[]>;
   genSeqText?: (seq: number) => string;
   disabledDate?: (dateStr: string) => boolean;
+  pageOutlineAvailable?: (id: string) => boolean;
   enableTextLayer?: boolean;
   resolutionControl?: boolean;
 }
@@ -246,10 +247,21 @@ function isDateDisabled(dateStr: string, config: {
   return false;
 }
 
+function hasRmrbPageOutline(id: string): boolean {
+  const year = Number(id.slice(0, 4));
+  return (year >= 1946 && year <= 1947)
+    || (year >= 1949 && year <= 2007)
+    || (year >= 2011 && year <= 2012);
+}
+
 export const PUBLICATIONS: Record<string, PublicationConfig> = {
   rmrb: {
     name: "rmrb", label: "人民日报", type: "newspaper", defaultId: "19761009",
     resolutionControl: true,
+    // Audited against representative local issues for every year. Some 2011
+    // and 2012 issues still contain only production codes; the reader applies
+    // a second content-level filter before showing the outline button.
+    pageOutlineAvailable: hasRmrbPageOutline,
     disabledDate: (d) => isDateDisabled(d, {
       minDate: "19460515", maxDate: getLatestRmrbAvailableDate(),
       missingRanges: RMRB_MISSING_RANGES,
