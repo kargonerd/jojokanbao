@@ -26,6 +26,7 @@ interface PdfViewerProps {
   onPageRendered?: (page: number) => void;
   onPageError?: (page: number, error: Error) => void;
   enableTextLayer?: boolean;
+  suppressPageLoading?: boolean;
 }
 
 interface VisiblePage {
@@ -85,6 +86,7 @@ export function PdfViewer({
   onPageRendered,
   onPageError,
   enableTextLayer = true,
+  suppressPageLoading = false,
 }: PdfViewerProps) {
   const normalizedInitialPage = clampPage(initialPage, document.numPages);
   const [loadedPages, setLoadedPages] = useState<Set<number>>(() => new Set([normalizedInitialPage]));
@@ -472,6 +474,7 @@ export function PdfViewer({
                 renderZoom={onZoomChange ? MAX_ZOOM : 1}
                 layoutZoom={effectiveZoom}
                 enableTextLayer={enableTextLayer}
+                showLoading={!suppressPageLoading}
                 onPageMetrics={handlePageMetrics}
                 onRendered={onPageRendered}
                 onError={(_failedPage, error) => handlePageError(pageNumber, error)}

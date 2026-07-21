@@ -21,6 +21,7 @@ interface PdfPageProps {
   renderZoom?: number;
   layoutZoom?: number;
   enableTextLayer?: boolean;
+  showLoading?: boolean;
   className?: string;
   onRendered?: (pageNumber: number) => void;
   onPageMetrics?: (pageNumber: number, metrics: PdfPageMetrics) => void;
@@ -72,6 +73,7 @@ export function PdfPage({
   renderZoom,
   layoutZoom = 1,
   enableTextLayer = true,
+  showLoading = true,
   className = "",
   onRendered,
   onPageMetrics,
@@ -229,7 +231,7 @@ export function PdfPage({
       {enableTextLayer ? (
         <div ref={textLayerRef} className="textLayer" data-pdf-text-layer />
       ) : null}
-      {rendering && (
+      {rendering && showLoading && (
         <div className="absolute inset-0 z-10 bg-paper/85" data-pdf-page-loading>
           <div className="sticky top-[50vh] flex -translate-y-1/2 items-center justify-center gap-2.5 py-6">
             <div className="w-4 h-4 border-2 border-red border-t-transparent rounded-full animate-spin" />

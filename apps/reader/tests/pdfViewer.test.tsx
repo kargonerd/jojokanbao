@@ -61,12 +61,12 @@ function createDocument(numPages: number) {
   };
 }
 
-async function renderViewer(document: PDFDocumentProxy, initialPage = 1) {
+async function renderViewer(document: PDFDocumentProxy, initialPage = 1, suppressPageLoading = false) {
   const host = window.document.createElement("div");
   window.document.body.append(host);
   const root = createRoot(host);
   await act(async () => {
-    root.render(<PdfViewer document={document} initialPage={initialPage} />);
+    root.render(<PdfViewer document={document} initialPage={initialPage} suppressPageLoading={suppressPageLoading} />);
   });
   return {
     host,
@@ -119,6 +119,15 @@ describe("PdfViewer demand loading", () => {
     expect(loadingMessage?.className).toContain("sticky");
     expect(loadingMessage?.className).toContain("top-[50vh]");
     expect(loadingMessage?.className).toContain("-translate-y-1/2");
+
+    await view.unmount();
+  });
+
+  it("suppresses the page-level loading prompt while a parent overlay is visible", async () => {
+    const { document } = createDocument(1);
+    const view = await renderViewer(document, 1, true);
+
+    expect(view.host.querySelector("[data-pdf-page-loading]")).toBeNull();
 
     await view.unmount();
   });
