@@ -133,6 +133,7 @@ describe("PdfViewer demand loading", () => {
   });
 
   it("renders an aligned selectable text layer for loaded pages", async () => {
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(300);
     const streamTextContent = vi.fn(() => new ReadableStream());
     const page = {
       getViewport: ({ scale }: { scale: number }) => ({
@@ -160,6 +161,9 @@ describe("PdfViewer demand loading", () => {
       disableNormalization: true,
     });
     expect(textLayerMocks.instances).toHaveLength(1);
+    expect(textLayerMocks.instances[0]?.container.style.getPropertyValue("--total-scale-factor")).toBe("0.5");
+    expect(textLayerMocks.instances[0]?.container.style.getPropertyValue("--scale-round-x")).toBe("1px");
+    expect(textLayerMocks.instances[0]?.container.style.getPropertyValue("--scale-round-y")).toBe("1px");
 
     await view.unmount();
   });

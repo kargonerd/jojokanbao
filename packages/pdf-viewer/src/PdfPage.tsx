@@ -195,6 +195,13 @@ export function PdfPage({
         const viewport = page.getViewport({ scale: layoutWidth / Math.max(baseViewport.width, 1) });
         textLayerTask.current?.cancel();
         textLayerContainer.replaceChildren();
+        // PDF.js positions spans as percentages but sizes their fonts and layer
+        // dimensions through these page-level variables. Without the viewport
+        // scale, selectable text collapses into the wrong columns even though
+        // the canvas itself remains visually correct.
+        textLayerContainer.style.setProperty("--total-scale-factor", String(viewport.scale));
+        textLayerContainer.style.setProperty("--scale-round-x", "1px");
+        textLayerContainer.style.setProperty("--scale-round-y", "1px");
         const task = new TextLayer({
           textContentSource: page.streamTextContent({
             includeMarkedContent: true,
@@ -222,6 +229,9 @@ export function PdfPage({
       textLayerTask.current?.cancel();
       textLayerTask.current = null;
       textLayerContainer.replaceChildren();
+      textLayerContainer.style.removeProperty("--total-scale-factor");
+      textLayerContainer.style.removeProperty("--scale-round-x");
+      textLayerContainer.style.removeProperty("--scale-round-y");
     };
   }, [containerWidth, document, enableTextLayer, layoutZoom, pageNumber]);
 
