@@ -385,7 +385,7 @@ test("mobile PDF slots keep their page ratio and evict distant canvases", async 
     };
   });
   expect(geometry.heightDifference).toBeLessThan(2);
-  expect(geometry.pixelDensity).toBeGreaterThanOrEqual(8.5);
+  expect(geometry.pixelDensity).toBeGreaterThanOrEqual(2.8);
   expect(geometry.pixels).toBeLessThanOrEqual(32_000_000);
 
   await page.locator("#page-6").scrollIntoViewIfNeeded();
@@ -420,14 +420,21 @@ test("mobile PDF slots keep their page ratio and evict distant canvases", async 
   ).width);
   await page.getByRole("button", { name: "开启区域缩放" }).click();
   await expect(page.locator("[data-pdf-viewer]")).toHaveAttribute("data-zoom", "3");
-  const maximumZoomDensity = await page.locator("[data-pdf-page][data-page-state='loaded'] canvas").first().evaluate((canvas) => {
+  await expect(page.locator("[data-pdf-viewer]")).toHaveAttribute("data-render-zoom", "3");
+  const upgradedCanvas = page.locator("[data-pdf-page][data-page-state='loaded'] canvas[data-pdf-render-zoom='3']").first();
+  await expect(upgradedCanvas).toBeVisible();
+  await expect(page.locator("canvas[data-pdf-render-zoom='3']")).toHaveCount(1);
+  await expect.poll(() => upgradedCanvas.evaluate((canvas) => (
+    canvas as HTMLCanvasElement
+  ).width)).toBeGreaterThan(highQualityWidthBeforeZoom);
+  const maximumZoomDensity = await upgradedCanvas.evaluate((canvas) => {
     const element = canvas as HTMLCanvasElement;
     return {
       canvasWidth: element.width,
       pixelDensity: element.width / element.getBoundingClientRect().width,
     };
   });
-  expect(maximumZoomDensity.canvasWidth).toBe(highQualityWidthBeforeZoom);
+  expect(maximumZoomDensity.canvasWidth).toBeGreaterThan(highQualityWidthBeforeZoom);
   expect(maximumZoomDensity.pixelDensity).toBeGreaterThanOrEqual(2.8);
 });
 
@@ -461,20 +468,21 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
   const interactionLayer = page.locator("#page-1 [data-pdf-text-layer]");
   await expect(source).toBeVisible({ timeout: 20_000 });
   await expect(interactionLayer).toBeVisible({ timeout: 20_000 });
+  const canvasWidthBeforeZoom = await source.evaluate((canvas) => (canvas as HTMLCanvasElement).width);
   const toggle = page.getByRole("button", { name: "开启区域缩放" });
   await toggle.click();
   await expect(page.getByRole("button", { name: "关闭区域缩放" })).toHaveAttribute("aria-pressed", "true");
   const viewer = page.locator("[data-pdf-viewer]");
   await expect(viewer).toHaveAttribute("data-zoom", "1.5");
   await expect(page.locator("[data-pdf-magnifier-lens]")).toHaveCount(0);
-  const canvasWidthBeforeZoom = await source.evaluate((canvas) => (canvas as HTMLCanvasElement).width);
   const reader = page.locator("[data-reader-scroll-container]");
   const scrollHeightBeforeZoom = await reader.evaluate((element) => element.scrollHeight);
 
   await interactionLayer.click({ position: { x: 300, y: 300 } });
   await expect(viewer).toHaveAttribute("data-zoom", "2");
-  await page.waitForTimeout(300);
-  expect(await source.evaluate((canvas) => (canvas as HTMLCanvasElement).width)).toBe(canvasWidthBeforeZoom);
+  await expect(viewer).toHaveAttribute("data-render-zoom", "2");
+  await expect.poll(() => source.evaluate((canvas) => (canvas as HTMLCanvasElement).width))
+    .toBeGreaterThan(canvasWidthBeforeZoom);
   expect(await reader.evaluate((element) => element.scrollHeight)).toBeGreaterThan(scrollHeightBeforeZoom);
   await expect(page.getByText("正在加载第 1 页")).toHaveCount(0);
 

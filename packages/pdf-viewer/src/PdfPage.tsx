@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useLayoutEffect, useState } from "react";
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from "pdfjs-dist";
 import { TextLayer } from "pdfjs-dist/legacy/build/pdf.mjs";
 import "./textLayer.css";
@@ -83,9 +83,12 @@ export function PdfPage({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
   const [rendering, setRendering] = useState(true);
+  const [canvasReady, setCanvasReady] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
   const renderTask = useRef<RenderTask | null>(null);
   const textLayerTask = useRef<{ cancel: () => void } | null>(null);
+  const hasRenderedRef = useRef(false);
+  const textLayerBaseScaleRef = useRef(0);
   const layoutZoomRef = useRef(Math.max(layoutZoom, 1));
   const callbacksRef = useRef({ onRendered, onPageMetrics, onError });
   layoutZoomRef.current = Math.max(layoutZoom, 1);
@@ -93,6 +96,15 @@ export function PdfPage({
   useEffect(() => {
     callbacksRef.current = { onRendered, onPageMetrics, onError };
   }, [onError, onPageMetrics, onRendered]);
+
+  useEffect(() => () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+    hasRenderedRef.current = false;
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -120,7 +132,8 @@ export function PdfPage({
 
     let disposed = false;
     let page: PDFPageProxy | null = null;
-    setRendering(true);
+    let renderCanvas: HTMLCanvasElement | null = null;
+    if (!hasRenderedRef.current) setRendering(true);
 
     const render = async () => {
       try {
@@ -139,25 +152,36 @@ export function PdfPage({
           renderZoom,
         });
         const viewport = page.getViewport({ scale: renderScale });
-        canvas.width = Math.max(1, Math.floor(viewport.width));
-        canvas.height = Math.max(1, Math.floor(viewport.height));
-        canvas.style.width = "100%";
-        canvas.style.height = "auto";
-
-        const context = canvas.getContext("2d");
+        renderCanvas = window.document.createElement("canvas");
+        renderCanvas.width = Math.max(1, Math.floor(viewport.width));
+        renderCanvas.height = Math.max(1, Math.floor(viewport.height));
+        const context = renderCanvas.getContext("2d");
         if (!context) throw new Error("Canvas 2D context is unavailable");
 
-        const task = page.render({ canvas, canvasContext: context, viewport });
+        const task = page.render({ canvas: renderCanvas, canvasContext: context, viewport });
         renderTask.current = task;
         await task.promise;
         if (disposed) return;
 
+        const visibleContext = canvas.getContext("2d");
+        if (!visibleContext) throw new Error("Canvas 2D context is unavailable");
+        canvas.width = renderCanvas.width;
+        canvas.height = renderCanvas.height;
+        canvas.style.width = "100%";
+        canvas.style.height = "auto";
+        visibleContext.drawImage(renderCanvas, 0, 0);
+        renderCanvas.width = 0;
+        renderCanvas.height = 0;
+        hasRenderedRef.current = true;
+        setCanvasReady(true);
         setRendering(false);
         callbacksRef.current.onRendered?.(pageNumber);
       } catch (error) {
         if (disposed || (error as { name?: string })?.name === "RenderingCancelledException") return;
         setRendering(false);
-        callbacksRef.current.onError?.(pageNumber, error instanceof Error ? error : new Error(String(error)));
+        if (!hasRenderedRef.current) {
+          callbacksRef.current.onError?.(pageNumber, error instanceof Error ? error : new Error(String(error)));
+        }
       }
     };
 
@@ -167,16 +191,28 @@ export function PdfPage({
       disposed = true;
       renderTask.current?.cancel();
       renderTask.current = null;
+      if (renderCanvas) {
+        renderCanvas.width = 0;
+        renderCanvas.height = 0;
+      }
       page?.cleanup();
-      canvas.width = 0;
-      canvas.height = 0;
     };
   }, [containerWidth, document, pageNumber, quality, renderZoom, scale]);
+
+  useLayoutEffect(() => {
+    const textLayerContainer = textLayerRef.current;
+    const baseScale = textLayerBaseScaleRef.current;
+    if (!textLayerContainer || !(baseScale > 0)) return;
+    textLayerContainer.style.setProperty(
+      "--total-scale-factor",
+      String(baseScale * Math.max(layoutZoom, 1)),
+    );
+  }, [layoutZoom]);
 
   useEffect(() => {
     const container = containerRef.current;
     const textLayerContainer = textLayerRef.current;
-    if (!enableTextLayer || !container || !textLayerContainer || !document || containerWidth === 0) {
+    if (!enableTextLayer || !canvasReady || !container || !textLayerContainer || !document || containerWidth === 0) {
       textLayerTask.current?.cancel();
       textLayerTask.current = null;
       textLayerContainer?.replaceChildren();
@@ -191,15 +227,18 @@ export function PdfPage({
         if (disposed) return;
 
         const baseViewport = page.getViewport({ scale: 1 });
-        const layoutWidth = Math.max(container.clientWidth, containerWidth * Math.max(layoutZoom, 1));
-        const viewport = page.getViewport({ scale: layoutWidth / Math.max(baseViewport.width, 1) });
+        const viewport = page.getViewport({ scale: containerWidth / Math.max(baseViewport.width, 1) });
         textLayerTask.current?.cancel();
         textLayerContainer.replaceChildren();
         // PDF.js positions spans as percentages but sizes their fonts and layer
         // dimensions through these page-level variables. Without the viewport
         // scale, selectable text collapses into the wrong columns even though
         // the canvas itself remains visually correct.
-        textLayerContainer.style.setProperty("--total-scale-factor", String(viewport.scale));
+        textLayerBaseScaleRef.current = viewport.scale;
+        textLayerContainer.style.setProperty(
+          "--total-scale-factor",
+          String(viewport.scale * layoutZoomRef.current),
+        );
         textLayerContainer.style.setProperty("--scale-round-x", "1px");
         textLayerContainer.style.setProperty("--scale-round-y", "1px");
         const task = new TextLayer({
@@ -228,16 +267,17 @@ export function PdfPage({
       disposed = true;
       textLayerTask.current?.cancel();
       textLayerTask.current = null;
+      textLayerBaseScaleRef.current = 0;
       textLayerContainer.replaceChildren();
       textLayerContainer.style.removeProperty("--total-scale-factor");
       textLayerContainer.style.removeProperty("--scale-round-x");
       textLayerContainer.style.removeProperty("--scale-round-y");
     };
-  }, [containerWidth, document, enableTextLayer, layoutZoom, pageNumber]);
+  }, [canvasReady, containerWidth, document, enableTextLayer, pageNumber]);
 
   return (
     <div ref={containerRef} id={id} data-pdf-page-content className={`relative h-full ${className}`}>
-      <canvas ref={canvasRef} className="block w-full h-auto" />
+      <canvas ref={canvasRef} className="block w-full h-auto" data-pdf-render-zoom={renderZoom ?? 1} />
       {enableTextLayer ? (
         <div ref={textLayerRef} className="textLayer" data-pdf-text-layer />
       ) : null}

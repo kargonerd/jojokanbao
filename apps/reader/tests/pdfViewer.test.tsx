@@ -84,6 +84,19 @@ async function renderViewer(
   });
   return {
     host,
+    rerender: async (nextZoomEnabled = zoomEnabled, nextZoom = zoom) => {
+      await act(async () => {
+        root.render(
+          <PdfViewer
+            document={document}
+            initialPage={initialPage}
+            suppressPageLoading={suppressPageLoading}
+            zoomEnabled={nextZoomEnabled}
+            zoom={nextZoom}
+          />,
+        );
+      });
+    },
     unmount: async () => {
       await act(async () => root.unmount());
       host.remove();
@@ -113,7 +126,9 @@ beforeEach(() => {
   textLayerMocks.instances.length = 0;
   vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({} as CanvasRenderingContext2D);
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    drawImage: vi.fn(),
+  } as unknown as CanvasRenderingContext2D);
 });
 
 afterEach(() => {
@@ -190,6 +205,34 @@ describe("PdfViewer demand loading", () => {
     expect(textLayerMocks.instances[0]?.container.style.getPropertyValue("--scale-round-x")).toBe("1px");
     expect(textLayerMocks.instances[0]?.container.style.getPropertyValue("--scale-round-y")).toBe("1px");
 
+    await view.rerender(true, 2);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 220));
+    });
+    expect(textLayerMocks.instances[0]?.container.style.getPropertyValue("--total-scale-factor")).toBe("1");
+    expect(view.host.querySelector("[data-pdf-viewer]")?.getAttribute("data-render-zoom")).toBe("2");
+    expect(textLayerMocks.instances).toHaveLength(1);
+    expect(streamTextContent).toHaveBeenCalledTimes(1);
+    expect(page.render).toHaveBeenCalledTimes(2);
+    expect(view.host.querySelector("[data-pdf-page-loading]")).toBeNull();
+
+    await view.unmount();
+  });
+
+  it("waits for zoom to settle before upgrading the canvas resolution", async () => {
+    const { document } = createDocument(1);
+    const view = await renderViewer(document);
+
+    expect(view.host.querySelector("[data-pdf-viewer]")?.getAttribute("data-render-zoom")).toBe("1");
+    await view.rerender(true, 3);
+    expect(view.host.querySelector("[data-pdf-viewer]")?.getAttribute("data-zoom")).toBe("3");
+    expect(view.host.querySelector("[data-pdf-viewer]")?.getAttribute("data-render-zoom")).toBe("1");
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 220));
+    });
+    expect(view.host.querySelector("[data-pdf-viewer]")?.getAttribute("data-render-zoom")).toBe("3");
+
     await view.unmount();
   });
 
@@ -241,6 +284,37 @@ describe("PdfViewer demand loading", () => {
 
     expect(view.host.querySelector("#page-80")?.getAttribute("data-page-state")).toBe("placeholder");
     expect(view.host.querySelector("#page-80 canvas")).toBeNull();
+
+    await view.unmount();
+  });
+
+  it("keeps at most three nearby rendered pages on constrained mobile devices", async () => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({
+      matches: true,
+      media: "(max-width: 767px)",
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })));
+    const { document } = createDocument(10);
+    const view = await renderViewer(document);
+    const loadingObserver = observers.find((observer) => observer.options?.rootMargin === "5% 0px");
+    const pages = [2, 3, 4].map((pageNumber) => view.host.querySelector(`#page-${pageNumber}`)!);
+
+    await act(async () => {
+      loadingObserver?.callback(pages.map((target, index) => ({
+        target,
+        isIntersecting: true,
+        boundingClientRect: { top: 100 + index * 800, bottom: 900 + index * 800 },
+      } as IntersectionObserverEntry)), {} as IntersectionObserver);
+    });
+
+    const loadedPages = [...view.host.querySelectorAll("[data-page-state='loaded']")]
+      .map((element) => element.getAttribute("data-page"));
+    expect(loadedPages).toEqual(["1", "2", "3"]);
 
     await view.unmount();
   });
@@ -311,7 +385,7 @@ describe("PdfViewer demand loading", () => {
     expect(qualityThree).toBeGreaterThan(qualityTwo);
   });
 
-  it("renders ahead for smooth high-resolution zoom without exceeding canvas limits", () => {
+  it("preserves high-resolution output at the settled zoom without exceeding canvas limits", () => {
     const base = {
       pageWidth: 600,
       pageHeight: 800,
