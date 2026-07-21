@@ -138,9 +138,10 @@ export function PdfViewer({
   const [touchInput] = useState(hasTouchInput);
   const [constrainedResidency] = useState(() => shouldConstrainPageResidency(touchInput));
   const [activeTextLayerPage, setActiveTextLayerPage] = useState<number | null>(normalizedInitialPage);
+  const textLayerEnabled = enableTextLayer && !touchInput;
 
   const scheduleTextLayerForPage = useCallback((pageNumber: number) => {
-    if (!constrainedResidency) return;
+    if (!textLayerEnabled || !constrainedResidency) return;
     if (textLayerSettleTimerRef.current !== null) {
       window.clearTimeout(textLayerSettleTimerRef.current);
     }
@@ -149,7 +150,7 @@ export function PdfViewer({
       textLayerSettleTimerRef.current = null;
       setActiveTextLayerPage(pageNumber);
     }, TEXT_LAYER_SETTLE_MS);
-  }, [constrainedResidency]);
+  }, [constrainedResidency, textLayerEnabled]);
 
   useEffect(() => () => {
     if (textLayerSettleTimerRef.current !== null) {
@@ -557,7 +558,7 @@ export function PdfViewer({
                 quality={quality}
                 renderZoom={pageNumber === currentPageRef.current ? renderZoom : 1}
                 layoutZoom={effectiveZoom}
-                enableTextLayer={enableTextLayer && (
+                enableTextLayer={textLayerEnabled && (
                   !constrainedResidency || pageNumber === activeTextLayerPage
                 )}
                 showLoading={!suppressPageLoading}

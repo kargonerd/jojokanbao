@@ -290,7 +290,7 @@ describe("PdfViewer demand loading", () => {
     await view.unmount();
   });
 
-  it("keeps at most three nearby rendered pages on constrained mobile devices", async () => {
+  it("keeps at most three nearby rendered pages and disables text layers on mobile", async () => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({
       matches: true,
       media: "(max-width: 767px)",
@@ -317,8 +317,7 @@ describe("PdfViewer demand loading", () => {
     const loadedPages = [...view.host.querySelectorAll("[data-page-state='loaded']")]
       .map((element) => element.getAttribute("data-page"));
     expect(loadedPages).toEqual(["1", "2", "3"]);
-    expect(view.host.querySelectorAll("[data-pdf-text-layer]")).toHaveLength(1);
-    expect(view.host.querySelector("#page-1 [data-pdf-text-layer]")).not.toBeNull();
+    expect(view.host.querySelectorAll("[data-pdf-text-layer]")).toHaveLength(0);
 
     await view.unmount();
   });
