@@ -42,6 +42,7 @@ const MAX_ZOOM = 3;
 const CLICK_ZOOM_STEP = 0.5;
 const WHEEL_ZOOM_STEP = 0.25;
 const RENDER_ZOOM_SETTLE_MS = 180;
+const TEXT_LAYER_SETTLE_MS = 220;
 const MAX_CONSTRAINED_RESIDENT_PAGES = 3;
 
 interface DragState {
@@ -73,11 +74,17 @@ function clampZoom(zoom: number): number {
   return Math.min(Math.max(zoom, MIN_ZOOM), MAX_ZOOM);
 }
 
-function shouldConstrainPageResidency(): boolean {
+function hasTouchInput(): boolean {
+  return window.navigator.maxTouchPoints > 0 || (
+    typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches
+  );
+}
+
+function shouldConstrainPageResidency(touchInput: boolean): boolean {
   const deviceMemory = (window.navigator as Navigator & { deviceMemory?: number }).deviceMemory;
   const narrowViewport = typeof window.matchMedia === "function"
     && window.matchMedia("(max-width: 767px)").matches;
-  return narrowViewport || (typeof deviceMemory === "number" && deviceMemory <= 4);
+  return touchInput || narrowViewport || (typeof deviceMemory === "number" && deviceMemory <= 4);
 }
 
 function selectResidentPages(
@@ -125,9 +132,30 @@ export function PdfViewer({
   const dragRef = useRef<DragState | null>(null);
   const activeTouchPointersRef = useRef<Map<number, PointerPosition>>(new Map());
   const pinchRef = useRef<PinchState | null>(null);
+  const textLayerSettleTimerRef = useRef<number | null>(null);
   const effectiveZoom = zoomEnabled ? clampZoom(zoom) : 1;
   const [renderZoom, setRenderZoom] = useState(effectiveZoom);
-  const [constrainedResidency] = useState(shouldConstrainPageResidency);
+  const [touchInput] = useState(hasTouchInput);
+  const [constrainedResidency] = useState(() => shouldConstrainPageResidency(touchInput));
+  const [activeTextLayerPage, setActiveTextLayerPage] = useState<number | null>(normalizedInitialPage);
+
+  const scheduleTextLayerForPage = useCallback((pageNumber: number) => {
+    if (!constrainedResidency) return;
+    if (textLayerSettleTimerRef.current !== null) {
+      window.clearTimeout(textLayerSettleTimerRef.current);
+    }
+    setActiveTextLayerPage(null);
+    textLayerSettleTimerRef.current = window.setTimeout(() => {
+      textLayerSettleTimerRef.current = null;
+      setActiveTextLayerPage(pageNumber);
+    }, TEXT_LAYER_SETTLE_MS);
+  }, [constrainedResidency]);
+
+  useEffect(() => () => {
+    if (textLayerSettleTimerRef.current !== null) {
+      window.clearTimeout(textLayerSettleTimerRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -183,6 +211,11 @@ export function PdfViewer({
     setDefaultPageAspectRatio(DEFAULT_PAGE_ASPECT_RATIO);
     currentPageRef.current = pageNumber;
     pagesInLoadRangeRef.current = new Set([pageNumber]);
+    if (textLayerSettleTimerRef.current !== null) {
+      window.clearTimeout(textLayerSettleTimerRef.current);
+      textLayerSettleTimerRef.current = null;
+    }
+    setActiveTextLayerPage(pageNumber);
   }, [document, document.numPages, initialPage]);
 
   useEffect(() => {
@@ -259,6 +292,7 @@ export function PdfViewer({
             if (!pagesInLoadRangeRef.current.has(previousPage)) next.delete(previousPage);
             return selectResidentPages(next, pageNumber, constrainedResidency);
           });
+          scheduleTextLayerForPage(pageNumber);
           onPageChange(pageNumber);
         }
       },
@@ -270,7 +304,7 @@ export function PdfViewer({
 
     container.querySelectorAll("[data-pdf-page]").forEach((element) => observer.observe(element));
     return () => observer.disconnect();
-  }, [constrainedResidency, document, onPageChange, scrollContainerRef]);
+  }, [constrainedResidency, document, onPageChange, scheduleTextLayerForPage, scrollContainerRef]);
 
   const handlePageError = (pageNumber: number, error: Error) => {
     setLoadedPages((previous) => {
@@ -357,8 +391,10 @@ export function PdfViewer({
       return;
     }
 
-    event.preventDefault();
-    capturePointer(event.currentTarget, event.pointerId);
+    if (event.pointerType !== "touch") {
+      event.preventDefault();
+      capturePointer(event.currentTarget, event.pointerId);
+    }
     dragRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -396,10 +432,15 @@ export function PdfViewer({
     const drag = dragRef.current;
     const scrollContainer = scrollContainerRef?.current;
     if (!drag || drag.pointerId !== event.pointerId || !scrollContainer) return;
+    if (event.pointerType === "touch" && window.getSelection()?.isCollapsed === false) return;
 
     const deltaX = event.clientX - drag.startX;
     const deltaY = event.clientY - drag.startY;
-    if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) drag.moved = true;
+    if (!drag.moved) {
+      if (Math.abs(deltaX) <= 4 && Math.abs(deltaY) <= 4) return;
+      drag.moved = true;
+      capturePointer(event.currentTarget, event.pointerId);
+    }
     scrollContainer.scrollLeft = drag.scrollLeft - deltaX;
     scrollContainer.scrollTop = drag.scrollTop - deltaY;
     event.preventDefault();
@@ -463,6 +504,7 @@ export function PdfViewer({
       data-pdf-viewer
       data-zoom={effectiveZoom}
       data-render-zoom={renderZoom}
+      data-touch-input={touchInput}
       className={`relative w-full ${className}`}
     >
       <div
@@ -472,7 +514,7 @@ export function PdfViewer({
         style={{
           width: `${effectiveZoom * 100}%`,
           touchAction: zoomEnabled ? "none" : "pan-y",
-          userSelect: zoomEnabled ? "none" : undefined,
+          userSelect: zoomEnabled && !touchInput ? "none" : undefined,
         }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -515,7 +557,9 @@ export function PdfViewer({
                 quality={quality}
                 renderZoom={pageNumber === currentPageRef.current ? renderZoom : 1}
                 layoutZoom={effectiveZoom}
-                enableTextLayer={enableTextLayer}
+                enableTextLayer={enableTextLayer && (
+                  !constrainedResidency || pageNumber === activeTextLayerPage
+                )}
                 showLoading={!suppressPageLoading}
                 onPageMetrics={handlePageMetrics}
                 onRendered={onPageRendered}
