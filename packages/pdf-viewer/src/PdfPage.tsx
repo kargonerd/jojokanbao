@@ -80,7 +80,7 @@ export function PdfPage({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
-  const [rendering, setRendering] = useState(false);
+  const [rendering, setRendering] = useState(true);
   const [containerWidth, setContainerWidth] = useState(0);
   const renderTask = useRef<RenderTask | null>(null);
   const textLayerTask = useRef<{ cancel: () => void } | null>(null);
@@ -224,7 +224,7 @@ export function PdfPage({
   }, [containerWidth, document, enableTextLayer, layoutZoom, pageNumber]);
 
   return (
-    <div ref={containerRef} id={id} className={`relative ${className}`}>
+    <div ref={containerRef} id={id} data-pdf-page-content className={`relative h-full ${className}`}>
       <canvas ref={canvasRef} className="block w-full h-auto" />
       {enableTextLayer ? (
         <div ref={textLayerRef} className="textLayer" data-pdf-text-layer />
