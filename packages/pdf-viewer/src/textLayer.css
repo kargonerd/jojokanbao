@@ -45,12 +45,12 @@
 }
 
 .textLayer ::-moz-selection {
-  background: rgb(139 26 26 / 0.25);
+  background: var(--color-red, #8b1a1a);
   color: transparent;
 }
 
 .textLayer ::selection {
-  background: rgb(139 26 26 / 0.25);
+  background: var(--color-red, #8b1a1a);
   color: transparent;
 }
 
