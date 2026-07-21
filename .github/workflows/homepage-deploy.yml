@@ -48,6 +48,7 @@ jobs:
       EDGEONE_PROJECT_NAME: ${{ vars.EDGEONE_HOMEPAGE_PROJECT_NAME || 'jojo-homepage' }}
       EDGEONE_DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'production' }}
       EDGEONE_UPLOAD_FROM_PATH: ./apps/homepage/dist/
+      HOMEPAGE_BASE_URL: ${{ vars.EDGEONE_HOMEPAGE_BASE_URL || 'https://jojokanbao.cn' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -70,6 +71,9 @@ jobs:
       - name: Build homepage
         run: pnpm --filter @jojo/homepage build
 
+      - name: Add deployment revision
+        run: printf '%s\n' "$GITHUB_SHA" > "$EDGEONE_UPLOAD_FROM_PATH/deployment.txt"
+
       - name: Upload homepage build
         uses: actions/upload-artifact@v4
         with:
@@ -83,12 +87,54 @@ jobs:
 
       - name: Deploy to EdgeOne Makers
         if: github.event_name != 'pull_request'
-        run: >-
-          pnpm dlx edgeone@1.6.14 makers deploy "$EDGEONE_UPLOAD_FROM_PATH"
-          --name "$EDGEONE_PROJECT_NAME"
-          --token "$EDGEONE_API_TOKEN"
-          --env "$EDGEONE_DEPLOY_ENV"
-          --area global
+        shell: bash
+        run: |
+          set +e
+          deploy_output="$(
+            pnpm dlx edgeone@1.6.14 makers deploy "$EDGEONE_UPLOAD_FROM_PATH" \
+              --name "$EDGEONE_PROJECT_NAME" \
+              --token "$EDGEONE_API_TOKEN" \
+              --env "$EDGEONE_DEPLOY_ENV" \
+              --area global 2>&1
+          )"
+          deploy_status=$?
+          set -e
+
+          printf '%s\n' "$deploy_output"
+
+          if [ "$deploy_status" -eq 0 ]; then
+            exit 0
+          fi
+
+          if [ "$EDGEONE_DEPLOY_ENV" = "production" ] && grep -q "Deploy Success" <<< "$deploy_output"; then
+            echo "::warning::EdgeOne completed the deployment but its follow-up status query failed; verifying the published revision instead."
+            exit 0
+          fi
+
+          exit "$deploy_status"
+
+      - name: Verify production revision
+        if: github.event_name != 'pull_request' && env.EDGEONE_DEPLOY_ENV == 'production'
+        shell: bash
+        run: |
+          revision_url="${HOMEPAGE_BASE_URL%/}/deployment.txt?revision=$GITHUB_SHA"
+
+          for attempt in $(seq 1 18); do
+            deployed_revision="$(curl --fail --silent --show-error --max-time 15 "$revision_url" || true)"
+
+            if [ "$deployed_revision" = "$GITHUB_SHA" ]; then
+              echo "Verified production revision $GITHUB_SHA"
+              exit 0
+            fi
+
+            if [ "$attempt" -lt 18 ]; then
+              echo "Production revision is not current yet (attempt $attempt/18); retrying in 10 seconds."
+              sleep 10
+            fi
+          done
+
+          echo "Production did not publish revision $GITHUB_SHA" >&2
+          exit 1
 
   e2e:
     needs: build-and-test
