@@ -876,6 +876,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             onPageRendered={handleInitialPageRendered}
             onPageError={handleInitialPageError}
             enableTextLayer={config.enableTextLayer ?? true}
+            suppressPageLoading={showInitialLoading}
           />
         )}
       </div>

@@ -197,9 +197,11 @@ describe("ReaderPage document states", () => {
     const pageLoadingText = screen.getByText("正在加载第 1 页");
     expect(pageLoadingText.closest(".fixed")).toBeTruthy();
     expect(screen.getAllByText(/正在加载/)).toHaveLength(1);
+    expect(latestViewerProps().suppressPageLoading).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "模拟初始页渲染完成" }));
     expect(screen.queryByText("正在加载第 1 页")).toBeNull();
+    expect(latestViewerProps().suppressPageLoading).toBe(false);
   });
 
   it("reveals the page error instead of leaving the initial loading overlay stuck", () => {
