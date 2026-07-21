@@ -122,13 +122,14 @@ describe("SearchPage results", () => {
     const content = screen.getByText("重点内容").parentElement!;
 
     expect(heading.querySelector("strong")?.textContent).toBe("历史");
+    expect(heading.querySelector("strong")?.className).toContain("search-highlight");
     expect(resultLink.getAttribute("href")).toBe("/rmrb/19660701#page-5");
     expect(resultLink.getAttribute("target")).toBe("_blank");
     expect(screen.getByText("人民日报")).toBeTruthy();
     expect(screen.getByText("1966-07-01")).toBeTruthy();
     expect(screen.getByText("第5版")).toBeTruthy();
     expect(content.querySelector("br")).toBeTruthy();
-    expect(content.querySelector("span.text-red")?.textContent).toBe("重点内容");
+    expect(content.querySelector("span.search-highlight")?.textContent).toBe("重点内容");
   });
 
   it("renders API HTML as inert text while preserving highlight markers", async () => {
@@ -141,6 +142,7 @@ describe("SearchPage results", () => {
 
     const highlight = await screen.findByText("历史", { selector: "strong" });
     const heading = highlight.closest("h3")!;
+    expect(highlight.className).toContain("search-highlight");
     expect(heading.textContent).toBe("标题<img src=x onerror=alert(1)>历史");
     expect(heading.querySelector("img")).toBeNull();
     expect(document.querySelector("script")).toBeNull();
