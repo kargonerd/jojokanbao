@@ -17,6 +17,9 @@
     "publish:reader-pdf": "node tooling/publish-protected-reader-pdfs.mjs",
     "purge:reader-pdf": "node tooling/purge-edgeone-reader-cache.mjs",
     "verify:reader-pdf": "node tooling/verify-reader-pdf-protection.mjs",
+    "invite:create": "node tooling/manage-signup-invites.mjs create",
+    "invite:list": "node tooling/manage-signup-invites.mjs list",
+    "invite:revoke": "node tooling/manage-signup-invites.mjs revoke",
     "clean": "turbo clean && rm -rf node_modules"
   },
   "devDependencies": {

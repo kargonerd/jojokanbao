@@ -10,6 +10,7 @@ blog/
 
 apps/
   homepage/      博客静态站点渲染器 (Astro 5)
+  account/       统一账号中心 (Supabase Auth + Vite + React 19)
   reader/        PDF 报纸/杂志阅读器 (Vite + React 19)
   rag/           RAG 知识库问答 + 文档阅读器 (Vite + React 19)
   press/         PDF 校对工具桌面端 (Electron + Vite + React 19)
@@ -33,6 +34,7 @@ references/
   legacy-jiuwen-root/  原 jojojiuwen 根目录 docs/demo/docker/scripts 归档
 
 packages/
+  auth/               跨应用 Supabase 认证、会话和用户资料
   editorial-preset/   CSS 设计系统 (Tailwind v4 theme + base styles)
   ui/                 共享 React 组件库 (Button, Card, NavBar, Modal, Tag, Pagination, LoadingSpinner)
   pdf-viewer/         共享 PDF 渲染 (PdfPage, PdfViewer, usePdfDocument)
@@ -58,6 +60,7 @@ pnpm test
 
 # 单独开发某个 app
 pnpm --filter @jojo/homepage dev
+pnpm --filter @jojo/account dev
 pnpm --filter @jojo/reader dev
 pnpm --filter @jojo/rag dev
 pnpm --filter @jojo/press dev
@@ -70,6 +73,10 @@ pnpm dev:press-engine
 pnpm dev:reader-search
 pnpm dev:jiuwen-api
 ```
+
+## 环境配置
+
+本地环境变量统一放在 monorepo 根目录的 `.env.local`，变量清单维护在可提交的 `.env.example`。不要在各 app 或 service 下新增真实 `.env` 文件，也不要提交 `.env.local`。部署环境继续通过对应平台的 Variables/Secrets 注入。
 
 ## 技术栈
 
@@ -108,6 +115,7 @@ pnpm dev:jiuwen-api
 
 ```tsx
 import { Button, Card, NavBar, Tag, Pagination, Modal, LoadingSpinner } from "@jojo/ui";
+import { createJojoAuthClient, createJojoAuthStore } from "@jojo/auth";
 import { PdfViewer, PdfPage, usePdfDocument } from "@jojo/pdf-viewer";
 ```
 

@@ -1,0 +1,14 @@
+project_id = "jojo-platform"
+
+[auth]
+site_url = "http://localhost:8081"
+additional_redirect_urls = [
+  "http://localhost:8081/auth/callback",
+  "http://localhost:8081/reset-password",
+  "https://account.jojokanbao.cn/auth/callback",
+  "https://account.jojokanbao.cn/reset-password",
+]
+
+[auth.hook.before_user_created]
+enabled = true
+uri = "pg-functions://postgres/public/hook_require_signup_invitation"
