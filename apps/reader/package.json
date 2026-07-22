@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@jojo/auth": "workspace:*",
     "@jojo/editorial-preset": "workspace:*",
     "@jojo/pdf-viewer": "workspace:*",
     "@jojo/ui": "workspace:*",
