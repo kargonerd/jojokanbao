@@ -1,4 +1,4 @@
--- Cross-service account data shared by every JOJO application.
+-- JOJO account profile data.
 create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   display_name text check (char_length(display_name) <= 50),
@@ -7,7 +7,7 @@ create table if not exists public.profiles (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
-comment on table public.profiles is 'Cross-service JOJO account profile data.';
+comment on table public.profiles is 'JOJO account profile data.';
 
 alter table public.profiles enable row level security;
 
