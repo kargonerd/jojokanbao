@@ -1,133 +1,539 @@
+.account-shell {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  color: var(--color-ink);
+  background: var(--color-paper-soft);
+}
+
 .account-shell button:disabled,
 .account-shell input:disabled {
   cursor: not-allowed;
 }
 
-.account-shell {
-  position: relative;
+.account-utility,
+.account-footer {
   display: flex;
-  min-height: 100vh;
-  flex-direction: column;
-  isolation: isolate;
+  width: min(100% - 2rem, 72rem);
+  justify-content: space-between;
+  margin-inline: auto;
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
 }
 
-.account-shell::before {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background-image:
-    linear-gradient(rgba(32, 32, 32, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(32, 32, 32, 0.025) 1px, transparent 1px);
-  background-size: 24px 24px;
+.account-utility {
+  border-bottom: 1px solid var(--color-ink);
+  padding-block: 1rem 0.75rem;
+}
+
+.account-utility a {
+  color: var(--color-ink);
+}
+
+.account-footer {
+  border-top: 1px solid var(--color-ink);
+  padding-block: 0.75rem 1rem;
+  color: var(--color-muted);
+}
+
+.account-main {
+  display: flex;
+  width: min(100% - 2rem, 72rem);
+  flex: 1;
+  align-items: center;
+  margin-inline: auto;
+  padding-block: 2.5rem;
+}
+
+.account-main--compact {
+  justify-content: center;
+}
+
+.credential-sheet {
+  position: relative;
+  width: 100%;
+  border: 2px solid var(--color-ink);
+  background: var(--color-cream);
+}
+
+.credential-sheet::after {
+  position: absolute;
+  inset: 7px;
+  border: 1px solid rgba(139, 26, 26, 0.28);
   content: "";
   pointer-events: none;
 }
 
-.account-shell .account-main {
+.credential-masthead {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 2rem;
+  border-bottom: 6px double var(--color-red);
+  padding: 1.75rem 2rem 1.5rem;
+}
+
+.archive-masthead {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1.25rem;
+  color: var(--color-ink);
+}
+
+.archive-masthead:hover {
+  color: var(--color-ink);
+}
+
+.archive-masthead__name {
+  color: var(--color-red);
+  font-family: var(--font-serif);
+  font-size: clamp(2.5rem, 5vw, 4.5rem);
+  font-weight: 900;
+  letter-spacing: -0.09em;
+  line-height: 0.9;
+}
+
+.archive-masthead__caption {
+  border-left: 2px solid var(--color-ink);
+  padding-left: 1.25rem;
+  font-size: 1.05rem;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+}
+
+.credential-issue {
+  display: grid;
+  min-width: 9rem;
+  grid-template-columns: 1fr auto;
+  gap: 0.25rem 0.75rem;
+  border-left: 1px solid var(--color-ink);
+  padding-left: 1.25rem;
+  font-family: var(--font-sans);
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+}
+
+.credential-issue strong {
+  grid-row: span 2;
+  align-self: center;
+  color: var(--color-red);
+  font-size: 1rem;
+}
+
+.credential-band {
+  position: relative;
+  z-index: 1;
   display: flex;
-  width: 100%;
-  max-width: 72rem;
-  flex: 1;
-  align-items: center;
-  margin-inline: auto;
-  padding: 3rem 2rem;
+  justify-content: space-between;
+  align-items: baseline;
+  background: var(--color-red);
+  padding: 0.72rem 2rem;
+  color: var(--color-cream);
+}
+
+.credential-band strong {
+  font-size: 1.05rem;
+  letter-spacing: 0.28em;
+}
+
+.credential-band span {
+  font-family: var(--font-sans);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.26em;
 }
 
 .account-shell .credential-grid {
+  position: relative;
+  z-index: 1;
   display: grid;
-  width: 100%;
-  min-height: 640px;
-  grid-template-columns: minmax(0, 1.08fr) minmax(400px, 0.92fr);
-  border: 1px solid var(--color-rule-dark);
-  box-shadow: 12px 12px 0 rgba(139, 26, 26, 0.1);
+  min-height: 31rem;
+  grid-template-columns: minmax(0, 0.92fr) minmax(25rem, 1.08fr);
+  border-bottom: 1px solid var(--color-ink);
 }
 
 .account-shell .credential-intro {
   position: relative;
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 3rem 1fr;
+  gap: 1.75rem;
   overflow: hidden;
-  padding: clamp(2.5rem, 6vw, 5rem);
-  color: var(--color-cream);
+  border-right: 2px solid var(--color-ink);
+  padding: 3rem 2.75rem;
+  background: var(--color-paper-soft);
+}
+
+.credential-intro__label {
+  align-self: start;
   background: var(--color-red);
-}
-
-.account-shell .credential-intro::after {
-  position: absolute;
-  right: -0.08em;
-  bottom: -0.27em;
-  color: rgba(245, 239, 230, 0.055);
-  content: "证";
-  font-size: 26rem;
+  padding: 0.8rem 0.55rem;
+  color: var(--color-cream);
+  font-size: 0.82rem;
   font-weight: 900;
-  line-height: 1;
-  pointer-events: none;
+  letter-spacing: 0.35em;
+  line-height: 1.15;
+  writing-mode: vertical-rl;
 }
 
-.account-shell .reader-pass {
+.credential-intro__copy {
   position: relative;
   z-index: 1;
-  max-width: 390px;
-  margin-top: 4rem;
-  border: 1px solid rgba(245, 239, 230, 0.5);
-  padding: 1.25rem;
-  color: var(--color-cream);
-  transform: rotate(-1.5deg);
+}
+
+.credential-intro__copy h1 {
+  max-width: 22rem;
+  font-size: clamp(2rem, 3.3vw, 3.1rem);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+}
+
+.reader-notes {
+  max-width: 22rem;
+  margin-top: 2.25rem;
+  border-top: 2px solid var(--color-ink);
+}
+
+.reader-notes li {
+  display: grid;
+  grid-template-columns: 3.25rem 1fr;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--color-ink);
+  padding-block: 0.9rem;
+  font-size: 0.78rem;
+  line-height: 1.75;
+}
+
+.reader-notes b {
+  color: var(--color-red);
+  font-size: 0.8rem;
+  letter-spacing: -0.08em;
+}
+
+.archive-seal {
+  position: absolute;
+  right: -1.25rem;
+  bottom: -1.5rem;
+  display: flex;
+  width: 8.5rem;
+  height: 8.5rem;
+  align-items: center;
+  justify-content: center;
+  border: 4px double var(--color-red);
+  border-radius: 50%;
+  flex-direction: column;
+  color: var(--color-red);
+  font-family: var(--font-sans);
+  line-height: 1.15;
+  opacity: 0.72;
+  transform: rotate(-9deg);
+}
+
+.archive-seal::before,
+.archive-seal::after {
+  position: absolute;
+  width: 72%;
+  border-top: 1px solid var(--color-red);
+  content: "";
+}
+
+.archive-seal::before {
+  top: 2.15rem;
+}
+
+.archive-seal::after {
+  bottom: 2.15rem;
+}
+
+.archive-seal span,
+.archive-seal small {
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.archive-seal strong {
+  margin-block: 0.55rem;
+  font-size: 1rem;
+  letter-spacing: 0.18em;
 }
 
 .account-shell .credential-form {
   display: flex;
-  min-width: 0;
   flex-direction: column;
   justify-content: center;
-  padding: clamp(2.25rem, 5vw, 4.5rem);
+  padding: 3rem clamp(2.5rem, 5vw, 5rem);
   background: var(--color-paper);
 }
 
-@media (max-width: 839px) {
-  .account-shell .account-main {
-    align-items: flex-start;
-    padding: 1.25rem;
-  }
+.credential-form__heading {
+  margin-bottom: 2rem;
+  border-bottom: 1px solid var(--color-ink);
+  padding-bottom: 1.2rem;
+}
 
+.credential-form__heading > p:first-child {
+  color: var(--color-red);
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+}
+
+.credential-form__heading h2 {
+  margin-top: 0.55rem;
+  font-size: 2rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.credential-form__heading > p:last-child {
+  margin-top: 0.55rem;
+  color: var(--color-muted);
+  font-size: 0.82rem;
+}
+
+.auth-form {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.auth-field {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.auth-field > span:first-child {
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.account-shell .auth-input {
+  width: 100%;
+  height: 3rem;
+  border: 0;
+  border-bottom: 2px solid var(--color-ink);
+  padding: 0 0.2rem;
+  background: transparent;
+  box-shadow: none;
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+}
+
+.account-shell .auth-input:hover {
+  border-bottom-color: var(--color-red);
+}
+
+.account-shell .auth-input:focus {
+  border-bottom-color: var(--color-red);
+  outline: 0;
+  box-shadow: 0 2px 0 var(--color-red);
+}
+
+.password-input {
+  position: relative;
+  display: block;
+}
+
+.password-input .auth-input {
+  padding-right: 3.5rem;
+}
+
+.password-toggle {
+  position: absolute;
+  inset-block: 0;
+  right: 0;
+  border: 0;
+  padding-inline: 0.5rem;
+  color: var(--color-red);
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.form-feedback {
+  border: 1px solid var(--color-ink);
+  border-left: 0.5rem solid var(--color-ink);
+  padding: 0.8rem 1rem;
+  font-size: 0.78rem;
+  line-height: 1.65;
+}
+
+.form-feedback--error {
+  border-color: var(--color-red);
+  color: var(--color-red-dark);
+}
+
+.form-feedback--notice {
+  background: var(--color-paper-soft);
+}
+
+.auth-submit {
+  min-height: 3.2rem;
+  border: 2px solid var(--color-red);
+  padding-inline: 1.5rem;
+  color: var(--color-cream);
+  background: var(--color-red);
+  font-size: 0.9rem;
+  font-weight: 900;
+  letter-spacing: 0.24em;
+}
+
+.auth-submit:hover:not(:disabled) {
+  color: var(--color-red);
+  background: var(--color-paper);
+}
+
+.auth-submit:disabled {
+  opacity: 0.58;
+}
+
+.credential-folio {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  padding: 0.65rem 2rem;
+  font-family: var(--font-sans);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+@media (max-width: 839px) {
   .account-shell .credential-grid {
-    min-height: auto;
     grid-template-columns: 1fr;
-    box-shadow: 7px 7px 0 rgba(139, 26, 26, 0.1);
   }
 
   .account-shell .credential-intro {
-    min-height: 300px;
-    padding: 2rem;
-  }
-
-  .account-shell .credential-intro h1 {
-    margin-top: 1.5rem;
-  }
-
-  .account-shell .reader-pass {
-    display: none;
+    min-height: 24rem;
+    border-right: 0;
+    border-bottom: 2px solid var(--color-ink);
   }
 
   .account-shell .credential-form {
-    padding: 2rem;
+    padding-block: 2.75rem;
   }
 }
 
-@media (max-width: 520px) {
-  .account-shell .credential-intro {
-    min-height: 260px;
-    padding: 1.5rem;
+@media (max-width: 560px) {
+  .account-utility,
+  .account-footer,
+  .account-main {
+    width: min(100% - 1.25rem, 72rem);
   }
 
-  .account-shell .credential-intro p:last-of-type {
+  .account-utility span,
+  .account-footer span:first-child {
     display: none;
   }
 
+  .account-main {
+    padding-block: 1rem;
+  }
+
+  .credential-masthead {
+    align-items: start;
+    gap: 1rem;
+    padding: 1.35rem 1.25rem 1.1rem;
+  }
+
+  .archive-masthead {
+    display: grid;
+    gap: 0.35rem;
+  }
+
+  .archive-masthead__name {
+    font-size: 2.45rem;
+  }
+
+  .archive-masthead__caption {
+    border-left: 0;
+    padding-left: 0;
+    font-size: 0.68rem;
+    letter-spacing: 0.16em;
+  }
+
+  .credential-issue {
+    min-width: 6.5rem;
+    padding-left: 0.75rem;
+    font-size: 0.54rem;
+  }
+
+  .credential-issue strong {
+    font-size: 0.78rem;
+  }
+
+  .credential-band {
+    padding-inline: 1.25rem;
+  }
+
+  .credential-band strong {
+    font-size: 0.9rem;
+    letter-spacing: 0.18em;
+  }
+
+  .credential-band span {
+    display: none;
+  }
+
+  .account-shell .credential-intro {
+    display: block;
+    min-height: 21rem;
+    padding: 2rem 1.5rem;
+  }
+
+  .credential-intro__label {
+    display: inline-block;
+    padding: 0.5rem 0.75rem;
+    letter-spacing: 0.18em;
+    writing-mode: horizontal-tb;
+  }
+
+  .credential-intro__copy h1 {
+    margin-top: 1.25rem;
+    font-size: 2rem;
+  }
+
+  .reader-notes {
+    margin-top: 1.5rem;
+  }
+
+  .reader-notes li {
+    font-size: 0.72rem;
+  }
+
+  .archive-seal {
+    right: -1rem;
+    bottom: -1.6rem;
+    width: 7rem;
+    height: 7rem;
+  }
+
+  .archive-seal::before {
+    top: 1.7rem;
+  }
+
+  .archive-seal::after {
+    bottom: 1.7rem;
+  }
+
   .account-shell .credential-form {
-    padding: 1.5rem;
+    padding: 2.25rem 1.5rem;
+  }
+
+  .credential-folio {
+    padding-inline: 1.25rem;
+  }
+
+  .credential-folio span:last-child {
+    display: none;
   }
 }
 
