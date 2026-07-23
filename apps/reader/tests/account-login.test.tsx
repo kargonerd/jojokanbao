@@ -59,7 +59,7 @@ describe("account login", () => {
 
     fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: " reader@example.com " } });
     fireEvent.change(screen.getByPlaceholderText("输入密码"), { target: { value: "strong-password" } });
-    fireEvent.click(screen.getByRole("button", { name: "登录账号" }));
+    fireEvent.click(screen.getByRole("button", { name: "登录并进入" }));
 
     await waitFor(() => expect(auth.state.signIn).toHaveBeenCalledWith("reader@example.com", "strong-password"));
     expect(await screen.findByText("Reader home")).toBeTruthy();

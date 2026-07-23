@@ -23,8 +23,8 @@ export function LoginPage() {
   };
 
   return (
-    <AuthScaffold eyebrow="Sign in / 登录" title="欢迎回来" description="使用你的 JOJO 账号继续阅读。">
-      <form className="space-y-5" onSubmit={handleSubmit}>
+    <AuthScaffold eyebrow="读者登记" title="账号登录" description="请填写已经登记的邮箱和密码。">
+      <form className="auth-form" onSubmit={handleSubmit}>
         <FormFeedback error={error} notice={notice} />
         <AuthField
           label="邮箱"
@@ -45,11 +45,8 @@ export function LoginPage() {
           onChange={(event) => setPassword(event.target.value)}
           required
         />
-        <SubmitButton busy={busy}>登录账号</SubmitButton>
+        <SubmitButton busy={busy}>登录并进入</SubmitButton>
       </form>
-      <div className="mt-8 border-t border-rule pt-5 text-sm text-muted">
-        账号注册暂未开放，已有账号可以直接登录。
-      </div>
     </AuthScaffold>
   );
 }
