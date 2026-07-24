@@ -246,13 +246,13 @@ describe("SearchPage filters", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "七月" }));
     expect((screen.getByRole("button", { name: "17" }) as HTMLButtonElement).disabled).toBe(false);
-    expect((screen.getByRole("button", { name: "18" }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "18" }));
+    expect((screen.getByRole("button", { name: "18日，暂不可选" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "18日，暂不可选" }));
     expect((screen.getByRole("textbox", { name: "开始日期" }) as HTMLInputElement).value).toBe("2026-07-16");
 
     fireEvent.click(screen.getByRole("button", { name: "开始日期：打开日历" }));
     fireEvent.click(screen.getByRole("button", { name: "结束日期：打开日历" }));
-    expect((screen.getByRole("button", { name: "18" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "18日，暂不可选" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("changes sort immediately, resets to page one, and closes the list", async () => {

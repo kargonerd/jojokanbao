@@ -37,9 +37,15 @@ describe("DatePicker reader interactions", () => {
     const onChange = vi.fn();
     render(<DatePicker value="19460627" onChange={onChange} disabledDate={(date) => date === "19460628"} />);
     fireEvent.click(screen.getByRole("button", { name: "1946年06月27日" }));
-    const disabledDay = screen.getByRole("button", { name: "28" }) as HTMLButtonElement;
+    const disabledDay = screen.getByRole("button", { name: "28日，暂不可选" }) as HTMLButtonElement;
 
     expect(disabledDay.disabled).toBe(true);
+    expect(disabledDay.title).toBe("暂不可选");
+    expect(disabledDay.querySelector("span")?.className).toContain("line-through");
+    expect(disabledDay.querySelector("span")?.className).toContain("bg-red/10");
+    expect(disabledDay.querySelector("span")?.className).toContain("border-red/40");
+    expect(disabledDay.querySelector("span")?.className).not.toContain("opacity-40");
+    expect(screen.getByText("标记日期：暂不可选")).toBeTruthy();
     fireEvent.click(disabledDay);
     await new Promise((resolve) => window.setTimeout(resolve, 0));
     expect(onChange).not.toHaveBeenCalled();

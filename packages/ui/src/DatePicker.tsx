@@ -8,6 +8,7 @@ interface DatePickerProps {
   className?: string;
   editable?: boolean;
   ariaLabel?: string;
+  unavailableLabel?: string;
 }
 
 const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"];
@@ -69,7 +70,15 @@ function getDecadeStart(year: number): number {
   return Math.floor(year / 10) * 10;
 }
 
-export function DatePicker({ value, onChange, disabledDate, className = "", editable = false, ariaLabel = "日期" }: DatePickerProps) {
+export function DatePicker({
+  value,
+  onChange,
+  disabledDate,
+  className = "",
+  editable = false,
+  ariaLabel = "日期",
+  unavailableLabel = "暂不可选",
+}: DatePickerProps) {
   const [open, setOpen] = useState(false);
   const [draftValue, setDraftValue] = useState(formatEditableDate(value));
   const [inputError, setInputError] = useState(false);
@@ -210,6 +219,10 @@ export function DatePicker({ value, onChange, disabledDate, className = "", edit
   const firstDay = getFirstDayOfWeek(viewYear, viewMonth);
   const todayStr = toDateStr(today.getFullYear(), today.getMonth(), today.getDate());
   const selectedStr = value && value.length === 8 ? value : "";
+  const hasUnavailableDates = Boolean(disabledDate) && Array.from(
+    { length: daysInMonth },
+    (_, index) => disabledDate?.(toDateStr(viewYear, viewMonth, index + 1)),
+  ).some(Boolean);
 
   return (
     <div ref={ref} className={`relative inline-block ${className}`}>
@@ -340,12 +353,14 @@ export function DatePicker({ value, onChange, disabledDate, className = "", edit
                       key={day}
                       type="button"
                       disabled={isDisabled}
+                      aria-label={isDisabled ? `${day}日，${unavailableLabel}` : undefined}
+                      title={isDisabled ? unavailableLabel : undefined}
                       className={`flex h-9 w-full items-center justify-center border-0 bg-transparent text-xs font-bold transition-colors ${isDisabled ? "cursor-not-allowed" : "cursor-pointer"}`}
                       onClick={() => handleDayClick(day)}
                     >
                       <span
                         className={`flex h-7 w-7 items-center justify-center rounded-[2px] transition-colors
-                          ${isDisabled ? "text-rule opacity-40" : isSelected ? "bg-red text-cream" : isToday ? "text-red" : "text-ink hover:bg-red/10 hover:text-red"}
+                          ${isDisabled ? "border border-red/40 bg-red/10 text-muted line-through decoration-2 decoration-red" : isSelected ? "bg-red text-cream" : isToday ? "text-red" : "text-ink hover:bg-red/10 hover:text-red"}
                         `}
                       >
                         {day}
@@ -354,6 +369,12 @@ export function DatePicker({ value, onChange, disabledDate, className = "", edit
                   );
                 })}
               </div>
+              {hasUnavailableDates ? (
+                <div className="mt-2 flex items-center gap-1.5 border-t border-rule pt-2 text-[11px] leading-none text-muted">
+                  <span aria-hidden="true" className="flex h-5 w-5 items-center justify-center border border-red/40 bg-red/10 font-bold line-through decoration-2 decoration-red">17</span>
+                  <span>标记日期：{unavailableLabel}</span>
+                </div>
+              ) : null}
             </>
           ) : null}
 
