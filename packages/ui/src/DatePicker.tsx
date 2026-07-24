@@ -14,6 +14,7 @@ interface DatePickerProps {
 const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"];
 const MONTH_NAMES = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
 const MONTH_LABELS = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"];
+const UNAVAILABLE_OPTION_CLASSES = "border border-red/40 bg-red/10 text-muted line-through decoration-2 decoration-red";
 
 type PanelMode = "date" | "month" | "year";
 
@@ -360,7 +361,7 @@ export function DatePicker({
                     >
                       <span
                         className={`flex h-7 w-7 items-center justify-center rounded-[2px] transition-colors
-                          ${isDisabled ? "border border-red/40 bg-red/10 text-muted line-through decoration-2 decoration-red" : isSelected ? "bg-red text-cream" : isToday ? "text-red" : "text-ink hover:bg-red/10 hover:text-red"}
+                          ${isDisabled ? UNAVAILABLE_OPTION_CLASSES : isSelected ? "bg-red text-cream" : isToday ? "text-red" : "text-ink hover:bg-red/10 hover:text-red"}
                         `}
                       >
                         {day}
@@ -387,10 +388,12 @@ export function DatePicker({
                     key={label}
                     type="button"
                     disabled={isDisabled}
+                    aria-label={isDisabled ? `${label}，${unavailableLabel}` : undefined}
+                    title={isDisabled ? unavailableLabel : undefined}
                     className={`flex h-10 items-center justify-center text-sm font-bold transition-colors ${isDisabled ? "cursor-not-allowed" : "cursor-pointer"}`}
                     onClick={() => handleMonthClick(month)}
                   >
-                    <span className={`flex h-8 min-w-[48px] items-center justify-center rounded-[2px] px-2 transition-colors ${isDisabled ? "text-rule opacity-40" : month === viewMonth ? "bg-red text-cream" : "text-ink hover:bg-red/10 hover:text-red"}`}>
+                    <span className={`flex h-8 min-w-[48px] items-center justify-center rounded-[2px] px-2 transition-colors ${isDisabled ? UNAVAILABLE_OPTION_CLASSES : month === viewMonth ? "bg-red text-cream" : "text-ink hover:bg-red/10 hover:text-red"}`}>
                       {label}
                     </span>
                   </button>
@@ -409,12 +412,14 @@ export function DatePicker({
                     key={year}
                     type="button"
                     disabled={isDisabled}
+                    aria-label={isDisabled ? `${year}年，${unavailableLabel}` : undefined}
+                    title={isDisabled ? unavailableLabel : undefined}
                     className={`flex h-10 items-center justify-center text-sm font-bold transition-colors ${isDisabled ? "cursor-not-allowed" : "cursor-pointer"}`}
                     onClick={() => handleYearClick(year)}
                   >
                     <span
                       className={`flex h-8 min-w-[52px] items-center justify-center rounded-[2px] px-2 transition-colors
-                        ${isDisabled ? "text-rule opacity-40" : year === viewYear ? "bg-red text-cream" : isOuter ? "text-rule opacity-60 hover:bg-red/10 hover:text-red hover:opacity-100" : "text-ink hover:bg-red/10 hover:text-red"}
+                        ${isDisabled ? UNAVAILABLE_OPTION_CLASSES : year === viewYear ? "bg-red text-cream" : isOuter ? "text-rule opacity-60 hover:bg-red/10 hover:text-red hover:opacity-100" : "text-ink hover:bg-red/10 hover:text-red"}
                       `}
                     >
                       {year}

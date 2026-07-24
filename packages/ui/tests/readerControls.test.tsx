@@ -52,6 +52,41 @@ describe("DatePicker reader interactions", () => {
     expect(screen.getByRole("button", { name: "上一月" })).toBeTruthy();
   });
 
+  it("uses the same unavailable treatment for disabled months and years", () => {
+    const onChange = vi.fn();
+    render(
+      <DatePicker
+        value="19761009"
+        onChange={onChange}
+        unavailableLabel="暂无该期"
+        disabledDate={(date) => date.startsWith("1975") || date.startsWith("197603")}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "1976年10月09日" }));
+    fireEvent.click(screen.getByRole("button", { name: "1976 年" }));
+
+    const disabledYear = screen.getByRole("button", { name: "1975年，暂无该期" }) as HTMLButtonElement;
+    expect(disabledYear.disabled).toBe(true);
+    expect(disabledYear.title).toBe("暂无该期");
+    expect(disabledYear.querySelector("span")?.className).toContain("line-through");
+    expect(disabledYear.querySelector("span")?.className).toContain("bg-red/10");
+    expect(disabledYear.querySelector("span")?.className).toContain("border-red/40");
+    expect(disabledYear.querySelector("span")?.className).not.toContain("opacity-40");
+
+    fireEvent.click(screen.getByRole("button", { name: "1976" }));
+    const disabledMonth = screen.getByRole("button", { name: "三月，暂无该期" }) as HTMLButtonElement;
+    expect(disabledMonth.disabled).toBe(true);
+    expect(disabledMonth.title).toBe("暂无该期");
+    expect(disabledMonth.querySelector("span")?.className).toContain("line-through");
+    expect(disabledMonth.querySelector("span")?.className).toContain("bg-red/10");
+    expect(disabledMonth.querySelector("span")?.className).toContain("border-red/40");
+    expect(disabledMonth.querySelector("span")?.className).not.toContain("opacity-40");
+
+    fireEvent.click(disabledMonth);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "上一年" })).toBeTruthy();
+  });
+
   it("moves across January and December without losing the year", () => {
     render(<DatePicker value="19760115" onChange={() => {}} />);
     fireEvent.click(screen.getByRole("button", { name: "1976年01月15日" }));

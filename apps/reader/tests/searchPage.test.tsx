@@ -238,11 +238,11 @@ describe("SearchPage filters", () => {
     fireEvent.click(screen.getByRole("button", { name: "开始日期：打开日历" }));
     fireEvent.click(screen.getByRole("button", { name: "2026 年" }));
     expect((screen.getByRole("button", { name: "2026" }) as HTMLButtonElement).disabled).toBe(false);
-    expect((screen.getByRole("button", { name: "2027" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "2027年，暂不可选" }) as HTMLButtonElement).disabled).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "2026" }));
     expect((screen.getByRole("button", { name: "七月" }) as HTMLButtonElement).disabled).toBe(false);
-    expect((screen.getByRole("button", { name: "八月" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "八月，暂不可选" }) as HTMLButtonElement).disabled).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "七月" }));
     expect((screen.getByRole("button", { name: "17" }) as HTMLButtonElement).disabled).toBe(false);
