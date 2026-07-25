@@ -629,4 +629,52 @@ describe("PdfViewer demand loading", () => {
     await act(async () => root.unmount());
     scrollContainer.remove();
   });
+
+  it("leaves desktop text drags to native selection when zoomed", async () => {
+    const { document } = createDocument(1);
+    const scrollContainer = window.document.createElement("div");
+    const host = window.document.createElement("div");
+    scrollContainer.append(host);
+    window.document.body.append(scrollContainer);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <PdfViewer
+          document={document}
+          zoomEnabled
+          zoom={2}
+          scrollContainerRef={{ current: scrollContainer }}
+        />,
+      );
+    });
+
+    const zoomContent = host.querySelector<HTMLElement>("[data-pdf-zoom-content]")!;
+    const textLayer = host.querySelector<HTMLElement>("[data-pdf-text-layer]")!;
+    const text = window.document.createElement("span");
+    text.textContent = "可框选文字";
+    textLayer.append(text);
+
+    expect(zoomContent.style.userSelect).toBe("");
+    const down = dispatchPointer(text, "pointerdown", {
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 120,
+      clientY: 160,
+    });
+    const move = dispatchPointer(text, "pointermove", {
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 70,
+      clientY: 130,
+    });
+    dispatchPointer(text, "pointerup", { pointerId: 1, pointerType: "mouse", clientX: 70, clientY: 130 });
+
+    expect(down.defaultPrevented).toBe(false);
+    expect(move.defaultPrevented).toBe(false);
+    expect(scrollContainer.scrollLeft).toBe(0);
+
+    await act(async () => root.unmount());
+    scrollContainer.remove();
+  });
 });
