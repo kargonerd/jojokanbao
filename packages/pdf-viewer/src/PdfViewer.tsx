@@ -52,6 +52,7 @@ interface DragState {
   scrollLeft: number;
   scrollTop: number;
   moved: boolean;
+  selectingText: boolean;
 }
 
 interface PointerPosition {
@@ -355,6 +356,8 @@ export function PdfViewer({
     if ((event.target as Element).closest("button")) return;
     const scrollContainer = scrollContainerRef?.current;
     if (!scrollContainer) return;
+    const selectingText = event.pointerType === "mouse"
+      && Boolean((event.target as Element).closest("[data-pdf-text-layer] span"));
 
     if (event.pointerType === "touch") {
       const activePointers = activeTouchPointersRef.current;
@@ -392,7 +395,7 @@ export function PdfViewer({
       return;
     }
 
-    if (event.pointerType !== "touch") {
+    if (event.pointerType !== "touch" && !selectingText) {
       event.preventDefault();
       capturePointer(event.currentTarget, event.pointerId);
     }
@@ -403,6 +406,7 @@ export function PdfViewer({
       scrollLeft: scrollContainer.scrollLeft,
       scrollTop: scrollContainer.scrollTop,
       moved: false,
+      selectingText,
     };
   };
 
@@ -437,6 +441,10 @@ export function PdfViewer({
 
     const deltaX = event.clientX - drag.startX;
     const deltaY = event.clientY - drag.startY;
+    if (drag.selectingText) {
+      if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) drag.moved = true;
+      return;
+    }
     if (!drag.moved) {
       if (Math.abs(deltaX) <= 4 && Math.abs(deltaY) <= 4) return;
       drag.moved = true;
@@ -475,6 +483,7 @@ export function PdfViewer({
             scrollLeft: scrollContainer.scrollLeft,
             scrollTop: scrollContainer.scrollTop,
             moved: true,
+            selectingText: false,
           };
         }
         return;
@@ -515,7 +524,6 @@ export function PdfViewer({
         style={{
           width: `${effectiveZoom * 100}%`,
           touchAction: zoomEnabled ? "none" : "pan-y",
-          userSelect: zoomEnabled && !touchInput ? "none" : undefined,
         }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
