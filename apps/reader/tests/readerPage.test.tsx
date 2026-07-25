@@ -249,9 +249,10 @@ describe("ReaderPage newspaper navigation", () => {
     renderReader("/rmrb/19460627");
     fireEvent.click(screen.getByRole("button", { name: "1946年06月27日" }));
 
-    expect((screen.getByRole("button", { name: "28" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "29" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "30" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "28日，暂无该期" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "29日，暂无该期" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "30日，暂无该期" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("标记日期：暂无该期")).toBeTruthy();
   });
 });
 
