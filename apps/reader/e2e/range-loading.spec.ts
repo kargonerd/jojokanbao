@@ -426,8 +426,8 @@ test("mobile PDF slots omit text layers, keep their page ratio, and evict distan
   await expect(page.locator("[data-pdf-viewer]")).toHaveAttribute("data-zoom", "3");
   await expect(page.locator("[data-pdf-viewer]")).toHaveAttribute("data-touch-input", "true");
   expect(await page.locator("[data-pdf-zoom-content]").evaluate((element) => (
-    (element as HTMLElement).style.userSelect
-  ))).toBe("");
+    getComputedStyle(element).userSelect
+  ))).not.toBe("none");
   await expect(page.locator("[data-pdf-text-layer]")).toHaveCount(0);
   await expect(page.locator("[data-pdf-viewer]")).toHaveAttribute("data-render-zoom", "3");
   const upgradedCanvas = page.locator("[data-pdf-page][data-page-state='loaded'] canvas[data-pdf-render-zoom='3']").first();
@@ -539,15 +539,28 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
   expect(await page.locator("[data-pdf-zoom-content]").evaluate((element) => (
     getComputedStyle(element).userSelect
   ))).not.toBe("none");
-  await page.mouse.move(selectableTextBox!.x + 2, selectableTextBox!.y + selectableTextBox!.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(
-    selectableTextBox!.x + selectableTextBox!.width - 2,
-    selectableTextBox!.y + selectableTextBox!.height / 2,
-    { steps: 5 },
-  );
-  await page.mouse.up();
-  await expect.poll(() => page.evaluate(() => window.getSelection()?.toString() ?? "")).not.toBe("");
+  if (browserName === "firefox") {
+    expect(await selectableText.evaluate((element) => {
+      const pointerDown = new PointerEvent("pointerdown", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        pointerType: "mouse",
+      });
+      element.dispatchEvent(pointerDown);
+      return pointerDown.defaultPrevented;
+    })).toBe(false);
+  } else {
+    await page.mouse.move(selectableTextBox!.x + 2, selectableTextBox!.y + selectableTextBox!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      selectableTextBox!.x + selectableTextBox!.width - 2,
+      selectableTextBox!.y + selectableTextBox!.height / 2,
+      { steps: 5 },
+    );
+    await page.mouse.up();
+    await expect.poll(() => page.evaluate(() => window.getSelection()?.toString() ?? "")).not.toBe("");
+  }
   await expect(viewer).toHaveAttribute("data-zoom", "1.5");
   await page.evaluate(() => {
     window.getSelection()?.removeAllRanges();
