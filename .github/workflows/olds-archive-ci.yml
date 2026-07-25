@@ -1,0 +1,88 @@
+name: Olds Archive CI
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "services/olds-api/**"
+      - ".github/workflows/bloomberg-archive.yml"
+      - ".github/workflows/olds-archive-ci.yml"
+  pull_request:
+    branches: [master]
+    paths:
+      - "services/olds-api/**"
+      - ".github/workflows/bloomberg-archive.yml"
+      - ".github/workflows/olds-archive-ci.yml"
+
+jobs:
+  # These job IDs intentionally match the repository's required status contexts.
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: services/olds-api
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/olds-api/requirements.txt
+
+      - run: python -m pip install -r requirements.txt pytest
+      - run: python -m pytest -q
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Validate downloader CLI and manifest
+        run: |
+          python -m py_compile \
+            services/olds-api/tools/download_bloomberg_year.py \
+            services/olds-api/tools/bloomberg_action_state.py \
+            services/olds-api/tools/verify_b2_private_bucket.py
+          python - <<'PY'
+          import gzip
+          import json
+          from pathlib import Path
+
+          path = Path(
+              "services/olds-api/data/"
+              "bloomberg-2020-archive-manifest.jsonl.gz"
+          )
+          required = {
+              "url",
+              "catalog_date",
+              "section",
+              "wayback_timestamp",
+              "wayback_snapshot_url",
+          }
+          count = 0
+          downloadable = 0
+          with gzip.open(path, "rt", encoding="utf-8") as stream:
+              for line in stream:
+                  row = json.loads(line)
+                  missing = required.difference(row)
+                  if missing:
+                      raise SystemExit(f"Manifest row missing {sorted(missing)}")
+                  count += 1
+                  downloadable += row.get("wayback_status") == "found"
+          if count != 83258 or downloadable != 69629:
+              raise SystemExit(
+                  "Expected 83258 catalog rows and 69629 downloadable rows; "
+                  f"found {count} and {downloadable}"
+              )
+          print(
+              f"Validated {count} catalog rows and "
+              f"{downloadable} downloadable rows."
+          )
+          PY
