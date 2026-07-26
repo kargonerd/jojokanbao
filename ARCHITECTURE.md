@@ -60,7 +60,13 @@ tooling/     共享 TypeScript / ESLint 配置
 Turborepo 管理任务依赖：
 - `build` 任务有 `dependsOn: ["^build"]`，确保 packages 先于 apps 构建
 - `test` 任务依赖 `^build`
+- `typecheck` 任务按 workspace 依赖关系执行
+- `verify:build` 在对应 app 构建完成后校验产物
 - `dev` 任务不缓存，持久运行
+
+Pull request 统一进入 `.github/workflows/ci.yml`。pnpm workspace 使用 Turborepo
+计算受影响范围；`blog/`、`supabase/` 和 Python 服务等 workspace 外内容由独立 job
+显式分类。部署、发版和定时运维不混入 CI。
 
 ## 部署
 

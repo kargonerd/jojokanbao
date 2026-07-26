@@ -6,6 +6,8 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "test": "turbo test",
+    "typecheck": "turbo typecheck",
+    "verify:build": "turbo verify:build",
     "lint": "turbo lint",
     "dev:rag-backend": "cd services/rag-backend && python run_simple.py",
     "dev:press-engine": "cd services/press-engine && python -m uvicorn jojo_press.app:app --host 127.0.0.1 --port 8765 --reload",

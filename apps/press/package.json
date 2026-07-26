@@ -7,6 +7,7 @@
     "dev": "vite --host 127.0.0.1 --port 4173",
     "build": "vite build",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "electron": "set PATH=%npm_node_execpath:node.exe=%;%PATH% && node ./dev-runner.mjs electron",
     "electron:dev": "set PATH=%npm_node_execpath:node.exe=%;%PATH% && node ./dev-runner.mjs electron",
     "app:dev": "set PATH=%npm_node_execpath:node.exe=%;%PATH% && node ./dev-runner.mjs app",

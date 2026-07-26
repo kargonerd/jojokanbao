@@ -64,3 +64,5 @@ import { PdfViewer, PdfPage, usePdfDocument } from "@jojo/pdf-viewer";
 - `apps/web` 是单个 Web 运行时：Archive、RAG、Olds 和 Account 共用路由与登录状态
 - 当前公开路由只有 `/archive/*`；Account、RAG、Olds 必须经 `src/rollout.ts` 的构建期开关显式发布
 - Homepage、桌面端和移动端仍是独立运行时，不直接共享浏览器内存状态
+- Pull request 检查统一维护在 `.github/workflows/ci.yml`；不要为 feature 或共享包新增独立 CI workflow
+- 部署、发版和定时运维 workflow 与 CI 分离，因为它们使用凭据或会修改外部状态

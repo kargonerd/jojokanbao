@@ -133,9 +133,18 @@ import { PdfViewer, PdfPage, usePdfDocument } from "@jojo/pdf-viewer";
 账号资料表、RLS 策略和头像存储规则位于 `supabase/migrations/`。注册方式和邀请码校验
 不属于该基础包，将由独立变更实现。
 
-## Unified Web release
+## CI and Unified Web release
 
-Unified Web deploys are isolated from the rest of the monorepo. Ordinary pushes to `master` run Web CI only when web-related paths change, and they do not deploy. Other apps can use their own tags without triggering the deployment.
+`.github/workflows/ci.yml` is the repository's single pull-request CI entry point. It uses
+Turborepo to check affected pnpm workspaces and has focused jobs for Web browser tests,
+Homepage content, Supabase/Auth contracts, and Python checks that need a separate runtime.
+Deployments and scheduled maintenance stay in independent workflows because they use
+credentials or change external state. See `.github/workflows/README.md` for the boundary
+and extension rules.
+
+Unified Web deployment is isolated from the rest of the monorepo. Ordinary pushes and pull
+requests run CI but do not deploy Web. Other apps can use their own release triggers without
+triggering the Web deployment.
 
 `master` is protected by a repository ruleset and must be updated through pull requests. Existing Reader release tags are also protected: only repository admins can create, update, or delete `reader-*` tags.
 
