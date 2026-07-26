@@ -49,19 +49,36 @@ describe("account login", () => {
 
   it("submits credentials and returns to the reader", async () => {
     render(
-      <MemoryRouter initialEntries={["/login"]}>
+      <MemoryRouter initialEntries={["/account"]}>
         <Routes>
-          <Route path="/login" element={<AccountLogin />} />
+          <Route path="/account" element={<AccountLogin />} />
           <Route path="/" element={<div>Reader home</div>} />
         </Routes>
       </MemoryRouter>,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
     fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: " reader@example.com " } });
-    fireEvent.change(screen.getByPlaceholderText("输入密码"), { target: { value: "strong-password" } });
-    fireEvent.click(screen.getByRole("button", { name: "登录并进入" }));
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "strong-password" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "登录" }).at(-1)!);
 
     await waitFor(() => expect(auth.state.signIn).toHaveBeenCalledWith("reader@example.com", "strong-password"));
     expect(await screen.findByText("Reader home")).toBeTruthy();
+  });
+
+  it("opens and closes the login book without exposing unfinished registration", () => {
+    render(<MemoryRouter><AccountLogin /></MemoryRouter>);
+
+    const dialog = document.querySelector<HTMLDialogElement>(".book-login-dialog")!;
+    expect(dialog.hasAttribute("open")).toBe(false);
+    expect(screen.queryByRole("button", { name: "注册" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+
+    expect(dialog.hasAttribute("open")).toBe(true);
+    expect(screen.getByRole("dialog", { name: "登录" })).toBeTruthy();
+
+    fireEvent.click(dialog);
+    expect(dialog.hasAttribute("open")).toBe(false);
   });
 });

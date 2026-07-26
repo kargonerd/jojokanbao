@@ -71,9 +71,10 @@ for (const cssFile of cssFiles) {
   const flattened = flattenCssLayers(source);
   const contentHash = createHash("sha256").update(flattened).digest("base64url").slice(0, 8);
   const hashedName = cssFile.replace(/-[^-]+\.css$/, `-${contentHash}.css`);
+  const isEntryStylesheet = indexHtml.includes(`assets/${cssFile}`);
 
   await writeFile(url, flattened);
-  if (hashedName !== cssFile) {
+  if (isEntryStylesheet && hashedName !== cssFile) {
     await rename(url, new URL(hashedName, assetsDir));
     indexHtml = indexHtml.replaceAll(`assets/${cssFile}`, `assets/${hashedName}`);
   }
