@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from es_repair import active_query, revision_id
-from es_migrations import apply_migration, create_migration, list_migrations
+from es_migrations import apply_migration, create_migration, list_migrations, preview_migration
 
 
 class RepairLogicTest(unittest.TestCase):
@@ -49,6 +49,55 @@ class RepairLogicTest(unittest.TestCase):
             self.assertEqual(client.calls, [("old-id", {"title": "新标题", "content": "新正文"}, False)])
             self.assertNotIn("reason", client.calls[0][1])
             self.assertEqual(len(list_migrations(directory)), 1)
+
+    def test_preview_is_deterministic_and_does_not_write_a_file(self):
+        with TemporaryDirectory() as temp:
+            directory = Path(temp)
+            first = preview_migration(
+                "old-id",
+                {"title": "新标题", "content": "新正文"},
+                deleted=False,
+                reason="读者反馈错字",
+                index="test-index",
+            )
+            second = preview_migration(
+                "old-id",
+                {"content": "新正文", "title": "新标题"},
+                deleted=False,
+                reason="读者反馈错字",
+                index="test-index",
+            )
+
+            self.assertEqual(first["previewHash"], second["previewHash"])
+            self.assertEqual(first["migration"]["state"], "pending")
+            self.assertEqual(first["esPayload"]["supersedesId"], "old-id")
+            self.assertEqual(list(directory.iterdir()), [])
+
+    def test_preview_hash_changes_when_reason_or_document_changes(self):
+        base = preview_migration(
+            "old-id",
+            {"title": "标题", "content": "正文"},
+            deleted=False,
+            reason="原因一",
+            index="test-index",
+        )
+        changed_reason = preview_migration(
+            "old-id",
+            {"title": "标题", "content": "正文"},
+            deleted=False,
+            reason="原因二",
+            index="test-index",
+        )
+        changed_document = preview_migration(
+            "old-id",
+            {"title": "标题", "content": "修改后正文"},
+            deleted=False,
+            reason="原因一",
+            index="test-index",
+        )
+
+        self.assertNotEqual(base["previewHash"], changed_reason["previewHash"])
+        self.assertNotEqual(base["previewHash"], changed_document["previewHash"])
 
 
 if __name__ == "__main__":

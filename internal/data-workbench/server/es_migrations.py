@@ -1,6 +1,7 @@
 """Local, auditable migration files for append-only ES repairs."""
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,6 +11,49 @@ from es_repair import KibanaConsoleClient, revision_id
 
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "es_migrations"
+GENERATED_AT_PREVIEW = "<generated when applied>"
+
+
+def preview_migration(
+    supersedes_id: str,
+    document: dict[str, Any],
+    *,
+    deleted: bool,
+    reason: str,
+    index: str,
+) -> dict[str, Any]:
+    """Build a deterministic, read-only preview for operator confirmation."""
+    clean = _clean_document(document)
+    migration_id = revision_id(supersedes_id, clean, deleted)
+    migration = {
+        "version": 1,
+        "id": migration_id,
+        "createdAt": GENERATED_AT_PREVIEW,
+        "index": index,
+        "operation": "delete" if deleted else "repair",
+        "supersedesId": supersedes_id,
+        "document": clean,
+        "reason": reason.strip(),
+        "state": "pending",
+    }
+    es_payload = {
+        **clean,
+        "@timestamp": GENERATED_AT_PREVIEW,
+        "isRevision": True,
+        "supersedesId": supersedes_id,
+        "deleted": bool(deleted),
+    }
+    canonical = json.dumps(
+        {"migration": migration, "esPayload": es_payload},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return {
+        "migration": migration,
+        "esPayload": es_payload,
+        "previewHash": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+    }
 
 
 def create_migration(
@@ -21,11 +65,7 @@ def create_migration(
     index: str,
     directory: Path = MIGRATIONS_DIR,
 ) -> dict[str, Any]:
-    clean = {
-        key: document.get(key)
-        for key in ("title", "content", "date", "page", "source")
-        if document.get(key) not in (None, "")
-    }
+    clean = _clean_document(document)
     migration_id = revision_id(supersedes_id, clean, deleted)
     path = directory / f"{migration_id}.json"
     if path.exists():
@@ -93,6 +133,14 @@ def _safe_path(migration_id: str, directory: Path) -> Path:
     if not path.exists():
         raise FileNotFoundError(f"migration 不存在：{migration_id}")
     return path
+
+
+def _clean_document(document: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: document.get(key)
+        for key in ("title", "content", "date", "page", "source")
+        if document.get(key) not in (None, "")
+    }
 
 
 def _write(path: Path, payload: dict[str, Any]) -> None:

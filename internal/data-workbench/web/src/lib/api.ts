@@ -137,6 +137,24 @@ export interface Migration {
   result?: { documentId?: string };
 }
 
+export interface MigrationCandidate {
+  version: number;
+  id: string;
+  createdAt: string;
+  index: string;
+  operation: "repair" | "delete";
+  supersedesId: string;
+  document: Partial<SearchDocument>;
+  reason: string;
+  state: "pending";
+}
+
+export interface MigrationPreview {
+  migration: MigrationCandidate;
+  esPayload: Record<string, unknown>;
+  previewHash: string;
+}
+
 async function parse<T>(response: Response): Promise<T> {
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) {

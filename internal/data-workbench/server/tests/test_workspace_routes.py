@@ -2,6 +2,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -72,6 +73,50 @@ class WorkspaceRoutesTest(unittest.TestCase):
             self.assertIn('"staging_id": "staging-contract-test"', payload)
         finally:
             progress_manager.cleanup(task_id)
+
+    @patch("es_repair_routes.KibanaConsoleClient")
+    def test_es_preview_is_read_only(self, client_class):
+        client_class.return_value.config = {"index": "news-test"}
+        with (
+            patch("es_repair_routes.create_migration") as create,
+            patch("es_repair_routes.apply_migration") as apply,
+        ):
+            response = self.client.post(
+                "/api/es-repair/preview",
+                json={
+                    "supersedesId": "old-id",
+                    "document": {"title": "修复稿", "content": "正文"},
+                    "reason": "读者反馈",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["migration"]["index"], "news-test")
+        self.assertEqual(len(payload["previewHash"]), 64)
+        create.assert_not_called()
+        apply.assert_not_called()
+
+    @patch("es_repair_routes.KibanaConsoleClient")
+    def test_es_apply_rejects_missing_preview_hash_before_writing(self, client_class):
+        client_class.return_value.config = {"index": "news-test"}
+        with (
+            patch("es_repair_routes.create_migration") as create,
+            patch("es_repair_routes.apply_migration") as apply,
+        ):
+            response = self.client.post(
+                "/api/es-repair/apply",
+                json={
+                    "supersedesId": "old-id",
+                    "document": {"title": "修复稿", "content": "正文"},
+                    "reason": "读者反馈",
+                },
+            )
+
+        self.assertEqual(response.status_code, 409)
+        create.assert_not_called()
+        apply.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -2,16 +2,17 @@ import { useCallback, useEffect, useState } from "react";
 import { Button, Field, LoadingSpinner, TextInput } from "@jojo/ui";
 import { PageTopbar } from "../components/PageTopbar";
 import { OperationDialog } from "../components/OperationDialog";
+import { MigrationPreviewDialog } from "../components/MigrationPreviewDialog";
 import {
   apiGet,
   apiPost,
   type Migration,
+  type MigrationPreview,
   type SearchDocument,
 } from "../lib/api";
 
 type DialogState = {
-  mode: "confirm" | "success" | "error";
-  deleted?: boolean;
+  mode: "success" | "error";
   title: string;
   message: string;
   details?: Array<{ label: string; value: string }>;
@@ -36,6 +37,9 @@ export function EsDataPage() {
   const [reason, setReason] = useState("");
   const [migrations, setMigrations] = useState<Migration[]>([]);
   const [dialog, setDialog] = useState<DialogState>();
+  const [preview, setPreview] = useState<MigrationPreview>();
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [applying, setApplying] = useState(false);
 
   const loadStatus = useCallback(() => {
     apiGet<{ success: boolean; index: string; activeDocuments: number }>(
@@ -84,21 +88,33 @@ export function EsDataPage() {
     setReason("");
   }
 
-  function requestApply(deleted: boolean) {
-    setDialog({
-      mode: "confirm",
-      deleted,
-      title: deleted ? "确认标记删除" : "确认追加修复",
-      message: deleted
-        ? "文章将从正常搜索结果中隐藏，原始数据仍会保留。"
-        : "系统会保留原文档，并追加一份完整的新版本。",
-    });
+  async function requestPreview(deleted: boolean) {
+    setPreviewLoading(true);
+    try {
+      const data = await apiPost<MigrationPreview & { success: boolean }>(
+        "/api/es-repair/preview",
+        {
+          supersedesId: selected.documentId,
+          document: draft,
+          deleted,
+          reason,
+        },
+      );
+      setPreview(data);
+    } catch (error) {
+      setDialog({
+        mode: "error",
+        title: "无法生成预览",
+        message: (error as Error).message,
+      });
+    } finally {
+      setPreviewLoading(false);
+    }
   }
 
   async function apply() {
-    if (!dialog || dialog.mode !== "confirm") return;
-    const deleted = Boolean(dialog.deleted);
-    setDialog(undefined);
+    if (!preview) return;
+    setApplying(true);
     try {
       const data = await apiPost<{
         success: boolean;
@@ -107,12 +123,13 @@ export function EsDataPage() {
         alreadyExists: boolean;
         migration: Migration;
       }>("/api/es-repair/apply", {
-        supersedesId: selected.documentId,
-        document: draft,
-        deleted,
-        reason,
-        confirm: true,
+        supersedesId: preview.migration.supersedesId,
+        document: preview.migration.document,
+        deleted: preview.migration.operation === "delete",
+        reason: preview.migration.reason,
+        previewHash: preview.previewHash,
       });
+      setPreview(undefined);
       setDialog({
         mode: "success",
         title: data.message,
@@ -130,11 +147,14 @@ export function EsDataPage() {
       loadMigrations();
       loadStatus();
     } catch (error) {
+      setPreview(undefined);
       setDialog({
         mode: "error",
         title: "执行失败",
         message: (error as Error).message,
       });
+    } finally {
+      setApplying(false);
     }
   }
 
@@ -269,21 +289,22 @@ export function EsDataPage() {
             </Field>
             <div className="button-row">
               <Button
-                disabled={!selected.documentId}
-                onClick={() => requestApply(false)}
+                disabled={!selected.documentId || previewLoading}
+                onClick={() => void requestPreview(false)}
               >
-                确认追加修复
+                {previewLoading ? "正在生成预览…" : "预览修复 migration"}
               </Button>
               <Button
                 variant="outline"
-                disabled={!selected.documentId}
-                onClick={() => requestApply(true)}
+                disabled={!selected.documentId || previewLoading}
+                onClick={() => void requestPreview(true)}
               >
-                标记删除
+                预览删除 migration
               </Button>
             </div>
             <p className="notice">
-              修复原因只保存在本地 migration 文件，不会写入 ES。
+              预览不会写文件或 ES；再次确认后才执行。修复原因只保存在本地
+              migration 文件。
             </p>
             <div className="migration-list">
               <h3>最近 migrations</h3>
@@ -315,34 +336,24 @@ export function EsDataPage() {
           </div>
         </section>
       </main>
+      <MigrationPreviewDialog
+        preview={preview}
+        applying={applying}
+        onApply={() => void apply()}
+        onClose={() => setPreview(undefined)}
+      />
       <OperationDialog
         open={Boolean(dialog)}
         kicker={
           dialog?.mode === "success"
             ? "MIGRATION APPLIED"
-            : dialog?.mode === "error"
-              ? "MIGRATION FAILED"
-              : dialog?.deleted
-                ? "DELETE MIGRATION"
-                : "REPAIR MIGRATION"
+            : "MIGRATION FAILED"
         }
         title={dialog?.title || ""}
         message={dialog?.message || ""}
-        record={dialog?.mode === "confirm" ? selected.title : undefined}
         details={dialog?.details}
-        confirmLabel={
-          dialog?.mode === "confirm"
-            ? dialog.deleted
-              ? "确认标记删除"
-              : "确认追加修复"
-            : "完成"
-        }
-        cancelLabel={dialog?.mode === "confirm" ? "返回检查" : undefined}
-        onConfirm={
-          dialog?.mode === "confirm"
-            ? () => void apply()
-            : () => setDialog(undefined)
-        }
+        confirmLabel="完成"
+        onConfirm={() => setDialog(undefined)}
         onClose={() => setDialog(undefined)}
       />
     </>
