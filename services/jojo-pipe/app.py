@@ -1017,7 +1017,7 @@ def open_in_ide():
         print(f"[IDE] 打开失败: {e}")
         return jsonify({'success': False, 'message': f'打开失败: {str(e)}'})
 
-FRONTEND_DIST = Path(__file__).resolve().parents[2] / 'apps' / 'data-workbench' / 'dist'
+FRONTEND_DIST = Path(__file__).resolve().parents[2] / 'tooling' / 'data-workbench' / 'dist'
 
 
 @app.route('/', defaults={'path': ''})
