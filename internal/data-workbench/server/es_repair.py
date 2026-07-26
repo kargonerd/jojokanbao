@@ -52,9 +52,14 @@ def _space_id_from_url(url: str) -> str:
     return host if host.startswith("space-") else ""
 
 
-def revision_id(supersedes_id: str, document: dict[str, Any], deleted: bool) -> str:
+def revision_id(replaced_document_id: str, document: dict[str, Any], deleted: bool) -> str:
+    # Keep the legacy canonical key so existing append-only IDs remain stable.
     canonical = json.dumps(
-        {"supersedesId": supersedes_id, "deleted": deleted, "document": document},
+        {
+            "supersedesId": replaced_document_id,
+            "deleted": deleted,
+            "document": document,
+        },
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
@@ -160,7 +165,7 @@ class KibanaConsoleClient:
 
     def create_revision(
         self,
-        supersedes_id: str,
+        replaced_document_id: str,
         document: dict[str, Any],
         *,
         deleted: bool = False,
@@ -174,10 +179,10 @@ class KibanaConsoleClient:
         revision = {
             **clean,
             "@timestamp": now,
-            "supersedesId": supersedes_id,
+            "replacedDocumentId": replaced_document_id,
         }
         # Exclude timestamps so retrying the same migration is idempotent.
-        doc_id = revision_id(supersedes_id, clean, deleted)
+        doc_id = revision_id(replaced_document_id, clean, deleted)
         status, payload = self.request(
             "POST", f"{self.config['index']}/_create/{quote(doc_id, safe='')}", revision
         )

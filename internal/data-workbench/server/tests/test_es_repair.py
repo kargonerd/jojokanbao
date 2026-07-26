@@ -33,8 +33,8 @@ class RepairLogicTest(unittest.TestCase):
             config = {"index": "test-index"}
             calls = []
 
-            def create_revision(self, supersedes_id, document, *, deleted=False):
-                self.calls.append((supersedes_id, document, deleted))
+            def create_revision(self, replaced_document_id, document, *, deleted=False):
+                self.calls.append((replaced_document_id, document, deleted))
                 return {"created": True, "alreadyExists": False, "documentId": "revision-id"}
 
         with TemporaryDirectory() as temp:
@@ -76,7 +76,7 @@ class RepairLogicTest(unittest.TestCase):
 
             self.assertEqual(first["previewHash"], second["previewHash"])
             self.assertEqual(first["migration"]["state"], "pending")
-            self.assertEqual(first["esPayload"]["supersedesId"], "old-id")
+            self.assertEqual(first["esPayload"]["replacedDocumentId"], "old-id")
             self.assertNotIn("deleted", first["esPayload"])
             self.assertNotIn("isRevision", first["esPayload"])
             self.assertEqual(list(directory.iterdir()), [])

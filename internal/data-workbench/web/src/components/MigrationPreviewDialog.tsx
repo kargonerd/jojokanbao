@@ -34,7 +34,7 @@ export function MigrationPreviewDialog({
           </div>
           <div>
             <span>原文档 ID</span>
-            <code>{preview.migration.supersedesId}</code>
+            <code>{preview.migration.replacedDocumentId}</code>
           </div>
           <div>
             <span>新版本 ID</span>

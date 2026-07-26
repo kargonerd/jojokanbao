@@ -15,7 +15,7 @@ GENERATED_AT_PREVIEW = "<generated when applied>"
 
 
 def preview_migration(
-    supersedes_id: str,
+    replaced_document_id: str,
     document: dict[str, Any],
     *,
     deleted: bool,
@@ -24,14 +24,14 @@ def preview_migration(
 ) -> dict[str, Any]:
     """Build a deterministic, read-only preview for operator confirmation."""
     clean = _clean_document(document)
-    migration_id = revision_id(supersedes_id, clean, deleted)
+    migration_id = revision_id(replaced_document_id, clean, deleted)
     migration = {
         "version": 1,
         "id": migration_id,
         "createdAt": GENERATED_AT_PREVIEW,
         "index": index,
         "operation": "delete" if deleted else "repair",
-        "supersedesId": supersedes_id,
+        "replacedDocumentId": replaced_document_id,
         "document": clean,
         "reason": reason.strip(),
         "state": "pending",
@@ -39,7 +39,7 @@ def preview_migration(
     es_payload = {
         **clean,
         "@timestamp": GENERATED_AT_PREVIEW,
-        "supersedesId": supersedes_id,
+        "replacedDocumentId": replaced_document_id,
     }
     canonical = json.dumps(
         {"migration": migration, "esPayload": es_payload},
@@ -55,7 +55,7 @@ def preview_migration(
 
 
 def create_migration(
-    supersedes_id: str,
+    replaced_document_id: str,
     document: dict[str, Any],
     *,
     deleted: bool,
@@ -64,7 +64,7 @@ def create_migration(
     directory: Path = MIGRATIONS_DIR,
 ) -> dict[str, Any]:
     clean = _clean_document(document)
-    migration_id = revision_id(supersedes_id, clean, deleted)
+    migration_id = revision_id(replaced_document_id, clean, deleted)
     path = directory / f"{migration_id}.json"
     if path.exists():
         return json.loads(path.read_text(encoding="utf-8"))
@@ -75,7 +75,7 @@ def create_migration(
         "createdAt": datetime.now(timezone.utc).isoformat(),
         "index": index,
         "operation": "delete" if deleted else "repair",
-        "supersedesId": supersedes_id,
+        "replacedDocumentId": replaced_document_id,
         "document": clean,
         "reason": reason.strip(),
         "state": "pending",
@@ -98,7 +98,7 @@ def apply_migration(
             f"migration 索引为 {migration['index']}，当前配置为 {es_client.config['index']}"
         )
     result = es_client.create_revision(
-        migration["supersedesId"],
+        migration.get("replacedDocumentId") or migration["supersedesId"],
         migration.get("document") or {},
         deleted=migration["operation"] == "delete",
     )
@@ -132,9 +132,11 @@ def excluded_document_ids(
     for migration in list_migrations(directory):
         if migration.get("state") != "applied" or migration.get("index") != index:
             continue
-        supersedes_id = migration.get("supersedesId")
-        if supersedes_id:
-            excluded.add(str(supersedes_id))
+        replaced_document_id = (
+            migration.get("replacedDocumentId") or migration.get("supersedesId")
+        )
+        if replaced_document_id:
+            excluded.add(str(replaced_document_id))
         if migration.get("operation") == "delete":
             tombstone_id = (migration.get("result") or {}).get("documentId")
             excluded.add(str(tombstone_id or migration["id"]))

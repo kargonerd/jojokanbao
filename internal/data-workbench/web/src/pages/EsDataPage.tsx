@@ -94,7 +94,7 @@ export function EsDataPage() {
       const data = await apiPost<MigrationPreview & { success: boolean }>(
         "/api/es-repair/preview",
         {
-          supersedesId: selected.documentId,
+          replacedDocumentId: selected.documentId,
           document: draft,
           deleted,
           reason,
@@ -123,7 +123,7 @@ export function EsDataPage() {
         alreadyExists: boolean;
         migration: Migration;
       }>("/api/es-repair/apply", {
-        supersedesId: preview.migration.supersedesId,
+        replacedDocumentId: preview.migration.replacedDocumentId,
         document: preview.migration.document,
         deleted: preview.migration.operation === "delete",
         reason: preview.migration.reason,

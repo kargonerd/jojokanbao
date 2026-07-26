@@ -84,7 +84,7 @@ class WorkspaceRoutesTest(unittest.TestCase):
             response = self.client.post(
                 "/api/es-repair/preview",
                 json={
-                    "supersedesId": "old-id",
+                    "replacedDocumentId": "old-id",
                     "document": {"title": "修复稿", "content": "正文"},
                     "reason": "读者反馈",
                 },
@@ -108,7 +108,7 @@ class WorkspaceRoutesTest(unittest.TestCase):
             response = self.client.post(
                 "/api/es-repair/apply",
                 json={
-                    "supersedesId": "old-id",
+                    "replacedDocumentId": "old-id",
                     "document": {"title": "修复稿", "content": "正文"},
                     "reason": "读者反馈",
                 },

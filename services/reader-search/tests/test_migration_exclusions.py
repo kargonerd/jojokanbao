@@ -34,7 +34,7 @@ class MigrationExclusionsTests(unittest.TestCase):
                 "id": "repair-1",
                 "index": "news",
                 "operation": "repair",
-                "supersedesId": "base-id",
+                "replacedDocumentId": "base-id",
                 "state": "applied",
             })
             self.assertEqual(load_excluded_ids(directory, "news"), {"base-id"})
@@ -46,7 +46,7 @@ class MigrationExclusionsTests(unittest.TestCase):
                 "id": "repair-2",
                 "index": "news",
                 "operation": "delete",
-                "supersedesId": "revision-1",
+                "replacedDocumentId": "revision-1",
                 "state": "applied",
                 "result": {"documentId": "tombstone-2"},
             })
@@ -62,17 +62,32 @@ class MigrationExclusionsTests(unittest.TestCase):
                 "id": "repair-pending",
                 "index": "news",
                 "operation": "repair",
-                "supersedesId": "pending-old",
+                "replacedDocumentId": "pending-old",
                 "state": "pending",
             })
             self._write(directory, "repair-other", {
                 "id": "repair-other",
                 "index": "other",
                 "operation": "repair",
-                "supersedesId": "other-old",
+                "replacedDocumentId": "other-old",
                 "state": "applied",
             })
             self.assertEqual(load_excluded_ids(directory, "news"), set())
+
+    def test_legacy_supersedes_id_remains_readable(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            self._write(directory, "repair-legacy", {
+                "id": "repair-legacy",
+                "index": "news",
+                "operation": "repair",
+                "supersedesId": "legacy-base-id",
+                "state": "applied",
+            })
+            self.assertEqual(
+                load_excluded_ids(directory, "news"),
+                {"legacy-base-id"},
+            )
 
     def test_result_exposes_document_id_but_not_legacy_revision_metadata(self):
         result = hit_to_active_result({
@@ -82,7 +97,7 @@ class MigrationExclusionsTests(unittest.TestCase):
                 "title": "最终标题",
                 "content": "最终正文",
                 "isRevision": True,
-                "supersedesId": "revision-1",
+                "replacedDocumentId": "revision-1",
                 "deleted": False,
             },
             "highlight": {"title": ["@highlight@最终@/highlight@标题"]},
@@ -90,6 +105,7 @@ class MigrationExclusionsTests(unittest.TestCase):
         self.assertEqual(result["documentId"], "revision-2")
         self.assertEqual(result["title"], "@highlight@最终@/highlight@标题")
         self.assertNotIn("supersedesId", result)
+        self.assertNotIn("replacedDocumentId", result)
         self.assertNotIn("deleted", result)
         self.assertNotIn("isRevision", result)
 

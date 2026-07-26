@@ -39,17 +39,17 @@ def search():
 @es_repair_blueprint.post("/api/es-repair/apply")
 def apply():
     data = request.get_json(silent=True) or {}
-    supersedes_id = str(data.get("supersedesId", "")).strip()
+    replaced_document_id = str(data.get("replacedDocumentId", "")).strip()
     deleted = bool(data.get("deleted"))
     document = data.get("document") or {}
-    if not supersedes_id:
+    if not replaced_document_id:
         return jsonify({"success": False, "message": "缺少被替代文档的 documentId"}), 400
     if not deleted and (not document.get("title") or not document.get("content")):
         return jsonify({"success": False, "message": "修复文档必须包含标题和正文"}), 400
     try:
         client = KibanaConsoleClient()
         preview = preview_migration(
-            supersedes_id,
+            replaced_document_id,
             document,
             deleted=deleted,
             reason=str(data.get("reason", "")),
@@ -62,7 +62,7 @@ def apply():
                 "message": "migration 预览已变化，请重新生成并确认",
             }), 409
         migration = create_migration(
-            supersedes_id,
+            replaced_document_id,
             document,
             deleted=deleted,
             reason=str(data.get("reason", "")),
@@ -83,17 +83,17 @@ def apply():
 @es_repair_blueprint.post("/api/es-repair/preview")
 def preview():
     data = request.get_json(silent=True) or {}
-    supersedes_id = str(data.get("supersedesId", "")).strip()
+    replaced_document_id = str(data.get("replacedDocumentId", "")).strip()
     deleted = bool(data.get("deleted"))
     document = data.get("document") or {}
-    if not supersedes_id:
+    if not replaced_document_id:
         return jsonify({"success": False, "message": "缺少被替代文档的 documentId"}), 400
     if not deleted and (not document.get("title") or not document.get("content")):
         return jsonify({"success": False, "message": "修复文档必须包含标题和正文"}), 400
     try:
         client = KibanaConsoleClient()
         result = preview_migration(
-            supersedes_id,
+            replaced_document_id,
             document,
             deleted=deleted,
             reason=str(data.get("reason", "")),

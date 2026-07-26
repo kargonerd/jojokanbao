@@ -6,7 +6,12 @@ from pathlib import Path
 from typing import Dict, Iterable, Set
 
 
-INTERNAL_REVISION_FIELDS = {"isRevision", "supersedesId", "deleted"}
+INTERNAL_REVISION_FIELDS = {
+    "isRevision",
+    "supersedesId",
+    "replacedDocumentId",
+    "deleted",
+}
 
 
 def build_active_query(
@@ -33,9 +38,11 @@ def load_excluded_ids(directory: Path, index: str) -> Set[str]:
             continue
         if migration.get("state") != "applied" or migration.get("index") != index:
             continue
-        supersedes_id = migration.get("supersedesId")
-        if supersedes_id:
-            excluded.add(str(supersedes_id))
+        replaced_document_id = (
+            migration.get("replacedDocumentId") or migration.get("supersedesId")
+        )
+        if replaced_document_id:
+            excluded.add(str(replaced_document_id))
         if migration.get("operation") == "delete":
             result_id = (migration.get("result") or {}).get("documentId")
             excluded.add(str(result_id or migration["id"]))

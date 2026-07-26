@@ -33,7 +33,7 @@ class SearchEs:
                         "page": 3,
                         "source": "rmrb",
                         "isRevision": True,
-                        "supersedesId": "revision-1",
+                        "replacedDocumentId": "revision-1",
                         "deleted": False,
                     },
                 }],
@@ -54,7 +54,7 @@ class SearchRevisionApiTests(unittest.TestCase):
                 "id": "repair-test",
                 "index": search_app.index_name,
                 "operation": "repair",
-                "supersedesId": "base-id",
+                "replacedDocumentId": "base-id",
                 "state": "applied",
             }),
             encoding="utf-8",
@@ -73,6 +73,7 @@ class SearchRevisionApiTests(unittest.TestCase):
         self.assertEqual(payload["total"], 1)
         self.assertEqual(payload["results"][0]["documentId"], "revision-2")
         self.assertNotIn("supersedesId", payload["results"][0])
+        self.assertNotIn("replacedDocumentId", payload["results"][0])
         self.assertEqual(self.fake_es.calls, 1)
 
         query = self.fake_es.search_query

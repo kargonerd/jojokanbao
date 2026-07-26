@@ -143,7 +143,7 @@ export interface MigrationCandidate {
   createdAt: string;
   index: string;
   operation: "repair" | "delete";
-  supersedesId: string;
+  replacedDocumentId: string;
   document: Partial<SearchDocument>;
   reason: string;
   state: "pending";

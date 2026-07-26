@@ -9,7 +9,7 @@ const preview = {
     createdAt: "<generated when applied>",
     index: "news-index",
     operation: "repair" as const,
-    supersedesId: "original-id",
+    replacedDocumentId: "original-id",
     document: { title: "修复标题", content: "修复正文" },
     reason: "读者反馈错字",
     state: "pending" as const,
@@ -17,7 +17,7 @@ const preview = {
   esPayload: {
     title: "修复标题",
     content: "修复正文",
-    supersedesId: "original-id",
+    replacedDocumentId: "original-id",
   },
   previewHash: "a".repeat(64),
 };
