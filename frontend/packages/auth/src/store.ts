@@ -3,11 +3,12 @@ import { create, type StoreApi, type UseBoundStore } from "zustand";
 import type { JojoAuthClient } from "./client";
 import { getAuthErrorMessage } from "./errors";
 import { createProfileRepository } from "./profile";
-import type { AuthState, UpdateProfileInput } from "./types";
+import type { AuthState, SignUpInput, UpdateProfileInput } from "./types";
 
 export interface AuthActions {
   clearFeedback: () => void;
   signIn: (email: string, password: string) => Promise<void>;
+  signUp: (input: SignUpInput) => Promise<boolean>;
   signOut: () => Promise<void>;
   sendPasswordReset: (email: string, redirectTo: string) => Promise<void>;
   updatePassword: (password: string) => Promise<void>;
@@ -45,6 +46,36 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
         if (error) throw error;
         const profile = data.user ? await profiles.getOrCreate(data.user.id) : null;
         set({ session: data.session, user: data.user, profile, busy: false });
+      } catch (error) {
+        set({ busy: false, error: getAuthErrorMessage(error) });
+        throw error;
+      }
+    },
+
+    signUp: async ({ email, password, invitationCode, emailRedirectTo }) => {
+      set({ busy: true, error: null, notice: null });
+      try {
+        const { data, error } = await client.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo,
+            data: { invitation_code: invitationCode.trim() },
+          },
+        });
+        if (error) throw error;
+
+        const session = data.session;
+        const requiresEmailConfirmation = session === null;
+        set({
+          session,
+          user: session?.user ?? null,
+          busy: false,
+          notice: requiresEmailConfirmation
+            ? "确认邮件已经发出，请打开邮件完成注册。"
+            : "账号已经创建。",
+        });
+        return requiresEmailConfirmation;
       } catch (error) {
         set({ busy: false, error: getAuthErrorMessage(error) });
         throw error;

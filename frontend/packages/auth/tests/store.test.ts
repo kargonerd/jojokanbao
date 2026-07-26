@@ -20,6 +20,10 @@ function createClient() {
     data: { user, session },
     error: null,
   });
+  const signUp = vi.fn().mockResolvedValue({
+    data: { user, session: null },
+    error: null,
+  });
   const getSession = vi.fn().mockResolvedValue({ data: { session }, error: null });
   const onAuthStateChange = vi.fn().mockReturnValue({
     data: { subscription: { unsubscribe } },
@@ -30,6 +34,7 @@ function createClient() {
       getSession,
       onAuthStateChange,
       signInWithPassword,
+      signUp,
     },
     from: vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
@@ -38,7 +43,7 @@ function createClient() {
     }),
   } as unknown as JojoAuthClient;
 
-  return { client, getSession, signInWithPassword, unsubscribe, user };
+  return { client, getSession, signInWithPassword, signUp, unsubscribe, user, session };
 }
 
 describe("createJojoAuthStore", () => {
@@ -83,5 +88,49 @@ describe("createJojoAuthStore", () => {
       busy: false,
       error: "邮箱或密码不正确。",
     });
+  });
+
+  it("signs up with invitation metadata and keeps unconfirmed users signed out", async () => {
+    const { client, signUp } = createClient();
+    const { useAuthStore } = createJojoAuthStore(client);
+
+    const requiresConfirmation = await useAuthStore.getState().signUp({
+      email: "reader@example.com",
+      password: "strong-password",
+      invitationCode: " JOJO-ABCD-EFGH-IJKL ",
+      emailRedirectTo: "https://reader.jojokanbao.cn/account",
+    });
+
+    expect(signUp).toHaveBeenCalledWith({
+      email: "reader@example.com",
+      password: "strong-password",
+      options: {
+        emailRedirectTo: "https://reader.jojokanbao.cn/account",
+        data: { invitation_code: "JOJO-ABCD-EFGH-IJKL" },
+      },
+    });
+    expect(requiresConfirmation).toBe(true);
+    expect(useAuthStore.getState()).toMatchObject({
+      session: null,
+      user: null,
+      busy: false,
+      notice: "确认邮件已经发出，请打开邮件完成注册。",
+    });
+  });
+
+  it("keeps the session when email confirmation is disabled", async () => {
+    const { client, signUp, session, user } = createClient();
+    signUp.mockResolvedValueOnce({ data: { user, session }, error: null });
+    const { useAuthStore } = createJojoAuthStore(client);
+
+    const requiresConfirmation = await useAuthStore.getState().signUp({
+      email: "reader@example.com",
+      password: "strong-password",
+      invitationCode: "JOJO-ABCD-EFGH-IJKL",
+      emailRedirectTo: "https://reader.jojokanbao.cn/account",
+    });
+
+    expect(requiresConfirmation).toBe(false);
+    expect(useAuthStore.getState()).toMatchObject({ session, user, busy: false });
   });
 });
