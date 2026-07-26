@@ -25,6 +25,7 @@ from storage import (
 )
 from vue_generator import generate_vue_code, generate_vue_diff, apply_vue_changes, generate_new_publication_diff, apply_multi_file_changes
 from progress_manager import progress_manager
+from es_repair_routes import es_repair_blueprint
 import tkinter as tk
 from tkinter import filedialog
 import requests
@@ -37,6 +38,7 @@ warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 app = Flask(__name__)
+app.register_blueprint(es_repair_blueprint)
 matcher = FileNameMatcher('config.json')
 
 # 启动时清理过期的临时目录（清理1小时以上未修改的）
@@ -51,7 +53,12 @@ SERVER_START_TIME = time.time()
 
 @app.route('/')
 def index():
-    """首页"""
+    """数据工作台总览"""
+    return render_template('dashboard.html')
+
+@app.route('/pdf')
+def pdf_workspace():
+    """PDF 数据管理"""
     return render_template('index.html')
 
 @app.route('/api/health')

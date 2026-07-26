@@ -1,0 +1,23 @@
+<aside class="workspace-nav">
+  <a class="workspace-brand" href="/">
+    <span class="workspace-brand-mark">J</span>
+    <span><b>JOJO 看报</b><small>数据工作台</small></span>
+  </a>
+  <nav>
+    <p class="workspace-nav-label">工作台</p>
+    <a class="workspace-nav-item {{ 'active' if active_module == 'overview' else '' }}" href="/">
+      <span>总览</span><small>Overview</small>
+    </a>
+    <p class="workspace-nav-label">数据管理</p>
+    <a class="workspace-nav-item {{ 'active' if active_module == 'pdf' else '' }}" href="/pdf">
+      <span>PDF 数据</span><small>导入与发布</small>
+    </a>
+    <a class="workspace-nav-item {{ 'active' if active_module == 'es' else '' }}" href="/es-repair">
+      <span>ES 数据</span><small>搜索与修复</small>
+    </a>
+  </nav>
+  <div class="workspace-nav-foot">
+    <span class="workspace-dot"></span>
+    LOCAL OPERATOR
+  </div>
+</aside>

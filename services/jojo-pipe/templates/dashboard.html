@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>JOJO 看报 · 数据工作台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/jojo-editorial.css">
+</head>
+<body class="workspace-body">
+<div class="workspace-shell">
+  {% set active_module = 'overview' %}
+  {% include '_workspace_nav.html' %}
+  <section class="workspace-surface">
+    <header class="workspace-topbar">
+      <div><p class="workspace-eyebrow">DATA OPERATIONS / 数据运营</p><h1>数据工作台</h1></div>
+      <div class="workspace-local-badge"><span></span>本地管理环境</div>
+    </header>
+    <main class="dashboard-main">
+      <section class="dashboard-hero">
+        <div>
+          <p class="workspace-eyebrow">JOJO KANBAO</p>
+          <h2>从报刊文件到可搜索数据，<br>在一个工作台完成。</h2>
+          <p>管理 PDF 入库、搜索索引修复及后续数据运营能力。各模块独立演进，共享同一套本地权限和操作记录。</p>
+        </div>
+        <div class="dashboard-date" id="today"></div>
+      </section>
+      <section class="dashboard-section">
+        <div class="dashboard-section-head"><div><p class="workspace-eyebrow">MODULES</p><h2>数据管理模块</h2></div><span>2 个模块可用</span></div>
+        <div class="module-grid">
+          <a class="module-card" href="/pdf">
+            <div class="module-number">01</div><div class="module-icon">PDF</div>
+            <h3>PDF 数据管理</h3>
+            <p>扫描报刊文件，完成命名识别、页面拆分、存储提交与发布代码检查。</p>
+            <div class="module-card-foot"><span>进入模块</span><b>→</b></div>
+          </a>
+          <a class="module-card" href="/es-repair">
+            <div class="module-number">02</div><div class="module-icon">ES</div>
+            <h3>ES 数据管理</h3>
+            <p>检索当前有效文档，通过 append-only migration 修复或逻辑删除搜索数据。</p>
+            <div class="module-card-foot"><span id="es-state">正在检查连接…</span><b>→</b></div>
+          </a>
+        </div>
+      </section>
+      <section class="dashboard-section dashboard-principles">
+        <div><b>单一入口</b><span>所有看报数据管理集中于本地工作台</span></div>
+        <div><b>操作可追踪</b><span>数据修复通过 migration 文件审计</span></div>
+        <div><b>模块化组织</b><span>PDF 与 ES 管理边界清晰、入口统一</span></div>
+      </section>
+    </main>
+  </section>
+</div>
+<script>
+document.getElementById("today").textContent=new Intl.DateTimeFormat("zh-CN",{year:"numeric",month:"long",day:"numeric",weekday:"long"}).format(new Date());
+fetch("/api/es-repair/status").then(r=>r.json()).then(x=>{document.getElementById("es-state").textContent=x.success?`${x.index} · ${x.activeDocuments} 条有效文档`:"ES 连接异常"}).catch(()=>{document.getElementById("es-state").textContent="ES 连接异常"});
+</script>
+</body></html>

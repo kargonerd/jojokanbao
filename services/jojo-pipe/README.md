@@ -4,6 +4,24 @@ JOJO Pipe is the local PDF intake tool for reader publications. It renames PDFs,
 splits page PDFs, and commits the generated files to a configurable storage
 backend.
 
+## ES repair workbench
+
+Run `python app.py`, then open `http://127.0.0.1:5000/` for the data-workbench
+overview. PDF intake lives at `/pdf`, and ES repair lives at `/es-repair`.
+The ES workbench
+reads `KIBANA_URL`, `ELASTICSEARCH_USERNAME`, and `ELASTICSEARCH_PASSWORD` from
+the repository root `.env`. It uses `aitest-1tk2lxru` by default; set
+`ES_REPAIR_INDEX` to override it.
+The local client defaults `ES_VERIFY_TLS` to `false` because Tencent's public
+Kibana `:5601` endpoint may terminate verified TLS handshakes; set it to `true`
+when the endpoint certificate path works in your environment.
+
+Repairs and removals first create a deterministic JSON migration in
+`es_migrations/`, then use append-only `_create`: a repair appends a complete
+new version and a removal appends a tombstone. Operator-only fields such as the
+repair reason remain in the migration file and are not indexed in ES. Existing
+documents are never physically overwritten.
+
 ## Storage Backends
 
 Storage is configured in `config.json` under `storage.backends`. Publications
