@@ -15,7 +15,7 @@ backend/
   src/app/             统一 FastAPI 与未上线业务模块
   tests/               Python 后端测试
   docs/                后端模块说明
-tools/                 数据工作台与 Archive PDF 工具
+tools/                 数据工作台、Archive PDF 工具和管理员命令
 infrastructure/        EdgeOne、Supabase 与线上腾讯 SCF Search
 content/blog/          博客内容
 vendor/                第三方源码
@@ -65,7 +65,9 @@ Desktop 的 MinerU API Key 例外：由每位用户在桌面“设置”中填�
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
 
-Supabase migrations 位于 `infrastructure/supabase/migrations`。
+Supabase migrations 位于 `infrastructure/supabase/migrations`。邀请注册的数据库约束、
+部署顺序和管理员邀请码命令见
+[`infrastructure/supabase/README.md`](./infrastructure/supabase/README.md)。
 
 ## 部署
 
