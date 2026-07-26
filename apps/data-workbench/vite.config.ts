@@ -7,7 +7,11 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { "@": resolve(__dirname, "src") } },
   build: { outDir: "dist", emptyOutDir: true },
-  test: { environment: "jsdom", globals: true },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: "./src/test/setup.ts",
+  },
   server: {
     port: 4174,
     proxy: {

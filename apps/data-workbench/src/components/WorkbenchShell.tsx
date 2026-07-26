@@ -12,23 +12,34 @@ export function WorkbenchShell() {
       <aside className="workbench-nav">
         <NavLink className="workbench-brand" to="/">
           <span className="brand-mark">J</span>
-          <span><b>JOJO 看报</b><small>数据工作台</small></span>
+          <span>
+            <b>JOJO 看报</b>
+            <small>数据工作台</small>
+          </span>
         </NavLink>
         <nav aria-label="工作台导航">
           {items.map((item) => (
             <NavLink
               key={item.to}
               end={item.end}
-              className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
+              className={({ isActive }) =>
+                `nav-item ${isActive ? "active" : ""}`
+              }
               to={item.to}
             >
-              <span>{item.label}</span><small>{item.note}</small>
+              <span>{item.label}</span>
+              <small>{item.note}</small>
             </NavLink>
           ))}
         </nav>
-        <div className="operator"><i />LOCAL OPERATOR</div>
+        <div className="operator">
+          <i />
+          LOCAL OPERATOR
+        </div>
       </aside>
-      <section className="workbench-content"><Outlet /></section>
+      <section className="workbench-content">
+        <Outlet />
+      </section>
     </div>
   );
 }

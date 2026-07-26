@@ -14,24 +14,40 @@ interface Props {
 }
 
 export function OperationDialog({
-  open, kicker, title, message, record, details = [], confirmLabel = "完成",
-  cancelLabel, onConfirm, onClose,
+  open,
+  kicker,
+  title,
+  message,
+  record,
+  details = [],
+  confirmLabel = "完成",
+  cancelLabel,
+  onConfirm,
+  onClose,
 }: Props) {
   return (
     <Modal open={open} onClose={onClose}>
       <section className="operation-dialog">
-        <header><p className="eyebrow">{kicker}</p><h2>{title}</h2></header>
+        <header>
+          <p className="eyebrow">{kicker}</p>
+          <h2>{title}</h2>
+        </header>
         <div className="dialog-body">
           <p>{message}</p>
           {record && <strong className="dialog-record">{record}</strong>}
           {details.map((detail) => (
             <div className="dialog-detail" key={detail.label}>
-              <span>{detail.label}</span><code>{detail.value}</code>
+              <span>{detail.label}</span>
+              <code>{detail.value}</code>
             </div>
           ))}
         </div>
         <footer>
-          {cancelLabel && <Button variant="outline" onClick={onClose}>{cancelLabel}</Button>}
+          {cancelLabel && (
+            <Button variant="outline" onClick={onClose}>
+              {cancelLabel}
+            </Button>
+          )}
           <Button onClick={onConfirm}>{confirmLabel}</Button>
         </footer>
       </section>

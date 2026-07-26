@@ -13,15 +13,16 @@ Python APIs and serves the production build; it no longer renders Jinja pages.
 For normal local use, run `start.bat`. It builds the frontend, starts Flask,
 then opens the workbench at `http://127.0.0.1:5000/`.
 
-During frontend development, use two terminals:
+During frontend development, start Flask and Vite together:
 
 ```bash
-pnpm dev:jojo-pipe-api
-pnpm dev:data-workbench
+pnpm dev:jojo-pipe
 ```
 
 The Vite development UI is at `http://127.0.0.1:4174/` and proxies `/api` to
-Flask on port 5000.
+Flask on port 5000. The lower-level `dev:jojo-pipe-api` and
+`dev:data-workbench` commands remain available when only one side needs
+debugging.
 
 ## ES repair workbench
 

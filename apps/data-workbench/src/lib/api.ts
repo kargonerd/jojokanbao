@@ -1,7 +1,13 @@
 export interface ApiResult {
   success: boolean;
   message?: string;
-  [key: string]: unknown;
+}
+
+export interface StorageInfo {
+  backend?: string;
+  backend_type?: string;
+  processed_path?: string;
+  split_path?: string;
 }
 
 export interface Publication {
@@ -10,10 +16,12 @@ export interface Publication {
   type: "newspaper" | "journal";
   vue_name?: string;
   source_path?: string;
-  storage?: unknown;
+  storage?: StorageInfo;
   processed_path?: string;
   split_path?: string;
-  [key: string]: unknown;
+  date_format?: string;
+  description?: string;
+  default_date?: string;
 }
 
 export interface FileMapping {
@@ -22,30 +30,92 @@ export interface FileMapping {
   success: boolean;
   rel_path?: string;
   error?: string;
-  [key: string]: unknown;
 }
 
 export interface Progress {
-  status: "pending" | "running" | "completed" | "failed" | "cancelled" | "not_found";
+  status:
+    | "pending"
+    | "processing"
+    | "running"
+    | "completed"
+    | "failed"
+    | "cancelled"
+    | "not_found";
   task_type?: "staging" | "commit";
   unit_label?: string;
   completed_files?: number;
   total_files?: number;
   current_page?: number;
   total_pages?: number;
-  processing_files?: Record<string, { status: string; current_page?: number; total_pages?: number }>;
-  result?: StagingResult | Record<string, unknown>;
+  processing_files?: Record<
+    string,
+    { status: string; current_page?: number; total_pages?: number }
+  >;
+  results?: StagingResult | CommitResult;
   error?: string;
+}
+
+export interface StagedFile {
+  original?: string;
+  renamed?: string;
+  processed_path?: string;
+  split_count?: number;
 }
 
 export interface StagingResult {
   success: boolean;
   staging_id: string;
-  preview?: Array<Record<string, unknown>>;
-  skipped?: Array<Record<string, unknown>>;
-  errors?: Array<Record<string, unknown> | string>;
+  preview?: StagedFile[];
+  skipped?: Array<{ original?: string; reason?: string }>;
+  errors?: Array<{ original?: string; error?: string } | string>;
   message?: string;
-  [key: string]: unknown;
+}
+
+export interface CommitResult {
+  success: boolean;
+  message?: string;
+  stats?: { processed?: number; split?: number; total?: number };
+}
+
+export interface TaskResponse extends ApiResult {
+  task_id: string;
+  staging_id?: string;
+}
+
+export interface ScanResponse extends ApiResult {
+  mapping: FileMapping[];
+  ai_prompt?: string;
+  stats: { total: number; success: number; failed: number };
+}
+
+export interface RuleResponse extends ApiResult {
+  results: FileMapping[];
+}
+
+export interface MultiFileChange {
+  filename: string;
+  filepath: string;
+  status: "added" | "modified" | "unchanged";
+  old_code: string;
+  new_code: string;
+  additions: number;
+  deletions: number;
+}
+
+export interface MultiFileDiff {
+  files: MultiFileChange[];
+  total_additions?: number;
+  total_deletions?: number;
+  total_files?: number;
+}
+
+export interface VuePreview extends ApiResult {
+  exists?: boolean;
+  old_code?: string;
+  new_code?: string;
+  diff_html?: string;
+  vue_filename?: string;
+  multi_file_diff?: MultiFileDiff;
 }
 
 export interface SearchDocument {
@@ -55,7 +125,6 @@ export interface SearchDocument {
   date?: string;
   page?: number;
   source?: string;
-  [key: string]: unknown;
 }
 
 export interface Migration {
@@ -69,7 +138,14 @@ export interface Migration {
 }
 
 async function parse<T>(response: Response): Promise<T> {
-  const payload = (await response.json()) as T & { success?: boolean; message?: string };
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new Error(`服务返回了非 JSON 响应（${response.status}）`);
+  }
+  const payload = (await response.json()) as T & {
+    success?: boolean;
+    message?: string;
+  };
   if (!response.ok || payload.success === false) {
     throw new Error(payload.message || `请求失败（${response.status}）`);
   }
@@ -97,9 +173,20 @@ export function watchProgress(
 ): () => void {
   const source = new EventSource(`/api/progress/${encodeURIComponent(taskId)}`);
   source.onmessage = (event) => {
-    const progress = JSON.parse(event.data) as Progress;
-    onProgress(progress);
-    if (["completed", "failed", "cancelled", "not_found"].includes(progress.status)) source.close();
+    try {
+      const progress = JSON.parse(event.data) as Progress;
+      onProgress(progress);
+      if (
+        ["completed", "failed", "cancelled", "not_found"].includes(
+          progress.status,
+        )
+      ) {
+        source.close();
+      }
+    } catch {
+      source.close();
+      onDisconnect();
+    }
   };
   source.onerror = () => {
     source.close();
