@@ -1,8 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/account/auth";
-import { AuthScaffold } from "@/account/components/AuthScaffold";
-import { AuthField, FormFeedback, PasswordField, SubmitButton } from "@/account/components/FormParts";
+import { LoginBook } from "@/account/components/LoginBook";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -23,30 +22,15 @@ export function LoginPage() {
   };
 
   return (
-    <AuthScaffold eyebrow="读者登记" title="账号登录" description="请填写已经登记的邮箱和密码。">
-      <form className="auth-form" onSubmit={handleSubmit}>
-        <FormFeedback error={error} notice={notice} />
-        <AuthField
-          label="邮箱"
-          type="email"
-          name="email"
-          autoComplete="email"
-          placeholder="name@example.com"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          required
-        />
-        <PasswordField
-          label="密码"
-          name="password"
-          autoComplete="current-password"
-          placeholder="输入密码"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          required
-        />
-        <SubmitButton busy={busy}>登录并进入</SubmitButton>
-      </form>
-    </AuthScaffold>
+    <LoginBook
+      email={email}
+      password={password}
+      busy={busy}
+      error={error}
+      notice={notice}
+      onEmailChange={setEmail}
+      onPasswordChange={setPassword}
+      onSubmit={handleSubmit}
+    />
   );
 }

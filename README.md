@@ -118,6 +118,10 @@ import { PdfViewer, PdfPage, usePdfDocument } from "@jojo/pdf-viewer";
 `.env.local` 中的 `VITE_SUPABASE_URL` 与 `VITE_SUPABASE_PUBLISHABLE_KEY`；这两个值是
 可公开的项目标识，不要在前端配置 `service_role` key 或 Supabase access token。
 
+Reader 的账号入口默认关闭。设置 `VITE_ENABLE_ACCOUNT=true` 后启用 `/account`；
+`/login` 会兼容跳转到该入口。登录页面随账号路由懒加载，关闭开关时不改变现有 Reader
+路由，也不会加载 Supabase 客户端和账号页面样式。
+
 账号资料表、RLS 策略和头像存储规则位于 `supabase/migrations/`。注册方式和邀请码校验
 不属于该基础包，将由独立变更实现。
 

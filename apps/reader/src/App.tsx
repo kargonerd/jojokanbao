@@ -23,14 +23,17 @@ export function App() {
     <BrowserRouter>
       <Routes>
         {rollout.account && (
-          <Route
-            path="/login"
-            element={
-              <Suspense fallback={<AccountFallback />}>
-                <AccountLogin />
-              </Suspense>
-            }
-          />
+          <>
+            <Route
+              path="/account"
+              element={
+                <Suspense fallback={<AccountFallback />}>
+                  <AccountLogin />
+                </Suspense>
+              }
+            />
+            <Route path="/login" element={<Navigate to="/account" replace />} />
+          </>
         )}
 
         <Route element={<Layout />}>
