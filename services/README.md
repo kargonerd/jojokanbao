@@ -9,8 +9,12 @@
 - `jiuwen-api/`：JOJO 旧闻 FastAPI 后端，提供新闻、RSS、来源、批注、评论、合订本任务。
 - `olds-api/`：Olds 历史新闻归档下载、状态维护和验证工具。
 - `reader-search/`：来自 `C:\Users\luoxixi\WebstormProjects\web\search` 的 Elasticsearch 搜索服务。
-PDF 入库、ES 修复和相关管理界面已迁移到 `internal/data-workbench/`。
 - `notebooklm-py/`：来自 `jojo-rag/notebooklm-py` 的 NotebookLM Python 客户端副本。
+
+## 已迁出
+
+PDF 入库、ES 修复和相关管理界面位于 `internal/data-workbench/`，不再属于
+`services/`。
 
 ## 启动
 

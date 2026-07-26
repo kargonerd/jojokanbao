@@ -14,10 +14,15 @@ the environments that need different runners or dependencies:
 - Supabase migrations and the shared Auth contract
 - the existing Olds Python test and archive-manifest checks
 
+The `build-and-test` aggregate job and `e2e` browser job keep stable check
+names because the `master` ruleset requires those contexts. The aggregate job
+fails when any applicable CI job fails or is cancelled.
+
 Turborepo selects affected workspace packages and their consumers using the
-exact base and head commits emitted by the `changes` job. Root files that are
-not workspace packages, such as `blog/`, `supabase/`, and
-`services/olds-api/`, are classified explicitly.
+exact base and head commits emitted by the `changes` job. This includes the
+internal Data Workbench Web package. Root files that are not workspace
+packages, such as `blog/`, `supabase/`, and `services/olds-api/`, are
+classified explicitly where they have dedicated checks.
 
 Every JavaScript or TypeScript workspace should expose the applicable standard
 scripts:

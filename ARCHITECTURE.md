@@ -21,7 +21,8 @@ apps/jiuwen-mobile ─→ Expo / React Native
 ```
 apps/        面向用户的前端、桌面端、移动端应用，参与 pnpm workspace
 packages/    共享 UI、设计系统、PDF viewer、工具配置，参与 pnpm workspace
-services/    后端、搜索、批处理工具，不参与 pnpm workspace
+internal/    内部应用与运维工作台；Web 参与 pnpm workspace，Python server 独立
+services/    独立 Python 后端、搜索和归档任务，不参与 pnpm workspace
 references/  外部参考工程、旧实现和迁移线索归档，不参与构建
 tooling/     仓库级共享配置、构建和运维工具
 ```
@@ -31,11 +32,14 @@ tooling/     仓库级共享配置、构建和运维工具
 - `rag-backend`：Flask / SCF
 - `press-engine`：FastAPI
 - `jiuwen-api`：现有旧闻 FastAPI；服务端重命名单独处理
+- `olds-api`：Olds 历史归档任务
 - `reader-search`：Flask + Elasticsearch
-- `internal/data-workbench`：内部数据工作台（React Web + Flask / Python 批处理）
 - `notebooklm-py`：Python package
 
-这些服务不加入 Turborepo，是为了避免 Python、Expo 等依赖影响当前前端工作区的安装、构建和测试。旧 Node/Nest/Express 后端实现归档到 `references/legacy-node-backends`，只作为迁移对照。
+`internal/data-workbench` 是内部数据工作台：`web/` 是 pnpm workspace，
+`server/` 保持独立 Python 依赖。Python 服务不加入 Turborepo，避免服务端依赖影响
+前端工作区的安装、构建和测试。旧 Node/Nest/Express 后端实现归档到
+`references/legacy-node-backends`，只作为迁移对照。
 
 ## 包职责
 

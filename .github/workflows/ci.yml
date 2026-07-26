@@ -69,7 +69,7 @@ jobs:
             fi
           }
 
-          write_flag node '^(apps/|packages/|tooling/|patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$)'
+          write_flag node '^(apps/|internal/[^/]+/web/|packages/|tooling/|patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$)'
           write_flag all_node '^(\.github/workflows/ci\.yml$|patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$)'
           write_flag desktop_e2e '^(apps/desktop/|packages/(editorial-preset|pdf-viewer|ui)/|tooling/tsconfig/|patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/ci\.yml$)'
           write_flag web_e2e '^(apps/web/|packages/(auth|editorial-preset|pdf-viewer|ui)/|tooling/tsconfig/|patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(ci|web-deploy)\.yml$)'
@@ -109,7 +109,8 @@ jobs:
         run: pnpm turbo run typecheck test build verify:build --affected
 
   web-e2e:
-    name: Web browser tests
+    # Keep this stable check name in sync with the master branch ruleset.
+    name: e2e
     needs: changes
     if: needs.changes.outputs.web_e2e == 'true'
     runs-on: ubuntu-latest
@@ -322,7 +323,8 @@ jobs:
           PY
 
   required:
-    name: Required
+    # This aggregate check is required by the master branch ruleset.
+    name: build-and-test
     if: always()
     needs:
       - changes

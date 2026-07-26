@@ -18,10 +18,12 @@ services/
   rag-backend/          JOJO-RAG Flask/SCF 后端
   press-engine/         JOJO Press FastAPI 后端
   jiuwen-api/           JOJO旧闻 FastAPI 后端
+  olds-api/             Olds 历史归档任务
   reader-search/        JOJO看报 Elasticsearch 搜索服务
+  notebooklm-py/        NotebookLM Python 客户端 vendored copy
+
 internal/
   data-workbench/       内部数据工作台（web + server）
-  notebooklm-py/        NotebookLM Python 客户端 vendored copy
 
 references/
   jiuwen-folo-analysis/ Folo/Follow 上游参考工程归档，不参与本仓库构建
@@ -91,7 +93,10 @@ pnpm dev:jiuwen-api
 
 ## 迁移边界
 
-`apps/` 和 `packages/` 参与当前 pnpm/turbo 前端工作区；`services/` 保留当前 Python 后端和工具源码，但不加入 pnpm workspace，避免服务依赖污染前端工作区。服务各自独立安装依赖和运行。旧 Node/Nest/Express 后端归档在 `references/legacy-node-backends/`，不参与构建、测试或部署。
+`apps/`、`packages/` 和 `internal/data-workbench/web` 参与当前 pnpm/turbo
+前端工作区。`services/` 与 `internal/data-workbench/server` 保留独立 Python
+依赖，不加入 pnpm workspace。旧 Node/Nest/Express 后端归档在
+`references/legacy-node-backends/`，不参与构建、测试或部署。
 
 迁移时刻意排除了 `.env`、数据库、运行输出、截图、日志、`node_modules`、构建产物等本地状态文件。配置只保留 `*.example.*` 或源码中的默认配置。
 
