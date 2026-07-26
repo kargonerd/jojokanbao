@@ -18,7 +18,7 @@
     "dev:jiuwen-mobile": "pnpm --filter @jojo/jiuwen-mobile start",
     "finalize:reader-pdf": "node tooling/finalize-reader-pdf-protection.mjs",
     "protect:reader-pdf": "node tooling/protect-reader-pdf.mjs",
-    "publish:reader-pdf": "node tooling/publish-protected-reader-pdfs.mjs",
+    "publish:reader-pdf": "node internal/data-workbench/scripts/publish-protected-reader-pdfs.mjs",
     "purge:reader-pdf": "node tooling/purge-edgeone-reader-cache.mjs",
     "verify:reader-pdf": "node tooling/verify-reader-pdf-protection.mjs",
     "clean": "turbo clean && rm -rf node_modules"

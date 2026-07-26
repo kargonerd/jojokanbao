@@ -20,7 +20,7 @@ const COLLECTIONS = {
 
 function usage() {
   console.log(`Usage:
-  node tooling/publish-protected-reader-pdfs.mjs --collection rmrb --source <local-root> --issue 19460515
+  node internal/data-workbench/scripts/publish-protected-reader-pdfs.mjs --collection rmrb --source <local-root> --issue 19460515
 
 Options:
   --collection <name>       One of: ${Object.keys(COLLECTIONS).join(", ")}
