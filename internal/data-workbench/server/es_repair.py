@@ -12,7 +12,7 @@ from urllib.parse import quote
 import requests
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 
 
 def _load_root_env() -> None:

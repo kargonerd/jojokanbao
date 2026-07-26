@@ -6,9 +6,10 @@ backend.
 
 ## React data workbench
 
-JOJO Pipe's browser UI lives in `tooling/data-workbench`. It is an internal React 19 tool
-shared by the overview, PDF intake, and ES repair modules. Flask contains the
-Python APIs and serves the production build; it no longer renders Jinja pages.
+The complete internal application lives in `internal/data-workbench`: `web/`
+contains the React 19 client, while `server/` contains the Flask APIs, PDF
+pipeline, and ES migrations. Flask serves the production web build and no
+longer renders Jinja pages.
 
 For normal local use, run `start.bat`. It builds the frontend, starts Flask,
 then opens the workbench at `http://127.0.0.1:5000/`.

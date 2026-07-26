@@ -49,4 +49,5 @@ output/
 
 # Custom rules files (if they contain sensitive paths)
 custom_rules.json
+config.json
 

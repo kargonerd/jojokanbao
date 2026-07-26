@@ -12,7 +12,7 @@
     "dev:reader-search": "cd services/reader-search && python app.py",
     "dev:data-workbench": "pnpm --filter @jojo/data-workbench dev",
     "build:data-workbench": "pnpm --filter @jojo/data-workbench build",
-    "dev:jojo-pipe-api": "cd services/jojo-pipe && python app.py",
+    "dev:jojo-pipe-api": "cd internal/data-workbench/server && python app.py",
     "dev:jojo-pipe": "concurrently -k -n api,web -c red,blue \"pnpm dev:jojo-pipe-api\" \"pnpm dev:data-workbench\"",
     "dev:jiuwen-api": "python services/jiuwen-api/run.py",
     "dev:jiuwen-mobile": "pnpm --filter @jojo/jiuwen-mobile start",

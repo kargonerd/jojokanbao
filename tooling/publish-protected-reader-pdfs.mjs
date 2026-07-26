@@ -7,7 +7,7 @@ const MASK_SEED = 0x4a4f4a4f;
 const PDF_MAGIC = "%PDF-";
 const CACHE_CONTROL = "public, max-age=315360000, immutable";
 const DEFAULT_QPDF = process.env.QPDF_BIN || "qpdf";
-const DEFAULT_PIPE_CONFIG = resolve("services", "jojo-pipe", "config.json");
+const DEFAULT_PIPE_CONFIG = resolve("internal", "data-workbench", "server", "config.json");
 const WORK_DIR = resolve("tmp", "protected-reader-publish");
 
 const COLLECTIONS = {
