@@ -8,9 +8,20 @@ export const MAX_PDF_CANVAS_PIXELS = 32_000_000;
 export const MAX_PDF_CANVAS_DIMENSION = 8_192;
 const MAX_AUTO_DEVICE_PIXEL_RATIO = 2;
 
-interface PdfPageMetrics {
+export interface PdfPageMetrics {
   width: number;
   height: number;
+}
+
+export interface PdfPageReferenceMetrics extends PdfPageMetrics {
+  rotation: number;
+}
+
+interface PdfContentBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
 }
 
 interface PdfPageProps {
@@ -27,6 +38,115 @@ interface PdfPageProps {
   onRendered?: (pageNumber: number) => void;
   onPageMetrics?: (pageNumber: number, metrics: PdfPageMetrics) => void;
   onError?: (pageNumber: number, error: Error) => void;
+}
+
+interface RecordedPdfOperationBounds {
+  length: number;
+  isEmpty: (index: number) => boolean;
+  minX: (index: number) => number;
+  minY: (index: number) => number;
+  maxX: (index: number) => number;
+  maxY: (index: number) => number;
+}
+
+const OVERSIZED_PAGE_WIDTH_RATIO = 1.75;
+const REFERENCE_PAGE_HEIGHT_TOLERANCE = 0.15;
+const CONTENT_LEFT_EDGE_TOLERANCE = 0.08;
+const CONTENT_RIGHT_EDGE_TOLERANCE = 0.08;
+const CONTENT_BOUNDS_MAX_DIMENSION = 512;
+const referencePageMetricsCache = new WeakMap<PDFDocumentProxy, Promise<PdfPageReferenceMetrics | null>>();
+
+function getReferencePageMetrics(document: PDFDocumentProxy): Promise<PdfPageReferenceMetrics | null> {
+  const cached = referencePageMetricsCache.get(document);
+  if (cached) return cached;
+
+  const metrics = document.getPage(1)
+    .then((page) => {
+      const viewport = page.getViewport({ scale: 1 });
+      if (!(viewport.width > 0) || !(viewport.height > 0)) return null;
+      return {
+        width: viewport.width,
+        height: viewport.height,
+        rotation: viewport.rotation,
+      };
+    })
+    .catch(() => null);
+  referencePageMetricsCache.set(document, metrics);
+  return metrics;
+}
+
+function getRecordedContentBounds(page: PDFPageProxy): PdfContentBounds | null {
+  const bounds = page.recordedBBoxes as RecordedPdfOperationBounds | null;
+  if (!bounds || !(bounds.length > 0)) return null;
+
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  for (let index = 0; index < bounds.length; index += 1) {
+    if (bounds.isEmpty(index)) continue;
+    minX = Math.min(minX, bounds.minX(index));
+    minY = Math.min(minY, bounds.minY(index));
+    maxX = Math.max(maxX, bounds.maxX(index));
+    maxY = Math.max(maxY, bounds.maxY(index));
+  }
+
+  if (![minX, minY, maxX, maxY].every(Number.isFinite) || minX >= maxX || minY >= maxY) {
+    return null;
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+export function getOversizedPdfPageCrop({
+  pageWidth,
+  pageHeight,
+  pageRotation,
+  referencePage,
+  contentBounds,
+}: {
+  pageWidth: number;
+  pageHeight: number;
+  pageRotation: number;
+  referencePage?: PdfPageReferenceMetrics | null;
+  contentBounds?: PdfContentBounds | null;
+}): PdfPageMetrics | null {
+  if (!referencePage || !contentBounds || pageRotation % 360 !== referencePage.rotation % 360) return null;
+  if (!(referencePage.width > 0) || !(referencePage.height > 0)) return null;
+
+  const widthRatio = pageWidth / referencePage.width;
+  const heightRatio = pageHeight / referencePage.height;
+  if (
+    widthRatio < OVERSIZED_PAGE_WIDTH_RATIO
+    || Math.abs(heightRatio - 1) > REFERENCE_PAGE_HEIGHT_TOLERANCE
+  ) {
+    return null;
+  }
+
+  const normalizedMinX = Math.max(0, contentBounds.minX);
+  const normalizedMaxX = Math.min(1, contentBounds.maxX);
+  const contentRight = normalizedMaxX * pageWidth;
+  if (
+    normalizedMinX > CONTENT_LEFT_EDGE_TOLERANCE
+    || contentRight > referencePage.width * (1 + CONTENT_RIGHT_EDGE_TOLERANCE)
+  ) {
+    return null;
+  }
+
+  return {
+    width: Math.min(Math.max(referencePage.width, contentRight), pageWidth),
+    height: pageHeight,
+  };
+}
+
+function isPotentiallyOversizedPdfPage(
+  pageMetrics: PdfPageReferenceMetrics,
+  referencePage?: PdfPageReferenceMetrics | null,
+): boolean {
+  if (!referencePage || pageMetrics.rotation % 360 !== referencePage.rotation % 360) return false;
+  if (!(referencePage.width > 0) || !(referencePage.height > 0)) return false;
+  return pageMetrics.width / referencePage.width >= OVERSIZED_PAGE_WIDTH_RATIO
+    && Math.abs(pageMetrics.height / referencePage.height - 1) <= REFERENCE_PAGE_HEIGHT_TOLERANCE;
 }
 
 export function getSafePdfRenderScale({
@@ -86,6 +206,7 @@ export function PdfPage({
   const [rendering, setRendering] = useState(true);
   const [canvasReady, setCanvasReady] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [displayMetrics, setDisplayMetrics] = useState<PdfPageMetrics | null>(null);
   const renderTask = useRef<RenderTask | null>(null);
   const textLayerTask = useRef<{ cancel: () => void } | null>(null);
   const textLayerSelectionCleanup = useRef<(() => void) | null>(null);
@@ -138,14 +259,78 @@ export function PdfPage({
 
     const render = async () => {
       try {
-        page = await document.getPage(pageNumber);
+        const [loadedPage, referencePageMetrics] = await Promise.all([
+          document.getPage(pageNumber),
+          getReferencePageMetrics(document),
+        ]);
+        page = loadedPage;
         if (disposed) return;
 
         const baseViewport = page.getViewport({ scale: 1 });
-        callbacksRef.current.onPageMetrics?.(pageNumber, { width: baseViewport.width, height: baseViewport.height });
+        const pageMetrics: PdfPageReferenceMetrics = {
+          width: baseViewport.width,
+          height: baseViewport.height,
+          rotation: baseViewport.rotation,
+        };
+        let nextDisplayMetrics: PdfPageMetrics = pageMetrics;
+
+        if (isPotentiallyOversizedPdfPage(pageMetrics, referencePageMetrics)) {
+          const analysisScale = Math.min(
+            1,
+            CONTENT_BOUNDS_MAX_DIMENSION / Math.max(baseViewport.width, baseViewport.height, 1),
+          );
+          const analysisViewport = page.getViewport({ scale: analysisScale });
+          const analysisCanvas = window.document.createElement("canvas");
+          analysisCanvas.width = Math.max(1, Math.ceil(analysisViewport.width));
+          analysisCanvas.height = Math.max(1, Math.ceil(analysisViewport.height));
+          const analysisContext = analysisCanvas.getContext("2d");
+          let contentBounds: PdfContentBounds | null = null;
+          let analysisTask: RenderTask | null = null;
+
+          if (analysisContext) {
+            try {
+              analysisTask = page.render({
+                canvas: analysisCanvas,
+                canvasContext: analysisContext,
+                viewport: analysisViewport,
+                recordOperations: true,
+              });
+              renderTask.current = analysisTask;
+              await analysisTask.promise;
+              if (disposed) return;
+              contentBounds = getRecordedContentBounds(page);
+            } catch (error) {
+              if (disposed || (error as { name?: string })?.name === "RenderingCancelledException") return;
+              // Content-bound analysis is an enhancement. If PDF.js cannot
+              // record one page, render its original dimensions instead.
+            } finally {
+              if (renderTask.current === analysisTask) renderTask.current = null;
+              analysisCanvas.width = 0;
+              analysisCanvas.height = 0;
+            }
+          } else {
+            analysisCanvas.width = 0;
+            analysisCanvas.height = 0;
+          }
+
+          nextDisplayMetrics = getOversizedPdfPageCrop({
+            pageWidth: baseViewport.width,
+            pageHeight: baseViewport.height,
+            pageRotation: baseViewport.rotation,
+            referencePage: referencePageMetrics,
+            contentBounds,
+          }) ?? pageMetrics;
+        }
+
+        setDisplayMetrics((previous) => (
+          previous?.width === nextDisplayMetrics.width && previous.height === nextDisplayMetrics.height
+            ? previous
+            : nextDisplayMetrics
+        ));
+        callbacksRef.current.onPageMetrics?.(pageNumber, nextDisplayMetrics);
         const renderScale = getSafePdfRenderScale({
-          pageWidth: baseViewport.width,
-          pageHeight: baseViewport.height,
+          pageWidth: nextDisplayMetrics.width,
+          pageHeight: nextDisplayMetrics.height,
           containerWidth,
           devicePixelRatio: window.devicePixelRatio,
           requestedScale: scale,
@@ -154,8 +339,8 @@ export function PdfPage({
         });
         const viewport = page.getViewport({ scale: renderScale });
         renderCanvas = window.document.createElement("canvas");
-        renderCanvas.width = Math.max(1, Math.floor(viewport.width));
-        renderCanvas.height = Math.max(1, Math.floor(viewport.height));
+        renderCanvas.width = Math.max(1, Math.floor(nextDisplayMetrics.width * renderScale));
+        renderCanvas.height = Math.max(1, Math.floor(nextDisplayMetrics.height * renderScale));
         const context = renderCanvas.getContext("2d");
         if (!context) throw new Error("Canvas 2D context is unavailable");
 
@@ -220,7 +405,9 @@ export function PdfPage({
         if (disposed) return;
 
         const baseViewport = page.getViewport({ scale: 1 });
-        const viewport = page.getViewport({ scale: containerWidth / Math.max(baseViewport.width, 1) });
+        const viewport = page.getViewport({
+          scale: containerWidth / Math.max(displayMetrics?.width ?? baseViewport.width, 1),
+        });
         textLayerTask.current?.cancel();
         textLayerSelectionCleanup.current?.();
         textLayerSelectionCleanup.current = null;
@@ -266,10 +453,10 @@ export function PdfPage({
       textLayerContainer.style.removeProperty("--scale-round-x");
       textLayerContainer.style.removeProperty("--scale-round-y");
     };
-  }, [canvasReady, containerWidth, document, enableTextLayer, pageNumber]);
+  }, [canvasReady, containerWidth, displayMetrics, document, enableTextLayer, pageNumber]);
 
   return (
-    <div ref={containerRef} id={id} data-pdf-page-content className={`relative h-full ${className}`}>
+    <div ref={containerRef} id={id} data-pdf-page-content className={`relative h-full overflow-hidden ${className}`}>
       <canvas ref={canvasRef} className="block w-full h-auto" data-pdf-render-zoom={renderZoom ?? 1} />
       {enableTextLayer ? (
         <div

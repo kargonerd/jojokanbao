@@ -81,6 +81,7 @@ describe("Reader App routes and homepage", () => {
     renderAt("/not-a-reader-route");
     expect(screen.getByRole("heading", { name: "404 Not Found" })).toBeTruthy();
     expect(screen.getByText("前途是光明的，道路是曲折的")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "返回首页" }).getAttribute("href")).toBe("/");
   });
 });
 

@@ -3,7 +3,11 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { PdfViewer } from "../../../packages/pdf-viewer/src/PdfViewer";
-import { getSafePdfRenderScale, MAX_PDF_CANVAS_PIXELS } from "../../../packages/pdf-viewer/src/PdfPage";
+import {
+  getOversizedPdfPageCrop,
+  getSafePdfRenderScale,
+  MAX_PDF_CANVAS_PIXELS,
+} from "../../../packages/pdf-viewer/src/PdfPage";
 
 const textLayerMocks = vi.hoisted(() => ({
   instances: [] as Array<{ container: HTMLElement; viewport: unknown }>,
@@ -352,6 +356,124 @@ describe("PdfViewer demand loading", () => {
     expect(scale).toBeLessThan(10);
   });
 
+  it("crops a double-width page only when recorded content stays inside the reference page", () => {
+    const referencePage = { width: 1_068.8, height: 1_500.8, rotation: 0 };
+    const crop = getOversizedPdfPageCrop({
+      pageWidth: 2_195.72,
+      pageHeight: 1_500.28,
+      pageRotation: 0,
+      referencePage,
+      contentBounds: { minX: 0.01, minY: 0.02, maxX: 0.47, maxY: 0.98 },
+    });
+
+    expect(crop).toEqual({ width: referencePage.width, height: 1_500.28 });
+    expect(getOversizedPdfPageCrop({
+      pageWidth: 2_195.72,
+      pageHeight: 1_500.28,
+      pageRotation: 0,
+      referencePage,
+      contentBounds: { minX: 0.01, minY: 0.02, maxX: 0.98, maxY: 0.98 },
+    })).toBeNull();
+  });
+
+  it("automatically restores a left-anchored double-width page to the reference page size", async () => {
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(300);
+    const referencePage = {
+      getViewport: ({ scale }: { scale: number }) => ({
+        width: 600 * scale,
+        height: 840 * scale,
+        scale,
+        rotation: 0,
+        rawDims: { pageWidth: 600, pageHeight: 840, pageX: 0, pageY: 0 },
+      }),
+    };
+    const recordedBBoxes = {
+      length: 1,
+      isEmpty: () => false,
+      minX: () => 0.01,
+      minY: () => 0.02,
+      maxX: () => 0.47,
+      maxY: () => 0.98,
+    };
+    const oversizedPage = {
+      recordedBBoxes,
+      getViewport: ({ scale }: { scale: number }) => ({
+        width: 1_230 * scale,
+        height: 840 * scale,
+        scale,
+        rotation: 0,
+        rawDims: { pageWidth: 1_230, pageHeight: 840, pageX: 0, pageY: 0 },
+      }),
+      render: vi.fn((_params?: unknown) => ({ promise: Promise.resolve(), cancel: vi.fn() })),
+      streamTextContent: vi.fn(() => new ReadableStream()),
+      cleanup: vi.fn(),
+    };
+    const document = {
+      numPages: 10,
+      getPage: vi.fn((pageNumber: number) => Promise.resolve(
+        pageNumber === 1 ? referencePage : oversizedPage,
+      )),
+    } as unknown as PDFDocumentProxy;
+
+    const view = await renderViewer(document, 10);
+
+    await vi.waitFor(() => {
+      expect(view.host.querySelector<HTMLCanvasElement>("#page-10 canvas")?.width).toBe(300);
+    });
+    const pageSlot = view.host.querySelector<HTMLElement>("#page-10");
+    const canvas = view.host.querySelector<HTMLCanvasElement>("#page-10 canvas");
+    expect(Number(pageSlot?.style.aspectRatio)).toBeCloseTo(600 / 840);
+    expect(canvas?.height).toBe(420);
+    expect(oversizedPage.render).toHaveBeenCalledTimes(2);
+    expect(oversizedPage.render.mock.calls[0]?.[0]).toMatchObject({ recordOperations: true });
+
+    await view.unmount();
+  });
+
+  it("falls back to the original page size when content-bound analysis fails", async () => {
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(300);
+    const referencePage = {
+      getViewport: ({ scale }: { scale: number }) => ({
+        width: 600 * scale,
+        height: 840 * scale,
+        scale,
+        rotation: 0,
+        rawDims: { pageWidth: 600, pageHeight: 840, pageX: 0, pageY: 0 },
+      }),
+    };
+    const oversizedPage = {
+      getViewport: ({ scale }: { scale: number }) => ({
+        width: 1_230 * scale,
+        height: 840 * scale,
+        scale,
+        rotation: 0,
+        rawDims: { pageWidth: 1_230, pageHeight: 840, pageX: 0, pageY: 0 },
+      }),
+      render: vi.fn()
+        .mockReturnValueOnce({ promise: Promise.reject(new Error("recording failed")), cancel: vi.fn() })
+        .mockReturnValueOnce({ promise: Promise.resolve(), cancel: vi.fn() }),
+      streamTextContent: vi.fn(() => new ReadableStream()),
+      cleanup: vi.fn(),
+    };
+    const document = {
+      numPages: 10,
+      getPage: vi.fn((pageNumber: number) => Promise.resolve(
+        pageNumber === 1 ? referencePage : oversizedPage,
+      )),
+    } as unknown as PDFDocumentProxy;
+
+    const view = await renderViewer(document, 10);
+
+    await vi.waitFor(() => {
+      expect(oversizedPage.render).toHaveBeenCalledTimes(2);
+    });
+    expect(Number(view.host.querySelector<HTMLElement>("#page-10")?.style.aspectRatio))
+      .toBeCloseTo(1_230 / 840);
+    expect(view.host.querySelector<HTMLCanvasElement>("#page-10 canvas")?.width).toBe(300);
+
+    await view.unmount();
+  });
+
   it("caps automatic device pixel ratio at two", () => {
     const base = {
       pageWidth: 600,
@@ -503,6 +625,54 @@ describe("PdfViewer demand loading", () => {
     const panMove = dispatchPointer(zoomContent, "pointermove", { pointerId: 1, clientX: 70, clientY: 130 });
     expect(panMove.defaultPrevented).toBe(true);
     expect(scrollContainer.scrollLeft).toBe(50);
+
+    await act(async () => root.unmount());
+    scrollContainer.remove();
+  });
+
+  it("leaves desktop text drags to native selection when zoomed", async () => {
+    const { document } = createDocument(1);
+    const scrollContainer = window.document.createElement("div");
+    const host = window.document.createElement("div");
+    scrollContainer.append(host);
+    window.document.body.append(scrollContainer);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <PdfViewer
+          document={document}
+          zoomEnabled
+          zoom={2}
+          scrollContainerRef={{ current: scrollContainer }}
+        />,
+      );
+    });
+
+    const zoomContent = host.querySelector<HTMLElement>("[data-pdf-zoom-content]")!;
+    const textLayer = host.querySelector<HTMLElement>("[data-pdf-text-layer]")!;
+    const text = window.document.createElement("span");
+    text.textContent = "可框选文字";
+    textLayer.append(text);
+
+    expect(zoomContent.style.userSelect).toBe("");
+    const down = dispatchPointer(text, "pointerdown", {
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 120,
+      clientY: 160,
+    });
+    const move = dispatchPointer(text, "pointermove", {
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 70,
+      clientY: 130,
+    });
+    dispatchPointer(text, "pointerup", { pointerId: 1, pointerType: "mouse", clientX: 70, clientY: 130 });
+
+    expect(down.defaultPrevented).toBe(false);
+    expect(move.defaultPrevented).toBe(false);
+    expect(scrollContainer.scrollLeft).toBe(0);
 
     await act(async () => root.unmount());
     scrollContainer.remove();

@@ -426,8 +426,8 @@ test("mobile PDF slots omit text layers, keep their page ratio, and evict distan
   await expect(page.locator("[data-pdf-viewer]")).toHaveAttribute("data-zoom", "3");
   await expect(page.locator("[data-pdf-viewer]")).toHaveAttribute("data-touch-input", "true");
   expect(await page.locator("[data-pdf-zoom-content]").evaluate((element) => (
-    (element as HTMLElement).style.userSelect
-  ))).toBe("");
+    getComputedStyle(element).userSelect
+  ))).not.toBe("none");
   await expect(page.locator("[data-pdf-text-layer]")).toHaveCount(0);
   await expect(page.locator("[data-pdf-viewer]")).toHaveAttribute("data-render-zoom", "3");
   const upgradedCanvas = page.locator("[data-pdf-page][data-page-state='loaded'] canvas[data-pdf-render-zoom='3']").first();
@@ -533,6 +533,40 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
   await expect(page.locator("[data-pdf-magnifier-lens]")).toHaveCount(0);
   const reader = page.locator("[data-reader-scroll-container]");
   const scrollHeightBeforeZoom = await reader.evaluate((element) => element.scrollHeight);
+  const selectableText = interactionLayer.getByText("Page 1 selectable text", { exact: true });
+  const selectableTextBox = await selectableText.boundingBox();
+  expect(selectableTextBox).not.toBeNull();
+  expect(await page.locator("[data-pdf-zoom-content]").evaluate((element) => (
+    getComputedStyle(element).userSelect
+  ))).not.toBe("none");
+  if (browserName === "firefox") {
+    expect(await selectableText.evaluate((element) => {
+      const pointerDown = new PointerEvent("pointerdown", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        pointerType: "mouse",
+      });
+      element.dispatchEvent(pointerDown);
+      return pointerDown.defaultPrevented;
+    })).toBe(false);
+  } else {
+    await page.mouse.move(selectableTextBox!.x + 2, selectableTextBox!.y + selectableTextBox!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      selectableTextBox!.x + selectableTextBox!.width - 2,
+      selectableTextBox!.y + selectableTextBox!.height / 2,
+      { steps: 5 },
+    );
+    await page.mouse.up();
+    await expect.poll(() => page.evaluate(() => window.getSelection()?.toString() ?? "")).not.toBe("");
+  }
+  await expect(viewer).toHaveAttribute("data-zoom", "1.5");
+  await page.evaluate(() => {
+    window.getSelection()?.removeAllRanges();
+    document.dispatchEvent(new Event("selectionchange"));
+  });
+
 
   await interactionLayer.click({ position: { x: 300, y: 300 } });
   await expect(viewer).toHaveAttribute("data-zoom", "2");
@@ -542,12 +576,32 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
   expect(await reader.evaluate((element) => element.scrollHeight)).toBeGreaterThan(scrollHeightBeforeZoom);
   await expect(page.getByText("正在加载第 1 页")).toHaveCount(0);
 
-  const scrollLeftBefore = await reader.evaluate((element) => element.scrollLeft);
-  await page.mouse.move(800, 400);
+  const horizontalScroll = await reader.evaluate((element) => ({
+    current: element.scrollLeft,
+    maximum: element.scrollWidth - element.clientWidth,
+  }));
+  const panStart = await page.locator("#page-1").evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const xCandidates = [0.8, 0.65, 0.5];
+    const yCandidates = [0.75, 0.6, 0.45];
+    for (const xRatio of xCandidates) {
+      for (const yRatio of yCandidates) {
+        const x = Math.min(window.innerWidth - 24, Math.max(24, rect.left + rect.width * xRatio));
+        const y = Math.min(window.innerHeight - 24, Math.max(24, rect.top + rect.height * yRatio));
+        const target = document.elementFromPoint(x, y);
+        if (target && element.contains(target) && !target.closest("[data-pdf-text-layer] span")) {
+          return { x, y };
+        }
+      }
+    }
+    throw new Error("No blank PDF page area is visible for the pan gesture");
+  });
+  const panDeltaX = horizontalScroll.current >= horizontalScroll.maximum / 2 ? 120 : -120;
+  await page.mouse.move(panStart.x, panStart.y);
   await page.mouse.down();
-  await page.mouse.move(650, 350, { steps: 5 });
+  await page.mouse.move(panStart.x + panDeltaX, panStart.y - 30, { steps: 5 });
   await page.mouse.up();
-  expect(await reader.evaluate((element) => element.scrollLeft)).toBeGreaterThan(scrollLeftBefore);
+  expect(await reader.evaluate((element) => element.scrollLeft)).not.toBe(horizontalScroll.current);
 
   await page.keyboard.down("Control");
   await page.mouse.wheel(0, -100);
