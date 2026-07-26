@@ -14,7 +14,7 @@
     "app:dev": "set PATH=%npm_node_execpath:node.exe=%;%PATH% && node ./dev-runner.mjs app",
     "test:browser:bbox": "node ./test-proofread-pdfjs-alignment.mjs",
     "test:electron:bbox": "node ./test-proofread-electron-alignment.mjs",
-    "verify:bbox": "pnpm test -- src/pages/ProofreadIssuesPage.test.tsx && pnpm run test:browser:bbox && pnpm run test:electron:bbox"
+    "verify:bbox": "pnpm test -- src/press/pages/ProofreadIssuesPage.test.tsx && pnpm run test:browser:bbox && pnpm run test:electron:bbox"
   },
   "dependencies": {
     "@jojo/editorial-preset": "workspace:*",

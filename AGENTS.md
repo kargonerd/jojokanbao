@@ -51,7 +51,8 @@ import { PdfViewer, PdfPage, usePdfDocument } from "@jojo/pdf-viewer";
 ## 文件结构约定
 
 - `apps/web/src/archive/`、`account/`、`rag/`、`olds/` — 统一 Web 的一级业务模块，不再套 `features/`
-- `apps/desktop/` — 统一 Electron 运行时；当前实现 Press，后续桌面能力继续在此扩展
+- `apps/desktop/src/press/` — 当前可运行的 Desktop Press 模块
+- `apps/desktop/src/archive/`、`account/`、`rag/`、`olds/` — Desktop 预留业务模块；接入前不注册路由
 - 业务模块内部可按 `pages/`、`components/`、`stores/`、`api.ts` 组织
 - `packages/*/src/` — 共享代码
 - `packages/*/tests/` — 包测试

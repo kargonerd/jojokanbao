@@ -5,7 +5,7 @@
 1. **共享优先** — 可复用的逻辑和组件提取到 `packages/`，app 层只写业务特有代码
 2. **CSS 驱动设计** — 设计系统是纯 CSS（editorial-preset），不绑定任何框架
 3. **产品边界优先** — Archive、Account、RAG 和 Olds 属于同一个 Web 客户端，不再按功能拆成独立 SPA；未完成模块通过构建期开关分阶段发布
-4. **桌面运行时统一** — Press 是 Desktop 当前的业务能力，不再作为独立 app；后续桌面能力共用 Electron shell、会话和发布流程
+4. **桌面运行时统一** — Desktop 当前运行 Press，并为 Archive、Account、RAG 和 Olds 保留平级模块；它们共用 Electron shell、会话和发布流程
 
 ## 依赖关系
 

@@ -8,7 +8,7 @@ vi.mock("@jojo/pdf-viewer", () => ({
 
 describe("Press App", () => {
   it("smoke test - app module loads", async () => {
-    const mod = await import("../src/App");
+    const mod = await import("../src/press/App");
     expect(mod.App).toBeDefined();
   });
 });

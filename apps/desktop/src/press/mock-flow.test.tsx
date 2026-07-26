@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { RouterProvider } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -32,6 +32,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  delete document.body.dataset.mockVariant;
   vi.restoreAllMocks();
 });
 
@@ -116,7 +117,7 @@ describe('mock workflow routes', () => {
     render(<RouterProvider router={router} />);
 
     expect(await screen.findByRole('heading', { name: '我的项目' })).toBeInTheDocument();
-    expect(document.body.dataset.mockVariant).toBe('c');
+    await waitFor(() => expect(document.body.dataset.mockVariant).toBe('c'));
     expect(screen.getByRole('link', { name: '新建项目' })).toHaveAttribute('href', '/projects/new?variant=c');
     expect(router.state.location.search).toBe('?variant=c');
   });
@@ -127,7 +128,7 @@ describe('mock workflow routes', () => {
     render(<RouterProvider router={router} />);
 
     expect(await screen.findByRole('heading', { name: '我的项目' })).toBeInTheDocument();
-    expect(document.body.dataset.mockVariant).toBe('b');
+    await waitFor(() => expect(document.body.dataset.mockVariant).toBe('b'));
     expect(screen.getByRole('link', { name: '新建项目' })).toHaveAttribute('href', '/projects/new?variant=b');
     expect(screen.getByText('将扫描版 PDF 转换为可编辑、可导出的结构化书籍数据')).toBeInTheDocument();
   });
