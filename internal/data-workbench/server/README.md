@@ -4,6 +4,48 @@ JOJO Pipe is the local PDF intake tool for reader publications. It renames PDFs,
 splits page PDFs, and commits the generated files to a configurable storage
 backend.
 
+## React data workbench
+
+The complete internal application lives in `internal/data-workbench`: `web/`
+contains the React 19 client, while `server/` contains the Flask APIs, PDF
+pipeline, and ES migrations. Flask serves the production web build and no
+longer renders Jinja pages.
+
+For normal local use, run `start.bat`. It builds the frontend, starts Flask,
+then opens the workbench at `http://127.0.0.1:5000/`.
+
+During frontend development, start Flask and Vite together:
+
+```bash
+pnpm dev:jojo-pipe
+```
+
+The Vite development UI is at `http://127.0.0.1:4174/` and proxies `/api` to
+Flask on port 5000. The lower-level `dev:jojo-pipe-api` and
+`dev:data-workbench` commands remain available when only one side needs
+debugging.
+
+## ES repair workbench
+
+Run `python app.py`, then open `http://127.0.0.1:5000/` for the data-workbench
+overview. PDF intake lives at `/pdf`, and ES repair lives at `/es` (the old
+`/es-repair` URL redirects in the React router).
+The ES workbench
+reads `KIBANA_URL`, `ELASTICSEARCH_USERNAME`, and `ELASTICSEARCH_PASSWORD` from
+the repository root `.env`. It uses `aitest-1tk2lxru` by default; set
+`ES_REPAIR_INDEX` to override it.
+The local client defaults `ES_VERIFY_TLS` to `false` because Tencent's public
+Kibana `:5601` endpoint may terminate verified TLS handshakes; set it to `true`
+when the endpoint certificate path works in your environment.
+
+Repairs and removals first create a deterministic JSON migration in
+`es_migrations/`, then use append-only `_create`: a repair appends a complete
+new version and a removal appends a tombstone. Search builds its excluded ID
+set from applied migrations instead of scanning ES revision documents.
+Operator-only fields such as the
+repair reason remain in the migration file and are not indexed in ES. Existing
+documents are never physically overwritten.
+
 ## Storage Backends
 
 Storage is configured in `config.json` under `storage.backends`. Publications

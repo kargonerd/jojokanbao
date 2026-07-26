@@ -9,7 +9,7 @@
 - `jiuwen-api/`：JOJO 旧闻 FastAPI 后端，提供新闻、RSS、来源、批注、评论、合订本任务。
 - `jiuwen-news-reader/`：旧 React 新闻阅读器前端原型；旧 Express 后端已归档到 `references/legacy-node-backends/`。
 - `reader-search/`：来自 `C:\Users\luoxixi\WebstormProjects\web\search` 的 Elasticsearch 搜索服务。
-- `jojo-pipe/`：来自 `C:\Users\luoxixi\WebstormProjects\web\JoJoPipe` 的 PDF 入库/批处理工具。
+PDF 入库、ES 修复和相关管理界面已迁移到 `internal/data-workbench/`。
 - `notebooklm-py/`：来自 `jojo-rag/notebooklm-py` 的 NotebookLM Python 客户端副本。
 
 ## 启动

@@ -1,0 +1,149 @@
+import json
+import sys
+import unittest
+from tempfile import TemporaryDirectory
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from es_repair import active_query, revision_id
+from es_migrations import (
+    apply_migration,
+    create_migration,
+    excluded_document_ids,
+    list_migrations,
+    preview_migration,
+)
+
+
+class RepairLogicTest(unittest.TestCase):
+    def test_revision_id_is_stable_and_content_sensitive(self):
+        doc = {"title": "修复稿", "content": "正文"}
+        self.assertEqual(revision_id("old-id", doc, False), revision_id("old-id", doc, False))
+        self.assertNotEqual(revision_id("old-id", doc, False), revision_id("old-id", {**doc, "content": "新正文"}, False))
+        self.assertNotEqual(revision_id("old-id", doc, False), revision_id("old-id", doc, True))
+
+    def test_active_query_uses_recorded_excluded_ids(self):
+        wrapped = active_query({"match": {"content": "测试"}}, {"b", "a"})
+        self.assertEqual(wrapped["bool"]["must"], [{"match": {"content": "测试"}}])
+        self.assertEqual(wrapped["bool"]["must_not"], [{"ids": {"values": ["a", "b"]}}])
+
+    def test_migration_keeps_reason_local_and_es_payload_clean(self):
+        class FakeClient:
+            config = {"index": "test-index"}
+            calls = []
+
+            def create_revision(self, replaced_document_id, document, *, deleted=False):
+                self.calls.append((replaced_document_id, document, deleted))
+                return {"created": True, "alreadyExists": False, "documentId": "revision-id"}
+
+        with TemporaryDirectory() as temp:
+            directory = Path(temp)
+            migration = create_migration(
+                "old-id",
+                {"title": "新标题", "content": "新正文"},
+                deleted=False,
+                reason="读者反馈错字",
+                index="test-index",
+                directory=directory,
+            )
+            client = FakeClient()
+            applied = apply_migration(migration["id"], client=client, directory=directory)
+
+            self.assertEqual(applied["reason"], "读者反馈错字")
+            self.assertEqual(applied["state"], "applied")
+            self.assertEqual(client.calls, [("old-id", {"title": "新标题", "content": "新正文"}, False)])
+            self.assertNotIn("reason", client.calls[0][1])
+            self.assertEqual(len(list_migrations(directory)), 1)
+
+    def test_preview_is_deterministic_and_does_not_write_a_file(self):
+        with TemporaryDirectory() as temp:
+            directory = Path(temp)
+            first = preview_migration(
+                "old-id",
+                {"title": "新标题", "content": "新正文"},
+                deleted=False,
+                reason="读者反馈错字",
+                index="test-index",
+            )
+            second = preview_migration(
+                "old-id",
+                {"content": "新正文", "title": "新标题"},
+                deleted=False,
+                reason="读者反馈错字",
+                index="test-index",
+            )
+
+            self.assertEqual(first["previewHash"], second["previewHash"])
+            self.assertEqual(first["migration"]["state"], "pending")
+            self.assertEqual(first["esPayload"]["replacedDocumentId"], "old-id")
+            self.assertNotIn("deleted", first["esPayload"])
+            self.assertNotIn("isRevision", first["esPayload"])
+            self.assertEqual(list(directory.iterdir()), [])
+
+    def test_preview_hash_changes_when_reason_or_document_changes(self):
+        base = preview_migration(
+            "old-id",
+            {"title": "标题", "content": "正文"},
+            deleted=False,
+            reason="原因一",
+            index="test-index",
+        )
+        changed_reason = preview_migration(
+            "old-id",
+            {"title": "标题", "content": "正文"},
+            deleted=False,
+            reason="原因二",
+            index="test-index",
+        )
+        changed_document = preview_migration(
+            "old-id",
+            {"title": "标题", "content": "修改后正文"},
+            deleted=False,
+            reason="原因一",
+            index="test-index",
+        )
+
+        self.assertNotEqual(base["previewHash"], changed_reason["previewHash"])
+        self.assertNotEqual(base["previewHash"], changed_document["previewHash"])
+
+    def test_applied_migrations_build_index_scoped_exclusions(self):
+        with TemporaryDirectory() as temp:
+            directory = Path(temp)
+            repair = create_migration(
+                "base-id",
+                {"title": "修复", "content": "正文"},
+                deleted=False,
+                reason="",
+                index="news",
+                directory=directory,
+            )
+            delete = create_migration(
+                repair["id"],
+                {"title": "修复", "content": "正文"},
+                deleted=True,
+                reason="",
+                index="news",
+                directory=directory,
+            )
+            for migration, document_id in (
+                (repair, repair["id"]),
+                (delete, delete["id"]),
+            ):
+                path = directory / f"{migration['id']}.json"
+                migration["state"] = "applied"
+                migration["result"] = {"documentId": document_id}
+                path.write_text(
+                    json.dumps(migration),
+                    encoding="utf-8",
+                )
+
+            self.assertEqual(
+                excluded_document_ids("news", directory),
+                {"base-id", repair["id"], delete["id"]},
+            )
+            self.assertEqual(excluded_document_ids("other", directory), set())
+
+
+if __name__ == "__main__":
+    unittest.main()

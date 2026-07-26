@@ -33,7 +33,7 @@ tooling/     共享 TypeScript / ESLint 配置
 - `jiuwen-api`：FastAPI
 - `jiuwen-news-reader`：旧 React 前端原型；旧 Express 后端已归档到 `references/legacy-node-backends`
 - `reader-search`：Flask + Elasticsearch
-- `jojo-pipe`：Flask / Python 批处理工具
+- `internal/data-workbench`：内部数据工作台（React Web + Flask / Python 批处理）
 - `notebooklm-py`：Python package
 
 这些服务不加入 Turborepo，是为了避免 Python、Expo 等依赖影响当前前端工作区的安装、构建和测试。旧 Node/Nest/Express 后端实现归档到 `references/legacy-node-backends`，只作为迁移对照。

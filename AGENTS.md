@@ -12,6 +12,7 @@ pnpm build            # 构建所有 app（通过 Turborepo）
 pnpm test             # 运行所有测试
 pnpm dev              # 并行启动所有 dev server
 pnpm --filter @jojo/reader dev   # 单独启动 reader
+pnpm dev:jojo-pipe               # 启动内部数据工作台前后端
 ```
 
 ## 代码规范
@@ -52,6 +53,8 @@ import { PdfViewer, PdfPage, usePdfDocument } from "@jojo/pdf-viewer";
 - `apps/*/src/api.ts` — API 层
 - `packages/*/src/` — 共享代码
 - `packages/*/tests/` — 包测试
+- `internal/data-workbench/web/` — 内部数据工作台 React 前端
+- `internal/data-workbench/server/` — 内部数据工作台 Flask 后端与 migration
 
 ## 注意事项
 

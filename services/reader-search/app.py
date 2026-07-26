@@ -1,9 +1,11 @@
 import os
+from pathlib import Path
 from flask import Flask, jsonify, request
 from elasticsearch import Elasticsearch
 import re
 from flask_cors import CORS
 from search_overlay import build_search_query, load_patch_state_file, merge_search_hits
+from migration_exclusions import build_active_query, hit_to_active_result, load_excluded_ids
 
 def create_elasticsearch_client():
   url = os.environ.get('ELASTICSEARCH_URL')
@@ -31,6 +33,10 @@ base_index_name = os.environ.get('ELASTICSEARCH_BASE_INDEX')
 delta_index_name = os.environ.get('ELASTICSEARCH_DELTA_INDEX')
 patch_state_path = os.environ.get('SEARCH_PATCH_STATE_FILE')
 overfetch_multiplier = int(os.environ.get('SEARCH_OVERFETCH_MULTIPLIER', '5'))
+migrations_dir = Path(os.environ.get(
+  'SEARCH_MIGRATIONS_DIR',
+  Path(__file__).resolve().parents[2] / 'internal' / 'data-workbench' / 'server' / 'es_migrations',
+))
         
 IS_SERVERLESS = bool(os.environ.get('SERVERLESS'))
 
@@ -45,7 +51,8 @@ def health():
   return jsonify({
     'status': 'ok',
     'elasticsearch': 'configured' if es else 'not_configured',
-    'overlay': 'enabled' if overlay_enabled else 'disabled'
+    'overlay': 'enabled' if overlay_enabled else 'disabled',
+    'revisionFiltering': 'enabled'
   })
 
 def processKeyword(keyword):
@@ -289,6 +296,10 @@ def search():
       
       if sort_query:
         query['sort'] = sort_query
+      query['query'] = build_active_query(
+        query['query'],
+        load_excluded_ids(migrations_dir, index_name),
+      )
       data = es.search(index=index_name, body=query)
       if not data:
         app.logger.error("search from ES return no data, ret: %s", data)
@@ -316,20 +327,10 @@ def search():
         return jsonify(empty_res)
       results = []
       for hit in hits_list:
-        source = hit.get('_source')
-        if not source:
+        if not hit.get('_source'):
           app.logger.warn("search from ES hit empty, hits list: %s", hits_list)
           continue
-        source.pop('@timestamp', None)
-        highlight = hit.get('highlight')
-        if highlight:
-          title = highlight.get('title')
-          if title and len(title):
-            source['title'] = title[0]
-          content = highlight.get('content')
-          if content and len(content):
-            source['content'] = content[0]
-        results.append(source)
+        results.append(hit_to_active_result(hit))
       return jsonify({'data': {'total': total_num, 'results': results}})
     except Exception as e:
       app.logger.error("search from ES error:", e)

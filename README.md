@@ -22,7 +22,8 @@ services/
   jiuwen-api/           JOJO旧闻 FastAPI 后端
   jiuwen-news-reader/   旧新闻阅读器前端原型；旧 Express 后端已归档
   reader-search/        JOJO看报 Elasticsearch 搜索服务
-  jojo-pipe/            PDF 入库/批处理工具
+internal/
+  data-workbench/       内部数据工作台（web + server）
   notebooklm-py/        NotebookLM Python 客户端 vendored copy
 
 references/
@@ -169,7 +170,7 @@ pnpm protect:reader-pdf encode input.pdf output.pdf
 pnpm protect:reader-pdf encode ./pdf-root --recursive
 
 # publish selected reader issues through qpdf linearization + protection
-# destination comes from services/jojo-pipe/config.json storage settings
+# destination comes from internal/data-workbench/server/config.json storage settings
 pnpm publish:reader-pdf -- --collection rmrb --source D:\PDF\RMRB --issue 19460515 --issue 19460516
 ```
 
