@@ -12,7 +12,9 @@ const auth = vi.hoisted(() => {
       busy: false,
       error: null,
       notice: null,
+      clearFeedback: vi.fn(),
       signIn: vi.fn(),
+      signUp: vi.fn(),
     },
     startAuthSync: vi.fn(() => stopAuthSync),
     stopAuthSync,
@@ -31,14 +33,16 @@ beforeEach(() => {
   auth.state.busy = false;
   auth.state.error = null;
   auth.state.notice = null;
+  auth.state.clearFeedback.mockClear();
   auth.state.signIn.mockReset().mockResolvedValue(undefined);
+  auth.state.signUp.mockReset().mockResolvedValue(true);
   auth.startAuthSync.mockClear();
   auth.stopAuthSync.mockClear();
 });
 
 afterEach(cleanup);
 
-describe("account login", () => {
+describe("account access", () => {
   it("starts and disposes auth synchronization", () => {
     const view = render(<MemoryRouter><AccountLogin /></MemoryRouter>);
 
@@ -66,19 +70,44 @@ describe("account login", () => {
     expect(await screen.findByText("Reader home")).toBeTruthy();
   });
 
-  it("opens and closes the login book without exposing unfinished registration", () => {
+  it("opens login and registration in the same book dialog", () => {
     render(<MemoryRouter><AccountLogin /></MemoryRouter>);
 
     const dialog = document.querySelector<HTMLDialogElement>(".book-login-dialog")!;
     expect(dialog.hasAttribute("open")).toBe(false);
-    expect(screen.queryByRole("button", { name: "注册" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+    fireEvent.click(screen.getByRole("button", { name: "注册" }));
 
     expect(dialog.hasAttribute("open")).toBe(true);
-    expect(screen.getByRole("dialog", { name: "登录" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "注册" })).toBeTruthy();
+    expect(screen.getByLabelText("邀请码")).toBeTruthy();
 
     fireEvent.click(dialog);
     expect(dialog.hasAttribute("open")).toBe(false);
+  });
+
+  it("submits invitation registration and shows the confirmation step", async () => {
+    render(<MemoryRouter><AccountLogin /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole("button", { name: "注册" }));
+    fireEvent.change(screen.getByLabelText("邀请码"), {
+      target: { value: " JOJO-ABCD-EFGH-IJKL " },
+    });
+    fireEvent.change(screen.getByLabelText("邮箱"), {
+      target: { value: " reader@example.com " },
+    });
+    fireEvent.change(screen.getByLabelText("密码"), {
+      target: { value: "strong-password" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "注册账号" }));
+
+    await waitFor(() => expect(auth.state.signUp).toHaveBeenCalledWith({
+      invitationCode: "JOJO-ABCD-EFGH-IJKL",
+      email: "reader@example.com",
+      password: "strong-password",
+      emailRedirectTo: "http://localhost:3000/account",
+    }));
+    expect(await screen.findByText("请检查邮箱")).toBeTruthy();
+    expect(screen.getByText(/reader@example.com/)).toBeTruthy();
   });
 });

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { startAuthSync, useAuthStore } from "./auth";
 import { LoadingPage } from "./components/LoadingPage";
-import { LoginPage } from "./pages/LoginPage";
+import { AccountPage } from "./pages/AccountPage";
 import "./styles.css";
 
 export default function AccountLogin() {
@@ -13,5 +13,5 @@ export default function AccountLogin() {
     return <LoadingPage />;
   }
 
-  return <LoginPage />;
+  return <AccountPage />;
 }
