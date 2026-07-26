@@ -839,6 +839,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
               value={date}
               onChange={(ds) => navigate(`/${name}/${ds}`)}
               disabledDate={config?.disabledDate}
+              unavailableLabel="暂无该期"
               className="min-w-0 flex-1 sm:flex-none"
             />
           </div>
