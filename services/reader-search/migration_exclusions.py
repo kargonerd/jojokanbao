@@ -1,4 +1,4 @@
-"""Git-backed append-only revision filtering for Reader search."""
+"""Build Reader Search document exclusions from reviewed migrations."""
 from __future__ import annotations
 
 import json

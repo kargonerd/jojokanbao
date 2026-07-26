@@ -5,7 +5,7 @@ from elasticsearch import Elasticsearch
 import re
 from flask_cors import CORS
 from search_overlay import build_search_query, load_patch_state_file, merge_search_hits
-from revision_chain import build_active_query, hit_to_active_result, load_excluded_ids
+from migration_exclusions import build_active_query, hit_to_active_result, load_excluded_ids
 
 def create_elasticsearch_client():
   url = os.environ.get('ELASTICSEARCH_URL')

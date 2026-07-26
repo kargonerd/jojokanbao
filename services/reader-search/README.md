@@ -14,6 +14,24 @@ $env:ELASTICSEARCH_INDEX="jojo-67f10bu8"
 python app.py
 ```
 
+### Migration exclusions
+
+Reader Search supports append-only repairs without Elasticsearch update/delete
+operations. It reads reviewed migration JSON files from
+`internal/data-workbench/server/es_migrations/` and adds one `must_not.ids`
+filter to each search request:
+
+- a repair excludes the superseded document ID;
+- a deletion excludes the superseded document ID and its new tombstone ID.
+
+Only applied migrations for the current Elasticsearch index are used. This
+keeps filtering before pagination without an extra ES revision scan. When this
+service is deployed separately, point it at the deployed migration directory:
+
+```powershell
+$env:SEARCH_MIGRATIONS_DIR="C:\path\to\reviewed\migrations"
+```
+
 ## Overlay Search Test
 
 Create a small base/delta test index from the local RMRB source data:

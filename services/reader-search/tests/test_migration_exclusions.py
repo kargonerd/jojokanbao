@@ -8,14 +8,14 @@ from pathlib import Path
 SERVICE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SERVICE_DIR))
 
-from revision_chain import (  # noqa: E402
+from migration_exclusions import (  # noqa: E402
     build_active_query,
     hit_to_active_result,
     load_excluded_ids,
 )
 
 
-class RevisionChainTests(unittest.TestCase):
+class MigrationExclusionsTests(unittest.TestCase):
     def test_active_query_uses_one_ids_filter(self):
         query = build_active_query(
             {"query_string": {"query": "测试"}},
