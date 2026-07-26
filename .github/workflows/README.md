@@ -52,7 +52,7 @@ participate in CI but do not need a deployment workflow.
 Scheduled and manually operated data tasks remain independent workflows:
 
 - `bloomberg-archive.yml`
-- `purge-reader-pdf-cache.yml`
+- `purge-archive-pdf-cache.yml`
 - `sync-rmrb.yml`
 
 Do not add a feature-specific CI workflow. Add a package script or a focused

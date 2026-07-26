@@ -9,11 +9,11 @@ const DEFAULT_RANGE_CHUNK_SIZE = 65536;
 
 function usage() {
   console.log(`Usage:
-  pnpm verify:reader-pdf <file-or-url> [file-or-url...]
+  pnpm verify:archive-pdf <file-or-url> [file-or-url...]
 
 Options:
   --allow-plain              Report plain PDFs as pass instead of failure.
-  --range-chunk-size <bytes> Override the reader-style range chunk size.
+  --range-chunk-size <bytes> Override the Archive range chunk size.
 
 Checks:
   - protected bytes do not start with %PDF- and cannot be opened directly by pdf.js

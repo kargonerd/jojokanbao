@@ -40,7 +40,7 @@ packages/
 tooling/
   eslint-config/      共享 ESLint 配置
   tsconfig/           共享 TypeScript 配置
-  reader-pdf/         Reader PDF 处理、发布和 CDN 运维工具
+  archive-pdf/        Archive PDF 处理、发布和 CDN 运维工具
 ```
 
 ## 快速开始
@@ -168,39 +168,39 @@ git push origin reader-v20260628
 
 The `Deploy unified web` workflow builds `@jojo/web` and uploads `apps/web/dist/` to EdgeOne Makers. It is also available through manual `workflow_dispatch` in GitHub Actions. Existing `reader-*` release tags remain supported to avoid changing the current production release procedure during this refactor.
 
-## Reader PDF protection
+## Archive PDF protection
 
-Reader can load JOJO-protected PDF bytes through HTTP Range requests while crawlers that fetch the raw `.pdf` object receive bytes that do not open as a normal PDF.
+Archive can load JOJO-protected PDF bytes through HTTP Range requests while crawlers that fetch the raw `.pdf` object receive bytes that do not open as a normal PDF.
 
 Encode local PDF files before uploading them back to the reader CDN/object storage:
 
 ```bash
 # one file, write to another path
-pnpm protect:reader-pdf encode input.pdf output.pdf
+pnpm protect:archive-pdf encode input.pdf output.pdf
 
 # directory, update *.pdf in place
-pnpm protect:reader-pdf encode ./pdf-root --recursive
+pnpm protect:archive-pdf encode ./pdf-root --recursive
 
 # publish selected reader issues through qpdf linearization + protection
 # destination comes from internal/data-workbench/server/config.json storage settings
-pnpm publish:reader-pdf -- --collection rmrb --source D:\PDF\RMRB --issue 19460515 --issue 19460516
+pnpm publish:archive-pdf -- --collection rmrb --source D:\PDF\RMRB --issue 19460515 --issue 19460516
 ```
 
 Verify local files or published URLs after upload:
 
 ```bash
-pnpm verify:reader-pdf ./pdf-root/RMRB/1946/19460515.pdf
-pnpm verify:reader-pdf https://blacknews.jojokanbao.cn/RMRB/1946/19460515.pdf
+pnpm verify:archive-pdf ./pdf-root/RMRB/1946/19460515.pdf
+pnpm verify:archive-pdf https://blacknews.jojokanbao.cn/RMRB/1946/19460515.pdf
 ```
 
 If `blacknews.jojokanbao.cn` still reports `state=plain` after the object storage copy is verified as protected, clear EdgeOne URL cache and verify again:
 
 ```bash
-pnpm purge:reader-pdf -- --zone-id <edgeone-zone-id> https://blacknews.jojokanbao.cn/RMRB/1946/19460515.pdf
-pnpm verify:reader-pdf https://blacknews.jojokanbao.cn/RMRB/1946/19460515.pdf
+pnpm purge:archive-pdf -- --zone-id <edgeone-zone-id> https://blacknews.jojokanbao.cn/RMRB/1946/19460515.pdf
+pnpm verify:archive-pdf https://blacknews.jojokanbao.cn/RMRB/1946/19460515.pdf
 
 # or purge and poll until verification passes
-pnpm finalize:reader-pdf -- --zone-id <edgeone-zone-id> https://blacknews.jojokanbao.cn/RMRB/1946/19460515.pdf
+pnpm finalize:archive-pdf -- --zone-id <edgeone-zone-id> https://blacknews.jojokanbao.cn/RMRB/1946/19460515.pdf
 ```
 
 Expected protected output is `PASS ... state=protected range=206 direct=fails decodedPages=N` for URLs. If the verifier reports `state=plain`, the object is still an ordinary PDF and must be encoded before publishing.

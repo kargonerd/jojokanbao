@@ -151,7 +151,7 @@ const samples = [
   { name: "large newspaper-like page", text: "RangeDaily", padding: 4096 },
 ];
 
-describe("protected reader PDFs", () => {
+describe("protected Archive PDFs", () => {
   it("cancels the initial range request before a transport exists", async () => {
     const { resolvePdfSource } = await loadProtectionModule();
     let receivedSignal: AbortSignal | null | undefined;

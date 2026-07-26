@@ -1,17 +1,17 @@
-# Reader PDF tooling
+# Archive PDF tooling
 
-Repository-level tools for preparing, publishing, and verifying protected Reader
+Repository-level tools for preparing, publishing, and verifying protected Archive
 PDF files. They operate across the content pipeline, object storage, EdgeOne,
-and the Web reader, so they are not owned by a single app or service.
+and the Archive Web module, so they are not owned by a single app or service.
 
 Use the stable root commands rather than invoking files by path:
 
 ```bash
-pnpm protect:reader-pdf
-pnpm verify:reader-pdf
-pnpm publish:reader-pdf
-pnpm purge:reader-pdf
-pnpm finalize:reader-pdf
+pnpm protect:archive-pdf
+pnpm verify:archive-pdf
+pnpm publish:archive-pdf
+pnpm purge:archive-pdf
+pnpm finalize:archive-pdf
 pnpm sync:rmrb
 ```
 

@@ -32,11 +32,11 @@ function hasPdfMagic(bytes) {
 
 function usage() {
   console.log(`Usage:
-  pnpm protect:reader-pdf encode <input.pdf|dir> [output.pdf] [--recursive] [--force]
-  pnpm protect:reader-pdf decode <input.pdf|dir> [output.pdf] [--recursive] [--force]
+  pnpm protect:archive-pdf encode <input.pdf|dir> [output.pdf] [--recursive] [--force]
+  pnpm protect:archive-pdf decode <input.pdf|dir> [output.pdf] [--recursive] [--force]
 
 Notes:
-  - encode makes a CDN-served .pdf unreadable until the reader decodes byte ranges.
+  - encode makes a CDN-served .pdf unreadable until Archive decodes byte ranges.
   - decode reverses the same operation.
   - With a directory input, files are updated in place and only *.pdf files are processed.
   - The operation preserves file length, so HTTP Range offsets remain valid.

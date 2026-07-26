@@ -6,7 +6,7 @@ const DEFAULT_TIMEOUT_SECONDS = 180;
 
 function usage() {
   console.log(`Usage:
-  pnpm finalize:reader-pdf -- --zone-id zone-xxx <url> [url...]
+  pnpm finalize:archive-pdf -- --zone-id zone-xxx <url> [url...]
 
 Options:
   --interval <seconds>   Verification polling interval. Default: ${DEFAULT_INTERVAL_SECONDS}
@@ -14,7 +14,7 @@ Options:
   --no-purge             Skip EdgeOne purge and only poll verifier.
   --zone-id <zone-id>    EdgeOne zone id. Defaults to EDGEONE_ZONE_ID.
 
-This runs EdgeOne URL purge, then polls the Reader PDF verifier until all URLs
+This runs EdgeOne URL purge, then polls the Archive PDF verifier until all URLs
 report PASS state=protected range=206 direct=fails.
 `);
 }
@@ -75,7 +75,7 @@ async function main() {
 
   if (purge) {
     const purgeResult = run("node", [
-      "tooling/reader-pdf/purge-cache.mjs",
+      "tooling/archive-pdf/purge-cache.mjs",
       "--zone-id",
       zoneId,
       ...urls,
@@ -90,7 +90,7 @@ async function main() {
   let attempt = 1;
   while (Date.now() <= deadline) {
     console.log(`Verify attempt ${attempt}`);
-    const verifyResult = run("node", ["tooling/reader-pdf/verify.mjs", ...urls]);
+    const verifyResult = run("node", ["tooling/archive-pdf/verify.mjs", ...urls]);
     if (verifyResult.status === 0) return;
     attempt += 1;
     if (Date.now() + interval * 1000 > deadline) break;

@@ -1,4 +1,4 @@
-name: Purge reader PDF cache
+name: Purge Archive PDF cache
 
 on:
   workflow_dispatch:
@@ -44,7 +44,7 @@ jobs:
             targets+=("https://blacknews.jojokanbao.cn/${collection}/")
           done
 
-          node tooling/reader-pdf/purge-cache.mjs \
+          node tooling/archive-pdf/purge-cache.mjs \
             --type purge_prefix \
             --method delete \
             "${targets[@]}"

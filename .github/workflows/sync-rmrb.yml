@@ -55,7 +55,7 @@ jobs:
           if [ "${{ inputs.force }}" = "true" ]; then
             args+=(--force)
           fi
-          python tooling/reader-pdf/sync_rmrb.py "${args[@]}"
+          python tooling/archive-pdf/sync_rmrb.py "${args[@]}"
 
       - name: Purge overwritten PDF from EdgeOne and verify
         if: ${{ inputs.force }}
@@ -67,7 +67,7 @@ jobs:
           year="$sync_date"
           year="${year:0:4}"
           url="https://blacknews.jojokanbao.cn/RMRB/${year}/${sync_date}.pdf"
-          node tooling/reader-pdf/purge-cache.mjs "$url"
+          node tooling/archive-pdf/purge-cache.mjs "$url"
 
           for attempt in {1..18}; do
             rm -f /tmp/rmrb-probe.pdf /tmp/rmrb-probe.decoded.pdf /tmp/rmrb-headers
@@ -79,7 +79,7 @@ jobs:
               "$url" \
               && grep -Eq '^HTTP/[^ ]+ 206' /tmp/rmrb-headers; then
               if [ "$(head -c 5 /tmp/rmrb-probe.pdf)" != "%PDF-" ] \
-                && node tooling/reader-pdf/protect.mjs decode /tmp/rmrb-probe.pdf /tmp/rmrb-probe.decoded.pdf \
+                && node tooling/archive-pdf/protect.mjs decode /tmp/rmrb-probe.pdf /tmp/rmrb-probe.decoded.pdf \
                 && [ "$(head -c 5 /tmp/rmrb-probe.decoded.pdf)" = "%PDF-" ]; then
                 echo "Public URL serves protected byte ranges."
                 exit 0

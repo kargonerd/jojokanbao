@@ -8,7 +8,7 @@ const PDF_MAGIC = "%PDF-";
 const CACHE_CONTROL = "public, max-age=315360000, immutable";
 const DEFAULT_QPDF = process.env.QPDF_BIN || "qpdf";
 const DEFAULT_PIPE_CONFIG = resolve("internal", "data-workbench", "server", "config.json");
-const WORK_DIR = resolve("tmp", "protected-reader-publish");
+const WORK_DIR = resolve("tmp", "protected-archive-publish");
 
 const COLLECTIONS = {
   rmrb: { pubCode: "RMRB", idPattern: /^\d{8}$/ },
@@ -20,7 +20,7 @@ const COLLECTIONS = {
 
 function usage() {
   console.log(`Usage:
-  pnpm publish:reader-pdf -- --collection rmrb --source <local-root> --issue 19460515
+  pnpm publish:archive-pdf -- --collection rmrb --source <local-root> --issue 19460515
 
 Options:
   --collection <name>       One of: ${Object.keys(COLLECTIONS).join(", ")}
@@ -282,7 +282,7 @@ async function prepareOne(args, collection, sourceRoot, storage, issue) {
   }
   await writeFile(protectedPdf, applyMask(bytes));
 
-  run(["node", "tooling/reader-pdf/verify.mjs", protectedPdf]);
+  run(["node", "tooling/archive-pdf/verify.mjs", protectedPdf]);
   return {
     issue,
     local: protectedPdf,

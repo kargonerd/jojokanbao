@@ -125,7 +125,7 @@ beforeEach(() => {
   });
   Object.defineProperty(URL, "createObjectURL", {
     configurable: true,
-    value: vi.fn(() => "blob:reader-pdf"),
+    value: vi.fn(() => "blob:archive-pdf"),
   });
   Object.defineProperty(URL, "revokeObjectURL", {
     configurable: true,
@@ -551,8 +551,8 @@ describe("ReaderPage toolbar interactions", () => {
       expect.objectContaining({ onDownloadProgress: expect.any(Function) }),
     ));
     expect(URL.createObjectURL).toHaveBeenCalledWith(expect.objectContaining({ type: "application/pdf" }));
-    expect(clickedDownload).toEqual({ href: "blob:reader-pdf", download: "rmrb-19761009.pdf" });
-    await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:reader-pdf"));
+    expect(clickedDownload).toEqual({ href: "blob:archive-pdf", download: "rmrb-19761009.pdf" });
+    await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:archive-pdf"));
   });
 
   it("prevents duplicate downloads and surfaces a download error", async () => {
