@@ -13,6 +13,7 @@ pnpm test             # 运行所有测试
 pnpm dev              # 并行启动所有 dev server
 pnpm --filter @jojo/web dev      # 单独启动统一 Web
 pnpm dev:jojo-pipe               # 启动内部数据工作台前后端
+pnpm dev:desktop      # 启动 Desktop Electron 客户端
 pnpm dev:rag-backend  # 启动 RAG Python 后端
 pnpm dev:jiuwen-api   # 启动现有旧闻 Python 后端
 ```
@@ -50,6 +51,7 @@ import { PdfViewer, PdfPage, usePdfDocument } from "@jojo/pdf-viewer";
 ## 文件结构约定
 
 - `apps/web/src/archive/`、`account/`、`rag/`、`olds/` — 统一 Web 的一级业务模块，不再套 `features/`
+- `apps/desktop/` — 统一 Electron 运行时；当前实现 Press，后续桌面能力继续在此扩展
 - 业务模块内部可按 `pages/`、`components/`、`stores/`、`api.ts` 组织
 - `packages/*/src/` — 共享代码
 - `packages/*/tests/` — 包测试

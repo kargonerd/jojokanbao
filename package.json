@@ -10,6 +10,7 @@
     "verify:build": "turbo verify:build",
     "lint": "turbo lint",
     "dev:rag-backend": "cd services/rag-backend && python run_simple.py",
+    "dev:desktop": "pnpm --filter @jojo/desktop app:dev",
     "dev:press-engine": "cd services/press-engine && python -m uvicorn jojo_press.app:app --host 127.0.0.1 --port 8765 --reload",
     "dev:reader-search": "cd services/reader-search && python app.py",
     "dev:data-workbench": "pnpm --filter @jojo/data-workbench dev",

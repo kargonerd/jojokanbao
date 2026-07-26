@@ -23,6 +23,88 @@ importers:
         specifier: ^2.4.0
         version: 2.9.14
 
+  apps/desktop:
+    dependencies:
+      '@jojo/editorial-preset':
+        specifier: workspace:*
+        version: link:../../packages/editorial-preset
+      '@jojo/pdf-viewer':
+        specifier: workspace:*
+        version: link:../../packages/pdf-viewer
+      '@jojo/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      dotenv:
+        specifier: ^17.4.0
+        version: 17.4.2
+      pdfjs-dist:
+        specifier: ^5.7.0
+        version: 5.7.284(patch_hash=zahbskxuqcrzag4gobt5x7k26i)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.6(react@19.2.6)
+      react-router-dom:
+        specifier: ^7.1.0
+        version: 7.15.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+    devDependencies:
+      '@jojo/tsconfig':
+        specifier: workspace:*
+        version: link:../../tooling/tsconfig
+      '@playwright/test':
+        specifier: 1.60.0
+        version: 1.60.0
+      '@tailwindcss/vite':
+        specifier: ^4.3.0
+        version: 4.3.0(vite@6.4.2(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
+      '@testing-library/jest-dom':
+        specifier: ^6.6.0
+        version: 6.9.1
+      '@testing-library/react':
+        specifier: ^16.3.0
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.9.3
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.15
+      '@types/react-dom':
+        specifier: ^19.0.0
+        version: 19.2.3(@types/react@19.2.15)
+      '@vitejs/plugin-react':
+        specifier: ^4.3.0
+        version: 4.7.0(vite@6.4.2(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
+      electron:
+        specifier: ^35.1.0
+        version: 35.7.5
+      jsdom:
+        specifier: ^26.0.0
+        version: 26.1.0
+      pdf2pic:
+        specifier: ^3.2.0
+        version: 3.2.0
+      tailwindcss:
+        specifier: ^4.3.0
+        version: 4.3.0
+      ts-node:
+        specifier: ^10.9.2
+        version: 10.9.2(@types/node@25.9.3)(typescript@5.9.3)
+      tsx:
+        specifier: ^4.21.0
+        version: 4.22.4
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vite:
+        specifier: ^6.3.0
+        version: 6.4.2(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.9.3)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)
+
   apps/homepage:
     dependencies:
       '@astrojs/rss':
@@ -87,88 +169,6 @@ importers:
       typescript:
         specifier: ~5.9.2
         version: 5.9.3
-
-  apps/press:
-    dependencies:
-      '@jojo/editorial-preset':
-        specifier: workspace:*
-        version: link:../../packages/editorial-preset
-      '@jojo/pdf-viewer':
-        specifier: workspace:*
-        version: link:../../packages/pdf-viewer
-      '@jojo/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
-      dotenv:
-        specifier: ^17.4.0
-        version: 17.4.2
-      pdfjs-dist:
-        specifier: ^5.7.0
-        version: 5.7.284(patch_hash=zahbskxuqcrzag4gobt5x7k26i)
-      react:
-        specifier: ^19.0.0
-        version: 19.2.6
-      react-dom:
-        specifier: ^19.0.0
-        version: 19.2.6(react@19.2.6)
-      react-router-dom:
-        specifier: ^7.1.0
-        version: 7.15.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-    devDependencies:
-      '@jojo/tsconfig':
-        specifier: workspace:*
-        version: link:../../tooling/tsconfig
-      '@tailwindcss/vite':
-        specifier: ^4.3.0
-        version: 4.3.0(vite@6.4.2(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
-      '@testing-library/jest-dom':
-        specifier: ^6.6.0
-        version: 6.9.1
-      '@testing-library/react':
-        specifier: ^16.3.0
-        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-      '@types/node':
-        specifier: ^25.6.0
-        version: 25.9.3
-      '@types/react':
-        specifier: ^19.0.0
-        version: 19.2.15
-      '@types/react-dom':
-        specifier: ^19.0.0
-        version: 19.2.3(@types/react@19.2.15)
-      '@vitejs/plugin-react':
-        specifier: ^4.3.0
-        version: 4.7.0(vite@6.4.2(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
-      electron:
-        specifier: ^35.1.0
-        version: 35.7.5
-      jsdom:
-        specifier: ^26.0.0
-        version: 26.1.0
-      pdf2pic:
-        specifier: ^3.2.0
-        version: 3.2.0
-      playwright:
-        specifier: ^1.59.1
-        version: 1.60.0
-      tailwindcss:
-        specifier: ^4.3.0
-        version: 4.3.0
-      ts-node:
-        specifier: ^10.9.2
-        version: 10.9.2(@types/node@25.9.3)(typescript@5.9.3)
-      tsx:
-        specifier: ^4.21.0
-        version: 4.22.4
-      typescript:
-        specifier: ^5.7.0
-        version: 5.9.3
-      vite:
-        specifier: ^6.3.0
-        version: 6.4.2(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)
-      vitest:
-        specifier: ^3.0.0
-        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.9.3)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)
 
   apps/web:
     dependencies:

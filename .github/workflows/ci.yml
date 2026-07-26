@@ -22,6 +22,7 @@ jobs:
       all_node: ${{ steps.filter.outputs.all_node }}
       base_sha: ${{ steps.filter.outputs.base_sha }}
       database: ${{ steps.filter.outputs.database }}
+      desktop_e2e: ${{ steps.filter.outputs.desktop_e2e }}
       head_sha: ${{ steps.filter.outputs.head_sha }}
       homepage_external: ${{ steps.filter.outputs.homepage_external }}
       node: ${{ steps.filter.outputs.node }}
@@ -70,6 +71,7 @@ jobs:
 
           write_flag node '^(apps/|packages/|tooling/|patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$)'
           write_flag all_node '^(\.github/workflows/ci\.yml$|patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$)'
+          write_flag desktop_e2e '^(apps/desktop/|packages/(editorial-preset|pdf-viewer|ui)/|tooling/tsconfig/|patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/ci\.yml$)'
           write_flag web_e2e '^(apps/web/|packages/(auth|editorial-preset|pdf-viewer|ui)/|tooling/tsconfig/|patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(ci|web-deploy)\.yml$)'
           write_flag homepage_external '^(blog/|\.github/workflows/homepage-deploy\.yml$)'
           write_flag database '^(supabase/|\.github/workflows/ci\.yml$)'
@@ -125,6 +127,26 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @jojo/web exec playwright install --with-deps chromium
       - run: pnpm --filter @jojo/web exec playwright test
+
+  desktop-e2e:
+    name: Desktop renderer tests
+    needs: changes
+    if: needs.changes.outputs.desktop_e2e == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.11.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @jojo/desktop exec playwright install --with-deps chromium
+      - run: pnpm --filter @jojo/desktop test:e2e
 
   web-cross-browser:
     name: Web ${{ matrix.browser }}
@@ -304,6 +326,7 @@ jobs:
     if: always()
     needs:
       - changes
+      - desktop-e2e
       - node
       - web-e2e
       - web-cross-browser

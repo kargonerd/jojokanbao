@@ -9,6 +9,7 @@ the environments that need different runners or dependencies:
 
 - pnpm/Turborepo workspaces
 - Web browser tests
+- Desktop renderer browser tests
 - root-level Homepage content
 - Supabase migrations and the shared Auth contract
 - the existing Olds Python test and archive-manifest checks
@@ -42,8 +43,9 @@ external state:
 - `homepage-deploy.yml` publishes the Homepage
 - `web-deploy.yml` publishes the unified Web client
 
-Future desktop and mobile releases should use their own release workflows.
-Internal local tools participate in CI but do not need a deployment workflow.
+The existing Desktop runtime and the future Mobile runtime should use their
+own release workflows when packaging is implemented. Internal local tools
+participate in CI but do not need a deployment workflow.
 
 ## Maintenance
 

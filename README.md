@@ -11,7 +11,7 @@ blog/
 apps/
   homepage/      博客静态站点渲染器 (Astro 5)
   web/           统一 Web 客户端：Archive + Account + RAG + Olds (Vite + React 19)
-  press/         PDF 校对工具桌面端 (Electron + Vite + React 19)
+  desktop/       统一桌面客户端；当前包含 Press (Electron + Vite + React 19)
   jiuwen-mobile/ 当前移动端原型，后续扩展为统一 Mobile 客户端 (Expo + React Native)
 
 services/
@@ -59,7 +59,7 @@ pnpm test
 # 单独开发某个 app
 pnpm --filter @jojo/homepage dev
 pnpm --filter @jojo/web dev
-pnpm --filter @jojo/press dev
+pnpm dev:desktop
 pnpm dev:jiuwen-mobile
 
 # 后端/服务（需先按各 service README 安装依赖）

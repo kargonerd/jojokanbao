@@ -5,13 +5,14 @@
 1. **共享优先** — 可复用的逻辑和组件提取到 `packages/`，app 层只写业务特有代码
 2. **CSS 驱动设计** — 设计系统是纯 CSS（editorial-preset），不绑定任何框架
 3. **产品边界优先** — Archive、Account、RAG 和 Olds 属于同一个 Web 客户端，不再按功能拆成独立 SPA；未完成模块通过构建期开关分阶段发布
+4. **桌面运行时统一** — Press 是 Desktop 当前的业务能力，不再作为独立 app；后续桌面能力共用 Electron shell、会话和发布流程
 
 ## 依赖关系
 
 ```
 apps/homepage ──→ Astro 静态博客
 apps/web     ──→ @jojo/auth + @jojo/ui + @jojo/pdf-viewer + @jojo/editorial-preset
-apps/press   ──→ @jojo/ui + @jojo/pdf-viewer + @jojo/editorial-preset
+apps/desktop ──→ @jojo/ui + @jojo/pdf-viewer + @jojo/editorial-preset
 apps/jiuwen-mobile ─→ Expo / React Native
 ```
 
@@ -74,4 +75,4 @@ Pull request 统一进入 `.github/workflows/ci.yml`。pnpm workspace 使用 Tur
 |-----|---------|
 | homepage | `jojokanbao.cn` 的 Astro 静态博客，保持独立部署 |
 | web | 部署到 `reader.jojokanbao.cn` 的统一 Web 客户端；当前仅开放 Archive，RAG / Olds 待 rollout |
-| press | Electron 打包分发 |
+| desktop | 统一 Electron 客户端；当前包含 Press，后续能力共用同一运行时和发布流程 |

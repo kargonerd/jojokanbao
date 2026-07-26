@@ -1,5 +1,5 @@
 {
-  "name": "@jojo/press",
+  "name": "@jojo/desktop",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,6 +7,7 @@
     "dev": "vite --host 127.0.0.1 --port 4173",
     "build": "vite build",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit",
     "electron": "set PATH=%npm_node_execpath:node.exe=%;%PATH% && node ./dev-runner.mjs electron",
     "electron:dev": "set PATH=%npm_node_execpath:node.exe=%;%PATH% && node ./dev-runner.mjs electron",
@@ -27,6 +28,7 @@
   },
   "devDependencies": {
     "@jojo/tsconfig": "workspace:*",
+    "@playwright/test": "1.60.0",
     "@tailwindcss/vite": "^4.3.0",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.3.0",
@@ -37,7 +39,6 @@
     "electron": "^35.1.0",
     "jsdom": "^26.0.0",
     "pdf2pic": "^3.2.0",
-    "playwright": "^1.59.1",
     "tailwindcss": "^4.3.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
