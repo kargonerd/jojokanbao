@@ -13,6 +13,7 @@ import { PageHeader } from "../src/PageHeader";
 import { Panel } from "../src/Panel";
 import { Toolbar } from "../src/Toolbar";
 import { NavBar } from "../src/NavBar";
+import { Modal } from "../src/Modal";
 
 describe("Button", () => {
   it("renders with primary variant by default", () => {
@@ -31,6 +32,22 @@ describe("Button", () => {
     render(<Button onClick={() => { clicked = true; }}>Go</Button>);
     fireEvent.click(screen.getByText("Go"));
     expect(clicked).toBe(true);
+  });
+});
+
+describe("Modal", () => {
+  it("supports viewport-safe wide content", () => {
+    render(
+      <Modal open size="wide" onClose={() => undefined}>
+        <div>Wide audit content</div>
+      </Modal>,
+    );
+    expect(screen.getByText("Wide audit content").parentElement?.className).toContain(
+      "w-[1120px]",
+    );
+    expect(screen.getByText("Wide audit content").parentElement?.className).toContain(
+      "max-w-full",
+    );
   });
 });
 

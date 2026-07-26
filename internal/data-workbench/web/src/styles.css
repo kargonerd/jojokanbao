@@ -638,6 +638,16 @@ button {
   display: flex;
   gap: 10px;
 }
+.button-row .delete-action {
+  color: #70413c;
+  border-color: #b99b96;
+  background: #fff;
+}
+.button-row .delete-action:hover:not(:disabled) {
+  color: var(--color-red);
+  border-color: var(--color-red);
+  background: #f7eeeb;
+}
 .notice {
   margin: 0;
   padding: 12px;
@@ -709,8 +719,8 @@ button {
   gap: 10px;
 }
 .migration-preview-dialog {
-  width: min(1120px, 92vw);
-  max-height: 90vh;
+  width: 100%;
+  max-height: calc(100vh - 40px);
   overflow: auto;
   background: #fff;
   border-top: 6px solid var(--color-red);
@@ -736,7 +746,7 @@ button {
 }
 .preview-ledger {
   display: grid;
-  grid-template-columns: 0.8fr 1fr 1fr;
+  grid-template-columns: minmax(150px, 0.7fr) repeat(2, minmax(0, 1.3fr));
   border-bottom: 1px solid #c9c1b6;
   background: #f5f1ea;
 }
@@ -758,8 +768,7 @@ button {
   font-size: 11px;
 }
 .preview-ledger code {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .preview-json-grid {
   display: grid;
@@ -768,6 +777,7 @@ button {
 .preview-json-grid > section {
   min-width: 0;
   padding: 22px 28px;
+  overflow: hidden;
 }
 .preview-json-grid > section:first-child {
   border-right: 1px solid #c9c1b6;
@@ -782,7 +792,7 @@ button {
   font-size: 12px;
 }
 .preview-json-grid pre {
-  max-height: 330px;
+  height: min(330px, 36vh);
   margin: 15px 0 0;
   padding: 16px;
   overflow: auto;
@@ -807,11 +817,16 @@ button {
   overflow-wrap: anywhere;
 }
 .migration-preview-dialog > footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   gap: 20px;
   align-items: center;
   padding: 20px 28px 25px;
+  background: #fff;
+  border-top: 1px solid #c9c1b6;
 }
 .migration-preview-dialog > footer p {
   margin: 0;

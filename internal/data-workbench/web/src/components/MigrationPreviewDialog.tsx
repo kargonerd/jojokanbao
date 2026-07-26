@@ -18,7 +18,7 @@ export function MigrationPreviewDialog({
 
   const isDelete = preview.migration.operation === "delete";
   return (
-    <Modal open onClose={onClose}>
+    <Modal open onClose={onClose} size="wide">
       <section className="migration-preview-dialog">
         <header>
           <div>

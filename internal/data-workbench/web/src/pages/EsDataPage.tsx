@@ -295,11 +295,12 @@ export function EsDataPage() {
                 {previewLoading ? "正在生成预览…" : "预览修复 migration"}
               </Button>
               <Button
+                className="delete-action"
                 variant="outline"
                 disabled={!selected.documentId || previewLoading}
                 onClick={() => void requestPreview(true)}
               >
-                预览删除 migration
+                预览删除墓碑
               </Button>
             </div>
             <p className="notice">
