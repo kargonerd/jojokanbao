@@ -10,6 +10,7 @@ const pdfjsRoot = dirname(pdfViewerRequire.resolve("pdfjs-dist/package.json"));
 const pdfjsAsset = (folder: string) => `${normalizePath(resolve(pdfjsRoot, folder))}/*`;
 
 export default defineConfig({
+  envDir: resolve(__dirname, "../.."),
   plugins: [
     react(),
     tailwindcss(),
