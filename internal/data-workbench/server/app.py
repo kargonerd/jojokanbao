@@ -3,7 +3,8 @@
 """
 Flask Web应用 - 报刊处理系统
 """
-from flask import Flask, render_template, request, jsonify, Response
+from flask import Flask, request, jsonify, Response, send_from_directory
+from pathlib import Path
 import os
 import json
 import threading
@@ -25,6 +26,7 @@ from storage import (
 )
 from vue_generator import generate_vue_code, generate_vue_diff, apply_vue_changes, generate_new_publication_diff, apply_multi_file_changes
 from progress_manager import progress_manager
+from es_repair_routes import es_repair_blueprint
 import tkinter as tk
 from tkinter import filedialog
 import requests
@@ -37,6 +39,7 @@ warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 app = Flask(__name__)
+app.register_blueprint(es_repair_blueprint)
 matcher = FileNameMatcher('config.json')
 
 # 启动时清理过期的临时目录（清理1小时以上未修改的）
@@ -48,11 +51,6 @@ print(f"[startup] 并发配置: 文件并发={FILE_WORKERS}, 页面并发={PAGE_
 
 # 记录服务器启动时间
 SERVER_START_TIME = time.time()
-
-@app.route('/')
-def index():
-    """首页"""
-    return render_template('index.html')
 
 @app.route('/api/health')
 def health_check():
@@ -1018,6 +1016,25 @@ def open_in_ide():
     except Exception as e:
         print(f"[IDE] 打开失败: {e}")
         return jsonify({'success': False, 'message': f'打开失败: {str(e)}'})
+
+FRONTEND_DIST = Path(__file__).resolve().parent.parent / 'web' / 'dist'
+
+
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_data_workbench(path):
+    """托管 React 数据工作台，并把客户端路由回退到 index.html。"""
+    requested = FRONTEND_DIST / path
+    if path and requested.is_file():
+        return send_from_directory(FRONTEND_DIST, path)
+    index_file = FRONTEND_DIST / 'index.html'
+    if not index_file.exists():
+        return jsonify({
+            'success': False,
+            'message': '数据工作台尚未构建，请运行 pnpm --filter @jojo/data-workbench build'
+        }), 503
+    return send_from_directory(FRONTEND_DIST, 'index.html')
+
 
 if __name__ == '__main__':
     print("=" * 50)
