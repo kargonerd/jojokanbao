@@ -122,6 +122,11 @@ Reader 的账号入口默认关闭。设置 `VITE_ENABLE_ACCOUNT=true` 后启用
 `/login` 会兼容跳转到该入口。登录页面随账号路由懒加载，关闭开关时不改变现有 Reader
 路由，也不会加载 Supabase 客户端和账号页面样式。
 
+本地开发时在仓库根目录的 `.env.local` 配置这三个值。通过
+`.github/workflows/reader-deploy.yml` 部署时，在 GitHub Repository variables 中配置同名
+变量；保持 `VITE_ENABLE_ACCOUNT=false` 即可继续部署不带账号入口的 Reader。这些都是
+浏览器端公开值，不应改用 `service_role` key。
+
 账号资料表、RLS 策略和头像存储规则位于 `supabase/migrations/`。注册方式和邀请码校验
 不属于该基础包，将由独立变更实现。
 
