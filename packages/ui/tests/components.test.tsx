@@ -38,7 +38,7 @@ describe("Button", () => {
 describe("Modal", () => {
   it("supports viewport-safe wide content", () => {
     render(
-      <Modal open size="wide" onClose={() => undefined}>
+      <Modal open size="wide" surface="bare" onClose={() => undefined}>
         <div>Wide audit content</div>
       </Modal>,
     );
@@ -47,6 +47,9 @@ describe("Modal", () => {
     );
     expect(screen.getByText("Wide audit content").parentElement?.className).toContain(
       "max-w-full",
+    );
+    expect(screen.getByText("Wide audit content").parentElement?.className).toContain(
+      "bg-transparent",
     );
   });
 });

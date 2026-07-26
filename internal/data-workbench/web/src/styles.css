@@ -591,6 +591,25 @@ button {
   max-height: 620px;
   overflow: auto;
 }
+.search-loading {
+  min-height: 130px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  color: #655e56;
+  background: #f7f3eb;
+  border: 1px dashed #c9c1b6;
+}
+.search-loading b,
+.search-loading span {
+  display: block;
+}
+.search-loading span {
+  margin-top: 4px;
+  color: #857d73;
+  font-size: 11px;
+}
 .result-card {
   padding: 15px;
   text-align: left;
@@ -685,8 +704,13 @@ button {
   font-size: 11px;
 }
 .operation-dialog {
-  min-width: min(520px, 80vw);
+  width: 100%;
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  padding: 28px;
+  background: #fff;
   border-top: 5px solid var(--color-red);
+  box-shadow: 10px 10px 0 rgba(0, 0, 0, 0.18);
 }
 .operation-dialog header {
   padding-bottom: 15px;
@@ -702,6 +726,7 @@ button {
   display: block;
   padding: 10px;
   background: #f3eee6;
+  overflow-wrap: anywhere;
 }
 .dialog-detail {
   display: grid;
@@ -712,6 +737,7 @@ button {
 }
 .dialog-detail code {
   overflow-wrap: anywhere;
+  min-width: 0;
 }
 .operation-dialog footer {
   display: flex;

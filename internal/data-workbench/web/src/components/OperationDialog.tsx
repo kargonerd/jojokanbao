@@ -26,7 +26,7 @@ export function OperationDialog({
   onClose,
 }: Props) {
   return (
-    <Modal open={open} onClose={onClose}>
+    <Modal open={open} onClose={onClose} size="medium" surface="bare">
       <section className="operation-dialog">
         <header>
           <p className="eyebrow">{kicker}</p>

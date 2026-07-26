@@ -198,11 +198,19 @@ export function EsDataPage() {
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="标题、正文或来源"
               />
-              <Button type="submit">搜索</Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? "正在搜索…" : "搜索"}
+              </Button>
             </form>
             <div className="search-results">
               {loading ? (
-                <LoadingSpinner />
+                <div className="search-loading" role="status">
+                  <LoadingSpinner />
+                  <div>
+                    <b>正在查询 ES</b>
+                    <span>腾讯云 Kibana 转发通常需要数秒，请稍候。</span>
+                  </div>
+                </div>
               ) : results.length === 0 ? (
                 <p className="empty-copy">输入关键词，或直接搜索查看最近文档</p>
               ) : (
