@@ -9,7 +9,7 @@ const DEFAULT_RANGE_CHUNK_SIZE = 65536;
 
 function usage() {
   console.log(`Usage:
-  node tooling/verify-reader-pdf-protection.mjs <file-or-url> [file-or-url...]
+  pnpm verify:reader-pdf <file-or-url> [file-or-url...]
 
 Options:
   --allow-plain              Report plain PDFs as pass instead of failure.

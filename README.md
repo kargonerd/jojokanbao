@@ -38,7 +38,9 @@ packages/
   pdf-viewer/         共享 PDF 渲染 (PdfPage, PdfViewer, usePdfDocument)
 
 tooling/
+  eslint-config/      共享 ESLint 配置
   tsconfig/           共享 TypeScript 配置
+  reader-pdf/         Reader PDF 处理、发布和 CDN 运维工具
 ```
 
 ## 快速开始

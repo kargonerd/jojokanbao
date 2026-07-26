@@ -32,8 +32,8 @@ function hasPdfMagic(bytes) {
 
 function usage() {
   console.log(`Usage:
-  node tooling/protect-reader-pdf.mjs encode <input.pdf|dir> [output.pdf] [--recursive] [--force]
-  node tooling/protect-reader-pdf.mjs decode <input.pdf|dir> [output.pdf] [--recursive] [--force]
+  pnpm protect:reader-pdf encode <input.pdf|dir> [output.pdf] [--recursive] [--force]
+  pnpm protect:reader-pdf decode <input.pdf|dir> [output.pdf] [--recursive] [--force]
 
 Notes:
   - encode makes a CDN-served .pdf unreadable until the reader decodes byte ranges.

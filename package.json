@@ -19,11 +19,12 @@
     "dev:jojo-pipe": "concurrently -k -n api,web -c red,blue \"pnpm dev:jojo-pipe-api\" \"pnpm dev:data-workbench\"",
     "dev:jiuwen-api": "python services/jiuwen-api/run.py",
     "dev:jiuwen-mobile": "pnpm --filter @jojo/jiuwen-mobile start",
-    "finalize:reader-pdf": "node tooling/finalize-reader-pdf-protection.mjs",
-    "protect:reader-pdf": "node tooling/protect-reader-pdf.mjs",
-    "publish:reader-pdf": "node internal/data-workbench/scripts/publish-protected-reader-pdfs.mjs",
-    "purge:reader-pdf": "node tooling/purge-edgeone-reader-cache.mjs",
-    "verify:reader-pdf": "node tooling/verify-reader-pdf-protection.mjs",
+    "finalize:reader-pdf": "node tooling/reader-pdf/finalize.mjs",
+    "protect:reader-pdf": "node tooling/reader-pdf/protect.mjs",
+    "publish:reader-pdf": "node tooling/reader-pdf/publish.mjs",
+    "purge:reader-pdf": "node tooling/reader-pdf/purge-cache.mjs",
+    "sync:rmrb": "python tooling/reader-pdf/sync_rmrb.py",
+    "verify:reader-pdf": "node tooling/reader-pdf/verify.mjs",
     "clean": "turbo clean && rm -rf node_modules"
   },
   "devDependencies": {

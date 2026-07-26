@@ -7,7 +7,7 @@ const DEFAULT_ENDPOINT = process.env.EDGEONE_ENDPOINT ?? "teo.tencentcloudapi.co
 
 function usage() {
   console.log(`Usage:
-  node tooling/purge-edgeone-reader-cache.mjs [--zone-id zone-xxx] [--type purge_url|purge_prefix] <target> [target...]
+  pnpm purge:reader-pdf -- [--zone-id zone-xxx] [--type purge_url|purge_prefix] <target> [target...]
 
 Options:
   --type <type>       purge_url (default) or purge_prefix.

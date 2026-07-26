@@ -58,6 +58,7 @@ import { PdfViewer, PdfPage, usePdfDocument } from "@jojo/pdf-viewer";
 - `packages/*/tests/` — 包测试
 - `internal/data-workbench/web/` — 内部数据工作台 React 前端
 - `internal/data-workbench/server/` — 内部数据工作台 Flask 后端与 migration
+- `tooling/reader-pdf/` — 跨内容管线、对象存储、CDN 和 Reader 的 PDF 运维工具
 - `services/*/` — 独立 Python 后端及工具，每个服务维护自己的 README 和依赖
 
 ## 注意事项

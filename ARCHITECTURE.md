@@ -23,7 +23,7 @@ apps/        面向用户的前端、桌面端、移动端应用，参与 pnpm w
 packages/    共享 UI、设计系统、PDF viewer、工具配置，参与 pnpm workspace
 services/    后端、搜索、批处理工具，不参与 pnpm workspace
 references/  外部参考工程、旧实现和迁移线索归档，不参与构建
-tooling/     共享 TypeScript / ESLint 配置
+tooling/     仓库级共享配置、构建和运维工具
 ```
 
 `services/` 保留迁移前各项目的后端与工具源码，并保持各自原技术栈：

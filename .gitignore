@@ -11,11 +11,14 @@ dist-electron
 *.tsbuildinfo
 coverage
 .vite
+**/__pycache__/
+*.pyc
 test-results/
 playwright-report/
 .idea/
 .playwright-mcp/
 blog/.obsidian/
+.rmrb-sync-work/
 
 # Service runtime data
 services/**/.env

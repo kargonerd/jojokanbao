@@ -19,8 +19,8 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.79 Safari/537.36",
 }
 WORK_DIR = Path(os.environ.get("RMRB_SYNC_WORK_DIR", ".rmrb-sync-work"))
-REPO_ROOT = Path(__file__).resolve().parent.parent
-PROTECT_SCRIPT = REPO_ROOT / "tooling" / "protect-reader-pdf.mjs"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+PROTECT_SCRIPT = REPO_ROOT / "tooling" / "reader-pdf" / "protect.mjs"
 
 
 def run(args):

@@ -4,7 +4,7 @@
 
 当前实现：
 
-- Web：`apps/reader/src/olds/`
+- Web：`apps/web/src/olds/`
 - API：`services/jiuwen-api/`
 - 旧 Express 后端：`references/legacy-node-backends/jiuwen-news-reader-express/`
 
