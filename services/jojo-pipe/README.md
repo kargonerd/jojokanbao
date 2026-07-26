@@ -4,10 +4,30 @@ JOJO Pipe is the local PDF intake tool for reader publications. It renames PDFs,
 splits page PDFs, and commits the generated files to a configurable storage
 backend.
 
+## React data workbench
+
+JOJO Pipe's browser UI lives in `apps/data-workbench`. It is a React 19 app
+shared by the overview, PDF intake, and ES repair modules. Flask contains the
+Python APIs and serves the production build; it no longer renders Jinja pages.
+
+For normal local use, run `start.bat`. It builds the frontend, starts Flask,
+then opens the workbench at `http://127.0.0.1:5000/`.
+
+During frontend development, use two terminals:
+
+```bash
+pnpm dev:jojo-pipe-api
+pnpm dev:data-workbench
+```
+
+The Vite development UI is at `http://127.0.0.1:4174/` and proxies `/api` to
+Flask on port 5000.
+
 ## ES repair workbench
 
 Run `python app.py`, then open `http://127.0.0.1:5000/` for the data-workbench
-overview. PDF intake lives at `/pdf`, and ES repair lives at `/es-repair`.
+overview. PDF intake lives at `/pdf`, and ES repair lives at `/es` (the old
+`/es-repair` URL redirects in the React router).
 The ES workbench
 reads `KIBANA_URL`, `ELASTICSEARCH_USERNAME`, and `ELASTICSEARCH_PASSWORD` from
 the repository root `.env`. It uses `aitest-1tk2lxru` by default; set
