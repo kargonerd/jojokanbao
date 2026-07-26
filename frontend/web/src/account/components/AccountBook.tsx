@@ -1,77 +1,18 @@
 import {
-  type FormEvent,
   type MouseEvent,
+  type ReactNode,
   useRef,
 } from "react";
+import { flushSync } from "react-dom";
 import { Link } from "react-router-dom";
 
-interface LoginBookProps {
-  email: string;
-  password: string;
+export type AccountMode = "login" | "register";
+
+interface AccountBookProps {
+  mode: AccountMode;
   busy: boolean;
-  error: string | null;
-  notice: string | null;
-  onEmailChange: (value: string) => void;
-  onPasswordChange: (value: string) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-}
-
-function LoginForm({
-  email,
-  password,
-  busy,
-  error,
-  notice,
-  onEmailChange,
-  onPasswordChange,
-  onSubmit,
-}: LoginBookProps) {
-  return (
-    <form className="book-account-form" onSubmit={onSubmit}>
-      {error && (
-        <p className="book-account-form__feedback book-account-form__feedback--error" role="alert">
-          {error}
-        </p>
-      )}
-      {!error && notice && (
-        <p className="book-account-form__feedback" role="status">
-          {notice}
-        </p>
-      )}
-
-      <div className="book-account-form__fields">
-        <label>
-          <span>邮箱</span>
-          <input
-            type="email"
-            name="email"
-            placeholder="name@example.com"
-            autoComplete="email"
-            value={email}
-            disabled={busy}
-            required
-            onChange={(event) => onEmailChange(event.target.value)}
-          />
-        </label>
-        <label>
-          <span>密码</span>
-          <input
-            type="password"
-            name="password"
-            placeholder="输入密码"
-            autoComplete="current-password"
-            value={password}
-            disabled={busy}
-            required
-            onChange={(event) => onPasswordChange(event.target.value)}
-          />
-        </label>
-        <button type="submit" disabled={busy}>
-          {busy ? "正在登录…" : "登录"}
-        </button>
-      </div>
-    </form>
-  );
+  children: ReactNode;
+  onModeChange: (mode: AccountMode) => void;
 }
 
 function QuotePage() {
@@ -100,9 +41,15 @@ function QuotePage() {
   );
 }
 
-export function LoginBook(props: LoginBookProps) {
+export function AccountBook({
+  mode,
+  busy,
+  children,
+  onModeChange,
+}: AccountBookProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const isRegistering = mode === "register";
 
   const openDialog = () => {
     const dialog = dialogRef.current;
@@ -118,6 +65,12 @@ export function LoginBook(props: LoginBookProps) {
     }
 
     dialog.setAttribute("open", "");
+  };
+
+  const openAccount = (nextMode: AccountMode) => {
+    // Commit the selected form before the native dialog starts its cover animation.
+    flushSync(() => onModeChange(nextMode));
+    openDialog();
   };
 
   const closeDialog = () => {
@@ -147,16 +100,17 @@ export function LoginBook(props: LoginBookProps) {
       <section className="login-book-entry" aria-labelledby="login-book-title">
         <span className="login-book-entry__star" aria-hidden="true">★</span>
         <h1 id="login-book-title">读者入口</h1>
-        <p>登录已有账号，进入 JOJO 报刊馆藏。</p>
+        <p>登录已有账号，或凭邀请码完成注册。</p>
         <div className="login-book-entry__actions">
-          <button type="button" onClick={openDialog}>登录</button>
+          <button type="button" disabled={busy} onClick={() => openAccount("login")}>登录</button>
+          <button type="button" disabled={busy} onClick={() => openAccount("register")}>注册</button>
         </div>
       </section>
 
       <dialog
         ref={dialogRef}
         className="book-login-dialog"
-        aria-label="登录"
+        aria-label={isRegistering ? "注册" : "登录"}
         onClick={closeFromBackdrop}
       >
         <div ref={stageRef} className="book-dialog-stage">
@@ -167,7 +121,27 @@ export function LoginBook(props: LoginBookProps) {
                   <span>读者登记</span>
                   <b>第 01 号</b>
                 </div>
-                <LoginForm {...props} />
+                <div className="book-account-form">
+                  <div className="book-account-form__modes" role="group" aria-label="账号操作">
+                    <button
+                      type="button"
+                      aria-pressed={!isRegistering}
+                      disabled={busy}
+                      onClick={() => onModeChange("login")}
+                    >
+                      登录
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={isRegistering}
+                      disabled={busy}
+                      onClick={() => onModeChange("register")}
+                    >
+                      注册
+                    </button>
+                  </div>
+                  {children}
+                </div>
                 <footer className="login-page__folio">
                   <span>登记日期：二〇二六年</span>
                   <Link to="/">JOJO 看报</Link>
@@ -178,7 +152,7 @@ export function LoginBook(props: LoginBookProps) {
             <div className="opening-book__turning-cover" aria-hidden="true">
               <div className="opening-book__cover-face opening-book__cover-front">
                 <span>★</span>
-                <strong>读者登录</strong>
+                <strong>{isRegistering ? "读者注册" : "读者登录"}</strong>
                 <small>全世界无产者，联合起来！</small>
               </div>
               <div className="opening-book__cover-face opening-book__cover-back">
