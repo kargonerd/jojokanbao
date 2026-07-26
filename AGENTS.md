@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-JOJO Platform 是一个 pnpm monorepo，包含 4 个前端应用和 3 个共享包，统一使用红色杂志风格设计系统。
+JOJO Platform 是一个 pnpm monorepo，当前包含 Homepage、统一 Web 客户端、桌面端、移动端原型和 4 个共享包，统一使用红色杂志风格设计系统。Python 服务位于 `services/`，不加入 pnpm workspace。
 
 ## 关键命令
 
@@ -11,8 +11,10 @@ pnpm install          # 安装所有依赖
 pnpm build            # 构建所有 app（通过 Turborepo）
 pnpm test             # 运行所有测试
 pnpm dev              # 并行启动所有 dev server
-pnpm --filter @jojo/reader dev   # 单独启动 reader
+pnpm --filter @jojo/web dev      # 单独启动统一 Web
 pnpm dev:jojo-pipe               # 启动内部数据工作台前后端
+pnpm dev:rag-backend  # 启动 RAG Python 后端
+pnpm dev:jiuwen-api   # 启动现有旧闻 Python 后端
 ```
 
 ## 代码规范
@@ -47,17 +49,18 @@ import { PdfViewer, PdfPage, usePdfDocument } from "@jojo/pdf-viewer";
 
 ## 文件结构约定
 
-- `apps/*/src/pages/` — 页面组件
-- `apps/*/src/components/` — app 特有组件
-- `apps/*/src/stores/` — Zustand stores
-- `apps/*/src/api.ts` — API 层
+- `apps/web/src/archive/`、`account/`、`rag/`、`olds/` — 统一 Web 的一级业务模块，不再套 `features/`
+- 业务模块内部可按 `pages/`、`components/`、`stores/`、`api.ts` 组织
 - `packages/*/src/` — 共享代码
 - `packages/*/tests/` — 包测试
 - `internal/data-workbench/web/` — 内部数据工作台 React 前端
 - `internal/data-workbench/server/` — 内部数据工作台 Flask 后端与 migration
+- `services/*/` — 独立 Python 后端及工具，每个服务维护自己的 README 和依赖
 
 ## 注意事项
 
 - pdfjs-dist 在 jsdom 环境下需要 mock（DOMMatrix 不可用）
 - editorial-preset 是纯 CSS，不含 JS，通过 Tailwind v4 的 @import 机制加载
-- 各 app 独立部署，不共享运行时状态
+- `apps/web` 是单个 Web 运行时：Archive、RAG、Olds 和 Account 共用路由与登录状态
+- 当前公开路由只有 `/archive/*`；Account、RAG、Olds 必须经 `src/rollout.ts` 的构建期开关显式发布
+- Homepage、桌面端和移动端仍是独立运行时，不直接共享浏览器内存状态

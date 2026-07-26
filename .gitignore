@@ -11,6 +11,8 @@ dist-electron
 *.tsbuildinfo
 coverage
 .vite
+test-results/
+playwright-report/
 .idea/
 .playwright-mcp/
 blog/.obsidian/

@@ -4,15 +4,14 @@
 
 1. **共享优先** — 可复用的逻辑和组件提取到 `packages/`，app 层只写业务特有代码
 2. **CSS 驱动设计** — 设计系统是纯 CSS（editorial-preset），不绑定任何框架
-3. **渐进式** — 每个 app 独立部署，互不依赖运行时
+3. **产品边界优先** — Archive、Account、RAG 和 Olds 属于同一个 Web 客户端，不再按功能拆成独立 SPA；未完成模块通过构建期开关分阶段发布
 
 ## 依赖关系
 
 ```
-apps/reader  ──→ @jojo/ui + @jojo/pdf-viewer + @jojo/editorial-preset
-apps/rag     ──→ @jojo/ui + @jojo/editorial-preset
+apps/homepage ──→ Astro 静态博客
+apps/web     ──→ @jojo/auth + @jojo/ui + @jojo/pdf-viewer + @jojo/editorial-preset
 apps/press   ──→ @jojo/ui + @jojo/pdf-viewer + @jojo/editorial-preset
-apps/jiuwen-web ─→ @jojo/ui + @jojo/editorial-preset
 apps/jiuwen-mobile ─→ Expo / React Native
 ```
 
@@ -30,8 +29,7 @@ tooling/     共享 TypeScript / ESLint 配置
 
 - `rag-backend`：Flask / SCF
 - `press-engine`：FastAPI
-- `jiuwen-api`：FastAPI
-- `jiuwen-news-reader`：旧 React 前端原型；旧 Express 后端已归档到 `references/legacy-node-backends`
+- `jiuwen-api`：现有旧闻 FastAPI；服务端重命名单独处理
 - `reader-search`：Flask + Elasticsearch
 - `internal/data-workbench`：内部数据工作台（React Web + Flask / Python 批处理）
 - `notebooklm-py`：Python package
@@ -68,7 +66,6 @@ Turborepo 管理任务依赖：
 
 | App | 部署方式 |
 |-----|---------|
-| reader | 静态站点 (Vercel / COS) |
-| rag | 静态站点 + SCF 后端 |
+| homepage | `jojokanbao.cn` 的 Astro 静态博客，保持独立部署 |
+| web | 部署到 `reader.jojokanbao.cn` 的统一 Web 客户端；当前仅开放 Archive，RAG / Olds 待 rollout |
 | press | Electron 打包分发 |
-| jiuwen-web | Vercel (Next.js) |

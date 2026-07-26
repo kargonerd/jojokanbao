@@ -1,11 +1,12 @@
-name: Reader CI
+name: Web CI
 
 on:
   push:
     branches: [master]
     paths:
-      - "apps/reader/**"
+      - "apps/web/**"
       - "packages/editorial-preset/**"
+      - "packages/auth/**"
       - "packages/pdf-viewer/**"
       - "packages/ui/**"
       - "supabase/**"
@@ -19,13 +20,14 @@ on:
       - "pnpm-workspace.yaml"
       - "turbo.json"
       - ".github/workflows/ci.yml"
-      - ".github/workflows/reader-deploy.yml"
+      - ".github/workflows/web-deploy.yml"
       - ".github/workflows/sync-rmrb.yml"
   pull_request:
     branches: [master]
     paths:
-      - "apps/reader/**"
+      - "apps/web/**"
       - "packages/editorial-preset/**"
+      - "packages/auth/**"
       - "packages/pdf-viewer/**"
       - "packages/ui/**"
       - "supabase/**"
@@ -39,7 +41,7 @@ on:
       - "pnpm-workspace.yaml"
       - "turbo.json"
       - ".github/workflows/ci.yml"
-      - ".github/workflows/reader-deploy.yml"
+      - ".github/workflows/web-deploy.yml"
       - ".github/workflows/sync-rmrb.yml"
 
 jobs:
@@ -58,10 +60,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm --filter @jojo/reader... typecheck
-      - run: pnpm --filter @jojo/reader... build
-      - run: pnpm --filter @jojo/reader verify:build
-      - run: pnpm --filter @jojo/reader... test
+      - run: pnpm --filter @jojo/web... typecheck
+      - run: pnpm --filter @jojo/web... build
+      - run: pnpm --filter @jojo/web verify:build
+      - run: pnpm --filter @jojo/web... test
 
   e2e:
     runs-on: ubuntu-latest
@@ -77,8 +79,8 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @jojo/reader exec playwright install --with-deps chromium
-      - run: pnpm --filter @jojo/reader exec playwright test
+      - run: pnpm --filter @jojo/web exec playwright install --with-deps chromium
+      - run: pnpm --filter @jojo/web exec playwright test
 
   cross-browser-e2e:
     if: github.event_name == 'push'
@@ -99,6 +101,6 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @jojo/reader exec playwright install --with-deps ${{ matrix.browser }}
+      - run: pnpm --filter @jojo/web exec playwright install --with-deps ${{ matrix.browser }}
       # WebKit is reliable serially; the two browser matrix jobs still run in parallel.
-      - run: pnpm --filter @jojo/reader exec playwright test --browser=${{ matrix.browser }} --workers=1
+      - run: pnpm --filter @jojo/web exec playwright test --browser=${{ matrix.browser }} --workers=1

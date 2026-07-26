@@ -10,17 +10,14 @@ blog/
 
 apps/
   homepage/      博客静态站点渲染器 (Astro 5)
-  reader/        PDF 报纸/杂志阅读器 (Vite + React 19)
-  rag/           RAG 知识库问答 + 文档阅读器 (Vite + React 19)
+  web/           统一 Web 客户端：Archive + Account + RAG + Olds (Vite + React 19)
   press/         PDF 校对工具桌面端 (Electron + Vite + React 19)
-  jiuwen-web/    新闻聚合 (Next.js 16 + React 19)
-  jiuwen-mobile/ 新闻聚合移动端 (Expo + React Native)
+  jiuwen-mobile/ 当前移动端原型，后续扩展为统一 Mobile 客户端 (Expo + React Native)
 
 services/
   rag-backend/          JOJO-RAG Flask/SCF 后端
   press-engine/         JOJO Press FastAPI 后端
   jiuwen-api/           JOJO旧闻 FastAPI 后端
-  jiuwen-news-reader/   旧新闻阅读器前端原型；旧 Express 后端已归档
   reader-search/        JOJO看报 Elasticsearch 搜索服务
 internal/
   data-workbench/       内部数据工作台（web + server）
@@ -32,6 +29,7 @@ references/
   legacy-reader-web/   原 WebstormProjects/web Vue reader 归档
   legacy-press-root/   原 jojo-press 根目录旧 server/static/scripts 归档
   legacy-jiuwen-root/  原 jojojiuwen 根目录 docs/demo/docker/scripts 归档
+  legacy-jiuwen-news-reader/ 旧 React 新闻阅读器原型
 
 packages/
   auth/               Supabase 客户端、会话状态与账号资料访问
@@ -60,10 +58,8 @@ pnpm test
 
 # 单独开发某个 app
 pnpm --filter @jojo/homepage dev
-pnpm --filter @jojo/reader dev
-pnpm --filter @jojo/rag dev
+pnpm --filter @jojo/web dev
 pnpm --filter @jojo/press dev
-pnpm --filter @jojo/jiuwen-web dev
 pnpm dev:jiuwen-mobile
 
 # 后端/服务（需先按各 service README 安装依赖）
@@ -73,15 +69,19 @@ pnpm dev:reader-search
 pnpm dev:jiuwen-api
 ```
 
+## 环境配置
+
+统一 Web 的 Vite 环境变量放在 monorepo 根目录的 `.env`，变量清单维护在可提交的 `.env.example`；只覆盖当前机器时可用 `.env.local`。Python 服务暂时继续按各自 README 配置，服务端整理会在独立变更中完成。不要提交任何真实 `.env` 文件。
+
 ## 技术栈
 
 | 层面 | 选择 |
 |------|------|
 | 语言 | TypeScript (strict) |
-| 框架 | React 19 + Vite / Next.js 16 |
+| 框架 | React 19 + Vite、Astro 5；移动端使用 Expo / React Native |
 | 样式 | Tailwind CSS v4 + @jojo/editorial-preset |
 | 状态管理 | Zustand |
-| 路由 | React Router 7 / Next.js App Router |
+| 路由 | React Router 7 / Astro 文件路由 |
 | 测试 | Vitest + @testing-library/react |
 | 构建编排 | Turborepo |
 | 包管理 | pnpm workspaces |
@@ -110,6 +110,7 @@ pnpm dev:jiuwen-api
 
 ```tsx
 import { Button, Card, NavBar, Tag, Pagination, Modal, LoadingSpinner } from "@jojo/ui";
+import { createJojoAuthClient, createJojoAuthStore } from "@jojo/auth";
 import { PdfViewer, PdfPage, usePdfDocument } from "@jojo/pdf-viewer";
 ```
 
@@ -119,24 +120,24 @@ import { PdfViewer, PdfPage, usePdfDocument } from "@jojo/pdf-viewer";
 仓库根目录 `.env` 中的 `VITE_SUPABASE_URL` 与 `VITE_SUPABASE_PUBLISHABLE_KEY`；这两个值是
 可公开的项目标识，不要在前端配置 `service_role` key 或 Supabase access token。
 
-Reader 的账号入口默认关闭。设置 `VITE_ENABLE_ACCOUNT=true` 后启用 `/account`；
-`/login` 会兼容跳转到该入口。登录页面随账号路由懒加载，关闭开关时不改变现有 Reader
+统一 Web 的账号入口默认关闭。设置 `VITE_ENABLE_ACCOUNT=true` 后启用 `/account`；
+`/login` 会兼容跳转到该入口。登录页面随账号路由懒加载，关闭开关时不改变现有 Archive
 路由，也不会加载 Supabase 客户端和账号页面样式。
 
 本地开发时在仓库根目录的 `.env` 配置这三个值；需要仅在当前机器覆盖某个值时，可以使用
 优先级更高的 `.env.local`。通过
-`.github/workflows/reader-deploy.yml` 部署时，在 GitHub Repository variables 中配置同名
-变量；保持 `VITE_ENABLE_ACCOUNT=false` 即可继续部署不带账号入口的 Reader。这些都是
+`.github/workflows/web-deploy.yml` 部署时，在 GitHub Repository variables 中配置同名
+变量；保持 `VITE_ENABLE_ACCOUNT=false` 即可继续部署不带账号入口的统一 Web。这些都是
 浏览器端公开值，不应改用 `service_role` key。
 
 账号资料表、RLS 策略和头像存储规则位于 `supabase/migrations/`。注册方式和邀请码校验
 不属于该基础包，将由独立变更实现。
 
-## Reader release
+## Unified Web release
 
-Reader deploys are isolated from the rest of the monorepo. Ordinary pushes to `master` run Reader CI only when reader-related paths change, and they do not deploy. Other apps can use their own tags without triggering reader deployment.
+Unified Web deploys are isolated from the rest of the monorepo. Ordinary pushes to `master` run Web CI only when web-related paths change, and they do not deploy. Other apps can use their own tags without triggering the deployment.
 
-`master` is protected by a repository ruleset and must be updated through pull requests. Reader release tags are also protected: only repository admins can create, update, or delete `reader-*` tags.
+`master` is protected by a repository ruleset and must be updated through pull requests. Existing Reader release tags are also protected: only repository admins can create, update, or delete `reader-*` tags.
 
 Automatic reader deployment is triggered only by reader-specific tags:
 
@@ -154,7 +155,7 @@ git tag reader-v20260628
 git push origin reader-v20260628
 ```
 
-The `Deploy reader web` workflow builds `@jojo/reader` and uploads `apps/reader/dist/` to Tencent COS. It is also available through manual `workflow_dispatch` in GitHub Actions.
+The `Deploy unified web` workflow builds `@jojo/web` and uploads `apps/web/dist/` to EdgeOne Makers. It is also available through manual `workflow_dispatch` in GitHub Actions. Existing `reader-*` release tags remain supported to avoid changing the current production release procedure during this refactor.
 
 ## Reader PDF protection
 
