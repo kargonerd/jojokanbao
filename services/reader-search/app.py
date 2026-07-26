@@ -1,10 +1,11 @@
 import os
+from pathlib import Path
 from flask import Flask, jsonify, request
 from elasticsearch import Elasticsearch
 import re
 from flask_cors import CORS
 from search_overlay import build_search_query, load_patch_state_file, merge_search_hits
-from revision_chain import RevisionStateCache, build_active_query, hit_to_active_result
+from revision_chain import build_active_query, hit_to_active_result, load_excluded_ids
 
 def create_elasticsearch_client():
   url = os.environ.get('ELASTICSEARCH_URL')
@@ -32,10 +33,10 @@ base_index_name = os.environ.get('ELASTICSEARCH_BASE_INDEX')
 delta_index_name = os.environ.get('ELASTICSEARCH_DELTA_INDEX')
 patch_state_path = os.environ.get('SEARCH_PATCH_STATE_FILE')
 overfetch_multiplier = int(os.environ.get('SEARCH_OVERFETCH_MULTIPLIER', '5'))
-revision_state = RevisionStateCache(
-  ttl_seconds=float(os.environ.get('SEARCH_REVISION_CACHE_SECONDS', '30')),
-  limit=int(os.environ.get('SEARCH_REVISION_LIMIT', '10000')),
-)
+migrations_dir = Path(os.environ.get(
+  'SEARCH_MIGRATIONS_DIR',
+  Path(__file__).resolve().parents[2] / 'internal' / 'data-workbench' / 'server' / 'es_migrations',
+))
         
 IS_SERVERLESS = bool(os.environ.get('SERVERLESS'))
 
@@ -297,7 +298,7 @@ def search():
         query['sort'] = sort_query
       query['query'] = build_active_query(
         query['query'],
-        revision_state.get(es, index_name),
+        load_excluded_ids(migrations_dir, index_name),
       )
       data = es.search(index=index_name, body=query)
       if not data:

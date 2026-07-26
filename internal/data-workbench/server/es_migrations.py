@@ -39,9 +39,7 @@ def preview_migration(
     es_payload = {
         **clean,
         "@timestamp": GENERATED_AT_PREVIEW,
-        "isRevision": True,
         "supersedesId": supersedes_id,
-        "deleted": bool(deleted),
     }
     canonical = json.dumps(
         {"migration": migration, "esPayload": es_payload},
@@ -123,6 +121,24 @@ def list_migrations(directory: Path = MIGRATIONS_DIR) -> list[dict[str, Any]]:
         except (OSError, ValueError):
             continue
     return sorted(result, key=lambda item: item.get("createdAt", ""), reverse=True)
+
+
+def excluded_document_ids(
+    index: str,
+    directory: Path = MIGRATIONS_DIR,
+) -> set[str]:
+    """Build the search exclusion set from applied migrations for one index."""
+    excluded: set[str] = set()
+    for migration in list_migrations(directory):
+        if migration.get("state") != "applied" or migration.get("index") != index:
+            continue
+        supersedes_id = migration.get("supersedesId")
+        if supersedes_id:
+            excluded.add(str(supersedes_id))
+        if migration.get("operation") == "delete":
+            tombstone_id = (migration.get("result") or {}).get("documentId")
+            excluded.add(str(tombstone_id or migration["id"]))
+    return excluded
 
 
 def _safe_path(migration_id: str, directory: Path) -> Path:

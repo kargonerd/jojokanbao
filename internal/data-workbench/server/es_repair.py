@@ -62,12 +62,12 @@ def revision_id(supersedes_id: str, document: dict[str, Any], deleted: bool) -> 
     return "repair-" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:40]
 
 
-def active_query(query: dict[str, Any], superseded_ids: list[str]) -> dict[str, Any]:
-    """Wrap any query so only current, non-deleted leaves are returned."""
-    must_not: list[dict[str, Any]] = [{"term": {"deleted": True}}]
-    if superseded_ids:
-        must_not.append({"ids": {"values": sorted(set(superseded_ids))}})
-    return {"bool": {"must": [query], "must_not": must_not}}
+def active_query(query: dict[str, Any], excluded_ids: set[str]) -> dict[str, Any]:
+    """Wrap a query with the exclusions recorded by applied migrations."""
+    wrapped: dict[str, Any] = {"must": [query]}
+    if excluded_ids:
+        wrapped["must_not"] = [{"ids": {"values": sorted(excluded_ids)}}]
+    return {"bool": wrapped}
 
 
 class KibanaConsoleClient:
@@ -130,19 +130,9 @@ class KibanaConsoleClient:
             raise RuntimeError(_error_message(payload))
         return payload
 
-    def superseded_ids(self) -> list[str]:
-        payload = self.search({
-            "size": 10000,
-            "_source": ["supersedesId"],
-            "query": {"exists": {"field": "supersedesId"}},
-        })
-        return [
-            hit["_source"]["supersedesId"]
-            for hit in payload.get("hits", {}).get("hits", [])
-            if hit.get("_source", {}).get("supersedesId")
-        ]
-
     def search_active(self, text: str, size: int = 20) -> dict[str, Any]:
+        from es_migrations import excluded_document_ids
+
         query = (
             {"multi_match": {
                 "query": text,
@@ -153,7 +143,10 @@ class KibanaConsoleClient:
         )
         payload = self.search({
             "size": max(1, min(size, 100)),
-            "query": active_query(query, self.superseded_ids()),
+            "query": active_query(
+                query,
+                excluded_document_ids(self.config["index"]),
+            ),
             "sort": [{"date": {"order": "desc", "unmapped_type": "date"}}],
         })
         hits = payload.get("hits", {})
@@ -181,9 +174,7 @@ class KibanaConsoleClient:
         revision = {
             **clean,
             "@timestamp": now,
-            "isRevision": True,
             "supersedesId": supersedes_id,
-            "deleted": bool(deleted),
         }
         # Exclude timestamps so retrying the same migration is idempotent.
         doc_id = revision_id(supersedes_id, clean, deleted)

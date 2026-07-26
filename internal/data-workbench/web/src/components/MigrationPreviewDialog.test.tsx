@@ -18,8 +18,6 @@ const preview = {
     title: "修复标题",
     content: "修复正文",
     supersedesId: "original-id",
-    isRevision: true,
-    deleted: false,
   },
   previewHash: "a".repeat(64),
 };

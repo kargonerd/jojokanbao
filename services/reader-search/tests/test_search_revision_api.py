@@ -1,4 +1,6 @@
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -12,18 +14,10 @@ import app as search_app  # noqa: E402
 class SearchEs:
     def __init__(self):
         self.search_query = None
+        self.calls = 0
 
     def search(self, *, index, body):
-        if body.get("_source") == ["supersedesId"]:
-            return {
-                "hits": {
-                    "total": {"value": 2},
-                    "hits": [
-                        {"_source": {"supersedesId": "base-id"}},
-                        {"_source": {"supersedesId": "revision-1"}},
-                    ],
-                }
-            }
+        self.calls += 1
         self.search_query = body
         return {
             "timed_out": False,
@@ -50,14 +44,27 @@ class SearchEs:
 class SearchRevisionApiTests(unittest.TestCase):
     def setUp(self):
         self.original_es = search_app.es
+        self.original_migrations_dir = search_app.migrations_dir
+        self.temp_dir = tempfile.TemporaryDirectory()
         self.fake_es = SearchEs()
         search_app.es = self.fake_es
-        search_app.revision_state.clear()
+        search_app.migrations_dir = Path(self.temp_dir.name)
+        (search_app.migrations_dir / "repair-test.json").write_text(
+            json.dumps({
+                "id": "repair-test",
+                "index": search_app.index_name,
+                "operation": "repair",
+                "supersedesId": "base-id",
+                "state": "applied",
+            }),
+            encoding="utf-8",
+        )
         self.client = search_app.app.test_client()
 
     def tearDown(self):
         search_app.es = self.original_es
-        search_app.revision_state.clear()
+        search_app.migrations_dir = self.original_migrations_dir
+        self.temp_dir.cleanup()
 
     def test_search_filters_chain_before_pagination_and_returns_document_id(self):
         response = self.client.get("/search?keyword=最终&page=2&size=5")
@@ -66,16 +73,14 @@ class SearchRevisionApiTests(unittest.TestCase):
         self.assertEqual(payload["total"], 1)
         self.assertEqual(payload["results"][0]["documentId"], "revision-2")
         self.assertNotIn("supersedesId", payload["results"][0])
+        self.assertEqual(self.fake_es.calls, 1)
 
         query = self.fake_es.search_query
         self.assertEqual(query["from"], 5)
         self.assertEqual(query["size"], 5)
         self.assertEqual(
             query["query"]["bool"]["must_not"],
-            [
-                {"term": {"deleted": True}},
-                {"ids": {"values": ["base-id", "revision-1"]}},
-            ],
+            [{"ids": {"values": ["base-id"]}}],
         )
 
 

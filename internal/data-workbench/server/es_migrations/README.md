@@ -8,4 +8,7 @@ Each migration is deterministic and replayable. Applying it uses only
 `_create/<revision-id>`, so replaying an already-applied migration is safe.
 
 Commit reviewed migration JSON files when the repair history should travel with
-the repository. Do not place credentials in this directory.
+the repository. Reader Search derives its excluded document IDs from applied
+migrations in this directory, scoped by the migration's `index`. A repair
+excludes its `supersedesId`; a deletion also excludes its own tombstone ID.
+Do not place credentials in this directory.

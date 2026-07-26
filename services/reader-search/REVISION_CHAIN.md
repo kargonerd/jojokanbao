@@ -3,19 +3,24 @@
 The default single-index search path supports repairs without Elasticsearch
 update/delete operations.
 
-A repair document stores the full active article and sets `supersedesId` to the
-previous Elasticsearch `_id`. A logical deletion does the same and sets
-`deleted: true`. Reader Search caches those revision edges, excludes every
-superseded `_id` and tombstone inside the Elasticsearch query, and returns the
-active hit's `_id` as `documentId`. Filtering before pagination keeps totals,
-sorting, and pages correct.
+Each applied migration records the Elasticsearch index, the superseded
+document ID, the operation, and the deterministic ID created by `_create`.
+Reader Search loads reviewed migration JSON files from
+`internal/data-workbench/server/es_migrations/` and adds one `must_not.ids`
+filter to the normal search request:
 
-Optional tuning:
+- repair: exclude the superseded document ID;
+- delete: exclude the superseded document ID and the new tombstone ID.
+
+This keeps filtering before pagination without issuing a separate Elasticsearch
+revision scan. Migration files are scoped by their `index` field, so test-index
+repairs cannot affect production search.
+
+Override the directory when Reader Search is deployed separately:
 
 ```powershell
-$env:SEARCH_REVISION_CACHE_SECONDS="30"
-$env:SEARCH_REVISION_LIMIT="10000"
+$env:SEARCH_MIGRATIONS_DIR="C:\path\to\reviewed\migrations"
 ```
 
-If the number of revision edges exceeds the configured limit, search fails
-closed instead of exposing stale versions.
+Reviewed, applied migrations must be deployed with Reader Search before their
+new ES documents should become visible to users.

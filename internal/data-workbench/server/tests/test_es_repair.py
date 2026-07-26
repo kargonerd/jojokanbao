@@ -1,3 +1,4 @@
+import json
 import sys
 import unittest
 from tempfile import TemporaryDirectory
@@ -6,7 +7,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from es_repair import active_query, revision_id
-from es_migrations import apply_migration, create_migration, list_migrations, preview_migration
+from es_migrations import (
+    apply_migration,
+    create_migration,
+    excluded_document_ids,
+    list_migrations,
+    preview_migration,
+)
 
 
 class RepairLogicTest(unittest.TestCase):
@@ -16,11 +23,10 @@ class RepairLogicTest(unittest.TestCase):
         self.assertNotEqual(revision_id("old-id", doc, False), revision_id("old-id", {**doc, "content": "新正文"}, False))
         self.assertNotEqual(revision_id("old-id", doc, False), revision_id("old-id", doc, True))
 
-    def test_active_query_suppresses_old_versions_and_tombstones(self):
-        wrapped = active_query({"match": {"content": "测试"}}, ["b", "a", "a"])
+    def test_active_query_uses_recorded_excluded_ids(self):
+        wrapped = active_query({"match": {"content": "测试"}}, {"b", "a"})
         self.assertEqual(wrapped["bool"]["must"], [{"match": {"content": "测试"}}])
-        self.assertEqual(wrapped["bool"]["must_not"][0], {"term": {"deleted": True}})
-        self.assertEqual(wrapped["bool"]["must_not"][1]["ids"]["values"], ["a", "b"])
+        self.assertEqual(wrapped["bool"]["must_not"], [{"ids": {"values": ["a", "b"]}}])
 
     def test_migration_keeps_reason_local_and_es_payload_clean(self):
         class FakeClient:
@@ -71,6 +77,8 @@ class RepairLogicTest(unittest.TestCase):
             self.assertEqual(first["previewHash"], second["previewHash"])
             self.assertEqual(first["migration"]["state"], "pending")
             self.assertEqual(first["esPayload"]["supersedesId"], "old-id")
+            self.assertNotIn("deleted", first["esPayload"])
+            self.assertNotIn("isRevision", first["esPayload"])
             self.assertEqual(list(directory.iterdir()), [])
 
     def test_preview_hash_changes_when_reason_or_document_changes(self):
@@ -98,6 +106,43 @@ class RepairLogicTest(unittest.TestCase):
 
         self.assertNotEqual(base["previewHash"], changed_reason["previewHash"])
         self.assertNotEqual(base["previewHash"], changed_document["previewHash"])
+
+    def test_applied_migrations_build_index_scoped_exclusions(self):
+        with TemporaryDirectory() as temp:
+            directory = Path(temp)
+            repair = create_migration(
+                "base-id",
+                {"title": "修复", "content": "正文"},
+                deleted=False,
+                reason="",
+                index="news",
+                directory=directory,
+            )
+            delete = create_migration(
+                repair["id"],
+                {"title": "修复", "content": "正文"},
+                deleted=True,
+                reason="",
+                index="news",
+                directory=directory,
+            )
+            for migration, document_id in (
+                (repair, repair["id"]),
+                (delete, delete["id"]),
+            ):
+                path = directory / f"{migration['id']}.json"
+                migration["state"] = "applied"
+                migration["result"] = {"documentId": document_id}
+                path.write_text(
+                    json.dumps(migration),
+                    encoding="utf-8",
+                )
+
+            self.assertEqual(
+                excluded_document_ids("news", directory),
+                {"base-id", repair["id"], delete["id"]},
+            )
+            self.assertEqual(excluded_document_ids("other", directory), set())
 
 
 if __name__ == "__main__":
