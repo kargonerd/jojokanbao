@@ -9,6 +9,7 @@ These run on every Reader pull request and should contain most regression cases.
 | Area | Test file | Protected behavior |
 | --- | --- | --- |
 | Routes and shell | `app.test.tsx` | all default redirects, publication cards, desktop/mobile navigation, support and 404 pages |
+| Account login | `account-login.test.tsx` | auth subscription cleanup, book dialog behavior, credential submission and redirect |
 | Reader page | `readerPage.test.tsx` | PDF URL derivation, invalid route rejection, loading/errors, date and issue navigation, settings, clarity, zoom, page/hash navigation, share, download and scroll controls |
 | Search page | `searchPage.test.tsx` | inert API HTML, query restoration, stale-response rejection, history navigation, highlighted results, sorting, dates, pagination, URL sync and explicit error/retry states |
 | Publication data | `publications.test.ts` | archive boundaries, missing dates/years/issues, supplements, sorted/unique sequences and defaults |

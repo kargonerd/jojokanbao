@@ -115,8 +115,18 @@ import { PdfViewer, PdfPage, usePdfDocument } from "@jojo/pdf-viewer";
 ## Auth 基础设施
 
 `@jojo/auth` 封装浏览器端 Supabase 客户端、会话同步和账号资料访问。前端仅配置
-`.env.local` 中的 `VITE_SUPABASE_URL` 与 `VITE_SUPABASE_PUBLISHABLE_KEY`；这两个值是
+仓库根目录 `.env` 中的 `VITE_SUPABASE_URL` 与 `VITE_SUPABASE_PUBLISHABLE_KEY`；这两个值是
 可公开的项目标识，不要在前端配置 `service_role` key 或 Supabase access token。
+
+Reader 的账号入口默认关闭。设置 `VITE_ENABLE_ACCOUNT=true` 后启用 `/account`；
+`/login` 会兼容跳转到该入口。登录页面随账号路由懒加载，关闭开关时不改变现有 Reader
+路由，也不会加载 Supabase 客户端和账号页面样式。
+
+本地开发时在仓库根目录的 `.env` 配置这三个值；需要仅在当前机器覆盖某个值时，可以使用
+优先级更高的 `.env.local`。通过
+`.github/workflows/reader-deploy.yml` 部署时，在 GitHub Repository variables 中配置同名
+变量；保持 `VITE_ENABLE_ACCOUNT=false` 即可继续部署不带账号入口的 Reader。这些都是
+浏览器端公开值，不应改用 `service_role` key。
 
 账号资料表、RLS 策略和头像存储规则位于 `supabase/migrations/`。注册方式和邀请码校验
 不属于该基础包，将由独立变更实现。

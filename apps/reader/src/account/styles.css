@@ -1,0 +1,877 @@
+.login-book-page {
+  --book-red: var(--color-red, #8b1a1a);
+  --book-red-bright: #ad2017;
+  --book-red-dark: #60100c;
+  --book-gold: #ddb239;
+  --book-ink: var(--color-ink, #202020);
+  --book-paper: #fff9e9;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: clamp(2rem, 6vw, 5.5rem);
+  color: var(--book-ink);
+  background: var(--color-paper, #fff);
+}
+
+.login-book-page *,
+.login-book-page *::before,
+.login-book-page *::after {
+  box-sizing: border-box;
+}
+
+.login-book-entry {
+  display: grid;
+  justify-items: center;
+  gap: 1.6rem;
+  text-align: center;
+}
+
+.login-book-entry__star {
+  color: var(--book-red);
+  font-size: 2.2rem;
+  line-height: 1;
+}
+
+.login-book-entry h1 {
+  margin: -0.7rem 0 0;
+  color: var(--book-ink);
+  font-family: var(--font-serif);
+  font-size: clamp(2.1rem, 4vw, 3.2rem);
+  letter-spacing: 0.16em;
+}
+
+.login-book-entry p {
+  margin: 0;
+  color: #4f4a44;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.login-book-entry__actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.login-book-entry__actions button {
+  min-width: 7.5rem;
+  border: 1px solid var(--book-red);
+  padding: 0.75rem 1.15rem;
+  color: #fff;
+  background: var(--book-red);
+  cursor: pointer;
+  font-family: var(--font-serif);
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.login-book-entry__actions button:hover {
+  transform: translateY(-2px);
+  box-shadow: 4px 4px 0 rgba(139, 26, 26, 0.14);
+}
+
+.login-book-entry__actions button:focus-visible {
+  outline: 3px solid var(--book-red);
+  outline-offset: 4px;
+}
+
+.book-login-dialog {
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--color-paper, #fff);
+}
+
+.book-login-dialog[open] {
+  animation: dialog-enter 180ms cubic-bezier(0.2, 0.65, 0.25, 1) both;
+}
+
+.book-login-dialog::backdrop {
+  background: transparent;
+}
+
+.book-dialog-stage {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 4.5rem 3.5rem 2.5rem;
+}
+
+.opening-book {
+  position: relative;
+  width: min(61rem, calc(100vw - 7rem), calc((100dvh - 7rem) * 1.4524));
+  aspect-ratio: 61 / 42;
+  perspective: 5200px;
+  transform: translateX(-24%) rotateZ(-0.65deg) scale(0.98);
+  transform-origin: center center;
+  transform-style: preserve-3d;
+  isolation: isolate;
+  will-change: transform;
+}
+
+.opening-book::before {
+  position: absolute;
+  z-index: -1;
+  right: 3%;
+  bottom: -0.9rem;
+  left: 5%;
+  height: 1.15rem;
+  border-radius: 50%;
+  background: rgba(32, 20, 12, 0.22);
+  filter: blur(1rem);
+  content: "";
+  opacity: 0;
+}
+
+.opening-book__right-cover,
+.opening-book__turning-cover {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 50%;
+}
+
+.opening-book__right-cover {
+  z-index: 2;
+  border: 2px solid var(--book-red-dark);
+  border-left: 0;
+  border-radius: 0 1.05rem 1.05rem 0;
+  padding: 1.05rem 1.05rem 1.35rem 0;
+  background:
+    linear-gradient(112deg, transparent 8%, rgba(255, 238, 210, 0.07) 24%, transparent 39%),
+    repeating-linear-gradient(2deg, transparent 0 3px, rgba(48, 3, 1, 0.025) 3px 4px),
+    repeating-linear-gradient(92deg, transparent 0 4px, rgba(255, 220, 180, 0.018) 4px 5px),
+    linear-gradient(105deg, #74110d, var(--book-red-bright) 10%, #94150f 74%, #67100c);
+  box-shadow:
+    0.5rem 0.72rem 0.62rem rgba(80, 55, 32, 0.12),
+    1.25rem 1.45rem 1.9rem rgba(32, 20, 12, 0.15);
+  transform: translateZ(0);
+}
+
+.opening-book__right-cover::after {
+  position: absolute;
+  z-index: 3;
+  top: 1.05rem;
+  bottom: 1.35rem;
+  left: 0;
+  width: 42%;
+  border-radius: 0 0.3rem 0.3rem 0;
+  background: linear-gradient(90deg, rgba(55, 33, 13, 0.26), rgba(55, 33, 13, 0.08) 42%, transparent);
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transform: scaleX(0.24);
+  transform-origin: left center;
+}
+
+.opening-book__login-page,
+.opening-book__cover-back .opening-book__quote-page {
+  color: var(--book-ink);
+  background:
+    linear-gradient(90deg, rgba(89, 55, 16, 0.07), transparent 7%, transparent 91%, rgba(89, 55, 16, 0.035)),
+    radial-gradient(circle at 18% 24%, rgba(121, 78, 23, 0.035) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 75% 68%, rgba(121, 78, 23, 0.03) 0 1px, transparent 1.5px),
+    var(--book-paper);
+  background-size: auto, 17px 19px, 23px 29px, auto;
+}
+
+.opening-book__login-page {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  border: 1px solid rgba(65, 38, 15, 0.24);
+  border-left: 0;
+  border-radius: 0 0.62rem 0.36rem 0;
+  padding: clamp(1.7rem, 3vw, 3.2rem) clamp(1.8rem, 3vw, 3rem);
+  flex-direction: column;
+  box-shadow:
+    inset 0.85rem 0 1.15rem -1.05rem rgba(48, 27, 7, 0.38),
+    inset -0.35rem 0 0.7rem -0.6rem rgba(99, 63, 21, 0.18),
+    0 1px 0 #f2e8ce,
+    0 2px 0 rgba(161, 130, 78, 0.48),
+    0 3px 3px rgba(77, 48, 18, 0.1);
+  transform: rotateY(-0.18deg) translateZ(0.8px);
+  transform-origin: left center;
+}
+
+.opening-book__turning-cover {
+  z-index: 12;
+  transform: rotateY(0deg) translateZ(3px);
+  transform-origin: left center;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.opening-book__turning-cover::after {
+  position: absolute;
+  z-index: 5;
+  top: 0.85rem;
+  right: -0.22rem;
+  bottom: 0.85rem;
+  width: 0.28rem;
+  background: linear-gradient(90deg, #4d0907, #8a1711 55%, #3c0806);
+  content: "";
+  opacity: 0;
+  transform: rotateY(90deg);
+  transform-origin: left center;
+}
+
+.opening-book__cover-face {
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--book-red-dark);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  background:
+    linear-gradient(112deg, transparent 8%, rgba(255, 238, 210, 0.075) 24%, transparent 39%),
+    repeating-linear-gradient(2deg, transparent 0 3px, rgba(48, 3, 1, 0.025) 3px 4px),
+    repeating-linear-gradient(92deg, transparent 0 4px, rgba(255, 220, 180, 0.018) 4px 5px),
+    linear-gradient(105deg, #79120d, var(--book-red-bright) 12%, #96160f 78%, #6c110c);
+  transform-style: preserve-3d;
+}
+
+.opening-book__cover-front {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.85rem 1.05rem 1.05rem 0.85rem;
+  color: var(--book-gold);
+  flex-direction: column;
+  font-family: var(--font-serif);
+  transform: translateZ(0.6px);
+}
+
+.opening-book__cover-front::before {
+  position: absolute;
+  inset: 0.7rem;
+  border: 1px solid rgba(255, 205, 80, 0.28);
+  border-radius: 0.5rem 0.75rem 0.75rem 0.5rem;
+  content: "";
+}
+
+.opening-book__cover-front > span {
+  margin-bottom: 2.2rem;
+  font-size: 2.8rem;
+  line-height: 1;
+}
+
+.opening-book__cover-front strong {
+  font-size: 1.75rem;
+  letter-spacing: 0.24em;
+}
+
+.opening-book__cover-front small {
+  position: absolute;
+  top: 50%;
+  left: 0.45rem;
+  color: rgba(231, 180, 53, 0.64);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  writing-mode: vertical-rl;
+  transform: translateY(-50%);
+}
+
+.opening-book__cover-back {
+  display: block;
+  border-left: 0;
+  border-radius: 1.05rem 0 0 1.05rem;
+  padding: 1.05rem 0 1.35rem 1.05rem;
+  box-shadow:
+    inset -1.2rem 0 1.5rem -1.3rem rgba(53, 3, 1, 0.66);
+  transform: rotateY(180deg) translateZ(0.6px);
+}
+
+.opening-book__cover-back .opening-book__quote-page {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid rgba(65, 38, 15, 0.28);
+  border-right: 0;
+  border-radius: 0.62rem 0 0 0.36rem;
+  box-shadow:
+    inset -0.85rem 0 1.15rem -1.05rem rgba(48, 27, 7, 0.34),
+    0 1px 0 #f2e8ce,
+    0 2px 0 rgba(161, 130, 78, 0.48),
+    0 3px 3px rgba(77, 48, 18, 0.1);
+}
+
+.opening-book__cover-back .opening-book__quote-page::after {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 68%,
+    rgba(58, 34, 10, 0.05) 82%,
+    rgba(48, 27, 7, 0.18) 94%,
+    rgba(42, 22, 6, 0.34) 100%
+  );
+  content: "";
+  pointer-events: none;
+}
+
+.opening-book__quote-page {
+  height: 100%;
+  padding: clamp(1.5rem, 2.5vw, 2.25rem);
+}
+
+.quote-page__frame {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--book-red);
+  padding: 2.5rem 3rem;
+  flex-direction: column;
+  text-align: center;
+}
+
+.quote-page__frame::before {
+  position: absolute;
+  inset: 0.35rem;
+  border: 1px solid var(--book-red);
+  content: "";
+}
+
+.quote-page__star {
+  position: relative;
+  z-index: 1;
+  margin: auto 0 2.8rem;
+  color: var(--book-red-bright);
+  font-size: clamp(2.25rem, 3.5vw, 3.2rem);
+  line-height: 1;
+}
+
+.quote-page__frame blockquote {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 20rem);
+  margin: 0 auto auto;
+  border-block: 1px solid rgba(157, 36, 26, 0.6);
+  padding-block: 1.4rem;
+  color: var(--book-red);
+  text-align: left;
+}
+
+.quote-page__frame blockquote p {
+  margin: 0;
+  font-size: clamp(0.84rem, 1.1vw, 1rem);
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  line-height: 2;
+}
+
+.quote-page__frame blockquote p > span {
+  display: block;
+  white-space: nowrap;
+}
+
+.quote-page__frame cite {
+  display: block;
+  margin-top: 0.7rem;
+  color: #6f6254;
+  font-style: normal;
+  text-align: right;
+}
+
+.quote-page__frame cite span,
+.quote-page__frame cite small {
+  display: block;
+}
+
+.quote-page__frame cite span {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.quote-page__frame cite small {
+  margin-top: 0.18rem;
+  font-size: 0.55rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  line-height: 1.65;
+}
+
+.opening-book__gutter {
+  position: absolute;
+  z-index: 20;
+  top: 1.05rem;
+  bottom: 1.35rem;
+  left: 50%;
+  width: 1.9rem;
+  opacity: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0,
+    rgba(57, 35, 13, 0.1) 22%,
+    rgba(48, 27, 7, 0.44) 47%,
+    rgba(255, 251, 226, 0.22) 58%,
+    transparent 100%
+  );
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.opening-book__gutter::after {
+  position: absolute;
+  top: 0.2rem;
+  bottom: 0.2rem;
+  left: 50%;
+  width: 1px;
+  background: rgba(42, 22, 6, 0.56);
+  box-shadow:
+    -0.25rem 0 0.58rem rgba(42, 22, 6, 0.36),
+    0.2rem 0 0.42rem rgba(69, 43, 15, 0.14);
+  content: "";
+  transform: translateX(-50%);
+}
+
+.login-page__number,
+.login-page__folio {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+}
+
+.login-page__number {
+  border-bottom: 1px solid var(--book-ink);
+  padding-bottom: 0.7rem;
+  font-weight: 900;
+}
+
+.login-page__number b,
+.login-page__folio a {
+  color: var(--book-red);
+  font-weight: 900;
+}
+
+.login-page__folio {
+  border-top: 1px solid #a88865;
+  padding-top: 0.7rem;
+  color: #776a57;
+  font-size: 0.55rem;
+}
+
+.book-account-form {
+  position: relative;
+  z-index: 1;
+  margin-block: auto;
+}
+
+.book-account-form__feedback {
+  margin: 0 0 1rem;
+  border-left: 3px solid var(--book-red);
+  padding: 0.6rem 0.75rem;
+  color: #5f5141;
+  background: rgba(139, 26, 26, 0.05);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.book-account-form__feedback--error {
+  color: var(--book-red-dark);
+}
+
+.book-account-form__fields {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.book-account-form__fields label {
+  display: grid;
+  grid-template-columns: 5rem 1fr;
+  align-items: end;
+  gap: 0.7rem;
+}
+
+.book-account-form__fields label > span {
+  padding-bottom: 0.62rem;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.book-account-form__fields input {
+  width: 100%;
+  height: 2.55rem;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  padding-inline: 0.3rem;
+  color: inherit;
+  background: transparent;
+  box-shadow: none;
+  font-family: var(--font-sans);
+}
+
+.book-account-form__fields input:focus {
+  border-bottom-color: var(--book-red);
+  outline: 2px solid color-mix(in srgb, var(--book-red) 24%, transparent);
+  outline-offset: 2px;
+}
+
+.book-account-form__fields input:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.book-account-form__fields > button {
+  min-height: 3.2rem;
+  margin-top: 0.55rem;
+  border: 2px solid var(--book-red);
+  color: #fff;
+  background: var(--book-red);
+  cursor: pointer;
+  font-family: var(--font-serif);
+  font-size: 0.85rem;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.book-account-form__fields > button:hover {
+  box-shadow: 4px 4px 0 rgba(139, 26, 26, 0.14);
+  transform: translateY(-2px);
+}
+
+.book-account-form__fields > button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+  box-shadow: none;
+  transform: none;
+}
+
+.book-login-dialog[open] .opening-book {
+  animation: book-camera-follow 1320ms cubic-bezier(0.38, 0.12, 0.12, 1) both;
+}
+
+.book-login-dialog[open] .opening-book::before {
+  animation: book-shadow-arrive 1320ms ease-out both;
+}
+
+.book-login-dialog[open] .opening-book__right-cover::after {
+  animation: page-shadow-sweep 1240ms ease-in-out both;
+}
+
+.book-login-dialog[open] .opening-book__turning-cover {
+  animation: cover-open 1240ms cubic-bezier(0.42, 0.1, 0.16, 1) both;
+}
+
+.book-login-dialog[open] .opening-book__turning-cover::after {
+  animation: cover-edge-visible 1240ms linear both;
+}
+
+.book-login-dialog[open] .opening-book__gutter {
+  animation: gutter-appear 1320ms linear both;
+}
+
+@keyframes book-camera-follow {
+  from {
+    transform: translateX(-24%) rotateZ(-0.65deg) scale(0.98);
+  }
+
+  to {
+    transform: translateX(0) rotateZ(-0.16deg) scale(1);
+  }
+}
+
+@keyframes dialog-enter {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes cover-open {
+  from {
+    transform: rotateY(0deg) translateZ(3px);
+  }
+
+  to {
+    transform: rotateY(-168deg) translateZ(3px);
+  }
+}
+
+@keyframes cover-edge-visible {
+  0%,
+  26%,
+  74%,
+  100% {
+    opacity: 0;
+  }
+
+  43%,
+  57% {
+    opacity: 1;
+  }
+}
+
+@keyframes page-shadow-sweep {
+  0%,
+  18% {
+    opacity: 0;
+    transform: scaleX(0.18);
+  }
+
+  48% {
+    opacity: 0.82;
+    transform: scaleX(1);
+  }
+
+  76% {
+    opacity: 0.22;
+    transform: scaleX(0.55);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scaleX(0.15);
+  }
+}
+
+@keyframes book-shadow-arrive {
+  0%,
+  45% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes gutter-appear {
+  0%,
+  72% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes mobile-book-focus {
+  0% {
+    transform: translateX(calc(-50% + 8vw)) scale(0.94);
+  }
+
+  100% {
+    transform: translateX(calc(-50% + 5vw)) scale(1);
+  }
+}
+
+@media (max-width: 880px) {
+  .book-login-dialog {
+    overflow-x: hidden;
+    overflow-y: auto;
+    background: var(--color-paper, #fff);
+  }
+
+  .book-dialog-stage {
+    position: relative;
+    min-height: 100dvh;
+    display: block;
+    padding: 0;
+  }
+
+  .opening-book {
+    position: absolute;
+    top: max(2rem, calc((100dvh - 34rem) / 2));
+    left: 0;
+    width: 180vw;
+    min-height: 0;
+    height: min(34rem, calc(100dvh - 4rem));
+    aspect-ratio: auto;
+    perspective: 3000px;
+    perspective-origin: 50% 45%;
+    transform: translateX(calc(-50% + 8vw)) scale(0.94);
+    transform-origin: 50% 50%;
+  }
+
+  .opening-book__right-cover,
+  .opening-book__turning-cover {
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 50%;
+    min-height: 0;
+  }
+
+  .opening-book__right-cover {
+    position: absolute;
+    border: 1px solid var(--book-red-dark);
+    border-left: 0;
+    border-radius: 0 0.85rem 0.85rem 0;
+    padding: 0.34rem 0.36rem 0.46rem 0;
+    background:
+      repeating-linear-gradient(92deg, transparent 0 4px, rgba(255, 220, 180, 0.018) 4px 5px),
+      linear-gradient(105deg, #74110d, var(--book-red-bright) 10%, #8f150f 76%, #67100c);
+    box-shadow:
+      0.35rem 0.5rem 0.45rem rgba(80, 55, 32, 0.12),
+      0.85rem 1rem 1.45rem rgba(32, 20, 12, 0.15);
+  }
+
+  .opening-book__right-cover::after {
+    content: none;
+  }
+
+  .opening-book__turning-cover {
+    transform: rotateY(0deg) translateZ(3px);
+    transform-origin: left center;
+  }
+
+  .opening-book__turning-cover::after {
+    content: none;
+  }
+
+  .opening-book__cover-front {
+    border-width: 1px;
+    border-radius: 0.65rem 0.9rem 0.9rem 0.65rem;
+    box-shadow: 0.7rem 0 1.1rem rgba(42, 20, 10, 0.18);
+  }
+
+  .opening-book__cover-front::before {
+    inset: 0.85rem;
+    border-radius: 0.4rem 0.65rem 0.65rem 0.4rem;
+  }
+
+  .opening-book__cover-back {
+    border-radius: 0.9rem 0 0 0.65rem;
+    padding: 0.34rem 0 0.46rem 0.36rem;
+  }
+
+  .opening-book__gutter {
+    display: block;
+    top: 0.34rem;
+    bottom: 0.46rem;
+    width: 0.86rem;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(48, 27, 7, 0.12) 23%,
+      rgba(48, 27, 7, 0.44) 48%,
+      rgba(255, 251, 226, 0.24) 62%,
+      transparent 100%
+    );
+  }
+
+  .book-login-dialog[open] .opening-book {
+    animation: mobile-book-focus 1120ms cubic-bezier(0.38, 0.12, 0.12, 1) both;
+  }
+
+  .book-login-dialog[open] .opening-book__turning-cover {
+    animation: cover-open 1080ms cubic-bezier(0.42, 0.1, 0.16, 1) both;
+  }
+
+  .opening-book__login-page {
+    min-height: 100%;
+    height: 100%;
+    border: 1px solid rgba(65, 38, 15, 0.2);
+    border-left: 0;
+    border-radius: 0 0.48rem 0.32rem 0;
+    padding: 2.4rem clamp(1.35rem, 6vw, 2.25rem) 1.2rem;
+    box-shadow:
+      0 1px 0 #f2e8ce,
+      0 2px 0 rgba(161, 130, 78, 0.34);
+    transform: none;
+  }
+
+  .login-page__number {
+    padding-bottom: 0.85rem;
+    font-size: 0.64rem;
+  }
+
+  .book-account-form {
+    width: 100%;
+    max-width: 30rem;
+    margin-block: auto;
+    padding-block: clamp(1.25rem, 4dvh, 1.75rem);
+  }
+
+  .book-account-form__fields {
+    gap: 0.75rem;
+  }
+
+  .book-account-form__fields label {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+
+  .book-account-form__fields label > span {
+    padding-bottom: 0;
+    font-size: 0.75rem;
+  }
+
+  .book-account-form__fields input {
+    height: 2.7rem;
+    padding-inline: 0.2rem;
+    font-size: 1rem;
+  }
+
+  .book-account-form__fields > button {
+    min-height: 3.1rem;
+    margin-top: 0.25rem;
+  }
+
+  .login-page__folio {
+    padding-top: 0.8rem;
+    font-size: 0.58rem;
+  }
+
+}
+
+@media (max-width: 560px) {
+  .login-book-page {
+    padding: 2rem 1rem;
+  }
+
+  .login-book-entry__actions {
+    width: min(100%, 20rem);
+  }
+
+  .login-book-entry__actions button {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .book-dialog-stage {
+    padding: 0;
+  }
+
+  .opening-book__login-page {
+    padding: 2.35rem 1.25rem 1.15rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-book-page *,
+  .login-book-page *::before,
+  .login-book-page *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

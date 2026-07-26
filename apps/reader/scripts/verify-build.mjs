@@ -34,15 +34,22 @@ try {
   const assetNames = await readdir(assetsDir);
   const workers = assetNames.filter((name) => name.startsWith("pdf.worker-"));
   const stylesheets = assetNames.filter((name) => name.endsWith(".css"));
+  const javascriptFiles = assetNames.filter((name) => name.endsWith(".js"));
   const indexHtml = await readFile(new URL("index.html", distDir), "utf8");
+  const emittedReferences = [
+    indexHtml,
+    ...await Promise.all(
+      javascriptFiles.map((name) => readFile(new URL(name, assetsDir), "utf8")),
+    ),
+  ].join("\n");
 
   for (const stylesheet of stylesheets) {
     const css = await readFile(new URL(stylesheet, assetsDir), "utf8");
     if (/@layer(?:\s+[-\w.]+)?\s*\{/.test(css)) {
       await fail(`legacy browser compatibility requires flattened cascade layers: ${stylesheet}`);
     }
-    if (!indexHtml.includes(`assets/${stylesheet}`)) {
-      await fail(`index.html does not reference the post-processed stylesheet: ${stylesheet}`);
+    if (!emittedReferences.includes(`assets/${stylesheet}`)) {
+      await fail(`the emitted HTML and JavaScript do not reference the stylesheet: ${stylesheet}`);
     }
   }
 
