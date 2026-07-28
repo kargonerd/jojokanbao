@@ -129,6 +129,17 @@ describe("JOJO Web routes and Archive homepage", () => {
 });
 
 describe("JOJO Web navigation", () => {
+  it("only marks the Archive homepage active on the exact root route", () => {
+    renderAt("/archive/hq/196419");
+
+    const homeLink = screen.getByRole("link", { name: "首页" });
+    const magazineMenu = screen.getByRole("button", { name: "杂志" });
+    expect(homeLink.classList.contains("text-red")).toBe(false);
+    expect(homeLink.querySelector("span")).toBeNull();
+    expect(magazineMenu.classList.contains("text-red")).toBe(true);
+    expect(magazineMenu.querySelector("span")).not.toBeNull();
+  });
+
   it("navigates to search and marks the route active", async () => {
     renderAt("/archive");
     fireEvent.click(screen.getByRole("link", { name: "搜索" }));
