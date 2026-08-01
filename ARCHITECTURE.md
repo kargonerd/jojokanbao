@@ -12,7 +12,7 @@
 ```
 apps/homepage ──→ Astro 静态博客
 apps/web     ──→ @jojo/auth + @jojo/ui + @jojo/pdf-viewer + @jojo/editorial-preset
-apps/desktop ──→ @jojo/ui + @jojo/pdf-viewer + @jojo/editorial-preset
+apps/desktop ──→ @jojo/ui + @jojo/editorial-preset + pdfjs-dist
 apps/jiuwen-mobile ─→ Expo / React Native
 ```
 
