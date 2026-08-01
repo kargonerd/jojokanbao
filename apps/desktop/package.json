@@ -11,10 +11,7 @@
     "typecheck": "tsc --noEmit",
     "electron": "set PATH=%npm_node_execpath:node.exe=%;%PATH% && node ./dev-runner.mjs electron",
     "electron:dev": "set PATH=%npm_node_execpath:node.exe=%;%PATH% && node ./dev-runner.mjs electron",
-    "app:dev": "set PATH=%npm_node_execpath:node.exe=%;%PATH% && node ./dev-runner.mjs app",
-    "test:browser:bbox": "node ./e2e/proofread-pdfjs-alignment.mjs",
-    "test:electron:bbox": "node ./e2e/proofread-electron-alignment.mjs",
-    "verify:bbox": "pnpm test -- src/press/pages/ProofreadIssuesPage.test.tsx && pnpm run test:browser:bbox && pnpm run test:electron:bbox"
+    "app:dev": "set PATH=%npm_node_execpath:node.exe=%;%PATH% && node ./dev-runner.mjs app"
   },
   "dependencies": {
     "@jojo/editorial-preset": "workspace:*",

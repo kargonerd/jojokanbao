@@ -5,11 +5,11 @@ Archive、Account、RAG 和 Olds 保留 renderer 模块位置。
 
 当前目录边界：
 
-- `electron/main.mjs`：唯一的 Electron 主进程入口，使用原生 ESM 直接运行。
+- `electron/main.js`：唯一的 Electron 主进程入口；项目声明了 `"type": "module"`，
+  因此普通 `.js` 即按 ESM 运行。
 - `electron/preload.cjs`：唯一的 preload bridge；CommonJS 是 Electron sandbox
   preload 的运行时边界，不维护同名 TypeScript 或 ESM 副本。
-- `electron/preload.test.ts`：主进程与 preload 契约测试，不是运行时入口。
-- `e2e/`：Playwright 端到端测试及需要真实 Python engine/Electron 的专项验证。
+- `e2e/`：Playwright 端到端测试。
 - `tests/`：不依赖真实桌面运行时的应用级测试。
 - `src/main.tsx`：React renderer 入口。
 - `src/press/`：当前可运行的 Press 页面、组件、路由和数据访问。

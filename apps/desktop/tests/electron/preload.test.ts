@@ -12,7 +12,7 @@ afterEach(() => {
 
 describe('preload bridge', () => {
   it('exposes a PDF picker bridge from the CommonJS preload entry', async () => {
-    const preloadSource = readFileSync(new URL('./preload.cjs', import.meta.url), 'utf8');
+    const preloadSource = readFileSync(new URL('../../electron/preload.cjs', import.meta.url), 'utf8');
     const processMock = {
       env: {
         JOJO_PRESS_API_BASE_URL: 'http://127.0.0.1:8766'
@@ -56,25 +56,25 @@ describe('preload bridge', () => {
   });
 
   it('points the Electron main process at the CommonJS preload entry', () => {
-    const mainSource = readFileSync(new URL('./main.mjs', import.meta.url), 'utf8');
+    const mainSource = readFileSync(new URL('../../electron/main.js', import.meta.url), 'utf8');
 
     expect(mainSource).toContain("preload: path.join(currentDir, 'preload.cjs')");
   });
 
   it('supports a configured test PDF path for automated upload verification', () => {
-    const mainSource = readFileSync(new URL('./main.mjs', import.meta.url), 'utf8');
+    const mainSource = readFileSync(new URL('../../electron/main.js', import.meta.url), 'utf8');
 
     expect(mainSource).toContain('process.env.JOJO_PRESS_TEST_SELECTED_PDF');
   });
 
   it('supports automatically triggering the upload flow for verification', () => {
-    const mainSource = readFileSync(new URL('./main.mjs', import.meta.url), 'utf8');
+    const mainSource = readFileSync(new URL('../../electron/main.js', import.meta.url), 'utf8');
 
     expect(mainSource).toContain("process.env.JOJO_PRESS_AUTO_UPLOAD_TEST === '1'");
   });
 
   it('enables a configurable Electron remote debugging port so end-to-end verification can attach to the real app window', () => {
-    const mainSource = readFileSync(new URL('./main.mjs', import.meta.url), 'utf8');
+    const mainSource = readFileSync(new URL('../../electron/main.js', import.meta.url), 'utf8');
 
     expect(mainSource).toContain("const remoteDebuggingPort = process.env.JOJO_PRESS_REMOTE_DEBUGGING_PORT ?? '9222'");
     expect(mainSource).toContain("app.commandLine.appendSwitch('remote-debugging-port', remoteDebuggingPort)");

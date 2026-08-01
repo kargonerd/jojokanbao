@@ -241,7 +241,7 @@ async function runElectron() {
 
   const electron = spawnProcess(process.execPath, [
     './node_modules/electron/cli.js',
-    './electron/main.mjs'
+    './electron/main.js'
   ], {
     cwd: desktopCwd,
     env: {
