@@ -10,21 +10,20 @@ blog/
 
 apps/
   homepage/      博客静态站点渲染器 (Astro 5)
-  reader/        PDF 报纸/杂志阅读器 (Vite + React 19)
-  rag/           RAG 知识库问答 + 文档阅读器 (Vite + React 19)
-  press/         PDF 校对工具桌面端 (Electron + Vite + React 19)
-  jiuwen-web/    新闻聚合 (Next.js 16 + React 19)
-  jiuwen-mobile/ 新闻聚合移动端 (Expo + React Native)
+  web/           统一 Web 客户端：Archive + Account + RAG + Olds (Vite + React 19)
+  desktop/       统一桌面客户端；当前包含 Press (Electron + Vite + React 19)
+  jiuwen-mobile/ 当前移动端原型，后续扩展为统一 Mobile 客户端 (Expo + React Native)
 
 services/
   rag-backend/          JOJO-RAG Flask/SCF 后端
   press-engine/         JOJO Press FastAPI 后端
   jiuwen-api/           JOJO旧闻 FastAPI 后端
-  jiuwen-news-reader/   旧新闻阅读器前端原型；旧 Express 后端已归档
+  olds-api/             Olds 历史归档任务
   reader-search/        JOJO看报 Elasticsearch 搜索服务
+  notebooklm-py/        NotebookLM Python 客户端 vendored copy
+
 internal/
   data-workbench/       内部数据工作台（web + server）
-  notebooklm-py/        NotebookLM Python 客户端 vendored copy
 
 references/
   jiuwen-folo-analysis/ Folo/Follow 上游参考工程归档，不参与本仓库构建
@@ -32,7 +31,6 @@ references/
   legacy-reader-web/   原 WebstormProjects/web Vue reader 归档
   legacy-press-root/   原 jojo-press 根目录旧 server/static/scripts 归档
   legacy-jiuwen-root/  原 jojojiuwen 根目录 docs/demo/docker/scripts 归档
-
 packages/
   auth/               Supabase 客户端、会话状态与账号资料访问
   editorial-preset/   CSS 设计系统 (Tailwind v4 theme + base styles)
@@ -40,7 +38,9 @@ packages/
   pdf-viewer/         共享 PDF 渲染 (PdfPage, PdfViewer, usePdfDocument)
 
 tooling/
+  eslint-config/      共享 ESLint 配置
   tsconfig/           共享 TypeScript 配置
+  archive-pdf/        Archive PDF 处理、发布和 CDN 运维工具
 ```
 
 ## 快速开始
@@ -60,10 +60,8 @@ pnpm test
 
 # 单独开发某个 app
 pnpm --filter @jojo/homepage dev
-pnpm --filter @jojo/reader dev
-pnpm --filter @jojo/rag dev
-pnpm --filter @jojo/press dev
-pnpm --filter @jojo/jiuwen-web dev
+pnpm --filter @jojo/web dev
+pnpm dev:desktop
 pnpm dev:jiuwen-mobile
 
 # 后端/服务（需先按各 service README 安装依赖）
@@ -73,15 +71,19 @@ pnpm dev:reader-search
 pnpm dev:jiuwen-api
 ```
 
+## 环境配置
+
+统一 Web 的 Vite 环境变量放在 monorepo 根目录的 `.env`，变量清单维护在可提交的 `.env.example`；只覆盖当前机器时可用 `.env.local`。Python 服务暂时继续按各自 README 配置，服务端整理会在独立变更中完成。不要提交任何真实 `.env` 文件。
+
 ## 技术栈
 
 | 层面 | 选择 |
 |------|------|
 | 语言 | TypeScript (strict) |
-| 框架 | React 19 + Vite / Next.js 16 |
+| 框架 | React 19 + Vite、Astro 5；移动端使用 Expo / React Native |
 | 样式 | Tailwind CSS v4 + @jojo/editorial-preset |
 | 状态管理 | Zustand |
-| 路由 | React Router 7 / Next.js App Router |
+| 路由 | React Router 7 / Astro 文件路由 |
 | 测试 | Vitest + @testing-library/react |
 | 构建编排 | Turborepo |
 | 包管理 | pnpm workspaces |
@@ -89,7 +91,10 @@ pnpm dev:jiuwen-api
 
 ## 迁移边界
 
-`apps/` 和 `packages/` 参与当前 pnpm/turbo 前端工作区；`services/` 保留当前 Python 后端和工具源码，但不加入 pnpm workspace，避免服务依赖污染前端工作区。服务各自独立安装依赖和运行。旧 Node/Nest/Express 后端归档在 `references/legacy-node-backends/`，不参与构建、测试或部署。
+`apps/`、`packages/` 和 `internal/data-workbench/web` 参与当前 pnpm/turbo
+前端工作区。`services/` 与 `internal/data-workbench/server` 保留独立 Python
+依赖，不加入 pnpm workspace。旧 Node/Nest/Express 后端归档在
+`references/legacy-node-backends/`，不参与构建、测试或部署。
 
 迁移时刻意排除了 `.env`、数据库、运行输出、截图、日志、`node_modules`、构建产物等本地状态文件。配置只保留 `*.example.*` 或源码中的默认配置。
 
@@ -110,6 +115,7 @@ pnpm dev:jiuwen-api
 
 ```tsx
 import { Button, Card, NavBar, Tag, Pagination, Modal, LoadingSpinner } from "@jojo/ui";
+import { createJojoAuthClient, createJojoAuthStore } from "@jojo/auth";
 import { PdfViewer, PdfPage, usePdfDocument } from "@jojo/pdf-viewer";
 ```
 
@@ -119,24 +125,33 @@ import { PdfViewer, PdfPage, usePdfDocument } from "@jojo/pdf-viewer";
 仓库根目录 `.env` 中的 `VITE_SUPABASE_URL` 与 `VITE_SUPABASE_PUBLISHABLE_KEY`；这两个值是
 可公开的项目标识，不要在前端配置 `service_role` key 或 Supabase access token。
 
-Reader 的账号入口默认关闭。设置 `VITE_ENABLE_ACCOUNT=true` 后启用 `/account`；
-`/login` 会兼容跳转到该入口。登录页面随账号路由懒加载，关闭开关时不改变现有 Reader
+统一 Web 的账号入口默认关闭。设置 `VITE_ENABLE_ACCOUNT=true` 后启用 `/account`；
+`/login` 会兼容跳转到该入口。登录页面随账号路由懒加载，关闭开关时不改变现有 Archive
 路由，也不会加载 Supabase 客户端和账号页面样式。
 
 本地开发时在仓库根目录的 `.env` 配置这三个值；需要仅在当前机器覆盖某个值时，可以使用
 优先级更高的 `.env.local`。通过
-`.github/workflows/reader-deploy.yml` 部署时，在 GitHub Repository variables 中配置同名
-变量；保持 `VITE_ENABLE_ACCOUNT=false` 即可继续部署不带账号入口的 Reader。这些都是
+`.github/workflows/web-deploy.yml` 部署时，在 GitHub Repository variables 中配置同名
+变量；保持 `VITE_ENABLE_ACCOUNT=false` 即可继续部署不带账号入口的统一 Web。这些都是
 浏览器端公开值，不应改用 `service_role` key。
 
 账号资料表、RLS 策略和头像存储规则位于 `supabase/migrations/`。注册方式和邀请码校验
 不属于该基础包，将由独立变更实现。
 
-## Reader release
+## CI and Unified Web release
 
-Reader deploys are isolated from the rest of the monorepo. Ordinary pushes to `master` run Reader CI only when reader-related paths change, and they do not deploy. Other apps can use their own tags without triggering reader deployment.
+`.github/workflows/ci.yml` is the repository's single pull-request CI entry point. It uses
+Turborepo to check affected pnpm workspaces and has focused jobs for Web browser tests,
+Homepage content, Supabase/Auth contracts, and Python checks that need a separate runtime.
+Deployments and scheduled maintenance stay in independent workflows because they use
+credentials or change external state. See `.github/workflows/README.md` for the boundary
+and extension rules.
 
-`master` is protected by a repository ruleset and must be updated through pull requests. Reader release tags are also protected: only repository admins can create, update, or delete `reader-*` tags.
+Unified Web deployment is isolated from the rest of the monorepo. Ordinary pushes and pull
+requests run CI but do not deploy Web. Other apps can use their own release triggers without
+triggering the Web deployment.
+
+`master` is protected by a repository ruleset and must be updated through pull requests. Existing Reader release tags are also protected: only repository admins can create, update, or delete `reader-*` tags.
 
 Automatic reader deployment is triggered only by reader-specific tags:
 
@@ -154,41 +169,41 @@ git tag reader-v20260628
 git push origin reader-v20260628
 ```
 
-The `Deploy reader web` workflow builds `@jojo/reader` and uploads `apps/reader/dist/` to Tencent COS. It is also available through manual `workflow_dispatch` in GitHub Actions.
+The `Deploy unified web` workflow builds `@jojo/web` and uploads `apps/web/dist/` to EdgeOne Makers. It is also available through manual `workflow_dispatch` in GitHub Actions. Existing `reader-*` release tags remain supported to avoid changing the current production release procedure during this refactor.
 
-## Reader PDF protection
+## Archive PDF protection
 
-Reader can load JOJO-protected PDF bytes through HTTP Range requests while crawlers that fetch the raw `.pdf` object receive bytes that do not open as a normal PDF.
+Archive can load JOJO-protected PDF bytes through HTTP Range requests while crawlers that fetch the raw `.pdf` object receive bytes that do not open as a normal PDF.
 
 Encode local PDF files before uploading them back to the reader CDN/object storage:
 
 ```bash
 # one file, write to another path
-pnpm protect:reader-pdf encode input.pdf output.pdf
+pnpm protect:archive-pdf encode input.pdf output.pdf
 
 # directory, update *.pdf in place
-pnpm protect:reader-pdf encode ./pdf-root --recursive
+pnpm protect:archive-pdf encode ./pdf-root --recursive
 
 # publish selected reader issues through qpdf linearization + protection
 # destination comes from internal/data-workbench/server/config.json storage settings
-pnpm publish:reader-pdf -- --collection rmrb --source D:\PDF\RMRB --issue 19460515 --issue 19460516
+pnpm publish:archive-pdf -- --collection rmrb --source D:\PDF\RMRB --issue 19460515 --issue 19460516
 ```
 
 Verify local files or published URLs after upload:
 
 ```bash
-pnpm verify:reader-pdf ./pdf-root/RMRB/1946/19460515.pdf
-pnpm verify:reader-pdf https://blacknews.jojokanbao.cn/RMRB/1946/19460515.pdf
+pnpm verify:archive-pdf ./pdf-root/RMRB/1946/19460515.pdf
+pnpm verify:archive-pdf https://blacknews.jojokanbao.cn/RMRB/1946/19460515.pdf
 ```
 
 If `blacknews.jojokanbao.cn` still reports `state=plain` after the object storage copy is verified as protected, clear EdgeOne URL cache and verify again:
 
 ```bash
-pnpm purge:reader-pdf -- --zone-id <edgeone-zone-id> https://blacknews.jojokanbao.cn/RMRB/1946/19460515.pdf
-pnpm verify:reader-pdf https://blacknews.jojokanbao.cn/RMRB/1946/19460515.pdf
+pnpm purge:archive-pdf -- --zone-id <edgeone-zone-id> https://blacknews.jojokanbao.cn/RMRB/1946/19460515.pdf
+pnpm verify:archive-pdf https://blacknews.jojokanbao.cn/RMRB/1946/19460515.pdf
 
 # or purge and poll until verification passes
-pnpm finalize:reader-pdf -- --zone-id <edgeone-zone-id> https://blacknews.jojokanbao.cn/RMRB/1946/19460515.pdf
+pnpm finalize:archive-pdf -- --zone-id <edgeone-zone-id> https://blacknews.jojokanbao.cn/RMRB/1946/19460515.pdf
 ```
 
 Expected protected output is `PASS ... state=protected range=206 direct=fails decodedPages=N` for URLs. If the verifier reports `state=plain`, the object is still an ordinary PDF and must be encoded before publishing.

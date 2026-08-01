@@ -7,10 +7,14 @@
 - `rag-backend/`：来自 `C:\Users\luoxixi\GAI\jojo-rag` 的 Flask/SCF 后端，提供 `/api/chat/stream`、`/api/catalog/**`、`/admin/**`，并保留原 `docs/` 与 `mock_cos/` 样例。
 - `press-engine/`：来自 `C:\Users\luoxixi\GAI\jojo-press\engine` 的 FastAPI 后端，提供项目创建、MinerU 识别、校对、导出。
 - `jiuwen-api/`：JOJO 旧闻 FastAPI 后端，提供新闻、RSS、来源、批注、评论、合订本任务。
-- `jiuwen-news-reader/`：旧 React 新闻阅读器前端原型；旧 Express 后端已归档到 `references/legacy-node-backends/`。
+- `olds-api/`：Olds 历史新闻归档下载、状态维护和验证工具。
 - `reader-search/`：来自 `C:\Users\luoxixi\WebstormProjects\web\search` 的 Elasticsearch 搜索服务。
-PDF 入库、ES 修复和相关管理界面已迁移到 `internal/data-workbench/`。
 - `notebooklm-py/`：来自 `jojo-rag/notebooklm-py` 的 NotebookLM Python 客户端副本。
+
+## 已迁出
+
+PDF 入库、ES 修复和相关管理界面位于 `internal/data-workbench/`，不再属于
+`services/`。
 
 ## 启动
 
