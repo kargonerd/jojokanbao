@@ -8,7 +8,7 @@ import { chromium } from 'playwright';
 const projectId = '1f56925df24b421da482cc21d3799aae';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const engineDir = path.resolve(__dirname, '..', '..', 'services', 'press-engine');
+const engineDir = path.resolve(__dirname, '..', '..', '..', 'services', 'press-engine');
 
 function assertClose(name, actual, expected, tolerance = 2) {
   if (Math.abs(actual - expected) > tolerance) {

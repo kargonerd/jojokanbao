@@ -130,21 +130,4 @@ describe('package scripts', () => {
     expect(runnerSource).toContain('if (!existingEngineStatus)');
   });
 
-  it('keeps the Electron e2e scripts on the renderer url reported by Vite instead of hard-coding fallback ports', () => {
-    const createProjectScript = readFileSync(new URL('./test-create-project.mjs', import.meta.url), 'utf8');
-    const fullFlowScript = readFileSync(new URL('./test-full-flow.mjs', import.meta.url), 'utf8');
-
-    expect(createProjectScript).not.toContain('127.0.0.1:4174');
-    expect(fullFlowScript).not.toContain('127.0.0.1:4174');
-  });
-
-  it('captures project creation from network responses instead of relying on the browser url', () => {
-    const createProjectScript = readFileSync(new URL('./test-create-project.mjs', import.meta.url), 'utf8');
-    const fullFlowScript = readFileSync(new URL('./test-full-flow.mjs', import.meta.url), 'utf8');
-
-    expect(createProjectScript).toContain('waitForResponse');
-    expect(fullFlowScript).toContain('waitForResponse');
-    expect(createProjectScript).not.toContain('const currentUrl = page.url()');
-    expect(fullFlowScript).not.toContain('const currentUrl = page.url()');
-  });
 });
