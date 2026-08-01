@@ -11,6 +11,7 @@ Archive、Account、RAG 和 Olds 保留 renderer 模块位置。
   preload 的运行时边界，不维护同名 TypeScript 或 ESM 副本。
 - `e2e/`：Playwright 端到端测试。
 - `tests/`：不依赖真实桌面运行时的应用级测试。
+- `scripts/`：仅供 Desktop 本地开发使用的 Electron/Python engine 启动器。
 - `src/main.tsx`：React renderer 入口。
 - `src/press/`：当前可运行的 Press 页面、组件、路由和数据访问。
 - `src/archive/`、`src/account/`、`src/rag/`、`src/olds/`：尚未接入的桌面模块占位目录。
@@ -26,7 +27,7 @@ Electron 运行时只暴露 `appName`、Python engine 地址和系统 PDF
 
 ```bash
 pnpm --filter @jojo/desktop dev
-pnpm --filter @jojo/desktop app:dev
+pnpm --filter @jojo/desktop dev:electron
 pnpm --filter @jojo/desktop typecheck
 pnpm --filter @jojo/desktop test
 pnpm --filter @jojo/desktop test:e2e

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 import { PressActionLink, PressButton, PressPage, PressPanel } from '../components/PressUi';
 import { ProjectCard } from '../components/ProjectCard';
@@ -68,8 +69,7 @@ function ProjectCoverPreview({ title, coverUrl, pdfUrl }: { title: string; cover
 
     void (async () => {
       try {
-        const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-        const documentTask = pdfjs.getDocument({ url: pdfUrl, disableWorker: true } as Parameters<typeof pdfjs.getDocument>[0]);
+        const documentTask = getDocument({ url: pdfUrl, disableWorker: true } as Parameters<typeof getDocument>[0]);
         const pdf = await documentTask.promise;
         const page = await pdf.getPage(1);
         const viewport = page.getViewport({ scale: 0.28 });

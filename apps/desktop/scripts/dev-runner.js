@@ -6,15 +6,14 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 import { config as loadEnv } from 'dotenv';
 
-import { buildRendererApiBaseUrl, chooseEnginePort } from './dev-runner-utils.mjs';
+import { buildRendererApiBaseUrl, chooseEnginePort } from './dev-runner-utils.js';
 
-const mode = process.argv[2];
-const desktopCwd = process.cwd();
 const defaultEnginePort = 8765;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const monorepoRoot = path.resolve(__dirname, '..', '..');
+const desktopCwd = path.resolve(__dirname, '..');
+const monorepoRoot = path.resolve(__dirname, '..', '..', '..');
 const engineDir = path.resolve(monorepoRoot, 'services', 'press-engine');
 const envPath = path.resolve(engineDir, '.env');
 const loadedEnv = loadEnv({ path: envPath, override: false, quiet: true });
@@ -267,9 +266,4 @@ async function runElectron() {
   });
 }
 
-if (mode === 'electron' || mode === 'dev') {
-  await runElectron();
-} else {
-  console.error('Usage: node dev-runner.mjs <electron|dev>');
-  process.exit(1);
-}
+await runElectron();

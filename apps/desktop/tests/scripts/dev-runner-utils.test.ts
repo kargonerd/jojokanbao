@@ -9,7 +9,7 @@ import {
   extractRendererUrl,
   shouldReuseRunningEngine,
   shouldReuseRunningEngineForDesktop
-} from './dev-runner-utils.mjs';
+} from '../../scripts/dev-runner-utils.js';
 
 describe('extractRendererUrl', () => {
   it('returns the actual Vite local url when the default port is unavailable', () => {
@@ -87,30 +87,28 @@ describe('chooseEnginePort', () => {
 });
 
 describe('package scripts', () => {
-  it('prepends the npm node directory to PATH before starting desktop runners', () => {
-    const packageJson = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
+  it('starts the desktop runner through a cross-platform Node command', () => {
+    const packageJson = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
       scripts: Record<string, string>;
     };
 
-    expect(packageJson.scripts.electron).toBe('set PATH=%npm_node_execpath:node.exe=%;%PATH% && node ./dev-runner.mjs electron');
-    expect(packageJson.scripts['electron:dev']).toBe('set PATH=%npm_node_execpath:node.exe=%;%PATH% && node ./dev-runner.mjs electron');
-    expect(packageJson.scripts['app:dev']).toBe('set PATH=%npm_node_execpath:node.exe=%;%PATH% && node ./dev-runner.mjs app');
+    expect(packageJson.scripts['dev:electron']).toBe('node ./scripts/dev-runner.js');
   });
 
   it('selects an engine port dynamically instead of assuming 8765 is always safe to reuse', () => {
-    const runnerSource = readFileSync(new URL('./dev-runner.mjs', import.meta.url), 'utf8');
+    const runnerSource = readFileSync(new URL('../../scripts/dev-runner.js', import.meta.url), 'utf8');
 
     expect(runnerSource).toContain('chooseEnginePort(');
   });
 
   it('does not run the desktop backend with uvicorn reload enabled', () => {
-    const runnerSource = readFileSync(new URL('./dev-runner.mjs', import.meta.url), 'utf8');
+    const runnerSource = readFileSync(new URL('../../scripts/dev-runner.js', import.meta.url), 'utf8');
 
     expect(runnerSource).not.toContain("'--reload'");
   });
 
   it('uses dotenv instead of a hand-written parser for the engine env file', () => {
-    const runnerSource = readFileSync(new URL('./dev-runner.mjs', import.meta.url), 'utf8');
+    const runnerSource = readFileSync(new URL('../../scripts/dev-runner.js', import.meta.url), 'utf8');
 
     expect(runnerSource).toContain("import { config as loadEnv } from 'dotenv';");
     expect(runnerSource).toContain('loadEnv({ path: envPath, override: false, quiet: true })');
@@ -118,14 +116,14 @@ describe('package scripts', () => {
   });
 
   it('passes the selected engine api base url into Electron preload for renderer requests', () => {
-    const runnerSource = readFileSync(new URL('./dev-runner.mjs', import.meta.url), 'utf8');
+    const runnerSource = readFileSync(new URL('../../scripts/dev-runner.js', import.meta.url), 'utf8');
 
     expect(runnerSource).toContain('buildRendererApiBaseUrl(');
     expect(runnerSource).toContain('JOJO_PRESS_API_BASE_URL: engineApiBaseUrl');
   });
 
   it('reuses a compatible running backend instead of blindly spawning another process on the same port', () => {
-    const runnerSource = readFileSync(new URL('./dev-runner.mjs', import.meta.url), 'utf8');
+    const runnerSource = readFileSync(new URL('../../scripts/dev-runner.js', import.meta.url), 'utf8');
 
     expect(runnerSource).toContain('if (!existingEngineStatus)');
   });

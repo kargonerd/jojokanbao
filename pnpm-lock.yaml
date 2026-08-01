@@ -28,9 +28,6 @@ importers:
       '@jojo/editorial-preset':
         specifier: workspace:*
         version: link:../../packages/editorial-preset
-      '@jojo/pdf-viewer':
-        specifier: workspace:*
-        version: link:../../packages/pdf-viewer
       '@jojo/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -83,9 +80,6 @@ importers:
       jsdom:
         specifier: ^26.0.0
         version: 26.1.0
-      pdf2pic:
-        specifier: ^3.2.0
-        version: 3.2.0
       tailwindcss:
         specifier: ^4.3.0
         version: 4.3.0
@@ -2847,12 +2841,6 @@ packages:
   array-iterate@2.0.1:
     resolution: {integrity: sha512-I1jXZMjAgCMmxT4qxXfPXa6SthSoE8h6gkSI9BGGNv8mP8G/v0blc+qFnZu6K42vTOiuME596QaLO0TP3Lk0xg==}
 
-  array-parallel@0.1.3:
-    resolution: {integrity: sha512-TDPTwSWW5E4oiFiKmz6RGJ/a80Y91GuLgUYuLd49+XBS75tYo8PNgaT2K/OxuQYqkoI852MDGBorg9OcUSTQ8w==}
-
-  array-series@0.1.5:
-    resolution: {integrity: sha512-L0XlBwfx9QetHOsbLDrE/vh2t018w9462HM3iaFfxRiK83aJjAt/Ja3NMkOW7FICwWTlQBa3ZbL5FKhuQWkDrg==}
-
   asap@2.0.6:
     resolution: {integrity: sha512-BSHWgDSAiKs50o2Re8ppvp3seVHXSRM44cdSsT9FfNEUUZLOGWVCsiWaRPWM1Znn+mqZ1OfVZ3z3DWEzSp7hRA==}
 
@@ -3889,11 +3877,6 @@ packages:
   globalthis@1.0.4:
     resolution: {integrity: sha512-DpLKbNU4WylpxJykQujfCcwYWiV/Jhm50Goo0wrVILAv5jOr9d+H+UR3PhSCD2rCCEIg0uc+G+muBTwD54JhDQ==}
     engines: {node: '>= 0.4'}
-
-  gm@1.25.1:
-    resolution: {integrity: sha512-jgcs2vKir9hFogGhXIfs0ODhJTfIrbECCehg38tqFgHm8zqXx7kAJyCYAFK4jTjx71AxrkFtkJBawbAxYUPX9A==}
-    engines: {node: '>=14'}
-    deprecated: The gm module has been sunset. Please migrate to an alternative. https://github.com/aheckmann/gm?tab=readme-ov-file#2025-02-24-this-project-is-not-maintained
 
   gopd@1.2.0:
     resolution: {integrity: sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==}
@@ -4967,10 +4950,6 @@ packages:
   pathval@2.0.1:
     resolution: {integrity: sha512-//nshmD55c46FuFw26xV/xFAaB5HF9Xdap7HJBBnrKdAd6/GxDBaNA1870O79+9ueg61cZLSVc+OaFlfmObYVQ==}
     engines: {node: '>= 14.16'}
-
-  pdf2pic@3.2.0:
-    resolution: {integrity: sha512-p0bp+Mp4iJy2hqSCLvJ521rDaZkzBvDFT9O9Y0BUID3I04/eDaebAFM5t8hoWeo2BCf42cDijLCGJWTOtkJVpA==}
-    engines: {node: '>=14'}
 
   pdfjs-dist@5.7.284:
     resolution: {integrity: sha512-h4EdYQczmGhbOlqc3PPZwxevn7ApdWPbovAuWXOB/DjIyigSnwfy2oze7c6mRcSr9XgLp3eN3EeL4DyySTPMFw==}
@@ -8936,10 +8915,6 @@ snapshots:
 
   array-iterate@2.0.1: {}
 
-  array-parallel@0.1.3: {}
-
-  array-series@0.1.5: {}
-
   asap@2.0.6: {}
 
   assertion-error@2.0.1: {}
@@ -10217,15 +10192,6 @@ snapshots:
       define-properties: 1.2.1
       gopd: 1.2.0
     optional: true
-
-  gm@1.25.1:
-    dependencies:
-      array-parallel: 0.1.3
-      array-series: 0.1.5
-      cross-spawn: 7.0.6
-      debug: 3.2.7
-    transitivePeerDependencies:
-      - supports-color
 
   gopd@1.2.0: {}
 
@@ -11723,12 +11689,6 @@ snapshots:
   pathe@2.0.3: {}
 
   pathval@2.0.1: {}
-
-  pdf2pic@3.2.0:
-    dependencies:
-      gm: 1.25.1
-    transitivePeerDependencies:
-      - supports-color
 
   pdfjs-dist@5.7.284(patch_hash=zahbskxuqcrzag4gobt5x7k26i):
     optionalDependencies:

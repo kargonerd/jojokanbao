@@ -14,6 +14,7 @@ import {
   fetchQualityStatus,
   getRecognitionStatus,
   resolvePdfSelection,
+  runExportOption,
   saveProjectMetadataConfirmation,
   setApiBaseUrlOverride,
   saveProofreadBlock,
@@ -233,7 +234,7 @@ function ExportRoute() {
   const options = useLoaderData() as ExportOption[];
   const { projectId = '' } = useParams();
 
-  return <ExportPage projectId={projectId} options={options} onExport={(optionId) => import('./lib/api').then(({ runExportOption }) => runExportOption(projectId, optionId))} />;
+  return <ExportPage projectId={projectId} options={options} onExport={(optionId) => runExportOption(projectId, optionId)} />;
 }
 
 function MockStructuredRoute() {

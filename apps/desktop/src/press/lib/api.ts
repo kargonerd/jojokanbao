@@ -9,7 +9,6 @@ import type {
 import type { ProofreadBlock, ProofreadWorkspace } from '../types/issues';
 
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:8765';
-const DEFAULT_TEST_PDF_PATH = 'C:\\Users\\luoxixi\\Downloads\\test.pdf';
 
 let apiBaseUrlOverride: string | null = null;
 
@@ -238,5 +237,3 @@ export async function resolvePdfSelection() {
   const file = await selectPdfFileFromBrowser();
   return { kind: 'file' as const, value: file };
 }
-
-export { DEFAULT_TEST_PDF_PATH };
