@@ -31,8 +31,6 @@ references/
   legacy-reader-web/   原 WebstormProjects/web Vue reader 归档
   legacy-press-root/   原 jojo-press 根目录旧 server/static/scripts 归档
   legacy-jiuwen-root/  原 jojojiuwen 根目录 docs/demo/docker/scripts 归档
-  legacy-jiuwen-news-reader/ 旧 React 新闻阅读器原型
-
 packages/
   auth/               Supabase 客户端、会话状态与账号资料访问
   editorial-preset/   CSS 设计系统 (Tailwind v4 theme + base styles)
