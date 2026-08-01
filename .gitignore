@@ -11,9 +11,14 @@ dist-electron
 *.tsbuildinfo
 coverage
 .vite
+**/__pycache__/
+*.pyc
+test-results/
+playwright-report/
 .idea/
 .playwright-mcp/
 blog/.obsidian/
+.rmrb-sync-work/
 
 # Service runtime data
 services/**/.env
@@ -35,8 +40,8 @@ references/**/node_modules/
 references/**/dist/
 references/**/.next/
 references/**/__pycache__/
-apps/press/*diagnostic*.png
-apps/press/*alignment*.png
+apps/desktop/*diagnostic*.png
+apps/desktop/*alignment*.png
 press-proofread*.png
 tmp/
 

@@ -1,69 +1,118 @@
-name: Reader CI
+name: CI
 
 on:
   push:
     branches: [master]
-    paths:
-      - "apps/reader/**"
-      - "packages/editorial-preset/**"
-      - "packages/pdf-viewer/**"
-      - "packages/ui/**"
-      - "supabase/**"
-      - "patches/**"
-      - "tooling/tsconfig/**"
-      - "tooling/protect-reader-pdf.mjs"
-      - "tooling/purge-edgeone-reader-cache.mjs"
-      - "upload/sync_rmrb_today.py"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - "turbo.json"
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/reader-deploy.yml"
-      - ".github/workflows/sync-rmrb.yml"
   pull_request:
     branches: [master]
-    paths:
-      - "apps/reader/**"
-      - "packages/editorial-preset/**"
-      - "packages/pdf-viewer/**"
-      - "packages/ui/**"
-      - "supabase/**"
-      - "patches/**"
-      - "tooling/tsconfig/**"
-      - "tooling/protect-reader-pdf.mjs"
-      - "tooling/purge-edgeone-reader-cache.mjs"
-      - "upload/sync_rmrb_today.py"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - "turbo.json"
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/reader-deploy.yml"
-      - ".github/workflows/sync-rmrb.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-and-test:
+  changes:
+    name: Detect affected areas
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    outputs:
+      all_node: ${{ steps.filter.outputs.all_node }}
+      base_sha: ${{ steps.filter.outputs.base_sha }}
+      database: ${{ steps.filter.outputs.database }}
+      desktop_e2e: ${{ steps.filter.outputs.desktop_e2e }}
+      head_sha: ${{ steps.filter.outputs.head_sha }}
+      homepage_external: ${{ steps.filter.outputs.homepage_external }}
+      node: ${{ steps.filter.outputs.node }}
+      olds: ${{ steps.filter.outputs.olds }}
+      web_e2e: ${{ steps.filter.outputs.web_e2e }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - id: filter
+        name: Classify changed paths
+        env:
+          EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          base_sha="$EVENT_BASE_SHA"
+          head_sha="$EVENT_HEAD_SHA"
+
+          if [[ -z "$base_sha" || "$base_sha" =~ ^0+$ ]] \
+            || ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+            base_sha="$(git rev-parse "${head_sha}^" 2>/dev/null || git rev-list --max-parents=0 "$head_sha")"
+          fi
+
+          changed_files="$(git diff --name-only "$base_sha" "$head_sha")"
+          printf '%s\n' "$changed_files"
+          printf 'base_sha=%s\n' "$base_sha" >> "$GITHUB_OUTPUT"
+          printf 'head_sha=%s\n' "$head_sha" >> "$GITHUB_OUTPUT"
+
+          matches() {
+            grep -Eq "$1" <<< "$changed_files"
+          }
+
+          write_flag() {
+            local name="$1"
+            local pattern="$2"
+            if matches "$pattern"; then
+              printf '%s=true\n' "$name" >> "$GITHUB_OUTPUT"
+            else
+              printf '%s=false\n' "$name" >> "$GITHUB_OUTPUT"
+            fi
+          }
+
+          write_flag node '^(apps/|internal/[^/]+/web/|packages/|tooling/|patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$)'
+          write_flag all_node '^(\.github/workflows/ci\.yml$|patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$)'
+          write_flag desktop_e2e '^(apps/desktop/|packages/(editorial-preset|pdf-viewer|ui)/|tooling/tsconfig/|patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/ci\.yml$)'
+          write_flag web_e2e '^(apps/web/|packages/(auth|editorial-preset|pdf-viewer|ui)/|tooling/tsconfig/|patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(ci|web-deploy)\.yml$)'
+          write_flag homepage_external '^(blog/|\.github/workflows/homepage-deploy\.yml$)'
+          write_flag database '^(supabase/|\.github/workflows/ci\.yml$)'
+          write_flag olds '^(services/olds-api/|\.github/workflows/(bloomberg-archive|ci)\.yml$)'
+
+  node:
+    name: Node workspaces
+    needs: changes
+    if: needs.changes.outputs.node == 'true' || needs.changes.outputs.all_node == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v5
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22.11.0
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm --filter @jojo/reader... typecheck
-      - run: pnpm --filter @jojo/reader... build
-      - run: pnpm --filter @jojo/reader verify:build
-      - run: pnpm --filter @jojo/reader... test
+      - name: Check all workspaces
+        if: needs.changes.outputs.all_node == 'true'
+        run: pnpm turbo run typecheck test build verify:build
 
-  e2e:
+      - name: Check affected workspaces
+        if: needs.changes.outputs.all_node != 'true'
+        env:
+          TURBO_SCM_BASE: ${{ needs.changes.outputs.base_sha }}
+          TURBO_SCM_HEAD: ${{ needs.changes.outputs.head_sha }}
+        run: pnpm turbo run typecheck test build verify:build --affected
+
+  web-e2e:
+    # Keep this stable check name in sync with the master branch ruleset.
+    name: e2e
+    needs: changes
+    if: needs.changes.outputs.web_e2e == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -73,15 +122,37 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22.11.0
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @jojo/reader exec playwright install --with-deps chromium
-      - run: pnpm --filter @jojo/reader exec playwright test
+      - run: pnpm --filter @jojo/web exec playwright install --with-deps chromium
+      - run: pnpm --filter @jojo/web exec playwright test
 
-  cross-browser-e2e:
-    if: github.event_name == 'push'
+  desktop-e2e:
+    name: Desktop renderer tests
+    needs: changes
+    if: needs.changes.outputs.desktop_e2e == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.11.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @jojo/desktop exec playwright install --with-deps chromium
+      - run: pnpm --filter @jojo/desktop test:e2e
+
+  web-cross-browser:
+    name: Web ${{ matrix.browser }}
+    needs: changes
+    if: github.event_name == 'push' && needs.changes.outputs.web_e2e == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -95,10 +166,185 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22.11.0
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @jojo/reader exec playwright install --with-deps ${{ matrix.browser }}
-      # WebKit is reliable serially; the two browser matrix jobs still run in parallel.
-      - run: pnpm --filter @jojo/reader exec playwright test --browser=${{ matrix.browser }} --workers=1
+      - run: pnpm --filter @jojo/web exec playwright install --with-deps ${{ matrix.browser }}
+      - run: pnpm --filter @jojo/web exec playwright test --browser=${{ matrix.browser }} --workers=1
+
+  homepage-external:
+    name: Homepage external content
+    needs: changes
+    if: needs.changes.outputs.homepage_external == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.11.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @jojo/homepage typecheck
+      - run: pnpm --filter @jojo/homepage test
+      - run: pnpm --filter @jojo/homepage build
+      - run: pnpm --filter @jojo/homepage verify:build
+
+  database:
+    name: Supabase contract
+    needs: changes
+    if: needs.changes.outputs.database == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.11.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @jojo/auth typecheck
+      - run: pnpm --filter @jojo/auth test
+
+      - name: Validate migration files
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          migrations=(supabase/migrations/*.sql)
+          [[ ${#migrations[@]} -gt 0 ]] || {
+            echo "No Supabase migrations found" >&2
+            exit 1
+          }
+
+          declare -A versions=()
+          for migration in "${migrations[@]}"; do
+            filename="${migration##*/}"
+            [[ "$filename" =~ ^([0-9]{12})_[a-z0-9_]+\.sql$ ]] || {
+              echo "Invalid migration filename: $filename" >&2
+              exit 1
+            }
+            version="${BASH_REMATCH[1]}"
+            [[ -s "$migration" ]] || {
+              echo "Empty migration: $filename" >&2
+              exit 1
+            }
+            [[ -z "${versions[$version]:-}" ]] || {
+              echo "Duplicate migration version: $version" >&2
+              exit 1
+            }
+            versions[$version]="$filename"
+          done
+
+  olds-tests:
+    name: Olds Python tests
+    needs: changes
+    if: needs.changes.outputs.olds == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: services/olds-api
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/olds-api/requirements.txt
+
+      - run: python -m pip install -r requirements.txt pytest
+      - run: python -m pytest -q
+
+  olds-manifest:
+    name: Olds archive manifest
+    needs: changes
+    if: needs.changes.outputs.olds == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Validate downloader CLI and manifest
+        run: |
+          python -m py_compile \
+            services/olds-api/tools/download_bloomberg_year.py \
+            services/olds-api/tools/bloomberg_action_state.py \
+            services/olds-api/tools/verify_b2_private_bucket.py
+          python - <<'PY'
+          import gzip
+          import json
+          from pathlib import Path
+
+          path = Path(
+              "services/olds-api/data/"
+              "bloomberg-2020-archive-manifest.jsonl.gz"
+          )
+          required = {
+              "url",
+              "catalog_date",
+              "section",
+              "wayback_timestamp",
+              "wayback_snapshot_url",
+          }
+          count = 0
+          downloadable = 0
+          with gzip.open(path, "rt", encoding="utf-8") as stream:
+              for line in stream:
+                  row = json.loads(line)
+                  missing = required.difference(row)
+                  if missing:
+                      raise SystemExit(f"Manifest row missing {sorted(missing)}")
+                  count += 1
+                  downloadable += row.get("wayback_status") == "found"
+          if count != 83258 or downloadable != 69629:
+              raise SystemExit(
+                  "Expected 83258 catalog rows and 69629 downloadable rows; "
+                  f"found {count} and {downloadable}"
+              )
+          print(
+              f"Validated {count} catalog rows and "
+              f"{downloadable} downloadable rows."
+          )
+          PY
+
+  required:
+    # This aggregate check is required by the master branch ruleset.
+    name: build-and-test
+    if: always()
+    needs:
+      - changes
+      - desktop-e2e
+      - node
+      - web-e2e
+      - web-cross-browser
+      - homepage-external
+      - database
+      - olds-tests
+      - olds-manifest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm required jobs
+        env:
+          RESULTS: >-
+            ${{ join(needs.*.result, ' ') }}
+        run: |
+          if grep -Eq '(^| )(failure|cancelled)($| )' <<< "$RESULTS"; then
+            echo "At least one CI job failed or was cancelled: $RESULTS" >&2
+            exit 1
+          fi
+          echo "CI completed: $RESULTS"

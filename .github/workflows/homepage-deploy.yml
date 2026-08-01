@@ -1,17 +1,7 @@
-name: Homepage CI and deploy
+name: Deploy homepage
 
 on:
   push:
-    branches: [master]
-    paths:
-      - "apps/homepage/**"
-      - "blog/**"
-      - "packages/editorial-preset/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - ".github/workflows/homepage-deploy.yml"
-  pull_request:
     branches: [master]
     paths:
       - "apps/homepage/**"
@@ -40,7 +30,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-test:
+  deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -62,31 +52,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Test homepage
-        run: pnpm --filter @jojo/homepage test
-
-      - name: Type-check homepage
-        run: pnpm --filter @jojo/homepage typecheck
-
       - name: Build homepage
         run: pnpm --filter @jojo/homepage build
+
+      - name: Verify homepage build
+        run: pnpm --filter @jojo/homepage verify:build
 
       - name: Add deployment revision
         run: printf '%s\n' "$GITHUB_SHA" > "$EDGEONE_UPLOAD_FROM_PATH/deployment.txt"
 
-      - name: Upload homepage build
-        uses: actions/upload-artifact@v7
-        with:
-          name: homepage-dist
-          path: apps/homepage/dist/
-          retention-days: 1
-
       - name: Verify deployment configuration
-        if: github.event_name != 'pull_request'
         run: test -n "$EDGEONE_API_TOKEN" || (echo "EDGEONE_API_TOKEN is not configured" >&2 && exit 1)
 
       - name: Deploy to EdgeOne Makers
-        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set +e
@@ -114,7 +92,7 @@ jobs:
           exit "$deploy_status"
 
       - name: Verify production revision
-        if: github.event_name != 'pull_request' && env.EDGEONE_DEPLOY_ENV == 'production'
+        if: env.EDGEONE_DEPLOY_ENV == 'production'
         shell: bash
         run: |
           revision_url="${HOMEPAGE_BASE_URL%/}/deployment.txt?revision=$GITHUB_SHA"
@@ -135,19 +113,3 @@ jobs:
 
           echo "Production did not publish revision $GITHUB_SHA" >&2
           exit 1
-
-  e2e:
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Download homepage build
-        uses: actions/download-artifact@v8
-        with:
-          name: homepage-dist
-          path: apps/homepage/dist/
-
-      - name: Verify generated site
-        run: node apps/homepage/scripts/verify-build.mjs
