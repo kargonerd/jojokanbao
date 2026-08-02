@@ -166,8 +166,14 @@ async function discoverZoneId({ credential, endpoint, urls }) {
   }
   const closestLength = matches[0].ZoneName.length;
   const closest = matches.filter((zone) => zone.ZoneName.length === closestLength);
-  if (closest.length !== 1) {
+  const closestNames = new Set(closest.map((zone) => zone.ZoneName.toLowerCase()));
+  if (closestNames.size !== 1) {
     throw new Error(`Multiple EdgeOne zones match equally: ${closest.map((zone) => zone.ZoneName).join(", ")}`);
+  }
+  if (closest.length > 1) {
+    console.warn(
+      `EdgeOne returned duplicate records for ${closest[0].ZoneName}; using ${closest[0].ZoneId}`,
+    );
   }
   console.log(`Discovered EdgeOne zone ${closest[0].ZoneName} (${closest[0].ZoneId})`);
   return closest[0].ZoneId;
