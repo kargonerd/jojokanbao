@@ -4,18 +4,12 @@ import { fetchPdfDownloadBytes, PdfViewer, usePdfDocument } from "@jojo/pdf-view
 import { EmptyState, LoadingSpinner, DatePicker, Toolbar, YearPicker } from "@jojo/ui";
 import { PUBLICATIONS, type PublicationName } from "../publications";
 import { archiveIssuePath } from "../../routes";
+import { getFacsimileIssueFilename } from "../facsimileObjects";
 
 const NEWSPAPER_HOST = "https://blacknews.jojokanbao.cn";
 const PAGE_SCROLL_GAP = 16;
 const READER_TOOLBAR_MAX_HEIGHT = 61;
 const DEFAULT_ZOOM = 1.5;
-const RMRB_REPAIRED_OBJECTS = new Set(["19670805", "20110702", "20150904", "20150905"]);
-
-export function getFacsimileIssueFilename(name: string, issueId: string): string {
-  return name === "rmrb" && RMRB_REPAIRED_OBJECTS.has(issueId)
-    ? `${issueId}-r1.pdf`
-    : `${issueId}.pdf`;
-}
 
 function isCalendarDate(value: string): boolean {
   if (!/^\d{8}$/.test(value)) return false;
