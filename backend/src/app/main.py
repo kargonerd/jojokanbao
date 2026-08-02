@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.account.router import router
 from app.core.config import get_settings
-from app.core.http import (
+from app.core.http_middleware import (
     ResponseHeadersMiddleware,
     UnhandledErrorMiddleware,
     install_exception_handlers,
