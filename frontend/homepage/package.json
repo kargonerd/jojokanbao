@@ -1,0 +1,32 @@
+{
+  "name": "@jojo/homepage",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --host 127.0.0.1 --port 4175",
+    "build": "astro build",
+    "verify:build": "node scripts/verify-build.mjs",
+    "preview": "astro preview --host 127.0.0.1 --port 4175",
+    "typecheck": "astro check",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@astrojs/react": "^6.0.2",
+    "@astrojs/rss": "^4.0.19",
+    "@astrojs/sitemap": "^3.7.3",
+    "@jojo/ui": "workspace:*",
+    "astro": "^5.18.2",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.9",
+    "@rolldown/binding-linux-x64-gnu": "1.2.1",
+    "@tailwindcss/vite": "^4.3.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.3",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

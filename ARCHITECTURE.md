@@ -1,82 +1,53 @@
 # Architecture
 
-## 设计原则
+JOJO Platform 按运行职责组织，不按历史项目或部署平台组织。
 
-1. **共享优先** — 可复用的逻辑和组件提取到 `packages/`，app 层只写业务特有代码
-2. **CSS 驱动设计** — 设计系统是纯 CSS（editorial-preset），不绑定任何框架
-3. **产品边界优先** — Archive、Account、RAG 和 Olds 属于同一个 Web 客户端，不再按功能拆成独立 SPA；未完成模块通过构建期开关分阶段发布
-4. **桌面运行时统一** — Desktop 当前运行 Press，并为 Archive、Account、RAG 和 Olds 保留平级模块；它们共用 Electron shell、会话和发布流程
-
-## 依赖关系
-
-```
-apps/homepage ──→ Astro 静态博客
-apps/web     ──→ @jojo/auth + @jojo/ui + @jojo/pdf-viewer + @jojo/editorial-preset
-apps/desktop ──→ @jojo/ui + @jojo/editorial-preset + pdfjs-dist
-apps/jiuwen-mobile ─→ Expo / React Native
+```text
+frontend/       Web、Homepage、Desktop、Mobile 以及前端共享包
+backend/        统一 Python 后端
+tools/          数据工作台与人工运维工具
+infrastructure/ EdgeOne、Supabase 等部署和基础设施配置
+content/        博客等内容源
+vendor/         必须保留在仓库中的第三方源码
+references/     尚未清理的历史参考代码，不参与构建
 ```
 
-## 仓库分层
+## Frontend
 
+- `frontend/web`：Archive、Account、RAG、Olds 共用的浏览器运行时。
+- `frontend/homepage`：官网与博客静态站点。
+- `frontend/desktop`：Electron 桌面产品；`engine/` 是 Desktop 专属的 Python 引擎。
+- `frontend/mobile`：移动端客户端。
+- `frontend/packages/ui`：React 组件以及通过 `@jojo/ui/styles` 导出的 CSS 设计系统。
+- `frontend/packages/auth`、`pdf-viewer`：前端共享能力。
+
+Homepage 已启用 Astro React integration，可以直接复用 `@jojo/ui` 组件。
+
+## Backend
+
+- `backend/src/app/main.py`：统一公网 FastAPI 入口。
+- `backend/src/app/core`：认证、配置、错误和 HTTP 中间件。
+- `backend/src/app/account`：已启用的账号 API。
+- `backend/src/app/olds`、`rag`：未上线模块，默认不进入公开路由或部署产物。
+
+本地运行主 API：
+
+```bash
+pnpm dev:backend
 ```
-apps/        面向用户的前端、桌面端、移动端应用，参与 pnpm workspace
-packages/    共享 UI、设计系统、PDF viewer、工具配置，参与 pnpm workspace
-internal/    内部应用与运维工作台；Web 参与 pnpm workspace，Python server 独立
-services/    独立 Python 后端、搜索和归档任务，不参与 pnpm workspace
-references/  外部参考工程、旧实现和迁移线索归档，不参与构建
-tooling/     仓库级共享配置、构建和运维工具
-```
 
-`services/` 保留迁移前各项目的后端与工具源码，并保持各自原技术栈：
+EdgeOne 专有入口位于 `infrastructure/edgeone/functions`，只导入
+`backend/src/app/main.py` 创建的应用，不承载业务逻辑。部署脚本将 Web 静态文件、
+主 API 和平台入口组装到忽略的 `.edgeone/web-deploy`。
 
-- `rag-backend`：Flask / SCF
-- `press-engine`：FastAPI
-- `jiuwen-api`：现有旧闻 FastAPI；服务端重命名单独处理
-- `olds-api`：Olds 历史归档任务
-- `reader-search`：Flask + Elasticsearch
-- `notebooklm-py`：Python package
+## Tools and infrastructure
 
-`internal/data-workbench` 是内部数据工作台：`web/` 是 pnpm workspace，
-`server/` 保持独立 Python 依赖。Python 服务不加入 Turborepo，避免服务端依赖影响
-前端工作区的安装、构建和测试。旧 Node/Nest/Express 后端实现归档到
-`references/legacy-node-backends`，只作为迁移对照。
+- `tools/data-workbench`：内部数据工作台。
+- `tools/archive-pdf`：Archive PDF 人工操作与发布工具。
+- `tools/bloomberg-archive`：定时 Bloomberg 数据归档工具。
+- `infrastructure/supabase`：数据库 migrations。
+- `infrastructure/edgeone`：EdgeOne 配置、入口和部署组装脚本。
+- `infrastructure/tencent-scf/search`：Reader 当前线上 Flask Search，独立运行。
 
-## 包职责
-
-### @jojo/editorial-preset
-- Tailwind v4 `@theme` 定义设计 token（颜色、字体、间距）
-- `@layer base` 全局重置（零圆角、selection、scrollbar、focus ring）
-- `@layer components` 工具类（`.btn`、`.tag`、`.kicker`）
-- Vue Datepicker 主题覆盖（仅 reader 使用）
-
-### @jojo/ui
-- 纯展示型 React 组件，通过 Tailwind class 实现样式
-- 不含业务逻辑，不含 API 调用
-- 通过 `className` prop 支持扩展
-
-### @jojo/pdf-viewer
-- 封装 pdfjs-dist 的 React 组件
-- `usePdfDocument` — 加载 PDF 文档
-- `PdfPage` — 渲染单页到 canvas
-- `PdfViewer` — 带懒加载的多页查看器
-
-## 构建流程
-
-Turborepo 管理任务依赖：
-- `build` 任务有 `dependsOn: ["^build"]`，确保 packages 先于 apps 构建
-- `test` 任务依赖 `^build`
-- `typecheck` 任务按 workspace 依赖关系执行
-- `verify:build` 在对应 app 构建完成后校验产物
-- `dev` 任务不缓存，持久运行
-
-Pull request 统一进入 `.github/workflows/ci.yml`。pnpm workspace 使用 Turborepo
-计算受影响范围；`blog/`、`supabase/` 和 Python 服务等 workspace 外内容由独立 job
-显式分类。部署、发版和定时运维不混入 CI。
-
-## 部署
-
-| App | 部署方式 |
-|-----|---------|
-| homepage | `jojokanbao.cn` 的 Astro 静态博客，保持独立部署 |
-| web | 部署到 `reader.jojokanbao.cn` 的统一 Web 客户端；当前仅开放 Archive，RAG / Olds 待 rollout |
-| desktop | 统一 Electron 客户端；当前包含 Press，后续能力共用同一运行时和发布流程 |
+依赖只在真实复用后抽取。前端共享代码放在 `frontend/packages`；Python 代码当前不建立
+推测性的共享包。

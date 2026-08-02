@@ -1,5 +1,14 @@
 # GitHub automation
 
+GitHub only discovers workflow files placed directly in this directory, so the
+directory stays flat and filenames provide the grouping:
+
+- `ci.yml` — pull-request and main-branch validation
+- `deploy-*.yml` — production and preview deployments
+- `maintenance-*.yml` — scheduled or manually triggered operational tasks
+
+Workflow display names use the same categories in the Actions UI.
+
 Repository automation is split by side effects, not by feature folder.
 
 ## Continuous integration
@@ -12,6 +21,7 @@ the environments that need different runners or dependencies:
 - Desktop renderer browser tests
 - root-level Homepage content
 - Supabase migrations and the shared Auth contract
+- EdgeOne Python Cloud API tests
 - the existing Olds Python test and archive-manifest checks
 
 The `build-and-test` aggregate job and `e2e` browser job keep stable check
@@ -21,7 +31,8 @@ fails when any applicable CI job fails or is cancelled.
 Turborepo selects affected workspace packages and their consumers using the
 exact base and head commits emitted by the `changes` job. This includes the
 internal Data Workbench Web package. Root files that are not workspace
-packages, such as `blog/`, `supabase/`, and `services/olds-api/`, are
+packages, such as `content/blog/`, `infrastructure/supabase/`, `backend/`,
+and `tools/bloomberg-archive/`, are
 classified explicitly where they have dedicated checks.
 
 Every JavaScript or TypeScript workspace should expose the applicable standard
@@ -45,8 +56,8 @@ verification scripts use the shared `verify:build` task.
 Deployment workflows are separate because they use credentials and change
 external state:
 
-- `homepage-deploy.yml` publishes the Homepage
-- `web-deploy.yml` publishes the unified Web client
+- `deploy-homepage.yml` publishes the Homepage
+- `deploy-web.yml` publishes the unified Web client
 
 The existing Desktop runtime and the future Mobile runtime should use their
 own release workflows when packaging is implemented. Internal local tools
@@ -56,9 +67,9 @@ participate in CI but do not need a deployment workflow.
 
 Scheduled and manually operated data tasks remain independent workflows:
 
-- `bloomberg-archive.yml`
-- `purge-archive-pdf-cache.yml`
-- `sync-rmrb.yml`
+- `maintenance-bloomberg-archive.yml`
+- `maintenance-purge-archive-pdf-cache.yml`
+- `maintenance-sync-rmrb.yml`
 
 Do not add a feature-specific CI workflow. Add a package script or a focused
 job to `ci.yml`; create another workflow only when its trigger, permissions, or

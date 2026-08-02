@@ -1,0 +1,4 @@
+-r requirements.txt
+feedparser==6.0.11
+python-dateutil==2.8.2
+python-multipart==0.0.20
