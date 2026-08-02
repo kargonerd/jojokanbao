@@ -9,6 +9,13 @@ const NEWSPAPER_HOST = "https://blacknews.jojokanbao.cn";
 const PAGE_SCROLL_GAP = 16;
 const READER_TOOLBAR_MAX_HEIGHT = 61;
 const DEFAULT_ZOOM = 1.5;
+const RMRB_REPAIRED_OBJECTS = new Set(["19670805", "20110702", "20150904", "20150905"]);
+
+export function getFacsimileIssueFilename(name: string, issueId: string): string {
+  return name === "rmrb" && RMRB_REPAIRED_OBJECTS.has(issueId)
+    ? `${issueId}-r1.pdf`
+    : `${issueId}.pdf`;
+}
 
 function isCalendarDate(value: string): boolean {
   if (!/^\d{8}$/.test(value)) return false;
@@ -260,7 +267,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const alignedInitialPageRef = useRef<string | null>(null);
 
   const pdfUrl = routeId
-    ? `${NEWSPAPER_HOST}/${name.toUpperCase()}/${routeId.slice(0, 4)}/${routeId}.pdf`
+    ? `${NEWSPAPER_HOST}/${name.toUpperCase()}/${routeId.slice(0, 4)}/${getFacsimileIssueFilename(name, routeId)}`
     : "";
   const { document: pdfDoc, loading, error, numPages } = usePdfDocument({ url: pdfUrl, protectedPdf: "auto" });
   const downloadFilename = `${name}-${routeId}.pdf`;

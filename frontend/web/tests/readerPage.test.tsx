@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ReaderPage } from "../src/archive/pages/ReaderPage";
+import { getFacsimileIssueFilename, ReaderPage } from "../src/archive/pages/ReaderPage";
 import type { PublicationName } from "../src/archive/publications";
 
 const pdfMocks = vi.hoisted(() => ({
@@ -43,6 +43,20 @@ vi.mock("@jojo/pdf-viewer", () => ({
     );
   },
 }));
+
+describe("facsimile object routing", () => {
+  it.each(["19670805", "20110702", "20150904", "20150905"])(
+    "routes repaired RMRB issue %s to its readable object alias",
+    (issueId) => {
+      expect(getFacsimileIssueFilename("rmrb", issueId)).toBe(`${issueId}-r1.pdf`);
+    },
+  );
+
+  it("keeps normal RMRB and other publication object names unchanged", () => {
+    expect(getFacsimileIssueFilename("rmrb", "19761009")).toBe("19761009.pdf");
+    expect(getFacsimileIssueFilename("ckxx", "19760910")).toBe("19760910.pdf");
+  });
+});
 
 const readyDocument = {
   numPages: 6,
