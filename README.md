@@ -55,6 +55,8 @@ pnpm test:backend
 ## 环境配置
 
 本地私密配置放在仓库根目录 `.env`，可提交的键名示例位于 `.env.example`。不要提交真实 token。
+Desktop 的 MinerU API Key 例外：由每位用户在桌面“设置”中填写，并通过系统安全存储
+保存在本机，不写入仓库 `.env`。
 
 统一 API 使用：
 

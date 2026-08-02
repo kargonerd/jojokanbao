@@ -79,7 +79,7 @@ describe('ProofreadIssuesPage', () => {
       ],
       preview: {
         page: 3,
-        documentUrl: 'http://127.0.0.1:8765/proofread/project-ops-handbook/source-pdf'
+        documentUrl: 'jojo-pdf://project/project-ops-handbook'
       },
       block: {
         id: 'heading-1',
@@ -105,7 +105,7 @@ describe('ProofreadIssuesPage', () => {
       expect(screen.getByAltText('第 3 页预览')).toHaveAttribute('src', 'data:image/png;base64,proofread');
     });
     expect(screen.getByText('文字编辑')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '进入导出' })).toHaveAttribute('href', '/projects/mock-1/export?variant=a');
+    expect(screen.getByRole('link', { name: '进入导出' })).toHaveAttribute('href', '/press/projects/mock-1/export?variant=a');
     expect(screen.getByDisplayValue('开始')).toBeInTheDocument();
     expect(screen.getByText('格式')).toBeInTheDocument();
     expect(screen.queryByText('目录结构')).not.toBeInTheDocument();
@@ -126,7 +126,7 @@ describe('ProofreadIssuesPage', () => {
       ],
       preview: {
         page: 3,
-        documentUrl: 'http://127.0.0.1:8765/proofread/project-ops-handbook/source-pdf'
+        documentUrl: 'jojo-pdf://project/project-ops-handbook'
       },
       block: {
         id: 'heading-1',
@@ -171,7 +171,7 @@ describe('ProofreadIssuesPage', () => {
       ],
       preview: {
         page: 3,
-        documentUrl: 'http://127.0.0.1:8765/proofread/project-ops-handbook/source-pdf'
+        documentUrl: 'jojo-pdf://project/project-ops-handbook'
       },
       block: {
         id: 'heading-1',
@@ -206,7 +206,7 @@ describe('ProofreadIssuesPage', () => {
       ],
       preview: {
         page: 3,
-        documentUrl: 'http://127.0.0.1:8765/proofread/project-ops-handbook/source-pdf'
+        documentUrl: 'jojo-pdf://project/project-ops-handbook'
       },
       block: {
         id: 'heading-1',
@@ -240,7 +240,7 @@ describe('ProofreadIssuesPage', () => {
       ],
       preview: {
         page: 3,
-        documentUrl: 'http://127.0.0.1:8765/proofread/project-ops-handbook/source-pdf',
+        documentUrl: 'jojo-pdf://project/project-ops-handbook',
         pages: [
           {
             pageNum: 3,
@@ -360,7 +360,7 @@ describe('ProofreadIssuesPage', () => {
       issues: [],
       preview: {
         page: 1,
-        documentUrl: 'http://127.0.0.1:8765/proofread/generated-project/source-pdf',
+        documentUrl: 'jojo-pdf://project/generated-project',
         pages: [
           {
             pageNum: 1,
@@ -418,7 +418,7 @@ describe('ProofreadIssuesPage', () => {
       issues: [],
       preview: {
         page: 1,
-        documentUrl: 'http://127.0.0.1:8765/proofread/generated-project/source-pdf'
+        documentUrl: 'jojo-pdf://project/generated-project'
       },
       block: null,
       toc: []

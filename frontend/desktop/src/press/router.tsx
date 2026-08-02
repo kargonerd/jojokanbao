@@ -13,13 +13,12 @@ import {
   fetchProofreadWorkspace,
   fetchQualityStatus,
   getRecognitionStatus,
+  importProjectSourcePdf,
   resolvePdfSelection,
   runExportOption,
   saveProjectMetadataConfirmation,
-  setApiBaseUrlOverride,
   saveProofreadBlock,
   startRecognition,
-  uploadProjectSourcePdf,
   type ApiError,
   type Project,
   type RecognitionTask
@@ -49,10 +48,10 @@ import type {
   QualityStatus
 } from './types/project';
 import type { ProofreadWorkspace } from './types/issues';
+import { pressPath } from './paths';
 
 export type CreateAppRouterOptions = {
   initialEntries?: string[];
-  apiBaseUrl?: string;
 };
 
 type RootLoaderData = {
@@ -109,34 +108,30 @@ function RootProjectListRoute() {
         currentStage: getStageLabel(project.currentStage),
         nextHref:
           project.currentStage === 'Proofreading workspace'
-            ? `/projects/${project.id}/proofread`
-            : `/projects/${project.id}/metadata`,
+            ? pressPath(`/projects/${project.id}/proofread`)
+            : pressPath(`/projects/${project.id}/metadata`),
         createdAt: project.createdAt ?? null,
         pdfUrl: project.path ?? null,
         coverUrl: project.coverUrl ?? null
       }))}
       onCreateProject={async (onPhaseChange) => {
-        onPhaseChange(typeof window !== 'undefined' && window.jojoPress?.selectPdf ? 'selecting' : 'creating');
+        onPhaseChange('selecting');
         const selection = await resolvePdfSelection();
         if (!selection.value) {
           return { status: 'cancelled' as const };
         }
 
         onPhaseChange('creating');
-        const sourceName = selection.kind === 'path' ? decodeURIComponent(selection.value.split(/[\\/]/).pop() ?? selection.value) : selection.value.name;
+        const sourceName = decodeURIComponent(selection.value.split(/[\\/]/).pop() ?? selection.value);
         const projectName = sourceName.replace(/\.pdf$/i, '');
 
         try {
           const createdProject = await createProject(projectName);
-          let pdfPath = selection.kind === 'path' ? selection.value : '';
-
-          if (selection.kind === 'file') {
-            const uploadResult = await uploadProjectSourcePdf(createdProject.project_id, selection.value);
-            pdfPath = uploadResult.pdf_path;
-          }
+          const importResult = await importProjectSourcePdf(createdProject.project_id, selection.value);
+          const pdfPath = importResult.pdf_path;
 
           await startRecognition(createdProject.project_id, pdfPath);
-          await navigate(`/projects/${createdProject.project_id}/recognition${window.location.search}`);
+          await navigate(`${pressPath(`/projects/${createdProject.project_id}/recognition`)}${window.location.search}`);
           return { status: 'created' as const };
         } catch (error) {
           const apiError = error as ApiError;
@@ -158,27 +153,23 @@ function NewProjectRoute() {
   return (
     <NewProjectPage
       onCreateProject={async (onPhaseChange) => {
-        onPhaseChange(typeof window !== 'undefined' && window.jojoPress?.selectPdf ? 'selecting' : 'creating');
+        onPhaseChange('selecting');
         const selection = await resolvePdfSelection();
         if (!selection.value) {
           return { status: 'cancelled' as const };
         }
 
         onPhaseChange('creating');
-        const sourceName = selection.kind === 'path' ? decodeURIComponent(selection.value.split(/[\\/]/).pop() ?? selection.value) : selection.value.name;
+        const sourceName = decodeURIComponent(selection.value.split(/[\\/]/).pop() ?? selection.value);
         const projectName = sourceName.replace(/\.pdf$/i, '');
 
         try {
           const createdProject = await createProject(projectName);
-          let pdfPath = selection.kind === 'path' ? selection.value : '';
-
-          if (selection.kind === 'file') {
-            const uploadResult = await uploadProjectSourcePdf(createdProject.project_id, selection.value);
-            pdfPath = uploadResult.pdf_path;
-          }
+          const importResult = await importProjectSourcePdf(createdProject.project_id, selection.value);
+          const pdfPath = importResult.pdf_path;
 
           await startRecognition(createdProject.project_id, pdfPath);
-          await navigate(`/projects/${createdProject.project_id}/recognition${window.location.search}`);
+          await navigate(`${pressPath(`/projects/${createdProject.project_id}/recognition`)}${window.location.search}`);
           return { status: 'created' as const };
         } catch (error) {
           const apiError = error as ApiError;
@@ -203,7 +194,7 @@ function MetadataRoute() {
       project={project}
       onConfirm={async (payload: ProjectMetadataConfirmationUpdate) => {
         await saveProjectMetadataConfirmation(projectId, payload);
-        await navigate(`/projects/${projectId}/proofread${window.location.search}`);
+        await navigate(`${pressPath(`/projects/${projectId}/proofread`)}${window.location.search}`);
       }}
     />
   );
@@ -275,7 +266,7 @@ function RecognitionRoute() {
 
   useEffect(() => {
     if (recognition?.status === 'completed') {
-      void navigate(`/projects/${projectId}/metadata${window.location.search}`, { replace: true });
+      void navigate(`${pressPath(`/projects/${projectId}/metadata`)}${window.location.search}`, { replace: true });
     }
   }, [navigate, projectId, recognition]);
 
@@ -288,7 +279,7 @@ function RecognitionRoute() {
       recognition={recognition}
       onContinue={async () => {
         if (recognition.status === 'completed') {
-          await navigate(`/projects/${projectId}/metadata${window.location.search}`);
+          await navigate(`${pressPath(`/projects/${projectId}/metadata`)}${window.location.search}`);
         }
       }}
     />
@@ -307,7 +298,7 @@ function RouteErrorPage() {
     <PressPage
       title="页面加载失败"
       description="请返回首页重试，或检查当前项目资源是否已经准备完成。"
-      actions={<PressActionLink to="/" tone="secondary">返回首页</PressActionLink>}
+      actions={<PressActionLink to={pressPath()} tone="secondary">返回项目列表</PressActionLink>}
     >
       <section className="page-layout page-layout--single">
         <PressPanel title="错误信息" meta="需要处理">
@@ -318,16 +309,12 @@ function RouteErrorPage() {
   );
 }
 
-function createRoutes(apiBaseUrl?: string) {
-  setApiBaseUrlOverride(apiBaseUrl ?? null);
-
-  return [
-    {
-      path: '/',
+export function createPressRoute() {
+  return {
+      path: '/press',
       element: <VariantLayout />,
       errorElement: <RouteErrorPage />,
       hydrateFallbackElement: <AppBootShell />,
-      handle: { apiBaseUrl },
       children: [
         {
           index: true,
@@ -398,15 +385,18 @@ function createRoutes(apiBaseUrl?: string) {
           element: <ExportPage projectId="mock-1" plan={mockExportPlan} />
         }
       ]
-    }
-  ];
+    };
 }
 
 export function createAppRouter(options: CreateAppRouterOptions = {}) {
-  const routes = createRoutes(options.apiBaseUrl);
+  const routes = [createPressRoute()];
 
   if (options.initialEntries) {
-    return createMemoryRouter(routes, { initialEntries: options.initialEntries });
+    const entries = options.initialEntries.map((entry) => {
+      const url = new URL(entry, 'http://desktop.local');
+      return `${pressPath(url.pathname)}${url.search}${url.hash}`;
+    });
+    return createMemoryRouter(routes, { initialEntries: entries });
   }
 
   return createBrowserRouter(routes);

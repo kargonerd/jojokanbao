@@ -33,7 +33,7 @@ describe('MetadataConfirmPage', () => {
     expect(screen.getByRole('heading', { name: '确认书籍信息' })).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: '项目导航' })).toBeInTheDocument();
     expect(screen.getAllByRole('link')).toHaveLength(5);
-    expect(document.querySelector('a[href="/projects/project-1/metadata?variant=a"]')).toHaveClass('project-nav__item--active');
+    expect(document.querySelector('a[href="/press/projects/project-1/metadata?variant=a"]')).toHaveClass('project-nav__item--active');
     expect(screen.queryByText('上传 PDF')).not.toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: '书名' })).toHaveValue('JoJo Volume 1');
     expect(screen.getByRole('textbox', { name: '副标题' })).toHaveValue('Phantom Blood');
