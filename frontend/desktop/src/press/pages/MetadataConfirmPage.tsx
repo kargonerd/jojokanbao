@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { PressActionLink, PressButton, PressPage, PressPanel } from '../components/PressUi';
 import type { MockMetadataDraft, ProjectMetadataConfirmation, ProjectMetadataConfirmationUpdate } from '../types/project';
+import { pressPath } from '../paths';
 
 type MetadataPageMode = 'real' | 'mock';
 
@@ -136,7 +137,7 @@ export function MetadataConfirmPage({ project, onConfirm, mode = 'real', project
 
           <div className="inline-actions">
             {mockMode ? (
-              <PressActionLink tone="secondary" to="/projects/mock-1/recognition">
+              <PressActionLink tone="secondary" to={pressPath('/projects/mock-1/recognition')}>
                 返回识别状态
               </PressActionLink>
             ) : null}

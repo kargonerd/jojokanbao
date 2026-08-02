@@ -2,6 +2,7 @@
 import { PressActionLink, PressButton, PressPage, PressPanel, PressStageStrip } from '../components/PressUi';
 import type { MockRecognitionState } from '../types/project';
 import type { RecognitionTask } from '../lib/api';
+import { pressPath } from '../paths';
 
 type RecognitionData = MockRecognitionState | RecognitionTask;
 
@@ -73,7 +74,7 @@ export function RecognitionWaitingPage({ recognition, onContinue, mode = 'real' 
             ) : null}
 
             <div className="inline-actions">
-              <PressActionLink to={mockRecognition?.nextHref ?? `/projects/${realRecognition?.project_id ?? ''}/metadata`}>
+              <PressActionLink to={pressPath(mockRecognition?.nextHref ?? `/projects/${realRecognition?.project_id ?? ''}/metadata`)}>
                 查看识别结果
               </PressActionLink>
             </div>

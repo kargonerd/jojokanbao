@@ -30,8 +30,7 @@ backend/**/node_modules/
 backend/**/dist/
 backend/**/build/
 backend/**/__pycache__/
-frontend/desktop/engine/projects/
-frontend/desktop/engine/exports/
+frontend/desktop/engine/.runtime/
 references/**/node_modules/
 references/**/dist/
 references/**/.next/

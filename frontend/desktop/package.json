@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 4173",
-    "build": "vite build",
+    "build": "vite build && tsc -p tsconfig.engine.json",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit",
@@ -12,7 +12,9 @@
   },
   "dependencies": {
     "@jojo/ui": "workspace:*",
+    "adm-zip": "^0.5.16",
     "dotenv": "^17.4.0",
+    "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^5.7.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -24,6 +26,7 @@
     "@tailwindcss/vite": "^4.3.0",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.3.0",
+    "@types/adm-zip": "^0.5.7",
     "@types/node": "^25.6.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

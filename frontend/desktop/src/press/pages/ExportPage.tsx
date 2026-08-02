@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { PressActionLink, PressButton, PressPage, PressPanel } from '../components/PressUi';
 import { getExportOptionLabel } from '../lib/operatorDisplay';
 import type { ExportOption, MockExportPlan } from '../types/project';
+import { pressPath } from '../paths';
 
 interface ExportPageProps {
   options?: ExportOption[];
@@ -30,7 +31,7 @@ export function ExportPage({ options, onExport, plan, projectId }: ExportPagePro
             </div>
 
             <div className="inline-actions">
-              <PressActionLink tone="secondary" to={`/projects/${projectId ?? 'mock-1'}/structured`}>
+              <PressActionLink tone="secondary" to={pressPath(`/projects/${projectId ?? 'mock-1'}/structured`)}>
                 返回导出准备
               </PressActionLink>
               <PressButton type="button" onClick={() => setExportedPath(plan.destination)}>

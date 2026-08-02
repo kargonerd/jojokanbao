@@ -37,7 +37,7 @@ pnpm test:backend
 - Reader Search 位于 `infrastructure/tencent-scf/search`，保持现有 Flask/SCF 行为。
 - EdgeOne 入口仅放在 `infrastructure/edgeone/functions`，不得包含业务逻辑。
 - 定时、批处理和人工运维代码放入 `tools/`，不伪装成 API。
-- Desktop 专属 Python 能力位于 `frontend/desktop/engine`。
+- Desktop 专属本地能力使用 TypeScript，位于 `frontend/desktop/engine`。
 - 后端公共、Olds 和 RAG 依赖分别由 `backend/requirements*.txt` 管理。
 
 ## 设计系统

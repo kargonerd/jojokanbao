@@ -1,0 +1,124 @@
+.desktop-home,
+.desktop-placeholder {
+  min-height: 100vh;
+  padding: 64px clamp(24px, 6vw, 96px);
+  color: #202020;
+  background: #fff;
+  font-family: "Noto Serif SC", "Songti SC", serif;
+}
+
+.desktop-settings {
+  min-height: 100vh;
+  padding: 64px clamp(24px, 8vw, 120px);
+  color: #202020;
+  background: #fff;
+  font-family: "Noto Serif SC", "Songti SC", serif;
+}
+
+.desktop-settings > p {
+  color: #8b1a1a;
+  letter-spacing: .16em;
+}
+
+.desktop-settings form {
+  display: grid;
+  gap: 16px;
+  max-width: 640px;
+  margin: 36px 0 24px;
+  padding: 28px 0;
+  border-block: 1px solid #202020;
+}
+
+.desktop-settings input {
+  padding: 12px;
+  border: 1px solid #202020;
+  border-radius: 0;
+  font: inherit;
+}
+
+.desktop-settings button {
+  width: fit-content;
+  padding: 10px 18px;
+  border: 1px solid #8b1a1a;
+  border-radius: 0;
+  color: #fff;
+  background: #8b1a1a;
+  font: inherit;
+}
+
+.desktop-settings > a {
+  display: block;
+  width: fit-content;
+  margin-top: 12px;
+  color: #8b1a1a;
+}
+
+.desktop-home__header {
+  max-width: 720px;
+  padding-bottom: 28px;
+  border-bottom: 3px solid #8b1a1a;
+}
+
+.desktop-home__header p,
+.desktop-module-card p,
+.desktop-placeholder > p {
+  margin: 0 0 12px;
+  color: #8b1a1a;
+  font-size: 12px;
+  letter-spacing: .16em;
+}
+
+.desktop-home h1,
+.desktop-placeholder h1 {
+  margin: 0 0 12px;
+  font-size: clamp(36px, 5vw, 64px);
+}
+
+.desktop-module-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0;
+  margin-top: 48px;
+  border-top: 1px solid #202020;
+  border-left: 1px solid #202020;
+}
+
+.desktop-module-card {
+  min-height: 220px;
+  padding: 28px;
+  border-right: 1px solid #202020;
+  border-bottom: 1px solid #202020;
+}
+
+.desktop-module-card h2 {
+  margin: 0 0 16px;
+  font-size: 28px;
+}
+
+.desktop-module-card span {
+  display: block;
+  min-height: 54px;
+  line-height: 1.7;
+}
+
+.desktop-module-card a,
+.desktop-placeholder a {
+  display: inline-block;
+  margin-top: 28px;
+  padding: 10px 18px;
+  border: 1px solid #8b1a1a;
+  color: #8b1a1a;
+  text-decoration: none;
+}
+
+.desktop-module-card a:hover,
+.desktop-placeholder a:hover {
+  transform: translateY(-2px);
+  box-shadow: 4px 4px 0 rgba(139, 26, 26, .14);
+}
+
+.desktop-placeholder {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+}
