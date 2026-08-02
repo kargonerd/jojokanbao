@@ -1,9 +1,10 @@
 # Desktop renderer
 
 - `main.tsx` 是 renderer 入口。
+- `shell/` 提供工作台、设置页和顶层模块路由。
 - `press/` 是当前可运行模块。
-- `archive/`、`account/`、`rag/`、`olds/` 当前仅保留模块位置，不注册路由，也不包含在
-  可用功能中。
+- `archive/`、`account/`、`rag/`、`olds/` 当前仅保留模块位置；对应顶层路由只显示
+  “尚未启用”占位页，不加载业务代码。
 - `electron.d.ts` 和 `test-setup.ts` 是 renderer 级基础文件。
 
 业务代码放在对应一级模块内，可按 `pages/`、`components/`、`stores/` 和 `api.ts`

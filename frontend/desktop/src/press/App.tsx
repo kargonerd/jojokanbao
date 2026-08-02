@@ -14,7 +14,8 @@ function getHashInitialEntry() {
 export default function App() {
   const router = useMemo(() => {
     const hashInitialEntry = getHashInitialEntry();
-    return hashInitialEntry ? createAppRouter({ initialEntries: [hashInitialEntry] }) : createAppRouter();
+    const browserEntry = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    return createAppRouter({ initialEntries: [hashInitialEntry ?? browserEntry] });
   }, []);
 
   return <RouterProvider router={router} />;

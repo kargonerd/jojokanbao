@@ -3,6 +3,7 @@ import { Button, PageFrame, PageHeader, Panel } from '@jojo/ui';
 import { Link } from 'react-router-dom';
 
 import { useMockVariant } from '../mock/variant-context';
+import { pressPath } from '../paths';
 import { VariantLink } from './VariantLink';
 
 type PressStep = 'recognition' | 'metadata' | 'proofread' | 'export';
@@ -74,7 +75,7 @@ export function PressPage({
         shouldShowProjectListAction || actions || projectMeta ? (
           <div className="header-actions">
             {shouldShowProjectListAction ? (
-              <PressActionLink tone="secondary" to="/" className="header-home-link">
+              <PressActionLink tone="secondary" to={pressPath()} className="header-home-link">
                 项目列表
               </PressActionLink>
             ) : null}
@@ -92,19 +93,19 @@ export function PressPage({
       {projectMode && projectId ? (
         <div className="project-workspace">
           <nav className="project-nav" aria-label="项目导航">
-            <VariantLink className="project-nav__home" to="/">
+            <VariantLink className="project-nav__home" to={pressPath()}>
               项目列表
             </VariantLink>
-            <VariantLink className={`project-nav__item ${activeStep === 'overview' ? 'project-nav__item--active' : ''}`} to={`/projects/${projectId}`}>
+            <VariantLink className={`project-nav__item ${activeStep === 'overview' ? 'project-nav__item--active' : ''}`} to={pressPath(`/projects/${projectId}`)}>
               项目概览
             </VariantLink>
-            <VariantLink className={`project-nav__item ${activeStep === 'metadata' ? 'project-nav__item--active' : ''}`} to={`/projects/${projectId}/metadata`}>
+            <VariantLink className={`project-nav__item ${activeStep === 'metadata' ? 'project-nav__item--active' : ''}`} to={pressPath(`/projects/${projectId}/metadata`)}>
               书籍信息
             </VariantLink>
-            <VariantLink className={`project-nav__item ${activeStep === 'proofread' ? 'project-nav__item--active' : ''}`} to={`/projects/${projectId}/proofread`}>
+            <VariantLink className={`project-nav__item ${activeStep === 'proofread' ? 'project-nav__item--active' : ''}`} to={pressPath(`/projects/${projectId}/proofread`)}>
               文字校对
             </VariantLink>
-            <VariantLink className={`project-nav__item ${activeStep === 'export' ? 'project-nav__item--active' : ''}`} to={`/projects/${projectId}/export`}>
+            <VariantLink className={`project-nav__item ${activeStep === 'export' ? 'project-nav__item--active' : ''}`} to={pressPath(`/projects/${projectId}/export`)}>
               导出
             </VariantLink>
           </nav>
