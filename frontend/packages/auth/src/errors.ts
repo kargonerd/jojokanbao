@@ -16,20 +16,31 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
 export function getAuthErrorMessage(error: unknown): string {
   if (!error || typeof error !== "object") return "操作没有完成，请稍后再试。";
 
-  const candidate = error as { code?: string; message?: string; status?: number };
+  const candidate = error as {
+    code?: string;
+    message?: string;
+    status?: number;
+  };
   if (candidate.code && AUTH_ERROR_MESSAGES[candidate.code]) {
     return AUTH_ERROR_MESSAGES[candidate.code]!;
   }
 
   const message = candidate.message?.toLowerCase() ?? "";
-  if (message.includes("invalid login credentials")) return "邮箱或密码不正确。";
-  if (message.includes("email not confirmed")) return "请先打开确认邮件，完成邮箱验证。";
-  if (message.includes("user already registered")) return "这个邮箱已经注册，请直接登录。";
+  if (message.includes("invalid login credentials"))
+    return "邮箱或密码不正确。";
+  if (message.includes("email not confirmed"))
+    return "请先打开确认邮件，完成邮箱验证。";
+  if (message.includes("user already registered"))
+    return "这个邮箱已经注册，请直接登录。";
   if (message.includes("invite code") || message.includes("invitation code")) {
     return "邀请码无效、已过期、已用完，或与当前邮箱不匹配。";
   }
+  if (message.includes("personal invitation has already been redeemed")) {
+    return "你的邀请码已经被使用，不能再次生成。";
+  }
   if (message.includes("rate limit")) return "请求过于频繁，请稍后再试。";
-  if (message.includes("failed to fetch")) return "暂时无法连接账号服务，请检查网络后重试。";
+  if (message.includes("failed to fetch"))
+    return "暂时无法连接账号服务，请检查网络后重试。";
   return candidate.status && candidate.status >= 500
     ? "账号服务暂时不可用，请稍后再试。"
     : "操作没有完成，请检查填写内容后重试。";

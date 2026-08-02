@@ -970,3 +970,137 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+.account-center {
+  width: min(100% - 2rem, 48rem);
+  min-height: 100vh;
+  margin-inline: auto;
+  padding: clamp(3rem, 8vw, 6rem) 0;
+  color: var(--color-ink);
+  font-family: "Noto Serif SC", serif;
+}
+
+.account-center__header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 2px solid var(--color-red);
+}
+
+.account-center__header h1,
+.personal-invitation h2 {
+  margin: 0;
+}
+
+.account-center__header a {
+  color: var(--color-red);
+  text-decoration: underline;
+  text-underline-offset: 0.25rem;
+}
+
+.account-center__eyebrow {
+  margin: 0 0 0.35rem;
+  color: var(--color-red);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
+.account-center__muted {
+  color: #6d655d;
+}
+
+.personal-invitation {
+  display: grid;
+  gap: 1rem;
+  margin-block: 2rem;
+  padding: clamp(1.5rem, 5vw, 2.5rem);
+  border: 1px solid #202020;
+  background: var(--color-paper);
+}
+
+.personal-invitation p {
+  margin: 0;
+  line-height: 1.8;
+}
+
+.personal-invitation__code {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding-block: 1rem;
+  border-block: 1px solid #d7d0c6;
+}
+
+.personal-invitation__code code {
+  overflow-wrap: anywhere;
+  color: var(--color-red);
+  font-size: clamp(1rem, 3vw, 1.35rem);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.personal-invitation__code small {
+  grid-column: 1 / -1;
+  color: #6d655d;
+}
+
+.account-center__primary,
+.personal-invitation__code button,
+.account-center__sign-out {
+  min-height: 2.75rem;
+  border: 1px solid var(--color-red);
+  border-radius: 0;
+  padding-inline: 1.25rem;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.account-center__primary {
+  justify-self: start;
+  background: var(--color-red);
+  color: white;
+}
+
+.personal-invitation__code button,
+.account-center__sign-out {
+  background: white;
+  color: var(--color-red);
+}
+
+.account-center__primary:not(:disabled):hover,
+.personal-invitation__code button:not(:disabled):hover,
+.account-center__sign-out:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 4px 4px 0 rgba(139, 26, 26, 0.14);
+}
+
+.account-center__primary:disabled,
+.account-center__sign-out:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.account-center__error {
+  color: var(--color-red);
+  font-weight: 700;
+}
+
+@media (max-width: 560px) {
+  .account-center__header {
+    display: grid;
+  }
+
+  .personal-invitation__code {
+    grid-template-columns: 1fr;
+  }
+
+  .personal-invitation__code small {
+    grid-column: auto;
+  }
+}

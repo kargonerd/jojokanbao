@@ -1,7 +1,11 @@
 import { useState, type FormEvent } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/account/auth";
-import { AccountBook, type AccountMode } from "@/account/components/AccountBook";
+import {
+  AccountBook,
+  type AccountMode,
+} from "@/account/components/AccountBook";
+import { AccountCenter } from "@/account/components/AccountCenter";
 import { LoginForm, RegisterForm } from "@/account/components/AccountForms";
 
 export function AccountPage() {
@@ -12,19 +16,16 @@ export function AccountPage() {
   const [invitationCode, setInvitationCode] = useState("");
   const [registrationEmail, setRegistrationEmail] = useState("");
   const [registrationPassword, setRegistrationPassword] = useState("");
-  const [registrationError, setRegistrationError] = useState<string | null>(null);
-  const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
-  const {
-    user,
-    signIn,
-    signUp,
-    busy,
-    error,
-    notice,
-    clearFeedback,
-  } = useAuthStore();
+  const [registrationError, setRegistrationError] = useState<string | null>(
+    null,
+  );
+  const [confirmationEmail, setConfirmationEmail] = useState<string | null>(
+    null,
+  );
+  const { user, signIn, signUp, busy, error, notice, clearFeedback } =
+    useAuthStore();
 
-  if (user) return <Navigate to="/" replace />;
+  if (user) return <AccountCenter />;
 
   const changeMode = (nextMode: AccountMode) => {
     clearFeedback();

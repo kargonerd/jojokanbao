@@ -67,10 +67,14 @@ can be used once, and is not bound to an email address. Only a SHA-256 digest
 is stored. The plaintext is printed once, so save it immediately and send it
 through a secure channel. Codes are case-insensitive.
 
-This change intentionally covers administrator-created invitations only.
-Giving each authenticated reader one personal invitation belongs to the later
-account-center change, where the lifecycle and recovery UI can be reviewed
-together.
+Each authenticated reader also has one lifetime personal invitation allocation
+in the account center. The generated code expires after 30 days and is shown
+only once. An unused code may be revoked and regenerated; after one code is
+redeemed, that account cannot generate another. The database serializes
+generation per account, so concurrent requests cannot create two usable codes.
+
+Administrator-created invitations remain independent of personal allocations
+and continue to use the management commands above.
 
 ## Email confirmation
 

@@ -1,6 +1,12 @@
 import type { Session, User } from "@supabase/supabase-js";
 
-export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
 
 export type Profile = {
   id: string;
@@ -8,6 +14,18 @@ export type Profile = {
   avatar_path: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type PersonalInvitationStatus = {
+  allocated: boolean;
+  redeemed: boolean;
+  expires_at?: string | null;
+  disabled?: boolean;
+};
+
+export type PersonalInvitation = {
+  code: string;
+  expires_at: string | null;
 };
 
 export type Database = {
@@ -31,7 +49,16 @@ export type Database = {
       };
     };
     Views: { [_ in never]: never };
-    Functions: { [_ in never]: never };
+    Functions: {
+      generate_personal_signup_invitation: {
+        Args: Record<PropertyKey, never>;
+        Returns: PersonalInvitation[];
+      };
+      get_personal_invitation_status: {
+        Args: Record<PropertyKey, never>;
+        Returns: PersonalInvitationStatus;
+      };
+    };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };
   };

@@ -7,6 +7,8 @@
 - 当前正式开放：`/archive`、`/archive/{rmrb|ckxx|hq|rmhb|sjzs}/:id`、`/archive/search`、`/archive/support`
 - 待发布：`/account`、`/rag/*`、`/olds/*`
 
+`/account` 在未登录时提供登录和邀请注册；登录后显示账户中心。每位读者可以在账户中心生成一个邀请名额，未使用时可换码，使用后不能再次生成。邀请码明文只在生成当次显示。
+
 旧 Reader 地址（例如 `/rmrb/19761009#page-5`）以及短暂使用过的 `/reader/*` 前缀会迁移到 `/archive/*`，并保留查询参数和锚点。静态托管必须将未知路径回退到 `index.html`，否则深链接会返回 404。
 
 ## 本地运行
