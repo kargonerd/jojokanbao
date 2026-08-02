@@ -1,0 +1,8 @@
+{
+  "devCommand": "node infrastructure/edgeone/backend-dev.mjs",
+  "cloudFunctions": {
+    "python": {
+      "maxDuration": 30
+    }
+  }
+}
