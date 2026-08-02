@@ -148,7 +148,7 @@ async function requestTencent({ action, credential, endpoint, payload }) {
   return parsed;
 }
 
-async function discoverZoneId({ credential, endpoint, urls }) {
+async function discoverZoneIds({ credential, endpoint, urls }) {
   const result = await requestTencent({
     action: "DescribeZones",
     credential,
@@ -172,33 +172,46 @@ async function discoverZoneId({ credential, endpoint, urls }) {
   }
   if (closest.length > 1) {
     console.warn(
-      `EdgeOne returned duplicate records for ${closest[0].ZoneName}; using ${closest[0].ZoneId}`,
+      `EdgeOne returned duplicate records for ${closest[0].ZoneName}: ${closest.map((zone) => zone.ZoneId).join(", ")}`,
     );
   }
-  console.log(`Discovered EdgeOne zone ${closest[0].ZoneName} (${closest[0].ZoneId})`);
-  return closest[0].ZoneId;
+  return closest.map((zone) => zone.ZoneId);
 }
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const credential = getCredential();
-  const zoneId = options.zoneId ?? await discoverZoneId({
-    credential,
-    endpoint: options.endpoint,
-    urls: options.urls,
-  });
-  const result = await requestTencent({
-    action: "CreatePurgeTask",
-    credential,
-    endpoint: options.endpoint,
-    payload: {
-      Targets: options.urls,
-      Type: options.type,
-      ZoneId: zoneId,
-      ...(options.method ? { Method: options.method } : {}),
-    },
-  });
-  console.log(JSON.stringify(result));
+  const zoneIds = options.zoneId
+    ? [options.zoneId]
+    : await discoverZoneIds({
+        credential,
+        endpoint: options.endpoint,
+        urls: options.urls,
+      });
+
+  for (const [index, zoneId] of zoneIds.entries()) {
+    console.log(`Trying EdgeOne zone ${zoneId}`);
+    try {
+      const result = await requestTencent({
+        action: "CreatePurgeTask",
+        credential,
+        endpoint: options.endpoint,
+        payload: {
+          Targets: options.urls,
+          Type: options.type,
+          ZoneId: zoneId,
+          ...(options.method ? { Method: options.method } : {}),
+        },
+      });
+      console.log(JSON.stringify(result));
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const canTryNext = message.includes("InvalidParameter.DomainNotFound") && index < zoneIds.length - 1;
+      if (!canTryNext) throw error;
+      console.warn(`Zone ${zoneId} does not own the target domain; trying the next matching record`);
+    }
+  }
 }
 
 main().catch((error) => {
