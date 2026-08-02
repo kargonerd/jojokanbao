@@ -1,6 +1,7 @@
 
 import { PressActionLink, PressPage, PressPanel, PressStageStrip } from '../components/PressUi';
 import type { MockStructuredOutputPreview, QualityStatus } from '../types/project';
+import { pressPath } from '../paths';
 
 interface QualityCheckPageProps {
   quality: QualityStatus | MockStructuredOutputPreview;
@@ -36,7 +37,7 @@ export function QualityCheckPage({ quality, projectId }: QualityCheckPageProps) 
             </div>
 
             <div className="inline-actions">
-              <PressActionLink tone="secondary" to="/projects/mock-1/proofread">
+              <PressActionLink tone="secondary" to={pressPath('/projects/mock-1/proofread')}>
                 返回校对台
               </PressActionLink>
               <PressActionLink to={quality.exportHref}>

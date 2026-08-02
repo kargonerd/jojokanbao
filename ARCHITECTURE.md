@@ -16,7 +16,7 @@ references/     尚未清理的历史参考代码，不参与构建
 
 - `frontend/web`：Archive、Account、RAG、Olds 共用的浏览器运行时。
 - `frontend/homepage`：官网与博客静态站点。
-- `frontend/desktop`：Electron 桌面产品；`engine/` 是 Desktop 专属的 Python 引擎。
+- `frontend/desktop`：Electron 桌面产品；`engine/` 是 Desktop 专属的 TypeScript 本地引擎。
 - `frontend/mobile`：移动端客户端。
 - `frontend/packages/ui`：React 组件以及通过 `@jojo/ui/styles` 导出的 CSS 设计系统。
 - `frontend/packages/auth`、`pdf-viewer`：前端共享能力。

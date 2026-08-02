@@ -5,6 +5,7 @@ import { PressActionLink, PressButton, PressPage, PressPanel } from '../componen
 import { ProjectCard } from '../components/ProjectCard';
 import { VariantLink } from '../components/VariantLink';
 import { useMockVariant } from '../mock/variant-context';
+import { pressPath } from '../paths';
 import type { MockTaskSummary } from '../types/project';
 
 type CreateProjectPhase = 'selecting' | 'creating';
@@ -127,7 +128,7 @@ function useCreateProjectStatus(onCreateProject?: (onPhaseChange: (phase: Create
 
   const handleCreateProject = async () => {
     setStatusMessage(null);
-    setWorkingMessage(typeof window !== 'undefined' && window.jojoPress?.selectPdf ? '正在打开文件选择器…' : null);
+    setWorkingMessage('正在打开文件选择器…');
 
     const result = await onCreateProject?.((phase) => {
       setWorkingMessage(phase === 'selecting' ? '正在打开文件选择器…' : '正在创建项目…');
@@ -171,7 +172,7 @@ export function NewProjectPage({ onCreateProject }: NewProjectPageProps) {
       home
       compact
       split
-      actions={<PressActionLink tone="secondary" to="/">返回项目列表</PressActionLink>}
+      actions={<PressActionLink tone="secondary" to={pressPath()}>返回项目列表</PressActionLink>}
     >
       {workingMessage || statusMessage ? (
         <div className="status-stack">
@@ -212,7 +213,7 @@ export default function ProjectListPage({ engineStatus = '正常', projects, onC
         home
         compact
         split
-        actions={<PressActionLink to="/projects/new">新建项目</PressActionLink>}
+        actions={<PressActionLink to={pressPath('/projects/new')}>新建项目</PressActionLink>}
       >
         <section className="page-layout page-layout--single">
           <PressPanel className="panel--project-list panel--bookshelf" as="section">
@@ -238,7 +239,7 @@ export default function ProjectListPage({ engineStatus = '正常', projects, onC
 
   return (
     <PressPage title={pageTitle} description={pageDescription} home compact>
-      {typeof window !== 'undefined' && window.jojoPress ? null : (
+      {typeof window !== 'undefined' && window.jojoDesktop ? null : (
         <section className="variant-switcher" aria-label="界面版本切换">
           <div className="variant-switcher__intro">
             <strong>多版对比</strong>
@@ -276,7 +277,7 @@ export default function ProjectListPage({ engineStatus = '正常', projects, onC
           </p>
           <div className="upload-dropzone">
             <p>{variant === 'b' ? '把旧刊、讲稿或资料汇编拖进来，先建档，再校订。' : '拖拽 PDF 到这里，或直接从本地选择。'}</p>
-            <PressActionLink to="/projects/mock-1/recognition">选择 PDF 文件</PressActionLink>
+            <PressActionLink to={pressPath('/projects/mock-1/recognition')}>选择 PDF 文件</PressActionLink>
           </div>
 
           <div className="mini-flow">

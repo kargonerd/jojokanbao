@@ -43,7 +43,7 @@ function appendVariant(path: string, variant: MockVariantId) {
 export function MockVariantProvider({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const electronVariantLocked = typeof window !== 'undefined' && Boolean(window.jojoPress);
+  const electronVariantLocked = typeof window !== 'undefined' && Boolean(window.jojoDesktop);
   const variant = electronVariantLocked ? DEFAULT_MOCK_VARIANT : resolveMockVariant(new URLSearchParams(location.search).get('variant'));
 
   useEffect(() => {

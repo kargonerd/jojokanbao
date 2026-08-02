@@ -6,8 +6,8 @@ import pdfWorkerSrc from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
 import { BlockEditorPane } from '../components/BlockEditorPane';
 import { IssueList } from '../components/IssueList';
 import { PressActionLink, PressPage, PressWorkbenchPanel } from '../components/PressUi';
-import { buildApiUrl } from '../lib/api';
 import type { ProofreadBlock, ProofreadBlockKind, ProofreadFontWeight, ProofreadWorkspace } from '../types/issues';
+import { pressPath } from '../paths';
 
 GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
 
@@ -103,11 +103,7 @@ export function ProofreadIssuesPage({ projectId = 'mock-1', workspace, onSaveBlo
   const totalBlocks = workspace.totalBlocks ?? blocks.length;
   const previewPage = workspace.preview.page;
   const totalPages = workspace.preview.totalPages ?? workspace.preview.pages?.length;
-  const previewDocumentUrl = workspace.preview.documentUrl
-    ? /^https?:\/\//.test(workspace.preview.documentUrl)
-      ? workspace.preview.documentUrl
-      : buildApiUrl(workspace.preview.documentUrl)
-    : undefined;
+  const previewDocumentUrl = workspace.preview.documentUrl || undefined;
   const previewUrl = previewDocumentUrl ? `${previewDocumentUrl}#page=${previewPage}` : undefined;
   const previewPageData = workspace.preview.pages?.find((page) => page.pageNum === previewPage);
   const previewBlocks = previewPageData?.blocks ?? [];
@@ -233,7 +229,7 @@ export function ProofreadIssuesPage({ projectId = 'mock-1', workspace, onSaveBlo
 
           {workspace.status !== 'recognition_pending' ? (
             <div className="preview-footer">
-              <PressActionLink to={`/projects/${projectId}/export`}>
+              <PressActionLink to={pressPath(`/projects/${projectId}/export`)}>
                 进入导出
               </PressActionLink>
             </div>

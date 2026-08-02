@@ -31,17 +31,14 @@ export function HelpPanel() {
           <div className="help-section">
             <h4 className="help-section__title">⚙️ 配置 MinerU 识别服务</h4>
             <p className="help-text">
-              如果遇到"识别服务未配置"错误，需要配置 MinerU API：
+              如果遇到“识别服务未配置”，请配置自己的 MinerU API Key：
             </p>
             <div className="code-block">
-              <p>1. 设置环境变量：</p>
-              <code>
-                MINERU_API_BASE=https://your-mineru-api.com<br/>
-                MINERU_API_TOKEN=your-api-token
-              </code>
+              <p>1. 返回桌面工作台，进入“设置”。</p>
+              <p>2. 填写从 MinerU 官网申请的 API Key。</p>
             </div>
             <p className="help-text">
-              2. 重启后端引擎服务
+              保存后立即生效，不需要重启。
             </p>
           </div>
           
