@@ -15,6 +15,8 @@ export interface AgentUsage {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  cacheWrite1hTokens?: number;
+  reasoningTokens?: number;
   totalTokens: number;
   cost: {
     input: number;
@@ -43,8 +45,16 @@ export interface RunPlatformAgentOptions {
   tools?: AgentTool[];
   /** Model selection remains an application/deployment concern. */
   model: Model<Api>;
-  /** Usually `(model, context, options) => models.streamSimple(...)`. */
+  /**
+   * Usually `(model, context, options) => models.streamSimple(...)`.
+   * A credential-aware Models instance can resolve auth itself. Direct provider streams
+   * can instead use `apiKey` or `getApiKey` below.
+   */
   stream: StreamFn;
+  /** Static credential forwarded to the provider stream. Never include it in events or logs. */
+  apiKey?: string;
+  /** Resolve short-lived credentials immediately before every model request. */
+  getApiKey?: AgentLoopConfig["getApiKey"];
   signal?: AbortSignal;
   reasoning?: ThinkingLevel;
   toolExecution?: ToolExecutionMode;
@@ -63,9 +73,11 @@ export interface RunPlatformAgentOptions {
 
 export interface PlatformAgentResult {
   answer: string;
+  /** Messages produced by this run, including the supplied prompt but excluding prior history. */
   messages: AgentMessage[];
   usage: AgentUsage;
   turns: number;
+  /** Tool calls admitted by the runtime budget; blocked excess calls are not counted. */
   toolCalls: number;
   durationMs: number;
 }

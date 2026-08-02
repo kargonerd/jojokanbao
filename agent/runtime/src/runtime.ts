@@ -31,6 +31,12 @@ function addUsage(target: Usage, source: Usage): void {
   target.output += source.output;
   target.cacheRead += source.cacheRead;
   target.cacheWrite += source.cacheWrite;
+  if (source.cacheWrite1h !== undefined) {
+    target.cacheWrite1h = (target.cacheWrite1h ?? 0) + source.cacheWrite1h;
+  }
+  if (source.reasoning !== undefined) {
+    target.reasoning = (target.reasoning ?? 0) + source.reasoning;
+  }
   target.totalTokens += source.totalTokens;
   target.cost.input += source.cost.input;
   target.cost.output += source.cost.output;
@@ -45,6 +51,12 @@ function publicUsage(usage: Usage): AgentUsage {
     outputTokens: usage.output,
     cacheReadTokens: usage.cacheRead,
     cacheWriteTokens: usage.cacheWrite,
+    ...(usage.cacheWrite1h === undefined
+      ? {}
+      : { cacheWrite1hTokens: usage.cacheWrite1h }),
+    ...(usage.reasoning === undefined
+      ? {}
+      : { reasoningTokens: usage.reasoning }),
     totalTokens: usage.totalTokens,
     cost: { ...usage.cost },
   };
@@ -70,9 +82,20 @@ function positiveInteger(value: number | undefined, fallback: number, name: stri
 }
 
 function promptMessages(prompt: RunPlatformAgentOptions["prompt"]): AgentMessage[] {
-  if (typeof prompt !== "string") return [...prompt];
+  if (typeof prompt !== "string") {
+    if (prompt.length === 0) throw new Error("prompt must contain at least one message");
+    return [...prompt];
+  }
   if (!prompt.trim()) throw new Error("prompt must not be empty");
   return [{ role: "user", content: prompt, timestamp: Date.now() }];
+}
+
+function terminalError(stopReason: "error" | "aborted", message?: string): Error {
+  const error = new Error(
+    message || (stopReason === "aborted" ? "model call aborted" : "model call failed"),
+  );
+  if (stopReason === "aborted") error.name = "AbortError";
+  return error;
 }
 
 export async function runPlatformAgent(
@@ -88,7 +111,7 @@ export async function runPlatformAgent(
   const usage = emptyUsage();
   let turns = 0;
   let toolCalls = 0;
-  let terminalError = "";
+  let failure: Error | undefined;
 
   const context: AgentContext = {
     systemPrompt: options.systemPrompt,
@@ -130,8 +153,14 @@ export async function runPlatformAgent(
 
     if (event.type === "message_end" && isAssistantMessage(event.message)) {
       addUsage(usage, event.message.usage);
-      if (event.message.stopReason === "error") {
-        terminalError = event.message.errorMessage || "model call failed";
+      if (
+        event.message.stopReason === "error"
+        || event.message.stopReason === "aborted"
+      ) {
+        failure = terminalError(
+          event.message.stopReason,
+          event.message.errorMessage,
+        );
       }
       await options.onEvent?.({ type: "usage", usage: publicUsage(usage) });
     }
@@ -142,14 +171,16 @@ export async function runPlatformAgent(
     context,
     {
       model: options.model,
+      ...(options.apiKey === undefined ? {} : { apiKey: options.apiKey }),
+      ...(options.getApiKey === undefined ? {} : { getApiKey: options.getApiKey }),
       ...(options.reasoning ? { reasoning: options.reasoning } : {}),
       toolExecution: options.toolExecution ?? "parallel",
       convertToLlm: options.convertToLlm ?? defaultMessageConverter,
       beforeToolCall: async (toolContext, signal) => {
-        toolCalls += 1;
-        if (toolCalls > maxToolCalls) {
+        if (toolCalls >= maxToolCalls) {
           return { block: true, reason: `tool call budget exceeded (${maxToolCalls})` };
         }
+        toolCalls += 1;
         return options.beforeToolCall?.(toolContext, signal);
       },
       shouldStopAfterTurn: async (turnContext) => {
@@ -162,7 +193,7 @@ export async function runPlatformAgent(
     options.stream,
   );
 
-  if (terminalError) throw new Error(terminalError);
+  if (failure) throw failure;
 
   const answer = [...messages]
     .reverse()

@@ -34,4 +34,8 @@ const result = await runPlatformAgent({
 console.log(result.usage);
 ```
 
-模型供应商、凭证、提示词和工具全部由使用方注入，因此同一个运行层可以用于不同产品，也能运行在本地服务器或 EdgeOne Agents。
+`models.streamSimple` 会使用 `Models` 实例配置的凭证存储，并在需要时刷新
+OAuth 凭证。直接使用 provider stream 时，可以通过 `apiKey` 注入固定凭证，
+或通过 `getApiKey` 在每轮模型请求前解析短期凭证。
+
+模型供应商、凭证、提示词和工具全部由使用方注入，因此同一个运行层可以用于不同产品，也能运行在本地服务器或 EdgeOne Agents。模型错误和取消会拒绝本次运行，不会伪装成成功结果。
