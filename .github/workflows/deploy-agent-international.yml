@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       EDGEONE_API_TOKEN: ${{ secrets.EDGEONE_API_TOKEN }}
-      EDGEONE_PROJECT_NAME: ${{ vars.EDGEONE_AGENT_PROJECT_NAME || 'jojo-agent-international' }}
+      EDGEONE_PROJECT_NAME: ${{ vars.EDGEONE_AGENT_PROJECT_NAME || 'jojo-agent-global' }}
       EDGEONE_DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'production' }}
       EDGEONE_UPLOAD_FROM_PATH: ./.edgeone/agent-deploy/
     steps:
