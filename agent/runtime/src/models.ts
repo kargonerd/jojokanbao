@@ -52,7 +52,7 @@ const PROVIDER_ALIASES: Record<string, PlatformProviderId> = {
 };
 
 export const PLATFORM_PROVIDER_ENV = {
-  "openai-codex": "JOJO_AGENT_AUTH_JSON",
+  "openai-codex": "CODEX_AUTH_JSON",
   google: "GEMINI_API_KEY",
   deepseek: "DEEPSEEK_API_KEY",
 } as const;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createEdgeOneCredentialStore,
   EdgeOneEncryptedCredentialPersistence,
 } from "../src";
 
@@ -21,6 +22,29 @@ function key(byte: number): Uint8Array {
 }
 
 describe("EdgeOneEncryptedCredentialPersistence", () => {
+  it("uses CODEX_AUTH_JSON as the deployed OAuth seed", async () => {
+    const blob = new MemoryBlobStore();
+    const credentials = createEdgeOneCredentialStore(
+      {
+        CODEX_AUTH_JSON: JSON.stringify({
+          "openai-codex": {
+            type: "oauth",
+            access: "access",
+            refresh: "refresh",
+            expires: 123,
+          },
+        }),
+        JOJO_AGENT_CREDENTIAL_KEY: Buffer.from(key(3)).toString("base64"),
+      },
+      blob,
+    );
+
+    await expect(credentials.read("openai-codex")).resolves.toMatchObject({
+      type: "oauth",
+      access: "access",
+    });
+  });
+
   it("seeds Codex OAuth into Blob without storing plaintext tokens", async () => {
     const blob = new MemoryBlobStore();
     const persistence = new EdgeOneEncryptedCredentialPersistence(

@@ -62,13 +62,13 @@ GEMINI_API_KEY=...
 JOJO_AGENT_PROFILE=international
 JOJO_AGENT_PROVIDER=openai-codex
 JOJO_AGENT_MODEL=gpt-5.6-terra
-JOJO_AGENT_AUTH_JSON={"openai-codex":{...}}
+CODEX_AUTH_JSON={"openai-codex":{...}}
 JOJO_AGENT_CREDENTIAL_KEY=<32-byte AES key encoded as base64>
 JOJO_AGENT_ALLOWED_ORIGINS=https://jojokanbao.cn
 JOJO_AGENT_UPSTREAM_URL=https://agent-global.jojokanbao.cn/jojo
 ```
 
-`JOJO_AGENT_AUTH_JSON` 的初始值来自本机完成 Pi 登录后生成的
+`CODEX_AUTH_JSON` 的初始值来自本机完成 Pi 登录后生成的
 `agent/runtime/auth.json`。首次请求会将它用 AES-256-GCM 加密后写入
 Makers Blob；Pi 刷新 OAuth 后也会写回加密 Blob。环境变量中的 JSON 只作为
 首次初始化种子。

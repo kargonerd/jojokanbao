@@ -156,7 +156,7 @@ export function createEdgeOneCredentialStore(
   const persistence = new EdgeOneEncryptedCredentialPersistence(
     store,
     encryptionKey(environment.JOJO_AGENT_CREDENTIAL_KEY),
-    environment.JOJO_AGENT_AUTH_JSON,
+    environment.CODEX_AUTH_JSON,
   );
   return new PersistentCredentialStore(persistence);
 }
