@@ -10,6 +10,24 @@ export type Profile = {
   updated_at: string;
 };
 
+export type PersonalInvitationStatus =
+  | {
+      allocated: false;
+      redeemed: false;
+    }
+  | {
+      allocated: true;
+      code: string;
+      redeemed: boolean;
+      expires_at: string | null;
+      disabled: boolean;
+    };
+
+export type PersonalInvitation = {
+  code: string;
+  expires_at: string | null;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -31,7 +49,16 @@ export type Database = {
       };
     };
     Views: { [_ in never]: never };
-    Functions: { [_ in never]: never };
+    Functions: {
+      generate_personal_signup_invitation: {
+        Args: Record<PropertyKey, never>;
+        Returns: PersonalInvitation[];
+      };
+      get_personal_invitation_status: {
+        Args: Record<PropertyKey, never>;
+        Returns: PersonalInvitationStatus;
+      };
+    };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };
   };

@@ -28,6 +28,12 @@ export function getAuthErrorMessage(error: unknown): string {
   if (message.includes("invite code") || message.includes("invitation code")) {
     return "邀请码无效、已过期、已用完，或与当前邮箱不匹配。";
   }
+  if (message.includes("personal invitation has already been redeemed")) {
+    return "你的邀请码已经被使用，不能再次生成。";
+  }
+  if (message.includes("personal invitation has been disabled")) {
+    return "你的邀请码已被停用，请联系管理员。";
+  }
   if (message.includes("rate limit")) return "请求过于频繁，请稍后再试。";
   if (message.includes("failed to fetch")) return "暂时无法连接账号服务，请检查网络后重试。";
   return candidate.status && candidate.status >= 500
