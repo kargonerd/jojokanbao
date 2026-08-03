@@ -14,6 +14,10 @@ enable_signup = true
 enable_signup = true
 enable_confirmations = true
 
+[auth.email.template.confirmation]
+subject = "请确认你的 JOJO 看报账号"
+content_path = "./supabase/templates/confirmation.html"
+
 [auth.hook.before_user_created]
 enabled = true
 uri = "pg-functions://postgres/public/hook_require_signup_invitation"

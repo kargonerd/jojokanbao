@@ -31,7 +31,7 @@ invitation PR is merged, run these commands from the repository root:
 pnpm dlx supabase link --project-ref <project-ref>
 pnpm dlx supabase db push --dry-run
 pnpm dlx supabase db push
-pnpm dlx supabase config push --project-ref <project-ref>
+pnpm dlx supabase --workdir infrastructure config push --project-ref <project-ref>
 ```
 
 The database migration must be pushed before the Auth config because the config
@@ -40,6 +40,11 @@ enables a hook backed by `public.hook_require_signup_invitation`.
 The database also enforces redemption with a trigger. Therefore new user
 creation fails closed if somebody disables or bypasses the hosted hook.
 Existing users are unaffected.
+
+The confirmation email source is
+`supabase/templates/confirmation.html` relative to the Supabase workdir. The
+hosted template must be updated through `config push` or the Management API;
+committing the HTML file alone does not change emails already sent by Supabase.
 
 The trigger applies to every new Auth user, including users created from the
 Supabase dashboard and OAuth identities. Keep those signup paths disabled
