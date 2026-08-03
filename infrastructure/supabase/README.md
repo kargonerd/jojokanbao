@@ -45,6 +45,10 @@ The confirmation email source is
 `supabase/templates/confirmation.html` relative to the Supabase workdir. The
 hosted template must be updated through `config push` or the Management API;
 committing the HTML file alone does not change emails already sent by Supabase.
+The template sends readers to `/account/confirm` on the requested JOJO origin.
+That page consumes the one-time token hash with Supabase Auth, removes it from
+the browser address bar, and offers a resend form when the link is no longer
+valid.
 
 The trigger applies to every new Auth user, including users created from the
 Supabase dashboard and OAuth identities. Keep those signup paths disabled

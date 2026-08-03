@@ -104,7 +104,7 @@
                   <tr>
                     <td align="center" bgcolor="#8b1a1a">
                       <a
-                        href="{{ .ConfirmationURL }}"
+                        href="{{ .RedirectTo }}/confirm?token_hash={{ .TokenHash }}"
                         style="display:inline-block;padding:14px 28px;border:1px solid #8b1a1a;background:#8b1a1a;color:#ffffff;font-family:Arial,'Microsoft YaHei',sans-serif;font-size:16px;font-weight:700;line-height:1.2;letter-spacing:.08em;text-decoration:none;"
                       >
                         确认邮箱并完成注册
@@ -121,7 +121,7 @@
                 <p
                   style="margin:0;padding:12px 14px;border-left:3px solid #8b1a1a;background:#f4efe7;font-family:Consolas,'Courier New',monospace;font-size:12px;line-height:1.65;word-break:break-all;color:#514a42;"
                 >
-                  {{ .ConfirmationURL }}
+                  {{ .RedirectTo }}/confirm?token_hash={{ .TokenHash }}
                 </p>
               </td>
             </tr>
