@@ -2,11 +2,15 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AccountLogin from "@/account/AccountLogin";
+import { AccountCenterPage } from "@/account/pages/AccountCenterPage";
 
 const account = vi.hoisted(() => ({
   auth: {
     initialized: true,
-    user: { id: "reader-1", email: "reader@example.com" },
+    user: { id: "reader-1", email: "reader@example.com" } as {
+      id: string;
+      email: string;
+    } | null,
     profile: {
       id: "reader-1",
       display_name: "雪豹",
@@ -57,6 +61,7 @@ vi.mock("@/account/invitationStore", () => ({
 }));
 
 beforeEach(() => {
+  account.auth.user = { id: "reader-1", email: "reader@example.com" };
   account.auth.profile.display_name = "雪豹";
   account.auth.busy = false;
   account.auth.error = null;
@@ -80,6 +85,19 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("account center", () => {
+  it("keeps using the confirmed user id while the auth store is signing out", async () => {
+    account.auth.user = null;
+
+    render(
+      <MemoryRouter>
+        <AccountCenterPage userId="reader-1" />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("heading", { name: "我的邀请码" })).toBeTruthy();
+    await waitFor(() => expect(account.invitation.load).toHaveBeenCalledWith("reader-1"));
+  });
+
   it("keeps an authenticated reader on /account and loads their invitation", async () => {
     render(<MemoryRouter><AccountLogin /></MemoryRouter>);
 

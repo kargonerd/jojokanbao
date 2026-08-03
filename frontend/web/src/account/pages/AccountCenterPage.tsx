@@ -2,9 +2,13 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../auth";
 import { PersonalInvitationPanel } from "../components/PersonalInvitationPanel";
 
-export function AccountCenterPage() {
+interface AccountCenterPageProps {
+  userId: string;
+}
+
+export function AccountCenterPage({ userId }: AccountCenterPageProps) {
   const navigate = useNavigate();
-  const { user, profile, busy, signOut } = useAuthStore();
+  const { profile, busy, signOut } = useAuthStore();
 
   const leaveAccount = async () => {
     try {
@@ -41,7 +45,7 @@ export function AccountCenterPage() {
       </header>
 
       <div className="mx-auto w-full max-w-[38rem] py-16 sm:py-24">
-        <PersonalInvitationPanel userId={user!.id} />
+        <PersonalInvitationPanel userId={userId} />
       </div>
     </main>
   );

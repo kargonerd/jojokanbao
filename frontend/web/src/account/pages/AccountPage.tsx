@@ -25,7 +25,7 @@ export function AccountPage() {
     clearFeedback,
   } = useAuthStore();
 
-  if (user) return <AccountCenterPage />;
+  if (user) return <AccountCenterPage userId={user.id} />;
 
   const changeMode = (nextMode: AccountMode) => {
     clearFeedback();
