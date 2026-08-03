@@ -5,9 +5,5 @@
     "python": {
       "maxDuration": 30
     }
-  },
-  "agents": {
-    "dir": "infrastructure/edgeone/agents/domestic",
-    "timeout": 300
   }
 }

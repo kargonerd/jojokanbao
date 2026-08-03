@@ -2,10 +2,6 @@ import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import {
-  agentDeploymentPackage,
-  copyAgentAssets,
-} from "./prepare-agent-assets.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const webDist = path.join(repositoryRoot, "frontend", "web", "dist");
@@ -50,23 +46,11 @@ await cp(functionSource, path.join(functionsOutput, "app"), {
   filter: includeFunctionFile,
 });
 await cp(path.join(apiRoot, "requirements.txt"), path.join(functionsOutput, "requirements.txt"));
-await copyAgentAssets({
-  repositoryRoot,
-  outputDirectory,
-  entriesDirectory: path.join(
-    repositoryRoot,
-    "infrastructure",
-    "edgeone",
-    "agents",
-    "domestic",
-  ),
-});
 
 const edgeoneConfig = JSON.parse(
   await readFile(path.join(repositoryRoot, "infrastructure", "edgeone", "edgeone.json"), "utf8"),
 );
 delete edgeoneConfig.devCommand;
-edgeoneConfig.agents.dir = "agents";
 
 await writeFile(
   path.join(outputDirectory, "edgeone.json"),
@@ -74,7 +58,7 @@ await writeFile(
 );
 await writeFile(
   path.join(outputDirectory, "package.json"),
-  `${JSON.stringify(agentDeploymentPackage("jojo-web-deploy"), null, 2)}\n`,
+  `${JSON.stringify({ name: "jojo-web-deploy", private: true }, null, 2)}\n`,
 );
 
 process.stdout.write(`${outputDirectory}\n`);

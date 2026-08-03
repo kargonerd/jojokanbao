@@ -43,16 +43,16 @@ EdgeOne 专有入口位于 `infrastructure/edgeone/functions`，只导入
 
 ## Agent
 
-- `agent/runtime`：基于 `pi-agent-core/Agent` 的产品无关运行层，以及 Codex、
-  Gemini、DeepSeek 的模型与凭证配置。
-- `agent/edgeone`：Supabase 登录校验、SSE、会话桥接和 Codex OAuth 加密 Blob
+- `agent/runtime`：基于 `pi-agent-core/Agent` 的产品无关运行层，以及 Codex
+  OAuth 模型与凭证配置。
+- `agent/edgeone`：Supabase 登录校验、SSE、会话桥接和 Codex OAuth 加密 Store
   持久化。
 - RAG、Olds 等业务只注入提示词和工具。
-- 国内 Agent 与 Web/Python API 在同一个 Makers 项目发布；国际 Agent 使用
-  独立 Makers 项目和域名，但共享相同运行层。
-- 国际项目用一个不运行 Pi 的 Node Cloud Function 处理浏览器 CORS 预检，再把
+- Codex Agent 使用不含中国大陆的独立 Makers 项目和域名；其他模型后续通过
+  Makers Models 接入。
+- Agent 项目用一个不运行 Pi 的 Node Cloud Function 处理浏览器 CORS 预检，再把
   SSE 请求转给同项目的 Makers Agent。
-- Agent 使用 Makers Agents Runtime，不塞进 Node Cloud Functions。
+- Pi Agent 使用 Makers Agents Runtime，不塞进 Node Cloud Functions。
 
 ## Tools and infrastructure
 

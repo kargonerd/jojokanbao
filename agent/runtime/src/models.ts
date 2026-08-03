@@ -7,17 +7,12 @@ import {
   type Models,
   type MutableModels,
 } from "@earendil-works/pi-ai";
-import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
-import { googleProvider } from "@earendil-works/pi-ai/providers/google";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 
-export type AgentDeploymentProfile = "domestic" | "international";
-export type PlatformProviderId = "openai-codex" | "google" | "deepseek";
 export type AgentEnvironment = Readonly<Record<string, string | undefined>>;
 
 export interface PlatformModelConfig {
-  profile: AgentDeploymentProfile;
-  provider: PlatformProviderId;
+  provider: "openai-codex";
   model: string;
 }
 
@@ -29,67 +24,15 @@ export interface PlatformModelRuntime {
   auth?: AuthCheck;
 }
 
-const PROFILE_DEFAULTS: Record<
-  AgentDeploymentProfile,
-  Pick<PlatformModelConfig, "provider" | "model">
-> = {
-  domestic: {
-    provider: "deepseek",
-    model: "deepseek-v4-flash",
-  },
-  international: {
-    provider: "openai-codex",
-    model: "gpt-5.6-terra",
-  },
-};
-
-const PROVIDER_ALIASES: Record<string, PlatformProviderId> = {
-  codex: "openai-codex",
-  "openai-codex": "openai-codex",
-  gemini: "google",
-  google: "google",
-  deepseek: "deepseek",
-};
-
-export const PLATFORM_PROVIDER_ENV = {
-  "openai-codex": "CODEX_AUTH_JSON",
-  google: "GEMINI_API_KEY",
-  deepseek: "DEEPSEEK_API_KEY",
-} as const;
-
-function deploymentProfile(value: string | undefined): AgentDeploymentProfile {
-  const normalized = value?.trim().toLowerCase();
-  if (!normalized) return "domestic";
-  if (normalized === "domestic" || normalized === "international") return normalized;
-  throw new Error("JOJO_AGENT_PROFILE must be domestic or international");
-}
-
-function providerId(value: string | undefined, fallback: PlatformProviderId): PlatformProviderId {
-  if (!value?.trim()) return fallback;
-  const resolved = PROVIDER_ALIASES[value.trim().toLowerCase()];
-  if (!resolved) {
-    throw new Error("JOJO_AGENT_PROVIDER must be codex, gemini/google, or deepseek");
-  }
-  return resolved;
-}
-
-function fallbackModel(provider: PlatformProviderId): string {
-  if (provider === "openai-codex") return PROFILE_DEFAULTS.international.model;
-  if (provider === "google") return "gemini-3.5-flash";
-  return PROFILE_DEFAULTS.domestic.model;
-}
+export const DEFAULT_CODEX_MODEL = "gpt-5.6-terra";
 
 export function resolvePlatformModelConfig(
   environment: AgentEnvironment,
-  defaultProfile?: AgentDeploymentProfile,
 ): PlatformModelConfig {
-  const profile = deploymentProfile(
-    environment.JOJO_AGENT_PROFILE ?? defaultProfile,
-  );
-  const defaults = PROFILE_DEFAULTS[profile];
-  const provider = providerId(environment.JOJO_AGENT_PROVIDER, defaults.provider);
-  const model = environment.JOJO_AGENT_MODEL?.trim() || fallbackModel(provider);
-  return { profile, provider, model };
+  return {
+    provider: "openai-codex",
+    model: environment.JOJO_AGENT_MODEL?.trim() || DEFAULT_CODEX_MODEL,
+  };
 }
 
 export function createPlatformModels(options: {
@@ -106,8 +49,6 @@ export function createPlatformModels(options: {
     authContext,
   });
   models.setProvider(openaiCodexProvider());
-  models.setProvider(googleProvider());
-  models.setProvider(deepseekProvider());
   return models;
 }
 

@@ -17,6 +17,7 @@
     "test:backend": "python -m pytest backend/tests -q",
     "prepare:web-deploy": "node infrastructure/edgeone/prepare-web-deploy.mjs",
     "prepare:agent-deploy": "node infrastructure/edgeone/prepare-agent-deploy.mjs",
+    "push:codex-auth": "pnpm --filter @jojo/agent-edgeone auth:push",
     "dev:reader-search": "cd infrastructure/tencent-scf/search && python app.py",
     "dev:data-workbench": "pnpm --filter @jojo/data-workbench dev",
     "build:data-workbench": "pnpm --filter @jojo/data-workbench build",

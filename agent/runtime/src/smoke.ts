@@ -15,22 +15,19 @@ if (!prompt) {
 }
 
 const config = resolvePlatformModelConfig(process.env);
-const credentials = config.provider === "openai-codex"
-  ? new JsonCredentialStore(
-    process.env.JOJO_AGENT_AUTH_PATH?.trim()
-      || fileURLToPath(new URL("../auth.json", import.meta.url)),
-  )
-  : undefined;
+const credentials = new JsonCredentialStore(
+  process.env.JOJO_AGENT_AUTH_PATH?.trim()
+    || fileURLToPath(new URL("../auth.json", import.meta.url)),
+);
 const runtime = await createPlatformModelRuntime({
   config,
   environment: process.env,
-  ...(credentials ? { credentials } : {}),
+  credentials,
 });
 
 if (!runtime.configured) {
   throw new Error(
-    `${config.provider}/${config.model} is not configured. `
-    + "Run auth:codex or set the provider API key.",
+    `${config.provider}/${config.model} is not configured. Run auth:codex first.`,
   );
 }
 

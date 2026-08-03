@@ -1,5 +1,12 @@
 export { AgentHttpError, authorizeSupabaseUser } from "./auth";
 export {
+  createCodexCredentialAdminHandler,
+} from "./credential-admin";
+export type {
+  CodexCredentialAdminContext,
+  CreateCodexCredentialAdminHandlerOptions,
+} from "./credential-admin";
+export {
   EdgeOneEncryptedCredentialPersistence,
   createEdgeOneCredentialStore,
 } from "./credential-store";

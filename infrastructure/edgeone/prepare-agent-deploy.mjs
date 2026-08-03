@@ -28,6 +28,11 @@ await cp(
   path.join(cloudFunctionsOutput, "agent"),
   { recursive: true },
 );
+await cp(
+  path.join(edgeoneRoot, "functions", "codex-auth"),
+  path.join(cloudFunctionsOutput, "internal", "codex-auth"),
+  { recursive: true },
+);
 
 const edgeoneConfig = JSON.parse(
   await readFile(

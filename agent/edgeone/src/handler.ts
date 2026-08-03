@@ -106,17 +106,14 @@ async function loadHistory(
 
 async function defaultModelRuntime(
   context: EdgeOneAgentContext,
-  defaultProfile: CreateEdgeOneAgentHandlerOptions["defaultProfile"],
 ): Promise<PlatformModelRuntime> {
   const environment = context.env ?? process.env;
-  const config = resolvePlatformModelConfig(environment, defaultProfile);
-  const credentials = config.provider === "openai-codex"
-    ? createEdgeOneCredentialStore(environment)
-    : undefined;
+  const config = resolvePlatformModelConfig(environment);
+  const credentials = createEdgeOneCredentialStore(environment, context.store);
   return createPlatformModelRuntime({
     config,
     environment,
-    ...(credentials ? { credentials } : {}),
+    credentials,
   });
 }
 
@@ -185,7 +182,7 @@ export function createEdgeOneAgentHandler(
       user = await (options.authorize ?? authorizeSupabaseUser)(context);
       runtime = await (
         options.createModelRuntime?.(context)
-        ?? defaultModelRuntime(context, options.defaultProfile)
+        ?? defaultModelRuntime(context)
       );
       if (!runtime.configured) {
         throw new AgentHttpError(
@@ -221,7 +218,6 @@ export function createEdgeOneAgentHandler(
     const environment = context.env ?? process.env;
 
     context.tracer?.setAttributes?.({
-      "agent.profile": runtime.config.profile,
       "agent.provider": runtime.config.provider,
       "agent.model": runtime.config.model,
       "agent.conversation_id": conversationId,
@@ -231,7 +227,6 @@ export function createEdgeOneAgentHandler(
       async start(controller) {
         try {
           controller.enqueue(sseFrame("status", {
-            profile: runtime.config.profile,
             provider: runtime.config.provider,
             model: runtime.config.model,
             conversationId,
@@ -288,18 +283,16 @@ export function createEdgeOneAgentHandler(
 }
 
 export function createEdgeOneAgentHealthHandler(
-  defaultProfile: CreateEdgeOneAgentHandlerOptions["defaultProfile"],
 ) {
   return async function onRequest(context: EdgeOneAgentContext): Promise<Response> {
     try {
-      const runtime = await defaultModelRuntime(context, defaultProfile);
+      const runtime = await defaultModelRuntime(context);
       return jsonResponse(200, {
         ok: true,
-        profile: runtime.config.profile,
         provider: runtime.config.provider,
         model: runtime.config.model,
         configured: runtime.configured,
-        supportedProviders: ["openai-codex", "google", "deepseek"],
+        supportedProviders: ["openai-codex"],
       });
     } catch (error) {
       return jsonResponse(200, {

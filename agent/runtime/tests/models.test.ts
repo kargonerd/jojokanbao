@@ -6,47 +6,24 @@ import {
 } from "../src";
 
 describe("resolvePlatformModelConfig", () => {
-  it("uses deployment-safe defaults for both regions", () => {
-    expect(resolvePlatformModelConfig({}, "domestic")).toEqual({
-      profile: "domestic",
-      provider: "deepseek",
-      model: "deepseek-v4-flash",
-    });
-    expect(resolvePlatformModelConfig({}, "international")).toEqual({
-      profile: "international",
+  it("uses the Codex default", () => {
+    expect(resolvePlatformModelConfig({})).toEqual({
       provider: "openai-codex",
       model: "gpt-5.6-terra",
     });
   });
 
-  it("accepts Gemini and provider aliases", () => {
+  it("accepts an explicit Codex model", () => {
     expect(resolvePlatformModelConfig({
-      JOJO_AGENT_PROFILE: "domestic",
-      JOJO_AGENT_PROVIDER: "gemini",
-      JOJO_AGENT_MODEL: "gemini-3.5-flash",
+      JOJO_AGENT_MODEL: "gpt-5.6-codex",
     })).toEqual({
-      profile: "domestic",
-      provider: "google",
-      model: "gemini-3.5-flash",
+      provider: "openai-codex",
+      model: "gpt-5.6-codex",
     });
   });
 });
 
 describe("createPlatformModelRuntime", () => {
-  it("resolves DeepSeek API keys from the deployment environment", async () => {
-    const config = resolvePlatformModelConfig({}, "domestic");
-    const runtime = await createPlatformModelRuntime({
-      config,
-      environment: { DEEPSEEK_API_KEY: "test-key" },
-    });
-
-    expect(runtime.configured).toBe(true);
-    expect(runtime.auth).toMatchObject({
-      type: "api_key",
-      source: "DEEPSEEK_API_KEY",
-    });
-  });
-
   it("recognizes a persisted Codex OAuth login without refreshing it", async () => {
     const credentials = new PersistentCredentialStore({
       read: async () => ({
@@ -59,7 +36,7 @@ describe("createPlatformModelRuntime", () => {
       }),
       write: async () => undefined,
     });
-    const config = resolvePlatformModelConfig({}, "international");
+    const config = resolvePlatformModelConfig({});
     const runtime = await createPlatformModelRuntime({ config, credentials });
 
     expect(runtime.configured).toBe(true);

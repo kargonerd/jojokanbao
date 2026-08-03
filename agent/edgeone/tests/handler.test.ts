@@ -8,7 +8,7 @@ import {
 describe("createEdgeOneAgentHandler", () => {
   it("streams a real Pi Agent run and persists the conversation", async () => {
     const faux = fauxProvider({
-      provider: "deepseek",
+      provider: "openai-codex",
       tokensPerSecond: 100_000,
     });
     faux.setResponses([fauxAssistantMessage("你好，JOJO。")]);
@@ -25,12 +25,10 @@ describe("createEdgeOneAgentHandler", () => {
       return `msg-${messages.length}`;
     });
     const handle = createEdgeOneAgentHandler({
-      defaultProfile: "domestic",
       authorize: async () => ({ id: "user-1" }),
       createModelRuntime: async () => ({
         config: {
-          profile: "domestic",
-          provider: "deepseek",
+          provider: "openai-codex",
           model: model.id,
         },
         models,
@@ -76,7 +74,6 @@ describe("createEdgeOneAgentHandler", () => {
   it("does not initialize a model for unauthenticated requests", async () => {
     const createModelRuntime = vi.fn();
     const handle = createEdgeOneAgentHandler({
-      defaultProfile: "international",
       authorize: async () => {
         throw new (await import("../src")).AgentHttpError(401, "Authentication required");
       },

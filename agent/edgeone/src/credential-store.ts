@@ -1,4 +1,3 @@
-import { getStore } from "@edgeone/pages-blob";
 import {
   PersistentCredentialStore,
   parseCredentialFile,
@@ -6,21 +5,9 @@ import {
   type CredentialFile,
   type CredentialPersistence,
 } from "@jojo/agent-runtime";
+import type { EdgeOneConversationStore } from "./types";
 
-const BLOB_NAMESPACE = "jojo-agent-secrets";
-const BLOB_KEY = "credentials.v1.aes-gcm.json";
-
-interface BlobStore {
-  get(
-    key: string,
-    options?: { type?: "text"; consistency?: "strong" },
-  ): Promise<unknown>;
-  set(
-    key: string,
-    value: string,
-    options?: { onlyIfNew?: boolean },
-  ): Promise<void>;
-}
+const CREDENTIAL_CONVERSATION_ID = "jojo-codex-credentials-v1";
 
 interface EncryptedEnvelope {
   version: 1;
@@ -43,12 +30,14 @@ function asArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 function encryptionKey(value: string | undefined): Uint8Array {
   if (!value?.trim()) {
     throw new Error(
-      "JOJO_AGENT_CREDENTIAL_KEY is required for deployed Codex OAuth",
+      "CODEX_CREDENTIAL_ENCRYPTION_KEY is required for deployed Codex OAuth",
     );
   }
   const bytes = fromBase64(value.trim());
   if (bytes.byteLength !== 32) {
-    throw new Error("JOJO_AGENT_CREDENTIAL_KEY must be a base64-encoded 32-byte key");
+    throw new Error(
+      "CODEX_CREDENTIAL_ENCRYPTION_KEY must be a base64-encoded 32-byte key",
+    );
   }
   return bytes;
 }
@@ -103,60 +92,47 @@ async function decryptCredentials(
 }
 
 export class EdgeOneEncryptedCredentialPersistence implements CredentialPersistence {
-  private seeded = false;
-
   constructor(
-    private readonly store: BlobStore,
+    private readonly store: EdgeOneConversationStore,
     private readonly rawKey: Uint8Array,
-    private readonly seed?: string,
   ) {}
 
   async read(): Promise<unknown | undefined> {
-    const stored = await this.store.get(BLOB_KEY, {
-      type: "text",
-      consistency: "strong",
+    const messages = await this.store.getMessages({
+      conversationId: CREDENTIAL_CONVERSATION_ID,
+      limit: 1,
+      order: "desc",
     });
+    const stored = messages[0]?.content;
     if (typeof stored === "string" && stored) {
       return decryptCredentials(stored, this.rawKey);
     }
-    if (!this.seed || this.seeded) return undefined;
-
-    const credentials = parseCredentialFile(this.seed);
-    try {
-      await this.store.set(
-        BLOB_KEY,
-        await encryptCredentials(credentials, this.rawKey),
-        { onlyIfNew: true },
-      );
-    } catch (error) {
-      const concurrentlySeeded = await this.store.get(BLOB_KEY, {
-        type: "text",
-        consistency: "strong",
-      });
-      if (typeof concurrentlySeeded === "string" && concurrentlySeeded) {
-        this.seeded = true;
-        return decryptCredentials(concurrentlySeeded, this.rawKey);
-      }
-      throw error;
-    }
-    this.seeded = true;
-    return credentials;
+    return undefined;
   }
 
   async write(credentials: CredentialFile): Promise<void> {
-    await this.store.set(BLOB_KEY, await encryptCredentials(credentials, this.rawKey));
-    this.seeded = true;
+    await this.store.appendMessage({
+      conversationId: CREDENTIAL_CONVERSATION_ID,
+      role: "system",
+      content: await encryptCredentials(credentials, this.rawKey),
+      metadata: {
+        kind: "codex-oauth-credential",
+        version: 1,
+      },
+    });
   }
 }
 
 export function createEdgeOneCredentialStore(
   environment: AgentEnvironment,
-  store: BlobStore = getStore(BLOB_NAMESPACE) as BlobStore,
+  store: EdgeOneConversationStore | undefined,
 ) {
+  if (!store) {
+    throw new Error("Makers Agent conversation store is unavailable");
+  }
   const persistence = new EdgeOneEncryptedCredentialPersistence(
     store,
-    encryptionKey(environment.JOJO_AGENT_CREDENTIAL_KEY),
-    environment.CODEX_AUTH_JSON,
+    encryptionKey(environment.CODEX_CREDENTIAL_ENCRYPTION_KEY),
   );
   return new PersistentCredentialStore(persistence);
 }

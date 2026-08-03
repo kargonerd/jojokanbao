@@ -4,16 +4,17 @@ import {
   EdgeOneEncryptedCredentialPersistence,
 } from "../src";
 
-class MemoryBlobStore {
-  value: string | undefined;
+class MemoryConversationStore {
+  values: string[] = [];
 
-  async get() {
-    return this.value;
+  async getMessages() {
+    const content = this.values.at(-1);
+    return content === undefined ? [] : [{ role: "system" as const, content }];
   }
 
-  async set(_key: string, value: string, options?: { onlyIfNew?: boolean }) {
-    if (options?.onlyIfNew && this.value !== undefined) return;
-    this.value = value;
+  async appendMessage(input: { content: unknown }) {
+    this.values.push(String(input.content));
+    return `message-${this.values.length}`;
   }
 }
 
@@ -22,74 +23,60 @@ function key(byte: number): Uint8Array {
 }
 
 describe("EdgeOneEncryptedCredentialPersistence", () => {
-  it("uses CODEX_AUTH_JSON as the deployed OAuth seed", async () => {
-    const blob = new MemoryBlobStore();
+  it("uses the deployed encryption key without storing plaintext tokens", async () => {
+    const store = new MemoryConversationStore();
     const credentials = createEdgeOneCredentialStore(
       {
-        CODEX_AUTH_JSON: JSON.stringify({
-          "openai-codex": {
-            type: "oauth",
-            access: "access",
-            refresh: "refresh",
-            expires: 123,
-          },
-        }),
-        JOJO_AGENT_CREDENTIAL_KEY: Buffer.from(key(3)).toString("base64"),
+        CODEX_CREDENTIAL_ENCRYPTION_KEY: Buffer.from(key(3)).toString("base64"),
       },
-      blob,
+      store,
+    );
+    await credentials.modify(
+      "openai-codex",
+      async () => ({
+        type: "oauth",
+        access: "private-access-token",
+        refresh: "private-refresh-token",
+        expires: 123,
+      }),
     );
 
     await expect(credentials.read("openai-codex")).resolves.toMatchObject({
       type: "oauth",
-      access: "access",
+      access: "private-access-token",
     });
-  });
+    expect(store.values.at(-1)).not.toContain("private-access-token");
+    expect(store.values.at(-1)).not.toContain("private-refresh-token");
 
-  it("seeds Codex OAuth into Blob without storing plaintext tokens", async () => {
-    const blob = new MemoryBlobStore();
-    const persistence = new EdgeOneEncryptedCredentialPersistence(
-      blob,
-      key(7),
-      JSON.stringify({
-        "openai-codex": {
-          type: "oauth",
-          access: "private-access-token",
-          refresh: "private-refresh-token",
-          expires: 123,
-        },
-      }),
+    const secondInstance = createEdgeOneCredentialStore(
+      {
+        CODEX_CREDENTIAL_ENCRYPTION_KEY: Buffer.from(key(3)).toString("base64"),
+      },
+      store,
     );
-
-    expect(await persistence.read()).toMatchObject({
-      "openai-codex": { type: "oauth", access: "private-access-token" },
-    });
-    expect(blob.value).not.toContain("private-access-token");
-    expect(blob.value).not.toContain("private-refresh-token");
-
-    const secondInstance = new EdgeOneEncryptedCredentialPersistence(blob, key(7));
-    expect(await secondInstance.read()).toMatchObject({
-      "openai-codex": { type: "oauth", refresh: "private-refresh-token" },
+    await expect(secondInstance.read("openai-codex")).resolves.toMatchObject({
+      type: "oauth",
+      refresh: "private-refresh-token",
     });
   });
 
   it("cannot decrypt credentials with a different project key", async () => {
-    const blob = new MemoryBlobStore();
+    const store = new MemoryConversationStore();
     const first = new EdgeOneEncryptedCredentialPersistence(
-      blob,
+      store,
       key(1),
-      JSON.stringify({
-        "openai-codex": {
-          type: "oauth",
-          access: "access",
-          refresh: "refresh",
-          expires: 123,
-        },
-      }),
     );
-    await first.read();
+    await first.write({
+      "openai-codex": {
+        type: "oauth",
+        access: "access",
+        refresh: "refresh",
+        expires: 123,
+      },
+    });
 
     await expect(
-      new EdgeOneEncryptedCredentialPersistence(blob, key(2)).read(),
+      new EdgeOneEncryptedCredentialPersistence(store, key(2)).read(),
     ).rejects.toThrow();
   });
 });

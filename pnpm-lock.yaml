@@ -25,9 +25,6 @@ importers:
 
   agent/edgeone:
     dependencies:
-      '@edgeone/pages-blob':
-        specifier: 0.0.15
-        version: 0.0.15
       '@jojo/agent-runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -41,6 +38,9 @@ importers:
       '@types/node':
         specifier: ^22.15.0
         version: 22.19.19
+      tsx:
+        specifier: ^4.19.0
+        version: 4.22.4
       typescript:
         specifier: ^5.9.0
         version: 5.9.3
@@ -1146,10 +1146,6 @@ packages:
     resolution: {integrity: sha512-Moe/H8c87yacDGK9dPbWphZNjVsrb3nTrIHycOQJAkFEnY9PYxOOd74+ny44kATfPU9Dm7aTHefar3pZF+UKUA==}
     engines: {node: '>=22.19.0'}
     hasBin: true
-
-  '@edgeone/pages-blob@0.0.15':
-    resolution: {integrity: sha512-03N1E3+AuLidppnMdpq0agNlGdhOiG/U9YUTFpBFse/C4kCpk8tGysPHv3/qGE8lyZVecLLnbkgn8l/OUKGu9w==}
-    engines: {node: '>=18.0.0'}
 
   '@electron/get@2.0.3':
     resolution: {integrity: sha512-Qkzpg2s9GnVV2I2BjRksUi43U5e6+zaQMcjoJy0C+C5oxaKl+fmckGDQFtRpZpZV0NQekuZZ+tGz7EA9TVnQtQ==}
@@ -2408,7 +2404,9 @@ packages:
   '@rolldown/binding-linux-x64-gnu@1.2.1':
     resolution: {integrity: sha512-/Orga1fZYkLc/56jBICcHrKchl8Z2UKdDSr3LG9ToWO1lQ6a4Livk9Xz+9WN91zsz5QR3XQz2NNoSDEvP6qadw==}
     engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@rolldown/binding-linux-x64-musl@1.2.1':
     resolution: {integrity: sha512-xxBJRL+0q0Kce7orznGWLuylHDY65vuARXZRpX+hPdv+DqK2c3NlCsVA98tlWzWNEE7yPqA/1NQ5nnCrj49Y5A==}
@@ -2810,6 +2808,7 @@ packages:
   '@tailwindcss/oxide-win32-x64-msvc@4.3.0':
     resolution: {integrity: sha512-Mvrf2kXW/yeW/OTezZlCGOirXRcUuLIBx/5Y12BaPM7wJoryG6dfS/NJL8aBPqtTEx/Vm4T4vKzFUcKDT+TKUA==}
     engines: {node: '>= 20'}
+    cpu: [x64]
     os: [win32]
 
   '@tailwindcss/oxide@4.3.0':
@@ -7990,8 +7989,6 @@ snapshots:
       - utf-8-validate
       - ws
       - zod
-
-  '@edgeone/pages-blob@0.0.15': {}
 
   '@electron/get@2.0.3':
     dependencies:

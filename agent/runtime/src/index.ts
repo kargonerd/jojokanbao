@@ -5,7 +5,7 @@ export {
   parseCredentialFile,
 } from "./credentials";
 export {
-  PLATFORM_PROVIDER_ENV,
+  DEFAULT_CODEX_MODEL,
   createPlatformModelRuntime,
   createPlatformModels,
   modelRuntimeStream,
@@ -23,11 +23,9 @@ export type {
   CredentialPersistence,
 } from "./credentials";
 export type {
-  AgentDeploymentProfile,
   AgentEnvironment,
   PlatformModelConfig,
   PlatformModelRuntime,
-  PlatformProviderId,
 } from "./models";
 
 export type {

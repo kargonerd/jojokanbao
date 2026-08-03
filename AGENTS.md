@@ -45,10 +45,11 @@ pnpm test:backend
 
 - 通用 Agent 运行层位于 `agent/runtime`，使用 `pi-agent-core/Agent`，不使用
   `pi-coding-agent`，也不自行实现 Agent Loop。
-- Codex、Gemini、DeepSeek 的 provider 与凭证抽象位于 `agent/runtime`；
-  EdgeOne 的认证、SSE 和加密凭证持久化位于 `agent/edgeone`。
+- 当前只接入 Codex OAuth；其他模型后续通过 Makers Models 统一接入。
+- EdgeOne 的认证、SSE 和加密凭证持久化位于 `agent/edgeone`。
 - RAG、Olds 等产品只注入提示词和业务工具。
-- Makers Agent 入口仅放在 `infrastructure/edgeone/agents`，不承载业务逻辑。
+- Codex Makers Agent 只部署到不含中国大陆的独立项目；入口仅放在
+  `infrastructure/edgeone/agents`，不承载业务逻辑。
 
 ## 设计系统
 

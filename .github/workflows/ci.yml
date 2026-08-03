@@ -319,10 +319,6 @@ jobs:
           test -f .edgeone/web-deploy/cloud-functions/requirements.txt
           test -f .edgeone/web-deploy/edgeone.json
           test -f .edgeone/web-deploy/package.json
-          test -f .edgeone/web-deploy/agents/jojo/index.ts
-          test -f .edgeone/web-deploy/agents/jojo/health.ts
-          test -f .edgeone/web-deploy/agent/runtime/src/runtime.ts
-          test -f .edgeone/web-deploy/agent/edgeone/src/handler.ts
           test ! -e .edgeone/web-deploy/cloud-functions/tests
           test ! -e .edgeone/web-deploy/cloud-functions/requirements-dev.txt
           test ! -e .edgeone/web-deploy/cloud-functions/app/olds
@@ -334,6 +330,7 @@ jobs:
           test -f .edgeone/agent-deploy/agent/runtime/src/runtime.ts
           test -f .edgeone/agent-deploy/agent/edgeone/src/handler.ts
           test -f .edgeone/agent-deploy/cloud-functions/agent/index.ts
+          test -f .edgeone/agent-deploy/cloud-functions/internal/codex-auth/index.ts
           test -f .edgeone/agent-deploy/edgeone.json
           test -f .edgeone/agent-deploy/package.json
           node -e 'const config = require("./.edgeone/agent-deploy/edgeone.json"); if (config.agents.dir !== "agents") process.exit(1)'

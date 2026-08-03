@@ -1,5 +1,4 @@
 import type {
-  AgentDeploymentProfile,
   AgentEnvironment,
   AgentMessage,
   AgentTool,
@@ -48,7 +47,6 @@ export interface AuthorizedAgentUser {
 }
 
 export interface CreateEdgeOneAgentHandlerOptions {
-  defaultProfile: AgentDeploymentProfile;
   systemPrompt?: string | ((context: EdgeOneAgentContext) => string);
   tools?: (
     context: EdgeOneAgentContext,
