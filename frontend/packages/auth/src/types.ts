@@ -47,6 +47,13 @@ export interface AuthState {
   notice: string | null;
 }
 
+export interface SignUpInput {
+  email: string;
+  password: string;
+  invitationCode: string;
+  emailRedirectTo: string;
+}
+
 export interface UpdateProfileInput {
   displayName: string;
   avatarPath?: string | null;

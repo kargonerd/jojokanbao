@@ -25,6 +25,9 @@
     "purge:archive-pdf": "node tools/archive-pdf/purge-cache.mjs",
     "sync:rmrb": "python tools/archive-pdf/sync_rmrb.py",
     "verify:archive-pdf": "node tools/archive-pdf/verify.mjs",
+    "invite:create": "node tools/manage-signup-invites.mjs create",
+    "invite:list": "node tools/manage-signup-invites.mjs list",
+    "invite:revoke": "node tools/manage-signup-invites.mjs revoke",
     "clean": "turbo clean && rm -rf node_modules"
   },
   "devDependencies": {

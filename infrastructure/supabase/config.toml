@@ -1,0 +1,23 @@
+project_id = "jojo-platform"
+
+[auth]
+site_url = "https://reader.jojokanbao.cn"
+additional_redirect_urls = [
+  "http://localhost:8080/account",
+  "http://127.0.0.1:8080/account",
+  "https://reader.jojokanbao.cn/account",
+  "https://jojokanbao.cn/account",
+]
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = true
+
+[auth.email.template.confirmation]
+subject = "请确认你的 JOJO 看报账号"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.hook.before_user_created]
+enabled = true
+uri = "pg-functions://postgres/public/hook_require_signup_invitation"
