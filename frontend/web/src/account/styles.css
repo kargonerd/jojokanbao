@@ -606,8 +606,11 @@
 
 .book-account-form__fields input:focus {
   border-bottom-color: var(--book-red);
-  outline: 2px solid color-mix(in srgb, var(--book-red) 24%, transparent);
-  outline-offset: 2px;
+  outline: none;
+}
+
+.book-account-form__fields input:focus-visible {
+  box-shadow: 0 1px 0 var(--book-red);
 }
 
 .book-account-form__fields input:disabled {
