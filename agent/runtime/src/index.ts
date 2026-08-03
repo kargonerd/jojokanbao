@@ -6,6 +6,7 @@ export {
 } from "./credentials";
 export {
   DEFAULT_CODEX_MODEL,
+  DEFAULT_CODEX_REASONING,
   createPlatformModelRuntime,
   createPlatformModels,
   modelRuntimeStream,

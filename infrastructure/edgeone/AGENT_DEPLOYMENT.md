@@ -25,13 +25,15 @@ jojokanbao.cn                         agent-global.jojokanbao.cn
 VITE_SUPABASE_URL=https://PROJECT.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=...
 
-JOJO_AGENT_MODEL=gpt-5.6-terra
+JOJO_AGENT_MODEL=gpt-5.6-luna
 JOJO_AGENT_ALLOWED_ORIGINS=https://jojokanbao.cn
 JOJO_AGENT_UPSTREAM_URL=https://agent-global.jojokanbao.cn/jojo
 
 CODEX_CREDENTIAL_ENCRYPTION_KEY=<32-byte random key encoded as base64>
 CODEX_CREDENTIAL_ADMIN_TOKEN=<at least 32 random characters>
 ```
+
+Agent 默认使用 Luna，推理强度固定为 `low`，优先控制 MVP 阶段的订阅额度消耗。
 
 `CODEX_CREDENTIAL_ENCRYPTION_KEY` 用于把会自动刷新的 Codex OAuth 凭证以
 AES-256-GCM 形式写入 Makers 内置 Store。Agent 的 `context.store` 与 Cloud

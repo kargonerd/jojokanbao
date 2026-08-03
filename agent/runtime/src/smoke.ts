@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import {
+  DEFAULT_CODEX_REASONING,
   JsonCredentialStore,
   createPlatformModelRuntime,
   modelRuntimeStream,
@@ -36,7 +37,7 @@ const result = await runPlatformAgent({
   prompt,
   model: runtime.model,
   stream: modelRuntimeStream(runtime),
-  reasoning: "low",
+  reasoning: DEFAULT_CODEX_REASONING,
   onEvent(event) {
     if (event.type === "text_delta") process.stdout.write(event.delta);
   },

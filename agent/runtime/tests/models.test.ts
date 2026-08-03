@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_CODEX_REASONING,
   PersistentCredentialStore,
   createPlatformModelRuntime,
   resolvePlatformModelConfig,
@@ -9,8 +10,9 @@ describe("resolvePlatformModelConfig", () => {
   it("uses the Codex default", () => {
     expect(resolvePlatformModelConfig({})).toEqual({
       provider: "openai-codex",
-      model: "gpt-5.6-terra",
+      model: "gpt-5.6-luna",
     });
+    expect(DEFAULT_CODEX_REASONING).toBe("low");
   });
 
   it("accepts an explicit Codex model", () => {

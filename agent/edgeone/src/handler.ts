@@ -1,4 +1,5 @@
 import {
+  DEFAULT_CODEX_REASONING,
   createPlatformModelRuntime,
   modelRuntimeStream,
   resolvePlatformModelConfig,
@@ -239,7 +240,7 @@ export function createEdgeOneAgentHandler(
             model: runtime.model,
             stream: modelRuntimeStream(runtime),
             signal: context.request.signal,
-            reasoning: "low",
+            reasoning: DEFAULT_CODEX_REASONING,
             maxTurns: positiveEnvironmentInteger(
               environment.JOJO_AGENT_MAX_TURNS,
               8,

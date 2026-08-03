@@ -31,10 +31,10 @@ Pi 会打开浏览器完成 ChatGPT 登录，并把凭证写入被 Git 忽略的
 `agent/runtime/auth.json`。也可以用 `JOJO_AGENT_AUTH_PATH` 指向已有的 Pi
 兼容凭证文件。
 
-默认模型是 `gpt-5.6-terra`，可以覆盖：
+默认使用 `gpt-5.6-luna`，推理强度固定为 `low`。模型可以覆盖：
 
 ```powershell
-$env:JOJO_AGENT_MODEL="gpt-5.6-codex"
+$env:JOJO_AGENT_MODEL="gpt-5.6-terra"
 ```
 
 ## SDK

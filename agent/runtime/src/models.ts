@@ -24,7 +24,8 @@ export interface PlatformModelRuntime {
   auth?: AuthCheck;
 }
 
-export const DEFAULT_CODEX_MODEL = "gpt-5.6-terra";
+export const DEFAULT_CODEX_MODEL = "gpt-5.6-luna";
+export const DEFAULT_CODEX_REASONING = "low" as const;
 
 export function resolvePlatformModelConfig(
   environment: AgentEnvironment,
