@@ -77,14 +77,14 @@ export function PersonalInvitationPanel({ userId }: PersonalInvitationPanelProps
       <header className="flex items-end justify-between border-b-2 border-red pb-4">
         <div>
           <span className="font-sans text-[0.65rem] font-black tracking-[0.18em] text-red">
-            个人账号
+            邀请新读者
           </span>
-          <h1
+          <h2
             id="invitation-title"
-            className="mb-0 mt-2 font-serif text-3xl font-black tracking-[0.1em] sm:text-4xl"
+            className="mb-0 mt-2 font-serif text-2xl font-black tracking-[0.1em] sm:text-3xl"
           >
             我的邀请码
-          </h1>
+          </h2>
         </div>
         <b className={`pb-1 text-xs tracking-[0.08em] ${statusLabel === "可使用" ? "text-red" : "text-muted"}`}>
           {statusLabel}

@@ -101,12 +101,23 @@ describe("account center", () => {
   it("keeps an authenticated reader on /account and loads their invitation", async () => {
     render(<MemoryRouter><AccountLogin /></MemoryRouter>);
 
-    expect(screen.getByRole("heading", { name: "我的邀请码" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "读者身份" })).toBeTruthy();
     expect(screen.getByText("雪豹")).toBeTruthy();
+    expect(screen.getByText("昵称取自全球动植物名称，目前暂不可修改。")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "我的邀请码" })).toBeTruthy();
     expect(screen.getByLabelText("邀请码 K7MP4X")).toBeTruthy();
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.queryByText("账号资料")).toBeNull();
     await waitFor(() => expect(account.invitation.load).toHaveBeenCalledWith("reader-1"));
+  });
+
+  it("shows an explicit pending state when an older profile has no nickname", () => {
+    account.auth.profile.display_name = "";
+
+    render(<MemoryRouter><AccountLogin /></MemoryRouter>);
+
+    expect(screen.getByText("昵称待分配")).toBeTruthy();
+    expect(screen.getByText("账号昵称尚未完成分配，请稍后刷新页面。")).toBeTruthy();
   });
 
   it("generates the reader's first invitation", async () => {
