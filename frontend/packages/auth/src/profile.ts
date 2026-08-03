@@ -1,9 +1,8 @@
 import type { JojoAuthClient } from "./client";
-import type { Profile, UpdateProfileInput } from "./types";
+import type { Profile } from "./types";
 
 interface ProfileRepository {
   getOrCreate: (userId: string) => Promise<Profile>;
-  update: (userId: string, input: UpdateProfileInput) => Promise<Profile>;
   uploadAvatar: (userId: string, previousPath: string | null, file: File) => Promise<Profile>;
 }
 
@@ -22,20 +21,6 @@ export function createProfileRepository(client: JojoAuthClient): ProfileReposito
     return created;
   };
 
-  const update = async (
-    userId: string,
-    { displayName, avatarPath }: UpdateProfileInput,
-  ): Promise<Profile> => {
-    const values = {
-      id: userId,
-      display_name: displayName.trim(),
-      ...(avatarPath !== undefined ? { avatar_path: avatarPath } : {}),
-    };
-    const { data, error } = await client.from("profiles").upsert(values).select("*").single();
-    if (error) throw error;
-    return data;
-  };
-
   const uploadAvatar = async (
     userId: string,
     previousPath: string | null,
@@ -52,7 +37,8 @@ export function createProfileRepository(client: JojoAuthClient): ProfileReposito
 
     const { data, error } = await client
       .from("profiles")
-      .upsert({ id: userId, avatar_path: path })
+      .update({ avatar_path: path })
+      .eq("id", userId)
       .select("*")
       .single();
     if (error) {
@@ -66,5 +52,5 @@ export function createProfileRepository(client: JojoAuthClient): ProfileReposito
     return data;
   };
 
-  return { getOrCreate, update, uploadAvatar };
+  return { getOrCreate, uploadAvatar };
 }

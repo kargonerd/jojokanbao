@@ -96,12 +96,13 @@ it never receives direct access to the private invitation tables.
 
 ## Reader nicknames
 
-Every profile has a non-empty editable `display_name`. When signup metadata
-does not provide one, a database trigger selects a nickname from the checked-in
-global animal and plant name pool. The nickname is generated in the database,
-so accounts created outside the Web client follow the same rule. Existing
-blank profiles are backfilled by the migration, while an explicitly chosen
-name is preserved and trimmed. Names are limited to 50 characters.
+Every profile has a non-empty `display_name` selected by a database trigger
+from the checked-in global animal and plant name pool. The trigger ignores
+client-supplied signup metadata, so accounts created outside the Web client
+follow the same rule. Existing blank profiles are backfilled by the migration.
+Names are limited to 50 characters and authenticated browser clients cannot
+update them. A future reviewed migration may introduce reader-controlled
+renaming without weakening the current default.
 
 ## Database tests
 
@@ -127,7 +128,7 @@ it is intentionally a rollout setting rather than a repository default.
 
 ## Email confirmation
 
-Email confirmation is enabled and returns to `/account`. Supabase's built-in
+Email confirmation is enabled and returns to `/archive`. Supabase's built-in
 SMTP is suitable only for owner testing: it sends only to project team
 addresses and currently allows two messages per hour. Configure custom SMTP
 before inviting external readers.

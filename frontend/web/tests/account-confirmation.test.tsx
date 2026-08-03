@@ -17,6 +17,7 @@ function renderConfirmation(path = "/account/confirm?token_hash=test-token") {
       <Routes>
         <Route path="/account/confirm" element={<AccountConfirmation />} />
         <Route path="/account" element={<div>Account page</div>} />
+        <Route path="/archive" element={<div>Archive home</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -30,7 +31,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("account email confirmation", () => {
-  it("confirms the one-time token and links to the account page", async () => {
+  it("confirms the one-time token and links to the archive homepage", async () => {
     renderConfirmation();
 
     expect(screen.getByRole("heading", { name: "正在确认邮箱" })).toBeTruthy();
@@ -41,8 +42,8 @@ describe("account email confirmation", () => {
       await screen.findByRole("heading", { name: "邮箱已经确认" }),
     ).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("link", { name: "进入 JOJO 看报" }));
-    expect(await screen.findByText("Account page")).toBeTruthy();
+    fireEvent.click(screen.getByRole("link", { name: "进入首页" }));
+    expect(await screen.findByText("Archive home")).toBeTruthy();
   });
 
   it("consumes the token only once under React Strict Mode", async () => {

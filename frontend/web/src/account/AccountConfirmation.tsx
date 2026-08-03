@@ -58,10 +58,10 @@ export default function AccountConfirmation() {
           账号登记完成，现在可以进入 JOJO 看报。
         </p>
         <Link
-          to="/account"
+          to="/archive"
           className="mt-8 inline-block border border-red bg-red px-7 py-3 font-serif text-sm font-bold tracking-[0.12em] text-white no-underline transition-[transform,box-shadow] duration-150 hover:-translate-y-0.5 hover:text-white hover:shadow-[4px_4px_0_rgba(139,26,26,.14)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red"
         >
-          进入 JOJO 看报
+          进入首页
         </Link>
       </ConfirmationShell>
     );

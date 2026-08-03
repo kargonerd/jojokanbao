@@ -17,6 +17,7 @@ const navItems: NavItem[] = [
   { label: "搜索", href: archivePath("search") },
   ...(rollout.olds ? [{ label: "旧闻", href: "/olds" }] : []),
   ...(rollout.rag ? [{ label: "问答", href: "/rag" }] : []),
+  ...(rollout.account ? [{ label: "账号", href: "/account" }] : []),
   { label: "反馈", href: archivePath("support") },
 ];
 

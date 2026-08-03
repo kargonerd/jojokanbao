@@ -18,7 +18,6 @@ const account = vi.hoisted(() => ({
     error: null as string | null,
     notice: null as string | null,
     clearFeedback: vi.fn(),
-    updateProfile: vi.fn(),
     signOut: vi.fn(),
   },
   invitation: {
@@ -63,7 +62,6 @@ beforeEach(() => {
   account.auth.error = null;
   account.auth.notice = null;
   account.auth.clearFeedback.mockClear();
-  account.auth.updateProfile.mockReset().mockResolvedValue(undefined);
   account.auth.signOut.mockReset().mockResolvedValue(undefined);
   account.invitation.status = {
     allocated: true,
@@ -85,26 +83,12 @@ describe("account center", () => {
   it("keeps an authenticated reader on /account and loads their invitation", async () => {
     render(<MemoryRouter><AccountLogin /></MemoryRouter>);
 
-    expect(screen.getByRole("heading", { name: "读者资料" })).toBeTruthy();
-    expect(screen.getByDisplayValue("reader@example.com")).toBeTruthy();
-    expect(screen.getByDisplayValue("雪豹")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "我的邀请码" })).toBeTruthy();
+    expect(screen.getByText("雪豹")).toBeTruthy();
     expect(screen.getByLabelText("邀请码 K7MP4X")).toBeTruthy();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByText("账号资料")).toBeNull();
     await waitFor(() => expect(account.invitation.load).toHaveBeenCalledWith("reader-1"));
-  });
-
-  it("edits the generated nickname", async () => {
-    render(<MemoryRouter><AccountLogin /></MemoryRouter>);
-
-    fireEvent.change(screen.getByLabelText("昵称"), {
-      target: { value: "  银杏  " },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "保存昵称" }));
-
-    await waitFor(() => {
-      expect(account.auth.updateProfile).toHaveBeenCalledWith({
-        displayName: "银杏",
-      });
-    });
   });
 
   it("generates the reader's first invitation", async () => {

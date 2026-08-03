@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(7);
+select extensions.plan(8);
 
 select extensions.col_not_null(
   'public',
@@ -30,7 +30,7 @@ insert into public.profiles (id)
 select generated_user_id from profile_name_test_state;
 
 insert into public.profiles (id, display_name)
-select named_user_id, '  银杏  ' from profile_name_test_state;
+select named_user_id, '不应保留的昵称' from profile_name_test_state;
 
 select extensions.ok(
   (
@@ -41,27 +41,34 @@ select extensions.ok(
   'a missing nickname is generated'
 );
 
-select extensions.is(
-  (
-    select display_name
-    from public.profiles
-    where id = (select named_user_id from profile_name_test_state)
-  ),
-  '银杏',
-  'an explicit nickname is trimmed and preserved'
-);
-
-update public.profiles
-set display_name = '   '
-where id = (select named_user_id from profile_name_test_state);
-
 select extensions.ok(
   (
     select pg_catalog.char_length(display_name) > 0
+      and display_name <> '不应保留的昵称'
     from public.profiles
     where id = (select named_user_id from profile_name_test_state)
   ),
-  'clearing a nickname generates a replacement'
+  'the database ignores a client-supplied nickname'
+);
+
+select extensions.ok(
+  not pg_catalog.has_column_privilege(
+    'authenticated',
+    'public.profiles',
+    'display_name',
+    'update'
+  ),
+  'browser users cannot update generated nicknames'
+);
+
+select extensions.ok(
+  pg_catalog.has_column_privilege(
+    'authenticated',
+    'public.profiles',
+    'avatar_path',
+    'update'
+  ),
+  'browser users retain the future avatar update permission'
 );
 
 select extensions.throws_ok(

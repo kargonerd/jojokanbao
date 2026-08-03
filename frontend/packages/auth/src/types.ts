@@ -35,13 +35,11 @@ export type Database = {
         Row: Profile;
         Insert: {
           id: string;
-          display_name?: string;
           avatar_path?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
-          display_name?: string;
           avatar_path?: string | null;
           updated_at?: string;
         };
@@ -79,9 +77,4 @@ export interface SignUpInput {
   password: string;
   invitationCode: string;
   emailRedirectTo: string;
-}
-
-export interface UpdateProfileInput {
-  displayName: string;
-  avatarPath?: string | null;
 }

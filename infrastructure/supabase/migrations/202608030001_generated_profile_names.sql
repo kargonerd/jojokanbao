@@ -1,4 +1,4 @@
--- Give every reader a usable nickname while keeping names editable.
+-- Give every reader a generated nickname. Editing may be introduced later.
 
 create or replace function private.random_profile_display_name()
 returns text
@@ -33,11 +33,7 @@ security definer
 set search_path = ''
 as $$
 begin
-  new.display_name := case
-    when nullif(pg_catalog.btrim(new.display_name), '') is null
-      then private.random_profile_display_name()
-    else pg_catalog.btrim(new.display_name)
-  end;
+  new.display_name := private.random_profile_display_name();
   return new;
 end;
 $$;
@@ -47,7 +43,7 @@ revoke execute on function public.ensure_profile_display_name()
 
 drop trigger if exists profiles_ensure_display_name on public.profiles;
 create trigger profiles_ensure_display_name
-  before insert or update of display_name on public.profiles
+  before insert on public.profiles
   for each row execute function public.ensure_profile_display_name();
 
 update public.profiles
@@ -66,5 +62,11 @@ alter table public.profiles
     pg_catalog.char_length(pg_catalog.btrim(display_name)) between 1 and 50
   );
 
+-- The Web client may update an avatar later, but cannot choose or change the
+-- generated nickname. Service-role code can add an explicit rename flow in a
+-- future reviewed migration.
+revoke update on table public.profiles from authenticated;
+grant update (avatar_path) on table public.profiles to authenticated;
+
 comment on column public.profiles.display_name is
-  'Editable reader nickname; generated from the animal and plant name pool when omitted.';
+  'Reader nickname generated once from the animal and plant name pool.';
