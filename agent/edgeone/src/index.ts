@@ -14,6 +14,15 @@ export {
   createEdgeOneAgentHandler,
   createEdgeOneAgentHealthHandler,
 } from "./handler";
+export {
+  AGENT_SERVICE_AUTH_HEADERS,
+  authorizeAgentServiceRequest,
+  createAgentServiceSignatureHeaders,
+} from "./service-auth";
+export type {
+  AgentServiceAuthorizationOptions,
+  AgentServiceSignatureInput,
+} from "./service-auth";
 export type {
   AgentRequestBody,
   AuthorizedAgentUser,

@@ -1,5 +1,10 @@
+import {
+  createAgentServiceSignatureHeaders,
+} from "@jojo/agent-edgeone";
+
 const CONVERSATION_HEADER = "Makers-Conversation-Id";
 const CONVERSATION_ID = /^[0-9A-Za-z._-]{6,36}$/;
+const MAX_REQUEST_BYTES = 64 * 1024;
 
 export interface AgentProxyContext {
   env?: Readonly<Record<string, string | undefined>>;
@@ -123,10 +128,43 @@ export async function onRequest(
   } catch {
     return jsonResponse(503, { error: "Agent upstream is not configured" }, origin);
   }
+  let body: ArrayBuffer | undefined;
+  let parsedBody: unknown;
+  if (request.method === "POST") {
+    const declaredLength = Number(request.headers.get("content-length") ?? "0");
+    if (declaredLength > MAX_REQUEST_BYTES) {
+      return jsonResponse(413, { error: "Agent request is too large" }, origin);
+    }
+    body = await request.arrayBuffer();
+    if (body.byteLength > MAX_REQUEST_BYTES) {
+      return jsonResponse(413, { error: "Agent request is too large" }, origin);
+    }
+    try {
+      parsedBody = JSON.parse(new TextDecoder().decode(body));
+    } catch {
+      return jsonResponse(400, { error: "Agent request must be valid JSON" }, origin);
+    }
+  }
+
   const headers = new Headers({ [CONVERSATION_HEADER]: conversationId });
   for (const name of ["authorization", "content-type", "accept"]) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
+  }
+  try {
+    const serviceHeaders = await createAgentServiceSignatureHeaders({
+      body: parsedBody,
+      conversationId,
+      environment,
+      method: request.method,
+    });
+    serviceHeaders.forEach((value, name) => headers.set(name, value));
+  } catch {
+    return jsonResponse(
+      503,
+      { error: "Agent service authentication is not configured" },
+      origin,
+    );
   }
 
   let upstream: Response;
@@ -136,7 +174,7 @@ export async function onRequest(
       headers,
       signal: request.signal,
       ...(request.method === "POST"
-        ? { body: await request.arrayBuffer() }
+        ? { body }
         : {}),
     });
   } catch {

@@ -13,6 +13,7 @@ import {
 } from "@jojo/agent-runtime";
 import { AgentHttpError, authorizeSupabaseUser } from "./auth";
 import { createEdgeOneCredentialStore } from "./credential-store";
+import { authorizeAgentServiceRequest } from "./service-auth";
 import type {
   AgentRequestBody,
   AuthorizedAgentUser,
@@ -179,6 +180,7 @@ export function createEdgeOneAgentHandler(
     let user: AuthorizedAgentUser;
     let runtime: PlatformModelRuntime;
     try {
+      await (options.authorizeService ?? authorizeAgentServiceRequest)(context);
       body = requestBody(context.request.body);
       user = await (options.authorize ?? authorizeSupabaseUser)(context);
       runtime = await (
@@ -284,9 +286,14 @@ export function createEdgeOneAgentHandler(
 }
 
 export function createEdgeOneAgentHealthHandler(
+  options: Pick<CreateEdgeOneAgentHandlerOptions, "authorizeService"> = {},
 ) {
   return async function onRequest(context: EdgeOneAgentContext): Promise<Response> {
     try {
+      await (options.authorizeService ?? authorizeAgentServiceRequest)(
+        context,
+        { method: "GET" },
+      );
       const runtime = await defaultModelRuntime(context);
       return jsonResponse(200, {
         ok: true,
@@ -296,6 +303,9 @@ export function createEdgeOneAgentHealthHandler(
         supportedProviders: ["openai-codex"],
       });
     } catch (error) {
+      if (error instanceof AgentHttpError) {
+        return jsonResponse(error.status, { error: error.message });
+      }
       return jsonResponse(200, {
         ok: false,
         configured: false,

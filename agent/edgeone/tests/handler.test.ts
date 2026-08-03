@@ -25,6 +25,7 @@ describe("createEdgeOneAgentHandler", () => {
       return `msg-${messages.length}`;
     });
     const handle = createEdgeOneAgentHandler({
+      authorizeService: async () => undefined,
       authorize: async () => ({ id: "user-1" }),
       createModelRuntime: async () => ({
         config: {
@@ -74,6 +75,7 @@ describe("createEdgeOneAgentHandler", () => {
   it("does not initialize a model for unauthenticated requests", async () => {
     const createModelRuntime = vi.fn();
     const handle = createEdgeOneAgentHandler({
+      authorizeService: async () => undefined,
       authorize: async () => {
         throw new (await import("../src")).AgentHttpError(401, "Authentication required");
       },
@@ -85,6 +87,33 @@ describe("createEdgeOneAgentHandler", () => {
     });
 
     expect(response.status).toBe(401);
+    expect(createModelRuntime).not.toHaveBeenCalled();
+  });
+
+  it("rejects direct requests before user auth or model initialization", async () => {
+    const authorize = vi.fn(async () => ({ id: "user-1" }));
+    const createModelRuntime = vi.fn();
+    const handle = createEdgeOneAgentHandler({
+      authorize,
+      createModelRuntime,
+    });
+
+    const response = await handle({
+      env: {
+        JOJO_AGENT_SERVICE_SECRET: "0123456789abcdef0123456789abcdef",
+      },
+      conversation_id: "conversation-1",
+      request: {
+        method: "POST",
+        body: { message: "Hello" },
+      },
+    });
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({
+      error: "Trusted service authentication required",
+    });
+    expect(authorize).not.toHaveBeenCalled();
     expect(createModelRuntime).not.toHaveBeenCalled();
   });
 });

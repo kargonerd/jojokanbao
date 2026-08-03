@@ -3,10 +3,15 @@ import {
   onRequest,
   type AgentProxyContext,
 } from "../../../infrastructure/edgeone/functions/agent-proxy/index";
+import {
+  AGENT_SERVICE_AUTH_HEADERS,
+  authorizeAgentServiceRequest,
+} from "../src";
 
 const allowedEnvironment = {
   JOJO_AGENT_ALLOWED_ORIGINS: "https://jojokanbao.cn",
   JOJO_AGENT_UPSTREAM_URL: "https://agent.example/jojo",
+  JOJO_AGENT_SERVICE_SECRET: "0123456789abcdef0123456789abcdef",
 };
 
 afterEach(() => {
@@ -76,6 +81,18 @@ describe("international Agent proxy", () => {
       .toBe("Bearer access-token");
     expect(new Headers(forwarded.headers).get("makers-conversation-id"))
       .toBe("conversation-001");
+    for (const name of Object.values(AGENT_SERVICE_AUTH_HEADERS)) {
+      expect(new Headers(forwarded.headers).get(name)).toBeTruthy();
+    }
+    await expect(authorizeAgentServiceRequest({
+      env: allowedEnvironment,
+      conversation_id: "conversation-001",
+      request: {
+        method: "POST",
+        headers: new Headers(forwarded.headers),
+        body: { message: "你好" },
+      },
+    })).resolves.toBeUndefined();
   });
 
   it("rejects untrusted browser origins before forwarding", async () => {
@@ -96,6 +113,30 @@ describe("international Agent proxy", () => {
 
     expect(response.status).toBe(403);
     expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the service secret is not configured", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await onRequest({
+      env: {
+        JOJO_AGENT_ALLOWED_ORIGINS: "https://jojokanbao.cn",
+        JOJO_AGENT_UPSTREAM_URL: "https://agent.example/jojo",
+      },
+      request: new Request("https://agent.example/agent", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "makers-conversation-id": "conversation-001",
+          origin: "https://jojokanbao.cn",
+        },
+        body: JSON.stringify({ message: "你好" }),
+      }),
+    });
+
+    expect(response.status).toBe(503);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

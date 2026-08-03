@@ -47,6 +47,9 @@ export interface AuthorizedAgentUser {
 }
 
 export interface CreateEdgeOneAgentHandlerOptions {
+  authorizeService?: (
+    context: EdgeOneAgentContext,
+  ) => void | Promise<void>;
   systemPrompt?: string | ((context: EdgeOneAgentContext) => string);
   tools?: (
     context: EdgeOneAgentContext,

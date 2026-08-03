@@ -12,8 +12,10 @@ jojokanbao.cn                         agent-global.jojokanbao.cn
                                      └──────────────────────────┘
 ```
 
-- `/agent` 处理浏览器 CORS 预检，并把 SSE 请求转给同项目 `/jojo`。
-- `/jojo` 运行 Pi Agent，并在调用 Codex 前校验 JOJO/Supabase Bearer Token。
+- `/agent` 处理浏览器 CORS 预检，为请求添加短时 HMAC 服务签名，再把 SSE
+  请求转给同项目 `/jojo`。
+- `/jojo` 运行 Pi Agent，并在调用 Codex 前依次校验 Cloud Function 服务签名
+  和 JOJO/Supabase Bearer Token；浏览器不能直接调用。
 - `/internal/codex-auth` 只供本地管理命令上传 Codex OAuth，不返回凭证。
 - `pnpm prepare:agent-deploy` 生成 `.edgeone/agent-deploy`。
 - `.github/workflows/deploy-agent-international.yml` 部署到
@@ -28,6 +30,7 @@ VITE_SUPABASE_PUBLISHABLE_KEY=...
 JOJO_AGENT_MODEL=gpt-5.6-luna
 JOJO_AGENT_ALLOWED_ORIGINS=https://jojokanbao.cn
 JOJO_AGENT_UPSTREAM_URL=https://agent-global.jojokanbao.cn/jojo
+JOJO_AGENT_SERVICE_SECRET=<32-byte random key encoded as base64>
 
 CODEX_CREDENTIAL_ENCRYPTION_KEY=<32-byte random key encoded as base64>
 CODEX_CREDENTIAL_ADMIN_TOKEN=<at least 32 random characters>
@@ -35,16 +38,24 @@ CODEX_CREDENTIAL_ADMIN_TOKEN=<at least 32 random characters>
 
 Agent 默认使用 Luna，推理强度固定为 `low`，优先控制 MVP 阶段的订阅额度消耗。
 
+`JOJO_AGENT_SERVICE_SECRET` 只保存在同一 Makers 项目的 Cloud Function 和
+Agent 运行环境中。`/agent` 使用它对请求方法、会话 ID、规范化请求体、60 秒
+时间戳和随机 nonce 做 HMAC-SHA256 签名；`/jojo` 在用户鉴权及模型初始化前
+验证签名。签名头不允许由浏览器传入，也不会把密钥发送给客户端。
+
 `CODEX_CREDENTIAL_ENCRYPTION_KEY` 用于把会自动刷新的 Codex OAuth 凭证以
 AES-256-GCM 形式写入 Makers 内置 Store。Agent 的 `context.store` 与 Cloud
 Function 的 `context.agent.store` 访问同一份数据。`CODEX_CREDENTIAL_ADMIN_TOKEN` 只保护凭证
 上传接口；完成初始化后可以从项目环境变量删除它并重新部署。
 
-PowerShell 生成两个随机值：
+PowerShell 生成三个随机值：
 
 ```powershell
 $encryptionBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
 [Convert]::ToBase64String($encryptionBytes)
+
+$serviceBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
+[Convert]::ToBase64String($serviceBytes)
 
 $adminBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
 [Convert]::ToHexString($adminBytes).ToLowerInvariant()
