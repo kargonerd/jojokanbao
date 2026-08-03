@@ -8,6 +8,7 @@ export interface NavItem {
 
 interface NavBarProps {
   items: NavItem[];
+  actions?: { label: string; href: string }[];
   trailing?: ReactNode;
   mobileTitle?: string;
   mobileTitleHref?: string;
@@ -15,7 +16,15 @@ interface NavBarProps {
   isActive: (href: string) => boolean;
 }
 
-export function NavBar({ items, trailing, mobileTitle, mobileTitleHref = "/", onNavigate, isActive }: NavBarProps) {
+export function NavBar({
+  items,
+  actions = [],
+  trailing,
+  mobileTitle,
+  mobileTitleHref = "/",
+  onNavigate,
+  isActive,
+}: NavBarProps) {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -91,8 +100,27 @@ export function NavBar({ items, trailing, mobileTitle, mobileTitleHref = "/", on
         ))}
       </ul>
 
-      {/* Trailing (quote, etc) */}
-      {trailing && <div className="hidden lg:block ml-auto">{trailing}</div>}
+      {/* Desktop utility area */}
+      {(trailing || actions.length > 0) && (
+        <div className="ml-auto hidden h-full items-center md:flex">
+          {trailing && <div className="hidden lg:block">{trailing}</div>}
+          {actions.map((action) => (
+            <a
+              key={action.href}
+              href={action.href}
+              onClick={(event) => {
+                event.preventDefault();
+                onNavigate(action.href);
+              }}
+              className={`ml-5 flex h-full items-center border-l border-rule px-5 text-sm font-bold tracking-wide no-underline transition-colors hover:text-red ${
+                isActive(action.href) ? "text-red" : "text-ink"
+              }`}
+            >
+              {action.label}
+            </a>
+          ))}
+        </div>
+      )}
 
       {/* Mobile hamburger */}
       <button className="md:hidden ml-auto p-2 border-0 bg-transparent text-ink" onClick={() => setMobileOpen(!mobileOpen)} aria-label="菜单">
@@ -124,6 +152,26 @@ export function NavBar({ items, trailing, mobileTitle, mobileTitleHref = "/", on
                   ))}
                 </li>
               )
+            )}
+            {actions.length > 0 && (
+              <li className="mt-2 border-t border-rule pt-2">
+                {actions.map((action) => (
+                  <a
+                    key={action.href}
+                    href={action.href}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      onNavigate(action.href);
+                      setMobileOpen(false);
+                    }}
+                    className={`block px-3 py-2 text-sm font-bold no-underline hover:text-red ${
+                      isActive(action.href) ? "text-red" : "text-ink"
+                    }`}
+                  >
+                    {action.label}
+                  </a>
+                ))}
+              </li>
             )}
           </ul>
         </div>

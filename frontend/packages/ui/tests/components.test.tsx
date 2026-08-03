@@ -158,4 +158,22 @@ describe("Layout primitives", () => {
     fireEvent.mouseEnter(screen.getByRole("button", { name: "Papers" }));
     expect(screen.getByText("Daily")).toBeDefined();
   });
+
+  it("keeps utility actions separate from content navigation", () => {
+    let destination = "";
+    render(
+      <NavBar
+        items={[{ label: "Archive", href: "/archive" }]}
+        actions={[{ label: "Account", href: "/account" }]}
+        onNavigate={(href) => { destination = href; }}
+        isActive={() => false}
+      />,
+    );
+
+    const desktopAccountLink = screen.getByRole("link", { name: "Account" });
+    expect(desktopAccountLink.parentElement?.tagName).toBe("DIV");
+
+    fireEvent.click(desktopAccountLink);
+    expect(destination).toBe("/account");
+  });
 });
