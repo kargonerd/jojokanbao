@@ -96,13 +96,28 @@ it never receives direct access to the private invitation tables.
 
 ## Reader nicknames
 
-Every profile has a non-empty `display_name` selected by a database trigger
-from the checked-in global animal and plant name pool. The trigger ignores
-client-supplied signup metadata, so accounts created outside the Web client
-follow the same rule. Existing blank profiles are backfilled by the migration.
-Names are limited to 50 characters and authenticated browser clients cannot
-update them. A future reviewed migration may introduce reader-controlled
-renaming without weakening the current default.
+Every profile has a unique `display_name` such as `雪豹-TGH`, selected by a
+database trigger from a private pool of 1,500 animal and 1,500 plant names.
+The three-letter suffix omits `I` and `O` to avoid confusion with digits. It
+provides 41,472,000 possible generated names without loading the pool into the
+Web client.
+
+The checked-in pool includes the original 64 familiar global names and 2,936
+names derived from *The National Checklist of Taiwan (Catalogue of Life in
+Taiwan, TaiCOL)* Version 1.13. The derived names use accepted species records,
+are normalized to Simplified Chinese, and are distributed across taxonomic
+classes instead of being dominated by insects. Source attribution:
+
+- Shao K, Chung K (2024), Taiwan Biodiversity Information Facility (TaiBIF)
+- DOI: https://doi.org/10.15468/auw1kd
+- License: https://creativecommons.org/licenses/by/4.0/
+
+The trigger ignores client-supplied signup metadata, so accounts created
+outside the Web client follow the same rule. The migration assigns generated
+names to existing profiles and enforces uniqueness in the database.
+Authenticated browser clients cannot update them. A future reviewed migration
+may introduce reader-controlled renaming without weakening the current
+default.
 
 ## Database tests
 
