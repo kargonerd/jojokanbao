@@ -6,6 +6,22 @@ describe("getAuthErrorMessage", () => {
     expect(getAuthErrorMessage({ code: "invalid_credentials" })).toBe("邮箱或密码不正确。");
   });
 
+  it("explains a redeemed personal invitation", () => {
+    expect(
+      getAuthErrorMessage({
+        message: "Personal invitation has already been redeemed.",
+      }),
+    ).toBe("你的邀请码已经被使用，不能再次生成。");
+  });
+
+  it("explains an administratively disabled personal invitation", () => {
+    expect(
+      getAuthErrorMessage({
+        message: "Personal invitation has been disabled.",
+      }),
+    ).toBe("你的邀请码已被停用，请联系管理员。");
+  });
+
   it("does not expose an unknown backend error message", () => {
     expect(getAuthErrorMessage({ message: "internal table name leaked" })).toBe("操作没有完成，请检查填写内容后重试。");
   });

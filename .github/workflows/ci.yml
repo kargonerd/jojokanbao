@@ -204,7 +204,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.database == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
@@ -248,6 +248,23 @@ jobs:
             }
             versions[$version]="$filename"
           done
+
+      - uses: supabase/setup-cli@v2
+        with:
+          version: latest
+
+      - name: Start local Supabase database
+        working-directory: infrastructure
+        run: supabase db start
+
+      - name: Run database tests
+        working-directory: infrastructure
+        run: supabase test db
+
+      - name: Stop local Supabase database
+        if: always()
+        working-directory: infrastructure
+        run: supabase stop --no-backup
 
   bloomberg-archive-tests:
     name: Bloomberg archive tests

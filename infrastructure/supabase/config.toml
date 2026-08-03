@@ -10,6 +10,9 @@ additional_redirect_urls = [
 ]
 enable_signup = true
 
+[auth.rate_limit]
+sign_in_sign_ups = 10
+
 [auth.email]
 enable_signup = true
 enable_confirmations = true
