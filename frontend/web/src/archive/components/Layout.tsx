@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { AppShell, NavBar, type NavItem } from "@jojo/ui";
 import { rollout } from "../../rollout";
@@ -23,20 +24,51 @@ const navItems: NavItem[] = [
 export function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [accountLabel, setAccountLabel] = useState("登录");
+
+  useEffect(() => {
+    if (!rollout.account) return;
+
+    let active = true;
+    let stopAuthSync = () => {};
+    let unsubscribe = () => {};
+
+    void import("../../account/auth").then(({ startAuthSync, useAuthStore }) => {
+      if (!active) return;
+
+      const updateLabel = () => {
+        const { user, profile } = useAuthStore.getState();
+        setAccountLabel(
+          user
+            ? profile?.display_name?.trim() || "账号"
+            : "登录",
+        );
+      };
+
+      unsubscribe = useAuthStore.subscribe(updateLabel);
+      stopAuthSync = startAuthSync();
+      updateLabel();
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+      stopAuthSync();
+    };
+  }, []);
 
   return (
     <AppShell
       header={
         <NavBar
           items={navItems}
-          actions={rollout.account ? [{ label: "账号", href: "/account" }] : []}
+          actions={rollout.account ? [{ label: accountLabel, href: "/account" }] : []}
           mobileTitle="JOJO看报"
           onNavigate={(href) => navigate(href)}
           isActive={(href) =>
             location.pathname === href ||
             (href !== ARCHIVE_ROOT && location.pathname.startsWith(href + "/"))
           }
-          trailing={<p className="text-[13px] italic font-bold text-red opacity-80 tracking-wider truncate max-w-[44vw] m-0">如果要看前途，一定要看历史 —— 毛泽东</p>}
         />
       }
       contentClassName="overflow-hidden"
