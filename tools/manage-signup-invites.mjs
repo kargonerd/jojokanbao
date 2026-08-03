@@ -84,7 +84,7 @@ async function createInvitation(args) {
   }
 
   console.log(`邀请码: ${invitation.code}`);
-  console.log("7 天内有效，仅可使用一次。请立即保存，数据库不会保存明文。");
+  console.log("7 天内有效，仅可使用一次。");
 }
 
 async function listInvitations(args) {
@@ -95,13 +95,17 @@ async function listInvitations(args) {
   const rows = await runQuery(
     `select
       id,
+      code,
+      kind,
+      owner_user_id,
       email,
       expires_at,
       max_uses,
       use_count,
       disabled_at,
       note,
-      created_at
+      created_at,
+      updated_at
     from private.signup_invitations
     order by created_at desc
     limit 100;`,
