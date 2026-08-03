@@ -55,25 +55,37 @@ describe("runPlatformAgent", () => {
     ]));
   });
 
-  it("stops after the configured turn budget", async () => {
+  it("rejects an unfinished tool loop after the configured turn budget", async () => {
     const faux = fauxProvider({ provider: "jojo-budget-test", tokensPerSecond: 100_000 });
     faux.setResponses([
-      fauxAssistantMessage("first turn"),
-      fauxAssistantMessage("second turn"),
+      fauxAssistantMessage(fauxToolCall("echo", { value: "first" })),
+      fauxAssistantMessage("should not run"),
     ]);
+    const parameters = Type.Object({ value: Type.String() });
+    const tool: AgentTool<typeof parameters> = {
+      name: "echo",
+      label: "Echo",
+      description: "Echo a value",
+      parameters,
+      execute: async (_callId, args) => ({
+        content: [{ type: "text", text: args.value }],
+        details: args,
+      }),
+    };
     const stream: StreamFn = (model, context, options) =>
       faux.provider.streamSimple(model, context, options);
 
-    const result = await runPlatformAgent({
+    await expect(runPlatformAgent({
       systemPrompt: "Answer briefly.",
       prompt: "Hello",
+      tools: [tool],
       model: faux.getModel(),
       stream,
       maxTurns: 1,
+    })).rejects.toMatchObject({
+      name: "AgentBudgetError",
+      message: "agent turn budget exceeded (1)",
     });
-
-    expect(result.answer).toBe("first turn");
-    expect(result.turns).toBe(1);
   });
 
   it("blocks excess tool calls without reporting a count above the budget", async () => {

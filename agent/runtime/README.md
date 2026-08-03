@@ -1,41 +1,96 @@
 # @jojo/agent-runtime
 
-JOJO Platform 的通用 Pi Agent 运行层。它只负责 Agent 循环，不包含 RAG、新闻、HTTP 或部署逻辑。
+JOJO Platform 的通用 Pi Agent 运行层。它使用 `pi-agent-core` 的高层
+`Agent`，不使用 `pi-coding-agent`，也不自行实现模型与工具之间的循环。
 
 ```text
-@jojo/agent-runtime
-├── Pi Agent 循环
-├── 工具调用与预算
-├── 通用流式事件
-└── token / cost 聚合
+pi-ai
+└── Codex OAuth、Gemini/DeepSeek API Key、模型目录和流式请求
 
-业务应用
-├── RAG：提供文档搜索工具和档案问答提示词
-└── 九闻：提供新闻检索工具和新闻助手提示词
+pi-agent-core / Agent
+└── 消息状态、Agent Loop、工具执行、事件和取消
+
+@jojo/agent-runtime
+└── JOJO 事件格式、预算、token/cost 和部署配置
+
+RAG / 九闻
+└── 各自的提示词和业务工具
 ```
 
-## 使用方式
+## Provider
+
+| 配置值 | Pi provider | 凭证 |
+| --- | --- | --- |
+| `codex` / `openai-codex` | `openai-codex` | ChatGPT Plus/Pro OAuth |
+| `gemini` / `google` | `google` | `GEMINI_API_KEY` |
+| `deepseek` | `deepseek` | `DEEPSEEK_API_KEY` |
+
+公共配置：
+
+```dotenv
+JOJO_AGENT_PROFILE=domestic
+JOJO_AGENT_PROVIDER=deepseek
+JOJO_AGENT_MODEL=deepseek-v4-flash
+```
+
+`domestic` 默认使用 `deepseek/deepseek-v4-flash`；`international`
+默认使用 `openai-codex/gpt-5.6-terra`。三项都可以通过环境变量覆盖。
+
+## Codex 登录
+
+在本机执行：
+
+```powershell
+pnpm --filter @jojo/agent-runtime auth:codex
+```
+
+Pi 会打开浏览器完成 ChatGPT 登录，并把凭证写入被 Git 忽略的
+`agent/runtime/auth.json`。运行一次真实连通测试：
+
+```powershell
+$env:JOJO_AGENT_PROFILE="international"
+pnpm --filter @jojo/agent-runtime smoke -- "用一句话介绍你自己"
+```
+
+也可以用 `JOJO_AGENT_AUTH_PATH` 指向已有的兼容 `auth.json` 文件做本地测试。
+
+API Key provider 的测试方式：
+
+```powershell
+$env:JOJO_AGENT_PROVIDER="gemini"
+$env:JOJO_AGENT_MODEL="gemini-3.5-flash"
+$env:GEMINI_API_KEY="..."
+pnpm --filter @jojo/agent-runtime smoke -- "你好"
+```
+
+## SDK
 
 ```ts
-import { runPlatformAgent } from "@jojo/agent-runtime";
+import {
+  createPlatformModelRuntime,
+  modelRuntimeStream,
+  resolvePlatformModelConfig,
+  runPlatformAgent,
+} from "@jojo/agent-runtime";
+
+const config = resolvePlatformModelConfig(process.env, "domestic");
+const runtime = await createPlatformModelRuntime({
+  config,
+  environment: process.env,
+});
 
 const result = await runPlatformAgent({
   systemPrompt: "你是九闻新闻助手。",
   prompt: "总结今天的重要新闻",
   tools: newsTools,
-  model,
-  stream: (activeModel, context, options) =>
-    models.streamSimple(activeModel, context, options),
+  model: runtime.model,
+  stream: modelRuntimeStream(runtime),
   onEvent(event) {
     if (event.type === "text_delta") process.stdout.write(event.delta);
   },
 });
-
-console.log(result.usage);
 ```
 
-`models.streamSimple` 会使用 `Models` 实例配置的凭证存储，并在需要时刷新
-OAuth 凭证。直接使用 provider stream 时，可以通过 `apiKey` 注入固定凭证，
-或通过 `getApiKey` 在每轮模型请求前解析短期凭证。
-
-模型供应商、凭证、提示词和工具全部由使用方注入，因此同一个运行层可以用于不同产品，也能运行在本地服务器或 EdgeOne Agents。模型错误和取消会拒绝本次运行，不会伪装成成功结果。
+Pi `Agent` 负责实际循环；JOJO 包装层只保留跨产品需要的事件格式、工具/轮次预算、
+错误边界以及 token/cost 汇总。模型错误、取消或未完成的预算终止都会拒绝本次运行，
+不会返回伪成功。

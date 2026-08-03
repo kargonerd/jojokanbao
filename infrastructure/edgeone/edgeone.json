@@ -1,8 +1,13 @@
 {
   "devCommand": "node infrastructure/edgeone/backend-dev.mjs",
   "cloudFunctions": {
+    "mainlandRegions": ["ap-shanghai"],
     "python": {
       "maxDuration": 30
     }
+  },
+  "agents": {
+    "dir": "infrastructure/edgeone/agents/domestic",
+    "timeout": 300
   }
 }

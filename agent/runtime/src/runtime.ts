@@ -1,6 +1,5 @@
-import { runAgentLoop } from "@earendil-works/pi-agent-core";
+import { Agent } from "@earendil-works/pi-agent-core";
 import type {
-  AgentContext,
   AgentEvent,
   AgentMessage,
 } from "@earendil-works/pi-agent-core";
@@ -73,6 +72,10 @@ function assistantText(message: AssistantMessage): string {
     .join("");
 }
 
+function hasToolCall(message: AssistantMessage): boolean {
+  return message.content.some((item) => item.type === "toolCall");
+}
+
 function positiveInteger(value: number | undefined, fallback: number, name: string): number {
   const resolved = value ?? fallback;
   if (!Number.isInteger(resolved) || resolved < 1) {
@@ -98,6 +101,19 @@ function terminalError(stopReason: "error" | "aborted", message?: string): Error
   return error;
 }
 
+function budgetError(maxTurns: number): Error {
+  const error = new Error(`agent turn budget exceeded (${maxTurns})`);
+  error.name = "AgentBudgetError";
+  return error;
+}
+
+/**
+ * Run one product-neutral Agent invocation.
+ *
+ * Pi's high-level Agent owns the transcript, model/tool loop, event ordering,
+ * cancellation and tool execution. This adapter only applies JOJO's public
+ * event/result shape and request budgets.
+ */
 export async function runPlatformAgent(
   options: RunPlatformAgentOptions,
 ): Promise<PlatformAgentResult> {
@@ -108,20 +124,45 @@ export async function runPlatformAgent(
     DEFAULT_MAX_TOOL_CALLS,
     "maxToolCalls",
   );
+  const initialMessages = [...(options.history ?? [])];
   const usage = emptyUsage();
   let turns = 0;
   let toolCalls = 0;
   let failure: Error | undefined;
 
-  const context: AgentContext = {
-    systemPrompt: options.systemPrompt,
-    messages: [...(options.history ?? [])],
-    tools: [...(options.tools ?? [])],
-  };
+  if (options.signal?.aborted) {
+    throw terminalError("aborted", "agent run aborted before it started");
+  }
 
-  const emit = async (event: AgentEvent) => {
+  const agent = new Agent({
+    initialState: {
+      systemPrompt: options.systemPrompt,
+      messages: initialMessages,
+      tools: [...(options.tools ?? [])],
+      model: options.model,
+      thinkingLevel: options.reasoning ?? "off",
+    },
+    streamFn: options.stream,
+    convertToLlm: options.convertToLlm ?? defaultMessageConverter,
+    getApiKey: options.getApiKey
+      ?? (options.apiKey === undefined ? undefined : async () => options.apiKey),
+    toolExecution: options.toolExecution ?? "parallel",
+    beforeToolCall: async (toolContext, signal) => {
+      if (toolCalls >= maxToolCalls) {
+        return { block: true, reason: `tool call budget exceeded (${maxToolCalls})` };
+      }
+      toolCalls += 1;
+      return options.beforeToolCall?.(toolContext, signal);
+    },
+    prepareNextTurnWithContext: options.prepareNextTurn,
+  });
+
+  const unsubscribe = agent.subscribe(async (event: AgentEvent) => {
     if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
-      await options.onEvent?.({ type: "text_delta", delta: event.assistantMessageEvent.delta });
+      await options.onEvent?.({
+        type: "text_delta",
+        delta: event.assistantMessageEvent.delta,
+      });
       return;
     }
 
@@ -145,59 +186,57 @@ export async function runPlatformAgent(
       return;
     }
 
-    if (event.type === "turn_end") {
-      turns += 1;
-      await options.onEvent?.({ type: "turn_end", turn: turns });
-      return;
-    }
-
     if (event.type === "message_end" && isAssistantMessage(event.message)) {
       addUsage(usage, event.message.usage);
       if (
         event.message.stopReason === "error"
         || event.message.stopReason === "aborted"
       ) {
-        failure = terminalError(
+        failure ??= terminalError(
           event.message.stopReason,
           event.message.errorMessage,
         );
       }
       await options.onEvent?.({ type: "usage", usage: publicUsage(usage) });
+      return;
     }
-  };
 
-  const messages = await runAgentLoop(
-    promptMessages(options.prompt),
-    context,
-    {
-      model: options.model,
-      ...(options.apiKey === undefined ? {} : { apiKey: options.apiKey }),
-      ...(options.getApiKey === undefined ? {} : { getApiKey: options.getApiKey }),
-      ...(options.reasoning ? { reasoning: options.reasoning } : {}),
-      toolExecution: options.toolExecution ?? "parallel",
-      convertToLlm: options.convertToLlm ?? defaultMessageConverter,
-      beforeToolCall: async (toolContext, signal) => {
-        if (toolCalls >= maxToolCalls) {
-          return { block: true, reason: `tool call budget exceeded (${maxToolCalls})` };
-        }
-        toolCalls += 1;
-        return options.beforeToolCall?.(toolContext, signal);
-      },
-      shouldStopAfterTurn: async (turnContext) => {
-        if (turns >= maxTurns) return true;
-        return (await options.shouldStopAfterTurn?.(turnContext)) ?? false;
-      },
-    },
-    emit,
-    options.signal,
-    options.stream,
-  );
+    if (
+      event.type === "turn_end"
+      && event.message.role === "assistant"
+      && event.message.stopReason !== "error"
+      && event.message.stopReason !== "aborted"
+    ) {
+      turns += 1;
+      await options.onEvent?.({ type: "turn_end", turn: turns });
+      if (turns >= maxTurns && hasToolCall(event.message)) {
+        failure = budgetError(maxTurns);
+        agent.abort();
+      }
+    }
+  });
+
+  const abort = () => agent.abort();
+  options.signal?.addEventListener("abort", abort, { once: true });
+
+  try {
+    await agent.prompt(promptMessages(options.prompt));
+  } finally {
+    options.signal?.removeEventListener("abort", abort);
+    unsubscribe();
+  }
 
   if (failure) throw failure;
 
+  const messages = agent.state.messages.slice(initialMessages.length);
   const answer = [...messages]
     .reverse()
-    .find(isAssistantMessage);
+    .find((message): message is AssistantMessage =>
+      isAssistantMessage(message)
+      && message.stopReason !== "error"
+      && message.stopReason !== "aborted"
+      && Boolean(assistantText(message)),
+    );
 
   return {
     answer: answer ? assistantText(answer) : "",

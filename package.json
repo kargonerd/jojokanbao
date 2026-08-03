@@ -16,6 +16,7 @@
     "dev:backend": "python -m uvicorn app.main:app --app-dir backend/src --host 127.0.0.1 --port 8088 --reload",
     "test:backend": "python -m pytest backend/tests -q",
     "prepare:web-deploy": "node infrastructure/edgeone/prepare-web-deploy.mjs",
+    "prepare:agent-deploy": "node infrastructure/edgeone/prepare-agent-deploy.mjs",
     "dev:reader-search": "cd infrastructure/tencent-scf/search && python app.py",
     "dev:data-workbench": "pnpm --filter @jojo/data-workbench dev",
     "build:data-workbench": "pnpm --filter @jojo/data-workbench build",

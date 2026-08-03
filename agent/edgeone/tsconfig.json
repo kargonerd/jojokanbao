@@ -1,0 +1,12 @@
+{
+  "extends": "@jojo/tsconfig/base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "src",
+    "tests",
+    "../../infrastructure/edgeone/agents/**/*.ts",
+    "../../infrastructure/edgeone/functions/agent-proxy/**/*.ts"
+  ]
+}

@@ -1,10 +1,11 @@
 import type {
   AgentLoopConfig,
+  AgentLoopTurnUpdate,
   AgentMessage,
   AgentTool,
   BeforeToolCallContext,
   BeforeToolCallResult,
-  ShouldStopAfterTurnContext,
+  PrepareNextTurnContext,
   StreamFn,
   ToolExecutionMode,
 } from "@earendil-works/pi-agent-core";
@@ -65,9 +66,11 @@ export interface RunPlatformAgentOptions {
     context: BeforeToolCallContext,
     signal?: AbortSignal,
   ) => Promise<BeforeToolCallResult | undefined>;
-  shouldStopAfterTurn?: (
-    context: ShouldStopAfterTurnContext,
-  ) => boolean | Promise<boolean>;
+  /** Modify model/context before Pi starts another provider turn. */
+  prepareNextTurn?: (
+    context: PrepareNextTurnContext,
+    signal?: AbortSignal,
+  ) => AgentLoopTurnUpdate | undefined | Promise<AgentLoopTurnUpdate | undefined>;
   onEvent?: (event: PlatformAgentEvent) => void | Promise<void>;
 }
 
