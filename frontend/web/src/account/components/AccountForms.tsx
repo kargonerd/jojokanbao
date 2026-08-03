@@ -115,10 +115,11 @@ export function RegisterForm({
         <input
           type="text"
           name="invitationCode"
-          placeholder="输入邀请码"
+          placeholder="6 位邀请码"
           autoComplete="off"
           autoCapitalize="characters"
-          maxLength={64}
+          minLength={6}
+          maxLength={6}
           value={invitationCode}
           disabled={busy}
           required

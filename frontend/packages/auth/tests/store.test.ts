@@ -97,7 +97,7 @@ describe("createJojoAuthStore", () => {
     const requiresConfirmation = await useAuthStore.getState().signUp({
       email: "reader@example.com",
       password: "strong-password",
-      invitationCode: " JOJO-ABCD-EFGH-IJKL ",
+      invitationCode: " K7MP4X ",
       emailRedirectTo: "https://reader.jojokanbao.cn/account",
     });
 
@@ -106,7 +106,7 @@ describe("createJojoAuthStore", () => {
       password: "strong-password",
       options: {
         emailRedirectTo: "https://reader.jojokanbao.cn/account",
-        data: { invitation_code: "JOJO-ABCD-EFGH-IJKL" },
+        data: { invitation_code: "K7MP4X" },
       },
     });
     expect(requiresConfirmation).toBe(true);
@@ -126,7 +126,7 @@ describe("createJojoAuthStore", () => {
     const requiresConfirmation = await useAuthStore.getState().signUp({
       email: "reader@example.com",
       password: "strong-password",
-      invitationCode: "JOJO-ABCD-EFGH-IJKL",
+      invitationCode: "K7MP4X",
       emailRedirectTo: "https://reader.jojokanbao.cn/account",
     });
 

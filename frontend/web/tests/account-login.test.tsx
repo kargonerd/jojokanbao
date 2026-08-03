@@ -91,7 +91,7 @@ describe("account access", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "注册" }));
     fireEvent.change(screen.getByLabelText("邀请码"), {
-      target: { value: " JOJO-ABCD-EFGH-IJKL " },
+      target: { value: " K7MP4X " },
     });
     fireEvent.change(screen.getByLabelText("邮箱"), {
       target: { value: " reader@example.com " },
@@ -102,7 +102,7 @@ describe("account access", () => {
     fireEvent.click(screen.getByRole("button", { name: "注册账号" }));
 
     await waitFor(() => expect(auth.state.signUp).toHaveBeenCalledWith({
-      invitationCode: "JOJO-ABCD-EFGH-IJKL",
+      invitationCode: "K7MP4X",
       email: "reader@example.com",
       password: "strong-password",
       emailRedirectTo: "http://localhost:3000/account",

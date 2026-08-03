@@ -48,8 +48,8 @@ export function AccountPage() {
 
     const code = invitationCode.trim();
     const email = registrationEmail.trim();
-    if (!code) {
-      setRegistrationError("请输入邀请码。");
+    if (!/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{6}$/i.test(code)) {
+      setRegistrationError("请输入正确的 6 位邀请码。");
       return;
     }
     if (registrationPassword.length < 8) {
