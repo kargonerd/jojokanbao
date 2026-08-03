@@ -81,6 +81,11 @@ describe("account access", () => {
     expect(dialog.hasAttribute("open")).toBe(true);
     expect(screen.getByRole("dialog", { name: "注册" })).toBeTruthy();
     expect(screen.getByLabelText("邀请码")).toBeTruthy();
+    expect(
+      Array.from(dialog.querySelectorAll("label > span"), (label) =>
+        label.textContent,
+      ),
+    ).toEqual(["邮箱", "密码", "邀请码"]);
 
     fireEvent.click(dialog);
     expect(dialog.hasAttribute("open")).toBe(false);

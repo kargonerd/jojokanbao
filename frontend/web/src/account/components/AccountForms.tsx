@@ -111,22 +111,6 @@ export function RegisterForm({
     <form className="book-account-form__fields" onSubmit={onSubmit}>
       <FormFeedback error={error} notice={notice} />
       <label>
-        <span>邀请码</span>
-        <input
-          type="text"
-          name="invitationCode"
-          placeholder="6 位邀请码"
-          autoComplete="off"
-          autoCapitalize="characters"
-          minLength={6}
-          maxLength={6}
-          value={invitationCode}
-          disabled={busy}
-          required
-          onChange={(event) => onInvitationCodeChange(event.target.value)}
-        />
-      </label>
-      <label>
         <span>邮箱</span>
         <input
           type="email"
@@ -151,6 +135,22 @@ export function RegisterForm({
           disabled={busy}
           required
           onChange={(event) => onPasswordChange(event.target.value)}
+        />
+      </label>
+      <label>
+        <span>邀请码</span>
+        <input
+          type="text"
+          name="invitationCode"
+          placeholder="6 位邀请码"
+          autoComplete="off"
+          autoCapitalize="characters"
+          minLength={6}
+          maxLength={6}
+          value={invitationCode}
+          disabled={busy}
+          required
+          onChange={(event) => onInvitationCodeChange(event.target.value)}
         />
       </label>
       <button type="submit" disabled={busy}>
