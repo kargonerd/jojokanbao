@@ -28,7 +28,7 @@ export function createProfileRepository(client: JojoAuthClient): ProfileReposito
   ): Promise<Profile> => {
     const values = {
       id: userId,
-      display_name: displayName.trim() || null,
+      display_name: displayName.trim(),
       ...(avatarPath !== undefined ? { avatar_path: avatarPath } : {}),
     };
     const { data, error } = await client.from("profiles").upsert(values).select("*").single();

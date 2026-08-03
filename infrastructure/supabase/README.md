@@ -25,13 +25,14 @@ Git.
 ## Apply to a hosted project
 
 Do not apply an unreviewed feature branch to the production project. After the
-invitation PR is merged, run these commands from the repository root:
+relevant PR is merged, run these commands from `infrastructure/`:
 
 ```bash
+cd infrastructure
 pnpm dlx supabase link --project-ref <project-ref>
 pnpm dlx supabase db push --dry-run
 pnpm dlx supabase db push
-pnpm dlx supabase --workdir infrastructure config push --project-ref <project-ref>
+pnpm dlx supabase config push --project-ref <project-ref>
 ```
 
 The database migration must be pushed before the Auth config because the config
@@ -40,6 +41,11 @@ enables a hook backed by `public.hook_require_signup_invitation`.
 The database also enforces redemption with a trigger. Therefore new user
 creation fails closed if somebody disables or bypasses the hosted hook.
 Existing users are unaffected.
+
+The Auth config explicitly preserves the hosted one-minute email request
+interval, eight-digit OTP setting, TOTP enrollment, and disabled Vector
+Storage. Keep these values checked in: omitted CLI defaults may otherwise
+appear as unrelated hosted config changes during `config push`.
 
 The confirmation email source is
 `supabase/templates/confirmation.html` relative to the Supabase workdir. The
@@ -85,10 +91,23 @@ use the management commands above. Administrator revocation is persistent:
 the owner cannot rotate a disabled code. Deleting an account disables its
 personal invitation before removing the ownership link.
 
+The Web account center reads only the authenticated personal-invitation RPCs;
+it never receives direct access to the private invitation tables.
+
+## Reader nicknames
+
+Every profile has a non-empty editable `display_name`. When signup metadata
+does not provide one, a database trigger selects a nickname from the checked-in
+global animal and plant name pool. The nickname is generated in the database,
+so accounts created outside the Web client follow the same rule. Existing
+blank profiles are backfilled by the migration, while an explicitly chosen
+name is preserved and trimmed. Names are limited to 50 characters.
+
 ## Database tests
 
-Invitation permissions and lifecycle behavior are covered by pgTAP tests in
-`supabase/tests/database/`. From `infrastructure/`, run:
+Invitation permissions, lifecycle behavior, and generated profile names are
+covered by pgTAP tests in `supabase/tests/database/`. From `infrastructure/`,
+run:
 
 ```bash
 supabase db start

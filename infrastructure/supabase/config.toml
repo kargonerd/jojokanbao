@@ -16,6 +16,8 @@ sign_in_sign_ups = 10
 [auth.email]
 enable_signup = true
 enable_confirmations = true
+max_frequency = "1m"
+otp_length = 8
 
 [auth.email.template.confirmation]
 subject = "请确认你的 JOJO 看报账号"
@@ -24,3 +26,10 @@ content_path = "./supabase/templates/confirmation.html"
 [auth.hook.before_user_created]
 enabled = true
 uri = "pg-functions://postgres/public/hook_require_signup_invitation"
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[storage.vector]
+enabled = false
