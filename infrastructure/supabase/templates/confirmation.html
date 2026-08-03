@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="x-apple-disable-message-reformatting">
+    <title>请确认你的 JOJO 看报账号</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f3f3f1;color:#202020;">
+    <div
+      style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;"
+    >
+      点击邮件中的按钮确认邮箱，完成 JOJO 看报账号注册。
+    </div>
+
+    <table
+      role="presentation"
+      width="100%"
+      cellspacing="0"
+      cellpadding="0"
+      border="0"
+      style="width:100%;border-collapse:collapse;background:#f3f3f1;"
+    >
+      <tr>
+        <td align="center" style="padding:32px 16px;">
+          <table
+            role="presentation"
+            width="600"
+            cellspacing="0"
+            cellpadding="0"
+            border="0"
+            style="width:100%;max-width:600px;border-collapse:collapse;border:1px solid #d8d3ca;background:#fffdf8;"
+          >
+            <tr>
+              <td style="height:6px;background:#8b1a1a;font-size:0;line-height:0;">
+                &nbsp;
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px 36px 24px;">
+                <table
+                  role="presentation"
+                  width="100%"
+                  cellspacing="0"
+                  cellpadding="0"
+                  border="0"
+                  style="width:100%;border-collapse:collapse;"
+                >
+                  <tr>
+                    <td valign="middle">
+                      <img
+                        src="https://reader.jojokanbao.cn/brand/jojo-kanbao-logo.png"
+                        width="300"
+                        alt="JOJO看报"
+                        style="display:block;width:300px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none;"
+                      >
+                      <div
+                        style="padding-top:7px;font-family:Arial,'Microsoft YaHei',sans-serif;font-size:12px;line-height:1.4;letter-spacing:.16em;color:#70685f;"
+                      >
+                        读者账号
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 36px;">
+                <div style="height:1px;background:#c9bca9;font-size:0;line-height:0;">
+                  &nbsp;
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:34px 36px 38px;">
+                <div
+                  style="font-family:Arial,'Microsoft YaHei',sans-serif;font-size:12px;font-weight:700;line-height:1.5;letter-spacing:.16em;color:#8b1a1a;"
+                >
+                  账号登记
+                </div>
+                <h1
+                  style="margin:10px 0 18px;font-family:Georgia,'Noto Serif SC','Songti SC','SimSun',serif;font-size:28px;line-height:1.45;letter-spacing:.04em;color:#202020;"
+                >
+                  请确认你的邮箱
+                </h1>
+                <p
+                  style="margin:0 0 12px;font-family:Arial,'Microsoft YaHei',sans-serif;font-size:16px;line-height:1.8;color:#4e4943;"
+                >
+                  你好，{{ .Email }}
+                </p>
+                <p
+                  style="margin:0 0 28px;font-family:Arial,'Microsoft YaHei',sans-serif;font-size:16px;line-height:1.8;color:#4e4943;"
+                >
+                  点击下面的按钮确认邮箱，完成 JOJO 看报账号注册。
+                </p>
+
+                <table
+                  role="presentation"
+                  cellspacing="0"
+                  cellpadding="0"
+                  border="0"
+                  style="border-collapse:collapse;"
+                >
+                  <tr>
+                    <td align="center" bgcolor="#8b1a1a">
+                      <a
+                        href="{{ .ConfirmationURL }}"
+                        style="display:inline-block;padding:14px 28px;border:1px solid #8b1a1a;background:#8b1a1a;color:#ffffff;font-family:Arial,'Microsoft YaHei',sans-serif;font-size:16px;font-weight:700;line-height:1.2;letter-spacing:.08em;text-decoration:none;"
+                      >
+                        确认邮箱并完成注册
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+
+                <p
+                  style="margin:28px 0 8px;font-family:Arial,'Microsoft YaHei',sans-serif;font-size:13px;line-height:1.7;color:#70685f;"
+                >
+                  如果按钮无法打开，请复制下面的地址到浏览器：
+                </p>
+                <p
+                  style="margin:0;padding:12px 14px;border-left:3px solid #8b1a1a;background:#f4efe7;font-family:Consolas,'Courier New',monospace;font-size:12px;line-height:1.65;word-break:break-all;color:#514a42;"
+                >
+                  {{ .ConfirmationURL }}
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:22px 36px;border-top:1px solid #d8d3ca;">
+                <p
+                  style="margin:0;font-family:Arial,'Microsoft YaHei',sans-serif;font-size:12px;line-height:1.7;color:#7a746c;"
+                >
+                  如果你没有注册 JOJO 看报，可以忽略这封邮件。
+                </p>
+              </td>
+            </tr>
+          </table>
+          <p
+            style="margin:14px 0 0;font-family:Arial,'Microsoft YaHei',sans-serif;font-size:11px;line-height:1.6;color:#8a857d;"
+          >
+            此邮件由 JOJO 看报账号系统自动发送，请勿直接回复。
+          </p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

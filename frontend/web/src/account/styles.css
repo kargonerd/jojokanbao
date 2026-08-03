@@ -58,8 +58,8 @@
   min-width: 7.5rem;
   border: 1px solid var(--book-red);
   padding: 0.75rem 1.15rem;
-  color: #fff;
-  background: var(--book-red);
+  color: var(--book-red);
+  background: var(--color-paper, #fff);
   cursor: pointer;
   font-family: var(--font-serif);
   font-size: 0.82rem;
@@ -70,9 +70,21 @@
     box-shadow 140ms ease;
 }
 
+.login-book-entry__actions button:first-child {
+  color: #fff;
+  background: var(--book-red);
+}
+
 .login-book-entry__actions button:hover {
   transform: translateY(-2px);
   box-shadow: 4px 4px 0 rgba(139, 26, 26, 0.14);
+}
+
+.login-book-entry__actions button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+  box-shadow: none;
+  transform: none;
 }
 
 .login-book-entry__actions button:focus-visible {
@@ -475,6 +487,55 @@
   margin-block: auto;
 }
 
+.book-account-form__modes {
+  display: grid;
+  margin-bottom: 1.15rem;
+  border-bottom: 1px solid rgba(80, 54, 29, 0.42);
+  grid-template-columns: 1fr 1fr;
+}
+
+.book-account-form__modes button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 0.55rem 0.4rem;
+  color: #796852;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-serif);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  transition:
+    color 140ms ease,
+    background 140ms ease,
+    transform 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.book-account-form__modes button:hover {
+  color: var(--book-red);
+  background: rgba(139, 26, 26, 0.025);
+  box-shadow: 4px 4px 0 rgba(139, 26, 26, 0.08);
+  transform: translateY(-2px);
+}
+
+.book-account-form__modes button[aria-pressed="true"] {
+  border-bottom-color: var(--book-red);
+  color: var(--book-red);
+}
+
+.book-account-form__modes button:focus-visible {
+  outline: 2px solid var(--book-red);
+  outline-offset: 2px;
+}
+
+.book-account-form__modes button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+  box-shadow: none;
+  transform: none;
+}
+
 .book-account-form__feedback {
   margin: 0 0 1rem;
   border-left: 3px solid var(--book-red);
@@ -488,6 +549,28 @@
 
 .book-account-form__feedback--error {
   color: var(--book-red-dark);
+}
+
+.book-account-form__confirmation {
+  display: grid;
+  gap: 0.8rem;
+  border-block: 1px solid rgba(80, 54, 29, 0.42);
+  padding-block: 1.6rem;
+  color: #5f5141;
+  line-height: 1.8;
+}
+
+.book-account-form__confirmation strong {
+  color: var(--book-red);
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  letter-spacing: 0.14em;
+}
+
+.book-account-form__confirmation p {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
 .book-account-form__fields {
@@ -523,8 +606,11 @@
 
 .book-account-form__fields input:focus {
   border-bottom-color: var(--book-red);
-  outline: 2px solid color-mix(in srgb, var(--book-red) 24%, transparent);
-  outline-offset: 2px;
+  outline: none;
+}
+
+.book-account-form__fields input:focus-visible {
+  box-shadow: 0 1px 0 var(--book-red);
 }
 
 .book-account-form__fields input:disabled {
@@ -809,6 +895,15 @@
     max-width: 30rem;
     margin-block: auto;
     padding-block: clamp(1.25rem, 4dvh, 1.75rem);
+  }
+
+  .book-account-form__modes {
+    margin-bottom: 1.1rem;
+  }
+
+  .book-account-form__modes button {
+    padding: 0.58rem 0.4rem;
+    font-size: 0.76rem;
   }
 
   .book-account-form__fields {
