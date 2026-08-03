@@ -52,19 +52,15 @@ The management commands use the Supabase Management API and the local
 `SUPABASE_ACCESS_TOKEN`. They never use a browser key:
 
 ```bash
-# Default: 7 days, one use, not bound to an email.
 pnpm invite:create
-
-# Restrict an invitation to one address.
-pnpm invite:create -- --email reader@example.com --days 7 --uses 1 --note early-reader
-
 pnpm invite:list
 pnpm invite:revoke -- <invitation-id>
 ```
 
-Only a SHA-256 digest is stored. The create command prints the plaintext once;
-send it immediately through a secure channel. Codes are normalized before
-validation, so letter case and separators do not matter.
+The create command generates a 6-character code that is valid for 7 days,
+can be used once, and is not bound to an email address. Only a SHA-256 digest
+is stored. The plaintext is printed once, so save it immediately and send it
+through a secure channel. Codes are case-insensitive.
 
 This change intentionally covers administrator-created invitations only.
 Giving each authenticated reader one personal invitation belongs to the later

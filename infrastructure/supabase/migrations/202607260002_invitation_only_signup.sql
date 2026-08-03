@@ -87,7 +87,7 @@ begin
   );
   signup_email := lower(trim(coalesce(event #>> '{user,email}', '')));
 
-  if char_length(normalized_code) < 16 or signup_email = '' then
+  if char_length(normalized_code) <> 6 or signup_email = '' then
     return jsonb_build_object(
       'error', jsonb_build_object(
         'http_code', 403,
@@ -201,8 +201,10 @@ language plpgsql
 set search_path = ''
 as $$
 declare
+  alphabet constant text := '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
   generated_code text;
-  random_hex text;
+  random_bytes bytea;
+  byte_index integer;
   normalized_code text;
   generated_id uuid;
   generated_expires_at timestamptz;
@@ -214,40 +216,48 @@ begin
     raise exception 'p_expires_in must be positive';
   end if;
 
-  random_hex := upper(encode(extensions.gen_random_bytes(16), 'hex'));
-  generated_code := 'JOJO-'
-    || substr(random_hex, 1, 4) || '-'
-    || substr(random_hex, 5, 4) || '-'
-    || substr(random_hex, 9, 4) || '-'
-    || substr(random_hex, 13, 4) || '-'
-    || substr(random_hex, 17, 4) || '-'
-    || substr(random_hex, 21, 4) || '-'
-    || substr(random_hex, 25, 4) || '-'
-    || substr(random_hex, 29, 4);
-  normalized_code :=
-    private.normalize_signup_invitation_code(generated_code);
   generated_expires_at := case
     when p_expires_in is null then null
     else now() + p_expires_in
   end;
 
-  insert into private.signup_invitations (
-    code_hash,
-    email,
-    expires_at,
-    max_uses,
-    note
-  ) values (
-    encode(
-      extensions.digest(convert_to(normalized_code, 'UTF8'), 'sha256'),
-      'hex'
-    ),
-    nullif(lower(trim(p_email)), ''),
-    generated_expires_at,
-    p_max_uses,
-    nullif(trim(p_note), '')
-  )
-  returning id into generated_id;
+  loop
+    random_bytes := extensions.gen_random_bytes(6);
+    generated_code := '';
+    for byte_index in 0..5 loop
+      generated_code := generated_code || substr(
+        alphabet,
+        (get_byte(random_bytes, byte_index) % 32) + 1,
+        1
+      );
+    end loop;
+    normalized_code :=
+      private.normalize_signup_invitation_code(generated_code);
+
+    begin
+      insert into private.signup_invitations (
+        code_hash,
+        email,
+        expires_at,
+        max_uses,
+        note
+      ) values (
+        encode(
+          extensions.digest(convert_to(normalized_code, 'UTF8'), 'sha256'),
+          'hex'
+        ),
+        nullif(lower(trim(p_email)), ''),
+        generated_expires_at,
+        p_max_uses,
+        nullif(trim(p_note), '')
+      )
+      returning id into generated_id;
+      exit;
+    exception when unique_violation then
+      -- A collision is extremely unlikely, but generating again is cheap.
+      null;
+    end;
+  end loop;
 
   return query
     select generated_code, generated_id, generated_expires_at;

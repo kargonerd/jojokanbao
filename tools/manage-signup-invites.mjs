@@ -28,36 +28,6 @@ function loadEnvFile(path) {
 loadEnvFile(".env.local");
 loadEnvFile(".env");
 
-function parseOptions(args, allowedKeys) {
-  const options = new Map();
-
-  for (let index = 0; index < args.length; index += 1) {
-    const argument = args[index];
-    if (!argument.startsWith("--")) {
-      throw new Error(`Unexpected argument: ${argument}`);
-    }
-
-    const option = argument.slice(2);
-    const separator = option.indexOf("=");
-    const rawKey = separator === -1 ? option : option.slice(0, separator);
-    const inlineValue = separator === -1 ? undefined : option.slice(separator + 1);
-    if (!allowedKeys.has(rawKey)) {
-      throw new Error(`Unknown option: --${rawKey}.`);
-    }
-    if (options.has(rawKey)) {
-      throw new Error(`Option --${rawKey} was provided more than once.`);
-    }
-    const value = inlineValue ?? args[index + 1];
-    if (!value || (inlineValue === undefined && value.startsWith("--"))) {
-      throw new Error(`Missing value for --${rawKey}.`);
-    }
-    if (inlineValue === undefined) index += 1;
-    options.set(rawKey, value);
-  }
-
-  return options;
-}
-
 async function runQuery(query, parameters = [], readOnly = false) {
   const accessToken = process.env.SUPABASE_ACCESS_TOKEN;
   const projectRef = process.env.SUPABASE_PROJECT_REF;
@@ -95,36 +65,17 @@ async function runQuery(query, parameters = [], readOnly = false) {
 }
 
 async function createInvitation(args) {
-  const options = parseOptions(
-    args,
-    new Set(["email", "days", "uses", "note"]),
-  );
-  const email = options.get("email") || null;
-  const days = Number(options.get("days") ?? "7");
-  const maxUses = Number(options.get("uses") ?? "1");
-  const note = options.get("note") || null;
-
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new Error("--email must be a valid email address.");
-  }
-  if (!Number.isInteger(days) || days < 1 || days > 365) {
-    throw new Error("--days must be an integer between 1 and 365.");
-  }
-  if (!Number.isInteger(maxUses) || maxUses < 1 || maxUses > 1000) {
-    throw new Error("--uses must be an integer between 1 and 1000.");
-  }
-  if (note && note.length > 500) {
-    throw new Error("--note must be 500 characters or fewer.");
+  if (args.length > 0) {
+    throw new Error("Usage: pnpm invite:create");
   }
 
   const rows = await runQuery(
     `select * from private.create_signup_invitation(
-      $1::text,
-      make_interval(days => $2::integer),
-      $3::integer,
-      $4::text
+      null,
+      interval '7 days',
+      1,
+      null
     );`,
-    [email, days, maxUses, note],
   );
   const invitation = rows[0];
 
@@ -133,11 +84,7 @@ async function createInvitation(args) {
   }
 
   console.log(`邀请码: ${invitation.code}`);
-  console.log(`ID: ${invitation.invitation_id}`);
-  console.log(`到期时间: ${invitation.expires_at}`);
-  console.log(`绑定邮箱: ${email ?? "未绑定"}`);
-  console.log(`可用次数: ${maxUses}`);
-  console.log("请立即安全发送邀请码；数据库不会保存明文。");
+  console.log("7 天内有效，仅可使用一次。请立即保存，数据库不会保存明文。");
 }
 
 async function listInvitations(args) {
@@ -187,9 +134,7 @@ async function revokeInvitation(args) {
 
 function printUsage() {
   console.log("Usage:");
-  console.log(
-    "  pnpm invite:create -- --email reader@example.com --days 7 --uses 1 --note early-reader",
-  );
+  console.log("  pnpm invite:create");
   console.log("  pnpm invite:list");
   console.log("  pnpm invite:revoke -- <invitation-id>");
 }
