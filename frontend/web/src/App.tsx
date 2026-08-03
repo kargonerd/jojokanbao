@@ -10,6 +10,7 @@ import { rollout } from "./rollout";
 import { ARCHIVE_ROOT, defaultArchiveIssuePath } from "./routes";
 
 const AccountLogin = lazy(() => import("./account/AccountLogin"));
+const AccountConfirmation = lazy(() => import("./account/AccountConfirmation"));
 const ReaderPage = lazy(() =>
   import("./archive/pages/ReaderPage").then(({ ReaderPage }) => ({ default: ReaderPage })),
 );
@@ -49,6 +50,14 @@ export function App() {
               element={
                 <LazyRoute>
                   <AccountLogin />
+                </LazyRoute>
+              }
+            />
+            <Route
+              path="/account/confirm"
+              element={
+                <LazyRoute>
+                  <AccountConfirmation />
                 </LazyRoute>
               }
             />
