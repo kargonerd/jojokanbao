@@ -4,6 +4,7 @@ project_id = "jojo-platform"
 site_url = "https://reader.jojokanbao.cn"
 additional_redirect_urls = [
   "http://localhost:8080/account",
+  "http://127.0.0.1:8080/account",
   "https://reader.jojokanbao.cn/account",
   "https://jojokanbao.cn/account",
 ]
