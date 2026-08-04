@@ -176,4 +176,20 @@ describe("Layout primitives", () => {
     fireEvent.click(desktopAccountLink);
     expect(destination).toBe("/account");
   });
+
+  it("renders a reader-code action as a compact identity mark", () => {
+    render(
+      <NavBar
+        items={[]}
+        actions={[{ label: "雪豹-TGH", href: "/account", hint: "读者" }]}
+        onNavigate={() => {}}
+        isActive={() => false}
+      />,
+    );
+
+    const accountLink = screen.getByRole("link", {
+      name: /读者\s+雪豹-TGH/,
+    });
+    expect(accountLink.querySelector("strong")?.textContent).toBe("雪豹-TGH");
+  });
 });

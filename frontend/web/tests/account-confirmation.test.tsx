@@ -6,6 +6,7 @@ import AccountConfirmation from "@/account/AccountConfirmation";
 
 const auth = vi.hoisted(() => ({
   confirmSignupEmail: vi.fn(),
+  getCurrentReaderDisplayName: vi.fn(),
   resendSignupConfirmation: vi.fn(),
 }));
 
@@ -24,14 +25,17 @@ function renderConfirmation(path = "/account/confirm?token_hash=test-token") {
 }
 
 beforeEach(() => {
-  auth.confirmSignupEmail.mockReset().mockResolvedValue(undefined);
+  auth.confirmSignupEmail.mockReset().mockResolvedValue({
+    displayName: "雪豹-TGH",
+  });
+  auth.getCurrentReaderDisplayName.mockReset().mockResolvedValue("雪豹-TGH");
   auth.resendSignupConfirmation.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(cleanup);
 
 describe("account email confirmation", () => {
-  it("confirms the one-time token and links to the archive homepage", async () => {
+  it("shows the assigned reader code before linking to the archive homepage", async () => {
     renderConfirmation();
 
     expect(screen.getByRole("heading", { name: "正在确认邮箱" })).toBeTruthy();
@@ -39,11 +43,25 @@ describe("account email confirmation", () => {
       expect(auth.confirmSignupEmail).toHaveBeenCalledWith("test-token"),
     );
     expect(
-      await screen.findByRole("heading", { name: "邮箱已经确认" }),
+      await screen.findByRole("heading", { name: "邮箱验证成功" }),
     ).toBeTruthy();
+    expect(screen.getByText("雪豹-TGH")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("link", { name: "进入首页" }));
+    fireEvent.click(screen.getByRole("link", { name: "记住了，进入首页" }));
     expect(await screen.findByText("Archive home")).toBeTruthy();
+  });
+
+  it("does not enter the homepage until a reader code is available", async () => {
+    auth.confirmSignupEmail.mockResolvedValueOnce({ displayName: null });
+    renderConfirmation();
+
+    expect(await screen.findByText("正在分配")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /进入首页/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "重新读取代号" }));
+
+    expect(await screen.findByText("雪豹-TGH")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "记住了，进入首页" })).toBeTruthy();
   });
 
   it("consumes the token only once under React Strict Mode", async () => {

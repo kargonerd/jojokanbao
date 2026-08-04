@@ -6,9 +6,15 @@ export interface NavItem {
   children?: { label: string; href: string }[];
 }
 
+interface NavAction {
+  label: string;
+  href: string;
+  hint?: string;
+}
+
 interface NavBarProps {
   items: NavItem[];
-  actions?: { label: string; href: string }[];
+  actions?: NavAction[];
   trailing?: ReactNode;
   mobileTitle?: string;
   mobileTitleHref?: string;
@@ -112,11 +118,20 @@ export function NavBar({
                 event.preventDefault();
                 onNavigate(action.href);
               }}
-              className={`ml-5 flex h-full items-center border-l border-rule px-5 text-sm font-bold tracking-wide no-underline transition-colors hover:text-red ${
+              className={`group ml-5 flex h-full items-center border-l border-rule px-5 text-sm font-bold tracking-wide no-underline transition-colors hover:text-red ${
                 isActive(action.href) ? "text-red" : "text-ink"
               }`}
             >
-              {action.label}
+              {action.hint ? (
+                <span className="flex items-center border-y border-red/40 px-3 py-1.5 text-red transition-[transform,box-shadow,background-color,color] duration-150 group-hover:-translate-y-0.5 group-hover:bg-red group-hover:text-white group-hover:shadow-[3px_3px_0_rgba(139,26,26,.14)]">
+                  <span className="pr-2 font-sans text-[0.58rem] font-black tracking-[0.18em] opacity-75">
+                    {action.hint}
+                  </span>
+                  <strong className="border-l border-current/30 pl-2 font-serif text-xs tracking-[0.1em]">
+                    {action.label}
+                  </strong>
+                </span>
+              ) : action.label}
             </a>
           ))}
         </div>
@@ -168,6 +183,11 @@ export function NavBar({
                       isActive(action.href) ? "text-red" : "text-ink"
                     }`}
                   >
+                    {action.hint && (
+                      <span className="mr-2 font-sans text-[0.6rem] font-black tracking-[0.16em] text-red">
+                        {action.hint}
+                      </span>
+                    )}
                     {action.label}
                   </a>
                 ))}

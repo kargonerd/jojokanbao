@@ -25,6 +25,7 @@ export function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [accountLabel, setAccountLabel] = useState("登录");
+  const [hasReaderCode, setHasReaderCode] = useState(false);
 
   useEffect(() => {
     if (!rollout.account) return;
@@ -38,11 +39,13 @@ export function Layout() {
 
       const updateLabel = () => {
         const { user, profile } = useAuthStore.getState();
+        const displayName = profile?.display_name?.trim();
         setAccountLabel(
           user
-            ? profile?.display_name?.trim() || "账号"
+            ? displayName || "账号"
             : "登录",
         );
+        setHasReaderCode(Boolean(user && displayName));
       };
 
       unsubscribe = useAuthStore.subscribe(updateLabel);
@@ -62,7 +65,13 @@ export function Layout() {
       header={
         <NavBar
           items={navItems}
-          actions={rollout.account ? [{ label: accountLabel, href: "/account" }] : []}
+          actions={rollout.account
+            ? [{
+                label: accountLabel,
+                href: "/account",
+                hint: hasReaderCode ? "读者" : undefined,
+              }]
+            : []}
           mobileTitle="JOJO看报"
           onNavigate={(href) => navigate(href)}
           isActive={(href) =>

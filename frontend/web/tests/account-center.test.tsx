@@ -13,7 +13,7 @@ const account = vi.hoisted(() => ({
     } | null,
     profile: {
       id: "reader-1",
-      display_name: "雪豹",
+      display_name: "雪豹-TGH",
       avatar_path: null,
       created_at: "2026-08-03T00:00:00Z",
       updated_at: "2026-08-03T00:00:00Z",
@@ -62,7 +62,7 @@ vi.mock("@/account/invitationStore", () => ({
 
 beforeEach(() => {
   account.auth.user = { id: "reader-1", email: "reader@example.com" };
-  account.auth.profile.display_name = "雪豹";
+  account.auth.profile.display_name = "雪豹-TGH";
   account.auth.busy = false;
   account.auth.error = null;
   account.auth.notice = null;
@@ -102,8 +102,8 @@ describe("account center", () => {
     render(<MemoryRouter><AccountLogin /></MemoryRouter>);
 
     expect(screen.getByRole("heading", { name: "读者身份" })).toBeTruthy();
-    expect(screen.getByText("雪豹")).toBeTruthy();
-    expect(screen.getByText("昵称取自全球动植物名称，目前暂不可修改。")).toBeTruthy();
+    expect(screen.getByText("雪豹-TGH")).toBeTruthy();
+    expect(screen.getByText("代号取自全球动植物名称，目前暂不可修改。")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "我的邀请码" })).toBeTruthy();
     expect(screen.getByLabelText("邀请码 K7MP4X")).toBeTruthy();
     expect(screen.queryByRole("textbox")).toBeNull();
@@ -111,13 +111,13 @@ describe("account center", () => {
     await waitFor(() => expect(account.invitation.load).toHaveBeenCalledWith("reader-1"));
   });
 
-  it("shows an explicit pending state when an older profile has no nickname", () => {
+  it("shows an explicit pending state when an older profile has no reader code", () => {
     account.auth.profile.display_name = "";
 
     render(<MemoryRouter><AccountLogin /></MemoryRouter>);
 
-    expect(screen.getByText("昵称待分配")).toBeTruthy();
-    expect(screen.getByText("账号昵称尚未完成分配，请稍后刷新页面。")).toBeTruthy();
+    expect(screen.getByText("代号待分配")).toBeTruthy();
+    expect(screen.getByText("读者代号尚未完成分配，请稍后刷新页面。")).toBeTruthy();
   });
 
   it("generates the reader's first invitation", async () => {

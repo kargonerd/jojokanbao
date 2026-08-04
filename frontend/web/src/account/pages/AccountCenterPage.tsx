@@ -9,7 +9,7 @@ interface AccountCenterPageProps {
 export function AccountCenterPage({ userId }: AccountCenterPageProps) {
   const navigate = useNavigate();
   const { profile, busy, error, signOut } = useAuthStore();
-  const displayName = profile?.display_name?.trim() || "昵称待分配";
+  const displayName = profile?.display_name?.trim() || "代号待分配";
   const hasDisplayName = Boolean(profile?.display_name?.trim());
 
   const leaveAccount = async () => {
@@ -42,50 +42,48 @@ export function AccountCenterPage({ userId }: AccountCenterPageProps) {
         </button>
       </header>
 
-      <article className="mx-auto w-full max-w-[46rem] py-14 sm:py-20">
-        <header>
-          <p className="m-0 font-sans text-[0.68rem] font-black tracking-[0.22em] text-red">
-            个人账号
-          </p>
-          <h1 className="mb-0 mt-3 font-serif text-4xl font-black tracking-[0.12em] sm:text-5xl">
-            读者身份
-          </h1>
-          <p className="mb-0 mt-5 text-sm font-bold leading-7 text-muted">
-            查看你的读者昵称与个人邀请凭证。
+      <article className="mx-auto w-full max-w-[64rem] py-9 sm:py-12">
+        <header className="grid gap-3 border-b border-rule pb-6 sm:grid-cols-[minmax(0,1fr)_18rem] sm:items-end sm:gap-10">
+          <div>
+            <p className="m-0 font-sans text-[0.68rem] font-black tracking-[0.22em] text-red">
+              个人账号
+            </p>
+            <h1 className="mb-0 mt-2 font-serif text-3xl font-black tracking-[0.1em] sm:text-4xl">
+              读者身份
+            </h1>
+          </div>
+          <p className="m-0 text-sm font-bold leading-7 text-muted sm:text-right">
+            查看你的读者代号与个人邀请凭证。
           </p>
         </header>
 
-        <section
-          aria-labelledby="reader-name-title"
-          className="mt-10 border-y-2 border-red py-7 sm:mt-12 sm:py-9"
-        >
-          <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_15rem] sm:items-end sm:gap-10">
-            <div>
-              <p
-                id="reader-name-title"
-                className="m-0 font-sans text-xs font-black tracking-[0.16em] text-red"
-              >
-                读者昵称
-              </p>
-              <strong className={`mt-3 block font-serif text-4xl font-black tracking-[0.12em] sm:text-5xl ${hasDisplayName ? "text-ink" : "text-muted"}`}>
-                {displayName}
-              </strong>
-            </div>
-            <p className="m-0 border-l border-rule pl-5 text-xs font-bold leading-6 text-muted">
+        <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)] lg:gap-14">
+          <section
+            aria-labelledby="reader-name-title"
+            className="border-t-2 border-red pt-4"
+          >
+            <p
+              id="reader-name-title"
+              className="m-0 font-sans text-[0.65rem] font-black tracking-[0.18em] text-red"
+            >
+              读者代号
+            </p>
+            <strong className={`mt-3 block font-serif text-4xl font-black tracking-[0.1em] sm:text-[2.75rem] ${hasDisplayName ? "text-ink" : "text-muted"}`}>
+              {displayName}
+            </strong>
+            <p className="mb-0 mt-5 border-t border-rule pt-4 text-xs font-bold leading-6 text-muted">
               {hasDisplayName
-                ? "昵称取自全球动植物名称，目前暂不可修改。"
-                : "账号昵称尚未完成分配，请稍后刷新页面。"}
+                ? "代号取自全球动植物名称，目前暂不可修改。"
+                : "读者代号尚未完成分配，请稍后刷新页面。"}
             </p>
-          </div>
-          {!hasDisplayName && error && (
-            <p className="mb-0 mt-5 border-l-2 border-red pl-4 text-sm font-bold leading-7 text-red" role="alert">
-              {error}
-            </p>
-          )}
-        </section>
+            {!hasDisplayName && error && (
+              <p className="mb-0 mt-5 border-l-2 border-red pl-4 text-sm font-bold leading-7 text-red" role="alert">
+                {error}
+              </p>
+            )}
+          </section>
 
-        <div className="mt-14 sm:mt-20">
-        <PersonalInvitationPanel userId={userId} />
+          <PersonalInvitationPanel userId={userId} />
         </div>
       </article>
     </main>

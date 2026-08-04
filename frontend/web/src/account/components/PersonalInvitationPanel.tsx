@@ -73,15 +73,15 @@ export function PersonalInvitationPanel({ userId }: PersonalInvitationPanelProps
   }
 
   return (
-    <section aria-labelledby="invitation-title">
-      <header className="flex items-end justify-between border-b-2 border-red pb-4">
+    <section aria-labelledby="invitation-title" className="border-t-2 border-red pt-4">
+      <header className="flex items-end justify-between border-b border-rule pb-3">
         <div>
           <span className="font-sans text-[0.65rem] font-black tracking-[0.18em] text-red">
             邀请新读者
           </span>
           <h2
             id="invitation-title"
-            className="mb-0 mt-2 font-serif text-2xl font-black tracking-[0.1em] sm:text-3xl"
+            className="mb-0 mt-2 font-serif text-2xl font-black tracking-[0.1em]"
           >
             我的邀请码
           </h2>
@@ -92,22 +92,22 @@ export function PersonalInvitationPanel({ userId }: PersonalInvitationPanelProps
       </header>
 
       {!ready || loading ? (
-        <p className="my-8 text-sm font-bold text-muted" role="status">
+        <p className="my-6 text-sm font-bold text-muted" role="status">
           正在查阅邀请码…
         </p>
       ) : status?.allocated ? (
-        <div className="my-8 border border-red bg-paper p-5 sm:p-6">
+        <div className="my-5 border border-red bg-paper p-4 sm:p-5">
           <span className="font-sans text-[0.6rem] font-black tracking-[0.18em] text-muted">
             JOJO · INVITATION
           </span>
           <strong
             aria-label={`邀请码 ${status.code}`}
-            className="my-6 grid grid-cols-6 gap-2"
+            className="my-5 grid grid-cols-6 gap-1.5 sm:gap-2"
           >
             {Array.from(status.code).map((character, index) => (
               <span
                 key={`${character}-${index}`}
-                className="border-b-2 border-red pb-2 text-center font-serif text-2xl text-red sm:text-3xl"
+                className="border-b-2 border-red pb-2 text-center font-serif text-2xl text-red"
               >
                 {character}
               </span>
@@ -127,7 +127,7 @@ export function PersonalInvitationPanel({ userId }: PersonalInvitationPanelProps
           </div>
         </div>
       ) : (
-        <p className="my-8 text-sm font-bold leading-8 text-muted">
+        <p className="my-6 text-sm font-bold leading-7 text-muted">
           每位读者可以生成一枚邀请码，赠予一位新读者。邀请码 30 天内有效，使用后即作废。
         </p>
       )}
