@@ -47,7 +47,8 @@ EdgeOne 专有入口位于 `infrastructure/edgeone/functions`，只导入
   OAuth 模型与凭证配置。
 - `agent/edgeone`：Supabase 登录校验、SSE、会话桥接和 Codex OAuth 加密 Store
   持久化。
-- RAG、Olds 等业务只注入提示词和工具。
+- `agent/rag`、`agent/olds`：业务 Agent 定义；当前只提供显式 placeholder，
+  后续分别注入文档检索和旧闻搜索工具。
 - Codex Agent 使用不含中国大陆的独立 Makers 项目和域名；其他模型后续通过
   Makers Models 接入。
 - Agent 项目用一个不运行 Pi 的 Node Cloud Function 处理浏览器 CORS 预检，再把

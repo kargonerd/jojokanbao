@@ -15,8 +15,10 @@ export {
 export {
   defaultMessageConverter,
   type AgentUsage,
+  type PlatformAgentDefinition,
   type PlatformAgentEvent,
   type PlatformAgentResult,
+  type PlatformAgentStatus,
   type RunPlatformAgentOptions,
 } from "./types";
 export type {

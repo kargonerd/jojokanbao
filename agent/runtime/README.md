@@ -12,8 +12,8 @@ pi-agent-core / Agent
 @jojo/agent-runtime
 └── JOJO 事件格式、预算、token/cost 和 Codex 模型配置
 
-RAG / 九闻
-└── 各自的提示词和业务工具
+agent/rag、agent/olds
+└── 各自的提示词和业务工具；当前为显式 placeholder
 ```
 
 这里使用 `pi-agent-core` 的高层 `Agent`，不使用 `pi-coding-agent`，也不自行

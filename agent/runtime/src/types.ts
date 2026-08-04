@@ -28,6 +28,21 @@ export interface AgentUsage {
   };
 }
 
+export type PlatformAgentStatus = "placeholder" | "available";
+
+/**
+ * Product-owned Agent configuration.
+ *
+ * RAG and Olds expose this small boundary now so deployment code can select a
+ * product without coupling its prompts and tools to a hosting platform.
+ */
+export interface PlatformAgentDefinition {
+  id: string;
+  status: PlatformAgentStatus;
+  systemPrompt: string;
+  createTools(): AgentTool[];
+}
+
 export type PlatformAgentEvent =
   | { type: "text_delta"; delta: string }
   | { type: "tool_start"; callId: string; name: string; args: unknown }
@@ -36,7 +51,7 @@ export type PlatformAgentEvent =
   | { type: "usage"; usage: AgentUsage };
 
 export interface RunPlatformAgentOptions {
-  /** Product-owned instructions. RAG and Jiuwen provide different prompts. */
+  /** Product-owned instructions. RAG and Olds provide different prompts. */
   systemPrompt: string;
   /** One string becomes a user message; advanced callers can provide messages directly. */
   prompt: string | AgentMessage[];
