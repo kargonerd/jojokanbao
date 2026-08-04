@@ -10,7 +10,6 @@ as $$
 declare
   alphabet constant text := 'ABCDEFGHJKLMNPQRSTUVWXYZ';
   pool_size integer;
-  short_pool_size integer;
   base_name text;
   candidate text;
 begin
@@ -24,32 +23,16 @@ begin
   into pool_size
   from private.profile_name_pool;
 
-  select pg_catalog.count(*)::integer
-  into short_pool_size
-  from private.profile_name_pool
-  where pg_catalog.char_length(name) <= 3;
-
   if pool_size = 0 then
     raise exception 'profile name pool is empty';
   end if;
 
   for attempt in 1..128 loop
-    if short_pool_size > 0 and pg_catalog.random() < 0.8 then
-      select pool.name
-      into base_name
-      from private.profile_name_pool as pool
-      where pg_catalog.char_length(pool.name) <= 3
-      offset pg_catalog.floor(
-        pg_catalog.random() * short_pool_size
-      )::integer
-      limit 1;
-    else
-      select pool.name
-      into base_name
-      from private.profile_name_pool as pool
-      offset pg_catalog.floor(pg_catalog.random() * pool_size)::integer
-      limit 1;
-    end if;
+    select pool.name
+    into base_name
+    from private.profile_name_pool as pool
+    offset pg_catalog.floor(pg_catalog.random() * pool_size)::integer
+    limit 1;
 
     candidate := base_name || '-' ||
       pg_catalog.substr(

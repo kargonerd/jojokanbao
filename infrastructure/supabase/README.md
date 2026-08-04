@@ -97,15 +97,16 @@ it never receives direct access to the private invitation tables.
 ## Reader nicknames
 
 Every profile has a unique `display_name` such as `雪豹-TGH`, selected by a
-database trigger from a private pool of more than 3,000 animal and plant names.
+database trigger from a private pool of 3,000 animal and plant names.
 The three-letter suffix omits `I` and `O` to avoid confusion with digits. It
-provides more than 41 million possible generated names without loading the pool
-into the Web client. Names of three Chinese characters or fewer are strongly
-preferred, while longer names remain available for variety.
+provides 41,472,000 possible generated names without loading the pool into the
+Web client. Exactly 2,700 base names are three Chinese characters or fewer;
+the remaining 300 longer names preserve some variety without requiring a
+separate weighting rule in the database trigger.
 
-The checked-in pool includes curated familiar names such as `东北虎`, `牡丹`,
-and `蒲公英`, together with 2,936 names derived from *The National Checklist of
-Taiwan (Catalogue of Life in Taiwan, TaiCOL)* Version 1.13. The derived names
+The checked-in pool includes 173 curated familiar names such as `东北虎`,
+`牡丹`, and `蒲公英`, together with 2,827 names derived from *The National
+Checklist of Taiwan (Catalogue of Life in Taiwan, TaiCOL)* Version 1.13. The derived names
 use accepted species records, are normalized to Simplified Chinese, and are
 distributed across taxonomic classes instead of being dominated by insects.
 Source attribution:
@@ -113,6 +114,17 @@ Source attribution:
 - Shao K, Chung K (2024), Taiwan Biodiversity Information Facility (TaiBIF)
 - DOI: https://doi.org/10.15468/auw1kd
 - License: https://creativecommons.org/licenses/by/4.0/
+
+The SQL pool is reproducible from the pinned Darwin Core archive:
+
+```bash
+python -m pip install -r supabase/scripts/requirements.txt
+python supabase/scripts/build_profile_name_pool.py
+```
+
+The builder verifies the source archive checksum before replacing the checked-in
+migration, so an upstream dataset change cannot silently alter assigned-name
+inputs.
 
 The trigger ignores client-supplied signup metadata, so accounts created
 outside the Web client follow the same rule. The migration assigns generated

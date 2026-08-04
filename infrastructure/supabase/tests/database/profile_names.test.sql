@@ -11,33 +11,30 @@ select extensions.col_not_null(
   'every profile has a display name'
 );
 
-select extensions.cmp_ok(
+select extensions.is(
   (select pg_catalog.count(*) from private.profile_name_pool),
-  '>=',
   3000::bigint,
-  'the private pool contains at least 3,000 base names'
+  'the private pool contains 3,000 base names'
 );
 
-select extensions.cmp_ok(
+select extensions.is(
   (
     select pg_catalog.count(*)
     from private.profile_name_pool
     where kind = 'animal'
   ),
-  '>=',
   1500::bigint,
-  'the pool contains at least 1,500 animal names'
+  'half of the pool contains animal names'
 );
 
-select extensions.cmp_ok(
+select extensions.is(
   (
     select pg_catalog.count(*)
     from private.profile_name_pool
     where kind = 'plant'
   ),
-  '>=',
   1500::bigint,
-  'the pool contains at least 1,500 plant names'
+  'half of the pool contains plant names'
 );
 
 select extensions.ok(
@@ -49,21 +46,14 @@ select extensions.ok(
   'the pool includes familiar short animal names'
 );
 
-select extensions.cmp_ok(
+select extensions.is(
   (
     select pg_catalog.count(*)
-    from pg_catalog.generate_series(1, 200)
-    where pg_catalog.char_length(
-      pg_catalog.split_part(
-        private.random_profile_display_name(),
-        '-',
-        1
-      )
-    ) <= 3
+    from private.profile_name_pool
+    where pg_catalog.char_length(name) <= 3
   ),
-  '>=',
-  140::bigint,
-  'short names are strongly preferred by the generator'
+  2700::bigint,
+  '90 percent of the source pool contains short names'
 );
 
 select extensions.ok(
