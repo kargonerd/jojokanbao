@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(14);
+select extensions.plan(16);
 
 select extensions.col_not_null(
   'public',
@@ -11,30 +11,59 @@ select extensions.col_not_null(
   'every profile has a display name'
 );
 
-select extensions.is(
+select extensions.cmp_ok(
   (select pg_catalog.count(*) from private.profile_name_pool),
+  '>=',
   3000::bigint,
-  'the private pool contains 3,000 base names'
+  'the private pool contains at least 3,000 base names'
 );
 
-select extensions.is(
+select extensions.cmp_ok(
   (
     select pg_catalog.count(*)
     from private.profile_name_pool
     where kind = 'animal'
   ),
+  '>=',
   1500::bigint,
-  'half of the pool contains animal names'
+  'the pool contains at least 1,500 animal names'
 );
 
-select extensions.is(
+select extensions.cmp_ok(
   (
     select pg_catalog.count(*)
     from private.profile_name_pool
     where kind = 'plant'
   ),
+  '>=',
   1500::bigint,
-  'half of the pool contains plant names'
+  'the pool contains at least 1,500 plant names'
+);
+
+select extensions.ok(
+  exists (
+    select 1
+    from private.profile_name_pool
+    where kind = 'animal' and name = '东北虎'
+  ),
+  'the pool includes familiar short animal names'
+);
+
+select extensions.cmp_ok(
+  (
+    select pg_catalog.count(*)
+    from pg_catalog.generate_series(1, 200)
+    where pg_catalog.char_length(
+      pg_catalog.split_part(
+        private.random_profile_display_name(),
+        '-',
+        1
+      )
+    ) <= 3
+  ),
+  '>=',
+  140::bigint,
+  'short names are strongly preferred by the generator'
 );
 
 select extensions.ok(

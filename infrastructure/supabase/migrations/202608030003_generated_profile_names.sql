@@ -10,6 +10,7 @@ as $$
 declare
   alphabet constant text := 'ABCDEFGHJKLMNPQRSTUVWXYZ';
   pool_size integer;
+  short_pool_size integer;
   base_name text;
   candidate text;
 begin
@@ -23,16 +24,32 @@ begin
   into pool_size
   from private.profile_name_pool;
 
+  select pg_catalog.count(*)::integer
+  into short_pool_size
+  from private.profile_name_pool
+  where pg_catalog.char_length(name) <= 3;
+
   if pool_size = 0 then
     raise exception 'profile name pool is empty';
   end if;
 
   for attempt in 1..128 loop
-    select pool.name
-    into base_name
-    from private.profile_name_pool as pool
-    offset pg_catalog.floor(pg_catalog.random() * pool_size)::integer
-    limit 1;
+    if short_pool_size > 0 and pg_catalog.random() < 0.8 then
+      select pool.name
+      into base_name
+      from private.profile_name_pool as pool
+      where pg_catalog.char_length(pool.name) <= 3
+      offset pg_catalog.floor(
+        pg_catalog.random() * short_pool_size
+      )::integer
+      limit 1;
+    else
+      select pool.name
+      into base_name
+      from private.profile_name_pool as pool
+      offset pg_catalog.floor(pg_catalog.random() * pool_size)::integer
+      limit 1;
+    end if;
 
     candidate := base_name || '-' ||
       pg_catalog.substr(
@@ -134,4 +151,4 @@ revoke update on table public.profiles from authenticated;
 grant update (avatar_path) on table public.profiles to authenticated;
 
 comment on column public.profiles.display_name is
-  'Unique reader nickname generated once as an animal or plant name plus three letters.';
+  'Unique reader code generated once as a preferably short animal or plant name plus three letters.';

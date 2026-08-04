@@ -1,4 +1,4 @@
--- 3,000 reviewable base names for generated reader nicknames.
+-- More than 3,000 reviewable base names for generated reader nicknames.
 --
 -- 2,936 names are derived from:
 -- Shao K, Chung K (2024). The National Checklist of Taiwan (Catalogue of
@@ -9,7 +9,9 @@
 -- Accepted animal and plant species with a 2-7 character Chinese vernacular
 -- name were converted to Simplified Chinese, screened for unsuitable terms,
 -- and selected deterministically across taxonomic classes. The remaining 64
--- familiar global names are the project's original curated list.
+-- familiar global names are the project's original curated list. An
+-- additional short-name set at the end keeps familiar animals and plants
+-- represented even when they are absent from the source catalogue.
 
 insert into private.profile_name_pool (kind, name)
 select 'animal', source.name
@@ -202,7 +204,152 @@ from pg_catalog.unnest(array[
   '印度齿口鱼', '紫胸长足虻', '紫针尾雨燕', '字码芋螺', '棕耳鹎', '棕腹仙鹟', '棕果蝠', '棕三趾鹑',
   '棕沙燕', '棕扇尾莺', '棕树蛇', '鬃螯活额寄居蟹', '纵带绯鲤', '纵带巨齿天竺鲷', '纵带弯线鳚', '纵纹腹小鸮',
   '足柄指形软珊瑚', '钻纹龟', '左旋鼈甲蜗牛', '座头鲸'
-]::text[]) as source(name);
+]::text[]) as source(name)
+on conflict (name) do nothing;
+
+-- Familiar names are deliberately short and easy to recognize. Existing
+-- names remain in their original category; only missing names are added.
+insert into private.profile_name_pool (kind, name)
+values
+  ('animal', '东北虎'),
+  ('animal', '华南虎'),
+  ('animal', '非洲狮'),
+  ('animal', '金钱豹'),
+  ('animal', '云豹'),
+  ('animal', '猎豹'),
+  ('animal', '北极熊'),
+  ('animal', '棕熊'),
+  ('animal', '黑熊'),
+  ('animal', '灰狼'),
+  ('animal', '狐狸'),
+  ('animal', '浣熊'),
+  ('animal', '水獭'),
+  ('animal', '河狸'),
+  ('animal', '兔狲'),
+  ('animal', '麋鹿'),
+  ('animal', '梅花鹿'),
+  ('animal', '马鹿'),
+  ('animal', '驼鹿'),
+  ('animal', '藏羚羊'),
+  ('animal', '野牦牛'),
+  ('animal', '牦牛'),
+  ('animal', '野猪'),
+  ('animal', '熊猫'),
+  ('animal', '小熊猫'),
+  ('animal', '长臂猿'),
+  ('animal', '黑猩猩'),
+  ('animal', '大猩猩'),
+  ('animal', '松鼠'),
+  ('animal', '花栗鼠'),
+  ('animal', '刺猬'),
+  ('animal', '袋鼠'),
+  ('animal', '树袋熊'),
+  ('animal', '鸭嘴兽'),
+  ('animal', '食蚁兽'),
+  ('animal', '水豚'),
+  ('animal', '犀牛'),
+  ('animal', '河马'),
+  ('animal', '非洲象'),
+  ('animal', '野骆驼'),
+  ('animal', '羊驼'),
+  ('animal', '海狮'),
+  ('animal', '海象'),
+  ('animal', '海豚'),
+  ('animal', '虎鲸'),
+  ('animal', '儒艮'),
+  ('animal', '抹香鲸'),
+  ('animal', '火烈鸟'),
+  ('animal', '猫头鹰'),
+  ('animal', '啄木鸟'),
+  ('animal', '渡鸦'),
+  ('animal', '企鹅'),
+  ('animal', '孔雀'),
+  ('animal', '扬子鳄'),
+  ('animal', '眼镜蛇'),
+  ('animal', '变色龙'),
+  ('animal', '小丑鱼'),
+  ('animal', '海星'),
+  ('animal', '寄居蟹'),
+  ('animal', '独角仙'),
+  ('animal', '萤火虫'),
+  ('plant', '牡丹'),
+  ('plant', '芍药'),
+  ('plant', '梅花'),
+  ('plant', '兰花'),
+  ('plant', '菊花'),
+  ('plant', '荷花'),
+  ('plant', '莲花'),
+  ('plant', '桃花'),
+  ('plant', '杏花'),
+  ('plant', '梨花'),
+  ('plant', '桂花'),
+  ('plant', '茉莉'),
+  ('plant', '海棠'),
+  ('plant', '山茶'),
+  ('plant', '杜鹃'),
+  ('plant', '紫薇'),
+  ('plant', '木棉'),
+  ('plant', '樱花'),
+  ('plant', '腊梅'),
+  ('plant', '月季'),
+  ('plant', '玫瑰'),
+  ('plant', '百合'),
+  ('plant', '水仙'),
+  ('plant', '郁金香'),
+  ('plant', '向日葵'),
+  ('plant', '蒲公英'),
+  ('plant', '三色堇'),
+  ('plant', '风信子'),
+  ('plant', '勿忘我'),
+  ('plant', '满天星'),
+  ('plant', '康乃馨'),
+  ('plant', '牵牛花'),
+  ('plant', '虞美人'),
+  ('plant', '金银花'),
+  ('plant', '紫罗兰'),
+  ('plant', '山楂'),
+  ('plant', '枫树'),
+  ('plant', '柳树'),
+  ('plant', '杨树'),
+  ('plant', '松树'),
+  ('plant', '柏树'),
+  ('plant', '榕树'),
+  ('plant', '槐树'),
+  ('plant', '梧桐'),
+  ('plant', '桦树'),
+  ('plant', '椰树'),
+  ('plant', '芦苇'),
+  ('plant', '芭蕉'),
+  ('plant', '香蕉'),
+  ('plant', '荔枝'),
+  ('plant', '龙眼'),
+  ('plant', '芒果'),
+  ('plant', '石榴'),
+  ('plant', '核桃'),
+  ('plant', '葡萄'),
+  ('plant', '草莓'),
+  ('plant', '蓝莓'),
+  ('plant', '西瓜'),
+  ('plant', '南瓜'),
+  ('plant', '冬瓜'),
+  ('plant', '黄瓜'),
+  ('plant', '番茄'),
+  ('plant', '土豆'),
+  ('plant', '玉米'),
+  ('plant', '水稻'),
+  ('plant', '小麦'),
+  ('plant', '高粱'),
+  ('plant', '大豆'),
+  ('plant', '花生'),
+  ('plant', '茶树'),
+  ('plant', '棉花'),
+  ('plant', '薄荷'),
+  ('plant', '艾草'),
+  ('plant', '人参'),
+  ('plant', '灵芝'),
+  ('plant', '枸杞'),
+  ('plant', '甘草')
+on conflict (name) do nothing;
 
 insert into private.profile_name_pool (kind, name)
 select 'plant', source.name
@@ -395,4 +542,5 @@ from pg_catalog.unnest(array[
   '皱萼藓', '皱棱仙人球', '皱叶耳叶藓', '珠芽狗脊蕨', '牛膝', '竹柏', '竹节草', '竹节蓼',
   '竹叶茅', '竹子', '竹子飘拂草', '锥形气叶藻', '浊叶树平苔', '子弹石栎', '紫背草', '紫柄蹄盖蕨',
   '紫花藿香蓟', '紫花窃衣', '紫花野百合', '紫云英'
-]::text[]) as source(name);
+]::text[]) as source(name)
+on conflict (name) do nothing;

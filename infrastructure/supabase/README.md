@@ -97,16 +97,18 @@ it never receives direct access to the private invitation tables.
 ## Reader nicknames
 
 Every profile has a unique `display_name` such as `雪豹-TGH`, selected by a
-database trigger from a private pool of 1,500 animal and 1,500 plant names.
+database trigger from a private pool of more than 3,000 animal and plant names.
 The three-letter suffix omits `I` and `O` to avoid confusion with digits. It
-provides 41,472,000 possible generated names without loading the pool into the
-Web client.
+provides more than 41 million possible generated names without loading the pool
+into the Web client. Names of three Chinese characters or fewer are strongly
+preferred, while longer names remain available for variety.
 
-The checked-in pool includes the original 64 familiar global names and 2,936
-names derived from *The National Checklist of Taiwan (Catalogue of Life in
-Taiwan, TaiCOL)* Version 1.13. The derived names use accepted species records,
-are normalized to Simplified Chinese, and are distributed across taxonomic
-classes instead of being dominated by insects. Source attribution:
+The checked-in pool includes curated familiar names such as `东北虎`, `牡丹`,
+and `蒲公英`, together with 2,936 names derived from *The National Checklist of
+Taiwan (Catalogue of Life in Taiwan, TaiCOL)* Version 1.13. The derived names
+use accepted species records, are normalized to Simplified Chinese, and are
+distributed across taxonomic classes instead of being dominated by insects.
+Source attribution:
 
 - Shao K, Chung K (2024), Taiwan Biodiversity Information Facility (TaiBIF)
 - DOI: https://doi.org/10.15468/auw1kd
