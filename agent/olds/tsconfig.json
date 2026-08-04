@@ -1,7 +1,0 @@
-{
-  "extends": "@jojo/tsconfig/base.json",
-  "compilerOptions": {
-    "noEmit": true
-  },
-  "include": ["src", "tests"]
-}

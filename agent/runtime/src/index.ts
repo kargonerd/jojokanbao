@@ -1,3 +1,7 @@
+export {
+  createOldsAgentDefinition,
+  createRagAgentDefinition,
+} from "./applications";
 export { runPlatformAgent } from "./runtime";
 export {
   JsonCredentialStore,
