@@ -13,7 +13,7 @@
   },
   "scripts": {
     "auth:codex": "pi-ai login openai-codex",
-    "auth:push": "tsx src/edgeone/push-codex-auth.ts",
+    "credentials:push": "tsx src/edgeone/push-credential.ts",
     "smoke": "tsx src/smoke.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

@@ -29,8 +29,8 @@ await cp(
   { recursive: true },
 );
 await cp(
-  path.join(edgeoneRoot, "functions", "codex-auth"),
-  path.join(cloudFunctionsOutput, "internal", "codex-auth"),
+  path.join(edgeoneRoot, "functions", "credentials"),
+  path.join(cloudFunctionsOutput, "internal", "credentials"),
   { recursive: true },
 );
 

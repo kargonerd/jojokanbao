@@ -50,11 +50,11 @@ export {
   authorizeSupabaseUser,
 } from "./edgeone/auth";
 export {
-  createCodexCredentialAdminHandler,
+  createCredentialAdminHandler,
 } from "./edgeone/credential-admin";
 export type {
-  CodexCredentialAdminContext,
-  CreateCodexCredentialAdminHandlerOptions,
+  CredentialAdminContext,
+  CreateCredentialAdminHandlerOptions,
 } from "./edgeone/credential-admin";
 export {
   EdgeOneEncryptedCredentialPersistence,

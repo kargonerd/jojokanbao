@@ -7,7 +7,7 @@ import {
 import type { AgentEnvironment } from "../models";
 import type { EdgeOneConversationStore } from "./types";
 
-const CREDENTIAL_CONVERSATION_ID = "jojo-codex-credentials-v1";
+const CREDENTIAL_CONVERSATION_ID = "jojo-platform-credentials-v1";
 
 interface EncryptedEnvelope {
   version: 1;
@@ -30,13 +30,13 @@ function asArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 function encryptionKey(value: string | undefined): Uint8Array {
   if (!value?.trim()) {
     throw new Error(
-      "CODEX_CREDENTIAL_ENCRYPTION_KEY is required for deployed Codex OAuth",
+      "JOJO_CREDENTIAL_ENCRYPTION_KEY is required for deployed credentials",
     );
   }
   const bytes = fromBase64(value.trim());
   if (bytes.byteLength !== 32) {
     throw new Error(
-      "CODEX_CREDENTIAL_ENCRYPTION_KEY must be a base64-encoded 32-byte key",
+      "JOJO_CREDENTIAL_ENCRYPTION_KEY must be a base64-encoded 32-byte key",
     );
   }
   return bytes;
@@ -81,7 +81,7 @@ async function decryptCredentials(
     || typeof envelope.iv !== "string"
     || typeof envelope.ciphertext !== "string"
   ) {
-    throw new Error("Stored Agent credential envelope is invalid");
+    throw new Error("Stored platform credential envelope is invalid");
   }
   const plaintext = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: asArrayBuffer(fromBase64(envelope.iv)) },
@@ -116,7 +116,7 @@ export class EdgeOneEncryptedCredentialPersistence implements CredentialPersiste
       role: "system",
       content: await encryptCredentials(credentials, this.rawKey),
       metadata: {
-        kind: "codex-oauth-credential",
+        kind: "encrypted-platform-credentials",
         version: 1,
       },
     });
@@ -132,7 +132,7 @@ export function createEdgeOneCredentialStore(
   }
   const persistence = new EdgeOneEncryptedCredentialPersistence(
     store,
-    encryptionKey(environment.CODEX_CREDENTIAL_ENCRYPTION_KEY),
+    encryptionKey(environment.JOJO_CREDENTIAL_ENCRYPTION_KEY),
   );
   return new PersistentCredentialStore(persistence);
 }

@@ -20,7 +20,7 @@ function includeSourceFile(source) {
     || segment === "README.md"
     || segment === "tsconfig.json"
     || segment === "smoke.ts"
-    || segment === "push-codex-auth.ts"
+    || segment === "push-credential.ts"
     || segment.endsWith(".tmp")
   );
 }

@@ -8,7 +8,7 @@ jojokanbao.cn                         agent-global.jojokanbao.cn
 ┌──────────────────────┐             ┌──────────────────────────┐
 │ Web + Python API     │ ── HTTPS ─▶ │ /agent  CORS/SSE proxy   │
 │ JOJO/Supabase 登录   │             │ /jojo   Makers Agent     │
-└──────────────────────┘             │ /internal/codex-auth     │
+└──────────────────────┘             │ /internal/credentials    │
                                      └──────────────────────────┘
 ```
 
@@ -16,7 +16,8 @@ jojokanbao.cn                         agent-global.jojokanbao.cn
   请求转给同项目 `/jojo`。
 - `/jojo` 运行 Pi Agent，并在调用 Codex 前依次校验 Cloud Function 服务签名
   和 JOJO/Supabase Bearer Token；浏览器不能直接调用。
-- `/internal/codex-auth` 只供本地管理命令上传 Codex OAuth，不返回凭证。
+- `/internal/credentials` 是平台通用的凭据管理入口，不返回凭据。当前只注册
+  `agent/openai-codex`，以后由其他业务注册自己的 scope/provider 和校验器。
 - `pnpm prepare:agent-deploy` 生成 `.edgeone/agent-deploy`。
 - `.github/workflows/deploy-agent-international.yml` 部署到
   `EDGEONE_AGENT_PROJECT_NAME` 指定的独立 Makers 项目。
@@ -32,8 +33,8 @@ JOJO_AGENT_ALLOWED_ORIGINS=https://jojokanbao.cn
 JOJO_AGENT_UPSTREAM_URL=https://agent-global.jojokanbao.cn/jojo
 JOJO_AGENT_SERVICE_SECRET=<32-byte random key encoded as base64>
 
-CODEX_CREDENTIAL_ENCRYPTION_KEY=<32-byte random key encoded as base64>
-CODEX_CREDENTIAL_ADMIN_TOKEN=<at least 32 random characters>
+JOJO_CREDENTIAL_ENCRYPTION_KEY=<32-byte random key encoded as base64>
+JOJO_OPERATOR_TOKEN=<at least 32 random characters>
 ```
 
 Agent 默认使用 Luna，推理强度固定为 `low`，优先控制 MVP 阶段的订阅额度消耗。
@@ -43,10 +44,10 @@ Agent 运行环境中。`/agent` 使用它对请求方法、会话 ID、规范�
 时间戳和随机 nonce 做 HMAC-SHA256 签名；`/jojo` 在用户鉴权及模型初始化前
 验证签名。签名头不允许由浏览器传入，也不会把密钥发送给客户端。
 
-`CODEX_CREDENTIAL_ENCRYPTION_KEY` 用于把会自动刷新的 Codex OAuth 凭证以
-AES-256-GCM 形式写入 Makers 内置 Store。Agent 的 `context.store` 与 Cloud
-Function 的 `context.agent.store` 访问同一份数据。`CODEX_CREDENTIAL_ADMIN_TOKEN` 只保护凭证
-上传接口；完成初始化后可以从项目环境变量删除它并重新部署。
+`JOJO_CREDENTIAL_ENCRYPTION_KEY` 用于把平台托管凭据以 AES-256-GCM 形式写入
+Makers 内置 Store。Agent 的 `context.store` 与 Cloud Function 的
+`context.agent.store` 访问同一份数据。`JOJO_OPERATOR_TOKEN` 用于平台运维操作，
+不能发送给浏览器；后续由 JOJO 管理员登录和 RBAC 替代。
 
 PowerShell 生成三个随机值：
 
@@ -72,9 +73,9 @@ pnpm --filter @jojo/agent auth:codex
 部署国际项目后，把本地凭证通过 HTTPS 写入加密 Store：
 
 ```powershell
-$env:JOJO_AGENT_DEPLOYMENT_URL="https://agent-global.jojokanbao.cn"
-$env:CODEX_CREDENTIAL_ADMIN_TOKEN="<与 Makers 项目一致>"
-pnpm push:codex-auth
+$env:JOJO_CREDENTIAL_SERVICE_URL="https://agent-global.jojokanbao.cn"
+$env:JOJO_OPERATOR_TOKEN="<与 Makers 项目一致>"
+pnpm push:credentials
 ```
 
 上传体不经过环境变量，因此不受 Makers 单个环境变量 500 字节限制。命令只上传

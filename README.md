@@ -48,7 +48,7 @@ pnpm dev:reader-search
 pnpm dev:data-workbench
 pnpm --filter @jojo/agent auth:codex
 pnpm --filter @jojo/agent smoke -- "你好"
-pnpm push:codex-auth
+pnpm push:credentials
 ```
 
 Python API 测试：

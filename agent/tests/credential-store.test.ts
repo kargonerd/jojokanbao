@@ -27,7 +27,7 @@ describe("EdgeOneEncryptedCredentialPersistence", () => {
     const store = new MemoryConversationStore();
     const credentials = createEdgeOneCredentialStore(
       {
-        CODEX_CREDENTIAL_ENCRYPTION_KEY: Buffer.from(key(3)).toString("base64"),
+        JOJO_CREDENTIAL_ENCRYPTION_KEY: Buffer.from(key(3)).toString("base64"),
       },
       store,
     );
@@ -50,7 +50,7 @@ describe("EdgeOneEncryptedCredentialPersistence", () => {
 
     const secondInstance = createEdgeOneCredentialStore(
       {
-        CODEX_CREDENTIAL_ENCRYPTION_KEY: Buffer.from(key(3)).toString("base64"),
+        JOJO_CREDENTIAL_ENCRYPTION_KEY: Buffer.from(key(3)).toString("base64"),
       },
       store,
     );

@@ -3,12 +3,12 @@ import {
   type CredentialFile,
 } from "../src";
 import { describe, expect, it, vi } from "vitest";
-import { createCodexCredentialAdminHandler } from "../src";
+import { createCredentialAdminHandler } from "../src";
 
-const ADMIN_TOKEN = "a".repeat(32);
+const OPERATOR_TOKEN = "a".repeat(32);
 
-function request(body: unknown, token = ADMIN_TOKEN): Request {
-  return new Request("https://agent.example.com/internal/codex-auth", {
+function request(body: unknown, token = OPERATOR_TOKEN): Request {
+  return new Request("https://agent.example.com/internal/credentials", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -18,7 +18,7 @@ function request(body: unknown, token = ADMIN_TOKEN): Request {
   });
 }
 
-describe("createCodexCredentialAdminHandler", () => {
+describe("createCredentialAdminHandler", () => {
   it("stores the uploaded Codex OAuth credential without returning it", async () => {
     let stored: CredentialFile = {};
     const credentials = new PersistentCredentialStore({
@@ -27,14 +27,16 @@ describe("createCodexCredentialAdminHandler", () => {
         stored = next;
       },
     });
-    const handle = createCodexCredentialAdminHandler({
+    const handle = createCredentialAdminHandler({
       createCredentialStore: () => credentials,
     });
 
     const response = await handle({
-      env: { CODEX_CREDENTIAL_ADMIN_TOKEN: ADMIN_TOKEN },
+      env: { JOJO_OPERATOR_TOKEN: OPERATOR_TOKEN },
       request: request({
-        "openai-codex": {
+        scope: "agent",
+        provider: "openai-codex",
+        credential: {
           type: "oauth",
           access: "access",
           refresh: "refresh",
@@ -53,12 +55,12 @@ describe("createCodexCredentialAdminHandler", () => {
 
   it("rejects an invalid administrator token before touching storage", async () => {
     const createCredentialStore = vi.fn();
-    const handle = createCodexCredentialAdminHandler({
+    const handle = createCredentialAdminHandler({
       createCredentialStore,
     });
 
     const response = await handle({
-      env: { CODEX_CREDENTIAL_ADMIN_TOKEN: ADMIN_TOKEN },
+      env: { JOJO_OPERATOR_TOKEN: OPERATOR_TOKEN },
       request: request({}, "wrong-token"),
     });
 
@@ -66,16 +68,37 @@ describe("createCodexCredentialAdminHandler", () => {
     expect(createCredentialStore).not.toHaveBeenCalled();
   });
 
-  it("accepts only a Pi openai-codex OAuth credential", async () => {
+  it("allowlists and validates each supported scope/provider pair", async () => {
     const createCredentialStore = vi.fn();
-    const handle = createCodexCredentialAdminHandler({
+    const handle = createCredentialAdminHandler({
       createCredentialStore,
     });
 
     const response = await handle({
-      env: { CODEX_CREDENTIAL_ADMIN_TOKEN: ADMIN_TOKEN },
+      env: { JOJO_OPERATOR_TOKEN: OPERATOR_TOKEN },
       request: request({
-        "openai-codex": { type: "api_key", key: "not-oauth" },
+        scope: "agent",
+        provider: "openai-codex",
+        credential: { type: "api_key", key: "not-oauth" },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(createCredentialStore).not.toHaveBeenCalled();
+  });
+
+  it("rejects unregistered platform credential scopes", async () => {
+    const createCredentialStore = vi.fn();
+    const handle = createCredentialAdminHandler({
+      createCredentialStore,
+    });
+
+    const response = await handle({
+      env: { JOJO_OPERATOR_TOKEN: OPERATOR_TOKEN },
+      request: request({
+        scope: "search",
+        provider: "elasticsearch",
+        credential: { type: "api_key", key: "secret" },
       }),
     });
 

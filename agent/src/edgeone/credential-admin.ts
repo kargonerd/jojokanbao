@@ -5,7 +5,7 @@ import type { EdgeOneConversationStore } from "./types";
 
 const MAX_CREDENTIAL_BYTES = 64 * 1024;
 
-export interface CodexCredentialAdminContext {
+export interface CredentialAdminContext {
   agent?: {
     store?: EdgeOneConversationStore;
   };
@@ -13,8 +13,14 @@ export interface CodexCredentialAdminContext {
   request: Request;
 }
 
-export interface CreateCodexCredentialAdminHandlerOptions {
+export interface CreateCredentialAdminHandlerOptions {
   createCredentialStore?: typeof createEdgeOneCredentialStore;
+}
+
+interface CredentialUpload {
+  scope: string;
+  provider: string;
+  credential: unknown;
 }
 
 function jsonResponse(status: number, body: Record<string, unknown>): Response {
@@ -49,28 +55,47 @@ function bearerToken(request: Request): string {
     : "";
 }
 
+function parseUpload(value: unknown): CredentialUpload {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Credential upload must be an object");
+  }
+  const upload = value as Partial<CredentialUpload>;
+  if (
+    typeof upload.scope !== "string"
+    || typeof upload.provider !== "string"
+    || !("credential" in upload)
+  ) {
+    throw new Error("Credential scope, provider and value are required");
+  }
+  return {
+    scope: upload.scope,
+    provider: upload.provider,
+    credential: upload.credential,
+  };
+}
+
 /**
- * One-purpose administration endpoint used by the local `auth:push` command.
+ * Platform credential administration endpoint.
  *
- * Codex OAuth payloads are larger than the Makers environment-variable limit,
- * so they arrive over TLS and are immediately encrypted into Makers Store. This route
- * never returns or logs credential contents.
+ * The endpoint and its operator authentication are intentionally not tied to
+ * Agent or Codex. Each supported scope/provider pair must still be explicitly
+ * allowlisted and validated before it can reach storage.
  */
-export function createCodexCredentialAdminHandler(
-  options: CreateCodexCredentialAdminHandlerOptions = {},
+export function createCredentialAdminHandler(
+  options: CreateCredentialAdminHandlerOptions = {},
 ) {
   return async function onRequest(
-    context: CodexCredentialAdminContext,
+    context: CredentialAdminContext,
   ): Promise<Response> {
     if (context.request.method !== "POST") {
       return jsonResponse(405, { error: "Method not allowed" });
     }
 
     const environment = context.env ?? process.env;
-    const adminToken = environment.CODEX_CREDENTIAL_ADMIN_TOKEN?.trim() ?? "";
+    const adminToken = environment.JOJO_OPERATOR_TOKEN?.trim() ?? "";
     if (adminToken.length < 32) {
       return jsonResponse(503, {
-        error: "Codex credential administration is not configured",
+        error: "Credential administration is not configured",
       });
     }
     if (!await secretMatches(bearerToken(context.request), adminToken)) {
@@ -84,13 +109,22 @@ export function createCodexCredentialAdminHandler(
       return jsonResponse(413, { error: "Credential payload is too large" });
     }
 
+    let upload: CredentialUpload;
     let credential;
     try {
       const body = await context.request.text();
       if (new TextEncoder().encode(body).byteLength > MAX_CREDENTIAL_BYTES) {
         return jsonResponse(413, { error: "Credential payload is too large" });
       }
-      credential = parseCredentialFile(body)["openai-codex"];
+      upload = parseUpload(JSON.parse(body));
+      if (upload.scope !== "agent" || upload.provider !== "openai-codex") {
+        return jsonResponse(400, {
+          error: "Credential scope or provider is not supported",
+        });
+      }
+      credential = parseCredentialFile({
+        [upload.provider]: upload.credential,
+      })[upload.provider];
       if (credential?.type !== "oauth") {
         return jsonResponse(400, {
           error: "A valid openai-codex OAuth credential is required",
@@ -104,7 +138,7 @@ export function createCodexCredentialAdminHandler(
       const credentials = (
         options.createCredentialStore ?? createEdgeOneCredentialStore
       )(environment, context.agent?.store);
-      await credentials.modify("openai-codex", async () => credential);
+      await credentials.modify(upload.provider, async () => credential);
       return new Response(null, {
         status: 204,
         headers: { "Cache-Control": "no-store" },
