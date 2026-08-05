@@ -25,13 +25,14 @@ Git.
 ## Apply to a hosted project
 
 Do not apply an unreviewed feature branch to the production project. After the
-invitation PR is merged, run these commands from the repository root:
+relevant PR is merged, run these commands from `infrastructure/`:
 
 ```bash
+cd infrastructure
 pnpm dlx supabase link --project-ref <project-ref>
 pnpm dlx supabase db push --dry-run
 pnpm dlx supabase db push
-pnpm dlx supabase --workdir infrastructure config push --project-ref <project-ref>
+pnpm dlx supabase config push --project-ref <project-ref>
 ```
 
 The database migration must be pushed before the Auth config because the config
@@ -40,6 +41,11 @@ enables a hook backed by `public.hook_require_signup_invitation`.
 The database also enforces redemption with a trigger. Therefore new user
 creation fails closed if somebody disables or bypasses the hosted hook.
 Existing users are unaffected.
+
+The Auth config explicitly preserves the hosted one-minute email request
+interval, eight-digit OTP setting, TOTP enrollment, and disabled Vector
+Storage. Keep these values checked in: omitted CLI defaults may otherwise
+appear as unrelated hosted config changes during `config push`.
 
 The confirmation email source is
 `supabase/templates/confirmation.html` relative to the Supabase workdir. The
@@ -85,10 +91,53 @@ use the management commands above. Administrator revocation is persistent:
 the owner cannot rotate a disabled code. Deleting an account disables its
 personal invitation before removing the ownership link.
 
+The Web account center reads only the authenticated personal-invitation RPCs;
+it never receives direct access to the private invitation tables.
+
+## Reader nicknames
+
+Every profile has a unique `display_name` such as `雪豹-TGH`, selected by a
+database trigger from a private pool of 3,000 animal and plant names.
+The three-letter suffix omits `I` and `O` to avoid confusion with digits. It
+provides 41,472,000 possible generated names without loading the pool into the
+Web client. Exactly 2,700 base names are three Chinese characters or fewer;
+the remaining 300 longer names preserve some variety without requiring a
+separate weighting rule in the database trigger.
+
+The checked-in pool includes 173 curated familiar names such as `东北虎`,
+`牡丹`, and `蒲公英`, together with 2,827 names derived from *The National
+Checklist of Taiwan (Catalogue of Life in Taiwan, TaiCOL)* Version 1.13. The derived names
+use accepted species records, are normalized to Simplified Chinese, and are
+distributed across taxonomic classes instead of being dominated by insects.
+Source attribution:
+
+- Shao K, Chung K (2024), Taiwan Biodiversity Information Facility (TaiBIF)
+- DOI: https://doi.org/10.15468/auw1kd
+- License: https://creativecommons.org/licenses/by/4.0/
+
+The SQL pool is reproducible from the pinned Darwin Core archive:
+
+```bash
+python -m pip install -r supabase/scripts/requirements.txt
+python supabase/scripts/build_profile_name_pool.py
+```
+
+The builder verifies the source archive checksum before replacing the checked-in
+migration, so an upstream dataset change cannot silently alter assigned-name
+inputs.
+
+The trigger ignores client-supplied signup metadata, so accounts created
+outside the Web client follow the same rule. The migration assigns generated
+names to existing profiles and enforces uniqueness in the database.
+Authenticated browser clients cannot update them. A future reviewed migration
+may introduce reader-controlled renaming without weakening the current
+default.
+
 ## Database tests
 
-Invitation permissions and lifecycle behavior are covered by pgTAP tests in
-`supabase/tests/database/`. From `infrastructure/`, run:
+Invitation permissions, lifecycle behavior, and generated profile names are
+covered by pgTAP tests in `supabase/tests/database/`. From `infrastructure/`,
+run:
 
 ```bash
 supabase db start
@@ -108,7 +157,7 @@ it is intentionally a rollout setting rather than a repository default.
 
 ## Email confirmation
 
-Email confirmation is enabled and returns to `/account`. Supabase's built-in
+Email confirmation is enabled and returns to `/archive`. Supabase's built-in
 SMTP is suitable only for owner testing: it sends only to project team
 addresses and currently allows two messages per hour. Configure custom SMTP
 before inviting external readers.

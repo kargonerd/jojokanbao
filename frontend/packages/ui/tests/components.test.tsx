@@ -158,4 +158,38 @@ describe("Layout primitives", () => {
     fireEvent.mouseEnter(screen.getByRole("button", { name: "Papers" }));
     expect(screen.getByText("Daily")).toBeDefined();
   });
+
+  it("keeps utility actions separate from content navigation", () => {
+    let destination = "";
+    render(
+      <NavBar
+        items={[{ label: "Archive", href: "/archive" }]}
+        actions={[{ label: "Account", href: "/account" }]}
+        onNavigate={(href) => { destination = href; }}
+        isActive={() => false}
+      />,
+    );
+
+    const desktopAccountLink = screen.getByRole("link", { name: "Account" });
+    expect(desktopAccountLink.parentElement?.tagName).toBe("DIV");
+
+    fireEvent.click(desktopAccountLink);
+    expect(destination).toBe("/account");
+  });
+
+  it("renders a reader-code action as a compact identity mark", () => {
+    render(
+      <NavBar
+        items={[]}
+        actions={[{ label: "雪豹-TGH", href: "/account", hint: "读者" }]}
+        onNavigate={() => {}}
+        isActive={() => false}
+      />,
+    );
+
+    const accountLink = screen.getByRole("link", {
+      name: /读者\s+雪豹-TGH/,
+    });
+    expect(accountLink.querySelector("strong")?.textContent).toBe("雪豹-TGH");
+  });
 });

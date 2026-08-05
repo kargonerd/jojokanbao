@@ -3,7 +3,7 @@ import { create, type StoreApi, type UseBoundStore } from "zustand";
 import type { JojoAuthClient } from "./client";
 import { getAuthErrorMessage } from "./errors";
 import { createProfileRepository } from "./profile";
-import type { AuthState, SignUpInput, UpdateProfileInput } from "./types";
+import type { AuthState, SignUpInput } from "./types";
 
 export interface AuthActions {
   clearFeedback: () => void;
@@ -13,7 +13,6 @@ export interface AuthActions {
   sendPasswordReset: (email: string, redirectTo: string) => Promise<void>;
   updatePassword: (password: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
-  updateProfile: (input: UpdateProfileInput) => Promise<void>;
   uploadAvatar: (file: File) => Promise<void>;
 }
 
@@ -123,19 +122,6 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
         set({ profile: await profiles.getOrCreate(user.id) });
       } catch (error) {
         set({ error: getAuthErrorMessage(error) });
-      }
-    },
-
-    updateProfile: async ({ displayName, avatarPath }) => {
-      const user = get().user;
-      if (!user) throw new Error("Not authenticated");
-      set({ busy: true, error: null, notice: null });
-      try {
-        const profile = await profiles.update(user.id, { displayName, avatarPath });
-        set({ profile, busy: false, notice: "账号资料已保存。" });
-      } catch (error) {
-        set({ busy: false, error: getAuthErrorMessage(error) });
-        throw error;
       }
     },
 

@@ -1,15 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { confirmSignupEmail } from "./auth";
+import {
+  confirmSignupEmail,
+  getCurrentReaderDisplayName,
+} from "./auth";
 import { ConfirmationShell } from "./components/ConfirmationShell";
 import { ResendConfirmationForm } from "./components/ResendConfirmationForm";
 
-type ConfirmationStatus = "verifying" | "confirmed" | "invalid";
+type ConfirmationState =
+  | { status: "verifying" }
+  | { status: "confirmed"; displayName: string | null }
+  | { status: "invalid" };
 
 export default function AccountConfirmation() {
   const [searchParams] = useSearchParams();
   const started = useRef(false);
-  const [status, setStatus] = useState<ConfirmationStatus>("verifying");
+  const [state, setState] = useState<ConfirmationState>({
+    status: "verifying",
+  });
+  const [refreshing, setRefreshing] = useState(false);
+  const [readerCodeError, setReaderCodeError] = useState(false);
 
   useEffect(() => {
     if (started.current) return;
@@ -25,16 +35,31 @@ export default function AccountConfirmation() {
     );
 
     if (!tokenHash) {
-      setStatus("invalid");
+      setState({ status: "invalid" });
       return;
     }
 
     void confirmSignupEmail(tokenHash)
-      .then(() => setStatus("confirmed"))
-      .catch(() => setStatus("invalid"));
+      .then(({ displayName }) =>
+        setState({ status: "confirmed", displayName }),
+      )
+      .catch(() => setState({ status: "invalid" }));
   }, [searchParams]);
 
-  if (status === "verifying") {
+  const refreshDisplayName = async () => {
+    setRefreshing(true);
+    setReaderCodeError(false);
+    try {
+      const displayName = await getCurrentReaderDisplayName();
+      setState({ status: "confirmed", displayName });
+    } catch {
+      setReaderCodeError(true);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  if (state.status === "verifying") {
     return (
       <ConfirmationShell>
         <h1 className="m-0 font-serif text-3xl font-bold tracking-[0.08em]">
@@ -48,21 +73,60 @@ export default function AccountConfirmation() {
     );
   }
 
-  if (status === "confirmed") {
+  if (state.status === "confirmed") {
+    const hasDisplayName = Boolean(state.displayName);
     return (
       <ConfirmationShell>
         <h1 className="m-0 font-serif text-3xl font-bold tracking-[0.08em]">
-          邮箱已经确认
+          邮箱验证成功
         </h1>
-        <p className="mt-5 text-base leading-8 text-muted">
-          账号登记完成，现在可以进入 JOJO 看报。
+        <p className="mb-0 mt-4 text-sm font-bold leading-7 text-muted">
+          账号登记完成。请记住系统为你分配的读者代号。
         </p>
-        <Link
-          to="/account"
-          className="mt-8 inline-block border border-red bg-red px-7 py-3 font-serif text-sm font-bold tracking-[0.12em] text-white no-underline transition-[transform,box-shadow] duration-150 hover:-translate-y-0.5 hover:text-white hover:shadow-[4px_4px_0_rgba(139,26,26,.14)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red"
+
+        <section
+          aria-labelledby="confirmed-reader-code"
+          className="mt-7 border-y-2 border-red py-5"
         >
-          进入 JOJO 看报
-        </Link>
+          <p
+            id="confirmed-reader-code"
+            className="m-0 font-sans text-[0.65rem] font-black tracking-[0.18em] text-red"
+          >
+            你的读者代号
+          </p>
+          <strong
+            className={`mt-2 block font-serif text-4xl font-black tracking-[0.1em] ${
+              hasDisplayName ? "text-ink" : "text-muted"
+            }`}
+          >
+            {state.displayName || "正在分配"}
+          </strong>
+          <p className="mb-0 mt-3 text-xs font-bold leading-6 text-muted">
+            {hasDisplayName
+              ? "代号取自全球动植物名称，登录后可在个人账号中再次查看。"
+              : readerCodeError
+                ? "暂时无法读取代号，请检查网络后重试。"
+                : "邮箱已经验证，但代号尚未完成分配，请稍后重新读取。"}
+          </p>
+        </section>
+
+        {hasDisplayName ? (
+          <Link
+            to="/archive"
+            className="mt-7 inline-block border border-red bg-red px-7 py-3 font-serif text-sm font-bold tracking-[0.12em] text-white no-underline transition-[transform,box-shadow] duration-150 hover:-translate-y-0.5 hover:text-white hover:shadow-[4px_4px_0_rgba(139,26,26,.14)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red"
+          >
+            记住了，进入首页
+          </Link>
+        ) : (
+          <button
+            type="button"
+            disabled={refreshing}
+            onClick={() => void refreshDisplayName()}
+            className="mt-7 border border-red bg-red px-7 py-3 font-serif text-sm font-bold tracking-[0.12em] text-white transition-[transform,box-shadow] duration-150 hover:-translate-y-0.5 hover:shadow-[4px_4px_0_rgba(139,26,26,.14)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red disabled:cursor-wait disabled:opacity-60"
+          >
+            {refreshing ? "正在读取…" : "重新读取代号"}
+          </button>
+        )}
       </ConfirmationShell>
     );
   }

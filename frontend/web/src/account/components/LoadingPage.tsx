@@ -1,4 +1,4 @@
-export function LoadingPage({ label = "正在核验账号…" }: { label?: string }) {
+export function LoadingPage({ label = "正在打开读者入口…" }: { label?: string }) {
   return (
     <main className="flex min-h-screen items-center justify-center bg-paper px-5">
       <div className="text-center">

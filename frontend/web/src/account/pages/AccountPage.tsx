@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/account/auth";
 import { AccountBook, type AccountMode } from "@/account/components/AccountBook";
 import { LoginForm, RegisterForm } from "@/account/components/AccountForms";
+import { AccountCenterPage } from "@/account/pages/AccountCenterPage";
 
 export function AccountPage() {
   const navigate = useNavigate();
@@ -24,7 +25,7 @@ export function AccountPage() {
     clearFeedback,
   } = useAuthStore();
 
-  if (user) return <Navigate to="/" replace />;
+  if (user) return <AccountCenterPage userId={user.id} />;
 
   const changeMode = (nextMode: AccountMode) => {
     clearFeedback();

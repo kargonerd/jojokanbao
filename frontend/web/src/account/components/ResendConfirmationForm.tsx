@@ -26,35 +26,49 @@ export function ResendConfirmationForm() {
   return (
     <>
       <form className="mt-8 border-t border-rule pt-7" onSubmit={resend}>
-        <label className="block">
-          <span className="mb-2 block text-sm font-bold tracking-[0.08em]">
+        <div className="grid gap-2 sm:grid-cols-[5rem_minmax(0,1fr)] sm:gap-4">
+          <label
+            htmlFor="confirmation-email"
+            className="pt-3 font-serif text-sm font-bold tracking-[0.1em]"
+          >
             注册邮箱
-          </span>
-          <input
-            type="email"
-            value={email}
-            required
-            autoComplete="email"
-            onChange={(event) => setEmail(event.target.value)}
-            className="w-full border-0 border-b border-ink bg-transparent px-0 py-3 text-base text-ink outline-none transition-colors focus:border-red"
-          />
-        </label>
+          </label>
+          <div>
+            <input
+              id="confirmation-email"
+              type="email"
+              value={email}
+              required
+              autoComplete="email"
+              placeholder="name@example.com"
+              aria-describedby="confirmation-email-note"
+              onChange={(event) => setEmail(event.target.value)}
+              className="h-11 w-full border-0 border-b border-ink bg-transparent px-0 font-sans text-[0.95rem] text-ink shadow-none outline-none transition-colors hover:border-red focus:border-red focus:shadow-none focus-visible:border-b-2 focus-visible:outline-none"
+            />
+            <small
+              id="confirmation-email-note"
+              className="mt-2 block font-sans text-xs leading-5 text-muted"
+            >
+              我们会向这个地址重新发送确认链接
+            </small>
+          </div>
+        </div>
         <button
           type="submit"
           disabled={sending}
-          className="mt-6 border border-red bg-red px-6 py-3 font-serif text-sm font-bold tracking-[0.1em] text-white transition-[transform,box-shadow] duration-150 hover:-translate-y-0.5 hover:shadow-[4px_4px_0_rgba(139,26,26,.14)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red disabled:cursor-wait disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-none"
+          className="mt-7 w-full border border-red bg-red px-6 py-3 font-serif text-sm font-bold tracking-[0.1em] text-white transition-[transform,box-shadow] duration-150 hover:-translate-y-0.5 hover:shadow-[4px_4px_0_rgba(139,26,26,.14)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red disabled:cursor-wait disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-none sm:ml-24 sm:w-auto"
         >
           {sending ? "正在发送…" : "重新发送确认邮件"}
         </button>
       </form>
 
       {notice && (
-        <p role="status" className="mt-6 border-l-2 border-red pl-4 text-sm leading-7 text-ink">
+        <p role="status" className="mt-6 border-l-2 border-red pl-4 text-sm leading-7 text-ink sm:ml-24">
           {notice}
         </p>
       )}
       {error && (
-        <p role="alert" className="mt-6 border-l-2 border-red pl-4 text-sm leading-7 text-red">
+        <p role="alert" className="mt-6 border-l-2 border-red pl-4 text-sm leading-7 text-red sm:ml-24">
           {error}
         </p>
       )}
