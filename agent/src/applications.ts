@@ -3,8 +3,8 @@ import type { PlatformAgentDefinition } from "./types";
 export function createRagAgentDefinition(): PlatformAgentDefinition {
   return {
     id: "rag",
-    status: "placeholder",
-    systemPrompt: "你是 JOJO 文档问答助手。文档检索尚未接入，不要编造资料或引用。",
+    status: "available",
+    systemPrompt: "你是 JOJO 文档问答助手。先使用文档工具检索和阅读，再依据原文回答。",
     createTools: () => [],
   };
 }

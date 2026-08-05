@@ -52,13 +52,18 @@ export interface CreateEdgeOneAgentHandlerOptions {
   authorizeService?: (
     context: EdgeOneAgentContext,
   ) => void | Promise<void>;
-  systemPrompt?: string | ((context: EdgeOneAgentContext) => string);
+  systemPrompt?: string | ((
+    context: EdgeOneAgentContext,
+    body: AgentRequestBody,
+  ) => string);
   tools?: (
     context: EdgeOneAgentContext,
     user: AuthorizedAgentUser,
+    body: AgentRequestBody,
   ) => AgentTool[] | Promise<AgentTool[]>;
   authorize?: (
     context: EdgeOneAgentContext,
+    body: AgentRequestBody,
   ) => AuthorizedAgentUser | Promise<AuthorizedAgentUser>;
   createModelRuntime?: (
     context: EdgeOneAgentContext,
@@ -66,7 +71,14 @@ export interface CreateEdgeOneAgentHandlerOptions {
 }
 
 export interface AgentRequestBody {
+  application: string;
+  userId: string;
   message: string;
+  systemPrompt?: string;
+  rag?: {
+    notebookId: string;
+    sourceIds: string[];
+  };
 }
 
 export type StoredAgentHistory = AgentMessage[];

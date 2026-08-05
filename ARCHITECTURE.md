@@ -29,7 +29,9 @@ Homepage 已启用 Astro React integration，可以直接复用 `@jojo/ui` 组�
 - `backend/src/app/main.py`：统一公网 FastAPI 入口。
 - `backend/src/app/core`：认证、配置、错误和 HTTP 中间件。
 - `backend/src/app/account`：已启用的账号 API。
-- `backend/src/app/olds`、`rag`：未上线模块，默认不进入公开路由或部署产物。
+- `backend/src/app/rag`：RAG 查询入口、Agent SSE 转发和无向量文档工具；旧
+  NotebookLM 文件仍不进入部署产物。
+- `backend/src/app/olds`：未上线模块，默认不进入公开路由或部署产物。
 
 本地运行主 API：
 
@@ -44,13 +46,15 @@ EdgeOne 专有入口位于 `infrastructure/edgeone/functions`，只导入
 ## Agent
 
 - `agent`：单一 `@jojo/agent` 包，包含 Pi Agent 运行层、Codex 模型与凭证配置。
-- `agent/src/edgeone`：同一包内的 EdgeOne 登录、SSE、服务鉴权和加密 Store
+- `agent/src/edgeone`：同一包内的 SSE、服务鉴权、远程工具和加密 Store
   适配。
-- `agent/src/applications.ts`：RAG、Olds 的最小业务占位函数；功能增长后再拆分。
+- `agent/src/applications.ts`：RAG 可用状态和 Olds 最小占位函数。
 - Codex Agent 使用不含中国大陆的独立 Makers 项目和域名；其他模型后续通过
   Makers Models 接入。
-- Agent 项目用一个不运行 Pi 的 Node Cloud Function 处理浏览器 CORS 预检，再把
-  SSE 请求转给同项目的 Makers Agent。
+- 浏览器只调用统一 Python API；国际 Agent 的 `/internal-agent` 仅接受主后端
+  的 HMAC 服务签名，不提供浏览器 CORS 代理。
+- RAG Agent 像代码 Agent 使用 grep/read 一样，通过签名回调使用关键词检索和
+  区间读取工具，不做 embedding。
 - Pi Agent 使用 Makers Agents Runtime，不塞进 Node Cloud Functions。
 
 ## Tools and infrastructure

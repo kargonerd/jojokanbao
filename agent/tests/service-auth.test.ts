@@ -36,6 +36,27 @@ async function signedContext(input: {
 }
 
 describe("Agent service authentication", () => {
+  it("matches the Python backend signature fixture", async () => {
+    const headers = await createAgentServiceSignatureHeaders({
+      body: {
+        application: "rag",
+        message: "你好",
+        rag: { notebookId: "book", sourceIds: ["source"] },
+        systemPrompt: "只依据原文",
+        userId: "user-1",
+      },
+      conversationId: "conversation-001",
+      environment,
+      method: "POST",
+      nonce: "nonce_0000000000000000000099",
+      now: 1_800_000_000_000,
+    });
+
+    expect(headers.get("X-JOJO-Service-Signature")).toBe(
+      "9UvMA80GDuJnyan_xsFDM9NjEg7MG7WJBplc-G91XDY",
+    );
+  });
+
   it("accepts a fresh Cloud Function signature", async () => {
     const context = await signedContext({
       body: { z: 1, message: "你好", a: true },

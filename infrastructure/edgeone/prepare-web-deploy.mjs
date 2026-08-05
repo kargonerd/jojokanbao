@@ -20,6 +20,16 @@ async function requireFile(filePath) {
 function includeFunctionFile(source) {
   const relative = path.relative(functionSource, source);
   const segments = relative.split(path.sep);
+  const ragIndex = segments.indexOf("rag");
+  if (ragIndex >= 0) {
+    if (segments.length === ragIndex + 1) return true;
+    return new Set([
+      "__init__.py",
+      "agent_client.py",
+      "documents.py",
+      "router.py",
+    ]).has(segments[ragIndex + 1]);
+  }
   return !segments.some((segment) =>
     segment === "tests"
     || segment === "__pycache__"
@@ -27,7 +37,6 @@ function includeFunctionFile(source) {
     || segment === ".venv"
     || segment === "requirements-dev.txt"
     || segment === "olds"
-    || segment === "rag"
   );
 }
 

@@ -60,7 +60,23 @@ export function ChatPage() {
           {messages.map((msg, i) => (
             <div key={i} className={`max-w-[80%] ${msg.role === "user" ? "ml-auto" : ""}`}>
               {msg.role === "assistant" ? (
-                <div className="border border-rule bg-paper px-4 py-3 text-sm leading-7" dangerouslySetInnerHTML={{ __html: formatChatMarkdown(msg.content) }} />
+                <div className="border border-rule bg-paper px-4 py-3">
+                  <div
+                    className="text-sm leading-7"
+                    dangerouslySetInnerHTML={{ __html: formatChatMarkdown(msg.content) }}
+                  />
+                  {msg.usage ? (
+                    <div className="mt-3 border-t border-rule pt-2 text-[11px] text-muted">
+                      {msg.usage.totalTokens.toLocaleString()} tokens
+                      {" · "}
+                      输入 {msg.usage.inputTokens.toLocaleString()}
+                      {" · "}
+                      输出 {msg.usage.outputTokens.toLocaleString()}
+                      {" · "}
+                      估算 ${msg.usage.cost.total.toFixed(4)}
+                    </div>
+                  ) : null}
+                </div>
               ) : (
                 <div className="whitespace-pre-wrap bg-red px-4 py-3 text-sm leading-7 text-cream">{msg.content}</div>
               )}

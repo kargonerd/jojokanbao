@@ -1,4 +1,5 @@
 import axios from "axios";
+import { authClient } from "../account/auth";
 import type {
   RagAdminAccount,
   RagAdminConfig,
@@ -6,11 +7,16 @@ import type {
   RagNotebook,
   RagPerson,
   RagReference,
+  RagStreamDone,
   RagSource,
   RagSourceDocument,
 } from "./types";
 
-const BASE = (import.meta.env.VITE_RAG_API_BASE || "").replace(/\/$/, "");
+const BASE = (
+  import.meta.env.VITE_RAG_API_BASE
+  || import.meta.env.VITE_PLATFORM_API_BASE
+  || "/api"
+).replace(/\/$/, "");
 
 type HttpMethod = "delete" | "get" | "post" | "put";
 
@@ -32,8 +38,8 @@ async function request<T>(method: HttpMethod, url: string, data?: unknown, token
 
 // Public
 export const notebookApi = {
-  list: () => request<RagNotebook[]>("get", "/api/notebooks"),
-  getSources: (nid: string) => request<RagSource[]>("get", `/api/notebooks/${encodeURIComponent(nid)}/sources`),
+  list: () => request<RagNotebook[]>("get", "/v1/rag/notebooks"),
+  getSources: (nid: string) => request<RagSource[]>("get", `/v1/rag/notebooks/${encodeURIComponent(nid)}/sources`),
   getSourceFulltext: (nid: string, sid: string) => request<string>("get", `/api/notebooks/${nid}/sources/${sid}/fulltext`),
 };
 
@@ -49,20 +55,38 @@ export const catalogApi = {
 };
 
 // Chat (streaming)
-export function askStream(params: { notebook_id: string; question: string; conversation_id?: string; source_ids?: string[] }, onChunk: (text: string) => void, onDone: (refs?: RagReference[]) => void, onError: (err: string) => void) {
+export function askStream(
+  params: {
+    notebook_id: string;
+    question: string;
+    conversation_id?: string;
+    source_ids: string[];
+  },
+  onChunk: (text: string) => void,
+  onDone: (result: RagStreamDone) => void,
+  onError: (err: string) => void,
+) {
   const ctrl = new AbortController();
   let settled = false;
-  const finish = (references?: RagReference[]) => {
+  const finish = (result: RagStreamDone = {}) => {
     if (settled) return;
     settled = true;
-    onDone(references);
+    onDone(result);
   };
 
-  void fetch(`${BASE}/api/chat/stream`, {
+  void authClient.auth.getSession().then(({ data, error }) => {
+    if (error) throw error;
+    const token = data.session?.access_token;
+    if (!token) throw new Error("请先登录 JOJO，再使用文档问答");
+    return fetch(`${BASE}/v1/rag/chat/stream`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(params),
     signal: ctrl.signal,
+    });
   }).then(async (res) => {
     if (!res.ok) throw new Error(`RAG 服务返回 HTTP ${res.status}`);
     if (!res.body) throw new Error("RAG 服务没有返回数据流");
@@ -70,33 +94,71 @@ export function askStream(params: { notebook_id: string; question: string; conve
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let eventName = "";
+    let dataLines: string[] = [];
+    const dispatch = () => {
+      if (dataLines.length === 0) {
+        eventName = "";
+        return false;
+      }
+      const payload = dataLines.join("\n");
+      const resolvedEvent = eventName || "message";
+      eventName = "";
+      dataLines = [];
+      if (payload === "[DONE]") {
+        finish();
+        return true;
+      }
+      let event: unknown;
+      try {
+        event = JSON.parse(payload);
+      } catch {
+        if (resolvedEvent === "message") onChunk(payload);
+        return false;
+      }
+      if (!isRecord(event)) return false;
+      const legacyType = typeof event.type === "string" ? event.type : undefined;
+      const type = resolvedEvent === "message" ? legacyType : resolvedEvent;
+      if (
+        (type === "text_delta" && typeof event.delta === "string")
+        || (type === "chunk" && typeof event.content === "string")
+      ) {
+        onChunk(type === "text_delta" ? event.delta as string : event.content as string);
+      } else if (type === "done") {
+        finish({
+          conversationId: typeof event.conversationId === "string"
+            ? event.conversationId
+            : undefined,
+          usage: isRecord(event.usage)
+            ? event.usage as unknown as RagStreamDone["usage"]
+            : undefined,
+        });
+        return true;
+      } else if (type === "error") {
+        settled = true;
+        onError(typeof event.message === "string" ? event.message : "RAG 流式请求失败");
+        return true;
+      }
+      return false;
+    };
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
+      const lines = buffer.split(/\r?\n/);
       buffer = lines.pop()!;
       for (const line of lines) {
-        if (!line.startsWith("data:")) continue;
-        const payload = line.slice(5).trim();
-        if (payload === "[DONE]") { finish(); return; }
-        let event: unknown;
-        try {
-          event = JSON.parse(payload);
-        } catch {
-          onChunk(payload);
-          continue;
-        }
-        if (!isRecord(event) || typeof event.type !== "string") continue;
-        if (event.type === "chunk" && typeof event.content === "string") onChunk(event.content);
-        else if (event.type === "done") { finish(Array.isArray(event.references) ? event.references as RagReference[] : undefined); return; }
-        else if (event.type === "error") {
-          settled = true;
-          onError(typeof event.message === "string" ? event.message : "RAG 流式请求失败");
-          return;
+        if (!line) {
+          if (dispatch()) return;
+        } else if (line.startsWith("event:")) {
+          eventName = line.slice(6).trim();
+        } else if (line.startsWith("data:")) {
+          dataLines.push(line.slice(5).trimStart());
         }
       }
     }
+    if (buffer) dataLines.push(buffer);
+    dispatch();
     finish();
   }).catch((error: unknown) => {
     if (error instanceof DOMException && error.name === "AbortError") return;

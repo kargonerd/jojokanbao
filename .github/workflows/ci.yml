@@ -322,14 +322,16 @@ jobs:
           test ! -e .edgeone/web-deploy/cloud-functions/tests
           test ! -e .edgeone/web-deploy/cloud-functions/requirements-dev.txt
           test ! -e .edgeone/web-deploy/cloud-functions/app/olds
-          test ! -e .edgeone/web-deploy/cloud-functions/app/rag
+          test -f .edgeone/web-deploy/cloud-functions/app/rag/router.py
+          test -f .edgeone/web-deploy/cloud-functions/app/rag/documents.py
+          test ! -e .edgeone/web-deploy/cloud-functions/app/rag/flask_app.py
           node -e 'const config = require("./.edgeone/web-deploy/edgeone.json"); if ("devCommand" in config) process.exit(1)'
           node infrastructure/edgeone/prepare-agent-deploy.mjs
-          test -f .edgeone/agent-deploy/agents/jojo/index.ts
-          test -f .edgeone/agent-deploy/agents/jojo/health.ts
+          test -f .edgeone/agent-deploy/agents/internal-agent/index.ts
+          test -f .edgeone/agent-deploy/agents/internal-agent/health.ts
           test -f .edgeone/agent-deploy/agent/src/runtime.ts
           test -f .edgeone/agent-deploy/agent/src/edgeone/handler.ts
-          test -f .edgeone/agent-deploy/cloud-functions/agent/index.ts
+          test ! -e .edgeone/agent-deploy/cloud-functions/agent
           test -f .edgeone/agent-deploy/cloud-functions/internal/credentials/index.ts
           test -f .edgeone/agent-deploy/edgeone.json
           test -f .edgeone/agent-deploy/package.json

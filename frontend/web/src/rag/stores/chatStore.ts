@@ -93,9 +93,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
     askStream(
       { notebook_id: selectedNotebook, question, conversation_id: conversationId || undefined, source_ids: selectedSourceIds },
       (chunk) => { content += chunk; set({ streamContent: content }); },
-      (refs) => {
-        const final = [...newMessages, { role: "assistant" as const, content, references: refs }];
-        set({ messages: final, streaming: false, streamContent: "" });
+      (result) => {
+        const final = [
+          ...newMessages,
+          {
+            role: "assistant" as const,
+            content,
+            usage: result.usage,
+          },
+        ];
+        set({
+          messages: final,
+          streaming: false,
+          streamContent: "",
+          conversationId: result.conversationId ?? conversationId,
+        });
         localStorage.setItem(`rag-messages-${selectedNotebook}`, JSON.stringify(final));
       },
       (err) => {

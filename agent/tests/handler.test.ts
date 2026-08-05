@@ -26,7 +26,6 @@ describe("createEdgeOneAgentHandler", () => {
     });
     const handle = createEdgeOneAgentHandler({
       authorizeService: async () => undefined,
-      authorize: async () => ({ id: "user-1" }),
       createModelRuntime: async () => ({
         config: {
           provider: "openai-codex",
@@ -40,7 +39,13 @@ describe("createEdgeOneAgentHandler", () => {
 
     const response = await handle({
       conversation_id: "conversation-1",
-      request: { body: { message: "你好" } },
+      request: {
+        body: {
+          application: "test",
+          userId: "user-1",
+          message: "你好",
+        },
+      },
       store: {
         getMessages,
         appendMessage,
@@ -83,7 +88,13 @@ describe("createEdgeOneAgentHandler", () => {
     });
 
     const response = await handle({
-      request: { body: { message: "Hello" } },
+      request: {
+        body: {
+          application: "test",
+          userId: "user-1",
+          message: "Hello",
+        },
+      },
     });
 
     expect(response.status).toBe(401);
@@ -105,7 +116,11 @@ describe("createEdgeOneAgentHandler", () => {
       conversation_id: "conversation-1",
       request: {
         method: "POST",
-        body: { message: "Hello" },
+        body: {
+          application: "test",
+          userId: "user-1",
+          message: "Hello",
+        },
       },
     });
 

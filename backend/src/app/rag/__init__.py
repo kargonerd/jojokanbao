@@ -1,1 +1,1 @@
-"""RAG prototype code. The public API is not enabled yet."""
+"""RAG API, Agent bridge, and legacy NotebookLM prototype modules."""

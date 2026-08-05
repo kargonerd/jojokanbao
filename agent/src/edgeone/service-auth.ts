@@ -1,5 +1,5 @@
 import type { AgentEnvironment } from "../models";
-import { AgentHttpError } from "./auth";
+import { AgentHttpError } from "./http-error";
 import type { EdgeOneAgentContext } from "./types";
 
 export const AGENT_SERVICE_AUTH_HEADERS = {

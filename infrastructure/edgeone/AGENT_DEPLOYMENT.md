@@ -6,16 +6,20 @@
 ```text
 jojokanbao.cn                         agent-global.jojokanbao.cn
 ┌──────────────────────┐             ┌──────────────────────────┐
-│ Web + Python API     │ ── HTTPS ─▶ │ /agent  CORS/SSE proxy   │
-│ JOJO/Supabase 登录   │             │ /jojo   Makers Agent     │
+│ Web                  │             │ /internal-agent          │
+│   ↓                  │             │   Pi + Codex + tools     │
+│ Python API           │ ── HMAC ──▶ │                          │
+│ 鉴权/Prompt/SSE      │ ◀─ HMAC ─── │ document tool callbacks  │
 └──────────────────────┘             │ /internal/credentials    │
                                      └──────────────────────────┘
 ```
 
-- `/agent` 处理浏览器 CORS 预检，为请求添加短时 HMAC 服务签名，再把 SSE
-  请求转给同项目 `/jojo`。
-- `/jojo` 运行 Pi Agent，并在调用 Codex 前依次校验 Cloud Function 服务签名
-  和 JOJO/Supabase Bearer Token；浏览器不能直接调用。
+- 浏览器只调用统一 Python API，由 Python 校验 JOJO/Supabase Bearer Token、
+  组装业务 Prompt，并把 Agent SSE 原样流式返回。
+- `/internal-agent` 运行 Pi Agent，只接受 Python API 的短时 HMAC 服务签名；
+  它不处理 CORS，也不接收浏览器 Bearer Token。
+- RAG Agent 通过同一套 HMAC 回调 Python API 的文档检索和区间读取接口。检索是
+  原始 Markdown 关键词搜索，不使用 embedding 或向量库。
 - `/internal/credentials` 是平台通用的凭据管理入口，不返回凭据。当前只注册
   `agent/openai-codex`，以后由其他业务注册自己的 scope/provider 和校验器。
 - `pnpm prepare:agent-deploy` 生成 `.edgeone/agent-deploy`。
@@ -25,12 +29,8 @@ jojokanbao.cn                         agent-global.jojokanbao.cn
 ## 项目环境变量
 
 ```dotenv
-VITE_SUPABASE_URL=https://PROJECT.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=...
-
 JOJO_AGENT_MODEL=gpt-5.6-luna
-JOJO_AGENT_ALLOWED_ORIGINS=https://jojokanbao.cn
-JOJO_AGENT_UPSTREAM_URL=https://agent-global.jojokanbao.cn/jojo
+JOJO_PLATFORM_API_URL=https://jojokanbao.cn/api
 JOJO_AGENT_SERVICE_SECRET=<32-byte random key encoded as base64>
 
 JOJO_CREDENTIAL_ENCRYPTION_KEY=<32-byte random key encoded as base64>
@@ -39,10 +39,9 @@ JOJO_OPERATOR_TOKEN=<at least 32 random characters>
 
 Agent 默认使用 Luna，推理强度固定为 `low`，优先控制 MVP 阶段的订阅额度消耗。
 
-`JOJO_AGENT_SERVICE_SECRET` 只保存在同一 Makers 项目的 Cloud Function 和
-Agent 运行环境中。`/agent` 使用它对请求方法、会话 ID、规范化请求体、60 秒
-时间戳和随机 nonce 做 HMAC-SHA256 签名；`/jojo` 在用户鉴权及模型初始化前
-验证签名。签名头不允许由浏览器传入，也不会把密钥发送给客户端。
+`JOJO_AGENT_SERVICE_SECRET` 同时保存在主 Python Makers 项目和国际 Agent
+Makers 项目中。两端使用它对请求方法、会话 ID、规范化请求体、60 秒时间戳和
+随机 nonce 做 HMAC-SHA256 签名。签名头和密钥都不会发送给浏览器。
 
 `JOJO_CREDENTIAL_ENCRYPTION_KEY` 用于把平台托管凭据以 AES-256-GCM 形式写入
 Makers 内置 Store。Agent 的 `context.store` 与 Cloud Function 的
@@ -81,19 +80,19 @@ pnpm push:credentials
 上传体不经过环境变量，因此不受 Makers 单个环境变量 500 字节限制。命令只上传
 `openai-codex` OAuth 项，不上传 Pi 文件里的其他 Provider 凭证。
 
-## 调用
+## 主 Python 项目环境变量
 
-```http
-POST /agent
-Authorization: Bearer <supabase-access-token>
-Content-Type: application/json
-Makers-Conversation-Id: conv_a1b2c3d4
-
-{"message":"你好"}
+```dotenv
+JOJO_AGENT_INTERNAL_URL=https://agent-global.jojokanbao.cn/internal-agent
+JOJO_AGENT_SERVICE_SECRET=<与国际项目相同>
+JOJO_AGENT_TIMEOUT_SECONDS=120
+JOJO_RAG_DOCUMENT_URL=https://document.jojokanbao.cn/path/to/book.md
+JOJO_RAG_DOCUMENT_TITLE=革命造反年代：上海文革运动史稿 I
 ```
 
-`Makers-Conversation-Id` 必须是客户端生成并持续复用的 6–36 位 URL-safe 会话
-ID。SSE 的 `usage` 与 `done` 事件均包含 token 数和 Pi 提供的美元成本估算。
+浏览器调用 `POST /api/v1/rag/chat/stream`。Python API 生成或复用 6–36 位
+URL-safe 会话 ID，内部调用 `/internal-agent`。SSE 的 `usage` 与 `done` 事件
+均包含 token 数和 Pi 提供的美元成本估算。
 
 可选预算：
 

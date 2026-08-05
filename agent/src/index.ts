@@ -47,8 +47,7 @@ export type { Api, AssistantMessage, Model, Models } from "@earendil-works/pi-ai
 
 export {
   AgentHttpError,
-  authorizeSupabaseUser,
-} from "./edgeone/auth";
+} from "./edgeone/http-error";
 export {
   createCredentialAdminHandler,
 } from "./edgeone/credential-admin";
@@ -64,6 +63,12 @@ export {
   createEdgeOneAgentHandler,
   createEdgeOneAgentHealthHandler,
 } from "./edgeone/handler";
+export {
+  createRemoteDocumentTools,
+} from "./edgeone/remote-document-tools";
+export type {
+  RemoteDocumentToolOptions,
+} from "./edgeone/remote-document-tools";
 export {
   AGENT_SERVICE_AUTH_HEADERS,
   authorizeAgentServiceRequest,

@@ -7,6 +7,7 @@ interface ImportMetaEnv {
   readonly VITE_ENABLE_OLDS?: string;
   readonly VITE_ENABLE_RAG?: string;
   readonly VITE_OLDS_API_BASE?: string;
+  readonly VITE_PLATFORM_API_BASE?: string;
   readonly VITE_RAG_API_BASE?: string;
 }
 

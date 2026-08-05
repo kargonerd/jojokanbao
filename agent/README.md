@@ -12,8 +12,8 @@ pi-agent-core / Agent
 @jojo/agent
 └── JOJO 事件格式、预算、token/cost 和 Codex 模型配置
 
-applications.ts
-└── RAG、Olds 的占位提示词和空工具列表
+EdgeOne adapter
+└── 仅服务签名可调用的内部 Agent、远程文档检索与读取工具
 ```
 
 这里使用 `pi-agent-core` 的高层 `Agent`，不使用 `pi-coding-agent`，也不自行
@@ -25,6 +25,8 @@ applications.ts
 ```powershell
 pnpm --filter @jojo/agent auth:codex
 pnpm --filter @jojo/agent smoke -- "用一句话介绍你自己"
+$env:JOJO_RAG_DOCUMENT_PATH="C:\path\to\book.md"
+pnpm --filter @jojo/agent rag:smoke -- "安亭事件是怎么发生的？"
 ```
 
 Pi 会打开浏览器完成 ChatGPT 登录，并把凭证写入被 Git 忽略的

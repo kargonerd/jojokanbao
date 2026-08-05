@@ -15,7 +15,7 @@ import type {
   AgentTool,
 } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { AgentHttpError, authorizeSupabaseUser } from "./auth";
+import { AgentHttpError } from "./http-error";
 import { createEdgeOneCredentialStore } from "./credential-store";
 import { authorizeAgentServiceRequest } from "./service-auth";
 import type {
@@ -45,14 +45,74 @@ function requestBody(value: unknown): AgentRequestBody {
   if (!value || typeof value !== "object" || !("message" in value)) {
     throw new AgentHttpError(400, "message is required");
   }
-  const message = (value as { message?: unknown }).message;
+  const candidate = value as Record<string, unknown>;
+  const message = candidate.message;
   if (typeof message !== "string" || !message.trim()) {
     throw new AgentHttpError(400, "message is required");
   }
   if (message.length > 10_000) {
     throw new AgentHttpError(413, "message exceeds 10000 characters");
   }
-  return { message: message.trim() };
+  const userId = candidate.userId;
+  if (
+    typeof userId !== "string"
+    || !/^[0-9A-Za-z_-]{1,128}$/.test(userId)
+  ) {
+    throw new AgentHttpError(400, "userId is required");
+  }
+  const application = candidate.application;
+  if (
+    typeof application !== "string"
+    || !/^[0-9a-z-]{1,32}$/.test(application)
+  ) {
+    throw new AgentHttpError(400, "application is required");
+  }
+  const systemPromptValue = candidate.systemPrompt;
+  if (
+    systemPromptValue !== undefined
+    && (
+      typeof systemPromptValue !== "string"
+      || !systemPromptValue.trim()
+      || systemPromptValue.length > 10_000
+    )
+  ) {
+    throw new AgentHttpError(400, "systemPrompt is invalid");
+  }
+  let rag: AgentRequestBody["rag"];
+  if (candidate.rag !== undefined) {
+    if (!candidate.rag || typeof candidate.rag !== "object") {
+      throw new AgentHttpError(400, "rag context is invalid");
+    }
+    const ragValue = candidate.rag as Record<string, unknown>;
+    if (
+      typeof ragValue.notebookId !== "string"
+      || !ragValue.notebookId
+      || !Array.isArray(ragValue.sourceIds)
+      || ragValue.sourceIds.length === 0
+      || ragValue.sourceIds.length > 20
+      || !ragValue.sourceIds.every(
+        (sourceId) => typeof sourceId === "string" && sourceId.length <= 128,
+      )
+    ) {
+      throw new AgentHttpError(400, "rag context is invalid");
+    }
+    rag = {
+      notebookId: ragValue.notebookId,
+      sourceIds: ragValue.sourceIds,
+    };
+  }
+  if (application === "rag" && !rag) {
+    throw new AgentHttpError(400, "rag context is required");
+  }
+  return {
+    application,
+    userId,
+    message: message.trim(),
+    ...(typeof systemPromptValue === "string"
+      ? { systemPrompt: systemPromptValue.trim() }
+      : {}),
+    ...(rag ? { rag } : {}),
+  };
 }
 
 function emptyUsage(): AssistantMessage["usage"] {
@@ -126,9 +186,13 @@ async function defaultModelRuntime(
 function systemPrompt(
   options: CreateEdgeOneAgentHandlerOptions,
   context: EdgeOneAgentContext,
+  body: AgentRequestBody,
 ): string {
-  if (typeof options.systemPrompt === "function") return options.systemPrompt(context);
+  if (typeof options.systemPrompt === "function") {
+    return options.systemPrompt(context, body);
+  }
   if (options.systemPrompt) return options.systemPrompt;
+  if (body.systemPrompt) return body.systemPrompt;
   return (context.env ?? process.env).JOJO_AGENT_SYSTEM_PROMPT?.trim()
     || "你是 JOJO Platform 的通用助手。准确回答问题；无法确认时明确说明。";
 }
@@ -186,7 +250,7 @@ export function createEdgeOneAgentHandler(
     try {
       await (options.authorizeService ?? authorizeAgentServiceRequest)(context);
       body = requestBody(context.request.body);
-      user = await (options.authorize ?? authorizeSupabaseUser)(context);
+      user = await options.authorize?.(context, body) ?? { id: body.userId };
       runtime = await (
         options.createModelRuntime?.(context)
         ?? defaultModelRuntime(context)
@@ -212,7 +276,7 @@ export function createEdgeOneAgentHandler(
     let tools: AgentTool[];
     try {
       history = await loadHistory(context, storageConversationId, runtime);
-      tools = await options.tools?.(context, user) ?? [];
+      tools = await options.tools?.(context, user, body) ?? [];
       await saveMessage(context, {
         conversationId: storageConversationId,
         role: "user",
@@ -239,7 +303,7 @@ export function createEdgeOneAgentHandler(
             conversationId,
           }));
           const result = await runPlatformAgent({
-            systemPrompt: systemPrompt(options, context),
+            systemPrompt: systemPrompt(options, context, body),
             prompt: body.message,
             history,
             tools,

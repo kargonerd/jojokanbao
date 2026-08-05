@@ -20,6 +20,7 @@ function includeSourceFile(source) {
     || segment === "README.md"
     || segment === "tsconfig.json"
     || segment === "smoke.ts"
+    || segment === "rag-smoke.ts"
     || segment === "push-credential.ts"
     || segment.endsWith(".tmp")
   );
