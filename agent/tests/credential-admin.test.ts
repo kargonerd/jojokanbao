@@ -1,7 +1,7 @@
 import {
   PersistentCredentialStore,
   type CredentialFile,
-} from "@jojo/agent-runtime";
+} from "../src";
 import { describe, expect, it, vi } from "vitest";
 import { createCodexCredentialAdminHandler } from "../src";
 

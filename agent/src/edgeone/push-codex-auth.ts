@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { parseCredentialFile } from "@jojo/agent-runtime";
+import { parseCredentialFile } from "../credentials";
 
 const deploymentUrl = process.env.JOJO_AGENT_DEPLOYMENT_URL?.trim();
 const adminToken = process.env.CODEX_CREDENTIAL_ADMIN_TOKEN?.trim();
@@ -11,7 +11,7 @@ if (!deploymentUrl || !adminToken) {
 }
 
 const authPath = process.env.JOJO_AGENT_AUTH_PATH?.trim()
-  || fileURLToPath(new URL("../../runtime/auth.json", import.meta.url));
+  || fileURLToPath(new URL("../../auth.json", import.meta.url));
 const credentials = parseCredentialFile(await readFile(authPath, "utf8"));
 const codex = credentials["openai-codex"];
 if (codex?.type !== "oauth") {

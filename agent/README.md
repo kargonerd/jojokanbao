@@ -1,4 +1,4 @@
-# @jojo/agent-runtime
+# @jojo/agent
 
 JOJO Platform 的通用 Pi Agent 运行层。当前阶段只接入 Codex OAuth。
 
@@ -9,7 +9,7 @@ pi-ai
 pi-agent-core / Agent
 └── 消息状态、Agent Loop、工具执行、事件和取消
 
-@jojo/agent-runtime
+@jojo/agent
 └── JOJO 事件格式、预算、token/cost 和 Codex 模型配置
 
 applications.ts
@@ -23,12 +23,12 @@ applications.ts
 ## 本地登录与验证
 
 ```powershell
-pnpm --filter @jojo/agent-runtime auth:codex
-pnpm --filter @jojo/agent-runtime smoke -- "用一句话介绍你自己"
+pnpm --filter @jojo/agent auth:codex
+pnpm --filter @jojo/agent smoke -- "用一句话介绍你自己"
 ```
 
 Pi 会打开浏览器完成 ChatGPT 登录，并把凭证写入被 Git 忽略的
-`agent/runtime/auth.json`。也可以用 `JOJO_AGENT_AUTH_PATH` 指向已有的 Pi
+`agent/auth.json`。也可以用 `JOJO_AGENT_AUTH_PATH` 指向已有的 Pi
 兼容凭证文件。
 
 默认使用 `gpt-5.6-luna`，推理强度固定为 `low`。模型可以覆盖：
@@ -46,12 +46,12 @@ import {
   modelRuntimeStream,
   resolvePlatformModelConfig,
   runPlatformAgent,
-} from "@jojo/agent-runtime";
+} from "@jojo/agent";
 
 const config = resolvePlatformModelConfig(process.env);
 const runtime = await createPlatformModelRuntime({
   config,
-  credentials: new JsonCredentialStore("agent/runtime/auth.json"),
+  credentials: new JsonCredentialStore("agent/auth.json"),
 });
 
 const result = await runPlatformAgent({

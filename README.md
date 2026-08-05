@@ -46,8 +46,8 @@ pnpm dev:desktop
 pnpm dev:backend
 pnpm dev:reader-search
 pnpm dev:data-workbench
-pnpm --filter @jojo/agent-runtime auth:codex
-pnpm --filter @jojo/agent-runtime smoke -- "你好"
+pnpm --filter @jojo/agent auth:codex
+pnpm --filter @jojo/agent smoke -- "你好"
 pnpm push:codex-auth
 ```
 

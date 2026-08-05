@@ -11,7 +11,7 @@ import {
 const prompt = process.argv.slice(2).join(" ").trim();
 if (!prompt) {
   throw new Error(
-    'Usage: pnpm --filter @jojo/agent-runtime smoke -- "你的问题"',
+    'Usage: pnpm --filter @jojo/agent smoke -- "你的问题"',
   );
 }
 

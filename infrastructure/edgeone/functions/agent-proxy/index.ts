@@ -1,6 +1,6 @@
 import {
   createAgentServiceSignatureHeaders,
-} from "@jojo/agent-edgeone";
+} from "@jojo/agent";
 
 const CONVERSATION_HEADER = "Makers-Conversation-Id";
 const CONVERSATION_ID = /^[0-9A-Za-z._-]{6,36}$/;

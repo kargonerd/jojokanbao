@@ -3,6 +3,14 @@ import path from "node:path";
 
 function includeSourceFile(source) {
   const segments = source.split(path.sep);
+  const agentRoot = segments.lastIndexOf("agent");
+  if (
+    agentRoot >= 0
+    && (segments[agentRoot + 1] === "runtime"
+      || segments[agentRoot + 1] === "edgeone")
+  ) {
+    return false;
+  }
   return !segments.some((segment) =>
     segment === "node_modules"
     || segment === ".turbo"
@@ -39,11 +47,9 @@ export async function copyAgentAssets({
     filter: includeSourceFile,
   });
 
-  const packagesOutput = path.join(outputDirectory, "agent");
-  await mkdir(packagesOutput, { recursive: true });
   await copyPackage(
-    path.join(repositoryRoot, "agent", "runtime"),
-    path.join(packagesOutput, "runtime"),
+    path.join(repositoryRoot, "agent"),
+    path.join(outputDirectory, "agent"),
     (manifest) => ({
       name: manifest.name,
       version: manifest.version,
@@ -56,24 +62,6 @@ export async function copyAgentAssets({
       dependencies: manifest.dependencies,
     }),
   );
-  await copyPackage(
-    path.join(repositoryRoot, "agent", "edgeone"),
-    path.join(packagesOutput, "edgeone"),
-    (manifest) => ({
-      name: manifest.name,
-      version: manifest.version,
-      private: true,
-      type: "module",
-      main: manifest.main,
-      types: manifest.types,
-      exports: manifest.exports,
-      engines: manifest.engines,
-      dependencies: {
-        ...manifest.dependencies,
-        "@jojo/agent-runtime": "file:../runtime",
-      },
-    }),
-  );
 }
 
 export function agentDeploymentPackage(name) {
@@ -84,7 +72,7 @@ export function agentDeploymentPackage(name) {
     packageManager: "pnpm@9.12.2",
     engines: { node: ">=22.19.0" },
     dependencies: {
-      "@jojo/agent-edgeone": "file:agent/edgeone",
+      "@jojo/agent": "file:agent",
     },
   };
 }

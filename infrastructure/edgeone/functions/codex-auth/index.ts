@@ -1,4 +1,4 @@
-import { createCodexCredentialAdminHandler } from "@jojo/agent-edgeone";
+import { createCodexCredentialAdminHandler } from "@jojo/agent";
 
 const handle = createCodexCredentialAdminHandler();
 

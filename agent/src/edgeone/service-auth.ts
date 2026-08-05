@@ -1,4 +1,4 @@
-import type { AgentEnvironment } from "@jojo/agent-runtime";
+import type { AgentEnvironment } from "../models";
 import { AgentHttpError } from "./auth";
 import type { EdgeOneAgentContext } from "./types";
 

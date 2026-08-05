@@ -44,3 +44,41 @@ export type {
 } from "@earendil-works/pi-agent-core";
 export { Type } from "@earendil-works/pi-ai";
 export type { Api, AssistantMessage, Model, Models } from "@earendil-works/pi-ai";
+
+export {
+  AgentHttpError,
+  authorizeSupabaseUser,
+} from "./edgeone/auth";
+export {
+  createCodexCredentialAdminHandler,
+} from "./edgeone/credential-admin";
+export type {
+  CodexCredentialAdminContext,
+  CreateCodexCredentialAdminHandlerOptions,
+} from "./edgeone/credential-admin";
+export {
+  EdgeOneEncryptedCredentialPersistence,
+  createEdgeOneCredentialStore,
+} from "./edgeone/credential-store";
+export {
+  createEdgeOneAgentHandler,
+  createEdgeOneAgentHealthHandler,
+} from "./edgeone/handler";
+export {
+  AGENT_SERVICE_AUTH_HEADERS,
+  authorizeAgentServiceRequest,
+  createAgentServiceSignatureHeaders,
+} from "./edgeone/service-auth";
+export type {
+  AgentServiceAuthorizationOptions,
+  AgentServiceSignatureInput,
+} from "./edgeone/service-auth";
+export type {
+  AgentRequestBody,
+  AuthorizedAgentUser,
+  CreateEdgeOneAgentHandlerOptions,
+  EdgeOneAgentContext,
+  EdgeOneAgentRequest,
+  EdgeOneConversationStore,
+  EdgeOneStoredMessage,
+} from "./edgeone/types";

@@ -1,4 +1,4 @@
-import { createEdgeOneAgentHandler } from "@jojo/agent-edgeone";
+import { createEdgeOneAgentHandler } from "@jojo/agent";
 
 const handle = createEdgeOneAgentHandler({});
 

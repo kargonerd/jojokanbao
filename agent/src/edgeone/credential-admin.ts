@@ -1,7 +1,5 @@
-import {
-  parseCredentialFile,
-  type AgentEnvironment,
-} from "@jojo/agent-runtime";
+import { parseCredentialFile } from "../credentials";
+import type { AgentEnvironment } from "../models";
 import { createEdgeOneCredentialStore } from "./credential-store";
 import type { EdgeOneConversationStore } from "./types";
 

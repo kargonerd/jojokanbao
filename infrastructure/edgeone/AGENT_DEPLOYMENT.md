@@ -66,7 +66,7 @@ $adminBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
 先在本机登录：
 
 ```powershell
-pnpm --filter @jojo/agent-runtime auth:codex
+pnpm --filter @jojo/agent auth:codex
 ```
 
 部署国际项目后，把本地凭证通过 HTTPS 写入加密 Store：

@@ -1,9 +1,11 @@
 import type {
-  AgentEnvironment,
   AgentMessage,
   AgentTool,
+} from "@earendil-works/pi-agent-core";
+import type {
+  AgentEnvironment,
   PlatformModelRuntime,
-} from "@jojo/agent-runtime";
+} from "../models";
 
 export interface EdgeOneStoredMessage {
   role: "user" | "assistant" | "system" | "tool";

@@ -1,5 +1,5 @@
 {
-  "name": "@jojo/agent-edgeone",
+  "name": "@jojo/agent",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,15 +12,17 @@
     "node": ">=22.19.0"
   },
   "scripts": {
-    "auth:push": "tsx src/push-codex-auth.ts",
+    "auth:codex": "pi-ai login openai-codex",
+    "auth:push": "tsx src/edgeone/push-codex-auth.ts",
+    "smoke": "tsx src/smoke.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@jojo/agent-runtime": "workspace:*"
+    "@earendil-works/pi-agent-core": "0.80.10",
+    "@earendil-works/pi-ai": "0.80.10"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "0.80.10",
     "@jojo/tsconfig": "workspace:*",
     "@types/node": "^22.15.0",
     "tsx": "^4.19.0",

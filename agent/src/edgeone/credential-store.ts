@@ -1,10 +1,10 @@
 import {
   PersistentCredentialStore,
   parseCredentialFile,
-  type AgentEnvironment,
   type CredentialFile,
   type CredentialPersistence,
-} from "@jojo/agent-runtime";
+} from "../credentials";
+import type { AgentEnvironment } from "../models";
 import type { EdgeOneConversationStore } from "./types";
 
 const CREDENTIAL_CONVERSATION_ID = "jojo-codex-credentials-v1";

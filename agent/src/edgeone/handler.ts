@@ -3,14 +3,18 @@ import {
   createPlatformModelRuntime,
   modelRuntimeStream,
   resolvePlatformModelConfig,
-  runPlatformAgent,
-  type AgentMessage,
-  type AgentTool,
-  type AgentUsage,
-  type AssistantMessage,
-  type PlatformAgentEvent,
   type PlatformModelRuntime,
-} from "@jojo/agent-runtime";
+} from "../models";
+import { runPlatformAgent } from "../runtime";
+import type {
+  AgentUsage,
+  PlatformAgentEvent,
+} from "../types";
+import type {
+  AgentMessage,
+  AgentTool,
+} from "@earendil-works/pi-agent-core";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { AgentHttpError, authorizeSupabaseUser } from "./auth";
 import { createEdgeOneCredentialStore } from "./credential-store";
 import { authorizeAgentServiceRequest } from "./service-auth";

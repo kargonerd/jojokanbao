@@ -1,4 +1,4 @@
-import { createEdgeOneAgentHealthHandler } from "@jojo/agent-edgeone";
+import { createEdgeOneAgentHealthHandler } from "@jojo/agent";
 
 const handle = createEdgeOneAgentHealthHandler();
 

@@ -6,7 +6,7 @@
   "include": [
     "src",
     "tests",
-    "../../infrastructure/edgeone/agents/**/*.ts",
-    "../../infrastructure/edgeone/functions/agent-proxy/**/*.ts"
+    "../infrastructure/edgeone/agents/**/*.ts",
+    "../infrastructure/edgeone/functions/**/*.ts"
   ]
 }
