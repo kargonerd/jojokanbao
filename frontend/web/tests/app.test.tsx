@@ -129,6 +129,12 @@ describe("JOJO Web routes and Archive homepage", () => {
 });
 
 describe("JOJO Web navigation", () => {
+  it("does not expose the account entry while its rollout flag is disabled", () => {
+    renderAt("/archive");
+
+    expect(screen.queryByRole("link", { name: "账号" })).toBeNull();
+  });
+
   it("only marks the Archive homepage active on the exact root route", () => {
     renderAt("/archive/hq/196419");
 
