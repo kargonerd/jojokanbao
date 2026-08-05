@@ -71,7 +71,7 @@ jobs:
             fi
           }
 
-          write_flag node '^(frontend/|tools/[^/]+/web/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$)'
+          write_flag node '^(agent/|frontend/|tools/[^/]+/web/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$)'
           write_flag all_node '^(\.github/workflows/ci\.yml$|patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$)'
           write_flag desktop_e2e '^(frontend/(desktop|packages/(pdf-viewer|ui)|tooling/tsconfig|patches)/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/ci\.yml$)'
           write_flag web_e2e '^(frontend/(web|packages/(auth|pdf-viewer|ui)|tooling/tsconfig|patches)/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(ci|deploy-web)\.yml$)'
@@ -96,7 +96,7 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 22.11.0
+          node-version: 22.19.0
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -126,7 +126,7 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 22.11.0
+          node-version: 22.19.0
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -146,7 +146,7 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 22.11.0
+          node-version: 22.19.0
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -170,7 +170,7 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 22.11.0
+          node-version: 22.19.0
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -190,7 +190,7 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 22.11.0
+          node-version: 22.19.0
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -212,7 +212,7 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 22.11.0
+          node-version: 22.19.0
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -324,6 +324,16 @@ jobs:
           test ! -e .edgeone/web-deploy/cloud-functions/app/olds
           test ! -e .edgeone/web-deploy/cloud-functions/app/rag
           node -e 'const config = require("./.edgeone/web-deploy/edgeone.json"); if ("devCommand" in config) process.exit(1)'
+          node infrastructure/edgeone/prepare-agent-deploy.mjs
+          test -f .edgeone/agent-deploy/agents/jojo/index.ts
+          test -f .edgeone/agent-deploy/agents/jojo/health.ts
+          test -f .edgeone/agent-deploy/agent/src/runtime.ts
+          test -f .edgeone/agent-deploy/agent/src/edgeone/handler.ts
+          test -f .edgeone/agent-deploy/cloud-functions/agent/index.ts
+          test -f .edgeone/agent-deploy/cloud-functions/internal/credentials/index.ts
+          test -f .edgeone/agent-deploy/edgeone.json
+          test -f .edgeone/agent-deploy/package.json
+          node -e 'const config = require("./.edgeone/agent-deploy/edgeone.json"); if (config.agents.dir !== "agents") process.exit(1)'
 
   search-scf:
     name: Reader Search SCF tests

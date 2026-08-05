@@ -46,7 +46,7 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 22.11.0
+          node-version: 22.19.0
           cache: pnpm
 
       - name: Install dependencies

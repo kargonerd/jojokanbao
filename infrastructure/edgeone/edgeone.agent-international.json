@@ -1,0 +1,11 @@
+{
+  "cloudFunctions": {
+    "nodejs": {
+      "maxDuration": 120
+    }
+  },
+  "agents": {
+    "dir": "infrastructure/edgeone/agents/international",
+    "timeout": 300
+  }
+}
