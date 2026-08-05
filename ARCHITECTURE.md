@@ -4,6 +4,7 @@ JOJO Platform 按运行职责组织，不按历史项目或部署平台组织。
 
 ```text
 frontend/       Web、Homepage、Desktop、Mobile 以及前端共享包
+agent/          产品无关的 Node Agent 运行层与模型适配
 backend/        统一 Python 后端
 tools/          数据工作台与人工运维工具
 infrastructure/ EdgeOne、Supabase 等部署和基础设施配置
@@ -39,6 +40,18 @@ pnpm dev:backend
 EdgeOne 专有入口位于 `infrastructure/edgeone/functions`，只导入
 `backend/src/app/main.py` 创建的应用，不承载业务逻辑。部署脚本将 Web 静态文件、
 主 API 和平台入口组装到忽略的 `.edgeone/web-deploy`。
+
+## Agent
+
+- `agent`：单一 `@jojo/agent` 包，包含 Pi Agent 运行层、Codex 模型与凭证配置。
+- `agent/src/edgeone`：同一包内的 EdgeOne 登录、SSE、服务鉴权和加密 Store
+  适配。
+- `agent/src/applications.ts`：RAG、Olds 的最小业务占位函数；功能增长后再拆分。
+- Codex Agent 使用不含中国大陆的独立 Makers 项目和域名；其他模型后续通过
+  Makers Models 接入。
+- Agent 项目用一个不运行 Pi 的 Node Cloud Function 处理浏览器 CORS 预检，再把
+  SSE 请求转给同项目的 Makers Agent。
+- Pi Agent 使用 Makers Agents Runtime，不塞进 Node Cloud Functions。
 
 ## Tools and infrastructure
 

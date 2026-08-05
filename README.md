@@ -15,6 +15,9 @@ backend/
   src/app/             统一 FastAPI 与未上线业务模块
   tests/               Python 后端测试
   docs/                后端模块说明
+agent/
+  runtime/             通用 Pi Agent、Codex OAuth 与凭证
+  edgeone/             Makers Agent 的认证、SSE 和持久化适配
 tools/                 数据工作台、Archive PDF 工具和管理员命令
 infrastructure/        EdgeOne、Supabase 与线上腾讯 SCF Search
 content/blog/          博客内容
@@ -43,6 +46,9 @@ pnpm dev:desktop
 pnpm dev:backend
 pnpm dev:reader-search
 pnpm dev:data-workbench
+pnpm --filter @jojo/agent auth:codex
+pnpm --filter @jojo/agent smoke -- "你好"
+pnpm push:credentials
 ```
 
 Python API 测试：
@@ -75,7 +81,10 @@ Supabase migrations 位于 `infrastructure/supabase/migrations`。邀请注册�
 - Web workflow 构建 `frontend/web`。
 - `pnpm prepare:web-deploy` 将 Web、`backend` 和 EdgeOne 薄入口组装到
   `.edgeone/web-deploy`。
+- `pnpm prepare:agent-deploy` 生成 Codex Agent 的独立国际部署包。
 - `infrastructure/edgeone/functions` 只包含平台适配代码。
+- Codex Agent 的部署与环境变量见
+  [`infrastructure/edgeone/AGENT_DEPLOYMENT.md`](./infrastructure/edgeone/AGENT_DEPLOYMENT.md)。
 - `infrastructure/tencent-scf/search` 是 Reader 当前线上搜索运行时，独立部署。
 
 线上部署由 GitHub Actions 完成；本地构建不会自动发布。

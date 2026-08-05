@@ -3,6 +3,7 @@
 ## 项目结构
 
 - `frontend/`：所有用户界面及其共享 TypeScript/CSS 包。
+- `agent/`：产品无关的 Node Agent 运行层与模型适配。
 - `backend/`：统一 Python API 和尚未启用的业务模块。
 - `tools/`：内部工作台和人工运维工具。
 - `infrastructure/`：EdgeOne 与 Supabase 配置。
@@ -39,6 +40,17 @@ pnpm test:backend
 - 定时、批处理和人工运维代码放入 `tools/`，不伪装成 API。
 - Desktop 专属本地能力使用 TypeScript，位于 `frontend/desktop/engine`。
 - 后端公共、Olds 和 RAG 依赖分别由 `backend/requirements*.txt` 管理。
+
+## Agent 约定
+
+- Agent 是单一 `@jojo/agent` 包，通用运行层位于 `agent/src`，使用
+  `pi-agent-core/Agent`，不使用
+  `pi-coding-agent`，也不自行实现 Agent Loop。
+- 当前只接入 Codex OAuth；其他模型后续通过 Makers Models 统一接入。
+- EdgeOne 的认证、SSE 和加密凭证持久化位于 `agent/src/edgeone`。
+- RAG、Olds 等产品只注入提示词和业务工具。
+- Codex Makers Agent 只部署到不含中国大陆的独立项目；入口仅放在
+  `infrastructure/edgeone/agents`，不承载业务逻辑。
 
 ## 设计系统
 
