@@ -1,6 +1,7 @@
 {
   "name": "jojo-platform",
   "private": true,
+  "license": "AGPL-3.0-only",
   "packageManager": "pnpm@9.12.2",
   "engines": {
     "node": ">=22.19.0"

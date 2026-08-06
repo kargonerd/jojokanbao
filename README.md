@@ -86,3 +86,19 @@ Supabase migrations 位于 `infrastructure/supabase/migrations`。邀请注册�
 - `infrastructure/tencent-scf/search` 是 Reader 当前线上搜索运行时，独立部署。
 
 线上部署由 GitHub Actions 完成；本地构建不会自动发布。
+
+## 贡献
+
+欢迎通过 Issue 和 Pull Request 参与开发。开始前请阅读
+[CONTRIBUTING.md](./CONTRIBUTING.md)。安全问题请按照
+[SECURITY.md](./SECURITY.md) 私下报告，不要发布到公开 Issue。
+
+## 许可证
+
+JOJO Platform 的原创源代码按照
+[GNU Affero General Public License v3.0 only](./LICENSE)（SPDX:
+`AGPL-3.0-only`）发布。通过网络向用户提供修改后的版本时，需要按许可证要求向
+这些用户提供对应源代码。
+
+依赖项、品牌和报刊素材可能适用其他权利和许可证，详见
+[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
