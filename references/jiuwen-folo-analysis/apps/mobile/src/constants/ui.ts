@@ -1,1 +1,0 @@
-export const TIMELINE_VIEW_SELECTOR_HEIGHT = 58

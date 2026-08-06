@@ -1,1 +1,0 @@
-ALTER TABLE `entries` DROP COLUMN `tags`;

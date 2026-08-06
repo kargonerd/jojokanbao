@@ -1,6 +1,0 @@
-{
-  "scripts": {
-    "setup": "pnpm i; cp $CONDUCTOR_ROOT_PATH/apps/desktop/.env.local apps/desktop/.env.local",
-    "run": "pnpm dev:web"
-  }
-}

@@ -21,7 +21,6 @@ agent/
 tools/                 数据工作台、Archive PDF 工具和管理员命令
 infrastructure/        EdgeOne、Supabase 与线上腾讯 SCF Search
 content/blog/          博客内容
-vendor/                第三方源码
 references/            历史参考代码
 ```
 

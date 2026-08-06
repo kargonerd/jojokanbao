@@ -1,1 +1,0 @@
-ALTER TABLE `subscriptions` ADD `hide_from_timeline` integer;

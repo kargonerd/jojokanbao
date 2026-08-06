@@ -1,1 +1,0 @@
-ALTER TABLE `ai_chat_messages` DROP COLUMN `rich_text_schema`;

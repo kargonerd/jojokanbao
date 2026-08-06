@@ -8,7 +8,7 @@
 - `tools/`：内部工作台和人工运维工具。
 - `infrastructure/`：EdgeOne 与 Supabase 配置。
 - `content/`：博客等内容。
-- `vendor/`、`references/`：不参与产品构建的第三方或历史参考代码。
+- `references/`：不参与产品构建的历史参考代码。
 
 ## 常用命令
 
@@ -33,13 +33,14 @@ pnpm test:backend
 ## 后端约定
 
 - 主 API 位于 `backend/src/app`，使用 FastAPI。
-- 公共能力位于 `app/core`；业务按 `app/account`、`olds`、`rag` 分模块。
-- Olds 和 RAG 尚未上线，默认不得加入公开路由或 EdgeOne 部署产物。
+- 公共能力位于 `app/core`；业务按 `app/account`、`olds` 分模块。
+- Olds 尚未上线，默认不得加入公开路由或 EdgeOne 部署产物。
+- RAG 由 `agent/` 承载，不在 Python 后端维护重复实现。
 - Reader Search 位于 `infrastructure/tencent-scf/search`，保持现有 Flask/SCF 行为。
 - EdgeOne 入口仅放在 `infrastructure/edgeone/functions`，不得包含业务逻辑。
 - 定时、批处理和人工运维代码放入 `tools/`，不伪装成 API。
 - Desktop 专属本地能力使用 TypeScript，位于 `frontend/desktop/engine`。
-- 后端公共、Olds 和 RAG 依赖分别由 `backend/requirements*.txt` 管理。
+- 后端公共和 Olds 依赖由 `backend/requirements*.txt` 管理。
 
 ## Agent 约定
 

@@ -1,3 +1,2 @@
 -r requirements-olds.txt
--r requirements-rag.txt
 pytest==8.4.1

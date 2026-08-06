@@ -1,1 +1,0 @@
-ALTER TABLE `lists` ADD `entry_ids` text;

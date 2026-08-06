@@ -9,7 +9,6 @@ backend/        统一 Python 后端
 tools/          数据工作台与人工运维工具
 infrastructure/ EdgeOne、Supabase 等部署和基础设施配置
 content/        博客等内容源
-vendor/         必须保留在仓库中的第三方源码
 references/     尚未清理的历史参考代码，不参与构建
 ```
 
@@ -29,7 +28,8 @@ Homepage 已启用 Astro React integration，可以直接复用 `@jojo/ui` 组�
 - `backend/src/app/main.py`：统一公网 FastAPI 入口。
 - `backend/src/app/core`：认证、配置、错误和 HTTP 中间件。
 - `backend/src/app/account`：已启用的账号 API。
-- `backend/src/app/olds`、`rag`：未上线模块，默认不进入公开路由或部署产物。
+- `backend/src/app/olds`：未上线模块，默认不进入公开路由或部署产物。
+- RAG 由独立 Agent 运行层承载，不在 Python 后端维护第二套实现。
 
 本地运行主 API：
 

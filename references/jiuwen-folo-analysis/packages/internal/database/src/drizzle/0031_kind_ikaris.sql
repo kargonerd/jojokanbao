@@ -1,1 +1,0 @@
-ALTER TABLE `entries` ADD `readability_updated_at` integer;
