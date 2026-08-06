@@ -1,0 +1,6 @@
+* @kargonerd
+
+# Security-sensitive paths stay explicitly owned even if broader ownership
+# rules are introduced later.
+/.github/workflows/ @kargonerd
+/infrastructure/ @kargonerd
