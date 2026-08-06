@@ -1,6 +1,6 @@
 # Architecture
 
-JOJO Platform 按运行职责组织，不按历史项目或部署平台组织。
+JOJO 看报按运行职责组织，不按历史项目或部署平台组织。
 
 ```text
 frontend/       Web、Homepage、Desktop、Mobile 以及前端共享包

@@ -100,7 +100,7 @@ ID。SSE 的 `usage` 与 `done` 事件均包含 token 数和 Pi 提供的美元�
 ```dotenv
 JOJO_AGENT_MAX_TURNS=8
 JOJO_AGENT_MAX_TOOL_CALLS=20
-JOJO_AGENT_SYSTEM_PROMPT=你是 JOJO Platform 助手。
+JOJO_AGENT_SYSTEM_PROMPT=你是 JOJO 看报助手。
 ```
 
 Codex 订阅模式只用于 MVP 和低并发验证。DeepSeek、Gemini 等后续通过 Makers

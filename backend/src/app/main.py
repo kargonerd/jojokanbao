@@ -12,7 +12,7 @@ from app.core.http_middleware import (
 
 settings = get_settings()
 app = FastAPI(
-    title="JOJO Platform API",
+    title="JOJO 看报 API",
     docs_url="/docs" if settings.environment != "production" else None,
     redoc_url=None,
 )

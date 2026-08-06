@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class HealthResponse(BaseModel):
     status: str = "ok"
-    service: str = "jojo-platform-api"
+    service: str = "jojokanbao-api"
 
 
 class CurrentUser(BaseModel):

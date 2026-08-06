@@ -1,6 +1,6 @@
-# Contributing to JOJO Platform
+# Contributing to JOJO 看报
 
-感谢你愿意参与 JOJO Platform。提交代码前，请先阅读
+感谢你愿意参与 JOJO 看报。提交代码前，请先阅读
 [ARCHITECTURE.md](./ARCHITECTURE.md) 和对应目录下的 README。
 
 ## 开发环境

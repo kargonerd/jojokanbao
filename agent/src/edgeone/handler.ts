@@ -130,7 +130,7 @@ function systemPrompt(
   if (typeof options.systemPrompt === "function") return options.systemPrompt(context);
   if (options.systemPrompt) return options.systemPrompt;
   return (context.env ?? process.env).JOJO_AGENT_SYSTEM_PROMPT?.trim()
-    || "你是 JOJO Platform 的通用助手。准确回答问题；无法确认时明确说明。";
+    || "你是 JOJO 看报的通用助手。准确回答问题；无法确认时明确说明。";
 }
 
 function eventPayload(event: PlatformAgentEvent): unknown {

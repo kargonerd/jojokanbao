@@ -2,7 +2,7 @@
 
 ## 支持范围
 
-JOJO Platform 目前只维护 `master` 上的最新版本。历史标签仅用于追溯 Reader
+JOJO 看报目前只维护 `master` 上的最新版本。历史标签仅用于追溯 Reader
 部署，不承诺单独提供安全修复。
 
 ## 报告漏洞

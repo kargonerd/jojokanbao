@@ -1,6 +1,6 @@
 # @jojo/agent
 
-JOJO Platform 的通用 Pi Agent 运行层。当前阶段只接入 Codex OAuth。
+JOJO 看报的通用 Pi Agent 运行层。当前阶段只接入 Codex OAuth。
 
 ```text
 pi-ai
