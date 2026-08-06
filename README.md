@@ -1,4 +1,4 @@
-# JOJO Platform
+# JOJO 看报
 
 JOJO 看报的完整产品代码，包括 Web、官网、桌面端、移动端、Python 后端、后台任务和内部工具。
 
@@ -95,7 +95,7 @@ Supabase migrations 位于 `infrastructure/supabase/migrations`。邀请注册�
 
 ## 许可证
 
-JOJO Platform 的原创源代码按照
+JOJO 看报的原创源代码按照
 [GNU Affero General Public License v3.0 only](./LICENSE)（SPDX:
 `AGPL-3.0-only`）发布。通过网络向用户提供修改后的版本时，需要按许可证要求向
 这些用户提供对应源代码。

@@ -33,7 +33,7 @@ if (!runtime.configured) {
 }
 
 const result = await runPlatformAgent({
-  systemPrompt: "你是 JOJO Platform 的连通性测试助手。请简洁、准确地回答。",
+  systemPrompt: "你是 JOJO 看报的连通性测试助手。请简洁、准确地回答。",
   prompt,
   model: runtime.model,
   stream: modelRuntimeStream(runtime),

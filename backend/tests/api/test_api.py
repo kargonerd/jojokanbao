@@ -43,7 +43,7 @@ def test_health_returns_stable_service_metadata_and_request_id() -> None:
     assert response.status_code == 200
     assert response.json() == {
         "status": "ok",
-        "service": "jojo-platform-api",
+        "service": "jojokanbao-api",
     }
     assert response.headers["x-request-id"] == "health-check-1"
     assert response.headers["cache-control"] == "no-store"
