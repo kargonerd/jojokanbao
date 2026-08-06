@@ -8,7 +8,6 @@
 - `tools/`：内部工作台和人工运维工具。
 - `infrastructure/`：EdgeOne 与 Supabase 配置。
 - `content/`：博客等内容。
-- `references/`：不参与产品构建的历史参考代码。
 
 ## 常用命令
 

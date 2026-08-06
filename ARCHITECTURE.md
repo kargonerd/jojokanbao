@@ -9,7 +9,6 @@ backend/        统一 Python 后端
 tools/          数据工作台与人工运维工具
 infrastructure/ EdgeOne、Supabase 等部署和基础设施配置
 content/        博客等内容源
-references/     尚未清理的历史参考代码，不参与构建
 ```
 
 ## Frontend
