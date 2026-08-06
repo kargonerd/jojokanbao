@@ -20,7 +20,7 @@ HEADERS = {
 }
 WORK_DIR = Path(os.environ.get("RMRB_SYNC_WORK_DIR", ".rmrb-sync-work"))
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PROTECT_SCRIPT = REPO_ROOT / "tooling" / "archive-pdf" / "protect.mjs"
+PROTECT_SCRIPT = REPO_ROOT / "tools" / "archive-pdf" / "protect.mjs"
 
 
 def run(args):
