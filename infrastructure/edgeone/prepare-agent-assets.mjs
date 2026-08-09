@@ -49,7 +49,7 @@ export async function copyAgentAssets({
 
   await copyPackage(
     path.join(repositoryRoot, "agent"),
-    path.join(outputDirectory, "agent"),
+    path.join(outputDirectory, "packages", "agent"),
     (manifest) => ({
       name: manifest.name,
       version: manifest.version,
@@ -68,7 +68,7 @@ export async function copyAgentAssets({
 
   await copyPackage(
     path.join(repositoryRoot, "frontend", "packages", "content"),
-    path.join(outputDirectory, "content"),
+    path.join(outputDirectory, "packages", "content"),
     (manifest) => ({
       name: manifest.name,
       version: manifest.version,
@@ -91,7 +91,7 @@ export function agentDeploymentPackage(name) {
     packageManager: "pnpm@9.12.2",
     engines: { node: ">=22.19.0" },
     dependencies: {
-      "@jojo/agent": "file:agent",
+      "@jojo/agent": "file:packages/agent",
     },
   };
 }
