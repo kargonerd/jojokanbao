@@ -1135,9 +1135,11 @@ JOJO_CONTENT_SEARCH_URL=https://<search-service>/content/search
 JOJO_CONTENT_CDN_BASE=https://<delivery-cdn>/
 ```
 
-Agent 的 `search_content` 先定位 ES 片段，`read_fragment` 读取一个完整章节；只有跨章归纳、
-全书统计或证据不足时才调用 `scan_full_item`。全书扫描发生在工具侧，受字节预算约束，只向
-模型返回计数和少量证据，不把整本正文塞进上下文。可用以下命令做不依赖模型的联通测试：
+Agent 的 `search_content` 先定位 ES 片段，`read_fragment` 读取一个完整章节；考虑全本时先用
+`inspect_item` 从小型 Manifest 获取章节数、字符数、预计处理量和预算。只有跨章归纳、全书
+统计或证据不足且未超预算时才调用 `scan_full_item`。全书扫描发生在工具侧，只向模型返回计数
+和少量证据，不把整本正文塞进上下文；结果另行报告实际 CDN 下载字节数。可用以下命令做不
+依赖模型的联通测试：
 
 ```powershell
 $env:JOJO_CONTENT_SEARCH_URL="http://127.0.0.1:9000/content/search"

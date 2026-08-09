@@ -65,6 +65,15 @@ describe("RAG content tools", () => {
     });
     const search = tools.find((tool) => tool.name === "search_content")!;
     await search.execute("search", { query: "苹果", datasetIds: ["ignored"] }, undefined);
+    const inspect = tools.find((tool) => tool.name === "inspect_item")!;
+    const inspection = await inspect.execute("inspect", { manifestObject }, undefined);
+    expect(inspection.details).toMatchObject({
+      itemId: "book-a:main",
+      chapterCount: 2,
+      characterCount: 40,
+      estimatedProcessingBytes: 400,
+      withinFullScanBudget: true,
+    });
     const scan = tools.find((tool) => tool.name === "scan_full_item")!;
     const output = await scan.execute("scan", {
       manifestObject,
@@ -88,6 +97,42 @@ describe("RAG content tools", () => {
       evidence: [{ chapterId: "chapter:1", occurrences: 1 }],
     });
     expect((filtered.details as { evidence: unknown[] }).evidence).toHaveLength(1);
+
+    const limitedTools = createRagTools({
+      searchUrl: "https://search.test/content/search",
+      contentCdnBase: "https://cdn.test/",
+      scope: { datasetIds: ["book-a"], itemIds: ["book-a:main"] },
+      fetchFn: fetchFn as typeof fetch,
+      fullItemByteBudget: 300,
+    });
+    const limitedScan = limitedTools.find((tool) => tool.name === "scan_full_item")!;
+    const uninspected = await limitedScan.execute("scan-before-inspect", {
+      manifestObject,
+      intent: "验证必须先检查规模",
+      terms: ["苹果"],
+    }, undefined);
+    expect(uninspected.details).toMatchObject({
+      scanned: false,
+      reason: "item must be inspected before full scan",
+    });
+    const limitedInspect = limitedTools.find((tool) => tool.name === "inspect_item")!;
+    const limitedInspection = await limitedInspect.execute("inspect-limited", { manifestObject }, undefined);
+    expect(limitedInspection.details).toMatchObject({
+      estimatedProcessingBytes: 400,
+      fullScanByteBudget: 300,
+      withinFullScanBudget: false,
+    });
+    const refused = await limitedScan.execute("scan-limited", {
+      manifestObject,
+      intent: "验证预算拒绝",
+      terms: ["苹果"],
+    }, undefined);
+    expect(refused.details).toMatchObject({
+      scanned: false,
+      reason: "item exceeds full-scan byte budget",
+      estimatedBytes: 400,
+      byteBudget: 300,
+    });
     expect(fetchFn).toHaveBeenCalledTimes(7);
   });
 });

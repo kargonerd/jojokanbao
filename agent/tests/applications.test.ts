@@ -10,6 +10,7 @@ describe("Agent application definitions", () => {
     expect(definition.id).toBe("rag");
     expect(definition.status).toBe("available");
     expect(definition.systemPrompt).toContain("search_content");
+    expect(definition.systemPrompt).toContain("inspect_item");
   });
 
   it("keeps Olds as a placeholder without fake tools", () => {

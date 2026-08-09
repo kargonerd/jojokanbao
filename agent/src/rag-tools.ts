@@ -100,6 +100,27 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
   const fetchFn = options.fetchFn ?? fetch;
   const jox = new JoxClient(options.contentCdnBase, fetchFn);
   const scope = options.scope ?? {};
+  const manifestCache = new Map<string, JojoItemManifest>();
+  const inspectedManifests = new Set<string>();
+  const fullItemByteBudget = options.fullItemByteBudget ?? 32 * 1024 * 1024;
+
+  function enforceManifestScope(manifest: JojoItemManifest): void {
+    if (scope.datasetIds?.length && !scope.datasetIds.includes(manifest.datasetId)) {
+      throw new Error("该 Dataset 不在用户选择范围内");
+    }
+    if (scope.itemIds?.length && !scope.itemIds.includes(manifest.itemId)) {
+      throw new Error("该 Item 不在用户选择范围内");
+    }
+  }
+
+  async function loadManifest(object: string, signal?: AbortSignal): Promise<JojoItemManifest> {
+    const cached = manifestCache.get(object);
+    if (cached) return cached;
+    const manifest = asJojoItemManifest(await jox.fetchJson<JojoItemManifest>(object, signal));
+    enforceManifestScope(manifest);
+    manifestCache.set(object, manifest);
+    return manifest;
+  }
 
   const searchParameters = Type.Object({
     query: Type.String({ description: "要检索的原文关键词或问题" }),
@@ -159,6 +180,41 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
     },
   };
 
+  const inspectParameters = Type.Object({
+    manifestObject: Type.String({ description: "search_content 返回的 manifestObject" }),
+  });
+  const inspectTool: AgentTool<typeof inspectParameters> = {
+    name: "inspect_item",
+    label: "查看全本规模",
+    description: "考虑扫描全本时先调用。只读取小型 manifest，返回章节数、字符数、预计处理量和预算，不下载正文；由 Agent 决定是否继续调用 scan_full_item。",
+    parameters: inspectParameters,
+    async execute(_callId, args, signal) {
+      const manifestObject = safeObjectKey(args.manifestObject);
+      enforceDatasetObjectScope(manifestObject, scope);
+      const manifest = await loadManifest(manifestObject, signal);
+      const chapters = manifest.content.chapters ?? [];
+      const estimatedBytes = chapters.reduce((total, chapter) => total + chapter.size, 0);
+      inspectedManifests.add(manifestObject);
+      return result({
+        itemId: manifest.itemId,
+        datasetId: manifest.datasetId,
+        title: manifest.title,
+        type: manifest.type,
+        chapterCount: chapters.length,
+        characterCount: manifest.contentStats.characterCount,
+        estimatedProcessingBytes: estimatedBytes,
+        fullScanByteBudget: fullItemByteBudget,
+        withinFullScanBudget: estimatedBytes <= fullItemByteBudget,
+        firstChapters: chapters.slice(0, 8).map((chapter) => ({
+          id: chapter.id,
+          order: chapter.order,
+          title: chapter.title,
+        })),
+        source: { manifestObject },
+      });
+    },
+  };
+
   const itemParameters = Type.Object({
     manifestObject: Type.String({ description: "search_content 返回的 manifestObject" }),
     intent: Type.String({ description: "为什么必须扫描整本，例如跨章比较、全书统计或全书综述" }),
@@ -173,18 +229,23 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
     async execute(_callId, args, signal) {
       const manifestObject = safeObjectKey(args.manifestObject);
       enforceDatasetObjectScope(manifestObject, scope);
-      const manifest = asJojoItemManifest(await jox.fetchJson<JojoItemManifest>(manifestObject, signal));
-      if (scope.datasetIds?.length && !scope.datasetIds.includes(manifest.datasetId)) throw new Error("该 Dataset 不在用户选择范围内");
-      if (scope.itemIds?.length && !scope.itemIds.includes(manifest.itemId)) throw new Error("该 Item 不在用户选择范围内");
+      if (!inspectedManifests.has(manifestObject)) {
+        return result({
+          scanned: false,
+          reason: "item must be inspected before full scan",
+          advice: "请先调用 inspect_item 查看全本规模和预算，再决定是否扫描。",
+          source: { manifestObject },
+        });
+      }
+      const manifest = await loadManifest(manifestObject, signal);
       const chapters = manifest.content.chapters ?? [];
       const estimatedBytes = chapters.reduce((total, chapter) => total + chapter.size, 0);
-      const budget = options.fullItemByteBudget ?? 32 * 1024 * 1024;
-      if (estimatedBytes > budget) {
+      if (estimatedBytes > fullItemByteBudget) {
         return result({
           scanned: false,
           reason: "item exceeds full-scan byte budget",
           estimatedBytes,
-          byteBudget: budget,
+          byteBudget: fullItemByteBudget,
           advice: "请先缩小关键词范围，并用 search_content/read_fragment 分批读取。",
         });
       }
@@ -225,5 +286,5 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
       });
     },
   };
-  return [searchTool, fragmentTool, itemTool];
+  return [searchTool, fragmentTool, inspectTool, itemTool];
 }

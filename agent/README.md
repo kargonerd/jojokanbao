@@ -72,8 +72,11 @@ const result = await runPlatformAgent({
 
 - `search_content`：查询 ES，返回可追溯的 Manifest/Fragment 路径。
 - `read_fragment`：从 CDN 解码一个完整章节或文章，默认优先使用。
+- `inspect_item`：考虑扫描全本时只读取小型 Manifest，返回章节数、字符数、预计处理量和
+  预算，不读取正文；Agent 据此决定是否继续。
 - `scan_full_item`：仅在跨章归纳、全书统计或证据不足时下载整个 Item 到工具侧扫描；受
-  32 MiB 默认预算限制，只返回统计和少量命中证据。
+  32 MiB 默认解码后内容预算限制，只返回统计和少量命中证据。实际 CDN 传输字节数在扫描
+  结果的 `downloadedBytes` 中报告，通常小于保守的预计处理量。
 
 部署设置 `JOJO_CONTENT_SEARCH_URL` 和 `JOJO_CONTENT_CDN_BASE`。不调用模型也可以验证真实
 ES/CDN 工具链：

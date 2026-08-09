@@ -20,6 +20,7 @@ const tools = createRagTools({
 });
 const search = tools.find((tool) => tool.name === "search_content")!;
 const read = tools.find((tool) => tool.name === "read_fragment")!;
+const inspect = tools.find((tool) => tool.name === "inspect_item")!;
 const scan = tools.find((tool) => tool.name === "scan_full_item")!;
 const signal = new AbortController().signal;
 
@@ -35,6 +36,11 @@ const first = hits[0]!;
 const readResult = await read.execute(
   "content-smoke-read",
   { fragmentObject: String(first.fragmentObject), maxChars: 2_000 },
+  signal,
+) as { details?: Record<string, unknown> };
+const inspectResult = await inspect.execute(
+  "content-smoke-inspect",
+  { manifestObject: String(first.manifestObject) },
   signal,
 ) as { details?: Record<string, unknown> };
 
@@ -64,5 +70,6 @@ process.stdout.write(`${JSON.stringify({
     fragmentObject: first.fragmentObject,
   },
   read: readResult.details,
+  inspect: inspectResult.details,
   ...(scanDetails ? { scan: scanDetails } : {}),
 }, null, 2)}\n`);
