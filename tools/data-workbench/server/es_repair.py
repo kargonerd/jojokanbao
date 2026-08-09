@@ -129,6 +129,26 @@ class KibanaConsoleClient:
             payload = {"message": response.text}
         return response.status_code, payload
 
+    def request_raw(self, method: str, path: str, body: str) -> tuple[int, Any]:
+        """Send a raw Console request, primarily for Elasticsearch NDJSON bulk APIs."""
+        if not self._logged_in:
+            self.login()
+        proxy = (
+            f"{self.config['kibana_url']}/s/{self.config['space_id']}/api/console/proxy"
+            f"?path={quote(path, safe='')}&method={quote(method.upper())}"
+        )
+        response = self.session.post(
+            proxy,
+            headers={"kbn-xsrf": "true", "Content-Type": "application/json"},
+            data=body.encode("utf-8"),
+            timeout=90,
+        )
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = {"message": response.text}
+        return response.status_code, payload
+
     def search(self, body: dict[str, Any]) -> dict[str, Any]:
         status, payload = self.request("POST", f"{self.config['index']}/_search", body)
         if status >= 400:

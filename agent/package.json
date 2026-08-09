@@ -15,10 +15,12 @@
     "auth:codex": "pi-ai login openai-codex",
     "credentials:push": "tsx src/edgeone/push-credential.ts",
     "smoke": "tsx src/smoke.ts",
+    "content:smoke": "tsx src/content-smoke.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@jojo/content": "workspace:*",
     "@earendil-works/pi-agent-core": "0.80.10",
     "@earendil-works/pi-ai": "0.80.10"
   },

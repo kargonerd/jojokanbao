@@ -39,6 +39,7 @@ frontend/desktop/*diagnostic*.png
 frontend/desktop/*alignment*.png
 press-proofread*.png
 tmp/
+tools/data-workbench/server/.runtime/
 
 # Local scratch directories used during migration/cleanup
 .tmp-empty-delete/

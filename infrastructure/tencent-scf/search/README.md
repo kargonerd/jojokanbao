@@ -16,6 +16,28 @@ $env:ELASTICSEARCH_INDEX="jojo-67f10bu8"
 python app.py
 ```
 
+## Unified content search
+
+`POST /content/search` serves Reader and Agent queries over JOJO books,
+newspapers and magazines. Configure a normal ES index with:
+
+```powershell
+$env:ELASTICSEARCH_CONTENT_INDEX="jojo-content-v1"
+```
+
+Tencent ES Serverless is append-only. Publish each build as an immutable
+release and set both values returned by Workbench publication:
+
+```powershell
+$env:ELASTICSEARCH_CONTENT_INDEX="aitest-1tk2lxru"
+$env:ELASTICSEARCH_CONTENT_RELEASE_ID="r3ca3503a48d9f9d83c03"
+```
+
+When a release is configured, Dataset and Item scope use SHA-256 filter keys so
+exact filtering remains reliable even if a legacy Serverless index dynamically
+mapped the original IDs as `text`. The API overfetches ES chunks and returns
+distinct `fragmentObject` results.
+
 ### Migration exclusions
 
 Reader Search supports append-only repairs without Elasticsearch update/delete

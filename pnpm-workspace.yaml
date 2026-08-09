@@ -3,4 +3,5 @@ packages:
   - "frontend/*"
   - "frontend/packages/*"
   - "frontend/tooling/*"
+  - "tools/content-pipeline"
   - "tools/*/web"

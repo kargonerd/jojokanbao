@@ -12,8 +12,8 @@ pi-agent-core / Agent
 @jojo/agent
 └── JOJO 事件格式、预算、token/cost 和 Codex 模型配置
 
-applications.ts
-└── RAG、Olds 的占位提示词和空工具列表
+applications.ts / rag-tools.ts
+└── RAG 提示词，以及搜索、读片段、按需扫描整本三个工具
 ```
 
 这里使用 `pi-agent-core` 的高层 `Agent`，不使用 `pi-coding-agent`，也不自行
@@ -67,3 +67,20 @@ const result = await runPlatformAgent({
 ```
 
 返回值包含聚合后的 token、Pi 成本估算、执行时间、轮次和工具调用数。
+
+## 馆藏 RAG 工具
+
+- `search_content`：查询 ES，返回可追溯的 Manifest/Fragment 路径。
+- `read_fragment`：从 CDN 解码一个完整章节或文章，默认优先使用。
+- `scan_full_item`：仅在跨章归纳、全书统计或证据不足时下载整个 Item 到工具侧扫描；受
+  32 MiB 默认预算限制，只返回统计和少量命中证据。
+
+部署设置 `JOJO_CONTENT_SEARCH_URL` 和 `JOJO_CONTENT_CDN_BASE`。不调用模型也可以验证真实
+ES/CDN 工具链：
+
+```powershell
+$env:JOJO_CONTENT_SEARCH_URL="http://127.0.0.1:9000/content/search"
+$env:JOJO_CONTENT_CDN_BASE="https://blacknews.jojokanbao.cn/"
+$env:JOJO_CONTENT_SMOKE_FULL_SCAN="true"
+pnpm --filter @jojo/agent content:smoke -- "童年时代"
+```

@@ -1,7 +1,7 @@
-# JOJO 数据格式 v1（草案）
+# JOJO 数据格式 v1
 
-> 状态：待评审。本文先冻结数据模型、对象边界和存储约定；Schema、Jox 编解码器、
-> 导入器与发布器应在本文通过评审后实现。本文描述目标格式，不表示当前线上数据已经完成迁移。
+> 状态：v1 已按本文实现。`@jojo/content`、内容导入/发布流水线、Workbench、Reader、
+> ES 搜索路由和 Agent 工具共同使用本格式；后续不兼容修改必须升级格式版本。
 
 JOJO 使用一套模型表达书籍、报纸和杂志，同时把长期保存的规范数据与浏览器直接读取的
 交付数据分开。基本阅读、目录浏览和整本下载只依赖对象存储与 CDN，不依赖数据库或
@@ -1071,9 +1071,12 @@ catalog.jox
   → 当前 chapter/article/asset Jox
 ```
 
-ES 只提供全文搜索、聚合和 RAG 检索。ES 是可丢弃的派生数据：重建程序流式读取
-Canonical Item，或读取从 Canonical 生成的 `search/*.jsonl.gz` 分片，写入新索引并在验证后
-切换 alias。搜索不可用时，目录浏览、阅读和下载仍然可用。
+ES 只提供全文搜索、聚合和 RAG 检索。ES 是可丢弃的派生数据：重建程序读取从 Canonical
+生成的 `search/documents.jsonl.gz`，写入新索引并在验证后切换搜索配置。普通 ES 可以按稳定
+`documentId` 覆盖并按 `datasetId` 清理旧文档。腾讯云 ES Serverless 只允许 `create`，因此
+每次构建写成不可变 `releaseId`，并额外保存 `datasetFilterKey`、`itemFilterKey` 两个
+SHA-256 精确过滤键；SCF 必须配置当前 `ELASTICSEARCH_CONTENT_RELEASE_ID`。半成品 release
+不得续写，应更换空索引重新发布。搜索不可用时，目录浏览、阅读和下载仍然可用。
 
 ## 17. 验证要求
 
@@ -1109,3 +1112,43 @@ Schema 与数据分离。来源私有字段只放进来源命名空间，例如�
 ```
 
 标准 Reader、搜索和 RAG 不依赖 `extensions`；只有对应导入器理解它们。
+
+## 18. 已实现的操作流程
+
+本地导入和验证：
+
+```powershell
+pnpm --filter @jojo/content-pipeline cli -- `
+  --input "C:\Users\YOUR_NAME\Downloads" `
+  --output "C:\path\to\build"
+pnpm --filter @jojo/content-pipeline validate -- "C:\path\to\build"
+```
+
+也可以启动 Data Workbench，在 `/content` 选择本地 JSON/目录，观察解析诊断和统计后分别发布
+B2、Elasticsearch、Hugging Face。B2 发布顺序固定为 Raw → Canonical → 内容/Asset →
+Manifest → Dataset index → Catalog，`catalog.jox` 是最终提交标志。
+
+Reader 只设置 `VITE_CONTENT_CDN_BASE`，直接从 CDN 读取目录、正文、媒体和 EPUB。Agent 设置：
+
+```text
+JOJO_CONTENT_SEARCH_URL=https://<search-service>/content/search
+JOJO_CONTENT_CDN_BASE=https://<delivery-cdn>/
+```
+
+Agent 的 `search_content` 先定位 ES 片段，`read_fragment` 读取一个完整章节；只有跨章归纳、
+全书统计或证据不足时才调用 `scan_full_item`。全书扫描发生在工具侧，受字节预算约束，只向
+模型返回计数和少量证据，不把整本正文塞进上下文。可用以下命令做不依赖模型的联通测试：
+
+```powershell
+$env:JOJO_CONTENT_SEARCH_URL="http://127.0.0.1:9000/content/search"
+$env:JOJO_CONTENT_CDN_BASE="https://blacknews.jojokanbao.cn/"
+$env:JOJO_CONTENT_DATASET_ID="book-9d0833b0a40c"
+$env:JOJO_CONTENT_ITEM_ID="book-9d0833b0a40c:main"
+$env:JOJO_CONTENT_SMOKE_FULL_SCAN="true"
+pnpm --filter @jojo/agent content:smoke -- "童年时代"
+```
+
+2026-08-09 的全量微信读书样本验收覆盖 76 个受支持文件（按 Book ID 去重为 74 本）、
+55 个 Dataset、113 个 Item、7,013 个章节、9,704 个 Asset 引用、13,077 个 Annotation 和
+32,281 个 ES 检索片段。4 个非微信读书 JSON 被明确跳过，2 个来源记录因缺失加密片段而保留诊断；
+其余内容、媒体引用、EPUB ZIP、Jox 哈希和对象引用验证均通过。

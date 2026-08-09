@@ -1,4 +1,5 @@
 import os
+import hashlib
 from pathlib import Path
 from flask import Flask, jsonify, request
 from elasticsearch import Elasticsearch
@@ -28,6 +29,8 @@ def create_elasticsearch_client():
 
 es = create_elasticsearch_client()
 index_name = os.environ.get('ELASTICSEARCH_INDEX', 'jojo-67f10bu8')
+content_index_name = os.environ.get('ELASTICSEARCH_CONTENT_INDEX', 'jojo-content-v1')
+content_release_id = os.environ.get('ELASTICSEARCH_CONTENT_RELEASE_ID', '').strip()
 overlay_enabled = os.environ.get('SEARCH_OVERLAY', '').lower() in ('1', 'true', 'yes', 'on')
 base_index_name = os.environ.get('ELASTICSEARCH_BASE_INDEX')
 delta_index_name = os.environ.get('ELASTICSEARCH_DELTA_INDEX')
@@ -43,7 +46,7 @@ IS_SERVERLESS = bool(os.environ.get('SERVERLESS'))
 app = Flask(__name__)
 app.config['DEFAULT_CONTENT_TYPE'] = 'application/json'  
 app.config['DEFAULT_CHARSET'] = 'utf-8'  
-CORS(app, origins=['https://reader.jojokanbao.cn', 'http://127.0.0.1:8080', 'http://localhost:8080'])
+CORS(app, origins=['https://jojokanbao.cn', 'https://reader.jojokanbao.cn', 'http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:8080', 'http://localhost:8080'])
 
 
 @app.route("/health")
@@ -61,6 +64,105 @@ def processKeyword(keyword):
   keyword = re.sub(r'\bnot\b', 'NOT', keyword, flags=re.IGNORECASE)
   keyword = keyword.replace("“", "\"").replace("”", "\"").replace("‘", "\"").replace("’", "\"")
   return keyword
+
+
+def _string_list(value, limit=100):
+  if not isinstance(value, list):
+    return []
+  return [item for item in value[:limit] if isinstance(item, str) and item]
+
+
+def _content_filter_key(value):
+  return hashlib.sha256(value.encode('utf-8')).hexdigest()
+
+
+@app.route("/content/search", methods=["POST"])
+def content_search():
+  """Search the unified JOJO content index for both readers and Agent tools."""
+  if es is None:
+    return jsonify({'error': 'search backend is not configured'}), 503
+  payload = request.get_json(silent=True) or {}
+  query_text = str(payload.get('query') or '').strip()
+  if not query_text:
+    return jsonify({'error': '搜索词为空'}), 400
+  try:
+    size = max(1, min(int(payload.get('size') or 8), 20))
+  except (TypeError, ValueError):
+    return jsonify({'error': 'size 参数错误'}), 400
+  filters = []
+  dataset_ids = _string_list(payload.get('datasetIds'))
+  item_ids = _string_list(payload.get('itemIds'))
+  if content_release_id:
+    filters.append({'term': {'releaseId': content_release_id}})
+    if dataset_ids:
+      filters.append({'terms': {'datasetFilterKey': [_content_filter_key(value) for value in dataset_ids]}})
+    if item_ids:
+      filters.append({'terms': {'itemFilterKey': [_content_filter_key(value) for value in item_ids]}})
+  else:
+    if dataset_ids:
+      filters.append({'terms': {'datasetId': dataset_ids}})
+    if item_ids:
+      filters.append({'terms': {'itemId': item_ids}})
+  body = {
+    # A long chapter can produce several ES chunks. Overfetch so the API can
+    # return distinct source fragments instead of spending every slot on one.
+    'size': min(size * 5, 100),
+    '_source': [
+      'datasetId', 'datasetTitle', 'itemId', 'itemTitle', 'itemType',
+      'targetId', 'targetTitle', 'chunkId', 'order', 'text', 'authors',
+      'publishedDate', 'manifestObject', 'fragmentObject'
+    ],
+    'query': {
+      'bool': {
+        'must': [{
+          'multi_match': {
+            'query': query_text,
+            'fields': ['datasetTitle^4', 'itemTitle^4', 'targetTitle^3', 'text'],
+            'type': 'best_fields',
+            'operator': 'and',
+          }
+        }],
+        'should': [{
+          'match_phrase': {
+            'text': {'query': query_text, 'boost': 8},
+          }
+        }],
+        'filter': filters,
+      }
+    },
+    'highlight': {
+      'fields': {'text': {'fragment_size': 260, 'number_of_fragments': 2}},
+      'pre_tags': ['<mark>'],
+      'post_tags': ['</mark>'],
+    },
+  }
+  try:
+    data = es.search(index=content_index_name, body=body)
+  except Exception as exc:
+    app.logger.exception('unified content search failed')
+    return jsonify({'error': str(exc)}), 502
+  hits = (data.get('hits') or {})
+  results = []
+  seen_fragments = set()
+  for hit in hits.get('hits') or []:
+    source = hit.get('_source') or {}
+    fragment_object = source.get('fragmentObject')
+    if fragment_object and fragment_object in seen_fragments:
+      continue
+    if fragment_object:
+      seen_fragments.add(fragment_object)
+    highlights = (hit.get('highlight') or {}).get('text') or []
+    results.append({
+      **source,
+      'score': hit.get('_score'),
+      'highlights': highlights,
+    })
+    if len(results) >= size:
+      break
+  total = hits.get('total') or 0
+  if isinstance(total, dict):
+    total = total.get('value', 0)
+  return jsonify({'data': {'total': total, 'results': results}})
 
 
 def is_quoted_only_query(query):

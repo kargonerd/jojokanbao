@@ -67,6 +67,10 @@ export interface CreateEdgeOneAgentHandlerOptions {
 
 export interface AgentRequestBody {
   message: string;
+  scope?: {
+    datasetIds?: string[];
+    itemIds?: string[];
+  };
 }
 
 export type StoredAgentHistory = AgentMessage[];
