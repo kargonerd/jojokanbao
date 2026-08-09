@@ -25,7 +25,7 @@ const cloudFunctionsOutput = path.join(outputDirectory, "cloud-functions");
 await mkdir(cloudFunctionsOutput, { recursive: true });
 await cp(
   path.join(edgeoneRoot, "functions", "agent-proxy"),
-  path.join(cloudFunctionsOutput, "agent"),
+  path.join(cloudFunctionsOutput, "api", "agent"),
   { recursive: true },
 );
 await cp(
