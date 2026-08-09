@@ -330,7 +330,7 @@ jobs:
           test -f .edgeone/agent-deploy/packages/agent/src/edgeone/handler.ts
           test -f .edgeone/agent-deploy/packages/content/src/jox.ts
           node -e 'const p=require("./.edgeone/agent-deploy/packages/agent/package.json"); if(p.dependencies["@jojo/content"]!=="file:../content") process.exit(1)'
-          test -f '.edgeone/agent-deploy/cloud-functions/gateway/[[route]].ts'
+          test -f '.edgeone/agent-deploy/cloud-functions/gateway/[[default]].ts'
           test -f .edgeone/agent-deploy/edgeone.json
           test -f .edgeone/agent-deploy/index.html
           test -f .edgeone/agent-deploy/package.json
