@@ -59,7 +59,26 @@ export async function copyAgentAssets({
       types: manifest.types,
       exports: manifest.exports,
       engines: manifest.engines,
-      dependencies: manifest.dependencies,
+      dependencies: {
+        ...manifest.dependencies,
+        "@jojo/content": "file:../content",
+      },
+    }),
+  );
+
+  await copyPackage(
+    path.join(repositoryRoot, "frontend", "packages", "content"),
+    path.join(outputDirectory, "content"),
+    (manifest) => ({
+      name: manifest.name,
+      version: manifest.version,
+      private: true,
+      type: "module",
+      main: manifest.main,
+      types: manifest.types,
+      exports: manifest.exports,
+      engines: manifest.engines,
+      dependencies: manifest.dependencies ?? {},
     }),
   );
 }

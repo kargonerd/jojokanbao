@@ -328,6 +328,8 @@ jobs:
           test -f .edgeone/agent-deploy/agents/jojo/health.ts
           test -f .edgeone/agent-deploy/agent/src/runtime.ts
           test -f .edgeone/agent-deploy/agent/src/edgeone/handler.ts
+          test -f .edgeone/agent-deploy/content/src/jox.ts
+          node -e 'const p=require("./.edgeone/agent-deploy/agent/package.json"); if(p.dependencies["@jojo/content"]!=="file:../content") process.exit(1)'
           test -f .edgeone/agent-deploy/cloud-functions/agent/index.ts
           test -f .edgeone/agent-deploy/cloud-functions/internal/credentials/index.ts
           test -f .edgeone/agent-deploy/edgeone.json
