@@ -78,3 +78,18 @@ jobs:
           log_url="$(jq -er '.Data.Response.LogUrl' <<<"$log_response")"
           curl --fail-with-body --silent --show-error "$log_url"
           exit 1
+
+      - name: Verify deployed Agent routes
+        if: steps.edgeone_deploy.outcome == 'success'
+        run: |
+          sed -E $'s/\033\[[0-9;]*[mK]//g' "$RUNNER_TEMP/edgeone-deploy.log" > "$RUNNER_TEMP/edgeone-deploy-clean.log"
+          deploy_url="$(grep -oE 'https://[^[:space:]]+\.edgeone\.dev\?eo_token=[^[:space:]]+' "$RUNNER_TEMP/edgeone-deploy-clean.log" | tail -1)"
+          test -n "$deploy_url" || (echo "Deploy URL was not reported" >&2 && exit 1)
+          base_url="${deploy_url%%\?*}"
+          query="${deploy_url#*\?}"
+          status="$(curl --silent --show-error --output "$RUNNER_TEMP/agent-health.json" \
+            --write-out '%{http_code}' \
+            --header 'Makers-Conversation-Id: jojo-deploy-health' \
+            "$base_url/api/chat?$query")"
+          cat "$RUNNER_TEMP/agent-health.json"
+          test "$status" != "404" || (echo "Agent proxy route is missing" >&2 && exit 1)
