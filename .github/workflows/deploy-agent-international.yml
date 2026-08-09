@@ -70,4 +70,11 @@ jobs:
           jq --arg deployment_id "$deployment_id" \
             '.Data.Response.Deployments[] | select(.DeploymentId == $deployment_id)' \
             <<<"$response"
+          log_response="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $EDGEONE_API_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data "{\"Action\":\"DescribePagesDeploymentLog\",\"ProjectId\":\"$project_id\",\"DeploymentId\":\"$deployment_id\"}" \
+            https://pages-api.cloud.tencent.com/v1)"
+          log_url="$(jq -er '.Data.Response.LogUrl' <<<"$log_response")"
+          curl --fail-with-body --silent --show-error "$log_url"
           exit 1
