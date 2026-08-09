@@ -1,5 +1,5 @@
 import {
-  onRequest as handleAgentProxyRequest,
+  handleAgentProxyRequest,
   type AgentProxyContext,
 } from "./handler";
 

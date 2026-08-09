@@ -92,7 +92,7 @@ function agentUrl(
  * Makers Agent routes require it before invoking user code. A Cloud Function
  * handles OPTIONS, then forwards the real request to the same project's Agent.
  */
-export async function onRequest(
+export async function handleAgentProxyRequest(
   context: AgentProxyContext,
 ): Promise<Response> {
   const environment = context.env ?? process.env;
