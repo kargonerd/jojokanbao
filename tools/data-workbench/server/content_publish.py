@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import tarfile
 from typing import Any, Callable, Iterable
 
 from es_repair import KibanaConsoleClient, _load_root_env
@@ -17,6 +18,17 @@ ROOT = Path(__file__).resolve().parents[3]
 RAW_REMOTE = os.getenv("JOJO_RAW_REMOTE", "jojo-b2:jojo-news-raw")
 DELIVERY_REMOTE = os.getenv("JOJO_DELIVERY_REMOTE", "jojo-b2-s3:jojo-newspaper")
 RCLONE_COPY_FLAGS = ["--checksum", "--transfers", "16", "--checkers", "32"]
+
+
+def _huggingface_token() -> str:
+    explicit = os.getenv("HF_TOKEN", "").strip()
+    if explicit:
+        return explicit
+    try:
+        from huggingface_hub import get_token
+    except ImportError:
+        return ""
+    return (get_token() or "").strip()
 
 
 def publication_status() -> dict[str, Any]:
@@ -34,7 +46,7 @@ def publication_status() -> dict[str, Any]:
             "index": os.getenv("ES_CONTENT_INDEX", "jojo-content-v1"),
         },
         "huggingface": {
-            "configured": bool(os.getenv("HF_TOKEN") and os.getenv("HF_DATASET_REPO")),
+            "configured": bool(_huggingface_token() and os.getenv("HF_DATASET_REPO")),
             "repoId": os.getenv("HF_DATASET_REPO", ""),
             "private": True,
         },
@@ -254,6 +266,79 @@ def _filter_key(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _prepare_huggingface_snapshot(
+    build_root: Path,
+    on_log: Callable[[str], None],
+) -> tuple[Path, dict[str, int]]:
+    """Bundle media per Dataset so one HF publish does not issue ~10k API calls."""
+    source = build_root / "huggingface"
+    target = build_root / ".publish" / "huggingface"
+    source_files = sorted(
+        path for path in source.rglob("*")
+        if path.is_file() and ".cache" not in path.relative_to(source).parts
+    )
+    fingerprint = hashlib.sha256("\n".join(
+        f"{path.relative_to(source).as_posix()}:{path.stat().st_size}:{path.stat().st_mtime_ns}"
+        for path in source_files
+    ).encode("utf-8")).hexdigest()
+    state_path = build_root / ".publish" / "huggingface-state.json"
+    if target.exists() and state_path.exists():
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            if state.get("fingerprint") == fingerprint:
+                return target, state["stats"]
+        except (OSError, ValueError, KeyError):
+            pass
+
+    resolved_target = target.resolve()
+    if not resolved_target.is_relative_to(build_root.resolve()):
+        raise RuntimeError("Hugging Face staging 目录越出构建目录")
+    if target.exists():
+        shutil.rmtree(target)
+    target.mkdir(parents=True)
+
+    asset_groups: dict[str, list[Path]] = {}
+    copied = 0
+    for path in source_files:
+        relative = path.relative_to(source)
+        if len(relative.parts) >= 3 and relative.parts[1] == "assets":
+            asset_groups.setdefault(relative.parts[0], []).append(path)
+            continue
+        destination = target / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, destination)
+        copied += 1
+
+    bundled_assets = 0
+    for dataset_id, paths in sorted(asset_groups.items()):
+        archive = target / dataset_id / "assets.tar"
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        on_log(f"打包 {dataset_id} 的 {len(paths)} 个媒体文件")
+        with tarfile.open(archive, "w") as bundle:
+            for path in sorted(paths):
+                bundle.add(path, arcname=f"assets/{path.name}", recursive=False)
+        bundled_assets += len(paths)
+    (target / "ASSETS.md").write_text(
+        "# Media bundles\n\n"
+        "Each Dataset keeps canonical JSON files directly browseable. When a Dataset has "
+        "media, `assets.tar` contains the `assets/` paths referenced by its Item files. "
+        "The browser delivery copy remains on B2/CDN.\n",
+        encoding="utf-8",
+    )
+    stats = {
+        "sourceFiles": len(source_files),
+        "metadataFiles": copied,
+        "bundledAssets": bundled_assets,
+        "uploadFiles": sum(1 for path in target.rglob("*") if path.is_file()),
+    }
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        json.dumps({"fingerprint": fingerprint, "stats": stats}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return target, stats
+
+
 def _count_release_documents(
     client: KibanaConsoleClient,
     index: str,
@@ -272,20 +357,51 @@ def _count_release_documents(
 
 def publish_huggingface(build_root: Path, on_log: Callable[[str], None]) -> dict[str, Any]:
     _load_root_env()
-    token = os.getenv("HF_TOKEN", "")
+    token = _huggingface_token()
     repo_id = os.getenv("HF_DATASET_REPO", "")
     if not token or not repo_id:
-        raise RuntimeError("缺少 HF_TOKEN 或 HF_DATASET_REPO")
+        raise RuntimeError("请先执行 huggingface-cli login，并设置 HF_DATASET_REPO")
     from huggingface_hub import HfApi
 
     api = HfApi(token=token)
     api.create_repo(repo_id=repo_id, repo_type="dataset", private=True, exist_ok=True)
     on_log(f"开始上传私有 Hugging Face Dataset：{repo_id}")
-    commit = api.upload_folder(
-        folder_path=str(build_root / "huggingface"),
-        path_in_repo=".",
+    snapshot, snapshot_stats = _prepare_huggingface_snapshot(build_root, on_log)
+    workers = max(1, int(os.getenv("HF_UPLOAD_WORKERS", "4")))
+    api.upload_large_folder(
+        folder_path=str(snapshot),
         repo_id=repo_id,
         repo_type="dataset",
-        commit_message="Publish JOJO canonical content",
+        private=True,
+        num_workers=workers,
     )
-    return {"repoId": repo_id, "private": True, "commit": str(commit)}
+    info = api.repo_info(repo_id=repo_id, repo_type="dataset")
+    if not info.private:
+        raise RuntimeError(f"Hugging Face Dataset {repo_id} 不是私有仓库，停止发布")
+    expected_files = {
+        path.relative_to(snapshot).as_posix()
+        for path in snapshot.rglob("*")
+        if path.is_file() and ".cache" not in path.relative_to(snapshot).parts
+    }
+    remote_files = set(api.list_repo_files(repo_id=repo_id, repo_type="dataset"))
+    stale_files = sorted(remote_files - expected_files - {".gitattributes"})
+    if stale_files:
+        on_log(f"清理 Hugging Face 中 {len(stale_files)} 个旧快照文件")
+        api.delete_files(
+            repo_id=repo_id,
+            repo_type="dataset",
+            delete_patterns=stale_files,
+            commit_message="Remove superseded JOJO canonical files",
+        )
+        info = api.repo_info(repo_id=repo_id, repo_type="dataset")
+        remote_files = set(api.list_repo_files(repo_id=repo_id, repo_type="dataset"))
+    missing_files = sorted(expected_files - remote_files)
+    if missing_files:
+        raise RuntimeError(f"Hugging Face 上传缺少 {len(missing_files)} 个文件：{missing_files[:3]}")
+    return {
+        "repoId": repo_id,
+        "private": True,
+        "remoteFiles": len(remote_files),
+        "commit": f"https://huggingface.co/datasets/{repo_id}/commit/{info.sha}",
+        **snapshot_stats,
+    }

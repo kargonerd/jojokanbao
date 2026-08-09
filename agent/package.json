@@ -18,6 +18,7 @@
     "auth:codex": "pi-ai login openai-codex",
     "credentials:push": "tsx src/edgeone/push-credential.ts",
     "smoke": "tsx src/smoke.ts",
+    "rag:smoke": "tsx src/rag-smoke.ts",
     "content:smoke": "tsx src/content-smoke.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

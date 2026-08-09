@@ -73,9 +73,21 @@ export function convertWereadChapter(
   $("script,iframe,style,link,meta,head").remove();
   const annotations: JojoAnnotation[] = [];
   const assets = new Map<string, JojoCanonicalAsset>();
+  let numberedAnnotationCount = 0;
+  let titleAnnotationCount = 0;
 
-  $("[data-wr-footernote], img.qqreader-footnote").each((index, element) => {
+  let annotationSourceIndex = 0;
+  $(
+    "h1.chapterTitle,h2.chapterTitle,h3.chapterTitle,h4.chapterTitle,h5.chapterTitle,h6.chapterTitle,"
+    + "[data-wr-footernote],img.qqreader-footnote",
+  ).each((_index, element) => {
     const current = $(element);
+    if (current.is("h1,h2,h3,h4,h5,h6")) {
+      numberedAnnotationCount = 0;
+      titleAnnotationCount = 0;
+      return;
+    }
+    const index = annotationSourceIndex++;
     const note = String(
       current.attr("data-wr-footernote")
       || current.attr("alt")
@@ -86,14 +98,34 @@ export function convertWereadChapter(
       current.remove();
       return;
     }
+    const heading = current.closest("h1,h2,h3,h4,h5,h6");
+    const headingText = heading.clone()
+      .find("[data-wr-footernote], img.qqreader-footnote")
+      .remove()
+      .end()
+      .text()
+      .replace(/\s+/g, " ")
+      .trim();
+    const isTitleAnnotation = heading.length > 0 && (
+      heading.hasClass("chapterTitle")
+      || headingText.normalize("NFKC") === source.title.normalize("NFKC").trim()
+    );
+    const label = isTitleAnnotation
+      ? "*".repeat(++titleAnnotationCount)
+      : String(++numberedAnnotationCount);
     const id = `annotation:${shortHash(`${source.id}:${index}:${note}`)}`;
     annotations.push({
       id,
       targetId: source.id,
       kind: "footnote",
-      label: String(annotations.length + 1),
+      label,
       body: { format: "text", value: note },
     });
+    // Some WeRead XHTML exports serialize an img marker as a non-void element
+    // and accidentally nest the following prose inside it. Keep that prose
+    // after the semantic marker instead of deleting it with the source node.
+    const trailingContent = current.html() ?? "";
+    if (trailingContent) current.after(trailingContent);
     current.replaceWith(`<sup data-annotation-id="${id}"></sup>`);
   });
 
@@ -144,7 +176,13 @@ export function convertWereadChapter(
   });
 
   const bodyHtml = $("body").length ? $("body").html() ?? "" : $.root().html() ?? "";
-  const value = sanitizeHtml(bodyHtml, {
+  // XML serialization shortens an empty semantic marker to <sup/>. HTML
+  // parsers treat that as an opening tag and swallow the following prose.
+  const htmlWithClosedMarkers = bodyHtml.replace(
+    /<sup\b([^>]*data-annotation-id="[^"]+"[^>]*)\/>/g,
+    "<sup$1></sup>",
+  );
+  const value = sanitizeHtml(htmlWithClosedMarkers, {
     allowedTags: ALLOWED_TAGS,
     allowedAttributes: {
       "*": ["id"],

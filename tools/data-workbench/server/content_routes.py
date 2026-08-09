@@ -18,6 +18,7 @@ from content_publish import (
     publish_elasticsearch,
     publish_huggingface,
 )
+from content_search import search_content
 
 
 content_blueprint = Blueprint("content", __name__)
@@ -158,6 +159,16 @@ def _phase_message(event: dict) -> str:
 @content_blueprint.get("/api/content/status")
 def status():
     return jsonify({"success": True, "publishers": publication_status()})
+
+
+@content_blueprint.post("/api/content/search")
+def content_search():
+    try:
+        return jsonify(search_content(request.get_json(silent=True) or {}))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
 
 
 @content_blueprint.get("/api/content/jobs")

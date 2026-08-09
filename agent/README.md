@@ -87,3 +87,9 @@ $env:JOJO_CONTENT_CDN_BASE="https://blacknews.jojokanbao.cn/"
 $env:JOJO_CONTENT_SMOKE_FULL_SCAN="true"
 pnpm --filter @jojo/agent content:smoke -- "童年时代"
 ```
+
+模型、ES 搜索和 B2/CDN 阅读的组合验证：
+
+```powershell
+pnpm --filter @jojo/agent rag:smoke -- "《毛泽东自述》的童年时代主要讲了什么？"
+```

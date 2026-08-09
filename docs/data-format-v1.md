@@ -976,6 +976,11 @@ Reader 根据 Asset 的 `type` 和 `mediaType` 渲染对应组件。微信读书
 HTML 导出器的 CSS 和弹窗脚本属于来源 UI，不作为书籍 Asset；导入时应转换成 Annotation，
 由 Reader 自己渲染脚注标记和弹层。
 
+脚注的 `label` 必须恢复来源实际显示规则，不能简单使用“本章提取到的第几个 Annotation”。
+例如篇名后的编者注通常显示为 `*`，不占正文注〔1〕的数字序号；同一个源文件包含多篇文章时，
+数字序号在每篇文章重新开始。跨卷引用（如“见第一卷《某文》注〔3〕”）应先用目录标题确定
+目标文章，再在该文章范围内按正文脚注落点解析第 3 个数字注，不能依赖整个章节数组位置。
+
 Annotation 可选 `anchorId`，用于只有段落级定位但没有内联标记的来源：
 
 ```json
@@ -1128,6 +1133,11 @@ pnpm --filter @jojo/content-pipeline validate -- "C:\path\to\build"
 B2、Elasticsearch、Hugging Face。B2 发布顺序固定为 Raw → Canonical → 内容/Asset →
 Manifest → Dataset index → Catalog，`catalog.jox` 是最终提交标志。
 
+Hugging Face 保存私有 Canonical 镜像，Dataset/Item JSON 保持可直接浏览和按书下载。为避免
+数千张小图逐文件上传触发 Hub API 限流，每个 Dataset 的媒体合并为一个 `assets.tar`；归档内
+仍使用 Item 所引用的 `assets/<sha256>.<ext>` 路径。B2/CDN 继续保存浏览器直接读取的独立媒体
+对象，HF 不参与 Reader 在线加载。
+
 Reader 只设置 `VITE_CONTENT_CDN_BASE`，直接从 CDN 读取目录、正文、媒体和 EPUB。Agent 设置：
 
 ```text
@@ -1148,6 +1158,12 @@ $env:JOJO_CONTENT_DATASET_ID="book-9d0833b0a40c"
 $env:JOJO_CONTENT_ITEM_ID="book-9d0833b0a40c:main"
 $env:JOJO_CONTENT_SMOKE_FULL_SCAN="true"
 pnpm --filter @jojo/agent content:smoke -- "童年时代"
+```
+
+完成 Codex OAuth 后，可把真实模型、ES 和 B2/CDN 一起验证：
+
+```powershell
+pnpm --filter @jojo/agent rag:smoke -- "《毛泽东自述》的童年时代主要讲了什么？"
 ```
 
 2026-08-09 的全量微信读书样本验收覆盖 76 个受支持文件（按 Book ID 去重为 74 本）、

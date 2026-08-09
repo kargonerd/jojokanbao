@@ -1,8 +1,8 @@
 import DOMPurify from "dompurify";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { LoadingSpinner } from "@jojo/ui";
-import type { JojoFragment, JojoTocNode } from "@jojo/content";
+import type { JojoAnnotation, JojoFragment, JojoTocNode } from "@jojo/content";
 import {
   downloadExport,
   loadAssetUrl,
@@ -28,7 +28,87 @@ function escapeHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
-function renderedBody(fragment: JojoFragment, assetUrls: Record<string, string>): string {
+const CHINESE_DIGITS: Record<string, number> = {
+  "〇": 0, "零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4,
+  "五": 5, "六": 6, "七": 7, "八": 8, "九": 9,
+};
+
+function chineseNumber(value: string): number | undefined {
+  if (/^\d+$/.test(value)) return Number(value);
+  if (value === "十") return 10;
+  if (value.includes("十")) {
+    const [tens, units] = value.split("十", 2);
+    const high = tens ? CHINESE_DIGITS[tens] : 1;
+    const low = units ? CHINESE_DIGITS[units] : 0;
+    return high === undefined || low === undefined ? undefined : high * 10 + low;
+  }
+  if ([...value].every((character) => character in CHINESE_DIGITS)) {
+    return Number([...value].map((character) => CHINESE_DIGITS[character]).join(""));
+  }
+  return undefined;
+}
+
+export interface AnnotationReference {
+  volumeNumber: number;
+  chapterTitle: string;
+  annotationLabel: string;
+}
+
+export function parseAnnotationReference(value: string): AnnotationReference | undefined {
+  const match = value.match(/(?:见|参见)本书第([〇零一二两三四五六七八九十\d]+)卷《([^》]+)》注[〔\[]\s*(\d+)\s*[〕\]]/);
+  if (!match) return undefined;
+  const volumeNumber = chineseNumber(match[1]!);
+  if (!volumeNumber) return undefined;
+  return { volumeNumber, chapterTitle: match[2]!.trim(), annotationLabel: match[3]! };
+}
+
+function annotationMarkerId(annotationId: string): string {
+  return `annotation-ref-${annotationId}`;
+}
+
+function annotationDisplayLabel(label: string | undefined): string {
+  if (!label) return "注";
+  return /^\*+$/.test(label) ? label : `[${label}]`;
+}
+
+export function findReferencedAnnotation(
+  fragment: JojoFragment,
+  label: string,
+  anchorId?: string,
+): JojoAnnotation | undefined {
+  if (!/^\d+$/.test(label)) {
+    return fragment.annotations.find((annotation) => annotation.label === label);
+  }
+  const clean = DOMPurify.sanitize(fragment.body.value);
+  const document = new DOMParser().parseFromString(`<main>${clean}</main>`, "text/html");
+  const elements = [...document.querySelectorAll("main *")];
+  const anchor = anchorId ? document.getElementById(anchorId) : undefined;
+  const anchorIndex = anchor ? elements.indexOf(anchor) : -1;
+  const anchorHeadingLevel = anchor?.tagName.match(/^H([1-6])$/)?.[1];
+  let endIndex = elements.length;
+  if (anchorIndex >= 0 && anchorHeadingLevel) {
+    const level = Number(anchorHeadingLevel);
+    const nextHeadingOffset = elements.slice(anchorIndex + 1).findIndex((element) => {
+      const match = element.tagName.match(/^H([1-6])$/);
+      return Boolean(match && Number(match[1]) <= level);
+    });
+    if (nextHeadingOffset >= 0) endIndex = anchorIndex + 1 + nextHeadingOffset;
+  }
+  const annotations = new Map(fragment.annotations.map((annotation) => [annotation.id, annotation]));
+  const numbered = elements
+    .map((element, index) => ({ element, index }))
+    .filter(({ element, index }) => (
+      element.matches("sup[data-annotation-id]")
+      && !element.closest("h1,h2,h3,h4,h5,h6")
+      && (anchorIndex < 0 || (index > anchorIndex && index < endIndex))
+    ))
+    .map(({ element }) => annotations.get(element.getAttribute("data-annotation-id") || ""))
+    .filter((annotation): annotation is JojoAnnotation => Boolean(annotation));
+  return numbered[Number(label) - 1]
+    ?? fragment.annotations.find((annotation) => annotation.label === label);
+}
+
+export function renderedBody(fragment: JojoFragment, assetUrls: Record<string, string>): string {
   const source = fragment.body.format === "html"
     ? fragment.body.value
     : fragment.body.value.split(/\n{2,}/).map((paragraph) => `<p>${escapeHtml(paragraph).replaceAll("\n", "<br>")}</p>`).join("");
@@ -43,12 +123,33 @@ function renderedBody(fragment: JojoFragment, assetUrls: Record<string, string>)
     image.alt = figure.querySelector("figcaption")?.textContent || "正文图片";
     figure.prepend(image);
   }
+  const annotations = new Map(fragment.annotations.map((annotation) => [annotation.id, annotation]));
+  for (const marker of document.querySelectorAll("sup[data-annotation-id]")) {
+    const annotationId = marker.getAttribute("data-annotation-id") || "";
+    const annotation = annotations.get(annotationId);
+    if (!annotation) continue;
+    const trailingText = marker.textContent || "";
+    marker.id = annotationMarkerId(annotationId);
+    marker.textContent = "";
+    const link = document.createElement("a");
+    link.href = `#${annotationId}`;
+    link.textContent = annotationDisplayLabel(annotation.label);
+    link.title = annotation.body.value;
+    link.setAttribute("aria-label", `查看注释 ${annotation.label || "注"}`);
+    link.className = "text-red no-underline font-bold";
+    marker.append(link);
+    if (trailingText) marker.after(document.createTextNode(trailingText));
+  }
   // Only internally generated Blob URLs are inserted after sanitization.
   return document.querySelector("main")?.innerHTML || "";
 }
 
 export function ReaderPage() {
   const { notebookId: datasetId, sourceId: itemKey } = useParams<{ notebookId: string; sourceId: string }>();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedChapter = searchParams.get("chapter") || "";
+  const requestedAnnotation = searchParams.get("annotation") || "";
   const [loaded, setLoaded] = useState<LoadedItem>();
   const [fragment, setFragment] = useState<JojoFragment>();
   const [activeChapter, setActiveChapter] = useState("");
@@ -63,9 +164,10 @@ export function ReaderPage() {
     setLoading(true); setError("");
     loadItem(datasetId, itemKey).then((value) => {
       setLoaded(value);
-      setActiveChapter(value.manifest.content.chapters?.[0]?.id || "");
+      const requested = value.manifest.content.chapters?.find((chapter) => chapter.id === requestedChapter);
+      setActiveChapter(requested?.id || value.manifest.content.chapters?.[0]?.id || "");
     }).catch((reason: Error) => setError(reason.message)).finally(() => setLoading(false));
-  }, [datasetId, itemKey]);
+  }, [datasetId, itemKey, requestedChapter]);
 
   useEffect(() => {
     if (!loaded || !activeChapter) return;
@@ -90,6 +192,48 @@ export function ReaderPage() {
   }, [activeChapter, loaded]);
 
   useEffect(() => () => Object.values(assetUrls).forEach((url) => URL.revokeObjectURL(url)), [assetUrls]);
+
+  useEffect(() => {
+    if (!fragment || !requestedAnnotation) return;
+    if (!fragment.annotations.some((annotation) => annotation.id === requestedAnnotation)) return;
+    window.requestAnimationFrame(() => {
+      document.getElementById(requestedAnnotation)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, [fragment, requestedAnnotation]);
+
+  async function followAnnotationReference(reference: AnnotationReference): Promise<void> {
+    if (!loaded || !datasetId) return;
+    setError("");
+    try {
+      const targetSummary = loaded.index.items.find((item) => (
+        item.itemKey === `volume-${reference.volumeNumber}` || item.order === reference.volumeNumber
+      ));
+      if (!targetSummary) throw new Error(`找不到第${reference.volumeNumber}卷`);
+      const target = await loadItem(datasetId, targetSummary.itemKey);
+      const targetTocNode = flattenToc(target.manifest.content.toc).find((node) => (
+        node.title.normalize("NFKC").trim() === reference.chapterTitle.normalize("NFKC").trim()
+      ));
+      const targetChapter = target.manifest.content.chapters?.find((chapter) => (
+        chapter.id === targetTocNode?.targetId ||
+        chapter.title.normalize("NFKC").trim() === reference.chapterTitle.normalize("NFKC").trim()
+      ));
+      if (!targetChapter) throw new Error(`找不到《${reference.chapterTitle}》`);
+      const targetFragment = await loadFragment(target, targetChapter.id);
+      const targetAnnotation = findReferencedAnnotation(
+        targetFragment,
+        reference.annotationLabel,
+        targetTocNode?.anchorId,
+      );
+      if (!targetAnnotation) throw new Error(`《${reference.chapterTitle}》没有注〔${reference.annotationLabel}〕`);
+      const query = new URLSearchParams({
+        chapter: targetChapter.id,
+        annotation: targetAnnotation.id,
+      });
+      navigate(`/rag/source/${encodeURIComponent(datasetId)}/${encodeURIComponent(targetSummary.itemKey)}?${query}`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
+  }
 
   const toc = useMemo(() => flattenToc(loaded?.manifest.content.toc), [loaded]);
   const html = useMemo(() => fragment ? renderedBody(fragment, assetUrls) : "", [assetUrls, fragment]);
@@ -124,7 +268,15 @@ export function ReaderPage() {
         {fragment ? <>
           <h1 className="text-3xl mb-8">{fragment.title}</h1>
           <div className="prose-editorial" dangerouslySetInnerHTML={{ __html: html }} />
-          {fragment.annotations.length > 0 && <section className="mt-12 pt-6 border-t border-rule text-sm"><h2>注释</h2><ol>{fragment.annotations.map((note) => <li id={note.id} key={note.id} className="mb-3">{note.body.value}</li>)}</ol></section>}
+          {fragment.annotations.length > 0 && <section className="mt-12 pt-6 border-t border-rule text-sm"><h2>注释</h2><ul className="list-none p-0">{fragment.annotations.map((note: JojoAnnotation) => {
+            const reference = parseAnnotationReference(note.body.value);
+            return <li id={note.id} key={note.id} className="mb-3 scroll-mt-20 target:bg-[rgba(139,26,26,.08)]">
+              <span className="mr-2 font-bold text-red">{annotationDisplayLabel(note.label)}</span>
+              <span>{note.body.value}</span>{" "}
+              {reference && <button type="button" onClick={() => void followAnnotationReference(reference)} className="border-0 bg-transparent p-0 text-red font-bold cursor-pointer">跳转到原注</button>}{" "}
+              <a href={`#${annotationMarkerId(note.id)}`} className="text-red no-underline" aria-label="返回正文脚注标记">↩</a>
+            </li>;
+          })}</ul></section>}
           {fragment.assetRefs.flatMap((id) => {
             const asset = loaded.manifest.assets.find((candidate) => candidate.id === id);
             const url = assetUrls[id];
