@@ -90,7 +90,7 @@ jobs:
           status="$(curl --silent --show-error --output "$RUNNER_TEMP/agent-health.json" \
             --write-out '%{http_code}' \
             --header 'Makers-Conversation-Id: jojo-deploy-health' \
-            "$base_url/gateway/query?$query")"
+            "$base_url/gateway/ask?$query")"
           cat "$RUNNER_TEMP/agent-health.json"
           if [ "$status" = "404" ]; then
             project_id="$(grep -oE 'makers-[a-z0-9]+' "$RUNNER_TEMP/edgeone-deploy-clean.log" | tail -1)"
