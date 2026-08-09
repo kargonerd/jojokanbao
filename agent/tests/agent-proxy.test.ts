@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   onRequest,
-  type AgentProxyContext,
 } from "../../infrastructure/edgeone/functions/agent-proxy/index";
+import type { AgentProxyContext } from "../src/edgeone/proxy";
 import {
   AGENT_SERVICE_AUTH_HEADERS,
   authorizeAgentServiceRequest,
