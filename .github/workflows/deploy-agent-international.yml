@@ -46,8 +46,28 @@ jobs:
         run: test -n "$EDGEONE_API_TOKEN" || (echo "EDGEONE_API_TOKEN is not configured" >&2 && exit 1)
 
       - name: Deploy to EdgeOne Makers
-        run: >-
-          pnpm dlx edgeone@1.6.14 makers deploy "$EDGEONE_UPLOAD_FROM_PATH"
-          --name "$EDGEONE_PROJECT_NAME"
-          --token "$EDGEONE_API_TOKEN"
-          --env "$EDGEONE_DEPLOY_ENV"
+        id: edgeone_deploy
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          pnpm dlx edgeone@1.6.14 makers deploy "$EDGEONE_UPLOAD_FROM_PATH" \
+            --name "$EDGEONE_PROJECT_NAME" \
+            --token "$EDGEONE_API_TOKEN" \
+            --env "$EDGEONE_DEPLOY_ENV" 2>&1 | tee "$RUNNER_TEMP/edgeone-deploy.log"
+
+      - name: Diagnose failed EdgeOne deployment
+        if: steps.edgeone_deploy.outcome == 'failure'
+        run: |
+          project_id="$(grep -oE 'makers-[a-z0-9]+' "$RUNNER_TEMP/edgeone-deploy.log" | tail -1)"
+          deployment_id="$(grep -oE 'Deployment ID: [a-z0-9]+' "$RUNNER_TEMP/edgeone-deploy.log" | tail -1 | awk '{print $3}')"
+          test -n "$project_id" || (echo "Project ID was not reported" >&2 && exit 1)
+          test -n "$deployment_id" || (echo "Deployment ID was not reported" >&2 && exit 1)
+          response="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $EDGEONE_API_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data "{\"Action\":\"DescribePagesDeployments\",\"ProjectId\":\"$project_id\",\"Offset\":0,\"Limit\":50,\"OrderBy\":\"CreatedOn\",\"Order\":\"Desc\"}" \
+            https://pages-api.cloud.tencent.com/v1)"
+          jq --arg deployment_id "$deployment_id" \
+            '.Data.Response.Deployments[] | select(.DeploymentId == $deployment_id)' \
+            <<<"$response"
+          exit 1
