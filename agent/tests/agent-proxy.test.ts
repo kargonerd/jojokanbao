@@ -95,6 +95,25 @@ describe("international Agent proxy", () => {
     })).resolves.toBeUndefined();
   });
 
+  it("preserves only the EdgeOne preview token for same-deployment health checks", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await onRequest(context(new Request(
+      "https://preview-agent.example/gateway/ask?eo_token=preview-secret&ignored=value",
+      { headers: { "makers-conversation-id": "health-check-001" } },
+    )));
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith(
+      new URL("https://preview-agent.example/jojo/health?eo_token=preview-secret"),
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("rejects untrusted browser origins before forwarding", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

@@ -71,7 +71,9 @@ function agentUrl(
   health: boolean,
 ): URL {
   const configured = environment.JOJO_AGENT_UPSTREAM_URL?.trim();
-  const target = new URL(requestUrl);
+  const incoming = new URL(requestUrl);
+  const previewToken = incoming.searchParams.get("eo_token");
+  const target = new URL(incoming);
   if (configured) {
     const configuredUrl = new URL(configured);
     if (configuredUrl.protocol !== "http:" && configuredUrl.protocol !== "https:") {
@@ -88,6 +90,7 @@ function agentUrl(
     ? `${target.pathname.replace(/\/$/, "")}/health`
     : target.pathname.replace(/\/$/, "");
   target.search = "";
+  if (previewToken) target.searchParams.set("eo_token", previewToken);
   target.hash = "";
   return target;
 }
