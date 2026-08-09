@@ -333,6 +333,7 @@ jobs:
           test -f .edgeone/agent-deploy/cloud-functions/agent/index.ts
           test -f .edgeone/agent-deploy/cloud-functions/internal/credentials/index.ts
           test -f .edgeone/agent-deploy/edgeone.json
+          test -f .edgeone/agent-deploy/index.html
           test -f .edgeone/agent-deploy/package.json
           node -e 'const config = require("./.edgeone/agent-deploy/edgeone.json"); if (config.agents.dir !== "agents") process.exit(1)'
 

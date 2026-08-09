@@ -49,5 +49,18 @@ await writeFile(
   path.join(outputDirectory, "package.json"),
   `${JSON.stringify(agentDeploymentPackage("jojo-agent-international-deploy"), null, 2)}\n`,
 );
+await writeFile(
+  path.join(outputDirectory, "index.html"),
+  [
+    "<!doctype html>",
+    '<html lang="zh-CN">',
+    '<meta charset="utf-8">',
+    '<meta name="robots" content="noindex">',
+    "<title>JOJO Agent</title>",
+    "<p>JOJO Agent service</p>",
+    "</html>",
+    "",
+  ].join("\n"),
+);
 
 process.stdout.write(`${outputDirectory}\n`);
