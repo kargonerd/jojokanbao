@@ -61,5 +61,8 @@ EdgeOne 专有入口位于 `infrastructure/edgeone/functions`，只导入
 - `infrastructure/edgeone`：EdgeOne 配置、入口和部署组装脚本。
 - `infrastructure/tencent-scf/search`：Reader 当前线上 Flask Search，独立运行。
 
+书籍、报纸和杂志的统一规范数据、B2/CDN 交付对象以及 Jox 边界见
+[`docs/data-format-v1.md`](./docs/data-format-v1.md)。
+
 依赖只在真实复用后抽取。前端共享代码放在 `frontend/packages`；Python 代码当前不建立
 推测性的共享包。
