@@ -11,6 +11,7 @@ describe("Agent application definitions", () => {
     expect(definition.status).toBe("available");
     expect(definition.systemPrompt).toContain("search_content");
     expect(definition.systemPrompt).toContain("inspect_item");
+    expect(definition.systemPrompt).toContain("list_item_toc");
   });
 
   it("keeps Olds as a placeholder without fake tools", () => {

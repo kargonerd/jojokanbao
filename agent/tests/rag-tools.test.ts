@@ -23,6 +23,12 @@ describe("RAG content tools", () => {
       metadata: {},
       content: {
         schema: "jojo-content/book/1",
+        toc: [{
+          id: "toc:root", order: 1, title: "上编", children: [
+            { id: "toc:1", order: 2, title: "第一章", targetId: "chapter:1" },
+            { id: "toc:2", order: 3, title: "第二章", targetId: "chapter:2", anchorId: "section:two" },
+          ],
+        }],
         chapters: [
           { id: "chapter:1", order: 1, title: "第一章", characterCount: 20, object: "chapters/one.jox", size: 200, sha256: "a" },
           { id: "chapter:2", order: 2, title: "第二章", characterCount: 20, object: "chapters/two.jox", size: 200, sha256: "b" },
@@ -73,6 +79,21 @@ describe("RAG content tools", () => {
       characterCount: 40,
       estimatedProcessingBytes: 400,
       withinFullScanBudget: true,
+      tocEntryCount: 3,
+      tocPreview: [
+        { depth: 0, title: "上编" },
+        { depth: 1, title: "第一章", fragmentObject: chapterOneObject },
+        { depth: 1, title: "第二章", fragmentObject: chapterTwoObject },
+      ],
+    });
+    const toc = tools.find((tool) => tool.name === "list_item_toc")!;
+    const listed = await toc.execute("toc", { manifestObject, offset: 1, limit: 1 }, undefined);
+    expect(listed.details).toMatchObject({
+      total: 3,
+      offset: 1,
+      entries: [{ depth: 1, title: "第一章", fragmentObject: chapterOneObject }],
+      hasMore: true,
+      nextOffset: 2,
     });
     const scan = tools.find((tool) => tool.name === "scan_full_item")!;
     const output = await scan.execute("scan", {

@@ -1133,10 +1133,12 @@ pnpm --filter @jojo/content-pipeline validate -- "C:\path\to\build"
 B2、Elasticsearch、Hugging Face。B2 发布顺序固定为 Raw → Canonical → 内容/Asset →
 Manifest → Dataset index → Catalog，`catalog.jox` 是最终提交标志。
 
-Hugging Face 保存私有 Canonical 镜像，Dataset/Item JSON 保持可直接浏览和按书下载。为避免
-数千张小图逐文件上传触发 Hub API 限流，每个 Dataset 的媒体合并为一个 `assets.tar`；归档内
-仍使用 Item 所引用的 `assets/<sha256>.<ext>` 路径。B2/CDN 继续保存浏览器直接读取的独立媒体
-对象，HF 不参与 Reader 在线加载。
+Hugging Face 的私有仓库显示为 **Marxism Dataset**，面向人提供中文书名目录、卷册页面、
+完整 TOC 和可直接预览的 `catalog.json`/`*.toc.json`；内部稳定 ID 只保留在结构化字段中，
+不作为主要导航目录。完整 Item 仍用 `.json.gz` 按书下载。为避免数千张小图逐文件上传触发
+Hub API 限流，每个 Dataset 的媒体合并为一个 `assets.tar`；归档内仍使用 Item 所引用的
+`assets/<sha256>.<ext>` 路径。`data/search-documents.jsonl.gz` 供 Dataset Viewer 和检索程序
+直接读取。B2/CDN 继续保存浏览器使用的独立媒体对象，HF 不参与 Reader 在线加载。
 
 Reader 只设置 `VITE_CONTENT_CDN_BASE`，直接从 CDN 读取目录、正文、媒体和 EPUB。Agent 设置：
 
@@ -1145,11 +1147,11 @@ JOJO_CONTENT_SEARCH_URL=https://<search-service>/content/search
 JOJO_CONTENT_CDN_BASE=https://<delivery-cdn>/
 ```
 
-Agent 的 `search_content` 先定位 ES 片段，`read_fragment` 读取一个完整章节；考虑全本时先用
-`inspect_item` 从小型 Manifest 获取章节数、字符数、预计处理量和预算。只有跨章归纳、全书
-统计或证据不足且未超预算时才调用 `scan_full_item`。全书扫描发生在工具侧，只向模型返回计数
-和少量证据，不把整本正文塞进上下文；结果另行报告实际 CDN 下载字节数。可用以下命令做不
-依赖模型的联通测试：
+Agent 的 `search_content` 先定位 ES 片段，`inspect_item` 从小型 Manifest 获取规模、预算和
+目录预览；需要选择章节时用 `list_item_toc` 分页查看完整层级目录，每个可读项直接返回可交给
+`read_fragment` 的对象路径。只有跨章归纳、全书统计或证据不足且未超预算时才调用
+`scan_full_item`。全书扫描发生在工具侧，只向模型返回计数和少量证据，不把整本正文塞进
+上下文；结果另行报告实际 CDN 下载字节数。可用以下命令做不依赖模型的联通测试：
 
 ```powershell
 $env:JOJO_CONTENT_SEARCH_URL="http://127.0.0.1:9000/content/search"
@@ -1166,7 +1168,12 @@ pnpm --filter @jojo/agent content:smoke -- "童年时代"
 pnpm --filter @jojo/agent rag:smoke -- "《毛泽东自述》的童年时代主要讲了什么？"
 ```
 
-2026-08-09 的全量微信读书样本验收覆盖 76 个受支持文件（按 Book ID 去重为 74 本）、
-55 个 Dataset、113 个 Item、7,013 个章节、9,704 个 Asset 引用、13,077 个 Annotation 和
-32,281 个 ES 检索片段。4 个非微信读书 JSON 被明确跳过，2 个来源记录因缺失加密片段而保留诊断；
-其余内容、媒体引用、EPUB ZIP、Jox 哈希和对象引用验证均通过。
+导入器在生成数据前同时校验：元数据声明的目录总数是否与实际 TOC 一致、TOC 中每个正文
+章节的 CID 是否都有响应、响应分片能否解码。默认任一项失败即拒绝该源文件；只有显式
+`--allow-partial` 才允许部分导入。同一 Book ID 有多个导出时，优先选择实际正文更多、目录
+更完整的版本，再比较覆盖率和导出时间。
+
+2026-08-10 的修订快照包含 55 个 Dataset、122 个 Item、7,681 个章节、10,395 个 Asset
+引用、13,077 个 Annotation 和 35,383 个 ES 检索片段。《马克思恩格斯文集（全十卷）》
+的残缺导出被识别为应有 1,076 条正文、实际 408 条、缺失 668 条；完整导出通过
+1,076/1,076 校验并拆分为十卷。内容、媒体引用、EPUB ZIP、Jox 哈希和对象引用全树校验通过。

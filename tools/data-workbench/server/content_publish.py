@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tarfile
@@ -18,6 +19,13 @@ ROOT = Path(__file__).resolve().parents[3]
 RAW_REMOTE = os.getenv("JOJO_RAW_REMOTE", "jojo-b2:jojo-news-raw")
 DELIVERY_REMOTE = os.getenv("JOJO_DELIVERY_REMOTE", "jojo-b2-s3:jojo-newspaper")
 RCLONE_COPY_FLAGS = ["--checksum", "--transfers", "16", "--checkers", "32"]
+RAW_COPY_FLAGS = [
+    *RCLONE_COPY_FLAGS,
+    "--b2-upload-cutoff", "50Mi",
+    "--b2-chunk-size", "16Mi",
+    "--b2-upload-concurrency", "8",
+]
+DELIVERY_COPY_FLAGS = [*RCLONE_COPY_FLAGS, "--s3-no-check-bucket"]
 
 
 def _huggingface_token() -> str:
@@ -115,23 +123,23 @@ def publish_b2(build_root: Path, on_log: Callable[[str], None]) -> dict[str, Any
         "--output", str(merged_metadata),
     ], on_log)
 
-    _run(["rclone", "copy", str(build_root / "raw"), f"{raw_remote}/raw", *RCLONE_COPY_FLAGS], on_log)
+    _run(["rclone", "copy", str(build_root / "raw"), f"{raw_remote}/raw", *RAW_COPY_FLAGS], on_log)
     _run(["rclone", "copy", str(build_root / "canonical"), f"{raw_remote}/canonical", *RCLONE_COPY_FLAGS], on_log)
     _run([
         "rclone", "copy", str(build_root / "delivery" / "content"), f"{delivery_remote}/content",
-        "--exclude", "**/manifest.jox", "--exclude", "**/index.jox", *RCLONE_COPY_FLAGS,
+        "--exclude", "**/manifest.jox", "--exclude", "**/index.jox", *DELIVERY_COPY_FLAGS,
     ], on_log)
     _run([
         "rclone", "copy", str(build_root / "delivery" / "content"), f"{delivery_remote}/content",
-        "--include", "**/manifest.jox", "--exclude", "*", *RCLONE_COPY_FLAGS,
+        "--filter", "+ **/manifest.jox", "--filter", "- **", *DELIVERY_COPY_FLAGS,
     ], on_log)
     if (merged_metadata / "content").exists():
-        _run(["rclone", "copy", str(merged_metadata / "content"), f"{delivery_remote}/content", *RCLONE_COPY_FLAGS], on_log)
+        _run(["rclone", "copy", str(merged_metadata / "content"), f"{delivery_remote}/content", *DELIVERY_COPY_FLAGS], on_log)
     # B2's S3 compatibility endpoint may treat copyto(bucket/root-object) as a
     # bucket-creation attempt. Copy the parent with an exact root filter instead.
     _run([
         "rclone", "copy", str(merged_metadata), delivery_remote,
-        "--filter", "+ /catalog.jox", "--filter", "- **", *RCLONE_COPY_FLAGS,
+        "--filter", "+ /catalog.jox", "--filter", "- **", *DELIVERY_COPY_FLAGS,
     ], on_log)
     return {"datasets": len(dataset_ids), "rawRemote": raw_remote, "deliveryRemote": delivery_remote}
 
@@ -266,6 +274,24 @@ def _filter_key(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _hf_slug(title: str, fallback: str) -> str:
+    value = re.sub(r"[^\w\u3400-\u9fff-]+", "-", title).strip()
+    value = re.sub(r"\s+", "-", value).strip(" .-")
+    return value[:100] or fallback
+
+
+def _markdown_text(value: Any) -> str:
+    return str(value or "").replace("|", "\\|").replace("\r", " ").replace("\n", " ").strip()
+
+
+def _toc_markdown(nodes: list[dict[str, Any]], depth: int = 0) -> list[str]:
+    lines: list[str] = []
+    for node in nodes:
+        lines.append(f"{'  ' * depth}- {_markdown_text(node.get('title') or '未命名目录项')}")
+        lines.extend(_toc_markdown(node.get("children") or [], depth + 1))
+    return lines
+
+
 def _prepare_huggingface_snapshot(
     build_root: Path,
     on_log: Callable[[str], None],
@@ -277,10 +303,10 @@ def _prepare_huggingface_snapshot(
         path for path in source.rglob("*")
         if path.is_file() and ".cache" not in path.relative_to(source).parts
     )
-    fingerprint = hashlib.sha256("\n".join(
+    fingerprint = hashlib.sha256(("human-readable-v3\n" + "\n".join(
         f"{path.relative_to(source).as_posix()}:{path.stat().st_size}:{path.stat().st_mtime_ns}"
         for path in source_files
-    ).encode("utf-8")).hexdigest()
+    )).encode("utf-8")).hexdigest()
     state_path = build_root / ".publish" / "huggingface-state.json"
     if target.exists() and state_path.exists():
         try:
@@ -297,34 +323,164 @@ def _prepare_huggingface_snapshot(
         shutil.rmtree(target)
     target.mkdir(parents=True)
 
-    asset_groups: dict[str, list[Path]] = {}
+    report_path = build_root / "report.json"
+    generated_at = None
+    if report_path.exists():
+        try:
+            generated_at = json.loads(report_path.read_text(encoding="utf-8")).get("generatedAt")
+        except (OSError, ValueError):
+            pass
+    collections: list[dict[str, Any]] = []
+    used_slugs: set[str] = set()
     copied = 0
-    for path in source_files:
-        relative = path.relative_to(source)
-        if len(relative.parts) >= 3 and relative.parts[1] == "assets":
-            asset_groups.setdefault(relative.parts[0], []).append(path)
-            continue
-        destination = target / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(path, destination)
-        copied += 1
-
     bundled_assets = 0
-    for dataset_id, paths in sorted(asset_groups.items()):
-        archive = target / dataset_id / "assets.tar"
-        archive.parent.mkdir(parents=True, exist_ok=True)
-        on_log(f"打包 {dataset_id} 的 {len(paths)} 个媒体文件")
-        with tarfile.open(archive, "w") as bundle:
-            for path in sorted(paths):
-                bundle.add(path, arcname=f"assets/{path.name}", recursive=False)
-        bundled_assets += len(paths)
+    for source_dataset in sorted(path for path in source.iterdir() if path.is_dir() and (path / "dataset.json").exists()):
+        dataset = json.loads((source_dataset / "dataset.json").read_text(encoding="utf-8"))
+        dataset_id = str(dataset.get("datasetId") or source_dataset.name)
+        title = str(dataset.get("title") or dataset_id)
+        slug = _hf_slug(title, dataset_id)
+        if slug in used_slugs:
+            slug = f"{slug}-{dataset_id[-6:]}"
+        used_slugs.add(slug)
+        collection_directory = target / "collections" / slug
+        items_directory = collection_directory / "items"
+        items_directory.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_dataset / "dataset.json", collection_directory / "dataset.json")
+        copied += 1
+        collection_items: list[dict[str, Any]] = []
+        for summary in sorted(dataset.get("items") or [], key=lambda item: (item.get("order") or 0, item.get("title") or "")):
+            item_key = str(summary.get("itemKey") or "main")
+            item_source = source_dataset / "data" / f"{item_key}.json.gz"
+            if not item_source.exists():
+                continue
+            with gzip.open(item_source, "rt", encoding="utf-8") as stream:
+                item = json.load(stream)
+            item_download = items_directory / f"{item_key}.json.gz"
+            shutil.copy2(item_source, item_download)
+            chapters = item.get("content", {}).get("chapters") or []
+            toc = item.get("content", {}).get("toc") or []
+            metadata = item.get("metadata") or {}
+            toc_document = {
+                "formatVersion": "marxism-toc/1",
+                "datasetId": dataset_id,
+                "datasetTitle": title,
+                "itemId": item.get("itemId"),
+                "itemTitle": item.get("title"),
+                "type": item.get("type"),
+                "language": item.get("language"),
+                "metadata": metadata,
+                "chapterCount": len(chapters),
+                "assetCount": len(item.get("assets") or []),
+                "annotationCount": len(item.get("annotations") or []),
+                "toc": toc,
+                "chapters": [
+                    {"id": chapter.get("id"), "order": chapter.get("order"), "title": chapter.get("title")}
+                    for chapter in chapters
+                ],
+                "download": f"{item_key}.json.gz",
+            }
+            (items_directory / f"{item_key}.toc.json").write_text(
+                json.dumps(toc_document, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            authors = "、".join(str(author) for author in metadata.get("authors") or []) or "未注明"
+            item_page = [
+                f"# {_markdown_text(item.get('title'))}", "",
+                f"- 作者：{_markdown_text(authors)}",
+                f"- 出版社：{_markdown_text(metadata.get('publisher') or '未注明')}",
+                f"- 章节数：{len(chapters)}",
+                f"- 图片/媒体：{len(item.get('assets') or [])}",
+                f"- 注释：{len(item.get('annotations') or [])}",
+                f"- [查看结构化目录]({item_key}.toc.json)",
+                f"- [下载完整 Canonical Item]({item_key}.json.gz)", "", "## 目录", "",
+                *(_toc_markdown(toc) or [f"- {_markdown_text(chapter.get('title'))}" for chapter in chapters]), "",
+            ]
+            (items_directory / f"{item_key}.md").write_text("\n".join(item_page), encoding="utf-8")
+            copied += 3
+            collection_items.append({
+                "itemId": item.get("itemId"),
+                "itemKey": item_key,
+                "title": item.get("title"),
+                "type": item.get("type"),
+                "order": summary.get("order"),
+                "chapterCount": len(chapters),
+                "tocPath": f"collections/{slug}/items/{item_key}.toc.json",
+                "pagePath": f"collections/{slug}/items/{item_key}.md",
+                "downloadPath": f"collections/{slug}/items/{item_key}.json.gz",
+            })
+        asset_paths = sorted(path for path in (source_dataset / "assets").glob("*") if path.is_file())
+        if asset_paths:
+            archive = collection_directory / "assets.tar"
+            on_log(f"打包《{title}》的 {len(asset_paths)} 个媒体文件")
+            with tarfile.open(archive, "w") as bundle:
+                for path in asset_paths:
+                    bundle.add(path, arcname=f"assets/{path.name}", recursive=False)
+            bundled_assets += len(asset_paths)
+        collection_readme = [
+            f"# {_markdown_text(title)}", "", _markdown_text(dataset.get("description")), "",
+            f"- 类型：`{dataset.get('type')}`",
+            f"- 语言：`{dataset.get('language')}`",
+            f"- 卷册/Item：{len(collection_items)}", "", "## 卷册", "",
+            "| 名称 | 章节 | 在线目录 | 完整下载 |", "|---|---:|---|---|",
+            *[
+                f"| {_markdown_text(item['title'])} | {item['chapterCount']} | "
+                f"[查看](items/{item['itemKey']}.md) | [JSON.GZ](items/{item['itemKey']}.json.gz) |"
+                for item in collection_items
+            ], "",
+        ]
+        if asset_paths:
+            collection_readme.extend(["媒体文件集中保存在 [assets.tar](assets.tar)。", ""])
+        (collection_directory / "README.md").write_text("\n".join(collection_readme), encoding="utf-8")
+        copied += 1
+        collections.append({
+            "datasetId": dataset_id,
+            "title": title,
+            "type": dataset.get("type"),
+            "language": dataset.get("language"),
+            "description": dataset.get("description"),
+            "path": f"collections/{slug}",
+            "items": collection_items,
+        })
+    collections.sort(key=lambda collection: str(collection["title"]))
+    catalog = {
+        "formatVersion": "marxism-catalog/1",
+        "title": "Marxism Dataset",
+        "generatedAt": generated_at,
+        "collectionCount": len(collections),
+        "itemCount": sum(len(collection["items"]) for collection in collections),
+        "collections": collections,
+    }
+    (target / "catalog.json").write_text(json.dumps(catalog, ensure_ascii=False, indent=2), encoding="utf-8")
+    search_documents = build_root / "search" / "documents.jsonl.gz"
+    if search_documents.exists():
+        (target / "data").mkdir(exist_ok=True)
+        shutil.copy2(search_documents, target / "data" / "search-documents.jsonl.gz")
+        copied += 1
+    root_readme = [
+        "---", "pretty_name: Marxism Dataset", "language:", "- zh", "task_categories:",
+        "- text-retrieval", "configs:", "- config_name: default", "  data_files:",
+        "  - split: train", "    path: data/search-documents.jsonl.gz", "---", "",
+        "# Marxism Dataset", "",
+        "马克思主义经典著作、文集、传记与相关研究资料的中文数字馆藏。", "",
+        "- 首页目录面向读者，可按书名进入并查看卷册和完整目录。",
+        "- `catalog.json` 面向程序和 Agent，提供稳定 ID 与可下载路径。",
+        "- `data/search-documents.jsonl.gz` 可由 Hugging Face Dataset Viewer 浏览并用于检索。",
+        "- 每个 Item 的 `.json.gz` 是完整 JOJO Canonical 数据，可用于重建搜索索引。", "",
+        f"当前包含 **{len(collections)}** 个书目 Dataset、**{catalog['itemCount']}** 个 Item。", "",
+        "## 馆藏目录", "", "| 书目 | 类型 | 卷册 |", "|---|---|---:|",
+        *[
+            f"| [{_markdown_text(collection['title'])}]({collection['path']}/README.md) | "
+            f"{collection['type']} | {len(collection['items'])} |"
+            for collection in collections
+        ], "",
+    ]
+    (target / "README.md").write_text("\n".join(root_readme), encoding="utf-8")
     (target / "ASSETS.md").write_text(
-        "# Media bundles\n\n"
-        "Each Dataset keeps canonical JSON files directly browseable. When a Dataset has "
-        "media, `assets.tar` contains the `assets/` paths referenced by its Item files. "
-        "The browser delivery copy remains on B2/CDN.\n",
+        "# 媒体归档\n\n每个书目目录中的 `assets.tar` 保存该书全部媒体。解包后仍为 "
+        "`assets/<sha256>.<ext>`，与 Canonical Item 的 `assets[].path` 一致。浏览器在线读取的 "
+        "Jox 媒体继续由 B2/CDN 提供。\n",
         encoding="utf-8",
     )
+    copied += 3
     stats = {
         "sourceFiles": len(source_files),
         "metadataFiles": copied,

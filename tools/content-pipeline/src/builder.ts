@@ -36,7 +36,7 @@ import type {
 } from "./models";
 import { chapterSearchDocuments, type JojoSearchDocument } from "./search";
 import { convertWereadChapter, htmlToText } from "./semantic-html";
-import { decodeWereadFile, isWereadExport } from "./weread";
+import { decodeWereadFile, inspectWereadCompleteness, isWereadExport } from "./weread";
 
 export interface BuildPipelineOptions {
   inputPaths: string[];
@@ -54,6 +54,11 @@ interface InspectedSource {
   sourceBookId: string;
   title: string;
   exportedAt: number;
+  chapterCoverage: number;
+  presentChapterRecords: number;
+  missingChapterRecords: number;
+  sourceTocItems: number;
+  missingTocItems: number;
 }
 
 interface DatasetBuildState {
@@ -148,12 +153,18 @@ async function inspectSource(sourcePath: string): Promise<InspectedSource | unde
   const raw = JSON.parse(await readFile(sourcePath, "utf8")) as unknown;
   if (!isWereadExport(raw)) return undefined;
   const metadata = rawMetadata(raw);
+  const completeness = inspectWereadCompleteness(raw);
   return {
     path: path.resolve(sourcePath),
     fileName: path.basename(sourcePath),
     sourceBookId: String(raw.bookId),
     title: String(metadata.title || path.basename(sourcePath, path.extname(sourcePath))),
     exportedAt: Number(raw.date) || 0,
+    chapterCoverage: completeness.chapterCoverage,
+    presentChapterRecords: completeness.presentChapterRecords,
+    missingChapterRecords: completeness.missingChapterRecords,
+    sourceTocItems: raw.toc?.length ?? 0,
+    missingTocItems: completeness.missingTocItems,
   };
 }
 
@@ -168,7 +179,28 @@ function selectedSources(
       selected.set(source.sourceBookId, source);
       continue;
     }
-    if (source.exportedAt > existing.exportedAt) {
+    const sourceQuality = [
+      source.presentChapterRecords,
+      source.sourceTocItems,
+      -source.missingTocItems,
+      -source.missingChapterRecords,
+      source.chapterCoverage,
+      source.exportedAt,
+    ];
+    const existingQuality = [
+      existing.presentChapterRecords,
+      existing.sourceTocItems,
+      -existing.missingTocItems,
+      -existing.missingChapterRecords,
+      existing.chapterCoverage,
+      existing.exportedAt,
+    ];
+    const sourceIsBetter = sourceQuality.some((value, index) => (
+      value !== existingQuality[index]
+      && value > existingQuality[index]!
+      && sourceQuality.slice(0, index).every((candidate, earlier) => candidate === existingQuality[earlier])
+    ));
+    if (sourceIsBetter) {
       duplicates.push(existing);
       selected.set(source.sourceBookId, source);
     } else {
@@ -578,7 +610,7 @@ export async function buildContentPipeline(
   }
   const { selected, duplicates } = selectedSources(inspected);
   for (const duplicate of duplicates) {
-    diagnostics.push({ level: "warning", code: "duplicate-source-book", message: `同一微信读书 Book ID 已选择较新的导出，跳过 ${duplicate.fileName}`, source: duplicate.path });
+    diagnostics.push({ level: "warning", code: "duplicate-source-book", message: `同一微信读书 Book ID 已选择完整度更高或更新的导出，跳过 ${duplicate.fileName}`, source: duplicate.path });
   }
 
   const volumeCounts = new Map<string, number>();
@@ -594,9 +626,36 @@ export async function buildContentPipeline(
   const builtItems: BuiltItemSummary[] = [];
   const fetchedAssets = new Map<string, JojoCanonicalAsset>();
   const fetchingAssets = new Map<string, Promise<JojoCanonicalAsset>>();
+  let importedFiles = 0;
   for (const [sourceIndex, inspectedSource] of selected.entries()) {
     options.onProgress?.({ phase: "decode", current: sourceIndex + 1, total: selected.length, file: inspectedSource.fileName });
     const decoded = await decodeWereadFile(inspectedSource.path);
+    let sourceRejected = false;
+    if (decoded.diagnostics.missingTocItems > 0) {
+      diagnostics.push({
+        level: options.allowPartial ? "warning" : "error",
+        code: "source-toc-truncated",
+        message: `${decoded.title} 目录不完整：元数据声明 ${decoded.diagnostics.declaredTocItems} 项，`
+          + `导出文件只有 ${decoded.diagnostics.sourceTocItems} 项，缺少 ${decoded.diagnostics.missingTocItems} 项`,
+        source: decoded.sourcePath,
+      });
+      sourceRejected = !options.allowPartial;
+    }
+    if (decoded.diagnostics.missingChapterRecords > 0) {
+      const firstMissing = decoded.diagnostics.missingChapters
+        .slice(0, 3)
+        .map((chapter) => `${chapter.order}. ${chapter.title}`)
+        .join("；");
+      diagnostics.push({
+        level: options.allowPartial ? "warning" : "error",
+        code: "source-chapters-missing",
+        message: `${decoded.title} 正文不完整：目录应有 ${decoded.diagnostics.expectedChapterRecords} 条正文，`
+          + `实际匹配 ${decoded.diagnostics.presentChapterRecords} 条，缺少 ${decoded.diagnostics.missingChapterRecords} 条`
+          + `${firstMissing ? `（例如：${firstMissing}）` : ""}`,
+        source: decoded.sourcePath,
+      });
+      sourceRejected = !options.allowPartial;
+    }
     if (decoded.diagnostics.failedChapterRecords > 0) {
       diagnostics.push({
         level: options.allowPartial ? "warning" : "error",
@@ -604,7 +663,13 @@ export async function buildContentPipeline(
         message: `${decoded.title} 有 ${decoded.diagnostics.failedChapterRecords} 个章节记录无法解码`,
         source: decoded.sourcePath,
       });
+      sourceRejected ||= !options.allowPartial;
     }
+    if (sourceRejected) {
+      rejectedFiles += 1;
+      continue;
+    }
+    importedFiles += 1;
     const semantic = decoded.chapters.map((chapter) => convertWereadChapter(chapter, diagnostics));
     let chapters = semantic.map((entry) => entry.chapter);
     const annotations = semantic.flatMap((entry) => entry.annotations);
@@ -777,7 +842,7 @@ export async function buildContentPipeline(
     formatVersion: "jojo-pipeline-report/1",
     generatedAt: (options.now?.() ?? new Date()).toISOString(),
     inputFiles: options.inputPaths.length,
-    acceptedFiles: inspected.length,
+    acceptedFiles: importedFiles,
     rejectedFiles,
     duplicateFiles: duplicates.length,
     datasets: datasets.size,

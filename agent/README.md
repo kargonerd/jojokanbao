@@ -73,7 +73,9 @@ const result = await runPlatformAgent({
 - `search_content`：查询 ES，返回可追溯的 Manifest/Fragment 路径。
 - `read_fragment`：从 CDN 解码一个完整章节或文章，默认优先使用。
 - `inspect_item`：考虑扫描全本时只读取小型 Manifest，返回章节数、字符数、预计处理量和
-  预算，不读取正文；Agent 据此决定是否继续。
+  预算以及目录预览，不读取正文；Agent 据此决定下一步。
+- `list_item_toc`：分页查看完整层级目录，并返回每个可读目录项对应的 `fragmentObject`；
+  Agent 可以先看目录、选择章节，再调用 `read_fragment`。
 - `scan_full_item`：仅在跨章归纳、全书统计或证据不足时下载整个 Item 到工具侧扫描；受
   32 MiB 默认解码后内容预算限制，只返回统计和少量命中证据。实际 CDN 传输字节数在扫描
   结果的 `downloadedBytes` 中报告，通常小于保守的预计处理量。

@@ -1,4 +1,5 @@
 import json
+import gzip
 import os
 import sys
 from types import SimpleNamespace
@@ -44,6 +45,15 @@ class B2PublishTest(unittest.TestCase):
         self.assertEqual(final_command[0:2], ["rclone", "copy"])
         self.assertIn("+ /catalog.jox", final_command)
         self.assertNotIn("copyto", final_command)
+        commands = [call.args[0] for call in _run.call_args_list]
+        raw_command = next(command for command in commands if command[0] == "rclone" and command[3].endswith("/raw"))
+        delivery_commands = [
+            command for command in commands
+            if command[0] == "rclone" and "jojo-newspaper" in command[3]
+        ]
+        self.assertIn("--b2-upload-cutoff", raw_command)
+        self.assertTrue(delivery_commands)
+        self.assertTrue(all("--s3-no-check-bucket" in command for command in delivery_commands))
 
     @patch.object(content_publish.shutil, "which", return_value="rclone.exe")
     @patch.object(content_publish, "_run")
@@ -82,15 +92,18 @@ class HuggingFacePublishTest(unittest.TestCase):
 
             def upload_large_folder(self, **kwargs):
                 calls["upload"] = kwargs
+                folder = Path(kwargs["folder_path"])
+                calls["remote"] = [".gitattributes", *sorted(
+                    path.relative_to(folder).as_posix()
+                    for path in folder.rglob("*")
+                    if path.is_file() and ".cache" not in path.relative_to(folder).parts
+                )]
 
             def repo_info(self, **_kwargs):
                 return SimpleNamespace(private=True, sha="abc")
 
             def list_repo_files(self, **_kwargs):
-                return [
-                    ".gitattributes", "ASSETS.md", "README.md",
-                    "book-a/dataset.json", "book-a/data/main.json.gz",
-                ]
+                return calls["remote"]
 
             def delete_files(self, **kwargs):
                 calls["delete"] = kwargs
@@ -104,15 +117,25 @@ class HuggingFacePublishTest(unittest.TestCase):
             root = Path(temp)
             (root / "huggingface" / "book-a" / "data").mkdir(parents=True)
             (root / "huggingface" / "README.md").write_text("root", encoding="utf-8")
-            (root / "huggingface" / "book-a" / "dataset.json").write_text("{}", encoding="utf-8")
-            (root / "huggingface" / "book-a" / "data" / "main.json.gz").write_bytes(b"item")
+            (root / "huggingface" / "book-a" / "dataset.json").write_text(json.dumps({
+                "datasetId": "book-a", "title": "测试书", "type": "book", "language": "zh-CN",
+                "items": [{"itemId": "book-a:main", "itemKey": "main", "title": "测试书", "order": 1}],
+            }, ensure_ascii=False), encoding="utf-8")
+            with gzip.open(root / "huggingface" / "book-a" / "data" / "main.json.gz", "wt", encoding="utf-8") as stream:
+                json.dump({
+                    "itemId": "book-a:main", "datasetId": "book-a", "title": "测试书", "type": "book",
+                    "language": "zh-CN", "metadata": {"authors": ["作者甲"], "publisher": "测试社"},
+                    "content": {"toc": [{"id": "toc:1", "order": 1, "title": "第一章", "targetId": "chapter:1"}],
+                                "chapters": [{"id": "chapter:1", "order": 1, "title": "第一章"}]},
+                    "assets": [], "annotations": [],
+                }, stream, ensure_ascii=False)
             result = content_publish.publish_huggingface(root, lambda _message: None)
 
         self.assertEqual(calls["token"], "cached-cli-token")
         self.assertTrue(calls["create"]["private"])
         self.assertEqual(calls["upload"]["repo_type"], "dataset")
         self.assertEqual(calls["upload"]["num_workers"], 4)
-        self.assertEqual(result["remoteFiles"], 5)
+        self.assertEqual(result["remoteFiles"], len(calls["remote"]))
         self.assertTrue(result["commit"].endswith("/commit/abc"))
         self.assertNotIn("delete", calls)
 
@@ -123,17 +146,33 @@ class HuggingFacePublishTest(unittest.TestCase):
             (source / "book-a" / "assets").mkdir(parents=True)
             (source / "book-a" / "data").mkdir()
             (source / "README.md").write_text("root", encoding="utf-8")
-            (source / "book-a" / "dataset.json").write_text("{}", encoding="utf-8")
-            (source / "book-a" / "data" / "main.json.gz").write_bytes(b"item")
+            (source / "book-a" / "dataset.json").write_text(json.dumps({
+                "datasetId": "book-a", "title": "测试书", "type": "book", "language": "zh-CN",
+                "description": "测试简介", "items": [
+                    {"itemId": "book-a:main", "itemKey": "main", "title": "测试书", "order": 1},
+                ],
+            }, ensure_ascii=False), encoding="utf-8")
+            with gzip.open(source / "book-a" / "data" / "main.json.gz", "wt", encoding="utf-8") as stream:
+                json.dump({
+                    "itemId": "book-a:main", "datasetId": "book-a", "title": "测试书", "type": "book",
+                    "language": "zh-CN", "metadata": {"authors": ["作者甲"], "publisher": "测试社"},
+                    "content": {"toc": [{"id": "toc:1", "order": 1, "title": "第一章", "targetId": "chapter:1"}],
+                                "chapters": [{"id": "chapter:1", "order": 1, "title": "第一章"}]},
+                    "assets": [{"path": "assets/one.png"}, {"path": "assets/two.jpg"}], "annotations": [],
+                }, stream, ensure_ascii=False)
             (source / "book-a" / "assets" / "one.png").write_bytes(b"one")
             (source / "book-a" / "assets" / "two.jpg").write_bytes(b"two")
 
             snapshot, stats = content_publish._prepare_huggingface_snapshot(root, lambda _message: None)
 
-            self.assertTrue((snapshot / "book-a" / "dataset.json").exists())
-            self.assertTrue((snapshot / "book-a" / "data" / "main.json.gz").exists())
-            self.assertFalse((snapshot / "book-a" / "assets").exists())
-            with __import__("tarfile").open(snapshot / "book-a" / "assets.tar") as archive:
+            collection = snapshot / "collections" / "测试书"
+            self.assertTrue((snapshot / "catalog.json").exists())
+            self.assertIn("Marxism Dataset", (snapshot / "README.md").read_text(encoding="utf-8"))
+            self.assertTrue((collection / "dataset.json").exists())
+            self.assertTrue((collection / "items" / "main.json.gz").exists())
+            self.assertIn("第一章", (collection / "items" / "main.md").read_text(encoding="utf-8"))
+            self.assertFalse((collection / "assets").exists())
+            with __import__("tarfile").open(collection / "assets.tar") as archive:
                 self.assertEqual(archive.getnames(), ["assets/one.png", "assets/two.jpg"])
             self.assertEqual(stats["sourceFiles"], 5)
             self.assertEqual(stats["bundledAssets"], 2)

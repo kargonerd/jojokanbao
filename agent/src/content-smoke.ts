@@ -21,6 +21,7 @@ const tools = createRagTools({
 const search = tools.find((tool) => tool.name === "search_content")!;
 const read = tools.find((tool) => tool.name === "read_fragment")!;
 const inspect = tools.find((tool) => tool.name === "inspect_item")!;
+const toc = tools.find((tool) => tool.name === "list_item_toc")!;
 const scan = tools.find((tool) => tool.name === "scan_full_item")!;
 const signal = new AbortController().signal;
 
@@ -41,6 +42,11 @@ const readResult = await read.execute(
 const inspectResult = await inspect.execute(
   "content-smoke-inspect",
   { manifestObject: String(first.manifestObject) },
+  signal,
+) as { details?: Record<string, unknown> };
+const tocResult = await toc.execute(
+  "content-smoke-toc",
+  { manifestObject: String(first.manifestObject), offset: 0, limit: 10 },
   signal,
 ) as { details?: Record<string, unknown> };
 
@@ -71,5 +77,6 @@ process.stdout.write(`${JSON.stringify({
   },
   read: readResult.details,
   inspect: inspectResult.details,
+  toc: tocResult.details,
   ...(scanDetails ? { scan: scanDetails } : {}),
 }, null, 2)}\n`);

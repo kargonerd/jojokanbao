@@ -142,6 +142,81 @@ export function isWereadExport(value: unknown): value is WereadRawExport {
   );
 }
 
+export interface WereadSourceCompleteness {
+  declaredTocItems: number;
+  missingTocItems: number;
+  expectedChapterRecords: number;
+  presentChapterRecords: number;
+  missingChapterRecords: number;
+  unmatchedChapterRecords: number;
+  duplicateChapterRecords: number;
+  chapterCoverage: number;
+  missingChapters: Array<{
+    chapterUid: string;
+    title: string;
+    order: number;
+  }>;
+}
+
+function optionalMainCover(entry: WereadTocEntry, index: number): boolean {
+  return index === 0
+    && Math.max(1, Number(entry.level) || 1) === 1
+    && /^(?:封面|cover)$/iu.test(String(entry.title ?? "").trim());
+}
+
+/**
+ * Checks that the WRX response list covers the source TOC. The exporter normally
+ * omits the top-level book cover response, so that one navigation-only entry is
+ * not treated as missing content.
+ */
+export function inspectWereadCompleteness(raw: WereadRawExport): WereadSourceCompleteness {
+  const sourceToc = raw.toc ?? [];
+  const bookMetadata = metadata(raw);
+  const declaredCandidates = [bookMetadata.chapterSize, bookMetadata.lastChapterIdx]
+    .map(Number)
+    .filter((value) => Number.isSafeInteger(value) && value >= 0);
+  const declaredTocItems = Math.max(sourceToc.length, ...declaredCandidates);
+  const expected = new Map<string, { chapterUid: string; title: string; order: number }>();
+  sourceToc.forEach((entry, index) => {
+    if (entry.chapterUid === undefined || optionalMainCover(entry, index)) return;
+    const cid = hashWereadId(entry.chapterUid);
+    if (!expected.has(cid)) {
+      expected.set(cid, {
+        chapterUid: String(entry.chapterUid),
+        title: String(entry.title || `目录 ${index + 1}`),
+        order: Number(entry.chapterIdx) || index + 1,
+      });
+    }
+  });
+
+  const counts = new Map<string, number>();
+  for (const record of raw.chapters ?? []) {
+    const cid = String(record.cid ?? "");
+    if (cid) counts.set(cid, (counts.get(cid) ?? 0) + 1);
+  }
+  const missingChapters = [...expected.entries()]
+    .filter(([cid]) => !counts.has(cid))
+    .map(([, chapter]) => chapter)
+    .sort((left, right) => left.order - right.order);
+  const presentChapterRecords = [...expected.keys()].filter((cid) => counts.has(cid)).length;
+  const unmatchedChapterRecords = [...counts.entries()]
+    .filter(([cid]) => !expected.has(cid))
+    .reduce((total, [, count]) => total + count, 0);
+  const duplicateChapterRecords = [...counts.values()]
+    .reduce((total, count) => total + Math.max(0, count - 1), 0);
+  return {
+    declaredTocItems,
+    missingTocItems: Math.max(0, declaredTocItems - sourceToc.length),
+    expectedChapterRecords: expected.size,
+    presentChapterRecords,
+    missingChapterRecords: missingChapters.length,
+    unmatchedChapterRecords,
+    duplicateChapterRecords,
+    chapterCoverage: expected.size === 0 ? 1 : presentChapterRecords / expected.size,
+    missingChapters: missingChapters.slice(0, 20),
+  };
+}
+
 function tocTargetMap(
   sourceToc: WereadTocEntry[],
   chaptersByUid: Map<string, DecodedWereadChapter>,
@@ -219,6 +294,7 @@ export async function decodeWereadFile(sourcePath: string): Promise<DecodedWerea
   const bookMetadata = metadata(raw);
   const sourceBookId = String(raw.bookId ?? bookMetadata.bookId ?? "");
   const sourceToc = raw.toc ?? [];
+  const completeness = inspectWereadCompleteness(raw);
   const tocByCid = new Map<string, WereadTocEntry>();
   for (const entry of sourceToc) {
     if (entry.chapterUid !== undefined) tocByCid.set(hashWereadId(entry.chapterUid), entry);
@@ -279,6 +355,7 @@ export async function decodeWereadFile(sourcePath: string): Promise<DecodedWerea
     diagnostics: {
       sourceTocItems: sourceToc.length,
       sourceChapterRecords: raw.chapters?.length ?? 0,
+      ...completeness,
       matchedChapterRecords: decoded.filter((chapter) => chapter.sourceChapterUid).length,
       decodedChapterRecords: decoded.length,
       failedChapterRecords: errors.length,

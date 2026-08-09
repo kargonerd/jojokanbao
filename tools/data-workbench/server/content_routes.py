@@ -104,7 +104,7 @@ def _build(job_id: str) -> None:
     command = [pnpm, "--filter", "@jojo/content-pipeline", "cli"]
     for input_path in job["inputPaths"]:
         command.extend(["--input", input_path])
-    command.extend(["--output", job["outputDirectory"], "--allow-partial"])
+    command.extend(["--output", job["outputDirectory"]])
     if not job["fetchAssets"]:
         command.append("--no-assets")
     try:
@@ -135,10 +135,16 @@ def _build(job_id: str) -> None:
             else:
                 _set(job_id, progress=event, phase=phase, message=_phase_message(event))
         code = process.wait()
-        if code:
-            raise RuntimeError(f"内容处理退出码 {code}")
         report_path = Path(job["outputDirectory"]) / "report.json"
-        report = json.loads(report_path.read_text(encoding="utf-8"))
+        report = json.loads(report_path.read_text(encoding="utf-8")) if report_path.exists() else None
+        if code:
+            if report:
+                _set(job_id, report=report)
+                errors = [item.get("message", "") for item in report.get("diagnostics", []) if item.get("level") == "error"]
+                if errors:
+                    raise RuntimeError("；".join(errors[:3]))
+            raise RuntimeError(f"内容处理退出码 {code}")
+        assert report is not None
         _set(job_id, status="ready", phase="complete", message="内容已生成并通过结构检查", report=report)
     except Exception as exc:
         _log(job_id, str(exc))

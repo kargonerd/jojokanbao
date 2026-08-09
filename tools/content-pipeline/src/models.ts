@@ -59,7 +59,20 @@ export interface DecodedWereadBook {
   toc: JojoTocNode[];
   diagnostics: {
     sourceTocItems: number;
+    declaredTocItems: number;
+    missingTocItems: number;
     sourceChapterRecords: number;
+    expectedChapterRecords: number;
+    presentChapterRecords: number;
+    missingChapterRecords: number;
+    unmatchedChapterRecords: number;
+    duplicateChapterRecords: number;
+    chapterCoverage: number;
+    missingChapters: Array<{
+      chapterUid: string;
+      title: string;
+      order: number;
+    }>;
     matchedChapterRecords: number;
     decodedChapterRecords: number;
     failedChapterRecords: number;

@@ -6,6 +6,7 @@ import {
   resolveJoxObject,
   type JojoFragment,
   type JojoItemManifest,
+  type JojoTocNode,
 } from "@jojo/content";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
@@ -94,6 +95,44 @@ function excerpt(text: string, terms: string[], maxChars: number): string {
   const center = positions.length ? Math.min(...positions) : 0;
   const start = Math.max(0, center - Math.floor(maxChars * .3));
   return `${start > 0 ? "…" : ""}${text.slice(start, start + maxChars)}${start + maxChars < text.length ? "…" : ""}`;
+}
+
+interface AgentTocEntry {
+  id: string;
+  order: number;
+  depth: number;
+  title: string;
+  targetId?: string;
+  anchorId?: string;
+  fragmentObject?: string;
+}
+
+function itemToc(manifest: JojoItemManifest, manifestObject: string): AgentTocEntry[] {
+  const chapters = manifest.content.chapters ?? [];
+  const chapterObjects = new Map(chapters.map((chapter) => [
+    chapter.id,
+    resolveJoxObject(manifestObject, chapter.object),
+  ]));
+  const flatten = (nodes: JojoTocNode[], depth = 0): AgentTocEntry[] => nodes.flatMap((node) => [{
+    id: node.id,
+    order: node.order,
+    depth,
+    title: node.title,
+    ...(node.targetId ? { targetId: node.targetId } : {}),
+    ...(node.anchorId ? { anchorId: node.anchorId } : {}),
+    ...(node.targetId && chapterObjects.has(node.targetId)
+      ? { fragmentObject: chapterObjects.get(node.targetId) }
+      : {}),
+  }, ...flatten(node.children ?? [], depth + 1)]);
+  const toc = flatten(manifest.content.toc ?? []);
+  return toc.length ? toc : chapters.map((chapter) => ({
+    id: `toc:${chapter.id}`,
+    order: chapter.order,
+    depth: 0,
+    title: chapter.title,
+    targetId: chapter.id,
+    fragmentObject: chapterObjects.get(chapter.id),
+  }));
 }
 
 export function createRagTools(options: RagToolOptions): AgentTool[] {
@@ -185,8 +224,8 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
   });
   const inspectTool: AgentTool<typeof inspectParameters> = {
     name: "inspect_item",
-    label: "查看全本规模",
-    description: "考虑扫描全本时先调用。只读取小型 manifest，返回章节数、字符数、预计处理量和预算，不下载正文；由 Agent 决定是否继续调用 scan_full_item。",
+    label: "查看书籍概况",
+    description: "读取小型 manifest，返回书籍规模、预算和目录预览，不下载正文。需要选择具体章节时继续调用 list_item_toc；考虑扫描全本时必须先调用本工具。",
     parameters: inspectParameters,
     async execute(_callId, args, signal) {
       const manifestObject = safeObjectKey(args.manifestObject);
@@ -194,6 +233,7 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
       const manifest = await loadManifest(manifestObject, signal);
       const chapters = manifest.content.chapters ?? [];
       const estimatedBytes = chapters.reduce((total, chapter) => total + chapter.size, 0);
+      const toc = itemToc(manifest, manifestObject);
       inspectedManifests.add(manifestObject);
       return result({
         itemId: manifest.itemId,
@@ -205,11 +245,43 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
         estimatedProcessingBytes: estimatedBytes,
         fullScanByteBudget: fullItemByteBudget,
         withinFullScanBudget: estimatedBytes <= fullItemByteBudget,
-        firstChapters: chapters.slice(0, 8).map((chapter) => ({
-          id: chapter.id,
-          order: chapter.order,
-          title: chapter.title,
-        })),
+        tocEntryCount: toc.length,
+        tocPreview: toc.slice(0, 20),
+        tocPreviewTruncated: toc.length > 20,
+        ...(toc.length > 20 ? { nextTocOffset: 20 } : {}),
+        source: { manifestObject },
+      });
+    },
+  };
+
+  const tocParameters = Type.Object({
+    manifestObject: Type.String({ description: "search_content 返回的 manifestObject" }),
+    offset: Type.Optional(Type.Number({ minimum: 0, description: "从第几个目录项开始，默认 0" })),
+    limit: Type.Optional(Type.Number({ minimum: 1, maximum: 200, description: "本次返回数量，默认 100" })),
+  });
+  const tocTool: AgentTool<typeof tocParameters> = {
+    name: "list_item_toc",
+    label: "查看书籍目录",
+    description: "分页查看一本书或一卷的完整层级目录。每个可读目录项包含 fragmentObject，可直接交给 read_fragment 读取正文；只读取 manifest，不下载正文。",
+    parameters: tocParameters,
+    async execute(_callId, args, signal) {
+      const manifestObject = safeObjectKey(args.manifestObject);
+      enforceDatasetObjectScope(manifestObject, scope);
+      const manifest = await loadManifest(manifestObject, signal);
+      const toc = itemToc(manifest, manifestObject);
+      const offset = Math.max(0, Math.floor(args.offset ?? 0));
+      const limit = Math.max(1, Math.min(200, Math.floor(args.limit ?? 100)));
+      const entries = toc.slice(offset, offset + limit);
+      return result({
+        itemId: manifest.itemId,
+        datasetId: manifest.datasetId,
+        title: manifest.title,
+        total: toc.length,
+        offset,
+        limit,
+        entries,
+        hasMore: offset + entries.length < toc.length,
+        ...(offset + entries.length < toc.length ? { nextOffset: offset + entries.length } : {}),
         source: { manifestObject },
       });
     },
@@ -286,5 +358,5 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
       });
     },
   };
-  return [searchTool, fragmentTool, inspectTool, itemTool];
+  return [searchTool, fragmentTool, inspectTool, tocTool, itemTool];
 }
