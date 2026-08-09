@@ -8,7 +8,7 @@ type GatewayContext = Parameters<typeof handleAgentProxyRequest>[0]
 
 export async function onRequest(context: GatewayContext): Promise<Response> {
   const pathname = new URL(context.request.url).pathname.replace(/\/+$/, "");
-  if (pathname === "/gateway/chat") {
+  if (pathname === "/gateway/query") {
     return handleAgentProxyRequest(context);
   }
   if (pathname === "/gateway/credentials") {
