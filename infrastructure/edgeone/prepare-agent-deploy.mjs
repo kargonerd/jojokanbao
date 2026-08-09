@@ -24,13 +24,8 @@ await copyAgentAssets({
 const cloudFunctionsOutput = path.join(outputDirectory, "cloud-functions");
 await mkdir(cloudFunctionsOutput, { recursive: true });
 await cp(
-  path.join(edgeoneRoot, "functions", "agent-proxy"),
-  path.join(cloudFunctionsOutput, "chat"),
-  { recursive: true },
-);
-await cp(
-  path.join(edgeoneRoot, "functions", "credentials"),
-  path.join(cloudFunctionsOutput, "internal", "credentials"),
+  path.join(edgeoneRoot, "functions", "gateway"),
+  path.join(cloudFunctionsOutput, "gateway"),
   { recursive: true },
 );
 

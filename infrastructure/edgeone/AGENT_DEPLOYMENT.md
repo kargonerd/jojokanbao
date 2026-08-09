@@ -6,17 +6,17 @@
 ```text
 jojokanbao.cn                         agent-global.jojokanbao.cn
 ┌──────────────────────┐             ┌──────────────────────────┐
-│ Web + Python API     │ ── HTTPS ─▶ │ /chat  CORS/SSE proxy    │
+│ Web + Python API     │ ── HTTPS ─▶ │ /gateway/chat proxy     │
 │ JOJO/Supabase 登录   │             │ /jojo   Makers Agent     │
-└──────────────────────┘             │ /internal/credentials    │
+└──────────────────────┘             │ /gateway/credentials     │
                                      └──────────────────────────┘
 ```
 
-- `/chat` 处理浏览器 CORS 预检，为请求添加短时 HMAC 服务签名，再把 SSE
+- `/gateway/chat` 处理浏览器 CORS 预检，为请求添加短时 HMAC 服务签名，再把 SSE
   请求转给同项目 `/jojo`。
 - `/jojo` 运行 Pi Agent，并在调用 Codex 前依次校验 Cloud Function 服务签名
   和 JOJO/Supabase Bearer Token；浏览器不能直接调用。
-- `/internal/credentials` 是平台通用的凭据管理入口，不返回凭据。当前只注册
+- `/gateway/credentials` 是平台通用的凭据管理入口，不返回凭据。当前只注册
   `agent/openai-codex`，以后由其他业务注册自己的 scope/provider 和校验器。
 - `pnpm prepare:agent-deploy` 生成 `.edgeone/agent-deploy`。
 - `.github/workflows/deploy-agent-international.yml` 部署到
@@ -27,7 +27,7 @@ jojokanbao.cn                         agent-global.jojokanbao.cn
 ```dotenv
 VITE_SUPABASE_URL=https://PROJECT.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=...
-VITE_AGENT_API_URL=https://agent-global.jojokanbao.cn/chat
+VITE_AGENT_API_URL=https://agent-global.jojokanbao.cn/gateway/chat
 
 JOJO_AGENT_MODEL=gpt-5.6-luna
 JOJO_AGENT_ALLOWED_ORIGINS=https://jojokanbao.cn
@@ -41,7 +41,7 @@ JOJO_OPERATOR_TOKEN=<at least 32 random characters>
 Agent 默认使用 Luna，推理强度固定为 `low`，优先控制 MVP 阶段的订阅额度消耗。
 
 `JOJO_AGENT_SERVICE_SECRET` 只保存在同一 Makers 项目的 Cloud Function 和
-Agent 运行环境中。`/chat` 使用它对请求方法、会话 ID、规范化请求体、60 秒
+Agent 运行环境中。`/gateway/chat` 使用它对请求方法、会话 ID、规范化请求体、60 秒
 时间戳和随机 nonce 做 HMAC-SHA256 签名；`/jojo` 在用户鉴权及模型初始化前
 验证签名。签名头不允许由浏览器传入，也不会把密钥发送给客户端。
 
@@ -85,7 +85,7 @@ pnpm push:credentials
 ## 调用
 
 ```http
-POST /chat
+POST /gateway/chat
 Authorization: Bearer <supabase-access-token>
 Content-Type: application/json
 Makers-Conversation-Id: conv_a1b2c3d4

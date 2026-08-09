@@ -18,7 +18,7 @@ if (codex?.type !== "oauth") {
   throw new Error(`No openai-codex OAuth credential found in ${authPath}`);
 }
 
-const target = new URL("/internal/credentials", deploymentUrl);
+const target = new URL("/gateway/credentials", deploymentUrl);
 if (target.protocol !== "https:" && target.hostname !== "localhost") {
   throw new Error("JOJO_CREDENTIAL_SERVICE_URL must use HTTPS");
 }
