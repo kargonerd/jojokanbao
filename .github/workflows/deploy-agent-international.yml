@@ -27,6 +27,7 @@ jobs:
       EDGEONE_PROJECT_NAME: ${{ vars.EDGEONE_AGENT_PROJECT_NAME || 'jojo-agent-global' }}
       EDGEONE_DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'production' }}
       EDGEONE_UPLOAD_FROM_PATH: ./.edgeone/agent-deploy/
+      EDGEONE_AGENT_BASE_URL: ${{ vars.EDGEONE_AGENT_BASE_URL || 'https://agent-global.jojokanbao.cn' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -83,15 +84,20 @@ jobs:
         if: steps.edgeone_deploy.outcome == 'success'
         run: |
           sed -E $'s/\033\[[0-9;]*[mK]//g' "$RUNNER_TEMP/edgeone-deploy.log" > "$RUNNER_TEMP/edgeone-deploy-clean.log"
-          deploy_url="$(grep -oE 'https://[^[:space:]]+\.edgeone\.dev\?eo_token=[^[:space:]]+' "$RUNNER_TEMP/edgeone-deploy-clean.log" | tail -1)"
-          test -n "$deploy_url" || (echo "Deploy URL was not reported" >&2 && exit 1)
-          base_url="${deploy_url%%\?*}"
-          query="${deploy_url#*\?}"
+          if [ "$EDGEONE_DEPLOY_ENV" = "production" ]; then
+            check_url="${EDGEONE_AGENT_BASE_URL%/}/gateway/ask"
+          else
+            deploy_url="$(grep -oE 'https://[^[:space:]]+\.edgeone\.dev\?eo_token=[^[:space:]]+' "$RUNNER_TEMP/edgeone-deploy-clean.log" | tail -1)"
+            test -n "$deploy_url" || (echo "Preview URL was not reported" >&2 && exit 1)
+            base_url="${deploy_url%%\?*}"
+            query="${deploy_url#*\?}"
+            check_url="$base_url/gateway/credentials?$query"
+          fi
           status="$(curl --silent --show-error --output "$RUNNER_TEMP/agent-health.json" \
             --max-time 60 \
             --write-out '%{http_code}' \
             --header 'Makers-Conversation-Id: jojo-deploy-health' \
-            "$base_url/gateway/ask?$query")"
+            "$check_url")"
           cat "$RUNNER_TEMP/agent-health.json"
           if [ "$status" = "404" ]; then
             project_id="$(grep -oE 'makers-[a-z0-9]+' "$RUNNER_TEMP/edgeone-deploy-clean.log" | tail -1)"
@@ -103,6 +109,6 @@ jobs:
               https://pages-api.cloud.tencent.com/v1)"
             log_url="$(jq -er '.Data.Response.LogUrl' <<<"$log_response")"
             curl --fail-with-body --silent --show-error "$log_url"
-            echo "Agent proxy route is missing" >&2
+            echo "Agent gateway route is missing" >&2
             exit 1
           fi

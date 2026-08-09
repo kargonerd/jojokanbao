@@ -21,6 +21,9 @@ jojokanbao.cn                         agent-global.jojokanbao.cn
 - `pnpm prepare:agent-deploy` 生成 `.edgeone/agent-deploy`。
 - `.github/workflows/deploy-agent-international.yml` 部署到
   `EDGEONE_AGENT_PROJECT_NAME` 指定的独立 Makers 项目。
+- Preview 的 `.edgeone.dev` 地址只检查 `/gateway/credentials` Cloud Function 路由；
+  Makers Agent endpoint 需要绑定自定义域名，Production 才通过
+  `EDGEONE_AGENT_BASE_URL` 检查 `/gateway/ask` 到 `/jojo/health` 的完整链路。
 
 ## 项目环境变量
 
