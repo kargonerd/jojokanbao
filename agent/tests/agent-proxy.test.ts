@@ -10,7 +10,7 @@ import {
 
 const allowedEnvironment = {
   JOJO_AGENT_ALLOWED_ORIGINS: "https://jojokanbao.cn",
-  JOJO_AGENT_UPSTREAM_URL: "https://agent.example/jojo",
+  JOJO_AGENT_UPSTREAM_URL: "https://production-agent.example/jojo",
   JOJO_AGENT_SERVICE_SECRET: "0123456789abcdef0123456789abcdef",
 };
 
@@ -28,7 +28,7 @@ describe("international Agent proxy", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await onRequest(context(new Request(
-      "https://agent.example/agent",
+      "https://preview-agent.example/gateway/ask",
       {
         method: "OPTIONS",
         headers: { origin: "https://jojokanbao.cn" },
@@ -54,7 +54,7 @@ describe("international Agent proxy", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await onRequest(context(new Request(
-      "https://agent.example/agent",
+      "https://preview-agent.example/gateway/ask",
       {
         method: "POST",
         headers: {
@@ -72,7 +72,7 @@ describe("international Agent proxy", () => {
     expect(response.headers.get("access-control-allow-origin"))
       .toBe("https://jojokanbao.cn");
     expect(fetchMock).toHaveBeenCalledWith(
-      new URL("https://agent.example/jojo"),
+      new URL("https://preview-agent.example/jojo"),
       expect.objectContaining({ method: "POST" }),
     );
     const forwarded = fetchMock.mock.calls[0]?.[1];

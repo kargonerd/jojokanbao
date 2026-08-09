@@ -88,6 +88,7 @@ jobs:
           base_url="${deploy_url%%\?*}"
           query="${deploy_url#*\?}"
           status="$(curl --silent --show-error --output "$RUNNER_TEMP/agent-health.json" \
+            --max-time 60 \
             --write-out '%{http_code}' \
             --header 'Makers-Conversation-Id: jojo-deploy-health' \
             "$base_url/gateway/ask?$query")"

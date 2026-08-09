@@ -71,9 +71,16 @@ function agentUrl(
   health: boolean,
 ): URL {
   const configured = environment.JOJO_AGENT_UPSTREAM_URL?.trim();
-  const target = configured
-    ? new URL(configured)
-    : new URL("/jojo", requestUrl);
+  const target = new URL(requestUrl);
+  if (configured) {
+    const configuredUrl = new URL(configured);
+    if (configuredUrl.protocol !== "http:" && configuredUrl.protocol !== "https:") {
+      throw new Error("JOJO_AGENT_UPSTREAM_URL must use http or https");
+    }
+    target.pathname = configuredUrl.pathname;
+  } else {
+    target.pathname = "/jojo";
+  }
   if (target.protocol !== "http:" && target.protocol !== "https:") {
     throw new Error("JOJO_AGENT_UPSTREAM_URL must use http or https");
   }
