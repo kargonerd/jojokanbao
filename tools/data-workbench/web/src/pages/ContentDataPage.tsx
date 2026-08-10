@@ -70,10 +70,10 @@ export function ContentDataPage() {
   }
 
   return <>
-    <PageTopbar eyebrow="Content Pipeline / v1" title="书籍与内容" description="微信读书 JSON → Canonical → Jox / EPUB → B2、ES 与 Hugging Face" />
+    <PageTopbar eyebrow="Content Pipeline / v1" title="书籍与内容" description="微信读书 / EPUB / Kindle → Canonical → Jox / EPUB → B2、ES 与 Hugging Face" />
     <main className="content-workbench">
       <section className="workspace-panel content-import-panel">
-        <div className="section-heading"><span>01</span><div><h2>选择本地源数据</h2><p>目录会读取其中全部 JSON；非微信读书文件会在报告中标记并跳过。</p></div></div>
+        <div className="section-heading"><span>01</span><div><h2>选择本地源数据</h2><p>支持微信读书 JSON、EPUB，以及无 DRM 的 AZW / MOBI / PRC；目录会读取全部支持文件。</p></div></div>
         <div className="content-path-row">
           <label><span>本地文件或目录</span><input placeholder="C:\\path\\to\\weread-exports" value={sourcePath} onChange={(event) => setSourcePath(event.target.value)} /></label>
           <button className="secondary-button" disabled={busy} onClick={browse}>选择目录</button>
@@ -82,8 +82,8 @@ export function ContentDataPage() {
         <div className="content-options">
           <label><input type="checkbox" checked={fetchAssets} onChange={(event) => setFetchAssets(event.target.checked)} /> 下载封面与正文图片</label>
           <span>或</span>
-          <button className="text-button" onClick={() => fileInput.current?.click()}>从浏览器上传 JSON</button>
-          <input ref={fileInput} hidden type="file" accept="application/json,.json" multiple onChange={(event) => void importFiles(event.target.files)} />
+          <button className="text-button" onClick={() => fileInput.current?.click()}>从浏览器上传电子书</button>
+          <input ref={fileInput} hidden type="file" accept="application/json,application/epub+zip,.json,.epub,.azw,.mobi,.prc" multiple onChange={(event) => void importFiles(event.target.files)} />
         </div>
         {error && <p className="content-error">{error}</p>}
       </section>

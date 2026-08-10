@@ -24,6 +24,7 @@ from content_search import search_content
 content_blueprint = Blueprint("content", __name__)
 RUNTIME = Path(__file__).resolve().parent / ".runtime" / "content-jobs"
 RUNTIME.mkdir(parents=True, exist_ok=True)
+SUPPORTED_SOURCE_SUFFIXES = {".json", ".epub", ".azw", ".mobi", ".prc"}
 _lock = threading.RLock()
 _jobs: dict[str, dict] = {}
 
@@ -203,12 +204,15 @@ def import_paths():
     for raw_path in supplied:
         value = Path(str(raw_path)).expanduser().resolve()
         if value.is_dir():
-            paths.extend(str(item) for item in sorted(value.glob("*.json")) if item.is_file())
-        elif value.is_file() and value.suffix.lower() == ".json":
+            paths.extend(
+                str(item) for item in sorted(value.iterdir())
+                if item.is_file() and item.suffix.lower() in SUPPORTED_SOURCE_SUFFIXES
+            )
+        elif value.is_file() and value.suffix.lower() in SUPPORTED_SOURCE_SUFFIXES:
             paths.append(str(value))
     paths = list(dict.fromkeys(paths))
     if not paths:
-        return jsonify({"success": False, "message": "没有找到 JSON 文件"}), 400
+        return jsonify({"success": False, "message": "没有找到支持的 JSON、EPUB 或 Kindle 文件"}), 400
     return jsonify({"success": True, "job": _new_job(paths, bool(data.get("fetchAssets", True)))})
 
 
@@ -222,14 +226,15 @@ def import_files():
     upload_root.mkdir(parents=True, exist_ok=True)
     input_paths = []
     for index, file in enumerate(files, 1):
-        if not file.filename or not file.filename.lower().endswith(".json"):
+        suffix = Path(file.filename or "").suffix.lower()
+        if suffix not in SUPPORTED_SOURCE_SUFFIXES:
             continue
-        target = upload_root / f"{index:04d}.json"
+        target = upload_root / f"{index:04d}{suffix}"
         file.save(target)
         input_paths.append(str(target))
     if not input_paths:
         shutil.rmtree(RUNTIME / job_id, ignore_errors=True)
-        return jsonify({"success": False, "message": "只支持 JSON 文件"}), 400
+        return jsonify({"success": False, "message": "只支持 JSON、EPUB、AZW、MOBI 和 PRC 文件"}), 400
     # _new_job allocates its own durable identifier; uploaded files remain valid inputs.
     return jsonify({"success": True, "job": _new_job(
         input_paths,

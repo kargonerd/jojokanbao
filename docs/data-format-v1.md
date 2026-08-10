@@ -1129,7 +1129,13 @@ pnpm --filter @jojo/content-pipeline cli -- `
 pnpm --filter @jojo/content-pipeline validate -- "C:\path\to\build"
 ```
 
-也可以启动 Data Workbench，在 `/content` 选择本地 JSON/目录，观察解析诊断和统计后分别发布
+输入目录会识别微信读书 WRX JSON、EPUB，以及无 DRM 的 MOBI 6/7（`.azw`、`.mobi`、
+`.prc`）。加密 Kindle 文件和 KF8/AZW3 会明确拒绝，导入器不包含 DRM 绕过逻辑。纯文本
+数字注号只有在正文标记和注释定义能够可靠配对时才转换成 `annotations`；不能可靠配对的
+标记原样保留并写入诊断。同一卷同时存在多个来源时，默认优先级为微信读书、EPUB、Kindle，
+因此可以保留微信版《毛泽东选集》前四卷，只用 Kindle 合订本补入第五卷。
+
+也可以启动 Data Workbench，在 `/content` 选择本地 JSON、EPUB、Kindle 文件或目录，观察解析诊断和统计后分别发布
 B2、Elasticsearch、Hugging Face。B2 发布顺序固定为 Raw → Canonical → 内容/Asset →
 Manifest → Dataset index → Catalog，`catalog.jox` 是最终提交标志。
 

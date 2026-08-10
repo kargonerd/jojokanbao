@@ -26,7 +26,7 @@ function argumentsFrom(argv: string[]): Arguments {
 
 const args = argumentsFrom(process.argv.slice(2));
 if (!args.output || args.input.length === 0) {
-  console.error("Usage: content-pipeline --input <file|directory>... --output <empty-directory> [--no-assets] [--allow-partial]");
+  console.error("Usage: content-pipeline --input <json|epub|azw|mobi|prc|directory>... --output <empty-directory> [--no-assets] [--allow-partial]");
   process.exit(2);
 }
 const inputPaths: string[] = [];
@@ -35,7 +35,7 @@ for (const input of args.input) {
   if (!entries) inputPaths.push(input);
   else {
     inputPaths.push(...entries
-      .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".json"))
+      .filter((entry) => entry.isFile() && /\.(?:json|epub|azw|mobi|prc)$/i.test(entry.name))
       .map((entry) => path.join(input, entry.name)));
   }
 }

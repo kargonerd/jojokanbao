@@ -32,6 +32,10 @@ describe("book Dataset grouping", () => {
       datasetTitle: "资本论(纪念版)",
       declaredTotalVolumes: 3,
     });
+    expect(groupBookTitle("毛泽东选集（1-5卷）")).toMatchObject({
+      datasetTitle: "毛泽东选集",
+      declaredTotalVolumes: 5,
+    });
   });
 
   it("splits chapter ranges on volume navigation markers", () => {

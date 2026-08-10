@@ -40,6 +40,7 @@ export function chineseNumber(value: string): number | undefined {
 const NUMBER = "[〇零一二两三四五六七八九十百\\d]+";
 const SEPARATE_VOLUME = new RegExp(`^(.*?)[（(]\\s*第(${NUMBER})卷\\s*[）)](?:\\s*(.*))?$`);
 const ALL_VOLUMES = new RegExp(`[（(]?\\s*全(${NUMBER})卷\\s*[）)]?`);
+const VOLUME_RANGE = new RegExp(`[（(]?\\s*(?:1|一)\\s*[-—–至到]\\s*(${NUMBER})卷\\s*[）)]?`);
 const VOLUME_REFERENCE = new RegExp(`(?:^|[（(\\s　])第(${NUMBER})卷(?:$|[）)\\s　:：])`);
 const VOLUME_HEADING = new RegExp(`^(?:.+?)?[（(]?第(${NUMBER})卷[）)]?$`);
 
@@ -77,6 +78,17 @@ export function groupBookTitle(title: string): BookGrouping {
   if (all) {
     const datasetTitle = normalized.replace(all[0], "").replace(/\s+/g, " ").trim();
     const total = chineseNumber(all[1]!);
+    return {
+      datasetTitle,
+      datasetId: datasetIdForTitle(datasetTitle),
+      datasetType: "book-series",
+      ...(total ? { declaredTotalVolumes: total } : {}),
+    };
+  }
+  const range = normalized.match(VOLUME_RANGE);
+  if (range) {
+    const datasetTitle = normalized.replace(range[0], "").replace(/\s+/g, " ").trim();
+    const total = chineseNumber(range[1]!);
     return {
       datasetTitle,
       datasetId: datasetIdForTitle(datasetTitle),

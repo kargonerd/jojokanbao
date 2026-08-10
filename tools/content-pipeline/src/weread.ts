@@ -332,6 +332,13 @@ export async function decodeWereadFile(sourcePath: string): Promise<DecodedWerea
       .map((chapter) => [chapter.sourceChapterUid!, chapter]),
   );
   return {
+    sourceKind: "weread",
+    sourceFormat: "weread-json",
+    sourceDetails: {
+      bookId: sourceBookId,
+      bid: raw.bid ?? null,
+      exportedAt: isoDate(raw.date) ?? null,
+    },
     sourcePath: path.resolve(sourcePath),
     sourceSha256,
     sourceBookId,

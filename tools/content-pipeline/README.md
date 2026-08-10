@@ -1,6 +1,6 @@
 # JOJO Content Pipeline
 
-把微信读书 WRX JSON 导入统一 JOJO v1，并一次生成 Raw、Canonical、Delivery Jox、EPUB、
+把微信读书 WRX JSON、EPUB，以及无 DRM 的 MOBI 6/7（`.azw`、`.mobi`、`.prc`）导入统一 JOJO v1，并一次生成 Raw、Canonical、Delivery Jox、EPUB、
 Hugging Face 镜像和 Elasticsearch JSONL。
 
 ```powershell
@@ -21,3 +21,8 @@ pnpm --filter @jojo/content-pipeline validate -- "C:\path\to\build"
 
 图片、音频和视频会下载为外部 Asset；正文只保留稳定 Asset ID。下载失败会产生 warning，
 不会写入悬空引用。每个 Item 预生成整本 EPUB，浏览器下载时不依赖 ES、数据库或服务端拼装。
+
+纯文本来源中的数字注号只有在正文标记与注释定义能够可靠配对时才会转换成
+`annotations`；`*这是……` 一类篇名编者注会转换成 `editor-note`。无法可靠配对的
+`*[1][2]` 等标记原样保留，并写入诊断，不会静默删改。Kindle 加密文件和 KF8/AZW3 会明确
+拒绝；导入器不包含 DRM 绕过逻辑。

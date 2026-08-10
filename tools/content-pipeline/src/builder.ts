@@ -21,6 +21,7 @@ import {
   type JojoItemManifest,
 } from "@jojo/content";
 import { buildEpub } from "./epub";
+import { decodeEbookFile, isEbookPath } from "./ebook";
 import {
   groupBookTitle,
   pruneToc,
@@ -59,6 +60,8 @@ interface InspectedSource {
   missingChapterRecords: number;
   sourceTocItems: number;
   missingTocItems: number;
+  sourceKind: DecodedWereadBook["sourceKind"];
+  decoded?: DecodedWereadBook;
 }
 
 interface DatasetBuildState {
@@ -150,6 +153,23 @@ function rawMetadata(raw: WereadRawExport): Record<string, unknown> {
 }
 
 async function inspectSource(sourcePath: string): Promise<InspectedSource | undefined> {
+  if (isEbookPath(sourcePath)) {
+    const decoded = await decodeEbookFile(sourcePath);
+    return {
+      path: path.resolve(sourcePath),
+      fileName: path.basename(sourcePath),
+      sourceBookId: decoded.sourceBookId,
+      title: decoded.title,
+      exportedAt: Date.parse(decoded.exportedAt) || 0,
+      chapterCoverage: decoded.diagnostics.chapterCoverage,
+      presentChapterRecords: decoded.diagnostics.presentChapterRecords,
+      missingChapterRecords: decoded.diagnostics.missingChapterRecords,
+      sourceTocItems: decoded.diagnostics.sourceTocItems,
+      missingTocItems: decoded.diagnostics.missingTocItems,
+      sourceKind: decoded.sourceKind,
+      decoded,
+    };
+  }
   const raw = JSON.parse(await readFile(sourcePath, "utf8")) as unknown;
   if (!isWereadExport(raw)) return undefined;
   const metadata = rawMetadata(raw);
@@ -165,6 +185,7 @@ async function inspectSource(sourcePath: string): Promise<InspectedSource | unde
     missingChapterRecords: completeness.missingChapterRecords,
     sourceTocItems: raw.toc?.length ?? 0,
     missingTocItems: completeness.missingTocItems,
+    sourceKind: "weread",
   };
 }
 
@@ -174,9 +195,10 @@ function selectedSources(
   const selected = new Map<string, InspectedSource>();
   const duplicates: InspectedSource[] = [];
   for (const source of sources) {
-    const existing = selected.get(source.sourceBookId);
+    const key = `${source.sourceKind}:${source.sourceBookId}`;
+    const existing = selected.get(key);
     if (!existing) {
-      selected.set(source.sourceBookId, source);
+      selected.set(key, source);
       continue;
     }
     const sourceQuality = [
@@ -202,7 +224,7 @@ function selectedSources(
     ));
     if (sourceIsBetter) {
       duplicates.push(existing);
-      selected.set(source.sourceBookId, source);
+      selected.set(key, source);
     } else {
       duplicates.push(source);
     }
@@ -217,13 +239,18 @@ function extensionForMediaType(mediaType: string): string {
     "image/png": ".png",
     "image/svg+xml": ".svg",
     "image/webp": ".webp",
+    "audio/mpeg": ".mp3",
+    "audio/mp4": ".m4a",
+    "audio/ogg": ".ogg",
+    "video/mp4": ".mp4",
+    "video/webm": ".webm",
   };
   return extensions[mediaType.split(";", 1)[0]!.toLowerCase()] ?? ".bin";
 }
 
 function sniffMediaType(bytes: Uint8Array, header: string | null, fallback: string): string {
   const declared = header?.split(";", 1)[0]?.toLowerCase();
-  if (declared?.startsWith("image/")) return declared;
+  if (/^(?:image|audio|video)\//.test(declared ?? "")) return declared!;
   if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "image/png";
   if (bytes[0] === 0xff && bytes[1] === 0xd8) return "image/jpeg";
   if (String.fromCharCode(...bytes.slice(0, 6)) === "GIF89a") return "image/gif";
@@ -232,6 +259,7 @@ function sniffMediaType(bytes: Uint8Array, header: string | null, fallback: stri
 }
 
 function permittedAssetUrl(value: string): boolean {
+  if (/^data:(?:image|audio|video)\/[a-z0-9.+-]+;base64,/i.test(value)) return true;
   try {
     const url = new URL(value);
     return url.protocol === "https:"
@@ -249,10 +277,11 @@ async function downloadAsset(
   fetchFn: typeof fetch,
 ): Promise<JojoCanonicalAsset> {
   if (!asset.sourceUrl || !permittedAssetUrl(asset.sourceUrl)) {
-    throw new Error(`不允许的微信读书资源地址：${asset.sourceUrl ?? "missing"}`);
+    throw new Error("不允许的资源地址");
   }
+  const isEmbedded = asset.sourceUrl.startsWith("data:");
   const response = await fetchFn(asset.sourceUrl, {
-    headers: {
+    headers: isEmbedded ? undefined : {
       Referer: "https://weread.qq.com/",
       "User-Agent": "JOJO-Content-Pipeline/1.0",
     },
@@ -454,18 +483,16 @@ async function buildItem(
     assets: part.assets,
     annotations: part.annotations,
     provenance: {
-      source: "weread",
+      source: part.source.sourceKind,
       sourceItemId: part.source.sourceBookId,
       sourceSha256: part.source.sourceSha256,
       importedAt: new Date().toISOString(),
       importer: "@jojo/content-pipeline/0.1.0",
     },
     extensions: {
-      weread: {
-        bookId: part.source.sourceBookId,
-        bid: part.source.sourceBid ?? null,
-        exportedAt: part.source.exportedAt,
-        sourceFormat: "weread-json",
+      [part.source.sourceKind]: {
+        ...part.source.sourceDetails,
+        sourceFormat: part.source.sourceFormat,
       },
     },
   };
@@ -601,16 +628,16 @@ export async function buildContentPipeline(
       if (source) inspected.push(source);
       else {
         rejectedFiles += 1;
-        diagnostics.push({ level: "warning", code: "unsupported-json", message: "跳过非微信读书 JSON", source: input });
+        diagnostics.push({ level: "warning", code: "unsupported-source", message: "跳过不支持的来源文件", source: input });
       }
     } catch (error) {
       rejectedFiles += 1;
-      diagnostics.push({ level: "error", code: "invalid-json", message: error instanceof Error ? error.message : String(error), source: input });
+      diagnostics.push({ level: "error", code: "invalid-source", message: error instanceof Error ? error.message : String(error), source: input });
     }
   }
   const { selected, duplicates } = selectedSources(inspected);
   for (const duplicate of duplicates) {
-    diagnostics.push({ level: "warning", code: "duplicate-source-book", message: `同一微信读书 Book ID 已选择完整度更高或更新的导出，跳过 ${duplicate.fileName}`, source: duplicate.path });
+    diagnostics.push({ level: "warning", code: "duplicate-source-book", message: `同一来源书籍 ID 已选择完整度更高或更新的文件，跳过 ${duplicate.fileName}`, source: duplicate.path });
   }
 
   const volumeCounts = new Map<string, number>();
@@ -626,10 +653,11 @@ export async function buildContentPipeline(
   const builtItems: BuiltItemSummary[] = [];
   const fetchedAssets = new Map<string, JojoCanonicalAsset>();
   const fetchingAssets = new Map<string, Promise<JojoCanonicalAsset>>();
+  const pendingParts: NormalizedBookPart[] = [];
   let importedFiles = 0;
   for (const [sourceIndex, inspectedSource] of selected.entries()) {
     options.onProgress?.({ phase: "decode", current: sourceIndex + 1, total: selected.length, file: inspectedSource.fileName });
-    const decoded = await decodeWereadFile(inspectedSource.path);
+    const decoded = inspectedSource.decoded ?? await decodeWereadFile(inspectedSource.path);
     let sourceRejected = false;
     if (decoded.diagnostics.missingTocItems > 0) {
       diagnostics.push({
@@ -680,7 +708,7 @@ export async function buildContentPipeline(
         id: "asset:cover",
         type: "image",
         role: "cover",
-        mediaType: "image/jpeg",
+        mediaType: decoded.coverUrl.match(/^data:([^;,]+)/i)?.[1] ?? "image/jpeg",
         path: "",
         sourceUrl: decoded.coverUrl,
         size: 0,
@@ -728,7 +756,7 @@ export async function buildContentPipeline(
             diagnostics.push({
               level: "warning",
               code: "asset-download-failed",
-              message: `${decoded.title}: ${entry.asset.sourceUrl} (${entry.error instanceof Error ? entry.error.message : String(entry.error)})`,
+              message: `${decoded.title}: 资源 ${entry.asset.id} 下载失败 (${entry.error instanceof Error ? entry.error.message : String(entry.error)})`,
               source: decoded.sourcePath,
             });
           }
@@ -739,7 +767,7 @@ export async function buildContentPipeline(
     }
     if (missingAssets.size > 0) chapters = chapters.map((chapter) => removeMissingAssets(chapter, missingAssets));
 
-    const rawTarget = path.join(roots.raw, "weread", decoded.sourceBookId, safeFileName(inspectedSource.fileName));
+    const rawTarget = path.join(roots.raw, decoded.sourceKind, safeFileName(decoded.sourceBookId), safeFileName(inspectedSource.fileName));
     await mkdir(path.dirname(rawTarget), { recursive: true });
     await copyFile(inspectedSource.path, rawTarget);
 
@@ -759,7 +787,40 @@ export async function buildContentPipeline(
         itemId: parts[0].itemId,
       });
     }
-    for (const part of parts) {
+    pendingParts.push(...parts);
+  }
+
+  const sourcePriority: Record<DecodedWereadBook["sourceKind"], number> = { weread: 3, epub: 2, kindle: 1 };
+  const selectedParts = new Map<string, NormalizedBookPart>();
+  for (const part of pendingParts) {
+    const key = `${part.datasetId}\0${part.itemKey}`;
+    const existing = selectedParts.get(key);
+    if (!existing) {
+      selectedParts.set(key, part);
+      continue;
+    }
+    const partQuality = [sourcePriority[part.source.sourceKind], part.annotations.length, part.chapters.length];
+    const existingQuality = [sourcePriority[existing.source.sourceKind], existing.annotations.length, existing.chapters.length];
+    const usePart = partQuality.some((value, index) => (
+      value !== existingQuality[index]
+      && value > existingQuality[index]!
+      && partQuality.slice(0, index).every((candidate, earlier) => candidate === existingQuality[earlier])
+    ));
+    const kept = usePart ? part : existing;
+    const skipped = usePart ? existing : part;
+    selectedParts.set(key, kept);
+    diagnostics.push({
+      level: "warning",
+      code: "duplicate-dataset-item-source",
+      message: `${part.itemTitle} 同时存在于 ${existing.source.sourceFormat} 和 ${part.source.sourceFormat}；保留 ${kept.source.sourceFormat}，跳过 ${skipped.source.sourceFormat}`,
+      source: skipped.source.sourcePath,
+      itemId: skipped.itemId,
+    });
+  }
+
+  for (const part of [...selectedParts.values()].sort((left, right) => (
+    left.datasetTitle.localeCompare(right.datasetTitle, "zh-CN") || left.itemOrder - right.itemOrder
+  ))) {
       options.onProgress?.({ phase: "build-item", itemId: part.itemId, title: part.itemTitle });
       const result = await buildItem(part, roots);
       builtItems.push(result.summary);
@@ -777,7 +838,6 @@ export async function buildContentPipeline(
       state.itemSummaries.push(result.itemSummary);
       if (state.items.length > 1) state.type = "book-series";
       datasets.set(part.datasetId, state);
-    }
   }
 
   const catalog: JojoCatalog = {

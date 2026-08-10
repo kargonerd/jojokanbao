@@ -41,6 +41,9 @@ export interface DecodedWereadChapter {
 }
 
 export interface DecodedWereadBook {
+  sourceKind: "weread" | "epub" | "kindle";
+  sourceFormat: "weread-json" | "epub" | "azw" | "mobi" | "prc";
+  sourceDetails: Record<string, unknown>;
   sourcePath: string;
   sourceSha256: string;
   sourceBookId: string;
