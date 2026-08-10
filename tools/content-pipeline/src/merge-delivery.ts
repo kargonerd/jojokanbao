@@ -38,7 +38,13 @@ export async function mergeDeliveryMetadata(input: {
   if (!local) throw new Error("本次构建缺少 delivery/catalog.jox");
   const remote = await readJox<JojoCatalog>(input.remoteRoot, "catalog.jox");
   const entries = new Map((remote?.datasets ?? []).map((entry) => [entry.datasetId, entry]));
-  for (const entry of local.datasets) entries.set(entry.datasetId, entry);
+  for (const entry of local.datasets) {
+    for (const [remoteId, remoteEntry] of entries) {
+      const bothBooks = [entry.type, remoteEntry.type].every((type) => type === "book" || type === "book-series");
+      if (remoteId !== entry.datasetId && bothBooks && remoteEntry.title === entry.title) entries.delete(remoteId);
+    }
+    entries.set(entry.datasetId, entry);
+  }
   const catalog: JojoCatalog = {
     formatVersion: "jojo-catalog/1",
     revision: Math.max(local.revision, remote?.revision ?? 0) + (remote ? 1 : 0),

@@ -20,6 +20,29 @@ function cleanText(value: string): string {
   return cheerio.load(value).text().replace(/\s+/g, " ").trim();
 }
 
+function normalizedMetadata(value: string): string {
+  return value.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+}
+
+function filenameMetadata(sourcePath: string): { title: string; author: string } {
+  const stem = path.basename(sourcePath, path.extname(sourcePath));
+  const matches = [...stem.matchAll(/\s*\(([^()]*)\)/g)];
+  const candidates = matches.filter((match) => !/(?:z-library|1lib|z-lib)\.sk/i.test(match[1] ?? ""));
+  const authorMatch = candidates.at(-1);
+  if (!authorMatch || authorMatch.index === undefined) return { title: stem.trim(), author: "" };
+  return {
+    title: stem.slice(0, authorMatch.index).trim(),
+    author: (authorMatch[1] ?? "").trim(),
+  };
+}
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
+}
+
 function dataUrl(mediaType: string, bytes: Uint8Array): string {
   return `data:${mediaType};base64,${Buffer.from(bytes).toString("base64")}`;
 }
@@ -70,6 +93,13 @@ interface EpubManifestEntry {
   file: string;
   mediaType: string;
   properties: string[];
+}
+
+interface DecodedEpubSpineEntry {
+  entry: EpubManifestEntry;
+  title: string;
+  bodyHtml: string;
+  content: string;
 }
 
 async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<DecodedWereadBook> {
@@ -124,7 +154,8 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
           const title = link.text().replace(/\s+/g, " ").trim();
           if (reference && title) {
             navigationEntries.push({ reference, title, level, sourceId: `nav-${level}-${index + 1}-${shortHash(reference)}` });
-            navTitles.set(zipPath(nav.file, reference).file, title);
+            const targetFile = zipPath(nav.file, reference).file;
+            if (!navTitles.has(targetFile)) navTitles.set(targetFile, title);
           }
           const nested = li.children("ol").first();
           if (nested.length) walk(nested, level + 1);
@@ -144,7 +175,8 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
           const title = point.children("navLabel").first().text().replace(/\s+/g, " ").trim();
           if (reference && title) {
             navigationEntries.push({ reference, title, level, sourceId: point.attr("id") ?? `ncx-${level}-${index + 1}` });
-            navTitles.set(zipPath(ncx.file, reference).file, title);
+            const targetFile = zipPath(ncx.file, reference).file;
+            if (!navTitles.has(targetFile)) navTitles.set(targetFile, title);
           }
           walk(point.children("navPoint"), level + 1);
         });
@@ -153,8 +185,7 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
     }
   }
 
-  const chapters: DecodedWereadChapter[] = [];
-  const chapterIds = new Map<string, string>();
+  const decodedSpine: DecodedEpubSpineEntry[] = [];
   const errors: Array<Record<string, unknown>> = [];
   for (const [index, entry] of spine.entries()) {
     const raw = await zip.file(entry.file)?.async("string");
@@ -178,51 +209,107 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
       const asset = embedded.get(zipPath(entry.file, reference).file);
       if (asset) current.replaceWith(`<img src="${asset.url}"/>`);
     });
-    const id = `chapter:${shortHash(entry.file)}`;
-    chapterIds.set(entry.file, id);
     const title = navTitles.get(entry.file)
       ?? $("h1,h2,h3,h4,h5,h6").first().text().replace(/\s+/g, " ").trim()
       ?? "";
-    chapters.push({
-      id,
-      sourceCid: entry.id,
-      sourceFiles: [entry.file],
+    decodedSpine.push({
+      entry,
       title: title || `章节 ${index + 1}`,
-      order: index + 1,
-      level: 1,
-      contentType: "application/xhtml+xml",
+      bodyHtml: $("body").length ? $("body").html() ?? "" : $.root().html() ?? "",
       content: $.xml(),
     });
   }
+
+  const spineIndexes = new Map(decodedSpine.map((chapter, index) => [chapter.entry.file, index]));
+  const navigationBase = nav?.file ?? ncx?.file ?? opfFile;
+  const navigationTargetIndexes = [...new Set(navigationEntries.flatMap((entry) => {
+    const index = spineIndexes.get(zipPath(navigationBase, entry.reference).file);
+    return index === undefined ? [] : [index];
+  }))].sort((left, right) => left - right);
+  const shouldCoalesce = decodedSpine.length >= 24
+    && navigationTargetIndexes.length >= 2
+    && decodedSpine.length >= navigationTargetIndexes.length * 3
+    && median(decodedSpine.map((chapter) => cleanText(chapter.bodyHtml).length)) < 1_200;
+
+  const boundaries = shouldCoalesce
+    ? [...new Set([0, ...navigationTargetIndexes])].sort((left, right) => left - right)
+    : decodedSpine.map((_chapter, index) => index);
+  const chapters: DecodedWereadChapter[] = [];
+  const chapterIds = new Map<string, string>();
+  const sourceAnchors = new Map<string, string>();
+  boundaries.forEach((start, index) => {
+    const end = boundaries[index + 1] ?? decodedSpine.length;
+    const group = decodedSpine.slice(start, end);
+    const first = group[0];
+    if (!first) return;
+    const id = `chapter:${shortHash(first.entry.file)}`;
+    for (const part of group) {
+      chapterIds.set(part.entry.file, id);
+      sourceAnchors.set(part.entry.file, `epub-source-${shortHash(part.entry.file)}`);
+    }
+    chapters.push({
+      id,
+      sourceCid: first.entry.id,
+      sourceFiles: group.map((part) => part.entry.file),
+      title: navTitles.get(first.entry.file) ?? first.title,
+      order: index + 1,
+      level: 1,
+      contentType: "application/xhtml+xml",
+      content: shouldCoalesce
+        ? `<html><body>${group.map((part) => (
+          `<hr id="${sourceAnchors.get(part.entry.file)}"/>${part.bodyHtml}`
+        )).join("")}</body></html>`
+        : first.content,
+    });
+  });
   const tocEntries = navigationEntries.flatMap((entry) => {
-    const resolved = zipPath(nav?.file ?? ncx?.file ?? opfFile, entry.reference);
+    const resolved = zipPath(navigationBase, entry.reference);
     const targetId = chapterIds.get(resolved.file);
     return targetId ? [{
       id: `toc:${entry.sourceId}`,
       title: entry.title,
       level: entry.level,
       targetId,
-      ...(resolved.anchor ? { anchorId: resolved.anchor } : {}),
+      ...(resolved.anchor
+        ? { anchorId: resolved.anchor }
+        : shouldCoalesce ? { anchorId: sourceAnchors.get(resolved.file) } : {}),
     }] : [];
   });
   const toc = tocEntries.length > 0
     ? buildNestedToc(tocEntries)
     : chapters.map((chapter, index) => ({ id: `toc:${index + 1}`, order: index + 1, title: chapter.title, targetId: chapter.id }));
-  const title = xmlValue($opf, "title") || path.basename(sourcePath, path.extname(sourcePath));
+  const fileMetadata = filenameMetadata(sourcePath);
+  const packageTitle = xmlValue($opf, "title");
+  const packageAuthor = xmlValue($opf, "creator");
+  const normalizedPackageTitle = normalizedMetadata(packageTitle);
+  const normalizedFileTitle = normalizedMetadata(fileMetadata.title);
+  const useFileTitle = !packageTitle || (
+    normalizedPackageTitle.length > 0
+    && normalizedFileTitle.startsWith(normalizedPackageTitle)
+    && normalizedFileTitle.length > normalizedPackageTitle.length
+  );
+  const suspiciousAuthor = !packageAuthor || /^(?:iphone|ipad|calibre|unknown|未知|佚名)$/i.test(packageAuthor.trim());
+  const title = useFileTitle ? fileMetadata.title : packageTitle;
+  const author = suspiciousAuthor && fileMetadata.author ? fileMetadata.author : packageAuthor;
   const identifier = xmlValue($opf, "identifier") || `sha256:${sha256(source).slice(0, 24)}`;
   const cover = manifest.find((entry) => entry.properties.includes("cover-image"))
     ?? byId.get($opf("meta[name='cover']").attr("content") ?? "");
   return {
     sourceKind: "epub",
     sourceFormat: "epub",
-    sourceDetails: { packagePath: opfFile },
+    sourceDetails: {
+      packagePath: opfFile,
+      ...(shouldCoalesce ? { spineFiles: decodedSpine.length, logicalChapters: chapters.length } : {}),
+      ...(title !== packageTitle && packageTitle ? { packageTitle } : {}),
+      ...(author !== packageAuthor && packageAuthor ? { packageAuthor } : {}),
+    },
     sourcePath: path.resolve(sourcePath),
     sourceSha256: sha256(source),
     sourceBookId: identifier,
     exportedAt: new Date().toISOString(),
     metadata: {},
     title,
-    author: xmlValue($opf, "creator"),
+    author,
     publisher: xmlValue($opf, "publisher"),
     isbn: xmlValue($opf, "identifier").match(/(?:97[89])?\d{9}[\dX]/i)?.[0] ?? "",
     language: xmlValue($opf, "language") || "zh-CN",
@@ -237,13 +324,13 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
       missingTocItems: 0,
       sourceChapterRecords: spine.length,
       expectedChapterRecords: spine.length,
-      presentChapterRecords: chapters.length,
+      presentChapterRecords: decodedSpine.length,
       missingChapterRecords: errors.length,
       unmatchedChapterRecords: 0,
       duplicateChapterRecords: 0,
-      chapterCoverage: spine.length ? chapters.length / spine.length : 0,
+      chapterCoverage: spine.length ? decodedSpine.length / spine.length : 0,
       missingChapters: errors.map((error, index) => ({ chapterUid: String(error.file), title: String(error.file), order: index + 1 })),
-      matchedChapterRecords: chapters.length,
+      matchedChapterRecords: decodedSpine.length,
       decodedChapterRecords: chapters.length,
       failedChapterRecords: errors.length,
       errors,

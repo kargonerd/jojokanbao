@@ -23,10 +23,10 @@ describe("delivery metadata merge", () => {
     const remote = path.join(root, "remote");
     const local = path.join(root, "local");
     const output = path.join(root, "output");
-    const entry = (id: string) => ({
+    const entry = (id: string, title = id) => ({
       datasetId: id,
       type: "book" as const,
-      title: id,
+      title,
       language: "zh-CN",
       indexObject: `content/books/${id}/index.jox`,
     });
@@ -34,7 +34,7 @@ describe("delivery metadata merge", () => {
       formatVersion: "jojo-catalog/1",
       revision: 3,
       updatedAt: "old",
-      datasets: [entry("existing"), entry("series")],
+      datasets: [entry("existing"), entry("series"), entry("book-123456789abc", "series")],
     } satisfies JojoCatalog);
     await put(local, "catalog.jox", {
       formatVersion: "jojo-catalog/1",

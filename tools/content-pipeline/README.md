@@ -5,10 +5,14 @@ Hugging Face 镜像和 Elasticsearch JSONL。
 
 ```powershell
 pnpm --filter @jojo/content-pipeline cli -- `
-  --input "C:\Users\YOUR_NAME\Downloads" `
+  --input-dir "C:\Users\YOUR_NAME\Downloads" `
   --output "C:\path\to\build"
 pnpm --filter @jojo/content-pipeline validate -- "C:\path\to\build"
 ```
+
+`--input-dir` 会递归扫描子目录，适合直接从 B2 Raw 的本地镜像重建完整馆藏。
+迁移或灾备重建时可以使用 `--asset-cache <旧 canonical 目录>`，按原始 `sourceUrl` 复用本地
+已下载媒体；缓存没有命中的资源仍会从来源地址获取。
 
 输出根目录包含 `raw/`、`canonical/`、`delivery/`、`huggingface/`、`search/` 和
 `report.json`。导入器按来源 Book ID 去重；只有章节标题能够证明全部卷次边界时才拆成多个
@@ -24,6 +28,9 @@ pnpm --filter @jojo/content-pipeline validate -- "C:\path\to\build"
 
 图片、音频和视频会下载为外部 Asset；正文只保留稳定 Asset ID。下载失败会产生 warning，
 不会写入悬空引用。每个 Item 预生成整本 EPUB，浏览器下载时不依赖 ES、数据库或服务端拼装。
+部分 EPUB 会把一章拆成大量很小的 spine 文件；当这种碎片特征足够明确时，导入器按 EPUB
+目录边界合并为逻辑章节，同时为原目录目标保留正文锚点。OPF 作者等元数据明显无效时，才会
+从规范的电子书文件名回退，原值保留在来源扩展信息中供审计。
 
 纯文本来源中的数字注号只有在正文标记与注释定义能够可靠配对时才会转换成
 `annotations`；`*这是……` 一类篇名编者注会转换成 `editor-note`。无法可靠配对的
