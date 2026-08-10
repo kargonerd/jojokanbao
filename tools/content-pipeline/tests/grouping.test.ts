@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   chineseNumber,
+  datasetIdForTitle,
   groupBookTitle,
   splitChapterRanges,
 } from "../src";
 
 describe("book Dataset grouping", () => {
+  it("uses readable stable pinyin Dataset IDs", () => {
+    expect(datasetIdForTitle("毛泽东选集")).toBe("mao-ze-dong-xuan-ji");
+    expect(datasetIdForTitle("1848年至1850年的法兰西阶级斗争"))
+      .toBe("1848-nian-zhi-1850-nian-de-fa-lan-xi-jie-ji-dou-zheng");
+  });
   it("parses Chinese volume numbers", () => {
     expect(chineseNumber("四")).toBe(4);
     expect(chineseNumber("二十八")).toBe(28);

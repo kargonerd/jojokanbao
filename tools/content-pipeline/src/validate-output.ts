@@ -108,9 +108,11 @@ export async function validatePipelineOutput(rootDirectory: string): Promise<Val
         continue;
       }
       const canonical = JSON.parse(gunzipSync(await readFile(path.join(root, ...summary.canonicalObject.split("/")))).toString("utf8")) as JojoCanonicalItem;
-      const chapterIds = new Set(canonical.content.chapters.map((chapter) => chapter.id));
-      for (const target of tocTargets(canonical.content.toc)) {
-        if (!chapterIds.has(target)) errors.push(`${summary.canonicalObject}: TOC target ${target} 不存在`);
+      if (canonical.content.schema === "jojo-content/book/1") {
+        const chapterIds = new Set(canonical.content.chapters.map((chapter) => chapter.id));
+        for (const target of tocTargets(canonical.content.toc)) {
+          if (!chapterIds.has(target)) errors.push(`${summary.canonicalObject}: TOC target ${target} 不存在`);
+        }
       }
     }
   }

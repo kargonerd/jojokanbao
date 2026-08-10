@@ -1,5 +1,5 @@
 export type JojoDatasetType = "book" | "book-series" | "magazine" | "newspaper";
-export type JojoItemType = "book" | "book-volume" | "periodical-issue";
+export type JojoItemType = "book" | "book-volume" | "magazine" | "newspaper";
 export type JojoAssetType = "audio" | "image" | "pdf" | "video";
 
 export interface JojoCatalogEntry {
@@ -28,7 +28,7 @@ export interface JojoDatasetItemSummary {
 }
 
 export interface JojoDatasetIndex {
-  formatVersion: "jojo-dataset/1";
+  formatVersion: "jojo-delivery-index/1";
   revision: number;
   datasetId: string;
   type: JojoDatasetType;
@@ -36,6 +36,16 @@ export interface JojoDatasetIndex {
   language: string;
   description?: string;
   items: JojoDatasetItemSummary[];
+}
+
+export interface JojoCanonicalDataset {
+  formatVersion: "jojo-dataset/1";
+  datasetId: string;
+  type: JojoDatasetType;
+  title: string;
+  language: string;
+  description?: string;
+  itemPath: string;
 }
 
 export interface JojoBody {
@@ -105,9 +115,10 @@ export interface JojoItemManifest {
   identifiers?: Record<string, string | null>;
   metadata: Record<string, unknown>;
   content: {
-    schema: "jojo-content/book/1" | "jojo-content/periodical-issue/1";
+    schema: "jojo-content/book/1" | "jojo-content/newspaper/1" | "jojo-content/magazine/1";
     toc?: JojoTocNode[];
     chapters?: JojoChapterDescriptor[];
+    articles?: JojoChapterDescriptor[];
   };
   contentStats: JojoContentStats;
   assets: JojoAssetDescriptor[];
@@ -143,6 +154,32 @@ export interface JojoCanonicalChapter {
   assetRefs: string[];
 }
 
+export interface JojoCanonicalPage {
+  id: string;
+  order: number;
+  number: number | null;
+  label: string;
+  title: string | null;
+  assetRefs: string[];
+}
+
+export interface JojoCanonicalArticle {
+  id: string;
+  order: number;
+  title: string;
+  authors: string[];
+  body: JojoBody;
+  assetRefs: string[];
+}
+
+export interface JojoCanonicalPlacement {
+  id: string;
+  pageId: string;
+  articleId: string;
+  order: number;
+  role: "complete" | "start" | "continue";
+}
+
 export interface JojoCanonicalAsset extends Omit<JojoAssetDescriptor, "object"> {
   path: string;
   sourceUrl?: string;
@@ -162,6 +199,11 @@ export interface JojoCanonicalItem {
     schema: "jojo-content/book/1";
     toc: JojoTocNode[];
     chapters: JojoCanonicalChapter[];
+  } | {
+    schema: "jojo-content/newspaper/1" | "jojo-content/magazine/1";
+    pages: JojoCanonicalPage[];
+    articles: JojoCanonicalArticle[];
+    placements: JojoCanonicalPlacement[];
   };
   assets: JojoCanonicalAsset[];
   annotations: JojoAnnotation[];

@@ -46,7 +46,10 @@ function safeObjectKey(value: string): string {
 }
 
 function enforceDatasetObjectScope(objectKey: string, scope: RagScope): void {
-  if (scope.datasetIds?.length && !scope.datasetIds.some((datasetId) => objectKey.startsWith(`content/${datasetId}/`))) {
+  const categories = ["books", "newspapers", "magazines"];
+  if (scope.datasetIds?.length && !scope.datasetIds.some((datasetId) => (
+    categories.some((category) => objectKey.startsWith(`content/${category}/${datasetId}/`))
+  ))) {
     throw new Error("该对象不在用户选择的 Dataset 范围内");
   }
 }

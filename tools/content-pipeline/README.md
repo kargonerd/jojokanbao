@@ -12,7 +12,10 @@ pnpm --filter @jojo/content-pipeline validate -- "C:\path\to\build"
 
 输出根目录包含 `raw/`、`canonical/`、`delivery/`、`huggingface/`、`search/` 和
 `report.json`。导入器按来源 Book ID 去重；只有章节标题能够证明全部卷次边界时才拆成多个
-`book-volume` Item，否则保留单一 `main` 并输出诊断，避免按书名猜卷。
+`book-volume` Item，否则保留单一 `full-book` 并输出诊断，避免按书名猜卷。Raw 书籍按
+`书名--来源ID.扩展名` 平铺；Canonical 只保存 `dataset.json`、`items/` 和 `assets/`，不上传
+目录或 ES 搜索副本；Delivery 按 `content/books/`、`content/newspapers/` 和
+`content/magazines/` 分类。
 
 导入前会用章节 CID 对照微信读书 TOC，检查应有正文数、实际匹配数和缺失章节。默认模式下
 缺少正文或章节解码失败都会拒绝该源文件；只有显式传入 `--allow-partial` 才会生成部分数据并

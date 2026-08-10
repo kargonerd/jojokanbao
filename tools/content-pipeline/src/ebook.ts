@@ -215,7 +215,7 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
   return {
     sourceKind: "epub",
     sourceFormat: "epub",
-    sourceDetails: { identifier, packagePath: opfFile },
+    sourceDetails: { packagePath: opfFile },
     sourcePath: path.resolve(sourcePath),
     sourceSha256: sha256(source),
     sourceBookId: identifier,
@@ -432,7 +432,7 @@ async function decodeMobi(sourcePath: string, source: Uint8Array, format: Exclud
   return {
     sourceKind: "kindle",
     sourceFormat: format,
-    sourceDetails: { asin: asin || null, mobiVersion, compression, encryptionType },
+    sourceDetails: { mobiVersion, compression, encryptionType },
     sourcePath: path.resolve(sourcePath),
     sourceSha256: sha256(source),
     sourceBookId: asin || `mobi:${uniqueId}:${sha256(source).slice(0, 12)}`,

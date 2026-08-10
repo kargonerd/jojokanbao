@@ -28,7 +28,7 @@ describe("delivery metadata merge", () => {
       type: "book" as const,
       title: id,
       language: "zh-CN",
-      indexObject: `content/${id}/index.jox`,
+      indexObject: `content/books/${id}/index.jox`,
     });
     await put(remote, "catalog.jox", {
       formatVersion: "jojo-catalog/1",
@@ -43,18 +43,18 @@ describe("delivery metadata merge", () => {
       datasets: [entry("series")],
     } satisfies JojoCatalog);
     const base = {
-      formatVersion: "jojo-dataset/1" as const,
+      formatVersion: "jojo-delivery-index/1" as const,
       revision: 1,
       datasetId: "series",
       type: "book" as const,
       title: "series",
       language: "zh-CN",
     };
-    await put(remote, "content/series/index.jox", {
+    await put(remote, "content/books/series/index.jox", {
       ...base,
       items: [{ itemId: "series:v1", itemKey: "v1", type: "book-volume", order: 1, title: "一", manifestObject: "items/v1/manifest.jox" }],
     } satisfies JojoDatasetIndex);
-    await put(local, "content/series/index.jox", {
+    await put(local, "content/books/series/index.jox", {
       ...base,
       items: [{ itemId: "series:v2", itemKey: "v2", type: "book-volume", order: 2, title: "二", manifestObject: "items/v2/manifest.jox" }],
     } satisfies JojoDatasetIndex);
@@ -64,8 +64,8 @@ describe("delivery metadata merge", () => {
       "catalog.jox",
     );
     const index = await gunzipJoxJson<JojoDatasetIndex>(
-      new Uint8Array(await readFile(path.join(output, "content/series/index.jox"))),
-      "content/series/index.jox",
+      new Uint8Array(await readFile(path.join(output, "content/books/series/index.jox"))),
+      "content/books/series/index.jox",
     );
     expect(catalog.datasets.map((item) => item.datasetId).sort()).toEqual(["existing", "series"]);
     expect(index.items.map((item) => item.itemId)).toEqual(["series:v1", "series:v2"]);

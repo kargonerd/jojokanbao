@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { JojoCanonicalChapter, JojoTocNode } from "@jojo/content";
+import { pinyin } from "pinyin-pro";
 
 const CHINESE_DIGITS: Record<string, number> = {
   "〇": 0,
@@ -57,7 +58,19 @@ function normalizedTitle(value: string): string {
 }
 
 export function datasetIdForTitle(title: string): string {
-  return `book-${createHash("sha256").update(normalizedTitle(title).toLowerCase()).digest("hex").slice(0, 12)}`;
+  const normalized = normalizedTitle(title);
+  const slug = pinyin(normalized, {
+    toneType: "none",
+    nonZh: "consecutive",
+    separator: "-",
+  }).toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+  if (!slug) return `book-${createHash("sha256").update(normalized).digest("hex").slice(0, 12)}`;
+  if (slug.length <= 80) return slug;
+  const suffix = createHash("sha256").update(normalized).digest("hex").slice(0, 8);
+  return `${slug.slice(0, 71).replace(/-+$/g, "")}-${suffix}`;
 }
 
 export function groupBookTitle(title: string): BookGrouping {

@@ -14,6 +14,7 @@ import {
   transformJoxBytes,
   type JojoCanonicalAsset,
   type JojoCanonicalChapter,
+  type JojoCanonicalDataset,
   type JojoCanonicalItem,
   type JojoCatalog,
   type JojoDatasetIndex,
@@ -388,16 +389,20 @@ function buildParts(
       totalVolumesForDataset,
     )];
   }
-  return [makePart("main", source.title, 1, allIds)];
+  return [makePart("full-book", source.title, 1, allIds)];
 }
 
 async function buildItem(
   part: NormalizedBookPart,
   roots: { canonical: string; delivery: string; huggingface: string },
-): Promise<{ summary: BuiltItemSummary; itemSummary: JojoDatasetIndex["items"][number]; search: JojoSearchDocument[] }> {
-  const canonicalDatasetDirectory = path.join(roots.canonical, part.datasetId);
+): Promise<{
+  summary: BuiltItemSummary;
+  itemSummary: JojoDatasetIndex["items"][number];
+  search: JojoSearchDocument[];
+}> {
+  const canonicalDatasetDirectory = path.join(roots.canonical, "books", part.datasetId);
   const canonicalItemDirectory = path.join(canonicalDatasetDirectory, "items", part.itemKey);
-  const deliveryItemPrefix = `content/${part.datasetId}/items/${part.itemKey}`;
+  const deliveryItemPrefix = `content/books/${part.datasetId}/items/${part.itemKey}`;
   const manifestObject = `${deliveryItemPrefix}/manifest.jox`;
   const fragmentObjects = new Map<string, string>();
   const chapterDescriptors: NonNullable<JojoItemManifest["content"]["chapters"]> = [];
@@ -484,19 +489,18 @@ async function buildItem(
     annotations: part.annotations,
     provenance: {
       source: part.source.sourceKind,
-      sourceItemId: part.source.sourceBookId,
+      sourceId: part.source.sourceBookId,
+      sourceFormat: part.source.sourceFormat,
+      sourceExportedAt: part.source.exportedAt,
       sourceSha256: part.source.sourceSha256,
       importedAt: new Date().toISOString(),
       importer: "@jojo/content-pipeline/0.1.0",
     },
     extensions: {
-      [part.source.sourceKind]: {
-        ...part.source.sourceDetails,
-        sourceFormat: part.source.sourceFormat,
-      },
+      [part.source.sourceKind]: part.source.sourceDetails,
     },
   };
-  const canonicalObject = `canonical/${part.datasetId}/items/${part.itemKey}/item.json.gz`;
+  const canonicalObject = `canonical/books/${part.datasetId}/items/${part.itemKey}/item.json.gz`;
   const canonicalGzip = await writeGzipJson(
     path.join(canonicalItemDirectory, "item.json.gz"),
     canonical,
@@ -556,12 +560,6 @@ async function buildItem(
     fragmentObjects,
     chapters: part.chapters,
   });
-  await mkdir(path.join(canonicalDatasetDirectory, "search"), { recursive: true });
-  await writeFile(
-    path.join(canonicalDatasetDirectory, "search", `${part.itemKey}.jsonl.gz`),
-    gzipSync(Buffer.from(`${search.map((document) => JSON.stringify(document)).join("\n")}\n`), { level: 9 }),
-  );
-
   return {
     summary: {
       datasetId: part.datasetId,
@@ -718,7 +716,7 @@ export async function buildContentPipeline(
       });
     }
     const grouping = groupBookTitle(decoded.title);
-    const canonicalDatasetDirectory = path.join(roots.canonical, grouping.datasetId);
+    const canonicalDatasetDirectory = path.join(roots.canonical, "books", grouping.datasetId);
     const resolvedAssets: JojoCanonicalAsset[] = [];
     const missingAssets = new Set<string>();
     if (options.fetchAssets !== false) {
@@ -767,7 +765,12 @@ export async function buildContentPipeline(
     }
     if (missingAssets.size > 0) chapters = chapters.map((chapter) => removeMissingAssets(chapter, missingAssets));
 
-    const rawTarget = path.join(roots.raw, decoded.sourceKind, safeFileName(decoded.sourceBookId), safeFileName(inspectedSource.fileName));
+    const sourceExtension = path.extname(inspectedSource.fileName).toLowerCase();
+    const readableTitle = safeFileName(decoded.title).slice(0, 100);
+    const readableSourceId = safeFileName(decoded.sourceBookId).slice(0, 60);
+    const readableRawFileName = `${readableTitle}--${readableSourceId}${sourceExtension}`;
+    const rawRelativePath = `${decoded.sourceKind}/${readableRawFileName}`;
+    const rawTarget = path.join(roots.raw, ...rawRelativePath.split("/"));
     await mkdir(path.dirname(rawTarget), { recursive: true });
     await copyFile(inspectedSource.path, rawTarget);
 
@@ -778,7 +781,7 @@ export async function buildContentPipeline(
       annotations,
       volumeCounts.get(grouping.datasetId),
     );
-    if (grouping.declaredTotalVolumes && parts.length === 1 && parts[0]?.itemKey === "main") {
+    if (grouping.declaredTotalVolumes && parts.length === 1 && parts[0]?.itemKey === "full-book") {
       diagnostics.push({
         level: "warning",
         code: "volume-boundaries-unproven",
@@ -849,7 +852,7 @@ export async function buildContentPipeline(
   for (const dataset of [...datasets.values()].sort((left, right) => left.title.localeCompare(right.title, "zh-CN"))) {
     dataset.itemSummaries.sort((left, right) => left.order - right.order || left.title.localeCompare(right.title, "zh-CN"));
     const index: JojoDatasetIndex = {
-      formatVersion: "jojo-dataset/1",
+      formatVersion: "jojo-delivery-index/1",
       revision: 1,
       datasetId: dataset.datasetId,
       type: dataset.type,
@@ -858,15 +861,27 @@ export async function buildContentPipeline(
       description: dataset.description,
       items: dataset.itemSummaries,
     };
-    await writeJson(path.join(roots.canonical, dataset.datasetId, "dataset.json"), index);
-    await writeJoxJson(roots.delivery, `content/${dataset.datasetId}/index.jox`, index);
+    const canonicalDataset: JojoCanonicalDataset = {
+      formatVersion: "jojo-dataset/1",
+      datasetId: dataset.datasetId,
+      type: dataset.type,
+      title: dataset.title,
+      language: dataset.language,
+      description: dataset.description,
+      itemPath: "items/{itemKey}/item.json.gz",
+    };
+    await writeJson(path.join(roots.canonical, "books", dataset.datasetId, "dataset.json"), canonicalDataset);
+    await writeJoxJson(roots.delivery, `content/books/${dataset.datasetId}/index.jox`, index);
     await mkdir(path.join(roots.huggingface, dataset.datasetId), { recursive: true });
     await writeFile(path.join(roots.huggingface, dataset.datasetId, "README.md"), hfReadme(dataset), "utf8");
-    await copyFile(
-      path.join(roots.canonical, dataset.datasetId, "dataset.json"),
-      path.join(roots.huggingface, dataset.datasetId, "dataset.json"),
-    );
-    const canonicalAssets = path.join(roots.canonical, dataset.datasetId, "assets");
+    await writeJson(path.join(roots.huggingface, dataset.datasetId, "dataset.json"), {
+      ...canonicalDataset,
+      items: dataset.itemSummaries.map(({ manifestObject: _manifestObject, ...item }) => ({
+        ...item,
+        path: `data/${item.itemKey}.json.gz`,
+      })),
+    });
+    const canonicalAssets = path.join(roots.canonical, "books", dataset.datasetId, "assets");
     let hasCanonicalAssets = false;
     try {
       await stat(canonicalAssets);
@@ -883,7 +898,7 @@ export async function buildContentPipeline(
       title: dataset.title,
       language: dataset.language,
       itemCount: dataset.items.length,
-      indexObject: `content/${dataset.datasetId}/index.jox`,
+      indexObject: `content/books/${dataset.datasetId}/index.jox`,
     });
   }
   await writeJoxJson(roots.delivery, "catalog.jox", catalog);

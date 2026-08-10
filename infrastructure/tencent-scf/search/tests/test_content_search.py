@@ -26,13 +26,13 @@ class ContentSearchEs:
                     "_source": {
                         "datasetId": "book-a",
                         "datasetTitle": "测试书库",
-                        "itemId": "book-a:main",
+                        "itemId": "book-a:full-book",
                         "itemTitle": "测试书",
                         "targetId": "chapter:1",
                         "targetTitle": "第一章",
                         "text": "苹果正文",
-                        "manifestObject": "content/book-a/items/main/manifest.jox",
-                        "fragmentObject": "content/book-a/items/main/chapters/a.jox",
+                        "manifestObject": "content/books/book-a/items/full-book/manifest.jox",
+                        "fragmentObject": "content/books/book-a/items/full-book/chapters/a.jox",
                     },
                     "highlight": {"text": ["<mark>苹果</mark>正文"]},
                 }],
@@ -58,7 +58,7 @@ class ContentSearchTests(unittest.TestCase):
             "query": "苹果",
             "size": 5,
             "datasetIds": ["book-a"],
-            "itemIds": ["book-a:main"],
+            "itemIds": ["book-a:full-book"],
         })
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()["data"]
@@ -67,7 +67,7 @@ class ContentSearchTests(unittest.TestCase):
         self.assertEqual(self.fake_es.index, search_app.content_index_name)
         self.assertEqual(self.fake_es.body["query"]["bool"]["filter"], [
             {"terms": {"datasetId": ["book-a"]}},
-            {"terms": {"itemId": ["book-a:main"]}},
+            {"terms": {"itemId": ["book-a:full-book"]}},
         ])
 
     def test_append_only_release_uses_exact_hashed_scope_filters(self):
@@ -75,13 +75,13 @@ class ContentSearchTests(unittest.TestCase):
         response = self.client.post('/content/search', json={
             'query': '苹果',
             'datasetIds': ['book-a'],
-            'itemIds': ['book-a:main'],
+            'itemIds': ['book-a:full-book'],
         })
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.fake_es.body['query']['bool']['filter'], [
             {'term': {'releaseId': 'r123456'}},
             {'terms': {'datasetFilterKey': [hashlib.sha256(b'book-a').hexdigest()]}},
-            {'terms': {'itemFilterKey': [hashlib.sha256(b'book-a:main').hexdigest()]}},
+            {'terms': {'itemFilterKey': [hashlib.sha256(b'book-a:full-book').hexdigest()]}},
         ])
 
     def test_search_returns_distinct_fragments_after_chunk_overfetch(self):
@@ -97,7 +97,7 @@ class ContentSearchTests(unittest.TestCase):
                         **first['_source'],
                         'targetId': 'chapter:2',
                         'targetTitle': '第二章',
-                        'fragmentObject': 'content/book-a/items/main/chapters/b.jox',
+                        'fragmentObject': 'content/books/book-a/items/full-book/chapters/b.jox',
                     },
                 }
                 base['hits']['hits'] = [first, first, second]

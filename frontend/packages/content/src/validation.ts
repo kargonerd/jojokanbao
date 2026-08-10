@@ -24,7 +24,7 @@ export const asJojoCatalog = (value: unknown): JojoCatalog =>
   format(value, "jojo-catalog/1");
 
 export const asJojoDatasetIndex = (value: unknown): JojoDatasetIndex =>
-  format(value, "jojo-dataset/1");
+  format(value, "jojo-delivery-index/1");
 
 export const asJojoItemManifest = (value: unknown): JojoItemManifest =>
   format(value, "jojo-item-manifest/1");

@@ -36,12 +36,12 @@ describe("Jox transport", () => {
 
   it("resolves nested object references", () => {
     expect(resolveJoxObject(
-      "content/books/items/main/manifest.jox",
+      "content/books/example/items/full-book/manifest.jox",
       "chapters/abc.jox",
-    )).toBe("content/books/items/main/chapters/abc.jox");
+    )).toBe("content/books/example/items/full-book/chapters/abc.jox");
     expect(resolveJoxObject(
-      "content/rmrb/availability/1990.jox",
-      "../items/1990-01-01.main/manifest.jox",
-    )).toBe("content/rmrb/items/1990-01-01.main/manifest.jox");
+      "content/newspapers/rmrb/availability/1990.jox",
+      "../items/1990/01/1990-01-01/manifest.jox",
+    )).toBe("content/newspapers/rmrb/items/1990/01/1990-01-01/manifest.jox");
   });
 });

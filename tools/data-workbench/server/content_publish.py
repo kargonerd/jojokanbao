@@ -100,6 +100,10 @@ def publish_b2(build_root: Path, on_log: Callable[[str], None]) -> dict[str, Any
     delivery_remote = os.getenv("JOJO_DELIVERY_REMOTE", DELIVERY_REMOTE).rstrip("/")
     report = json.loads((build_root / "report.json").read_text(encoding="utf-8"))
     dataset_ids = sorted({item["datasetId"] for item in report["itemsBuilt"]})
+    dataset_index_keys = sorted({
+        item["manifestObject"].split("/items/", 1)[0] + "/index.jox"
+        for item in report["itemsBuilt"]
+    })
     remote_metadata = build_root / ".publish" / "remote"
     merged_metadata = build_root / ".publish" / "merged"
     if merged_metadata.exists():
@@ -113,8 +117,7 @@ def publish_b2(build_root: Path, on_log: Callable[[str], None]) -> dict[str, Any
     # publish, so probing every Dataset index only adds one failed B2 round trip
     # per Dataset and cannot discover a valid previous release.
     if has_remote_catalog:
-        for dataset_id in dataset_ids:
-            key = f"content/{dataset_id}/index.jox"
+        for key in dataset_index_keys:
             _try_copy_remote(f"{delivery_remote}/{key}", remote_metadata / key, on_log)
     _run([
         "pnpm", "--filter", "@jojo/content-pipeline", "merge-delivery",
@@ -349,7 +352,7 @@ def _prepare_huggingface_snapshot(
         copied += 1
         collection_items: list[dict[str, Any]] = []
         for summary in sorted(dataset.get("items") or [], key=lambda item: (item.get("order") or 0, item.get("title") or "")):
-            item_key = str(summary.get("itemKey") or "main")
+            item_key = str(summary.get("itemKey") or "full-book")
             item_source = source_dataset / "data" / f"{item_key}.json.gz"
             if not item_source.exists():
                 continue

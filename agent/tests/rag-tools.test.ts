@@ -9,13 +9,13 @@ function jox(value: unknown, key: string): Uint8Array {
 
 describe("RAG content tools", () => {
   it("enforces the selected scope and scans a full Item outside model context", async () => {
-    const manifestObject = "content/book-a/items/main/manifest.jox";
-    const chapterOneObject = "content/book-a/items/main/chapters/one.jox";
-    const chapterTwoObject = "content/book-a/items/main/chapters/two.jox";
+    const manifestObject = "content/books/book-a/items/full-book/manifest.jox";
+    const chapterOneObject = "content/books/book-a/items/full-book/chapters/one.jox";
+    const chapterTwoObject = "content/books/book-a/items/full-book/chapters/two.jox";
     const manifest = {
       formatVersion: "jojo-item-manifest/1",
       revision: 1,
-      itemId: "book-a:main",
+      itemId: "book-a:full-book",
       datasetId: "book-a",
       type: "book",
       title: "测试书",
@@ -40,7 +40,7 @@ describe("RAG content tools", () => {
     };
     const fragment = (id: string, title: string, body: string) => ({
       formatVersion: "jojo-fragment/1",
-      itemId: "book-a:main",
+      itemId: "book-a:full-book",
       fragmentId: id,
       type: "chapter",
       order: Number(id.at(-1)),
@@ -57,8 +57,8 @@ describe("RAG content tools", () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input) === "https://search.test/content/search") {
         const body = JSON.parse(String(init?.body));
-        expect(body).toMatchObject({ datasetIds: ["book-a"], itemIds: ["book-a:main"] });
-        return Response.json({ data: { total: 1, results: [{ itemId: "book-a:main" }] } });
+        expect(body).toMatchObject({ datasetIds: ["book-a"], itemIds: ["book-a:full-book"] });
+        return Response.json({ data: { total: 1, results: [{ itemId: "book-a:full-book" }] } });
       }
       const bytes = objects.get(String(input));
       return bytes ? new Response(bytes.slice().buffer) : new Response(null, { status: 404 });
@@ -66,7 +66,7 @@ describe("RAG content tools", () => {
     const tools = createRagTools({
       searchUrl: "https://search.test/content/search",
       contentCdnBase: "https://cdn.test/",
-      scope: { datasetIds: ["book-a"], itemIds: ["book-a:main"] },
+      scope: { datasetIds: ["book-a"], itemIds: ["book-a:full-book"] },
       fetchFn: fetchFn as typeof fetch,
     });
     const search = tools.find((tool) => tool.name === "search_content")!;
@@ -74,7 +74,7 @@ describe("RAG content tools", () => {
     const inspect = tools.find((tool) => tool.name === "inspect_item")!;
     const inspection = await inspect.execute("inspect", { manifestObject }, undefined);
     expect(inspection.details).toMatchObject({
-      itemId: "book-a:main",
+      itemId: "book-a:full-book",
       chapterCount: 2,
       characterCount: 40,
       estimatedProcessingBytes: 400,
@@ -122,7 +122,7 @@ describe("RAG content tools", () => {
     const limitedTools = createRagTools({
       searchUrl: "https://search.test/content/search",
       contentCdnBase: "https://cdn.test/",
-      scope: { datasetIds: ["book-a"], itemIds: ["book-a:main"] },
+      scope: { datasetIds: ["book-a"], itemIds: ["book-a:full-book"] },
       fetchFn: fetchFn as typeof fetch,
       fullItemByteBudget: 300,
     });
