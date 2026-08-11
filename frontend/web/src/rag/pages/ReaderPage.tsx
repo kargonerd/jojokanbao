@@ -152,6 +152,13 @@ export function renderedBody(fragment: JojoFragment, assetUrls: Record<string, s
   return main?.innerHTML || "";
 }
 
+export function shouldRenderChapterTitle(fragment: JojoFragment, html: string): boolean {
+  if (fragment.title !== "封面" && fragment.title !== "插图") return true;
+  const document = new DOMParser().parseFromString(`<main>${html}</main>`, "text/html");
+  const main = document.querySelector("main");
+  return Boolean(main?.textContent?.replace(/\s+/g, "").length) || !main?.querySelector("img,figure,svg");
+}
+
 export function ReaderPage() {
   const { notebookId: datasetId, sourceId: itemKey } = useParams<{ notebookId: string; sourceId: string }>();
   const navigate = useNavigate();
@@ -266,7 +273,7 @@ export function ReaderPage() {
       : undefined}
   >
     {fragment ? <>
-          <h1 className="mb-12 mt-0 text-[2em] font-medium leading-[1.4] tracking-[-.02em]">{fragment.title}</h1>
+          {shouldRenderChapterTitle(fragment, html) && <h1 className="mb-12 mt-0 text-[2em] font-medium leading-[1.4] tracking-[-.02em]">{fragment.title}</h1>}
           <div className="prose-editorial [&_p]:my-[1.15em] [&_p]:text-justify [&_p]:indent-[2em] [&_figure]:my-10 [&_figure_img]:mx-auto [&_figure_img]:block [&_figure_img]:max-h-[78vh] [&_figure_img]:max-w-full [&_figcaption]:mt-3 [&_figcaption]:text-center [&_figcaption]:font-sans [&_figcaption]:text-xs [&_figcaption]:text-muted" dangerouslySetInnerHTML={{ __html: html }} />
           {fragment.annotations.length > 0 && <section className="mt-16 border-t border-rule pt-8 text-[.82em] leading-[1.85]"><h2 className="mb-6 font-sans text-sm tracking-[.18em]">本章注释</h2><ol className="m-0 list-none p-0">{fragment.annotations.map((note: JojoAnnotation) => {
             const reference = parseAnnotationReference(note.body.value);

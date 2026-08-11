@@ -86,18 +86,17 @@ describe("BookReader", () => {
     expect(onChapterChange).toHaveBeenCalledWith("chapter-2");
   });
 
-  it("uses a perspective page turn before applying the next page", () => {
+  it("uses a brief content fade without delaying the next page", () => {
     vi.useFakeTimers();
     vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false })));
     const onChapterChange = vi.fn();
     const { container } = renderReader(onChapterChange);
     fireEvent.click(screen.getByRole("button", { name: "下一页" }));
-    expect(container.querySelector(".book-page-turn-sheet--next")).not.toBeNull();
-    expect(onChapterChange).not.toHaveBeenCalled();
-    act(() => vi.advanceTimersByTime(250));
     expect(onChapterChange).toHaveBeenCalledWith("chapter-2");
-    act(() => vi.advanceTimersByTime(310));
-    expect(container.querySelector(".book-page-turn-sheet--next")).toBeNull();
+    expect(container.querySelector(".book-page-content-arrive")).not.toBeNull();
+    expect(container.querySelector(".book-page-turn-stage")).toBeNull();
+    act(() => vi.advanceTimersByTime(160));
+    expect(container.querySelector(".book-page-content-arrive")).toBeNull();
     vi.useRealTimers();
   });
 
@@ -109,7 +108,36 @@ describe("BookReader", () => {
     const drawer = document.querySelector("aside");
     expect(drawer?.className).toContain("right-0");
     expect(drawer?.className).not.toContain("left-0");
+    const search = screen.getByRole("textbox", { name: "搜索目录" });
+    expect(search.className).toContain("book-toc-search");
+    expect(search.closest("label")?.className).toContain("border-b");
     fireEvent.click(screen.getByRole("button", { name: "第二章" }));
     expect(onChapterChange).toHaveBeenCalledWith("chapter-2");
+  });
+
+  it("pads an odd number of physical pages so the final spread does not repeat a column", async () => {
+    const clientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+    const scrollWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollWidth");
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get() { return this.hasAttribute("data-book-page-flow") ? 1000 : 0; },
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
+      configurable: true,
+      get() {
+        if (!this.hasAttribute("data-book-page-flow")) return 0;
+        return this.querySelector("[data-book-trailing-page]") ? 2080 : 1540;
+      },
+    });
+
+    try {
+      const { container } = renderReader();
+      await waitFor(() => expect(container.querySelector("[data-book-trailing-page]")).not.toBeNull());
+    } finally {
+      if (clientWidth) Object.defineProperty(HTMLElement.prototype, "clientWidth", clientWidth);
+      else delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+      if (scrollWidth) Object.defineProperty(HTMLElement.prototype, "scrollWidth", scrollWidth);
+      else delete (HTMLElement.prototype as { scrollWidth?: number }).scrollWidth;
+    }
   });
 });

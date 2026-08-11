@@ -4,6 +4,7 @@ import {
   findReferencedAnnotation,
   parseAnnotationReference,
   renderedBody,
+  shouldRenderChapterTitle,
 } from "../src/rag/pages/ReaderPage";
 
 describe("RAG content Reader annotations", () => {
@@ -28,6 +29,23 @@ describe("RAG content Reader annotations", () => {
     expect(document.querySelector("h1")).toBeNull();
     expect(document.getElementById("original-title")).not.toBeNull();
     expect(document.body.textContent).toContain("正文");
+  });
+
+  it("keeps an imported cover label for navigation without printing it over the cover", () => {
+    const fragment: JojoFragment = {
+      formatVersion: "jojo-fragment/1",
+      itemId: "book:test",
+      fragmentId: "chapter:cover",
+      type: "chapter",
+      order: 1,
+      title: "封面",
+      body: { format: "html", profile: "jojo-semantic-html/1", value: '<figure data-asset-id="asset:cover"></figure>' },
+      assetRefs: ["asset:cover"],
+      annotations: [],
+    };
+
+    expect(shouldRenderChapterTitle(fragment, '<figure><img src="blob:cover"></figure>')).toBe(false);
+    expect(shouldRenderChapterTitle({ ...fragment, title: "第一章" }, "<p>正文</p>")).toBe(true);
   });
 
   it("renders a stable round-trip link between a marker and its annotation", () => {

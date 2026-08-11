@@ -1,77 +1,40 @@
-.book-page-turn-stage {
-  position: absolute;
-  inset: 0;
-  z-index: 25;
-  overflow: hidden;
-  pointer-events: none;
-  perspective: 2200px;
+.book-toc-search-shell {
+  transition: border-color 140ms ease;
 }
 
-.book-page-turn-sheet {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 50%;
-  transform-style: preserve-3d;
-  will-change: transform;
+.book-toc-search-shell:focus-within {
+  border-bottom-color: var(--color-red);
 }
 
-.book-page-turn-sheet--next {
-  left: 50%;
-  transform-origin: left center;
-  animation: jojo-turn-next 560ms cubic-bezier(.32, .02, .18, 1) both;
+.book-toc-search,
+.book-toc-search:hover,
+.book-toc-search:focus,
+.book-toc-search:focus-visible {
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 0 !important;
 }
 
-.book-page-turn-sheet--previous {
-  left: 0;
-  transform-origin: right center;
-  animation: jojo-turn-previous 560ms cubic-bezier(.32, .02, .18, 1) both;
+.book-page-content-arrive {
+  animation: jojo-page-content-arrive 160ms ease-out both;
 }
 
-.book-page-turn-face {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  background: inherit;
-  backface-visibility: hidden;
+.book-page-trailing-blank {
+  display: block;
+  height: 1px;
+  break-before: column;
+  -webkit-column-break-before: always;
 }
 
-.book-page-turn-face--front::after,
-.book-page-turn-face--back::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, rgba(20, 20, 18, .18), transparent 18%, transparent 82%, rgba(20, 20, 18, .08));
-  opacity: 0;
-  animation: jojo-turn-shadow 560ms ease-in-out both;
-}
-
-.book-page-turn-face--back {
-  transform: rotateY(180deg);
-}
-
-@keyframes jojo-turn-next {
-  0% { transform: rotateY(0deg); }
-  45% { transform: rotateY(-82deg); }
-  55% { transform: rotateY(-100deg); }
-  100% { transform: rotateY(-180deg); }
-}
-
-@keyframes jojo-turn-previous {
-  0% { transform: rotateY(0deg); }
-  45% { transform: rotateY(82deg); }
-  55% { transform: rotateY(100deg); }
-  100% { transform: rotateY(180deg); }
-}
-
-@keyframes jojo-turn-shadow {
-  0%, 100% { opacity: 0; }
-  48%, 52% { opacity: 1; }
+@keyframes jojo-page-content-arrive {
+  from { opacity: .72; }
+  to { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .book-page-turn-sheet--next,
-  .book-page-turn-sheet--previous {
-    animation-duration: 1ms;
+  .book-page-content-arrive {
+    animation: none;
   }
 }
