@@ -242,9 +242,13 @@ export function ReaderPage() {
   const tocItems = toc.length
     ? toc
     : chapters.map((chapter) => ({ ...chapter, targetId: chapter.id, depth: 0 }));
+  const logicalChapterCount = (loaded.manifest.content.toc ?? []).filter((item) => (
+    /^第[〇零一二两三四五六七八九十百\d]+章(?:[：:]|$)/.test(item.title.trim())
+  )).length || undefined;
   return <BookReader
     bookTitle={loaded.manifest.title}
     characterCount={loaded.manifest.contentStats.characterCount}
+    logicalChapterCount={logicalChapterCount}
     chapters={chapters.map((chapter) => ({ id: chapter.id, title: chapter.title }))}
     toc={tocItems.map((item) => ({ id: item.id, title: item.title, targetId: item.targetId, depth: item.depth }))}
     activeChapterId={activeChapter}
@@ -261,7 +265,6 @@ export function ReaderPage() {
       ? () => void downloadExport(loaded, "export:epub").catch((reason: Error) => setError(reason.message))
       : undefined}
   >
-    <p className="mb-5 mt-0 font-sans text-[11px] tracking-[.18em] text-muted [break-after:avoid-column]">第 {activeChapterIndex + 1} / {chapters.length} 章</p>
     {fragment ? <>
           <h1 className="mb-12 mt-0 text-[2em] font-medium leading-[1.4] tracking-[-.02em]">{fragment.title}</h1>
           <div className="prose-editorial [&_p]:my-[1.15em] [&_p]:text-justify [&_p]:indent-[2em] [&_figure]:my-10 [&_figure_img]:mx-auto [&_figure_img]:block [&_figure_img]:max-h-[78vh] [&_figure_img]:max-w-full [&_figcaption]:mt-3 [&_figcaption]:text-center [&_figcaption]:font-sans [&_figcaption]:text-xs [&_figcaption]:text-muted" dangerouslySetInnerHTML={{ __html: html }} />
