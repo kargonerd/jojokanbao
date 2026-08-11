@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -103,6 +104,7 @@ export function BookReader({
   const [theme, setTheme] = useState<BookReaderTheme>(storedTheme);
   const [mode, setMode] = useState<BookReaderMode>(storedMode);
   const [tocOpen, setTocOpen] = useState(false);
+  const [tocQuery, setTocQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [readingProgress, setReadingProgress] = useState(0);
   const [columnsPerSpread, setColumnsPerSpread] = useState(() => window.innerWidth >= 900 ? 2 : 1);
@@ -111,6 +113,7 @@ export function BookReader({
   const scrollRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<HTMLDivElement>(null);
   const articleRef = useRef<HTMLElement>(null);
+  const tocPanelRef = useRef<HTMLElement>(null);
   const currentPageRef = useRef(0);
   const pendingPageRef = useRef<"start" | "end" | null>("start");
   const turnTimersRef = useRef<number[]>([]);
@@ -121,6 +124,11 @@ export function BookReader({
   const bookProgress = chapters.length
     ? Math.min(100, Math.round(((activeChapterIndex + readingProgress / 100) / chapters.length) * 100))
     : 0;
+  const filteredToc = useMemo(() => {
+    const query = tocQuery.normalize("NFKC").trim().toLocaleLowerCase();
+    if (!query) return toc;
+    return toc.filter((item) => item.title.normalize("NFKC").toLocaleLowerCase().includes(query));
+  }, [toc, tocQuery]);
 
   const measurePages = useCallback(() => {
     const flow = flowRef.current;
@@ -157,6 +165,14 @@ export function BookReader({
   useEffect(() => () => {
     turnTimersRef.current.forEach((timer) => window.clearTimeout(timer));
   }, []);
+
+  useEffect(() => {
+    if (!tocOpen || tocQuery) return;
+    const frame = window.requestAnimationFrame(() => {
+      tocPanelRef.current?.querySelector<HTMLElement>("[data-toc-active='true']")?.scrollIntoView({ block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [tocOpen, tocQuery]);
 
   useEffect(() => {
     const closePanels = (event: KeyboardEvent): void => {
@@ -337,22 +353,24 @@ export function BookReader({
 
   return <div className={`h-screen overflow-hidden ${shellClass}`}>
     <nav data-book-toolbar aria-label="阅读工具" className="fixed right-5 top-1/2 z-30 hidden -translate-y-1/2 flex-col gap-2 md:flex">
-      <button type="button" onClick={() => { setTocOpen(true); setSettingsOpen(false); }} className={controlClass} aria-label="打开目录" title="目录">目录</button>
+      <button type="button" onClick={() => { setTocOpen(true); setSettingsOpen(false); }} className={controlClass} aria-label="打开目录" title="目录"><span className="flex flex-col gap-[3px]" aria-hidden="true"><i className="block h-px w-5 bg-current" /><i className="block h-px w-5 bg-current" /><i className="block h-px w-5 bg-current" /></span></button>
       <Link to={backHref} className={`${controlClass} no-underline text-current`} aria-label="向 AI 提问" title="向 AI 提问">AI</Link>
       <button type="button" onClick={() => { setSettingsOpen((value) => !value); setTocOpen(false); }} className={controlClass} aria-label="阅读设置" title="阅读设置">Aa</button>
-      <button type="button" onClick={() => changeMode(mode === "paged" ? "scroll" : "paged")} className={controlClass} aria-label="切换阅读模式" title="切换阅读模式">{mode === "paged" ? "双页" : "滚动"}</button>
+      <button type="button" data-reader-mode={mode} onClick={() => changeMode(mode === "paged" ? "scroll" : "paged")} className={controlClass} aria-label="切换阅读模式" title={mode === "paged" ? "切换为上下滚动" : "切换为双栏翻页"}><span className={`grid h-5 w-5 gap-[2px] ${mode === "paged" ? "grid-cols-2" : "grid-cols-1"}`} aria-hidden="true"><i className="block border border-current" />{mode === "paged" && <i className="block border border-current" />}</span></button>
     </nav>
 
     {tocOpen && <>
       <button type="button" aria-label="关闭目录" onClick={() => setTocOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" />
-      <aside className={`fixed inset-y-0 left-0 z-50 w-[min(88vw,390px)] overflow-y-auto border-r shadow-[18px_0_50px_rgba(0,0,0,.12)] ${panelClass}`}>
+      <aside ref={tocPanelRef} aria-label="目录面板" className={`fixed inset-y-0 right-0 z-50 w-full overflow-y-auto border-l shadow-[-18px_0_50px_rgba(0,0,0,.12)] sm:w-[min(88vw,420px)] ${panelClass}`}>
         <div className={`sticky top-0 z-10 border-b px-7 py-6 ${panelClass}`}>
           <div className="flex items-start justify-between gap-4">
             <div><p className="m-0 font-sans text-[11px] tracking-[.22em] text-muted">目录</p><h2 className="mb-1 mt-2 text-xl leading-snug">{bookTitle}</h2><p className="m-0 font-sans text-xs text-muted">{logicalChapterCount ? `${logicalChapterCount} 章 · ` : ""}{characterCount.toLocaleString()} 字</p></div>
             <button type="button" onClick={() => setTocOpen(false)} className="border-0 bg-transparent text-2xl cursor-pointer text-current" aria-label="关闭目录">×</button>
           </div>
+          <label className={`mt-5 flex h-10 items-center gap-2 border px-3 font-sans text-xs ${theme === "dark" ? "border-[#393d3a] bg-[#1c1f1d]" : "border-[#d8d8d1] bg-white"}`}><span className="text-muted" aria-hidden="true">⌕</span><input value={tocQuery} onChange={(event) => setTocQuery(event.target.value)} placeholder="搜索目录" className="min-w-0 flex-1 border-0 bg-transparent p-0 text-current outline-none placeholder:text-muted" /></label>
         </div>
-        <ol className="m-0 list-none px-4 py-5">{toc.map((item) => <li key={item.id}><button type="button" onClick={() => chooseChapter(item.targetId)} style={{ paddingLeft: `${16 + item.depth * 16}px` }} className={`relative block w-full border-0 bg-transparent py-2.5 pr-4 text-left font-serif text-[13px] leading-relaxed cursor-pointer ${activeChapterId === item.targetId ? "font-bold text-red before:absolute before:inset-y-2 before:left-0 before:w-[2px] before:bg-red" : "text-current hover:text-red"}`}>{item.title}</button></li>)}</ol>
+        <ol className="m-0 list-none px-4 py-5">{filteredToc.map((item) => <li key={item.id}><button type="button" data-toc-active={activeChapterId === item.targetId ? "true" : undefined} onClick={() => chooseChapter(item.targetId)} style={{ paddingLeft: `${16 + item.depth * 16}px` }} className={`relative block w-full border-0 bg-transparent py-2.5 pr-4 text-left font-serif text-[13px] leading-relaxed cursor-pointer ${activeChapterId === item.targetId ? "font-bold text-red before:absolute before:inset-y-2 before:right-0 before:w-[2px] before:bg-red" : "text-current hover:text-red"}`}>{item.title}</button></li>)}</ol>
+        {filteredToc.length === 0 && <p className="px-7 py-10 text-center font-sans text-xs text-muted">没有匹配的目录项</p>}
       </aside>
     </>}
 
@@ -373,25 +391,24 @@ export function BookReader({
     <header className={`relative z-20 h-12 border-b backdrop-blur-md ${chromeClass}`}>
       <div className="mx-auto flex h-full max-w-[1180px] items-center gap-3 px-4 font-sans text-xs md:px-10">
         <Link to={backHref} className="text-current no-underline" aria-label="返回问答">←</Link>
+        <span className="min-w-0 flex-1 truncate text-muted md:hidden">{chapters[activeChapterIndex]?.title || bookTitle}</span>
+        <span className="hidden min-w-0 flex-1 truncate text-muted md:block">{bookTitle}</span>
+        <span className="hidden max-w-[42%] truncate text-muted md:block">{chapters[activeChapterIndex]?.title}</span>
         <button type="button" onClick={() => setTocOpen(true)} className="border-0 bg-transparent p-0 font-sans text-xs text-current cursor-pointer md:hidden">目录</button>
-        <span className="min-w-0 flex-1 truncate text-muted">{bookTitle}</span>
-        <span className="hidden max-w-[42%] truncate text-muted sm:block">{chapters[activeChapterIndex]?.title}</span>
-        <button type="button" onClick={() => changeMode(mode === "paged" ? "scroll" : "paged")} className="border-0 bg-transparent p-0 font-sans text-xs text-current cursor-pointer md:hidden">{mode === "paged" ? "翻页" : "滚动"}</button>
         <button type="button" onClick={() => setSettingsOpen((value) => !value)} className="border-0 bg-transparent p-0 font-sans text-xs text-current cursor-pointer md:hidden">Aa</button>
-        {mode === "scroll" && <span className="tabular-nums text-muted">全书 {bookProgress}%</span>}
-        <span className="tabular-nums text-muted">全书 {bookProgress}%</span>
+        <span className="hidden tabular-nums text-muted md:inline">全书 {bookProgress}%</span>
       </div>
     </header>
 
     {mode === "scroll" ? <div ref={scrollRef} onScroll={updateScrollProgress} onClick={handleInternalLink} className="h-[calc(100%-48px)] overflow-y-auto scroll-smooth">
       <main className="mx-auto max-w-[920px] px-0 py-0 md:px-5 md:py-8">
-        <article className={`relative min-h-[calc(100vh-96px)] border-x px-6 py-12 shadow-[0_16px_50px_rgba(32,32,28,.10)] sm:px-12 md:px-20 md:py-20 ${pageClass} ${theme === "dark" ? "border-[#2d312e]" : "border-[#ddddd6]"}`} style={{ fontSize: `${fontSize}px`, lineHeight: 2.05 }}>
+        <article className={`relative min-h-full border-0 px-6 py-10 shadow-none sm:px-12 md:min-h-[calc(100vh-96px)] md:border-x md:px-20 md:py-20 md:shadow-[0_16px_50px_rgba(32,32,28,.10)] ${pageClass} ${theme === "dark" ? "md:border-[#2d312e]" : "md:border-[#ddddd6]"}`} style={{ fontSize: `${fontSize}px`, lineHeight: 2.05 }}>
           <div className="mx-auto max-w-[730px]">{error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}{children}{chapterNavigation}</div>
         </article>
       </main>
-    </div> : <main className="relative h-[calc(100%-48px)] px-3 py-3 sm:px-8 sm:py-5 md:px-20 md:py-6">
+    </div> : <main className="relative h-[calc(100%-48px)] px-0 py-0 md:px-20 md:py-6">
       <div className="relative mx-auto h-full max-w-[1180px]">
-        <article ref={articleRef} className={`relative h-full overflow-hidden border px-7 py-10 shadow-[0_16px_55px_rgba(32,32,28,.14)] sm:px-12 md:px-16 md:py-14 ${pageClass} ${theme === "dark" ? "border-[#2d312e]" : "border-[#d8d8d1]"}`}>
+        <article ref={articleRef} className={`relative h-full overflow-hidden border-0 px-6 pb-16 pt-10 shadow-none sm:px-10 md:border md:px-16 md:py-14 md:shadow-[0_16px_55px_rgba(32,32,28,.14)] ${pageClass} ${theme === "dark" ? "md:border-[#2d312e]" : "md:border-[#d8d8d1]"}`}>
           {columnsPerSpread === 2 && <div className={`pointer-events-none absolute inset-y-0 left-1/2 z-10 w-10 -translate-x-1/2 ${theme === "dark" ? "bg-[linear-gradient(90deg,transparent,rgba(0,0,0,.22),transparent)]" : "bg-[linear-gradient(90deg,transparent,rgba(77,75,66,.09),transparent)]"}`} aria-hidden="true" />}
           <div ref={flowRef} data-book-page-flow onClick={handleInternalLink} className="h-full overflow-hidden [column-fill:auto] [&_figure]:break-inside-avoid [&_h1]:[break-after:avoid-column] [&_h2]:[break-after:avoid-column] [&_li]:break-inside-avoid" style={{ columnCount: columnsPerSpread, columnGap: columnsPerSpread === 2 ? "80px" : "48px", fontSize: `${fontSize}px`, lineHeight: 1.95 }}>
             {error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}{children}
@@ -422,7 +439,7 @@ export function BookReader({
         <button type="button" onClick={nextPage} disabled={Boolean(turnSnapshot) || (!nextChapter && pageMetrics.page >= pageMetrics.spreads - 1)} className={`absolute bottom-4 right-5 z-30 flex h-9 items-center justify-center gap-1 border px-3 font-sans text-xs shadow-[2px_4px_14px_rgba(0,0,0,.08)] cursor-pointer transition-colors disabled:cursor-default disabled:opacity-20 sm:right-8 ${panelClass}`} aria-label="下一页" title="下一页（→ 或空格）">下一页 <span aria-hidden="true">›</span></button>
       </div>
       <div className="pointer-events-none absolute inset-x-0 bottom-1 flex items-center justify-center gap-4 font-sans text-[10px] text-muted md:bottom-2">
-        <span>{firstPhysicalPage === lastPhysicalPage ? firstPhysicalPage : `${firstPhysicalPage}–${lastPhysicalPage}`} / {pageMetrics.physicalPages} 页</span><span className="hidden sm:inline">按 ← → 或空格翻页</span><span>全书 {bookProgress}%</span>
+        <span>{firstPhysicalPage === lastPhysicalPage ? firstPhysicalPage : `${firstPhysicalPage}–${lastPhysicalPage}`} / {pageMetrics.physicalPages} 页</span><span className="hidden sm:inline">按 ← → 或空格翻页</span><span className="hidden sm:inline">全书 {bookProgress}%</span>
       </div>
     </main>}
   </div>;

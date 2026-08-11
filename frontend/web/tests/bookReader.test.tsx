@@ -57,7 +57,7 @@ describe("BookReader", () => {
     expect(flow?.style.columnCount).toBe("2");
     expect(toolbar?.className).toContain("right-5");
     expect(toolbar?.className).not.toContain("left-5");
-    expect(screen.getByRole("button", { name: "切换阅读模式" }).textContent).toBe("双页");
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "切换阅读模式" }).dataset.readerMode).toBe("paged");
     expect(screen.queryByText("上一节")).toBeNull();
   });
 
@@ -106,6 +106,9 @@ describe("BookReader", () => {
     renderReader(onChapterChange);
     fireEvent.click(screen.getByRole("button", { name: "打开目录" }));
     expect(screen.getByText(/40 章/)).toBeTruthy();
+    const drawer = document.querySelector("aside");
+    expect(drawer?.className).toContain("right-0");
+    expect(drawer?.className).not.toContain("left-0");
     fireEvent.click(screen.getByRole("button", { name: "第二章" }));
     expect(onChapterChange).toHaveBeenCalledWith("chapter-2");
   });
