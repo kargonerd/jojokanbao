@@ -1,5 +1,4 @@
 import axios from "axios";
-import { authClient } from "../account/auth";
 import { loadCatalog, loadDataset } from "./content";
 import type {
   RagAdminAccount,
@@ -69,6 +68,7 @@ export function askStream(params: { dataset_id: string; question: string; conver
   const ctrl = new AbortController();
   let settled = false;
   const conversationId = params.conversation_id || `conv_${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`;
+  const references = new Map<string, RagReference>();
   const finish = (references?: RagReference[]) => {
     if (settled) return;
     settled = true;
@@ -76,6 +76,7 @@ export function askStream(params: { dataset_id: string; question: string; conver
   };
 
   void (async () => {
+    const { authClient } = await import("../account/auth");
     const { data, error } = await authClient.auth.getSession();
     if (error) throw error;
     const token = data.session?.access_token;
@@ -115,7 +116,15 @@ export function askStream(params: { dataset_id: string; question: string; conver
         if (!payloadText) continue;
         const event = JSON.parse(payloadText) as Record<string, unknown>;
         if (eventName === "text_delta" && typeof event.delta === "string") onChunk(event.delta);
-        else if (eventName === "done") { finish(); return; }
+        else if (eventName === "tool_end" && Array.isArray(event.references)) {
+          for (const candidate of event.references) {
+            if (!isRecord(candidate)) continue;
+            const reference = candidate as RagReference;
+            const key = `${reference.itemId || ""}:${reference.targetId || ""}:${reference.fragmentObject || ""}`;
+            references.set(key, reference);
+          }
+        }
+        else if (eventName === "done") { finish([...references.values()]); return; }
         else if (eventName === "error") {
           settled = true;
           onError(typeof event.message === "string" ? event.message : "Agent 流式请求失败");

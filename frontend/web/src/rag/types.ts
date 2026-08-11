@@ -1,4 +1,21 @@
-export type RagReference = Record<string, unknown>;
+export interface RagReference {
+  datasetId?: string;
+  itemId?: string;
+  targetId?: string;
+  title?: string;
+  excerpt?: string;
+  fragmentObject?: string;
+}
+
+export interface RagSearchHit extends RagReference {
+  datasetId: string;
+  itemId: string;
+  targetId: string;
+  targetTitle: string;
+  text: string;
+  highlights?: string[];
+  score?: number;
+}
 
 export interface RagNotebook {
   id: string;

@@ -8,6 +8,7 @@ import {
   loadAssetUrl,
   loadFragment,
   loadItem,
+  searchLoadedBook,
   type LoadedItem,
 } from "../content";
 import { BookReader } from "../components/BookReader";
@@ -153,7 +154,7 @@ export function renderedBody(fragment: JojoFragment, assetUrls: Record<string, s
     link.textContent = annotationDisplayLabel(annotation.label);
     link.title = annotation.body.value;
     link.setAttribute("aria-label", `查看注释 ${annotation.label || "注"}`);
-    link.className = "text-red no-underline font-bold";
+    link.className = "book-footnote-link text-red no-underline font-bold";
     marker.append(link);
     if (trailingText) marker.after(document.createTextNode(trailingText));
   }
@@ -178,6 +179,7 @@ export function ReaderPage() {
   const [fragment, setFragment] = useState<JojoFragment>();
   const [activeChapter, setActiveChapter] = useState("");
   const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
+  const [focusText, setFocusText] = useState<{ text: string; token: number }>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -263,6 +265,8 @@ export function ReaderPage() {
   )).length || undefined;
   return <BookReader
     bookTitle={loaded.manifest.title}
+    datasetId={loaded.manifest.datasetId}
+    itemId={loaded.manifest.itemId}
     characterCount={loaded.manifest.contentStats.characterCount}
     logicalChapterCount={logicalChapterCount}
     chapters={chapters.map((chapter) => ({ id: chapter.id, title: chapter.title }))}
@@ -270,13 +274,22 @@ export function ReaderPage() {
     activeChapterId={activeChapter}
     chapterKey={fragment?.fragmentId ?? activeChapter}
     focusAnchorId={requestedAnnotation || undefined}
+    focusText={focusText}
     contentLoading={!fragment}
     error={error}
     backHref="/rag/chat"
     onChapterChange={(chapterId) => {
       setFragment(undefined);
+      setFocusText(undefined);
       setActiveChapter(chapterId);
     }}
+    onLocate={(chapterId, text) => {
+      const normalizedText = text?.replace(/\s+/g, " ").trim();
+      setFocusText(normalizedText ? { text: normalizedText.length > 80 ? normalizedText.slice(0, 36) : normalizedText, token: Date.now() } : undefined);
+      if (chapterId !== activeChapter) setFragment(undefined);
+      setActiveChapter(chapterId);
+    }}
+    onSearch={(query) => searchLoadedBook(loaded, query)}
     onDownload={loaded.manifest.exports.some((item) => item.id === "export:epub")
       ? () => void downloadExport(loaded, "export:epub").catch((reason: Error) => setError(reason.message))
       : undefined}

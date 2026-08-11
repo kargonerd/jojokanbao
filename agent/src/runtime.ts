@@ -7,9 +7,56 @@ import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
 import {
   defaultMessageConverter,
   type AgentUsage,
+  type AgentSourceReference,
   type PlatformAgentResult,
   type RunPlatformAgentOptions,
 } from "./types";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function stringField(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function sourceReference(value: unknown): AgentSourceReference | undefined {
+  if (!isRecord(value)) return undefined;
+  const targetId = stringField(value.targetId) ?? stringField(value.chapterId);
+  if (!targetId) return undefined;
+  const source = isRecord(value.source) ? value.source : undefined;
+  const excerpt = stringField(value.text);
+  return {
+    ...(stringField(value.datasetId) ? { datasetId: stringField(value.datasetId) } : {}),
+    ...(stringField(value.itemId) ? { itemId: stringField(value.itemId) } : {}),
+    targetId,
+    ...(stringField(value.targetTitle) || stringField(value.title)
+      ? { title: stringField(value.targetTitle) ?? stringField(value.title) }
+      : {}),
+    ...(excerpt ? { excerpt: excerpt.slice(0, 320) } : {}),
+    ...(stringField(value.fragmentObject) || stringField(source?.fragmentObject)
+      ? { fragmentObject: stringField(value.fragmentObject) ?? stringField(source?.fragmentObject) }
+      : {}),
+  };
+}
+
+export function toolSourceReferences(result: unknown): AgentSourceReference[] {
+  if (!isRecord(result)) return [];
+  const details = isRecord(result.details) ? result.details : result;
+  const candidates = [
+    ...(Array.isArray(details.hits) ? details.hits : []),
+    ...(Array.isArray(details.evidence) ? details.evidence : []),
+    details,
+  ];
+  const references = new Map<string, AgentSourceReference>();
+  for (const candidate of candidates) {
+    const reference = sourceReference(candidate);
+    if (!reference) continue;
+    references.set(`${reference.itemId || ""}:${reference.targetId}:${reference.fragmentObject || ""}`, reference);
+    if (references.size >= 8) break;
+  }
+  return [...references.values()];
+}
 
 const DEFAULT_MAX_TURNS = 8;
 const DEFAULT_MAX_TOOL_CALLS = 20;
@@ -177,11 +224,13 @@ export async function runPlatformAgent(
     }
 
     if (event.type === "tool_execution_end") {
+      const references = toolSourceReferences(event.result);
       await options.onEvent?.({
         type: "tool_end",
         callId: event.toolCallId,
         name: event.toolName,
         isError: event.isError,
+        ...(references.length ? { references } : {}),
       });
       return;
     }

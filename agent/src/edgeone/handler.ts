@@ -143,6 +143,7 @@ function eventPayload(event: PlatformAgentEvent): unknown {
       callId: event.callId,
       name: event.name,
       isError: event.isError,
+      ...(event.references?.length ? { references: event.references } : {}),
     };
   }
   if (event.type === "turn_end") return { turn: event.turn };

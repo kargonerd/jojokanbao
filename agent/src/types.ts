@@ -30,6 +30,15 @@ export interface AgentUsage {
 
 export type PlatformAgentStatus = "placeholder" | "available";
 
+export interface AgentSourceReference {
+  datasetId?: string;
+  itemId?: string;
+  targetId: string;
+  title?: string;
+  excerpt?: string;
+  fragmentObject?: string;
+}
+
 /**
  * Product-owned Agent configuration.
  *
@@ -46,7 +55,7 @@ export interface PlatformAgentDefinition {
 export type PlatformAgentEvent =
   | { type: "text_delta"; delta: string }
   | { type: "tool_start"; callId: string; name: string; args: unknown }
-  | { type: "tool_end"; callId: string; name: string; isError: boolean }
+  | { type: "tool_end"; callId: string; name: string; isError: boolean; references?: AgentSourceReference[] }
   | { type: "turn_end"; turn: number }
   | { type: "usage"; usage: AgentUsage };
 

@@ -9,9 +9,12 @@ import {
   useState,
 } from "react";
 import { Link } from "react-router-dom";
+import type { RagReference, RagSearchHit } from "../types";
+import { BookAiPanel } from "./BookAiPanel";
+import { BookSearchPanel } from "./BookSearchPanel";
 import "./BookReader.css";
 
-export type BookReaderTheme = "paper" | "light" | "dark";
+export type BookReaderPaperColor = "ivory" | "white" | "dark";
 export type BookReaderMode = "paged" | "scroll";
 
 export interface BookReaderChapter {
@@ -26,6 +29,8 @@ export interface BookReaderTocItem extends BookReaderChapter {
 
 export interface BookReaderProps {
   bookTitle: string;
+  datasetId: string;
+  itemId: string;
   characterCount: number;
   logicalChapterCount?: number;
   chapters: BookReaderChapter[];
@@ -33,10 +38,13 @@ export interface BookReaderProps {
   activeChapterId: string;
   chapterKey: string;
   focusAnchorId?: string;
+  focusText?: { text: string; token: number };
   contentLoading?: boolean;
   error?: string;
   backHref: string;
   onChapterChange: (chapterId: string) => void;
+  onLocate: (chapterId: string, text?: string) => void;
+  onSearch: (query: string) => Promise<RagSearchHit[]>;
   onDownload?: () => void;
   children: ReactNode;
 }
@@ -44,6 +52,14 @@ export interface BookReaderProps {
 interface ExpandedImage {
   src: string;
   alt: string;
+}
+
+interface ReaderTextSelection {
+  text: string;
+  range: Range;
+  left: number;
+  top: number;
+  above: boolean;
 }
 
 interface PageMetrics {
@@ -62,9 +78,17 @@ const DEFAULT_PAGE_METRICS: PageMetrics = {
   step: 0,
 };
 
-function storedTheme(): BookReaderTheme {
-  const value = window.localStorage.getItem("jojo-reader-theme");
-  return value === "light" || value === "dark" || value === "paper" ? value : "paper";
+function storedPaperColor(): BookReaderPaperColor {
+  const value = window.localStorage.getItem("jojo-reader-paper-color");
+  if (value === "ivory" || value === "white" || value === "dark") return value;
+  const legacy = window.localStorage.getItem("jojo-reader-theme");
+  return legacy === "dark" ? "dark" : legacy === "light" ? "white" : "ivory";
+}
+
+function storedPaperTexture(): boolean {
+  const value = window.localStorage.getItem("jojo-reader-paper-texture");
+  if (value === "true" || value === "false") return value === "true";
+  return window.localStorage.getItem("jojo-reader-theme") !== "light";
 }
 
 function storedMode(): BookReaderMode {
@@ -80,6 +104,8 @@ function storedFontSize(): number {
 
 export function BookReader({
   bookTitle,
+  datasetId,
+  itemId,
   characterCount,
   logicalChapterCount,
   chapters,
@@ -87,19 +113,29 @@ export function BookReader({
   activeChapterId,
   chapterKey,
   focusAnchorId,
+  focusText,
   contentLoading = false,
   error,
   backHref,
   onChapterChange,
+  onLocate,
+  onSearch,
   onDownload,
   children,
 }: BookReaderProps) {
   const [fontSize, setFontSize] = useState(storedFontSize);
-  const [theme, setTheme] = useState<BookReaderTheme>(storedTheme);
+  const [paperColor, setPaperColor] = useState<BookReaderPaperColor>(storedPaperColor);
+  const [paperTexture, setPaperTexture] = useState(storedPaperTexture);
   const [mode, setMode] = useState<BookReaderMode>(storedMode);
   const [tocOpen, setTocOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
   const [tocQuery, setTocQuery] = useState("");
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [toolPopover, setToolPopover] = useState<"font" | "color">();
+  const [textSelection, setTextSelection] = useState<ReaderTextSelection>();
+  const [thoughtOpen, setThoughtOpen] = useState(false);
+  const [thought, setThought] = useState("");
+  const [aiQuestion, setAiQuestion] = useState<string>();
   const [expandedImage, setExpandedImage] = useState<ExpandedImage>();
   const [readingProgress, setReadingProgress] = useState(0);
   const [columnsPerSpread, setColumnsPerSpread] = useState(() => window.innerWidth >= 900 ? 2 : 1);
@@ -112,6 +148,7 @@ export function BookReader({
   const currentPageRef = useRef(0);
   const pendingPageRef = useRef<"start" | "end" | null>("start");
   const transitionTimerRef = useRef<number | undefined>(undefined);
+  const jumpTimerRef = useRef<number | undefined>(undefined);
 
   const activeChapterIndex = Math.max(0, chapters.findIndex((chapter) => chapter.id === activeChapterId));
   const previousChapter = chapters[activeChapterIndex - 1];
@@ -152,9 +189,9 @@ export function BookReader({
     window.localStorage.setItem("jojo-reader-font-size", String(fontSize));
   }, [fontSize]);
 
-  useEffect(() => {
-    window.localStorage.setItem("jojo-reader-theme", theme);
-  }, [theme]);
+  useEffect(() => { window.localStorage.setItem("jojo-reader-paper-color", paperColor); }, [paperColor]);
+
+  useEffect(() => { window.localStorage.setItem("jojo-reader-paper-texture", String(paperTexture)); }, [paperTexture]);
 
   useEffect(() => {
     window.localStorage.setItem("jojo-reader-mode", mode);
@@ -162,6 +199,7 @@ export function BookReader({
 
   useEffect(() => () => {
     if (transitionTimerRef.current) window.clearTimeout(transitionTimerRef.current);
+    if (jumpTimerRef.current) window.clearTimeout(jumpTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -176,7 +214,11 @@ export function BookReader({
     const closePanels = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
       setTocOpen(false);
-      setSettingsOpen(false);
+      setSearchOpen(false);
+      setAiOpen(false);
+      setToolPopover(undefined);
+      setTextSelection(undefined);
+      setThoughtOpen(false);
       setExpandedImage(undefined);
     };
     window.addEventListener("keydown", closePanels);
@@ -224,7 +266,7 @@ export function BookReader({
       mutationObserver?.disconnect();
       flow?.querySelectorAll("img").forEach((image) => image.removeEventListener("load", measurePages));
     };
-  }, [children, contentLoading, fontSize, measurePages, theme]);
+  }, [children, contentLoading, fontSize, measurePages, paperColor, paperTexture]);
 
   const goToPage = useCallback((page: number, behavior: ScrollBehavior = "smooth") => {
     const bounded = Math.max(0, Math.min(page, pageMetrics.spreads - 1));
@@ -232,6 +274,8 @@ export function BookReader({
     currentPageRef.current = bounded;
     setPageMetrics((current) => ({ ...current, page: bounded }));
     setReadingProgress(pageMetrics.spreads <= 1 ? 100 : Math.round((bounded / (pageMetrics.spreads - 1)) * 100));
+    setTextSelection(undefined);
+    setThoughtOpen(false);
   }, [pageMetrics.spreads, pageMetrics.step]);
 
   const chooseChapter = useCallback((chapterId: string | undefined, destination: "start" | "end" = "start"): void => {
@@ -287,24 +331,72 @@ export function BookReader({
     return () => window.removeEventListener("keydown", turnWithKeyboard);
   }, [mode, nextPage, previousPage]);
 
-  const revealAnchor = useCallback((anchorId: string, behavior: ScrollBehavior = "smooth") => {
-    const target = document.getElementById(anchorId);
-    if (!target) return;
+  const highlightJumpTarget = useCallback((target: HTMLElement): void => {
+    document.querySelectorAll("[data-book-jump-target]").forEach((element) => {
+      element.removeAttribute("data-book-jump-target");
+    });
+    target.setAttribute("data-book-jump-target", "true");
+    target.tabIndex = -1;
+    target.focus({ preventScroll: true });
+    if (jumpTimerRef.current) window.clearTimeout(jumpTimerRef.current);
+    jumpTimerRef.current = window.setTimeout(() => target.removeAttribute("data-book-jump-target"), 2200);
+  }, []);
+
+  const revealElement = useCallback((target: HTMLElement) => {
     if (mode === "scroll") {
-      target.scrollIntoView({ behavior, block: "center" });
+      target.scrollIntoView({ behavior: "auto", block: "center" });
+      highlightJumpTarget(target);
       return;
     }
     const flow = flowRef.current;
     if (!flow || !pageMetrics.step) return;
-    const targetLeft = target.getBoundingClientRect().left - flow.getBoundingClientRect().left + flow.scrollLeft;
-    goToPage(Math.floor(targetLeft / pageMetrics.step), behavior);
-  }, [goToPage, mode, pageMetrics.step]);
+    const targetRect = target.getClientRects()[0] ?? target.getBoundingClientRect();
+    const targetLeft = Math.max(0, targetRect.left - flow.getBoundingClientRect().left + flow.scrollLeft);
+    goToPage(Math.floor((targetLeft + 1) / pageMetrics.step), "auto");
+    highlightJumpTarget(target);
+  }, [goToPage, highlightJumpTarget, mode, pageMetrics.step]);
+
+  const revealAnchor = useCallback((anchorId: string) => {
+    const target = document.getElementById(anchorId);
+    if (target) revealElement(target);
+  }, [revealElement]);
 
   useEffect(() => {
     if (!focusAnchorId || contentLoading) return;
     const timer = window.setTimeout(() => revealAnchor(focusAnchorId), 80);
     return () => window.clearTimeout(timer);
   }, [contentLoading, focusAnchorId, pageMetrics.step, revealAnchor]);
+
+  useEffect(() => {
+    if (!focusText?.text || contentLoading) return;
+    const timer = window.setTimeout(() => {
+      const root = mode === "paged" ? flowRef.current : scrollRef.current;
+      if (!root) return;
+      root.querySelectorAll("mark[data-book-search-target]").forEach((mark) => mark.replaceWith(...mark.childNodes));
+      root.normalize();
+      const query = focusText.text.replace(/\s+/g, " ").trim();
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node) {
+        const value = node.textContent || "";
+        const index = value.indexOf(query);
+        if (index >= 0) {
+          const range = document.createRange();
+          range.setStart(node, index);
+          range.setEnd(node, index + query.length);
+          const marker = document.createElement("mark");
+          marker.setAttribute("data-book-search-target", "true");
+          range.surroundContents(marker);
+          revealElement(marker);
+          return;
+        }
+        node = walker.nextNode();
+      }
+      const title = root.querySelector<HTMLElement>("h1,h2,h3");
+      if (title) revealElement(title);
+    }, 140);
+    return () => window.clearTimeout(timer);
+  }, [contentLoading, focusText, mode, pageMetrics.step, revealElement]);
 
   function handleReaderClick(event: ReactMouseEvent<HTMLDivElement>): void {
     const image = (event.target as Element).closest<HTMLImageElement>("img");
@@ -321,18 +413,131 @@ export function BookReader({
     revealAnchor(anchorId);
   }
 
+  function captureTextSelection(): void {
+    window.setTimeout(() => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || !selection.rangeCount) {
+        setTextSelection(undefined);
+        setThoughtOpen(false);
+        return;
+      }
+      const range = selection.getRangeAt(0);
+      const ancestor = range.commonAncestorContainer;
+      const insideReader = Boolean(flowRef.current?.contains(ancestor) || scrollRef.current?.contains(ancestor));
+      const text = selection.toString().replace(/\s+/g, " ").trim();
+      if (!insideReader || !text) return;
+      const rect = range.getBoundingClientRect();
+      const toolbarHalfWidth = Math.min(128, Math.max(0, window.innerWidth / 2 - 8));
+      const above = rect.top > 110;
+      setTextSelection({
+        text: text.slice(0, 2_000),
+        range: range.cloneRange(),
+        left: Math.min(window.innerWidth - toolbarHalfWidth, Math.max(toolbarHalfWidth, rect.left + rect.width / 2)),
+        top: above ? rect.top - 10 : rect.bottom + 10,
+        above,
+      });
+      setThoughtOpen(false);
+    }, 0);
+  }
+
+  function wrapSelection(className: string, title?: string): void {
+    if (!textSelection) return;
+    const marker = document.createElement("mark");
+    marker.className = className;
+    if (title) marker.title = title;
+    try {
+      textSelection.range.surroundContents(marker);
+    } catch {
+      // Multi-paragraph ranges need a persisted anchor model before they can be styled safely.
+    }
+    window.getSelection()?.removeAllRanges();
+    setTextSelection(undefined);
+    setThoughtOpen(false);
+  }
+
+  async function copySelection(): Promise<void> {
+    if (!textSelection) return;
+    try {
+      await navigator.clipboard.writeText(textSelection.text);
+    } catch {
+      const input = document.createElement("textarea");
+      input.value = textSelection.text;
+      input.style.position = "fixed";
+      input.style.opacity = "0";
+      document.body.append(input);
+      input.select();
+      document.execCommand?.("copy");
+      input.remove();
+    }
+    window.getSelection()?.removeAllRanges();
+    setTextSelection(undefined);
+  }
+
+  function underlineSelection(): void {
+    // TODO(user-data): persist the quote anchor and underline in the user's reading profile.
+    wrapSelection("book-reader-user-underline");
+  }
+
+  function saveThought(): void {
+    if (!thought.trim()) return;
+    // TODO(user-data): persist the anchored thought and sync it across the user's bookshelf.
+    wrapSelection("book-reader-thought-anchor", thought.trim());
+    setThought("");
+  }
+
+  function explainSelection(): void {
+    if (!textSelection) return;
+    // TODO(user-level): aggregate frequently explained phrases and render a subtle reusable explanation marker.
+    setAiQuestion(`请结合《${bookTitle}》的上下文解释这段话：\n\n“${textSelection.text}”`);
+    setTextSelection(undefined);
+    setThoughtOpen(false);
+    openPanel("ai");
+  }
+
+  function openPanel(panel: "toc" | "search" | "ai"): void {
+    setTocOpen(panel === "toc");
+    setSearchOpen(panel === "search");
+    setAiOpen(panel === "ai");
+    setToolPopover(undefined);
+    setTextSelection(undefined);
+    setThoughtOpen(false);
+  }
+
+  function openTool(tool: "font" | "color"): void {
+    setToolPopover((current) => current === tool ? undefined : tool);
+    setTocOpen(false);
+    setSearchOpen(false);
+    setAiOpen(false);
+    setTextSelection(undefined);
+    setThoughtOpen(false);
+  }
+
+  function locateReference(reference: RagReference): void {
+    if (!reference.targetId) return;
+    setAiOpen(false);
+    onLocate(reference.targetId, reference.excerpt);
+  }
+
+  function locateSearchResult(hit: RagSearchHit, matchText: string): void {
+    setSearchOpen(false);
+    onLocate(hit.targetId, matchText);
+  }
+
   function updateScrollProgress(): void {
     const reader = scrollRef.current;
     if (!reader) return;
     const range = reader.scrollHeight - reader.clientHeight;
     setReadingProgress(range <= 0 ? 100 : Math.min(100, Math.round((reader.scrollTop / range) * 100)));
+    setTextSelection(undefined);
+    setThoughtOpen(false);
   }
 
-  const shellClass = theme === "dark" ? "bg-[#151716] text-[#deded8]" : theme === "light" ? "bg-[#edf0f0] text-ink" : "bg-[#e8e9e4] text-ink";
-  const pageClass = theme === "dark" ? "bg-[#202321]" : theme === "light" ? "bg-white" : "bg-[#fbfaf6]";
-  const panelClass = theme === "dark" ? "bg-[#242725] text-[#deded8] border-[#393d3a]" : "bg-[#fbfaf6] text-ink border-[#d8d8d1]";
-  const chromeClass = theme === "dark" ? "border-[#303431] bg-[#151716]/90" : theme === "light" ? "border-[#d6d8d3] bg-[#edf0f0]/90" : "border-[#d6d8d3] bg-[#e8e9e4]/90";
-  const controlClass = `h-12 w-12 border flex items-center justify-center bg-transparent cursor-pointer font-sans text-xs transition-colors focus-visible:outline-2 focus-visible:outline-red ${theme === "dark" ? "border-[#444844] hover:bg-[#2b2f2c]" : "border-[#d2d3ce] hover:bg-white"}`;
+  const isDark = paperColor === "dark";
+  const shellClass = isDark ? "bg-[#151716] text-[#deded8]" : paperColor === "white" ? "bg-[#edf0f0] text-ink" : "bg-[#e8e9e4] text-ink";
+  const pageClass = isDark ? "bg-[#202321]" : paperColor === "white" ? "bg-white" : "bg-[#fbfaf6]";
+  const panelClass = isDark ? "bg-[#242725] text-[#deded8] border-[#393d3a]" : "bg-[#fbfaf6] text-ink border-[#d8d8d1]";
+  const chromeClass = isDark ? "border-[#303431] bg-[#151716]/90" : paperColor === "white" ? "border-[#d6d8d3] bg-[#edf0f0]/90" : "border-[#d6d8d3] bg-[#e8e9e4]/90";
+  const controlClass = `flex h-11 w-11 shrink-0 items-center justify-center border bg-transparent font-sans text-[10px] leading-none cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-red md:h-12 md:w-12 md:text-xs ${isDark ? "border-[#444844] hover:bg-[#2b2f2c]" : "border-[#d2d3ce] hover:bg-white"}`;
   const firstPhysicalPage = pageMetrics.page * pageMetrics.columnsPerSpread + 1;
   const lastPhysicalPage = Math.min(firstPhysicalPage + pageMetrics.columnsPerSpread - 1, pageMetrics.physicalPages);
 
@@ -341,13 +546,16 @@ export function BookReader({
     <button type="button" disabled={!nextChapter} onClick={() => chooseChapter(nextChapter?.id)} className="border-0 border-l border-rule bg-transparent py-4 pl-4 text-right text-current cursor-pointer disabled:cursor-default disabled:opacity-30"><span className="mb-1 block text-muted">下一节</span>{nextChapter?.title ?? "已经是最后一节"}</button>
   </nav>;
 
-  return <div className={`h-screen overflow-hidden ${shellClass}`}>
-    <nav data-book-toolbar aria-label="阅读工具" className="fixed right-5 top-1/2 z-30 hidden -translate-y-1/2 flex-col gap-2 md:flex">
-      <button type="button" onClick={() => { setTocOpen(true); setSettingsOpen(false); }} className={controlClass} aria-label="打开目录" title="目录"><span className="flex flex-col gap-[3px]" aria-hidden="true"><i className="block h-px w-5 bg-current" /><i className="block h-px w-5 bg-current" /><i className="block h-px w-5 bg-current" /></span></button>
-      <Link to={backHref} className={`${controlClass} no-underline text-current`} aria-label="向 AI 提问" title="向 AI 提问">AI</Link>
-      <button type="button" onClick={() => { setSettingsOpen((value) => !value); setTocOpen(false); }} className={controlClass} aria-label="阅读设置" title="阅读设置"><svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true"><path d="M4 6h7m4 0h5M4 12h3m4 0h9M4 18h9m4 0h3" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="13" cy="6" r="2" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="9" cy="12" r="2" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="15" cy="18" r="2" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg></button>
-      <button type="button" data-reader-mode={mode} onClick={() => changeMode(mode === "paged" ? "scroll" : "paged")} className={controlClass} aria-label="切换阅读模式" title={mode === "paged" ? "切换为上下滚动" : "切换为双页阅读"}><span className="font-sans text-[11px] tracking-[.08em]" aria-hidden="true">{mode === "paged" ? "双页" : "滚动"}</span></button>
-      {onDownload && <button type="button" onClick={onDownload} className={`${controlClass} mt-3`} aria-label="下载整本 EPUB" title="下载整本 EPUB"><svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 20h14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" /></svg></button>}
+  return <div className={`h-screen overflow-hidden ${isDark ? "book-reader-dark" : ""} ${shellClass}`}>
+    <nav data-book-toolbar aria-label="阅读工具" className={`fixed bottom-2 left-2 right-2 z-30 flex gap-1 overflow-x-auto border p-1 backdrop-blur-md md:bottom-auto md:left-auto md:right-5 md:top-1/2 md:-translate-y-1/2 md:flex-col md:gap-2 md:overflow-visible md:border-0 md:p-0 ${chromeClass}`}>
+      <button type="button" onClick={() => openPanel("toc")} className={controlClass} aria-label="打开目录" title="目录">目录</button>
+      <button type="button" onClick={() => openPanel("search")} className={controlClass} aria-label="搜索全书" title="搜索全书">搜索</button>
+      <button type="button" onClick={() => { setAiQuestion(undefined); openPanel("ai"); }} className={controlClass} aria-label="打开书内 AI" title="书内 AI">AI</button>
+      <button type="button" onClick={() => openTool("font")} className={controlClass} aria-label="调整字号" title="字号">字号</button>
+      <button type="button" onClick={() => openTool("color")} className={controlClass} aria-label="选择纸张颜色" title="纸张颜色"><span className={`h-4 w-4 border ${isDark ? "border-white/50 bg-[#202321]" : paperColor === "white" ? "border-[#aaa] bg-white" : "border-[#b8ad96] bg-[#fbfaf6]"}`} aria-hidden="true" /></button>
+      <button type="button" aria-pressed={paperTexture} onClick={() => setPaperTexture((value) => !value)} className={`${controlClass} ${paperTexture ? "text-red" : ""}`} aria-label="切换纸张纹理" title={paperTexture ? "关闭纸张纹理" : "开启纸张纹理"}>纹理</button>
+      <button type="button" data-reader-mode={mode} onClick={() => changeMode(mode === "paged" ? "scroll" : "paged")} className={controlClass} aria-label="切换阅读模式" title={mode === "paged" ? "切换为上下滚动" : "切换为双页阅读"}>{mode === "paged" ? "双页" : "滚动"}</button>
+      {onDownload && <button type="button" onClick={onDownload} className={`${controlClass} md:mt-3`} aria-label="下载整本 EPUB" title="下载整本 EPUB"><svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 20h14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" /></svg></button>}
     </nav>
 
     {tocOpen && <>
@@ -358,7 +566,7 @@ export function BookReader({
             <div><p className="m-0 font-sans text-[11px] tracking-[.22em] text-muted">目录</p><h2 className="mb-1 mt-2 text-xl leading-snug">{bookTitle}</h2><p className="m-0 font-sans text-xs text-muted">{logicalChapterCount ? `${logicalChapterCount} 章 · ` : ""}{characterCount.toLocaleString()} 字</p></div>
             <button type="button" onClick={() => setTocOpen(false)} className="border-0 bg-transparent text-2xl cursor-pointer text-current" aria-label="关闭目录">×</button>
           </div>
-          <label className={`book-toc-search-shell mt-5 flex h-10 items-center gap-3 border-0 border-b px-0 font-sans text-xs ${theme === "dark" ? "border-[#4a4d4a]" : "border-[#b9bab4]"}`}>
+          <label className={`book-toc-search-shell mt-5 flex h-10 items-center gap-3 border-0 border-b px-0 font-sans text-xs ${isDark ? "border-[#4a4d4a]" : "border-[#b9bab4]"}`}>
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="m15.5 15.5 5 5" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
             <input value={tocQuery} onChange={(event) => setTocQuery(event.target.value)} placeholder="搜索目录" aria-label="搜索目录" className="book-toc-search min-w-0 flex-1 text-current placeholder:text-muted" />
           </label>
@@ -368,18 +576,35 @@ export function BookReader({
       </aside>
     </>}
 
-    {settingsOpen && <>
-      <button type="button" aria-label="关闭阅读设置" onClick={() => setSettingsOpen(false)} className="fixed inset-0 z-30 border-0 bg-black/10 cursor-default" />
-      <section className={`fixed inset-x-4 bottom-4 z-40 border p-5 shadow-[8px_12px_35px_rgba(0,0,0,.14)] md:inset-x-auto md:bottom-auto md:right-20 md:top-1/2 md:w-72 md:-translate-y-1/2 ${panelClass}`} aria-label="阅读设置">
-        <div className="mb-5 flex items-center justify-between"><h2 className="m-0 font-sans text-sm">阅读设置</h2><button type="button" onClick={() => setSettingsOpen(false)} className="border-0 bg-transparent text-xl cursor-pointer text-current" aria-label="关闭设置">×</button></div>
-        <div className="mb-2 font-sans text-xs text-muted">阅读方式</div>
-        <div className="mb-6 grid grid-cols-2 gap-2">{(["paged", "scroll"] as BookReaderMode[]).map((value) => <button type="button" key={value} onClick={() => changeMode(value)} className={`h-10 border bg-transparent text-current cursor-pointer ${mode === value ? "border-red font-bold text-red outline outline-1 outline-red" : "border-rule"}`}>{value === "paged" ? "双页阅读" : "上下滚动"}</button>)}</div>
-        <label className="mb-2 flex items-center justify-between font-sans text-xs text-muted"><span>字号</span><span>{fontSize}px</span></label>
-        <input type="range" min="14" max="24" value={fontSize} onChange={(event) => setFontSize(+event.target.value)} className="book-reader-range mb-6 w-full" aria-label="字号" />
-        <div className="mb-2 font-sans text-xs text-muted">纸张</div>
-        <div className="grid grid-cols-3 gap-2">{(["paper", "light", "dark"] as BookReaderTheme[]).map((value) => <button type="button" key={value} onClick={() => setTheme(value)} className={`h-10 border cursor-pointer ${value === "paper" ? "bg-[#fbfaf6] text-ink" : value === "light" ? "bg-white text-ink" : "bg-[#202321] text-white"} ${theme === value ? "border-red outline outline-1 outline-red" : "border-rule"}`}>{value === "paper" ? "纸张" : value === "light" ? "明亮" : "夜间"}</button>)}</div>
+    {searchOpen && <><button type="button" aria-label="关闭全书搜索" onClick={() => setSearchOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookSearchPanel bookTitle={bookTitle} panelClass={panelClass} onClose={() => setSearchOpen(false)} onJump={locateSearchResult} onSearch={onSearch} /></>}
+
+    {aiOpen && <><button type="button" aria-label="关闭书内 AI" onClick={() => setAiOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookAiPanel key={aiQuestion || "book-ai"} bookTitle={bookTitle} datasetId={datasetId} itemId={itemId} initialQuestion={aiQuestion} panelClass={panelClass} onClose={() => setAiOpen(false)} onJump={locateReference} /></>}
+
+    {toolPopover && <>
+      <button type="button" aria-label="关闭阅读工具" onClick={() => setToolPopover(undefined)} className="fixed inset-0 z-20 border-0 bg-transparent cursor-default" />
+      <section className={`fixed bottom-16 left-2 right-2 z-40 border p-4 shadow-[6px_10px_30px_rgba(0,0,0,.14)] md:bottom-auto md:left-auto md:right-20 md:top-1/2 md:w-64 md:-translate-y-1/2 ${panelClass}`} aria-label={toolPopover === "font" ? "字号工具" : "纸张颜色工具"}>
+        {toolPopover === "font" ? <>
+          <label className="mb-3 flex items-center justify-between font-sans text-xs text-muted"><span>字号</span><span>{fontSize}px</span></label>
+          <input type="range" min="14" max="24" value={fontSize} onChange={(event) => setFontSize(+event.target.value)} className="book-reader-range w-full" aria-label="字号" />
+        </> : <>
+          <p className="mb-3 mt-0 font-sans text-xs text-muted">纸张颜色</p>
+          <div className="grid grid-cols-3 gap-2">{(["ivory", "white", "dark"] as BookReaderPaperColor[]).map((value) => <button type="button" key={value} onClick={() => { setPaperColor(value); setToolPopover(undefined); }} className={`h-12 border cursor-pointer ${value === "ivory" ? "bg-[#fbfaf6] text-ink" : value === "white" ? "bg-white text-ink" : "bg-[#202321] text-white"} ${paperColor === value ? "border-red outline outline-1 outline-red" : "border-rule"}`}>{value === "ivory" ? "米白" : value === "white" ? "白色" : "夜间"}</button>)}</div>
+        </>}
       </section>
     </>}
+
+    {textSelection && <div className={`book-selection-tools fixed z-[65] -translate-x-1/2 font-sans ${textSelection.above ? "-translate-y-full" : ""}`} style={{ left: textSelection.left, top: textSelection.top }}>
+      <div className={`flex border shadow-[3px_6px_20px_rgba(0,0,0,.18)] ${panelClass}`} role="toolbar" aria-label="选中文字工具">
+        <button type="button" onClick={() => void copySelection()} className="book-selection-action">复制</button>
+        <button type="button" onClick={underlineSelection} className="book-selection-action">划线</button>
+        <button type="button" onClick={() => setThoughtOpen((value) => !value)} className="book-selection-action">写想法</button>
+        <button type="button" onClick={explainSelection} className="book-selection-action text-red">AI 解释</button>
+      </div>
+      {thoughtOpen && <div className={`mt-1 w-72 border p-3 shadow-[3px_6px_20px_rgba(0,0,0,.16)] ${panelClass}`}>
+        <textarea autoFocus value={thought} onChange={(event) => setThought(event.target.value)} placeholder="写下此刻的想法……" rows={3} className="book-thought-input block w-full resize-none border-0 border-b border-rule bg-transparent px-0 py-1 font-serif text-sm leading-6 text-current" />
+        <div className="mt-2 flex justify-end"><button type="button" disabled={!thought.trim()} onClick={saveThought} className="border-0 bg-transparent p-0 text-xs font-bold text-red cursor-pointer disabled:opacity-30">保存</button></div>
+      </div>}
+    </div>}
 
     <header className={`relative z-20 h-12 border-b backdrop-blur-md ${chromeClass}`}>
       <div className="mx-auto flex h-full max-w-[1180px] items-center gap-3 px-4 font-sans text-xs md:px-10">
@@ -387,9 +612,6 @@ export function BookReader({
         <span className="min-w-0 flex-1 truncate text-muted md:hidden">{chapters[activeChapterIndex]?.title || bookTitle}</span>
         <span className="hidden min-w-0 flex-1 truncate text-muted md:block">{bookTitle}</span>
         <span className="hidden max-w-[42%] truncate text-muted md:block">{chapters[activeChapterIndex]?.title}</span>
-        <button type="button" onClick={() => setTocOpen(true)} className="border-0 bg-transparent p-0 font-sans text-xs text-current cursor-pointer md:hidden">目录</button>
-        <button type="button" onClick={() => setSettingsOpen((value) => !value)} className="border-0 bg-transparent p-0 text-current cursor-pointer md:hidden" aria-label="打开阅读设置"><svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true"><path d="M4 6h7m4 0h5M4 12h3m4 0h9M4 18h9m4 0h3" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="13" cy="6" r="2" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="9" cy="12" r="2" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="15" cy="18" r="2" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg></button>
-        {onDownload && <button type="button" onClick={onDownload} className="ml-1 border-0 border-l border-rule bg-transparent py-0 pl-3 pr-0 text-current cursor-pointer md:hidden" aria-label="移动端下载整本 EPUB"><svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 20h14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" /></svg></button>}
         <span className="hidden tabular-nums text-muted md:inline">全书 {bookProgress}%</span>
       </div>
     </header>
@@ -402,17 +624,17 @@ export function BookReader({
       </figure>
     </div>}
 
-    {mode === "scroll" ? <div ref={scrollRef} onScroll={updateScrollProgress} onClick={handleReaderClick} className="h-[calc(100%-48px)] overflow-y-auto scroll-smooth">
+    {mode === "scroll" ? <div ref={scrollRef} onScroll={updateScrollProgress} onClick={handleReaderClick} onMouseUp={captureTextSelection} className="h-[calc(100%-48px)] overflow-y-auto">
       <main className="mx-auto max-w-[920px] px-0 py-0 md:px-5 md:py-8">
-        <article className={`relative min-h-full border-0 px-6 py-10 shadow-none sm:px-12 md:min-h-[calc(100vh-96px)] md:border-x md:px-20 md:py-20 md:shadow-[0_16px_50px_rgba(32,32,28,.10)] ${pageClass} ${theme === "dark" ? "md:border-[#2d312e]" : "md:border-[#ddddd6]"}`} style={{ fontSize: `${fontSize}px`, lineHeight: 2.05 }}>
+        <article className={`relative min-h-full border-0 px-6 pb-24 pt-10 shadow-none sm:px-12 md:min-h-[calc(100vh-96px)] md:border-x md:px-20 md:py-20 md:shadow-[0_16px_50px_rgba(32,32,28,.10)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#ddddd6]"}`} style={{ fontSize: `${fontSize}px`, lineHeight: 2.05 }}>
           <div className="mx-auto max-w-[730px]">{error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}{children}{chapterNavigation}</div>
         </article>
       </main>
     </div> : <main className="relative h-[calc(100%-48px)] px-0 py-0 md:px-20 md:py-6">
       <div className="relative mx-auto h-full max-w-[1180px]">
-        <article className={`relative h-full overflow-hidden border-0 px-6 pb-16 pt-10 shadow-none sm:px-10 md:border md:px-16 md:py-14 md:shadow-[0_16px_55px_rgba(32,32,28,.14)] ${pageClass} ${theme === "dark" ? "md:border-[#2d312e]" : "md:border-[#d8d8d1]"}`}>
-          {columnsPerSpread === 2 && <div className={`pointer-events-none absolute inset-y-0 left-1/2 z-10 w-10 -translate-x-1/2 ${theme === "dark" ? "bg-[linear-gradient(90deg,transparent,rgba(0,0,0,.22),transparent)]" : "bg-[linear-gradient(90deg,transparent,rgba(77,75,66,.09),transparent)]"}`} aria-hidden="true" />}
-          <div ref={flowRef} data-book-page-flow onClick={handleReaderClick} className={`h-full overflow-hidden [column-fill:auto] [&_img]:cursor-zoom-in [&_figure]:break-inside-avoid [&_h1]:[break-after:avoid-column] [&_h2]:[break-after:avoid-column] [&_li]:break-inside-avoid ${pageTransitioning ? "book-page-content-arrive" : ""}`} style={{ columnCount: columnsPerSpread, columnGap: columnsPerSpread === 2 ? "80px" : "48px", fontSize: `${fontSize}px`, lineHeight: 1.95 }}>
+        <article className={`relative h-full overflow-hidden border-0 px-6 pb-20 pt-10 shadow-none sm:px-10 md:border md:px-16 md:py-14 md:shadow-[0_16px_55px_rgba(32,32,28,.14)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#d8d8d1]"}`}>
+          {columnsPerSpread === 2 && <div className={`pointer-events-none absolute inset-y-0 left-1/2 z-10 w-10 -translate-x-1/2 ${isDark ? "bg-[linear-gradient(90deg,transparent,rgba(0,0,0,.22),transparent)]" : "bg-[linear-gradient(90deg,transparent,rgba(77,75,66,.09),transparent)]"}`} aria-hidden="true" />}
+          <div ref={flowRef} data-book-page-flow onClick={handleReaderClick} onMouseUp={captureTextSelection} className={`relative h-full overflow-hidden [column-fill:auto] [&_img]:cursor-zoom-in [&_figure]:break-inside-avoid [&_h1]:[break-after:avoid-column] [&_h2]:[break-after:avoid-column] [&_li]:break-inside-avoid ${pageTransitioning ? "book-page-content-arrive" : ""}`} style={{ columnCount: columnsPerSpread, columnGap: columnsPerSpread === 2 ? "80px" : "48px", fontSize: `${fontSize}px`, lineHeight: 1.95 }}>
             {error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}{children}
             {trailingBlankPage && <span data-book-trailing-page className="book-page-trailing-blank" aria-hidden="true" />}
           </div>

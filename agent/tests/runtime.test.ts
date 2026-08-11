@@ -7,8 +7,24 @@ import {
 } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 import { runPlatformAgent, type PlatformAgentEvent } from "../src";
+import { toolSourceReferences } from "../src/runtime";
 
 describe("runPlatformAgent", () => {
+  it("exposes compact source locations without streaming full tool results", () => {
+    expect(toolSourceReferences({
+      details: {
+        hits: [{ datasetId: "books", itemId: "book:one", targetId: "chapter:2", targetTitle: "第二章", text: "命中正文", fragmentObject: "content/books/one/chapter-2.jox" }],
+      },
+    })).toEqual([{
+      datasetId: "books",
+      itemId: "book:one",
+      targetId: "chapter:2",
+      title: "第二章",
+      excerpt: "命中正文",
+      fragmentObject: "content/books/one/chapter-2.jox",
+    }]);
+  });
+
   it("runs a Pi tool loop and exposes product-neutral events", async () => {
     const faux = fauxProvider({ provider: "jojo-test", tokensPerSecond: 100_000 });
     faux.setResponses([

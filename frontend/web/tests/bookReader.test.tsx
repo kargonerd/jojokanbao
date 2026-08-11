@@ -16,6 +16,10 @@ describe("BookReader", () => {
     vi.stubGlobal("ResizeObserver", ResizeObserverMock);
     Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value: vi.fn() });
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+    Object.defineProperty(Range.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 240, right: 420, top: 220, bottom: 250, width: 180, height: 30, x: 240, y: 220, toJSON: () => ({}) }),
+    });
   });
 
   afterEach(() => {
@@ -29,6 +33,8 @@ describe("BookReader", () => {
       <MemoryRouter>
         <BookReader
           bookTitle="测试书"
+          datasetId="test-books"
+          itemId="test-books:full-book"
           characterCount={12000}
           logicalChapterCount={40}
           chapters={[{ id: "chapter-1", title: "第一章" }, { id: "chapter-2", title: "第二章" }]}
@@ -40,9 +46,13 @@ describe("BookReader", () => {
           chapterKey="chapter-1"
           backHref="/rag/chat"
           onChapterChange={onChapterChange}
+          onLocate={vi.fn()}
+          onSearch={vi.fn(async () => [])}
         >
           <h1>第一章</h1>
           <p>这是正文。</p>
+          <p><a href="#annotation-test">[1]</a></p>
+          <p id="annotation-test">这是注释。</p>
           <img src="blob:test-image" alt="测试插图" />
         </BookReader>
       </MemoryRouter>,
@@ -59,15 +69,17 @@ describe("BookReader", () => {
     expect(toolbar?.className).toContain("right-5");
     expect(toolbar?.className).not.toContain("left-5");
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "切换阅读模式" }).dataset.readerMode).toBe("paged");
-    expect(screen.getByRole("button", { name: "阅读设置" }).textContent).not.toContain("Aa");
+    expect(screen.queryByRole("button", { name: "阅读设置" })).toBeNull();
+    expect(screen.getByRole("button", { name: "调整字号" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "选择纸张颜色" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "切换纸张纹理" })).toBeTruthy();
     expect(screen.queryByText("上一节")).toBeNull();
     expect(screen.queryByText(/按 ← →/)).toBeNull();
   });
 
   it("switches to scrolling mode and remembers the choice", async () => {
     renderReader();
-    fireEvent.click(screen.getByRole("button", { name: "阅读设置" }));
-    fireEvent.click(screen.getByRole("button", { name: "上下滚动" }));
+    fireEvent.click(screen.getByRole("button", { name: "切换阅读模式" }));
     expect(screen.queryByText(/\/ 1 页/)).toBeNull();
     await waitFor(() => expect(window.localStorage.getItem("jojo-reader-mode")).toBe("scroll"));
   });
@@ -75,8 +87,28 @@ describe("BookReader", () => {
   it("uses a plain mode label and a minimal font-size slider", () => {
     renderReader();
     expect(screen.getByRole("button", { name: "切换阅读模式" }).textContent).toContain("双页");
-    fireEvent.click(screen.getByRole("button", { name: "阅读设置" }));
+    fireEvent.click(screen.getByRole("button", { name: "调整字号" }));
     expect(screen.getByRole("slider", { name: "字号" }).className).toContain("book-reader-range");
+  });
+
+  it("stores paper color and texture independently", async () => {
+    renderReader();
+    fireEvent.click(screen.getByRole("button", { name: "选择纸张颜色" }));
+    fireEvent.click(screen.getByRole("button", { name: "夜间" }));
+    fireEvent.click(screen.getByRole("button", { name: "切换纸张纹理" }));
+    await waitFor(() => {
+      expect(window.localStorage.getItem("jojo-reader-paper-color")).toBe("dark");
+      expect(window.localStorage.getItem("jojo-reader-paper-texture")).toBe("false");
+    });
+  });
+
+  it("jumps to footnotes instantly and marks the destination", () => {
+    renderReader();
+    fireEvent.click(screen.getByRole("button", { name: "切换阅读模式" }));
+    fireEvent.click(screen.getByRole("link", { name: "[1]" }));
+    const target = screen.getByText("这是注释。");
+    expect(target.getAttribute("data-book-jump-target")).toBe("true");
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ behavior: "auto", block: "center" });
   });
 
   it("turns into the next chapter with the right arrow at the final spread", () => {
@@ -157,5 +189,27 @@ describe("BookReader", () => {
     expect(screen.getByRole("dialog", { name: "图片预览" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "关闭图片预览" }));
     expect(screen.queryByRole("dialog", { name: "图片预览" })).toBeNull();
+  });
+
+  it("shows contextual actions for selected text and copies without leaving the reader", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const { container } = renderReader();
+    const paragraph = screen.getByText("这是正文。");
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent.mouseUp(container.querySelector("[data-book-page-flow]")!);
+
+    const toolbar = await screen.findByRole("toolbar", { name: "选中文字工具" });
+    expect(toolbar.textContent).toContain("复制");
+    expect(toolbar.textContent).toContain("划线");
+    expect(toolbar.textContent).toContain("写想法");
+    expect(toolbar.textContent).toContain("AI 解释");
+    fireEvent.click(screen.getByRole("button", { name: "复制" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("这是正文。"));
+    expect(screen.queryByRole("toolbar", { name: "选中文字工具" })).toBeNull();
   });
 });
