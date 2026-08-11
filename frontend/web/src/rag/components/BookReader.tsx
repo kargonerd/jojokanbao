@@ -331,7 +331,8 @@ export function BookReader({
     <nav data-book-toolbar aria-label="阅读工具" className="fixed right-5 top-1/2 z-30 hidden -translate-y-1/2 flex-col gap-2 md:flex">
       <button type="button" onClick={() => { setTocOpen(true); setSettingsOpen(false); }} className={controlClass} aria-label="打开目录" title="目录"><span className="flex flex-col gap-[3px]" aria-hidden="true"><i className="block h-px w-5 bg-current" /><i className="block h-px w-5 bg-current" /><i className="block h-px w-5 bg-current" /></span></button>
       <Link to={backHref} className={`${controlClass} no-underline text-current`} aria-label="向 AI 提问" title="向 AI 提问">AI</Link>
-      <button type="button" onClick={() => { setSettingsOpen((value) => !value); setTocOpen(false); }} className={controlClass} aria-label="阅读设置" title="阅读设置">Aa</button>
+      {onDownload && <button type="button" onClick={onDownload} className={controlClass} aria-label="下载整本 EPUB" title="下载整本 EPUB"><svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 20h14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" /></svg></button>}
+      <button type="button" onClick={() => { setSettingsOpen((value) => !value); setTocOpen(false); }} className={controlClass} aria-label="阅读设置" title="阅读设置"><svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true"><path d="M4 6h7m4 0h5M4 12h3m4 0h9M4 18h9m4 0h3" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="13" cy="6" r="2" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="9" cy="12" r="2" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="15" cy="18" r="2" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg></button>
       <button type="button" data-reader-mode={mode} onClick={() => changeMode(mode === "paged" ? "scroll" : "paged")} className={controlClass} aria-label="切换阅读模式" title={mode === "paged" ? "切换为上下滚动" : "切换为双页阅读"}><span className={`grid h-5 w-5 gap-[2px] ${mode === "paged" ? "grid-cols-2" : "grid-cols-1"}`} aria-hidden="true"><i className="block border border-current" />{mode === "paged" && <i className="block border border-current" />}</span></button>
     </nav>
 
@@ -363,7 +364,6 @@ export function BookReader({
         <input type="range" min="14" max="24" value={fontSize} onChange={(event) => setFontSize(+event.target.value)} className="mb-6 w-full accent-[var(--color-red)]" />
         <div className="mb-2 font-sans text-xs text-muted">纸张</div>
         <div className="grid grid-cols-3 gap-2">{(["paper", "light", "dark"] as BookReaderTheme[]).map((value) => <button type="button" key={value} onClick={() => setTheme(value)} className={`h-10 border cursor-pointer ${value === "paper" ? "bg-[#fbfaf6] text-ink" : value === "light" ? "bg-white text-ink" : "bg-[#202321] text-white"} ${theme === value ? "border-red outline outline-1 outline-red" : "border-rule"}`}>{value === "paper" ? "纸张" : value === "light" ? "明亮" : "夜间"}</button>)}</div>
-        {onDownload && <button type="button" className="mt-6 w-full border border-red bg-transparent py-2.5 font-sans text-xs font-bold text-red cursor-pointer hover:bg-red hover:text-white" onClick={onDownload}>下载整本 EPUB</button>}
       </section>
     </>}
 
@@ -374,7 +374,8 @@ export function BookReader({
         <span className="hidden min-w-0 flex-1 truncate text-muted md:block">{bookTitle}</span>
         <span className="hidden max-w-[42%] truncate text-muted md:block">{chapters[activeChapterIndex]?.title}</span>
         <button type="button" onClick={() => setTocOpen(true)} className="border-0 bg-transparent p-0 font-sans text-xs text-current cursor-pointer md:hidden">目录</button>
-        <button type="button" onClick={() => setSettingsOpen((value) => !value)} className="border-0 bg-transparent p-0 font-sans text-xs text-current cursor-pointer md:hidden">Aa</button>
+        {onDownload && <button type="button" onClick={onDownload} className="border-0 bg-transparent p-0 text-current cursor-pointer md:hidden" aria-label="移动端下载整本 EPUB"><svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 20h14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" /></svg></button>}
+        <button type="button" onClick={() => setSettingsOpen((value) => !value)} className="border-0 bg-transparent p-0 text-current cursor-pointer md:hidden" aria-label="打开阅读设置"><svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true"><path d="M4 6h7m4 0h5M4 12h3m4 0h9M4 18h9m4 0h3" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="13" cy="6" r="2" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="9" cy="12" r="2" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="15" cy="18" r="2" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg></button>
         <span className="hidden tabular-nums text-muted md:inline">全书 {bookProgress}%</span>
       </div>
     </header>
@@ -398,7 +399,7 @@ export function BookReader({
         <button type="button" onClick={nextPage} disabled={pageTransitioning || (!nextChapter && pageMetrics.page >= pageMetrics.spreads - 1)} className={`absolute bottom-4 right-5 z-30 flex h-9 items-center justify-center gap-1 border px-3 font-sans text-xs shadow-[2px_4px_14px_rgba(0,0,0,.08)] cursor-pointer transition-colors disabled:cursor-default disabled:opacity-20 sm:right-8 ${panelClass}`} aria-label="下一页" title="下一页（→ 或空格）">下一页 <span aria-hidden="true">›</span></button>
       </div>
       <div className="pointer-events-none absolute inset-x-0 bottom-1 flex items-center justify-center gap-4 font-sans text-[10px] text-muted md:bottom-2">
-        <span>{firstPhysicalPage === lastPhysicalPage ? firstPhysicalPage : `${firstPhysicalPage}–${lastPhysicalPage}`} / {pageMetrics.physicalPages} 页</span><span className="hidden sm:inline">按 ← → 或空格翻页</span><span className="hidden sm:inline">全书 {bookProgress}%</span>
+        <span>{firstPhysicalPage === lastPhysicalPage ? firstPhysicalPage : `${firstPhysicalPage}–${lastPhysicalPage}`} / {pageMetrics.physicalPages} 页</span>
       </div>
     </main>}
   </div>;

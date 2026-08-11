@@ -58,7 +58,9 @@ describe("BookReader", () => {
     expect(toolbar?.className).toContain("right-5");
     expect(toolbar?.className).not.toContain("left-5");
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "切换阅读模式" }).dataset.readerMode).toBe("paged");
+    expect(screen.getByRole("button", { name: "阅读设置" }).textContent).not.toContain("Aa");
     expect(screen.queryByText("上一节")).toBeNull();
+    expect(screen.queryByText(/按 ← →/)).toBeNull();
   });
 
   it("switches to scrolling mode and remembers the choice", async () => {

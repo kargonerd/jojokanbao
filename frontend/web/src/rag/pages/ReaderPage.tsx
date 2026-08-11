@@ -273,8 +273,8 @@ export function ReaderPage() {
       : undefined}
   >
     {fragment ? <>
-          {shouldRenderChapterTitle(fragment, html) && <h1 className="mb-12 mt-0 text-[2em] font-medium leading-[1.4] tracking-[-.02em]">{fragment.title}</h1>}
-          <div className="prose-editorial [&_p]:my-[1.15em] [&_p]:text-justify [&_p]:indent-[2em] [&_figure]:my-10 [&_figure_img]:mx-auto [&_figure_img]:block [&_figure_img]:max-h-[78vh] [&_figure_img]:max-w-full [&_figcaption]:mt-3 [&_figcaption]:text-center [&_figcaption]:font-sans [&_figcaption]:text-xs [&_figcaption]:text-muted" dangerouslySetInnerHTML={{ __html: html }} />
+          {shouldRenderChapterTitle(fragment, html) && <h1 className="mb-12 mt-0 text-[2em] font-medium leading-[1.4] tracking-[-.02em] text-red">{fragment.title}</h1>}
+          <div className="prose-editorial [&_p]:my-[1.15em] [&_p]:text-justify [&_p]:indent-[2em] [&_h1]:text-red [&_h2]:text-red [&_h3]:text-red [&_h4]:text-red [&_figure]:my-10 [&_figure_img]:mx-auto [&_figure_img]:block [&_figure_img]:max-h-[78vh] [&_figure_img]:max-w-full [&_figcaption]:mt-3 [&_figcaption]:text-center [&_figcaption]:font-sans [&_figcaption]:text-xs [&_figcaption]:text-muted" dangerouslySetInnerHTML={{ __html: html }} />
           {fragment.annotations.length > 0 && <section className="mt-16 border-t border-rule pt-8 text-[.82em] leading-[1.85]"><h2 className="mb-6 font-sans text-sm tracking-[.18em]">本章注释</h2><ol className="m-0 list-none p-0">{fragment.annotations.map((note: JojoAnnotation) => {
             const reference = parseAnnotationReference(note.body.value);
             return <li id={note.id} key={note.id} className="mb-4 scroll-mt-20 border-l border-rule pl-4 target:border-red target:bg-[rgba(139,26,26,.06)]">
