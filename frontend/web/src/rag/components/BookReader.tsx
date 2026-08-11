@@ -41,6 +41,11 @@ export interface BookReaderProps {
   children: ReactNode;
 }
 
+interface ExpandedImage {
+  src: string;
+  alt: string;
+}
+
 interface PageMetrics {
   page: number;
   spreads: number;
@@ -95,6 +100,7 @@ export function BookReader({
   const [tocOpen, setTocOpen] = useState(false);
   const [tocQuery, setTocQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [expandedImage, setExpandedImage] = useState<ExpandedImage>();
   const [readingProgress, setReadingProgress] = useState(0);
   const [columnsPerSpread, setColumnsPerSpread] = useState(() => window.innerWidth >= 900 ? 2 : 1);
   const [pageMetrics, setPageMetrics] = useState<PageMetrics>(DEFAULT_PAGE_METRICS);
@@ -171,6 +177,7 @@ export function BookReader({
       if (event.key !== "Escape") return;
       setTocOpen(false);
       setSettingsOpen(false);
+      setExpandedImage(undefined);
     };
     window.addEventListener("keydown", closePanels);
     return () => window.removeEventListener("keydown", closePanels);
@@ -189,6 +196,7 @@ export function BookReader({
     if (pendingPageRef.current === null) pendingPageRef.current = "start";
     setReadingProgress(0);
     setPageMetrics((current) => ({ ...current, page: 0 }));
+    setExpandedImage(undefined);
   }, [chapterKey]);
 
   useEffect(() => {
@@ -298,7 +306,13 @@ export function BookReader({
     return () => window.clearTimeout(timer);
   }, [contentLoading, focusAnchorId, pageMetrics.step, revealAnchor]);
 
-  function handleInternalLink(event: ReactMouseEvent<HTMLDivElement>): void {
+  function handleReaderClick(event: ReactMouseEvent<HTMLDivElement>): void {
+    const image = (event.target as Element).closest<HTMLImageElement>("img");
+    if (image) {
+      event.preventDefault();
+      setExpandedImage({ src: image.currentSrc || image.src, alt: image.alt });
+      return;
+    }
     const link = (event.target as HTMLElement).closest<HTMLAnchorElement>('a[href^="#"]');
     if (!link) return;
     const anchorId = decodeURIComponent(link.getAttribute("href")?.slice(1) || "");
@@ -331,9 +345,9 @@ export function BookReader({
     <nav data-book-toolbar aria-label="阅读工具" className="fixed right-5 top-1/2 z-30 hidden -translate-y-1/2 flex-col gap-2 md:flex">
       <button type="button" onClick={() => { setTocOpen(true); setSettingsOpen(false); }} className={controlClass} aria-label="打开目录" title="目录"><span className="flex flex-col gap-[3px]" aria-hidden="true"><i className="block h-px w-5 bg-current" /><i className="block h-px w-5 bg-current" /><i className="block h-px w-5 bg-current" /></span></button>
       <Link to={backHref} className={`${controlClass} no-underline text-current`} aria-label="向 AI 提问" title="向 AI 提问">AI</Link>
-      {onDownload && <button type="button" onClick={onDownload} className={controlClass} aria-label="下载整本 EPUB" title="下载整本 EPUB"><svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 20h14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" /></svg></button>}
       <button type="button" onClick={() => { setSettingsOpen((value) => !value); setTocOpen(false); }} className={controlClass} aria-label="阅读设置" title="阅读设置"><svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true"><path d="M4 6h7m4 0h5M4 12h3m4 0h9M4 18h9m4 0h3" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="13" cy="6" r="2" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="9" cy="12" r="2" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="15" cy="18" r="2" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg></button>
-      <button type="button" data-reader-mode={mode} onClick={() => changeMode(mode === "paged" ? "scroll" : "paged")} className={controlClass} aria-label="切换阅读模式" title={mode === "paged" ? "切换为上下滚动" : "切换为双页阅读"}><span className={`grid h-5 w-5 gap-[2px] ${mode === "paged" ? "grid-cols-2" : "grid-cols-1"}`} aria-hidden="true"><i className="block border border-current" />{mode === "paged" && <i className="block border border-current" />}</span></button>
+      <button type="button" data-reader-mode={mode} onClick={() => changeMode(mode === "paged" ? "scroll" : "paged")} className={controlClass} aria-label="切换阅读模式" title={mode === "paged" ? "切换为上下滚动" : "切换为双页阅读"}><span className="font-sans text-[11px] tracking-[.08em]" aria-hidden="true">{mode === "paged" ? "双页" : "滚动"}</span></button>
+      {onDownload && <button type="button" onClick={onDownload} className={`${controlClass} mt-3`} aria-label="下载整本 EPUB" title="下载整本 EPUB"><svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 20h14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" /></svg></button>}
     </nav>
 
     {tocOpen && <>
@@ -361,7 +375,7 @@ export function BookReader({
         <div className="mb-2 font-sans text-xs text-muted">阅读方式</div>
         <div className="mb-6 grid grid-cols-2 gap-2">{(["paged", "scroll"] as BookReaderMode[]).map((value) => <button type="button" key={value} onClick={() => changeMode(value)} className={`h-10 border bg-transparent text-current cursor-pointer ${mode === value ? "border-red font-bold text-red outline outline-1 outline-red" : "border-rule"}`}>{value === "paged" ? "双页阅读" : "上下滚动"}</button>)}</div>
         <label className="mb-2 flex items-center justify-between font-sans text-xs text-muted"><span>字号</span><span>{fontSize}px</span></label>
-        <input type="range" min="14" max="24" value={fontSize} onChange={(event) => setFontSize(+event.target.value)} className="mb-6 w-full accent-[var(--color-red)]" />
+        <input type="range" min="14" max="24" value={fontSize} onChange={(event) => setFontSize(+event.target.value)} className="book-reader-range mb-6 w-full" aria-label="字号" />
         <div className="mb-2 font-sans text-xs text-muted">纸张</div>
         <div className="grid grid-cols-3 gap-2">{(["paper", "light", "dark"] as BookReaderTheme[]).map((value) => <button type="button" key={value} onClick={() => setTheme(value)} className={`h-10 border cursor-pointer ${value === "paper" ? "bg-[#fbfaf6] text-ink" : value === "light" ? "bg-white text-ink" : "bg-[#202321] text-white"} ${theme === value ? "border-red outline outline-1 outline-red" : "border-rule"}`}>{value === "paper" ? "纸张" : value === "light" ? "明亮" : "夜间"}</button>)}</div>
       </section>
@@ -374,13 +388,21 @@ export function BookReader({
         <span className="hidden min-w-0 flex-1 truncate text-muted md:block">{bookTitle}</span>
         <span className="hidden max-w-[42%] truncate text-muted md:block">{chapters[activeChapterIndex]?.title}</span>
         <button type="button" onClick={() => setTocOpen(true)} className="border-0 bg-transparent p-0 font-sans text-xs text-current cursor-pointer md:hidden">目录</button>
-        {onDownload && <button type="button" onClick={onDownload} className="border-0 bg-transparent p-0 text-current cursor-pointer md:hidden" aria-label="移动端下载整本 EPUB"><svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 20h14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" /></svg></button>}
         <button type="button" onClick={() => setSettingsOpen((value) => !value)} className="border-0 bg-transparent p-0 text-current cursor-pointer md:hidden" aria-label="打开阅读设置"><svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true"><path d="M4 6h7m4 0h5M4 12h3m4 0h9M4 18h9m4 0h3" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="13" cy="6" r="2" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="9" cy="12" r="2" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="15" cy="18" r="2" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg></button>
+        {onDownload && <button type="button" onClick={onDownload} className="ml-1 border-0 border-l border-rule bg-transparent py-0 pl-3 pr-0 text-current cursor-pointer md:hidden" aria-label="移动端下载整本 EPUB"><svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 20h14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" /></svg></button>}
         <span className="hidden tabular-nums text-muted md:inline">全书 {bookProgress}%</span>
       </div>
     </header>
 
-    {mode === "scroll" ? <div ref={scrollRef} onScroll={updateScrollProgress} onClick={handleInternalLink} className="h-[calc(100%-48px)] overflow-y-auto scroll-smooth">
+    {expandedImage && <div role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setExpandedImage(undefined)} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-5 md:p-10">
+      <button type="button" onClick={() => setExpandedImage(undefined)} className="absolute right-5 top-5 border border-white/40 bg-black/20 px-3 py-2 font-sans text-xs text-white hover:border-white" aria-label="关闭图片预览">关闭</button>
+      <figure className="m-0 flex max-h-full max-w-full flex-col items-center gap-3" onClick={(event) => event.stopPropagation()}>
+        <img src={expandedImage.src} alt={expandedImage.alt || "放大图片"} className="max-h-[88vh] max-w-[94vw] cursor-zoom-out object-contain shadow-[0_20px_70px_rgba(0,0,0,.35)]" />
+        {expandedImage.alt && expandedImage.alt !== "正文图片" && <figcaption className="font-sans text-xs text-white/75">{expandedImage.alt}</figcaption>}
+      </figure>
+    </div>}
+
+    {mode === "scroll" ? <div ref={scrollRef} onScroll={updateScrollProgress} onClick={handleReaderClick} className="h-[calc(100%-48px)] overflow-y-auto scroll-smooth">
       <main className="mx-auto max-w-[920px] px-0 py-0 md:px-5 md:py-8">
         <article className={`relative min-h-full border-0 px-6 py-10 shadow-none sm:px-12 md:min-h-[calc(100vh-96px)] md:border-x md:px-20 md:py-20 md:shadow-[0_16px_50px_rgba(32,32,28,.10)] ${pageClass} ${theme === "dark" ? "md:border-[#2d312e]" : "md:border-[#ddddd6]"}`} style={{ fontSize: `${fontSize}px`, lineHeight: 2.05 }}>
           <div className="mx-auto max-w-[730px]">{error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}{children}{chapterNavigation}</div>
@@ -390,7 +412,7 @@ export function BookReader({
       <div className="relative mx-auto h-full max-w-[1180px]">
         <article className={`relative h-full overflow-hidden border-0 px-6 pb-16 pt-10 shadow-none sm:px-10 md:border md:px-16 md:py-14 md:shadow-[0_16px_55px_rgba(32,32,28,.14)] ${pageClass} ${theme === "dark" ? "md:border-[#2d312e]" : "md:border-[#d8d8d1]"}`}>
           {columnsPerSpread === 2 && <div className={`pointer-events-none absolute inset-y-0 left-1/2 z-10 w-10 -translate-x-1/2 ${theme === "dark" ? "bg-[linear-gradient(90deg,transparent,rgba(0,0,0,.22),transparent)]" : "bg-[linear-gradient(90deg,transparent,rgba(77,75,66,.09),transparent)]"}`} aria-hidden="true" />}
-          <div ref={flowRef} data-book-page-flow onClick={handleInternalLink} className={`h-full overflow-hidden [column-fill:auto] [&_figure]:break-inside-avoid [&_h1]:[break-after:avoid-column] [&_h2]:[break-after:avoid-column] [&_li]:break-inside-avoid ${pageTransitioning ? "book-page-content-arrive" : ""}`} style={{ columnCount: columnsPerSpread, columnGap: columnsPerSpread === 2 ? "80px" : "48px", fontSize: `${fontSize}px`, lineHeight: 1.95 }}>
+          <div ref={flowRef} data-book-page-flow onClick={handleReaderClick} className={`h-full overflow-hidden [column-fill:auto] [&_img]:cursor-zoom-in [&_figure]:break-inside-avoid [&_h1]:[break-after:avoid-column] [&_h2]:[break-after:avoid-column] [&_li]:break-inside-avoid ${pageTransitioning ? "book-page-content-arrive" : ""}`} style={{ columnCount: columnsPerSpread, columnGap: columnsPerSpread === 2 ? "80px" : "48px", fontSize: `${fontSize}px`, lineHeight: 1.95 }}>
             {error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}{children}
             {trailingBlankPage && <span data-book-trailing-page className="book-page-trailing-blank" aria-hidden="true" />}
           </div>

@@ -31,6 +31,28 @@ describe("RAG content Reader annotations", () => {
     expect(document.body.textContent).toContain("正文");
   });
 
+  it("removes an EPUB table-of-contents heading and its useless self-link", () => {
+    const fragment: JojoFragment = {
+      formatVersion: "jojo-fragment/1",
+      itemId: "book:test",
+      fragmentId: "chapter:toc",
+      type: "chapter",
+      order: 2,
+      title: "目录",
+      body: {
+        format: "html",
+        profile: "jojo-semantic-html/1",
+        value: '<p>&nbsp;</p><h1 id="toc">目录</h1><p><a href="chapter-1">声明</a></p><p>目录</p>',
+      },
+      assetRefs: [],
+      annotations: [],
+    };
+
+    const document = new DOMParser().parseFromString(renderedBody(fragment, {}), "text/html");
+    expect(document.querySelector("h1")).toBeNull();
+    expect(document.body.textContent?.replace(/\s+/g, "").trim()).toBe("声明");
+  });
+
   it("keeps an imported cover label for navigation without printing it over the cover", () => {
     const fragment: JojoFragment = {
       formatVersion: "jojo-fragment/1",

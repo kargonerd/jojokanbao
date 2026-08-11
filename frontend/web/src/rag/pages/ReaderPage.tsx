@@ -110,7 +110,10 @@ export function renderedBody(fragment: JojoFragment, assetUrls: Record<string, s
   const clean = DOMPurify.sanitize(source);
   const document = new DOMParser().parseFromString(`<main>${clean}</main>`, "text/html");
   const main = document.querySelector("main");
-  const firstContentElement = [...(main?.children ?? [])].find((element) => element.tagName !== "HR");
+  const firstContentElement = [...(main?.children ?? [])].find((element) => (
+    element.tagName !== "HR"
+    && (element.textContent?.replace(/\s+/g, "").length || element.querySelector("img,figure,svg"))
+  ));
   if (/^H[1-6]$/.test(firstContentElement?.tagName ?? "")
     && firstContentElement?.textContent?.normalize("NFKC").replace(/\s+/g, " ").trim()
       === fragment.title.normalize("NFKC").replace(/\s+/g, " ").trim()) {
@@ -121,6 +124,12 @@ export function renderedBody(fragment: JojoFragment, assetUrls: Record<string, s
       firstContentElement.before(anchor);
     }
     firstContentElement.remove();
+  }
+  if (fragment.title.normalize("NFKC").trim() === "目录") {
+    const selfEntry = [...(main?.children ?? [])].find((element) => (
+      element.textContent?.normalize("NFKC").replace(/\s+/g, "").trim() === "目录"
+    ));
+    selfEntry?.remove();
   }
   for (const figure of document.querySelectorAll("figure[data-asset-id]")) {
     const assetId = figure.getAttribute("data-asset-id") || "";

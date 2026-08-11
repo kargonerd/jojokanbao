@@ -43,6 +43,7 @@ describe("BookReader", () => {
         >
           <h1>第一章</h1>
           <p>这是正文。</p>
+          <img src="blob:test-image" alt="测试插图" />
         </BookReader>
       </MemoryRouter>,
     );
@@ -69,6 +70,13 @@ describe("BookReader", () => {
     fireEvent.click(screen.getByRole("button", { name: "上下滚动" }));
     expect(screen.queryByText(/\/ 1 页/)).toBeNull();
     await waitFor(() => expect(window.localStorage.getItem("jojo-reader-mode")).toBe("scroll"));
+  });
+
+  it("uses a plain mode label and a minimal font-size slider", () => {
+    renderReader();
+    expect(screen.getByRole("button", { name: "切换阅读模式" }).textContent).toContain("双页");
+    fireEvent.click(screen.getByRole("button", { name: "阅读设置" }));
+    expect(screen.getByRole("slider", { name: "字号" }).className).toContain("book-reader-range");
   });
 
   it("turns into the next chapter with the right arrow at the final spread", () => {
@@ -141,5 +149,13 @@ describe("BookReader", () => {
       if (scrollWidth) Object.defineProperty(HTMLElement.prototype, "scrollWidth", scrollWidth);
       else delete (HTMLElement.prototype as { scrollWidth?: number }).scrollWidth;
     }
+  });
+
+  it("opens book images in a dismissible full-screen preview", () => {
+    renderReader();
+    fireEvent.click(screen.getByRole("img", { name: "测试插图" }));
+    expect(screen.getByRole("dialog", { name: "图片预览" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "关闭图片预览" }));
+    expect(screen.queryByRole("dialog", { name: "图片预览" })).toBeNull();
   });
 });

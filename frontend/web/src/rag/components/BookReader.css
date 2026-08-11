@@ -28,6 +28,58 @@
   -webkit-column-break-before: always;
 }
 
+.book-reader-range,
+.book-reader-range:hover,
+.book-reader-range:focus,
+.book-reader-range:focus-visible {
+  appearance: none;
+  height: 20px;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+.book-reader-range::-webkit-slider-runnable-track {
+  height: 2px;
+  background: #b9bab4;
+}
+
+.book-reader-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -5px;
+  border: 0;
+  border-radius: 0;
+  background: var(--color-red);
+}
+
+.book-reader-range::-moz-range-track {
+  height: 2px;
+  border: 0;
+  background: #b9bab4;
+}
+
+.book-reader-range::-moz-range-progress {
+  height: 2px;
+  background: var(--color-red);
+}
+
+.book-reader-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 0;
+  background: var(--color-red);
+}
+
+.book-reader-range:focus-visible::-webkit-slider-thumb {
+  outline: 1px solid var(--color-red);
+  outline-offset: 3px;
+}
+
 @keyframes jojo-page-content-arrive {
   from { opacity: .72; }
   to { opacity: 1; }
