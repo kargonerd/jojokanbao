@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
-import { decodeEbookFile, palmDocDecompress } from "../src";
+import { convertWereadChapter, decodeEbookFile, palmDocDecompress } from "../src";
 
 describe("Kindle PalmDOC decoding", () => {
   it("decodes literals, space shortcuts, and back references", () => {
@@ -33,6 +33,33 @@ describe("Kindle PalmDOC decoding", () => {
       expect(decoded.chapters).toHaveLength(1);
       expect(decoded.chapters[0]!.content).toContain("data:image/png;base64,");
       expect(decoded.toc[0]).toMatchObject({ title: "第一章", targetId: decoded.chapters[0]!.id });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves cross-document EPUB footnotes and excludes note-only spine files", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jojo-epub-footnote-test-"));
+    try {
+      const zip = new JSZip();
+      zip.file("mimetype", "application/epub+zip");
+      zip.file("META-INF/container.xml", `<?xml version="1.0"?><container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>`);
+      zip.file("OEBPS/content.opf", `<?xml version="1.0"?><package xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>脚注书</dc:title><dc:creator>作者</dc:creator><dc:identifier>footnote-id</dc:identifier></metadata><manifest><item id="c1" href="chapter.xhtml" media-type="application/xhtml+xml"/><item id="n1" href="note.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c1"/><itemref idref="n1"/></spine></package>`);
+      zip.file("OEBPS/chapter.xhtml", `<html><body><p>正文<a href="note.xhtml#note_12"><sup>12</sup></a></p></body></html>`);
+      zip.file("OEBPS/note.xhtml", `<html><body><dl class="footnote" id="note_12"><dt><a href="chapter.xhtml#back_note_12">←12</a></dt><dd><p>第十二条原注。</p></dd></dl></body></html>`);
+      const file = path.join(directory, "脚注书.epub");
+      await writeFile(file, await zip.generateAsync({ type: "uint8array" }));
+
+      const decoded = await decodeEbookFile(file);
+      expect(decoded.chapters).toHaveLength(1);
+      expect(decoded.chapters[0]!.content).toContain('data-jojo-footnote-label="12"');
+      const semantic = convertWereadChapter(decoded.chapters[0]!, []);
+      expect(semantic.annotations).toMatchObject([
+        { label: "12", body: { value: "第十二条原注。" } },
+      ]);
+      expect(semantic.chapter.body.value).not.toContain("<sup><sup");
+      expect(decoded.sourceDetails).toMatchObject({ footnoteFiles: 1 });
+      expect(decoded.diagnostics.chapterCoverage).toBe(1);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

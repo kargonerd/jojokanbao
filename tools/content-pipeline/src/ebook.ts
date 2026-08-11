@@ -102,6 +102,11 @@ interface DecodedEpubSpineEntry {
   content: string;
 }
 
+interface EpubFootnoteDefinition {
+  body: string;
+  label?: string;
+}
+
 async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<DecodedWereadBook> {
   const zip = await JSZip.loadAsync(source);
   const containerXml = await zip.file("META-INF/container.xml")?.async("string");
@@ -127,6 +132,42 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
   const spine = $opf("spine > itemref").map((_index, element) => byId.get($opf(element).attr("idref") ?? ""))
     .get().filter((entry): entry is EpubManifestEntry => Boolean(entry));
   if (spine.length === 0) throw new Error("EPUB spine 为空，没有可导入正文");
+
+  const spineDocuments = new Map<string, string>();
+  const missingSpineFiles = new Set<string>();
+  await Promise.all(spine.map(async (entry) => {
+    const raw = await zip.file(entry.file)?.async("string");
+    if (raw === undefined) missingSpineFiles.add(entry.file);
+    else spineDocuments.set(entry.file, raw);
+  }));
+
+  const footnotes = new Map<string, EpubFootnoteDefinition>();
+  const footnoteOnlyFiles = new Set<string>();
+  for (const [file, raw] of spineDocuments) {
+    const $document = cheerio.load(raw, { xmlMode: true });
+    const isFootnote = (element: Parameters<typeof $document>[0]): boolean => {
+      const current = $document(element);
+      const epubTypes = (current.attr("epub:type") ?? current.attr("type") ?? "").split(/\s+/);
+      const role = current.attr("role") ?? "";
+      return current.hasClass("footnote") || epubTypes.includes("footnote") || role === "doc-footnote";
+    };
+    $document("[id]").each((_index, element) => {
+      const current = $document(element);
+      const id = current.attr("id");
+      if (!id || !isFootnote(element)) return;
+      const bodySource = current.find("dd").first().length ? current.find("dd").first() : current;
+      const clone = bodySource.clone();
+      clone.find("a[href*='#back_'],a[epub\\:type='backlink'],a[role='doc-backlink']").remove();
+      const body = clone.text().replace(/\s+/g, " ").trim();
+      if (!body) return;
+      const label = id.match(/(?:note|fn)[_-]?(\d+)$/i)?.[1];
+      footnotes.set(`${file}#${id}`, { body, ...(label ? { label } : {}) });
+    });
+    const bodyChildren = $document("body").children().toArray();
+    if (bodyChildren.length > 0 && bodyChildren.every((element) => isFootnote(element))) {
+      footnoteOnlyFiles.add(file);
+    }
+  }
 
   const embedded = new Map<string, { mediaType: string; url: string }>();
   await Promise.all(manifest.map(async (entry) => {
@@ -188,12 +229,28 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
   const decodedSpine: DecodedEpubSpineEntry[] = [];
   const errors: Array<Record<string, unknown>> = [];
   for (const [index, entry] of spine.entries()) {
-    const raw = await zip.file(entry.file)?.async("string");
+    const raw = spineDocuments.get(entry.file);
     if (!raw) {
       errors.push({ file: entry.file, error: "spine 引用的文件不存在" });
       continue;
     }
+    if (footnoteOnlyFiles.has(entry.file)) continue;
     const $ = cheerio.load(raw, { xmlMode: true });
+    $("a[href]").each((_linkIndex, element) => {
+      const current = $(element);
+      const reference = current.attr("href");
+      if (!reference || /^(?:https?:|mailto:|#)/i.test(reference)) return;
+      const resolved = zipPath(entry.file, reference);
+      const definition = resolved.anchor ? footnotes.get(`${resolved.file}#${resolved.anchor}`) : undefined;
+      if (!definition) return;
+      const visibleLabel = current.text().replace(/\D+/g, "").trim();
+      const marker = $("<span></span>")
+        .attr("data-wr-footernote", definition.body)
+        .attr("data-jojo-footnote-label", visibleLabel || definition.label || "");
+      const wrapper = current.parent();
+      if (wrapper.is("sup") && wrapper.children().length === 1) wrapper.replaceWith(marker);
+      else current.replaceWith(marker);
+    });
     $("img[src],audio[src],video[src],source[src]").each((_assetIndex, element) => {
       const current = $(element);
       const reference = current.attr("src");
@@ -212,10 +269,14 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
     const title = navTitles.get(entry.file)
       ?? $("h1,h2,h3,h4,h5,h6").first().text().replace(/\s+/g, " ").trim()
       ?? "";
+    const bodyHtml = $("body").length ? $("body").html() ?? "" : $.root().html() ?? "";
+    const mediaOnlyTitle = cleanText(bodyHtml).length === 0 && $("img,image,svg").length > 0
+      ? (index === 0 ? "封面" : "插图")
+      : "";
     decodedSpine.push({
       entry,
-      title: title || `章节 ${index + 1}`,
-      bodyHtml: $("body").length ? $("body").html() ?? "" : $.root().html() ?? "",
+      title: title || mediaOnlyTitle || `章节 ${index + 1}`,
+      bodyHtml,
       content: $.xml(),
     });
   }
@@ -299,7 +360,9 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
     sourceFormat: "epub",
     sourceDetails: {
       packagePath: opfFile,
-      ...(shouldCoalesce ? { spineFiles: decodedSpine.length, logicalChapters: chapters.length } : {}),
+      ...(shouldCoalesce || footnoteOnlyFiles.size > 0
+        ? { spineFiles: spine.length, logicalChapters: chapters.length, footnoteFiles: footnoteOnlyFiles.size }
+        : {}),
       ...(title !== packageTitle && packageTitle ? { packageTitle } : {}),
       ...(author !== packageAuthor && packageAuthor ? { packageAuthor } : {}),
     },
@@ -324,13 +387,13 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
       missingTocItems: 0,
       sourceChapterRecords: spine.length,
       expectedChapterRecords: spine.length,
-      presentChapterRecords: decodedSpine.length,
+      presentChapterRecords: spine.length - missingSpineFiles.size,
       missingChapterRecords: errors.length,
       unmatchedChapterRecords: 0,
       duplicateChapterRecords: 0,
-      chapterCoverage: spine.length ? decodedSpine.length / spine.length : 0,
+      chapterCoverage: spine.length ? (spine.length - missingSpineFiles.size) / spine.length : 0,
       missingChapters: errors.map((error, index) => ({ chapterUid: String(error.file), title: String(error.file), order: index + 1 })),
-      matchedChapterRecords: decodedSpine.length,
+      matchedChapterRecords: spine.length - missingSpineFiles.size,
       decodedChapterRecords: chapters.length,
       failedChapterRecords: errors.length,
       errors,

@@ -48,6 +48,12 @@ function escapeText(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+function meaningfulImageLabel(value: string | undefined): string | null {
+  const label = value?.replace(/\s+/g, " ").trim();
+  if (!label || /^(?:image|img|picture|photo|图片|图像|插图)$/i.test(label)) return null;
+  return label;
+}
+
 interface TextNodeLike {
   type: "text";
   data: string;
@@ -234,9 +240,10 @@ export function convertWereadChapter(
       heading.hasClass("chapterTitle")
       || headingText.normalize("NFKC") === source.title.normalize("NFKC").trim()
     );
-    const label = isTitleAnnotation
+    const explicitLabel = current.attr("data-jojo-footnote-label")?.trim();
+    const label = explicitLabel || (isTitleAnnotation
       ? "*".repeat(++titleAnnotationCount)
-      : String(++numberedAnnotationCount);
+      : String(++numberedAnnotationCount));
     const id = `annotation:${shortHash(`${source.id}:${index}:${note}`)}`;
     annotations.push({
       id,
@@ -267,7 +274,7 @@ export function convertWereadChapter(
       return;
     }
     const id = `asset:image-${shortHash(sourceUrl)}`;
-    const alt = current.attr("alt")?.trim() || null;
+    const alt = meaningfulImageLabel(current.attr("alt"));
     const resolvable = /^(?:https:\/\/|data:)/i.test(sourceUrl);
     if (!resolvable) {
       diagnostics.push({
@@ -324,6 +331,12 @@ export function convertWereadChapter(
       caption,
     });
     current.replaceWith(`<figure data-asset-id="${id}">${caption ? `<figcaption>${escapeText(caption)}</figcaption>` : ""}</figure>`);
+  });
+
+  $("a[href]").each((_index, element) => {
+    const current = $(element);
+    const href = current.attr("href")?.trim() ?? "";
+    if (href && !/^(?:#|https?:|mailto:)/i.test(href)) current.replaceWith(current.contents());
   });
 
   const bodyHtml = $("body").length ? $("body").html() ?? "" : $.root().html() ?? "";

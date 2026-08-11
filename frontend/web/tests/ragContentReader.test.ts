@@ -7,6 +7,29 @@ import {
 } from "../src/rag/pages/ReaderPage";
 
 describe("RAG content Reader annotations", () => {
+  it("does not render the source heading twice when it matches the fragment title", () => {
+    const fragment: JojoFragment = {
+      formatVersion: "jojo-fragment/1",
+      itemId: "book:test",
+      fragmentId: "chapter:1",
+      type: "chapter",
+      order: 1,
+      title: "第一章",
+      body: {
+        format: "html",
+        profile: "jojo-semantic-html/1",
+        value: '<hr id="source"/><h1 id="original-title">第一章</h1><p>正文</p>',
+      },
+      assetRefs: [],
+      annotations: [],
+    };
+
+    const document = new DOMParser().parseFromString(renderedBody(fragment, {}), "text/html");
+    expect(document.querySelector("h1")).toBeNull();
+    expect(document.getElementById("original-title")).not.toBeNull();
+    expect(document.body.textContent).toContain("正文");
+  });
+
   it("renders a stable round-trip link between a marker and its annotation", () => {
     const fragment: JojoFragment = {
       formatVersion: "jojo-fragment/1",

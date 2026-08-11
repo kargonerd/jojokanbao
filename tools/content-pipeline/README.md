@@ -31,6 +31,9 @@ pnpm --filter @jojo/content-pipeline validate -- "C:\path\to\build"
 部分 EPUB 会把一章拆成大量很小的 spine 文件；当这种碎片特征足够明确时，导入器按 EPUB
 目录边界合并为逻辑章节，同时为原目录目标保留正文锚点。OPF 作者等元数据明显无效时，才会
 从规范的电子书文件名回退，原值保留在来源扩展信息中供审计。
+EPUB 跨 XHTML 的脚注链接会转换为 Item 内的 `annotations`，脚注文件不再生成伪章节；无法
+转换的相对文件链接会去除跳转能力，避免 Reader 把 EPUB 文件名误当成 Item ID。`Image` 等
+无意义图片替代文字不会显示为图注。
 
 纯文本来源中的数字注号只有在正文标记与注释定义能够可靠配对时才会转换成
 `annotations`；`*这是……` 一类篇名编者注会转换成 `editor-note`。无法可靠配对的

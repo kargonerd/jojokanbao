@@ -45,6 +45,27 @@ describe("WeRead semantic HTML", () => {
     expect(diagnostics).toEqual([]);
   });
 
+  it("preserves an explicit EPUB footnote label and removes unsafe relative links", () => {
+    const diagnostics: Parameters<typeof convertWereadChapter>[1] = [];
+    const result = convertWereadChapter({
+      id: "chapter:epub",
+      sourceCid: "epub",
+      sourceFiles: [],
+      title: "第一章",
+      order: 1,
+      level: 1,
+      contentType: "application/xhtml+xml",
+      content: `<html><body><p>正文<span data-wr-footernote="原注内容" data-jojo-footnote-label="12"></span></p>
+        <p><a href="part0047.html#note_12">遗留内部链接</a></p>
+        <p><img src="https://example.com/image.png" alt="Image"/></p></body></html>`,
+    }, diagnostics);
+
+    expect(result.annotations).toMatchObject([{ label: "12", body: { value: "原注内容" } }]);
+    expect(result.chapter.body.value).not.toContain("part0047.html");
+    expect(result.chapter.body.value).not.toContain("<figcaption>Image</figcaption>");
+    expect(result.assets).toMatchObject([{ alt: null, caption: null }]);
+  });
+
   it("keeps title notes outside the numbered footnote sequence", () => {
     const diagnostics: Parameters<typeof convertWereadChapter>[1] = [];
     const result = convertWereadChapter({

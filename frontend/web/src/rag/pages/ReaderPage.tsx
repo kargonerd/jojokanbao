@@ -114,6 +114,19 @@ export function renderedBody(fragment: JojoFragment, assetUrls: Record<string, s
     : fragment.body.value.split(/\n{2,}/).map((paragraph) => `<p>${escapeHtml(paragraph).replaceAll("\n", "<br>")}</p>`).join("");
   const clean = DOMPurify.sanitize(source);
   const document = new DOMParser().parseFromString(`<main>${clean}</main>`, "text/html");
+  const main = document.querySelector("main");
+  const firstContentElement = [...(main?.children ?? [])].find((element) => element.tagName !== "HR");
+  if (/^H[1-6]$/.test(firstContentElement?.tagName ?? "")
+    && firstContentElement?.textContent?.normalize("NFKC").replace(/\s+/g, " ").trim()
+      === fragment.title.normalize("NFKC").replace(/\s+/g, " ").trim()) {
+    const headingId = firstContentElement.id;
+    if (headingId) {
+      const anchor = document.createElement("span");
+      anchor.id = headingId;
+      firstContentElement.before(anchor);
+    }
+    firstContentElement.remove();
+  }
   for (const figure of document.querySelectorAll("figure[data-asset-id]")) {
     const assetId = figure.getAttribute("data-asset-id") || "";
     const url = assetUrls[assetId];
@@ -141,7 +154,7 @@ export function renderedBody(fragment: JojoFragment, assetUrls: Record<string, s
     if (trailingText) marker.after(document.createTextNode(trailingText));
   }
   // Only internally generated Blob URLs are inserted after sanitization.
-  return document.querySelector("main")?.innerHTML || "";
+  return main?.innerHTML || "";
 }
 
 export function ReaderPage() {
