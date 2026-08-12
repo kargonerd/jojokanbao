@@ -32,6 +32,20 @@
   background-blend-mode: screen;
 }
 
+.prose-editorial [data-align="left"] {
+  text-align: left;
+}
+
+.prose-editorial [data-align="center"] {
+  text-align: center;
+  text-indent: 0;
+}
+
+.prose-editorial [data-align="right"] {
+  text-align: right;
+  text-indent: 0;
+}
+
 .book-footnote-link,
 .book-footnote-link:hover,
 .book-footnote-link:focus,

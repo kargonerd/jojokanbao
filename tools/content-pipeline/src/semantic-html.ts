@@ -14,6 +14,32 @@ const ALLOWED_TAGS = [
   "a", "br", "hr", "figure", "figcaption",
 ];
 
+const ALIGNABLE_TAGS = "p,h1,h2,h3,h4,h5,h6,blockquote,li,figure,figcaption";
+const SEMANTIC_ALIGNMENTS = new Set(["left", "center", "right"]);
+
+function semanticAlignment(current: ReturnType<cheerio.CheerioAPI>): string | undefined {
+  const explicit = current.attr("data-align") ?? current.attr("align");
+  if (explicit && SEMANTIC_ALIGNMENTS.has(explicit.toLowerCase())) return explicit.toLowerCase();
+
+  const inline = current.attr("style")?.match(/(?:^|;)\s*text-align\s*:\s*(left|center|right)\b/i)?.[1];
+  if (inline) return inline.toLowerCase();
+
+  for (const className of (current.attr("class") ?? "").split(/\s+/)) {
+    const match = className.toLowerCase().match(/(?:^|[-_])(left|center|right)(?:$|[-_])/);
+    if (match?.[1]) return match[1];
+  }
+  return undefined;
+}
+
+function preserveSemanticAlignment($: cheerio.CheerioAPI): void {
+  $("*").each((_index, element) => {
+    const current = $(element);
+    const alignment = current.is(ALIGNABLE_TAGS) ? semanticAlignment(current) : undefined;
+    current.removeAttr("data-align");
+    if (alignment) current.attr("data-align", alignment);
+  });
+}
+
 function shortHash(value: string): string {
   return createHash("sha256").update(value).digest("hex").slice(0, 16);
 }
@@ -200,6 +226,10 @@ export function convertWereadChapter(
     ? `<html><body>${textBody(source.content)}</body></html>`
     : source.content;
   const $ = cheerio.load(input, { xmlMode: true });
+  // Preserve only the small, interoperable part of source presentation that
+  // carries meaning in books (for example a right-aligned date or signature).
+  // Arbitrary classes and inline CSS are still removed by the sanitizer.
+  preserveSemanticAlignment($);
   $("script,iframe,style,link,meta,head").remove();
   const annotations: JojoAnnotation[] = [];
   const assets = new Map<string, JojoCanonicalAsset>();
@@ -349,7 +379,7 @@ export function convertWereadChapter(
   const value = sanitizeHtml(htmlWithClosedMarkers, {
     allowedTags: ALLOWED_TAGS,
     allowedAttributes: {
-      "*": ["id"],
+      "*": ["id", "data-align"],
       a: ["href"],
       figure: ["data-asset-id"],
       sup: ["data-annotation-id"],

@@ -495,10 +495,10 @@ strong em sup sub a br hr figure figcaption
 允许属性：
 
 ```text
-id href data-asset-id data-annotation-id
+id href data-asset-id data-annotation-id data-align
 ```
 
-禁止脚本、iframe、style、class、事件属性、外部 CSS 和 `javascript:` URL。图片位置使用 `figure[data-asset-id]`，真实文件由 `assets` 描述。
+`data-align` 只允许 `left`、`center`、`right`，用于保留署期、署名、题记等具有语义的原书对齐方式。禁止脚本、iframe、style、class、事件属性、外部 CSS 和 `javascript:` URL。图片位置使用 `figure[data-asset-id]`，真实文件由 `assets` 描述。
 
 ## 5. Delivery
 

@@ -56,7 +56,11 @@ function chapterXhtml(
   return `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="zh-CN">
-<head><meta charset="utf-8"/><title>${escapeXml(chapter.title)}</title></head>
+<head><meta charset="utf-8"/><title>${escapeXml(chapter.title)}</title><style>
+[data-align="left"]{text-align:left}
+[data-align="center"]{text-align:center;text-indent:0}
+[data-align="right"]{text-align:right;text-indent:0}
+</style></head>
 <body><h1>${escapeXml(chapter.title)}</h1>${body}</body></html>`;
 }
 

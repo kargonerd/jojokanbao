@@ -28,6 +28,31 @@ describe("WeRead semantic HTML", () => {
     expect(diagnostics).toEqual([]);
   });
 
+  it("converts source alignment into a safe semantic attribute", () => {
+    const diagnostics: Parameters<typeof convertWereadChapter>[1] = [];
+    const result = convertWereadChapter({
+      id: "chapter:poem",
+      sourceCid: "poem",
+      sourceFiles: [],
+      title: "忆秦娥·娄山关",
+      order: 1,
+      level: 1,
+      contentType: "application/xhtml+xml",
+      content: `<html><body>
+        <p class="content-right">1935年2月</p>
+        <p style="color:red; text-align: center" onclick="evil()">题记</p>
+        <p class="copyright" data-align="wide">普通正文<span data-align="right">内文</span></p>
+      </body></html>`,
+    }, diagnostics);
+
+    expect(result.chapter.body.value).toContain('<p data-align="right">1935年2月</p>');
+    expect(result.chapter.body.value).toContain('<p data-align="center">题记</p>');
+    expect(result.chapter.body.value).toContain("<p>普通正文内文</p>");
+    expect(result.chapter.body.value.match(/data-align=/g)).toHaveLength(2);
+    expect(result.chapter.body.value).not.toMatch(/class=|style=|onclick/);
+    expect(diagnostics).toEqual([]);
+  });
+
   it("drops the exporter footnote icon instead of treating it as a content asset", () => {
     const diagnostics: Parameters<typeof convertWereadChapter>[1] = [];
     const result = convertWereadChapter({

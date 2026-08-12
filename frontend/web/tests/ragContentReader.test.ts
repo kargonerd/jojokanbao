@@ -8,6 +8,27 @@ import {
 } from "../src/rag/pages/ReaderPage";
 
 describe("RAG content Reader annotations", () => {
+  it("keeps semantic source alignment for the book layout", () => {
+    const fragment: JojoFragment = {
+      formatVersion: "jojo-fragment/1",
+      itemId: "book:test",
+      fragmentId: "chapter:poem",
+      type: "chapter",
+      order: 1,
+      title: "忆秦娥·娄山关",
+      body: {
+        format: "html",
+        profile: "jojo-semantic-html/1",
+        value: '<p>正文</p><p data-align="right">1935年2月</p>',
+      },
+      assetRefs: [],
+      annotations: [],
+    };
+
+    const document = new DOMParser().parseFromString(renderedBody(fragment, {}), "text/html");
+    expect(document.querySelector('p[data-align="right"]')?.textContent).toBe("1935年2月");
+  });
+
   it("preserves source blank paragraphs and line breaks as book layout", () => {
     const fragment: JojoFragment = {
       formatVersion: "jojo-fragment/1",
