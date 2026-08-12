@@ -8,26 +8,26 @@ import {
 } from "../src/rag/pages/ReaderPage";
 
 describe("RAG content Reader annotations", () => {
-  it("removes source empty paragraphs instead of turning them into fake page gaps", () => {
+  it("preserves source blank paragraphs and line breaks as book layout", () => {
     const fragment: JojoFragment = {
       formatVersion: "jojo-fragment/1",
       itemId: "book:test",
-      fragmentId: "chapter:gaps",
+      fragmentId: "chapter:spacing",
       type: "chapter",
       order: 1,
       title: "正文",
       body: {
         format: "html",
         profile: "jojo-semantic-html/1",
-        value: "<p>第一段</p><br><p>&nbsp;</p><br><p>​</p><p><br><br></p><p>第二段</p>",
+        value: "<p>第一段</p><p>&nbsp;</p><br><p>第二段</p>",
       },
       assetRefs: [],
       annotations: [],
     };
 
     const document = new DOMParser().parseFromString(renderedBody(fragment, {}), "text/html");
-    expect([...document.querySelectorAll("p")].map((paragraph) => paragraph.textContent)).toEqual(["第一段", "第二段"]);
-    expect(document.querySelector("body > br")).toBeNull();
+    expect(document.querySelectorAll("p")).toHaveLength(3);
+    expect(document.querySelector("body > br")).not.toBeNull();
   });
 
   it("does not render the source heading twice when it matches the fragment title", () => {
