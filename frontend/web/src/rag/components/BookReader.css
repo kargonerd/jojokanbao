@@ -46,6 +46,105 @@
   text-indent: 0;
 }
 
+.prose-editorial [data-indent="none"] {
+  text-indent: 0;
+}
+
+.prose-editorial blockquote:not([data-role="aside"]) {
+  margin: 1.35em 1.8em;
+  padding: 0;
+  border: 0;
+  color: color-mix(in srgb, currentColor 84%, var(--color-red));
+  font-family: "Noto Serif SC", "STKaiti", "KaiTi", serif;
+}
+
+.prose-editorial q {
+  font-family: "Noto Serif SC", "STKaiti", "KaiTi", serif;
+}
+
+.prose-editorial [data-role="poem"] {
+  margin-left: 2em;
+  text-align: left;
+  white-space: pre-wrap;
+}
+
+.prose-editorial [data-role="translation"] {
+  color: color-mix(in srgb, currentColor 82%, transparent);
+}
+
+.prose-editorial [data-role="note"] {
+  text-indent: 0;
+  font-size: .86em;
+  line-height: 1.75;
+  color: color-mix(in srgb, currentColor 78%, transparent);
+}
+
+.prose-editorial [data-role="subheading"] {
+  margin-top: 1.7em;
+  color: var(--color-red);
+  font-weight: 700;
+}
+
+.prose-editorial [data-role="aside"] {
+  margin: 1.5em 0;
+  padding: .8em 1em;
+  border-left: 2px solid var(--color-red);
+  background: color-mix(in srgb, var(--color-red) 5%, transparent);
+}
+
+.prose-editorial [data-role="highlight"] {
+  padding: .05em .16em;
+  background: color-mix(in srgb, var(--color-red) 8%, transparent);
+}
+
+.prose-editorial [data-role="caption"] {
+  text-align: center;
+  text-indent: 0;
+  font-family: sans-serif;
+  font-size: .76em;
+  color: color-mix(in srgb, currentColor 68%, transparent);
+}
+
+.prose-editorial [data-font="kai"] {
+  font-family: "STKaiti", "KaiTi", "Noto Serif SC", serif;
+}
+
+.prose-editorial [data-font="fang-song"] {
+  font-family: "STFangsong", "FangSong", "Noto Serif SC", serif;
+}
+
+.prose-editorial [data-size="small"] {
+  font-size: .82em;
+}
+
+.prose-editorial span[data-role="inline-image"] {
+  display: inline-block;
+  width: auto;
+  height: 1em;
+  margin: 0 .1em;
+  line-height: 1;
+  text-indent: 0;
+  vertical-align: -.08em;
+}
+
+.prose-editorial img[data-book-inline-asset="true"] {
+  display: inline-block;
+  width: auto;
+  max-width: none;
+  height: 1em;
+  margin: 0;
+  vertical-align: baseline;
+}
+
+.prose-editorial figure[data-role="signature"] {
+  margin-left: auto;
+}
+
+.prose-editorial u {
+  text-decoration-thickness: .06em;
+  text-underline-offset: .13em;
+}
+
 .book-footnote-link,
 .book-footnote-link:hover,
 .book-footnote-link:focus,

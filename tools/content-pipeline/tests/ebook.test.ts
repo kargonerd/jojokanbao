@@ -1,9 +1,10 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 import { convertWereadChapter, decodeEbookFile, palmDocDecompress } from "../src";
+import { buildEpub } from "../src/epub";
 
 describe("Kindle PalmDOC decoding", () => {
   it("decodes literals, space shortcuts, and back references", () => {
@@ -13,6 +14,52 @@ describe("Kindle PalmDOC decoding", () => {
       0x80, 0x2a,
     ]);
     expect(Buffer.from(palmDocDecompress(encoded)).toString("utf8")).toBe("abc Dabc D");
+  });
+
+  it("exports semantic inline images and controlled book layout to EPUB", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jojo-semantic-epub-test-"));
+    try {
+      await mkdir(path.join(directory, "assets"));
+      await writeFile(path.join(directory, "assets", "glyph.png"), Uint8Array.from([137, 80, 78, 71]));
+      const bytes = await buildEpub({
+        itemId: "book:test",
+        title: "语义书",
+        language: "zh-CN",
+        author: "作者",
+        chapters: [{
+          id: "chapter:1",
+          order: 1,
+          title: "第一章",
+          body: {
+            format: "html",
+            profile: "jojo-semantic-html/1",
+            value: `<p data-role="poem" data-indent="none">甲<span data-asset-id="asset:glyph" data-role="inline-image"></span>乙</p>
+              <figure data-asset-id="asset:glyph" data-width="70"><figcaption>图一</figcaption></figure>`,
+          },
+          assetRefs: ["asset:glyph"],
+        }],
+        toc: [{ id: "toc:1", order: 1, title: "第一章", targetId: "chapter:1" }],
+        annotations: [],
+        assets: [{
+          id: "asset:glyph",
+          type: "image",
+          role: "inline",
+          mediaType: "image/png",
+          path: "assets/glyph.png",
+          size: 4,
+          sha256: "test",
+          alt: "符号",
+        }],
+        canonicalDatasetDirectory: directory,
+      });
+      const epub = await JSZip.loadAsync(bytes);
+      const chapter = await epub.file("OEBPS/chapters/chapter-0001.xhtml")!.async("string");
+      expect(chapter).toContain('<img class="jojo-inline-image" src="../assets/glyph.png" alt="符号"/>');
+      expect(chapter).toContain('<figure data-width="70"><img src="../assets/glyph.png" alt="符号"/><figcaption>图一</figcaption></figure>');
+      expect(chapter).toContain('[data-role="poem"]');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it("imports an EPUB spine, navigation, and embedded image", async () => {

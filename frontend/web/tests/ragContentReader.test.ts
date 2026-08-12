@@ -29,6 +29,38 @@ describe("RAG content Reader annotations", () => {
     expect(document.querySelector('p[data-align="right"]')?.textContent).toBe("1935年2月");
   });
 
+  it("renders block and inline semantic assets without changing their flow", () => {
+    const fragment: JojoFragment = {
+      formatVersion: "jojo-fragment/1",
+      itemId: "book:test",
+      fragmentId: "chapter:assets",
+      type: "chapter",
+      order: 1,
+      title: "图片",
+      body: {
+        format: "html",
+        profile: "jojo-semantic-html/1",
+        value: `<p data-indent="none">甲<span data-asset-id="asset:glyph" data-role="inline-image"></span>乙</p>
+          <figure data-asset-id="asset:photo" data-width="70"><figcaption>图一</figcaption></figure>`,
+      },
+      assetRefs: ["asset:glyph", "asset:photo"],
+      annotations: [],
+    };
+
+    const document = new DOMParser().parseFromString(renderedBody(fragment, {
+      "asset:glyph": "blob:glyph",
+      "asset:photo": "blob:photo",
+    }), "text/html");
+    const inline = document.querySelector('span[data-role="inline-image"]');
+    expect(inline?.previousSibling?.textContent).toBe("甲");
+    expect(inline?.nextSibling?.textContent).toBe("乙");
+    expect(inline?.querySelector("img")?.getAttribute("data-book-inline-asset")).toBe("true");
+    const figure = document.querySelector("figure");
+    expect(figure?.querySelector("img")?.src).toContain("blob:photo");
+    expect(figure?.getAttribute("style")).toContain("max-width: 70%");
+    expect(figure?.querySelector("figcaption")?.textContent).toBe("图一");
+  });
+
   it("preserves source blank paragraphs and line breaks as book layout", () => {
     const fragment: JojoFragment = {
       formatVersion: "jojo-fragment/1",

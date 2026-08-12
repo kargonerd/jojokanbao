@@ -489,16 +489,28 @@ path: items/2026/2026-special-1.json.gz
 
 ```text
 p h1 h2 h3 h4 h5 h6 blockquote ol ul li
-strong em sup sub a br hr figure figcaption
+strong em sup sub u s q a br hr figure figcaption span
 ```
 
 允许属性：
 
 ```text
 id href data-asset-id data-annotation-id data-align
+data-role data-indent data-font data-size data-width
 ```
 
-`data-align` 只允许 `left`、`center`、`right`，用于保留署期、署名、题记等具有语义的原书对齐方式。禁止脚本、iframe、style、class、事件属性、外部 CSS 和 `javascript:` URL。图片位置使用 `figure[data-asset-id]`，真实文件由 `assets` 描述。
+受控属性的取值如下：
+
+- `data-align`：`left`、`center`、`right`，保留署期、署名、题记等对齐关系。
+- `data-indent`：当前只允许 `none`，表示原书明确不做首行缩进。
+- `data-font`：`kai`、`fang-song`，仅用于编辑注、诗歌等字体本身承担区分作用的内容。
+- `data-size`：当前只允许 `small`，用于原书明确缩小的题内层级等内容。
+- `data-role`：`aside`、`caption`、`highlight`、`inline-image`、`note`、`poem`、`signature`、`subheading`、`translation`。
+- `data-width`：`10` 到 `100` 的整数，表示图片相对正文栏宽的百分比；Reader 可以根据屏幕空间进一步收窄。
+
+块级图片使用 `figure[data-asset-id]`，图片说明放在其 `figcaption` 中。嵌在文字或公式中的小图使用空的 `span[data-asset-id][data-role="inline-image"]`，不得提升为独立插图。真实文件统一由 Item 的 `assets` 描述。
+
+导入器应把来源 class 转换为上述 HTML 元素和受控属性，不把来源 class、内联 CSS 或厂商命名写进规范数据。例如粗体转为 `strong`、上下标转为 `sup`/`sub`、块引文转为 `blockquote`、图片说明转为 `figcaption`。禁止脚本、iframe、style、class、事件属性、外部 CSS 和 `javascript:` URL。
 
 ## 5. Delivery
 
