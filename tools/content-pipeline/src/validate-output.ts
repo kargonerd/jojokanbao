@@ -5,6 +5,7 @@ import { gunzipSync } from "node:zlib";
 import JSZip from "jszip";
 import {
   asJojoCatalog,
+  asJojoBookSearchIndex,
   asJojoDatasetIndex,
   asJojoFragment,
   asJojoItemManifest,
@@ -70,6 +71,20 @@ export async function validatePipelineOutput(rootDirectory: string): Promise<Val
       knownObjects.add(manifestObject);
       const manifest = asJojoItemManifest(await jsonObject<JojoItemManifest>(root, manifestObject));
       if (manifest.itemId !== item.itemId) errors.push(`${manifestObject}: itemId 不一致`);
+      if (manifest.search) {
+        const object = resolveJoxObject(manifestObject, manifest.search.object);
+        knownObjects.add(object);
+        const compressed = await clearBytes(root, object);
+        const clear = new Uint8Array(gunzipSync(compressed));
+        if (clear.length !== manifest.search.size) errors.push(`${object}: Search size 不一致`);
+        if (digest(clear) !== manifest.search.sha256) errors.push(`${object}: Search SHA-256 不一致`);
+        const search = asJojoBookSearchIndex(JSON.parse(Buffer.from(clear).toString("utf8")));
+        if (search.itemId !== manifest.itemId) errors.push(`${object}: Search Item 身份不一致`);
+        const chapterIds = new Set((manifest.content.chapters ?? []).map((chapter) => chapter.id));
+        if (search.blocks.some((block) => !chapterIds.has(block.targetId))) {
+          errors.push(`${object}: Search targetId 不存在`);
+        }
+      }
       for (const chapter of manifest.content.chapters ?? []) {
         fragments += 1;
         const object = resolveJoxObject(manifestObject, chapter.object);

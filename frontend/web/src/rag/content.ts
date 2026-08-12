@@ -1,10 +1,12 @@
 import {
   JoxClient,
   resolveJoxObject,
+  asJojoBookSearchIndex,
   asJojoCatalog,
   asJojoDatasetIndex,
   asJojoItemManifest,
   type JojoCatalog,
+  type JojoBookSearchIndex,
   type JojoCatalogEntry,
   type JojoDatasetIndex,
   type JojoDatasetItemSummary,
@@ -20,6 +22,7 @@ const fallbackClient = import.meta.env.VITE_CONTENT_CDN_FALLBACK_BASE
   : undefined;
 let catalogPromise: Promise<JojoCatalog> | undefined;
 const datasetSources = new Map<string, Array<{ entry: JojoCatalogEntry; client: JoxClient }>>();
+const bookSearchPromises = new Map<string, Promise<JojoBookSearchIndex>>();
 
 export interface LoadedDataset {
   entry: JojoCatalogEntry;
@@ -138,9 +141,73 @@ function escapeHighlight(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
+function normalizedSearchText(value: string): string {
+  return value.normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function searchIndexResults(
+  loaded: LoadedItem,
+  index: JojoBookSearchIndex,
+  query: string,
+  size: number,
+): RagSearchHit[] {
+  const needle = normalizedSearchText(query);
+  const chapterTitles = new Map(
+    (loaded.manifest.content.chapters ?? []).map((chapter) => [chapter.id, chapter.title]),
+  );
+  const results: RagSearchHit[] = [];
+  for (const block of index.blocks) {
+    const text = block.text.replace(/\s+/g, " ").trim();
+    const normalized = normalizedSearchText(text);
+    const normalizedIndex = normalized.indexOf(needle);
+    if (normalizedIndex < 0) continue;
+
+    // NFKC normally preserves offsets for Chinese prose. If it does not, use
+    // the original query offset; otherwise keep a readable result without
+    // inventing a location that is not present in the chapter.
+    const directIndex = text.toLocaleLowerCase().indexOf(query.trim().toLocaleLowerCase());
+    const matchIndex = directIndex >= 0 ? directIndex : Math.min(normalizedIndex, text.length);
+    const matchLength = directIndex >= 0 ? query.trim().length : Math.min(needle.length, text.length - matchIndex);
+    const excerptStart = Math.max(0, matchIndex - 70);
+    const excerptEnd = Math.min(text.length, matchIndex + matchLength + 120);
+    const before = text.slice(excerptStart, matchIndex);
+    const match = text.slice(matchIndex, matchIndex + matchLength);
+    const after = text.slice(matchIndex + matchLength, excerptEnd);
+    const title = chapterTitles.get(block.targetId) ?? "正文";
+    results.push({
+      datasetId: loaded.manifest.datasetId,
+      itemId: loaded.manifest.itemId,
+      targetId: block.targetId,
+      targetTitle: title,
+      title,
+      text: `${excerptStart > 0 ? "…" : ""}${text.slice(excerptStart, excerptEnd)}${excerptEnd < text.length ? "…" : ""}`,
+      highlights: [`${excerptStart > 0 ? "…" : ""}${escapeHighlight(before)}<mark>${escapeHighlight(match)}</mark>${escapeHighlight(after)}${excerptEnd < text.length ? "…" : ""}`],
+    });
+    if (results.length >= size) break;
+  }
+  return results;
+}
+
+async function loadBookSearchIndex(loaded: LoadedItem): Promise<JojoBookSearchIndex | undefined> {
+  const descriptor = loaded.manifest.search;
+  if (!descriptor) return undefined;
+  const object = resolveJoxObject(loaded.manifestObject, descriptor.object);
+  const key = `${loaded.manifest.itemId}\0${object}\0${descriptor.sha256}`;
+  let promise = bookSearchPromises.get(key);
+  if (!promise) {
+    promise = loaded.client.fetchJson<JojoBookSearchIndex>(object).then(asJojoBookSearchIndex);
+    bookSearchPromises.set(key, promise);
+  }
+  const index = await promise;
+  if (index.itemId !== loaded.manifest.itemId) throw new Error("书内搜索文件与当前书籍不匹配");
+  return index;
+}
+
 export async function searchLoadedBook(loaded: LoadedItem, query: string, size = 30): Promise<RagSearchHit[]> {
-  const needle = query.trim().toLocaleLowerCase();
+  const needle = normalizedSearchText(query);
   if (!needle) return [];
+  const staticIndex = await loadBookSearchIndex(loaded);
+  if (staticIndex) return searchIndexResults(loaded, staticIndex, query, size);
   const chapters = loaded.manifest.content.chapters ?? [];
   const results: RagSearchHit[] = [];
   for (let start = 0; start < chapters.length; start += 8) {
@@ -148,7 +215,7 @@ export async function searchLoadedBook(loaded: LoadedItem, query: string, size =
     const fragments = await Promise.all(batch.map((chapter) => loadFragment(loaded, chapter.id)));
     for (const fragment of fragments) {
       const text = searchableText(fragment).replace(/\s+/g, " ").trim();
-      const index = text.toLocaleLowerCase().indexOf(needle);
+      const index = normalizedSearchText(text).indexOf(needle);
       if (index < 0) continue;
       const excerptStart = Math.max(0, index - 70);
       const excerptEnd = Math.min(text.length, index + query.length + 120);

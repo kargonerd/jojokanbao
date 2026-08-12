@@ -111,6 +111,14 @@ export function renderedBody(fragment: JojoFragment, assetUrls: Record<string, s
   const clean = DOMPurify.sanitize(source);
   const document = new DOMParser().parseFromString(`<main>${clean}</main>`, "text/html");
   const main = document.querySelector("main");
+  for (const element of main?.querySelectorAll("p,blockquote,h1,h2,h3,h4,h5,h6,li,figcaption") ?? []) {
+    const hasContent = Boolean(
+      element.textContent?.replace(/[\s\u00a0\u200b-\u200d\u3000\ufeff]+/g, "").length
+      || element.querySelector("img,figure,audio,video,hr"),
+    );
+    if (!hasContent) element.remove();
+  }
+  for (const lineBreak of main?.querySelectorAll(":scope > br") ?? []) lineBreak.remove();
   const firstContentElement = [...(main?.children ?? [])].find((element) => (
     element.tagName !== "HR"
     && (element.textContent?.replace(/\s+/g, "").length || element.querySelector("img,figure,svg"))

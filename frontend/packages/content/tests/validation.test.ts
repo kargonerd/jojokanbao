@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { asJojoDatasetIndex } from "../src";
+import { asJojoBookSearchIndex, asJojoDatasetIndex } from "../src";
 
 const legacyIndex = {
   formatVersion: "jojo-dataset/1",
@@ -35,5 +35,21 @@ describe("asJojoDatasetIndex", () => {
       language: "zh-CN",
       itemPath: "items/{itemId}.json.gz",
     })).toThrow("Expected jojo-delivery-index/1, received jojo-dataset/1");
+  });
+});
+
+describe("asJojoBookSearchIndex", () => {
+  it("accepts the lightweight per-book text search format", () => {
+    const index = {
+      formatVersion: "jojo-book-search/1",
+      itemId: "example:full-book",
+      blocks: [{ targetId: "chapter:1", order: 1, text: "正文" }],
+    };
+    expect(asJojoBookSearchIndex(index)).toBe(index);
+  });
+
+  it("rejects unrelated search objects", () => {
+    expect(() => asJojoBookSearchIndex({ formatVersion: "jojo-search-document/1" }))
+      .toThrow("Expected jojo-book-search/1");
   });
 });

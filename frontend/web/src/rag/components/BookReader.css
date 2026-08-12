@@ -22,16 +22,14 @@
 }
 
 .book-page-texture {
-  background-image:
-    radial-gradient(circle at 16% 22%, rgba(84, 70, 45, .035) 0 .7px, transparent .8px),
-    radial-gradient(circle at 74% 68%, rgba(84, 70, 45, .025) 0 .65px, transparent .75px);
-  background-size: 5px 5px, 7px 7px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='280' viewBox='0 0 360 280'%3E%3Cfilter id='paper' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.035 .22' numOctaves='4' seed='23' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 .30 0 0 0 0 .24 0 0 0 0 .15 0 0 0 .055 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23paper)'/%3E%3C/svg%3E");
+  background-size: 360px 280px;
+  background-blend-mode: multiply;
 }
 
 .book-reader-dark .book-page-texture {
-  background-image:
-    radial-gradient(circle at 16% 22%, rgba(255, 255, 255, .025) 0 .7px, transparent .8px),
-    radial-gradient(circle at 74% 68%, rgba(255, 255, 255, .018) 0 .65px, transparent .75px);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='280' viewBox='0 0 360 280'%3E%3Cfilter id='paper' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.035 .22' numOctaves='4' seed='23' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .022 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23paper)'/%3E%3C/svg%3E");
+  background-blend-mode: screen;
 }
 
 .book-footnote-link,

@@ -515,6 +515,7 @@ jojo-newspaper/
    │        ├─ volume-1/
    │        │  ├─ manifest.jox
    │        │  ├─ chapters/<opaque-id>.jox
+   │        │  ├─ search/text.jox
    │        │  ├─ assets/<opaque-id>.jox
    │        │  └─ exports/<opaque-id>.jox
    │        └─ volume-5/
@@ -542,6 +543,7 @@ jojo-newspaper/
 - `index.jox`：一个 Dataset 下的 Item 摘要和 Manifest 地址。
 - `manifest.jox`：一个 Item 的元数据、目录、规模和子对象描述。
 - `chapters/*.jox`：单个书籍章节。
+- `search/text.jox`：一个 Item 的轻量纯文本搜索块，只供浏览器书内搜索。
 - `articles/*.jox`：单篇报刊文章。
 - `assets/*.jox`：图片、音频、视频和 PDF 等媒体。
 - `exports/*.jox`：可直接下载的整本或整期成品。
@@ -602,6 +604,13 @@ Manifest 不包含整章正文，只描述对象：
     "chapterCount": 28,
     "characterCount": 105487
   },
+  "search": {
+    "format": "text",
+    "profile": "jojo-book-search/1",
+    "object": "search/text.jox",
+    "size": 98642,
+    "sha256": "..."
+  },
   "assets": [],
   "exports": [
     {
@@ -626,6 +635,25 @@ Manifest 不包含整章正文，只描述对象：
 
 图片、音频和视频属于 `assets/`，不属于 `exports/`。
 
+书籍导入时生成一个可选的 `search/text.jox`：
+
+```json
+{
+  "formatVersion": "jojo-book-search/1",
+  "itemId": "mao-ze-dong-zi-shu:full-book",
+  "blocks": [
+    {
+      "targetId": "chapter:0001",
+      "anchorId": "paragraph-03",
+      "order": 18,
+      "text": "这是去除 HTML 后的段落正文。"
+    }
+  ]
+}
+```
+
+它不是分词倒排索引，也不依赖 ES。Reader 首次搜索时从 CDN 下载一次，在浏览器内做 NFKC 归一化后的精确子串匹配；`anchorId` 只在来源本来有稳定锚点时保存。旧 Manifest 没有 `search` 时，Reader 可以逐章读取并搜索，保证 v1 数据向后兼容。
+
 Jox 是可逆混淆和压缩封装，用于降低直接抓取便利性，不是加密或权限系统。对象名使用内容派生的不透明 ID；Manifest 保存媒体类型、大小和 SHA-256。
 
 ## 6. Reader 与 Agent
@@ -637,6 +665,15 @@ catalog.jox
 → Dataset index.jox
 → Item manifest.jox
 → chapter/article/asset/export.jox
+```
+
+单本书搜索：
+
+```text
+Item manifest.jox
+→ search/text.jox（一次下载并缓存）
+→ 命中 targetId
+→ 只读取对应 chapter.jox
 ```
 
 Agent：
@@ -667,7 +704,7 @@ Canonical Item 是 ES 的源数据。重建任务：
 3. 临时拆分搜索文档并批量写入新 ES 索引。
 4. 验证后切换索引别名或配置。
 
-B2 Canonical 不长期保存 `search/*.jsonl.gz`，避免重复保存正文和产生漂移。流水线本地构建目录仍可生成临时 `search/documents.jsonl.gz` 供一次发布任务使用，但发布 Raw/Canonical 时不上传它。
+B2 Canonical 不长期保存 `search/*.jsonl.gz`，避免重复保存正文和产生漂移。流水线本地构建目录仍可生成临时 `search/documents.jsonl.gz` 供一次发布任务使用，但发布 Raw/Canonical 时不上传它。Delivery 中每本书的 `search/text.jox` 是面向浏览器的派生数据，可以随 Canonical 重新生成，不作为 ES 重建真值。
 
 ## 8. 导入与完整性校验
 
@@ -686,6 +723,7 @@ B2 Canonical 不长期保存 `search/*.jsonl.gz`，避免重复保存正文和�
 - Annotation 的 `targetId` 和可选 `anchorId` 是否有效。
 - Asset/Export 的大小和 SHA-256 是否匹配。
 - Delivery Manifest、Fragment 和搜索指针是否可解析。
+- `search/text.jox` 的 Item 身份、章节目标、大小和 SHA-256 是否正确。
 
 默认发现缺章或解码失败时拒绝导入；只有显式 `--allow-partial` 才允许部分导入。同一来源 ID 存在多个导出时，优先保留目录与正文更完整的版本。
 

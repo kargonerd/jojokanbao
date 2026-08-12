@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import JSZip from "jszip";
 import { afterEach, describe, expect, it } from "vitest";
+import { gunzipJoxJson, resolveJoxObject, type JojoBookSearchIndex, type JojoItemManifest } from "@jojo/content";
 import { buildContentPipeline } from "../src";
 import { validatePipelineOutput } from "../src/validate-output";
 
@@ -67,6 +68,28 @@ describe("approved B2 layout", () => {
     expect(await exists(path.join(output, "raw", "catalog.json"))).toBe(false);
     expect(await exists(path.join(output, "raw", "epub", "index.json"))).toBe(false);
     expect(await exists(path.join(output, "delivery", "content", "books", "ce-shi-shu", "index.jox"))).toBe(true);
+    const manifestObject = report.itemsBuilt[0]!.manifestObject;
+    const manifest = await gunzipJoxJson<JojoItemManifest>(
+      new Uint8Array(await readFile(path.join(output, "delivery", ...manifestObject.split("/")))),
+      manifestObject,
+    );
+    expect(manifest.search).toMatchObject({
+      format: "text",
+      profile: "jojo-book-search/1",
+      object: "search/text.jox",
+    });
+    const searchObject = resolveJoxObject(manifestObject, manifest.search!.object);
+    const search = await gunzipJoxJson<JojoBookSearchIndex>(
+      new Uint8Array(await readFile(path.join(output, "delivery", ...searchObject.split("/")))),
+      searchObject,
+    );
+    expect(search).toMatchObject({
+      formatVersion: "jojo-book-search/1",
+      itemId: "ce-shi-shu:full-book",
+    });
+    expect(search.blocks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ targetId: expect.any(String), text: "正文" }),
+    ]));
     expect((await validatePipelineOutput(output)).errors).toEqual([]);
   });
 });

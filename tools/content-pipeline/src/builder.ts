@@ -36,7 +36,7 @@ import type {
   PipelineReport,
   WereadRawExport,
 } from "./models";
-import { chapterSearchDocuments, type JojoSearchDocument } from "./search";
+import { bookSearchIndex, chapterSearchDocuments, type JojoSearchDocument } from "./search";
 import { convertWereadChapter, htmlToText } from "./semantic-html";
 import { decodeWereadFile, inspectWereadCompleteness, isWereadExport } from "./weread";
 
@@ -509,6 +509,12 @@ async function buildItem(
     (sum, chapter) => sum + htmlToText(chapter.body.value).length,
     0,
   );
+  const searchObject = "search/text.jox";
+  const searchInfo = await writeJoxJson(
+    roots.delivery,
+    `${deliveryItemPrefix}/${searchObject}`,
+    bookSearchIndex({ itemId: part.itemId, chapters: part.chapters }),
+  );
   const manifest: JojoItemManifest = {
     formatVersion: "jojo-item-manifest/1",
     revision: 1,
@@ -528,6 +534,12 @@ async function buildItem(
       chapterCount: part.chapters.length,
       characterCount,
       canonicalCompressedSize: canonicalGzip.length,
+    },
+    search: {
+      format: "text",
+      profile: "jojo-book-search/1",
+      object: searchObject,
+      ...searchInfo,
     },
     assets: assetDescriptors,
     exports: [{

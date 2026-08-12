@@ -1,5 +1,6 @@
 import type {
   JojoCatalog,
+  JojoBookSearchIndex,
   JojoDatasetIndex,
   JojoFragment,
   JojoItemManifest,
@@ -44,6 +45,9 @@ export const asJojoDatasetIndex = (value: unknown): JojoDatasetIndex => {
 
 export const asJojoItemManifest = (value: unknown): JojoItemManifest =>
   format(value, "jojo-item-manifest/1");
+
+export const asJojoBookSearchIndex = (value: unknown): JojoBookSearchIndex =>
+  format(value, "jojo-book-search/1");
 
 export const asJojoFragment = (value: unknown): JojoFragment =>
   format(value, "jojo-fragment/1");

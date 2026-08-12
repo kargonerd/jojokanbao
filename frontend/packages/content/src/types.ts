@@ -98,6 +98,24 @@ export interface JojoExportDescriptor extends JojoObjectDescriptor {
   fileName: string;
 }
 
+export interface JojoBookSearchDescriptor extends JojoObjectDescriptor {
+  format: "text";
+  profile: "jojo-book-search/1";
+}
+
+export interface JojoBookSearchBlock {
+  targetId: string;
+  anchorId?: string;
+  order: number;
+  text: string;
+}
+
+export interface JojoBookSearchIndex {
+  formatVersion: "jojo-book-search/1";
+  itemId: string;
+  blocks: JojoBookSearchBlock[];
+}
+
 export interface JojoContentStats {
   chapterCount: number;
   characterCount: number;
@@ -121,6 +139,7 @@ export interface JojoItemManifest {
     articles?: JojoChapterDescriptor[];
   };
   contentStats: JojoContentStats;
+  search?: JojoBookSearchDescriptor;
   assets: JojoAssetDescriptor[];
   exports: JojoExportDescriptor[];
 }
