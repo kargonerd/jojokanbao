@@ -3,6 +3,7 @@ import { useChatStore } from "../stores/chatStore";
 import { formatChatMarkdown } from "../utils/markdown";
 import { AppShell, Button, EmptyState } from "@jojo/ui";
 import { RagHeader } from "../RagHeader";
+import { Link } from "react-router-dom";
 
 export function ChatPage() {
   const { notebooks, selectedNotebook, sources, selectedSourceIds, messages, loading, error, streaming, streamContent, loadNotebooks, selectNotebook, toggleSource, sendMessage, clearConversation } = useChatStore();
@@ -19,7 +20,7 @@ export function ChatPage() {
       header={<RagHeader />}
       sidebar={
         <>
-        <h2 className="text-sm font-bold text-red tracking-wider mb-4">知识库</h2>
+        <h2 className="text-sm font-bold text-red tracking-wider mb-4">馆藏 Dataset</h2>
         {loading ? <p className="text-xs text-muted">正在加载…</p> : null}
         {notebooks.map((nb) => (
           <button key={nb.id} onClick={() => selectNotebook(nb.id)} className={`block w-full text-left px-3 py-2 text-sm font-bold border-0 bg-transparent mb-1 transition-colors ${selectedNotebook === nb.id ? "text-red bg-red/5" : "text-ink hover:text-red"}`}>
@@ -28,11 +29,12 @@ export function ChatPage() {
         ))}
         {selectedNotebook && sources.length > 0 && (
           <div className="mt-4 pt-4 border-t border-rule">
-            <h3 className="text-xs font-bold text-muted tracking-wider mb-2">来源筛选</h3>
+            <h3 className="text-xs font-bold text-muted tracking-wider mb-2">书籍 / 分卷范围</h3>
             {sources.map((s) => (
               <label key={s.id} className="flex items-center gap-2 py-1 text-xs text-ink cursor-pointer">
                 <input type="checkbox" checked={selectedSourceIds.includes(s.id)} onChange={() => toggleSource(s.id)} className="accent-[var(--color-red)]" />
                 <span className="truncate">{s.title || s.name}</span>
+                <Link className="ml-auto shrink-0 font-bold text-red no-underline" to={`/rag/source/${encodeURIComponent(selectedNotebook)}/${encodeURIComponent(s.itemKey || s.id)}`}>阅读</Link>
               </label>
             ))}
           </div>
@@ -55,7 +57,7 @@ export function ChatPage() {
         <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
           {error ? <div role="alert" className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</div> : null}
           {messages.length === 0 && !streaming && (
-            <EmptyState title="有什么想问的？" description="基于知识库的 AI 问答" />
+            <EmptyState title="有什么想问的？" description="Agent 会先搜索，再决定读取命中章节还是扫描整本" />
           )}
           {messages.map((msg, i) => (
             <div key={i} className={`max-w-[80%] ${msg.role === "user" ? "ml-auto" : ""}`}>

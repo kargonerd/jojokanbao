@@ -3,6 +3,7 @@ import { NavLink, Outlet } from "react-router-dom";
 const items = [
   { to: "/", label: "总览", note: "Overview", end: true },
   { to: "/pdf", label: "PDF 数据", note: "导入与发布" },
+  { to: "/content", label: "书籍内容", note: "JSON 与 Jox" },
   { to: "/es", label: "ES 数据", note: "搜索与修复" },
 ];
 

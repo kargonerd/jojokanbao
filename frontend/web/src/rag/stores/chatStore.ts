@@ -91,11 +91,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     let content = "";
     askStream(
-      { notebook_id: selectedNotebook, question, conversation_id: conversationId || undefined, source_ids: selectedSourceIds },
+      { dataset_id: selectedNotebook, question, conversation_id: conversationId || undefined, item_ids: selectedSourceIds },
       (chunk) => { content += chunk; set({ streamContent: content }); },
-      (refs) => {
+      (refs, nextConversationId) => {
         const final = [...newMessages, { role: "assistant" as const, content, references: refs }];
-        set({ messages: final, streaming: false, streamContent: "" });
+        set({ messages: final, streaming: false, streamContent: "", conversationId: nextConversationId ?? conversationId });
         localStorage.setItem(`rag-messages-${selectedNotebook}`, JSON.stringify(final));
       },
       (err) => {

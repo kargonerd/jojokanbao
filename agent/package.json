@@ -6,7 +6,10 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./edgeone/credential-admin": "./src/edgeone/credential-admin.ts",
+    "./edgeone/proxy": "./src/edgeone/proxy.ts",
+    "./edgeone/service-auth": "./src/edgeone/service-auth.ts"
   },
   "engines": {
     "node": ">=22.19.0"
@@ -15,10 +18,13 @@
     "auth:codex": "pi-ai login openai-codex",
     "credentials:push": "tsx src/edgeone/push-credential.ts",
     "smoke": "tsx src/smoke.ts",
+    "rag:smoke": "tsx src/rag-smoke.ts",
+    "content:smoke": "tsx src/content-smoke.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@jojo/content": "workspace:*",
     "@earendil-works/pi-agent-core": "0.80.10",
     "@earendil-works/pi-ai": "0.80.10"
   },

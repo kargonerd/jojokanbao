@@ -1,6 +1,7 @@
 import sys
 import tempfile
 import unittest
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -54,6 +55,35 @@ class WorkspaceRoutesTest(unittest.TestCase):
         response = self.client.get("/api/health")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["status"], "ok")
+
+    def test_content_import_path_accepts_epub_and_kindle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("book.json", "book.epub", "book.azw", "ignore.txt"):
+                (root / name).write_bytes(b"test")
+            with patch("content_routes._new_job", return_value={"jobId": "test"}) as create:
+                response = self.client.post("/api/content/import-paths", json={"paths": [directory]})
+
+        self.assertEqual(response.status_code, 200)
+        suffixes = {Path(value).suffix for value in create.call_args.args[0]}
+        self.assertEqual(suffixes, {".json", ".epub", ".azw"})
+
+    def test_content_browser_upload_preserves_ebook_suffix(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with (
+                patch("content_routes.RUNTIME", Path(directory)),
+                patch("content_routes._new_job", return_value={"jobId": "test"}) as create,
+            ):
+                response = self.client.post("/api/content/import-files", data={
+                    "files": [
+                        (BytesIO(b"epub"), "example.epub"),
+                        (BytesIO(b"mobi"), "example.mobi"),
+                    ],
+                }, content_type="multipart/form-data")
+
+        self.assertEqual(response.status_code, 200)
+        suffixes = [Path(value).suffix for value in create.call_args.args[0]]
+        self.assertEqual(suffixes, [".epub", ".mobi"])
 
     def test_progress_contract_exposes_results_for_react_workflow(self):
         task_id = "workspace-contract-test"

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@jojo/auth": "workspace:*",
+    "@jojo/content": "workspace:*",
     "@jojo/pdf-viewer": "workspace:*",
     "@jojo/ui": "workspace:*",
     "axios": "^1.7.0",

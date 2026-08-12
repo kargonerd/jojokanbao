@@ -3,6 +3,7 @@ import { WorkbenchShell } from "./components/WorkbenchShell";
 import { OverviewPage } from "./pages/OverviewPage";
 import { PdfDataPage } from "./pages/PdfDataPage";
 import { EsDataPage } from "./pages/EsDataPage";
+import { ContentDataPage } from "./pages/ContentDataPage";
 
 export function App() {
   return (
@@ -12,6 +13,7 @@ export function App() {
           <Route index element={<OverviewPage />} />
           <Route path="pdf" element={<PdfDataPage />} />
           <Route path="es" element={<EsDataPage />} />
+          <Route path="content" element={<ContentDataPage />} />
           <Route path="es-repair" element={<Navigate replace to="/es" />} />
         </Route>
       </Routes>

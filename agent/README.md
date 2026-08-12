@@ -12,8 +12,8 @@ pi-agent-core / Agent
 @jojo/agent
 └── JOJO 事件格式、预算、token/cost 和 Codex 模型配置
 
-applications.ts
-└── RAG、Olds 的占位提示词和空工具列表
+applications.ts / rag-tools.ts
+└── RAG 提示词，以及搜索、读片段、按需扫描整本三个工具
 ```
 
 这里使用 `pi-agent-core` 的高层 `Agent`，不使用 `pi-coding-agent`，也不自行
@@ -67,3 +67,31 @@ const result = await runPlatformAgent({
 ```
 
 返回值包含聚合后的 token、Pi 成本估算、执行时间、轮次和工具调用数。
+
+## 馆藏 RAG 工具
+
+- `search_content`：查询 ES，返回可追溯的 Manifest/Fragment 路径。
+- `read_fragment`：从 CDN 解码一个完整章节或文章，默认优先使用。
+- `inspect_item`：考虑扫描全本时只读取小型 Manifest，返回章节数、字符数、预计处理量和
+  预算以及目录预览，不读取正文；Agent 据此决定下一步。
+- `list_item_toc`：分页查看完整层级目录，并返回每个可读目录项对应的 `fragmentObject`；
+  Agent 可以先看目录、选择章节，再调用 `read_fragment`。
+- `scan_full_item`：仅在跨章归纳、全书统计或证据不足时下载整个 Item 到工具侧扫描；受
+  32 MiB 默认解码后内容预算限制，只返回统计和少量命中证据。实际 CDN 传输字节数在扫描
+  结果的 `downloadedBytes` 中报告，通常小于保守的预计处理量。
+
+部署设置 `JOJO_CONTENT_SEARCH_URL` 和 `JOJO_CONTENT_CDN_BASE`。不调用模型也可以验证真实
+ES/CDN 工具链：
+
+```powershell
+$env:JOJO_CONTENT_SEARCH_URL="http://127.0.0.1:9000/content/search"
+$env:JOJO_CONTENT_CDN_BASE="https://blacknews.jojokanbao.cn/"
+$env:JOJO_CONTENT_SMOKE_FULL_SCAN="true"
+pnpm --filter @jojo/agent content:smoke -- "童年时代"
+```
+
+模型、ES 搜索和 B2/CDN 阅读的组合验证：
+
+```powershell
+pnpm --filter @jojo/agent rag:smoke -- "《毛泽东自述》的童年时代主要讲了什么？"
+```

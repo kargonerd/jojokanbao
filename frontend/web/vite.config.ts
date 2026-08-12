@@ -23,5 +23,14 @@ export default defineConfig({
     }),
   ],
   resolve: { alias: { "@": resolve(__dirname, "src") } },
-  server: { port: 8080 },
+  server: {
+    port: 8080,
+    proxy: {
+      "/content-cdn": {
+        target: "http://127.0.0.1:8765",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/content-cdn/, ""),
+      },
+    },
+  },
 });
