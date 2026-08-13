@@ -16,6 +16,7 @@ on:
           - HQ
           - SJZS
           - content-catalog
+          - book-content
 
 permissions:
   contents: read
@@ -41,6 +42,14 @@ jobs:
           if [ "${{ inputs.collection }}" = "content-catalog" ]; then
             node tools/archive-pdf/purge-cache.mjs \
               "https://blacknews.jojokanbao.cn/catalog.jox"
+            exit 0
+          fi
+
+          if [ "${{ inputs.collection }}" = "book-content" ]; then
+            node tools/archive-pdf/purge-cache.mjs \
+              --type purge_prefix \
+              --method invalidate \
+              "https://blacknews.jojokanbao.cn/content/books/"
             exit 0
           fi
 
