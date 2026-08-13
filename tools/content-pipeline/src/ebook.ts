@@ -346,6 +346,12 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
         internalLinkErrors.push({ file: part.entry.file, reference, error: "EPUB 内链编码无效" });
         return;
       }
+      const epubTypes = (current.attr("epub:type") ?? current.attr("role") ?? "").split(/\s+/);
+      if (epubTypes.includes("backlink") || epubTypes.includes("doc-backlink") || /^(?:back|backlink)[_-]/i.test(resolved.anchor ?? "")) {
+        current.replaceWith(current.contents());
+        internalLinkCount -= 1;
+        return;
+      }
       const targetId = chapterIds.get(resolved.file);
       if (!targetId) {
         internalLinkErrors.push({ file: part.entry.file, reference, error: "EPUB 内链目标不在正文 spine 中" });
