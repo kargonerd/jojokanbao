@@ -50,9 +50,11 @@ jobs:
 
       - name: Build web
         env:
-          # Keep unfinished modules out of the public route table until an explicit rollout change.
+          # Reader/RAG and account are part of the public Web rollout. The
+          # content access field remains a soft login gate per Item.
           VITE_ENABLE_OLDS: "false"
-          VITE_ENABLE_RAG: "false"
+          VITE_ENABLE_RAG: "true"
+          VITE_ENABLE_ACCOUNT: "true"
           VITE_RAG_API_BASE: ${{ vars.VITE_RAG_API_BASE }}
           VITE_OLDS_API_BASE: ${{ vars.VITE_OLDS_API_BASE }}
         run: pnpm --filter @jojo/web build
