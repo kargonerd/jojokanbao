@@ -41,8 +41,9 @@ function chapterXhtml(
     body = body.replace(expression, (_whole, attributes: string, inner: string) => {
       const caption = inner.match(/<figcaption>([\s\S]*?)<\/figcaption>/i)?.[1] ?? "";
       const width = attributes.match(/\bdata-width=["'](\d{1,3})["']/i)?.[1];
-      const role = attributes.match(/\bdata-role=["'](signature)["']/i)?.[1];
-      return `<figure${width ? ` data-width="${width}"` : ""}${role ? ` data-role="${role}"` : ""}><img src="../${escapeXml(asset.path)}" alt="${escapeXml(asset.alt ?? "")}"/>${caption ? `<figcaption>${caption}</figcaption>` : ""}</figure>`;
+      const role = attributes.match(/\bdata-role=["'](signature|cover|full-width|table-image)["']/i)?.[1];
+      const alt = asset.alt ?? (role === "cover" ? "封面" : role === "table-image" ? "表格" : "");
+      return `<figure${width ? ` data-width="${width}"` : ""}${role ? ` data-role="${role}"` : ""}><img src="../${escapeXml(asset.path)}" alt="${escapeXml(alt)}"/>${caption ? `<figcaption>${caption}</figcaption>` : ""}</figure>`;
     });
     const inlineExpression = new RegExp(
       `<span[^>]*\\bdata-asset-id=["']${assetId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["'][^>]*><\\/span>`,
@@ -75,6 +76,9 @@ blockquote{margin:1em 1.5em;font-family:serif}
 [data-role="poem"]{margin-left:2em;text-align:left;white-space:pre-wrap}
 [data-role="translation"]{opacity:.82}
 [data-role="note"]{font-size:.86em;line-height:1.7;text-indent:0}
+[data-role="annotation"]{margin-left:1.5em;font-size:.9em;text-indent:0}
+[data-role="salutation"]{text-indent:0}
+[data-role="attribution"]{text-align:right;text-indent:0}
 [data-role="subheading"]{font-weight:bold}
 [data-role="aside"]{margin:1em 0;padding:.6em 1em;border-left:2px solid #8b1a1a}
 [data-role="highlight"]{padding:.05em .16em;background:#f3eaea}
@@ -83,6 +87,10 @@ blockquote{margin:1em 1.5em;font-family:serif}
 [data-font="fang-song"]{font-family:FangSong,STFangsong,serif}
 [data-size="small"]{font-size:.82em}
 figure[data-role="signature"]{margin-left:auto}
+figure[data-role="cover"]{width:72%;max-width:28em;margin-left:auto;margin-right:auto}
+figure[data-role="cover"] img,figure[data-role="full-width"] img,figure[data-role="table-image"] img{width:100%;height:auto}
+figure[data-role="full-width"],figure[data-role="table-image"]{width:100%;max-width:100%}
+[data-break-before="page"]{break-before:page;page-break-before:always}
 figure[data-width="30"]{max-width:30%}figure[data-width="40"]{max-width:40%}figure[data-width="50"]{max-width:50%}
 figure[data-width="60"]{max-width:60%}figure[data-width="70"]{max-width:70%}figure[data-width="80"]{max-width:80%}
 .jojo-inline-image{display:inline-block;width:auto;height:1em;margin:0 .1em;vertical-align:-.08em}

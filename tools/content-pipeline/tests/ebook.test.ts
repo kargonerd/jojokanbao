@@ -33,8 +33,9 @@ describe("Kindle PalmDOC decoding", () => {
           body: {
             format: "html",
             profile: "jojo-semantic-html/1",
-            value: `<p data-role="poem" data-indent="none">甲<span data-asset-id="asset:glyph" data-role="inline-image"></span>乙</p>
-              <figure data-asset-id="asset:glyph" data-width="70"><figcaption>图一</figcaption></figure>`,
+            value: `<p data-role="poem" data-indent="none" data-break-before="page">甲<span data-asset-id="asset:glyph" data-role="inline-image"></span>乙</p>
+              <figure data-asset-id="asset:glyph" data-width="70"><figcaption>图一</figcaption></figure>
+              <figure data-asset-id="asset:glyph" data-role="cover"></figure>`,
           },
           assetRefs: ["asset:glyph"],
         }],
@@ -56,7 +57,9 @@ describe("Kindle PalmDOC decoding", () => {
       const chapter = await epub.file("OEBPS/chapters/chapter-0001.xhtml")!.async("string");
       expect(chapter).toContain('<img class="jojo-inline-image" src="../assets/glyph.png" alt="符号"/>');
       expect(chapter).toContain('<figure data-width="70"><img src="../assets/glyph.png" alt="符号"/><figcaption>图一</figcaption></figure>');
+      expect(chapter).toContain('<figure data-role="cover"><img src="../assets/glyph.png" alt="符号"/></figure>');
       expect(chapter).toContain('[data-role="poem"]');
+      expect(chapter).toContain('[data-break-before="page"]');
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

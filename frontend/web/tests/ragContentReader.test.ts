@@ -41,15 +41,19 @@ describe("RAG content Reader annotations", () => {
         format: "html",
         profile: "jojo-semantic-html/1",
         value: `<p data-indent="none">甲<span data-asset-id="asset:glyph" data-role="inline-image"></span>乙</p>
-          <figure data-asset-id="asset:photo" data-width="70"><figcaption>图一</figcaption></figure>`,
+          <figure data-asset-id="asset:photo" data-width="70"><figcaption>图一</figcaption></figure>
+          <figure data-asset-id="asset:cover" data-role="cover"></figure>
+          <figure data-asset-id="asset:table" data-role="table-image"></figure>`,
       },
-      assetRefs: ["asset:glyph", "asset:photo"],
+      assetRefs: ["asset:glyph", "asset:photo", "asset:cover", "asset:table"],
       annotations: [],
     };
 
     const document = new DOMParser().parseFromString(renderedBody(fragment, {
       "asset:glyph": "blob:glyph",
       "asset:photo": "blob:photo",
+      "asset:cover": "blob:cover",
+      "asset:table": "blob:table",
     }), "text/html");
     const inline = document.querySelector('span[data-role="inline-image"]');
     expect(inline?.previousSibling?.textContent).toBe("甲");
@@ -59,6 +63,8 @@ describe("RAG content Reader annotations", () => {
     expect(figure?.querySelector("img")?.src).toContain("blob:photo");
     expect(figure?.getAttribute("style")).toContain("max-width: 70%");
     expect(figure?.querySelector("figcaption")?.textContent).toBe("图一");
+    expect(document.querySelector('figure[data-role="cover"] img')?.getAttribute("alt")).toBe("封面");
+    expect(document.querySelector('figure[data-role="table-image"] img')?.getAttribute("alt")).toBe("表格");
   });
 
   it("preserves source blank paragraphs and line breaks as book layout", () => {

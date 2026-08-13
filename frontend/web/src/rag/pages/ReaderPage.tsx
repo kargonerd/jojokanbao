@@ -144,7 +144,9 @@ export function renderedBody(fragment: JojoFragment, assetUrls: Record<string, s
       placeholder.append(image);
       continue;
     }
-    image.alt = placeholder.querySelector("figcaption")?.textContent || "正文图片";
+    const role = placeholder.getAttribute("data-role");
+    image.alt = placeholder.querySelector("figcaption")?.textContent
+      || (role === "cover" ? "封面" : role === "table-image" ? "表格" : "正文图片");
     const width = Number(placeholder.getAttribute("data-width"));
     if (Number.isInteger(width) && width >= 10 && width <= 100) {
       (placeholder as HTMLElement).style.maxWidth = `${width}%`;

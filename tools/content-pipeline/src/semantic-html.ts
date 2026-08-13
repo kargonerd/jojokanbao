@@ -13,23 +13,35 @@ const ALLOWED_TAGS = [
   "blockquote", "ol", "ul", "li", "strong", "em", "sup", "sub", "u", "s", "q",
   "a", "br", "hr", "figure", "figcaption", "span",
 ];
+const NON_VOID_SEMANTIC_TAGS = [
+  "p", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "ol", "ul", "li",
+  "strong", "em", "sup", "sub", "u", "s", "q", "a", "figure", "figcaption", "span",
+].join("|");
 
 const ALIGNABLE_TAGS = "p,h1,h2,h3,h4,h5,h6,blockquote,li,figure,figcaption";
 const SEMANTIC_ALIGNMENTS = new Set(["left", "center", "right"]);
 const NOTE_CLASSES = new Set(["content-k", "content-kt", "content-l"]);
+const NOTE_DEFINITION_CLASS = /^(?:content[-_](?:k|kt|l)|fncontent(?:[-_].*)?)$/i;
 const CAPTION_CLASSES = new Set(["imgtitle", "imgdescript", "tuti"]);
-const IMAGE_CONTAINER_CLASSES = new Set(["bodypic", "qrbodypic", "chatu_img", "pic"]);
+const IMAGE_CONTAINER_CLASS = /^(?:bodypic\d*|qrbodypic\d*|bodpic\d*|chatu_img\d*|pic)$/i;
 const INLINE_IMAGE_CLASS = /^(?:h|s)-pic\d*$/i;
+const FULL_WIDTH_IMAGE_CLASS = /^(?:qqreader-fullimg|bleed[-_]?pic\d*)$/i;
+const TABLE_IMAGE_CLASS = /^(?:pic[-_]?table|table[-_]?pic)$/i;
+const COVER_CLASS = /^frontcover$/i;
+const SUBHEADING_CLASS = /^(?:title|subhead|content-title|content[-_]b)$/i;
 const CENTER_CLASSES = /^(?:center|content[-_]?c\d*|contentcr\d*|newcontentcr\d*)$/i;
 const RIGHT_CLASSES = /^(?:content[-_]?r|subhead)$/i;
+const SHORT_ALIGNMENT_CLASS = /^(?:title|bodycontent(?:[-_]\d+)?)[-_]([clr])$/i;
 const NO_INDENT_CLASS = /(?:^|[-_])noindent(?:$|[-_])|^content3(?:\d+|_\d+)?$|^content31$/i;
 const POEM_CLASS = /(?:^|[-_])poem(?:$|[-_])|^poemcontent/i;
 const SEMANTIC_ROLES = new Set([
-  "aside", "caption", "highlight", "image-container", "inline-image", "note", "poem",
-  "signature", "subheading", "translation",
+  "annotation", "aside", "attribution", "caption", "cover", "full-width", "highlight",
+  "image-container", "inline-image", "letter", "note", "poem", "salutation", "signature",
+  "subheading", "table-image", "translation",
 ]);
 const SEMANTIC_FONTS = new Set(["kai", "fang-song"]);
 const SEMANTIC_SIZES = new Set(["small"]);
+const SEMANTIC_BREAKS = new Set(["page"]);
 
 type SemanticTag = "strong" | "em" | "sup" | "sub" | "u" | "s" | "q" | "blockquote" | "h4";
 
@@ -63,7 +75,7 @@ function semanticTag(classes: string[], currentTag: string): SemanticTag | undef
 function semanticFont(classes: string[]): string | undefined {
   const normalized = classes.map((className) => className.toLowerCase());
   if (normalized.some((className) => (
-    className === "kaiti"
+    className.includes("kaiti")
     || className.startsWith("kt_")
     || NOTE_CLASSES.has(className)
     || className.startsWith("quotation")
@@ -123,6 +135,10 @@ function unwrapInvalidBlockSpans($: cheerio.CheerioAPI): void {
  * titles, so WeRead HTML and EPUB XHTML pass through the same path.
  */
 function preserveSourceSemantics($: cheerio.CheerioAPI): void {
+  // EPUB commonly uses the older presentational spellings. JOJO keeps one
+  // source-independent spelling for each meaning.
+  $("b").each((_index, element) => renameElement(element, "strong"));
+  $("i").each((_index, element) => renameElement(element, "em"));
   unwrapInvalidBlockSpans($);
   $("*").each((_index, element) => {
     const current = $(element);
@@ -133,11 +149,15 @@ function preserveSourceSemantics($: cheerio.CheerioAPI): void {
     const explicitFont = current.attr("data-font")?.toLowerCase();
     const explicitWidth = Number(current.attr("data-width"));
     const explicitSize = current.attr("data-size")?.toLowerCase();
-    current.removeAttr("data-role data-indent data-font data-width data-size");
+    const explicitBreakBefore = current.attr("data-break-before")?.toLowerCase();
+    current.removeAttr("data-role data-indent data-font data-width data-size data-break-before");
     if (explicitRole && SEMANTIC_ROLES.has(explicitRole)) current.attr("data-role", explicitRole);
     if (explicitIndent === "none") current.attr("data-indent", "none");
     if (explicitFont && SEMANTIC_FONTS.has(explicitFont)) current.attr("data-font", explicitFont);
     if (explicitSize && SEMANTIC_SIZES.has(explicitSize)) current.attr("data-size", explicitSize);
+    if (explicitBreakBefore && SEMANTIC_BREAKS.has(explicitBreakBefore)) {
+      current.attr("data-break-before", explicitBreakBefore);
+    }
     if (Number.isInteger(explicitWidth) && explicitWidth >= 10 && explicitWidth <= 100) {
       current.attr("data-width", String(explicitWidth));
     }
@@ -145,12 +165,23 @@ function preserveSourceSemantics($: cheerio.CheerioAPI): void {
     if (replacement) renameElement(element, replacement);
 
     const normalized = classes.map((className) => className.toLowerCase());
-    if (normalized.some((className) => NOTE_CLASSES.has(className))) {
-      current.attr("data-role", "note").attr("data-indent", "none");
+    if (normalized.some((className) => NOTE_DEFINITION_CLASS.test(className))) {
+      current
+        .attr("data-role", "note")
+        .attr("data-indent", "none")
+        // Internal import hint. It is intentionally absent from the final
+        // semantic HTML allowlist.
+        .attr("data-source-note-definition", "true");
     } else if (normalized.some((className) => CAPTION_CLASSES.has(className))) {
       current.attr("data-role", "caption").attr("data-indent", "none");
-    } else if (normalized.some((className) => IMAGE_CONTAINER_CLASSES.has(className))) {
+    } else if (normalized.some((className) => IMAGE_CONTAINER_CLASS.test(className))) {
       current.attr("data-role", "image-container");
+    } else if (normalized.some((className) => COVER_CLASS.test(className))) {
+      current.attr("data-role", "cover").attr("data-indent", "none");
+    } else if (normalized.some((className) => FULL_WIDTH_IMAGE_CLASS.test(className))) {
+      current.attr("data-role", "full-width").attr("data-indent", "none");
+    } else if (normalized.some((className) => TABLE_IMAGE_CLASS.test(className))) {
+      current.attr("data-role", "table-image").attr("data-indent", "none");
     } else if (normalized.some((className) => POEM_CLASS.test(className))) {
       current.attr("data-role", "poem").attr("data-indent", "none");
     } else if (normalized.includes("wr-translation")) {
@@ -158,8 +189,18 @@ function preserveSourceSemantics($: cheerio.CheerioAPI): void {
     } else if (normalized.some((className) => /^(?:border|bordered-box|textborder|bgcolor(?:-\d+)?)$/i.test(className))) {
       current.attr("data-role", tagName === "span" ? "highlight" : "aside");
       if (tagName === "div") renameElement(element, "blockquote");
-    } else if (normalized.includes("title") || normalized.includes("subhead") || normalized.includes("content-title")) {
+    } else if (normalized.some((className) => SUBHEADING_CLASS.test(className))) {
       current.attr("data-role", "subheading").attr("data-indent", "none");
+    } else if (normalized.includes("content-0")) {
+      current.attr("data-role", "subheading").attr("data-align", "center").attr("data-indent", "none");
+    } else if (normalized.includes("author")) {
+      current.attr("data-role", "attribution").attr("data-align", "right").attr("data-indent", "none");
+    } else if (normalized.includes("letters")) {
+      current.attr("data-role", "salutation").attr("data-indent", "none");
+    } else if (normalized.includes("text-letters")) {
+      current.attr("data-role", "letter");
+    } else if (normalized.includes("biaozhu")) {
+      current.attr("data-role", "annotation").attr("data-indent", "none");
     }
 
     if (normalized.some((className) => NO_INDENT_CLASS.test(className))) current.attr("data-indent", "none");
@@ -170,6 +211,7 @@ function preserveSourceSemantics($: cheerio.CheerioAPI): void {
       current.html(`<u>${current.html() ?? ""}</u>`);
     }
     if (normalized.some((className) => /^signcontent(?:-|$)/.test(className))) current.attr("data-align", "right");
+    if (normalized.includes("force-page-break")) current.attr("data-break-before", "page");
     const width = sourceImageWidth(current);
     if (width) current.attr("data-width", width);
     if (normalized.includes("signimg")) current.attr("data-role", "signature").attr("data-width", width ?? "30");
@@ -197,6 +239,10 @@ function semanticAlignment(current: ReturnType<cheerio.CheerioAPI>): string | un
     if (match?.[1]) return match[1];
     if (CENTER_CLASSES.test(className)) return "center";
     if (RIGHT_CLASSES.test(className)) return "right";
+    const short = className.match(SHORT_ALIGNMENT_CLASS)?.[1]?.toLowerCase();
+    if (short === "c") return "center";
+    if (short === "l") return "left";
+    if (short === "r") return "right";
   }
   return undefined;
 }
@@ -246,7 +292,7 @@ function escapeText(value: string): string {
 
 function meaningfulImageLabel(value: string | undefined): string | null {
   const label = value?.replace(/\s+/g, " ").trim();
-  if (!label || /^(?:image|img|picture|photo|图片|图像|插图)$/i.test(label)) return null;
+  if (!label || /^(?:image|img|picture|photo|cover|table|图片|图像|插图|封面|表格)$/i.test(label)) return null;
   return label;
 }
 
@@ -269,7 +315,7 @@ function textualAnnotations(
   }> = [];
   $("p").each((_index, element) => {
     const text = $(element).text().replace(/\s+/g, " ").trim();
-    const noteParagraph = $(element).attr("data-role") === "note";
+    const noteParagraph = $(element).attr("data-source-note-definition") === "true";
     const match = text.match(noteParagraph
       ? /^(\*+|\[(\d{1,3})\]|〔(\d{1,3})〕|\((\d{1,3})\)|（(\d{1,3})）)\s*(.+)$/s
       : /^(\*+|\[(\d{1,3})\]|〔(\d{1,3})〕)\s*(.+)$/s);
@@ -419,7 +465,10 @@ export function convertWereadChapter(
   // Arbitrary classes and inline CSS are still removed by the sanitizer.
   preserveSourceSemantics($);
   preserveSemanticAlignment($);
-  $("script,iframe,style,link,meta,head").remove();
+  // Some exports put head-only elements directly in body. In XML mode an
+  // empty <title/> later becomes an unclosed HTML RCDATA element and escapes
+  // the remainder of the chapter, so remove it here as well as <head>.
+  $("script,iframe,style,link,meta,title,head").remove();
   const annotations: JojoAnnotation[] = [];
   const assets = new Map<string, JojoCanonicalAsset>();
   let numberedAnnotationCount = 0;
@@ -506,14 +555,27 @@ export function convertWereadChapter(
       return;
     }
     const inline = sourceInline;
-    const container = current.closest('[data-role="image-container"], [data-role="signature"]').first();
+    const container = current.parents([
+      '[data-role="image-container"]',
+      '[data-role="signature"]',
+      '[data-role="cover"]',
+      '[data-role="full-width"]',
+      '[data-role="table-image"]',
+    ].join(", ")).first();
     const captionElement = container.length
       ? container.find('[data-role="caption"]').first()
       : current.parent().next('[data-role="caption"]').first();
     const caption = meaningfulImageLabel(captionElement.text()) ?? meaningfulImageLabel(current.attr("title"));
     const alt = meaningfulImageLabel(current.attr("alt")) ?? caption;
     const width = sourceImageWidth(current) ?? (container.length ? container.attr("data-width") : undefined);
-    const role = container.attr("data-role") === "signature" ? "signature" : inline ? "inline" : "content";
+    const presentationRole = current.attr("data-role") || container.attr("data-role") || "";
+    const figureRole = presentationRole === "image-container" || presentationRole === "inline-image"
+      ? ""
+      : presentationRole;
+    const role = inline
+      ? "inline"
+      : figureRole === "table-image" ? "table"
+        : figureRole || "content";
     const resolvable = /^(?:https:\/\/|data:)/i.test(sourceUrl);
     if (!resolvable) {
       diagnostics.push({
@@ -546,11 +608,17 @@ export function convertWereadChapter(
     }
     const figure = $(`<figure data-asset-id="${id}"></figure>`);
     if (width) figure.attr("data-width", width);
-    if (role === "signature") figure.attr("data-role", "signature");
-    const displayCaption = caption ?? alt;
+    if (figureRole) figure.attr("data-role", figureRole);
+    const displayCaption = caption ?? (figureRole === "cover" ? null : alt);
     if (displayCaption) figure.append(`<figcaption>${sanitizeHtml(displayCaption, { allowedTags: [] })}</figcaption>`);
     if (container.length && container.find("img").length === 1) {
-      container.replaceWith(figure);
+      // Replace the image at its own position, remove only the caption that
+      // was promoted into figcaption, then unwrap the publisher container.
+      // Some books put meaningful annotation paragraphs beside an image;
+      // replacing the whole container would silently delete that prose.
+      current.replaceWith(figure);
+      captionElement.remove();
+      container.replaceWith(container.contents());
       return;
     }
     captionElement.remove();
@@ -620,19 +688,17 @@ export function convertWereadChapter(
   const bodyHtml = bodies.length
     ? bodies.map((_index, body) => $(body).html() ?? "").get().join("\n")
     : $.root().html() ?? "";
-  // XML serialization shortens an empty semantic marker to <sup/>. HTML
-  // parsers treat that as an opening tag and swallow the following prose.
-  const htmlWithClosedMarkers = bodyHtml.replace(
-    /<sup\b([^>]*data-annotation-id="[^"]+"[^>]*)\/>/g,
-    "<sup$1></sup>",
-  ).replace(
-    /<span\b([^>]*data-role="inline-image"[^>]*)\/>/g,
-    "<span$1></span>",
+  // XML serialization shortens any empty element to <tag/>. HTML only treats
+  // true void elements that way; <figure/>, <p/>, <sup/> and friends would
+  // otherwise swallow every following sibling until an accidental end tag.
+  const htmlWithClosedElements = bodyHtml.replace(
+    new RegExp(`<(${NON_VOID_SEMANTIC_TAGS})\\b([^>]*)\\/>`, "gi"),
+    "<$1$2></$1>",
   );
-  const value = sanitizeHtml(htmlWithClosedMarkers, {
+  const value = sanitizeHtml(htmlWithClosedElements, {
     allowedTags: ALLOWED_TAGS,
     allowedAttributes: {
-      "*": ["id", "data-align", "data-role", "data-indent", "data-font", "data-width", "data-size"],
+      "*": ["id", "data-align", "data-role", "data-indent", "data-font", "data-width", "data-size", "data-break-before"],
       a: ["href"],
       figure: ["data-asset-id"],
       span: ["data-asset-id"],

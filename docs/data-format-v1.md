@@ -496,7 +496,7 @@ strong em sup sub u s q a br hr figure figcaption span
 
 ```text
 id href data-asset-id data-annotation-id data-align
-data-role data-indent data-font data-size data-width
+data-role data-indent data-font data-size data-width data-break-before
 ```
 
 受控属性的取值如下：
@@ -505,12 +505,13 @@ data-role data-indent data-font data-size data-width
 - `data-indent`：当前只允许 `none`，表示原书明确不做首行缩进。
 - `data-font`：`kai`、`fang-song`，仅用于编辑注、诗歌等字体本身承担区分作用的内容。
 - `data-size`：当前只允许 `small`，用于原书明确缩小的题内层级等内容。
-- `data-role`：`aside`、`caption`、`highlight`、`inline-image`、`note`、`poem`、`signature`、`subheading`、`translation`。
+- `data-role`：`annotation`、`aside`、`attribution`、`caption`、`cover`、`full-width`、`highlight`、`inline-image`、`letter`、`note`、`poem`、`salutation`、`signature`、`subheading`、`table-image`、`translation`。
 - `data-width`：`10` 到 `100` 的整数，表示图片相对正文栏宽的百分比；Reader 可以根据屏幕空间进一步收窄。
+- `data-break-before`：当前只允许 `page`，表示来源明确要求在此处另起一页；滚动 Reader 可以忽略，分页 Reader 和 EPUB 导出应遵守。
 
 块级图片使用 `figure[data-asset-id]`，图片说明放在其 `figcaption` 中。嵌在文字或公式中的小图使用空的 `span[data-asset-id][data-role="inline-image"]`，不得提升为独立插图。真实文件统一由 Item 的 `assets` 描述。
 
-导入器应把来源 class 转换为上述 HTML 元素和受控属性，不把来源 class、内联 CSS 或厂商命名写进规范数据。例如粗体转为 `strong`、上下标转为 `sup`/`sub`、块引文转为 `blockquote`、图片说明转为 `figcaption`。禁止脚本、iframe、style、class、事件属性、外部 CSS 和 `javascript:` URL。
+导入器应把来源 class 转换为上述 HTML 元素和受控属性，不把来源 class、内联 CSS 或厂商命名写进规范数据。例如粗体转为 `strong`、上下标转为 `sup`/`sub`、块引文转为 `blockquote`、图片说明转为 `figcaption`，并把封面、全幅图、表格图、书信、署名和显式分页转换成对应的受控语义。脚注定义及其正文标记应转换为 Item 的 `annotations`，不得只保留来源内部链接。禁止脚本、iframe、style、class、事件属性、外部 CSS 和 `javascript:` URL。
 
 ## 5. Delivery
 

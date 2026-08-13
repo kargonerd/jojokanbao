@@ -42,7 +42,7 @@ describe("WeRead semantic HTML", () => {
         <p class="content-right">1935年2月</p>
         <p style="color:red; text-align: center" onclick="evil()">题记</p>
         <p class="copyright" data-align="wide">普通正文<span data-align="right">内文</span></p>
-        <p data-role="evil" data-font="comic" data-size="huge" data-width="999">非法属性</p>
+        <p data-role="evil" data-font="comic" data-size="huge" data-width="999" data-break-before="screen">非法属性</p>
       </body></html>`,
     }, diagnostics);
 
@@ -92,6 +92,43 @@ describe("WeRead semantic HTML", () => {
     expect(diagnostics).toEqual([]);
   });
 
+  it("preserves legacy alignment, typography, document roles, and page breaks", () => {
+    const result = convertWereadChapter({
+      id: "chapter:legacy-semantics",
+      sourceCid: "legacy-semantics",
+      sourceFiles: [],
+      title: "旧版排版",
+      order: 1,
+      level: 1,
+      contentType: "application/xhtml+xml",
+      content: `<html><body>
+        <h1 class="thirdTitle title-c force-page-break">第一章</h1>
+        <h2 class="fourthTitle title-l">第一节</h2>
+        <p class="bodyContent-1-c"><b>一九五八年二月十九日</b></p>
+        <p class="bodyContent-3-kaiti-top-2"><i>楷体来信</i></p>
+        <p class="content-b">内容提要</p><p class="content_b">一、外交方针</p>
+        <p class="content-0">（1901—1904年）</p>
+        <p class="author">署名</p>
+        <p class="letters">同志：</p>
+        <p class="text-letters">书信正文</p>
+        <p class="biaozhu">（A产品在本领域消费）</p>
+      </body></html>`,
+    }, []);
+
+    expect(result.chapter.body.value).toMatch(/<h1 (?=[^>]*data-align="center")(?=[^>]*data-break-before="page")[^>]*>第一章<\/h1>/);
+    expect(result.chapter.body.value).toContain('<h2 data-align="left">第一节</h2>');
+    expect(result.chapter.body.value).toContain('<p data-align="center"><strong>一九五八年二月十九日</strong></p>');
+    expect(result.chapter.body.value).toContain('<p data-font="kai"><em>楷体来信</em></p>');
+    expect(result.chapter.body.value).toContain('<p data-role="subheading" data-indent="none">内容提要</p>');
+    expect(result.chapter.body.value).toContain('<p data-role="subheading" data-indent="none">一、外交方针</p>');
+    expect(result.chapter.body.value).toMatch(/<p (?=[^>]*data-role="subheading")(?=[^>]*data-align="center")(?=[^>]*data-indent="none")[^>]*>（1901—1904年）<\/p>/);
+    expect(result.chapter.body.value).toMatch(/<p (?=[^>]*data-role="attribution")(?=[^>]*data-align="right")(?=[^>]*data-indent="none")[^>]*>署名<\/p>/);
+    expect(result.chapter.body.value).toMatch(/<p (?=[^>]*data-role="salutation")(?=[^>]*data-indent="none")[^>]*>同志：<\/p>/);
+    expect(result.chapter.body.value).toContain('<p data-role="letter">书信正文</p>');
+    expect(result.chapter.body.value).toMatch(/<p (?=[^>]*data-role="annotation")(?=[^>]*data-indent="none")[^>]*>（A产品在本领域消费）<\/p>/);
+    expect(result.chapter.body.value).not.toMatch(/class=|<b>|<i>/);
+  });
+
   it("pairs parenthesized publisher notes without treating ordinary parentheses as notes", () => {
     const diagnostics: Parameters<typeof convertWereadChapter>[1] = [];
     const result = convertWereadChapter({
@@ -114,6 +151,31 @@ describe("WeRead semantic HTML", () => {
     expect(result.chapter.body.value).not.toContain('<a href="#note-1">');
     expect(result.chapter.body.value).toContain("（2）这是正文，不应被移走。");
     expect(result.chapter.body.value).not.toContain("第一条编者注");
+  });
+
+  it("converts fnContent endnotes and their printed markers into annotations", () => {
+    const result = convertWereadChapter({
+      id: "chapter:fncontent",
+      sourceCid: "fncontent",
+      sourceFiles: [],
+      title: "回忆录",
+      order: 1,
+      level: 1,
+      contentType: "application/xhtml+xml",
+      content: `<html><body>
+        <p>派珀<a href="#jz_1_1"><sup>(1)</sup></a>飞机从上空盘旋。</p>
+        <hr/>
+        <p class="fnContent-1-6"><a href="#jzyy_1_1">(1)</a> Piper，美国飞机制造公司名。</p>
+      </body></html>`,
+    }, []);
+
+    expect(result.annotations).toMatchObject([{
+      label: "1",
+      body: { format: "text", value: "Piper，美国飞机制造公司名。" },
+    }]);
+    expect(result.chapter.body.value).toContain("派珀<sup data-annotation-id=");
+    expect(result.chapter.body.value).toContain("</sup>飞机从上空盘旋。");
+    expect(result.chapter.body.value).not.toMatch(/fnContent|jz_1_1|jzyy_1_1|美国飞机制造公司名/);
   });
 
   it("keeps inline glyph images inline and binds image descriptions to figures", () => {
@@ -142,6 +204,58 @@ describe("WeRead semantic HTML", () => {
       ["signature", null],
     ]);
     expect(diagnostics).toEqual([]);
+  });
+
+  it("normalizes cover, full-width, table, and variant image containers", () => {
+    const result = convertWereadChapter({
+      id: "chapter:image-roles",
+      sourceCid: "image-roles",
+      sourceFiles: [],
+      title: "图片语义",
+      order: 1,
+      level: 1,
+      contentType: "application/xhtml+xml",
+      content: `<html><body>
+        <h1 class="frontCover"><img src="https://example.com/cover.jpg" alt="封面"/></h1>
+        <img class="qqreader-fullimg" src="https://example.com/full.jpg"/>
+        <p class="bleed-pic1"><img src="https://example.com/bleed.png"/></p>
+        <p class="pic_table"><img src="https://example.com/table.png" alt="table"/></p>
+        <div class="bodPic"><img src="https://example.com/body.jpg"/><p class="biaozhu">图内标注</p></div>
+        <div class="qrbodyPic1"><img src="https://example.com/variant.jpg"/></div>
+      </body></html>`,
+    }, []);
+
+    expect(result.assets.map((asset) => asset.role)).toEqual([
+      "cover", "full-width", "full-width", "table", "content", "content",
+    ]);
+    expect(result.chapter.body.value.match(/data-role="cover"/g)).toHaveLength(1);
+    expect(result.chapter.body.value.match(/data-role="full-width"/g)).toHaveLength(2);
+    expect(result.chapter.body.value.match(/data-role="table-image"/g)).toHaveLength(1);
+    expect(result.chapter.body.value).toContain('<p data-role="annotation" data-indent="none">图内标注</p>');
+    expect(result.chapter.body.value.match(/<figure/g)).toHaveLength(6);
+    expect(result.chapter.body.value).not.toMatch(/<figure[^>]*>\s*<figure/);
+    expect(result.chapter.body.value).not.toMatch(/class=|<figcaption>(?:封面|table)<\/figcaption>/);
+  });
+
+  it("does not let empty body metadata or empty figures swallow later content", () => {
+    const result = convertWereadChapter({
+      id: "chapter:empty-elements",
+      sourceCid: "empty-elements",
+      sourceFiles: [],
+      title: "空元素",
+      order: 1,
+      level: 1,
+      contentType: "application/xhtml+xml",
+      content: `<html><body><title></title>
+        <img class="qqreader-fullimg" src="https://example.com/full.jpg"/>
+        <p class="biaozhu">第一条标注</p><p class="biaozhu">第二条标注</p>
+      </body></html>`,
+    }, []);
+
+    expect(result.chapter.body.value).toContain('<figure data-asset-id=');
+    expect(result.chapter.body.value).toContain('</figure>');
+    expect(result.chapter.body.value.match(/data-role="annotation"/g)).toHaveLength(2);
+    expect(result.chapter.body.value).not.toContain("&lt;p");
   });
 
   it("keeps every body when an exporter concatenates XHTML files into one chapter", () => {
