@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       collection:
-        description: "PDF collection prefix to purge after a protected migration."
+        description: "Archive PDF prefix or JOJO content catalog to purge."
         required: true
         default: "all"
         type: choice
@@ -15,6 +15,7 @@ on:
           - CKXX
           - HQ
           - SJZS
+          - content-catalog
 
 permissions:
   contents: read
@@ -37,6 +38,12 @@ jobs:
       - name: Purge protected PDF prefixes
         shell: bash
         run: |
+          if [ "${{ inputs.collection }}" = "content-catalog" ]; then
+            node tools/archive-pdf/purge-cache.mjs \
+              "https://blacknews.jojokanbao.cn/catalog.jox"
+            exit 0
+          fi
+
           if [ "${{ inputs.collection }}" = "all" ]; then
             collections=(RMRB RMHB CKXX HQ SJZS)
           else
