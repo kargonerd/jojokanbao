@@ -8,13 +8,16 @@ interface BookAiPanelProps {
   datasetId: string;
   itemId: string;
   initialQuestion?: string;
+  initialAnswer?: string;
+  explanationQuote?: string;
   panelClass: string;
   onClose: () => void;
   onJump: (reference: RagReference) => void;
+  onExplanationComplete?: (quote: string, answer: string) => void;
 }
 
-export function BookAiPanel({ bookTitle, datasetId, itemId, initialQuestion, panelClass, onClose, onJump }: BookAiPanelProps) {
-  const [messages, setMessages] = useState<RagMessage[]>([]);
+export function BookAiPanel({ bookTitle, datasetId, itemId, initialQuestion, initialAnswer, explanationQuote, panelClass, onClose, onJump, onExplanationComplete }: BookAiPanelProps) {
+  const [messages, setMessages] = useState<RagMessage[]>(initialAnswer ? [{ role: "assistant", content: initialAnswer }] : []);
   const [input, setInput] = useState("");
   const [streamContent, setStreamContent] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -44,6 +47,7 @@ export function BookAiPanel({ bookTitle, datasetId, itemId, initialQuestion, pan
         setConversationId(nextConversationId);
         setStreaming(false);
         setStreamContent("");
+        if (explanationQuote && answer) onExplanationComplete?.(explanationQuote, answer);
       },
       (message) => {
         setError(message);

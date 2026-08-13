@@ -13,6 +13,17 @@ import type { RagReference, RagSearchHit } from "../types";
 import { BookAiPanel } from "./BookAiPanel";
 import { BookSearchPanel } from "./BookSearchPanel";
 import "./BookReader.css";
+import {
+  bookshelfContains,
+  loadMarks,
+  popularExplanations,
+  reusableExplanation,
+  saveExplanation,
+  saveMark,
+  setBookshelf,
+  type ReaderMark,
+  type ReusableExplanation,
+} from "../readerData";
 
 export type BookReaderPaperColor = "ivory" | "white" | "dark";
 export type BookReaderMode = "paged" | "scroll";
@@ -136,6 +147,12 @@ export function BookReader({
   const [thoughtOpen, setThoughtOpen] = useState(false);
   const [thought, setThought] = useState("");
   const [aiQuestion, setAiQuestion] = useState<string>();
+  const [aiInitialAnswer, setAiInitialAnswer] = useState<string>();
+  const [aiExplanationQuote, setAiExplanationQuote] = useState<string>();
+  const [marks, setMarks] = useState<ReaderMark[]>([]);
+  const [onBookshelf, setOnBookshelf] = useState(false);
+  const [readerNotice, setReaderNotice] = useState("");
+  const [popular, setPopular] = useState<ReusableExplanation[]>([]);
   const [expandedImage, setExpandedImage] = useState<ExpandedImage>();
   const [readingProgress, setReadingProgress] = useState(0);
   const [columnsPerSpread, setColumnsPerSpread] = useState(() => window.innerWidth >= 900 ? 2 : 1);
@@ -240,6 +257,74 @@ export function BookReader({
     setPageMetrics((current) => ({ ...current, page: 0 }));
     setExpandedImage(undefined);
   }, [chapterKey]);
+
+  useEffect(() => {
+    loadMarks(itemId, activeChapterId).then(setMarks).catch(() => setMarks([]));
+    popularExplanations(itemId, activeChapterId).then(setPopular).catch(() => setPopular([]));
+  }, [activeChapterId, itemId]);
+
+  useEffect(() => {
+    bookshelfContains(itemId).then(setOnBookshelf).catch(() => setOnBookshelf(false));
+  }, [itemId]);
+
+  useEffect(() => {
+    const root = mode === "paged" ? flowRef.current : scrollRef.current;
+    if (!root || contentLoading || !marks.length) return;
+    root.querySelectorAll("mark[data-reader-mark]").forEach((mark) => mark.replaceWith(...mark.childNodes));
+    root.normalize();
+    for (const saved of marks) {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      let match: Text | undefined;
+      while (node) {
+        const text = node.textContent || "";
+        const index = text.indexOf(saved.quote);
+        if (index >= 0 && (!saved.prefix || text.slice(Math.max(0, index - saved.prefix.length), index) === saved.prefix) && (!saved.suffix || text.slice(index + saved.quote.length, index + saved.quote.length + saved.suffix.length) === saved.suffix)) {
+          if (match) { match = undefined; break; }
+          match = node as Text;
+        }
+        node = walker.nextNode();
+      }
+      if (!match) continue;
+      const index = (match.textContent || "").indexOf(saved.quote);
+      const range = document.createRange();
+      range.setStart(match, index); range.setEnd(match, index + saved.quote.length);
+      const marker = document.createElement("mark");
+      marker.dataset.readerMark = saved.id;
+      marker.className = saved.kind === "thought" ? "book-reader-thought-anchor" : "book-reader-user-underline";
+      if (saved.thought) marker.title = saved.thought;
+      range.surroundContents(marker);
+    }
+  }, [contentLoading, marks, mode, pageMetrics.step]);
+
+  useEffect(() => {
+    const root = mode === "paged" ? flowRef.current : scrollRef.current;
+    if (!root || contentLoading || !popular.length) return;
+    for (const explanation of popular) {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node) {
+        const value = node.textContent || "";
+        const index = value.indexOf(explanation.quote);
+        if (index >= 0) {
+          const range = document.createRange();
+          range.setStart(node, index); range.setEnd(node, index + explanation.quote.length);
+          const marker = document.createElement("mark");
+          marker.dataset.readerExplanation = "true";
+          marker.title = `${explanation.count} 位读者查询过，点击查看解释`;
+          marker.addEventListener("click", () => {
+            setAiExplanationQuote(explanation.quote);
+            setAiQuestion(undefined);
+            setAiInitialAnswer(`${explanation.answer}\n\n已有 ${explanation.count} 位读者查询过这段话。`);
+            openPanel("ai");
+          });
+          range.surroundContents(marker);
+          break;
+        }
+        node = walker.nextNode();
+      }
+    }
+  }, [contentLoading, mode, pageMetrics.step, popular]);
 
   useEffect(() => {
     currentPageRef.current = 0;
@@ -473,25 +558,63 @@ export function BookReader({
     setTextSelection(undefined);
   }
 
-  function underlineSelection(): void {
-    // TODO(user-data): persist the quote anchor and underline in the user's reading profile.
-    wrapSelection("book-reader-user-underline");
+  function selectionAnchor() {
+    if (!textSelection) return undefined;
+    const container = textSelection.range.startContainer.textContent || "";
+    const start = textSelection.range.startOffset;
+    return { chapterId: activeChapterId, quote: textSelection.text, prefix: container.slice(Math.max(0, start - 24), start), suffix: container.slice(textSelection.range.endOffset, textSelection.range.endOffset + 24) };
   }
 
-  function saveThought(): void {
+  async function underlineSelection(): Promise<void> {
+    const anchor = selectionAnchor();
+    if (!anchor) return;
+    try {
+      const saved = await saveMark({ ...anchor, datasetId, itemId, kind: "underline" });
+      setMarks((value) => [...value, saved]);
+      wrapSelection("book-reader-user-underline");
+    } catch (reason) { setReaderNotice(reason instanceof Error ? reason.message : String(reason)); }
+  }
+
+  async function saveThought(): Promise<void> {
     if (!thought.trim()) return;
-    // TODO(user-data): persist the anchored thought and sync it across the user's bookshelf.
-    wrapSelection("book-reader-thought-anchor", thought.trim());
-    setThought("");
+    const anchor = selectionAnchor();
+    if (!anchor) return;
+    try {
+      const saved = await saveMark({ ...anchor, datasetId, itemId, kind: "thought", thought: thought.trim() });
+      setMarks((value) => [...value, saved]);
+      wrapSelection("book-reader-thought-anchor", thought.trim());
+      setThought("");
+    } catch (reason) { setReaderNotice(reason instanceof Error ? reason.message : String(reason)); }
   }
 
-  function explainSelection(): void {
+  async function explainSelection(): Promise<void> {
     if (!textSelection) return;
-    // TODO(user-level): aggregate frequently explained phrases and render a subtle reusable explanation marker.
-    setAiQuestion(`请结合《${bookTitle}》的上下文解释这段话：\n\n“${textSelection.text}”`);
+    const quote = textSelection.text;
+    setAiExplanationQuote(quote);
+    setAiInitialAnswer(undefined);
+    try {
+      const reusable = await reusableExplanation(itemId, quote);
+      if (reusable) {
+        setAiQuestion(undefined);
+        setAiInitialAnswer(`${reusable.answer}\n\n已有 ${reusable.count} 位读者查询过这段话。`);
+      } else {
+        await saveExplanation({ datasetId, itemId, chapterId: activeChapterId, quote });
+        setAiQuestion(`请结合《${bookTitle}》的上下文解释这段话：\n\n“${quote}”`);
+      }
+    } catch {
+      setAiQuestion(`请结合《${bookTitle}》的上下文解释这段话：\n\n“${quote}”`);
+    }
     setTextSelection(undefined);
     setThoughtOpen(false);
     openPanel("ai");
+  }
+
+  async function toggleBookshelf(): Promise<void> {
+    try {
+      await setBookshelf({ datasetId, itemId, title: bookTitle, added: !onBookshelf });
+      setOnBookshelf(!onBookshelf);
+      setReaderNotice(onBookshelf ? "已从书架移除" : "已加入书架");
+    } catch (reason) { setReaderNotice(reason instanceof Error ? reason.message : String(reason)); }
   }
 
   function openPanel(panel: "toc" | "search" | "ai"): void {
@@ -550,7 +673,8 @@ export function BookReader({
     <nav data-book-toolbar aria-label="阅读工具" className={`fixed bottom-2 left-2 right-2 z-30 flex gap-1 overflow-x-auto border p-1 backdrop-blur-md md:bottom-auto md:left-auto md:right-5 md:top-1/2 md:-translate-y-1/2 md:flex-col md:gap-2 md:overflow-visible md:border-0 md:p-0 ${chromeClass}`}>
       <button type="button" onClick={() => openPanel("toc")} className={controlClass} aria-label="打开目录" title="目录">目录</button>
       <button type="button" onClick={() => openPanel("search")} className={controlClass} aria-label="搜索全书" title="搜索全书">搜索</button>
-      <button type="button" onClick={() => { setAiQuestion(undefined); openPanel("ai"); }} className={controlClass} aria-label="打开书内 AI" title="书内 AI">AI</button>
+      <button type="button" onClick={() => { setAiQuestion(undefined); setAiInitialAnswer(undefined); setAiExplanationQuote(undefined); openPanel("ai"); }} className={controlClass} aria-label="打开书内 AI" title="书内 AI">AI</button>
+      <button type="button" aria-pressed={onBookshelf} onClick={() => void toggleBookshelf()} className={`${controlClass} ${onBookshelf ? "text-red" : ""}`} aria-label={onBookshelf ? "移出书架" : "加入书架"} title={onBookshelf ? "移出书架" : "加入书架"}>书架</button>
       <button type="button" onClick={() => openTool("font")} className={controlClass} aria-label="调整字号" title="字号">字号</button>
       <button type="button" onClick={() => openTool("color")} className={controlClass} aria-label="选择纸张颜色" title="纸张颜色"><span className={`h-4 w-4 border ${isDark ? "border-white/50 bg-[#202321]" : paperColor === "white" ? "border-[#aaa] bg-white" : "border-[#b8ad96] bg-[#fbfaf6]"}`} aria-hidden="true" /></button>
       <button type="button" aria-pressed={paperTexture} onClick={() => setPaperTexture((value) => !value)} className={`${controlClass} ${paperTexture ? "text-red" : ""}`} aria-label="切换纸张纹理" title={paperTexture ? "关闭纸张纹理" : "开启纸张纹理"}>纹理</button>
@@ -578,7 +702,7 @@ export function BookReader({
 
     {searchOpen && <><button type="button" aria-label="关闭全书搜索" onClick={() => setSearchOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookSearchPanel bookTitle={bookTitle} panelClass={panelClass} onClose={() => setSearchOpen(false)} onJump={locateSearchResult} onSearch={onSearch} /></>}
 
-    {aiOpen && <><button type="button" aria-label="关闭书内 AI" onClick={() => setAiOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookAiPanel key={aiQuestion || "book-ai"} bookTitle={bookTitle} datasetId={datasetId} itemId={itemId} initialQuestion={aiQuestion} panelClass={panelClass} onClose={() => setAiOpen(false)} onJump={locateReference} /></>}
+    {aiOpen && <><button type="button" aria-label="关闭书内 AI" onClick={() => setAiOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookAiPanel key={`${aiQuestion || "book-ai"}:${aiInitialAnswer || ""}`} bookTitle={bookTitle} datasetId={datasetId} itemId={itemId} initialQuestion={aiQuestion} initialAnswer={aiInitialAnswer} explanationQuote={aiExplanationQuote} panelClass={panelClass} onClose={() => setAiOpen(false)} onJump={locateReference} onExplanationComplete={(quote, answer) => void saveExplanation({ datasetId, itemId, chapterId: activeChapterId, quote, answer })} /></>}
 
     {toolPopover && <>
       <button type="button" aria-label="关闭阅读工具" onClick={() => setToolPopover(undefined)} className="fixed inset-0 z-20 border-0 bg-transparent cursor-default" />
@@ -596,15 +720,17 @@ export function BookReader({
     {textSelection && <div className={`book-selection-tools fixed z-[65] -translate-x-1/2 font-sans ${textSelection.above ? "-translate-y-full" : ""}`} style={{ left: textSelection.left, top: textSelection.top }}>
       <div className={`flex border shadow-[3px_6px_20px_rgba(0,0,0,.18)] ${panelClass}`} role="toolbar" aria-label="选中文字工具">
         <button type="button" onClick={() => void copySelection()} className="book-selection-action">复制</button>
-        <button type="button" onClick={underlineSelection} className="book-selection-action">划线</button>
+        <button type="button" onClick={() => void underlineSelection()} className="book-selection-action">划线</button>
         <button type="button" onClick={() => setThoughtOpen((value) => !value)} className="book-selection-action">写想法</button>
-        <button type="button" onClick={explainSelection} className="book-selection-action text-red">AI 解释</button>
+        <button type="button" onClick={() => void explainSelection()} className="book-selection-action text-red">AI 解释</button>
       </div>
       {thoughtOpen && <div className={`mt-1 w-72 border p-3 shadow-[3px_6px_20px_rgba(0,0,0,.16)] ${panelClass}`}>
         <textarea autoFocus value={thought} onChange={(event) => setThought(event.target.value)} placeholder="写下此刻的想法……" rows={3} className="book-thought-input block w-full resize-none border-0 border-b border-rule bg-transparent px-0 py-1 font-serif text-sm leading-6 text-current" />
-        <div className="mt-2 flex justify-end"><button type="button" disabled={!thought.trim()} onClick={saveThought} className="border-0 bg-transparent p-0 text-xs font-bold text-red cursor-pointer disabled:opacity-30">保存</button></div>
+        <div className="mt-2 flex justify-end"><button type="button" disabled={!thought.trim()} onClick={() => void saveThought()} className="border-0 bg-transparent p-0 text-xs font-bold text-red cursor-pointer disabled:opacity-30">保存</button></div>
       </div>}
     </div>}
+
+    {readerNotice && <button type="button" onClick={() => setReaderNotice("")} className={`fixed bottom-20 left-1/2 z-[66] -translate-x-1/2 border px-4 py-2 font-sans text-xs shadow-lg md:bottom-6 ${panelClass}`}>{readerNotice}</button>}
 
     <header className={`relative z-20 h-12 border-b backdrop-blur-md ${chromeClass}`}>
       <div className="mx-auto flex h-full max-w-[1180px] items-center gap-3 px-4 font-sans text-xs md:px-10">
