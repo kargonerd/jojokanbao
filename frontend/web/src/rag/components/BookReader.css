@@ -114,6 +114,14 @@
   background: color-mix(in srgb, var(--color-red) 8%, transparent);
 }
 
+mark[data-reader-explanation] {
+  padding: 0 .06em;
+  border-bottom: 1px dotted currentColor;
+  background: transparent;
+  color: inherit;
+  cursor: help;
+}
+
 .prose-editorial [data-role="caption"] {
   text-align: center;
   text-indent: 0;

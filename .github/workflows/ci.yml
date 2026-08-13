@@ -249,22 +249,18 @@ jobs:
             versions[$version]="$filename"
           done
 
-      - uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf # v2
-        with:
-          version: latest
-
       - name: Start local Supabase database
         working-directory: infrastructure
-        run: supabase db start
+        run: pnpm dlx supabase@2.114.0 db start
 
       - name: Run database tests
         working-directory: infrastructure
-        run: supabase test db
+        run: pnpm dlx supabase@2.114.0 test db
 
       - name: Stop local Supabase database
         if: always()
         working-directory: infrastructure
-        run: supabase stop --no-backup
+        run: pnpm dlx supabase@2.114.0 stop --no-backup
 
   bloomberg-archive-tests:
     name: Bloomberg archive tests
