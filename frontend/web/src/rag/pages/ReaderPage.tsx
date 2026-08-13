@@ -192,6 +192,7 @@ export function ReaderPage() {
   const [activeChapter, setActiveChapter] = useState("");
   const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
   const [focusText, setFocusText] = useState<{ text: string; token: number }>();
+  const [focusAnchorId, setFocusAnchorId] = useState(requestedAnnotation);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -201,9 +202,10 @@ export function ReaderPage() {
     loadItem(datasetId, itemKey).then((value) => {
       setLoaded(value);
       const requested = value.manifest.content.chapters?.find((chapter) => chapter.id === requestedChapter);
+      setFocusAnchorId(requestedAnnotation);
       setActiveChapter(requested?.id || value.manifest.content.chapters?.[0]?.id || "");
     }).catch((reason: Error) => setError(reason.message)).finally(() => setLoading(false));
-  }, [datasetId, itemKey, requestedChapter]);
+  }, [datasetId, itemKey, requestedAnnotation, requestedChapter]);
 
   useEffect(() => {
     if (!loaded || !activeChapter) return;
@@ -285,7 +287,7 @@ export function ReaderPage() {
     toc={tocItems.map((item) => ({ id: item.id, title: item.title, targetId: item.targetId, depth: item.depth }))}
     activeChapterId={activeChapter}
     chapterKey={fragment?.fragmentId ?? activeChapter}
-    focusAnchorId={requestedAnnotation || undefined}
+    focusAnchorId={focusAnchorId || undefined}
     focusText={focusText}
     contentLoading={!fragment}
     error={error}
@@ -293,11 +295,18 @@ export function ReaderPage() {
     onChapterChange={(chapterId) => {
       setFragment(undefined);
       setFocusText(undefined);
+      setFocusAnchorId("");
       setActiveChapter(chapterId);
     }}
     onLocate={(chapterId, text) => {
       const normalizedText = text?.replace(/\s+/g, " ").trim();
       setFocusText(normalizedText ? { text: normalizedText.length > 80 ? normalizedText.slice(0, 36) : normalizedText, token: Date.now() } : undefined);
+      if (chapterId !== activeChapter) setFragment(undefined);
+      setActiveChapter(chapterId);
+    }}
+    onInternalLink={(chapterId, anchorId) => {
+      setFocusText(undefined);
+      setFocusAnchorId(anchorId || "");
       if (chapterId !== activeChapter) setFragment(undefined);
       setActiveChapter(chapterId);
     }}

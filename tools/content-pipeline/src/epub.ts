@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import * as cheerio from "cheerio";
 import JSZip from "jszip";
 import type {
   JojoAnnotation,
@@ -29,8 +30,24 @@ function chapterXhtml(
   chapter: JojoCanonicalChapter,
   annotations: JojoAnnotation[],
   assets: Map<string, JojoCanonicalAsset>,
+  chapterNames: Map<string, string>,
 ): string {
   let body = chapter.body.value;
+  // Parse as HTML here so semantic empty containers such as span/figure are
+  // expanded instead of serialized as XML self-closing elements.
+  const $links = cheerio.load(`<html><body>${body}</body></html>`);
+  $links("a[data-target-id]").each((_index, element) => {
+    const current = $links(element);
+    const targetId = current.attr("data-target-id") ?? "";
+    const targetFile = chapterNames.get(targetId);
+    if (!targetFile) return;
+    const anchorId = current.attr("data-anchor-id");
+    const href = targetId === chapter.id
+      ? (anchorId ? `#${anchorId}` : "#")
+      : `${path.posix.basename(targetFile)}${anchorId ? `#${anchorId}` : ""}`;
+    current.attr("href", href).removeAttr("data-target-id").removeAttr("data-anchor-id");
+  });
+  body = $links("body").html() ?? body;
   for (const assetId of chapter.assetRefs) {
     const asset = assets.get(assetId);
     if (!asset?.path || asset.type !== "image") continue;
@@ -120,7 +137,7 @@ export async function buildEpub(input: {
   );
   const assetMap = new Map(input.assets.map((asset) => [asset.id, asset]));
   for (const chapter of input.chapters) {
-    zip.file(`OEBPS/${chapterNames.get(chapter.id)!}`, chapterXhtml(chapter, input.annotations, assetMap));
+    zip.file(`OEBPS/${chapterNames.get(chapter.id)!}`, chapterXhtml(chapter, input.annotations, assetMap, chapterNames));
   }
   for (const asset of input.assets) {
     if (!asset.path || asset.type !== "image") continue;

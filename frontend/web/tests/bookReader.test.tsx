@@ -28,7 +28,7 @@ describe("BookReader", () => {
     vi.unstubAllGlobals();
   });
 
-  function renderReader(onChapterChange = vi.fn()) {
+  function renderReader(onChapterChange = vi.fn(), onInternalLink = vi.fn()) {
     const view = render(
       <MemoryRouter>
         <BookReader
@@ -47,6 +47,7 @@ describe("BookReader", () => {
           backHref="/rag/chat"
           onChapterChange={onChapterChange}
           onLocate={vi.fn()}
+          onInternalLink={onInternalLink}
           onSearch={vi.fn(async () => [])}
         >
           <h1>第一章</h1>
@@ -57,7 +58,7 @@ describe("BookReader", () => {
         </BookReader>
       </MemoryRouter>,
     );
-    return { ...view, onChapterChange };
+    return { ...view, onChapterChange, onInternalLink };
   }
 
   it("uses a real two-column paged layout on desktop by default", () => {
@@ -109,6 +110,19 @@ describe("BookReader", () => {
     const target = screen.getByText("这是注释。");
     expect(target.getAttribute("data-book-jump-target")).toBe("true");
     expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ behavior: "auto", block: "center" });
+  });
+
+  it("routes imported cross-chapter links through stable chapter and anchor ids", () => {
+    const onInternalLink = vi.fn();
+    const { container } = renderReader(vi.fn(), onInternalLink);
+    const link = document.createElement("a");
+    link.href = "#section-2";
+    link.dataset.targetId = "chapter-2";
+    link.dataset.anchorId = "section-2";
+    link.textContent = "第二章";
+    container.querySelector("[data-book-page-flow]")?.append(link);
+    fireEvent.click(link);
+    expect(onInternalLink).toHaveBeenCalledWith("chapter-2", "section-2");
   });
 
   it("turns into the next chapter with the right arrow at the final spread", () => {

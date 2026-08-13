@@ -54,6 +54,14 @@ function zipPath(baseFile: string, reference: string): { file: string; anchor?: 
   return { file: file.replace(/^\.\//, ""), ...(anchor ? { anchor: decodeURIComponent(anchor) } : {}) };
 }
 
+function epubLinkTarget(baseFile: string, reference: string): { file: string; anchor?: string } {
+  if (reference.startsWith("#")) {
+    const anchor = reference.slice(1);
+    return { file: baseFile, ...(anchor ? { anchor: decodeURIComponent(anchor) } : {}) };
+  }
+  return zipPath(baseFile, reference);
+}
+
 function xmlValue($: cheerio.CheerioAPI, localName: string): string {
   const match = $("*").filter((_index, element) => (
     element.type === "tag" && element.name.toLowerCase().split(":").at(-1) === localName.toLowerCase()
@@ -308,6 +316,63 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
       chapterIds.set(part.entry.file, id);
       sourceAnchors.set(part.entry.file, `epub-source-${shortHash(part.entry.file)}`);
     }
+  });
+
+  const internalLinkErrors: Array<Record<string, unknown>> = [];
+  const sourceDocumentAnchors = new Map(decodedSpine.map((part) => {
+    const $ = cheerio.load(`<html><body>${part.bodyHtml}</body></html>`, { xmlMode: true });
+    return [part.entry.file, new Set($("[id],a[name]").map((_index, element) => (
+      $(element).attr("id") ?? $(element).attr("name") ?? ""
+    )).get().filter(Boolean))] as const;
+  }));
+  let internalLinkCount = 0;
+  let resolvedInternalLinkCount = 0;
+  for (const part of decodedSpine) {
+    const $ = cheerio.load(`<html><body>${part.bodyHtml}</body></html>`, { xmlMode: true });
+    $("a[name]:not([id])").each((_index, element) => {
+      const current = $(element);
+      const name = current.attr("name");
+      if (name) current.attr("id", name);
+    });
+    $("a[href]").each((_index, element) => {
+      const current = $(element);
+      const reference = current.attr("href")?.trim();
+      if (!reference || /^(?:https?:|mailto:)/i.test(reference)) return;
+      internalLinkCount += 1;
+      let resolved: { file: string; anchor?: string };
+      try {
+        resolved = epubLinkTarget(part.entry.file, reference);
+      } catch {
+        internalLinkErrors.push({ file: part.entry.file, reference, error: "EPUB 内链编码无效" });
+        return;
+      }
+      const targetId = chapterIds.get(resolved.file);
+      if (!targetId) {
+        internalLinkErrors.push({ file: part.entry.file, reference, error: "EPUB 内链目标不在正文 spine 中" });
+        return;
+      }
+      if (resolved.anchor && !sourceDocumentAnchors.get(resolved.file)?.has(resolved.anchor)) {
+        internalLinkErrors.push({ file: part.entry.file, reference, error: "EPUB 内链锚点不存在" });
+        return;
+      }
+      const anchorId = resolved.anchor
+        ?? (shouldCoalesce ? sourceAnchors.get(resolved.file) : undefined);
+      current.attr("href", anchorId ? `#${anchorId}` : "#");
+      current.attr("data-target-id", targetId);
+      if (anchorId) current.attr("data-anchor-id", anchorId);
+      else current.removeAttr("data-anchor-id");
+      resolvedInternalLinkCount += 1;
+    });
+    part.bodyHtml = $("body").html() ?? "";
+    part.content = `<html><body>${part.bodyHtml}</body></html>`;
+  }
+
+  boundaries.forEach((start, index) => {
+    const end = boundaries[index + 1] ?? decodedSpine.length;
+    const group = decodedSpine.slice(start, end);
+    const first = group[0];
+    if (!first) return;
+    const id = chapterIds.get(first.entry.file)!;
     chapters.push({
       id,
       sourceCid: first.entry.id,
@@ -360,6 +425,8 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
     sourceFormat: "epub",
     sourceDetails: {
       packagePath: opfFile,
+      internalLinks: internalLinkCount,
+      resolvedInternalLinks: resolvedInternalLinkCount,
       ...(shouldCoalesce || footnoteOnlyFiles.size > 0
         ? { spineFiles: spine.length, logicalChapters: chapters.length, footnoteFiles: footnoteOnlyFiles.size }
         : {}),
@@ -396,7 +463,7 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
       matchedChapterRecords: spine.length - missingSpineFiles.size,
       decodedChapterRecords: chapters.length,
       failedChapterRecords: errors.length,
-      errors,
+      errors: [...errors, ...internalLinkErrors],
     },
   };
 }
@@ -539,10 +606,46 @@ async function decodeMobi(sourcePath: string, source: Uint8Array, format: Exclud
   });
   entries.sort((left, right) => left.target - right.target);
   if (entries.length === 0) entries.push({ title: exthText(recordsExth, 503) || "正文", target: 0, level: 1 });
+  const chapterIds = entries.map((entry) => `chapter:${shortHash(`${entry.target}:${entry.title}`)}`);
+  const mobiLinkTargets = new Set<number>();
+  const $bodyLinks = cheerio.load(decoder.decode(textBytes.subarray(0, Math.min(tocOffset, textBytes.length))));
+  $bodyLinks("a[filepos]").each((_index, element) => {
+    const target = Number($bodyLinks(element).attr("filepos"));
+    if (Number.isSafeInteger(target) && target >= 0 && target < tocOffset) mobiLinkTargets.add(target);
+  });
+  const chapterForOffset = (target: number): number => {
+    let result = 0;
+    for (let index = 1; index < entries.length && entries[index]!.target <= target; index += 1) result = index;
+    return result;
+  };
+  const decodeFragmentWithAnchors = (start: number, end: number): string => {
+    const targets = [...mobiLinkTargets].filter((target) => target >= start && target < end).sort((left, right) => left - right);
+    let cursor = start;
+    let result = "";
+    for (const target of targets) {
+      result += decoder.decode(textBytes.subarray(cursor, target));
+      result += `<span id="mobi-filepos-${target}"></span>`;
+      cursor = target;
+    }
+    return result + decoder.decode(textBytes.subarray(cursor, end));
+  };
+  let resolvedInternalLinkCount = 0;
   const chapters: DecodedWereadChapter[] = entries.map((entry, index) => {
     const end = entries[index + 1]?.target ?? Math.min(tocOffset, textBytes.length);
-    const fragment = decoder.decode(textBytes.subarray(entry.target, end));
+    const fragment = decodeFragmentWithAnchors(entry.target, end);
     const $ = cheerio.load(`<html><body>${fragment}</body></html>`);
+    $("a[filepos]").each((_linkIndex, element) => {
+      const current = $(element);
+      const target = Number(current.attr("filepos"));
+      if (!Number.isSafeInteger(target) || !mobiLinkTargets.has(target)) return;
+      const targetChapterIndex = chapterForOffset(target);
+      const anchorId = `mobi-filepos-${target}`;
+      current.attr("href", `#${anchorId}`);
+      current.attr("data-target-id", chapterIds[targetChapterIndex]!);
+      current.attr("data-anchor-id", anchorId);
+      current.removeAttr("filepos");
+      resolvedInternalLinkCount += 1;
+    });
     $("img[recindex]").each((_imageIndex, element) => {
       const current = $(element);
       const url = imageUrls.get(Number(current.attr("recindex")));
@@ -550,7 +653,7 @@ async function decodeMobi(sourcePath: string, source: Uint8Array, format: Exclud
       current.removeAttr("recindex");
     });
     return {
-      id: `chapter:${shortHash(`${entry.target}:${entry.title}`)}`,
+      id: chapterIds[index]!,
       sourceCid: String(entry.target),
       sourceFiles: [],
       title: entry.title,
@@ -582,7 +685,13 @@ async function decodeMobi(sourcePath: string, source: Uint8Array, format: Exclud
   return {
     sourceKind: "kindle",
     sourceFormat: format,
-    sourceDetails: { mobiVersion, compression, encryptionType },
+    sourceDetails: {
+      mobiVersion,
+      compression,
+      encryptionType,
+      internalLinks: $bodyLinks("a[filepos]").length,
+      resolvedInternalLinks: resolvedInternalLinkCount,
+    },
     sourcePath: path.resolve(sourcePath),
     sourceSha256: sha256(source),
     sourceBookId: asin || `mobi:${uniqueId}:${sha256(source).slice(0, 12)}`,
