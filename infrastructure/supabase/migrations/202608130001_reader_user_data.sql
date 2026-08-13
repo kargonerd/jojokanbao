@@ -4,7 +4,7 @@ create table if not exists public.reader_bookshelf (
   item_id text not null,
   title text not null,
   added_at timestamptz not null default timezone('utc', now()),
-  primary key (user_id, item_id)
+  primary key (user_id, dataset_id, item_id)
 );
 
 create table if not exists public.reader_marks (
@@ -32,7 +32,7 @@ create table if not exists public.reader_ai_explanations (
   answer text,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now()),
-  unique (user_id, item_id, phrase_key)
+  unique (user_id, dataset_id, item_id, phrase_key)
 );
 
 alter table public.reader_bookshelf enable row level security;
@@ -47,35 +47,35 @@ create policy "reader_ai_explanations_insert_own" on public.reader_ai_explanatio
 create policy "reader_ai_explanations_update_own" on public.reader_ai_explanations for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 create policy "reader_ai_explanations_delete_own" on public.reader_ai_explanations for delete to authenticated using ((select auth.uid()) = user_id);
 
-create index if not exists reader_marks_item_chapter on public.reader_marks(user_id, item_id, chapter_id);
-create index if not exists reader_ai_explanations_phrase on public.reader_ai_explanations(item_id, phrase_key);
+create index if not exists reader_marks_item_chapter on public.reader_marks(user_id, dataset_id, item_id, chapter_id);
+create index if not exists reader_ai_explanations_phrase on public.reader_ai_explanations(dataset_id, item_id, phrase_key);
 
-create or replace function public.get_reusable_reader_explanation(p_item_id text, p_phrase_key text)
+create or replace function public.get_reusable_reader_explanation(p_dataset_id text, p_item_id text, p_phrase_key text)
 returns table(quote text, answer text, explanation_count bigint)
 language sql security definer set search_path = '' stable
 as $$
   select min(e.quote), e.answer, count(*)
   from public.reader_ai_explanations e
-  where e.item_id = p_item_id and e.phrase_key = p_phrase_key and e.answer is not null
+  where e.dataset_id = p_dataset_id and e.item_id = p_item_id and e.phrase_key = p_phrase_key and e.answer is not null
   group by e.answer
   order by count(*) desc, e.answer
   limit 1
 $$;
 
-create or replace function public.get_popular_reader_explanations(p_item_id text, p_chapter_id text)
+create or replace function public.get_popular_reader_explanations(p_dataset_id text, p_item_id text, p_chapter_id text)
 returns table(quote text, answer text, explanation_count bigint)
 language sql security definer set search_path = '' stable
 as $$
   select min(e.quote), e.answer, count(*)
   from public.reader_ai_explanations e
-  where e.item_id = p_item_id and e.chapter_id = p_chapter_id and e.answer is not null
+  where e.dataset_id = p_dataset_id and e.item_id = p_item_id and e.chapter_id = p_chapter_id and e.answer is not null
   group by e.phrase_key, e.answer
   having count(*) >= 2
   order by count(*) desc, min(e.quote)
   limit 50
 $$;
 
-revoke all on function public.get_reusable_reader_explanation(text, text) from public, anon;
-revoke all on function public.get_popular_reader_explanations(text, text) from public, anon;
-grant execute on function public.get_reusable_reader_explanation(text, text) to authenticated;
-grant execute on function public.get_popular_reader_explanations(text, text) to authenticated;
+revoke all on function public.get_reusable_reader_explanation(text, text, text) from public, anon;
+revoke all on function public.get_popular_reader_explanations(text, text, text) from public, anon;
+grant execute on function public.get_reusable_reader_explanation(text, text, text) to authenticated;
+grant execute on function public.get_popular_reader_explanations(text, text, text) to authenticated;

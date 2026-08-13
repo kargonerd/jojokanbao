@@ -260,22 +260,22 @@ export function BookReader({
 
   useEffect(() => {
     let cancelled = false;
-    loadMarks(itemId, activeChapterId)
+    loadMarks(datasetId, itemId, activeChapterId)
       .then((value) => { if (!cancelled) setMarks(value); })
       .catch(() => { if (!cancelled) setMarks([]); });
-    popularExplanations(itemId, activeChapterId)
+    popularExplanations(datasetId, itemId, activeChapterId)
       .then((value) => { if (!cancelled) setPopular(value); })
       .catch(() => { if (!cancelled) setPopular([]); });
     return () => { cancelled = true; };
-  }, [activeChapterId, itemId]);
+  }, [activeChapterId, datasetId, itemId]);
 
   useEffect(() => {
     let cancelled = false;
-    bookshelfContains(itemId)
+    bookshelfContains(datasetId, itemId)
       .then((value) => { if (!cancelled) setOnBookshelf(value); })
       .catch(() => { if (!cancelled) setOnBookshelf(false); });
     return () => { cancelled = true; };
-  }, [itemId]);
+  }, [datasetId, itemId]);
 
   useEffect(() => {
     const root = mode === "paged" ? flowRef.current : scrollRef.current;
@@ -603,7 +603,7 @@ export function BookReader({
     setAiExplanationQuote(quote);
     setAiInitialAnswer(undefined);
     try {
-      const reusable = await reusableExplanation(itemId, quote);
+      const reusable = await reusableExplanation(datasetId, itemId, quote);
       if (reusable) {
         setAiQuestion(undefined);
         setAiInitialAnswer(`${reusable.answer}\n\n已有 ${reusable.count} 位读者查询过这段话。`);
