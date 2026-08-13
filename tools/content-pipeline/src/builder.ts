@@ -317,6 +317,10 @@ function removeMissingAssets(
       new RegExp(`<figure[^>]*data-asset-id=["']${escaped}["'][^>]*>([\\s\\S]*?)<\\/figure>`, "gi"),
       (_whole, inner: string) => inner.replace(/<\/?figcaption>/gi, ""),
     );
+    value = value.replace(
+      new RegExp(`<span[^>]*data-asset-id=["']${escaped}["'][^>]*><\\/span>`, "gi"),
+      "",
+    );
   }
   return {
     ...chapter,

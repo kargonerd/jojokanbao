@@ -132,14 +132,26 @@ export function renderedBody(fragment: JojoFragment, assetUrls: Record<string, s
     ));
     selfEntry?.remove();
   }
-  for (const figure of document.querySelectorAll("figure[data-asset-id]")) {
-    const assetId = figure.getAttribute("data-asset-id") || "";
+  for (const placeholder of document.querySelectorAll("figure[data-asset-id], span[data-asset-id]")) {
+    const assetId = placeholder.getAttribute("data-asset-id") || "";
     const url = assetUrls[assetId];
     if (!url) continue;
     const image = document.createElement("img");
     image.src = url;
-    image.alt = figure.querySelector("figcaption")?.textContent || "正文图片";
-    figure.prepend(image);
+    if (placeholder.tagName === "SPAN") {
+      image.alt = "行内图片";
+      image.setAttribute("data-book-inline-asset", "true");
+      placeholder.append(image);
+      continue;
+    }
+    const role = placeholder.getAttribute("data-role");
+    image.alt = placeholder.querySelector("figcaption")?.textContent
+      || (role === "cover" ? "封面" : role === "table-image" ? "表格" : "正文图片");
+    const width = Number(placeholder.getAttribute("data-width"));
+    if (Number.isInteger(width) && width >= 10 && width <= 100) {
+      (placeholder as HTMLElement).style.maxWidth = `${width}%`;
+    }
+    placeholder.prepend(image);
   }
   const annotations = new Map(fragment.annotations.map((annotation) => [annotation.id, annotation]));
   for (const marker of document.querySelectorAll("sup[data-annotation-id]")) {
