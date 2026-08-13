@@ -259,12 +259,22 @@ export function BookReader({
   }, [chapterKey]);
 
   useEffect(() => {
-    loadMarks(itemId, activeChapterId).then(setMarks).catch(() => setMarks([]));
-    popularExplanations(itemId, activeChapterId).then(setPopular).catch(() => setPopular([]));
+    let cancelled = false;
+    loadMarks(itemId, activeChapterId)
+      .then((value) => { if (!cancelled) setMarks(value); })
+      .catch(() => { if (!cancelled) setMarks([]); });
+    popularExplanations(itemId, activeChapterId)
+      .then((value) => { if (!cancelled) setPopular(value); })
+      .catch(() => { if (!cancelled) setPopular([]); });
+    return () => { cancelled = true; };
   }, [activeChapterId, itemId]);
 
   useEffect(() => {
-    bookshelfContains(itemId).then(setOnBookshelf).catch(() => setOnBookshelf(false));
+    let cancelled = false;
+    bookshelfContains(itemId)
+      .then((value) => { if (!cancelled) setOnBookshelf(value); })
+      .catch(() => { if (!cancelled) setOnBookshelf(false); });
+    return () => { cancelled = true; };
   }, [itemId]);
 
   useEffect(() => {

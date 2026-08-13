@@ -15,7 +15,13 @@ export function AccountCenterPage({ userId }: AccountCenterPageProps) {
   const hasDisplayName = Boolean(profile?.display_name?.trim());
   const [books, setBooks] = useState<BookshelfEntry[]>([]);
 
-  useEffect(() => { loadBookshelf().then(setBooks).catch(() => setBooks([])); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    loadBookshelf()
+      .then((value) => { if (!cancelled) setBooks(value); })
+      .catch(() => { if (!cancelled) setBooks([]); });
+    return () => { cancelled = true; };
+  }, []);
 
   const leaveAccount = async () => {
     try {
