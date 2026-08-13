@@ -433,6 +433,23 @@ describe("WeRead semantic HTML", () => {
     expect(result.chapter.body.value.match(/data-annotation-id=/g)).toHaveLength(2);
   });
 
+  it("preserves plain-text source lines as paragraphs and keeps intentional blank lines", () => {
+    const result = convertWereadChapter({
+      id: "chapter:chronicle",
+      sourceCid: "chronicle",
+      sourceFiles: [],
+      title: "1964年 七十一岁",
+      order: 1,
+      level: 1,
+      contentType: "text/plain",
+      content: "    同日 会见代表团。\r\n    7月9日 下午，发表谈话。\r\n\r\n    7月10日 接见外宾。\r\n",
+    }, []);
+
+    expect(result.chapter.body.value).toBe(
+      "<p>同日 会见代表团。</p><p>7月9日 下午，发表谈话。</p><p><br /></p><p>7月10日 接见外宾。</p>",
+    );
+  });
+
   it("turns a leading-star editor note into an annotation", () => {
     const diagnostics: Parameters<typeof convertWereadChapter>[1] = [];
     const result = convertWereadChapter({

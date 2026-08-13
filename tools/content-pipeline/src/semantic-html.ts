@@ -278,11 +278,13 @@ function plainText(value: string): string {
 }
 
 function textBody(content: string): string {
-  return content
-    .split(/\r?\n{2,}/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean)
-    .map((paragraph) => `<p>${sanitizeHtml(paragraph, { allowedTags: [], allowedAttributes: {} })}</p>`)
+  const lines = content.replaceAll("\r\n", "\n").replaceAll("\r", "\n").split("\n");
+  while (lines.at(-1)?.trim() === "") lines.pop();
+  return lines
+    .map((line) => line.trim())
+    .map((line) => line
+      ? `<p>${sanitizeHtml(line, { allowedTags: [], allowedAttributes: {} })}</p>`
+      : "<p><br></p>")
     .join("");
 }
 
