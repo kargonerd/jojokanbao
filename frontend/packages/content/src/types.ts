@@ -1,6 +1,8 @@
 export type JojoDatasetType = "book" | "book-series" | "magazine" | "newspaper";
 export type JojoItemType = "book" | "book-volume" | "magazine" | "newspaper";
 export type JojoAssetType = "audio" | "image" | "pdf" | "video";
+export type JojoPublicationStatus = "draft" | "published";
+export type JojoContentAccess = "public" | "authenticated";
 
 export interface JojoCatalogEntry {
   datasetId: string;
@@ -9,6 +11,8 @@ export interface JojoCatalogEntry {
   language: string;
   itemCount?: number;
   indexObject: string;
+  publicationStatus?: JojoPublicationStatus;
+  access?: JojoContentAccess;
 }
 
 export interface JojoCatalog {
@@ -25,6 +29,8 @@ export interface JojoDatasetItemSummary {
   order: number;
   title: string;
   manifestObject: string;
+  publicationStatus?: JojoPublicationStatus;
+  access?: JojoContentAccess;
 }
 
 export interface JojoDatasetIndex {
@@ -35,6 +41,8 @@ export interface JojoDatasetIndex {
   title: string;
   language: string;
   description?: string;
+  publicationStatus?: JojoPublicationStatus;
+  access?: JojoContentAccess;
   items: JojoDatasetItemSummary[];
 }
 
@@ -44,6 +52,8 @@ export interface JojoCanonicalDataset {
   type: JojoDatasetType;
   title: string;
   language: string;
+  publicationStatus?: JojoPublicationStatus;
+  access?: JojoContentAccess;
   description?: string;
   itemPath: string;
 }
@@ -130,6 +140,8 @@ export interface JojoItemManifest {
   type: JojoItemType;
   title: string;
   language: string;
+  publicationStatus?: JojoPublicationStatus;
+  access?: JojoContentAccess;
   identifiers?: Record<string, string | null>;
   metadata: Record<string, unknown>;
   content: {
@@ -212,6 +224,8 @@ export interface JojoCanonicalItem {
   type: JojoItemType;
   title: string;
   language: string;
+  publicationStatus?: JojoPublicationStatus;
+  access?: JojoContentAccess;
   identifiers: Record<string, string | null>;
   metadata: Record<string, unknown>;
   content: {

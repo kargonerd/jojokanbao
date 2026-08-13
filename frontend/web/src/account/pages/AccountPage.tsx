@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthStore } from "@/account/auth";
 import { AccountBook, type AccountMode } from "@/account/components/AccountBook";
 import { LoginForm, RegisterForm } from "@/account/components/AccountForms";
@@ -7,6 +7,9 @@ import { AccountCenterPage } from "@/account/pages/AccountCenterPage";
 
 export function AccountPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedReturnTo = searchParams.get("returnTo") || "/";
+  const returnTo = requestedReturnTo.startsWith("/") && !requestedReturnTo.startsWith("//") ? requestedReturnTo : "/";
   const [mode, setMode] = useState<AccountMode>("login");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -37,7 +40,7 @@ export function AccountPage() {
     event.preventDefault();
     try {
       await signIn(loginEmail.trim(), loginPassword);
-      navigate("/", { replace: true });
+      navigate(returnTo, { replace: true });
     } catch {
       // The shared auth store exposes a localized error.
     }
@@ -68,7 +71,7 @@ export function AccountPage() {
       if (requiresConfirmation) {
         setConfirmationEmail(email);
       } else {
-        navigate("/", { replace: true });
+        navigate(returnTo, { replace: true });
       }
     } catch {
       // The shared auth store exposes a localized error.

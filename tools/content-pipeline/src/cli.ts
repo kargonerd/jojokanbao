@@ -10,10 +10,12 @@ interface Arguments {
   assetCache?: string;
   fetchAssets: boolean;
   allowPartial: boolean;
+  publicationStatus: "draft" | "published";
+  access: "public" | "authenticated";
 }
 
 function argumentsFrom(argv: string[]): Arguments {
-  const result: Arguments = { input: [], fetchAssets: true, allowPartial: false };
+  const result: Arguments = { input: [], fetchAssets: true, allowPartial: false, publicationStatus: "draft", access: "public" };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index]!;
     if (value === "--input" || value === "-i") result.input.push(path.resolve(argv[++index]!));
@@ -22,6 +24,10 @@ function argumentsFrom(argv: string[]): Arguments {
     else if (value === "--asset-cache") result.assetCache = path.resolve(argv[++index]!);
     else if (value === "--no-assets") result.fetchAssets = false;
     else if (value === "--allow-partial") result.allowPartial = true;
+    else if (value === "--published") result.publicationStatus = "published";
+    else if (value === "--draft") result.publicationStatus = "draft";
+    else if (value === "--authenticated") result.access = "authenticated";
+    else if (value === "--public") result.access = "public";
     else throw new Error(`未知参数：${value}`);
   }
   return result;
@@ -29,7 +35,7 @@ function argumentsFrom(argv: string[]): Arguments {
 
 const args = argumentsFrom(process.argv.slice(2));
 if (!args.output || args.input.length === 0) {
-  console.error("Usage: content-pipeline --input <json|epub|azw|mobi|prc|directory>... --output <empty-directory> [--asset-cache <canonical-directory>] [--no-assets] [--allow-partial]");
+  console.error("Usage: content-pipeline --input <json|epub|azw|mobi|prc|directory>... --output <empty-directory> [--published|--draft] [--public|--authenticated] [--asset-cache <canonical-directory>] [--no-assets] [--allow-partial]");
   process.exit(2);
 }
 const inputPaths: string[] = [];
@@ -99,6 +105,8 @@ try {
     fetchAssets: args.fetchAssets,
     ...(fetchFn ? { fetchFn } : {}),
     allowPartial: args.allowPartial,
+    publicationStatus: args.publicationStatus,
+    access: args.access,
     onProgress: (event) => process.stdout.write(`${JSON.stringify(event)}\n`),
   });
   if (!args.allowPartial && report.diagnostics.some((entry) => entry.level === "error")) process.exitCode = 1;

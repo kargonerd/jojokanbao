@@ -5,6 +5,8 @@ import { contentApi, type ContentJob, type PublisherStatus } from "../content/ap
 export function ContentDataPage() {
   const [sourcePath, setSourcePath] = useState("");
   const [fetchAssets, setFetchAssets] = useState(true);
+  const [publicationStatus, setPublicationStatus] = useState<"draft" | "published">("draft");
+  const [access, setAccess] = useState<"public" | "authenticated">("public");
   const [job, setJob] = useState<ContentJob>();
   const [publishers, setPublishers] = useState<PublisherStatus>();
   const [targets, setTargets] = useState<string[]>([]);
@@ -44,7 +46,7 @@ export function ContentDataPage() {
 
   async function importPath() {
     setBusy(true); setError("");
-    try { setJob((await contentApi.importPaths([sourcePath], fetchAssets)).job); }
+    try { setJob((await contentApi.importPaths([sourcePath], fetchAssets, publicationStatus, access)).job); }
     catch (reason) { setError((reason as Error).message); }
     finally { setBusy(false); }
   }
@@ -52,7 +54,7 @@ export function ContentDataPage() {
   async function importFiles(files: FileList | null) {
     if (!files?.length) return;
     setBusy(true); setError("");
-    try { setJob((await contentApi.importFiles([...files], fetchAssets)).job); }
+    try { setJob((await contentApi.importFiles([...files], fetchAssets, publicationStatus, access)).job); }
     catch (reason) { setError((reason as Error).message); }
     finally { setBusy(false); if (fileInput.current) fileInput.current.value = ""; }
   }
@@ -84,6 +86,10 @@ export function ContentDataPage() {
           <span>或</span>
           <button className="text-button" onClick={() => fileInput.current?.click()}>从浏览器上传电子书</button>
           <input ref={fileInput} hidden type="file" accept="application/json,application/epub+zip,.json,.epub,.azw,.mobi,.prc" multiple onChange={(event) => void importFiles(event.target.files)} />
+        </div>
+        <div className="content-options">
+          <label>发布状态 <select value={publicationStatus} onChange={(event) => setPublicationStatus(event.target.value as "draft" | "published")}><option value="draft">草稿（不在馆藏展示）</option><option value="published">发布</option></select></label>
+          <label>阅读门槛 <select value={access} onChange={(event) => setAccess(event.target.value as "public" | "authenticated")}><option value="public">任何人</option><option value="authenticated">仅登录用户（软门槛）</option></select></label>
         </div>
         {error && <p className="content-error">{error}</p>}
       </section>

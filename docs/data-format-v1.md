@@ -1,5 +1,7 @@
 # JOJO 统一数据与交付格式 v1
 
+内容可选携带 `publicationStatus: "draft" | "published"` 和 `access: "public" | "authenticated"`。缺省值分别按 `published`、`public` 解释，以兼容旧数据。`draft` 不进入普通馆藏列表；`authenticated` 只表示 Reader 的登录软门槛，公开 CDN 对象本身并不因此获得访问控制或 DRM。
+
 > 状态：待合并。书籍导入器已实现；报纸和杂志按照本文约定接入。
 
 JOJO 用同一套外壳保存书籍、报纸和杂志，但明确区分三类数据：

@@ -49,6 +49,8 @@ describe("approved B2 layout", () => {
       outputDirectory: output,
       fetchAssets: false,
       now: () => new Date("2026-08-10T00:00:00.000Z"),
+      publicationStatus: "published",
+      access: "authenticated",
     });
 
     expect(report.itemsBuilt[0]).toMatchObject({
@@ -78,6 +80,7 @@ describe("approved B2 layout", () => {
       profile: "jojo-book-search/1",
       object: "search/text.jox",
     });
+    expect(manifest).toMatchObject({ publicationStatus: "published", access: "authenticated" });
     const searchObject = resolveJoxObject(manifestObject, manifest.search!.object);
     const search = await gunzipJoxJson<JojoBookSearchIndex>(
       new Uint8Array(await readFile(path.join(output, "delivery", ...searchObject.split("/")))),

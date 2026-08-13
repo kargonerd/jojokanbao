@@ -34,19 +34,19 @@ async function request<T>(method: HttpMethod, url: string, data?: unknown, token
 
 // Public
 export const notebookApi = {
-  list: async (): Promise<RagNotebook[]> => (await loadCatalog()).datasets.map((dataset) => ({
+  list: async (): Promise<RagNotebook[]> => (await loadCatalog()).datasets.filter((dataset) => dataset.publicationStatus !== "draft").map((dataset) => ({
     id: dataset.datasetId,
     title: dataset.title,
     sources_count: dataset.itemCount,
     type: dataset.type,
     indexObject: dataset.indexObject,
   })),
-  getSources: async (nid: string): Promise<RagSource[]> => (await loadDataset(nid)).index.items.map((item) => ({
+  getSources: async (nid: string): Promise<RagSource[]> => (await loadDataset(nid)).index.items.filter((item) => item.publicationStatus !== "draft").map((item) => ({
     id: item.itemId,
     itemId: item.itemId,
     itemKey: item.itemKey,
     title: item.title,
-    published: true,
+    published: item.publicationStatus !== "draft",
     manifestObject: item.manifestObject,
   })),
   getSourceFulltext: () => Promise.reject(new Error("请通过章节或 Agent 按需读取内容")),

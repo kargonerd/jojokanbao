@@ -6,6 +6,15 @@ import {
   renderedBody,
   shouldRenderChapterTitle,
 } from "../src/rag/pages/ReaderPage";
+import type { JojoCatalogEntry } from "@jojo/content";
+
+describe("content visibility compatibility", () => {
+  it("treats old catalog entries as published and public", () => {
+    const legacy: JojoCatalogEntry = { datasetId: "legacy", type: "book", title: "旧书", language: "zh-CN", indexObject: "legacy/index.jox" };
+    expect(legacy.publicationStatus).toBeUndefined();
+    expect(legacy.access).toBeUndefined();
+  });
+});
 
 describe("RAG content Reader annotations", () => {
   it("keeps semantic source alignment for the book layout", () => {
