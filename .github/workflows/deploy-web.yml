@@ -50,11 +50,11 @@ jobs:
 
       - name: Build web
         env:
-          # Reader/RAG and account are part of the public Web rollout. The
-          # content access field remains a soft login gate per Item.
+          # Reader remains public while RAG and account stay hidden until their
+          # product rollout is ready.
           VITE_ENABLE_OLDS: "false"
-          VITE_ENABLE_RAG: "true"
-          VITE_ENABLE_ACCOUNT: "true"
+          VITE_ENABLE_RAG: "false"
+          VITE_ENABLE_ACCOUNT: "false"
           VITE_RAG_API_BASE: ${{ vars.VITE_RAG_API_BASE }}
           VITE_OLDS_API_BASE: ${{ vars.VITE_OLDS_API_BASE }}
         run: pnpm --filter @jojo/web build
