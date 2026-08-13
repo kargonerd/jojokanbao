@@ -75,5 +75,7 @@ as $$
   limit 50
 $$;
 
+revoke all on function public.get_reusable_reader_explanation(text, text) from public, anon;
+revoke all on function public.get_popular_reader_explanations(text, text) from public, anon;
 grant execute on function public.get_reusable_reader_explanation(text, text) to authenticated;
 grant execute on function public.get_popular_reader_explanations(text, text) to authenticated;
