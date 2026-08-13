@@ -1,6 +1,6 @@
 import DOMPurify from "dompurify";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { LoadingSpinner } from "@jojo/ui";
 import type { JojoAnnotation, JojoFragment, JojoTocNode } from "@jojo/content";
 import {
@@ -194,6 +194,23 @@ export function ReaderPage() {
   const [focusText, setFocusText] = useState<{ text: string; token: number }>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [authState, setAuthState] = useState({ initialized: false, signedIn: false });
+
+  useEffect(() => {
+    let active = true;
+    let unsubscribe: (() => void) | undefined;
+    void import("@/account/auth").then(async ({ authClient }) => {
+      const { data } = await authClient.auth.getSession();
+      if (active) setAuthState({ initialized: true, signedIn: Boolean(data.session) });
+      const listener = authClient.auth.onAuthStateChange((_event, session) => {
+        if (active) setAuthState({ initialized: true, signedIn: Boolean(session) });
+      });
+      unsubscribe = () => listener.data.subscription.unsubscribe();
+    }).catch(() => {
+      if (active) setAuthState({ initialized: true, signedIn: false });
+    });
+    return () => { active = false; unsubscribe?.(); };
+  }, []);
 
   useEffect(() => {
     if (!datasetId || !itemKey) return;
@@ -267,6 +284,12 @@ export function ReaderPage() {
   const html = useMemo(() => fragment ? renderedBody(fragment, assetUrls) : "", [assetUrls, fragment]);
   if (loading) return <LoadingSpinner text="正在解码 Jox Manifest" fullscreen />;
   if (!loaded) return <div className="p-8 text-center text-muted">{error || "内容不存在"}</div>;
+  const access = loaded.manifest.access ?? loaded.item.access ?? loaded.index.access ?? loaded.entry.access ?? "public";
+  if (access === "authenticated" && (!authState.initialized || !authState.signedIn)) {
+    if (!authState.initialized) return <LoadingSpinner text="正在确认登录状态" fullscreen />;
+    const returnTo = `${window.location.pathname}${window.location.search}`;
+    return <main className="flex min-h-screen items-center justify-center bg-paper px-6 text-center"><div className="max-w-md border-l-2 border-red pl-6 text-left"><p className="m-0 text-xs tracking-[.18em] text-red">登录后阅读</p><h1 className="my-4 text-2xl">{loaded.manifest.title}</h1><p className="text-sm leading-7 text-muted">这份内容设置了登录软门槛。登录后会回到当前书籍。</p><Link className="text-sm font-bold text-red no-underline" to={`/account?returnTo=${encodeURIComponent(returnTo)}`}>登录 / 注册 →</Link></div></main>;
+  }
   const chapters = loaded.manifest.content.chapters ?? [];
   const activeChapterIndex = Math.max(0, chapters.findIndex((chapter) => chapter.id === activeChapter));
   const tocItems = toc.length

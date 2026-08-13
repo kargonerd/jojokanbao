@@ -75,7 +75,7 @@ def _load_jobs() -> None:
 _load_jobs()
 
 
-def _new_job(input_paths: list[str], fetch_assets: bool, job_id: str | None = None) -> dict:
+def _new_job(input_paths: list[str], fetch_assets: bool, publication_status: str = "draft", access: str = "public", job_id: str | None = None) -> dict:
     job_id = job_id or uuid.uuid4().hex[:16]
     job = {
         "jobId": job_id,
@@ -86,6 +86,8 @@ def _new_job(input_paths: list[str], fetch_assets: bool, job_id: str | None = No
         "updatedAt": _now(),
         "inputPaths": input_paths,
         "fetchAssets": fetch_assets,
+        "publicationStatus": publication_status,
+        "access": access,
         "outputDirectory": str(RUNTIME / job_id / "output"),
         "progress": {},
         "report": None,
@@ -108,6 +110,8 @@ def _build(job_id: str) -> None:
     command.extend(["--output", job["outputDirectory"]])
     if not job["fetchAssets"]:
         command.append("--no-assets")
+    command.append("--published" if job.get("publicationStatus") == "published" else "--draft")
+    command.append("--authenticated" if job.get("access") == "authenticated" else "--public")
     try:
         process = subprocess.Popen(
             command,
@@ -213,7 +217,9 @@ def import_paths():
     paths = list(dict.fromkeys(paths))
     if not paths:
         return jsonify({"success": False, "message": "没有找到支持的 JSON、EPUB 或 Kindle 文件"}), 400
-    return jsonify({"success": True, "job": _new_job(paths, bool(data.get("fetchAssets", True)))})
+    publication_status = "published" if data.get("publicationStatus") == "published" else "draft"
+    access = "authenticated" if data.get("access") == "authenticated" else "public"
+    return jsonify({"success": True, "job": _new_job(paths, bool(data.get("fetchAssets", True)), publication_status, access)})
 
 
 @content_blueprint.post("/api/content/import-files")
@@ -239,6 +245,8 @@ def import_files():
     return jsonify({"success": True, "job": _new_job(
         input_paths,
         request.form.get("fetchAssets", "true").lower() != "false",
+        "published" if request.form.get("publicationStatus") == "published" else "draft",
+        "authenticated" if request.form.get("access") == "authenticated" else "public",
         job_id=job_id,
     )})
 

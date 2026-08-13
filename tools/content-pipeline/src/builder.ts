@@ -45,6 +45,8 @@ export interface BuildPipelineOptions {
   outputDirectory: string;
   fetchAssets?: boolean;
   allowPartial?: boolean;
+  publicationStatus?: "draft" | "published";
+  access?: "public" | "authenticated";
   fetchFn?: typeof fetch;
   now?: () => Date;
   onProgress?: (event: Record<string, unknown>) => void;
@@ -399,6 +401,8 @@ function buildParts(
 async function buildItem(
   part: NormalizedBookPart,
   roots: { canonical: string; delivery: string; huggingface: string },
+  publicationStatus: "draft" | "published",
+  access: "public" | "authenticated",
 ): Promise<{
   summary: BuiltItemSummary;
   itemSummary: JojoDatasetIndex["items"][number];
@@ -475,6 +479,8 @@ async function buildItem(
     type: part.itemType,
     title: part.itemTitle,
     language: part.source.language,
+    publicationStatus,
+    access,
     identifiers: { isbn: part.source.isbn || null },
     metadata: {
       authors: authors(part.source),
@@ -527,6 +533,8 @@ async function buildItem(
     type: part.itemType,
     title: part.itemTitle,
     language: part.source.language,
+    publicationStatus,
+    access,
     identifiers: canonical.identifiers,
     metadata: canonical.metadata,
     content: {
@@ -597,6 +605,8 @@ async function buildItem(
       order: part.itemOrder,
       title: part.itemTitle,
       manifestObject: `items/${part.itemKey}/manifest.jox`,
+      publicationStatus,
+      access,
     },
     search,
   };
@@ -625,6 +635,8 @@ export async function buildContentPipeline(
   options: BuildPipelineOptions,
 ): Promise<PipelineReport> {
   const outputDirectory = path.resolve(options.outputDirectory);
+  const publicationStatus = options.publicationStatus ?? "draft";
+  const access = options.access ?? "public";
   await ensureFreshDirectory(outputDirectory);
   const roots = {
     raw: path.join(outputDirectory, "raw"),
@@ -841,7 +853,7 @@ export async function buildContentPipeline(
     left.datasetTitle.localeCompare(right.datasetTitle, "zh-CN") || left.itemOrder - right.itemOrder
   ))) {
       options.onProgress?.({ phase: "build-item", itemId: part.itemId, title: part.itemTitle });
-      const result = await buildItem(part, roots);
+      const result = await buildItem(part, roots, publicationStatus, access);
       builtItems.push(result.summary);
       allSearch.push(...result.search);
       const state = datasets.get(part.datasetId) ?? {
@@ -875,6 +887,8 @@ export async function buildContentPipeline(
       title: dataset.title,
       language: dataset.language,
       description: dataset.description,
+      publicationStatus,
+      access,
       items: dataset.itemSummaries,
     };
     const canonicalDataset: JojoCanonicalDataset = {
@@ -884,6 +898,8 @@ export async function buildContentPipeline(
       title: dataset.title,
       language: dataset.language,
       description: dataset.description,
+      publicationStatus,
+      access,
       itemPath: "items/{itemKey}/item.json.gz",
     };
     await writeJson(path.join(roots.canonical, "books", dataset.datasetId, "dataset.json"), canonicalDataset);
@@ -915,6 +931,8 @@ export async function buildContentPipeline(
       language: dataset.language,
       itemCount: dataset.items.length,
       indexObject: `content/books/${dataset.datasetId}/index.jox`,
+      publicationStatus,
+      access,
     });
   }
   await writeJoxJson(roots.delivery, "catalog.jox", catalog);

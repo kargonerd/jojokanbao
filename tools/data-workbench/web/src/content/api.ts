@@ -34,6 +34,8 @@ export interface ContentJob {
   createdAt: string;
   updatedAt: string;
   inputPaths: string[];
+  publicationStatus: "draft" | "published";
+  access: "public" | "authenticated";
   outputDirectory: string;
   progress: Record<string, unknown>;
   report: ContentReport | null;
@@ -58,15 +60,17 @@ export const contentApi = {
   jobs: () => fetch("/api/content/jobs").then((response) => json<{ success: true; jobs: ContentJob[] }>(response)),
   job: (jobId: string) => fetch(`/api/content/jobs/${jobId}`).then((response) => json<{ success: true; job: ContentJob }>(response)),
   browse: () => fetch("/api/browse-folder", { method: "POST" }).then((response) => json<{ success: true; path: string }>(response)),
-  importPaths: (paths: string[], fetchAssets: boolean) => fetch("/api/content/import-paths", {
+  importPaths: (paths: string[], fetchAssets: boolean, publicationStatus: "draft" | "published", access: "public" | "authenticated") => fetch("/api/content/import-paths", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ paths, fetchAssets }),
+    body: JSON.stringify({ paths, fetchAssets, publicationStatus, access }),
   }).then((response) => json<{ success: true; job: ContentJob }>(response)),
-  importFiles: (files: File[], fetchAssets: boolean) => {
+  importFiles: (files: File[], fetchAssets: boolean, publicationStatus: "draft" | "published", access: "public" | "authenticated") => {
     const body = new FormData();
     files.forEach((file) => body.append("files", file));
     body.append("fetchAssets", String(fetchAssets));
+    body.append("publicationStatus", publicationStatus);
+    body.append("access", access);
     return fetch("/api/content/import-files", { method: "POST", body })
       .then((response) => json<{ success: true; job: ContentJob }>(response));
   },
