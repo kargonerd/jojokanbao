@@ -78,6 +78,11 @@ export function Layout() {
             location.pathname === href ||
             (href !== ARCHIVE_ROOT && location.pathname.startsWith(href + "/"))
           }
+          trailing={
+            <p className="m-0 max-w-[44vw] truncate text-[13px] font-bold italic tracking-wider text-red opacity-80">
+              如果要看前途，一定要看历史 —— 毛泽东
+            </p>
+          }
         />
       }
       contentClassName="overflow-hidden"
