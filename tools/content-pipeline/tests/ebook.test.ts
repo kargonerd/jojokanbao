@@ -34,10 +34,17 @@ describe("Kindle PalmDOC decoding", () => {
             format: "html",
             profile: "jojo-semantic-html/1",
             value: `<p data-role="poem" data-indent="none" data-break-before="page">甲<span data-asset-id="asset:glyph" data-role="inline-image"></span>乙</p>
+              <p><a href="#section-two" data-target-id="chapter:2" data-anchor-id="section-two">第二章第二节</a></p>
               <figure data-asset-id="asset:glyph" data-width="70"><figcaption>图一</figcaption></figure>
               <figure data-asset-id="asset:glyph" data-role="cover"></figure>`,
           },
           assetRefs: ["asset:glyph"],
+        }, {
+          id: "chapter:2",
+          order: 2,
+          title: "第二章",
+          body: { format: "html", profile: "jojo-semantic-html/1", value: '<h2 id="section-two">第二节</h2><p>乙</p>' },
+          assetRefs: [],
         }],
         toc: [{ id: "toc:1", order: 1, title: "第一章", targetId: "chapter:1" }],
         annotations: [],
@@ -60,6 +67,8 @@ describe("Kindle PalmDOC decoding", () => {
       expect(chapter).toContain('<figure data-role="cover"><img src="../assets/glyph.png" alt="符号"/></figure>');
       expect(chapter).toContain('[data-role="poem"]');
       expect(chapter).toContain('[data-break-before="page"]');
+      expect(chapter).toContain('href="chapter-0002.xhtml#section-two"');
+      expect(chapter).not.toContain("data-target-id");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -83,6 +92,31 @@ describe("Kindle PalmDOC decoding", () => {
       expect(decoded.chapters).toHaveLength(1);
       expect(decoded.chapters[0]!.content).toContain("data:image/png;base64,");
       expect(decoded.toc[0]).toMatchObject({ title: "第一章", targetId: decoded.chapters[0]!.id });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rewrites a printed EPUB contents chapter to stable chapter and anchor targets", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jojo-epub-links-test-"));
+    try {
+      const zip = new JSZip();
+      zip.file("mimetype", "application/epub+zip");
+      zip.file("META-INF/container.xml", `<?xml version="1.0"?><container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>`);
+      zip.file("OEBPS/content.opf", `<?xml version="1.0"?><package xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>目录链接书</dc:title><dc:creator>作者</dc:creator><dc:identifier>links-id</dc:identifier></metadata><manifest><item id="toc" href="contents.xhtml" media-type="application/xhtml+xml"/><item id="c1" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="toc"/><itemref idref="c1"/></spine></package>`);
+      zip.file("OEBPS/contents.xhtml", `<html><body><h1>目录</h1><p><a href="chapter.xhtml#section-two">第二节</a></p></body></html>`);
+      zip.file("OEBPS/chapter.xhtml", `<html><body><h1>第一章</h1><h2 id="section-two">第二节</h2><p>正文</p></body></html>`);
+      const file = path.join(directory, "目录链接书.epub");
+      await writeFile(file, await zip.generateAsync({ type: "uint8array" }));
+
+      const decoded = await decodeEbookFile(file);
+      const targetId = decoded.chapters[1]!.id;
+      const semantic = convertWereadChapter(decoded.chapters[0]!, []);
+      expect(semantic.chapter.body.value).toContain(`data-target-id="${targetId}"`);
+      expect(semantic.chapter.body.value).toContain('data-anchor-id="section-two"');
+      expect(semantic.chapter.body.value).toContain('href="#section-two"');
+      expect(decoded.sourceDetails).toMatchObject({ internalLinks: 1, resolvedInternalLinks: 1 });
+      expect(decoded.diagnostics.errors).toEqual([]);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

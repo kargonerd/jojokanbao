@@ -719,6 +719,23 @@ export async function buildContentPipeline(
       });
       sourceRejected ||= !options.allowPartial;
     }
+    const internalLinks = Number(decoded.sourceDetails.internalLinks ?? 0);
+    const resolvedInternalLinks = Number(decoded.sourceDetails.resolvedInternalLinks ?? internalLinks);
+    if (resolvedInternalLinks < internalLinks) {
+      const examples = decoded.diagnostics.errors
+        .filter((entry) => String(entry.error ?? "").includes("内链"))
+        .slice(0, 3)
+        .map((entry) => `${String(entry.file ?? "未知文件")} → ${String(entry.reference ?? "未知目标")}`)
+        .join("；");
+      diagnostics.push({
+        level: options.allowPartial ? "warning" : "error",
+        code: "internal-links-unresolved",
+        message: `${decoded.title} 有 ${internalLinks - resolvedInternalLinks}/${internalLinks} 条正文内链无法精确解析`
+          + `${examples ? `（${examples}）` : ""}`,
+        source: decoded.sourcePath,
+      });
+      sourceRejected ||= !options.allowPartial;
+    }
     if (sourceRejected) {
       rejectedFiles += 1;
       continue;

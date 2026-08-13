@@ -699,7 +699,7 @@ export function convertWereadChapter(
     allowedTags: ALLOWED_TAGS,
     allowedAttributes: {
       "*": ["id", "data-align", "data-role", "data-indent", "data-font", "data-width", "data-size", "data-break-before"],
-      a: ["href"],
+      a: ["href", "data-target-id", "data-anchor-id"],
       figure: ["data-asset-id"],
       span: ["data-asset-id"],
       sup: ["data-annotation-id"],

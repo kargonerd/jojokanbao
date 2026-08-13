@@ -55,6 +55,7 @@ export interface BookReaderProps {
   backHref: string;
   onChapterChange: (chapterId: string) => void;
   onLocate: (chapterId: string, text?: string) => void;
+  onInternalLink?: (chapterId: string, anchorId?: string) => void;
   onSearch: (query: string) => Promise<RagSearchHit[]>;
   onDownload?: () => void;
   children: ReactNode;
@@ -130,6 +131,7 @@ export function BookReader({
   backHref,
   onChapterChange,
   onLocate,
+  onInternalLink,
   onSearch,
   onDownload,
   children,
@@ -502,7 +504,14 @@ export function BookReader({
     }
     const link = (event.target as HTMLElement).closest<HTMLAnchorElement>('a[href^="#"]');
     if (!link) return;
-    const anchorId = decodeURIComponent(link.getAttribute("href")?.slice(1) || "");
+    const targetId = link.dataset.targetId;
+    const anchorId = link.dataset.anchorId
+      || decodeURIComponent(link.getAttribute("href")?.slice(1) || "");
+    if (targetId && targetId !== activeChapterId) {
+      event.preventDefault();
+      onInternalLink?.(targetId, anchorId || undefined);
+      return;
+    }
     if (!anchorId || !document.getElementById(anchorId)) return;
     event.preventDefault();
     revealAnchor(anchorId);

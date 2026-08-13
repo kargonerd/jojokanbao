@@ -497,7 +497,7 @@ strong em sup sub u s q a br hr figure figcaption span
 允许属性：
 
 ```text
-id href data-asset-id data-annotation-id data-align
+id href data-target-id data-anchor-id data-asset-id data-annotation-id data-align
 data-role data-indent data-font data-size data-width data-break-before
 ```
 
@@ -510,6 +510,7 @@ data-role data-indent data-font data-size data-width data-break-before
 - `data-role`：`annotation`、`aside`、`attribution`、`caption`、`cover`、`full-width`、`highlight`、`inline-image`、`letter`、`note`、`poem`、`salutation`、`signature`、`subheading`、`table-image`、`translation`。
 - `data-width`：`10` 到 `100` 的整数，表示图片相对正文栏宽的百分比；Reader 可以根据屏幕空间进一步收窄。
 - `data-break-before`：当前只允许 `page`，表示来源明确要求在此处另起一页；滚动 Reader 可以忽略，分页 Reader 和 EPUB 导出应遵守。
+- `a[data-target-id]`：Item 内的稳定章节 ID；`data-anchor-id` 可选，表示该章节内的精确锚点。导入器应把 EPUB 路径或 Kindle filepos 转换成这两个字段，不把来源文件路径写入规范正文。
 
 块级图片使用 `figure[data-asset-id]`，图片说明放在其 `figcaption` 中。嵌在文字或公式中的小图使用空的 `span[data-asset-id][data-role="inline-image"]`，不得提升为独立插图。真实文件统一由 Item 的 `assets` 描述。
 
