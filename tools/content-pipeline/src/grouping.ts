@@ -44,6 +44,7 @@ const ALL_VOLUMES = new RegExp(`[（(]?\\s*全(${NUMBER})卷\\s*[）)]?`);
 const VOLUME_RANGE = new RegExp(`[（(]?\\s*(?:1|一)\\s*[-—–至到]\\s*(${NUMBER})卷\\s*[）)]?`);
 const VOLUME_REFERENCE = new RegExp(`(?:^|[（(\\s　])第(${NUMBER})卷(?:$|[）)\\s　:：])`);
 const VOLUME_HEADING = new RegExp(`^(?:.+?)?[（(]?第(${NUMBER})卷[）)]?$`);
+const CHRONOLOGICAL_PART = /^(.*?)[：:]\s*(\d{4})\s*[～~—–-]\s*(\d{4})(.*)$/;
 
 export interface BookGrouping {
   datasetTitle: string;
@@ -51,6 +52,9 @@ export interface BookGrouping {
   datasetType: "book" | "book-series";
   sourceVolumeNumber?: number;
   declaredTotalVolumes?: number;
+  sourcePartKey?: string;
+  sourcePartOrder?: number;
+  supersededDatasetIds?: string[];
 }
 
 function normalizedTitle(value: string): string {
@@ -75,6 +79,28 @@ export function datasetIdForTitle(title: string): string {
 
 export function groupBookTitle(title: string): BookGrouping {
   const normalized = normalizedTitle(title);
+  const chronological = normalized.match(CHRONOLOGICAL_PART);
+  if (chronological) {
+    const datasetTitle = chronological[1]!.trim();
+    const startYear = Number(chronological[2]);
+    const endYear = Number(chronological[3]);
+    const all = normalized.match(ALL_VOLUMES);
+    const total = all ? chineseNumber(all[1]!) : undefined;
+    const legacyTitle = all
+      ? normalized.replace(all[0], "").replace(/\s+/g, " ").trim()
+      : normalized;
+    const datasetId = datasetIdForTitle(datasetTitle);
+    const legacyDatasetId = datasetIdForTitle(legacyTitle);
+    return {
+      datasetTitle,
+      datasetId,
+      datasetType: "book-series",
+      sourcePartKey: `period-${startYear}-${endYear}`,
+      sourcePartOrder: startYear,
+      ...(total ? { declaredTotalVolumes: total } : {}),
+      ...(legacyDatasetId !== datasetId ? { supersededDatasetIds: [legacyDatasetId] } : {}),
+    };
+  }
   const separate = normalized.match(SEPARATE_VOLUME);
   if (separate) {
     const volume = chineseNumber(separate[2]!);

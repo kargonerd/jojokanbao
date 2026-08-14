@@ -138,6 +138,7 @@ export interface PipelineReport {
   annotations: number;
   outputDirectory: string;
   catalogObject: string;
+  supersededDatasetIds: string[];
   itemsBuilt: BuiltItemSummary[];
   diagnostics: PipelineDiagnostic[];
 }

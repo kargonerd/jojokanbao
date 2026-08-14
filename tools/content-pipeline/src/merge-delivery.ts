@@ -33,11 +33,13 @@ export async function mergeDeliveryMetadata(input: {
   remoteRoot: string;
   outputRoot: string;
   updatedAt?: string;
+  removeDatasetIds?: string[];
 }): Promise<{ datasets: number; indexes: number }> {
   const local = await readJox<JojoCatalog>(input.localRoot, "catalog.jox");
   if (!local) throw new Error("本次构建缺少 delivery/catalog.jox");
   const remote = await readJox<JojoCatalog>(input.remoteRoot, "catalog.jox");
   const entries = new Map((remote?.datasets ?? []).map((entry) => [entry.datasetId, entry]));
+  for (const datasetId of input.removeDatasetIds ?? []) entries.delete(datasetId);
   for (const entry of local.datasets) {
     for (const [remoteId, remoteEntry] of entries) {
       const bothBooks = [entry.type, remoteEntry.type].every((type) => type === "book" || type === "book-series");

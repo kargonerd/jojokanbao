@@ -71,4 +71,41 @@ describe("delivery metadata merge", () => {
     expect(index.items.map((item) => item.itemId)).toEqual(["series:v1", "series:v2"]);
     expect(index.type).toBe("book-series");
   });
+
+  it("removes explicitly superseded Dataset entries", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "jojo-merge-superseded-"));
+    const remote = path.join(root, "remote");
+    const local = path.join(root, "local");
+    const output = path.join(root, "output");
+    const entry = (id: string, title: string) => ({
+      datasetId: id,
+      type: "book-series" as const,
+      title,
+      language: "zh-CN",
+      indexObject: `content/books/${id}/index.jox`,
+    });
+    await put(remote, "catalog.jox", {
+      formatVersion: "jojo-catalog/1", revision: 3, updatedAt: "old",
+      datasets: [
+        entry("mao-ze-dong-nian-pu-1893-1949-xiu-ding-ben", "毛泽东年谱:1893~1949(修订本)"),
+        entry("mao-ze-dong-nian-pu-1949-1976", "毛泽东年谱:1949~1976"),
+      ],
+    } satisfies JojoCatalog);
+    await put(local, "catalog.jox", {
+      formatVersion: "jojo-catalog/1", revision: 1, updatedAt: "new",
+      datasets: [entry("mao-ze-dong-nian-pu", "毛泽东年谱")],
+    } satisfies JojoCatalog);
+    await put(local, "content/books/mao-ze-dong-nian-pu/index.jox", {
+      formatVersion: "jojo-delivery-index/1", revision: 1,
+      datasetId: "mao-ze-dong-nian-pu", type: "book-series", title: "毛泽东年谱", language: "zh-CN", items: [],
+    } satisfies JojoDatasetIndex);
+    await mergeDeliveryMetadata({
+      localRoot: local, remoteRoot: remote, outputRoot: output,
+      removeDatasetIds: ["mao-ze-dong-nian-pu-1893-1949-xiu-ding-ben", "mao-ze-dong-nian-pu-1949-1976"],
+    });
+    const catalog = await gunzipJoxJson<JojoCatalog>(
+      new Uint8Array(await readFile(path.join(output, "catalog.jox"))), "catalog.jox",
+    );
+    expect(catalog.datasets.map((item) => item.datasetId)).toEqual(["mao-ze-dong-nian-pu"]);
+  });
 });
