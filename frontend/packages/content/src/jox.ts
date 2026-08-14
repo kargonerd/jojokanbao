@@ -86,16 +86,24 @@ export class JoxClient {
     return new URL(normalized, this.baseUrl);
   }
 
-  async fetchBytes(objectKey: string, signal?: AbortSignal): Promise<Uint8Array> {
-    const response = await this.fetchFn(this.url(objectKey), { signal });
+  async fetchBytes(
+    objectKey: string,
+    signal?: AbortSignal,
+    cache: RequestCache = "default",
+  ): Promise<Uint8Array> {
+    const response = await this.fetchFn(this.url(objectKey), { signal, cache });
     if (!response.ok) {
       throw new Error(`Jox object returned HTTP ${response.status}: ${objectKey}`);
     }
     return new Uint8Array(await response.arrayBuffer());
   }
 
-  async fetchJson<T>(objectKey: string, signal?: AbortSignal): Promise<T> {
-    return gunzipJoxJson<T>(await this.fetchBytes(objectKey, signal), objectKey);
+  async fetchJson<T>(
+    objectKey: string,
+    signal?: AbortSignal,
+    cache: RequestCache = "default",
+  ): Promise<T> {
+    return gunzipJoxJson<T>(await this.fetchBytes(objectKey, signal, cache), objectKey);
   }
 
   async fetchDecodedBytes(

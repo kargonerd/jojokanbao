@@ -26,12 +26,13 @@ describe("Jox transport", () => {
     const protectedBytes = transformJoxBytes(compressed, key);
     await expect(gunzipJoxJson(protectedBytes, key)).resolves.toEqual(payload);
 
-    const fetchFn = async (input: RequestInfo | URL) => {
+    const fetchFn = async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(String(input)).toBe("https://cdn.example/root/catalog.jox");
+      expect(init?.cache).toBe("no-store");
       return new Response(protectedBytes.slice().buffer);
     };
     const client = new JoxClient("https://cdn.example/root", fetchFn as typeof fetch);
-    await expect(client.fetchJson(key)).resolves.toEqual(payload);
+    await expect(client.fetchJson(key, undefined, "no-store")).resolves.toEqual(payload);
   });
 
   it("resolves nested object references", () => {

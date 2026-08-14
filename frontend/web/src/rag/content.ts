@@ -39,9 +39,9 @@ export interface LoadedItem extends LoadedDataset {
 
 export function loadCatalog(): Promise<JojoCatalog> {
   catalogPromise ??= (async () => {
-    const primary = asJojoCatalog(await client.fetchJson<JojoCatalog>("catalog.jox"));
+    const primary = asJojoCatalog(await client.fetchJson<JojoCatalog>("catalog.jox", undefined, "no-store"));
     const fallback = fallbackClient
-      ? await fallbackClient.fetchJson<JojoCatalog>("catalog.jox").then(asJojoCatalog).catch(() => undefined)
+      ? await fallbackClient.fetchJson<JojoCatalog>("catalog.jox", undefined, "no-store").then(asJojoCatalog).catch(() => undefined)
       : undefined;
     const entries = new Map<string, JojoCatalogEntry>();
     datasetSources.clear();
