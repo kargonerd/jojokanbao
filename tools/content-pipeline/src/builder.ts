@@ -343,7 +343,9 @@ function buildParts(
   totalVolumesForDataset?: number,
 ): NormalizedBookPart[] {
   const grouping = groupBookTitle(source.title);
-  const ranges = splitChapterRanges(chapters, source.toc, grouping.declaredTotalVolumes);
+  const ranges = grouping.sourcePartKey
+    ? []
+    : splitChapterRanges(chapters, source.toc, grouping.declaredTotalVolumes);
   const makePart = (
     itemKey: string,
     itemTitle: string,
@@ -393,6 +395,14 @@ function buildParts(
       allIds,
       grouping.sourceVolumeNumber,
       totalVolumesForDataset,
+    )];
+  }
+  if (grouping.sourcePartKey) {
+    return [makePart(
+      grouping.sourcePartKey,
+      source.title,
+      grouping.sourcePartOrder ?? 1,
+      allIds,
     )];
   }
   return [makePart("full-book", source.title, 1, allIds)];
@@ -677,6 +687,7 @@ export async function buildContentPipeline(
   const datasets = new Map<string, DatasetBuildState>();
   const allSearch: JojoSearchDocument[] = [];
   const builtItems: BuiltItemSummary[] = [];
+  const supersededDatasetIds = new Set<string>();
   const fetchedAssets = new Map<string, JojoCanonicalAsset>();
   const fetchingAssets = new Map<string, Promise<JojoCanonicalAsset>>();
   const pendingParts: NormalizedBookPart[] = [];
@@ -761,6 +772,9 @@ export async function buildContentPipeline(
       });
     }
     const grouping = groupBookTitle(decoded.title);
+    for (const datasetId of grouping.supersededDatasetIds ?? []) {
+      supersededDatasetIds.add(datasetId);
+    }
     const canonicalDatasetDirectory = path.join(roots.canonical, "books", grouping.datasetId);
     const resolvedAssets: JojoCanonicalAsset[] = [];
     const missingAssets = new Set<string>();
@@ -979,6 +993,7 @@ export async function buildContentPipeline(
     annotations: builtItems.reduce((sum, item) => sum + item.annotations, 0),
     outputDirectory,
     catalogObject: "delivery/catalog.jox",
+    supersededDatasetIds: [...supersededDatasetIds].sort(),
     itemsBuilt: builtItems,
     diagnostics,
   };

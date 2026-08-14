@@ -21,6 +21,7 @@ class B2PublishTest(unittest.TestCase):
         (root / "report.json").write_text(
             json.dumps(
                 {
+                    "supersededDatasetIds": ["old-dataset"],
                     "itemsBuilt": [
                         {"datasetId": "dataset-a", "manifestObject": "content/books/dataset-a/items/full-book/manifest.jox"},
                         {"datasetId": "dataset-b", "manifestObject": "content/books/dataset-b/items/full-book/manifest.jox"},
@@ -46,6 +47,9 @@ class B2PublishTest(unittest.TestCase):
         self.assertIn("+ /catalog.jox", final_command)
         self.assertNotIn("copyto", final_command)
         commands = [call.args[0] for call in _run.call_args_list]
+        merge_command = next(command for command in commands if command[0] == "pnpm")
+        self.assertIn("--remove-dataset", merge_command)
+        self.assertIn("old-dataset", merge_command)
         raw_command = next(command for command in commands if command[0] == "rclone" and command[3].endswith("/raw"))
         delivery_commands = [
             command for command in commands

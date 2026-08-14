@@ -44,6 +44,28 @@ describe("book Dataset grouping", () => {
     });
   });
 
+  it("groups chronological parts under one stable Dataset", () => {
+    const first = groupBookTitle("毛泽东年谱：1893～1949（全3卷）（修订本）");
+    const second = groupBookTitle("毛泽东年谱：1949～1976（全6卷）");
+    expect(first).toMatchObject({
+      datasetTitle: "毛泽东年谱",
+      datasetId: "mao-ze-dong-nian-pu",
+      datasetType: "book-series",
+      sourcePartKey: "period-1893-1949",
+      sourcePartOrder: 1893,
+      declaredTotalVolumes: 3,
+    });
+    expect(second).toMatchObject({
+      datasetTitle: "毛泽东年谱",
+      datasetId: first.datasetId,
+      sourcePartKey: "period-1949-1976",
+      sourcePartOrder: 1949,
+      declaredTotalVolumes: 6,
+    });
+    expect(first.supersededDatasetIds).toEqual(["mao-ze-dong-nian-pu-1893-1949-xiu-ding-ben"]);
+    expect(second.supersededDatasetIds).toEqual(["mao-ze-dong-nian-pu-1949-1976"]);
+  });
+
   it("splits chapter ranges on volume navigation markers", () => {
     const chapters = [0, 1, 2, 3, 4].map((order) => ({
       id: `chapter:${order}`,

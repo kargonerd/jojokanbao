@@ -100,6 +100,7 @@ def publish_b2(build_root: Path, on_log: Callable[[str], None]) -> dict[str, Any
     delivery_remote = os.getenv("JOJO_DELIVERY_REMOTE", DELIVERY_REMOTE).rstrip("/")
     report = json.loads((build_root / "report.json").read_text(encoding="utf-8"))
     dataset_ids = sorted({item["datasetId"] for item in report["itemsBuilt"]})
+    superseded_dataset_ids = sorted(set(report.get("supersededDatasetIds", [])))
     dataset_index_keys = sorted({
         item["manifestObject"].split("/items/", 1)[0] + "/index.jox"
         for item in report["itemsBuilt"]
@@ -119,12 +120,15 @@ def publish_b2(build_root: Path, on_log: Callable[[str], None]) -> dict[str, Any
     if has_remote_catalog:
         for key in dataset_index_keys:
             _try_copy_remote(f"{delivery_remote}/{key}", remote_metadata / key, on_log)
-    _run([
+    merge_command = [
         "pnpm", "--filter", "@jojo/content-pipeline", "merge-delivery",
         "--local", str(build_root / "delivery"),
         "--remote", str(remote_metadata),
         "--output", str(merged_metadata),
-    ], on_log)
+    ]
+    for dataset_id in superseded_dataset_ids:
+        merge_command.extend(["--remove-dataset", dataset_id])
+    _run(merge_command, on_log)
 
     _run(["rclone", "copy", str(build_root / "raw"), f"{raw_remote}/raw", *RAW_COPY_FLAGS], on_log)
     _run(["rclone", "copy", str(build_root / "canonical"), f"{raw_remote}/canonical", *RCLONE_COPY_FLAGS], on_log)
