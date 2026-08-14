@@ -29,7 +29,6 @@ class Publisher:
     name: str
     region: str
     path: str
-    requested_limit: int
     note: str
 
 
@@ -37,26 +36,26 @@ class Publisher:
 # publisher landing page. A route is kept in the catalog when it currently fails so that a
 # future recovery is visible instead of being silently omitted from the denominator.
 PUBLISHERS = (
-    Publisher("bloomberg", "Bloomberg", "US / Global", "/bloomberg/markets", 100, "Markets route"),
-    Publisher("ap", "Associated Press", "US / Global", "/apnews/mobile", 100, "AP mobile latest feed"),
-    Publisher("bbc", "BBC News", "UK / Global", "/bbc", 100, "Top stories"),
-    Publisher("aljazeera", "Al Jazeera English", "Middle East / Global", "/aljazeera/english/news", 100, "English news"),
-    Publisher("npr", "NPR", "US", "/npr/1001", 100, "News channel 1001"),
-    Publisher("dw", "DW", "Germany / Global", "/dw/rss/rss-en-all", 100, "All English news"),
-    Publisher("cnbc", "CNBC", "US / Global", "/cnbc/rss", 100, "Top news"),
-    Publisher("washingtonpost", "The Washington Post", "US / Global", "/washingtonpost/app/world", 100, "World section"),
-    Publisher("cbc", "CBC News", "Canada", "/cbc/topics", 100, "All topics"),
-    Publisher("rfi", "RFI", "France / Global", "/rfi", 100, "Generic news route"),
-    Publisher("nikkei_asia", "Nikkei Asia", "Japan / Asia", "/nikkei/asia", 100, "Latest news"),
-    Publisher("korea_herald", "The Korea Herald", "South Korea / Asia", "/koreaherald", 100, "Latest news"),
-    Publisher("cna", "中央通讯社", "Taiwan / Asia", "/cna/aall", 100, "全部新闻"),
-    Publisher("tass", "TASS", "Russia / Global", "/tass/world", 100, "World section; state-run source"),
-    Publisher("people", "人民网", "Mainland China", "/people", 100, "Headlines; state-run source"),
-    Publisher("nyt", "The New York Times", "US / Global", "/nytimes/rss/HomePage", 100, "Home page feed enhancement"),
-    Publisher("wsj", "The Wall Street Journal", "US / Global", "/wsj/en-us", 100, "US edition"),
-    Publisher("reuters", "Reuters", "UK / Global", "/reuters/world", 100, "World section"),
-    Publisher("zaobao", "联合早报", "Singapore / Greater China", "/zaobao/realtime", 100, "即时新闻"),
-    Publisher("caixin", "财新", "Mainland China", "/caixin/latest", 100, "最新文章，不带订阅 Cookie"),
+    Publisher("bloomberg", "Bloomberg", "US / Global", "/bloomberg/markets", "Markets route"),
+    Publisher("ap", "Associated Press", "US / Global", "/apnews/mobile", "AP mobile latest feed"),
+    Publisher("bbc", "BBC News", "UK / Global", "/bbc", "Top stories"),
+    Publisher("aljazeera", "Al Jazeera English", "Middle East / Global", "/aljazeera/english/news", "English news"),
+    Publisher("npr", "NPR", "US", "/npr/1001", "News channel 1001"),
+    Publisher("dw", "DW", "Germany / Global", "/dw/rss/rss-en-all", "All English news"),
+    Publisher("cnbc", "CNBC", "US / Global", "/cnbc/rss", "Top news"),
+    Publisher("washingtonpost", "The Washington Post", "US / Global", "/washingtonpost/app/world", "World section"),
+    Publisher("cbc", "CBC News", "Canada", "/cbc/topics", "All topics"),
+    Publisher("rfi", "RFI", "France / Global", "/rfi", "Generic news route"),
+    Publisher("nikkei_asia", "Nikkei Asia", "Japan / Asia", "/nikkei/asia", "Latest news"),
+    Publisher("korea_herald", "The Korea Herald", "South Korea / Asia", "/koreaherald", "Latest news"),
+    Publisher("cna", "中央通讯社", "Taiwan / Asia", "/cna/aall", "全部新闻"),
+    Publisher("tass", "TASS", "Russia / Global", "/tass/world", "World section; state-run source"),
+    Publisher("people", "人民网", "Mainland China", "/people", "Headlines; state-run source"),
+    Publisher("nyt", "The New York Times", "US / Global", "/nytimes/rss/HomePage", "Home page feed enhancement"),
+    Publisher("wsj", "The Wall Street Journal", "US / Global", "/wsj/en-us", "US edition"),
+    Publisher("reuters", "Reuters", "UK / Global", "/reuters/world", "World section"),
+    Publisher("zaobao", "联合早报", "Singapore / Greater China", "/zaobao/realtime", "即时新闻"),
+    Publisher("caixin", "财新", "Mainland China", "/caixin/latest", "最新文章，不带订阅 Cookie"),
 )
 
 
@@ -76,13 +75,13 @@ def normalize_instance(value: str) -> str:
     return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
 
 
-def build_url(instance: str, publisher: Publisher, access_key: str | None) -> str:
-    url = f"{normalize_instance(instance)}/{publisher.path.lstrip('/')}?limit={publisher.requested_limit}"
-    if not access_key:
-        return url
+def build_url(instance: str, publisher: Publisher, access_key: str | None, feed_limit: int) -> str:
+    url = f"{normalize_instance(instance)}/{publisher.path.lstrip('/')}"
     parsed = urllib.parse.urlsplit(url)
     query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
-    query.append(("key", access_key))
+    query.append(("limit", str(feed_limit)))
+    if access_key:
+        query.append(("key", access_key))
     return urllib.parse.urlunsplit((*parsed[:3], urllib.parse.urlencode(query), parsed.fragment))
 
 
@@ -186,7 +185,7 @@ def parse_feed(body: bytes) -> list[dict]:
     return entries
 
 
-def summarize_entries(entries: list[dict], now: datetime, zone: ZoneInfo, requested_limit: int) -> dict:
+def summarize_entries(entries: list[dict], now: datetime, zone: ZoneInfo) -> dict:
     today = now.astimezone(zone).date()
     yesterday = today - timedelta(days=1)
     buckets = {"today": 0, "yesterday": 0, "older": 0, "future": 0, "undated": 0}
@@ -228,7 +227,6 @@ def summarize_entries(entries: list[dict], now: datetime, zone: ZoneInfo, reques
         "long_description_rate": round(long_descriptions / len(entries), 3) if entries else None,
         "median_description_chars": round(statistics.median(description_lengths)) if entries else None,
         "freshest_published_at": freshest.isoformat() if freshest else None,
-        "feed_window_saturated": len(entries) >= requested_limit,
     }
 
 
@@ -240,9 +238,10 @@ def probe_publisher(
     retries: int,
     now: datetime,
     zone: ZoneInfo,
+    feed_limit: int,
 ) -> dict:
-    url = build_url(instance, publisher, access_key)
-    base = asdict(publisher)
+    url = build_url(instance, publisher, access_key, feed_limit)
+    base = {**asdict(publisher), "requested_feed_limit": feed_limit}
     last_result: dict = {}
     for attempt in range(retries + 1):
         try:
@@ -256,7 +255,11 @@ def probe_publisher(
                 last_result.update(status="html_instead_of_feed", error="server returned HTML")
             else:
                 entries = parse_feed(body)
-                last_result.update(status="ok", **summarize_entries(entries, now, zone, publisher.requested_limit))
+                last_result.update(
+                    status="ok",
+                    requested_limit_reached=len(entries) >= feed_limit,
+                    **summarize_entries(entries, now, zone),
+                )
                 return last_result
         except (ET.ParseError, ValueError) as exc:
             last_result = {**base, "status": "invalid_feed", "error": f"{type(exc).__name__}: {exc}", "attempts": attempt + 1}
@@ -321,13 +324,13 @@ def render_markdown(report: dict) -> str:
         "",
         "> Coverage here means the RSSHub feed window returned dated items. It does not prove complete newsroom output or full text.",
         "",
-        "| Publisher | Result | HTTP | Today | Yesterday | Feed items | Description | Long description | Requested limit reached |",
+        "| Publisher | Result | HTTP | Today | Yesterday | Feed items | Description | Long description | Limit reached |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for result in report["publishers"]:
         ok = result["status"] == "ok"
         lines.append(
-            "| {name} | {status} | {http} | {today} | {yesterday} | {items} | {description} | {long_description} | {saturated} |".format(
+            "| {name} | {status} | {http} | {today} | {yesterday} | {items} | {description} | {long_description} | {limit_reached} |".format(
                 name=result["name"].replace("|", "\\|"),
                 status=result["status"],
                 http=result.get("http_status", "—"),
@@ -336,7 +339,7 @@ def render_markdown(report: dict) -> str:
                 items=result.get("item_count", "—"),
                 description=percent(result.get("description_nonempty_rate")) if ok else "—",
                 long_description=percent(result.get("long_description_rate")) if ok else "—",
-                saturated="yes" if result.get("feed_window_saturated") else "no" if ok else "—",
+                limit_reached="yes" if result.get("requested_limit_reached") else "no" if ok else "—",
             )
         )
     failures = [result for result in report["publishers"] if result["status"] != "ok"]
@@ -355,7 +358,8 @@ def write_outputs(report: dict, output_dir: Path) -> None:
     fields = (
         "key", "name", "region", "status", "http_status", "today_count", "yesterday_count", "recent_count",
         "item_count", "unique_url_count", "undated_count", "description_nonempty_rate", "long_description_rate",
-        "median_description_chars", "freshest_published_at", "feed_window_saturated", "elapsed_ms", "attempts", "error",
+        "median_description_chars", "freshest_published_at", "requested_feed_limit", "requested_limit_reached",
+        "elapsed_ms", "attempts", "error",
     )
     with (output_dir / "coverage.csv").open("w", newline="", encoding="utf-8-sig") as stream:
         writer = csv.DictWriter(stream, fieldnames=fields, extrasaction="ignore")
@@ -371,12 +375,18 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=90.0)
     parser.add_argument("--retries", type=int, default=1)
     parser.add_argument("--request-delay", type=float, default=1.0)
+    parser.add_argument(
+        "--feed-limit",
+        type=int,
+        default=500,
+        help="Large RSSHub output window used to discover the route's current complete item pool (default: 500).",
+    )
     parser.add_argument("--publisher", action="append", choices=[publisher.key for publisher in PUBLISHERS])
     parser.add_argument("--output-dir", type=Path, default=Path("rsshub-coverage-report"))
     args = parser.parse_args()
 
-    if args.timeout <= 0 or args.retries < 0 or args.request_delay < 0:
-        parser.error("timeout must be positive; retries and request-delay must be non-negative")
+    if args.timeout <= 0 or args.retries < 0 or args.request_delay < 0 or args.feed_limit <= 0:
+        parser.error("timeout and feed-limit must be positive; retries and request-delay must be non-negative")
     try:
         zone = ZoneInfo(args.timezone)
         instance = normalize_instance(args.instance)
@@ -393,7 +403,16 @@ def main() -> int:
     for index, publisher in enumerate(publishers):
         if index and args.request_delay:
             time.sleep(args.request_delay)
-        result = probe_publisher(instance, publisher, access_key, args.timeout, args.retries, now, zone)
+        result = probe_publisher(
+            instance,
+            publisher,
+            access_key,
+            args.timeout,
+            args.retries,
+            now,
+            zone,
+            args.feed_limit,
+        )
         results.append(result)
         print(
             f"{publisher.key}: {result['status']} http={result.get('http_status', '-')} "

@@ -9,9 +9,12 @@ It produces three files in `rsshub-coverage-report/`:
 - `coverage.csv`: one row per publisher;
 - `summary.md`: the table shown in the GitHub Actions run summary.
 
-The counts describe the current RSSHub feed window, not all articles published by a newsroom.
-Reaching the requested limit means the window may be truncated. Description length is measured
-only as a payload diagnostic and is not evidence that the full article is present.
+Omitting RSSHub's `limit` query parameter does not mean unlimited output: routes such as AP fall
+back to a 20-item default. The monitor therefore requests a deliberately large 500-item window.
+When a route returns fewer than 500 items, the report has captured its current complete item pool;
+when it returns exactly 500, the report marks it for a larger follow-up probe. This is still not
+all articles ever published by a newsroom. Description length is measured only as a payload
+diagnostic and is not evidence that the full article is present.
 
 The catalog intentionally keeps currently failing routes such as Reuters and The Wall Street
 Journal. Removing them would make the apparent publisher coverage rate look better while hiding

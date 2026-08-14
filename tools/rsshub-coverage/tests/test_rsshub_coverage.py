@@ -28,10 +28,10 @@ ZONE = ZoneInfo("Asia/Shanghai")
 
 class RsshubCoverageTests(unittest.TestCase):
     def test_build_url_encodes_access_key_without_changing_route(self) -> None:
-        publisher = Publisher("test", "Test", "Global", "/test/latest", 100, "test")
+        publisher = Publisher("test", "Test", "Global", "/test/latest", "test")
         self.assertEqual(
-            build_url("https://rsshub.example.test/", publisher, "secret +/value"),
-            "https://rsshub.example.test/test/latest?limit=100&key=secret+%2B%2Fvalue",
+            build_url("https://rsshub.example.test/", publisher, "secret +/value", 500),
+            "https://rsshub.example.test/test/latest?limit=500&key=secret+%2B%2Fvalue",
         )
 
     def test_feed_dates_and_description_richness_are_summarized(self) -> None:
@@ -44,12 +44,11 @@ class RsshubCoverageTests(unittest.TestCase):
               <item><title>Undated</title><link>https://example.test/undated</link></item>
             </channel></rss>"""
         )
-        result = summarize_entries(entries, NOW, ZONE, requested_limit=3)
+        result = summarize_entries(entries, NOW, ZONE)
         self.assertEqual(result["today_count"], 1)
         self.assertEqual(result["yesterday_count"], 1)
         self.assertEqual(result["undated_count"], 1)
         self.assertEqual(result["description_nonempty_rate"], 0.667)
-        self.assertTrue(result["feed_window_saturated"])
 
     def test_report_and_artifacts_preserve_failures(self) -> None:
         report = build_report(
@@ -59,7 +58,7 @@ class RsshubCoverageTests(unittest.TestCase):
                     "key": "ok", "name": "Working", "region": "Global", "status": "ok", "http_status": 200,
                     "today_count": 4, "yesterday_count": 3, "recent_count": 7, "item_count": 10,
                     "description_nonempty_rate": 1.0, "long_description_rate": 0.5,
-                    "feed_window_saturated": False,
+                    "requested_feed_limit": 500, "requested_limit_reached": False,
                 },
                 {"key": "bad", "name": "Blocked", "region": "Global", "status": "http_error", "http_status": 503, "error": "HTTP 503"},
             ],
