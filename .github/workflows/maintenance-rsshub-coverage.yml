@@ -37,6 +37,7 @@ jobs:
           --timeout 90
           --retries 1
           --request-delay 1
+          --feed-limit 500
           --output-dir rsshub-coverage-report
 
       - name: Publish run summary
