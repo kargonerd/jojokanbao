@@ -26,15 +26,18 @@ function supabaseAbortScope(request: Request): {
   signal: AbortSignal;
 } {
   const controller = new AbortController();
-  const abortFromRequest = () => controller.abort(request.signal.reason);
-  if (request.signal.aborted) abortFromRequest();
-  else request.signal.addEventListener("abort", abortFromRequest, { once: true });
+  // Makers' production Request implementation may omit the optional signal
+  // even though local Node's Request always exposes it.
+  const requestSignal = (request as Request & { signal?: AbortSignal }).signal;
+  const abortFromRequest = () => controller.abort(requestSignal?.reason);
+  if (requestSignal?.aborted) abortFromRequest();
+  else requestSignal?.addEventListener?.("abort", abortFromRequest, { once: true });
   const timeout = setTimeout(() => controller.abort(), SUPABASE_TIMEOUT_MS);
   return {
     signal: controller.signal,
     dispose: () => {
       clearTimeout(timeout);
-      request.signal.removeEventListener("abort", abortFromRequest);
+      requestSignal?.removeEventListener?.("abort", abortFromRequest);
     },
   };
 }
