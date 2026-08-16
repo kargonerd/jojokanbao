@@ -94,26 +94,30 @@ jobs:
             check_url="$base_url/gateway/credentials?$query"
           fi
           status=""
-          for attempt in $(seq 1 12); do
+          for attempt in $(seq 1 6); do
             status="$(curl --silent --show-error --output "$RUNNER_TEMP/agent-health.json" \
-              --max-time 60 \
+              --connect-timeout 5 \
+              --max-time 10 \
               --write-out '%{http_code}' \
               --header 'Makers-Conversation-Id: jojo-deploy-health' \
-              "$check_url")"
-            [ "$status" != "404" ] && break
+              "$check_url")" || status="000"
+            [ "$status" != "000" ] && [ "$status" != "404" ] && break
             sleep 10
           done
-          if [ "$status" = "404" ] && [ "$EDGEONE_DEPLOY_ENV" = "production" ]; then
+          if { [ "$status" = "000" ] || [ "$status" = "404" ]; } && [ "$EDGEONE_DEPLOY_ENV" = "production" ]; then
             echo "Custom domain is still propagating; verifying this deployment URL instead."
             check_url="$base_url/gateway/ask?$query"
             status="$(curl --silent --show-error --output "$RUNNER_TEMP/agent-health.json" \
-              --max-time 60 \
+              --connect-timeout 5 \
+              --max-time 10 \
               --write-out '%{http_code}' \
               --header 'Makers-Conversation-Id: jojo-deploy-health' \
-              "$check_url")"
+              "$check_url")" || status="000"
           fi
           cat "$RUNNER_TEMP/agent-health.json"
-          if [ "$status" = "404" ]; then
+          expected_status="405"
+          [ "$EDGEONE_DEPLOY_ENV" = "production" ] && expected_status="200"
+          if [ "$status" != "$expected_status" ]; then
             project_id="$(grep -oE 'makers-[a-z0-9]+' "$RUNNER_TEMP/edgeone-deploy-clean.log" | tail -1)"
             deployment_id="$(grep -oE 'Deployment ID: [a-z0-9]+' "$RUNNER_TEMP/edgeone-deploy-clean.log" | tail -1 | awk '{print $3}')"
             log_response="$(curl --fail-with-body --silent --show-error \
@@ -123,6 +127,6 @@ jobs:
               https://pages-api.cloud.tencent.com/v1)"
             log_url="$(jq -er '.Data.Response.LogUrl' <<<"$log_response")"
             curl --fail-with-body --silent --show-error "$log_url"
-            echo "Agent gateway route is missing" >&2
+            echo "Agent gateway health check returned HTTP $status; expected $expected_status" >&2
             exit 1
           fi
