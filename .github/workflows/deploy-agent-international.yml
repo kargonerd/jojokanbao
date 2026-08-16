@@ -84,13 +84,13 @@ jobs:
         if: steps.edgeone_deploy.outcome == 'success'
         run: |
           sed -E $'s/\033\[[0-9;]*[mK]//g' "$RUNNER_TEMP/edgeone-deploy.log" > "$RUNNER_TEMP/edgeone-deploy-clean.log"
+          deploy_url="$(grep -oE 'https://[^[:space:]]+\.edgeone\.dev\?eo_token=[^[:space:]]+' "$RUNNER_TEMP/edgeone-deploy-clean.log" | tail -1)"
+          test -n "$deploy_url" || (echo "Preview URL was not reported" >&2 && exit 1)
+          base_url="${deploy_url%%\?*}"
+          query="${deploy_url#*\?}"
           if [ "$EDGEONE_DEPLOY_ENV" = "production" ]; then
             check_url="${EDGEONE_AGENT_BASE_URL%/}/gateway/ask"
           else
-            deploy_url="$(grep -oE 'https://[^[:space:]]+\.edgeone\.dev\?eo_token=[^[:space:]]+' "$RUNNER_TEMP/edgeone-deploy-clean.log" | tail -1)"
-            test -n "$deploy_url" || (echo "Preview URL was not reported" >&2 && exit 1)
-            base_url="${deploy_url%%\?*}"
-            query="${deploy_url#*\?}"
             check_url="$base_url/gateway/credentials?$query"
           fi
           status=""
@@ -103,6 +103,15 @@ jobs:
             [ "$status" != "404" ] && break
             sleep 10
           done
+          if [ "$status" = "404" ] && [ "$EDGEONE_DEPLOY_ENV" = "production" ]; then
+            echo "Custom domain is still propagating; verifying this deployment URL instead."
+            check_url="$base_url/gateway/ask?$query"
+            status="$(curl --silent --show-error --output "$RUNNER_TEMP/agent-health.json" \
+              --max-time 60 \
+              --write-out '%{http_code}' \
+              --header 'Makers-Conversation-Id: jojo-deploy-health' \
+              "$check_url")"
+          fi
           cat "$RUNNER_TEMP/agent-health.json"
           if [ "$status" = "404" ]; then
             project_id="$(grep -oE 'makers-[a-z0-9]+' "$RUNNER_TEMP/edgeone-deploy-clean.log" | tail -1)"
