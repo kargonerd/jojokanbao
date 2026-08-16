@@ -73,7 +73,7 @@ describe("international Agent proxy", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("forwards authenticated SSE requests to the same-project Agent", async () => {
+  it("forwards authenticated SSE requests to the configured Agent origin", async () => {
     const fetchMock = vi.fn(
       async (input: string | URL | Request, _init?: RequestInit) => {
         const url = String(input);
@@ -132,7 +132,7 @@ describe("international Agent proxy", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      new URL("https://preview-agent.example/jojo"),
+      new URL("https://production-agent.example/jojo"),
       expect.objectContaining({ method: "POST" }),
     );
     const forwarded = fetchMock.mock.calls[2]?.[1];
@@ -280,7 +280,7 @@ describe("international Agent proxy", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("preserves only the EdgeOne preview token for same-deployment health checks", async () => {
+  it("preserves only the EdgeOne preview token when checking the configured Agent", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -294,7 +294,7 @@ describe("international Agent proxy", () => {
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledWith(
-      new URL("https://preview-agent.example/jojo/health?eo_token=preview-secret"),
+      new URL("https://production-agent.example/jojo/health?eo_token=preview-secret"),
       expect.objectContaining({ method: "GET" }),
     );
   });

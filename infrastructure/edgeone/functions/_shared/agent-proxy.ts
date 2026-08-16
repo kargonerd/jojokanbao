@@ -142,10 +142,17 @@ async function requireRagWorkspaceAccess(
   if (authResponse.status === 401 || authResponse.status === 403) {
     return jsonResponse(401, { error: "Authentication required" }, origin);
   }
-  if (!authResponse.ok || !configResponse.ok) {
+  if (!authResponse.ok) {
     return jsonResponse(
       503,
-      { error: "Feature evaluation service unavailable" },
+      { error: "Feature authentication service unavailable" },
+      origin,
+    );
+  }
+  if (!configResponse.ok) {
+    return jsonResponse(
+      503,
+      { error: "Feature rule service unavailable" },
       origin,
     );
   }
@@ -160,7 +167,7 @@ async function requireRagWorkspaceAccess(
   } catch {
     return jsonResponse(
       503,
-      { error: "Feature evaluation service unavailable" },
+      { error: "Feature evaluation response is invalid" },
       origin,
     );
   }
@@ -172,7 +179,7 @@ async function requireRagWorkspaceAccess(
   if (typeof userId !== "string" || !userId) {
     return jsonResponse(
       503,
-      { error: "Feature evaluation service unavailable" },
+      { error: "Feature authentication response is invalid" },
       origin,
     );
   }
@@ -187,7 +194,7 @@ async function requireRagWorkspaceAccess(
   } catch {
     return jsonResponse(
       503,
-      { error: "Feature evaluation service unavailable" },
+      { error: "Feature rule configuration is invalid" },
       origin,
     );
   }
@@ -203,19 +210,11 @@ function agentUrl(
   const configured = environment.JOJO_AGENT_UPSTREAM_URL?.trim();
   const incoming = new URL(requestUrl);
   const previewToken = incoming.searchParams.get("eo_token");
-  const target = new URL(incoming);
-  if (configured) {
-    const configuredUrl = new URL(configured);
-    if (configuredUrl.protocol !== "http:" && configuredUrl.protocol !== "https:") {
-      throw new Error("JOJO_AGENT_UPSTREAM_URL must use http or https");
-    }
-    target.pathname = configuredUrl.pathname;
-  } else {
-    target.pathname = "/jojo";
-  }
+  const target = configured ? new URL(configured) : new URL(incoming);
   if (target.protocol !== "http:" && target.protocol !== "https:") {
     throw new Error("JOJO_AGENT_UPSTREAM_URL must use http or https");
   }
+  if (!configured) target.pathname = "/jojo";
   target.pathname = health
     ? `${target.pathname.replace(/\/$/, "")}/health`
     : target.pathname.replace(/\/$/, "");
