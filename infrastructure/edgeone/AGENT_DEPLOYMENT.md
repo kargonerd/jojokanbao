@@ -12,10 +12,10 @@ jojokanbao.cn                         agent-global.jojokanbao.cn
                                      └──────────────────────────┘
 ```
 
-- `/gateway/ask` 处理浏览器 CORS 预检，为请求添加短时 HMAC 服务签名，再把 SSE
-  请求转给同项目 `/jojo`。
+- `/gateway/ask` 处理浏览器 CORS 预检，使用当前用户 Bearer Token 检查
+  `agent.chat`，通过后添加短时 HMAC 服务签名，再把 SSE 请求转给同项目 `/jojo`。
 - `/jojo` 运行 Pi Agent，并在调用 Codex 前依次校验 Cloud Function 服务签名
-  和 JOJO/Supabase Bearer Token；浏览器不能直接调用。
+  和 JOJO/Supabase Bearer Token；它不处理平台入口开关，浏览器也不能直接调用。
 - `/gateway/credentials` 是平台通用的凭据管理入口，不返回凭据。当前只注册
   `agent/openai-codex`，以后由其他业务注册自己的 scope/provider 和校验器。
 - `pnpm prepare:agent-deploy` 生成 `.edgeone/agent-deploy`。

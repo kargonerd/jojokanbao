@@ -27,7 +27,6 @@ describe("createEdgeOneAgentHandler", () => {
     const handle = createEdgeOneAgentHandler({
       authorizeService: async () => undefined,
       authorize: async () => ({ id: "user-1" }),
-      checkFeature: async () => undefined,
       createModelRuntime: async () => ({
         config: {
           provider: "openai-codex",
@@ -80,7 +79,6 @@ describe("createEdgeOneAgentHandler", () => {
       authorize: async () => {
         throw new (await import("../src")).AgentHttpError(401, "Authentication required");
       },
-      checkFeature: async () => undefined,
       createModelRuntime,
     });
 
@@ -92,29 +90,11 @@ describe("createEdgeOneAgentHandler", () => {
     expect(createModelRuntime).not.toHaveBeenCalled();
   });
 
-  it("does not initialize a model when agent.chat is disabled", async () => {
-    const createModelRuntime = vi.fn();
-    const handle = createEdgeOneAgentHandler({
-      authorizeService: async () => undefined,
-      authorize: async () => ({ id: "user-1" }),
-      checkFeature: async () => {
-        throw new (await import("../src")).AgentHttpError(403, "Feature is not available");
-      },
-      createModelRuntime,
-    });
-
-    const response = await handle({ request: { body: { message: "Hello" } } });
-
-    expect(response.status).toBe(403);
-    expect(createModelRuntime).not.toHaveBeenCalled();
-  });
-
   it("rejects direct requests before user auth or model initialization", async () => {
     const authorize = vi.fn(async () => ({ id: "user-1" }));
     const createModelRuntime = vi.fn();
     const handle = createEdgeOneAgentHandler({
       authorize,
-      checkFeature: async () => undefined,
       createModelRuntime,
     });
 

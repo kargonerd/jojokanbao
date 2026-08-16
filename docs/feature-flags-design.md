@@ -11,7 +11,7 @@ JOJO 目前的 `frontend/web/src/rollout.ts` 只在构建时读取 `VITE_ENABLE_
 - 运行时开关，不重新构建 Web 即可调整。
 - 支持 `1%` 到 `100%`、最小步进 1% 的稳定灰度；不开放时直接不配置百分比规则。
 - 每个 Flag 支持多条有序规则，例如“指定用户开启 → 20% 用户开启 → 全局关闭”。
-- 前端只负责体验和路由，FastAPI、Agent 与 Supabase RLS/RPC 负责真正的权限边界。
+- 前端只负责体验和路由，FastAPI、EdgeOne Cloud Function 与 Supabase RLS/RPC 负责真正的权限边界。
 - 所有修改可追溯、可回滚，并有紧急全关能力。
 - Flag 不代替登录、角色和数据权限。
 
@@ -31,7 +31,7 @@ Web ── GET /v1/features/evaluations ── FastAPI
  │                                           v
  ├── Supabase 直连写入 ─────────────── RLS + feature_enabled(...)
  │
- └── Agent 请求 ───────────────────── Auth 后、模型初始化前检查 Flag
+ └── Agent 请求 ── Cloud Function 检查 Flag ──▶ Makers Agent
 ```
 
 这意味着前端即使被篡改，也只能显示入口，不能越过后端或 RLS 使用未开放能力。
@@ -211,15 +211,15 @@ X-JOJO-Visitor-ID: <uuid, optional>
 
 Supabase 暂时不可用时：新能力默认关闭；已经不受 Flag 控制的首页、资料库和阅读基础能力继续工作。管理写入失败时不做本地假成功。
 
-## 7. Agent 设计
+## 7. Agent 网关设计
 
-`agent` 是独立运行边界，不能相信 Web 已经隐藏入口。`createEdgeOneAgentHandler` 中的顺序调整为：
+`/gateway/ask` Cloud Function 是浏览器访问 Agent 的平台网关，不能相信 Web 已经隐藏入口。请求顺序为：
 
 ```text
-服务间认证 → Supabase 用户认证 → 检查 agent.chat → 初始化模型 → 执行请求
+检查 agent.chat → 添加服务签名 → Makers Agent 验证服务签名与用户身份 → 初始化模型 → 执行请求
 ```
 
-这样未进入灰度组的请求不会初始化模型、不会消耗 token。Agent 使用当前用户 Bearer Token 调同一 Supabase 判定 RPC；超时或判定服务不可用时 fail closed，返回 `403 feature_not_available` 或 `503 feature_evaluation_unavailable`。
+这样未进入灰度组的请求不会到达 Makers Agent、不会初始化模型或消耗 token。Cloud Function 使用当前用户 Bearer Token 调同一 Supabase 判定 RPC；超时或判定服务不可用时 fail closed。Makers Agent 只处理自己的运行配置，未来的 Prompt、模型或工具实验使用独立的 Agent 内部开关，不复用平台入口 Flag。
 
 ## 8. Web 前端设计
 
@@ -291,7 +291,7 @@ Flask 只监听 `127.0.0.1`。数据库只保存 Operator Token 摘要，私有�
 应用层必测：
 
 - FastAPI 依赖在业务处理前拦截，错误码稳定，ETag/Vary/Cache-Control 正确。
-- Agent 在模型初始化前拦截。
+- EdgeOne Cloud Function 在转发到 Agent 前拦截。
 - Web 登录切换不复用上一用户结果；关闭时无入口且直接访问路由被拦。
 - 管理更新 revision 冲突、必填原因、原子发布、审计记录和首位全局关闭。
 
@@ -301,7 +301,7 @@ Flask 只监听 `127.0.0.1`。数据库只保存 Operator Token 摘要，私有�
 
 1. Supabase 表、判定函数、管理 RPC、RLS 与 pgTAP。
 2. FastAPI repository/service/依赖和管理 API。
-3. Agent `agent.chat` 的服务端强制校验。
+3. EdgeOne Cloud Function 对 `agent.chat` 的服务端强制校验。
 4. Web Zustand store、路由/交互门禁与后端错误同步。
 5. 管理界面。
 6. 先迁移 `library.bookshelf`，验证端到端后再迁移 RAG 构建期开关；Olds 保持整体关闭，不进入本轮迁移。

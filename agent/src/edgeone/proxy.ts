@@ -1,10 +1,12 @@
 import {
   createAgentServiceSignatureHeaders,
 } from "@jojo/agent/edgeone/service-auth";
+import { bearerToken } from "./auth";
 
 const CONVERSATION_HEADER = "Makers-Conversation-Id";
 const CONVERSATION_ID = /^[0-9A-Za-z._-]{6,36}$/;
 const MAX_REQUEST_BYTES = 64 * 1024;
+const AGENT_CHAT_FLAG = "agent.chat";
 
 export interface AgentProxyContext {
   env?: Readonly<Record<string, string | undefined>>;
@@ -63,6 +65,87 @@ function copyUpstreamHeaders(upstream: Response, origin: string | null): Headers
     if (value) headers.set(name, value);
   }
   return headers;
+}
+
+async function requireAgentChatAccess(
+  environment: Readonly<Record<string, string | undefined>>,
+  request: Request,
+  origin: string | null,
+): Promise<Response | null> {
+  const baseUrl = environment.VITE_SUPABASE_URL?.trim().replace(/\/$/, "");
+  const publishableKey = environment.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
+  if (!baseUrl || !publishableKey) {
+    return jsonResponse(
+      503,
+      { error: "Feature evaluation is not configured" },
+      origin,
+    );
+  }
+
+  const token = bearerToken(request.headers);
+  if (!token) {
+    return jsonResponse(401, { error: "Authentication required" }, origin);
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/rest/v1/rpc/get_my_feature_flags`, {
+      method: "POST",
+      headers: {
+        apikey: publishableKey,
+        authorization: `Bearer ${token}`,
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ p_keys: [AGENT_CHAT_FLAG], p_visitor_id: null }),
+      signal: request.signal,
+    });
+  } catch {
+    return jsonResponse(
+      503,
+      { error: "Feature evaluation service unavailable" },
+      origin,
+    );
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    return jsonResponse(401, { error: "Authentication required" }, origin);
+  }
+  if (!response.ok) {
+    return jsonResponse(
+      503,
+      { error: "Feature evaluation service unavailable" },
+      origin,
+    );
+  }
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return jsonResponse(
+      503,
+      { error: "Feature evaluation service unavailable" },
+      origin,
+    );
+  }
+  const decision = Array.isArray(payload)
+    ? payload.find((item) => (
+      item
+      && typeof item === "object"
+      && "flag_key" in item
+      && item.flag_key === AGENT_CHAT_FLAG
+    ))
+    : undefined;
+  if (
+    !decision
+    || typeof decision !== "object"
+    || !("enabled" in decision)
+    || decision.enabled !== true
+  ) {
+    return jsonResponse(403, { error: "This feature is not available" }, origin);
+  }
+  return null;
 }
 
 function agentUrl(
@@ -175,6 +258,11 @@ export async function handleAgentProxyRequest(
       { error: "Agent service authentication is not configured" },
       origin,
     );
+  }
+
+  if (request.method === "POST") {
+    const denied = await requireAgentChatAccess(environment, request, origin);
+    if (denied) return denied;
   }
 
   let upstream: Response;
