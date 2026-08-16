@@ -26,7 +26,7 @@ export function AccountCenterPage({ userId }: AccountCenterPageProps) {
   const leaveAccount = async () => {
     try {
       await signOut();
-      navigate("/archive", { replace: true });
+      navigate("/", { replace: true });
     } catch {
       // The shared auth store exposes a localized error.
     }
@@ -36,8 +36,8 @@ export function AccountCenterPage({ userId }: AccountCenterPageProps) {
     <main className="min-h-screen bg-paper px-5 py-8 text-ink sm:px-8 sm:py-12">
       <header className="mx-auto flex w-full max-w-[64rem] items-center justify-between border-b border-ink pb-4">
         <Link
-          to="/archive"
-          aria-label="返回 JOJO 看报首页"
+          to="/"
+          aria-label="返回 JOJO 首页"
           className="inline-flex items-center gap-2 font-serif text-sm font-black tracking-[0.14em] text-ink no-underline hover:text-red"
         >
           <span aria-hidden="true" className="text-red">★</span>
@@ -54,7 +54,7 @@ export function AccountCenterPage({ userId }: AccountCenterPageProps) {
       </header>
 
       <article className="mx-auto w-full max-w-[64rem] py-9 sm:py-12">
-        <section className="mb-10 border-b border-rule pb-8"><p className="m-0 font-sans text-[.68rem] font-black tracking-[.22em] text-red">我的书架</p>{books.length ? <ul className="mt-5 grid list-none gap-3 p-0 sm:grid-cols-2">{books.map((book) => <li key={book.itemId}><Link className="block border-l-2 border-rule py-2 pl-4 text-sm text-ink no-underline hover:border-red hover:text-red" to={`/rag/source/${encodeURIComponent(book.datasetId)}/${encodeURIComponent(book.itemId)}`}>{book.title}</Link></li>)}</ul> : <p className="mt-4 text-sm text-muted">还没有加入书架的书。</p>}</section>
+        <section className="mb-10 border-b border-rule pb-8"><p className="m-0 font-sans text-[.68rem] font-black tracking-[.22em] text-red">我的书架</p>{books.length ? <ul className="mt-5 grid list-none gap-3 p-0 sm:grid-cols-2">{books.map((book) => <li key={book.itemId}><Link className="block border-l-2 border-rule py-2 pl-4 text-sm text-ink no-underline hover:border-red hover:text-red" to={`/book/${encodeURIComponent(book.datasetId)}/${encodeURIComponent(book.itemId)}`}>{book.title}</Link></li>)}</ul> : <p className="mt-4 text-sm text-muted">还没有加入书架的书。</p>}</section>
         <header className="grid gap-3 border-b border-rule pb-6 sm:grid-cols-[minmax(0,1fr)_18rem] sm:items-end sm:gap-10">
           <div>
             <p className="m-0 font-sans text-[0.68rem] font-black tracking-[0.22em] text-red">

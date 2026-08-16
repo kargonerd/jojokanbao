@@ -3,6 +3,7 @@ import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { AppShell, NavBar, type NavItem } from "@jojo/ui";
 import { rollout } from "../../rollout";
 import { ARCHIVE_ROOT, archivePath, defaultArchiveIssuePath } from "../../routes";
+import { PlatformHeader } from "../../platform/PlatformHeader";
 
 const coreNavItems: NavItem[] = [
   { label: "首页", href: ARCHIVE_ROOT },
@@ -31,7 +32,7 @@ export function Layout({ platformRedesign = rollout.platformRedesign }: { platfo
   const [hasReaderCode, setHasReaderCode] = useState(false);
 
   useEffect(() => {
-    if (!rollout.account) return;
+    if (platformRedesign || !rollout.account) return;
 
     let active = true;
     let stopAuthSync = () => {};
@@ -61,7 +62,18 @@ export function Layout({ platformRedesign = rollout.platformRedesign }: { platfo
       unsubscribe();
       stopAuthSync();
     };
-  }, []);
+  }, [platformRedesign]);
+
+  if (platformRedesign) {
+    return (
+      <div className="platform-shell flex h-screen flex-col overflow-hidden">
+        <PlatformHeader />
+        <main className="min-h-0 flex-1 overflow-hidden">
+          <Outlet />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <AppShell

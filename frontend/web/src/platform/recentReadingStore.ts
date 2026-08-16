@@ -4,8 +4,11 @@ import { persist } from "zustand/middleware";
 export type RecentReadingKind = "book" | "periodical";
 
 export interface RecentReadingItem {
+  datasetId?: string;
   id: string;
+  itemKey?: string;
   kind: RecentReadingKind;
+  publicationId?: string;
   title: string;
   subtitle: string;
   href: string;

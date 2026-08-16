@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { loadBookCoverUrl } from "../rag/content";
 
 export function BookCover({
+  className = "library-cover",
   title,
   tone,
   datasetId,
   itemKey,
 }: {
+  className?: string;
   title: string;
   tone: string;
   datasetId: string;
@@ -43,12 +45,14 @@ export function BookCover({
     }).catch(() => undefined);
     return () => {
       active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      if (objectUrl.startsWith("blob:") && typeof URL.revokeObjectURL === "function") {
+        URL.revokeObjectURL(objectUrl);
+      }
     };
   }, [datasetId, itemKey, shouldLoad]);
 
   return (
-    <div ref={coverRef} className={`library-cover book-cover book-cover-${tone}${imageUrl ? " has-image" : ""}`}>
+    <div ref={coverRef} className={`${className} book-cover book-cover-${tone}${imageUrl ? " has-image" : ""}`}>
       {imageUrl ? <img src={imageUrl} alt="" /> : <b>{title}</b>}
     </div>
   );

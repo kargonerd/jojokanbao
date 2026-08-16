@@ -131,6 +131,37 @@ describe("platform homepage", () => {
     expect(screen.getByRole("link", { name: "打开旧版 JOJO 看报" }).getAttribute("href")).toBe("/legacy");
     expect(screen.queryByRole("link", { name: "GitHub 查看源码" })).toBeNull();
   });
+
+  it("keeps the platform navigation when entering the newspaper archive", () => {
+    renderAt("/archive");
+
+    const navigation = screen.getByRole("navigation", { name: "主导航" });
+    expect(within(navigation).getByRole("link", { name: "首页" }).getAttribute("href")).toBe("/");
+    expect(within(navigation).getByRole("link", { name: "资料库" })).toBeTruthy();
+    expect(within(navigation).queryByText("报纸")).toBeNull();
+    expect(within(navigation).queryByText("杂志")).toBeNull();
+  });
+
+  it("loads the real book cover for an existing recent-reading record", async () => {
+    catalogMocks.loadBookCoverUrl.mockResolvedValue("blob:book-cover");
+    useRecentReadingStore.setState({
+      items: [{
+        id: "book:mao:volume-1",
+        kind: "book",
+        title: "毛泽东文集 第一卷",
+        subtitle: "毛泽东文集",
+        href: "/book/mao/volume-1",
+        progress: 0,
+        updatedAt: Date.now(),
+      }],
+    });
+
+    renderAt("/");
+
+    await waitFor(() => expect(catalogMocks.loadBookCoverUrl).toHaveBeenCalledWith("mao", "volume-1"));
+    const card = screen.getByRole("link", { name: /毛泽东文集 第一卷/ });
+    await waitFor(() => expect(card.querySelector("img")?.getAttribute("src")).toBe("blob:book-cover"));
+  });
 });
 
 describe("platform library", () => {
@@ -214,8 +245,29 @@ describe("platform library", () => {
     await waitFor(() => expect(window.location.pathname).toBe("/archive/rmrb/19761009"));
     expect(useRecentReadingStore.getState().items[0]).toMatchObject({
       id: "periodical:rmrb",
+      publicationId: "rmrb",
       title: "人民日报",
       href: "/archive/rmrb/19761009",
     });
+  });
+
+  it("uses the saved publication artwork in recent reading", async () => {
+    useRecentReadingStore.setState({
+      items: [{
+        id: "periodical:rmrb",
+        kind: "periodical",
+        publicationId: "rmrb",
+        title: "人民日报",
+        subtitle: "1976 年 10 月 9 日",
+        href: "/archive/rmrb/19761009",
+        progress: 0,
+        updatedAt: Date.now(),
+      }],
+    });
+
+    renderAt("/");
+
+    const card = screen.getByRole("link", { name: /人民日报/ });
+    expect(card.querySelector("img")?.getAttribute("src")).toContain("people-daily-brand");
   });
 });

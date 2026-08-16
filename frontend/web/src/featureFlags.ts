@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { platformAccountConfigured } from "./platform/accountSession";
+import { platformAccountConfigured, usePlatformAccountStore } from "./platform/accountSession";
 
 export const FEATURE_FLAG_KEYS = [
   "library.bookshelf",
@@ -14,6 +14,22 @@ type FeatureFlagValues = Record<FeatureFlagKey, boolean>;
 const disabledFlags = (): FeatureFlagValues => Object.fromEntries(
   FEATURE_FLAG_KEYS.map((key) => [key, false]),
 ) as FeatureFlagValues;
+
+function migrationCompatibilityFlags(): FeatureFlagValues {
+  const flags = disabledFlags();
+  if (usePlatformAccountStore.getState().userId) {
+    flags["library.bookshelf"] = true;
+    flags["reader.annotations"] = true;
+  }
+  return flags;
+}
+
+function featureRpcIsMissing(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const value = error as { code?: unknown; message?: unknown };
+  return value.code === "PGRST202"
+    || (typeof value.message === "string" && value.message.includes("get_my_feature_flags"));
+}
 const VISITOR_STORAGE_KEY = "jojo-feature-visitor-id";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -64,9 +80,14 @@ export async function refreshFeatureFlags(): Promise<void> {
       revisions.push(`${row.flag_key}:${row.revision}`);
     }
     useFeatureFlagStore.setState({ initialized: true, revision: revisions.join("|"), flags });
-  } catch {
+  } catch (error) {
     if (sequence !== refreshSequence) return;
-    useFeatureFlagStore.setState({ initialized: true, revision: "unavailable", flags: disabledFlags() });
+    const migrationPending = featureRpcIsMissing(error);
+    useFeatureFlagStore.setState({
+      initialized: true,
+      revision: migrationPending ? "migration-pending" : "unavailable",
+      flags: migrationPending ? migrationCompatibilityFlags() : disabledFlags(),
+    });
   }
 }
 

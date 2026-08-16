@@ -19,7 +19,7 @@ describe("BookReader", () => {
       flags: {
         "library.bookshelf": true,
         "reader.annotations": true,
-        "rag.workspace": false,
+        "rag.workspace": true,
         "olds.workspace": false,
       },
     });
@@ -241,10 +241,11 @@ describe("BookReader", () => {
   it("hides bookshelf and annotation writes when their runtime flags are off", async () => {
     useFeatureFlagStore.setState((state) => ({
       ...state,
-      flags: { ...state.flags, "library.bookshelf": false, "reader.annotations": false },
+      flags: { ...state.flags, "library.bookshelf": false, "reader.annotations": false, "rag.workspace": false },
     }));
     const { container } = renderReader();
     expect(screen.queryByRole("button", { name: "加入书架" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "打开书内 AI" })).toBeNull();
 
     const paragraph = screen.getByText("这是正文。");
     const range = document.createRange();

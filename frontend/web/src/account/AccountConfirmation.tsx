@@ -112,7 +112,7 @@ export default function AccountConfirmation() {
 
         {hasDisplayName ? (
           <Link
-            to="/archive"
+            to="/"
             className="mt-7 inline-block border border-red bg-red px-7 py-3 font-serif text-sm font-bold tracking-[0.12em] text-white no-underline transition-[transform,box-shadow] duration-150 hover:-translate-y-0.5 hover:text-white hover:shadow-[4px_4px_0_rgba(139,26,26,.14)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red"
           >
             记住了，进入首页

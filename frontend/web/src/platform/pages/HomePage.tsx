@@ -7,14 +7,37 @@ import type { RagNotebook } from "../../rag/types";
 import { fuzzyBookTitleScore } from "../bookSearch";
 import { BookCover } from "../BookCover";
 import { usePlatformAccountStore } from "../accountSession";
-import { bookCoverTone } from "../catalog";
+import { PERIODICALS, bookCoverTone } from "../catalog";
 import { dailyQuote } from "../dailyQuote";
 import { useRecentReadingStore, type RecentReadingItem } from "../recentReadingStore";
 import { useFeatureFlag, useFeatureFlagStore } from "../../featureFlags";
 
 function RecentCover({ item }: { item: RecentReadingItem }) {
   if (item.kind === "book") {
-    return <div className="recent-cover recent-cover-book"><b>{item.title}</b><small>继续阅读</small></div>;
+    const path = item.href.split("?")[0]?.split("/").filter(Boolean) ?? [];
+    const datasetId = item.datasetId ?? (path[0] === "book" && path[1] ? decodeURIComponent(path[1]) : undefined);
+    const itemKey = item.itemKey ?? (path[0] === "book" && path[2] ? decodeURIComponent(path[2]) : undefined);
+    if (datasetId) {
+      return (
+        <BookCover
+          className="recent-cover"
+          title={item.title}
+          tone={bookCoverTone(`${datasetId}:${itemKey ?? ""}`)}
+          datasetId={datasetId}
+          itemKey={itemKey}
+        />
+      );
+    }
+    return <div className="recent-cover recent-cover-book"><b>{item.title}</b></div>;
+  }
+  const publicationId = item.publicationId ?? item.id.replace(/^periodical:/, "");
+  const publication = PERIODICALS.find((entry) => entry.id === publicationId);
+  if (publication) {
+    return (
+      <div className="recent-cover recent-cover-image">
+        <img src={publication.image} alt="" style={{ objectPosition: publication.imagePosition }} />
+      </div>
+    );
   }
   return (
     <div className="recent-cover recent-cover-paper">

@@ -174,53 +174,44 @@ describe("JOJO Web navigation", () => {
     expect(screen.getByRole("link", { name: /返回首页/ }).getAttribute("href")).toBe("/");
   });
 
-  it("only marks the Archive homepage active on the exact root route", () => {
+  it("keeps the platform navigation neutral inside a publication reader", () => {
     renderAt("/archive/hq/196419");
 
     const homeLink = screen.getByRole("link", { name: "首页" });
-    const magazineMenu = screen.getByRole("button", { name: "杂志" });
-    expect(homeLink.classList.contains("text-red")).toBe(false);
-    expect(homeLink.querySelector("span")).toBeNull();
-    expect(magazineMenu.classList.contains("text-red")).toBe(true);
-    expect(magazineMenu.querySelector("span")).not.toBeNull();
+    expect(homeLink.classList.contains("is-active")).toBe(false);
+    expect(screen.getByRole("link", { name: "资料库" }).classList.contains("is-active")).toBe(false);
+    expect(screen.queryByRole("button", { name: "杂志" })).toBeNull();
   });
 
   it("navigates to search and marks the route active", async () => {
     renderAt("/archive");
     fireEvent.click(screen.getByRole("link", { name: "搜索" }));
 
-    await waitFor(() => expect(window.location.pathname).toBe("/archive/search"));
+    await waitFor(() => expect(window.location.pathname).toBe("/search"));
     expect(screen.getByPlaceholderText("在JOJO看报上搜索")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "搜索" }).className).toContain("text-red");
+    expect(screen.getByRole("link", { name: "搜索" }).className).toContain("is-active");
   });
 
-  it("opens a desktop publication menu and closes it after navigation", async () => {
+  it("opens the library from the archive through the shared navigation", async () => {
     renderAt("/archive");
-    const newspaperMenu = screen.getByRole("button", { name: "报纸" });
-    fireEvent.focus(newspaperMenu);
-    expect(newspaperMenu.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(screen.getByRole("link", { name: "资料库" }));
 
-    fireEvent.click(screen.getByRole("link", { name: "参考消息" }));
-    await waitFor(() => expect(window.location.pathname).toBe("/archive/ckxx/19760910"));
-    expect(newspaperMenu.getAttribute("aria-expanded")).toBe("false");
+    await waitFor(() => expect(window.location.pathname).toBe("/library"));
+    expect(screen.getByRole("link", { name: "资料库" }).className).toContain("is-active");
   });
 
-  it("opens the mobile menu, navigates, and closes the menu", async () => {
+  it("uses the same About entry instead of the old feedback menu", async () => {
     renderAt("/archive");
-    const menuButton = screen.getByRole("button", { name: "菜单" });
-    fireEvent.click(menuButton);
-    const feedbackLinks = screen.getAllByRole("link", { name: "反馈" });
-    expect(feedbackLinks).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "菜单" })).toBeNull();
+    fireEvent.click(screen.getByRole("link", { name: "关于" }));
 
-    fireEvent.click(feedbackLinks.at(-1)!);
-    await waitFor(() => expect(window.location.pathname).toBe("/archive/support"));
+    await waitFor(() => expect(window.location.pathname).toBe("/support"));
     expect(screen.getByRole("heading", { name: "关于 JOJO 看报" })).toBeTruthy();
-    expect(screen.getAllByRole("link", { name: "反馈" })).toHaveLength(1);
   });
 
   it("returns home through the mobile brand link", async () => {
     renderAt("/archive/support");
-    fireEvent.click(screen.getByRole("link", { name: "JOJO看报" }));
+    fireEvent.click(screen.getByRole("link", { name: "JOJO 看报首页" }));
 
     await waitFor(() => expect(window.location.pathname).toBe("/"));
     expect(screen.getByRole("heading", { name: "今天读什么？" })).toBeTruthy();

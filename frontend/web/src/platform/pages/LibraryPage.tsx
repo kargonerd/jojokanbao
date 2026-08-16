@@ -131,7 +131,7 @@ export function LibraryPage() {
   function rememberPeriodical(entry: PeriodicalEntry) {
     const href = issuePath(entry);
     const id = href.split("/").at(-1) || PUBLICATIONS[entry.id].defaultId;
-    remember({ id: `periodical:${entry.id}`, kind: "periodical", title: entry.title, subtitle: issueLabel(id), href, progress: 0 });
+    remember({ id: `periodical:${entry.id}`, kind: "periodical", publicationId: entry.id, title: entry.title, subtitle: issueLabel(id), href, progress: 0 });
   }
 
   function rememberBook(source: RagSource) {
@@ -140,6 +140,8 @@ export function LibraryPage() {
     remember({
       id: `book:${datasetId}:${itemKey}`,
       kind: "book",
+      datasetId,
+      itemKey,
       title: source.title || source.name || selectedBook?.title || "未命名书籍",
       subtitle: selectedBook?.title || "书籍",
       href: `/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(itemKey)}`,
