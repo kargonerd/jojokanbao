@@ -26,6 +26,10 @@ From the repository root:
 pnpm dev:jojo-pipe
 ```
 
+只评审功能开关界面时，可以打开
+`http://127.0.0.1:4174/features?preview=1`。该地址使用只读示例规则，且仅在
+Vite 开发环境生效；生产管理入口始终要求管理员登录。
+
 Publication configuration is read from the repository `.env`:
 
 ```text

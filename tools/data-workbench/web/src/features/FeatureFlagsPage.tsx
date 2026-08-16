@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { PageTopbar } from "../components/PageTopbar";
 import { featureAdminAuth, featureAdminConfigured } from "./adminAuth";
+import { previewFeatureFlags } from "./previewData";
 import type { FeatureConditionType, FeatureFlagDefinition, FeatureFlagRule, FeatureUser } from "./types";
 
 const conditionLabels: Record<FeatureConditionType, string> = {
@@ -46,6 +47,8 @@ function publishedAt(value: string): string {
 }
 
 export function FeatureFlagsPage() {
+  const previewMode = import.meta.env.DEV && new URLSearchParams(window.location.search).get("preview") === "1";
+  if (previewMode) return <ConfiguredFeatureFlagsPage auth={previewFeatureAdminAuth} preview />;
   if (!featureAdminConfigured || !featureAdminAuth) {
     return (
       <>
@@ -54,11 +57,31 @@ export function FeatureFlagsPage() {
       </>
     );
   }
-  return <ConfiguredFeatureFlagsPage />;
+  return <ConfiguredFeatureFlagsPage auth={featureAdminAuth} />;
 }
 
-function ConfiguredFeatureFlagsPage() {
-  const auth = featureAdminAuth!;
+type FeatureAdminAuth = NonNullable<typeof featureAdminAuth>;
+
+const previewFeatureAdminAuth = {
+  client: {
+    rpc: async (name: string) => {
+      if (name === "get_my_feature_flag_admin_role") return { data: "viewer", error: null };
+      if (name === "admin_list_feature_flags") return { data: previewFeatureFlags, error: null };
+      return { data: [], error: null };
+    },
+  },
+  startAuthSync: () => () => undefined,
+  useAuthStore: () => ({
+    initialized: true,
+    user: { id: "local-preview" },
+    busy: false,
+    error: null,
+    signIn: async () => undefined,
+    signOut: async () => undefined,
+  }),
+} as unknown as FeatureAdminAuth;
+
+function ConfiguredFeatureFlagsPage({ auth, preview = false }: { auth: FeatureAdminAuth; preview?: boolean }) {
   const { initialized, user, busy, error, signIn, signOut } = auth.useAuthStore();
   const [flags, setFlags] = useState<FeatureFlagDefinition[]>([]);
   const [selectedKey, setSelectedKey] = useState("");
@@ -193,8 +216,8 @@ function ConfiguredFeatureFlagsPage() {
       <PageTopbar
         eyebrow="RUNTIME CONTROL / 运行控制"
         title="功能开关"
-        description="规则按从上到下的顺序执行，命中第一条后立即停止。"
-        aside={<span className="local-badge"><i />{role === "editor" ? "可发布" : "只读"}</span>}
+        description={preview ? "本地只读预览。规则按从上到下的顺序执行，命中第一条后立即停止。" : "规则按从上到下的顺序执行，命中第一条后立即停止。"}
+        aside={<span className="local-badge"><i />{preview ? "本地预览" : role === "editor" ? "可发布" : "只读"}</span>}
       />
       <main className="feature-workspace">
         <aside className="feature-index" aria-label="功能开关列表">
