@@ -19,7 +19,7 @@ class WorkspaceRoutesTest(unittest.TestCase):
         cls.temp_dir = tempfile.TemporaryDirectory()
         dist = Path(cls.temp_dir.name)
         (dist / "index.html").write_text(
-            "<!doctype html><title>JOJO 看报 · 数据工作台</title><div id='root'></div>",
+            "<!doctype html><title>JOJO 看报 · 管理台</title><div id='root'></div>",
             encoding="utf-8",
         )
         app_module.FRONTEND_DIST = dist
@@ -35,7 +35,7 @@ class WorkspaceRoutesTest(unittest.TestCase):
         response = self.client.get("/")
         try:
             self.assertEqual(response.status_code, 200)
-            self.assertIn("数据工作台".encode("utf-8"), response.data)
+            self.assertIn("管理台".encode("utf-8"), response.data)
         finally:
             response.close()
 

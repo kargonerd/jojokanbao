@@ -60,6 +60,11 @@ export interface CreateEdgeOneAgentHandlerOptions {
   authorize?: (
     context: EdgeOneAgentContext,
   ) => AuthorizedAgentUser | Promise<AuthorizedAgentUser>;
+  checkFeature?: (
+    context: EdgeOneAgentContext,
+    user: AuthorizedAgentUser,
+    key: string,
+  ) => void | Promise<void>;
   createModelRuntime?: (
     context: EdgeOneAgentContext,
   ) => PlatformModelRuntime | Promise<PlatformModelRuntime>;

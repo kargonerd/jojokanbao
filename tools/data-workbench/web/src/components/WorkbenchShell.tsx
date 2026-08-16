@@ -5,6 +5,7 @@ const items = [
   { to: "/pdf", label: "PDF 数据", note: "导入与发布" },
   { to: "/content", label: "书籍内容", note: "JSON 与 Jox" },
   { to: "/es", label: "ES 数据", note: "搜索与修复" },
+  { to: "/features", label: "功能开关", note: "灰度与规则" },
 ];
 
 export function WorkbenchShell() {
@@ -15,10 +16,10 @@ export function WorkbenchShell() {
           <span className="brand-mark">J</span>
           <span>
             <b>JOJO 看报</b>
-            <small>数据工作台</small>
+            <small>管理台</small>
           </span>
         </NavLink>
-        <nav aria-label="工作台导航">
+        <nav aria-label="管理台导航">
           {items.map((item) => (
             <NavLink
               key={item.to}
@@ -35,7 +36,7 @@ export function WorkbenchShell() {
         </nav>
         <div className="operator">
           <i />
-          LOCAL OPERATOR
+          CONTROL ENVIRONMENT
         </div>
       </aside>
       <section className="workbench-content">

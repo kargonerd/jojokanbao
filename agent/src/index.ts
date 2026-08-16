@@ -50,6 +50,7 @@ export {
   AgentHttpError,
   authorizeSupabaseUser,
 } from "./edgeone/auth";
+export { requireFeatureFlag } from "./edgeone/feature-flags";
 export {
   createCredentialAdminHandler,
 } from "./edgeone/credential-admin";

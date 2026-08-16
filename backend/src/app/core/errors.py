@@ -27,3 +27,13 @@ class AuthServiceError(ApiError):
 class ConfigurationError(ApiError):
     def __init__(self, message: str = "Service authentication is not configured") -> None:
         super().__init__(503, "service_not_configured", message)
+
+
+class FeatureEvaluationError(ApiError):
+    def __init__(self, message: str = "Feature evaluation service is unavailable") -> None:
+        super().__init__(503, "feature_evaluation_unavailable", message)
+
+
+class FeatureNotAvailableError(ApiError):
+    def __init__(self, message: str = "This feature is not available") -> None:
+        super().__init__(403, "feature_not_available", message)

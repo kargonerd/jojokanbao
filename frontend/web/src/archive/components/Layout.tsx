@@ -17,7 +17,6 @@ const navItems: NavItem[] = [
   ]},
   { label: "搜索", href: archivePath("search") },
   ...(rollout.olds ? [{ label: "旧闻", href: "/olds" }] : []),
-  ...(rollout.rag ? [{ label: "问答", href: "/rag" }] : []),
   { label: "反馈", href: archivePath("support") },
 ];
 
@@ -65,13 +64,11 @@ export function Layout() {
       header={
         <NavBar
           items={navItems}
-          actions={rollout.account
-            ? [{
-                label: accountLabel,
-                href: "/account",
-                hint: hasReaderCode ? "读者" : undefined,
-              }]
-            : []}
+          actions={[{
+            label: accountLabel,
+            href: "/account",
+            hint: hasReaderCode ? "读者" : undefined,
+          }]}
           mobileTitle="JOJO看报"
           onNavigate={(href) => navigate(href)}
           isActive={(href) =>

@@ -16,6 +16,7 @@ import type {
 } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { AgentHttpError, authorizeSupabaseUser } from "./auth";
+import { requireFeatureFlag } from "./feature-flags";
 import { createEdgeOneCredentialStore } from "./credential-store";
 import { authorizeAgentServiceRequest } from "./service-auth";
 import type {
@@ -188,6 +189,7 @@ export function createEdgeOneAgentHandler(
       await (options.authorizeService ?? authorizeAgentServiceRequest)(context);
       body = requestBody(context.request.body);
       user = await (options.authorize ?? authorizeSupabaseUser)(context);
+      await (options.checkFeature ?? requireFeatureFlag)(context, user, "agent.chat");
       runtime = await (
         options.createModelRuntime?.(context)
         ?? defaultModelRuntime(context)

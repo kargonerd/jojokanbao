@@ -20,7 +20,7 @@ export function OverviewPage() {
     <>
       <PageTopbar
         eyebrow="DATA OPERATIONS / 数据运营"
-        title="数据工作台"
+        title="JOJO 管理台"
         aside={
           <span className="local-badge">
             <i />
@@ -35,10 +35,10 @@ export function OverviewPage() {
             <h2>
               从报刊文件到可搜索数据，
               <br />
-              在一个工作台完成。
+              在一个管理台完成。
             </h2>
             <p>
-              管理 PDF 入库和搜索索引修复。每项操作保留清晰边界与可核验结果。
+              管理内容入库、搜索索引和产品运行规则。每项操作保留清晰边界与可核验结果。
             </p>
           </div>
           <time>
@@ -53,7 +53,7 @@ export function OverviewPage() {
               <p className="eyebrow">MODULES</p>
               <h2>数据管理模块</h2>
             </div>
-            <span>2 个模块可用</span>
+            <span>4 个模块可用</span>
           </header>
           <div className="module-grid">
             <Link className="module-card" to="/pdf">
@@ -78,6 +78,18 @@ export function OverviewPage() {
                 <span>{esState}</span>
                 <b>→</b>
               </footer>
+            </Link>
+            <Link className="module-card" to="/content">
+              <span className="module-code">JOX</span>
+              <h3>书籍内容管理</h3>
+              <p>导入并发布书籍 JSON、清单与 Jox 内容对象。</p>
+              <footer><span>进入模块</span><b>→</b></footer>
+            </Link>
+            <Link className="module-card" to="/features">
+              <span className="module-code">FLAG</span>
+              <h3>功能开关</h3>
+              <p>按顺序配置用户名单、百分比灰度和全局默认规则。</p>
+              <footer><span>进入运行控制</span><b>→</b></footer>
             </Link>
           </div>
         </section>

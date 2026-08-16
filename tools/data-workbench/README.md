@@ -1,9 +1,11 @@
-# JOJO Data Workbench
+# JOJO 管理台
 
 Internal operations application for PDF intake, publication data generation,
 and append-only Elasticsearch repairs.
 
-`/content` is the JOJO v1 content importer and publisher. It accepts local
+The internal package and directory keep the historical `data-workbench` name for now.
+The product UI is **JOJO 管理台**, covering content operations, search maintenance,
+and runtime feature rules. `/content` is the JOJO v1 content importer and publisher. It accepts local
 WeRead JSON paths or browser-selected files, shows background job progress and
 diagnostics, then independently publishes B2, Elasticsearch and Hugging Face.
 By default, a WeRead source is rejected when its declared TOC is truncated,

@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BookReader } from "../src/rag/components/BookReader";
+import { useFeatureFlagStore } from "../src/featureFlags";
 
 class ResizeObserverMock {
   observe(): void {}
@@ -12,6 +13,17 @@ class ResizeObserverMock {
 describe("BookReader", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    useFeatureFlagStore.setState({
+      initialized: true,
+      revision: "reader-test",
+      flags: {
+        "library.bookshelf": true,
+        "reader.annotations": true,
+        "agent.chat": false,
+        "rag.workspace": false,
+        "olds.workspace": false,
+      },
+    });
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 1200, writable: true });
     vi.stubGlobal("ResizeObserver", ResizeObserverMock);
     Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value: vi.fn() });
@@ -225,5 +237,24 @@ describe("BookReader", () => {
     fireEvent.click(screen.getByRole("button", { name: "复制" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("这是正文。"));
     expect(screen.queryByRole("toolbar", { name: "选中文字工具" })).toBeNull();
+  });
+
+  it("hides bookshelf and annotation writes when their runtime flags are off", async () => {
+    useFeatureFlagStore.setState((state) => ({
+      ...state,
+      flags: { ...state.flags, "library.bookshelf": false, "reader.annotations": false },
+    }));
+    const { container } = renderReader();
+    expect(screen.queryByRole("button", { name: "加入书架" })).toBeNull();
+
+    const paragraph = screen.getByText("这是正文。");
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent.mouseUp(container.querySelector("[data-book-page-flow]")!);
+
+    const toolbar = await screen.findByRole("toolbar", { name: "选中文字工具" });
+    expect(toolbar.textContent).toBe("复制");
   });
 });

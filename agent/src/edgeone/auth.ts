@@ -13,7 +13,7 @@ export class AgentHttpError extends Error {
   }
 }
 
-function bearerToken(
+export function bearerToken(
   headers: EdgeOneAgentContext["request"]["headers"],
 ): string | undefined {
   const rawValue = headers instanceof Headers

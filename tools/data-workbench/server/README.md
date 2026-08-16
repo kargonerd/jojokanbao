@@ -4,7 +4,7 @@ JOJO Pipe is the local PDF intake tool for reader publications. It renames PDFs,
 splits page PDFs, and commits the generated files to a configurable storage
 backend.
 
-## React data workbench
+## React JOJO 管理台
 
 The complete internal application lives in `tools/data-workbench`: `web/`
 contains the React 19 client, while `server/` contains the Flask APIs, PDF
