@@ -82,6 +82,10 @@ $env:JOJO_OPERATOR_TOKEN="<与 Makers 项目一致>"
 pnpm push:credentials
 ```
 
+也可以启动 `pnpm dev:jojo-pipe`，在本机 JOJO 管理台的 `/agent` 页面检查凭据
+来源并确认更新。管理台复用同一个 `JOJO_OPERATOR_TOKEN`，浏览器不读取 Token
+或 OAuth 明文；部署端必须先配置相同的 Operator Token。
+
 上传体不经过环境变量，因此不受 Makers 单个环境变量 500 字节限制。命令只上传
 `openai-codex` OAuth 项，不上传 Pi 文件里的其他 Provider 凭证。
 

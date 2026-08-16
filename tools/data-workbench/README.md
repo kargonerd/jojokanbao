@@ -33,6 +33,13 @@ pnpm dev:jojo-pipe
 首次启用功能开关管理时，需要在目标 Supabase 项目中执行已评审的迁移，并按
 `infrastructure/supabase/README.md` 将同一个 Operator Token 的摘要写入数据库。
 
+Agent 管理页面位于 `http://127.0.0.1:4174/agent`。本机 Flask 优先读取
+`JOJO_CODEX_AUTH_PATH` 或 `agent/auth.json`；两者不存在时读取当前用户的
+`~/.codex/auth.json`，只把转换后的 `openai-codex` OAuth 凭据直接发送到
+`JOJO_CREDENTIAL_SERVICE_URL`。浏览器只接收就绪状态、来源提示和有效期，
+不会收到 Operator Token、access token 或 refresh token。更新前必须确认部署端
+已配置同一个 `JOJO_OPERATOR_TOKEN`。
+
 Publication configuration is read from the repository `.env`:
 
 ```text

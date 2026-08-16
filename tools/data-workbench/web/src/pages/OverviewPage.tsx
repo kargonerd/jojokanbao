@@ -53,7 +53,7 @@ export function OverviewPage() {
               <p className="eyebrow">MODULES</p>
               <h2>数据管理模块</h2>
             </div>
-            <span>4 个模块可用</span>
+            <span>5 个模块可用</span>
           </header>
           <div className="module-grid">
             <Link className="module-card" to="/pdf">
@@ -90,6 +90,12 @@ export function OverviewPage() {
               <h3>功能开关</h3>
               <p>按顺序配置用户名单、百分比灰度和全局默认规则。</p>
               <footer><span>进入运行控制</span><b>→</b></footer>
+            </Link>
+            <Link className="module-card" to="/agent">
+              <span className="module-code">AGENT</span>
+              <h3>Agent 管理</h3>
+              <p>检查本机 Codex OAuth，并通过 Operator 接口更新部署端凭据。</p>
+              <footer><span>进入 Agent 运维</span><b>→</b></footer>
             </Link>
           </div>
         </section>
