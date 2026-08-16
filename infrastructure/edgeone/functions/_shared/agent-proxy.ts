@@ -338,7 +338,17 @@ export async function handleAgentProxyRequest(
     return jsonResponse(502, { error: "Agent upstream unavailable" }, origin);
   }
 
-  return new Response(upstream.body, {
+  let responseBody: ArrayBuffer;
+  try {
+    // EdgeOne Node Functions do not reliably preserve a nested Agent SSE body
+    // after the handler returns. Buffer the bounded Agent response so the
+    // browser receives a complete event stream instead of a truncated fetch.
+    responseBody = await upstream.arrayBuffer();
+  } catch {
+    return jsonResponse(502, { error: "Agent response was interrupted" }, origin);
+  }
+
+  return new Response(responseBody, {
     status: upstream.status,
     headers: copyUpstreamHeaders(upstream, origin),
   });
