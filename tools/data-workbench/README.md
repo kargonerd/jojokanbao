@@ -26,9 +26,12 @@ From the repository root:
 pnpm dev:jojo-pipe
 ```
 
-只评审功能开关界面时，可以打开
-`http://127.0.0.1:4174/features?preview=1`。该地址使用只读示例规则，且仅在
-Vite 开发环境生效；生产管理入口始终要求管理员登录。
+功能开关页面位于 `http://127.0.0.1:4174/features`。它只通过同机 Flask
+服务访问 Supabase：Flask 从仓库根目录 `.env` 读取现有的
+`JOJO_OPERATOR_TOKEN`，浏览器不接收、不保存这个密钥，也不需要单独登录。
+
+首次启用功能开关管理时，需要在目标 Supabase 项目中执行已评审的迁移，并按
+`infrastructure/supabase/README.md` 将同一个 Operator Token 的摘要写入数据库。
 
 Publication configuration is read from the repository `.env`:
 

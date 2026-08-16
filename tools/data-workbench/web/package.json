@@ -9,7 +9,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@jojo/auth": "workspace:*",
     "@jojo/ui": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

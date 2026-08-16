@@ -422,9 +422,6 @@ importers:
 
   tools/data-workbench/web:
     dependencies:
-      '@jojo/auth':
-        specifier: workspace:*
-        version: link:../../../frontend/packages/auth
       '@jojo/ui':
         specifier: workspace:*
         version: link:../../../frontend/packages/ui

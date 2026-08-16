@@ -18,6 +18,7 @@ export interface FeatureFlagRule {
 export interface FeatureFlagDefinition {
   key: string;
   description: string;
+  emergencyDisabled: boolean;
   revision: number;
   updatedAt: string;
   updatedBy: string | null;

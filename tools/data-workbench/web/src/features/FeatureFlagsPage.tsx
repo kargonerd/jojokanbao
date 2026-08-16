@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageTopbar } from "../components/PageTopbar";
-import { featureAdminAuth, featureAdminConfigured } from "./adminAuth";
-import { previewFeatureFlags } from "./previewData";
+import { featureFlagApi } from "./api";
 import type { FeatureConditionType, FeatureFlagDefinition, FeatureFlagRule, FeatureUser } from "./types";
 
 const conditionLabels: Record<FeatureConditionType, string> = {
@@ -47,96 +46,43 @@ function publishedAt(value: string): string {
 }
 
 export function FeatureFlagsPage() {
-  const previewMode = import.meta.env.DEV && new URLSearchParams(window.location.search).get("preview") === "1";
-  if (previewMode) return <ConfiguredFeatureFlagsPage auth={previewFeatureAdminAuth} preview />;
-  if (!featureAdminConfigured || !featureAdminAuth) {
-    return (
-      <>
-        <PageTopbar eyebrow="RUNTIME CONTROL / 运行控制" title="功能开关" description="按顺序控制功能对哪些读者开放。" />
-        <main className="feature-empty"><strong>管理登录尚未配置</strong><p>请在仓库根目录配置 Supabase 浏览器端公开值后重新启动管理台。</p></main>
-      </>
-    );
-  }
-  return <ConfiguredFeatureFlagsPage auth={featureAdminAuth} />;
-}
-
-type FeatureAdminAuth = NonNullable<typeof featureAdminAuth>;
-
-const previewFeatureAdminAuth = {
-  client: {
-    rpc: async (name: string) => {
-      if (name === "get_my_feature_flag_admin_role") return { data: "viewer", error: null };
-      if (name === "admin_list_feature_flags") return { data: previewFeatureFlags, error: null };
-      return { data: [], error: null };
-    },
-  },
-  startAuthSync: () => () => undefined,
-  useAuthStore: () => ({
-    initialized: true,
-    user: { id: "local-preview" },
-    busy: false,
-    error: null,
-    signIn: async () => undefined,
-    signOut: async () => undefined,
-  }),
-} as unknown as FeatureAdminAuth;
-
-function ConfiguredFeatureFlagsPage({ auth, preview = false }: { auth: FeatureAdminAuth; preview?: boolean }) {
-  const { initialized, user, busy, error, signIn, signOut } = auth.useAuthStore();
   const [flags, setFlags] = useState<FeatureFlagDefinition[]>([]);
   const [selectedKey, setSelectedKey] = useState("");
   const [draftRules, setDraftRules] = useState<FeatureFlagRule[]>([]);
-  const [role, setRole] = useState<string | null>(null);
+  const [emergencyDisabled, setEmergencyDisabled] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
   const [reason, setReason] = useState("");
   const [notice, setNotice] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-
-  useEffect(() => auth.startAuthSync(), [auth]);
 
   useEffect(() => {
-    if (!user) {
-      setFlags([]);
-      setRole(null);
-      return;
-    }
     let active = true;
-    void Promise.all([
-      (auth.client as any).rpc("get_my_feature_flag_admin_role"),
-      (auth.client as any).rpc("admin_list_feature_flags"),
-    ]).then(([roleResult, flagsResult]) => {
+    void featureFlagApi.list().then((next) => {
       if (!active) return;
-      if (roleResult.error) throw roleResult.error;
-      setRole(typeof roleResult.data === "string" ? roleResult.data : null);
-      if (flagsResult.error) throw flagsResult.error;
-      const next = Array.isArray(flagsResult.data) ? flagsResult.data as FeatureFlagDefinition[] : [];
       setFlags(next);
       setSelectedKey((current) => current || next[0]?.key || "");
       setLoadError("");
-    }).catch((reason: unknown) => {
-      if (active) setLoadError(reason instanceof Error ? reason.message : "无法读取功能开关");
+    }).catch((error: unknown) => {
+      if (active) setLoadError(error instanceof Error ? error.message : "无法读取功能开关");
+    }).finally(() => {
+      if (active) setLoading(false);
     });
     return () => { active = false; };
-  }, [auth, user]);
+  }, []);
 
   const selected = flags.find((flag) => flag.key === selectedKey);
-  const canEdit = role === "editor";
   useEffect(() => {
-    setDraftRules(selected ? structuredClone(selected.rules).map((rule) => ({
+    const next = flags.find((flag) => flag.key === selectedKey);
+    setDraftRules(next ? structuredClone(next.rules).map((rule) => ({
       ...rule,
       startsAt: toLocalInput(rule.startsAt),
       endsAt: toLocalInput(rule.endsAt),
     })) : []);
+    setEmergencyDisabled(next?.emergencyDisabled ?? false);
     setReason("");
     setNotice("");
-  }, [selected]);
-
-  async function submitLogin(event: FormEvent) {
-    event.preventDefault();
-    try { await signIn(email, password); } catch { /* store exposes the localized error */ }
-  }
+  }, [selectedKey]);
 
   function updateRule(index: number, patch: Partial<FeatureFlagRule>) {
     setDraftRules((rules) => rules.map((rule, position) => position === index ? { ...rule, ...patch } : rule));
@@ -161,7 +107,7 @@ function ConfiguredFeatureFlagsPage({ auth, preview = false }: { auth: FeatureAd
   }
 
   async function publish() {
-    if (!selected || reason.trim().length < 3 || role !== "editor") return;
+    if (!selected || reason.trim().length < 3) return;
     setSaving(true);
     setNotice("");
     setLoadError("");
@@ -173,42 +119,34 @@ function ConfiguredFeatureFlagsPage({ auth, preview = false }: { auth: FeatureAd
       endsAt: publishedTime(rule.endsAt),
     }));
     try {
-      const { data, error } = await (auth.client as any).rpc("admin_publish_feature_flag", {
-        p_key: selected.key,
-        p_rules: rules,
-        p_expected_revision: selected.revision,
-        p_reason: reason.trim(),
-        p_request_id: crypto.randomUUID(),
+      const updated = await featureFlagApi.publish({
+        key: selected.key,
+        rules,
+        emergencyDisabled,
+        expectedRevision: selected.revision,
+        reason: reason.trim(),
+        requestId: crypto.randomUUID(),
       });
-      if (error) throw error;
-      const updated = data as FeatureFlagDefinition;
       setFlags((items) => items.map((item) => item.key === updated.key ? updated : item));
       setNotice(`已发布 revision ${updated.revision}`);
       setReason("");
-    } catch (reason: unknown) {
-      setLoadError(reason instanceof Error ? reason.message : "发布失败");
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "发布失败");
     } finally {
       setSaving(false);
     }
   }
 
-  if (!initialized) return <main className="feature-empty">正在确认管理身份…</main>;
-  if (!user) {
+  if (loading) {
+    return <main className="feature-empty">正在读取功能开关…</main>;
+  }
+  if (loadError && !flags.length) {
     return (
       <>
-        <PageTopbar eyebrow="RUNTIME CONTROL / 运行控制" title="功能开关" description="登录管理员账号后编辑运行时规则。" />
-        <form className="feature-login" onSubmit={submitLogin}>
-          <label>邮箱<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
-          <label>密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
-          {error && <p role="alert">{error}</p>}
-          <button className="primary-button" type="submit" disabled={busy}>{busy ? "登录中…" : "登录管理台"}</button>
-        </form>
+        <PageTopbar eyebrow="RUNTIME CONTROL / 运行控制" title="功能开关" description="本机通过 JOJO Operator 管理运行时规则。" />
+        <main className="feature-empty"><strong>无法连接功能开关</strong><p>{loadError}</p><p>确认本地 API 已启动，并在仓库 `.env` 配置现有的 JOJO_OPERATOR_TOKEN。</p></main>
       </>
     );
-  }
-
-  if (loadError && !role) {
-    return <><PageTopbar eyebrow="RUNTIME CONTROL / 运行控制" title="功能开关" /><main className="feature-empty"><strong>当前账号没有管理权限</strong><p>{loadError}</p><button className="secondary-button" type="button" onClick={() => void signOut()}>退出账号</button></main></>;
   }
 
   return (
@@ -216,23 +154,28 @@ function ConfiguredFeatureFlagsPage({ auth, preview = false }: { auth: FeatureAd
       <PageTopbar
         eyebrow="RUNTIME CONTROL / 运行控制"
         title="功能开关"
-        description={preview ? "本地只读预览。规则按从上到下的顺序执行，命中第一条后立即停止。" : "规则按从上到下的顺序执行，命中第一条后立即停止。"}
-        aside={<span className="local-badge"><i />{preview ? "本地预览" : role === "editor" ? "可发布" : "只读"}</span>}
+        description="规则从上到下执行，命中第一条后立即停止。"
+        aside={<span className="local-badge"><i />本机 Operator</span>}
       />
       <main className="feature-workspace">
         <aside className="feature-index" aria-label="功能开关列表">
           {flags.map((flag) => (
             <button key={flag.key} type="button" className={flag.key === selectedKey ? "active" : ""} onClick={() => setSelectedKey(flag.key)}>
-              <b>{flag.key}</b><span>{flag.rules.length} 条规则 · r{flag.revision}</span>
+              <b>{flag.key}</b><span>{flag.emergencyDisabled ? "紧急关闭" : `${flag.rules.length} 条规则`} · r{flag.revision}</span>
             </button>
           ))}
         </aside>
         {selected && (
           <section className="feature-editor">
-            <header><div><p className="eyebrow">{selected.key}</p><h2>{selected.description}</h2></div><div className="feature-revision" title={selected.updatedBy ? `修改人 ${selected.updatedBy}` : "系统初始配置"}><b>revision {selected.revision}</b><span>{publishedAt(selected.updatedAt)}</span></div></header>
+            <header><div><p className="eyebrow">{selected.key}</p><h2>{selected.description}</h2></div><div className="feature-revision" title="由本机 Operator 修改"><b>revision {selected.revision}</b><span>{publishedAt(selected.updatedAt)}</span></div></header>
+            <label className={`feature-emergency${emergencyDisabled ? " active" : ""}`}>
+              <span><b>紧急关闭</b><small>优先于全部规则，白名单也不能越过。</small></span>
+              <input type="checkbox" checked={emergencyDisabled} onChange={(event) => setEmergencyDisabled(event.target.checked)} />
+              <i aria-hidden="true" />
+            </label>
             <div className="rule-add-bar">
               <span>添加规则</span>
-              {(["users", "percentage", "authenticated", "global"] as const).map((kind) => <button key={kind} type="button" disabled={!canEdit} onClick={() => addRule(kind)}>+ {conditionLabels[kind]}</button>)}
+              {(["users", "percentage", "authenticated", "global"] as const).map((kind) => <button key={kind} type="button" onClick={() => addRule(kind)}>+ {conditionLabels[kind]}</button>)}
             </div>
             <div className="rule-track">
               {draftRules.map((rule, index) => (
@@ -243,14 +186,12 @@ function ConfiguredFeatureFlagsPage({ auth, preview = false }: { auth: FeatureAd
                   onChange={(patch) => updateRule(index, patch)}
                   onMove={(direction) => moveRule(index, direction)}
                   onDelete={() => setDraftRules((rules) => rules.filter((_, position) => position !== index))}
-                  client={auth.client as any}
-                  editable={canEdit}
                 />
               ))}
             </div>
             <footer className="feature-publish">
-              <label>发布原因<input value={reason} disabled={!canEdit} onChange={(event) => setReason(event.target.value)} placeholder="说明为什么修改这组规则" /></label>
-              <button className="primary-button" type="button" disabled={saving || role !== "editor" || reason.trim().length < 3} onClick={() => void publish()}>{saving ? "发布中…" : "发布规则"}</button>
+              <label>发布原因<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="说明为什么修改这组规则" /></label>
+              <button className="primary-button" type="button" disabled={saving || reason.trim().length < 3} onClick={() => void publish()}>{saving ? "发布中…" : "发布规则"}</button>
               {notice && <p role="status">{notice}</p>}
               {loadError && <p className="content-error" role="alert">{loadError}</p>}
             </footer>
@@ -261,22 +202,23 @@ function ConfiguredFeatureFlagsPage({ auth, preview = false }: { auth: FeatureAd
   );
 }
 
-function RuleCard({ index, rule, onChange, onMove, onDelete, client, editable }: {
+function RuleCard({ index, rule, onChange, onMove, onDelete }: {
   index: number;
   rule: FeatureFlagRule;
   onChange: (patch: Partial<FeatureFlagRule>) => void;
   onMove: (direction: -1 | 1) => void;
   onDelete: () => void;
-  client: { rpc: (name: string, args?: unknown) => Promise<{ data: unknown; error: unknown }> };
-  editable: boolean;
 }) {
   const [userQuery, setUserQuery] = useState("");
   const [userResults, setUserResults] = useState<FeatureUser[]>([]);
   const summary = useMemo(() => rule.conditionType === "percentage" ? `${rule.percentage || 1}% · ${rule.bucketBy === "visitor" ? "访问者" : "登录用户"}` : conditionLabels[rule.conditionType], [rule]);
 
   async function searchUsers() {
-    const { data, error } = await client.rpc("admin_search_feature_users", { p_query: userQuery.trim() });
-    if (!error) setUserResults(Array.isArray(data) ? data as FeatureUser[] : []);
+    try {
+      setUserResults(await featureFlagApi.searchUsers(userQuery.trim()));
+    } catch {
+      setUserResults([]);
+    }
   }
 
   return (
@@ -284,23 +226,23 @@ function RuleCard({ index, rule, onChange, onMove, onDelete, client, editable }:
       <div className="rule-order"><b>{String(index + 1).padStart(2, "0")}</b><i /></div>
       <div className="rule-body">
         <header>
-          <input className="rule-name" value={rule.name} disabled={!editable} onChange={(event) => onChange({ name: event.target.value })} aria-label={`规则 ${index + 1} 名称`} />
+          <input className="rule-name" value={rule.name} onChange={(event) => onChange({ name: event.target.value })} aria-label={`规则 ${index + 1} 名称`} />
           <span>{summary}</span>
-          <button type="button" disabled={!editable} className={`rule-result ${rule.serve ? "on" : "off"}`} onClick={() => onChange({ serve: !rule.serve })}>{rule.serve ? "ON" : "OFF"}</button>
+          <button type="button" className={`rule-result ${rule.serve ? "on" : "off"}`} onClick={() => onChange({ serve: !rule.serve })}>{rule.serve ? "ON" : "OFF"}</button>
         </header>
         <div className="rule-fields">
-          <label>条件<select value={rule.conditionType} disabled={!editable || rule.isFallback} onChange={(event) => {
+          <label>条件<select value={rule.conditionType} disabled={rule.isFallback} onChange={(event) => {
             const conditionType = event.target.value as FeatureConditionType;
             onChange({ conditionType, percentage: conditionType === "percentage" ? 1 : null, bucketBy: conditionType === "percentage" ? "user" : null, bucketSalt: null, userIds: [] });
           }}>{Object.entries(conditionLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-          {rule.conditionType === "percentage" && <><label>比例<input type="number" min="1" max="100" step="1" value={rule.percentage || 1} disabled={!editable} onChange={(event) => onChange({ percentage: Math.max(1, Math.min(100, Math.round(Number(event.target.value)))) })} /></label><label>分桶对象<select value={rule.bucketBy || "user"} disabled={!editable} onChange={(event) => onChange({ bucketBy: event.target.value as "user" | "visitor" })}><option value="user">登录用户</option><option value="visitor">匿名访问者</option></select></label></>}
-          <label>开始时间<input type="datetime-local" value={rule.startsAt || ""} onChange={(event) => onChange({ startsAt: event.target.value || null })} disabled={!editable || rule.isFallback} /></label>
-          <label>结束时间<input type="datetime-local" value={rule.endsAt || ""} onChange={(event) => onChange({ endsAt: event.target.value || null })} disabled={!editable || rule.isFallback} /></label>
+          {rule.conditionType === "percentage" && <><label>比例<input type="number" min="1" max="100" step="1" value={rule.percentage || 1} onChange={(event) => onChange({ percentage: Math.max(1, Math.min(100, Math.round(Number(event.target.value)))) })} /></label><label>分桶对象<select value={rule.bucketBy || "user"} onChange={(event) => onChange({ bucketBy: event.target.value as "user" | "visitor" })}><option value="user">登录用户</option><option value="visitor">匿名访问者</option></select></label></>}
+          <label>开始时间<input type="datetime-local" value={rule.startsAt || ""} onChange={(event) => onChange({ startsAt: event.target.value || null })} disabled={rule.isFallback} /></label>
+          <label>结束时间<input type="datetime-local" value={rule.endsAt || ""} onChange={(event) => onChange({ endsAt: event.target.value || null })} disabled={rule.isFallback} /></label>
         </div>
-        {rule.conditionType === "users" && <div className="rule-users"><div><input value={userQuery} onChange={(event) => setUserQuery(event.target.value)} placeholder="搜索读者代号、UUID 或邮箱" /><button type="button" onClick={() => void searchUsers()}>搜索</button></div>{userResults.map((candidate) => <button key={candidate.user_id} type="button" disabled={!editable} onClick={() => onChange({ userIds: [...new Set([...rule.userIds, candidate.user_id])] })}>+ {candidate.display_name || candidate.email || candidate.user_id}</button>)}<ul>{rule.userIds.map((userId) => <li key={userId}><code>{userId}</code><button type="button" disabled={!editable} onClick={() => onChange({ userIds: rule.userIds.filter((id) => id !== userId) })}>移除</button></li>)}</ul></div>}
+        {rule.conditionType === "users" && <div className="rule-users"><div><input value={userQuery} onChange={(event) => setUserQuery(event.target.value)} placeholder="搜索读者代号、UUID 或邮箱" /><button type="button" onClick={() => void searchUsers()}>搜索</button></div>{userResults.map((candidate) => <button key={candidate.user_id} type="button" onClick={() => onChange({ userIds: [...new Set([...rule.userIds, candidate.user_id])] })}>+ {candidate.display_name || candidate.email || candidate.user_id}</button>)}<ul>{rule.userIds.map((userId) => <li key={userId}><code>{userId}</code><button type="button" onClick={() => onChange({ userIds: rule.userIds.filter((id) => id !== userId) })}>移除</button></li>)}</ul></div>}
         <footer>
-          <label><input type="checkbox" checked={rule.enabled} disabled={!editable || rule.isFallback} onChange={(event) => onChange({ enabled: event.target.checked })} />启用规则</label>
-          {!rule.isFallback && <><button type="button" disabled={!editable} onClick={() => onMove(-1)} aria-label={`上移规则 ${index + 1}`}>↑</button><button type="button" disabled={!editable} onClick={() => onMove(1)} aria-label={`下移规则 ${index + 1}`}>↓</button><button type="button" disabled={!editable} onClick={onDelete}>删除</button></>}
+          <label><input type="checkbox" checked={rule.enabled} disabled={rule.isFallback} onChange={(event) => onChange({ enabled: event.target.checked })} />启用规则</label>
+          {!rule.isFallback && <><button type="button" onClick={() => onMove(-1)} aria-label={`上移规则 ${index + 1}`}>↑</button><button type="button" onClick={() => onMove(1)} aria-label={`下移规则 ${index + 1}`}>↓</button><button type="button" onClick={onDelete}>删除</button></>}
           {rule.isFallback && <span>最终默认规则 · 固定在末尾</span>}
         </footer>
       </div>

@@ -5,6 +5,7 @@ revoke all on schema private from public, anon, authenticated;
 create table if not exists private.feature_flags (
   key text primary key check (key ~ '^[a-z][a-z0-9_.]{2,79}$'),
   description text not null check (char_length(btrim(description)) between 1 and 500),
+  emergency_disabled boolean not null default false,
   revision bigint not null default 1 check (revision > 0),
   updated_by uuid references auth.users(id) on delete set null,
   updated_at timestamptz not null default timezone('utc', now())
@@ -51,10 +52,10 @@ create table if not exists private.feature_flag_rule_users (
 create index if not exists feature_flag_rule_users_user
   on private.feature_flag_rule_users(user_id, rule_id);
 
-create table if not exists private.feature_flag_admins (
-  user_id uuid primary key references auth.users(id) on delete cascade,
-  role text not null check (role in ('viewer', 'editor')),
-  created_at timestamptz not null default timezone('utc', now())
+create table if not exists private.feature_flag_operator_secret (
+  singleton boolean primary key default true check (singleton),
+  token_digest bytea not null check (octet_length(token_digest) = 32),
+  updated_at timestamptz not null default timezone('utc', now())
 );
 
 create table if not exists private.feature_flag_audit_log (
@@ -86,19 +87,25 @@ set search_path = ''
 as $$
 declare
   current_revision bigint;
+  emergency_disabled boolean;
   rule_record record;
   subject text;
   digest_bytes bytea;
   bucket bigint;
   matches boolean;
 begin
-  select flag.revision
-    into current_revision
+  select flag.revision, flag.emergency_disabled
+    into current_revision, emergency_disabled
     from private.feature_flags as flag
     where flag.key = p_key;
 
   if current_revision is null then
     return query select false, null::uuid, 0::bigint;
+    return;
+  end if;
+
+  if emergency_disabled then
+    return query select false, null::uuid, current_revision;
     return;
   end if;
 
@@ -168,6 +175,7 @@ as $$
   select jsonb_build_object(
     'key', flag.key,
     'description', flag.description,
+    'emergencyDisabled', flag.emergency_disabled,
     'revision', flag.revision,
     'updatedAt', flag.updated_at,
     'updatedBy', flag.updated_by,
@@ -228,33 +236,35 @@ as $$
     from private.feature_flag_evaluate(p_key, auth.uid(), null) as evaluation
 $$;
 
-create or replace function public.is_feature_flag_admin()
+create or replace function private.feature_flag_operator_authorized(p_operator_token text)
 returns boolean
 language sql
 stable
 security definer
 set search_path = ''
 as $$
-  select exists (
+  select char_length(coalesce(p_operator_token, '')) >= 32 and exists (
     select 1
-      from private.feature_flag_admins as admin
-      where admin.user_id = auth.uid()
+      from private.feature_flag_operator_secret as secret
+      where secret.singleton
+        and secret.token_digest = extensions.digest(p_operator_token, 'sha256')
   )
 $$;
 
-create or replace function public.get_my_feature_flag_admin_role()
-returns text
-language sql
-stable
+create or replace function private.require_feature_flag_operator(p_operator_token text)
+returns void
+language plpgsql
 security definer
 set search_path = ''
 as $$
-  select admin.role
-    from private.feature_flag_admins as admin
-    where admin.user_id = auth.uid()
+begin
+  if not private.feature_flag_operator_authorized(p_operator_token) then
+    raise insufficient_privilege using message = 'Feature flag operator token is invalid';
+  end if;
+end;
 $$;
 
-create or replace function public.admin_list_feature_flags()
+create or replace function public.operator_list_feature_flags(p_operator_token text)
 returns jsonb
 language plpgsql
 stable
@@ -262,9 +272,7 @@ security definer
 set search_path = ''
 as $$
 begin
-  if not public.is_feature_flag_admin() then
-    raise insufficient_privilege using message = 'Feature flag administrator access required';
-  end if;
+  perform private.require_feature_flag_operator(p_operator_token);
   return coalesce((
     select jsonb_agg(private.feature_flag_snapshot(flag.key) order by flag.key)
       from private.feature_flags as flag
@@ -272,7 +280,10 @@ begin
 end;
 $$;
 
-create or replace function public.admin_search_feature_users(p_query text)
+create or replace function public.operator_search_feature_users(
+  p_operator_token text,
+  p_query text
+)
 returns table(user_id uuid, display_name text, email text)
 language plpgsql
 stable
@@ -282,9 +293,7 @@ as $$
 declare
   normalized_query text := btrim(coalesce(p_query, ''));
 begin
-  if not public.is_feature_flag_admin() then
-    raise insufficient_privilege using message = 'Feature flag administrator access required';
-  end if;
+  perform private.require_feature_flag_operator(p_operator_token);
   if char_length(normalized_query) < 2 then
     return;
   end if;
@@ -300,9 +309,11 @@ begin
 end;
 $$;
 
-create or replace function public.admin_publish_feature_flag(
+create or replace function public.operator_publish_feature_flag(
+  p_operator_token text,
   p_key text,
   p_rules jsonb,
+  p_emergency_disabled boolean,
   p_expected_revision bigint,
   p_reason text,
   p_request_id text default null
@@ -313,7 +324,6 @@ security definer
 set search_path = ''
 as $$
 declare
-  actor_id uuid := auth.uid();
   current_revision bigint;
   next_revision bigint;
   before_snapshot jsonb;
@@ -325,12 +335,7 @@ declare
   fallback_count integer;
   rule_count integer;
 begin
-  if not exists (
-    select 1 from private.feature_flag_admins as admin
-      where admin.user_id = actor_id and admin.role = 'editor'
-  ) then
-    raise insufficient_privilege using message = 'Feature flag editor access required';
-  end if;
+  perform private.require_feature_flag_operator(p_operator_token);
   if char_length(btrim(coalesce(p_reason, ''))) < 3 then
     raise invalid_parameter_value using message = 'A change reason of at least 3 characters is required';
   end if;
@@ -414,7 +419,8 @@ begin
   next_revision := current_revision + 1;
   update private.feature_flags
     set revision = next_revision,
-        updated_by = actor_id,
+        emergency_disabled = p_emergency_disabled,
+        updated_by = null,
         updated_at = timezone('utc', now())
     where key = p_key;
   after_snapshot := private.feature_flag_snapshot(p_key);
@@ -422,7 +428,7 @@ begin
   insert into private.feature_flag_audit_log(
     flag_key, revision, action, before_state, after_state, actor_user_id, reason, request_id
   ) values (
-    p_key, next_revision, 'publish', before_snapshot, after_snapshot, actor_id, btrim(p_reason), nullif(btrim(p_request_id), '')
+    p_key, next_revision, 'publish', before_snapshot, after_snapshot, null, btrim(p_reason), nullif(btrim(p_request_id), '')
   );
 
   return after_snapshot;
@@ -431,20 +437,18 @@ $$;
 
 revoke all on function private.feature_flag_evaluate(text, uuid, uuid) from public, anon, authenticated;
 revoke all on function private.feature_flag_snapshot(text) from public, anon, authenticated;
+revoke all on function private.feature_flag_operator_authorized(text) from public, anon, authenticated;
+revoke all on function private.require_feature_flag_operator(text) from public, anon, authenticated;
 revoke all on function public.get_my_feature_flags(text[], uuid) from public;
 revoke all on function public.feature_enabled(text) from public;
-revoke all on function public.is_feature_flag_admin() from public;
-revoke all on function public.get_my_feature_flag_admin_role() from public;
-revoke all on function public.admin_list_feature_flags() from public;
-revoke all on function public.admin_search_feature_users(text) from public;
-revoke all on function public.admin_publish_feature_flag(text, jsonb, bigint, text, text) from public;
+revoke all on function public.operator_list_feature_flags(text) from public;
+revoke all on function public.operator_search_feature_users(text, text) from public;
+revoke all on function public.operator_publish_feature_flag(text, text, jsonb, boolean, bigint, text, text) from public;
 grant execute on function public.get_my_feature_flags(text[], uuid) to anon, authenticated;
 grant execute on function public.feature_enabled(text) to authenticated;
-grant execute on function public.is_feature_flag_admin() to authenticated;
-grant execute on function public.get_my_feature_flag_admin_role() to authenticated;
-grant execute on function public.admin_list_feature_flags() to authenticated;
-grant execute on function public.admin_search_feature_users(text) to authenticated;
-grant execute on function public.admin_publish_feature_flag(text, jsonb, bigint, text, text) to authenticated;
+grant execute on function public.operator_list_feature_flags(text) to anon, authenticated;
+grant execute on function public.operator_search_feature_users(text, text) to anon, authenticated;
+grant execute on function public.operator_publish_feature_flag(text, text, jsonb, boolean, bigint, text, text) to anon, authenticated;
 
 insert into private.feature_flags(key, description)
 values

@@ -1,6 +1,6 @@
 # JOJO Platform Feature Flag 设计
 
-状态：提案，等待 review；本文件不代表已经开始实现。
+状态：首版实现，等待 review 和数据库迁移；未部署到线上。
 
 ## 1. 要解决的问题
 
@@ -23,7 +23,7 @@ Supabase Postgres 是唯一配置源和唯一判定算法所在地。前端不�
 
 ```text
                        private.feature_flags
-                    /  rules / rule_users / audit / admins
+                    /  rules / rule_users / audit / operator digest
                    v
 Web ── GET /v1/features/evaluations ── FastAPI
  │                                           │
@@ -52,8 +52,9 @@ Web ── GET /v1/features/evaluations ── FastAPI
 | --- | --- |
 | `key text primary key` | 稳定键，例如 `library.bookshelf` |
 | `description text` | 面向维护者的说明 |
+| `emergency_disabled boolean` | 独立紧急关闭；为 true 时不再执行任何规则 |
 | `revision bigint` | 乐观锁版本，每次修改递增 |
-| `updated_by uuid` | 最后修改管理员 |
+| `updated_by uuid` | 最后修改用户；本机 Operator 发布时为空 |
 | `updated_at timestamptz` | 最后修改时间 |
 
 Flag 本身只保存身份和版本，不再保存 `mode`、全局百分比、白名单或特殊优先级。所有投放逻辑都是下面的有序规则。
@@ -75,21 +76,21 @@ Flag 本身只保存身份和版本，不再保存 `mode`、全局百分比、�
 | `enabled boolean` | 暂停一条规则而不删除 |
 | `is_fallback boolean` | 标记唯一的最终默认规则 |
 
-每个 Flag 必须有且只有一条 `condition_type = global`、`is_fallback = true` 的最终规则，而且它必须排在最后。管理员可以在它前面配置任意多条规则，也可以配置额外的 `global` 规则作为立即全开或紧急全关。
+每个 Flag 必须有且只有一条 `condition_type = global`、`is_fallback = true` 的最终规则，而且它必须排在最后。维护者可以在它前面配置任意多条规则。普通全开或全关仍然是有序规则；不可绕过的事故止血使用 Flag 上独立的 `emergency_disabled`。
 
 ### 3.3 `private.feature_flag_rule_users`
 
 `users` 规则的成员单独存放为 `(rule_id, user_id)`，`user_id` 使用 Supabase `auth.users.id`，不使用易变邮箱。白名单只是一个 `users → serve on` 规则；拒绝名单则是一个排在更前面的 `users → serve off` 规则，两者不再是引擎内置的特殊概念。
 
-### 3.4 管理员与审计
+### 3.4 Operator 与审计
 
-- `private.feature_flag_admins(user_id, role)`：首版只有 `editor` 和 `viewer`。
-- `private.feature_flag_audit_log`：只追加，记录 `before`、`after`、操作者、必填变更原因、请求 ID和时间。
+- `private.feature_flag_operator_secret`：只保存现有 `JOJO_OPERATOR_TOKEN` 的 SHA-256 摘要，不保存明文。
+- `private.feature_flag_audit_log`：只追加，记录 `before`、`after`、必填变更原因、请求 ID 和时间；本机 Operator 发布的 `actor_user_id` 为空。
 - 私有表不给 `anon`、`authenticated` 直接授权；只允许受控的 `security definer` RPC 访问，并固定 `search_path = ''`。
 
 ## 4. 判定规则
 
-引擎没有“白名单一定优先”“紧急关闭一定优先”之类的隐藏逻辑。它只做一件事：按 `position` 从上到下检查，跳过已暂停或不在时间窗内的规则，命中第一条后返回该规则的 `serve`，不再继续。
+正常判定严格按 `position` 从上到下检查，跳过已暂停或不在时间窗内的规则，命中第一条后返回该规则的 `serve`，不再继续。唯一的规则外优先级是独立事故开关：`emergency_disabled = true` 时立即返回关闭，任何白名单、百分比或时间窗都不能越过。
 
 用户提出的典型配置会直接表示成：
 
@@ -101,13 +102,7 @@ Flag: rag.workspace
 3. [global]     默认                  → OFF  (fallback)
 ```
 
-如果线上出问题，需要所有人立刻关闭，则在最上面新增或启用一条规则：
-
-```text
-0. [global] 紧急全关 → OFF
-```
-
-因为它最先匹配所有请求，所以包括原白名单在内的后续规则都不会执行。如果希望测试人员在普通关闭状态下仍可使用，则把白名单规则放在普通全局关闭规则之前。行为完全由管理员看到的规则顺序决定。
+如果希望测试人员在普通关闭状态下仍可使用，就把白名单规则放在普通全局关闭规则之前。线上事故需要所有人立刻关闭时，开启独立的“紧急关闭”，它优先于整条规则链。
 
 各条件的匹配方式：
 
@@ -164,14 +159,13 @@ and public.feature_enabled('library.bookshelf')
 
 SELECT、INSERT、UPDATE、DELETE 都要覆盖。不能只在 React 按钮或 `readerData.ts` 里判断。
 
-管理 RPC 包括：
+本机 Operator RPC 包括：
 
-- `admin_list_feature_flags()`
-- `admin_publish_feature_flag(key, rules, expected_revision, reason)`：在一个事务中校验并发布整条规则链。
-- `admin_rollback_feature_flag(key, target_revision, expected_revision, reason)`
-- `admin_search_feature_users(query)`：只返回管理界面需要的最少字段。
+- `operator_list_feature_flags(operator_token)`
+- `operator_publish_feature_flag(operator_token, key, rules, emergency_disabled, expected_revision, reason, request_id)`：在一个事务中校验并发布整条规则链和紧急状态。
+- `operator_search_feature_users(operator_token, query)`：只返回管理界面需要的最少字段。
 
-所有写 RPC 在数据库内检查 `auth.uid()` 是否为 `editor`，使用 `expected_revision` 防止两位管理员互相覆盖。
+每个 Operator RPC 都在数据库内对令牌做 SHA-256 摘要比对，写入使用 `expected_revision` 防止覆盖较新的配置。`SUPABASE_ACCESS_TOKEN` 不参与此功能。
 
 ## 6. FastAPI 设计
 
@@ -257,7 +251,7 @@ useFeatureFlag("library.bookshelf");
 
 现有 “JOJO Data Workbench / 数据工作台” 对外改名为“JOJO 管理台”，因为它将同时承担内容、索引和运行控制。首版只修改产品标题、页面文案和导航信息架构；目录 `tools/data-workbench`、包名 `@jojo/data-workbench` 及开发命令暂时保留，避免无关的工程迁移扩大风险。
 
-新增“功能开关”一级页面，仅 `private.feature_flag_admins` 中的管理员可见。管理员资格首版只通过数据库维护，管理界面不提供添加或删除管理员的能力。
+新增“功能开关”一级页面。管理台仅供本机使用，不再增加一套网页登录和角色：浏览器调用同源 Flask API，Flask 从根目录 `.env` 读取已有 `JOJO_OPERATOR_TOKEN` 并调用受保护的 Supabase RPC。令牌不进入 Vite 环境变量、浏览器存储或响应体。
 
 列表页显示 Flag、规则数和 revision；编辑页同时显示描述、最后更新时间与 revision，并采用一条从上到下的红色判定轨道。每张规则卡的序号就是实际执行顺序：
 
@@ -266,10 +260,10 @@ useFeatureFlag("library.bookshelf");
 - `users` 规则按读者代号、用户 UUID 或精确邮箱搜索后添加。
 - 百分比只允许整数，最小步进为 1%。
 - 每条规则可配置开始/结束时间；最终 fallback 固定在末尾，不允许删除或拖走。
-- 需要整体关闭时，在规则链首位放置 `global → OFF`；它会按同一首条命中规则遮蔽后续规则。
+- 页面顶部提供独立“紧急关闭”，开启后优先于全部规则，白名单也不能越过。
 - 保存时一次发布完整规则链并要求填写原因；revision 冲突时禁止覆盖并要求刷新。
 
-管理台使用 Supabase 用户登录并调用管理 API/RPC，绝不在浏览器使用 service role key。
+Flask 只监听 `127.0.0.1`。数据库只保存 Operator Token 摘要，私有配置表仍不向浏览器角色开放。
 
 ## 10. 首批 Flag 与迁移
 
@@ -318,7 +312,8 @@ useFeatureFlag("library.bookshelf");
 
 - Supabase 是唯一 Flag 配置与判定源，前后端不各自维护规则。
 - 规则严格按界面顺序 first-match-wins，并强制保留最后一条 `global` fallback。
-- 管理员首版只通过数据库维护，界面不提供管理员增删。
+- 管理台复用现有 `JOJO_OPERATOR_TOKEN`，不引入 Supabase 浏览器登录、管理员表或新的 Access Token。
 - 管理界面放入更名后的“JOJO 管理台”。
 - 百分比只支持整数，最小步进 1%。
 - Olds 整体关闭，本轮不拆子 Flag。
+- `emergency_disabled` 是唯一高于规则链的硬关闭，任何规则都不能越过。

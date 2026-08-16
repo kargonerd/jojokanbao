@@ -17,6 +17,9 @@ SUPABASE_PROJECT_REF=
 VITE_SUPABASE_URL=
 VITE_SUPABASE_PUBLISHABLE_KEY=
 VITE_ENABLE_ACCOUNT=true
+
+# Existing local operator secret. Do not prefix it with VITE_.
+JOJO_OPERATOR_TOKEN=
 ```
 
 `.env.local` may override values for one machine. Both files are ignored by
@@ -37,6 +40,25 @@ pnpm dlx supabase config push --project-ref <project-ref>
 
 The database migration must be pushed before the Auth config because the config
 enables a hook backed by `public.hook_require_signup_invitation`.
+
+### Configure the local feature-flag operator
+
+Feature-flag administration reuses the existing `JOJO_OPERATOR_TOKEN`; it does
+not use `SUPABASE_ACCESS_TOKEN` and does not require a browser login. After the
+feature-flag migration has been reviewed and pushed, register the SHA-256 digest
+of that same token once in the target project:
+
+```sql
+insert into private.feature_flag_operator_secret (singleton, token_digest)
+values (true, extensions.digest('<same JOJO_OPERATOR_TOKEN>', 'sha256'))
+on conflict (singleton) do update
+set token_digest = excluded.token_digest,
+    updated_at = timezone('utc', now());
+```
+
+The JOJO Console Flask server reads the plaintext token from the repository
+`.env` and sends it only to the protected operator RPC. The Vite client receives
+neither the token nor its digest. Keep the console bound to `127.0.0.1`.
 
 The database also enforces redemption with a trigger. Therefore new user
 creation fails closed if somebody disables or bypasses the hosted hook.
