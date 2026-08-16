@@ -17,9 +17,9 @@ JOJO 目前的 `frontend/web/src/rollout.ts` 只在构建时读取 `VITE_ENABLE_
 
 ## 2. 核心决策
 
-### 2.1 一个配置源，两层执行
+### 2.1 一个配置源，多处服务端执行
 
-Supabase Postgres 是唯一配置源和唯一判定算法所在地。前端不下载原始百分比和白名单，只获取针对当前访问者已经计算好的布尔结果。
+Supabase Postgres 是唯一配置源。Web/FastAPI/RLS 使用数据库判定函数；Agent 网关从受保护的 Operator RPC 读取单个 Flag 的原始规则，并在 Cloud Function 内按相同的 first-match 语义判定。浏览器不下载原始百分比和白名单，只获取针对当前访问者已经计算好的布尔结果。
 
 ```text
                        private.feature_flags
@@ -31,7 +31,7 @@ Web ── GET /v1/features/evaluations ── FastAPI
  │                                           v
  ├── Supabase 直连写入 ─────────────── RLS + feature_enabled(...)
  │
- └── Agent 请求 ── Cloud Function 检查 Flag ──▶ Makers Agent
+ └── Agent 请求 ── Cloud Function 验证用户、读取并计算规则 ──▶ Makers Agent
 ```
 
 这意味着前端即使被篡改，也只能显示入口，不能越过后端或 RLS 使用未开放能力。
@@ -138,7 +138,7 @@ public.feature_enabled(p_key text)
 returns boolean
 ```
 
-`get_my_feature_flags` 用于 Web/FastAPI 获取批量结果；`feature_enabled` 用于 RLS。两者调用同一个私有判定函数，避免多套算法。
+`get_my_feature_flags` 用于 Web/FastAPI 获取批量结果；`feature_enabled` 用于 RLS。两者调用同一个私有判定函数。Agent 网关不调用这两个按用户判定的 RPC，而是读取单个原始规则文档并在 Cloud Function 内执行同样的规则语义。
 
 返回值不包含规则、百分比、盐、用户集合、管理员信息或其他用户标识。
 
@@ -162,6 +162,7 @@ SELECT、INSERT、UPDATE、DELETE 都要覆盖。不能只在 React 按钮或 `r
 本机 Operator RPC 包括：
 
 - `operator_list_feature_flags(operator_token)`
+- `operator_get_feature_flag(operator_token, key)`：只向持有 Operator Token 的服务返回单个 Flag 的 revision 与规则，用于 Cloud Function 本地判定。
 - `operator_publish_feature_flag(operator_token, key, rules, expected_revision, reason, request_id)`：在一个事务中校验并发布整条规则链、递增 revision 并追加历史。
 - `operator_rollback_feature_flag(operator_token, key, target_revision, expected_revision, request_id)`：把历史快照重新发布为新 revision。
 - `operator_search_feature_users(operator_token, query)`：只返回管理界面需要的最少字段。
@@ -217,10 +218,10 @@ Supabase 暂时不可用时：新能力默认关闭；已经不受 Flag 控制�
 `/gateway/ask` Cloud Function 是浏览器访问 Agent 的平台网关，不能相信 Web 已经隐藏入口。请求顺序为：
 
 ```text
-检查 agent.chat → 添加服务签名 → Makers Agent 验证服务签名与用户身份 → 初始化模型 → 执行请求
+验证用户 Token → 读取 agent.chat 规则 → Cloud Function 按序判定 → 添加服务签名 → Makers Agent → 模型
 ```
 
-这样未进入灰度组的请求不会到达 Makers Agent、不会初始化模型或消耗 token。Cloud Function 使用当前用户 Bearer Token 调同一 Supabase 判定 RPC；超时或判定服务不可用时 fail closed。Makers Agent 只处理自己的运行配置，未来的 Prompt、模型或工具实验使用独立的 Agent 内部开关，不复用平台入口 Flag。
+这样未进入灰度组的请求不会到达 Makers Agent、不会初始化模型或消耗 token。Cloud Function 先通过 Supabase Auth 验证当前 Bearer Token 并取得用户 ID，再用服务端已有的 `JOJO_OPERATOR_TOKEN` 调 `operator_get_feature_flag` 读取 `agent.chat` 原始规则，在函数内依次计算用户、登录、百分比、全局和时间窗条件。Token 无效返回 401；配置缺失、损坏或 Supabase 不可用时 fail closed。Makers Agent 只处理自己的运行配置，未来的 Prompt、模型或工具实验使用独立的 Agent 内部开关，不复用平台入口 Flag。
 
 ## 8. Web 前端设计
 
@@ -311,7 +312,7 @@ Flask 只监听 `127.0.0.1`。数据库只保存 Operator Token 摘要，私有�
 
 ## 13. 已确认的实现决策
 
-- Supabase 是唯一 Flag 配置与判定源，前后端不各自维护规则。
+- Supabase 是唯一 Flag 配置源；数据库与 Cloud Function 执行同一套规则语义，前端不维护或计算规则。
 - 规则严格按界面顺序 first-match-wins，并强制保留最后一条 `global` fallback。
 - 管理台复用现有 `JOJO_OPERATOR_TOKEN`，不引入 Supabase 浏览器登录、管理员表或新的 Access Token。
 - 管理界面放入更名后的“JOJO 管理台”。

@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(27);
+select extensions.plan(29);
 
 select extensions.has_table('private', 'feature_flags', 'feature flag configuration uses one private table');
 select extensions.has_table('private', 'feature_flag_operator_secret', 'only the operator token digest has separate storage');
@@ -67,6 +67,19 @@ select extensions.is(
   jsonb_array_length(public.operator_list_feature_flags(repeat('o', 32))),
   5,
   'the configured operator token can list flags'
+);
+
+select extensions.throws_ok(
+  $$select public.operator_get_feature_flag('wrong-token', 'agent.chat')$$,
+  '42501',
+  'Feature flag operator token is invalid',
+  'runtime rule reads reject an invalid operator token'
+);
+
+select extensions.is(
+  public.operator_get_feature_flag(repeat('o', 32), 'agent.chat')->>'revision',
+  '1',
+  'the protected runtime read returns one rule document'
 );
 
 select extensions.is(

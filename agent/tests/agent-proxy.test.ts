@@ -12,8 +12,34 @@ const allowedEnvironment = {
   JOJO_AGENT_ALLOWED_ORIGINS: "https://jojokanbao.cn",
   JOJO_AGENT_UPSTREAM_URL: "https://production-agent.example/jojo",
   JOJO_AGENT_SERVICE_SECRET: "0123456789abcdef0123456789abcdef",
+  JOJO_OPERATOR_TOKEN: "operator-token-0123456789abcdef0123456789abcdef",
   VITE_SUPABASE_URL: "https://example.supabase.co",
   VITE_SUPABASE_PUBLISHABLE_KEY: "publishable-key",
+};
+
+const enabledForUserConfig = {
+  key: "agent.chat",
+  revision: 4,
+  rules: [
+    {
+      id: "30000000-0000-4000-8000-000000000001",
+      conditionType: "users",
+      serve: true,
+      enabled: true,
+      startsAt: null,
+      endsAt: null,
+      userIds: ["user-1"],
+    },
+    {
+      id: "30000000-0000-4000-8000-000000000002",
+      conditionType: "global",
+      serve: false,
+      enabled: true,
+      startsAt: null,
+      endsAt: null,
+      userIds: [],
+    },
+  ],
 };
 
 afterEach(() => {
@@ -48,10 +74,10 @@ describe("international Agent proxy", () => {
   it("forwards authenticated SSE requests to the same-project Agent", async () => {
     const fetchMock = vi.fn(
       async (input: string | URL | Request, _init?: RequestInit) => {
-        if (String(input).includes("example.supabase.co")) {
-          return Response.json([
-            { flag_key: "agent.chat", enabled: true, revision: 4 },
-          ]);
+        const url = String(input);
+        if (url.endsWith("/auth/v1/user")) return Response.json({ id: "user-1" });
+        if (url.endsWith("/rest/v1/rpc/operator_get_feature_flag")) {
+          return Response.json(enabledForUserConfig);
         }
         return new Response("event: done\ndata: {}\n\n", {
           status: 200,
@@ -81,22 +107,33 @@ describe("international Agent proxy", () => {
       .toBe("https://jojokanbao.cn");
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "https://example.supabase.co/rest/v1/rpc/get_my_feature_flags",
+      "https://example.supabase.co/auth/v1/user",
       expect.objectContaining({
-        method: "POST",
+        method: "GET",
         headers: expect.objectContaining({
           apikey: "publishable-key",
           authorization: "Bearer access-token",
         }),
-        body: JSON.stringify({ p_keys: ["agent.chat"], p_visitor_id: null }),
       }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
+      "https://example.supabase.co/rest/v1/rpc/operator_get_feature_flag",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ apikey: "publishable-key" }),
+        body: JSON.stringify({
+          p_operator_token: allowedEnvironment.JOJO_OPERATOR_TOKEN,
+          p_key: "agent.chat",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
       new URL("https://preview-agent.example/jojo"),
       expect.objectContaining({ method: "POST" }),
     );
-    const forwarded = fetchMock.mock.calls[1]?.[1];
+    const forwarded = fetchMock.mock.calls[2]?.[1];
     if (!forwarded) throw new Error("Expected forwarded request options");
     expect(new Headers(forwarded.headers).get("authorization"))
       .toBe("Bearer access-token");
@@ -117,9 +154,14 @@ describe("international Agent proxy", () => {
   });
 
   it("blocks disabled agent.chat requests before invoking the Agent", async () => {
-    const fetchMock = vi.fn(async (_input: string | URL | Request) => Response.json([
-      { flag_key: "agent.chat", enabled: false, revision: 5 },
-    ]));
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/auth/v1/user")) return Response.json({ id: "user-2" });
+      if (url.endsWith("/rest/v1/rpc/operator_get_feature_flag")) {
+        return Response.json(enabledForUserConfig);
+      }
+      throw new Error("The Agent must not be invoked");
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await onRequest(context(new Request(
@@ -140,8 +182,78 @@ describe("international Agent proxy", () => {
     await expect(response.json()).resolves.toEqual({
       error: "This feature is not available",
     });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails closed when Supabase rejects an expired login", async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await onRequest(context(new Request(
+      "https://preview-agent.example/gateway/ask",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer expired-token",
+          "content-type": "application/json",
+          "makers-conversation-id": "conversation-001",
+          origin: "https://jojokanbao.cn",
+        },
+        body: JSON.stringify({ message: "你好" }),
+      },
+    )));
+
+    expect(response.status).toBe(401);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("example.supabase.co");
+  });
+
+  it("uses the same stable user percentage semantics as Postgres", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/auth/v1/user")) return Response.json({ id: "user-1" });
+      if (url.endsWith("/rest/v1/rpc/operator_get_feature_flag")) {
+        return Response.json({
+          key: "agent.chat",
+          revision: 5,
+          rules: [
+            {
+              id: "30000000-0000-4000-8000-000000000003",
+              conditionType: "percentage",
+              bucketBy: "user",
+              bucketSalt: "30000000-0000-4000-8000-000000000004",
+              percentage: 100,
+              serve: true,
+              enabled: true,
+              startsAt: null,
+              endsAt: null,
+              userIds: [],
+            },
+            enabledForUserConfig.rules[1],
+          ],
+        });
+      }
+      return new Response("event: done\ndata: {}\n\n", {
+        headers: { "content-type": "text/event-stream" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await onRequest(context(new Request(
+      "https://preview-agent.example/gateway/ask",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer access-token",
+          "content-type": "application/json",
+          "makers-conversation-id": "conversation-001",
+          origin: "https://jojokanbao.cn",
+        },
+        body: JSON.stringify({ message: "你好" }),
+      },
+    )));
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("requires a user login before evaluating agent.chat", async () => {

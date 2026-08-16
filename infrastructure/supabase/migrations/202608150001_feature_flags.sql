@@ -335,6 +335,30 @@ begin
 end;
 $$;
 
+create or replace function public.operator_get_feature_flag(
+  p_operator_token text,
+  p_key text
+)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  perform private.require_feature_flag_operator(p_operator_token);
+  return (
+    select jsonb_build_object(
+      'key', flag.key,
+      'revision', flag.revision,
+      'rules', flag.rules
+    )
+      from private.feature_flags as flag
+      where flag.key = p_key
+  );
+end;
+$$;
+
 create or replace function public.operator_search_feature_users(
   p_operator_token text,
   p_query text
@@ -470,12 +494,14 @@ revoke all on function private.feature_flag_normalize_rules(jsonb) from public, 
 revoke all on function public.get_my_feature_flags(text[], uuid) from public;
 revoke all on function public.feature_enabled(text) from public;
 revoke all on function public.operator_list_feature_flags(text) from public;
+revoke all on function public.operator_get_feature_flag(text, text) from public;
 revoke all on function public.operator_search_feature_users(text, text) from public;
 revoke all on function public.operator_publish_feature_flag(text, text, jsonb, bigint, text, text) from public;
 revoke all on function public.operator_rollback_feature_flag(text, text, bigint, bigint, text) from public;
 grant execute on function public.get_my_feature_flags(text[], uuid) to anon, authenticated;
 grant execute on function public.feature_enabled(text) to authenticated;
 grant execute on function public.operator_list_feature_flags(text) to anon, authenticated;
+grant execute on function public.operator_get_feature_flag(text, text) to anon, authenticated;
 grant execute on function public.operator_search_feature_users(text, text) to anon, authenticated;
 grant execute on function public.operator_publish_feature_flag(text, text, jsonb, bigint, text, text) to anon, authenticated;
 grant execute on function public.operator_rollback_feature_flag(text, text, bigint, bigint, text) to anon, authenticated;

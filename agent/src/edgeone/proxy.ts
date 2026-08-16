@@ -8,6 +8,25 @@ const CONVERSATION_ID = /^[0-9A-Za-z._-]{6,36}$/;
 const MAX_REQUEST_BYTES = 64 * 1024;
 const AGENT_CHAT_FLAG = "agent.chat";
 
+interface FeatureFlagRule {
+  bucketBy?: unknown;
+  bucketSalt?: unknown;
+  conditionType?: unknown;
+  enabled?: unknown;
+  endsAt?: unknown;
+  id?: unknown;
+  percentage?: unknown;
+  serve?: unknown;
+  startsAt?: unknown;
+  userIds?: unknown;
+}
+
+interface FeatureFlagConfig {
+  key?: unknown;
+  revision?: unknown;
+  rules?: unknown;
+}
+
 export interface AgentProxyContext {
   env?: Readonly<Record<string, string | undefined>>;
   request: Request;
@@ -67,6 +86,100 @@ function copyUpstreamHeaders(upstream: Response, origin: string | null): Headers
   return headers;
 }
 
+function activeAt(rule: FeatureFlagRule, now: number): boolean {
+  if (typeof rule.enabled !== "boolean") throw new Error("Invalid rule enabled");
+  if (!rule.enabled) return false;
+
+  for (const [boundary, comparison] of [
+    [rule.startsAt, "start"],
+    [rule.endsAt, "end"],
+  ] as const) {
+    if (boundary === null || boundary === undefined || boundary === "") continue;
+    if (typeof boundary !== "string") throw new Error("Invalid rule window");
+    const timestamp = Date.parse(boundary);
+    if (!Number.isFinite(timestamp)) throw new Error("Invalid rule window");
+    if (comparison === "start" && now < timestamp) return false;
+    if (comparison === "end" && now >= timestamp) return false;
+  }
+  return true;
+}
+
+async function percentageMatches(
+  rule: FeatureFlagRule,
+  userId: string,
+): Promise<boolean> {
+  if (rule.bucketBy === "visitor") return false;
+  if (
+    rule.bucketBy !== "user"
+    || typeof rule.id !== "string"
+    || typeof rule.bucketSalt !== "string"
+    || !Number.isInteger(rule.percentage)
+    || Number(rule.percentage) < 1
+    || Number(rule.percentage) > 100
+  ) {
+    throw new Error("Invalid percentage rule");
+  }
+  const source = [
+    AGENT_CHAT_FLAG,
+    rule.id,
+    rule.bucketSalt,
+    `user:${userId}`,
+  ].join(":");
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(source),
+  );
+  const bucket = new DataView(digest).getUint32(0, false) % 100;
+  return bucket < Number(rule.percentage);
+}
+
+async function evaluateAgentChatFlag(
+  payload: unknown,
+  userId: string,
+): Promise<boolean> {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Feature flag is missing");
+  }
+  const config = payload as FeatureFlagConfig;
+  if (
+    config.key !== AGENT_CHAT_FLAG
+    || typeof config.revision !== "number"
+    || !Array.isArray(config.rules)
+    || config.rules.length === 0
+  ) {
+    throw new Error("Invalid feature flag config");
+  }
+
+  const now = Date.now();
+  for (const value of config.rules) {
+    if (!value || typeof value !== "object") throw new Error("Invalid rule");
+    const rule = value as FeatureFlagRule;
+    if (!activeAt(rule, now)) continue;
+    if (typeof rule.serve !== "boolean") throw new Error("Invalid rule result");
+
+    let matches = false;
+    switch (rule.conditionType) {
+      case "global":
+      case "authenticated":
+        matches = true;
+        break;
+      case "users":
+        if (!Array.isArray(rule.userIds) || !rule.userIds.every((id) => typeof id === "string")) {
+          throw new Error("Invalid users rule");
+        }
+        matches = rule.userIds.includes(userId);
+        break;
+      case "percentage":
+        matches = await percentageMatches(rule, userId);
+        break;
+      default:
+        throw new Error("Invalid rule condition");
+    }
+    if (matches) return rule.serve;
+  }
+  return false;
+}
+
 async function requireAgentChatAccess(
   environment: Readonly<Record<string, string | undefined>>,
   request: Request,
@@ -74,7 +187,8 @@ async function requireAgentChatAccess(
 ): Promise<Response | null> {
   const baseUrl = environment.VITE_SUPABASE_URL?.trim().replace(/\/$/, "");
   const publishableKey = environment.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
-  if (!baseUrl || !publishableKey) {
+  const operatorToken = environment.JOJO_OPERATOR_TOKEN?.trim();
+  if (!baseUrl || !publishableKey || !operatorToken || operatorToken.length < 32) {
     return jsonResponse(
       503,
       { error: "Feature evaluation is not configured" },
@@ -87,17 +201,15 @@ async function requireAgentChatAccess(
     return jsonResponse(401, { error: "Authentication required" }, origin);
   }
 
-  let response: Response;
+  let authResponse: Response;
   try {
-    response = await fetch(`${baseUrl}/rest/v1/rpc/get_my_feature_flags`, {
-      method: "POST",
+    authResponse = await fetch(`${baseUrl}/auth/v1/user`, {
+      method: "GET",
       headers: {
         apikey: publishableKey,
         authorization: `Bearer ${token}`,
         accept: "application/json",
-        "content-type": "application/json",
       },
-      body: JSON.stringify({ p_keys: [AGENT_CHAT_FLAG], p_visitor_id: null }),
       signal: request.signal,
     });
   } catch {
@@ -108,10 +220,10 @@ async function requireAgentChatAccess(
     );
   }
 
-  if (response.status === 401 || response.status === 403) {
+  if (authResponse.status === 401 || authResponse.status === 403) {
     return jsonResponse(401, { error: "Authentication required" }, origin);
   }
-  if (!response.ok) {
+  if (!authResponse.ok) {
     return jsonResponse(
       503,
       { error: "Feature evaluation service unavailable" },
@@ -119,9 +231,9 @@ async function requireAgentChatAccess(
     );
   }
 
-  let payload: unknown;
+  let authPayload: unknown;
   try {
-    payload = await response.json();
+    authPayload = await authResponse.json();
   } catch {
     return jsonResponse(
       503,
@@ -129,23 +241,55 @@ async function requireAgentChatAccess(
       origin,
     );
   }
-  const decision = Array.isArray(payload)
-    ? payload.find((item) => (
-      item
-      && typeof item === "object"
-      && "flag_key" in item
-      && item.flag_key === AGENT_CHAT_FLAG
-    ))
+  const userId = authPayload && typeof authPayload === "object" && "id" in authPayload
+    ? authPayload.id
     : undefined;
-  if (
-    !decision
-    || typeof decision !== "object"
-    || !("enabled" in decision)
-    || decision.enabled !== true
-  ) {
-    return jsonResponse(403, { error: "This feature is not available" }, origin);
+  if (typeof userId !== "string" || !userId) {
+    return jsonResponse(401, { error: "Authentication required" }, origin);
   }
-  return null;
+
+  let configResponse: Response;
+  try {
+    configResponse = await fetch(`${baseUrl}/rest/v1/rpc/operator_get_feature_flag`, {
+      method: "POST",
+      headers: {
+        apikey: publishableKey,
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        p_operator_token: operatorToken,
+        p_key: AGENT_CHAT_FLAG,
+      }),
+      signal: request.signal,
+    });
+  } catch {
+    return jsonResponse(
+      503,
+      { error: "Feature evaluation service unavailable" },
+      origin,
+    );
+  }
+  if (!configResponse.ok) {
+    return jsonResponse(
+      503,
+      { error: "Feature evaluation service unavailable" },
+      origin,
+    );
+  }
+
+  try {
+    const enabled = await evaluateAgentChatFlag(await configResponse.json(), userId);
+    if (enabled) return null;
+  } catch {
+    return jsonResponse(
+      503,
+      { error: "Feature evaluation service unavailable" },
+      origin,
+    );
+  }
+
+  return jsonResponse(403, { error: "This feature is not available" }, origin);
 }
 
 function agentUrl(
