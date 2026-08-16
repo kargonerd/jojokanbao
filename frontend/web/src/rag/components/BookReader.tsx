@@ -43,6 +43,7 @@ export interface BookReaderProps {
   bookTitle: string;
   datasetId: string;
   itemId: string;
+  manifestObject: string;
   characterCount: number;
   logicalChapterCount?: number;
   chapters: BookReaderChapter[];
@@ -119,6 +120,7 @@ export function BookReader({
   bookTitle,
   datasetId,
   itemId,
+  manifestObject,
   characterCount,
   logicalChapterCount,
   chapters,
@@ -738,7 +740,7 @@ export function BookReader({
 
     {searchOpen && <><button type="button" aria-label="关闭全书搜索" onClick={() => setSearchOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookSearchPanel bookTitle={bookTitle} panelClass={panelClass} onClose={() => setSearchOpen(false)} onJump={locateSearchResult} onSearch={onSearch} /></>}
 
-    {agentEnabled && aiOpen && <><button type="button" aria-label="关闭书内 AI" onClick={() => setAiOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookAiPanel key={`${aiQuestion || "book-ai"}:${aiInitialAnswer || ""}`} bookTitle={bookTitle} datasetId={datasetId} itemId={itemId} initialQuestion={aiQuestion} initialAnswer={aiInitialAnswer} explanationQuote={aiExplanationQuote} panelClass={panelClass} onClose={() => setAiOpen(false)} onJump={locateReference} onExplanationComplete={annotationsEnabled ? (quote, answer) => void saveExplanation({ datasetId, itemId, chapterId: activeChapterId, quote, answer }) : undefined} /></>}
+    {agentEnabled && aiOpen && <><button type="button" aria-label="关闭书内 AI" onClick={() => setAiOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookAiPanel key={`${aiQuestion || "book-ai"}:${aiInitialAnswer || ""}`} bookTitle={bookTitle} datasetId={datasetId} itemId={itemId} manifestObject={manifestObject} initialQuestion={aiQuestion} initialAnswer={aiInitialAnswer} explanationQuote={aiExplanationQuote} panelClass={panelClass} onClose={() => setAiOpen(false)} onJump={locateReference} onExplanationComplete={annotationsEnabled ? (quote, answer) => void saveExplanation({ datasetId, itemId, chapterId: activeChapterId, quote, answer }) : undefined} /></>}
 
     {toolPopover && <>
       <button type="button" aria-label="关闭阅读工具" onClick={() => setToolPopover(undefined)} className="fixed inset-0 z-20 border-0 bg-transparent cursor-default" />

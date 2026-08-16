@@ -9,11 +9,15 @@ function scopeFrom(value: unknown): RagScope {
   if (!value || typeof value !== "object") return {};
   const scope = (value as { scope?: unknown }).scope;
   if (!scope || typeof scope !== "object") return {};
-  const input = scope as { datasetIds?: unknown; itemIds?: unknown };
+  const input = scope as { datasetIds?: unknown; itemIds?: unknown; manifestObjects?: unknown };
   const strings = (candidate: unknown) => Array.isArray(candidate)
     ? candidate.filter((item): item is string => typeof item === "string").slice(0, 100)
     : undefined;
-  return { datasetIds: strings(input.datasetIds), itemIds: strings(input.itemIds) };
+  return {
+    datasetIds: strings(input.datasetIds),
+    itemIds: strings(input.itemIds),
+    manifestObjects: strings(input.manifestObjects),
+  };
 }
 
 const definition = createRagAgentDefinition();
@@ -22,7 +26,6 @@ const handle = createEdgeOneAgentHandler({
   tools(context) {
     const environment = context.env ?? process.env;
     const searchUrl = environment.JOJO_CONTENT_SEARCH_URL?.trim();
-    if (!searchUrl) throw new Error("JOJO_CONTENT_SEARCH_URL is not configured");
     return createRagTools({
       searchUrl,
       contentCdnBase: environment.JOJO_CONTENT_CDN_BASE?.trim() || "https://blacknews.jojokanbao.cn/",

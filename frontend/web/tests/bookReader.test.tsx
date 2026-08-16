@@ -46,6 +46,7 @@ describe("BookReader", () => {
           bookTitle="测试书"
           datasetId="test-books"
           itemId="test-books:full-book"
+          manifestObject="content/books/test-books/items/full-book/manifest.jox"
           characterCount={12000}
           logicalChapterCount={40}
           chapters={[{ id: "chapter-1", title: "第一章" }, { id: "chapter-2", title: "第二章" }]}

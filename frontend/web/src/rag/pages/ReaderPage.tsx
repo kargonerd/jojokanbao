@@ -305,6 +305,7 @@ export function ReaderPage({ publicReader = false }: { publicReader?: boolean })
     bookTitle={loaded.manifest.title}
     datasetId={loaded.manifest.datasetId}
     itemId={loaded.manifest.itemId}
+    manifestObject={loaded.manifestObject}
     characterCount={loaded.manifest.contentStats.characterCount}
     logicalChapterCount={logicalChapterCount}
     chapters={chapters.map((chapter) => ({ id: chapter.id, title: chapter.title }))}

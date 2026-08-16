@@ -64,7 +64,7 @@ export const catalogApi = {
 };
 
 // Chat (streaming)
-export function askStream(params: { dataset_id: string; question: string; conversation_id?: string; item_ids?: string[] }, onChunk: (text: string) => void, onDone: (refs?: RagReference[], conversationId?: string) => void, onError: (err: string) => void) {
+export function askStream(params: { dataset_id: string; question: string; conversation_id?: string; item_ids?: string[]; manifest_objects?: string[] }, onChunk: (text: string) => void, onDone: (refs?: RagReference[], conversationId?: string) => void, onError: (err: string) => void) {
   const ctrl = new AbortController();
   let settled = false;
   const conversationId = params.conversation_id || `conv_${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`;
@@ -91,7 +91,11 @@ export function askStream(params: { dataset_id: string; question: string; conver
       },
       body: JSON.stringify({
         message: params.question,
-        scope: { datasetIds: [params.dataset_id], itemIds: params.item_ids ?? [] },
+        scope: {
+          datasetIds: [params.dataset_id],
+          itemIds: params.item_ids ?? [],
+          manifestObjects: params.manifest_objects ?? [],
+        },
       }),
       signal: ctrl.signal,
     });
