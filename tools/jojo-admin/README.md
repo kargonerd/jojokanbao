@@ -1,10 +1,9 @@
 # JOJO 管理台
 
-Internal operations application for PDF intake, publication data generation,
-and append-only Elasticsearch repairs.
+Internal JOJO management application for PDF intake, publication data generation,
+append-only Elasticsearch repairs, feature flags, and Agent operations.
 
-The internal package and directory keep the historical `data-workbench` name for now.
-The product UI is **JOJO 管理台**, covering content operations, search maintenance,
+The product UI and internal package are both named **JOJO 管理台**, covering content operations, search maintenance,
 and runtime feature rules. `/content` is the JOJO v1 content importer and publisher. It accepts local
 WeRead JSON paths or browser-selected files, shows background job progress and
 diagnostics, then independently publishes B2, Elasticsearch and Hugging Face.
@@ -13,8 +12,7 @@ TOC chapter responses are missing, or any response cannot be decoded.
 
 ## Structure
 
-- `web/` — React 19 client, registered in the pnpm workspace as
-  `@jojo/data-workbench`.
+- `web/` — React 19 client, registered in the pnpm workspace as `@jojo/admin`.
 - `server/` — Flask APIs, PDF processing pipeline, storage adapters, and local
   ES migration files.
 
@@ -23,7 +21,7 @@ TOC chapter responses are missing, or any response cannot be decoded.
 From the repository root:
 
 ```bash
-pnpm dev:jojo-pipe
+pnpm dev:admin
 ```
 
 功能开关页面位于 `http://127.0.0.1:4174/features`。它只通过同机 Flask
@@ -67,12 +65,12 @@ HF 发布结果显示为 **Marxism Dataset**。首页和 `collections/` 使用�
 本地联调 Reader/Agent 的真实 ES 搜索时，可只启动轻量搜索入口：
 
 ```powershell
-$env:ES_CONTENT_INDEX="<Workbench 发布返回的索引>"
-$env:ES_CONTENT_RELEASE_ID="<Workbench 发布返回的 releaseId>"
+$env:ES_CONTENT_INDEX="<管理台发布返回的索引>"
+$env:ES_CONTENT_RELEASE_ID="<管理台发布返回的 releaseId>"
 python server/content_search_app.py
 ```
 
-它通过 Workbench 已配置的 Kibana Console 代理提供与线上一致的
+它通过管理台已配置的 Kibana Console 代理提供与线上一致的
 `POST /content/search`，不会启动旧报刊处理器。
 
 Tencent ES Serverless indexes must be created in the Tencent console first;

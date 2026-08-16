@@ -1,4 +1,4 @@
-"""Flask routes for the local ES repair workbench."""
+"""Flask routes for the local JOJO Admin ES repair page."""
 import hmac
 
 from flask import Blueprint, jsonify, request

@@ -1,6 +1,6 @@
 # ES migrations
 
-The JOJO Pipe ES repair workbench writes one JSON migration per repair or
+The JOJO Admin ES repair page writes one JSON migration per repair or
 logical deletion. The file contains operator context such as `reason`; those
 fields are deliberately not indexed in Elasticsearch.
 

@@ -1,36 +1,36 @@
-# JOJO Pipe
+# JOJO 管理台
 
 JOJO Pipe is the local PDF intake tool for reader publications. It renames PDFs,
 splits page PDFs, and commits the generated files to a configurable storage
 backend.
 
-## React JOJO 管理台
+## React 管理界面
 
-The complete internal application lives in `tools/data-workbench`: `web/`
+The complete internal application lives in `tools/jojo-admin`: `web/`
 contains the React 19 client, while `server/` contains the Flask APIs, PDF
 pipeline, and ES migrations. Flask serves the production web build and no
 longer renders Jinja pages.
 
 For normal local use, run `start.bat`. It builds the frontend, starts Flask,
-then opens the workbench at `http://127.0.0.1:5000/`.
+then opens the admin console at `http://127.0.0.1:5000/`.
 
 During frontend development, start Flask and Vite together:
 
 ```bash
-pnpm dev:jojo-pipe
+pnpm dev:admin
 ```
 
 The Vite development UI is at `http://127.0.0.1:4174/` and proxies `/api` to
-Flask on port 5000. The lower-level `dev:jojo-pipe-api` and
-`dev:data-workbench` commands remain available when only one side needs
+Flask on port 5000. The lower-level `dev:admin-api` and
+`dev:admin-web` commands remain available when only one side needs
 debugging.
 
-## ES repair workbench
+## ES repair
 
-Run `python app.py`, then open `http://127.0.0.1:5000/` for the data-workbench
+Run `python app.py`, then open `http://127.0.0.1:5000/` for the admin console
 overview. PDF intake lives at `/pdf`, and ES repair lives at `/es` (the old
 `/es-repair` URL redirects in the React router).
-The ES workbench
+The ES page
 reads `KIBANA_URL`, `ELASTICSEARCH_USERNAME`, and `ELASTICSEARCH_PASSWORD` from
 the repository root `.env`. It uses `aitest-1tk2lxru` by default; set
 `ES_REPAIR_INDEX` to override it.

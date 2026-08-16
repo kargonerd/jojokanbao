@@ -251,7 +251,7 @@ useFeatureFlag("library.bookshelf");
 
 ## 9. JOJO 管理台
 
-现有 “JOJO Data Workbench / 数据工作台” 对外改名为“JOJO 管理台”，因为它将同时承担内容、索引和运行控制。首版只修改产品标题、页面文案和导航信息架构；目录 `tools/data-workbench`、包名 `@jojo/data-workbench` 及开发命令暂时保留，避免无关的工程迁移扩大风险。
+“JOJO 管理台”同时承担内容、索引和运行控制。工程目录为 `tools/jojo-admin`，Web 包名为 `@jojo/admin`，本地使用 `pnpm dev:admin` 启动。
 
 新增“功能开关”一级页面。管理台仅供本机使用，不再增加一套网页登录和角色：浏览器调用同源 Flask API，Flask 从根目录 `.env` 读取已有 `JOJO_OPERATOR_TOKEN` 并调用受保护的 Supabase RPC。令牌不进入 Vite 环境变量、浏览器存储或响应体。
 

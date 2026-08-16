@@ -3,7 +3,7 @@ import { apiGet, apiPost } from "./api";
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe("workbench API client", () => {
+describe("admin API client", () => {
   it("returns a successful JSON payload", async () => {
     vi.stubGlobal(
       "fetch",

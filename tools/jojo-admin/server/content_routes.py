@@ -1,4 +1,4 @@
-"""Local Workbench routes for importing and publishing JOJO content."""
+"""Local JOJO Admin routes for importing and publishing content."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -66,7 +66,7 @@ def _load_jobs() -> None:
             job = json.loads(state.read_text(encoding="utf-8"))
             if job.get("status") in {"building", "publishing"}:
                 job["status"] = "interrupted"
-                job["message"] = "Workbench 重启中断了任务，可以重新导入或发布"
+                job["message"] = "管理台重启中断了任务，可以重新导入或发布"
             _jobs[job["jobId"]] = job
         except Exception:
             continue

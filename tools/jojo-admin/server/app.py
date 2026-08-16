@@ -1028,7 +1028,7 @@ FRONTEND_DIST = Path(__file__).resolve().parent.parent / 'web' / 'dist'
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
-def serve_data_workbench(path):
+def serve_admin_console(path):
     """托管 React JOJO 管理台，并把客户端路由回退到 index.html。"""
     requested = FRONTEND_DIST / path
     if path and requested.is_file():
@@ -1037,7 +1037,7 @@ def serve_data_workbench(path):
     if not index_file.exists():
         return jsonify({
             'success': False,
-            'message': 'JOJO 管理台尚未构建，请运行 pnpm --filter @jojo/data-workbench build'
+            'message': 'JOJO 管理台尚未构建，请运行 pnpm build:admin'
         }), 503
     return send_from_directory(FRONTEND_DIST, 'index.html')
 

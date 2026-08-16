@@ -1,35 +1,31 @@
 import {
   createAgentServiceSignatureHeaders,
 } from "@jojo/agent/edgeone/service-auth";
-import { bearerToken } from "./auth";
+import { evaluateAuthenticatedFeatureFlag } from "./feature-flag-evaluator";
 
 const CONVERSATION_HEADER = "Makers-Conversation-Id";
 const CONVERSATION_ID = /^[0-9A-Za-z._-]{6,36}$/;
 const MAX_REQUEST_BYTES = 64 * 1024;
+const SUPABASE_TIMEOUT_MS = 5_000;
 const AGENT_CHAT_FLAG = "agent.chat";
-
-interface FeatureFlagRule {
-  bucketBy?: unknown;
-  bucketSalt?: unknown;
-  conditionType?: unknown;
-  enabled?: unknown;
-  endsAt?: unknown;
-  id?: unknown;
-  percentage?: unknown;
-  serve?: unknown;
-  startsAt?: unknown;
-  userIds?: unknown;
-}
-
-interface FeatureFlagConfig {
-  key?: unknown;
-  revision?: unknown;
-  rules?: unknown;
-}
 
 export interface AgentProxyContext {
   env?: Readonly<Record<string, string | undefined>>;
   request: Request;
+}
+
+function bearerToken(headers: Headers): string | undefined {
+  const value = headers.get("authorization")?.trim();
+  if (!value) return undefined;
+  const [scheme, token] = value.split(/\s+/, 2);
+  return scheme?.toLowerCase() === "bearer" && token ? token : undefined;
+}
+
+function supabaseSignal(request: Request): AbortSignal {
+  return AbortSignal.any([
+    request.signal,
+    AbortSignal.timeout(SUPABASE_TIMEOUT_MS),
+  ]);
 }
 
 function configuredOrigins(
@@ -86,100 +82,6 @@ function copyUpstreamHeaders(upstream: Response, origin: string | null): Headers
   return headers;
 }
 
-function activeAt(rule: FeatureFlagRule, now: number): boolean {
-  if (typeof rule.enabled !== "boolean") throw new Error("Invalid rule enabled");
-  if (!rule.enabled) return false;
-
-  for (const [boundary, comparison] of [
-    [rule.startsAt, "start"],
-    [rule.endsAt, "end"],
-  ] as const) {
-    if (boundary === null || boundary === undefined || boundary === "") continue;
-    if (typeof boundary !== "string") throw new Error("Invalid rule window");
-    const timestamp = Date.parse(boundary);
-    if (!Number.isFinite(timestamp)) throw new Error("Invalid rule window");
-    if (comparison === "start" && now < timestamp) return false;
-    if (comparison === "end" && now >= timestamp) return false;
-  }
-  return true;
-}
-
-async function percentageMatches(
-  rule: FeatureFlagRule,
-  userId: string,
-): Promise<boolean> {
-  if (rule.bucketBy === "visitor") return false;
-  if (
-    rule.bucketBy !== "user"
-    || typeof rule.id !== "string"
-    || typeof rule.bucketSalt !== "string"
-    || !Number.isInteger(rule.percentage)
-    || Number(rule.percentage) < 1
-    || Number(rule.percentage) > 100
-  ) {
-    throw new Error("Invalid percentage rule");
-  }
-  const source = [
-    AGENT_CHAT_FLAG,
-    rule.id,
-    rule.bucketSalt,
-    `user:${userId}`,
-  ].join(":");
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(source),
-  );
-  const bucket = new DataView(digest).getUint32(0, false) % 100;
-  return bucket < Number(rule.percentage);
-}
-
-async function evaluateAgentChatFlag(
-  payload: unknown,
-  userId: string,
-): Promise<boolean> {
-  if (!payload || typeof payload !== "object") {
-    throw new Error("Feature flag is missing");
-  }
-  const config = payload as FeatureFlagConfig;
-  if (
-    config.key !== AGENT_CHAT_FLAG
-    || typeof config.revision !== "number"
-    || !Array.isArray(config.rules)
-    || config.rules.length === 0
-  ) {
-    throw new Error("Invalid feature flag config");
-  }
-
-  const now = Date.now();
-  for (const value of config.rules) {
-    if (!value || typeof value !== "object") throw new Error("Invalid rule");
-    const rule = value as FeatureFlagRule;
-    if (!activeAt(rule, now)) continue;
-    if (typeof rule.serve !== "boolean") throw new Error("Invalid rule result");
-
-    let matches = false;
-    switch (rule.conditionType) {
-      case "global":
-      case "authenticated":
-        matches = true;
-        break;
-      case "users":
-        if (!Array.isArray(rule.userIds) || !rule.userIds.every((id) => typeof id === "string")) {
-          throw new Error("Invalid users rule");
-        }
-        matches = rule.userIds.includes(userId);
-        break;
-      case "percentage":
-        matches = await percentageMatches(rule, userId);
-        break;
-      default:
-        throw new Error("Invalid rule condition");
-    }
-    if (matches) return rule.serve;
-  }
-  return false;
-}
-
 async function requireAgentChatAccess(
   environment: Readonly<Record<string, string | undefined>>,
   request: Request,
@@ -202,16 +104,33 @@ async function requireAgentChatAccess(
   }
 
   let authResponse: Response;
+  let configResponse: Response;
   try {
-    authResponse = await fetch(`${baseUrl}/auth/v1/user`, {
-      method: "GET",
-      headers: {
-        apikey: publishableKey,
-        authorization: `Bearer ${token}`,
-        accept: "application/json",
-      },
-      signal: request.signal,
-    });
+    const signal = supabaseSignal(request);
+    [authResponse, configResponse] = await Promise.all([
+      fetch(`${baseUrl}/auth/v1/user`, {
+        method: "GET",
+        headers: {
+          apikey: publishableKey,
+          authorization: `Bearer ${token}`,
+          accept: "application/json",
+        },
+        signal,
+      }),
+      fetch(`${baseUrl}/rest/v1/rpc/operator_get_feature_flag`, {
+        method: "POST",
+        headers: {
+          apikey: publishableKey,
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          p_operator_token: operatorToken,
+          p_key: AGENT_CHAT_FLAG,
+        }),
+        signal,
+      }),
+    ]);
   } catch {
     return jsonResponse(
       503,
@@ -223,7 +142,7 @@ async function requireAgentChatAccess(
   if (authResponse.status === 401 || authResponse.status === 403) {
     return jsonResponse(401, { error: "Authentication required" }, origin);
   }
-  if (!authResponse.ok) {
+  if (!authResponse.ok || !configResponse.ok) {
     return jsonResponse(
       503,
       { error: "Feature evaluation service unavailable" },
@@ -232,8 +151,12 @@ async function requireAgentChatAccess(
   }
 
   let authPayload: unknown;
+  let configPayload: unknown;
   try {
-    authPayload = await authResponse.json();
+    [authPayload, configPayload] = await Promise.all([
+      authResponse.json(),
+      configResponse.json(),
+    ]);
   } catch {
     return jsonResponse(
       503,
@@ -241,36 +164,12 @@ async function requireAgentChatAccess(
       origin,
     );
   }
-  const userId = authPayload && typeof authPayload === "object" && "id" in authPayload
+  const userId = authPayload
+    && typeof authPayload === "object"
+    && "id" in authPayload
     ? authPayload.id
     : undefined;
   if (typeof userId !== "string" || !userId) {
-    return jsonResponse(401, { error: "Authentication required" }, origin);
-  }
-
-  let configResponse: Response;
-  try {
-    configResponse = await fetch(`${baseUrl}/rest/v1/rpc/operator_get_feature_flag`, {
-      method: "POST",
-      headers: {
-        apikey: publishableKey,
-        accept: "application/json",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        p_operator_token: operatorToken,
-        p_key: AGENT_CHAT_FLAG,
-      }),
-      signal: request.signal,
-    });
-  } catch {
-    return jsonResponse(
-      503,
-      { error: "Feature evaluation service unavailable" },
-      origin,
-    );
-  }
-  if (!configResponse.ok) {
     return jsonResponse(
       503,
       { error: "Feature evaluation service unavailable" },
@@ -279,7 +178,11 @@ async function requireAgentChatAccess(
   }
 
   try {
-    const enabled = await evaluateAgentChatFlag(await configResponse.json(), userId);
+    const enabled = await evaluateAuthenticatedFeatureFlag(
+      configPayload,
+      AGENT_CHAT_FLAG,
+      userId,
+    );
     if (enabled) return null;
   } catch {
     return jsonResponse(
@@ -383,6 +286,11 @@ export async function handleAgentProxyRequest(
     }
   }
 
+  if (request.method === "POST") {
+    const denied = await requireAgentChatAccess(environment, request, origin);
+    if (denied) return denied;
+  }
+
   const headers = new Headers({ [CONVERSATION_HEADER]: conversationId });
   for (const name of ["authorization", "content-type", "accept"]) {
     const value = request.headers.get(name);
@@ -402,11 +310,6 @@ export async function handleAgentProxyRequest(
       { error: "Agent service authentication is not configured" },
       origin,
     );
-  }
-
-  if (request.method === "POST") {
-    const denied = await requireAgentChatAccess(environment, request, origin);
-    if (denied) return denied;
   }
 
   let upstream: Response;

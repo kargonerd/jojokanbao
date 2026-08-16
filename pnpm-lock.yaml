@@ -420,7 +420,7 @@ importers:
         specifier: ^3.2.0
         version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.19)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.33.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)
 
-  tools/data-workbench/web:
+  tools/jojo-admin/web:
     dependencies:
       '@jojo/ui':
         specifier: workspace:*

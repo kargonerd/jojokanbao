@@ -84,7 +84,7 @@ $env:JOJO_OPERATOR_TOKEN="<与 Makers 项目一致>"
 pnpm push:credentials
 ```
 
-也可以启动 `pnpm dev:jojo-pipe`，在本机 JOJO 管理台的 `/agent` 页面检查凭据
+也可以启动 `pnpm dev:admin`，在本机 JOJO 管理台的 `/agent` 页面检查凭据
 来源并确认更新。管理台复用同一个 `JOJO_OPERATOR_TOKEN`，浏览器不读取 Token
 或 OAuth 明文；部署端必须先配置相同的 Operator Token。
 

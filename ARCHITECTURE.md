@@ -6,7 +6,7 @@ JOJO 看报按运行职责组织，不按历史项目或部署平台组织。
 frontend/       Web、Homepage、Desktop、Mobile 以及前端共享包
 agent/          产品无关的 Node Agent 运行层与模型适配
 backend/        统一 Python 后端
-tools/          数据工作台与人工运维工具
+tools/          JOJO 管理台与人工运维工具
 infrastructure/ EdgeOne、Supabase 等部署和基础设施配置
 content/        博客等内容源
 ```
@@ -54,7 +54,7 @@ EdgeOne 专有入口位于 `infrastructure/edgeone/functions`，只导入
 
 ## Tools and infrastructure
 
-- `tools/data-workbench`：内部数据工作台。
+- `tools/jojo-admin`：本机 JOJO 管理台。
 - `tools/archive-pdf`：Archive PDF 人工操作与发布工具。
 - `tools/bloomberg-archive`：定时 Bloomberg 数据归档工具。
 - `infrastructure/supabase`：数据库 migrations。

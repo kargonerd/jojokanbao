@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   onRequest,
-} from "../../infrastructure/edgeone/functions/agent-proxy/index";
-import type { AgentProxyContext } from "../src/edgeone/proxy";
+} from "../../infrastructure/edgeone/functions/gateway/[[default]]";
+import type {
+  AgentProxyContext,
+} from "../../infrastructure/edgeone/functions/_shared/agent-proxy";
 import {
   AGENT_SERVICE_AUTH_HEADERS,
   authorizeAgentServiceRequest,
@@ -204,7 +206,7 @@ describe("international Agent proxy", () => {
     )));
 
     expect(response.status).toBe(401);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("uses the same stable user percentage semantics as Postgres", async () => {
@@ -221,7 +223,8 @@ describe("international Agent proxy", () => {
               conditionType: "percentage",
               bucketBy: "user",
               bucketSalt: "30000000-0000-4000-8000-000000000004",
-              percentage: 100,
+              // The Postgres-compatible hash puts user-1 in bucket 6.
+              percentage: 7,
               serve: true,
               enabled: true,
               startsAt: null,
@@ -301,7 +304,7 @@ describe("international Agent proxy", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await onRequest(context(new Request(
-      "https://agent.example/agent",
+      "https://agent.example/gateway/ask",
       {
         method: "POST",
         headers: {
@@ -326,7 +329,7 @@ describe("international Agent proxy", () => {
         JOJO_AGENT_ALLOWED_ORIGINS: "https://jojokanbao.cn",
         JOJO_AGENT_UPSTREAM_URL: "https://agent.example/jojo",
       },
-      request: new Request("https://agent.example/agent", {
+      request: new Request("https://agent.example/gateway/ask", {
         method: "POST",
         headers: {
           "content-type": "application/json",

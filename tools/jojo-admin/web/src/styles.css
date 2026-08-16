@@ -20,12 +20,12 @@ select {
 button {
   border-radius: 0 !important;
 }
-.workbench-shell {
+.admin-shell {
   min-height: 100vh;
   display: grid;
   grid-template-columns: 238px minmax(0, 1fr);
 }
-.workbench-nav {
+.admin-nav {
   position: sticky;
   top: 0;
   height: 100vh;
@@ -36,7 +36,7 @@ button {
   display: flex;
   flex-direction: column;
 }
-.workbench-brand {
+.admin-brand {
   color: inherit;
   text-decoration: none;
   display: flex;
@@ -55,17 +55,17 @@ button {
   font-size: 28px;
   font-weight: 800;
 }
-.workbench-brand b,
-.workbench-brand small {
+.admin-brand b,
+.admin-brand small {
   display: block;
 }
-.workbench-brand small {
+.admin-brand small {
   margin-top: 3px;
   color: #776f64;
   letter-spacing: 0.14em;
   font-size: 11px;
 }
-.workbench-nav nav {
+.admin-nav nav {
   margin-top: 25px;
   display: grid;
   gap: 7px;
@@ -287,7 +287,7 @@ button {
   .publisher-grid { grid-template-columns: 1fr; }
   .report-grid { grid-template-columns: repeat(3, 1fr); }
 }
-.workbench-content {
+.admin-content {
   min-width: 0;
   padding: 34px clamp(24px, 5vw, 76px) 64px;
 }
@@ -1134,20 +1134,20 @@ button {
 .feature-publish p { grid-column: 1 / -1; margin: 0; color: #2d6a43; font-size: 12px; }
 
 @media (max-width: 820px) {
-  .workbench-shell {
+  .admin-shell {
     grid-template-columns: 1fr;
   }
-  .workbench-nav {
+  .admin-nav {
     position: static;
     width: auto;
     height: auto;
     padding: 14px;
     box-shadow: inset 0 -4px 0 var(--color-red);
   }
-  .workbench-brand {
+  .admin-brand {
     padding-bottom: 12px;
   }
-  .workbench-nav nav {
+  .admin-nav nav {
     margin-top: 10px;
     grid-template-columns: repeat(2, 1fr);
   }
@@ -1158,7 +1158,7 @@ button {
   .operator {
     display: none;
   }
-  .workbench-content {
+  .admin-content {
     padding: 22px 14px 48px;
   }
   .step-rail {

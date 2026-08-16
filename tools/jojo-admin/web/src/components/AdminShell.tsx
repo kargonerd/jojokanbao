@@ -9,11 +9,11 @@ const items = [
   { to: "/agent", label: "Agent 管理", note: "凭据与连接" },
 ];
 
-export function WorkbenchShell() {
+export function AdminShell() {
   return (
-    <div className="workbench-shell">
-      <aside className="workbench-nav">
-        <NavLink className="workbench-brand" to="/">
+    <div className="admin-shell">
+      <aside className="admin-nav">
+        <NavLink className="admin-brand" to="/">
           <span className="brand-mark">J</span>
           <span>
             <b>JOJO 看报</b>
@@ -40,7 +40,7 @@ export function WorkbenchShell() {
           CONTROL ENVIRONMENT
         </div>
       </aside>
-      <section className="workbench-content">
+      <section className="admin-content">
         <Outlet />
       </section>
     </div>
