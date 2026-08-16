@@ -60,44 +60,17 @@ describe("JOJO Web routes and Archive homepage", () => {
     expect(screen.queryByRole("link", { name: "Agent" })).toBeNull();
   });
 
-  it("keeps the previous interface available through the legacy entry", async () => {
+  it("does not expose the previous interface through the legacy entry", async () => {
     renderAt("/legacy");
 
-    await waitFor(() => expect(window.location.pathname).toBe("/archive"));
-    expect(screen.getByRole("heading", { name: "人民日报", level: 2 })).toBeTruthy();
+    await waitFor(() => expect(window.location.pathname).toBe("/"));
+    expect(screen.getByRole("heading", { name: "今天读什么？" })).toBeTruthy();
   });
 
-  it("renders all publication cards with editorial metadata and accessible covers", () => {
+  it("moves the Archive index to the redesigned library", async () => {
     renderAt("/archive");
-    const expectedCards: Array<[string, string, string]> = [
-      ["人民日报", "中国共产党中央委员会", "1946 —"],
-      ["参考消息", "新华通讯社", "1957 —"],
-      ["红旗", "中国共产党中央委员会", "1958 — 1988"],
-      ["人民画报", "人民画报社", "1950 —"],
-      ["世界知识", "世界知识出版社", "1934 —"],
-    ];
-
-    for (const [title, publisher, year] of expectedCards) {
-      const heading = screen.getByRole("heading", { name: title, level: 2 });
-      const card = heading.closest(".group")!;
-      expect(within(card as HTMLElement).getByRole("img", { name: title })).toBeTruthy();
-      expect(within(card as HTMLElement).getByText(publisher)).toBeTruthy();
-      expect(within(card as HTMLElement).getByText(year)).toBeTruthy();
-    }
-  });
-
-  it("opens the selected publication card in the reader", async () => {
-    renderAt("/archive");
-    const card = screen.getByRole("heading", { name: "人民画报", level: 2 }).closest(".group")!;
-    fireEvent.click(card);
-
-    await waitFor(() => expect(window.location.pathname).toBe("/archive/rmhb/197292"));
-    await waitFor(() => {
-      expect(appPdfMocks.usePdfDocument).toHaveBeenLastCalledWith({
-        url: "https://blacknews.jojokanbao.cn/RMHB/1972/197292.pdf",
-        protectedPdf: "auto",
-      });
-    });
+    await waitFor(() => expect(window.location.pathname).toBe("/library"));
+    expect(screen.getByRole("region", { name: "馆藏列表" })).toBeTruthy();
   });
 
   it("redirects every publication root to its documented default issue", async () => {
@@ -137,10 +110,10 @@ describe("JOJO Web routes and Archive homepage", () => {
     expect(window.location.hash).toBe("#page-2");
   });
 
-  it("redirects the exact /reader route to the Archive root", async () => {
+  it("redirects the exact /reader route to the redesigned library", async () => {
     renderAt("/reader");
 
-    await waitFor(() => expect(window.location.pathname).toBe("/archive"));
+    await waitFor(() => expect(window.location.pathname).toBe("/library"));
   });
 
   it("keeps unfinished modules disabled by default", () => {
@@ -222,10 +195,10 @@ describe("Support page", () => {
   it("keeps feedback, download, memorial, and donation sections available", () => {
     renderAt("/archive/support");
 
-    for (const name of ["关于 JOJO 看报", "返回旧版", "纪念缅怀", "数据下载", "捐助"]) {
+    for (const name of ["关于 JOJO 看报", "纪念缅怀", "数据下载", "捐助"]) {
       expect(screen.getByRole("heading", { name })).toBeTruthy();
     }
-    expect(screen.getByRole("link", { name: "打开旧版 JOJO 看报" }).getAttribute("href")).toBe("/legacy");
+    expect(screen.queryByRole("link", { name: "打开旧版 JOJO 看报" })).toBeNull();
     expect(screen.queryByText("开源项目")).toBeNull();
     expect(screen.queryByRole("link", { name: "GitHub 查看源码" })).toBeNull();
     expect(screen.getByText("974380749")).toBeTruthy();

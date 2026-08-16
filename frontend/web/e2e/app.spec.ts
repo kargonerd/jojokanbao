@@ -31,18 +31,17 @@ test.describe("JOJO Web", () => {
     ))).toBe(false);
   });
 
-  test("legacy entry keeps the previous Archive homepage available", async ({ page }) => {
+  test("legacy entry returns to the redesigned homepage", async ({ page }) => {
     await page.goto("/legacy");
-    await expect(page).toHaveURL("/archive");
-    await expect(page.getByText("人民日报")).toBeVisible();
-    await expect(page.getByText("参考消息")).toBeVisible();
+    await expect(page).toHaveURL("/");
+    await expect(page.getByRole("heading", { name: "今天读什么？" })).toBeVisible();
   });
 
   test("navigation works", async ({ page }) => {
-    await page.goto("/archive");
+    await page.goto("/");
     // Click search nav item
-    await page.getByText("搜索").click();
-    await expect(page).toHaveURL("/archive/search");
+    await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "搜索", exact: true }).click();
+    await expect(page).toHaveURL("/search");
     // Search input should be visible
     await expect(page.getByPlaceholder("在JOJO看报上搜索")).toBeVisible();
   });
@@ -51,7 +50,7 @@ test.describe("JOJO Web", () => {
     await page.goto("/support");
     await expect(page.getByRole("link", { name: "关于", exact: true })).toHaveClass(/is-active/);
     await expect(page.getByRole("heading", { name: "关于 JOJO 看报" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "打开旧版 JOJO 看报" })).toHaveAttribute("href", "/legacy");
+    await expect(page.getByRole("link", { name: "打开旧版 JOJO 看报" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "GitHub 查看源码" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "数据下载" })).toBeVisible();
   });

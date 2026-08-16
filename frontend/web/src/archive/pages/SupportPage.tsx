@@ -41,17 +41,6 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
             下留言或私信反馈
           </p>
 
-          {platformRedesign && (
-            <>
-              {/* 旧版入口 */}
-              <h1 className="text-2xl font-bold tracking-wider text-ink border-t border-rule-dark border-b border-b-rule pt-2.5 pb-2.5 mt-7 mb-4">返回旧版</h1>
-              <p className="text-ink/80 leading-8">
-                需要使用原来的报刊首页和导航时，可以
-                <a href="/legacy" className="font-bold text-red"> 打开旧版 JOJO 看报</a>。
-              </p>
-            </>
-          )}
-
           {/* 纪念缅怀 */}
           <h1 className="text-2xl font-bold tracking-wider text-ink border-t border-rule-dark border-b border-b-rule pt-2.5 pb-2.5 mt-7 mb-4">纪念缅怀</h1>
           <ul className="list-none p-0 m-0">

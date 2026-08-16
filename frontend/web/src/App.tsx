@@ -86,7 +86,7 @@ function AccountEntry() {
 function archiveRoute(platformRedesign: boolean) {
   return (
     <Route path={ARCHIVE_ROOT} element={<Layout platformRedesign={platformRedesign} />}>
-      <Route index element={<ArchiveHomePage />} />
+      <Route index element={platformRedesign ? <Navigate to="/library" replace /> : <ArchiveHomePage />} />
       {archivePublications.map((publication) => (
         <Fragment key={publication.name}>
           <Route
@@ -151,7 +151,7 @@ function PlatformRoutes() {
         <Route path="/book/:notebookId/:sourceId" element={<LazyRoute><BookReaderPage publicReader /></LazyRoute>} />
         {archiveRoute(true)}
         <Route path="/reader/*" element={<ArchiveRedirect stripPrefix="/reader" />} />
-        <Route path="/legacy/*" element={<ArchiveRedirect stripPrefix="/legacy" />} />
+        <Route path="/legacy/*" element={<Navigate to="/" replace />} />
 
         {platformArchivePaths.map((path) => (
           <Route key={path} path={`/${path}/*`} element={<ArchiveRedirect />} />
