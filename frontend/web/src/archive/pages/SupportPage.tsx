@@ -1,5 +1,6 @@
 import weixinImg from "../assets/weixin.png";
 import zfbImg from "../assets/zfb.png";
+import { rollout } from "../../rollout";
 
 const downloads = [
   { name: "人民日报", links: [
@@ -25,14 +26,14 @@ const downloads = [
   ]},
 ];
 
-export function SupportPage() {
+export function SupportPage({ platformRedesign = rollout.platformRedesign }: { platformRedesign?: boolean }) {
   return (
     <div className="h-full overflow-y-auto bg-paper">
       <div className="max-w-[960px] mx-auto px-5 py-7 md:px-10">
         <div className="p-8 md:p-10 border-4 border-red shadow-[inset_0_0_0_8px_var(--color-paper),inset_0_0_0_10px_var(--color-red)]">
 
           {/* 关于与反馈 */}
-          <h1 className="text-2xl font-bold tracking-wider text-ink border-t border-rule-dark border-b border-b-rule pt-2.5 pb-2.5 mb-4">关于 JOJO 看报</h1>
+          <h1 className="text-2xl font-bold tracking-wider text-ink border-t border-rule-dark border-b border-b-rule pt-2.5 pb-2.5 mb-4">{platformRedesign ? "关于 JOJO 看报" : "反馈"}</h1>
           <p className="text-ink/80 leading-8">
             网站为业余时间开发制作，因此较为粗糙，如果网站有任何问题，或者希望对网站提出建议，可以进入QQ群:
             <strong className="text-red"> 974380749 </strong> 进行反馈，也可以在B站
@@ -40,12 +41,16 @@ export function SupportPage() {
             下留言或私信反馈
           </p>
 
-          {/* 旧版入口 */}
-          <h1 className="text-2xl font-bold tracking-wider text-ink border-t border-rule-dark border-b border-b-rule pt-2.5 pb-2.5 mt-7 mb-4">返回旧版</h1>
-          <p className="text-ink/80 leading-8">
-            需要使用原来的报刊首页和导航时，可以
-            <a href="/legacy" className="font-bold text-red"> 打开旧版 JOJO 看报</a>。
-          </p>
+          {platformRedesign && (
+            <>
+              {/* 旧版入口 */}
+              <h1 className="text-2xl font-bold tracking-wider text-ink border-t border-rule-dark border-b border-b-rule pt-2.5 pb-2.5 mt-7 mb-4">返回旧版</h1>
+              <p className="text-ink/80 leading-8">
+                需要使用原来的报刊首页和导航时，可以
+                <a href="/legacy" className="font-bold text-red"> 打开旧版 JOJO 看报</a>。
+              </p>
+            </>
+          )}
 
           {/* 纪念缅怀 */}
           <h1 className="text-2xl font-bold tracking-wider text-ink border-t border-rule-dark border-b border-b-rule pt-2.5 pb-2.5 mt-7 mb-4">纪念缅怀</h1>

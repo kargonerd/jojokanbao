@@ -32,6 +32,9 @@ jobs:
       EDGEONE_PROJECT_NAME: ${{ vars.EDGEONE_PROJECT_NAME || 'jojo-reader' }}
       EDGEONE_DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'production' }}
       EDGEONE_UPLOAD_FROM_PATH: ./.edgeone/web-deploy/
+      # Merging redesign code is production-safe. The current site remains active
+      # until this repository variable is explicitly enabled for a Reader build.
+      VITE_ENABLE_PLATFORM_REDESIGN: ${{ vars.VITE_ENABLE_PLATFORM_REDESIGN || 'false' }}
       VITE_ENABLE_ACCOUNT: ${{ vars.VITE_ENABLE_ACCOUNT || 'false' }}
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}

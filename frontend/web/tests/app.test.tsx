@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { App } from "../src/App";
+import { App, AppRoutes } from "../src/App";
 
 const appPdfMocks = vi.hoisted(() => ({
   usePdfDocument: vi.fn(),
@@ -29,6 +30,28 @@ afterEach(() => {
 });
 
 describe("JOJO Web routes and Archive homepage", () => {
+  it("keeps the complete previous site active when the redesign build flag is off", async () => {
+    const home = render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppRoutes platformRedesign={false} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "人民日报", level: 2 })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "今天读什么？" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "登录" })).toBeNull();
+    home.unmount();
+
+    render(
+      <MemoryRouter initialEntries={["/archive/support"]}>
+        <AppRoutes platformRedesign={false} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("heading", { name: "反馈" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "关于 JOJO 看报" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "返回旧版" })).toBeNull();
+  });
+
   it("renders the new reading-first homepage at the site root", () => {
     renderAt("/");
 

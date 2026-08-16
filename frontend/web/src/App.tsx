@@ -25,7 +25,8 @@ const BookReaderPage = lazy(() =>
 const RagRoutes = lazy(() => import("./rag/RagRoutes"));
 const OldsRoutes = lazy(() => import("./olds/OldsRoutes"));
 
-const legacyArchivePaths = [...PUBLICATION_NAMES] as const;
+const legacyArchivePaths = [...PUBLICATION_NAMES, "search", "support"] as const;
+const platformArchivePaths = [...PUBLICATION_NAMES] as const;
 const archivePublications = Object.values(PUBLICATIONS);
 const accountConfigured = Boolean(
   import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
@@ -38,12 +39,7 @@ function ModuleFallback() {
 function ArchiveRedirect({ stripPrefix = "" }: { stripPrefix?: string }) {
   const location = useLocation();
   const pathname = `${ARCHIVE_ROOT}${location.pathname.slice(stripPrefix.length)}`;
-  return (
-    <Navigate
-      to={{ pathname, search: location.search, hash: location.hash }}
-      replace
-    />
-  );
+  return <Navigate to={{ pathname, search: location.search, hash: location.hash }} replace />;
 }
 
 function LazyRoute({ children }: { children: ReactNode }) {
@@ -87,92 +83,100 @@ function AccountEntry() {
   );
 }
 
-export function App() {
+function archiveRoute(platformRedesign: boolean) {
   return (
-    <BrowserRouter>
+    <Route path={ARCHIVE_ROOT} element={<Layout platformRedesign={platformRedesign} />}>
+      <Route index element={<ArchiveHomePage />} />
+      {archivePublications.map((publication) => (
+        <Fragment key={publication.name}>
+          <Route
+            path={`${publication.name}/:id`}
+            element={<LazyRoute><ReaderPage type={publication.type} name={publication.name} /></LazyRoute>}
+          />
+          <Route
+            path={publication.name}
+            element={<Navigate to={defaultArchiveIssuePath(publication.name)} replace />}
+          />
+        </Fragment>
+      ))}
+      <Route path="search" element={<SearchPage platformRedesign={platformRedesign} />} />
+      <Route path="support" element={<SupportPage platformRedesign={platformRedesign} />} />
+    </Route>
+  );
+}
+
+function LegacyRoutes() {
+  return (
+    <Routes>
+      {rollout.account && (
+        <>
+          <Route path="/account" element={<LazyRoute><AccountLogin /></LazyRoute>} />
+          <Route path="/account/confirm" element={<LazyRoute><AccountConfirmation /></LazyRoute>} />
+          <Route path="/login" element={<Navigate to="/account" replace />} />
+        </>
+      )}
+
+      <Route path="/" element={<Navigate to={ARCHIVE_ROOT} replace />} />
+      {archiveRoute(false)}
+      <Route path="/reader/*" element={<ArchiveRedirect stripPrefix="/reader" />} />
+
+      {legacyArchivePaths.map((path) => (
+        <Route key={path} path={`/${path}/*`} element={<ArchiveRedirect />} />
+      ))}
+
+      {rollout.rag && <Route path="/rag/*" element={<LazyRoute><RagRoutes /></LazyRoute>} />}
+      {rollout.olds && <Route path="/olds/*" element={<LazyRoute><OldsRoutes /></LazyRoute>} />}
+      <Route path="*" element={<NotFoundPage />} />
+    </Routes>
+  );
+}
+
+function PlatformRoutes() {
+  return (
+    <>
       <RuntimeBootstrap />
       <Routes>
-        <Route
-          path="/account"
-          element={<AccountEntry />}
-        />
-        <Route
-          path="/account/confirm"
-          element={
-            <LazyRoute>
-              <AccountConfirmation />
-            </LazyRoute>
-          }
-        />
+        <Route path="/account" element={<AccountEntry />} />
+        <Route path="/account/confirm" element={<LazyRoute><AccountConfirmation /></LazyRoute>} />
         <Route path="/login" element={<Navigate to="/account" replace />} />
 
         <Route element={<PlatformLayout />}>
           <Route index element={<PlatformHomePage />} />
           <Route path="library" element={<LibraryPage />} />
           <Route path="library/:datasetId" element={<LibraryPage />} />
-          <Route path="search" element={<div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage /></div>} />
-          <Route path="support" element={<SupportPage />} />
+          <Route path="search" element={<div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage platformRedesign /></div>} />
+          <Route path="support" element={<SupportPage platformRedesign />} />
         </Route>
 
-        <Route
-          path="/book/:notebookId/:sourceId"
-          element={
-            <LazyRoute>
-              <BookReaderPage publicReader />
-            </LazyRoute>
-          }
-        />
-
-        <Route path={ARCHIVE_ROOT} element={<Layout />}>
-          <Route index element={<ArchiveHomePage />} />
-
-          {archivePublications.map((publication) => (
-            <Fragment key={publication.name}>
-              <Route
-                path={`${publication.name}/:id`}
-                element={
-                  <LazyRoute>
-                    <ReaderPage type={publication.type} name={publication.name} />
-                  </LazyRoute>
-                }
-              />
-              <Route
-                path={publication.name}
-                element={<Navigate to={defaultArchiveIssuePath(publication.name)} replace />}
-              />
-            </Fragment>
-          ))}
-
-          <Route path="search" element={<SearchPage />} />
-          <Route path="support" element={<SupportPage />} />
-        </Route>
-
+        <Route path="/book/:notebookId/:sourceId" element={<LazyRoute><BookReaderPage publicReader /></LazyRoute>} />
+        {archiveRoute(true)}
         <Route path="/reader/*" element={<ArchiveRedirect stripPrefix="/reader" />} />
         <Route path="/legacy/*" element={<ArchiveRedirect stripPrefix="/legacy" />} />
 
-        {legacyArchivePaths.map((path) => (
+        {platformArchivePaths.map((path) => (
           <Route key={path} path={`/${path}/*`} element={<ArchiveRedirect />} />
         ))}
 
         {rollout.rag && (
-          <Route
-            path="/rag/*"
-            element={
-              <FeatureRoute flag="rag.workspace"><LazyRoute><RagRoutes /></LazyRoute></FeatureRoute>
-            }
-          />
+          <Route path="/rag/*" element={<FeatureRoute flag="rag.workspace"><LazyRoute><RagRoutes /></LazyRoute></FeatureRoute>} />
         )}
         {rollout.olds && (
-          <Route
-            path="/olds/*"
-            element={
-              <FeatureRoute flag="olds.workspace"><LazyRoute><OldsRoutes /></LazyRoute></FeatureRoute>
-            }
-          />
+          <Route path="/olds/*" element={<FeatureRoute flag="olds.workspace"><LazyRoute><OldsRoutes /></LazyRoute></FeatureRoute>} />
         )}
-
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
+    </>
+  );
+}
+
+export function AppRoutes({ platformRedesign = rollout.platformRedesign }: { platformRedesign?: boolean }) {
+  return platformRedesign ? <PlatformRoutes /> : <LegacyRoutes />;
+}
+
+export function App() {
+  return (
+    <BrowserRouter>
+      <AppRoutes />
     </BrowserRouter>
   );
 }
