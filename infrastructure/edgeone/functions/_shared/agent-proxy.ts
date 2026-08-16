@@ -21,11 +21,22 @@ function bearerToken(headers: Headers): string | undefined {
   return scheme?.toLowerCase() === "bearer" && token ? token : undefined;
 }
 
-function supabaseSignal(request: Request): AbortSignal {
-  return AbortSignal.any([
-    request.signal,
-    AbortSignal.timeout(SUPABASE_TIMEOUT_MS),
-  ]);
+function supabaseAbortScope(request: Request): {
+  dispose: () => void;
+  signal: AbortSignal;
+} {
+  const controller = new AbortController();
+  const abortFromRequest = () => controller.abort(request.signal.reason);
+  if (request.signal.aborted) abortFromRequest();
+  else request.signal.addEventListener("abort", abortFromRequest, { once: true });
+  const timeout = setTimeout(() => controller.abort(), SUPABASE_TIMEOUT_MS);
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      clearTimeout(timeout);
+      request.signal.removeEventListener("abort", abortFromRequest);
+    },
+  };
 }
 
 function configuredOrigins(
@@ -105,8 +116,8 @@ async function requireRagWorkspaceAccess(
 
   let authResponse: Response;
   let configResponse: Response;
+  const abortScope = supabaseAbortScope(request);
   try {
-    const signal = supabaseSignal(request);
     [authResponse, configResponse] = await Promise.all([
       fetch(`${baseUrl}/auth/v1/user`, {
         method: "GET",
@@ -115,7 +126,7 @@ async function requireRagWorkspaceAccess(
           authorization: `Bearer ${token}`,
           accept: "application/json",
         },
-        signal,
+        signal: abortScope.signal,
       }),
       fetch(`${baseUrl}/rest/v1/rpc/operator_get_feature_flag`, {
         method: "POST",
@@ -128,7 +139,7 @@ async function requireRagWorkspaceAccess(
           p_operator_token: operatorToken,
           p_key: RAG_WORKSPACE_FLAG,
         }),
-        signal,
+        signal: abortScope.signal,
       }),
     ]);
   } catch {
@@ -137,6 +148,8 @@ async function requireRagWorkspaceAccess(
       { error: "Feature evaluation service unavailable" },
       origin,
     );
+  } finally {
+    abortScope.dispose();
   }
 
   if (authResponse.status === 401 || authResponse.status === 403) {
