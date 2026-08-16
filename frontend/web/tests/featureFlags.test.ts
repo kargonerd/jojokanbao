@@ -35,6 +35,6 @@ describe("feature flag store", () => {
     await refreshFeatureFlags();
 
     expect(useFeatureFlagStore.getState().initialized).toBe(true);
-    expect(Object.values(useFeatureFlagStore.getState().flags)).toEqual([false, false, false, false, false]);
+    expect(Object.values(useFeatureFlagStore.getState().flags)).toEqual([false, false, false, false]);
   });
 });

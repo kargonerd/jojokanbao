@@ -508,10 +508,6 @@ grant execute on function public.operator_rollback_feature_flag(text, text, bigi
 
 insert into private.feature_flags(key, description, rules)
 values
-  ('agent.chat', 'JOJO Agent 对话入口和模型请求', jsonb_build_array(
-    jsonb_build_object('id', '30000000-0000-4000-8000-000000000001', 'name', '内部测试用户', 'conditionType', 'users', 'serve', true, 'percentage', null, 'bucketBy', null, 'bucketSalt', null, 'startsAt', null, 'endsAt', null, 'enabled', true, 'isFallback', false, 'userIds', jsonb_build_array()),
-    jsonb_build_object('id', '30000000-0000-4000-8000-000000000002', 'name', '默认关闭', 'conditionType', 'global', 'serve', false, 'percentage', null, 'bucketBy', null, 'bucketSalt', null, 'startsAt', null, 'endsAt', null, 'enabled', true, 'isFallback', true, 'userIds', jsonb_build_array())
-  )),
   ('library.bookshelf', '登录读者的服务端书架', jsonb_build_array(
     jsonb_build_object('id', '10000000-0000-4000-8000-000000000001', 'name', '已登录读者', 'conditionType', 'authenticated', 'serve', true, 'percentage', null, 'bucketBy', null, 'bucketSalt', null, 'startsAt', null, 'endsAt', null, 'enabled', true, 'isFallback', false, 'userIds', jsonb_build_array()),
     jsonb_build_object('id', '10000000-0000-4000-8000-000000000002', 'name', '默认关闭', 'conditionType', 'global', 'serve', false, 'percentage', null, 'bucketBy', null, 'bucketSalt', null, 'startsAt', null, 'endsAt', null, 'enabled', true, 'isFallback', true, 'userIds', jsonb_build_array())

@@ -20,7 +20,7 @@ const allowedEnvironment = {
 };
 
 const enabledForUserConfig = {
-  key: "agent.chat",
+  key: "rag.workspace",
   revision: 4,
   rules: [
     {
@@ -126,7 +126,7 @@ describe("international Agent proxy", () => {
         headers: expect.objectContaining({ apikey: "publishable-key" }),
         body: JSON.stringify({
           p_operator_token: allowedEnvironment.JOJO_OPERATOR_TOKEN,
-          p_key: "agent.chat",
+          p_key: "rag.workspace",
         }),
       }),
     );
@@ -155,7 +155,7 @@ describe("international Agent proxy", () => {
     })).resolves.toBeUndefined();
   });
 
-  it("blocks disabled agent.chat requests before invoking the Agent", async () => {
+  it("blocks disabled rag.workspace requests before invoking the Agent", async () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
       if (url.endsWith("/auth/v1/user")) return Response.json({ id: "user-2" });
@@ -215,7 +215,7 @@ describe("international Agent proxy", () => {
       if (url.endsWith("/auth/v1/user")) return Response.json({ id: "user-1" });
       if (url.endsWith("/rest/v1/rpc/operator_get_feature_flag")) {
         return Response.json({
-          key: "agent.chat",
+          key: "rag.workspace",
           revision: 5,
           rules: [
             {
@@ -223,8 +223,8 @@ describe("international Agent proxy", () => {
               conditionType: "percentage",
               bucketBy: "user",
               bucketSalt: "30000000-0000-4000-8000-000000000004",
-              // The Postgres-compatible hash puts user-1 in bucket 6.
-              percentage: 7,
+              // The Postgres-compatible hash puts user-1 in bucket 98.
+              percentage: 99,
               serve: true,
               enabled: true,
               startsAt: null,
@@ -259,7 +259,7 @@ describe("international Agent proxy", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("requires a user login before evaluating agent.chat", async () => {
+  it("requires a user login before evaluating rag.workspace", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 

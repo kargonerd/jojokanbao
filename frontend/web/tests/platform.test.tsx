@@ -44,7 +44,6 @@ beforeEach(() => {
     flags: {
       "library.bookshelf": false,
       "reader.annotations": false,
-      "agent.chat": false,
       "rag.workspace": false,
       "olds.workspace": false,
     },

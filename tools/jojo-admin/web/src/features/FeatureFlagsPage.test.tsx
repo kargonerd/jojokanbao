@@ -13,8 +13,8 @@ vi.mock("./api", () => ({ featureFlagApi: api }));
 import { FeatureFlagsPage } from "./FeatureFlagsPage";
 
 const flag = {
-  key: "agent.chat",
-  description: "JOJO Agent 对话入口和模型请求",
+  key: "rag.workspace",
+  description: "RAG 工作区路由与请求",
   revision: 7,
   updatedAt: "2026-08-16T01:30:00.000Z",
   rules: [
@@ -81,7 +81,7 @@ describe("FeatureFlagsPage", () => {
     render(<FeatureFlagsPage />);
 
     expect(await screen.findByText("本机 Operator")).toBeInTheDocument();
-    expect(screen.getAllByText("agent.chat")).toHaveLength(2);
+    expect(screen.getAllByText("rag.workspace")).toHaveLength(2);
     expect(await screen.findByDisplayValue("内部测试用户")).toBeEnabled();
     expect(screen.queryByRole("button", { name: "登录管理台" })).not.toBeInTheDocument();
   });
@@ -95,7 +95,7 @@ describe("FeatureFlagsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "发布规则" }));
 
     await waitFor(() => expect(api.publish).toHaveBeenCalledWith(expect.objectContaining({
-      key: "agent.chat",
+      key: "rag.workspace",
       expectedRevision: 7,
       reason: "调整灰度规则",
     })));
@@ -119,7 +119,7 @@ describe("FeatureFlagsPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "回滚到 revision 6" }));
 
     await waitFor(() => expect(api.rollback).toHaveBeenCalledWith(expect.objectContaining({
-      key: "agent.chat",
+      key: "rag.workspace",
       targetRevision: 6,
       expectedRevision: 7,
     })));

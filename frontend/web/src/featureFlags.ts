@@ -4,7 +4,6 @@ import { platformAccountConfigured } from "./platform/accountSession";
 export const FEATURE_FLAG_KEYS = [
   "library.bookshelf",
   "reader.annotations",
-  "agent.chat",
   "rag.workspace",
   "olds.workspace",
 ] as const;

@@ -19,7 +19,6 @@ describe("BookReader", () => {
       flags: {
         "library.bookshelf": true,
         "reader.annotations": true,
-        "agent.chat": false,
         "rag.workspace": false,
         "olds.workspace": false,
       },

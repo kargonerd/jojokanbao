@@ -7,7 +7,7 @@ const CONVERSATION_HEADER = "Makers-Conversation-Id";
 const CONVERSATION_ID = /^[0-9A-Za-z._-]{6,36}$/;
 const MAX_REQUEST_BYTES = 64 * 1024;
 const SUPABASE_TIMEOUT_MS = 5_000;
-const AGENT_CHAT_FLAG = "agent.chat";
+const RAG_WORKSPACE_FLAG = "rag.workspace";
 
 export interface AgentProxyContext {
   env?: Readonly<Record<string, string | undefined>>;
@@ -82,7 +82,7 @@ function copyUpstreamHeaders(upstream: Response, origin: string | null): Headers
   return headers;
 }
 
-async function requireAgentChatAccess(
+async function requireRagWorkspaceAccess(
   environment: Readonly<Record<string, string | undefined>>,
   request: Request,
   origin: string | null,
@@ -126,7 +126,7 @@ async function requireAgentChatAccess(
         },
         body: JSON.stringify({
           p_operator_token: operatorToken,
-          p_key: AGENT_CHAT_FLAG,
+          p_key: RAG_WORKSPACE_FLAG,
         }),
         signal,
       }),
@@ -180,7 +180,7 @@ async function requireAgentChatAccess(
   try {
     const enabled = await evaluateAuthenticatedFeatureFlag(
       configPayload,
-      AGENT_CHAT_FLAG,
+      RAG_WORKSPACE_FLAG,
       userId,
     );
     if (enabled) return null;
@@ -287,7 +287,7 @@ export async function handleAgentProxyRequest(
   }
 
   if (request.method === "POST") {
-    const denied = await requireAgentChatAccess(environment, request, origin);
+    const denied = await requireRagWorkspaceAccess(environment, request, origin);
     if (denied) return denied;
   }
 

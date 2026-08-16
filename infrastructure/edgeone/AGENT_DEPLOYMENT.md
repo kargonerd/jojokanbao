@@ -13,7 +13,7 @@ jojokanbao.cn                         agent-global.jojokanbao.cn
 ```
 
 - `/gateway/ask` 处理浏览器 CORS 预检，先使用当前用户 Bearer Token 向 Supabase
-  Auth 确认用户身份，再用仅存在于服务端的 `JOJO_OPERATOR_TOKEN` 读取 `agent.chat`
+  Auth 确认用户身份，再用仅存在于服务端的 `JOJO_OPERATOR_TOKEN` 读取 `rag.workspace`
   原始规则并在 Cloud Function 内按顺序判定；通过后添加短时 HMAC 服务签名，再把
   SSE 请求转给同项目 `/jojo`。
 - `/jojo` 运行 Pi Agent，并在调用 Codex 前依次校验 Cloud Function 服务签名
