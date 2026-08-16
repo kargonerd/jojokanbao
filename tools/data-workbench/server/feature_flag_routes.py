@@ -83,6 +83,12 @@ class SupabaseFeatureFlagAdminClient:
             raise FeatureFlagAdminError("Feature Flag 服务返回了无效数据")
         return result
 
+    def rollback(self, payload: dict[str, Any]) -> dict[str, Any]:
+        result = self.rpc("operator_rollback_feature_flag", payload)
+        if not isinstance(result, dict):
+            raise FeatureFlagAdminError("Feature Flag 服务返回了无效数据")
+        return result
+
 
 @feature_flags_blueprint.get("/api/features")
 def list_features():
@@ -106,16 +112,33 @@ def search_feature_users():
 @feature_flags_blueprint.post("/api/features/publish")
 def publish_feature():
     body = request.get_json(silent=True) or {}
-    required = ("key", "rules", "expectedRevision", "reason", "requestId", "emergencyDisabled")
+    required = ("key", "rules", "expectedRevision", "reason", "requestId")
     if any(name not in body for name in required):
         return jsonify({"success": False, "message": "发布参数不完整"}), 400
     try:
         flag = SupabaseFeatureFlagAdminClient().publish({
             "p_key": body["key"],
             "p_rules": body["rules"],
-            "p_emergency_disabled": bool(body["emergencyDisabled"]),
             "p_expected_revision": body["expectedRevision"],
             "p_reason": body["reason"],
+            "p_request_id": body["requestId"],
+        })
+        return jsonify({"success": True, "flag": flag})
+    except FeatureFlagAdminError as error:
+        return jsonify({"success": False, "message": str(error)}), 502
+
+
+@feature_flags_blueprint.post("/api/features/rollback")
+def rollback_feature():
+    body = request.get_json(silent=True) or {}
+    required = ("key", "targetRevision", "expectedRevision", "requestId")
+    if any(name not in body for name in required):
+        return jsonify({"success": False, "message": "回滚参数不完整"}), 400
+    try:
+        flag = SupabaseFeatureFlagAdminClient().rollback({
+            "p_key": body["key"],
+            "p_target_revision": body["targetRevision"],
+            "p_expected_revision": body["expectedRevision"],
             "p_request_id": body["requestId"],
         })
         return jsonify({"success": True, "flag": flag})

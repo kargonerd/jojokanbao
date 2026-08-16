@@ -23,7 +23,7 @@ Supabase Postgres 是唯一配置源和唯一判定算法所在地。前端不�
 
 ```text
                        private.feature_flags
-                    /  rules / rule_users / audit / operator digest
+                    /  rules JSONB / history JSONB / operator digest
                    v
 Web ── GET /v1/features/evaluations ── FastAPI
  │                                           │
@@ -52,45 +52,45 @@ Web ── GET /v1/features/evaluations ── FastAPI
 | --- | --- |
 | `key text primary key` | 稳定键，例如 `library.bookshelf` |
 | `description text` | 面向维护者的说明 |
-| `emergency_disabled boolean` | 独立紧急关闭；为 true 时不再执行任何规则 |
+| `rules jsonb` | 按数组顺序保存整条规则链，用户集合也属于对应规则 |
 | `revision bigint` | 乐观锁版本，每次修改递增 |
-| `updated_by uuid` | 最后修改用户；本机 Operator 发布时为空 |
+| `history jsonb` | 每次发布后的完整规则快照、revision、原因、请求 ID 和时间 |
 | `updated_at timestamptz` | 最后修改时间 |
 
-Flag 本身只保存身份和版本，不再保存 `mode`、全局百分比、白名单或特殊优先级。所有投放逻辑都是下面的有序规则。
+每个 Flag 只占一行。规则、白名单和修改历史不再拆成关联表；管理台每次原子发布完整 JSONB 规则文档。
 
-### 3.2 `private.feature_flag_rules`
+### 3.2 `rules` 文档
 
-| 字段 | 含义 |
+| 规则字段 | 含义 |
 | --- | --- |
-| `id uuid primary key` | 稳定的规则 ID |
-| `flag_key text` | Flag 键 |
-| `position int` | 从小到大执行，命中第一条后立即停止 |
+| `id uuid` | 稳定的规则 ID |
 | `name text` | 例如“内部测试用户”“20% 灰度”“默认关闭” |
-| `condition_type text` | `users`、`percentage`、`authenticated` 或 `global` |
+| `conditionType text` | `users`、`percentage`、`authenticated` 或 `global` |
 | `serve boolean` | 命中后返回开启或关闭 |
 | `percentage int` | 百分比规则专用，只允许整数 `1..100` |
-| `bucket_by text` | `user` 或 `visitor`；高成本能力只能使用 `user` |
-| `bucket_salt uuid` | 每条百分比规则独立的稳定分桶盐 |
-| `starts_at / ends_at timestamptz` | 规则的可选生效窗口 |
+| `bucketBy text` | `user` 或 `visitor`；高成本能力只能使用 `user` |
+| `bucketSalt uuid` | 每条百分比规则独立的稳定分桶盐 |
+| `startsAt / endsAt timestamptz` | 规则的可选生效窗口 |
 | `enabled boolean` | 暂停一条规则而不删除 |
-| `is_fallback boolean` | 标记唯一的最终默认规则 |
+| `isFallback boolean` | 标记唯一的最终默认规则 |
+| `userIds uuid[]` | `users` 规则的成员；不使用易变邮箱 |
 
-每个 Flag 必须有且只有一条 `condition_type = global`、`is_fallback = true` 的最终规则，而且它必须排在最后。维护者可以在它前面配置任意多条规则。普通全开或全关仍然是有序规则；不可绕过的事故止血使用 Flag 上独立的 `emergency_disabled`。
+数组顺序就是判定顺序。每个 Flag 必须有且只有一条 `conditionType = global`、`isFallback = true` 的最终规则，而且它必须排在最后。普通全开、全关和事故止血都用规则表达；需要立即关闭所有人时，在第一位启用 `global → OFF`。
 
-### 3.3 `private.feature_flag_rule_users`
+### 3.3 revision 与回滚
 
-`users` 规则的成员单独存放为 `(rule_id, user_id)`，`user_id` 使用 Supabase `auth.users.id`，不使用易变邮箱。白名单只是一个 `users → serve on` 规则；拒绝名单则是一个排在更前面的 `users → serve off` 规则，两者不再是引擎内置的特殊概念。
+`revision` 是只增不减的乐观锁版本，不是修改内容本身。管理台按 revision 读取后提交；若数据库已进入更高 revision，旧页面的写入被拒绝，防止覆盖别人刚发布的配置。
 
-### 3.4 Operator 与审计
+`history` 保存每次成功发布后的完整规则快照。回滚会选择旧快照并重新发布为一个新 revision，不会倒退或删除历史，因此回滚操作本身也可以再次回滚。
+
+### 3.4 Operator
 
 - `private.feature_flag_operator_secret`：只保存现有 `JOJO_OPERATOR_TOKEN` 的 SHA-256 摘要，不保存明文。
-- `private.feature_flag_audit_log`：只追加，记录 `before`、`after`、必填变更原因、请求 ID 和时间；本机 Operator 发布的 `actor_user_id` 为空。
 - 私有表不给 `anon`、`authenticated` 直接授权；只允许受控的 `security definer` RPC 访问，并固定 `search_path = ''`。
 
 ## 4. 判定规则
 
-正常判定严格按 `position` 从上到下检查，跳过已暂停或不在时间窗内的规则，命中第一条后返回该规则的 `serve`，不再继续。唯一的规则外优先级是独立事故开关：`emergency_disabled = true` 时立即返回关闭，任何白名单、百分比或时间窗都不能越过。
+正常判定严格按 `rules` 数组顺序从上到下检查，跳过已暂停或不在时间窗内的规则，命中第一条后返回该规则的 `serve`，不再继续。不存在规则之外的特殊优先级。
 
 用户提出的典型配置会直接表示成：
 
@@ -102,7 +102,7 @@ Flag: rag.workspace
 3. [global]     默认                  → OFF  (fallback)
 ```
 
-如果希望测试人员在普通关闭状态下仍可使用，就把白名单规则放在普通全局关闭规则之前。线上事故需要所有人立刻关闭时，开启独立的“紧急关闭”，它优先于整条规则链。
+如果希望测试人员在普通关闭状态下仍可使用，就把白名单规则放在普通全局关闭规则之前。线上事故需要所有人立刻关闭时，把一条启用的 `global → OFF` 放在规则链第一位。
 
 各条件的匹配方式：
 
@@ -118,7 +118,7 @@ Flag 不存在、规则配置损坏或没有得到结果时统一关闭。正常
 ```text
 subject = 登录用户时 "user:<auth.uid()>"
           匿名用户时 "visitor:<server-validated visitor uuid>"
-bucket  = uint64(sha256(flag_key + rule_id + bucket_salt + subject)) mod 10000
+bucket  = uint32(sha256(flag_key + rule_id + bucket_salt + subject)) mod 100
 matched = bucket < percentage
 ```
 
@@ -162,7 +162,8 @@ SELECT、INSERT、UPDATE、DELETE 都要覆盖。不能只在 React 按钮或 `r
 本机 Operator RPC 包括：
 
 - `operator_list_feature_flags(operator_token)`
-- `operator_publish_feature_flag(operator_token, key, rules, emergency_disabled, expected_revision, reason, request_id)`：在一个事务中校验并发布整条规则链和紧急状态。
+- `operator_publish_feature_flag(operator_token, key, rules, expected_revision, reason, request_id)`：在一个事务中校验并发布整条规则链、递增 revision 并追加历史。
+- `operator_rollback_feature_flag(operator_token, key, target_revision, expected_revision, request_id)`：把历史快照重新发布为新 revision。
 - `operator_search_feature_users(operator_token, query)`：只返回管理界面需要的最少字段。
 
 每个 Operator RPC 都在数据库内对令牌做 SHA-256 摘要比对，写入使用 `expected_revision` 防止覆盖较新的配置。`SUPABASE_ACCESS_TOKEN` 不参与此功能。
@@ -260,7 +261,7 @@ useFeatureFlag("library.bookshelf");
 - `users` 规则按读者代号、用户 UUID 或精确邮箱搜索后添加。
 - 百分比只允许整数，最小步进为 1%。
 - 每条规则可配置开始/结束时间；最终 fallback 固定在末尾，不允许删除或拖走。
-- 页面顶部提供独立“紧急关闭”，开启后优先于全部规则，白名单也不能越过。
+- 页面提供 revision 修改记录，可将旧快照一键回滚为新 revision。
 - 保存时一次发布完整规则链并要求填写原因；revision 冲突时禁止覆盖并要求刷新。
 
 Flask 只监听 `127.0.0.1`。数据库只保存 Operator Token 摘要，私有配置表仍不向浏览器角色开放。
@@ -286,14 +287,14 @@ Flask 只监听 `127.0.0.1`。数据库只保存 Operator Token 摘要，私有�
 - 严格 first-match-wins，规则重排会立即改变结果，暂停与时间窗会正确跳过。
 - 用户集合成员、未登录、未知 key、删除用户和最终 fallback 的行为。
 - RLS 对 SELECT 与全部写操作都确实拒绝未开放用户。
-- 普通用户无法读取配置、白名单和审计表，也不能调用管理 RPC。
+- 普通用户无法读取配置、白名单和历史，也不能调用管理 RPC。
 
 应用层必测：
 
 - FastAPI 依赖在业务处理前拦截，错误码稳定，ETag/Vary/Cache-Control 正确。
 - EdgeOne Cloud Function 在转发到 Agent 前拦截。
 - Web 登录切换不复用上一用户结果；关闭时无入口且直接访问路由被拦。
-- 管理更新 revision 冲突、必填原因、原子发布、审计记录和首位全局关闭。
+- 管理更新 revision 冲突、必填原因、原子发布、历史记录、回滚和首位全局关闭。
 
 日志只记录 Flag key、结果、revision 和聚合原因，不记录完整 token、邮箱或白名单。指标至少包括每个 Flag 的 enabled/disabled 计数、判定失败率和延迟；高基数 user id 不进入指标标签。
 
@@ -316,4 +317,4 @@ Flask 只监听 `127.0.0.1`。数据库只保存 Operator Token 摘要，私有�
 - 管理界面放入更名后的“JOJO 管理台”。
 - 百分比只支持整数，最小步进 1%。
 - Olds 整体关闭，本轮不拆子 Flag。
-- `emergency_disabled` 是唯一高于规则链的硬关闭，任何规则都不能越过。
+- 全部行为由同一条有序规则链表达；首位 `global → OFF` 用于立即关闭所有访问。

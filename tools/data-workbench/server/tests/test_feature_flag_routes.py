@@ -72,9 +72,9 @@ def test_routes_list_and_publish_without_browser_login():
     client = app.test_client()
     updated = {
         "key": "agent.chat",
-        "emergencyDisabled": True,
         "revision": 8,
         "rules": [],
+        "history": [],
     }
     with patch("feature_flag_routes.SupabaseFeatureFlagAdminClient") as client_class:
         client_class.return_value.list_flags.return_value = [updated]
@@ -83,16 +83,34 @@ def test_routes_list_and_publish_without_browser_login():
         published = client.post("/api/features/publish", json={
             "key": "agent.chat",
             "rules": [],
-            "emergencyDisabled": True,
             "expectedRevision": 7,
-            "reason": "紧急关闭",
+            "reason": "调整规则",
             "requestId": "request-1",
         })
 
     assert listed.status_code == 200
     assert listed.get_json()["flags"][0]["key"] == "agent.chat"
     assert published.status_code == 200
-    assert published.get_json()["flag"]["emergencyDisabled"] is True
     call = client_class.return_value.publish.call_args.args[0]
-    assert call["p_emergency_disabled"] is True
+    assert call["p_expected_revision"] == 7
     assert "operatorToken" not in published.get_json()
+
+
+def test_route_rolls_back_without_exposing_the_operator_token():
+    client = app.test_client()
+    updated = {"key": "agent.chat", "revision": 9, "rules": [], "history": []}
+    with patch("feature_flag_routes.SupabaseFeatureFlagAdminClient") as client_class:
+        client_class.return_value.rollback.return_value = updated
+        response = client.post("/api/features/rollback", json={
+            "key": "agent.chat",
+            "targetRevision": 6,
+            "expectedRevision": 8,
+            "requestId": "request-rollback-1",
+        })
+
+    assert response.status_code == 200
+    assert response.get_json()["flag"]["revision"] == 9
+    call = client_class.return_value.rollback.call_args.args[0]
+    assert call["p_target_revision"] == 6
+    assert call["p_expected_revision"] == 8
+    assert "operatorToken" not in response.get_json()

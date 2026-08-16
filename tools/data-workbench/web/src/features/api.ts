@@ -13,12 +13,20 @@ export const featureFlagApi = {
   publish: async (input: {
     key: string;
     rules: FeatureFlagRule[];
-    emergencyDisabled: boolean;
     expectedRevision: number;
     reason: string;
     requestId: string;
   }) => {
     const result = await apiPost<{ success: true; flag: FeatureFlagDefinition }>("/api/features/publish", input);
+    return result.flag;
+  },
+  rollback: async (input: {
+    key: string;
+    targetRevision: number;
+    expectedRevision: number;
+    requestId: string;
+  }) => {
+    const result = await apiPost<{ success: true; flag: FeatureFlagDefinition }>("/api/features/rollback", input);
     return result.flag;
   },
 };

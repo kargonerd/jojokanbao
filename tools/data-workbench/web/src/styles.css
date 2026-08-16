@@ -1075,18 +1075,25 @@ button {
 .feature-revision { display: grid; gap: 4px; padding: 7px 9px; background: #eeeae2; color: #746d64; text-align: right; }
 .feature-revision b { font: 10px ui-monospace, monospace; }
 .feature-revision span { font-size: 10px; }
-.feature-emergency { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 18px; align-items: center; margin-top: 22px; border: 1px solid #bdb4a8; border-left: 4px solid #746d64; padding: 14px 16px; background: #f5f1e9; cursor: pointer; }
-.feature-emergency > span { display: grid; gap: 3px; }
-.feature-emergency b { color: #4f4942; font-size: 13px; }
-.feature-emergency small { color: #777067; font-size: 11px; }
-.feature-emergency input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.feature-emergency > i { position: relative; width: 42px; height: 22px; border: 1px solid #8f877d; background: #fff; }
-.feature-emergency > i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; background: #746d64; transition: transform .16s ease, background .16s ease; }
-.feature-emergency.active { border-color: var(--color-red); border-left-color: var(--color-red); background: #f4e8e5; box-shadow: 4px 4px 0 rgba(139,26,26,.12); }
-.feature-emergency.active b { color: var(--color-red); }
-.feature-emergency.active > i { border-color: var(--color-red); }
-.feature-emergency.active > i::after { transform: translateX(20px); background: var(--color-red); }
-.feature-emergency:focus-within { outline: 2px solid var(--color-red); outline-offset: 3px; }
+.feature-history { margin-top: 22px; border: 1px solid #bdb4a8; border-left: 4px solid var(--color-red); background: #f5f1e9; }
+.feature-history > header { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; border-bottom: 1px solid #cfc7bc; padding: 13px 15px; }
+.feature-history > header div { display: grid; gap: 3px; }
+.feature-history > header b { color: #4f4942; font-size: 13px; }
+.feature-history > header span,
+.feature-history > header small { color: #777067; font-size: 10px; }
+.feature-history ol { max-height: 224px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.feature-history li { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 54px; border-bottom: 1px solid #ddd6cb; padding: 8px 15px; }
+.feature-history li:last-child { border-bottom: 0; }
+.feature-history li.current { background: #fff; }
+.feature-history code { color: var(--color-red); font: 700 11px ui-monospace, monospace; }
+.feature-history li > div { display: grid; gap: 3px; min-width: 0; }
+.feature-history li > div b { overflow: hidden; color: #403a34; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.feature-history li > div span { color: #827a70; font-size: 10px; }
+.feature-history button { border: 1px solid #a59c91; padding: 6px 8px; background: #fff; color: #544d45; cursor: pointer; font-size: 10px; }
+.feature-history button:hover { border-color: var(--color-red); color: var(--color-red); transform: translateY(-1px); box-shadow: 3px 3px 0 rgba(139,26,26,.12); }
+.feature-history button:focus-visible { outline: 2px solid var(--color-red); outline-offset: 2px; }
+.feature-history button:disabled { cursor: wait; opacity: .55; transform: none; box-shadow: none; }
+.feature-history em { color: #2d6a43; font-size: 10px; font-style: normal; }
 .rule-add-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 22px 0; }
 .rule-add-bar > span { margin-right: 5px; color: #6b645b; font-size: 12px; }
 .rule-add-bar button { border: 1px solid #bcb3a7; padding: 7px 10px; background: #faf8f3; color: #5e574f; cursor: pointer; font-size: 11px; }
@@ -1201,6 +1208,9 @@ button {
 @media (max-width: 560px) {
   .feature-index,
   .rule-fields { grid-template-columns: 1fr; }
+  .feature-history li { grid-template-columns: 38px minmax(0, 1fr); }
+  .feature-history li > button,
+  .feature-history li > em { grid-column: 2; justify-self: start; }
   .rule-body > header { grid-template-columns: 1fr auto; }
   .rule-body > header > span { grid-column: 1 / -1; grid-row: 2; }
   .feature-publish { grid-template-columns: 1fr; }

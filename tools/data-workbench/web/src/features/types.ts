@@ -18,11 +18,18 @@ export interface FeatureFlagRule {
 export interface FeatureFlagDefinition {
   key: string;
   description: string;
-  emergencyDisabled: boolean;
   revision: number;
   updatedAt: string;
-  updatedBy: string | null;
   rules: FeatureFlagRule[];
+  history: FeatureFlagHistoryEntry[];
+}
+
+export interface FeatureFlagHistoryEntry {
+  revision: number;
+  rules: FeatureFlagRule[];
+  reason: string;
+  requestId: string | null;
+  updatedAt: string;
 }
 
 export interface FeatureUser {

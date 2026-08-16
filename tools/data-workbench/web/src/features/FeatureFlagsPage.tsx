@@ -45,11 +45,18 @@ function publishedAt(value: string): string {
   }).format(date);
 }
 
+function editableRules(rules: FeatureFlagRule[]): FeatureFlagRule[] {
+  return structuredClone(rules).map((rule) => ({
+    ...rule,
+    startsAt: toLocalInput(rule.startsAt),
+    endsAt: toLocalInput(rule.endsAt),
+  }));
+}
+
 export function FeatureFlagsPage() {
   const [flags, setFlags] = useState<FeatureFlagDefinition[]>([]);
   const [selectedKey, setSelectedKey] = useState("");
   const [draftRules, setDraftRules] = useState<FeatureFlagRule[]>([]);
-  const [emergencyDisabled, setEmergencyDisabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -74,12 +81,7 @@ export function FeatureFlagsPage() {
   const selected = flags.find((flag) => flag.key === selectedKey);
   useEffect(() => {
     const next = flags.find((flag) => flag.key === selectedKey);
-    setDraftRules(next ? structuredClone(next.rules).map((rule) => ({
-      ...rule,
-      startsAt: toLocalInput(rule.startsAt),
-      endsAt: toLocalInput(rule.endsAt),
-    })) : []);
-    setEmergencyDisabled(next?.emergencyDisabled ?? false);
+    setDraftRules(next ? editableRules(next.rules) : []);
     setReason("");
     setNotice("");
   }, [selectedKey]);
@@ -122,16 +124,39 @@ export function FeatureFlagsPage() {
       const updated = await featureFlagApi.publish({
         key: selected.key,
         rules,
-        emergencyDisabled,
         expectedRevision: selected.revision,
         reason: reason.trim(),
         requestId: crypto.randomUUID(),
       });
       setFlags((items) => items.map((item) => item.key === updated.key ? updated : item));
+      setDraftRules(editableRules(updated.rules));
       setNotice(`已发布 revision ${updated.revision}`);
       setReason("");
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "发布失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function rollback(targetRevision: number) {
+    if (!selected || targetRevision === selected.revision) return;
+    setSaving(true);
+    setNotice("");
+    setLoadError("");
+    try {
+      const updated = await featureFlagApi.rollback({
+        key: selected.key,
+        targetRevision,
+        expectedRevision: selected.revision,
+        requestId: crypto.randomUUID(),
+      });
+      setFlags((items) => items.map((item) => item.key === updated.key ? updated : item));
+      setDraftRules(editableRules(updated.rules));
+      setReason("");
+      setNotice(`已回滚到 revision ${targetRevision}，当前为 revision ${updated.revision}`);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "回滚失败");
     } finally {
       setSaving(false);
     }
@@ -161,18 +186,30 @@ export function FeatureFlagsPage() {
         <aside className="feature-index" aria-label="功能开关列表">
           {flags.map((flag) => (
             <button key={flag.key} type="button" className={flag.key === selectedKey ? "active" : ""} onClick={() => setSelectedKey(flag.key)}>
-              <b>{flag.key}</b><span>{flag.emergencyDisabled ? "紧急关闭" : `${flag.rules.length} 条规则`} · r{flag.revision}</span>
+              <b>{flag.key}</b><span>{flag.rules.length} 条规则 · r{flag.revision}</span>
             </button>
           ))}
         </aside>
         {selected && (
           <section className="feature-editor">
             <header><div><p className="eyebrow">{selected.key}</p><h2>{selected.description}</h2></div><div className="feature-revision" title="由本机 Operator 修改"><b>revision {selected.revision}</b><span>{publishedAt(selected.updatedAt)}</span></div></header>
-            <label className={`feature-emergency${emergencyDisabled ? " active" : ""}`}>
-              <span><b>紧急关闭</b><small>优先于全部规则，白名单也不能越过。</small></span>
-              <input type="checkbox" checked={emergencyDisabled} onChange={(event) => setEmergencyDisabled(event.target.checked)} />
-              <i aria-hidden="true" />
-            </label>
+            <section className="feature-history" aria-label="修改记录">
+              <header><div><b>修改记录</b><span>回滚会恢复当时的整条规则链，并生成新的 revision。</span></div><small>{selected.history.length} 个版本</small></header>
+              <ol>
+                {[...selected.history].reverse().map((entry) => {
+                  const current = entry.revision === selected.revision;
+                  return (
+                    <li key={`${entry.revision}-${entry.requestId || "seed"}`} className={current ? "current" : ""}>
+                      <code>r{entry.revision}</code>
+                      <div><b>{entry.reason}</b><span>{publishedAt(entry.updatedAt)}</span></div>
+                      {current
+                        ? <em>当前版本</em>
+                        : <button type="button" disabled={saving} onClick={() => void rollback(entry.revision)}>回滚到 revision {entry.revision}</button>}
+                    </li>
+                  );
+                })}
+              </ol>
+            </section>
             <div className="rule-add-bar">
               <span>添加规则</span>
               {(["users", "percentage", "authenticated", "global"] as const).map((kind) => <button key={kind} type="button" onClick={() => addRule(kind)}>+ {conditionLabels[kind]}</button>)}

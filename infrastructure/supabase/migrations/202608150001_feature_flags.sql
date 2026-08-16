@@ -5,52 +5,11 @@ revoke all on schema private from public, anon, authenticated;
 create table if not exists private.feature_flags (
   key text primary key check (key ~ '^[a-z][a-z0-9_.]{2,79}$'),
   description text not null check (char_length(btrim(description)) between 1 and 500),
-  emergency_disabled boolean not null default false,
+  rules jsonb not null default '[]'::jsonb check (jsonb_typeof(rules) = 'array'),
   revision bigint not null default 1 check (revision > 0),
-  updated_by uuid references auth.users(id) on delete set null,
+  history jsonb not null default '[]'::jsonb check (jsonb_typeof(history) = 'array'),
   updated_at timestamptz not null default timezone('utc', now())
 );
-
-create table if not exists private.feature_flag_rules (
-  id uuid primary key default extensions.gen_random_uuid(),
-  flag_key text not null references private.feature_flags(key) on delete cascade,
-  position integer not null check (position >= 0),
-  name text not null check (char_length(btrim(name)) between 1 and 120),
-  condition_type text not null check (condition_type in ('users', 'percentage', 'authenticated', 'global')),
-  serve boolean not null,
-  percentage integer,
-  bucket_by text,
-  bucket_salt uuid,
-  starts_at timestamptz,
-  ends_at timestamptz,
-  enabled boolean not null default true,
-  is_fallback boolean not null default false,
-  created_at timestamptz not null default timezone('utc', now()),
-  check (ends_at is null or starts_at is null or ends_at > starts_at),
-  check (
-    (condition_type = 'percentage' and percentage between 1 and 100 and bucket_by in ('user', 'visitor') and bucket_salt is not null)
-    or
-    (condition_type <> 'percentage' and percentage is null and bucket_by is null and bucket_salt is null)
-  ),
-  check (
-    not is_fallback
-    or (condition_type = 'global' and enabled and starts_at is null and ends_at is null)
-  ),
-  unique (flag_key, position)
-);
-
-create unique index if not exists feature_flag_one_fallback
-  on private.feature_flag_rules(flag_key)
-  where is_fallback;
-
-create table if not exists private.feature_flag_rule_users (
-  rule_id uuid not null references private.feature_flag_rules(id) on delete cascade,
-  user_id uuid not null references auth.users(id) on delete cascade,
-  primary key (rule_id, user_id)
-);
-
-create index if not exists feature_flag_rule_users_user
-  on private.feature_flag_rule_users(user_id, rule_id);
 
 create table if not exists private.feature_flag_operator_secret (
   singleton boolean primary key default true check (singleton),
@@ -58,21 +17,6 @@ create table if not exists private.feature_flag_operator_secret (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
-create table if not exists private.feature_flag_audit_log (
-  id bigint generated always as identity primary key,
-  flag_key text not null,
-  revision bigint not null,
-  action text not null check (action in ('publish', 'seed')),
-  before_state jsonb,
-  after_state jsonb not null,
-  actor_user_id uuid references auth.users(id) on delete set null,
-  reason text not null check (char_length(btrim(reason)) between 3 and 500),
-  request_id text,
-  created_at timestamptz not null default timezone('utc', now())
-);
-
-create index if not exists feature_flag_audit_key_revision
-  on private.feature_flag_audit_log(flag_key, revision desc);
 
 create or replace function private.feature_flag_evaluate(
   p_key text,
@@ -87,15 +31,18 @@ set search_path = ''
 as $$
 declare
   current_revision bigint;
-  emergency_disabled boolean;
-  rule_record record;
+  current_rules jsonb;
+  rule_json jsonb;
+  rule_id uuid;
+  starts_at timestamptz;
+  ends_at timestamptz;
   subject text;
   digest_bytes bytea;
   bucket bigint;
   matches boolean;
 begin
-  select flag.revision, flag.emergency_disabled
-    into current_revision, emergency_disabled
+  select flag.revision, flag.rules
+    into current_revision, current_rules
     from private.feature_flags as flag
     where flag.key = p_key;
 
@@ -104,44 +51,37 @@ begin
     return;
   end if;
 
-  if emergency_disabled then
-    return query select false, null::uuid, current_revision;
-    return;
-  end if;
-
-  for rule_record in
-    select rule.*
-      from private.feature_flag_rules as rule
-      where rule.flag_key = p_key
-      order by rule.position, rule.id
+  for rule_json in
+    select item.rule
+      from jsonb_array_elements(current_rules) with ordinality as item(rule, position)
+      order by item.position
   loop
-    if not rule_record.enabled
-      or (rule_record.starts_at is not null and now() < rule_record.starts_at)
-      or (rule_record.ends_at is not null and now() >= rule_record.ends_at)
+    starts_at := nullif(rule_json->>'startsAt', '')::timestamptz;
+    ends_at := nullif(rule_json->>'endsAt', '')::timestamptz;
+    if not coalesce((rule_json->>'enabled')::boolean, true)
+      or (starts_at is not null and now() < starts_at)
+      or (ends_at is not null and now() >= ends_at)
     then
       continue;
     end if;
 
+    rule_id := (rule_json->>'id')::uuid;
     matches := false;
-    if rule_record.condition_type = 'global' then
+    if rule_json->>'conditionType' = 'global' then
       matches := true;
-    elsif rule_record.condition_type = 'authenticated' then
+    elsif rule_json->>'conditionType' = 'authenticated' then
       matches := p_user_id is not null;
-    elsif rule_record.condition_type = 'users' then
-      matches := p_user_id is not null and exists (
-        select 1
-          from private.feature_flag_rule_users as member
-          where member.rule_id = rule_record.id
-            and member.user_id = p_user_id
-      );
-    elsif rule_record.condition_type = 'percentage' then
-      subject := case rule_record.bucket_by
+    elsif rule_json->>'conditionType' = 'users' then
+      matches := p_user_id is not null
+        and coalesce(rule_json->'userIds', '[]'::jsonb) ? p_user_id::text;
+    elsif rule_json->>'conditionType' = 'percentage' then
+      subject := case rule_json->>'bucketBy'
         when 'user' then case when p_user_id is not null then 'user:' || p_user_id::text end
         when 'visitor' then case when p_visitor_id is not null then 'visitor:' || p_visitor_id::text end
       end;
       if subject is not null then
         digest_bytes := extensions.digest(
-          p_key || ':' || rule_record.id::text || ':' || rule_record.bucket_salt::text || ':' || subject,
+          p_key || ':' || rule_id::text || ':' || (rule_json->>'bucketSalt') || ':' || subject,
           'sha256'
         );
         bucket := mod(
@@ -151,12 +91,12 @@ begin
             + pg_catalog.get_byte(digest_bytes, 3)::bigint,
           100
         );
-        matches := bucket < rule_record.percentage;
+        matches := bucket < (rule_json->>'percentage')::integer;
       end if;
     end if;
 
     if matches then
-      return query select rule_record.serve, rule_record.id, current_revision;
+      return query select (rule_json->>'serve')::boolean, rule_id, current_revision;
       return;
     end if;
   end loop;
@@ -175,35 +115,10 @@ as $$
   select jsonb_build_object(
     'key', flag.key,
     'description', flag.description,
-    'emergencyDisabled', flag.emergency_disabled,
     'revision', flag.revision,
     'updatedAt', flag.updated_at,
-    'updatedBy', flag.updated_by,
-    'rules', coalesce((
-      select jsonb_agg(
-        jsonb_build_object(
-          'id', rule.id,
-          'name', rule.name,
-          'conditionType', rule.condition_type,
-          'serve', rule.serve,
-          'percentage', rule.percentage,
-          'bucketBy', rule.bucket_by,
-          'bucketSalt', rule.bucket_salt,
-          'startsAt', rule.starts_at,
-          'endsAt', rule.ends_at,
-          'enabled', rule.enabled,
-          'isFallback', rule.is_fallback,
-          'userIds', coalesce((
-            select jsonb_agg(member.user_id order by member.user_id)
-              from private.feature_flag_rule_users as member
-              where member.rule_id = rule.id
-          ), '[]'::jsonb)
-        )
-        order by rule.position
-      )
-      from private.feature_flag_rules as rule
-      where rule.flag_key = flag.key
-    ), '[]'::jsonb)
+    'rules', flag.rules,
+    'history', flag.history
   )
   from private.feature_flags as flag
   where flag.key = p_key
@@ -264,6 +179,146 @@ begin
 end;
 $$;
 
+create or replace function private.feature_flag_normalize_rules(p_rules jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  normalized_rules jsonb := '[]'::jsonb;
+  normalized_users jsonb;
+  rule_json jsonb;
+  condition_name text;
+  rule_name text;
+  rule_id uuid;
+  percentage integer;
+  bucket_by text;
+  bucket_salt uuid;
+  starts_at timestamptz;
+  ends_at timestamptz;
+  enabled boolean;
+  is_fallback boolean;
+  serve boolean;
+  fallback_count integer;
+  rule_count integer;
+begin
+  if jsonb_typeof(p_rules) is distinct from 'array' then
+    raise invalid_parameter_value using message = 'Rules must be a JSON array';
+  end if;
+
+  rule_count := jsonb_array_length(p_rules);
+  if rule_count < 1 or rule_count > 50 then
+    raise invalid_parameter_value using message = 'A feature flag must contain between 1 and 50 rules';
+  end if;
+
+  select count(*)::integer
+    into fallback_count
+    from jsonb_array_elements(p_rules) as item(rule)
+    where coalesce((item.rule->>'isFallback')::boolean, false);
+  if fallback_count <> 1
+    or coalesce((p_rules->(rule_count - 1)->>'isFallback')::boolean, false) is not true
+    or p_rules->(rule_count - 1)->>'conditionType' <> 'global'
+    or coalesce((p_rules->(rule_count - 1)->>'enabled')::boolean, true) is not true
+    or nullif(p_rules->(rule_count - 1)->>'startsAt', '') is not null
+    or nullif(p_rules->(rule_count - 1)->>'endsAt', '') is not null
+  then
+    raise invalid_parameter_value using message = 'The last rule must be the single enabled global fallback';
+  end if;
+
+  for rule_json in select item.rule from jsonb_array_elements(p_rules) as item(rule)
+  loop
+    if jsonb_typeof(rule_json) is distinct from 'object' then
+      raise invalid_parameter_value using message = 'Each feature flag rule must be an object';
+    end if;
+
+    condition_name := rule_json->>'conditionType';
+    if condition_name is null
+      or condition_name not in ('users', 'percentage', 'authenticated', 'global')
+    then
+      raise invalid_parameter_value using message = 'Unknown feature flag rule condition';
+    end if;
+
+    rule_name := btrim(coalesce(rule_json->>'name', ''));
+    if char_length(rule_name) < 1 or char_length(rule_name) > 120 then
+      raise invalid_parameter_value using message = 'Rule names must contain between 1 and 120 characters';
+    end if;
+    if jsonb_typeof(rule_json->'serve') is distinct from 'boolean' then
+      raise invalid_parameter_value using message = 'Rule serve must be boolean';
+    end if;
+    if rule_json ? 'enabled' and jsonb_typeof(rule_json->'enabled') <> 'boolean' then
+      raise invalid_parameter_value using message = 'Rule enabled must be boolean';
+    end if;
+    if rule_json ? 'isFallback' and jsonb_typeof(rule_json->'isFallback') <> 'boolean' then
+      raise invalid_parameter_value using message = 'Rule isFallback must be boolean';
+    end if;
+
+    rule_id := case
+      when coalesce(rule_json->>'id', '') = '' then extensions.gen_random_uuid()
+      else (rule_json->>'id')::uuid
+    end;
+    serve := (rule_json->>'serve')::boolean;
+    enabled := coalesce((rule_json->>'enabled')::boolean, true);
+    is_fallback := coalesce((rule_json->>'isFallback')::boolean, false);
+    starts_at := nullif(rule_json->>'startsAt', '')::timestamptz;
+    ends_at := nullif(rule_json->>'endsAt', '')::timestamptz;
+    if starts_at is not null and ends_at is not null and ends_at <= starts_at then
+      raise invalid_parameter_value using message = 'Rule end time must be after its start time';
+    end if;
+
+    percentage := null;
+    bucket_by := null;
+    bucket_salt := null;
+    if condition_name = 'percentage' then
+      percentage := (rule_json->>'percentage')::integer;
+      bucket_by := rule_json->>'bucketBy';
+      if percentage is null or percentage not between 1 and 100 then
+        raise invalid_parameter_value using message = 'Percentage rules must use an integer from 1 to 100';
+      end if;
+      if bucket_by is null or bucket_by not in ('user', 'visitor') then
+        raise invalid_parameter_value using message = 'Percentage rules must bucket by user or visitor';
+      end if;
+      bucket_salt := case
+        when coalesce(rule_json->>'bucketSalt', '') = '' then extensions.gen_random_uuid()
+        else (rule_json->>'bucketSalt')::uuid
+      end;
+    end if;
+
+    normalized_users := '[]'::jsonb;
+    if condition_name = 'users' then
+      if jsonb_typeof(coalesce(rule_json->'userIds', '[]'::jsonb)) <> 'array' then
+        raise invalid_parameter_value using message = 'User rules must contain a userIds array';
+      end if;
+      perform member.value::uuid
+        from jsonb_array_elements_text(coalesce(rule_json->'userIds', '[]'::jsonb)) as member(value);
+      select coalesce(jsonb_agg(member.value order by member.value), '[]'::jsonb)
+        into normalized_users
+        from (
+          select distinct value
+            from jsonb_array_elements_text(coalesce(rule_json->'userIds', '[]'::jsonb))
+        ) as member(value);
+    end if;
+
+    normalized_rules := normalized_rules || jsonb_build_array(jsonb_build_object(
+      'id', rule_id,
+      'name', rule_name,
+      'conditionType', condition_name,
+      'serve', serve,
+      'percentage', percentage,
+      'bucketBy', bucket_by,
+      'bucketSalt', bucket_salt,
+      'startsAt', starts_at,
+      'endsAt', ends_at,
+      'enabled', enabled,
+      'isFallback', is_fallback,
+      'userIds', normalized_users
+    ));
+  end loop;
+
+  return normalized_rules;
+end;
+$$;
+
 create or replace function public.operator_list_feature_flags(p_operator_token text)
 returns jsonb
 language plpgsql
@@ -313,7 +368,6 @@ create or replace function public.operator_publish_feature_flag(
   p_operator_token text,
   p_key text,
   p_rules jsonb,
-  p_emergency_disabled boolean,
   p_expected_revision bigint,
   p_reason text,
   p_request_id text default null
@@ -326,39 +380,15 @@ as $$
 declare
   current_revision bigint;
   next_revision bigint;
-  before_snapshot jsonb;
-  after_snapshot jsonb;
-  rule_json jsonb;
-  rule_position bigint;
-  new_rule_id uuid;
-  condition_name text;
-  fallback_count integer;
-  rule_count integer;
+  normalized_rules jsonb;
+  changed_at timestamptz;
+  history_entry jsonb;
 begin
   perform private.require_feature_flag_operator(p_operator_token);
   if char_length(btrim(coalesce(p_reason, ''))) < 3 then
     raise invalid_parameter_value using message = 'A change reason of at least 3 characters is required';
   end if;
-  if jsonb_typeof(p_rules) <> 'array' then
-    raise invalid_parameter_value using message = 'Rules must be a JSON array';
-  end if;
-
-  rule_count := jsonb_array_length(p_rules);
-  if rule_count < 1 or rule_count > 50 then
-    raise invalid_parameter_value using message = 'A feature flag must contain between 1 and 50 rules';
-  end if;
-
-  select count(*)::integer
-    into fallback_count
-    from jsonb_array_elements(p_rules) as item(rule)
-    where coalesce((item.rule->>'isFallback')::boolean, false);
-  if fallback_count <> 1
-    or coalesce((p_rules->(rule_count - 1)->>'isFallback')::boolean, false) is not true
-    or p_rules->(rule_count - 1)->>'conditionType' <> 'global'
-    or coalesce((p_rules->(rule_count - 1)->>'enabled')::boolean, true) is not true
-  then
-    raise invalid_parameter_value using message = 'The last rule must be the single enabled global fallback';
-  end if;
+  normalized_rules := private.feature_flag_normalize_rules(p_rules);
 
   select flag.revision
     into current_revision
@@ -372,66 +402,63 @@ begin
     raise serialization_failure using message = 'Feature flag revision conflict';
   end if;
 
-  before_snapshot := private.feature_flag_snapshot(p_key);
-  delete from private.feature_flag_rules where flag_key = p_key;
-
-  for rule_json, rule_position in
-    select item.rule, item.position - 1
-      from jsonb_array_elements(p_rules) with ordinality as item(rule, position)
-  loop
-    condition_name := rule_json->>'conditionType';
-    if condition_name not in ('users', 'percentage', 'authenticated', 'global') then
-      raise invalid_parameter_value using message = 'Unknown feature flag rule condition';
-    end if;
-
-    new_rule_id := case
-      when coalesce(rule_json->>'id', '') = '' then extensions.gen_random_uuid()
-      else (rule_json->>'id')::uuid
-    end;
-
-    insert into private.feature_flag_rules (
-      id, flag_key, position, name, condition_type, serve,
-      percentage, bucket_by, bucket_salt, starts_at, ends_at, enabled, is_fallback
-    ) values (
-      new_rule_id,
-      p_key,
-      rule_position,
-      rule_json->>'name',
-      condition_name,
-      (rule_json->>'serve')::boolean,
-      case when condition_name = 'percentage' then (rule_json->>'percentage')::integer end,
-      case when condition_name = 'percentage' then rule_json->>'bucketBy' end,
-      case when condition_name = 'percentage' then coalesce(nullif(rule_json->>'bucketSalt', '')::uuid, extensions.gen_random_uuid()) end,
-      nullif(rule_json->>'startsAt', '')::timestamptz,
-      nullif(rule_json->>'endsAt', '')::timestamptz,
-      coalesce((rule_json->>'enabled')::boolean, true),
-      coalesce((rule_json->>'isFallback')::boolean, false)
-    );
-
-    if condition_name = 'users' then
-      insert into private.feature_flag_rule_users(rule_id, user_id)
-      select new_rule_id, member.value::uuid
-        from jsonb_array_elements_text(coalesce(rule_json->'userIds', '[]'::jsonb)) as member(value)
-      on conflict do nothing;
-    end if;
-  end loop;
-
   next_revision := current_revision + 1;
-  update private.feature_flags
-    set revision = next_revision,
-        emergency_disabled = p_emergency_disabled,
-        updated_by = null,
-        updated_at = timezone('utc', now())
-    where key = p_key;
-  after_snapshot := private.feature_flag_snapshot(p_key);
-
-  insert into private.feature_flag_audit_log(
-    flag_key, revision, action, before_state, after_state, actor_user_id, reason, request_id
-  ) values (
-    p_key, next_revision, 'publish', before_snapshot, after_snapshot, null, btrim(p_reason), nullif(btrim(p_request_id), '')
+  changed_at := timezone('utc', now());
+  history_entry := jsonb_build_object(
+    'revision', next_revision,
+    'rules', normalized_rules,
+    'reason', btrim(p_reason),
+    'requestId', nullif(btrim(p_request_id), ''),
+    'updatedAt', changed_at
   );
+  update private.feature_flags
+    set rules = normalized_rules,
+        revision = next_revision,
+        history = history || jsonb_build_array(history_entry),
+        updated_at = changed_at
+    where key = p_key;
 
-  return after_snapshot;
+  return private.feature_flag_snapshot(p_key);
+end;
+$$;
+
+create or replace function public.operator_rollback_feature_flag(
+  p_operator_token text,
+  p_key text,
+  p_target_revision bigint,
+  p_expected_revision bigint,
+  p_request_id text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  target_rules jsonb;
+begin
+  perform private.require_feature_flag_operator(p_operator_token);
+  select entry.value->'rules'
+    into target_rules
+    from private.feature_flags as flag
+    cross join lateral jsonb_array_elements(flag.history) as entry(value)
+    where flag.key = p_key
+      and (entry.value->>'revision')::bigint = p_target_revision;
+  if target_rules is null then
+    raise no_data_found using message = 'Unknown feature flag revision';
+  end if;
+  if p_target_revision = p_expected_revision then
+    raise invalid_parameter_value using message = 'The current revision cannot be rolled back to itself';
+  end if;
+
+  return public.operator_publish_feature_flag(
+    p_operator_token,
+    p_key,
+    target_rules,
+    p_expected_revision,
+    '回滚到 revision ' || p_target_revision::text,
+    p_request_id
+  );
 end;
 $$;
 
@@ -439,38 +466,52 @@ revoke all on function private.feature_flag_evaluate(text, uuid, uuid) from publ
 revoke all on function private.feature_flag_snapshot(text) from public, anon, authenticated;
 revoke all on function private.feature_flag_operator_authorized(text) from public, anon, authenticated;
 revoke all on function private.require_feature_flag_operator(text) from public, anon, authenticated;
+revoke all on function private.feature_flag_normalize_rules(jsonb) from public, anon, authenticated;
 revoke all on function public.get_my_feature_flags(text[], uuid) from public;
 revoke all on function public.feature_enabled(text) from public;
 revoke all on function public.operator_list_feature_flags(text) from public;
 revoke all on function public.operator_search_feature_users(text, text) from public;
-revoke all on function public.operator_publish_feature_flag(text, text, jsonb, boolean, bigint, text, text) from public;
+revoke all on function public.operator_publish_feature_flag(text, text, jsonb, bigint, text, text) from public;
+revoke all on function public.operator_rollback_feature_flag(text, text, bigint, bigint, text) from public;
 grant execute on function public.get_my_feature_flags(text[], uuid) to anon, authenticated;
 grant execute on function public.feature_enabled(text) to authenticated;
 grant execute on function public.operator_list_feature_flags(text) to anon, authenticated;
 grant execute on function public.operator_search_feature_users(text, text) to anon, authenticated;
-grant execute on function public.operator_publish_feature_flag(text, text, jsonb, boolean, bigint, text, text) to anon, authenticated;
+grant execute on function public.operator_publish_feature_flag(text, text, jsonb, bigint, text, text) to anon, authenticated;
+grant execute on function public.operator_rollback_feature_flag(text, text, bigint, bigint, text) to anon, authenticated;
 
-insert into private.feature_flags(key, description)
+insert into private.feature_flags(key, description, rules)
 values
-  ('agent.chat', 'JOJO Agent 对话入口和模型请求'),
-  ('library.bookshelf', '登录读者的服务端书架'),
-  ('olds.workspace', '尚未完成的旧闻工作区'),
-  ('rag.workspace', 'RAG 工作区路由与导航'),
-  ('reader.annotations', '划线、想法和 AI 解释数据')
+  ('agent.chat', 'JOJO Agent 对话入口和模型请求', jsonb_build_array(
+    jsonb_build_object('id', '30000000-0000-4000-8000-000000000001', 'name', '内部测试用户', 'conditionType', 'users', 'serve', true, 'percentage', null, 'bucketBy', null, 'bucketSalt', null, 'startsAt', null, 'endsAt', null, 'enabled', true, 'isFallback', false, 'userIds', jsonb_build_array()),
+    jsonb_build_object('id', '30000000-0000-4000-8000-000000000002', 'name', '默认关闭', 'conditionType', 'global', 'serve', false, 'percentage', null, 'bucketBy', null, 'bucketSalt', null, 'startsAt', null, 'endsAt', null, 'enabled', true, 'isFallback', true, 'userIds', jsonb_build_array())
+  )),
+  ('library.bookshelf', '登录读者的服务端书架', jsonb_build_array(
+    jsonb_build_object('id', '10000000-0000-4000-8000-000000000001', 'name', '已登录读者', 'conditionType', 'authenticated', 'serve', true, 'percentage', null, 'bucketBy', null, 'bucketSalt', null, 'startsAt', null, 'endsAt', null, 'enabled', true, 'isFallback', false, 'userIds', jsonb_build_array()),
+    jsonb_build_object('id', '10000000-0000-4000-8000-000000000002', 'name', '默认关闭', 'conditionType', 'global', 'serve', false, 'percentage', null, 'bucketBy', null, 'bucketSalt', null, 'startsAt', null, 'endsAt', null, 'enabled', true, 'isFallback', true, 'userIds', jsonb_build_array())
+  )),
+  ('olds.workspace', '尚未完成的旧闻工作区', jsonb_build_array(
+    jsonb_build_object('id', '50000000-0000-4000-8000-000000000001', 'name', '整体关闭', 'conditionType', 'global', 'serve', false, 'percentage', null, 'bucketBy', null, 'bucketSalt', null, 'startsAt', null, 'endsAt', null, 'enabled', true, 'isFallback', true, 'userIds', jsonb_build_array())
+  )),
+  ('rag.workspace', 'RAG 工作区路由与导航', jsonb_build_array(
+    jsonb_build_object('id', '40000000-0000-4000-8000-000000000001', 'name', '内部测试用户', 'conditionType', 'users', 'serve', true, 'percentage', null, 'bucketBy', null, 'bucketSalt', null, 'startsAt', null, 'endsAt', null, 'enabled', true, 'isFallback', false, 'userIds', jsonb_build_array()),
+    jsonb_build_object('id', '40000000-0000-4000-8000-000000000002', 'name', '默认关闭', 'conditionType', 'global', 'serve', false, 'percentage', null, 'bucketBy', null, 'bucketSalt', null, 'startsAt', null, 'endsAt', null, 'enabled', true, 'isFallback', true, 'userIds', jsonb_build_array())
+  )),
+  ('reader.annotations', '划线、想法和 AI 解释数据', jsonb_build_array(
+    jsonb_build_object('id', '20000000-0000-4000-8000-000000000001', 'name', '已登录读者', 'conditionType', 'authenticated', 'serve', true, 'percentage', null, 'bucketBy', null, 'bucketSalt', null, 'startsAt', null, 'endsAt', null, 'enabled', true, 'isFallback', false, 'userIds', jsonb_build_array()),
+    jsonb_build_object('id', '20000000-0000-4000-8000-000000000002', 'name', '默认关闭', 'conditionType', 'global', 'serve', false, 'percentage', null, 'bucketBy', null, 'bucketSalt', null, 'startsAt', null, 'endsAt', null, 'enabled', true, 'isFallback', true, 'userIds', jsonb_build_array())
+  ))
 on conflict (key) do nothing;
 
-insert into private.feature_flag_rules(id, flag_key, position, name, condition_type, serve, enabled, is_fallback)
-values
-  ('10000000-0000-4000-8000-000000000001', 'library.bookshelf', 0, '已登录读者', 'authenticated', true, true, false),
-  ('10000000-0000-4000-8000-000000000002', 'library.bookshelf', 1, '默认关闭', 'global', false, true, true),
-  ('20000000-0000-4000-8000-000000000001', 'reader.annotations', 0, '已登录读者', 'authenticated', true, true, false),
-  ('20000000-0000-4000-8000-000000000002', 'reader.annotations', 1, '默认关闭', 'global', false, true, true),
-  ('30000000-0000-4000-8000-000000000001', 'agent.chat', 0, '内部测试用户', 'users', true, true, false),
-  ('30000000-0000-4000-8000-000000000002', 'agent.chat', 1, '默认关闭', 'global', false, true, true),
-  ('40000000-0000-4000-8000-000000000001', 'rag.workspace', 0, '内部测试用户', 'users', true, true, false),
-  ('40000000-0000-4000-8000-000000000002', 'rag.workspace', 1, '默认关闭', 'global', false, true, true),
-  ('50000000-0000-4000-8000-000000000001', 'olds.workspace', 0, '整体关闭', 'global', false, true, true)
-on conflict (id) do nothing;
+update private.feature_flags
+  set history = jsonb_build_array(jsonb_build_object(
+    'revision', revision,
+    'rules', rules,
+    'reason', '初始配置',
+    'requestId', null,
+    'updatedAt', updated_at
+  ))
+  where history = '[]'::jsonb;
 
 drop policy if exists "reader_bookshelf_own" on public.reader_bookshelf;
 create policy "reader_bookshelf_own"
