@@ -106,6 +106,7 @@ describe("account center", () => {
     expect(screen.getByText("代号取自全球动植物名称，目前暂不可修改。")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "我的邀请码" })).toBeTruthy();
     expect(screen.getByLabelText("邀请码 K7MP4X")).toBeTruthy();
+    expect(screen.queryByText("我的书架")).toBeNull();
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.queryByText("账号资料")).toBeNull();
     await waitFor(() => expect(account.invitation.load).toHaveBeenCalledWith("reader-1"));

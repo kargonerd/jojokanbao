@@ -1,8 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
 import { useAuthStore } from "../auth";
 import { PersonalInvitationPanel } from "../components/PersonalInvitationPanel";
-import { loadBookshelf, type BookshelfEntry } from "@/rag/readerData";
 
 interface AccountCenterPageProps {
   userId: string;
@@ -13,15 +11,6 @@ export function AccountCenterPage({ userId }: AccountCenterPageProps) {
   const { profile, busy, error, signOut } = useAuthStore();
   const displayName = profile?.display_name?.trim() || "代号待分配";
   const hasDisplayName = Boolean(profile?.display_name?.trim());
-  const [books, setBooks] = useState<BookshelfEntry[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    loadBookshelf()
-      .then((value) => { if (!cancelled) setBooks(value); })
-      .catch(() => { if (!cancelled) setBooks([]); });
-    return () => { cancelled = true; };
-  }, []);
 
   const leaveAccount = async () => {
     try {
@@ -54,7 +43,6 @@ export function AccountCenterPage({ userId }: AccountCenterPageProps) {
       </header>
 
       <article className="mx-auto w-full max-w-[64rem] py-9 sm:py-12">
-        <section className="mb-10 border-b border-rule pb-8"><p className="m-0 font-sans text-[.68rem] font-black tracking-[.22em] text-red">我的书架</p>{books.length ? <ul className="mt-5 grid list-none gap-3 p-0 sm:grid-cols-2">{books.map((book) => <li key={book.itemId}><Link className="block border-l-2 border-rule py-2 pl-4 text-sm text-ink no-underline hover:border-red hover:text-red" to={`/book/${encodeURIComponent(book.datasetId)}/${encodeURIComponent(book.itemId)}`}>{book.title}</Link></li>)}</ul> : <p className="mt-4 text-sm text-muted">还没有加入书架的书。</p>}</section>
         <header className="grid gap-3 border-b border-rule pb-6 sm:grid-cols-[minmax(0,1fr)_18rem] sm:items-end sm:gap-10">
           <div>
             <p className="m-0 font-sans text-[0.68rem] font-black tracking-[0.22em] text-red">
