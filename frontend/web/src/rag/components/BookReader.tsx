@@ -785,8 +785,11 @@ export function BookReader({
           onClick={() => void toggleBookshelf()}
           className={`group flex h-8 shrink-0 items-center gap-1.5 border-0 bg-transparent px-2 font-sans text-[11px] cursor-pointer focus-visible:outline-2 focus-visible:outline-red ${onBookshelf ? "text-red" : "text-muted hover:text-red"}`}
         >
-          <svg viewBox="0 0 16 20" className="h-4 w-3.5" aria-hidden="true">
-            <path d="M2.25 1.5h11.5v16.75L8 14.7l-5.75 3.55V1.5Z" fill={onBookshelf ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.25" />
+          <svg viewBox="0 0 30 24" className="h-4 w-5" aria-hidden="true">
+            <path d="M3 5.5c4-.5 7 .5 9 2.5 2-2 5-3 9-2.5v14c-4-.5-7 .5-9 2.5-2-2-5-3-9-2.5zM12 8v14" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="miter" />
+            {onBookshelf
+              ? <path d="m23 9 1.75 1.75 3.25-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="square" />
+              : <path d="M26 5v7M22.5 8.5h7" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" />}
           </svg>
           <span className="hidden sm:inline">{onBookshelf ? "已在书架" : "加入书架"}</span>
         </button>}
