@@ -12,10 +12,12 @@ jojokanbao.cn                         agent-global.jojokanbao.cn
                                      └──────────────────────────┘
 ```
 
-- `/gateway/ask` 处理浏览器 CORS 预检，为请求添加短时 HMAC 服务签名，再把 SSE
-  请求转给同项目 `/jojo`。
+- `/gateway/ask` 处理浏览器 CORS 预检，先使用当前用户 Bearer Token 向 Supabase
+  Auth 确认用户身份，再用仅存在于服务端的 `JOJO_OPERATOR_TOKEN` 读取 `rag.workspace`
+  原始规则并在 Cloud Function 内按顺序判定；通过后添加短时 HMAC 服务签名，再把
+  SSE 请求转给同项目 `/jojo`。
 - `/jojo` 运行 Pi Agent，并在调用 Codex 前依次校验 Cloud Function 服务签名
-  和 JOJO/Supabase Bearer Token；浏览器不能直接调用。
+  和 JOJO/Supabase Bearer Token；它不处理平台入口开关，浏览器也不能直接调用。
 - `/gateway/credentials` 是平台通用的凭据管理入口，不返回凭据。当前只注册
   `agent/openai-codex`，以后由其他业务注册自己的 scope/provider 和校验器。
 - `pnpm prepare:agent-deploy` 生成 `.edgeone/agent-deploy`。
@@ -81,6 +83,10 @@ $env:JOJO_CREDENTIAL_SERVICE_URL="https://agent-global.jojokanbao.cn"
 $env:JOJO_OPERATOR_TOKEN="<与 Makers 项目一致>"
 pnpm push:credentials
 ```
+
+也可以启动 `pnpm dev:admin`，在本机 JOJO 管理台的 `/agent` 页面检查凭据
+来源并确认更新。管理台复用同一个 `JOJO_OPERATOR_TOKEN`，浏览器不读取 Token
+或 OAuth 明文；部署端必须先配置相同的 Operator Token。
 
 上传体不经过环境变量，因此不受 Makers 单个环境变量 500 字节限制。命令只上传
 `openai-codex` OAuth 项，不上传 Pi 文件里的其他 Provider 凭证。

@@ -7,7 +7,7 @@ const MASK_SEED = 0x4a4f4a4f;
 const PDF_MAGIC = "%PDF-";
 const CACHE_CONTROL = "public, max-age=315360000, immutable";
 const DEFAULT_QPDF = process.env.QPDF_BIN || "qpdf";
-const DEFAULT_WORKBENCH_CONFIG = resolve("internal", "data-workbench", "server", "config.json");
+const DEFAULT_ADMIN_CONFIG = resolve("tools", "jojo-admin", "server", "config.json");
 const WORK_DIR = resolve("tmp", "protected-archive-publish");
 
 const COLLECTIONS = {
@@ -29,8 +29,8 @@ Options:
   --from <issue>            Include issues at or after this id.
   --to <issue>              Include issues at or before this id.
   --source <path>           Local plain-PDF root containing <year>/<issue>.pdf.
-                            If omitted, uses publications.<code>.source_path from Data Workbench config.
-  --config <path>           Data Workbench config. Default: ${DEFAULT_WORKBENCH_CONFIG}
+                            If omitted, uses publications.<code>.source_path from JOJO Admin config.
+  --config <path>           JOJO Admin config. Default: ${DEFAULT_ADMIN_CONFIG}
   --remote <remote:path>    Override destination rclone remote root.
   --qpdf <path>             qpdf executable path.
   --force                   Overwrite an existing destination object.
@@ -56,7 +56,7 @@ function parseArgs(argv) {
     force: false,
     from: null,
     issues: [],
-    config: DEFAULT_WORKBENCH_CONFIG,
+    config: DEFAULT_ADMIN_CONFIG,
     qpdf: DEFAULT_QPDF,
     remote: null,
     resume: false,
@@ -164,11 +164,11 @@ function formatPrefix(template, pubCode) {
   return normalizeKey(template.replaceAll("{code}", pubCode).replaceAll("{code_lower}", pubCode.toLowerCase()));
 }
 
-async function loadWorkbenchConfig(configPath) {
+async function loadAdminConfig(configPath) {
   return JSON.parse(await readFile(configPath, "utf8"));
 }
 
-function resolvePublicationStorage(workbenchConfig, pubCode, remoteOverride = null) {
+function resolvePublicationStorage(adminConfig, pubCode, remoteOverride = null) {
   if (remoteOverride) {
     return {
       type: "rclone",
@@ -183,12 +183,12 @@ function resolvePublicationStorage(workbenchConfig, pubCode, remoteOverride = nu
     };
   }
 
-  const pub = workbenchConfig.publications?.[pubCode];
+  const pub = adminConfig.publications?.[pubCode];
   if (!pub) {
-    throw new Error(`Publication ${pubCode} not found in ${DEFAULT_WORKBENCH_CONFIG}`);
+    throw new Error(`Publication ${pubCode} not found in ${DEFAULT_ADMIN_CONFIG}`);
   }
 
-  const storageRoot = workbenchConfig.storage || {};
+  const storageRoot = adminConfig.storage || {};
   const storageConfig = pub.storage || {};
   const backendName =
     (typeof storageConfig === "string" ? storageConfig : storageConfig.backend || storageConfig.name) ||
@@ -470,19 +470,19 @@ async function verifyPublished(storage, item) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const collection = COLLECTIONS[args.collection];
-  let workbenchConfig = {};
+  let adminConfig = {};
   try {
-    workbenchConfig = await loadWorkbenchConfig(args.config);
+    adminConfig = await loadAdminConfig(args.config);
   } catch (error) {
     if (error?.code !== "ENOENT" || !args.remote || !args.source) throw error;
   }
-  const pub = workbenchConfig.publications?.[collection.pubCode];
+  const pub = adminConfig.publications?.[collection.pubCode];
   const sourceRoot = args.source || pub?.source_path;
   if (!sourceRoot) {
     throw new Error(`--source is required because ${collection.pubCode}.source_path is not configured`);
   }
 
-  const storage = resolvePublicationStorage(workbenchConfig, collection.pubCode, args.remote);
+  const storage = resolvePublicationStorage(adminConfig, collection.pubCode, args.remote);
   const issues = await selectedIssues(args, collection, sourceRoot);
   if (issues.length === 0) throw new Error("No matching PDF issues were found");
   const statePath = args.state || join(WORK_DIR, "state", `${args.collection}.json`);

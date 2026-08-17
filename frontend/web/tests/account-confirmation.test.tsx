@@ -18,7 +18,7 @@ function renderConfirmation(path = "/account/confirm?token_hash=test-token") {
       <Routes>
         <Route path="/account/confirm" element={<AccountConfirmation />} />
         <Route path="/account" element={<div>Account page</div>} />
-        <Route path="/archive" element={<div>Archive home</div>} />
+        <Route path="/" element={<div>Platform home</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -35,7 +35,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("account email confirmation", () => {
-  it("shows the assigned reader code before linking to the archive homepage", async () => {
+  it("shows the assigned reader code before linking to the platform homepage", async () => {
     renderConfirmation();
 
     expect(screen.getByRole("heading", { name: "正在确认邮箱" })).toBeTruthy();
@@ -48,7 +48,7 @@ describe("account email confirmation", () => {
     expect(screen.getByText("雪豹-TGH")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("link", { name: "记住了，进入首页" }));
-    expect(await screen.findByText("Archive home")).toBeTruthy();
+    expect(await screen.findByText("Platform home")).toBeTruthy();
   });
 
   it("does not enter the homepage until a reader code is available", async () => {

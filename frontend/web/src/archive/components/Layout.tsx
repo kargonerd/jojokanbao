@@ -3,8 +3,9 @@ import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { AppShell, NavBar, type NavItem } from "@jojo/ui";
 import { rollout } from "../../rollout";
 import { ARCHIVE_ROOT, archivePath, defaultArchiveIssuePath } from "../../routes";
+import { PlatformHeader } from "../../platform/PlatformHeader";
 
-const navItems: NavItem[] = [
+const coreNavItems: NavItem[] = [
   { label: "首页", href: ARCHIVE_ROOT },
   { label: "报纸", children: [
     { label: "人民日报", href: defaultArchiveIssuePath("rmrb") },
@@ -16,19 +17,22 @@ const navItems: NavItem[] = [
     { label: "世界知识", href: defaultArchiveIssuePath("sjzs") },
   ]},
   { label: "搜索", href: archivePath("search") },
-  ...(rollout.olds ? [{ label: "旧闻", href: "/olds" }] : []),
-  ...(rollout.rag ? [{ label: "问答", href: "/rag" }] : []),
-  { label: "反馈", href: archivePath("support") },
 ];
 
-export function Layout() {
+export function Layout({ platformRedesign = rollout.platformRedesign }: { platformRedesign?: boolean }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const navItems: NavItem[] = [
+    ...coreNavItems,
+    ...(rollout.olds ? [{ label: "旧闻", href: "/olds" }] : []),
+    ...(!platformRedesign && rollout.rag ? [{ label: "问答", href: "/rag" }] : []),
+    { label: "反馈", href: archivePath("support") },
+  ];
   const [accountLabel, setAccountLabel] = useState("登录");
   const [hasReaderCode, setHasReaderCode] = useState(false);
 
   useEffect(() => {
-    if (!rollout.account) return;
+    if (platformRedesign || !rollout.account) return;
 
     let active = true;
     let stopAuthSync = () => {};
@@ -58,14 +62,25 @@ export function Layout() {
       unsubscribe();
       stopAuthSync();
     };
-  }, []);
+  }, [platformRedesign]);
+
+  if (platformRedesign) {
+    return (
+      <div className="platform-shell flex h-screen flex-col overflow-hidden">
+        <PlatformHeader />
+        <main className="min-h-0 flex-1 overflow-hidden">
+          <Outlet />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <AppShell
       header={
         <NavBar
           items={navItems}
-          actions={rollout.account
+          actions={platformRedesign || rollout.account
             ? [{
                 label: accountLabel,
                 href: "/account",

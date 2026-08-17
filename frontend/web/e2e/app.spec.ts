@@ -13,12 +13,15 @@ test.describe("JOJO Web", () => {
     }
   });
 
-  test("root redirects to the Archive homepage", async ({ page }) => {
+  test("root opens the reading-first homepage", async ({ page }) => {
     await page.goto("/");
-    await expect(page).toHaveURL("/archive");
-    await expect(page.locator("h2").first()).toBeVisible();
-    await expect(page.getByText("人民日报")).toBeVisible();
-    await expect(page.getByText("参考消息")).toBeVisible();
+    await expect(page).toHaveURL("/");
+    await expect(page.getByRole("heading", { name: "今天读什么？" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "资料库", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "关于", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "登录", exact: true })).toBeVisible();
+    await expect(page.getByText("还没有阅读记录")).toBeVisible();
+    await expect(page.getByText("Agent")).toHaveCount(0);
 
     const resources = await page.evaluate(() => (
       performance.getEntriesByType("resource").map((entry) => entry.name)
@@ -28,18 +31,27 @@ test.describe("JOJO Web", () => {
     ))).toBe(false);
   });
 
+  test("legacy entry returns to the redesigned homepage", async ({ page }) => {
+    await page.goto("/legacy");
+    await expect(page).toHaveURL("/");
+    await expect(page.getByRole("heading", { name: "今天读什么？" })).toBeVisible();
+  });
+
   test("navigation works", async ({ page }) => {
-    await page.goto("/archive");
+    await page.goto("/");
     // Click search nav item
-    await page.getByText("搜索").click();
-    await expect(page).toHaveURL("/archive/search");
+    await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "搜索", exact: true }).click();
+    await expect(page).toHaveURL("/search");
     // Search input should be visible
     await expect(page.getByPlaceholder("在JOJO看报上搜索")).toBeVisible();
   });
 
   test("support page loads", async ({ page }) => {
-    await page.goto("/archive/support");
-    await expect(page.getByRole("heading", { name: "反馈" })).toBeVisible();
+    await page.goto("/support");
+    await expect(page.getByRole("link", { name: "关于", exact: true })).toHaveClass(/is-active/);
+    await expect(page.getByRole("heading", { name: "关于 JOJO 看报" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "打开旧版 JOJO 看报" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "GitHub 查看源码" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "数据下载" })).toBeVisible();
   });
 
@@ -54,7 +66,7 @@ test.describe("JOJO Web", () => {
   });
 
   test("unfinished modules remain disabled", async ({ page }) => {
-    for (const path of ["/account", "/rag", "/olds"]) {
+    for (const path of ["/rag", "/olds"]) {
       await page.goto(path);
       await expect(page.getByRole("heading", { name: "404 Not Found" })).toBeVisible();
     }

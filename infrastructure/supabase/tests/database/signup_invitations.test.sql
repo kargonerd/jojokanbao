@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(22);
+select extensions.plan(23);
 
 select extensions.has_column(
   'private',
@@ -86,7 +86,8 @@ create temporary table invitation_test_state (
   admin_code text,
   personal_id uuid,
   first_code text,
-  second_code text
+  second_code text,
+  third_code text
 );
 insert into invitation_test_state default values;
 
@@ -196,10 +197,10 @@ update invitation_test_state
 set second_code = generated.code
 from generated;
 
-select extensions.isnt(
+select extensions.is(
   (select first_code from invitation_test_state),
   (select second_code from invitation_test_state),
-  'regeneration rotates the code'
+  'repeated generation keeps an active code stable'
 );
 select extensions.is(
   (
@@ -211,7 +212,24 @@ select extensions.is(
       )
   ),
   1::bigint,
-  'regeneration keeps one personal invitation row'
+  'repeated generation keeps one personal invitation row'
+);
+
+update private.signup_invitations
+set expires_at = now() - interval '1 minute'
+where id = (select personal_id from invitation_test_state);
+
+with generated as (
+  select * from public.generate_personal_signup_invitation()
+)
+update invitation_test_state
+set third_code = generated.code
+from generated;
+
+select extensions.isnt(
+  (select first_code from invitation_test_state),
+  (select third_code from invitation_test_state),
+  'an expired invitation can be regenerated'
 );
 
 select extensions.ok(

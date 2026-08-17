@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { Link } from "react-router-dom";
+import { useFeatureFlag } from "../../featureFlags";
 import type { RagReference, RagSearchHit } from "../types";
 import { BookAiPanel } from "./BookAiPanel";
 import { BookSearchPanel } from "./BookSearchPanel";
@@ -42,6 +43,7 @@ export interface BookReaderProps {
   bookTitle: string;
   datasetId: string;
   itemId: string;
+  manifestObject: string;
   characterCount: number;
   logicalChapterCount?: number;
   chapters: BookReaderChapter[];
@@ -118,6 +120,7 @@ export function BookReader({
   bookTitle,
   datasetId,
   itemId,
+  manifestObject,
   characterCount,
   logicalChapterCount,
   chapters,
@@ -136,6 +139,9 @@ export function BookReader({
   onDownload,
   children,
 }: BookReaderProps) {
+  const annotationsEnabled = useFeatureFlag("reader.annotations");
+  const bookshelfEnabled = useFeatureFlag("library.bookshelf");
+  const agentEnabled = useFeatureFlag("rag.workspace");
   const [fontSize, setFontSize] = useState(storedFontSize);
   const [paperColor, setPaperColor] = useState<BookReaderPaperColor>(storedPaperColor);
   const [paperTexture, setPaperTexture] = useState(storedPaperTexture);
@@ -261,6 +267,11 @@ export function BookReader({
   }, [chapterKey]);
 
   useEffect(() => {
+    if (!annotationsEnabled) {
+      setMarks([]);
+      setPopular([]);
+      return;
+    }
     let cancelled = false;
     loadMarks(datasetId, itemId, activeChapterId)
       .then((value) => { if (!cancelled) setMarks(value); })
@@ -269,15 +280,19 @@ export function BookReader({
       .then((value) => { if (!cancelled) setPopular(value); })
       .catch(() => { if (!cancelled) setPopular([]); });
     return () => { cancelled = true; };
-  }, [activeChapterId, datasetId, itemId]);
+  }, [activeChapterId, annotationsEnabled, datasetId, itemId]);
 
   useEffect(() => {
+    if (!bookshelfEnabled) {
+      setOnBookshelf(false);
+      return;
+    }
     let cancelled = false;
     bookshelfContains(datasetId, itemId)
       .then((value) => { if (!cancelled) setOnBookshelf(value); })
       .catch(() => { if (!cancelled) setOnBookshelf(false); });
     return () => { cancelled = true; };
-  }, [datasetId, itemId]);
+  }, [bookshelfEnabled, datasetId, itemId]);
 
   useEffect(() => {
     const root = mode === "paged" ? flowRef.current : scrollRef.current;
@@ -585,6 +600,7 @@ export function BookReader({
   }
 
   async function underlineSelection(): Promise<void> {
+    if (!annotationsEnabled) return;
     const anchor = selectionAnchor();
     if (!anchor) return;
     try {
@@ -595,6 +611,7 @@ export function BookReader({
   }
 
   async function saveThought(): Promise<void> {
+    if (!annotationsEnabled) return;
     if (!thought.trim()) return;
     const anchor = selectionAnchor();
     if (!anchor) return;
@@ -607,6 +624,7 @@ export function BookReader({
   }
 
   async function explainSelection(): Promise<void> {
+    if (!annotationsEnabled) return;
     if (!textSelection) return;
     const quote = textSelection.text;
     setAiExplanationQuote(quote);
@@ -629,6 +647,7 @@ export function BookReader({
   }
 
   async function toggleBookshelf(): Promise<void> {
+    if (!bookshelfEnabled) return;
     try {
       await setBookshelf({ datasetId, itemId, title: bookTitle, added: !onBookshelf });
       setOnBookshelf(!onBookshelf);
@@ -692,8 +711,7 @@ export function BookReader({
     <nav data-book-toolbar aria-label="阅读工具" className={`fixed bottom-2 left-2 right-2 z-30 flex gap-1 overflow-x-auto border p-1 backdrop-blur-md md:bottom-auto md:left-auto md:right-5 md:top-1/2 md:-translate-y-1/2 md:flex-col md:gap-2 md:overflow-visible md:border-0 md:p-0 ${chromeClass}`}>
       <button type="button" onClick={() => openPanel("toc")} className={controlClass} aria-label="打开目录" title="目录">目录</button>
       <button type="button" onClick={() => openPanel("search")} className={controlClass} aria-label="搜索全书" title="搜索全书">搜索</button>
-      <button type="button" onClick={() => { setAiQuestion(undefined); setAiInitialAnswer(undefined); setAiExplanationQuote(undefined); openPanel("ai"); }} className={controlClass} aria-label="打开书内 AI" title="书内 AI">AI</button>
-      <button type="button" aria-pressed={onBookshelf} onClick={() => void toggleBookshelf()} className={`${controlClass} ${onBookshelf ? "text-red" : ""}`} aria-label={onBookshelf ? "移出书架" : "加入书架"} title={onBookshelf ? "移出书架" : "加入书架"}>书架</button>
+      {agentEnabled && <button type="button" onClick={() => { setAiQuestion(undefined); setAiInitialAnswer(undefined); setAiExplanationQuote(undefined); openPanel("ai"); }} className={controlClass} aria-label="打开书内 AI" title="书内 AI">AI</button>}
       <button type="button" onClick={() => openTool("font")} className={controlClass} aria-label="调整字号" title="字号">字号</button>
       <button type="button" onClick={() => openTool("color")} className={controlClass} aria-label="选择纸张颜色" title="纸张颜色"><span className={`h-4 w-4 border ${isDark ? "border-white/50 bg-[#202321]" : paperColor === "white" ? "border-[#aaa] bg-white" : "border-[#b8ad96] bg-[#fbfaf6]"}`} aria-hidden="true" /></button>
       <button type="button" aria-pressed={paperTexture} onClick={() => setPaperTexture((value) => !value)} className={`${controlClass} ${paperTexture ? "text-red" : ""}`} aria-label="切换纸张纹理" title={paperTexture ? "关闭纸张纹理" : "开启纸张纹理"}>纹理</button>
@@ -721,7 +739,7 @@ export function BookReader({
 
     {searchOpen && <><button type="button" aria-label="关闭全书搜索" onClick={() => setSearchOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookSearchPanel bookTitle={bookTitle} panelClass={panelClass} onClose={() => setSearchOpen(false)} onJump={locateSearchResult} onSearch={onSearch} /></>}
 
-    {aiOpen && <><button type="button" aria-label="关闭书内 AI" onClick={() => setAiOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookAiPanel key={`${aiQuestion || "book-ai"}:${aiInitialAnswer || ""}`} bookTitle={bookTitle} datasetId={datasetId} itemId={itemId} initialQuestion={aiQuestion} initialAnswer={aiInitialAnswer} explanationQuote={aiExplanationQuote} panelClass={panelClass} onClose={() => setAiOpen(false)} onJump={locateReference} onExplanationComplete={(quote, answer) => void saveExplanation({ datasetId, itemId, chapterId: activeChapterId, quote, answer })} /></>}
+    {agentEnabled && aiOpen && <><button type="button" aria-label="关闭书内 AI" onClick={() => setAiOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookAiPanel key={`${aiQuestion || "book-ai"}:${aiInitialAnswer || ""}`} bookTitle={bookTitle} datasetId={datasetId} itemId={itemId} manifestObject={manifestObject} initialQuestion={aiQuestion} initialAnswer={aiInitialAnswer} explanationQuote={aiExplanationQuote} panelClass={panelClass} onClose={() => setAiOpen(false)} onJump={locateReference} onExplanationComplete={annotationsEnabled ? (quote, answer) => void saveExplanation({ datasetId, itemId, chapterId: activeChapterId, quote, answer }) : undefined} /></>}
 
     {toolPopover && <>
       <button type="button" aria-label="关闭阅读工具" onClick={() => setToolPopover(undefined)} className="fixed inset-0 z-20 border-0 bg-transparent cursor-default" />
@@ -739,9 +757,9 @@ export function BookReader({
     {textSelection && <div className={`book-selection-tools fixed z-[65] -translate-x-1/2 font-sans ${textSelection.above ? "-translate-y-full" : ""}`} style={{ left: textSelection.left, top: textSelection.top }}>
       <div className={`flex border shadow-[3px_6px_20px_rgba(0,0,0,.18)] ${panelClass}`} role="toolbar" aria-label="选中文字工具">
         <button type="button" onClick={() => void copySelection()} className="book-selection-action">复制</button>
-        <button type="button" onClick={() => void underlineSelection()} className="book-selection-action">划线</button>
+        {annotationsEnabled && <><button type="button" onClick={() => void underlineSelection()} className="book-selection-action">划线</button>
         <button type="button" onClick={() => setThoughtOpen((value) => !value)} className="book-selection-action">写想法</button>
-        <button type="button" onClick={() => void explainSelection()} className="book-selection-action text-red">AI 解释</button>
+        {agentEnabled && <button type="button" onClick={() => void explainSelection()} className="book-selection-action text-red">AI 解释</button>}</>}
       </div>
       {thoughtOpen && <div className={`mt-1 w-72 border p-3 shadow-[3px_6px_20px_rgba(0,0,0,.16)] ${panelClass}`}>
         <textarea autoFocus value={thought} onChange={(event) => setThought(event.target.value)} placeholder="写下此刻的想法……" rows={3} className="book-thought-input block w-full resize-none border-0 border-b border-rule bg-transparent px-0 py-1 font-serif text-sm leading-6 text-current" />
@@ -753,9 +771,29 @@ export function BookReader({
 
     <header className={`relative z-20 h-12 border-b backdrop-blur-md ${chromeClass}`}>
       <div className="mx-auto flex h-full max-w-[1180px] items-center gap-3 px-4 font-sans text-xs md:px-10">
-        <Link to={backHref} className="text-current no-underline" aria-label="返回问答">←</Link>
-        <span className="min-w-0 flex-1 truncate text-muted md:hidden">{chapters[activeChapterIndex]?.title || bookTitle}</span>
-        <span className="hidden min-w-0 flex-1 truncate text-muted md:block">{bookTitle}</span>
+        <Link to={backHref} className="flex h-7 w-6 shrink-0 items-center justify-start text-current no-underline hover:text-red focus-visible:outline-2 focus-visible:outline-red" aria-label="返回问答">
+          <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true">
+            <path d="m8.5 4.5-5.5 5.5 5.5 5.5M3.5 10H17" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" />
+          </svg>
+        </Link>
+        <span className="max-w-[52vw] shrink truncate text-muted md:max-w-[min(34vw,28rem)]">{bookTitle}</span>
+        {bookshelfEnabled && <button
+          type="button"
+          aria-pressed={onBookshelf}
+          aria-label={onBookshelf ? "移出书架" : "加入书架"}
+          title={onBookshelf ? "移出书架" : "加入书架"}
+          onClick={() => void toggleBookshelf()}
+          className={`group flex h-8 shrink-0 items-center gap-1.5 border-0 bg-transparent px-2 font-sans text-[11px] cursor-pointer focus-visible:outline-2 focus-visible:outline-red ${onBookshelf ? "text-red" : "text-muted hover:text-red"}`}
+        >
+          <svg viewBox="0 0 30 24" className="h-4 w-5" aria-hidden="true">
+            <path d="M3 5.5c4-.5 7 .5 9 2.5 2-2 5-3 9-2.5v14c-4-.5-7 .5-9 2.5-2-2-5-3-9-2.5zM12 8v14" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="miter" />
+            {onBookshelf
+              ? <path d="m23 9 1.75 1.75 3.25-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="square" />
+              : <path d="M26 5v7M22.5 8.5h7" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" />}
+          </svg>
+          <span className="hidden sm:inline">{onBookshelf ? "已在书架" : "加入书架"}</span>
+        </button>}
+        <span className="min-w-0 flex-1" aria-hidden="true" />
         <span className="hidden max-w-[42%] truncate text-muted md:block">{chapters[activeChapterIndex]?.title}</span>
         <span className="hidden tabular-nums text-muted md:inline">全书 {bookProgress}%</span>
       </div>

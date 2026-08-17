@@ -18,7 +18,7 @@ backend/
 agent/
   runtime/             通用 Pi Agent、Codex OAuth 与凭证
   edgeone/             Makers Agent 的认证、SSE 和持久化适配
-tools/                 数据工作台、Archive PDF 工具和管理员命令
+tools/                 JOJO 管理台、Archive PDF 工具和管理员命令
 infrastructure/        EdgeOne、Supabase 与线上腾讯 SCF Search
 content/blog/          博客内容
 ```
@@ -43,7 +43,7 @@ pnpm --filter @jojo/homepage dev
 pnpm dev:desktop
 pnpm dev:backend
 pnpm dev:reader-search
-pnpm dev:data-workbench
+pnpm dev:admin
 pnpm --filter @jojo/agent auth:codex
 pnpm --filter @jojo/agent smoke -- "你好"
 pnpm push:credentials

@@ -12,7 +12,7 @@ import type {
 } from "./types";
 
 const BASE = (import.meta.env.VITE_RAG_API_BASE || "").replace(/\/$/, "");
-const AGENT_URL = import.meta.env.VITE_AGENT_API_URL || `${BASE}/agent`;
+const AGENT_URL = import.meta.env.VITE_AGENT_API_URL?.trim();
 
 type HttpMethod = "delete" | "get" | "post" | "put";
 
@@ -64,7 +64,7 @@ export const catalogApi = {
 };
 
 // Chat (streaming)
-export function askStream(params: { dataset_id: string; question: string; conversation_id?: string; item_ids?: string[] }, onChunk: (text: string) => void, onDone: (refs?: RagReference[], conversationId?: string) => void, onError: (err: string) => void) {
+export function askStream(params: { dataset_id: string; question: string; conversation_id?: string; item_ids?: string[]; manifest_objects?: string[] }, onChunk: (text: string) => void, onDone: (refs?: RagReference[], conversationId?: string) => void, onError: (err: string) => void) {
   const ctrl = new AbortController();
   let settled = false;
   const conversationId = params.conversation_id || `conv_${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`;
@@ -76,6 +76,7 @@ export function askStream(params: { dataset_id: string; question: string; conver
   };
 
   void (async () => {
+    if (!AGENT_URL) throw new Error("书内 AI 服务尚未部署");
     const { authClient } = await import("../account/auth");
     const { data, error } = await authClient.auth.getSession();
     if (error) throw error;
@@ -90,7 +91,11 @@ export function askStream(params: { dataset_id: string; question: string; conver
       },
       body: JSON.stringify({
         message: params.question,
-        scope: { datasetIds: [params.dataset_id], itemIds: params.item_ids ?? [] },
+        scope: {
+          datasetIds: [params.dataset_id],
+          itemIds: params.item_ids ?? [],
+          manifestObjects: params.manifest_objects ?? [],
+        },
       }),
       signal: ctrl.signal,
     });

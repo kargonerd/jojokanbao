@@ -14,10 +14,11 @@ import { Type } from "@earendil-works/pi-ai";
 export interface RagScope {
   datasetIds?: string[];
   itemIds?: string[];
+  manifestObjects?: string[];
 }
 
 export interface RagToolOptions {
-  searchUrl: string;
+  searchUrl?: string;
   contentCdnBase: string;
   scope?: RagScope;
   fetchFn?: typeof fetch;
@@ -155,6 +156,16 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
     }
   }
 
+  function resolveManifestObject(candidate: string | undefined): string {
+    const selected = scope.manifestObjects ?? [];
+    const object = safeObjectKey(candidate || (selected.length === 1 ? selected[0]! : ""));
+    if (selected.length && !selected.includes(object)) {
+      throw new Error("该 Manifest 不在用户选择范围内");
+    }
+    enforceDatasetObjectScope(object, scope);
+    return object;
+  }
+
   async function loadManifest(object: string, signal?: AbortSignal): Promise<JojoItemManifest> {
     const cached = manifestCache.get(object);
     if (cached) return cached;
@@ -176,6 +187,7 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
     description: "在 Elasticsearch 中搜索书籍、报纸和杂志。先调用它定位证据；结果给出可继续读取的 manifestObject 和 fragmentObject。",
     parameters: searchParameters,
     async execute(_callId, args, signal) {
+      if (!options.searchUrl) throw new Error("搜索服务未配置");
       const response = await fetchFn(options.searchUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -223,7 +235,7 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
   };
 
   const inspectParameters = Type.Object({
-    manifestObject: Type.String({ description: "search_content 返回的 manifestObject" }),
+    manifestObject: Type.Optional(Type.String({ description: "search_content 返回的 manifestObject；当前已选中一本书时可省略" })),
   });
   const inspectTool: AgentTool<typeof inspectParameters> = {
     name: "inspect_item",
@@ -231,8 +243,7 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
     description: "读取小型 manifest，返回书籍规模、预算和目录预览，不下载正文。需要选择具体章节时继续调用 list_item_toc；考虑扫描全本时必须先调用本工具。",
     parameters: inspectParameters,
     async execute(_callId, args, signal) {
-      const manifestObject = safeObjectKey(args.manifestObject);
-      enforceDatasetObjectScope(manifestObject, scope);
+      const manifestObject = resolveManifestObject(args.manifestObject);
       const manifest = await loadManifest(manifestObject, signal);
       const chapters = manifest.content.chapters ?? [];
       const estimatedBytes = chapters.reduce((total, chapter) => total + chapter.size, 0);
@@ -258,7 +269,7 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
   };
 
   const tocParameters = Type.Object({
-    manifestObject: Type.String({ description: "search_content 返回的 manifestObject" }),
+    manifestObject: Type.Optional(Type.String({ description: "search_content 返回的 manifestObject；当前已选中一本书时可省略" })),
     offset: Type.Optional(Type.Number({ minimum: 0, description: "从第几个目录项开始，默认 0" })),
     limit: Type.Optional(Type.Number({ minimum: 1, maximum: 200, description: "本次返回数量，默认 100" })),
   });
@@ -268,8 +279,7 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
     description: "分页查看一本书或一卷的完整层级目录。每个可读目录项包含 fragmentObject，可直接交给 read_fragment 读取正文；只读取 manifest，不下载正文。",
     parameters: tocParameters,
     async execute(_callId, args, signal) {
-      const manifestObject = safeObjectKey(args.manifestObject);
-      enforceDatasetObjectScope(manifestObject, scope);
+      const manifestObject = resolveManifestObject(args.manifestObject);
       const manifest = await loadManifest(manifestObject, signal);
       const toc = itemToc(manifest, manifestObject);
       const offset = Math.max(0, Math.floor(args.offset ?? 0));
@@ -291,7 +301,7 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
   };
 
   const itemParameters = Type.Object({
-    manifestObject: Type.String({ description: "search_content 返回的 manifestObject" }),
+    manifestObject: Type.Optional(Type.String({ description: "search_content 返回的 manifestObject；当前已选中一本书时可省略" })),
     intent: Type.String({ description: "为什么必须扫描整本，例如跨章比较、全书统计或全书综述" }),
     terms: Type.Array(Type.String(), { description: "用于本地扫描和计数的关键词，至少一个" }),
     maxEvidenceChapters: Type.Optional(Type.Number({ minimum: 1, maximum: 12 })),
@@ -302,8 +312,7 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
     description: "仅在搜索和单章阅读不足时调用。下载整个 Item 到工具侧，在本地扫描所有章节，只把统计和最相关证据送回模型，不把整本全文塞进上下文。",
     parameters: itemParameters,
     async execute(_callId, args, signal) {
-      const manifestObject = safeObjectKey(args.manifestObject);
-      enforceDatasetObjectScope(manifestObject, scope);
+      const manifestObject = resolveManifestObject(args.manifestObject);
       if (!inspectedManifests.has(manifestObject)) {
         return result({
           scanned: false,
@@ -361,5 +370,11 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
       });
     },
   };
-  return [searchTool, fragmentTool, inspectTool, tocTool, itemTool];
+  return [
+    ...(options.searchUrl ? [searchTool] : []),
+    fragmentTool,
+    inspectTool,
+    tocTool,
+    itemTool,
+  ];
 }

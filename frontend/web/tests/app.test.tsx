@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { App } from "../src/App";
+import { App, AppRoutes } from "../src/App";
 
 const appPdfMocks = vi.hoisted(() => ({
   usePdfDocument: vi.fn(),
@@ -29,43 +30,47 @@ afterEach(() => {
 });
 
 describe("JOJO Web routes and Archive homepage", () => {
-  it("redirects the Reader root to the canonical Archive route", async () => {
+  it("keeps the complete previous site active when the redesign build flag is off", async () => {
+    const home = render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppRoutes platformRedesign={false} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "人民日报", level: 2 })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "今天读什么？" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "登录" })).toBeNull();
+    home.unmount();
+
+    render(
+      <MemoryRouter initialEntries={["/archive/support"]}>
+        <AppRoutes platformRedesign={false} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("heading", { name: "反馈" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "关于 JOJO 看报" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "返回旧版" })).toBeNull();
+  });
+
+  it("renders the new reading-first homepage at the site root", () => {
     renderAt("/");
 
-    await waitFor(() => expect(window.location.pathname).toBe("/archive"));
+    expect(screen.getByRole("heading", { name: "今天读什么？" })).toBeTruthy();
+    expect(within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "资料库" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Agent" })).toBeNull();
   });
 
-  it("renders all publication cards with editorial metadata and accessible covers", () => {
-    renderAt("/archive");
-    const expectedCards: Array<[string, string, string]> = [
-      ["人民日报", "中国共产党中央委员会", "1946 —"],
-      ["参考消息", "新华通讯社", "1957 —"],
-      ["红旗", "中国共产党中央委员会", "1958 — 1988"],
-      ["人民画报", "人民画报社", "1950 —"],
-      ["世界知识", "世界知识出版社", "1934 —"],
-    ];
+  it("does not expose the previous interface through the legacy entry", async () => {
+    renderAt("/legacy");
 
-    for (const [title, publisher, year] of expectedCards) {
-      const heading = screen.getByRole("heading", { name: title, level: 2 });
-      const card = heading.closest(".group")!;
-      expect(within(card as HTMLElement).getByRole("img", { name: title })).toBeTruthy();
-      expect(within(card as HTMLElement).getByText(publisher)).toBeTruthy();
-      expect(within(card as HTMLElement).getByText(year)).toBeTruthy();
-    }
+    await waitFor(() => expect(window.location.pathname).toBe("/"));
+    expect(screen.getByRole("heading", { name: "今天读什么？" })).toBeTruthy();
   });
 
-  it("opens the selected publication card in the reader", async () => {
+  it("moves the Archive index to the redesigned library", async () => {
     renderAt("/archive");
-    const card = screen.getByRole("heading", { name: "人民画报", level: 2 }).closest(".group")!;
-    fireEvent.click(card);
-
-    await waitFor(() => expect(window.location.pathname).toBe("/archive/rmhb/197292"));
-    await waitFor(() => {
-      expect(appPdfMocks.usePdfDocument).toHaveBeenLastCalledWith({
-        url: "https://blacknews.jojokanbao.cn/RMHB/1972/197292.pdf",
-        protectedPdf: "auto",
-      });
-    });
+    await waitFor(() => expect(window.location.pathname).toBe("/library"));
+    expect(screen.getByRole("region", { name: "馆藏列表" })).toBeTruthy();
   });
 
   it("redirects every publication root to its documented default issue", async () => {
@@ -105,14 +110,14 @@ describe("JOJO Web routes and Archive homepage", () => {
     expect(window.location.hash).toBe("#page-2");
   });
 
-  it("redirects the exact /reader route to the Archive root", async () => {
+  it("redirects the exact /reader route to the redesigned library", async () => {
     renderAt("/reader");
 
-    await waitFor(() => expect(window.location.pathname).toBe("/archive"));
+    await waitFor(() => expect(window.location.pathname).toBe("/library"));
   });
 
   it("keeps unfinished modules disabled by default", () => {
-    for (const path of ["/account", "/rag", "/olds"]) {
+    for (const path of ["/rag", "/olds"]) {
       const view = renderAt(path);
       expect(screen.getByRole("heading", { name: "404 Not Found" })).toBeTruthy();
       view.unmount();
@@ -129,62 +134,60 @@ describe("JOJO Web routes and Archive homepage", () => {
 });
 
 describe("JOJO Web navigation", () => {
-  it("does not expose the account entry while its rollout flag is disabled", () => {
+  it("keeps the login entry visible", () => {
     renderAt("/archive");
 
-    expect(screen.queryByRole("link", { name: "账号" })).toBeNull();
+    expect(screen.getByRole("link", { name: "登录" }).getAttribute("href")).toBe("/account");
   });
 
-  it("only marks the Archive homepage active on the exact root route", () => {
+  it("keeps the account route visible when local auth configuration is absent", () => {
+    renderAt("/account");
+
+    expect(screen.getByRole("heading", { name: "登录服务未配置" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /返回首页/ }).getAttribute("href")).toBe("/");
+  });
+
+  it("keeps the platform navigation neutral inside a publication reader", () => {
     renderAt("/archive/hq/196419");
 
     const homeLink = screen.getByRole("link", { name: "首页" });
-    const magazineMenu = screen.getByRole("button", { name: "杂志" });
-    expect(homeLink.classList.contains("text-red")).toBe(false);
-    expect(homeLink.querySelector("span")).toBeNull();
-    expect(magazineMenu.classList.contains("text-red")).toBe(true);
-    expect(magazineMenu.querySelector("span")).not.toBeNull();
+    expect(homeLink.classList.contains("is-active")).toBe(false);
+    expect(screen.getByRole("link", { name: "资料库" }).classList.contains("is-active")).toBe(false);
+    expect(screen.queryByRole("button", { name: "杂志" })).toBeNull();
   });
 
   it("navigates to search and marks the route active", async () => {
     renderAt("/archive");
     fireEvent.click(screen.getByRole("link", { name: "搜索" }));
 
-    await waitFor(() => expect(window.location.pathname).toBe("/archive/search"));
+    await waitFor(() => expect(window.location.pathname).toBe("/search"));
     expect(screen.getByPlaceholderText("在JOJO看报上搜索")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "搜索" }).className).toContain("text-red");
+    expect(screen.getByRole("link", { name: "搜索" }).className).toContain("is-active");
   });
 
-  it("opens a desktop publication menu and closes it after navigation", async () => {
+  it("opens the library from the archive through the shared navigation", async () => {
     renderAt("/archive");
-    const newspaperMenu = screen.getByRole("button", { name: "报纸" });
-    fireEvent.focus(newspaperMenu);
-    expect(newspaperMenu.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(screen.getByRole("link", { name: "资料库" }));
 
-    fireEvent.click(screen.getByRole("link", { name: "参考消息" }));
-    await waitFor(() => expect(window.location.pathname).toBe("/archive/ckxx/19760910"));
-    expect(newspaperMenu.getAttribute("aria-expanded")).toBe("false");
+    await waitFor(() => expect(window.location.pathname).toBe("/library"));
+    expect(screen.getByRole("link", { name: "资料库" }).className).toContain("is-active");
   });
 
-  it("opens the mobile menu, navigates, and closes the menu", async () => {
+  it("uses the same About entry instead of the old feedback menu", async () => {
     renderAt("/archive");
-    const menuButton = screen.getByRole("button", { name: "菜单" });
-    fireEvent.click(menuButton);
-    const feedbackLinks = screen.getAllByRole("link", { name: "反馈" });
-    expect(feedbackLinks).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "菜单" })).toBeNull();
+    fireEvent.click(screen.getByRole("link", { name: "关于" }));
 
-    fireEvent.click(feedbackLinks.at(-1)!);
-    await waitFor(() => expect(window.location.pathname).toBe("/archive/support"));
-    expect(screen.getByRole("heading", { name: "反馈" })).toBeTruthy();
-    expect(screen.getAllByRole("link", { name: "反馈" })).toHaveLength(1);
+    await waitFor(() => expect(window.location.pathname).toBe("/support"));
+    expect(screen.getByRole("heading", { name: "关于 JOJO 看报" })).toBeTruthy();
   });
 
   it("returns home through the mobile brand link", async () => {
     renderAt("/archive/support");
-    fireEvent.click(screen.getByRole("link", { name: "JOJO看报" }));
+    fireEvent.click(screen.getByRole("link", { name: "JOJO 看报首页" }));
 
-    await waitFor(() => expect(window.location.pathname).toBe("/archive"));
-    expect(screen.getByRole("heading", { name: "人民日报", level: 2 })).toBeTruthy();
+    await waitFor(() => expect(window.location.pathname).toBe("/"));
+    expect(screen.getByRole("heading", { name: "今天读什么？" })).toBeTruthy();
   });
 });
 
@@ -192,9 +195,12 @@ describe("Support page", () => {
   it("keeps feedback, download, memorial, and donation sections available", () => {
     renderAt("/archive/support");
 
-    for (const name of ["反馈", "纪念缅怀", "数据下载", "捐助"]) {
+    for (const name of ["关于 JOJO 看报", "纪念缅怀", "数据下载", "捐助"]) {
       expect(screen.getByRole("heading", { name })).toBeTruthy();
     }
+    expect(screen.queryByRole("link", { name: "打开旧版 JOJO 看报" })).toBeNull();
+    expect(screen.queryByText("开源项目")).toBeNull();
+    expect(screen.queryByRole("link", { name: "GitHub 查看源码" })).toBeNull();
     expect(screen.getByText("974380749")).toBeTruthy();
     expect(screen.getByRole("link", { name: /纪念毛主席诞辰132周年/ }).getAttribute("target")).toBe("_blank");
     expect(screen.getAllByRole("link", { name: "OneDrive下载" })).toHaveLength(5);

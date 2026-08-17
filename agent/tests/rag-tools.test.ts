@@ -66,13 +66,17 @@ describe("RAG content tools", () => {
     const tools = createRagTools({
       searchUrl: "https://search.test/content/search",
       contentCdnBase: "https://cdn.test/",
-      scope: { datasetIds: ["book-a"], itemIds: ["book-a:full-book"] },
+      scope: {
+        datasetIds: ["book-a"],
+        itemIds: ["book-a:full-book"],
+        manifestObjects: [manifestObject],
+      },
       fetchFn: fetchFn as typeof fetch,
     });
     const search = tools.find((tool) => tool.name === "search_content")!;
     await search.execute("search", { query: "苹果", datasetIds: ["ignored"] }, undefined);
     const inspect = tools.find((tool) => tool.name === "inspect_item")!;
-    const inspection = await inspect.execute("inspect", { manifestObject }, undefined);
+    const inspection = await inspect.execute("inspect", {}, undefined);
     expect(inspection.details).toMatchObject({
       itemId: "book-a:full-book",
       chapterCount: 2,
@@ -86,6 +90,20 @@ describe("RAG content tools", () => {
         { depth: 1, title: "第二章", fragmentObject: chapterTwoObject },
       ],
     });
+    const selectedOnlyTools = createRagTools({
+      contentCdnBase: "https://cdn.test/",
+      scope: {
+        datasetIds: ["book-a"],
+        itemIds: ["book-a:full-book"],
+        manifestObjects: [manifestObject],
+      },
+      fetchFn: fetchFn as typeof fetch,
+    });
+    expect(selectedOnlyTools.find((tool) => tool.name === "search_content")).toBeUndefined();
+    const selectedInspection = await selectedOnlyTools
+      .find((tool) => tool.name === "inspect_item")!
+      .execute("inspect-selected", {}, undefined);
+    expect(selectedInspection.details).toMatchObject({ title: "测试书" });
     const toc = tools.find((tool) => tool.name === "list_item_toc")!;
     const listed = await toc.execute("toc", { manifestObject, offset: 1, limit: 1 }, undefined);
     expect(listed.details).toMatchObject({
@@ -154,6 +172,6 @@ describe("RAG content tools", () => {
       estimatedBytes: 400,
       byteBudget: 300,
     });
-    expect(fetchFn).toHaveBeenCalledTimes(7);
+    expect(fetchFn).toHaveBeenCalledTimes(8);
   });
 });

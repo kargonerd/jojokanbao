@@ -33,7 +33,7 @@ describe("createPlatformModelRuntime", () => {
           type: "oauth",
           access: "access",
           refresh: "refresh",
-          expires: 0,
+          expires: Date.now() + 60_000,
         },
       }),
       write: async () => undefined,
@@ -43,5 +43,42 @@ describe("createPlatformModelRuntime", () => {
 
     expect(runtime.configured).toBe(true);
     expect(runtime.auth).toMatchObject({ type: "oauth", source: "OAuth" });
+  });
+
+  it("refreshes an expired Codex credential without loading Node-only OAuth code", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      access_token: "fresh-access",
+      refresh_token: "fresh-refresh",
+      expires_in: 3_600,
+    }), { status: 200, headers: { "content-type": "application/json" } });
+    let writtenAccess = "";
+    const credentials = new PersistentCredentialStore({
+      read: async () => ({
+        "openai-codex": {
+          type: "oauth",
+          access: "expired-access",
+          refresh: "expired-refresh",
+          expires: 0,
+        },
+      }),
+      write: async (next) => {
+        const credential = next["openai-codex"];
+        writtenAccess = credential?.type === "oauth" ? credential.access : "";
+      },
+    });
+
+    try {
+      const runtime = await createPlatformModelRuntime({
+        config: resolvePlatformModelConfig({}),
+        credentials,
+      });
+      const auth = await runtime.models.getAuth("openai-codex");
+      expect(runtime.auth).toMatchObject({ type: "oauth", source: "OAuth" });
+      expect(auth).toMatchObject({ auth: { apiKey: "fresh-access" }, source: "OAuth" });
+      expect(writtenAccess).toBe("fresh-access");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

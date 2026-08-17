@@ -272,7 +272,7 @@ test("browser download restores a readable PDF with the issue filename", async (
   expect(Buffer.concat(chunks).subarray(0, 5).toString("ascii")).toBe("%PDF-");
 });
 
-test("reader dropdowns stay above the toolbar and close consistently", async ({ page }) => {
+test("reader controls close consistently and keep the platform navigation", async ({ page }) => {
   const pdf = makeDemandLoadedPdf(1_000);
   await page.route("https://blacknews.jojokanbao.cn/**/*.pdf", async (route) => {
     const range = route.request().headers().range;
@@ -326,15 +326,10 @@ test("reader dropdowns stay above the toolbar and close consistently", async ({ 
   await page.mouse.click(8, 180);
   await expect(page.getByText("页面跳转")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "杂志" }).hover();
-  const magazineLink = page.getByRole("link", { name: "人民画报" });
-  await expect(magazineLink).toBeVisible();
-  const linkIsTopmost = await magazineLink.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    const target = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-    return target === element || element.contains(target);
-  });
-  expect(linkIsTopmost).toBe(true);
+  const navigation = page.getByRole("navigation", { name: "主导航" });
+  await expect(navigation.getByRole("link", { name: "首页", exact: true })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "资料库", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "杂志" })).toHaveCount(0);
 });
 
 test("mobile PDF slots omit text layers, keep their page ratio, and evict distant canvases", async ({ page }) => {

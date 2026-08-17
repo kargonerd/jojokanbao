@@ -28,6 +28,11 @@ await cp(
   path.join(cloudFunctionsOutput, "gateway"),
   { recursive: true },
 );
+await cp(
+  path.join(edgeoneRoot, "functions", "_shared"),
+  path.join(cloudFunctionsOutput, "_shared"),
+  { recursive: true },
+);
 
 const edgeoneConfig = JSON.parse(
   await readFile(

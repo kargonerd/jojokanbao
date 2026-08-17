@@ -117,6 +117,17 @@ export async function loadAssetUrl(loaded: LoadedItem, assetId: string): Promise
   return URL.createObjectURL(new Blob([bytes.slice().buffer], { type: asset.mediaType }));
 }
 
+export async function loadBookCoverUrl(datasetId: string, itemKey?: string): Promise<string | undefined> {
+  const dataset = await loadDataset(datasetId);
+  const summary = itemKey
+    ? dataset.index.items.find((item) => item.itemKey === itemKey || item.itemId === itemKey)
+    : dataset.index.items.find((item) => item.publicationStatus !== "draft");
+  if (!summary) return undefined;
+  const loaded = await loadItem(datasetId, summary.itemKey);
+  const cover = loaded.manifest.assets.find((asset) => asset.type === "image" && asset.role === "cover");
+  return cover ? loadAssetUrl(loaded, cover.id) : undefined;
+}
+
 export async function downloadExport(loaded: LoadedItem, exportId: string): Promise<void> {
   const descriptor = loaded.manifest.exports.find((candidate) => candidate.id === exportId);
   if (!descriptor) throw new Error("导出文件不存在");

@@ -42,7 +42,7 @@ distinct `fragmentObject` results.
 
 Reader Search supports append-only repairs without Elasticsearch update/delete
 operations. It reads reviewed migration JSON files from
-`tools/data-workbench/server/es_migrations/` and adds one `must_not.ids`
+`tools/jojo-admin/server/es_migrations/` and adds one `must_not.ids`
 filter to each search request:
 
 - a repair excludes the superseded document ID;

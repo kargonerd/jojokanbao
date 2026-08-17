@@ -14,6 +14,7 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: {
+      VITE_ENABLE_PLATFORM_REDESIGN: "true",
       VITE_ENABLE_ACCOUNT: "false",
       VITE_ENABLE_OLDS: "false",
       VITE_ENABLE_RAG: "false",

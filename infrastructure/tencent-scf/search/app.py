@@ -38,7 +38,7 @@ patch_state_path = os.environ.get('SEARCH_PATCH_STATE_FILE')
 overfetch_multiplier = int(os.environ.get('SEARCH_OVERFETCH_MULTIPLIER', '5'))
 migrations_dir = Path(os.environ.get(
   'SEARCH_MIGRATIONS_DIR',
-  Path(__file__).resolve().parents[2] / 'internal' / 'data-workbench' / 'server' / 'es_migrations',
+  Path(__file__).resolve().parents[3] / 'tools' / 'jojo-admin' / 'server' / 'es_migrations',
 ))
         
 IS_SERVERLESS = bool(os.environ.get('SERVERLESS'))

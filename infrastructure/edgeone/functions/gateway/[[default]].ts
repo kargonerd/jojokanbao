@@ -1,5 +1,5 @@
 import { createCredentialAdminHandler } from "@jojo/agent/edgeone/credential-admin";
-import { handleAgentProxyRequest } from "@jojo/agent/edgeone/proxy";
+import { handleAgentProxyRequest } from "../_shared/agent-proxy";
 
 const handleCredentials = createCredentialAdminHandler();
 

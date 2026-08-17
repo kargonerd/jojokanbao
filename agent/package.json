@@ -8,7 +8,6 @@
   "exports": {
     ".": "./src/index.ts",
     "./edgeone/credential-admin": "./src/edgeone/credential-admin.ts",
-    "./edgeone/proxy": "./src/edgeone/proxy.ts",
     "./edgeone/service-auth": "./src/edgeone/service-auth.ts"
   },
   "engines": {

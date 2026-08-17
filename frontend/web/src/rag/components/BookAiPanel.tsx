@@ -7,6 +7,7 @@ interface BookAiPanelProps {
   bookTitle: string;
   datasetId: string;
   itemId: string;
+  manifestObject: string;
   initialQuestion?: string;
   initialAnswer?: string;
   explanationQuote?: string;
@@ -16,7 +17,7 @@ interface BookAiPanelProps {
   onExplanationComplete?: (quote: string, answer: string) => void;
 }
 
-export function BookAiPanel({ bookTitle, datasetId, itemId, initialQuestion, initialAnswer, explanationQuote, panelClass, onClose, onJump, onExplanationComplete }: BookAiPanelProps) {
+export function BookAiPanel({ bookTitle, datasetId, itemId, manifestObject, initialQuestion, initialAnswer, explanationQuote, panelClass, onClose, onJump, onExplanationComplete }: BookAiPanelProps) {
   const [messages, setMessages] = useState<RagMessage[]>(initialAnswer ? [{ role: "assistant", content: initialAnswer }] : []);
   const [input, setInput] = useState("");
   const [streamContent, setStreamContent] = useState("");
@@ -40,7 +41,7 @@ export function BookAiPanel({ bookTitle, datasetId, itemId, initialQuestion, ini
     setStreamContent("");
     let answer = "";
     cancelRef.current = askStream(
-      { dataset_id: datasetId, item_ids: [itemId], question, conversation_id: conversationId },
+      { dataset_id: datasetId, item_ids: [itemId], manifest_objects: [manifestObject], question, conversation_id: conversationId },
       (chunk) => { answer += chunk; setStreamContent(answer); },
       (references, nextConversationId) => {
         setMessages([...nextMessages, { role: "assistant", content: answer, references }]);

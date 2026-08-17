@@ -23,8 +23,8 @@ app.add_middleware(
     allow_origins=list(settings.allowed_origins),
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
-    expose_headers=["X-Request-ID"],
+    allow_headers=["Authorization", "Content-Type", "X-JOJO-Visitor-ID", "X-Request-ID"],
+    expose_headers=["ETag", "X-Request-ID"],
 )
 app.add_middleware(ResponseHeadersMiddleware)
 install_exception_handlers(app)
