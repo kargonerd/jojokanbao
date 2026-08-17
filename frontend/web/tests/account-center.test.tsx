@@ -94,18 +94,19 @@ describe("account center", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("heading", { name: "我的邀请码" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "邀请码" })).toBeTruthy();
     await waitFor(() => expect(account.invitation.load).toHaveBeenCalledWith("reader-1"));
   });
 
   it("keeps an authenticated reader on /account and loads their invitation", async () => {
     render(<MemoryRouter><AccountLogin /></MemoryRouter>);
 
-    expect(screen.getByRole("heading", { name: "读者身份" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "账号" })).toBeNull();
     expect(screen.getByText("雪豹-TGH")).toBeTruthy();
-    expect(screen.getByText("代号取自全球动植物名称，目前暂不可修改。")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "我的邀请码" })).toBeTruthy();
+    expect(screen.getByText("暂不可修改")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "邀请码" })).toBeTruthy();
     expect(screen.getByLabelText("邀请码 K7MP4X")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "换一个邀请码" })).toBeNull();
     expect(screen.queryByText("我的书架")).toBeNull();
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.queryByText("账号资料")).toBeNull();
@@ -118,7 +119,7 @@ describe("account center", () => {
     render(<MemoryRouter><AccountLogin /></MemoryRouter>);
 
     expect(screen.getByText("代号待分配")).toBeTruthy();
-    expect(screen.getByText("读者代号尚未完成分配，请稍后刷新页面。")).toBeTruthy();
+    expect(screen.getByText("正在分配，请稍后刷新")).toBeTruthy();
   });
 
   it("generates the reader's first invitation", async () => {
