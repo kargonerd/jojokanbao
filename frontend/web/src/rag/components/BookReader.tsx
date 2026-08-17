@@ -771,9 +771,12 @@ export function BookReader({
 
     <header className={`relative z-20 h-12 border-b backdrop-blur-md ${chromeClass}`}>
       <div className="mx-auto flex h-full max-w-[1180px] items-center gap-3 px-4 font-sans text-xs md:px-10">
-        <Link to={backHref} className="text-current no-underline" aria-label="返回问答">←</Link>
-        <span className="min-w-0 flex-1 truncate text-muted md:hidden">{chapters[activeChapterIndex]?.title || bookTitle}</span>
-        <span className="hidden min-w-0 flex-1 truncate text-muted md:block">{bookTitle}</span>
+        <Link to={backHref} className="flex h-7 w-6 shrink-0 items-center justify-start text-current no-underline hover:text-red focus-visible:outline-2 focus-visible:outline-red" aria-label="返回问答">
+          <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true">
+            <path d="m8.5 4.5-5.5 5.5 5.5 5.5M3.5 10H17" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" />
+          </svg>
+        </Link>
+        <span className="max-w-[52vw] shrink truncate text-muted md:max-w-[min(34vw,28rem)]">{bookTitle}</span>
         {bookshelfEnabled && <button
           type="button"
           aria-pressed={onBookshelf}
@@ -787,6 +790,7 @@ export function BookReader({
           </svg>
           <span className="hidden sm:inline">{onBookshelf ? "已在书架" : "加入书架"}</span>
         </button>}
+        <span className="min-w-0 flex-1" aria-hidden="true" />
         <span className="hidden max-w-[42%] truncate text-muted md:block">{chapters[activeChapterIndex]?.title}</span>
         <span className="hidden tabular-nums text-muted md:inline">全书 {bookProgress}%</span>
       </div>
