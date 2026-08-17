@@ -77,10 +77,13 @@ describe("BookReader", () => {
     const { container } = renderReader();
     const flow = container.querySelector<HTMLElement>("[data-book-page-flow]");
     const toolbar = container.querySelector<HTMLElement>("[data-book-toolbar]");
+    const bookshelfButton = screen.getByRole("button", { name: "加入书架" });
     expect(flow).not.toBeNull();
     expect(flow?.style.columnCount).toBe("2");
     expect(toolbar?.className).toContain("right-5");
     expect(toolbar?.className).not.toContain("left-5");
+    expect(toolbar?.contains(bookshelfButton)).toBe(false);
+    expect(bookshelfButton.closest("header")).not.toBeNull();
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "切换阅读模式" }).dataset.readerMode).toBe("paged");
     expect(screen.queryByRole("button", { name: "阅读设置" })).toBeNull();
     expect(screen.getByRole("button", { name: "调整字号" })).toBeTruthy();

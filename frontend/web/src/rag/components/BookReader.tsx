@@ -712,7 +712,6 @@ export function BookReader({
       <button type="button" onClick={() => openPanel("toc")} className={controlClass} aria-label="打开目录" title="目录">目录</button>
       <button type="button" onClick={() => openPanel("search")} className={controlClass} aria-label="搜索全书" title="搜索全书">搜索</button>
       {agentEnabled && <button type="button" onClick={() => { setAiQuestion(undefined); setAiInitialAnswer(undefined); setAiExplanationQuote(undefined); openPanel("ai"); }} className={controlClass} aria-label="打开书内 AI" title="书内 AI">AI</button>}
-      {bookshelfEnabled && <button type="button" aria-pressed={onBookshelf} onClick={() => void toggleBookshelf()} className={`${controlClass} ${onBookshelf ? "text-red" : ""}`} aria-label={onBookshelf ? "移出书架" : "加入书架"} title={onBookshelf ? "移出书架" : "加入书架"}>书架</button>}
       <button type="button" onClick={() => openTool("font")} className={controlClass} aria-label="调整字号" title="字号">字号</button>
       <button type="button" onClick={() => openTool("color")} className={controlClass} aria-label="选择纸张颜色" title="纸张颜色"><span className={`h-4 w-4 border ${isDark ? "border-white/50 bg-[#202321]" : paperColor === "white" ? "border-[#aaa] bg-white" : "border-[#b8ad96] bg-[#fbfaf6]"}`} aria-hidden="true" /></button>
       <button type="button" aria-pressed={paperTexture} onClick={() => setPaperTexture((value) => !value)} className={`${controlClass} ${paperTexture ? "text-red" : ""}`} aria-label="切换纸张纹理" title={paperTexture ? "关闭纸张纹理" : "开启纸张纹理"}>纹理</button>
@@ -775,6 +774,19 @@ export function BookReader({
         <Link to={backHref} className="text-current no-underline" aria-label="返回问答">←</Link>
         <span className="min-w-0 flex-1 truncate text-muted md:hidden">{chapters[activeChapterIndex]?.title || bookTitle}</span>
         <span className="hidden min-w-0 flex-1 truncate text-muted md:block">{bookTitle}</span>
+        {bookshelfEnabled && <button
+          type="button"
+          aria-pressed={onBookshelf}
+          aria-label={onBookshelf ? "移出书架" : "加入书架"}
+          title={onBookshelf ? "移出书架" : "加入书架"}
+          onClick={() => void toggleBookshelf()}
+          className={`group flex h-8 shrink-0 items-center gap-1.5 border-0 bg-transparent px-2 font-sans text-[11px] cursor-pointer focus-visible:outline-2 focus-visible:outline-red ${onBookshelf ? "text-red" : "text-muted hover:text-red"}`}
+        >
+          <svg viewBox="0 0 16 20" className="h-4 w-3.5" aria-hidden="true">
+            <path d="M2.25 1.5h11.5v16.75L8 14.7l-5.75 3.55V1.5Z" fill={onBookshelf ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.25" />
+          </svg>
+          <span className="hidden sm:inline">{onBookshelf ? "已在书架" : "加入书架"}</span>
+        </button>}
         <span className="hidden max-w-[42%] truncate text-muted md:block">{chapters[activeChapterIndex]?.title}</span>
         <span className="hidden tabular-nums text-muted md:inline">全书 {bookProgress}%</span>
       </div>
