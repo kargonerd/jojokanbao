@@ -25,6 +25,14 @@ Flask on port 5000. The lower-level `dev:admin-api` and
 `dev:admin-web` commands remain available when only one side needs
 debugging.
 
+## RMRB missing-content review
+
+The `/rmrb-review` React route uses the staging-only `/api/rmrb-review/*`
+endpoints. Set `RMRB_REVIEW_ROOT` when the queue and decision JSONL files are
+not below the repository `tmp/rmrb-peopledata-full-directory` directory. Set
+`RMRB_SOURCE_PDF_ROOT` to expose matching local source PDFs through the review
+link. These endpoints never write the source corpus or Elasticsearch.
+
 ## ES repair
 
 Run `python app.py`, then open `http://127.0.0.1:5000/` for the admin console

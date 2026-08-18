@@ -53,7 +53,7 @@ export function OverviewPage() {
               <p className="eyebrow">MODULES</p>
               <h2>数据管理模块</h2>
             </div>
-            <span>5 个模块可用</span>
+            <span>6 个模块可用</span>
           </header>
           <div className="module-grid">
             <Link className="module-card" to="/pdf">
@@ -96,6 +96,12 @@ export function OverviewPage() {
               <h3>Agent 管理</h3>
               <p>检查本机 Codex OAuth，并通过 Operator 接口更新部署端凭据。</p>
               <footer><span>进入 Agent 运维</span><b>→</b></footer>
+            </Link>
+            <Link className="module-card" to="/rmrb-review">
+              <span className="module-code">RMRB</span>
+              <h3>人民日报缺失正文</h3>
+              <p>按人民数据目录复核本地两份来源均未提供正文的记录，只生成 staging 决策。</p>
+              <footer><span>进入人工复核</span><b>→</b></footer>
             </Link>
           </div>
         </section>
