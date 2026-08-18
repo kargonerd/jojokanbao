@@ -47,6 +47,13 @@ Agent 管理页面位于 `http://127.0.0.1:4174/agent`。本机 Flask 优先读�
 匿名角色没有表或用户 RPC 权限；登录读者通过 `reader.annotations` 功能开关访问，
 Workbench 通过 operator RPC 审核。
 
+人民日报缺失正文工作台位于 `http://127.0.0.1:4174/rmrb-review`。它读取
+`tmp/rmrb-peopledata-full-directory/merged-missing-workbench.sqlite3`，按日期升序
+展示本地 JSONL 与年度 XLSX 合并后仍为空的目录记录。Accept/Reject 只写入
+`manual-review-decisions-workbench.jsonl`，不会直接修改语料或 Elasticsearch。
+生成合并队列和自动补全图片记录的命令见
+[`tools/rmrb-repair/README.md`](../rmrb-repair/README.md)。
+
 Publication configuration is read from the repository `.env`:
 
 ```text

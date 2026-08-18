@@ -1,0 +1,73 @@
+export type RmrbDecision = {
+  decision: "accept" | "reject";
+  content?: string;
+  reason?: string;
+};
+
+export type RmrbReviewItem = {
+  date: string;
+  page: number;
+  peopleDataOrdinal: number;
+  title: string;
+  status: string;
+  rawRecoveryClass: string;
+  peopleDataHref?: string;
+  sourcePdf?: string;
+  decision?: RmrbDecision;
+};
+
+export type RmrbQueue = {
+  success: boolean;
+  total: number;
+  offset: number;
+  limit: number;
+  sort: "date-ascending";
+  items: RmrbReviewItem[];
+};
+
+export type RmrbStats = {
+  success: boolean;
+  total: number;
+  counts: { pending: number; accept: number; reject: number };
+};
+
+async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, init);
+  const payload = await response.json();
+  if (!response.ok || payload.success === false) {
+    throw new Error(payload.error || payload.message || `Request failed: ${response.status}`);
+  }
+  return payload as T;
+}
+
+export const rmrbReviewApi = {
+  queue(offset: number, limit: number, query: string) {
+    const params = new URLSearchParams({
+      offset: String(offset),
+      limit: String(limit),
+      pendingOnly: "1",
+    });
+    if (query.trim()) params.set("q", query.trim());
+    return requestJson<RmrbQueue>(`/api/rmrb-review/queue?${params}`);
+  },
+  stats() {
+    return requestJson<RmrbStats>("/api/rmrb-review/stats");
+  },
+  decide(item: RmrbReviewItem, decision: "accept" | "reject", content: string, reason: string) {
+    return requestJson<{ success: true; decision: RmrbDecision }>(
+      "/api/rmrb-review/decision",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: item.date,
+          page: item.page,
+          peopleDataOrdinal: item.peopleDataOrdinal,
+          decision,
+          content,
+          reason,
+        }),
+      },
+    );
+  },
+};
