@@ -65,7 +65,7 @@
     "appId": "cn.jojokanbao.desktop",
     "productName": "JOJO看报",
     "executableName": "jojo-kanbao",
-    "artifactName": "JOJO看报-${version}-${arch}.${ext}",
+    "artifactName": "JOJO-Kanbao-${version}-${arch}.${ext}",
     "directories": {
       "output": "release"
     },
