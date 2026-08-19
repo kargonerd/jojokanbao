@@ -6,6 +6,7 @@ import { EsDataPage } from "./pages/EsDataPage";
 import { ContentDataPage } from "./pages/ContentDataPage";
 import { FeatureFlagsPage } from "./features/FeatureFlagsPage";
 import { AgentAdminPage } from "./agent/AgentAdminPage";
+import { ModerationPage } from "./moderation/ModerationPage";
 
 export function App() {
   return (
@@ -18,6 +19,7 @@ export function App() {
           <Route path="content" element={<ContentDataPage />} />
           <Route path="features" element={<FeatureFlagsPage />} />
           <Route path="agent" element={<AgentAdminPage />} />
+          <Route path="moderation" element={<ModerationPage />} />
           <Route path="es-repair" element={<Navigate replace to="/es" />} />
         </Route>
       </Routes>

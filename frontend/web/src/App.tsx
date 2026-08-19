@@ -9,6 +9,7 @@ import { NotFoundPage } from "./NotFoundPage";
 import { PlatformLayout } from "./platform/PlatformLayout";
 import { PlatformHomePage } from "./platform/pages/HomePage";
 import { LibraryPage } from "./platform/pages/LibraryPage";
+import { NotificationsPage } from "./notifications/NotificationsPage";
 import { PERIODICALS } from "./platform/catalog";
 import { rollout } from "./rollout";
 import { ARCHIVE_ROOT, defaultArchiveIssuePath } from "./routes";
@@ -125,6 +126,7 @@ function PlatformRoutes() {
           <Route path="library/:datasetId" element={<LibraryPage periodicals={PERIODICALS} />} />
           <Route path="search" element={<div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage platformRedesign /></div>} />
           <Route path="support" element={<SupportPage platformRedesign />} />
+          <Route path="notifications" element={<NotificationsPage />} />
         </Route>
 
         <Route path="/book/:notebookId/:sourceId" element={<LazyRoute><BookReaderPage publicReader /></LazyRoute>} />
