@@ -84,8 +84,8 @@ python tools/rmrb-repair/prepare_rmrb_publication.py `
 ```
 
 The output contains B2 Canonical objects under `canonical/`, public Jox
-objects under `delivery/`, a private Hugging Face mirror under
-`huggingface/rmrb/`, and private repair audit material under
+objects under `delivery/`, a Hugging Face dataset under
+`huggingface/newspapers/rmrb/`, and private repair audit material under
 `raw/newspapers/rmrb/repair-runs/`. Missing articles remain in Items with
 `contentState: "missing"`; Delivery keeps their descriptors with
 `object: null`. `manifest.json` records every file's size and SHA-256;
