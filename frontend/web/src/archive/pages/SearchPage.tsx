@@ -1,5 +1,5 @@
 import { Fragment, useState, useEffect, useRef, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { Button, Tag, Pagination, LoadingSpinner, DateRangePicker, type DateRangeValue } from "@jojo/ui";
 import { getLatestRmrbAvailableDate } from "../dateAvailability";
@@ -89,7 +89,13 @@ function buildSearchParams({
   return query;
 }
 
-export function SearchPage({ platformRedesign = rollout.platformRedesign }: { platformRedesign?: boolean }) {
+export function SearchPage({
+  platformRedesign = rollout.platformRedesign,
+  openResultsInNewTab = true,
+}: {
+  platformRedesign?: boolean;
+  openResultsInNewTab?: boolean;
+}) {
   const [params, setParams] = useSearchParams();
   const [term, setTerm] = useState(params.get("keyword") || "");
   const [results, setResults] = useState<SearchResult[] | null>(null);
@@ -230,7 +236,11 @@ export function SearchPage({ platformRedesign = rollout.platformRedesign }: { pl
   const selectedSortLabel = SORT_OPTIONS.find((option) => option.value === sort)?.label ?? "默认排序";
 
   return (
-    <div ref={scrollContainerRef} data-search-scroll-container className="h-full overflow-y-auto bg-paper text-ink">
+    <div
+      ref={scrollContainerRef}
+      data-search-scroll-container
+      className={`h-full overflow-y-auto text-ink ${platformRedesign ? "platform-search-page" : "bg-paper"}`}
+    >
       {loading && <LoadingSpinner text="搜索中" fullscreen />}
 
       {/* Centered search */}
@@ -338,11 +348,15 @@ export function SearchPage({ platformRedesign = rollout.platformRedesign }: { pl
                       <span className="absolute left-0 top-5 w-9 pb-1.5 border-b-2 border-red text-red text-[13px] font-bold tracking-wider">
                         {String(i + 1 + (page - 1) * pageSize).padStart(2, "0")}
                       </span>
-                      <a href={`${archiveIssuePath("rmrb", r.date.replace(/-/g, ""))}#page-${r.page}`} target="_blank" rel="noreferrer">
+                      <Link
+                        to={`${archiveIssuePath("rmrb", r.date.replace(/-/g, ""))}#page-${r.page}`}
+                        target={openResultsInNewTab ? "_blank" : undefined}
+                        rel={openResultsInNewTab ? "noreferrer" : undefined}
+                      >
                         <h3 className="text-xl font-bold text-ink tracking-wide m-0 hover:text-red transition-colors">
                           {renderHighlighted(r.title, false, true)}
                         </h3>
-                      </a>
+                      </Link>
                       <div className="flex gap-1.5 py-2">
                         <Tag>人民日报</Tag>
                         <Tag>{r.date}</Tag>

@@ -21,7 +21,7 @@ describe('ProjectOverviewPage', () => {
         currentStage: 'Metadata confirmation'
       }
     });
-    window.jojoDesktop = { appName: 'test', engine: { invoke } };
+    window.jojoDesktop = { appName: 'test', engine: { invoke } } as unknown as JojoDesktopBridge;
     const router = createMemoryRouter(
       [
         {
@@ -62,7 +62,7 @@ describe('ProjectOverviewPage', () => {
         currentStage: 'Proofreading workspace'
       }
     });
-    window.jojoDesktop = { appName: 'test', engine: { invoke } };
+    window.jojoDesktop = { appName: 'test', engine: { invoke } } as unknown as JojoDesktopBridge;
     const router = createMemoryRouter(
       [
         {

@@ -11,7 +11,7 @@ beforeEach(() => {
     appName: 'jojo-desktop',
     selectPdf: vi.fn(),
     engine: { invoke },
-  };
+  } as unknown as JojoDesktopBridge;
 });
 
 describe('Press routes', () => {

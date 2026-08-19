@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useAuthStore } from "@/account/auth";
-import { AccountBook, type AccountMode } from "@/account/components/AccountBook";
-import { LoginForm, RegisterForm } from "@/account/components/AccountForms";
-import { AccountCenterPage } from "@/account/pages/AccountCenterPage";
+import { useAuthStore } from "../auth";
+import { AccountBook, type AccountMode } from "../components/AccountBook";
+import { LoginForm, RegisterForm } from "../components/AccountForms";
+import { AccountCenterPage } from "./AccountCenterPage";
 
 export function AccountPage() {
   const navigate = useNavigate();

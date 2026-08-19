@@ -68,4 +68,21 @@ describe("usePdfDocument route transitions", () => {
     expect(snapshots[0]).toEqual({ url: "/second.pdf", loading: true, hasDocument: false });
     expect(screen.getByText("loading")).toBeTruthy();
   });
+
+  it("resolves the shared PDF.js resources against the current host", async () => {
+    const document = { numPages: 1, destroy: vi.fn().mockResolvedValue(undefined) };
+    pdfDocumentMocks.getDocument.mockReturnValue({
+      promise: Promise.resolve(document),
+      destroy: vi.fn().mockResolvedValue(undefined),
+    });
+
+    render(<DocumentStateProbe url="/font-test.pdf" snapshots={[]} />);
+    await waitFor(() => expect(screen.getByText("ready")).toBeTruthy());
+
+    expect(pdfDocumentMocks.getDocument).toHaveBeenCalledWith(expect.objectContaining({
+      cMapUrl: expect.stringMatching(/\/assets\/pdfjs\/cmaps\/$/),
+      wasmUrl: expect.stringMatching(/\/assets\/pdfjs\/wasm\/$/),
+      standardFontDataUrl: expect.stringMatching(/\/assets\/pdfjs\/standard_fonts\/$/),
+    }));
+  });
 });

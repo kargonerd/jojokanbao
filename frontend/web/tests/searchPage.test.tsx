@@ -35,12 +35,12 @@ function LocationProbe() {
   );
 }
 
-function renderSearch(path = "/search") {
+function renderSearch(path = "/search", platformRedesign = false) {
   window.history.replaceState({}, "", path);
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="/search" element={<SearchPage />} />
+        <Route path="/search" element={<SearchPage platformRedesign={platformRedesign} />} />
       </Routes>
       <LocationProbe />
     </MemoryRouter>,
@@ -74,6 +74,17 @@ afterEach(() => {
 });
 
 describe("SearchPage initial search", () => {
+  it("uses the platform canvas only in the redesigned shell", () => {
+    const { unmount } = renderSearch("/search", true);
+    const redesignedContainer = document.querySelector("[data-search-scroll-container]");
+    expect(redesignedContainer?.classList.contains("platform-search-page")).toBe(true);
+    expect(redesignedContainer?.classList.contains("bg-paper")).toBe(false);
+
+    unmount();
+    renderSearch();
+    expect(document.querySelector("[data-search-scroll-container]")?.classList.contains("bg-paper")).toBe(true);
+  });
+
   it("focuses the empty search box and ignores blank submissions", () => {
     renderSearch();
     const input = screen.getByPlaceholderText("在JOJO看报上搜索") as HTMLInputElement;

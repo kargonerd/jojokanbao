@@ -4,9 +4,8 @@ import { LoadingSpinner } from "@jojo/ui";
 import { notebookApi } from "../../rag/api";
 import { loadBookshelf, setBookshelf, type BookshelfEntry } from "../../rag/readerData";
 import type { RagNotebook, RagSource } from "../../rag/types";
-import { PUBLICATIONS } from "../../archive/publications";
-import { defaultArchiveIssuePath } from "../../routes";
-import { PERIODICALS, bookCoverTone, issueLabel, type PeriodicalEntry } from "../catalog";
+import type { PeriodicalEntry } from "../catalog";
+import { bookCoverTone, issueLabel } from "../bookCatalog";
 import { BookCover } from "../BookCover";
 import { fuzzyBookTitleScore } from "../bookSearch";
 import { usePlatformAccountStore } from "../accountSession";
@@ -39,7 +38,7 @@ function normalizedType(value: string | null): LibraryType {
   return value === "periodical" || value === "book" ? value : "all";
 }
 
-export function LibraryPage() {
+export function LibraryPage({ periodicals = [] }: { periodicals?: readonly PeriodicalEntry[] }) {
   const { datasetId } = useParams<{ datasetId?: string }>();
   const location = useLocation();
   const navigate = useNavigate();
@@ -58,7 +57,11 @@ export function LibraryPage() {
   const userId = usePlatformAccountStore((state) => state.userId);
   const flagsInitialized = useFeatureFlagStore((state) => state.initialized);
   const bookshelfEnabled = useFeatureFlag("library.bookshelf");
-  const type = normalizedType(searchParams.get("type"));
+  const includePeriodicals = periodicals.length > 0;
+  const type = includePeriodicals ? normalizedType(searchParams.get("type")) : "book";
+  const availableLibraryTypes = includePeriodicals
+    ? libraryTypes
+    : libraryTypes.filter((item) => item.id === "book");
 
   useEffect(() => {
     let active = true;
@@ -70,13 +73,13 @@ export function LibraryPage() {
         setError("");
       })
       .catch(() => {
-        if (active) setError("书籍目录暂时无法载入，报刊仍可正常使用。");
+        if (active) setError(includePeriodicals ? "书籍目录暂时无法载入，报刊仍可正常使用。" : "书籍目录暂时无法载入，请稍后重试。");
       })
       .finally(() => {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, []);
+  }, [includePeriodicals]);
 
   useEffect(() => {
     if (!userId || !bookshelfEnabled) {
@@ -125,12 +128,12 @@ export function LibraryPage() {
   }
 
   function issuePath(entry: PeriodicalEntry): string {
-    return defaultArchiveIssuePath(entry.id);
+    return `/archive/${entry.id}/${entry.defaultIssueId}`;
   }
 
   function rememberPeriodical(entry: PeriodicalEntry) {
     const href = issuePath(entry);
-    const id = href.split("/").at(-1) || PUBLICATIONS[entry.id].defaultId;
+    const id = href.split("/").at(-1) || entry.defaultIssueId;
     remember({ id: `periodical:${entry.id}`, kind: "periodical", publicationId: entry.id, title: entry.title, subtitle: issueLabel(id), href, progress: 0 });
   }
 
@@ -193,16 +196,16 @@ export function LibraryPage() {
     }
   }
 
-  const showPeriodicals = !datasetId && (type === "all" || type === "periodical");
+  const showPeriodicals = includePeriodicals && !datasetId && (type === "all" || type === "periodical");
   const showBooks = !datasetId && (type === "all" || type === "book");
   const titleMatches = (value: string) => !libraryQuery.trim() || Number.isFinite(fuzzyBookTitleScore(value, libraryQuery));
-  const visiblePeriodicals = PERIODICALS.filter((entry) => titleMatches(entry.title));
+  const visiblePeriodicals = periodicals.filter((entry) => titleMatches(entry.title));
   const visibleBooks = books.filter((book) => titleMatches(book.title || book.name || ""));
   const visibleSources = sources.filter((source) => titleMatches(source.title || source.name || ""));
   return (
     <main className="platform-library">
       <aside className="library-types" aria-label="资料类型">
-        {libraryTypes.map((item) => (
+        {availableLibraryTypes.map((item) => (
           <button
             key={item.id}
             type="button"
@@ -233,7 +236,7 @@ export function LibraryPage() {
             type="search"
             value={libraryQuery}
             onChange={(event) => setLibraryQuery(event.target.value)}
-            placeholder={datasetId ? "搜索本书分卷" : "搜索报刊或书名"}
+            placeholder={datasetId ? "搜索本书分卷" : includePeriodicals ? "搜索报刊或书名" : "搜索书名"}
           />
           {libraryQuery && <button type="button" onClick={() => setLibraryQuery("")} aria-label="清空馆藏搜索">清除</button>}
         </form>

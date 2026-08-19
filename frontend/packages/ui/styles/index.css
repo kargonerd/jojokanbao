@@ -76,7 +76,7 @@
   a:hover { color: var(--color-red-dark); }
 
   /* Inputs */
-  input, select, textarea {
+  input:not([type="radio"]):not([type="checkbox"]), select, textarea {
     border: 1px solid var(--color-rule-dark);
     background: var(--color-paper);
     color: var(--color-ink);
@@ -85,8 +85,8 @@
     font-family: inherit;
     transition: border-color .2s ease;
   }
-  input:hover, select:hover, textarea:hover { border-color: var(--color-red); }
-  input:focus, select:focus, textarea:focus {
+  input:not([type="radio"]):not([type="checkbox"]):hover, select:hover, textarea:hover { border-color: var(--color-red); }
+  input:not([type="radio"]):not([type="checkbox"]):focus, select:focus, textarea:focus {
     border-color: var(--color-red);
     outline: none;
     box-shadow: 0 0 0 1px var(--color-red);
