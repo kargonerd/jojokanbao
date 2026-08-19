@@ -802,7 +802,7 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
     }
     write_json(output / "canonical" / "newspapers" / "rmrb" / "dataset.json", dataset)
     write_json(output / "huggingface" / "rmrb" / "dataset.json", dataset)
-    hf_readme = """# 人民日报\n\nJOJO Canonical 的 Hugging Face 私有镜像。\n\n- `data/articles/*.jsonl.gz`：Dataset Viewer 用年度文章分片。\n- `items/`：一天一个完整 `jojo-item/1`。\n- `assets/`：按 SHA-256 命名的整期 PDF 与文章图片。\n- 空正文记录不会删除；`contentState` 只使用 `available`、`missing`。\n"""
+    hf_readme = """# 人民日报数据集\n\n按人民数据目录整理的《人民日报》数字数据集，包含文章目录、正文、整期原始 PDF 和文章图片。\n\n- `data/articles/*.jsonl.gz`：供 Dataset Viewer 浏览和数据分析的年度文章分片。\n- `items/`：按日期保存的完整报纸数据。\n- `assets/`：按 SHA-256 命名的整期 PDF 与文章图片。\n- `contentState` 使用 `available`、`missing` 表示正文是否可用。\n"""
     (output / "huggingface" / "rmrb" / "README.md").write_text(hf_readme, encoding="utf-8", newline="\n")
     assets_root = output / "canonical" / "newspapers" / "rmrb" / "assets"
     if assets_root.is_dir():
