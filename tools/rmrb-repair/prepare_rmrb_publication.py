@@ -802,7 +802,7 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
     }
     write_json(output / "canonical" / "newspapers" / "rmrb" / "dataset.json", dataset)
     write_json(output / "huggingface" / "rmrb" / "dataset.json", dataset)
-    hf_readme = """# 人民日报数据集\n\n按人民数据目录整理的《人民日报》数字数据集，包含文章目录、正文、整期原始 PDF 和文章图片。\n\n- `data/articles/*.jsonl.gz`：按年份分片的逐篇文章表，便于程序批量分析。\n- `items/`：按日期保存的完整报纸数据。\n- `assets/`：按 SHA-256 命名的整期 PDF 与文章图片。\n- `contentState` 使用 `available`、`missing` 表示正文是否可用。\n\n注意：Hugging Face 免费账户不为私有数据集提供网页 Dataset Viewer；文件仍可在登录后下载，或通过 Hugging Face API/SDK 读取。\n"""
+    hf_readme = """# 人民日报数据集\n\n按人民数据目录整理的《人民日报》数字数据集，包含文章目录、正文、整期原始 PDF 和文章图片。\n\n- `data/articles/*.jsonl.gz`：按年份分片的逐篇文章表，可通过 Dataset Viewer 浏览并用于批量分析。\n- `items/`：按日期保存的完整报纸数据。\n- `assets/`：按 SHA-256 命名的整期 PDF 与文章图片。\n- `contentState` 使用 `available`、`missing` 表示正文是否可用。\n"""
     (output / "huggingface" / "rmrb" / "README.md").write_text(hf_readme, encoding="utf-8", newline="\n")
     assets_root = output / "canonical" / "newspapers" / "rmrb" / "assets"
     if assets_root.is_dir():
