@@ -151,7 +151,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @jojo/desktop exec playwright install --with-deps chromium
-      - run: pnpm --filter @jojo/desktop test:e2e
+      - run: xvfb-run --auto-servernum pnpm --filter @jojo/desktop test:e2e
 
   web-cross-browser:
     name: Web ${{ matrix.browser }}
