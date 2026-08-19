@@ -135,8 +135,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          release_flags=(--verify-tag --generate-notes --title "JOJO看报 Desktop ${GITHUB_REF_NAME#desktop-v}")
-          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+          release_version="${GITHUB_REF_NAME#desktop-v}"
+          release_flags=(--verify-tag --generate-notes --title "JOJO看报 Desktop ${release_version}")
+          if [[ "$release_version" == *-* ]]; then
             release_flags+=(--prerelease)
           fi
           gh release create "$GITHUB_REF_NAME" release/* "${release_flags[@]}"
