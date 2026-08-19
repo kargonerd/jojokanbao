@@ -192,11 +192,11 @@ select extensions.matches(
 insert into public.user_notifications(
   id, recipient_id, kind, title, event_key, created_at
 )
-select '30000000-0000-4000-8000-000000000003', pager_id, 'test.cursor', '三', 'cursor-3', '2026-08-19 00:00:00+00' from annotation_test_state
+select '30000000-0000-4000-8000-000000000003'::uuid, pager_id, 'test.cursor', '三', 'cursor-3', '2026-08-19 00:00:00+00'::timestamptz from annotation_test_state
 union all
-select '30000000-0000-4000-8000-000000000002', pager_id, 'test.cursor', '二', 'cursor-2', '2026-08-19 00:00:00+00' from annotation_test_state
+select '30000000-0000-4000-8000-000000000002'::uuid, pager_id, 'test.cursor', '二', 'cursor-2', '2026-08-19 00:00:00+00'::timestamptz from annotation_test_state
 union all
-select '30000000-0000-4000-8000-000000000001', pager_id, 'test.cursor', '一', 'cursor-1', '2026-08-19 00:00:00+00' from annotation_test_state;
+select '30000000-0000-4000-8000-000000000001'::uuid, pager_id, 'test.cursor', '一', 'cursor-1', '2026-08-19 00:00:00+00'::timestamptz from annotation_test_state;
 
 do $$
 begin
