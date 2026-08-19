@@ -66,3 +66,22 @@ Set these optional environment variables when local paths differ:
 $env:RMRB_REVIEW_ROOT = "C:/path/to/tmp/rmrb-peopledata-full-directory"
 $env:RMRB_SOURCE_PDF_ROOT = "D:/path/to/source-pdfs"
 ```
+
+## Prepare a publication snapshot
+
+Convert the PeopleData-aligned merge plus every staged decision into one
+`jojo-item/1` newspaper Item per day. This command does not upload anything.
+Existing archive PDFs remain at `RMRB/{YYYY}/{YYYYMMDD}.pdf`; Canonical Items
+only record that legacy object key and copy zero PDF bytes.
+
+```powershell
+python tools/rmrb-repair/prepare_rmrb_publication.py `
+  --output tmp/rmrb-publication/2026-08-18 `
+  --snapshot-id 2026-08-18
+```
+
+The output contains B2 Canonical objects under `canonical/`, a Hugging Face
+supplement under `huggingface/rmrb/`, and private repair audit material under
+`raw/newspapers/rmrb/repair-runs/`. `manifest.json` records every file's size
+and SHA-256; `_SUCCESS.json` is written last. Upload remains a separate,
+explicit operation after reviewing this dry run.
