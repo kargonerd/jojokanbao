@@ -46,7 +46,10 @@ def test_prepare_keeps_missing_and_reuses_legacy_pdf_key(tmp_path: Path) -> None
     assert item["title"] == "人民日报 1950年1月1日"
     assert item["extensions"]["rmrb"]["legacyPdfObject"] == "RMRB/1950/19500101.pdf"
     assert report["canonicalPdfCount"] == 0
-    assert (output / "huggingface/rmrb/items/1950/01/1950-01-01.json.gz").is_file()
+    assert (output / "huggingface/newspapers/rmrb/items/1950/01/1950-01-01.json.gz").is_file()
+    with gzip.open(output / "huggingface/newspapers/rmrb/data/articles/1950.jsonl.gz", "rt", encoding="utf-8") as stream:
+        viewer_row = json.loads(next(stream))
+    assert set(viewer_row) == {"date", "page", "ordinal", "title", "content", "status"}
 
 
 def test_image_decision_creates_hashed_asset(tmp_path: Path) -> None:
@@ -120,7 +123,7 @@ def test_pdf_and_adaptive_dual_availability(tmp_path: Path) -> None:
     }
     digest = MODULE.sha256_file(pdf)
     assert (output / f"canonical/newspapers/rmrb/assets/{digest}.pdf").read_bytes() == b"%PDF-preview"
-    assert (output / f"huggingface/rmrb/assets/{digest}.pdf").read_bytes() == b"%PDF-preview"
+    assert (output / f"huggingface/newspapers/rmrb/assets/{digest}.pdf").read_bytes() == b"%PDF-preview"
     index_key = "content/newspapers/rmrb/index.jox"
     protected = (output / "delivery" / index_key).read_bytes()
     decoded = gzip.decompress(MODULE.transform_jox_bytes(protected, index_key))

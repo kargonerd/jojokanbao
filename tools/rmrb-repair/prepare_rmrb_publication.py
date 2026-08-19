@@ -324,7 +324,7 @@ def write_json_gz(path: Path, value: Any) -> None:
 
 
 def open_year_shard(root: Path, year: str) -> TextIO:
-    path = root / "huggingface" / "rmrb" / "data" / "articles" / f"{year}.jsonl.gz"
+    path = root / "huggingface" / "newspapers" / "rmrb" / "data" / "articles" / f"{year}.jsonl.gz"
     path.parent.mkdir(parents=True, exist_ok=True)
     return gzip.open(path, "wt", encoding="utf-8", newline="\n", compresslevel=6)
 
@@ -394,21 +394,12 @@ def build_article(
         "assetRefs": asset_refs,
     }
     viewer_row = {
-        "formatVersion": "jojo-newspaper-article-row/1",
-        "datasetId": "rmrb",
-        "itemId": f"rmrb:{day}",
-        "articleId": article_id,
         "date": day,
         "page": page,
         "ordinal": ordinal,
         "title": title,
-        "authors": [],
-        "body": body,
-        "contentState": content_state,
-        "contentSource": row.get("contentSource"),
-        "matchMethod": row.get("matchMethod"),
-        "peopleDataHref": row.get("href"),
-        "imageSha256": asset.get("sha256") if asset else None,
+        "content": body,
+        "status": content_state,
     }
     return article, viewer_row, asset, stripped_title
 
@@ -436,7 +427,7 @@ def build_day(
         article, viewer_row, asset, stripped = build_article(row, decisions, canonical_root / "assets")
         articles.append(article)
         viewer.write(json_dump(viewer_row) + "\n")
-        status = str(viewer_row["contentState"])
+        status = str(viewer_row["status"])
         counts[status] += 1
         stripped_titles += int(stripped)
         if asset:
@@ -517,8 +508,7 @@ def build_day(
     relative = Path("items") / day[:4] / day[5:7] / f"{day}.json.gz"
     canonical_item = canonical_root / relative
     write_json_gz(canonical_item, item)
-    # Match the existing HF collection convention: dataset.json, items/, assets.tar.
-    hf_item = output / "huggingface" / "rmrb" / relative
+    hf_item = output / "huggingface" / "newspapers" / "rmrb" / relative
     hardlink_or_copy(canonical_item, hf_item)
     summary = {
         "itemId": item["itemId"],
@@ -801,13 +791,16 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
         "availability": availability,
     }
     write_json(output / "canonical" / "newspapers" / "rmrb" / "dataset.json", dataset)
-    write_json(output / "huggingface" / "rmrb" / "dataset.json", dataset)
+    hf_root = output / "huggingface" / "newspapers" / "rmrb"
+    write_json(hf_root / "dataset.json", dataset)
+    newspapers_readme = """# 报刊数据集\n\n按报刊种类组织的数字报刊数据。\n\n- [`rmrb/`](rmrb/)：《人民日报》文章、整期数据、PDF 和图片。\n"""
+    (hf_root.parent / "README.md").write_text(newspapers_readme, encoding="utf-8", newline="\n")
     hf_readme = """# 人民日报数据集\n\n按人民数据目录整理的《人民日报》数字数据集，包含文章目录、正文、整期原始 PDF 和文章图片。\n\n- `data/articles/*.jsonl.gz`：按年份分片的逐篇文章表，可通过 Dataset Viewer 浏览并用于批量分析。\n- `items/`：按日期保存的完整报纸数据。\n- `assets/`：按 SHA-256 命名的整期 PDF 与文章图片。\n- `contentState` 使用 `available`、`missing` 表示正文是否可用。\n"""
-    (output / "huggingface" / "rmrb" / "README.md").write_text(hf_readme, encoding="utf-8", newline="\n")
+    (hf_root / "README.md").write_text(hf_readme, encoding="utf-8", newline="\n")
     assets_root = output / "canonical" / "newspapers" / "rmrb" / "assets"
     if assets_root.is_dir():
         for path in sorted(value for value in assets_root.iterdir() if value.is_file()):
-            hardlink_or_copy(path, output / "huggingface" / "rmrb" / "assets" / path.name)
+            hardlink_or_copy(path, hf_root / "assets" / path.name)
     delivery_report = build_delivery(output, items, availability) if not args.skip_delivery else {}
     if not args.skip_audit:
         prepare_audit(output, args.review_root, args.snapshot_id, decisions)
