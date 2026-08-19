@@ -30,6 +30,7 @@ from es_repair_routes import es_repair_blueprint
 from content_routes import content_blueprint
 from feature_flag_routes import feature_flags_blueprint
 from agent_admin_routes import agent_admin_blueprint
+from annotation_moderation_routes import annotation_moderation_blueprint
 import tkinter as tk
 from tkinter import filedialog
 import requests
@@ -46,6 +47,7 @@ app.register_blueprint(es_repair_blueprint)
 app.register_blueprint(content_blueprint)
 app.register_blueprint(feature_flags_blueprint)
 app.register_blueprint(agent_admin_blueprint)
+app.register_blueprint(annotation_moderation_blueprint)
 matcher = FileNameMatcher('config.json')
 
 # 启动时清理过期的临时目录（清理1小时以上未修改的）

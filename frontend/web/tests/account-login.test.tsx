@@ -70,6 +70,34 @@ describe("account access", () => {
     expect(await screen.findByText("Reader home")).toBeTruthy();
   });
 
+  it("honors an explicit return target when a session already exists", async () => {
+    auth.state.user = { id: "reader-1" } as never;
+    render(
+      <MemoryRouter initialEntries={["/account?returnTo=%2Fnotifications"]}>
+        <Routes>
+          <Route path="/account" element={<AccountLogin />} />
+          <Route path="/notifications" element={<div>Notification inbox</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Notification inbox")).toBeTruthy();
+  });
+
+  it("does not follow an external return target", async () => {
+    auth.state.user = { id: "reader-1" } as never;
+    render(
+      <MemoryRouter initialEntries={["/account?returnTo=%2F%2Fevil.example"]}>
+        <Routes>
+          <Route path="/account" element={<AccountLogin />} />
+          <Route path="/" element={<div>Safe home</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Safe home")).toBeTruthy();
+  });
+
   it("opens login and registration in the same book dialog", () => {
     render(<MemoryRouter><AccountLogin /></MemoryRouter>);
 

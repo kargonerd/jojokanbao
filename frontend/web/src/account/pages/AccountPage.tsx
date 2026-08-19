@@ -1,15 +1,21 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthStore } from "@/account/auth";
 import { AccountBook, type AccountMode } from "@/account/components/AccountBook";
 import { LoginForm, RegisterForm } from "@/account/components/AccountForms";
 import { AccountCenterPage } from "@/account/pages/AccountCenterPage";
 
+function safeReturnPath(value: string | null): string {
+  if (!value?.startsWith("/") || value.startsWith("//")) return "/";
+  return /^\/account(?:[?#]|$)/.test(value) ? "/" : value;
+}
+
 export function AccountPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const requestedReturnTo = searchParams.get("returnTo") || "/";
-  const returnTo = requestedReturnTo.startsWith("/") && !requestedReturnTo.startsWith("//") ? requestedReturnTo : "/";
+  const requestedReturnTo = searchParams.get("returnTo");
+  const hasReturnTo = requestedReturnTo !== null;
+  const returnTo = safeReturnPath(requestedReturnTo);
   const [mode, setMode] = useState<AccountMode>("login");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -28,6 +34,7 @@ export function AccountPage() {
     clearFeedback,
   } = useAuthStore();
 
+  if (user && hasReturnTo) return <Navigate to={returnTo} replace />;
   if (user) return <AccountCenterPage userId={user.id} />;
 
   const changeMode = (nextMode: AccountMode) => {
@@ -66,7 +73,9 @@ export function AccountPage() {
         invitationCode: code,
         email,
         password: registrationPassword,
-        emailRedirectTo: `${window.location.origin}/account`,
+        emailRedirectTo: hasReturnTo
+          ? `${window.location.origin}/account?returnTo=${encodeURIComponent(returnTo)}`
+          : `${window.location.origin}/account`,
       });
       if (requiresConfirmation) {
         setConfirmationEmail(email);

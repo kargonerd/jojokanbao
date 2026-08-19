@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { usePlatformAccountStore } from "./accountSession";
+import { PlatformAccountMenu } from "./PlatformAccountMenu";
 
 const navItems = [
   { label: "首页", href: "/" },
@@ -15,8 +15,6 @@ function isActive(pathname: string, href: string): boolean {
 
 export function PlatformHeader() {
   const { pathname } = useLocation();
-  const userId = usePlatformAccountStore((state) => state.userId);
-  const displayName = usePlatformAccountStore((state) => state.displayName);
 
   return (
     <header className="platform-header">
@@ -35,7 +33,7 @@ export function PlatformHeader() {
           </Link>
         ))}
       </nav>
-      <Link className="platform-login" to="/account">{userId ? displayName || "账号" : "登录"}</Link>
+      <PlatformAccountMenu />
     </header>
   );
 }

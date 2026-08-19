@@ -47,3 +47,8 @@ export function startPlatformAccountSync(): () => void {
     stopAuthSync();
   };
 }
+
+export async function signOutPlatformAccount(): Promise<void> {
+  const { useAuthStore } = await import("../account/auth");
+  await useAuthStore.getState().signOut();
+}

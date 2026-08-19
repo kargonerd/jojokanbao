@@ -3,6 +3,16 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BookReader } from "../src/rag/components/BookReader";
 import { useFeatureFlagStore } from "../src/featureFlags";
+import { usePlatformAccountStore } from "../src/platform/accountSession";
+
+const annotationApi = vi.hoisted(() => ({
+  loadAnnotationThreads: vi.fn(async () => []),
+  createAnnotation: vi.fn(),
+  addAnnotationComment: vi.fn(),
+  reportAnnotationComment: vi.fn(),
+}));
+
+vi.mock("../src/annotations/api", () => annotationApi);
 
 class ResizeObserverMock {
   observe(): void {}
@@ -23,6 +33,11 @@ describe("BookReader", () => {
         "olds.workspace": false,
       },
     });
+    usePlatformAccountStore.setState({ initialized: true, userId: "11111111-1111-4111-8111-111111111111", displayName: "测试读者-ABC" });
+    annotationApi.loadAnnotationThreads.mockResolvedValue([]);
+    annotationApi.createAnnotation.mockReset();
+    annotationApi.addAnnotationComment.mockReset();
+    annotationApi.reportAnnotationComment.mockReset();
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 1200, writable: true });
     vi.stubGlobal("ResizeObserver", ResizeObserverMock);
     Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value: vi.fn() });
@@ -242,6 +257,44 @@ describe("BookReader", () => {
     expect(screen.queryByRole("toolbar", { name: "选中文字工具" })).toBeNull();
   });
 
+  it("persists a selected passage and initial comment through the shared annotation API", async () => {
+    annotationApi.createAnnotation.mockResolvedValue({
+      id: "annotation-1",
+      contentType: "book",
+      contentId: "test-books:test-books:full-book",
+      sectionId: "chapter-1",
+      contentTitle: "测试书 · 第一章",
+      contentUrl: "/book/test-books/test-books:full-book",
+      authorId: "11111111-1111-4111-8111-111111111111",
+      authorName: "测试读者-ABC",
+      quote: "这是正文。",
+      prefix: "第一章",
+      suffix: "[1]这是注释。",
+      startOffset: 3,
+      endOffset: 8,
+      createdAt: "2026-08-18T10:00:00Z",
+      comments: [],
+    });
+    const { container } = renderReader();
+    const paragraph = screen.getByText("这是正文。");
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent.mouseUp(container.querySelector("[data-book-page-flow]")!);
+
+    fireEvent.click(await screen.findByRole("button", { name: "写想法" }));
+    fireEvent.change(screen.getByPlaceholderText("写下此刻的想法……"), { target: { value: "值得继续讨论" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(annotationApi.createAnnotation).toHaveBeenCalledWith(
+      expect.objectContaining({ contentType: "book", sectionId: "chapter-1" }),
+      expect.objectContaining({ quote: "这是正文。" }),
+      "值得继续讨论",
+    ));
+    expect(await screen.findByRole("complementary", { name: "划线评论" })).toBeTruthy();
+  });
+
   it("hides bookshelf and annotation writes when their runtime flags are off", async () => {
     useFeatureFlagStore.setState((state) => ({
       ...state,
@@ -260,5 +313,21 @@ describe("BookReader", () => {
 
     const toolbar = await screen.findByRole("toolbar", { name: "选中文字工具" });
     expect(toolbar.textContent).toBe("复制");
+  });
+
+  it("does not load or expose shared comments to a signed-out reader", async () => {
+    usePlatformAccountStore.setState({ initialized: true, userId: null, displayName: null });
+    annotationApi.loadAnnotationThreads.mockClear();
+    const { container } = renderReader();
+    const paragraph = screen.getByText("这是正文。");
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent.mouseUp(container.querySelector("[data-book-page-flow]")!);
+
+    const toolbar = await screen.findByRole("toolbar", { name: "选中文字工具" });
+    expect(toolbar.textContent).toBe("复制");
+    expect(annotationApi.loadAnnotationThreads).not.toHaveBeenCalled();
   });
 });

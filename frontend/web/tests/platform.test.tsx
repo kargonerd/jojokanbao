@@ -87,6 +87,30 @@ describe("platform homepage", () => {
     expect(screen.queryByText("新闻")).toBeNull();
   });
 
+  it("keeps notifications and account actions inside the reader menu", async () => {
+    renderAt("/");
+    act(() => usePlatformAccountStore.setState({ initialized: true, userId: "reader-1", displayName: "长鯙-WUP" }));
+
+    const navigation = screen.getByRole("navigation", { name: "主导航" });
+    expect(within(navigation).queryByRole("link", { name: /通知/ })).toBeNull();
+    const account = screen.getByRole("button", { name: /长鯙-WUP，账号菜单/ });
+    expect(account.querySelector(".platform-account-mark")).toBeNull();
+    expect(account.querySelector(".platform-account-caret")).toBeNull();
+    fireEvent.click(account);
+
+    const menu = await screen.findByRole("menu", { name: "读者菜单" });
+    expect(within(menu).getByRole("menuitem", { name: /通知/ }).getAttribute("href")).toBe("/notifications");
+    expect(within(menu).getByRole("menuitem", { name: /我的书架/ }).getAttribute("href")).toBe("/#book-shelf-title");
+    expect(within(menu).getByRole("menuitem", { name: "账号" }).getAttribute("href")).toBe("/account");
+    expect(within(menu).getByRole("menuitem", { name: "退出登录" })).toBeTruthy();
+    expect(within(menu).queryByText("JOJO 读者账号")).toBeNull();
+    expect(within(menu).queryByText("收藏的书")).toBeNull();
+    expect(within(menu).queryByText("查看资料")).toBeNull();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: "读者菜单" })).toBeNull();
+  });
+
   it("shows a truthful empty state until something has been opened", () => {
     renderAt("/");
 

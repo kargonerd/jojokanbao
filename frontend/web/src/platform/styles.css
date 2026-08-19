@@ -39,14 +39,14 @@
 .platform-brand-full { display: block; width: 154px; height: auto; }
 .platform-brand-mark { display: none; width: 34px; height: 34px; }
 
-.platform-header nav {
+.platform-header > nav {
   display: flex;
   align-self: stretch;
   justify-content: center;
   gap: clamp(22px, 3vw, 38px);
 }
 
-.platform-header nav a {
+.platform-header > nav > a {
   display: flex;
   align-items: center;
   border-bottom: 3px solid transparent;
@@ -57,18 +57,81 @@
   transition: color .16s ease, border-color .16s ease;
 }
 
-.platform-header nav a:hover,
-.platform-header nav a.is-active {
+.platform-header > nav > a:hover,
+.platform-header > nav > a.is-active {
   border-bottom-color: var(--color-red);
   color: var(--color-red);
 }
 
 .platform-login {
+  display: inline-flex;
+  align-items: center;
   justify-self: end;
+  gap: 9px;
   color: var(--color-red) !important;
   font-size: .875rem;
   font-weight: 700;
 }
+
+.platform-account-menu { position: relative; justify-self: end; }
+.platform-account-trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  padding: 8px 4px;
+  color: var(--color-red);
+  background: transparent;
+  font: 700 .875rem/1 var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.platform-account-trigger > b {
+  position: absolute;
+  top: -2px;
+  right: -9px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  color: #fff;
+  background: var(--color-red);
+  font: 700 8px/15px var(--font-sans);
+  text-align: center;
+}
+.platform-account-trigger:hover,
+.platform-account-trigger[aria-expanded="true"] { color: var(--color-ink); }
+.platform-account-trigger:focus-visible { outline: 2px solid var(--color-red); outline-offset: 4px; }
+.platform-account-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 9px);
+  right: 0;
+  width: 168px;
+  border: 1px solid #c8c5bd;
+  border-top: 3px solid var(--color-red);
+  color: var(--color-ink);
+  background: #fff;
+  box-shadow: 6px 8px 0 rgba(139, 26, 26, .09), 0 18px 40px rgba(32, 32, 32, .13);
+}
+.platform-account-popover nav { display: grid; }
+.platform-account-popover nav a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #eceae5;
+  padding: 11px 15px;
+  color: inherit;
+  text-decoration: none;
+}
+.platform-account-popover nav a:hover,
+.platform-account-popover nav a:focus-visible { color: var(--color-red); background: #fff9f7; outline: 0; }
+.platform-account-popover nav span { font: 700 12px/1.4 var(--font-sans); }
+.platform-account-popover nav b { min-width: 18px; padding: 3px 5px; color: #fff; background: var(--color-red); font: 700 9px/1 var(--font-sans); text-align: center; }
+.platform-account-popover > p { margin: 0; padding: 9px 17px; color: var(--color-red); background: #fff7f5; font: 11px/1.6 var(--font-sans); }
+.platform-account-signout { width: 100%; border: 0; padding: 12px 17px; color: #777; background: #f7f6f3; font: 700 11px/1.4 var(--font-sans); text-align: left; cursor: pointer; }
+.platform-account-signout:hover:not(:disabled),
+.platform-account-signout:focus-visible { color: var(--color-red); outline: 0; }
+.platform-account-signout:disabled { cursor: wait; opacity: .55; }
 
 .platform-home {
   min-height: calc(100vh - 64px);
@@ -521,8 +584,8 @@
     min-height: 58px;
     padding: 0 16px;
   }
-  .platform-header nav { gap: 17px; }
-  .platform-header nav a { font-size: .78rem; }
+  .platform-header > nav { gap: 17px; }
+  .platform-header > nav > a { font-size: .78rem; }
   .platform-login { font-size: .78rem; }
   .platform-home { min-height: calc(100vh - 58px); padding: 38px 20px 40px; }
   .home-search { margin-bottom: 38px; }
@@ -550,8 +613,9 @@
 @media (max-width: 430px) {
   .platform-brand-full { display: none; }
   .platform-brand-mark { display: block; }
-  .platform-header nav { gap: 13px; }
-  .platform-header nav a { font-size: .72rem; letter-spacing: 0; }
+  .platform-header > nav { gap: 13px; }
+  .platform-header > nav > a { font-size: .72rem; letter-spacing: 0; }
+  .platform-account-popover { position: fixed; top: 58px; right: 10px; width: min(168px, calc(100vw - 20px)); }
   .platform-search-box { gap: 8px; padding-left: 12px; }
   .library-heading { display: block; }
   .library-date { margin-top: 16px; }

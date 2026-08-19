@@ -1,13 +1,3 @@
-export interface ReaderMark {
-  id: string;
-  chapterId: string;
-  kind: "underline" | "thought";
-  quote: string;
-  prefix: string;
-  suffix: string;
-  thought?: string | null;
-}
-
 export interface ReusableExplanation {
   quote: string;
   answer: string;
@@ -51,20 +41,6 @@ export async function setBookshelf(input: { datasetId: string; itemId: string; t
     const { error } = await client.from("reader_bookshelf").delete().eq("user_id", id).eq("dataset_id", input.datasetId).eq("item_id", input.itemId);
     if (error) throw error;
   }
-}
-
-export async function loadMarks(datasetId: string, itemId: string, chapterId: string): Promise<ReaderMark[]> {
-  const { client, userId: id } = await sessionClient();
-  const { data, error } = await client.from("reader_marks").select("id,chapter_id,kind,quote,prefix,suffix,thought").eq("user_id", id).eq("dataset_id", datasetId).eq("item_id", itemId).eq("chapter_id", chapterId).order("created_at");
-  if (error) throw error;
-  return (data ?? []).map((row: any) => ({ id: row.id, chapterId: row.chapter_id, kind: row.kind, quote: row.quote, prefix: row.prefix, suffix: row.suffix, thought: row.thought }));
-}
-
-export async function saveMark(input: Omit<ReaderMark, "id"> & { datasetId: string; itemId: string }): Promise<ReaderMark> {
-  const { client, userId: id } = await sessionClient();
-  const { data, error } = await client.from("reader_marks").insert({ user_id: id, dataset_id: input.datasetId, item_id: input.itemId, chapter_id: input.chapterId, kind: input.kind, quote: input.quote, prefix: input.prefix, suffix: input.suffix, thought: input.thought ?? null }).select("id,chapter_id,kind,quote,prefix,suffix,thought").single();
-  if (error) throw error;
-  return { id: data.id, chapterId: data.chapter_id, kind: data.kind, quote: data.quote, prefix: data.prefix, suffix: data.suffix, thought: data.thought };
 }
 
 export function phraseKey(value: string): string {

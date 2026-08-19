@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
+import { SelectableAnnotationArticle } from "../../annotations/SelectableAnnotationArticle";
 import { OldsHeader } from "../OldsHeader";
 import { oldsApi, type OldsBriefing, type OldsNewsDetail } from "../api";
 
@@ -55,7 +56,15 @@ export function OldsDetailPage() {
               <p className="kicker">{detail.news.source?.name || "未知来源"} · {detail.news.publishedAt}</p>
               <h1 className="mt-4 text-3xl font-black leading-tight md:text-5xl">{detail.news.title}</h1>
               {detail.news.summary ? <p className="mt-5 border-l-4 border-red pl-4 text-base leading-8 text-muted">{detail.news.summary}</p> : null}
-              <div className="mt-8 whitespace-pre-wrap text-base leading-8">{detail.news.content || "暂无正文。"}</div>
+              <SelectableAnnotationArticle subject={{
+                contentType: "newspaper",
+                contentId: detail.news.id,
+                sectionId: "body",
+                contentTitle: detail.news.title,
+                contentUrl: window.location.pathname,
+              }}>
+                <div className="mt-8 whitespace-pre-wrap text-base leading-8">{detail.news.content || "暂无正文。"}</div>
+              </SelectableAnnotationArticle>
               {detail.news.url ? <a className="mt-6 inline-block text-sm font-bold" href={detail.news.url} target="_blank" rel="noreferrer">查看原文 ↗</a> : null}
 
               <section className="mt-10 border-t-4 border-red pt-6">

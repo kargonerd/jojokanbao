@@ -9,20 +9,24 @@ import {
   useState,
 } from "react";
 import { Link } from "react-router-dom";
+import { AnnotationDiscussionPanel } from "../../annotations/AnnotationDiscussionPanel";
+import { renderAnnotationMarks, textAnchorFromRange } from "../../annotations/domAnchors";
+import type { TextAnchor } from "../../annotations/types";
+import { useAnnotationThreads } from "../../annotations/useAnnotationThreads";
 import { useFeatureFlag } from "../../featureFlags";
+import { usePlatformAccountStore } from "../../platform/accountSession";
+import { NotificationLink } from "../../notifications/NotificationLink";
+import { rollout } from "../../rollout";
 import type { RagReference, RagSearchHit } from "../types";
 import { BookAiPanel } from "./BookAiPanel";
 import { BookSearchPanel } from "./BookSearchPanel";
 import "./BookReader.css";
 import {
   bookshelfContains,
-  loadMarks,
   popularExplanations,
   reusableExplanation,
   saveExplanation,
-  saveMark,
   setBookshelf,
-  type ReaderMark,
   type ReusableExplanation,
 } from "../readerData";
 
@@ -70,7 +74,7 @@ interface ExpandedImage {
 
 interface ReaderTextSelection {
   text: string;
-  range: Range;
+  anchor: TextAnchor;
   left: number;
   top: number;
   above: boolean;
@@ -140,6 +144,7 @@ export function BookReader({
   children,
 }: BookReaderProps) {
   const annotationsEnabled = useFeatureFlag("reader.annotations");
+  const currentUserId = usePlatformAccountStore((state) => state.userId);
   const bookshelfEnabled = useFeatureFlag("library.bookshelf");
   const agentEnabled = useFeatureFlag("rag.workspace");
   const [fontSize, setFontSize] = useState(storedFontSize);
@@ -157,7 +162,8 @@ export function BookReader({
   const [aiQuestion, setAiQuestion] = useState<string>();
   const [aiInitialAnswer, setAiInitialAnswer] = useState<string>();
   const [aiExplanationQuote, setAiExplanationQuote] = useState<string>();
-  const [marks, setMarks] = useState<ReaderMark[]>([]);
+  const [activeAnnotationId, setActiveAnnotationId] = useState<string>();
+  const [annotationSaving, setAnnotationSaving] = useState(false);
   const [onBookshelf, setOnBookshelf] = useState(false);
   const [readerNotice, setReaderNotice] = useState("");
   const [popular, setPopular] = useState<ReusableExplanation[]>([]);
@@ -176,11 +182,26 @@ export function BookReader({
   const jumpTimerRef = useRef<number | undefined>(undefined);
 
   const activeChapterIndex = Math.max(0, chapters.findIndex((chapter) => chapter.id === activeChapterId));
+  const annotationSubject = useMemo(() => ({
+    contentType: "book" as const,
+    contentId: `${datasetId}:${itemId}`,
+    sectionId: activeChapterId,
+    contentTitle: `${bookTitle} · ${chapters[activeChapterIndex]?.title || "正文"}`,
+    contentUrl: `${window.location.pathname}?${new URLSearchParams({ chapter: activeChapterId })}`,
+  }), [activeChapterId, activeChapterIndex, bookTitle, chapters, datasetId, itemId]);
+  const annotationAccess = annotationsEnabled && Boolean(currentUserId);
+  const annotations = useAnnotationThreads(annotationSubject, annotationAccess);
+  const activeAnnotation = annotations.threads.find((thread) => thread.id === activeAnnotationId);
   const previousChapter = chapters[activeChapterIndex - 1];
   const nextChapter = chapters[activeChapterIndex + 1];
   const bookProgress = chapters.length
     ? Math.min(100, Math.round(((activeChapterIndex + readingProgress / 100) / chapters.length) * 100))
     : 0;
+
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("discussion");
+    if (requested && annotations.threads.some((thread) => thread.id === requested)) setActiveAnnotationId(requested);
+  }, [annotations.threads]);
   const filteredToc = useMemo(() => {
     const query = tocQuery.normalize("NFKC").trim().toLocaleLowerCase();
     if (!query) return toc;
@@ -268,14 +289,10 @@ export function BookReader({
 
   useEffect(() => {
     if (!annotationsEnabled) {
-      setMarks([]);
       setPopular([]);
       return;
     }
     let cancelled = false;
-    loadMarks(datasetId, itemId, activeChapterId)
-      .then((value) => { if (!cancelled) setMarks(value); })
-      .catch(() => { if (!cancelled) setMarks([]); });
     popularExplanations(datasetId, itemId, activeChapterId)
       .then((value) => { if (!cancelled) setPopular(value); })
       .catch(() => { if (!cancelled) setPopular([]); });
@@ -296,33 +313,9 @@ export function BookReader({
 
   useEffect(() => {
     const root = mode === "paged" ? flowRef.current : scrollRef.current;
-    if (!root || contentLoading || !marks.length) return;
-    root.querySelectorAll("mark[data-reader-mark]").forEach((mark) => mark.replaceWith(...mark.childNodes));
-    root.normalize();
-    for (const saved of marks) {
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      let node = walker.nextNode();
-      let match: Text | undefined;
-      while (node) {
-        const text = node.textContent || "";
-        const index = text.indexOf(saved.quote);
-        if (index >= 0 && (!saved.prefix || text.slice(Math.max(0, index - saved.prefix.length), index) === saved.prefix) && (!saved.suffix || text.slice(index + saved.quote.length, index + saved.quote.length + saved.suffix.length) === saved.suffix)) {
-          if (match) { match = undefined; break; }
-          match = node as Text;
-        }
-        node = walker.nextNode();
-      }
-      if (!match) continue;
-      const index = (match.textContent || "").indexOf(saved.quote);
-      const range = document.createRange();
-      range.setStart(match, index); range.setEnd(match, index + saved.quote.length);
-      const marker = document.createElement("mark");
-      marker.dataset.readerMark = saved.id;
-      marker.className = saved.kind === "thought" ? "book-reader-thought-anchor" : "book-reader-user-underline";
-      if (saved.thought) marker.title = saved.thought;
-      range.surroundContents(marker);
-    }
-  }, [contentLoading, marks, mode, pageMetrics.step]);
+    if (!root || contentLoading) return;
+    renderAnnotationMarks(root, annotations.threads, setActiveAnnotationId);
+  }, [annotations.threads, contentLoading, mode, pageMetrics.step]);
 
   useEffect(() => {
     const root = mode === "paged" ? flowRef.current : scrollRef.current;
@@ -533,42 +526,32 @@ export function BookReader({
   }
 
   function captureTextSelection(): void {
-    window.setTimeout(() => {
-      const selection = window.getSelection();
-      if (!selection || selection.isCollapsed || !selection.rangeCount) {
-        setTextSelection(undefined);
-        setThoughtOpen(false);
-        return;
-      }
-      const range = selection.getRangeAt(0);
-      const ancestor = range.commonAncestorContainer;
-      const insideReader = Boolean(flowRef.current?.contains(ancestor) || scrollRef.current?.contains(ancestor));
-      const text = selection.toString().replace(/\s+/g, " ").trim();
-      if (!insideReader || !text) return;
-      const rect = range.getBoundingClientRect();
-      const toolbarHalfWidth = Math.min(128, Math.max(0, window.innerWidth / 2 - 8));
-      const above = rect.top > 110;
-      setTextSelection({
-        text: text.slice(0, 2_000),
-        range: range.cloneRange(),
-        left: Math.min(window.innerWidth - toolbarHalfWidth, Math.max(toolbarHalfWidth, rect.left + rect.width / 2)),
-        top: above ? rect.top - 10 : rect.bottom + 10,
-        above,
-      });
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.rangeCount) {
+      setTextSelection(undefined);
       setThoughtOpen(false);
-    }, 0);
+      return;
+    }
+    const range = selection.getRangeAt(0);
+    const ancestor = range.commonAncestorContainer;
+    const insideReader = Boolean(flowRef.current?.contains(ancestor) || scrollRef.current?.contains(ancestor));
+    const root = mode === "paged" ? flowRef.current : scrollRef.current;
+    const anchor = root && textAnchorFromRange(root, range);
+    if (!insideReader || !anchor) return;
+    const rect = range.getBoundingClientRect();
+    const toolbarHalfWidth = Math.min(128, Math.max(0, window.innerWidth / 2 - 8));
+    const above = rect.top > 110;
+    setTextSelection({
+      text: anchor.quote,
+      anchor,
+      left: Math.min(window.innerWidth - toolbarHalfWidth, Math.max(toolbarHalfWidth, rect.left + rect.width / 2)),
+      top: above ? rect.top - 10 : rect.bottom + 10,
+      above,
+    });
+    setThoughtOpen(false);
   }
 
-  function wrapSelection(className: string, title?: string): void {
-    if (!textSelection) return;
-    const marker = document.createElement("mark");
-    marker.className = className;
-    if (title) marker.title = title;
-    try {
-      textSelection.range.surroundContents(marker);
-    } catch {
-      // Multi-paragraph ranges need a persisted anchor model before they can be styled safely.
-    }
+  function clearSelection(): void {
     window.getSelection()?.removeAllRanges();
     setTextSelection(undefined);
     setThoughtOpen(false);
@@ -593,34 +576,34 @@ export function BookReader({
   }
 
   function selectionAnchor() {
-    if (!textSelection) return undefined;
-    const container = textSelection.range.startContainer.textContent || "";
-    const start = textSelection.range.startOffset;
-    return { chapterId: activeChapterId, quote: textSelection.text, prefix: container.slice(Math.max(0, start - 24), start), suffix: container.slice(textSelection.range.endOffset, textSelection.range.endOffset + 24) };
+    return textSelection?.anchor;
   }
 
   async function underlineSelection(): Promise<void> {
-    if (!annotationsEnabled) return;
+    if (!annotationsEnabled || annotationSaving) return;
     const anchor = selectionAnchor();
     if (!anchor) return;
+    setAnnotationSaving(true);
     try {
-      const saved = await saveMark({ ...anchor, datasetId, itemId, kind: "underline" });
-      setMarks((value) => [...value, saved]);
-      wrapSelection("book-reader-user-underline");
+      const saved = await annotations.create(anchor);
+      clearSelection();
+      setActiveAnnotationId(saved.id);
     } catch (reason) { setReaderNotice(reason instanceof Error ? reason.message : String(reason)); }
+    finally { setAnnotationSaving(false); }
   }
 
   async function saveThought(): Promise<void> {
-    if (!annotationsEnabled) return;
-    if (!thought.trim()) return;
+    if (!annotationsEnabled || !thought.trim() || annotationSaving) return;
     const anchor = selectionAnchor();
     if (!anchor) return;
+    setAnnotationSaving(true);
     try {
-      const saved = await saveMark({ ...anchor, datasetId, itemId, kind: "thought", thought: thought.trim() });
-      setMarks((value) => [...value, saved]);
-      wrapSelection("book-reader-thought-anchor", thought.trim());
+      const saved = await annotations.create(anchor, thought.trim());
+      clearSelection();
+      setActiveAnnotationId(saved.id);
       setThought("");
     } catch (reason) { setReaderNotice(reason instanceof Error ? reason.message : String(reason)); }
+    finally { setAnnotationSaving(false); }
   }
 
   async function explainSelection(): Promise<void> {
@@ -741,6 +724,14 @@ export function BookReader({
 
     {agentEnabled && aiOpen && <><button type="button" aria-label="关闭书内 AI" onClick={() => setAiOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookAiPanel key={`${aiQuestion || "book-ai"}:${aiInitialAnswer || ""}`} bookTitle={bookTitle} datasetId={datasetId} itemId={itemId} manifestObject={manifestObject} initialQuestion={aiQuestion} initialAnswer={aiInitialAnswer} explanationQuote={aiExplanationQuote} panelClass={panelClass} onClose={() => setAiOpen(false)} onJump={locateReference} onExplanationComplete={annotationsEnabled ? (quote, answer) => void saveExplanation({ datasetId, itemId, chapterId: activeChapterId, quote, answer }) : undefined} /></>}
 
+    {activeAnnotation && currentUserId ? <AnnotationDiscussionPanel key={activeAnnotation.id}
+      thread={activeAnnotation}
+      currentUserId={currentUserId}
+      onClose={() => setActiveAnnotationId(undefined)}
+      onComment={(body, parentCommentId) => annotations.comment(activeAnnotation.id, body, parentCommentId)}
+      onReport={(commentId, reason, details) => annotations.report(activeAnnotation.id, commentId, reason, details)}
+    /> : null}
+
     {toolPopover && <>
       <button type="button" aria-label="关闭阅读工具" onClick={() => setToolPopover(undefined)} className="fixed inset-0 z-20 border-0 bg-transparent cursor-default" />
       <section className={`fixed bottom-16 left-2 right-2 z-40 border p-4 shadow-[6px_10px_30px_rgba(0,0,0,.14)] md:bottom-auto md:left-auto md:right-20 md:top-1/2 md:w-64 md:-translate-y-1/2 ${panelClass}`} aria-label={toolPopover === "font" ? "字号工具" : "纸张颜色工具"}>
@@ -757,13 +748,13 @@ export function BookReader({
     {textSelection && <div className={`book-selection-tools fixed z-[65] -translate-x-1/2 font-sans ${textSelection.above ? "-translate-y-full" : ""}`} style={{ left: textSelection.left, top: textSelection.top }}>
       <div className={`flex border shadow-[3px_6px_20px_rgba(0,0,0,.18)] ${panelClass}`} role="toolbar" aria-label="选中文字工具">
         <button type="button" onClick={() => void copySelection()} className="book-selection-action">复制</button>
-        {annotationsEnabled && <><button type="button" onClick={() => void underlineSelection()} className="book-selection-action">划线</button>
-        <button type="button" onClick={() => setThoughtOpen((value) => !value)} className="book-selection-action">写想法</button>
+        {annotationAccess && <><button type="button" disabled={annotationSaving} onClick={() => void underlineSelection()} className="book-selection-action">划线</button>
+        <button type="button" disabled={annotationSaving} onClick={() => setThoughtOpen((value) => !value)} className="book-selection-action">写想法</button>
         {agentEnabled && <button type="button" onClick={() => void explainSelection()} className="book-selection-action text-red">AI 解释</button>}</>}
       </div>
       {thoughtOpen && <div className={`mt-1 w-72 border p-3 shadow-[3px_6px_20px_rgba(0,0,0,.16)] ${panelClass}`}>
         <textarea autoFocus value={thought} onChange={(event) => setThought(event.target.value)} placeholder="写下此刻的想法……" rows={3} className="book-thought-input block w-full resize-none border-0 border-b border-rule bg-transparent px-0 py-1 font-serif text-sm leading-6 text-current" />
-        <div className="mt-2 flex justify-end"><button type="button" disabled={!thought.trim()} onClick={() => void saveThought()} className="border-0 bg-transparent p-0 text-xs font-bold text-red cursor-pointer disabled:opacity-30">保存</button></div>
+        <div className="mt-2 flex justify-end"><button type="button" disabled={annotationSaving || !thought.trim()} onClick={() => void saveThought()} className="border-0 bg-transparent p-0 text-xs font-bold text-red cursor-pointer disabled:opacity-30">{annotationSaving ? "保存中…" : "保存"}</button></div>
       </div>}
     </div>}
 
@@ -794,6 +785,7 @@ export function BookReader({
           <span className="hidden sm:inline">{onBookshelf ? "已在书架" : "加入书架"}</span>
         </button>}
         <span className="min-w-0 flex-1" aria-hidden="true" />
+        {rollout.platformRedesign && <NotificationLink className="shrink-0 text-muted hover:text-red" />}
         <span className="hidden max-w-[42%] truncate text-muted md:block">{chapters[activeChapterIndex]?.title}</span>
         <span className="hidden tabular-nums text-muted md:inline">全书 {bookProgress}%</span>
       </div>

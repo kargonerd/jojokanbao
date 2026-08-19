@@ -28,6 +28,10 @@ pnpm dev:admin
 服务访问 Supabase：Flask 从仓库根目录 `.env` 读取现有的
 `JOJO_OPERATOR_TOKEN`，浏览器不接收、不保存这个密钥，也不需要单独登录。
 
+评论审核页面位于 `http://127.0.0.1:4174/moderation`。它复用同一个
+`JOJO_OPERATOR_TOKEN`，读取读者举报并支持隐藏、恢复评论或驳回举报；每次操作
+必须填写理由，数据库会保留审核事件。管理员 token 始终只由同机 Flask 代理读取。
+
 首次启用功能开关管理时，需要在目标 Supabase 项目中执行已评审的迁移，并按
 `infrastructure/supabase/README.md` 将同一个 Operator Token 的摘要写入数据库。
 
@@ -37,6 +41,11 @@ Agent 管理页面位于 `http://127.0.0.1:4174/agent`。本机 Flask 优先读�
 `JOJO_CREDENTIAL_SERVICE_URL`。浏览器只接收就绪状态、来源提示和有效期，
 不会收到 Operator Token、access token 或 refresh token。更新前必须确认部署端
 已配置同一个 `JOJO_OPERATOR_TOKEN`。
+
+划线评论和审核依赖
+`infrastructure/supabase/migrations/202608180001_unified_annotations.sql`。部署迁移后，
+匿名角色没有表或用户 RPC 权限；登录读者通过 `reader.annotations` 功能开关访问，
+Workbench 通过 operator RPC 审核。
 
 Publication configuration is read from the repository `.env`:
 

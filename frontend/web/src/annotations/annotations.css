@@ -1,0 +1,79 @@
+.content-annotation-mark {
+  padding: 0;
+  color: inherit;
+  background: linear-gradient(transparent 72%, rgba(139, 26, 26, .22) 72%);
+  border-bottom: 1px solid rgba(139, 26, 26, .62);
+  cursor: pointer;
+}
+.content-annotation-mark:hover,
+.content-annotation-mark:focus-visible {
+  background: rgba(139, 26, 26, .12);
+  outline: 1px solid var(--color-red);
+  outline-offset: 2px;
+}
+.annotation-selection-tools {
+  position: fixed;
+  z-index: 70;
+  width: 250px;
+  transform: translate(-50%, -100%);
+  font-family: sans-serif;
+}
+.annotation-selection-tools > div { display: flex; width: fit-content; margin: 0 auto; background: var(--color-paper); border: 1px solid var(--color-rule, #bbb); box-shadow: 4px 6px 18px rgba(32,32,32,.18); }
+.annotation-selection-tools > div button { border: 0; border-right: 1px solid var(--color-rule, #bbb); padding: 9px 14px; color: var(--color-ink); background: transparent; font-size: 11px; cursor: pointer; }
+.annotation-selection-tools > div button:last-child { border-right: 0; color: var(--color-red); }
+.annotation-selection-tools > section { display: grid; gap: 10px; margin-top: 5px; padding: 12px; background: var(--color-paper); border: 1px solid var(--color-rule, #bbb); box-shadow: 4px 6px 18px rgba(32,32,32,.14); }
+.annotation-selection-tools textarea { width: 100%; border: 0; border-bottom: 1px solid var(--color-rule, #bbb); padding: 5px 0; background: transparent; resize: vertical; }
+.annotation-selection-tools section button { justify-self: end; border: 0; color: var(--color-red); background: transparent; font-weight: 700; cursor: pointer; }
+.annotation-selection-tools section button:disabled { opacity: .35; cursor: default; }
+.annotation-notice { position: fixed; bottom: 24px; left: 50%; z-index: 75; transform: translateX(-50%); border: 1px solid var(--color-red); padding: 9px 14px; color: var(--color-red); background: var(--color-paper); box-shadow: 4px 4px 0 rgba(139,26,26,.12); cursor: pointer; }
+.annotation-panel {
+  position: fixed;
+  inset: 0 0 0 auto;
+  z-index: 80;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  width: min(100%, 430px);
+  color: var(--color-ink);
+  background: var(--color-paper);
+  border-left: 1px solid var(--color-rule, #d2d0c9);
+  box-shadow: -14px 0 36px rgba(32, 32, 32, .16);
+  font-family: "Noto Serif SC", serif;
+}
+.annotation-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 22px 24px 18px;
+  color: #fff;
+  background: var(--color-red);
+}
+.annotation-panel__header span { font: 700 9px/1 sans-serif; letter-spacing: .2em; opacity: .72; }
+.annotation-panel__header h2 { margin: 7px 0 0; font-size: 23px; }
+.annotation-panel__header button { border: 0; padding: 0; color: inherit; background: transparent; font-size: 28px; cursor: pointer; }
+.annotation-panel blockquote { margin: 22px 24px 8px; padding: 0 0 0 15px; border-left: 3px solid var(--color-red); font-size: 14px; line-height: 1.9; }
+.annotation-panel__meta { padding: 0 24px 18px 42px; color: var(--color-muted, #777); font: 11px/1.5 sans-serif; }
+.annotation-comments { margin: 0; padding: 0 24px 20px; overflow-y: auto; list-style: none; }
+.annotation-comments > li { padding: 16px 0; border-top: 1px solid var(--color-rule, #ddd); }
+.annotation-comment__byline { display: flex; justify-content: space-between; gap: 12px; font: 12px/1.4 sans-serif; }
+.annotation-comment__byline time, .annotation-comments small { color: var(--color-muted, #777); font-size: 10px; }
+.annotation-comments p { margin: 8px 0 0; font-size: 13px; line-height: 1.8; white-space: pre-wrap; }
+.annotation-comment__actions { display: flex; gap: 12px; margin-top: 8px; }
+.annotation-comment__actions button,
+.annotation-report-form button,
+.annotation-composer div button { border: 0; padding: 0; color: var(--color-red); background: transparent; font: 11px sans-serif; cursor: pointer; }
+.annotation-comment__actions button:disabled { color: var(--color-muted, #777); cursor: default; }
+.annotation-comments__empty { color: var(--color-muted, #777); font-size: 12px; line-height: 1.8; }
+.annotation-report-form { display: grid; gap: 8px; margin-top: 12px; padding: 12px; background: rgba(139, 26, 26, .05); border-left: 2px solid var(--color-red); }
+.annotation-report-form select,
+.annotation-report-form textarea,
+.annotation-composer textarea { width: 100%; border: 0; border-bottom: 1px solid var(--color-rule, #bbb); padding: 8px 0; color: inherit; background: transparent; font: 12px/1.7 inherit; resize: vertical; }
+.annotation-report-form div { display: flex; justify-content: flex-end; gap: 14px; }
+.annotation-composer { padding: 16px 24px 22px; border-top: 3px double var(--color-rule, #aaa); background: var(--color-paper); }
+.annotation-composer > div { display: flex; justify-content: space-between; margin-bottom: 6px; color: var(--color-muted, #777); font: 11px sans-serif; }
+.annotation-composer > button { display: block; margin: 12px 0 0 auto; border: 1px solid var(--color-red); padding: 8px 14px; color: #fff; background: var(--color-red); font: 700 11px sans-serif; cursor: pointer; }
+.annotation-composer > button:disabled { opacity: .4; cursor: default; }
+.annotation-composer > p { margin: 9px 0 0; color: var(--color-red); font: 11px/1.5 sans-serif; }
+
+@media (max-width: 560px) {
+  .annotation-panel { top: 48px; }
+}
