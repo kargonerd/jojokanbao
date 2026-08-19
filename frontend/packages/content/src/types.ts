@@ -3,6 +3,27 @@ export type JojoItemType = "book" | "book-volume" | "magazine" | "newspaper";
 export type JojoAssetType = "audio" | "image" | "pdf" | "video";
 export type JojoPublicationStatus = "draft" | "published";
 export type JojoContentAccess = "public" | "authenticated";
+export type JojoContentState = "available" | "missing";
+
+export interface JojoAdaptiveCalendarMembers {
+  months?: string[];
+  ranges?: [string, string][];
+  dates?: string[];
+}
+
+export interface JojoAdaptiveCalendar {
+  format: "adaptive-calendar/1";
+  startDate: string;
+  endDate: string;
+  default: "available";
+  years: Record<string, { include: JojoAdaptiveCalendarMembers } | { exclude: JojoAdaptiveCalendarMembers }>;
+}
+
+export interface JojoPeriodicalAvailability {
+  formatVersion: "jojo-periodical-availability/1";
+  text: JojoAdaptiveCalendar;
+  pdf: JojoAdaptiveCalendar;
+}
 
 export interface JojoCatalogEntry {
   datasetId: string;
@@ -43,7 +64,9 @@ export interface JojoDatasetIndex {
   description?: string;
   publicationStatus?: JojoPublicationStatus;
   access?: JojoContentAccess;
-  items: JojoDatasetItemSummary[];
+  items?: JojoDatasetItemSummary[];
+  itemPath?: string;
+  availability?: JojoPeriodicalAvailability;
 }
 
 export interface JojoCanonicalDataset {
@@ -56,6 +79,7 @@ export interface JojoCanonicalDataset {
   access?: JojoContentAccess;
   description?: string;
   itemPath: string;
+  availability?: JojoPeriodicalAvailability;
 }
 
 export interface JojoBody {
@@ -84,6 +108,17 @@ export interface JojoChapterDescriptor extends JojoObjectDescriptor {
   order: number;
   title: string;
   characterCount: number;
+}
+
+export interface JojoArticleDescriptor {
+  id: string;
+  order: number;
+  title: string;
+  characterCount: number;
+  contentState: JojoContentState;
+  object: string | null;
+  size?: number;
+  sha256?: string;
 }
 
 export interface JojoAssetDescriptor extends JojoObjectDescriptor {
@@ -127,7 +162,10 @@ export interface JojoBookSearchIndex {
 }
 
 export interface JojoContentStats {
-  chapterCount: number;
+  chapterCount?: number;
+  articleCount?: number;
+  availableArticleCount?: number;
+  missingArticleCount?: number;
   characterCount: number;
   canonicalCompressedSize?: number;
 }
@@ -148,7 +186,7 @@ export interface JojoItemManifest {
     schema: "jojo-content/book/1" | "jojo-content/newspaper/1" | "jojo-content/magazine/1";
     toc?: JojoTocNode[];
     chapters?: JojoChapterDescriptor[];
-    articles?: JojoChapterDescriptor[];
+    articles?: JojoArticleDescriptor[];
   };
   contentStats: JojoContentStats;
   search?: JojoBookSearchDescriptor;
@@ -172,6 +210,7 @@ export interface JojoFragment {
   type: "article" | "chapter";
   order: number;
   title: string;
+  contentState?: JojoContentState;
   body: JojoBody;
   assetRefs: string[];
   annotations: JojoAnnotation[];
@@ -199,6 +238,7 @@ export interface JojoCanonicalArticle {
   order: number;
   title: string;
   authors: string[];
+  contentState?: JojoContentState;
   body: JojoBody;
   assetRefs: string[];
 }

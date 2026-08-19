@@ -71,17 +71,23 @@ $env:RMRB_SOURCE_PDF_ROOT = "D:/path/to/source-pdfs"
 
 Convert the PeopleData-aligned merge plus every staged decision into one
 `jojo-item/1` newspaper Item per day. This command does not upload anything.
-Existing archive PDFs remain at `RMRB/{YYYY}/{YYYYMMDD}.pdf`; Canonical Items
-only record that legacy object key and copy zero PDF bytes.
+Existing archive PDFs are read from `--pdf-root`, validated by presence, and
+copied by full SHA-256 into Canonical and Hugging Face `assets/`. Delivery PDF
+exports are emitted as range-safe Jox objects. Text and PDF availability are
+encoded independently with adaptive calendars.
 
 ```powershell
 python tools/rmrb-repair/prepare_rmrb_publication.py `
   --output tmp/rmrb-publication/2026-08-18 `
-  --snapshot-id 2026-08-18
+  --snapshot-id 2026-08-18 `
+  --pdf-root D:/path/to/source-pdfs
 ```
 
-The output contains B2 Canonical objects under `canonical/`, a Hugging Face
-supplement under `huggingface/rmrb/`, and private repair audit material under
-`raw/newspapers/rmrb/repair-runs/`. `manifest.json` records every file's size
-and SHA-256; `_SUCCESS.json` is written last. Upload remains a separate,
-explicit operation after reviewing this dry run.
+The output contains B2 Canonical objects under `canonical/`, public Jox
+objects under `delivery/`, a private Hugging Face mirror under
+`huggingface/rmrb/`, and private repair audit material under
+`raw/newspapers/rmrb/repair-runs/`. Missing articles remain in Items with
+`contentState: "missing"`; Delivery keeps their descriptors with
+`object: null`. `manifest.json` records every file's size and SHA-256;
+`_SUCCESS.json` is written last. Upload remains a separate, explicit operation
+after reviewing this dry run.
