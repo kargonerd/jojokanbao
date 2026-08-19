@@ -52,7 +52,7 @@ importers:
         version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.19)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.33.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)
 
   frontend/desktop:
-    dependencies:
+    devDependencies:
       '@jojo/auth':
         specifier: workspace:*
         version: link:../packages/auth
@@ -62,40 +62,15 @@ importers:
       '@jojo/pdf-viewer':
         specifier: workspace:*
         version: link:../packages/pdf-viewer
+      '@jojo/tsconfig':
+        specifier: workspace:*
+        version: link:../tooling/tsconfig
       '@jojo/ui':
         specifier: workspace:*
         version: link:../packages/ui
       '@jojo/web':
         specifier: workspace:*
         version: link:../web
-      axios:
-        specifier: ^1.7.0
-        version: 1.16.1
-      dompurify:
-        specifier: ^3.4.12
-        version: 3.4.12
-      marked:
-        specifier: ^15.0.0
-        version: 15.0.12
-      pdfjs-dist:
-        specifier: ^5.7.0
-        version: 5.7.284(patch_hash=zahbskxuqcrzag4gobt5x7k26i)
-      react:
-        specifier: ^19.0.0
-        version: 19.2.6
-      react-dom:
-        specifier: ^19.0.0
-        version: 19.2.6(react@19.2.6)
-      react-router-dom:
-        specifier: ^7.1.0
-        version: 7.15.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-      zustand:
-        specifier: ^5.0.0
-        version: 5.0.13(@types/react@19.2.15)(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6))
-    devDependencies:
-      '@jojo/tsconfig':
-        specifier: workspace:*
-        version: link:../tooling/tsconfig
       '@playwright/test':
         specifier: 1.60.0
         version: 1.60.0
@@ -126,6 +101,12 @@ importers:
       adm-zip:
         specifier: ^0.5.16
         version: 0.5.18
+      axios:
+        specifier: ^1.7.0
+        version: 1.16.1
+      dompurify:
+        specifier: ^3.4.12
+        version: 3.4.12
       dotenv:
         specifier: ^17.4.0
         version: 17.4.2
@@ -138,9 +119,24 @@ importers:
       jsdom:
         specifier: ^26.0.0
         version: 26.1.0
+      marked:
+        specifier: ^15.0.0
+        version: 15.0.12
       pdf-lib:
         specifier: ^1.17.1
         version: 1.17.1
+      pdfjs-dist:
+        specifier: ^5.7.0
+        version: 5.7.284(patch_hash=zahbskxuqcrzag4gobt5x7k26i)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.6(react@19.2.6)
+      react-router-dom:
+        specifier: ^7.1.0
+        version: 7.15.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       tailwindcss:
         specifier: ^4.3.0
         version: 4.3.0
@@ -156,6 +152,9 @@ importers:
       vitest:
         specifier: ^3.0.0
         version: 3.2.4(@types/debug@4.1.13)(@types/node@25.9.3)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.33.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)
+      zustand:
+        specifier: ^5.0.0
+        version: 5.0.13(@types/react@19.2.15)(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6))
 
   frontend/homepage:
     dependencies:
