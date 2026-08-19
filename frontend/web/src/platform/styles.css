@@ -17,6 +17,10 @@
   text-decoration: none;
 }
 
+.platform-search-page {
+  background: var(--platform-canvas);
+}
+
 .platform-header {
   position: sticky;
   top: 0;
@@ -61,6 +65,14 @@
 .platform-header nav a.is-active {
   border-bottom-color: var(--color-red);
   color: var(--color-red);
+}
+
+.platform-header-actions {
+  display: flex;
+  align-self: stretch;
+  align-items: center;
+  justify-self: end;
+  gap: 18px;
 }
 
 .platform-login {

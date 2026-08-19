@@ -1,29 +1,64 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { SettingsPage } from './SettingsPage';
 
-const getMineru = vi.fn();
-const saveMineru = vi.fn();
+const getCloseBehavior = vi.fn();
+const saveCloseBehavior = vi.fn();
+const getLaunchAtLogin = vi.fn();
+const saveLaunchAtLogin = vi.fn();
+const getAppInfo = vi.fn();
+
+afterEach(cleanup);
 
 beforeEach(() => {
-  getMineru.mockReset().mockResolvedValue({ configured: false });
-  saveMineru.mockReset().mockResolvedValue({ configured: true });
+  getCloseBehavior.mockReset().mockResolvedValue('tray');
+  saveCloseBehavior.mockReset().mockImplementation(async (value) => value);
+  getLaunchAtLogin.mockReset().mockResolvedValue(false);
+  saveLaunchAtLogin.mockReset().mockImplementation(async (value) => value);
+  getAppInfo.mockReset().mockResolvedValue({ version: '0.2.0', platform: 'win32', arch: 'x64' });
   window.jojoDesktop = {
     appName: 'test',
     engine: { invoke: vi.fn() },
-    settings: { getMineru, saveMineru },
+    settings: {
+      getCloseBehavior,
+      saveCloseBehavior,
+      getLaunchAtLogin,
+      saveLaunchAtLogin,
+      getMineru: vi.fn(),
+      saveMineru: vi.fn(),
+    },
+    getAppInfo,
   };
 });
 
-describe('MinerU settings', () => {
-  it('does not reveal the stored key and saves a replacement through Electron', async () => {
-    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
-    await waitFor(() => expect(getMineru).toHaveBeenCalled());
-    fireEvent.change(screen.getByLabelText('MinerU API Key'), { target: { value: 'secret-token' } });
-    fireEvent.click(screen.getByRole('button', { name: '保存 API Key' }));
-    await waitFor(() => expect(saveMineru).toHaveBeenCalledWith('secret-token'));
-    expect(screen.getByLabelText('MinerU API Key')).toHaveValue('');
-    expect(screen.getByText('API Key 已安全保存')).toBeInTheDocument();
+describe('Desktop settings', () => {
+  it('loads and updates the persisted close behavior', async () => {
+    render(<SettingsPage />);
+
+    const closeBehavior = await screen.findByRole('combobox', { name: '关闭窗口时' });
+    expect(closeBehavior).toHaveValue('tray');
+    fireEvent.change(closeBehavior, { target: { value: 'quit' } });
+    await waitFor(() => expect(saveCloseBehavior).toHaveBeenCalledWith('quit'));
+    expect(screen.getByText('已保存')).toBeInTheDocument();
+    expect(screen.getByRole('contentinfo')).toHaveTextContent('版本 0.2.0');
+  });
+
+  it('lets the user restore first-close prompting', async () => {
+    render(<SettingsPage />);
+
+    const closeBehavior = await screen.findByRole('combobox', { name: '关闭窗口时' });
+    fireEvent.change(closeBehavior, { target: { value: 'ask' } });
+    await waitFor(() => expect(saveCloseBehavior).toHaveBeenCalledWith('ask'));
+  });
+
+  it('uses the native launch-at-login preference', async () => {
+    render(<SettingsPage />);
+
+    const launchAtLogin = await screen.findByRole('checkbox', { name: '开机时启动' });
+    expect(launchAtLogin).not.toBeChecked();
+    fireEvent.click(launchAtLogin);
+    await waitFor(() => expect(saveLaunchAtLogin).toHaveBeenCalledWith(true));
+    expect(launchAtLogin).toBeChecked();
   });
 });

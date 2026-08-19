@@ -1,11 +1,12 @@
 # Desktop renderer
 
 - `main.tsx` 是 renderer 入口。
-- `shell/` 提供工作台、设置页和顶层模块路由。
-- `press/` 是当前可运行模块。
-- `archive/`、`account/`、`rag/`、`olds/` 当前仅保留模块位置；对应顶层路由只显示
-  “尚未启用”占位页，不加载业务代码。
+- `shell/` 只提供桌面运行时适配和顶层模块路由；页面框架直接复用 Web 的
+  `PlatformLayout` 与 `PlatformHeader`。
+- `press/` 保留本地 PDF 工作流源码，但当前桌面版本不注册路由，也不进入 renderer。
+- 报刊/书籍阅读、资料库、搜索、RAG 和 Account 通过 `@jojo/web/desktop` 的显式导出接入，
+  避免复制新版 Web 业务实现。
 - `electron.d.ts` 和 `test-setup.ts` 是 renderer 级基础文件。
 
-业务代码放在对应一级模块内，可按 `pages/`、`components/`、`stores/` 和 `api.ts`
-继续拆分。跨业务复用的代码应优先进入 `packages/`。
+旧版 Archive 首页不在桌面路由中，报刊阅读路由直接复用 Web 实现。Desktop 特有业务
+放在本目录；跨端业务优先从 Web 的桌面入口或 `packages/` 复用。

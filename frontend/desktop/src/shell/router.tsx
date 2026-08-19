@@ -1,73 +1,197 @@
+import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import {
   Link,
+  Navigate,
+  Outlet,
   createBrowserRouter,
   createHashRouter,
   type RouteObject,
+  useLocation,
 } from 'react-router-dom';
-import { createPressRoute } from '../press/router';
+import {
+  ArchiveLayout,
+  ArchiveReaderPage,
+  AccountEntry,
+  BookReaderPage,
+  LibraryPage,
+  PERIODICALS,
+  PUBLICATIONS,
+  PUBLICATION_NAMES,
+  PlatformHomePage,
+  PlatformLayout,
+  PLATFORM_NAVIGATION_ITEMS,
+  RagRoutes,
+  SearchPage,
+  SupportPage,
+  defaultArchiveIssuePath,
+  refreshFeatureFlags,
+  rollout,
+  startPlatformAccountSync,
+  type FeatureFlagKey,
+  type PlatformNavigationItem,
+  useFeatureFlag,
+  useFeatureFlagStore,
+  usePlatformAccountStore,
+} from '@jojo/web/desktop';
 import { SettingsPage } from './SettingsPage';
 
-const modules = [
-  { path: '/press', name: 'Press', description: '识别、校对并导出书刊', enabled: true, action: '进入 Press' },
-  { path: '/archive', name: 'Archive', description: '报纸与杂志馆藏阅读', enabled: false },
-  { path: '/account', name: 'Account', description: '账号与个人资料', enabled: false },
-  { path: '/rag', name: 'RAG', description: '个人知识库与问答', enabled: false },
-  { path: '/olds', name: 'Olds', description: '旧闻资料整理', enabled: false },
-  { path: '/settings', name: '设置', description: '配置 MinerU 等桌面服务', enabled: true, action: '打开设置' },
-] as const;
+const coreDesktopNavigation: readonly PlatformNavigationItem[] = PLATFORM_NAVIGATION_ITEMS;
+const AccountConfirmation = lazy(() => import('@jojo/web/account-confirmation'));
 
-function DesktopHome() {
+function DesktopRuntime() {
+  const accountInitialized = usePlatformAccountStore((state) => state.initialized);
+  const userId = usePlatformAccountStore((state) => state.userId);
+  const flagsInitialized = useFeatureFlagStore((state) => state.initialized);
+  const ragEnabled = useFeatureFlag('rag.workspace');
+
+  useEffect(() => startPlatformAccountSync(), []);
+  useEffect(() => {
+    if (accountInitialized) void refreshFeatureFlags();
+  }, [accountInitialized, userId]);
+  useEffect(() => {
+    if (flagsInitialized) {
+      window.jojoDesktop?.setFeatureAvailability?.({ rag: rollout.rag && ragEnabled });
+    }
+  }, [flagsInitialized, ragEnabled]);
+  return null;
+}
+
+function DesktopRuntimeLayout() {
+  return <><DesktopRuntime /><Outlet /></>;
+}
+
+function useDesktopNavigation(): readonly PlatformNavigationItem[] {
+  const flagsInitialized = useFeatureFlagStore((state) => state.initialized);
+  const ragEnabled = useFeatureFlag('rag.workspace');
+  return [
+    ...coreDesktopNavigation,
+    ...(rollout.rag && flagsInitialized && ragEnabled ? [{ label: 'JOJO问答', href: '/rag' }] : []),
+  ];
+}
+
+function DesktopSettingsAction() {
+  const { pathname } = useLocation();
   return (
-    <main className="desktop-home">
-      <header className="desktop-home__header">
-        <p>JOJO DESKTOP</p>
-        <h1>工作台</h1>
-        <span>桌面端能力统一从这里进入。</span>
-      </header>
-      <section className="desktop-module-grid" aria-label="桌面模块">
-        {modules.map((module) => (
-          <article className="desktop-module-card" key={module.path}>
-            <p>{module.enabled ? '可使用' : '开发中'}</p>
-            <h2>{module.name}</h2>
-            <span>{module.description}</span>
-            {module.enabled ? <Link to={module.path}>{'action' in module ? module.action : '进入'}</Link> : null}
-          </article>
-        ))}
-      </section>
-    </main>
+    <Link
+      aria-label="设置"
+      className={`desktop-header-setting${pathname === '/settings' ? ' is-active' : ''}`}
+      title="设置 (Ctrl+,)"
+      to="/settings"
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="adjustments">
+        <path d="M4 8h10m4 0h2M4 16h2m4 0h10" />
+        <circle cx="16" cy="8" r="2" />
+        <circle cx="8" cy="16" r="2" />
+      </svg>
+    </Link>
   );
 }
 
-function ModulePlaceholder({ name }: { name: string }) {
+function DesktopPlatformLayout() {
   return (
-    <main className="desktop-placeholder">
-      <p>JOJO DESKTOP</p>
-      <h1>{name}</h1>
-      <span>模块位置已经保留，功能尚未启用。</span>
-      <Link to="/">返回工作台</Link>
+    <PlatformLayout
+      className="desktop-shell"
+      headerActions={<DesktopSettingsAction />}
+      navigationItems={useDesktopNavigation()}
+    />
+  );
+}
+
+function DesktopArchiveLayout() {
+  return (
+    <ArchiveLayout
+      className="desktop-shell"
+      headerActions={<DesktopSettingsAction />}
+      navigationItems={useDesktopNavigation()}
+      platformRedesign
+    />
+  );
+}
+
+function ServiceMessage({ eyebrow, title, children }: { eyebrow: string; title: string; children: ReactNode }) {
+  return (
+    <main className="desktop-service-message">
+      <p>{eyebrow}</p>
+      <h1>{title}</h1>
+      <div>{children}</div>
+      <Link to="/">返回今日阅读</Link>
     </main>
   );
 }
 
 function NotFound() {
   return (
-    <main className="desktop-placeholder">
-      <h1>页面不存在</h1>
-      <Link to="/">返回工作台</Link>
-    </main>
+    <ServiceMessage eyebrow="404" title="没有找到这个页面">
+      <p>地址可能已经变更。返回首页后可以从顶部导航重新选择功能。</p>
+    </ServiceMessage>
   );
 }
 
+function FeatureRoute({ flag, children }: { flag: FeatureFlagKey; children: ReactNode }) {
+  const initialized = useFeatureFlagStore((state) => state.initialized);
+  const enabled = useFeatureFlag(flag);
+  if (!initialized) {
+    return (
+      <ServiceMessage eyebrow="JOJO" title="正在检查功能权限">
+        <p>正在读取这台设备可使用的功能。</p>
+      </ServiceMessage>
+    );
+  }
+  return enabled ? children : <NotFound />;
+}
+
 export function createDesktopRoutes(): RouteObject[] {
+  const archiveReaderRoutes: RouteObject[] = PUBLICATION_NAMES.flatMap((name) => [
+    { path: name, element: <Navigate to={defaultArchiveIssuePath(name)} replace /> },
+    {
+      path: `${name}/:id`,
+      element: <ArchiveReaderPage name={name} type={PUBLICATIONS[name].type} />,
+    },
+  ]);
   return [
-    { path: '/', element: <DesktopHome /> },
-    createPressRoute(),
-    { path: '/settings', element: <SettingsPage /> },
-    { path: '/archive/*', element: <ModulePlaceholder name="Archive" /> },
-    { path: '/account/*', element: <ModulePlaceholder name="Account" /> },
-    { path: '/rag/*', element: <ModulePlaceholder name="RAG" /> },
-    { path: '/olds/*', element: <ModulePlaceholder name="Olds" /> },
-    { path: '*', element: <NotFound /> },
+    {
+      path: '/',
+      element: <DesktopRuntimeLayout />,
+      children: [
+        {
+          element: <DesktopPlatformLayout />,
+          children: [
+            { index: true, element: <PlatformHomePage periodicals={PERIODICALS} /> },
+            { path: 'library', element: <LibraryPage periodicals={PERIODICALS} /> },
+            { path: 'library/:datasetId', element: <LibraryPage periodicals={PERIODICALS} /> },
+            {
+              path: 'search',
+              element: <div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage openResultsInNewTab={false} platformRedesign /></div>,
+            },
+            { path: 'support', element: <SupportPage platformRedesign /> },
+            { path: 'settings', element: <SettingsPage /> },
+          ],
+        },
+        {
+          path: 'archive',
+          element: <DesktopArchiveLayout />,
+          children: [
+            { index: true, element: <Navigate to="/library?type=periodical" replace /> },
+            ...archiveReaderRoutes,
+          ],
+        },
+        { path: 'book/:notebookId/:sourceId', element: <BookReaderPage publicReader /> },
+        ...(rollout.rag
+          ? [{ path: 'rag/*', element: <FeatureRoute flag="rag.workspace"><RagRoutes /></FeatureRoute> }]
+          : []),
+        { path: 'account', element: <AccountEntry /> },
+        {
+          path: 'account/confirm',
+          element: (
+            <Suspense fallback={<main className="min-h-screen bg-paper" aria-label="正在载入账号确认页面" />}>
+              <AccountConfirmation />
+            </Suspense>
+          ),
+        },
+        { path: 'login', element: <Navigate to="/account" replace /> },
+        { path: '*', element: <NotFound /> },
+      ],
+    },
   ];
 }
 

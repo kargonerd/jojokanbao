@@ -14,9 +14,15 @@ import {
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
-const CMAP_URL = "/assets/pdfjs/cmaps/";
-const WASM_URL = "/assets/pdfjs/wasm/";
-const STANDARD_FONT_URL = "/assets/pdfjs/standard_fonts/";
+function pdfjsAssetUrl(folder: string): string {
+  const path = `${import.meta.env.BASE_URL}assets/pdfjs/${folder}/`;
+  if (typeof window === "undefined") return path;
+  return new URL(path, window.document.baseURI).href;
+}
+
+const CMAP_URL = pdfjsAssetUrl("cmaps");
+const WASM_URL = pdfjsAssetUrl("wasm");
+const STANDARD_FONT_URL = pdfjsAssetUrl("standard_fonts");
 
 interface UsePdfDocumentOptions {
   url: string;

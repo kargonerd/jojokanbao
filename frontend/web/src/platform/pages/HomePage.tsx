@@ -7,12 +7,13 @@ import type { RagNotebook } from "../../rag/types";
 import { fuzzyBookTitleScore } from "../bookSearch";
 import { BookCover } from "../BookCover";
 import { usePlatformAccountStore } from "../accountSession";
-import { PERIODICALS, bookCoverTone } from "../catalog";
+import type { PeriodicalEntry } from "../catalog";
+import { bookCoverTone } from "../bookCatalog";
 import { dailyQuote } from "../dailyQuote";
 import { useRecentReadingStore, type RecentReadingItem } from "../recentReadingStore";
 import { useFeatureFlag, useFeatureFlagStore } from "../../featureFlags";
 
-function RecentCover({ item }: { item: RecentReadingItem }) {
+function RecentCover({ item, periodicals }: { item: RecentReadingItem; periodicals: readonly PeriodicalEntry[] }) {
   if (item.kind === "book") {
     const path = item.href.split("?")[0]?.split("/").filter(Boolean) ?? [];
     const datasetId = item.datasetId ?? (path[0] === "book" && path[1] ? decodeURIComponent(path[1]) : undefined);
@@ -31,7 +32,7 @@ function RecentCover({ item }: { item: RecentReadingItem }) {
     return <div className="recent-cover recent-cover-book"><b>{item.title}</b></div>;
   }
   const publicationId = item.publicationId ?? item.id.replace(/^periodical:/, "");
-  const publication = PERIODICALS.find((entry) => entry.id === publicationId);
+  const publication = periodicals.find((entry) => entry.id === publicationId);
   if (publication) {
     return (
       <div className="recent-cover recent-cover-image">
@@ -46,7 +47,7 @@ function RecentCover({ item }: { item: RecentReadingItem }) {
   );
 }
 
-export function PlatformHomePage() {
+export function PlatformHomePage({ periodicals = [] }: { periodicals?: readonly PeriodicalEntry[] }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [books, setBooks] = useState<RagNotebook[]>([]);
@@ -57,7 +58,8 @@ export function PlatformHomePage() {
   const userId = usePlatformAccountStore((state) => state.userId);
   const flagsInitialized = useFeatureFlagStore((state) => state.initialized);
   const bookshelfEnabled = useFeatureFlag("library.bookshelf");
-  const recentItems = storedRecentItems.slice(0, 4);
+  const includePeriodicals = periodicals.length > 0;
+  const recentItems = storedRecentItems.filter((item) => includePeriodicals || item.kind === "book").slice(0, 4);
   const quote = useMemo(() => dailyQuote(), []);
 
   useEffect(() => {
@@ -181,7 +183,7 @@ export function PlatformHomePage() {
           <div className="recent-grid">
             {recentItems.map((item) => (
               <Link key={item.id} className="recent-card" to={item.href}>
-                <RecentCover item={item} />
+                <RecentCover item={item} periodicals={periodicals} />
                 <div className="recent-copy">
                   <strong>{item.title}</strong>
                   <div className="recent-meta"><p>{item.subtitle}</p><span>{Math.round(item.progress)}%</span></div>
@@ -195,7 +197,7 @@ export function PlatformHomePage() {
             <span aria-hidden="true">阅</span>
             <div>
               <strong>还没有阅读记录</strong>
-              <p>从资料库打开一份报刊或书籍，下一次从这里接着读。</p>
+              <p>{includePeriodicals ? "从资料库打开一份报刊或书籍，下一次从这里接着读。" : "从资料库打开一本书，下一次从这里接着读。"}</p>
             </div>
             <Link to="/library">去资料库&nbsp;→</Link>
           </div>
