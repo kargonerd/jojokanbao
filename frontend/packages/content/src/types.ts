@@ -25,6 +25,11 @@ export interface JojoPeriodicalAvailability {
   pdf: JojoAdaptiveCalendar;
 }
 
+export interface JojoItemAvailability {
+  text: JojoContentState;
+  pdf: JojoContentState;
+}
+
 export interface JojoCatalogEntry {
   datasetId: string;
   type: JojoDatasetType;
@@ -64,6 +69,7 @@ export interface JojoDatasetIndex {
   description?: string;
   publicationStatus?: JojoPublicationStatus;
   access?: JojoContentAccess;
+  availability?: JojoItemAvailability;
   items?: JojoDatasetItemSummary[];
   itemPath?: string;
   availability?: JojoPeriodicalAvailability;
@@ -80,6 +86,7 @@ export interface JojoCanonicalDataset {
   description?: string;
   itemPath: string;
   availability?: JojoPeriodicalAvailability;
+  items?: JojoDatasetItemSummary[];
 }
 
 export interface JojoBody {
@@ -115,7 +122,7 @@ export interface JojoArticleDescriptor {
   order: number;
   title: string;
   characterCount: number;
-  contentState: JojoContentState;
+  status: JojoContentState;
   object: string | null;
   size?: number;
   sha256?: string;
@@ -180,6 +187,7 @@ export interface JojoItemManifest {
   language: string;
   publicationStatus?: JojoPublicationStatus;
   access?: JojoContentAccess;
+  availability?: JojoItemAvailability;
   identifiers?: Record<string, string | null>;
   metadata: Record<string, unknown>;
   content: {
@@ -210,7 +218,7 @@ export interface JojoFragment {
   type: "article" | "chapter";
   order: number;
   title: string;
-  contentState?: JojoContentState;
+  status?: JojoContentState;
   body: JojoBody;
   assetRefs: string[];
   annotations: JojoAnnotation[];
@@ -266,6 +274,7 @@ export interface JojoCanonicalItem {
   language: string;
   publicationStatus?: JojoPublicationStatus;
   access?: JojoContentAccess;
+  availability?: JojoItemAvailability;
   identifiers: Record<string, string | null>;
   metadata: Record<string, unknown>;
   content: {

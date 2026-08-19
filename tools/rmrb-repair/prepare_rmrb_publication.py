@@ -4,8 +4,8 @@
 The converter is intentionally staging-only.  It streams the merged
 PeopleData-aligned JSONL, applies staged review decisions, writes one
 Canonical newspaper Item per day, and creates yearly Hugging Face viewer
-shards. Original issue PDFs are content-addressed in Canonical/Hugging Face
-and transformed into range-safe Jox Delivery exports. The command only builds
+shards. Original issue PDFs use date-addressed Canonical/Hugging Face paths
+and become primary range-safe Jox Delivery assets. The command only builds
 local staging output; uploading remains a separate, explicit operation.
 """
 
@@ -33,6 +33,7 @@ DEFAULT_REVIEW_ROOT = WORKSPACE / "tmp" / "rmrb-peopledata-full-directory"
 DEFAULT_MERGED = DEFAULT_REVIEW_ROOT / "merged-peopledata-canonical.jsonl"
 DEFAULT_IMAGES = WORKSPACE / "tmp" / "pdfs" / "rmrb-peopledata-online-images"
 DEFAULT_PDFS = Path(r"D:\暂存")
+DEFAULT_PDFS_1998_2012 = Path(r"D:\Cloud\OneDrive\rmrb\RMRB")
 COPY_MARKER_RE = re.compile(r"[（(]\s*人民数据库资料\s*[）)]")
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff"}
 JOX_SALT = 0x4A4F5831
@@ -122,12 +123,29 @@ def write_jox_file(root: Path, object_key: str, source: Path) -> dict[str, Any]:
     with source.open("rb") as input_stream, target.open("wb") as output_stream:
         while chunk := input_stream.read(1024 * 1024):
             digest.update(chunk)
-            output_stream.write(bytes(
-                byte ^ jox_mask_byte(size + index, seed)
-                for index, byte in enumerate(chunk)
-            ))
+            output_stream.write(transform_jox_chunk(chunk, seed, size))
             size += len(chunk)
     return {"size": size, "sha256": digest.hexdigest()}
+
+
+def transform_jox_chunk(value: bytes, seed: int, offset: int) -> bytes:
+    """Transform a large object chunk, using NumPy when locally available."""
+    try:
+        import numpy as np
+    except ImportError:
+        return bytes(
+            byte ^ jox_mask_byte(offset + index, seed)
+            for index, byte in enumerate(value)
+        )
+    positions = np.arange(offset, offset + len(value), dtype=np.uint32)
+    mixed = (positions + np.uint32(0x9E3779B9)) ^ np.uint32(seed) ^ np.uint32(JOX_SALT)
+    mixed ^= mixed >> np.uint32(16)
+    mixed *= np.uint32(0x7FEB352D)
+    mixed ^= mixed >> np.uint32(15)
+    mixed *= np.uint32(0x846CA68B)
+    mixed ^= mixed >> np.uint32(16)
+    mask = (mixed & np.uint32(0xFF)).astype(np.uint8)
+    return np.bitwise_xor(np.frombuffer(value, dtype=np.uint8), mask).tobytes()
 
 
 def stable_suffix(*parts: object, length: int = 16) -> str:
@@ -218,8 +236,10 @@ def hardlink_or_copy(source: Path, target: Path) -> None:
         shutil.copy2(source, target)
 
 
-def issue_pdf_path(pdf_root: Path, day: str) -> Path:
-    return pdf_root / day[:4] / f"{day.replace('-', '')}.pdf"
+def issue_pdf_path(pdf_root: Path, day: str, pdf_1998_2012_root: Path | None = None) -> Path:
+    year = int(day[:4])
+    root = pdf_1998_2012_root if pdf_1998_2012_root and 1998 <= year <= 2012 else pdf_root
+    return root / day[:4] / f"{day.replace('-', '')}.pdf"
 
 
 def calendar_dates(start_date: str, end_date: str) -> list[str]:
@@ -336,7 +356,7 @@ def image_asset(decision: Decision, canonical_assets: Path) -> tuple[dict[str, A
     if decision.image_sha256 and sha256_file(decision.image_path) != digest:
         raise ValueError(f"Image checksum mismatch: {decision.image_path}")
     suffix = decision.image_path.suffix.lower()
-    target = canonical_assets / f"{digest}{suffix}"
+    target = canonical_assets / "images" / f"{digest}{suffix}"
     hardlink_or_copy(decision.image_path, target)
     asset_id = f"asset:image-{digest[:16]}"
     media_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
@@ -350,7 +370,7 @@ def image_asset(decision: Decision, canonical_assets: Path) -> tuple[dict[str, A
         "caption": None,
         "size": target.stat().st_size,
         "sha256": digest,
-        "path": f"assets/{target.name}",
+        "path": f"assets/images/{target.name}",
         **({"sourceUrl": decision.image_url} if decision.image_url else {}),
     }, asset_id)
 
@@ -359,6 +379,7 @@ def build_article(
     row: dict[str, Any],
     decisions: dict[ArticleKey, Decision],
     canonical_assets: Path,
+    pdf_url: str | None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any] | None, bool]:
     key = article_key(row)
     day, page, ordinal = key
@@ -400,6 +421,7 @@ def build_article(
         "title": title,
         "content": body,
         "status": content_state,
+        "pdf": pdf_url,
     }
     return article, viewer_row, asset, stripped_title
 
@@ -413,6 +435,7 @@ def build_day(
     generated_at: str,
     viewer: TextIO,
     pdf_root: Path,
+    pdf_1998_2012_root: Path | None,
 ) -> tuple[dict[str, Any], Counter[str], int]:
     canonical_root = output / "canonical" / "newspapers" / "rmrb"
     articles: list[dict[str, Any]] = []
@@ -423,8 +446,14 @@ def build_day(
     counts: Counter[str] = Counter()
     stripped_titles = 0
     page_article_order: Counter[int] = Counter()
+    pdf_source = issue_pdf_path(pdf_root, day, pdf_1998_2012_root)
+    pdf_url = (
+        "https://huggingface.co/datasets/luoxiaozhuang/marxism-dataset/resolve/main/"
+        f"newspapers/rmrb/assets/pdfs/{day[:4]}/{day[5:7]}/{day}.pdf"
+        if pdf_source.is_file() else None
+    )
     for row in sorted(rows, key=lambda value: (int(value["page"]), int(value["ordinal"]))):
-        article, viewer_row, asset, stripped = build_article(row, decisions, canonical_root / "assets")
+        article, viewer_row, asset, stripped = build_article(row, decisions, canonical_root / "assets", pdf_url)
         articles.append(article)
         viewer.write(json_dump(viewer_row) + "\n")
         status = str(viewer_row["status"])
@@ -442,14 +471,13 @@ def build_day(
             "role": "complete",
         })
     compact = day.replace("-", "")
-    pdf_source = issue_pdf_path(pdf_root, day)
     pdf_digest: str | None = None
     pdf_asset_path: str | None = None
     if pdf_source.is_file():
         pdf_digest = sha256_file(pdf_source)
-        pdf_target = canonical_root / "assets" / f"{pdf_digest}.pdf"
+        pdf_target = canonical_root / "assets" / "pdfs" / day[:4] / day[5:7] / f"{day}.pdf"
         hardlink_or_copy(pdf_source, pdf_target)
-        pdf_asset_path = f"assets/{pdf_target.name}"
+        pdf_asset_path = f"assets/pdfs/{day[:4]}/{day[5:7]}/{day}.pdf"
         assets[f"asset:issue-pdf-{pdf_digest[:16]}"] = {
             "id": f"asset:issue-pdf-{pdf_digest[:16]}",
             "type": "pdf",
@@ -548,7 +576,7 @@ def build_delivery(output: Path, items: list[dict[str, Any]], availability: dict
                 "order": article["order"],
                 "title": article["title"],
                 "characterCount": len(body),
-                "contentState": state,
+                "status": state,
             }
             if state == "available":
                 fragment = {
@@ -558,7 +586,7 @@ def build_delivery(output: Path, items: list[dict[str, Any]], availability: dict
                     "type": "article",
                     "order": article["order"],
                     "title": article["title"],
-                    "contentState": state,
+                    "status": state,
                     "body": article["body"],
                     "assetRefs": article["assetRefs"],
                     "annotations": [],
@@ -578,16 +606,13 @@ def build_delivery(output: Path, items: list[dict[str, Any]], availability: dict
         for asset in item["assets"]:
             source = canonical_root / asset["path"]
             if asset["type"] == "pdf":
-                relative_object = f"exports/{opaque_name_from_sha256(asset['sha256'])}.jox"
+                relative_object = "assets/newspaper.pdf.jox"
                 info = write_jox_file(delivery_root, f"{item_prefix}/{relative_object}", source)
-                exports.append({
-                    "id": "export:issue-pdf",
-                    "format": "pdf",
-                    "mediaType": "application/pdf",
-                    "fileName": f"人民日报-{day}.pdf",
-                    "object": relative_object,
-                    **info,
-                })
+                descriptor = {
+                    key: value for key, value in asset.items()
+                    if key not in {"path", "sourceUrl", "sha256", "size"}
+                }
+                asset_descriptors.append({**descriptor, "object": relative_object, **info})
                 export_count += 1
                 continue
             relative_object = f"assets/{opaque_name_from_sha256(asset['sha256'])}.jox"
@@ -609,6 +634,10 @@ def build_delivery(output: Path, items: list[dict[str, Any]], availability: dict
             "language": "zh-CN",
             "publicationStatus": "published",
             "access": "public",
+            "availability": {
+                "text": "available" if any(row["status"] == "available" for row in article_descriptors) else "missing",
+                "pdf": "available" if any(row["type"] == "pdf" for row in asset_descriptors) else "missing",
+            },
             "identifiers": item["identifiers"],
             "metadata": item["metadata"],
             "content": {
@@ -617,8 +646,8 @@ def build_delivery(output: Path, items: list[dict[str, Any]], availability: dict
             },
             "contentStats": {
                 "articleCount": len(article_descriptors),
-                "availableArticleCount": sum(row["contentState"] == "available" for row in article_descriptors),
-                "missingArticleCount": sum(row["contentState"] == "missing" for row in article_descriptors),
+                "availableArticleCount": sum(row["status"] == "available" for row in article_descriptors),
+                "missingArticleCount": sum(row["status"] == "missing" for row in article_descriptors),
                 "characterCount": sum(row["characterCount"] for row in article_descriptors),
             },
             "assets": asset_descriptors,
@@ -644,7 +673,7 @@ def build_delivery(output: Path, items: list[dict[str, Any]], availability: dict
         "deliveryFragments": fragment_count,
         "deliveryMissingDescriptors": missing_descriptor_count,
         "deliveryAssets": asset_count,
-        "deliveryPdfExports": export_count,
+        "deliveryPdfAssets": export_count,
     }
 
 
@@ -723,7 +752,7 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
         assert year_writer is not None
         summary, counts, stripped = build_day(
             current_day, day_rows, decisions, output, args.snapshot_id, generated_at, year_writer,
-            args.pdf_root,
+            args.pdf_root, args.pdf_1998_2012_root,
         )
         summary["order"] = len(items) + 1
         items.append(summary)
@@ -732,7 +761,8 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
         days_written += 1
         return args.limit_days is None or days_written < args.limit_days
 
-    with args.merged.open(encoding="utf-8-sig") as stream:
+    opener = gzip.open if args.merged.suffix.lower() == ".gz" else open
+    with opener(args.merged, "rt", encoding="utf-8-sig") as stream:
         for line in stream:
             if not line.strip():
                 continue
@@ -795,12 +825,12 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
     write_json(hf_root / "dataset.json", dataset)
     newspapers_readme = """# 报刊数据集\n\n按报刊种类组织的数字报刊数据。\n\n- [`rmrb/`](rmrb/)：《人民日报》文章、整期数据、PDF 和图片。\n"""
     (hf_root.parent / "README.md").write_text(newspapers_readme, encoding="utf-8", newline="\n")
-    hf_readme = """# 人民日报数据集\n\n按人民数据目录整理的《人民日报》数字数据集，包含文章目录、正文、整期原始 PDF 和文章图片。\n\n- `data/articles/*.jsonl.gz`：按年份分片的逐篇文章表，可通过 Dataset Viewer 浏览并用于批量分析。\n- `items/`：按日期保存的完整报纸数据。\n- `assets/`：按 SHA-256 命名的整期 PDF 与文章图片。\n- `contentState` 使用 `available`、`missing` 表示正文是否可用。\n"""
+    hf_readme = """# 人民日报数据集\n\n按人民数据目录整理的《人民日报》数字数据集，包含文章目录、正文、整期原始 PDF 和文章图片。\n\n- `data/articles/*.jsonl.gz`：按年份分片的逐篇文章表，可通过 Dataset Viewer 浏览并用于批量分析。\n- `items/`：按日期保存的完整报纸数据。\n- `assets/pdfs/YYYY/MM/YYYY-MM-DD.pdf`：可直接展示的整期原报。\n- `assets/images/`：按 SHA-256 命名的文章图片。\n- `status` 使用 `available`、`missing` 表示正文是否可用。\n"""
     (hf_root / "README.md").write_text(hf_readme, encoding="utf-8", newline="\n")
     assets_root = output / "canonical" / "newspapers" / "rmrb" / "assets"
     if assets_root.is_dir():
-        for path in sorted(value for value in assets_root.iterdir() if value.is_file()):
-            hardlink_or_copy(path, hf_root / "assets" / path.name)
+        for path in sorted(value for value in assets_root.rglob("*") if value.is_file()):
+            hardlink_or_copy(path, hf_root / "assets" / path.relative_to(assets_root))
     delivery_report = build_delivery(output, items, availability) if not args.skip_delivery else {}
     if not args.skip_audit:
         prepare_audit(output, args.review_root, args.snapshot_id, decisions)
@@ -850,6 +880,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--start-date")
     result.add_argument("--end-date")
     result.add_argument("--pdf-root", type=Path, default=DEFAULT_PDFS)
+    result.add_argument("--pdf-1998-2012-root", type=Path, default=DEFAULT_PDFS_1998_2012)
     result.add_argument("--limit-days", type=int)
     result.add_argument("--skip-audit", action="store_true")
     result.add_argument("--skip-delivery", action="store_true")

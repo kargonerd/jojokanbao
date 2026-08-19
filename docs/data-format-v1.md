@@ -142,16 +142,18 @@ canonical/
 │  └─ rmrb/
 │     ├─ dataset.json
 │     ├─ items/1990/09/1990-09-06.json.gz
-│     └─ assets/<sha256>.pdf
+│     ├─ assets/pdfs/1990/09/1990-09-06.pdf
+│     └─ assets/images/<sha256>.jpg
 └─ magazines/
    └─ qiushi/
       ├─ dataset.json
       ├─ items/2026/2026-15.json.gz
       ├─ items/2026/2026-special-1.json.gz
-      └─ assets/<sha256>.pdf
+      └─ assets/pdfs/2026/2026-15.pdf
 ```
 
-资源以 SHA-256 命名，避免同一 Dataset 内重复保存。
+期级 PDF 是面向展示的主资源，使用日期或期号命名；文章图片等无稳定业务名称的资源仍以
+SHA-256 命名，避免同一 Dataset 内重复保存。
 
 ### 3.2 Dataset
 
@@ -251,7 +253,7 @@ Dataset 和 Delivery Index，不再拆分年度 Availability 文件。顶层默�
 生成器根据该年范围内可用与缺失日期的数量选择较少的一侧：可用日期不超过一半时使用
 `include`，否则使用 `exclude`。完整月份优先折叠为 `months`，三个及以上连续日期折叠为
 `ranges`，其余放入 `dates`。`text` 表示该期
-至少有一篇可阅读文章；`pdf` 表示整期 PDF 已通过校验并生成 Export。两者互不推断。
+至少有一篇可阅读文章；`pdf` 表示整期 PDF 已通过校验并登记为 Asset。两者互不推断。
 
 ### 3.3 Item 外壳
 
@@ -590,8 +592,8 @@ jojo-newspaper/
    │     └─ items/1990/09/1990-09-06/
    │        ├─ manifest.jox
    │        ├─ articles/<opaque-id>.jox
-   │        ├─ assets/<opaque-id>.jox
-   │        └─ exports/<opaque-id>.jox
+   │        ├─ assets/newspaper.pdf.jox
+   │        └─ assets/<opaque-id>.jox
    └─ magazines/
       └─ qiushi/
          ├─ index.jox
@@ -611,7 +613,7 @@ jojo-newspaper/
 - `search/text.jox`：一个 Item 的轻量纯文本搜索块，只供浏览器书内搜索。
 - `articles/*.jox`：单篇报刊文章。
 - `assets/*.jox`：图片、音频、视频和 PDF 等媒体。
-- `exports/*.jox`：可直接下载的整本或整期成品。
+- `exports/*.jox`：由 Canonical 内容生成的整本下载成品，例如 EPUB。
 
 Delivery Index 使用独立格式，避免与 Canonical Dataset 混淆：
 
@@ -640,7 +642,7 @@ Delivery Index 使用独立格式，避免与 Canonical Dataset 混淆：
 `availability.text`、`availability.pdf`，避免在一个 Index 中重复列出数万条 Item，也避免
 前端额外下载逐年索引。Reader 先检查对应能力的日历，再用日期展开 Manifest 路径。
 
-### 5.2 Manifest 与 Export
+### 5.2 Manifest、Asset 与 Export
 
 Manifest 不包含整章正文，只描述对象：
 
@@ -698,11 +700,34 @@ Manifest 不包含整章正文，只描述对象：
 `exports/` 是可选目录：
 
 - 书籍通常提供整本 EPUB，可选 PDF。
-- 报纸通常提供整期原报 PDF。
-- 杂志通常提供整期 PDF 或 EPUB。
+- 报纸和杂志的原始整期 PDF 属于 `assets/`，用于阅读器展示，也可以下载。
+- 由规范内容额外生成的 EPUB/PDF 才属于 `exports/`。
 - 没有成品下载时，`exports` 为 `[]`，目录不创建。
 
-图片、音频和视频属于 `assets/`，不属于 `exports/`。
+图片、音频、视频和原始期级 PDF 属于 `assets/`，不属于 `exports/`。
+
+报刊 Item Manifest 还必须直接表达两种能力；空正文或 rejected/missing 文章不算文本可用：
+
+```json
+{
+  "availability": {"text": "available", "pdf": "available"},
+  "content": {
+    "schema": "jojo-content/newspaper/1",
+    "articles": [
+      {"id": "article:1", "title": "示例", "status": "missing", "object": null}
+    ]
+  },
+  "assets": [
+    {
+      "type": "pdf",
+      "role": "issue-pdf",
+      "mediaType": "application/pdf",
+      "object": "assets/newspaper.pdf.jox"
+    }
+  ],
+  "exports": []
+}
+```
 
 书籍导入时生成一个可选的 `search/text.jox`：
 
