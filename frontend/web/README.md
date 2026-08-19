@@ -27,6 +27,17 @@ VITE_RAG_API_BASE=
 VITE_OLDS_API_BASE=http://127.0.0.1:3001
 ```
 
+## 划线评论
+
+最新设计中的书籍阅读器和新闻正文共用 `src/annotations/`。读者必须登录且命中
+`reader.annotations` 功能开关，才能读取划线、发表评论、回复其他读者或举报评论。
+旧 `src/archive/` PDF 页面不接入此能力。后端契约由 Supabase 迁移
+`202608180001_unified_annotations.sql` 提供。
+
+同一迁移还提供通用站内通知表和用户 RPC。回复评论会通知被回复者，直接评论划线会
+通知划线作者；自己触发的事件不会给自己发通知。登录读者可从新版页头进入
+`/notifications`，前台每 30 秒及窗口重新聚焦时刷新未读数。当前不包含邮件或系统推送。
+
 然后运行：
 
 ```bash

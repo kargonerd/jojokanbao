@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { usePlatformAccountStore } from "./accountSession";
+import { PlatformAccountMenu } from "./PlatformAccountMenu";
 
 export type PlatformNavigationItem = {
   label: string;
@@ -29,8 +29,6 @@ export function PlatformHeader({
   actions?: ReactNode;
 } = {}) {
   const { pathname } = useLocation();
-  const userId = usePlatformAccountStore((state) => state.userId);
-  const displayName = usePlatformAccountStore((state) => state.displayName);
   const brandBase = import.meta.env.BASE_URL;
 
   return (
@@ -52,7 +50,7 @@ export function PlatformHeader({
       </nav>
       <div className="platform-header-actions">
         {actions}
-        <Link className="platform-login" to="/account">{userId ? displayName || "账号" : "登录"}</Link>
+        <PlatformAccountMenu />
       </div>
     </header>
   );

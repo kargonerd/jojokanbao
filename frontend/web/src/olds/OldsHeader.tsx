@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { PlatformAccountMenu } from "../platform/PlatformAccountMenu";
 import { ARCHIVE_ROOT } from "../routes";
 import { rollout } from "../rollout";
 
@@ -13,6 +14,7 @@ export function OldsHeader() {
           <Link to={libraryHref} className="font-bold text-ink hover:text-red">资料库</Link>
           {rollout.rag && <Link to="/rag" className="font-bold text-ink hover:text-red">问答</Link>}
         </nav>
+        {rollout.platformRedesign && <PlatformAccountMenu />}
       </div>
     </header>
   );
