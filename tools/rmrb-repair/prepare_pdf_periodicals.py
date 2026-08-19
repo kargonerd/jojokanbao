@@ -201,7 +201,7 @@ def build_publication(
         }) + "\n")
 
         item_prefix = str(row["deliveryPrefix"])
-        pdf_object = "assets/issue.pdf.jox"
+        pdf_object = "assets/newspaper.pdf.jox" if publication.slug == "rmrb" else "assets/issue.pdf.jox"
         info = common.write_jox_file(delivery_root, f"{item_prefix}/{pdf_object}", source)
         manifest = {
             "formatVersion": "jojo-item-manifest/1",
