@@ -49,7 +49,8 @@ def test_prepare_keeps_missing_and_reuses_legacy_pdf_key(tmp_path: Path) -> None
     assert (output / "huggingface/newspapers/rmrb/items/1950/01/1950-01-01.json.gz").is_file()
     with gzip.open(output / "huggingface/newspapers/rmrb/data/articles/1950.jsonl.gz", "rt", encoding="utf-8") as stream:
         viewer_row = json.loads(next(stream))
-    assert set(viewer_row) == {"date", "page", "ordinal", "title", "content", "status"}
+    assert set(viewer_row) == {"date", "page", "ordinal", "title", "content", "status", "pdf"}
+    assert viewer_row["pdf"] is None
 
 
 def test_image_decision_creates_hashed_asset(tmp_path: Path) -> None:
@@ -74,7 +75,7 @@ def test_image_decision_creates_hashed_asset(tmp_path: Path) -> None:
     ])
     report = MODULE.prepare(args)
     assert report["articleStatuses"] == {"available": 1}
-    assert (output / f"canonical/newspapers/rmrb/assets/{digest}.jpg").read_bytes() == b"fake-jpeg"
+    assert (output / f"canonical/newspapers/rmrb/assets/images/{digest}.jpg").read_bytes() == b"fake-jpeg"
 
 
 def test_date_range_flushes_last_selected_day(tmp_path: Path) -> None:
@@ -121,14 +122,24 @@ def test_pdf_and_adaptive_dual_availability(tmp_path: Path) -> None:
     assert dataset["availability"]["pdf"]["years"]["1950"] == {
         "include": {"dates": ["01-01"]},
     }
-    digest = MODULE.sha256_file(pdf)
-    assert (output / f"canonical/newspapers/rmrb/assets/{digest}.pdf").read_bytes() == b"%PDF-preview"
-    assert (output / f"huggingface/newspapers/rmrb/assets/{digest}.pdf").read_bytes() == b"%PDF-preview"
+    assert (output / "canonical/newspapers/rmrb/assets/pdfs/1950/01/1950-01-01.pdf").read_bytes() == b"%PDF-preview"
+    assert (output / "huggingface/newspapers/rmrb/assets/pdfs/1950/01/1950-01-01.pdf").read_bytes() == b"%PDF-preview"
     index_key = "content/newspapers/rmrb/index.jox"
     protected = (output / "delivery" / index_key).read_bytes()
     decoded = gzip.decompress(MODULE.transform_jox_bytes(protected, index_key))
     index = json.loads(decoded)
     assert index["availability"] == dataset["availability"]
+    manifest_key = "content/newspapers/rmrb/items/1950/01/1950-01-01/manifest.jox"
+    protected = (output / "delivery" / manifest_key).read_bytes()
+    manifest = json.loads(gzip.decompress(MODULE.transform_jox_bytes(protected, manifest_key)))
+    assert manifest["availability"] == {"text": "available", "pdf": "available"}
+    assert manifest["content"]["articles"][0]["status"] == "available"
+    assert "contentState" not in manifest["content"]["articles"][0]
+    assert manifest["exports"] == []
+    pdf_asset = next(asset for asset in manifest["assets"] if asset["type"] == "pdf")
+    assert pdf_asset["object"] == "assets/newspaper.pdf.jox"
+    protected_pdf = output / "delivery/content/newspapers/rmrb/items/1950/01/1950-01-01/assets/newspaper.pdf.jox"
+    assert MODULE.transform_jox_bytes(protected_pdf.read_bytes(), str(Path(manifest_key).parent / pdf_asset["object"])) == b"%PDF-preview"
 
 
 def test_adaptive_calendar_uses_requested_calendar_end() -> None:
