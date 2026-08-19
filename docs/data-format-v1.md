@@ -190,7 +190,24 @@ canonical/
   "type": "newspaper",
   "title": "人民日报",
   "language": "zh-CN",
-  "itemPath": "items/{YYYY}/{MM}/{YYYY-MM-DD}.json.gz"
+  "itemPath": "items/{YYYY}/{MM}/{YYYY-MM-DD}.json.gz",
+  "availability": {
+    "formatVersion": "jojo-periodical-availability/1",
+    "text": {
+      "format": "adaptive-calendar/1",
+      "startDate": "1946-05-15",
+      "endDate": "2025-12-31",
+      "default": "available",
+      "years": {}
+    },
+    "pdf": {
+      "format": "adaptive-calendar/1",
+      "startDate": "1946-05-15",
+      "endDate": "2025-12-31",
+      "default": "available",
+      "years": {}
+    }
+  }
 }
 ```
 
@@ -208,6 +225,33 @@ canonical/
 ```
 
 Canonical Dataset 不引用 `.jox`。`.jox` 只属于 Delivery。
+
+报纸和杂志必须分别表达文本版与 PDF 版是否可用。日期型报刊把两套自适应日历直接放进
+Dataset 和 Delivery Index，不再拆分年度 Availability 文件。顶层默认日期可用；整年可用时
+不记录该年。某年大多数日期可用时使用 `exclude`，只有少数日期可用时使用 `include`。两者
+都可以包含完整月份、连续日期范围和零散日期：
+
+```json
+{
+  "1951": {
+    "exclude": {
+      "months": ["08"],
+      "ranges": [["11-03", "11-07"]],
+      "dates": ["02-14"]
+    }
+  },
+  "1967": {
+    "include": {
+      "dates": ["01-06", "01-13"]
+    }
+  }
+}
+```
+
+生成器根据该年范围内可用与缺失日期的数量选择较少的一侧：可用日期不超过一半时使用
+`include`，否则使用 `exclude`。完整月份优先折叠为 `months`，三个及以上连续日期折叠为
+`ranges`，其余放入 `dates`。`text` 表示该期
+至少有一篇可阅读文章；`pdf` 表示整期 PDF 已通过校验并生成 Export。两者互不推断。
 
 ### 3.3 Item 外壳
 
@@ -392,6 +436,7 @@ Canonical Dataset 不引用 `.jox`。`.jox` 只属于 Delivery。
         "order": 1,
         "title": "历史也得完整地“透明”",
         "authors": ["宋志坚"],
+        "contentState": "available",
         "body": {
           "format": "html",
           "profile": "jojo-semantic-html/1",
@@ -416,6 +461,10 @@ Canonical Dataset 不引用 `.jox`。`.jox` 只属于 Delivery。
   "extensions": {}
 }
 ```
+
+报刊文章的 `contentState` 只允许 `available`、`missing`。有正文、实际图片或明确的
+`【图片】` 占位内容时为 `available`；没有可阅读正文时为 `missing`，但标题和目录位置仍须
+保留。人工修复方式和无法确认的原因属于私有审计信息，不扩展公开状态枚举。
 
 `placements` 是文章与版面的唯一权威关系。`pages` 和 `articles` 不重复保存双向引用。`role` v1 允许：
 
@@ -586,6 +635,10 @@ Delivery Index 使用独立格式，避免与 Canonical Dataset 混淆：
   ]
 }
 ```
+
+书籍和短期刊物可用 `items` 明列 Item。大型日期型报刊改用确定性的 `itemPath` 与内嵌
+`availability.text`、`availability.pdf`，避免在一个 Index 中重复列出数万条 Item，也避免
+前端额外下载逐年索引。Reader 先检查对应能力的日历，再用日期展开 Manifest 路径。
 
 ### 5.2 Manifest 与 Export
 

@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Prepare a JOJO v1 RMRB Canonical snapshot without uploading it.
+"""Prepare JOJO v1 RMRB Canonical, Delivery, and Hugging Face snapshots.
 
 The converter is intentionally staging-only.  It streams the merged
 PeopleData-aligned JSONL, applies staged review decisions, writes one
 Canonical newspaper Item per day, and creates yearly Hugging Face viewer
-shards.  Existing archive PDFs are referenced by their legacy B2 object key;
-the 92 GiB PDF collection is never copied into this build.
+shards. Original issue PDFs are content-addressed in Canonical/Hugging Face
+and transformed into range-safe Jox Delivery exports. The command only builds
+local staging output; uploading remains a separate, explicit operation.
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import gzip
 import hashlib
 import json
@@ -30,8 +32,10 @@ WORKSPACE = Path(__file__).resolve().parents[2]
 DEFAULT_REVIEW_ROOT = WORKSPACE / "tmp" / "rmrb-peopledata-full-directory"
 DEFAULT_MERGED = DEFAULT_REVIEW_ROOT / "merged-peopledata-canonical.jsonl"
 DEFAULT_IMAGES = WORKSPACE / "tmp" / "pdfs" / "rmrb-peopledata-online-images"
+DEFAULT_PDFS = Path(r"D:\暂存")
 COPY_MARKER_RE = re.compile(r"[（(]\s*人民数据库资料\s*[）)]")
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff"}
+JOX_SALT = 0x4A4F5831
 
 
 ArticleKey = tuple[str, int, int]
@@ -63,6 +67,67 @@ def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
         while chunk := stream.read(chunk_size):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def opaque_name(value: bytes) -> str:
+    return base64.urlsafe_b64encode(hashlib.sha256(value).digest()).decode("ascii").rstrip("=")[:18]
+
+
+def opaque_name_from_sha256(digest: str) -> str:
+    return base64.urlsafe_b64encode(bytes.fromhex(digest)).decode("ascii").rstrip("=")[:18]
+
+
+def fnv1a(value: str) -> int:
+    result = 0x811C9DC5
+    for byte in value.replace("\\", "/").lstrip("/").encode("utf-8"):
+        result ^= byte
+        result = (result * 0x01000193) & 0xFFFFFFFF
+    return result
+
+
+def jox_mask_byte(position: int, object_seed: int) -> int:
+    value = (((position & 0xFFFFFFFF) + 0x9E3779B9) & 0xFFFFFFFF) ^ object_seed ^ JOX_SALT
+    value ^= value >> 16
+    value = (value * 0x7FEB352D) & 0xFFFFFFFF
+    value ^= value >> 15
+    value = (value * 0x846CA68B) & 0xFFFFFFFF
+    value ^= value >> 16
+    return value & 0xFF
+
+
+def transform_jox_bytes(value: bytes, object_key: str, offset: int = 0) -> bytes:
+    seed = fnv1a(object_key)
+    return bytes(byte ^ jox_mask_byte(offset + index, seed) for index, byte in enumerate(value))
+
+
+def write_jox_json(root: Path, object_key: str, value: Any) -> dict[str, Any]:
+    clear = (json_dump(value) + "\n").encode("utf-8")
+    compressed = gzip.compress(clear, compresslevel=9, mtime=0)
+    target = root / Path(object_key)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(transform_jox_bytes(compressed, object_key))
+    return {"size": len(clear), "sha256": sha256_bytes(clear)}
+
+
+def write_jox_file(root: Path, object_key: str, source: Path) -> dict[str, Any]:
+    target = root / Path(object_key)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    seed = fnv1a(object_key)
+    digest = hashlib.sha256()
+    size = 0
+    with source.open("rb") as input_stream, target.open("wb") as output_stream:
+        while chunk := input_stream.read(1024 * 1024):
+            digest.update(chunk)
+            output_stream.write(bytes(
+                byte ^ jox_mask_byte(size + index, seed)
+                for index, byte in enumerate(chunk)
+            ))
+            size += len(chunk)
+    return {"size": size, "sha256": digest.hexdigest()}
 
 
 def stable_suffix(*parts: object, length: int = 16) -> str:
@@ -153,6 +218,91 @@ def hardlink_or_copy(source: Path, target: Path) -> None:
         shutil.copy2(source, target)
 
 
+def issue_pdf_path(pdf_root: Path, day: str) -> Path:
+    return pdf_root / day[:4] / f"{day.replace('-', '')}.pdf"
+
+
+def calendar_dates(start_date: str, end_date: str) -> list[str]:
+    from datetime import date, timedelta
+
+    start = date.fromisoformat(start_date)
+    end = date.fromisoformat(end_date)
+    result: list[str] = []
+    current = start
+    while current <= end:
+        result.append(current.isoformat())
+        current += timedelta(days=1)
+    return result
+
+
+def compact_date_members(year: int, members: set[str], in_scope: set[str]) -> dict[str, Any]:
+    remaining = set(members)
+    months: list[str] = []
+    for month in range(1, 13):
+        prefix = f"{year:04d}-{month:02d}-"
+        scoped_month = {day for day in in_scope if day.startswith(prefix)}
+        if scoped_month and scoped_month <= remaining:
+            months.append(f"{month:02d}")
+            remaining -= scoped_month
+
+    ordered = sorted(remaining)
+    ranges: list[list[str]] = []
+    dates: list[str] = []
+    from datetime import date, timedelta
+
+    index = 0
+    while index < len(ordered):
+        start = index
+        while (
+            index + 1 < len(ordered)
+            and date.fromisoformat(ordered[index + 1]) == date.fromisoformat(ordered[index]) + timedelta(days=1)
+        ):
+            index += 1
+        run = ordered[start:index + 1]
+        if len(run) >= 3:
+            ranges.append([run[0][5:], run[-1][5:]])
+        else:
+            dates.extend(day[5:] for day in run)
+        index += 1
+
+    result: dict[str, Any] = {}
+    if months:
+        result["months"] = months
+    if ranges:
+        result["ranges"] = ranges
+    if dates:
+        result["dates"] = dates
+    return result
+
+
+def adaptive_calendar(start_date: str, end_date: str, available_dates: set[str]) -> dict[str, Any]:
+    scope = set(calendar_dates(start_date, end_date))
+    available = available_dates & scope
+    years: dict[str, Any] = {}
+    for year_text in sorted({day[:4] for day in scope}):
+        year = int(year_text)
+        year_scope = {day for day in scope if day.startswith(f"{year_text}-")}
+        year_available = available & year_scope
+        if year_available == year_scope:
+            continue
+        include = compact_date_members(year, year_available, year_scope)
+        exclude = compact_date_members(year, year_scope - year_available, year_scope)
+        # Keep the representation intuitive as well as compact: sparse years
+        # list what exists, while mostly complete years list what is absent.
+        years[year_text] = (
+            {"include": include}
+            if len(year_available) <= len(year_scope - year_available)
+            else {"exclude": exclude}
+        )
+    return {
+        "format": "adaptive-calendar/1",
+        "startDate": start_date,
+        "endDate": end_date,
+        "default": "available",
+        "years": years,
+    }
+
+
 def write_json(path: Path, value: Any, *, pretty: bool = True) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="\n") as stream:
@@ -220,7 +370,6 @@ def build_article(
     asset_refs: list[str] = []
     if source_content:
         body, stripped_title = strip_exact_title_prefix(title, source_content)
-        status = "available"
     elif decision and decision.decision == "accept":
         body = decision.content
         if body == "【图片】":
@@ -228,17 +377,11 @@ def build_article(
             if result:
                 asset, asset_id = result
                 asset_refs.append(asset_id)
-                status = "image"
-            else:
-                status = "image-placeholder"
-        else:
-            status = "repaired"
     elif decision and decision.decision == "reject":
         body = ""
-        status = "rejected"
     else:
         body = ""
-        status = "missing"
+    content_state = "available" if body else "missing"
     suffix = stable_suffix("rmrb", day, page, ordinal)
     article_id = f"article:{suffix}"
     article = {
@@ -246,6 +389,7 @@ def build_article(
         "order": ordinal + 1,
         "title": title,
         "authors": [],
+        "contentState": content_state,
         "body": {"format": "text", "value": body},
         "assetRefs": asset_refs,
     }
@@ -260,7 +404,7 @@ def build_article(
         "title": title,
         "authors": [],
         "body": body,
-        "status": status,
+        "contentState": content_state,
         "contentSource": row.get("contentSource"),
         "matchMethod": row.get("matchMethod"),
         "peopleDataHref": row.get("href"),
@@ -277,6 +421,7 @@ def build_day(
     snapshot_id: str,
     generated_at: str,
     viewer: TextIO,
+    pdf_root: Path,
 ) -> tuple[dict[str, Any], Counter[str], int]:
     canonical_root = output / "canonical" / "newspapers" / "rmrb"
     articles: list[dict[str, Any]] = []
@@ -284,7 +429,6 @@ def build_day(
     pages = sorted({int(row["page"]) for row in rows})
     page_order = {page: index + 1 for index, page in enumerate(pages)}
     assets: dict[str, dict[str, Any]] = {}
-    states: dict[str, str] = {}
     counts: Counter[str] = Counter()
     stripped_titles = 0
     page_article_order: Counter[int] = Counter()
@@ -292,11 +436,9 @@ def build_day(
         article, viewer_row, asset, stripped = build_article(row, decisions, canonical_root / "assets")
         articles.append(article)
         viewer.write(json_dump(viewer_row) + "\n")
-        status = str(viewer_row["status"])
+        status = str(viewer_row["contentState"])
         counts[status] += 1
         stripped_titles += int(stripped)
-        if status != "available":
-            states[article["id"]] = status
         if asset:
             assets[asset["id"]] = asset
         page = int(row["page"])
@@ -309,6 +451,26 @@ def build_day(
             "role": "complete",
         })
     compact = day.replace("-", "")
+    pdf_source = issue_pdf_path(pdf_root, day)
+    pdf_digest: str | None = None
+    pdf_asset_path: str | None = None
+    if pdf_source.is_file():
+        pdf_digest = sha256_file(pdf_source)
+        pdf_target = canonical_root / "assets" / f"{pdf_digest}.pdf"
+        hardlink_or_copy(pdf_source, pdf_target)
+        pdf_asset_path = f"assets/{pdf_target.name}"
+        assets[f"asset:issue-pdf-{pdf_digest[:16]}"] = {
+            "id": f"asset:issue-pdf-{pdf_digest[:16]}",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": f"人民日报 {day} 原报",
+            "alt": None,
+            "caption": None,
+            "size": pdf_target.stat().st_size,
+            "sha256": pdf_digest,
+            "path": pdf_asset_path,
+        }
     year, month, date_number = (int(part) for part in day.split("-"))
     issue_title = f"人民日报 {year}年{month}月{date_number}日"
     item = {
@@ -340,14 +502,16 @@ def build_day(
         "annotations": [],
         "provenance": {
             "source": "peopledata-directory-local-merge",
+            "sourceId": compact,
             "sourceFormat": "peopledata-directory+jsonl+xlsx+review-decisions",
+            **({"sourceSha256": pdf_digest} if pdf_digest else {}),
             "importedAt": generated_at,
             "importer": "tools/rmrb-repair/prepare_rmrb_publication.py",
         },
         "extensions": {"rmrb": {
             "snapshotId": snapshot_id,
             "legacyPdfObject": f"RMRB/{day[:4]}/{compact}.pdf",
-            "articleStates": states,
+            "pdfAvailable": pdf_digest is not None,
         }},
     }
     relative = Path("items") / day[:4] / day[5:7] / f"{day}.json.gz"
@@ -365,8 +529,133 @@ def build_day(
         "publishedDate": day,
         "path": relative.as_posix(),
         "articleCount": len(articles),
+        "textAvailable": counts["available"] > 0,
+        "pdfAvailable": pdf_digest is not None,
+        "pdfPath": pdf_asset_path,
     }
     return summary, counts, stripped_titles
+
+
+def build_delivery(output: Path, items: list[dict[str, Any]], availability: dict[str, Any]) -> dict[str, int]:
+    canonical_root = output / "canonical" / "newspapers" / "rmrb"
+    delivery_root = output / "delivery"
+    fragment_count = 0
+    missing_descriptor_count = 0
+    export_count = 0
+    asset_count = 0
+    for summary in items:
+        day = str(summary["publishedDate"])
+        canonical_item = canonical_root / str(summary["path"])
+        with gzip.open(canonical_item, "rt", encoding="utf-8") as stream:
+            item = json.load(stream)
+        item_prefix = f"content/newspapers/rmrb/items/{day[:4]}/{day[5:7]}/{day}"
+        article_descriptors: list[dict[str, Any]] = []
+        for article in item["content"]["articles"]:
+            body = str(article["body"]["value"])
+            state = str(article["contentState"])
+            descriptor: dict[str, Any] = {
+                "id": article["id"],
+                "order": article["order"],
+                "title": article["title"],
+                "characterCount": len(body),
+                "contentState": state,
+            }
+            if state == "available":
+                fragment = {
+                    "formatVersion": "jojo-fragment/1",
+                    "itemId": item["itemId"],
+                    "fragmentId": article["id"],
+                    "type": "article",
+                    "order": article["order"],
+                    "title": article["title"],
+                    "contentState": state,
+                    "body": article["body"],
+                    "assetRefs": article["assetRefs"],
+                    "annotations": [],
+                }
+                clear = (json_dump(fragment) + "\n").encode("utf-8")
+                relative_object = f"articles/{opaque_name(clear)}.jox"
+                info = write_jox_json(delivery_root, f"{item_prefix}/{relative_object}", fragment)
+                descriptor.update({"object": relative_object, **info})
+                fragment_count += 1
+            else:
+                descriptor["object"] = None
+                missing_descriptor_count += 1
+            article_descriptors.append(descriptor)
+
+        asset_descriptors: list[dict[str, Any]] = []
+        exports: list[dict[str, Any]] = []
+        for asset in item["assets"]:
+            source = canonical_root / asset["path"]
+            if asset["type"] == "pdf":
+                relative_object = f"exports/{opaque_name_from_sha256(asset['sha256'])}.jox"
+                info = write_jox_file(delivery_root, f"{item_prefix}/{relative_object}", source)
+                exports.append({
+                    "id": "export:issue-pdf",
+                    "format": "pdf",
+                    "mediaType": "application/pdf",
+                    "fileName": f"人民日报-{day}.pdf",
+                    "object": relative_object,
+                    **info,
+                })
+                export_count += 1
+                continue
+            relative_object = f"assets/{opaque_name_from_sha256(asset['sha256'])}.jox"
+            info = write_jox_file(delivery_root, f"{item_prefix}/{relative_object}", source)
+            descriptor = {
+                key: value for key, value in asset.items()
+                if key not in {"path", "sourceUrl", "sha256", "size"}
+            }
+            asset_descriptors.append({**descriptor, "object": relative_object, **info})
+            asset_count += 1
+
+        manifest = {
+            "formatVersion": "jojo-item-manifest/1",
+            "revision": 1,
+            "itemId": item["itemId"],
+            "datasetId": "rmrb",
+            "type": "newspaper",
+            "title": item["title"],
+            "language": "zh-CN",
+            "publicationStatus": "published",
+            "access": "public",
+            "identifiers": item["identifiers"],
+            "metadata": item["metadata"],
+            "content": {
+                "schema": "jojo-content/newspaper/1",
+                "articles": article_descriptors,
+            },
+            "contentStats": {
+                "articleCount": len(article_descriptors),
+                "availableArticleCount": sum(row["contentState"] == "available" for row in article_descriptors),
+                "missingArticleCount": sum(row["contentState"] == "missing" for row in article_descriptors),
+                "characterCount": sum(row["characterCount"] for row in article_descriptors),
+            },
+            "assets": asset_descriptors,
+            "exports": exports,
+        }
+        write_jox_json(delivery_root, f"{item_prefix}/manifest.jox", manifest)
+
+    index = {
+        "formatVersion": "jojo-delivery-index/1",
+        "revision": 1,
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报",
+        "language": "zh-CN",
+        "description": "以人民数据目录为权威目录的人民日报数字档案。",
+        "publicationStatus": "published",
+        "access": "public",
+        "itemPath": "items/{YYYY}/{MM}/{YYYY-MM-DD}/manifest.jox",
+        "availability": availability,
+    }
+    write_jox_json(delivery_root, "content/newspapers/rmrb/index.jox", index)
+    return {
+        "deliveryFragments": fragment_count,
+        "deliveryMissingDescriptors": missing_descriptor_count,
+        "deliveryAssets": asset_count,
+        "deliveryPdfExports": export_count,
+    }
 
 
 def decision_rows(decisions: dict[ArticleKey, Decision]) -> Iterable[dict[str, Any]]:
@@ -443,7 +732,8 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
             writer_year = year
         assert year_writer is not None
         summary, counts, stripped = build_day(
-            current_day, day_rows, decisions, output, args.snapshot_id, generated_at, year_writer
+            current_day, day_rows, decisions, output, args.snapshot_id, generated_at, year_writer,
+            args.pdf_root,
         )
         summary["order"] = len(items) + 1
         items.append(summary)
@@ -480,6 +770,24 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
     if year_writer:
         year_writer.close()
 
+    if not items:
+        raise ValueError("No RMRB issues were selected")
+    start_date = args.start_date or str(items[0]["publishedDate"])
+    end_date = args.end_date or str(items[-1]["publishedDate"])
+    availability = {
+        "formatVersion": "jojo-periodical-availability/1",
+        "text": adaptive_calendar(
+            start_date,
+            end_date,
+            {str(item["publishedDate"]) for item in items if item["textAvailable"]},
+        ),
+        "pdf": adaptive_calendar(
+            start_date,
+            end_date,
+            {str(item["publishedDate"]) for item in items if item["pdfAvailable"]},
+        ),
+    }
+
     dataset = {
         "formatVersion": "jojo-dataset/1",
         "datasetId": "rmrb",
@@ -490,17 +798,17 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
         "access": "public",
         "description": "以人民数据目录为权威目录、合并本地 JSONL 与年度 XLSX 正文的人民日报数字档案。",
         "itemPath": "items/{YYYY}/{MM}/{YYYY-MM-DD}.json.gz",
+        "availability": availability,
     }
     write_json(output / "canonical" / "newspapers" / "rmrb" / "dataset.json", dataset)
-    hf_dataset = {**dataset, "items": items}
-    write_json(output / "huggingface" / "rmrb" / "dataset.json", hf_dataset)
-    hf_readme = """# 人民日报\n\nJOJO Canonical 的 Hugging Face 私有镜像。\n\n- `data/articles/*.jsonl.gz`：Dataset Viewer 用年度文章分片。\n- `items/`：一天一个完整 `jojo-item/1`。\n- `assets.tar`：按 SHA-256 命名的文章图片；解包后为 `assets/`。\n- 空正文记录不会删除；请查看 `status` 字段。\n"""
+    write_json(output / "huggingface" / "rmrb" / "dataset.json", dataset)
+    hf_readme = """# 人民日报\n\nJOJO Canonical 的 Hugging Face 私有镜像。\n\n- `data/articles/*.jsonl.gz`：Dataset Viewer 用年度文章分片。\n- `items/`：一天一个完整 `jojo-item/1`。\n- `assets/`：按 SHA-256 命名的整期 PDF 与文章图片。\n- 空正文记录不会删除；`contentState` 只使用 `available`、`missing`。\n"""
     (output / "huggingface" / "rmrb" / "README.md").write_text(hf_readme, encoding="utf-8", newline="\n")
     assets_root = output / "canonical" / "newspapers" / "rmrb" / "assets"
     if assets_root.is_dir():
-        with tarfile.open(output / "huggingface" / "rmrb" / "assets.tar", "w") as archive:
-            for path in sorted(value for value in assets_root.iterdir() if value.is_file()):
-                archive.add(path, arcname=f"assets/{path.name}", recursive=False)
+        for path in sorted(value for value in assets_root.iterdir() if value.is_file()):
+            hardlink_or_copy(path, output / "huggingface" / "rmrb" / "assets" / path.name)
+    delivery_report = build_delivery(output, items, availability) if not args.skip_delivery else {}
     if not args.skip_audit:
         prepare_audit(output, args.review_root, args.snapshot_id, decisions)
     report = {
@@ -508,16 +816,25 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
         "snapshotId": args.snapshot_id,
         "generatedAt": generated_at,
         "source": str(args.merged),
-        "dateRange": {"start": items[0]["publishedDate"] if items else None, "end": items[-1]["publishedDate"] if items else None},
+        "dateRange": {"start": start_date, "end": end_date},
+        "itemDateRange": {
+            "start": items[0]["publishedDate"],
+            "end": items[-1]["publishedDate"],
+        },
         "itemCount": len(items),
         "articleCount": sum(totals.values()),
         "articleStatuses": dict(sorted(totals.items())),
         "exactTitlePrefixesRemoved": stripped_titles,
-        "legacyPdfBytesCopied": 0,
+        "canonicalPdfCount": sum(bool(item["pdfAvailable"]) for item in items),
+        "canonicalPdfBytes": sum(
+            (output / "canonical" / "newspapers" / "rmrb" / item["pdfPath"]).stat().st_size
+            for item in items if item["pdfPath"]
+        ),
         "legacyPdfPattern": "RMRB/{YYYY}/{YYYYMMDD}.pdf",
         "scope": "staging-only",
         "b2Uploaded": False,
         "huggingFaceUploaded": False,
+        **delivery_report,
     }
     write_json(output / "report.json", report)
     manifest = file_manifest(output)
@@ -539,8 +856,10 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--snapshot-id", default="2026-08-18")
     result.add_argument("--start-date")
     result.add_argument("--end-date")
+    result.add_argument("--pdf-root", type=Path, default=DEFAULT_PDFS)
     result.add_argument("--limit-days", type=int)
     result.add_argument("--skip-audit", action="store_true")
+    result.add_argument("--skip-delivery", action="store_true")
     return result
 
 
