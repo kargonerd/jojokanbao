@@ -2,7 +2,12 @@
   "name": "@jojo/desktop",
   "version": "0.2.0",
   "description": "JOJO看报的阅读与问答桌面客户端",
-  "author": "JOJO Platform Contributors",
+  "author": {
+    "name": "JOJO Platform Contributors",
+    "email": "kargonerd@users.noreply.github.com"
+  },
+  "homepage": "https://jojokanbao.cn",
+  "desktopName": "jojo-kanbao.desktop",
   "private": true,
   "type": "module",
   "main": "electron/main.js",
