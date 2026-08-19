@@ -1,21 +1,3 @@
-.notification-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: inherit;
-  font: 700 12px/1 var(--font-sans, sans-serif);
-  text-decoration: none;
-}
-.notification-link:hover,
-.notification-link:focus-visible { color: var(--color-red); }
-.notification-link b {
-  min-width: 18px;
-  padding: 3px 5px;
-  color: #fff;
-  background: var(--color-red);
-  font: 700 9px/1 var(--font-sans, sans-serif);
-  text-align: center;
-}
 .notifications-page {
   min-height: calc(100vh - 64px);
   padding: 30px clamp(18px, 5vw, 72px) 72px;

@@ -50,4 +50,22 @@ describe("AnnotationDiscussionPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "提交举报" }));
     await waitFor(() => expect(onReport).toHaveBeenCalledWith("comment-1", "abuse", "包含人身攻击"));
   });
+
+  it("renders untrusted names and comments as plain text", () => {
+    const unsafeThread = {
+      ...thread,
+      authorName: "<img src=x onerror=alert(1)>",
+      comments: [{
+        ...thread.comments[0]!,
+        authorName: "<script>alert(2)</script>",
+        body: "<svg onload=alert(3)>",
+      }],
+    };
+    const { container } = render(<AnnotationDiscussionPanel thread={unsafeThread} currentUserId="user-1" onClose={vi.fn()} onComment={vi.fn()} onReport={vi.fn()} />);
+
+    expect(screen.getByText("<img src=x onerror=alert(1)> 划线", { exact: false })).toBeTruthy();
+    expect(screen.getByText("<script>alert(2)</script>")).toBeTruthy();
+    expect(screen.getByText("<svg onload=alert(3)>")).toBeTruthy();
+    expect(container.querySelector("script, svg[onload], img[onerror]")).toBeNull();
+  });
 });

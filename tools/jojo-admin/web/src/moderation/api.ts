@@ -10,7 +10,6 @@ export const moderationApi = {
     await apiPost(`/api/moderation/comments/${encodeURIComponent(commentId)}`, {
       action,
       reason,
-      requestId: crypto.randomUUID(),
     });
   },
 };

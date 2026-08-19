@@ -20,6 +20,11 @@ function textPayload(item: UserNotification, key: string): string {
   return typeof item.payload[key] === "string" ? item.payload[key] as string : "";
 }
 
+function safeLocalPath(value: string | null): string | null {
+  if (!value?.startsWith("/") || value.startsWith("//") || value.includes("\\") || /[\r\n]/.test(value)) return null;
+  return value;
+}
+
 export function NotificationsPage() {
   const userId = usePlatformAccountStore((state) => state.userId);
   const [items, setItems] = useState<UserNotification[]>([]);
@@ -68,7 +73,8 @@ export function NotificationsPage() {
   }
 
   async function loadMore() {
-    const before = items.at(-1)?.createdAt;
+    const lastItem = items.at(-1);
+    const before = lastItem ? { id: lastItem.id, createdAt: lastItem.createdAt } : undefined;
     if (!before || busy) return;
     setBusy(true);
     setError("");
@@ -117,14 +123,15 @@ export function NotificationsPage() {
       <ol className="notification-list">
         {items.map((item, index) => {
           const showSeenDivider = index > 0 && !items[index - 1]?.readAt && Boolean(item.readAt);
+          const targetPath = safeLocalPath(item.targetPath);
           return <Fragment key={item.id}>
             {showSeenDivider ? <li className="notification-seen-divider" aria-label="上次看到这里"><span>上次看到这里</span></li> : null}
             <li className={`notification-item ${item.readAt ? "" : "is-unread"}`}>
-              {item.targetPath ? (
-                <Link to={item.targetPath} onClick={() => markOneRead(item)}>
-                  <NotificationContent item={item} />
+              {targetPath ? (
+                <Link to={targetPath} onClick={() => markOneRead(item)}>
+                  <NotificationContent item={item} targetPath={targetPath} />
                 </Link>
-              ) : <NotificationContent item={item} />}
+              ) : <NotificationContent item={item} targetPath={null} />}
             </li>
           </Fragment>;
         })}
@@ -134,7 +141,7 @@ export function NotificationsPage() {
   );
 }
 
-function NotificationContent({ item }: { item: UserNotification }) {
+function NotificationContent({ item, targetPath }: { item: UserNotification; targetPath: string | null }) {
   const actor = item.actorName || "JOJO 编辑部";
   const quote = textPayload(item, "quote");
   const contentTitle = textPayload(item, "contentTitle");
@@ -146,7 +153,7 @@ function NotificationContent({ item }: { item: UserNotification }) {
         <div className="notification-byline"><b>{actor}</b><span>{item.title}</span>{!item.readAt ? <i>新</i> : null}</div>
         {item.body ? <p>{item.body}</p> : null}
         {quote ? <blockquote><span>你划线的原文</span><p>{quote}</p></blockquote> : null}
-        <footer><time>{displayTime(item.createdAt)}</time>{item.targetPath ? <span>查看讨论 →</span> : null}</footer>
+        <footer><time>{displayTime(item.createdAt)}</time>{targetPath ? <span>查看讨论 →</span> : null}</footer>
       </div>
       {contentTitle ? <aside><small>{contentType === "newspaper" ? "报刊" : contentType === "book" ? "书籍" : "站务"}</small><strong>{contentTitle}</strong>{sectionTitle ? <span>{sectionTitle}</span> : null}</aside> : null}
     </article>

@@ -1,4 +1,4 @@
-import type { UserNotification } from "./types";
+import type { NotificationCursor, UserNotification } from "./types";
 
 const useMockNotifications = import.meta.env.DEV && import.meta.env.VITE_MOCK_NOTIFICATIONS === "true";
 
@@ -18,14 +18,15 @@ function resultOrThrow<T>(data: T | null, error: { code?: string; message?: stri
   return data;
 }
 
-export async function loadNotifications(limit = 50, before?: string): Promise<UserNotification[]> {
+export async function loadNotifications(limit = 50, before?: NotificationCursor): Promise<UserNotification[]> {
   if (useMockNotifications) {
     const { readMockNotifications } = await import("./mock");
     return readMockNotifications(before).slice(0, limit);
   }
   const { data, error } = await rpc("get_my_notifications", {
     p_limit: limit,
-    p_before: before || null,
+    p_before: before?.createdAt || null,
+    p_before_id: before?.id || null,
   });
   const result = resultOrThrow<unknown>(data, error, "通知暂时无法读取");
   return Array.isArray(result) ? result as UserNotification[] : [];

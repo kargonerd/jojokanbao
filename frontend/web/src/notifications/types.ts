@@ -12,3 +12,8 @@ export interface UserNotification {
   readAt: string | null;
   createdAt: string;
 }
+
+export interface NotificationCursor {
+  id: string;
+  createdAt: string;
+}

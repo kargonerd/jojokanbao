@@ -245,7 +245,7 @@ describe("BookReader", () => {
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
-    fireEvent.mouseUp(container.querySelector("[data-book-page-flow]")!);
+    fireEvent.pointerUp(container.querySelector("[data-book-page-flow]")!);
 
     const toolbar = await screen.findByRole("toolbar", { name: "选中文字工具" });
     expect(toolbar.textContent).toContain("复制");
@@ -281,7 +281,7 @@ describe("BookReader", () => {
     range.selectNodeContents(paragraph);
     window.getSelection()?.removeAllRanges();
     window.getSelection()?.addRange(range);
-    fireEvent.mouseUp(container.querySelector("[data-book-page-flow]")!);
+    fireEvent.pointerUp(container.querySelector("[data-book-page-flow]")!);
 
     fireEvent.click(await screen.findByRole("button", { name: "写想法" }));
     fireEvent.change(screen.getByPlaceholderText("写下此刻的想法……"), { target: { value: "值得继续讨论" } });
@@ -309,7 +309,7 @@ describe("BookReader", () => {
     range.selectNodeContents(paragraph);
     window.getSelection()?.removeAllRanges();
     window.getSelection()?.addRange(range);
-    fireEvent.mouseUp(container.querySelector("[data-book-page-flow]")!);
+    fireEvent.pointerUp(container.querySelector("[data-book-page-flow]")!);
 
     const toolbar = await screen.findByRole("toolbar", { name: "选中文字工具" });
     expect(toolbar.textContent).toBe("复制");
@@ -324,7 +324,7 @@ describe("BookReader", () => {
     range.selectNodeContents(paragraph);
     window.getSelection()?.removeAllRanges();
     window.getSelection()?.addRange(range);
-    fireEvent.mouseUp(container.querySelector("[data-book-page-flow]")!);
+    fireEvent.pointerUp(container.querySelector("[data-book-page-flow]")!);
 
     const toolbar = await screen.findByRole("toolbar", { name: "选中文字工具" });
     expect(toolbar.textContent).toBe("复制");

@@ -1,7 +1,6 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NotificationLink } from "../src/notifications/NotificationLink";
 import { NotificationsPage } from "../src/notifications/NotificationsPage";
 import { resetNotifications, useNotificationStore } from "../src/notifications/store";
 import { usePlatformAccountStore } from "../src/platform/accountSession";
@@ -79,17 +78,6 @@ describe("generic notifications", () => {
     expect(useNotificationStore.getState().unreadCount).toBe(0);
   });
 
-  it("polls the shared unread count only for a signed-in reader", async () => {
-    const view = render(<MemoryRouter><NotificationLink /></MemoryRouter>);
-    expect(await screen.findByRole("link", { name: "通知，1 条未读" })).toBeTruthy();
-    expect(api.loadUnreadNotificationCount).toHaveBeenCalledTimes(1);
-
-    act(() => usePlatformAccountStore.setState({ initialized: true, userId: null, displayName: null }));
-    expect(screen.queryByRole("link", { name: /通知/ })).toBeNull();
-    expect(useNotificationStore.getState().unreadCount).toBe(0);
-    view.unmount();
-  });
-
   it("does not load a signed-out inbox", () => {
     usePlatformAccountStore.setState({ initialized: true, userId: null, displayName: null });
     render(<MemoryRouter><NotificationsPage /></MemoryRouter>);
@@ -107,5 +95,23 @@ describe("generic notifications", () => {
     expect(await screen.findByText("东北虎-ABC")).toBeTruthy();
     expect(screen.getByText("东北虎-DEF")).toBeTruthy();
     expect(screen.queryByText("东北虎", { exact: true })).toBeNull();
+  });
+
+  it("renders untrusted notification fields as text and refuses an unsafe target", async () => {
+    api.loadNotifications.mockResolvedValue([{
+      ...reply,
+      id: "unsafe-notification",
+      actorName: "<img src=x onerror=alert(1)>",
+      title: "<script>alert(2)</script>",
+      body: "<svg onload=alert(3)>",
+      targetPath: "/\\evil.example",
+    }]);
+    const { container } = render(<MemoryRouter><NotificationsPage /></MemoryRouter>);
+
+    expect(await screen.findByText("<img src=x onerror=alert(1)>")).toBeTruthy();
+    expect(screen.getByText("<script>alert(2)</script>")).toBeTruthy();
+    expect(screen.getByText("<svg onload=alert(3)>")).toBeTruthy();
+    expect(container.querySelector("script, svg[onload], img[onerror]")).toBeNull();
+    expect(screen.queryByRole("link")).toBeNull();
   });
 });

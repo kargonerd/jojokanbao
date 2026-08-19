@@ -1,4 +1,4 @@
-import type { UserNotification } from "./types";
+import type { NotificationCursor, UserNotification } from "./types";
 
 const now = Date.now();
 
@@ -119,9 +119,11 @@ export const mockNotifications: UserNotification[] = [
 
 const locallyRead = new Set(mockNotifications.filter((item) => item.readAt).map((item) => item.id));
 
-export function readMockNotifications(before?: string): UserNotification[] {
+export function readMockNotifications(before?: NotificationCursor): UserNotification[] {
   return mockNotifications
-    .filter((item) => !before || item.createdAt < before)
+    .filter((item) => !before
+      || item.createdAt < before.createdAt
+      || (item.createdAt === before.createdAt && item.id < before.id))
     .map((item) => locallyRead.has(item.id) ? { ...item, readAt: item.readAt || new Date().toISOString() } : { ...item, readAt: null });
 }
 

@@ -22,7 +22,6 @@ class SupabaseAnnotationModerationClient(SupabaseOperatorRpcClient):
             "p_comment_id": comment_id,
             "p_action": payload["action"],
             "p_reason": payload["reason"],
-            "p_request_id": payload.get("requestId"),
         })
         if not isinstance(result, dict):
             raise AnnotationModerationError("评论审核服务返回了无效数据")
@@ -56,7 +55,6 @@ def moderate_annotation_comment(comment_id: str):
         result = SupabaseAnnotationModerationClient().moderate(comment_id, {
             "action": action,
             "reason": reason,
-            "requestId": body.get("requestId"),
         })
         return jsonify({"success": True, "result": result})
     except AnnotationModerationError as error:

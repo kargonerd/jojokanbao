@@ -24,7 +24,10 @@ describe("SelectableAnnotationArticle", () => {
     });
     Object.defineProperty(Range.prototype, "getBoundingClientRect", { configurable: true, value: () => ({ left: 100, top: 100, bottom: 120, width: 100 }) });
   });
-  afterEach(cleanup);
+  afterEach(() => {
+    window.getSelection()?.removeAllRanges();
+    cleanup();
+  });
 
   it("uses the same annotation contract for a newspaper body", async () => {
     render(<SelectableAnnotationArticle subject={{ contentType: "newspaper", contentId: "news-1", sectionId: "body", contentTitle: "新闻标题" }}><p>报刊正文</p></SelectableAnnotationArticle>);
@@ -33,7 +36,7 @@ describe("SelectableAnnotationArticle", () => {
     range.selectNodeContents(paragraph);
     window.getSelection()?.removeAllRanges();
     window.getSelection()?.addRange(range);
-    fireEvent.mouseUp(paragraph);
+    fireEvent.pointerUp(paragraph, { pointerType: "touch" });
     fireEvent.click(await screen.findByRole("button", { name: "评论" }));
     fireEvent.change(screen.getByPlaceholderText("写下你的评论……"), { target: { value: "报刊评论" } });
     fireEvent.click(screen.getByRole("button", { name: "保存划线评论" }));
@@ -42,5 +45,18 @@ describe("SelectableAnnotationArticle", () => {
       expect.objectContaining({ quote: "报刊正文" }),
       "报刊评论",
     ));
+  });
+
+  it("opens the selection tools after a keyboard selection", async () => {
+    render(<SelectableAnnotationArticle subject={{ contentType: "newspaper", contentId: "news-1", sectionId: "body", contentTitle: "新闻标题" }}><p>键盘选择正文</p></SelectableAnnotationArticle>);
+    const paragraph = screen.getByText("键盘选择正文");
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+
+    fireEvent.keyUp(paragraph, { key: "ArrowRight", shiftKey: true });
+
+    expect(await screen.findByRole("toolbar", { name: "选中文字工具" })).toBeTruthy();
   });
 });

@@ -57,6 +57,10 @@ export function SelectableAnnotationArticle({ subject, children }: { subject: An
     setCommentOpen(false);
   }
 
+  function capturePointerSelection() {
+    window.setTimeout(captureSelection, 0);
+  }
+
   function clearSelection() {
     window.getSelection()?.removeAllRanges();
     setSelection(undefined);
@@ -81,7 +85,7 @@ export function SelectableAnnotationArticle({ subject, children }: { subject: An
 
   return (
     <>
-      <div ref={rootRef} onMouseUp={captureSelection}>{children}</div>
+      <div ref={rootRef} onPointerUp={capturePointerSelection} onKeyUp={captureSelection}>{children}</div>
       {selection ? (
         <div className="annotation-selection-tools" style={{ left: selection.left, top: selection.top }} role="toolbar" aria-label="选中文字工具">
           <div><button type="button" disabled={saving} onClick={() => void save()}>划线</button><button type="button" disabled={saving} onClick={() => setCommentOpen((value) => !value)}>评论</button></div>

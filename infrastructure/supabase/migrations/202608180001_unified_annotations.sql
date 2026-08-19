@@ -12,6 +12,7 @@ create table if not exists public.content_annotations (
       char_length(content_url) <= 1024
       and left(content_url, 1) = '/'
       and left(content_url, 2) <> '//'
+      and strpos(content_url, E'\\') = 0
       and content_url !~ E'[\\r\\n]'
     )
   ),
@@ -66,6 +67,7 @@ create table if not exists public.user_notifications (
       char_length(target_path) <= 1024
       and left(target_path, 1) = '/'
       and left(target_path, 2) <> '//'
+      and strpos(target_path, E'\\') = 0
       and target_path !~ E'[\\r\\n]'
     )
   ),
@@ -78,15 +80,6 @@ create table if not exists public.user_notifications (
   unique(recipient_id, event_key)
 );
 
-create table if not exists private.annotation_moderation_events (
-  id uuid primary key default extensions.gen_random_uuid(),
-  comment_id uuid not null references public.annotation_comments(id) on delete cascade,
-  action text not null check (action in ('hide', 'restore', 'dismiss')),
-  reason text not null check (char_length(reason) between 2 and 500),
-  request_id text check (request_id is null or char_length(request_id) <= 200),
-  created_at timestamptz not null default timezone('utc', now())
-);
-
 create index if not exists content_annotations_subject
   on public.content_annotations(content_type, content_id, section_id, created_at);
 create unique index if not exists content_annotations_anchor
@@ -96,21 +89,19 @@ create index if not exists annotation_comments_thread
 create index if not exists annotation_comment_reports_queue
   on public.annotation_comment_reports(status, created_at);
 create index if not exists user_notifications_recipient
-  on public.user_notifications(recipient_id, created_at desc);
+  on public.user_notifications(recipient_id, created_at desc, id desc);
 create index if not exists user_notifications_unread
-  on public.user_notifications(recipient_id, created_at desc) where read_at is null;
+  on public.user_notifications(recipient_id, created_at desc, id desc) where read_at is null;
 
 alter table public.content_annotations enable row level security;
 alter table public.annotation_comments enable row level security;
 alter table public.annotation_comment_reports enable row level security;
 alter table public.user_notifications enable row level security;
-alter table private.annotation_moderation_events enable row level security;
 
 revoke all on table public.content_annotations from public, anon, authenticated;
 revoke all on table public.annotation_comments from public, anon, authenticated;
 revoke all on table public.annotation_comment_reports from public, anon, authenticated;
 revoke all on table public.user_notifications from public, anon, authenticated;
-revoke all on table private.annotation_moderation_events from public, anon, authenticated;
 
 -- Retire the unreleased legacy marks path. Shared RPCs are the only implementation.
 revoke all on table public.reader_marks from anon, authenticated;
@@ -176,6 +167,7 @@ begin
     char_length(p_target_path) > 1024
     or left(p_target_path, 1) <> '/'
     or left(p_target_path, 2) = '//'
+    or strpos(p_target_path, E'\\') > 0
     or p_target_path ~ E'[\\r\\n]'
   ) then
     raise invalid_parameter_value using message = 'Notification target must be a local path';
@@ -244,7 +236,8 @@ $$;
 
 create or replace function public.get_my_notifications(
   p_limit integer default 50,
-  p_before timestamptz default null
+  p_before timestamptz default null,
+  p_before_id uuid default null
 )
 returns jsonb
 language plpgsql
@@ -258,10 +251,13 @@ begin
   if p_limit not between 1 and 100 then
     raise invalid_parameter_value using message = 'Notification limit must be between 1 and 100';
   end if;
+  if (p_before is null) <> (p_before_id is null) then
+    raise invalid_parameter_value using message = 'Notification cursor is incomplete';
+  end if;
   return coalesce((
-    select jsonb_agg(entry.payload order by entry.created_at desc)
+    select jsonb_agg(entry.payload order by entry.created_at desc, entry.id desc)
     from (
-      select notification.created_at, jsonb_build_object(
+      select notification.id, notification.created_at, jsonb_build_object(
         'id', notification.id,
         'kind', notification.kind,
         'title', notification.title,
@@ -278,8 +274,11 @@ begin
       from public.user_notifications notification
       left join public.profiles profile on profile.id = notification.actor_id
       where notification.recipient_id = account_id
-        and (p_before is null or notification.created_at < p_before)
-      order by notification.created_at desc
+        and (
+          p_before is null
+          or (notification.created_at, notification.id) < (p_before, p_before_id)
+        )
+      order by notification.created_at desc, notification.id desc
       limit p_limit
     ) entry
   ), '[]'::jsonb);
@@ -382,6 +381,7 @@ begin
     char_length(normalized_path) > 1024
     or left(normalized_path, 1) <> '/'
     or left(normalized_path, 2) = '//'
+    or strpos(normalized_path, E'\\') > 0
     or normalized_path ~ E'[\\r\\n]'
   ) then
     raise invalid_parameter_value using message = 'Annotation target must be a local path';
@@ -535,16 +535,20 @@ as $$
 declare
   reader_id uuid := private.require_annotation_reader();
   report_id uuid;
+  comment_author_id uuid;
 begin
-  if not exists (
-    select 1
+  select comment.user_id
+  into comment_author_id
     from public.annotation_comments comment
     join public.content_annotations annotation on annotation.id = comment.annotation_id
     where comment.id = p_comment_id
       and comment.moderation_status = 'visible'
-      and annotation.moderation_status = 'visible'
-  ) then
+      and annotation.moderation_status = 'visible';
+  if not found then
     raise no_data_found using message = 'Comment not found';
+  end if;
+  if comment_author_id = reader_id then
+    raise invalid_parameter_value using message = 'You cannot report your own comment';
   end if;
 
   insert into public.annotation_comment_reports(comment_id, reporter_id, reason, details)
@@ -618,14 +622,17 @@ create or replace function public.operator_moderate_annotation_comment(
   p_operator_token text,
   p_comment_id uuid,
   p_action text,
-  p_reason text,
-  p_request_id text default null
+  p_reason text
 )
 returns jsonb
 language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  affected_report record;
+  notification_body text;
+  notification_target_path text;
 begin
   perform private.require_feature_flag_operator(p_operator_token);
   if p_action not in ('hide', 'restore', 'dismiss') then
@@ -638,6 +645,63 @@ begin
     raise no_data_found using message = 'Comment not found';
   end if;
 
+  notification_body := case p_action
+    when 'hide' then '你举报的评论已经由编辑审核并隐藏。感谢你帮助维护讨论秩序。'
+    when 'restore' then '这条评论的处理结果已经更新，现已恢复显示。'
+    else '你举报的评论已经复核，目前不作隐藏处理。'
+  end;
+
+  for affected_report in
+    select
+      report.id,
+      report.reporter_id,
+      report.created_at,
+      annotation.id as annotation_id,
+      annotation.content_type,
+      annotation.content_title,
+      annotation.content_url,
+      annotation.section_id,
+      annotation.quote
+    from public.annotation_comment_reports report
+    join public.annotation_comments comment on comment.id = report.comment_id
+    join public.content_annotations annotation on annotation.id = comment.annotation_id
+    where report.comment_id = p_comment_id
+      and (
+        (p_action in ('hide', 'dismiss') and report.status = 'pending')
+        or (p_action = 'restore' and report.status in ('pending', 'resolved'))
+      )
+  loop
+    notification_target_path := affected_report.content_url;
+    if notification_target_path is not null then
+      notification_target_path := notification_target_path
+        || case when strpos(notification_target_path, '?') > 0 then '&' else '?' end
+        || 'discussion=' || affected_report.annotation_id::text;
+      if char_length(notification_target_path) > 1024 then
+        notification_target_path := affected_report.content_url;
+      end if;
+    end if;
+
+    perform private.enqueue_user_notification(
+      affected_report.reporter_id,
+      null,
+      'moderation.report_resolved',
+      '处理了你的举报',
+      notification_body,
+      notification_target_path,
+      'annotation_report',
+      affected_report.id::text,
+      'annotation-report:' || affected_report.id::text || ':' || p_action || ':' || affected_report.created_at::text,
+      jsonb_build_object(
+        'annotationId', affected_report.annotation_id,
+        'contentType', affected_report.content_type,
+        'contentTitle', affected_report.content_title,
+        'sectionId', affected_report.section_id,
+        'quote', affected_report.quote,
+        'action', p_action
+      )
+    );
+  end loop;
+
   if p_action = 'hide' then
     update public.annotation_comments set moderation_status = 'hidden', updated_at = timezone('utc', now()) where id = p_comment_id;
     update public.annotation_comment_reports set status = 'resolved', reviewed_at = timezone('utc', now()) where comment_id = p_comment_id and status = 'pending';
@@ -648,8 +712,6 @@ begin
     update public.annotation_comment_reports set status = 'dismissed', reviewed_at = timezone('utc', now()) where comment_id = p_comment_id and status = 'pending';
   end if;
 
-  insert into private.annotation_moderation_events(comment_id, action, reason, request_id)
-  values (p_comment_id, p_action, btrim(p_reason), nullif(btrim(p_request_id), ''));
   return jsonb_build_object('commentId', p_comment_id, 'action', p_action, 'success', true);
 end;
 $$;
@@ -658,7 +720,7 @@ revoke all on function private.require_account_user() from public, anon, authent
 revoke all on function private.require_annotation_reader() from public, anon, authenticated;
 revoke all on function private.enqueue_user_notification(uuid, uuid, text, text, text, text, text, text, text, jsonb) from public, anon, authenticated;
 revoke all on function private.annotation_snapshot(uuid) from public, anon, authenticated;
-revoke all on function public.get_my_notifications(integer, timestamptz) from public, anon;
+revoke all on function public.get_my_notifications(integer, timestamptz, uuid) from public, anon;
 revoke all on function public.get_my_unread_notification_count() from public, anon;
 revoke all on function public.mark_my_notification_read(uuid) from public, anon;
 revoke all on function public.get_annotation_threads(text, text, text) from public, anon;
@@ -666,9 +728,9 @@ revoke all on function public.create_content_annotation(text, text, text, text, 
 revoke all on function public.add_annotation_comment(uuid, text, uuid) from public, anon;
 revoke all on function public.report_annotation_comment(uuid, text, text) from public, anon;
 revoke all on function public.operator_list_annotation_reports(text, text) from public;
-revoke all on function public.operator_moderate_annotation_comment(text, uuid, text, text, text) from public;
+revoke all on function public.operator_moderate_annotation_comment(text, uuid, text, text) from public;
 
-grant execute on function public.get_my_notifications(integer, timestamptz) to authenticated;
+grant execute on function public.get_my_notifications(integer, timestamptz, uuid) to authenticated;
 grant execute on function public.get_my_unread_notification_count() to authenticated;
 grant execute on function public.mark_my_notification_read(uuid) to authenticated;
 grant execute on function public.get_annotation_threads(text, text, text) to authenticated;
@@ -676,7 +738,7 @@ grant execute on function public.create_content_annotation(text, text, text, tex
 grant execute on function public.add_annotation_comment(uuid, text, uuid) to authenticated;
 grant execute on function public.report_annotation_comment(uuid, text, text) to authenticated;
 grant execute on function public.operator_list_annotation_reports(text, text) to anon, authenticated;
-grant execute on function public.operator_moderate_annotation_comment(text, uuid, text, text, text) to anon, authenticated;
+grant execute on function public.operator_moderate_annotation_comment(text, uuid, text, text) to anon, authenticated;
 
 comment on table public.content_annotations is 'Shared text annotations for books, newspapers, magazines, and articles.';
 comment on table public.annotation_comments is 'Authenticated reader discussion attached to a text annotation.';

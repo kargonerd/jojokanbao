@@ -6,7 +6,7 @@ import { LoginForm, RegisterForm } from "@/account/components/AccountForms";
 import { AccountCenterPage } from "@/account/pages/AccountCenterPage";
 
 function safeReturnPath(value: string | null): string {
-  if (!value?.startsWith("/") || value.startsWith("//")) return "/";
+  if (!value?.startsWith("/") || value.startsWith("//") || value.includes("\\") || /[\r\n]/.test(value)) return "/";
   return /^\/account(?:[?#]|$)/.test(value) ? "/" : value;
 }
 

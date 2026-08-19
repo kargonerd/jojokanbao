@@ -4,6 +4,16 @@ import { SelectableAnnotationArticle } from "../../annotations/SelectableAnnotat
 import { OldsHeader } from "../OldsHeader";
 import { oldsApi, type OldsBriefing, type OldsNewsDetail } from "../api";
 
+function safeNewsUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 export function OldsDetailPage() {
   const { newsId = "" } = useParams();
   const [detail, setDetail] = useState<OldsNewsDetail | null>(null);
@@ -12,6 +22,7 @@ export function OldsDetailPage() {
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const originalUrl = safeNewsUrl(detail?.news.url);
 
   useEffect(() => {
     let active = true;
@@ -65,7 +76,7 @@ export function OldsDetailPage() {
               }}>
                 <div className="mt-8 whitespace-pre-wrap text-base leading-8">{detail.news.content || "暂无正文。"}</div>
               </SelectableAnnotationArticle>
-              {detail.news.url ? <a className="mt-6 inline-block text-sm font-bold" href={detail.news.url} target="_blank" rel="noreferrer">查看原文 ↗</a> : null}
+              {originalUrl ? <a className="mt-6 inline-block text-sm font-bold" href={originalUrl} target="_blank" rel="noreferrer">查看原文 ↗</a> : null}
 
               <section className="mt-10 border-t-4 border-red pt-6">
                 <h2 className="text-2xl font-black">追问这条新闻</h2>

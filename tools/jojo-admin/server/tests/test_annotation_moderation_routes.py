@@ -77,7 +77,6 @@ def test_routes_validate_and_forward_moderation_without_exposing_token():
         moderated = client.post("/api/moderation/comments/comment-1", json={
             "action": "hide",
             "reason": "人身攻击",
-            "requestId": "request-1",
         })
 
     assert listed.status_code == 200
@@ -87,7 +86,6 @@ def test_routes_validate_and_forward_moderation_without_exposing_token():
     client_class.return_value.moderate.assert_called_once_with("comment-1", {
         "action": "hide",
         "reason": "人身攻击",
-        "requestId": "request-1",
     })
 
 

@@ -15,7 +15,7 @@ import type { TextAnchor } from "../../annotations/types";
 import { useAnnotationThreads } from "../../annotations/useAnnotationThreads";
 import { useFeatureFlag } from "../../featureFlags";
 import { usePlatformAccountStore } from "../../platform/accountSession";
-import { NotificationLink } from "../../notifications/NotificationLink";
+import { PlatformAccountMenu } from "../../platform/PlatformAccountMenu";
 import { rollout } from "../../rollout";
 import type { RagReference, RagSearchHit } from "../types";
 import { BookAiPanel } from "./BookAiPanel";
@@ -551,6 +551,10 @@ export function BookReader({
     setThoughtOpen(false);
   }
 
+  function capturePointerTextSelection(): void {
+    window.setTimeout(captureTextSelection, 0);
+  }
+
   function clearSelection(): void {
     window.getSelection()?.removeAllRanges();
     setTextSelection(undefined);
@@ -785,9 +789,9 @@ export function BookReader({
           <span className="hidden sm:inline">{onBookshelf ? "已在书架" : "加入书架"}</span>
         </button>}
         <span className="min-w-0 flex-1" aria-hidden="true" />
-        {rollout.platformRedesign && <NotificationLink className="shrink-0 text-muted hover:text-red" />}
         <span className="hidden max-w-[42%] truncate text-muted md:block">{chapters[activeChapterIndex]?.title}</span>
         <span className="hidden tabular-nums text-muted md:inline">全书 {bookProgress}%</span>
+        {rollout.platformRedesign && <PlatformAccountMenu />}
       </div>
     </header>
 
@@ -799,7 +803,7 @@ export function BookReader({
       </figure>
     </div>}
 
-    {mode === "scroll" ? <div ref={scrollRef} onScroll={updateScrollProgress} onClick={handleReaderClick} onMouseUp={captureTextSelection} className="h-[calc(100%-48px)] overflow-y-auto">
+    {mode === "scroll" ? <div ref={scrollRef} onScroll={updateScrollProgress} onClick={handleReaderClick} onPointerUp={capturePointerTextSelection} onKeyUp={captureTextSelection} className="h-[calc(100%-48px)] overflow-y-auto">
       <main className="mx-auto max-w-[920px] px-0 py-0 md:px-5 md:py-8">
         <article className={`relative min-h-full border-0 px-6 pb-24 pt-10 shadow-none sm:px-12 md:min-h-[calc(100vh-96px)] md:border-x md:px-20 md:py-20 md:shadow-[0_16px_50px_rgba(32,32,28,.10)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#ddddd6]"}`} style={{ fontSize: `${fontSize}px`, lineHeight: 2.05 }}>
           <div className="mx-auto max-w-[730px]">{error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}{children}{chapterNavigation}</div>
@@ -809,7 +813,7 @@ export function BookReader({
       <div className="relative mx-auto h-full max-w-[1180px]">
         <article className={`relative h-full overflow-hidden border-0 px-6 pb-20 pt-10 shadow-none sm:px-10 md:border md:px-16 md:py-14 md:shadow-[0_16px_55px_rgba(32,32,28,.14)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#d8d8d1]"}`}>
           {columnsPerSpread === 2 && <div className={`pointer-events-none absolute inset-y-0 left-1/2 z-10 w-10 -translate-x-1/2 ${isDark ? "bg-[linear-gradient(90deg,transparent,rgba(0,0,0,.22),transparent)]" : "bg-[linear-gradient(90deg,transparent,rgba(77,75,66,.09),transparent)]"}`} aria-hidden="true" />}
-          <div ref={flowRef} data-book-page-flow onClick={handleReaderClick} onMouseUp={captureTextSelection} className={`relative h-full overflow-hidden [column-fill:auto] [&_img]:cursor-zoom-in [&_figure]:break-inside-avoid [&_h1]:[break-after:avoid-column] [&_h2]:[break-after:avoid-column] [&_li]:break-inside-avoid ${pageTransitioning ? "book-page-content-arrive" : ""}`} style={{ columnCount: columnsPerSpread, columnGap: columnsPerSpread === 2 ? "80px" : "48px", fontSize: `${fontSize}px`, lineHeight: 1.95 }}>
+          <div ref={flowRef} data-book-page-flow onClick={handleReaderClick} onPointerUp={capturePointerTextSelection} onKeyUp={captureTextSelection} className={`relative h-full overflow-hidden [column-fill:auto] [&_img]:cursor-zoom-in [&_figure]:break-inside-avoid [&_h1]:[break-after:avoid-column] [&_h2]:[break-after:avoid-column] [&_li]:break-inside-avoid ${pageTransitioning ? "book-page-content-arrive" : ""}`} style={{ columnCount: columnsPerSpread, columnGap: columnsPerSpread === 2 ? "80px" : "48px", fontSize: `${fontSize}px`, lineHeight: 1.95 }}>
             {error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}{children}
             {trailingBlankPage && <span data-book-trailing-page className="book-page-trailing-blank" aria-hidden="true" />}
           </div>
