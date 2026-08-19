@@ -178,14 +178,14 @@ select extensions.is(
   'moderation writes a real notification for the affected reporter'
 );
 
-select extensions.like(
+select extensions.matches(
   (
     select target_path
     from public.user_notifications notification, annotation_test_state state
     where notification.recipient_id = state.reporter_id
       and notification.kind = 'moderation.report_resolved'
   ),
-  '%discussion=%',
+  'discussion=',
   'the moderation notification links back to the discussion'
 );
 
