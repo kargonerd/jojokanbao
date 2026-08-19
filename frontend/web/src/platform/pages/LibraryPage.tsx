@@ -244,14 +244,14 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
         {(error || shelfError) && <p className="library-notice" role="status">{error || shelfError}</p>}
         {(loading || sourceLoading) && <div className="library-loading"><LoadingSpinner text="正在整理馆藏" /></div>}
 
-        {!datasetId && !loading && (
+        {!datasetId && (
           <div className="cover-grid">
             {showPeriodicals && visiblePeriodicals.map((entry) => (
               <Link key={entry.id} className="cover-card" to={issuePath(entry)} onClick={() => rememberPeriodical(entry)}>
                 <PaperCover entry={entry} /><strong>{entry.title}</strong><small>{entry.kind} · {entry.years}</small>
               </Link>
             ))}
-            {showBooks && visibleBooks.map((book) => {
+            {!loading && showBooks && visibleBooks.map((book) => {
               const title = book.title || book.name || "未命名书籍";
               const onShelf = shelfItems.some((item) => item.datasetId === book.id);
               return (
