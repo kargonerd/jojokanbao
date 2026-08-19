@@ -34,14 +34,27 @@ export class ApiError extends Error {
   }
 }
 
-function getDesktopBridge() {
-  return typeof window !== 'undefined' ? window.jojoDesktop : undefined;
+type PressEngineBridgeResult =
+  | { ok: true; value: unknown }
+  | { ok: false; error: { status: number; message: string } };
+
+interface PressDesktopBridgeExtension {
+  selectPdf?: () => Promise<string | null>;
+  engine: {
+    invoke: (command: string, payload?: Record<string, unknown>) => Promise<PressEngineBridgeResult>;
+  };
 }
 
-function requireDesktopBridge() {
+function getDesktopBridge() {
+  return typeof window !== 'undefined'
+    ? window.jojoDesktop as (JojoDesktopBridge & Partial<PressDesktopBridgeExtension>) | undefined
+    : undefined;
+}
+
+function requireDesktopBridge(): JojoDesktopBridge & PressDesktopBridgeExtension {
   const bridge = getDesktopBridge();
-  if (!bridge) throw new ApiError('Press 只能在 JOJO 桌面应用中运行', 503);
-  return bridge;
+  if (!bridge?.engine) throw new ApiError('Press 当前版本未启用', 503);
+  return bridge as JojoDesktopBridge & PressDesktopBridgeExtension;
 }
 
 async function invokeDesktop<T>(command: string, payload: Record<string, unknown> = {}) {

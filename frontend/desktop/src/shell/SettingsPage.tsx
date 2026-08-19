@@ -14,6 +14,7 @@ const closeBehaviorOptions: Array<{
 ];
 
 export function SettingsPage() {
+  const launchAtLoginSupported = window.jojoDesktop?.platform !== 'linux';
   const [closeBehavior, setCloseBehavior] = useState<CloseBehavior>('ask');
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
   const [closeBusy, setCloseBusy] = useState(true);
@@ -26,7 +27,7 @@ export function SettingsPage() {
     const settings = window.jojoDesktop?.settings;
     void Promise.all([
       settings?.getCloseBehavior() ?? Promise.resolve<CloseBehavior>('ask'),
-      settings?.getLaunchAtLogin?.() ?? Promise.resolve(false),
+      launchAtLoginSupported ? settings?.getLaunchAtLogin?.() ?? Promise.resolve(false) : Promise.resolve(false),
       window.jojoDesktop?.getAppInfo?.() ?? Promise.resolve(null),
     ])
       .then(([behavior, launchEnabled, info]) => {
@@ -42,7 +43,7 @@ export function SettingsPage() {
         setCloseBusy(false);
         setLaunchBusy(false);
       });
-  }, []);
+  }, [launchAtLoginSupported]);
 
   const updateCloseBehavior = async (value: CloseBehavior) => {
     const settings = window.jojoDesktop?.settings;
@@ -119,22 +120,24 @@ export function SettingsPage() {
           </div>
         </div>
 
-        <label className="desktop-preference-row desktop-preference-toggle">
-          <span className="desktop-preference-copy">
-            <strong>开机时启动</strong>
-            <small>登录电脑后自动打开 JOJO看报</small>
-          </span>
-          <span className="desktop-preference-control">
-            <input
-              aria-label="开机时启动"
-              checked={launchAtLogin}
-              disabled={launchBusy}
-              onChange={(event) => void updateLaunchAtLogin(event.target.checked)}
-              type="checkbox"
-            />
-            <output aria-live="polite">{launchMessage}</output>
-          </span>
-        </label>
+        {launchAtLoginSupported ? (
+          <label className="desktop-preference-row desktop-preference-toggle">
+            <span className="desktop-preference-copy">
+              <strong>开机时启动</strong>
+              <small>登录电脑后自动打开 JOJO看报</small>
+            </span>
+            <span className="desktop-preference-control">
+              <input
+                aria-label="开机时启动"
+                checked={launchAtLogin}
+                disabled={launchBusy}
+                onChange={(event) => void updateLaunchAtLogin(event.target.checked)}
+                type="checkbox"
+              />
+              <output aria-live="polite">{launchMessage}</output>
+            </span>
+          </label>
+        ) : null}
       </section>
 
       <footer className="desktop-settings-about" aria-label="关于 JOJO看报">

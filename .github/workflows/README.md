@@ -5,6 +5,7 @@ directory stays flat and filenames provide the grouping:
 
 - `ci.yml` — pull-request and main-branch validation
 - `deploy-*.yml` — production and preview deployments
+- `release-*.yml` — installable application releases
 - `maintenance-*.yml` — scheduled or manually triggered operational tasks
 
 Workflow display names use the same categories in the Actions UI.
@@ -58,10 +59,12 @@ external state:
 
 - `deploy-homepage.yml` publishes the Homepage
 - `deploy-web.yml` publishes the unified Web client
+- `release-desktop.yml` builds Desktop installers on Windows, macOS (Apple Silicon
+  and Intel), and Linux; `desktop-v*` tags publish the resulting files as a
+  GitHub Release, while manual runs retain them as workflow artifacts
 
-The existing Desktop runtime and the future Mobile runtime should use their
-own release workflows when packaging is implemented. Internal local tools
-participate in CI but do not need a deployment workflow.
+The future Mobile runtime should use its own release workflow when packaging is
+implemented. Internal local tools participate in CI but do not need a deployment workflow.
 
 ## Maintenance
 

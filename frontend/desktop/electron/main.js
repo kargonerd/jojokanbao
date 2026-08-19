@@ -1,25 +1,19 @@
-import { BrowserWindow, Menu, Tray, app, dialog, ipcMain, nativeImage, net, protocol, safeStorage, screen, session, shell } from 'electron';
-import { readFile, unlink, writeFile } from 'node:fs/promises';
+import { BrowserWindow, Menu, Tray, app, ipcMain, nativeImage, screen, session, shell } from 'electron';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { Worker } from 'node:worker_threads';
+import { fileURLToPath } from 'node:url';
 import { closeBehaviors, normalizeCloseBehavior } from './preferences.js';
 import { getDefaultWindowBounds, getRestorableWindowBounds } from './window-state.js';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const rendererUrl = process.env.JOJO_DESKTOP_RENDERER_URL;
-const testSelectedPdf = process.env.JOJO_PRESS_TEST_SELECTED_PDF;
-const remoteDebuggingPort = process.env.JOJO_DESKTOP_REMOTE_DEBUGGING_PORT ?? process.env.JOJO_PRESS_REMOTE_DEBUGGING_PORT;
+const remoteDebuggingPort = process.env.JOJO_DESKTOP_REMOTE_DEBUGGING_PORT;
 let mainWindow;
 let tray;
 let isQuitting = false;
 let pendingCloseWindow;
 let closeBehavior = 'ask';
 let ragWorkspaceEnabled = false;
-let engineWorker;
-let nextEngineRequestId = 1;
-const pendingEngineRequests = new Map();
-const mineruSettingsPath = () => path.join(app.getPath('userData'), 'mineru-token.bin');
 const windowStatePath = () => path.join(app.getPath('userData'), 'window-state.json');
 const preferencesPath = () => path.join(app.getPath('userData'), 'desktop-preferences.json');
 
@@ -133,6 +127,7 @@ function setupTray() {
   const trayIcon = nativeImage
     .createFromPath(path.join(currentDir, '../dist/brand/jojo-kanbao-mark.png'))
     .resize({ width: 16, height: 16 });
+  if (process.platform === 'darwin') trayIcon.setTemplateImage(true);
   tray = new Tray(trayIcon);
   tray.setToolTip('JOJO看报');
   tray.setContextMenu(Menu.buildFromTemplate([
@@ -176,36 +171,6 @@ ipcMain.on('jojo-desktop:close-choice', async (event, choice) => {
     app.quit();
   }
 });
-
-async function readMineruToken() {
-  try {
-    const encrypted = await readFile(mineruSettingsPath());
-    return safeStorage.decryptString(encrypted);
-  } catch {
-    return '';
-  }
-}
-
-async function saveMineruToken(token) {
-  const normalized = String(token ?? '').trim();
-  if (normalized.length > 4096) throw new Error('MinerU API Key 长度无效');
-  if (!normalized) {
-    await unlink(mineruSettingsPath()).catch(() => undefined);
-    return '';
-  }
-  if (!safeStorage.isEncryptionAvailable()) {
-    throw new Error('当前系统无法安全保存 MinerU API Key');
-  }
-  await writeFile(mineruSettingsPath(), safeStorage.encryptString(normalized));
-  return normalized;
-}
-
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme: 'jojo-pdf',
-    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
-  }
-]);
 
 if (remoteDebuggingPort) app.commandLine.appendSwitch('remote-debugging-port', remoteDebuggingPort);
 
@@ -318,23 +283,6 @@ async function createWindow() {
 
 }
 
-ipcMain.handle('jojo-desktop:select-pdf', async () => {
-  if (testSelectedPdf) {
-    return testSelectedPdf;
-  }
-
-  const result = await dialog.showOpenDialog({
-    properties: ['openFile'],
-    filters: [{ name: 'PDF 文件', extensions: ['pdf'] }]
-  });
-
-  if (result.canceled || result.filePaths.length === 0) {
-    return null;
-  }
-
-  return result.filePaths[0];
-});
-
 ipcMain.handle('jojo-desktop:app-info', () => ({
   version: app.getVersion(),
   platform: process.platform,
@@ -354,12 +302,14 @@ ipcMain.handle('jojo-settings:close-behavior:save', async (event, value) => {
 
 ipcMain.handle('jojo-settings:launch-at-login:get', (event) => {
   if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('unauthorized');
+  if (process.platform === 'linux') return false;
   return app.getLoginItemSettings().openAtLogin;
 });
 
 ipcMain.handle('jojo-settings:launch-at-login:save', (event, value) => {
   if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('unauthorized');
   if (typeof value !== 'boolean') throw new Error('开机启动设置无效');
+  if (process.platform === 'linux') return false;
   app.setLoginItemSettings({ openAtLogin: value });
   return app.getLoginItemSettings().openAtLogin;
 });
@@ -371,87 +321,6 @@ ipcMain.on('jojo-desktop:feature-availability', (event, features) => {
   ragWorkspaceEnabled = nextRagWorkspaceEnabled;
   setupApplicationMenu();
 });
-
-async function startEngineApplication() {
-  const runtimeRoot = path.join(app.getPath('userData'), 'press');
-  process.env.JOJO_PRESS_PROJECTS_ROOT = path.join(runtimeRoot, 'projects');
-  process.env.JOJO_PRESS_EXPORT_ROOT = path.join(runtimeRoot, 'exports');
-  engineWorker = new Worker(new URL('../dist/engine/worker.js', import.meta.url));
-  engineWorker.on('message', (message) => {
-    const pending = pendingEngineRequests.get(message.id);
-    if (!pending) return;
-    pendingEngineRequests.delete(message.id);
-    pending.resolve(message);
-  });
-  engineWorker.on('error', (error) => {
-    for (const pending of pendingEngineRequests.values()) pending.reject(error);
-    pendingEngineRequests.clear();
-  });
-  const invokeEngine = (command, payload = {}) => new Promise((resolve, reject) => {
-    const id = nextEngineRequestId++;
-    pendingEngineRequests.set(id, { resolve, reject });
-    engineWorker.postMessage({ id, command, payload });
-  });
-  await invokeEngine('settings:mineru:configure', { token: await readMineruToken() });
-
-  ipcMain.handle('jojo-settings:mineru:get', async () => ({
-    configured: Boolean(await readMineruToken())
-  }));
-  ipcMain.handle('jojo-settings:mineru:save', async (_event, token) => {
-    const savedToken = await saveMineruToken(token);
-    await invokeEngine('settings:mineru:configure', { token: savedToken });
-    return { configured: Boolean(savedToken) };
-  });
-  const commands = new Set([
-    'health',
-    'projects:list',
-    'projects:get',
-    'projects:create',
-    'projects:metadata:get',
-    'projects:metadata:save',
-    'projects:source:import',
-    'recognition:start',
-    'recognition:status',
-    'proofread:workspace',
-    'proofread:block:save',
-    'quality:get',
-    'export:options',
-    'export:run'
-  ]);
-  ipcMain.handle('jojo-engine:invoke', async (_event, command, payload) => {
-    if (!commands.has(command)) {
-      return { ok: false, error: { status: 404, message: 'unknown engine command' } };
-    }
-    try {
-      return await invokeEngine(command, payload && typeof payload === 'object' ? payload : {});
-    } catch (error) {
-      return {
-        ok: false,
-        error: {
-          status: Number(error?.status ?? 500),
-          message: error instanceof Error ? error.message : 'engine request failed'
-        }
-      };
-    }
-  });
-
-  protocol.handle('jojo-pdf', async (request) => {
-    const url = new URL(request.url);
-    if (url.hostname !== 'project') return new Response('not found', { status: 404 });
-    try {
-      const result = await invokeEngine('projects:source:path', {
-        projectId: decodeURIComponent(url.pathname.slice(1))
-      });
-      if (!result.ok) return new Response('not found', { status: result.error.status });
-      const pdfPath = result.value;
-      return net.fetch(pathToFileURL(pdfPath).href, {
-        headers: request.headers
-      });
-    } catch {
-      return new Response('not found', { status: 404 });
-    }
-  });
-}
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
@@ -483,5 +352,4 @@ app.on('before-quit', () => {
   isQuitting = true;
   tray?.destroy();
   tray = undefined;
-  void engineWorker?.terminate();
 });

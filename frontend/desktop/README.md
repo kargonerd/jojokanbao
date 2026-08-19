@@ -35,12 +35,9 @@ Engine 保持按运行职责拆分的扁平结构：
 原始压缩包和规范化后的 `content_list.json` 保存在项目 `artifacts/` 下；超过
 600 页的 PDF 会按 300 页分片识别，并在合并时恢复原始页码。
 
-为后续 Press 重做保留的 preload bridge 仍只包含系统 PDF 选择器、MinerU 设置接口和
-白名单 Engine 命令；这些接口在当前路由中不可达，主进程也不会启动 Worker。Renderer
-始终无法访问 Node.js、`ipcRenderer` 或任意本地文件路径。
-
 Press 的 engine、页面与测试代码暂时保留，供下一轮体验重做；当前生产构建不会注册
-Press 路由、菜单和快捷键，也不会启动 Engine Worker 或打包其 renderer 资源。
+Press 路由、菜单和快捷键，也不会暴露 PDF 选择、MinerU 或 Engine IPC，不会启动 Worker
+或打包其 renderer 资源。Renderer 始终无法访问 Node.js、`ipcRenderer` 或任意本地文件路径。
 
 Desktop 顶层路由：
 
@@ -76,7 +73,14 @@ pnpm --filter @jojo/desktop test:electron
 pnpm --filter @jojo/desktop build
 pnpm --filter @jojo/desktop run pack
 pnpm --filter @jojo/desktop dist:win
+pnpm --filter @jojo/desktop dist:mac
+pnpm --filter @jojo/desktop dist:linux
 ```
 
-`pack` 生成可直接运行的 `release/win-unpacked/JOJO看报.exe`；`dist:win` 生成 NSIS
-安装包。两类产物都写入被 Git 忽略的 `release/`。
+`pack` 生成可直接运行的 `release/win-unpacked/jojo-kanbao.exe`；`dist:win` 生成 NSIS
+安装包，macOS 生成 DMG/ZIP，Linux 生成 AppImage/DEB。产物都写入被 Git 忽略的
+`release/`。推送与 `package.json` 版本匹配的 `desktop-v*` tag 会自动构建三平台产物并
+发布 GitHub Release；带后缀的 tag（例如 `desktop-v0.2.0-rc.1`）会标记为预发布。
+
+当前自动构建默认不签名，适合 RC 验证。正式对外发布前应配置 Windows 代码签名和
+Apple Developer ID/notarization，避免 SmartScreen 或 Gatekeeper 安全提示。

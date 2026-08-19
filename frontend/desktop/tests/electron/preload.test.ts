@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 describe('preload bridge', () => {
-  it('exposes a PDF picker bridge from the CommonJS preload entry', async () => {
+  it('exposes only the active desktop shell bridge from the CommonJS preload entry', () => {
     const preloadSource = readFileSync(new URL('../../electron/preload.cjs', import.meta.url), 'utf8');
     const localRequire = (specifier: string) => {
       if (specifier === 'electron') {
@@ -39,8 +39,6 @@ describe('preload bridge', () => {
     const module = { exports: {} };
     const executePreload = new Function('require', 'module', 'exports', preloadSource);
 
-    invoke.mockResolvedValue('file:///C:/books/demo.pdf');
-
     executePreload(localRequire, module, module.exports);
 
     expect(exposeInMainWorld).toHaveBeenCalledTimes(1);
@@ -51,7 +49,6 @@ describe('preload bridge', () => {
         appName: string;
         platform: NodeJS.Platform;
         getAppInfo: () => Promise<unknown>;
-        selectPdf: () => Promise<string | null>;
         setFeatureAvailability: (features: { rag: boolean }) => void;
         onCloseChoiceRequested: (callback: () => void) => () => void;
         respondToCloseChoice: (choice: 'tray' | 'quit' | 'cancel') => void;
@@ -61,22 +58,22 @@ describe('preload bridge', () => {
           getLaunchAtLogin: () => Promise<boolean>;
           saveLaunchAtLogin: (enabled: boolean) => Promise<boolean>;
         };
-        engine: { invoke: (command: string, payload?: object) => Promise<unknown> };
+        selectPdf?: unknown;
+        engine?: unknown;
       }
     ];
 
     expect(bridgeName).toBe('jojoDesktop');
     expect(exposedBridge.appName).toBe('jojo-desktop');
     expect(exposedBridge.platform).toBe(process.platform);
-    expect(exposedBridge.selectPdf).toEqual(expect.any(Function));
+    expect(exposedBridge.selectPdf).toBeUndefined();
+    expect(exposedBridge.engine).toBeUndefined();
     expect(exposedBridge.getAppInfo).toEqual(expect.any(Function));
     exposedBridge.setFeatureAvailability({ rag: false });
     expect(send).toHaveBeenCalledWith('jojo-desktop:feature-availability', { rag: false });
 
-    await expect(exposedBridge.selectPdf()).resolves.toBe('file:///C:/books/demo.pdf');
-    expect(invoke).toHaveBeenCalledWith('jojo-desktop:select-pdf');
-    await exposedBridge.engine.invoke('projects:list', {});
-    expect(invoke).toHaveBeenCalledWith('jojo-engine:invoke', 'projects:list', {});
+    expect(invoke).not.toHaveBeenCalledWith('jojo-desktop:select-pdf');
+    expect(invoke).not.toHaveBeenCalledWith('jojo-engine:invoke', expect.anything(), expect.anything());
   });
 
   it('exposes close-choice events and the persisted close preference', async () => {
@@ -126,20 +123,13 @@ describe('preload bridge', () => {
     expect(mainSource).toContain("loadFile(path.join(currentDir, '../dist/index.html'))");
   });
 
-  it('starts the compiled TypeScript application over IPC without a loopback server', () => {
+  it('does not initialize the disabled Press engine or its privileged PDF scheme', () => {
     const mainSource = readFileSync(new URL('../../electron/main.js', import.meta.url), 'utf8');
 
-    expect(mainSource).toContain("app.getPath('userData')");
-    expect(mainSource).toContain("new Worker(new URL('../dist/engine/worker.js'");
-    expect(mainSource).toContain("ipcMain.handle('jojo-engine:invoke'");
-    expect(mainSource).not.toContain('.listen(');
-    expect(mainSource).not.toContain('JOJO_PRESS_API_BASE_URL');
-  });
-
-  it('supports a configured test PDF path for automated upload verification', () => {
-    const mainSource = readFileSync(new URL('../../electron/main.js', import.meta.url), 'utf8');
-
-    expect(mainSource).toContain('process.env.JOJO_PRESS_TEST_SELECTED_PDF');
+    expect(mainSource).not.toContain('new Worker(');
+    expect(mainSource).not.toContain("ipcMain.handle('jojo-engine:invoke'");
+    expect(mainSource).not.toContain('protocol.registerSchemesAsPrivileged');
+    expect(mainSource).not.toContain("ipcMain.handle('jojo-desktop:select-pdf'");
   });
 
   it('does not expose a startup shortcut into the disabled Press flow', () => {
@@ -154,6 +144,7 @@ describe('preload bridge', () => {
     const mainSource = readFileSync(new URL('../../electron/main.js', import.meta.url), 'utf8');
 
     expect(mainSource).toContain('process.env.JOJO_DESKTOP_REMOTE_DEBUGGING_PORT');
+    expect(mainSource).not.toContain('JOJO_PRESS_REMOTE_DEBUGGING_PORT');
     expect(mainSource).toContain("if (remoteDebuggingPort) app.commandLine.appendSwitch('remote-debugging-port', remoteDebuggingPort)");
     expect(mainSource).not.toContain("?? '9222'");
   });

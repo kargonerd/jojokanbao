@@ -16,7 +16,9 @@
     "dev:electron": "node ./scripts/dev-runner.js",
     "start": "pnpm build && electron .",
     "pack": "pnpm build && electron-builder --dir",
-    "dist:win": "pnpm build && electron-builder --win nsis"
+    "dist:win": "pnpm build && electron-builder --win nsis --x64",
+    "dist:mac": "pnpm build && electron-builder --mac dmg zip",
+    "dist:linux": "pnpm build && electron-builder --linux AppImage deb --x64"
   },
   "dependencies": {
     "@jojo/auth": "workspace:*",
@@ -24,12 +26,9 @@
     "@jojo/pdf-viewer": "workspace:*",
     "@jojo/ui": "workspace:*",
     "@jojo/web": "workspace:*",
-    "adm-zip": "^0.5.16",
     "axios": "^1.7.0",
     "dompurify": "^3.4.12",
-    "dotenv": "^17.4.0",
     "marked": "^15.0.0",
-    "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^5.7.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -47,9 +46,12 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",
+    "adm-zip": "^0.5.16",
+    "dotenv": "^17.4.0",
     "electron": "^35.1.0",
     "electron-builder": "^26.15.3",
     "jsdom": "^26.0.0",
+    "pdf-lib": "^1.17.1",
     "tailwindcss": "^4.3.0",
     "typescript": "^5.7.0",
     "vite": "^6.3.0",
@@ -59,6 +61,7 @@
   "build": {
     "appId": "cn.jojokanbao.desktop",
     "productName": "JOJO看报",
+    "executableName": "jojo-kanbao",
     "artifactName": "JOJO看报-${version}-${arch}.${ext}",
     "directories": {
       "output": "release"
@@ -70,7 +73,19 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "../web/public/brand/jojo-kanbao-mark.png"
+      "icon": "../web/public/brand/jojo-kanbao-mark.svg"
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.news",
+      "icon": "../web/public/brand/jojo-kanbao-mark.svg"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Office",
+      "icon": "../web/public/brand/jojo-kanbao-mark.svg",
+      "syncDesktopName": true,
+      "synopsis": "JOJO看报桌面阅读客户端"
     },
     "nsis": {
       "oneClick": false,

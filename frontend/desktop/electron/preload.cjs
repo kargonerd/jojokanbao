@@ -4,7 +4,6 @@ contextBridge.exposeInMainWorld('jojoDesktop', {
   appName: 'jojo-desktop',
   platform: process.platform,
   getAppInfo: () => ipcRenderer.invoke('jojo-desktop:app-info'),
-  selectPdf: () => ipcRenderer.invoke('jojo-desktop:select-pdf'),
   setFeatureAvailability: (features) => ipcRenderer.send('jojo-desktop:feature-availability', features),
   onNavigate: (callback) => {
     const listener = (_event, path) => callback(path);
@@ -24,11 +23,6 @@ contextBridge.exposeInMainWorld('jojoDesktop', {
     getCloseBehavior: () => ipcRenderer.invoke('jojo-settings:close-behavior:get'),
     saveCloseBehavior: (behavior) => ipcRenderer.invoke('jojo-settings:close-behavior:save', behavior),
     getLaunchAtLogin: () => ipcRenderer.invoke('jojo-settings:launch-at-login:get'),
-    saveLaunchAtLogin: (enabled) => ipcRenderer.invoke('jojo-settings:launch-at-login:save', enabled),
-    getMineru: () => ipcRenderer.invoke('jojo-settings:mineru:get'),
-    saveMineru: (token) => ipcRenderer.invoke('jojo-settings:mineru:save', token)
-  },
-  engine: {
-    invoke: (command, payload) => ipcRenderer.invoke('jojo-engine:invoke', command, payload)
+    saveLaunchAtLogin: (enabled) => ipcRenderer.invoke('jojo-settings:launch-at-login:save', enabled)
   }
 });

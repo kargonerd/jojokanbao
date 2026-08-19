@@ -18,7 +18,7 @@ beforeEach(() => {
     appName: 'jojo-desktop',
     selectPdf,
     engine: { invoke },
-  };
+  } as unknown as JojoDesktopBridge;
 });
 
 describe('desktop engine client', () => {

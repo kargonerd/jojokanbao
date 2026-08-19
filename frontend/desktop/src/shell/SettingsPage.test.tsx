@@ -19,14 +19,12 @@ beforeEach(() => {
   getAppInfo.mockReset().mockResolvedValue({ version: '0.2.0', platform: 'win32', arch: 'x64' });
   window.jojoDesktop = {
     appName: 'test',
-    engine: { invoke: vi.fn() },
+    platform: 'win32',
     settings: {
       getCloseBehavior,
       saveCloseBehavior,
       getLaunchAtLogin,
       saveLaunchAtLogin,
-      getMineru: vi.fn(),
-      saveMineru: vi.fn(),
     },
     getAppInfo,
   };
@@ -60,5 +58,15 @@ describe('Desktop settings', () => {
     fireEvent.click(launchAtLogin);
     await waitFor(() => expect(saveLaunchAtLogin).toHaveBeenCalledWith(true));
     expect(launchAtLogin).toBeChecked();
+  });
+
+  it('hides unsupported launch-at-login settings on Linux', async () => {
+    window.jojoDesktop = { ...window.jojoDesktop!, platform: 'linux' };
+
+    render(<SettingsPage />);
+
+    await screen.findByRole('combobox', { name: '关闭窗口时' });
+    expect(screen.queryByRole('checkbox', { name: '开机时启动' })).not.toBeInTheDocument();
+    expect(getLaunchAtLogin).not.toHaveBeenCalled();
   });
 });
