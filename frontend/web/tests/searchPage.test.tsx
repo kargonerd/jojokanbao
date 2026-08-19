@@ -74,10 +74,10 @@ afterEach(() => {
 });
 
 describe("SearchPage initial search", () => {
-  it("uses the platform canvas only in the redesigned shell", () => {
+  it("uses the app canvas only in the redesigned shell", () => {
     const { unmount } = renderSearch("/search", true);
     const redesignedContainer = document.querySelector("[data-search-scroll-container]");
-    expect(redesignedContainer?.classList.contains("platform-search-page")).toBe(true);
+    expect(redesignedContainer?.classList.contains("app-search-page")).toBe(true);
     expect(redesignedContainer?.classList.contains("bg-paper")).toBe(false);
 
     unmount();

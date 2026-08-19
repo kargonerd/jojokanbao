@@ -316,7 +316,7 @@ jobs:
           test -f .edgeone/web-deploy/package.json
           test ! -e .edgeone/web-deploy/cloud-functions/tests
           test ! -e .edgeone/web-deploy/cloud-functions/requirements-dev.txt
-          test ! -e .edgeone/web-deploy/cloud-functions/app/olds
+          test ! -e .edgeone/web-deploy/cloud-functions/app/times
           test ! -e .edgeone/web-deploy/cloud-functions/app/rag
           node -e 'const config = require("./.edgeone/web-deploy/edgeone.json"); if ("devCommand" in config) process.exit(1)'
           node infrastructure/edgeone/prepare-agent-deploy.mjs

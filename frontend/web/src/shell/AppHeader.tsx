@@ -1,30 +1,30 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { PlatformAccountMenu } from "./PlatformAccountMenu";
+import { AccountMenu } from "../account/AccountMenu";
 
-export type PlatformNavigationItem = {
+export type AppNavigationItem = {
   label: string;
   href: string;
 };
 
-export const PLATFORM_NAVIGATION_ITEMS = [
+export const APP_NAVIGATION_ITEMS = [
   { label: "首页", href: "/" },
   { label: "资料库", href: "/library" },
   { label: "搜索", href: "/search" },
   { label: "关于", href: "/support" },
-] as const satisfies readonly PlatformNavigationItem[];
+] as const satisfies readonly AppNavigationItem[];
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function PlatformHeader({
-  navigationItems = PLATFORM_NAVIGATION_ITEMS,
+export function AppHeader({
+  navigationItems = APP_NAVIGATION_ITEMS,
   navigationLabel = "主导航",
   actions,
 }: {
-  navigationItems?: readonly PlatformNavigationItem[];
+  navigationItems?: readonly AppNavigationItem[];
   navigationLabel?: string;
   actions?: ReactNode;
 } = {}) {
@@ -32,10 +32,10 @@ export function PlatformHeader({
   const brandBase = import.meta.env.BASE_URL;
 
   return (
-    <header className="platform-header">
-      <Link className="platform-brand" to="/" aria-label="JOJO 看报首页">
-        <img className="platform-brand-full" src={`${brandBase}brand/jojo-kanbao-logo.png`} alt="" />
-        <img className="platform-brand-mark" src={`${brandBase}brand/jojo-kanbao-mark.png`} alt="" />
+    <header className="app-header">
+      <Link className="app-brand" to="/" aria-label="JOJO 看报首页">
+        <img className="app-brand-full" src={`${brandBase}brand/jojo-kanbao-logo.png`} alt="" />
+        <img className="app-brand-mark" src={`${brandBase}brand/jojo-kanbao-mark.png`} alt="" />
       </Link>
       <nav aria-label={navigationLabel}>
         {navigationItems.map((item) => (
@@ -48,9 +48,9 @@ export function PlatformHeader({
           </Link>
         ))}
       </nav>
-      <div className="platform-header-actions">
+      <div className="app-header-actions">
         {actions}
-        <PlatformAccountMenu />
+        <AccountMenu />
       </div>
     </header>
   );

@@ -1,16 +1,16 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { LoadingSpinner } from "@jojo/ui";
-import { notebookApi } from "../../rag/api";
-import { loadBookshelf, setBookshelf, type BookshelfEntry } from "../../rag/readerData";
-import type { RagNotebook, RagSource } from "../../rag/types";
-import type { PeriodicalEntry } from "../catalog";
-import { bookCoverTone, issueLabel } from "../bookCatalog";
-import { BookCover } from "../BookCover";
-import { fuzzyBookTitleScore } from "../bookSearch";
-import { usePlatformAccountStore } from "../accountSession";
-import { useRecentReadingStore } from "../recentReadingStore";
-import { useFeatureFlag, useFeatureFlagStore } from "../../featureFlags";
+import { useAccountSessionStore } from "../account/session";
+import { useFeatureFlag, useFeatureFlagStore } from "../featureFlags";
+import { notebookApi } from "../rag/api";
+import { loadBookshelf, setBookshelf, type BookshelfEntry } from "../rag/readerData";
+import type { RagNotebook, RagSource } from "../rag/types";
+import { BookCover } from "./BookCover";
+import { bookCoverTone, issueLabel } from "./bookCatalog";
+import { fuzzyBookTitleScore } from "./bookSearch";
+import type { PeriodicalEntry } from "./catalog";
+import { useRecentReadingStore } from "./recentReadingStore";
 
 type LibraryType = "all" | "periodical" | "book";
 
@@ -53,8 +53,8 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
   const [sourceLoading, setSourceLoading] = useState(false);
   const [error, setError] = useState("");
   const remember = useRecentReadingStore((state) => state.remember);
-  const accountInitialized = usePlatformAccountStore((state) => state.initialized);
-  const userId = usePlatformAccountStore((state) => state.userId);
+  const accountInitialized = useAccountSessionStore((state) => state.initialized);
+  const userId = useAccountSessionStore((state) => state.userId);
   const flagsInitialized = useFeatureFlagStore((state) => state.initialized);
   const bookshelfEnabled = useFeatureFlag("library.bookshelf");
   const includePeriodicals = periodicals.length > 0;
@@ -203,7 +203,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
   const visibleBooks = books.filter((book) => titleMatches(book.title || book.name || ""));
   const visibleSources = sources.filter((source) => titleMatches(source.title || source.name || ""));
   return (
-    <main className="platform-library">
+    <main className="app-library">
       <aside className="library-types" aria-label="资料类型">
         {availableLibraryTypes.map((item) => (
           <button
@@ -228,7 +228,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
           </div>
         )}
 
-        <form className="platform-search-box library-filter" role="search" onSubmit={(event) => event.preventDefault()}>
+        <form className="app-search-box library-filter" role="search" onSubmit={(event) => event.preventDefault()}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></svg>
           <label className="sr-only" htmlFor="library-filter-input">{datasetId ? "搜索本书分卷" : "搜索馆藏"}</label>
           <input

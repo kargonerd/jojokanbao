@@ -1,8 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
-import { usePlatformAccountStore } from "../src/platform/accountSession";
-import { useRecentReadingStore } from "../src/platform/recentReadingStore";
+import { useAccountSessionStore } from "../src/account/session";
+import { useRecentReadingStore } from "../src/library/recentReadingStore";
 import { useFeatureFlagStore } from "../src/featureFlags";
 
 const catalogMocks = vi.hoisted(() => ({
@@ -37,7 +37,7 @@ function renderAt(path: string) {
 
 beforeEach(() => {
   window.localStorage.clear();
-  usePlatformAccountStore.setState({ initialized: true, userId: null, displayName: null });
+  useAccountSessionStore.setState({ initialized: true, userId: null, displayName: null });
   useFeatureFlagStore.setState({
     initialized: true,
     revision: "test",
@@ -45,7 +45,7 @@ beforeEach(() => {
       "library.bookshelf": false,
       "reader.annotations": false,
       "rag.workspace": false,
-      "olds.workspace": false,
+      "times.workspace": false,
     },
   });
   useRecentReadingStore.setState({ items: [] });
@@ -72,7 +72,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("platform homepage", () => {
+describe("app homepage", () => {
   it("keeps the global navigation focused on the public reading tools", () => {
     renderAt("/");
 
@@ -89,13 +89,13 @@ describe("platform homepage", () => {
 
   it("keeps notifications and account actions inside the reader menu", async () => {
     renderAt("/");
-    act(() => usePlatformAccountStore.setState({ initialized: true, userId: "reader-1", displayName: "长鯙-WUP" }));
+    act(() => useAccountSessionStore.setState({ initialized: true, userId: "reader-1", displayName: "长鯙-WUP" }));
 
     const navigation = screen.getByRole("navigation", { name: "主导航" });
     expect(within(navigation).queryByRole("link", { name: /通知/ })).toBeNull();
     const account = screen.getByRole("button", { name: /长鯙-WUP，账号菜单/ });
-    expect(account.querySelector(".platform-account-mark")).toBeNull();
-    expect(account.querySelector(".platform-account-caret")).toBeNull();
+    expect(account.querySelector(".app-account-mark")).toBeNull();
+    expect(account.querySelector(".app-account-caret")).toBeNull();
     fireEvent.click(account);
 
     const menu = await screen.findByRole("menu", { name: "读者菜单" });
@@ -141,7 +141,7 @@ describe("platform homepage", () => {
     expect(screen.queryByText("JOJO READING ROOM")).toBeNull();
   });
 
-  it("keeps search and feedback inside the new platform navigation", () => {
+  it("keeps search and feedback inside the new app navigation", () => {
     const searchView = renderAt("/search");
     expect(screen.getByRole("link", { name: "搜索" }).className).toContain("is-active");
     expect(screen.getByPlaceholderText("在JOJO看报上搜索")).toBeTruthy();
@@ -156,7 +156,7 @@ describe("platform homepage", () => {
     expect(screen.queryByRole("link", { name: "GitHub 查看源码" })).toBeNull();
   });
 
-  it("keeps the platform navigation when entering the newspaper archive", () => {
+  it("keeps the app navigation when entering the newspaper archive", () => {
     renderAt("/archive");
 
     const navigation = screen.getByRole("navigation", { name: "主导航" });
@@ -188,7 +188,7 @@ describe("platform homepage", () => {
   });
 });
 
-describe("platform library", () => {
+describe("app library", () => {
   it("filters to books and opens a collection without exposing an Agent tab", async () => {
     renderAt("/library?type=book");
 
@@ -217,7 +217,7 @@ describe("platform library", () => {
 
   it("uses the signed-in reader's server bookshelf", async () => {
     renderAt("/library?type=book");
-    act(() => usePlatformAccountStore.setState({ initialized: true, userId: "reader-1", displayName: "测试读者" }));
+    act(() => useAccountSessionStore.setState({ initialized: true, userId: "reader-1", displayName: "测试读者" }));
     act(() => useFeatureFlagStore.setState((state) => ({
       ...state,
       initialized: true,

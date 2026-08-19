@@ -24,7 +24,7 @@
     "build:admin": "pnpm --filter @jojo/admin build",
     "dev:admin-api": "cd tools/jojo-admin/server && python app.py",
     "dev:admin": "concurrently -k -n api,web -c red,blue \"pnpm dev:admin-api\" \"pnpm dev:admin-web\"",
-    "dev:jiuwen-mobile": "pnpm --filter @jojo/jiuwen-mobile start",
+    "dev:times-mobile": "pnpm --filter @jojo/times-mobile start",
     "finalize:archive-pdf": "node tools/archive-pdf/finalize.mjs",
     "protect:archive-pdf": "node tools/archive-pdf/protect.mjs",
     "publish:archive-pdf": "node tools/archive-pdf/publish.mjs",

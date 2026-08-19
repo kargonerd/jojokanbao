@@ -27,7 +27,7 @@ test.describe("JOJO Web", () => {
       performance.getEntriesByType("resource").map((entry) => entry.name)
     ));
     expect(resources.some((url) => (
-      /AccountLogin|OldsRoutes|RagRoutes|ReaderPage|pdf\.worker/.test(url)
+      /AccountLogin|TimesRoutes|RagRoutes|ReaderPage|pdf\.worker/.test(url)
     ))).toBe(false);
   });
 
@@ -67,7 +67,7 @@ test.describe("JOJO Web", () => {
   });
 
   test("unfinished modules remain disabled", async ({ page }) => {
-    for (const path of ["/rag", "/olds"]) {
+    for (const path of ["/rag", "/times"]) {
       await page.goto(path);
       await expect(page.getByRole("heading", { name: "404 Not Found" })).toBeVisible();
     }

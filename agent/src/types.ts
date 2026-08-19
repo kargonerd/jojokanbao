@@ -42,7 +42,7 @@ export interface AgentSourceReference {
 /**
  * Product-owned Agent configuration.
  *
- * RAG and Olds expose this small boundary now so deployment code can select a
+ * RAG and Times expose this small boundary now so deployment code can select a
  * product without coupling its prompts and tools to a hosting platform.
  */
 export interface PlatformAgentDefinition {
@@ -60,7 +60,7 @@ export type PlatformAgentEvent =
   | { type: "usage"; usage: AgentUsage };
 
 export interface RunPlatformAgentOptions {
-  /** Product-owned instructions. RAG and Olds provide different prompts. */
+  /** Product-owned instructions. RAG and Times provide different prompts. */
   systemPrompt: string;
   /** One string becomes a user message; advanced callers can provide messages directly. */
   prompt: string | AgentMessage[];

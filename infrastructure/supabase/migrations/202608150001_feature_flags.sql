@@ -512,7 +512,7 @@ values
     jsonb_build_object('id', '10000000-0000-4000-8000-000000000001', 'name', '已登录读者', 'conditionType', 'authenticated', 'serve', true, 'percentage', null, 'bucketBy', null, 'bucketSalt', null, 'startsAt', null, 'endsAt', null, 'enabled', true, 'isFallback', false, 'userIds', jsonb_build_array()),
     jsonb_build_object('id', '10000000-0000-4000-8000-000000000002', 'name', '默认关闭', 'conditionType', 'global', 'serve', false, 'percentage', null, 'bucketBy', null, 'bucketSalt', null, 'startsAt', null, 'endsAt', null, 'enabled', true, 'isFallback', true, 'userIds', jsonb_build_array())
   )),
-  ('olds.workspace', '尚未完成的旧闻工作区', jsonb_build_array(
+  ('times.workspace', '尚未完成的时事工作区', jsonb_build_array(
     jsonb_build_object('id', '50000000-0000-4000-8000-000000000001', 'name', '整体关闭', 'conditionType', 'global', 'serve', false, 'percentage', null, 'bucketBy', null, 'bucketSalt', null, 'startsAt', null, 'endsAt', null, 'enabled', true, 'isFallback', true, 'userIds', jsonb_build_array())
   )),
   ('rag.workspace', 'RAG 工作区路由与导航', jsonb_build_array(

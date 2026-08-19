@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DAILY_QUOTES, dailyQuote } from "../src/platform/dailyQuote";
+import { DAILY_QUOTES, dailyQuote } from "../src/home/dailyQuote";
 
 describe("dailyQuote", () => {
   it("stays stable for the same Shanghai calendar day", () => {

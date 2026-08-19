@@ -48,12 +48,12 @@ select extensions.is(
 
 select extensions.is(
   (select enabled from private.feature_flag_evaluate(
-    'olds.workspace',
+    'times.workspace',
     (select allowed_id from feature_flag_test_state),
     null
   )),
   false,
-  'Olds remains globally disabled'
+  'Times remains globally disabled'
 );
 
 select extensions.throws_ok(

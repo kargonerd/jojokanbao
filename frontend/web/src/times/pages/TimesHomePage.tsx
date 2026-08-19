@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { OldsHeader } from "../OldsHeader";
-import { oldsApi, type OldsDigest, type OldsNewsItem, type OldsStats } from "../api";
+import { TimesHeader } from "../TimesHeader";
+import { timesApi, type TimesDigest, type TimesNewsItem, type TimesStats } from "../api";
 
-const emptyDigest: OldsDigest = {
+const emptyDigest: TimesDigest = {
   articleCount: 0,
   hotKeywords: [],
   attentionLanes: [],
@@ -22,16 +22,16 @@ function formatDate(value: string) {
   }).format(date);
 }
 
-export function OldsHomePage() {
-  const [news, setNews] = useState<OldsNewsItem[]>([]);
-  const [digest, setDigest] = useState<OldsDigest>(emptyDigest);
-  const [stats, setStats] = useState<OldsStats>({ total: 0, sourceCount: 0 });
+export function TimesHomePage() {
+  const [news, setNews] = useState<TimesNewsItem[]>([]);
+  const [digest, setDigest] = useState<TimesDigest>(emptyDigest);
+  const [stats, setStats] = useState<TimesStats>({ total: 0, sourceCount: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    void Promise.all([oldsApi.listNews(), oldsApi.getDigest(), oldsApi.getStats()])
+    void Promise.all([timesApi.listNews(), timesApi.getDigest(), timesApi.getStats()])
       .then(([nextNews, nextDigest, nextStats]) => {
         if (!active) return;
         setNews(nextNews);
@@ -39,7 +39,7 @@ export function OldsHomePage() {
         setStats(nextStats);
       })
       .catch((reason: unknown) => {
-        if (active) setError(reason instanceof Error ? reason.message : "旧闻服务暂时不可用");
+        if (active) setError(reason instanceof Error ? reason.message : "时事服务暂时不可用");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -49,14 +49,14 @@ export function OldsHomePage() {
 
   return (
     <div className="min-h-screen bg-paper text-ink">
-      <OldsHeader />
+      <TimesHeader />
       <main className="mx-auto grid max-w-7xl gap-8 px-5 py-6 md:grid-cols-[minmax(0,1fr)_360px] md:px-8 md:py-8">
         <section>
           <div className="border-b-4 border-red pb-5">
             <p className="kicker m-0">Pi Agent Dispatch</p>
-            <h1 className="mt-4 text-4xl font-black tracking-[0.08em] md:text-5xl">今日旧闻</h1>
+            <h1 className="mt-4 text-4xl font-black tracking-[0.08em] md:text-5xl">今日时事</h1>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-muted">
-              先看事实，再查旧闻，最后追问。当前已接入 {stats.sourceCount} 个来源，数据库内 {stats.total} 条新闻。
+              先看事实，再查背景，最后追问。当前已接入 {stats.sourceCount} 个来源，数据库内 {stats.total} 条新闻。
             </p>
           </div>
 
@@ -72,7 +72,7 @@ export function OldsHomePage() {
           <div className="mt-6 grid gap-3">
             {news.map((item, index) => (
               <article key={item.id} className="group border border-rule bg-paper p-4 transition-all hover:-translate-y-0.5 hover:border-red hover:shadow-[4px_4px_0_rgba(139,26,26,.14)]">
-                <Link to={`/olds/${item.id}`} className="grid gap-3 text-ink md:grid-cols-[52px_1fr]">
+                <Link to={`/times/${item.id}`} className="grid gap-3 text-ink md:grid-cols-[52px_1fr]">
                   <div className="font-sans text-xs font-bold text-muted">#{String(index + 1).padStart(3, "0")}</div>
                   <div>
                     <div className="flex flex-wrap gap-3 text-xs text-muted">

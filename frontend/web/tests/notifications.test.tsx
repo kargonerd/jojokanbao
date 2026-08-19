@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationsPage } from "../src/notifications/NotificationsPage";
 import { resetNotifications, useNotificationStore } from "../src/notifications/store";
-import { usePlatformAccountStore } from "../src/platform/accountSession";
+import { useAccountSessionStore } from "../src/account/session";
 
 const api = vi.hoisted(() => ({
   loadNotifications: vi.fn(),
@@ -40,7 +40,7 @@ const earlierReply = {
 
 beforeEach(() => {
   resetNotifications();
-  usePlatformAccountStore.setState({ initialized: true, userId: "reader-1", displayName: "收件人" });
+  useAccountSessionStore.setState({ initialized: true, userId: "reader-1", displayName: "收件人" });
   api.loadNotifications.mockReset();
   api.loadUnreadNotificationCount.mockReset();
   api.markNotificationRead.mockReset();
@@ -79,7 +79,7 @@ describe("generic notifications", () => {
   });
 
   it("does not load a signed-out inbox", () => {
-    usePlatformAccountStore.setState({ initialized: true, userId: null, displayName: null });
+    useAccountSessionStore.setState({ initialized: true, userId: null, displayName: null });
     render(<MemoryRouter><NotificationsPage /></MemoryRouter>);
     expect(screen.getByRole("heading", { name: "登录后查看通知" })).toBeTruthy();
     expect(api.loadNotifications).not.toHaveBeenCalled();

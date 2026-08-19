@@ -1,9 +1,9 @@
-# JOJO旧闻 mobile
+# JOJO Times mobile
 
 ## 当前状态
 - 技术栈：Expo 55 + React Native 0.83
-- App 名称：`JOJO旧闻`
-- Android 包名：`com.luoxixi.jojojiuwen`
+- App 名称：`JOJO Times`
+- Android 包名：`com.luoxixi.jojotimes`
 - Expo owner：`luoxiaozhuang`
 - EAS projectId：`ce6a6762-1d7b-464e-9622-cf1591b4cb02`
 
@@ -60,7 +60,7 @@ EXPO_PUBLIC_API_BASE=http://192.168.1.16:3002
 
 ## 图标资源
 当前图标主设计源文件：
-- `assets/jojojiuwen-icon.svg`
+- `assets/jojo-times-icon.svg`
 
 Expo 当前使用的资源位于：
 - `assets/icon.png`

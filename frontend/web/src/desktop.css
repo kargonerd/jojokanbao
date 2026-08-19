@@ -1,6 +1,6 @@
 /* Complete shared renderer stylesheet for non-Web hosts such as Electron. */
 @import "@jojo/ui/styles";
-@import "./platform/styles.css";
+@import "./shell/styles.css";
 
-/* Tailwind utilities used by RAG, Olds, Account, and the shared reader. */
+/* Tailwind utilities used by RAG, Times, Account, and the shared reader. */
 @source "./**/*.{ts,tsx}";

@@ -47,7 +47,7 @@ test.describe('Real Electron client', () => {
       });
 
       const navigation = page.getByRole('navigation', { name: '主导航' });
-      await expect(navigation.getByText(/Press|书刊制作|今日旧闻/i)).toHaveCount(0);
+      await expect(navigation.getByText(/Press|书刊制作|JOJO Times|时事/i)).toHaveCount(0);
       await expect(navigation.getByRole('link', { name: '搜索' })).toBeVisible();
       await expect(navigation.getByRole('link', { name: '关于' })).toBeVisible();
       await expect(navigation.getByRole('link', { name: 'JOJO问答' })).toHaveCount(0);

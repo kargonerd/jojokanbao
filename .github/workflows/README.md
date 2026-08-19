@@ -23,7 +23,7 @@ the environments that need different runners or dependencies:
 - root-level Homepage content
 - Supabase migrations and the shared Auth contract
 - EdgeOne Python Cloud API tests
-- the existing Olds Python test and archive-manifest checks
+- the existing Times Python test and archive-manifest checks
 
 The `build-and-test` aggregate job and `e2e` browser job keep stable check
 names because the `master` ruleset requires those contexts. The aggregate job

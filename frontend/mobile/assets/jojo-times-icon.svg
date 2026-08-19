@@ -39,5 +39,5 @@
   <rect x="300" y="598" width="420" height="24" rx="12" fill="#991B1B" opacity="0.82"/>
   <rect x="300" y="654" width="308" height="24" rx="12" fill="#B91C1C" opacity="0.72"/>
 
-  <text x="512" y="748" text-anchor="middle" font-size="104" font-weight="700" font-family="Microsoft YaHei, Segoe UI, Arial, sans-serif" fill="#7F1D1D">旧闻</text>
+  <text x="512" y="748" text-anchor="middle" font-size="104" font-weight="700" font-family="Microsoft YaHei, Segoe UI, Arial, sans-serif" fill="#7F1D1D">时事</text>
 </svg>

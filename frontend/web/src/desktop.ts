@@ -4,16 +4,16 @@ export {
   useFeatureFlagStore,
   type FeatureFlagKey,
 } from "./featureFlags";
-export { startPlatformAccountSync, usePlatformAccountStore } from "./platform/accountSession";
-export { PlatformHomePage } from "./platform/pages/HomePage";
+export { startAccountSessionSync, useAccountSessionStore } from "./account/session";
+export { HomePage } from "./home/HomePage";
 export {
-  PLATFORM_NAVIGATION_ITEMS,
-  PlatformHeader,
-  type PlatformNavigationItem,
-} from "./platform/PlatformHeader";
-export { PlatformLayout } from "./platform/PlatformLayout";
-export { LibraryPage } from "./platform/pages/LibraryPage";
-export { PERIODICALS } from "./platform/catalog";
+  APP_NAVIGATION_ITEMS,
+  AppHeader,
+  type AppNavigationItem,
+} from "./shell/AppHeader";
+export { AppLayout } from "./shell/AppLayout";
+export { LibraryPage } from "./library/LibraryPage";
+export { PERIODICALS } from "./library/catalog";
 export { Layout as ArchiveLayout } from "./archive/components/Layout";
 export { SearchPage } from "./archive/pages/SearchPage";
 export { SupportPage } from "./archive/pages/SupportPage";

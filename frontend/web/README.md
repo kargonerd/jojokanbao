@@ -1,12 +1,12 @@
 # JOJO Web
 
-`@jojo/web` 是部署到 `reader.jojokanbao.cn` 的统一 Web 客户端。Archive、Account、RAG、Olds 分别位于 `src/archive`、`src/account`、`src/rag`、`src/olds`；不再为每个模块维护独立 SPA，也不额外套 `features/`。
+`@jojo/web` 是部署到 `reader.jojokanbao.cn` 的统一 Web 客户端。应用外壳、首页、资料库分别位于 `src/shell`、`src/home`、`src/library`；Archive、Account、RAG、JOJO Times 分别位于 `src/archive`、`src/account`、`src/rag`、`src/times`。不再为每个模块维护独立 SPA，也不额外套 `features/`。
 
 ## 路由与整站发布开关
 
 - 生产默认（`VITE_ENABLE_PLATFORM_REDESIGN=false`）：保持原站路由和界面，`/` 跳转 `/archive`
 - 新版预览（`VITE_ENABLE_PLATFORM_REDESIGN=true`）：开放 `/`、`/library`、`/search`、`/support`、`/account`、`/book/:datasetId/:itemKey`，并保留 `/archive/*`
-- 待发布：`/rag/*`、`/olds/*`
+- 待发布：`/rag/*`、`/times/*`
 
 旧 Reader 地址（例如 `/rmrb/19761009#page-5`）以及短暂使用过的 `/reader/*` 前缀会迁移到 `/archive/*`，并保留查询参数和锚点。静态托管必须将未知路径回退到 `index.html`，否则深链接会返回 404。
 
@@ -22,9 +22,9 @@ VITE_SUPABASE_URL=
 VITE_SUPABASE_PUBLISHABLE_KEY=
 VITE_ENABLE_PLATFORM_REDESIGN=true
 VITE_ENABLE_RAG=false
-VITE_ENABLE_OLDS=false
+VITE_ENABLE_TIMES=false
 VITE_RAG_API_BASE=
-VITE_OLDS_API_BASE=http://127.0.0.1:3001
+VITE_TIMES_API_BASE=http://127.0.0.1:3001
 ```
 
 ## 划线评论
@@ -48,7 +48,7 @@ pnpm --filter @jojo/web dev
 
 其他未完成模块默认不可路由、不会显示在导航中，但源码仍会随项目进行类型检查和单元测试。本地开发某个模块时，将对应的 `VITE_ENABLE_*` 改为 `true` 并重启 Vite。账号模块需要配置根目录 `.env.example` 列出的 Supabase 浏览器端公开值。
 
-RAG 与 Olds 的旧管理页面源码暂时保留用于迁移对照，但不注册路由。它们必须先接入统一账号的权限模型，才能在后续变更中开放。
+RAG 与 JOJO Times 的旧管理页面源码暂时保留用于迁移对照，但不注册路由。它们必须先接入统一账号的权限模型，才能在后续变更中开放。
 
 ## 账号中心
 

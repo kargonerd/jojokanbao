@@ -13,7 +13,7 @@ test.describe('Desktop renderer', () => {
     await expect(navigation.getByRole('link', { name: '设置' })).toHaveCount(0);
     await expect(page.getByRole('link', { name: '设置' })).toHaveAttribute('href', '/settings');
     await expect(page.getByRole('link', { name: '设置' }).locator('svg')).toHaveAttribute('data-icon', 'adjustments');
-    await expect(navigation.getByText(/Archive|Press|书刊制作|今日旧闻/i)).toHaveCount(0);
+    await expect(navigation.getByText(/Archive|Press|书刊制作|JOJO Times|时事/i)).toHaveCount(0);
   });
 
   test('About is the same shared Web page', async ({ page }) => {
@@ -47,7 +47,7 @@ test.describe('Desktop renderer', () => {
     await page.goto('/rag');
     await expect(page.getByRole('heading', { name: '没有找到这个页面' })).toBeVisible();
     await expect(page.getByRole('link', { name: '返回今日阅读' })).toHaveAttribute('href', '/');
-    await page.goto('/olds');
+    await page.goto('/times');
     await expect(page.getByRole('heading', { name: '没有找到这个页面' })).toBeVisible();
   });
 
@@ -71,7 +71,7 @@ test.describe('Desktop renderer', () => {
 
   test('shared base styles keep the sticky title bar opaque and controls intentional', async ({ page }) => {
     await page.goto('/');
-    const header = page.locator('.platform-header');
+    const header = page.locator('.app-header');
     const searchButton = page.getByRole('button', { name: '搜索' });
 
     await expect(header).toHaveCSS('background-color', 'rgb(255, 255, 255)');

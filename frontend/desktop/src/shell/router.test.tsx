@@ -19,7 +19,7 @@ describe('Desktop shell routes', () => {
     expect(navigation.querySelector('a[href="/settings"]')).toBeNull();
     expect(screen.getByRole('link', { name: '设置' })).toHaveAttribute('href', '/settings');
     expect(screen.getByRole('link', { name: '设置' }).querySelector('svg')).toHaveAttribute('data-icon', 'adjustments');
-    expect(navigation).not.toHaveTextContent(/书刊制作|Press|今日旧闻/i);
+    expect(navigation).not.toHaveTextContent(/书刊制作|Press|JOJO Times|时事/i);
     expect(screen.getByRole('heading', { name: '我的书架' })).toBeInTheDocument();
   });
 
@@ -60,12 +60,12 @@ describe('Desktop shell routes', () => {
     expect(screen.queryByRole('heading', { name: '我的项目' })).not.toBeInTheDocument();
   });
 
-  it('keeps the disabled Olds module out of desktop routes', () => {
-    const router = createMemoryRouter(createDesktopRoutes(), { initialEntries: ['/olds'] });
+  it('keeps the disabled Times module out of desktop routes', () => {
+    const router = createMemoryRouter(createDesktopRoutes(), { initialEntries: ['/times'] });
     render(<RouterProvider router={router} />);
 
     expect(screen.getByRole('heading', { name: '没有找到这个页面' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: '今日旧闻' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '时事' })).not.toBeInTheDocument();
   });
 
   it('guards JOJO Q&A with the same runtime feature flag as Web', async () => {

@@ -6,16 +6,16 @@ import { SearchPage } from "./archive/pages/SearchPage";
 import { SupportPage } from "./archive/pages/SupportPage";
 import { PUBLICATIONS, PUBLICATION_NAMES } from "./archive/publications";
 import { NotFoundPage } from "./NotFoundPage";
-import { PlatformLayout } from "./platform/PlatformLayout";
-import { PlatformHomePage } from "./platform/pages/HomePage";
-import { LibraryPage } from "./platform/pages/LibraryPage";
+import { AppLayout } from "./shell/AppLayout";
+import { HomePage } from "./home/HomePage";
+import { LibraryPage } from "./library/LibraryPage";
 import { NotificationsPage } from "./notifications/NotificationsPage";
-import { PERIODICALS } from "./platform/catalog";
+import { PERIODICALS } from "./library/catalog";
 import { rollout } from "./rollout";
 import { ARCHIVE_ROOT, defaultArchiveIssuePath } from "./routes";
 import { refreshFeatureFlags, useFeatureFlag, useFeatureFlagStore, type FeatureFlagKey } from "./featureFlags";
-import { startPlatformAccountSync, usePlatformAccountStore } from "./platform/accountSession";
 import { AccountEntry } from "./account/AccountEntry";
+import { startAccountSessionSync, useAccountSessionStore } from "./account/session";
 
 const AccountLogin = lazy(() => import("./account/AccountLogin"));
 const AccountConfirmation = lazy(() => import("./account/AccountConfirmation"));
@@ -26,10 +26,10 @@ const BookReaderPage = lazy(() =>
   import("./rag/pages/ReaderPage").then(({ ReaderPage }) => ({ default: ReaderPage })),
 );
 const RagRoutes = lazy(() => import("./rag/RagRoutes"));
-const OldsRoutes = lazy(() => import("./olds/OldsRoutes"));
+const TimesRoutes = lazy(() => import("./times/TimesRoutes"));
 
 const legacyArchivePaths = [...PUBLICATION_NAMES, "search", "support"] as const;
-const platformArchivePaths = [...PUBLICATION_NAMES] as const;
+const redesignedArchivePaths = [...PUBLICATION_NAMES] as const;
 const archivePublications = Object.values(PUBLICATIONS);
 
 function ModuleFallback() {
@@ -47,9 +47,9 @@ function LazyRoute({ children }: { children: ReactNode }) {
 }
 
 function RuntimeBootstrap() {
-  const accountInitialized = usePlatformAccountStore((state) => state.initialized);
-  const userId = usePlatformAccountStore((state) => state.userId);
-  useEffect(() => startPlatformAccountSync(), []);
+  const accountInitialized = useAccountSessionStore((state) => state.initialized);
+  const userId = useAccountSessionStore((state) => state.userId);
+  useEffect(() => startAccountSessionSync(), []);
   useEffect(() => {
     if (accountInitialized) void refreshFeatureFlags();
   }, [accountInitialized, userId]);
@@ -105,13 +105,13 @@ function LegacyRoutes() {
       ))}
 
       {rollout.rag && <Route path="/rag/*" element={<LazyRoute><RagRoutes /></LazyRoute>} />}
-      {rollout.olds && <Route path="/olds/*" element={<LazyRoute><OldsRoutes /></LazyRoute>} />}
+      {rollout.times && <Route path="/times/*" element={<LazyRoute><TimesRoutes /></LazyRoute>} />}
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
 }
 
-function PlatformRoutes() {
+function RedesignedRoutes() {
   return (
     <>
       <RuntimeBootstrap />
@@ -120,8 +120,8 @@ function PlatformRoutes() {
         <Route path="/account/confirm" element={<LazyRoute><AccountConfirmation /></LazyRoute>} />
         <Route path="/login" element={<Navigate to="/account" replace />} />
 
-        <Route element={<PlatformLayout />}>
-          <Route index element={<PlatformHomePage periodicals={PERIODICALS} />} />
+        <Route element={<AppLayout />}>
+          <Route index element={<HomePage periodicals={PERIODICALS} />} />
           <Route path="library" element={<LibraryPage periodicals={PERIODICALS} />} />
           <Route path="library/:datasetId" element={<LibraryPage periodicals={PERIODICALS} />} />
           <Route path="search" element={<div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage platformRedesign /></div>} />
@@ -134,15 +134,15 @@ function PlatformRoutes() {
         <Route path="/reader/*" element={<ArchiveRedirect stripPrefix="/reader" />} />
         <Route path="/legacy/*" element={<Navigate to="/" replace />} />
 
-        {platformArchivePaths.map((path) => (
+        {redesignedArchivePaths.map((path) => (
           <Route key={path} path={`/${path}/*`} element={<ArchiveRedirect />} />
         ))}
 
         {rollout.rag && (
           <Route path="/rag/*" element={<FeatureRoute flag="rag.workspace"><LazyRoute><RagRoutes /></LazyRoute></FeatureRoute>} />
         )}
-        {rollout.olds && (
-          <Route path="/olds/*" element={<FeatureRoute flag="olds.workspace"><LazyRoute><OldsRoutes /></LazyRoute></FeatureRoute>} />
+        {rollout.times && (
+          <Route path="/times/*" element={<FeatureRoute flag="times.workspace"><LazyRoute><TimesRoutes /></LazyRoute></FeatureRoute>} />
         )}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
@@ -151,7 +151,7 @@ function PlatformRoutes() {
 }
 
 export function AppRoutes({ platformRedesign = rollout.platformRedesign }: { platformRedesign?: boolean }) {
-  return platformRedesign ? <PlatformRoutes /> : <LegacyRoutes />;
+  return platformRedesign ? <RedesignedRoutes /> : <LegacyRoutes />;
 }
 
 export function App() {

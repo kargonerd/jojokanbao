@@ -239,7 +239,7 @@ export function SearchPage({
     <div
       ref={scrollContainerRef}
       data-search-scroll-container
-      className={`h-full overflow-y-auto text-ink ${platformRedesign ? "platform-search-page" : "bg-paper"}`}
+      className={`h-full overflow-y-auto text-ink ${platformRedesign ? "app-search-page" : "bg-paper"}`}
     >
       {loading && <LoadingSpinner text="搜索中" fullscreen />}
 
@@ -251,7 +251,7 @@ export function SearchPage({
         >
           <div className="w-[90%] max-w-[640px]">
             <div className={platformRedesign
-              ? "platform-search-box"
+              ? "app-search-box"
               : "flex items-center gap-3 border-2 border-rule-dark bg-paper p-2 pl-4 transition-all focus-within:border-red focus-within:shadow-[4px_4px_0_rgba(139,26,26,.14)]"}
             >
               <input ref={inputRef} value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearch()} placeholder="在JOJO看报上搜索" className="h-10 flex-1 border-0 bg-transparent p-0 text-base focus:border-0 focus:shadow-none" />

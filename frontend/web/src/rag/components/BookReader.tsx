@@ -14,8 +14,8 @@ import { renderAnnotationMarks, textAnchorFromRange } from "../../annotations/do
 import type { TextAnchor } from "../../annotations/types";
 import { useAnnotationThreads } from "../../annotations/useAnnotationThreads";
 import { useFeatureFlag } from "../../featureFlags";
-import { usePlatformAccountStore } from "../../platform/accountSession";
-import { PlatformAccountMenu } from "../../platform/PlatformAccountMenu";
+import { AccountMenu } from "../../account/AccountMenu";
+import { useAccountSessionStore } from "../../account/session";
 import { rollout } from "../../rollout";
 import type { RagReference, RagSearchHit } from "../types";
 import { BookAiPanel } from "./BookAiPanel";
@@ -144,7 +144,7 @@ export function BookReader({
   children,
 }: BookReaderProps) {
   const annotationsEnabled = useFeatureFlag("reader.annotations");
-  const currentUserId = usePlatformAccountStore((state) => state.userId);
+  const currentUserId = useAccountSessionStore((state) => state.userId);
   const bookshelfEnabled = useFeatureFlag("library.bookshelf");
   const agentEnabled = useFeatureFlag("rag.workspace");
   const [fontSize, setFontSize] = useState(storedFontSize);
@@ -791,7 +791,7 @@ export function BookReader({
         <span className="min-w-0 flex-1" aria-hidden="true" />
         <span className="hidden max-w-[42%] truncate text-muted md:block">{chapters[activeChapterIndex]?.title}</span>
         <span className="hidden tabular-nums text-muted md:inline">全书 {bookProgress}%</span>
-        {rollout.platformRedesign && <PlatformAccountMenu />}
+        {rollout.platformRedesign && <AccountMenu />}
       </div>
     </header>
 

@@ -2,7 +2,7 @@
   min-height: calc(100vh - 64px);
   padding: 30px clamp(18px, 5vw, 72px) 72px;
   color: var(--color-ink);
-  background: var(--platform-canvas, #f4f4f2);
+  background: var(--app-canvas, #f4f4f2);
   font-family: var(--font-serif, "Noto Serif SC", serif);
 }
 .notifications-heading {

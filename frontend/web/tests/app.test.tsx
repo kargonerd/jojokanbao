@@ -117,7 +117,7 @@ describe("JOJO Web routes and Archive homepage", () => {
   });
 
   it("keeps unfinished modules disabled by default", () => {
-    for (const path of ["/rag", "/olds"]) {
+    for (const path of ["/rag", "/times"]) {
       const view = renderAt(path);
       expect(screen.getByRole("heading", { name: "404 Not Found" })).toBeTruthy();
       view.unmount();
@@ -147,7 +147,7 @@ describe("JOJO Web navigation", () => {
     expect(screen.getByRole("link", { name: /返回首页/ }).getAttribute("href")).toBe("/");
   });
 
-  it("keeps the platform navigation neutral inside a publication reader", () => {
+  it("keeps the app navigation neutral inside a publication reader", () => {
     renderAt("/archive/hq/196419");
 
     const homeLink = screen.getByRole("link", { name: "首页" });

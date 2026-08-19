@@ -291,7 +291,7 @@ def make_questions(news: dict, terms: list[dict]) -> list[str]:
     return [
         f"{source_name} 的报道中，哪些信息是事实，哪些仍是判断？",
         f"如果把“{names[0]}”作为主线，后续最该跟踪的变量是什么？",
-        f"这条新闻与“{names[1]}”或“{names[2]}”相关旧闻之间，是延续还是反转？",
+        f"这条新闻与“{names[1]}”或“{names[2]}”相关历史报道之间，是延续还是反转？",
     ]
 
 
@@ -317,7 +317,7 @@ def build_briefing(store: Store, news_id: str) -> dict | None:
             "name": "Pi Agent",
             "loop": [
                 {"step": "Perceive", "description": "抓取标题、来源、发布时间、重复词和段落线索。"},
-                {"step": "Interpret", "description": "把事实、判断、旧闻关联和证据缺口拆开。"},
+                {"step": "Interpret", "description": "把事实、判断、历史关联和证据缺口拆开。"},
                 {"step": "Inquire", "description": "给出下一轮追问，让读者继续验证而不是被动接受摘要。"},
             ],
         },
@@ -330,10 +330,10 @@ def build_briefing(store: Store, news_id: str) -> dict | None:
         "stanceChecks": make_stance_checks(news),
         "readingActions": [
             {"label": "先读事实", "prompt": "用一遍阅读只标记谁、何时、何地、做了什么。"},
-            {"label": "再查旧闻", "prompt": "打开旧闻对照，确认这是不是同一议题的延续、转向或反驳。"},
+            {"label": "再查背景", "prompt": "打开历史对照，确认这是不是同一议题的延续、转向或反驳。"},
             {"label": "最后追问", "prompt": "把最不确定的一点交给问答框，让 agent 只基于当前资料回答。"},
         ],
-        "oldContext": related,
+        "historicalContext": related,
     }
 
 
@@ -384,13 +384,13 @@ def answer_question(store: Store, news_id: str, question: str) -> dict | None:
     normalized = question.lower()
     if any(word in normalized for word in ["summary", "summarize", "总结", "摘要", "概括"]):
         answer = briefing["tldr"]
-    elif any(word in normalized for word in ["related", "history", "旧闻", "背景", "对照"]):
-        contexts = briefing["oldContext"]
+    elif any(word in normalized for word in ["related", "history", "历史", "背景", "对照"]):
+        contexts = briefing["historicalContext"]
         if contexts:
             lines = [f"{item['title']}：{item['reason']}" for item in contexts[:3]]
-            answer = "可对照这些旧闻线索：" + "；".join(lines)
+            answer = "可对照这些历史线索：" + "；".join(lines)
         else:
-            answer = "当前资料里还没有找到足够强的旧闻对照，建议先补充更多同主题来源。"
+            answer = "当前资料里还没有找到足够强的历史对照，建议先补充更多同主题来源。"
     else:
         points = "；".join(briefing["keyPoints"][:3])
         answer = f"基于当前文章，最稳妥的回答是：{points}"
@@ -402,7 +402,7 @@ def answer_question(store: Store, news_id: str, question: str) -> dict | None:
             "source": news.get("source"),
         }
     ]
-    for context in briefing["oldContext"][:2]:
+    for context in briefing["historicalContext"][:2]:
         citations.append(
             {
                 "articleId": context["id"],

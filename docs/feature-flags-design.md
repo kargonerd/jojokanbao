@@ -108,7 +108,7 @@ type FeatureFlagKey =
   | "library.bookshelf"
   | "reader.annotations"
   | "rag.workspace"
-  | "olds.workspace";
+  | "times.workspace";
 ```
 
 - 登录、退出和 Token 刷新时重新查询。
@@ -139,9 +139,9 @@ RAG 页面和 RAG 请求统一使用一个 Flag：`rag.workspace`，不再另设
 | `library.bookshelf` | `authenticated → ON`，`global → OFF` | 登录书架和对应 RLS |
 | `reader.annotations` | `authenticated → ON`，`global → OFF` | 划线、想法、AI 解释写入和对应 RLS |
 | `rag.workspace` | `users(空) → ON`，`global → OFF` | RAG 页面和真实请求 |
-| `olds.workspace` | `global → OFF` | 尚未完成的旧闻整体关闭 |
+| `times.workspace` | `global → OFF` | 尚未完成的时事模块整体关闭 |
 
-首页、资料库、搜索、关于、登录和基础阅读不放入首批 Flag。迁移完成前仍保留现有 `VITE_ENABLE_RAG` 和 `VITE_ENABLE_OLDS`；构建开关与运行时 Flag 都为 ON 才开放，因此合并 PR 不会自动改变线上页面。
+首页、资料库、搜索、关于、登录和基础阅读不放入首批 Flag。迁移完成前仍保留现有 `VITE_ENABLE_RAG` 和 `VITE_ENABLE_TIMES`；构建开关与运行时 Flag 都为 ON 才开放，因此合并 PR 不会自动改变线上页面。
 
 ## 8. 管理台与测试
 

@@ -55,11 +55,11 @@ jobs:
         env:
           # Reader remains public while RAG and account stay hidden until their
           # product rollout is ready.
-          VITE_ENABLE_OLDS: "false"
+          VITE_ENABLE_TIMES: "false"
           VITE_ENABLE_RAG: "false"
           VITE_ENABLE_ACCOUNT: "false"
           VITE_RAG_API_BASE: ${{ vars.VITE_RAG_API_BASE }}
-          VITE_OLDS_API_BASE: ${{ vars.VITE_OLDS_API_BASE }}
+          VITE_TIMES_API_BASE: ${{ vars.VITE_TIMES_API_BASE }}
         run: pnpm --filter @jojo/web build
 
       - name: Verify deployable PDF worker

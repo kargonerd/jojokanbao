@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@jojo/ui";
-import { notebookApi } from "../../rag/api";
-import { loadBookshelf, type BookshelfEntry } from "../../rag/readerData";
-import type { RagNotebook } from "../../rag/types";
-import { fuzzyBookTitleScore } from "../bookSearch";
-import { BookCover } from "../BookCover";
-import { usePlatformAccountStore } from "../accountSession";
-import type { PeriodicalEntry } from "../catalog";
-import { bookCoverTone } from "../bookCatalog";
-import { dailyQuote } from "../dailyQuote";
-import { useRecentReadingStore, type RecentReadingItem } from "../recentReadingStore";
-import { useFeatureFlag, useFeatureFlagStore } from "../../featureFlags";
+import { useAccountSessionStore } from "../account/session";
+import { useFeatureFlag, useFeatureFlagStore } from "../featureFlags";
+import { BookCover } from "../library/BookCover";
+import { bookCoverTone } from "../library/bookCatalog";
+import { fuzzyBookTitleScore } from "../library/bookSearch";
+import type { PeriodicalEntry } from "../library/catalog";
+import { useRecentReadingStore, type RecentReadingItem } from "../library/recentReadingStore";
+import { notebookApi } from "../rag/api";
+import { loadBookshelf, type BookshelfEntry } from "../rag/readerData";
+import type { RagNotebook } from "../rag/types";
+import { dailyQuote } from "./dailyQuote";
 
 function RecentCover({ item, periodicals }: { item: RecentReadingItem; periodicals: readonly PeriodicalEntry[] }) {
   if (item.kind === "book") {
@@ -47,7 +47,7 @@ function RecentCover({ item, periodicals }: { item: RecentReadingItem; periodica
   );
 }
 
-export function PlatformHomePage({ periodicals = [] }: { periodicals?: readonly PeriodicalEntry[] }) {
+export function HomePage({ periodicals = [] }: { periodicals?: readonly PeriodicalEntry[] }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [books, setBooks] = useState<RagNotebook[]>([]);
@@ -55,7 +55,7 @@ export function PlatformHomePage({ periodicals = [] }: { periodicals?: readonly 
   const [shelfError, setShelfError] = useState("");
   const [searchAttempted, setSearchAttempted] = useState(false);
   const storedRecentItems = useRecentReadingStore((state) => state.items);
-  const userId = usePlatformAccountStore((state) => state.userId);
+  const userId = useAccountSessionStore((state) => state.userId);
   const flagsInitialized = useFeatureFlagStore((state) => state.initialized);
   const bookshelfEnabled = useFeatureFlag("library.bookshelf");
   const includePeriodicals = periodicals.length > 0;
@@ -107,14 +107,14 @@ export function PlatformHomePage({ periodicals = [] }: { periodicals?: readonly 
   }
 
   return (
-    <main className="platform-home">
+    <main className="app-home">
       <section className="home-search" aria-labelledby="home-search-title">
         <h1 id="home-search-title">今天读什么？</h1>
         <div className="home-book-search">
-          <form className="platform-search-box" onSubmit={submitSearch} role="search">
-            <label className="sr-only" htmlFor="platform-home-search">搜索书名</label>
+          <form className="app-search-box" onSubmit={submitSearch} role="search">
+            <label className="sr-only" htmlFor="app-home-search">搜索书名</label>
             <input
-              id="platform-home-search"
+              id="app-home-search"
               type="search"
               value={query}
               onChange={(event) => { setQuery(event.target.value); setSearchAttempted(false); }}

@@ -11,7 +11,7 @@ import feedparser
 from .store import Store
 
 
-USER_AGENT = "JOJO-Jiuwen/0.1 (+https://jojokanbao.cn)"
+USER_AGENT = "JOJO-Times/0.1 (+https://jojokanbao.cn)"
 TAG_RE = re.compile(r"<[^>]+>")
 
 

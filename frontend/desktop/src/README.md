@@ -2,7 +2,7 @@
 
 - `main.tsx` 是 renderer 入口。
 - `shell/` 只提供桌面运行时适配和顶层模块路由；页面框架直接复用 Web 的
-  `PlatformLayout` 与 `PlatformHeader`。
+  `AppLayout` 与 `AppHeader`。
 - `press/` 保留本地 PDF 工作流源码，但当前桌面版本不注册路由，也不进入 renderer。
 - 报刊/书籍阅读、资料库、搜索、RAG 和 Account 通过 `@jojo/web/desktop` 的显式导出接入，
   避免复制新版 Web 业务实现。

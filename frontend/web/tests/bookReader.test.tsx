@@ -3,7 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BookReader } from "../src/rag/components/BookReader";
 import { useFeatureFlagStore } from "../src/featureFlags";
-import { usePlatformAccountStore } from "../src/platform/accountSession";
+import { useAccountSessionStore } from "../src/account/session";
 
 const annotationApi = vi.hoisted(() => ({
   loadAnnotationThreads: vi.fn(async () => []),
@@ -30,10 +30,10 @@ describe("BookReader", () => {
         "library.bookshelf": true,
         "reader.annotations": true,
         "rag.workspace": true,
-        "olds.workspace": false,
+        "times.workspace": false,
       },
     });
-    usePlatformAccountStore.setState({ initialized: true, userId: "11111111-1111-4111-8111-111111111111", displayName: "测试读者-ABC" });
+    useAccountSessionStore.setState({ initialized: true, userId: "11111111-1111-4111-8111-111111111111", displayName: "测试读者-ABC" });
     annotationApi.loadAnnotationThreads.mockResolvedValue([]);
     annotationApi.createAnnotation.mockReset();
     annotationApi.addAnnotationComment.mockReset();
@@ -316,7 +316,7 @@ describe("BookReader", () => {
   });
 
   it("does not load or expose shared comments to a signed-out reader", async () => {
-    usePlatformAccountStore.setState({ initialized: true, userId: null, displayName: null });
+    useAccountSessionStore.setState({ initialized: true, userId: null, displayName: null });
     annotationApi.loadAnnotationThreads.mockClear();
     const { container } = renderReader();
     const paragraph = screen.getByText("这是正文。");

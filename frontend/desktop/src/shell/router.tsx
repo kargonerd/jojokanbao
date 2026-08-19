@@ -17,34 +17,34 @@ import {
   PERIODICALS,
   PUBLICATIONS,
   PUBLICATION_NAMES,
-  PlatformHomePage,
-  PlatformLayout,
-  PLATFORM_NAVIGATION_ITEMS,
+  HomePage,
+  AppLayout,
+  APP_NAVIGATION_ITEMS,
   RagRoutes,
   SearchPage,
   SupportPage,
   defaultArchiveIssuePath,
   refreshFeatureFlags,
   rollout,
-  startPlatformAccountSync,
+  startAccountSessionSync,
   type FeatureFlagKey,
-  type PlatformNavigationItem,
+  type AppNavigationItem,
   useFeatureFlag,
   useFeatureFlagStore,
-  usePlatformAccountStore,
+  useAccountSessionStore,
 } from '@jojo/web/desktop';
 import { SettingsPage } from './SettingsPage';
 
-const coreDesktopNavigation: readonly PlatformNavigationItem[] = PLATFORM_NAVIGATION_ITEMS;
+const coreDesktopNavigation: readonly AppNavigationItem[] = APP_NAVIGATION_ITEMS;
 const AccountConfirmation = lazy(() => import('@jojo/web/account-confirmation'));
 
 function DesktopRuntime() {
-  const accountInitialized = usePlatformAccountStore((state) => state.initialized);
-  const userId = usePlatformAccountStore((state) => state.userId);
+  const accountInitialized = useAccountSessionStore((state) => state.initialized);
+  const userId = useAccountSessionStore((state) => state.userId);
   const flagsInitialized = useFeatureFlagStore((state) => state.initialized);
   const ragEnabled = useFeatureFlag('rag.workspace');
 
-  useEffect(() => startPlatformAccountSync(), []);
+  useEffect(() => startAccountSessionSync(), []);
   useEffect(() => {
     if (accountInitialized) void refreshFeatureFlags();
   }, [accountInitialized, userId]);
@@ -60,7 +60,7 @@ function DesktopRuntimeLayout() {
   return <><DesktopRuntime /><Outlet /></>;
 }
 
-function useDesktopNavigation(): readonly PlatformNavigationItem[] {
+function useDesktopNavigation(): readonly AppNavigationItem[] {
   const flagsInitialized = useFeatureFlagStore((state) => state.initialized);
   const ragEnabled = useFeatureFlag('rag.workspace');
   return [
@@ -87,9 +87,9 @@ function DesktopSettingsAction() {
   );
 }
 
-function DesktopPlatformLayout() {
+function DesktopAppLayout() {
   return (
-    <PlatformLayout
+    <AppLayout
       className="desktop-shell"
       headerActions={<DesktopSettingsAction />}
       navigationItems={useDesktopNavigation()}
@@ -154,9 +154,9 @@ export function createDesktopRoutes(): RouteObject[] {
       element: <DesktopRuntimeLayout />,
       children: [
         {
-          element: <DesktopPlatformLayout />,
+          element: <DesktopAppLayout />,
           children: [
-            { index: true, element: <PlatformHomePage periodicals={PERIODICALS} /> },
+            { index: true, element: <HomePage periodicals={PERIODICALS} /> },
             { path: 'library', element: <LibraryPage periodicals={PERIODICALS} /> },
             { path: 'library/:datasetId', element: <LibraryPage periodicals={PERIODICALS} /> },
             {

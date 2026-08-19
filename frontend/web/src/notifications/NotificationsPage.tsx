@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { usePlatformAccountStore } from "../platform/accountSession";
+import { useAccountSessionStore } from "../account/session";
 import { loadNotifications, loadUnreadNotificationCount, markNotificationRead } from "./api";
 import { useNotificationStore } from "./store";
 import type { UserNotification } from "./types";
@@ -26,7 +26,7 @@ function safeLocalPath(value: string | null): string | null {
 }
 
 export function NotificationsPage() {
-  const userId = usePlatformAccountStore((state) => state.userId);
+  const userId = useAccountSessionStore((state) => state.userId);
   const [items, setItems] = useState<UserNotification[]>([]);
   const [loading, setLoading] = useState(Boolean(userId));
   const [busy, setBusy] = useState(false);

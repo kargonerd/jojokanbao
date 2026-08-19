@@ -1,9 +1,9 @@
 import { useEffect } from "react";
-import { usePlatformAccountStore } from "../platform/accountSession";
+import { useAccountSessionStore } from "../account/session";
 import { refreshUnreadNotifications, resetNotifications, useNotificationStore } from "./store";
 
 export function useUnreadNotifications() {
-  const userId = usePlatformAccountStore((state) => state.userId);
+  const userId = useAccountSessionStore((state) => state.userId);
   const unreadCount = useNotificationStore((state) => state.unreadCount);
 
   useEffect(() => {

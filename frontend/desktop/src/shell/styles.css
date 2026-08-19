@@ -1,5 +1,5 @@
 :root {
-  --desktop-canvas: var(--platform-canvas, #f4f4f2);
+  --desktop-canvas: var(--app-canvas, #f4f4f2);
   color-scheme: light;
 }
 
@@ -19,25 +19,25 @@ input {
   min-width: 960px;
 }
 
-.desktop-shell .platform-header {
+.desktop-shell .app-header {
   padding-left: 40px;
   -webkit-app-region: drag;
 }
 
-.desktop-shell .platform-header a,
-.desktop-shell .platform-header nav {
+.desktop-shell .app-header a,
+.desktop-shell .app-header nav {
   -webkit-app-region: no-drag;
 }
 
-.desktop-shell .platform-header nav {
+.desktop-shell .app-header nav {
   gap: clamp(20px, 2.5vw, 34px);
 }
 
-html:not([data-desktop-platform='darwin']) .desktop-shell .platform-header-actions {
+html:not([data-desktop-platform='darwin']) .desktop-shell .app-header-actions {
   margin-right: 112px;
 }
 
-html[data-desktop-platform='darwin'] .desktop-shell .platform-brand {
+html[data-desktop-platform='darwin'] .desktop-shell .app-brand {
   margin-left: 72px;
 }
 
@@ -372,11 +372,11 @@ html[data-desktop-platform='darwin'] .desktop-shell .platform-brand {
 }
 
 @media (max-width: 1120px) {
-  .desktop-shell .platform-header {
+  .desktop-shell .app-header {
     padding-inline: 28px;
   }
 
-  .desktop-shell .platform-header nav {
+  .desktop-shell .app-header nav {
     gap: 20px;
   }
 

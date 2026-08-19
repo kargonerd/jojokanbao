@@ -1,24 +1,24 @@
 import { create } from "zustand";
 
-interface PlatformAccountState {
+interface AccountSessionState {
   initialized: boolean;
   userId: string | null;
   displayName: string | null;
 }
 
-export const platformAccountConfigured = Boolean(
+export const accountSessionConfigured = Boolean(
   import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
 );
 
-export const usePlatformAccountStore = create<PlatformAccountState>(() => ({
-  initialized: !platformAccountConfigured,
+export const useAccountSessionStore = create<AccountSessionState>(() => ({
+  initialized: !accountSessionConfigured,
   userId: null,
   displayName: null,
 }));
 
-export function startPlatformAccountSync(): () => void {
-  if (!platformAccountConfigured) {
-    usePlatformAccountStore.setState({ initialized: true, userId: null, displayName: null });
+export function startAccountSessionSync(): () => void {
+  if (!accountSessionConfigured) {
+    useAccountSessionStore.setState({ initialized: true, userId: null, displayName: null });
     return () => {};
   }
 
@@ -30,7 +30,7 @@ export function startPlatformAccountSync(): () => void {
     if (!active) return;
     const update = () => {
       const { initialized, user, profile } = useAuthStore.getState();
-      usePlatformAccountStore.setState({
+      useAccountSessionStore.setState({
         initialized,
         userId: user?.id || null,
         displayName: profile?.display_name?.trim() || null,
@@ -48,7 +48,7 @@ export function startPlatformAccountSync(): () => void {
   };
 }
 
-export async function signOutPlatformAccount(): Promise<void> {
+export async function signOutAccount(): Promise<void> {
   const { useAuthStore } = await import("../account/auth");
   await useAuthStore.getState().signOut();
 }

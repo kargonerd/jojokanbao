@@ -131,12 +131,12 @@ describe("account center", () => {
     await waitFor(() => expect(account.invitation.generate).toHaveBeenCalledOnce());
   });
 
-  it("signs out and returns to the platform homepage", async () => {
+  it("signs out and returns to the app homepage", async () => {
     render(
       <MemoryRouter initialEntries={["/account"]}>
         <Routes>
           <Route path="/account" element={<AccountLogin />} />
-          <Route path="/" element={<div>Platform home</div>} />
+          <Route path="/" element={<div>App home</div>} />
         </Routes>
       </MemoryRouter>,
     );
@@ -144,6 +144,6 @@ describe("account center", () => {
     fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
 
     await waitFor(() => expect(account.auth.signOut).toHaveBeenCalledOnce());
-    expect(await screen.findByText("Platform home")).toBeTruthy();
+    expect(await screen.findByText("App home")).toBeTruthy();
   });
 });
