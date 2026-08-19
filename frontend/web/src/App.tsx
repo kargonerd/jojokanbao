@@ -10,10 +10,12 @@ import { PlatformLayout } from "./platform/PlatformLayout";
 import { PlatformHomePage } from "./platform/pages/HomePage";
 import { LibraryPage } from "./platform/pages/LibraryPage";
 import { NotificationsPage } from "./notifications/NotificationsPage";
+import { PERIODICALS } from "./platform/catalog";
 import { rollout } from "./rollout";
 import { ARCHIVE_ROOT, defaultArchiveIssuePath } from "./routes";
 import { refreshFeatureFlags, useFeatureFlag, useFeatureFlagStore, type FeatureFlagKey } from "./featureFlags";
 import { startPlatformAccountSync, usePlatformAccountStore } from "./platform/accountSession";
+import { AccountEntry } from "./account/AccountEntry";
 
 const AccountLogin = lazy(() => import("./account/AccountLogin"));
 const AccountConfirmation = lazy(() => import("./account/AccountConfirmation"));
@@ -29,9 +31,6 @@ const OldsRoutes = lazy(() => import("./olds/OldsRoutes"));
 const legacyArchivePaths = [...PUBLICATION_NAMES, "search", "support"] as const;
 const platformArchivePaths = [...PUBLICATION_NAMES] as const;
 const archivePublications = Object.values(PUBLICATIONS);
-const accountConfigured = Boolean(
-  import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-);
 
 function ModuleFallback() {
   return <div className="flex min-h-screen items-center justify-center bg-paper font-bold text-red">正在打开 JOJO…</div>;
@@ -62,26 +61,6 @@ function FeatureRoute({ flag, children }: { flag: FeatureFlagKey; children: Reac
   const enabled = useFeatureFlag(flag);
   if (!initialized) return <ModuleFallback />;
   return enabled ? children : <NotFoundPage />;
-}
-
-function AccountEntry() {
-  if (accountConfigured) {
-    return (
-      <Suspense fallback={<main className="min-h-screen bg-paper" aria-label="正在载入登录页面" />}>
-        <AccountLogin />
-      </Suspense>
-    );
-  }
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-paper px-6 text-ink">
-      <div className="max-w-md border-l-2 border-red pl-6">
-        <p className="m-0 text-xs font-bold tracking-[.18em] text-red">JOJO ACCOUNT</p>
-        <h1 className="my-4 text-3xl font-medium">登录服务未配置</h1>
-        <p className="mb-5 text-sm leading-7 text-muted">当前本地环境缺少 Supabase 公开配置；部署环境配置完成后，这里会显示现有登录与邀请注册页面。</p>
-        <a className="text-sm font-bold text-red" href="/">返回首页 →</a>
-      </div>
-    </main>
-  );
 }
 
 function archiveRoute(platformRedesign: boolean) {
@@ -142,9 +121,9 @@ function PlatformRoutes() {
         <Route path="/login" element={<Navigate to="/account" replace />} />
 
         <Route element={<PlatformLayout />}>
-          <Route index element={<PlatformHomePage />} />
-          <Route path="library" element={<LibraryPage />} />
-          <Route path="library/:datasetId" element={<LibraryPage />} />
+          <Route index element={<PlatformHomePage periodicals={PERIODICALS} />} />
+          <Route path="library" element={<LibraryPage periodicals={PERIODICALS} />} />
+          <Route path="library/:datasetId" element={<LibraryPage periodicals={PERIODICALS} />} />
           <Route path="search" element={<div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage platformRedesign /></div>} />
           <Route path="support" element={<SupportPage platformRedesign />} />
           <Route path="notifications" element={<NotificationsPage />} />

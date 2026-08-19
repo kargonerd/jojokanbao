@@ -31,6 +31,7 @@ backend/**/dist/
 backend/**/build/
 backend/**/__pycache__/
 frontend/desktop/engine/.runtime/
+frontend/desktop/release/
 references/**/node_modules/
 references/**/dist/
 references/**/.next/

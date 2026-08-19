@@ -44,6 +44,7 @@ test.describe("JOJO Web", () => {
     await expect(page).toHaveURL("/search");
     // Search input should be visible
     await expect(page.getByPlaceholder("在JOJO看报上搜索")).toBeVisible();
+    await expect(page.locator("[data-search-scroll-container]")).toHaveCSS("background-color", "rgb(244, 244, 242)");
   });
 
   test("support page loads", async ({ page }) => {

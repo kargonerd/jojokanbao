@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { AppShell, NavBar, type NavItem } from "@jojo/ui";
 import { rollout } from "../../rollout";
 import { ARCHIVE_ROOT, archivePath, defaultArchiveIssuePath } from "../../routes";
-import { PlatformHeader } from "../../platform/PlatformHeader";
+import { PlatformHeader, type PlatformNavigationItem } from "../../platform/PlatformHeader";
 
 const coreNavItems: NavItem[] = [
   { label: "首页", href: ARCHIVE_ROOT },
@@ -19,7 +19,17 @@ const coreNavItems: NavItem[] = [
   { label: "搜索", href: archivePath("search") },
 ];
 
-export function Layout({ platformRedesign = rollout.platformRedesign }: { platformRedesign?: boolean }) {
+export function Layout({
+  platformRedesign = rollout.platformRedesign,
+  navigationItems,
+  headerActions,
+  className,
+}: {
+  platformRedesign?: boolean;
+  navigationItems?: readonly PlatformNavigationItem[];
+  headerActions?: ReactNode;
+  className?: string;
+}) {
   const navigate = useNavigate();
   const location = useLocation();
   const navItems: NavItem[] = [
@@ -66,8 +76,8 @@ export function Layout({ platformRedesign = rollout.platformRedesign }: { platfo
 
   if (platformRedesign) {
     return (
-      <div className="platform-shell flex h-screen flex-col overflow-hidden">
-        <PlatformHeader />
+      <div className={["platform-shell flex h-screen flex-col overflow-hidden", className].filter(Boolean).join(" ")}>
+        <PlatformHeader actions={headerActions} navigationItems={navigationItems} />
         <main className="min-h-0 flex-1 overflow-hidden">
           <Outlet />
         </main>

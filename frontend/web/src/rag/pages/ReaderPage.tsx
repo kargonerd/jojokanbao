@@ -200,7 +200,7 @@ export function ReaderPage({ publicReader = false }: { publicReader?: boolean })
   useEffect(() => {
     let active = true;
     let unsubscribe: (() => void) | undefined;
-    void import("@/account/auth").then(async ({ authClient }) => {
+    void import("../../account/auth").then(async ({ authClient }) => {
       const { data } = await authClient.auth.getSession();
       if (active) setAuthState({ initialized: true, signedIn: Boolean(data.session) });
       const listener = authClient.auth.onAuthStateChange((_event, session) => {

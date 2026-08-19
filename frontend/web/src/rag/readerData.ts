@@ -10,7 +10,7 @@ export interface BookshelfEntry { datasetId: string; itemId: string; title: stri
 // Database type intentionally remains stable until the migration is deployed.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function sessionClient(): Promise<{ client: any; userId: string }> {
-  const { authClient } = await import("@/account/auth");
+  const { authClient } = await import("../account/auth");
   const { data, error } = await authClient.auth.getUser();
   if (error) throw error;
   if (!data.user) throw new Error("请先登录后保存阅读数据");

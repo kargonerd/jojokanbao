@@ -96,10 +96,10 @@ describe("JOJO Web routes and Archive homepage", () => {
     await waitFor(() => expect(window.location.pathname).toBe("/archive/rmrb/19761009"));
     expect(window.location.search).toBe("?from=bookmark");
     expect(window.location.hash).toBe("#page-5");
-    expect(appPdfMocks.usePdfDocument).toHaveBeenLastCalledWith({
+    await waitFor(() => expect(appPdfMocks.usePdfDocument).toHaveBeenLastCalledWith({
       url: "https://blacknews.jojokanbao.cn/RMRB/1976/19761009.pdf",
       protectedPdf: "auto",
-    });
+    }));
   });
 
   it("redirects the superseded /reader prefix to Archive", async () => {
