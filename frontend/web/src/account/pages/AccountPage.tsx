@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
-import { useAuthStore } from "@/account/auth";
-import { AccountBook, type AccountMode } from "@/account/components/AccountBook";
-import { LoginForm, RegisterForm } from "@/account/components/AccountForms";
-import { AccountCenterPage } from "@/account/pages/AccountCenterPage";
+import { useAuthStore } from "../auth";
+import { AccountBook, type AccountMode } from "../components/AccountBook";
+import { LoginForm, RegisterForm } from "../components/AccountForms";
+import { AccountCenterPage } from "./AccountCenterPage";
 
 function safeReturnPath(value: string | null): string {
   if (!value?.startsWith("/") || value.startsWith("//") || value.includes("\\") || /[\r\n]/.test(value)) return "/";
