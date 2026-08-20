@@ -124,6 +124,9 @@ class Publisher:
         marker = f"pdf:{slug}"
         if marker in self.state["completed"]:
             self.log(f"skip completed {marker}")
+            batch = self.work / slug
+            if (batch / "pdf-periodicals-report.json").is_file():
+                self.safe_remove_batch(batch)
             return
         batch = self.work / slug
         if not (batch / "pdf-periodicals-report.json").is_file():
