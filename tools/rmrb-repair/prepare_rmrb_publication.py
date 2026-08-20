@@ -33,7 +33,8 @@ DEFAULT_REVIEW_ROOT = WORKSPACE / "tmp" / "rmrb-peopledata-full-directory"
 DEFAULT_MERGED = DEFAULT_REVIEW_ROOT / "merged-peopledata-canonical.jsonl"
 DEFAULT_IMAGES = WORKSPACE / "tmp" / "pdfs" / "rmrb-peopledata-online-images"
 DEFAULT_PDFS = Path(r"D:\暂存")
-DEFAULT_PDFS_1998_2012 = Path(r"D:\Cloud\OneDrive\rmrb\RMRB")
+DEFAULT_PDFS_1998_2012 = Path(r"C:\Users\luoxixi\Desktop\rmrb_final_1998_2012")
+DEFAULT_PDFS_2014_2026 = Path(r"D:\Cloud\OneDrive\rmrb\RMRB")
 COPY_MARKER_RE = re.compile(r"[（(]\s*人民数据库资料\s*[）)]")
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff"}
 JOX_SALT = 0x4A4F5831
@@ -236,9 +237,19 @@ def hardlink_or_copy(source: Path, target: Path) -> None:
         shutil.copy2(source, target)
 
 
-def issue_pdf_path(pdf_root: Path, day: str, pdf_1998_2012_root: Path | None = None) -> Path:
+def issue_pdf_path(
+    pdf_root: Path,
+    day: str,
+    pdf_1998_2012_root: Path | None = None,
+    pdf_2014_2026_root: Path | None = None,
+) -> Path:
     year = int(day[:4])
-    root = pdf_1998_2012_root if pdf_1998_2012_root and 1998 <= year <= 2012 else pdf_root
+    if pdf_1998_2012_root and 1998 <= year <= 2012:
+        root = pdf_1998_2012_root
+    elif pdf_2014_2026_root and 2014 <= year <= 2026:
+        root = pdf_2014_2026_root
+    else:
+        root = pdf_root
     return root / day[:4] / f"{day.replace('-', '')}.pdf"
 
 
@@ -436,6 +447,7 @@ def build_day(
     viewer: TextIO,
     pdf_root: Path,
     pdf_1998_2012_root: Path | None,
+    pdf_2014_2026_root: Path | None,
 ) -> tuple[dict[str, Any], Counter[str], int]:
     canonical_root = output / "canonical" / "newspapers" / "rmrb"
     articles: list[dict[str, Any]] = []
@@ -446,7 +458,7 @@ def build_day(
     counts: Counter[str] = Counter()
     stripped_titles = 0
     page_article_order: Counter[int] = Counter()
-    pdf_source = issue_pdf_path(pdf_root, day, pdf_1998_2012_root)
+    pdf_source = issue_pdf_path(pdf_root, day, pdf_1998_2012_root, pdf_2014_2026_root)
     pdf_url = (
         "https://huggingface.co/datasets/luoxiaozhuang/marxism-dataset/resolve/main/"
         f"newspapers/rmrb/assets/pdfs/{day[:4]}/{day[5:7]}/{day}.pdf"
@@ -752,7 +764,7 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
         assert year_writer is not None
         summary, counts, stripped = build_day(
             current_day, day_rows, decisions, output, args.snapshot_id, generated_at, year_writer,
-            args.pdf_root, args.pdf_1998_2012_root,
+            args.pdf_root, args.pdf_1998_2012_root, args.pdf_2014_2026_root,
         )
         summary["order"] = len(items) + 1
         items.append(summary)
@@ -881,6 +893,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--end-date")
     result.add_argument("--pdf-root", type=Path, default=DEFAULT_PDFS)
     result.add_argument("--pdf-1998-2012-root", type=Path, default=DEFAULT_PDFS_1998_2012)
+    result.add_argument("--pdf-2014-2026-root", type=Path, default=DEFAULT_PDFS_2014_2026)
     result.add_argument("--limit-days", type=int)
     result.add_argument("--skip-audit", action="store_true")
     result.add_argument("--skip-delivery", action="store_true")

@@ -220,7 +220,7 @@ class Publisher:
             if batch.exists():
                 raise RuntimeError(f"Incomplete existing batch needs inspection: {batch}")
             pdf_root = rmrb.DEFAULT_PDFS
-            if int(year) > 2012:
+            if year == "2013":
                 pdf_root = self.cache_remote_rmrb_year(year)
             self.run([
                 sys.executable, str(WORKSPACE / "tools/rmrb-repair/prepare_rmrb_publication.py"),
@@ -262,10 +262,11 @@ class Publisher:
         marker = f"rmrb:{year}"
         if marker in self.state["completed"]:
             return
-        cache_root = self.cache_remote_rmrb_year(year)
         batch = self.work / f"rmrb-{year}"
         if not (batch / "canonical/newspapers/rmrb/dataset.json").is_file():
-            publication = pdfs.Publication("RMRB", "rmrb", "人民日报", "newspaper", "daily", cache_root)
+            publication = pdfs.Publication(
+                "RMRB", "rmrb", "人民日报", "newspaper", "daily", rmrb.DEFAULT_PDFS_2014_2026,
+            )
             pdfs.build_publication(publication, batch, now(), year=year)
         self.rclone_copy(batch / "canonical/newspapers/rmrb", "jojo-b2:jojo-news-raw/canonical/newspapers/rmrb", [f"/items/{year}/**", f"/assets/pdfs/{year}/**"])
         self.rclone_copy(batch / "delivery/content/newspapers/rmrb", "jojo-b2-s3:jojo-newspaper/content/newspapers/rmrb", [f"/items/{year}/**"])
@@ -274,7 +275,6 @@ class Publisher:
         self.state["completed"].append(marker)
         self.save_state()
         self.safe_remove_batch(batch)
-        shutil.rmtree(cache_root / year)
 
     def finalize_rmrb(self) -> None:
         marker = "rmrb:final-index"
