@@ -1,7 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { SelectableAnnotationArticle } from "../../annotations/SelectableAnnotationArticle";
-import { TimesHeader } from "../TimesHeader";
 import { timesApi, type TimesBriefing, type TimesNewsDetail } from "../api";
 
 function safeNewsUrl(value: string | null | undefined): string | null {
@@ -55,9 +54,7 @@ export function TimesDetailPage() {
   };
 
   return (
-    <div className="min-h-screen bg-paper text-ink">
-      <TimesHeader />
-      <main className="mx-auto max-w-5xl px-5 py-8 md:px-8">
+    <main className="mx-auto min-h-[calc(100vh-64px)] max-w-5xl bg-paper px-5 py-8 text-ink md:px-8">
         <Link to="/times" className="text-sm font-bold">← 返回今日时事</Link>
         {error ? <div role="alert" className="mt-6 border border-red p-5 text-sm text-red">{error}</div> : null}
         {!detail && !error ? <p className="mt-8 text-sm text-muted">正在读取新闻…</p> : null}
@@ -110,7 +107,6 @@ export function TimesDetailPage() {
             </aside>
           </article>
         ) : null}
-      </main>
-    </div>
+    </main>
   );
 }

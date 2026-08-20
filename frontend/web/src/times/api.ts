@@ -1,19 +1,9 @@
-const TIMES_API_BASE = (import.meta.env.VITE_TIMES_API_BASE || "").replace(/\/$/, "");
+import { requestJson } from "../api/client";
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${TIMES_API_BASE}${path}`, {
-    ...init,
-    headers: {
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...init?.headers,
-    },
-  });
+const TIMES_API_ROOT = "/api/v1/times";
 
-  if (!response.ok) {
-    throw new Error(`时事服务返回 HTTP ${response.status}`);
-  }
-
-  return response.json() as Promise<T>;
+async function request<T>(path: string, options?: { method?: "POST"; body?: unknown }): Promise<T> {
+  return requestJson<T>(`${TIMES_API_ROOT}${path}`, options);
 }
 
 export type TimesNewsItem = {
@@ -53,8 +43,6 @@ export type TimesBriefing = {
   timeline?: Array<{ date: string; detail: string }>;
 };
 
-export type TimesSource = { id: string; name: string; rssUrl: string };
-
 export const timesApi = {
   listNews: () => request<TimesNewsItem[]>("/news?limit=100"),
   getDigest: () => request<TimesDigest>("/ai/digest?limit=100"),
@@ -63,13 +51,6 @@ export const timesApi = {
   getBriefing: (newsId: string) => request<TimesBriefing>(`/ai/briefing/${encodeURIComponent(newsId)}`),
   ask: (newsId: string, question: string) => request<{ answer: string }>("/ai/ask", {
     method: "POST",
-    body: JSON.stringify({ newsId, question }),
+    body: { newsId, question },
   }),
-  listSources: () => request<TimesSource[]>("/sources"),
-  createSource: (name: string, rssUrl: string) => request<TimesSource>("/sources", {
-    method: "POST",
-    body: JSON.stringify({ name, rssUrl }),
-  }),
-  deleteSource: (sourceId: string) => request<TimesSource>(`/sources/${encodeURIComponent(sourceId)}`, { method: "DELETE" }),
-  fetchRss: () => request<unknown>("/jobs/fetch-rss", { method: "POST" }),
 };

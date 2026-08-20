@@ -27,8 +27,9 @@ Homepage 已启用 Astro React integration，可以直接复用 `@jojo/ui` 组�
 - `backend/src/app/main.py`：统一公网 FastAPI 入口。
 - `backend/src/app/core`：认证、配置、错误和 HTTP 中间件。
 - `backend/src/app/account`：已启用的账号 API。
-- `backend/src/app/times`：未上线的 JOJO Times（时事）模块，默认不进入公开路由或部署产物。
 - RAG 由独立 Agent 运行层承载，不在 Python 后端维护第二套实现。
+- Times 当前只保留统一 Web 内的未上线页面；未来后端必须作为 `app.main` 下的
+  `/v1/times` router 实现，不保留独立 FastAPI、SQLite repository 或服务进程。
 
 本地运行主 API：
 

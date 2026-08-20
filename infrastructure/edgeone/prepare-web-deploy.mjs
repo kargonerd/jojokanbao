@@ -26,7 +26,6 @@ function includeFunctionFile(source) {
     || segment === ".pytest_cache"
     || segment === ".venv"
     || segment === "requirements-dev.txt"
-    || segment === "times"
     || segment === "rag"
   );
 }

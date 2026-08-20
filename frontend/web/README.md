@@ -23,9 +23,11 @@ VITE_SUPABASE_PUBLISHABLE_KEY=
 VITE_ENABLE_PLATFORM_REDESIGN=true
 VITE_ENABLE_RAG=false
 VITE_ENABLE_TIMES=false
-VITE_RAG_API_BASE=
-VITE_TIMES_API_BASE=http://127.0.0.1:3001
 ```
+
+Web 业务接口统一使用 Reader 同源路径：RAG 走 `/api/v1/rag/*`，Times 预留
+`/api/v1/times/*`，不再为业务模块配置独立 API Base。Times 的 Python router 尚未
+实现，因此构建开关与运行时功能开关继续默认关闭。
 
 ## 划线评论
 

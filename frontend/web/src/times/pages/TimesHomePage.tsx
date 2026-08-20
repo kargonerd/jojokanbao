@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { TimesHeader } from "../TimesHeader";
 import { timesApi, type TimesDigest, type TimesNewsItem, type TimesStats } from "../api";
 
 const emptyDigest: TimesDigest = {
@@ -48,9 +47,7 @@ export function TimesHomePage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-paper text-ink">
-      <TimesHeader />
-      <main className="mx-auto grid max-w-7xl gap-8 px-5 py-6 md:grid-cols-[minmax(0,1fr)_360px] md:px-8 md:py-8">
+    <main className="mx-auto grid min-h-[calc(100vh-64px)] max-w-7xl gap-8 bg-paper px-5 py-6 text-ink md:grid-cols-[minmax(0,1fr)_360px] md:px-8 md:py-8">
         <section>
           <div className="border-b-4 border-red pb-5">
             <p className="kicker m-0">Pi Agent Dispatch</p>
@@ -112,7 +109,6 @@ export function TimesHomePage() {
             </div>
           </section>
         </aside>
-      </main>
-    </div>
+    </main>
   );
 }

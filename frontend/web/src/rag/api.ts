@@ -1,4 +1,4 @@
-import axios from "axios";
+import { requestJson } from "../api/client";
 import { loadCatalog, loadDataset } from "./content";
 import type {
   RagAdminAccount,
@@ -11,7 +11,7 @@ import type {
   RagSourceDocument,
 } from "./types";
 
-const BASE = (import.meta.env.VITE_RAG_API_BASE || "").replace(/\/$/, "");
+const RAG_API_ROOT = "/api/v1/rag";
 const AGENT_URL = import.meta.env.VITE_AGENT_API_URL?.trim();
 
 type HttpMethod = "delete" | "get" | "post" | "put";
@@ -21,15 +21,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 async function request<T>(method: HttpMethod, url: string, data?: unknown, token?: string): Promise<T> {
-  const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await axios({ method, url: `${BASE}${url}`, data, headers });
-  const body: unknown = res.data;
-  if (isRecord(body) && body.success === false) {
-    throw new Error(typeof body.error === "string" ? body.error : "请求失败");
-  }
-  if (isRecord(body) && "data" in body) return body.data as T;
-  return body as T;
+  return requestJson<T>(`${RAG_API_ROOT}${url}`, {
+    method: method.toUpperCase() as Uppercase<HttpMethod>,
+    body: data,
+    token,
+  });
 }
 
 // Public
@@ -53,14 +49,14 @@ export const notebookApi = {
 };
 
 export const catalogApi = {
-  listNotebooks: () => request<RagNotebook[]>("get", "/api/catalog/notebooks"),
-  getNotebook: (id: string) => request<RagNotebook>("get", `/api/catalog/notebooks/${encodeURIComponent(id)}`),
-  getSourceDocument: (nid: string, sid: string) => request<RagSourceDocument>("get", `/api/catalog/notebooks/${nid}/sources/${sid}/document`),
-  getSourceChapter: (nid: string, sid: string, chapterId: string) => request<string | { text?: string }>("get", `/api/catalog/notebooks/${nid}/sources/${sid}/chapters/${chapterId}`),
-  getPersons: (nid: string, sid: string) => request<RagPerson[]>("get", `/api/catalog/notebooks/${nid}/sources/${sid}/analysis/persons`),
-  getPersonEvents: (nid: string, sid: string, name: string) => request<RagAnalysis>("get", `/api/catalog/notebooks/${nid}/sources/${sid}/analysis/persons/${encodeURIComponent(name)}/events`),
-  getTimeline: (nid: string, sid: string, query: string) => request<RagAnalysis>("post", `/api/catalog/notebooks/${nid}/sources/${sid}/analysis/timeline`, { query }),
-  getRelations: (nid: string, sid: string, query: string) => request<RagAnalysis>("post", `/api/catalog/notebooks/${nid}/sources/${sid}/analysis/relations`, { query }),
+  listNotebooks: () => request<RagNotebook[]>("get", "/catalog/notebooks"),
+  getNotebook: (id: string) => request<RagNotebook>("get", `/catalog/notebooks/${encodeURIComponent(id)}`),
+  getSourceDocument: (nid: string, sid: string) => request<RagSourceDocument>("get", `/catalog/notebooks/${nid}/sources/${sid}/document`),
+  getSourceChapter: (nid: string, sid: string, chapterId: string) => request<string | { text?: string }>("get", `/catalog/notebooks/${nid}/sources/${sid}/chapters/${chapterId}`),
+  getPersons: (nid: string, sid: string) => request<RagPerson[]>("get", `/catalog/notebooks/${nid}/sources/${sid}/analysis/persons`),
+  getPersonEvents: (nid: string, sid: string, name: string) => request<RagAnalysis>("get", `/catalog/notebooks/${nid}/sources/${sid}/analysis/persons/${encodeURIComponent(name)}/events`),
+  getTimeline: (nid: string, sid: string, query: string) => request<RagAnalysis>("post", `/catalog/notebooks/${nid}/sources/${sid}/analysis/timeline`, { query }),
+  getRelations: (nid: string, sid: string, query: string) => request<RagAnalysis>("post", `/catalog/notebooks/${nid}/sources/${sid}/analysis/relations`, { query }),
 };
 
 // Chat (streaming)

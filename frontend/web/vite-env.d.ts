@@ -7,8 +7,6 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_URL: string;
   readonly VITE_ENABLE_TIMES?: string;
   readonly VITE_ENABLE_RAG?: string;
-  readonly VITE_TIMES_API_BASE?: string;
-  readonly VITE_RAG_API_BASE?: string;
 }
 
 interface ImportMeta {

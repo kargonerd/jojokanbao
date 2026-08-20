@@ -105,7 +105,6 @@ function LegacyRoutes() {
       ))}
 
       {rollout.rag && <Route path="/rag/*" element={<LazyRoute><RagRoutes /></LazyRoute>} />}
-      {rollout.times && <Route path="/times/*" element={<LazyRoute><TimesRoutes /></LazyRoute>} />}
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
@@ -127,6 +126,9 @@ function RedesignedRoutes() {
           <Route path="search" element={<div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage platformRedesign /></div>} />
           <Route path="support" element={<SupportPage platformRedesign />} />
           <Route path="notifications" element={<NotificationsPage />} />
+          {rollout.times && (
+            <Route path="times/*" element={<FeatureRoute flag="times.workspace"><LazyRoute><TimesRoutes /></LazyRoute></FeatureRoute>} />
+          )}
         </Route>
 
         <Route path="/book/:notebookId/:sourceId" element={<LazyRoute><BookReaderPage publicReader /></LazyRoute>} />
@@ -140,9 +142,6 @@ function RedesignedRoutes() {
 
         {rollout.rag && (
           <Route path="/rag/*" element={<FeatureRoute flag="rag.workspace"><LazyRoute><RagRoutes /></LazyRoute></FeatureRoute>} />
-        )}
-        {rollout.times && (
-          <Route path="/times/*" element={<FeatureRoute flag="times.workspace"><LazyRoute><TimesRoutes /></LazyRoute></FeatureRoute>} />
         )}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
