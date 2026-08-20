@@ -25,9 +25,11 @@ VITE_ENABLE_RAG=false
 VITE_ENABLE_TIMES=false
 ```
 
-Web 业务接口统一使用 Reader 同源路径：RAG 走 `/api/v1/rag/*`，Times 预留
-`/api/v1/times/*`，不再为业务模块配置独立 API Base。Times 的 Python router 尚未
-实现，因此构建开关与运行时功能开关继续默认关闭。
+Web 业务接口统一使用 Reader 同源路径。Times 预留 `/api/v1/times/*`；RAG 馆藏直接
+读取已发布的 Jox 内容，Agent 请求走 `/gateway/ask`，再由 Reader Cloud Function
+转发到国际 Agent。浏览器不再配置模块 API Base 或直连 Agent 域名。Times 的 Python
+router 尚未实现，因此构建开关与运行时功能开关继续默认关闭。本地 Vite 服务器使用
+服务端 `JOJO_AGENT_GATEWAY_URL` 代理同一个 `/gateway/ask` 路径。
 
 ## 划线评论
 

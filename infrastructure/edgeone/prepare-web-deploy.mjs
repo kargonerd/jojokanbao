@@ -8,6 +8,7 @@ const webDist = path.join(repositoryRoot, "frontend", "web", "dist");
 const apiRoot = path.join(repositoryRoot, "backend");
 const functionSource = path.join(apiRoot, "src", "app");
 const functionEntry = path.join(repositoryRoot, "infrastructure", "edgeone", "functions", "api");
+const gatewayEntry = path.join(repositoryRoot, "infrastructure", "edgeone", "functions", "reader-gateway");
 const outputDirectory = path.join(repositoryRoot, ".edgeone", "web-deploy");
 
 async function requireFile(filePath) {
@@ -26,12 +27,12 @@ function includeFunctionFile(source) {
     || segment === ".pytest_cache"
     || segment === ".venv"
     || segment === "requirements-dev.txt"
-    || segment === "rag"
   );
 }
 
 await requireFile(path.join(webDist, "index.html"));
 await requireFile(path.join(functionEntry, "index.py"));
+await requireFile(path.join(gatewayEntry, "[[default]].ts"));
 await requireFile(path.join(apiRoot, "requirements.txt"));
 
 await rm(outputDirectory, { recursive: true, force: true });
@@ -40,6 +41,7 @@ await cp(webDist, outputDirectory, { recursive: true });
 const functionsOutput = path.join(outputDirectory, "cloud-functions");
 await mkdir(functionsOutput, { recursive: true });
 await cp(functionEntry, path.join(functionsOutput, "api"), { recursive: true });
+await cp(gatewayEntry, path.join(functionsOutput, "gateway"), { recursive: true });
 await cp(functionSource, path.join(functionsOutput, "app"), {
   recursive: true,
   filter: includeFunctionFile,
@@ -57,7 +59,7 @@ await writeFile(
 );
 await writeFile(
   path.join(outputDirectory, "package.json"),
-  `${JSON.stringify({ name: "jojo-web-deploy", private: true }, null, 2)}\n`,
+  `${JSON.stringify({ name: "jojo-web-deploy", private: true, type: "module" }, null, 2)}\n`,
 );
 
 process.stdout.write(`${outputDirectory}\n`);

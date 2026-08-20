@@ -165,6 +165,9 @@ export function createDesktopRoutes(): RouteObject[] {
             },
             { path: 'support', element: <SupportPage platformRedesign /> },
             { path: 'settings', element: <SettingsPage /> },
+            ...(rollout.rag
+              ? [{ path: 'rag/*', element: <FeatureRoute flag="rag.workspace"><RagRoutes /></FeatureRoute> }]
+              : []),
           ],
         },
         {
@@ -175,10 +178,7 @@ export function createDesktopRoutes(): RouteObject[] {
             ...archiveReaderRoutes,
           ],
         },
-        { path: 'book/:notebookId/:sourceId', element: <BookReaderPage publicReader /> },
-        ...(rollout.rag
-          ? [{ path: 'rag/*', element: <FeatureRoute flag="rag.workspace"><RagRoutes /></FeatureRoute> }]
-          : []),
+        { path: 'book/:notebookId/:sourceId', element: <BookReaderPage /> },
         { path: 'account', element: <AccountEntry /> },
         {
           path: 'account/confirm',

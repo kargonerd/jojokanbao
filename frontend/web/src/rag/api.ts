@@ -1,33 +1,15 @@
-import { requestJson } from "../api/client";
 import { loadCatalog, loadDataset } from "./content";
 import type {
-  RagAdminAccount,
-  RagAdminConfig,
-  RagAnalysis,
   RagNotebook,
-  RagPerson,
   RagReference,
   RagSource,
-  RagSourceDocument,
 } from "./types";
 
-const RAG_API_ROOT = "/api/v1/rag";
-const AGENT_URL = import.meta.env.VITE_AGENT_API_URL?.trim();
-
-type HttpMethod = "delete" | "get" | "post" | "put";
+const AGENT_URL = "/gateway/ask";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
-
-async function request<T>(method: HttpMethod, url: string, data?: unknown, token?: string): Promise<T> {
-  return requestJson<T>(`${RAG_API_ROOT}${url}`, {
-    method: method.toUpperCase() as Uppercase<HttpMethod>,
-    body: data,
-    token,
-  });
-}
-
 // Public
 export const notebookApi = {
   list: async (): Promise<RagNotebook[]> => (await loadCatalog()).datasets.filter((dataset) => dataset.publicationStatus !== "draft").map((dataset) => ({
@@ -48,17 +30,6 @@ export const notebookApi = {
   getSourceFulltext: () => Promise.reject(new Error("请通过章节或 Agent 按需读取内容")),
 };
 
-export const catalogApi = {
-  listNotebooks: () => request<RagNotebook[]>("get", "/catalog/notebooks"),
-  getNotebook: (id: string) => request<RagNotebook>("get", `/catalog/notebooks/${encodeURIComponent(id)}`),
-  getSourceDocument: (nid: string, sid: string) => request<RagSourceDocument>("get", `/catalog/notebooks/${nid}/sources/${sid}/document`),
-  getSourceChapter: (nid: string, sid: string, chapterId: string) => request<string | { text?: string }>("get", `/catalog/notebooks/${nid}/sources/${sid}/chapters/${chapterId}`),
-  getPersons: (nid: string, sid: string) => request<RagPerson[]>("get", `/catalog/notebooks/${nid}/sources/${sid}/analysis/persons`),
-  getPersonEvents: (nid: string, sid: string, name: string) => request<RagAnalysis>("get", `/catalog/notebooks/${nid}/sources/${sid}/analysis/persons/${encodeURIComponent(name)}/events`),
-  getTimeline: (nid: string, sid: string, query: string) => request<RagAnalysis>("post", `/catalog/notebooks/${nid}/sources/${sid}/analysis/timeline`, { query }),
-  getRelations: (nid: string, sid: string, query: string) => request<RagAnalysis>("post", `/catalog/notebooks/${nid}/sources/${sid}/analysis/relations`, { query }),
-};
-
 // Chat (streaming)
 export function askStream(params: { dataset_id: string; question: string; conversation_id?: string; item_ids?: string[]; manifest_objects?: string[] }, onChunk: (text: string) => void, onDone: (refs?: RagReference[], conversationId?: string) => void, onError: (err: string) => void) {
   const ctrl = new AbortController();
@@ -72,7 +43,6 @@ export function askStream(params: { dataset_id: string; question: string; conver
   };
 
   void (async () => {
-    if (!AGENT_URL) throw new Error("书内 AI 服务尚未部署");
     const { authClient } = await import("../account/auth");
     const { data, error } = await authClient.auth.getSession();
     if (error) throw error;
@@ -141,16 +111,3 @@ export function askStream(params: { dataset_id: string; question: string; conver
   });
   return () => ctrl.abort();
 }
-
-// Admin
-export const adminApi = {
-  login: (password: string) => request<{ token: string }>("post", "/admin/login", { password }),
-  getAccounts: async (token: string): Promise<RagAdminAccount[]> => (await request<RagAdminConfig>("get", "/admin/config", undefined, token)).accounts,
-  addAccount: (token: string, data: { name: string; cookie: string }) => request<{ accounts: RagAdminAccount[] }>("post", "/admin/accounts", data, token),
-  refreshAccount: (token: string, id: number) => request<{ accounts: RagAdminAccount[] }>("post", `/admin/accounts/${id}/refresh`, undefined, token),
-  deleteAccount: (token: string, id: number) => request<{ accounts: RagAdminAccount[] }>("delete", `/admin/accounts/${id}`, undefined, token),
-  listNotebooks: (token: string) => request<RagNotebook[]>("get", "/admin/notebooks", undefined, token),
-  updateNotebook: (token: string, id: string, data: { title: string }) => request<RagNotebook>("put", `/admin/notebooks/${id}`, data, token),
-  listSources: (token: string, nid: string) => request<RagSource[]>("get", `/admin/notebooks/${nid}/sources`, undefined, token),
-  updateSource: (token: string, nid: string, sid: string, data: { title: string; published: boolean }) => request<RagSource>("put", `/admin/notebooks/${nid}/sources/${sid}`, data, token),
-};

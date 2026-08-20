@@ -310,13 +310,13 @@ jobs:
           node infrastructure/edgeone/prepare-web-deploy.mjs
           test -f .edgeone/web-deploy/index.html
           test -f .edgeone/web-deploy/cloud-functions/api/index.py
+          test -f '.edgeone/web-deploy/cloud-functions/gateway/[[default]].ts'
           test -f .edgeone/web-deploy/cloud-functions/app/main.py
           test -f .edgeone/web-deploy/cloud-functions/requirements.txt
           test -f .edgeone/web-deploy/edgeone.json
           test -f .edgeone/web-deploy/package.json
           test ! -e .edgeone/web-deploy/cloud-functions/tests
           test ! -e .edgeone/web-deploy/cloud-functions/requirements-dev.txt
-          test ! -e .edgeone/web-deploy/cloud-functions/app/rag
           node -e 'const config = require("./.edgeone/web-deploy/edgeone.json"); if ("devCommand" in config) process.exit(1)'
           node infrastructure/edgeone/prepare-agent-deploy.mjs
           test -f .edgeone/agent-deploy/agents/jojo/index.ts

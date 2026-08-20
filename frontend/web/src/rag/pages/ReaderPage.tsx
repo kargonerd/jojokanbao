@@ -181,7 +181,7 @@ export function shouldRenderChapterTitle(fragment: JojoFragment, html: string): 
   return Boolean(main?.textContent?.replace(/\s+/g, "").length) || !main?.querySelector("img,figure,svg");
 }
 
-export function ReaderPage({ publicReader = false }: { publicReader?: boolean }) {
+export function ReaderPage() {
   const { notebookId: datasetId, sourceId: itemKey } = useParams<{ notebookId: string; sourceId: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -276,8 +276,7 @@ export function ReaderPage({ publicReader = false }: { publicReader?: boolean })
         chapter: targetChapter.id,
         annotation: targetAnnotation.id,
       });
-      const readerRoot = publicReader ? "/book" : "/rag/source";
-      navigate(`${readerRoot}/${encodeURIComponent(datasetId)}/${encodeURIComponent(targetSummary.itemKey)}?${query}`);
+      navigate(`/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(targetSummary.itemKey)}?${query}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     }
@@ -316,7 +315,7 @@ export function ReaderPage({ publicReader = false }: { publicReader?: boolean })
     focusText={focusText}
     contentLoading={!fragment}
     error={error}
-    backHref={publicReader ? `/library/${encodeURIComponent(loaded.manifest.datasetId)}` : "/rag/chat"}
+    backHref={`/library/${encodeURIComponent(loaded.manifest.datasetId)}`}
     onChapterChange={(chapterId) => {
       setFragment(undefined);
       setFocusText(undefined);

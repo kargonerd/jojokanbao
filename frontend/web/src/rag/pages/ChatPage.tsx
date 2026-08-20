@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useChatStore } from "../stores/chatStore";
 import { formatChatMarkdown } from "../utils/markdown";
 import { AppShell, Button, EmptyState } from "@jojo/ui";
-import { RagHeader } from "../RagHeader";
 import { Link } from "react-router-dom";
 
 export function ChatPage() {
@@ -17,7 +16,7 @@ export function ChatPage() {
 
   return (
     <AppShell
-      header={<RagHeader />}
+      className="!h-[calc(100vh-64px)]"
       sidebar={
         <>
         <h2 className="text-sm font-bold text-red tracking-wider mb-4">馆藏 Dataset</h2>
@@ -34,7 +33,7 @@ export function ChatPage() {
               <label key={s.id} className="flex items-center gap-2 py-1 text-xs text-ink cursor-pointer">
                 <input type="checkbox" checked={selectedSourceIds.includes(s.id)} onChange={() => toggleSource(s.id)} className="accent-[var(--color-red)]" />
                 <span className="truncate">{s.title || s.name}</span>
-                <Link className="ml-auto shrink-0 font-bold text-red no-underline" to={`/rag/source/${encodeURIComponent(selectedNotebook)}/${encodeURIComponent(s.itemKey || s.id)}`}>阅读</Link>
+                <Link className="ml-auto shrink-0 font-bold text-red no-underline" to={`/book/${encodeURIComponent(selectedNotebook)}/${encodeURIComponent(s.itemKey || s.id)}`}>阅读</Link>
               </label>
             ))}
           </div>

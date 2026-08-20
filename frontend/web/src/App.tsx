@@ -104,7 +104,6 @@ function LegacyRoutes() {
         <Route key={path} path={`/${path}/*`} element={<ArchiveRedirect />} />
       ))}
 
-      {rollout.rag && <Route path="/rag/*" element={<LazyRoute><RagRoutes /></LazyRoute>} />}
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
@@ -126,12 +125,15 @@ function RedesignedRoutes() {
           <Route path="search" element={<div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage platformRedesign /></div>} />
           <Route path="support" element={<SupportPage platformRedesign />} />
           <Route path="notifications" element={<NotificationsPage />} />
+          {rollout.rag && (
+            <Route path="rag/*" element={<FeatureRoute flag="rag.workspace"><LazyRoute><RagRoutes /></LazyRoute></FeatureRoute>} />
+          )}
           {rollout.times && (
             <Route path="times/*" element={<FeatureRoute flag="times.workspace"><LazyRoute><TimesRoutes /></LazyRoute></FeatureRoute>} />
           )}
         </Route>
 
-        <Route path="/book/:notebookId/:sourceId" element={<LazyRoute><BookReaderPage publicReader /></LazyRoute>} />
+        <Route path="/book/:notebookId/:sourceId" element={<LazyRoute><BookReaderPage /></LazyRoute>} />
         {archiveRoute(true)}
         <Route path="/reader/*" element={<ArchiveRedirect stripPrefix="/reader" />} />
         <Route path="/legacy/*" element={<Navigate to="/" replace />} />
@@ -140,9 +142,6 @@ function RedesignedRoutes() {
           <Route key={path} path={`/${path}/*`} element={<ArchiveRedirect />} />
         ))}
 
-        {rollout.rag && (
-          <Route path="/rag/*" element={<FeatureRoute flag="rag.workspace"><LazyRoute><RagRoutes /></LazyRoute></FeatureRoute>} />
-        )}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </>

@@ -34,7 +34,6 @@ export function Layout({
   const location = useLocation();
   const navItems: NavItem[] = [
     ...coreNavItems,
-    ...(!platformRedesign && rollout.rag ? [{ label: "问答", href: "/rag" }] : []),
     { label: "反馈", href: archivePath("support") },
   ];
   const [accountLabel, setAccountLabel] = useState("登录");
