@@ -113,7 +113,7 @@ class Publisher:
     def hf_upload(self, folder: Path, includes: list[str] | None = None) -> None:
         command = [
             "hf", "upload-large-folder", HF_REPO, str(folder),
-            "--repo-type", "dataset", "--num-workers", "2", "--no-bars",
+            "--repo-type", "dataset", "--num-workers", "4", "--no-bars",
         ]
         if includes:
             command.append("--include")
