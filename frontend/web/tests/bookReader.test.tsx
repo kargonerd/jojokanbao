@@ -29,7 +29,6 @@ describe("BookReader", () => {
       flags: {
         "library.bookshelf": true,
         "reader.annotations": true,
-        "rag.workspace": true,
       },
     });
     useAccountSessionStore.setState({ initialized: true, userId: "11111111-1111-4111-8111-111111111111", displayName: "测试读者-ABC" });
@@ -294,14 +293,14 @@ describe("BookReader", () => {
     expect(await screen.findByRole("complementary", { name: "划线评论" })).toBeTruthy();
   });
 
-  it("hides bookshelf and annotation writes when their runtime flags are off", async () => {
+  it("keeps AI available while hiding bookshelf and annotation writes when their flags are off", async () => {
     useFeatureFlagStore.setState((state) => ({
       ...state,
-      flags: { ...state.flags, "library.bookshelf": false, "reader.annotations": false, "rag.workspace": false },
+      flags: { ...state.flags, "library.bookshelf": false, "reader.annotations": false },
     }));
     const { container } = renderReader();
     expect(screen.queryByRole("button", { name: "加入书架" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "打开书内 AI" })).toBeNull();
+    expect(screen.getByRole("button", { name: "打开书内 AI" })).toBeTruthy();
 
     const paragraph = screen.getByText("这是正文。");
     const range = document.createRange();
@@ -311,22 +310,15 @@ describe("BookReader", () => {
     fireEvent.pointerUp(container.querySelector("[data-book-page-flow]")!);
 
     const toolbar = await screen.findByRole("toolbar", { name: "选中文字工具" });
-    expect(toolbar.textContent).toBe("复制");
+    expect(toolbar.textContent).toBe("复制AI 解释");
   });
 
   it("does not load or expose shared comments to a signed-out reader", async () => {
     useAccountSessionStore.setState({ initialized: true, userId: null, displayName: null });
     annotationApi.loadAnnotationThreads.mockClear();
-    const { container } = renderReader();
-    const paragraph = screen.getByText("这是正文。");
-    const range = document.createRange();
-    range.selectNodeContents(paragraph);
-    window.getSelection()?.removeAllRanges();
-    window.getSelection()?.addRange(range);
-    fireEvent.pointerUp(container.querySelector("[data-book-page-flow]")!);
-
-    const toolbar = await screen.findByRole("toolbar", { name: "选中文字工具" });
-    expect(toolbar.textContent).toBe("复制");
+    renderReader();
+    expect(screen.queryByRole("button", { name: "打开书内 AI" })).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "划线评论" })).toBeNull();
     expect(annotationApi.loadAnnotationThreads).not.toHaveBeenCalled();
   });
 });

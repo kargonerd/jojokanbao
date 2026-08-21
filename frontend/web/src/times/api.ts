@@ -3,7 +3,12 @@ import { requestJson } from "../api/client";
 const TIMES_API_ROOT = "/api/v1/times";
 
 async function request<T>(path: string): Promise<T> {
-  return requestJson<T>(`${TIMES_API_ROOT}${path}`);
+  const { authClient } = await import("../account/auth");
+  const { data, error } = await authClient.auth.getSession();
+  if (error) throw error;
+  const token = data.session?.access_token;
+  if (!token) throw new Error("请先登录后使用时事");
+  return requestJson<T>(`${TIMES_API_ROOT}${path}`, { token });
 }
 
 export type TimesNewsItem = {

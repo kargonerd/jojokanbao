@@ -13,7 +13,7 @@ import { NotificationsPage } from "./notifications/NotificationsPage";
 import { PERIODICALS } from "./library/catalog";
 import { rollout } from "./rollout";
 import { ARCHIVE_ROOT, defaultArchiveIssuePath } from "./routes";
-import { refreshFeatureFlags, useFeatureFlag, useFeatureFlagStore, type FeatureFlagKey } from "./featureFlags";
+import { refreshFeatureFlags } from "./featureFlags";
 import { AccountEntry } from "./account/AccountEntry";
 import { startAccountSessionSync, useAccountSessionStore } from "./account/session";
 
@@ -56,11 +56,16 @@ function RuntimeBootstrap() {
   return null;
 }
 
-function FeatureRoute({ flag, children }: { flag: FeatureFlagKey; children: ReactNode }) {
-  const initialized = useFeatureFlagStore((state) => state.initialized);
-  const enabled = useFeatureFlag(flag);
+function AuthenticatedRoute({ children }: { children: ReactNode }) {
+  const initialized = useAccountSessionStore((state) => state.initialized);
+  const userId = useAccountSessionStore((state) => state.userId);
+  const location = useLocation();
   if (!initialized) return <ModuleFallback />;
-  return enabled ? children : <NotFoundPage />;
+  if (!userId) {
+    const returnTo = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate to={`/account?returnTo=${encodeURIComponent(returnTo)}`} replace />;
+  }
+  return children;
 }
 
 function archiveRoute(platformRedesign: boolean) {
@@ -126,14 +131,16 @@ function RedesignedRoutes() {
           <Route path="support" element={<SupportPage platformRedesign />} />
           <Route path="notifications" element={<NotificationsPage />} />
           {rollout.rag && (
-            <Route path="rag/*" element={<FeatureRoute flag="rag.workspace"><LazyRoute><RagRoutes /></LazyRoute></FeatureRoute>} />
+            <Route path="rag/*" element={<AuthenticatedRoute><LazyRoute><RagRoutes /></LazyRoute></AuthenticatedRoute>} />
           )}
           {rollout.times && (
-            <Route path="times/*" element={<LazyRoute><TimesRoutes /></LazyRoute>} />
+            <Route path="times/*" element={<AuthenticatedRoute><LazyRoute><TimesRoutes /></LazyRoute></AuthenticatedRoute>} />
           )}
         </Route>
 
-        <Route path="/book/:notebookId/:sourceId" element={<LazyRoute><BookReaderPage /></LazyRoute>} />
+        {rollout.rag && (
+          <Route path="/book/:notebookId/:sourceId" element={<AuthenticatedRoute><LazyRoute><BookReaderPage /></LazyRoute></AuthenticatedRoute>} />
+        )}
         {archiveRoute(true)}
         <Route path="/reader/*" element={<ArchiveRedirect stripPrefix="/reader" />} />
         <Route path="/legacy/*" element={<Navigate to="/" replace />} />

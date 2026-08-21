@@ -25,8 +25,9 @@ pnpm dev:backend
 - `GET http://127.0.0.1:8088/v1/times/news`
 
 Times 使用 `JOJO_TIMES_RSSHUB_URL` 和服务端专用的
-`JOJOKANBAO_RSSHUB_ACCESS_KEY`。访问密钥只存在于 Python API 环境，不能放入任何
-`VITE_*` 变量或浏览器请求。
+`JOJOKANBAO_RSSHUB_ACCESS_KEY`；它的值就是 Render 上 RSSHub 服务的 `ACCESS_KEY`，
+不是另一把新密钥。访问密钥只存在于 Python API 环境，不能放入任何 `VITE_*` 变量或
+浏览器请求。Times 路由还会校验 JOJO 登录 access token。
 
 ## 测试
 

@@ -55,19 +55,19 @@ select extensions.throws_ok(
 
 select extensions.is(
   jsonb_array_length(public.operator_list_feature_flags(repeat('o', 32))),
-  3,
+  2,
   'the configured operator token can list flags'
 );
 
 select extensions.throws_ok(
-  $$select public.operator_get_feature_flag('wrong-token', 'rag.workspace')$$,
+  $$select public.operator_get_feature_flag('wrong-token', 'reader.annotations')$$,
   '42501',
   'Feature flag operator token is invalid',
   'runtime rule reads reject an invalid operator token'
 );
 
 select extensions.is(
-  public.operator_get_feature_flag(repeat('o', 32), 'rag.workspace')->>'revision',
+  public.operator_get_feature_flag(repeat('o', 32), 'reader.annotations')->>'revision',
   '1',
   'the protected runtime read returns one rule document'
 );
@@ -75,7 +75,7 @@ select extensions.is(
 select extensions.is(
   public.operator_publish_feature_flag(
     repeat('o', 32),
-    'rag.workspace',
+    'reader.annotations',
     jsonb_build_array(
       jsonb_build_object(
         'name', '内部读者',
@@ -103,7 +103,7 @@ select extensions.is(
 
 select extensions.is(
   (select enabled from private.feature_flag_evaluate(
-    'rag.workspace',
+    'reader.annotations',
     (select allowed_id from feature_flag_test_state),
     null
   )),
@@ -113,7 +113,7 @@ select extensions.is(
 
 select extensions.is(
   (select enabled from private.feature_flag_evaluate(
-    'rag.workspace',
+    'reader.annotations',
     (select other_id from feature_flag_test_state),
     null
   )),
@@ -122,7 +122,7 @@ select extensions.is(
 );
 
 select extensions.is(
-  jsonb_array_length(private.feature_flag_snapshot('rag.workspace')->'history'),
+  jsonb_array_length(private.feature_flag_snapshot('reader.annotations')->'history'),
   2,
   'publishing appends the new complete snapshot to the history field'
 );
@@ -131,7 +131,7 @@ select extensions.throws_ok(
   $$
     select public.operator_publish_feature_flag(
       repeat('o', 32),
-      'rag.workspace',
+      'reader.annotations',
       '[{"name":"Invalid fraction","conditionType":"percentage","serve":true,"percentage":0,"bucketBy":"user","enabled":true,"isFallback":false},{"name":"Default","conditionType":"global","serve":false,"enabled":true,"isFallback":true}]'::jsonb,
       2,
       'Invalid percentage test',
@@ -147,7 +147,7 @@ select extensions.throws_ok(
   $$
     select public.operator_publish_feature_flag(
       repeat('o', 32),
-      'rag.workspace',
+      'reader.annotations',
       '[{"name":"Not a fallback","conditionType":"users","serve":true,"enabled":true,"isFallback":false,"userIds":[]}]'::jsonb,
       2,
       'Invalid fallback test',
@@ -162,7 +162,7 @@ select extensions.throws_ok(
 select extensions.is(
   public.operator_publish_feature_flag(
     repeat('o', 32),
-    'rag.workspace',
+    'reader.annotations',
     jsonb_build_array(
       jsonb_build_object('name', '立即关闭', 'conditionType', 'global', 'serve', false, 'enabled', true, 'isFallback', false),
       jsonb_build_object('name', '内部读者', 'conditionType', 'users', 'serve', true, 'enabled', true, 'isFallback', false, 'userIds', jsonb_build_array((select allowed_id from feature_flag_test_state))),
@@ -178,7 +178,7 @@ select extensions.is(
 
 select extensions.is(
   (select enabled from private.feature_flag_evaluate(
-    'rag.workspace',
+    'reader.annotations',
     (select allowed_id from feature_flag_test_state),
     null
   )),
@@ -189,7 +189,7 @@ select extensions.is(
 select extensions.is(
   public.operator_rollback_feature_flag(
     repeat('o', 32),
-    'rag.workspace',
+    'reader.annotations',
     2,
     3,
     'feature-rollback-1'
@@ -200,7 +200,7 @@ select extensions.is(
 
 select extensions.is(
   (select enabled from private.feature_flag_evaluate(
-    'rag.workspace',
+    'reader.annotations',
     (select allowed_id from feature_flag_test_state),
     null
   )),
@@ -209,25 +209,25 @@ select extensions.is(
 );
 
 select extensions.is(
-  jsonb_array_length(private.feature_flag_snapshot('rag.workspace')->'history'),
+  jsonb_array_length(private.feature_flag_snapshot('reader.annotations')->'history'),
   4,
   'rollback is also appended to history'
 );
 
 select extensions.is(
-  private.feature_flag_snapshot('rag.workspace')->'history'->3->>'reason',
+  private.feature_flag_snapshot('reader.annotations')->'history'->3->>'reason',
   '回滚到 revision 2',
   'rollback history records the source revision'
 );
 
 select extensions.is(
-  jsonb_array_length(private.feature_flag_snapshot('rag.workspace')->'rules'),
+  jsonb_array_length(private.feature_flag_snapshot('reader.annotations')->'rules'),
   2,
   'the current rule document is stored on the flag row'
 );
 
 select extensions.is(
-  private.feature_flag_snapshot('rag.workspace')->'history'->1->>'requestId',
+  private.feature_flag_snapshot('reader.annotations')->'history'->1->>'requestId',
   'feature-test-1',
   'history retains the request id for each modification'
 );
@@ -236,7 +236,7 @@ select extensions.throws_ok(
   $$
     select public.operator_publish_feature_flag(
       repeat('o', 32),
-      'rag.workspace',
+      'reader.annotations',
       '[{"name":"Default","conditionType":"global","serve":false,"enabled":true,"isFallback":true}]'::jsonb,
       3,
       'Stale update test',

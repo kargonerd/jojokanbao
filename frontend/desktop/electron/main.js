@@ -200,7 +200,7 @@ function setupApplicationMenu() {
         { label: '资料库', accelerator: 'CmdOrCtrl+2', click: () => navigateTo('/library') },
         { label: '搜索', accelerator: 'CmdOrCtrl+3', click: () => navigateTo('/search') },
         ...(ragWorkspaceEnabled
-          ? [{ label: '问书', accelerator: 'CmdOrCtrl+4', click: () => navigateTo('/rag') }]
+          ? [{ label: 'AI', accelerator: 'CmdOrCtrl+4', click: () => navigateTo('/rag') }]
           : [])
       ]
     },

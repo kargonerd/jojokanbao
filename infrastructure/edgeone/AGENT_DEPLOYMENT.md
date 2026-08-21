@@ -13,11 +13,10 @@ reader.jojokanbao.cn                  agent-global.jojokanbao.cn
 └──────────────────────┘             └──────────────────────────┘
 ```
 
-- Reader 的 `/gateway/ask` 只把允许的请求头和问答请求体转发给国际 Gateway，并把上游
+- Reader 的 `/gateway/ask` 只把允许的请求头和 AI 请求体转发给国际 Gateway，并把上游
   SSE 响应返回给浏览器；它不读取 Token 内容，也不持有 Agent 签名密钥。国际
   `/gateway/ask` 使用当前用户 Bearer Token
-  向 Supabase Auth 确认用户身份，再用仅存在于服务端的 `JOJO_OPERATOR_TOKEN` 读取 `rag.workspace`
-  原始规则并在 Cloud Function 内按顺序判定；通过后添加短时 HMAC 服务签名，再把
+  向 Supabase Auth 确认用户身份；通过后添加短时 HMAC 服务签名，再把
   SSE 请求转给同项目 `/jojo`。
 - `/jojo` 运行 Pi Agent，并在调用 Codex 前依次校验 Cloud Function 服务签名
   和 JOJO/Supabase Bearer Token；它不处理平台入口开关，浏览器也不能直接调用。
@@ -75,6 +74,7 @@ $serviceBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
 
 $adminBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
 [Convert]::ToHexString($adminBytes).ToLowerInvariant()
+
 ```
 
 ## 初始化 Codex OAuth

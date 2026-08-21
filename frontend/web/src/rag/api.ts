@@ -47,7 +47,7 @@ export function askStream(params: { datasetIds: string[]; question: string; conv
     const { data, error } = await authClient.auth.getSession();
     if (error) throw error;
     const token = data.session?.access_token;
-    if (!token) throw new Error("请先登录后使用问书");
+    if (!token) throw new Error("请先登录后使用 AI");
     const response = await fetch(AGENT_URL, {
       method: "POST",
       headers: {

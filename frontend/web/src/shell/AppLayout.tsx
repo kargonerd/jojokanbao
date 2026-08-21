@@ -1,9 +1,23 @@
 import type { ReactNode } from "react";
 import { Outlet } from "react-router-dom";
-import { useFeatureFlag } from "../featureFlags";
+import { useAccountSessionStore } from "../account/session";
 import { rollout } from "../rollout";
 import { APP_NAVIGATION_ITEMS, AppHeader, type AppNavigationItem } from "./AppHeader";
 import "./styles.css";
+
+export function buildAppNavigationItems(
+  authenticated: boolean,
+  capabilities = { rag: rollout.rag, times: rollout.times },
+): readonly AppNavigationItem[] {
+  const primaryItems = APP_NAVIGATION_ITEMS.filter((item) => item.href !== "/support");
+  const aboutItem = APP_NAVIGATION_ITEMS.find((item) => item.href === "/support");
+  return [
+    ...primaryItems,
+    ...(authenticated && capabilities.rag ? [{ label: "AI", href: "/rag" }] : []),
+    ...(authenticated && capabilities.times ? [{ label: "时事", href: "/times" }] : []),
+    ...(aboutItem ? [aboutItem] : []),
+  ];
+}
 
 export function AppLayout({
   navigationItems,
@@ -16,12 +30,9 @@ export function AppLayout({
   headerActions?: ReactNode;
   className?: string;
 } = {}) {
-  const ragEnabled = useFeatureFlag("rag.workspace");
-  const resolvedNavigationItems = navigationItems || [
-    ...APP_NAVIGATION_ITEMS,
-    ...(rollout.rag && ragEnabled ? [{ label: "问书", href: "/rag" }] : []),
-    ...(rollout.times ? [{ label: "时事", href: "/times" }] : []),
-  ];
+  const accountInitialized = useAccountSessionStore((state) => state.initialized);
+  const userId = useAccountSessionStore((state) => state.userId);
+  const resolvedNavigationItems = navigationItems || buildAppNavigationItems(accountInitialized && Boolean(userId));
   return (
     <div className={["app-shell", className].filter(Boolean).join(" ")}>
       <AppHeader actions={headerActions} navigationItems={resolvedNavigationItems} navigationLabel={navigationLabel} />

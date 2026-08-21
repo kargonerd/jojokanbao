@@ -9,7 +9,7 @@ test.describe('Desktop renderer', () => {
     await expect(navigation.getByRole('link', { name: '资料库' })).toHaveAttribute('href', '/library');
     await expect(navigation.getByRole('link', { name: '搜索' })).toHaveAttribute('href', '/search');
     await expect(navigation.getByRole('link', { name: '关于' })).toHaveAttribute('href', '/support');
-    await expect(navigation.getByRole('link', { name: '问书' })).toHaveCount(0);
+    await expect(navigation.getByRole('link', { name: 'AI' })).toHaveCount(0);
     await expect(navigation.getByRole('link', { name: '设置' })).toHaveCount(0);
     await expect(page.getByRole('link', { name: '设置' })).toHaveAttribute('href', '/settings');
     await expect(page.getByRole('link', { name: '设置' }).locator('svg')).toHaveAttribute('data-icon', 'adjustments');

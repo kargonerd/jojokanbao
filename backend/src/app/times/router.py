@@ -4,6 +4,7 @@ from functools import lru_cache
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from ..core.auth import get_current_user
 from ..core.config import get_settings
 from .service import TimesFeedService
 
@@ -13,7 +14,7 @@ def get_times_service() -> TimesFeedService:
     return TimesFeedService(get_settings())
 
 
-router = APIRouter(tags=["times"])
+router = APIRouter(tags=["times"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("/news")

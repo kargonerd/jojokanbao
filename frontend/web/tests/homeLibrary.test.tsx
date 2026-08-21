@@ -44,7 +44,6 @@ beforeEach(() => {
     flags: {
       "library.bookshelf": false,
       "reader.annotations": false,
-      "rag.workspace": false,
     },
   });
   useRecentReadingStore.setState({ items: [] });

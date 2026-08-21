@@ -6,6 +6,8 @@ import httpx
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
+from app.core.auth import get_current_user
+from app.core.models import CurrentUser
 from app.main import app
 from app.times.router import get_times_service
 from app.times.service import TimesFeedService
@@ -80,12 +82,19 @@ def test_times_routes_return_web_contract() -> None:
                 "sourceCounts": [{"name": "测试来源", "count": 1}],
             }
 
+    async def authenticated_user() -> CurrentUser:
+        return CurrentUser(id="reader-1")
+
     app.dependency_overrides[get_times_service] = FakeTimesService
     try:
         client = TestClient(app, raise_server_exceptions=False)
+        assert client.get("/v1/times/news").status_code == 401
+
+        app.dependency_overrides[get_current_user] = authenticated_user
         assert client.get("/v1/times/news").json() == [item]
         assert client.get("/v1/times/stats").json() == {"total": 1, "sourceCount": 1}
         assert client.get("/v1/times/news/news-1").json()["news"] == item
         assert client.get("/v1/times/news/missing").status_code == 404
     finally:
         app.dependency_overrides.pop(get_times_service, None)
+        app.dependency_overrides.pop(get_current_user, None)

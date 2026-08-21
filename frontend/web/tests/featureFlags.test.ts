@@ -27,11 +27,11 @@ describe("feature flag store", () => {
     await refreshFeatureFlags();
 
     expect(rpc).toHaveBeenCalledWith("get_my_feature_flags", expect.objectContaining({
-      p_keys: expect.arrayContaining(["library.bookshelf", "rag.workspace"]),
+      p_keys: expect.arrayContaining(["library.bookshelf", "reader.annotations"]),
       p_visitor_id: expect.stringMatching(/^[0-9a-f-]{36}$/i),
     }));
     expect(useFeatureFlagStore.getState().flags["library.bookshelf"]).toBe(true);
-    expect(useFeatureFlagStore.getState().flags["rag.workspace"]).toBe(false);
+    expect(useFeatureFlagStore.getState().flags["reader.annotations"]).toBe(false);
   });
 
   it("fails closed when evaluation is unavailable", async () => {
@@ -40,7 +40,7 @@ describe("feature flag store", () => {
     await refreshFeatureFlags();
 
     expect(useFeatureFlagStore.getState().initialized).toBe(true);
-    expect(Object.values(useFeatureFlagStore.getState().flags)).toEqual([false, false, false]);
+    expect(Object.values(useFeatureFlagStore.getState().flags)).toEqual([false, false]);
   });
 
   it("keeps existing signed-in reading features available before the flag migration", async () => {
@@ -56,7 +56,6 @@ describe("feature flag store", () => {
     expect(useFeatureFlagStore.getState().flags).toEqual({
       "library.bookshelf": true,
       "reader.annotations": true,
-      "rag.workspace": false,
     });
   });
 });

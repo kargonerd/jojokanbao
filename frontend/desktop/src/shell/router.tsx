@@ -27,32 +27,28 @@ import {
   refreshFeatureFlags,
   rollout,
   startAccountSessionSync,
-  type FeatureFlagKey,
   type AppNavigationItem,
-  useFeatureFlag,
-  useFeatureFlagStore,
   useAccountSessionStore,
 } from '@jojo/web/desktop';
 import { SettingsPage } from './SettingsPage';
 
-const coreDesktopNavigation: readonly AppNavigationItem[] = APP_NAVIGATION_ITEMS;
+const coreDesktopNavigation = APP_NAVIGATION_ITEMS.filter((item) => item.href !== '/support');
+const aboutDesktopNavigation = APP_NAVIGATION_ITEMS.filter((item) => item.href === '/support');
 const AccountConfirmation = lazy(() => import('@jojo/web/account-confirmation'));
 
 function DesktopRuntime() {
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
-  const flagsInitialized = useFeatureFlagStore((state) => state.initialized);
-  const ragEnabled = useFeatureFlag('rag.workspace');
 
   useEffect(() => startAccountSessionSync(), []);
   useEffect(() => {
     if (accountInitialized) void refreshFeatureFlags();
   }, [accountInitialized, userId]);
   useEffect(() => {
-    if (flagsInitialized) {
-      window.jojoDesktop?.setFeatureAvailability?.({ rag: rollout.rag && ragEnabled });
+    if (accountInitialized) {
+      window.jojoDesktop?.setFeatureAvailability?.({ rag: rollout.rag && Boolean(userId) });
     }
-  }, [flagsInitialized, ragEnabled]);
+  }, [accountInitialized, userId]);
   return null;
 }
 
@@ -61,11 +57,12 @@ function DesktopRuntimeLayout() {
 }
 
 function useDesktopNavigation(): readonly AppNavigationItem[] {
-  const flagsInitialized = useFeatureFlagStore((state) => state.initialized);
-  const ragEnabled = useFeatureFlag('rag.workspace');
+  const accountInitialized = useAccountSessionStore((state) => state.initialized);
+  const userId = useAccountSessionStore((state) => state.userId);
   return [
     ...coreDesktopNavigation,
-    ...(rollout.rag && flagsInitialized && ragEnabled ? [{ label: '问书', href: '/rag' }] : []),
+    ...(rollout.rag && accountInitialized && userId ? [{ label: 'AI', href: '/rag' }] : []),
+    ...aboutDesktopNavigation,
   ];
 }
 
@@ -127,9 +124,10 @@ function NotFound() {
   );
 }
 
-function FeatureRoute({ flag, children }: { flag: FeatureFlagKey; children: ReactNode }) {
-  const initialized = useFeatureFlagStore((state) => state.initialized);
-  const enabled = useFeatureFlag(flag);
+function AuthenticatedRoute({ children }: { children: ReactNode }) {
+  const initialized = useAccountSessionStore((state) => state.initialized);
+  const userId = useAccountSessionStore((state) => state.userId);
+  const location = useLocation();
   if (!initialized) {
     return (
       <ServiceMessage eyebrow="JOJO" title="正在检查功能权限">
@@ -137,7 +135,11 @@ function FeatureRoute({ flag, children }: { flag: FeatureFlagKey; children: Reac
       </ServiceMessage>
     );
   }
-  return enabled ? children : <NotFound />;
+  if (!userId) {
+    const returnTo = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate to={`/account?returnTo=${encodeURIComponent(returnTo)}`} replace />;
+  }
+  return children;
 }
 
 export function createDesktopRoutes(): RouteObject[] {
@@ -166,7 +168,7 @@ export function createDesktopRoutes(): RouteObject[] {
             { path: 'support', element: <SupportPage platformRedesign /> },
             { path: 'settings', element: <SettingsPage /> },
             ...(rollout.rag
-              ? [{ path: 'rag/*', element: <FeatureRoute flag="rag.workspace"><RagRoutes /></FeatureRoute> }]
+              ? [{ path: 'rag/*', element: <AuthenticatedRoute><RagRoutes /></AuthenticatedRoute> }]
               : []),
           ],
         },
@@ -178,7 +180,9 @@ export function createDesktopRoutes(): RouteObject[] {
             ...archiveReaderRoutes,
           ],
         },
-        { path: 'book/:notebookId/:sourceId', element: <BookReaderPage /> },
+        ...(rollout.rag
+          ? [{ path: 'book/:notebookId/:sourceId', element: <AuthenticatedRoute><BookReaderPage /></AuthenticatedRoute> }]
+          : []),
         { path: 'account', element: <AccountEntry /> },
         {
           path: 'account/confirm',
