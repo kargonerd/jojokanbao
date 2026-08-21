@@ -30,7 +30,6 @@ describe("BookReader", () => {
         "library.bookshelf": true,
         "reader.annotations": true,
         "rag.workspace": true,
-        "times.workspace": false,
       },
     });
     useAccountSessionStore.setState({ initialized: true, userId: "11111111-1111-4111-8111-111111111111", displayName: "测试读者-ABC" });

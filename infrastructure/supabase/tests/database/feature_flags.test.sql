@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(29);
+select extensions.plan(28);
 
 select extensions.has_table('private', 'feature_flags', 'feature flag configuration uses one private table');
 select extensions.has_table('private', 'feature_flag_operator_secret', 'only the operator token digest has separate storage');
@@ -46,16 +46,6 @@ select extensions.is(
   'an authenticated reader matches the first bookshelf rule'
 );
 
-select extensions.is(
-  (select enabled from private.feature_flag_evaluate(
-    'times.workspace',
-    (select allowed_id from feature_flag_test_state),
-    null
-  )),
-  false,
-  'Times remains globally disabled'
-);
-
 select extensions.throws_ok(
   $$select public.operator_list_feature_flags('wrong-token')$$,
   '42501',
@@ -65,7 +55,7 @@ select extensions.throws_ok(
 
 select extensions.is(
   jsonb_array_length(public.operator_list_feature_flags(repeat('o', 32))),
-  4,
+  3,
   'the configured operator token can list flags'
 );
 

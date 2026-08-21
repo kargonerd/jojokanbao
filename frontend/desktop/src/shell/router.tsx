@@ -65,7 +65,7 @@ function useDesktopNavigation(): readonly AppNavigationItem[] {
   const ragEnabled = useFeatureFlag('rag.workspace');
   return [
     ...coreDesktopNavigation,
-    ...(rollout.rag && flagsInitialized && ragEnabled ? [{ label: 'JOJO问答', href: '/rag' }] : []),
+    ...(rollout.rag && flagsInitialized && ragEnabled ? [{ label: '问书', href: '/rag' }] : []),
   ];
 }
 

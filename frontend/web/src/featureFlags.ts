@@ -5,7 +5,6 @@ export const FEATURE_FLAG_KEYS = [
   "library.bookshelf",
   "reader.annotations",
   "rag.workspace",
-  "times.workspace",
 ] as const;
 
 export type FeatureFlagKey = typeof FEATURE_FLAG_KEYS[number];

@@ -9,7 +9,7 @@ test.describe('Desktop renderer', () => {
     await expect(navigation.getByRole('link', { name: '资料库' })).toHaveAttribute('href', '/library');
     await expect(navigation.getByRole('link', { name: '搜索' })).toHaveAttribute('href', '/search');
     await expect(navigation.getByRole('link', { name: '关于' })).toHaveAttribute('href', '/support');
-    await expect(navigation.getByRole('link', { name: 'JOJO问答' })).toHaveCount(0);
+    await expect(navigation.getByRole('link', { name: '问书' })).toHaveCount(0);
     await expect(navigation.getByRole('link', { name: '设置' })).toHaveCount(0);
     await expect(page.getByRole('link', { name: '设置' })).toHaveAttribute('href', '/settings');
     await expect(page.getByRole('link', { name: '设置' }).locator('svg')).toHaveAttribute('data-icon', 'adjustments');
@@ -90,7 +90,7 @@ test.describe('Desktop renderer', () => {
   test('RAG stays unavailable while the shared runtime flag is off', async ({ page }) => {
     await page.goto('/rag/chat');
     await expect(page.getByRole('heading', { name: '没有找到这个页面' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'JOJO RAG' })).toHaveCount(0);
+    await expect(page.getByRole('region', { name: '提问范围' })).toHaveCount(0);
   });
 
   test('close choice is a simple one-time preference dialog', async ({ page }) => {

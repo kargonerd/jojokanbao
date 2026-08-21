@@ -14,7 +14,7 @@ vi.mock("../src/annotations/api", () => annotationApi);
 
 describe("SelectableAnnotationArticle", () => {
   beforeEach(() => {
-    useFeatureFlagStore.setState({ initialized: true, revision: "test", flags: { "library.bookshelf": false, "reader.annotations": true, "rag.workspace": false, "times.workspace": false } });
+    useFeatureFlagStore.setState({ initialized: true, revision: "test", flags: { "library.bookshelf": false, "reader.annotations": true, "rag.workspace": false } });
     useAccountSessionStore.setState({ initialized: true, userId: "user-1", displayName: "报刊读者-ABC" });
     annotationApi.loadAnnotationThreads.mockResolvedValue([]);
     annotationApi.createAnnotation.mockResolvedValue({

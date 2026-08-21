@@ -30,7 +30,7 @@
   align-items: center;
   min-height: 64px;
   flex: none;
-  padding: 0 clamp(22px, 5vw, 72px);
+  padding: 0 40px;
   border-bottom: 1px solid var(--app-line);
   background: var(--color-paper);
 }

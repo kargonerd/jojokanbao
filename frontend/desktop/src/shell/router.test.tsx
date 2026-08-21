@@ -73,6 +73,6 @@ describe('Desktop shell routes', () => {
     render(<RouterProvider router={router} />);
 
     expect(await screen.findByRole('heading', { name: '没有找到这个页面' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'JOJO RAG' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '提问范围' })).not.toBeInTheDocument();
   });
 });

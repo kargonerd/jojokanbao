@@ -16,12 +16,11 @@ export function AppLayout({
   headerActions?: ReactNode;
   className?: string;
 } = {}) {
-  const timesEnabled = useFeatureFlag("times.workspace");
   const ragEnabled = useFeatureFlag("rag.workspace");
   const resolvedNavigationItems = navigationItems || [
     ...APP_NAVIGATION_ITEMS,
-    ...(rollout.rag && ragEnabled ? [{ label: "问答", href: "/rag" }] : []),
-    ...(rollout.times && timesEnabled ? [{ label: "时事", href: "/times" }] : []),
+    ...(rollout.rag && ragEnabled ? [{ label: "问书", href: "/rag" }] : []),
+    ...(rollout.times ? [{ label: "时事", href: "/times" }] : []),
   ];
   return (
     <div className={["app-shell", className].filter(Boolean).join(" ")}>

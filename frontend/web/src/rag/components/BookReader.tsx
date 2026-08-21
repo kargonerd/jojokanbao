@@ -766,7 +766,7 @@ export function BookReader({
 
     <header className={`relative z-20 h-12 border-b backdrop-blur-md ${chromeClass}`}>
       <div className="mx-auto flex h-full max-w-[1180px] items-center gap-3 px-4 font-sans text-xs md:px-10">
-        <Link to={backHref} className="flex h-7 w-6 shrink-0 items-center justify-start text-current no-underline hover:text-red focus-visible:outline-2 focus-visible:outline-red" aria-label="返回问答">
+        <Link to={backHref} className="flex h-7 w-6 shrink-0 items-center justify-start text-current no-underline hover:text-red focus-visible:outline-2 focus-visible:outline-red" aria-label="返回问书">
           <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true">
             <path d="m8.5 4.5-5.5 5.5 5.5 5.5M3.5 10H17" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" />
           </svg>

@@ -41,7 +41,7 @@ export function BookAiPanel({ bookTitle, datasetId, itemId, manifestObject, init
     setStreamContent("");
     let answer = "";
     cancelRef.current = askStream(
-      { dataset_id: datasetId, item_ids: [itemId], manifest_objects: [manifestObject], question, conversation_id: conversationId },
+      { datasetIds: [datasetId], itemIds: [itemId], manifestObjects: [manifestObject], question, conversationId },
       (chunk) => { answer += chunk; setStreamContent(answer); },
       (references, nextConversationId) => {
         setMessages([...nextMessages, { role: "assistant", content: answer, references }]);

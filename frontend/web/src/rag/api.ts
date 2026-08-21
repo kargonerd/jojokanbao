@@ -31,10 +31,10 @@ export const notebookApi = {
 };
 
 // Chat (streaming)
-export function askStream(params: { dataset_id: string; question: string; conversation_id?: string; item_ids?: string[]; manifest_objects?: string[] }, onChunk: (text: string) => void, onDone: (refs?: RagReference[], conversationId?: string) => void, onError: (err: string) => void) {
+export function askStream(params: { datasetIds: string[]; question: string; conversationId?: string; itemIds?: string[]; manifestObjects?: string[] }, onChunk: (text: string) => void, onDone: (refs?: RagReference[], conversationId?: string) => void, onError: (err: string) => void) {
   const ctrl = new AbortController();
   let settled = false;
-  const conversationId = params.conversation_id || `conv_${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`;
+  const conversationId = params.conversationId || `conv_${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`;
   const references = new Map<string, RagReference>();
   const finish = (references?: RagReference[]) => {
     if (settled) return;
@@ -47,7 +47,7 @@ export function askStream(params: { dataset_id: string; question: string; conver
     const { data, error } = await authClient.auth.getSession();
     if (error) throw error;
     const token = data.session?.access_token;
-    if (!token) throw new Error("请先登录后使用 JOJO Agent");
+    if (!token) throw new Error("请先登录后使用问书");
     const response = await fetch(AGENT_URL, {
       method: "POST",
       headers: {
@@ -58,9 +58,9 @@ export function askStream(params: { dataset_id: string; question: string; conver
       body: JSON.stringify({
         message: params.question,
         scope: {
-          datasetIds: [params.dataset_id],
-          itemIds: params.item_ids ?? [],
-          manifestObjects: params.manifest_objects ?? [],
+          datasetIds: params.datasetIds,
+          itemIds: params.itemIds ?? [],
+          manifestObjects: params.manifestObjects ?? [],
         },
       }),
       signal: ctrl.signal,

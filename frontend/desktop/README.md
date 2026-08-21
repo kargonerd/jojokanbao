@@ -1,7 +1,7 @@
 # JOJO看报 Desktop
 
 `@jojo/desktop` 是 JOJO看报新版 Web 体验的 Electron 客户端。Renderer 直接复用 Web 的
-`AppLayout`、`AppHeader`、首页、资料库、搜索、报刊/书籍阅读器、JOJO 问答和 Account；
+`AppLayout`、`AppHeader`、首页、资料库、搜索、报刊/书籍阅读器、问书和 Account；
 旧版 Archive 首页、暂时关闭的 JOJO Times（时事）与尚待重做的 Press 不进入桌面导航或 renderer 构建。
 
 当前目录边界：
@@ -44,7 +44,7 @@ Desktop 顶层路由：
 - `/`：今日阅读工作台。
 - `/library`、`/archive/*`、`/book/*`：与 Web 共用的报刊/书籍资料库和阅读器。
 - `/search`：与 Web 共用的报刊正文搜索。
-- `/rag/*`：JOJO 问答，入口与路由统一由 `rag.workspace` feature flag 控制。
+- `/rag/*`：问书，入口与路由统一由 `rag.workspace` feature flag 控制。
 - `/account`：登录、注册和书架同步；未配置 Supabase 时显示可操作的配置提示。
 
 生产环境从 `dist/index.html` 以 hash 路由启动，开发环境使用 browser 路由。主进程启用

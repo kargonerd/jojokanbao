@@ -129,7 +129,7 @@ function RedesignedRoutes() {
             <Route path="rag/*" element={<FeatureRoute flag="rag.workspace"><LazyRoute><RagRoutes /></LazyRoute></FeatureRoute>} />
           )}
           {rollout.times && (
-            <Route path="times/*" element={<FeatureRoute flag="times.workspace"><LazyRoute><TimesRoutes /></LazyRoute></FeatureRoute>} />
+            <Route path="times/*" element={<LazyRoute><TimesRoutes /></LazyRoute>} />
           )}
         </Route>
 
