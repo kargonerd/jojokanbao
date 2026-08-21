@@ -50,10 +50,9 @@ export function TimesHomePage() {
     <main className="mx-auto grid min-h-[calc(100vh-64px)] max-w-7xl gap-8 bg-paper px-5 py-6 text-ink md:grid-cols-[minmax(0,1fr)_360px] md:px-8 md:py-8">
         <section>
           <div className="border-b-4 border-red pb-5">
-            <p className="kicker m-0">Pi Agent Dispatch</p>
             <h1 className="mt-4 text-4xl font-black tracking-[0.08em] md:text-5xl">今日时事</h1>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-muted">
-              先看事实，再查背景，最后追问。当前已接入 {stats.sourceCount} 个来源，数据库内 {stats.total} 条新闻。
+              先看事实，再查背景。当前汇总 {stats.sourceCount} 个来源、{stats.total} 条新闻。
             </p>
           </div>
 
@@ -87,8 +86,7 @@ export function TimesHomePage() {
 
         <aside className="space-y-5 md:sticky md:top-6 md:self-start">
           <section className="border-2 border-red p-5">
-            <p className="text-xs font-bold tracking-[0.2em] text-red">PI AGENT</p>
-            <h2 className="mt-2 text-2xl font-black">今日读法</h2>
+            <h2 className="text-2xl font-black">今日读法</h2>
             <div className="mt-4 space-y-3">
               {digest.starterQuestions.map((question) => <p key={question} className="border-l-4 border-red pl-3 text-sm leading-6">{question}</p>)}
               {!digest.starterQuestions.length ? <p className="text-sm text-muted">等待新闻数据生成读法。</p> : null}

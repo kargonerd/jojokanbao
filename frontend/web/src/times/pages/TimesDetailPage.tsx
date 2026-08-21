@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { SelectableAnnotationArticle } from "../../annotations/SelectableAnnotationArticle";
 import { timesApi, type TimesBriefing, type TimesNewsDetail } from "../api";
@@ -17,9 +17,6 @@ export function TimesDetailPage() {
   const { newsId = "" } = useParams();
   const [detail, setDetail] = useState<TimesNewsDetail | null>(null);
   const [briefing, setBriefing] = useState<TimesBriefing | null>(null);
-  const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState("");
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const originalUrl = safeNewsUrl(detail?.news.url);
 
@@ -37,21 +34,6 @@ export function TimesDetailPage() {
       });
     return () => { active = false; };
   }, [newsId]);
-
-  const ask = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!question.trim()) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await timesApi.ask(newsId, question.trim());
-      setAnswer(result.answer);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "提问失败");
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <main className="mx-auto min-h-[calc(100vh-64px)] max-w-5xl bg-paper px-5 py-8 text-ink md:px-8">
@@ -75,14 +57,6 @@ export function TimesDetailPage() {
               </SelectableAnnotationArticle>
               {originalUrl ? <a className="mt-6 inline-block text-sm font-bold" href={originalUrl} target="_blank" rel="noreferrer">查看原文 ↗</a> : null}
 
-              <section className="mt-10 border-t-4 border-red pt-6">
-                <h2 className="text-2xl font-black">追问这条新闻</h2>
-                <form onSubmit={ask} className="mt-4 flex gap-3">
-                  <input className="input flex-1" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="输入你的问题" />
-                  <button className="btn" type="submit" disabled={busy}>{busy ? "思考中…" : "提问"}</button>
-                </form>
-                {answer ? <p className="mt-5 border border-rule p-5 leading-7">{answer}</p> : null}
-              </section>
             </div>
 
             <aside className="space-y-5">

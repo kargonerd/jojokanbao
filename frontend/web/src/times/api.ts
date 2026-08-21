@@ -2,8 +2,8 @@ import { requestJson } from "../api/client";
 
 const TIMES_API_ROOT = "/api/v1/times";
 
-async function request<T>(path: string, options?: { method?: "POST"; body?: unknown }): Promise<T> {
-  return requestJson<T>(`${TIMES_API_ROOT}${path}`, options);
+async function request<T>(path: string): Promise<T> {
+  return requestJson<T>(`${TIMES_API_ROOT}${path}`);
 }
 
 export type TimesNewsItem = {
@@ -49,8 +49,4 @@ export const timesApi = {
   getStats: () => request<TimesStats>("/stats"),
   getNews: (newsId: string) => request<TimesNewsDetail>(`/news/${encodeURIComponent(newsId)}`),
   getBriefing: (newsId: string) => request<TimesBriefing>(`/ai/briefing/${encodeURIComponent(newsId)}`),
-  ask: (newsId: string, question: string) => request<{ answer: string }>("/ai/ask", {
-    method: "POST",
-    body: { newsId, question },
-  }),
 };

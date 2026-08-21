@@ -14,4 +14,13 @@ describe("same-origin business APIs", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/times/news?limit=100", expect.objectContaining({ method: "GET" }));
   });
+
+  it("rejects an HTML fallback instead of letting Times render a blank screen", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("<!doctype html>", {
+      status: 200,
+      headers: { "Content-Type": "text/html" },
+    })));
+
+    await expect(timesApi.listNews()).rejects.toThrow("服务暂时不可用");
+  });
 });

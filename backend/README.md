@@ -7,6 +7,7 @@ src/app/
   main.py       FastAPI 入口
   core/         配置、认证、错误和 HTTP 中间件
   account/      已启用的账号 API
+  times/        通过受保护 RSSHub 聚合时事内容的只读 API
 tests/
 ```
 
@@ -21,6 +22,11 @@ pnpm dev:backend
 
 - `GET http://127.0.0.1:8088/v1/health`
 - `GET http://127.0.0.1:8088/v1/me`
+- `GET http://127.0.0.1:8088/v1/times/news`
+
+Times 使用 `JOJO_TIMES_RSSHUB_URL` 和服务端专用的
+`JOJOKANBAO_RSSHUB_ACCESS_KEY`。访问密钥只存在于 Python API 环境，不能放入任何
+`VITE_*` 变量或浏览器请求。
 
 ## 测试
 
