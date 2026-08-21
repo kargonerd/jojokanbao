@@ -10,16 +10,18 @@ destinations succeed; source PDFs are never modified.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import gzip
 import json
 import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 import prepare_pdf_periodicals as pdfs
 import prepare_rmrb_publication as rmrb
@@ -43,13 +45,15 @@ class Publisher:
         self.work.mkdir(parents=True, exist_ok=True)
         self.log_path = self.work / "publish-all.log"
         self.state_path = self.work / "publish-state.json"
+        self.log_lock = threading.Lock()
         self.state = self.load_state()
 
     def log(self, message: str) -> None:
         line = f"[{now()}] {message}"
-        print(line, flush=True)
-        with self.log_path.open("a", encoding="utf-8", newline="\n") as stream:
-            stream.write(line + "\n")
+        with self.log_lock:
+            print(line, flush=True)
+            with self.log_path.open("a", encoding="utf-8", newline="\n") as stream:
+                stream.write(line + "\n")
 
     def load_state(self) -> dict[str, Any]:
         if self.state_path.is_file():
@@ -120,6 +124,15 @@ class Publisher:
             command.extend(includes)
         self.run(command, attempts=20)
 
+    def run_parallel_uploads(self, tasks: dict[str, Callable[[], None]]) -> None:
+        self.log(f"starting parallel uploads: {', '.join(tasks)}")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(tasks)) as executor:
+            futures = {executor.submit(task): name for name, task in tasks.items()}
+            for future in concurrent.futures.as_completed(futures):
+                name = futures[future]
+                future.result()
+                self.log(f"parallel upload completed: {name}")
+
     def publish_pdf_collection(self, slug: str) -> None:
         marker = f"pdf:{slug}"
         if marker in self.state["completed"]:
@@ -136,15 +149,17 @@ class Publisher:
                 sys.executable, str(WORKSPACE / "tools/rmrb-repair/prepare_pdf_periodicals.py"),
                 "--output", str(batch), "--publication", slug,
             ])
-        self.rclone_copy(
-            batch / f"canonical/newspapers/{slug}",
-            f"jojo-b2:jojo-news-raw/canonical/newspapers/{slug}",
-        )
-        self.rclone_copy(
-            batch / f"delivery/content/newspapers/{slug}",
-            f"jojo-b2-s3:jojo-newspaper/content/newspapers/{slug}",
-        )
-        self.hf_upload(batch / "huggingface")
+        self.run_parallel_uploads({
+            "canonical-b2": lambda: self.rclone_copy(
+                batch / f"canonical/newspapers/{slug}",
+                f"jojo-b2:jojo-news-raw/canonical/newspapers/{slug}",
+            ),
+            "delivery-b2": lambda: self.rclone_copy(
+                batch / f"delivery/content/newspapers/{slug}",
+                f"jojo-b2-s3:jojo-newspaper/content/newspapers/{slug}",
+            ),
+            "huggingface": lambda: self.hf_upload(batch / "huggingface"),
+        })
         self.state["completed"].append(marker)
         self.save_state()
         self.safe_remove_batch(batch)
@@ -231,23 +246,25 @@ class Publisher:
                 "--pdf-root", str(pdf_root),
             ])
         canonical_includes = [f"/items/{year}/**", f"/assets/pdfs/{year}/**", "/assets/images/**"]
-        self.rclone_copy(
-            batch / "canonical/newspapers/rmrb",
-            "jojo-b2:jojo-news-raw/canonical/newspapers/rmrb",
-            canonical_includes,
-        )
-        self.rclone_copy(
-            batch / "delivery/content/newspapers/rmrb",
-            "jojo-b2-s3:jojo-newspaper/content/newspapers/rmrb",
-            [f"/items/{year}/**"],
-        )
         hf_includes = [
             f"newspapers/rmrb/items/{year}/**",
             f"newspapers/rmrb/assets/pdfs/{year}/**",
             "newspapers/rmrb/assets/images/**",
             f"newspapers/rmrb/data/articles/{year}.jsonl.gz",
         ]
-        self.hf_upload(batch / "huggingface", hf_includes)
+        self.run_parallel_uploads({
+            "canonical-b2": lambda: self.rclone_copy(
+                batch / "canonical/newspapers/rmrb",
+                "jojo-b2:jojo-news-raw/canonical/newspapers/rmrb",
+                canonical_includes,
+            ),
+            "delivery-b2": lambda: self.rclone_copy(
+                batch / "delivery/content/newspapers/rmrb",
+                "jojo-b2-s3:jojo-newspaper/content/newspapers/rmrb",
+                [f"/items/{year}/**"],
+            ),
+            "huggingface": lambda: self.hf_upload(batch / "huggingface", hf_includes),
+        })
         self.collect_rmrb_year(batch, year)
         self.state["completed"].append(marker)
         self.save_state()
@@ -268,9 +285,26 @@ class Publisher:
                 "RMRB", "rmrb", "人民日报", "newspaper", "daily", rmrb.DEFAULT_PDFS_2014_2026,
             )
             pdfs.build_publication(publication, batch, now(), year=year)
-        self.rclone_copy(batch / "canonical/newspapers/rmrb", "jojo-b2:jojo-news-raw/canonical/newspapers/rmrb", [f"/items/{year}/**", f"/assets/pdfs/{year}/**"])
-        self.rclone_copy(batch / "delivery/content/newspapers/rmrb", "jojo-b2-s3:jojo-newspaper/content/newspapers/rmrb", [f"/items/{year}/**"])
-        self.hf_upload(batch / "huggingface", [f"newspapers/rmrb/items/{year}/**", f"newspapers/rmrb/assets/pdfs/{year}/**", f"newspapers/rmrb/data/issues/{year}.jsonl.gz"])
+        self.run_parallel_uploads({
+            "canonical-b2": lambda: self.rclone_copy(
+                batch / "canonical/newspapers/rmrb",
+                "jojo-b2:jojo-news-raw/canonical/newspapers/rmrb",
+                [f"/items/{year}/**", f"/assets/pdfs/{year}/**"],
+            ),
+            "delivery-b2": lambda: self.rclone_copy(
+                batch / "delivery/content/newspapers/rmrb",
+                "jojo-b2-s3:jojo-newspaper/content/newspapers/rmrb",
+                [f"/items/{year}/**"],
+            ),
+            "huggingface": lambda: self.hf_upload(
+                batch / "huggingface",
+                [
+                    f"newspapers/rmrb/items/{year}/**",
+                    f"newspapers/rmrb/assets/pdfs/{year}/**",
+                    f"newspapers/rmrb/data/issues/{year}.jsonl.gz",
+                ],
+            ),
+        })
         self.collect_rmrb_year(batch, year)
         self.state["completed"].append(marker)
         self.save_state()
