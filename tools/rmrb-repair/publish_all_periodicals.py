@@ -101,7 +101,7 @@ class Publisher:
     def rclone_copy(self, source: Path | str, destination: str, includes: list[str] | None = None) -> None:
         command = [
             "rclone", "copy", str(source), destination,
-            "--transfers", "8", "--checkers", "24",
+            "--transfers", "16", "--checkers", "32",
             "--retries", "10", "--low-level-retries", "20",
         ]
         if includes:
@@ -113,7 +113,7 @@ class Publisher:
     def hf_upload(self, folder: Path, includes: list[str] | None = None) -> None:
         command = [
             "hf", "upload-large-folder", HF_REPO, str(folder),
-            "--repo-type", "dataset", "--num-workers", "4", "--no-bars",
+            "--repo-type", "dataset", "--num-workers", "8", "--no-bars",
         ]
         if includes:
             command.append("--include")
