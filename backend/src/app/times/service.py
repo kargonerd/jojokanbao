@@ -153,7 +153,7 @@ class TimesFeedService:
 
     async def all_news(self) -> list[dict]:
         if not self._settings.rsshub_access_key:
-            raise ConfigurationError("Times RSSHub access is not configured")
+            raise ConfigurationError("时事内容源尚未配置")
         if self._cache_until > monotonic():
             return self._cache
         async with self._lock:
@@ -167,7 +167,7 @@ class TimesFeedService:
             ) as client:
                 feeds = await asyncio.gather(*(self._fetch_publisher(client, publisher) for publisher in PUBLISHERS))
             if not any(feed is not None for feed in feeds):
-                raise ApiError(502, "rsshub_unavailable", "Times RSSHub is unavailable")
+                raise ApiError(502, "rsshub_unavailable", "时事内容源暂时不可用")
             unique = {item["id"]: item for feed in feeds if feed for item in feed}
             self._cache = sorted(unique.values(), key=lambda item: item["publishedAt"], reverse=True)
             self._cache_until = monotonic() + CACHE_SECONDS
