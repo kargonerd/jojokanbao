@@ -142,7 +142,7 @@ class HuggingFacePublishTest(unittest.TestCase):
         self.assertEqual(calls["token"], "cached-cli-token")
         self.assertFalse(calls["create"]["private"])
         self.assertEqual(calls["upload"]["repo_type"], "dataset")
-        self.assertEqual(calls["upload"]["num_workers"], 2)
+        self.assertEqual(calls["upload"]["num_workers"], 4)
         self.assertFalse(result["private"])
         self.assertEqual(result["remoteFiles"], len(calls["remote"]))
         self.assertTrue(result["commit"].endswith("/commit/abc"))

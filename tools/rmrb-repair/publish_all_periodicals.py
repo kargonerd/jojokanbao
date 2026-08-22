@@ -121,8 +121,13 @@ class Publisher:
         self.run(command, attempts=3)
 
     def hf_upload(self, folder: Path, includes: list[str] | None = None) -> None:
-        workers = max(1, int(os.getenv("HF_UPLOAD_WORKERS", "2")))
+        workers = max(1, int(os.getenv("HF_UPLOAD_WORKERS", "4")))
         env = os.environ.copy()
+        # On the current proxied Windows link, Xet payloads reach CAS but the
+        # final metadata shard does not return, so no resumable upload state or
+        # Hub commit is produced. The LFS bridge has lower peak throughput but
+        # reliably advances both metadata and commits. Xet remains opt-in.
+        env.setdefault("HF_HUB_DISABLE_XET", "1")
         # Xet high-performance mode is intended for hosts with at least 64 GB
         # of RAM.  Keep the resumable Xet transport enabled, but require an
         # explicit opt-in for its much larger buffers/concurrency settings.
@@ -142,6 +147,7 @@ class Publisher:
             command.extend(includes)
         self.log(
             f"Hugging Face upload: workers={workers}, "
+            f"xetDisabled={env['HF_HUB_DISABLE_XET']}, "
             f"xetHighPerformance={env['HF_XET_HIGH_PERFORMANCE']}"
         )
         self.run(command, attempts=20, env=env)
