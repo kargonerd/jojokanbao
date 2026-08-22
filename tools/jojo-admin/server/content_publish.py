@@ -525,7 +525,7 @@ def publish_huggingface(build_root: Path, on_log: Callable[[str], None]) -> dict
     api.create_repo(repo_id=repo_id, repo_type="dataset", private=private, exist_ok=True)
     on_log(f"开始上传{'私有' if private else '公开'} Hugging Face Dataset：{repo_id}")
     snapshot, snapshot_stats = _prepare_huggingface_snapshot(build_root, on_log)
-    workers = max(1, int(os.getenv("HF_UPLOAD_WORKERS", "4")))
+    workers = max(1, int(os.getenv("HF_UPLOAD_WORKERS", "2")))
     api.upload_large_folder(
         folder_path=str(snapshot),
         repo_id=repo_id,

@@ -63,7 +63,7 @@ ES_CONTENT_INDEX=<existing Elasticsearch index>
 HF_DATASET_REPO=luoxiaozhuang/marxism-dataset
 HF_DATASET_PRIVATE=false
 HF_XET_HIGH_PERFORMANCE=1
-HF_UPLOAD_WORKERS=4
+HF_UPLOAD_WORKERS=2
 ```
 
 S3 兼容入口发布时会显式使用 `--s3-no-check-bucket`，避免 rclone 对既有 B2 Bucket
