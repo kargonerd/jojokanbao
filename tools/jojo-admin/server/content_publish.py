@@ -513,6 +513,7 @@ def _count_release_documents(
 
 def publish_huggingface(build_root: Path, on_log: Callable[[str], None]) -> dict[str, Any]:
     _load_root_env()
+    os.environ.setdefault("HF_XET_HIGH_PERFORMANCE", "1")
     token = _huggingface_token()
     repo_id = os.getenv("HF_DATASET_REPO", "")
     if not token or not repo_id:

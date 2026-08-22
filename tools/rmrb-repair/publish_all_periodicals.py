@@ -65,10 +65,16 @@ class Publisher:
         temporary.write_text(json.dumps(self.state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         os.replace(temporary, self.state_path)
 
-    def run(self, command: list[str], *, attempts: int = 1) -> None:
+    def run(
+        self,
+        command: list[str],
+        *,
+        attempts: int = 1,
+        env: dict[str, str] | None = None,
+    ) -> None:
         for attempt in range(1, attempts + 1):
             self.log(f"RUN {attempt}/{attempts}: {' '.join(command)}")
-            result = subprocess.run(command, cwd=WORKSPACE, check=False)
+            result = subprocess.run(command, cwd=WORKSPACE, check=False, env=env)
             if result.returncode == 0:
                 return
             if attempt == attempts:
@@ -115,14 +121,21 @@ class Publisher:
         self.run(command, attempts=3)
 
     def hf_upload(self, folder: Path, includes: list[str] | None = None) -> None:
+        workers = max(1, int(os.getenv("HF_UPLOAD_WORKERS", "4")))
+        env = os.environ.copy()
+        env.setdefault("HF_XET_HIGH_PERFORMANCE", "1")
         command = [
             "hf", "upload-large-folder", HF_REPO, str(folder),
-            "--repo-type", "dataset", "--num-workers", "8", "--no-bars",
+            "--repo-type", "dataset", "--num-workers", str(workers), "--no-bars",
         ]
         if includes:
             command.append("--include")
             command.extend(includes)
-        self.run(command, attempts=20)
+        self.log(
+            f"Hugging Face upload: workers={workers}, "
+            f"xetHighPerformance={env['HF_XET_HIGH_PERFORMANCE']}"
+        )
+        self.run(command, attempts=20, env=env)
 
     def run_parallel_uploads(self, tasks: dict[str, Callable[[], None]]) -> None:
         self.log(f"starting parallel uploads: {', '.join(tasks)}")
