@@ -20,7 +20,8 @@ from ..core.errors import ApiError, ConfigurationError
 USER_AGENT = "JOJO-Times/1.0 (+https://jojokanbao.cn)"
 TAG_RE = re.compile(r"<[^>]+>")
 CACHE_SECONDS = 300
-FEED_ITEM_LIMIT = 80
+# Match the scheduled coverage probe so reader requests reuse its RSSHub cache.
+FEED_ITEM_LIMIT = 500
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,7 +169,22 @@ class TimesFeedService:
             return self._cache
 
     async def list_news(self, limit: int) -> list[dict]:
-        return (await self.all_news())[:limit]
+        news = await self.all_news()
+        by_source: dict[str, list[dict]] = {}
+        for item in news:
+            by_source.setdefault(item["source"]["name"], []).append(item)
+        if not by_source:
+            return []
+
+        quota = max(1, limit // len(by_source))
+        selected: list[dict] = []
+        remaining: list[dict] = []
+        for source_items in by_source.values():
+            selected.extend(source_items[:quota])
+            remaining.extend(source_items[quota:])
+        remaining.sort(key=lambda item: item["publishedAt"], reverse=True)
+        selected.extend(remaining[: max(0, limit - len(selected))])
+        return sorted(selected, key=lambda item: item["publishedAt"], reverse=True)[:limit]
 
     async def get_news(self, news_id: str) -> dict | None:
         return next((item for item in await self.all_news() if item["id"] == news_id), None)

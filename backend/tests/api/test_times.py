@@ -32,9 +32,11 @@ def times_settings(**overrides: object) -> Settings:
 
 def test_times_service_aggregates_protected_rsshub_routes() -> None:
     seen_keys: list[str | None] = []
+    seen_limits: list[str | None] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen_keys.append(request.url.params.get("key"))
+        seen_limits.append(request.url.params.get("limit"))
         slug = request.url.path.strip("/").replace("/", "-")
         return httpx.Response(200, content=f"""
           <rss version="2.0"><channel><item>
@@ -50,6 +52,7 @@ def test_times_service_aggregates_protected_rsshub_routes() -> None:
 
     assert len(news) == 5
     assert all(key == "protected-key" for key in seen_keys)
+    assert all(limit == "500" for limit in seen_limits)
     assert news[0]["url"].startswith("https://news.example.test/")
     assert "protected-key" not in str(news)
 
@@ -66,6 +69,27 @@ def test_times_service_stops_slow_rsshub_requests_at_the_configured_deadline() -
 
     with pytest.raises(ApiError, match="时事内容源暂时不可用"):
         asyncio.run(service.list_news(100))
+
+
+def test_times_service_balances_the_reader_feed_across_available_sources() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        slug = request.url.path.strip("/").replace("/", "-")
+        items = "".join(
+            f"<item><title>{slug} {index}</title><link>https://news.example.test/{slug}/{index}</link>"
+            f"<pubDate>Thu, 21 Aug 2026 {index:02d}:00:00 GMT</pubDate></item>"
+            for index in range(10)
+        )
+        return httpx.Response(200, content=f"<rss version='2.0'><channel>{items}</channel></rss>".encode())
+
+    service = TimesFeedService(times_settings(), transport=httpx.MockTransport(handler))
+    news = asyncio.run(service.list_news(20))
+    source_counts = {
+        source: sum(item["source"]["name"] == source for item in news)
+        for source in {item["source"]["name"] for item in news}
+    }
+
+    assert len(source_counts) == 5
+    assert set(source_counts.values()) == {4}
 
 
 def test_times_routes_return_web_contract() -> None:
