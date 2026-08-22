@@ -18,11 +18,19 @@ python -m pip install -r backend/requirements-dev.txt
 pnpm dev:backend
 ```
 
+本地 RSSHub 密钥放在仓库根目录的 `.env.local`（该文件不会提交）：
+
+```dotenv
+JOJOKANBAO_RSSHUB_ACCESS_KEY=<RSSHub 的 ACCESS_KEY>
+```
+
 接口：
 
 - `GET http://127.0.0.1:8088/v1/health`
 - `GET http://127.0.0.1:8088/v1/me`
 - `GET http://127.0.0.1:8088/v1/times/news`
+- `GET http://127.0.0.1:8088/v1/times/news/{news_id}`
+- `GET http://127.0.0.1:8088/v1/times/stats`
 
 Times 使用 `JOJO_TIMES_RSSHUB_URL` 和服务端专用的
 `JOJOKANBAO_RSSHUB_ACCESS_KEY`；它的值就是 Render 上 RSSHub 服务的 `ACCESS_KEY`，

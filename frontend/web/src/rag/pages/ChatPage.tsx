@@ -120,7 +120,7 @@ export function ChatPage() {
 
   return (
     <AppShell
-      className="!h-[calc(100vh-64px)]"
+      className="!h-[calc(100vh-64px)] !bg-[var(--app-canvas)]"
       sidebar={<ScopeSelector />}
       sidebarClassName="hidden md:block w-72 !p-0"
       contentClassName="flex flex-col"

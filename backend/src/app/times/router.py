@@ -30,30 +30,9 @@ async def get_news(news_id: str, service: TimesFeedService = Depends(get_times_s
     news = await service.get_news(news_id)
     if news is None:
         raise HTTPException(status_code=404, detail="News not found")
-    return {"news": news, "scrapbookItems": []}
+    return news
 
 
 @router.get("/stats")
 async def stats(service: TimesFeedService = Depends(get_times_service)):
     return await service.stats()
-
-
-@router.get("/ai/digest")
-async def digest(
-    limit: int = Query(default=100, ge=1, le=200),
-    service: TimesFeedService = Depends(get_times_service),
-):
-    return await service.digest(limit)
-
-
-@router.get("/ai/briefing/{news_id}")
-async def briefing(news_id: str, service: TimesFeedService = Depends(get_times_service)):
-    news = await service.get_news(news_id)
-    if news is None:
-        raise HTTPException(status_code=404, detail="News not found")
-    return {
-        "readingQuestions": [f"《{news['title']}》引用了哪些一手信息？", "其他来源如何描述同一事件？"],
-        "historicalContext": [],
-        "entities": [],
-        "timeline": [],
-    }

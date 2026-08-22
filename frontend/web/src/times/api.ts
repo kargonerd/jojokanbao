@@ -21,37 +21,10 @@ export type TimesNewsItem = {
   source?: { name: string } | null;
 };
 
-export type TimesDigest = {
-  articleCount: number;
-  hotKeywords: { name: string; weight: number }[];
-  attentionLanes: { label: string; why: string; articleIds: string[] }[];
-  starterQuestions: string[];
-  sourceCounts: { name: string; count: number }[];
-};
-
 export type TimesStats = { total: number; sourceCount: number };
-
-export type TimesNewsDetail = {
-  news: TimesNewsItem;
-  scrapbookItems?: Array<{
-    id: string;
-    score: number;
-    reason: string;
-    relatedNews: TimesNewsItem;
-  }>;
-};
-
-export type TimesBriefing = {
-  readingQuestions?: string[];
-  historicalContext?: Array<TimesNewsItem & { score: number; reason: string }>;
-  entities?: Array<{ name: string; type: string }>;
-  timeline?: Array<{ date: string; detail: string }>;
-};
 
 export const timesApi = {
   listNews: () => request<TimesNewsItem[]>("/news?limit=100"),
-  getDigest: () => request<TimesDigest>("/ai/digest?limit=100"),
   getStats: () => request<TimesStats>("/stats"),
-  getNews: (newsId: string) => request<TimesNewsDetail>(`/news/${encodeURIComponent(newsId)}`),
-  getBriefing: (newsId: string) => request<TimesBriefing>(`/ai/briefing/${encodeURIComponent(newsId)}`),
+  getNews: (newsId: string) => request<TimesNewsItem>(`/news/${encodeURIComponent(newsId)}`),
 };

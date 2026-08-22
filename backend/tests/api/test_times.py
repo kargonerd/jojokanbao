@@ -3,10 +3,12 @@ from __future__ import annotations
 import asyncio
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.core.auth import get_current_user
+from app.core.errors import ApiError
 from app.core.models import CurrentUser
 from app.main import app
 from app.times.router import get_times_service
@@ -46,10 +48,24 @@ def test_times_service_aggregates_protected_rsshub_routes() -> None:
     service = TimesFeedService(times_settings(), transport=httpx.MockTransport(handler))
     news = asyncio.run(service.list_news(100))
 
-    assert len(news) == 20
+    assert len(news) == 5
     assert all(key == "protected-key" for key in seen_keys)
     assert news[0]["url"].startswith("https://news.example.test/")
     assert "protected-key" not in str(news)
+
+
+def test_times_service_stops_slow_rsshub_requests_at_the_configured_deadline() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.1)
+        return httpx.Response(200, content=b"<rss version='2.0'><channel /></rss>")
+
+    service = TimesFeedService(
+        times_settings(rsshub_timeout_seconds=0.01),
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(ApiError, match="时事内容源暂时不可用"):
+        asyncio.run(service.list_news(100))
 
 
 def test_times_routes_return_web_contract() -> None:
@@ -73,15 +89,6 @@ def test_times_routes_return_web_contract() -> None:
         async def stats(self):
             return {"total": 1, "sourceCount": 1}
 
-        async def digest(self, limit: int):
-            return {
-                "articleCount": 1,
-                "hotKeywords": [],
-                "attentionLanes": [],
-                "starterQuestions": [],
-                "sourceCounts": [{"name": "测试来源", "count": 1}],
-            }
-
     async def authenticated_user() -> CurrentUser:
         return CurrentUser(id="reader-1")
 
@@ -93,8 +100,10 @@ def test_times_routes_return_web_contract() -> None:
         app.dependency_overrides[get_current_user] = authenticated_user
         assert client.get("/v1/times/news").json() == [item]
         assert client.get("/v1/times/stats").json() == {"total": 1, "sourceCount": 1}
-        assert client.get("/v1/times/news/news-1").json()["news"] == item
+        assert client.get("/v1/times/news/news-1").json() == item
         assert client.get("/v1/times/news/missing").status_code == 404
+        assert client.get("/v1/times/ai/digest").status_code == 404
+        assert client.get("/v1/times/ai/briefing/news-1").status_code == 404
     finally:
         app.dependency_overrides.pop(get_times_service, None)
         app.dependency_overrides.pop(get_current_user, None)

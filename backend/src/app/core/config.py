@@ -47,7 +47,7 @@ class Settings:
     auth_timeout_seconds: float
     rsshub_url: str = "https://jojokanbao-rsshub.onrender.com"
     rsshub_access_key: str | None = None
-    rsshub_timeout_seconds: float = 12.0
+    rsshub_timeout_seconds: float = 25.0
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -75,7 +75,7 @@ class Settings:
             rsshub_access_key=(os.getenv("JOJOKANBAO_RSSHUB_ACCESS_KEY") or "").strip() or None,
             rsshub_timeout_seconds=_positive_float(
                 os.getenv("JOJO_TIMES_RSSHUB_TIMEOUT_SECONDS"),
-                default=12.0,
+                default=25.0,
                 name="JOJO_TIMES_RSSHUB_TIMEOUT_SECONDS",
             ),
         )

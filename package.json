@@ -14,7 +14,7 @@
     "verify:build": "turbo verify:build",
     "lint": "turbo lint",
     "dev:desktop": "pnpm --filter @jojo/desktop dev:electron",
-    "dev:backend": "python -m uvicorn app.main:app --app-dir backend/src --host 127.0.0.1 --port 8088 --reload",
+    "dev:backend": "python -m uvicorn app.main:app --app-dir backend/src --host 127.0.0.1 --port 8088 --reload --env-file .env.local",
     "test:backend": "python -m pytest backend/tests -q",
     "prepare:web-deploy": "node infrastructure/edgeone/prepare-web-deploy.mjs",
     "prepare:agent-deploy": "node infrastructure/edgeone/prepare-agent-deploy.mjs",

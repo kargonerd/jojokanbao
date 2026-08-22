@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -20,7 +19,6 @@ from ..core.errors import ApiError, ConfigurationError
 
 USER_AGENT = "JOJO-Times/1.0 (+https://jojokanbao.cn)"
 TAG_RE = re.compile(r"<[^>]+>")
-TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9-]{2,}|[\u4e00-\u9fff]{2,6}")
 CACHE_SECONDS = 300
 FEED_ITEM_LIMIT = 80
 
@@ -32,27 +30,14 @@ class Publisher:
     path: str
 
 
+# Keep request-time fan-out within the EdgeOne function window. More sources
+# belong in a scheduled ingestion job instead of the reader request path.
 PUBLISHERS = (
     Publisher("bloomberg", "Bloomberg", "/bloomberg/markets"),
     Publisher("ap", "Associated Press", "/apnews/mobile"),
     Publisher("bbc", "BBC News", "/bbc"),
     Publisher("aljazeera", "Al Jazeera", "/aljazeera/english/news"),
     Publisher("npr", "NPR", "/npr/1001"),
-    Publisher("dw", "DW", "/dw/rss/rss-en-all"),
-    Publisher("cnbc", "CNBC", "/cnbc/rss"),
-    Publisher("washingtonpost", "The Washington Post", "/washingtonpost/app/world"),
-    Publisher("cbc", "CBC News", "/cbc/topics"),
-    Publisher("rfi", "RFI", "/rfi"),
-    Publisher("nikkei_asia", "Nikkei Asia", "/nikkei/asia"),
-    Publisher("korea_herald", "The Korea Herald", "/koreaherald"),
-    Publisher("cna", "中央通讯社", "/cna/aall"),
-    Publisher("tass", "TASS", "/tass/world"),
-    Publisher("people", "人民网", "/people"),
-    Publisher("nyt", "The New York Times", "/nytimes/rss/HomePage"),
-    Publisher("wsj", "The Wall Street Journal", "/wsj/en-us"),
-    Publisher("reuters", "Reuters", "/reuters/world"),
-    Publisher("zaobao", "联合早报", "/zaobao/realtime"),
-    Publisher("caixin", "财新", "/caixin/latest"),
 )
 
 
@@ -165,8 +150,17 @@ class TimesFeedService:
                 transport=self._transport,
                 headers={"Accept": "application/rss+xml, application/atom+xml, application/xml", "User-Agent": USER_AGENT},
             ) as client:
-                feeds = await asyncio.gather(*(self._fetch_publisher(client, publisher) for publisher in PUBLISHERS))
+                tasks = [asyncio.create_task(self._fetch_publisher(client, publisher)) for publisher in PUBLISHERS]
+                done, pending = await asyncio.wait(tasks, timeout=self._settings.rsshub_timeout_seconds)
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    await asyncio.gather(*pending, return_exceptions=True)
+                feeds = [task.result() for task in done if not task.cancelled() and task.exception() is None]
             if not any(feed is not None for feed in feeds):
+                if self._cache:
+                    self._cache_until = monotonic() + 60
+                    return self._cache
                 raise ApiError(502, "rsshub_unavailable", "时事内容源暂时不可用")
             unique = {item["id"]: item for feed in feeds if feed for item in feed}
             self._cache = sorted(unique.values(), key=lambda item: item["publishedAt"], reverse=True)
@@ -182,23 +176,3 @@ class TimesFeedService:
     async def stats(self) -> dict:
         news = await self.all_news()
         return {"total": len(news), "sourceCount": len({item["source"]["name"] for item in news})}
-
-    async def digest(self, limit: int) -> dict:
-        news = (await self.all_news())[:limit]
-        sources = Counter(item["source"]["name"] for item in news)
-        tokens = Counter(
-            token.lower()
-            for item in news
-            for token in TOKEN_RE.findall(item["title"])
-            if token.lower() not in {"the", "and", "news", "with", "from", "that", "this"}
-        )
-        return {
-            "articleCount": len(news),
-            "hotKeywords": [{"name": name, "weight": count} for name, count in tokens.most_common(12)],
-            "attentionLanes": [],
-            "starterQuestions": [
-                "今天哪些事件被不同来源同时关注？",
-                "哪些报道需要回到原始来源继续核对？",
-            ] if news else [],
-            "sourceCounts": [{"name": name, "count": count} for name, count in sources.most_common()],
-        }
