@@ -63,6 +63,8 @@ commit，并使用 `--require-news-runner` 防止静默退回摘要。单篇解�
 
 `maintenance-times.yml` 的十分钟发布路径使用 HTTP 捕获；手动 `validate-24h` 模式会额外跑每源一篇
 Chromium 样本。浏览器捕获适合对 HTTP 403、JavaScript 页面做补偿和抽检，但不进入十分钟全量路径。
+单次页面尝试最多保留主文档和 127 个子资源，正文/header 读取共享 5 秒预算，避免广告和追踪请求
+把一次抽检拖到不可控时长。
 
 传入 `--publish` 后，工具会先从 Delivery B2 读取 `latest.jox` 和 `index.jox`，从私有 Raw B2
 读取文章抓取状态及保留窗口内的 Canonical，合并已有文章后再发布本次结果。默认 remote 与现有
