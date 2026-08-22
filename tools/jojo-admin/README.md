@@ -6,7 +6,8 @@ append-only Elasticsearch repairs, feature flags, and Agent operations.
 The product UI and internal package are both named **JOJO 管理台**, covering content operations, search maintenance,
 and runtime feature rules. `/content` is the JOJO v1 content importer and publisher. It accepts local
 WeRead JSON paths or browser-selected files, shows background job progress and
-diagnostics, then independently publishes B2, Elasticsearch and Hugging Face.
+diagnostics, then publishes Canonical data to Hugging Face, Delivery objects to
+B2, and rebuildable search documents to Elasticsearch.
 By default, a WeRead source is rejected when its declared TOC is truncated,
 TOC chapter responses are missing, or any response cannot be decoded.
 
@@ -47,17 +48,31 @@ Agent 管理页面位于 `http://127.0.0.1:4174/agent`。本机 Flask 优先读�
 匿名角色没有表或用户 RPC 权限；登录读者通过 `reader.annotations` 功能开关访问，
 Workbench 通过 operator RPC 审核。
 
+人民日报缺失正文工作台位于 `http://127.0.0.1:4174/rmrb-review`。它读取
+`tmp/rmrb-peopledata-full-directory/merged-missing-workbench.sqlite3`，按日期升序
+展示本地 JSONL 与年度 XLSX 合并后仍为空的目录记录。Accept/Reject 只写入
+`manual-review-decisions-workbench.jsonl`，不会直接修改语料或 Elasticsearch。
+生成合并队列和自动补全图片记录的命令见
+[`tools/rmrb-repair/README.md`](../rmrb-repair/README.md)。
+
 Publication configuration is read from the repository `.env`:
 
 ```text
-JOJO_RAW_REMOTE=jojo-b2:jojo-news-raw
 JOJO_DELIVERY_REMOTE=jojo-b2-s3:jojo-newspaper
 ES_CONTENT_INDEX=<existing Elasticsearch index>
-HF_DATASET_REPO=<owner>/marxism
+HF_DATASET_REPO=luoxiaozhuang/marxism-dataset
+HF_DATASET_PRIVATE=false
+HF_HUB_DISABLE_XET=1  # 当前代理链路使用可可靠提交的 LFS；稳定直连环境可设为 0
+HF_XET_HIGH_PERFORMANCE=0  # 64 GB+ RAM hosts may set this to 1
+HF_XET_FIXED_UPLOAD_CONCURRENCY=2
+HF_XET_CLIENT_RETRY_MAX_DURATION=1200s
+HF_XET_CLIENT_READ_TIMEOUT=600s
+HF_UPLOAD_WORKERS=4
 ```
 
 S3 兼容入口发布时会显式使用 `--s3-no-check-bucket`，避免 rclone 对既有 B2 Bucket
-误发 `CreateBucket`；大于 50 MiB 的 Raw 文件使用 B2 分片并发上传。
+误发 `CreateBucket`。Raw 和 Canonical 不上传 B2；Hugging Face 是唯一 Canonical 真值，
+B2 只保存 Reader 使用的 Delivery 对象。
 
 Hugging Face 凭据默认复用本机 CLI 登录，不需要把 Token 写进 `.env`：
 
@@ -68,7 +83,7 @@ huggingface-cli whoami
 
 无人值守环境仍可使用 `HF_TOKEN=<write token>`，它会优先于 CLI 凭据。
 
-HF 发布结果显示为 **Marxism Dataset**。首页和 `collections/` 使用中文书名导航；每本书
+HF 发布结果显示为 **Marxism Dataset**。默认发布为公开 Dataset；首页和 `collections/` 使用中文书名导航；每本书
 提供人类可读的卷册页面、完整目录 JSON、Canonical Item 下载和按 Dataset 打包的媒体归档。
 
 本地联调 Reader/Agent 的真实 ES 搜索时，可只启动轻量搜索入口：

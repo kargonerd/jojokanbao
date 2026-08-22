@@ -10,13 +10,13 @@ JOJO 用同一套外壳保存书籍、报纸和杂志，但明确区分三类数
 - Canonical：清晰、规范、可以重建一切派生数据的唯一真值。
 - Delivery：供 Reader 和 Agent 从 CDN 读取的拆分、压缩、Jox 混淆对象。
 
-Elasticsearch、Hugging Face 和 EPUB 都是派生数据，不是真值。格式不包含 `rights`；将来确有权限管理需求时再单独升级版本。
+Hugging Face Dataset 是书籍、报纸和杂志唯一的 Canonical 真值，保存 Canonical JSON、索引和可读媒体。B2 只保存 Reader 使用的 Delivery；Raw 不上传。Elasticsearch 和 EPUB 都是可由 Canonical 重建的派生数据。格式不包含 `rights`；将来确有权限管理需求时再单独升级版本。
 
 ## 1. 两个 B2 Bucket
 
 ### 1.1 `jojo-news-raw`
 
-这是私有 Bucket，导入器、重建任务和管理员使用。Reader 与 Agent 不读取它。
+这是历史私有 Bucket。新发布任务不再写入它；Reader、Agent 和重建任务均不依赖它。
 
 ```text
 jojo-news-raw/
@@ -43,11 +43,11 @@ jojo-news-raw/
    └─ magazines/
 ```
 
-Raw 书籍采用 `书名--来源ID.扩展名`，直接平铺在来源目录。来源 ID 防止同名文件覆盖。Raw 不生成 `catalog.json` 或 `index.json`；私有重建任务使用 B2/S3 `ListObjects` 枚举来源文件。
+上述目录只描述已经上传的历史对象。Raw 来源文件只在本地导入期间使用，不再上传；需要长期恢复的数据必须进入 Hugging Face Canonical。
 
 报纸和杂志数量较多，Raw 按来源、年份、月份、日期或期号分片。
 
-Canonical 不保存根 `catalog.json`，也不保存 `search/` 副本。重建任务通过 `canonical/**/dataset.json` 发现 Dataset，并从 Canonical Item 临时生成 ES 文档。
+`jojo-news-raw/canonical/` 只保留已经上传的历史对象。书籍和报刊 Canonical 均发布到 Hugging Face，B2 只保存应用交付所需的 Delivery 对象。
 
 ### 1.2 `jojo-newspaper`
 
@@ -142,16 +142,18 @@ canonical/
 │  └─ rmrb/
 │     ├─ dataset.json
 │     ├─ items/1990/09/1990-09-06.json.gz
-│     └─ assets/<sha256>.pdf
+│     ├─ assets/pdfs/1990/09/1990-09-06.pdf
+│     └─ assets/images/<sha256>.jpg
 └─ magazines/
    └─ qiushi/
       ├─ dataset.json
       ├─ items/2026/2026-15.json.gz
       ├─ items/2026/2026-special-1.json.gz
-      └─ assets/<sha256>.pdf
+      └─ assets/pdfs/2026/2026-15.pdf
 ```
 
-资源以 SHA-256 命名，避免同一 Dataset 内重复保存。
+期级 PDF 是面向展示的主资源，使用日期或期号命名；文章图片等无稳定业务名称的资源仍以
+SHA-256 命名，避免同一 Dataset 内重复保存。
 
 ### 3.2 Dataset
 
@@ -190,7 +192,24 @@ canonical/
   "type": "newspaper",
   "title": "人民日报",
   "language": "zh-CN",
-  "itemPath": "items/{YYYY}/{MM}/{YYYY-MM-DD}.json.gz"
+  "itemPath": "items/{YYYY}/{MM}/{YYYY-MM-DD}.json.gz",
+  "availability": {
+    "formatVersion": "jojo-periodical-availability/1",
+    "text": {
+      "format": "adaptive-calendar/1",
+      "startDate": "1946-05-15",
+      "endDate": "2025-12-31",
+      "default": "available",
+      "years": {}
+    },
+    "pdf": {
+      "format": "adaptive-calendar/1",
+      "startDate": "1946-05-15",
+      "endDate": "2025-12-31",
+      "default": "available",
+      "years": {}
+    }
+  }
 }
 ```
 
@@ -208,6 +227,33 @@ canonical/
 ```
 
 Canonical Dataset 不引用 `.jox`。`.jox` 只属于 Delivery。
+
+报纸和杂志必须分别表达文本版与 PDF 版是否可用。日期型报刊把两套自适应日历直接放进
+Dataset 和 Delivery Index，不再拆分年度 Availability 文件。顶层默认日期可用；整年可用时
+不记录该年。某年大多数日期可用时使用 `exclude`，只有少数日期可用时使用 `include`。两者
+都可以包含完整月份、连续日期范围和零散日期：
+
+```json
+{
+  "1951": {
+    "exclude": {
+      "months": ["08"],
+      "ranges": [["11-03", "11-07"]],
+      "dates": ["02-14"]
+    }
+  },
+  "1967": {
+    "include": {
+      "dates": ["01-06", "01-13"]
+    }
+  }
+}
+```
+
+生成器根据该年范围内可用与缺失日期的数量选择较少的一侧：可用日期不超过一半时使用
+`include`，否则使用 `exclude`。完整月份优先折叠为 `months`，三个及以上连续日期折叠为
+`ranges`，其余放入 `dates`。`text` 表示该期
+至少有一篇可阅读文章；`pdf` 表示整期 PDF 已通过校验并登记为 Asset。两者互不推断。
 
 ### 3.3 Item 外壳
 
@@ -392,6 +438,7 @@ Canonical Dataset 不引用 `.jox`。`.jox` 只属于 Delivery。
         "order": 1,
         "title": "历史也得完整地“透明”",
         "authors": ["宋志坚"],
+        "contentState": "available",
         "body": {
           "format": "html",
           "profile": "jojo-semantic-html/1",
@@ -416,6 +463,10 @@ Canonical Dataset 不引用 `.jox`。`.jox` 只属于 Delivery。
   "extensions": {}
 }
 ```
+
+报刊文章的 `contentState` 只允许 `available`、`missing`。有正文、实际图片或明确的
+`【图片】` 占位内容时为 `available`；没有可阅读正文时为 `missing`，但标题和目录位置仍须
+保留。人工修复方式和无法确认的原因属于私有审计信息，不扩展公开状态枚举。
 
 `placements` 是文章与版面的唯一权威关系。`pages` 和 `articles` 不重复保存双向引用。`role` v1 允许：
 
@@ -541,8 +592,8 @@ jojo-newspaper/
    │     └─ items/1990/09/1990-09-06/
    │        ├─ manifest.jox
    │        ├─ articles/<opaque-id>.jox
-   │        ├─ assets/<opaque-id>.jox
-   │        └─ exports/<opaque-id>.jox
+   │        ├─ assets/newspaper.pdf.jox
+   │        └─ assets/<opaque-id>.jox
    └─ magazines/
       └─ qiushi/
          ├─ index.jox
@@ -562,7 +613,7 @@ jojo-newspaper/
 - `search/text.jox`：一个 Item 的轻量纯文本搜索块，只供浏览器书内搜索。
 - `articles/*.jox`：单篇报刊文章。
 - `assets/*.jox`：图片、音频、视频和 PDF 等媒体。
-- `exports/*.jox`：可直接下载的整本或整期成品。
+- `exports/*.jox`：由 Canonical 内容生成的整本下载成品，例如 EPUB。
 
 Delivery Index 使用独立格式，避免与 Canonical Dataset 混淆：
 
@@ -587,7 +638,11 @@ Delivery Index 使用独立格式，避免与 Canonical Dataset 混淆：
 }
 ```
 
-### 5.2 Manifest 与 Export
+书籍和短期刊物可用 `items` 明列 Item。大型日期型报刊改用确定性的 `itemPath` 与内嵌
+`availability.text`、`availability.pdf`，避免在一个 Index 中重复列出数万条 Item，也避免
+前端额外下载逐年索引。Reader 先检查对应能力的日历，再用日期展开 Manifest 路径。
+
+### 5.2 Manifest、Asset 与 Export
 
 Manifest 不包含整章正文，只描述对象：
 
@@ -645,11 +700,34 @@ Manifest 不包含整章正文，只描述对象：
 `exports/` 是可选目录：
 
 - 书籍通常提供整本 EPUB，可选 PDF。
-- 报纸通常提供整期原报 PDF。
-- 杂志通常提供整期 PDF 或 EPUB。
+- 报纸和杂志的原始整期 PDF 属于 `assets/`，用于阅读器展示，也可以下载。
+- 由规范内容额外生成的 EPUB/PDF 才属于 `exports/`。
 - 没有成品下载时，`exports` 为 `[]`，目录不创建。
 
-图片、音频和视频属于 `assets/`，不属于 `exports/`。
+图片、音频、视频和原始期级 PDF 属于 `assets/`，不属于 `exports/`。
+
+报刊 Item Manifest 还必须直接表达两种能力；空正文或 rejected/missing 文章不算文本可用：
+
+```json
+{
+  "availability": {"text": "available", "pdf": "available"},
+  "content": {
+    "schema": "jojo-content/newspaper/1",
+    "articles": [
+      {"id": "article:1", "title": "示例", "status": "missing", "object": null}
+    ]
+  },
+  "assets": [
+    {
+      "type": "pdf",
+      "role": "issue-pdf",
+      "mediaType": "application/pdf",
+      "object": "assets/newspaper.pdf.jox"
+    }
+  ],
+  "exports": []
+}
+```
 
 书籍导入时生成一个可选的 `search/text.jox`：
 
@@ -715,12 +793,12 @@ JOJO_CONTENT_CDN_BASE=https://<delivery-cdn>/
 
 Canonical Item 是 ES 的源数据。重建任务：
 
-1. 使用私有 B2/S3 `ListObjects` 查找 `canonical/**/dataset.json`。
-2. 按 Dataset 的 `itemPath` 和实际对象列表读取 `item.json.gz`。
+1. 读取 Hugging Face Dataset 的 `catalog.json` 和各 Dataset 的 `dataset.json`。
+2. 按 Dataset 的下载路径读取 Canonical Item `.json.gz`。
 3. 临时拆分搜索文档并批量写入新 ES 索引。
 4. 验证后切换索引别名或配置。
 
-B2 Canonical 不长期保存 `search/*.jsonl.gz`，避免重复保存正文和产生漂移。流水线本地构建目录仍可生成临时 `search/documents.jsonl.gz` 供一次发布任务使用，但发布 Raw/Canonical 时不上传它。Delivery 中每本书的 `search/text.jox` 是面向浏览器的派生数据，可以随 Canonical 重新生成，不作为 ES 重建真值。
+Hugging Face Canonical 可同时保存用于 Dataset Viewer 的 `data/search-documents.jsonl.gz`；它必须由同一批 Canonical Item 生成。Delivery 中每本书的 `search/text.jox` 是面向浏览器的派生数据，可以随 Canonical 重新生成，不作为 ES 重建真值。
 
 ## 8. 导入与完整性校验
 
@@ -756,15 +834,17 @@ pnpm --filter @jojo/content-pipeline validate -- "C:\temp\jojo-build"
 
 ## 9. 发布边界
 
-发布到 B2：
+书籍、报纸和杂志统一使用以下发布边界：
 
 ```text
-本地 raw/       → jojo-news-raw/raw/
-本地 canonical/ → jojo-news-raw/canonical/
+本地 canonical/ → Hugging Face Dataset
 本地 delivery/  → jojo-newspaper/
+本地 raw/       → 不上传
 ```
 
-发布顺序：
+已经存在的私有 B2 Raw / Canonical 历史对象不会在发布过程中自动删除；清理必须作为单独、显式确认的操作执行。
+
+本地构建顺序：
 
 ```text
 Raw
@@ -776,3 +856,5 @@ Raw
 ```
 
 `catalog.jox` 最后发布，表示本次 Delivery 元数据已经完整。旧的不透明内容对象可以延迟清理，不能在新 Catalog 生效前删除。
+
+远端发布顺序为 Hugging Face Canonical → B2 Delivery → Elasticsearch。后两者均可从 Hugging Face Canonical 重建。

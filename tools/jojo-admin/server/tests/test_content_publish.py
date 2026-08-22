@@ -50,12 +50,13 @@ class B2PublishTest(unittest.TestCase):
         merge_command = next(command for command in commands if command[0] == "pnpm")
         self.assertIn("--remove-dataset", merge_command)
         self.assertIn("old-dataset", merge_command)
-        raw_command = next(command for command in commands if command[0] == "rclone" and command[3].endswith("/raw"))
         delivery_commands = [
             command for command in commands
             if command[0] == "rclone" and "jojo-newspaper" in command[3]
         ]
-        self.assertIn("--b2-upload-cutoff", raw_command)
+        self.assertFalse(any("jojo-news-raw" in " ".join(command) for command in commands))
+        self.assertFalse(any(str(root / "raw") in command for command in commands))
+        self.assertFalse(any(str(root / "canonical") in command for command in commands))
         self.assertTrue(delivery_commands)
         self.assertTrue(all("--s3-no-check-bucket" in command for command in delivery_commands))
 
@@ -78,13 +79,16 @@ class B2PublishTest(unittest.TestCase):
 class HuggingFacePublishTest(unittest.TestCase):
     @patch.object(content_publish, "_huggingface_token", return_value="cached-cli-token")
     def test_status_accepts_cli_login(self, _token):
-        with patch.dict(os.environ, {"HF_DATASET_REPO": "owner/private-content"}, clear=False):
+        with patch.dict(os.environ, {
+            "HF_DATASET_REPO": "owner/public-content", "HF_DATASET_PRIVATE": "false",
+        }, clear=False):
             status = content_publish.publication_status()["huggingface"]
         self.assertTrue(status["configured"])
-        self.assertEqual(status["repoId"], "owner/private-content")
+        self.assertEqual(status["repoId"], "owner/public-content")
+        self.assertFalse(status["private"])
 
     @patch.object(content_publish, "_huggingface_token", return_value="cached-cli-token")
-    def test_publish_uses_cli_token_and_verifies_private_repo(self, _token):
+    def test_publish_uses_cli_token_and_verifies_public_repo(self, _token):
         calls = {}
 
         class FakeApi:
@@ -104,7 +108,7 @@ class HuggingFacePublishTest(unittest.TestCase):
                 )]
 
             def repo_info(self, **_kwargs):
-                return SimpleNamespace(private=True, sha="abc")
+                return SimpleNamespace(private=False, sha="abc")
 
             def list_repo_files(self, **_kwargs):
                 return calls["remote"]
@@ -115,7 +119,7 @@ class HuggingFacePublishTest(unittest.TestCase):
         module = SimpleNamespace(HfApi=FakeApi)
         with TemporaryDirectory() as temp, patch.dict(
             os.environ,
-            {"HF_DATASET_REPO": "owner/private-content", "HF_TOKEN": ""},
+            {"HF_DATASET_REPO": "owner/public-content", "HF_DATASET_PRIVATE": "false", "HF_TOKEN": ""},
             clear=False,
         ), patch.dict(sys.modules, {"huggingface_hub": module}):
             root = Path(temp)
@@ -136,9 +140,10 @@ class HuggingFacePublishTest(unittest.TestCase):
             result = content_publish.publish_huggingface(root, lambda _message: None)
 
         self.assertEqual(calls["token"], "cached-cli-token")
-        self.assertTrue(calls["create"]["private"])
+        self.assertFalse(calls["create"]["private"])
         self.assertEqual(calls["upload"]["repo_type"], "dataset")
         self.assertEqual(calls["upload"]["num_workers"], 4)
+        self.assertFalse(result["private"])
         self.assertEqual(result["remoteFiles"], len(calls["remote"]))
         self.assertTrue(result["commit"].endswith("/commit/abc"))
         self.assertNotIn("delete", calls)

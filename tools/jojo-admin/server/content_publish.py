@@ -16,15 +16,8 @@ from es_repair import KibanaConsoleClient, _load_root_env
 
 
 ROOT = Path(__file__).resolve().parents[3]
-RAW_REMOTE = os.getenv("JOJO_RAW_REMOTE", "jojo-b2:jojo-news-raw")
 DELIVERY_REMOTE = os.getenv("JOJO_DELIVERY_REMOTE", "jojo-b2-s3:jojo-newspaper")
 RCLONE_COPY_FLAGS = ["--checksum", "--transfers", "16", "--checkers", "32"]
-RAW_COPY_FLAGS = [
-    *RCLONE_COPY_FLAGS,
-    "--b2-upload-cutoff", "50Mi",
-    "--b2-chunk-size", "16Mi",
-    "--b2-upload-concurrency", "8",
-]
 DELIVERY_COPY_FLAGS = [*RCLONE_COPY_FLAGS, "--s3-no-check-bucket"]
 
 
@@ -39,12 +32,15 @@ def _huggingface_token() -> str:
     return (get_token() or "").strip()
 
 
+def _huggingface_private() -> bool:
+    return os.getenv("HF_DATASET_PRIVATE", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def publication_status() -> dict[str, Any]:
     _load_root_env()
     return {
         "b2": {
             "configured": bool(shutil.which("rclone")),
-            "rawRemote": os.getenv("JOJO_RAW_REMOTE", RAW_REMOTE),
             "deliveryRemote": os.getenv("JOJO_DELIVERY_REMOTE", DELIVERY_REMOTE),
         },
         "elasticsearch": {
@@ -56,7 +52,7 @@ def publication_status() -> dict[str, Any]:
         "huggingface": {
             "configured": bool(_huggingface_token() and os.getenv("HF_DATASET_REPO")),
             "repoId": os.getenv("HF_DATASET_REPO", ""),
-            "private": True,
+            "private": _huggingface_private(),
         },
     }
 
@@ -96,7 +92,6 @@ def _try_copy_remote(remote: str, local: Path, on_log: Callable[[str], None]) ->
 def publish_b2(build_root: Path, on_log: Callable[[str], None]) -> dict[str, Any]:
     if not shutil.which("rclone"):
         raise RuntimeError("未安装 rclone")
-    raw_remote = os.getenv("JOJO_RAW_REMOTE", RAW_REMOTE).rstrip("/")
     delivery_remote = os.getenv("JOJO_DELIVERY_REMOTE", DELIVERY_REMOTE).rstrip("/")
     report = json.loads((build_root / "report.json").read_text(encoding="utf-8"))
     dataset_ids = sorted({item["datasetId"] for item in report["itemsBuilt"]})
@@ -130,8 +125,6 @@ def publish_b2(build_root: Path, on_log: Callable[[str], None]) -> dict[str, Any
         merge_command.extend(["--remove-dataset", dataset_id])
     _run(merge_command, on_log)
 
-    _run(["rclone", "copy", str(build_root / "raw"), f"{raw_remote}/raw", *RAW_COPY_FLAGS], on_log)
-    _run(["rclone", "copy", str(build_root / "canonical"), f"{raw_remote}/canonical", *RCLONE_COPY_FLAGS], on_log)
     _run([
         "rclone", "copy", str(build_root / "delivery" / "content"), f"{delivery_remote}/content",
         "--exclude", "**/manifest.jox", "--exclude", "**/index.jox", *DELIVERY_COPY_FLAGS,
@@ -148,7 +141,7 @@ def publish_b2(build_root: Path, on_log: Callable[[str], None]) -> dict[str, Any
         "rclone", "copy", str(merged_metadata), delivery_remote,
         "--filter", "+ /catalog.jox", "--filter", "- **", *DELIVERY_COPY_FLAGS,
     ], on_log)
-    return {"datasets": len(dataset_ids), "rawRemote": raw_remote, "deliveryRemote": delivery_remote}
+    return {"datasets": len(dataset_ids), "deliveryRemote": delivery_remote}
 
 
 CONTENT_MAPPING = {
@@ -520,6 +513,16 @@ def _count_release_documents(
 
 def publish_huggingface(build_root: Path, on_log: Callable[[str], None]) -> dict[str, Any]:
     _load_root_env()
+    # The current proxy accepts Xet payloads but can stall final shard
+    # registration indefinitely. Prefer the resumable LFS bridge by default;
+    # operators can opt back into Xet with HF_HUB_DISABLE_XET=0.
+    os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
+    # Xet high-performance mode can regress throughput on machines with less
+    # than 64 GB of RAM. Keep Xet enabled, with high-performance as opt-in.
+    os.environ.setdefault("HF_XET_HIGH_PERFORMANCE", "0")
+    os.environ.setdefault("HF_XET_FIXED_UPLOAD_CONCURRENCY", "2")
+    os.environ.setdefault("HF_XET_CLIENT_RETRY_MAX_DURATION", "1200s")
+    os.environ.setdefault("HF_XET_CLIENT_READ_TIMEOUT", "600s")
     token = _huggingface_token()
     repo_id = os.getenv("HF_DATASET_REPO", "")
     if not token or not repo_id:
@@ -527,20 +530,22 @@ def publish_huggingface(build_root: Path, on_log: Callable[[str], None]) -> dict
     from huggingface_hub import HfApi
 
     api = HfApi(token=token)
-    api.create_repo(repo_id=repo_id, repo_type="dataset", private=True, exist_ok=True)
-    on_log(f"开始上传私有 Hugging Face Dataset：{repo_id}")
+    private = _huggingface_private()
+    api.create_repo(repo_id=repo_id, repo_type="dataset", private=private, exist_ok=True)
+    on_log(f"开始上传{'私有' if private else '公开'} Hugging Face Dataset：{repo_id}")
     snapshot, snapshot_stats = _prepare_huggingface_snapshot(build_root, on_log)
     workers = max(1, int(os.getenv("HF_UPLOAD_WORKERS", "4")))
     api.upload_large_folder(
         folder_path=str(snapshot),
         repo_id=repo_id,
         repo_type="dataset",
-        private=True,
+        private=private,
         num_workers=workers,
     )
     info = api.repo_info(repo_id=repo_id, repo_type="dataset")
-    if not info.private:
-        raise RuntimeError(f"Hugging Face Dataset {repo_id} 不是私有仓库，停止发布")
+    if bool(info.private) != private:
+        expected = "私有" if private else "公开"
+        raise RuntimeError(f"Hugging Face Dataset {repo_id} 不是预期的{expected}仓库，停止发布")
     expected_files = {
         path.relative_to(snapshot).as_posix()
         for path in snapshot.rglob("*")
@@ -563,7 +568,7 @@ def publish_huggingface(build_root: Path, on_log: Callable[[str], None]) -> dict
         raise RuntimeError(f"Hugging Face 上传缺少 {len(missing_files)} 个文件：{missing_files[:3]}")
     return {
         "repoId": repo_id,
-        "private": True,
+        "private": private,
         "remoteFiles": len(remote_files),
         "commit": f"https://huggingface.co/datasets/{repo_id}/commit/{info.sha}",
         **snapshot_stats,

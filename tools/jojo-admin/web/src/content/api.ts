@@ -44,7 +44,7 @@ export interface ContentJob {
 }
 
 export interface PublisherStatus {
-  b2: { configured: boolean; rawRemote: string; deliveryRemote: string };
+  b2: { configured: boolean; deliveryRemote: string };
   elasticsearch: { configured: boolean; index: string };
   huggingface: { configured: boolean; repoId: string; private: boolean };
 }
