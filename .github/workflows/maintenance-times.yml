@@ -132,8 +132,9 @@ jobs:
 
       - name: Capture one browser sample per source
         if: github.event_name == 'workflow_dispatch' && inputs.mode == 'validate-24h'
+        continue-on-error: true
         run: >-
-          python tools/times-pipeline/run.py
+          timeout --signal=TERM 8m python tools/times-pipeline/run.py
           --output "$RUNNER_TEMP/jojo-times-24h-browser-sample"
           --collection-window-hours 24
           --timeout 70
@@ -141,7 +142,7 @@ jobs:
           --archive-engine browser
           --archive-workers 8
           --archive-max-pages 26
-          --archive-browser-retries 1
+          --archive-browser-retries 0
           --archive-refresh-hours 24
           --archive-retry-hours 2
           --archive-max-response-bytes 5000000

@@ -1,7 +1,7 @@
 # JOJO Times offline pipeline
 
-Times 不再由浏览器请求触发实时抓取。这个工具把来源 RSS 聚合为 JOJO newspaper v1，抓取
-文章原始 HTTP 响应并生成 WARC/WACZ，复用 `jojo-news-archive-runner` 的 12 个出版方解析器，
+Times 不再由浏览器请求触发实时抓取。这个工具把 26 家来源的 RSS 聚合为 JOJO newspaper v1，抓取
+文章原始 HTTP 响应并生成 WARC/WACZ，复用 `jojo-news-archive-runner` 锁定的出版方解析器，
 最后生成 Canonical、Delivery Jox 和可重建 Elasticsearch 的 JSONL，并按提交顺序发布到 B2。
 
 ## 对象布局
@@ -33,8 +33,9 @@ Article Jox 是内容寻址的不可变对象；当天 manifest、availability�
 对象的半次发布。全局 `catalog.jox` 只在 Times Dataset 注册项缺失或变化时合并并最后发布，
 避免十分钟任务持续改写其他馆藏共用的 Catalog。
 
-流水线只接收出版方明确给出发布时间且位于 7 天窗口内的条目；缺失时间的条目不会被抓取时间
-伪装成新消息。文章页面按 `state.json.gz` 增量轮转，默认每轮最多抓取 50 篇，24 小时刷新成功
+流水线默认只接收出版方明确给出发布时间且位于过去 24 小时的条目；缺失时间的条目不会被抓取时间
+伪装成新消息。Delivery 和 Canonical 默认保留 7 天。文章页面按 `state.json.gz` 增量轮转，生产任务
+使用轻量 HTTP 捕获并默认每轮最多抓取 50 篇，24 小时刷新成功
 页面、2 小时重试失败页面。增量构建复用 `latest.jox` 中已有的内容寻址对象，只生成新增或正文发生变化的
 Article。
 
@@ -56,9 +57,12 @@ python tools/times-pipeline/run.py --output "$env:TEMP/jojo-times-build"
 python -m pytest tools/times-pipeline/tests -q
 ```
 
-解析器仓库及 12 个 parser version 由 `runner.lock.json` 锁定；GitHub Action 检出其中记录的精确
+解析器仓库及 13 个 parser version（包括当前未启用来源）由 `runner.lock.json` 锁定；GitHub Action 检出其中记录的精确
 commit，并使用 `--require-news-runner` 防止静默退回摘要。单篇解析失败不会丢失 WARC，后续可对
 已存档 HTML 离线重跑解析器。
+
+`maintenance-times.yml` 的十分钟发布路径使用 HTTP 捕获；手动 `validate-24h` 模式会额外跑每源一篇
+Chromium 样本。浏览器捕获适合对 HTTP 403、JavaScript 页面做补偿和抽检，但不进入十分钟全量路径。
 
 传入 `--publish` 后，工具会先从 Delivery B2 读取 `latest.jox` 和 `index.jox`，从私有 Raw B2
 读取文章抓取状态及保留窗口内的 Canonical，合并已有文章后再发布本次结果。默认 remote 与现有
