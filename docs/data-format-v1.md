@@ -10,13 +10,13 @@ JOJO 用同一套外壳保存书籍、报纸和杂志，但明确区分三类数
 - Canonical：清晰、规范、可以重建一切派生数据的唯一真值。
 - Delivery：供 Reader 和 Agent 从 CDN 读取的拆分、压缩、Jox 混淆对象。
 
-Elasticsearch 和 EPUB 是派生数据。书籍仍以私有 B2 Canonical 为真值；报纸和杂志不上传独立 Raw 或私有 B2 Canonical，而以 Hugging Face Dataset 中的 Canonical JSON、索引和可读 PDF 为真值。格式不包含 `rights`；将来确有权限管理需求时再单独升级版本。
+Hugging Face Dataset 是书籍、报纸和杂志唯一的 Canonical 真值，保存 Canonical JSON、索引和可读媒体。B2 只保存 Reader 使用的 Delivery；Raw 不上传。Elasticsearch 和 EPUB 都是可由 Canonical 重建的派生数据。格式不包含 `rights`；将来确有权限管理需求时再单独升级版本。
 
 ## 1. 两个 B2 Bucket
 
 ### 1.1 `jojo-news-raw`
 
-这是私有 Bucket，导入器、重建任务和管理员使用。Reader 与 Agent 不读取它。
+这是历史私有 Bucket。新发布任务不再写入它；Reader、Agent 和重建任务均不依赖它。
 
 ```text
 jojo-news-raw/
@@ -43,13 +43,11 @@ jojo-news-raw/
    └─ magazines/
 ```
 
-Raw 书籍采用 `书名--来源ID.扩展名`，直接平铺在来源目录。来源 ID 防止同名文件覆盖。Raw 不生成 `catalog.json` 或 `index.json`；私有重建任务使用 B2/S3 `ListObjects` 枚举来源文件。
+上述目录只描述已经上传的历史对象。Raw 来源文件只在本地导入期间使用，不再上传；需要长期恢复的数据必须进入 Hugging Face Canonical。
 
 报纸和杂志数量较多，Raw 按来源、年份、月份、日期或期号分片。
 
-Canonical 不保存根 `catalog.json`，也不保存 `search/` 副本。重建任务通过 `canonical/**/dataset.json` 发现 Dataset，并从 Canonical Item 临时生成 ES 文档。
-
-`jojo-news-raw/canonical/newspapers/` 和 `canonical/magazines/` 只保留已经上传的历史对象；新的报刊发布任务不再写入这两个前缀。报刊 Canonical 发布到 Hugging Face，B2 只保存应用交付所需的 Delivery 对象。
+`jojo-news-raw/canonical/` 只保留已经上传的历史对象。书籍和报刊 Canonical 均发布到 Hugging Face，B2 只保存应用交付所需的 Delivery 对象。
 
 ### 1.2 `jojo-newspaper`
 
@@ -795,12 +793,12 @@ JOJO_CONTENT_CDN_BASE=https://<delivery-cdn>/
 
 Canonical Item 是 ES 的源数据。重建任务：
 
-1. 使用私有 B2/S3 `ListObjects` 查找 `canonical/**/dataset.json`。
-2. 按 Dataset 的 `itemPath` 和实际对象列表读取 `item.json.gz`。
+1. 读取 Hugging Face Dataset 的 `catalog.json` 和各 Dataset 的 `dataset.json`。
+2. 按 Dataset 的下载路径读取 Canonical Item `.json.gz`。
 3. 临时拆分搜索文档并批量写入新 ES 索引。
 4. 验证后切换索引别名或配置。
 
-B2 Canonical 不长期保存 `search/*.jsonl.gz`，避免重复保存正文和产生漂移。流水线本地构建目录仍可生成临时 `search/documents.jsonl.gz` 供一次发布任务使用，但发布 Raw/Canonical 时不上传它。Delivery 中每本书的 `search/text.jox` 是面向浏览器的派生数据，可以随 Canonical 重新生成，不作为 ES 重建真值。
+Hugging Face Canonical 可同时保存用于 Dataset Viewer 的 `data/search-documents.jsonl.gz`；它必须由同一批 Canonical Item 生成。Delivery 中每本书的 `search/text.jox` 是面向浏览器的派生数据，可以随 Canonical 重新生成，不作为 ES 重建真值。
 
 ## 8. 导入与完整性校验
 
@@ -836,15 +834,7 @@ pnpm --filter @jojo/content-pipeline validate -- "C:\temp\jojo-build"
 
 ## 9. 发布边界
 
-书籍发布边界：
-
-```text
-本地 raw/       → jojo-news-raw/raw/
-本地 canonical/ → jojo-news-raw/canonical/
-本地 delivery/  → jojo-newspaper/
-```
-
-报纸和杂志发布边界：
+书籍、报纸和杂志统一使用以下发布边界：
 
 ```text
 本地 canonical/ → Hugging Face Dataset
@@ -852,9 +842,9 @@ pnpm --filter @jojo/content-pipeline validate -- "C:\temp\jojo-build"
 本地 raw/       → 不上传
 ```
 
-报刊已存在的私有 B2 Canonical 对象不会在发布过程中自动删除；清理必须作为单独、显式确认的操作执行。
+已经存在的私有 B2 Raw / Canonical 历史对象不会在发布过程中自动删除；清理必须作为单独、显式确认的操作执行。
 
-发布顺序：
+本地构建顺序：
 
 ```text
 Raw
@@ -866,3 +856,5 @@ Raw
 ```
 
 `catalog.jox` 最后发布，表示本次 Delivery 元数据已经完整。旧的不透明内容对象可以延迟清理，不能在新 Catalog 生效前删除。
+
+远端发布顺序为 Hugging Face Canonical → B2 Delivery → Elasticsearch。后两者均可从 Hugging Face Canonical 重建。
