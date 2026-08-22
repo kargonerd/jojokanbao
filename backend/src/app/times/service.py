@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 import hashlib
 import html
+import json
+from pathlib import Path
 import re
 from time import monotonic
 from typing import Iterable
@@ -26,20 +28,55 @@ FEED_ITEM_LIMIT = 500
 
 @dataclass(frozen=True, slots=True)
 class Publisher:
-    key: str
+    id: str
     name: str
-    path: str
+    route: str
+    language: str
 
 
-# Keep request-time fan-out within the EdgeOne function window. More sources
-# belong in a scheduled ingestion job instead of the reader request path.
-PUBLISHERS = (
-    Publisher("bloomberg", "Bloomberg", "/bloomberg/markets"),
-    Publisher("ap", "Associated Press", "/apnews/mobile"),
-    Publisher("bbc", "BBC News", "/bbc"),
-    Publisher("aljazeera", "Al Jazeera", "/aljazeera/english/news"),
-    Publisher("npr", "NPR", "/npr/1001"),
-)
+SOURCES_CONFIG = Path(__file__).with_name("sources.json")
+
+
+def load_publishers(config_path: Path = SOURCES_CONFIG) -> tuple[Publisher, ...]:
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"Unable to read Times sources from {config_path}") from error
+    if not isinstance(config, dict) or config.get("version") != 1:
+        raise ValueError("Times sources must use config version 1")
+    sources = config.get("sources")
+    if not isinstance(sources, list):
+        raise ValueError("Times sources config must contain a sources array")
+
+    publishers: list[Publisher] = []
+    seen_ids: set[str] = set()
+    for position, source in enumerate(sources):
+        if not isinstance(source, dict):
+            raise ValueError(f"Times source at index {position} must be an object")
+        enabled = source.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise ValueError(f"Times source at index {position} has an invalid enabled value")
+        if not enabled:
+            continue
+        values = {field: source.get(field) for field in ("id", "name", "route", "language")}
+        if any(not isinstance(value, str) or not value.strip() for value in values.values()):
+            raise ValueError(f"Times source at index {position} is missing a required string field")
+        source_id = values["id"].strip()
+        route = values["route"].strip()
+        if source_id in seen_ids:
+            raise ValueError(f"Duplicate Times source id: {source_id}")
+        if not route.startswith("/"):
+            raise ValueError(f"Times source route must start with '/': {source_id}")
+        seen_ids.add(source_id)
+        publishers.append(Publisher(
+            source_id,
+            values["name"].strip(),
+            route,
+            values["language"].strip(),
+        ))
+    if not publishers:
+        raise ValueError("Times sources config must enable at least one source")
+    return tuple(publishers)
 
 
 def _local_name(tag: str) -> str:
@@ -113,15 +150,21 @@ def parse_feed(body: bytes, publisher: Publisher) -> list[dict]:
             "content": description[:20_000] or None,
             "url": url,
             "publishedAt": _published_at(_child_text(node, ("pubdate", "date", "published", "updated"))),
-            "source": {"name": publisher.name},
+            "source": {"id": publisher.id, "name": publisher.name, "language": publisher.language},
         })
     return items
 
 
 class TimesFeedService:
-    def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        transport: httpx.AsyncBaseTransport | None = None,
+        publishers: tuple[Publisher, ...] | None = None,
+    ) -> None:
         self._settings = settings
         self._transport = transport
+        self._publishers = publishers if publishers is not None else load_publishers()
         self._cache: list[dict] = []
         self._cache_until = 0.0
         self._lock = asyncio.Lock()
@@ -129,7 +172,7 @@ class TimesFeedService:
     async def _fetch_publisher(self, client: httpx.AsyncClient, publisher: Publisher) -> list[dict] | None:
         try:
             response = await client.get(
-                f"{self._settings.rsshub_url}{publisher.path}",
+                f"{self._settings.rsshub_url}{publisher.route}",
                 params={"limit": FEED_ITEM_LIMIT, "key": self._settings.rsshub_access_key},
             )
             response.raise_for_status()
@@ -151,7 +194,7 @@ class TimesFeedService:
                 transport=self._transport,
                 headers={"Accept": "application/rss+xml, application/atom+xml, application/xml", "User-Agent": USER_AGENT},
             ) as client:
-                tasks = [asyncio.create_task(self._fetch_publisher(client, publisher)) for publisher in PUBLISHERS]
+                tasks = [asyncio.create_task(self._fetch_publisher(client, publisher)) for publisher in self._publishers]
                 done, pending = await asyncio.wait(tasks, timeout=self._settings.rsshub_timeout_seconds)
                 for task in pending:
                     task.cancel()

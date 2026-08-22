@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+from pathlib import Path
 
 import httpx
 import pytest
@@ -12,7 +14,7 @@ from app.core.errors import ApiError
 from app.core.models import CurrentUser
 from app.main import app
 from app.times.router import get_times_service
-from app.times.service import TimesFeedService
+from app.times.service import TimesFeedService, load_publishers
 
 
 def times_settings(**overrides: object) -> Settings:
@@ -28,6 +30,36 @@ def times_settings(**overrides: object) -> Settings:
     }
     values.update(overrides)
     return Settings(**values)  # type: ignore[arg-type]
+
+
+def test_times_sources_are_loaded_from_config(tmp_path: Path) -> None:
+    config_path = tmp_path / "sources.json"
+    config_path.write_text(
+        json.dumps({
+            "version": 1,
+            "sources": [
+                {
+                    "id": "enabled",
+                    "name": "Enabled",
+                    "route": "/enabled",
+                    "language": "en",
+                    "enabled": True,
+                },
+                {
+                    "id": "disabled",
+                    "name": "Disabled",
+                    "route": "/disabled",
+                    "language": "zh-CN",
+                    "enabled": False,
+                },
+            ],
+        }),
+        encoding="utf-8",
+    )
+
+    publishers = load_publishers(config_path)
+
+    assert [(publisher.id, publisher.route) for publisher in publishers] == [("enabled", "/enabled")]
 
 
 def test_times_service_aggregates_protected_rsshub_routes() -> None:

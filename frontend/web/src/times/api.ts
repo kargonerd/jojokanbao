@@ -18,7 +18,7 @@ export type TimesNewsItem = {
   content?: string | null;
   url?: string | null;
   publishedAt: string;
-  source?: { name: string } | null;
+  source?: { id: string; name: string; language: string } | null;
 };
 
 export const timesApi = {

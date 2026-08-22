@@ -30,12 +30,13 @@ JOJOKANBAO_RSSHUB_ACCESS_KEY=<RSSHub 的 ACCESS_KEY>
 - `GET http://127.0.0.1:8088/v1/me`
 - `GET http://127.0.0.1:8088/v1/times/news`
 - `GET http://127.0.0.1:8088/v1/times/news/{news_id}`
-- `GET http://127.0.0.1:8088/v1/times/stats`
 
 Times 使用 `JOJO_TIMES_RSSHUB_URL` 和服务端专用的
 `JOJOKANBAO_RSSHUB_ACCESS_KEY`；它的值就是 Render 上 RSSHub 服务的 `ACCESS_KEY`，
 不是另一把新密钥。访问密钥只存在于 Python API 环境，不能放入任何 `VITE_*` 变量或
-浏览器请求。Times 路由还会校验 JOJO 登录 access token。
+浏览器请求。Times 路由还会校验 JOJO 登录 access token。新闻源在
+`src/app/times/sources.json` 中配置；修改 `enabled` 可以停用来源，不需要修改 Python
+业务代码。
 
 ## 测试
 
