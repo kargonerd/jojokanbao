@@ -109,16 +109,25 @@ class Publisher:
             self.log(f"removed reproducible staging batch: {resolved}")
 
     def rclone_copy(self, source: Path | str, destination: str, includes: list[str] | None = None) -> None:
+        env = os.environ.copy()
+        transfers = max(1, int(os.getenv("B2_UPLOAD_TRANSFERS", "128")))
+        checkers = max(transfers, int(os.getenv("B2_UPLOAD_CHECKERS", "256")))
+        proxy = os.getenv("B2_UPLOAD_PROXY", "").strip()
+        if proxy:
+            env["HTTP_PROXY"] = proxy
+            env["HTTPS_PROXY"] = proxy
+            env["ALL_PROXY"] = proxy
+            env.setdefault("NO_PROXY", "127.0.0.1,localhost")
         command = [
             "rclone", "copy", str(source), destination,
-            "--transfers", "16", "--checkers", "32",
+            "--transfers", str(transfers), "--checkers", str(checkers), "--fast-list",
             "--retries", "10", "--low-level-retries", "20",
         ]
         if includes:
             for pattern in includes:
                 command.extend(["--include", pattern])
             command.extend(["--exclude", "*"])
-        self.run(command, attempts=3)
+        self.run(command, attempts=3, env=env)
 
     def hf_upload(self, folder: Path, includes: list[str] | None = None) -> None:
         workers = max(1, int(os.getenv("HF_UPLOAD_WORKERS", "4")))
@@ -128,6 +137,7 @@ class Publisher:
         # Hub commit is produced. The LFS bridge has lower peak throughput but
         # reliably advances both metadata and commits. Xet remains opt-in.
         env.setdefault("HF_HUB_DISABLE_XET", "1")
+        env.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
         # Xet high-performance mode is intended for hosts with at least 64 GB
         # of RAM.  Keep the resumable Xet transport enabled, but require an
         # explicit opt-in for its much larger buffers/concurrency settings.
@@ -138,17 +148,33 @@ class Publisher:
         env.setdefault("HF_XET_FIXED_UPLOAD_CONCURRENCY", "2")
         env.setdefault("HF_XET_CLIENT_RETRY_MAX_DURATION", "1200s")
         env.setdefault("HF_XET_CLIENT_READ_TIMEOUT", "600s")
+        proxy = os.getenv("HF_UPLOAD_PROXY", "").strip()
+        if proxy:
+            # Scope the temporary multi-exit proxy to Hugging Face only. B2
+            # delivery uploads should keep using their normal route.
+            env["HTTP_PROXY"] = proxy
+            env["HTTPS_PROXY"] = proxy
+            env["ALL_PROXY"] = proxy
+            env.setdefault("NO_PROXY", "127.0.0.1,localhost")
+        state_name = folder.parent.name.replace("/", "-").replace("\\", "-")
         command = [
-            "hf", "upload-large-folder", HF_REPO, str(folder),
-            "--repo-type", "dataset", "--num-workers", str(workers), "--no-bars",
+            sys.executable,
+            str(WORKSPACE / "tools/rmrb-repair/upload_hf_batched.py"),
+            "--source", str(folder),
+            "--repo", HF_REPO,
+            "--state", str(self.work / "hf-batched-state" / f"{state_name}.json"),
+            "--batch-size", "500",
+            "--workers", str(workers),
+            "--commit-message", f"Upload {state_name}",
         ]
         if includes:
-            command.append("--include")
-            command.extend(includes)
+            for pattern in includes:
+                command.extend(["--include", pattern])
         self.log(
-            f"Hugging Face upload: workers={workers}, "
+            f"Hugging Face batched upload: workers={workers}, batchSize=500, "
             f"xetDisabled={env['HF_HUB_DISABLE_XET']}, "
-            f"xetHighPerformance={env['HF_XET_HIGH_PERFORMANCE']}"
+            f"xetHighPerformance={env['HF_XET_HIGH_PERFORMANCE']}, "
+            f"proxy={'enabled' if proxy else 'system'}"
         )
         self.run(command, attempts=20, env=env)
 
@@ -277,9 +303,8 @@ class Publisher:
         ]
         self.run_parallel_uploads({
             "delivery-b2": lambda: self.rclone_copy(
-                batch / "delivery/content/newspapers/rmrb",
-                "jojo-b2-s3:jojo-newspaper/content/newspapers/rmrb",
-                [f"/items/{year}/**"],
+                batch / f"delivery/content/newspapers/rmrb/items/{year}",
+                f"jojo-b2-s3:jojo-newspaper/content/newspapers/rmrb/items/{year}",
             ),
             "huggingface": lambda: self.hf_upload(batch / "huggingface", hf_includes),
         })
@@ -305,9 +330,8 @@ class Publisher:
             pdfs.build_publication(publication, batch, now(), year=year)
         self.run_parallel_uploads({
             "delivery-b2": lambda: self.rclone_copy(
-                batch / "delivery/content/newspapers/rmrb",
-                "jojo-b2-s3:jojo-newspaper/content/newspapers/rmrb",
-                [f"/items/{year}/**"],
+                batch / f"delivery/content/newspapers/rmrb/items/{year}",
+                f"jojo-b2-s3:jojo-newspaper/content/newspapers/rmrb/items/{year}",
             ),
             "huggingface": lambda: self.hf_upload(
                 batch / "huggingface",
