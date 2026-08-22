@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--archive-engine", choices=("browser", "http"), default=os.getenv("JOJO_TIMES_ARCHIVE_ENGINE", "browser"))
     parser.add_argument("--archive-proxy", default=os.getenv("JOJO_TIMES_ARCHIVE_PROXY"))
     parser.add_argument("--archive-browser-executable", default=os.getenv("JOJO_TIMES_BROWSER_EXECUTABLE"))
-    parser.add_argument("--archive-browser-retries", type=int, default=4)
+    parser.add_argument("--archive-browser-retries", type=int, default=1)
     parser.add_argument("--archive-workers", type=int, default=4)
     parser.add_argument("--archive-max-pages", type=int, default=50)
     parser.add_argument("--archive-refresh-hours", type=float, default=24.0)
