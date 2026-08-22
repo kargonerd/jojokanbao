@@ -1,0 +1,19 @@
+{
+  "repository": "https://github.com/kargonerd/jojo-news-archive-runner",
+  "commit": "520b56cca8cd8d229825f1a5bceac8c91e502891",
+  "servicePath": "services/olds-api",
+  "parsers": {
+    "ap": "ap-parser/0.6.21",
+    "wsj": "wsj-parser/0.8.49",
+    "bloomberg": "bloomberg-parser/0.10.300",
+    "nyt": "nyt-parser/0.8.55",
+    "reuters": "reuters-parser/0.7.25",
+    "ft": "ft-parser/0.8.31",
+    "axios": "axios-parser/0.1.9",
+    "npr": "npr-parser/0.1.18",
+    "nikkei": "nikkei-parser/0.1.3",
+    "zaobao": "zaobao-parser/0.1.1",
+    "aljazeera": "aljazeera-parser/0.1.2",
+    "scmp": "scmp-parser/0.1.1"
+  }
+}
