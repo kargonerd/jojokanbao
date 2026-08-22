@@ -575,6 +575,8 @@ def build_times_release(
         "archiveResponses": archive_report["responses"],
         "archivedArticles": archive_report["pages"],
         "archiveArticleFailures": archive_report["articleFailures"],
+        "archiveSucceededArticles": sum(row["succeeded"] for row in archive_by_source.values()),
+        "archiveFailedArticles": sum(row["failed"] for row in archive_by_source.values()),
         "archiveWarcBytes": archive_report["warcBytes"],
         "archiveWaczBytes": archive_report["waczBytes"],
         "archiveBySource": sorted(archive_by_source.values(), key=lambda row: row["sourceId"]),

@@ -377,10 +377,8 @@ async def _browser_attempt(
         except PlaywrightError as exc:
             navigation_error = type(exc).__name__
 
-        exchanges: list[HttpExchange] = []
-        captured_bytes = 0
         main_status: int | None = None
-        captured_at = datetime.now(timezone.utc).isoformat()
+        response_rows: list[tuple[Any, str, bool]] = []
         for response in observed:
             request_url = str(response.url)
             if not request_url.startswith(("http://", "https://")):
@@ -388,12 +386,26 @@ async def _browser_attempt(
             is_page = _is_page_response(response, page)
             if is_page:
                 main_status = int(response.status)
+            response_rows.append((response, request_url, is_page))
+
+        async def read_response(row: tuple[Any, str, bool]) -> tuple[Any, str, bool, bytes]:
+            response, request_url, is_page = row
+            try:
+                body = await asyncio.wait_for(
+                    response.body(),
+                    timeout=min(timeout_seconds, 5.0),
+                )
+            except (PlaywrightError, asyncio.TimeoutError):
+                body = b""
+            return response, request_url, is_page, body
+
+        response_bodies = await asyncio.gather(*(read_response(row) for row in response_rows))
+        exchanges: list[HttpExchange] = []
+        captured_bytes = 0
+        captured_at = datetime.now(timezone.utc).isoformat()
+        for response, request_url, is_page, body in response_bodies:
             if not is_page and captured_bytes >= maximum_page_bytes:
                 continue
-            try:
-                body = await response.body()
-            except PlaywrightError:
-                body = b""
             remaining = maximum_page_bytes - captured_bytes
             if is_page:
                 remaining = max(remaining, maximum_response_bytes)
@@ -767,7 +779,13 @@ def write_web_archive(
         "sources": source_statuses,
         "feedResponses": len(list(raw_feeds)),
         "articleAttempts": len(captures),
-        "articleFailures": sum(capture.error is not None or capture.final_exchange is None for capture in captures),
+        "articleFailures": sum(
+            capture.error is not None
+            or capture.final_exchange is None
+            or capture.final_exchange.status_code < 200
+            or capture.final_exchange.status_code >= 400
+            for capture in captures
+        ),
         **metrics,
     }
     (run_root / "run.json").write_bytes(_json_bytes(run_value))
