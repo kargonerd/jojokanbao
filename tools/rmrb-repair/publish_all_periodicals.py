@@ -123,7 +123,16 @@ class Publisher:
     def hf_upload(self, folder: Path, includes: list[str] | None = None) -> None:
         workers = max(1, int(os.getenv("HF_UPLOAD_WORKERS", "2")))
         env = os.environ.copy()
-        env.setdefault("HF_XET_HIGH_PERFORMANCE", "1")
+        # Xet high-performance mode is intended for hosts with at least 64 GB
+        # of RAM.  Keep the resumable Xet transport enabled, but require an
+        # explicit opt-in for its much larger buffers/concurrency settings.
+        env.setdefault("HF_XET_HIGH_PERFORMANCE", "0")
+        # The current proxy path has modest aggregate bandwidth. Two long-lived
+        # streams complete Xet's ~61 MB transfer units reliably; more streams
+        # divide the same bandwidth and can hit the default retry deadline.
+        env.setdefault("HF_XET_FIXED_UPLOAD_CONCURRENCY", "2")
+        env.setdefault("HF_XET_CLIENT_RETRY_MAX_DURATION", "1200s")
+        env.setdefault("HF_XET_CLIENT_READ_TIMEOUT", "600s")
         command = [
             "hf", "upload-large-folder", HF_REPO, str(folder),
             "--repo-type", "dataset", "--num-workers", str(workers), "--no-bars",

@@ -513,7 +513,12 @@ def _count_release_documents(
 
 def publish_huggingface(build_root: Path, on_log: Callable[[str], None]) -> dict[str, Any]:
     _load_root_env()
-    os.environ.setdefault("HF_XET_HIGH_PERFORMANCE", "1")
+    # Xet high-performance mode can regress throughput on machines with less
+    # than 64 GB of RAM. Keep Xet enabled, with high-performance as opt-in.
+    os.environ.setdefault("HF_XET_HIGH_PERFORMANCE", "0")
+    os.environ.setdefault("HF_XET_FIXED_UPLOAD_CONCURRENCY", "2")
+    os.environ.setdefault("HF_XET_CLIENT_RETRY_MAX_DURATION", "1200s")
+    os.environ.setdefault("HF_XET_CLIENT_READ_TIMEOUT", "600s")
     token = _huggingface_token()
     repo_id = os.getenv("HF_DATASET_REPO", "")
     if not token or not repo_id:
