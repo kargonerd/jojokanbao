@@ -10,7 +10,7 @@ JOJO 用同一套外壳保存书籍、报纸和杂志，但明确区分三类数
 - Canonical：清晰、规范、可以重建一切派生数据的唯一真值。
 - Delivery：供 Reader 和 Agent 从 CDN 读取的拆分、压缩、Jox 混淆对象。
 
-Elasticsearch、Hugging Face 和 EPUB 都是派生数据，不是真值。格式不包含 `rights`；将来确有权限管理需求时再单独升级版本。
+Elasticsearch 和 EPUB 是派生数据。书籍仍以私有 B2 Canonical 为真值；报纸和杂志不上传独立 Raw 或私有 B2 Canonical，而以 Hugging Face Dataset 中的 Canonical JSON、索引和可读 PDF 为真值。格式不包含 `rights`；将来确有权限管理需求时再单独升级版本。
 
 ## 1. 两个 B2 Bucket
 
@@ -48,6 +48,8 @@ Raw 书籍采用 `书名--来源ID.扩展名`，直接平铺在来源目录。�
 报纸和杂志数量较多，Raw 按来源、年份、月份、日期或期号分片。
 
 Canonical 不保存根 `catalog.json`，也不保存 `search/` 副本。重建任务通过 `canonical/**/dataset.json` 发现 Dataset，并从 Canonical Item 临时生成 ES 文档。
+
+`jojo-news-raw/canonical/newspapers/` 和 `canonical/magazines/` 只保留已经上传的历史对象；新的报刊发布任务不再写入这两个前缀。报刊 Canonical 发布到 Hugging Face，B2 只保存应用交付所需的 Delivery 对象。
 
 ### 1.2 `jojo-newspaper`
 
@@ -834,13 +836,23 @@ pnpm --filter @jojo/content-pipeline validate -- "C:\temp\jojo-build"
 
 ## 9. 发布边界
 
-发布到 B2：
+书籍发布边界：
 
 ```text
 本地 raw/       → jojo-news-raw/raw/
 本地 canonical/ → jojo-news-raw/canonical/
 本地 delivery/  → jojo-newspaper/
 ```
+
+报纸和杂志发布边界：
+
+```text
+本地 canonical/ → Hugging Face Dataset
+本地 delivery/  → jojo-newspaper/
+本地 raw/       → 不上传
+```
+
+报刊已存在的私有 B2 Canonical 对象不会在发布过程中自动删除；清理必须作为单独、显式确认的操作执行。
 
 发布顺序：
 
