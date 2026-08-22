@@ -121,7 +121,7 @@ class Publisher:
         self.run(command, attempts=3)
 
     def hf_upload(self, folder: Path, includes: list[str] | None = None) -> None:
-        workers = max(1, int(os.getenv("HF_UPLOAD_WORKERS", "4")))
+        workers = max(1, int(os.getenv("HF_UPLOAD_WORKERS", "2")))
         env = os.environ.copy()
         env.setdefault("HF_XET_HIGH_PERFORMANCE", "1")
         command = [
