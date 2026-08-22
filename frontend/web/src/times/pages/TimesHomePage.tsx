@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { timesApi, type TimesNewsItem, type TimesStats } from "../api";
+import { timesApi, type TimesNewsItem } from "../api";
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -15,17 +15,15 @@ function formatDate(value: string) {
 
 export function TimesHomePage() {
   const [news, setNews] = useState<TimesNewsItem[]>([]);
-  const [stats, setStats] = useState<TimesStats>({ total: 0, sourceCount: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    void Promise.all([timesApi.listNews(), timesApi.getStats()])
-      .then(([nextNews, nextStats]) => {
+    void timesApi.listNews()
+      .then((nextNews) => {
         if (!active) return;
         setNews(nextNews);
-        setStats(nextStats);
       })
       .catch((reason: unknown) => {
         if (active) setError(reason instanceof Error ? reason.message : "时事服务暂时不可用");
@@ -41,9 +39,6 @@ export function TimesHomePage() {
       <section className="mx-auto max-w-5xl">
         <div className="border-b-4 border-red pb-5">
           <h1 className="mt-4 text-4xl font-black tracking-[0.08em] md:text-5xl">今日时事</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-muted">
-            当前汇总 {stats.sourceCount} 个来源、{stats.total} 条新闻。
-          </p>
         </div>
 
         {loading ? <p className="mt-8 text-sm text-muted">正在读取新闻…</p> : null}

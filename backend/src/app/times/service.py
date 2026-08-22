@@ -188,7 +188,3 @@ class TimesFeedService:
 
     async def get_news(self, news_id: str) -> dict | None:
         return next((item for item in await self.all_news() if item["id"] == news_id), None)
-
-    async def stats(self) -> dict:
-        news = await self.all_news()
-        return {"total": len(news), "sourceCount": len({item["source"]["name"] for item in news})}

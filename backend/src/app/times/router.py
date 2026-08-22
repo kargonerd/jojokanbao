@@ -31,8 +31,3 @@ async def get_news(news_id: str, service: TimesFeedService = Depends(get_times_s
     if news is None:
         raise HTTPException(status_code=404, detail="News not found")
     return news
-
-
-@router.get("/stats")
-async def stats(service: TimesFeedService = Depends(get_times_service)):
-    return await service.stats()

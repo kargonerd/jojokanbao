@@ -21,10 +21,7 @@ export type TimesNewsItem = {
   source?: { name: string } | null;
 };
 
-export type TimesStats = { total: number; sourceCount: number };
-
 export const timesApi = {
   listNews: () => request<TimesNewsItem[]>("/news?limit=100"),
-  getStats: () => request<TimesStats>("/stats"),
   getNews: (newsId: string) => request<TimesNewsItem>(`/news/${encodeURIComponent(newsId)}`),
 };

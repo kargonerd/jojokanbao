@@ -110,9 +110,6 @@ def test_times_routes_return_web_contract() -> None:
         async def get_news(self, news_id: str):
             return item if news_id == item["id"] else None
 
-        async def stats(self):
-            return {"total": 1, "sourceCount": 1}
-
     async def authenticated_user() -> CurrentUser:
         return CurrentUser(id="reader-1")
 
@@ -123,7 +120,7 @@ def test_times_routes_return_web_contract() -> None:
 
         app.dependency_overrides[get_current_user] = authenticated_user
         assert client.get("/v1/times/news").json() == [item]
-        assert client.get("/v1/times/stats").json() == {"total": 1, "sourceCount": 1}
+        assert client.get("/v1/times/stats").status_code == 404
         assert client.get("/v1/times/news/news-1").json() == item
         assert client.get("/v1/times/news/missing").status_code == 404
         assert client.get("/v1/times/ai/digest").status_code == 404
