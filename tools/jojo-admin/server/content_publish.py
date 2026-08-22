@@ -513,6 +513,10 @@ def _count_release_documents(
 
 def publish_huggingface(build_root: Path, on_log: Callable[[str], None]) -> dict[str, Any]:
     _load_root_env()
+    # The current proxy accepts Xet payloads but can stall final shard
+    # registration indefinitely. Prefer the resumable LFS bridge by default;
+    # operators can opt back into Xet with HF_HUB_DISABLE_XET=0.
+    os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
     # Xet high-performance mode can regress throughput on machines with less
     # than 64 GB of RAM. Keep Xet enabled, with high-performance as opt-in.
     os.environ.setdefault("HF_XET_HIGH_PERFORMANCE", "0")
@@ -530,7 +534,7 @@ def publish_huggingface(build_root: Path, on_log: Callable[[str], None]) -> dict
     api.create_repo(repo_id=repo_id, repo_type="dataset", private=private, exist_ok=True)
     on_log(f"开始上传{'私有' if private else '公开'} Hugging Face Dataset：{repo_id}")
     snapshot, snapshot_stats = _prepare_huggingface_snapshot(build_root, on_log)
-    workers = max(1, int(os.getenv("HF_UPLOAD_WORKERS", "2")))
+    workers = max(1, int(os.getenv("HF_UPLOAD_WORKERS", "4")))
     api.upload_large_folder(
         folder_path=str(snapshot),
         repo_id=repo_id,

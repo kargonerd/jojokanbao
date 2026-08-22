@@ -62,11 +62,12 @@ JOJO_DELIVERY_REMOTE=jojo-b2-s3:jojo-newspaper
 ES_CONTENT_INDEX=<existing Elasticsearch index>
 HF_DATASET_REPO=luoxiaozhuang/marxism-dataset
 HF_DATASET_PRIVATE=false
+HF_HUB_DISABLE_XET=1  # 当前代理链路使用可可靠提交的 LFS；稳定直连环境可设为 0
 HF_XET_HIGH_PERFORMANCE=0  # 64 GB+ RAM hosts may set this to 1
 HF_XET_FIXED_UPLOAD_CONCURRENCY=2
 HF_XET_CLIENT_RETRY_MAX_DURATION=1200s
 HF_XET_CLIENT_READ_TIMEOUT=600s
-HF_UPLOAD_WORKERS=2
+HF_UPLOAD_WORKERS=4
 ```
 
 S3 兼容入口发布时会显式使用 `--s3-no-check-bucket`，避免 rclone 对既有 B2 Bucket
