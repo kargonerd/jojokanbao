@@ -275,11 +275,7 @@ class Publisher:
         }
         self.save_state()
 
-    def publish_rmrb_year(self, year: str) -> None:
-        marker = f"rmrb:{year}"
-        if marker in self.state["completed"]:
-            self.log(f"skip completed {marker}")
-            return
+    def prepare_rmrb_year(self, year: str) -> Path:
         batch = self.work / f"rmrb-{year}"
         if not (batch / "_SUCCESS.json").is_file():
             if batch.exists():
@@ -295,6 +291,15 @@ class Publisher:
                 "--snapshot-id", self.args.snapshot_id,
                 "--pdf-root", str(pdf_root),
             ])
+        return batch
+
+    def publish_prepared_rmrb_year(self, year: str, batch: Path) -> None:
+        marker = f"rmrb:{year}"
+        if marker in self.state["completed"]:
+            self.log(f"skip completed {marker}")
+            return
+        if not (batch / "_SUCCESS.json").is_file():
+            raise RuntimeError(f"Prepared batch is missing success marker: {batch}")
         hf_includes = [
             f"newspapers/rmrb/items/{year}/**",
             f"newspapers/rmrb/assets/pdfs/{year}/**",
@@ -316,6 +321,30 @@ class Publisher:
         if cache.is_dir():
             shutil.rmtree(cache)
             self.log(f"removed downloaded legacy PDF cache: {cache}")
+
+    def publish_rmrb_years_pipelined(self, years: list[str]) -> None:
+        pending = [year for year in years if f"rmrb:{year}" not in self.state["completed"]]
+        for year in years:
+            if year not in pending:
+                self.log(f"skip completed rmrb:{year}")
+        if not pending:
+            return
+
+        # Preparation is CPU/disk-heavy while publishing is network-heavy.
+        # Keep one year staged ahead so those resources work concurrently,
+        # without multiplying temporary disk usage beyond two annual batches.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            prepared = self.prepare_rmrb_year(pending[0])
+            for index, year in enumerate(pending):
+                next_future: concurrent.futures.Future[Path] | None = None
+                if index + 1 < len(pending):
+                    next_year = pending[index + 1]
+                    self.log(f"pipeline prefetch started: rmrb:{next_year}")
+                    next_future = executor.submit(self.prepare_rmrb_year, next_year)
+                self.publish_prepared_rmrb_year(year, prepared)
+                if next_future is not None:
+                    prepared = next_future.result()
+                    self.log(f"pipeline prefetch completed: rmrb:{pending[index + 1]}")
 
     def publish_rmrb_2026(self) -> None:
         year = "2026"
@@ -446,8 +475,7 @@ class Publisher:
         for slug in ("ckxx", "rmhb", "sjzs"):
             self.publish_pdf_collection(slug)
         years = self.split_rmrb_source()
-        for year in years:
-            self.publish_rmrb_year(year)
+        self.publish_rmrb_years_pipelined(years)
         self.publish_rmrb_2026()
         self.finalize_rmrb()
         self.log("ALL PERIODICAL PUBLICATION TASKS COMPLETED")
