@@ -14,6 +14,7 @@
     "nikkei": "nikkei-parser/0.1.3",
     "zaobao": "zaobao-parser/0.1.1",
     "aljazeera": "aljazeera-parser/0.1.2",
-    "scmp": "scmp-parser/0.1.1"
+    "scmp": "scmp-parser/0.1.1",
+    "caixin": "caixin-parser/0.1.0"
   }
 }
