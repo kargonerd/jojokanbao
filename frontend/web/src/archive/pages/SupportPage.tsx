@@ -28,7 +28,7 @@ const downloads = [
 
 export function SupportPage({ platformRedesign = rollout.platformRedesign }: { platformRedesign?: boolean }) {
   return (
-    <div className="h-full overflow-y-auto bg-paper">
+    <div className={`h-full overflow-y-auto ${platformRedesign ? "bg-[var(--app-canvas)]" : "bg-paper"}`}>
       <div className="max-w-[960px] mx-auto px-5 py-7 md:px-10">
         <div className="p-8 md:p-10 border-4 border-red shadow-[inset_0_0_0_8px_var(--color-paper),inset_0_0_0_10px_var(--color-red)]">
 

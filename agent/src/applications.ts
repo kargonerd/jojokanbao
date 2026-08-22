@@ -16,11 +16,11 @@ scan_full_item 下载全本到工具侧并在本地扫描，但不会把全书�
   };
 }
 
-export function createOldsAgentDefinition(): PlatformAgentDefinition {
+export function createTimesAgentDefinition(): PlatformAgentDefinition {
   return {
-    id: "olds",
+    id: "times",
     status: "placeholder",
-    systemPrompt: "你是 JOJO 旧闻资料助手。旧闻检索尚未接入，不要编造检索结果或来源。",
+    systemPrompt: "你是 JOJO 时事资料助手。历史资料检索尚未接入，不要编造检索结果或来源。",
     createTools: () => [],
   };
 }

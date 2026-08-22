@@ -1,13 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.account.router import router
+from app.account.router import router as account_router
 from app.core.config import get_settings
 from app.core.http_middleware import (
     ResponseHeadersMiddleware,
     UnhandledErrorMiddleware,
     install_exception_handlers,
 )
+from app.times.router import router as times_router
 
 
 settings = get_settings()
@@ -28,4 +29,5 @@ app.add_middleware(
 )
 app.add_middleware(ResponseHeadersMiddleware)
 install_exception_handlers(app)
-app.include_router(router, prefix="/v1")
+app.include_router(account_router, prefix="/v1")
+app.include_router(times_router, prefix="/v1/times")

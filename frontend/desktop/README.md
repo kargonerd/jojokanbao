@@ -1,8 +1,8 @@
 # JOJO看报 Desktop
 
-`@jojo/desktop` 是 JOJO看报新版平台的 Electron 客户端。Renderer 直接复用 Web 的
-`PlatformLayout`、`PlatformHeader`、首页、资料库、搜索、报刊/书籍阅读器、JOJO 问答和 Account；
-旧版 Archive 首页、暂时关闭的今日旧闻与尚待重做的 Press 不进入桌面导航或 renderer 构建。
+`@jojo/desktop` 是 JOJO看报新版 Web 体验的 Electron 客户端。Renderer 直接复用 Web 的
+`AppLayout`、`AppHeader`、首页、资料库、搜索、报刊/书籍阅读器、AI 和 Account；
+旧版 Archive 首页、暂时关闭的 JOJO Times（时事）与尚待重做的 Press 不进入桌面导航或 renderer 构建。
 
 当前目录边界：
 
@@ -16,7 +16,7 @@
 - `src/main.tsx`：统一 Desktop Shell 的 React renderer 入口。
 - `src/shell/`：桌面运行时适配和顶层模块路由，不实现第二套 UI 框架。
 - `src/press/`：暂未启用的 Press 源码，当前不会进入路由或 renderer 构建。
-- `../web/src/desktop.ts`：从新版 Web 平台向 Desktop 暴露的稳定模块入口。
+- `../web/src/desktop.ts`：从新版 Web 向 Desktop 暴露的稳定模块入口。
 - `../web/src/desktop.css`：完整的跨运行时样式入口，统一加载 UI token、基础控件样式，
   并为 Web 业务模块生成 Tailwind utilities；Desktop 不单独复制页面样式。
 - `src/electron.d.ts`：renderer 使用的 preload bridge 类型。
@@ -44,7 +44,7 @@ Desktop 顶层路由：
 - `/`：今日阅读工作台。
 - `/library`、`/archive/*`、`/book/*`：与 Web 共用的报刊/书籍资料库和阅读器。
 - `/search`：与 Web 共用的报刊正文搜索。
-- `/rag/*`：JOJO 问答，入口与路由统一由 `rag.workspace` feature flag 控制。
+- `/rag/*`：AI，仅登录读者可见、可访问。
 - `/account`：登录、注册和书架同步；未配置 Supabase 时显示可操作的配置提示。
 
 生产环境从 `dist/index.html` 以 hash 路由启动，开发环境使用 browser 路由。主进程启用

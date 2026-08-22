@@ -272,7 +272,7 @@ test("browser download restores a readable PDF with the issue filename", async (
   expect(Buffer.concat(chunks).subarray(0, 5).toString("ascii")).toBe("%PDF-");
 });
 
-test("reader controls close consistently and keep the platform navigation", async ({ page }) => {
+test("reader controls close consistently and keep the app navigation", async ({ page }) => {
   const pdf = makeDemandLoadedPdf(1_000);
   await page.route("https://blacknews.jojokanbao.cn/**/*.pdf", async (route) => {
     const range = route.request().headers().range;

@@ -1,11 +1,9 @@
 import { create } from "zustand";
-import { platformAccountConfigured, usePlatformAccountStore } from "./platform/accountSession";
+import { accountSessionConfigured, useAccountSessionStore } from "./account/session";
 
 export const FEATURE_FLAG_KEYS = [
   "library.bookshelf",
   "reader.annotations",
-  "rag.workspace",
-  "olds.workspace",
 ] as const;
 
 export type FeatureFlagKey = typeof FEATURE_FLAG_KEYS[number];
@@ -17,7 +15,7 @@ const disabledFlags = (): FeatureFlagValues => Object.fromEntries(
 
 function migrationCompatibilityFlags(): FeatureFlagValues {
   const flags = disabledFlags();
-  if (usePlatformAccountStore.getState().userId) {
+  if (useAccountSessionStore.getState().userId) {
     flags["library.bookshelf"] = true;
     flags["reader.annotations"] = true;
   }
@@ -60,7 +58,7 @@ let refreshSequence = 0;
 export async function refreshFeatureFlags(): Promise<void> {
   const sequence = ++refreshSequence;
   useFeatureFlagStore.setState({ initialized: false });
-  if (!platformAccountConfigured) {
+  if (!accountSessionConfigured) {
     useFeatureFlagStore.setState({ initialized: true, revision: "local-unconfigured", flags: disabledFlags() });
     return;
   }

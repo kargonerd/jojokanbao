@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  createOldsAgentDefinition,
+  createTimesAgentDefinition,
   createRagAgentDefinition,
 } from "../src";
 
@@ -14,9 +14,9 @@ describe("Agent application definitions", () => {
     expect(definition.systemPrompt).toContain("list_item_toc");
   });
 
-  it("keeps Olds as a placeholder without fake tools", () => {
-    const definition = createOldsAgentDefinition();
-    expect(definition.id).toBe("olds");
+  it("keeps Times as a placeholder without fake tools", () => {
+    const definition = createTimesAgentDefinition();
+    expect(definition.id).toBe("times");
     expect(definition.status).toBe("placeholder");
     expect(definition.createTools()).toEqual([]);
   });

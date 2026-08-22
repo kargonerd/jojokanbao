@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useAccountSessionStore } from "../account/session";
 import { useFeatureFlag } from "../featureFlags";
-import { usePlatformAccountStore } from "../platform/accountSession";
 import { AnnotationDiscussionPanel } from "./AnnotationDiscussionPanel";
 import { renderAnnotationMarks, textAnchorFromRange } from "./domAnchors";
 import type { AnnotationSubject, TextAnchor } from "./types";
@@ -15,7 +15,7 @@ interface SelectionState {
 
 export function SelectableAnnotationArticle({ subject, children }: { subject: AnnotationSubject; children: ReactNode }) {
   const enabled = useFeatureFlag("reader.annotations");
-  const currentUserId = usePlatformAccountStore((state) => state.userId);
+  const currentUserId = useAccountSessionStore((state) => state.userId);
   const access = enabled && Boolean(currentUserId);
   const annotations = useAnnotationThreads(subject, access);
   const rootRef = useRef<HTMLDivElement>(null);

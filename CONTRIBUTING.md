@@ -28,7 +28,7 @@ pnpm test:backend
 1. 从最新 `master` 创建短期分支。
 2. 每个 PR 只解决一个清晰问题，并补充相应测试和文档。
 3. 不得提交 token、密码、私钥、生产数据或本地 `.env`。
-4. 不得绕过功能开关启用尚未上线的 Account、RAG 或 Olds 功能。
+4. 不得绕过功能开关启用尚未上线的 Account、RAG 或 Times 功能。
 5. 修改 `.github/workflows/` 时保持最小权限，并将所有 Action 固定到完整 commit SHA。
 6. PR 必须通过仓库要求的检查、代码所有者审核和 review。
 

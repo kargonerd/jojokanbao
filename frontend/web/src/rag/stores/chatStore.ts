@@ -1,6 +1,8 @@
 import { create } from "zustand";
-import { notebookApi, askStream } from "../api";
-import type { RagMessage, RagNotebook, RagSource } from "../types";
+import { askStream, notebookApi } from "../api";
+import type { RagMessage, RagNotebook } from "../types";
+
+export type ChatScopeMode = "single" | "multiple";
 
 function readStoredMessages(value: string | null): RagMessage[] {
   if (!value) return [];
@@ -18,11 +20,26 @@ function readStoredMessages(value: string | null): RagMessage[] {
   }
 }
 
+function scopeStorageKey(datasetIds: string[]): string | null {
+  if (!datasetIds.length) return null;
+  return `rag-messages-${[...datasetIds].sort().join(",")}`;
+}
+
+function restoredScope(datasetIds: string[]) {
+  const storageKey = scopeStorageKey(datasetIds);
+  return {
+    selectedNotebookIds: datasetIds,
+    messages: readStoredMessages(storageKey ? localStorage.getItem(storageKey) : null),
+    conversationId: null,
+    streamContent: "",
+    error: null,
+  };
+}
+
 interface ChatState {
   notebooks: RagNotebook[];
-  selectedNotebook: string | null;
-  sources: RagSource[];
-  selectedSourceIds: string[];
+  selectedNotebookIds: string[];
+  scopeMode: ChatScopeMode;
   messages: RagMessage[];
   loading: boolean;
   error: string | null;
@@ -30,17 +47,17 @@ interface ChatState {
   streamContent: string;
   conversationId: string | null;
   loadNotebooks: () => Promise<void>;
-  selectNotebook: (id: string) => Promise<void>;
-  toggleSource: (id: string) => void;
+  selectNotebook: (id: string) => void;
+  toggleNotebook: (id: string) => void;
+  setScopeMode: (mode: ChatScopeMode) => void;
   sendMessage: (question: string) => void;
   clearConversation: () => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
   notebooks: [],
-  selectedNotebook: null,
-  sources: [],
-  selectedSourceIds: [],
+  selectedNotebookIds: [],
+  scopeMode: "single",
   messages: [],
   loading: false,
   error: null,
@@ -52,62 +69,70 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const notebooks = await notebookApi.list();
-      set({ notebooks, loading: false });
       const saved = localStorage.getItem("rag-last-notebook");
-      if (saved && notebooks.some((notebook) => notebook.id === saved)) await get().selectNotebook(saved);
-      else if (notebooks[0]) await get().selectNotebook(notebooks[0].id);
-    } catch (error) {
-      set({ loading: false, error: error instanceof Error ? error.message : "知识库加载失败" });
-    }
-  },
-
-  selectNotebook: async (id) => {
-    set({ selectedNotebook: id, sources: [], selectedSourceIds: [], messages: [], conversationId: null, loading: true, error: null });
-    localStorage.setItem("rag-last-notebook", id);
-    try {
-      const sources = await notebookApi.getSources(id);
+      const initial = notebooks.find((notebook) => notebook.id === saved) ?? notebooks[0];
       set({
-        sources,
-        selectedSourceIds: sources.map((source) => source.id),
-        messages: readStoredMessages(localStorage.getItem(`rag-messages-${id}`)),
+        notebooks,
         loading: false,
+        ...(initial ? restoredScope([initial.id]) : restoredScope([])),
       });
     } catch (error) {
-      set({ loading: false, error: error instanceof Error ? error.message : "知识库来源加载失败" });
+      set({ loading: false, error: error instanceof Error ? error.message : "书目加载失败" });
     }
   },
 
-  toggleSource: (id) => set((s) => ({
-    selectedSourceIds: s.selectedSourceIds.includes(id)
-      ? s.selectedSourceIds.filter((x) => x !== id)
-      : [...s.selectedSourceIds, id],
-  })),
+  selectNotebook: (id) => {
+    localStorage.setItem("rag-last-notebook", id);
+    set({ scopeMode: "single", ...restoredScope([id]) });
+  },
+
+  toggleNotebook: (id) => set((state) => {
+    const selectedNotebookIds = state.selectedNotebookIds.includes(id)
+      ? state.selectedNotebookIds.filter((candidate) => candidate !== id)
+      : [...state.selectedNotebookIds, id];
+    const lastSelectedNotebookId = selectedNotebookIds.at(-1);
+    if (lastSelectedNotebookId) localStorage.setItem("rag-last-notebook", lastSelectedNotebookId);
+    return restoredScope(selectedNotebookIds);
+  }),
+
+  setScopeMode: (scopeMode) => set((state) => {
+    if (scopeMode === state.scopeMode) return {};
+    const selectedNotebookIds = scopeMode === "single"
+      ? [state.selectedNotebookIds[0] ?? state.notebooks[0]?.id].filter((id): id is string => Boolean(id))
+      : state.selectedNotebookIds;
+    if (scopeMode === "single" && selectedNotebookIds[0]) {
+      localStorage.setItem("rag-last-notebook", selectedNotebookIds[0]);
+    }
+    return { scopeMode, ...restoredScope(selectedNotebookIds) };
+  }),
 
   sendMessage: (question) => {
-    const { selectedNotebook, selectedSourceIds, messages, conversationId } = get();
-    if (!selectedNotebook || !question.trim()) return;
+    const { selectedNotebookIds, messages, conversationId, streaming } = get();
+    if (!selectedNotebookIds.length || !question.trim() || streaming) return;
     const newMessages = [...messages, { role: "user" as const, content: question }];
     set({ messages: newMessages, streaming: true, streamContent: "", error: null });
 
     let content = "";
     askStream(
-      { dataset_id: selectedNotebook, question, conversation_id: conversationId || undefined, item_ids: selectedSourceIds },
+      { datasetIds: selectedNotebookIds, question, conversationId: conversationId || undefined },
       (chunk) => { content += chunk; set({ streamContent: content }); },
       (refs, nextConversationId) => {
         const final = [...newMessages, { role: "assistant" as const, content, references: refs }];
         set({ messages: final, streaming: false, streamContent: "", conversationId: nextConversationId ?? conversationId });
-        localStorage.setItem(`rag-messages-${selectedNotebook}`, JSON.stringify(final));
+        const storageKey = scopeStorageKey(selectedNotebookIds);
+        if (storageKey) localStorage.setItem(storageKey, JSON.stringify(final));
       },
       (err) => {
         const final = [...newMessages, { role: "assistant" as const, content: `错误: ${err}` }];
         set({ messages: final, streaming: false, streamContent: "", error: err });
-      }
+      },
     );
   },
 
   clearConversation: () => {
-    const { selectedNotebook } = get();
+    const { selectedNotebookIds } = get();
     set({ messages: [], conversationId: null, streamContent: "", error: null });
-    if (selectedNotebook) localStorage.removeItem(`rag-messages-${selectedNotebook}`);
+    const storageKey = scopeStorageKey(selectedNotebookIds);
+    if (storageKey) localStorage.removeItem(storageKey);
   },
 }));

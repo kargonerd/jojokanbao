@@ -1,37 +1,15 @@
-import axios from "axios";
 import { loadCatalog, loadDataset } from "./content";
 import type {
-  RagAdminAccount,
-  RagAdminConfig,
-  RagAnalysis,
   RagNotebook,
-  RagPerson,
   RagReference,
   RagSource,
-  RagSourceDocument,
 } from "./types";
 
-const BASE = (import.meta.env.VITE_RAG_API_BASE || "").replace(/\/$/, "");
-const AGENT_URL = import.meta.env.VITE_AGENT_API_URL?.trim();
-
-type HttpMethod = "delete" | "get" | "post" | "put";
+const AGENT_URL = "/gateway/ask";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
-
-async function request<T>(method: HttpMethod, url: string, data?: unknown, token?: string): Promise<T> {
-  const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await axios({ method, url: `${BASE}${url}`, data, headers });
-  const body: unknown = res.data;
-  if (isRecord(body) && body.success === false) {
-    throw new Error(typeof body.error === "string" ? body.error : "请求失败");
-  }
-  if (isRecord(body) && "data" in body) return body.data as T;
-  return body as T;
-}
-
 // Public
 export const notebookApi = {
   list: async (): Promise<RagNotebook[]> => (await loadCatalog()).datasets.filter((dataset) => dataset.publicationStatus !== "draft").map((dataset) => ({
@@ -52,22 +30,11 @@ export const notebookApi = {
   getSourceFulltext: () => Promise.reject(new Error("请通过章节或 Agent 按需读取内容")),
 };
 
-export const catalogApi = {
-  listNotebooks: () => request<RagNotebook[]>("get", "/api/catalog/notebooks"),
-  getNotebook: (id: string) => request<RagNotebook>("get", `/api/catalog/notebooks/${encodeURIComponent(id)}`),
-  getSourceDocument: (nid: string, sid: string) => request<RagSourceDocument>("get", `/api/catalog/notebooks/${nid}/sources/${sid}/document`),
-  getSourceChapter: (nid: string, sid: string, chapterId: string) => request<string | { text?: string }>("get", `/api/catalog/notebooks/${nid}/sources/${sid}/chapters/${chapterId}`),
-  getPersons: (nid: string, sid: string) => request<RagPerson[]>("get", `/api/catalog/notebooks/${nid}/sources/${sid}/analysis/persons`),
-  getPersonEvents: (nid: string, sid: string, name: string) => request<RagAnalysis>("get", `/api/catalog/notebooks/${nid}/sources/${sid}/analysis/persons/${encodeURIComponent(name)}/events`),
-  getTimeline: (nid: string, sid: string, query: string) => request<RagAnalysis>("post", `/api/catalog/notebooks/${nid}/sources/${sid}/analysis/timeline`, { query }),
-  getRelations: (nid: string, sid: string, query: string) => request<RagAnalysis>("post", `/api/catalog/notebooks/${nid}/sources/${sid}/analysis/relations`, { query }),
-};
-
 // Chat (streaming)
-export function askStream(params: { dataset_id: string; question: string; conversation_id?: string; item_ids?: string[]; manifest_objects?: string[] }, onChunk: (text: string) => void, onDone: (refs?: RagReference[], conversationId?: string) => void, onError: (err: string) => void) {
+export function askStream(params: { datasetIds: string[]; question: string; conversationId?: string; itemIds?: string[]; manifestObjects?: string[] }, onChunk: (text: string) => void, onDone: (refs?: RagReference[], conversationId?: string) => void, onError: (err: string) => void) {
   const ctrl = new AbortController();
   let settled = false;
-  const conversationId = params.conversation_id || `conv_${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`;
+  const conversationId = params.conversationId || `conv_${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`;
   const references = new Map<string, RagReference>();
   const finish = (references?: RagReference[]) => {
     if (settled) return;
@@ -76,12 +43,11 @@ export function askStream(params: { dataset_id: string; question: string; conver
   };
 
   void (async () => {
-    if (!AGENT_URL) throw new Error("书内 AI 服务尚未部署");
     const { authClient } = await import("../account/auth");
     const { data, error } = await authClient.auth.getSession();
     if (error) throw error;
     const token = data.session?.access_token;
-    if (!token) throw new Error("请先登录后使用 JOJO Agent");
+    if (!token) throw new Error("请先登录后使用 AI");
     const response = await fetch(AGENT_URL, {
       method: "POST",
       headers: {
@@ -92,9 +58,9 @@ export function askStream(params: { dataset_id: string; question: string; conver
       body: JSON.stringify({
         message: params.question,
         scope: {
-          datasetIds: [params.dataset_id],
-          itemIds: params.item_ids ?? [],
-          manifestObjects: params.manifest_objects ?? [],
+          datasetIds: params.datasetIds,
+          itemIds: params.itemIds ?? [],
+          manifestObjects: params.manifestObjects ?? [],
         },
       }),
       signal: ctrl.signal,
@@ -145,16 +111,3 @@ export function askStream(params: { dataset_id: string; question: string; conver
   });
   return () => ctrl.abort();
 }
-
-// Admin
-export const adminApi = {
-  login: (password: string) => request<{ token: string }>("post", "/admin/login", { password }),
-  getAccounts: async (token: string): Promise<RagAdminAccount[]> => (await request<RagAdminConfig>("get", "/admin/config", undefined, token)).accounts,
-  addAccount: (token: string, data: { name: string; cookie: string }) => request<{ accounts: RagAdminAccount[] }>("post", "/admin/accounts", data, token),
-  refreshAccount: (token: string, id: number) => request<{ accounts: RagAdminAccount[] }>("post", `/admin/accounts/${id}/refresh`, undefined, token),
-  deleteAccount: (token: string, id: number) => request<{ accounts: RagAdminAccount[] }>("delete", `/admin/accounts/${id}`, undefined, token),
-  listNotebooks: (token: string) => request<RagNotebook[]>("get", "/admin/notebooks", undefined, token),
-  updateNotebook: (token: string, id: string, data: { title: string }) => request<RagNotebook>("put", `/admin/notebooks/${id}`, data, token),
-  listSources: (token: string, nid: string) => request<RagSource[]>("get", `/admin/notebooks/${nid}/sources`, undefined, token),
-  updateSource: (token: string, nid: string, sid: string, data: { title: string; published: boolean }) => request<RagSource>("put", `/admin/notebooks/${nid}/sources/${sid}`, data, token),
-};

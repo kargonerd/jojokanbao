@@ -1,5 +1,5 @@
 export {
-  createOldsAgentDefinition,
+  createTimesAgentDefinition,
   createRagAgentDefinition,
 } from "./applications";
 export { runPlatformAgent } from "./runtime";

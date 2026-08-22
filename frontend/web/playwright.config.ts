@@ -16,7 +16,7 @@ export default defineConfig({
     env: {
       VITE_ENABLE_PLATFORM_REDESIGN: "true",
       VITE_ENABLE_ACCOUNT: "false",
-      VITE_ENABLE_OLDS: "false",
+      VITE_ENABLE_TIMES: "false",
       VITE_ENABLE_RAG: "false",
     },
   },

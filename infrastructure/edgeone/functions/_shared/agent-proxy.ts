@@ -1,13 +1,11 @@
 import {
   createAgentServiceSignatureHeaders,
 } from "@jojo/agent/edgeone/service-auth";
-import { evaluateAuthenticatedFeatureFlag } from "./feature-flag-evaluator";
 
 const CONVERSATION_HEADER = "Makers-Conversation-Id";
 const CONVERSATION_ID = /^[0-9A-Za-z._-]{6,36}$/;
 const MAX_REQUEST_BYTES = 64 * 1024;
 const SUPABASE_TIMEOUT_MS = 5_000;
-const RAG_WORKSPACE_FLAG = "rag.workspace";
 
 export interface AgentProxyContext {
   env?: Readonly<Record<string, string | undefined>>;
@@ -96,18 +94,17 @@ function copyUpstreamHeaders(upstream: Response, origin: string | null): Headers
   return headers;
 }
 
-async function requireRagWorkspaceAccess(
+async function requireAuthenticatedUser(
   environment: Readonly<Record<string, string | undefined>>,
   request: Request,
   origin: string | null,
 ): Promise<Response | null> {
   const baseUrl = environment.VITE_SUPABASE_URL?.trim().replace(/\/$/, "");
   const publishableKey = environment.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
-  const operatorToken = environment.JOJO_OPERATOR_TOKEN?.trim();
-  if (!baseUrl || !publishableKey || !operatorToken || operatorToken.length < 32) {
+  if (!baseUrl || !publishableKey) {
     return jsonResponse(
       503,
-      { error: "Feature evaluation is not configured" },
+      { error: "Authentication is not configured" },
       origin,
     );
   }
@@ -118,37 +115,21 @@ async function requireRagWorkspaceAccess(
   }
 
   let authResponse: Response;
-  let configResponse: Response;
   const abortScope = supabaseAbortScope(request);
   try {
-    [authResponse, configResponse] = await Promise.all([
-      fetch(`${baseUrl}/auth/v1/user`, {
-        method: "GET",
-        headers: {
-          apikey: publishableKey,
-          authorization: `Bearer ${token}`,
-          accept: "application/json",
-        },
-        signal: abortScope.signal,
-      }),
-      fetch(`${baseUrl}/rest/v1/rpc/operator_get_feature_flag`, {
-        method: "POST",
-        headers: {
-          apikey: publishableKey,
-          accept: "application/json",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          p_operator_token: operatorToken,
-          p_key: RAG_WORKSPACE_FLAG,
-        }),
-        signal: abortScope.signal,
-      }),
-    ]);
+    authResponse = await fetch(`${baseUrl}/auth/v1/user`, {
+      method: "GET",
+      headers: {
+        apikey: publishableKey,
+        authorization: `Bearer ${token}`,
+        accept: "application/json",
+      },
+      signal: abortScope.signal,
+    });
   } catch {
     return jsonResponse(
       503,
-      { error: "Feature evaluation service unavailable" },
+      { error: "Authentication service unavailable" },
       origin,
     );
   } finally {
@@ -165,25 +146,13 @@ async function requireRagWorkspaceAccess(
       origin,
     );
   }
-  if (!configResponse.ok) {
-    return jsonResponse(
-      503,
-      { error: "Feature rule service unavailable" },
-      origin,
-    );
-  }
-
   let authPayload: unknown;
-  let configPayload: unknown;
   try {
-    [authPayload, configPayload] = await Promise.all([
-      authResponse.json(),
-      configResponse.json(),
-    ]);
+    authPayload = await authResponse.json();
   } catch {
     return jsonResponse(
       503,
-      { error: "Feature evaluation response is invalid" },
+      { error: "Authentication response is invalid" },
       origin,
     );
   }
@@ -200,22 +169,7 @@ async function requireRagWorkspaceAccess(
     );
   }
 
-  try {
-    const enabled = await evaluateAuthenticatedFeatureFlag(
-      configPayload,
-      RAG_WORKSPACE_FLAG,
-      userId,
-    );
-    if (enabled) return null;
-  } catch {
-    return jsonResponse(
-      503,
-      { error: "Feature rule configuration is invalid" },
-      origin,
-    );
-  }
-
-  return jsonResponse(403, { error: "This feature is not available" }, origin);
+  return null;
 }
 
 function agentUrl(
@@ -302,7 +256,7 @@ export async function handleAgentProxyRequest(
   }
 
   if (request.method === "POST") {
-    const denied = await requireRagWorkspaceAccess(environment, request, origin);
+    const denied = await requireAuthenticatedUser(environment, request, origin);
     if (denied) return denied;
   }
 

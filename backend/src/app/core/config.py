@@ -45,6 +45,9 @@ class Settings:
     supabase_url: str | None
     supabase_publishable_key: str | None
     auth_timeout_seconds: float
+    rsshub_url: str = "https://jojokanbao-rsshub.onrender.com"
+    rsshub_access_key: str | None = None
+    rsshub_timeout_seconds: float = 25.0
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -64,6 +67,16 @@ class Settings:
                 os.getenv("JOJO_AUTH_TIMEOUT_SECONDS"),
                 default=5.0,
                 name="JOJO_AUTH_TIMEOUT_SECONDS",
+            ),
+            rsshub_url=(
+                os.getenv("JOJO_TIMES_RSSHUB_URL", "https://jojokanbao-rsshub.onrender.com").strip().rstrip("/")
+                or "https://jojokanbao-rsshub.onrender.com"
+            ),
+            rsshub_access_key=(os.getenv("JOJOKANBAO_RSSHUB_ACCESS_KEY") or "").strip() or None,
+            rsshub_timeout_seconds=_positive_float(
+                os.getenv("JOJO_TIMES_RSSHUB_TIMEOUT_SECONDS"),
+                default=25.0,
+                name="JOJO_TIMES_RSSHUB_TIMEOUT_SECONDS",
             ),
         )
 

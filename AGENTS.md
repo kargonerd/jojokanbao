@@ -26,20 +26,21 @@ pnpm test:backend
 - 状态管理使用 Zustand。
 - 测试使用 Vitest 和 Testing Library。
 - `frontend/packages/ui` 同时提供 React 组件和 `@jojo/ui/styles` CSS 设计系统。
-- Web 一级业务模块位于 `frontend/web/src/account`、`archive`、`rag`、`olds`。
+- Web 应用外壳位于 `frontend/web/src/shell`，首页和资料库分别位于 `home`、`library`。
+- 一级业务模块位于 `frontend/web/src/account`、`archive`、`rag`、`times`；不要再建立含混的 `platform` 目录。
 - Archive 已上线，保持低风险演进。
 
 ## 后端约定
 
 - 主 API 位于 `backend/src/app`，使用 FastAPI。
-- 公共能力位于 `app/core`；业务按 `app/account`、`olds` 分模块。
-- Olds 尚未上线，默认不得加入公开路由或 EdgeOne 部署产物。
+- 公共能力位于 `app/core`；业务按 `app/account`、`times` 分模块。
+- JOJO Times（时事）尚未上线，默认不得加入公开路由或 EdgeOne 部署产物。
 - RAG 由 `agent/` 承载，不在 Python 后端维护重复实现。
 - Reader Search 位于 `infrastructure/tencent-scf/search`，保持现有 Flask/SCF 行为。
 - EdgeOne 入口仅放在 `infrastructure/edgeone/functions`，不得包含业务逻辑。
 - 定时、批处理和人工运维代码放入 `tools/`，不伪装成 API。
 - Desktop 专属本地能力使用 TypeScript，位于 `frontend/desktop/engine`。
-- 后端公共和 Olds 依赖由 `backend/requirements*.txt` 管理。
+- 后端公共和 JOJO Times 依赖由 `backend/requirements*.txt` 管理。
 
 ## Agent 约定
 
@@ -48,7 +49,7 @@ pnpm test:backend
   `pi-coding-agent`，也不自行实现 Agent Loop。
 - 当前只接入 Codex OAuth；其他模型后续通过 Makers Models 统一接入。
 - EdgeOne 的认证、SSE 和加密凭证持久化位于 `agent/src/edgeone`。
-- RAG、Olds 等产品只注入提示词和业务工具。
+- RAG、JOJO Times 等产品只注入提示词和业务工具。
 - Codex Makers Agent 只部署到不含中国大陆的独立项目；入口仅放在
   `infrastructure/edgeone/agents`，不承载业务逻辑。
 

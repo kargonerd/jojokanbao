@@ -47,10 +47,10 @@ test.describe('Real Electron client', () => {
       });
 
       const navigation = page.getByRole('navigation', { name: '主导航' });
-      await expect(navigation.getByText(/Press|书刊制作|今日旧闻/i)).toHaveCount(0);
+      await expect(navigation.getByText(/Press|书刊制作|JOJO Times|时事/i)).toHaveCount(0);
       await expect(navigation.getByRole('link', { name: '搜索' })).toBeVisible();
       await expect(navigation.getByRole('link', { name: '关于' })).toBeVisible();
-      await expect(navigation.getByRole('link', { name: 'JOJO问答' })).toHaveCount(0);
+      await expect(navigation.getByRole('link', { name: 'AI' })).toHaveCount(0);
       await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '资料库' }).click();
       await expect(page.getByPlaceholder('搜索报刊或书名')).toBeVisible();
       await expect(page.getByRole('button', { name: '报刊' })).toBeVisible();

@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App, AppRoutes } from "../src/App";
+import { buildAppNavigationItems } from "../src/shell/AppLayout";
 
 const appPdfMocks = vi.hoisted(() => ({
   usePdfDocument: vi.fn(),
@@ -117,7 +118,7 @@ describe("JOJO Web routes and Archive homepage", () => {
   });
 
   it("keeps unfinished modules disabled by default", () => {
-    for (const path of ["/rag", "/olds"]) {
+    for (const path of ["/rag", "/times"]) {
       const view = renderAt(path);
       expect(screen.getByRole("heading", { name: "404 Not Found" })).toBeTruthy();
       view.unmount();
@@ -134,6 +135,15 @@ describe("JOJO Web routes and Archive homepage", () => {
 });
 
 describe("JOJO Web navigation", () => {
+  it("shows AI and Times only to signed-in readers and keeps About last", () => {
+    expect(buildAppNavigationItems(false, { rag: true, times: true }).map((item) => item.label)).toEqual([
+      "首页", "资料库", "搜索", "关于",
+    ]);
+    expect(buildAppNavigationItems(true, { rag: true, times: true }).map((item) => item.label)).toEqual([
+      "首页", "资料库", "搜索", "AI", "时事", "关于",
+    ]);
+  });
+
   it("keeps the login entry visible", () => {
     renderAt("/archive");
 
@@ -147,7 +157,7 @@ describe("JOJO Web navigation", () => {
     expect(screen.getByRole("link", { name: /返回首页/ }).getAttribute("href")).toBe("/");
   });
 
-  it("keeps the platform navigation neutral inside a publication reader", () => {
+  it("keeps the app navigation neutral inside a publication reader", () => {
     renderAt("/archive/hq/196419");
 
     const homeLink = screen.getByRole("link", { name: "首页" });

@@ -1,20 +1,22 @@
 # Codex Agent deployment
 
-当前阶段只部署 Codex Agent。它位于不含中国大陆的独立 EdgeOne Makers 项目，
-不进入国内 Web/Python 项目。
+Codex Agent 运行时只部署在不含中国大陆的独立 EdgeOne Makers 项目。
+Reader 项目仅部署同源 `/gateway/ask` 流式中继，不包含 Agent 运行时或签名密钥；
+Python 业务 API 不承载 RAG。
 
 ```text
-jojokanbao.cn                         agent-global.jojokanbao.cn
+reader.jojokanbao.cn                  agent-global.jojokanbao.cn
 ┌──────────────────────┐             ┌──────────────────────────┐
-│ Web + Python API     │ ── HTTPS ─▶ │ /gateway/ask proxy      │
-│ JOJO/Supabase 登录   │             │ /jojo   Makers Agent     │
-└──────────────────────┘             │ /gateway/credentials     │
-                                     └──────────────────────────┘
+│ Web + Python API     │ ── HTTPS ─▶ │ /gateway/ask auth proxy │
+│ /gateway/ask relay   │             │ /jojo   Makers Agent     │
+│ JOJO/Supabase 登录   │             │ /gateway/credentials     │
+└──────────────────────┘             └──────────────────────────┘
 ```
 
-- `/gateway/ask` 处理浏览器 CORS 预检，先使用当前用户 Bearer Token 向 Supabase
-  Auth 确认用户身份，再用仅存在于服务端的 `JOJO_OPERATOR_TOKEN` 读取 `rag.workspace`
-  原始规则并在 Cloud Function 内按顺序判定；通过后添加短时 HMAC 服务签名，再把
+- Reader 的 `/gateway/ask` 只把允许的请求头和 AI 请求体转发给国际 Gateway，并把上游
+  SSE 响应返回给浏览器；它不读取 Token 内容，也不持有 Agent 签名密钥。国际
+  `/gateway/ask` 使用当前用户 Bearer Token
+  向 Supabase Auth 确认用户身份；通过后添加短时 HMAC 服务签名，再把
   SSE 请求转给同项目 `/jojo`。
 - `/jojo` 运行 Pi Agent，并在调用 Codex 前依次校验 Cloud Function 服务签名
   和 JOJO/Supabase Bearer Token；它不处理平台入口开关，浏览器也不能直接调用。
@@ -29,13 +31,19 @@ jojokanbao.cn                         agent-global.jojokanbao.cn
 
 ## 项目环境变量
 
+Reader 项目只需要配置国际 Gateway 地址；未配置时使用下方默认地址：
+
+```dotenv
+JOJO_AGENT_GATEWAY_URL=https://agent-global.jojokanbao.cn/gateway/ask
+```
+
+国际 Agent 项目配置：
+
 ```dotenv
 VITE_SUPABASE_URL=https://PROJECT.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=...
-VITE_AGENT_API_URL=https://agent-global.jojokanbao.cn/gateway/ask
-
 JOJO_AGENT_MODEL=gpt-5.6-luna
-JOJO_AGENT_ALLOWED_ORIGINS=https://jojokanbao.cn
+JOJO_AGENT_ALLOWED_ORIGINS=https://reader.jojokanbao.cn
 JOJO_AGENT_UPSTREAM_URL=https://agent-global.jojokanbao.cn/jojo
 JOJO_AGENT_SERVICE_SECRET=<32-byte random key encoded as base64>
 
@@ -66,6 +74,7 @@ $serviceBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
 
 $adminBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
 [Convert]::ToHexString($adminBytes).ToLowerInvariant()
+
 ```
 
 ## 初始化 Codex OAuth

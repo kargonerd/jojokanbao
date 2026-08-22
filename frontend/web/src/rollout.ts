@@ -5,6 +5,6 @@ function enabled(value: string | undefined): boolean {
 export const rollout = {
   platformRedesign: enabled(import.meta.env.VITE_ENABLE_PLATFORM_REDESIGN),
   account: enabled(import.meta.env.VITE_ENABLE_ACCOUNT),
-  olds: enabled(import.meta.env.VITE_ENABLE_OLDS),
+  times: enabled(import.meta.env.VITE_ENABLE_TIMES),
   rag: enabled(import.meta.env.VITE_ENABLE_RAG),
 } as const;

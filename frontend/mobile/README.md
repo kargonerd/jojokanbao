@@ -1,9 +1,9 @@
-# JOJO旧闻 mobile
+# JOJO Times mobile
 
 ## 当前状态
 - 技术栈：Expo 55 + React Native 0.83
-- App 名称：`JOJO旧闻`
-- Android 包名：`com.luoxixi.jojojiuwen`
+- App 名称：`JOJO Times`
+- Android 包名：`com.luoxixi.jojotimes`
 - Expo owner：`luoxiaozhuang`
 - EAS projectId：`ce6a6762-1d7b-464e-9622-cf1591b4cb02`
 
@@ -11,7 +11,7 @@
 本项目当前走 **EAS 云构建** 出 Android APK。
 
 相关配置：
-- `app.json`：应用名、包名、图标、EAS projectId
+- `app.json`：应用名、包名、EAS projectId
 - `eas.json`：`preview` profile 使用 `buildType: "apk"`
 - `.env`：`EXPO_PUBLIC_API_BASE`
 
@@ -59,16 +59,7 @@ EXPO_PUBLIC_API_BASE=http://192.168.1.16:3002
 - 如果改回模拟器或本机调试，需要换成对应地址
 
 ## 图标资源
-当前图标主设计源文件：
-- `assets/jojojiuwen-icon.svg`
-
-Expo 当前使用的资源位于：
-- `assets/icon.png`
-- `assets/favicon.png`
-- `assets/splash-icon.png`
-- `assets/android-icon-foreground.png`
-- `assets/android-icon-background.png`
-- `assets/android-icon-monochrome.png`
+当前不维护 Times 专用图标，后续统一接入 JOJO 看报品牌图标。
 
 ## 这次踩过的坑
 
@@ -95,7 +86,7 @@ bash: eas: command not found
 真机安装 APK 后，`127.0.0.1` 指向的是手机自己，不是开发机，所以 API base 必须换成电脑局域网 IP。
 
 ## 后续如果重新打包
-1. 确认 `app.json` 名称、包名、图标无误
+1. 确认 `app.json` 名称、包名无误
 2. 确认 `.env` 里的 `EXPO_PUBLIC_API_BASE` 可被手机访问
 3. 执行：
 

@@ -37,7 +37,7 @@ function HomeScreen({ navigation }: any) {
         setNews(Array.isArray(newsData) ? newsData : []);
         setDigest(digestData);
       } catch {
-        setError("无法连接 JOJO旧闻 API");
+        setError("无法连接 JOJO Times API");
       } finally {
         setLoading(false);
       }
@@ -50,7 +50,7 @@ function HomeScreen({ navigation }: any) {
     <View style={styles.container}>
       <StatusBar style="dark" />
       <View style={styles.header}>
-        <Text style={styles.brand}>JOJO旧闻</Text>
+        <Text style={styles.brand}>JOJO TIMES</Text>
         <Text style={styles.subtitle}>AI 辅助阅读新闻</Text>
       </View>
       {loading ? (

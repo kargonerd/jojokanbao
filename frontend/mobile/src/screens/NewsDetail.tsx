@@ -34,7 +34,7 @@ type Briefing = {
   tldr: string;
   keyPoints: string[];
   readingQuestions: string[];
-  oldContext: { id: string; title: string; reason: string; score: number }[];
+  historicalContext: { id: string; title: string; reason: string; score: number }[];
 };
 
 function getUserIdentity() {
@@ -173,9 +173,9 @@ export default function NewsDetail({ route, navigation }: any) {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>旧闻对照</Text>
-        {data.scrapbookItems.length === 0 && (briefing?.oldContext.length ?? 0) === 0 ? (
-          <Text style={styles.muted}>暂无旧闻候选。</Text>
+        <Text style={styles.sectionTitle}>历史对照</Text>
+        {data.scrapbookItems.length === 0 && (briefing?.historicalContext.length ?? 0) === 0 ? (
+          <Text style={styles.muted}>暂无历史资料候选。</Text>
         ) : null}
         {data.scrapbookItems.map((item) => (
           <View key={item.id} style={styles.card}>
@@ -185,7 +185,7 @@ export default function NewsDetail({ route, navigation }: any) {
           </View>
         ))}
         {data.scrapbookItems.length === 0
-          ? (briefing?.oldContext ?? []).map((item) => (
+          ? (briefing?.historicalContext ?? []).map((item) => (
               <View key={item.id} style={styles.card}>
                 <Text style={styles.cardMeta}>候选关联 {item.score.toFixed(2)}</Text>
                 <Text style={styles.cardTitle}>{item.title}</Text>

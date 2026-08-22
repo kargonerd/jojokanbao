@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SelectableAnnotationArticle } from "../src/annotations/SelectableAnnotationArticle";
 import { useFeatureFlagStore } from "../src/featureFlags";
-import { usePlatformAccountStore } from "../src/platform/accountSession";
+import { useAccountSessionStore } from "../src/account/session";
 
 const annotationApi = vi.hoisted(() => ({
   loadAnnotationThreads: vi.fn(async () => []),
@@ -14,8 +14,8 @@ vi.mock("../src/annotations/api", () => annotationApi);
 
 describe("SelectableAnnotationArticle", () => {
   beforeEach(() => {
-    useFeatureFlagStore.setState({ initialized: true, revision: "test", flags: { "library.bookshelf": false, "reader.annotations": true, "rag.workspace": false, "olds.workspace": true } });
-    usePlatformAccountStore.setState({ initialized: true, userId: "user-1", displayName: "报刊读者-ABC" });
+    useFeatureFlagStore.setState({ initialized: true, revision: "test", flags: { "library.bookshelf": false, "reader.annotations": true } });
+    useAccountSessionStore.setState({ initialized: true, userId: "user-1", displayName: "报刊读者-ABC" });
     annotationApi.loadAnnotationThreads.mockResolvedValue([]);
     annotationApi.createAnnotation.mockResolvedValue({
       id: "annotation-news-1", contentType: "newspaper", contentId: "news-1", sectionId: "body", contentTitle: "新闻标题",

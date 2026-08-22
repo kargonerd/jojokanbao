@@ -13,7 +13,7 @@ content/        博客等内容源
 
 ## Frontend
 
-- `frontend/web`：Archive、Account、RAG、Olds 共用的浏览器运行时。
+- `frontend/web`：Archive、Account、RAG、JOJO Times 共用的浏览器运行时；`shell`、`home`、`library` 分别承载应用外壳、首页和资料库。
 - `frontend/homepage`：官网与博客静态站点。
 - `frontend/desktop`：Electron 桌面产品；`engine/` 是 Desktop 专属的 TypeScript 本地引擎。
 - `frontend/mobile`：移动端客户端。
@@ -27,8 +27,10 @@ Homepage 已启用 Astro React integration，可以直接复用 `@jojo/ui` 组�
 - `backend/src/app/main.py`：统一公网 FastAPI 入口。
 - `backend/src/app/core`：认证、配置、错误和 HTTP 中间件。
 - `backend/src/app/account`：已启用的账号 API。
-- `backend/src/app/olds`：未上线模块，默认不进入公开路由或部署产物。
-- RAG 由独立 Agent 运行层承载，不在 Python 后端维护第二套实现。
+- RAG 由独立 Agent 运行层承载，不在 Python 后端维护第二套实现；浏览器统一请求
+  Reader 的 `/gateway/ask`，由同源 Cloud Function 转发到国际 Agent。
+- Times 由 `app.main` 下的 `/v1/times` router 从受保护的 JOJO RSSHub 聚合内容；
+  保持无状态，不保留独立 FastAPI、SQLite repository 或服务进程。
 
 本地运行主 API：
 
@@ -45,7 +47,7 @@ EdgeOne 专有入口位于 `infrastructure/edgeone/functions`，只导入
 - `agent`：单一 `@jojo/agent` 包，包含 Pi Agent 运行层、Codex 模型与凭证配置。
 - `agent/src/edgeone`：同一包内的 EdgeOne 登录、SSE、服务鉴权和加密 Store
   适配。
-- `agent/src/applications.ts`：RAG、Olds 的最小业务占位函数；功能增长后再拆分。
+- `agent/src/applications.ts`：RAG、JOJO Times 的最小业务占位函数；功能增长后再拆分。
 - Codex Agent 使用不含中国大陆的独立 Makers 项目和域名；其他模型后续通过
   Makers Models 接入。
 - Agent 项目用一个不运行 Pi 的 Node Cloud Function 处理浏览器 CORS 预检，再把

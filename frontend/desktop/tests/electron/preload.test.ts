@@ -137,7 +137,7 @@ describe('preload bridge', () => {
 
     expect(mainSource).not.toContain('JOJO_PRESS_AUTO_UPLOAD_TEST');
     expect(mainSource).not.toContain("navigateTo('/press");
-    expect(mainSource).not.toContain("navigateTo('/olds");
+    expect(mainSource).not.toContain("navigateTo('/times");
   });
 
   it('only enables a remote debugging port when test configuration explicitly requests one', () => {

@@ -22,7 +22,7 @@ import httpx
 
 
 DEFAULT_USER_AGENT = (
-    "JOJO-Olds/0.1 (+https://jojokanbao.cn; authorized personal academic archive)"
+    "JOJO-Times/0.1 (+https://jojokanbao.cn; authorized personal academic archive)"
 )
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 IMAGE_HOSTS = {"assets.bwbx.io", "assets.bwbx.com"}
