@@ -193,7 +193,7 @@ jobs:
               print(f"\n### {label}\n")
               print(f"- Sources: {report['availableSourceCount']}/{report['sourceCount']}")
               print(f"- Articles: {report['fetchedArticles']}")
-              print(f"- Archived: {report['archivedArticles']}/{report['selectedForArchive']} (failures: {report['archiveArticleFailures']})")
+              print(f"- Successful pages: {report.get('archiveSucceededArticles', 0)}/{report['selectedForArchive']} (failures: {report.get('archiveFailedArticles', 0)})")
               print(f"- WACZ: {report['archiveWaczBytes'] / 1024 / 1024:.1f} MiB")
               print(f"- Collect/archive/build/total: {timings.get('collect', 0) / 1000:.1f}s / {timings.get('archive', 0) / 1000:.1f}s / {timings.get('build', 0) / 1000:.1f}s / {timings.get('total', 0) / 1000:.1f}s")
               print("\n| Source | Feed | 24h items | Feed ms | Archived | Failed | Page MiB |")

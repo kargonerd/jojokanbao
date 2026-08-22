@@ -58,6 +58,8 @@ def enrich_articles(
             raise RuntimeError("JOJO_NEWS_ARCHIVE_RUNNER_ROOT or --news-runner-root is required")
         return values, {"runner": None, "complete": 0, "partial": 0, "unsupported": 0, "error": 0, "skipped": len(values)}
     parse_article = _load_runner(root)
+    lock = json.loads(DEFAULT_LOCK.read_text(encoding="utf-8"))
+    supported_parsers = frozenset(lock.get("parsers", {}))
     capture_by_id = {capture.article_id: capture for capture in captures}
     stats: dict[str, int | str | None] = {
         "runner": str(root.resolve()),
@@ -80,6 +82,10 @@ def enrich_articles(
             enriched.append(article)
             continue
         parser_id = article.source.parser_id or article.source.id
+        if parser_id not in supported_parsers:
+            stats["unsupported"] = int(stats["unsupported"] or 0) + 1
+            enriched.append(article)
+            continue
         try:
             parsed = parse_article(
                 final.body,

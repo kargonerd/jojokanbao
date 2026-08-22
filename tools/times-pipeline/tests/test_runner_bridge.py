@@ -44,4 +44,26 @@ def test_enrich_articles_reuses_runner_parser_and_maps_partial_status(monkeypatc
     assert report["partial"] == 1
 
 
+def test_enrich_articles_classifies_unconfigured_parser_as_unsupported(monkeypatch, tmp_path: Path) -> None:
+    source = Source("new-source", "New source", "en", None, "https://example.test/feed", "summary-only")
+    article = Article("article-one", "Feed headline", "Summary", "Summary", "summary", "https://example.test/story", NOW.isoformat(), source)
+    final = HttpExchange(
+        source.id, article.id, article.url, article.title, NOW.isoformat(), article.url,
+        (), 200, "OK", (("Content-Type", "text/html"),), b"<html></html>",
+    )
+    capture = ArticleCapture(article.id, source.id, article.url, article.title, (final,), 4)
+
+    def unexpected_parser(*_args, **_kwargs):
+        raise AssertionError("unsupported sources must not call the pinned parser")
+
+    monkeypatch.setattr(bridge, "_load_runner", lambda _root: unexpected_parser)
+    enriched, report = bridge.enrich_articles(
+        [article], [capture], runner_root=tmp_path, require_runner=True, parsed_at=NOW,
+    )
+
+    assert enriched == [article]
+    assert report["unsupported"] == 1
+    assert report["error"] == 0
+
+
 NOW = datetime(2026, 8, 22, 12, 0, tzinfo=timezone.utc)
