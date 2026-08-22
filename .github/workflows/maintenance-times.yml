@@ -91,8 +91,10 @@ jobs:
           --output "$RUNNER_TEMP/jojo-times-build"
           --timeout 70
           --article-timeout 25
+          --archive-engine http
           --archive-workers 16
           --archive-max-pages 50
+          --archive-browser-retries 1
           --archive-refresh-hours 24
           --archive-retry-hours 2
           --archive-max-response-bytes 5000000

@@ -433,7 +433,10 @@ async def _browser_attempt(
             ))
         return exchanges, main_status, navigation_error
     finally:
-        await context.close()
+        try:
+            await asyncio.wait_for(context.close(), timeout=5.0)
+        except (PlaywrightError, asyncio.TimeoutError):
+            pass
 
 
 async def _capture_one_browser(
@@ -535,7 +538,10 @@ async def _capture_articles_browser(
 
             return list(await asyncio.gather(*(guarded(article) for article in values)))
         finally:
-            await browser.close()
+            try:
+                await asyncio.wait_for(browser.close(), timeout=10.0)
+            except (Exception, asyncio.TimeoutError):
+                pass
 
 
 def _feed_exchange(raw_feed: RawFeed) -> HttpExchange:
