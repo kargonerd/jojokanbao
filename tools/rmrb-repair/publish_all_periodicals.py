@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Resumable publisher for the five JOJO periodical collections.
 
-The publisher intentionally works in bounded batches.  It uploads Canonical
-to private B2, Delivery to public B2, and readable source PDFs/metadata to the
-Hugging Face dataset.  Generated batches are removed only after all three
-destinations succeed; source PDFs are never modified.
+The publisher intentionally works in bounded batches.  Hugging Face is the
+Canonical dataset and readable PDF store; public B2 contains only Delivery
+objects used by the applications.  Generated batches are removed only after
+both destinations succeed; source PDFs are never modified.
 """
 
 from __future__ import annotations
@@ -150,10 +150,6 @@ class Publisher:
                 "--output", str(batch), "--publication", slug,
             ])
         self.run_parallel_uploads({
-            "canonical-b2": lambda: self.rclone_copy(
-                batch / f"canonical/newspapers/{slug}",
-                f"jojo-b2:jojo-news-raw/canonical/newspapers/{slug}",
-            ),
             "delivery-b2": lambda: self.rclone_copy(
                 batch / f"delivery/content/newspapers/{slug}",
                 f"jojo-b2-s3:jojo-newspaper/content/newspapers/{slug}",
@@ -245,7 +241,6 @@ class Publisher:
                 "--snapshot-id", self.args.snapshot_id,
                 "--pdf-root", str(pdf_root),
             ])
-        canonical_includes = [f"/items/{year}/**", f"/assets/pdfs/{year}/**", "/assets/images/**"]
         hf_includes = [
             f"newspapers/rmrb/items/{year}/**",
             f"newspapers/rmrb/assets/pdfs/{year}/**",
@@ -253,11 +248,6 @@ class Publisher:
             f"newspapers/rmrb/data/articles/{year}.jsonl.gz",
         ]
         self.run_parallel_uploads({
-            "canonical-b2": lambda: self.rclone_copy(
-                batch / "canonical/newspapers/rmrb",
-                "jojo-b2:jojo-news-raw/canonical/newspapers/rmrb",
-                canonical_includes,
-            ),
             "delivery-b2": lambda: self.rclone_copy(
                 batch / "delivery/content/newspapers/rmrb",
                 "jojo-b2-s3:jojo-newspaper/content/newspapers/rmrb",
@@ -286,11 +276,6 @@ class Publisher:
             )
             pdfs.build_publication(publication, batch, now(), year=year)
         self.run_parallel_uploads({
-            "canonical-b2": lambda: self.rclone_copy(
-                batch / "canonical/newspapers/rmrb",
-                "jojo-b2:jojo-news-raw/canonical/newspapers/rmrb",
-                [f"/items/{year}/**", f"/assets/pdfs/{year}/**"],
-            ),
             "delivery-b2": lambda: self.rclone_copy(
                 batch / "delivery/content/newspapers/rmrb",
                 "jojo-b2-s3:jojo-newspaper/content/newspapers/rmrb",
@@ -353,10 +338,22 @@ class Publisher:
             encoding="utf-8", newline="\n",
         )
         rmrb.write_jox_json(batch / "delivery", "content/newspapers/rmrb/index.jox", index)
-        self.rclone_copy(batch / "canonical/newspapers/rmrb", "jojo-b2:jojo-news-raw/canonical/newspapers/rmrb")
-        self.rclone_copy(batch / "delivery/content/newspapers/rmrb", "jojo-b2-s3:jojo-newspaper/content/newspapers/rmrb")
-        self.run(["hf", "upload", HF_REPO, str(batch / "huggingface/newspapers/rmrb"), "newspapers/rmrb", "--repo-type", "dataset", "--commit-message", "Finalize People's Daily indexes"], attempts=10)
-        self.run(["hf", "upload", HF_REPO, str(batch / "huggingface/newspapers/README.md"), "newspapers/README.md", "--repo-type", "dataset", "--commit-message", "Document all periodical datasets"], attempts=10)
+        self.run_parallel_uploads({
+            "delivery-b2": lambda: self.rclone_copy(
+                batch / "delivery/content/newspapers/rmrb",
+                "jojo-b2-s3:jojo-newspaper/content/newspapers/rmrb",
+            ),
+            "huggingface-index": lambda: self.run([
+                "hf", "upload", HF_REPO, str(batch / "huggingface/newspapers/rmrb"),
+                "newspapers/rmrb", "--repo-type", "dataset", "--commit-message",
+                "Finalize People's Daily indexes",
+            ], attempts=10),
+            "huggingface-readme": lambda: self.run([
+                "hf", "upload", HF_REPO, str(batch / "huggingface/newspapers/README.md"),
+                "newspapers/README.md", "--repo-type", "dataset", "--commit-message",
+                "Document all periodical datasets",
+            ], attempts=10),
+        })
         self.finalize_catalog(batch)
         self.state["completed"].append(marker)
         self.save_state()
