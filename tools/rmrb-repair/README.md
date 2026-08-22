@@ -83,8 +83,8 @@ python tools/rmrb-repair/prepare_rmrb_publication.py `
   --pdf-root D:/path/to/source-pdfs
 ```
 
-The output contains B2 Canonical objects under `canonical/`, public Jox
-objects under `delivery/`, a Hugging Face dataset under
+The output contains local Canonical objects under `canonical/` for validation
+and Hugging Face publication, public Jox objects under `delivery/`, a Hugging Face dataset under
 `huggingface/newspapers/rmrb/`, and private repair audit material under
 `raw/newspapers/rmrb/repair-runs/`. Missing articles remain in Items with
 `contentState: "missing"`; Delivery keeps their descriptors with

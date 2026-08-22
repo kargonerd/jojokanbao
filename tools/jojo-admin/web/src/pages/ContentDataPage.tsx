@@ -72,7 +72,7 @@ export function ContentDataPage() {
   }
 
   return <>
-    <PageTopbar eyebrow="Content Pipeline / v1" title="书籍与内容" description="微信读书 / EPUB / Kindle → Canonical → Jox / EPUB → B2、ES 与 Hugging Face" />
+    <PageTopbar eyebrow="Content Pipeline / v1" title="书籍与内容" description="微信读书 / EPUB / Kindle → Hugging Face Canonical → B2 Delivery 与 ES" />
     <main className="content-workbench">
       <section className="workspace-panel content-import-panel">
         <div className="section-heading"><span>01</span><div><h2>选择本地源数据</h2><p>支持微信读书 JSON、EPUB，以及无 DRM 的 AZW / MOBI / PRC；目录会读取全部支持文件。</p></div></div>
@@ -112,11 +112,11 @@ export function ContentDataPage() {
       </section>}
 
       {canPublish && publishers && <section className="workspace-panel content-publish-panel">
-        <div className="section-heading"><span>02</span><div><h2>发布生成结果</h2><p>B2 是阅读真值与 CDN，ES 只做可重建搜索索引，Hugging Face 保存私有 Canonical 副本。</p></div></div>
+        <div className="section-heading"><span>02</span><div><h2>发布生成结果</h2><p>Hugging Face 是唯一 Canonical 真值；B2 只保存 Reader 使用的 Delivery，ES 是可重建搜索索引。</p></div></div>
         <div className="publisher-grid">
+          <Publisher name="huggingface" title="Hugging Face · Canonical" detail={publishers.huggingface.repoId || "需要 HF_TOKEN / HF_DATASET_REPO"} configured={publishers.huggingface.configured} selected={targets.includes("huggingface")} result={job.publish.huggingface?.status} onToggle={toggleTarget} />
           <Publisher name="b2" title="Backblaze B2" detail={publishers.b2.deliveryRemote} configured={publishers.b2.configured} selected={targets.includes("b2")} result={job.publish.b2?.status} onToggle={toggleTarget} />
           <Publisher name="elasticsearch" title="Elasticsearch" detail={publishers.elasticsearch.index} configured={publishers.elasticsearch.configured} selected={targets.includes("elasticsearch")} result={job.publish.elasticsearch?.status} onToggle={toggleTarget} />
-          <Publisher name="huggingface" title="Hugging Face" detail={publishers.huggingface.repoId || "需要 HF_TOKEN / HF_DATASET_REPO"} configured={publishers.huggingface.configured} selected={targets.includes("huggingface")} result={job.publish.huggingface?.status} onToggle={toggleTarget} />
         </div>
         <div className="panel-actions"><button className="primary-button" disabled={busy || job.status === "publishing" || targets.length === 0} onClick={publish}>发布选中目标</button></div>
       </section>}
