@@ -293,17 +293,21 @@ async def collect_sources(
     rsshub_url: str,
     rsshub_access_key: str | None,
     timeout_seconds: float = 60.0,
+    rsshub_workers: int = 3,
     now: datetime | None = None,
     since: datetime | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> tuple[list[Article], list[RawFeed], list[dict]]:
     fetched_at = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     window_start = since.astimezone(timezone.utc) if since is not None else None
+    if rsshub_workers < 1:
+        raise ValueError("RSSHub worker count must be positive")
     if any(source.route is not None for source in sources) and not rsshub_access_key:
         raise RuntimeError("JOJOKANBAO_RSSHUB_ACCESS_KEY is required for configured RSSHub routes")
     articles: list[Article] = []
     raw_feeds: list[RawFeed] = []
     statuses: list[dict] = []
+    rsshub_semaphore = asyncio.Semaphore(rsshub_workers)
 
     async with httpx.AsyncClient(
         timeout=timeout_seconds,
@@ -329,7 +333,11 @@ async def collect_sources(
                 attempts = 0
                 try:
                     for attempts, retry_delay in enumerate((*FEED_RETRY_DELAYS_SECONDS, None), start=1):
-                        response = await client.get(url, params=params)
+                        if transport_kind == "rsshub":
+                            async with rsshub_semaphore:
+                                response = await client.get(url, params=params)
+                        else:
+                            response = await client.get(url, params=params)
                         if response.status_code not in TRANSIENT_FEED_STATUSES or retry_delay is None:
                             break
                         await asyncio.sleep(retry_delay)

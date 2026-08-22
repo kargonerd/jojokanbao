@@ -179,3 +179,33 @@ def test_collect_sources_retries_transient_feed_failure() -> None:
     assert len(raw_feeds) == 1
     assert statuses[0]["status"] == "ok"
     assert statuses[0]["attempts"] == 2
+
+
+def test_collect_sources_limits_rsshub_concurrency() -> None:
+    active = 0
+    maximum_active = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal active, maximum_active
+        active += 1
+        maximum_active = max(maximum_active, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return httpx.Response(200, content=RSS, headers={"Content-Type": "application/rss+xml"})
+
+    sources = tuple(
+        Source(f"protected-{index}", f"Protected {index}", "en", f"/protected/{index}", None, "summary-only")
+        for index in range(5)
+    )
+    articles, _raw_feeds, statuses = asyncio.run(collect_sources(
+        sources,
+        rsshub_url="https://rsshub.example.test",
+        rsshub_access_key="protected-key",
+        rsshub_workers=2,
+        now=datetime(2026, 8, 22, tzinfo=timezone.utc),
+        transport=httpx.MockTransport(handler),
+    ))
+
+    assert len(articles) == 5
+    assert {status["status"] for status in statuses} == {"ok"}
+    assert maximum_active == 2
