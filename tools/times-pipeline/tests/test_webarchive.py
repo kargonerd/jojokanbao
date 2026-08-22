@@ -13,6 +13,7 @@ from times_pipeline.feeds import Article, RawFeed, Source
 from times_pipeline.webarchive import (
     ArticleCapture,
     HttpExchange,
+    _limit_browser_response_rows,
     capture_articles,
     select_articles_for_capture,
     write_web_archive,
@@ -186,6 +187,16 @@ def test_capture_selection_allows_feed_only_validation() -> None:
         refresh_hours=24,
         retry_hours=2,
     ) == []
+
+
+def test_browser_response_limit_preserves_page_and_bounds_subresources() -> None:
+    rows = [(f"response-{index}", f"https://example.test/{index}", index == 150) for index in range(200)]
+
+    selected = _limit_browser_response_rows(rows, maximum=16)
+
+    assert len(selected) == 16
+    assert selected[:15] == rows[:15]
+    assert selected[-1] == rows[150]
 
 
 def _fingerprint(value: Article) -> str:

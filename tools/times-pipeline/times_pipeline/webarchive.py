@@ -30,6 +30,7 @@ SENSITIVE_HEADERS = frozenset({"authorization", "cookie", "proxy-authorization",
 SENSITIVE_RESPONSE_HEADERS = frozenset({"set-cookie"})
 SENSITIVE_QUERY_NAMES = frozenset({"access_key", "api_key", "apikey", "key", "token"})
 BROWSER_RETRY_STATUSES = frozenset({403, 408, 425, 429, 500, 502, 503, 504})
+MAX_BROWSER_RESPONSES_PER_ATTEMPT = 128
 
 
 @dataclass(frozen=True, slots=True)
@@ -314,6 +315,21 @@ def _is_page_response(response: Any, page: Any) -> bool:
         return False
 
 
+def _limit_browser_response_rows(
+    rows: list[tuple[Any, str, bool]],
+    maximum: int = MAX_BROWSER_RESPONSES_PER_ATTEMPT,
+) -> list[tuple[Any, str, bool]]:
+    if maximum <= 0:
+        raise ValueError("Browser response limit must be positive")
+    if len(rows) <= maximum:
+        return rows
+    page_indexes = {index for index, row in enumerate(rows) if row[2]}
+    remaining = max(0, maximum - len(page_indexes))
+    non_page_indexes = [index for index, row in enumerate(rows) if not row[2]][:remaining]
+    selected_indexes = page_indexes | set(non_page_indexes)
+    return [row for index, row in enumerate(rows) if index in selected_indexes]
+
+
 async def _playwright_headers(value: Any) -> tuple[tuple[str, str], ...]:
     try:
         rows = await value.headers_array()
@@ -388,22 +404,36 @@ async def _browser_attempt(
                 main_status = int(response.status)
             response_rows.append((response, request_url, is_page))
 
-        async def read_response(row: tuple[Any, str, bool]) -> tuple[Any, str, bool, bytes]:
+        response_rows = _limit_browser_response_rows(response_rows)
+
+        async def read_response(
+            row: tuple[Any, str, bool],
+        ) -> tuple[Any, str, bool, bytes, tuple[tuple[str, str], ...], tuple[tuple[str, str], ...]]:
             response, request_url, is_page = row
+            async def read_body() -> bytes:
+                try:
+                    return await response.body()
+                except PlaywrightError:
+                    return b""
+
             try:
-                body = await asyncio.wait_for(
-                    response.body(),
+                body, request_headers, response_headers = await asyncio.wait_for(
+                    asyncio.gather(
+                        read_body(),
+                        _playwright_headers(response.request),
+                        _playwright_headers(response),
+                    ),
                     timeout=min(timeout_seconds, 5.0),
                 )
-            except (PlaywrightError, asyncio.TimeoutError):
-                body = b""
-            return response, request_url, is_page, body
+            except asyncio.TimeoutError:
+                body, request_headers, response_headers = b"", (), ()
+            return response, request_url, is_page, body, request_headers, response_headers
 
         response_bodies = await asyncio.gather(*(read_response(row) for row in response_rows))
         exchanges: list[HttpExchange] = []
         captured_bytes = 0
         captured_at = datetime.now(timezone.utc).isoformat()
-        for response, request_url, is_page, body in response_bodies:
+        for response, request_url, is_page, body, request_headers, response_headers in response_bodies:
             if not is_page and captured_bytes >= maximum_page_bytes:
                 continue
             remaining = maximum_page_bytes - captured_bytes
@@ -413,8 +443,6 @@ async def _browser_attempt(
             truncated = len(body) > limit
             body = body[:limit]
             captured_bytes += len(body)
-            request_headers = await _playwright_headers(response.request)
-            response_headers = await _playwright_headers(response)
             exchanges.append(HttpExchange(
                 source_id=article.source.id,
                 article_id=article.id,
