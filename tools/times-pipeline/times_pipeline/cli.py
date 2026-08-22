@@ -28,6 +28,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rsshub-url", default=os.getenv("JOJO_TIMES_RSSHUB_URL", "https://jojokanbao-rsshub.onrender.com"))
     parser.add_argument("--rsshub-access-key-env", default="JOJOKANBAO_RSSHUB_ACCESS_KEY")
     parser.add_argument("--timeout", type=float, default=60.0)
+    parser.add_argument("--rsshub-workers", type=int, default=3)
     parser.add_argument("--article-timeout", type=float, default=25.0)
     parser.add_argument("--archive-engine", choices=("browser", "http"), default=os.getenv("JOJO_TIMES_ARCHIVE_ENGINE", "browser"))
     parser.add_argument("--archive-proxy", default=os.getenv("JOJO_TIMES_ARCHIVE_PROXY"))
@@ -80,6 +81,7 @@ async def run(args: argparse.Namespace) -> dict:
         rsshub_url=args.rsshub_url,
         rsshub_access_key=os.getenv(args.rsshub_access_key_env),
         timeout_seconds=args.timeout,
+        rsshub_workers=args.rsshub_workers,
         now=now,
         since=window_start,
     )
