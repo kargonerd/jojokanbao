@@ -19,7 +19,7 @@ describe("RmrbReviewPage", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/stats")) {
-        return new Response(JSON.stringify({ success: true, total: 2, counts: { pending: decided ? 1 : 2, accept: decided ? 1 : 0, reject: 0 } }), { status: 200 });
+        return new Response(JSON.stringify({ success: true, total: 2, counts: { pending: decided ? 1 : 2, pendingPublication: decided ? 1 : 0 } }), { status: 200 });
       }
       if (url.includes("/decision") && init?.method === "POST") {
         decided = true;
@@ -28,7 +28,8 @@ describe("RmrbReviewPage", () => {
       if (url.endsWith("/sync") && init?.method === "POST") {
         return new Response(JSON.stringify({
           success: true,
-          acceptedCount: 3,
+          stagedCount: 3,
+          pendingPublication: 0,
           canonicalChanges: 1,
           publishedChanges: 1,
           results: { huggingface: { commit: "abc" } },

@@ -27,7 +27,7 @@ export type RmrbQueue = {
 export type RmrbStats = {
   success: boolean;
   total: number;
-  counts: { pending: number; accept: number; reject: number };
+  counts: { pending: number; pendingPublication: number };
 };
 
 export type RmrbSyncTarget = "huggingface" | "b2";
@@ -46,7 +46,8 @@ export type RmrbSyncStatus = {
 
 export type RmrbSyncResult = {
   success: true;
-  acceptedCount: number;
+  stagedCount: number;
+  pendingPublication: number;
   canonicalChanges: number;
   publishedChanges: number;
   results: Partial<Record<RmrbSyncTarget, object>>;

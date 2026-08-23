@@ -52,6 +52,8 @@ Workbench 通过 operator RPC 审核。
 `tmp/rmrb-peopledata-full-directory/merged-missing-workbench.sqlite3`，按日期升序
 展示本地 JSONL 与年度 XLSX 合并后仍为空的目录记录。Accept/Reject 只写入
 `manual-review-decisions-workbench.jsonl`，Accept/Reject 本身不会等待网络。
+新 Accept 同时写入本地 `manual-review-pending-publication.json`；工作台分别显示
+“待复核”和“待发布”，HF 与 B2 均成功后才从待发布数中移除。
 页面中的“发布修订数据”可独立选择 Hugging Face、B2。人工决定不上传远端；
 选择 Hugging Face 时会原子更新受影响日期的 Canonical Item、受影响年份的
 Dataset Viewer 分片和必要的 availability；选择 B2 时会先发布

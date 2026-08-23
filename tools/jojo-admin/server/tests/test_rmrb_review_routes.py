@@ -57,6 +57,7 @@ class RmrbReviewRoutesTest(unittest.TestCase):
             patch.object(routes, "SYNC_STATE", self.sync_root / "review-sync-state.json"),
             patch.object(routes, "PUBLISH_ROOT", self.sync_root / "publish"),
             patch.object(routes, "PUBLICATION_STATE", self.sync_root / "publication-state.json"),
+            patch.object(routes, "PENDING_PUBLICATION", self.root / "manual-review-pending-publication.json"),
         )
         for item in self.patches:
             item.start()
@@ -99,7 +100,7 @@ class RmrbReviewRoutesTest(unittest.TestCase):
         self.assertEqual(queue["total"], 1)
         self.assertEqual(queue["items"][0]["title"], "较晚稿")
         stats = self.client.get("/api/rmrb-review/stats").get_json()
-        self.assertEqual(stats["counts"], {"accept": 1, "pending": 1, "reject": 0})
+        self.assertEqual(stats["counts"], {"pending": 1, "pendingPublication": 1})
 
     def test_accept_requires_content(self):
         response = self.client.post(
@@ -142,7 +143,8 @@ class RmrbReviewRoutesTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
-        self.assertEqual(payload["acceptedCount"], 1)
+        self.assertEqual(payload["stagedCount"], 1)
+        self.assertEqual(payload["pendingPublication"], 0)
         self.assertEqual(payload["canonicalChanges"], 1)
         sync_hf.assert_called_once()
         sync_b2.assert_called_once()

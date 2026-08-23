@@ -34,6 +34,9 @@ review queue only needs article keys, titles, and PeopleData links; it does not
 load or expose local PDFs. Review decisions remain local-first and these
 endpoints never update Elasticsearch. The UI can explicitly publish accepted
 content to Hugging Face and/or B2; local decision logs are not uploaded.
+Accepted rows enter a local pending-publication journal. Each successful target
+is cleared independently, and a row leaves the pending count only after both HF
+Canonical and B2 Delivery have succeeded.
 Hugging Face uses `RMRB_REVIEW_HF_REPO` (then
 `HF_DATASET_REPO`) and the CLI token or `HF_TOKEN`; B2 uses
 `RMRB_REVIEW_B2_REMOTE` (then `JOJO_DELIVERY_REMOTE`) through rclone.

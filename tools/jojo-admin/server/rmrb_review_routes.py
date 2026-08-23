@@ -46,6 +46,7 @@ SYNC_ROOT = REVIEW_ROOT / "sync"
 SYNC_STATE = SYNC_ROOT / "review-sync-state.json"
 PUBLISH_ROOT = SYNC_ROOT / "publish"
 PUBLICATION_STATE = SYNC_ROOT / "publication-state.json"
+PENDING_PUBLICATION = REVIEW_ROOT / "manual-review-pending-publication.json"
 COPY_MARKER_RE = re.compile(r"[（(]\s*人民数据库资料\s*[）)]")
 DECISION_LOCK = threading.Lock()
 SYNC_LOCK = threading.Lock()
@@ -200,6 +201,51 @@ def _write_publication_state(state: dict[str, object]) -> None:
         PUBLICATION_STATE,
         (json.dumps(state, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8"),
     )
+
+
+def _publication_key(key: tuple[str, int, int]) -> str:
+    return "|".join((key[0], str(key[1]), str(key[2])))
+
+
+def _load_pending_publication() -> dict[str, dict[str, object]]:
+    if not PENDING_PUBLICATION.is_file():
+        return {}
+    try:
+        payload = json.loads(PENDING_PUBLICATION.read_text(encoding="utf-8"))
+        items = payload.get("items") if isinstance(payload, dict) else None
+        return {
+            str(key): dict(value)
+            for key, value in (items or {}).items()
+            if isinstance(value, dict)
+        }
+    except (OSError, json.JSONDecodeError, TypeError):
+        logging.exception("Unable to read pending RMRB publication journal %s", PENDING_PUBLICATION)
+        return {}
+
+
+def _write_pending_publication(items: dict[str, dict[str, object]]) -> None:
+    payload = {
+        "formatVersion": "jojo-rmrb-pending-publication/1",
+        "items": dict(sorted(items.items())),
+    }
+    _atomic_write(
+        PENDING_PUBLICATION,
+        (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
+    )
+
+
+def _stage_publication(key: tuple[str, int, int], content: str, decision: str) -> None:
+    items = _load_pending_publication()
+    name = _publication_key(key)
+    if decision == "accept":
+        items[name] = {
+            "contentSha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            "targets": ["huggingface", "b2"],
+            "stagedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+    else:
+        items.pop(name, None)
+    _write_pending_publication(items)
 
 
 def _sync_huggingface(canonical: CanonicalPatch) -> dict[str, object]:
@@ -410,8 +456,7 @@ def stats_api():
         )
     counts = {
         "pending": total - sum(handled.values()),
-        "accept": int(handled.get("accept", 0)),
-        "reject": int(handled.get("reject", 0)),
+        "pendingPublication": len(_load_pending_publication()),
     }
     return jsonify({"success": True, "total": total, "counts": counts})
 
@@ -453,33 +498,20 @@ def sync_api():
         publication_state = _load_publication_state()
         publication_targets = publication_state.setdefault("targets", {})
         assert isinstance(publication_targets, dict)
-
-        def published_for(target: str) -> dict[str, str] | None:
-            value = publication_targets.get(target)
-            if not isinstance(value, dict) or not isinstance(value.get("accepted"), dict):
-                return None
-            return {str(key): str(digest) for key, digest in value["accepted"].items()}
-
-        hf_published = published_for("huggingface")
-        b2_published = published_for("b2")
+        pending_snapshot = _load_pending_publication()
         hf_names = {
-            name for name, digest in desired.items()
-            if hf_published is None or hf_published.get(name) != digest
+            name for name, row in pending_snapshot.items()
+            if "huggingface" in (row.get("targets") or []) and "huggingface" in targets
         }
         b2_names = {
-            name for name, digest in desired.items()
-            if b2_published is not None and b2_published.get(name) != digest
+            name for name, row in pending_snapshot.items()
+            if "b2" in (row.get("targets") or []) and "b2" in targets
         }
         canonical = _prepare_publication(
             decisions,
             {parse_key(name) for name in hf_names | b2_names},
             {parse_key(name) for name in b2_names},
         )
-        if b2_published is None:
-            # The original HF and B2 snapshots were published together.  On
-            # the first incremental run, only canonical differences discovered
-            # above can be outstanding in Delivery.
-            b2_names = {"|".join((key[0], str(key[1]), str(key[2]))) for key in canonical.changed_keys}
         if "b2" in targets and canonical.changed_keys and "huggingface" not in targets:
             return jsonify({
                 "success": False,
@@ -499,6 +531,7 @@ def sync_api():
             "huggingface": lambda: _sync_huggingface(canonical),
             "b2": lambda: _sync_b2(delivery or DeliveryPatch(PUBLISH_ROOT)),
         }
+        target_names = {"huggingface": hf_names, "b2": b2_names}
         for target in targets:
             if target == "b2" and "huggingface" in errors:
                 errors[target] = "HF Canonical 发布失败，已停止 B2 发布以避免数据分叉"
@@ -513,18 +546,25 @@ def sync_api():
                     **detail,
                 }
                 publication_targets[target] = {"accepted": desired}
-                if target == "huggingface" and b2_published is None and "b2" not in targets:
-                    changed_names = {
-                        "|".join((key[0], str(key[1]), str(key[2])))
-                        for key in canonical.changed_keys
-                    }
-                    publication_targets["b2"] = {
-                        "accepted": {
-                            name: digest for name, digest in desired.items()
-                            if name not in changed_names
-                        }
-                    }
                 _write_publication_state(publication_state)
+                with DECISION_LOCK:
+                    latest_pending = _load_pending_publication()
+                    for name in target_names[target]:
+                        current = latest_pending.get(name)
+                        snapshot = pending_snapshot.get(name)
+                        if current is None or snapshot is None:
+                            continue
+                        if current.get("contentSha256") != snapshot.get("contentSha256"):
+                            continue
+                        remaining = [
+                            value for value in (current.get("targets") or [])
+                            if value != target
+                        ]
+                        if remaining:
+                            current["targets"] = remaining
+                        else:
+                            latest_pending.pop(name, None)
+                    _write_pending_publication(latest_pending)
             except Exception as error:  # Each selected destination is independent.
                 logging.exception("Unable to sync RMRB reviews to %s", target)
                 errors[target] = str(error)
@@ -533,7 +573,8 @@ def sync_api():
         _write_sync_state(state)
         response = {
             "success": not errors,
-            "acceptedCount": canonical.accepted_count,
+            "stagedCount": len(pending_snapshot),
+            "pendingPublication": len(_load_pending_publication()),
             "canonicalChanges": canonical.changed_article_count,
             "publishedChanges": max(
                 (int(detail.get("publishedArticles") or 0) for detail in results.values() if isinstance(detail, dict)),
@@ -600,4 +641,5 @@ def decision_api():
         }
         existing[key] = row
         _write_workbench_decisions(existing)
+        _stage_publication(key, content, decision)
     return jsonify({"success": True, "decision": row})

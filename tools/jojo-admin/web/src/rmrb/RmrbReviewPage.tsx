@@ -103,7 +103,12 @@ export function RmrbReviewPage() {
       const result = await rmrbReviewApi.sync(targets);
       const labels = targets.map((target) => target === "huggingface" ? "Hugging Face" : "B2");
       setMessage(`已向 ${labels.join("、")} 发布 ${result.publishedChanges.toLocaleString()} 条新修订。`);
-      setSyncStatus(await rmrbReviewApi.syncStatus());
+      const [latestSyncStatus, latestStats] = await Promise.all([
+        rmrbReviewApi.syncStatus(),
+        rmrbReviewApi.stats(),
+      ]);
+      setSyncStatus(latestSyncStatus);
+      setStats(latestStats.counts);
     } catch (error) {
       setMessage(`同步失败：${(error as Error).message}`);
     } finally {
@@ -134,7 +139,7 @@ export function RmrbReviewPage() {
             <button className="secondary-button" type="submit">搜索</button>
           </form>
           <p className="rmrb-review-summary">
-            待处理 {stats?.pending.toLocaleString() ?? "—"} · 已处理 {stats ? (stats.accept + stats.reject).toLocaleString() : "—"}
+            待复核 {stats?.pending.toLocaleString() ?? "—"} · 待发布 {stats?.pendingPublication.toLocaleString() ?? "—"}
           </p>
           <div className="rmrb-review-list">
             {items.map((item, index) => (
