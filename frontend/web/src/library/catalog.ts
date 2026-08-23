@@ -1,8 +1,8 @@
-import rmrbImage from "./assets/periodicals/people-daily-brand.jpg";
-import ckxxImage from "./assets/periodicals/reference-news-brand.jpg";
-import hqImage from "./assets/periodicals/red-flag-brand.jpg";
-import rmhbImage from "./assets/periodicals/china-pictorial-brand.jpg";
-import sjzsImage from "./assets/periodicals/world-affairs-brand.jpg";
+import rmrbImage from "../../../packages/content/assets/periodicals/people-daily-brand.jpg";
+import ckxxImage from "../../../packages/content/assets/periodicals/reference-news-brand.jpg";
+import hqImage from "../../../packages/content/assets/periodicals/red-flag-brand.jpg";
+import rmhbImage from "../../../packages/content/assets/periodicals/china-pictorial-brand.jpg";
+import sjzsImage from "../../../packages/content/assets/periodicals/world-affairs-brand.jpg";
 import { ARCHIVE_PUBLICATIONS, type ArchivePublicationName } from "@jojo/content";
 export { BOOK_COVER_TONES, bookCoverTone, issueLabel } from "./bookCatalog";
 

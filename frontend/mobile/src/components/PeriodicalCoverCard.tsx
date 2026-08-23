@@ -5,11 +5,11 @@ import { IS_EINK_RELEASE } from "../config/appVariant";
 import { mobileTheme } from "../theme/tokens";
 
 export const publicationImages: Record<ArchivePublicationName, ImageSourcePropType> = {
-  rmrb: require("../../assets/periodicals/people-daily-brand.jpg"),
-  ckxx: require("../../assets/periodicals/reference-news-brand.jpg"),
-  hq: require("../../assets/periodicals/red-flag-brand.jpg"),
-  rmhb: require("../../assets/periodicals/china-pictorial-brand.jpg"),
-  sjzs: require("../../assets/periodicals/world-affairs-brand.jpg"),
+  rmrb: require("../../../packages/content/assets/periodicals/people-daily-brand.jpg"),
+  ckxx: require("../../../packages/content/assets/periodicals/reference-news-brand.jpg"),
+  hq: require("../../../packages/content/assets/periodicals/red-flag-brand.jpg"),
+  rmhb: require("../../../packages/content/assets/periodicals/china-pictorial-brand.jpg"),
+  sjzs: require("../../../packages/content/assets/periodicals/world-affairs-brand.jpg"),
 };
 
 export const PeriodicalCoverCard = memo(function PeriodicalCoverCard({
