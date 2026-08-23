@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Outlet } from "react-router-dom";
 import { useAccountSessionStore } from "../account/session";
 import { rollout } from "../rollout";
@@ -24,11 +24,15 @@ export function AppLayout({
   navigationLabel,
   headerActions,
   className,
+  children,
+  showHeader = true,
 }: {
   navigationItems?: readonly AppNavigationItem[];
   navigationLabel?: string;
   headerActions?: ReactNode;
   className?: string;
+  children?: ReactNode;
+  showHeader?: boolean;
 } = {}) {
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
@@ -37,8 +41,8 @@ export function AppLayout({
     navigationItems || buildAppNavigationItems((accountInitialized && Boolean(userId)) || publicTimesAudit);
   return (
     <div className={["app-shell", className].filter(Boolean).join(" ")}>
-      <AppHeader actions={headerActions} navigationItems={resolvedNavigationItems} navigationLabel={navigationLabel} />
-      <Outlet />
+      {showHeader ? <AppHeader key="app-header" actions={headerActions} navigationItems={resolvedNavigationItems} navigationLabel={navigationLabel} /> : null}
+      <Fragment key="app-content">{children ?? <Outlet />}</Fragment>
     </div>
   );
 }

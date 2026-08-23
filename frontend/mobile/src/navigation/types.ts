@@ -4,6 +4,7 @@ import type { MobileBook } from "../lib/books";
 export type RootStackParamList = {
   Tabs: undefined;
   Settings: { section?: SettingsSection } | undefined;
+  AccountSecurity: undefined;
   Reader: {
     publication: ArchivePublicationName;
     issueId: string;

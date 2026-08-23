@@ -11,17 +11,34 @@ additional_redirect_urls = [
 enable_signup = true
 
 [auth.rate_limit]
+email_sent = 100
 sign_in_sign_ups = 10
+token_verifications = 10
 
 [auth.email]
 enable_signup = true
 enable_confirmations = true
 max_frequency = "1m"
-otp_length = 8
+otp_length = 6
+otp_expiry = 600
 
 [auth.email.template.confirmation]
-subject = "请确认你的 JOJO 看报账号"
+subject = "{{ .Token }} 是你的 JOJO 注册验证码"
 content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.recovery]
+subject = "{{ .Token }} 是你的 JOJO 密码重置验证码"
+content_path = "./supabase/templates/recovery.html"
+
+[auth.email.template.reauthentication]
+subject = "{{ .Token }} 是你的 JOJO 身份验证码"
+content_path = "./supabase/templates/reauthentication.html"
+
+[auth.email.notification.password_changed]
+enabled = true
+subject = "你的 JOJO 账号密码已修改"
+# Supabase CLI 2.114 resolves notification paths from config.toml, unlike verification templates.
+content_path = "./templates/password_changed_notification.html"
 
 [auth.hook.before_user_created]
 enabled = true

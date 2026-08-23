@@ -36,6 +36,7 @@ pnpm dlx supabase link --project-ref <project-ref>
 pnpm dlx supabase db push --dry-run
 pnpm dlx supabase db push
 pnpm dlx supabase config push --project-ref <project-ref>
+pnpm dlx supabase functions deploy delete-account
 ```
 
 The database migration must be pushed before the Auth config because the config
@@ -65,18 +66,30 @@ creation fails closed if somebody disables or bypasses the hosted hook.
 Existing users are unaffected.
 
 The Auth config explicitly preserves the hosted one-minute email request
-interval, eight-digit OTP setting, TOTP enrollment, and disabled Vector
-Storage. Keep these values checked in: omitted CLI defaults may otherwise
-appear as unrelated hosted config changes during `config push`.
+interval, 100-email-per-hour project allowance, six-digit OTP setting, TOTP
+enrollment, and disabled Vector Storage. Keep these values checked in: omitted
+CLI defaults may otherwise appear as unrelated hosted config changes during
+`config push`.
 
-The confirmation email source is
-`supabase/templates/confirmation.html` relative to the Supabase workdir. The
-hosted template must be updated through `config push` or the Management API;
-committing the HTML file alone does not change emails already sent by Supabase.
-The template sends readers to `/account/confirm` on the requested JOJO origin.
-That page consumes the one-time token hash with Supabase Auth, removes it from
-the browser address bar, and offers a resend form when the link is no longer
-valid.
+Registration, recovery, reauthentication, and password-change email sources
+are in `supabase/templates/` relative to the Supabase workdir. They share one
+JOJO-branded layout and use the same hosted logo. Hosted templates must be
+updated through `config push` or the Management API; committing HTML alone does
+not change emails already sent by Supabase. To apply all four templates through
+the Management API with credentials from the repository `.env`, run:
+
+```powershell
+pwsh infrastructure/supabase/scripts/update-auth-email-templates.ps1
+```
+
+The three verification templates display `{{ .Token }}` so Web, Desktop, and
+Mobile complete the flow with the same six-digit code and do not depend on an
+app link or Deep Link. The legacy `/account/confirm` route remains temporarily
+available for confirmation links sent before this rollout.
+
+The `delete-account` Edge Function validates the caller's access token before
+using the server-only service role. It removes the reader's avatar objects and
+Auth user. Never expose `SUPABASE_SERVICE_ROLE_KEY` to any frontend environment.
 
 The trigger applies to every new Auth user, including users created from the
 Supabase dashboard and OAuth identities. Keep those signup paths disabled
@@ -177,12 +190,12 @@ public, also enable CAPTCHA in Supabase Bot and Abuse Protection and wire its
 token into the signup form. CAPTCHA requires a provider site key and secret, so
 it is intentionally a rollout setting rather than a repository default.
 
-## Email confirmation
+## Email verification and recovery
 
-Email confirmation is enabled and returns to `/archive`. Supabase's built-in
-SMTP is suitable only for owner testing: it sends only to project team
-addresses and currently allows two messages per hour. Configure custom SMTP
-before inviting external readers.
+Email confirmation and password recovery both use six-digit codes that expire
+after ten minutes. Supabase's built-in SMTP is suitable only for owner testing:
+it sends only to project team addresses and currently allows two messages per
+hour. Configure custom SMTP before inviting external readers.
 
 Useful official references:
 

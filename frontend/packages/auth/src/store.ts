@@ -9,11 +9,15 @@ export interface AuthActions {
   clearFeedback: () => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (input: SignUpInput) => Promise<boolean>;
+  confirmSignUp: (email: string, code: string) => Promise<void>;
+  resendSignUpCode: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
-  sendPasswordReset: (email: string, redirectTo: string) => Promise<void>;
-  updatePassword: (password: string) => Promise<void>;
+  sendPasswordReset: (email: string) => Promise<void>;
+  verifyPasswordResetCode: (email: string, code: string) => Promise<void>;
+  completePasswordRecovery: (password: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  deleteAccount: (currentPassword: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
-  uploadAvatar: (file: File) => Promise<void>;
 }
 
 export type AuthStore = AuthState & AuthActions;
@@ -31,6 +35,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
     session: null,
     user: null,
     profile: null,
+    recoveryPending: false,
     initialized: false,
     busy: false,
     error: null,
@@ -51,14 +56,13 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
       }
     },
 
-    signUp: async ({ email, password, invitationCode, emailRedirectTo }) => {
+    signUp: async ({ email, password, invitationCode }) => {
       set({ busy: true, error: null, notice: null });
       try {
         const { data, error } = await client.auth.signUp({
           email,
           password,
           options: {
-            emailRedirectTo,
             data: { invitation_code: invitationCode.trim() },
           },
         });
@@ -71,7 +75,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
           user: session?.user ?? null,
           busy: false,
           notice: requiresEmailConfirmation
-            ? "确认邮件已经发出，请打开邮件完成注册。"
+            ? "验证码已经发送，请在当前页面完成注册。"
             : "账号已经创建。",
         });
         return requiresEmailConfirmation;
@@ -81,20 +85,59 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
       }
     },
 
+    confirmSignUp: async (email, code) => {
+      set({ busy: true, error: null, notice: null });
+      try {
+        const { data, error } = await client.auth.verifyOtp({
+          email: email.trim(),
+          token: code.trim(),
+          type: "email",
+        });
+        if (error) throw error;
+        const profile = data.user ? await profiles.getOrCreate(data.user.id) : null;
+        set({
+          session: data.session,
+          user: data.user,
+          profile,
+          recoveryPending: false,
+          busy: false,
+          notice: "邮箱验证完成，账号已经启用。",
+        });
+      } catch (error) {
+        set({ busy: false, error: getAuthErrorMessage(error) });
+        throw error;
+      }
+    },
+
+    resendSignUpCode: async (email) => {
+      set({ busy: true, error: null, notice: null });
+      try {
+        const { error } = await client.auth.resend({
+          type: "signup",
+          email: email.trim(),
+        });
+        if (error) throw error;
+        set({ busy: false, notice: "新的验证码已经发送。" });
+      } catch (error) {
+        set({ busy: false, error: getAuthErrorMessage(error) });
+        throw error;
+      }
+    },
+
     signOut: async () => {
       set({ busy: true, error: null, notice: null });
-      const { error } = await client.auth.signOut();
+      const { error } = await client.auth.signOut({ scope: "local" });
       if (error) {
         set({ busy: false, error: getAuthErrorMessage(error) });
         throw error;
       }
-      set({ session: null, user: null, profile: null, busy: false });
+      set({ session: null, user: null, profile: null, recoveryPending: false, busy: false });
     },
 
-    sendPasswordReset: async (email, redirectTo) => {
+    sendPasswordReset: async (email) => {
       set({ busy: true, error: null, notice: null });
       try {
-        const { error } = await client.auth.resetPasswordForEmail(email, { redirectTo });
+        const { error } = await client.auth.resetPasswordForEmail(email.trim());
         if (error) throw error;
         set({ busy: false, notice: "如果该邮箱已注册，你会收到一封重置密码邮件。" });
       } catch (error) {
@@ -103,12 +146,86 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
       }
     },
 
-    updatePassword: async (password) => {
+    verifyPasswordResetCode: async (email, code) => {
+      set({ busy: true, recoveryPending: true, error: null, notice: null });
+      try {
+        const { data, error } = await client.auth.verifyOtp({
+          email: email.trim(),
+          token: code.trim(),
+          type: "recovery",
+        });
+        if (error) throw error;
+        const profile = data.user ? await profiles.getOrCreate(data.user.id) : null;
+        set({
+          session: data.session,
+          user: data.user,
+          profile,
+          recoveryPending: true,
+          busy: false,
+          notice: "验证码正确，请设置新密码。",
+        });
+      } catch (error) {
+        set({ busy: false, recoveryPending: false, error: getAuthErrorMessage(error) });
+        throw error;
+      }
+    },
+
+    completePasswordRecovery: async (password) => {
       set({ busy: true, error: null, notice: null });
       try {
         const { error } = await client.auth.updateUser({ password });
         if (error) throw error;
-        set({ busy: false, notice: "密码已更新，下次请使用新密码登录。" });
+        const { error: signOutError } = await client.auth.signOut({ scope: "others" });
+        if (signOutError) throw signOutError;
+        set({ recoveryPending: false, busy: false, notice: "密码已更新，其他设备的登录已经退出。" });
+      } catch (error) {
+        set({ busy: false, error: getAuthErrorMessage(error) });
+        throw error;
+      }
+    },
+
+    changePassword: async (currentPassword, newPassword) => {
+      const email = get().user?.email;
+      if (!email) throw new Error("Not authenticated");
+      set({ busy: true, error: null, notice: null });
+      try {
+        const { data, error: signInError } = await client.auth.signInWithPassword({
+          email,
+          password: currentPassword,
+        });
+        if (signInError) throw signInError;
+        const { error } = await client.auth.updateUser({ password: newPassword });
+        if (error) throw error;
+        const { error: signOutError } = await client.auth.signOut({ scope: "others" });
+        if (signOutError) throw signOutError;
+        set({ session: data.session, user: data.user, busy: false, notice: "密码已经修改。" });
+      } catch (error) {
+        set({ busy: false, error: getAuthErrorMessage(error) });
+        throw error;
+      }
+    },
+
+    deleteAccount: async (currentPassword) => {
+      const email = get().user?.email;
+      if (!email) throw new Error("Not authenticated");
+      set({ busy: true, error: null, notice: null });
+      try {
+        const { error: signInError } = await client.auth.signInWithPassword({
+          email,
+          password: currentPassword,
+        });
+        if (signInError) throw signInError;
+        const { error } = await client.functions.invoke("delete-account", { method: "POST" });
+        if (error) throw error;
+        await client.auth.signOut({ scope: "local" }).catch(() => undefined);
+        set({
+          session: null,
+          user: null,
+          profile: null,
+          recoveryPending: false,
+          busy: false,
+          notice: "账号已经注销。",
+        });
       } catch (error) {
         set({ busy: false, error: getAuthErrorMessage(error) });
         throw error;
@@ -125,23 +242,17 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
       }
     },
 
-    uploadAvatar: async (file) => {
-      const { user, profile } = get();
-      if (!user) throw new Error("Not authenticated");
-      set({ busy: true, error: null, notice: null });
-      try {
-        const updatedProfile = await profiles.uploadAvatar(user.id, profile?.avatar_path ?? null, file);
-        set({ profile: updatedProfile, busy: false, notice: "头像已更新。" });
-      } catch (error) {
-        set({ busy: false, error: getAuthErrorMessage(error) });
-        throw error;
-      }
-    },
   }));
 
   const syncSession = async (session: Session | null) => {
     if (!session?.user) {
-      useAuthStore.setState({ session: null, user: null, profile: null, initialized: true });
+      useAuthStore.setState({
+        session: null,
+        user: null,
+        profile: null,
+        recoveryPending: false,
+        initialized: true,
+      });
       return;
     }
     try {

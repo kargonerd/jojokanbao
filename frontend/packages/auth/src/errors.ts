@@ -3,7 +3,9 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   email_address_invalid: "邮箱地址格式不正确。",
   email_address_not_authorized: "当前邮件服务不能向这个地址发送确认邮件。",
   email_exists: "这个邮箱已经注册，请直接登录。",
-  email_not_confirmed: "请先打开确认邮件，完成邮箱验证。",
+  email_not_confirmed: "请先输入邮件中的验证码，完成邮箱验证。",
+  otp_expired: "验证码已过期，请重新发送。",
+  otp_disabled: "验证码登录暂不可用。",
   invalid_credentials: "邮箱或密码不正确。",
   over_email_send_rate_limit: "邮件发送过于频繁，请稍后再试。",
   over_request_rate_limit: "请求过于频繁，请稍后再试。",
@@ -23,7 +25,14 @@ export function getAuthErrorMessage(error: unknown): string {
 
   const message = candidate.message?.toLowerCase() ?? "";
   if (message.includes("invalid login credentials")) return "邮箱或密码不正确。";
-  if (message.includes("email not confirmed")) return "请先打开确认邮件，完成邮箱验证。";
+  if (message.includes("email not confirmed")) return "请先输入邮件中的验证码，完成邮箱验证。";
+  if (message.includes("token has expired") || message.includes("otp expired")) {
+    return "验证码已过期，请重新发送。";
+  }
+  if (message.includes("token") && message.includes("invalid")) {
+    return "验证码不正确，请检查后重试。";
+  }
+  if (message.includes("reauthentication")) return "当前密码不正确。";
   if (message.includes("user already registered")) return "这个邮箱已经注册，请直接登录。";
   if (message.includes("invite code") || message.includes("invitation code")) {
     return "邀请码无效、已过期、已用完，或与当前邮箱不匹配。";

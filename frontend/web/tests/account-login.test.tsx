@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AccountLogin from "@/account/AccountLogin";
@@ -9,12 +9,18 @@ const auth = vi.hoisted(() => {
     state: {
       initialized: true,
       user: null,
+      recoveryPending: false,
       busy: false,
       error: null,
       notice: null,
       clearFeedback: vi.fn(),
       signIn: vi.fn(),
       signUp: vi.fn(),
+      confirmSignUp: vi.fn(),
+      resendSignUpCode: vi.fn(),
+      sendPasswordReset: vi.fn(),
+      verifyPasswordResetCode: vi.fn(),
+      completePasswordRecovery: vi.fn(),
     },
     startAuthSync: vi.fn(() => stopAuthSync),
     stopAuthSync,
@@ -22,6 +28,7 @@ const auth = vi.hoisted(() => {
 });
 
 vi.mock("@/account/auth", () => ({
+  authClient: {},
   startAuthSync: auth.startAuthSync,
   useAuthStore: (selector?: (state: typeof auth.state) => unknown) =>
     selector ? selector(auth.state) : auth.state,
@@ -30,12 +37,18 @@ vi.mock("@/account/auth", () => ({
 beforeEach(() => {
   auth.state.initialized = true;
   auth.state.user = null;
+  auth.state.recoveryPending = false;
   auth.state.busy = false;
   auth.state.error = null;
   auth.state.notice = null;
   auth.state.clearFeedback.mockClear();
   auth.state.signIn.mockReset().mockResolvedValue(undefined);
   auth.state.signUp.mockReset().mockResolvedValue(true);
+  auth.state.confirmSignUp.mockReset().mockResolvedValue(undefined);
+  auth.state.resendSignUpCode.mockReset().mockResolvedValue(undefined);
+  auth.state.sendPasswordReset.mockReset().mockResolvedValue(undefined);
+  auth.state.verifyPasswordResetCode.mockReset().mockResolvedValue(undefined);
+  auth.state.completePasswordRecovery.mockReset().mockResolvedValue(undefined);
   auth.startAuthSync.mockClear();
   auth.stopAuthSync.mockClear();
 });
@@ -127,14 +140,26 @@ describe("account access", () => {
       Array.from(dialog.querySelectorAll("label > span"), (label) =>
         label.textContent,
       ),
-    ).toEqual(["邮箱", "密码", "邀请码"]);
+    ).toEqual(["邮箱", "密码", "再次输入密码", "邀请码"]);
 
     fireEvent.click(dialog);
     expect(dialog.hasAttribute("open")).toBe(false);
   });
 
-  it("submits invitation registration and shows the confirmation step", async () => {
-    render(<MemoryRouter><AccountLogin /></MemoryRouter>);
+  it("confirms invitation registration without flashing the account center, then returns home", async () => {
+    let finishConfirmation!: () => void;
+    auth.state.confirmSignUp.mockImplementation(() => new Promise<void>((resolve) => {
+      finishConfirmation = resolve;
+    }));
+    const accountRoutes = () => (
+      <MemoryRouter initialEntries={["/account"]}>
+        <Routes>
+          <Route path="/account" element={<AccountLogin />} />
+          <Route path="/" element={<div>New reader home</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
+    const view = render(accountRoutes());
 
     fireEvent.click(screen.getByRole("button", { name: "注册" }));
     fireEvent.change(screen.getByLabelText("邀请码"), {
@@ -146,15 +171,49 @@ describe("account access", () => {
     fireEvent.change(screen.getByLabelText("密码"), {
       target: { value: "strong-password" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "注册账号" }));
+    fireEvent.change(screen.getByLabelText("再次输入密码"), {
+      target: { value: "strong-password" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送注册验证码" }));
 
     await waitFor(() => expect(auth.state.signUp).toHaveBeenCalledWith({
       invitationCode: "K7MP4X",
       email: "reader@example.com",
       password: "strong-password",
-      emailRedirectTo: "http://localhost:3000/account",
     }));
-    expect(await screen.findByText("请检查邮箱")).toBeTruthy();
+    expect(await screen.findByLabelText("6 位验证码")).toBeTruthy();
+    expect(document.querySelectorAll(".book-account-form__code-slot")).toHaveLength(6);
+    expect(screen.queryByText(/Identity proof/i)).toBeNull();
     expect(screen.getByText(/reader@example.com/)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("6 位验证码"), { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: "确认并完成注册" }));
+    await waitFor(() => expect(auth.state.confirmSignUp).toHaveBeenCalledWith("reader@example.com", "123456"));
+
+    auth.state.user = { id: "reader-1", email: "reader@example.com" } as never;
+    view.rerender(accountRoutes());
+    expect(screen.queryByRole("heading", { name: "账号资料" })).toBeNull();
+    expect(screen.getByLabelText("6 位验证码")).toBeTruthy();
+
+    await act(async () => finishConfirmation());
+    expect(await screen.findByText("New reader home")).toBeTruthy();
+  });
+
+  it("recovers a password with an email code", async () => {
+    render(<MemoryRouter><AccountLogin /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+    fireEvent.click(screen.getByRole("button", { name: "忘记密码？" }));
+    fireEvent.change(screen.getByLabelText("注册邮箱"), { target: { value: "reader@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送验证码" }));
+    await waitFor(() => expect(auth.state.sendPasswordReset).toHaveBeenCalledWith("reader@example.com"));
+
+    fireEvent.change(screen.getByLabelText("6 位验证码"), { target: { value: "654321" } });
+    fireEvent.click(screen.getByRole("button", { name: "验证身份" }));
+    await waitFor(() => expect(auth.state.verifyPasswordResetCode).toHaveBeenCalledWith("reader@example.com", "654321"));
+
+    fireEvent.change(screen.getByLabelText("新密码"), { target: { value: "new-password" } });
+    fireEvent.change(screen.getByLabelText("再次输入新密码"), { target: { value: "new-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存新密码" }));
+    await waitFor(() => expect(auth.state.completePasswordRecovery).toHaveBeenCalledWith("new-password"));
   });
 });

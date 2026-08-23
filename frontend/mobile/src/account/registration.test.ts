@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { getRegistrationValidationError, MOBILE_SIGNUP_REDIRECT_URL } from "./registration";
+import { getRegistrationValidationError } from "./registration";
 
 describe("mobile account registration", () => {
-  it("uses the web account page for email confirmation", () => {
-    expect(MOBILE_SIGNUP_REDIRECT_URL).toBe("https://reader.jojokanbao.cn/account");
-  });
-
   it("accepts the same invitation alphabet as the web registration form", () => {
     expect(getRegistrationValidationError("A2BC9Z", "12345678")).toBeNull();
     expect(getRegistrationValidationError(" a2bc9z ", "12345678")).toBeNull();

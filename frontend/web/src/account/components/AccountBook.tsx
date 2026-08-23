@@ -1,16 +1,18 @@
 import {
   type MouseEvent,
   type ReactNode,
+  useEffect,
   useRef,
 } from "react";
 import { flushSync } from "react-dom";
 import { Link } from "react-router-dom";
 
-export type AccountMode = "login" | "register";
+export type AccountMode = "login" | "register" | "recover";
 
 interface AccountBookProps {
   mode: AccountMode;
   busy: boolean;
+  open?: boolean;
   children: ReactNode;
   onModeChange: (mode: AccountMode) => void;
 }
@@ -44,12 +46,14 @@ function QuotePage() {
 export function AccountBook({
   mode,
   busy,
+  open = false,
   children,
   onModeChange,
 }: AccountBookProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const isRegistering = mode === "register";
+  const isRecovering = mode === "recover";
 
   const openDialog = () => {
     const dialog = dialogRef.current;
@@ -66,6 +70,10 @@ export function AccountBook({
 
     dialog.setAttribute("open", "");
   };
+
+  useEffect(() => {
+    if (open) openDialog();
+  }, [open]);
 
   const openAccount = (nextMode: AccountMode) => {
     // Commit the selected form before the native dialog starts its cover animation.
@@ -110,7 +118,7 @@ export function AccountBook({
       <dialog
         ref={dialogRef}
         className="book-login-dialog"
-        aria-label={isRegistering ? "注册" : "登录"}
+        aria-label={isRegistering ? "注册" : isRecovering ? "找回密码" : "登录"}
         onClick={closeFromBackdrop}
       >
         <div ref={stageRef} className="book-dialog-stage">
@@ -125,7 +133,7 @@ export function AccountBook({
                   <div className="book-account-form__modes" role="group" aria-label="账号操作">
                     <button
                       type="button"
-                      aria-pressed={!isRegistering}
+                      aria-pressed={mode === "login"}
                       disabled={busy}
                       onClick={() => onModeChange("login")}
                     >
@@ -152,7 +160,7 @@ export function AccountBook({
             <div className="opening-book__turning-cover" aria-hidden="true">
               <div className="opening-book__cover-face opening-book__cover-front">
                 <span>★</span>
-                <strong>{isRegistering ? "读者注册" : "读者登录"}</strong>
+                <strong>{isRegistering ? "读者注册" : isRecovering ? "找回密码" : "读者登录"}</strong>
                 <small>全世界无产者，联合起来！</small>
               </div>
               <div className="opening-book__cover-face opening-book__cover-back">

@@ -84,13 +84,26 @@ function DesktopSettingsAction() {
   );
 }
 
-function DesktopAppLayout() {
+function DesktopAppLayout({ children, showHeader = true }: { children?: ReactNode; showHeader?: boolean } = {}) {
   return (
     <AppLayout
       className="desktop-shell"
       headerActions={<DesktopSettingsAction />}
       navigationItems={useDesktopNavigation()}
-    />
+      showHeader={showHeader}
+    >
+      {children}
+    </AppLayout>
+  );
+}
+
+function DesktopAccountRoute() {
+  const accountInitialized = useAccountSessionStore((state) => state.initialized);
+  const userId = useAccountSessionStore((state) => state.userId);
+  return (
+    <DesktopAppLayout showHeader={accountInitialized && Boolean(userId)}>
+      <AccountEntry />
+    </DesktopAppLayout>
   );
 }
 
@@ -183,7 +196,7 @@ export function createDesktopRoutes(): RouteObject[] {
         ...(rollout.rag
           ? [{ path: 'book/:notebookId/:sourceId', element: <AuthenticatedRoute><BookReaderPage /></AuthenticatedRoute> }]
           : []),
-        { path: 'account', element: <AccountEntry /> },
+        { path: 'account', element: <DesktopAccountRoute /> },
         {
           path: 'account/confirm',
           element: (
