@@ -174,7 +174,7 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @jojo/web exec playwright install ${{ matrix.browser }}
+      - run: pnpm --filter @jojo/web exec playwright install --with-deps ${{ matrix.browser }}
       - run: pnpm --filter @jojo/web exec playwright test --browser=${{ matrix.browser }} --workers=1
 
   homepage-external:
