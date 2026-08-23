@@ -61,7 +61,7 @@ export async function mergeDeliveryMetadata(input: {
     if (!localIndex) throw new Error(`本次构建缺少 ${objectKey}`);
     const remoteIndex = await readJox<JojoDatasetIndex>(input.remoteRoot, objectKey);
     const items = new Map((remoteIndex?.items ?? []).map((item) => [item.itemId, item]));
-    for (const item of localIndex.items) items.set(item.itemId, item);
+    for (const item of localIndex.items ?? []) items.set(item.itemId, item);
     const merged: JojoDatasetIndex = {
       ...localIndex,
       revision: Math.max(localIndex.revision, remoteIndex?.revision ?? 0) + (remoteIndex ? 1 : 0),

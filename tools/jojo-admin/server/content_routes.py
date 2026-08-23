@@ -254,7 +254,7 @@ def import_files():
 @content_blueprint.post("/api/content/jobs/<job_id>/publish")
 def publish(job_id: str):
     data = request.get_json(silent=True) or {}
-    targets = [name for name in ("b2", "elasticsearch", "huggingface") if name in (data.get("targets") or [])]
+    targets = [name for name in ("huggingface", "b2", "elasticsearch") if name in (data.get("targets") or [])]
     with _lock:
         value = _jobs.get(job_id)
         if not value:

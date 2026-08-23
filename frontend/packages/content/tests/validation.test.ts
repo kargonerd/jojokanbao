@@ -19,6 +19,18 @@ const legacyIndex = {
 };
 
 describe("asJojoDatasetIndex", () => {
+  it("normalizes a sparse periodical index to an empty item list", () => {
+    expect(asJojoDatasetIndex({
+      formatVersion: "jojo-delivery-index/1",
+      datasetId: "rmrb",
+      type: "newspaper",
+      title: "人民日报",
+      language: "zh-CN",
+      revision: 1,
+      itemPath: "items/{date}/manifest.jox",
+    }).items).toEqual([]);
+  });
+
   it("normalizes the early v1 delivery label when the index shape is complete", () => {
     expect(asJojoDatasetIndex(legacyIndex)).toEqual({
       ...legacyIndex,

@@ -23,10 +23,11 @@ const fallbackClient = import.meta.env.VITE_CONTENT_CDN_FALLBACK_BASE
 let catalogPromise: Promise<JojoCatalog> | undefined;
 const datasetSources = new Map<string, Array<{ entry: JojoCatalogEntry; client: JoxClient }>>();
 const bookSearchPromises = new Map<string, Promise<JojoBookSearchIndex>>();
+type LoadedDatasetIndex = JojoDatasetIndex & { items: JojoDatasetItemSummary[] };
 
 export interface LoadedDataset {
   entry: JojoCatalogEntry;
-  index: JojoDatasetIndex;
+  index: LoadedDatasetIndex;
   client: JoxClient;
   itemClients: Map<string, JoxClient>;
 }
@@ -76,7 +77,7 @@ export async function loadDataset(datasetId: string): Promise<LoadedDataset> {
   })));
   if (loadedIndexes.some(({ index }) => index.datasetId !== datasetId)) throw new Error("Dataset Index 格式无效");
   const itemClients = new Map<string, JoxClient>();
-  const items = new Map<string, JojoDatasetIndex["items"][number]>();
+  const items = new Map<string, JojoDatasetItemSummary>();
   for (const { source, index } of [...loadedIndexes].reverse()) {
     for (const item of index.items) {
       items.set(item.itemId, item);
@@ -84,7 +85,7 @@ export async function loadDataset(datasetId: string): Promise<LoadedDataset> {
     }
   }
   const primary = loadedIndexes[0]!;
-  const index: JojoDatasetIndex = {
+  const index: LoadedDatasetIndex = {
     ...primary.index,
     revision: Math.max(...loadedIndexes.map((value) => value.index.revision)),
     type: items.size > 1 && primary.index.type === "book" ? "book-series" : primary.index.type,

@@ -68,7 +68,7 @@ describe("delivery metadata merge", () => {
       "content/books/series/index.jox",
     );
     expect(catalog.datasets.map((item) => item.datasetId).sort()).toEqual(["existing", "series"]);
-    expect(index.items.map((item) => item.itemId)).toEqual(["series:v1", "series:v2"]);
+    expect(index.items?.map((item) => item.itemId)).toEqual(["series:v1", "series:v2"]);
     expect(index.type).toBe("book-series");
   });
 

@@ -25,6 +25,31 @@ Flask on port 5000. The lower-level `dev:admin-api` and
 `dev:admin-web` commands remain available when only one side needs
 debugging.
 
+## RMRB missing-content review
+
+The `/rmrb-review` React route rebuilds its queue from the compact missing-row
+index derived from Hugging Face Canonical and keeps Accept/Reject drafts local until the
+operator explicitly publishes. `RMRB_REVIEW_ROOT` optionally changes the
+directory used for the disposable SQLite cache and unpublished draft journal;
+it defaults to `tmp/rmrb-review`. The cache is keyed by the HF commit and can be
+deleted or rebuilt on another computer without copying any historical local
+source files. The review queue only needs article keys, titles, and synthesized
+PeopleData links; it does not load or expose local PDFs. These
+endpoints never update Elasticsearch. The top-right publish action updates both
+Hugging Face and B2 in one operation; local decision logs are not uploaded.
+Accepted rows enter a local pending-publication journal. Each successful target
+is cleared independently, and a row leaves the pending count only after both HF
+Canonical and B2 Delivery have succeeded.
+Hugging Face uses `RMRB_REVIEW_HF_REPO` (then
+`HF_DATASET_REPO`) and the CLI token or `HF_TOKEN`; B2 uses
+`RMRB_REVIEW_B2_REMOTE` (then `JOJO_DELIVERY_REMOTE`) through rclone.
+Hugging Face publication patches only affected Canonical Items, annual article
+shards, the missing-row index, and availability metadata in one commit. B2 publication writes new
+immutable article fragments before mutable issue manifests and the collection
+index. Rejection is reserved for confirmed invalid, duplicate, or non-article
+catalog entries; after publication it is represented by the formal HF
+`rejected` article status and excluded from future review queues.
+
 ## ES repair
 
 Run `python app.py`, then open `http://127.0.0.1:5000/` for the admin console

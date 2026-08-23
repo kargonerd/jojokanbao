@@ -6,7 +6,8 @@ append-only Elasticsearch repairs, feature flags, and Agent operations.
 The product UI and internal package are both named **JOJO 管理台**, covering content operations, search maintenance,
 and runtime feature rules. `/content` is the JOJO v1 content importer and publisher. It accepts local
 WeRead JSON paths or browser-selected files, shows background job progress and
-diagnostics, then independently publishes B2, Elasticsearch and Hugging Face.
+diagnostics, then publishes Canonical data to Hugging Face, Delivery objects to
+B2, and rebuildable search documents to Elasticsearch.
 By default, a WeRead source is rejected when its declared TOC is truncated,
 TOC chapter responses are missing, or any response cannot be decoded.
 
@@ -47,17 +48,46 @@ Agent 管理页面位于 `http://127.0.0.1:4174/agent`。本机 Flask 优先读�
 匿名角色没有表或用户 RPC 权限；登录读者通过 `reader.annotations` 功能开关访问，
 Workbench 通过 operator RPC 审核。
 
+人民日报缺失正文工作台位于 `http://127.0.0.1:4174/rmrb-review`。它读取由
+Hugging Face Canonical 生成的 `indexes/missing-articles.jsonl.gz`，按日期升序展示
+`status=missing` 的记录。启动时会按 HF commit 自动生成
+`tmp/rmrb-review/hf-missing-workbench.sqlite3`；该 SQLite 只是可丢弃缓存，新电脑
+无需复制旧目录或数据库。Accept/Reject 先写入本机草稿和
+`manual-review-pending-publication.json`，本地操作本身不会等待网络；工作台分别显示
+“待复核”和“待发布”，HF 与 B2 均成功后才从待发布数中移除。未发布草稿如需跨电脑
+继续处理，需要先在原电脑发布。
+正文编辑区支持直接粘贴 PNG、JPEG、WebP 和 GIF；图片先以校验和命名的本地附件暂存，
+发布时写入 HF Canonical `assets/images/` 并生成对应的 B2 Delivery Jox 资产。只有图片、
+没有文字的记录会自动以 `【图片】` 作为可检索正文标记。
+右上角“发布 N 条修订”一次同时更新 Hugging Face 和 B2。人工决定不上传远端；
+Hugging Face 会原子更新受影响日期的 Canonical Item、受影响年份的
+Dataset Viewer 分片、缺失正文索引和必要的 availability；B2 会先发布
+正文 fragment，再更新日期 manifest 和必要的总 index。Reject 仅用于确定为无效、
+重复或非文章的目录项，发布后写入 HF 的正式 `rejected` 状态且不会生成正文 fragment。
+此流程不修改 Elasticsearch。
+生成合并队列和自动补全图片记录的命令见
+[`tools/rmrb-repair/README.md`](../rmrb-repair/README.md)。
+
 Publication configuration is read from the repository `.env`:
 
 ```text
-JOJO_RAW_REMOTE=jojo-b2:jojo-news-raw
 JOJO_DELIVERY_REMOTE=jojo-b2-s3:jojo-newspaper
 ES_CONTENT_INDEX=<existing Elasticsearch index>
-HF_DATASET_REPO=<owner>/marxism
+HF_DATASET_REPO=luoxiaozhuang/marxism-dataset
+HF_DATASET_PRIVATE=false
+HF_HUB_DISABLE_XET=1  # 当前代理链路使用可可靠提交的 LFS；稳定直连环境可设为 0
+HF_XET_HIGH_PERFORMANCE=0  # 64 GB+ RAM hosts may set this to 1
+HF_XET_FIXED_UPLOAD_CONCURRENCY=2
+HF_XET_CLIENT_RETRY_MAX_DURATION=1200s
+HF_XET_CLIENT_READ_TIMEOUT=600s
+HF_UPLOAD_WORKERS=4
+RMRB_REVIEW_HF_REPO=luoxiaozhuang/marxism-dataset
+RMRB_REVIEW_B2_REMOTE=jojo-b2-s3:jojo-newspaper
 ```
 
 S3 兼容入口发布时会显式使用 `--s3-no-check-bucket`，避免 rclone 对既有 B2 Bucket
-误发 `CreateBucket`；大于 50 MiB 的 Raw 文件使用 B2 分片并发上传。
+误发 `CreateBucket`。Raw 和 Canonical 不上传 B2；Hugging Face 是唯一 Canonical 真值，
+B2 只保存 Reader 使用的 Delivery 对象。
 
 Hugging Face 凭据默认复用本机 CLI 登录，不需要把 Token 写进 `.env`：
 
@@ -68,7 +98,7 @@ huggingface-cli whoami
 
 无人值守环境仍可使用 `HF_TOKEN=<write token>`，它会优先于 CLI 凭据。
 
-HF 发布结果显示为 **Marxism Dataset**。首页和 `collections/` 使用中文书名导航；每本书
+HF 发布结果显示为 **Marxism Dataset**。默认发布为公开 Dataset；首页和 `collections/` 使用中文书名导航；每本书
 提供人类可读的卷册页面、完整目录 JSON、Canonical Item 下载和按 Dataset 打包的媒体归档。
 
 本地联调 Reader/Agent 的真实 ES 搜索时，可只启动轻量搜索入口：
