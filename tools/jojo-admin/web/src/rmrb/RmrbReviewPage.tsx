@@ -24,10 +24,6 @@ export function RmrbReviewPage() {
   const [busy, setBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncStatus, setSyncStatus] = useState<RmrbSyncStatus>();
-  const [syncTargets, setSyncTargets] = useState<Record<RmrbSyncTarget, boolean>>({
-    huggingface: false,
-    b2: false,
-  });
   const [message, setMessage] = useState("");
 
   const current = items[selected];
@@ -90,19 +86,13 @@ export function RmrbReviewPage() {
   }
 
   async function syncDecisions() {
-    const targets = (Object.entries(syncTargets) as [RmrbSyncTarget, boolean][])
-      .filter(([, selected]) => selected)
-      .map(([target]) => target);
-    if (!targets.length || syncBusy) {
-      setMessage("请先选择 Hugging Face 或 B2。");
-      return;
-    }
+    const targets: RmrbSyncTarget[] = ["huggingface", "b2"];
+    if (syncBusy || !stats?.pendingPublication) return;
     setSyncBusy(true);
     setMessage("");
     try {
       const result = await rmrbReviewApi.sync(targets);
-      const labels = targets.map((target) => target === "huggingface" ? "Hugging Face" : "B2");
-      setMessage(`已向 ${labels.join("、")} 发布 ${result.publishedChanges.toLocaleString()} 条新修订。`);
+      setMessage(`已发布 ${result.publishedChanges.toLocaleString()} 条修订，HF 与 B2 已同步。`);
       const [latestSyncStatus, latestStats] = await Promise.all([
         rmrbReviewApi.syncStatus(),
         rmrbReviewApi.stats(),
@@ -118,6 +108,12 @@ export function RmrbReviewPage() {
 
   const start = total ? offset + 1 : 0;
   const end = Math.min(offset + items.length, total);
+  const publishReady = Boolean(
+    stats?.pendingPublication &&
+    syncStatus?.configured.huggingface &&
+    syncStatus?.configured.b2 &&
+    !syncBusy,
+  );
 
   return (
     <>
@@ -125,7 +121,21 @@ export function RmrbReviewPage() {
         eyebrow="RMRB / HUMAN REVIEW"
         title="人民日报缺失正文"
         description="Accept 先保存到本地；点击发布后增量更新正式数据。"
-        aside={<span className="local-badge"><i />按日期升序</span>}
+        aside={
+          <div className="rmrb-review-top-publish">
+            <small>HF Canonical + B2 Delivery</small>
+            <button
+              className="primary-button"
+              type="button"
+              disabled={!publishReady}
+              onClick={() => void syncDecisions()}
+            >
+              {syncBusy
+                ? "正在发布…"
+                : `发布 ${stats?.pendingPublication.toLocaleString() ?? "—"} 条修订`}
+            </button>
+          </div>
+        }
       />
       <main className="rmrb-review-workspace">
         <aside className="rmrb-review-queue">
@@ -185,36 +195,7 @@ export function RmrbReviewPage() {
                 <button className="primary-button" disabled={busy} onClick={() => void submit("accept")}>Accept · 暂存</button>
                 <button className="secondary-button" disabled={busy} onClick={() => void submit("reject")}>Reject · 暂存</button>
               </div>
-              <div className="rmrb-review-publish">
-                <span>发布到</span>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={syncTargets.huggingface}
-                    disabled={!syncStatus?.configured.huggingface || syncBusy}
-                    onChange={(event) => setSyncTargets((value) => ({ ...value, huggingface: event.target.checked }))}
-                  /> HF
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={syncTargets.b2}
-                    disabled={!syncStatus?.configured.b2 || syncBusy}
-                    onChange={(event) => setSyncTargets((value) => ({ ...value, b2: event.target.checked }))}
-                  /> B2
-                </label>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={syncBusy || !Object.values(syncTargets).some(Boolean)}
-                  onClick={() => void syncDecisions()}
-                >{syncBusy ? "发布中…" : "发布修订"}</button>
-              </div>
             </div>
-            <small className="rmrb-review-publish-state">
-              HF 规范数据 · B2 前端数据
-              {syncStatus?.state.targets && Object.keys(syncStatus.state.targets).length > 0 ? " · 已发布过" : " · 尚未发布"}
-            </small>
             {message && <p className="rmrb-review-message">{message}</p>}
           </> : <p>{busy ? "正在读取…" : "没有待处理记录。"}</p>}
         </section>

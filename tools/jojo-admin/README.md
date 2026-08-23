@@ -54,9 +54,9 @@ Workbench 通过 operator RPC 审核。
 `manual-review-decisions-workbench.jsonl`，Accept/Reject 本身不会等待网络。
 新 Accept 同时写入本地 `manual-review-pending-publication.json`；工作台分别显示
 “待复核”和“待发布”，HF 与 B2 均成功后才从待发布数中移除。
-页面中的“发布修订数据”可独立选择 Hugging Face、B2。人工决定不上传远端；
-选择 Hugging Face 时会原子更新受影响日期的 Canonical Item、受影响年份的
-Dataset Viewer 分片和必要的 availability；选择 B2 时会先发布
+右上角“发布 N 条修订”一次同时更新 Hugging Face 和 B2。人工决定不上传远端；
+Hugging Face 会原子更新受影响日期的 Canonical Item、受影响年份的
+Dataset Viewer 分片和必要的 availability；B2 会先发布
 正文 fragment，再更新日期 manifest 和必要的总 index。Reject 只进入审计记录，
 不会被标记成正文可用，只保留在本地工作台记录中。此流程不修改 Elasticsearch。
 生成合并队列和自动补全图片记录的命令见

@@ -19,7 +19,7 @@ describe("RmrbReviewPage", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/stats")) {
-        return new Response(JSON.stringify({ success: true, total: 2, counts: { pending: decided ? 1 : 2, pendingPublication: decided ? 1 : 0 } }), { status: 200 });
+        return new Response(JSON.stringify({ success: true, total: 2, counts: { pending: decided ? 1 : 2, pendingPublication: decided ? 4 : 3 } }), { status: 200 });
       }
       if (url.includes("/decision") && init?.method === "POST") {
         decided = true;
@@ -57,16 +57,14 @@ describe("RmrbReviewPage", () => {
     expect(screen.getByLabelText("正文")).toHaveValue("");
   });
 
-  it("publishes reviewed data only to selected destinations", async () => {
+  it("publishes all staged data to HF and B2 with one click", async () => {
     render(<RmrbReviewPage />);
-    const hf = await screen.findByRole("checkbox", { name: "HF" });
-    fireEvent.click(hf);
-    fireEvent.click(screen.getByRole("button", { name: "发布修订" }));
-    await screen.findByText("已向 Hugging Face 发布 1 条新修订。");
+    fireEvent.click(await screen.findByRole("button", { name: "发布 3 条修订" }));
+    await screen.findByText("已发布 1 条修订，HF 与 B2 已同步。");
 
     const fetchMock = vi.mocked(fetch);
     const syncCall = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
     expect(syncCall).toBeTruthy();
-    expect(JSON.parse(String(syncCall?.[1]?.body))).toEqual({ targets: ["huggingface"] });
+    expect(JSON.parse(String(syncCall?.[1]?.body))).toEqual({ targets: ["huggingface", "b2"] });
   });
 });

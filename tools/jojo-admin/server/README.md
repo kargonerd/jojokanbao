@@ -32,8 +32,8 @@ explicitly publishes. Set `RMRB_REVIEW_ROOT` when the queue and decision JSONL f
 not below the repository `tmp/rmrb-peopledata-full-directory` directory. The
 review queue only needs article keys, titles, and PeopleData links; it does not
 load or expose local PDFs. Review decisions remain local-first and these
-endpoints never update Elasticsearch. The UI can explicitly publish accepted
-content to Hugging Face and/or B2; local decision logs are not uploaded.
+endpoints never update Elasticsearch. The top-right publish action updates both
+Hugging Face and B2 in one operation; local decision logs are not uploaded.
 Accepted rows enter a local pending-publication journal. Each successful target
 is cleared independently, and a row leaves the pending count only after both HF
 Canonical and B2 Delivery have succeeded.

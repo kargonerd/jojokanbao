@@ -1586,31 +1586,24 @@ button {
 .rmrb-review-action-dock {
   display: flex;
   align-items: center;
-  gap: 16px;
   margin-top: 18px;
   padding: 12px 0;
   border-top: 3px double #aaa197;
   border-bottom: 1px solid #d8d0c5;
 }
-.rmrb-review-actions,
-.rmrb-review-publish { display: flex; align-items: center; gap: 10px; }
-.rmrb-review-publish {
-  margin-left: auto;
-  padding-left: 16px;
-  border-left: 1px solid #d8d0c5;
-  color: #655e56;
-  font-size: 12px;
+.rmrb-review-actions { display: flex; align-items: center; gap: 10px; }
+.rmrb-review-top-publish {
+  display: grid;
+  gap: 7px;
+  justify-items: end;
 }
-.rmrb-review-publish label { display: flex; align-items: center; gap: 5px; margin: 0; color: var(--color-ink); }
-.rmrb-review-publish input { width: auto; accent-color: var(--color-red); }
-.rmrb-review-publish .secondary-button { min-height: 36px; padding: 7px 11px; }
-.rmrb-review-publish-state {
-  display: block;
-  margin-top: 7px;
+.rmrb-review-top-publish small {
   color: #756e65;
-  font-size: 11px;
-  text-align: right;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: .06em;
 }
+.rmrb-review-top-publish .primary-button { min-width: 148px; min-height: 42px; }
 .rmrb-review-message {
   margin-top: 14px;
   padding: 10px 12px;
@@ -1627,7 +1620,5 @@ button {
 }
 
 @media (max-width: 680px) {
-  .rmrb-review-action-dock { align-items: stretch; flex-direction: column; }
-  .rmrb-review-publish { margin-left: 0; padding: 10px 0 0; border-top: 1px solid #d8d0c5; border-left: 0; }
-  .rmrb-review-publish-state { text-align: left; }
+  .rmrb-review-top-publish { justify-items: start; }
 }
