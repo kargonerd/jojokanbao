@@ -76,12 +76,12 @@ jobs:
           --env "$EDGEONE_DEPLOY_ENV"
 
       - name: Verify deployed web assets
-        if: ${{ (inputs.verify_base_url || vars.EDGEONE_READER_BASE_URL) != '' }}
+        if: ${{ inputs.verify_base_url != '' || (env.EDGEONE_DEPLOY_ENV == 'production' && vars.EDGEONE_READER_BASE_URL != '') }}
         env:
           READER_BASE_URL: ${{ inputs.verify_base_url || vars.EDGEONE_READER_BASE_URL }}
           READER_DEPLOY_REVISION: ${{ github.sha }}
         run: node frontend/web/scripts/verify-deployment.mjs
 
       - name: Report deferred deployment verification
-        if: ${{ (inputs.verify_base_url || vars.EDGEONE_READER_BASE_URL) == '' }}
+        if: ${{ inputs.verify_base_url == '' && (env.EDGEONE_DEPLOY_ENV != 'production' || vars.EDGEONE_READER_BASE_URL == '') }}
         run: echo "::notice::Deployment uploaded. Verify its Makers URL, then set EDGEONE_READER_BASE_URL for automatic verification."

@@ -32,9 +32,9 @@ export function AppLayout({
 } = {}) {
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
-  const localTimesAudit = import.meta.env.DEV && import.meta.env.VITE_TIMES_AUDIT_PUBLIC === "true";
+  const publicTimesAudit = import.meta.env.VITE_TIMES_AUDIT_PUBLIC === "true";
   const resolvedNavigationItems =
-    navigationItems || buildAppNavigationItems((accountInitialized && Boolean(userId)) || localTimesAudit);
+    navigationItems || buildAppNavigationItems((accountInitialized && Boolean(userId)) || publicTimesAudit);
   return (
     <div className={["app-shell", className].filter(Boolean).join(" ")}>
       <AppHeader actions={headerActions} navigationItems={resolvedNavigationItems} navigationLabel={navigationLabel} />
