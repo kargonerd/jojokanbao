@@ -71,12 +71,12 @@ jobs:
             fi
           }
 
-          write_flag node '^(agent/|frontend/|tools/[^/]+/web/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(release-desktop|release-mobile(-eink)?)\.yml$)'
+          write_flag node '^(agent/|frontend/|tools/(times-pipeline/|[^/]+/web/)|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(release-desktop|release-mobile(-eink)?|maintenance-times[^/]*)\.yml$)'
           write_flag all_node '^(\.github/workflows/ci\.yml$|patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$)'
           write_flag desktop_e2e '^(frontend/(desktop|packages/(pdf-viewer|ui)|tooling/tsconfig|patches)/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(ci|release-desktop)\.yml$)'
           write_flag web_e2e '^(frontend/(web|packages/(auth|pdf-viewer|ui)|tooling/tsconfig|patches)/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(ci|deploy-web)\.yml$)'
           write_flag homepage_external '^(content/blog/|\.github/workflows/deploy-homepage\.yml$)'
-          write_flag cloud_api '^(backend/|tools/times-pipeline/|infrastructure/edgeone/|\.github/workflows/(ci|deploy-web|maintenance-times)\.yml$)'
+          write_flag cloud_api '^(backend/|tools/times-pipeline/|infrastructure/edgeone/|\.github/workflows/(ci|deploy-web|maintenance-times[^/]*)\.yml$)'
           write_flag database '^(infrastructure/supabase/|\.github/workflows/ci\.yml$)'
           write_flag search_scf '^(infrastructure/tencent-scf/search/|\.github/workflows/ci\.yml$)'
           write_flag bloomberg_archive '^(tools/bloomberg-archive/|\.github/workflows/(maintenance-bloomberg-archive|ci)\.yml$)'
