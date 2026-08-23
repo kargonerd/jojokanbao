@@ -116,7 +116,7 @@ export function AccountCenterPage({ userId, onForgotPassword }: AccountCenterPag
 
   return (
     <main className="min-h-[calc(100vh-64px)] bg-[var(--app-canvas)] px-5 text-ink sm:px-8">
-      <article className="mx-auto w-full max-w-[54rem] py-9 sm:py-12">
+      <article className="mx-auto w-full max-w-[54rem] py-7 sm:py-8">
         {!activeDialog && (error || notice) && (
           <p
             className={`mb-6 border-l-4 px-4 py-3 text-sm font-bold leading-7 ${error ? "border-red bg-[#fbf3f3] text-red" : "border-ink bg-[#f5f3ee] text-ink"}`}
@@ -127,7 +127,7 @@ export function AccountCenterPage({ userId, onForgotPassword }: AccountCenterPag
         )}
 
         <div className="border-y border-rule">
-          <section aria-labelledby="reader-name-title" className="grid gap-4 py-7 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-8">
+          <section aria-labelledby="reader-name-title" className="grid gap-4 py-6 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-8">
             <h2 id="reader-name-title" className="m-0 font-sans text-xs font-black tracking-[0.16em] text-red">账号资料</h2>
             <div>
               <strong className={`block font-serif text-3xl font-black tracking-[0.08em] ${hasDisplayName ? "text-ink" : "text-muted"}`}>{displayName}</strong>
@@ -143,7 +143,7 @@ export function AccountCenterPage({ userId, onForgotPassword }: AccountCenterPag
 
           <PersonalInvitationPanel userId={userId} />
 
-          <section aria-labelledby="security-title" className="grid gap-4 border-t border-rule py-7 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-8">
+          <section aria-labelledby="security-title" className="grid gap-4 border-t border-rule py-6 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-8">
             <h2 id="security-title" className="m-0 font-sans text-xs font-black tracking-[0.16em] text-red">账号与安全</h2>
             <div className="divide-y divide-rule border-y border-rule">
               <div className="flex items-center justify-between gap-5 py-4">
@@ -163,7 +163,7 @@ export function AccountCenterPage({ userId, onForgotPassword }: AccountCenterPag
             </div>
           </section>
 
-          <section aria-labelledby="delete-title" className="grid gap-4 border-t border-red py-7 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-8">
+          <section aria-labelledby="delete-title" className="grid gap-4 border-t border-red py-6 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-8">
             <h2 id="delete-title" className="m-0 font-sans text-xs font-black tracking-[0.16em] text-red">危险操作</h2>
             <div className="flex items-center justify-between gap-5">
               <div>

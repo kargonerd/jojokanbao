@@ -68,7 +68,7 @@ export function PersonalInvitationPanel({ userId }: PersonalInvitationPanelProps
   };
 
   return (
-    <section aria-labelledby="invitation-title" className="grid gap-3 border-t border-rule py-7 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-8">
+    <section aria-labelledby="invitation-title" className="grid gap-3 border-t border-rule py-6 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-8">
       <h2 id="invitation-title" className="m-0 font-sans text-xs font-black tracking-[0.16em] text-red">
         邀请码
       </h2>
