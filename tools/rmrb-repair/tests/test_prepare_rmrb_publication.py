@@ -86,6 +86,16 @@ def test_image_decision_creates_hashed_asset(tmp_path: Path) -> None:
     report = MODULE.prepare(args)
     assert report["articleStatuses"] == {"available": 1}
     assert (output / f"canonical/newspapers/rmrb/assets/images/{digest}.jpg").read_bytes() == b"fake-jpeg"
+    with gzip.open(
+        output / "canonical/newspapers/rmrb/items/1951/01/1951-01-01.json.gz",
+        "rt", encoding="utf-8",
+    ) as stream:
+        article = json.load(stream)["content"]["articles"][0]
+    assert article["body"]["format"] == "html"
+    assert article["body"]["profile"] == "jojo-semantic-html/1"
+    assert "【图片】" in article["body"]["value"]
+    assert f'data-asset-id="asset:image-{digest[:16]}"' in article["body"]["value"]
+    assert article["assetRefs"] == [f"asset:image-{digest[:16]}"]
 
 
 def test_confirmed_reject_has_distinct_article_state(tmp_path: Path) -> None:

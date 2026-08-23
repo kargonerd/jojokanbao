@@ -15,6 +15,7 @@ import argparse
 import base64
 import gzip
 import hashlib
+import html
 import json
 import mimetypes
 import os
@@ -433,7 +434,7 @@ def build_article(
         body, stripped_title = strip_exact_title_prefix(title, source_content)
     elif decision and decision.decision == "accept":
         body = decision.content
-        if body == "【图片】":
+        if decision.image_path is not None:
             result = image_asset(decision, canonical_assets)
             if result:
                 asset, asset_id = result
@@ -442,9 +443,27 @@ def build_article(
         body = ""
     else:
         body = ""
+    body_payload: dict[str, str]
+    if asset_refs:
+        paragraphs = "".join(
+            f"<p>{html.escape(paragraph).replace(chr(10), '<br>')}</p>"
+            for paragraph in body.split("\n\n")
+            if paragraph
+        )
+        figures = "".join(
+            f'<figure data-asset-id="{html.escape(asset_id)}" data-role="article-image"></figure>'
+            for asset_id in asset_refs
+        )
+        body_payload = {
+            "format": "html",
+            "profile": "jojo-semantic-html/1",
+            "value": paragraphs + figures,
+        }
+    else:
+        body_payload = {"format": "text", "value": body}
     content_state = (
         "rejected" if decision and decision.decision == "reject"
-        else "available" if body
+        else "available" if body_payload["value"]
         else "missing"
     )
     suffix = stable_suffix("rmrb", day, page, ordinal)
@@ -455,7 +474,7 @@ def build_article(
         "title": title,
         "authors": [],
         "contentState": content_state,
-        "body": {"format": "text", "value": body},
+        "body": body_payload,
         "assetRefs": asset_refs,
     }
     viewer_row = {
