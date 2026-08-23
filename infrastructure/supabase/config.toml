@@ -30,6 +30,10 @@ content_path = "./supabase/templates/confirmation.html"
 subject = "{{ .Token }} 是你的 JOJO 密码重置验证码"
 content_path = "./supabase/templates/recovery.html"
 
+[auth.email.template.reauthentication]
+subject = "{{ .Token }} 是你的 JOJO 身份验证码"
+content_path = "./supabase/templates/reauthentication.html"
+
 [auth.email.notification.password_changed]
 enabled = true
 subject = "你的 JOJO 账号密码已修改"

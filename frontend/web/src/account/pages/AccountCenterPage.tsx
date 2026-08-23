@@ -175,14 +175,14 @@ export function AccountCenterPage({ userId }: AccountCenterPageProps) {
         </div>
       </article>
 
-      <Modal open={activeDialog === "password"} onClose={closeDialog}>
-        <section role="dialog" aria-modal="true" aria-labelledby="password-dialog-title" className="p-6 sm:p-8">
+      <Modal open={activeDialog === "password"} onClose={closeDialog} size="medium" surface="bare">
+        <section role="dialog" aria-modal="true" aria-labelledby="password-dialog-title" className="mx-auto w-full max-w-[30rem] border border-rule-dark border-t-4 border-t-red bg-paper p-6 shadow-[8px_10px_36px_rgba(32,32,32,.18)] sm:p-8">
           <div className="flex items-start justify-between gap-5 border-b border-rule pb-4">
             <div>
               <h2 id="password-dialog-title" className="m-0 font-serif text-2xl font-black text-ink">修改密码</h2>
               <p className="mb-0 mt-2 text-xs font-bold leading-6 text-muted">保存后，其他设备会退出登录。</p>
             </div>
-            <button type="button" aria-label="关闭修改密码" disabled={busy} onClick={closeDialog} className="border-0 bg-transparent p-1 text-2xl leading-none text-muted hover:text-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-red">×</button>
+            <button type="button" aria-label="关闭修改密码" disabled={busy} onClick={closeDialog} className="flex h-8 w-8 shrink-0 items-center justify-center border border-rule-dark bg-paper text-xl leading-none text-muted hover:border-red hover:text-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red">×</button>
           </div>
 
           {dialogFeedback && <p role="alert" className="mb-0 mt-5 border-l-4 border-red bg-[#fbf3f3] px-4 py-3 text-sm font-bold leading-6 text-red">{dialogFeedback}</p>}
@@ -199,14 +199,14 @@ export function AccountCenterPage({ userId }: AccountCenterPageProps) {
         </section>
       </Modal>
 
-      <Modal open={activeDialog === "delete"} onClose={closeDialog}>
-        <section role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title" className="p-6 sm:p-8">
+      <Modal open={activeDialog === "delete"} onClose={closeDialog} size="medium" surface="bare">
+        <section role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title" className="mx-auto w-full max-w-[30rem] border border-rule-dark border-t-4 border-t-red bg-paper p-6 shadow-[8px_10px_36px_rgba(32,32,32,.18)] sm:p-8">
           <div className="flex items-start justify-between gap-5 border-b border-red pb-4">
             <div>
               <h2 id="delete-dialog-title" className="m-0 font-serif text-2xl font-black text-red">注销账号</h2>
               <p className="mb-0 mt-2 text-xs font-bold leading-6 text-muted">这项操作无法撤销，请再次确认身份。</p>
             </div>
-            <button type="button" aria-label="关闭注销账号" disabled={busy} onClick={closeDialog} className="border-0 bg-transparent p-1 text-2xl leading-none text-muted hover:text-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-red">×</button>
+            <button type="button" aria-label="关闭注销账号" disabled={busy} onClick={closeDialog} className="flex h-8 w-8 shrink-0 items-center justify-center border border-rule-dark bg-paper text-xl leading-none text-muted hover:border-red hover:text-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red">×</button>
           </div>
 
           {dialogFeedback && <p role="alert" className="mb-0 mt-5 border-l-4 border-red bg-[#fbf3f3] px-4 py-3 text-sm font-bold leading-6 text-red">{dialogFeedback}</p>}

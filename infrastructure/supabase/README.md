@@ -71,13 +71,21 @@ enrollment, and disabled Vector Storage. Keep these values checked in: omitted
 CLI defaults may otherwise appear as unrelated hosted config changes during
 `config push`.
 
-The registration and recovery email sources are in `supabase/templates/`
-relative to the Supabase workdir. Hosted templates must be updated through
-`config push` or the Management API; committing HTML alone does not change
-emails already sent by Supabase. Both templates display `{{ .Token }}` so Web,
-Desktop, and Mobile complete the flow with the same six-digit code and do not
-depend on an app link or Deep Link. The legacy `/account/confirm` route remains
-temporarily available for confirmation links sent before this rollout.
+Registration, recovery, reauthentication, and password-change email sources
+are in `supabase/templates/` relative to the Supabase workdir. They share one
+JOJO-branded layout and use the same hosted logo. Hosted templates must be
+updated through `config push` or the Management API; committing HTML alone does
+not change emails already sent by Supabase. To apply all four templates through
+the Management API with credentials from the repository `.env`, run:
+
+```powershell
+pwsh infrastructure/supabase/scripts/update-auth-email-templates.ps1
+```
+
+The three verification templates display `{{ .Token }}` so Web, Desktop, and
+Mobile complete the flow with the same six-digit code and do not depend on an
+app link or Deep Link. The legacy `/account/confirm` route remains temporarily
+available for confirmation links sent before this rollout.
 
 The `delete-account` Edge Function validates the caller's access token before
 using the server-only service role. It removes the reader's avatar objects and
