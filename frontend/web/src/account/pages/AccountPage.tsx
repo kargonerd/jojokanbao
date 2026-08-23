@@ -37,6 +37,7 @@ export function AccountPage() {
   const [recoveryPasswordConfirmation, setRecoveryPasswordConfirmation] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
   const [resendSeconds, setResendSeconds] = useState(0);
+  const [authTransitioning, setAuthTransitioning] = useState(false);
   const {
     user,
     signIn,
@@ -60,8 +61,8 @@ export function AccountPage() {
     return () => window.clearInterval(timer);
   }, [resendSeconds]);
 
-  if (user && mode !== "recover" && hasReturnTo) return <Navigate to={returnTo} replace />;
-  if (user && mode !== "recover") return <AccountCenterPage userId={user.id} />;
+  if (user && mode !== "recover" && !authTransitioning && hasReturnTo) return <Navigate to={returnTo} replace />;
+  if (user && mode !== "recover" && !authTransitioning) return <AccountCenterPage userId={user.id} />;
 
   const changeMode = (nextMode: AccountMode) => {
     clearFeedback();
@@ -76,10 +77,12 @@ export function AccountPage() {
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setAuthTransitioning(true);
     try {
       await signIn(loginEmail.trim(), loginPassword);
       navigate(returnTo, { replace: true });
     } catch {
+      setAuthTransitioning(false);
       // The shared auth store exposes a localized error.
     }
   };
@@ -103,12 +106,14 @@ export function AccountPage() {
     }
 
     try {
+      setAuthTransitioning(true);
       const requiresConfirmation = await signUp({
         invitationCode: code,
         email,
         password: registrationPassword,
       });
       if (requiresConfirmation) {
+        setAuthTransitioning(false);
         setConfirmationEmail(email);
         setConfirmationCode("");
         setResendSeconds(60);
@@ -116,6 +121,7 @@ export function AccountPage() {
         navigate(returnTo, { replace: true });
       }
     } catch {
+      setAuthTransitioning(false);
       // The shared auth store exposes a localized error.
     }
   };
@@ -127,10 +133,12 @@ export function AccountPage() {
       setLocalError("请输入邮件中的 6 位验证码。");
       return;
     }
+    setAuthTransitioning(true);
     try {
       await confirmSignUp(confirmationEmail, confirmationCode);
       navigate(returnTo, { replace: true });
     } catch {
+      setAuthTransitioning(false);
       // The shared auth store exposes a localized error.
     }
   };

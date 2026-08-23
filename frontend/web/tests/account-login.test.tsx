@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AccountLogin from "@/account/AccountLogin";
@@ -146,8 +146,20 @@ describe("account access", () => {
     expect(dialog.hasAttribute("open")).toBe(false);
   });
 
-  it("submits invitation registration and shows the confirmation step", async () => {
-    render(<MemoryRouter><AccountLogin /></MemoryRouter>);
+  it("confirms invitation registration without flashing the account center, then returns home", async () => {
+    let finishConfirmation!: () => void;
+    auth.state.confirmSignUp.mockImplementation(() => new Promise<void>((resolve) => {
+      finishConfirmation = resolve;
+    }));
+    const accountRoutes = () => (
+      <MemoryRouter initialEntries={["/account"]}>
+        <Routes>
+          <Route path="/account" element={<AccountLogin />} />
+          <Route path="/" element={<div>New reader home</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
+    const view = render(accountRoutes());
 
     fireEvent.click(screen.getByRole("button", { name: "注册" }));
     fireEvent.change(screen.getByLabelText("邀请码"), {
@@ -177,6 +189,14 @@ describe("account access", () => {
     fireEvent.change(screen.getByLabelText("6 位验证码"), { target: { value: "123456" } });
     fireEvent.click(screen.getByRole("button", { name: "确认并完成注册" }));
     await waitFor(() => expect(auth.state.confirmSignUp).toHaveBeenCalledWith("reader@example.com", "123456"));
+
+    auth.state.user = { id: "reader-1", email: "reader@example.com" } as never;
+    view.rerender(accountRoutes());
+    expect(screen.queryByRole("heading", { name: "你的统一账号" })).toBeNull();
+    expect(screen.getByLabelText("6 位验证码")).toBeTruthy();
+
+    await act(async () => finishConfirmation());
+    expect(await screen.findByText("New reader home")).toBeTruthy();
   });
 
   it("recovers a password with an email code", async () => {
