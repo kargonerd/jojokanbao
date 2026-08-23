@@ -61,7 +61,8 @@ external state:
 - `deploy-web.yml` publishes the unified Web client
 - `release-desktop.yml` builds Desktop installers on Windows, macOS (Apple Silicon
   and Intel), and Linux; `desktop-v*` tags publish the resulting files as a
-  GitHub Release, while manual runs retain them as workflow artifacts
+  GitHub Release, starting with `desktop-v0.0.1-rc1`, while manual runs retain
+  them as workflow artifacts
 - `release-mobile.yml` asks EAS Build for the signed standard Android APK;
   `mobile-v*` tags publish the APK and SHA-256 checksum as a GitHub Release,
   while manual runs retain the APK as a workflow artifact
