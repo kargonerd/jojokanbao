@@ -33,15 +33,15 @@ not below the repository `tmp/rmrb-peopledata-full-directory` directory. The
 review queue only needs article keys, titles, and PeopleData links; it does not
 load or expose local PDFs. Review decisions remain local-first and these
 endpoints never update Elasticsearch. The UI can explicitly publish accepted
-content and synchronize the merged decision ledger to Hugging Face and/or B2 at
-`newspapers/rmrb/annotations/`. Hugging Face uses `RMRB_REVIEW_HF_REPO` (then
+content to Hugging Face and/or B2; local decision logs are not uploaded.
+Hugging Face uses `RMRB_REVIEW_HF_REPO` (then
 `HF_DATASET_REPO`) and the CLI token or `HF_TOKEN`; B2 uses
 `RMRB_REVIEW_B2_REMOTE` (then `JOJO_DELIVERY_REMOTE`) through rclone.
 Hugging Face publication patches only affected Canonical Items, annual article
 shards, and availability metadata in one commit. B2 publication writes new
 immutable article fragments before mutable issue manifests and the collection
-index. Rejected records remain missing and are preserved only in the audit
-ledger.
+index. Rejected records remain missing and are preserved only in the local
+workbench log.
 
 ## ES repair
 

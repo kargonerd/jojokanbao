@@ -1,5 +1,4 @@
 import json
-import gzip
 import sqlite3
 import sys
 import tempfile
@@ -116,7 +115,7 @@ class RmrbReviewRoutesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("requires", response.get_json()["error"])
 
-    def test_syncs_local_ledger_to_selected_targets(self):
+    def test_publishes_formal_data_without_remote_annotation_ledger(self):
         self.client.post(
             "/api/rmrb-review/decision",
             json={
@@ -143,16 +142,15 @@ class RmrbReviewRoutesTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
-        self.assertEqual(payload["recordCount"], 1)
+        self.assertEqual(payload["acceptedCount"], 1)
         self.assertEqual(payload["canonicalChanges"], 1)
         sync_hf.assert_called_once()
         sync_b2.assert_called_once()
-        with gzip.open(self.sync_root / "review-decisions.jsonl.gz", "rt", encoding="utf-8") as stream:
-            exported = json.loads(stream.readline())
-        self.assertEqual(exported["content"], "确认正文。")
+        self.assertFalse((self.sync_root / "review-decisions.jsonl.gz").exists())
+        self.assertFalse((self.sync_root / "review-decisions.manifest.json").exists())
         state = json.loads((self.sync_root / "review-sync-state.json").read_text(encoding="utf-8"))
-        self.assertEqual(state["targets"]["huggingface"]["recordCount"], 1)
-        self.assertEqual(state["targets"]["b2"]["recordCount"], 1)
+        self.assertEqual(state["targets"]["huggingface"]["acceptedCount"], 1)
+        self.assertEqual(state["targets"]["b2"]["acceptedCount"], 1)
 
     def test_sync_requires_at_least_one_known_target(self):
         response = self.client.post("/api/rmrb-review/sync", json={"targets": []})

@@ -102,10 +102,7 @@ export function RmrbReviewPage() {
     try {
       const result = await rmrbReviewApi.sync(targets);
       const labels = targets.map((target) => target === "huggingface" ? "Hugging Face" : "B2");
-      setMessage(
-        `已发布 ${result.publishedChanges.toLocaleString()} 条新修订；` +
-        `${result.recordCount.toLocaleString()} 条复核记录已同步到 ${labels.join("、")}。`,
-      );
+      setMessage(`已向 ${labels.join("、")} 发布 ${result.publishedChanges.toLocaleString()} 条新修订。`);
       setSyncStatus(await rmrbReviewApi.syncStatus());
     } catch (error) {
       setMessage(`同步失败：${(error as Error).message}`);

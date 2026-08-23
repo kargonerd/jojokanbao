@@ -52,12 +52,11 @@ Workbench 通过 operator RPC 审核。
 `tmp/rmrb-peopledata-full-directory/merged-missing-workbench.sqlite3`，按日期升序
 展示本地 JSONL 与年度 XLSX 合并后仍为空的目录记录。Accept/Reject 只写入
 `manual-review-decisions-workbench.jsonl`，Accept/Reject 本身不会等待网络。
-页面中的“发布修订数据”可独立选择 Hugging Face、B2，将所有本地决定合并为
-`newspapers/rmrb/annotations/review-decisions.jsonl.gz`，并在同目录写入带记录数和
-SHA-256 的 manifest。选择 Hugging Face 时还会原子更新受影响日期的 Canonical
-Item、受影响年份的 Dataset Viewer 分片和必要的 availability；选择 B2 时会先发布
+页面中的“发布修订数据”可独立选择 Hugging Face、B2。人工决定不上传远端；
+选择 Hugging Face 时会原子更新受影响日期的 Canonical Item、受影响年份的
+Dataset Viewer 分片和必要的 availability；选择 B2 时会先发布
 正文 fragment，再更新日期 manifest 和必要的总 index。Reject 只进入审计记录，
-不会被标记成正文可用。此流程不修改 Elasticsearch。
+不会被标记成正文可用，只保留在本地工作台记录中。此流程不修改 Elasticsearch。
 生成合并队列和自动补全图片记录的命令见
 [`tools/rmrb-repair/README.md`](../rmrb-repair/README.md)。
 

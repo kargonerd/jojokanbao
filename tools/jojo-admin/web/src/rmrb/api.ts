@@ -35,23 +35,20 @@ export type RmrbSyncTarget = "huggingface" | "b2";
 export type RmrbSyncStatus = {
   success: true;
   configured: Record<RmrbSyncTarget, boolean>;
-  remotePath: string;
   state: {
     targets?: Partial<Record<RmrbSyncTarget, {
-      syncedAt: string;
-      recordCount: number;
-      sha256: string;
+      publishedAt: string;
+      acceptedCount: number;
+      desiredSha256: string;
     }>>;
   };
 };
 
 export type RmrbSyncResult = {
   success: true;
-  recordCount: number;
   acceptedCount: number;
   canonicalChanges: number;
   publishedChanges: number;
-  sha256: string;
   results: Partial<Record<RmrbSyncTarget, object>>;
 };
 

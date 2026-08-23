@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import gzip
 import hashlib
-import io
 import json
 import logging
 import os
@@ -48,7 +46,6 @@ SYNC_ROOT = REVIEW_ROOT / "sync"
 SYNC_STATE = SYNC_ROOT / "review-sync-state.json"
 PUBLISH_ROOT = SYNC_ROOT / "publish"
 PUBLICATION_STATE = SYNC_ROOT / "publication-state.json"
-SYNC_REMOTE_ROOT = "newspapers/rmrb/annotations"
 COPY_MARKER_RE = re.compile(r"[（(]\s*人民数据库资料\s*[）)]")
 DECISION_LOCK = threading.Lock()
 SYNC_LOCK = threading.Lock()
@@ -96,46 +93,6 @@ def _atomic_write(path: Path, payload: bytes) -> None:
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_bytes(payload)
     os.replace(temporary, path)
-
-
-def _portable_decision(row: dict[str, object]) -> dict[str, object]:
-    """Keep the remotely recoverable review fields and omit local evidence paths."""
-    names = (
-        "date", "page", "peopleDataOrdinal", "title", "decision", "content",
-        "contentHtml", "reason", "reviewedAt",
-    )
-    return {name: row[name] for name in names if name in row}
-
-
-def _build_sync_snapshot() -> tuple[Path, Path, dict[str, object]]:
-    rows = [
-        _portable_decision(row)
-        for _, row in sorted(load_all_decisions().items(), key=lambda item: item[0])
-    ]
-    clear = b"".join(
-        (json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
-        for row in rows
-    )
-    compressed_buffer = io.BytesIO()
-    with gzip.GzipFile(fileobj=compressed_buffer, mode="wb", compresslevel=6, mtime=0) as stream:
-        stream.write(clear)
-    compressed = compressed_buffer.getvalue()
-    artifact = SYNC_ROOT / "review-decisions.jsonl.gz"
-    manifest_path = SYNC_ROOT / "review-decisions.manifest.json"
-    generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    manifest: dict[str, object] = {
-        "formatVersion": "jojo-rmrb-review-sync/1",
-        "generatedAt": generated_at,
-        "recordCount": len(rows),
-        "sha256": hashlib.sha256(compressed).hexdigest(),
-        "object": f"{SYNC_REMOTE_ROOT}/review-decisions.jsonl.gz",
-    }
-    _atomic_write(artifact, compressed)
-    _atomic_write(
-        manifest_path,
-        (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
-    )
-    return artifact, manifest_path, manifest
 
 
 def _huggingface_token() -> str:
@@ -245,12 +202,7 @@ def _write_publication_state(state: dict[str, object]) -> None:
     )
 
 
-def _sync_huggingface(
-    artifact: Path,
-    manifest_path: Path,
-    manifest: dict[str, object],
-    canonical: CanonicalPatch,
-) -> dict[str, object]:
+def _sync_huggingface(canonical: CanonicalPatch) -> dict[str, object]:
     token = _huggingface_token()
     if not token:
         raise RuntimeError("Hugging Face 未登录且 HF_TOKEN 未配置")
@@ -258,27 +210,21 @@ def _sync_huggingface(
 
     repo_id = _huggingface_repo()
     operations = [
-        CommitOperationAdd(
-            path_in_repo=f"{SYNC_REMOTE_ROOT}/{artifact.name}",
-            path_or_fileobj=str(artifact),
-        ),
-        CommitOperationAdd(
-            path_in_repo=f"{SYNC_REMOTE_ROOT}/{manifest_path.name}",
-            path_or_fileobj=str(manifest_path),
-        ),
-    ]
-    operations.extend(
         CommitOperationAdd(path_in_repo=name, path_or_fileobj=str(path))
         for name, path in sorted(canonical.files.items())
-    )
+    ]
+    if not operations:
+        return {
+            "repoId": repo_id,
+            "commit": None,
+            "publishedArticles": 0,
+            "publishedObjects": 0,
+        }
     commit = HfApi(token=token).create_commit(
         repo_id=repo_id,
         repo_type="dataset",
         operations=operations,
-        commit_message=(
-            f"Publish {canonical.changed_article_count} reviewed RMRB articles "
-            f"and sync {manifest['recordCount']} decisions"
-        ),
+        commit_message=f"Publish {canonical.changed_article_count} reviewed RMRB articles",
     )
     return {
         "repoId": repo_id,
@@ -309,12 +255,7 @@ def _run_rclone_copyto(source: Path | str, destination: str) -> None:
         raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "rclone 上传失败")
 
 
-def _sync_b2(
-    artifact: Path,
-    manifest_path: Path,
-    manifest: dict[str, object],
-    delivery: DeliveryPatch,
-) -> dict[str, object]:
+def _sync_b2(delivery: DeliveryPatch) -> dict[str, object]:
     # Publish immutable fragments first, issue manifests second, and the
     # collection index last so readers never observe dangling references.
     def priority(name: str) -> tuple[int, str]:
@@ -326,13 +267,8 @@ def _sync_b2(
 
     for name, path in sorted(delivery.files.items(), key=lambda item: priority(item[0])):
         _run_rclone_copyto(path, f"{_b2_remote()}/{name}")
-    root = f"{_b2_remote()}/{SYNC_REMOTE_ROOT}"
-    _run_rclone_copyto(artifact, f"{root}/{artifact.name}")
-    # The manifest is the commit marker and is deliberately written last.
-    _run_rclone_copyto(manifest_path, f"{root}/{manifest_path.name}")
     return {
-        "remote": root,
-        "sha256": manifest["sha256"],
+        "remote": _b2_remote(),
         "publishedArticles": delivery.changed_article_count,
         "publishedObjects": len(delivery.files),
     }
@@ -490,7 +426,6 @@ def sync_status_api():
                 "huggingface": bool(_huggingface_token() and _huggingface_repo()),
                 "b2": bool(shutil.which("rclone.exe") or shutil.which("rclone")),
             },
-            "remotePath": SYNC_REMOTE_ROOT,
             "state": state,
         }
     )
@@ -509,9 +444,12 @@ def sync_api():
     if not SYNC_LOCK.acquire(blocking=False):
         return jsonify({"success": False, "error": "another review sync is running"}), 409
     try:
-        artifact, manifest_path, manifest = _build_sync_snapshot()
         decisions = load_all_decisions()
         desired = accepted_hashes(decisions)
+        desired_sha256 = hashlib.sha256(
+            json.dumps(desired, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        published_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
         publication_state = _load_publication_state()
         publication_targets = publication_state.setdefault("targets", {})
         assert isinstance(publication_targets, dict)
@@ -558,12 +496,8 @@ def sync_api():
         results: dict[str, object] = {}
         errors: dict[str, str] = {}
         sync_functions = {
-            "huggingface": lambda: _sync_huggingface(
-                artifact, manifest_path, manifest, canonical,
-            ),
-            "b2": lambda: _sync_b2(
-                artifact, manifest_path, manifest, delivery or DeliveryPatch(PUBLISH_ROOT),
-            ),
+            "huggingface": lambda: _sync_huggingface(canonical),
+            "b2": lambda: _sync_b2(delivery or DeliveryPatch(PUBLISH_ROOT)),
         }
         for target in targets:
             if target == "b2" and "huggingface" in errors:
@@ -573,9 +507,9 @@ def sync_api():
                 detail = sync_functions[target]()
                 results[target] = detail
                 target_state[target] = {
-                    "syncedAt": manifest["generatedAt"],
-                    "recordCount": manifest["recordCount"],
-                    "sha256": manifest["sha256"],
+                    "publishedAt": published_at,
+                    "acceptedCount": len(desired),
+                    "desiredSha256": desired_sha256,
                     **detail,
                 }
                 publication_targets[target] = {"accepted": desired}
@@ -595,18 +529,16 @@ def sync_api():
                 logging.exception("Unable to sync RMRB reviews to %s", target)
                 errors[target] = str(error)
         state["formatVersion"] = "jojo-rmrb-review-sync-state/1"
-        state["lastAttemptAt"] = manifest["generatedAt"]
+        state["lastAttemptAt"] = published_at
         _write_sync_state(state)
         response = {
             "success": not errors,
-            "recordCount": manifest["recordCount"],
             "acceptedCount": canonical.accepted_count,
             "canonicalChanges": canonical.changed_article_count,
             "publishedChanges": max(
                 (int(detail.get("publishedArticles") or 0) for detail in results.values() if isinstance(detail, dict)),
                 default=0,
             ),
-            "sha256": manifest["sha256"],
             "results": results,
             "errors": errors,
         }

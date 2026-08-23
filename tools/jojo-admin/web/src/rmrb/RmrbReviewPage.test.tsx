@@ -28,11 +28,9 @@ describe("RmrbReviewPage", () => {
       if (url.endsWith("/sync") && init?.method === "POST") {
         return new Response(JSON.stringify({
           success: true,
-          recordCount: 7,
           acceptedCount: 3,
           canonicalChanges: 1,
           publishedChanges: 1,
-          sha256: "digest",
           results: { huggingface: { commit: "abc" } },
         }), { status: 200 });
       }
@@ -40,7 +38,6 @@ describe("RmrbReviewPage", () => {
         return new Response(JSON.stringify({
           success: true,
           configured: { huggingface: true, b2: true },
-          remotePath: "newspapers/rmrb/annotations",
           state: { targets: {} },
         }), { status: 200 });
       }
@@ -64,7 +61,7 @@ describe("RmrbReviewPage", () => {
     const hf = await screen.findByRole("checkbox", { name: "HF" });
     fireEvent.click(hf);
     fireEvent.click(screen.getByRole("button", { name: "立即发布" }));
-    await screen.findByText("已发布 1 条新修订；7 条复核记录已同步到 Hugging Face。");
+    await screen.findByText("已向 Hugging Face 发布 1 条新修订。");
 
     const fetchMock = vi.mocked(fetch);
     const syncCall = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
