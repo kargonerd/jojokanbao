@@ -24,9 +24,16 @@ function format<T>(value: unknown, expected: string): T {
 export const asJojoCatalog = (value: unknown): JojoCatalog =>
   format(value, "jojo-catalog/1");
 
-export const asJojoDatasetIndex = (value: unknown): JojoDatasetIndex => {
+export const asJojoDatasetIndex = (
+  value: unknown,
+): JojoDatasetIndex & { items: NonNullable<JojoDatasetIndex["items"]> } => {
   const object = record(value);
-  if (object.formatVersion === "jojo-delivery-index/1") return value as JojoDatasetIndex;
+  if (object.formatVersion === "jojo-delivery-index/1") {
+    return {
+      ...object,
+      items: Array.isArray(object.items) ? object.items : [],
+    } as unknown as JojoDatasetIndex & { items: NonNullable<JojoDatasetIndex["items"]> };
+  }
   // Early v1 publishers used the canonical label on the delivery index even
   // though the object already contained revision + items. Accept only that
   // exact legacy shape; a real canonical dataset (itemPath, no items) remains
@@ -38,7 +45,10 @@ export const asJojoDatasetIndex = (value: unknown): JojoDatasetIndex => {
     && typeof object.title === "string"
     && typeof object.language === "string"
     && Array.isArray(object.items)) {
-    return { ...object, formatVersion: "jojo-delivery-index/1" } as unknown as JojoDatasetIndex;
+    return {
+      ...object,
+      formatVersion: "jojo-delivery-index/1",
+    } as unknown as JojoDatasetIndex & { items: NonNullable<JojoDatasetIndex["items"]> };
   }
   throw new Error(`Expected jojo-delivery-index/1, received ${String(object.formatVersion)}`);
 };
