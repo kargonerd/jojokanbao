@@ -33,8 +33,3 @@ export function createJojoAuthClient({
     },
   });
 }
-
-export function getProfileAvatarUrl(client: JojoAuthClient, avatarPath: string | null | undefined): string | null {
-  if (!avatarPath) return null;
-  return client.storage.from("avatars").getPublicUrl(avatarPath).data.publicUrl;
-}

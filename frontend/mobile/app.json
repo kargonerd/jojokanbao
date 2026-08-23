@@ -37,13 +37,7 @@
     },
     "plugins": [
       "@react-native-community/datetimepicker",
-      "expo-font",
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "允许 JOJO 看报访问照片，以便你选择账号头像。"
-        }
-      ]
+      "expo-font"
     ],
     "extra": {
       "eas": {

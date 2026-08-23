@@ -69,6 +69,13 @@ function TimesAccessRoute({ children }: { children: ReactNode }) {
   return publicAudit ? children : <AuthenticatedRoute>{children}</AuthenticatedRoute>;
 }
 
+function AccountRoute() {
+  const initialized = useAccountSessionStore((state) => state.initialized);
+  const userId = useAccountSessionStore((state) => state.userId);
+  const account = <AccountEntry />;
+  return initialized && userId ? <AppLayout>{account}</AppLayout> : account;
+}
+
 function archiveRoute(platformRedesign: boolean) {
   return (
     <Route path={ARCHIVE_ROOT} element={<Layout platformRedesign={platformRedesign} />}>
@@ -120,7 +127,7 @@ function RedesignedRoutes() {
     <>
       <RuntimeBootstrap />
       <Routes>
-        <Route path="/account" element={<AccountEntry />} />
+        <Route path="/account" element={<AccountRoute />} />
         <Route path="/account/confirm" element={<LazyRoute><AccountConfirmation /></LazyRoute>} />
         <Route path="/login" element={<Navigate to="/account" replace />} />
 

@@ -18,8 +18,6 @@ export interface AuthActions {
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   deleteAccount: (currentPassword: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
-  uploadAvatar: (file: File) => Promise<void>;
-  uploadAvatarData: (data: ArrayBuffer, extension: string, contentType: string) => Promise<void>;
 }
 
 export type AuthStore = AuthState & AuthActions;
@@ -244,37 +242,6 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
       }
     },
 
-    uploadAvatar: async (file) => {
-      const { user, profile } = get();
-      if (!user) throw new Error("Not authenticated");
-      set({ busy: true, error: null, notice: null });
-      try {
-        const updatedProfile = await profiles.uploadAvatar(user.id, profile?.avatar_path ?? null, file);
-        set({ profile: updatedProfile, busy: false, notice: "头像已更新。" });
-      } catch (error) {
-        set({ busy: false, error: getAuthErrorMessage(error) });
-        throw error;
-      }
-    },
-
-    uploadAvatarData: async (data, extension, contentType) => {
-      const { user, profile } = get();
-      if (!user) throw new Error("Not authenticated");
-      set({ busy: true, error: null, notice: null });
-      try {
-        const updatedProfile = await profiles.uploadAvatarData(
-          user.id,
-          profile?.avatar_path ?? null,
-          data,
-          extension,
-          contentType,
-        );
-        set({ profile: updatedProfile, busy: false, notice: "头像已更新。" });
-      } catch (error) {
-        set({ busy: false, error: getAuthErrorMessage(error) });
-        throw error;
-      }
-    },
   }));
 
   const syncSession = async (session: Session | null) => {

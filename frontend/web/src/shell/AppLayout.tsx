@@ -24,11 +24,13 @@ export function AppLayout({
   navigationLabel,
   headerActions,
   className,
+  children,
 }: {
   navigationItems?: readonly AppNavigationItem[];
   navigationLabel?: string;
   headerActions?: ReactNode;
   className?: string;
+  children?: ReactNode;
 } = {}) {
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
@@ -38,7 +40,7 @@ export function AppLayout({
   return (
     <div className={["app-shell", className].filter(Boolean).join(" ")}>
       <AppHeader actions={headerActions} navigationItems={resolvedNavigationItems} navigationLabel={navigationLabel} />
-      <Outlet />
+      {children ?? <Outlet />}
     </div>
   );
 }

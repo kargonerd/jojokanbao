@@ -1,11 +1,9 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { getProfileAvatarUrl } from "@jojo/auth";
 import { useNavigation, type NavigationProp } from "@react-navigation/native";
-import * as ImagePicker from "expo-image-picker";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Alert,
-  Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,34 +12,37 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { mobileAuthClient, useMobileAuthStore } from "../account/auth";
+import { useMobileAuthStore } from "../account/auth";
+import { ScreenHeader } from "../components/ScreenHeader";
 import type { RootStackParamList } from "../navigation/types";
 import { mobileTheme } from "../theme/tokens";
+
+type AccountSheet = "password" | "delete" | null;
 
 function Field({
   label,
   value,
   onChangeText,
   secure = false,
-  editable = true,
+  autoFocus = false,
 }: {
   label: string;
   value: string;
   onChangeText: (value: string) => void;
   secure?: boolean;
-  editable?: boolean;
+  autoFocus?: boolean;
 }) {
   const theme = mobileTheme;
   return (
     <View style={styles.field}>
       <Text style={[styles.label, { color: theme.ink, fontFamily: theme.sans }]}>{label}</Text>
       <TextInput
+        autoFocus={autoFocus}
         value={value}
         onChangeText={onChangeText}
         secureTextEntry={secure}
-        editable={editable}
         autoCapitalize="none"
-        style={[styles.input, { color: editable ? theme.ink : theme.muted, borderColor: theme.ruleDark, backgroundColor: editable ? theme.paper : theme.paperSoft, fontFamily: theme.sans }]}
+        style={[styles.input, { color: theme.ink, borderColor: theme.ruleDark, backgroundColor: theme.paper, fontFamily: theme.sans }]}
       />
     </View>
   );
@@ -74,6 +75,105 @@ function Action({
   );
 }
 
+function InfoRow({ label, value }: { label: string; value: string }) {
+  const theme = mobileTheme;
+  return (
+    <View style={[styles.infoRow, { borderTopColor: theme.rule }]}>
+      <Text style={[styles.infoLabel, { color: theme.muted, fontFamily: theme.sans }]}>{label}</Text>
+      <Text selectable style={[styles.infoValue, { color: theme.ink, fontFamily: theme.serif }]}>{value}</Text>
+    </View>
+  );
+}
+
+function SettingsRow({
+  title,
+  description,
+  onPress,
+  disabled,
+  danger = false,
+}: {
+  title: string;
+  description: string;
+  onPress: () => void;
+  disabled: boolean;
+  danger?: boolean;
+}) {
+  const theme = mobileTheme;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.settingsRow,
+        { borderTopColor: danger ? theme.red : theme.rule, opacity: disabled ? 0.45 : pressed ? 0.65 : 1 },
+      ]}
+    >
+      <View style={styles.settingsCopy}>
+        <Text style={[styles.settingsTitle, { color: danger ? theme.red : theme.ink, fontFamily: theme.serif }]}>{title}</Text>
+        <Text style={[styles.settingsDescription, { color: theme.muted, fontFamily: theme.sans }]}>{description}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={danger ? theme.red : theme.muted} />
+    </Pressable>
+  );
+}
+
+function Feedback({ message, error }: { message: string; error: boolean }) {
+  const theme = mobileTheme;
+  return (
+    <Text
+      accessibilityRole={error ? "alert" : undefined}
+      style={[
+        styles.feedback,
+        {
+          color: error ? theme.red : theme.ink,
+          borderLeftColor: error ? theme.red : theme.ink,
+          backgroundColor: theme.paperSoft,
+          fontFamily: theme.sans,
+        },
+      ]}
+    >
+      {message}
+    </Text>
+  );
+}
+
+function OperationSheet({
+  visible,
+  title,
+  description,
+  danger = false,
+  onClose,
+  children,
+}: {
+  visible: boolean;
+  title: string;
+  description: string;
+  danger?: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const theme = mobileTheme;
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <SafeAreaView style={[styles.sheetSafe, { backgroundColor: theme.paper }]}>
+        <View style={[styles.sheetHeader, { borderBottomColor: danger ? theme.red : theme.ink }]}>
+          <Pressable accessibilityRole="button" accessibilityLabel={`关闭${title}`} onPress={onClose} hitSlop={10}>
+            <Text style={[styles.sheetClose, { color: theme.red, fontFamily: theme.sans }]}>取消</Text>
+          </Pressable>
+          <Text style={[styles.sheetTitle, { color: danger ? theme.red : theme.ink, fontFamily: theme.serif }]}>{title}</Text>
+          <View style={styles.sheetHeaderSpacer} />
+        </View>
+        <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+          <Text style={[styles.sheetDescription, { color: theme.muted, fontFamily: theme.sans }]}>{description}</Text>
+          {children}
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 export function AccountSecurityScreen() {
   const theme = mobileTheme;
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
@@ -83,49 +183,38 @@ export function AccountSecurityScreen() {
     busy,
     error,
     notice,
-    uploadAvatarData,
     changePassword,
     deleteAccount,
     signOut,
     clearFeedback,
   } = useMobileAuthStore();
+  const [activeSheet, setActiveSheet] = useState<AccountSheet>(null);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newPasswordConfirmation, setNewPasswordConfirmation] = useState("");
   const [deletePassword, setDeletePassword] = useState("");
   const [deletePhrase, setDeletePhrase] = useState("");
   const [localError, setLocalError] = useState("");
-  const avatarUrl = getProfileAvatarUrl(mobileAuthClient, profile?.avatar_path);
 
-  const chooseAvatar = async () => {
+  const openSheet = (sheet: Exclude<AccountSheet, null>) => {
     clearFeedback();
     setLocalError("");
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setLocalError("需要照片权限才能选择头像。");
-      return;
+    if (sheet === "password") {
+      setCurrentPassword("");
+      setNewPassword("");
+      setNewPasswordConfirmation("");
+    } else {
+      setDeletePassword("");
+      setDeletePhrase("");
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [4, 5],
-      quality: 0.82,
-    });
-    const asset = result.canceled ? undefined : result.assets[0];
-    if (!asset) return;
-    try {
-      const response = await fetch(asset.uri);
-      const data = await response.arrayBuffer();
-      if (data.byteLength > 2 * 1024 * 1024) {
-        setLocalError("头像文件不能超过 2 MB。");
-        return;
-      }
-      const contentType = asset.mimeType || "image/jpeg";
-      const extension = asset.fileName?.split(".").pop() || contentType.split("/").pop() || "jpg";
-      await uploadAvatarData(data, extension, contentType);
-    } catch {
-      setLocalError("头像上传没有完成，请稍后再试。");
-    }
+    setActiveSheet(sheet);
+  };
+
+  const closeSheet = () => {
+    if (busy) return;
+    clearFeedback();
+    setLocalError("");
+    setActiveSheet(null);
   };
 
   const savePassword = async () => {
@@ -144,6 +233,7 @@ export function AccountSecurityScreen() {
       setCurrentPassword("");
       setNewPassword("");
       setNewPasswordConfirmation("");
+      setActiveSheet(null);
     } catch {
       // The shared auth store exposes a localized error below.
     }
@@ -156,7 +246,7 @@ export function AccountSecurityScreen() {
       setLocalError("请输入“注销账号”确认这项操作。");
       return;
     }
-    Alert.alert("永久注销账号", "账号、资料和头像会永久删除，这项操作无法撤销。", [
+    Alert.alert("永久注销账号", "账号及相关数据会永久删除，这项操作无法撤销。", [
       { text: "取消", style: "cancel" },
       {
         text: "永久注销",
@@ -182,49 +272,29 @@ export function AccountSecurityScreen() {
   }
 
   const feedback = localError || error || notice;
+  const feedbackIsError = Boolean(localError || error);
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.paper }]}>
-      <View style={[styles.header, { borderBottomColor: theme.ink }]}>
-        <Pressable accessibilityRole="button" accessibilityLabel="返回" onPress={() => navigation.goBack()} style={styles.back}>
-          <Ionicons name="arrow-back" size={20} color={theme.red} />
-          <Text style={[styles.backText, { color: theme.red, fontFamily: theme.sans }]}>返回</Text>
-        </Pressable>
-        <Text style={[styles.kicker, { color: theme.red, fontFamily: theme.sans }]}>ACCOUNT DOSSIER</Text>
-        <Text style={[styles.title, { color: theme.ink, fontFamily: theme.serif }]}>账号与安全</Text>
-      </View>
+      <ScreenHeader title="账号与安全" onBack={() => navigation.goBack()} />
+
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        {feedback ? (
-          <Text accessibilityRole={localError || error ? "alert" : undefined} style={[styles.feedback, { color: localError || error ? theme.red : theme.ink, borderLeftColor: localError || error ? theme.red : theme.ink, backgroundColor: theme.paperSoft, fontFamily: theme.sans }]}>{feedback}</Text>
-        ) : null}
+        {!activeSheet && feedback ? <Feedback message={feedback} error={feedbackIsError} /> : null}
 
         <View style={[styles.card, { borderColor: theme.ink }]}>
-          <Text style={[styles.sectionKicker, { color: theme.red, fontFamily: theme.sans }]}>PROFILE</Text>
           <Text style={[styles.sectionTitle, { color: theme.ink, fontFamily: theme.serif }]}>账号资料</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="更换头像" disabled={busy} onPress={() => void chooseAvatar()} style={[styles.avatar, { borderColor: theme.red, backgroundColor: theme.paperSoft }]}>
-            {avatarUrl ? <Image source={{ uri: avatarUrl }} style={styles.avatarImage} /> : <Text style={[styles.avatarFallback, { color: theme.red }]}>{(profile?.display_name || user.email || "J").slice(0, 1)}</Text>}
-            <Text style={[styles.avatarAction, { color: theme.inverse, fontFamily: theme.sans }]}>更换头像</Text>
-          </Pressable>
-          <Field label="读者代号（不可修改）" value={profile?.display_name || "代号待分配"} onChangeText={() => undefined} editable={false} />
-          <Field label="登录邮箱（不可修改）" value={user.email || ""} onChangeText={() => undefined} editable={false} />
+          <InfoRow label="读者代号" value={profile?.display_name || "代号待分配"} />
+          <InfoRow label="登录邮箱" value={user.email || "—"} />
+          <Text style={[styles.helper, { color: theme.muted, fontFamily: theme.sans }]}>读者代号和登录邮箱暂不可修改。</Text>
         </View>
 
         <View style={[styles.card, { borderColor: theme.ink }]}>
-          <Text style={[styles.sectionKicker, { color: theme.red, fontFamily: theme.sans }]}>SECURITY</Text>
-          <Text style={[styles.sectionTitle, { color: theme.ink, fontFamily: theme.serif }]}>修改密码</Text>
-          <Text style={[styles.helper, { color: theme.muted, fontFamily: theme.sans }]}>修改后其他设备会退出登录。</Text>
-          <Field label="当前密码" value={currentPassword} onChangeText={setCurrentPassword} secure />
-          <Field label="新密码" value={newPassword} onChangeText={setNewPassword} secure />
-          <Field label="再次输入新密码" value={newPasswordConfirmation} onChangeText={setNewPasswordConfirmation} secure />
-          <Action label={busy ? "处理中…" : "修改密码"} disabled={busy} onPress={() => void savePassword()} />
-        </View>
-
-        <View style={[styles.card, { borderColor: theme.ink }]}>
-          <Text style={[styles.sectionKicker, { color: theme.red, fontFamily: theme.sans }]}>SESSION</Text>
-          <Text style={[styles.sectionTitle, { color: theme.ink, fontFamily: theme.serif }]}>当前设备</Text>
-          <Action
-            label="退出当前设备"
+          <Text style={[styles.sectionTitle, { color: theme.ink, fontFamily: theme.serif }]}>账号操作</Text>
+          <SettingsRow title="修改密码" description="修改后，其他设备会退出登录。" disabled={busy} onPress={() => openSheet("password")} />
+          <SettingsRow
+            title="退出当前设备"
+            description="不会影响其他已登录设备。"
             disabled={busy}
-            outline
             onPress={() => {
               void signOut()
                 .then(() => navigation.goBack())
@@ -234,39 +304,65 @@ export function AccountSecurityScreen() {
         </View>
 
         <View style={[styles.card, { borderColor: theme.red }]}>
-          <Text style={[styles.sectionKicker, { color: theme.red, fontFamily: theme.sans }]}>DANGER ZONE</Text>
-          <Text style={[styles.sectionTitle, { color: theme.red, fontFamily: theme.serif }]}>注销账号</Text>
-          <Text style={[styles.helper, { color: theme.muted, fontFamily: theme.sans }]}>注销后账号、资料和头像将永久删除。</Text>
-          <Field label="当前密码" value={deletePassword} onChangeText={setDeletePassword} secure />
-          <Field label="输入“注销账号”确认" value={deletePhrase} onChangeText={setDeletePhrase} />
-          <Action label="永久注销账号" disabled={busy} outline onPress={confirmDeletion} />
+          <Text style={[styles.sectionTitle, { color: theme.red, fontFamily: theme.serif }]}>危险操作</Text>
+          <SettingsRow title="注销账号" description="账号及相关数据会永久删除。" disabled={busy} danger onPress={() => openSheet("delete")} />
         </View>
       </ScrollView>
+
+      <OperationSheet
+        visible={activeSheet === "password"}
+        title="修改密码"
+        description="保存后，其他设备会退出登录。"
+        onClose={closeSheet}
+      >
+        {feedback ? <Feedback message={feedback} error={feedbackIsError} /> : null}
+        <Field autoFocus label="当前密码" value={currentPassword} onChangeText={setCurrentPassword} secure />
+        <Field label="新密码" value={newPassword} onChangeText={setNewPassword} secure />
+        <Field label="再次输入新密码" value={newPasswordConfirmation} onChangeText={setNewPasswordConfirmation} secure />
+        <Action label={busy ? "处理中…" : "保存新密码"} disabled={busy} onPress={() => void savePassword()} />
+      </OperationSheet>
+
+      <OperationSheet
+        visible={activeSheet === "delete"}
+        title="注销账号"
+        description="这项操作无法撤销，请再次确认身份。"
+        danger
+        onClose={closeSheet}
+      >
+        {feedback ? <Feedback message={feedback} error={feedbackIsError} /> : null}
+        <Field autoFocus label="当前密码" value={deletePassword} onChangeText={setDeletePassword} secure />
+        <Field label="输入“注销账号”确认" value={deletePhrase} onChangeText={setDeletePhrase} />
+        <Action label={busy ? "处理中…" : "永久注销账号"} disabled={busy} outline onPress={confirmDeletion} />
+      </OperationSheet>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  header: { borderBottomWidth: 2, paddingHorizontal: 18, paddingBottom: 18 },
-  back: { minHeight: 42, flexDirection: "row", alignItems: "center", gap: 6 },
-  backText: { fontSize: 12, fontWeight: "900" },
-  kicker: { marginTop: 8, fontSize: 9, fontWeight: "900", letterSpacing: 2.2 },
-  title: { marginTop: 7, fontSize: 30, fontWeight: "900" },
   content: { width: "100%", maxWidth: 760, alignSelf: "center", padding: 18, gap: 14 },
   card: { borderWidth: 1, padding: 18, gap: 14 },
-  sectionKicker: { fontSize: 9, fontWeight: "900", letterSpacing: 2.1 },
   sectionTitle: { fontSize: 21, fontWeight: "900" },
   helper: { fontSize: 12, lineHeight: 20, fontWeight: "700" },
+  infoRow: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 13, gap: 5 },
+  infoLabel: { fontSize: 10, fontWeight: "800", letterSpacing: 0.8 },
+  infoValue: { fontSize: 17, lineHeight: 26, fontWeight: "900" },
+  settingsRow: { minHeight: 72, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14 },
+  settingsCopy: { flex: 1, gap: 5 },
+  settingsTitle: { fontSize: 16, fontWeight: "900" },
+  settingsDescription: { fontSize: 11, lineHeight: 18, fontWeight: "700" },
   field: { gap: 7 },
   label: { fontSize: 11, fontWeight: "800" },
   input: { minHeight: 48, borderWidth: 1, paddingHorizontal: 12, fontSize: 14 },
   action: { minHeight: 48, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   actionText: { fontSize: 12, fontWeight: "900", letterSpacing: 1.5 },
-  avatar: { width: 92, height: 112, alignItems: "center", justifyContent: "center", overflow: "hidden", borderWidth: 2 },
-  avatarImage: { width: "100%", height: "100%" },
-  avatarFallback: { fontSize: 32, fontWeight: "900" },
-  avatarAction: { position: "absolute", right: 0, bottom: 0, left: 0, padding: 4, textAlign: "center", backgroundColor: "rgba(32,32,32,.88)", fontSize: 9, fontWeight: "900" },
   feedback: { borderLeftWidth: 4, padding: 12, fontSize: 12, lineHeight: 20, fontWeight: "700" },
+  sheetSafe: { flex: 1 },
+  sheetHeader: { minHeight: 58, borderBottomWidth: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 18 },
+  sheetClose: { minWidth: 44, fontSize: 12, fontWeight: "900" },
+  sheetTitle: { fontSize: 19, fontWeight: "900" },
+  sheetHeaderSpacer: { width: 44 },
+  sheetContent: { width: "100%", maxWidth: 620, alignSelf: "center", padding: 22, gap: 18 },
+  sheetDescription: { fontSize: 12, lineHeight: 20, fontWeight: "700" },
   empty: { flex: 1, padding: 24, justifyContent: "center", gap: 18 },
 });

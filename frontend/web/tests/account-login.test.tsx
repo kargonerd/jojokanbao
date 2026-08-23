@@ -192,7 +192,7 @@ describe("account access", () => {
 
     auth.state.user = { id: "reader-1", email: "reader@example.com" } as never;
     view.rerender(accountRoutes());
-    expect(screen.queryByRole("heading", { name: "你的统一账号" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "账号资料" })).toBeNull();
     expect(screen.getByLabelText("6 位验证码")).toBeTruthy();
 
     await act(async () => finishConfirmation());
