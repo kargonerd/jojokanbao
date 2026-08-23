@@ -16,5 +16,8 @@
     "@jojo/tsconfig": "workspace:*",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2"
   }
 }

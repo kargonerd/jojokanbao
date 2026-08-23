@@ -1,3 +1,5 @@
+import { gunzipSync, strFromU8 } from "fflate";
+
 const JOX_SALT = 0x4a4f5831; // "JOX1"
 
 function utf8(value: string): Uint8Array {
@@ -37,35 +39,12 @@ export function transformJoxBytes(
   return result;
 }
 
-async function readStream(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    size += value.length;
-  }
-  const output = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    output.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return output;
-}
-
 export async function gunzipJoxJson<T>(
   protectedBytes: Uint8Array,
   objectKey: string,
 ): Promise<T> {
   const compressed = transformJoxBytes(protectedBytes, objectKey);
-  const stream = new Blob([compressed.slice().buffer]).stream().pipeThrough(
-    new DecompressionStream("gzip"),
-  );
-  const decoded = await readStream(stream);
-  return JSON.parse(new TextDecoder().decode(decoded)) as T;
+  return JSON.parse(strFromU8(gunzipSync(compressed))) as T;
 }
 
 export class JoxClient {

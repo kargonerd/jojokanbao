@@ -10,6 +10,11 @@ export default defineConfig({
     "import.meta.env.VITE_ENABLE_RAG": JSON.stringify("false"),
   },
   plugins: [react()],
-  resolve: { alias: { "@": resolve(__dirname, "src") } },
+  resolve: {
+    alias: { "@": resolve(__dirname, "src") },
+    // Keep mocks and workspace sources on the same physical PDF.js module
+    // when pnpm uses its isolated node_modules layout.
+    dedupe: ["pdfjs-dist"],
+  },
   test: { environment: "jsdom", include: ["tests/**/*.test.{ts,tsx}"], testTimeout: 30000 },
 });

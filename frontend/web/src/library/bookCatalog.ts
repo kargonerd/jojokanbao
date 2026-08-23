@@ -1,3 +1,5 @@
+import { formatArchiveIssueLabel } from "@jojo/content";
+
 export const BOOK_COVER_TONES = ["red", "ink", "beige", "brick", "gray"] as const;
 
 export function bookCoverTone(value: string): (typeof BOOK_COVER_TONES)[number] {
@@ -7,7 +9,5 @@ export function bookCoverTone(value: string): (typeof BOOK_COVER_TONES)[number] 
 }
 
 export function issueLabel(id: string): string {
-  if (/^\d{8}$/.test(id)) return `${id.slice(0, 4)} 年 ${Number(id.slice(4, 6))} 月 ${Number(id.slice(6, 8))} 日`;
-  if (/^\d{6}$/.test(id)) return `${id.slice(0, 4)} 年第 ${Number(id.slice(4))} 期`;
-  return id;
+  return formatArchiveIssueLabel(id);
 }

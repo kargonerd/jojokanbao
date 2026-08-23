@@ -1,17 +1,44 @@
 {
   "expo": {
-    "name": "JOJO Times",
-    "slug": "jojo-times",
-    "version": "1.0.0",
-    "orientation": "portrait",
+    "name": "JOJO看报",
+    "slug": "jojo-kanbao",
+    "version": "0.0.1-rc1",
+    "scheme": "jojokanbao",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
     "ios": {
-      "supportsTablet": true
+      "bundleIdentifier": "com.luoxixi.jojokanbao",
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
-      "package": "com.luoxixi.jojotimes",
-      "predictiveBackGestureEnabled": false
+      "package": "com.luoxixi.jojokanbao",
+      "predictiveBackGestureEnabled": false,
+      "adaptiveIcon": {
+        "backgroundColor": "#8b1a1a",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      }
     },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "@react-native-community/datetimepicker",
+      "expo-font"
+    ],
     "extra": {
       "eas": {
         "projectId": "ce6a6762-1d7b-464e-9622-cf1591b4cb02"

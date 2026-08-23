@@ -4,10 +4,57 @@
     "appVersionSource": "local"
   },
   "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "APP_VARIANT": "standard",
+        "EXPO_PUBLIC_APP_VARIANT": "standard"
+      }
+    },
     "preview": {
+      "distribution": "internal",
+      "env": {
+        "APP_VARIANT": "standard",
+        "EXPO_PUBLIC_APP_VARIANT": "standard"
+      },
       "android": {
         "buildType": "apk"
       }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "APP_VARIANT": "standard",
+        "EXPO_PUBLIC_APP_VARIANT": "standard"
+      },
+      "android": {
+        "buildType": "app-bundle"
+      }
+    },
+    "eink-preview": {
+      "distribution": "internal",
+      "env": {
+        "APP_VARIANT": "eink",
+        "EXPO_PUBLIC_APP_VARIANT": "eink"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "eink-production": {
+      "autoIncrement": true,
+      "env": {
+        "APP_VARIANT": "eink",
+        "EXPO_PUBLIC_APP_VARIANT": "eink"
+      },
+      "android": {
+        "buildType": "app-bundle"
+      }
     }
+  },
+  "submit": {
+    "production": {},
+    "eink-production": {}
   }
 }

@@ -1,4 +1,8 @@
-import { getLatestRmrbAvailableDate } from "./dateAvailability";
+import {
+  ARCHIVE_PUBLICATION_NAMES,
+  getLatestRmrbAvailableDate,
+  type ArchivePublicationName,
+} from "@jojo/content";
 
 /**
  * 报刊配置数据 — 从原 Vue 项目迁移
@@ -205,8 +209,8 @@ const SJZS_YEARS = [1934,1935,1936,1937,1938,1939,1940,1941,1945,1946,1947,1948,
 
 // ─── 公共接口 ───
 
-export const PUBLICATION_NAMES = ["rmrb", "ckxx", "hq", "rmhb", "sjzs"] as const;
-export type PublicationName = (typeof PUBLICATION_NAMES)[number];
+export const PUBLICATION_NAMES = ARCHIVE_PUBLICATION_NAMES;
+export type PublicationName = ArchivePublicationName;
 
 export interface PublicationConfig {
   name: PublicationName;
