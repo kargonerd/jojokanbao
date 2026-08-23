@@ -41,7 +41,7 @@ describe("RmrbReviewPage", () => {
       }
       if (url.endsWith("/sync") && init?.method === "POST") {
         publishing = true;
-        await new Promise((resolve) => window.setTimeout(resolve, 100));
+        await new Promise((resolve) => window.setTimeout(resolve, 1_000));
         publishing = false;
         return new Response(JSON.stringify({
           success: true,

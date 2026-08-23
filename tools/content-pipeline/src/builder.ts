@@ -74,7 +74,7 @@ interface DatasetBuildState {
   language: string;
   description: string;
   items: BuiltItemSummary[];
-  itemSummaries: JojoDatasetIndex["items"];
+  itemSummaries: NonNullable<JojoDatasetIndex["items"]>;
 }
 
 const MAX_ASSET_BYTES = 64 * 1024 * 1024;
@@ -415,7 +415,7 @@ async function buildItem(
   access: "public" | "authenticated",
 ): Promise<{
   summary: BuiltItemSummary;
-  itemSummary: JojoDatasetIndex["items"][number];
+  itemSummary: NonNullable<JojoDatasetIndex["items"]>[number];
   search: JojoSearchDocument[];
 }> {
   const canonicalDatasetDirectory = path.join(roots.canonical, "books", part.datasetId);

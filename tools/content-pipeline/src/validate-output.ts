@@ -65,7 +65,7 @@ export async function validatePipelineOutput(rootDirectory: string): Promise<Val
     knownObjects.add(entry.indexObject);
     const index = asJojoDatasetIndex(await jsonObject(root, entry.indexObject));
     if (index.datasetId !== entry.datasetId) errors.push(`${entry.indexObject}: datasetId 不一致`);
-    for (const item of index.items) {
+    for (const item of index.items ?? []) {
       items += 1;
       const manifestObject = resolveJoxObject(entry.indexObject, item.manifestObject);
       knownObjects.add(manifestObject);

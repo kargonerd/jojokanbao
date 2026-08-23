@@ -28,7 +28,8 @@ function imageTypeFromSource(source: string): string | undefined {
 }
 
 function imageNameFromSource(source: string): string {
-  const encodedName = source.split("/").at(-1)?.split("?", 1)[0] || "clipboard-image";
+  const parts = source.split("/");
+  const encodedName = parts[parts.length - 1]?.split("?", 1)[0] || "clipboard-image";
   try {
     return decodeURIComponent(encodedName);
   } catch {
