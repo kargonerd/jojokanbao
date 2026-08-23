@@ -1,4 +1,4 @@
-import type { JojoDatasetIndex, JojoItemManifest } from "./types.js";
+import type { JojoDatasetIndex, JojoDatasetItemSummary, JojoItemManifest } from "./types.js";
 
 export type TimesContentStatus = "full" | "partial" | "summary";
 export type TimesSourceHealthStatus = "healthy" | "degraded" | "unavailable";
@@ -61,6 +61,7 @@ export interface TimesUnavailableCase {
 export interface TimesDeliveryIndex extends JojoDatasetIndex {
   datasetId: "times";
   type: "newspaper";
+  items: JojoDatasetItemSummary[];
   updatedAt: string;
   window: {
     from: string;

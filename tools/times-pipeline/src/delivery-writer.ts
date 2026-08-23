@@ -3,7 +3,7 @@ import { gzipSync, gunzipSync } from "node:zlib";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type {
-  JojoChapterDescriptor,
+  JojoArticleDescriptor,
   JojoCatalog,
   JojoFragment,
   TimesDateManifest,
@@ -295,7 +295,7 @@ export async function buildTimesDelivery(input: {
     const itemId = `times:${date}`;
     const itemPrefix = `content/newspapers/times/items/${year}/${month}/${date}`;
     const articles: TimesDeliveryArticle[] = [];
-    const descriptors: JojoChapterDescriptor[] = [];
+    const descriptors: JojoArticleDescriptor[] = [];
 
     for (const [articleIndex, row] of rowsForDate.entries()) {
       const body = {
@@ -323,6 +323,7 @@ export async function buildTimesDelivery(input: {
         order: articleIndex + 1,
         title: row.canonical.title,
         characterCount: plainText(body.value).length,
+        status: "available",
         object: relativeObject,
         ...info,
       });
@@ -365,7 +366,10 @@ export async function buildTimesDelivery(input: {
       },
       content: { schema: "jojo-content/newspaper/1", articles: descriptors },
       contentStats: {
-        chapterCount: articles.length,
+        articleCount: articles.length,
+        availableArticleCount: articles.length,
+        missingArticleCount: 0,
+        rejectedArticleCount: 0,
         characterCount: descriptors.reduce((sum, descriptor) => sum + descriptor.characterCount, 0),
       },
       assets: [],
