@@ -8,6 +8,7 @@ staging artifacts; it never replaces the corpus or Elasticsearch data.
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import re
 import sqlite3
@@ -24,6 +25,9 @@ YEAR_RE = re.compile(r"(\d{4})年")
 KNOWN_PAGE_CODES = {101: 1, 111: 11, 202: 2, 505: 5, 606: 6, 909: 9, 1212: 12}
 TITLE_SEGMENT_RE = re.compile(r"(?:\s{2,}|　+)")
 TRAILING_IMAGE_RE = re.compile(r"[（(]\s*图片\s*[）)]\s*$")
+LEADING_IMAGE_RE = re.compile(r"^\s*图片(?:\s+|[：:—-]+)")
+GENERIC_IMAGE_TITLES = {"图片", "图", "照片", "地图", "表", "表格", "图表", "漫画", "插图"}
+DEFAULT_TITLE_CORRECTIONS = Path(__file__).with_name("rmrb-title-corrections.jsonl")
 
 
 def norm(value: Any) -> str:
@@ -47,18 +51,103 @@ def title_variants(value: Any) -> set[str]:
     raw_variants = {primary}
     raw_variants.update(part.strip() for part in TITLE_SEGMENT_RE.split(primary) if part.strip())
     for part in tuple(raw_variants):
-        without_image = TRAILING_IMAGE_RE.sub("", part).strip()
+        without_image = LEADING_IMAGE_RE.sub("", TRAILING_IMAGE_RE.sub("", part)).strip()
         if without_image:
             raw_variants.add(without_image)
         if "——" in without_image:
             heading = without_image.split("——", 1)[0].strip()
-            if len(norm(heading)) >= 4:
+            if len(norm(heading)) >= 3:
                 raw_variants.add(heading)
     return {normalized for part in raw_variants if (normalized := norm(part))}
 
 
+def row_title_variants(row: dict[str, Any]) -> set[str]:
+    """Return source-title variants, using captions for generic image titles."""
+    result = title_variants(row.get("title"))
+    primary = primary_title(row.get("title"))
+    if norm(primary) in {norm(value) for value in GENERIC_IMAGE_TITLES}:
+        caption = primary_title(row.get("content"))
+        if caption:
+            result.update(title_variants(caption))
+    return result
+
+
 def character_bag(value: Any) -> str:
     return "".join(sorted(norm(value)))
+
+
+def is_single_character_edit(left: str, right: str) -> bool:
+    """Return whether two normalized titles differ by one character edit."""
+    if left == right or abs(len(left) - len(right)) > 1:
+        return False
+    if len(left) == len(right):
+        return sum(a != b for a, b in zip(left, right, strict=True)) == 1
+    shorter, longer = (left, right) if len(left) < len(right) else (right, left)
+    index = 0
+    for character in longer:
+        if index < len(shorter) and shorter[index] == character:
+            index += 1
+    return index == len(shorter)
+
+
+def jsonl_primary_title_counts(
+    path: Path,
+) -> tuple[Counter[str], dict[str, set[tuple[str, int | None]]]]:
+    """Count JSONL titles and retain locations only for repeated titles."""
+    counts: Counter[str] = Counter()
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            row = json.loads(line)
+            if not has_content(row):
+                continue
+            key = norm(primary_title(row.get("title")))
+            if key:
+                counts[key] += 1
+    repeated = {title for title, count in counts.items() if count > 1}
+    locations: dict[str, set[tuple[str, int | None]]] = {
+        title: set() for title in repeated
+    }
+    if repeated:
+        with path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                row = json.loads(line)
+                if not has_content(row):
+                    continue
+                key = norm(primary_title(row.get("title")))
+                if key in locations:
+                    locations[key].add(
+                        (str(row.get("date") or "")[:10], page_number(row.get("page")))
+                    )
+    return counts, locations
+
+
+def load_reviewed_title_corrections(
+    path: Path | None,
+) -> set[tuple[str, int, str, str]]:
+    """Load explicitly reviewed source-title to directory-title corrections."""
+    if path is None or not path.is_file():
+        return set()
+    result: set[tuple[str, int, str, str]] = set()
+    with path.open(encoding="utf-8-sig") as handle:
+        for line_number, line in enumerate(handle, 1):
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            date = str(row.get("date") or "")[:10]
+            page = page_number(row.get("page"))
+            source_title = norm(primary_title(row.get("sourceTitle")))
+            directory_title = norm(row.get("directoryTitle"))
+            if (
+                not DATE_RE.fullmatch(date)
+                or page is None
+                or not source_title
+                or not directory_title
+            ):
+                raise ValueError(
+                    f"Invalid reviewed title correction at {path}:{line_number}"
+                )
+            result.add((date, page, source_title, directory_title))
+    return result
 
 
 def has_content(row: dict[str, Any] | None) -> bool:
@@ -79,7 +168,7 @@ def title_indexes(
 ) -> dict[str, list[dict[str, Any]]]:
     result: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
-        values = {norm(row.get("title")), *title_variants(row.get("title"))}
+        values = {norm(row.get("title")), *row_title_variants(row)}
         primary_key = norm(primary_title(row.get("title")))
         if len(primary_key) >= 8:
             values.add(f"bag:{character_bag(primary_key)}")
@@ -197,7 +286,15 @@ def iter_xlsx_by_date(root: Path) -> Iterator[tuple[str, list[dict[str, Any]]]]:
         yield current, rows
 
 
-def choose(canonical: dict[str, Any], candidates: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, str]:
+def choose(
+    canonical: dict[str, Any],
+    candidates: list[dict[str, Any]],
+    *,
+    jsonl_title_counts: Counter[str] | None = None,
+    directory_title_counts: Counter[str] | None = None,
+    self_validated_jsonl_titles: set[str] | None = None,
+    reviewed_title_corrections: set[tuple[str, int, str, str]] | None = None,
+) -> tuple[dict[str, Any] | None, str]:
     if not candidates:
         return None, "none"
     ctitle = norm(canonical["title"])
@@ -229,7 +326,8 @@ def choose(canonical: dict[str, Any], candidates: list[dict[str, Any]]) -> tuple
     primary = list(collapsed.values())
     if len(primary) == 1:
         return primary[0], "exact_primary_title"
-    variants = [row for row in pool if ctitle and ctitle in title_variants(row.get("title"))]
+    canonical_variants = {ctitle, *title_variants(canonical.get("title"))}
+    variants = [row for row in pool if canonical_variants & row_title_variants(row)]
     collapsed = {}
     for row in variants:
         key = (norm(row.get("title")), norm(row.get("content"))[:400])
@@ -239,6 +337,32 @@ def choose(canonical: dict[str, Any], candidates: list[dict[str, Any]]) -> tuple
     variants = list(collapsed.values())
     if len(variants) == 1:
         return variants[0], "exact_title_variant"
+    components = [
+        row
+        for row in pool
+        if not (
+            len(ctitle) >= 8
+            and character_bag(primary_title(row.get("title"))) == character_bag(ctitle)
+        )
+        and any(
+            min(len(canonical_variant), len(source_variant)) >= 4
+            and (
+                canonical_variant in source_variant
+                or source_variant in canonical_variant
+            )
+            for canonical_variant in canonical_variants
+            for source_variant in row_title_variants(row)
+        )
+    ]
+    collapsed = {}
+    for row in components:
+        key = (norm(row.get("title")), norm(row.get("content"))[:400])
+        prior = collapsed.get(key)
+        if prior is None or len(str(row.get("content") or "")) > len(str(prior.get("content") or "")):
+            collapsed[key] = row
+    components = list(collapsed.values())
+    if len(components) == 1:
+        return components[0], "exact_title_component"
     if len(ctitle) >= 8:
         reordered = [
             row
@@ -254,6 +378,44 @@ def choose(canonical: dict[str, Any], candidates: list[dict[str, Any]]) -> tuple
         reordered = list(collapsed.values())
         if len(reordered) == 1:
             return reordered[0], "exact_title_characters"
+    # A repeated JSONL title can validate a narrowly-scoped one-character
+    # correction.  Example: two distinct JSONL articles are titled
+    # ``黄河防泛记``; PeopleData contains that exact title for the first issue
+    # and ``黄河防汛记`` on the second article's own date/page.  Only allow the
+    # correction when JSONL has more occurrences than the directory has exact
+    # titles, the local PeopleData candidate is unique, and the title is long
+    # enough to avoid treating generic short headings as corrections.
+    if (
+        jsonl_title_counts is not None
+        and directory_title_counts is not None
+        and self_validated_jsonl_titles is not None
+        and reviewed_title_corrections is not None
+    ):
+        corrected = []
+        for row in pool:
+            source_title = norm(primary_title(row.get("title")))
+            if (
+                len(ctitle) >= 4
+                and jsonl_title_counts[source_title] > 1
+                and jsonl_title_counts[source_title] > directory_title_counts[source_title]
+                and source_title in self_validated_jsonl_titles
+                and (
+                    str(canonical.get("date") or "")[:10],
+                    page_number(canonical.get("page")),
+                    source_title,
+                    ctitle,
+                )
+                in reviewed_title_corrections
+                and is_single_character_edit(ctitle, source_title)
+            ):
+                corrected.append(row)
+        if len(corrected) == 1:
+            return corrected[0], "reviewed_jsonl_one_character_correction"
+    # JSONL is trusted content, so an unexplained fuzzy title match is more
+    # dangerous than preserving the source record for later review.  XLSX
+    # fallback retains its historical fuzzy behavior for otherwise-empty rows.
+    if jsonl_title_counts is not None:
+        return None, "ambiguous"
     scored: list[tuple[float, dict[str, Any]]] = []
     for row in pool:
         full_title = norm(row.get("title"))
@@ -295,6 +457,21 @@ def main() -> None:
         help="Audit rows preserved from JSONL without a confident PeopleData alignment",
     )
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument(
+        "--title-corrections",
+        type=Path,
+        default=DEFAULT_TITLE_CORRECTIONS,
+        help="Reviewed JSONL title corrections (JSONL)",
+    )
+    parser.add_argument(
+        "--end-date",
+        help="Optional inclusive audit boundary (YYYY-MM-DD)",
+    )
+    parser.add_argument(
+        "--audit-only",
+        action="store_true",
+        help="Run matching and reports without writing the full merged JSONL",
+    )
     args = parser.parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.unmatched.parent.mkdir(parents=True, exist_ok=True)
@@ -304,14 +481,45 @@ def main() -> None:
     jsonl_unaligned_path.parent.mkdir(parents=True, exist_ok=True)
 
     directory = sqlite3.connect(f"file:{args.directory}?mode=ro", uri=True)
+    jsonl_title_counts, jsonl_title_locations = jsonl_primary_title_counts(args.jsonl)
+    reviewed_title_corrections = load_reviewed_title_corrections(
+        args.title_corrections
+    )
+    repeated_jsonl_titles = {
+        title for title, count in jsonl_title_counts.items() if count > 1
+    }
+    directory_title_counts: Counter[str] = Counter()
+    directory_title_locations: dict[str, set[tuple[str, int]]] = {
+        title: set() for title in repeated_jsonl_titles
+    }
+    if repeated_jsonl_titles:
+        for issue_date, page, title in directory.execute(
+            "SELECT issue_date, page_number, title FROM articles"
+        ):
+            key = norm(title)
+            if key in repeated_jsonl_titles:
+                directory_title_counts[key] += 1
+                directory_title_locations[key].add((issue_date, int(page)))
+    self_validated_jsonl_titles = {
+        title
+        for title in repeated_jsonl_titles
+        if jsonl_title_locations.get(title, set())
+        & directory_title_locations.get(title, set())
+    }
     dates = [row[0] for row in directory.execute("SELECT issue_date FROM issues WHERE result_count > 0 ORDER BY issue_date")]
+    if args.end_date:
+        if not DATE_RE.fullmatch(args.end_date):
+            raise ValueError(f"Invalid --end-date: {args.end_date}")
+        dates = [date for date in dates if date <= args.end_date]
     json_iter = iter_jsonl_by_date(args.jsonl)
     xlsx_iter = iter_xlsx_by_date(args.xlsx_root)
     json_date, json_rows = next(json_iter, (None, []))
     xlsx_date, xlsx_rows = next(xlsx_iter, (None, []))
     counters = Counter()
     with (
-        args.output.open("w", encoding="utf-8") as out,
+        open(os.devnull, "w", encoding="utf-8")
+        if args.audit_only
+        else args.output.open("w", encoding="utf-8") as out,
         args.unmatched.open("w", encoding="utf-8") as missing,
         jsonl_unaligned_path.open("w", encoding="utf-8") as jsonl_unaligned,
     ):
@@ -395,7 +603,14 @@ def main() -> None:
                     used_local,
                     local_indexes.get(page, {}),
                 )
-                local_match, local_method = choose(canonical, local_candidates)
+                local_match, local_method = choose(
+                    canonical,
+                    local_candidates,
+                    jsonl_title_counts=jsonl_title_counts,
+                    directory_title_counts=directory_title_counts,
+                    self_validated_jsonl_titles=self_validated_jsonl_titles,
+                    reviewed_title_corrections=reviewed_title_corrections,
+                )
                 # Older annual exports omit the page column entirely; in that
                 # case the date/title still provide a valid match.
                 xlsx_match: dict[str, Any] | None = None
@@ -456,10 +671,14 @@ def main() -> None:
             if index % 100 == 0:
                 print(f"processed {index}/{len(dates)} dates", flush=True)
         while json_date is not None:
+            if args.end_date and json_date > args.end_date:
+                break
             counters["jsonOnlyRows"] += len(json_rows)
             preserve_jsonl_rows(json_rows, set(), "date_after_peopledata_scope", 0)
             json_date, json_rows = next(json_iter, (None, []))
         while xlsx_date is not None:
+            if args.end_date and xlsx_date > args.end_date:
+                break
             counters["xlsxOnlyRows"] += len(xlsx_rows)
             xlsx_date, xlsx_rows = next(xlsx_iter, (None, []))
     accounted_jsonl = (
@@ -476,6 +695,7 @@ def main() -> None:
         "jsonl": str(args.jsonl.resolve()),
         "xlsxRoot": str(args.xlsx_root.resolve()),
         "output": str(args.output.resolve()),
+        "auditOnly": args.audit_only,
         "unmatched": str(args.unmatched.resolve()),
         "jsonlUnaligned": str(jsonl_unaligned_path.resolve()),
         "safeToPublish": safe_to_publish,

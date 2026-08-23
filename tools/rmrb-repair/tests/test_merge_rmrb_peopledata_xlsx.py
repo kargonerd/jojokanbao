@@ -3,6 +3,7 @@ import json
 import sqlite3
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 
 
@@ -75,6 +76,40 @@ def test_choose_matches_catalog_title_after_image_suffix_is_removed():
     assert method == "exact_title_variant"
 
 
+def test_choose_matches_image_caption_to_catalog_title():
+    canonical = {"page": 2, "title": "麦收"}
+    candidates = [{"page": 2, "title": "图片\n邹雅", "content": "麦收\n邹雅刻"}]
+
+    selected, method = MODULE.choose(canonical, candidates)
+
+    assert selected is not None
+    assert method == "exact_title_variant"
+
+
+def test_choose_normalizes_image_marker_on_both_sides():
+    canonical = {"page": 4, "title": "图片 短命的高兴"}
+    candidates = [
+        {"page": 4, "title": "短命的高兴（图片）\n邹雅", "content": "短命的高兴"}
+    ]
+
+    selected, method = MODULE.choose(canonical, candidates)
+
+    assert selected is not None
+    assert method == "exact_title_variant"
+
+
+def test_choose_matches_image_title_component_inside_long_catalog_title():
+    canonical = {"page": 3, "title": "王克勤爱民如母 模范战士连环画"}
+    candidates = [
+        {"page": 3, "title": "王克勤爱民如母（图片）\n高诗林", "content": "图画正文"}
+    ]
+
+    selected, method = MODULE.choose(canonical, candidates)
+
+    assert selected is not None
+    assert method == "exact_title_component"
+
+
 def test_choose_matches_reordered_headline_parts_by_exact_characters():
     canonical = {"page": 1, "title": "解放日报社论 一年的教训"}
     candidates = [
@@ -85,6 +120,46 @@ def test_choose_matches_reordered_headline_parts_by_exact_characters():
 
     assert selected is not None
     assert method == "exact_title_characters"
+
+
+def test_choose_uses_repeated_jsonl_title_to_validate_one_character_correction():
+    canonical = {"date": "1947-08-31", "page": 2, "title": "黄河防汛记"}
+    candidates = [
+        {"page": 2, "title": "黄河防泛记\n君·谦", "content": "第二篇独立正文"}
+    ]
+
+    selected, method = MODULE.choose(
+        canonical,
+        candidates,
+        jsonl_title_counts=Counter({"黄河防泛记": 2}),
+        directory_title_counts=Counter({"黄河防泛记": 1}),
+        self_validated_jsonl_titles={"黄河防泛记"},
+        reviewed_title_corrections={
+            ("1947-08-31", 2, "黄河防泛记", "黄河防汛记")
+        },
+    )
+
+    assert selected is not None
+    assert method == "reviewed_jsonl_one_character_correction"
+
+
+def test_choose_does_not_generalize_one_character_correction_without_review():
+    canonical = {"date": "1947-08-31", "page": 2, "title": "黄河防汛记"}
+    candidates = [
+        {"page": 2, "title": "黄河防泛记\n君·谦", "content": "正文"}
+    ]
+
+    selected, method = MODULE.choose(
+        canonical,
+        candidates,
+        jsonl_title_counts=Counter({"黄河防泛记": 2}),
+        directory_title_counts=Counter({"黄河防泛记": 1}),
+        self_validated_jsonl_titles={"黄河防泛记"},
+        reviewed_title_corrections=set(),
+    )
+
+    assert selected is None
+    assert method == "ambiguous"
 
 
 def test_merge_preserves_an_unaligned_jsonl_body_instead_of_silently_dropping_it(tmp_path: Path):
