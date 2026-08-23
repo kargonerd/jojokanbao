@@ -7,6 +7,7 @@ import { AccountCenterPage } from "@/account/pages/AccountCenterPage";
 const account = vi.hoisted(() => ({
   auth: {
     initialized: true,
+    recoveryPending: false,
     user: { id: "reader-1", email: "reader@example.com" } as {
       id: string;
       email: string;
@@ -23,6 +24,9 @@ const account = vi.hoisted(() => ({
     notice: null as string | null,
     clearFeedback: vi.fn(),
     signOut: vi.fn(),
+    uploadAvatar: vi.fn(),
+    changePassword: vi.fn(),
+    deleteAccount: vi.fn(),
   },
   invitation: {
     ownerUserId: "reader-1",
@@ -51,9 +55,14 @@ const account = vi.hoisted(() => ({
 }));
 
 vi.mock("@/account/auth", () => ({
+  authClient: {},
   startAuthSync: account.startAuthSync,
   useAuthStore: (selector?: (state: typeof account.auth) => unknown) =>
     selector ? selector(account.auth) : account.auth,
+}));
+
+vi.mock("@jojo/auth", () => ({
+  getProfileAvatarUrl: () => null,
 }));
 
 vi.mock("@/account/invitationStore", () => ({
@@ -68,6 +77,9 @@ beforeEach(() => {
   account.auth.notice = null;
   account.auth.clearFeedback.mockClear();
   account.auth.signOut.mockReset().mockResolvedValue(undefined);
+  account.auth.uploadAvatar.mockReset().mockResolvedValue(undefined);
+  account.auth.changePassword.mockReset().mockResolvedValue(undefined);
+  account.auth.deleteAccount.mockReset().mockResolvedValue(undefined);
   account.invitation.status = {
     allocated: true,
     code: "K7MP4X",
@@ -103,13 +115,15 @@ describe("account center", () => {
 
     expect(screen.queryByRole("heading", { name: "账号" })).toBeNull();
     expect(screen.getByText("雪豹-TGH")).toBeTruthy();
-    expect(screen.getByText("暂不可修改")).toBeTruthy();
+    expect(screen.getByText("读者代号由系统分配，暂不可修改")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "邀请码" })).toBeTruthy();
     expect(screen.getByLabelText("邀请码 K7MP4X")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "换一个邀请码" })).toBeNull();
     expect(screen.queryByText("我的书架")).toBeNull();
-    expect(screen.queryByRole("textbox")).toBeNull();
-    expect(screen.queryByText("账号资料")).toBeNull();
+    expect(screen.getByText("账号资料")).toBeTruthy();
+    expect(screen.getByText("reader@example.com")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "修改密码" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "永久注销账号" })).toBeTruthy();
     await waitFor(() => expect(account.invitation.load).toHaveBeenCalledWith("reader-1"));
   });
 
@@ -119,7 +133,7 @@ describe("account center", () => {
     render(<MemoryRouter><AccountLogin /></MemoryRouter>);
 
     expect(screen.getByText("代号待分配")).toBeTruthy();
-    expect(screen.getByText("正在分配，请稍后刷新")).toBeTruthy();
+    expect(screen.getByText("读者代号由系统分配，暂不可修改")).toBeTruthy();
   });
 
   it("generates the reader's first invitation", async () => {
@@ -145,5 +159,14 @@ describe("account center", () => {
 
     await waitFor(() => expect(account.auth.signOut).toHaveBeenCalledOnce());
     expect(await screen.findByText("App home")).toBeTruthy();
+  });
+
+  it("reauthenticates to change the password", async () => {
+    render(<MemoryRouter><AccountLogin /></MemoryRouter>);
+    fireEvent.change(screen.getAllByLabelText("当前密码")[0]!, { target: { value: "old-password" } });
+    fireEvent.change(screen.getByLabelText("新密码"), { target: { value: "new-password" } });
+    fireEvent.change(screen.getByLabelText("再次输入新密码"), { target: { value: "new-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "修改密码" }));
+    await waitFor(() => expect(account.auth.changePassword).toHaveBeenCalledWith("old-password", "new-password"));
   });
 });

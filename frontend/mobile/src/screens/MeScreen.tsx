@@ -1,6 +1,6 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useNavigation, type NavigationProp } from "@react-navigation/native";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -19,14 +19,15 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MOBILE_ACCOUNT_CONFIGURED, useMobileAuthStore } from "../account/auth";
-import { getRegistrationValidationError, MOBILE_SIGNUP_REDIRECT_URL } from "../account/registration";
+import { getRegistrationValidationError } from "../account/registration";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionTitle } from "../components/SectionTitle";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import type { RootStackParamList } from "../navigation/types";
 import { mobileTheme, type MobileTheme } from "../theme/tokens";
 
-type AccountMode = "login" | "register";
+type AccountMode = "login" | "register" | "recover";
+type RecoveryStep = "email" | "code" | "password";
 
 const spineShadowBands = [
   "rgba(32,32,32,0)",
@@ -74,8 +75,16 @@ export function MeScreen() {
   const [accountMode, setAccountMode] = useState<AccountMode>("login");
   const [registrationEmail, setRegistrationEmail] = useState("");
   const [registrationPassword, setRegistrationPassword] = useState("");
+  const [registrationPasswordConfirmation, setRegistrationPasswordConfirmation] = useState("");
   const [invitationCode, setInvitationCode] = useState("");
   const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
+  const [confirmationCode, setConfirmationCode] = useState("");
+  const [recoveryStep, setRecoveryStep] = useState<RecoveryStep>("email");
+  const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const [recoveryPassword, setRecoveryPassword] = useState("");
+  const [recoveryPasswordConfirmation, setRecoveryPasswordConfirmation] = useState("");
+  const [resendSeconds, setResendSeconds] = useState(0);
   const [localError, setLocalError] = useState("");
   const [loginVisible, setLoginVisible] = useState(false);
   const [dialogViewport, setDialogViewport] = useState(() => ({ width: windowWidth, height: windowHeight }));
@@ -84,7 +93,23 @@ export function MeScreen() {
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const cameraProgress = useRef(new Animated.Value(0)).current;
   const coverProgress = useRef(new Animated.Value(0)).current;
-  const { initialized, user, profile, busy, error, notice, signIn, signUp, signOut, clearFeedback } = useMobileAuthStore();
+  const {
+    initialized,
+    user,
+    profile,
+    busy,
+    error,
+    notice,
+    signIn,
+    signUp,
+    confirmSignUp,
+    resendSignUpCode,
+    sendPasswordReset,
+    verifyPasswordResetCode,
+    completePasswordRecovery,
+    signOut,
+    clearFeedback,
+  } = useMobileAuthStore();
   const dialogWidth = loginVisible ? dialogViewport.width : windowWidth;
   const dialogHeight = loginVisible ? dialogViewport.height : windowHeight;
   const wideBook = dialogWidth > 880;
@@ -94,6 +119,12 @@ export function MeScreen() {
   const bookHeight = wideBook ? bookWidth * (42 / 61) : Math.min(544, dialogHeight - 64);
   const bookEndOffset = wideBook ? 0 : -bookWidth / 2 + dialogWidth * 0.05;
   const bookStartOffset = wideBook ? -bookWidth * 0.24 : bookEndOffset + dialogWidth * 0.03;
+
+  useEffect(() => {
+    if (resendSeconds <= 0) return undefined;
+    const timer = setInterval(() => setResendSeconds((seconds) => Math.max(0, seconds - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [resendSeconds]);
 
   const openAccount = (mode: AccountMode) => {
     closingRef.current = false;
@@ -159,6 +190,11 @@ export function MeScreen() {
     clearFeedback();
     setLocalError("");
     setAccountMode(mode);
+    if (mode === "recover") {
+      setRecoveryStep("email");
+      setRecoveryEmail(email.trim());
+      setRecoveryCode("");
+    }
   };
 
   const closeLogin = (force = false) => {
@@ -237,19 +273,94 @@ export function MeScreen() {
       setLocalError(validationError);
       return;
     }
+    if (registrationPassword !== registrationPasswordConfirmation) {
+      setLocalError("两次输入的密码不一致。");
+      return;
+    }
     try {
       const requiresConfirmation = await signUp({
         invitationCode: invitationCode.trim(),
         email: normalizedEmail,
         password: registrationPassword,
-        emailRedirectTo: MOBILE_SIGNUP_REDIRECT_URL,
       });
       setRegistrationPassword("");
+      setRegistrationPasswordConfirmation("");
       if (requiresConfirmation) {
         setConfirmationEmail(normalizedEmail);
+        setConfirmationCode("");
+        setResendSeconds(60);
       } else {
         closeLogin(true);
       }
+    } catch {
+      // The shared auth store exposes a localized error below.
+    }
+  };
+
+  const handleConfirmSignUp = async () => {
+    clearFeedback();
+    setLocalError("");
+    if (!confirmationEmail || !/^\d{6}$/.test(confirmationCode)) {
+      setLocalError("请输入邮件中的 6 位验证码。");
+      return;
+    }
+    try {
+      await confirmSignUp(confirmationEmail, confirmationCode);
+      closeLogin(true);
+    } catch {
+      // The shared auth store exposes a localized error below.
+    }
+  };
+
+  const resendCode = async () => {
+    if (resendSeconds > 0) return;
+    try {
+      if (accountMode === "register" && confirmationEmail) {
+        await resendSignUpCode(confirmationEmail);
+      } else {
+        await sendPasswordReset(recoveryEmail.trim());
+      }
+      setResendSeconds(60);
+    } catch {
+      // The shared auth store exposes a localized error below.
+    }
+  };
+
+  const handleRecovery = async () => {
+    clearFeedback();
+    setLocalError("");
+    try {
+      if (recoveryStep === "email") {
+        if (!recoveryEmail.trim()) {
+          setLocalError("请输入注册邮箱。");
+          return;
+        }
+        await sendPasswordReset(recoveryEmail.trim());
+        setRecoveryStep("code");
+        setResendSeconds(60);
+        return;
+      }
+      if (recoveryStep === "code") {
+        if (!/^\d{6}$/.test(recoveryCode)) {
+          setLocalError("请输入邮件中的 6 位验证码。");
+          return;
+        }
+        await verifyPasswordResetCode(recoveryEmail.trim(), recoveryCode);
+        setRecoveryStep("password");
+        return;
+      }
+      if (recoveryPassword.length < 8) {
+        setLocalError("新密码至少需要 8 位字符。");
+        return;
+      }
+      if (recoveryPassword !== recoveryPasswordConfirmation) {
+        setLocalError("两次输入的新密码不一致。");
+        return;
+      }
+      await completePasswordRecovery(recoveryPassword);
+      setEmail(recoveryEmail.trim());
+      setPassword("");
+      closeLogin(true);
     } catch {
       // The shared auth store exposes a localized error below.
     }
@@ -281,6 +392,15 @@ export function MeScreen() {
                 <Text style={[styles.infoLabel, { color: theme.muted, fontFamily: theme.sans }]}>邮箱</Text>
                 <Text numberOfLines={1} style={[styles.infoValue, { color: theme.ink, fontFamily: theme.sans }]}>{user.email || "—"}</Text>
               </View>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => navigation.navigate("AccountSecurity")}
+                style={({ pressed }) => [styles.accountEntry, { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.rule }, pressed && { backgroundColor: theme.paperSoft }]}
+              >
+                <Ionicons name="shield-checkmark-outline" size={20} color={theme.ink} />
+                <Text style={[styles.accountEntryText, { color: theme.ink, fontFamily: theme.serif }]}>账号与安全</Text>
+                <Ionicons name="chevron-forward" size={17} color={theme.muted} />
+              </Pressable>
               <Pressable
                 accessibilityRole="button"
                 disabled={busy}
@@ -355,7 +475,7 @@ export function MeScreen() {
           accessibilityViewIsModal
           style={[styles.modalOverlay, { backgroundColor: IS_EINK_RELEASE ? "rgba(255,255,255,.96)" : "rgba(0,0,0,.48)", opacity: backdropOpacity }]}
         >
-          <Pressable accessibilityLabel={accountMode === "register" ? "关闭注册" : "关闭登录"} onPress={() => closeLogin()} style={StyleSheet.absoluteFill} />
+          <Pressable accessibilityLabel={accountMode === "register" ? "关闭注册" : accountMode === "recover" ? "关闭找回密码" : "关闭登录"} onPress={() => closeLogin()} style={StyleSheet.absoluteFill} />
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
             pointerEvents="box-none"
@@ -411,7 +531,7 @@ export function MeScreen() {
                         <Text style={[styles.bookNumber, { color: theme.red, fontFamily: theme.sans }]}>第 01 号</Text>
                       </View>
                       <View accessibilityRole="tablist" style={[styles.modeTabs, { borderBottomColor: theme.rule }]}>
-                        {(["login", "register"] as const).map((mode) => {
+                        {(["login", "register", "recover"] as const).map((mode) => {
                           const selected = accountMode === mode;
                           return (
                             <Pressable
@@ -422,7 +542,7 @@ export function MeScreen() {
                               onPress={() => changeAccountMode(mode)}
                               style={[styles.modeTab, selected && { borderBottomColor: theme.red }]}
                             >
-                              <Text style={[styles.modeTabText, { color: selected ? theme.red : theme.muted, fontFamily: theme.sans }]}>{mode === "login" ? "登录" : "注册"}</Text>
+                              <Text style={[styles.modeTabText, { color: selected ? theme.red : theme.muted, fontFamily: theme.sans }]}>{mode === "login" ? "登录" : mode === "register" ? "注册" : "找回"}</Text>
                             </Pressable>
                           );
                         })}
@@ -469,14 +589,42 @@ export function MeScreen() {
                           >
                             <Text style={[styles.loginText, { color: theme.inverse, fontFamily: theme.sans }]}>{busy ? "登录中" : "登录"}</Text>
                           </Pressable>
+                          <Pressable accessibilityRole="button" disabled={busy} onPress={() => changeAccountMode("recover")}>
+                            <Text style={[styles.textAction, { color: theme.red, fontFamily: theme.sans }]}>忘记密码？</Text>
+                          </Pressable>
                         </View>
-                      ) : confirmationEmail ? (
-                        <View accessibilityRole="summary" style={styles.confirmation}>
-                          <Text style={[styles.confirmationTitle, { color: theme.ink, fontFamily: theme.serif }]}>请检查邮箱</Text>
-                          <Text style={[styles.confirmationText, { color: theme.muted, fontFamily: theme.sans }]}>确认邮件已发送到 {confirmationEmail}。</Text>
-                          <Text style={[styles.confirmationText, { color: theme.muted, fontFamily: theme.sans }]}>打开邮件中的链接后，账号会自动激活并返回这里。</Text>
+                      ) : accountMode === "register" && confirmationEmail ? (
+                        <View style={styles.form}>
+                          <View style={[styles.proofStrip, { backgroundColor: theme.red, borderColor: theme.redDark }]}>
+                            <Text style={[styles.proofLabel, { color: theme.inverse, fontFamily: theme.sans }]}>IDENTITY PROOF / 十分钟内有效</Text>
+                            <Text style={[styles.proofCode, { color: theme.inverse, fontFamily: theme.sans }]}>{confirmationCode || "000000"}</Text>
+                          </View>
+                          <Text style={[styles.confirmationText, { color: theme.muted, fontFamily: theme.sans }]}>验证码已发送到 {confirmationEmail}</Text>
+                          <Text style={[styles.fieldLabel, { color: theme.ink, fontFamily: theme.sans }]}>6 位验证码</Text>
+                          <TextInput
+                            value={confirmationCode}
+                            onChangeText={(value) => { setConfirmationCode(value.replace(/\D/g, "").slice(0, 6)); setLocalError(""); clearFeedback(); }}
+                            autoComplete="one-time-code"
+                            keyboardType="number-pad"
+                            maxLength={6}
+                            returnKeyType="done"
+                            onSubmitEditing={() => void handleConfirmSignUp()}
+                            style={[styles.input, styles.codeInput, { color: theme.red, borderColor: theme.red, fontFamily: theme.sans }]}
+                          />
+                          {localError || error || notice ? (
+                            <Text accessibilityRole={localError || error ? "alert" : undefined} style={[styles.error, { color: localError || error ? theme.red : theme.muted, fontFamily: theme.sans }]}>{localError || error || notice}</Text>
+                          ) : null}
+                          <Pressable accessibilityRole="button" disabled={busy} onPress={() => void handleConfirmSignUp()} style={({ pressed }) => [styles.loginButton, { backgroundColor: theme.red, opacity: busy ? 0.45 : pressed ? 0.78 : 1 }]}>
+                            <Text style={[styles.loginText, { color: theme.inverse, fontFamily: theme.sans }]}>{busy ? "正在验证…" : "确认并完成注册"}</Text>
+                          </Pressable>
+                          <Pressable accessibilityRole="button" disabled={busy || resendSeconds > 0} onPress={() => void resendCode()}>
+                            <Text style={[styles.textAction, { color: theme.red, fontFamily: theme.sans }]}>{resendSeconds > 0 ? `${resendSeconds} 秒后可重发` : "重新发送验证码"}</Text>
+                          </Pressable>
+                          <Pressable accessibilityRole="button" disabled={busy} onPress={() => { clearFeedback(); setLocalError(""); setConfirmationEmail(null); setConfirmationCode(""); }}>
+                            <Text style={[styles.textAction, { color: theme.red, fontFamily: theme.sans }]}>修改注册信息</Text>
+                          </Pressable>
                         </View>
-                      ) : (
+                      ) : accountMode === "register" ? (
                         <View style={styles.form}>
                           <Text style={[styles.fieldLabel, { color: theme.ink, fontFamily: theme.sans }]}>邮箱</Text>
                           <TextInput
@@ -506,6 +654,20 @@ export function MeScreen() {
                             placeholderTextColor={theme.muted}
                             style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
                           />
+                          <Text style={[styles.fieldLabel, styles.passwordLabel, { color: theme.ink, fontFamily: theme.sans }]}>再次输入密码</Text>
+                          <TextInput
+                            value={registrationPasswordConfirmation}
+                            onChangeText={(value) => { setRegistrationPasswordConfirmation(value); setLocalError(""); clearFeedback(); }}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            autoComplete="new-password"
+                            textContentType="newPassword"
+                            secureTextEntry
+                            returnKeyType="next"
+                            placeholder="重复输入密码"
+                            placeholderTextColor={theme.muted}
+                            style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
+                          />
                           <Text style={[styles.fieldLabel, styles.passwordLabel, { color: theme.ink, fontFamily: theme.sans }]}>邀请码</Text>
                           <TextInput
                             value={invitationCode}
@@ -529,8 +691,76 @@ export function MeScreen() {
                             onPress={() => void handleSignUp()}
                             style={({ pressed }) => [styles.loginButton, { backgroundColor: theme.red, opacity: busy ? 0.45 : pressed ? 0.78 : 1 }]}
                           >
-                            <Text style={[styles.loginText, { color: theme.inverse, fontFamily: theme.sans }]}>{busy ? "正在注册…" : "注册账号"}</Text>
+                            <Text style={[styles.loginText, { color: theme.inverse, fontFamily: theme.sans }]}>{busy ? "正在注册…" : "发送注册验证码"}</Text>
                           </Pressable>
+                        </View>
+                      ) : (
+                        <View style={styles.form}>
+                          <Text style={[styles.recoveryTitle, { color: theme.ink, fontFamily: theme.serif }]}>{recoveryStep === "password" ? "设置新密码" : "找回密码"}</Text>
+                          <Text style={[styles.confirmationText, { color: theme.muted, fontFamily: theme.sans }]}>{recoveryStep === "email" ? "验证码会发送到你的注册邮箱。" : `正在验证 ${recoveryEmail}`}</Text>
+                          {recoveryStep === "email" ? (
+                            <>
+                              <Text style={[styles.fieldLabel, { color: theme.ink, fontFamily: theme.sans }]}>注册邮箱</Text>
+                              <TextInput
+                                value={recoveryEmail}
+                                onChangeText={(value) => { setRecoveryEmail(value); setLocalError(""); clearFeedback(); }}
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                                autoComplete="email"
+                                keyboardType="email-address"
+                                textContentType="emailAddress"
+                                placeholder="name@example.com"
+                                placeholderTextColor={theme.muted}
+                                style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
+                              />
+                            </>
+                          ) : recoveryStep === "code" ? (
+                            <>
+                              <Text style={[styles.fieldLabel, { color: theme.ink, fontFamily: theme.sans }]}>6 位验证码</Text>
+                              <TextInput
+                                value={recoveryCode}
+                                onChangeText={(value) => { setRecoveryCode(value.replace(/\D/g, "").slice(0, 6)); setLocalError(""); clearFeedback(); }}
+                                autoComplete="one-time-code"
+                                keyboardType="number-pad"
+                                maxLength={6}
+                                returnKeyType="done"
+                                onSubmitEditing={() => void handleRecovery()}
+                                style={[styles.input, styles.codeInput, { color: theme.red, borderColor: theme.red, fontFamily: theme.sans }]}
+                              />
+                            </>
+                          ) : (
+                            <>
+                              <Text style={[styles.fieldLabel, { color: theme.ink, fontFamily: theme.sans }]}>新密码</Text>
+                              <TextInput
+                                value={recoveryPassword}
+                                onChangeText={(value) => { setRecoveryPassword(value); setLocalError(""); clearFeedback(); }}
+                                autoComplete="new-password"
+                                secureTextEntry
+                                style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
+                              />
+                              <Text style={[styles.fieldLabel, styles.passwordLabel, { color: theme.ink, fontFamily: theme.sans }]}>再次输入新密码</Text>
+                              <TextInput
+                                value={recoveryPasswordConfirmation}
+                                onChangeText={(value) => { setRecoveryPasswordConfirmation(value); setLocalError(""); clearFeedback(); }}
+                                autoComplete="new-password"
+                                secureTextEntry
+                                returnKeyType="done"
+                                onSubmitEditing={() => void handleRecovery()}
+                                style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
+                              />
+                            </>
+                          )}
+                          {localError || error || notice ? (
+                            <Text accessibilityRole={localError || error ? "alert" : undefined} style={[styles.error, { color: localError || error ? theme.red : theme.muted, fontFamily: theme.sans }]}>{localError || error || notice}</Text>
+                          ) : null}
+                          <Pressable accessibilityRole="button" disabled={busy} onPress={() => void handleRecovery()} style={({ pressed }) => [styles.loginButton, { backgroundColor: theme.red, opacity: busy ? 0.45 : pressed ? 0.78 : 1 }]}>
+                            <Text style={[styles.loginText, { color: theme.inverse, fontFamily: theme.sans }]}>{busy ? "处理中…" : recoveryStep === "email" ? "发送验证码" : recoveryStep === "code" ? "验证身份" : "保存新密码"}</Text>
+                          </Pressable>
+                          {recoveryStep === "code" ? (
+                            <Pressable accessibilityRole="button" disabled={busy || resendSeconds > 0} onPress={() => void resendCode()}>
+                              <Text style={[styles.textAction, { color: theme.red, fontFamily: theme.sans }]}>{resendSeconds > 0 ? `${resendSeconds} 秒后可重发` : "重新发送验证码"}</Text>
+                            </Pressable>
+                          ) : null}
                         </View>
                       )}
                       <View style={[styles.bookFooter, { borderTopColor: theme.rule }]}>
@@ -586,7 +816,7 @@ export function MeScreen() {
                   >
                     <View style={[styles.coverFrame, { borderColor: theme.inverse }]} />
                     <Text style={[styles.coverStar, { color: theme.inverse }]}>★</Text>
-                    <Text style={[styles.coverTitle, { color: theme.inverse, fontFamily: theme.serif }]}>{accountMode === "register" ? "读者注册" : "读者登录"}</Text>
+                    <Text style={[styles.coverTitle, { color: theme.inverse, fontFamily: theme.serif }]}>{accountMode === "register" ? "读者注册" : accountMode === "recover" ? "找回密码" : "读者登录"}</Text>
                   </Animated.View>
                   <Animated.View
                     style={[
@@ -690,9 +920,15 @@ const styles = StyleSheet.create({
   fieldLabel: { marginBottom: 7, fontSize: 12, fontWeight: "800" },
   passwordLabel: { marginTop: 15 },
   input: { height: 46, borderBottomWidth: 1, paddingHorizontal: 3, fontSize: 14 },
+  codeInput: { height: 58, borderWidth: 2, fontSize: 22, fontWeight: "900", letterSpacing: 8, textAlign: "center" },
   error: { marginTop: 11, fontSize: 12, lineHeight: 18, fontWeight: "700" },
   loginButton: { height: 46, marginTop: 18, alignItems: "center", justifyContent: "center" },
   loginText: { fontSize: 13, fontWeight: "900" },
+  textAction: { paddingVertical: 7, textAlign: "center", fontSize: 11, fontWeight: "900" },
+  proofStrip: { borderWidth: 1, padding: 12, transform: [{ rotate: "-0.6deg" }] },
+  proofLabel: { fontSize: 8, fontWeight: "900", letterSpacing: 1.4 },
+  proofCode: { marginTop: 7, fontSize: 22, fontWeight: "900", letterSpacing: 7 },
+  recoveryTitle: { fontSize: 22, fontWeight: "900", letterSpacing: 1.5 },
   confirmation: { flex: 1, minHeight: 230, justifyContent: "center", paddingVertical: 30 },
   confirmationTitle: { fontSize: 24, fontWeight: "900", letterSpacing: 2 },
   confirmationText: { marginTop: 13, fontSize: 12, lineHeight: 21, fontWeight: "700" },

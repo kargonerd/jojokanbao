@@ -1,8 +1,13 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthStore } from "../auth";
 import { AccountBook, type AccountMode } from "../components/AccountBook";
-import { LoginForm, RegisterForm } from "../components/AccountForms";
+import {
+  LoginForm,
+  RecoveryForm,
+  RegisterForm,
+  type RecoveryStep,
+} from "../components/AccountForms";
 import { AccountCenterPage } from "./AccountCenterPage";
 
 function safeReturnPath(value: string | null): string {
@@ -22,25 +27,51 @@ export function AccountPage() {
   const [invitationCode, setInvitationCode] = useState("");
   const [registrationEmail, setRegistrationEmail] = useState("");
   const [registrationPassword, setRegistrationPassword] = useState("");
-  const [registrationError, setRegistrationError] = useState<string | null>(null);
+  const [registrationPasswordConfirmation, setRegistrationPasswordConfirmation] = useState("");
   const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
+  const [confirmationCode, setConfirmationCode] = useState("");
+  const [recoveryStep, setRecoveryStep] = useState<RecoveryStep>("email");
+  const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const [recoveryPassword, setRecoveryPassword] = useState("");
+  const [recoveryPasswordConfirmation, setRecoveryPasswordConfirmation] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [resendSeconds, setResendSeconds] = useState(0);
   const {
     user,
     signIn,
     signUp,
+    confirmSignUp,
+    resendSignUpCode,
+    sendPasswordReset,
+    verifyPasswordResetCode,
+    completePasswordRecovery,
     busy,
     error,
     notice,
     clearFeedback,
   } = useAuthStore();
 
-  if (user && hasReturnTo) return <Navigate to={returnTo} replace />;
-  if (user) return <AccountCenterPage userId={user.id} />;
+  useEffect(() => {
+    if (resendSeconds <= 0) return undefined;
+    const timer = window.setInterval(() => {
+      setResendSeconds((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendSeconds]);
+
+  if (user && mode !== "recover" && hasReturnTo) return <Navigate to={returnTo} replace />;
+  if (user && mode !== "recover") return <AccountCenterPage userId={user.id} />;
 
   const changeMode = (nextMode: AccountMode) => {
     clearFeedback();
-    setRegistrationError(null);
+    setLocalError(null);
     setMode(nextMode);
+    if (nextMode === "recover") {
+      setRecoveryStep("email");
+      setRecoveryEmail(loginEmail.trim());
+      setRecoveryCode("");
+    }
   };
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
@@ -55,16 +86,19 @@ export function AccountPage() {
 
   const handleRegistration = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setRegistrationError(null);
-
+    setLocalError(null);
     const code = invitationCode.trim();
     const email = registrationEmail.trim();
     if (!/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{6}$/i.test(code)) {
-      setRegistrationError("请输入正确的 6 位邀请码。");
+      setLocalError("请输入正确的 6 位邀请码。");
       return;
     }
     if (registrationPassword.length < 8) {
-      setRegistrationError("密码至少需要 8 位字符。");
+      setLocalError("密码至少需要 8 位字符。");
+      return;
+    }
+    if (registrationPassword !== registrationPasswordConfirmation) {
+      setLocalError("两次输入的密码不一致。");
       return;
     }
 
@@ -73,15 +107,90 @@ export function AccountPage() {
         invitationCode: code,
         email,
         password: registrationPassword,
-        emailRedirectTo: hasReturnTo
-          ? `${window.location.origin}/account?returnTo=${encodeURIComponent(returnTo)}`
-          : `${window.location.origin}/account`,
       });
       if (requiresConfirmation) {
         setConfirmationEmail(email);
+        setConfirmationCode("");
+        setResendSeconds(60);
       } else {
         navigate(returnTo, { replace: true });
       }
+    } catch {
+      // The shared auth store exposes a localized error.
+    }
+  };
+
+  const handleRegistrationConfirmation = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLocalError(null);
+    if (!confirmationEmail || !/^\d{6}$/.test(confirmationCode)) {
+      setLocalError("请输入邮件中的 6 位验证码。");
+      return;
+    }
+    try {
+      await confirmSignUp(confirmationEmail, confirmationCode);
+      navigate(returnTo, { replace: true });
+    } catch {
+      // The shared auth store exposes a localized error.
+    }
+  };
+
+  const resendRegistrationCode = async () => {
+    if (!confirmationEmail || resendSeconds > 0) return;
+    try {
+      await resendSignUpCode(confirmationEmail);
+      setResendSeconds(60);
+    } catch {
+      // The shared auth store exposes a localized error.
+    }
+  };
+
+  const handleRecovery = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLocalError(null);
+    try {
+      if (recoveryStep === "email") {
+        if (!recoveryEmail.trim()) {
+          setLocalError("请输入注册邮箱。");
+          return;
+        }
+        await sendPasswordReset(recoveryEmail.trim());
+        setRecoveryStep("code");
+        setResendSeconds(60);
+        return;
+      }
+      if (recoveryStep === "code") {
+        if (!/^\d{6}$/.test(recoveryCode)) {
+          setLocalError("请输入邮件中的 6 位验证码。");
+          return;
+        }
+        await verifyPasswordResetCode(recoveryEmail.trim(), recoveryCode);
+        setRecoveryStep("password");
+        return;
+      }
+      if (recoveryPassword.length < 8) {
+        setLocalError("新密码至少需要 8 位字符。");
+        return;
+      }
+      if (recoveryPassword !== recoveryPasswordConfirmation) {
+        setLocalError("两次输入的新密码不一致。");
+        return;
+      }
+      await completePasswordRecovery(recoveryPassword);
+      setLoginEmail(recoveryEmail.trim());
+      setLoginPassword("");
+      setMode("login");
+      if (hasReturnTo) navigate(returnTo, { replace: true });
+    } catch {
+      // The shared auth store exposes a localized error.
+    }
+  };
+
+  const resendRecoveryCode = async () => {
+    if (resendSeconds > 0) return;
+    try {
+      await sendPasswordReset(recoveryEmail.trim());
+      setResendSeconds(60);
     } catch {
       // The shared auth store exposes a localized error.
     }
@@ -98,21 +207,54 @@ export function AccountPage() {
           notice={notice}
           onEmailChange={setLoginEmail}
           onPasswordChange={setLoginPassword}
+          onForgotPassword={() => changeMode("recover")}
           onSubmit={handleLogin}
         />
-      ) : (
+      ) : mode === "register" ? (
         <RegisterForm
           invitationCode={invitationCode}
           email={registrationEmail}
           password={registrationPassword}
+          passwordConfirmation={registrationPasswordConfirmation}
           confirmationEmail={confirmationEmail}
+          confirmationCode={confirmationCode}
+          resendSeconds={resendSeconds}
           busy={busy}
-          error={registrationError ?? error}
+          error={localError ?? error}
           notice={notice}
           onInvitationCodeChange={setInvitationCode}
           onEmailChange={setRegistrationEmail}
           onPasswordChange={setRegistrationPassword}
+          onPasswordConfirmationChange={setRegistrationPasswordConfirmation}
+          onConfirmationCodeChange={setConfirmationCode}
+          onConfirmSubmit={handleRegistrationConfirmation}
+          onResend={() => void resendRegistrationCode()}
+          onEditRegistration={() => {
+            clearFeedback();
+            setLocalError(null);
+            setConfirmationEmail(null);
+            setConfirmationCode("");
+          }}
           onSubmit={handleRegistration}
+        />
+      ) : (
+        <RecoveryForm
+          step={recoveryStep}
+          email={recoveryEmail}
+          code={recoveryCode}
+          password={recoveryPassword}
+          passwordConfirmation={recoveryPasswordConfirmation}
+          resendSeconds={resendSeconds}
+          busy={busy}
+          error={localError ?? error}
+          notice={notice}
+          onEmailChange={setRecoveryEmail}
+          onCodeChange={setRecoveryCode}
+          onPasswordChange={setRecoveryPassword}
+          onPasswordConfirmationChange={setRecoveryPasswordConfirmation}
+          onResend={() => void resendRecoveryCode()}
+          onBackToLogin={() => changeMode("login")}
+          onSubmit={handleRecovery}
         />
       )}
     </AccountBook>

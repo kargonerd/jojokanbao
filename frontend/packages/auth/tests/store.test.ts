@@ -5,37 +5,42 @@ import type { Profile } from "../src/types";
 
 const profile: Profile = {
   id: "user-1",
-  display_name: "JOJO",
+  display_name: "雪豹-TGH",
   avatar_path: null,
-  created_at: "2026-07-22T00:00:00Z",
-  updated_at: "2026-07-22T00:00:00Z",
+  created_at: "2026-08-23T00:00:00Z",
+  updated_at: "2026-08-23T00:00:00Z",
 };
 
 function createClient() {
-  const user = { id: profile.id };
-  const session = { user, access_token: "access-token" };
+  const user = { id: profile.id, email: "reader@example.com" };
+  const session = { user, access_token: "access-token", refresh_token: "refresh-token" };
   const unsubscribe = vi.fn();
   const maybeSingle = vi.fn().mockResolvedValue({ data: profile, error: null });
-  const signInWithPassword = vi.fn().mockResolvedValue({
-    data: { user, session },
-    error: null,
-  });
-  const signUp = vi.fn().mockResolvedValue({
-    data: { user, session: null },
-    error: null,
-  });
+  const signInWithPassword = vi.fn().mockResolvedValue({ data: { user, session }, error: null });
+  const signUp = vi.fn().mockResolvedValue({ data: { user, session: null }, error: null });
+  const verifyOtp = vi.fn().mockResolvedValue({ data: { user, session }, error: null });
+  const resend = vi.fn().mockResolvedValue({ data: {}, error: null });
+  const resetPasswordForEmail = vi.fn().mockResolvedValue({ data: {}, error: null });
+  const updateUser = vi.fn().mockResolvedValue({ data: { user }, error: null });
+  const signOut = vi.fn().mockResolvedValue({ error: null });
+  const invoke = vi.fn().mockResolvedValue({ data: {}, error: null });
   const getSession = vi.fn().mockResolvedValue({ data: { session }, error: null });
-  const onAuthStateChange = vi.fn().mockReturnValue({
-    data: { subscription: { unsubscribe } },
-  });
 
   const client = {
     auth: {
-      getSession,
-      onAuthStateChange,
       signInWithPassword,
       signUp,
+      verifyOtp,
+      resend,
+      resetPasswordForEmail,
+      updateUser,
+      signOut,
+      getSession,
+      onAuthStateChange: vi.fn().mockReturnValue({
+        data: { subscription: { unsubscribe } },
+      }),
     },
+    functions: { invoke },
     from: vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({ maybeSingle }),
@@ -43,94 +48,114 @@ function createClient() {
     }),
   } as unknown as JojoAuthClient;
 
-  return { client, getSession, signInWithPassword, signUp, unsubscribe, user, session };
+  return {
+    client,
+    user,
+    session,
+    unsubscribe,
+    getSession,
+    signInWithPassword,
+    signUp,
+    verifyOtp,
+    resend,
+    resetPasswordForEmail,
+    updateUser,
+    signOut,
+    invoke,
+  };
 }
 
 describe("createJojoAuthStore", () => {
   it("hydrates the current session and disposes its auth subscription", async () => {
     const { client, getSession, unsubscribe, user } = createClient();
     const controller = createJojoAuthStore(client);
-
     const stop = controller.startAuthSync();
 
-    await vi.waitFor(() => {
-      expect(controller.useAuthStore.getState().initialized).toBe(true);
-    });
+    await vi.waitFor(() => expect(controller.useAuthStore.getState().initialized).toBe(true));
     expect(getSession).toHaveBeenCalledOnce();
     expect(controller.useAuthStore.getState()).toMatchObject({ user, profile });
-
     stop();
     expect(unsubscribe).toHaveBeenCalledOnce();
   });
 
-  it("signs in and loads the account profile", async () => {
+  it("signs in and maps invalid credentials", async () => {
     const { client, signInWithPassword, user } = createClient();
     const { useAuthStore } = createJojoAuthStore(client);
-
     await useAuthStore.getState().signIn("reader@example.com", "password");
+    expect(useAuthStore.getState()).toMatchObject({ user, profile, busy: false });
 
-    expect(signInWithPassword).toHaveBeenCalledWith({
-      email: "reader@example.com",
-      password: "password",
-    });
-    expect(useAuthStore.getState()).toMatchObject({ user, profile, busy: false, error: null });
-  });
-
-  it("maps sign-in failures without leaving the store busy", async () => {
-    const { client, signInWithPassword } = createClient();
     const failure = { code: "invalid_credentials" };
     signInWithPassword.mockResolvedValueOnce({ data: {}, error: failure });
-    const { useAuthStore } = createJojoAuthStore(client);
-
     await expect(useAuthStore.getState().signIn("reader@example.com", "wrong")).rejects.toBe(failure);
-
-    expect(useAuthStore.getState()).toMatchObject({
-      busy: false,
-      error: "邮箱或密码不正确。",
-    });
+    expect(useAuthStore.getState().error).toBe("邮箱或密码不正确。");
   });
 
-  it("signs up with invitation metadata and keeps unconfirmed users signed out", async () => {
-    const { client, signUp } = createClient();
+  it("keeps an unconfirmed signup signed out and confirms its email code", async () => {
+    const { client, signUp, verifyOtp, user } = createClient();
     const { useAuthStore } = createJojoAuthStore(client);
 
-    const requiresConfirmation = await useAuthStore.getState().signUp({
+    const needsCode = await useAuthStore.getState().signUp({
       email: "reader@example.com",
       password: "strong-password",
-      invitationCode: " K7MP4X ",
-      emailRedirectTo: "https://reader.jojokanbao.cn/account",
+      invitationCode: " A2BC9Z ",
     });
-
     expect(signUp).toHaveBeenCalledWith({
       email: "reader@example.com",
       password: "strong-password",
-      options: {
-        emailRedirectTo: "https://reader.jojokanbao.cn/account",
-        data: { invitation_code: "K7MP4X" },
-      },
+      options: { data: { invitation_code: "A2BC9Z" } },
     });
-    expect(requiresConfirmation).toBe(true);
-    expect(useAuthStore.getState()).toMatchObject({
-      session: null,
-      user: null,
-      busy: false,
-      notice: "确认邮件已经发出，请打开邮件完成注册。",
+    expect(needsCode).toBe(true);
+    expect(useAuthStore.getState().user).toBeNull();
+
+    await useAuthStore.getState().confirmSignUp("reader@example.com", " 123456 ");
+    expect(verifyOtp).toHaveBeenCalledWith({
+      email: "reader@example.com",
+      token: "123456",
+      type: "email",
     });
+    expect(useAuthStore.getState()).toMatchObject({ user, profile, busy: false });
   });
 
-  it("keeps the session when email confirmation is disabled", async () => {
-    const { client, signUp, session, user } = createClient();
-    signUp.mockResolvedValueOnce({ data: { user, session }, error: null });
+  it("resends signup codes and starts recovery without exposing account existence", async () => {
+    const { client, resend, resetPasswordForEmail } = createClient();
     const { useAuthStore } = createJojoAuthStore(client);
+    await useAuthStore.getState().resendSignUpCode(" reader@example.com ");
+    expect(resend).toHaveBeenCalledWith({ type: "signup", email: "reader@example.com" });
+    await useAuthStore.getState().sendPasswordReset(" reader@example.com ");
+    expect(resetPasswordForEmail).toHaveBeenCalledWith("reader@example.com");
+    expect(useAuthStore.getState().notice).toContain("如果该邮箱已注册");
+  });
 
-    const requiresConfirmation = await useAuthStore.getState().signUp({
+  it("verifies a recovery code, updates the password, and signs out other sessions", async () => {
+    const { client, verifyOtp, updateUser, signOut } = createClient();
+    const { useAuthStore } = createJojoAuthStore(client);
+    await useAuthStore.getState().verifyPasswordResetCode("reader@example.com", "654321");
+    expect(verifyOtp).toHaveBeenCalledWith({
       email: "reader@example.com",
-      password: "strong-password",
-      invitationCode: "K7MP4X",
-      emailRedirectTo: "https://reader.jojokanbao.cn/account",
+      token: "654321",
+      type: "recovery",
     });
+    expect(useAuthStore.getState().recoveryPending).toBe(true);
+    await useAuthStore.getState().completePasswordRecovery("new-strong-password");
+    expect(updateUser).toHaveBeenCalledWith({ password: "new-strong-password" });
+    expect(signOut).toHaveBeenCalledWith({ scope: "others" });
+    expect(useAuthStore.getState().recoveryPending).toBe(false);
+  });
 
-    expect(requiresConfirmation).toBe(false);
-    expect(useAuthStore.getState()).toMatchObject({ session, user, busy: false });
+  it("reauthenticates before changing a password or deleting the account", async () => {
+    const { client, user, session, signInWithPassword, updateUser, invoke, signOut } = createClient();
+    const { useAuthStore } = createJojoAuthStore(client);
+    useAuthStore.setState({ user: user as never, session: session as never, profile });
+    await useAuthStore.getState().changePassword("current-password", "new-strong-password");
+    expect(signInWithPassword).toHaveBeenCalledWith({
+      email: "reader@example.com",
+      password: "current-password",
+    });
+    expect(updateUser).toHaveBeenCalledWith({ password: "new-strong-password" });
+
+    await useAuthStore.getState().deleteAccount("new-strong-password");
+    expect(invoke).toHaveBeenCalledWith("delete-account", { method: "POST" });
+    expect(signOut).toHaveBeenCalledWith({ scope: "local" });
+    expect(useAuthStore.getState()).toMatchObject({ user: null, session: null, profile: null });
   });
 });

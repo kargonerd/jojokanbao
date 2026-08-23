@@ -14,6 +14,7 @@ import { ReaderScreen } from "./src/screens/ReaderScreen";
 import { SearchScreen } from "./src/screens/SearchScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { MeScreen } from "./src/screens/MeScreen";
+import { AccountSecurityScreen } from "./src/screens/AccountSecurityScreen";
 import { startMobileAuthSync } from "./src/account/auth";
 import { IS_EINK_RELEASE } from "./src/config/appVariant";
 import { mobileTheme } from "./src/theme/tokens";
@@ -183,6 +184,15 @@ export default function App() {
       <NavigationContainer theme={navigationTheme}>
         <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.paper } }}>
           <Stack.Screen name="Tabs" component={MainTabs} />
+          <Stack.Screen
+            name="AccountSecurity"
+            component={AccountSecurityScreen}
+            options={{
+              gestureEnabled: true,
+              fullScreenGestureEnabled: true,
+              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
+            }}
+          />
           <Stack.Screen
             name="Settings"
             component={SettingsScreen}

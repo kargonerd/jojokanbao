@@ -4,6 +4,13 @@ import type { Profile } from "./types";
 interface ProfileRepository {
   getOrCreate: (userId: string) => Promise<Profile>;
   uploadAvatar: (userId: string, previousPath: string | null, file: File) => Promise<Profile>;
+  uploadAvatarData: (
+    userId: string,
+    previousPath: string | null,
+    contents: ArrayBuffer,
+    extension: string,
+    contentType: string,
+  ) => Promise<Profile>;
 }
 
 export function createProfileRepository(client: JojoAuthClient): ProfileRepository {
@@ -21,16 +28,21 @@ export function createProfileRepository(client: JojoAuthClient): ProfileReposito
     return created;
   };
 
-  const uploadAvatar = async (
+  const uploadAvatarData = async (
     userId: string,
     previousPath: string | null,
-    file: File,
+    contents: ArrayBuffer,
+    extension: string,
+    contentType: string,
   ): Promise<Profile> => {
-    const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
-    const path = `${userId}/${crypto.randomUUID()}.${extension}`;
-    const { error: uploadError } = await client.storage.from("avatars").upload(path, file, {
+    const safeExtension = /^(jpe?g|png|webp)$/.test(extension.toLowerCase())
+      ? extension.toLowerCase()
+      : "jpg";
+    const uniquePart = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const path = `${userId}/${uniquePart}.${safeExtension}`;
+    const { error: uploadError } = await client.storage.from("avatars").upload(path, contents, {
       cacheControl: "3600",
-      contentType: file.type,
+      contentType,
       upsert: false,
     });
     if (uploadError) throw uploadError;
@@ -52,5 +64,17 @@ export function createProfileRepository(client: JojoAuthClient): ProfileReposito
     return data;
   };
 
-  return { getOrCreate, uploadAvatar };
+  const uploadAvatar = async (
+    userId: string,
+    previousPath: string | null,
+    file: File,
+  ): Promise<Profile> => uploadAvatarData(
+    userId,
+    previousPath,
+    await file.arrayBuffer(),
+    file.name.split(".").pop() || "jpg",
+    file.type,
+  );
+
+  return { getOrCreate, uploadAvatar, uploadAvatarData };
 }

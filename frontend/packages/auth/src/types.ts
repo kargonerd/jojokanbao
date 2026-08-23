@@ -66,6 +66,7 @@ export interface AuthState {
   session: Session | null;
   user: User | null;
   profile: Profile | null;
+  recoveryPending: boolean;
   initialized: boolean;
   busy: boolean;
   error: string | null;
@@ -76,5 +77,4 @@ export interface SignUpInput {
   email: string;
   password: string;
   invitationCode: string;
-  emailRedirectTo: string;
 }
