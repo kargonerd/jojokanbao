@@ -1,212 +1,226 @@
-import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { NavigationContainer } from "@react-navigation/native";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { DefaultTheme, NavigationContainer, useIsFocused, type Theme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { fetchJson } from "./src/lib/api";
-import NewsDetail from "./src/screens/NewsDetail";
+import { StatusBar } from "expo-status-bar";
+import { useEffect, useMemo, useState, type ComponentProps, type ComponentType } from "react";
+import { BackHandler, InteractionManager, Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import type { MainTabParamList, RootStackParamList } from "./src/navigation/types";
+import { HomeScreen } from "./src/screens/HomeScreen";
+import { BookDetailsScreen } from "./src/screens/BookDetailsScreen";
+import { BookReaderScreen } from "./src/screens/BookReaderScreen";
+import { LibraryScreen } from "./src/screens/LibraryScreen";
+import { ReaderScreen } from "./src/screens/ReaderScreen";
+import { SearchScreen } from "./src/screens/SearchScreen";
+import { SettingsScreen } from "./src/screens/SettingsScreen";
+import { MeScreen } from "./src/screens/MeScreen";
+import { startMobileAuthSync } from "./src/account/auth";
+import { IS_EINK_RELEASE } from "./src/config/appVariant";
+import { mobileTheme } from "./src/theme/tokens";
 
-const Stack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
-type NewsItem = {
-  id: string;
-  title: string;
-  summary?: string | null;
-  publishedAt: string;
-  source?: { name: string } | null;
+const tabIcons: Record<keyof MainTabParamList, ComponentProps<typeof Ionicons>["name"]> = {
+  Today: "today-outline",
+  Library: "library-outline",
+  Search: "search-outline",
+  Me: "person-outline",
 };
 
-type Digest = {
-  articleCount: number;
-  hotKeywords: { name: string; weight: number }[];
+const tabLabels: Record<keyof MainTabParamList, string> = {
+  Today: "今日",
+  Library: "资料库",
+  Search: "搜索",
+  Me: "我",
 };
 
-function HomeScreen({ navigation }: any) {
-  const [news, setNews] = useState<NewsItem[]>([]);
-  const [digest, setDigest] = useState<Digest | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+const tabPreloadOrder: Array<keyof MainTabParamList> = ["Library", "Search", "Me"];
+
+const tabScreens: Record<keyof MainTabParamList, ComponentType> = {
+  Today: HomeScreen,
+  Library: LibraryScreen,
+  Search: SearchScreen,
+  Me: MeScreen,
+};
+
+function MainTabs() {
+  const theme = mobileTheme;
+  const tabsFocused = useIsFocused();
+  const [activeTab, setActiveTab] = useState<keyof MainTabParamList>("Today");
+  const [mountedTabs, setMountedTabs] = useState<Set<keyof MainTabParamList>>(() => new Set(["Today"]));
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   useEffect(() => {
-    async function load() {
-      try {
-        const [newsData, digestData] = await Promise.all([
-          fetchJson<NewsItem[]>("/news?limit=100"),
-          fetchJson<Digest>("/ai/digest?limit=100"),
-        ]);
-        setNews(Array.isArray(newsData) ? newsData : []);
-        setDigest(digestData);
-      } catch {
-        setError("无法连接 JOJO Times API");
-      } finally {
-        setLoading(false);
-      }
-    }
+    const interactionTasks: Array<{ cancel: () => void }> = [];
+    const timers = tabPreloadOrder.map((routeName, index) => setTimeout(() => {
+      const task = InteractionManager.runAfterInteractions(() => {
+        setMountedTabs((current) => {
+          if (current.has(routeName)) return current;
+          return new Set([...current, routeName]);
+        });
+      });
+      interactionTasks.push(task);
+    }, 650 + index * 320));
 
-    void load();
+    return () => {
+      timers.forEach(clearTimeout);
+      interactionTasks.forEach((task) => task.cancel());
+    };
   }, []);
 
-  return (
-    <View style={styles.container}>
-      <StatusBar style="dark" />
-      <View style={styles.header}>
-        <Text style={styles.brand}>JOJO TIMES</Text>
-        <Text style={styles.subtitle}>AI 辅助阅读新闻</Text>
-      </View>
-      {loading ? (
-        <View style={styles.loading}>
-          <ActivityIndicator color={palette.red} />
-        </View>
-      ) : (
-        <ScrollView contentContainerStyle={styles.list}>
-          <View style={styles.digestPanel}>
-            <Text style={styles.kicker}>PI AGENT</Text>
-            <Text style={styles.digestTitle}>已读入 {digest?.articleCount ?? news.length} 条新闻</Text>
-            <View style={styles.keywordRow}>
-              {(digest?.hotKeywords ?? []).slice(0, 6).map((term) => (
-                <Text key={term.name} style={styles.tag}>
-                  {term.name} / {term.weight}
-                </Text>
-              ))}
-            </View>
-          </View>
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true));
+    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false));
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          {news.map((item, index) => (
-            <TouchableOpacity key={item.id} style={styles.card} onPress={() => navigation.navigate("Detail", { id: item.id })}>
-              <Text style={styles.index}>#{String(index + 1).padStart(3, "0")} · {item.source?.name || "未知来源"}</Text>
-              <Text style={styles.cardTitle}>{item.title}</Text>
-              {item.summary ? <Text style={styles.cardSummary}>{item.summary}</Text> : null}
-            </TouchableOpacity>
-          ))}
-          {news.length === 0 && !error ? <Text style={styles.empty}>暂无新闻，请先运行抓取脚本。</Text> : null}
-        </ScrollView>
-      )}
+  useEffect(() => {
+    if (!tabsFocused) return undefined;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (activeTab === "Today") return false;
+      setActiveTab("Today");
+      return true;
+    });
+    return () => subscription.remove();
+  }, [activeTab, tabsFocused]);
+
+  function selectTab(routeName: keyof MainTabParamList) {
+    setMountedTabs((current) => {
+      if (current.has(routeName)) return current;
+      return new Set([...current, routeName]);
+    });
+    setActiveTab(routeName);
+  }
+
+  return (
+    <View style={[styles.tabsRoot, { backgroundColor: theme.paper }]}>
+      <View style={[styles.sceneHost, { bottom: keyboardVisible ? 0 : 60 }]}>
+        {(Object.keys(tabScreens) as Array<keyof MainTabParamList>).map((routeName) => {
+          if (!mountedTabs.has(routeName)) return null;
+          const Screen = tabScreens[routeName];
+          const selected = activeTab === routeName;
+          return (
+            <View
+              key={routeName}
+              collapsable={false}
+              importantForAccessibility={selected ? "auto" : "no-hide-descendants"}
+              pointerEvents={selected ? "auto" : "none"}
+              style={[styles.tabScene, { opacity: selected ? 1 : 0 }]}
+            >
+              <Screen />
+            </View>
+          );
+        })}
+      </View>
+      {!keyboardVisible ? (
+        <View accessibilityRole="tablist" style={[styles.tabBar, { backgroundColor: theme.paper, borderTopColor: theme.ruleDark }]}>
+          {(Object.keys(tabScreens) as Array<keyof MainTabParamList>).map((routeName) => {
+            const selected = activeTab === routeName;
+            const color = selected ? theme.red : theme.muted;
+            return (
+              <Pressable
+                key={routeName}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
+                accessibilityLabel={tabLabels[routeName]}
+                onPress={() => selectTab(routeName)}
+                style={styles.tabButton}
+              >
+                <Ionicons name={tabIcons[routeName]} color={color} size={21} />
+                <Text style={[styles.tabLabel, { color, fontFamily: theme.sans }]}>{tabLabels[routeName]}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
     </View>
   );
 }
 
+const styles = StyleSheet.create({
+  tabsRoot: { flex: 1 },
+  sceneHost: { position: "absolute", top: 0, left: 0, right: 0 },
+  tabScene: { ...StyleSheet.absoluteFillObject },
+  tabBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 60,
+    paddingTop: 5,
+    paddingBottom: 5,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+  },
+  tabButton: { flex: 1, alignItems: "center", justifyContent: "center", gap: 1 },
+  tabLabel: { fontSize: 10, fontWeight: "700" },
+});
+
 export default function App() {
+  const theme = mobileTheme;
+  const navigationTheme = useMemo<Theme>(() => ({
+    ...DefaultTheme,
+    dark: false,
+    colors: {
+      ...DefaultTheme.colors,
+      primary: theme.red,
+      background: theme.paper,
+      card: theme.paper,
+      text: theme.ink,
+      border: theme.rule,
+      notification: theme.red,
+    },
+  }), [theme]);
+
+  useEffect(() => startMobileAuthSync(), []);
+
   return (
-    <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Home" component={HomeScreen} />
-        <Stack.Screen name="Detail" component={NewsDetail} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <SafeAreaProvider>
+      <StatusBar style="dark" backgroundColor={theme.paper} />
+      <NavigationContainer theme={navigationTheme}>
+        <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.paper } }}>
+          <Stack.Screen name="Tabs" component={MainTabs} />
+          <Stack.Screen
+            name="Settings"
+            component={SettingsScreen}
+            options={{
+              gestureEnabled: true,
+              fullScreenGestureEnabled: true,
+              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
+            }}
+          />
+          <Stack.Screen
+            name="Reader"
+            component={ReaderScreen}
+            options={{
+              gestureEnabled: true,
+              fullScreenGestureEnabled: true,
+              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
+            }}
+          />
+          <Stack.Screen
+            name="BookDetails"
+            component={BookDetailsScreen}
+            options={{
+              gestureEnabled: true,
+              fullScreenGestureEnabled: true,
+              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
+            }}
+          />
+          <Stack.Screen
+            name="BookReader"
+            component={BookReaderScreen}
+            options={{
+              gestureEnabled: true,
+              fullScreenGestureEnabled: true,
+              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
+            }}
+          />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }
-
-const palette = {
-  red: "#8b1a1a",
-  ink: "#202020",
-  muted: "#666666",
-  rule: "#d8d8d8",
-  paper: "#ffffff",
-  soft: "#f7f7f7",
-};
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: palette.paper,
-  },
-  header: {
-    paddingTop: 58,
-    paddingHorizontal: 20,
-    paddingBottom: 14,
-    borderBottomWidth: 2,
-    borderBottomColor: palette.ink,
-    backgroundColor: palette.paper,
-  },
-  brand: {
-    color: palette.red,
-    fontSize: 22,
-    fontWeight: "900",
-    letterSpacing: 3,
-  },
-  subtitle: {
-    marginTop: 6,
-    color: palette.muted,
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 2,
-  },
-  loading: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  list: {
-    padding: 20,
-    gap: 12,
-  },
-  digestPanel: {
-    borderWidth: 2,
-    borderColor: palette.red,
-    padding: 16,
-    backgroundColor: palette.paper,
-  },
-  kicker: {
-    color: palette.red,
-    fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 3,
-  },
-  digestTitle: {
-    marginTop: 8,
-    color: palette.ink,
-    fontSize: 18,
-    fontWeight: "900",
-  },
-  keywordRow: {
-    marginTop: 12,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  tag: {
-    borderWidth: 1,
-    borderColor: palette.rule,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    color: palette.muted,
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  card: {
-    padding: 16,
-    borderWidth: 1,
-    borderColor: palette.rule,
-    backgroundColor: palette.paper,
-  },
-  index: {
-    color: palette.muted,
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1,
-  },
-  cardTitle: {
-    marginTop: 8,
-    color: palette.ink,
-    fontSize: 17,
-    fontWeight: "800",
-    lineHeight: 24,
-  },
-  cardSummary: {
-    marginTop: 8,
-    color: palette.muted,
-    lineHeight: 21,
-  },
-  error: {
-    borderWidth: 1,
-    borderColor: palette.red,
-    padding: 12,
-    color: palette.red,
-    fontWeight: "700",
-  },
-  empty: {
-    textAlign: "center",
-    color: palette.muted,
-  },
-});

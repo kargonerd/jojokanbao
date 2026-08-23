@@ -62,9 +62,14 @@ external state:
 - `release-desktop.yml` builds Desktop installers on Windows, macOS (Apple Silicon
   and Intel), and Linux; `desktop-v*` tags publish the resulting files as a
   GitHub Release, while manual runs retain them as workflow artifacts
+- `release-mobile.yml` asks EAS Build for the signed standard Android APK;
+  `mobile-v*` tags publish the APK and SHA-256 checksum as a GitHub Release,
+  while manual runs retain the APK as a workflow artifact
+- `release-mobile-eink.yml` asks EAS Build for a signed Android APK; `mobile-eink-v*`
+  tags publish the APK and SHA-256 checksum as a GitHub Release, while manual
+  runs retain the APK as a workflow artifact
 
-The future Mobile runtime should use its own release workflow when packaging is
-implemented. Internal local tools participate in CI but do not need a deployment workflow.
+Internal local tools participate in CI but do not need a deployment workflow.
 
 ## Maintenance
 

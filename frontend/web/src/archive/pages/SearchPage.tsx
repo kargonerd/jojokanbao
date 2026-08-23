@@ -1,12 +1,11 @@
 import { Fragment, useState, useEffect, useRef, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import axios from "axios";
+import { ARCHIVE_SEARCH_API } from "@jojo/content";
 import { Button, Tag, Pagination, LoadingSpinner, DateRangePicker, type DateRangeValue } from "@jojo/ui";
 import { getLatestRmrbAvailableDate } from "../dateAvailability";
 import { archiveIssuePath } from "../../routes";
 import { rollout } from "../../rollout";
-
-const SEARCH_API = "https://s1.jojokanbao.cn/search";
 
 interface SearchResult {
   title: string;
@@ -155,7 +154,7 @@ export function SearchPage({
     setLoading(true);
     setError(null);
 
-    void axios.get(SEARCH_API, { params: requestParams, signal: controller.signal })
+    void axios.get(ARCHIVE_SEARCH_API, { params: requestParams, signal: controller.signal })
       .then((response) => {
         if (controller.signal.aborted || requestId !== requestIdRef.current) return;
         const data = response.data?.data;

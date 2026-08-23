@@ -1,0 +1,169 @@
+name: Release · Mobile Android
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "mobile-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Validate tag and mobile configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_version="$(node -p "require('./frontend/mobile/package.json').version")"
+          expo_version="$(node -p "require('./frontend/mobile/app.json').expo.version")"
+          test "$package_version" = "$expo_version"
+
+          if [[ "$GITHUB_REF" == refs/tags/mobile-v* ]]; then
+            tag_version="${GITHUB_REF_NAME#mobile-v}"
+            if [[ "$tag_version" != "$package_version" && "$tag_version" != "$package_version"-* ]]; then
+              echo "Tag $GITHUB_REF_NAME does not match mobile package version $package_version." >&2
+              exit 1
+            fi
+          fi
+
+          node <<'NODE'
+          process.env.APP_VARIANT = "standard";
+          const base = require("./frontend/mobile/app.json").expo;
+          const configure = require("./frontend/mobile/app.config.js");
+          const config = configure({ config: base });
+          if (config.android?.package !== "com.luoxixi.jojokanbao") {
+            throw new Error(`Unexpected Android package: ${config.android?.package}`);
+          }
+          NODE
+
+  build:
+    name: Build signed Android APK
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      EXPO_PUBLIC_AGENT_API_URL: https://agent-global.jojokanbao.cn/gateway/ask
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+
+      - name: Check release configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_TOKEN"
+          test -n "$EXPO_PUBLIC_SUPABASE_URL"
+          test -n "$EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Verify mobile source
+        run: |
+          pnpm --filter @jojo/auth typecheck
+          pnpm --filter @jojo/auth test
+          pnpm --filter @jojo/content typecheck
+          pnpm --filter @jojo/content test
+          pnpm --filter @jojo/mobile typecheck
+          pnpm --filter @jojo/mobile test
+          pnpm --filter @jojo/mobile build:android
+
+      - name: Install pinned EAS CLI
+        run: npm install --global eas-cli@18.5.0
+
+      - id: eas-build
+        name: Build and download signed APK
+        working-directory: frontend/mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_json="$(eas build --platform android --profile preview --non-interactive --wait --json)"
+          printf '%s\n' "$build_json" > "$RUNNER_TEMP/eas-build.json"
+          build_id="$(jq -er 'if type == "array" then .[0].id else .id end' "$RUNNER_TEMP/eas-build.json")"
+
+          eas build:view "$build_id" --json > "$RUNNER_TEMP/eas-build-view.json"
+          artifact_url="$(jq -er '.artifacts.buildUrl' "$RUNNER_TEMP/eas-build-view.json")"
+          version="$(node -p "require('./package.json').version")"
+          artifact_name="JOJO-Kanbao-${version}.apk"
+
+          mkdir -p release
+          curl --fail --location --retry 3 --output "release/$artifact_name" "$artifact_url"
+          test -s "release/$artifact_name"
+
+          aapt_path="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          test -n "$aapt_path"
+          badging="$($aapt_path dump badging "release/$artifact_name")"
+          grep -Fq "package: name='com.luoxixi.jojokanbao'" <<< "$badging"
+          if grep -Fq "application-debuggable" <<< "$badging"; then
+            echo "Refusing to publish a debuggable APK." >&2
+            exit 1
+          fi
+
+          printf 'build_id=%s\n' "$build_id" >> "$GITHUB_OUTPUT"
+          printf 'artifact_name=%s\n' "$artifact_name" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: mobile-android
+          if-no-files-found: error
+          retention-days: 14
+          path: frontend/mobile/release/*.apk
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/mobile-v')
+    needs:
+      - validate
+      - build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Download APK
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: mobile-android
+          path: release
+
+      - name: Create checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum ./*.apk > SHA256SUMS.txt
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_version="${GITHUB_REF_NAME#mobile-v}"
+          release_flags=(--verify-tag --generate-notes --title "JOJO看报 Android ${release_version}")
+          if [[ "$release_version" == *-* ]]; then
+            release_flags+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" release/* "${release_flags[@]}"

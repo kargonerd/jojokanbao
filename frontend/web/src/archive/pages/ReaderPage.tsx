@@ -1,12 +1,11 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { fetchPdfDownloadBytes, PdfViewer, usePdfDocument } from "@jojo/pdf-viewer";
+import { archivePdfUrl } from "@jojo/content";
 import { EmptyState, LoadingSpinner, DatePicker, Toolbar, YearPicker } from "@jojo/ui";
 import { PUBLICATIONS, type PublicationName } from "../publications";
 import { archiveIssuePath } from "../../routes";
-import { getFacsimileIssueFilename } from "../facsimileObjects";
 
-const NEWSPAPER_HOST = "https://blacknews.jojokanbao.cn";
 const PAGE_SCROLL_GAP = 16;
 const READER_TOOLBAR_MAX_HEIGHT = 61;
 const DEFAULT_ZOOM = 1.5;
@@ -260,9 +259,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const shareResetTimer = useRef<number | null>(null);
   const alignedInitialPageRef = useRef<string | null>(null);
 
-  const pdfUrl = routeId
-    ? `${NEWSPAPER_HOST}/${name.toUpperCase()}/${routeId.slice(0, 4)}/${getFacsimileIssueFilename(name, routeId)}`
-    : "";
+  const pdfUrl = routeId ? archivePdfUrl(name, routeId) : "";
   const { document: pdfDoc, loading, error, numPages } = usePdfDocument({ url: pdfUrl, protectedPdf: "auto" });
   const downloadFilename = `${name}-${routeId}.pdf`;
 
