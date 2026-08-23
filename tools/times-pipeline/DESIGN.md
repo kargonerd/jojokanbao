@@ -44,7 +44,7 @@ Times 不恢复实时抓取 API。运行入口只保留 CLI 和 `maintenance-tim
 
 | 分组 | 来源 | 首选内容 | 原页用途 |
 |---|---|---|---|
-| RSSHub 正文优先 | 人民网、央视新闻、中国新闻网、澎湃新闻、第一财经、财联社、证券时报 | `feed-body` | 原始 HTML 存档、抽样校验、未来离线重解析 |
+| RSSHub 正文优先 | 人民网、央视新闻、中国新闻网、澎湃新闻、财联社、证券时报 | `feed-body` | 原始 HTML 存档、抽样校验、未来离线重解析 |
 | RSS/路由发现 + runner | AP、Bloomberg、NYT、Reuters、FT、Axios、NPR、Nikkei、联合早报、Al Jazeera、SCMP | 已锁定出版方 parser；失败时保留摘要 | WACZ 与正文解析 |
 | 发现 + 待补 parser | The Guardian、新华网 | Guardian 官方 World RSS；新华网暂用站点限定发现 RSS | 必须抓原页；补专用 parser 后产出稳定全文 |
 | 全球区域补充 + 待补 parser | CNA、The Indian Express、Deutsche Welle、Focus Taiwan、Africanews、Agência Brasil | 官方 RSS 优先；Indian Express 暂用分区发现 feed | 原始 HTML 存档；补专用 parser 后产出稳定全文 |
