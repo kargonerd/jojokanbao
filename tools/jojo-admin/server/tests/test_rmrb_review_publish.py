@@ -1,4 +1,5 @@
 import gzip
+import hashlib
 import json
 import sys
 import tempfile
@@ -142,6 +143,46 @@ class RmrbReviewPublishTest(unittest.TestCase):
         self.assertTrue(descriptor["object"].startswith("articles/"))
         self.assertEqual(manifest["contentStats"]["availableArticleCount"], 1)
         self.assertIn("content/newspapers/rmrb/index.jox", patch.files)
+
+    def test_pasted_image_is_published_as_a_canonical_and_delivery_asset(self):
+        image = b"\x89PNG\r\n\x1a\nclipboard-image"
+        source = self.root / "attachments" / "table.png"
+        source.parent.mkdir(parents=True)
+        source.write_bytes(image)
+        digest = hashlib.sha256(image).hexdigest()
+        self.decisions[self.key].update({
+            "content": "【图片】",
+            "images": [{
+                "path": str(source),
+                "mediaType": "image/png",
+                "sha256": digest,
+                "size": len(image),
+            }],
+        })
+        canonical = publish.prepare_canonical_patch(
+            self.decisions, lambda name: self.hf / name, self.output / "canonical",
+        )
+        item = publish._read_json_gz(canonical.issue_files[self.day])
+        article = item["content"]["articles"][0]
+        asset = next(row for row in item["assets"] if row["type"] == "image")
+        self.assertEqual(article["assetRefs"], [asset["id"]])
+        self.assertEqual(article["body"]["format"], "html")
+        self.assertIn(f'data-asset-id="{asset["id"]}"', article["body"]["value"])
+        canonical_asset = f"newspapers/rmrb/assets/images/{digest}.png"
+        self.assertEqual(canonical.files[canonical_asset].read_bytes(), image)
+
+        delivery = publish.prepare_delivery_patch(
+            self.decisions, canonical, lambda name: self.delivery / name, self.output / "delivery",
+        )
+        manifest_key = f"content/newspapers/rmrb/items/1950/01/{self.day}/manifest.jox"
+        manifest = publish._decode_jox(delivery.files[manifest_key], manifest_key)
+        delivered_asset = next(row for row in manifest["assets"] if row["id"] == asset["id"])
+        asset_key = f"content/newspapers/rmrb/items/1950/01/{self.day}/{delivered_asset['object']}"
+        self.assertIn(asset_key, delivery.files)
+        self.assertEqual(
+            publish._transform_jox(delivery.files[asset_key].read_bytes(), asset_key),
+            image,
+        )
 
     def test_reject_uses_article_state_without_publishing_a_fragment(self):
         self.decisions[self.key].update({"decision": "reject", "content": ""})

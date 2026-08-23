@@ -10,8 +10,10 @@ from __future__ import annotations
 import base64
 import gzip
 import hashlib
+import html
 import io
 import json
+import shutil
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
@@ -117,9 +119,94 @@ def accepted_hashes(
 ) -> dict[str, str]:
     """Return compact desired-state hashes suitable for a local publish journal."""
     return {
-        "|".join((key[0], str(key[1]), str(key[2]))): hashlib.sha256(content.encode("utf-8")).hexdigest()
+        "|".join((key[0], str(key[1]), str(key[2]))): hashlib.sha256(
+            _json_bytes({
+                "content": content,
+                "images": [
+                    str(image.get("sha256") or "")
+                    for image in (decisions[key].get("images") or [])
+                    if isinstance(image, dict)
+                ],
+            })
+        ).hexdigest()
         for key, content in _accepted(decisions).items()
     }
+
+
+def _decision_images(row: dict[str, object]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for raw in row.get("images") or []:
+        if not isinstance(raw, dict):
+            continue
+        source = Path(str(raw.get("path") or ""))
+        digest = str(raw.get("sha256") or "").lower()
+        media_type = str(raw.get("mediaType") or "")
+        if not source.is_file() or len(digest) != 64 or not media_type.startswith("image/"):
+            raise ValueError(f"复核图片附件无效：{source}")
+        value = source.read_bytes()
+        if hashlib.sha256(value).hexdigest() != digest:
+            raise ValueError(f"复核图片校验失败：{source}")
+        result.append({
+            "source": source,
+            "sha256": digest,
+            "mediaType": media_type,
+            "size": len(value),
+        })
+    return result
+
+
+def _article_body(content: str, asset_ids: list[str]) -> dict[str, str]:
+    if not asset_ids:
+        return {"format": "text", "value": content}
+    paragraphs = "".join(
+        f"<p>{html.escape(paragraph).replace(chr(10), '<br>')}</p>"
+        for paragraph in content.split("\n\n")
+        if paragraph
+    )
+    figures = "".join(
+        f'<figure data-asset-id="{html.escape(asset_id)}" data-role="article-image"></figure>'
+        for asset_id in asset_ids
+    )
+    return {
+        "format": "html",
+        "profile": "jojo-semantic-html/1",
+        "value": paragraphs + figures,
+    }
+
+
+def _copy_image_assets(
+    decision: dict[str, object],
+    output: Path,
+    patch: CanonicalPatch,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    descriptors: list[dict[str, Any]] = []
+    asset_ids: list[str] = []
+    for image in _decision_images(decision):
+        source = image["source"]
+        digest = image["sha256"]
+        suffix = source.suffix.lower() or ".bin"
+        relative_path = f"assets/images/{digest}{suffix}"
+        repo_path = f"newspapers/rmrb/{relative_path}"
+        target = output / repo_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not target.is_file():
+            shutil.copy2(source, target)
+        patch.files[repo_path] = target
+        asset_id = f"asset:image-{digest[:16]}"
+        descriptors.append({
+            "id": asset_id,
+            "type": "image",
+            "role": "article-image",
+            "mediaType": image["mediaType"],
+            "title": None,
+            "alt": None,
+            "caption": None,
+            "size": image["size"],
+            "sha256": digest,
+            "path": relative_path,
+        })
+        asset_ids.append(asset_id)
+    return descriptors, asset_ids
 
 
 def parse_key(value: str) -> tuple[str, int, int]:
@@ -272,14 +359,19 @@ def prepare_canonical_patch(
                 str(row.get("date")) == day and str(row.get("status")) == "available"
                 for row in viewer_rows
             )
-            item_entries = [entry for entry in pending if entry[0][0] == day]
-            if not item_entries and not any(key[0] == day for key in materialize):
+            pending_keys = {entry[0] for entry in pending}
+            item_entries = [
+                entry for entry in entries
+                if entry[0][0] == day and (entry[0] in pending_keys or entry[0] in materialize)
+            ]
+            if not item_entries:
                 day_text_after[day] = day_text_before[day]
                 continue
             item_name = f"newspapers/rmrb/items/{day[:4]}/{day[5:7]}/{day}.json.gz"
             item_source = source_file(item_name)
             item = _read_json_gz(item_source)
             articles = {str(row["id"]): row for row in item["content"]["articles"]}
+            item_assets = {str(row["id"]): row for row in item.get("assets") or []}
             item_changed = False
             for key, state, content in item_entries:
                 article = articles.get(_article_id(*key))
@@ -289,14 +381,31 @@ def prepare_canonical_patch(
                 expected_title = str(decisions[key].get("title") or "").strip()
                 if expected_title and expected_title != str(article.get("title") or "").strip():
                     raise ValueError(f"正式数据标题不一致，拒绝覆盖：{key[0]} 第{key[1]}版 #{key[2]}")
-                if article.get("contentState") != state or article.get("body") != {"format": "text", "value": content}:
+                image_assets, image_refs = _copy_image_assets(decisions[key], output, patch)
+                for asset in image_assets:
+                    if item_assets.get(asset["id"]) != asset:
+                        item_assets[asset["id"]] = asset
+                        item_changed = True
+                existing_refs = [
+                    str(value) for value in article.get("assetRefs") or []
+                    if str(value) not in image_refs
+                ]
+                desired_refs = existing_refs + image_refs
+                desired_body = _article_body(content, image_refs)
+                if (
+                    article.get("contentState") != state
+                    or article.get("body") != desired_body
+                    or article.get("assetRefs") != desired_refs
+                ):
                     article["contentState"] = state
-                    article["body"] = {"format": "text", "value": content}
+                    article["body"] = desired_body
+                    article["assetRefs"] = desired_refs
                     item_changed = True
                     patch.changed_article_count += 1
                 viewer["content"] = content
                 viewer["status"] = state
             if item_changed:
+                item["assets"] = sorted(item_assets.values(), key=lambda value: str(value["id"]))
                 item["revision"] = int(item.get("revision") or 0) + 1
                 relative = Path(item_name)
                 target = output / relative
@@ -391,8 +500,19 @@ def _write_jox(path: Path, object_key: str, value: Any) -> tuple[int, str]:
     return len(clear), hashlib.sha256(clear).hexdigest()
 
 
+def _write_jox_file(path: Path, object_key: str, source: Path) -> tuple[int, str]:
+    clear = source.read_bytes()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(_transform_jox(clear, object_key))
+    return len(clear), hashlib.sha256(clear).hexdigest()
+
+
 def _opaque_name(value: bytes) -> str:
     return base64.urlsafe_b64encode(hashlib.sha256(value).digest()).decode("ascii").rstrip("=")[:18]
+
+
+def _opaque_name_from_sha256(digest: str) -> str:
+    return base64.urlsafe_b64encode(bytes.fromhex(digest)).decode("ascii").rstrip("=")[:18]
 
 
 def prepare_delivery_patch(
@@ -419,6 +539,8 @@ def prepare_delivery_patch(
         manifest_key = f"{prefix}/manifest.jox"
         manifest = _decode_jox(delivery_file(manifest_key), manifest_key)
         descriptors = {str(row["id"]): row for row in manifest["content"]["articles"]}
+        manifest_assets = {str(row["id"]): row for row in manifest.get("assets") or []}
+        canonical_assets = {str(row["id"]): row for row in item.get("assets") or []}
         manifest_changed = False
         for key, state, content in entries:
             article_id = _article_id(*key)
@@ -428,6 +550,29 @@ def prepare_delivery_patch(
                 raise ValueError(f"Delivery 中找不到复核条目：{key[0]} 第{key[1]}版 #{key[2]}")
             fragment_file: tuple[str, Path] | None = None
             if state == "available":
+                for asset_id in article.get("assetRefs") or []:
+                    asset = canonical_assets.get(str(asset_id))
+                    if asset is None or str(asset.get("type")) != "image":
+                        continue
+                    source = canonical.root / "newspapers/rmrb" / str(asset["path"])
+                    digest = str(asset["sha256"])
+                    relative_asset = f"assets/{_opaque_name_from_sha256(digest)}.jox"
+                    asset_key = f"{prefix}/{relative_asset}"
+                    asset_target = output / asset_key
+                    asset_size, asset_digest = _write_jox_file(asset_target, asset_key, source)
+                    patch.files[asset_key] = asset_target
+                    desired_asset = {
+                        name: value for name, value in asset.items()
+                        if name not in {"path", "sourceUrl", "sha256", "size"}
+                    }
+                    desired_asset.update({
+                        "object": relative_asset,
+                        "size": asset_size,
+                        "sha256": asset_digest,
+                    })
+                    if manifest_assets.get(str(asset_id)) != desired_asset:
+                        manifest_assets[str(asset_id)] = desired_asset
+                        manifest_changed = True
                 fragment = {
                     "formatVersion": "jojo-fragment/1",
                     "itemId": item["itemId"],
@@ -436,7 +581,7 @@ def prepare_delivery_patch(
                     "order": article["order"],
                     "title": article["title"],
                     "status": state,
-                    "body": {"format": "text", "value": content},
+                    "body": article["body"],
                     "assetRefs": article.get("assetRefs") or [],
                     "annotations": [],
                 }
@@ -474,6 +619,7 @@ def prepare_delivery_patch(
                 manifest_changed = True
         if manifest_changed:
             rows = manifest["content"]["articles"]
+            manifest["assets"] = sorted(manifest_assets.values(), key=lambda value: str(value["id"]))
             manifest["revision"] = int(manifest.get("revision") or 0) + 1
             manifest["availability"]["text"] = "available" if any(row["status"] == "available" for row in rows) else "missing"
             manifest["contentStats"] = {

@@ -1,4 +1,5 @@
 import json
+import base64
 import sqlite3
 import sys
 import tempfile
@@ -140,6 +141,34 @@ class RmrbReviewRoutesTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("requires", response.get_json()["error"])
+
+    def test_accept_saves_a_pasted_image_and_uses_the_image_marker(self):
+        image = b"\x89PNG\r\n\x1a\nclipboard-image"
+        response = self.client.post(
+            "/api/rmrb-review/decision",
+            json={
+                "date": "1950-01-02",
+                "page": 2,
+                "peopleDataOrdinal": 4,
+                "decision": "accept",
+                "content": "",
+                "images": [{
+                    "name": "table.png",
+                    "mediaType": "image/png",
+                    "dataUrl": "data:image/png;base64," + base64.b64encode(image).decode("ascii"),
+                }],
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        saved = json.loads(self.decisions.read_text(encoding="utf-8"))
+        self.assertEqual(saved["content"], "【图片】")
+        self.assertEqual(saved["images"][0]["mediaType"], "image/png")
+        attachment = Path(saved["images"][0]["path"])
+        self.assertEqual(attachment.read_bytes(), image)
+        pending = json.loads(
+            (self.root / "manual-review-pending-publication.json").read_text(encoding="utf-8")
+        )["items"]["1950-01-02|2|4"]
+        self.assertIn("payloadSha256", pending)
 
     def test_reject_is_staged_for_formal_publication(self):
         response = self.client.post(

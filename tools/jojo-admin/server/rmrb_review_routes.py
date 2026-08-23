@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import json
 import logging
@@ -51,6 +53,15 @@ PUBLISH_ROOT = SYNC_ROOT / "publish"
 PUBLICATION_STATE = SYNC_ROOT / "publication-state.json"
 PENDING_PUBLICATION = REVIEW_ROOT / "manual-review-pending-publication.json"
 COPY_MARKER_RE = re.compile(r"[（(]\s*人民数据库资料\s*[）)]")
+IMAGE_DATA_RE = re.compile(r"^data:(image/(?:png|jpeg|webp|gif));base64,(.+)$", re.DOTALL)
+IMAGE_SUFFIXES = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+}
+MAX_REVIEW_IMAGES = 10
+MAX_REVIEW_IMAGE_BYTES = 15 * 1024 * 1024
 DECISION_LOCK = threading.Lock()
 SYNC_LOCK = threading.Lock()
 SYNC_PROGRESS_LOCK = threading.Lock()
@@ -272,16 +283,86 @@ def _write_pending_publication(items: dict[str, dict[str, object]]) -> None:
     )
 
 
-def _stage_publication(key: tuple[str, int, int], content: str, decision: str) -> None:
+def _publication_payload_sha256(
+    content: str,
+    decision: str,
+    images: list[dict[str, object]],
+) -> str:
+    payload = {
+        "content": content,
+        "decision": decision,
+        "images": [str(image.get("sha256") or "") for image in images],
+    }
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _stage_publication(
+    key: tuple[str, int, int],
+    content: str,
+    decision: str,
+    images: list[dict[str, object]] | None = None,
+) -> None:
+    image_rows = images or []
     items = _load_pending_publication()
     name = _publication_key(key)
     items[name] = {
         "decision": decision,
         "contentSha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        "payloadSha256": _publication_payload_sha256(content, decision, image_rows),
         "targets": ["huggingface", "b2"],
         "stagedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
     _write_pending_publication(items)
+
+
+def _valid_image_signature(media_type: str, value: bytes) -> bool:
+    if media_type == "image/png":
+        return value.startswith(b"\x89PNG\r\n\x1a\n")
+    if media_type == "image/jpeg":
+        return value.startswith(b"\xff\xd8\xff")
+    if media_type == "image/gif":
+        return value.startswith((b"GIF87a", b"GIF89a"))
+    if media_type == "image/webp":
+        return len(value) >= 12 and value[:4] == b"RIFF" and value[8:12] == b"WEBP"
+    return False
+
+
+def _save_review_images(values: object) -> list[dict[str, object]]:
+    if values in (None, []):
+        return []
+    if not isinstance(values, list) or len(values) > MAX_REVIEW_IMAGES:
+        raise ValueError(f"images must be a list of at most {MAX_REVIEW_IMAGES} items")
+    result: list[dict[str, object]] = []
+    for index, value in enumerate(values, start=1):
+        if not isinstance(value, dict):
+            raise ValueError(f"image {index} is invalid")
+        match = IMAGE_DATA_RE.fullmatch(str(value.get("dataUrl") or ""))
+        if not match:
+            raise ValueError(f"image {index} must be a PNG, JPEG, WebP or GIF data URL")
+        media_type, encoded = match.groups()
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+        except (binascii.Error, ValueError) as error:
+            raise ValueError(f"image {index} contains invalid base64 data") from error
+        if not raw or len(raw) > MAX_REVIEW_IMAGE_BYTES:
+            raise ValueError(f"image {index} must be between 1 byte and 15 MB")
+        if not _valid_image_signature(media_type, raw):
+            raise ValueError(f"image {index} content does not match {media_type}")
+        digest = hashlib.sha256(raw).hexdigest()
+        relative = Path("attachments") / f"{digest}{IMAGE_SUFFIXES[media_type]}"
+        target = REVIEW_ROOT / relative
+        if not target.is_file():
+            _atomic_write(target, raw)
+        result.append({
+            "name": str(value.get("name") or f"clipboard-image-{index}"),
+            "mediaType": media_type,
+            "size": len(raw),
+            "sha256": digest,
+            "path": str(target.resolve()),
+        })
+    return result
 
 
 def _sync_huggingface(canonical: CanonicalPatch) -> dict[str, object]:
@@ -699,7 +780,9 @@ def sync_api():
                         snapshot = pending_snapshot.get(name)
                         if current is None or snapshot is None:
                             continue
-                        if current.get("contentSha256") != snapshot.get("contentSha256"):
+                        current_payload = current.get("payloadSha256") or current.get("contentSha256")
+                        snapshot_payload = snapshot.get("payloadSha256") or snapshot.get("contentSha256")
+                        if current_payload != snapshot_payload:
                             continue
                         if current.get("decision", "accept") != snapshot.get("decision", "accept"):
                             continue
@@ -792,8 +875,14 @@ def decision_api():
         return jsonify({"success": False, "error": "article is not in the missing-content queue"}), 404
     content = COPY_MARKER_RE.sub("", str(payload.get("content") or "")).strip()
     reason = str(payload.get("reason") or "").strip()
+    try:
+        images = _save_review_images(payload.get("images")) if decision == "accept" else []
+    except ValueError as error:
+        return jsonify({"success": False, "error": str(error)}), 400
+    if decision == "accept" and not content and not images:
+        return jsonify({"success": False, "error": "accept requires a transcription or image"}), 400
     if decision == "accept" and not content:
-        return jsonify({"success": False, "error": "accept requires a transcription"}), 400
+        content = "【图片】"
     if decision == "reject" and not reason:
         return jsonify({"success": False, "error": "reject requires a confirmed catalog-error reason"}), 400
     row: dict[str, object] = {
@@ -804,6 +893,7 @@ def decision_api():
         "decision": decision,
         "content": content if decision == "accept" else "",
         "reason": reason or "人工复核确认",
+        "images": images,
         "reviewedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "scope": "staging-only",
         "sourceCorpusModified": False,
@@ -816,5 +906,5 @@ def decision_api():
         }
         existing[key] = row
         _write_workbench_decisions(existing)
-        _stage_publication(key, content, decision)
+        _stage_publication(key, content, decision, images)
     return jsonify({"success": True, "decision": row})

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import type { FormEvent } from "react";
+import type { ClipboardEvent, FormEvent } from "react";
 import { PageTopbar } from "../components/PageTopbar";
 import {
   rmrbReviewApi,
+  type RmrbDecisionImage,
   type RmrbReviewItem,
   type RmrbSourceStatus,
   type RmrbStats,
@@ -11,6 +12,23 @@ import {
 } from "./api";
 
 const PAGE_SIZE = 40;
+const MAX_PASTED_IMAGES = 10;
+const MAX_PASTED_IMAGE_BYTES = 15 * 1024 * 1024;
+const PASTE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+
+function readImage(file: File): Promise<RmrbDecisionImage> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve({
+      name: file.name || "clipboard-image",
+      mediaType: file.type,
+      dataUrl: String(reader.result || ""),
+      size: file.size,
+    }));
+    reader.addEventListener("error", () => reject(new Error("无法读取剪贴板图片。")));
+    reader.readAsDataURL(file);
+  });
+}
 
 export function RmrbReviewPage() {
   const [items, setItems] = useState<RmrbReviewItem[]>([]);
@@ -20,6 +38,7 @@ export function RmrbReviewPage() {
   const [searchInput, setSearchInput] = useState("");
   const [query, setQuery] = useState("");
   const [content, setContent] = useState("");
+  const [images, setImages] = useState<RmrbDecisionImage[]>([]);
   const [reason, setReason] = useState("");
   const [stats, setStats] = useState<RmrbStats["counts"]>();
   const [sourceStatus, setSourceStatus] = useState<RmrbSourceStatus>();
@@ -44,6 +63,7 @@ export function RmrbReviewPage() {
       setStats(latestStats.counts);
       setSelected(Math.min(preferredIndex, Math.max(queue.items.length - 1, 0)));
       setContent("");
+      setImages([]);
       setReason("");
     } catch (error) {
       setMessage((error as Error).message);
@@ -107,6 +127,7 @@ export function RmrbReviewPage() {
   function choose(index: number) {
     setSelected(index);
     setContent(items[index]?.decision?.content || "");
+    setImages([]);
     setReason(items[index]?.decision?.reason || "");
     setMessage("");
   }
@@ -117,10 +138,37 @@ export function RmrbReviewPage() {
     setQuery(searchInput);
   }
 
+  async function pasteImages(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const files = [...event.clipboardData.items]
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file));
+    if (!files.length) return;
+    const accepted = files.filter((file) => (
+      PASTE_IMAGE_TYPES.has(file.type) && file.size <= MAX_PASTED_IMAGE_BYTES
+    ));
+    if (!accepted.length) {
+      setMessage("图片需为 PNG、JPEG、WebP 或 GIF，且单张不超过 15 MB。");
+      return;
+    }
+    const remaining = Math.max(0, MAX_PASTED_IMAGES - images.length);
+    if (!remaining) {
+      setMessage("一篇文章最多暂存 10 张图片。");
+      return;
+    }
+    try {
+      const pasted = await Promise.all(accepted.slice(0, remaining).map(readImage));
+      setImages((currentImages) => [...currentImages, ...pasted].slice(0, MAX_PASTED_IMAGES));
+      setMessage(`已贴入 ${pasted.length} 张图片，可继续粘贴正文或直接暂存。`);
+    } catch (error) {
+      setMessage((error as Error).message);
+    }
+  }
+
   async function submit(decision: "accept" | "reject") {
     if (!current || busy) return;
-    if (decision === "accept" && !content.trim()) {
-      setMessage("Accept 需要先粘贴正文。");
+    if (decision === "accept" && !content.trim() && !images.length) {
+      setMessage("Accept 需要先粘贴正文或图片。");
       return;
     }
     if (decision === "reject" && !reason.trim()) {
@@ -130,7 +178,7 @@ export function RmrbReviewPage() {
     setBusy(true);
     setMessage("");
     try {
-      await rmrbReviewApi.decide(current, decision, content.trim(), reason.trim());
+      await rmrbReviewApi.decide(current, decision, content.trim(), reason.trim(), images);
       setMessage(decision === "accept" ? "已暂存并进入下一条。" : "已拒绝并进入下一条。");
       await load(selected);
     } catch (error) {
@@ -257,13 +305,30 @@ export function RmrbReviewPage() {
               {current.peopleDataHref && <a href={current.peopleDataHref} target="_blank" rel="noreferrer">人民数据正文</a>}
             </div>
             <label>
-              <span>正文（不含标题）</span>
-              <textarea
-                aria-label="正文"
-                value={content}
-                onChange={(event) => setContent(event.target.value)}
-                placeholder="从人民数据复制正文后粘贴到这里"
-              />
+              <span>正文与图片（不含标题）</span>
+              <div className={`rmrb-review-compose${images.length ? " has-images" : ""}`}>
+                <textarea
+                  aria-label="正文"
+                  value={content}
+                  onChange={(event) => setContent(event.target.value)}
+                  onPaste={(event) => void pasteImages(event)}
+                  placeholder="从人民数据复制后粘贴到这里；支持 Ctrl+V 直接贴文字和图片"
+                />
+                {images.length > 0 && (
+                  <div className="rmrb-review-image-strip" aria-label="已粘贴图片">
+                    {images.map((image, index) => (
+                      <figure key={`${image.name}-${index}`}>
+                        <img src={image.dataUrl} alt={`已粘贴图片 ${index + 1}`} />
+                        <button
+                          type="button"
+                          aria-label={`删除图片 ${index + 1}`}
+                          onClick={() => setImages((currentImages) => currentImages.filter((_, itemIndex) => itemIndex !== index))}
+                        >删除</button>
+                      </figure>
+                    ))}
+                  </div>
+                )}
+              </div>
             </label>
             <label>
               <span>复核说明（Reject 时必填）</span>

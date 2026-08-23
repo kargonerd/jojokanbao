@@ -56,6 +56,9 @@ Hugging Face Canonical 生成的 `indexes/missing-articles.jsonl.gz`，按日期
 `manual-review-pending-publication.json`，本地操作本身不会等待网络；工作台分别显示
 “待复核”和“待发布”，HF 与 B2 均成功后才从待发布数中移除。未发布草稿如需跨电脑
 继续处理，需要先在原电脑发布。
+正文编辑区支持直接粘贴 PNG、JPEG、WebP 和 GIF；图片先以校验和命名的本地附件暂存，
+发布时写入 HF Canonical `assets/images/` 并生成对应的 B2 Delivery Jox 资产。只有图片、
+没有文字的记录会自动以 `【图片】` 作为可检索正文标记。
 右上角“发布 N 条修订”一次同时更新 Hugging Face 和 B2。人工决定不上传远端；
 Hugging Face 会原子更新受影响日期的 Canonical Item、受影响年份的
 Dataset Viewer 分片、缺失正文索引和必要的 availability；B2 会先发布

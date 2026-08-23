@@ -2,6 +2,15 @@ export type RmrbDecision = {
   decision: "accept" | "reject";
   content?: string;
   reason?: string;
+  images?: RmrbDecisionImage[];
+};
+
+export type RmrbDecisionImage = {
+  name: string;
+  mediaType: string;
+  dataUrl?: string;
+  sha256?: string;
+  size?: number;
 };
 
 export type RmrbReviewItem = {
@@ -114,7 +123,13 @@ export const rmrbReviewApi = {
       body: JSON.stringify({ targets }),
     });
   },
-  decide(item: RmrbReviewItem, decision: "accept" | "reject", content: string, reason: string) {
+  decide(
+    item: RmrbReviewItem,
+    decision: "accept" | "reject",
+    content: string,
+    reason: string,
+    images: RmrbDecisionImage[] = [],
+  ) {
     return requestJson<{ success: true; decision: RmrbDecision }>(
       "/api/rmrb-review/decision",
       {
@@ -127,6 +142,7 @@ export const rmrbReviewApi = {
           decision,
           content,
           reason,
+          images,
         }),
       },
     );

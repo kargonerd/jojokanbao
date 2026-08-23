@@ -97,6 +97,31 @@ describe("RmrbReviewPage", () => {
     expect(screen.getByLabelText("正文")).toHaveValue("");
   });
 
+  it("accepts a clipboard image without requiring transcription text", async () => {
+    render(<RmrbReviewPage />);
+    await screen.findByRole("heading", { name: "第一篇" });
+    const file = new File(
+      [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])],
+      "table.png",
+      { type: "image/png" },
+    );
+    fireEvent.paste(screen.getByLabelText("正文"), {
+      clipboardData: {
+        items: [{ kind: "file", type: "image/png", getAsFile: () => file }],
+      },
+    });
+    expect(await screen.findByRole("img", { name: "已粘贴图片 1" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Accept · 暂存" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "第二篇" })).toBeInTheDocument());
+
+    const decisionCall = vi.mocked(fetch).mock.calls.find(([input]) => String(input).includes("/decision"));
+    const payload = JSON.parse(String(decisionCall?.[1]?.body));
+    expect(payload.content).toBe("");
+    expect(payload.images).toHaveLength(1);
+    expect(payload.images[0]).toMatchObject({ name: "table.png", mediaType: "image/png" });
+    expect(payload.images[0].dataUrl).toMatch(/^data:image\/png;base64,/);
+  });
+
   it("does not reject a normal missing article without a confirmed reason", async () => {
     render(<RmrbReviewPage />);
     await screen.findByRole("heading", { name: "第一篇" });
