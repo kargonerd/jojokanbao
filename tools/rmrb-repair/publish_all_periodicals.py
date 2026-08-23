@@ -493,8 +493,9 @@ class Publisher:
 
     def run_all(self) -> None:
         self.wait_for_pids(self.args.wait_pid)
-        for slug in ("ckxx", "rmhb", "sjzs"):
-            self.publish_pdf_collection(slug)
+        if not self.args.rmrb_only:
+            for slug in ("ckxx", "rmhb", "sjzs"):
+                self.publish_pdf_collection(slug)
         years = self.split_rmrb_source()
         self.publish_rmrb_years_pipelined(years)
         self.publish_rmrb_2026()
@@ -510,6 +511,11 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--work", type=Path, default=DEFAULT_WORK)
     result.add_argument("--snapshot-id", default="2026-08-20")
     result.add_argument("--wait-pid", action="append", type=int, default=[])
+    result.add_argument(
+        "--rmrb-only",
+        action="store_true",
+        help="Publish only People's Daily; leave the other periodical datasets untouched.",
+    )
     return result
 
 
