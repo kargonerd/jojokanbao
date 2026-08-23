@@ -29,8 +29,11 @@ Homepage 已启用 Astro React integration，可以直接复用 `@jojo/ui` 组�
 - `backend/src/app/account`：已启用的账号 API。
 - RAG 由独立 Agent 运行层承载，不在 Python 后端维护第二套实现；浏览器统一请求
   Reader 的 `/gateway/ask`，由同源 Cloud Function 转发到国际 Agent。
-- Times 由 `app.main` 下的 `/v1/times` router 从受保护的 JOJO RSSHub 聚合内容；
-  保持无状态，不保留独立 FastAPI、SQLite repository 或服务进程。
+- Times 由 `tools/times-pipeline` 每十分钟离线采集，以 WARC 1.1/WACZ 1.2 保存原始 HTTP；
+  正文优先使用进程内锁定的 RSSHub route，缺失时由 Chromium+BPC 原页归档和通用正文回填，
+  再生成媒体 Canonical 与 Delivery Jox。Raw/Canonical 写入同一个 HF Dataset，GitHub Actions
+  按对象依赖顺序只把 Delivery 发布到 B2。Web 与 Mobile 直接读取 B2 CDN，不在读者请求路径中
+  抓取出版方或调用 Python API，也不依赖 `jojo-news-archive-runner`。
 
 本地运行主 API：
 
@@ -59,6 +62,7 @@ EdgeOne 专有入口位于 `infrastructure/edgeone/functions`，只导入
 - `tools/jojo-admin`：本机 JOJO 管理台。
 - `tools/archive-pdf`：Archive PDF 人工操作与发布工具。
 - `tools/bloomberg-archive`：定时 Bloomberg 数据归档工具。
+- `tools/times-pipeline`：Times 新闻源采集、Raw/Canonical 构建、WACZ 归档及 B2 Delivery 发布工具。
 - `infrastructure/supabase`：数据库 migrations。
 - `infrastructure/edgeone`：EdgeOne 配置、入口和部署组装脚本。
 - `infrastructure/tencent-scf/search`：Reader 当前线上 Flask Search，独立运行。

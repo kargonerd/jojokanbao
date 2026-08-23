@@ -1,9 +1,6 @@
-name: Maintenance · Publish Times to B2
+name: Legacy · Times v1 manual validation
 
 on:
-  schedule:
-    # Every ten minutes, offset from the top of the hour to reduce scheduler contention.
-    - cron: "3/10 * * * *"
   workflow_dispatch:
     inputs:
       mode:
@@ -19,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: times-b2-publisher
+  group: times-v1-legacy
   cancel-in-progress: false
 
 jobs:

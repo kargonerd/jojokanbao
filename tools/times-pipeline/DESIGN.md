@@ -1,206 +1,243 @@
-# JOJO Times 离线新闻系统设计
+# JOJO 时事离线新闻系统设计
 
-状态：设计基线，2026-08-23。
+状态：v2 实施基线，2026-08-23。
 
-## 1. 目标
+## 1. 目标与边界
 
-JOJO Times 每十分钟离线发现新闻、保存原始网络响应、提取结构化正文并发布到 B2。Web、Mobile
-和后续 Agent 只读取 B2 CDN 或搜索索引，不在用户请求路径中访问出版方、RSSHub 或 Python API。
+时事系统是每十分钟运行的离线任务，不提供实时抓取 API。出版方访问、正文抓取、原始网页存档、
+规范化和发布全部发生在 GitHub Actions；Web、Mobile 和 Agent 只读取 B2 CDN 或搜索索引。
 
-当前生产目录为 23 家来源。WSJ、财新、第一财经、证券时报和 The Indian Express 均不在目录中。
+系统只有三层数据：
 
-核心目标：
+1. **Raw**：出版方原始 RSS、API、HTML 和 WARC/WACZ，可重放、可重新解析。
+2. **Canonical**：按媒体保存的规范文章，是翻译、搜索和 Delivery 的唯一输入。
+3. **Delivery**：跨媒体聚合后的 JOJO 时事 Jox，仅供 CDN 消费。
 
-1. 单一来源失败不阻断其他来源，也不删除上一轮已发布内容。
-2. RSSHub 已稳定返回正文时直接消费正文；只有需要原页解析或存档时才抓文章页。
-3. 每次抓取都可重放、可重新解析：原始 feed 和文章 HTTP 交换写入 WARC 1.1/WACZ 1.2。
-4. 发布是幂等且有提交顺序的；CDN 不会看到引用尚未上传对象的 manifest。
-5. 翻译和 ES 是 Canonical 的下游消费者，不侵入采集器，也不改变前端对象地址规则。
+Raw 与 Canonical 位于同一个 Hugging Face Dataset repo 的 `raw/`、`canonical/` 目录。B2 只保存
+Delivery，不保存 WACZ、Canonical 或任务状态。
 
-## 2. 系统边界
+“实时”和“历史”不是两套数据：当前日期的 Delivery manifest 更新频繁，过去日期的同类 manifest
+按需加载。前端从最新可用日期开始，并在用户继续滚动时逐日加载历史；系统不建立 `latest.jox`，也
+不以七天窗口删除 Delivery。
+
+## 2. 总体流程
 
 ```text
-GitHub Actions（每 10 分钟，single-flight）
+Capture workflow（每 10 分钟）
   │
-  ├─ 发现层：官方 RSS / RSSHub / 站点发现适配器
-  ├─ 归一化：时间、canonical URL、稳定 article id、7 天窗口、去重
-  ├─ 正文层：feed 正文 → 已锁定解析器 → HTTP/浏览器兜底
-  ├─ 存档层：WARC + CDXJ + pages.jsonl → WACZ
-  ├─ Canonical：可重建、与交付格式解耦的文章真值
-  ├─ 派生层：翻译、ES documents（可选）
-  └─ 提交层：不可变对象 → manifest → availability/index/latest → catalog
-                         │
-                         ▼
-                 B2 private raw / B2 CDN delivery
-                         │
-                   Web / Mobile / Agent
+  ├─ RSSHub npm package / 官方 RSS / 自有站点适配器
+  ├─ canonical URL、稳定 article id、发布时间和来源分类
+  ├─ 新文章与到期重试进入 Playwright Chromium + BPC
+  ├─ 原始请求、响应和页面资源写入 WARC/WACZ
+  └─ 单次原子 commit → HF raw/news/{source}/...
+
+Process workflow（错开 5 分钟）
+  │
+  ├─ 读取尚未处理的 HF Raw commit
+  ├─ 合并 route/feed 正文与浏览器正文回填
+  ├─ 按媒体写入 HF canonical/news/{source}/...
+  ├─ 从所有媒体 Canonical 构建按日期的时事版面
+  └─ Canonical commit 成功后发布 B2 Delivery
+       ├─ immutable article/asset Jox
+       ├─ 日期 manifest
+       ├─ index
+       └─ 必要时最后更新 catalog
 ```
 
-Times 不恢复实时抓取 API。运行入口只保留 CLI 和 `maintenance-times.yml`。
+Capture 成功以 HF Raw commit 成功为准。Process 先提交 HF Canonical，再更新 B2；B2 发布失败时可
+从 Canonical 重试，不重新访问出版方。
 
-## 3. 来源策略
+## 3. 来源模型
 
-### 3.1 当前生产分组
-
-| 分组 | 来源 | 首选内容 | 原页用途 |
-|---|---|---|---|
-| RSSHub 正文优先 | 人民网、央视新闻、中国新闻网、澎湃新闻、财联社 | `feed-body` | 原始 HTML 存档、抽样校验、未来离线重解析 |
-| RSS/路由发现 + runner | AP、Bloomberg、NYT、Reuters、FT、Axios、NPR、Nikkei、联合早报、Al Jazeera、SCMP | 已锁定出版方 parser；失败时保留摘要 | WACZ 与正文解析 |
-| 发现 + 待补 parser | The Guardian、新华网 | Guardian 官方 World RSS；新华网暂用站点限定发现 RSS | 必须抓原页；补专用 parser 后产出稳定全文 |
-| 全球区域补充 + 待补 parser | CNA、Deutsche Welle、Focus Taiwan、Africanews、Agência Brasil | 官方 RSS 优先 | 原始 HTML 存档；补专用 parser 后产出稳定全文 |
-
-Axios、NPR 的 feed 经常包含长文本，但在逐篇原页一致性和持续稳定性通过前，不因长度大就自动切换
-`feed-body`。新华网长期方案应是自有站点发现适配器，Google News 只作为过渡发现层。
-
-### 3.2 配置演进
-
-当前 `sources.json` v1 足以表达 `route/feedUrl`、`contentPolicy`、`parserId` 和是否存档。下一阶段升级
-到 v2，将发现、正文和存档拆成三个显式策略，避免用一个字段暗示整个抓取流程：
+每家媒体配置三个互相独立的策略：
 
 ```json
 {
-  "id": "people",
-  "discovery": { "kind": "rsshub", "route": "/people" },
-  "content": { "priority": ["feed-body", "archive-parser"] },
-  "archive": { "mode": "http-first", "browserFallback": true },
-  "health": { "maximumAgeMinutes": 180, "minimumItems": 1 }
+  "id": "reuters",
+  "name": "Reuters",
+  "language": "en",
+  "discovery": {
+    "kind": "sitemap",
+    "url": "https://www.reuters.com/arc/outboundfeeds/sitemap-index/?outputType=xml",
+    "maximumPages": 20
+  },
+  "content": { "priority": ["browser-parser", "discovery-summary"] },
+  "archive": {
+    "mode": "browser",
+    "bpc": true,
+    "proxyPolicy": "reuters"
+  }
 }
 ```
 
-迁移时继续读取 v1；全部来源转成 v2 后再提升配置版本，不进行一次性破坏性迁移。
+发现策略：
 
-## 4. 单轮运行协议
+- `rsshub-package`：在任务进程内调用 RSSHub 的 `init()`、`request()`，不部署 RSSHub 服务。
+- `official-rss`：直接读取出版方 RSS/Atom。
+- `sitemap`：读取出版方官方 sitemap，只负责发现 URL 和更新时间。
+- `official-rss-list`：合并同一媒体的多个官方分类 feed，例如 CNA。
+- `site-adapter`：预留给没有稳定 feed 的媒体列表页或内容 API；当前 23 家没有启用。
 
-1. 从 Delivery B2 下载 `latest.jox`、`index.jox`、`catalog.jox`；从 Raw B2 下载 archive state 和
-   保留窗口内的 Canonical issue。
-2. 并行请求全部发现源。429 和 5xx 使用 1 秒、3 秒有限重试；每家状态单独记录。
-3. 只接收出版方明确给出发布时间、且在 7 天窗口内的条目。canonical URL 与来源共同生成稳定 ID。
-4. 合并上一轮 `latest`，因此某家本轮失败不会让其尚在窗口内的文章消失。
-5. 正文按优先级选择：
-   - 已验证 `feed-body`：立即形成正文，原页抓取不阻塞正文交付；
-   - 有出版方 parser：抓原页后调用 runner；
-   - parser 不支持或失败：保留 feed 摘要和归档，等待离线重解析。
-6. 增量选择需要归档的 URL：新文章优先、内容指纹变化次之、失败重试再次、24 小时刷新最后；每轮
-   保证每个有候选的来源至少一篇，再填满全局预算。
-7. 当前十分钟生产归档使用 Chromium，保存主文档及同页网络响应，并受单响应、单页、响应数量和
-   每轮 50 页预算约束。HTTP 全量模式保留为验证基线，不作为生产归档的替代品。
-8. 构建 WACZ、Canonical、Delivery Jox 和当轮 ES JSONL；在发布前完成本地引用完整性校验。
-9. 按第 6 节顺序提交 B2。只有不可变依赖均成功后才推进 `latest` 等可变指针。
-10. 输出脱敏 `report.json`；错误只记录类型、HTTP 状态、时延和计数，不写访问 key、Cookie 或代理信息。
+正文策略按优先级执行：
 
-## 5. 存储契约
+- `discovery-body`：已经验证 route/feed 正文与原页一致。
+- `browser-parser`：Chromium 捕获原页后，优先读取 JSON-LD `articleBody`，再按通用文章容器和段落
+  质量门槛提取正文；需要来源特例时优先修复 RSSHub route，再增加锁定的来源适配器。
+- `discovery-summary`：正文失败时保留摘要，但必须标记 `contentStatus=summary`。
 
-### 5.1 Raw B2（私有）
+浏览器抓取统一加载固定版本 BPC。BPC 解决页面内付费墙逻辑，不解决网络层 401/403；代理选择、
+Chromium 和 BPC 版本都记录到脱敏 manifest。归档器直接生成标准 WARC 1.1、CDXJ 和 WACZ 1.2，
+可供 ReplayWeb.page 等兼容读取器重放；当前实现不依赖 Browsertrix 服务。
+
+RSSHub 配置和代理是进程级状态，所以每家来源在独立 Node worker 中运行。父进程限制并发；单个 worker
+崩溃、超时或代理失败不影响其他媒体。
+
+## 4. 媒体目录
+
+生产目录当前启用 23 家：AP、The Guardian、Bloomberg、The New York Times、Reuters、Financial
+Times、Axios、NPR、Nikkei Asia、联合早报、Al Jazeera、SCMP、新华网、人民网、央视新闻、
+中国新闻网、澎湃新闻、财联社、CNA、Deutsche Welle、Focus Taiwan、Africanews 和 Agência Brasil。
+
+同一 route 的文章逐篇做正文质量判定，不能因为少量长稿就把整家媒体标成“全文”。NPR、联合早报、
+SCMP 和多家中国媒体已有稳定 route 正文；AP 等公开原页可由浏览器正文回填；Reuters、Bloomberg、
+NYT、FT 等限制页仍会真实显示为摘要、metadata 或不可用案例，不会伪装成全文。
+
+## 5. HF 单仓库存储契约
+
+### 5.1 Raw：按媒体、日期和运行分目录
 
 ```text
-raw/web-archives/times/YYYY/MM/DD/RUN_ID/times-RUN_ID.wacz
-raw/web-archives/times/YYYY/MM/DD/RUN_ID/run.json
+raw/news/{source}/
+└─ YYYY/MM/DD/RUN_ID/
+   ├─ manifest.json
+   ├─ discovery.json.gz
+   ├─ candidates.jsonl.gz
+   └─ network/
+      ├─ exchanges.jsonl.gz
+      └─ bodies/{sha256}.bin.gz
+
+raw/news/runs/YYYY/MM/DD/RUN_ID.json
 raw/web-archives/times/state.json.gz
-canonical/news-articles/{parser-or-source}/YYYY/MM/{article-id}-{hash}.json.gz
-canonical/newspapers/times/items/YYYY/MM/YYYY-MM-DD.json.gz
+raw/web-archives/times/YYYY/MM/DD/RUN_ID/
+├─ run.json
+└─ times-RUN_ID.wacz
 ```
 
-WACZ 是原始证据；Canonical 是可从 WACZ 重建、但供后续处理稳定消费的真值。二者都不由前端直接
-枚举。鉴权 header、Cookie、RSSHub key、代理认证以及 `Set-Cookie` 不写入 WARC。
+`discovery.json.gz` 保存 RSSHub Data、官方 XML 的解析结果或 sitemap 输出；发现阶段的原始 HTTP
+交换写入 `network/`，浏览器页面及其资源写入共享 WACZ。`candidates.jsonl.gz` 是统一文章候选清单。
+`manifest.json` 记录对象 SHA-256、
+媒体、抓取方式、版本、计数、错误和完成状态，但不记录 Cookie、Authorization、代理 URI、订阅地址
+或其他凭据。
 
-### 5.2 Delivery B2（CDN）
+共享 `raw/web-archives/times/state.json.gz` 以 `sourceId + canonicalUrl` 生成的稳定 article id 维护抓取状态：成功页面按刷新策略
+跳过，失败页面到期后换节点重试，直播文章按配置刷新。Raw response digest 未变化时不重复解析。
+
+### 5.2 Canonical：按媒体和发布日期分片
+
+```text
+canonical/news/{source}/
+├─ dataset.json
+└─ articles/YYYY/MM/YYYY-MM-DD.jsonl.gz
+```
+
+一行是一篇 `jojo-news-article/1`：
+
+```json
+{
+  "formatVersion": "jojo-news-article/1",
+  "articleId": "reuters:...",
+  "canonicalUrl": "https://www.reuters.com/...",
+  "title": "...",
+  "authors": [],
+  "publishedAt": "2026-08-23T11:52:00Z",
+  "language": "en",
+  "publisherCategories": ["World"],
+  "categories": ["world", "politics"],
+  "body": {
+    "format": "html",
+    "profile": "jojo-semantic-html/1",
+    "value": "<p>...</p>"
+  },
+  "contentStatus": "full",
+  "contentHash": "sha256:...",
+  "provenance": {
+    "rawRevision": "HF commit SHA",
+    "rawObject": "raw/web-archives/times/.../times-RUN_ID.wacz",
+    "parserVersion": "reuters"
+  }
+}
+```
+
+同一媒体每天一个 gzip JSONL，避免每篇一个 HF 文件。文件在最新 commit 中保存当天文章的最新版本，
+历史版本由 HF commit 历史保留。翻译、ES 和 Delivery 都按 article id/content hash 增量处理。
+
+HF 顶层不建立聚合 `canonical/newspapers/times` 正文副本；跨媒体排序是 Delivery 构建行为，避免同一
+正文以媒体 Canonical 和 Times Canonical 两份形式漂移。
+
+## 6. B2 Delivery 契约
 
 ```text
 catalog.jox
-content/newspapers/times/latest.jox
-content/newspapers/times/index.jox
-content/newspapers/times/availability/YYYY.jox
-content/newspapers/times/items/YYYY/MM/YYYY-MM-DD/manifest.jox
-content/newspapers/times/items/YYYY/MM/YYYY-MM-DD/articles/*.jox
+content/newspapers/times/
+├─ index.jox
+└─ items/YYYY/MM/YYYY-MM-DD/
+   ├─ manifest.jox
+   ├─ articles/{opaque-content-id}.jox
+   └─ assets/{opaque-content-id}.jox
 ```
 
-Article Jox 内容寻址、长期 immutable；manifest 和各级指针允许 60 秒重新验证。前端从
-`latest.jox` 或 `index.jox` 进入，不猜测 B2 目录，也不读取 Raw bucket。
+`index.jox` 只列出可用日期和 manifest 地址。前端取第一个可用日期，并在滚动时读取前一天；文章正文
+只在用户打开文章时按需加载。当前日期 manifest 可被每十分钟更新，过去日期使用完全相同的格式。
 
-## 6. 发布事务与恢复
+Article/Asset Jox 以内容派生的不透明 ID 命名，设置一年 immutable 缓存。日期 manifest、index 和
+catalog 是可变提交标记，设置短缓存并按以下顺序发布：
 
-发布顺序固定为：
+1. Article/Asset；
+2. 日期 manifest；
+3. index；
+4. 仅在 Dataset 注册项变化时更新 catalog。
 
-1. Raw WACZ、run metadata、Canonical；
-2. Raw archive state；
-3. Delivery Article；
-4. 当日 manifest；
-5. availability；
-6. index；
-7. latest；
-8. 仅在 Times 注册项变化时更新全局 catalog。
+不存在 `latest.jox`、Raw B2、Canonical B2 或七天删除任务。
 
-1–3 阶段失败不会改变读者可见指针，可以安全重跑。4–8 阶段使用内容校验和上传；重跑同一个构建
-不会产生不同的 Article 地址。`latest` 发布失败时，下轮从旧指针重新合并并补交，不执行远端删除。
+## 7. 实时与历史
 
-## 7. 运行预算和健康度
+存储层没有实时/历史分界。文章首次捕获时就进入 Raw archive，解析后永久进入媒体 Canonical。Delivery
+中今天、昨天和多年前都使用日期 Item：
 
-- GitHub Actions 使用固定 concurrency group，任何时刻最多一个发布任务。
-- 十分钟是触发频率，不假定 GitHub cron 精确准点。任务应设置 8 分钟软预算，在第 6 分钟停止领取
-  新的浏览器抓取，预留构建和指针提交时间；硬超时不得落在提交可变指针的中间。
-- 每轮 Chromium 页面预算为 50，积压通过后续轮次消化。24 小时全量实测 800 篇约 1.134 GiB；
-  稳定态十分钟新增量远低于预算，feed 正文不受页面预算影响。
-- 单源健康指标：feed 成功率、最新文章年龄、条目数、正文/摘要比例、原页比对差异、归档成功率、
-  parser complete/partial/error。
-- 连续异常只降低该源到“发现/摘要”或暂缓原页抓取，不自动从目录删除，也不阻断其他来源。
-- 财联社当前已有瞬时 503 证据，有限重试是必需项；禁止无限重试拖垮整轮。
+- 当前日期 manifest：前端定时重新验证或在页面重新聚焦时刷新；
+- 前一日期：允许迟到文章和修订；
+- 稳定历史日期：按滚动按需读取，正式更正时仍可发布新 article 对象并推进 manifest revision。
 
-## 8. 翻译和搜索扩展点
+“实时”是前端默认从最新日期开始和刷新当前 manifest 的行为；“历史”是用户继续读取更早日期的行为。
 
-翻译器读取 Canonical，不读取 WACZ，也不重新访问出版方。译文包含原文内容哈希、语言、模型和提示词
-版本；原文变化时生成新的派生版本。发布译文会形成新的内容寻址 Article，再原子推进 manifest。
+## 8. 去重、版本和可恢复性
 
-ES 发布器消费当轮 `search/times/runs/RUN_ID/documents.jsonl.gz` 或从 Canonical 重建。JSONL 是传输
-产物，不是长期真值；索引失败不能回滚新闻 CDN 发布。后续可增加独立 search checkpoint，确保
-at-least-once 写入和幂等 document id。
+```text
+articleId       = SHA-256(sourceId + canonicalUrl)
+rawDigest       = SHA-256(主文档原始响应)
+parseKey        = SHA-256(rawDigest + parserVersion)
+contentHash     = SHA-256(规范标题、正文、发布时间)
+deliveryObject  = opaque(contentHash)
+```
 
-## 9. 实施阶段
+URL 归一化去掉追踪参数和 fragment，跟随重定向并采用 `rel=canonical`/`og:url`，同时维护移动版、AMP
+和聚合跳转别名。解析逻辑升级时可从 Raw/WACZ 重跑而无需重新访问媒体；Canonical 未变化时不重复翻译、
+索引或发布。
 
-### Phase 0：目录收敛（当前）
+单源失败不删除旧 Canonical 或 Delivery。任何可变 B2 指针只在其引用的不可变对象成功上传后更新；
+任务不通过删除整个远端前缀恢复失败运行。
 
-- 生产目录收敛为 23 家；移除 WSJ、财新、第一财经、证券时报和 The Indian Express。
-- 5 家验证通过的大陆来源启用 RSSHub `feed-body`。
-- 增加 CNA、Deutsche Welle、Focus Taiwan、Africanews、Agência Brasil，形成亚洲、欧洲、非洲和拉美区域补充。
-- 所有 feed 瞬时错误使用有限重试；配置和审计进入 CI。
+## 9. 工作流与凭据
 
-验收：目录测试通过；单源 503 不影响其他来源；任何报告不含 secret。
+- `maintenance-times-capture.yml`：每十分钟，single-flight，只需要 HF 写权限和媒体抓取代理配置。
+- `maintenance-times-process.yml`：错开五分钟，读取同一 HF repo 的 Raw，提交 Canonical，再使用 B2 凭据发布 Delivery。
+- RSSHub package、Chromium、BPC 和 Python/Node 依赖都锁定版本。
+- 代理订阅只存在于 GitHub Secret；运行时由固定版本 Mihomo 写入临时配置，日志和上传产物不记录
+  订阅 URL、节点名、Cookie、Authorization 或控制密钥。
+- 捕获任务设置软预算，停止领取新浏览器页面后仍预留时间完成 WACZ 和 HF commit。
 
-### Phase 1：来源可靠性
+## 10. 后续扩展
 
-- 连续运行 72 小时健康监测，确认时效、条目数和正文一致性，而非只看 HTTP 200。
-- 为 Guardian、新华网增加 runner parser；为新华网增加自有发现适配器。
-- 复核 Axios、NPR 是否可提升为 `feed-body`。
-
-验收：每家至少 20 篇人工/自动抽样；正文与原页一致；失败时正确降级为摘要。
-
-### Phase 2：分层归档（当前）
-
-- 十分钟生产路径使用 Chromium 增量归档；HTTP 全量仅用于速度和可达性基线。
-- 增加软时间预算、积压计数、浏览器触发原因和 WACZ replay 自动 QA。
-- 保持 WARC/WACZ 和 B2 key 不变，前端不受迁移影响。
-
-验收：公开静态源不启动 Chrome；JS/反爬源能触发兜底；WACZ 可由自建 replay 与
-ReplayWeb.page 打开。
-
-### Phase 3：B2 staging 与上线
-
-- 连续 24 小时 dry-run，只生成报告和 staging 对象，不推进生产 `latest`。
-- 校验对象引用、缓存头、增量合并和失败恢复后，启用十分钟生产发布。
-- Web/Mobile 切到 B2 CDN；旧实时 Times API 保持删除状态。
-
-验收：前端断开后端仍可读；任一 Action 中断后 CDN 指针仍引用完整对象；下轮能自动恢复。
-
-### Phase 4：翻译和 ES
-
-- 翻译器与 ES 发布器作为独立 job 消费 Canonical/checkpoint。
-- 为派生数据增加版本、监控和重放命令，不修改采集任务的成功定义。
-
-验收：翻译或 ES 故障不影响原文发布；清空索引后可完全由 Canonical 重建。
-
-## 10. 当前不做
-
-- 不把用户代理订阅放入生产工作流。
-- 不在前端或 Agent 请求期间抓新闻。
-- 不把 RSS 字符数当作全文证明。
-- 不用 ES、翻译结果或 Delivery Jox 反向充当 Canonical 真值。
-- 不为恢复失败运行而删除整个 B2 前缀。
+翻译和 ES 只消费媒体 Canonical，不读取 Delivery，也不重新访问出版方。翻译结果记录原文 content hash、
+语言、模型和提示词版本；ES 使用稳定 article id 幂等写入。两者失败都不能阻断原文 Capture、Canonical
+或 B2 发布。

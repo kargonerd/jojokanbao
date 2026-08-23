@@ -10,6 +10,8 @@ from io import BytesIO
 import json
 from pathlib import Path
 import re
+import shutil
+import tempfile
 from typing import Any, Iterable
 from urllib.parse import urljoin, urlsplit
 from uuid import uuid4
@@ -120,8 +122,9 @@ def _normalized_response_headers(
 def load_archive_state(previous_directory: Path | None) -> dict[str, Any]:
     if previous_directory is None:
         return {"formatVersion": ARCHIVE_STATE_VERSION, "articles": {}}
-    path = previous_directory / "archive-state.json.gz"
-    if not path.exists():
+    paths = [previous_directory / "state.json.gz", previous_directory / "archive-state.json.gz"]
+    path = next((candidate for candidate in paths if candidate.exists()), None)
+    if path is None:
         return {"formatVersion": ARCHIVE_STATE_VERSION, "articles": {}}
     try:
         value = json.loads(gzip.decompress(path.read_bytes()))
@@ -267,6 +270,7 @@ async def capture_articles(
     engine: str = "http",
     proxy_server: str | None = None,
     browser_executable: str | None = None,
+    browser_extension_path: str | None = None,
     browser_retries: int = 4,
     maximum_page_bytes: int = 25_000_000,
 ) -> list[ArticleCapture]:
@@ -289,6 +293,7 @@ async def capture_articles(
             maximum_page_bytes=maximum_page_bytes,
             proxy_server=proxy_server,
             browser_executable=browser_executable,
+            browser_extension_path=browser_extension_path,
             retries=browser_retries,
         )
     if engine != "http":
@@ -349,6 +354,7 @@ async def _browser_attempt(
     timeout_seconds: float,
     maximum_response_bytes: int,
     maximum_page_bytes: int,
+    shared_context: Any | None = None,
 ) -> tuple[list[HttpExchange], int | None, str | None]:
     from playwright.async_api import Error as PlaywrightError
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -358,13 +364,15 @@ async def _browser_attempt(
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
         f"(KHTML, like Gecko) Chrome/{chrome_version} Safari/537.36"
     )
-    context = await browser.new_context(
+    owns_context = shared_context is None
+    context = shared_context or await browser.new_context(
         user_agent=user_agent,
         locale="en-US",
         timezone_id="UTC",
         viewport={"width": 1440, "height": 1000},
         java_script_enabled=True,
     )
+    page = None
     try:
         page = await context.new_page()
         page.set_default_timeout(round(timeout_seconds * 1_000))
@@ -462,7 +470,10 @@ async def _browser_attempt(
         return exchanges, main_status, navigation_error
     finally:
         try:
-            await asyncio.wait_for(context.close(), timeout=5.0)
+            if page is not None:
+                await asyncio.wait_for(page.close(), timeout=5.0)
+            if owns_context:
+                await asyncio.wait_for(context.close(), timeout=5.0)
         except (PlaywrightError, asyncio.TimeoutError):
             pass
 
@@ -476,6 +487,8 @@ async def _capture_one_browser(
     maximum_page_bytes: int,
     proxy_server: str | None,
     browser_executable: str | None,
+    browser_extension_path: str | None,
+    shared_context: Any | None,
     retries: int,
 ) -> ArticleCapture:
     started = asyncio.get_running_loop().time()
@@ -489,6 +502,7 @@ async def _capture_one_browser(
                 timeout_seconds=timeout_seconds,
                 maximum_response_bytes=maximum_response_bytes,
                 maximum_page_bytes=maximum_page_bytes,
+                shared_context=shared_context,
             )
         except Exception as exc:
             attempt_exchanges, status, attempt_error = [], None, type(exc).__name__
@@ -521,6 +535,7 @@ async def _capture_articles_browser(
     maximum_page_bytes: int,
     proxy_server: str | None,
     browser_executable: str | None,
+    browser_extension_path: str | None,
     retries: int,
 ) -> list[ArticleCapture]:
     try:
@@ -533,23 +548,43 @@ async def _capture_articles_browser(
         return []
     semaphore = asyncio.Semaphore(workers)
     async with async_playwright() as playwright:
+        browser_args = [
+            "--disable-blink-features=AutomationControlled",
+            "--disable-dev-shm-usage",
+            "--disable-features=IsolateOrigins,site-per-process",
+            "--disable-site-isolation-trials",
+            "--no-first-run",
+            "--no-default-browser-check",
+        ]
+        if browser_extension_path:
+            extension = str(Path(browser_extension_path).resolve())
+            browser_args.extend([f"--disable-extensions-except={extension}", f"--load-extension={extension}"])
         launch_options: dict[str, Any] = {
             "headless": True,
             "ignore_default_args": ["--enable-automation", "--hide-scrollbars"],
-            "args": [
-                "--disable-blink-features=AutomationControlled",
-                "--disable-dev-shm-usage",
-                "--disable-features=IsolateOrigins,site-per-process",
-                "--disable-site-isolation-trials",
-                "--no-first-run",
-                "--no-default-browser-check",
-            ],
+            "args": browser_args,
         }
         if browser_executable:
             launch_options["executable_path"] = browser_executable
         if proxy_server:
             launch_options["proxy"] = {"server": proxy_server}
-        browser = await playwright.chromium.launch(**launch_options)
+        shared_context = None
+        profile_directory = None
+        if browser_extension_path:
+            profile_directory = tempfile.mkdtemp(prefix="jojo-times-browser-")
+            shared_context = await playwright.chromium.launch_persistent_context(
+                profile_directory,
+                locale="en-US",
+                timezone_id="UTC",
+                viewport={"width": 1440, "height": 1000},
+                java_script_enabled=True,
+                **launch_options,
+            )
+            browser = shared_context.browser
+            if browser is None:
+                raise RuntimeError("Persistent Chromium context did not expose a browser")
+        else:
+            browser = await playwright.chromium.launch(**launch_options)
         try:
             async def guarded(article: Article) -> ArticleCapture:
                 async with semaphore:
@@ -561,15 +596,22 @@ async def _capture_articles_browser(
                         maximum_page_bytes=maximum_page_bytes,
                         proxy_server=proxy_server,
                         browser_executable=browser_executable,
+                        browser_extension_path=browser_extension_path,
+                        shared_context=shared_context,
                         retries=retries,
                     )
 
             return list(await asyncio.gather(*(guarded(article) for article in values)))
         finally:
             try:
-                await asyncio.wait_for(browser.close(), timeout=10.0)
+                if shared_context is not None:
+                    await asyncio.wait_for(shared_context.close(), timeout=10.0)
+                else:
+                    await asyncio.wait_for(browser.close(), timeout=10.0)
             except (Exception, asyncio.TimeoutError):
                 pass
+            if profile_directory:
+                shutil.rmtree(profile_directory, ignore_errors=True)
 
 
 def _feed_exchange(raw_feed: RawFeed) -> HttpExchange:

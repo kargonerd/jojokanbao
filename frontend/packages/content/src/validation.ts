@@ -4,7 +4,7 @@ import type {
   JojoDatasetIndex,
   JojoFragment,
   JojoItemManifest,
-} from "./types";
+} from "./types.js";
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {

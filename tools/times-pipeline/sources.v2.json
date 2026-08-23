@@ -1,0 +1,250 @@
+{
+  "version": 2,
+  "sources": [
+    {
+      "id": "ap",
+      "name": "AP News",
+      "language": "en",
+      "discovery": { "kind": "rsshub-package", "route": "/apnews/mobile" },
+      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "ap" },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "guardian",
+      "name": "The Guardian",
+      "language": "en",
+      "discovery": { "kind": "official-rss", "url": "https://www.theguardian.com/world/rss" },
+      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "guardian" },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "bloomberg-markets",
+      "name": "Bloomberg",
+      "language": "en",
+      "discovery": { "kind": "official-rss", "url": "https://feeds.bloomberg.com/markets/news.rss" },
+      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "bloomberg" },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "bloomberg" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "nyt",
+      "name": "The New York Times",
+      "language": "en",
+      "discovery": { "kind": "official-rss", "url": "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml" },
+      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "nyt" },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "nyt" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "reuters",
+      "name": "Reuters",
+      "language": "en",
+      "discovery": {
+        "kind": "sitemap",
+        "url": "https://www.reuters.com/arc/outboundfeeds/sitemap-index/?outputType=xml",
+        "maximumPages": 20
+      },
+      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "reuters" },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "reuters" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "ft",
+      "name": "Financial Times",
+      "language": "en",
+      "discovery": { "kind": "official-rss", "url": "https://www.ft.com/rss/home/international" },
+      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "ft" },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "ft" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "axios",
+      "name": "Axios",
+      "language": "en",
+      "discovery": { "kind": "official-rss", "url": "https://api.axios.com/feed/" },
+      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "axios" },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "axios" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "npr-news",
+      "name": "NPR",
+      "language": "en",
+      "discovery": { "kind": "rsshub-package", "route": "/npr/1001" },
+      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "npr", "minimumFullCharacters": 1000, "minimumFullParagraphs": 5 },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "nikkei",
+      "name": "Nikkei Asia",
+      "language": "en",
+      "discovery": { "kind": "rsshub-package", "route": "/nikkei/asia" },
+      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "nikkei", "minimumFullCharacters": 1000, "minimumFullParagraphs": 5 },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "nikkei" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "zaobao",
+      "name": "联合早报",
+      "language": "zh-CN",
+      "discovery": { "kind": "rsshub-package", "route": "/zaobao/realtime" },
+      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "zaobao", "minimumFullCharacters": 200, "minimumFullParagraphs": 3 },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "zaobao" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "aljazeera-english",
+      "name": "Al Jazeera",
+      "language": "en",
+      "discovery": { "kind": "rsshub-package", "route": "/aljazeera/english/news" },
+      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "aljazeera", "minimumFullCharacters": 1000, "minimumFullParagraphs": 5 },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "scmp",
+      "name": "South China Morning Post",
+      "language": "en",
+      "discovery": { "kind": "rsshub-package", "route": "/scmp/91" },
+      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "scmp", "minimumFullCharacters": 500, "minimumFullParagraphs": 3 },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "scmp" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "xinhua",
+      "name": "新华网",
+      "language": "zh-CN",
+      "discovery": { "kind": "rsshub-package", "route": "/news/xhsxw" },
+      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "xinhua", "minimumFullCharacters": 80, "minimumFullParagraphs": 1 },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "people",
+      "name": "人民网",
+      "language": "zh-CN",
+      "discovery": { "kind": "rsshub-package", "route": "/people" },
+      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "people", "minimumFullCharacters": 100, "minimumFullParagraphs": 1 },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "cctv",
+      "name": "央视新闻",
+      "language": "zh-CN",
+      "discovery": { "kind": "rsshub-package", "route": "/cctv/news" },
+      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "cctv", "minimumFullCharacters": 100, "minimumFullParagraphs": 1 },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "chinanews",
+      "name": "中国新闻网",
+      "language": "zh-CN",
+      "discovery": { "kind": "rsshub-package", "route": "/chinanews" },
+      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "chinanews", "minimumFullCharacters": 100, "minimumFullParagraphs": 1 },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "thepaper",
+      "name": "澎湃新闻",
+      "language": "zh-CN",
+      "discovery": { "kind": "rsshub-package", "route": "/thepaper/featured" },
+      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "thepaper", "minimumFullCharacters": 100, "minimumFullParagraphs": 1 },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "cls",
+      "name": "财联社",
+      "language": "zh-CN",
+      "discovery": { "kind": "rsshub-package", "route": "/cls/depth/1000" },
+      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "cls", "minimumFullCharacters": 100, "minimumFullParagraphs": 1 },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "cna-singapore",
+      "name": "CNA",
+      "language": "en",
+      "discovery": {
+        "kind": "official-rss-list",
+        "urls": [
+          "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml",
+          "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6511",
+          "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6936",
+          "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=10416",
+          "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6311",
+          "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=679471",
+          "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=10296"
+        ]
+      },
+      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "cna" },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "dw",
+      "name": "Deutsche Welle",
+      "language": "en",
+      "discovery": { "kind": "official-rss", "url": "https://rss.dw.com/xml/rss-en-all" },
+      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "dw" },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "focus-taiwan",
+      "name": "Focus Taiwan",
+      "language": "en",
+      "discovery": { "kind": "official-rss", "url": "https://feeds.feedburner.com/rsscna/engnews/" },
+      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "focus-taiwan" },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "africanews",
+      "name": "Africanews",
+      "language": "en",
+      "discovery": { "kind": "official-rss", "url": "https://www.africanews.com/feed/rss" },
+      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "africanews" },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    },
+    {
+      "id": "agencia-brasil",
+      "name": "Agência Brasil",
+      "language": "pt-BR",
+      "discovery": { "kind": "official-rss", "url": "https://agenciabrasil.ebc.com.br/rss/ultimasnoticias/feed.xml" },
+      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "agencia-brasil" },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
+      "health": { "minimumCandidates": 1 },
+      "enabled": true
+    }
+  ]
+}

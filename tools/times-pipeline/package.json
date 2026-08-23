@@ -1,0 +1,28 @@
+{
+  "name": "@jojo/times-pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "capture": "node dist/src/capture-cli.js",
+    "process": "node dist/src/process-cli.js",
+    "delivery": "node dist/src/delivery-cli.js",
+    "serve": "node dist/src/serve-cli.js"
+  },
+  "dependencies": {
+    "@jojo/content": "workspace:*",
+    "fast-xml-parser": "5.2.5",
+    "rsshub": "1.0.0-master.5151c32"
+  },
+  "devDependencies": {
+    "@types/node": "24.3.0",
+    "typescript": "5.9.2",
+    "vitest": "3.2.4"
+  }
+}
