@@ -196,15 +196,37 @@ def upload_hf(
         CommitOperationAdd(path_in_repo=name, path_or_fileobj=str(path))
         for name, path in sorted(files.items())
     ]
-    commit = HfApi(token=token).create_commit(
-        repo_id=repo_id,
-        repo_type="dataset",
-        operations=operations,
-        commit_message=f"Recover {count} RMRB bodies from legacy JSONL",
-        parent_commit=parent_commit,
-        num_threads=workers,
-    )
-    return str(commit.oid)
+    api = HfApi(token=token)
+    for attempt in range(1, 21):
+        try:
+            commit = api.create_commit(
+                repo_id=repo_id,
+                repo_type="dataset",
+                operations=operations,
+                commit_message=f"Recover {count} RMRB bodies from legacy JSONL",
+                parent_commit=parent_commit,
+                num_threads=workers,
+            )
+            return str(commit.oid)
+        except Exception as exc:
+            message = str(exc).lower()
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+            if (
+                status_code == 409
+                or "parent commit" in message
+                or "a commit has happened" in message
+            ):
+                raise
+            if attempt == 20:
+                raise
+            delay = min(60, attempt * 10)
+            print(
+                f"retry HF staged upload after {type(exc).__name__} "
+                f"({attempt}/20, {delay}s): {' '.join(str(exc).split())[:300]}",
+                flush=True,
+            )
+            time.sleep(delay)
+    raise AssertionError("unreachable")
 
 
 def upload_b2(remote: str, root: Path, transfers: int) -> None:
