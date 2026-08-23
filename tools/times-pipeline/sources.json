@@ -149,14 +149,6 @@
       "enabled": true
     },
     {
-      "id": "stcn",
-      "name": "证券时报",
-      "route": "/stcn/article/list/yw",
-      "language": "zh-CN",
-      "contentPolicy": "feed-body",
-      "enabled": true
-    },
-    {
       "id": "cna-singapore",
       "name": "CNA",
       "feedUrls": [
@@ -167,23 +159,6 @@
         "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6311",
         "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=679471",
         "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=10296"
-      ],
-      "language": "en",
-      "contentPolicy": "summary-only",
-      "enabled": true
-    },
-    {
-      "id": "indian-express",
-      "name": "The Indian Express",
-      "feedUrls": [
-        "https://news.google.com/rss/search?q=when%3A1d%20site%3Aindianexpress.com&hl=en-IN&gl=IN&ceid=IN%3Aen",
-        "https://news.google.com/rss/search?q=when%3A1d%20site%3Aindianexpress.com%2Fsection%2Findia&hl=en-IN&gl=IN&ceid=IN%3Aen",
-        "https://news.google.com/rss/search?q=when%3A1d%20site%3Aindianexpress.com%2Fsection%2Fworld&hl=en-IN&gl=IN&ceid=IN%3Aen",
-        "https://news.google.com/rss/search?q=when%3A1d%20site%3Aindianexpress.com%2Fsection%2Fbusiness&hl=en-IN&gl=IN&ceid=IN%3Aen",
-        "https://news.google.com/rss/search?q=when%3A1d%20site%3Aindianexpress.com%2Fsection%2Fpolitics&hl=en-IN&gl=IN&ceid=IN%3Aen",
-        "https://news.google.com/rss/search?q=when%3A1d%20site%3Aindianexpress.com%2Fsection%2Fcities&hl=en-IN&gl=IN&ceid=IN%3Aen",
-        "https://news.google.com/rss/search?q=when%3A1d%20site%3Aindianexpress.com%2Fsection%2Ftechnology&hl=en-IN&gl=IN&ceid=IN%3Aen",
-        "https://news.google.com/rss/search?q=when%3A1d%20site%3Aindianexpress.com%2Fsection%2Fexplained&hl=en-IN&gl=IN&ceid=IN%3Aen"
       ],
       "language": "en",
       "contentPolicy": "summary-only",

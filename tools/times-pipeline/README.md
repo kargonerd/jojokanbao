@@ -1,6 +1,6 @@
 # JOJO Times offline pipeline
 
-Times 不再由浏览器请求触发实时抓取。这个工具把 26 家来源的 RSS 聚合为 JOJO newspaper v1，抓取
+Times 不再由浏览器请求触发实时抓取。这个工具把 23 家来源的 RSS 聚合为 JOJO newspaper v1，抓取
 文章原始 HTTP 响应并生成 WARC/WACZ，复用 `jojo-news-archive-runner` 锁定的出版方解析器，
 最后生成 Canonical、Delivery Jox 和可重建 Elasticsearch 的 JSONL，并按提交顺序发布到 B2。
 
