@@ -84,21 +84,21 @@ def test_load_sources_accepts_multiple_public_feeds(tmp_path: Path) -> None:
     )
 
 
-def test_production_catalog_contains_the_required_twenty_five_sources() -> None:
+def test_production_catalog_contains_the_required_twenty_three_sources() -> None:
     config = Path(__file__).resolve().parents[1] / "sources.json"
     sources = load_sources(config)
 
     assert [source.id for source in sources] == [
         "ap", "guardian", "bloomberg-markets", "nyt", "reuters", "ft", "axios",
         "npr-news", "nikkei", "zaobao", "aljazeera-english", "scmp", "xinhua",
-        "people", "cctv", "chinanews", "thepaper", "cls", "stcn",
-        "cna-singapore", "indian-express", "dw", "focus-taiwan", "africanews",
+        "people", "cctv", "chinanews", "thepaper", "cls", "cna-singapore",
+        "dw", "focus-taiwan", "africanews",
         "agencia-brasil",
     ]
     assert "wsj" not in {source.id for source in sources}
     assert {
         source.id for source in sources if source.content_policy == "feed-body"
-    } == {"people", "cctv", "chinanews", "thepaper", "cls", "stcn"}
+    } == {"people", "cctv", "chinanews", "thepaper", "cls"}
 
 
 def test_collect_sources_filters_to_requested_time_window() -> None:

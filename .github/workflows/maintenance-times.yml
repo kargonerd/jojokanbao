@@ -103,15 +103,6 @@ jobs:
           --max-latest-articles 1000
           --publish
 
-      - name: Probe The Indian Express official feed from GitHub
-        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'validate-24h'
-        run: >-
-          curl --location --silent --show-error --max-time 30
-          --user-agent 'JOJO-Times-Offline/1.0 (+https://jojokanbao.cn)'
-          --output /dev/null
-          --write-out 'official_indian_express=%{http_code} bytes=%{size_download} seconds=%{time_total}\n'
-          https://indianexpress.com/feed/
-
       - name: Capture all discovered articles from the last 24 hours over HTTP
         if: github.event_name == 'workflow_dispatch' && inputs.mode == 'validate-24h'
         run: >-

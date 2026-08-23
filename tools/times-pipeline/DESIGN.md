@@ -7,7 +7,7 @@
 JOJO Times 每十分钟离线发现新闻、保存原始网络响应、提取结构化正文并发布到 B2。Web、Mobile
 和后续 Agent 只读取 B2 CDN 或搜索索引，不在用户请求路径中访问出版方、RSSHub 或 Python API。
 
-首期生产目录为 26 家来源。WSJ 已移除；财新不在目录中。
+当前生产目录为 23 家来源。WSJ、财新、第一财经、证券时报和 The Indian Express 均不在目录中。
 
 核心目标：
 
@@ -44,10 +44,10 @@ Times 不恢复实时抓取 API。运行入口只保留 CLI 和 `maintenance-tim
 
 | 分组 | 来源 | 首选内容 | 原页用途 |
 |---|---|---|---|
-| RSSHub 正文优先 | 人民网、央视新闻、中国新闻网、澎湃新闻、财联社、证券时报 | `feed-body` | 原始 HTML 存档、抽样校验、未来离线重解析 |
+| RSSHub 正文优先 | 人民网、央视新闻、中国新闻网、澎湃新闻、财联社 | `feed-body` | 原始 HTML 存档、抽样校验、未来离线重解析 |
 | RSS/路由发现 + runner | AP、Bloomberg、NYT、Reuters、FT、Axios、NPR、Nikkei、联合早报、Al Jazeera、SCMP | 已锁定出版方 parser；失败时保留摘要 | WACZ 与正文解析 |
 | 发现 + 待补 parser | The Guardian、新华网 | Guardian 官方 World RSS；新华网暂用站点限定发现 RSS | 必须抓原页；补专用 parser 后产出稳定全文 |
-| 全球区域补充 + 待补 parser | CNA、The Indian Express、Deutsche Welle、Focus Taiwan、Africanews、Agência Brasil | 官方 RSS 优先；Indian Express 暂用分区发现 feed | 原始 HTML 存档；补专用 parser 后产出稳定全文 |
+| 全球区域补充 + 待补 parser | CNA、Deutsche Welle、Focus Taiwan、Africanews、Agência Brasil | 官方 RSS 优先 | 原始 HTML 存档；补专用 parser 后产出稳定全文 |
 
 Axios、NPR 的 feed 经常包含长文本，但在逐篇原页一致性和持续稳定性通过前，不因长度大就自动切换
 `feed-body`。新华网长期方案应是自有站点发现适配器，Google News 只作为过渡发现层。
@@ -158,9 +158,9 @@ at-least-once 写入和幂等 document id。
 
 ### Phase 0：目录收敛（当前）
 
-- 生产目录固定为 26 家；移除 WSJ 和财新。
-- 7 家验证通过的大陆来源启用 RSSHub `feed-body`。
-- 增加 CNA、The Indian Express、Deutsche Welle、Focus Taiwan、Africanews、Agência Brasil，形成亚洲、欧洲、非洲和拉美区域补充。
+- 生产目录收敛为 23 家；移除 WSJ、财新、第一财经、证券时报和 The Indian Express。
+- 5 家验证通过的大陆来源启用 RSSHub `feed-body`。
+- 增加 CNA、Deutsche Welle、Focus Taiwan、Africanews、Agência Brasil，形成亚洲、欧洲、非洲和拉美区域补充。
 - 所有 feed 瞬时错误使用有限重试；配置和审计进入 CI。
 
 验收：目录测试通过；单源 503 不影响其他来源；任何报告不含 secret。
