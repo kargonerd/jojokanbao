@@ -27,17 +27,21 @@ debugging.
 
 ## RMRB missing-content review
 
-The `/rmrb-review` React route uses the staging-only `/api/rmrb-review/*`
-endpoints. Set `RMRB_REVIEW_ROOT` when the queue and decision JSONL files are
+The `/rmrb-review` React route keeps Accept/Reject local until the operator
+explicitly publishes. Set `RMRB_REVIEW_ROOT` when the queue and decision JSONL files are
 not below the repository `tmp/rmrb-peopledata-full-directory` directory. The
 review queue only needs article keys, titles, and PeopleData links; it does not
-load or expose local PDFs. These endpoints never write the source corpus or
-Elasticsearch.
-Review decisions remain local-first. The UI can explicitly synchronize the
-merged decision ledger to Hugging Face and/or B2 at
+load or expose local PDFs. Review decisions remain local-first and these
+endpoints never update Elasticsearch. The UI can explicitly publish accepted
+content and synchronize the merged decision ledger to Hugging Face and/or B2 at
 `newspapers/rmrb/annotations/`. Hugging Face uses `RMRB_REVIEW_HF_REPO` (then
 `HF_DATASET_REPO`) and the CLI token or `HF_TOKEN`; B2 uses
 `RMRB_REVIEW_B2_REMOTE` (then `JOJO_DELIVERY_REMOTE`) through rclone.
+Hugging Face publication patches only affected Canonical Items, annual article
+shards, and availability metadata in one commit. B2 publication writes new
+immutable article fragments before mutable issue manifests and the collection
+index. Rejected records remain missing and are preserved only in the audit
+ledger.
 
 ## ES repair
 

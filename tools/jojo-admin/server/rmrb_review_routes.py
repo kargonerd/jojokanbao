@@ -1,4 +1,4 @@
-"""Staging-only review API for RMRB records that still lack local content."""
+"""Local-first review and incremental publication API for missing RMRB content."""
 
 from __future__ import annotations
 
@@ -19,6 +19,15 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
+from rmrb_review_publish import (
+    CanonicalPatch,
+    DeliveryPatch,
+    accepted_hashes,
+    parse_key,
+    prepare_canonical_patch,
+    prepare_delivery_patch,
+)
+
 
 rmrb_review_blueprint = Blueprint("rmrb_review", __name__)
 
@@ -37,6 +46,8 @@ REVIEW_DB = REVIEW_ROOT / "merged-missing-workbench.sqlite3"
 WORKBENCH_DECISIONS = REVIEW_ROOT / "manual-review-decisions-workbench.jsonl"
 SYNC_ROOT = REVIEW_ROOT / "sync"
 SYNC_STATE = SYNC_ROOT / "review-sync-state.json"
+PUBLISH_ROOT = SYNC_ROOT / "publish"
+PUBLICATION_STATE = SYNC_ROOT / "publication-state.json"
 SYNC_REMOTE_ROOT = "newspapers/rmrb/annotations"
 COPY_MARKER_RE = re.compile(r"[（(]\s*人民数据库资料\s*[）)]")
 DECISION_LOCK = threading.Lock()
@@ -169,7 +180,77 @@ def _write_sync_state(state: dict[str, object]) -> None:
     )
 
 
-def _sync_huggingface(artifact: Path, manifest_path: Path, manifest: dict[str, object]) -> dict[str, object]:
+def _hf_source_file(filename: str) -> Path:
+    from huggingface_hub import hf_hub_download
+
+    return Path(hf_hub_download(
+        repo_id=_huggingface_repo(),
+        filename=filename,
+        repo_type="dataset",
+        token=_huggingface_token() or None,
+    ))
+
+
+def _delivery_source_file(filename: str) -> Path:
+    target = PUBLISH_ROOT / "delivery-source" / filename
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # Delivery manifests are mutable commit markers; always fetch the current
+    # copy instead of trusting an earlier local review-sync run.
+    _run_rclone_copyto(f"{_b2_remote()}/{filename}", str(target))
+    return target
+
+
+def _prepare_publication(
+    decisions: dict[tuple[str, int, int], dict[str, object]],
+    candidate_keys: set[tuple[str, int, int]] | None = None,
+    issue_keys: set[tuple[str, int, int]] | None = None,
+) -> CanonicalPatch:
+    return prepare_canonical_patch(
+        decisions,
+        _hf_source_file,
+        PUBLISH_ROOT / "canonical",
+        candidate_keys,
+        issue_keys,
+    )
+
+
+def _prepare_delivery(
+    decisions: dict[tuple[str, int, int], dict[str, object]],
+    canonical: CanonicalPatch,
+    candidate_keys: set[tuple[str, int, int]] | None = None,
+) -> DeliveryPatch:
+    return prepare_delivery_patch(
+        decisions,
+        canonical,
+        _delivery_source_file,
+        PUBLISH_ROOT / "delivery",
+        candidate_keys,
+    )
+
+
+def _load_publication_state() -> dict[str, object]:
+    if not PUBLICATION_STATE.is_file():
+        return {"formatVersion": "jojo-rmrb-review-publication-state/1", "targets": {}}
+    try:
+        return json.loads(PUBLICATION_STATE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        logging.exception("Unable to read RMRB publication state %s", PUBLICATION_STATE)
+        return {"formatVersion": "jojo-rmrb-review-publication-state/1", "targets": {}}
+
+
+def _write_publication_state(state: dict[str, object]) -> None:
+    _atomic_write(
+        PUBLICATION_STATE,
+        (json.dumps(state, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8"),
+    )
+
+
+def _sync_huggingface(
+    artifact: Path,
+    manifest_path: Path,
+    manifest: dict[str, object],
+    canonical: CanonicalPatch,
+) -> dict[str, object]:
     token = _huggingface_token()
     if not token:
         raise RuntimeError("Hugging Face 未登录且 HF_TOKEN 未配置")
@@ -186,16 +267,28 @@ def _sync_huggingface(artifact: Path, manifest_path: Path, manifest: dict[str, o
             path_or_fileobj=str(manifest_path),
         ),
     ]
+    operations.extend(
+        CommitOperationAdd(path_in_repo=name, path_or_fileobj=str(path))
+        for name, path in sorted(canonical.files.items())
+    )
     commit = HfApi(token=token).create_commit(
         repo_id=repo_id,
         repo_type="dataset",
         operations=operations,
-        commit_message=f"Sync {manifest['recordCount']} RMRB review decisions",
+        commit_message=(
+            f"Publish {canonical.changed_article_count} reviewed RMRB articles "
+            f"and sync {manifest['recordCount']} decisions"
+        ),
     )
-    return {"repoId": repo_id, "commit": str(commit.oid)}
+    return {
+        "repoId": repo_id,
+        "commit": str(commit.oid),
+        "publishedArticles": canonical.changed_article_count,
+        "publishedObjects": len(canonical.files),
+    }
 
 
-def _run_rclone_copyto(source: Path, destination: str) -> None:
+def _run_rclone_copyto(source: Path | str, destination: str) -> None:
     executable = shutil.which("rclone.exe") or shutil.which("rclone")
     if not executable:
         raise RuntimeError("未安装 rclone")
@@ -216,12 +309,33 @@ def _run_rclone_copyto(source: Path, destination: str) -> None:
         raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "rclone 上传失败")
 
 
-def _sync_b2(artifact: Path, manifest_path: Path, manifest: dict[str, object]) -> dict[str, object]:
+def _sync_b2(
+    artifact: Path,
+    manifest_path: Path,
+    manifest: dict[str, object],
+    delivery: DeliveryPatch,
+) -> dict[str, object]:
+    # Publish immutable fragments first, issue manifests second, and the
+    # collection index last so readers never observe dangling references.
+    def priority(name: str) -> tuple[int, str]:
+        if name.endswith("/index.jox"):
+            return 2, name
+        if name.endswith("/manifest.jox"):
+            return 1, name
+        return 0, name
+
+    for name, path in sorted(delivery.files.items(), key=lambda item: priority(item[0])):
+        _run_rclone_copyto(path, f"{_b2_remote()}/{name}")
     root = f"{_b2_remote()}/{SYNC_REMOTE_ROOT}"
     _run_rclone_copyto(artifact, f"{root}/{artifact.name}")
     # The manifest is the commit marker and is deliberately written last.
     _run_rclone_copyto(manifest_path, f"{root}/{manifest_path.name}")
-    return {"remote": root, "sha256": manifest["sha256"]}
+    return {
+        "remote": root,
+        "sha256": manifest["sha256"],
+        "publishedArticles": delivery.changed_article_count,
+        "publishedObjects": len(delivery.files),
+    }
 
 
 def _open_db() -> sqlite3.Connection:
@@ -396,15 +510,67 @@ def sync_api():
         return jsonify({"success": False, "error": "another review sync is running"}), 409
     try:
         artifact, manifest_path, manifest = _build_sync_snapshot()
+        decisions = load_all_decisions()
+        desired = accepted_hashes(decisions)
+        publication_state = _load_publication_state()
+        publication_targets = publication_state.setdefault("targets", {})
+        assert isinstance(publication_targets, dict)
+
+        def published_for(target: str) -> dict[str, str] | None:
+            value = publication_targets.get(target)
+            if not isinstance(value, dict) or not isinstance(value.get("accepted"), dict):
+                return None
+            return {str(key): str(digest) for key, digest in value["accepted"].items()}
+
+        hf_published = published_for("huggingface")
+        b2_published = published_for("b2")
+        hf_names = {
+            name for name, digest in desired.items()
+            if hf_published is None or hf_published.get(name) != digest
+        }
+        b2_names = {
+            name for name, digest in desired.items()
+            if b2_published is not None and b2_published.get(name) != digest
+        }
+        canonical = _prepare_publication(
+            decisions,
+            {parse_key(name) for name in hf_names | b2_names},
+            {parse_key(name) for name in b2_names},
+        )
+        if b2_published is None:
+            # The original HF and B2 snapshots were published together.  On
+            # the first incremental run, only canonical differences discovered
+            # above can be outstanding in Delivery.
+            b2_names = {"|".join((key[0], str(key[1]), str(key[2]))) for key in canonical.changed_keys}
+        if "b2" in targets and canonical.changed_keys and "huggingface" not in targets:
+            return jsonify({
+                "success": False,
+                "error": "B2 修订依赖尚未发布的 HF Canonical；请同时选择 HF",
+            }), 409
+        delivery = _prepare_delivery(
+            decisions,
+            canonical,
+            {parse_key(name) for name in b2_names},
+        ) if "b2" in targets else None
         state = _load_sync_state()
         target_state = state.setdefault("targets", {})
         assert isinstance(target_state, dict)
         results: dict[str, object] = {}
         errors: dict[str, str] = {}
-        sync_functions = {"huggingface": _sync_huggingface, "b2": _sync_b2}
+        sync_functions = {
+            "huggingface": lambda: _sync_huggingface(
+                artifact, manifest_path, manifest, canonical,
+            ),
+            "b2": lambda: _sync_b2(
+                artifact, manifest_path, manifest, delivery or DeliveryPatch(PUBLISH_ROOT),
+            ),
+        }
         for target in targets:
+            if target == "b2" and "huggingface" in errors:
+                errors[target] = "HF Canonical 发布失败，已停止 B2 发布以避免数据分叉"
+                continue
             try:
-                detail = sync_functions[target](artifact, manifest_path, manifest)
+                detail = sync_functions[target]()
                 results[target] = detail
                 target_state[target] = {
                     "syncedAt": manifest["generatedAt"],
@@ -412,6 +578,19 @@ def sync_api():
                     "sha256": manifest["sha256"],
                     **detail,
                 }
+                publication_targets[target] = {"accepted": desired}
+                if target == "huggingface" and b2_published is None and "b2" not in targets:
+                    changed_names = {
+                        "|".join((key[0], str(key[1]), str(key[2])))
+                        for key in canonical.changed_keys
+                    }
+                    publication_targets["b2"] = {
+                        "accepted": {
+                            name: digest for name, digest in desired.items()
+                            if name not in changed_names
+                        }
+                    }
+                _write_publication_state(publication_state)
             except Exception as error:  # Each selected destination is independent.
                 logging.exception("Unable to sync RMRB reviews to %s", target)
                 errors[target] = str(error)
@@ -421,11 +600,20 @@ def sync_api():
         response = {
             "success": not errors,
             "recordCount": manifest["recordCount"],
+            "acceptedCount": canonical.accepted_count,
+            "canonicalChanges": canonical.changed_article_count,
+            "publishedChanges": max(
+                (int(detail.get("publishedArticles") or 0) for detail in results.values() if isinstance(detail, dict)),
+                default=0,
+            ),
             "sha256": manifest["sha256"],
             "results": results,
             "errors": errors,
         }
         return jsonify(response), 200 if not errors else 502
+    except Exception as error:
+        logging.exception("Unable to prepare RMRB review publication")
+        return jsonify({"success": False, "error": str(error)}), 502
     finally:
         SYNC_LOCK.release()
 

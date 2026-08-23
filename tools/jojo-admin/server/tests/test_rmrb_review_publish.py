@@ -1,0 +1,143 @@
+import gzip
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import rmrb_review_publish as publish
+
+
+class RmrbReviewPublishTest(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.root = Path(self.directory.name)
+        self.hf = self.root / "hf"
+        self.delivery = self.root / "b2"
+        self.output = self.root / "out"
+        self.day = "1950-01-01"
+        self.key = (self.day, 1, 0)
+        self.article_id = publish._article_id(*self.key)
+        self.decisions = {
+            self.key: {
+                "date": self.day,
+                "page": 1,
+                "peopleDataOrdinal": 0,
+                "title": "待补文章",
+                "decision": "accept",
+                "content": "人工确认的正文。",
+            }
+        }
+        self._write_sources()
+
+    def tearDown(self):
+        self.directory.cleanup()
+
+    def _write_sources(self):
+        dataset = {
+            "formatVersion": "jojo-dataset/1",
+            "datasetId": "rmrb",
+            "availability": {
+                "text": {
+                    "format": "adaptive-calendar/1",
+                    "startDate": "1950-01-01",
+                    "endDate": "1950-01-02",
+                    "default": "available",
+                    "years": {"1950": {"include": {"dates": ["01-02"]}}},
+                },
+                "pdf": {
+                    "format": "adaptive-calendar/1",
+                    "startDate": "1950-01-01",
+                    "endDate": "1950-01-02",
+                    "default": "available",
+                    "years": {},
+                },
+            },
+        }
+        path = self.hf / "newspapers/rmrb/dataset.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(dataset, ensure_ascii=False), encoding="utf-8")
+        item = {
+            "formatVersion": "jojo-item/1",
+            "revision": 1,
+            "itemId": f"rmrb:{self.day}",
+            "content": {"articles": [{
+                "id": self.article_id,
+                "order": 1,
+                "title": "待补文章",
+                "contentState": "missing",
+                "body": {"format": "text", "value": ""},
+                "assetRefs": [],
+            }]},
+        }
+        publish._write_json_gz(
+            self.hf / f"newspapers/rmrb/items/1950/01/{self.day}.json.gz", item,
+        )
+        publish._write_jsonl_gz(
+            self.hf / "newspapers/rmrb/data/articles/1950.jsonl.gz",
+            [
+                {"date": self.day, "page": 1, "ordinal": 0, "title": "待补文章", "content": "", "status": "missing", "pdf": None},
+                {"date": "1950-01-02", "page": 1, "ordinal": 0, "title": "已有文章", "content": "已有", "status": "available", "pdf": None},
+            ],
+        )
+        prefix = f"content/newspapers/rmrb/items/1950/01/{self.day}"
+        manifest = {
+            "formatVersion": "jojo-item-manifest/1",
+            "revision": 1,
+            "itemId": f"rmrb:{self.day}",
+            "availability": {"text": "missing", "pdf": "missing"},
+            "content": {"articles": [{
+                "id": self.article_id,
+                "order": 1,
+                "title": "待补文章",
+                "characterCount": 0,
+                "status": "missing",
+                "object": None,
+            }]},
+            "contentStats": {"articleCount": 1, "availableArticleCount": 0, "missingArticleCount": 1, "characterCount": 0},
+        }
+        publish._write_jox(self.delivery / f"{prefix}/manifest.jox", f"{prefix}/manifest.jox", manifest)
+        index_key = "content/newspapers/rmrb/index.jox"
+        publish._write_jox(
+            self.delivery / index_key,
+            index_key,
+            {"formatVersion": "jojo-delivery-index/1", "revision": 1, "availability": dataset["availability"]},
+        )
+
+    def test_accept_patches_canonical_viewer_and_availability(self):
+        patch = publish.prepare_canonical_patch(
+            self.decisions, lambda name: self.hf / name, self.output / "canonical",
+        )
+        self.assertEqual(patch.changed_article_count, 1)
+        self.assertTrue(patch.dataset_changed)
+        self.assertEqual(len(patch.files), 3)
+        item = publish._read_json_gz(patch.issue_files[self.day])
+        article = item["content"]["articles"][0]
+        self.assertEqual(article["contentState"], "available")
+        self.assertEqual(article["body"]["value"], "人工确认的正文。")
+        rows = publish._read_jsonl_gz(patch.files["newspapers/rmrb/data/articles/1950.jsonl.gz"])
+        self.assertEqual(rows[0]["status"], "available")
+        self.assertEqual(patch.dataset["availability"]["text"]["years"], {})
+
+    def test_delivery_publishes_fragment_before_mutable_markers(self):
+        canonical = publish.prepare_canonical_patch(
+            self.decisions, lambda name: self.hf / name, self.output / "canonical",
+        )
+        patch = publish.prepare_delivery_patch(
+            self.decisions, canonical, lambda name: self.delivery / name, self.output / "delivery",
+        )
+        self.assertEqual(patch.changed_article_count, 1)
+        manifest_key = f"content/newspapers/rmrb/items/1950/01/{self.day}/manifest.jox"
+        manifest = publish._decode_jox(patch.files[manifest_key], manifest_key)
+        descriptor = manifest["content"]["articles"][0]
+        self.assertEqual(descriptor["status"], "available")
+        self.assertTrue(descriptor["object"].startswith("articles/"))
+        self.assertEqual(manifest["contentStats"]["availableArticleCount"], 1)
+        self.assertIn("content/newspapers/rmrb/index.jox", patch.files)
+
+
+if __name__ == "__main__":
+    unittest.main()

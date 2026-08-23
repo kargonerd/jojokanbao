@@ -48,6 +48,9 @@ export type RmrbSyncStatus = {
 export type RmrbSyncResult = {
   success: true;
   recordCount: number;
+  acceptedCount: number;
+  canonicalChanges: number;
+  publishedChanges: number;
   sha256: string;
   results: Partial<Record<RmrbSyncTarget, object>>;
 };

@@ -12,6 +12,7 @@ from flask import Flask
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import rmrb_review_routes as routes
+from rmrb_review_publish import CanonicalPatch, DeliveryPatch
 
 
 def build_database(path: Path) -> None:
@@ -55,6 +56,8 @@ class RmrbReviewRoutesTest(unittest.TestCase):
             patch.object(routes, "WORKBENCH_DECISIONS", self.decisions),
             patch.object(routes, "SYNC_ROOT", self.sync_root),
             patch.object(routes, "SYNC_STATE", self.sync_root / "review-sync-state.json"),
+            patch.object(routes, "PUBLISH_ROOT", self.sync_root / "publish"),
+            patch.object(routes, "PUBLICATION_STATE", self.sync_root / "publication-state.json"),
         )
         for item in self.patches:
             item.start()
@@ -124,7 +127,11 @@ class RmrbReviewRoutesTest(unittest.TestCase):
                 "content": "确认正文。",
             },
         )
-        with patch.object(
+        canonical = CanonicalPatch(self.sync_root / "publish", accepted_count=1, changed_article_count=1)
+        delivery = DeliveryPatch(self.sync_root / "delivery", changed_article_count=1)
+        with patch.object(routes, "_prepare_publication", return_value=canonical), patch.object(
+            routes, "_prepare_delivery", return_value=delivery
+        ), patch.object(
             routes, "_sync_huggingface", return_value={"repoId": "owner/dataset", "commit": "abc"}
         ) as sync_hf, patch.object(
             routes, "_sync_b2", return_value={"remote": "remote/path", "sha256": "digest"}
@@ -137,6 +144,7 @@ class RmrbReviewRoutesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(payload["recordCount"], 1)
+        self.assertEqual(payload["canonicalChanges"], 1)
         sync_hf.assert_called_once()
         sync_b2.assert_called_once()
         with gzip.open(self.sync_root / "review-decisions.jsonl.gz", "rt", encoding="utf-8") as stream:

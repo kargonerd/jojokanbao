@@ -102,7 +102,10 @@ export function RmrbReviewPage() {
     try {
       const result = await rmrbReviewApi.sync(targets);
       const labels = targets.map((target) => target === "huggingface" ? "Hugging Face" : "B2");
-      setMessage(`已将 ${result.recordCount.toLocaleString()} 条人工记录同步到 ${labels.join("、")}。`);
+      setMessage(
+        `已发布 ${result.publishedChanges.toLocaleString()} 条新修订；` +
+        `${result.recordCount.toLocaleString()} 条复核记录已同步到 ${labels.join("、")}。`,
+      );
       setSyncStatus(await rmrbReviewApi.syncStatus());
     } catch (error) {
       setMessage(`同步失败：${(error as Error).message}`);
@@ -119,7 +122,7 @@ export function RmrbReviewPage() {
       <PageTopbar
         eyebrow="RMRB / HUMAN REVIEW"
         title="人民日报缺失正文"
-        description="只写 staging 决策，不直接修改语料或 Elasticsearch。"
+        description="Accept 先保存到本地；点击发布后增量更新正式数据。"
         aside={<span className="local-badge"><i />按日期升序</span>}
       />
       <main className="rmrb-review-workspace">
@@ -137,7 +140,7 @@ export function RmrbReviewPage() {
             待处理 {stats?.pending.toLocaleString() ?? "—"} · 已处理 {stats ? (stats.accept + stats.reject).toLocaleString() : "—"}
           </p>
           <div className="rmrb-review-sync">
-            <b>人工记录同步</b>
+            <b>发布修订数据</b>
             <div>
               <label>
                 <input
@@ -160,11 +163,11 @@ export function RmrbReviewPage() {
                 type="button"
                 disabled={syncBusy || !Object.values(syncTargets).some(Boolean)}
                 onClick={() => void syncDecisions()}
-              >{syncBusy ? "同步中…" : "立即同步"}</button>
+              >{syncBusy ? "发布中…" : "立即发布"}</button>
             </div>
             <small>
-              本地优先
-              {syncStatus?.state.targets && Object.keys(syncStatus.state.targets).length > 0 ? " · 已有远端备份" : " · 尚未同步"}
+              HF 更新规范数据 · B2 更新前端 Delivery
+              {syncStatus?.state.targets && Object.keys(syncStatus.state.targets).length > 0 ? " · 已发布过" : " · 尚未发布"}
             </small>
           </div>
           <div className="rmrb-review-list">
