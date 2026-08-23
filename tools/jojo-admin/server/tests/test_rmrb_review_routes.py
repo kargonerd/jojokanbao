@@ -129,6 +129,58 @@ class RmrbReviewRoutesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("requires", response.get_json()["error"])
 
+    def test_reject_is_staged_for_formal_publication(self):
+        response = self.client.post(
+            "/api/rmrb-review/decision",
+            json={
+                "date": "1950-01-01",
+                "page": 1,
+                "peopleDataOrdinal": 2,
+                "decision": "reject",
+                "reason": "确认是重复目录项",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        pending = json.loads(
+            (self.root / "manual-review-pending-publication.json").read_text(encoding="utf-8")
+        )["items"]
+        self.assertEqual(pending["1950-01-01|1|2"]["decision"], "reject")
+        self.assertEqual(pending["1950-01-01|1|2"]["targets"], ["huggingface", "b2"])
+
+    def test_reject_requires_a_catalog_error_reason(self):
+        response = self.client.post(
+            "/api/rmrb-review/decision",
+            json={
+                "date": "1950-01-01",
+                "page": 1,
+                "peopleDataOrdinal": 2,
+                "decision": "reject",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("reason", response.get_json()["error"])
+
+    def test_missing_tombstone_restores_legacy_reject_to_queue(self):
+        legacy = self.root / "manual-review-decisions-legacy.jsonl"
+        legacy.write_text(json.dumps({
+            "date": "1950-01-01",
+            "page": 1,
+            "peopleDataOrdinal": 2,
+            "decision": "reject",
+            "reason": "OCR 不完整",
+        }, ensure_ascii=False) + "\n", encoding="utf-8")
+        self.decisions.write_text(json.dumps({
+            "date": "1950-01-01",
+            "page": 1,
+            "peopleDataOrdinal": 2,
+            "decision": "missing",
+            "reason": "恢复人工复核",
+        }, ensure_ascii=False) + "\n", encoding="utf-8")
+
+        queue = self.client.get("/api/rmrb-review/queue?pendingOnly=1").get_json()
+        self.assertEqual(queue["total"], 2)
+        self.assertEqual(queue["items"][0]["title"], "较早稿")
+
     def test_publishes_formal_data_without_remote_annotation_ledger(self):
         self.client.post(
             "/api/rmrb-review/decision",

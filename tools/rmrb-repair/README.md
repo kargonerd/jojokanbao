@@ -88,6 +88,7 @@ and Hugging Face publication, public Jox objects under `delivery/`, a Hugging Fa
 `huggingface/newspapers/rmrb/`, and private repair audit material under
 `raw/newspapers/rmrb/repair-runs/`. Missing articles remain in Items with
 `contentState: "missing"`; Delivery keeps their descriptors with
-`object: null`. `manifest.json` records every file's size and SHA-256;
+`object: null`. Only confirmed invalid or duplicate catalog entries use
+`contentState: "rejected"`; failed OCR remains `missing`. `manifest.json` records every file's size and SHA-256;
 `_SUCCESS.json` is written last. Upload remains a separate, explicit operation
 after reviewing this dry run.

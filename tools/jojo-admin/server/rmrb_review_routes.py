@@ -107,6 +107,9 @@ def load_all_decisions() -> dict[tuple[str, int, int], dict[str, object]]:
                 if not all(name in row for name in ("date", "page", "peopleDataOrdinal")):
                     continue
                 decision = str(row.get("decision") or row.get("status") or "").lower()
+                if decision == "missing":
+                    decisions.pop(_key(row), None)
+                    continue
                 if decision in {"accept", "reject"}:
                     decisions[_key(row)] = {**row, "decision": decision}
         except (OSError, json.JSONDecodeError, TypeError, ValueError):
@@ -262,14 +265,12 @@ def _write_pending_publication(items: dict[str, dict[str, object]]) -> None:
 def _stage_publication(key: tuple[str, int, int], content: str, decision: str) -> None:
     items = _load_pending_publication()
     name = _publication_key(key)
-    if decision == "accept":
-        items[name] = {
-            "contentSha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
-            "targets": ["huggingface", "b2"],
-            "stagedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        }
-    else:
-        items.pop(name, None)
+    items[name] = {
+        "decision": decision,
+        "contentSha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        "targets": ["huggingface", "b2"],
+        "stagedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
     _write_pending_publication(items)
 
 
@@ -650,6 +651,8 @@ def sync_api():
                             continue
                         if current.get("contentSha256") != snapshot.get("contentSha256"):
                             continue
+                        if current.get("decision", "accept") != snapshot.get("decision", "accept"):
+                            continue
                         remaining = [
                             value for value in (current.get("targets") or [])
                             if value != target
@@ -741,6 +744,8 @@ def decision_api():
     reason = str(payload.get("reason") or "").strip()
     if decision == "accept" and not content:
         return jsonify({"success": False, "error": "accept requires a transcription"}), 400
+    if decision == "reject" and not reason:
+        return jsonify({"success": False, "error": "reject requires a confirmed catalog-error reason"}), 400
     row: dict[str, object] = {
         "date": key[0],
         "page": key[1],
@@ -748,7 +753,7 @@ def decision_api():
         "title": source.get("title"),
         "decision": decision,
         "content": content if decision == "accept" else "",
-        "reason": reason or ("人工复核确认" if decision == "accept" else "人工复核后拒绝"),
+        "reason": reason or "人工复核确认",
         "reviewedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "scope": "staging-only",
         "sourceCorpusModified": False,

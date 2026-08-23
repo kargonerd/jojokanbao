@@ -94,6 +94,20 @@ def _accepted(decisions: dict[tuple[str, int, int], dict[str, object]]) -> dict[
     return result
 
 
+def _reviewed(
+    decisions: dict[tuple[str, int, int], dict[str, object]],
+) -> dict[tuple[str, int, int], tuple[str, str]]:
+    result: dict[tuple[str, int, int], tuple[str, str]] = {}
+    for key, row in decisions.items():
+        decision = str(row.get("decision") or "").lower()
+        content = str(row.get("content") or "").strip()
+        if decision == "accept" and content:
+            result[key] = ("available", content)
+        elif decision == "reject":
+            result[key] = ("rejected", "")
+    return result
+
+
 def accepted_hashes(
     decisions: dict[tuple[str, int, int], dict[str, object]],
 ) -> dict[str, str]:
@@ -213,19 +227,22 @@ def prepare_canonical_patch(
     issue_keys: set[tuple[str, int, int]] | None = None,
 ) -> CanonicalPatch:
     """Patch HF canonical files in a local staging directory."""
-    accepted = _accepted(decisions)
-    patch = CanonicalPatch(root=output, accepted_count=len(accepted))
+    reviewed = _reviewed(decisions)
+    patch = CanonicalPatch(
+        root=output,
+        accepted_count=sum(state == "available" for state, _ in reviewed.values()),
+    )
     dataset_path = source_file("newspapers/rmrb/dataset.json")
     patch.dataset = json.loads(dataset_path.read_text(encoding="utf-8"))
-    candidates = set(accepted) if candidate_keys is None else set(accepted) & candidate_keys
+    candidates = set(reviewed) if candidate_keys is None else set(reviewed) & candidate_keys
     materialize = candidates if issue_keys is None else candidates & issue_keys
     if not candidates:
         return patch
 
-    by_year: dict[str, list[tuple[tuple[str, int, int], str]]] = {}
+    by_year: dict[str, list[tuple[tuple[str, int, int], str, str]]] = {}
     for key in candidates:
-        content = accepted[key]
-        by_year.setdefault(key[0][:4], []).append((key, content))
+        state, content = reviewed[key]
+        by_year.setdefault(key[0][:4], []).append((key, state, content))
 
     changed_days: set[str] = set()
     day_text_before: dict[str, bool] = {}
@@ -237,15 +254,15 @@ def prepare_canonical_patch(
             (str(row["date"]), int(row["page"]), int(row["ordinal"])): row
             for row in viewer_rows
         }
-        pending: list[tuple[tuple[str, int, int], str]] = []
-        for key, content in entries:
+        pending: list[tuple[tuple[str, int, int], str, str]] = []
+        for key, state, content in entries:
             viewer = viewer_index.get(key)
             if viewer is None:
                 raise ValueError(f"正式年度分片中找不到复核条目：{key[0]} 第{key[1]}版 #{key[2]}")
-            if str(viewer.get("status")) != "available" or str(viewer.get("content") or "") != content:
-                pending.append((key, content))
+            if str(viewer.get("status")) != state or str(viewer.get("content") or "") != content:
+                pending.append((key, state, content))
                 patch.changed_keys.add(key)
-        days = sorted({key[0] for key, _ in entries})
+        days = sorted({key[0] for key, _, _ in entries})
         for day in days:
             day_text_before[day] = any(
                 str(row.get("date")) == day and str(row.get("status")) == "available"
@@ -260,7 +277,7 @@ def prepare_canonical_patch(
             item = _read_json_gz(item_source)
             articles = {str(row["id"]): row for row in item["content"]["articles"]}
             item_changed = False
-            for key, content in item_entries:
+            for key, state, content in item_entries:
                 article = articles.get(_article_id(*key))
                 viewer = viewer_index.get(key)
                 if article is None or viewer is None:
@@ -268,13 +285,13 @@ def prepare_canonical_patch(
                 expected_title = str(decisions[key].get("title") or "").strip()
                 if expected_title and expected_title != str(article.get("title") or "").strip():
                     raise ValueError(f"正式数据标题不一致，拒绝覆盖：{key[0]} 第{key[1]}版 #{key[2]}")
-                if article.get("contentState") != "available" or article.get("body") != {"format": "text", "value": content}:
-                    article["contentState"] = "available"
+                if article.get("contentState") != state or article.get("body") != {"format": "text", "value": content}:
+                    article["contentState"] = state
                     article["body"] = {"format": "text", "value": content}
                     item_changed = True
                     patch.changed_article_count += 1
                 viewer["content"] = content
-                viewer["status"] = "available"
+                viewer["status"] = state
             if item_changed:
                 item["revision"] = int(item.get("revision") or 0) + 1
                 relative = Path(item_name)
@@ -359,15 +376,15 @@ def prepare_delivery_patch(
     candidate_keys: set[tuple[str, int, int]] | None = None,
 ) -> DeliveryPatch:
     """Build B2 Delivery fragments/manifests from the canonical patch."""
-    accepted = _accepted(decisions)
+    reviewed = _reviewed(decisions)
     patch = DeliveryPatch(root=output)
-    candidates = set(accepted) if candidate_keys is None else set(accepted) & candidate_keys
+    candidates = set(reviewed) if candidate_keys is None else set(reviewed) & candidate_keys
     if not candidates:
         return patch
-    by_day: dict[str, list[tuple[tuple[str, int, int], str]]] = {}
+    by_day: dict[str, list[tuple[tuple[str, int, int], str, str]]] = {}
     for key in candidates:
-        content = accepted[key]
-        by_day.setdefault(key[0], []).append((key, content))
+        state, content = reviewed[key]
+        by_day.setdefault(key[0], []).append((key, state, content))
     for day, entries in sorted(by_day.items()):
         item = _read_json_gz(canonical.issue_files[day])
         articles = {str(row["id"]): row for row in item["content"]["articles"]}
@@ -376,43 +393,56 @@ def prepare_delivery_patch(
         manifest = _decode_jox(delivery_file(manifest_key), manifest_key)
         descriptors = {str(row["id"]): row for row in manifest["content"]["articles"]}
         manifest_changed = False
-        for key, content in entries:
+        for key, state, content in entries:
             article_id = _article_id(*key)
             article = articles.get(article_id)
             descriptor = descriptors.get(article_id)
             if article is None or descriptor is None:
                 raise ValueError(f"Delivery 中找不到复核条目：{key[0]} 第{key[1]}版 #{key[2]}")
-            fragment = {
-                "formatVersion": "jojo-fragment/1",
-                "itemId": item["itemId"],
-                "fragmentId": article_id,
-                "type": "article",
-                "order": article["order"],
-                "title": article["title"],
-                "status": "available",
-                "body": {"format": "text", "value": content},
-                "assetRefs": article.get("assetRefs") or [],
-                "annotations": [],
-            }
-            clear = _json_bytes(fragment)
-            relative_object = f"articles/{_opaque_name(clear)}.jox"
-            object_key = f"{prefix}/{relative_object}"
-            target = output / object_key
-            size, digest = _write_jox(target, object_key, fragment)
-            desired = {
-                "id": article_id,
-                "order": article["order"],
-                "title": article["title"],
-                "characterCount": len(content),
-                "status": "available",
-                "object": relative_object,
-                "size": size,
-                "sha256": digest,
-            }
+            fragment_file: tuple[str, Path] | None = None
+            if state == "available":
+                fragment = {
+                    "formatVersion": "jojo-fragment/1",
+                    "itemId": item["itemId"],
+                    "fragmentId": article_id,
+                    "type": "article",
+                    "order": article["order"],
+                    "title": article["title"],
+                    "status": state,
+                    "body": {"format": "text", "value": content},
+                    "assetRefs": article.get("assetRefs") or [],
+                    "annotations": [],
+                }
+                clear = _json_bytes(fragment)
+                relative_object = f"articles/{_opaque_name(clear)}.jox"
+                object_key = f"{prefix}/{relative_object}"
+                target = output / object_key
+                size, digest = _write_jox(target, object_key, fragment)
+                fragment_file = (object_key, target)
+                desired = {
+                    "id": article_id,
+                    "order": article["order"],
+                    "title": article["title"],
+                    "characterCount": len(content),
+                    "status": state,
+                    "object": relative_object,
+                    "size": size,
+                    "sha256": digest,
+                }
+            else:
+                desired = {
+                    "id": article_id,
+                    "order": article["order"],
+                    "title": article["title"],
+                    "characterCount": 0,
+                    "status": "rejected",
+                    "object": None,
+                }
             if descriptor != desired:
                 descriptor.clear()
                 descriptor.update(desired)
-                patch.files[object_key] = target
+                if fragment_file:
+                    patch.files[fragment_file[0]] = fragment_file[1]
                 patch.changed_article_count += 1
                 manifest_changed = True
         if manifest_changed:
@@ -423,6 +453,7 @@ def prepare_delivery_patch(
                 "articleCount": len(rows),
                 "availableArticleCount": sum(row["status"] == "available" for row in rows),
                 "missingArticleCount": sum(row["status"] == "missing" for row in rows),
+                "rejectedArticleCount": sum(row["status"] == "rejected" for row in rows),
                 "characterCount": sum(int(row.get("characterCount") or 0) for row in rows),
             }
             target = output / manifest_key

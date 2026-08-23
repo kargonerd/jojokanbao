@@ -95,6 +95,10 @@ export function RmrbReviewPage() {
       setMessage("Accept 需要先粘贴正文。");
       return;
     }
+    if (decision === "reject" && !reason.trim()) {
+      setMessage("Reject 只用于确认无效的目录项，并且必须填写原因。");
+      return;
+    }
     setBusy(true);
     setMessage("");
     try {
@@ -232,13 +236,13 @@ export function RmrbReviewPage() {
               />
             </label>
             <label>
-              <span>复核说明（可选）</span>
+              <span>复核说明（Reject 时必填）</span>
               <input aria-label="复核说明" value={reason} onChange={(event) => setReason(event.target.value)} />
             </label>
             <div className="rmrb-review-action-dock">
               <div className="rmrb-review-actions">
                 <button className="primary-button" disabled={busy} onClick={() => void submit("accept")}>Accept · 暂存</button>
-                <button className="secondary-button" disabled={busy} onClick={() => void submit("reject")}>Reject · 暂存</button>
+                <button className="secondary-button" disabled={busy} onClick={() => void submit("reject")}>Reject · 目录无效</button>
               </div>
             </div>
             {message && <p className="rmrb-review-message">{message}</p>}

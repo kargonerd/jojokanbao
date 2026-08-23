@@ -186,6 +186,11 @@ def load_decisions(review_root: Path) -> dict[ArticleKey, Decision]:
                 except (KeyError, TypeError, ValueError):
                     continue
                 verdict = str(row.get("decision") or row.get("status") or "").lower()
+                if verdict == "missing":
+                    decisions.pop(key, None)
+                    image_details.pop(key, None)
+                    sources.pop(key, None)
+                    continue
                 if verdict not in {"accept", "reject"}:
                     continue
                 sources.setdefault(key, set()).add(path.name)
@@ -413,7 +418,11 @@ def build_article(
         body = ""
     else:
         body = ""
-    content_state = "available" if body else "missing"
+    content_state = (
+        "rejected" if decision and decision.decision == "reject"
+        else "available" if body
+        else "missing"
+    )
     suffix = stable_suffix("rmrb", day, page, ordinal)
     article_id = f"article:{suffix}"
     article = {
@@ -660,6 +669,7 @@ def build_delivery(output: Path, items: list[dict[str, Any]], availability: dict
                 "articleCount": len(article_descriptors),
                 "availableArticleCount": sum(row["status"] == "available" for row in article_descriptors),
                 "missingArticleCount": sum(row["status"] == "missing" for row in article_descriptors),
+                "rejectedArticleCount": sum(row["status"] == "rejected" for row in article_descriptors),
                 "characterCount": sum(row["characterCount"] for row in article_descriptors),
             },
             "assets": asset_descriptors,
@@ -837,7 +847,7 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
     write_json(hf_root / "dataset.json", dataset)
     newspapers_readme = """# 报刊数据集\n\n按报刊种类组织的数字报刊数据。\n\n- [`rmrb/`](rmrb/)：《人民日报》文章、整期数据、PDF 和图片。\n"""
     (hf_root.parent / "README.md").write_text(newspapers_readme, encoding="utf-8", newline="\n")
-    hf_readme = """# 人民日报数据集\n\n按人民数据目录整理的《人民日报》数字数据集，包含文章目录、正文、整期原始 PDF 和文章图片。\n\n- `data/articles/*.jsonl.gz`：按年份分片的逐篇文章表，可通过 Dataset Viewer 浏览并用于批量分析。\n- `items/`：按日期保存的完整报纸数据。\n- `assets/pdfs/YYYY/MM/YYYY-MM-DD.pdf`：可直接展示的整期原报。\n- `assets/images/`：按 SHA-256 命名的文章图片。\n- `status` 使用 `available`、`missing` 表示正文是否可用。\n"""
+    hf_readme = """# 人民日报数据集\n\n按人民数据目录整理的《人民日报》数字数据集，包含文章目录、正文、整期原始 PDF 和文章图片。\n\n- `data/articles/*.jsonl.gz`：按年份分片的逐篇文章表，可通过 Dataset Viewer 浏览并用于批量分析。\n- `items/`：按日期保存的完整报纸数据。\n- `assets/pdfs/YYYY/MM/YYYY-MM-DD.pdf`：可直接展示的整期原报。\n- `assets/images/`：按 SHA-256 命名的文章图片。\n- `status` 使用 `available`、`missing`、`rejected`；自动提取失败仍为 `missing`，仅确认无效的目录项为 `rejected`。\n"""
     (hf_root / "README.md").write_text(hf_readme, encoding="utf-8", newline="\n")
     assets_root = output / "canonical" / "newspapers" / "rmrb" / "assets"
     if assets_root.is_dir():

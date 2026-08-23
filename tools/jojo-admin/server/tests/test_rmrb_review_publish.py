@@ -138,6 +138,32 @@ class RmrbReviewPublishTest(unittest.TestCase):
         self.assertEqual(manifest["contentStats"]["availableArticleCount"], 1)
         self.assertIn("content/newspapers/rmrb/index.jox", patch.files)
 
+    def test_reject_uses_article_state_without_publishing_a_fragment(self):
+        self.decisions[self.key].update({"decision": "reject", "content": ""})
+        canonical = publish.prepare_canonical_patch(
+            self.decisions, lambda name: self.hf / name, self.output / "canonical",
+        )
+        item = publish._read_json_gz(canonical.issue_files[self.day])
+        article = item["content"]["articles"][0]
+        self.assertEqual(article["contentState"], "rejected")
+        self.assertEqual(article["body"]["value"], "")
+        rows = publish._read_jsonl_gz(
+            canonical.files["newspapers/rmrb/data/articles/1950.jsonl.gz"]
+        )
+        self.assertEqual(rows[0]["status"], "rejected")
+
+        delivery = publish.prepare_delivery_patch(
+            self.decisions, canonical, lambda name: self.delivery / name, self.output / "delivery",
+        )
+        manifest_key = f"content/newspapers/rmrb/items/1950/01/{self.day}/manifest.jox"
+        manifest = publish._decode_jox(delivery.files[manifest_key], manifest_key)
+        descriptor = manifest["content"]["articles"][0]
+        self.assertEqual(descriptor["status"], "rejected")
+        self.assertIsNone(descriptor["object"])
+        self.assertEqual(manifest["contentStats"]["rejectedArticleCount"], 1)
+        self.assertEqual(manifest["contentStats"]["missingArticleCount"], 0)
+        self.assertFalse(any("/articles/" in name for name in delivery.files))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -464,9 +464,11 @@ Dataset 和 Delivery Index，不再拆分年度 Availability 文件。顶层默�
 }
 ```
 
-报刊文章的 `contentState` 只允许 `available`、`missing`。有正文、实际图片或明确的
-`【图片】` 占位内容时为 `available`；没有可阅读正文时为 `missing`，但标题和目录位置仍须
-保留。人工修复方式和无法确认的原因属于私有审计信息，不扩展公开状态枚举。
+报刊文章的 `contentState` 允许 `available`、`missing`、`rejected`。有正文、实际图片或明确的
+`【图片】` 占位内容时为 `available`；尚无可阅读正文（包括自动提取失败、需要人工复核）时为
+`missing`；仅当权威目录条目确认错误、重复或并非独立文章时才使用 `rejected`。`rejected`
+不是 OCR 失败状态，正常缺失文章不得因此退出待复核队列。标题和目录位置在三种状态下均须保留。
+人工修复方式和无法确认的原因仍属于私有审计信息，不写入公开正文对象。
 
 `placements` 是文章与版面的唯一权威关系。`pages` 和 `articles` 不重复保存双向引用。`role` v1 允许：
 
@@ -706,7 +708,9 @@ Manifest 不包含整章正文，只描述对象：
 
 图片、音频、视频和原始期级 PDF 属于 `assets/`，不属于 `exports/`。
 
-报刊 Item Manifest 还必须直接表达两种能力；空正文或 rejected/missing 文章不算文本可用：
+报刊 Item Manifest 还必须直接表达两种能力；空正文或 `rejected`/`missing` 文章不算文本可用。
+文章描述符的 `status` 与 Canonical `contentState` 使用同一文章级枚举；`rejected` 描述符与
+`missing` 一样令 `object` 为 `null`，但在 `contentStats.rejectedArticleCount` 中单独计数：
 
 ```json
 {
@@ -714,7 +718,7 @@ Manifest 不包含整章正文，只描述对象：
   "content": {
     "schema": "jojo-content/newspaper/1",
     "articles": [
-      {"id": "article:1", "title": "示例", "status": "missing", "object": null}
+      {"id": "article:1", "title": "示例", "status": "rejected", "object": null}
     ]
   },
   "assets": [

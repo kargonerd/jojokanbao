@@ -4,6 +4,7 @@ export type JojoAssetType = "audio" | "image" | "pdf" | "video";
 export type JojoPublicationStatus = "draft" | "published";
 export type JojoContentAccess = "public" | "authenticated";
 export type JojoContentState = "available" | "missing";
+export type JojoArticleContentState = JojoContentState | "rejected";
 
 export interface JojoAdaptiveCalendarMembers {
   months?: string[];
@@ -69,10 +70,9 @@ export interface JojoDatasetIndex {
   description?: string;
   publicationStatus?: JojoPublicationStatus;
   access?: JojoContentAccess;
-  availability?: JojoItemAvailability;
+  availability?: JojoItemAvailability | JojoPeriodicalAvailability;
   items?: JojoDatasetItemSummary[];
   itemPath?: string;
-  availability?: JojoPeriodicalAvailability;
 }
 
 export interface JojoCanonicalDataset {
@@ -122,7 +122,7 @@ export interface JojoArticleDescriptor {
   order: number;
   title: string;
   characterCount: number;
-  status: JojoContentState;
+  status: JojoArticleContentState;
   object: string | null;
   size?: number;
   sha256?: string;
@@ -173,6 +173,7 @@ export interface JojoContentStats {
   articleCount?: number;
   availableArticleCount?: number;
   missingArticleCount?: number;
+  rejectedArticleCount?: number;
   characterCount: number;
   canonicalCompressedSize?: number;
 }
@@ -218,7 +219,7 @@ export interface JojoFragment {
   type: "article" | "chapter";
   order: number;
   title: string;
-  status?: JojoContentState;
+  status?: JojoArticleContentState;
   body: JojoBody;
   assetRefs: string[];
   annotations: JojoAnnotation[];
@@ -246,7 +247,7 @@ export interface JojoCanonicalArticle {
   order: number;
   title: string;
   authors: string[];
-  contentState?: JojoContentState;
+  contentState?: JojoArticleContentState;
   body: JojoBody;
   assetRefs: string[];
 }

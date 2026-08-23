@@ -84,6 +84,14 @@ describe("RmrbReviewPage", () => {
     expect(screen.getByLabelText("正文")).toHaveValue("");
   });
 
+  it("does not reject a normal missing article without a confirmed reason", async () => {
+    render(<RmrbReviewPage />);
+    await screen.findByRole("heading", { name: "第一篇" });
+    fireEvent.click(screen.getByRole("button", { name: "Reject · 目录无效" }));
+    expect(screen.getByText("Reject 只用于确认无效的目录项，并且必须填写原因。")).toBeInTheDocument();
+    expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
   it("publishes all staged data to HF and B2 with one click", async () => {
     render(<RmrbReviewPage />);
     fireEvent.click(await screen.findByRole("button", { name: "发布 3 条修订" }));

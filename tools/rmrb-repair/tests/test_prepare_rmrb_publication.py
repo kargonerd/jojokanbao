@@ -78,6 +78,37 @@ def test_image_decision_creates_hashed_asset(tmp_path: Path) -> None:
     assert (output / f"canonical/newspapers/rmrb/assets/images/{digest}.jpg").read_bytes() == b"fake-jpeg"
 
 
+def test_confirmed_reject_has_distinct_article_state(tmp_path: Path) -> None:
+    review = tmp_path / "review"
+    merged = review / "merged.jsonl"
+    write_jsonl(merged, [{
+        "date": "1950-01-01", "page": 1, "ordinal": 0,
+        "title": "重复目录项", "content": "",
+    }])
+    write_jsonl(review / "manual-review-decisions-workbench.jsonl", [{
+        "date": "1950-01-01", "page": 1, "peopleDataOrdinal": 0,
+        "decision": "reject", "reason": "确认重复",
+    }])
+    output = tmp_path / "output"
+    args = MODULE.parser().parse_args([
+        "--merged", str(merged), "--review-root", str(review),
+        "--output", str(output), "--skip-audit", "--pdf-root", str(tmp_path / "pdfs"),
+    ])
+    report = MODULE.prepare(args)
+    assert report["articleStatuses"] == {"rejected": 1}
+    with gzip.open(
+        output / "canonical/newspapers/rmrb/items/1950/01/1950-01-01.json.gz",
+        "rt", encoding="utf-8",
+    ) as stream:
+        item = json.load(stream)
+    assert item["content"]["articles"][0]["contentState"] == "rejected"
+    manifest_key = "content/newspapers/rmrb/items/1950/01/1950-01-01/manifest.jox"
+    protected = (output / "delivery" / manifest_key).read_bytes()
+    manifest = json.loads(gzip.decompress(MODULE.transform_jox_bytes(protected, manifest_key)))
+    assert manifest["content"]["articles"][0]["status"] == "rejected"
+    assert manifest["contentStats"]["rejectedArticleCount"] == 1
+
+
 def test_date_range_flushes_last_selected_day(tmp_path: Path) -> None:
     review = tmp_path / "review"
     merged = review / "merged.jsonl"
