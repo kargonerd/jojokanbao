@@ -30,10 +30,16 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
   return (
     <div className={`h-full overflow-y-auto ${platformRedesign ? "bg-[var(--app-canvas)]" : "bg-paper"}`}>
       <div className="max-w-[960px] mx-auto px-5 py-7 md:px-10">
-        <div className="p-8 md:p-10 border-4 border-red shadow-[inset_0_0_0_8px_var(--color-paper),inset_0_0_0_10px_var(--color-red)]">
+        <div className={platformRedesign
+          ? "border border-rule border-t-[3px] border-t-red bg-paper p-8 shadow-[4px_4px_0_rgba(139,26,26,.08)] md:p-10"
+          : "p-8 md:p-10 border-4 border-red shadow-[inset_0_0_0_8px_var(--color-paper),inset_0_0_0_10px_var(--color-red)]"
+        }>
 
           {/* 关于与反馈 */}
-          <h1 className="text-2xl font-bold tracking-wider text-ink border-t border-rule-dark border-b border-b-rule pt-2.5 pb-2.5 mb-4">{platformRedesign ? "关于 JOJO 看报" : "反馈"}</h1>
+          <h1 className={platformRedesign
+            ? "mb-4 border-b border-b-rule pb-3 text-2xl font-bold tracking-wider text-ink"
+            : "text-2xl font-bold tracking-wider text-ink border-t border-rule-dark border-b border-b-rule pt-2.5 pb-2.5 mb-4"
+          }>{platformRedesign ? "关于 JOJO 看报" : "反馈"}</h1>
           <p className="text-ink/80 leading-8">
             网站为业余时间开发制作，因此较为粗糙，如果网站有任何问题，或者希望对网站提出建议，可以进入QQ群:
             <strong className="text-red"> 974380749 </strong> 进行反馈，也可以在B站
