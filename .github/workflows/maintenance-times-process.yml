@@ -1,0 +1,194 @@
+name: Maintenance · Times Canonical and B2 Delivery
+
+on:
+  schedule:
+    - cron: "5,15,25,35,45,55 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: times-hf-dataset-writer
+  cancel-in-progress: false
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    environment: maintenance
+    timeout-minutes: 9
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_TIMES_DATASET_REPO: ${{ secrets.HF_TIMES_DATASET_REPO || secrets.HF_DATASET_REPO }}
+      B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+      B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+      JOJO_DELIVERY_REMOTE: jojo-b2:${{ secrets.B2_BUCKET || 'jojo-newspaper' }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "24.15.0"
+          cache: pnpm
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Validate publication configuration
+        run: |
+          test -n "$HF_TOKEN" || (echo "HF_TOKEN is not configured" >&2 && exit 1)
+          test -n "$HF_TIMES_DATASET_REPO" || (echo "HF_TIMES_DATASET_REPO is not configured" >&2 && exit 1)
+          test -n "$B2_KEY_ID" || (echo "B2_KEY_ID is not configured" >&2 && exit 1)
+          test -n "$B2_APPLICATION_KEY" || (echo "B2_APPLICATION_KEY is not configured" >&2 && exit 1)
+
+      - name: Install locked dependencies and rclone
+        run: |
+          pnpm install --frozen-lockfile
+          python -m pip install "huggingface_hub==0.34.4"
+          sudo apt-get update
+          sudo apt-get install -y rclone
+
+      - name: Build Times pipeline
+        run: pnpm --filter @jojo/times-pipeline build
+
+      - name: Download HF Raw and Canonical snapshot
+        run: |
+          python - <<'PY'
+          import os
+          from huggingface_hub import HfApi, snapshot_download
+
+          repo = os.environ["HF_TIMES_DATASET_REPO"]
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          revision = api.repo_info(repo_id=repo, repo_type="dataset").sha
+          snapshot_download(
+              repo_id=repo,
+              repo_type="dataset",
+              revision=revision,
+              local_dir=os.path.join(os.environ["RUNNER_TEMP"], "jojo-times"),
+              allow_patterns=["raw/**", "canonical/**"],
+              token=os.environ["HF_TOKEN"],
+          )
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              output.write(f"TIMES_RAW_REVISION={revision}\n")
+          PY
+
+      - name: Resolve latest complete Raw run
+        run: |
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const root = path.join(process.env.RUNNER_TEMP, "jojo-times", "raw", "news", "runs");
+          const files = [];
+          function walk(dir) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const target = path.join(dir, entry.name);
+              if (entry.isDirectory()) walk(target);
+              else if (entry.isFile() && entry.name.endsWith(".json")) files.push(target);
+            }
+          }
+          walk(root);
+          const run = files.sort().reverse().find((file) => JSON.parse(fs.readFileSync(file, "utf8")).complete);
+          if (!run) throw new Error("HF Raw has no complete Times run manifest");
+          fs.appendFileSync(process.env.GITHUB_ENV, `TIMES_RUN_MANIFEST=${run}\n`);
+          NODE
+
+      - name: Build and commit Canonical
+        run: |
+          node tools/times-pipeline/dist/src/process-cli.js \
+            --config tools/times-pipeline/sources.v2.json \
+            --output "$RUNNER_TEMP/jojo-times" \
+            --run-manifest "$TIMES_RUN_MANIFEST" \
+            --raw-revision "$TIMES_RAW_REVISION" \
+            > "$RUNNER_TEMP/process-result.json"
+          python - <<'PY'
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+          from huggingface_hub import HfApi
+
+          run = json.loads(Path(os.environ["TIMES_RUN_MANIFEST"]).read_text())
+          result = json.loads((Path(os.environ["RUNNER_TEMP"]) / "process-result.json").read_text())
+          canonical = Path(os.environ["RUNNER_TEMP"]) / "jojo-times" / "canonical"
+          staging = Path(os.environ["RUNNER_TEMP"]) / "canonical-staging"
+          for source in result["sources"]:
+              source_id = source["sourceId"]
+              relative_files = [Path("news") / source_id / "dataset.json"]
+              relative_files.extend(
+                  Path("news") / source_id / "articles" / date[:4] / date[5:7] / f"{date}.jsonl.gz"
+                  for date in source["dates"]
+              )
+              for relative in relative_files:
+                  target = staging / relative
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copy2(canonical / relative, target)
+          run_report = Path(result["report"])
+          report_relative = run_report.relative_to(canonical)
+          (staging / report_relative).parent.mkdir(parents=True, exist_ok=True)
+          shutil.copy2(run_report, staging / report_relative)
+          HfApi(token=os.environ["HF_TOKEN"]).upload_folder(
+              repo_id=os.environ["HF_TIMES_DATASET_REPO"],
+              repo_type="dataset",
+              folder_path=staging,
+              path_in_repo="canonical",
+              commit_message=f"times canonical {run['runId']}",
+          )
+          PY
+
+      - name: Configure B2 and restore mutable Delivery pointers
+        run: |
+          rclone config create jojo-b2 b2 account "$B2_KEY_ID" key "$B2_APPLICATION_KEY" --non-interactive
+          mkdir -p "$RUNNER_TEMP/previous-delivery"
+          if rclone lsf "$JOJO_DELIVERY_REMOTE/content/newspapers/times" --files-only --include index.jox | grep -qx 'index.jox'; then
+            rclone copyto "$JOJO_DELIVERY_REMOTE/content/newspapers/times/index.jox" "$RUNNER_TEMP/previous-delivery/index.jox"
+          fi
+          if rclone lsf "$JOJO_DELIVERY_REMOTE" --files-only --include catalog.jox | grep -qx 'catalog.jox'; then
+            rclone copyto "$JOJO_DELIVERY_REMOTE/catalog.jox" "$RUNNER_TEMP/previous-delivery/catalog.jox"
+          fi
+
+      - name: Build Delivery with historical index
+        run: |
+          node tools/times-pipeline/dist/src/delivery-cli.js \
+            --config tools/times-pipeline/sources.v2.json \
+            --output "$RUNNER_TEMP/jojo-times" \
+            --run-manifest "$TIMES_RUN_MANIFEST" \
+            --delivery-output "$RUNNER_TEMP/jojo-times-delivery" \
+            --previous-index "$RUNNER_TEMP/previous-delivery/index.jox" \
+            --previous-catalog "$RUNNER_TEMP/previous-delivery/catalog.jox" \
+            > "$RUNNER_TEMP/delivery-result.json"
+
+      - name: Publish B2 Delivery in commit order
+        run: |
+          delivery="$RUNNER_TEMP/jojo-times-delivery"
+          remote="$JOJO_DELIVERY_REMOTE/content/newspapers/times"
+          rclone copy "$delivery/content/newspapers/times/items" "$remote/items" \
+            --include '**/articles/*.jox' --include '**/assets/*.jox' --exclude '*' \
+            --checksum --transfers 16 --header-upload 'Cache-Control: public, max-age=31536000, immutable'
+          rclone copy "$delivery/content/newspapers/times/items" "$remote/items" \
+            --include '**/manifest.jox' --exclude '*' \
+            --checksum --transfers 8 --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
+          rclone copyto "$delivery/content/newspapers/times/index.jox" "$remote/index.jox" \
+            --checksum --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
+          rclone copyto "$delivery/catalog.jox" "$JOJO_DELIVERY_REMOTE/catalog.jox" \
+            --checksum --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
+
+      - name: Publish processing summary
+        if: always()
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("node:fs");
+          const path = process.env.RUNNER_TEMP + "/delivery-result.json";
+          console.log("## Times Canonical and Delivery\n");
+          if (!fs.existsSync(path)) {
+            console.log("Delivery result is missing.");
+            process.exit(0);
+          }
+          const report = JSON.parse(fs.readFileSync(path, "utf8"));
+          console.log(`- Articles: ${report.articles}`);
+          console.log(`- Sources: ${report.sourceHealth.length}`);
+          console.log(`- Unavailable cases: ${report.unavailableCaseCount}`);
+          console.log(`- Delivery index: \`${report.indexObject}\``);
+          NODE

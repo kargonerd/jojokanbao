@@ -70,7 +70,7 @@ export class JoxClient {
     signal?: AbortSignal,
     cache: RequestCache = "default",
   ): Promise<Uint8Array> {
-    const response = await this.fetchFn(this.url(objectKey), { signal, cache });
+    const response = await this.fetchFn(this.url(objectKey), { cache, ...(signal ? { signal } : {}) });
     if (!response.ok) {
       throw new Error(`Jox object returned HTTP ${response.status}: ${objectKey}`);
     }

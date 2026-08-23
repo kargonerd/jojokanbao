@@ -45,7 +45,8 @@
   },
   "pnpm": {
     "patchedDependencies": {
-      "pdfjs-dist@5.7.284": "frontend/patches/pdfjs-dist@5.7.284.patch"
+      "pdfjs-dist@5.7.284": "frontend/patches/pdfjs-dist@5.7.284.patch",
+      "rsshub@1.0.0-master.5151c32": "tools/times-pipeline/patches/rsshub@1.0.0-master.5151c32.patch"
     }
   }
 }

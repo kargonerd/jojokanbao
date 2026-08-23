@@ -32,7 +32,6 @@ jobs:
       EDGEONE_PROJECT_NAME: ${{ vars.EDGEONE_PROJECT_NAME || 'jojo-reader' }}
       EDGEONE_DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'production' }}
       EDGEONE_UPLOAD_FROM_PATH: ./.edgeone/web-deploy/
-      JOJOKANBAO_RSSHUB_ACCESS_KEY: ${{ secrets.JOJOKANBAO_RSSHUB_ACCESS_KEY }}
       # Merging redesign code is production-safe. The current site remains active
       # until this repository variable is explicitly enabled for a Reader build.
       VITE_ENABLE_PLATFORM_REDESIGN: ${{ vars.VITE_ENABLE_PLATFORM_REDESIGN || 'false' }}
@@ -41,6 +40,7 @@ jobs:
       VITE_ENABLE_TIMES: ${{ vars.VITE_ENABLE_TIMES || 'true' }}
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      VITE_TIMES_CDN_BASE: ${{ vars.VITE_TIMES_CDN_BASE || 'https://blacknews.jojokanbao.cn/' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -53,12 +53,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Configure protected Times source
-        run: |
-          test -n "$JOJOKANBAO_RSSHUB_ACCESS_KEY" || (echo "JOJOKANBAO_RSSHUB_ACCESS_KEY is not configured" >&2 && exit 1)
-          pnpm dlx edgeone@1.6.14 makers link --name "$EDGEONE_PROJECT_NAME" --token "$EDGEONE_API_TOKEN"
-          pnpm dlx edgeone@1.6.14 makers env set JOJOKANBAO_RSSHUB_ACCESS_KEY "$JOJOKANBAO_RSSHUB_ACCESS_KEY" --token "$EDGEONE_API_TOKEN"
 
       - name: Build web
         run: pnpm --filter @jojo/web build

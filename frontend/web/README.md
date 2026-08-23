@@ -25,11 +25,12 @@ VITE_ENABLE_RAG=false
 VITE_ENABLE_TIMES=false
 ```
 
-Web 业务接口统一使用 Reader 同源路径。Times 使用 `/api/v1/times/*`；RAG 馆藏直接
-读取已发布的 Jox 内容，Agent 请求走 `/gateway/ask`，再由 Reader Cloud Function
-转发到国际 Agent。浏览器不再配置模块 API Base 或直连 Agent 域名。AI 与时事都只向
-已登录读者显示并在服务端校验 Supabase access token。本地 Vite 服务器使用
-服务端 `JOJO_AGENT_GATEWAY_URL` 代理同一个 `/gateway/ask` 路径。
+Times 与 RAG 馆藏都直接读取 B2 CDN 已发布的 Jox 内容；Times 默认使用
+`VITE_CONTENT_CDN_BASE`，也可由 `VITE_TIMES_CDN_BASE` 单独覆盖。Agent 请求走
+`/gateway/ask`，再由 Reader Cloud Function 转发到国际 Agent。浏览器不配置模块 API
+Base 或直连 Agent 域名。AI 与时事入口仍只向已登录读者显示；账号、Agent 和划线评论等
+写操作继续校验 Supabase access token。本地 Vite 服务器使用服务端
+`JOJO_AGENT_GATEWAY_URL` 代理同一个 `/gateway/ask` 路径。
 
 ## 划线评论
 

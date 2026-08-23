@@ -1,0 +1,210 @@
+name: Maintenance · Times capture to HF Raw
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      since_hours:
+        description: Discovery window in hours
+        type: string
+        default: "24"
+        required: true
+      sources:
+        description: Optional comma-separated source ids; empty runs all enabled sources
+        type: string
+        default: ""
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: times-hf-dataset-writer
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    environment: maintenance
+    timeout-minutes: 9
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_TIMES_DATASET_REPO: ${{ secrets.HF_TIMES_DATASET_REPO || secrets.HF_DATASET_REPO }}
+      TIMES_SINCE_HOURS: ${{ inputs.since_hours || '24' }}
+      TIMES_SOURCES: ${{ inputs.sources || '' }}
+      JOJO_TIMES_PROXY_URI: ${{ secrets.JOJO_TIMES_PROXY_URI }}
+      JOJO_TIMES_PROXY_SUBSCRIPTION: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "24.15.0"
+          cache: pnpm
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Validate HF configuration
+        run: |
+          test -n "$HF_TOKEN" || (echo "HF_TOKEN is not configured" >&2 && exit 1)
+          test -n "$HF_TIMES_DATASET_REPO" || (echo "HF_TIMES_DATASET_REPO is not configured" >&2 && exit 1)
+
+      - name: Install locked pipeline dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          python -m pip install "huggingface_hub==0.34.4"
+          python -m pip install -r tools/times-pipeline/requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Restore browser archive state from HF
+        run: |
+          python - <<'PY'
+          import os
+          from huggingface_hub import hf_hub_download
+          from huggingface_hub.errors import EntryNotFoundError
+
+          try:
+              hf_hub_download(
+                  repo_id=os.environ["HF_TIMES_DATASET_REPO"],
+                  repo_type="dataset",
+                  filename="raw/web-archives/times/state.json.gz",
+                  local_dir=os.path.join(os.environ["RUNNER_TEMP"], "jojo-times"),
+                  token=os.environ["HF_TOKEN"],
+              )
+          except EntryNotFoundError:
+              pass
+          PY
+
+      - name: Start pinned Mihomo for a configured subscription
+        if: env.JOJO_TIMES_PROXY_SUBSCRIPTION != ''
+        env:
+          MIHOMO_VERSION: 1.19.30
+          MIHOMO_SHA256: cf06ce2c7d1421bdbda14ee4a5b6046672dc35ebf8eecd8e77504ec3c0ed9a84
+        run: |
+          mkdir -p "$RUNNER_TEMP/mihomo"
+          curl -fsSL "https://github.com/MetaCubeX/mihomo/releases/download/v${MIHOMO_VERSION}/mihomo-linux-amd64-v${MIHOMO_VERSION}.gz" \
+            -o "$RUNNER_TEMP/mihomo/mihomo.gz"
+          echo "$MIHOMO_SHA256  $RUNNER_TEMP/mihomo/mihomo.gz" | sha256sum -c -
+          gzip -d "$RUNNER_TEMP/mihomo/mihomo.gz"
+          chmod 700 "$RUNNER_TEMP/mihomo/mihomo"
+          python tools/times-pipeline/prepare_proxy.py --output "$RUNNER_TEMP/mihomo/config.yaml"
+          nohup "$RUNNER_TEMP/mihomo/mihomo" -d "$RUNNER_TEMP/mihomo" -f "$RUNNER_TEMP/mihomo/config.yaml" \
+            > "$RUNNER_TEMP/mihomo/runtime.log" 2>&1 &
+          for attempt in $(seq 1 12); do
+            if curl --proxy http://127.0.0.1:7890 --max-time 8 -fsS -o /dev/null https://www.gstatic.com/generate_204; then
+              echo "JOJO_TIMES_PROXY_URI=http://127.0.0.1:7890" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Mihomo did not expose a healthy local proxy" >&2
+          exit 1
+
+      - name: Check out pinned BPC extension
+        env:
+          BPC_REVISION: 587dcfd3d3b18652607e37d3d401430e85f8c8ec
+        run: |
+          git init "$RUNNER_TEMP/bpc-source"
+          git -C "$RUNNER_TEMP/bpc-source" remote add origin https://gitflic.ru/project/magnolia1234/bpc_uploads.git
+          git -C "$RUNNER_TEMP/bpc-source" fetch --depth 1 origin "$BPC_REVISION"
+          git -C "$RUNNER_TEMP/bpc-source" checkout --detach FETCH_HEAD
+          unzip -q "$RUNNER_TEMP/bpc-source/bypass-paywalls-chrome-clean-master.zip" -d "$RUNNER_TEMP/bpc"
+          echo "BPC_EXTENSION_PATH=$RUNNER_TEMP/bpc/bypass-paywalls-chrome-clean-master" >> "$GITHUB_ENV"
+          echo "BPC_REVISION=$BPC_REVISION" >> "$GITHUB_ENV"
+
+      - name: Verify and build Times pipeline
+        run: |
+          pnpm --filter @jojo/times-pipeline typecheck
+          pnpm --filter @jojo/times-pipeline test
+          pnpm --filter @jojo/times-pipeline build
+
+      - name: Capture all enabled sources
+        run: |
+          args=(
+            --config tools/times-pipeline/sources.v2.json
+            --output "$RUNNER_TEMP/jojo-times"
+            --since-hours "$TIMES_SINCE_HOURS"
+            --workers 4
+          )
+          if [ -n "$TIMES_SOURCES" ]; then
+            args+=(--sources "$TIMES_SOURCES")
+          fi
+          node tools/times-pipeline/dist/src/capture-cli.js "${args[@]}" > "$RUNNER_TEMP/capture-result.json"
+
+      - name: Resolve capture manifest
+        run: |
+          node -e 'const fs=require("node:fs");const result=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+"/capture-result.json","utf8"));fs.appendFileSync(process.env.GITHUB_ENV,"TIMES_RUN_MANIFEST="+result.runManifest+"\n")'
+
+      - name: Capture up to 50 replayable Chromium pages
+        id: browser_archive
+        continue-on-error: true
+        run: |
+          args=(
+            --config tools/times-pipeline/sources.v2.json
+            --output "$RUNNER_TEMP/jojo-times"
+            --run-manifest "$TIMES_RUN_MANIFEST"
+            --engine browser
+            --max-pages 50
+            --workers 8
+            --timeout 25
+            --maximum-response-bytes 5000000
+            --maximum-page-bytes 25000000
+            --refresh-hours 24
+            --retry-hours 2
+            --browser-extension-path "$BPC_EXTENSION_PATH"
+            --browser-extension-revision "$BPC_REVISION"
+          )
+          if [ -n "$JOJO_TIMES_PROXY_URI" ]; then
+            args+=(--proxy-server "$JOJO_TIMES_PROXY_URI")
+          fi
+          python tools/times-pipeline/archive_v2.py "${args[@]}" > "$RUNNER_TEMP/archive-result.json"
+
+      - name: Commit Raw as one HF Dataset revision
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from huggingface_hub import HfApi
+
+          root = Path(os.environ["RUNNER_TEMP"])
+          result = json.loads((root / "capture-result.json").read_text())
+          HfApi(token=os.environ["HF_TOKEN"]).upload_folder(
+              repo_id=os.environ["HF_TIMES_DATASET_REPO"],
+              repo_type="dataset",
+              folder_path=root / "jojo-times" / "raw",
+              path_in_repo="raw",
+              commit_message=f"times raw {result['runId']}",
+          )
+          PY
+
+      - name: Publish capture summary
+        if: always()
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("node:fs");
+          const path = process.env.RUNNER_TEMP + "/capture-result.json";
+          console.log("## Times Raw capture\n");
+          if (!fs.existsSync(path)) {
+            console.log("Capture result is missing.");
+            process.exit(0);
+          }
+          const report = JSON.parse(fs.readFileSync(path, "utf8"));
+          const rows = report.results || [];
+          console.log(`- Run: \`${report.runId}\``);
+          console.log(`- Sources: ${rows.filter((row) => row.status === "ok").length}/${rows.length}`);
+          console.log(`- Candidates: ${rows.reduce((sum, row) => sum + (row.output?.candidates || 0), 0)}`);
+          console.log(`- Errors: ${rows.filter((row) => row.status === "error").length}`);
+          const archivePath = process.env.RUNNER_TEMP + "/archive-result.json";
+          if (fs.existsSync(archivePath)) {
+            const archive = JSON.parse(fs.readFileSync(archivePath, "utf8"));
+            console.log(`- Chromium archive: ${archive.selected} pages, ${archive.articleFailures} failures, ${archive.extractedFullBodies} full bodies, ${(archive.waczBytes / 1024 / 1024).toFixed(1)} MiB`);
+          } else {
+            console.log("- Chromium archive: failed or skipped; Raw discovery was still committed");
+          }
+          NODE

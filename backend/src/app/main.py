@@ -8,7 +8,6 @@ from app.core.http_middleware import (
     UnhandledErrorMiddleware,
     install_exception_handlers,
 )
-from app.times.router import router as times_router
 
 
 settings = get_settings()
@@ -30,4 +29,3 @@ app.add_middleware(
 app.add_middleware(ResponseHeadersMiddleware)
 install_exception_handlers(app)
 app.include_router(account_router, prefix="/v1")
-app.include_router(times_router, prefix="/v1/times")

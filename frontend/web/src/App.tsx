@@ -68,6 +68,11 @@ function AuthenticatedRoute({ children }: { children: ReactNode }) {
   return children;
 }
 
+function TimesAccessRoute({ children }: { children: ReactNode }) {
+  const localAudit = import.meta.env.DEV && import.meta.env.VITE_TIMES_AUDIT_PUBLIC === "true";
+  return localAudit ? children : <AuthenticatedRoute>{children}</AuthenticatedRoute>;
+}
+
 function archiveRoute(platformRedesign: boolean) {
   return (
     <Route path={ARCHIVE_ROOT} element={<Layout platformRedesign={platformRedesign} />}>
@@ -134,7 +139,7 @@ function RedesignedRoutes() {
             <Route path="rag/*" element={<AuthenticatedRoute><LazyRoute><RagRoutes /></LazyRoute></AuthenticatedRoute>} />
           )}
           {rollout.times && (
-            <Route path="times/*" element={<AuthenticatedRoute><LazyRoute><TimesRoutes /></LazyRoute></AuthenticatedRoute>} />
+            <Route path="times/*" element={<TimesAccessRoute><LazyRoute><TimesRoutes /></LazyRoute></TimesAccessRoute>} />
           )}
         </Route>
 
