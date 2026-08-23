@@ -72,8 +72,11 @@ function TimesAccessRoute({ children }: { children: ReactNode }) {
 function AccountRoute() {
   const initialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
-  const account = <AccountEntry />;
-  return initialized && userId ? <AppLayout>{account}</AppLayout> : account;
+  return (
+    <AppLayout showHeader={initialized && Boolean(userId)}>
+      <AccountEntry />
+    </AppLayout>
+  );
 }
 
 function archiveRoute(platformRedesign: boolean) {

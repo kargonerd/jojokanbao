@@ -1,8 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App, AppRoutes } from "../src/App";
-import { buildAppNavigationItems } from "../src/shell/AppLayout";
+import { AppLayout, buildAppNavigationItems } from "../src/shell/AppLayout";
 
 const appPdfMocks = vi.hoisted(() => ({
   usePdfDocument: vi.fn(),
@@ -135,6 +136,29 @@ describe("JOJO Web routes and Archive homepage", () => {
 });
 
 describe("JOJO Web navigation", () => {
+  it("keeps account form state mounted when the authenticated header appears", () => {
+    function StatefulAccountForm() {
+      const [step, setStep] = useState("验证码");
+      return <button type="button" onClick={() => setStep("设置新密码")}>{step}</button>;
+    }
+
+    const view = render(
+      <MemoryRouter>
+        <AppLayout showHeader={false}><StatefulAccountForm /></AppLayout>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "验证码" }));
+
+    view.rerender(
+      <MemoryRouter>
+        <AppLayout showHeader><StatefulAccountForm /></AppLayout>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("button", { name: "设置新密码" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "主导航" })).toBeTruthy();
+  });
+
   it("shows AI and Times only to signed-in readers and keeps About last", () => {
     expect(buildAppNavigationItems(false, { rag: true, times: true }).map((item) => item.label)).toEqual([
       "首页", "资料库", "搜索", "关于",

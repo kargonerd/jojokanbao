@@ -84,12 +84,13 @@ function DesktopSettingsAction() {
   );
 }
 
-function DesktopAppLayout({ children }: { children?: ReactNode } = {}) {
+function DesktopAppLayout({ children, showHeader = true }: { children?: ReactNode; showHeader?: boolean } = {}) {
   return (
     <AppLayout
       className="desktop-shell"
       headerActions={<DesktopSettingsAction />}
       navigationItems={useDesktopNavigation()}
+      showHeader={showHeader}
     >
       {children}
     </AppLayout>
@@ -99,8 +100,11 @@ function DesktopAppLayout({ children }: { children?: ReactNode } = {}) {
 function DesktopAccountRoute() {
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
-  const account = <AccountEntry />;
-  return accountInitialized && userId ? <DesktopAppLayout>{account}</DesktopAppLayout> : account;
+  return (
+    <DesktopAppLayout showHeader={accountInitialized && Boolean(userId)}>
+      <AccountEntry />
+    </DesktopAppLayout>
+  );
 }
 
 function DesktopArchiveLayout() {

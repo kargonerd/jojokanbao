@@ -21,25 +21,9 @@ export function AccountPage() {
   const requestedReturnTo = searchParams.get("returnTo");
   const hasReturnTo = requestedReturnTo !== null;
   const returnTo = safeReturnPath(requestedReturnTo);
-  const [mode, setMode] = useState<AccountMode>("login");
-  const [loginEmail, setLoginEmail] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [invitationCode, setInvitationCode] = useState("");
-  const [registrationEmail, setRegistrationEmail] = useState("");
-  const [registrationPassword, setRegistrationPassword] = useState("");
-  const [registrationPasswordConfirmation, setRegistrationPasswordConfirmation] = useState("");
-  const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
-  const [confirmationCode, setConfirmationCode] = useState("");
-  const [recoveryStep, setRecoveryStep] = useState<RecoveryStep>("email");
-  const [recoveryEmail, setRecoveryEmail] = useState("");
-  const [recoveryCode, setRecoveryCode] = useState("");
-  const [recoveryPassword, setRecoveryPassword] = useState("");
-  const [recoveryPasswordConfirmation, setRecoveryPasswordConfirmation] = useState("");
-  const [localError, setLocalError] = useState<string | null>(null);
-  const [resendSeconds, setResendSeconds] = useState(0);
-  const [authTransitioning, setAuthTransitioning] = useState(false);
   const {
     user,
+    recoveryPending,
     signIn,
     signUp,
     confirmSignUp,
@@ -52,7 +36,24 @@ export function AccountPage() {
     notice,
     clearFeedback,
   } = useAuthStore();
-
+  const startsInPasswordRecovery = Boolean(user && recoveryPending);
+  const [mode, setMode] = useState<AccountMode>(() => startsInPasswordRecovery ? "recover" : "login");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [invitationCode, setInvitationCode] = useState("");
+  const [registrationEmail, setRegistrationEmail] = useState("");
+  const [registrationPassword, setRegistrationPassword] = useState("");
+  const [registrationPasswordConfirmation, setRegistrationPasswordConfirmation] = useState("");
+  const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
+  const [confirmationCode, setConfirmationCode] = useState("");
+  const [recoveryStep, setRecoveryStep] = useState<RecoveryStep>(() => startsInPasswordRecovery ? "password" : "email");
+  const [recoveryEmail, setRecoveryEmail] = useState(() => startsInPasswordRecovery ? user?.email ?? "" : "");
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const [recoveryPassword, setRecoveryPassword] = useState("");
+  const [recoveryPasswordConfirmation, setRecoveryPasswordConfirmation] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [resendSeconds, setResendSeconds] = useState(0);
+  const [authTransitioning, setAuthTransitioning] = useState(false);
   useEffect(() => {
     if (resendSeconds <= 0) return undefined;
     const timer = window.setInterval(() => {
@@ -60,6 +61,13 @@ export function AccountPage() {
     }, 1000);
     return () => window.clearInterval(timer);
   }, [resendSeconds]);
+
+  useEffect(() => {
+    if (!recoveryPending) return;
+    setMode("recover");
+    setRecoveryStep("password");
+    if (user?.email) setRecoveryEmail(user.email);
+  }, [recoveryPending, user?.email]);
 
   const changeMode = (nextMode: AccountMode, recoveryAddress?: string) => {
     clearFeedback();

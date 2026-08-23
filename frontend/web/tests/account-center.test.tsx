@@ -69,6 +69,7 @@ vi.mock("@/account/invitationStore", () => ({
 
 beforeEach(() => {
   account.auth.user = { id: "reader-1", email: "reader@example.com" };
+  account.auth.recoveryPending = false;
   account.auth.profile.display_name = "雪豹-TGH";
   account.auth.busy = false;
   account.auth.error = null;
@@ -196,6 +197,17 @@ describe("account center", () => {
     fireEvent.change(screen.getByLabelText("再次输入新密码"), { target: { value: "replacement-password" } });
     fireEvent.click(screen.getByRole("button", { name: "保存新密码" }));
     await waitFor(() => expect(account.auth.completePasswordRecovery).toHaveBeenCalledWith("replacement-password"));
+  });
+
+  it("restores the new-password form when a recovery session remounts the account page", () => {
+    account.auth.recoveryPending = true;
+
+    render(<MemoryRouter><AccountLogin /></MemoryRouter>);
+
+    expect(screen.getByRole("dialog", { name: "找回密码" })).toBeTruthy();
+    expect(screen.getByLabelText("新密码")).toBeTruthy();
+    expect(screen.getByLabelText("再次输入新密码")).toBeTruthy();
+    expect(screen.queryByLabelText("当前密码")).toBeNull();
   });
 
   it("keeps account deletion fields behind a destructive confirmation dialog", () => {
