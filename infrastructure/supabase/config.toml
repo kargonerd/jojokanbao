@@ -24,20 +24,20 @@ otp_expiry = 600
 
 [auth.email.template.confirmation]
 subject = "{{ .Token }} 是你的 JOJO 注册验证码"
-content_path = "./supabase/templates/confirmation.html"
+content_path = "./templates/confirmation.html"
 
 [auth.email.template.recovery]
 subject = "{{ .Token }} 是你的 JOJO 密码重置验证码"
-content_path = "./supabase/templates/recovery.html"
+content_path = "./templates/recovery.html"
 
 [auth.email.template.reauthentication]
 subject = "{{ .Token }} 是你的 JOJO 身份验证码"
-content_path = "./supabase/templates/reauthentication.html"
+content_path = "./templates/reauthentication.html"
 
 [auth.email.notification.password_changed]
 enabled = true
 subject = "你的 JOJO 账号密码已修改"
-content_path = "./supabase/templates/password_changed_notification.html"
+content_path = "./templates/password_changed_notification.html"
 
 [auth.hook.before_user_created]
 enabled = true
