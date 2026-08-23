@@ -35,7 +35,7 @@ Article Jox 是内容寻址的不可变对象；当天 manifest、availability�
 
 流水线默认只接收出版方明确给出发布时间且位于过去 24 小时的条目；缺失时间的条目不会被抓取时间
 伪装成新消息。Delivery 和 Canonical 默认保留 7 天。文章页面按 `state.json.gz` 增量轮转，生产任务
-使用轻量 HTTP 捕获并默认每轮最多抓取 50 篇，24 小时刷新成功
+使用 Chromium 捕获主文档及同页网络资源，默认每轮最多抓取 50 篇，24 小时刷新成功
 页面、2 小时重试失败页面。增量构建复用 `latest.jox` 中已有的内容寻址对象，只生成新增或正文发生变化的
 Article。
 
@@ -61,8 +61,8 @@ python -m pytest tools/times-pipeline/tests -q
 commit，并使用 `--require-news-runner` 防止静默退回摘要。单篇解析失败不会丢失 WARC，后续可对
 已存档 HTML 离线重跑解析器。
 
-`maintenance-times.yml` 的十分钟发布路径使用 HTTP 捕获；手动 `validate-24h` 模式会额外跑每源一篇
-Chromium 样本。浏览器捕获适合对 HTTP 403、JavaScript 页面做补偿和抽检，但不进入十分钟全量路径。
+`maintenance-times.yml` 的十分钟发布路径使用 Chromium 增量捕获；手动 `validate-24h` 模式同时保留
+全量 HTTP 基线和每源 Chromium 抽样，便于区分 feed、主文档和完整页面资源的故障。
 单次页面尝试最多保留主文档和 127 个子资源，正文/header 读取共享 5 秒预算，避免广告和追踪请求
 把一次抽检拖到不可控时长。
 
