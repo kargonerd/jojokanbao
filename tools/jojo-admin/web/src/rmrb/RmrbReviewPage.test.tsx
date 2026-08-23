@@ -25,6 +25,22 @@ describe("RmrbReviewPage", () => {
         decided = true;
         return new Response(JSON.stringify({ success: true, decision: { decision: "accept" } }), { status: 200 });
       }
+      if (url.endsWith("/sync") && init?.method === "POST") {
+        return new Response(JSON.stringify({
+          success: true,
+          recordCount: 7,
+          sha256: "digest",
+          results: { huggingface: { commit: "abc" } },
+        }), { status: 200 });
+      }
+      if (url.endsWith("/sync")) {
+        return new Response(JSON.stringify({
+          success: true,
+          configured: { huggingface: true, b2: true },
+          remotePath: "newspapers/rmrb/annotations",
+          state: { targets: {} },
+        }), { status: 200 });
+      }
       return new Response(JSON.stringify({ success: true, total: decided ? 1 : 2, offset: 0, limit: 40, sort: "date-ascending", items: decided ? [second] : [first, second] }), { status: 200 });
     }));
   });
@@ -38,5 +54,18 @@ describe("RmrbReviewPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Accept · 暂存" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "第二篇" })).toBeInTheDocument());
     expect(screen.getByLabelText("正文")).toHaveValue("");
+  });
+
+  it("syncs the local review ledger only to selected destinations", async () => {
+    render(<RmrbReviewPage />);
+    const hf = await screen.findByRole("checkbox", { name: "HF" });
+    fireEvent.click(hf);
+    fireEvent.click(screen.getByRole("button", { name: "立即同步" }));
+    await screen.findByText("已将 7 条人工记录同步到 Hugging Face。");
+
+    const fetchMock = vi.mocked(fetch);
+    const syncCall = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
+    expect(syncCall).toBeTruthy();
+    expect(JSON.parse(String(syncCall?.[1]?.body))).toEqual({ targets: ["huggingface"] });
   });
 });

@@ -12,7 +12,6 @@ export type RmrbReviewItem = {
   status: string;
   rawRecoveryClass: string;
   peopleDataHref?: string;
-  sourcePdf?: string;
   decision?: RmrbDecision;
 };
 
@@ -29,6 +28,28 @@ export type RmrbStats = {
   success: boolean;
   total: number;
   counts: { pending: number; accept: number; reject: number };
+};
+
+export type RmrbSyncTarget = "huggingface" | "b2";
+
+export type RmrbSyncStatus = {
+  success: true;
+  configured: Record<RmrbSyncTarget, boolean>;
+  remotePath: string;
+  state: {
+    targets?: Partial<Record<RmrbSyncTarget, {
+      syncedAt: string;
+      recordCount: number;
+      sha256: string;
+    }>>;
+  };
+};
+
+export type RmrbSyncResult = {
+  success: true;
+  recordCount: number;
+  sha256: string;
+  results: Partial<Record<RmrbSyncTarget, object>>;
 };
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -52,6 +73,16 @@ export const rmrbReviewApi = {
   },
   stats() {
     return requestJson<RmrbStats>("/api/rmrb-review/stats");
+  },
+  syncStatus() {
+    return requestJson<RmrbSyncStatus>("/api/rmrb-review/sync");
+  },
+  sync(targets: RmrbSyncTarget[]) {
+    return requestJson<RmrbSyncResult>("/api/rmrb-review/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targets }),
+    });
   },
   decide(item: RmrbReviewItem, decision: "accept" | "reject", content: string, reason: string) {
     return requestJson<{ success: true; decision: RmrbDecision }>(

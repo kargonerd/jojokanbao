@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { PageTopbar } from "../components/PageTopbar";
-import { rmrbReviewApi, type RmrbReviewItem, type RmrbStats } from "./api";
+import {
+  rmrbReviewApi,
+  type RmrbReviewItem,
+  type RmrbStats,
+  type RmrbSyncStatus,
+  type RmrbSyncTarget,
+} from "./api";
 
 const PAGE_SIZE = 40;
 
@@ -16,6 +22,12 @@ export function RmrbReviewPage() {
   const [reason, setReason] = useState("");
   const [stats, setStats] = useState<RmrbStats["counts"]>();
   const [busy, setBusy] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<RmrbSyncStatus>();
+  const [syncTargets, setSyncTargets] = useState<Record<RmrbSyncTarget, boolean>>({
+    huggingface: false,
+    b2: false,
+  });
   const [message, setMessage] = useState("");
 
   const current = items[selected];
@@ -42,6 +54,9 @@ export function RmrbReviewPage() {
   }, [offset, query]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void rmrbReviewApi.syncStatus().then(setSyncStatus).catch(() => undefined);
+  }, []);
 
   function choose(index: number) {
     setSelected(index);
@@ -74,6 +89,28 @@ export function RmrbReviewPage() {
     }
   }
 
+  async function syncDecisions() {
+    const targets = (Object.entries(syncTargets) as [RmrbSyncTarget, boolean][])
+      .filter(([, selected]) => selected)
+      .map(([target]) => target);
+    if (!targets.length || syncBusy) {
+      setMessage("请先选择 Hugging Face 或 B2。");
+      return;
+    }
+    setSyncBusy(true);
+    setMessage("");
+    try {
+      const result = await rmrbReviewApi.sync(targets);
+      const labels = targets.map((target) => target === "huggingface" ? "Hugging Face" : "B2");
+      setMessage(`已将 ${result.recordCount.toLocaleString()} 条人工记录同步到 ${labels.join("、")}。`);
+      setSyncStatus(await rmrbReviewApi.syncStatus());
+    } catch (error) {
+      setMessage(`同步失败：${(error as Error).message}`);
+    } finally {
+      setSyncBusy(false);
+    }
+  }
+
   const start = total ? offset + 1 : 0;
   const end = Math.min(offset + items.length, total);
 
@@ -99,6 +136,37 @@ export function RmrbReviewPage() {
           <p className="rmrb-review-summary">
             待处理 {stats?.pending.toLocaleString() ?? "—"} · 已处理 {stats ? (stats.accept + stats.reject).toLocaleString() : "—"}
           </p>
+          <div className="rmrb-review-sync">
+            <b>人工记录同步</b>
+            <div>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={syncTargets.huggingface}
+                  disabled={!syncStatus?.configured.huggingface || syncBusy}
+                  onChange={(event) => setSyncTargets((value) => ({ ...value, huggingface: event.target.checked }))}
+                /> HF
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={syncTargets.b2}
+                  disabled={!syncStatus?.configured.b2 || syncBusy}
+                  onChange={(event) => setSyncTargets((value) => ({ ...value, b2: event.target.checked }))}
+                /> B2
+              </label>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={syncBusy || !Object.values(syncTargets).some(Boolean)}
+                onClick={() => void syncDecisions()}
+              >{syncBusy ? "同步中…" : "立即同步"}</button>
+            </div>
+            <small>
+              本地优先
+              {syncStatus?.state.targets && Object.keys(syncStatus.state.targets).length > 0 ? " · 已有远端备份" : " · 尚未同步"}
+            </small>
+          </div>
           <div className="rmrb-review-list">
             {items.map((item, index) => (
               <button
@@ -124,7 +192,6 @@ export function RmrbReviewPage() {
             <h2>{current.title}</h2>
             <div className="rmrb-review-links">
               {current.peopleDataHref && <a href={current.peopleDataHref} target="_blank" rel="noreferrer">人民数据正文</a>}
-              {current.sourcePdf && <a href={current.sourcePdf} target="_blank" rel="noreferrer">本地 PDF</a>}
             </div>
             <label>
               <span>正文（不含标题）</span>

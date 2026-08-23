@@ -1520,9 +1520,22 @@ button {
   color: #756e65;
   font-size: 12px;
 }
+.rmrb-review-sync {
+  display: grid;
+  gap: 7px;
+  padding: 12px 16px;
+  border-top: 1px solid #d8d0c5;
+  background: #fff;
+  font-size: 12px;
+}
+.rmrb-review-sync > div { display: flex; align-items: center; gap: 12px; }
+.rmrb-review-sync label { display: flex; align-items: center; gap: 5px; }
+.rmrb-review-sync input { accent-color: var(--color-red); }
+.rmrb-review-sync .secondary-button { min-height: 32px; margin-left: auto; padding: 5px 9px; }
+.rmrb-review-sync small { color: #756e65; }
 .rmrb-review-list {
   min-height: 0;
-  max-height: calc(100vh - 285px);
+  max-height: calc(100vh - 395px);
   overflow: auto;
   border-top: 3px double #aaa197;
 }

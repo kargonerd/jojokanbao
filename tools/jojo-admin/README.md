@@ -52,6 +52,9 @@ Workbench 通过 operator RPC 审核。
 `tmp/rmrb-peopledata-full-directory/merged-missing-workbench.sqlite3`，按日期升序
 展示本地 JSONL 与年度 XLSX 合并后仍为空的目录记录。Accept/Reject 只写入
 `manual-review-decisions-workbench.jsonl`，不会直接修改语料或 Elasticsearch。
+页面中的“人工记录同步”可独立选择 Hugging Face、B2，将所有本地决定合并为
+`newspapers/rmrb/annotations/review-decisions.jsonl.gz`，并在同目录写入带记录数和
+SHA-256 的 manifest。同步是显式操作，Accept/Reject 不等待网络。
 生成合并队列和自动补全图片记录的命令见
 [`tools/rmrb-repair/README.md`](../rmrb-repair/README.md)。
 
@@ -68,6 +71,8 @@ HF_XET_FIXED_UPLOAD_CONCURRENCY=2
 HF_XET_CLIENT_RETRY_MAX_DURATION=1200s
 HF_XET_CLIENT_READ_TIMEOUT=600s
 HF_UPLOAD_WORKERS=4
+RMRB_REVIEW_HF_REPO=luoxiaozhuang/marxism-dataset
+RMRB_REVIEW_B2_REMOTE=jojo-b2-s3:jojo-newspaper
 ```
 
 S3 兼容入口发布时会显式使用 `--s3-no-check-bucket`，避免 rclone 对既有 B2 Bucket

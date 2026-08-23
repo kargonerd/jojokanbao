@@ -1,4 +1,5 @@
 import json
+import gzip
 import sqlite3
 import sys
 import tempfile
@@ -46,12 +47,14 @@ class RmrbReviewRoutesTest(unittest.TestCase):
         self.root = Path(self.directory.name)
         self.database = self.root / "merged-missing-workbench.sqlite3"
         self.decisions = self.root / "manual-review-decisions-workbench.jsonl"
+        self.sync_root = self.root / "sync"
         build_database(self.database)
         self.patches = (
             patch.object(routes, "REVIEW_ROOT", self.root),
             patch.object(routes, "REVIEW_DB", self.database),
             patch.object(routes, "WORKBENCH_DECISIONS", self.decisions),
-            patch.object(routes, "SOURCE_PDF_ROOT", self.root / "pdfs"),
+            patch.object(routes, "SYNC_ROOT", self.sync_root),
+            patch.object(routes, "SYNC_STATE", self.sync_root / "review-sync-state.json"),
         )
         for item in self.patches:
             item.start()
@@ -109,6 +112,45 @@ class RmrbReviewRoutesTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("requires", response.get_json()["error"])
+
+    def test_syncs_local_ledger_to_selected_targets(self):
+        self.client.post(
+            "/api/rmrb-review/decision",
+            json={
+                "date": "1950-01-01",
+                "page": 1,
+                "peopleDataOrdinal": 2,
+                "decision": "accept",
+                "content": "确认正文。",
+            },
+        )
+        with patch.object(
+            routes, "_sync_huggingface", return_value={"repoId": "owner/dataset", "commit": "abc"}
+        ) as sync_hf, patch.object(
+            routes, "_sync_b2", return_value={"remote": "remote/path", "sha256": "digest"}
+        ) as sync_b2:
+            response = self.client.post(
+                "/api/rmrb-review/sync",
+                json={"targets": ["huggingface", "b2"]},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["recordCount"], 1)
+        sync_hf.assert_called_once()
+        sync_b2.assert_called_once()
+        with gzip.open(self.sync_root / "review-decisions.jsonl.gz", "rt", encoding="utf-8") as stream:
+            exported = json.loads(stream.readline())
+        self.assertEqual(exported["content"], "确认正文。")
+        state = json.loads((self.sync_root / "review-sync-state.json").read_text(encoding="utf-8"))
+        self.assertEqual(state["targets"]["huggingface"]["recordCount"], 1)
+        self.assertEqual(state["targets"]["b2"]["recordCount"], 1)
+
+    def test_sync_requires_at_least_one_known_target(self):
+        response = self.client.post("/api/rmrb-review/sync", json={"targets": []})
+        self.assertEqual(response.status_code, 400)
+        response = self.client.post("/api/rmrb-review/sync", json={"targets": ["unknown"]})
+        self.assertEqual(response.status_code, 400)
 
 
 if __name__ == "__main__":

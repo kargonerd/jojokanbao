@@ -29,9 +29,15 @@ debugging.
 
 The `/rmrb-review` React route uses the staging-only `/api/rmrb-review/*`
 endpoints. Set `RMRB_REVIEW_ROOT` when the queue and decision JSONL files are
-not below the repository `tmp/rmrb-peopledata-full-directory` directory. Set
-`RMRB_SOURCE_PDF_ROOT` to expose matching local source PDFs through the review
-link. These endpoints never write the source corpus or Elasticsearch.
+not below the repository `tmp/rmrb-peopledata-full-directory` directory. The
+review queue only needs article keys, titles, and PeopleData links; it does not
+load or expose local PDFs. These endpoints never write the source corpus or
+Elasticsearch.
+Review decisions remain local-first. The UI can explicitly synchronize the
+merged decision ledger to Hugging Face and/or B2 at
+`newspapers/rmrb/annotations/`. Hugging Face uses `RMRB_REVIEW_HF_REPO` (then
+`HF_DATASET_REPO`) and the CLI token or `HF_TOKEN`; B2 uses
+`RMRB_REVIEW_B2_REMOTE` (then `JOJO_DELIVERY_REMOTE`) through rclone.
 
 ## ES repair
 

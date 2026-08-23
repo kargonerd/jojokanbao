@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import gzip
+import hashlib
+import io
 import json
 import logging
 import os
 import re
+import shutil
 import sqlite3
+import subprocess
 import threading
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import quote
 
-from flask import Blueprint, jsonify, request, send_file
+from flask import Blueprint, jsonify, request
 
 
 rmrb_review_blueprint = Blueprint("rmrb_review", __name__)
@@ -25,15 +29,18 @@ REVIEW_ROOT = Path(
         WORKSPACE_ROOT / "tmp" / "rmrb-peopledata-full-directory",
     )
 )
-SOURCE_PDF_ROOT = Path(os.environ.get("RMRB_SOURCE_PDF_ROOT", "D:/暂存"))
 PEOPLE_DATA_BASE = (
     "https://webvpn.zju.edu.cn/https/"
     "77726476706e69737468656265737421f4f6559d69206d5f6e048ce29b5a2e7b74a4/rmrb"
 )
 REVIEW_DB = REVIEW_ROOT / "merged-missing-workbench.sqlite3"
 WORKBENCH_DECISIONS = REVIEW_ROOT / "manual-review-decisions-workbench.jsonl"
+SYNC_ROOT = REVIEW_ROOT / "sync"
+SYNC_STATE = SYNC_ROOT / "review-sync-state.json"
+SYNC_REMOTE_ROOT = "newspapers/rmrb/annotations"
 COPY_MARKER_RE = re.compile(r"[（(]\s*人民数据库资料\s*[）)]")
 DECISION_LOCK = threading.Lock()
+SYNC_LOCK = threading.Lock()
 
 
 def _key(row: dict[str, object]) -> tuple[str, int, int]:
@@ -71,6 +78,150 @@ def load_all_decisions() -> dict[tuple[str, int, int], dict[str, object]]:
         except (OSError, json.JSONDecodeError, TypeError, ValueError):
             logging.exception("Unable to read RMRB decision log %s", path)
     return decisions
+
+
+def _atomic_write(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_bytes(payload)
+    os.replace(temporary, path)
+
+
+def _portable_decision(row: dict[str, object]) -> dict[str, object]:
+    """Keep the remotely recoverable review fields and omit local evidence paths."""
+    names = (
+        "date", "page", "peopleDataOrdinal", "title", "decision", "content",
+        "contentHtml", "reason", "reviewedAt",
+    )
+    return {name: row[name] for name in names if name in row}
+
+
+def _build_sync_snapshot() -> tuple[Path, Path, dict[str, object]]:
+    rows = [
+        _portable_decision(row)
+        for _, row in sorted(load_all_decisions().items(), key=lambda item: item[0])
+    ]
+    clear = b"".join(
+        (json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+        for row in rows
+    )
+    compressed_buffer = io.BytesIO()
+    with gzip.GzipFile(fileobj=compressed_buffer, mode="wb", compresslevel=6, mtime=0) as stream:
+        stream.write(clear)
+    compressed = compressed_buffer.getvalue()
+    artifact = SYNC_ROOT / "review-decisions.jsonl.gz"
+    manifest_path = SYNC_ROOT / "review-decisions.manifest.json"
+    generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    manifest: dict[str, object] = {
+        "formatVersion": "jojo-rmrb-review-sync/1",
+        "generatedAt": generated_at,
+        "recordCount": len(rows),
+        "sha256": hashlib.sha256(compressed).hexdigest(),
+        "object": f"{SYNC_REMOTE_ROOT}/review-decisions.jsonl.gz",
+    }
+    _atomic_write(artifact, compressed)
+    _atomic_write(
+        manifest_path,
+        (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
+    )
+    return artifact, manifest_path, manifest
+
+
+def _huggingface_token() -> str:
+    explicit = os.environ.get("HF_TOKEN", "").strip()
+    if explicit:
+        return explicit
+    try:
+        from huggingface_hub import get_token
+    except ImportError:
+        return ""
+    return (get_token() or "").strip()
+
+
+def _huggingface_repo() -> str:
+    return (
+        os.environ.get("RMRB_REVIEW_HF_REPO", "").strip()
+        or os.environ.get("HF_DATASET_REPO", "").strip()
+        or "luoxiaozhuang/marxism-dataset"
+    )
+
+
+def _b2_remote() -> str:
+    return os.environ.get("RMRB_REVIEW_B2_REMOTE", "").strip() or os.environ.get(
+        "JOJO_DELIVERY_REMOTE", "jojo-b2-s3:jojo-newspaper"
+    ).rstrip("/")
+
+
+def _load_sync_state() -> dict[str, object]:
+    if not SYNC_STATE.is_file():
+        return {"formatVersion": "jojo-rmrb-review-sync-state/1", "targets": {}}
+    try:
+        return json.loads(SYNC_STATE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        logging.exception("Unable to read RMRB review sync state %s", SYNC_STATE)
+        return {"formatVersion": "jojo-rmrb-review-sync-state/1", "targets": {}}
+
+
+def _write_sync_state(state: dict[str, object]) -> None:
+    _atomic_write(
+        SYNC_STATE,
+        (json.dumps(state, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
+    )
+
+
+def _sync_huggingface(artifact: Path, manifest_path: Path, manifest: dict[str, object]) -> dict[str, object]:
+    token = _huggingface_token()
+    if not token:
+        raise RuntimeError("Hugging Face 未登录且 HF_TOKEN 未配置")
+    from huggingface_hub import CommitOperationAdd, HfApi
+
+    repo_id = _huggingface_repo()
+    operations = [
+        CommitOperationAdd(
+            path_in_repo=f"{SYNC_REMOTE_ROOT}/{artifact.name}",
+            path_or_fileobj=str(artifact),
+        ),
+        CommitOperationAdd(
+            path_in_repo=f"{SYNC_REMOTE_ROOT}/{manifest_path.name}",
+            path_or_fileobj=str(manifest_path),
+        ),
+    ]
+    commit = HfApi(token=token).create_commit(
+        repo_id=repo_id,
+        repo_type="dataset",
+        operations=operations,
+        commit_message=f"Sync {manifest['recordCount']} RMRB review decisions",
+    )
+    return {"repoId": repo_id, "commit": str(commit.oid)}
+
+
+def _run_rclone_copyto(source: Path, destination: str) -> None:
+    executable = shutil.which("rclone.exe") or shutil.which("rclone")
+    if not executable:
+        raise RuntimeError("未安装 rclone")
+    result = subprocess.run(
+        [
+            executable, "copyto", str(source), destination, "--checksum",
+            "--retries", "5", "--low-level-retries", "10", "--s3-no-check-bucket",
+        ],
+        cwd=WORKSPACE_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=600,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "rclone 上传失败")
+
+
+def _sync_b2(artifact: Path, manifest_path: Path, manifest: dict[str, object]) -> dict[str, object]:
+    root = f"{_b2_remote()}/{SYNC_REMOTE_ROOT}"
+    _run_rclone_copyto(artifact, f"{root}/{artifact.name}")
+    # The manifest is the commit marker and is deliberately written last.
+    _run_rclone_copyto(manifest_path, f"{root}/{manifest_path.name}")
+    return {"remote": root, "sha256": manifest["sha256"]}
 
 
 def _open_db() -> sqlite3.Connection:
@@ -120,17 +271,6 @@ def _people_data_href(row: dict[str, object]) -> str | None:
     return None
 
 
-def _source_pdf(day: str) -> Path | None:
-    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
-        return None
-    candidate = SOURCE_PDF_ROOT / day[:4] / f"{day.replace('-', '')}.pdf"
-    try:
-        candidate.resolve().relative_to(SOURCE_PDF_ROOT.resolve())
-    except (OSError, ValueError):
-        return None
-    return candidate if candidate.is_file() else None
-
-
 def _public_row(
     row: dict[str, object], decision: dict[str, object] | None
 ) -> dict[str, object]:
@@ -143,7 +283,6 @@ def _public_row(
         "status": "local-content-missing",
         "rawRecoveryClass": "本地两份数据均无正文",
         "peopleDataHref": _people_data_href(row),
-        "sourcePdf": f"/api/rmrb-review/pdf?date={quote(day)}" if _source_pdf(day) else None,
         "decision": decision,
     }
 
@@ -227,13 +366,68 @@ def stats_api():
     return jsonify({"success": True, "total": total, "counts": counts})
 
 
-@rmrb_review_blueprint.get("/api/rmrb-review/pdf")
-def pdf_api():
-    day = request.args.get("date", "").strip()
-    path = _source_pdf(day)
-    if path is None:
-        return jsonify({"success": False, "error": "source PDF not found"}), 404
-    return send_file(path, mimetype="application/pdf")
+@rmrb_review_blueprint.get("/api/rmrb-review/sync")
+def sync_status_api():
+    state = _load_sync_state()
+    return jsonify(
+        {
+            "success": True,
+            "configured": {
+                "huggingface": bool(_huggingface_token() and _huggingface_repo()),
+                "b2": bool(shutil.which("rclone.exe") or shutil.which("rclone")),
+            },
+            "remotePath": SYNC_REMOTE_ROOT,
+            "state": state,
+        }
+    )
+
+
+@rmrb_review_blueprint.post("/api/rmrb-review/sync")
+def sync_api():
+    payload = request.get_json(silent=True) or {}
+    requested = payload.get("targets") or []
+    if not isinstance(requested, list):
+        return jsonify({"success": False, "error": "targets must be a list"}), 400
+    targets = list(dict.fromkeys(str(item).strip().lower() for item in requested))
+    allowed = {"huggingface", "b2"}
+    if not targets or any(item not in allowed for item in targets):
+        return jsonify({"success": False, "error": "select huggingface and/or b2"}), 400
+    if not SYNC_LOCK.acquire(blocking=False):
+        return jsonify({"success": False, "error": "another review sync is running"}), 409
+    try:
+        artifact, manifest_path, manifest = _build_sync_snapshot()
+        state = _load_sync_state()
+        target_state = state.setdefault("targets", {})
+        assert isinstance(target_state, dict)
+        results: dict[str, object] = {}
+        errors: dict[str, str] = {}
+        sync_functions = {"huggingface": _sync_huggingface, "b2": _sync_b2}
+        for target in targets:
+            try:
+                detail = sync_functions[target](artifact, manifest_path, manifest)
+                results[target] = detail
+                target_state[target] = {
+                    "syncedAt": manifest["generatedAt"],
+                    "recordCount": manifest["recordCount"],
+                    "sha256": manifest["sha256"],
+                    **detail,
+                }
+            except Exception as error:  # Each selected destination is independent.
+                logging.exception("Unable to sync RMRB reviews to %s", target)
+                errors[target] = str(error)
+        state["formatVersion"] = "jojo-rmrb-review-sync-state/1"
+        state["lastAttemptAt"] = manifest["generatedAt"]
+        _write_sync_state(state)
+        response = {
+            "success": not errors,
+            "recordCount": manifest["recordCount"],
+            "sha256": manifest["sha256"],
+            "results": results,
+            "errors": errors,
+        }
+        return jsonify(response), 200 if not errors else 502
+    finally:
+        SYNC_LOCK.release()
 
 
 def _write_workbench_decisions(rows: dict[tuple[str, int, int], dict[str, object]]) -> None:
