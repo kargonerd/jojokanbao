@@ -136,37 +136,6 @@ export function RmrbReviewPage() {
           <p className="rmrb-review-summary">
             待处理 {stats?.pending.toLocaleString() ?? "—"} · 已处理 {stats ? (stats.accept + stats.reject).toLocaleString() : "—"}
           </p>
-          <div className="rmrb-review-sync">
-            <b>发布修订数据</b>
-            <div>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={syncTargets.huggingface}
-                  disabled={!syncStatus?.configured.huggingface || syncBusy}
-                  onChange={(event) => setSyncTargets((value) => ({ ...value, huggingface: event.target.checked }))}
-                /> HF
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={syncTargets.b2}
-                  disabled={!syncStatus?.configured.b2 || syncBusy}
-                  onChange={(event) => setSyncTargets((value) => ({ ...value, b2: event.target.checked }))}
-                /> B2
-              </label>
-              <button
-                className="secondary-button"
-                type="button"
-                disabled={syncBusy || !Object.values(syncTargets).some(Boolean)}
-                onClick={() => void syncDecisions()}
-              >{syncBusy ? "发布中…" : "立即发布"}</button>
-            </div>
-            <small>
-              HF 更新规范数据 · B2 更新前端 Delivery
-              {syncStatus?.state.targets && Object.keys(syncStatus.state.targets).length > 0 ? " · 已发布过" : " · 尚未发布"}
-            </small>
-          </div>
           <div className="rmrb-review-list">
             {items.map((item, index) => (
               <button
@@ -206,10 +175,41 @@ export function RmrbReviewPage() {
               <span>复核说明（可选）</span>
               <input aria-label="复核说明" value={reason} onChange={(event) => setReason(event.target.value)} />
             </label>
-            <div className="rmrb-review-actions">
-              <button className="primary-button" disabled={busy} onClick={() => void submit("accept")}>Accept · 暂存</button>
-              <button className="secondary-button" disabled={busy} onClick={() => void submit("reject")}>Reject · 暂存</button>
+            <div className="rmrb-review-action-dock">
+              <div className="rmrb-review-actions">
+                <button className="primary-button" disabled={busy} onClick={() => void submit("accept")}>Accept · 暂存</button>
+                <button className="secondary-button" disabled={busy} onClick={() => void submit("reject")}>Reject · 暂存</button>
+              </div>
+              <div className="rmrb-review-publish">
+                <span>发布到</span>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={syncTargets.huggingface}
+                    disabled={!syncStatus?.configured.huggingface || syncBusy}
+                    onChange={(event) => setSyncTargets((value) => ({ ...value, huggingface: event.target.checked }))}
+                  /> HF
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={syncTargets.b2}
+                    disabled={!syncStatus?.configured.b2 || syncBusy}
+                    onChange={(event) => setSyncTargets((value) => ({ ...value, b2: event.target.checked }))}
+                  /> B2
+                </label>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={syncBusy || !Object.values(syncTargets).some(Boolean)}
+                  onClick={() => void syncDecisions()}
+                >{syncBusy ? "发布中…" : "发布修订"}</button>
+              </div>
             </div>
+            <small className="rmrb-review-publish-state">
+              HF 规范数据 · B2 前端数据
+              {syncStatus?.state.targets && Object.keys(syncStatus.state.targets).length > 0 ? " · 已发布过" : " · 尚未发布"}
+            </small>
             {message && <p className="rmrb-review-message">{message}</p>}
           </> : <p>{busy ? "正在读取…" : "没有待处理记录。"}</p>}
         </section>

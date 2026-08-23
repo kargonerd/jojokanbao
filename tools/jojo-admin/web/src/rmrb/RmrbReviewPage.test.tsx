@@ -60,7 +60,7 @@ describe("RmrbReviewPage", () => {
     render(<RmrbReviewPage />);
     const hf = await screen.findByRole("checkbox", { name: "HF" });
     fireEvent.click(hf);
-    fireEvent.click(screen.getByRole("button", { name: "立即发布" }));
+    fireEvent.click(screen.getByRole("button", { name: "发布修订" }));
     await screen.findByText("已向 Hugging Face 发布 1 条新修订。");
 
     const fetchMock = vi.mocked(fetch);

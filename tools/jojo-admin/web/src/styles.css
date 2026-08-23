@@ -1520,22 +1520,9 @@ button {
   color: #756e65;
   font-size: 12px;
 }
-.rmrb-review-sync {
-  display: grid;
-  gap: 7px;
-  padding: 12px 16px;
-  border-top: 1px solid #d8d0c5;
-  background: #fff;
-  font-size: 12px;
-}
-.rmrb-review-sync > div { display: flex; align-items: center; gap: 12px; }
-.rmrb-review-sync label { display: flex; align-items: center; gap: 5px; }
-.rmrb-review-sync input { accent-color: var(--color-red); }
-.rmrb-review-sync .secondary-button { min-height: 32px; margin-left: auto; padding: 5px 9px; }
-.rmrb-review-sync small { color: #756e65; }
 .rmrb-review-list {
   min-height: 0;
-  max-height: calc(100vh - 395px);
+  max-height: calc(100vh - 302px);
   overflow: auto;
   border-top: 3px double #aaa197;
 }
@@ -1590,13 +1577,40 @@ button {
 .rmrb-review-links a:hover { color: #fff; background: var(--color-red); }
 .rmrb-review-editor label { display: grid; gap: 7px; margin-top: 14px; color: #655e56; font-size: 12px; }
 .rmrb-review-editor textarea {
-  height: 190px;
-  min-height: 190px;
-  max-height: 190px;
+  height: 145px;
+  min-height: 145px;
+  max-height: 145px;
   resize: none;
   line-height: 1.75;
 }
-.rmrb-review-actions { display: flex; gap: 10px; margin-top: 18px; }
+.rmrb-review-action-dock {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 18px;
+  padding: 12px 0;
+  border-top: 3px double #aaa197;
+  border-bottom: 1px solid #d8d0c5;
+}
+.rmrb-review-actions,
+.rmrb-review-publish { display: flex; align-items: center; gap: 10px; }
+.rmrb-review-publish {
+  margin-left: auto;
+  padding-left: 16px;
+  border-left: 1px solid #d8d0c5;
+  color: #655e56;
+  font-size: 12px;
+}
+.rmrb-review-publish label { display: flex; align-items: center; gap: 5px; margin: 0; color: var(--color-ink); }
+.rmrb-review-publish input { width: auto; accent-color: var(--color-red); }
+.rmrb-review-publish .secondary-button { min-height: 36px; padding: 7px 11px; }
+.rmrb-review-publish-state {
+  display: block;
+  margin-top: 7px;
+  color: #756e65;
+  font-size: 11px;
+  text-align: right;
+}
 .rmrb-review-message {
   margin-top: 14px;
   padding: 10px 12px;
@@ -1610,4 +1624,10 @@ button {
   .rmrb-review-workspace { grid-template-columns: 1fr; }
   .rmrb-review-list { max-height: 340px; }
   .rmrb-review-queue { border-right: 0; border-bottom: 1px solid #bdb5aa; }
+}
+
+@media (max-width: 680px) {
+  .rmrb-review-action-dock { align-items: stretch; flex-direction: column; }
+  .rmrb-review-publish { margin-left: 0; padding: 10px 0 0; border-top: 1px solid #d8d0c5; border-left: 0; }
+  .rmrb-review-publish-state { text-align: left; }
 }
