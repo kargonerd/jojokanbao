@@ -23,6 +23,7 @@ export function RmrbReviewPage() {
   const [stats, setStats] = useState<RmrbStats["counts"]>();
   const [busy, setBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
+  const [syncElapsed, setSyncElapsed] = useState(0);
   const [syncStatus, setSyncStatus] = useState<RmrbSyncStatus>();
   const [message, setMessage] = useState("");
 
@@ -53,6 +54,27 @@ export function RmrbReviewPage() {
   useEffect(() => {
     void rmrbReviewApi.syncStatus().then(setSyncStatus).catch(() => undefined);
   }, []);
+  useEffect(() => {
+    if (!syncBusy) return;
+    const started = Date.now();
+    setSyncElapsed(0);
+    const refresh = async () => {
+      try {
+        setSyncStatus(await rmrbReviewApi.syncStatus());
+      } catch {
+        // The publication request remains authoritative; retry on the next tick.
+      }
+    };
+    void refresh();
+    const progressTimer = window.setInterval(() => void refresh(), 750);
+    const elapsedTimer = window.setInterval(() => {
+      setSyncElapsed(Math.floor((Date.now() - started) / 1000));
+    }, 1000);
+    return () => {
+      window.clearInterval(progressTimer);
+      window.clearInterval(elapsedTimer);
+    };
+  }, [syncBusy]);
 
   function choose(index: number) {
     setSelected(index);
@@ -89,6 +111,7 @@ export function RmrbReviewPage() {
     const targets: RmrbSyncTarget[] = ["huggingface", "b2"];
     if (syncBusy || !stats?.pendingPublication) return;
     setSyncBusy(true);
+    setSyncElapsed(0);
     setMessage("");
     try {
       const result = await rmrbReviewApi.sync(targets);
@@ -114,6 +137,18 @@ export function RmrbReviewPage() {
     syncStatus?.configured.b2 &&
     !syncBusy,
   );
+  const syncProgress = syncStatus?.progress;
+  const publishButtonLabel = (() => {
+    if (!syncBusy) return `发布 ${stats?.pendingPublication.toLocaleString() ?? "—"} 条修订`;
+    if (syncProgress?.phase === "huggingface") return "正在提交 HF…";
+    if (syncProgress?.phase === "b2") return "正在更新 B2…";
+    return "正在准备发布…";
+  })();
+  const publishHint = syncBusy
+    ? `${syncProgress?.message || "正在启动发布任务"} · ${syncElapsed} 秒`
+    : syncProgress?.status === "succeeded"
+      ? syncProgress.message
+      : "HF Canonical + B2 Delivery";
 
   return (
     <>
@@ -123,17 +158,27 @@ export function RmrbReviewPage() {
         description="Accept 先保存到本地；点击发布后增量更新正式数据。"
         aside={
           <div className="rmrb-review-top-publish">
-            <small>HF Canonical + B2 Delivery</small>
+            <small aria-live="polite">{publishHint}</small>
             <button
               className="primary-button"
               type="button"
               disabled={!publishReady}
               onClick={() => void syncDecisions()}
             >
-              {syncBusy
-                ? "正在发布…"
-                : `发布 ${stats?.pendingPublication.toLocaleString() ?? "—"} 条修订`}
+              {publishButtonLabel}
             </button>
+            {syncBusy && (
+              <div
+                className="rmrb-review-publish-progress"
+                role="progressbar"
+                aria-label="发布进度"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={syncProgress?.percent ?? 3}
+              >
+                <i style={{ width: `${syncProgress?.percent ?? 3}%` }} />
+              </div>
+            )}
           </div>
         }
       />

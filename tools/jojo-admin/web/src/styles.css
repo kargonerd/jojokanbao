@@ -1602,8 +1602,23 @@ button {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 10px;
   letter-spacing: .06em;
+  max-width: 360px;
+  text-align: right;
 }
 .rmrb-review-top-publish .primary-button { min-width: 148px; min-height: 42px; }
+.rmrb-review-publish-progress {
+  width: 100%;
+  height: 4px;
+  overflow: hidden;
+  border: 1px solid #c9bfb5;
+  background: #fff;
+}
+.rmrb-review-publish-progress i {
+  display: block;
+  height: 100%;
+  background: var(--color-red);
+  transition: width .25s ease;
+}
 .rmrb-review-message {
   margin-top: 14px;
   padding: 10px 12px;
@@ -1621,4 +1636,5 @@ button {
 
 @media (max-width: 680px) {
   .rmrb-review-top-publish { justify-items: start; }
+  .rmrb-review-top-publish small { text-align: left; }
 }

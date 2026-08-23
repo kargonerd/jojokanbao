@@ -32,6 +32,19 @@ export type RmrbStats = {
 
 export type RmrbSyncTarget = "huggingface" | "b2";
 
+export type RmrbSyncProgress = {
+  status: "idle" | "running" | "succeeded" | "failed";
+  phase: "idle" | "preparing" | "huggingface" | "b2" | "complete" | "failed";
+  message: string;
+  completed: number;
+  total: number;
+  percent: number;
+  startedAt: string | null;
+  updatedAt: string | null;
+  finishedAt: string | null;
+  publishedChanges: number;
+};
+
 export type RmrbSyncStatus = {
   success: true;
   configured: Record<RmrbSyncTarget, boolean>;
@@ -42,6 +55,7 @@ export type RmrbSyncStatus = {
       desiredSha256: string;
     }>>;
   };
+  progress: RmrbSyncProgress;
 };
 
 export type RmrbSyncResult = {

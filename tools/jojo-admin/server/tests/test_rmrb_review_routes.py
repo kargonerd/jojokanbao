@@ -61,6 +61,19 @@ class RmrbReviewRoutesTest(unittest.TestCase):
         )
         for item in self.patches:
             item.start()
+        with routes.SYNC_PROGRESS_LOCK:
+            routes.SYNC_PROGRESS.update({
+                "status": "idle",
+                "phase": "idle",
+                "message": "等待发布",
+                "completed": 0,
+                "total": 0,
+                "percent": 0,
+                "startedAt": None,
+                "updatedAt": None,
+                "finishedAt": None,
+                "publishedChanges": 0,
+            })
         app = Flask(__name__)
         app.register_blueprint(routes.rmrb_review_blueprint)
         self.client = app.test_client()
@@ -132,9 +145,9 @@ class RmrbReviewRoutesTest(unittest.TestCase):
         with patch.object(routes, "_prepare_publication", return_value=canonical), patch.object(
             routes, "_prepare_delivery", return_value=delivery
         ), patch.object(
-            routes, "_sync_huggingface", return_value={"repoId": "owner/dataset", "commit": "abc"}
+            routes, "_sync_huggingface", return_value={"repoId": "owner/dataset", "commit": "abc", "publishedArticles": 1}
         ) as sync_hf, patch.object(
-            routes, "_sync_b2", return_value={"remote": "remote/path", "sha256": "digest"}
+            routes, "_sync_b2", return_value={"remote": "remote/path", "sha256": "digest", "publishedArticles": 1}
         ) as sync_b2:
             response = self.client.post(
                 "/api/rmrb-review/sync",
@@ -153,6 +166,11 @@ class RmrbReviewRoutesTest(unittest.TestCase):
         state = json.loads((self.sync_root / "review-sync-state.json").read_text(encoding="utf-8"))
         self.assertEqual(state["targets"]["huggingface"]["acceptedCount"], 1)
         self.assertEqual(state["targets"]["b2"]["acceptedCount"], 1)
+        progress = self.client.get("/api/rmrb-review/sync").get_json()["progress"]
+        self.assertEqual(progress["status"], "succeeded")
+        self.assertEqual(progress["phase"], "complete")
+        self.assertEqual(progress["percent"], 100)
+        self.assertEqual(progress["publishedChanges"], 1)
 
     def test_sync_requires_at_least_one_known_target(self):
         response = self.client.post("/api/rmrb-review/sync", json={"targets": []})

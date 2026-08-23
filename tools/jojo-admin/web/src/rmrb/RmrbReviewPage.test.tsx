@@ -16,6 +16,7 @@ const second = { ...first, date: "1950-01-02", peopleDataOrdinal: 3, title: "第
 describe("RmrbReviewPage", () => {
   beforeEach(() => {
     let decided = false;
+    let publishing = false;
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/stats")) {
@@ -26,6 +27,9 @@ describe("RmrbReviewPage", () => {
         return new Response(JSON.stringify({ success: true, decision: { decision: "accept" } }), { status: 200 });
       }
       if (url.endsWith("/sync") && init?.method === "POST") {
+        publishing = true;
+        await new Promise((resolve) => window.setTimeout(resolve, 100));
+        publishing = false;
         return new Response(JSON.stringify({
           success: true,
           stagedCount: 3,
@@ -40,6 +44,29 @@ describe("RmrbReviewPage", () => {
           success: true,
           configured: { huggingface: true, b2: true },
           state: { targets: {} },
+          progress: publishing ? {
+            status: "running",
+            phase: "b2",
+            message: "正在更新 B2 Delivery（3/8）：manifest.jox",
+            completed: 7,
+            total: 12,
+            percent: 73,
+            startedAt: "2026-08-23T04:43:36+00:00",
+            updatedAt: "2026-08-23T04:43:40+00:00",
+            finishedAt: null,
+            publishedChanges: 0,
+          } : {
+            status: "idle",
+            phase: "idle",
+            message: "等待发布",
+            completed: 0,
+            total: 0,
+            percent: 0,
+            startedAt: null,
+            updatedAt: null,
+            finishedAt: null,
+            publishedChanges: 0,
+          },
         }), { status: 200 });
       }
       return new Response(JSON.stringify({ success: true, total: decided ? 1 : 2, offset: 0, limit: 40, sort: "date-ascending", items: decided ? [second] : [first, second] }), { status: 200 });
@@ -60,6 +87,9 @@ describe("RmrbReviewPage", () => {
   it("publishes all staged data to HF and B2 with one click", async () => {
     render(<RmrbReviewPage />);
     fireEvent.click(await screen.findByRole("button", { name: "发布 3 条修订" }));
+    expect(await screen.findByText(/正在更新 B2 Delivery（3\/8）/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "正在更新 B2…" })).toBeDisabled();
+    expect(screen.getByRole("progressbar", { name: "发布进度" })).toHaveAttribute("aria-valuenow", "73");
     await screen.findByText("已发布 1 条修订，HF 与 B2 已同步。");
 
     const fetchMock = vi.mocked(fetch);

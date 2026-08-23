@@ -14,6 +14,7 @@ import threading
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 from flask import Blueprint, jsonify, request
 
@@ -50,6 +51,30 @@ PENDING_PUBLICATION = REVIEW_ROOT / "manual-review-pending-publication.json"
 COPY_MARKER_RE = re.compile(r"[（(]\s*人民数据库资料\s*[）)]")
 DECISION_LOCK = threading.Lock()
 SYNC_LOCK = threading.Lock()
+SYNC_PROGRESS_LOCK = threading.Lock()
+SYNC_PROGRESS: dict[str, object] = {
+    "status": "idle",
+    "phase": "idle",
+    "message": "等待发布",
+    "completed": 0,
+    "total": 0,
+    "percent": 0,
+    "startedAt": None,
+    "updatedAt": None,
+    "finishedAt": None,
+    "publishedChanges": 0,
+}
+
+
+def _set_sync_progress(**changes: object) -> None:
+    with SYNC_PROGRESS_LOCK:
+        SYNC_PROGRESS.update(changes)
+        SYNC_PROGRESS["updatedAt"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _sync_progress_snapshot() -> dict[str, object]:
+    with SYNC_PROGRESS_LOCK:
+        return dict(SYNC_PROGRESS)
 
 
 def _key(row: dict[str, object]) -> tuple[str, int, int]:
@@ -301,7 +326,10 @@ def _run_rclone_copyto(source: Path | str, destination: str) -> None:
         raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "rclone 上传失败")
 
 
-def _sync_b2(delivery: DeliveryPatch) -> dict[str, object]:
+def _sync_b2(
+    delivery: DeliveryPatch,
+    progress: Callable[[int, int, str], None] | None = None,
+) -> dict[str, object]:
     # Publish immutable fragments first, issue manifests second, and the
     # collection index last so readers never observe dangling references.
     def priority(name: str) -> tuple[int, str]:
@@ -311,8 +339,13 @@ def _sync_b2(delivery: DeliveryPatch) -> dict[str, object]:
             return 1, name
         return 0, name
 
-    for name, path in sorted(delivery.files.items(), key=lambda item: priority(item[0])):
+    files = sorted(delivery.files.items(), key=lambda item: priority(item[0]))
+    for index, (name, path) in enumerate(files, start=1):
+        if progress:
+            progress(index - 1, len(files), name)
         _run_rclone_copyto(path, f"{_b2_remote()}/{name}")
+        if progress:
+            progress(index, len(files), name)
     return {
         "remote": _b2_remote(),
         "publishedArticles": delivery.changed_article_count,
@@ -472,6 +505,7 @@ def sync_status_api():
                 "b2": bool(shutil.which("rclone.exe") or shutil.which("rclone")),
             },
             "state": state,
+            "progress": _sync_progress_snapshot(),
         }
     )
 
@@ -488,6 +522,18 @@ def sync_api():
         return jsonify({"success": False, "error": "select huggingface and/or b2"}), 400
     if not SYNC_LOCK.acquire(blocking=False):
         return jsonify({"success": False, "error": "another review sync is running"}), 409
+    started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    _set_sync_progress(
+        status="running",
+        phase="preparing",
+        message="正在读取待发布修订",
+        completed=0,
+        total=0,
+        percent=3,
+        startedAt=started_at,
+        finishedAt=None,
+        publishedChanges=0,
+    )
     try:
         decisions = load_all_decisions()
         desired = accepted_hashes(decisions)
@@ -499,6 +545,10 @@ def sync_api():
         publication_targets = publication_state.setdefault("targets", {})
         assert isinstance(publication_targets, dict)
         pending_snapshot = _load_pending_publication()
+        _set_sync_progress(
+            message=f"正在核对 {len(pending_snapshot)} 条修订与 HF 正式数据",
+            percent=8,
+        )
         hf_names = {
             name for name, row in pending_snapshot.items()
             if "huggingface" in (row.get("targets") or []) and "huggingface" in targets
@@ -513,31 +563,75 @@ def sync_api():
             {parse_key(name) for name in b2_names},
         )
         if "b2" in targets and canonical.changed_keys and "huggingface" not in targets:
+            _set_sync_progress(
+                status="failed",
+                phase="failed",
+                message="B2 依赖的 HF 正式数据尚未发布",
+                finishedAt=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            )
             return jsonify({
                 "success": False,
                 "error": "B2 修订依赖尚未发布的 HF Canonical；请同时选择 HF",
             }), 409
+        _set_sync_progress(
+            message=f"HF 正式数据已核对，正在生成 B2 Delivery",
+            percent=28,
+        )
         delivery = _prepare_delivery(
             decisions,
             canonical,
             {parse_key(name) for name in b2_names},
         ) if "b2" in targets else None
+        hf_object_count = len(canonical.files) if "huggingface" in targets else 0
+        b2_object_count = len(delivery.files) if delivery is not None else 0
+        object_total = hf_object_count + b2_object_count
+        _set_sync_progress(
+            message=f"发布包已就绪，共 {object_total} 个远端对象",
+            completed=0,
+            total=object_total,
+            percent=35,
+        )
         state = _load_sync_state()
         target_state = state.setdefault("targets", {})
         assert isinstance(target_state, dict)
         results: dict[str, object] = {}
         errors: dict[str, str] = {}
-        sync_functions = {
-            "huggingface": lambda: _sync_huggingface(canonical),
-            "b2": lambda: _sync_b2(delivery or DeliveryPatch(PUBLISH_ROOT)),
-        }
         target_names = {"huggingface": hf_names, "b2": b2_names}
         for target in targets:
             if target == "b2" and "huggingface" in errors:
                 errors[target] = "HF Canonical 发布失败，已停止 B2 发布以避免数据分叉"
                 continue
             try:
-                detail = sync_functions[target]()
+                if target == "huggingface":
+                    _set_sync_progress(
+                        phase="huggingface",
+                        message=f"正在提交 HF Canonical（{hf_object_count} 个对象）",
+                        percent=40,
+                    )
+                    detail = _sync_huggingface(canonical)
+                    _set_sync_progress(
+                        completed=hf_object_count,
+                        message="HF Canonical 已提交，正在准备 B2",
+                        percent=65 if "b2" in targets else 95,
+                    )
+                else:
+                    def report_b2(completed: int, total: int, name: str) -> None:
+                        overall_completed = hf_object_count + completed
+                        object_name = name.rsplit("/", 1)[-1]
+                        percent = 68
+                        if object_total:
+                            percent = min(96, 40 + round(56 * overall_completed / object_total))
+                        _set_sync_progress(
+                            phase="b2",
+                            message=f"正在更新 B2 Delivery（{completed}/{total}）：{object_name}",
+                            completed=overall_completed,
+                            percent=percent,
+                        )
+
+                    detail = _sync_b2(
+                        delivery or DeliveryPatch(PUBLISH_ROOT),
+                        report_b2,
+                    )
                 results[target] = detail
                 target_state[target] = {
                     "publishedAt": published_at,
@@ -583,9 +677,35 @@ def sync_api():
             "results": results,
             "errors": errors,
         }
+        published_changes = int(response["publishedChanges"])
+        if errors:
+            _set_sync_progress(
+                status="failed",
+                phase="failed",
+                message="发布未全部完成：" + "；".join(errors.values()),
+                finishedAt=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                publishedChanges=published_changes,
+            )
+        else:
+            _set_sync_progress(
+                status="succeeded",
+                phase="complete",
+                message=f"已发布 {published_changes} 条修订，HF 与 B2 均已完成",
+                completed=object_total,
+                total=object_total,
+                percent=100,
+                finishedAt=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                publishedChanges=published_changes,
+            )
         return jsonify(response), 200 if not errors else 502
     except Exception as error:
         logging.exception("Unable to prepare RMRB review publication")
+        _set_sync_progress(
+            status="failed",
+            phase="failed",
+            message=f"发布失败：{error}",
+            finishedAt=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        )
         return jsonify({"success": False, "error": str(error)}), 502
     finally:
         SYNC_LOCK.release()
