@@ -16,7 +16,7 @@ beforeEach(() => {
   saveCloseBehavior.mockReset().mockImplementation(async (value) => value);
   getLaunchAtLogin.mockReset().mockResolvedValue(false);
   saveLaunchAtLogin.mockReset().mockImplementation(async (value) => value);
-  getAppInfo.mockReset().mockResolvedValue({ version: '0.0.1', platform: 'win32', arch: 'x64' });
+  getAppInfo.mockReset().mockResolvedValue({ version: '0.0.1-rc1', platform: 'win32', arch: 'x64' });
   window.jojoDesktop = {
     appName: 'test',
     platform: 'win32',
@@ -39,7 +39,7 @@ describe('Desktop settings', () => {
     fireEvent.change(closeBehavior, { target: { value: 'quit' } });
     await waitFor(() => expect(saveCloseBehavior).toHaveBeenCalledWith('quit'));
     expect(screen.getByText('已保存')).toBeInTheDocument();
-    expect(screen.getByRole('contentinfo')).toHaveTextContent('版本 0.0.1');
+    expect(screen.getByRole('contentinfo')).toHaveTextContent('版本 0.0.1-rc1');
   });
 
   it('lets the user restore first-close prompting', async () => {
