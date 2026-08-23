@@ -285,6 +285,7 @@ interface RecoveryFormProps extends FeedbackProps {
   passwordConfirmation: string;
   resendSeconds: number;
   busy: boolean;
+  backLabel?: string;
   onEmailChange: (value: string) => void;
   onCodeChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
@@ -302,6 +303,7 @@ export function RecoveryForm({
   passwordConfirmation,
   resendSeconds,
   busy,
+  backLabel = "返回登录",
   error,
   notice,
   onEmailChange,
@@ -377,7 +379,7 @@ export function RecoveryForm({
         </button>
       )}
       <button type="button" className="book-account-form__text-action" disabled={busy} onClick={onBackToLogin}>
-        返回登录
+        {backLabel}
       </button>
     </form>
   );

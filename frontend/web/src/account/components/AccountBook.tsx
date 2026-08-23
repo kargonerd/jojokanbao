@@ -1,6 +1,7 @@
 import {
   type MouseEvent,
   type ReactNode,
+  useEffect,
   useRef,
 } from "react";
 import { flushSync } from "react-dom";
@@ -11,6 +12,7 @@ export type AccountMode = "login" | "register" | "recover";
 interface AccountBookProps {
   mode: AccountMode;
   busy: boolean;
+  open?: boolean;
   children: ReactNode;
   onModeChange: (mode: AccountMode) => void;
 }
@@ -44,6 +46,7 @@ function QuotePage() {
 export function AccountBook({
   mode,
   busy,
+  open = false,
   children,
   onModeChange,
 }: AccountBookProps) {
@@ -67,6 +70,10 @@ export function AccountBook({
 
     dialog.setAttribute("open", "");
   };
+
+  useEffect(() => {
+    if (open) openDialog();
+  }, [open]);
 
   const openAccount = (nextMode: AccountMode) => {
     // Commit the selected form before the native dialog starts its cover animation.

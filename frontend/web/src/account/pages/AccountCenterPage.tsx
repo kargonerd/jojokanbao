@@ -6,6 +6,7 @@ import { PersonalInvitationPanel } from "../components/PersonalInvitationPanel";
 
 interface AccountCenterPageProps {
   userId: string;
+  onForgotPassword: () => void;
 }
 
 type AccountDialog = "password" | "delete" | null;
@@ -19,7 +20,7 @@ const primaryButtonClass =
 const secondaryButtonClass =
   "min-h-11 border border-rule-dark bg-paper px-5 font-serif text-sm font-black tracking-[0.08em] text-ink hover:border-red hover:text-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red disabled:cursor-wait disabled:opacity-60";
 
-export function AccountCenterPage({ userId }: AccountCenterPageProps) {
+export function AccountCenterPage({ userId, onForgotPassword }: AccountCenterPageProps) {
   const navigate = useNavigate();
   const {
     user,
@@ -189,6 +190,14 @@ export function AccountCenterPage({ userId }: AccountCenterPageProps) {
 
           <form className="mt-6 grid gap-4" onSubmit={savePassword}>
             <label className="grid gap-2 font-sans text-xs font-bold text-ink"><span>当前密码</span><input autoFocus type="password" autoComplete="current-password" value={currentPassword} disabled={busy} required onChange={(event) => setCurrentPassword(event.target.value)} className="min-h-11 border border-ink bg-paper px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red" /></label>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onForgotPassword}
+              className="justify-self-start border-0 bg-transparent p-0 font-sans text-xs font-bold text-red underline decoration-rule-dark underline-offset-4 hover:decoration-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red disabled:cursor-wait disabled:opacity-60"
+            >
+              忘记当前密码？通过邮箱验证码重设
+            </button>
             <label className="grid gap-2 font-sans text-xs font-bold text-ink"><span>新密码</span><input type="password" autoComplete="new-password" minLength={8} value={newPassword} disabled={busy} required onChange={(event) => setNewPassword(event.target.value)} className="min-h-11 border border-ink bg-paper px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red" /></label>
             <label className="grid gap-2 font-sans text-xs font-bold text-ink"><span>再次输入新密码</span><input type="password" autoComplete="new-password" minLength={8} value={newPasswordConfirmation} disabled={busy} required onChange={(event) => setNewPasswordConfirmation(event.target.value)} className="min-h-11 border border-ink bg-paper px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red" /></label>
             <div className="mt-2 flex justify-end gap-3 border-t border-rule pt-5">

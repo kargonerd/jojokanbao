@@ -24,6 +24,9 @@ const account = vi.hoisted(() => ({
     notice: null as string | null,
     clearFeedback: vi.fn(),
     signOut: vi.fn(),
+    sendPasswordReset: vi.fn(),
+    verifyPasswordResetCode: vi.fn(),
+    completePasswordRecovery: vi.fn(),
     changePassword: vi.fn(),
     deleteAccount: vi.fn(),
   },
@@ -72,6 +75,9 @@ beforeEach(() => {
   account.auth.notice = null;
   account.auth.clearFeedback.mockClear();
   account.auth.signOut.mockReset().mockResolvedValue(undefined);
+  account.auth.sendPasswordReset.mockReset().mockResolvedValue(undefined);
+  account.auth.verifyPasswordResetCode.mockReset().mockResolvedValue(undefined);
+  account.auth.completePasswordRecovery.mockReset().mockResolvedValue(undefined);
   account.auth.changePassword.mockReset().mockResolvedValue(undefined);
   account.auth.deleteAccount.mockReset().mockResolvedValue(undefined);
   account.invitation.status = {
@@ -96,7 +102,7 @@ describe("account center", () => {
 
     render(
       <MemoryRouter>
-        <AccountCenterPage userId="reader-1" />
+        <AccountCenterPage userId="reader-1" onForgotPassword={() => undefined} />
       </MemoryRouter>,
     );
 
@@ -168,6 +174,28 @@ describe("account center", () => {
     fireEvent.change(within(dialog).getByLabelText("再次输入新密码"), { target: { value: "new-password" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "保存新密码" }));
     await waitFor(() => expect(account.auth.changePassword).toHaveBeenCalledWith("old-password", "new-password"));
+  });
+
+  it("lets an authenticated reader reset a forgotten current password by email code", async () => {
+    render(<MemoryRouter><AccountLogin /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole("button", { name: "修改密码" }));
+    fireEvent.click(screen.getByRole("button", { name: "忘记当前密码？通过邮箱验证码重设" }));
+
+    const emailInput = screen.getByLabelText("注册邮箱") as HTMLInputElement;
+    expect(emailInput.value).toBe("reader@example.com");
+    expect(screen.getByRole("button", { name: "返回账号" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "发送验证码" }));
+    await waitFor(() => expect(account.auth.sendPasswordReset).toHaveBeenCalledWith("reader@example.com"));
+
+    fireEvent.change(screen.getByLabelText("6 位验证码"), { target: { value: "654321" } });
+    fireEvent.click(screen.getByRole("button", { name: "验证身份" }));
+    await waitFor(() => expect(account.auth.verifyPasswordResetCode).toHaveBeenCalledWith("reader@example.com", "654321"));
+
+    fireEvent.change(screen.getByLabelText("新密码"), { target: { value: "replacement-password" } });
+    fireEvent.change(screen.getByLabelText("再次输入新密码"), { target: { value: "replacement-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存新密码" }));
+    await waitFor(() => expect(account.auth.completePasswordRecovery).toHaveBeenCalledWith("replacement-password"));
   });
 
   it("keeps account deletion fields behind a destructive confirmation dialog", () => {

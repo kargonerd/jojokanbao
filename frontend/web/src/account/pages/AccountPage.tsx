@@ -61,19 +61,28 @@ export function AccountPage() {
     return () => window.clearInterval(timer);
   }, [resendSeconds]);
 
-  if (user && mode !== "recover" && !authTransitioning && hasReturnTo) return <Navigate to={returnTo} replace />;
-  if (user && mode !== "recover" && !authTransitioning) return <AccountCenterPage userId={user.id} />;
-
-  const changeMode = (nextMode: AccountMode) => {
+  const changeMode = (nextMode: AccountMode, recoveryAddress?: string) => {
     clearFeedback();
     setLocalError(null);
     setMode(nextMode);
     if (nextMode === "recover") {
       setRecoveryStep("email");
-      setRecoveryEmail(loginEmail.trim());
+      setRecoveryEmail(recoveryAddress?.trim() || loginEmail.trim());
       setRecoveryCode("");
+      setRecoveryPassword("");
+      setRecoveryPasswordConfirmation("");
     }
   };
+
+  if (user && mode !== "recover" && !authTransitioning && hasReturnTo) return <Navigate to={returnTo} replace />;
+  if (user && mode !== "recover" && !authTransitioning) {
+    return (
+      <AccountCenterPage
+        userId={user.id}
+        onForgotPassword={() => changeMode("recover", user.email)}
+      />
+    );
+  }
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -205,7 +214,7 @@ export function AccountPage() {
   };
 
   return (
-    <AccountBook mode={mode} busy={busy} onModeChange={changeMode}>
+    <AccountBook mode={mode} busy={busy} open={mode === "recover" && Boolean(user)} onModeChange={changeMode}>
       {mode === "login" ? (
         <LoginForm
           email={loginEmail}
@@ -254,6 +263,7 @@ export function AccountPage() {
           passwordConfirmation={recoveryPasswordConfirmation}
           resendSeconds={resendSeconds}
           busy={busy}
+          backLabel={user ? "返回账号" : "返回登录"}
           error={localError ?? error}
           notice={notice}
           onEmailChange={setRecoveryEmail}

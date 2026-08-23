@@ -1,6 +1,6 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useNavigation, type NavigationProp } from "@react-navigation/native";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Alert,
   Modal,
@@ -17,7 +17,8 @@ import { ScreenHeader } from "../components/ScreenHeader";
 import type { RootStackParamList } from "../navigation/types";
 import { mobileTheme } from "../theme/tokens";
 
-type AccountSheet = "password" | "delete" | null;
+type AccountSheet = "password" | "recovery" | "delete" | null;
+type PasswordRecoveryStep = "code" | "password";
 
 function Field({
   label,
@@ -25,12 +26,14 @@ function Field({
   onChangeText,
   secure = false,
   autoFocus = false,
+  code = false,
 }: {
   label: string;
   value: string;
   onChangeText: (value: string) => void;
   secure?: boolean;
   autoFocus?: boolean;
+  code?: boolean;
 }) {
   const theme = mobileTheme;
   return (
@@ -42,6 +45,9 @@ function Field({
         onChangeText={onChangeText}
         secureTextEntry={secure}
         autoCapitalize="none"
+        keyboardType={code ? "number-pad" : "default"}
+        maxLength={code ? 6 : undefined}
+        autoComplete={code ? "one-time-code" : undefined}
         style={[styles.input, { color: theme.ink, borderColor: theme.ruleDark, backgroundColor: theme.paper, fontFamily: theme.sans }]}
       />
     </View>
@@ -183,6 +189,9 @@ export function AccountSecurityScreen() {
     busy,
     error,
     notice,
+    sendPasswordReset,
+    verifyPasswordResetCode,
+    completePasswordRecovery,
     changePassword,
     deleteAccount,
     signOut,
@@ -192,9 +201,20 @@ export function AccountSecurityScreen() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newPasswordConfirmation, setNewPasswordConfirmation] = useState("");
+  const [recoveryStep, setRecoveryStep] = useState<PasswordRecoveryStep>("code");
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const [recoveryPassword, setRecoveryPassword] = useState("");
+  const [recoveryPasswordConfirmation, setRecoveryPasswordConfirmation] = useState("");
+  const [resendSeconds, setResendSeconds] = useState(0);
   const [deletePassword, setDeletePassword] = useState("");
   const [deletePhrase, setDeletePhrase] = useState("");
   const [localError, setLocalError] = useState("");
+
+  useEffect(() => {
+    if (resendSeconds <= 0) return undefined;
+    const timer = setInterval(() => setResendSeconds((seconds) => Math.max(0, seconds - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [resendSeconds]);
 
   const openSheet = (sheet: Exclude<AccountSheet, null>) => {
     clearFeedback();
@@ -234,6 +254,74 @@ export function AccountSecurityScreen() {
       setNewPassword("");
       setNewPasswordConfirmation("");
       setActiveSheet(null);
+    } catch {
+      // The shared auth store exposes a localized error below.
+    }
+  };
+
+  const beginPasswordRecovery = async () => {
+    const email = user?.email?.trim();
+    clearFeedback();
+    setLocalError("");
+    if (!email) {
+      setLocalError("账号没有可用的登录邮箱。");
+      return;
+    }
+    setRecoveryStep("code");
+    setRecoveryCode("");
+    setRecoveryPassword("");
+    setRecoveryPasswordConfirmation("");
+    setActiveSheet("recovery");
+    try {
+      await sendPasswordReset(email);
+      setResendSeconds(60);
+    } catch {
+      // The shared auth store exposes a localized error below.
+    }
+  };
+
+  const continuePasswordRecovery = async () => {
+    const email = user?.email?.trim();
+    clearFeedback();
+    setLocalError("");
+    if (!email) {
+      setLocalError("账号没有可用的登录邮箱。");
+      return;
+    }
+    try {
+      if (recoveryStep === "code") {
+        if (!/^\d{6}$/.test(recoveryCode)) {
+          setLocalError("请输入邮件中的 6 位验证码。");
+          return;
+        }
+        await verifyPasswordResetCode(email, recoveryCode);
+        setRecoveryStep("password");
+        return;
+      }
+      if (recoveryPassword.length < 8) {
+        setLocalError("新密码至少需要 8 位字符。");
+        return;
+      }
+      if (recoveryPassword !== recoveryPasswordConfirmation) {
+        setLocalError("两次输入的新密码不一致。");
+        return;
+      }
+      await completePasswordRecovery(recoveryPassword);
+      setRecoveryCode("");
+      setRecoveryPassword("");
+      setRecoveryPasswordConfirmation("");
+      setActiveSheet(null);
+    } catch {
+      // The shared auth store exposes a localized error below.
+    }
+  };
+
+  const resendPasswordRecoveryCode = async () => {
+    const email = user?.email?.trim();
+    if (!email || resendSeconds > 0) return;
+    try {
+      await sendPasswordReset(email);
+      setResendSeconds(60);
     } catch {
       // The shared auth store exposes a localized error below.
     }
@@ -317,9 +405,44 @@ export function AccountSecurityScreen() {
       >
         {feedback ? <Feedback message={feedback} error={feedbackIsError} /> : null}
         <Field autoFocus label="当前密码" value={currentPassword} onChangeText={setCurrentPassword} secure />
+        <Pressable accessibilityRole="button" disabled={busy} onPress={() => void beginPasswordRecovery()}>
+          <Text style={[styles.textAction, { color: theme.red, fontFamily: theme.sans }]}>忘记当前密码？通过邮箱验证码重设</Text>
+        </Pressable>
         <Field label="新密码" value={newPassword} onChangeText={setNewPassword} secure />
         <Field label="再次输入新密码" value={newPasswordConfirmation} onChangeText={setNewPasswordConfirmation} secure />
         <Action label={busy ? "处理中…" : "保存新密码"} disabled={busy} onPress={() => void savePassword()} />
+      </OperationSheet>
+
+      <OperationSheet
+        visible={activeSheet === "recovery"}
+        title="重设密码"
+        description={recoveryStep === "code" ? `验证码已发送到 ${user.email || "你的登录邮箱"}` : "验证完成，请设置一个新密码。"}
+        onClose={closeSheet}
+      >
+        {feedback ? <Feedback message={feedback} error={feedbackIsError} /> : null}
+        {recoveryStep === "code" ? (
+          <>
+            <Field
+              autoFocus
+              code
+              label="6 位验证码"
+              value={recoveryCode}
+              onChangeText={(value) => setRecoveryCode(value.replace(/\D/g, "").slice(0, 6))}
+            />
+            <Action label={busy ? "处理中…" : "验证身份"} disabled={busy} onPress={() => void continuePasswordRecovery()} />
+            <Pressable accessibilityRole="button" disabled={busy || resendSeconds > 0} onPress={() => void resendPasswordRecoveryCode()}>
+              <Text style={[styles.textAction, { color: theme.red, fontFamily: theme.sans, opacity: busy || resendSeconds > 0 ? 0.45 : 1 }]}>
+                {resendSeconds > 0 ? `${resendSeconds} 秒后可重发` : "重新发送验证码"}
+              </Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <Field autoFocus label="新密码" value={recoveryPassword} onChangeText={setRecoveryPassword} secure />
+            <Field label="再次输入新密码" value={recoveryPasswordConfirmation} onChangeText={setRecoveryPasswordConfirmation} secure />
+            <Action label={busy ? "处理中…" : "保存新密码"} disabled={busy} onPress={() => void continuePasswordRecovery()} />
+          </>
+        )}
       </OperationSheet>
 
       <OperationSheet
@@ -356,6 +479,7 @@ const styles = StyleSheet.create({
   input: { minHeight: 48, borderWidth: 1, paddingHorizontal: 12, fontSize: 14 },
   action: { minHeight: 48, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   actionText: { fontSize: 12, fontWeight: "900", letterSpacing: 1.5 },
+  textAction: { paddingVertical: 4, textAlign: "left", fontSize: 11, lineHeight: 18, fontWeight: "900" },
   feedback: { borderLeftWidth: 4, padding: 12, fontSize: 12, lineHeight: 20, fontWeight: "700" },
   sheetSafe: { flex: 1 },
   sheetHeader: { minHeight: 58, borderBottomWidth: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 18 },
