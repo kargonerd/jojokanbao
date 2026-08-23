@@ -30,12 +30,32 @@ import prepare_rmrb_publication as rmrb
 WORKSPACE = Path(__file__).resolve().parents[2]
 DEFAULT_SOURCE = Path(r"C:\Users\luoxixi\GAI\jojo-platform\tmp\rmrb-peopledata-full-directory\merged-peopledata-canonical.jsonl")
 DEFAULT_REVIEW = DEFAULT_SOURCE.parent
+DEFAULT_MERGE_REPORT = DEFAULT_REVIEW / "merged-peopledata-report.json"
 DEFAULT_WORK = Path(r"C:\Users\luoxixi\GAI\jojo-platform\tmp\periodical-publish")
 HF_REPO = "luoxiaozhuang/marxism-dataset"
 
 
 def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def validate_safe_rmrb_merge(merged: Path, report_path: Path) -> dict[str, Any]:
+    """Reject publication unless the merge proved that every JSONL body survived."""
+    if not report_path.is_file():
+        raise RuntimeError(f"RMRB merge safety report is missing: {report_path}")
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    reported_output = Path(str(report.get("output") or ""))
+    if not reported_output.is_absolute() or reported_output.resolve() != merged.resolve():
+        raise RuntimeError(
+            f"RMRB merge report does not describe the selected source: {reported_output} != {merged}"
+        )
+    orphan_count = int(report.get("counters", {}).get("jsonlOrphanedContentRows", -1))
+    if report.get("safeToPublish") is not True or orphan_count != 0:
+        raise RuntimeError(
+            "RMRB merge is not safe to publish: "
+            f"safeToPublish={report.get('safeToPublish')!r}, jsonlOrphanedContentRows={orphan_count}"
+        )
+    return report
 
 
 class Publisher:
@@ -215,6 +235,7 @@ class Publisher:
         self.safe_remove_batch(batch)
 
     def split_rmrb_source(self) -> list[str]:
+        validate_safe_rmrb_merge(self.args.merged, self.args.merge_report)
         shard_root = self.work / "rmrb-source-years"
         marker = shard_root / "_SUCCESS.json"
         if marker.is_file():
@@ -485,6 +506,7 @@ def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument("--merged", type=Path, default=DEFAULT_SOURCE)
     result.add_argument("--review-root", type=Path, default=DEFAULT_REVIEW)
+    result.add_argument("--merge-report", type=Path, default=DEFAULT_MERGE_REPORT)
     result.add_argument("--work", type=Path, default=DEFAULT_WORK)
     result.add_argument("--snapshot-id", default="2026-08-20")
     result.add_argument("--wait-pid", action="append", type=int, default=[])

@@ -32,9 +32,31 @@ python tools/rmrb-repair/merge_rmrb_peopledata_xlsx.py `
   --xlsx-root C:/path/to/annual-xlsx `
   --output tmp/rmrb-peopledata-full-directory/merged-peopledata-canonical.jsonl `
   --unmatched tmp/rmrb-peopledata-full-directory/merged-unmatched.jsonl `
+  --jsonl-unaligned tmp/rmrb-peopledata-full-directory/merged-jsonl-unaligned.jsonl `
   --report tmp/rmrb-peopledata-full-directory/merged-report.json
 
 python tools/rmrb-repair/build_rmrb_missing_workbench_db.py
+```
+
+The merge treats non-empty JSONL bodies as the preservation baseline. Confident
+matches receive PeopleData catalog metadata. Any body that cannot be aligned is
+retained as a same-date `sourceOnly` article and recorded in the unaligned audit
+file. The command exits non-zero and sets `safeToPublish: false` if its accounting
+ever shows that a non-empty JSONL body was neither matched, explicitly collapsed
+as an identical duplicate, nor preserved.
+
+## Recover a published missing queue from JSONL
+
+Use the current HF-derived missing index, not an old local queue. This makes the
+repair additive and leaves already-published manual decisions untouched. The
+command emits only unique, non-empty, same-date/same-page accept decisions:
+
+```powershell
+python tools/rmrb-repair/recover_rmrb_missing_from_jsonl.py `
+  --jsonl D:/path/to/output.jsonl `
+  --missing-index tmp/rmrb-jsonl-recovery/missing-articles.jsonl.gz `
+  --output tmp/rmrb-jsonl-recovery/decisions.jsonl `
+  --report tmp/rmrb-jsonl-recovery/report.json
 ```
 
 ## Auto-complete image-only records
