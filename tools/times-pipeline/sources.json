@@ -141,14 +141,6 @@
       "enabled": true
     },
     {
-      "id": "yicai",
-      "name": "第一财经",
-      "route": "/yicai/latest",
-      "language": "zh-CN",
-      "contentPolicy": "feed-body",
-      "enabled": true
-    },
-    {
       "id": "cls",
       "name": "财联社",
       "route": "/cls/depth/1000",
