@@ -125,6 +125,26 @@ describe("RmrbReviewPage", () => {
     expect(payload.images[0].dataUrl).toMatch(/^data:image\/png;base64,/);
   });
 
+  it("accepts an image copied as People Data HTML", async () => {
+    render(<RmrbReviewPage />);
+    await screen.findByRole("heading", { name: "第一篇" });
+    const editor = screen.getByLabelText("正文");
+    const sourceUrl = "https://webvpn.zju.edu.cn/https/77726476706e69737468656265737421f4f6559d69206d5f6e048ce29b5a2e7b74a4/pic/1950/example.jpg?vpn-1";
+    editor.innerHTML = `<img src="${sourceUrl}">`;
+    fireEvent.input(editor);
+    fireEvent.click(screen.getByRole("button", { name: "Accept · 暂存" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "第二篇" })).toBeInTheDocument());
+
+    const decisionCall = vi.mocked(fetch).mock.calls.find(([input]) => String(input).includes("/decision"));
+    const payload = JSON.parse(String(decisionCall?.[1]?.body));
+    expect(payload.content).toBe("");
+    expect(payload.images).toEqual([expect.objectContaining({
+      name: "example.jpg",
+      mediaType: "image/jpeg",
+      sourceUrl,
+    })]);
+  });
+
   it("does not reject a normal missing article without a confirmed reason", async () => {
     render(<RmrbReviewPage />);
     await screen.findByRole("heading", { name: "第一篇" });

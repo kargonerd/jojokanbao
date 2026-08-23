@@ -13,7 +13,9 @@ import shutil
 import sqlite3
 import subprocess
 import threading
+import urllib.error
 import urllib.parse
+import urllib.request
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,6 +47,7 @@ PEOPLE_DATA_BASE = (
     "https://webvpn.zju.edu.cn/https/"
     "77726476706e69737468656265737421f4f6559d69206d5f6e048ce29b5a2e7b74a4/rmrb"
 )
+PEOPLE_DATA_IMAGE_PREFIX = PEOPLE_DATA_BASE.removesuffix("/rmrb") + "/pic/"
 REVIEW_DB = REVIEW_ROOT / "hf-missing-workbench.sqlite3"
 WORKBENCH_DECISIONS = REVIEW_ROOT / "manual-review-decisions-workbench.jsonl"
 SYNC_ROOT = REVIEW_ROOT / "sync"
@@ -329,6 +332,35 @@ def _valid_image_signature(media_type: str, value: bytes) -> bool:
     return False
 
 
+def _download_people_data_image(source_url: str, index: int) -> tuple[str, bytes]:
+    parsed = urllib.parse.urlsplit(source_url)
+    if (
+        parsed.scheme != "https"
+        or parsed.netloc != "webvpn.zju.edu.cn"
+        or not source_url.startswith(PEOPLE_DATA_IMAGE_PREFIX)
+    ):
+        raise ValueError(f"image {index} source URL is not a People Data image")
+    request_value = urllib.request.Request(
+        source_url,
+        headers={
+            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            "Referer": f"{PEOPLE_DATA_BASE}/",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request_value, timeout=30) as response:
+            raw = response.read(MAX_REVIEW_IMAGE_BYTES + 1)
+    except (OSError, urllib.error.URLError) as error:
+        raise ValueError(f"image {index} could not be downloaded from People Data") from error
+    if not raw or len(raw) > MAX_REVIEW_IMAGE_BYTES:
+        raise ValueError(f"image {index} must be between 1 byte and 15 MB")
+    for media_type in IMAGE_SUFFIXES:
+        if _valid_image_signature(media_type, raw):
+            return media_type, raw
+    raise ValueError(f"image {index} downloaded content is not a supported image")
+
+
 def _save_review_images(values: object) -> list[dict[str, object]]:
     if values in (None, []):
         return []
@@ -339,17 +371,23 @@ def _save_review_images(values: object) -> list[dict[str, object]]:
         if not isinstance(value, dict):
             raise ValueError(f"image {index} is invalid")
         match = IMAGE_DATA_RE.fullmatch(str(value.get("dataUrl") or ""))
-        if not match:
-            raise ValueError(f"image {index} must be a PNG, JPEG, WebP or GIF data URL")
-        media_type, encoded = match.groups()
-        try:
-            raw = base64.b64decode(encoded, validate=True)
-        except (binascii.Error, ValueError) as error:
-            raise ValueError(f"image {index} contains invalid base64 data") from error
-        if not raw or len(raw) > MAX_REVIEW_IMAGE_BYTES:
-            raise ValueError(f"image {index} must be between 1 byte and 15 MB")
-        if not _valid_image_signature(media_type, raw):
-            raise ValueError(f"image {index} content does not match {media_type}")
+        source_url = str(value.get("sourceUrl") or "")
+        if match:
+            media_type, encoded = match.groups()
+            try:
+                raw = base64.b64decode(encoded, validate=True)
+            except (binascii.Error, ValueError) as error:
+                raise ValueError(f"image {index} contains invalid base64 data") from error
+            if not raw or len(raw) > MAX_REVIEW_IMAGE_BYTES:
+                raise ValueError(f"image {index} must be between 1 byte and 15 MB")
+            if not _valid_image_signature(media_type, raw):
+                raise ValueError(f"image {index} content does not match {media_type}")
+        elif source_url:
+            media_type, raw = _download_people_data_image(source_url, index)
+        else:
+            raise ValueError(
+                f"image {index} must be a PNG, JPEG, WebP or GIF data URL or a People Data image"
+            )
         digest = hashlib.sha256(raw).hexdigest()
         relative = Path("attachments") / f"{digest}{IMAGE_SUFFIXES[media_type]}"
         target = REVIEW_ROOT / relative
@@ -361,6 +399,7 @@ def _save_review_images(values: object) -> list[dict[str, object]]:
             "size": len(raw),
             "sha256": digest,
             "path": str(target.resolve()),
+            **({"sourceUrl": source_url} if source_url else {}),
         })
     return result
 

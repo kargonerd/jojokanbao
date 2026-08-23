@@ -9,6 +9,7 @@ export type RmrbDecisionImage = {
   name: string;
   mediaType: string;
   dataUrl?: string;
+  sourceUrl?: string;
   sha256?: string;
   size?: number;
 };

@@ -15,7 +15,26 @@ const PAGE_SIZE = 40;
 const MAX_PASTED_IMAGES = 10;
 const MAX_PASTED_IMAGE_BYTES = 15 * 1024 * 1024;
 const PASTE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+const PEOPLE_DATA_IMAGE_PREFIX = "https://webvpn.zju.edu.cn/https/77726476706e69737468656265737421f4f6559d69206d5f6e048ce29b5a2e7b74a4/pic/";
 type DraftImage = RmrbDecisionImage & { id: string };
+
+function imageTypeFromSource(source: string): string | undefined {
+  const path = source.split("?", 1)[0]?.toLowerCase() || "";
+  if (path.endsWith(".png")) return "image/png";
+  if (path.endsWith(".jpg") || path.endsWith(".jpeg")) return "image/jpeg";
+  if (path.endsWith(".webp")) return "image/webp";
+  if (path.endsWith(".gif")) return "image/gif";
+  return undefined;
+}
+
+function imageNameFromSource(source: string): string {
+  const encodedName = source.split("/").at(-1)?.split("?", 1)[0] || "clipboard-image";
+  try {
+    return decodeURIComponent(encodedName);
+  } catch {
+    return encodedName;
+  }
+}
 
 function readImage(file: File): Promise<RmrbDecisionImage> {
   return new Promise((resolve, reject) => {
@@ -162,6 +181,32 @@ export function RmrbReviewPage() {
     });
   }
 
+  function captureEmbeddedImages(): DraftImage[] {
+    const editor = editorRef.current;
+    if (!editor) return [];
+    const captured: DraftImage[] = [];
+    for (const element of editor.querySelectorAll<HTMLImageElement>("img:not([data-rmrb-image-id])")) {
+      const source = element.currentSrc || element.src || element.getAttribute("src") || "";
+      const dataMatch = source.match(/^data:(image\/(?:png|jpeg|webp|gif));base64,/i);
+      const mediaType = dataMatch?.[1]?.toLowerCase() || imageTypeFromSource(source);
+      const isPeopleDataImage = source.startsWith(PEOPLE_DATA_IMAGE_PREFIX);
+      if (!mediaType || (!dataMatch && !isPeopleDataImage)) continue;
+      const id = `embedded-${Date.now()}-${captured.length}-${Math.random().toString(16).slice(2)}`;
+      element.dataset.rmrbImageId = id;
+      captured.push({
+        id,
+        name: imageNameFromSource(source),
+        mediaType,
+        ...(dataMatch ? { dataUrl: source } : { sourceUrl: source }),
+      });
+    }
+    if (captured.length) {
+      setImages((currentImages) => [...currentImages, ...captured].slice(0, MAX_PASTED_IMAGES));
+      setMessage(`已识别 ${captured.length} 张网页图片，可直接暂存。`);
+    }
+    return captured;
+  }
+
   function insertEditorImage(image: DraftImage) {
     const editor = editorRef.current;
     if (!editor || !image.dataUrl) return;
@@ -191,7 +236,10 @@ export function RmrbReviewPage() {
       .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
       .map((item) => item.getAsFile())
       .filter((file): file is File => Boolean(file));
-    if (!files.length) return;
+    if (!files.length) {
+      window.setTimeout(() => captureEmbeddedImages(), 0);
+      return;
+    }
     event.preventDefault();
     const accepted = files.filter((file) => (
       PASTE_IMAGE_TYPES.has(file.type) && file.size <= MAX_PASTED_IMAGE_BYTES
@@ -221,7 +269,9 @@ export function RmrbReviewPage() {
 
   async function submit(decision: "accept" | "reject") {
     if (!current || busy) return;
-    if (decision === "accept" && !content.trim() && !images.length) {
+    const capturedImages = decision === "accept" ? captureEmbeddedImages() : [];
+    const submissionImages = [...images, ...capturedImages].slice(0, MAX_PASTED_IMAGES);
+    if (decision === "accept" && !content.trim() && !submissionImages.length) {
       setMessage("Accept 需要先粘贴正文或图片。");
       return;
     }
@@ -237,7 +287,7 @@ export function RmrbReviewPage() {
         decision,
         content.trim(),
         reason.trim(),
-        images.map(({ id: _id, ...image }) => image),
+        submissionImages.map(({ id: _id, ...image }) => image),
       );
       setMessage(decision === "accept" ? "已暂存并进入下一条。" : "已拒绝并进入下一条。");
       await load(selected);

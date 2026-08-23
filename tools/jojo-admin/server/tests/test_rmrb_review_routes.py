@@ -5,7 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from flask import Flask
 
@@ -169,6 +169,53 @@ class RmrbReviewRoutesTest(unittest.TestCase):
             (self.root / "manual-review-pending-publication.json").read_text(encoding="utf-8")
         )["items"]["1950-01-02|2|4"]
         self.assertIn("payloadSha256", pending)
+
+    def test_accept_downloads_an_embedded_people_data_image(self):
+        image = b"\xff\xd8\xffembedded-image"
+        source_url = routes.PEOPLE_DATA_IMAGE_PREFIX + "1950/example.jpg?vpn-1"
+        remote = MagicMock()
+        remote.__enter__.return_value.read.return_value = image
+        with patch.object(routes.urllib.request, "urlopen", return_value=remote) as urlopen:
+            response = self.client.post(
+                "/api/rmrb-review/decision",
+                json={
+                    "date": "1950-01-02",
+                    "page": 2,
+                    "peopleDataOrdinal": 4,
+                    "decision": "accept",
+                    "content": "",
+                    "images": [{
+                        "name": "example.jpg",
+                        "mediaType": "image/jpeg",
+                        "sourceUrl": source_url,
+                    }],
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        urlopen.assert_called_once()
+        saved = json.loads(self.decisions.read_text(encoding="utf-8"))
+        self.assertEqual(saved["content"], "【图片】")
+        self.assertEqual(saved["images"][0]["sourceUrl"], source_url)
+        self.assertEqual(Path(saved["images"][0]["path"]).read_bytes(), image)
+
+    def test_embedded_image_rejects_an_untrusted_source(self):
+        response = self.client.post(
+            "/api/rmrb-review/decision",
+            json={
+                "date": "1950-01-02",
+                "page": 2,
+                "peopleDataOrdinal": 4,
+                "decision": "accept",
+                "content": "",
+                "images": [{
+                    "name": "example.jpg",
+                    "mediaType": "image/jpeg",
+                    "sourceUrl": "https://example.test/example.jpg",
+                }],
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("not a People Data image", response.get_json()["error"])
 
     def test_reject_is_staged_for_formal_publication(self):
         response = self.client.post(
