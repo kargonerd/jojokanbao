@@ -57,7 +57,6 @@ jobs:
       - name: Install locked pipeline dependencies
         run: |
           pnpm install --frozen-lockfile
-          python -m pip install "huggingface_hub==0.34.4"
           python -m pip install -r tools/times-pipeline/requirements.txt
           python -m playwright install --with-deps chromium
 

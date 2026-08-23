@@ -114,6 +114,10 @@ Delivery 构建会合并旧 index，所以滚动历史不会在下一轮消失�
 - `maintenance-times-process.yml`：错开 5 分钟读取最新完整 Raw commit，增量提交 Canonical，然后按
   Article/Asset → 日期 manifest → index → catalog 的顺序发布 B2 Delivery。
 
+Process 不下载 WACZ 或整个历史 Dataset。`download_hf_snapshot.py` 只恢复最新完整 run、对应的 source
+manifest/candidates，以及这些候选日期已经存在的 Canonical 分片；同日增量可以合并，下载量不会随
+Raw 存档累计而线性增长。
+
 代理订阅只从 `JOJO_TIMES_PROXY_SUBSCRIPTION` Secret 读取。任务使用固定 Mihomo 二进制生成临时配置；
 订阅 URL、节点名、Cookie、Authorization 和控制密钥不会进入日志、manifest、WACZ 请求头或 artifact。
 
