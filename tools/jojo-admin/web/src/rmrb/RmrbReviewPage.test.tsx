@@ -91,10 +91,12 @@ describe("RmrbReviewPage", () => {
   it("submits pasted content and advances to the next pending record", async () => {
     render(<RmrbReviewPage />);
     expect(await screen.findByRole("heading", { name: "第一篇" })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("正文"), { target: { value: "确认后的正文。" } });
+    const editor = screen.getByLabelText("正文");
+    editor.textContent = "确认后的正文。";
+    fireEvent.input(editor);
     fireEvent.click(screen.getByRole("button", { name: "Accept · 暂存" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "第二篇" })).toBeInTheDocument());
-    expect(screen.getByLabelText("正文")).toHaveValue("");
+    expect(screen.getByLabelText("正文")).toHaveTextContent("");
   });
 
   it("accepts a clipboard image without requiring transcription text", async () => {
@@ -110,7 +112,8 @@ describe("RmrbReviewPage", () => {
         items: [{ kind: "file", type: "image/png", getAsFile: () => file }],
       },
     });
-    expect(await screen.findByRole("img", { name: "已粘贴图片 1" })).toBeInTheDocument();
+    expect(await screen.findByRole("img", { name: "table.png" })).toBeInTheDocument();
+    expect(screen.getByLabelText("正文")).toContainElement(screen.getByRole("img", { name: "table.png" }));
     fireEvent.click(screen.getByRole("button", { name: "Accept · 暂存" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "第二篇" })).toBeInTheDocument());
 

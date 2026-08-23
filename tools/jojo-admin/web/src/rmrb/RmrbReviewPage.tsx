@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ClipboardEvent, FormEvent } from "react";
 import { PageTopbar } from "../components/PageTopbar";
 import {
@@ -15,6 +15,7 @@ const PAGE_SIZE = 40;
 const MAX_PASTED_IMAGES = 10;
 const MAX_PASTED_IMAGE_BYTES = 15 * 1024 * 1024;
 const PASTE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+type DraftImage = RmrbDecisionImage & { id: string };
 
 function readImage(file: File): Promise<RmrbDecisionImage> {
   return new Promise((resolve, reject) => {
@@ -38,7 +39,7 @@ export function RmrbReviewPage() {
   const [searchInput, setSearchInput] = useState("");
   const [query, setQuery] = useState("");
   const [content, setContent] = useState("");
-  const [images, setImages] = useState<RmrbDecisionImage[]>([]);
+  const [images, setImages] = useState<DraftImage[]>([]);
   const [reason, setReason] = useState("");
   const [stats, setStats] = useState<RmrbStats["counts"]>();
   const [sourceStatus, setSourceStatus] = useState<RmrbSourceStatus>();
@@ -47,8 +48,17 @@ export function RmrbReviewPage() {
   const [syncElapsed, setSyncElapsed] = useState(0);
   const [syncStatus, setSyncStatus] = useState<RmrbSyncStatus>();
   const [message, setMessage] = useState("");
+  const editorRef = useRef<HTMLDivElement>(null);
 
   const current = items[selected];
+  const currentKey = current
+    ? `${current.date}|${current.page}|${current.peopleDataOrdinal}`
+    : "";
+
+  useEffect(() => {
+    if (!editorRef.current) return;
+    editorRef.current.textContent = current?.decision?.content || "";
+  }, [currentKey]);
 
   const load = useCallback(async (preferredIndex = 0) => {
     setBusy(true);
@@ -138,12 +148,51 @@ export function RmrbReviewPage() {
     setQuery(searchInput);
   }
 
-  async function pasteImages(event: ClipboardEvent<HTMLTextAreaElement>) {
+  function syncEditorState() {
+    const editor = editorRef.current;
+    if (!editor) return;
+    setContent(editor.innerText || editor.textContent || "");
+    const visibleImageIds = new Set(
+      [...editor.querySelectorAll<HTMLImageElement>("img[data-rmrb-image-id]")]
+        .map((image) => image.dataset.rmrbImageId || ""),
+    );
+    setImages((currentImages) => {
+      const remaining = currentImages.filter((image) => visibleImageIds.has(image.id));
+      return remaining.length === currentImages.length ? currentImages : remaining;
+    });
+  }
+
+  function insertEditorImage(image: DraftImage) {
+    const editor = editorRef.current;
+    if (!editor || !image.dataUrl) return;
+    const element = document.createElement("img");
+    element.src = image.dataUrl;
+    element.alt = image.name || "粘贴图片";
+    element.dataset.rmrbImageId = image.id;
+    const lineBreak = document.createElement("br");
+    const selection = window.getSelection();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : undefined;
+    if (range && editor.contains(range.commonAncestorContainer)) {
+      range.deleteContents();
+      range.insertNode(lineBreak);
+      range.insertNode(element);
+      range.setStartAfter(lineBreak);
+      range.collapse(true);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    } else {
+      editor.append(element, lineBreak);
+    }
+    editor.focus();
+  }
+
+  async function pasteImages(event: ClipboardEvent<HTMLDivElement>) {
     const files = [...event.clipboardData.items]
       .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
       .map((item) => item.getAsFile())
       .filter((file): file is File => Boolean(file));
     if (!files.length) return;
+    event.preventDefault();
     const accepted = files.filter((file) => (
       PASTE_IMAGE_TYPES.has(file.type) && file.size <= MAX_PASTED_IMAGE_BYTES
     ));
@@ -157,8 +206,13 @@ export function RmrbReviewPage() {
       return;
     }
     try {
-      const pasted = await Promise.all(accepted.slice(0, remaining).map(readImage));
+      const loaded = await Promise.all(accepted.slice(0, remaining).map(readImage));
+      const pasted = loaded.map((image, index) => ({
+        ...image,
+        id: `pasted-${Date.now()}-${index}-${Math.random().toString(16).slice(2)}`,
+      }));
       setImages((currentImages) => [...currentImages, ...pasted].slice(0, MAX_PASTED_IMAGES));
+      pasted.forEach(insertEditorImage);
       setMessage(`已贴入 ${pasted.length} 张图片，可继续粘贴正文或直接暂存。`);
     } catch (error) {
       setMessage((error as Error).message);
@@ -178,7 +232,13 @@ export function RmrbReviewPage() {
     setBusy(true);
     setMessage("");
     try {
-      await rmrbReviewApi.decide(current, decision, content.trim(), reason.trim(), images);
+      await rmrbReviewApi.decide(
+        current,
+        decision,
+        content.trim(),
+        reason.trim(),
+        images.map(({ id: _id, ...image }) => image),
+      );
       setMessage(decision === "accept" ? "已暂存并进入下一条。" : "已拒绝并进入下一条。");
       await load(selected);
     } catch (error) {
@@ -306,28 +366,20 @@ export function RmrbReviewPage() {
             </div>
             <label>
               <span>正文与图片（不含标题）</span>
-              <div className={`rmrb-review-compose${images.length ? " has-images" : ""}`}>
-                <textarea
+              <div className="rmrb-review-compose">
+                <div
+                  ref={editorRef}
+                  className="rmrb-review-rich-editor"
+                  role="textbox"
                   aria-label="正文"
-                  value={content}
-                  onChange={(event) => setContent(event.target.value)}
+                  aria-multiline="true"
+                  contentEditable
+                  suppressContentEditableWarning
+                  data-placeholder="从人民数据复制后粘贴到这里；支持 Ctrl+V 直接贴文字和图片"
+                  onInput={syncEditorState}
                   onPaste={(event) => void pasteImages(event)}
-                  placeholder="从人民数据复制后粘贴到这里；支持 Ctrl+V 直接贴文字和图片"
                 />
-                {images.length > 0 && (
-                  <div className="rmrb-review-image-strip" aria-label="已粘贴图片">
-                    {images.map((image, index) => (
-                      <figure key={`${image.name}-${index}`}>
-                        <img src={image.dataUrl} alt={`已粘贴图片 ${index + 1}`} />
-                        <button
-                          type="button"
-                          aria-label={`删除图片 ${index + 1}`}
-                          onClick={() => setImages((currentImages) => currentImages.filter((_, itemIndex) => itemIndex !== index))}
-                        >删除</button>
-                      </figure>
-                    ))}
-                  </div>
-                )}
+                {images.length > 0 && <small>已粘贴 {images.length} 张图片</small>}
               </div>
             </label>
             <label>
