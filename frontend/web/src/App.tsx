@@ -32,10 +32,6 @@ const legacyArchivePaths = [...PUBLICATION_NAMES, "search", "support"] as const;
 const redesignedArchivePaths = [...PUBLICATION_NAMES] as const;
 const archivePublications = Object.values(PUBLICATIONS);
 
-function ModuleFallback() {
-  return <div className="flex min-h-screen items-center justify-center bg-paper font-bold text-red">正在打开 JOJO…</div>;
-}
-
 function ArchiveRedirect({ stripPrefix = "" }: { stripPrefix?: string }) {
   const location = useLocation();
   const pathname = `${ARCHIVE_ROOT}${location.pathname.slice(stripPrefix.length)}`;
@@ -43,7 +39,7 @@ function ArchiveRedirect({ stripPrefix = "" }: { stripPrefix?: string }) {
 }
 
 function LazyRoute({ children }: { children: ReactNode }) {
-  return <Suspense fallback={<ModuleFallback />}>{children}</Suspense>;
+  return <Suspense fallback={null}>{children}</Suspense>;
 }
 
 function RuntimeBootstrap() {
@@ -60,7 +56,7 @@ function AuthenticatedRoute({ children }: { children: ReactNode }) {
   const initialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
   const location = useLocation();
-  if (!initialized) return <ModuleFallback />;
+  if (!initialized) return null;
   if (!userId) {
     const returnTo = `${location.pathname}${location.search}${location.hash}`;
     return <Navigate to={`/account?returnTo=${encodeURIComponent(returnTo)}`} replace />;
