@@ -665,32 +665,6 @@
   transform: none;
 }
 
-.book-account-form__proof {
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  padding: 0.7rem 0.8rem;
-  color: #fff;
-  background: var(--book-red);
-  transform: rotate(-0.6deg);
-}
-
-.book-account-form__proof span,
-.book-account-form__proof strong {
-  display: block;
-}
-
-.book-account-form__proof span {
-  font-size: 0.5rem;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  opacity: 0.8;
-}
-
-.book-account-form__proof strong {
-  margin-top: 0.4rem;
-  font-size: 1.35rem;
-  letter-spacing: 0.28em;
-}
-
 .book-account-form__hint,
 .book-account-form__section-title span {
   margin: 0;
@@ -715,14 +689,72 @@
   margin-top: 0.35rem;
 }
 
-.book-account-form__fields input.book-account-form__code {
-  height: 3.4rem;
-  border: 2px solid var(--book-red);
-  color: var(--book-red);
-  font-size: 1.3rem;
+.book-account-form__fields label.book-account-form__code-field {
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  gap: 0.55rem;
+}
+
+.book-account-form__code-entry {
+  position: relative;
+}
+
+.book-account-form__code-slots {
+  display: grid;
+  gap: clamp(0.25rem, 1vw, 0.45rem);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.book-account-form__code-slot {
+  height: 3.45rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid #a88865;
+  color: #796852;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.42), transparent),
+    rgba(255, 250, 235, 0.72);
+  font-family: var(--font-serif);
+  font-size: 1.55rem;
   font-weight: 900;
-  letter-spacing: 0.34em;
-  text-align: center;
+  line-height: 1;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    color 120ms ease,
+    background 120ms ease;
+}
+
+.book-account-form__code-slot--filled {
+  border-color: var(--book-red);
+  color: var(--book-red);
+  background: rgba(139, 26, 26, 0.045);
+}
+
+.book-account-form__code-entry:focus-within .book-account-form__code-slot--active {
+  border-color: var(--book-red);
+  box-shadow: inset 0 -3px 0 var(--book-red);
+}
+
+.book-account-form__fields input.book-account-form__code-input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  color: transparent;
+  background: transparent;
+  caret-color: transparent;
+  cursor: text;
+  opacity: 0.01;
+}
+
+.book-account-form__fields input.book-account-form__code-input:focus,
+.book-account-form__fields input.book-account-form__code-input:focus-visible {
+  border: 0;
+  box-shadow: none;
+  outline: none;
 }
 
 .account-security-form {

@@ -17,6 +17,58 @@ function FormFeedback({ error, notice }: FeedbackProps) {
   );
 }
 
+function VerificationCodeField({
+  value,
+  busy,
+  onChange,
+}: {
+  value: string;
+  busy: boolean;
+  onChange: (value: string) => void;
+}) {
+  const activeIndex = Math.min(value.length, 5);
+
+  return (
+    <label className="book-account-form__code-field">
+      <span>6 位验证码</span>
+      <div className="book-account-form__code-entry">
+        <div className="book-account-form__code-slots" aria-hidden="true">
+          {Array.from({ length: 6 }, (_, index) => {
+            const digit = value[index] ?? "";
+            return (
+              <span
+                className={[
+                  "book-account-form__code-slot",
+                  digit ? "book-account-form__code-slot--filled" : "",
+                  index === activeIndex ? "book-account-form__code-slot--active" : "",
+                ].filter(Boolean).join(" ")}
+                key={index}
+              >
+                {digit || "\u00a0"}
+              </span>
+            );
+          })}
+        </div>
+        <input
+          className="book-account-form__code-input"
+          aria-label="6 位验证码"
+          type="text"
+          name="confirmationCode"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          pattern="[0-9]{6}"
+          maxLength={6}
+          value={value}
+          disabled={busy}
+          required
+          autoFocus
+          onChange={(event) => onChange(event.target.value.replace(/\D/g, "").slice(0, 6))}
+        />
+      </div>
+    </label>
+  );
+}
+
 interface LoginFormProps extends FeedbackProps {
   email: string;
   password: string;
@@ -126,28 +178,13 @@ export function RegisterForm({
   if (confirmationEmail) {
     return (
       <form className="book-account-form__fields" onSubmit={onConfirmSubmit}>
-        <div className="book-account-form__proof" role="status">
-          <span>Identity proof / 十分钟内有效</span>
-          <strong>{confirmationCode || "000000"}</strong>
-        </div>
         <p className="book-account-form__hint">验证码已发送到 {confirmationEmail}</p>
         <FormFeedback error={error} notice={notice} />
-        <label>
-          <span>6 位验证码</span>
-          <input
-            className="book-account-form__code"
-            type="text"
-            name="confirmationCode"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            pattern="[0-9]{6}"
-            maxLength={6}
-            value={confirmationCode}
-            disabled={busy}
-            required
-            onChange={(event) => onConfirmationCodeChange(event.target.value.replace(/\D/g, "").slice(0, 6))}
-          />
-        </label>
+        <VerificationCodeField
+          value={confirmationCode}
+          busy={busy}
+          onChange={onConfirmationCodeChange}
+        />
         <button type="submit" disabled={busy}>
           {busy ? "正在验证…" : "确认并完成注册"}
         </button>
@@ -296,21 +333,7 @@ export function RecoveryForm({
         </label>
       )}
       {step === "code" && (
-        <label>
-          <span>6 位验证码</span>
-          <input
-            className="book-account-form__code"
-            type="text"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            pattern="[0-9]{6}"
-            maxLength={6}
-            value={code}
-            disabled={busy}
-            required
-            onChange={(event) => onCodeChange(event.target.value.replace(/\D/g, "").slice(0, 6))}
-          />
-        </label>
+        <VerificationCodeField value={code} busy={busy} onChange={onCodeChange} />
       )}
       {step === "password" && (
         <>

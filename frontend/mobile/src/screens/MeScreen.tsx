@@ -66,6 +66,61 @@ function QuotePage({ theme }: { theme: MobileTheme }) {
   );
 }
 
+function VerificationCodeInput({
+  value,
+  theme,
+  onChange,
+  onSubmit,
+}: {
+  value: string;
+  theme: MobileTheme;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  const activeIndex = Math.min(value.length, 5);
+
+  return (
+    <View style={styles.codeEntry}>
+      <View pointerEvents="none" style={styles.codeSlots}>
+        {Array.from({ length: 6 }, (_, index) => {
+          const digit = value[index] ?? "";
+          const active = index === activeIndex;
+          return (
+            <View
+              key={index}
+              style={[
+                styles.codeSlot,
+                {
+                  borderColor: digit || active ? theme.red : theme.ruleDark,
+                  backgroundColor: digit ? "rgba(139,26,26,.045)" : theme.paper,
+                  borderBottomWidth: active ? 3 : 1,
+                },
+              ]}
+            >
+              <Text style={[styles.codeDigit, { color: theme.red, fontFamily: theme.serif }]}>
+                {digit || " "}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+      <TextInput
+        accessibilityLabel="6 位验证码"
+        value={value}
+        onChangeText={(nextValue) => onChange(nextValue.replace(/\D/g, "").slice(0, 6))}
+        autoComplete="one-time-code"
+        autoFocus
+        caretHidden
+        keyboardType="number-pad"
+        maxLength={6}
+        returnKeyType="done"
+        onSubmitEditing={onSubmit}
+        style={styles.codeHiddenInput}
+      />
+    </View>
+  );
+}
+
 export function MeScreen() {
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -595,21 +650,13 @@ export function MeScreen() {
                         </View>
                       ) : accountMode === "register" && confirmationEmail ? (
                         <View style={styles.form}>
-                          <View style={[styles.proofStrip, { backgroundColor: theme.red, borderColor: theme.redDark }]}>
-                            <Text style={[styles.proofLabel, { color: theme.inverse, fontFamily: theme.sans }]}>IDENTITY PROOF / 十分钟内有效</Text>
-                            <Text style={[styles.proofCode, { color: theme.inverse, fontFamily: theme.sans }]}>{confirmationCode || "000000"}</Text>
-                          </View>
                           <Text style={[styles.confirmationText, { color: theme.muted, fontFamily: theme.sans }]}>验证码已发送到 {confirmationEmail}</Text>
                           <Text style={[styles.fieldLabel, { color: theme.ink, fontFamily: theme.sans }]}>6 位验证码</Text>
-                          <TextInput
+                          <VerificationCodeInput
                             value={confirmationCode}
-                            onChangeText={(value) => { setConfirmationCode(value.replace(/\D/g, "").slice(0, 6)); setLocalError(""); clearFeedback(); }}
-                            autoComplete="one-time-code"
-                            keyboardType="number-pad"
-                            maxLength={6}
-                            returnKeyType="done"
-                            onSubmitEditing={() => void handleConfirmSignUp()}
-                            style={[styles.input, styles.codeInput, { color: theme.red, borderColor: theme.red, fontFamily: theme.sans }]}
+                            theme={theme}
+                            onChange={(value) => { setConfirmationCode(value); setLocalError(""); clearFeedback(); }}
+                            onSubmit={() => void handleConfirmSignUp()}
                           />
                           {localError || error || notice ? (
                             <Text accessibilityRole={localError || error ? "alert" : undefined} style={[styles.error, { color: localError || error ? theme.red : theme.muted, fontFamily: theme.sans }]}>{localError || error || notice}</Text>
@@ -717,15 +764,11 @@ export function MeScreen() {
                           ) : recoveryStep === "code" ? (
                             <>
                               <Text style={[styles.fieldLabel, { color: theme.ink, fontFamily: theme.sans }]}>6 位验证码</Text>
-                              <TextInput
+                              <VerificationCodeInput
                                 value={recoveryCode}
-                                onChangeText={(value) => { setRecoveryCode(value.replace(/\D/g, "").slice(0, 6)); setLocalError(""); clearFeedback(); }}
-                                autoComplete="one-time-code"
-                                keyboardType="number-pad"
-                                maxLength={6}
-                                returnKeyType="done"
-                                onSubmitEditing={() => void handleRecovery()}
-                                style={[styles.input, styles.codeInput, { color: theme.red, borderColor: theme.red, fontFamily: theme.sans }]}
+                                theme={theme}
+                                onChange={(value) => { setRecoveryCode(value); setLocalError(""); clearFeedback(); }}
+                                onSubmit={() => void handleRecovery()}
                               />
                             </>
                           ) : (
@@ -920,14 +963,15 @@ const styles = StyleSheet.create({
   fieldLabel: { marginBottom: 7, fontSize: 12, fontWeight: "800" },
   passwordLabel: { marginTop: 15 },
   input: { height: 46, borderBottomWidth: 1, paddingHorizontal: 3, fontSize: 14 },
-  codeInput: { height: 58, borderWidth: 2, fontSize: 22, fontWeight: "900", letterSpacing: 8, textAlign: "center" },
+  codeEntry: { position: "relative", height: 58 },
+  codeSlots: { ...StyleSheet.absoluteFillObject, flexDirection: "row", gap: 6 },
+  codeSlot: { flex: 1, alignItems: "center", justifyContent: "center", borderWidth: 1 },
+  codeDigit: { fontSize: 22, fontWeight: "900", lineHeight: 26 },
+  codeHiddenInput: { ...StyleSheet.absoluteFillObject, color: "transparent", backgroundColor: "transparent", opacity: 0.02 },
   error: { marginTop: 11, fontSize: 12, lineHeight: 18, fontWeight: "700" },
   loginButton: { height: 46, marginTop: 18, alignItems: "center", justifyContent: "center" },
   loginText: { fontSize: 13, fontWeight: "900" },
   textAction: { paddingVertical: 7, textAlign: "center", fontSize: 11, fontWeight: "900" },
-  proofStrip: { borderWidth: 1, padding: 12, transform: [{ rotate: "-0.6deg" }] },
-  proofLabel: { fontSize: 8, fontWeight: "900", letterSpacing: 1.4 },
-  proofCode: { marginTop: 7, fontSize: 22, fontWeight: "900", letterSpacing: 7 },
   recoveryTitle: { fontSize: 22, fontWeight: "900", letterSpacing: 1.5 },
   confirmation: { flex: 1, minHeight: 230, justifyContent: "center", paddingVertical: 30 },
   confirmationTitle: { fontSize: 24, fontWeight: "900", letterSpacing: 2 },

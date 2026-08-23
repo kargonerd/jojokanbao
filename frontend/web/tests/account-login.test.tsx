@@ -170,6 +170,8 @@ describe("account access", () => {
       password: "strong-password",
     }));
     expect(await screen.findByLabelText("6 位验证码")).toBeTruthy();
+    expect(document.querySelectorAll(".book-account-form__code-slot")).toHaveLength(6);
+    expect(screen.queryByText(/Identity proof/i)).toBeNull();
     expect(screen.getByText(/reader@example.com/)).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("6 位验证码"), { target: { value: "123456" } });
