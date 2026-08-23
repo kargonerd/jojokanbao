@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "JOJO看报",
-    "slug": "jojo-kanbao",
+    "slug": "mobile",
     "version": "0.0.1-rc1",
     "scheme": "jojokanbao",
     "orientation": "default",
