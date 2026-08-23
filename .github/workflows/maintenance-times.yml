@@ -56,8 +56,7 @@ jobs:
         run: |
           python -m pip install -r tools/times-pipeline/requirements.txt
 
-      - name: Install browser for validation
-        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'validate-24h'
+      - name: Install Chromium
         run: python -m playwright install --with-deps chromium
 
       - name: Install rclone
@@ -91,13 +90,14 @@ jobs:
           --output "$RUNNER_TEMP/jojo-times-build"
           --timeout 70
           --article-timeout 25
-          --archive-engine http
-          --archive-workers 16
+          --archive-engine browser
+          --archive-workers 8
           --archive-max-pages 50
-          --archive-browser-retries 1
+          --archive-browser-retries 0
           --archive-refresh-hours 24
           --archive-retry-hours 2
           --archive-max-response-bytes 5000000
+          --archive-max-page-bytes 25000000
           --require-news-runner
           --retention-days 7
           --max-latest-articles 1000
