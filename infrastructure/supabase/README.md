@@ -66,9 +66,10 @@ creation fails closed if somebody disables or bypasses the hosted hook.
 Existing users are unaffected.
 
 The Auth config explicitly preserves the hosted one-minute email request
-interval, six-digit OTP setting, TOTP enrollment, and disabled Vector
-Storage. Keep these values checked in: omitted CLI defaults may otherwise
-appear as unrelated hosted config changes during `config push`.
+interval, 100-email-per-hour project allowance, six-digit OTP setting, TOTP
+enrollment, and disabled Vector Storage. Keep these values checked in: omitted
+CLI defaults may otherwise appear as unrelated hosted config changes during
+`config push`.
 
 The registration and recovery email sources are in `supabase/templates/`
 relative to the Supabase workdir. Hosted templates must be updated through

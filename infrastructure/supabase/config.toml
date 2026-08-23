@@ -11,6 +11,7 @@ additional_redirect_urls = [
 enable_signup = true
 
 [auth.rate_limit]
+email_sent = 100
 sign_in_sign_ups = 10
 token_verifications = 10
 
