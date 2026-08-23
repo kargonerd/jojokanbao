@@ -47,53 +47,29 @@ jobs:
       - name: Install locked dependencies and rclone
         run: |
           pnpm install --frozen-lockfile
-          python -m pip install "huggingface_hub==0.34.4"
+          python -m pip install -r tools/times-pipeline/requirements.txt
           sudo apt-get update
           sudo apt-get install -y rclone
 
       - name: Build Times pipeline
         run: pnpm --filter @jojo/times-pipeline build
 
-      - name: Download HF Raw and Canonical snapshot
+      - name: Download the latest processable HF snapshot
         run: |
+          python tools/times-pipeline/download_hf_snapshot.py \
+            --repo "$HF_TIMES_DATASET_REPO" \
+            --output "$RUNNER_TEMP/jojo-times" \
+            > "$RUNNER_TEMP/hf-snapshot-result.json"
           python - <<'PY'
+          import json
           import os
-          from huggingface_hub import HfApi, snapshot_download
+          from pathlib import Path
 
-          repo = os.environ["HF_TIMES_DATASET_REPO"]
-          api = HfApi(token=os.environ["HF_TOKEN"])
-          revision = api.repo_info(repo_id=repo, repo_type="dataset").sha
-          snapshot_download(
-              repo_id=repo,
-              repo_type="dataset",
-              revision=revision,
-              local_dir=os.path.join(os.environ["RUNNER_TEMP"], "jojo-times"),
-              allow_patterns=["raw/**", "canonical/**"],
-              token=os.environ["HF_TOKEN"],
-          )
+          result = json.loads((Path(os.environ["RUNNER_TEMP"]) / "hf-snapshot-result.json").read_text())
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
-              output.write(f"TIMES_RAW_REVISION={revision}\n")
+              output.write(f"TIMES_RAW_REVISION={result['revision']}\n")
+              output.write(f"TIMES_RUN_MANIFEST={result['runManifest']}\n")
           PY
-
-      - name: Resolve latest complete Raw run
-        run: |
-          node - <<'NODE'
-          const fs = require("node:fs");
-          const path = require("node:path");
-          const root = path.join(process.env.RUNNER_TEMP, "jojo-times", "raw", "news", "runs");
-          const files = [];
-          function walk(dir) {
-            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-              const target = path.join(dir, entry.name);
-              if (entry.isDirectory()) walk(target);
-              else if (entry.isFile() && entry.name.endsWith(".json")) files.push(target);
-            }
-          }
-          walk(root);
-          const run = files.sort().reverse().find((file) => JSON.parse(fs.readFileSync(file, "utf8")).complete);
-          if (!run) throw new Error("HF Raw has no complete Times run manifest");
-          fs.appendFileSync(process.env.GITHUB_ENV, `TIMES_RUN_MANIFEST=${run}\n`);
-          NODE
 
       - name: Build and commit Canonical
         run: |
