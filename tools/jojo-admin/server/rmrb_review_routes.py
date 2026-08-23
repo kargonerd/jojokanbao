@@ -11,6 +11,7 @@ import shutil
 import sqlite3
 import subprocess
 import threading
+import urllib.parse
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,6 +27,7 @@ from rmrb_review_publish import (
     prepare_canonical_patch,
     prepare_delivery_patch,
 )
+from rmrb_review_source import remove_from_review_cache, review_source_manager
 
 
 rmrb_review_blueprint = Blueprint("rmrb_review", __name__)
@@ -34,14 +36,14 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
 REVIEW_ROOT = Path(
     os.environ.get(
         "RMRB_REVIEW_ROOT",
-        WORKSPACE_ROOT / "tmp" / "rmrb-peopledata-full-directory",
+        WORKSPACE_ROOT / "tmp" / "rmrb-review",
     )
 )
 PEOPLE_DATA_BASE = (
     "https://webvpn.zju.edu.cn/https/"
     "77726476706e69737468656265737421f4f6559d69206d5f6e048ce29b5a2e7b74a4/rmrb"
 )
-REVIEW_DB = REVIEW_ROOT / "merged-missing-workbench.sqlite3"
+REVIEW_DB = REVIEW_ROOT / "hf-missing-workbench.sqlite3"
 WORKBENCH_DECISIONS = REVIEW_ROOT / "manual-review-decisions-workbench.jsonl"
 SYNC_ROOT = REVIEW_ROOT / "sync"
 SYNC_STATE = SYNC_ROOT / "review-sync-state.json"
@@ -94,27 +96,35 @@ def _read_decision_file(path: Path) -> list[dict[str, object]]:
     return rows
 
 
-def load_all_decisions() -> dict[tuple[str, int, int], dict[str, object]]:
-    """Load all staged verdicts, with the interactive workbench taking priority."""
+def load_pending_decisions() -> dict[tuple[str, int, int], dict[str, object]]:
+    """Load only unpublished local drafts; published history comes from HF."""
     decisions: dict[tuple[str, int, int], dict[str, object]] = {}
-    paths = sorted(REVIEW_ROOT.glob("manual-review-decisions-*.jsonl"))
-    if WORKBENCH_DECISIONS in paths:
-        paths.remove(WORKBENCH_DECISIONS)
-        paths.append(WORKBENCH_DECISIONS)
-    for path in paths:
-        try:
-            for row in _read_decision_file(path):
-                if not all(name in row for name in ("date", "page", "peopleDataOrdinal")):
-                    continue
-                decision = str(row.get("decision") or row.get("status") or "").lower()
-                if decision == "missing":
-                    decisions.pop(_key(row), None)
-                    continue
-                if decision in {"accept", "reject"}:
-                    decisions[_key(row)] = {**row, "decision": decision}
-        except (OSError, json.JSONDecodeError, TypeError, ValueError):
-            logging.exception("Unable to read RMRB decision log %s", path)
+    if not WORKBENCH_DECISIONS.is_file():
+        return decisions
+    pending = set(_load_pending_publication())
+    try:
+        for row in _read_decision_file(WORKBENCH_DECISIONS):
+            if not all(name in row for name in ("date", "page", "peopleDataOrdinal")):
+                continue
+            key = _key(row)
+            if _publication_key(key) not in pending:
+                continue
+            decision = str(row.get("decision") or row.get("status") or "").lower()
+            if decision in {"accept", "reject"}:
+                decisions[key] = {**row, "decision": decision}
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        logging.exception("Unable to read RMRB workbench drafts %s", WORKBENCH_DECISIONS)
     return decisions
+
+
+def _review_source_status(force: bool = False) -> dict[str, object]:
+    review_source_manager.ensure_started(
+        REVIEW_DB,
+        _huggingface_repo(),
+        _huggingface_token(),
+        force=force,
+    )
+    return review_source_manager.snapshot(REVIEW_DB)
 
 
 def _atomic_write(path: Path, payload: bytes) -> None:
@@ -396,8 +406,24 @@ def _people_data_href(row: dict[str, object]) -> str | None:
         return "https://webvpn.zju.edu.cn" + href
     day = str(row.get("date") or "")
     page = int(row.get("page") or 0)
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", day) and page > 0:
-        return f"{PEOPLE_DATA_BASE}/{day.replace('-', '')}/{page}"
+    ordinal = int(row.get("peopleDataOrdinal", -1))
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", day) and page > 0 and ordinal >= 0:
+        query = {
+            "cds": [{
+                "fld": "dataTime",
+                "cdr": "AND",
+                "hlt": "false",
+                "vlr": "OR",
+                "qtp": "DEF",
+                "val": day.replace("-", ""),
+            }],
+            "obs": [{"fld": "dataTime", "drt": "DESC"}],
+        }
+        encoded = urllib.parse.quote(
+            json.dumps(query, ensure_ascii=False, separators=(",", ":")),
+            safe="",
+        )
+        return f"{PEOPLE_DATA_BASE}/pd.html?qs={encoded}&tr=A&pageNo=1&pageSize=200&position={ordinal}"
     return None
 
 
@@ -410,8 +436,8 @@ def _public_row(
         "page": row.get("page"),
         "peopleDataOrdinal": row.get("peopleDataOrdinal"),
         "title": row.get("title"),
-        "status": "local-content-missing",
-        "rawRecoveryClass": "本地两份数据均无正文",
+        "status": "missing",
+        "rawRecoveryClass": "HF Canonical 正文缺失",
         "peopleDataHref": _people_data_href(row),
         "decision": decision,
     }
@@ -419,9 +445,14 @@ def _public_row(
 
 @rmrb_review_blueprint.get("/api/rmrb-review/queue")
 def queue_api():
+    source = _review_source_status()
     if not REVIEW_DB.is_file():
-        return jsonify({"success": False, "error": "missing-content workbench index is not built"}), 503
-    decisions = load_all_decisions()
+        return jsonify({
+            "success": False,
+            "error": str(source.get("message") or "正在从 HF 生成待复核队列"),
+            "source": source,
+        }), 503
+    decisions = load_pending_decisions()
     pending_only = request.args.get("pendingOnly", "").lower() in {"1", "true", "yes"}
     query = request.args.get("q", "").strip().lower()
     year = request.args.get("year", "").strip()
@@ -474,9 +505,14 @@ def queue_api():
 
 @rmrb_review_blueprint.get("/api/rmrb-review/stats")
 def stats_api():
+    source = _review_source_status()
     if not REVIEW_DB.is_file():
-        return jsonify({"success": False, "error": "missing-content workbench index is not built"}), 503
-    decisions = load_all_decisions()
+        return jsonify({
+            "success": False,
+            "error": str(source.get("message") or "正在从 HF 生成待复核队列"),
+            "source": source,
+        }), 503
+    decisions = load_pending_decisions()
     with closing(_open_db()) as connection:
         _prepare_handled_table(connection, decisions)
         total = connection.execute("SELECT COUNT(*) FROM missing_articles").fetchone()[0]
@@ -493,6 +529,12 @@ def stats_api():
         "pendingPublication": len(_load_pending_publication()),
     }
     return jsonify({"success": True, "total": total, "counts": counts})
+
+
+@rmrb_review_blueprint.get("/api/rmrb-review/source")
+def source_status_api():
+    force = request.args.get("refresh", "").lower() in {"1", "true", "yes"}
+    return jsonify({"success": True, **_review_source_status(force=force)})
 
 
 @rmrb_review_blueprint.get("/api/rmrb-review/sync")
@@ -536,7 +578,7 @@ def sync_api():
         publishedChanges=0,
     )
     try:
-        decisions = load_all_decisions()
+        decisions = load_pending_decisions()
         desired = accepted_hashes(decisions)
         desired_sha256 = hashlib.sha256(
             json.dumps(desired, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -610,6 +652,14 @@ def sync_api():
                         percent=40,
                     )
                     detail = _sync_huggingface(canonical)
+                    commit = str(detail.get("commit") or "")
+                    if commit:
+                        remove_from_review_cache(
+                            REVIEW_DB,
+                            {parse_key(name) for name in hf_names},
+                            commit,
+                        )
+                        review_source_manager.mark_published(commit)
                     _set_sync_progress(
                         completed=hf_object_count,
                         message="HF Canonical 已提交，正在准备 B2",

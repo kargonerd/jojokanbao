@@ -48,17 +48,20 @@ Agent 管理页面位于 `http://127.0.0.1:4174/agent`。本机 Flask 优先读�
 匿名角色没有表或用户 RPC 权限；登录读者通过 `reader.annotations` 功能开关访问，
 Workbench 通过 operator RPC 审核。
 
-人民日报缺失正文工作台位于 `http://127.0.0.1:4174/rmrb-review`。它读取
-`tmp/rmrb-peopledata-full-directory/merged-missing-workbench.sqlite3`，按日期升序
-展示本地 JSONL 与年度 XLSX 合并后仍为空的目录记录。Accept/Reject 只写入
-`manual-review-decisions-workbench.jsonl`，Accept/Reject 本身不会等待网络。
-新 Accept 同时写入本地 `manual-review-pending-publication.json`；工作台分别显示
-“待复核”和“待发布”，HF 与 B2 均成功后才从待发布数中移除。
+人民日报缺失正文工作台位于 `http://127.0.0.1:4174/rmrb-review`。它读取由
+Hugging Face Canonical 生成的 `indexes/missing-articles.jsonl.gz`，按日期升序展示
+`status=missing` 的记录。启动时会按 HF commit 自动生成
+`tmp/rmrb-review/hf-missing-workbench.sqlite3`；该 SQLite 只是可丢弃缓存，新电脑
+无需复制旧目录或数据库。Accept/Reject 先写入本机草稿和
+`manual-review-pending-publication.json`，本地操作本身不会等待网络；工作台分别显示
+“待复核”和“待发布”，HF 与 B2 均成功后才从待发布数中移除。未发布草稿如需跨电脑
+继续处理，需要先在原电脑发布。
 右上角“发布 N 条修订”一次同时更新 Hugging Face 和 B2。人工决定不上传远端；
 Hugging Face 会原子更新受影响日期的 Canonical Item、受影响年份的
-Dataset Viewer 分片和必要的 availability；B2 会先发布
-正文 fragment，再更新日期 manifest 和必要的总 index。Reject 只进入审计记录，
-不会被标记成正文可用，只保留在本地工作台记录中。此流程不修改 Elasticsearch。
+Dataset Viewer 分片、缺失正文索引和必要的 availability；B2 会先发布
+正文 fragment，再更新日期 manifest 和必要的总 index。Reject 仅用于确定为无效、
+重复或非文章的目录项，发布后写入 HF 的正式 `rejected` 状态且不会生成正文 fragment。
+此流程不修改 Elasticsearch。
 生成合并队列和自动补全图片记录的命令见
 [`tools/rmrb-repair/README.md`](../rmrb-repair/README.md)。
 

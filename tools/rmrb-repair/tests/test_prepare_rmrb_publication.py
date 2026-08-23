@@ -51,6 +51,16 @@ def test_prepare_keeps_missing_and_reuses_legacy_pdf_key(tmp_path: Path) -> None
         viewer_row = json.loads(next(stream))
     assert set(viewer_row) == {"date", "page", "ordinal", "title", "content", "status", "pdf"}
     assert viewer_row["pdf"] is None
+    with gzip.open(
+        output / "huggingface/newspapers/rmrb/indexes/missing-articles.jsonl.gz",
+        "rt", encoding="utf-8",
+    ) as stream:
+        missing_rows = [json.loads(line) for line in stream]
+    assert missing_rows == [{
+        "date": "1950-01-01", "page": 2, "ordinal": 1,
+        "title": "缺失篇", "status": "missing",
+    }]
+    assert report["missingIndexCount"] == 1
 
 
 def test_image_decision_creates_hashed_asset(tmp_path: Path) -> None:

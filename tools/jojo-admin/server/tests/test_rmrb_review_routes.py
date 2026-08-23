@@ -4,7 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from flask import Flask
 
@@ -48,6 +48,17 @@ class RmrbReviewRoutesTest(unittest.TestCase):
         self.database = self.root / "merged-missing-workbench.sqlite3"
         self.decisions = self.root / "manual-review-decisions-workbench.jsonl"
         self.sync_root = self.root / "sync"
+        self.source_manager = Mock()
+        self.source_manager.snapshot.return_value = {
+            "status": "ready",
+            "source": "huggingface",
+            "message": "HF 待复核队列已就绪",
+            "completed": 1,
+            "total": 1,
+            "revision": "revision-1",
+            "error": None,
+            "cached": True,
+        }
         build_database(self.database)
         self.patches = (
             patch.object(routes, "REVIEW_ROOT", self.root),
@@ -58,6 +69,7 @@ class RmrbReviewRoutesTest(unittest.TestCase):
             patch.object(routes, "PUBLISH_ROOT", self.sync_root / "publish"),
             patch.object(routes, "PUBLICATION_STATE", self.sync_root / "publication-state.json"),
             patch.object(routes, "PENDING_PUBLICATION", self.root / "manual-review-pending-publication.json"),
+            patch.object(routes, "review_source_manager", self.source_manager),
         )
         for item in self.patches:
             item.start()
@@ -160,7 +172,7 @@ class RmrbReviewRoutesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("reason", response.get_json()["error"])
 
-    def test_missing_tombstone_restores_legacy_reject_to_queue(self):
+    def test_historical_local_decisions_do_not_drive_the_hf_queue(self):
         legacy = self.root / "manual-review-decisions-legacy.jsonl"
         legacy.write_text(json.dumps({
             "date": "1950-01-01",
@@ -169,14 +181,6 @@ class RmrbReviewRoutesTest(unittest.TestCase):
             "decision": "reject",
             "reason": "OCR 不完整",
         }, ensure_ascii=False) + "\n", encoding="utf-8")
-        self.decisions.write_text(json.dumps({
-            "date": "1950-01-01",
-            "page": 1,
-            "peopleDataOrdinal": 2,
-            "decision": "missing",
-            "reason": "恢复人工复核",
-        }, ensure_ascii=False) + "\n", encoding="utf-8")
-
         queue = self.client.get("/api/rmrb-review/queue?pendingOnly=1").get_json()
         self.assertEqual(queue["total"], 2)
         self.assertEqual(queue["items"][0]["title"], "较早稿")

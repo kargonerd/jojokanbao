@@ -83,6 +83,10 @@ class RmrbReviewPublishTest(unittest.TestCase):
                 {"date": "1950-01-02", "page": 1, "ordinal": 0, "title": "已有文章", "content": "已有", "status": "available", "pdf": None},
             ],
         )
+        publish._write_jsonl_gz(
+            self.hf / publish.MISSING_INDEX,
+            [{"date": self.day, "page": 1, "ordinal": 0, "title": "待补文章", "status": "missing"}],
+        )
         prefix = f"content/newspapers/rmrb/items/1950/01/{self.day}"
         manifest = {
             "formatVersion": "jojo-item-manifest/1",
@@ -113,13 +117,14 @@ class RmrbReviewPublishTest(unittest.TestCase):
         )
         self.assertEqual(patch.changed_article_count, 1)
         self.assertTrue(patch.dataset_changed)
-        self.assertEqual(len(patch.files), 3)
+        self.assertEqual(len(patch.files), 4)
         item = publish._read_json_gz(patch.issue_files[self.day])
         article = item["content"]["articles"][0]
         self.assertEqual(article["contentState"], "available")
         self.assertEqual(article["body"]["value"], "人工确认的正文。")
         rows = publish._read_jsonl_gz(patch.files["newspapers/rmrb/data/articles/1950.jsonl.gz"])
         self.assertEqual(rows[0]["status"], "available")
+        self.assertEqual(publish._read_jsonl_gz(patch.files[publish.MISSING_INDEX]), [])
         self.assertEqual(patch.dataset["availability"]["text"]["years"], {})
 
     def test_delivery_publishes_fragment_before_mutable_markers(self):
@@ -151,6 +156,7 @@ class RmrbReviewPublishTest(unittest.TestCase):
             canonical.files["newspapers/rmrb/data/articles/1950.jsonl.gz"]
         )
         self.assertEqual(rows[0]["status"], "rejected")
+        self.assertEqual(publish._read_jsonl_gz(canonical.files[publish.MISSING_INDEX]), [])
 
         delivery = publish.prepare_delivery_patch(
             self.decisions, canonical, lambda name: self.delivery / name, self.output / "delivery",
@@ -163,6 +169,37 @@ class RmrbReviewPublishTest(unittest.TestCase):
         self.assertEqual(manifest["contentStats"]["rejectedArticleCount"], 1)
         self.assertEqual(manifest["contentStats"]["missingArticleCount"], 0)
         self.assertFalse(any("/articles/" in name for name in delivery.files))
+
+    def test_missing_transition_restores_a_false_reject_to_the_queue(self):
+        self.decisions[self.key].update({"decision": "missing", "content": ""})
+        shard = self.hf / "newspapers/rmrb/data/articles/1950.jsonl.gz"
+        rows = publish._read_jsonl_gz(shard)
+        rows[0]["status"] = "rejected"
+        publish._write_jsonl_gz(shard, rows)
+        item_path = self.hf / f"newspapers/rmrb/items/1950/01/{self.day}.json.gz"
+        item = publish._read_json_gz(item_path)
+        item["content"]["articles"][0]["contentState"] = "rejected"
+        publish._write_json_gz(item_path, item)
+        manifest_key = f"content/newspapers/rmrb/items/1950/01/{self.day}/manifest.jox"
+        manifest_path = self.delivery / manifest_key
+        manifest = publish._decode_jox(manifest_path, manifest_key)
+        manifest["content"]["articles"][0]["status"] = "rejected"
+        manifest["contentStats"].update({"missingArticleCount": 0, "rejectedArticleCount": 1})
+        publish._write_jox(manifest_path, manifest_key, manifest)
+
+        canonical = publish.prepare_canonical_patch(
+            self.decisions, lambda name: self.hf / name, self.output / "canonical",
+        )
+        restored = publish._read_json_gz(canonical.issue_files[self.day])
+        self.assertEqual(restored["content"]["articles"][0]["contentState"], "missing")
+        missing = publish._read_jsonl_gz(canonical.files[publish.MISSING_INDEX])
+        self.assertEqual(len(missing), 1)
+
+        delivery = publish.prepare_delivery_patch(
+            self.decisions, canonical, lambda name: self.delivery / name, self.output / "delivery",
+        )
+        manifest = publish._decode_jox(delivery.files[manifest_key], manifest_key)
+        self.assertEqual(manifest["content"]["articles"][0]["status"], "missing")
 
 
 if __name__ == "__main__":

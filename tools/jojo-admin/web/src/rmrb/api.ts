@@ -30,6 +30,18 @@ export type RmrbStats = {
   counts: { pending: number; pendingPublication: number };
 };
 
+export type RmrbSourceStatus = {
+  success: true;
+  status: "idle" | "checking" | "downloading" | "building" | "ready" | "failed";
+  source: "huggingface";
+  message: string;
+  completed: number;
+  total: number;
+  revision: string | null;
+  cached: boolean;
+  error: string | null;
+};
+
 export type RmrbSyncTarget = "huggingface" | "b2";
 
 export type RmrbSyncProgress = {
@@ -88,6 +100,9 @@ export const rmrbReviewApi = {
   },
   stats() {
     return requestJson<RmrbStats>("/api/rmrb-review/stats");
+  },
+  sourceStatus() {
+    return requestJson<RmrbSourceStatus>("/api/rmrb-review/source");
   },
   syncStatus() {
     return requestJson<RmrbSyncStatus>("/api/rmrb-review/sync");

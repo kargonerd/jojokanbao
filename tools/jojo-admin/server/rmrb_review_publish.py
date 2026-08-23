@@ -19,6 +19,7 @@ from typing import Any, Callable, Iterable
 
 
 JOX_SALT = 0x4A4F5831
+MISSING_INDEX = "newspapers/rmrb/indexes/missing-articles.jsonl.gz"
 SourceFile = Callable[[str], Path]
 DeliveryFile = Callable[[str], Path]
 
@@ -105,6 +106,9 @@ def _reviewed(
             result[key] = ("available", content)
         elif decision == "reject":
             result[key] = ("rejected", "")
+        elif decision == "missing":
+            # Maintenance transition used to undo a historical false reject.
+            result[key] = ("missing", "")
     return result
 
 
@@ -312,6 +316,29 @@ def prepare_canonical_patch(
             _write_jsonl_gz(shard_target, viewer_rows)
             patch.files[shard_name] = shard_target
 
+    if patch.changed_keys:
+        missing_rows = _read_jsonl_gz(source_file(MISSING_INDEX))
+        missing_by_key = {
+            (str(row["date"]), int(row["page"]), int(row["ordinal"])): row
+            for row in missing_rows
+        }
+        for key in patch.changed_keys:
+            state, _ = reviewed[key]
+            if state == "missing":
+                missing_by_key[key] = {
+                    "date": key[0],
+                    "page": key[1],
+                    "ordinal": key[2],
+                    "title": str(decisions[key].get("title") or ""),
+                    "status": "missing",
+                }
+            elif missing_by_key.pop(key, None) is None:
+                raise ValueError(f"HF 缺失正文索引中找不到待发布记录：{key}")
+        remaining = [missing_by_key[key] for key in sorted(missing_by_key)]
+        missing_target = output / MISSING_INDEX
+        _write_jsonl_gz(missing_target, remaining)
+        patch.files[MISSING_INDEX] = missing_target
+
     text_calendar = patch.dataset["availability"]["text"]
     available = _available_dates(text_calendar)
     for day, is_available in day_text_after.items():
@@ -435,7 +462,7 @@ def prepare_delivery_patch(
                     "order": article["order"],
                     "title": article["title"],
                     "characterCount": 0,
-                    "status": "rejected",
+                    "status": state,
                     "object": None,
                 }
             if descriptor != desired:

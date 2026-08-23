@@ -26,6 +26,19 @@ describe("RmrbReviewPage", () => {
         decided = true;
         return new Response(JSON.stringify({ success: true, decision: { decision: "accept" } }), { status: 200 });
       }
+      if (url.endsWith("/source")) {
+        return new Response(JSON.stringify({
+          success: true,
+          status: "ready",
+          source: "huggingface",
+          message: "HF 待复核队列已就绪",
+          completed: 80,
+          total: 80,
+          revision: "revision-1",
+          cached: true,
+          error: null,
+        }), { status: 200 });
+      }
       if (url.endsWith("/sync") && init?.method === "POST") {
         publishing = true;
         await new Promise((resolve) => window.setTimeout(resolve, 100));

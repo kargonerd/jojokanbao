@@ -365,6 +365,30 @@ def open_year_shard(root: Path, year: str) -> TextIO:
     return gzip.open(path, "wt", encoding="utf-8", newline="\n", compresslevel=6)
 
 
+def write_missing_index(root: Path, years: set[str]) -> int:
+    """Write the compact, Canonical-derived queue consumed by the review workbench."""
+    target = root / "huggingface" / "newspapers" / "rmrb" / "indexes" / "missing-articles.jsonl.gz"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    count = 0
+    with gzip.open(target, "wt", encoding="utf-8", newline="\n", compresslevel=9) as output:
+        for year in sorted(years):
+            shard = root / "huggingface" / "newspapers" / "rmrb" / "data" / "articles" / f"{year}.jsonl.gz"
+            with gzip.open(shard, "rt", encoding="utf-8") as stream:
+                for line in stream:
+                    row = json.loads(line)
+                    if row.get("status") != "missing":
+                        continue
+                    output.write(json_dump({
+                        "date": row["date"],
+                        "page": row["page"],
+                        "ordinal": row["ordinal"],
+                        "title": row["title"],
+                        "status": "missing",
+                    }) + "\n")
+                    count += 1
+    return count
+
+
 def image_asset(decision: Decision, canonical_assets: Path) -> tuple[dict[str, Any], str] | None:
     if decision.image_path is None:
         return None
@@ -814,6 +838,7 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
 
     if not items:
         raise ValueError("No RMRB issues were selected")
+    missing_index_count = write_missing_index(output, {str(item["publishedDate"])[:4] for item in items})
     start_date = args.start_date or str(items[0]["publishedDate"])
     end_date = args.end_date or str(items[-1]["publishedDate"])
     availability = {
@@ -847,7 +872,7 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
     write_json(hf_root / "dataset.json", dataset)
     newspapers_readme = """# 报刊数据集\n\n按报刊种类组织的数字报刊数据。\n\n- [`rmrb/`](rmrb/)：《人民日报》文章、整期数据、PDF 和图片。\n"""
     (hf_root.parent / "README.md").write_text(newspapers_readme, encoding="utf-8", newline="\n")
-    hf_readme = """# 人民日报数据集\n\n按人民数据目录整理的《人民日报》数字数据集，包含文章目录、正文、整期原始 PDF 和文章图片。\n\n- `data/articles/*.jsonl.gz`：按年份分片的逐篇文章表，可通过 Dataset Viewer 浏览并用于批量分析。\n- `items/`：按日期保存的完整报纸数据。\n- `assets/pdfs/YYYY/MM/YYYY-MM-DD.pdf`：可直接展示的整期原报。\n- `assets/images/`：按 SHA-256 命名的文章图片。\n- `status` 使用 `available`、`missing`、`rejected`；自动提取失败仍为 `missing`，仅确认无效的目录项为 `rejected`。\n"""
+    hf_readme = """# 人民日报数据集\n\n按人民数据目录整理的《人民日报》数字数据集，包含文章目录、正文、整期原始 PDF 和文章图片。\n\n- `data/articles/*.jsonl.gz`：按年份分片的逐篇文章表，可通过 Dataset Viewer 浏览并用于批量分析。\n- `indexes/missing-articles.jsonl.gz`：工作台使用的缺失正文派生索引。\n- `items/`：按日期保存的完整报纸数据。\n- `assets/pdfs/YYYY/MM/YYYY-MM-DD.pdf`：可直接展示的整期原报。\n- `assets/images/`：按 SHA-256 命名的文章图片。\n- `status` 使用 `available`、`missing`、`rejected`；自动提取失败仍为 `missing`，仅确认无效的目录项为 `rejected`。\n"""
     (hf_root / "README.md").write_text(hf_readme, encoding="utf-8", newline="\n")
     assets_root = output / "canonical" / "newspapers" / "rmrb" / "assets"
     if assets_root.is_dir():
@@ -869,6 +894,7 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
         "itemCount": len(items),
         "articleCount": sum(totals.values()),
         "articleStatuses": dict(sorted(totals.items())),
+        "missingIndexCount": missing_index_count,
         "exactTitlePrefixesRemoved": stripped_titles,
         "canonicalPdfCount": sum(bool(item["pdfAvailable"]) for item in items),
         "canonicalPdfBytes": sum(

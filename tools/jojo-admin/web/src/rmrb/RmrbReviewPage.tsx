@@ -4,6 +4,7 @@ import { PageTopbar } from "../components/PageTopbar";
 import {
   rmrbReviewApi,
   type RmrbReviewItem,
+  type RmrbSourceStatus,
   type RmrbStats,
   type RmrbSyncStatus,
   type RmrbSyncTarget,
@@ -21,6 +22,7 @@ export function RmrbReviewPage() {
   const [content, setContent] = useState("");
   const [reason, setReason] = useState("");
   const [stats, setStats] = useState<RmrbStats["counts"]>();
+  const [sourceStatus, setSourceStatus] = useState<RmrbSourceStatus>();
   const [busy, setBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncElapsed, setSyncElapsed] = useState(0);
@@ -50,7 +52,33 @@ export function RmrbReviewPage() {
     }
   }, [offset, query]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    let stopped = false;
+    let timer: number | undefined;
+    const refresh = async () => {
+      try {
+        const latest = await rmrbReviewApi.sourceStatus();
+        if (stopped) return;
+        setSourceStatus(latest);
+        if (latest.status === "ready") {
+          await load();
+          return;
+        }
+        if (latest.status === "failed") {
+          setMessage(latest.message);
+          return;
+        }
+      } catch (error) {
+        if (!stopped) setMessage((error as Error).message);
+      }
+      if (!stopped) timer = window.setTimeout(() => void refresh(), 1000);
+    };
+    void refresh();
+    return () => {
+      stopped = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [load]);
   useEffect(() => {
     void rmrbReviewApi.syncStatus().then(setSyncStatus).catch(() => undefined);
   }, []);
@@ -159,7 +187,7 @@ export function RmrbReviewPage() {
       <PageTopbar
         eyebrow="RMRB / HUMAN REVIEW"
         title="人民日报缺失正文"
-        description="Accept 先保存到本地；点击发布后增量更新正式数据。"
+        description="待复核列表来自 HF Canonical；Accept 先暂存，发布后更新正式数据。"
         aside={
           <div className="rmrb-review-top-publish">
             <small aria-live="polite">{publishHint}</small>
@@ -198,7 +226,9 @@ export function RmrbReviewPage() {
             <button className="secondary-button" type="submit">搜索</button>
           </form>
           <p className="rmrb-review-summary">
-            待复核 {stats?.pending.toLocaleString() ?? "—"} · 待发布 {stats?.pendingPublication.toLocaleString() ?? "—"}
+            {sourceStatus?.status !== "ready"
+              ? sourceStatus?.message || "正在连接 HF Canonical…"
+              : <>待复核 {stats?.pending.toLocaleString() ?? "—"} · 待发布 {stats?.pendingPublication.toLocaleString() ?? "—"}</>}
           </p>
           <div className="rmrb-review-list">
             {items.map((item, index) => (
