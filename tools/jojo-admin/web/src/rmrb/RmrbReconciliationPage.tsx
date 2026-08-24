@@ -281,6 +281,10 @@ export function RmrbReconciliationPage() {
 
             <div className="rmrb-reconcile-evidence">
               <article className="rmrb-reconcile-source">
+                <section className="rmrb-reconcile-source-title" aria-label="JSONL 目录标题">
+                  <span>JSONL 目录标题</span>
+                  <p>{current.title}</p>
+                </section>
                 <header>
                   <b>JSONL 正文</b>
                   <a href={current.sourcePageHref} target="_blank" rel="noreferrer">查看当天版面</a>

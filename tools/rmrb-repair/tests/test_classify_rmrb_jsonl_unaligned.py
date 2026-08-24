@@ -143,3 +143,101 @@ def test_directory_evidence_only_retains_requested_titles_and_pages(tmp_path: Pa
     assert list(exact) == [MODULE.norm("日期可能错误")]
     assert list(pages) == [("1947-08-31", 2)]
     assert pages[("1947-08-31", 2)][0]["title"] == "黄河防汛记"
+
+
+def test_equal_duplicate_title_groups_pair_by_relative_page_order():
+    sources = [
+        {
+            **source("1949-12-12", 3, "中国人民银行北京分行公告"),
+            "content": "第一份公告正文",
+            "preservedOrdinal": 47,
+        },
+        {
+            **source("1949-12-12", 3, "中国人民银行北京分行公告"),
+            "content": "第二份公告正文",
+            "preservedOrdinal": 48,
+        },
+    ]
+    missing = [
+        {
+            "date": "1949-12-12",
+            "page": 3,
+            "ordinal": 24,
+            "title": "中国人民银行北京分行公告",
+            "href": "/24",
+        },
+        {
+            "date": "1949-12-12",
+            "page": 3,
+            "ordinal": 25,
+            "title": "中国人民银行北京分行公告",
+            "href": "/25",
+        },
+    ]
+
+    remaining, resolved = MODULE.resolve_exact_same_page_groups(sources, missing)
+
+    assert remaining == []
+    assert [(row["ordinal"], row["content"]) for row in resolved] == [
+        (24, "第一份公告正文"),
+        (25, "第二份公告正文"),
+    ]
+    assert all(row["matchMethod"] == "exact_title_ordered_group" for row in resolved)
+
+
+def test_unequal_duplicate_title_groups_stay_unresolved():
+    sources = [
+        {
+            **source("1949-12-12", 3, "同名公告"),
+            "preservedOrdinal": 47,
+        }
+    ]
+    missing = [
+        {"date": "1949-12-12", "page": 3, "ordinal": 24, "title": "同名公告"},
+        {"date": "1949-12-12", "page": 3, "ordinal": 25, "title": "同名公告"},
+    ]
+
+    remaining, resolved = MODULE.resolve_exact_same_page_groups(sources, missing)
+
+    assert remaining == sources
+    assert resolved == []
+
+
+def test_whitespace_only_same_date_title_uses_peopledata_page():
+    sources = [{
+        **source(
+            "1950-06-02",
+            2,
+            "京市人民广播电台  将举行庆祝六一联欢会  约有各校小同学演出歌剧等节目",
+        ),
+        "preservedOrdinal": 75,
+    }]
+    missing = [{
+        "date": "1950-06-02",
+        "page": 3,
+        "ordinal": 32,
+        "title": "京市人民广播电台 将举行庆祝六一联欢会 约有各校小同学演出歌剧等节目",
+        "href": "/32",
+    }]
+
+    remaining, resolved = MODULE.resolve_whitespace_only_same_date_groups(sources, missing)
+
+    assert remaining == []
+    assert resolved[0]["page"] == 3
+    assert resolved[0]["ordinal"] == 32
+    assert resolved[0]["matchMethod"] == "exact_title_whitespace_same_date"
+
+
+def test_whitespace_rule_does_not_ignore_punctuation_difference():
+    sources = [{**source("1950-06-02", 2, "标题甲"), "preservedOrdinal": 75}]
+    missing = [{
+        "date": "1950-06-02",
+        "page": 3,
+        "ordinal": 32,
+        "title": "标题，甲",
+    }]
+
+    remaining, resolved = MODULE.resolve_whitespace_only_same_date_groups(sources, missing)
+
+    assert remaining == sources
+    assert resolved == []

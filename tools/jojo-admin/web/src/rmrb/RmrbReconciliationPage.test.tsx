@@ -93,7 +93,7 @@ describe("RmrbReconciliationPage", () => {
     await screen.findByRole("heading", { name: "梁漱溟发表谈话" });
     expect(screen.queryByDisplayValue("1946-07-23")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /手工修正日期/ }));
-    expect(screen.getByDisplayValue("1946-07-23")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("1946-07-23")).toBeInTheDocument();
     expect(screen.getByDisplayValue("梁漱溟发表谈话")).toBeInTheDocument();
   });
 });

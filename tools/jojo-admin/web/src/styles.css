@@ -1876,6 +1876,24 @@ button {
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
+.rmrb-reconcile-source-title {
+  margin-bottom: 18px;
+  padding: 13px 14px;
+  border: 1px solid #cfc6bb;
+  background: #fbfaf7;
+  box-shadow: 3px 3px 0 rgba(70, 58, 47, .07);
+}
+.rmrb-reconcile-source-title span {
+  color: #746c63;
+  font-size: 10px;
+  letter-spacing: .08em;
+}
+.rmrb-reconcile-source-title p {
+  margin: 8px 0 0;
+  font-size: 17px;
+  line-height: 1.55;
+  white-space: pre-line;
+}
 .rmrb-reconcile-source pre {
   max-height: 278px;
   margin: 12px 0 6px;

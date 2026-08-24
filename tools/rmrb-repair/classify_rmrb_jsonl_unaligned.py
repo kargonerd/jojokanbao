@@ -15,6 +15,7 @@ import argparse
 import calendar
 import json
 import sqlite3
+import unicodedata
 from collections import Counter, defaultdict
 from datetime import date, timedelta
 from pathlib import Path
@@ -78,6 +79,136 @@ def load_unaligned(path: Path) -> list[dict[str, Any]]:
             date.fromisoformat(issue_date)
             rows.append(row)
     return rows
+
+
+def load_jsonl(path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                rows.append(json.loads(line))
+    return rows
+
+
+def exact_issue_page_title_key(row: dict[str, Any]) -> tuple[str, int, str] | None:
+    issue_date = str(row.get("date") or "")[:10]
+    page = page_number(row.get("page"))
+    title = normalized_primary_title(row)
+    if not issue_date or page is None or not title:
+        return None
+    return issue_date, int(page), title
+
+
+def whitespace_insensitive_title(row: dict[str, Any]) -> str:
+    title = unicodedata.normalize("NFKC", primary_title(row.get("title"))).casefold()
+    return "".join(title.split())
+
+
+def exact_issue_whitespace_title_key(row: dict[str, Any]) -> tuple[str, str] | None:
+    issue_date = str(row.get("date") or "")[:10]
+    title = whitespace_insensitive_title(row)
+    if not issue_date or not title:
+        return None
+    return issue_date, title
+
+
+def canonicalize_exact_group_pair(
+    source: dict[str, Any], candidate: dict[str, Any]
+) -> dict[str, Any]:
+    return {
+        "date": str(candidate.get("date") or "")[:10],
+        "page": int(page_number(candidate.get("page")) or 0),
+        "ordinal": int(candidate["ordinal"]),
+        "title": str(candidate.get("title") or "").strip(),
+        "href": candidate.get("href"),
+        "content": str(source.get("content") or "").strip(),
+        "contentSource": "jsonl",
+        "matchMethod": "exact_title_ordered_group",
+        "sourceTitle": str(source.get("title") or "").strip(),
+        "sourceOrdinal": int(source.get("preservedOrdinal", source.get("ordinal", 0))),
+    }
+
+
+def resolve_exact_same_page_groups(
+    source_rows: list[dict[str, Any]],
+    missing_rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Pair equal-sized duplicate-title groups by their relative page order.
+
+    A single title can legitimately occur more than once on one page (for
+    example two bank notices).  The original one-row matcher deliberately
+    withheld those groups as ambiguous.  If the still-missing PeopleData group
+    and the unaligned JSONL group have the same date, page, normalized title,
+    and cardinality, their relative order is sufficient to preserve both
+    distinct bodies without borrowing a candidate from another date.
+    """
+    source_groups: dict[tuple[str, int, str], list[tuple[int, dict[str, Any]]]] = defaultdict(list)
+    missing_groups: dict[tuple[str, int, str], list[dict[str, Any]]] = defaultdict(list)
+    for index, row in enumerate(source_rows):
+        if key := exact_issue_page_title_key(row):
+            source_groups[key].append((index, row))
+    for row in missing_rows:
+        if key := exact_issue_page_title_key(row):
+            missing_groups[key].append(row)
+
+    resolved_indexes: set[int] = set()
+    resolved: list[dict[str, Any]] = []
+    for key, sources in source_groups.items():
+        candidates = missing_groups.get(key, [])
+        if not candidates or len(sources) != len(candidates):
+            continue
+        ordered_sources = sorted(
+            sources,
+            key=lambda item: int(
+                item[1].get("preservedOrdinal", item[1].get("ordinal", item[0]))
+            ),
+        )
+        ordered_candidates = sorted(candidates, key=lambda row: int(row["ordinal"]))
+        for (index, source), candidate in zip(ordered_sources, ordered_candidates):
+            resolved_indexes.add(index)
+            resolved.append(canonicalize_exact_group_pair(source, candidate))
+
+    remaining = [row for index, row in enumerate(source_rows) if index not in resolved_indexes]
+    resolved.sort(key=lambda row: (row["date"], row["page"], row["ordinal"]))
+    return remaining, resolved
+
+
+def resolve_whitespace_only_same_date_groups(
+    source_rows: list[dict[str, Any]],
+    missing_rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Resolve same-date catalog matches whose titles differ only in spacing."""
+    source_groups: dict[tuple[str, str], list[tuple[int, dict[str, Any]]]] = defaultdict(list)
+    missing_groups: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for index, row in enumerate(source_rows):
+        if key := exact_issue_whitespace_title_key(row):
+            source_groups[key].append((index, row))
+    for row in missing_rows:
+        if key := exact_issue_whitespace_title_key(row):
+            missing_groups[key].append(row)
+
+    resolved_indexes: set[int] = set()
+    resolved: list[dict[str, Any]] = []
+    for key, sources in source_groups.items():
+        candidates = missing_groups.get(key, [])
+        if not candidates or len(sources) != len(candidates):
+            continue
+        ordered_sources = sorted(
+            sources,
+            key=lambda item: int(
+                item[1].get("preservedOrdinal", item[1].get("ordinal", item[0]))
+            ),
+        )
+        ordered_candidates = sorted(candidates, key=lambda row: int(row["ordinal"]))
+        for (index, source), candidate in zip(ordered_sources, ordered_candidates):
+            resolved_indexes.add(index)
+            canonical = canonicalize_exact_group_pair(source, candidate)
+            canonical["matchMethod"] = "exact_title_whitespace_same_date"
+            resolved.append(canonical)
+
+    remaining = [row for index, row in enumerate(source_rows) if index not in resolved_indexes]
+    resolved.sort(key=lambda row: (row["date"], row["page"], row["ordinal"]))
+    return remaining, resolved
 
 
 def load_directory_evidence(
@@ -217,9 +348,20 @@ def main() -> None:
     parser.add_argument("--accepted", required=True, type=Path)
     parser.add_argument("--review", required=True, type=Path)
     parser.add_argument("--report", required=True, type=Path)
+    parser.add_argument("--peopledata-unmatched", type=Path)
+    parser.add_argument("--auto-merged", type=Path)
     args = parser.parse_args()
 
     rows = load_unaligned(args.jsonl_unaligned)
+    input_count = len(rows)
+    auto_merged: list[dict[str, Any]] = []
+    if args.peopledata_unmatched:
+        missing_rows = load_jsonl(args.peopledata_unmatched)
+        rows, same_page_merged = resolve_exact_same_page_groups(rows, missing_rows)
+        rows, whitespace_merged = resolve_whitespace_only_same_date_groups(
+            rows, missing_rows
+        )
+        auto_merged = same_page_merged + whitespace_merged
     source_titles = {
         title for row in rows if (title := normalized_primary_title(row))
     }
@@ -231,12 +373,18 @@ def main() -> None:
         args.directory, source_titles, source_issue_pages
     )
 
-    accepted: list[dict[str, Any]] = []
+    accepted: list[dict[str, Any]] = list(auto_merged)
     review: list[dict[str, Any]] = []
     counters: Counter[str] = Counter()
+    counters["inputRows"] = input_count
+    counters["autoMergedExactGroupRows"] = len(auto_merged)
+    counters["autoMergedSamePageRows"] = len(same_page_merged) if args.peopledata_unmatched else 0
+    counters["autoMergedWhitespaceSameDateRows"] = (
+        len(whitespace_merged) if args.peopledata_unmatched else 0
+    )
+    counters["acceptedJsonlCanonicalRows"] = len(auto_merged)
     for row in rows:
         classified = classify_row(row, exact_locations, page_titles)
-        counters["inputRows"] += 1
         signals = classified["reconciliationSignals"]
         if "suspected_title_typo" in signals:
             counters["suspectedTitleTypoRows"] += 1
@@ -251,13 +399,19 @@ def main() -> None:
 
     accepted_count = write_jsonl(args.accepted, accepted)
     review_count = write_jsonl(args.review, review)
-    safe = accepted_count + review_count == len(rows)
+    if args.auto_merged:
+        write_jsonl(args.auto_merged, auto_merged)
+    safe = accepted_count + review_count == input_count
     report = {
         "formatVersion": "jojo-rmrb-jsonl-unaligned-classification/1",
         "directory": str(args.directory.resolve()),
         "jsonlUnaligned": str(args.jsonl_unaligned.resolve()),
         "accepted": str(args.accepted.resolve()),
         "review": str(args.review.resolve()),
+        "peopleDataUnmatched": (
+            str(args.peopledata_unmatched.resolve()) if args.peopledata_unmatched else None
+        ),
+        "autoMerged": str(args.auto_merged.resolve()) if args.auto_merged else None,
         "safe": safe,
         "counters": dict(counters),
     }
