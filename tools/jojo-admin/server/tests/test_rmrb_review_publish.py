@@ -242,6 +242,59 @@ class RmrbReviewPublishTest(unittest.TestCase):
         manifest = publish._decode_jox(delivery.files[manifest_key], manifest_key)
         self.assertEqual(manifest["content"]["articles"][0]["status"], "missing")
 
+    def test_jsonl_supplement_append_preserves_existing_rows_and_adds_delivery_fragment(self):
+        source_key = (self.day, 2, 5)
+        source_rows = {source_key: {
+            "date": self.day,
+            "page": 2,
+            "ordinal": 5,
+            "title": "JSONL 原题\n作者",
+            "content": "此前没有表示的可信正文。",
+            "contentSource": "jsonl",
+            "matchMethod": "jsonl_directory_omission",
+        }}
+        canonical = publish.prepare_canonical_jsonl_supplement_append(
+            source_rows, lambda name: self.hf / name, self.output / "canonical-supplements",
+        )
+        self.assertEqual(canonical.changed_article_count, 1)
+        item = publish._read_json_gz(canonical.issue_files[self.day])
+        self.assertEqual(len(item["content"]["articles"]), 2)
+        self.assertEqual(item["content"]["articles"][0]["contentState"], "missing")
+        appended = item["content"]["articles"][1]
+        self.assertEqual(appended["id"], publish._article_id(*source_key))
+        self.assertEqual(appended["body"]["value"], "此前没有表示的可信正文。")
+        self.assertNotIn("sourceOnly", appended["extensions"]["rmrb"])
+        self.assertEqual(
+            appended["extensions"]["rmrb"]["matchMethod"],
+            "jsonl_directory_omission",
+        )
+        self.assertEqual(item["content"]["pages"][0]["number"], 2)
+        self.assertEqual(item["content"]["placements"][0]["articleId"], appended["id"])
+        viewer = publish._read_jsonl_gz(
+            canonical.files["newspapers/rmrb/data/articles/1950.jsonl.gz"]
+        )
+        viewer_append = next(row for row in viewer if int(row["ordinal"]) == 5)
+        self.assertNotIn("sourceOnly", viewer_append)
+        self.assertNotIn(publish.MISSING_INDEX, canonical.files)
+
+        delivery = publish.prepare_delivery_jsonl_supplement_append(
+            source_rows,
+            canonical,
+            lambda name: self.delivery / name,
+            self.output / "delivery-supplements",
+        )
+        self.assertEqual(delivery.changed_article_count, 1)
+        manifest_key = f"content/newspapers/rmrb/items/1950/01/{self.day}/manifest.jox"
+        manifest = publish._decode_jox(delivery.files[manifest_key], manifest_key)
+        descriptors = manifest["content"]["articles"]
+        self.assertEqual(len(descriptors), 2)
+        self.assertEqual(descriptors[-1]["id"], appended["id"])
+        self.assertEqual(descriptors[-1]["status"], "available")
+        self.assertEqual(manifest["contentStats"]["missingArticleCount"], 1)
+        self.assertEqual(manifest["contentStats"]["availableArticleCount"], 1)
+        fragment_key = f"content/newspapers/rmrb/items/1950/01/{self.day}/{descriptors[-1]['object']}"
+        self.assertIn(fragment_key, delivery.files)
+
 
 if __name__ == "__main__":
     unittest.main()

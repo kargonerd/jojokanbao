@@ -465,6 +465,175 @@ def prepare_canonical_patch(
     return patch
 
 
+def prepare_canonical_jsonl_supplement_append(
+    rows: dict[tuple[str, int, int], dict[str, object]],
+    source_file: SourceFile,
+    output: Path,
+) -> CanonicalPatch:
+    """Append preserved JSONL articles without rewriting existing articles."""
+    patch = CanonicalPatch(root=output, accepted_count=len(rows))
+    dataset_path = source_file("newspapers/rmrb/dataset.json")
+    patch.dataset = json.loads(dataset_path.read_text(encoding="utf-8"))
+    by_year: dict[str, list[tuple[tuple[str, int, int], dict[str, object]]]] = {}
+    for key, row in rows.items():
+        content = str(row.get("content") or "").strip()
+        if (
+            not content
+            or row.get("contentSource") != "jsonl"
+            or row.get("matchMethod") != "jsonl_directory_omission"
+            or "sourceOnly" in row
+        ):
+            raise ValueError(f"JSONL Canonical supplement row is invalid: {key}")
+        by_year.setdefault(key[0][:4], []).append((key, row))
+
+    days_with_text = set()
+    for year, entries in sorted(by_year.items()):
+        shard_name = f"newspapers/rmrb/data/articles/{year}.jsonl.gz"
+        viewer_rows = _read_jsonl_gz(source_file(shard_name))
+        viewer_index = {
+            (str(row["date"]), int(row["page"]), int(row["ordinal"])): row
+            for row in viewer_rows
+        }
+        viewer_changed = False
+        by_day: dict[str, list[tuple[tuple[str, int, int], dict[str, object]]]] = {}
+        for key, row in entries:
+            by_day.setdefault(key[0], []).append((key, row))
+
+        for day, day_entries in sorted(by_day.items()):
+            item_name = f"newspapers/rmrb/items/{day[:4]}/{day[5:7]}/{day}.json.gz"
+            item_source = source_file(item_name)
+            item = _read_json_gz(item_source)
+            articles = {str(row["id"]): row for row in item["content"]["articles"]}
+            placements = {
+                str(row["articleId"]): row for row in item["content"].get("placements") or []
+            }
+            pages = {int(row["number"]): row for row in item["content"].get("pages") or []}
+            placement_order: dict[int, int] = {}
+            for placement in placements.values():
+                page_id = str(placement.get("pageId") or "")
+                try:
+                    page = int(page_id.rsplit(":", 1)[-1])
+                except ValueError:
+                    continue
+                placement_order[page] = max(
+                    placement_order.get(page, 0), int(placement.get("order") or 0)
+                )
+            pdf = next(
+                (viewer.get("pdf") for key, viewer in viewer_index.items() if key[0] == day),
+                None,
+            )
+            item_changed = False
+            for key, source_row in sorted(day_entries):
+                _, page, ordinal = key
+                article_id = _article_id(*key)
+                title = str(source_row.get("title") or "").strip()
+                content = str(source_row.get("content") or "").strip()
+                desired_article = {
+                    "id": article_id,
+                    "order": ordinal + 1,
+                    "title": title,
+                    "authors": [],
+                    "contentState": "available",
+                    "body": {"format": "text", "value": content},
+                    "assetRefs": [],
+                    "extensions": {"rmrb": {
+                        "contentSource": "jsonl",
+                        "matchMethod": "jsonl_directory_omission",
+                    }},
+                }
+                existing_article = articles.get(article_id)
+                if existing_article is None:
+                    articles[article_id] = desired_article
+                    patch.changed_article_count += 1
+                    patch.changed_keys.add(key)
+                    item_changed = True
+                elif existing_article != desired_article:
+                    raise ValueError(f"Canonical JSONL supplement conflicts with existing row: {key}")
+
+                if page not in pages:
+                    pages[page] = {
+                        "id": f"page:{page:02d}",
+                        "order": max((int(value.get("order") or 0) for value in pages.values()), default=0) + 1,
+                        "number": page,
+                        "label": f"第{page}版",
+                        "title": None,
+                        "assetRefs": [],
+                    }
+                    item_changed = True
+                if article_id not in placements:
+                    placement_order[page] = placement_order.get(page, 0) + 1
+                    placements[article_id] = {
+                        "id": f"placement:{_stable_suffix('rmrb', day, page, ordinal)}",
+                        "pageId": f"page:{page:02d}",
+                        "articleId": article_id,
+                        "order": placement_order[page],
+                        "role": "complete",
+                    }
+                    item_changed = True
+
+                desired_viewer = {
+                    "date": day,
+                    "page": page,
+                    "ordinal": ordinal,
+                    "title": title,
+                    "content": content,
+                    "status": "available",
+                    "pdf": pdf,
+                }
+                existing_viewer = viewer_index.get(key)
+                if existing_viewer is None:
+                    viewer_rows.append(desired_viewer)
+                    viewer_index[key] = desired_viewer
+                    viewer_changed = True
+                elif existing_viewer != desired_viewer:
+                    raise ValueError(f"Viewer JSONL supplement conflicts with existing row: {key}")
+
+            if item_changed:
+                item["content"]["articles"] = sorted(
+                    articles.values(), key=lambda value: int(value["order"])
+                )
+                item["content"]["placements"] = sorted(
+                    placements.values(),
+                    key=lambda value: (
+                        str(value.get("pageId") or ""), int(value.get("order") or 0)
+                    ),
+                )
+                item["content"]["pages"] = sorted(
+                    pages.values(), key=lambda value: int(value["order"])
+                )
+                item["revision"] = int(item.get("revision") or 0) + 1
+                target = output / item_name
+                _write_json_gz(target, item)
+                patch.files[item_name] = target
+                patch.issue_files[day] = target
+            else:
+                # Supports resuming B2 after the Canonical append already landed.
+                patch.issue_files[day] = item_source
+            days_with_text.add(day)
+
+        if viewer_changed:
+            viewer_rows.sort(
+                key=lambda value: (
+                    str(value["date"]), int(value["page"]), int(value["ordinal"])
+                )
+            )
+            target = output / shard_name
+            _write_jsonl_gz(target, viewer_rows)
+            patch.files[shard_name] = target
+
+    text_calendar = patch.dataset["availability"]["text"]
+    available = _available_dates(text_calendar)
+    available.update(days_with_text)
+    new_calendar = _adaptive_calendar(text_calendar, available)
+    if new_calendar != text_calendar:
+        patch.dataset["availability"]["text"] = new_calendar
+        target = output / "newspapers/rmrb/dataset.json"
+        _write_json(target, patch.dataset)
+        patch.files["newspapers/rmrb/dataset.json"] = target
+        patch.dataset_changed = True
+    return patch
+
+
 def _fnv1a(value: str) -> int:
     result = 0x811C9DC5
     for byte in value.replace("\\", "/").lstrip("/").encode("utf-8"):
@@ -628,6 +797,93 @@ def prepare_delivery_patch(
                 "missingArticleCount": sum(row["status"] == "missing" for row in rows),
                 "rejectedArticleCount": sum(row["status"] == "rejected" for row in rows),
                 "characterCount": sum(int(row.get("characterCount") or 0) for row in rows),
+            }
+            target = output / manifest_key
+            _write_jox(target, manifest_key, manifest)
+            patch.files[manifest_key] = target
+    if canonical.dataset_changed:
+        index_key = "content/newspapers/rmrb/index.jox"
+        index = _decode_jox(delivery_file(index_key), index_key)
+        index["availability"] = canonical.dataset["availability"]
+        index["revision"] = int(index.get("revision") or 0) + 1
+        target = output / index_key
+        _write_jox(target, index_key, index)
+        patch.files[index_key] = target
+    return patch
+
+
+def prepare_delivery_jsonl_supplement_append(
+    rows: dict[tuple[str, int, int], dict[str, object]],
+    canonical: CanonicalPatch,
+    delivery_file: DeliveryFile,
+    output: Path,
+) -> DeliveryPatch:
+    """Derive Delivery fragments and manifests for Canonical JSONL supplements."""
+    patch = DeliveryPatch(root=output)
+    by_day: dict[str, list[tuple[tuple[str, int, int], dict[str, object]]]] = {}
+    for key, row in rows.items():
+        by_day.setdefault(key[0], []).append((key, row))
+    for day, entries in sorted(by_day.items()):
+        item = _read_json_gz(canonical.issue_files[day])
+        articles = {str(row["id"]): row for row in item["content"]["articles"]}
+        prefix = f"content/newspapers/rmrb/items/{day[:4]}/{day[5:7]}/{day}"
+        manifest_key = f"{prefix}/manifest.jox"
+        manifest = _decode_jox(delivery_file(manifest_key), manifest_key)
+        descriptors = {str(row["id"]): row for row in manifest["content"]["articles"]}
+        manifest_changed = False
+        for key, _source_row in sorted(entries):
+            article_id = _article_id(*key)
+            article = articles.get(article_id)
+            if article is None:
+                raise ValueError(f"Canonical JSONL supplement is missing during Delivery build: {key}")
+            fragment = {
+                "formatVersion": "jojo-fragment/1",
+                "itemId": item["itemId"],
+                "fragmentId": article_id,
+                "type": "article",
+                "order": article["order"],
+                "title": article["title"],
+                "status": "available",
+                "body": article["body"],
+                "assetRefs": [],
+                "annotations": [],
+            }
+            clear = _json_bytes(fragment)
+            relative_object = f"articles/{_opaque_name(clear)}.jox"
+            object_key = f"{prefix}/{relative_object}"
+            target = output / object_key
+            size, digest = _write_jox(target, object_key, fragment)
+            desired = {
+                "id": article_id,
+                "order": article["order"],
+                "title": article["title"],
+                "characterCount": len(str(article["body"]["value"])),
+                "status": "available",
+                "object": relative_object,
+                "size": size,
+                "sha256": digest,
+            }
+            existing = descriptors.get(article_id)
+            if existing is None:
+                descriptors[article_id] = desired
+                patch.files[object_key] = target
+                patch.changed_article_count += 1
+                manifest_changed = True
+            elif existing != desired:
+                raise ValueError(f"Delivery JSONL supplement conflicts with existing row: {key}")
+        if manifest_changed:
+            manifest["content"]["articles"] = sorted(
+                descriptors.values(), key=lambda value: int(value["order"])
+            )
+            values = manifest["content"]["articles"]
+            manifest["revision"] = int(manifest.get("revision") or 0) + 1
+            manifest["availability"]["text"] = "available"
+            manifest["contentStats"] = {
+                "articleCount": len(values),
+                "availableArticleCount": sum(row["status"] == "available" for row in values),
+                "missingArticleCount": sum(row["status"] == "missing" for row in values),
+                "rejectedArticleCount": sum(row["status"] == "rejected" for row in values),
+                "characterCount": sum(int(row.get("characterCount") or 0) for row in values),
             }
             target = output / manifest_key
             _write_jox(target, manifest_key, manifest)
