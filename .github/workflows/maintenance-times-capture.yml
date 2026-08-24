@@ -27,7 +27,7 @@ jobs:
   capture:
     runs-on: ubuntu-latest
     environment: maintenance
-    timeout-minutes: 9
+    timeout-minutes: 15
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       HF_TIMES_DATASET_REPO: ${{ secrets.HF_TIMES_DATASET_REPO || secrets.HF_DATASET_REPO }}
@@ -91,7 +91,9 @@ jobs:
           echo "$MIHOMO_SHA256  $RUNNER_TEMP/mihomo/mihomo.gz" | sha256sum -c -
           gzip -d "$RUNNER_TEMP/mihomo/mihomo.gz"
           chmod 700 "$RUNNER_TEMP/mihomo/mihomo"
-          python tools/times-pipeline/prepare_proxy.py --output "$RUNNER_TEMP/mihomo/config.yaml"
+          python tools/times-pipeline/prepare_proxy.py \
+            --output "$RUNNER_TEMP/mihomo/config.yaml" \
+            --control-output "$RUNNER_TEMP/mihomo/control.json"
           nohup "$RUNNER_TEMP/mihomo/mihomo" -d "$RUNNER_TEMP/mihomo" -f "$RUNNER_TEMP/mihomo/config.yaml" \
             > "$RUNNER_TEMP/mihomo/runtime.log" 2>&1 &
           for attempt in $(seq 1 12); do
@@ -155,13 +157,17 @@ jobs:
             --maximum-page-bytes 25000000
             --refresh-hours 24
             --retry-hours 2
+            --browser-retries 4
             --browser-extension-path "$BPC_EXTENSION_PATH"
             --browser-extension-revision "$BPC_REVISION"
           )
           if [ -n "$JOJO_TIMES_PROXY_URI" ]; then
             args+=(--proxy-server "$JOJO_TIMES_PROXY_URI")
           fi
-          python tools/times-pipeline/archive_v2.py "${args[@]}" > "$RUNNER_TEMP/archive-result.json"
+          if [ -f "$RUNNER_TEMP/mihomo/control.json" ]; then
+            args+=(--proxy-control "$RUNNER_TEMP/mihomo/control.json")
+          fi
+          xvfb-run -a python tools/times-pipeline/archive_v2.py "${args[@]}" > "$RUNNER_TEMP/archive-result.json"
 
       - name: Commit Raw as one HF Dataset revision
         run: |
@@ -202,7 +208,7 @@ jobs:
           const archivePath = process.env.RUNNER_TEMP + "/archive-result.json";
           if (fs.existsSync(archivePath)) {
             const archive = JSON.parse(fs.readFileSync(archivePath, "utf8"));
-            console.log(`- Chromium archive: ${archive.selected} pages, ${archive.articleFailures} failures, ${archive.extractedFullBodies} full bodies, ${(archive.waczBytes / 1024 / 1024).toFixed(1)} MiB`);
+            console.log(`- Chromium archive: ${archive.selected} pages, ${archive.articleFailures} transport failures, ${archive.fullTextFailures ?? "unknown"} full-text failures, ${archive.extractedFullBodies} extracted full bodies, ${(archive.waczBytes / 1024 / 1024).toFixed(1)} MiB`);
           } else {
             console.log("- Chromium archive: failed or skipped; Raw discovery was still committed");
           }

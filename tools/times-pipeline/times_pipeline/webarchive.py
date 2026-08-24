@@ -8,11 +8,12 @@ import gzip
 import hashlib
 from io import BytesIO
 import json
+import os
 from pathlib import Path
 import re
 import shutil
 import tempfile
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 from urllib.parse import urljoin, urlsplit
 from uuid import uuid4
 import zipfile
@@ -62,6 +63,9 @@ class ArticleCapture:
     exchanges: tuple[HttpExchange, ...]
     elapsed_ms: int
     error: str | None = None
+    parser_id: str | None = None
+    minimum_full_characters: int = 800
+    minimum_full_paragraphs: int = 3
 
     @property
     def final_exchange(self) -> HttpExchange | None:
@@ -158,7 +162,7 @@ def select_articles_for_capture(
         return []
     cutoff = now.astimezone(timezone.utc) - timedelta(days=retention_days)
     rows = state.get("articles", {}) if isinstance(state, dict) else {}
-    ranked: list[tuple[int, datetime, Article]] = []
+    ranked: list[tuple[int, int, datetime, Article]] = []
     for article in articles:
         published = _parse_datetime(article.published_at)
         if not article.source.archive_pages or published is None or published < cutoff:
@@ -172,28 +176,49 @@ def select_articles_for_capture(
         else:
             last_attempt = _parse_datetime(previous.get("lastAttempt"))
             status = previous.get("httpStatus")
-            wait_hours = retry_hours if previous.get("error") or status not in range(200, 400) else refresh_hours
+            full_text_missing = (
+                article.content_status != "full"
+                and previous.get("fullTextCaptured") is not True
+            )
+            if previous.get("failureReason") == "hard-paywall":
+                # Site markup, BPC rules, and access behavior change. Recheck a
+                # terminal paywall on the normal refresh interval rather than
+                # suppressing this URL forever or retrying it every two hours.
+                wait_hours = refresh_hours
+            else:
+                wait_hours = retry_hours if (
+                    full_text_missing
+                    or previous.get("error")
+                    or status not in range(200, 400)
+                ) else refresh_hours
             if last_attempt is not None and now.astimezone(timezone.utc) - last_attempt < timedelta(hours=wait_hours):
                 continue
             rank = 2 if wait_hours == retry_hours else 3
-        ranked.append((rank, published, article))
-    ranked.sort(key=lambda row: (row[0], -row[1].timestamp(), row[2].id))
+        content_rank = 0 if article.content_status != "full" else 1
+        ranked.append((content_rank, rank, published, article))
+    ranked.sort(key=lambda row: (row[0], row[1], -row[2].timestamp(), row[3].id))
     selected: list[Article] = []
-    selected_ids: set[str] = set()
-    represented_sources: set[str] = set()
-    for _rank, _published, article in ranked:
-        if article.source.id in represented_sources:
-            continue
-        selected.append(article)
-        selected_ids.add(article.id)
-        represented_sources.add(article.source.id)
-        if len(selected) == max_pages:
-            return selected
-    for _rank, _published, article in ranked:
-        if article.id in selected_ids:
-            continue
-        selected.append(article)
-        if len(selected) == max_pages:
+    by_source: dict[str, list[Article]] = {}
+    source_order: list[str] = []
+    for _content_rank, _state_rank, _published, article in ranked:
+        if article.source.id not in by_source:
+            by_source[article.source.id] = []
+            source_order.append(article.source.id)
+        by_source[article.source.id].append(article)
+    positions = {source_id: 0 for source_id in source_order}
+    while len(selected) < max_pages:
+        added = False
+        for source_id in source_order:
+            position = positions[source_id]
+            source_articles = by_source[source_id]
+            if position >= len(source_articles):
+                continue
+            selected.append(source_articles[position])
+            positions[source_id] += 1
+            added = True
+            if len(selected) == max_pages:
+                break
+        if not added:
             break
     return selected
 
@@ -257,6 +282,9 @@ async def _capture_one(
         exchanges=tuple(exchanges),
         elapsed_ms=elapsed_ms,
         error=error,
+        parser_id=article.source.parser_id,
+        minimum_full_characters=article.source.minimum_full_characters,
+        minimum_full_paragraphs=article.source.minimum_full_paragraphs,
     )
 
 
@@ -335,6 +363,45 @@ def _limit_browser_response_rows(
     return [row for index, row in enumerate(rows) if index in selected_indexes]
 
 
+def _rendered_page_exchange(
+    article: Article,
+    *,
+    captured_at: str,
+    request_url: str,
+    user_agent: str,
+    status_code: int | None,
+    body: bytes,
+    maximum_response_bytes: int,
+) -> HttpExchange | None:
+    if not request_url.startswith(("http://", "https://")) or not body:
+        return None
+    truncated = len(body) > maximum_response_bytes
+    body = body[:maximum_response_bytes]
+    response_headers = _normalized_response_headers(
+        (
+            ("Content-Type", "text/html; charset=utf-8"),
+            ("X-JOJO-Rendered-DOM", "true"),
+        ),
+        len(body),
+        truncated,
+    )
+    return HttpExchange(
+        source_id=article.source.id,
+        article_id=article.id,
+        canonical_url=article.url,
+        title=article.title,
+        captured_at=captured_at,
+        request_url=_archive_safe_url(request_url),
+        request_headers=(("User-Agent", user_agent),),
+        status_code=status_code or 200,
+        reason_phrase="Rendered DOM",
+        response_headers=response_headers,
+        body=body,
+        truncated=truncated,
+        is_page=True,
+    )
+
+
 async def _playwright_headers(value: Any) -> tuple[tuple[str, str], ...]:
     try:
         rows = await value.headers_array()
@@ -345,6 +412,66 @@ async def _playwright_headers(value: Any) -> tuple[tuple[str, str], ...]:
             return tuple((str(name), str(item)) for name, item in rows.items())
         except Exception:
             return ()
+
+
+async def _wait_for_bpc_extension(context: Any, timeout_seconds: float = 10.0) -> None:
+    """Wait until BPC has loaded its enabled-site and DOMPurify rule tables."""
+    workers = [worker for worker in context.service_workers if worker.url.startswith("chrome-extension://")]
+    if not workers:
+        try:
+            worker = await context.wait_for_event("serviceworker", timeout=round(timeout_seconds * 1_000))
+            workers = [worker] if worker.url.startswith("chrome-extension://") else []
+        except Exception:
+            workers = []
+    if not workers:
+        raise RuntimeError("Configured Chromium extension did not load")
+
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+    while asyncio.get_running_loop().time() < deadline:
+        for worker in workers:
+            try:
+                ready = await worker.evaluate(
+                    """() => (
+                        Array.isArray(globalThis.enabledSites) && globalThis.enabledSites.length > 0
+                        && Array.isArray(globalThis.dompurify_sites) && globalThis.dompurify_sites.length > 0
+                    )"""
+                )
+            except Exception:
+                ready = False
+            if ready:
+                return
+        await asyncio.sleep(0.1)
+    raise RuntimeError("Configured BPC extension did not finish initializing")
+
+
+async def _rerun_bpc_for_page(context: Any, page: Any) -> bool:
+    """Run BPC once more after article DOM nodes exist.
+
+    BPC's MV3 background injects at document_start. Some routes, including
+    Bloomberg, synchronously inspect article nodes and can finish before those
+    nodes have mounted. A late bg2cs message uses BPC's own registered content
+    script and rule implementation; it does not duplicate BPC logic here.
+    """
+    script = """async (url) => {
+        const tabs = await chrome.tabs.query({});
+        const tab = tabs.find(item => item.url === url);
+        if (!tab) return false;
+        try {
+            await chrome.tabs.sendMessage(tab.id, {msg: 'bg2cs', data: {}});
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }"""
+    for worker in context.service_workers:
+        if not worker.url.startswith("chrome-extension://"):
+            continue
+        try:
+            if await worker.evaluate(script, str(page.url)):
+                return True
+        except Exception:
+            continue
+    return False
 
 
 async def _browser_attempt(
@@ -385,6 +512,15 @@ async def _browser_attempt(
                 wait_until="domcontentloaded",
                 timeout=round(timeout_seconds * 1_000),
             )
+        except PlaywrightTimeoutError:
+            # A navigation timeout does not mean the page DOM is unusable.
+            # Continue with BPC and rendered-DOM capture when Chromium has
+            # already received enough of the document to expose the article.
+            navigation_error = "BrowserTimeout"
+        except PlaywrightError as exc:
+            navigation_error = type(exc).__name__
+
+        try:
             try:
                 await page.wait_for_load_state(
                     "networkidle",
@@ -392,14 +528,15 @@ async def _browser_attempt(
                 )
             except PlaywrightTimeoutError:
                 pass
+            if shared_context is not None:
+                await _rerun_bpc_for_page(shared_context, page)
             for _index in range(4):
                 await page.evaluate("window.scrollBy(0, Math.max(window.innerHeight * 0.8, 600))")
                 await asyncio.sleep(0.2)
             await asyncio.sleep(0.5)
-        except PlaywrightTimeoutError:
-            navigation_error = "BrowserTimeout"
         except PlaywrightError as exc:
-            navigation_error = type(exc).__name__
+            if navigation_error is None:
+                navigation_error = type(exc).__name__
 
         main_status: int | None = None
         response_rows: list[tuple[Any, str, bool]] = []
@@ -467,6 +604,24 @@ async def _browser_attempt(
                 request_method=str(response.request.method or "GET").upper(),
                 is_page=is_page,
             ))
+        try:
+            rendered_body = (await page.content()).encode("utf-8")
+        except PlaywrightError:
+            rendered_body = b""
+        rendered_exchange = _rendered_page_exchange(
+            article,
+            captured_at=captured_at,
+            request_url=str(page.url),
+            user_agent=user_agent,
+            status_code=main_status,
+            body=rendered_body,
+            maximum_response_bytes=maximum_response_bytes,
+        )
+        if rendered_exchange is not None:
+            # Keep the original HTTP response(s), then append the post-JavaScript
+            # DOM used by the parser and by replay. Extensions such as BPC mutate
+            # this DOM, not Playwright's original response body.
+            exchanges.append(rendered_exchange)
         return exchanges, main_status, navigation_error
     finally:
         try:
@@ -523,6 +678,9 @@ async def _capture_one_browser(
         exchanges=tuple(exchanges),
         elapsed_ms=elapsed_ms,
         error=error,
+        parser_id=article.source.parser_id,
+        minimum_full_characters=article.source.minimum_full_characters,
+        minimum_full_paragraphs=article.source.minimum_full_paragraphs,
     )
 
 
@@ -547,6 +705,10 @@ async def _capture_articles_browser(
     if not values:
         return []
     semaphore = asyncio.Semaphore(workers)
+    source_semaphores = {
+        source_id: asyncio.Semaphore(2)
+        for source_id in {article.source.id for article in values}
+    }
     async with async_playwright() as playwright:
         browser_args = [
             "--disable-blink-features=AutomationControlled",
@@ -559,8 +721,12 @@ async def _capture_articles_browser(
         if browser_extension_path:
             extension = str(Path(browser_extension_path).resolve())
             browser_args.extend([f"--disable-extensions-except={extension}", f"--load-extension={extension}"])
+            if os.name == "nt":
+                browser_args.extend(["--window-position=-32000,-32000", "--window-size=800,600"])
         launch_options: dict[str, Any] = {
-            "headless": True,
+            # Chromium does not load extensions in Playwright's headless mode.
+            # CI runs the headed process inside Xvfb; Windows keeps it off-screen.
+            "headless": not bool(browser_extension_path),
             "ignore_default_args": ["--enable-automation", "--hide-scrollbars"],
             "args": browser_args,
         }
@@ -580,6 +746,11 @@ async def _capture_articles_browser(
                 java_script_enabled=True,
                 **launch_options,
             )
+            try:
+                await _wait_for_bpc_extension(shared_context)
+            except RuntimeError:
+                await shared_context.close()
+                raise
             browser = shared_context.browser
             if browser is None:
                 raise RuntimeError("Persistent Chromium context did not expose a browser")
@@ -587,7 +758,7 @@ async def _capture_articles_browser(
             browser = await playwright.chromium.launch(**launch_options)
         try:
             async def guarded(article: Article) -> ArticleCapture:
-                async with semaphore:
+                async with semaphore, source_semaphores[article.source.id]:
                     return await _capture_one_browser(
                         browser,
                         article,
@@ -604,6 +775,11 @@ async def _capture_articles_browser(
             return list(await asyncio.gather(*(guarded(article) for article in values)))
         finally:
             try:
+                # Let Playwright settle extension/service-worker protocol work
+                # before closing the persistent context. This avoids harmless
+                # TargetClosedError futures during BPC shutdown.
+                if shared_context is not None:
+                    await asyncio.sleep(0.25)
                 if shared_context is not None:
                     await asyncio.wait_for(shared_context.close(), timeout=10.0)
                 else:
@@ -807,6 +983,8 @@ def write_web_archive(
     source_statuses: list[dict[str, Any]],
     generated_at: datetime,
     run_id: str,
+    full_text_outcomes: Mapping[str, bool] | None = None,
+    failure_reasons: Mapping[str, str | None] | None = None,
 ) -> dict[str, Any]:
     relative_run_root = Path("web-archives") / "times" / generated_at.strftime("%Y/%m/%d") / run_id
     run_root = raw_root / relative_run_root
@@ -837,6 +1015,16 @@ def write_web_archive(
             "error": capture.error,
             "waczObject": wacz_object,
             "parserStatus": quality.get("status") if isinstance(quality, dict) else None,
+            "fullTextCaptured": (
+                full_text_outcomes.get(capture.article_id)
+                if full_text_outcomes is not None
+                else None
+            ),
+            "failureReason": (
+                failure_reasons.get(capture.article_id)
+                if failure_reasons is not None
+                else None
+            ),
         }
     state = {
         "formatVersion": ARCHIVE_STATE_VERSION,

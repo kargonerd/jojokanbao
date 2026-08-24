@@ -1,5 +1,6 @@
 import path from "node:path";
 import { parseArgs, requiredArg } from "./args.js";
+import { isCandidateAllowed } from "./candidate-policy.js";
 import { loadSources } from "./config.js";
 import { discoverOfficialRss } from "./discovery/rss.js";
 import { discoverWithRssHub } from "./discovery/rsshub.js";
@@ -31,7 +32,10 @@ async function main(): Promise<void> {
         : source.discovery.kind === "sitemap"
           ? await discoverSitemap(source, fetchedAt, cutoff)
         : (() => { throw new Error(`${source.id}: site adapter is not implemented`); })();
-    result.candidates = result.candidates.filter((candidate) => new Date(candidate.publishedAt).valueOf() >= cutoff);
+    result.candidates = result.candidates.filter((candidate) => (
+      new Date(candidate.publishedAt).valueOf() >= cutoff
+      && isCandidateAllowed(source, candidate)
+    ));
     const networkFile = await recorder.flush();
     const manifest = await writeSourceCapture(runRoot, runId, startedAt, result, networkFile, recorder.exchanges.length);
     const status = manifest.healthStatus === "healthy" ? "ok" : "empty";

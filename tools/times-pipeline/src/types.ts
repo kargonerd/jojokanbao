@@ -17,6 +17,8 @@ export interface SourceConfig {
     parser?: string;
     minimumFullCharacters?: number;
     minimumFullParagraphs?: number;
+    allowedHostnames?: string[];
+    excludedPathPrefixes?: string[];
   };
   archive: {
     mode: "browser" | "http" | "none";
@@ -43,6 +45,7 @@ export interface Candidate {
   browserCapturedAt?: string;
   browserHttpStatus?: number;
   browserArchiveObject?: string;
+  browserFailureReason?: "hard-paywall" | "http-blocked" | "extraction-failed";
   contentStatus: "full" | "summary" | "metadata";
   publishedAt: string;
   updatedAt?: string;

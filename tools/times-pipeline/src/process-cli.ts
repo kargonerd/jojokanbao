@@ -19,7 +19,7 @@ async function main(): Promise<void> {
   const rawRevision = args.get("raw-revision") ?? "local";
   const sources = new Map((await loadSources(configPath)).map((source) => [source.id, source]));
   const run = JSON.parse(await readFile(runManifestPath, "utf8")) as RawRunManifest;
-  const results: Array<{ sourceId: string; dates: string[]; articles: number; skippedMetadata: number }> = [];
+  const results: Array<{ sourceId: string; dates: string[]; articles: number; skippedMetadata: number; skippedNonFull: number }> = [];
   for (const row of run.sources) {
     if (row.status !== "ok" || !row.output?.manifest) continue;
     const source = sources.get(row.sourceId);

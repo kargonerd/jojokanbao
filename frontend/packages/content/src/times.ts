@@ -6,6 +6,9 @@ export type TimesUnavailableReason =
   | "source-error"
   | "source-empty"
   | "metadata-only"
+  | "full-text-pending"
+  | "hard-paywall"
+  | "http-blocked"
   | "canonical-missing"
   | "browser-capture-failed";
 
@@ -44,6 +47,7 @@ export interface TimesSourceHealth {
   browserAttempts: number;
   browserSucceeded: number;
   browserFailed: number;
+  browserExtractedFull?: number;
   updatedAt: string;
 }
 

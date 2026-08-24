@@ -13,6 +13,7 @@ import type {
   TimesUnavailableCase,
 } from "@jojo/content";
 import type { CanonicalArticle } from "./canonical-writer.js";
+import { isCandidateAllowed, isCanonicalUrlAllowed } from "./candidate-policy.js";
 import { sha256 } from "./identity.js";
 import { plainText, removeParserArtifacts } from "./text.js";
 import type { Candidate, SourceCaptureManifest, SourceConfig } from "./types.js";
@@ -35,7 +36,13 @@ export interface RawRunManifest {
   windowHours?: number;
   sources: RawWorkerResult[];
   browserArchive?: {
-    captureBySource?: Array<{ sourceId: string; attempts: number; succeeded: number; failed: number }>;
+    captureBySource?: Array<{
+      sourceId: string;
+      attempts: number;
+      succeeded: number;
+      failed: number;
+      extractedFullBodies?: number;
+    }>;
     failedCases?: Array<{
       articleId: string;
       sourceId: string;
@@ -50,9 +57,17 @@ export interface RawRunManifest {
 interface SourceDeliveryData {
   source: SourceConfig;
   manifest?: SourceCaptureManifest;
+  rawCandidateCount: number;
   candidates: Candidate[];
   canonical: CanonicalArticle[];
   worker: RawWorkerResult;
+}
+
+interface BrowserSourceStats {
+  attempts: number;
+  succeeded: number;
+  failed: number;
+  extractedFullBodies?: number;
 }
 
 const JOX_SALT = 0x4a4f5831;
@@ -125,10 +140,14 @@ async function sourceData(
   source: SourceConfig,
   worker: RawWorkerResult,
 ): Promise<SourceDeliveryData> {
-  if (!worker.output?.manifest) return { source, candidates: [], canonical: [], worker };
+  if (!worker.output?.manifest) return { source, rawCandidateCount: 0, candidates: [], canonical: [], worker };
   const manifestPath = path.join(workspaceRoot, ...worker.output.manifest.split("/"));
   const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as SourceCaptureManifest;
-  const candidates = await readJsonLinesGzip<Candidate>(path.join(path.dirname(manifestPath), "candidates.jsonl.gz"));
+  // Reapply the current source policy while building Delivery. Raw is immutable,
+  // so an older run can still contain content (for example AP video pages) that
+  // a newer source policy now skips entirely.
+  const rawCandidates = await readJsonLinesGzip<Candidate>(path.join(path.dirname(manifestPath), "candidates.jsonl.gz"));
+  const candidates = rawCandidates.filter((candidate) => isCandidateAllowed(source, candidate));
   const byDate = new Map<string, Set<string>>();
   for (const candidate of candidates) {
     const date = new Date(candidate.publishedAt).toISOString().slice(0, 10);
@@ -149,9 +168,12 @@ async function sourceData(
       month,
       `${date}.jsonl.gz`,
     ));
-    canonical.push(...rows.filter((article) => ids.has(article.articleId)));
+    // Delivery is full-text only. Keep this defensive filter even though the
+    // Canonical writer also rejects summaries, so old Canonical shards cannot
+    // leak summary-only articles back into the reader.
+    canonical.push(...rows.filter((article) => ids.has(article.articleId) && article.contentStatus === "full"));
   }
-  return { source, manifest, candidates, canonical, worker };
+  return { source, manifest, rawCandidateCount: rawCandidates.length, candidates, canonical, worker };
 }
 
 function unavailableCases(data: SourceDeliveryData, deliveredIds: Set<string>): TimesUnavailableCase[] {
@@ -166,6 +188,9 @@ function unavailableCases(data: SourceDeliveryData, deliveredIds: Set<string>): 
     }];
   }
   if (data.candidates.length === 0) {
+    // A source whose Raw candidates were all intentionally excluded (for
+    // example, a video-only ChinaNews interval) is not a discovery failure.
+    if (data.rawCandidateCount > 0) return [];
     return [{
       id: `${data.source.id}:source-empty`,
       source,
@@ -176,37 +201,55 @@ function unavailableCases(data: SourceDeliveryData, deliveredIds: Set<string>): 
   }
   return data.candidates
     .filter((candidate) => !deliveredIds.has(candidate.articleId))
-    .map((candidate) => ({
-      id: candidate.articleId,
-      source,
-      reason: candidate.contentStatus === "metadata" ? "metadata-only" as const : "canonical-missing" as const,
-      stage: candidate.contentStatus === "metadata" ? "capture" as const : "canonical" as const,
-      message: candidate.contentStatus === "metadata"
-        ? "已发现链接，但尚未取得可发布的正文或摘要。"
-        : "Raw 候选存在，但本次 Canonical 没有对应文章。",
-      title: candidate.title,
-      url: candidate.canonicalUrl,
-      publishedAt: candidate.publishedAt,
-    }));
+    .map((candidate) => {
+      const reason = candidate.browserFailureReason === "hard-paywall"
+        ? "hard-paywall" as const
+        : candidate.browserFailureReason === "http-blocked"
+          ? "http-blocked" as const
+          : candidate.contentStatus === "metadata"
+        ? "metadata-only" as const
+        : candidate.contentStatus === "summary"
+          ? "full-text-pending" as const
+          : "canonical-missing" as const;
+      return {
+        id: candidate.articleId,
+        source,
+        reason,
+        stage: reason === "canonical-missing" ? "canonical" as const : "capture" as const,
+        message: reason === "hard-paywall"
+          ? "原页为硬付费墙或只提供付费预览，按策略跳过。"
+          : reason === "http-blocked"
+            ? "原页被 HTTP 访问限制拦截，尚未取得全文。"
+            : reason === "metadata-only"
+          ? "已发现链接，但尚未取得正文。"
+          : reason === "full-text-pending"
+            ? "已发现文章摘要，但尚未取得全文，因此不进入 Delivery。"
+            : "Raw 已有全文，但本次 Canonical 没有对应文章。",
+        title: candidate.title,
+        url: candidate.canonicalUrl,
+        publishedAt: candidate.publishedAt,
+      };
+    });
 }
 
 function sourceHealth(
   data: SourceDeliveryData,
   cases: TimesUnavailableCase[],
-  browser = { attempts: 0, succeeded: 0, failed: 0 },
+  browser: BrowserSourceStats = { attempts: 0, succeeded: 0, failed: 0, extractedFullBodies: 0 },
 ): TimesSourceHealth {
   const source = { id: data.source.id, name: data.source.name, language: data.source.language };
   const discovered = data.candidates.length;
   const full = data.canonical.filter((article) => article.contentStatus === "full").length;
-  const summary = data.canonical.filter((article) => article.contentStatus === "summary").length;
-  const delivered = full + summary;
+  const summary = 0;
+  const delivered = full;
   const unavailable = cases.length;
-  const availabilityRate = discovered ? delivered / discovered : 0;
-  const fullTextRate = discovered ? full / discovered : 0;
-  const healthScore = discovered ? ((full + summary * 0.5) / discovered) * 100 : 0;
+  const intentionallyEmpty = discovered === 0 && data.rawCandidateCount > 0 && unavailable === 0;
+  const availabilityRate = discovered ? delivered / discovered : intentionallyEmpty ? 1 : 0;
+  const fullTextRate = discovered ? full / discovered : intentionallyEmpty ? 1 : 0;
+  const healthScore = discovered ? (full / discovered) * 100 : intentionallyEmpty ? 100 : 0;
   return {
     source,
-    status: delivered === 0 ? "unavailable" : unavailable > 0 || summary > 0 || browser.failed > 0 ? "degraded" : "healthy",
+    status: intentionallyEmpty ? "healthy" : delivered === 0 ? "unavailable" : unavailable > 0 ? "degraded" : "healthy",
     discovered,
     delivered,
     full,
@@ -219,6 +262,7 @@ function sourceHealth(
     browserAttempts: browser.attempts,
     browserSucceeded: browser.succeeded,
     browserFailed: browser.failed,
+    browserExtractedFull: browser.extractedFullBodies ?? 0,
     updatedAt: data.manifest?.completedAt ?? new Date().toISOString(),
   };
 }
@@ -251,11 +295,13 @@ export async function buildTimesDelivery(input: {
   const cases: TimesUnavailableCase[] = [];
   const health: TimesSourceHealth[] = [];
   const articleRows: Array<{ canonical: CanonicalArticle; candidate?: Candidate }> = [];
+  const deliveredIds = new Set<string>();
   const browserBySource = new Map((input.run.browserArchive?.captureBySource ?? []).map((row) => [row.sourceId, row]));
 
   for (const data of values) {
-    const deliveredIds = new Set(data.canonical.map((article) => article.articleId));
-    const sourceCases = unavailableCases(data, deliveredIds);
+    const sourceDeliveredIds = new Set(data.canonical.map((article) => article.articleId));
+    for (const articleId of sourceDeliveredIds) deliveredIds.add(articleId);
+    const sourceCases = unavailableCases(data, sourceDeliveredIds);
     cases.push(...sourceCases);
     health.push(sourceHealth(data, sourceCases, browserBySource.get(data.source.id)));
     const candidateById = new Map(data.candidates.map((candidate) => [candidate.articleId, candidate]));
@@ -265,16 +311,19 @@ export async function buildTimesDelivery(input: {
     }));
   }
 
+  const caseIds = new Set(cases.map((item) => item.id));
   for (const failure of input.run.browserArchive?.failedCases ?? []) {
+    if (deliveredIds.has(failure.articleId) || caseIds.has(failure.articleId)) continue;
     const source = sourceById.get(failure.sourceId);
     if (!source) continue;
+    if (failure.url && !isCanonicalUrlAllowed(source, failure.url)) continue;
     const status = failure.httpStatus ? `HTTP ${failure.httpStatus}` : failure.error || "未取得主文档响应";
     cases.push({
       id: `${failure.articleId}:browser-capture`,
       source: { id: source.id, name: source.name, language: source.language },
       reason: "browser-capture-failed",
       stage: "capture",
-      message: `Chromium 原页归档失败：${status}。文章摘要仍可独立发布时不会受此影响。`,
+      message: `Chromium 原页归档失败：${status}。取得全文前不会进入 Delivery。`,
       ...(failure.title ? { title: failure.title } : {}),
       ...(failure.url ? { url: failure.url } : {}),
     });

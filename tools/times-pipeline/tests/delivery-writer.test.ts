@@ -13,13 +13,81 @@ const source: SourceConfig = {
   name: "Example News",
   language: "en",
   discovery: { kind: "official-rss", url: "https://example.test/feed.xml" },
-  content: { priority: ["discovery-body", "discovery-summary"] },
+  content: {
+    priority: ["discovery-body", "discovery-summary"],
+    allowedHostnames: ["example.test"],
+    excludedPathPrefixes: ["/video/"],
+  },
   archive: { mode: "http", bpc: true },
   health: { minimumCandidates: 1 },
   enabled: true,
 };
 
 describe("Times Delivery writer", () => {
+  it("does not report intentionally excluded video-only candidates as unavailable", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "jojo-times-video-workspace-"));
+    const deliveryRoot = await mkdtemp(path.join(os.tmpdir(), "jojo-times-video-output-"));
+    const runId = "video-run";
+    const manifestObject = `raw/news/example/2026/08/23/${runId}/manifest.json`;
+    const runRoot = path.join(workspaceRoot, ...manifestObject.split("/").slice(0, -1));
+    await mkdir(runRoot, { recursive: true });
+    await writeFile(path.join(runRoot, "manifest.json"), JSON.stringify({
+      formatVersion: "jojo-times-raw-source-run/1",
+      runId,
+      sourceId: source.id,
+      sourceName: source.name,
+      startedAt: "2026-08-23T10:00:00.000Z",
+      completedAt: "2026-08-23T10:01:00.000Z",
+      discovery: source.discovery,
+      candidateCount: 1,
+      fullCount: 0,
+      summaryCount: 1,
+      metadataCount: 0,
+      networkExchangeCount: 1,
+      objects: [],
+      archiveStatus: "recorded-http",
+      healthStatus: "healthy",
+      complete: true,
+    } satisfies SourceCaptureManifest));
+    const video: Candidate = {
+      articleId: "example:video-only",
+      sourceId: source.id,
+      sourceName: source.name,
+      language: source.language,
+      sourceUrl: "https://example.test/video/clip",
+      canonicalUrl: "https://example.test/video/clip",
+      title: "Video only",
+      contentStatus: "summary",
+      publishedAt: "2026-08-23T09:30:00.000Z",
+      authors: [],
+      publisherCategories: [],
+    };
+    await writeFile(path.join(runRoot, "candidates.jsonl.gz"), gzipSync(`${JSON.stringify(video)}\n`));
+    const result = await buildTimesDelivery({
+      workspaceRoot,
+      deliveryRoot,
+      run: {
+        runId,
+        startedAt: "2026-08-23T10:00:00.000Z",
+        completedAt: "2026-08-23T10:01:00.000Z",
+        sources: [{ sourceId: source.id, status: "ok", output: { manifest: manifestObject } }],
+      },
+      sources: [source],
+      windowHours: 24,
+    });
+
+    expect(result.unavailableCases).toEqual([]);
+    expect(result.sourceHealth[0]).toMatchObject({
+      status: "healthy",
+      discovered: 0,
+      delivered: 0,
+      unavailable: 0,
+      availabilityRate: 1,
+      fullTextRate: 1,
+      healthScore: 100,
+    });
+  });
+
   it("writes date Jox objects with source health and unavailable cases", async () => {
     const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "jojo-times-delivery-workspace-"));
     const deliveryRoot = await mkdtemp(path.join(os.tmpdir(), "jojo-times-delivery-output-"));
@@ -35,9 +103,9 @@ describe("Times Delivery writer", () => {
       startedAt: "2026-08-23T10:00:00.000Z",
       completedAt: "2026-08-23T10:01:00.000Z",
       discovery: source.discovery,
-      candidateCount: 2,
+      candidateCount: 4,
       fullCount: 1,
-      summaryCount: 0,
+      summaryCount: 2,
       metadataCount: 1,
       networkExchangeCount: 2,
       objects: [],
@@ -58,6 +126,32 @@ describe("Times Delivery writer", () => {
       discoveryBody: "<p>Full body</p>",
       contentStatus: "full",
       publishedAt: "2026-08-23T09:30:00.000Z",
+      authors: [],
+      publisherCategories: [],
+    }, {
+      articleId: "example:summary",
+      sourceId: source.id,
+      sourceName: source.name,
+      language: source.language,
+      sourceUrl: "https://example.test/summary",
+      canonicalUrl: "https://example.test/summary",
+      title: "Summary-only story",
+      summary: "This is only a feed summary.",
+      contentStatus: "summary",
+      publishedAt: "2026-08-23T09:15:00.000Z",
+      authors: [],
+      publisherCategories: [],
+    }, {
+      articleId: "example:video",
+      sourceId: source.id,
+      sourceName: source.name,
+      language: source.language,
+      sourceUrl: "https://example.test/video/clip",
+      canonicalUrl: "https://example.test/video/clip",
+      title: "Video clip",
+      summary: "Video-only content.",
+      contentStatus: "summary",
+      publishedAt: "2026-08-23T09:10:00.000Z",
       authors: [],
       publisherCategories: [],
     }, {
@@ -95,9 +189,19 @@ describe("Times Delivery writer", () => {
         discovery: source.discovery,
       },
     };
+    const staleSummaryCanonical: CanonicalArticle = {
+      ...canonical,
+      articleId: "example:summary",
+      canonicalUrl: "https://example.test/summary",
+      title: "Summary-only story",
+      publishedAt: "2026-08-23T09:15:00.000Z",
+      body: { format: "text", value: "This is only a feed summary." },
+      contentStatus: "summary",
+      contentHash: "summary-hash",
+    };
     const shard = path.join(workspaceRoot, "canonical/news/example/articles/2026/08/2026-08-23.jsonl.gz");
     await mkdir(path.dirname(shard), { recursive: true });
-    await writeFile(shard, gzipSync(`${JSON.stringify(canonical)}\n`));
+    await writeFile(shard, gzipSync(`${JSON.stringify(canonical)}\n${JSON.stringify(staleSummaryCanonical)}\n`));
     const run: RawRunManifest = {
       runId,
       startedAt: "2026-08-23T10:00:00.000Z",
@@ -111,6 +215,12 @@ describe("Times Delivery writer", () => {
           sourceId: source.id,
           title: "Full story",
           url: "https://example.test/full",
+          httpStatus: 403,
+        }, {
+          articleId: "example:video",
+          sourceId: source.id,
+          title: "Video clip",
+          url: "https://example.test/video/clip",
           httpStatus: 403,
         }],
       },
@@ -168,18 +278,19 @@ describe("Times Delivery writer", () => {
     const index = await gunzipJoxJson<TimesDeliveryIndex>(indexBytes, result.indexObject);
     expect(index.items.map((item) => item.itemKey)).toEqual(["2026-08-23", "2026-08-21"]);
     expect(index.sourceHealth[0]).toMatchObject({
-      discovered: 2,
+      discovered: 3,
       delivered: 1,
       full: 1,
-      unavailable: 1,
+      summary: 0,
+      unavailable: 2,
       browserAttempts: 1,
       browserFailed: 1,
-      healthScore: 50,
+      healthScore: 33.3,
     });
     expect(index.unavailableCases).toHaveLength(2);
     expect(index.unavailableCases).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "example:missing", reason: "metadata-only" }),
-      expect.objectContaining({ id: "example:full:browser-capture", reason: "browser-capture-failed" }),
+      expect.objectContaining({ id: "example:summary", reason: "full-text-pending" }),
     ]));
 
     const manifestKey = "content/newspapers/times/items/2026/08/2026-08-23/manifest.jox";

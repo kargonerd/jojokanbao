@@ -67,11 +67,27 @@ function parseSource(value: unknown, position: number): SourceConfig | null {
   const parser = typeof content?.parser === "string" && content.parser.trim() ? content.parser.trim() : undefined;
   const minimumFullCharacters = content?.minimumFullCharacters;
   const minimumFullParagraphs = content?.minimumFullParagraphs;
+  const allowedHostnames = content?.allowedHostnames;
+  const excludedPathPrefixes = content?.excludedPathPrefixes;
   if (minimumFullCharacters !== undefined && (!Number.isInteger(minimumFullCharacters) || (minimumFullCharacters as number) < 0)) {
     throw new Error(`${id}.content.minimumFullCharacters must be a non-negative integer`);
   }
   if (minimumFullParagraphs !== undefined && (!Number.isInteger(minimumFullParagraphs) || (minimumFullParagraphs as number) < 0)) {
     throw new Error(`${id}.content.minimumFullParagraphs must be a non-negative integer`);
+  }
+  if (allowedHostnames !== undefined && (
+    !Array.isArray(allowedHostnames)
+    || allowedHostnames.length === 0
+    || allowedHostnames.some((hostname) => typeof hostname !== "string" || !hostname.trim() || hostname.includes("/"))
+  )) {
+    throw new Error(`${id}.content.allowedHostnames must contain hostnames`);
+  }
+  if (excludedPathPrefixes !== undefined && (
+    !Array.isArray(excludedPathPrefixes)
+    || excludedPathPrefixes.length === 0
+    || excludedPathPrefixes.some((prefix) => typeof prefix !== "string" || !prefix.startsWith("/"))
+  )) {
+    throw new Error(`${id}.content.excludedPathPrefixes must contain absolute path prefixes`);
   }
   const proxyPolicy = typeof archive.proxyPolicy === "string" && archive.proxyPolicy.trim() ? archive.proxyPolicy.trim() : undefined;
   const health = row.health as Record<string, unknown> | undefined;
@@ -89,6 +105,12 @@ function parseSource(value: unknown, position: number): SourceConfig | null {
       ...(parser ? { parser } : {}),
       ...(minimumFullCharacters !== undefined ? { minimumFullCharacters: minimumFullCharacters as number } : {}),
       ...(minimumFullParagraphs !== undefined ? { minimumFullParagraphs: minimumFullParagraphs as number } : {}),
+      ...(allowedHostnames !== undefined
+        ? { allowedHostnames: [...new Set((allowedHostnames as string[]).map((hostname) => hostname.trim().toLowerCase()))] }
+        : {}),
+      ...(excludedPathPrefixes !== undefined
+        ? { excludedPathPrefixes: [...new Set(excludedPathPrefixes as string[])] }
+        : {}),
     },
     archive: { mode: mode as SourceConfig["archive"]["mode"], bpc: archive.bpc, ...(proxyPolicy ? { proxyPolicy } : {}) },
     health: { minimumCandidates: minimumCandidates as number },

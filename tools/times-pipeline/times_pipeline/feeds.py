@@ -35,6 +35,8 @@ class Source:
     parser_id: str | None = None
     archive_pages: bool = True
     feed_urls: tuple[str, ...] = ()
+    minimum_full_characters: int = 800
+    minimum_full_paragraphs: int = 3
 
 
 @dataclass(frozen=True, slots=True)

@@ -6,7 +6,7 @@
       "name": "AP News",
       "language": "en",
       "discovery": { "kind": "rsshub-package", "route": "/apnews/mobile" },
-      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "ap" },
+      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "ap", "allowedHostnames": ["apnews.com"], "excludedPathPrefixes": ["/video/"] },
       "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
       "health": { "minimumCandidates": 1 },
       "enabled": true
@@ -26,7 +26,7 @@
       "name": "Bloomberg",
       "language": "en",
       "discovery": { "kind": "official-rss", "url": "https://feeds.bloomberg.com/markets/news.rss" },
-      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "bloomberg" },
+      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "bloomberg", "minimumFullCharacters": 800, "minimumFullParagraphs": 3 },
       "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "bloomberg" },
       "health": { "minimumCandidates": 1 },
       "enabled": true
@@ -70,7 +70,7 @@
       "name": "Axios",
       "language": "en",
       "discovery": { "kind": "official-rss", "url": "https://api.axios.com/feed/" },
-      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "axios" },
+      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "axios", "minimumFullCharacters": 1000, "minimumFullParagraphs": 5 },
       "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "axios" },
       "health": { "minimumCandidates": 1 },
       "enabled": true
@@ -110,7 +110,7 @@
       "name": "Al Jazeera",
       "language": "en",
       "discovery": { "kind": "rsshub-package", "route": "/aljazeera/english/news" },
-      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "aljazeera", "minimumFullCharacters": 1000, "minimumFullParagraphs": 5 },
+      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "aljazeera", "minimumFullCharacters": 300, "minimumFullParagraphs": 2, "allowedHostnames": ["www.aljazeera.com"], "excludedPathPrefixes": ["/video/"] },
       "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
       "health": { "minimumCandidates": 1 },
       "enabled": true
@@ -130,7 +130,7 @@
       "name": "新华网",
       "language": "zh-CN",
       "discovery": { "kind": "rsshub-package", "route": "/news/xhsxw" },
-      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "xinhua", "minimumFullCharacters": 80, "minimumFullParagraphs": 1 },
+      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "xinhua", "minimumFullCharacters": 20, "minimumFullParagraphs": 1 },
       "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
       "health": { "minimumCandidates": 1 },
       "enabled": true
@@ -150,7 +150,7 @@
       "name": "央视新闻",
       "language": "zh-CN",
       "discovery": { "kind": "rsshub-package", "route": "/cctv/news" },
-      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "cctv", "minimumFullCharacters": 100, "minimumFullParagraphs": 1 },
+      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "cctv", "minimumFullCharacters": 40, "minimumFullParagraphs": 1, "allowedHostnames": ["news.cctv.com"] },
       "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
       "health": { "minimumCandidates": 1 },
       "enabled": true
@@ -160,7 +160,7 @@
       "name": "中国新闻网",
       "language": "zh-CN",
       "discovery": { "kind": "rsshub-package", "route": "/chinanews" },
-      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "chinanews", "minimumFullCharacters": 100, "minimumFullParagraphs": 1 },
+      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "chinanews", "minimumFullCharacters": 100, "minimumFullParagraphs": 1, "excludedPathPrefixes": ["/gn/shipin/", "/sh/shipin/"] },
       "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
       "health": { "minimumCandidates": 1 },
       "enabled": true
@@ -170,7 +170,7 @@
       "name": "澎湃新闻",
       "language": "zh-CN",
       "discovery": { "kind": "rsshub-package", "route": "/thepaper/featured" },
-      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "thepaper", "minimumFullCharacters": 100, "minimumFullParagraphs": 1 },
+      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "thepaper", "minimumFullCharacters": 100, "minimumFullParagraphs": 1, "allowedHostnames": ["thepaper.cn", "www.thepaper.cn", "m.thepaper.cn"], "excludedPathPrefixes": ["/morningEveningPaper", "/papernews/morningEveningPaper"] },
       "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
       "health": { "minimumCandidates": 1 },
       "enabled": true
@@ -180,7 +180,7 @@
       "name": "财联社",
       "language": "zh-CN",
       "discovery": { "kind": "rsshub-package", "route": "/cls/depth/1000" },
-      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "cls", "minimumFullCharacters": 100, "minimumFullParagraphs": 1 },
+      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "cls", "minimumFullCharacters": 40, "minimumFullParagraphs": 1 },
       "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
       "health": { "minimumCandidates": 1 },
       "enabled": true
@@ -221,7 +221,7 @@
       "name": "Focus Taiwan",
       "language": "en",
       "discovery": { "kind": "official-rss", "url": "https://feeds.feedburner.com/rsscna/engnews/" },
-      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "focus-taiwan" },
+      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "focus-taiwan", "minimumFullCharacters": 500, "minimumFullParagraphs": 3 },
       "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
       "health": { "minimumCandidates": 1 },
       "enabled": true

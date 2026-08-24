@@ -151,7 +151,7 @@ export function TimesHomePage() {
                           <span className={`border px-2 py-0.5 font-sans text-[10px] font-black ${healthClasses[item.status]}`}>{healthLabels[item.status]}</span>
                         </span>
                         <span className="mt-2 block font-sans text-xs text-muted">
-                          发现 {item.discovered} · 全文 {item.full} · 摘要 {item.summary} · 不可用 {item.unavailable}
+                          发现 {item.discovered} · 全文 {item.full} · 待全文 {item.unavailable} · 浏览器提取 {item.browserExtractedFull ?? 0}
                           {item.browserAttempts ? ` · 原页归档 ${item.browserSucceeded}/${item.browserAttempts}` : ""}
                         </span>
                         <span className="mt-3 block h-1.5 bg-rule">

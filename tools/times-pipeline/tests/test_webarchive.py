@@ -14,6 +14,7 @@ from times_pipeline.webarchive import (
     ArticleCapture,
     HttpExchange,
     _limit_browser_response_rows,
+    _rendered_page_exchange,
     capture_articles,
     select_articles_for_capture,
     write_web_archive,
@@ -177,6 +178,157 @@ def test_capture_selection_represents_each_source_before_filling_remaining_slots
     assert [value.id for value in selected] == ["newest", "other"]
 
 
+def test_capture_selection_retries_http_200_when_full_text_was_not_captured() -> None:
+    pending = article("pending", NOW - timedelta(hours=3))
+    state = {"articles": {
+        pending.id: {
+            "fingerprint": _fingerprint(pending),
+            "lastAttempt": (NOW - timedelta(hours=3)).isoformat(),
+            "httpStatus": 200,
+            "fullTextCaptured": False,
+        },
+    }}
+
+    selected = select_articles_for_capture(
+        [pending],
+        state,
+        now=NOW,
+        retention_days=7,
+        max_pages=1,
+        refresh_hours=24,
+        retry_hours=2,
+    )
+
+    assert [value.id for value in selected] == [pending.id]
+
+
+def test_capture_selection_does_not_retry_recent_missing_full_text() -> None:
+    pending = article("pending", NOW - timedelta(hours=1))
+    state = {"articles": {
+        pending.id: {
+            "fingerprint": _fingerprint(pending),
+            "lastAttempt": (NOW - timedelta(hours=1)).isoformat(),
+            "httpStatus": 200,
+            "fullTextCaptured": False,
+        },
+    }}
+
+    selected = select_articles_for_capture(
+        [pending],
+        state,
+        now=NOW,
+        retention_days=7,
+        max_pages=1,
+        refresh_hours=24,
+        retry_hours=2,
+    )
+
+    assert selected == []
+
+
+def test_capture_selection_rechecks_hard_paywall_after_refresh_interval() -> None:
+    pending = article("pending", NOW - timedelta(days=2))
+    state = {"articles": {
+        pending.id: {
+            "fingerprint": _fingerprint(pending),
+            "lastAttempt": (NOW - timedelta(days=2)).isoformat(),
+            "httpStatus": 200,
+            "fullTextCaptured": False,
+            "failureReason": "hard-paywall",
+        },
+    }}
+
+    selected = select_articles_for_capture(
+        [pending],
+        state,
+        now=NOW,
+        retention_days=7,
+        max_pages=1,
+        refresh_hours=24,
+        retry_hours=2,
+    )
+
+    assert selected == [pending]
+
+
+def test_capture_selection_does_not_recheck_recent_hard_paywall() -> None:
+    pending = article("pending", NOW - timedelta(hours=1))
+    state = {"articles": {
+        pending.id: {
+            "fingerprint": _fingerprint(pending),
+            "lastAttempt": (NOW - timedelta(hours=1)).isoformat(),
+            "httpStatus": 200,
+            "fullTextCaptured": False,
+            "failureReason": "hard-paywall",
+        },
+    }}
+
+    selected = select_articles_for_capture(
+        [pending],
+        state,
+        now=NOW,
+        retention_days=7,
+        max_pages=1,
+        refresh_hours=24,
+        retry_hours=2,
+    )
+
+    assert selected == []
+
+
+def test_capture_selection_round_robins_sources_and_prioritizes_missing_full_text() -> None:
+    second_source = Source("second", "Second", "en", None, "https://second.test/feed", "summary-only")
+    first_full = article("first-full", NOW)
+    first_full = Article(
+        id=first_full.id,
+        title=first_full.title,
+        summary=first_full.summary,
+        body="Full body",
+        content_status="full",
+        url=first_full.url,
+        published_at=first_full.published_at,
+        source=first_full.source,
+    )
+    first_pending = article("first-pending", NOW - timedelta(minutes=2))
+    second_pending = Article(
+        id="second-pending",
+        title="Second pending",
+        summary="Summary",
+        body="Summary",
+        content_status="summary",
+        url="https://second.test/pending",
+        published_at=(NOW - timedelta(minutes=1)).isoformat(),
+        source=second_source,
+    )
+    second_pending_older = Article(
+        id="second-pending-older",
+        title="Second pending older",
+        summary="Summary",
+        body="Summary",
+        content_status="summary",
+        url="https://second.test/pending-older",
+        published_at=(NOW - timedelta(minutes=3)).isoformat(),
+        source=second_source,
+    )
+
+    selected = select_articles_for_capture(
+        [first_full, first_pending, second_pending, second_pending_older],
+        {"articles": {}},
+        now=NOW,
+        retention_days=7,
+        max_pages=4,
+        refresh_hours=24,
+        retry_hours=2,
+    )
+
+    assert [value.id for value in selected] == [
+        "second-pending",
+        "first-pending",
+        "second-pending-older",
+        "first-full",
+    ]
+
+
 def test_capture_selection_allows_feed_only_validation() -> None:
     assert select_articles_for_capture(
         [article("new")],
@@ -197,6 +349,31 @@ def test_browser_response_limit_preserves_page_and_bounds_subresources() -> None
     assert len(selected) == 16
     assert selected[:15] == rows[:15]
     assert selected[-1] == rows[150]
+
+
+def test_rendered_page_exchange_is_last_page_candidate_and_is_bounded() -> None:
+    value = article("rendered")
+    rendered_body = b"<html><article>Rendered article body</article></html>"
+    rendered = _rendered_page_exchange(
+        value,
+        captured_at=NOW.isoformat(),
+        request_url=f"{value.url}?token=secret&view=full#fragment",
+        user_agent="JOJO Chromium",
+        status_code=403,
+        body=rendered_body,
+        maximum_response_bytes=32,
+    )
+
+    assert rendered is not None
+    assert rendered.is_page is True
+    assert rendered.status_code == 403
+    assert rendered.reason_phrase == "Rendered DOM"
+    assert rendered.request_url == f"{value.url}?view=full"
+    assert rendered.request_headers == (("User-Agent", "JOJO Chromium"),)
+    assert rendered.body == rendered_body[:32]
+    assert rendered.truncated is True
+    assert ("X-JOJO-Rendered-DOM", "true") in rendered.response_headers
+    assert ("X-JOJO-Capture-Truncated", "true") in rendered.response_headers
 
 
 def _fingerprint(value: Article) -> str:

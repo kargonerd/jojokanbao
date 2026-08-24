@@ -30,11 +30,11 @@ export interface CanonicalArticle {
   };
 }
 
-type PublishableCandidate = Candidate & { contentStatus: "full" | "summary" };
+type FullCandidate = Candidate & { contentStatus: "full" };
 
-function isPublishable(candidate: Candidate): candidate is PublishableCandidate {
-  if (candidate.contentStatus === "metadata") return false;
-  return Boolean(candidate.discoveryBody?.trim() || candidate.browserBody?.trim() || candidate.summary?.trim());
+function isFull(candidate: Candidate): candidate is FullCandidate {
+  return candidate.contentStatus === "full"
+    && Boolean(candidate.discoveryBody?.trim() || candidate.browserBody?.trim());
 }
 
 function issueDate(value: string): string {
@@ -42,17 +42,16 @@ function issueDate(value: string): string {
 }
 
 function canonicalArticle(
-  candidate: PublishableCandidate,
+  candidate: FullCandidate,
   manifest: SourceCaptureManifest,
   manifestObject: string,
   rawRevision: string,
   parserVersion?: string,
 ): CanonicalArticle {
   const fullBody = candidate.discoveryBody ?? candidate.browserBody;
-  const value = removeParserArtifacts(fullBody ?? candidate.summary ?? "").trim();
-  const body = fullBody
-    ? { format: "html" as const, profile: "jojo-semantic-html/1" as const, value }
-    : { format: "text" as const, value };
+  if (!fullBody?.trim()) throw new Error(`${candidate.articleId}: full candidate has no full body`);
+  const value = removeParserArtifacts(fullBody).trim();
+  const body = { format: "html" as const, profile: "jojo-semantic-html/1" as const, value };
   const contentHash = sha256(JSON.stringify({
     title: candidate.title,
     publishedAt: candidate.publishedAt,
@@ -101,7 +100,7 @@ export async function writeCanonicalSource(
   manifestObject: string,
   candidates: Candidate[],
   rawRevision: string,
-): Promise<{ sourceId: string; dates: string[]; articles: number; skippedMetadata: number }> {
+): Promise<{ sourceId: string; dates: string[]; articles: number; skippedMetadata: number; skippedNonFull: number }> {
   const sourceRoot = path.join(output, "canonical", "news", source.id);
   await mkdir(sourceRoot, { recursive: true });
   await writeFile(path.join(sourceRoot, "dataset.json"), `${JSON.stringify({
@@ -111,9 +110,9 @@ export async function writeCanonicalSource(
     language: source.language,
     itemPath: "articles/{YYYY}/{MM}/{YYYY-MM-DD}.jsonl.gz",
   }, null, 2)}\n`);
-  const publishable = candidates.filter(isPublishable);
-  const byDate = new Map<string, PublishableCandidate[]>();
-  for (const candidate of publishable) {
+  const fullCandidates = candidates.filter(isFull);
+  const byDate = new Map<string, Candidate[]>();
+  for (const candidate of candidates) {
     const date = issueDate(candidate.publishedAt);
     byDate.set(date, [...(byDate.get(date) ?? []), candidate]);
   }
@@ -121,8 +120,13 @@ export async function writeCanonicalSource(
     const [year, month] = date.split("-");
     if (!year || !month) continue;
     const target = path.join(sourceRoot, "articles", year, month, `${date}.jsonl.gz`);
-    const merged = new Map((await existingArticles(target)).map((article) => [article.articleId, article]));
-    for (const candidate of values) {
+    // Canonical is a full-text layer. Historical summaries are removed, while a
+    // previously captured full article is never replaced by a later feed-only
+    // observation of the same URL.
+    const merged = new Map((await existingArticles(target))
+      .filter((article) => article.contentStatus === "full")
+      .map((article) => [article.articleId, article]));
+    for (const candidate of values.filter(isFull)) {
       merged.set(candidate.articleId, canonicalArticle(candidate, manifest, manifestObject, rawRevision, source.content.parser));
     }
     const rows = [...merged.values()].sort((left, right) => left.publishedAt.localeCompare(right.publishedAt) || left.articleId.localeCompare(right.articleId));
@@ -132,7 +136,8 @@ export async function writeCanonicalSource(
   return {
     sourceId: source.id,
     dates: [...byDate.keys()].sort(),
-    articles: publishable.length,
-    skippedMetadata: candidates.length - publishable.length,
+    articles: fullCandidates.length,
+    skippedMetadata: candidates.filter((candidate) => candidate.contentStatus === "metadata").length,
+    skippedNonFull: candidates.length - fullCandidates.length,
   };
 }

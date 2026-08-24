@@ -15,13 +15,17 @@ Financial Times、Axios、NPR、Nikkei Asia、联合早报、Al Jazeera、SCMP�
 - 官方 RSS / RSS 列表：直接抓取并保留原始 XML。
 - Sitemap：目前用于 Reuters 官方 URL 发现。
 - `discovery-body`：逐篇质量门槛通过后直接标为全文。
-- Chromium+BPC：每轮最多 50 个新页面或到期重试页面，生成标准 WARC 1.1/CDXJ/WACZ，并把通过
-  通用正文质量门槛的页面回填为全文。
-- `discovery-summary`：正文不可用时保留真实摘要，绝不把 metadata-only 伪装成摘要。
+- Chromium+BPC：每轮公平选择最多 50 个新页面或到期重试页面，保存原始响应和最终渲染 DOM，生成
+  标准 WARC 1.1/CDXJ/WACZ，并把通过来源正文门槛的页面回填为全文。
+- `discovery-summary`：正文不可用时只在 Raw 保留真实摘要，供诊断和后续重放；Canonical 与 Delivery
+  不发布摘要或部分正文。
 
-同一 route 内允许全文与摘要混合。例如当前实测 NPR 3/3 为全文、联合早报 24/24 为全文，Nikkei
-和 Al Jazeera 则逐篇判定。NPR route 的 gzip 兼容修复和可录制 fetch hook 都保存在锁定 RSSHub
-package patch 中。
+同一 route 内逐篇判定正文。`isMetered`、`isAccessibleForFree=false` 等商业访问元数据不能单独判为
+硬付费墙；只有浏览器、BPC、来源解析器和配置重试都未取得正文，且最终渲染 DOM 仍有明确订阅墙时，
+才记录为 `hard-paywall`。403、超时和 HTTP 200 空壳 DOM 同样不算完成，会换健康代理节点并按失败
+窗口重试。Canonical 写入是单调的：后续摘要批次不能
+覆盖已经存在的全文。NPR route 的 gzip 兼容修复和可录制 fetch hook 都保存在锁定 RSSHub package
+patch 中。
 
 ## 本地运行
 
@@ -120,13 +124,16 @@ Raw 存档累计而线性增长。
 
 代理订阅只从 `JOJO_TIMES_PROXY_SUBSCRIPTION` Secret 读取。任务使用固定 Mihomo 二进制生成临时配置；
 订阅 URL、节点名、Cookie、Authorization 和控制密钥不会进入日志、manifest、WACZ 请求头或 artifact。
+首轮使用延迟探测组；缺少全文的页面在立即重试前切换到另一条健康节点。BPC 使用有界面 Chromium，
+Linux Action 由 Xvfb 提供显示环境；采集前不仅验证扩展 service worker，还等待 BPC 站点规则完成
+初始化，并在文章 DOM 就绪后补发一次 BPC 消息，避免 MV3 `document_start` 注入早于正文节点。
 
 验证命令：
 
 ```powershell
 pnpm --filter @jojo/times-pipeline typecheck
 pnpm --filter @jojo/times-pipeline test
-python -m pytest tools/times-pipeline/tests/test_webarchive.py tools/times-pipeline/tests/test_prepare_proxy.py -q
+python -m pytest tools/times-pipeline/tests -q
 ```
 
 旧 Python v1 流程暂时保留作历史结果对照；v2 不再依赖 `jojo-news-archive-runner` 或 Olds API。

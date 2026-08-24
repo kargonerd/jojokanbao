@@ -23,6 +23,9 @@ jobs:
       B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
       B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
       JOJO_DELIVERY_REMOTE: jojo-b2:${{ secrets.B2_BUCKET || 'jojo-newspaper' }}
+      TIMES_CDN_BASE: ${{ vars.TIMES_CDN_BASE || vars.CONTENT_CDN_BASE || 'https://blacknews.jojokanbao.cn' }}
+      TENCENTCLOUD_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
+      TENCENTCLOUD_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -43,6 +46,8 @@ jobs:
           test -n "$HF_TIMES_DATASET_REPO" || (echo "HF_TIMES_DATASET_REPO is not configured" >&2 && exit 1)
           test -n "$B2_KEY_ID" || (echo "B2_KEY_ID is not configured" >&2 && exit 1)
           test -n "$B2_APPLICATION_KEY" || (echo "B2_APPLICATION_KEY is not configured" >&2 && exit 1)
+          test -n "$TENCENTCLOUD_SECRET_ID" || (echo "COS_SECRET_ID is not configured" >&2 && exit 1)
+          test -n "$TENCENTCLOUD_SECRET_KEY" || (echo "COS_SECRET_KEY is not configured" >&2 && exit 1)
 
       - name: Install locked dependencies and rclone
         run: |
@@ -142,14 +147,28 @@ jobs:
           remote="$JOJO_DELIVERY_REMOTE/content/newspapers/times"
           rclone copy "$delivery/content/newspapers/times/items" "$remote/items" \
             --include '**/articles/*.jox' --include '**/assets/*.jox' --exclude '*' \
-            --checksum --transfers 16 --header-upload 'Cache-Control: public, max-age=31536000, immutable'
+            --checksum --transfers 16 --metadata-set 'cache-control=public, max-age=31536000, immutable'
           rclone copy "$delivery/content/newspapers/times/items" "$remote/items" \
             --include '**/manifest.jox' --exclude '*' \
-            --checksum --transfers 8 --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
+            --checksum --transfers 8 --metadata-set 'cache-control=public, max-age=60, must-revalidate'
           rclone copyto "$delivery/content/newspapers/times/index.jox" "$remote/index.jox" \
-            --checksum --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
+            --checksum --metadata-set 'cache-control=public, max-age=60, must-revalidate'
           rclone copyto "$delivery/catalog.jox" "$JOJO_DELIVERY_REMOTE/catalog.jox" \
-            --checksum --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
+            --checksum --metadata-set 'cache-control=public, max-age=60, must-revalidate'
+
+      - name: Purge mutable Delivery pointers from EdgeOne
+        run: |
+          delivery="$RUNNER_TEMP/jojo-times-delivery"
+          base="${TIMES_CDN_BASE%/}"
+          targets=(
+            "$base/catalog.jox"
+            "$base/content/newspapers/times/index.jox"
+          )
+          while IFS= read -r manifest; do
+            relative="${manifest#"$delivery/"}"
+            targets+=("$base/$relative")
+          done < <(find "$delivery/content/newspapers/times/items" -type f -name manifest.jox -print)
+          node tools/archive-pdf/purge-cache.mjs "${targets[@]}"
 
       - name: Publish processing summary
         if: always()

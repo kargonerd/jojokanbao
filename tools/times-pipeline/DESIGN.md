@@ -35,7 +35,7 @@ Process workflow（错开 5 分钟）
   │
   ├─ 读取尚未处理的 HF Raw commit
   ├─ 合并 route/feed 正文与浏览器正文回填
-  ├─ 按媒体写入 HF canonical/news/{source}/...
+  ├─ 仅将通过全文质量门槛的文章写入 HF canonical/news/{source}/...
   ├─ 从所有媒体 Canonical 构建按日期的时事版面
   └─ Canonical commit 成功后发布 B2 Delivery
        ├─ immutable article/asset Jox
@@ -81,13 +81,18 @@ Capture 成功以 HF Raw commit 成功为准。Process 先提交 HF Canonical，
 正文策略按优先级执行：
 
 - `discovery-body`：已经验证 route/feed 正文与原页一致。
-- `browser-parser`：Chromium 捕获原页后，优先读取 JSON-LD `articleBody`，再按通用文章容器和段落
-  质量门槛提取正文；需要来源特例时优先修复 RSSHub route，再增加锁定的来源适配器。
-- `discovery-summary`：正文失败时保留摘要，但必须标记 `contentStatus=summary`。
+- `browser-parser`：Chromium 捕获原页后，检查同次导航的所有主文档版本，优先读取官方结构化正文
+  （JSON-LD、Reuters Fusion 等），再按来源容器和段落质量门槛提取；需要来源特例时优先修复
+  RSSHub route，再增加锁定的来源适配器。
+- `discovery-summary`：正文失败时只在 Raw 保留摘要并标记 `contentStatus=summary`，不进入 Canonical
+  或 Delivery。
 
-浏览器抓取统一加载固定版本 BPC。BPC 解决页面内付费墙逻辑，不解决网络层 401/403；代理选择、
-Chromium 和 BPC 版本都记录到脱敏 manifest。归档器直接生成标准 WARC 1.1、CDXJ 和 WACZ 1.2，
-可供 ReplayWeb.page 等兼容读取器重放；当前实现不依赖 Browsertrix 服务。
+浏览器抓取统一加载固定版本 BPC；Linux 使用 Xvfb 中的有界面 Chromium。service worker 出现不代表
+BPC 已可用，抓取器还会等待 enabled-sites/DOMPurify 规则表初始化，并在文章 DOM 就绪后再次触发 BPC，
+避免 MV3 的 `document_start` 时序漏过正文节点。BPC 解决页面内逻辑，不保证解决网络层 401/403；首轮
+由 Mihomo 延迟组选择节点，缺少全文的页面在立即重试前切换另一条健康节点。代理选择、Chromium 和
+BPC 版本只以脱敏指标记录。归档器直接生成标准
+WARC 1.1、CDXJ 和 WACZ 1.2，可供兼容读取器重放；当前实现不依赖 Browsertrix 服务。
 
 RSSHub 配置和代理是进程级状态，所以每家来源在独立 Node worker 中运行。父进程限制并发；单个 worker
 崩溃、超时或代理失败不影响其他媒体。
@@ -99,8 +104,10 @@ Times、Axios、NPR、Nikkei Asia、联合早报、Al Jazeera、SCMP、新华网
 中国新闻网、澎湃新闻、财联社、CNA、Deutsche Welle、Focus Taiwan、Africanews 和 Agência Brasil。
 
 同一 route 的文章逐篇做正文质量判定，不能因为少量长稿就把整家媒体标成“全文”。NPR、联合早报、
-SCMP 和多家中国媒体已有稳定 route 正文；AP 等公开原页可由浏览器正文回填；Reuters、Bloomberg、
-NYT、FT 等限制页仍会真实显示为摘要、metadata 或不可用案例，不会伪装成全文。
+SCMP 和多家中国媒体已有稳定 route 正文；AP 等公开原页由浏览器回填；Reuters 使用页面官方 Fusion
+结构化正文。Bloomberg 的 `__NEXT_DATA__.props.pageProps.story.body.content` 与 BPC 使用同一官方
+结构化正文路径；`isMetered` 等元数据不算硬墙。最终仍只有明确订阅墙的文章作为不可用案例，不会
+发布预览、摘要或 metadata；401/403 和解析失败保持待全文状态并重试。
 
 ## 5. HF 单仓库存储契约
 
@@ -129,8 +136,10 @@ raw/web-archives/times/YYYY/MM/DD/RUN_ID/
 媒体、抓取方式、版本、计数、错误和完成状态，但不记录 Cookie、Authorization、代理 URI、订阅地址
 或其他凭据。
 
-共享 `raw/web-archives/times/state.json.gz` 以 `sourceId + canonicalUrl` 生成的稳定 article id 维护抓取状态：成功页面按刷新策略
-跳过，失败页面到期后换节点重试，直播文章按配置刷新。Raw response digest 未变化时不重复解析。
+共享 `raw/web-archives/times/state.json.gz` 以 `sourceId + canonicalUrl` 生成的稳定 article id 维护抓取状态：
+只有全文捕获才按成功刷新策略跳过；HTTP 200 空壳和网络失败按失败窗口换节点重试。明确硬付费墙也
+不是永久状态：文章指纹未变化时按正常刷新周期复查，避免站点或 BPC 规则更新后仍被永久压制。
+Raw response digest 未变化时不重复解析。
 
 ### 5.2 Canonical：按媒体和发布日期分片
 
@@ -169,7 +178,8 @@ canonical/news/{source}/
 ```
 
 同一媒体每天一个 gzip JSONL，避免每篇一个 HF 文件。文件在最新 commit 中保存当天文章的最新版本，
-历史版本由 HF commit 历史保留。翻译、ES 和 Delivery 都按 article id/content hash 增量处理。
+历史版本由 HF commit 历史保留。Canonical 只含 `contentStatus=full`，已有全文不会被后续非全文运行
+降级或删除。翻译、ES 和 Delivery 都按 article id/content hash 增量处理。
 
 HF 顶层不建立聚合 `canonical/newspapers/times` 正文副本；跨媒体排序是 Delivery 构建行为，避免同一
 正文以媒体 Canonical 和 Times Canonical 两份形式漂移。
