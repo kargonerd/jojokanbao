@@ -32,13 +32,17 @@ async function main(): Promise<void> {
         : source.discovery.kind === "sitemap"
           ? await discoverSitemap(source, fetchedAt, cutoff)
         : (() => { throw new Error(`${source.id}: site adapter is not implemented`); })();
+    const discoveredCandidateCount = result.candidates.length;
     result.candidates = result.candidates.filter((candidate) => (
       new Date(candidate.publishedAt).valueOf() >= cutoff
       && isCandidateAllowed(source, candidate)
     ));
     const networkFile = await recorder.flush();
     const manifest = await writeSourceCapture(runRoot, runId, startedAt, result, networkFile, recorder.exchanges.length);
-    const status = manifest.healthStatus === "healthy" ? "ok" : "empty";
+    // A feed can be non-empty while every entry is intentionally excluded by
+    // policy (for example, a video-only ChinaNews interval). That is a
+    // successful discovery run, not a broken or empty source.
+    const status = manifest.healthStatus === "healthy" || discoveredCandidateCount > 0 ? "ok" : "empty";
     process.stdout.write(`${JSON.stringify({
       sourceId,
       status,

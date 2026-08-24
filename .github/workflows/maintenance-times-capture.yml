@@ -149,7 +149,7 @@ jobs:
         run: |
           node -e 'const fs=require("node:fs");const result=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+"/capture-result.json","utf8"));fs.appendFileSync(process.env.GITHUB_ENV,"TIMES_RUN_MANIFEST="+result.runManifest+"\n")'
 
-      - name: Capture up to 50 replayable Chromium pages
+      - name: Capture replayable Chromium pages
         id: browser_archive
         continue-on-error: true
         run: |
