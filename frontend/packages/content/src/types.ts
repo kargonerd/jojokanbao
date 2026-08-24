@@ -36,6 +36,7 @@ export interface JojoCatalogEntry {
   type: JojoDatasetType;
   title: string;
   language: string;
+  contentProfile?: string;
   itemCount?: number;
   indexObject: string;
   publicationStatus?: JojoPublicationStatus;

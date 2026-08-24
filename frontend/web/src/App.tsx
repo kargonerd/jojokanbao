@@ -69,8 +69,8 @@ function AuthenticatedRoute({ children }: { children: ReactNode }) {
 }
 
 function TimesAccessRoute({ children }: { children: ReactNode }) {
-  const publicAudit = import.meta.env.VITE_TIMES_AUDIT_PUBLIC === "true";
-  return publicAudit ? children : <AuthenticatedRoute>{children}</AuthenticatedRoute>;
+  const publicTimeline = import.meta.env.VITE_TIMES_PUBLIC === "true";
+  return publicTimeline ? children : <AuthenticatedRoute>{children}</AuthenticatedRoute>;
 }
 
 function archiveRoute(platformRedesign: boolean) {

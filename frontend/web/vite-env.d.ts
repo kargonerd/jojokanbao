@@ -8,8 +8,7 @@ interface ImportMetaEnv {
   readonly VITE_ENABLE_TIMES?: string;
   readonly VITE_ENABLE_RAG?: string;
   readonly VITE_CONTENT_CDN_BASE?: string;
-  readonly VITE_TIMES_CDN_BASE?: string;
-  readonly VITE_TIMES_AUDIT_PUBLIC?: string;
+  readonly VITE_TIMES_PUBLIC?: string;
 }
 
 interface ImportMeta {

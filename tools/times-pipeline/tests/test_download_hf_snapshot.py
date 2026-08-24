@@ -37,9 +37,9 @@ def test_candidate_dates_drive_only_matching_canonical_shards(tmp_path) -> None:
     }
 
 
-def test_run_window_dates_cover_every_canonical_shard_touched_by_the_window() -> None:
+def test_run_window_dates_include_the_timezone_boundary_shard() -> None:
     assert _run_window_dates({
         "startedAt": "2026-08-24T00:05:00Z",
         "completedAt": "2026-08-24T00:45:00Z",
         "windowHours": 24,
-    }) == {"2026-08-23", "2026-08-24"}
+    }) == {"2026-08-22", "2026-08-23", "2026-08-24"}

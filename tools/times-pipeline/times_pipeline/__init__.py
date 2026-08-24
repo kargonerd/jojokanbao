@@ -1,6 +1,5 @@
-"""Offline collection and JOJO newspaper delivery for Times."""
+"""Replayable Chromium archive support for the JOJO news pipeline."""
 
-from .build import build_times_release
-from .feeds import Article, Source, collect_sources, load_sources
+from .feeds import Article, RawFeed, Source
 
-__all__ = ["Article", "Source", "build_times_release", "collect_sources", "load_sources"]
+__all__ = ["Article", "RawFeed", "Source"]

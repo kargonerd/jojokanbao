@@ -15,11 +15,11 @@ function safeNewsUrl(value: string | null | undefined): string | null {
 }
 
 export function TimesDetailPage() {
-  const { newsId = "" } = useParams();
+  const { sourceId = "", issueDate = "", newsId = "" } = useParams();
   const [news, setNews] = useState<TimesNewsItem | null>(null);
   const [error, setError] = useState<string | null>(null);
   const originalUrl = safeNewsUrl(news?.url);
-  const backUrl = news?.source?.id ? `/times?source=${encodeURIComponent(news.source.id)}` : "/times";
+  const backUrl = sourceId ? `/times?source=${encodeURIComponent(sourceId)}` : "/times";
   const articleHtml = useMemo(() => {
     if (!news?.content || news.contentFormat !== "html") return null;
     return DOMPurify.sanitize(news.content);
@@ -28,7 +28,7 @@ export function TimesDetailPage() {
   useEffect(() => {
     let active = true;
     setError(null);
-    void timesApi.getNews(newsId)
+    void timesApi.getNews(sourceId, issueDate, newsId)
       .then((nextNews) => {
         if (active) setNews(nextNews);
       })
@@ -36,22 +36,24 @@ export function TimesDetailPage() {
         if (active) setError(reason instanceof Error ? reason.message : "新闻读取失败");
       });
     return () => { active = false; };
-  }, [newsId]);
+  }, [issueDate, newsId, sourceId]);
 
   return (
     <main className="min-h-[calc(100vh-64px)] bg-[var(--app-canvas)] px-5 py-8 text-ink md:px-8">
       <div className="mx-auto max-w-4xl">
-        <Link to={backUrl} className="text-sm font-bold">← 返回时事审计</Link>
+        <Link to={backUrl} className="font-sans text-xs font-black tracking-[0.08em] text-red">← 返回时间线</Link>
         {error ? <div role="alert" className="mt-6 border border-red p-5 text-sm text-red">{error}</div> : null}
         {!news && !error ? <p className="mt-8 text-sm text-muted">正在读取新闻…</p> : null}
         {news ? (
           <article className="mt-6 bg-paper px-5 py-7 md:px-10 md:py-10">
             <p className="kicker">
-              {news.source?.name || "未知来源"} · {news.publishedAt} · {
-                news.contentStatus === "full" ? "全文" : news.contentStatus === "summary" ? "摘要" : "部分正文"
-              }
+              {news.source?.name || "未知来源"} · {new Intl.DateTimeFormat("zh-CN", {
+                dateStyle: "medium",
+                timeStyle: "short",
+              }).format(new Date(news.publishedAt))}
             </p>
             <h1 className="mt-4 text-3xl font-black leading-tight md:text-5xl">{news.title}</h1>
+            {news.authors.length ? <p className="mt-4 font-sans text-xs font-bold text-muted">{news.authors.join("、")}</p> : null}
             {news.summary ? <p className="mt-5 border-l-4 border-red pl-4 text-base leading-8 text-muted">{news.summary}</p> : null}
             <SelectableAnnotationArticle subject={{
               contentType: "newspaper",
@@ -69,16 +71,6 @@ export function TimesDetailPage() {
                 <div className="mt-8 whitespace-pre-wrap text-base leading-8">{news.content || "暂无正文。"}</div>
               )}
             </SelectableAnnotationArticle>
-            {news.contentStatus === "summary" ? (
-              <p className="mt-5 border-t border-rule pt-4 text-sm leading-6 text-muted">
-                当前离线版本仅保存标题与摘要；完整内容请前往出版方原文。
-              </p>
-            ) : null}
-            {news.contentStatus === "partial" ? (
-              <p className="mt-5 border-t border-rule pt-4 text-sm leading-6 text-muted">
-                当前离线解析得到的是部分正文；原始网页响应已存档，可在解析器升级后重新处理。
-              </p>
-            ) : null}
             {originalUrl ? <a className="mt-6 inline-block text-sm font-bold" href={originalUrl} target="_blank" rel="noreferrer">查看原文 ↗</a> : null}
           </article>
         ) : null}

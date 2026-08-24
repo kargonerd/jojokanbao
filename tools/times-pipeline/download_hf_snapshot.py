@@ -67,7 +67,9 @@ def _run_window_dates(run: dict[str, Any]) -> set[str]:
     hours = float(run.get("windowHours", 24))
     if hours <= 0 or completed < started:
         raise ValueError("Invalid Times run window")
-    first = (started - timedelta(hours=hours)).date()
+    # Delivery groups the timeline in Asia/Shanghai. Include the preceding UTC
+    # shard so the first eight local hours of a date are available for merge.
+    first = (started - timedelta(hours=hours)).date() - timedelta(days=1)
     last = completed.date()
     return {
         (first + timedelta(days=offset)).isoformat()

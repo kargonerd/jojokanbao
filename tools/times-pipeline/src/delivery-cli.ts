@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import type { JojoCatalog, TimesDeliveryIndex } from "@jojo/content";
+import type { JojoCatalog, NewsPublisherIndex } from "@jojo/content";
 import { parseArgs, requiredArg } from "./args.js";
 import { loadSources } from "./config.js";
-import { buildTimesDelivery, readJoxJson, type RawRunManifest } from "./delivery-writer.js";
+import { buildNewsDelivery, readJoxJson, type RawRunManifest } from "./delivery-writer.js";
 
 async function optionalJox<T>(target: string | undefined, objectKey: string): Promise<T | undefined> {
   if (!target) return undefined;
@@ -24,23 +24,33 @@ async function main(): Promise<void> {
   const run = JSON.parse(await readFile(runManifestPath, "utf8")) as RawRunManifest;
   const windowHours = Number(args.get("window-hours") ?? run.windowHours ?? 24);
   if (!Number.isFinite(windowHours) || windowHours <= 0) throw new Error("--window-hours must be positive");
-  const previousIndex = await optionalJox<TimesDeliveryIndex>(args.get("previous-index"), "content/newspapers/times/index.jox");
-  const previousCatalog = await optionalJox<JojoCatalog>(args.get("previous-catalog"), "catalog.jox");
-  const result = await buildTimesDelivery({
+  const sources = await loadSources(configPath);
+  const previousDelivery = args.get("previous-delivery") ? path.resolve(args.get("previous-delivery")!) : undefined;
+  const previousCatalog = await optionalJox<JojoCatalog>(
+    previousDelivery ? path.join(previousDelivery, "catalog.jox") : undefined,
+    "catalog.jox",
+  );
+  const previousIndexes = new Map<string, NewsPublisherIndex>();
+  if (previousDelivery) {
+    await Promise.all(sources.map(async (source) => {
+      const objectKey = `content/newspapers/${source.id}/index.jox`;
+      const index = await optionalJox<NewsPublisherIndex>(path.join(previousDelivery, ...objectKey.split("/")), objectKey);
+      if (index) previousIndexes.set(source.id, index);
+    }));
+  }
+  const result = await buildNewsDelivery({
     workspaceRoot,
     deliveryRoot,
     run,
-    sources: await loadSources(configPath),
+    sources,
     windowHours,
-    ...(previousIndex ? { previousIndex } : {}),
+    ...(previousIndexes.size ? { previousIndexes } : {}),
     ...(previousCatalog ? { previousCatalog } : {}),
   });
   process.stdout.write(`${JSON.stringify({
     deliveryRoot,
-    indexObject: result.indexObject,
     articles: result.articles,
-    sourceHealth: result.sourceHealth,
-    unavailableCaseCount: result.unavailableCases.length,
+    sources: result.sources,
   }, null, 2)}\n`);
 }
 

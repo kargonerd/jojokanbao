@@ -1,7 +1,7 @@
 # JOJO Times offline pipeline
 
 Times v2 是 JOJO 看报的离线时事流水线，不提供前端请求触发的抓取 API。完整契约见
-[DESIGN.md](DESIGN.md)，媒体实测记录见 [FULL_TEXT_AUDIT.md](FULL_TEXT_AUDIT.md)。
+[DESIGN.md](DESIGN.md)。每轮媒体可用性以 Raw manifest 和 GitHub Actions summary 为准。
 
 ## 当前覆盖
 
@@ -101,22 +101,23 @@ B2 只保存 Delivery：
 
 ```text
 catalog.jox
-content/newspapers/times/
+content/newspapers/{source}/
 ├─ index.jox
 └─ items/YYYY/MM/YYYY-MM-DD/
    ├─ manifest.jox
    └─ articles/{opaque-content-id}.jox
 ```
 
-日期 manifest、index 和 catalog 是短缓存可变指针；正文对象按内容寻址并使用 immutable 缓存。
-Delivery 构建会合并旧 index，所以滚动历史不会在下一轮消失。不存在 `latest.jox`。
+每家媒体独立注册为 Newspaper Dataset。日期 manifest、媒体 index 和 catalog 是短缓存可变指针；
+正文对象按内容寻址并使用 immutable 缓存。Delivery 构建会合并各媒体旧 index，所以滚动历史不会在
+下一轮消失。不存在聚合 `times` Dataset 或 `latest.jox`。
 
 ## GitHub Actions
 
 - `maintenance-times-capture.yml`：每 10 分钟发现媒体、最多归档 50 个 Chromium+BPC 页面，并把
   本轮 Raw 作为一次 HF commit。
 - `maintenance-times-process.yml`：错开 5 分钟读取最新完整 Raw commit，增量提交 Canonical，然后按
-  Article/Asset → 日期 manifest → index → catalog 的顺序发布 B2 Delivery。
+  Article/Asset → 各媒体日期 manifest → 各媒体 index → catalog 的顺序发布 B2 Delivery。
 
 Process 不下载 WACZ 或整个历史 Dataset。`download_hf_snapshot.py` 只恢复最新完整 run、对应的 source
 manifest/candidates，以及这些候选日期已经存在的 Canonical 分片；同日增量可以合并，下载量不会随
@@ -136,4 +137,4 @@ pnpm --filter @jojo/times-pipeline test
 python -m pytest tools/times-pipeline/tests -q
 ```
 
-旧 Python v1 流程暂时保留作历史结果对照；v2 不再依赖 `jojo-news-archive-runner` 或 Olds API。
+流水线不依赖 `jojo-news-archive-runner` 或 Olds API，也不保留能够发布旧聚合 `times` Dataset 的 v1 入口。

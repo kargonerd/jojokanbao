@@ -1,90 +1,45 @@
 import type { JojoDatasetIndex, JojoDatasetItemSummary, JojoItemManifest } from "./types.js";
 
-export type TimesContentStatus = "full" | "partial" | "summary";
-export type TimesSourceHealthStatus = "healthy" | "degraded" | "unavailable";
-export type TimesUnavailableReason =
-  | "source-error"
-  | "source-empty"
-  | "metadata-only"
-  | "full-text-pending"
-  | "hard-paywall"
-  | "http-blocked"
-  | "canonical-missing"
-  | "browser-capture-failed";
+export const NEWS_TIMELINE_PROFILE = "jojo-news-timeline/1";
 
-export interface TimesSourceRef {
+export interface NewsSourceRef {
   id: string;
   name: string;
   language: string;
 }
 
-export interface TimesDeliveryArticle {
+export interface NewsDeliveryArticle {
   id: string;
   title: string;
   summary?: string | null;
-  contentStatus: TimesContentStatus;
   url?: string | null;
   publishedAt: string;
   issueDate: string;
   language: string;
-  source: TimesSourceRef;
+  source: NewsSourceRef;
+  authors: string[];
+  categories: string[];
+  publisherCategories: string[];
   articleObject: string;
   translations?: Record<string, unknown>;
 }
 
-export interface TimesSourceHealth {
-  source: TimesSourceRef;
-  status: TimesSourceHealthStatus;
-  discovered: number;
-  delivered: number;
-  full: number;
-  summary: number;
-  unavailable: number;
-  availabilityRate: number;
-  fullTextRate: number;
-  healthScore: number;
-  networkExchanges: number;
-  browserAttempts: number;
-  browserSucceeded: number;
-  browserFailed: number;
-  browserExtractedFull?: number;
-  updatedAt: string;
-}
-
-export interface TimesUnavailableCase {
-  id: string;
-  source: TimesSourceRef;
-  reason: TimesUnavailableReason;
-  stage: "discovery" | "capture" | "canonical";
-  message: string;
-  title?: string;
-  url?: string;
-  publishedAt?: string;
-}
-
-export interface TimesDeliveryIndex extends JojoDatasetIndex {
-  datasetId: "times";
+export interface NewsPublisherIndex extends JojoDatasetIndex {
   type: "newspaper";
   items: JojoDatasetItemSummary[];
+  contentProfile: typeof NEWS_TIMELINE_PROFILE;
   updatedAt: string;
-  window: {
-    from: string;
-    to: string;
-    hours: number;
-  };
-  sourceHealth: TimesSourceHealth[];
-  unavailableCases: TimesUnavailableCase[];
 }
 
-export interface TimesDateMetadata extends Record<string, unknown> {
-  formatVersion: "jojo-times-date-metadata/1";
+export interface NewsDateMetadata extends Record<string, unknown> {
+  formatVersion: "jojo-news-date-metadata/1";
   issueDate: string;
   generatedAt: string;
-  articles: TimesDeliveryArticle[];
+  source: NewsSourceRef;
+  articles: NewsDeliveryArticle[];
 }
 
-export interface TimesDateManifest extends Omit<JojoItemManifest, "metadata"> {
-  datasetId: "times";
+export interface NewsDateManifest extends Omit<JojoItemManifest, "metadata"> {
   type: "newspaper";
-  metadata: TimesDateMetadata;
+  metadata: NewsDateMetadata;
 }

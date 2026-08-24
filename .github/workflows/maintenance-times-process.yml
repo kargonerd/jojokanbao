@@ -1,4 +1,4 @@
-name: Maintenance · Times Canonical and B2 Delivery
+name: Maintenance · News Canonical and B2 Delivery
 
 on:
   schedule:
@@ -23,7 +23,7 @@ jobs:
       B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
       B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
       JOJO_DELIVERY_REMOTE: jojo-b2:${{ secrets.B2_BUCKET || 'jojo-newspaper' }}
-      TIMES_CDN_BASE: ${{ vars.TIMES_CDN_BASE || vars.CONTENT_CDN_BASE || 'https://blacknews.jojokanbao.cn' }}
+      CONTENT_CDN_BASE: ${{ vars.CONTENT_CDN_BASE || 'https://blacknews.jojokanbao.cn' }}
       TENCENTCLOUD_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
       TENCENTCLOUD_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
       HF_HUB_ETAG_TIMEOUT: "30"
@@ -121,16 +121,15 @@ jobs:
           )
           PY
 
-      - name: Configure B2 and restore mutable Delivery pointers
+      - name: Configure B2 and restore mutable Delivery metadata
         run: |
           rclone config create jojo-b2 b2 account "$B2_KEY_ID" key "$B2_APPLICATION_KEY" --non-interactive
-          mkdir -p "$RUNNER_TEMP/previous-delivery"
-          if rclone lsf "$JOJO_DELIVERY_REMOTE/content/newspapers/times" --files-only --include index.jox | grep -qx 'index.jox'; then
-            rclone copyto "$JOJO_DELIVERY_REMOTE/content/newspapers/times/index.jox" "$RUNNER_TEMP/previous-delivery/index.jox"
-          fi
+          mkdir -p "$RUNNER_TEMP/previous-delivery/content/newspapers"
           if rclone lsf "$JOJO_DELIVERY_REMOTE" --files-only --include catalog.jox | grep -qx 'catalog.jox'; then
             rclone copyto "$JOJO_DELIVERY_REMOTE/catalog.jox" "$RUNNER_TEMP/previous-delivery/catalog.jox"
           fi
+          rclone copy "$JOJO_DELIVERY_REMOTE/content/newspapers" "$RUNNER_TEMP/previous-delivery/content/newspapers" \
+            --include '*/index.jox' --exclude '*'
 
       - name: Build Delivery with historical index
         run: |
@@ -139,37 +138,34 @@ jobs:
             --output "$RUNNER_TEMP/jojo-times" \
             --run-manifest "$TIMES_RUN_MANIFEST" \
             --delivery-output "$RUNNER_TEMP/jojo-times-delivery" \
-            --previous-index "$RUNNER_TEMP/previous-delivery/index.jox" \
-            --previous-catalog "$RUNNER_TEMP/previous-delivery/catalog.jox" \
+            --previous-delivery "$RUNNER_TEMP/previous-delivery" \
             > "$RUNNER_TEMP/delivery-result.json"
 
       - name: Publish B2 Delivery in commit order
         run: |
           delivery="$RUNNER_TEMP/jojo-times-delivery"
-          remote="$JOJO_DELIVERY_REMOTE/content/newspapers/times"
-          rclone copy "$delivery/content/newspapers/times/items" "$remote/items" \
-            --include '**/articles/*.jox' --include '**/assets/*.jox' --exclude '*' \
+          remote="$JOJO_DELIVERY_REMOTE/content/newspapers"
+          rclone copy "$delivery/content/newspapers" "$remote" \
+            --include '*/items/**/articles/*.jox' --include '*/items/**/assets/*.jox' --exclude '*' \
             --checksum --transfers 16 --metadata-set 'cache-control=public, max-age=31536000, immutable'
-          rclone copy "$delivery/content/newspapers/times/items" "$remote/items" \
-            --include '**/manifest.jox' --exclude '*' \
+          rclone copy "$delivery/content/newspapers" "$remote" \
+            --include '*/items/**/manifest.jox' --exclude '*' \
             --checksum --transfers 8 --metadata-set 'cache-control=public, max-age=60, must-revalidate'
-          rclone copyto "$delivery/content/newspapers/times/index.jox" "$remote/index.jox" \
-            --checksum --metadata-set 'cache-control=public, max-age=60, must-revalidate'
+          rclone copy "$delivery/content/newspapers" "$remote" \
+            --include '*/index.jox' --exclude '*' \
+            --checksum --transfers 8 --metadata-set 'cache-control=public, max-age=60, must-revalidate'
           rclone copyto "$delivery/catalog.jox" "$JOJO_DELIVERY_REMOTE/catalog.jox" \
             --checksum --metadata-set 'cache-control=public, max-age=60, must-revalidate'
 
       - name: Purge mutable Delivery pointers from EdgeOne
         run: |
           delivery="$RUNNER_TEMP/jojo-times-delivery"
-          base="${TIMES_CDN_BASE%/}"
-          targets=(
-            "$base/catalog.jox"
-            "$base/content/newspapers/times/index.jox"
-          )
-          while IFS= read -r manifest; do
-            relative="${manifest#"$delivery/"}"
+          base="${CONTENT_CDN_BASE%/}"
+          targets=("$base/catalog.jox")
+          while IFS= read -r mutable; do
+            relative="${mutable#"$delivery/"}"
             targets+=("$base/$relative")
-          done < <(find "$delivery/content/newspapers/times/items" -type f -name manifest.jox -print)
+          done < <(find "$delivery/content/newspapers" -type f \( -name index.jox -o -name manifest.jox \) -print)
           node tools/archive-pdf/purge-cache.mjs "${targets[@]}"
 
       - name: Publish processing summary
@@ -178,14 +174,13 @@ jobs:
           node - <<'NODE' | tee -a "$GITHUB_STEP_SUMMARY"
           const fs = require("node:fs");
           const path = process.env.RUNNER_TEMP + "/delivery-result.json";
-          console.log("## Times Canonical and Delivery\n");
+          console.log("## News Canonical and Delivery\n");
           if (!fs.existsSync(path)) {
             console.log("Delivery result is missing.");
             process.exit(0);
           }
           const report = JSON.parse(fs.readFileSync(path, "utf8"));
           console.log(`- Articles: ${report.articles}`);
-          console.log(`- Sources: ${report.sourceHealth.length}`);
-          console.log(`- Unavailable cases: ${report.unavailableCaseCount}`);
-          console.log(`- Delivery index: \`${report.indexObject}\``);
+          console.log(`- Sources: ${report.sources.length}`);
+          console.log(`- Delivery indexes: ${report.sources.map((source) => source.indexObject).join(", ")}`);
           NODE

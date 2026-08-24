@@ -7,7 +7,7 @@ export default function TimesRoutes() {
   return (
     <Routes>
       <Route index element={<TimesHomePage />} />
-      <Route path=":newsId" element={<TimesDetailPage />} />
+      <Route path=":sourceId/:issueDate/:newsId" element={<TimesDetailPage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );

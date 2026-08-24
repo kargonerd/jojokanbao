@@ -80,9 +80,7 @@ Scheduled and manually operated data tasks remain independent workflows:
 - `maintenance-purge-archive-pdf-cache.yml`
 - `maintenance-sync-rmrb.yml`
 - `maintenance-times-capture.yml` — every ten minutes, captures all Times sources and commits HTTP/WACZ Raw to the private HF Dataset
-- `maintenance-times-process.yml` — at minutes 5/15/25/35/45/55, commits Canonical to the same HF Dataset and publishes B2 Delivery in pointer-safe order
-- `maintenance-times-v2-pilot.yml` — manual, non-publishing v2 validation
-- `maintenance-times.yml` — legacy v1 manual validation only; it has no schedule
+- `maintenance-times-process.yml` — at minutes 5/15/25/35/45/55, commits per-source Canonical to the same HF Dataset and publishes per-source Newspaper Delivery in pointer-safe order
 
 Do not add a feature-specific CI workflow. Add a package script or a focused
 job to `ci.yml`; create another workflow only when its trigger, permissions, or

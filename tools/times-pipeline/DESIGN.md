@@ -11,7 +11,7 @@
 
 1. **Raw**：出版方原始 RSS、API、HTML 和 WARC/WACZ，可重放、可重新解析。
 2. **Canonical**：按媒体保存的规范文章，是翻译、搜索和 Delivery 的唯一输入。
-3. **Delivery**：跨媒体聚合后的 JOJO 时事 Jox，仅供 CDN 消费。
+3. **Delivery**：仍按媒体保存的 JOJO Newspaper Jox，仅供 CDN 消费；跨媒体时间线由前端组合。
 
 Raw 与 Canonical 位于同一个 Hugging Face Dataset repo 的 `raw/`、`canonical/` 目录。B2 只保存
 Delivery，不保存 WACZ、Canonical 或任务状态。
@@ -36,7 +36,7 @@ Process workflow（错开 5 分钟）
   ├─ 读取尚未处理的 HF Raw commit
   ├─ 合并 route/feed 正文与浏览器正文回填
   ├─ 仅将通过全文质量门槛的文章写入 HF canonical/news/{source}/...
-  ├─ 从所有媒体 Canonical 构建按日期的时事版面
+  ├─ 为每家媒体从 Canonical 构建按日期的 Newspaper Item
   └─ Canonical commit 成功后发布 B2 Delivery
        ├─ immutable article/asset Jox
        ├─ 日期 manifest
@@ -181,14 +181,14 @@ canonical/news/{source}/
 历史版本由 HF commit 历史保留。Canonical 只含 `contentStatus=full`，已有全文不会被后续非全文运行
 降级或删除。翻译、ES 和 Delivery 都按 article id/content hash 增量处理。
 
-HF 顶层不建立聚合 `canonical/newspapers/times` 正文副本；跨媒体排序是 Delivery 构建行为，避免同一
-正文以媒体 Canonical 和 Times Canonical 两份形式漂移。
+HF 顶层不建立聚合 `canonical/newspapers/times` 正文副本；B2 也不建立 `times` 虚拟报纸。跨媒体
+排序、媒体筛选和向前滚动都是前端读取各媒体 Delivery 后的展示行为。
 
 ## 6. B2 Delivery 契约
 
 ```text
 catalog.jox
-content/newspapers/times/
+content/newspapers/{source}/
 ├─ index.jox
 └─ items/YYYY/MM/YYYY-MM-DD/
    ├─ manifest.jox
@@ -196,29 +196,32 @@ content/newspapers/times/
    └─ assets/{opaque-content-id}.jox
 ```
 
-`index.jox` 只列出可用日期和 manifest 地址。前端取第一个可用日期，并在滚动时读取前一天；文章正文
-只在用户打开文章时按需加载。当前日期 manifest 可被每十分钟更新，过去日期使用完全相同的格式。
+每家媒体是一个 `newspaper` Dataset，并以 `contentProfile=jojo-news-timeline/1` 注册到 `catalog.jox`。
+媒体 `index.jox` 只列出该媒体的可用日期和 manifest 地址。前端合并所有媒体的同日 manifest，按文章
+发布时间排序；滚动时继续读取前一个可用日期。文章正文只在用户打开文章时按需加载。当前日期
+manifest 可被每十分钟更新，过去日期使用完全相同的格式。
 
 Article/Asset Jox 以内容派生的不透明 ID 命名，设置一年 immutable 缓存。日期 manifest、index 和
 catalog 是可变提交标记，设置短缓存并按以下顺序发布：
 
 1. Article/Asset；
 2. 日期 manifest；
-3. index；
-4. 仅在 Dataset 注册项变化时更新 catalog。
+3. 各媒体 index；
+4. catalog。
 
-不存在 `latest.jox`、Raw B2、Canonical B2 或七天删除任务。
+不存在 `content/newspapers/times`、`latest.jox`、Raw B2、Canonical B2 或七天删除任务。抓取健康度、
+失败 case 和节点重试信息只保存在 HF Raw manifest 与 Action summary，不进入用户 Delivery。
 
 ## 7. 实时与历史
 
 存储层没有实时/历史分界。文章首次捕获时就进入 Raw archive，解析后永久进入媒体 Canonical。Delivery
-中今天、昨天和多年前都使用日期 Item：
+中每家媒体的今天、昨天和多年前都使用日期 Item：
 
 - 当前日期 manifest：前端定时重新验证或在页面重新聚焦时刷新；
 - 前一日期：允许迟到文章和修订；
 - 稳定历史日期：按滚动按需读取，正式更正时仍可发布新 article 对象并推进 manifest revision。
 
-“实时”是前端默认从最新日期开始和刷新当前 manifest 的行为；“历史”是用户继续读取更早日期的行为。
+“实时”是前端默认合并各媒体最新日期、刷新当前 manifest 的行为；“历史”是用户继续读取更早日期的行为。
 
 ## 8. 去重、版本和可恢复性
 
