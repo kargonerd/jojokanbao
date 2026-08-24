@@ -31,18 +31,33 @@ from merge_rmrb_peopledata_xlsx import (
 
 
 NORMALIZED_GENERIC_IMAGE_TITLES = {norm(value) for value in GENERIC_IMAGE_TITLES}
-NORMALIZED_GENERIC_SECTION_TITLES = {norm("读者来信")}
 
 
 def content_heading_after_section(row: dict[str, Any]) -> str:
+    """Return the first article heading after a repeated section label.
+
+    The legacy JSONL sometimes stores a recurring section label as its catalog
+    title and repeats that label twice at the start of the body.  The first
+    distinct line after those repeated labels is the actual article heading.
+    Requiring two leading copies keeps ordinary articles, whose title is only
+    repeated once before the prose, out of this repair rule.
+    """
     section = norm(primary_title(row.get("title")))
-    if section not in NORMALIZED_GENERIC_SECTION_TITLES:
+    if not section:
         return ""
-    for line in str(row.get("content") or "").splitlines():
-        heading = line.strip()
-        normalized = norm(heading)
-        if normalized and normalized != section:
-            return heading
+    lines = [
+        line.strip()
+        for line in str(row.get("content") or "").splitlines()
+        if line.strip()
+    ]
+    repeated_labels = 0
+    for line in lines:
+        if norm(line) == section:
+            repeated_labels += 1
+            continue
+        if repeated_labels >= 2:
+            return line
+        return ""
     return ""
 
 
@@ -53,8 +68,8 @@ def normalized_primary_title(row: dict[str, Any]) -> str:
         if caption and caption not in NORMALIZED_GENERIC_IMAGE_TITLES:
             return caption
         return ""
-    if title in NORMALIZED_GENERIC_SECTION_TITLES:
-        return norm(content_heading_after_section(row))
+    if heading := content_heading_after_section(row):
+        return norm(heading)
     return title
 
 
@@ -181,7 +196,11 @@ def resolve_exact_same_page_groups(
         ordered_candidates = sorted(candidates, key=lambda row: int(row["ordinal"]))
         for (index, source), candidate in zip(ordered_sources, ordered_candidates):
             resolved_indexes.add(index)
-            resolved.append(canonicalize_exact_group_pair(source, candidate))
+            canonical = canonicalize_exact_group_pair(source, candidate)
+            if derived_title := content_heading_after_section(source):
+                canonical["matchMethod"] = "repeated_section_heading_same_page"
+                canonical["derivedSourceTitle"] = derived_title
+            resolved.append(canonical)
 
     remaining = [row for index, row in enumerate(source_rows) if index not in resolved_indexes]
     resolved.sort(key=lambda row: (row["date"], row["page"], row["ordinal"]))

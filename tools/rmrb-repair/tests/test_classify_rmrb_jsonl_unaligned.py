@@ -251,6 +251,24 @@ def test_reader_letters_uses_first_real_body_heading():
     assert MODULE.normalized_primary_title(row) == MODULE.norm("从消极怠工到创新纪录")
 
 
+def test_repeated_section_title_uses_first_real_body_heading_generically():
+    row = source("1951-10-28", 2, "经济生活简评")
+    row["content"] = (
+        "经济生活简评\n\n经济生活简评\n郭金玉重新回到互助组\n正文"
+    )
+
+    assert MODULE.content_heading_after_section(row) == "郭金玉重新回到互助组"
+    assert MODULE.normalized_primary_title(row) == MODULE.norm("郭金玉重新回到互助组")
+
+
+def test_single_leading_title_is_not_treated_as_a_section_label():
+    row = source("1951-10-28", 2, "普通文章标题")
+    row["content"] = "普通文章标题\n这是正文第一行\n这是正文第二行"
+
+    assert MODULE.content_heading_after_section(row) == ""
+    assert MODULE.normalized_primary_title(row) == MODULE.norm("普通文章标题")
+
+
 def test_reader_letters_heading_matches_peopledata_full_title():
     source_row = {
         **source("1951-01-05", 2, "读者来信"),
@@ -273,6 +291,54 @@ def test_reader_letters_heading_matches_peopledata_full_title():
     assert resolved[0]["ordinal"] == 21
     assert resolved[0]["title"] == "从消极怠工到创新纪录 济南铁路机厂工人张怀玉来信"
     assert resolved[0]["matchMethod"] == "generic_section_heading_same_date"
+
+
+def test_repeated_section_heading_matches_same_day_peopledata_title():
+    source_row = {
+        **source("1951-10-28", 2, "经济生活简评"),
+        "content": "经济生活简评\n经济生活简评\n郭金玉重新回到互助组\n正文",
+        "preservedOrdinal": 46,
+    }
+    missing = [{
+        "date": "1951-10-28",
+        "page": 2,
+        "ordinal": 18,
+        "title": "郭金玉重新回到互助组",
+        "href": "/18",
+    }]
+
+    remaining, resolved = MODULE.resolve_generic_section_heading_groups(
+        [source_row], missing
+    )
+
+    assert remaining == []
+    assert resolved[0]["ordinal"] == 18
+    assert resolved[0]["sourceTitle"] == "经济生活简评"
+    assert resolved[0]["derivedSourceTitle"] == "郭金玉重新回到互助组"
+    assert resolved[0]["matchMethod"] == "generic_section_heading_same_date"
+
+
+def test_repeated_section_exact_match_records_derived_title_provenance():
+    source_row = {
+        **source("1951-10-28", 2, "经济生活简评"),
+        "content": "经济生活简评\n经济生活简评\n郭金玉重新回到互助组\n正文",
+        "preservedOrdinal": 46,
+    }
+    missing = [{
+        "date": "1951-10-28",
+        "page": 2,
+        "ordinal": 18,
+        "title": "郭金玉重新回到互助组",
+        "href": "/18",
+    }]
+
+    remaining, resolved = MODULE.resolve_exact_same_page_groups(
+        [source_row], missing
+    )
+
+    assert remaining == []
+    assert resolved[0]["matchMethod"] == "repeated_section_heading_same_page"
+    assert resolved[0]["derivedSourceTitle"] == "郭金玉重新回到互助组"
 
 
 def test_reader_letters_heading_requires_unique_same_page_candidate():
