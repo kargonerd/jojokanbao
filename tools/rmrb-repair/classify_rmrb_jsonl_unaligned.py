@@ -33,6 +33,29 @@ from merge_rmrb_peopledata_xlsx import (
 NORMALIZED_GENERIC_IMAGE_TITLES = {norm(value) for value in GENERIC_IMAGE_TITLES}
 
 
+def candidate_has_empty_difference(value: Any, reference: Any) -> bool:
+    """Mirror the workbench's ``∅`` marker for a shorter candidate title."""
+    source = list(str(value or ""))
+    other = list(str(reference or ""))
+    if source == other:
+        return False
+    prefix = 0
+    while (
+        prefix < len(source)
+        and prefix < len(other)
+        and source[prefix] == other[prefix]
+    ):
+        prefix += 1
+    suffix = 0
+    while (
+        suffix < len(source) - prefix
+        and suffix < len(other) - prefix
+        and source[len(source) - suffix - 1] == other[len(other) - suffix - 1]
+    ):
+        suffix += 1
+    return not source[prefix : len(source) - suffix]
+
+
 def content_heading_after_section(row: dict[str, Any]) -> str:
     """Return the first article heading after a repeated section label.
 
@@ -195,6 +218,10 @@ def resolve_exact_same_page_groups(
         )
         ordered_candidates = sorted(candidates, key=lambda row: int(row["ordinal"]))
         for (index, source), candidate in zip(ordered_sources, ordered_candidates):
+            if candidate_has_empty_difference(
+                candidate.get("title"), source.get("title")
+            ):
+                continue
             resolved_indexes.add(index)
             canonical = canonicalize_exact_group_pair(source, candidate)
             if derived_title := content_heading_after_section(source):
@@ -235,6 +262,10 @@ def resolve_whitespace_only_same_date_groups(
         )
         ordered_candidates = sorted(candidates, key=lambda row: int(row["ordinal"]))
         for (index, source), candidate in zip(ordered_sources, ordered_candidates):
+            if candidate_has_empty_difference(
+                candidate.get("title"), source.get("title")
+            ):
+                continue
             resolved_indexes.add(index)
             canonical = canonicalize_exact_group_pair(source, candidate)
             canonical["matchMethod"] = "exact_title_whitespace_same_date"
@@ -265,6 +296,9 @@ def resolve_generic_section_heading_groups(
             if str(candidate.get("date") or "")[:10] == issue_date
             and int(page_number(candidate.get("page")) or 0) == page
             and norm(primary_title(candidate.get("title"))).startswith(heading)
+            and not candidate_has_empty_difference(
+                candidate.get("title"), source.get("title")
+            )
             and (
                 issue_date,
                 int(page_number(candidate.get("page")) or 0),
@@ -393,9 +427,23 @@ def classify_row(
     suspected_typos = typo_candidates(
         source_title, page_titles.get((issue_date, page), [])
     )
+    suspected_typos = [
+        candidate
+        for candidate in suspected_typos
+        if not candidate_has_empty_difference(
+            candidate.get("title"), row.get("title")
+        )
+    ]
     nearby_exact = exact_nearby_matches(
         issue_date, page, exact_locations.get(source_title, [])
     )
+    nearby_exact = [
+        candidate
+        for candidate in nearby_exact
+        if not candidate_has_empty_difference(
+            candidate.get("title"), row.get("title")
+        )
+    ]
     signals = []
     if suspected_typos:
         signals.append("suspected_title_typo")

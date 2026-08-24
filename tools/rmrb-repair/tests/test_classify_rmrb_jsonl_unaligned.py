@@ -106,6 +106,27 @@ def test_withholds_exact_title_on_adjacent_date():
     assert result["reconciliationSignals"] == ["adjacent_date"]
 
 
+def test_accepts_jsonl_when_adjacent_candidate_renders_as_empty_difference():
+    row = source(
+        "1952-02-13",
+        3,
+        "刘正明终于站稳了工人阶级立场（图片）\n顾群 冯真 邓澍",
+    )
+    locations = {
+        MODULE.norm("刘正明终于站稳了工人阶级立场（图片）"): [
+            evidence("1952-02-12", 3, "刘正明终于站稳了工人阶级立场（图片）")
+        ]
+    }
+
+    result = MODULE.classify_row(row, locations, {})
+
+    assert MODULE.candidate_has_empty_difference(
+        "刘正明终于站稳了工人阶级立场（图片）", row["title"]
+    )
+    assert result["reconciliationDecision"] == "accept_jsonl_canonical"
+    assert result["reconciliationSignals"] == []
+
+
 def test_withholds_exact_title_on_same_day_of_adjacent_month():
     row = source(title="月份可能错误")
     locations = {
@@ -183,6 +204,26 @@ def test_equal_duplicate_title_groups_pair_by_relative_page_order():
         (25, "第二份公告正文"),
     ]
     assert all(row["matchMethod"] == "exact_title_ordered_group" for row in resolved)
+
+
+def test_empty_difference_candidate_is_not_auto_merged_on_same_page():
+    source_row = {
+        **source("1952-02-13", 3, "主标题\n作者甲 作者乙"),
+        "preservedOrdinal": 62,
+    }
+    missing = [{
+        "date": "1952-02-13",
+        "page": 3,
+        "ordinal": 25,
+        "title": "主标题",
+    }]
+
+    remaining, resolved = MODULE.resolve_exact_same_page_groups(
+        [source_row], missing
+    )
+
+    assert remaining == [source_row]
+    assert resolved == []
 
 
 def test_unequal_duplicate_title_groups_stay_unresolved():
