@@ -249,7 +249,6 @@ export function RmrbReconciliationPage() {
               <span>疑点</span>
               <select aria-label="疑点类型" value={signal} onChange={(event) => changeSignal(event.target.value)}>
                 <option value="all">全部类型</option>
-                <option value="suspected_title_typo">疑似错字</option>
                 <option value="same_date_other_page">同日其他版</option>
                 <option value="adjacent_date">相邻日期</option>
                 <option value="adjacent_month_same_day">相邻月份同日</option>

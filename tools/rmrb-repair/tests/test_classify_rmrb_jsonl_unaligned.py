@@ -26,7 +26,7 @@ def source(issue_date: str = "1947-08-31", page: int = 2, title: str = "独立�
     return {"date": issue_date, "page": page, "title": title, "content": "正文"}
 
 
-def test_classifies_one_character_edit_on_same_page_as_suspected_typo():
+def test_accepts_jsonl_for_one_character_edit_on_same_page():
     row = source(title="黄河防泛记")
     result = MODULE.classify_row(
         row,
@@ -34,8 +34,24 @@ def test_classifies_one_character_edit_on_same_page_as_suspected_typo():
         {("1947-08-31", 2): [evidence("1947-08-31", 2, "黄河防汛记")]},
     )
 
-    assert result["reconciliationDecision"] == "review_nearby_conflict"
-    assert result["reconciliationSignals"] == ["suspected_title_typo"]
+    assert result["reconciliationDecision"] == "accept_jsonl_canonical"
+    assert result["reconciliationSignals"] == []
+    assert result["suspectedTypoCandidates"] == []
+
+
+def test_same_page_typo_does_not_hide_an_adjacent_date_conflict():
+    row = source(title="黄河防泛记")
+    locations = {
+        MODULE.norm("黄河防泛记"): [evidence("1947-08-30", 2, "黄河防泛记")]
+    }
+    pages = {
+        ("1947-08-31", 2): [evidence("1947-08-31", 2, "黄河防汛记")]
+    }
+
+    result = MODULE.classify_row(row, locations, pages)
+
+    assert result["reconciliationSignals"] == ["adjacent_date"]
+    assert result["suspectedTypoCandidates"] == []
 
 
 def test_accepts_jsonl_when_no_typo_or_nearby_exact_title_exists():

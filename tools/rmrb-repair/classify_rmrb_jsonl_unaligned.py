@@ -424,16 +424,10 @@ def classify_row(
     issue_date = str(row.get("date") or "")[:10]
     page = int(page_number(row.get("page")) or 0)
     source_title = normalized_primary_title(row)
-    suspected_typos = typo_candidates(
-        source_title, page_titles.get((issue_date, page), [])
-    )
-    suspected_typos = [
-        candidate
-        for candidate in suspected_typos
-        if not candidate_has_empty_difference(
-            candidate.get("title"), row.get("title")
-        )
-    ]
+    # Policy: on the same issue and page, a one-character catalog difference
+    # does not outweigh the complete JSONL record.  Keep the JSONL title and do
+    # not expose the PeopleData typo candidate for human review.
+    suspected_typos: list[dict[str, Any]] = []
     nearby_exact = exact_nearby_matches(
         issue_date, page, exact_locations.get(source_title, [])
     )
@@ -445,8 +439,6 @@ def classify_row(
         )
     ]
     signals = []
-    if suspected_typos:
-        signals.append("suspected_title_typo")
     signals.extend(sorted({str(match["kind"]) for match in nearby_exact}))
     accepted = not signals
     return {
