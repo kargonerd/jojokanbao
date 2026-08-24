@@ -15,6 +15,11 @@ on:
         type: string
         default: ""
         required: false
+      max_pages:
+        description: Maximum Chromium pages; use a larger value for an explicit backlog test
+        type: string
+        default: "50"
+        required: true
 
 permissions:
   contents: read
@@ -27,12 +32,13 @@ jobs:
   capture:
     runs-on: ubuntu-latest
     environment: maintenance
-    timeout-minutes: 15
+    timeout-minutes: 45
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       HF_TIMES_DATASET_REPO: ${{ secrets.HF_TIMES_DATASET_REPO || secrets.HF_DATASET_REPO }}
       TIMES_SINCE_HOURS: ${{ inputs.since_hours || '24' }}
       TIMES_SOURCES: ${{ inputs.sources || '' }}
+      TIMES_MAX_PAGES: ${{ inputs.max_pages || '50' }}
       JOJO_TIMES_PROXY_URI: ${{ secrets.JOJO_TIMES_PROXY_URI }}
       JOJO_TIMES_PROXY_SUBSCRIPTION: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION }}
     steps:
@@ -152,7 +158,7 @@ jobs:
             --output "$RUNNER_TEMP/jojo-times"
             --run-manifest "$TIMES_RUN_MANIFEST"
             --engine browser
-            --max-pages 50
+            --max-pages "$TIMES_MAX_PAGES"
             --workers 8
             --timeout 25
             --maximum-response-bytes 5000000
@@ -193,7 +199,7 @@ jobs:
       - name: Publish capture summary
         if: always()
         run: |
-          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          node - <<'NODE' | tee -a "$GITHUB_STEP_SUMMARY"
           const fs = require("node:fs");
           const path = process.env.RUNNER_TEMP + "/capture-result.json";
           console.log("## Times Raw capture\n");

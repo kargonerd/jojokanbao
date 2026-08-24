@@ -173,7 +173,7 @@ jobs:
       - name: Publish processing summary
         if: always()
         run: |
-          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          node - <<'NODE' | tee -a "$GITHUB_STEP_SUMMARY"
           const fs = require("node:fs");
           const path = process.env.RUNNER_TEMP + "/delivery-result.json";
           console.log("## Times Canonical and Delivery\n");

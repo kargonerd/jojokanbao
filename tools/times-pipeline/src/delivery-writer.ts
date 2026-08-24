@@ -190,7 +190,9 @@ function unavailableCases(data: SourceDeliveryData, deliveredIds: Set<string>): 
   if (data.candidates.length === 0) {
     // A source whose Raw candidates were all intentionally excluded (for
     // example, a video-only ChinaNews interval) is not a discovery failure.
-    if (data.rawCandidateCount > 0) return [];
+    // `ok` also distinguishes this from a genuinely empty discovery worker:
+    // current capture policy can exclude videos before they reach Raw.
+    if (data.rawCandidateCount > 0 || data.worker.status === "ok") return [];
     return [{
       id: `${data.source.id}:source-empty`,
       source,
@@ -243,7 +245,9 @@ function sourceHealth(
   const summary = 0;
   const delivered = full;
   const unavailable = cases.length;
-  const intentionallyEmpty = discovered === 0 && data.rawCandidateCount > 0 && unavailable === 0;
+  const intentionallyEmpty = discovered === 0
+    && (data.rawCandidateCount > 0 || data.worker.status === "ok")
+    && unavailable === 0;
   const availabilityRate = discovered ? delivered / discovered : intentionallyEmpty ? 1 : 0;
   const fullTextRate = discovered ? full / discovered : intentionallyEmpty ? 1 : 0;
   const healthScore = discovered ? (full / discovered) * 100 : intentionallyEmpty ? 100 : 0;

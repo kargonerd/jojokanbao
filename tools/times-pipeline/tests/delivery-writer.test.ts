@@ -24,7 +24,7 @@ const source: SourceConfig = {
 };
 
 describe("Times Delivery writer", () => {
-  it("does not report intentionally excluded video-only candidates as unavailable", async () => {
+  it("does not report a successful interval with only policy exclusions as unavailable", async () => {
     const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "jojo-times-video-workspace-"));
     const deliveryRoot = await mkdtemp(path.join(os.tmpdir(), "jojo-times-video-output-"));
     const runId = "video-run";
@@ -39,9 +39,9 @@ describe("Times Delivery writer", () => {
       startedAt: "2026-08-23T10:00:00.000Z",
       completedAt: "2026-08-23T10:01:00.000Z",
       discovery: source.discovery,
-      candidateCount: 1,
+      candidateCount: 0,
       fullCount: 0,
-      summaryCount: 1,
+      summaryCount: 0,
       metadataCount: 0,
       networkExchangeCount: 1,
       objects: [],
@@ -49,20 +49,7 @@ describe("Times Delivery writer", () => {
       healthStatus: "healthy",
       complete: true,
     } satisfies SourceCaptureManifest));
-    const video: Candidate = {
-      articleId: "example:video-only",
-      sourceId: source.id,
-      sourceName: source.name,
-      language: source.language,
-      sourceUrl: "https://example.test/video/clip",
-      canonicalUrl: "https://example.test/video/clip",
-      title: "Video only",
-      contentStatus: "summary",
-      publishedAt: "2026-08-23T09:30:00.000Z",
-      authors: [],
-      publisherCategories: [],
-    };
-    await writeFile(path.join(runRoot, "candidates.jsonl.gz"), gzipSync(`${JSON.stringify(video)}\n`));
+    await writeFile(path.join(runRoot, "candidates.jsonl.gz"), gzipSync(""));
     const result = await buildTimesDelivery({
       workspaceRoot,
       deliveryRoot,
