@@ -23,7 +23,7 @@ SOURCE_FILE = Path(
         WORKSPACE_ROOT
         / "tmp"
         / "rmrb-peopledata-full-directory"
-        / "classify-source-only-v5"
+        / "classify-source-only-v6"
         / "review-nearby-conflicts.jsonl",
     )
 )

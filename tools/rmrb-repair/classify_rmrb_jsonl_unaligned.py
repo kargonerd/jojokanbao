@@ -31,6 +31,19 @@ from merge_rmrb_peopledata_xlsx import (
 
 
 NORMALIZED_GENERIC_IMAGE_TITLES = {norm(value) for value in GENERIC_IMAGE_TITLES}
+NORMALIZED_GENERIC_SECTION_TITLES = {norm("读者来信")}
+
+
+def content_heading_after_section(row: dict[str, Any]) -> str:
+    section = norm(primary_title(row.get("title")))
+    if section not in NORMALIZED_GENERIC_SECTION_TITLES:
+        return ""
+    for line in str(row.get("content") or "").splitlines():
+        heading = line.strip()
+        normalized = norm(heading)
+        if normalized and normalized != section:
+            return heading
+    return ""
 
 
 def normalized_primary_title(row: dict[str, Any]) -> str:
@@ -40,6 +53,8 @@ def normalized_primary_title(row: dict[str, Any]) -> str:
         if caption and caption not in NORMALIZED_GENERIC_IMAGE_TITLES:
             return caption
         return ""
+    if title in NORMALIZED_GENERIC_SECTION_TITLES:
+        return norm(content_heading_after_section(row))
     return title
 
 
@@ -211,6 +226,71 @@ def resolve_whitespace_only_same_date_groups(
     return remaining, resolved
 
 
+def resolve_generic_section_heading_groups(
+    source_rows: list[dict[str, Any]],
+    missing_rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Match recurring section labels using the first real heading in the body."""
+    resolved_indexes: set[int] = set()
+    resolved_candidate_keys: set[tuple[str, int, int]] = set()
+    resolved: list[dict[str, Any]] = []
+    for index, source in enumerate(source_rows):
+        heading = norm(content_heading_after_section(source))
+        if len(heading) < 4:
+            continue
+        issue_date = str(source.get("date") or "")[:10]
+        page = int(page_number(source.get("page")) or 0)
+        candidates = [
+            candidate
+            for candidate in missing_rows
+            if str(candidate.get("date") or "")[:10] == issue_date
+            and int(page_number(candidate.get("page")) or 0) == page
+            and norm(primary_title(candidate.get("title"))).startswith(heading)
+            and (
+                issue_date,
+                int(page_number(candidate.get("page")) or 0),
+                int(candidate.get("ordinal", -1)),
+            )
+            not in resolved_candidate_keys
+        ]
+        if len(candidates) != 1:
+            continue
+        candidate = candidates[0]
+        candidate_key = (
+            issue_date,
+            int(page_number(candidate.get("page")) or 0),
+            int(candidate["ordinal"]),
+        )
+        resolved_candidate_keys.add(candidate_key)
+        resolved_indexes.add(index)
+        canonical = canonicalize_exact_group_pair(source, candidate)
+        canonical["matchMethod"] = "generic_section_heading_same_date"
+        canonical["derivedSourceTitle"] = content_heading_after_section(source)
+        resolved.append(canonical)
+
+    remaining = [row for index, row in enumerate(source_rows) if index not in resolved_indexes]
+    resolved.sort(key=lambda row: (row["date"], row["page"], row["ordinal"]))
+    return remaining, resolved
+
+
+def without_resolved_candidates(
+    missing_rows: list[dict[str, Any]], resolved: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    keys = {
+        (row["date"], int(row["page"]), int(row["ordinal"])) for row in resolved
+    }
+    return [
+        row
+        for row in missing_rows
+        if (
+            str(row.get("date") or "")[:10],
+            int(page_number(row.get("page")) or 0),
+            int(row.get("ordinal", -1)),
+        )
+        not in keys
+    ]
+
+
 def load_directory_evidence(
     directory_path: Path,
     source_titles: set[str],
@@ -358,10 +438,15 @@ def main() -> None:
     if args.peopledata_unmatched:
         missing_rows = load_jsonl(args.peopledata_unmatched)
         rows, same_page_merged = resolve_exact_same_page_groups(rows, missing_rows)
+        missing_rows = without_resolved_candidates(missing_rows, same_page_merged)
         rows, whitespace_merged = resolve_whitespace_only_same_date_groups(
             rows, missing_rows
         )
-        auto_merged = same_page_merged + whitespace_merged
+        missing_rows = without_resolved_candidates(missing_rows, whitespace_merged)
+        rows, section_heading_merged = resolve_generic_section_heading_groups(
+            rows, missing_rows
+        )
+        auto_merged = same_page_merged + whitespace_merged + section_heading_merged
     source_titles = {
         title for row in rows if (title := normalized_primary_title(row))
     }
@@ -381,6 +466,9 @@ def main() -> None:
     counters["autoMergedSamePageRows"] = len(same_page_merged) if args.peopledata_unmatched else 0
     counters["autoMergedWhitespaceSameDateRows"] = (
         len(whitespace_merged) if args.peopledata_unmatched else 0
+    )
+    counters["autoMergedGenericSectionHeadingRows"] = (
+        len(section_heading_merged) if args.peopledata_unmatched else 0
     )
     counters["acceptedJsonlCanonicalRows"] = len(auto_merged)
     for row in rows:

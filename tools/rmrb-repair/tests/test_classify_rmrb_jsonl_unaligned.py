@@ -241,3 +241,54 @@ def test_whitespace_rule_does_not_ignore_punctuation_difference():
 
     assert remaining == sources
     assert resolved == []
+
+
+def test_reader_letters_uses_first_real_body_heading():
+    row = source("1951-01-05", 2, "读者来信")
+    row["content"] = "读者来信\n\n  读者来信\n  从消极怠工到创新纪录\n正文"
+
+    assert MODULE.content_heading_after_section(row) == "从消极怠工到创新纪录"
+    assert MODULE.normalized_primary_title(row) == MODULE.norm("从消极怠工到创新纪录")
+
+
+def test_reader_letters_heading_matches_peopledata_full_title():
+    source_row = {
+        **source("1951-01-05", 2, "读者来信"),
+        "content": "读者来信\n读者来信\n从消极怠工到创新纪录\n正文",
+        "preservedOrdinal": 46,
+    }
+    missing = [{
+        "date": "1951-01-05",
+        "page": 2,
+        "ordinal": 21,
+        "title": "从消极怠工到创新纪录 济南铁路机厂工人张怀玉来信",
+        "href": "/21",
+    }]
+
+    remaining, resolved = MODULE.resolve_generic_section_heading_groups(
+        [source_row], missing
+    )
+
+    assert remaining == []
+    assert resolved[0]["ordinal"] == 21
+    assert resolved[0]["title"] == "从消极怠工到创新纪录 济南铁路机厂工人张怀玉来信"
+    assert resolved[0]["matchMethod"] == "generic_section_heading_same_date"
+
+
+def test_reader_letters_heading_requires_unique_same_page_candidate():
+    source_row = {
+        **source("1951-01-05", 2, "读者来信"),
+        "content": "读者来信\n实际标题\n正文",
+        "preservedOrdinal": 46,
+    }
+    missing = [
+        {"date": "1951-01-05", "page": 2, "ordinal": 21, "title": "实际标题 甲"},
+        {"date": "1951-01-05", "page": 2, "ordinal": 22, "title": "实际标题 乙"},
+    ]
+
+    remaining, resolved = MODULE.resolve_generic_section_heading_groups(
+        [source_row], missing
+    )
+
+    assert remaining == [source_row]
+    assert resolved == []
