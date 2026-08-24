@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from download_hf_snapshot import _candidate_dates, _candidate_object, _canonical_objects
+from download_hf_snapshot import _candidate_dates, _candidate_object, _canonical_objects, _run_window_dates
 
 
 def test_candidate_object_is_resolved_beside_source_manifest() -> None:
@@ -35,3 +35,11 @@ def test_candidate_dates_drive_only_matching_canonical_shards(tmp_path) -> None:
         "canonical/news/ap/articles/2026/08/2026-08-22.jsonl.gz",
         "canonical/news/ap/articles/2026/08/2026-08-23.jsonl.gz",
     }
+
+
+def test_run_window_dates_cover_every_canonical_shard_touched_by_the_window() -> None:
+    assert _run_window_dates({
+        "startedAt": "2026-08-24T00:05:00Z",
+        "completedAt": "2026-08-24T00:45:00Z",
+        "windowHours": 24,
+    }) == {"2026-08-23", "2026-08-24"}

@@ -135,10 +135,28 @@ async function readJsonLinesGzip<T>(target: string): Promise<T[]> {
   }
 }
 
+function issueDatesBetween(from: string, to: string): string[] {
+  const start = new Date(from);
+  const end = new Date(to);
+  if (!Number.isFinite(start.valueOf()) || !Number.isFinite(end.valueOf()) || start > end) {
+    throw new Error(`Invalid Delivery window: ${from} to ${to}`);
+  }
+  const dates: string[] = [];
+  const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
+  const last = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
+  while (cursor <= last) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
+}
+
 async function sourceData(
   workspaceRoot: string,
   source: SourceConfig,
   worker: RawWorkerResult,
+  windowFrom: string,
+  windowTo: string,
 ): Promise<SourceDeliveryData> {
   if (!worker.output?.manifest) return { source, rawCandidateCount: 0, candidates: [], canonical: [], worker };
   const manifestPath = path.join(workspaceRoot, ...worker.output.manifest.split("/"));
@@ -148,15 +166,11 @@ async function sourceData(
   // a newer source policy now skips entirely.
   const rawCandidates = await readJsonLinesGzip<Candidate>(path.join(path.dirname(manifestPath), "candidates.jsonl.gz"));
   const candidates = rawCandidates.filter((candidate) => isCandidateAllowed(source, candidate));
-  const byDate = new Map<string, Set<string>>();
-  for (const candidate of candidates) {
-    const date = new Date(candidate.publishedAt).toISOString().slice(0, 10);
-    const ids = byDate.get(date) ?? new Set<string>();
-    ids.add(candidate.articleId);
-    byDate.set(date, ids);
-  }
-  const canonical: CanonicalArticle[] = [];
-  for (const [date, ids] of byDate) {
+  // Canonical is cumulative. A feed can roll an article out between two
+  // capture runs, so Delivery must read every shard in the active time window
+  // instead of limiting itself to IDs repeated by the latest feed snapshot.
+  const canonicalById = new Map<string, CanonicalArticle>();
+  for (const date of issueDatesBetween(windowFrom, windowTo)) {
     const [year, month] = dateParts(date);
     const rows = await readJsonLinesGzip<CanonicalArticle>(path.join(
       workspaceRoot,
@@ -171,8 +185,14 @@ async function sourceData(
     // Delivery is full-text only. Keep this defensive filter even though the
     // Canonical writer also rejects summaries, so old Canonical shards cannot
     // leak summary-only articles back into the reader.
-    canonical.push(...rows.filter((article) => ids.has(article.articleId) && article.contentStatus === "full"));
+    for (const article of rows) {
+      if (article.contentStatus !== "full") continue;
+      const published = new Date(article.publishedAt).valueOf();
+      if (published < new Date(windowFrom).valueOf() || published > new Date(windowTo).valueOf()) continue;
+      canonicalById.set(article.articleId, article);
+    }
   }
+  const canonical = [...canonicalById.values()];
   return { source, manifest, rawCandidateCount: rawCandidates.length, candidates, canonical, worker };
 }
 
@@ -234,14 +254,28 @@ function unavailableCases(data: SourceDeliveryData, deliveredIds: Set<string>): 
     });
 }
 
+function unavailableCaseArticleId(item: TimesUnavailableCase): string {
+  return item.id.endsWith(":browser-capture")
+    ? item.id.slice(0, -":browser-capture".length)
+    : item.id;
+}
+
 function sourceHealth(
   data: SourceDeliveryData,
   cases: TimesUnavailableCase[],
   browser: BrowserSourceStats = { attempts: 0, succeeded: 0, failed: 0, extractedFullBodies: 0 },
 ): TimesSourceHealth {
   const source = { id: data.source.id, name: data.source.name, language: data.source.language };
-  const discovered = data.candidates.length;
-  const full = data.canonical.filter((article) => article.contentStatus === "full").length;
+  const deliveredIds = new Set(data.canonical
+    .filter((article) => article.contentStatus === "full")
+    .map((article) => article.articleId));
+  const discoveredIds = new Set([
+    ...data.candidates.map((candidate) => candidate.articleId),
+    ...deliveredIds,
+    ...cases.filter((item) => item.publishedAt).map((item) => item.id),
+  ]);
+  const discovered = discoveredIds.size;
+  const full = deliveredIds.size;
   const summary = 0;
   const delivered = full;
   const unavailable = cases.length;
@@ -290,10 +324,12 @@ export async function buildTimesDelivery(input: {
   sourceHealth: TimesSourceHealth[];
   unavailableCases: TimesUnavailableCase[];
 }> {
+  const windowTo = input.run.completedAt;
+  const windowFrom = new Date(new Date(input.run.startedAt).valueOf() - input.windowHours * 3_600_000).toISOString();
   const sourceById = new Map(input.sources.map((source) => [source.id, source]));
   const rows = await Promise.all(input.run.sources.map(async (worker) => {
     const source = sourceById.get(worker.sourceId);
-    return source ? sourceData(input.workspaceRoot, source, worker) : undefined;
+    return source ? sourceData(input.workspaceRoot, source, worker, windowFrom, windowTo) : undefined;
   }));
   const values = rows.filter((row): row is SourceDeliveryData => Boolean(row));
   const cases: TimesUnavailableCase[] = [];
@@ -307,7 +343,6 @@ export async function buildTimesDelivery(input: {
     for (const articleId of sourceDeliveredIds) deliveredIds.add(articleId);
     const sourceCases = unavailableCases(data, sourceDeliveredIds);
     cases.push(...sourceCases);
-    health.push(sourceHealth(data, sourceCases, browserBySource.get(data.source.id)));
     const candidateById = new Map(data.candidates.map((candidate) => [candidate.articleId, candidate]));
     articleRows.push(...data.canonical.map((canonical) => {
       const candidate = candidateById.get(canonical.articleId);
@@ -331,6 +366,24 @@ export async function buildTimesDelivery(input: {
       ...(failure.title ? { title: failure.title } : {}),
       ...(failure.url ? { url: failure.url } : {}),
     });
+  }
+
+  // Preserve unresolved articles that have rolled out of a short feed but are
+  // still inside this Delivery window. Resolved Canonical articles always win.
+  const caseArticleIds = new Set(cases.map(unavailableCaseArticleId));
+  for (const previous of input.previousIndex?.unavailableCases ?? []) {
+    if (!previous.publishedAt || previous.publishedAt < windowFrom || previous.publishedAt > windowTo) continue;
+    const articleId = unavailableCaseArticleId(previous);
+    if (deliveredIds.has(articleId) || caseArticleIds.has(articleId)) continue;
+    if (!sourceById.has(previous.source.id)) continue;
+    cases.push(previous);
+    caseIds.add(previous.id);
+    caseArticleIds.add(articleId);
+  }
+
+  for (const data of values) {
+    const sourceCases = cases.filter((item) => item.source.id === data.source.id);
+    health.push(sourceHealth(data, sourceCases, browserBySource.get(data.source.id)));
   }
 
   articleRows.sort((left, right) => right.canonical.publishedAt.localeCompare(left.canonical.publishedAt));
@@ -449,8 +502,6 @@ export async function buildTimesDelivery(input: {
     .sort((left, right) => right.itemKey.localeCompare(left.itemKey))
     .map((item, index) => ({ ...item, order: index + 1 }));
   const indexObject = "content/newspapers/times/index.jox";
-  const to = input.run.completedAt;
-  const from = new Date(new Date(input.run.startedAt).valueOf() - input.windowHours * 3_600_000).toISOString();
   const index: TimesDeliveryIndex = {
     formatVersion: "jojo-delivery-index/1",
     revision: Date.parse(input.run.completedAt),
@@ -463,7 +514,7 @@ export async function buildTimesDelivery(input: {
     access: "authenticated",
     items: mergedItems,
     updatedAt: input.run.completedAt,
-    window: { from, to, hours: input.windowHours },
+    window: { from: windowFrom, to: windowTo, hours: input.windowHours },
     sourceHealth: health.sort((left, right) => left.source.name.localeCompare(right.source.name)),
     unavailableCases: cases.sort((left, right) => (right.publishedAt ?? "").localeCompare(left.publishedAt ?? "")),
   };

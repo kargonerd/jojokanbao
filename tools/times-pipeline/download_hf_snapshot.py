@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 import gzip
 import json
 import os
@@ -56,6 +56,22 @@ def _canonical_objects(source_id: str, dates: set[str]) -> set[str]:
         for issue_date in dates
     )
     return objects
+
+
+def _run_window_dates(run: dict[str, Any]) -> set[str]:
+    started_value = str(run.get("startedAt", "")).replace("Z", "+00:00")
+    completed_value = str(run.get("completedAt", run.get("startedAt", ""))).replace("Z", "+00:00")
+    started = datetime.fromisoformat(started_value).astimezone(timezone.utc)
+    completed = datetime.fromisoformat(completed_value).astimezone(timezone.utc)
+    hours = float(run.get("windowHours", 24))
+    if hours <= 0 or completed < started:
+        raise ValueError("Invalid Times run window")
+    first = (started - timedelta(hours=hours)).date()
+    last = completed.date()
+    return {
+        (first + timedelta(days=offset)).isoformat()
+        for offset in range((last - first).days + 1)
+    }
 
 
 class SnapshotDownloader:
@@ -119,8 +135,9 @@ class SnapshotDownloader:
         with ThreadPoolExecutor(max_workers=8) as pool:
             bundles = list(pool.map(source_bundle, source_rows))
 
+        window_dates = _run_window_dates(run)
         wanted_canonical = set().union(*(
-            _canonical_objects(source_id, dates) for source_id, dates in bundles
+            _canonical_objects(source_id, dates | window_dates) for source_id, dates in bundles
         )) if bundles else set()
         existing_canonical = self._tree_files("canonical/news")
         canonical_to_download = sorted(wanted_canonical & existing_canonical)

@@ -186,9 +186,17 @@ describe("Times Delivery writer", () => {
       contentStatus: "summary",
       contentHash: "summary-hash",
     };
+    const rolledOutCanonical: CanonicalArticle = {
+      ...canonical,
+      articleId: "example:rolled-out",
+      canonicalUrl: "https://example.test/rolled-out",
+      title: "Full story no longer present in the latest feed page",
+      publishedAt: "2026-08-23T08:45:00.000Z",
+      contentHash: "rolled-out-hash",
+    };
     const shard = path.join(workspaceRoot, "canonical/news/example/articles/2026/08/2026-08-23.jsonl.gz");
     await mkdir(path.dirname(shard), { recursive: true });
-    await writeFile(shard, gzipSync(`${JSON.stringify(canonical)}\n${JSON.stringify(staleSummaryCanonical)}\n`));
+    await writeFile(shard, gzipSync(`${JSON.stringify(canonical)}\n${JSON.stringify(staleSummaryCanonical)}\n${JSON.stringify(rolledOutCanonical)}\n`));
     const run: RawRunManifest = {
       runId,
       startedAt: "2026-08-23T10:00:00.000Z",
@@ -235,7 +243,16 @@ describe("Times Delivery writer", () => {
       updatedAt: "2026-08-21T10:00:00.000Z",
       window: { from: "2026-08-20T10:00:00.000Z", to: "2026-08-21T10:00:00.000Z", hours: 24 },
       sourceHealth: [],
-      unavailableCases: [],
+      unavailableCases: [{
+        id: "example:previous-pending",
+        source: { id: source.id, name: source.name, language: source.language },
+        reason: "full-text-pending",
+        stage: "capture",
+        message: "Still waiting for full text.",
+        title: "A story that rolled out of the latest feed page",
+        url: "https://example.test/previous-pending",
+        publishedAt: "2026-08-23T08:30:00.000Z",
+      }],
     };
     const previousCatalog: JojoCatalog = {
       formatVersion: "jojo-catalog/1",
@@ -265,26 +282,28 @@ describe("Times Delivery writer", () => {
     const index = await gunzipJoxJson<TimesDeliveryIndex>(indexBytes, result.indexObject);
     expect(index.items.map((item) => item.itemKey)).toEqual(["2026-08-23", "2026-08-21"]);
     expect(index.sourceHealth[0]).toMatchObject({
-      discovered: 3,
-      delivered: 1,
-      full: 1,
+      discovered: 5,
+      delivered: 2,
+      full: 2,
       summary: 0,
-      unavailable: 2,
+      unavailable: 3,
       browserAttempts: 1,
       browserFailed: 1,
-      healthScore: 33.3,
+      healthScore: 40,
     });
-    expect(index.unavailableCases).toHaveLength(2);
+    expect(index.unavailableCases).toHaveLength(3);
     expect(index.unavailableCases).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "example:missing", reason: "metadata-only" }),
       expect.objectContaining({ id: "example:summary", reason: "full-text-pending" }),
+      expect.objectContaining({ id: "example:previous-pending", reason: "full-text-pending" }),
     ]));
 
     const manifestKey = "content/newspapers/times/items/2026/08/2026-08-23/manifest.jox";
     const dateBytes = new Uint8Array(await readFile(path.join(deliveryRoot, ...manifestKey.split("/"))));
     const dateManifest = await gunzipJoxJson<TimesDateManifest>(dateBytes, manifestKey);
-    expect(dateManifest.metadata.articles).toHaveLength(1);
+    expect(dateManifest.metadata.articles).toHaveLength(2);
     expect(dateManifest.metadata.articles[0]).toMatchObject({ id: "example:full", contentStatus: "full" });
+    expect(dateManifest.metadata.articles[1]).toMatchObject({ id: "example:rolled-out", contentStatus: "full" });
     const catalogBytes = new Uint8Array(await readFile(path.join(deliveryRoot, "catalog.jox")));
     const catalog = await gunzipJoxJson<JojoCatalog>(catalogBytes, "catalog.jox");
     expect(catalog.datasets.map((dataset) => dataset.datasetId)).toEqual(["reader", "times"]);
