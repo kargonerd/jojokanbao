@@ -30,6 +30,11 @@ on:
         type: string
         default: "4"
         required: true
+      retry_hours:
+        description: Re-attempt failed pages after this many hours; lower only for an explicit repair
+        type: string
+        default: "2"
+        required: true
 
 permissions:
   contents: read
@@ -51,6 +56,7 @@ jobs:
       TIMES_MAX_PAGES: ${{ inputs.max_pages || '50' }}
       TIMES_REFRESH_HOURS: ${{ inputs.refresh_hours || '24' }}
       TIMES_BROWSER_RETRIES: ${{ inputs.browser_retries || '4' }}
+      TIMES_RETRY_HOURS: ${{ inputs.retry_hours || '2' }}
       JOJO_TIMES_PROXY_URI: ${{ secrets.JOJO_TIMES_PROXY_URI }}
       JOJO_TIMES_PROXY_SUBSCRIPTION: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION }}
     steps:
@@ -176,7 +182,7 @@ jobs:
             --maximum-response-bytes 5000000
             --maximum-page-bytes 25000000
             --refresh-hours "$TIMES_REFRESH_HOURS"
-            --retry-hours 2
+            --retry-hours "$TIMES_RETRY_HOURS"
             --browser-retries "$TIMES_BROWSER_RETRIES"
             --browser-extension-path "$BPC_EXTENSION_PATH"
             --browser-extension-revision "$BPC_REVISION"
