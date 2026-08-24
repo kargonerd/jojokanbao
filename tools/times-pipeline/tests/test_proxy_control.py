@@ -26,13 +26,16 @@ def test_rotation_selects_another_healthy_low_latency_node(tmp_path, monkeypatch
             "JOJO-AUTO": {"now": "node-a"},
             "node-a": {"alive": True, "history": [{"delay": 20}]},
             "node-b": {"alive": True, "history": [{"delay": 45}]},
-            "node-c": {"alive": False, "history": [{"delay": 10}]},
+            "node-c": {"alive": True, "history": [{"delay": 60}]},
         }}
 
     monkeypatch.setattr(proxy_control, "_request_json", request)
 
     assert proxy_control.rotate_proxy(control) is True
     assert calls[-1][2:] == ("PUT", {"name": "node-b"})
+    assert proxy_control.rotate_proxy(control) is True
+    assert calls[-1][2:] == ("PUT", {"name": "node-c"})
+    assert json.loads(control.read_text(encoding="utf-8"))["usedCandidates"] == ["node-b", "node-c"]
     assert all(call[1] == "ephemeral-secret" for call in calls)
 
 

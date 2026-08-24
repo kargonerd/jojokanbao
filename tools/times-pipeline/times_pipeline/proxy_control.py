@@ -72,7 +72,11 @@ def rotate_proxy(path: Path) -> bool:
             return False
         route = proxies.get(route_group, {})
         latency = proxies.get(latency_group, {})
-        excluded = {
+        used = {
+            name for name in control.get("usedCandidates", [])
+            if isinstance(name, str) and name in control["candidates"]
+        }
+        excluded = used | {
             route.get("now") if isinstance(route, dict) else None,
             latency.get("now") if isinstance(latency, dict) else None,
         }
@@ -90,6 +94,28 @@ def rotate_proxy(path: Path) -> bool:
                 if isinstance(entry, dict) and isinstance(entry.get("delay"), int) and entry["delay"] > 0
             ] if isinstance(history, list) else []
             ranked.append((delays[-1] if delays else 1_000_000, position, name))
+        if not ranked and used:
+            # Start a fresh pass only after every currently healthy candidate
+            # has been tried once. This prevents bouncing between the same two
+            # low-latency nodes during one browser repair run.
+            used.clear()
+            excluded = {
+                route.get("now") if isinstance(route, dict) else None,
+                latency.get("now") if isinstance(latency, dict) else None,
+            }
+            for position, name in enumerate(control["candidates"]):
+                if name in excluded:
+                    continue
+                row = proxies.get(name, {})
+                if not isinstance(row, dict) or row.get("alive") is False:
+                    continue
+                history = row.get("history")
+                delays = [
+                    entry.get("delay")
+                    for entry in history
+                    if isinstance(entry, dict) and isinstance(entry.get("delay"), int) and entry["delay"] > 0
+                ] if isinstance(history, list) else []
+                ranked.append((delays[-1] if delays else 1_000_000, position, name))
         if not ranked:
             return False
         _delay, _position, selected = min(ranked)
@@ -99,6 +125,11 @@ def rotate_proxy(path: Path) -> bool:
             method="PUT",
             payload={"name": selected},
         )
+        control["usedCandidates"] = [
+            name for name in control["candidates"]
+            if name in used or name == selected
+        ]
+        path.write_text(json.dumps(control, ensure_ascii=False), encoding="utf-8")
         return True
     except (OSError, ValueError, KeyError, json.JSONDecodeError):
         return False

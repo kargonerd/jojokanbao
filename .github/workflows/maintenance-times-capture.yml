@@ -25,6 +25,11 @@ on:
         type: string
         default: "24"
         required: true
+      browser_retries:
+        description: Additional browser/proxy rounds; increase only for an explicit repair
+        type: string
+        default: "4"
+        required: true
 
 permissions:
   contents: read
@@ -45,6 +50,7 @@ jobs:
       TIMES_SOURCES: ${{ inputs.sources || '' }}
       TIMES_MAX_PAGES: ${{ inputs.max_pages || '50' }}
       TIMES_REFRESH_HOURS: ${{ inputs.refresh_hours || '24' }}
+      TIMES_BROWSER_RETRIES: ${{ inputs.browser_retries || '4' }}
       JOJO_TIMES_PROXY_URI: ${{ secrets.JOJO_TIMES_PROXY_URI }}
       JOJO_TIMES_PROXY_SUBSCRIPTION: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION }}
     steps:
@@ -171,7 +177,7 @@ jobs:
             --maximum-page-bytes 25000000
             --refresh-hours "$TIMES_REFRESH_HOURS"
             --retry-hours 2
-            --browser-retries 4
+            --browser-retries "$TIMES_BROWSER_RETRIES"
             --browser-extension-path "$BPC_EXTENSION_PATH"
             --browser-extension-revision "$BPC_REVISION"
           )
