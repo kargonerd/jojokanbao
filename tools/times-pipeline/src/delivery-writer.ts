@@ -158,13 +158,16 @@ async function sourceData(
   windowFrom: string,
   windowTo: string,
 ): Promise<SourceDeliveryData> {
-  if (!worker.output?.manifest) return { source, rawCandidateCount: 0, candidates: [], canonical: [], worker };
-  const manifestPath = path.join(workspaceRoot, ...worker.output.manifest.split("/"));
-  const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as SourceCaptureManifest;
+  let manifest: SourceCaptureManifest | undefined;
+  let rawCandidates: Candidate[] = [];
+  if (worker.output?.manifest) {
+    const manifestPath = path.join(workspaceRoot, ...worker.output.manifest.split("/"));
+    manifest = JSON.parse(await readFile(manifestPath, "utf8")) as SourceCaptureManifest;
+    rawCandidates = await readJsonLinesGzip<Candidate>(path.join(path.dirname(manifestPath), "candidates.jsonl.gz"));
+  }
   // Reapply the current source policy while building Delivery. Raw is immutable,
   // so an older run can still contain content (for example AP video pages) that
   // a newer source policy now skips entirely.
-  const rawCandidates = await readJsonLinesGzip<Candidate>(path.join(path.dirname(manifestPath), "candidates.jsonl.gz"));
   const candidates = rawCandidates.filter((candidate) => isCandidateAllowed(source, candidate));
   // Canonical is cumulative. A feed can roll an article out between two
   // capture runs, so Delivery must read every shard in the active time window
@@ -193,7 +196,14 @@ async function sourceData(
     }
   }
   const canonical = [...canonicalById.values()];
-  return { source, manifest, rawCandidateCount: rawCandidates.length, candidates, canonical, worker };
+  return {
+    source,
+    ...(manifest ? { manifest } : {}),
+    rawCandidateCount: rawCandidates.length,
+    candidates,
+    canonical,
+    worker,
+  };
 }
 
 function unavailableCases(data: SourceDeliveryData, deliveredIds: Set<string>): TimesUnavailableCase[] {
@@ -327,11 +337,17 @@ export async function buildTimesDelivery(input: {
   const windowTo = input.run.completedAt;
   const windowFrom = new Date(new Date(input.run.startedAt).valueOf() - input.windowHours * 3_600_000).toISOString();
   const sourceById = new Map(input.sources.map((source) => [source.id, source]));
-  const rows = await Promise.all(input.run.sources.map(async (worker) => {
-    const source = sourceById.get(worker.sourceId);
-    return source ? sourceData(input.workspaceRoot, source, worker, windowFrom, windowTo) : undefined;
-  }));
-  const values = rows.filter((row): row is SourceDeliveryData => Boolean(row));
+  const workerBySource = new Map(input.run.sources.map((worker) => [worker.sourceId, worker]));
+  // A targeted repair Raw run may contain only a subset of sources. Delivery
+  // still represents the complete configured dataset and therefore always
+  // reads cumulative Canonical for every enabled source.
+  const values = await Promise.all(input.sources.map((source) => sourceData(
+    input.workspaceRoot,
+    source,
+    workerBySource.get(source.id) ?? { sourceId: source.id, status: "ok" },
+    windowFrom,
+    windowTo,
+  )));
   const cases: TimesUnavailableCase[] = [];
   const health: TimesSourceHealth[] = [];
   const articleRows: Array<{ canonical: CanonicalArticle; candidate?: Candidate }> = [];

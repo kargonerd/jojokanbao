@@ -23,6 +23,17 @@ const source: SourceConfig = {
   enabled: true,
 };
 
+const preservedSource: SourceConfig = {
+  ...source,
+  id: "preserved",
+  name: "Preserved News",
+  discovery: { kind: "official-rss", url: "https://preserved.test/feed.xml" },
+  content: {
+    ...source.content,
+    allowedHostnames: ["preserved.test"],
+  },
+};
+
 describe("Times Delivery writer", () => {
   it("does not report a successful interval with only policy exclusions as unavailable", async () => {
     const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "jojo-times-video-workspace-"));
@@ -197,6 +208,22 @@ describe("Times Delivery writer", () => {
     const shard = path.join(workspaceRoot, "canonical/news/example/articles/2026/08/2026-08-23.jsonl.gz");
     await mkdir(path.dirname(shard), { recursive: true });
     await writeFile(shard, gzipSync(`${JSON.stringify(canonical)}\n${JSON.stringify(staleSummaryCanonical)}\n${JSON.stringify(rolledOutCanonical)}\n`));
+    const preservedCanonical: CanonicalArticle = {
+      ...canonical,
+      articleId: "preserved:full",
+      source: { id: preservedSource.id, name: preservedSource.name },
+      canonicalUrl: "https://preserved.test/full",
+      title: "Full article from a source outside this targeted Raw run",
+      publishedAt: "2026-08-23T08:15:00.000Z",
+      contentHash: "preserved-hash",
+      provenance: {
+        ...canonical.provenance,
+        discovery: preservedSource.discovery,
+      },
+    };
+    const preservedShard = path.join(workspaceRoot, "canonical/news/preserved/articles/2026/08/2026-08-23.jsonl.gz");
+    await mkdir(path.dirname(preservedShard), { recursive: true });
+    await writeFile(preservedShard, gzipSync(`${JSON.stringify(preservedCanonical)}\n`));
     const run: RawRunManifest = {
       runId,
       startedAt: "2026-08-23T10:00:00.000Z",
@@ -273,7 +300,7 @@ describe("Times Delivery writer", () => {
       workspaceRoot,
       deliveryRoot,
       run,
-      sources: [source],
+      sources: [source, preservedSource],
       windowHours: 24,
       previousIndex,
       previousCatalog,
@@ -291,6 +318,13 @@ describe("Times Delivery writer", () => {
       browserFailed: 1,
       healthScore: 40,
     });
+    expect(index.sourceHealth[1]).toMatchObject({
+      source: { id: "preserved" },
+      status: "healthy",
+      discovered: 1,
+      delivered: 1,
+      unavailable: 0,
+    });
     expect(index.unavailableCases).toHaveLength(3);
     expect(index.unavailableCases).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "example:missing", reason: "metadata-only" }),
@@ -301,9 +335,10 @@ describe("Times Delivery writer", () => {
     const manifestKey = "content/newspapers/times/items/2026/08/2026-08-23/manifest.jox";
     const dateBytes = new Uint8Array(await readFile(path.join(deliveryRoot, ...manifestKey.split("/"))));
     const dateManifest = await gunzipJoxJson<TimesDateManifest>(dateBytes, manifestKey);
-    expect(dateManifest.metadata.articles).toHaveLength(2);
+    expect(dateManifest.metadata.articles).toHaveLength(3);
     expect(dateManifest.metadata.articles[0]).toMatchObject({ id: "example:full", contentStatus: "full" });
     expect(dateManifest.metadata.articles[1]).toMatchObject({ id: "example:rolled-out", contentStatus: "full" });
+    expect(dateManifest.metadata.articles[2]).toMatchObject({ id: "preserved:full", contentStatus: "full" });
     const catalogBytes = new Uint8Array(await readFile(path.join(deliveryRoot, "catalog.jox")));
     const catalog = await gunzipJoxJson<JojoCatalog>(catalogBytes, "catalog.jox");
     expect(catalog.datasets.map((dataset) => dataset.datasetId)).toEqual(["reader", "times"]);

@@ -20,6 +20,11 @@ on:
         type: string
         default: "50"
         required: true
+      refresh_hours:
+        description: Re-capture successful pages after this many hours; lower only for an explicit repair
+        type: string
+        default: "24"
+        required: true
 
 permissions:
   contents: read
@@ -39,6 +44,7 @@ jobs:
       TIMES_SINCE_HOURS: ${{ inputs.since_hours || '24' }}
       TIMES_SOURCES: ${{ inputs.sources || '' }}
       TIMES_MAX_PAGES: ${{ inputs.max_pages || '50' }}
+      TIMES_REFRESH_HOURS: ${{ inputs.refresh_hours || '24' }}
       JOJO_TIMES_PROXY_URI: ${{ secrets.JOJO_TIMES_PROXY_URI }}
       JOJO_TIMES_PROXY_SUBSCRIPTION: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION }}
     steps:
@@ -163,7 +169,7 @@ jobs:
             --timeout 25
             --maximum-response-bytes 5000000
             --maximum-page-bytes 25000000
-            --refresh-hours 24
+            --refresh-hours "$TIMES_REFRESH_HOURS"
             --retry-hours 2
             --browser-retries 4
             --browser-extension-path "$BPC_EXTENSION_PATH"

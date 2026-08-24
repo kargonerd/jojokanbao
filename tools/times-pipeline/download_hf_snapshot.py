@@ -136,10 +136,17 @@ class SnapshotDownloader:
             bundles = list(pool.map(source_bundle, source_rows))
 
         window_dates = _run_window_dates(run)
-        wanted_canonical = set().union(*(
-            _canonical_objects(source_id, dates | window_dates) for source_id, dates in bundles
-        )) if bundles else set()
         existing_canonical = self._tree_files("canonical/news")
+        candidate_dates = set().union(*(dates for _, dates in bundles)) if bundles else set()
+        wanted_dates = window_dates | candidate_dates
+        canonical_sources = {
+            PurePosixPath(object_name).parts[2]
+            for object_name in existing_canonical
+            if len(PurePosixPath(object_name).parts) >= 3
+        }
+        wanted_canonical = set().union(*(
+            _canonical_objects(source_id, wanted_dates) for source_id in canonical_sources
+        )) if canonical_sources else set()
         canonical_to_download = sorted(wanted_canonical & existing_canonical)
         with ThreadPoolExecutor(max_workers=8) as pool:
             list(pool.map(self._download, canonical_to_download))
