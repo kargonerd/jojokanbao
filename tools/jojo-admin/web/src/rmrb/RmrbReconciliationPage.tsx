@@ -47,19 +47,32 @@ function highlightedDifference(value: string, reference: string): ReactNode {
 
 function CandidateCard({
   candidate,
+  sourceDate,
   sourceTitle,
   disabled,
   onMerge,
 }: {
   candidate: RmrbReconciliationCandidate;
+  sourceDate: string;
   sourceTitle: string;
   disabled: boolean;
   onMerge: () => void;
 }) {
+  const dateDiffers = candidate.date !== sourceDate;
   return (
     <article className="rmrb-reconcile-candidate">
       <header>
-        <span>{candidate.date} · 第 {candidate.page} 版 · #{candidate.ordinal}</span>
+        <div className="rmrb-reconcile-candidate-meta">
+          {dateDiffers ? <span
+            className="rmrb-reconcile-date-change"
+            aria-label={`日期不同：JSONL ${sourceDate}，人民数据 ${candidate.date}`}
+          >
+            <span><small>JSONL</small><del>{sourceDate}</del></span>
+            <b aria-hidden="true">→</b>
+            <span><small>人民数据</small><mark>{candidate.date}</mark></span>
+          </span> : <span>{candidate.date}</span>}
+          <span>第 {candidate.page} 版 · #{candidate.ordinal}</span>
+        </div>
         <a href={candidate.peopleDataHref} target="_blank" rel="noreferrer">打开人民数据</a>
       </header>
       <h3>{highlightedDifference(candidate.title, sourceTitle)}</h3>
@@ -316,6 +329,7 @@ export function RmrbReconciliationPage() {
                   <CandidateCard
                     key={candidate.candidateKey}
                     candidate={candidate}
+                    sourceDate={current.date}
                     sourceTitle={current.title}
                     disabled={busy || Boolean(current.decision)}
                     onMerge={() => void decide("merge_candidate", candidate.candidateKey)}

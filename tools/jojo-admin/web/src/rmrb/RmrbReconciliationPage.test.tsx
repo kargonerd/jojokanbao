@@ -13,13 +13,13 @@ const first = {
   signalLabels: ["疑似一字之差"],
   sourcePageHref: "https://example.test/19460723/1",
   candidates: [{
-    candidateKey: "1946-07-23|1|9",
-    date: "1946-07-23",
+    candidateKey: "1946-07-24|1|9",
+    date: "1946-07-24",
     page: 1,
     ordinal: 9,
     title: "梁潄溟发表谈话",
     editDistance: 1,
-    relations: ["suspected_title_typo"],
+    relations: ["suspected_title_typo", "adjacent_date"],
     peopleDataHref: "https://example.test/candidate",
   }],
 };
@@ -75,6 +75,7 @@ describe("RmrbReconciliationPage", () => {
     expect(screen.getByText((_, node) => (
       node?.tagName === "H3" && node.textContent === "梁潄溟发表谈话"
     ))).toBeInTheDocument();
+    expect(screen.getByLabelText("日期不同：JSONL 1946-07-23，人民数据 1946-07-24")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "合并到这个候选" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "另一篇" })).toBeInTheDocument());
 
@@ -84,7 +85,7 @@ describe("RmrbReconciliationPage", () => {
       page: 1,
       ordinal: 21,
       resolution: "merge_candidate",
-      candidateKey: "1946-07-23|1|9",
+      candidateKey: "1946-07-24|1|9",
     });
   });
 

@@ -1929,7 +1929,45 @@ button {
   background: #fbfaf7;
   box-shadow: 3px 3px 0 rgba(70, 58, 47, .07);
 }
-.rmrb-reconcile-candidate > header span {
+.rmrb-reconcile-candidate-meta {
+  display: grid;
+  gap: 5px;
+  color: #746c63;
+  font: 9px ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.rmrb-reconcile-date-change {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  color: #4f4841;
+}
+.rmrb-reconcile-date-change > span {
+  display: inline-flex;
+  gap: 4px;
+  align-items: baseline;
+}
+.rmrb-reconcile-date-change small {
+  color: #8b8177;
+  font: 8px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: .04em;
+}
+.rmrb-reconcile-date-change del {
+  color: #796e64;
+  text-decoration-color: var(--color-red);
+  text-decoration-thickness: 1px;
+}
+.rmrb-reconcile-date-change b {
+  color: var(--color-red);
+  font-size: 12px;
+}
+.rmrb-reconcile-candidate .rmrb-reconcile-date-change mark {
+  padding: 2px 4px;
+  color: #fff;
+  background: var(--color-red);
+  box-shadow: none;
+}
+.rmrb-reconcile-candidate-meta > span:last-child {
   color: #746c63;
   font: 9px ui-monospace, SFMono-Regular, Consolas, monospace;
 }
