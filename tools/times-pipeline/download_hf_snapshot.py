@@ -7,6 +7,7 @@ import gzip
 import json
 import os
 from pathlib import Path, PurePosixPath
+import time
 from typing import Any
 
 from huggingface_hub import HfApi, hf_hub_download
@@ -83,14 +84,21 @@ class SnapshotDownloader:
         self.revision = self.api.repo_info(repo_id=repo_id, repo_type="dataset").sha
 
     def _download(self, object_name: str) -> Path:
-        return Path(hf_hub_download(
-            repo_id=self.repo_id,
-            repo_type="dataset",
-            filename=object_name,
-            revision=self.revision,
-            local_dir=self.output,
-            token=self.token,
-        ))
+        for attempt in range(4):
+            try:
+                return Path(hf_hub_download(
+                    repo_id=self.repo_id,
+                    repo_type="dataset",
+                    filename=object_name,
+                    revision=self.revision,
+                    local_dir=self.output,
+                    token=self.token,
+                ))
+            except Exception:
+                if attempt == 3:
+                    raise
+                time.sleep(2**attempt)
+        raise AssertionError("unreachable")
 
     def _tree_files(self, root: str) -> set[str]:
         try:
@@ -148,7 +156,7 @@ class SnapshotDownloader:
             _canonical_objects(source_id, wanted_dates) for source_id in canonical_sources
         )) if canonical_sources else set()
         canonical_to_download = sorted(wanted_canonical & existing_canonical)
-        with ThreadPoolExecutor(max_workers=8) as pool:
+        with ThreadPoolExecutor(max_workers=4) as pool:
             list(pool.map(self._download, canonical_to_download))
 
         return {

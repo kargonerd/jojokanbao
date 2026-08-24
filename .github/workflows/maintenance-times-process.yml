@@ -26,6 +26,8 @@ jobs:
       TIMES_CDN_BASE: ${{ vars.TIMES_CDN_BASE || vars.CONTENT_CDN_BASE || 'https://blacknews.jojokanbao.cn' }}
       TENCENTCLOUD_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
       TENCENTCLOUD_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
+      HF_HUB_ETAG_TIMEOUT: "30"
+      HF_HUB_DOWNLOAD_TIMEOUT: "60"
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
