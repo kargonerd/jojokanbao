@@ -44,3 +44,27 @@ def test_supplement_input_requires_safe_classification_report(tmp_path: Path):
     }), encoding="utf-8")
     with pytest.raises(ValueError, match="not safe"):
         MODULE.load_supplement_rows(source, report)
+
+
+@pytest.mark.parametrize(
+    ("status", "message"),
+    [
+        (409, "Conflict"),
+        (412, "Precondition Failed"),
+        (400, "The branch was updated since you opened this page"),
+    ],
+)
+def test_hf_commit_conflict_recognizes_stale_parent(status: int, message: str):
+    response = type("Response", (), {"status_code": status})()
+    exc = RuntimeError(message)
+    exc.response = response
+
+    assert MODULE.is_hf_commit_conflict(exc) is True
+
+
+def test_hf_commit_conflict_does_not_hide_transient_failure():
+    response = type("Response", (), {"status_code": 503})()
+    exc = RuntimeError("Service Unavailable")
+    exc.response = response
+
+    assert MODULE.is_hf_commit_conflict(exc) is False

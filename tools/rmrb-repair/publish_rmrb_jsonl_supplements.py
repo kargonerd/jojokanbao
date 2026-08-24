@@ -136,9 +136,7 @@ def upload_hf_year(
             )
             return str(result.oid)
         except Exception as exc:
-            message = str(exc).lower()
-            status = getattr(getattr(exc, "response", None), "status_code", None)
-            if status == 409 or "parent commit" in message or "a commit has happened" in message:
+            if is_hf_commit_conflict(exc):
                 raise
             if attempt == 20:
                 raise
@@ -150,6 +148,21 @@ def upload_hf_year(
             )
             time.sleep(delay)
     raise AssertionError("unreachable")
+
+
+def is_hf_commit_conflict(exc: Exception) -> bool:
+    """Return true when the staged parent is no longer HF's branch head."""
+    message = str(exc).lower()
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    return status in {409, 412} or any(
+        marker in message
+        for marker in (
+            "parent commit",
+            "a commit has happened",
+            "branch was updated",
+            "precondition failed",
+        )
+    )
 
 
 def save_state(path: Path, state: dict[str, Any]) -> None:
@@ -343,11 +356,7 @@ def main() -> None:
                         args.hf_workers,
                     )
                 except Exception as exc:
-                    message = str(exc).lower()
-                    if (
-                        conflict_attempt < 5
-                        and ("parent commit" in message or "a commit has happened" in message)
-                    ):
+                    if conflict_attempt < 5 and is_hf_commit_conflict(exc):
                         reset_stage(stage_path, args.work)
                         continue
                     raise
