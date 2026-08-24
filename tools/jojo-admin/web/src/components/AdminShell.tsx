@@ -9,6 +9,7 @@ const items = [
   { to: "/moderation", label: "评论审核", note: "举报与处置" },
   { to: "/agent", label: "Agent 管理", note: "凭据与连接" },
   { to: "/rmrb-review", label: "人民日报复核", note: "缺失正文" },
+  { to: "/rmrb-title-review", label: "标题对勘", note: "JSONL 冲突" },
 ];
 
 export function AdminShell() {

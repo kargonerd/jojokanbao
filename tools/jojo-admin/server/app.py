@@ -32,6 +32,7 @@ from feature_flag_routes import feature_flags_blueprint
 from agent_admin_routes import agent_admin_blueprint
 from annotation_moderation_routes import annotation_moderation_blueprint
 from rmrb_review_routes import rmrb_review_blueprint
+from rmrb_reconciliation_routes import rmrb_reconciliation_blueprint
 import tkinter as tk
 from tkinter import filedialog
 import requests
@@ -50,6 +51,7 @@ app.register_blueprint(feature_flags_blueprint)
 app.register_blueprint(agent_admin_blueprint)
 app.register_blueprint(annotation_moderation_blueprint)
 app.register_blueprint(rmrb_review_blueprint)
+app.register_blueprint(rmrb_reconciliation_blueprint)
 matcher = FileNameMatcher('config.json')
 
 # 启动时清理过期的临时目录（清理1小时以上未修改的）
