@@ -25,7 +25,7 @@ Delivery，不保存 WACZ、Canonical 或任务状态。
 ```text
 Capture workflow（每 10 分钟）
   │
-  ├─ JOJO 来源适配器 / 官方 RSS / sitemap / 迁移期 RSSHub 兼容入口
+  ├─ JOJO 来源适配器 / 官方 RSS / sitemap / 官方栏目页
   ├─ canonical URL、稳定 article id、发布时间和来源分类
   ├─ 新文章与到期重试进入 Playwright Chromium + BPC
   ├─ 原始请求、响应和页面资源写入 WARC/WACZ
@@ -80,9 +80,7 @@ Capture 成功以 HF Raw commit 成功为准。Process 先提交 HF Canonical，
 - `sitemap`：读取出版方官方 sitemap，只负责发现 URL 和更新时间。
 - `official-rss-list`：合并同一媒体的多个官方分类 feed，例如 CNA。
 - `site-adapter/html-news-page`：抓取没有稳定 feed 的栏目页，支持限定 URL 前缀和文章卡片 selector。
-- `site-adapter/thepaper-channel`：直接复用澎湃官方频道 API 与文章页数据，跳过视频，不经过失效的
-  RSSHub channel route。
-- `rsshub-package`：只保留给尚未移植的来源，作为迁移期兼容策略和实现对照，不是新架构的核心。
+- `site-adapter/thepaper-channel`：直接读取澎湃官方频道 API 与文章页数据，并跳过视频。
 
 `source-adapter` 同时声明 `driver: http | browser`。HTTP 是当前默认；浏览器发现通过
 `DiscoveryRuntime.browser.open()` 注入，因此将来遇到必须渲染栏目页的媒体不需要改变适配器契约。
@@ -106,7 +104,7 @@ Chromium 和 BPC 版本都记录到脱敏 manifest。归档器直接生成标准
 `X-JOJO-Capture-Source: browser-dom-fallback`；原始响应可读时绝不替换。Canonical 仍只消费通过质量
 门槛的正文，Raw 可区分网络原文和 DOM 兜底。
 
-每家来源在独立 Node worker 中运行，隔离来源代码、迁移期 RSSHub 配置和代理状态。父进程限制并发；单个 worker
+每家来源在独立 Node worker 中运行，隔离来源代码和代理状态。父进程限制并发；单个 worker
 崩溃、超时或代理失败不影响其他媒体。
 
 ## 4. 媒体与栏目目录
@@ -117,8 +115,7 @@ Times、Axios、NPR、Nikkei Asia、联合早报、Al Jazeera、SCMP、新华网
 生产目录中。
 
 每家媒体的 `sections` 是经产品选择后的出版方栏目白名单，保存稳定栏目 ID、官网 URL 和地区/主题/
-综合流类型。`multi` discovery 可以为同一媒体绑定多个 JOJO 来源适配器、官方 RSS、sitemap、栏目页适配器
-或迁移期 RSSHub route；
+综合流类型。`multi` discovery 可以为同一媒体绑定多个 JOJO 来源适配器、官方 RSS、sitemap 或栏目页适配器；
 同一文章命中多个父子栏目时按稳定 article id 合并，并在 Raw、Canonical 和 Delivery 中保留全部
 `publisherSections`，供前端筛选和后续分类模型使用。
 
@@ -126,8 +123,8 @@ Times、Axios、NPR、Nikkei Asia、联合早报、Al Jazeera、SCMP、新华网
 时间窗口内没有文章属于正常状态；只有栏目入口真实失败且没有其他入口补齐，或使用了未分类 fallback，
 才标记栏目降级。
 
-同一 route 的文章逐篇做正文质量判定，不能因为少量长稿就把整家媒体标成“全文”。NPR、联合早报、
-SCMP 和多家中国媒体已有稳定 route 正文；AP 等公开原页可由浏览器正文回填；Reuters、Bloomberg、
+同一入口的文章逐篇做正文质量判定，不能因为少量长稿就把整家媒体标成“全文”。NPR、联合早报、
+SCMP 和多家中国媒体可从官方 feed/API 或原页取得正文；AP 等公开原页可由浏览器正文回填；Reuters、Bloomberg、
 NYT、FT 等限制页仍会真实显示为摘要、metadata 或不可用案例，不会伪装成全文。
 
 ## 5. HF 单仓库存储契约
@@ -151,7 +148,7 @@ raw/web-archives/times/YYYY/MM/DD/RUN_ID/
 └─ times-RUN_ID.wacz
 ```
 
-`discovery.json.gz` 保存来源 API 数据、RSSHub Data、官方 XML 的解析结果或 sitemap 输出；发现阶段的原始 HTTP
+`discovery.json.gz` 保存来源 API 数据、官方 XML、栏目 HTML 的解析结果或 sitemap 输出；发现阶段的原始 HTTP
 交换写入 `network/`，浏览器页面及其资源写入共享 WACZ。`candidates.jsonl.gz` 是统一文章候选清单。
 `manifest.json` 记录对象 SHA-256、
 媒体、抓取方式、版本、计数、错误和完成状态，但不记录 Cookie、Authorization、代理 URI、订阅地址
@@ -259,7 +256,7 @@ URL 归一化去掉追踪参数和 fragment，跟随重定向并采用 `rel=cano
 
 - `maintenance-times-capture.yml`：每十分钟，single-flight，只需要 HF 写权限和媒体抓取代理配置。
 - `maintenance-times-process.yml`：错开五分钟，读取同一 HF repo 的 Raw，提交 Canonical，再使用 B2 凭据发布 Delivery。
-- 迁移期 RSSHub package、Chromium、BPC 和 Python/Node 依赖都锁定版本。
+- Chromium、BPC 和 Python/Node 依赖都锁定版本。
 - 代理订阅只存在于 GitHub Secret；运行时由固定版本 Mihomo 写入临时配置，日志和上传产物不记录
   订阅 URL、节点名、Cookie、Authorization 或控制密钥。
 - 捕获任务设置软预算，停止领取新浏览器页面后仍预留时间完成 WACZ 和 HF commit。

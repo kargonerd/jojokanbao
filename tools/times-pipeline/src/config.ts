@@ -26,27 +26,48 @@ function credentialFreeHttpsUrl(value: unknown, field: string): string {
   return url;
 }
 
+function credentialFreeWebUrl(value: unknown, field: string): string {
+  const url = requiredString(value, field);
+  const parsed = new URL(url);
+  if ((parsed.protocol !== "https:" && parsed.protocol !== "http:") || parsed.username || parsed.password) {
+    throw new Error(`${field} must be a credential-free HTTP(S) URL`);
+  }
+  return url;
+}
+
 function parseDiscoveryEndpoint(value: unknown, field: string): DiscoveryEndpoint {
   if (!value || typeof value !== "object") throw new Error(`${field} must be an object`);
   const row = value as Record<string, unknown>;
   const kind = requiredString(row.kind, `${field}.kind`);
-  if (kind === "rsshub-package") {
-    const route = requiredString(row.route, `${field}.route`);
-    if (!route.startsWith("/")) throw new Error(`${field}.route must start with /`);
-    return { kind, route };
-  }
   if (kind === "source-adapter") {
     const adapter = requiredString(row.adapter, `${field}.adapter`);
-    if (adapter !== "ap") throw new Error(`${field}.adapter is unsupported: ${adapter}`);
     const driver = requiredString(row.driver, `${field}.driver`);
     if (driver !== "http" && driver !== "browser") throw new Error(`${field}.driver must be http or browser`);
-    const sectionPath = requiredString(row.path, `${field}.path`);
-    if (!sectionPath.startsWith("/")) throw new Error(`${field}.path must start with /`);
     const maximumItems = row.maximumItems;
     if (!Number.isInteger(maximumItems) || (maximumItems as number) < 1 || (maximumItems as number) > 100) {
       throw new Error(`${field}.maximumItems must be an integer from 1 to 100`);
     }
-    return { kind, adapter, driver, path: sectionPath, maximumItems: maximumItems as number };
+    if (adapter === "ap") {
+      const sectionPath = requiredString(row.path, `${field}.path`);
+      if (!sectionPath.startsWith("/")) throw new Error(`${field}.path must start with /`);
+      return { kind, adapter, driver, path: sectionPath, maximumItems: maximumItems as number };
+    }
+    if (adapter === "nikkei") {
+      const stream = requiredString(row.stream, `${field}.stream`);
+      if (stream !== "latest") throw new Error(`${field}.stream must be latest`);
+      return { kind, adapter, driver, stream, maximumItems: maximumItems as number };
+    }
+    if (adapter === "cls") {
+      const categoryId = requiredString(row.categoryId, `${field}.categoryId`);
+      if (!/^\d+$/u.test(categoryId)) throw new Error(`${field}.categoryId must contain only digits`);
+      return { kind, adapter, driver, categoryId, maximumItems: maximumItems as number };
+    }
+    if (adapter === "dw") {
+      const navigationId = requiredString(row.navigationId, `${field}.navigationId`);
+      if (!/^\d+$/u.test(navigationId)) throw new Error(`${field}.navigationId must contain only digits`);
+      return { kind, adapter, driver, navigationId, maximumItems: maximumItems as number };
+    }
+    throw new Error(`${field}.adapter is unsupported: ${adapter}`);
   }
   if (kind === "official-rss-list") {
     if (!Array.isArray(row.urls) || row.urls.length === 0 || row.urls.length > 20) {
@@ -90,7 +111,7 @@ function parseDiscoveryEndpoint(value: unknown, field: string): DiscoveryEndpoin
     return {
       kind,
       adapter,
-      url: credentialFreeHttpsUrl(row.url, `${field}.url`),
+      url: credentialFreeWebUrl(row.url, `${field}.url`),
       articlePathPrefixes,
       ...(linkSelector ? { linkSelector } : {}),
       maximumItems: maximumItems as number,

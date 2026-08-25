@@ -13,7 +13,7 @@ from times_pipeline.jox import read_jox_json
 
 
 NOW = datetime(2026, 8, 22, 12, 0, tzinfo=timezone.utc)
-SOURCE = Source("example", "Example", "en", None, "https://publisher.example.test/feed", "summary-only")
+SOURCE = Source("example", "Example", "en", "https://publisher.example.test/feed", "summary-only")
 
 
 def article(identifier: str, hour: int, day: str = "2026-08-22") -> Article:

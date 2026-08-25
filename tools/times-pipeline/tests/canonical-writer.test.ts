@@ -23,7 +23,7 @@ const source: SourceConfig = {
 };
 
 describe("canonical writer", () => {
-  it("removes RSSHub parser component placeholders from publishable content", () => {
+  it("removes upstream parser component placeholders from publishable content", () => {
     expect(removeParserArtifacts('<p>Before</p>Unhandled type: inline-plus-widget {"type":"inline-plus-widget"}<p>After</p>'))
       .toBe("<p>Before</p> <p>After</p>");
   });

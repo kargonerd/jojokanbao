@@ -51,6 +51,40 @@ describe("HTML news page adapter", () => {
     });
   });
 
+  it("supports an HTTP listing with HTTPS links and Chinese article timestamps", async () => {
+    const chinese: SourceConfig = {
+      ...source,
+      id: "people",
+      language: "zh-CN",
+      discovery: {
+        kind: "site-adapter",
+        adapter: "html-news-page",
+        url: "http://news.example.test/",
+        articlePathPrefixes: ["/n1/"],
+        maximumItems: 20,
+      },
+    };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "http://news.example.test/") {
+        return new Response('<a href="https://news.example.test/n1/2026/0825/story.html">Story</a>', { status: 200 });
+      }
+      expect(url).toBe("http://news.example.test/n1/2026/0825/story.html");
+      return new Response(`
+        <h1><img alt="logo"></h1><h1>真正的文章标题</h1>
+        <span class="pubtime"></span><b id="newstime">2026年08月25日08:44</b>
+        <div id="rwb_zw"><p>这是足够长的文章正文段落，用于验证来源页面解析。</p></div>
+      `, { status: 200 });
+    }));
+
+    const result = await discoverSiteAdapter(chinese, "2026-08-25T05:10:00Z");
+
+    expect(result.candidates[0]).toMatchObject({
+      title: "真正的文章标题",
+      publishedAt: "2026-08-25T00:44:00.000Z",
+    });
+  });
+
   it("uses The Paper channel API directly and excludes video details", async () => {
     const thepaper: SourceConfig = {
       ...source,

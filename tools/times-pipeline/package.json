@@ -19,7 +19,6 @@
     "@jojo/content": "workspace:*",
     "cheerio": "1.2.0",
     "fast-xml-parser": "5.2.5",
-    "rsshub": "1.0.0-master.5151c32",
     "undici": "8.10.0"
   },
   "devDependencies": {

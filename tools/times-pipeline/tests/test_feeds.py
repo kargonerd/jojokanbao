@@ -20,7 +20,7 @@ RSS = b"""<?xml version='1.0' encoding='UTF-8'?>
 
 
 def source(content_policy: str = "summary-only") -> Source:
-    return Source("example", "Example", "en", None, "https://publisher.example.test/feed", content_policy)
+    return Source("example", "Example", "en", "https://publisher.example.test/feed", content_policy)
 
 
 def test_parse_feed_keeps_summary_only_until_full_text_is_explicitly_licensed() -> None:
@@ -84,23 +84,6 @@ def test_load_sources_accepts_multiple_public_feeds(tmp_path: Path) -> None:
     )
 
 
-def test_production_catalog_contains_the_required_twenty_two_sources() -> None:
-    config = Path(__file__).resolve().parents[1] / "sources.json"
-    sources = load_sources(config)
-
-    assert [source.id for source in sources] == [
-        "ap", "guardian", "bloomberg-markets", "nyt", "reuters", "ft", "axios",
-        "npr-news", "nikkei", "zaobao", "aljazeera-english", "scmp", "xinhua",
-        "people", "chinanews", "thepaper", "cls", "cna-singapore",
-        "dw", "focus-taiwan", "africanews",
-        "agencia-brasil",
-    ]
-    assert "wsj" not in {source.id for source in sources}
-    assert {
-        source.id for source in sources if source.content_policy == "feed-body"
-    } == {"people", "chinanews", "thepaper", "cls"}
-
-
 def test_collect_sources_filters_to_requested_time_window() -> None:
     recent_rss = RSS.replace(
         b"</channel>",
@@ -114,8 +97,6 @@ def test_collect_sources_filters_to_requested_time_window() -> None:
 
     articles, _raw_feeds, statuses = asyncio.run(collect_sources(
         (source(),),
-        rsshub_url="https://rsshub.example.test",
-        rsshub_access_key=None,
         now=datetime(2026, 8, 22, 12, tzinfo=timezone.utc),
         since=datetime(2026, 8, 22, 11, tzinfo=timezone.utc),
         transport=httpx.MockTransport(handler),
@@ -124,37 +105,6 @@ def test_collect_sources_filters_to_requested_time_window() -> None:
     assert [article.title for article in articles] == ["Recent"]
     assert statuses[0]["feedItems"] == 2
     assert statuses[0]["items"] == 1
-
-
-def test_collect_sources_never_sends_rsshub_key_to_public_feed() -> None:
-    requests: list[httpx.Request] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        requests.append(request)
-        return httpx.Response(200, content=RSS, headers={"Content-Type": "application/rss+xml"})
-
-    sources = (
-        Source("protected", "Protected", "en", "/protected", None, "summary-only"),
-        Source("public", "Public", "en", None, "https://publisher.example.test/feed", "summary-only"),
-    )
-    articles, raw_feeds, statuses = asyncio.run(collect_sources(
-        sources,
-        rsshub_url="https://rsshub.example.test",
-        rsshub_access_key="protected-key",
-        now=datetime(2026, 8, 22, tzinfo=timezone.utc),
-        transport=httpx.MockTransport(handler),
-    ))
-
-    assert len(articles) == 2
-    assert len(raw_feeds) == 2
-    assert {status["status"] for status in statuses} == {"ok"}
-    rsshub_request = next(request for request in requests if request.url.host == "rsshub.example.test")
-    public_request = next(request for request in requests if request.url.host == "publisher.example.test")
-    assert rsshub_request.url.params["key"] == "protected-key"
-    assert public_request.url.params.get("key") is None
-    protected_feed = next(feed for feed in raw_feeds if feed.source_id == "protected")
-    assert "protected-key" not in protected_feed.url
-    assert all(name.casefold() not in {"authorization", "cookie", "x-api-key"} for name, _value in protected_feed.request_headers)
 
 
 def test_collect_sources_retries_transient_feed_failure() -> None:
@@ -168,9 +118,7 @@ def test_collect_sources_retries_transient_feed_failure() -> None:
         return httpx.Response(200, content=RSS, headers={"Content-Type": "application/rss+xml"})
 
     articles, raw_feeds, statuses = asyncio.run(collect_sources(
-        (Source("protected", "Protected", "en", "/protected", None, "summary-only"),),
-        rsshub_url="https://rsshub.example.test",
-        rsshub_access_key="protected-key",
+        (Source("example", "Example", "en", "https://publisher.example.test/feed", "summary-only"),),
         now=datetime(2026, 8, 22, tzinfo=timezone.utc),
         transport=httpx.MockTransport(handler),
     ))
@@ -179,33 +127,3 @@ def test_collect_sources_retries_transient_feed_failure() -> None:
     assert len(raw_feeds) == 1
     assert statuses[0]["status"] == "ok"
     assert statuses[0]["attempts"] == 2
-
-
-def test_collect_sources_limits_rsshub_concurrency() -> None:
-    active = 0
-    maximum_active = 0
-
-    async def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal active, maximum_active
-        active += 1
-        maximum_active = max(maximum_active, active)
-        await asyncio.sleep(0.01)
-        active -= 1
-        return httpx.Response(200, content=RSS, headers={"Content-Type": "application/rss+xml"})
-
-    sources = tuple(
-        Source(f"protected-{index}", f"Protected {index}", "en", f"/protected/{index}", None, "summary-only")
-        for index in range(5)
-    )
-    articles, _raw_feeds, statuses = asyncio.run(collect_sources(
-        sources,
-        rsshub_url="https://rsshub.example.test",
-        rsshub_access_key="protected-key",
-        rsshub_workers=2,
-        now=datetime(2026, 8, 22, tzinfo=timezone.utc),
-        transport=httpx.MockTransport(handler),
-    ))
-
-    assert len(articles) == 5
-    assert {status["status"] for status in statuses} == {"ok"}
-    assert maximum_active == 2

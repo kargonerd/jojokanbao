@@ -1,7 +1,7 @@
 # JOJO Times offline pipeline
 
 Times v2 是 JOJO 看报的离线时事流水线，不提供前端请求触发的抓取 API。完整契约见
-[DESIGN.md](DESIGN.md)，媒体实测记录见 [FULL_TEXT_AUDIT.md](FULL_TEXT_AUDIT.md)。
+[DESIGN.md](DESIGN.md)。
 
 ## 当前覆盖
 
@@ -12,16 +12,14 @@ Financial Times、Axios、NPR、Nikkei Asia、联合早报、Al Jazeera、SCMP�
 
 发现和正文是两套独立策略：
 
-- JOJO 原生来源适配器：直接调用出版方的轻量入口。AP 参考实现直接读取其 persisted GraphQL，
-  不运行 RSSHub，也不逐篇打开栏目页。
+- JOJO 原生来源适配器：直接调用出版方的轻量入口。来源特例按
+  `src/sources/{source}/discover.ts|page.ts|process.ts` 组织；AP、Nikkei、财联社和 DW 当前使用该结构。
 - 官方 RSS / RSS 列表：直接抓取并保留原始 XML。
 - Sitemap：目前用于 Reuters 官方 URL 发现。
 - Multi：合并同一媒体的多个选定栏目入口，按文章 ID 去重并保留所有命中的出版方栏目。
 - HTML 栏目页适配器：用于 Bloomberg Asia/AI、Axios、Nikkei 地区页、新华网、人民网大湾区和
   Agência Brasil 英文版等没有可用 RSS 的栏目；可用 CSS selector 只选择文章卡片，避免把导航链接当文章。
-- 官方内容 API 适配器：澎湃频道直接读取其频道 API 和文章页 `__NEXT_DATA__`，不依赖当前已损坏的
-  RSSHub channel route，并在发现阶段跳过视频。
-- RSSHub package：迁移期间只作为尚未移植来源的兼容入口；新来源不以 RSSHub route 作为生产核心。
+- 官方内容 API 适配器：澎湃频道直接读取其频道 API 和文章页 `__NEXT_DATA__`，并在发现阶段跳过视频。
 - 发现驱动：来源适配器显式声明 `driver: http | browser`。当前 AP 使用 `http`；浏览器 runtime 已作为
   注入接口保留，但尚未给任何生产发现适配器启用，误配会直接失败而不是静默降级。
 - `discovery-body`：逐篇质量门槛通过后直接标为全文。
@@ -29,9 +27,8 @@ Financial Times、Axios、NPR、Nikkei Asia、联合早报、Al Jazeera、SCMP�
   通用正文质量门槛的页面回填为全文。
 - `discovery-summary`：正文不可用时保留真实摘要，绝不把 metadata-only 伪装成摘要。
 
-同一入口内允许全文与摘要混合，正文质量逐篇判定。尚未迁移的 NPR route 所需 gzip 兼容修复和可录制
-fetch hook 暂时保存在锁定 RSSHub package patch 中。栏目健康度按入口是否可用计算；栏目入口正常但 24 小时
-内没有新稿，不会误报为降级。
+同一入口内允许全文与摘要混合，正文质量逐篇判定。栏目健康度按入口是否可用计算；栏目入口正常但
+24 小时内没有新稿，不会误报为降级。
 
 AP 是第一条 JOJO 原生完整参考流：4 个栏目只产生 4 次发现请求；候选 URL 再进入统一 Chromium
 归档，随后生成按媒体 Canonical 和 B2 格式 Delivery。2026-08-25 的本地两小时回归发现 18 篇，
@@ -147,4 +144,4 @@ pnpm --filter @jojo/times-pipeline test
 python -m pytest tools/times-pipeline/tests/test_webarchive.py tools/times-pipeline/tests/test_prepare_proxy.py -q
 ```
 
-旧 Python v1 流程暂时保留作历史结果对照；v2 不再依赖 `jojo-news-archive-runner` 或 Olds API。
+旧 Python v1 采集入口已经移除；v2 不依赖外部聚合服务、`jojo-news-archive-runner` 或 Olds API。

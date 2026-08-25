@@ -52,7 +52,8 @@ function articleLinks(html: string, pageUrl: string, prefixes: string[], maximum
     if (!href || links.length >= maximumItems) return;
     try {
       const url = new URL(href, page);
-      if (url.origin !== page.origin || !prefixes.some((prefix) => url.pathname.startsWith(prefix))) return;
+      if (url.hostname !== page.hostname || !prefixes.some((prefix) => url.pathname.startsWith(prefix))) return;
+      if (page.protocol === "http:") url.protocol = "http:";
       url.hash = "";
       const normalized = url.toString();
       if (seen.has(normalized)) return;
@@ -74,15 +75,27 @@ function bodyHtml(value: string): string {
 function publicationDate(value: unknown, language: string): string | undefined {
   const raw = text(value);
   if (!raw) return undefined;
-  if (language.toLowerCase().startsWith("zh") && /^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?$/u.test(raw)) {
-    const local = raw.length === 10 ? `${raw}T00:00:00+08:00` : `${raw.replace(" ", "T")}+08:00`;
-    return isoDate(local);
+  if (language.toLowerCase().startsWith("zh")) {
+    const isoLocal = raw.match(/(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}(?::\d{2})?))?/u);
+    if (isoLocal) {
+      const local = isoLocal[2] ? `${isoLocal[1]}T${isoLocal[2]}+08:00` : `${isoLocal[1]}T00:00:00+08:00`;
+      return isoDate(local);
+    }
+    const chinese = raw.match(/(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})(?::(\d{2}))?/u);
+    if (chinese) {
+      const [, year, month, day, hour, minute, second = "00"] = chinese;
+      return isoDate(`${year}-${month?.padStart(2, "0")}-${day?.padStart(2, "0")}T${hour?.padStart(2, "0")}:${minute}:${second}+08:00`);
+    }
   }
   return isoDate(raw);
 }
 
+function firstNonEmptyText(document: ReturnType<typeof load>, selector: string): string | undefined {
+  return document(selector).toArray().map((element) => plainText(document(element).text())).find(Boolean);
+}
+
 function fallbackBody(document: ReturnType<typeof load>): string | undefined {
-  const container = document("[itemprop='articleBody'], #detailContent, .left_zw, .article-body, .article__body, .content_desc, article").first();
+  const container = document("[itemprop='articleBody'], #detailContent, #rwb_zw, .rm_txt_con, .left_zw, .article-body, .articleBody, .article__body, .content_desc, article").first();
   if (!container.length) return undefined;
   container.find("script, style, nav, footer, header, aside, form, noscript, .adInContent").remove();
   return container.html()?.trim() || undefined;
@@ -256,17 +269,20 @@ export async function discoverSiteAdapter(source: SourceConfig, fetchedAt: strin
       const html = await fetchHtml(source.id, sourceUrl);
       const document = load(html);
       const json = articleJson(html);
-      const title = plainText(
-        text(json?.headline)
-          ?? document('meta[property="og:title"]').attr("content")
-          ?? document("h1").first().text()
-          ?? document("title").text(),
-      ).trim();
+      const heading = document("h1").toArray()
+        .map((element) => plainText(document(element).text()))
+        .toSorted((left, right) => right.length - left.length)[0];
+      const title = [
+        text(json?.headline),
+        document('meta[property="og:title"]').attr("content"),
+        heading,
+        document("title").text(),
+      ].map(plainText).find(Boolean)?.trim() ?? "";
       const publishedAt = publicationDate(json?.datePublished, source.language)
         ?? publicationDate(document('meta[property="article:published_time"]').attr("content"), source.language)
+        ?? publicationDate(firstNonEmptyText(document, "#newstime, #pubtime_baidu, .pubtime, .content_left_time, .mheader .info"), source.language)
         ?? publicationDate(document('meta[name="publishdate"], meta[name="date"]').first().attr("content"), source.language)
-        ?? publicationDate(document("time[datetime]").first().attr("datetime"), source.language)
-        ?? publicationDate(document("#pubtime_baidu, .pubtime").first().text(), source.language);
+        ?? publicationDate(document("time[datetime]").first().attr("datetime"), source.language);
       if (!title || !publishedAt) return undefined;
       const declaredUrl = text(json?.url) ?? document('link[rel="canonical"]').attr("href") ?? sourceUrl;
       const canonicalUrl = normalizeArticleUrl(new URL(declaredUrl, sourceUrl).toString());

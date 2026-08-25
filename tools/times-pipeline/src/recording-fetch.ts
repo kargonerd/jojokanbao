@@ -7,7 +7,6 @@ import type { RecordedExchange } from "./types.js";
 
 const REDACTED_REQUEST_HEADERS = new Set(["authorization", "cookie", "proxy-authorization", "x-api-key"]);
 const REDACTED_RESPONSE_HEADERS = new Set(["set-cookie"]);
-const RSSHUB_FETCH_HOOK = Symbol.for("jojo.rsshub.fetch");
 
 export async function normalizeEncodedResponse(response: Response): Promise<Response> {
   const body = Buffer.from(await response.clone().arrayBuffer());
@@ -80,9 +79,7 @@ export class RecordingFetch {
         throw error;
       }
     };
-    Reflect.set(globalThis, RSSHUB_FETCH_HOOK, globalThis.fetch);
     return () => {
-      Reflect.deleteProperty(globalThis, RSSHUB_FETCH_HOOK);
       globalThis.fetch = this.nativeFetch;
       if (previousDispatcher) setGlobalDispatcher(previousDispatcher);
       if (proxyAgent) void proxyAgent.close();

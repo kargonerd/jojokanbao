@@ -14,13 +14,38 @@ export interface DiscoveryRuntime {
   browser?: BrowserDiscoveryRuntime;
 }
 
+export interface SourcePagePolicy {
+  capture: "browser" | "http";
+  bodySelectors: string[];
+}
+
 export type DiscoveryEndpoint =
-  | { kind: "rsshub-package"; route: string }
   | {
       kind: "source-adapter";
       adapter: "ap";
       driver: DiscoveryDriver;
       path: string;
+      maximumItems: number;
+    }
+  | {
+      kind: "source-adapter";
+      adapter: "nikkei";
+      driver: DiscoveryDriver;
+      stream: "latest";
+      maximumItems: number;
+    }
+  | {
+      kind: "source-adapter";
+      adapter: "cls";
+      driver: DiscoveryDriver;
+      categoryId: string;
+      maximumItems: number;
+    }
+  | {
+      kind: "source-adapter";
+      adapter: "dw";
+      driver: DiscoveryDriver;
+      navigationId: string;
       maximumItems: number;
     }
   | { kind: "official-rss"; url: string }
@@ -118,11 +143,12 @@ export interface Candidate {
 
 export interface DiscoveryResult {
   source: SourceConfig;
-  transport: "rsshub-package" | "source-adapter" | "official-rss" | "official-rss-list" | "sitemap" | "site-adapter" | "multi";
+  transport: "source-adapter" | "official-rss" | "official-rss-list" | "sitemap" | "site-adapter" | "multi";
   fetchedAt: string;
   upstream: unknown;
   candidates: Candidate[];
   version?: string;
+  pagePolicy?: SourcePagePolicy;
 }
 
 export interface RecordedExchange {
@@ -160,6 +186,7 @@ export interface SourceCaptureManifest {
   summaryCount: number;
   metadataCount: number;
   networkExchangeCount: number;
+  pagePolicy?: SourcePagePolicy;
   sectionCoverage?: {
     selected: string[];
     covered: string[];

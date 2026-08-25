@@ -4,6 +4,7 @@ import path from "node:path";
 import { parseArgs, requiredArg } from "./args.js";
 import { writeCanonicalSource } from "./canonical-writer.js";
 import { loadSources } from "./config.js";
+import { processSourceCandidate } from "./sources/registry.js";
 import type { Candidate, SourceCaptureManifest } from "./types.js";
 
 interface RawRunManifest {
@@ -28,7 +29,8 @@ async function main(): Promise<void> {
     const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as SourceCaptureManifest;
     const candidatesPath = path.join(path.dirname(manifestPath), "candidates.jsonl.gz");
     const candidates = gunzipSync(await readFile(candidatesPath)).toString("utf8")
-      .split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line) as Candidate);
+      .split(/\r?\n/).filter(Boolean)
+      .map((line) => processSourceCandidate(source.id, JSON.parse(line) as Candidate));
     results.push(await writeCanonicalSource(output, source, manifest, row.output.manifest, candidates, rawRevision));
   }
   const reportPath = path.join(output, "canonical", "news", "runs", `${run.runId}.json`);

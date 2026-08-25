@@ -20,7 +20,7 @@ class Parsed:
 
 
 def test_enrich_articles_reuses_runner_parser_and_maps_partial_status(monkeypatch, tmp_path: Path) -> None:
-    source = Source("bloomberg-markets", "Bloomberg", "en", None, "https://example.test/feed", "summary-only", "bloomberg")
+    source = Source("bloomberg-markets", "Bloomberg", "en", "https://example.test/feed", "summary-only", "bloomberg")
     article = Article("article-one", "Feed headline", "Summary", "Summary", "summary", "https://bloomberg.com/story", NOW.isoformat(), source)
     final = HttpExchange(
         source.id, article.id, article.url, article.title, NOW.isoformat(), article.url,
@@ -45,7 +45,7 @@ def test_enrich_articles_reuses_runner_parser_and_maps_partial_status(monkeypatc
 
 
 def test_enrich_articles_classifies_unconfigured_parser_as_unsupported(monkeypatch, tmp_path: Path) -> None:
-    source = Source("new-source", "New source", "en", None, "https://example.test/feed", "summary-only")
+    source = Source("new-source", "New source", "en", "https://example.test/feed", "summary-only")
     article = Article("article-one", "Feed headline", "Summary", "Summary", "summary", "https://example.test/story", NOW.isoformat(), source)
     final = HttpExchange(
         source.id, article.id, article.url, article.title, NOW.isoformat(), article.url,

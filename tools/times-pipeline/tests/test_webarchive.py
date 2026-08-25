@@ -22,7 +22,7 @@ from times_pipeline.webarchive import (
 
 
 NOW = datetime(2026, 8, 22, 12, 0, tzinfo=timezone.utc)
-SOURCE = Source("example", "Example", "en", None, "https://example.test/feed", "summary-only")
+SOURCE = Source("example", "Example", "en", "https://example.test/feed", "summary-only")
 
 
 def article(identifier: str, published_at: datetime = NOW) -> Article:
@@ -151,7 +151,7 @@ def test_capture_selection_prioritizes_new_and_changed_then_refreshes() -> None:
 
 
 def test_capture_selection_represents_each_source_before_filling_remaining_slots() -> None:
-    second_source = Source("second", "Second", "en", None, "https://second.test/feed", "summary-only")
+    second_source = Source("second", "Second", "en", "https://second.test/feed", "summary-only")
     newest = article("newest", NOW)
     older = article("older", NOW - timedelta(minutes=1))
     other = Article(

@@ -29,7 +29,6 @@ class Source:
     id: str
     name: str
     language: str
-    route: str | None
     feed_url: str | None
     content_policy: str
     parser_id: str | None = None
@@ -124,10 +123,8 @@ def load_sources(config_path: Path) -> tuple[Source, ...]:
         source_id = str(required["id"]).strip()
         if source_id in seen_ids:
             raise ValueError(f"Duplicate Times source id: {source_id}")
-        route_value = row.get("route")
         feed_url_value = row.get("feedUrl")
         feed_urls_value = row.get("feedUrls")
-        route = route_value.strip() if isinstance(route_value, str) and route_value.strip() else None
         feed_url = feed_url_value.strip() if isinstance(feed_url_value, str) and feed_url_value.strip() else None
         if feed_url is not None and feed_urls_value is not None:
             raise ValueError(f"Times source cannot define both feedUrl and feedUrls: {source_id}")
@@ -139,10 +136,8 @@ def load_sources(config_path: Path) -> tuple[Source, ...]:
                 raise ValueError(f"Times source feedUrls must contain strings: {source_id}")
             feed_urls = tuple(dict.fromkeys(value.strip() for value in feed_urls_value))
             feed_url = feed_urls[0]
-        if (route is None) == (feed_url is None):
-            raise ValueError(f"Times source must define exactly one of route or feedUrl: {source_id}")
-        if route is not None and not route.startswith("/"):
-            raise ValueError(f"Times source route must start with '/': {source_id}")
+        if feed_url is None:
+            raise ValueError(f"Times source must define feedUrl or feedUrls: {source_id}")
         for configured_url in feed_urls or ((feed_url,) if feed_url is not None else ()):
             parsed = urlsplit(configured_url)
             if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
@@ -160,7 +155,6 @@ def load_sources(config_path: Path) -> tuple[Source, ...]:
             id=source_id,
             name=str(required["name"]).strip(),
             language=str(required["language"]).strip(),
-            route=route,
             feed_url=feed_url,
             content_policy=content_policy,
             parser_id=parser_id,
@@ -290,24 +284,16 @@ def parse_feed(body: bytes, source: Source) -> list[Article]:
 async def collect_sources(
     sources: tuple[Source, ...],
     *,
-    rsshub_url: str,
-    rsshub_access_key: str | None,
     timeout_seconds: float = 60.0,
-    rsshub_workers: int = 3,
     now: datetime | None = None,
     since: datetime | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> tuple[list[Article], list[RawFeed], list[dict]]:
     fetched_at = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     window_start = since.astimezone(timezone.utc) if since is not None else None
-    if rsshub_workers < 1:
-        raise ValueError("RSSHub worker count must be positive")
-    if any(source.route is not None for source in sources) and not rsshub_access_key:
-        raise RuntimeError("JOJOKANBAO_RSSHUB_ACCESS_KEY is required for configured RSSHub routes")
     articles: list[Article] = []
     raw_feeds: list[RawFeed] = []
     statuses: list[dict] = []
-    rsshub_semaphore = asyncio.Semaphore(rsshub_workers)
 
     async with httpx.AsyncClient(
         timeout=timeout_seconds,
@@ -320,24 +306,16 @@ async def collect_sources(
     ) as client:
         async def collect(source: Source) -> tuple[list[Article], list[RawFeed], dict]:
             started = asyncio.get_running_loop().time()
-            if source.route is not None:
-                endpoints = ((f"{rsshub_url.rstrip('/')}{source.route}", {"limit": FEED_ITEM_LIMIT, "key": rsshub_access_key}),)
-                transport_kind = "rsshub"
-            else:
-                assert source.feed_url is not None
-                endpoints = tuple((url, None) for url in (source.feed_urls or (source.feed_url,)))
-                transport_kind = "public-rss"
+            assert source.feed_url is not None
+            endpoints = tuple(source.feed_urls or (source.feed_url,))
+            transport_kind = "official-feed"
 
-            async def fetch_endpoint(url: str, params: dict | None) -> tuple[list[Article], RawFeed | None, dict]:
+            async def fetch_endpoint(url: str) -> tuple[list[Article], RawFeed | None, dict]:
                 response = None
                 attempts = 0
                 try:
                     for attempts, retry_delay in enumerate((*FEED_RETRY_DELAYS_SECONDS, None), start=1):
-                        if transport_kind == "rsshub":
-                            async with rsshub_semaphore:
-                                response = await client.get(url, params=params)
-                        else:
-                            response = await client.get(url, params=params)
+                        response = await client.get(url)
                         if response.status_code not in TRANSIENT_FEED_STATUSES or retry_delay is None:
                             break
                         await asyncio.sleep(retry_delay)
@@ -364,7 +342,7 @@ async def collect_sources(
                         "attempts": attempts,
                     }
 
-            endpoint_results = await asyncio.gather(*(fetch_endpoint(url, params) for url, params in endpoints))
+            endpoint_results = await asyncio.gather(*(fetch_endpoint(url) for url in endpoints))
             successful = [(values, raw, detail) for values, raw, detail in endpoint_results if raw is not None]
             failures = [detail for _values, raw, detail in endpoint_results if raw is None]
             elapsed_ms = round((asyncio.get_running_loop().time() - started) * 1_000)

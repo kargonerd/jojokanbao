@@ -99,6 +99,7 @@ export async function writeSourceCapture(
     summaryCount: result.candidates.filter((candidate) => candidate.contentStatus === "summary").length,
     metadataCount: result.candidates.filter((candidate) => candidate.contentStatus === "metadata").length,
     networkExchangeCount,
+    ...(result.pagePolicy ? { pagePolicy: result.pagePolicy } : {}),
     ...(sectionCoverage ? { sectionCoverage } : {}),
     objects,
     archiveStatus: "recorded-http",

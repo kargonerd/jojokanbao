@@ -28,5 +28,17 @@ describe("sources v2", () => {
     }
     expect(sources.find((source) => source.id === "bloomberg-markets")?.sections)
       .toContainEqual(expect.objectContaining({ id: "asia", url: "https://www.bloomberg.com/asia" }));
+    const configuredSections = sources.flatMap((source) => source.discovery.kind === "multi"
+      ? source.discovery.targets.flatMap((target) => target.sectionIds.map((sectionId) => `${source.id}:${sectionId}`))
+      : []);
+    for (const source of sources) {
+      for (const section of source.sections ?? []) {
+        const hasInferenceRule = Boolean(section.match?.urlPrefixes?.length || section.match?.publisherCategories?.length);
+        expect(
+          configuredSections.includes(`${source.id}:${section.id}`) || hasInferenceRule,
+          `${source.id}:${section.id} has neither a discovery target nor an inference rule`,
+        ).toBe(true);
+      }
+    }
   });
 });

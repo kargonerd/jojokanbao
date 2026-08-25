@@ -35,13 +35,11 @@ def _read_candidates(path: Path) -> list[dict[str, Any]]:
 
 def _source(row: dict[str, Any]) -> Source:
     discovery = row["discovery"]
-    route = discovery.get("route") if discovery.get("kind") == "rsshub-package" else None
     urls = discovery.get("urls") or ([discovery["url"]] if discovery.get("url") else [])
     return Source(
         id=row["id"],
         name=row["name"],
         language=row["language"],
-        route=route,
         feed_url=urls[0] if urls else None,
         feed_urls=tuple(urls),
         content_policy="feed-body" if "discovery-body" in row["content"]["priority"] else "summary-only",
@@ -82,7 +80,7 @@ def _json_article_bodies(value: Any) -> list[str]:
     return []
 
 
-def _browser_article_body(body: bytes) -> str | None:
+def _browser_article_body(body: bytes, source_selectors: tuple[str, ...] = ()) -> str | None:
     if not body:
         return None
     document = BeautifulSoup(body, "html.parser")
@@ -100,7 +98,7 @@ def _browser_article_body(body: bytes) -> str | None:
 
     for element in document.select("script, style, nav, footer, header, aside, form, noscript"):
         element.decompose()
-    selectors = (
+    selectors = source_selectors + (
         "[itemprop='articleBody']",
         "article",
         ".article-body",
@@ -155,6 +153,9 @@ def _apply_capture_results(
             continue
         manifest_path = workspace.joinpath(*manifest_object.split("/"))
         candidates_path = manifest_path.parent / "candidates.jsonl.gz"
+        manifest = _read_json(manifest_path)
+        configured_selectors = (manifest.get("pagePolicy") or {}).get("bodySelectors") or []
+        source_selectors = tuple(value for value in configured_selectors if isinstance(value, str) and value.strip())
         rows = _read_candidates(candidates_path)
         attempts = succeeded = failed = extracted = 0
         for row in rows:
@@ -172,7 +173,7 @@ def _apply_capture_results(
                 failed += 1
                 continue
             succeeded += 1
-            browser_body = _browser_article_body(final.body)
+            browser_body = _browser_article_body(final.body, source_selectors)
             if browser_body:
                 row["browserBody"] = browser_body
                 row["contentStatus"] = "full"
@@ -183,7 +184,6 @@ def _apply_capture_results(
         payload = "".join(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n" for row in rows)
         candidate_bytes = gzip.compress(payload.encode("utf-8"), compresslevel=9, mtime=0)
         candidates_path.write_bytes(candidate_bytes)
-        manifest = _read_json(manifest_path)
         manifest["fullCount"] = sum(row["contentStatus"] == "full" for row in rows)
         manifest["summaryCount"] = sum(row["contentStatus"] == "summary" for row in rows)
         manifest["metadataCount"] = sum(row["contentStatus"] == "metadata" for row in rows)
