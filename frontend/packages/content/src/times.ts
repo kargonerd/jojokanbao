@@ -6,6 +6,7 @@ export type TimesUnavailableReason =
   | "source-error"
   | "source-empty"
   | "metadata-only"
+  | "full-text-pending"
   | "canonical-missing"
   | "browser-capture-failed";
 

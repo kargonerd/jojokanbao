@@ -156,6 +156,7 @@ async function sourceData(
 
 function unavailableCases(data: SourceDeliveryData, deliveredIds: Set<string>): TimesUnavailableCase[] {
   const source = { id: data.source.id, name: data.source.name, language: data.source.language };
+  const canonicalById = new Map(data.canonical.map((article) => [article.articleId, article]));
   if (data.worker.status === "error") {
     return [{
       id: `${data.source.id}:source-error`,
@@ -176,18 +177,26 @@ function unavailableCases(data: SourceDeliveryData, deliveredIds: Set<string>): 
   }
   return data.candidates
     .filter((candidate) => !deliveredIds.has(candidate.articleId))
-    .map((candidate) => ({
-      id: candidate.articleId,
-      source,
-      reason: candidate.contentStatus === "metadata" ? "metadata-only" as const : "canonical-missing" as const,
-      stage: candidate.contentStatus === "metadata" ? "capture" as const : "canonical" as const,
-      message: candidate.contentStatus === "metadata"
-        ? "已发现链接，但尚未取得可发布的正文或摘要。"
-        : "Raw 候选存在，但本次 Canonical 没有对应文章。",
-      title: candidate.title,
-      url: candidate.canonicalUrl,
-      publishedAt: candidate.publishedAt,
-    }));
+    .map((candidate) => {
+      const canonical = canonicalById.get(candidate.articleId);
+      const summaryOnly = canonical?.contentStatus === "summary" || candidate.contentStatus === "summary";
+      return {
+        id: candidate.articleId,
+        source,
+        reason: candidate.contentStatus === "metadata"
+          ? "metadata-only" as const
+          : summaryOnly ? "full-text-pending" as const : "canonical-missing" as const,
+        stage: candidate.contentStatus === "metadata" || summaryOnly ? "capture" as const : "canonical" as const,
+        message: candidate.contentStatus === "metadata"
+          ? "已发现链接，但尚未取得正文。"
+          : summaryOnly
+            ? "已取得摘要，但尚未取得全文，因此不进入 Delivery。"
+            : "Raw 候选存在，但本次 Canonical 没有对应文章。",
+        title: candidate.title,
+        url: candidate.canonicalUrl,
+        publishedAt: candidate.publishedAt,
+      };
+    });
 }
 
 function sourceHealth(
@@ -199,11 +208,11 @@ function sourceHealth(
   const discovered = data.candidates.length;
   const full = data.canonical.filter((article) => article.contentStatus === "full").length;
   const summary = data.canonical.filter((article) => article.contentStatus === "summary").length;
-  const delivered = full + summary;
+  const delivered = full;
   const unavailable = cases.length;
   const availabilityRate = discovered ? delivered / discovered : 0;
   const fullTextRate = discovered ? full / discovered : 0;
-  const healthScore = discovered ? ((full + summary * 0.5) / discovered) * 100 : 0;
+  const healthScore = discovered ? (full / discovered) * 100 : 0;
   return {
     source,
     status: delivered === 0 ? "unavailable" : unavailable > 0 || summary > 0 || browser.failed > 0 ? "degraded" : "healthy",
@@ -254,12 +263,13 @@ export async function buildTimesDelivery(input: {
   const browserBySource = new Map((input.run.browserArchive?.captureBySource ?? []).map((row) => [row.sourceId, row]));
 
   for (const data of values) {
-    const deliveredIds = new Set(data.canonical.map((article) => article.articleId));
+    const fullArticles = data.canonical.filter((article) => article.contentStatus === "full");
+    const deliveredIds = new Set(fullArticles.map((article) => article.articleId));
     const sourceCases = unavailableCases(data, deliveredIds);
     cases.push(...sourceCases);
     health.push(sourceHealth(data, sourceCases, browserBySource.get(data.source.id)));
     const candidateById = new Map(data.candidates.map((candidate) => [candidate.articleId, candidate]));
-    articleRows.push(...data.canonical.map((canonical) => {
+    articleRows.push(...fullArticles.map((canonical) => {
       const candidate = candidateById.get(canonical.articleId);
       return candidate ? { canonical, candidate } : { canonical };
     }));
@@ -274,7 +284,7 @@ export async function buildTimesDelivery(input: {
       source: { id: source.id, name: source.name, language: source.language },
       reason: "browser-capture-failed",
       stage: "capture",
-      message: `Chromium 原页归档失败：${status}。文章摘要仍可独立发布时不会受此影响。`,
+      message: `Chromium 原页归档失败：${status}。没有其他全文来源时，文章不会进入 Delivery。`,
       ...(failure.title ? { title: failure.title } : {}),
       ...(failure.url ? { url: failure.url } : {}),
     });

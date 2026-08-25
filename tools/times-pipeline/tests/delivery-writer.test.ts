@@ -35,9 +35,9 @@ describe("Times Delivery writer", () => {
       startedAt: "2026-08-23T10:00:00.000Z",
       completedAt: "2026-08-23T10:01:00.000Z",
       discovery: source.discovery,
-      candidateCount: 2,
+      candidateCount: 3,
       fullCount: 1,
-      summaryCount: 0,
+      summaryCount: 1,
       metadataCount: 1,
       networkExchangeCount: 2,
       objects: [],
@@ -58,6 +58,19 @@ describe("Times Delivery writer", () => {
       discoveryBody: "<p>Full body</p>",
       contentStatus: "full",
       publishedAt: "2026-08-23T09:30:00.000Z",
+      authors: [],
+      publisherCategories: [],
+    }, {
+      articleId: "example:summary",
+      sourceId: source.id,
+      sourceName: source.name,
+      language: source.language,
+      sourceUrl: "https://example.test/summary",
+      canonicalUrl: "https://example.test/summary",
+      title: "Summary-only story",
+      summary: "Summary without a full body",
+      contentStatus: "summary",
+      publishedAt: "2026-08-23T09:15:00.000Z",
       authors: [],
       publisherCategories: [],
     }, {
@@ -95,9 +108,19 @@ describe("Times Delivery writer", () => {
         discovery: source.discovery,
       },
     };
+    const summaryCanonical: CanonicalArticle = {
+      ...canonical,
+      articleId: "example:summary",
+      canonicalUrl: "https://example.test/summary",
+      title: "Summary-only story",
+      publishedAt: "2026-08-23T09:15:00.000Z",
+      body: { format: "text", value: "Summary without a full body" },
+      contentStatus: "summary",
+      contentHash: "summary-hash",
+    };
     const shard = path.join(workspaceRoot, "canonical/news/example/articles/2026/08/2026-08-23.jsonl.gz");
     await mkdir(path.dirname(shard), { recursive: true });
-    await writeFile(shard, gzipSync(`${JSON.stringify(canonical)}\n`));
+    await writeFile(shard, gzipSync(`${JSON.stringify(canonical)}\n${JSON.stringify(summaryCanonical)}\n`));
     const run: RawRunManifest = {
       runId,
       startedAt: "2026-08-23T10:00:00.000Z",
@@ -168,17 +191,21 @@ describe("Times Delivery writer", () => {
     const index = await gunzipJoxJson<TimesDeliveryIndex>(indexBytes, result.indexObject);
     expect(index.items.map((item) => item.itemKey)).toEqual(["2026-08-23", "2026-08-21"]);
     expect(index.sourceHealth[0]).toMatchObject({
-      discovered: 2,
+      discovered: 3,
       delivered: 1,
       full: 1,
-      unavailable: 1,
+      summary: 1,
+      unavailable: 2,
       browserAttempts: 1,
       browserFailed: 1,
-      healthScore: 50,
+      availabilityRate: 0.3333,
+      fullTextRate: 0.3333,
+      healthScore: 33.3,
     });
-    expect(index.unavailableCases).toHaveLength(2);
+    expect(index.unavailableCases).toHaveLength(3);
     expect(index.unavailableCases).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "example:missing", reason: "metadata-only" }),
+      expect.objectContaining({ id: "example:summary", reason: "full-text-pending" }),
       expect.objectContaining({ id: "example:full:browser-capture", reason: "browser-capture-failed" }),
     ]));
 
