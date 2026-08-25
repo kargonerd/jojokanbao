@@ -375,6 +375,33 @@ def test_repeated_section_heading_matches_same_day_peopledata_title():
     assert resolved[0]["matchMethod"] == "generic_section_heading_same_date"
 
 
+def test_single_leading_section_heading_matches_unique_same_page_candidate():
+    source_row = {
+        **source("1956-08-20", 4, "对批评的反应"),
+        "content": "对批评的反应\n江西省人民委员会来信：\n正文",
+        "preservedOrdinal": 94,
+    }
+    missing = [{
+        "date": "1956-08-20",
+        "page": 4,
+        "ordinal": 45,
+        "title": "江西省人民委员会来信：",
+        "href": "/45",
+    }]
+
+    remaining, resolved = MODULE.resolve_generic_section_heading_groups(
+        [source_row], missing
+    )
+
+    assert remaining == []
+    assert resolved[0]["date"] == "1956-08-20"
+    assert resolved[0]["page"] == 4
+    assert resolved[0]["ordinal"] == 45
+    assert resolved[0]["title"] == "江西省人民委员会来信："
+    assert resolved[0]["sourceTitle"] == "对批评的反应"
+    assert resolved[0]["derivedSourceTitle"] == "江西省人民委员会来信："
+
+
 def test_repeated_section_exact_match_records_derived_title_provenance():
     source_row = {
         **source("1951-10-28", 2, "经济生活简评"),

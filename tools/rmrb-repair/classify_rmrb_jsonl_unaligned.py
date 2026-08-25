@@ -84,6 +84,30 @@ def content_heading_after_section(row: dict[str, Any]) -> str:
     return ""
 
 
+def content_heading_after_leading_title(row: dict[str, Any]) -> str:
+    """Return the line after one or more leading copies of the source title.
+
+    Unlike ``content_heading_after_section``, this permissive variant is only
+    used where a unique same-issue, same-page PeopleData title confirms the
+    derived heading.  That external confirmation prevents an ordinary first
+    paragraph from being treated as a catalog title.
+    """
+    section = norm(primary_title(row.get("title")))
+    if not section:
+        return ""
+    lines = [
+        line.strip()
+        for line in str(row.get("content") or "").splitlines()
+        if line.strip()
+    ]
+    if not lines or norm(lines[0]) != section:
+        return ""
+    for line in lines[1:]:
+        if norm(line) != section:
+            return line
+    return ""
+
+
 def normalized_primary_title(row: dict[str, Any]) -> str:
     title = norm(primary_title(row.get("title")))
     if title in NORMALIZED_GENERIC_IMAGE_TITLES:
@@ -281,21 +305,28 @@ def resolve_generic_section_heading_groups(
     missing_rows: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Match recurring section labels using the first real heading in the body."""
+    missing_by_issue_page: dict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
+    for candidate in missing_rows:
+        issue_page = (
+            str(candidate.get("date") or "")[:10],
+            int(page_number(candidate.get("page")) or 0),
+        )
+        missing_by_issue_page[issue_page].append(candidate)
+
     resolved_indexes: set[int] = set()
     resolved_candidate_keys: set[tuple[str, int, int]] = set()
     resolved: list[dict[str, Any]] = []
     for index, source in enumerate(source_rows):
-        heading = norm(content_heading_after_section(source))
+        derived_title = content_heading_after_leading_title(source)
+        heading = norm(derived_title)
         if len(heading) < 4:
             continue
         issue_date = str(source.get("date") or "")[:10]
         page = int(page_number(source.get("page")) or 0)
         candidates = [
             candidate
-            for candidate in missing_rows
-            if str(candidate.get("date") or "")[:10] == issue_date
-            and int(page_number(candidate.get("page")) or 0) == page
-            and norm(primary_title(candidate.get("title"))).startswith(heading)
+            for candidate in missing_by_issue_page.get((issue_date, page), [])
+            if norm(primary_title(candidate.get("title"))).startswith(heading)
             and not candidate_has_empty_difference(
                 candidate.get("title"), source.get("title")
             )
@@ -318,7 +349,7 @@ def resolve_generic_section_heading_groups(
         resolved_indexes.add(index)
         canonical = canonicalize_exact_group_pair(source, candidate)
         canonical["matchMethod"] = "generic_section_heading_same_date"
-        canonical["derivedSourceTitle"] = content_heading_after_section(source)
+        canonical["derivedSourceTitle"] = derived_title
         resolved.append(canonical)
 
     remaining = [row for index, row in enumerate(source_rows) if index not in resolved_indexes]
