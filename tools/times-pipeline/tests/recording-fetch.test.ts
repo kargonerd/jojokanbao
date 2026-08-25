@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getGlobalDispatcher } from "undici";
 import { normalizeEncodedResponse, RecordingFetch } from "../src/recording-fetch.js";
 
 afterEach(() => {
@@ -28,6 +29,7 @@ describe("recording fetch", () => {
     process.env.JOJO_TIMES_PROXY_URI = "http://127.0.0.1:7890";
     const output = await mkdtemp(path.join(os.tmpdir(), "jojo-recording-fetch-"));
     const recorder = new RecordingFetch(output);
+    const directDispatcher = getGlobalDispatcher();
     const restore = recorder.install();
     try {
       const response = await fetch("https://publisher.test/feed.xml");
@@ -36,10 +38,12 @@ describe("recording fetch", () => {
       await recorder.flush();
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(fetchMock.mock.calls[0]?.[1]).toBeUndefined();
-      expect(fetchMock.mock.calls[1]?.[1]).toEqual(expect.objectContaining({ dispatcher: expect.anything() }));
+      expect(fetchMock.mock.calls[1]?.[1]).toBeUndefined();
+      expect(getGlobalDispatcher()).not.toBe(directDispatcher);
       expect(recorder.exchanges.map((exchange) => exchange.response?.status)).toEqual([400, 200]);
     } finally {
       restore();
+      expect(getGlobalDispatcher()).toBe(directDispatcher);
       await rm(output, { recursive: true, force: true });
     }
   });

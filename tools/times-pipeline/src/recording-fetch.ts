@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { gzipSync, gunzipSync } from "node:zlib";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { ProxyAgent, type Dispatcher } from "undici";
+import { getGlobalDispatcher, ProxyAgent, setGlobalDispatcher } from "undici";
 import type { RecordedExchange } from "./types.js";
 
 const REDACTED_REQUEST_HEADERS = new Set(["authorization", "cookie", "proxy-authorization", "x-api-key"]);
@@ -56,17 +56,17 @@ export class RecordingFetch {
     const recorder = this;
     const proxyUri = process.env.JOJO_TIMES_PROXY_URI?.trim();
     const proxyAgent = proxyUri ? new ProxyAgent(proxyUri) : undefined;
+    const previousDispatcher = getGlobalDispatcher();
+    let proxyActive = false;
     async function attempt(
       input: RequestInfo | URL,
       init?: RequestInit,
-      dispatcher?: Dispatcher,
     ): Promise<Response> {
       const sequence = ++recorder.#sequence;
       const startedAt = new Date().toISOString();
       const request = requestMetadata(input, init);
       try {
-        const attemptInit = dispatcher ? { ...init, dispatcher } as RequestInit : init;
-        const response = await recorder.nativeFetch(input, attemptInit);
+        const response = await recorder.nativeFetch(input, init);
         const copy = response.clone();
         const capture = recorder.captureBody(sequence, startedAt, request, response, copy);
         recorder.pending.add(capture);
@@ -84,16 +84,20 @@ export class RecordingFetch {
       }
     }
     globalThis.fetch = async function recordingFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+      if (proxyActive) return attempt(input, init);
       try {
         const direct = await attempt(input, init);
         if (!proxyAgent || !PROXY_RETRY_STATUSES.has(direct.status)) return direct;
       } catch (error) {
         if (!proxyAgent) throw error;
       }
-      return attempt(input, init, proxyAgent);
+      setGlobalDispatcher(proxyAgent);
+      proxyActive = true;
+      return attempt(input, init);
     };
     return () => {
       globalThis.fetch = this.nativeFetch;
+      if (proxyActive) setGlobalDispatcher(previousDispatcher);
       if (proxyAgent) void proxyAgent.close();
     };
   }
