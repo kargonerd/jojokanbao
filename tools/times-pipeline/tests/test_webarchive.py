@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gzip
+from dataclasses import replace
 from io import BytesIO
 import json
 from datetime import datetime, timedelta, timezone
@@ -9,6 +10,7 @@ import zipfile
 
 from warcio.archiveiterator import ArchiveIterator
 
+from archive_v2 import _merge_capture_attempts
 from times_pipeline.feeds import Article, RawFeed, Source
 from times_pipeline.webarchive import (
     ArticleCapture,
@@ -52,6 +54,34 @@ def exchange(value: Article) -> HttpExchange:
         response_headers=(("Content-Type", "text/html; charset=utf-8"), ("Content-Length", "999")),
         body=b"<html><article><p>Archived body.</p></article></html>",
     )
+
+
+def test_proxy_retry_merge_keeps_failed_and_successful_page_attempts() -> None:
+    value = article("proxy-retry")
+    first = ArticleCapture(
+        value.id,
+        value.source.id,
+        value.url,
+        value.title,
+        (replace(exchange(value), status_code=403, reason_phrase="Forbidden", is_page=True),),
+        10,
+        "HTTPStatus403",
+    )
+    retry = ArticleCapture(
+        value.id,
+        value.source.id,
+        value.url,
+        value.title,
+        (replace(exchange(value), is_page=True),),
+        20,
+    )
+
+    merged = _merge_capture_attempts(first, retry)
+
+    assert [attempt.status_code for attempt in merged.exchanges] == [403, 200]
+    assert merged.elapsed_ms == 30
+    assert merged.error is None
+    assert merged.final_exchange and merged.final_exchange.status_code == 200
 
 
 def test_wacz_contains_replayable_warc_cdxj_and_pages_without_secrets(tmp_path: Path) -> None:

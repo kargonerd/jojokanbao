@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
-import secrets
 from typing import Any
 from urllib.request import Request, urlopen
 
@@ -45,37 +44,49 @@ def _subscription(value: bytes) -> dict[str, Any]:
     return {"proxies": proxies}
 
 
-def main() -> None:
-    args = _arguments()
-    subscription_url = os.environ.get(args.subscription_env, "").strip()
-    if not subscription_url:
-        raise RuntimeError(f"{args.subscription_env} is not configured")
-    subscription = _subscription(_download(subscription_url))
+def _mihomo_config(subscription: dict[str, Any]) -> dict[str, Any]:
     names = list(dict.fromkeys(row["name"] for row in subscription["proxies"]))
-    config = {
+    auto_group = "JOJO-TIMES-AUTO"
+    route_group = "JOJO-TIMES-ROUTE"
+    if auto_group in names or route_group in names:
+        raise RuntimeError("The proxy subscription contains a reserved JOJO group name")
+    return {
         "mixed-port": 7890,
         "allow-lan": False,
         "bind-address": "127.0.0.1",
         "mode": "rule",
         "log-level": "warning",
         "external-controller": "127.0.0.1:9090",
-        "secret": secrets.token_urlsafe(24),
+        "secret": "",
         "unified-delay": True,
         "tcp-concurrent": True,
         "proxies": subscription["proxies"],
         "proxy-groups": [{
-            "name": "JOJO-AUTO",
+            "name": auto_group,
             "type": "url-test",
             "proxies": names,
             "url": "https://www.gstatic.com/generate_204",
             "interval": 300,
             "tolerance": 100,
+        }, {
+            "name": route_group,
+            "type": "select",
+            "proxies": [auto_group, *names],
         }],
-        "rules": ["MATCH,JOJO-AUTO"],
+        "rules": [f"MATCH,{route_group}"],
     }
+
+
+def main() -> None:
+    args = _arguments()
+    subscription_url = os.environ.get(args.subscription_env, "").strip()
+    if not subscription_url:
+        raise RuntimeError(f"{args.subscription_env} is not configured")
+    subscription = _subscription(_download(subscription_url))
+    config = _mihomo_config(subscription)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(yaml.safe_dump(config, allow_unicode=True, sort_keys=False), encoding="utf-8")
-    print(f"Prepared a temporary Mihomo configuration with {len(names)} nodes")
+    print(f"Prepared a temporary Mihomo configuration with {len(subscription['proxies'])} nodes")
 
 
 if __name__ == "__main__":

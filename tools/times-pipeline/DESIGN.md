@@ -95,8 +95,9 @@ Capture 成功以 HF Raw commit 成功为准。Process 先提交 HF Canonical，
   质量门槛提取正文；需要来源特例时在 JOJO 来源适配器或解析器中实现并锁定测试样本。
 - `discovery-summary`：正文失败时保留摘要，但必须标记 `contentStatus=summary`。
 
-浏览器抓取可加载固定版本 BPC。BPC 解决页面内付费墙逻辑，不解决网络层 401/403；代理选择、
-Chromium 和 BPC 版本都记录到脱敏 manifest。归档器直接生成标准 WARC 1.1、CDXJ 和 WACZ 1.2，
+浏览器抓取可加载固定版本 BPC。BPC 解决页面内付费墙逻辑，不解决网络层 401/403；这类响应由
+Mihomo 路由组切换不同订阅节点重试，manifest 只记录轮数，不记录节点名。代理状态、Chromium 和
+BPC 版本都记录到脱敏 manifest。归档器直接生成标准 WARC 1.1、CDXJ 和 WACZ 1.2，
 可供 ReplayWeb.page 等兼容读取器重放；当前实现不依赖 Browsertrix 服务。
 
 归档器优先读取主导航响应，再读取页面资源，避免大型 HTML 与几十个子资源竞争 DevTools 读取超时。

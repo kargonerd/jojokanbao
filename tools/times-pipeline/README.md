@@ -135,7 +135,8 @@ manifest/candidates，以及这些候选日期已经存在的 Canonical 分片�
 Raw 存档累计而线性增长。
 
 代理订阅只从 `JOJO_TIMES_PROXY_SUBSCRIPTION` Secret 读取。任务使用固定 Mihomo 二进制生成临时配置；
-订阅 URL、节点名、Cookie、Authorization 和控制密钥不会进入日志、manifest、WACZ 请求头或 artifact。
+首次页面抓取走延迟优选节点；网络层 401/403 或连接失败时，归档器最多切换 4 个不同节点重试。
+订阅 URL、节点名、Cookie 和 Authorization 不会进入日志、manifest、WACZ 请求头或 artifact。
 
 验证命令：
 

@@ -13,14 +13,113 @@ import re
 from typing import Any
 
 from bs4 import BeautifulSoup
+import httpx
 
 from times_pipeline.feeds import Article, Source
 from times_pipeline.webarchive import (
+    ArticleCapture,
     capture_articles,
     load_archive_state,
     select_articles_for_capture,
     write_web_archive,
 )
+
+
+def _capture_succeeded(capture: ArticleCapture) -> bool:
+    final = capture.final_exchange
+    return capture.error is None and final is not None and 200 <= final.status_code < 400
+
+
+def _merge_capture_attempts(previous: ArticleCapture, retry: ArticleCapture) -> ArticleCapture:
+    return ArticleCapture(
+        article_id=retry.article_id,
+        source_id=retry.source_id,
+        canonical_url=retry.canonical_url,
+        title=retry.title,
+        exchanges=previous.exchanges + retry.exchanges,
+        elapsed_ms=previous.elapsed_ms + retry.elapsed_ms,
+        error=retry.error,
+    )
+
+
+async def _mihomo_route_candidates(control_url: str, group: str, automatic: str, maximum: int) -> list[str]:
+    try:
+        async with httpx.AsyncClient(base_url=control_url, timeout=5) as client:
+            response = await client.get(f"/proxies/{group}")
+            response.raise_for_status()
+            payload = response.json()
+    except Exception:
+        raise RuntimeError("Unable to read the local Mihomo route group") from None
+    values = payload.get("all") if isinstance(payload, dict) else None
+    current = payload.get("now") if isinstance(payload, dict) else None
+    if not isinstance(values, list):
+        raise RuntimeError("The local Mihomo route group has no proxy candidates")
+    return [
+        value for value in values
+        if isinstance(value, str) and value and value not in {automatic, current}
+    ][:maximum]
+
+
+async def _select_mihomo_route(control_url: str, group: str, name: str) -> None:
+    try:
+        async with httpx.AsyncClient(base_url=control_url, timeout=5) as client:
+            response = await client.put(f"/proxies/{group}", json={"name": name})
+            response.raise_for_status()
+    except Exception:
+        raise RuntimeError("Unable to change the local Mihomo route") from None
+
+
+async def _capture_with_proxy_rotation(
+    selected: list[Article],
+    args: argparse.Namespace,
+) -> tuple[list[ArticleCapture], int]:
+    async def capture(values: list[Article]) -> list[ArticleCapture]:
+        return await capture_articles(
+            values,
+            timeout_seconds=args.timeout,
+            workers=args.workers,
+            maximum_response_bytes=args.maximum_response_bytes,
+            engine=args.engine,
+            proxy_server=args.proxy_server,
+            browser_extension_path=args.browser_extension_path,
+            browser_retries=0,
+            maximum_page_bytes=args.maximum_page_bytes,
+        )
+
+    captures = await capture(selected)
+    if (
+        args.engine != "browser"
+        or not args.proxy_server
+        or not args.proxy_control_url
+        or args.proxy_rotation_attempts <= 0
+    ):
+        return captures, 0
+    alternatives = await _mihomo_route_candidates(
+        args.proxy_control_url,
+        args.proxy_group,
+        args.proxy_automatic_name,
+        args.proxy_rotation_attempts,
+    )
+    article_by_id = {article.id: article for article in selected}
+    capture_by_id = {capture.article_id: capture for capture in captures}
+    rounds = 0
+    try:
+        for alternative in alternatives:
+            retry_articles = [
+                article_by_id[capture.article_id]
+                for capture in capture_by_id.values()
+                if not _capture_succeeded(capture) and capture.article_id in article_by_id
+            ]
+            if not retry_articles:
+                break
+            await _select_mihomo_route(args.proxy_control_url, args.proxy_group, alternative)
+            await asyncio.sleep(0.25)
+            for retry in await capture(retry_articles):
+                capture_by_id[retry.article_id] = _merge_capture_attempts(capture_by_id[retry.article_id], retry)
+            rounds += 1
+    finally:
+        await _select_mihomo_route(args.proxy_control_url, args.proxy_group, args.proxy_automatic_name)
+    return [capture_by_id[article.id] for article in selected], rounds
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -237,9 +336,16 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--refresh-hours", type=float, default=24)
     parser.add_argument("--retry-hours", type=float, default=2)
     parser.add_argument("--proxy-server")
+    parser.add_argument("--proxy-control-url")
+    parser.add_argument("--proxy-group", default="JOJO-TIMES-ROUTE")
+    parser.add_argument("--proxy-automatic-name", default="JOJO-TIMES-AUTO")
+    parser.add_argument("--proxy-rotation-attempts", type=int, default=0)
     parser.add_argument("--browser-extension-path")
     parser.add_argument("--browser-extension-revision")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.proxy_rotation_attempts < 0:
+        parser.error("--proxy-rotation-attempts must not be negative")
+    return args
 
 
 async def _main() -> None:
@@ -264,17 +370,7 @@ async def _main() -> None:
         refresh_hours=args.refresh_hours,
         retry_hours=args.retry_hours,
     )
-    captures = await capture_articles(
-        selected,
-        timeout_seconds=args.timeout,
-        workers=args.workers,
-        maximum_response_bytes=args.maximum_response_bytes,
-        engine=args.engine,
-        proxy_server=args.proxy_server,
-        browser_extension_path=args.browser_extension_path,
-        browser_retries=0,
-        maximum_page_bytes=args.maximum_page_bytes,
-    )
+    captures, proxy_rotation_rounds = await _capture_with_proxy_rotation(selected, args)
     statuses = [{
         "id": result["sourceId"],
         "status": result["status"],
@@ -294,14 +390,17 @@ async def _main() -> None:
     failed_cases: list[dict[str, Any]] = []
     for capture in captures:
         final = capture.final_exchange
-        succeeded = capture.error is None and final is not None and 200 <= final.status_code < 400
+        succeeded = _capture_succeeded(capture)
+        route_attempts = max(1, sum(exchange.is_page for exchange in capture.exchanges))
         source_report = capture_by_source.setdefault(capture.source_id, {
             "sourceId": capture.source_id,
             "attempts": 0,
+            "routeAttempts": 0,
             "succeeded": 0,
             "failed": 0,
         })
         source_report["attempts"] += 1
+        source_report["routeAttempts"] += route_attempts
         source_report["succeeded" if succeeded else "failed"] += 1
         if not succeeded:
             failed_cases.append({
@@ -311,6 +410,7 @@ async def _main() -> None:
                 "url": capture.canonical_url,
                 "httpStatus": final.status_code if final is not None else None,
                 "error": capture.error,
+                "routeAttempts": route_attempts,
             })
     report["captureBySource"] = sorted(capture_by_source.values(), key=lambda row: row["sourceId"])
     report["failedCases"] = failed_cases
@@ -321,6 +421,7 @@ async def _main() -> None:
         "extensionEnabled": bool(args.browser_extension_path),
         "extensionRevision": args.browser_extension_revision if args.browser_extension_path else None,
         "proxyConfigured": bool(args.proxy_server),
+        "proxyRotationRounds": proxy_rotation_rounds,
         "workers": args.workers,
         "maximumPages": args.max_pages,
     }
