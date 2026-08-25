@@ -275,20 +275,26 @@ def _browser_article_body(body: bytes, source_selectors: tuple[str, ...] = ()) -
         ".post-content",
         "main",
     )
-    candidates = []
+    candidate_groups = []
     for selector in selectors:
-        candidates.extend(document.select(selector))
-    candidates.append(document)
+        selected = document.select(selector)
+        if selected:
+            candidate_groups.append(selected)
+    candidate_groups.append([document])
     best_paragraphs: list[str] = []
-    for container in candidates:
+    for containers in candidate_groups:
         paragraphs: list[str] = []
         seen: set[str] = set()
-        for element in container.find_all(("p", "h2", "h3", "blockquote")):
-            text = re.sub(r"\s+", " ", element.get_text(" ", strip=True)).strip()
-            if len(text) < 20 or text in seen:
-                continue
-            seen.add(text)
-            paragraphs.append(text)
+        for container in containers:
+            elements = container.find_all(("p", "h2", "h3", "blockquote"))
+            if not elements and container is not document:
+                elements = [container]
+            for element in elements:
+                text = re.sub(r"\s+", " ", element.get_text(" ", strip=True)).strip()
+                if len(text) < 20 or text in seen:
+                    continue
+                seen.add(text)
+                paragraphs.append(text)
         if sum(map(len, paragraphs)) > sum(map(len, best_paragraphs)):
             best_paragraphs = paragraphs
     text = "\n".join(best_paragraphs)

@@ -10,7 +10,7 @@ import type {
 export type SourceAdapterEndpoint = Extract<DiscoveryEndpoint, { kind: "source-adapter" }>;
 
 export interface SourceModule {
-  id: SourceAdapterEndpoint["adapter"];
+  id: string;
   discoverHttp?: (
     source: SourceConfig,
     endpoint: SourceAdapterEndpoint,

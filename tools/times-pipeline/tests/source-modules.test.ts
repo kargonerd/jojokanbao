@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { discoverSource } from "../src/discovery/multi.js";
-import { processSourceCandidate } from "../src/sources/registry.js";
+import { processSourceCandidate, sourcePagePolicy } from "../src/sources/registry.js";
 import type { Candidate, DiscoveryEndpoint, SourceConfig } from "../src/types.js";
 
 function source(id: string, discovery: DiscoveryEndpoint): SourceConfig {
@@ -111,5 +111,9 @@ describe("native source modules", () => {
     const processed = processSourceCandidate("ap", candidate);
     expect(processed.publisherCategories).toEqual(["World"]);
     expect(candidate.publisherCategories).toEqual(["World", "World"]);
+  });
+
+  it("exposes Reuters direct paragraph blocks as a source page policy", () => {
+    expect(sourcePagePolicy("reuters")?.bodySelectors).toEqual(["[data-testid^='paragraph-']"]);
   });
 });

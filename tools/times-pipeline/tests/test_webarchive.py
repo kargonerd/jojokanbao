@@ -11,7 +11,7 @@ import zipfile
 
 from warcio.archiveiterator import ArchiveIterator
 
-from archive_v2 import _merge_capture_attempts, _select_proxy_candidates
+from archive_v2 import _browser_article_body, _merge_capture_attempts, _select_proxy_candidates
 from times_pipeline.feeds import Article, RawFeed, Source
 from times_pipeline.webarchive import (
     ArticleCapture,
@@ -275,6 +275,21 @@ def test_browser_dom_is_only_a_fallback_for_an_empty_final_page() -> None:
     assert _page_body_with_dom_fallback(raw, rendered, is_final_page=True) == (raw, False)
     assert _page_body_with_dom_fallback(b"", rendered, is_final_page=False) == (b"", False)
     assert _page_body_with_dom_fallback(b"", rendered, is_final_page=True) == (rendered, True)
+
+
+def test_browser_body_groups_source_selected_direct_text_blocks() -> None:
+    blocks = "".join(
+        f'<div data-testid="paragraph-{index}">Section {index}. {"Article sentence. " * 18}</div>'
+        for index in range(3)
+    )
+
+    body = _browser_article_body(
+        f"<html><body>{blocks}</body></html>".encode(),
+        ("[data-testid^='paragraph-']",),
+    )
+
+    assert body is not None
+    assert body.count("<p>") == 3
 
 
 def test_browser_extension_waits_for_default_sites_and_session_rules() -> None:

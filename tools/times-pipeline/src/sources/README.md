@@ -8,13 +8,13 @@ endpoints, content policy, and archive policy together:
 └─ source.json
 ```
 
-Only real publisher-specific code is added alongside that file. A custom source module has four
-small files:
+Only real publisher-specific code is added alongside that file. A custom source module uses the
+small files it actually needs:
 
 ```text
 {source}/
 ├─ source.json  # sections, discovery endpoints, content/archive policy
-├─ discover.ts  # publisher API/listing -> normalized candidates
+├─ discover.ts  # optional publisher API/listing -> normalized candidates
 ├─ page.ts      # page capture mode and source-specific body selectors
 ├─ process.ts   # source normalization before Canonical is written
 └─ index.ts     # module wiring

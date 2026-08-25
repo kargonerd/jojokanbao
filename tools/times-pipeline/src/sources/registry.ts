@@ -2,6 +2,7 @@ import { apSource } from "./ap/index.js";
 import { clsSource } from "./cls/index.js";
 import { dwSource } from "./dw/index.js";
 import { nikkeiSource } from "./nikkei/index.js";
+import { reutersSource } from "./reuters/index.js";
 import type { SourceModule } from "./contracts.js";
 import type { Candidate, DiscoveryResult, DiscoveryRuntime, SourceConfig, SourcePagePolicy } from "../types.js";
 
@@ -10,6 +11,7 @@ const modules = new Map<string, SourceModule>([
   clsSource,
   dwSource,
   nikkeiSource,
+  reutersSource,
 ].map((module) => [module.id, module]));
 
 export async function discoverWithSourceModule(
