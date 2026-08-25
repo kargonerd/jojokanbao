@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import gzip
 from dataclasses import replace
 from io import BytesIO
@@ -17,6 +18,7 @@ from times_pipeline.webarchive import (
     HttpExchange,
     _limit_browser_response_rows,
     _page_body_with_dom_fallback,
+    _wait_for_browser_extension_ready,
     capture_articles,
     select_articles_for_capture,
     write_web_archive,
@@ -25,6 +27,21 @@ from times_pipeline.webarchive import (
 
 NOW = datetime(2026, 8, 22, 12, 0, tzinfo=timezone.utc)
 SOURCE = Source("example", "Example", "en", "https://example.test/feed", "summary-only")
+
+
+class FakeExtensionWorker:
+    def __init__(self, states: list[dict[str, int]]) -> None:
+        self.states = states
+
+    async def evaluate(self, _script: str) -> dict[str, int]:
+        if len(self.states) > 1:
+            return self.states.pop(0)
+        return self.states[0]
+
+
+class FakeExtensionContext:
+    def __init__(self, worker: FakeExtensionWorker) -> None:
+        self.service_workers = [worker]
 
 
 def article(identifier: str, published_at: datetime = NOW) -> Article:
@@ -258,6 +275,20 @@ def test_browser_dom_is_only_a_fallback_for_an_empty_final_page() -> None:
     assert _page_body_with_dom_fallback(raw, rendered, is_final_page=True) == (raw, False)
     assert _page_body_with_dom_fallback(b"", rendered, is_final_page=False) == (b"", False)
     assert _page_body_with_dom_fallback(b"", rendered, is_final_page=True) == (rendered, True)
+
+
+def test_browser_extension_waits_for_default_sites_and_session_rules() -> None:
+    worker = FakeExtensionWorker([
+        {"siteCount": 0, "sessionRuleCount": 0},
+        {"siteCount": 287, "sessionRuleCount": 412},
+    ])
+
+    state = asyncio.run(_wait_for_browser_extension_ready(
+        FakeExtensionContext(worker),
+        timeout_seconds=1.0,
+    ))
+
+    assert state == {"siteCount": 287, "sessionRuleCount": 412}
 
 
 def _fingerprint(value: Article) -> str:

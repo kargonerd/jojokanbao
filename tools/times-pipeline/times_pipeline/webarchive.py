@@ -33,6 +33,7 @@ SENSITIVE_RESPONSE_HEADERS = frozenset({"set-cookie"})
 SENSITIVE_QUERY_NAMES = frozenset({"access_key", "api_key", "apikey", "key", "token"})
 BROWSER_RETRY_STATUSES = frozenset({403, 408, 425, 429, 500, 502, 503, 504})
 MAX_BROWSER_RESPONSES_PER_ATTEMPT = 128
+BROWSER_EXTENSION_READY_TIMEOUT_SECONDS = 10.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +68,59 @@ class ArticleCapture:
     def final_exchange(self) -> HttpExchange | None:
         pages = [exchange for exchange in self.exchanges if exchange.is_page]
         return pages[-1] if pages else (self.exchanges[-1] if self.exchanges else None)
+
+
+async def _wait_for_browser_extension_ready(
+    context: Any,
+    *,
+    timeout_seconds: float = BROWSER_EXTENSION_READY_TIMEOUT_SECONDS,
+) -> dict[str, int]:
+    """Wait until a freshly installed MV3 extension has persisted sites and installed rules."""
+    workers = list(context.service_workers)
+    if workers:
+        worker = workers[0]
+    else:
+        try:
+            worker = await context.wait_for_event(
+                "serviceworker",
+                timeout=round(timeout_seconds * 1_000),
+            )
+        except Exception as exc:
+            raise RuntimeError("Configured browser extension did not start") from exc
+
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+    last_state: dict[str, int] = {"siteCount": 0, "sessionRuleCount": 0}
+    while asyncio.get_running_loop().time() < deadline:
+        try:
+            state = await worker.evaluate(
+                """() => new Promise((resolve) => {
+                  chrome.storage.local.get({sites: {}}, (stored) => {
+                    chrome.declarativeNetRequest.getSessionRules((rules) => {
+                      resolve({
+                        siteCount: Object.keys(stored.sites || {}).length,
+                        sessionRuleCount: Array.isArray(rules) ? rules.length : 0,
+                      });
+                    });
+                  });
+                })"""
+            )
+            last_state = {
+                "siteCount": int(state.get("siteCount", 0)),
+                "sessionRuleCount": int(state.get("sessionRuleCount", 0)),
+            }
+            if last_state["siteCount"] > 0 and last_state["sessionRuleCount"] > 0:
+                return last_state
+        except Exception:
+            # The service worker can restart while first-install handlers update storage.
+            workers = list(context.service_workers)
+            if workers:
+                worker = workers[0]
+        await asyncio.sleep(0.1)
+
+    raise RuntimeError(
+        "Configured browser extension did not finish initialization "
+        f"(sites={last_state['siteCount']}, sessionRules={last_state['sessionRuleCount']})"
+    )
 
 
 def _json_bytes(value: Any) -> bytes:
@@ -567,7 +621,7 @@ async def _capture_articles_browser(
     retries: int,
 ) -> list[ArticleCapture]:
     try:
-        from playwright.async_api import Error as PlaywrightError, async_playwright
+        from playwright.async_api import async_playwright
     except ImportError as exc:
         raise RuntimeError("Browser capture requires the playwright Python package") from exc
 
@@ -612,11 +666,7 @@ async def _capture_articles_browser(
             browser = shared_context.browser
             if browser is None:
                 raise RuntimeError("Persistent Chromium context did not expose a browser")
-            if not shared_context.service_workers:
-                try:
-                    await shared_context.wait_for_event("serviceworker", timeout=10_000)
-                except PlaywrightError:
-                    raise RuntimeError("Configured browser extension did not start") from None
+            await _wait_for_browser_extension_ready(shared_context)
         else:
             browser = await playwright.chromium.launch(**launch_options)
         try:
