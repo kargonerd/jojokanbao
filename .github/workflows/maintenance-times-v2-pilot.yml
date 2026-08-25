@@ -18,6 +18,11 @@ on:
         type: string
         default: "22"
         required: true
+      use_bpc:
+        description: Load the pinned BPC extension during browser capture
+        type: boolean
+        default: true
+        required: true
 
 permissions:
   contents: read
@@ -116,9 +121,10 @@ jobs:
         run: |
           node -e 'const fs=require("node:fs");const result=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+"/capture-result.json","utf8"));fs.appendFileSync(process.env.GITHUB_ENV,"TIMES_RUN_MANIFEST="+result.runManifest+"\n")'
 
-      - name: Archive a representative page from every source with BPC
+      - name: Archive representative pages with optional BPC
         env:
           TIMES_MAX_PAGES: ${{ inputs.max_pages }}
+          TIMES_USE_BPC: ${{ inputs.use_bpc }}
         run: |
           args=(
             --config tools/times-pipeline/sources.v2.json
@@ -132,10 +138,14 @@ jobs:
             --maximum-page-bytes 25000000
             --refresh-hours 24
             --retry-hours 2
-            --browser-extension-path "$BPC_EXTENSION_PATH"
-            --browser-extension-revision "$BPC_REVISION"
             --headed
           )
+          if [ "$TIMES_USE_BPC" = "true" ]; then
+            args+=(
+              --browser-extension-path "$BPC_EXTENSION_PATH"
+              --browser-extension-revision "$BPC_REVISION"
+            )
+          fi
           if [ -n "$JOJO_TIMES_PROXY_URI" ]; then
             args+=(
               --proxy-server "$JOJO_TIMES_PROXY_URI"
