@@ -49,14 +49,6 @@ export type DiscoveryEndpoint =
       navigationId: string;
       maximumItems: number;
     }
-  | {
-      kind: "source-adapter";
-      adapter: "bloomberg";
-      driver: DiscoveryDriver;
-      pageId: string;
-      moduleIds: string[];
-      maximumItems: number;
-    }
   | { kind: "official-rss"; url: string }
   | { kind: "official-rss-list"; urls: string[] }
   | { kind: "sitemap"; url: string; maximumPages: number }

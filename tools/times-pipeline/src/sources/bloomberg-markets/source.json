@@ -7,7 +7,8 @@
       "id": "asia",
       "name": "Asia",
       "url": "https://www.bloomberg.com/asia",
-      "kind": "edition"
+      "kind": "edition",
+      "discoverable": false
     },
     {
       "id": "markets",
@@ -37,7 +38,8 @@
       "id": "ai",
       "name": "AI",
       "url": "https://www.bloomberg.com/ai",
-      "kind": "topic"
+      "kind": "topic",
+      "discoverable": false
     },
     {
       "id": "politics",
@@ -49,27 +51,6 @@
   "discovery": {
     "kind": "multi",
     "targets": [
-      {
-        "id": "asia",
-        "sectionIds": [
-          "asia"
-        ],
-        "discovery": {
-          "kind": "source-adapter",
-          "adapter": "bloomberg",
-          "driver": "http",
-          "pageId": "phoenix-asia",
-          "moduleIds": [
-            "lede",
-            "well-1",
-            "well-2",
-            "well-3",
-            "well-4",
-            "more-top-stories"
-          ],
-          "maximumItems": 50
-        }
-      },
       {
         "id": "markets",
         "sectionIds": [
@@ -108,29 +89,6 @@
         "discovery": {
           "kind": "official-rss",
           "url": "https://feeds.bloomberg.com/technology/news.rss"
-        }
-      },
-      {
-        "id": "ai",
-        "sectionIds": [
-          "ai"
-        ],
-        "discovery": {
-          "kind": "source-adapter",
-          "adapter": "bloomberg",
-          "driver": "http",
-          "pageId": "phx-ai",
-          "moduleIds": [
-            "top_single_story",
-            "feature_story",
-            "top_stories",
-            "top_stories_1",
-            "topic_package_3",
-            "topic_package_1",
-            "topic_package_2",
-            "archive_story_list"
-          ],
-          "maximumItems": 50
         }
       },
       {

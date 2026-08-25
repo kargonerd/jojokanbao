@@ -76,7 +76,6 @@ jobs:
           for attempt in $(seq 1 12); do
             if curl --proxy http://127.0.0.1:7890 --max-time 8 -fsS -o /dev/null https://www.gstatic.com/generate_204; then
               echo "JOJO_TIMES_PROXY_URI=http://127.0.0.1:7890" >> "$GITHUB_ENV"
-              echo "JOJO_TIMES_PROXY_CONTROL_URL=http://127.0.0.1:9090" >> "$GITHUB_ENV"
               exit 0
             fi
             sleep 2
@@ -112,7 +111,6 @@ jobs:
             --output "$RUNNER_TEMP/jojo-times-v2"
             --since-hours "$TIMES_SINCE_HOURS"
             --workers 3
-            --serial-sources bloomberg-markets
           )
           if [ -n "$TIMES_SOURCES" ]; then
             args+=(--sources "$TIMES_SOURCES")

@@ -16,6 +16,8 @@ describe("sources v2", () => {
     expect(sources.map((source) => source.id)).toContain("agencia-brasil");
     expect(sources.every((source) => Boolean(source.sections?.length))).toBe(true);
     expect(sources.reduce((count, source) => count + (source.sections?.length ?? 0), 0)).toBe(153);
+    expect(sources.reduce((count, source) => count
+      + (source.sections?.filter((section) => section.discoverable !== false).length ?? 0), 0)).toBe(146);
     expect(sources.find((source) => source.id === "reuters")?.discovery.kind).toBe("multi");
     expect(sources.find((source) => source.id === "guardian")?.discovery.kind).toBe("multi");
     expect(sources.find((source) => source.id === "scmp")?.archive.bpc).toBe(true);
@@ -30,8 +32,13 @@ describe("sources v2", () => {
         && target.discovery.driver === "http"
       )).toBe(true);
     }
-    expect(sources.find((source) => source.id === "bloomberg-markets")?.sections)
-      .toContainEqual(expect.objectContaining({ id: "asia", url: "https://www.bloomberg.com/asia" }));
+    const bloombergSections = sources.find((source) => source.id === "bloomberg-markets")?.sections;
+    expect(bloombergSections)
+      .toContainEqual(expect.objectContaining({ id: "asia", url: "https://www.bloomberg.com/asia", discoverable: false }));
+    expect(bloombergSections)
+      .toContainEqual(expect.objectContaining({ id: "ai", url: "https://www.bloomberg.com/ai", discoverable: false }));
+    expect(sources.find((source) => source.id === "axios")?.sections?.every((section) => section.discoverable === false))
+      .toBe(true);
     const configuredSections = sources.flatMap((source) => source.discovery.kind === "multi"
       ? source.discovery.targets.flatMap((target) => target.sectionIds.map((sectionId) => `${source.id}:${sectionId}`))
       : []);

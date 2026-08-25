@@ -56,19 +56,16 @@ async function main(): Promise<void> {
   if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error("--workers must be a positive integer");
   const requested = new Set((args.get("sources") ?? "").split(",").map((value) => value.trim()).filter(Boolean));
   const sources = (await loadSources(config)).filter((source) => requested.size === 0 || requested.has(source.id));
-  const serialIds = new Set((args.get("serial-sources") ?? "").split(",").map((value) => value.trim()).filter(Boolean));
   if (sources.length === 0) throw new Error("No selected source is enabled");
   await mkdir(output, { recursive: true });
   const started = new Date();
   const id = runId(started);
   const worker = fileURLToPath(new URL("./source-worker.js", import.meta.url));
   const results: WorkerResult[] = [];
-  const parallelSources = sources.filter((source) => !serialIds.has(source.id));
-  const serialSources = sources.filter((source) => serialIds.has(source.id));
   let cursor = 0;
   async function consume(): Promise<void> {
-    while (cursor < parallelSources.length) {
-      const source = parallelSources[cursor++];
+    while (cursor < sources.length) {
+      const source = sources[cursor++];
       if (!source) return;
       results.push(await runWorker(worker, [
         "--config", config,
@@ -80,17 +77,7 @@ async function main(): Promise<void> {
       ], source.id));
     }
   }
-  await Promise.all(Array.from({ length: Math.min(concurrency, parallelSources.length) }, consume));
-  for (const source of serialSources) {
-    results.push(await runWorker(worker, [
-      "--config", config,
-      "--output", output,
-      "--source", source.id,
-      "--run-id", id,
-      "--started-at", started.toISOString(),
-      "--since-hours", sinceHours,
-    ], source.id));
-  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, sources.length) }, consume));
   const date = started.toISOString().slice(0, 10).replaceAll("-", "/");
   const runManifest = path.join(output, "raw", "news", "runs", ...date.split("/"), `${id}.json`);
   await mkdir(path.dirname(runManifest), { recursive: true });

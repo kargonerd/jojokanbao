@@ -1,5 +1,4 @@
 import { apSource } from "./ap/index.js";
-import { bloombergSource } from "./bloomberg-markets/index.js";
 import { clsSource } from "./cls/index.js";
 import { dwSource } from "./dw/index.js";
 import { nikkeiSource } from "./nikkei/index.js";
@@ -9,7 +8,6 @@ import type { Candidate, DiscoveryResult, DiscoveryRuntime, SourceConfig, Source
 
 const modules = new Map<string, SourceModule>([
   apSource,
-  bloombergSource,
   clsSource,
   dwSource,
   nikkeiSource,

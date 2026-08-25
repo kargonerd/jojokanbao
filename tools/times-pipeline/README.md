@@ -10,19 +10,21 @@ Times v2 是 JOJO 看报的离线时事流水线，不提供前端请求触发�
 Financial Times、Axios、NPR、Nikkei Asia、联合早报、Al Jazeera、SCMP、新华网、人民网、
 中国新闻网、澎湃新闻、财联社、CNA、Deutsche Welle、Focus Taiwan、Africanews、Agência Brasil。
 央视新闻已从 v1/v2 目录移除。22 家共配置 153 个选定栏目。
+其中 146 个栏目可由轻量发现入口覆盖；Axios 的 5 个栏目与 Bloomberg Asia/AI 共 7 个栏目只保留
+出版方目录定义，不参与运行时栏目覆盖率，也不会被错误分类。
 
 发现和正文是两套独立策略：
 
 - JOJO 原生来源适配器：直接调用出版方的轻量入口。来源特例按
-  `src/sources/{source}/discover.ts|page.ts|process.ts` 组织；AP、Bloomberg、Nikkei、财联社和 DW
+  `src/sources/{source}/discover.ts|page.ts|process.ts` 组织；AP、Nikkei、财联社和 DW
   当前使用原生发现器，Reuters 另有页面 URL/正文选择策略。
 - 官方 RSS / RSS 列表：直接抓取并保留原始 XML。
 - Sitemap：目前用于 Reuters 官方 URL 发现。
 - Multi：合并同一媒体的多个选定栏目入口，按文章 ID 去重并保留所有命中的出版方栏目。
 - HTML 栏目页适配器：用于 Nikkei 地区页、新华网、人民网大湾区和 Agência Brasil 英文版等没有
   可用 RSS/API 的栏目；可用 CSS selector 只选择文章卡片，避免把导航链接当文章。
-- Bloomberg Asia/AI 读取其一方 `lineup-next` JSON；当 Node TLS 指纹被拒绝时，Bloomberg 来源独占
-  一个轻量 curl+Mihomo 节点重试阶段，不启动发现浏览器，也不影响其他 21 家并行发现。
+- Bloomberg 使用 5 个稳定的官方主题 RSS。Asia/AI 仍保留为出版方栏目链接，但目前没有稳定的轻量
+  Feed/API，明确标为仅声明栏目；流水线不会请求分类页，也不会把其他稿件伪标成 Asia/AI。
 - Axios 使用官方全文 feed。官网保留 5 个栏目定义和链接，但 feed 不提供可靠栏目字段，因此这些栏目
   明确标为不可分类，不再请求会返回 Cloudflare 403 的栏目 HTML，也不会伪造文章栏目归属。
 - 官方内容 API 适配器：澎湃频道直接读取其频道 API 和文章页 `__NEXT_DATA__`，并在发现阶段跳过视频。
@@ -55,8 +57,7 @@ node tools/times-pipeline/dist/src/capture-cli.js `
   --config tools/times-pipeline/sources.v2.json `
   --output "$env:TEMP/jojo-times-v2" `
   --since-hours 24 `
-  --workers 4 `
-  --serial-sources bloomberg-markets
+  --workers 4
 ```
 
 从 capture 输出取得 `runManifest` 后：
@@ -141,8 +142,7 @@ Raw 存档累计而线性增长。
 
 代理订阅只从 `JOJO_TIMES_PROXY_SUBSCRIPTION` Secret 读取。任务使用固定 Mihomo 二进制生成临时配置；
 首次页面抓取走延迟优选节点；网络层 401/403 或连接失败时，归档器从已通过健康检查的节点中混合
-低延迟和分散位置抽样，正式任务最多切换 8 个不同节点重试。Bloomberg 的两个一方 JSON 入口也会
-在独占发现阶段最多抽样 12 个节点；结束后恢复自动路由。
+低延迟和分散位置抽样，正式任务最多切换 8 个不同节点重试。
 订阅 URL、节点名、Cookie 和 Authorization 不会进入日志、manifest、WACZ 请求头或 artifact。
 
 验证命令：
