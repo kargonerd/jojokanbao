@@ -63,6 +63,7 @@ class ArticleCapture:
     exchanges: tuple[HttpExchange, ...]
     elapsed_ms: int
     error: str | None = None
+    rendered_body: bytes = b""
 
     @property
     def final_exchange(self) -> HttpExchange | None:
@@ -417,7 +418,7 @@ async def _browser_attempt(
     maximum_response_bytes: int,
     maximum_page_bytes: int,
     shared_context: Any | None = None,
-) -> tuple[list[HttpExchange], int | None, str | None]:
+) -> tuple[list[HttpExchange], int | None, str | None, bytes]:
     from playwright.async_api import Error as PlaywrightError
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
@@ -551,7 +552,7 @@ async def _browser_attempt(
                 request_method=str(response.request.method or "GET").upper(),
                 is_page=is_page,
             ))
-        return exchanges, main_status, navigation_error
+        return exchanges, main_status, navigation_error, rendered_dom
     finally:
         try:
             if page is not None:
@@ -578,9 +579,10 @@ async def _capture_one_browser(
     started = asyncio.get_running_loop().time()
     exchanges: list[HttpExchange] = []
     error: str | None = None
+    rendered_body = b""
     for attempt in range(retries + 1):
         try:
-            attempt_exchanges, status, attempt_error = await _browser_attempt(
+            attempt_exchanges, status, attempt_error, attempt_rendered_body = await _browser_attempt(
                 browser,
                 article,
                 timeout_seconds=timeout_seconds,
@@ -589,8 +591,10 @@ async def _capture_one_browser(
                 shared_context=shared_context,
             )
         except Exception as exc:
-            attempt_exchanges, status, attempt_error = [], None, type(exc).__name__
+            attempt_exchanges, status, attempt_error, attempt_rendered_body = [], None, type(exc).__name__, b""
         exchanges.extend(attempt_exchanges)
+        if attempt_rendered_body:
+            rendered_body = attempt_rendered_body
         should_retry = status is None or status in BROWSER_RETRY_STATUSES
         if not should_retry:
             error = None if status is not None and 200 <= status < 400 else f"HTTPStatus{status}"
@@ -607,6 +611,7 @@ async def _capture_one_browser(
         exchanges=tuple(exchanges),
         elapsed_ms=elapsed_ms,
         error=error,
+        rendered_body=rendered_body,
     )
 
 

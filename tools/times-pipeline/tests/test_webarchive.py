@@ -83,6 +83,7 @@ def test_proxy_retry_merge_keeps_failed_and_successful_page_attempts() -> None:
         (replace(exchange(value), status_code=403, reason_phrase="Forbidden", is_page=True),),
         10,
         "HTTPStatus403",
+        b"<html>failed rendered page</html>",
     )
     retry = ArticleCapture(
         value.id,
@@ -91,6 +92,7 @@ def test_proxy_retry_merge_keeps_failed_and_successful_page_attempts() -> None:
         value.title,
         (replace(exchange(value), is_page=True),),
         20,
+        rendered_body=b"<html>successful rendered page</html>",
     )
 
     merged = _merge_capture_attempts(first, retry)
@@ -99,6 +101,7 @@ def test_proxy_retry_merge_keeps_failed_and_successful_page_attempts() -> None:
     assert merged.elapsed_ms == 30
     assert merged.error is None
     assert merged.final_exchange and merged.final_exchange.status_code == 200
+    assert merged.rendered_body == b"<html>successful rendered page</html>"
 
 
 def test_proxy_candidates_exclude_current_route_and_mix_fast_with_spread_nodes() -> None:

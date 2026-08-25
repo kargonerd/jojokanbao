@@ -45,3 +45,19 @@ def test_articles_can_use_a_source_specific_capture_url(tmp_path: Path) -> None:
 
     assert len(articles) == 1
     assert articles[0].url == candidate["sourceUrl"]
+
+
+def test_canonical_extraction_prefers_bpc_rendered_dom_over_raw_preview() -> None:
+    raw_preview = b"<html><article><p>Short publisher preview.</p></article></html>"
+    rendered = (
+        "<html><article>"
+        + "".join(f"<p>Full rendered paragraph {index}. {'Article sentence. ' * 25}</p>" for index in range(4))
+        + "</article></html>"
+    ).encode()
+
+    body = archive_v2._captured_article_body(rendered, raw_preview)
+
+    assert body is not None
+    assert body.count("<p>") == 4
+    assert "Full rendered paragraph" in body
+    assert "Short publisher preview" not in body

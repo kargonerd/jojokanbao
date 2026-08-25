@@ -32,7 +32,8 @@ Financial Times、Axios、NPR、Nikkei Asia、联合早报、Al Jazeera、SCMP�
   注入接口保留，但尚未给任何生产发现适配器启用，误配会直接失败而不是静默降级。
 - `discovery-body`：逐篇质量门槛通过后直接标为全文。
 - Chromium（可加载 BPC）：每轮最多 50 个新页面或到期重试页面，生成标准 WARC 1.1/CDXJ/WACZ，并把通过
-  通用正文质量门槛的页面回填为全文。
+  通用正文质量门槛的页面回填为全文。WACZ 保留出版方原始 HTTP 响应；Canonical 正文优先从 BPC
+  处理后的 rendered DOM 提取，失败时再读取原始响应，两种用途不会互相覆盖。
 - `discovery-summary`：正文不可用时保留真实摘要，绝不把 metadata-only 伪装成摘要。
 
 同一入口内允许全文与摘要混合，正文质量逐篇判定。栏目健康度按入口是否可用计算；栏目入口正常但

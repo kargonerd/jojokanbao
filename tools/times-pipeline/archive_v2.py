@@ -39,6 +39,7 @@ def _merge_capture_attempts(previous: ArticleCapture, retry: ArticleCapture) -> 
         exchanges=previous.exchanges + retry.exchanges,
         elapsed_ms=previous.elapsed_ms + retry.elapsed_ms,
         error=retry.error,
+        rendered_body=retry.rendered_body or previous.rendered_body,
     )
 
 
@@ -313,6 +314,17 @@ def _browser_article_body(body: bytes, source_selectors: tuple[str, ...] = ()) -
     return "".join(f"<p>{html.escape(part)}</p>" for part in best_paragraphs)
 
 
+def _captured_article_body(
+    rendered_body: bytes,
+    response_body: bytes,
+    source_selectors: tuple[str, ...] = (),
+) -> str | None:
+    return (
+        _browser_article_body(rendered_body, source_selectors)
+        or _browser_article_body(response_body, source_selectors)
+    )
+
+
 def _apply_capture_results(
     workspace: Path,
     run: dict[str, Any],
@@ -347,7 +359,7 @@ def _apply_capture_results(
                 failed += 1
                 continue
             succeeded += 1
-            browser_body = _browser_article_body(final.body, source_selectors)
+            browser_body = _captured_article_body(capture.rendered_body, final.body, source_selectors)
             if browser_body:
                 row["browserBody"] = browser_body
                 row["contentStatus"] = "full"
