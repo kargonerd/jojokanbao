@@ -107,12 +107,13 @@ jobs:
       - name: Check out pinned BPC extension
         env:
           BPC_REVISION: 587dcfd3d3b18652607e37d3d401430e85f8c8ec
+          BPC_SHA256: 1db1c0d424f2ca1f8b9c88b91789ea68b7732969023cb23f82b263c060a6ce59
         run: |
-          git init "$RUNNER_TEMP/bpc-source"
-          git -C "$RUNNER_TEMP/bpc-source" remote add origin https://gitflic.ru/project/magnolia1234/bpc_uploads.git
-          git -C "$RUNNER_TEMP/bpc-source" fetch --depth 1 origin "$BPC_REVISION"
-          git -C "$RUNNER_TEMP/bpc-source" checkout --detach FETCH_HEAD
-          unzip -q "$RUNNER_TEMP/bpc-source/bypass-paywalls-chrome-clean-master.zip" -d "$RUNNER_TEMP/bpc"
+          curl -fsSL --retry 3 \
+            "https://gitflic.ru/project/magnolia1234/bpc_uploads/blob/raw?file=bypass-paywalls-chrome-clean-master.zip&inline=false&commit=${BPC_REVISION}" \
+            -o "$RUNNER_TEMP/bpc.zip"
+          echo "$BPC_SHA256  $RUNNER_TEMP/bpc.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/bpc.zip" -d "$RUNNER_TEMP/bpc"
           echo "BPC_EXTENSION_PATH=$RUNNER_TEMP/bpc/bypass-paywalls-chrome-clean-master" >> "$GITHUB_ENV"
           echo "BPC_REVISION=$BPC_REVISION" >> "$GITHUB_ENV"
 
