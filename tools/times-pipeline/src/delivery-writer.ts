@@ -342,6 +342,7 @@ export async function buildTimesDelivery(input: {
           name: row.canonical.source.name,
           language: row.canonical.language,
         },
+        ...(row.canonical.publisherSections?.length ? { publisherSections: row.canonical.publisherSections } : {}),
         articleObject,
       });
     }

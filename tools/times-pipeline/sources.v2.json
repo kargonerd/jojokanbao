@@ -2,249 +2,497 @@
   "version": 2,
   "sources": [
     {
-      "id": "ap",
-      "name": "AP News",
-      "language": "en",
-      "discovery": { "kind": "rsshub-package", "route": "/apnews/mobile" },
+      "id": "ap", "name": "AP News", "language": "en",
+      "sections": [
+        { "id": "world", "name": "World", "url": "https://apnews.com/world-news", "kind": "region" },
+        { "id": "us", "name": "U.S.", "url": "https://apnews.com/us-news", "kind": "region" },
+        { "id": "politics", "name": "Politics", "url": "https://apnews.com/politics", "kind": "topic" },
+        { "id": "business", "name": "Business", "url": "https://apnews.com/business", "kind": "topic" }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "world", "sectionIds": ["world"], "discovery": { "kind": "source-adapter", "adapter": "ap", "driver": "http", "path": "/world-news", "maximumItems": 100 } },
+        { "id": "us", "sectionIds": ["us"], "discovery": { "kind": "source-adapter", "adapter": "ap", "driver": "http", "path": "/us-news", "maximumItems": 100 } },
+        { "id": "politics", "sectionIds": ["politics"], "discovery": { "kind": "source-adapter", "adapter": "ap", "driver": "http", "path": "/politics", "maximumItems": 100 } },
+        { "id": "business", "sectionIds": ["business"], "discovery": { "kind": "source-adapter", "adapter": "ap", "driver": "http", "path": "/business", "maximumItems": 100 } }
+      ] },
       "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "ap" },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "guardian",
-      "name": "The Guardian",
-      "language": "en",
-      "discovery": { "kind": "official-rss", "url": "https://www.theguardian.com/world/rss" },
+      "id": "guardian", "name": "The Guardian", "language": "en",
+      "sections": [
+        { "id": "world", "name": "World", "url": "https://www.theguardian.com/world", "kind": "region" },
+        { "id": "uk", "name": "UK", "url": "https://www.theguardian.com/uk-news", "kind": "region" },
+        { "id": "us", "name": "US", "url": "https://www.theguardian.com/us-news", "kind": "region" },
+        { "id": "us-politics", "name": "US Politics", "url": "https://www.theguardian.com/us-news/us-politics", "kind": "topic" },
+        { "id": "australia", "name": "Australia", "url": "https://www.theguardian.com/australia-news", "kind": "region" },
+        { "id": "europe", "name": "Europe", "url": "https://www.theguardian.com/world/europe-news", "kind": "region" },
+        { "id": "middle-east", "name": "Middle East", "url": "https://www.theguardian.com/world/middleeast", "kind": "region" },
+        { "id": "uk-politics", "name": "UK Politics", "url": "https://www.theguardian.com/politics", "kind": "topic" },
+        { "id": "business", "name": "Business", "url": "https://www.theguardian.com/business", "kind": "topic" }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "world", "sectionIds": ["world"], "discovery": { "kind": "official-rss", "url": "https://www.theguardian.com/world/rss" } },
+        { "id": "uk", "sectionIds": ["uk"], "discovery": { "kind": "official-rss", "url": "https://www.theguardian.com/uk-news/rss" } },
+        { "id": "us", "sectionIds": ["us"], "discovery": { "kind": "official-rss", "url": "https://www.theguardian.com/us-news/rss" } },
+        { "id": "us-politics", "sectionIds": ["us-politics"], "discovery": { "kind": "official-rss", "url": "https://www.theguardian.com/us-news/us-politics/rss" } },
+        { "id": "australia", "sectionIds": ["australia"], "discovery": { "kind": "official-rss", "url": "https://www.theguardian.com/australia-news/rss" } },
+        { "id": "europe", "sectionIds": ["europe"], "discovery": { "kind": "official-rss", "url": "https://www.theguardian.com/world/europe-news/rss" } },
+        { "id": "middle-east", "sectionIds": ["middle-east"], "discovery": { "kind": "official-rss", "url": "https://www.theguardian.com/world/middleeast/rss" } },
+        { "id": "uk-politics", "sectionIds": ["uk-politics"], "discovery": { "kind": "official-rss", "url": "https://www.theguardian.com/politics/rss" } },
+        { "id": "business", "sectionIds": ["business"], "discovery": { "kind": "official-rss", "url": "https://www.theguardian.com/business/rss" } }
+      ] },
       "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "guardian" },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "bloomberg-markets",
-      "name": "Bloomberg",
-      "language": "en",
-      "discovery": { "kind": "official-rss", "url": "https://feeds.bloomberg.com/markets/news.rss" },
+      "id": "bloomberg-markets", "name": "Bloomberg", "language": "en",
+      "sections": [
+        { "id": "asia", "name": "Asia", "url": "https://www.bloomberg.com/asia", "kind": "edition" },
+        { "id": "markets", "name": "Markets", "url": "https://www.bloomberg.com/markets", "kind": "topic" },
+        { "id": "economics", "name": "Economics", "url": "https://www.bloomberg.com/economics", "kind": "topic" },
+        { "id": "industries", "name": "Industries", "url": "https://www.bloomberg.com/industries", "kind": "topic" },
+        { "id": "technology", "name": "Technology", "url": "https://www.bloomberg.com/technology", "kind": "topic" },
+        { "id": "ai", "name": "AI", "url": "https://www.bloomberg.com/ai", "kind": "topic" },
+        { "id": "politics", "name": "Politics", "url": "https://www.bloomberg.com/politics", "kind": "topic" }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "asia", "sectionIds": ["asia"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.bloomberg.com/asia", "articlePathPrefixes": ["/news/articles/"], "maximumItems": 50 } },
+        { "id": "markets", "sectionIds": ["markets"], "discovery": { "kind": "official-rss", "url": "https://feeds.bloomberg.com/markets/news.rss" } },
+        { "id": "economics", "sectionIds": ["economics"], "discovery": { "kind": "official-rss", "url": "https://feeds.bloomberg.com/economics/news.rss" } },
+        { "id": "industries", "sectionIds": ["industries"], "discovery": { "kind": "official-rss", "url": "https://feeds.bloomberg.com/industries/news.rss" } },
+        { "id": "technology", "sectionIds": ["technology"], "discovery": { "kind": "official-rss", "url": "https://feeds.bloomberg.com/technology/news.rss" } },
+        { "id": "ai", "sectionIds": ["ai"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.bloomberg.com/ai", "articlePathPrefixes": ["/news/articles/"], "maximumItems": 50 } },
+        { "id": "politics", "sectionIds": ["politics"], "discovery": { "kind": "official-rss", "url": "https://feeds.bloomberg.com/politics/news.rss" } }
+      ] },
       "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "bloomberg" },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "bloomberg" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "bloomberg" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "nyt",
-      "name": "The New York Times",
-      "language": "en",
-      "discovery": { "kind": "official-rss", "url": "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml" },
+      "id": "nyt", "name": "The New York Times", "language": "en",
+      "sections": [
+        { "id": "world", "name": "World", "url": "https://www.nytimes.com/section/world", "kind": "region" },
+        { "id": "us", "name": "U.S.", "url": "https://www.nytimes.com/section/us", "kind": "region" },
+        { "id": "politics", "name": "Politics", "url": "https://www.nytimes.com/section/politics", "kind": "topic" },
+        { "id": "new-york", "name": "New York", "url": "https://www.nytimes.com/section/nyregion", "kind": "region" },
+        { "id": "business", "name": "Business", "url": "https://www.nytimes.com/section/business", "kind": "topic" },
+        { "id": "economy", "name": "Economy", "url": "https://www.nytimes.com/section/business/economy", "kind": "topic" },
+        { "id": "technology", "name": "Technology", "url": "https://www.nytimes.com/section/technology", "kind": "topic" }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "world", "sectionIds": ["world"], "discovery": { "kind": "official-rss", "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml" } },
+        { "id": "us", "sectionIds": ["us"], "discovery": { "kind": "official-rss", "url": "https://rss.nytimes.com/services/xml/rss/nyt/US.xml" } },
+        { "id": "politics", "sectionIds": ["politics"], "discovery": { "kind": "official-rss", "url": "https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml" } },
+        { "id": "new-york", "sectionIds": ["new-york"], "discovery": { "kind": "official-rss", "url": "https://rss.nytimes.com/services/xml/rss/nyt/NYRegion.xml" } },
+        { "id": "business", "sectionIds": ["business"], "discovery": { "kind": "official-rss", "url": "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml" } },
+        { "id": "economy", "sectionIds": ["economy"], "discovery": { "kind": "official-rss", "url": "https://rss.nytimes.com/services/xml/rss/nyt/Economy.xml" } },
+        { "id": "technology", "sectionIds": ["technology"], "discovery": { "kind": "official-rss", "url": "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml" } }
+      ] },
       "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "nyt" },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "nyt" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "nyt" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "reuters",
-      "name": "Reuters",
-      "language": "en",
-      "discovery": {
-        "kind": "sitemap",
-        "url": "https://www.reuters.com/arc/outboundfeeds/sitemap-index/?outputType=xml",
-        "maximumPages": 20
-      },
+      "id": "reuters", "name": "Reuters", "language": "en",
+      "sections": [
+        { "id": "world", "name": "World", "url": "https://www.reuters.com/world/", "kind": "region", "match": { "urlPrefixes": ["https://www.reuters.com/world/"] } },
+        { "id": "business", "name": "Business", "url": "https://www.reuters.com/business/", "kind": "topic", "match": { "urlPrefixes": ["https://www.reuters.com/business/"] } },
+        { "id": "markets", "name": "Markets", "url": "https://www.reuters.com/markets/", "kind": "topic", "match": { "urlPrefixes": ["https://www.reuters.com/markets/"] } },
+        { "id": "technology", "name": "Technology", "url": "https://www.reuters.com/technology/", "kind": "topic", "match": { "urlPrefixes": ["https://www.reuters.com/technology/"] } }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "sitemap", "sectionIds": [], "discovery": { "kind": "sitemap", "url": "https://www.reuters.com/arc/outboundfeeds/sitemap-index/?outputType=xml", "maximumPages": 20 } }
+      ] },
       "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "reuters" },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "reuters" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "reuters" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "ft",
-      "name": "Financial Times",
-      "language": "en",
-      "discovery": { "kind": "official-rss", "url": "https://www.ft.com/rss/home/international" },
+      "id": "ft", "name": "Financial Times", "language": "en",
+      "sections": [
+        { "id": "world", "name": "World", "url": "https://www.ft.com/world", "kind": "region" },
+        { "id": "global-economy", "name": "Global Economy", "url": "https://www.ft.com/global-economy", "kind": "topic" },
+        { "id": "uk", "name": "UK", "url": "https://www.ft.com/uk", "kind": "region" },
+        { "id": "us", "name": "US", "url": "https://www.ft.com/us", "kind": "region" },
+        { "id": "china", "name": "China", "url": "https://www.ft.com/china", "kind": "region" },
+        { "id": "africa", "name": "Africa", "url": "https://www.ft.com/africa", "kind": "region" },
+        { "id": "asia-pacific", "name": "Asia Pacific", "url": "https://www.ft.com/asia-pacific", "kind": "region" },
+        { "id": "emerging-markets", "name": "Emerging Markets", "url": "https://www.ft.com/emerging-markets", "kind": "region" },
+        { "id": "europe", "name": "Europe", "url": "https://www.ft.com/europe", "kind": "region" },
+        { "id": "americas", "name": "Americas", "url": "https://www.ft.com/americas", "kind": "region" },
+        { "id": "middle-east-north-africa", "name": "Middle East & North Africa", "url": "https://www.ft.com/middle-east-north-africa", "kind": "region" }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "world", "sectionIds": ["world"], "discovery": { "kind": "official-rss", "url": "https://www.ft.com/rss/world" } },
+        { "id": "global-economy", "sectionIds": ["global-economy"], "discovery": { "kind": "official-rss", "url": "https://www.ft.com/rss/global-economy" } },
+        { "id": "uk", "sectionIds": ["uk"], "discovery": { "kind": "official-rss-list", "urls": ["https://www.ft.com/rss/uk-politics-policy", "https://www.ft.com/rss/uk-business-economy"] } },
+        { "id": "us", "sectionIds": ["us"], "discovery": { "kind": "official-rss", "url": "https://www.ft.com/rss/us" } },
+        { "id": "china", "sectionIds": ["china"], "discovery": { "kind": "official-rss", "url": "https://www.ft.com/rss/china" } },
+        { "id": "africa", "sectionIds": ["africa"], "discovery": { "kind": "official-rss", "url": "https://www.ft.com/rss/africa" } },
+        { "id": "asia-pacific", "sectionIds": ["asia-pacific"], "discovery": { "kind": "official-rss", "url": "https://www.ft.com/rss/asia-pacific" } },
+        { "id": "emerging-markets", "sectionIds": ["emerging-markets"], "discovery": { "kind": "official-rss", "url": "https://www.ft.com/rss/emerging-markets" } },
+        { "id": "europe", "sectionIds": ["europe"], "discovery": { "kind": "official-rss", "url": "https://www.ft.com/rss/europe" } },
+        { "id": "americas", "sectionIds": ["americas"], "discovery": { "kind": "official-rss", "url": "https://www.ft.com/rss/americas" } },
+        { "id": "middle-east-north-africa", "sectionIds": ["middle-east-north-africa"], "discovery": { "kind": "official-rss", "url": "https://www.ft.com/rss/middle-east-north-africa" } }
+      ] },
       "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "ft" },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "ft" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "ft" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "axios",
-      "name": "Axios",
-      "language": "en",
-      "discovery": { "kind": "official-rss", "url": "https://api.axios.com/feed/" },
-      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "axios" },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "axios" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "id": "axios", "name": "Axios", "language": "en",
+      "sections": [
+        { "id": "politics-policy", "name": "Politics & Policy", "url": "https://www.axios.com/politics-policy", "kind": "topic" },
+        { "id": "business", "name": "Business", "url": "https://www.axios.com/business", "kind": "topic" },
+        { "id": "technology", "name": "Technology", "url": "https://www.axios.com/technology", "kind": "topic" },
+        { "id": "world", "name": "World", "url": "https://www.axios.com/world", "kind": "region" },
+        { "id": "economy", "name": "Economy", "url": "https://www.axios.com/economy", "kind": "topic" }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "politics-policy", "sectionIds": ["politics-policy"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.axios.com/politics-policy", "articlePathPrefixes": ["/202"], "maximumItems": 50 } },
+        { "id": "business", "sectionIds": ["business"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.axios.com/business", "articlePathPrefixes": ["/202"], "maximumItems": 50 } },
+        { "id": "technology", "sectionIds": ["technology"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.axios.com/technology", "articlePathPrefixes": ["/202"], "maximumItems": 50 } },
+        { "id": "world", "sectionIds": ["world"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.axios.com/world", "articlePathPrefixes": ["/202"], "maximumItems": 50 } },
+        { "id": "economy", "sectionIds": ["economy"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.axios.com/economy", "articlePathPrefixes": ["/202"], "maximumItems": 50 } },
+        { "id": "official-feed-fallback", "sectionIds": [], "fallback": true, "discovery": { "kind": "official-rss", "url": "https://api.axios.com/feed/" } }
+      ] },
+      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "axios", "minimumFullCharacters": 500, "minimumFullParagraphs": 3 },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "axios" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "npr-news",
-      "name": "NPR",
-      "language": "en",
-      "discovery": { "kind": "rsshub-package", "route": "/npr/1001" },
+      "id": "npr-news", "name": "NPR", "language": "en",
+      "sections": [
+        { "id": "national", "name": "National", "url": "https://www.npr.org/sections/national/", "kind": "region" },
+        { "id": "world", "name": "World", "url": "https://www.npr.org/sections/world/", "kind": "region" },
+        { "id": "politics", "name": "Politics", "url": "https://www.npr.org/sections/politics/", "kind": "topic" },
+        { "id": "business", "name": "Business", "url": "https://www.npr.org/sections/business/", "kind": "topic" },
+        { "id": "economy", "name": "Economy", "url": "https://www.npr.org/sections/economy/", "kind": "topic" }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "national", "sectionIds": ["national"], "discovery": { "kind": "rsshub-package", "route": "/npr/1003?limit=100" } },
+        { "id": "world", "sectionIds": ["world"], "discovery": { "kind": "rsshub-package", "route": "/npr/1004?limit=100" } },
+        { "id": "politics", "sectionIds": ["politics"], "discovery": { "kind": "rsshub-package", "route": "/npr/1014?limit=100" } },
+        { "id": "business", "sectionIds": ["business"], "discovery": { "kind": "rsshub-package", "route": "/npr/1006?limit=100" } },
+        { "id": "economy", "sectionIds": ["economy"], "discovery": { "kind": "rsshub-package", "route": "/npr/1017?limit=100" } }
+      ] },
       "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "npr", "minimumFullCharacters": 1000, "minimumFullParagraphs": 5 },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "nikkei",
-      "name": "Nikkei Asia",
-      "language": "en",
-      "discovery": { "kind": "rsshub-package", "route": "/nikkei/asia" },
+      "id": "nikkei", "name": "Nikkei Asia", "language": "en",
+      "sections": [
+        { "id": "china", "name": "China", "url": "https://asia.nikkei.com/location/east-asia/china", "kind": "region", "match": { "urlPrefixes": ["https://asia.nikkei.com/location/east-asia/china/"] } },
+        { "id": "japan", "name": "Japan", "url": "https://asia.nikkei.com/location/east-asia/japan", "kind": "region", "match": { "urlPrefixes": ["https://asia.nikkei.com/location/east-asia/japan/"] } },
+        { "id": "southeast-asia", "name": "Southeast Asia", "url": "https://asia.nikkei.com/location/southeast-asia", "kind": "region", "match": { "urlPrefixes": ["https://asia.nikkei.com/location/southeast-asia/"] } },
+        { "id": "india", "name": "India", "url": "https://asia.nikkei.com/location/south-asia/india", "kind": "region", "match": { "urlPrefixes": ["https://asia.nikkei.com/location/south-asia/india/"] } },
+        { "id": "east-asia", "name": "East Asia", "url": "https://asia.nikkei.com/location/east-asia", "kind": "region", "match": { "urlPrefixes": ["https://asia.nikkei.com/location/east-asia/"] } },
+        { "id": "south-asia", "name": "South Asia", "url": "https://asia.nikkei.com/location/south-asia", "kind": "region", "match": { "urlPrefixes": ["https://asia.nikkei.com/location/south-asia/"] } },
+        { "id": "central-asia", "name": "Central Asia", "url": "https://asia.nikkei.com/location/central-asia", "kind": "region", "match": { "urlPrefixes": ["https://asia.nikkei.com/location/central-asia/"] } },
+        { "id": "oceania", "name": "Oceania", "url": "https://asia.nikkei.com/location/oceania", "kind": "region", "match": { "urlPrefixes": ["https://asia.nikkei.com/location/oceania/"] } },
+        { "id": "business", "name": "Business", "url": "https://asia.nikkei.com/business", "kind": "topic", "match": { "urlPrefixes": ["https://asia.nikkei.com/business/"] } },
+        { "id": "markets", "name": "Markets", "url": "https://asia.nikkei.com/business/markets", "kind": "topic", "match": { "urlPrefixes": ["https://asia.nikkei.com/business/markets/"] } },
+        { "id": "tech", "name": "Tech", "url": "https://asia.nikkei.com/business/tech", "kind": "topic", "match": { "urlPrefixes": ["https://asia.nikkei.com/business/technology/", "https://asia.nikkei.com/business/tech/"] } },
+        { "id": "politics", "name": "Politics", "url": "https://asia.nikkei.com/politics", "kind": "topic", "match": { "urlPrefixes": ["https://asia.nikkei.com/politics/"] } },
+        { "id": "economy", "name": "Economy", "url": "https://asia.nikkei.com/economy", "kind": "topic", "match": { "urlPrefixes": ["https://asia.nikkei.com/economy/"] } }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "latest", "sectionIds": [], "discovery": { "kind": "rsshub-package", "route": "/nikkei/asia?limit=100" } },
+        { "id": "china", "sectionIds": ["china"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://asia.nikkei.com/location/east-asia/china", "articlePathPrefixes": ["/"], "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]", "maximumItems": 50 } },
+        { "id": "japan", "sectionIds": ["japan"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://asia.nikkei.com/location/east-asia/japan", "articlePathPrefixes": ["/"], "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]", "maximumItems": 50 } },
+        { "id": "southeast-asia", "sectionIds": ["southeast-asia"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://asia.nikkei.com/location/southeast-asia", "articlePathPrefixes": ["/"], "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]", "maximumItems": 50 } },
+        { "id": "india", "sectionIds": ["india"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://asia.nikkei.com/location/south-asia/india", "articlePathPrefixes": ["/"], "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]", "maximumItems": 50 } },
+        { "id": "east-asia", "sectionIds": ["east-asia"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://asia.nikkei.com/location/east-asia", "articlePathPrefixes": ["/"], "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]", "maximumItems": 50 } },
+        { "id": "south-asia", "sectionIds": ["south-asia"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://asia.nikkei.com/location/south-asia", "articlePathPrefixes": ["/"], "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]", "maximumItems": 50 } },
+        { "id": "central-asia", "sectionIds": ["central-asia"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://asia.nikkei.com/location/central-asia", "articlePathPrefixes": ["/"], "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]", "maximumItems": 50 } },
+        { "id": "oceania", "sectionIds": ["oceania"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://asia.nikkei.com/location/oceania", "articlePathPrefixes": ["/"], "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]", "maximumItems": 50 } }
+      ] },
       "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "nikkei", "minimumFullCharacters": 1000, "minimumFullParagraphs": 5 },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "nikkei" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "nikkei" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "zaobao",
-      "name": "联合早报",
-      "language": "zh-CN",
-      "discovery": { "kind": "rsshub-package", "route": "/zaobao/realtime" },
+      "id": "zaobao", "name": "联合早报", "language": "zh-CN",
+      "sections": [
+        { "id": "latest", "name": "最新", "url": "https://www.zaobao.com.sg/realtime", "kind": "stream" },
+        { "id": "singapore", "name": "新加坡", "url": "https://www.zaobao.com.sg/news/singapore", "kind": "region" },
+        { "id": "world", "name": "国际", "url": "https://www.zaobao.com.sg/news/world", "kind": "region" },
+        { "id": "china", "name": "中国", "url": "https://www.zaobao.com.sg/news/china", "kind": "region" },
+        { "id": "southeast-asia", "name": "东南亚", "url": "https://www.zaobao.com.sg/news/sea", "kind": "region" },
+        { "id": "finance", "name": "财经", "url": "https://www.zaobao.com.sg/finance", "kind": "topic" }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "latest-china", "sectionIds": ["latest", "china"], "discovery": { "kind": "rsshub-package", "route": "/zaobao/realtime/china?limit=100" } },
+        { "id": "latest-singapore", "sectionIds": ["latest", "singapore"], "discovery": { "kind": "rsshub-package", "route": "/zaobao/realtime/singapore?limit=100" } },
+        { "id": "latest-world", "sectionIds": ["latest", "world"], "discovery": { "kind": "rsshub-package", "route": "/zaobao/realtime/world?limit=100" } },
+        { "id": "latest-finance", "sectionIds": ["latest", "finance"], "discovery": { "kind": "rsshub-package", "route": "/zaobao/realtime/zfinance?limit=100" } },
+        { "id": "southeast-asia", "sectionIds": ["southeast-asia"], "discovery": { "kind": "rsshub-package", "route": "/zaobao/znews/sea?limit=100" } }
+      ] },
       "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "zaobao", "minimumFullCharacters": 200, "minimumFullParagraphs": 3 },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "zaobao" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "zaobao" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "aljazeera-english",
-      "name": "Al Jazeera",
-      "language": "en",
-      "discovery": { "kind": "rsshub-package", "route": "/aljazeera/english/news" },
+      "id": "aljazeera-english", "name": "Al Jazeera", "language": "en",
+      "sections": [
+        { "id": "news", "name": "News", "url": "https://www.aljazeera.com/news/", "kind": "stream" },
+        { "id": "africa", "name": "Africa", "url": "https://www.aljazeera.com/where/africa/", "kind": "region" },
+        { "id": "asia", "name": "Asia", "url": "https://www.aljazeera.com/where/asia/", "kind": "region" },
+        { "id": "us-canada", "name": "US & Canada", "url": "https://www.aljazeera.com/where/us-canada/", "kind": "region" },
+        { "id": "latin-america", "name": "Latin America", "url": "https://www.aljazeera.com/where/latin-america/", "kind": "region" },
+        { "id": "europe", "name": "Europe", "url": "https://www.aljazeera.com/where/europe/", "kind": "region" },
+        { "id": "asia-pacific", "name": "Asia Pacific", "url": "https://www.aljazeera.com/where/asia-pacific/", "kind": "region" },
+        { "id": "middle-east", "name": "Middle East", "url": "https://www.aljazeera.com/where/middle-east/", "kind": "region" },
+        { "id": "explained", "name": "Explained", "url": "https://www.aljazeera.com/tag/explainer/", "kind": "topic" },
+        { "id": "economy", "name": "Economy", "url": "https://www.aljazeera.com/economy/", "kind": "topic" },
+        { "id": "human-rights", "name": "Human Rights", "url": "https://www.aljazeera.com/tag/human-rights/", "kind": "topic" }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "news", "sectionIds": ["news"], "discovery": { "kind": "rsshub-package", "route": "/aljazeera/english/news?limit=30" } },
+        { "id": "africa", "sectionIds": ["africa"], "discovery": { "kind": "rsshub-package", "route": "/aljazeera/english/where/africa?limit=30" } },
+        { "id": "asia", "sectionIds": ["asia"], "discovery": { "kind": "rsshub-package", "route": "/aljazeera/english/where/asia?limit=30" } },
+        { "id": "us-canada", "sectionIds": ["us-canada"], "discovery": { "kind": "rsshub-package", "route": "/aljazeera/english/where/us-canada?limit=30" } },
+        { "id": "latin-america", "sectionIds": ["latin-america"], "discovery": { "kind": "rsshub-package", "route": "/aljazeera/english/where/latin-america?limit=30" } },
+        { "id": "europe", "sectionIds": ["europe"], "discovery": { "kind": "rsshub-package", "route": "/aljazeera/english/where/europe?limit=30" } },
+        { "id": "asia-pacific", "sectionIds": ["asia-pacific"], "discovery": { "kind": "rsshub-package", "route": "/aljazeera/english/where/asia-pacific?limit=30" } },
+        { "id": "middle-east", "sectionIds": ["middle-east"], "discovery": { "kind": "rsshub-package", "route": "/aljazeera/english/where/middle-east?limit=30" } },
+        { "id": "explained", "sectionIds": ["explained"], "discovery": { "kind": "rsshub-package", "route": "/aljazeera/english/tag/explainer?limit=30" } },
+        { "id": "economy", "sectionIds": ["economy"], "discovery": { "kind": "rsshub-package", "route": "/aljazeera/english/economy?limit=30" } },
+        { "id": "human-rights", "sectionIds": ["human-rights"], "discovery": { "kind": "rsshub-package", "route": "/aljazeera/english/tag/human-rights?limit=30" } }
+      ] },
       "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "aljazeera", "minimumFullCharacters": 1000, "minimumFullParagraphs": 5 },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "scmp",
-      "name": "South China Morning Post",
-      "language": "en",
-      "discovery": { "kind": "rsshub-package", "route": "/scmp/91" },
+      "id": "scmp", "name": "South China Morning Post", "language": "en",
+      "sections": [
+        { "id": "news", "name": "News", "url": "https://www.scmp.com/news", "kind": "stream" },
+        { "id": "china", "name": "China", "url": "https://www.scmp.com/news/china", "kind": "region" },
+        { "id": "hong-kong", "name": "Hong Kong", "url": "https://www.scmp.com/news/hong-kong", "kind": "region" },
+        { "id": "asia", "name": "Asia", "url": "https://www.scmp.com/news/asia", "kind": "region" },
+        { "id": "world", "name": "World", "url": "https://www.scmp.com/news/world", "kind": "region" },
+        { "id": "business", "name": "Business", "url": "https://www.scmp.com/business", "kind": "topic" },
+        { "id": "economy", "name": "Economy", "url": "https://www.scmp.com/economy", "kind": "topic" },
+        { "id": "tech", "name": "Tech", "url": "https://www.scmp.com/tech", "kind": "topic" }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "news", "sectionIds": ["news"], "discovery": { "kind": "rsshub-package", "route": "/scmp/91?limit=100" } },
+        { "id": "china", "sectionIds": ["china"], "discovery": { "kind": "official-rss", "url": "https://www.scmp.com/rss/4/feed" } },
+        { "id": "hong-kong", "sectionIds": ["hong-kong"], "discovery": { "kind": "rsshub-package", "route": "/scmp/2?limit=100" } },
+        { "id": "asia", "sectionIds": ["asia"], "discovery": { "kind": "rsshub-package", "route": "/scmp/3?limit=100" } },
+        { "id": "world", "sectionIds": ["world"], "discovery": { "kind": "rsshub-package", "route": "/scmp/5?limit=100" } },
+        { "id": "business", "sectionIds": ["business"], "discovery": { "kind": "official-rss", "url": "https://www.scmp.com/rss/92/feed" } },
+        { "id": "economy", "sectionIds": ["economy"], "discovery": { "kind": "official-rss", "url": "https://www.scmp.com/rss/12/feed" } },
+        { "id": "tech", "sectionIds": ["tech"], "discovery": { "kind": "official-rss", "url": "https://www.scmp.com/rss/36/feed" } }
+      ] },
       "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "scmp", "minimumFullCharacters": 500, "minimumFullParagraphs": 3 },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "scmp" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "scmp" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "xinhua",
-      "name": "新华网",
-      "language": "zh-CN",
-      "discovery": { "kind": "rsshub-package", "route": "/news/xhsxw" },
+      "id": "xinhua", "name": "新华网", "language": "zh-CN",
+      "sections": [
+        { "id": "politics", "name": "时政", "url": "https://www.news.cn/politics/index.html", "kind": "topic" },
+        { "id": "world", "name": "国际", "url": "https://www.news.cn/world/index.html", "kind": "region" },
+        { "id": "fortune", "name": "财经", "url": "https://www.news.cn/fortune/index.htm", "kind": "topic" },
+        { "id": "comments", "name": "网评", "url": "https://www.news.cn/comments/index.html", "kind": "topic" },
+        { "id": "hong-kong-macao", "name": "港澳", "url": "https://www.news.cn/gangao/index.html", "kind": "region" },
+        { "id": "taiwan", "name": "台湾", "url": "https://www.news.cn/tw/index.html", "kind": "region" },
+        { "id": "military", "name": "军事", "url": "https://www.news.cn/milpro/index.htm", "kind": "topic" },
+        { "id": "law", "name": "法律", "url": "https://www.news.cn/law/index.html", "kind": "topic" },
+        { "id": "finance", "name": "金融", "url": "https://www.news.cn/money/index.html", "kind": "topic" }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "politics", "sectionIds": ["politics"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.news.cn/politics/index.html", "articlePathPrefixes": ["/politics/"], "maximumItems": 30 } },
+        { "id": "world", "sectionIds": ["world"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.news.cn/world/index.html", "articlePathPrefixes": ["/world/"], "maximumItems": 30 } },
+        { "id": "fortune", "sectionIds": ["fortune"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.news.cn/fortune/index.htm", "articlePathPrefixes": ["/fortune/"], "maximumItems": 30 } },
+        { "id": "comments", "sectionIds": ["comments"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.news.cn/comments/index.html", "articlePathPrefixes": ["/comments/"], "maximumItems": 30 } },
+        { "id": "hong-kong-macao", "sectionIds": ["hong-kong-macao"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.news.cn/gangao/index.html", "articlePathPrefixes": ["/gangao/"], "maximumItems": 30 } },
+        { "id": "taiwan", "sectionIds": ["taiwan"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.news.cn/tw/index.html", "articlePathPrefixes": ["/tw/"], "maximumItems": 30 } },
+        { "id": "military", "sectionIds": ["military"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.news.cn/milpro/index.htm", "articlePathPrefixes": ["/mil/", "/milpro/"], "maximumItems": 30 } },
+        { "id": "law", "sectionIds": ["law"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.news.cn/law/index.html", "articlePathPrefixes": ["/law/"], "maximumItems": 30 } },
+        { "id": "finance", "sectionIds": ["finance"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.news.cn/money/index.html", "articlePathPrefixes": ["/money/"], "maximumItems": 30 } }
+      ] },
       "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "xinhua", "minimumFullCharacters": 80, "minimumFullParagraphs": 1 },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "people",
-      "name": "人民网",
-      "language": "zh-CN",
-      "discovery": { "kind": "rsshub-package", "route": "/people" },
+      "id": "people", "name": "人民网", "language": "zh-CN",
+      "sections": [
+        { "id": "politics", "name": "党网·时政", "url": "https://cpc.people.com.cn/", "kind": "topic" },
+        { "id": "personnel", "name": "人事", "url": "https://renshi.people.com.cn/", "kind": "topic" },
+        { "id": "anti-corruption", "name": "反腐", "url": "https://fanfu.people.com.cn/", "kind": "topic" },
+        { "id": "theory", "name": "理论", "url": "https://theory.people.com.cn/", "kind": "topic" },
+        { "id": "economy-technology", "name": "经济·科技", "url": "https://finance.people.com.cn/", "kind": "topic" },
+        { "id": "society-law", "name": "社会·法治", "url": "https://society.people.com.cn/", "kind": "topic" },
+        { "id": "world", "name": "国际", "url": "https://world.people.com.cn/", "kind": "region" },
+        { "id": "military", "name": "军事", "url": "https://military.people.com.cn/", "kind": "topic" },
+        { "id": "greater-bay-area", "name": "大湾区", "url": "https://gba.people.cn/", "kind": "region" },
+        { "id": "taiwan", "name": "台湾", "url": "https://tw.people.com.cn/", "kind": "region" }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "politics", "sectionIds": ["politics"], "discovery": { "kind": "rsshub-package", "route": "/people/cpc/24h?limit=50" } },
+        { "id": "personnel", "sectionIds": ["personnel"], "discovery": { "kind": "rsshub-package", "route": "/people/renshi?limit=50" } },
+        { "id": "anti-corruption", "sectionIds": ["anti-corruption"], "discovery": { "kind": "rsshub-package", "route": "/people/fanfu?limit=50" } },
+        { "id": "theory", "sectionIds": ["theory"], "discovery": { "kind": "rsshub-package", "route": "/people/theory?limit=50" } },
+        { "id": "economy-technology", "sectionIds": ["economy-technology"], "discovery": { "kind": "rsshub-package", "route": "/people/finance?limit=50" } },
+        { "id": "society-law", "sectionIds": ["society-law"], "discovery": { "kind": "rsshub-package", "route": "/people/society?limit=50" } },
+        { "id": "world", "sectionIds": ["world"], "discovery": { "kind": "rsshub-package", "route": "/people/world?limit=50" } },
+        { "id": "military", "sectionIds": ["military"], "discovery": { "kind": "rsshub-package", "route": "/people/military?limit=50" } },
+        { "id": "greater-bay-area", "sectionIds": ["greater-bay-area"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://gba.people.cn/", "articlePathPrefixes": ["/n1/"], "maximumItems": 50 } },
+        { "id": "taiwan", "sectionIds": ["taiwan"], "discovery": { "kind": "rsshub-package", "route": "/people/tw?limit=50" } }
+      ] },
       "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "people", "minimumFullCharacters": 100, "minimumFullParagraphs": 1 },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "cctv",
-      "name": "央视新闻",
-      "language": "zh-CN",
-      "discovery": { "kind": "rsshub-package", "route": "/cctv/news" },
-      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "cctv", "minimumFullCharacters": 100, "minimumFullParagraphs": 1 },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
-    },
-    {
-      "id": "chinanews",
-      "name": "中国新闻网",
-      "language": "zh-CN",
-      "discovery": { "kind": "rsshub-package", "route": "/chinanews" },
+      "id": "chinanews", "name": "中国新闻网", "language": "zh-CN",
+      "sections": [
+        { "id": "latest", "name": "即时", "url": "https://www.chinanews.com.cn/scroll-news/news1.html", "kind": "stream" },
+        { "id": "politics", "name": "时政", "url": "https://www.chinanews.com.cn/china/", "kind": "topic" },
+        { "id": "finance", "name": "财经", "url": "https://www.chinanews.com.cn/finance/", "kind": "topic" },
+        { "id": "world", "name": "国际", "url": "https://www.chinanews.com.cn/world/", "kind": "region" },
+        { "id": "society", "name": "社会", "url": "https://www.chinanews.com.cn/society/", "kind": "topic" }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "latest", "sectionIds": ["latest"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.chinanews.com.cn/scroll-news/news1.html", "articlePathPrefixes": ["/gn/", "/cj/", "/gj/", "/sh/"], "maximumItems": 100 } },
+        { "id": "politics", "sectionIds": ["politics"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.chinanews.com.cn/china/", "articlePathPrefixes": ["/gn/"], "maximumItems": 50 } },
+        { "id": "finance", "sectionIds": ["finance"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.chinanews.com.cn/finance/", "articlePathPrefixes": ["/cj/"], "maximumItems": 50 } },
+        { "id": "world", "sectionIds": ["world"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.chinanews.com.cn/world/", "articlePathPrefixes": ["/gj/"], "maximumItems": 50 } },
+        { "id": "society", "sectionIds": ["society"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.chinanews.com.cn/society/", "articlePathPrefixes": ["/sh/"], "maximumItems": 50 } }
+      ] },
       "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "chinanews", "minimumFullCharacters": 100, "minimumFullParagraphs": 1 },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "thepaper",
-      "name": "澎湃新闻",
-      "language": "zh-CN",
-      "discovery": { "kind": "rsshub-package", "route": "/thepaper/featured" },
+      "id": "thepaper", "name": "澎湃新闻", "language": "zh-CN",
+      "sections": [
+        { "id": "featured", "name": "要闻/精选", "url": "https://www.thepaper.cn/channel_25949", "kind": "stream" },
+        { "id": "international", "name": "国际", "url": "https://www.thepaper.cn/channel_122908", "kind": "region" },
+        { "id": "current-affairs", "name": "时事", "url": "https://www.thepaper.cn/channel_25950", "kind": "topic" },
+        { "id": "finance", "name": "财经", "url": "https://www.thepaper.cn/channel_25951", "kind": "topic" },
+        { "id": "thought", "name": "思想", "url": "https://www.thepaper.cn/channel_25952", "kind": "topic" },
+        { "id": "technology", "name": "科技", "url": "https://www.thepaper.cn/channel_119908", "kind": "topic" }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "featured", "sectionIds": ["featured"], "discovery": { "kind": "rsshub-package", "route": "/thepaper/featured?limit=100" } },
+        { "id": "international", "sectionIds": ["international"], "discovery": { "kind": "site-adapter", "adapter": "thepaper-channel", "channelId": "122908", "maximumItems": 100 } },
+        { "id": "current-affairs", "sectionIds": ["current-affairs"], "discovery": { "kind": "site-adapter", "adapter": "thepaper-channel", "channelId": "25950", "maximumItems": 100 } },
+        { "id": "finance", "sectionIds": ["finance"], "discovery": { "kind": "site-adapter", "adapter": "thepaper-channel", "channelId": "25951", "maximumItems": 100 } },
+        { "id": "thought", "sectionIds": ["thought"], "discovery": { "kind": "site-adapter", "adapter": "thepaper-channel", "channelId": "25952", "maximumItems": 100 } },
+        { "id": "technology", "sectionIds": ["technology"], "discovery": { "kind": "site-adapter", "adapter": "thepaper-channel", "channelId": "119908", "maximumItems": 100 } }
+      ] },
       "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "thepaper", "minimumFullCharacters": 100, "minimumFullParagraphs": 1 },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "cls",
-      "name": "财联社",
-      "language": "zh-CN",
-      "discovery": { "kind": "rsshub-package", "route": "/cls/depth/1000" },
+      "id": "cls", "name": "财联社", "language": "zh-CN",
+      "sections": [
+        { "id": "headlines", "name": "头条", "url": "https://www.cls.cn/depth?id=1000", "kind": "stream" },
+        { "id": "stocks", "name": "股市", "url": "https://www.cls.cn/depth?id=1003", "kind": "topic" },
+        { "id": "hong-kong-stocks", "name": "港股", "url": "https://www.cls.cn/depth?id=1135", "kind": "topic" },
+        { "id": "global", "name": "环球", "url": "https://www.cls.cn/depth?id=1007", "kind": "region" }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "headlines", "sectionIds": ["headlines"], "discovery": { "kind": "rsshub-package", "route": "/cls/depth/1000?limit=100" } },
+        { "id": "stocks", "sectionIds": ["stocks"], "discovery": { "kind": "rsshub-package", "route": "/cls/depth/1003?limit=100" } },
+        { "id": "hong-kong-stocks", "sectionIds": ["hong-kong-stocks"], "discovery": { "kind": "rsshub-package", "route": "/cls/depth/1135?limit=100" } },
+        { "id": "global", "sectionIds": ["global"], "discovery": { "kind": "rsshub-package", "route": "/cls/depth/1007?limit=100" } }
+      ] },
       "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "cls", "minimumFullCharacters": 100, "minimumFullParagraphs": 1 },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "cna-singapore",
-      "name": "CNA",
-      "language": "en",
-      "discovery": {
-        "kind": "official-rss-list",
-        "urls": [
-          "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml",
-          "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6511",
-          "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6936",
-          "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=10416",
-          "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6311",
-          "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=679471",
-          "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=10296"
-        ]
-      },
+      "id": "cna-singapore", "name": "CNA", "language": "en",
+      "sections": [
+        { "id": "top-stories", "name": "Top Stories", "url": "https://www.channelnewsasia.com/", "kind": "stream" },
+        { "id": "asia", "name": "Asia", "url": "https://www.channelnewsasia.com/asia", "kind": "region", "match": { "urlPrefixes": ["https://www.channelnewsasia.com/asia/"] } },
+        { "id": "east-asia", "name": "East Asia", "url": "https://www.channelnewsasia.com/east-asia", "kind": "region", "match": { "urlPrefixes": ["https://www.channelnewsasia.com/east-asia/"] } },
+        { "id": "singapore", "name": "Singapore", "url": "https://www.channelnewsasia.com/singapore", "kind": "region", "match": { "urlPrefixes": ["https://www.channelnewsasia.com/singapore/"] } },
+        { "id": "world", "name": "World", "url": "https://www.channelnewsasia.com/world", "kind": "region", "match": { "urlPrefixes": ["https://www.channelnewsasia.com/world/"] } },
+        { "id": "business", "name": "Business", "url": "https://www.channelnewsasia.com/business", "kind": "topic", "match": { "urlPrefixes": ["https://www.channelnewsasia.com/business/"] } }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "top-stories", "sectionIds": ["top-stories"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.channelnewsasia.com/", "articlePathPrefixes": ["/asia/", "/east-asia/", "/singapore/", "/world/", "/business/"], "maximumItems": 50 } },
+        { "id": "asia", "sectionIds": [], "discovery": { "kind": "official-rss", "url": "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6511" } },
+        { "id": "singapore", "sectionIds": [], "discovery": { "kind": "official-rss", "url": "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=10416" } },
+        { "id": "world", "sectionIds": [], "discovery": { "kind": "official-rss", "url": "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6311" } },
+        { "id": "business", "sectionIds": [], "discovery": { "kind": "official-rss", "url": "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6936" } }
+      ] },
       "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "cna" },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "dw",
-      "name": "Deutsche Welle",
-      "language": "en",
-      "discovery": { "kind": "official-rss", "url": "https://rss.dw.com/xml/rss-en-all" },
+      "id": "dw", "name": "Deutsche Welle", "language": "en",
+      "sections": [
+        { "id": "germany", "name": "Germany", "url": "https://www.dw.com/en/germany/s-1432", "kind": "region" },
+        { "id": "europe", "name": "Europe", "url": "https://www.dw.com/en/europe/s-1433", "kind": "region" },
+        { "id": "world", "name": "World", "url": "https://www.dw.com/en/world/s-1429", "kind": "region" },
+        { "id": "africa", "name": "Africa", "url": "https://www.dw.com/en/africa/s-12756", "kind": "region" },
+        { "id": "asia", "name": "Asia", "url": "https://www.dw.com/en/asia/s-12758", "kind": "region" },
+        { "id": "americas", "name": "Americas", "url": "https://www.dw.com/en/americas/s-12757", "kind": "region" },
+        { "id": "middle-east", "name": "Middle East", "url": "https://www.dw.com/en/middle-east/s-14207", "kind": "region" },
+        { "id": "business", "name": "Business", "url": "https://www.dw.com/en/business/s-1431", "kind": "topic" }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "germany", "sectionIds": ["germany"], "discovery": { "kind": "rsshub-package", "route": "/dw/news/en/s-1432?limit=100" } },
+        { "id": "europe", "sectionIds": ["europe"], "discovery": { "kind": "rsshub-package", "route": "/dw/news/en/s-1433?limit=100" } },
+        { "id": "world", "sectionIds": ["world"], "discovery": { "kind": "rsshub-package", "route": "/dw/news/en?limit=100" } },
+        { "id": "africa", "sectionIds": ["africa"], "discovery": { "kind": "rsshub-package", "route": "/dw/news/en/s-12756?limit=100" } },
+        { "id": "asia", "sectionIds": ["asia"], "discovery": { "kind": "rsshub-package", "route": "/dw/news/en/s-12758?limit=100" } },
+        { "id": "americas-latin", "sectionIds": ["americas"], "discovery": { "kind": "rsshub-package", "route": "/dw/news/en/s-58267484?limit=100" } },
+        { "id": "americas-north", "sectionIds": ["americas"], "discovery": { "kind": "rsshub-package", "route": "/dw/news/en/s-58267502?limit=100" } },
+        { "id": "middle-east", "sectionIds": ["middle-east"], "discovery": { "kind": "rsshub-package", "route": "/dw/news/en/s-14207?limit=100" } },
+        { "id": "business", "sectionIds": ["business"], "discovery": { "kind": "rsshub-package", "route": "/dw/news/en/s-1431?limit=100" } }
+      ] },
       "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "dw" },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "focus-taiwan",
-      "name": "Focus Taiwan",
-      "language": "en",
-      "discovery": { "kind": "official-rss", "url": "https://feeds.feedburner.com/rsscna/engnews/" },
+      "id": "focus-taiwan", "name": "Focus Taiwan", "language": "en",
+      "sections": [
+        { "id": "latest", "name": "Latest", "url": "https://focustaiwan.tw/", "kind": "stream" },
+        { "id": "politics", "name": "Politics", "url": "https://focustaiwan.tw/politics", "kind": "topic", "match": { "urlPrefixes": ["https://focustaiwan.tw/politics/"] } },
+        { "id": "business", "name": "Business", "url": "https://focustaiwan.tw/business", "kind": "topic", "match": { "urlPrefixes": ["https://focustaiwan.tw/business/"] } },
+        { "id": "society", "name": "Society", "url": "https://focustaiwan.tw/society", "kind": "topic", "match": { "urlPrefixes": ["https://focustaiwan.tw/society/"] } },
+        { "id": "science-technology", "name": "Science & Tech", "url": "https://focustaiwan.tw/sci-tech", "kind": "topic", "match": { "urlPrefixes": ["https://focustaiwan.tw/sci-tech/"] } }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "latest", "sectionIds": ["latest"], "discovery": { "kind": "official-rss", "url": "https://feeds.feedburner.com/rsscna/engnews/" } }
+      ] },
       "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "focus-taiwan" },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "africanews",
-      "name": "Africanews",
-      "language": "en",
-      "discovery": { "kind": "official-rss", "url": "https://www.africanews.com/feed/rss" },
+      "id": "africanews", "name": "Africanews", "language": "en",
+      "sections": [
+        { "id": "news", "name": "News", "url": "https://www.africanews.com/news/", "kind": "stream" },
+        { "id": "business", "name": "Business", "url": "https://www.africanews.com/business/", "kind": "topic" },
+        { "id": "markets", "name": "Markets", "url": "https://www.africanews.com/business/markets/", "kind": "topic" },
+        { "id": "science-technology", "name": "Science & Technology", "url": "https://www.africanews.com/science-technology/", "kind": "topic" }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "news", "sectionIds": ["news"], "discovery": { "kind": "official-rss", "url": "https://www.africanews.com/feed/rss?themes=news" } },
+        { "id": "business", "sectionIds": ["business"], "discovery": { "kind": "official-rss", "url": "https://www.africanews.com/feed/rss?themes=business" } },
+        { "id": "markets", "sectionIds": ["markets"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://www.africanews.com/business/markets/", "articlePathPrefixes": ["/202"], "maximumItems": 50 } },
+        { "id": "science-technology", "sectionIds": ["science-technology"], "discovery": { "kind": "official-rss", "url": "https://www.africanews.com/feed/rss?themes=science_technology" } }
+      ] },
       "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "africanews" },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" }, "health": { "minimumCandidates": 1 }, "enabled": true
     },
     {
-      "id": "agencia-brasil",
-      "name": "Agência Brasil",
-      "language": "pt-BR",
-      "discovery": { "kind": "official-rss", "url": "https://agenciabrasil.ebc.com.br/rss/ultimasnoticias/feed.xml" },
-      "content": { "priority": ["browser-parser", "discovery-summary"], "parser": "agencia-brasil" },
-      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" },
-      "health": { "minimumCandidates": 1 },
-      "enabled": true
+      "id": "agencia-brasil", "name": "Agência Brasil", "language": "en",
+      "sections": [
+        { "id": "culture", "name": "Culture", "url": "https://agenciabrasil.ebc.com.br/en/cultura", "kind": "topic" },
+        { "id": "economy", "name": "Economy", "url": "https://agenciabrasil.ebc.com.br/en/economia", "kind": "topic" },
+        { "id": "education", "name": "Education", "url": "https://agenciabrasil.ebc.com.br/en/educacao", "kind": "topic" },
+        { "id": "general", "name": "General", "url": "https://agenciabrasil.ebc.com.br/en/geral", "kind": "topic" },
+        { "id": "health", "name": "Health", "url": "https://agenciabrasil.ebc.com.br/en/saude", "kind": "topic" },
+        { "id": "human-rights", "name": "Human Rights", "url": "https://agenciabrasil.ebc.com.br/en/direitos-humanos", "kind": "topic" }
+      ],
+      "discovery": { "kind": "multi", "targets": [
+        { "id": "culture", "sectionIds": ["culture"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://agenciabrasil.ebc.com.br/en/cultura", "articlePathPrefixes": ["/en/cultura/noticia/"], "maximumItems": 50 } },
+        { "id": "economy", "sectionIds": ["economy"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://agenciabrasil.ebc.com.br/en/economia", "articlePathPrefixes": ["/en/economia/noticia/"], "maximumItems": 50 } },
+        { "id": "education", "sectionIds": ["education"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://agenciabrasil.ebc.com.br/en/educacao", "articlePathPrefixes": ["/en/educacao/noticia/"], "maximumItems": 50 } },
+        { "id": "general", "sectionIds": ["general"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://agenciabrasil.ebc.com.br/en/geral", "articlePathPrefixes": ["/en/geral/noticia/"], "maximumItems": 50 } },
+        { "id": "health", "sectionIds": ["health"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://agenciabrasil.ebc.com.br/en/saude", "articlePathPrefixes": ["/en/saude/noticia/"], "maximumItems": 50 } },
+        { "id": "human-rights", "sectionIds": ["human-rights"], "discovery": { "kind": "site-adapter", "adapter": "html-news-page", "url": "https://agenciabrasil.ebc.com.br/en/direitos-humanos", "articlePathPrefixes": ["/en/direitos-humanos/noticia/"], "maximumItems": 50 } }
+      ] },
+      "content": { "priority": ["discovery-body", "browser-parser", "discovery-summary"], "parser": "agencia-brasil", "minimumFullCharacters": 500, "minimumFullParagraphs": 3 },
+      "archive": { "mode": "browser", "bpc": true, "proxyPolicy": "direct-first" }, "health": { "minimumCandidates": 1 }, "enabled": true
     }
   ]
 }

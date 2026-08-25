@@ -1,9 +1,72 @@
-export type DiscoveryConfig =
+export type DiscoveryDriver = "http" | "browser";
+
+export interface BrowserDiscoveryPage {
+  url: string;
+  status?: number;
+  html: string;
+}
+
+export interface BrowserDiscoveryRuntime {
+  open(url: string): Promise<BrowserDiscoveryPage>;
+}
+
+export interface DiscoveryRuntime {
+  browser?: BrowserDiscoveryRuntime;
+}
+
+export type DiscoveryEndpoint =
   | { kind: "rsshub-package"; route: string }
+  | {
+      kind: "source-adapter";
+      adapter: "ap";
+      driver: DiscoveryDriver;
+      path: string;
+      maximumItems: number;
+    }
   | { kind: "official-rss"; url: string }
   | { kind: "official-rss-list"; urls: string[] }
   | { kind: "sitemap"; url: string; maximumPages: number }
-  | { kind: "site-adapter"; adapter: string };
+  | {
+      kind: "site-adapter";
+      adapter: "html-news-page";
+      url: string;
+      articlePathPrefixes: string[];
+      linkSelector?: string;
+      maximumItems: number;
+    }
+  | {
+      kind: "site-adapter";
+      adapter: "thepaper-channel";
+      channelId: string;
+      maximumItems: number;
+    };
+
+export interface DiscoveryTarget {
+  id: string;
+  sectionIds: string[];
+  fallback?: boolean;
+  discovery: DiscoveryEndpoint;
+}
+
+export type DiscoveryConfig = DiscoveryEndpoint | { kind: "multi"; targets: DiscoveryTarget[] };
+
+export type PublisherSectionKind = "stream" | "edition" | "region" | "topic";
+
+export interface PublisherSectionConfig {
+  id: string;
+  name: string;
+  url: string;
+  kind: PublisherSectionKind;
+  match?: {
+    urlPrefixes?: string[];
+    publisherCategories?: string[];
+  };
+}
+
+export interface PublisherSectionRef {
+  id: string;
+  name: string;
+}
 
 export type ContentPriority = "discovery-body" | "browser-parser" | "discovery-summary";
 
@@ -11,6 +74,7 @@ export interface SourceConfig {
   id: string;
   name: string;
   language: string;
+  sections?: PublisherSectionConfig[];
   discovery: DiscoveryConfig;
   content: {
     priority: ContentPriority[];
@@ -48,12 +112,13 @@ export interface Candidate {
   updatedAt?: string;
   authors: string[];
   publisherCategories: string[];
+  publisherSections?: PublisherSectionRef[];
   upstreamId?: string;
 }
 
 export interface DiscoveryResult {
   source: SourceConfig;
-  transport: "rsshub-package" | "official-rss" | "official-rss-list" | "sitemap" | "site-adapter";
+  transport: "rsshub-package" | "source-adapter" | "official-rss" | "official-rss-list" | "sitemap" | "site-adapter" | "multi";
   fetchedAt: string;
   upstream: unknown;
   candidates: Candidate[];
@@ -95,8 +160,15 @@ export interface SourceCaptureManifest {
   summaryCount: number;
   metadataCount: number;
   networkExchangeCount: number;
+  sectionCoverage?: {
+    selected: string[];
+    covered: string[];
+    uncovered: string[];
+    failedTargets: string[];
+    fallbackUsed: boolean;
+  };
   objects: Array<{ path: string; size: number; sha256: string }>;
   archiveStatus: "recorded-http" | "wacz-complete";
-  healthStatus: "healthy" | "empty";
+  healthStatus: "healthy" | "degraded" | "empty";
   complete: boolean;
 }

@@ -117,14 +117,6 @@
       "enabled": true
     },
     {
-      "id": "cctv",
-      "name": "央视新闻",
-      "route": "/cctv/news",
-      "language": "zh-CN",
-      "contentPolicy": "feed-body",
-      "enabled": true
-    },
-    {
       "id": "chinanews",
       "name": "中国新闻网",
       "route": "/chinanews",

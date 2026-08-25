@@ -61,11 +61,16 @@ describe("canonical writer", () => {
       publishedAt: "2026-08-23T10:00:00Z",
       authors: [],
       publisherCategories: ["World"],
+      publisherSections: [{ id: "world", name: "World" }],
     };
     await writeCanonicalSource(output, source, manifest, "raw/news/reuters/run/manifest.json", [candidate], "raw-sha");
     const shard = path.join(output, "canonical", "news", "reuters", "articles", "2026", "08", "2026-08-23.jsonl.gz");
     const row = JSON.parse(gunzipSync(await readFile(shard)).toString("utf8")) as Record<string, unknown>;
-    expect(row).toMatchObject({ articleId: "reuters:one", contentStatus: "summary" });
+    expect(row).toMatchObject({
+      articleId: "reuters:one",
+      contentStatus: "summary",
+      publisherSections: [{ id: "world", name: "World" }],
+    });
     await expect(readFile(path.join(output, "canonical", "newspapers", "times", "dataset.json"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

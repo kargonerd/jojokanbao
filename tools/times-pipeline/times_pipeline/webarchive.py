@@ -335,6 +335,12 @@ def _limit_browser_response_rows(
     return [row for index, row in enumerate(rows) if index in selected_indexes]
 
 
+def _page_body_with_dom_fallback(body: bytes, rendered_dom: bytes, *, is_final_page: bool) -> tuple[bytes, bool]:
+    if body or not is_final_page or not rendered_dom:
+        return body, False
+    return rendered_dom, True
+
+
 async def _playwright_headers(value: Any) -> tuple[tuple[str, str], ...]:
     try:
         rows = await value.headers_array()
@@ -377,6 +383,7 @@ async def _browser_attempt(
         page = await context.new_page()
         page.set_default_timeout(round(timeout_seconds * 1_000))
         observed: list[Any] = []
+        rendered_dom = b""
         page.on("response", lambda response: observed.append(response))
         navigation_error: str | None = None
         try:
@@ -400,6 +407,14 @@ async def _browser_attempt(
             navigation_error = "BrowserTimeout"
         except PlaywrightError as exc:
             navigation_error = type(exc).__name__
+
+        try:
+            rendered_dom = (await asyncio.wait_for(
+                page.content(),
+                timeout=min(timeout_seconds, 10.0),
+            )).encode("utf-8")
+        except (PlaywrightError, asyncio.TimeoutError, UnicodeEncodeError):
+            rendered_dom = b""
 
         main_status: int | None = None
         response_rows: list[tuple[Any, str, bool]] = []
@@ -431,17 +446,30 @@ async def _browser_attempt(
                         _playwright_headers(response.request),
                         _playwright_headers(response),
                     ),
-                    timeout=min(timeout_seconds, 5.0),
+                    timeout=timeout_seconds if is_page else min(timeout_seconds, 5.0),
                 )
             except asyncio.TimeoutError:
                 body, request_headers, response_headers = b"", (), ()
             return response, request_url, is_page, body, request_headers, response_headers
 
-        response_bodies = await asyncio.gather(*(read_response(row) for row in response_rows))
+        page_rows = [row for row in response_rows if row[2]]
+        resource_rows = [row for row in response_rows if not row[2]]
+        # Read navigation responses first. Large article documents can otherwise lose
+        # the DevTools response body while competing with dozens of subresources.
+        response_bodies = [await read_response(row) for row in page_rows]
+        response_bodies.extend(await asyncio.gather(*(read_response(row) for row in resource_rows)))
+        final_page_response = page_rows[-1][0] if page_rows else None
         exchanges: list[HttpExchange] = []
         captured_bytes = 0
         captured_at = datetime.now(timezone.utc).isoformat()
         for response, request_url, is_page, body, request_headers, response_headers in response_bodies:
+            body, used_dom_fallback = _page_body_with_dom_fallback(
+                body,
+                rendered_dom,
+                is_final_page=is_page and response is final_page_response,
+            )
+            if used_dom_fallback:
+                response_headers = response_headers + (("X-JOJO-Capture-Source", "browser-dom-fallback"),)
             if not is_page and captured_bytes >= maximum_page_bytes:
                 continue
             remaining = maximum_page_bytes - captured_bytes
