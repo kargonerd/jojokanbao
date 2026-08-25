@@ -7,6 +7,7 @@ type ClsEndpoint = Extract<DiscoveryEndpoint, { kind: "source-adapter"; adapter:
 type JsonObject = Record<string, unknown>;
 
 const ROOT = "https://www.cls.cn";
+const API_ROOTS = ["https://api3.cls.cn", ROOT] as const;
 
 function object(value: unknown): JsonObject | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : undefined;
@@ -54,14 +55,35 @@ function mapCandidate(source: SourceConfig, row: JsonObject): Candidate | undefi
 }
 
 export async function discoverCls(source: SourceConfig, endpoint: ClsEndpoint, fetchedAt: string): Promise<DiscoveryResult> {
-  const url = new URL(`${ROOT}/v3/depth/home/assembled/${endpoint.categoryId}`);
-  url.search = signedParams().toString();
-  const response = await fetch(url, {
-    headers: { accept: "application/json", "user-agent": "JOJO-Times-Offline/2.0 (+https://jojokanbao.cn)" },
-    signal: AbortSignal.timeout(70_000),
-  });
-  if (!response.ok) throw new Error(`${source.id}: CLS API returned HTTP ${response.status}`);
-  const payload: unknown = await response.json();
+  let payload: unknown;
+  const failures: string[] = [];
+  for (const apiRoot of API_ROOTS) {
+    const url = new URL(`${apiRoot}/v3/depth/home/assembled/${endpoint.categoryId}`);
+    url.search = signedParams().toString();
+    try {
+      const response = await fetch(url, {
+        headers: {
+          accept: "application/json",
+          referer: `${ROOT}/`,
+          "user-agent": "JOJO-Times-Offline/2.0 (+https://jojokanbao.cn)",
+        },
+        signal: AbortSignal.timeout(35_000),
+      });
+      if (!response.ok) {
+        failures.push(`${url.hostname}: HTTP ${response.status}`);
+        continue;
+      }
+      payload = await response.json();
+      break;
+    } catch (error) {
+      const cause = error instanceof Error && error.cause && typeof error.cause === "object"
+        && "code" in error.cause && typeof error.cause.code === "string"
+        ? ` (${error.cause.code})`
+        : "";
+      failures.push(`${url.hostname}: ${error instanceof Error ? error.message : String(error)}${cause}`);
+    }
+  }
+  if (payload === undefined) throw new Error(`${source.id}: CLS API failed: ${failures.join("; ")}`);
   const data = object(object(payload)?.data);
   const candidates = new Map<string, Candidate>();
   for (const row of [...rows(data?.top_article), ...rows(data?.depth_list)]) {

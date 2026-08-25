@@ -67,6 +67,26 @@ describe("native source modules", () => {
     expect(result.pagePolicy?.capture).toBe("browser");
   });
 
+  it("falls back to the CLS website API host when its primary API host is unavailable", async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: {
+        top_article: [{ id: 43, title: "备用接口新闻", ctime: 1_787_650_000 }],
+        depth_list: [],
+      } }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const config = source("cls", {
+      kind: "source-adapter", adapter: "cls", driver: "http", categoryId: "1000", maximumItems: 10,
+    });
+
+    const result = await discoverSource(config, "2026-08-25T00:00:00Z", 0);
+
+    expect(result.candidates[0]?.title).toBe("备用接口新闻");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(new URL(String(fetchMock.mock.calls[0]?.[0])).hostname).toBe("api3.cls.cn");
+    expect(new URL(String(fetchMock.mock.calls[1]?.[0])).hostname).toBe("www.cls.cn");
+  });
+
   it("maps DW articles and liveblogs while omitting videos", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ data: { content: {
       contentComposition: { informationSpaces: [{ main: [{ contents: [

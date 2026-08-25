@@ -5,7 +5,8 @@ Times v2 是 JOJO 看报的离线时事流水线，不提供前端请求触发�
 
 ## 当前覆盖
 
-`sources.v2.json` 启用 22 家媒体：AP、The Guardian、Bloomberg、The New York Times、Reuters、
+`sources.v2.json` 是 22 家媒体的目录索引；每家媒体的配置位于
+`src/sources/{source}/source.json`：AP、The Guardian、Bloomberg、The New York Times、Reuters、
 Financial Times、Axios、NPR、Nikkei Asia、联合早报、Al Jazeera、SCMP、新华网、人民网、
 中国新闻网、澎湃新闻、财联社、CNA、Deutsche Welle、Focus Taiwan、Africanews、Agência Brasil。
 央视新闻已从 v1/v2 目录移除。22 家共配置 153 个选定栏目。

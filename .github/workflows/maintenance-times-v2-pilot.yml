@@ -24,7 +24,10 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    environment: maintenance
     timeout-minutes: 30
+    env:
+      JOJO_TIMES_PROXY_SUBSCRIPTION: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -35,8 +38,52 @@ jobs:
           node-version: "24.15.0"
           cache: pnpm
 
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
       - name: Install locked dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          pnpm install --frozen-lockfile
+          python -m pip install -r tools/times-pipeline/requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Start pinned Mihomo for a configured subscription
+        if: env.JOJO_TIMES_PROXY_SUBSCRIPTION != ''
+        env:
+          MIHOMO_VERSION: 1.19.30
+          MIHOMO_SHA256: cf06ce2c7d1421bdbda14ee4a5b6046672dc35ebf8eecd8e77504ec3c0ed9a84
+        run: |
+          mkdir -p "$RUNNER_TEMP/mihomo"
+          curl -fsSL "https://github.com/MetaCubeX/mihomo/releases/download/v${MIHOMO_VERSION}/mihomo-linux-amd64-v${MIHOMO_VERSION}.gz" \
+            -o "$RUNNER_TEMP/mihomo/mihomo.gz"
+          echo "$MIHOMO_SHA256  $RUNNER_TEMP/mihomo/mihomo.gz" | sha256sum -c -
+          gzip -d "$RUNNER_TEMP/mihomo/mihomo.gz"
+          chmod 700 "$RUNNER_TEMP/mihomo/mihomo"
+          python tools/times-pipeline/prepare_proxy.py --output "$RUNNER_TEMP/mihomo/config.yaml"
+          nohup "$RUNNER_TEMP/mihomo/mihomo" -d "$RUNNER_TEMP/mihomo" -f "$RUNNER_TEMP/mihomo/config.yaml" \
+            > "$RUNNER_TEMP/mihomo/runtime.log" 2>&1 &
+          for attempt in $(seq 1 12); do
+            if curl --proxy http://127.0.0.1:7890 --max-time 8 -fsS -o /dev/null https://www.gstatic.com/generate_204; then
+              echo "JOJO_TIMES_PROXY_URI=http://127.0.0.1:7890" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Mihomo did not expose a healthy local proxy" >&2
+          exit 1
+
+      - name: Check out pinned BPC extension
+        env:
+          BPC_REVISION: 587dcfd3d3b18652607e37d3d401430e85f8c8ec
+        run: |
+          git init "$RUNNER_TEMP/bpc-source"
+          git -C "$RUNNER_TEMP/bpc-source" remote add origin https://gitflic.ru/project/magnolia1234/bpc_uploads.git
+          git -C "$RUNNER_TEMP/bpc-source" fetch --depth 1 origin "$BPC_REVISION"
+          git -C "$RUNNER_TEMP/bpc-source" checkout --detach FETCH_HEAD
+          unzip -q "$RUNNER_TEMP/bpc-source/bypass-paywalls-chrome-clean-master.zip" -d "$RUNNER_TEMP/bpc"
+          echo "BPC_EXTENSION_PATH=$RUNNER_TEMP/bpc/bypass-paywalls-chrome-clean-master" >> "$GITHUB_ENV"
+          echo "BPC_REVISION=$BPC_REVISION" >> "$GITHUB_ENV"
 
       - name: Verify and build the v2 pipeline
         run: |
@@ -63,6 +110,28 @@ jobs:
       - name: Resolve capture manifest
         run: |
           node -e 'const fs=require("node:fs");const result=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+"/capture-result.json","utf8"));fs.appendFileSync(process.env.GITHUB_ENV,"TIMES_RUN_MANIFEST="+result.runManifest+"\n")'
+
+      - name: Archive a representative page from every source with BPC
+        run: |
+          args=(
+            --config tools/times-pipeline/sources.v2.json
+            --output "$RUNNER_TEMP/jojo-times-v2"
+            --run-manifest "$TIMES_RUN_MANIFEST"
+            --engine browser
+            --max-pages 22
+            --workers 8
+            --timeout 25
+            --maximum-response-bytes 5000000
+            --maximum-page-bytes 25000000
+            --refresh-hours 24
+            --retry-hours 2
+            --browser-extension-path "$BPC_EXTENSION_PATH"
+            --browser-extension-revision "$BPC_REVISION"
+          )
+          if [ -n "$JOJO_TIMES_PROXY_URI" ]; then
+            args+=(--proxy-server "$JOJO_TIMES_PROXY_URI")
+          fi
+          python tools/times-pipeline/archive_v2.py "${args[@]}" > "$RUNNER_TEMP/archive-result.json"
 
       - name: Build Canonical validation output
         run: >-

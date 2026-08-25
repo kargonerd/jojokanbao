@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 import type {
   ContentPriority,
   DiscoveryConfig,
@@ -241,10 +242,32 @@ function parseSource(value: unknown, position: number): SourceConfig | null {
   };
 }
 
-export async function loadSources(path: string): Promise<SourceConfig[]> {
-  const parsed = JSON.parse(await readFile(path, "utf8")) as { version?: unknown; sources?: unknown };
-  if (parsed.version !== 2 || !Array.isArray(parsed.sources)) throw new Error("Times sources must use config version 2");
-  const sources = parsed.sources.map(parseSource).filter((source): source is SourceConfig => source !== null);
+async function sourceRows(configPath: string): Promise<unknown[]> {
+  const parsed = JSON.parse(await readFile(configPath, "utf8")) as {
+    version?: unknown;
+    sources?: unknown;
+    sourceFiles?: unknown;
+  };
+  if (parsed.version !== 2) throw new Error("Times sources must use config version 2");
+  if (Array.isArray(parsed.sources)) return parsed.sources;
+  if (!Array.isArray(parsed.sourceFiles) || parsed.sourceFiles.length === 0 || parsed.sourceFiles.length > 100) {
+    throw new Error("Times sources must contain a sources array or 1 to 100 sourceFiles");
+  }
+  const configRoot = path.dirname(configPath);
+  return Promise.all(parsed.sourceFiles.map(async (value, index) => {
+    const relative = requiredString(value, `sourceFiles[${index}]`);
+    if (path.isAbsolute(relative)) throw new Error(`sourceFiles[${index}] must be relative to the catalog`);
+    const sourcePath = path.resolve(configRoot, relative);
+    if (sourcePath !== configRoot && !sourcePath.startsWith(`${configRoot}${path.sep}`)) {
+      throw new Error(`sourceFiles[${index}] must stay inside the catalog directory`);
+    }
+    return JSON.parse(await readFile(sourcePath, "utf8")) as unknown;
+  }));
+}
+
+export async function loadSources(configPath: string): Promise<SourceConfig[]> {
+  const rows = await sourceRows(path.resolve(configPath));
+  const sources = rows.map(parseSource).filter((source): source is SourceConfig => source !== null);
   const seen = new Set<string>();
   for (const source of sources) {
     if (seen.has(source.id)) throw new Error(`Duplicate source id: ${source.id}`);

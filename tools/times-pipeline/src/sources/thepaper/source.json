@@ -1,0 +1,139 @@
+{
+  "id": "thepaper",
+  "name": "澎湃新闻",
+  "language": "zh-CN",
+  "sections": [
+    {
+      "id": "featured",
+      "name": "要闻/精选",
+      "url": "https://www.thepaper.cn/channel_25949",
+      "kind": "stream"
+    },
+    {
+      "id": "international",
+      "name": "国际",
+      "url": "https://www.thepaper.cn/channel_122908",
+      "kind": "region"
+    },
+    {
+      "id": "current-affairs",
+      "name": "时事",
+      "url": "https://www.thepaper.cn/channel_25950",
+      "kind": "topic"
+    },
+    {
+      "id": "finance",
+      "name": "财经",
+      "url": "https://www.thepaper.cn/channel_25951",
+      "kind": "topic"
+    },
+    {
+      "id": "thought",
+      "name": "思想",
+      "url": "https://www.thepaper.cn/channel_25952",
+      "kind": "topic"
+    },
+    {
+      "id": "technology",
+      "name": "科技",
+      "url": "https://www.thepaper.cn/channel_119908",
+      "kind": "topic"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "featured",
+        "sectionIds": [
+          "featured"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "thepaper-channel",
+          "channelId": "25949",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "international",
+        "sectionIds": [
+          "international"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "thepaper-channel",
+          "channelId": "122908",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "current-affairs",
+        "sectionIds": [
+          "current-affairs"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "thepaper-channel",
+          "channelId": "25950",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "finance",
+        "sectionIds": [
+          "finance"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "thepaper-channel",
+          "channelId": "25951",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "thought",
+        "sectionIds": [
+          "thought"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "thepaper-channel",
+          "channelId": "25952",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "technology",
+        "sectionIds": [
+          "technology"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "thepaper-channel",
+          "channelId": "119908",
+          "maximumItems": 100
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "discovery-body",
+      "browser-parser",
+      "discovery-summary"
+    ],
+    "parser": "thepaper",
+    "minimumFullCharacters": 100,
+    "minimumFullParagraphs": 1
+  },
+  "archive": {
+    "mode": "browser",
+    "bpc": true,
+    "proxyPolicy": "direct-first"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

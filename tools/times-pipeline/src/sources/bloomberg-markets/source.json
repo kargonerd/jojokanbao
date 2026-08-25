@@ -1,0 +1,150 @@
+{
+  "id": "bloomberg-markets",
+  "name": "Bloomberg",
+  "language": "en",
+  "sections": [
+    {
+      "id": "asia",
+      "name": "Asia",
+      "url": "https://www.bloomberg.com/asia",
+      "kind": "edition"
+    },
+    {
+      "id": "markets",
+      "name": "Markets",
+      "url": "https://www.bloomberg.com/markets",
+      "kind": "topic"
+    },
+    {
+      "id": "economics",
+      "name": "Economics",
+      "url": "https://www.bloomberg.com/economics",
+      "kind": "topic"
+    },
+    {
+      "id": "industries",
+      "name": "Industries",
+      "url": "https://www.bloomberg.com/industries",
+      "kind": "topic"
+    },
+    {
+      "id": "technology",
+      "name": "Technology",
+      "url": "https://www.bloomberg.com/technology",
+      "kind": "topic"
+    },
+    {
+      "id": "ai",
+      "name": "AI",
+      "url": "https://www.bloomberg.com/ai",
+      "kind": "topic"
+    },
+    {
+      "id": "politics",
+      "name": "Politics",
+      "url": "https://www.bloomberg.com/politics",
+      "kind": "topic"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "asia",
+        "sectionIds": [
+          "asia"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://www.bloomberg.com/asia",
+          "articlePathPrefixes": [
+            "/news/articles/"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "markets",
+        "sectionIds": [
+          "markets"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://feeds.bloomberg.com/markets/news.rss"
+        }
+      },
+      {
+        "id": "economics",
+        "sectionIds": [
+          "economics"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://feeds.bloomberg.com/economics/news.rss"
+        }
+      },
+      {
+        "id": "industries",
+        "sectionIds": [
+          "industries"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://feeds.bloomberg.com/industries/news.rss"
+        }
+      },
+      {
+        "id": "technology",
+        "sectionIds": [
+          "technology"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://feeds.bloomberg.com/technology/news.rss"
+        }
+      },
+      {
+        "id": "ai",
+        "sectionIds": [
+          "ai"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://www.bloomberg.com/ai",
+          "articlePathPrefixes": [
+            "/news/articles/"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "politics",
+        "sectionIds": [
+          "politics"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://feeds.bloomberg.com/politics/news.rss"
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "browser-parser",
+      "discovery-summary"
+    ],
+    "parser": "bloomberg"
+  },
+  "archive": {
+    "mode": "browser",
+    "bpc": true,
+    "proxyPolicy": "bloomberg"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

@@ -1,0 +1,156 @@
+{
+  "id": "zaobao",
+  "name": "联合早报",
+  "language": "zh-CN",
+  "sections": [
+    {
+      "id": "latest",
+      "name": "最新",
+      "url": "https://www.zaobao.com.sg/realtime",
+      "kind": "stream"
+    },
+    {
+      "id": "singapore",
+      "name": "新加坡",
+      "url": "https://www.zaobao.com.sg/news/singapore",
+      "kind": "region"
+    },
+    {
+      "id": "world",
+      "name": "国际",
+      "url": "https://www.zaobao.com.sg/news/world",
+      "kind": "region"
+    },
+    {
+      "id": "china",
+      "name": "中国",
+      "url": "https://www.zaobao.com.sg/news/china",
+      "kind": "region"
+    },
+    {
+      "id": "southeast-asia",
+      "name": "东南亚",
+      "url": "https://www.zaobao.com.sg/news/sea",
+      "kind": "region"
+    },
+    {
+      "id": "finance",
+      "name": "财经",
+      "url": "https://www.zaobao.com.sg/finance",
+      "kind": "topic"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "latest-china",
+        "sectionIds": [
+          "latest",
+          "china"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://www.zaobao.com/realtime/china",
+          "articlePathPrefixes": [
+            "/realtime/",
+            "/news/"
+          ],
+          "linkSelector": ".card-listing .card .content-header a[href], [data-testid='article-list'] article a.article-link[href]",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "latest-singapore",
+        "sectionIds": [
+          "latest",
+          "singapore"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://www.zaobao.com/realtime/singapore",
+          "articlePathPrefixes": [
+            "/realtime/",
+            "/news/"
+          ],
+          "linkSelector": ".card-listing .card .content-header a[href], [data-testid='article-list'] article a.article-link[href]",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "latest-world",
+        "sectionIds": [
+          "latest",
+          "world"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://www.zaobao.com/realtime/world",
+          "articlePathPrefixes": [
+            "/realtime/",
+            "/news/"
+          ],
+          "linkSelector": ".card-listing .card .content-header a[href], [data-testid='article-list'] article a.article-link[href]",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "latest-finance",
+        "sectionIds": [
+          "latest",
+          "finance"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://www.zaobao.com/realtime/finance",
+          "articlePathPrefixes": [
+            "/realtime/",
+            "/finance/"
+          ],
+          "linkSelector": ".card-listing .card .content-header a[href], [data-testid='article-list'] article a.article-link[href]",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "southeast-asia",
+        "sectionIds": [
+          "southeast-asia"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://www.zaobao.com/news/sea",
+          "articlePathPrefixes": [
+            "/news/",
+            "/realtime/"
+          ],
+          "linkSelector": ".card-listing .card .content-header a[href], [data-testid='article-list'] article a.article-link[href]",
+          "maximumItems": 100
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "discovery-body",
+      "browser-parser",
+      "discovery-summary"
+    ],
+    "parser": "zaobao",
+    "minimumFullCharacters": 200,
+    "minimumFullParagraphs": 3
+  },
+  "archive": {
+    "mode": "browser",
+    "bpc": true,
+    "proxyPolicy": "zaobao"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

@@ -1,0 +1,140 @@
+{
+  "id": "cna-singapore",
+  "name": "CNA",
+  "language": "en",
+  "sections": [
+    {
+      "id": "top-stories",
+      "name": "Top Stories",
+      "url": "https://www.channelnewsasia.com/",
+      "kind": "stream"
+    },
+    {
+      "id": "asia",
+      "name": "Asia",
+      "url": "https://www.channelnewsasia.com/asia",
+      "kind": "region",
+      "match": {
+        "urlPrefixes": [
+          "https://www.channelnewsasia.com/asia/"
+        ]
+      }
+    },
+    {
+      "id": "east-asia",
+      "name": "East Asia",
+      "url": "https://www.channelnewsasia.com/east-asia",
+      "kind": "region",
+      "match": {
+        "urlPrefixes": [
+          "https://www.channelnewsasia.com/east-asia/"
+        ]
+      }
+    },
+    {
+      "id": "singapore",
+      "name": "Singapore",
+      "url": "https://www.channelnewsasia.com/singapore",
+      "kind": "region",
+      "match": {
+        "urlPrefixes": [
+          "https://www.channelnewsasia.com/singapore/"
+        ]
+      }
+    },
+    {
+      "id": "world",
+      "name": "World",
+      "url": "https://www.channelnewsasia.com/world",
+      "kind": "region",
+      "match": {
+        "urlPrefixes": [
+          "https://www.channelnewsasia.com/world/"
+        ]
+      }
+    },
+    {
+      "id": "business",
+      "name": "Business",
+      "url": "https://www.channelnewsasia.com/business",
+      "kind": "topic",
+      "match": {
+        "urlPrefixes": [
+          "https://www.channelnewsasia.com/business/"
+        ]
+      }
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "top-stories",
+        "sectionIds": [
+          "top-stories"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://www.channelnewsasia.com/",
+          "articlePathPrefixes": [
+            "/asia/",
+            "/east-asia/",
+            "/singapore/",
+            "/world/",
+            "/business/"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "asia",
+        "sectionIds": [],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6511"
+        }
+      },
+      {
+        "id": "singapore",
+        "sectionIds": [],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=10416"
+        }
+      },
+      {
+        "id": "world",
+        "sectionIds": [],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6311"
+        }
+      },
+      {
+        "id": "business",
+        "sectionIds": [],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6936"
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "browser-parser",
+      "discovery-summary"
+    ],
+    "parser": "cna"
+  },
+  "archive": {
+    "mode": "browser",
+    "bpc": true,
+    "proxyPolicy": "direct-first"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

@@ -1,0 +1,157 @@
+{
+  "id": "agencia-brasil",
+  "name": "Agência Brasil",
+  "language": "en",
+  "sections": [
+    {
+      "id": "culture",
+      "name": "Culture",
+      "url": "https://agenciabrasil.ebc.com.br/en/cultura",
+      "kind": "topic"
+    },
+    {
+      "id": "economy",
+      "name": "Economy",
+      "url": "https://agenciabrasil.ebc.com.br/en/economia",
+      "kind": "topic"
+    },
+    {
+      "id": "education",
+      "name": "Education",
+      "url": "https://agenciabrasil.ebc.com.br/en/educacao",
+      "kind": "topic"
+    },
+    {
+      "id": "general",
+      "name": "General",
+      "url": "https://agenciabrasil.ebc.com.br/en/geral",
+      "kind": "topic"
+    },
+    {
+      "id": "health",
+      "name": "Health",
+      "url": "https://agenciabrasil.ebc.com.br/en/saude",
+      "kind": "topic"
+    },
+    {
+      "id": "human-rights",
+      "name": "Human Rights",
+      "url": "https://agenciabrasil.ebc.com.br/en/direitos-humanos",
+      "kind": "topic"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "culture",
+        "sectionIds": [
+          "culture"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://agenciabrasil.ebc.com.br/en/cultura",
+          "articlePathPrefixes": [
+            "/en/cultura/noticia/"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "economy",
+        "sectionIds": [
+          "economy"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://agenciabrasil.ebc.com.br/en/economia",
+          "articlePathPrefixes": [
+            "/en/economia/noticia/"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "education",
+        "sectionIds": [
+          "education"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://agenciabrasil.ebc.com.br/en/educacao",
+          "articlePathPrefixes": [
+            "/en/educacao/noticia/"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "general",
+        "sectionIds": [
+          "general"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://agenciabrasil.ebc.com.br/en/geral",
+          "articlePathPrefixes": [
+            "/en/geral/noticia/"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "health",
+        "sectionIds": [
+          "health"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://agenciabrasil.ebc.com.br/en/saude",
+          "articlePathPrefixes": [
+            "/en/saude/noticia/"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "human-rights",
+        "sectionIds": [
+          "human-rights"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://agenciabrasil.ebc.com.br/en/direitos-humanos",
+          "articlePathPrefixes": [
+            "/en/direitos-humanos/noticia/"
+          ],
+          "maximumItems": 50
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "discovery-body",
+      "browser-parser",
+      "discovery-summary"
+    ],
+    "parser": "agencia-brasil",
+    "minimumFullCharacters": 500,
+    "minimumFullParagraphs": 3
+  },
+  "archive": {
+    "mode": "browser",
+    "bpc": true,
+    "proxyPolicy": "direct-first"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

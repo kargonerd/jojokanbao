@@ -1,0 +1,145 @@
+{
+  "id": "axios",
+  "name": "Axios",
+  "language": "en",
+  "sections": [
+    {
+      "id": "politics-policy",
+      "name": "Politics & Policy",
+      "url": "https://www.axios.com/politics-policy",
+      "kind": "topic"
+    },
+    {
+      "id": "business",
+      "name": "Business",
+      "url": "https://www.axios.com/business",
+      "kind": "topic"
+    },
+    {
+      "id": "technology",
+      "name": "Technology",
+      "url": "https://www.axios.com/technology",
+      "kind": "topic"
+    },
+    {
+      "id": "world",
+      "name": "World",
+      "url": "https://www.axios.com/world",
+      "kind": "region"
+    },
+    {
+      "id": "economy",
+      "name": "Economy",
+      "url": "https://www.axios.com/economy",
+      "kind": "topic"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "politics-policy",
+        "sectionIds": [
+          "politics-policy"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://www.axios.com/politics-policy",
+          "articlePathPrefixes": [
+            "/202"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "business",
+        "sectionIds": [
+          "business"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://www.axios.com/business",
+          "articlePathPrefixes": [
+            "/202"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "technology",
+        "sectionIds": [
+          "technology"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://www.axios.com/technology",
+          "articlePathPrefixes": [
+            "/202"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "world",
+        "sectionIds": [
+          "world"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://www.axios.com/world",
+          "articlePathPrefixes": [
+            "/202"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "economy",
+        "sectionIds": [
+          "economy"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://www.axios.com/economy",
+          "articlePathPrefixes": [
+            "/202"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "official-feed-fallback",
+        "sectionIds": [],
+        "fallback": true,
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://api.axios.com/feed/"
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "discovery-body",
+      "browser-parser",
+      "discovery-summary"
+    ],
+    "parser": "axios",
+    "minimumFullCharacters": 500,
+    "minimumFullParagraphs": 3
+  },
+  "archive": {
+    "mode": "browser",
+    "bpc": true,
+    "proxyPolicy": "axios"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

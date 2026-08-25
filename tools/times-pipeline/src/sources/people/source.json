@@ -1,0 +1,241 @@
+{
+  "id": "people",
+  "name": "人民网",
+  "language": "zh-CN",
+  "sections": [
+    {
+      "id": "politics",
+      "name": "党网·时政",
+      "url": "https://cpc.people.com.cn/",
+      "kind": "topic"
+    },
+    {
+      "id": "personnel",
+      "name": "人事",
+      "url": "https://renshi.people.com.cn/",
+      "kind": "topic"
+    },
+    {
+      "id": "anti-corruption",
+      "name": "反腐",
+      "url": "https://fanfu.people.com.cn/",
+      "kind": "topic"
+    },
+    {
+      "id": "theory",
+      "name": "理论",
+      "url": "https://theory.people.com.cn/",
+      "kind": "topic"
+    },
+    {
+      "id": "economy-technology",
+      "name": "经济·科技",
+      "url": "https://finance.people.com.cn/",
+      "kind": "topic"
+    },
+    {
+      "id": "society-law",
+      "name": "社会·法治",
+      "url": "https://society.people.com.cn/",
+      "kind": "topic"
+    },
+    {
+      "id": "world",
+      "name": "国际",
+      "url": "https://world.people.com.cn/",
+      "kind": "region"
+    },
+    {
+      "id": "military",
+      "name": "军事",
+      "url": "https://military.people.com.cn/",
+      "kind": "topic"
+    },
+    {
+      "id": "greater-bay-area",
+      "name": "大湾区",
+      "url": "https://gba.people.cn/",
+      "kind": "region"
+    },
+    {
+      "id": "taiwan",
+      "name": "台湾",
+      "url": "https://tw.people.com.cn/",
+      "kind": "region"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "politics",
+        "sectionIds": [
+          "politics"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "http://cpc.people.com.cn/",
+          "articlePathPrefixes": [
+            "/n1/"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "personnel",
+        "sectionIds": [
+          "personnel"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "http://renshi.people.com.cn/",
+          "articlePathPrefixes": [
+            "/n1/"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "anti-corruption",
+        "sectionIds": [
+          "anti-corruption"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "http://fanfu.people.com.cn/",
+          "articlePathPrefixes": [
+            "/n1/"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "theory",
+        "sectionIds": [
+          "theory"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "http://theory.people.com.cn/",
+          "articlePathPrefixes": [
+            "/n1/"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "economy-technology",
+        "sectionIds": [
+          "economy-technology"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "http://finance.people.com.cn/",
+          "articlePathPrefixes": [
+            "/n1/"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "society-law",
+        "sectionIds": [
+          "society-law"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "http://society.people.com.cn/",
+          "articlePathPrefixes": [
+            "/n1/"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "world",
+        "sectionIds": [
+          "world"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "http://world.people.com.cn/",
+          "articlePathPrefixes": [
+            "/n1/"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "military",
+        "sectionIds": [
+          "military"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "http://military.people.com.cn/",
+          "articlePathPrefixes": [
+            "/n1/"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "greater-bay-area",
+        "sectionIds": [
+          "greater-bay-area"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "http://gba.people.cn/",
+          "articlePathPrefixes": [
+            "/n1/"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "taiwan",
+        "sectionIds": [
+          "taiwan"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "http://tw.people.com.cn/",
+          "articlePathPrefixes": [
+            "/n1/"
+          ],
+          "maximumItems": 50
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "discovery-body",
+      "browser-parser",
+      "discovery-summary"
+    ],
+    "parser": "people",
+    "minimumFullCharacters": 100,
+    "minimumFullParagraphs": 1
+  },
+  "archive": {
+    "mode": "browser",
+    "bpc": true,
+    "proxyPolicy": "direct-first"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

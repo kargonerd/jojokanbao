@@ -1,0 +1,159 @@
+{
+  "id": "scmp",
+  "name": "South China Morning Post",
+  "language": "en",
+  "sections": [
+    {
+      "id": "news",
+      "name": "News",
+      "url": "https://www.scmp.com/news",
+      "kind": "stream"
+    },
+    {
+      "id": "china",
+      "name": "China",
+      "url": "https://www.scmp.com/news/china",
+      "kind": "region"
+    },
+    {
+      "id": "hong-kong",
+      "name": "Hong Kong",
+      "url": "https://www.scmp.com/news/hong-kong",
+      "kind": "region"
+    },
+    {
+      "id": "asia",
+      "name": "Asia",
+      "url": "https://www.scmp.com/news/asia",
+      "kind": "region"
+    },
+    {
+      "id": "world",
+      "name": "World",
+      "url": "https://www.scmp.com/news/world",
+      "kind": "region"
+    },
+    {
+      "id": "business",
+      "name": "Business",
+      "url": "https://www.scmp.com/business",
+      "kind": "topic"
+    },
+    {
+      "id": "economy",
+      "name": "Economy",
+      "url": "https://www.scmp.com/economy",
+      "kind": "topic"
+    },
+    {
+      "id": "tech",
+      "name": "Tech",
+      "url": "https://www.scmp.com/tech",
+      "kind": "topic"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "news",
+        "sectionIds": [
+          "news"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.scmp.com/rss/91/feed"
+        }
+      },
+      {
+        "id": "china",
+        "sectionIds": [
+          "china"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.scmp.com/rss/4/feed"
+        }
+      },
+      {
+        "id": "hong-kong",
+        "sectionIds": [
+          "hong-kong"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.scmp.com/rss/2/feed"
+        }
+      },
+      {
+        "id": "asia",
+        "sectionIds": [
+          "asia"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.scmp.com/rss/3/feed"
+        }
+      },
+      {
+        "id": "world",
+        "sectionIds": [
+          "world"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.scmp.com/rss/5/feed"
+        }
+      },
+      {
+        "id": "business",
+        "sectionIds": [
+          "business"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.scmp.com/rss/92/feed"
+        }
+      },
+      {
+        "id": "economy",
+        "sectionIds": [
+          "economy"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.scmp.com/rss/12/feed"
+        }
+      },
+      {
+        "id": "tech",
+        "sectionIds": [
+          "tech"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.scmp.com/rss/36/feed"
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "discovery-body",
+      "browser-parser",
+      "discovery-summary"
+    ],
+    "parser": "scmp",
+    "minimumFullCharacters": 500,
+    "minimumFullParagraphs": 3
+  },
+  "archive": {
+    "mode": "browser",
+    "bpc": true,
+    "proxyPolicy": "scmp"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

@@ -1,0 +1,139 @@
+{
+  "id": "chinanews",
+  "name": "中国新闻网",
+  "language": "zh-CN",
+  "sections": [
+    {
+      "id": "latest",
+      "name": "即时",
+      "url": "https://www.chinanews.com.cn/scroll-news/news1.html",
+      "kind": "stream"
+    },
+    {
+      "id": "politics",
+      "name": "时政",
+      "url": "https://www.chinanews.com.cn/china/",
+      "kind": "topic"
+    },
+    {
+      "id": "finance",
+      "name": "财经",
+      "url": "https://www.chinanews.com.cn/finance/",
+      "kind": "topic"
+    },
+    {
+      "id": "world",
+      "name": "国际",
+      "url": "https://www.chinanews.com.cn/world/",
+      "kind": "region"
+    },
+    {
+      "id": "society",
+      "name": "社会",
+      "url": "https://www.chinanews.com.cn/society/",
+      "kind": "topic"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "latest",
+        "sectionIds": [
+          "latest"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://www.chinanews.com.cn/scroll-news/news1.html",
+          "articlePathPrefixes": [
+            "/gn/",
+            "/cj/",
+            "/gj/",
+            "/sh/"
+          ],
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "politics",
+        "sectionIds": [
+          "politics"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://www.chinanews.com.cn/china/",
+          "articlePathPrefixes": [
+            "/gn/"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "finance",
+        "sectionIds": [
+          "finance"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://www.chinanews.com.cn/finance/",
+          "articlePathPrefixes": [
+            "/cj/"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "world",
+        "sectionIds": [
+          "world"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://www.chinanews.com.cn/world/",
+          "articlePathPrefixes": [
+            "/gj/"
+          ],
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "society",
+        "sectionIds": [
+          "society"
+        ],
+        "discovery": {
+          "kind": "site-adapter",
+          "adapter": "html-news-page",
+          "url": "https://www.chinanews.com.cn/society/",
+          "articlePathPrefixes": [
+            "/sh/"
+          ],
+          "maximumItems": 50
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "discovery-body",
+      "browser-parser",
+      "discovery-summary"
+    ],
+    "parser": "chinanews",
+    "minimumFullCharacters": 100,
+    "minimumFullParagraphs": 1
+  },
+  "archive": {
+    "mode": "browser",
+    "bpc": true,
+    "proxyPolicy": "direct-first"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

@@ -1,11 +1,15 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { loadSources } from "../src/config.js";
 
 describe("sources v2", () => {
   it("loads the complete Times source catalog", async () => {
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+    const catalog = JSON.parse(await readFile(path.join(root, "sources.v2.json"), "utf8")) as { sourceFiles: string[] };
+    expect(catalog.sourceFiles).toHaveLength(22);
+    expect(catalog.sourceFiles.every((file) => /^src\/sources\/[a-z0-9-]+\/source\.json$/u.test(file))).toBe(true);
     const sources = await loadSources(path.join(root, "sources.v2.json"));
     expect(sources).toHaveLength(22);
     expect(sources.map((source) => source.id)).not.toContain("cctv");

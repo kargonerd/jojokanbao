@@ -27,6 +27,25 @@ def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _read_source_catalog(path: Path) -> dict[str, Any]:
+    catalog = _read_json(path)
+    if isinstance(catalog.get("sources"), list):
+        return catalog
+    source_files = catalog.get("sourceFiles")
+    if catalog.get("version") != 2 or not isinstance(source_files, list) or not source_files:
+        raise ValueError("Times sources must contain a sources array or sourceFiles")
+    root = path.parent.resolve()
+    sources = []
+    for relative in source_files:
+        if not isinstance(relative, str) or not relative.strip():
+            raise ValueError("Times sourceFiles entries must be non-empty strings")
+        source_path = (root / relative).resolve()
+        if not source_path.is_relative_to(root):
+            raise ValueError("Times sourceFiles entries must stay inside the catalog directory")
+        sources.append(_read_json(source_path))
+    return {"version": 2, "sources": sources}
+
+
 def _read_candidates(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
@@ -228,7 +247,7 @@ async def _main() -> None:
     workspace = args.output.resolve()
     run_path = args.run_manifest.resolve()
     run = _read_json(run_path)
-    config = _read_json(args.config.resolve())
+    config = _read_source_catalog(args.config.resolve())
     generated_at = datetime.now(timezone.utc)
     articles = _articles(workspace, run, config)
     requested_sources = {value.strip() for value in (args.sources or "").split(",") if value.strip()}

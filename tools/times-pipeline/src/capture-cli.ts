@@ -95,7 +95,7 @@ async function main(): Promise<void> {
     complete: true,
   }, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify({ runId: id, runManifest, results }, null, 2)}\n`);
-  if (results.every((result) => result.status === "error")) process.exitCode = 1;
+  if (results.some((result) => result.status === "error")) process.exitCode = 1;
 }
 
 main().catch((error: unknown) => {

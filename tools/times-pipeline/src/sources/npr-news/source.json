@@ -1,0 +1,111 @@
+{
+  "id": "npr-news",
+  "name": "NPR",
+  "language": "en",
+  "sections": [
+    {
+      "id": "national",
+      "name": "National",
+      "url": "https://www.npr.org/sections/national/",
+      "kind": "region"
+    },
+    {
+      "id": "world",
+      "name": "World",
+      "url": "https://www.npr.org/sections/world/",
+      "kind": "region"
+    },
+    {
+      "id": "politics",
+      "name": "Politics",
+      "url": "https://www.npr.org/sections/politics/",
+      "kind": "topic"
+    },
+    {
+      "id": "business",
+      "name": "Business",
+      "url": "https://www.npr.org/sections/business/",
+      "kind": "topic"
+    },
+    {
+      "id": "economy",
+      "name": "Economy",
+      "url": "https://www.npr.org/sections/economy/",
+      "kind": "topic"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "national",
+        "sectionIds": [
+          "national"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://feeds.npr.org/1003/rss.xml"
+        }
+      },
+      {
+        "id": "world",
+        "sectionIds": [
+          "world"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://feeds.npr.org/1004/rss.xml"
+        }
+      },
+      {
+        "id": "politics",
+        "sectionIds": [
+          "politics"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://feeds.npr.org/1014/rss.xml"
+        }
+      },
+      {
+        "id": "business",
+        "sectionIds": [
+          "business"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://feeds.npr.org/1006/rss.xml"
+        }
+      },
+      {
+        "id": "economy",
+        "sectionIds": [
+          "economy"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://feeds.npr.org/1017/rss.xml"
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "discovery-body",
+      "browser-parser",
+      "discovery-summary"
+    ],
+    "parser": "npr",
+    "minimumFullCharacters": 1000,
+    "minimumFullParagraphs": 5
+  },
+  "archive": {
+    "mode": "browser",
+    "bpc": true,
+    "proxyPolicy": "direct-first"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

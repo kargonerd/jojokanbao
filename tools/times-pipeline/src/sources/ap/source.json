@@ -1,0 +1,104 @@
+{
+  "id": "ap",
+  "name": "AP News",
+  "language": "en",
+  "sections": [
+    {
+      "id": "world",
+      "name": "World",
+      "url": "https://apnews.com/world-news",
+      "kind": "region"
+    },
+    {
+      "id": "us",
+      "name": "U.S.",
+      "url": "https://apnews.com/us-news",
+      "kind": "region"
+    },
+    {
+      "id": "politics",
+      "name": "Politics",
+      "url": "https://apnews.com/politics",
+      "kind": "topic"
+    },
+    {
+      "id": "business",
+      "name": "Business",
+      "url": "https://apnews.com/business",
+      "kind": "topic"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "world",
+        "sectionIds": [
+          "world"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "ap",
+          "driver": "http",
+          "path": "/world-news",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "us",
+        "sectionIds": [
+          "us"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "ap",
+          "driver": "http",
+          "path": "/us-news",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "politics",
+        "sectionIds": [
+          "politics"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "ap",
+          "driver": "http",
+          "path": "/politics",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "business",
+        "sectionIds": [
+          "business"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "ap",
+          "driver": "http",
+          "path": "/business",
+          "maximumItems": 100
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "browser-parser",
+      "discovery-summary"
+    ],
+    "parser": "ap"
+  },
+  "archive": {
+    "mode": "browser",
+    "bpc": true,
+    "proxyPolicy": "direct-first"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}
