@@ -13,6 +13,11 @@ on:
         type: string
         default: ""
         required: false
+      max_pages:
+        description: Maximum representative Chromium pages
+        type: string
+        default: "22"
+        required: true
 
 permissions:
   contents: read
@@ -94,6 +99,7 @@ jobs:
         env:
           TIMES_SINCE_HOURS: ${{ inputs.since_hours }}
           TIMES_SOURCES: ${{ inputs.sources }}
+          TIMES_MAX_PAGES: ${{ inputs.max_pages }}
         run: |
           args=(
             --config tools/times-pipeline/sources.v2.json
@@ -111,13 +117,15 @@ jobs:
           node -e 'const fs=require("node:fs");const result=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+"/capture-result.json","utf8"));fs.appendFileSync(process.env.GITHUB_ENV,"TIMES_RUN_MANIFEST="+result.runManifest+"\n")'
 
       - name: Archive a representative page from every source with BPC
+        env:
+          TIMES_MAX_PAGES: ${{ inputs.max_pages }}
         run: |
           args=(
             --config tools/times-pipeline/sources.v2.json
             --output "$RUNNER_TEMP/jojo-times-v2"
             --run-manifest "$TIMES_RUN_MANIFEST"
             --engine browser
-            --max-pages 22
+            --max-pages "$TIMES_MAX_PAGES"
             --workers 8
             --timeout 25
             --maximum-response-bytes 5000000
