@@ -9,6 +9,11 @@ export function normalizeArticleUrl(value: string): string {
   const url = new URL(value);
   url.hash = "";
   url.hostname = url.hostname.toLowerCase();
+  const thepaperMobile = url.hostname === "m.thepaper.cn" ? url.pathname.match(/^\/detail\/(\d+)\/?$/u) : null;
+  if (thepaperMobile?.[1]) {
+    url.hostname = "www.thepaper.cn";
+    url.pathname = `/newsDetail_forward_${thepaperMobile[1]}`;
+  }
   for (const key of [...url.searchParams.keys()]) {
     if (TRACKING_PARAMETERS.has(key.toLowerCase()) || key.toLowerCase().startsWith("utm_")) url.searchParams.delete(key);
   }

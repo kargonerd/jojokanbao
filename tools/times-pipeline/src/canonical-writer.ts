@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { sha256 } from "./identity.js";
 import { removeParserArtifacts } from "./text.js";
-import type { Candidate, SourceCaptureManifest, SourceConfig } from "./types.js";
+import type { Candidate, PublisherSectionRef, SourceCaptureManifest, SourceConfig } from "./types.js";
 
 export interface CanonicalArticle {
   formatVersion: "jojo-news-article/1";
@@ -16,6 +16,7 @@ export interface CanonicalArticle {
   publishedAt: string;
   updatedAt?: string;
   publisherCategories: string[];
+  publisherSections?: PublisherSectionRef[];
   categories: string[];
   body: { format: "html" | "text"; profile?: "jojo-semantic-html/1"; value: string };
   contentStatus: "full" | "summary";
@@ -69,6 +70,7 @@ function canonicalArticle(
     publishedAt: candidate.publishedAt,
     ...(candidate.updatedAt ? { updatedAt: candidate.updatedAt } : {}),
     publisherCategories: candidate.publisherCategories,
+    publisherSections: candidate.publisherSections ?? [],
     categories: [],
     body,
     contentStatus: candidate.contentStatus,

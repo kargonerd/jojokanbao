@@ -1,8 +1,16 @@
 import { readFile } from "node:fs/promises";
-import type { ContentPriority, DiscoveryConfig, SourceConfig } from "./types.js";
+import type {
+  ContentPriority,
+  DiscoveryConfig,
+  DiscoveryEndpoint,
+  PublisherSectionConfig,
+  PublisherSectionKind,
+  SourceConfig,
+} from "./types.js";
 
 const SOURCE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const PRIORITIES = new Set<ContentPriority>(["discovery-body", "browser-parser", "discovery-summary"]);
+const SECTION_KINDS = new Set<PublisherSectionKind>(["stream", "edition", "region", "topic"]);
 
 function requiredString(value: unknown, field: string): string {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${field} must be a non-empty string`);
@@ -18,35 +26,149 @@ function credentialFreeHttpsUrl(value: unknown, field: string): string {
   return url;
 }
 
-function parseDiscovery(value: unknown, sourceId: string): DiscoveryConfig {
-  if (!value || typeof value !== "object") throw new Error(`${sourceId}.discovery must be an object`);
+function parseDiscoveryEndpoint(value: unknown, field: string): DiscoveryEndpoint {
+  if (!value || typeof value !== "object") throw new Error(`${field} must be an object`);
   const row = value as Record<string, unknown>;
-  const kind = requiredString(row.kind, `${sourceId}.discovery.kind`);
+  const kind = requiredString(row.kind, `${field}.kind`);
   if (kind === "rsshub-package") {
-    const route = requiredString(row.route, `${sourceId}.discovery.route`);
-    if (!route.startsWith("/")) throw new Error(`${sourceId}.discovery.route must start with /`);
+    const route = requiredString(row.route, `${field}.route`);
+    if (!route.startsWith("/")) throw new Error(`${field}.route must start with /`);
     return { kind, route };
+  }
+  if (kind === "source-adapter") {
+    const adapter = requiredString(row.adapter, `${field}.adapter`);
+    if (adapter !== "ap") throw new Error(`${field}.adapter is unsupported: ${adapter}`);
+    const driver = requiredString(row.driver, `${field}.driver`);
+    if (driver !== "http" && driver !== "browser") throw new Error(`${field}.driver must be http or browser`);
+    const sectionPath = requiredString(row.path, `${field}.path`);
+    if (!sectionPath.startsWith("/")) throw new Error(`${field}.path must start with /`);
+    const maximumItems = row.maximumItems;
+    if (!Number.isInteger(maximumItems) || (maximumItems as number) < 1 || (maximumItems as number) > 100) {
+      throw new Error(`${field}.maximumItems must be an integer from 1 to 100`);
+    }
+    return { kind, adapter, driver, path: sectionPath, maximumItems: maximumItems as number };
   }
   if (kind === "official-rss-list") {
     if (!Array.isArray(row.urls) || row.urls.length === 0 || row.urls.length > 20) {
-      throw new Error(`${sourceId}.discovery.urls must contain 1 to 20 URLs`);
+      throw new Error(`${field}.urls must contain 1 to 20 URLs`);
     }
-    const urls = [...new Set(row.urls.map((url, index) => credentialFreeHttpsUrl(url, `${sourceId}.discovery.urls[${index}]`)))];
+    const urls = [...new Set(row.urls.map((url, index) => credentialFreeHttpsUrl(url, `${field}.urls[${index}]`)))];
     return { kind, urls };
   }
   if (kind === "official-rss" || kind === "sitemap") {
-    const url = credentialFreeHttpsUrl(row.url, `${sourceId}.discovery.url`);
+    const url = credentialFreeHttpsUrl(row.url, `${field}.url`);
     if (kind === "sitemap") {
       const maximumPages = row.maximumPages;
       if (!Number.isInteger(maximumPages) || (maximumPages as number) < 1 || (maximumPages as number) > 100) {
-        throw new Error(`${sourceId}.discovery.maximumPages must be an integer from 1 to 100`);
+        throw new Error(`${field}.maximumPages must be an integer from 1 to 100`);
       }
       return { kind, url, maximumPages: maximumPages as number };
     }
     return { kind, url };
   }
-  if (kind === "site-adapter") return { kind, adapter: requiredString(row.adapter, `${sourceId}.discovery.adapter`) };
-  throw new Error(`${sourceId}.discovery.kind is unsupported: ${kind}`);
+  if (kind === "site-adapter") {
+    const adapter = requiredString(row.adapter, `${field}.adapter`);
+    const maximumItems = row.maximumItems;
+    if (!Number.isInteger(maximumItems) || (maximumItems as number) < 1 || (maximumItems as number) > 100) {
+      throw new Error(`${field}.maximumItems must be an integer from 1 to 100`);
+    }
+    if (adapter === "thepaper-channel") {
+      const channelId = requiredString(row.channelId, `${field}.channelId`);
+      if (!/^\d+$/u.test(channelId)) throw new Error(`${field}.channelId must contain only digits`);
+      return { kind, adapter, channelId, maximumItems: maximumItems as number };
+    }
+    if (adapter !== "html-news-page") throw new Error(`${field}.adapter is unsupported: ${adapter}`);
+    if (!Array.isArray(row.articlePathPrefixes) || row.articlePathPrefixes.length === 0 || row.articlePathPrefixes.length > 20) {
+      throw new Error(`${field}.articlePathPrefixes must contain 1 to 20 paths`);
+    }
+    const articlePathPrefixes = [...new Set(row.articlePathPrefixes.map((value, index) => {
+      const prefix = requiredString(value, `${field}.articlePathPrefixes[${index}]`);
+      if (!prefix.startsWith("/")) throw new Error(`${field}.articlePathPrefixes[${index}] must start with /`);
+      return prefix;
+    }))];
+    const linkSelector = row.linkSelector === undefined ? undefined : requiredString(row.linkSelector, `${field}.linkSelector`);
+    return {
+      kind,
+      adapter,
+      url: credentialFreeHttpsUrl(row.url, `${field}.url`),
+      articlePathPrefixes,
+      ...(linkSelector ? { linkSelector } : {}),
+      maximumItems: maximumItems as number,
+    };
+  }
+  throw new Error(`${field}.kind is unsupported: ${kind}`);
+}
+
+function parseDiscovery(value: unknown, sourceId: string, sectionIds: Set<string>): DiscoveryConfig {
+  if (!value || typeof value !== "object") throw new Error(`${sourceId}.discovery must be an object`);
+  const row = value as Record<string, unknown>;
+  if (row.kind !== "multi") return parseDiscoveryEndpoint(value, `${sourceId}.discovery`);
+  if (!Array.isArray(row.targets) || row.targets.length === 0 || row.targets.length > 100) {
+    throw new Error(`${sourceId}.discovery.targets must contain 1 to 100 targets`);
+  }
+  const seen = new Set<string>();
+  const targets = row.targets.map((value, index) => {
+    if (!value || typeof value !== "object") throw new Error(`${sourceId}.discovery.targets[${index}] must be an object`);
+    const target = value as Record<string, unknown>;
+    const id = requiredString(target.id, `${sourceId}.discovery.targets[${index}].id`);
+    if (!SOURCE_ID.test(id)) throw new Error(`${sourceId}.discovery target id is invalid: ${id}`);
+    if (seen.has(id)) throw new Error(`${sourceId}.discovery target id is duplicated: ${id}`);
+    seen.add(id);
+    if (!Array.isArray(target.sectionIds)) throw new Error(`${sourceId}.${id}.sectionIds must be an array`);
+    const selected = [...new Set(target.sectionIds.map((item, position) => requiredString(item, `${sourceId}.${id}.sectionIds[${position}]`)))];
+    for (const sectionId of selected) {
+      if (!sectionIds.has(sectionId)) throw new Error(`${sourceId}.${id} references unknown section: ${sectionId}`);
+    }
+    return {
+      id,
+      sectionIds: selected,
+      ...(target.fallback === true ? { fallback: true } : {}),
+      discovery: parseDiscoveryEndpoint(target.discovery, `${sourceId}.discovery.targets[${index}].discovery`),
+    };
+  });
+  return { kind: "multi", targets };
+}
+
+function parseSections(value: unknown, sourceId: string): PublisherSectionConfig[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length === 0 || value.length > 100) {
+    throw new Error(`${sourceId}.sections must contain 1 to 100 sections`);
+  }
+  const seen = new Set<string>();
+  return value.map((value, index) => {
+    if (!value || typeof value !== "object") throw new Error(`${sourceId}.sections[${index}] must be an object`);
+    const row = value as Record<string, unknown>;
+    const id = requiredString(row.id, `${sourceId}.sections[${index}].id`);
+    if (!SOURCE_ID.test(id)) throw new Error(`${sourceId}.section id is invalid: ${id}`);
+    if (seen.has(id)) throw new Error(`${sourceId}.section id is duplicated: ${id}`);
+    seen.add(id);
+    const kind = requiredString(row.kind, `${sourceId}.${id}.kind`) as PublisherSectionKind;
+    if (!SECTION_KINDS.has(kind)) throw new Error(`${sourceId}.${id}.kind is invalid`);
+    let match: PublisherSectionConfig["match"];
+    if (row.match !== undefined) {
+      if (!row.match || typeof row.match !== "object") throw new Error(`${sourceId}.${id}.match must be an object`);
+      const rawMatch = row.match as Record<string, unknown>;
+      const urlPrefixes = rawMatch.urlPrefixes === undefined ? undefined : (() => {
+        if (!Array.isArray(rawMatch.urlPrefixes)) throw new Error(`${sourceId}.${id}.match.urlPrefixes must be an array`);
+        return [...new Set(rawMatch.urlPrefixes.map((url, position) => credentialFreeHttpsUrl(url, `${sourceId}.${id}.match.urlPrefixes[${position}]`)))];
+      })();
+      const publisherCategories = rawMatch.publisherCategories === undefined ? undefined : (() => {
+        if (!Array.isArray(rawMatch.publisherCategories)) throw new Error(`${sourceId}.${id}.match.publisherCategories must be an array`);
+        return [...new Set(rawMatch.publisherCategories.map((item, position) => requiredString(item, `${sourceId}.${id}.match.publisherCategories[${position}]`)))];
+      })();
+      match = {
+        ...(urlPrefixes?.length ? { urlPrefixes } : {}),
+        ...(publisherCategories?.length ? { publisherCategories } : {}),
+      };
+    }
+    return {
+      id,
+      name: requiredString(row.name, `${sourceId}.${id}.name`),
+      url: credentialFreeHttpsUrl(row.url, `${sourceId}.${id}.url`),
+      kind,
+      ...(match && Object.keys(match).length ? { match } : {}),
+    };
+  });
 }
 
 function parseSource(value: unknown, position: number): SourceConfig | null {
@@ -55,6 +177,7 @@ function parseSource(value: unknown, position: number): SourceConfig | null {
   if (row.enabled === false) return null;
   const id = requiredString(row.id, `sources[${position}].id`);
   if (!SOURCE_ID.test(id)) throw new Error(`${id}.id must use lowercase letters, numbers and hyphens`);
+  const sections = parseSections(row.sections, id);
   const content = row.content as Record<string, unknown> | undefined;
   const priorities = content?.priority;
   if (!Array.isArray(priorities) || priorities.length === 0 || priorities.some((item) => !PRIORITIES.has(item as ContentPriority))) {
@@ -83,7 +206,8 @@ function parseSource(value: unknown, position: number): SourceConfig | null {
     id,
     name: requiredString(row.name, `${id}.name`),
     language: requiredString(row.language, `${id}.language`),
-    discovery: parseDiscovery(row.discovery, id),
+    ...(sections ? { sections } : {}),
+    discovery: parseDiscovery(row.discovery, id, new Set(sections?.map((section) => section.id) ?? [])),
     content: {
       priority: [...priorities] as ContentPriority[],
       ...(parser ? { parser } : {}),

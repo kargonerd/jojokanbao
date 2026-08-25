@@ -1,9 +1,7 @@
 import path from "node:path";
 import { parseArgs, requiredArg } from "./args.js";
 import { loadSources } from "./config.js";
-import { discoverOfficialRss } from "./discovery/rss.js";
-import { discoverWithRssHub } from "./discovery/rsshub.js";
-import { discoverSitemap } from "./discovery/sitemap.js";
+import { discoverSource } from "./discovery/multi.js";
 import { RecordingFetch } from "./recording-fetch.js";
 import { sourceRunRoot, writeSourceCapture } from "./raw-writer.js";
 
@@ -24,17 +22,11 @@ async function main(): Promise<void> {
   try {
     const fetchedAt = new Date().toISOString();
     const cutoff = new Date(startedAt).valueOf() - sinceHours * 3_600_000;
-    const result = source.discovery.kind === "rsshub-package"
-      ? await discoverWithRssHub(source, fetchedAt)
-      : source.discovery.kind === "official-rss" || source.discovery.kind === "official-rss-list"
-        ? await discoverOfficialRss(source, fetchedAt)
-        : source.discovery.kind === "sitemap"
-          ? await discoverSitemap(source, fetchedAt, cutoff)
-        : (() => { throw new Error(`${source.id}: site adapter is not implemented`); })();
+    const result = await discoverSource(source, fetchedAt, cutoff);
     result.candidates = result.candidates.filter((candidate) => new Date(candidate.publishedAt).valueOf() >= cutoff);
     const networkFile = await recorder.flush();
     const manifest = await writeSourceCapture(runRoot, runId, startedAt, result, networkFile, recorder.exchanges.length);
-    const status = manifest.healthStatus === "healthy" ? "ok" : "empty";
+    const status = manifest.healthStatus === "empty" ? "empty" : "ok";
     process.stdout.write(`${JSON.stringify({
       sourceId,
       status,

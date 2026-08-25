@@ -8,4 +8,9 @@ describe("article identity", () => {
     expect(first).toBe(second);
     expect(articleId("example", first)).toBe(articleId("example", second));
   });
+
+  it("unifies The Paper mobile and desktop article URLs", () => {
+    expect(normalizeArticleUrl("https://m.thepaper.cn/detail/33845618"))
+      .toBe(normalizeArticleUrl("https://www.thepaper.cn/newsDetail_forward_33845618"));
+  });
 });

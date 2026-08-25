@@ -7,11 +7,26 @@ describe("sources v2", () => {
   it("loads the complete Times source catalog", async () => {
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
     const sources = await loadSources(path.join(root, "sources.v2.json"));
-    expect(sources).toHaveLength(23);
+    expect(sources).toHaveLength(22);
+    expect(sources.map((source) => source.id)).not.toContain("cctv");
     expect(sources.map((source) => source.id)).toContain("agencia-brasil");
-    expect(sources.find((source) => source.id === "reuters")?.discovery.kind).toBe("sitemap");
-    expect(sources.find((source) => source.id === "guardian")?.discovery.kind).toBe("official-rss");
+    expect(sources.every((source) => Boolean(source.sections?.length))).toBe(true);
+    expect(sources.reduce((count, source) => count + (source.sections?.length ?? 0), 0)).toBe(153);
+    expect(sources.find((source) => source.id === "reuters")?.discovery.kind).toBe("multi");
+    expect(sources.find((source) => source.id === "guardian")?.discovery.kind).toBe("multi");
     expect(sources.find((source) => source.id === "scmp")?.archive.bpc).toBe(true);
-    expect(sources.find((source) => source.id === "cna-singapore")?.discovery.kind).toBe("official-rss-list");
+    expect(sources.find((source) => source.id === "cna-singapore")?.discovery.kind).toBe("multi");
+    const ap = sources.find((source) => source.id === "ap");
+    expect(ap?.discovery.kind).toBe("multi");
+    if (ap?.discovery.kind === "multi") {
+      expect(ap.discovery.targets).toHaveLength(4);
+      expect(ap.discovery.targets.every((target) =>
+        target.discovery.kind === "source-adapter"
+        && target.discovery.adapter === "ap"
+        && target.discovery.driver === "http"
+      )).toBe(true);
+    }
+    expect(sources.find((source) => source.id === "bloomberg-markets")?.sections)
+      .toContainEqual(expect.objectContaining({ id: "asia", url: "https://www.bloomberg.com/asia" }));
   });
 });
