@@ -49,11 +49,13 @@ function mergeCandidate(left: Candidate | undefined, right: Candidate): Candidat
   };
 }
 
-function isVideo(candidate: Candidate): boolean {
+function isUnsupportedMedia(candidate: Candidate): boolean {
   const segments = new URL(candidate.canonicalUrl).pathname.toLowerCase().split("/").filter(Boolean);
   const categories = candidate.publisherCategories.map((category) => category.trim().toLowerCase());
-  return segments.some((segment) => segment === "video" || segment === "videos" || segment === "shipin")
-    || categories.some((category) => category === "video" || category === "视频");
+  const unsupportedSegments = new Set(["gallery", "galleries", "picture", "pictures", "video", "videos", "shipin"]);
+  const unsupportedCategories = new Set(["gallery", "photo gallery", "picture gallery", "video", "视频", "图集"]);
+  return segments.some((segment) => unsupportedSegments.has(segment))
+    || categories.some((category) => unsupportedCategories.has(category));
 }
 
 async function discoverEndpoint(
@@ -74,7 +76,7 @@ export async function discoverSource(source: SourceConfig, fetchedAt: string, cu
   if (source.discovery.kind !== "multi") {
     const result = await discoverEndpoint(source, source.discovery, fetchedAt, cutoff, runtime);
     result.source = source;
-    result.candidates = result.candidates.filter((candidate) => !isVideo(candidate)).map((candidate) => annotate(source, candidate, []));
+    result.candidates = result.candidates.filter((candidate) => !isUnsupportedMedia(candidate)).map((candidate) => annotate(source, candidate, []));
     return result;
   }
 
@@ -108,7 +110,7 @@ export async function discoverSource(source: SourceConfig, fetchedAt: string, cu
     const errors = targets.map((target) => `${target.id}: ${target.error ?? "failed"}`).join("; ");
     throw new Error(`${source.id}: every discovery target failed: ${errors}`);
   }
-  const values = [...candidates.values()].filter((candidate) => !isVideo(candidate));
+  const values = [...candidates.values()].filter((candidate) => !isUnsupportedMedia(candidate));
   const taggedCount = values.filter((candidate) => candidate.publisherSections?.length).length;
   const selected = values.filter((candidate) => !source.sections?.length
     || candidate.publisherSections?.length

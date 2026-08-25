@@ -33,6 +33,11 @@ describe("multi-section discovery", () => {
         <link>https://example.test/articles/shared</link>
         <pubDate>Tue, 25 Aug 2026 05:00:00 GMT</pubDate>
         <description>Summary</description>
+      </item><item>
+        <title>Picture gallery</title>
+        <link>https://example.test/world/gallery/pictures</link>
+        <pubDate>Tue, 25 Aug 2026 05:05:00 GMT</pubDate>
+        <description>Images rather than an article body</description>
       </item></channel></rss>`, { status: 200 })));
 
     const result = await discoverSource(source, "2026-08-25T05:10:00Z", Date.parse("2026-08-24T05:10:00Z"));
