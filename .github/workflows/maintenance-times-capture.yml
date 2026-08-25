@@ -161,7 +161,8 @@ jobs:
             args+=(
               --proxy-server "$JOJO_TIMES_PROXY_URI"
               --proxy-control-url http://127.0.0.1:9090
-              --proxy-rotation-attempts 4
+              --proxy-rotation-attempts 8
+              --proxy-retry-timeout 12
             )
           fi
           python tools/times-pipeline/archive_v2.py "${args[@]}" > "$RUNNER_TEMP/archive-result.json"

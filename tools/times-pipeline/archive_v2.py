@@ -45,19 +45,66 @@ def _merge_capture_attempts(previous: ArticleCapture, retry: ArticleCapture) -> 
 async def _mihomo_route_candidates(control_url: str, group: str, automatic: str, maximum: int) -> list[str]:
     try:
         async with httpx.AsyncClient(base_url=control_url, timeout=5) as client:
-            response = await client.get(f"/proxies/{group}")
-            response.raise_for_status()
-            payload = response.json()
+            route_response, automatic_response, proxies_response = await asyncio.gather(
+                client.get(f"/proxies/{group}"),
+                client.get(f"/proxies/{automatic}"),
+                client.get("/proxies"),
+            )
+            route_response.raise_for_status()
+            automatic_response.raise_for_status()
+            proxies_response.raise_for_status()
+            route = route_response.json()
+            automatic_route = automatic_response.json()
+            proxies = proxies_response.json()
     except Exception:
         raise RuntimeError("Unable to read the local Mihomo route group") from None
-    values = payload.get("all") if isinstance(payload, dict) else None
-    current = payload.get("now") if isinstance(payload, dict) else None
+    return _select_proxy_candidates(route, automatic_route, proxies, automatic, maximum)
+
+
+def _select_proxy_candidates(
+    route: Any,
+    automatic_route: Any,
+    proxies: Any,
+    automatic: str,
+    maximum: int,
+) -> list[str]:
+    values = route.get("all") if isinstance(route, dict) else None
+    current = route.get("now") if isinstance(route, dict) else None
+    automatic_current = automatic_route.get("now") if isinstance(automatic_route, dict) else None
     if not isinstance(values, list):
         raise RuntimeError("The local Mihomo route group has no proxy candidates")
-    return [
+    available = [
         value for value in values
-        if isinstance(value, str) and value and value not in {automatic, current}
-    ][:maximum]
+        if isinstance(value, str) and value and value not in {automatic, current, automatic_current}
+    ]
+    proxy_rows = proxies.get("proxies") if isinstance(proxies, dict) else None
+    proxy_rows = proxy_rows if isinstance(proxy_rows, dict) else {}
+
+    def delay(name: str) -> int | None:
+        row = proxy_rows.get(name)
+        history = row.get("history") if isinstance(row, dict) else None
+        if not isinstance(history, list):
+            return None
+        values = [entry.get("delay") for entry in history if isinstance(entry, dict)]
+        measured = [value for value in values if isinstance(value, int) and value > 0]
+        return measured[-1] if measured else None
+
+    healthy = [name for name in available if delay(name) is not None]
+    pool = healthy if healthy else available
+    if len(pool) <= maximum:
+        return pool
+    selected = sorted(pool, key=lambda name: delay(name) or 2**31)[:min(3, maximum)]
+    remaining = maximum - len(selected)
+    if remaining <= 0:
+        return selected
+    for index in range(remaining):
+        position = round((index + 1) * (len(pool) - 1) / (remaining + 1))
+        candidate = pool[position]
+        if candidate not in selected:
+            selected.append(candidate)
+    if len(selected) < maximum:
+        selected.extend(name for name in pool if name not in selected)
+    return selected[:maximum]
 
 
 async def _select_mihomo_route(control_url: str, group: str, name: str) -> None:
@@ -73,10 +120,10 @@ async def _capture_with_proxy_rotation(
     selected: list[Article],
     args: argparse.Namespace,
 ) -> tuple[list[ArticleCapture], int]:
-    async def capture(values: list[Article]) -> list[ArticleCapture]:
+    async def capture(values: list[Article], timeout: float | None = None) -> list[ArticleCapture]:
         return await capture_articles(
             values,
-            timeout_seconds=args.timeout,
+            timeout_seconds=timeout or args.timeout,
             workers=args.workers,
             maximum_response_bytes=args.maximum_response_bytes,
             engine=args.engine,
@@ -114,7 +161,7 @@ async def _capture_with_proxy_rotation(
                 break
             await _select_mihomo_route(args.proxy_control_url, args.proxy_group, alternative)
             await asyncio.sleep(0.25)
-            for retry in await capture(retry_articles):
+            for retry in await capture(retry_articles, args.proxy_retry_timeout):
                 capture_by_id[retry.article_id] = _merge_capture_attempts(capture_by_id[retry.article_id], retry)
             rounds += 1
     finally:
@@ -340,11 +387,12 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--proxy-group", default="JOJO-TIMES-ROUTE")
     parser.add_argument("--proxy-automatic-name", default="JOJO-TIMES-AUTO")
     parser.add_argument("--proxy-rotation-attempts", type=int, default=0)
+    parser.add_argument("--proxy-retry-timeout", type=float, default=15)
     parser.add_argument("--browser-extension-path")
     parser.add_argument("--browser-extension-revision")
     args = parser.parse_args()
-    if args.proxy_rotation_attempts < 0:
-        parser.error("--proxy-rotation-attempts must not be negative")
+    if args.proxy_rotation_attempts < 0 or args.proxy_retry_timeout <= 0:
+        parser.error("proxy rotation attempts and retry timeout must be valid")
     return args
 
 

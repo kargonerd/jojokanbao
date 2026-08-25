@@ -10,7 +10,7 @@ import zipfile
 
 from warcio.archiveiterator import ArchiveIterator
 
-from archive_v2 import _merge_capture_attempts
+from archive_v2 import _merge_capture_attempts, _select_proxy_candidates
 from times_pipeline.feeds import Article, RawFeed, Source
 from times_pipeline.webarchive import (
     ArticleCapture,
@@ -82,6 +82,27 @@ def test_proxy_retry_merge_keeps_failed_and_successful_page_attempts() -> None:
     assert merged.elapsed_ms == 30
     assert merged.error is None
     assert merged.final_exchange and merged.final_exchange.status_code == 200
+
+
+def test_proxy_candidates_exclude_current_route_and_mix_fast_with_spread_nodes() -> None:
+    candidates = _select_proxy_candidates(
+        {"all": ["JOJO-TIMES-AUTO", "node-a", "node-b", "node-c", "node-d", "node-e", "node-f"], "now": "JOJO-TIMES-AUTO"},
+        {"now": "node-a"},
+        {"proxies": {
+            "node-a": {"history": [{"delay": 10}]},
+            "node-b": {"history": [{"delay": 20}]},
+            "node-c": {"history": [{"delay": 30}]},
+            "node-d": {"history": [{"delay": 40}]},
+            "node-e": {"history": [{"delay": 200}]},
+            "node-f": {"history": [{"delay": 300}]},
+        }},
+        "JOJO-TIMES-AUTO",
+        4,
+    )
+
+    assert candidates[:3] == ["node-b", "node-c", "node-d"]
+    assert candidates[3] == "node-e"
+    assert "node-a" not in candidates
 
 
 def test_wacz_contains_replayable_warc_cdxj_and_pages_without_secrets(tmp_path: Path) -> None:
