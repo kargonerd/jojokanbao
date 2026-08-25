@@ -1,4 +1,5 @@
 import { apSource } from "./ap/index.js";
+import { bloombergSource } from "./bloomberg-markets/index.js";
 import { clsSource } from "./cls/index.js";
 import { dwSource } from "./dw/index.js";
 import { nikkeiSource } from "./nikkei/index.js";
@@ -8,6 +9,7 @@ import type { Candidate, DiscoveryResult, DiscoveryRuntime, SourceConfig, Source
 
 const modules = new Map<string, SourceModule>([
   apSource,
+  bloombergSource,
   clsSource,
   dwSource,
   nikkeiSource,
@@ -32,7 +34,7 @@ export async function discoverWithSourceModule(
     if (!module.discoverBrowser) throw new Error(`${source.id}: ${endpoint.adapter} does not support browser discovery`);
     result = await module.discoverBrowser(source, endpoint, fetchedAt, runtime.browser);
   }
-  result.pagePolicy = module.page;
+  if (module.page) result.pagePolicy = module.page;
   return result;
 }
 
@@ -41,5 +43,5 @@ export function sourcePagePolicy(sourceId: string): SourcePagePolicy | undefined
 }
 
 export function processSourceCandidate(sourceId: string, candidate: Candidate): Candidate {
-  return modules.get(sourceId)?.process(candidate) ?? candidate;
+  return modules.get(sourceId)?.process?.(candidate) ?? candidate;
 }

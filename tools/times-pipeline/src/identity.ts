@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 const TRACKING_PARAMETERS = new Set([
-  "fbclid", "gclid", "mc_cid", "mc_eid", "ref", "ref_src", "spm", "utm_campaign", "utm_content",
+  "fbclid", "gclid", "mc_cid", "mc_eid", "ref", "ref_src", "spm", "srnd", "utm_campaign", "utm_content",
   "utm_medium", "utm_source", "utm_term",
 ]);
 

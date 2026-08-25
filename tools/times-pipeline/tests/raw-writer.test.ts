@@ -75,4 +75,26 @@ describe("raw writer section coverage", () => {
     expect(manifest.healthStatus).toBe("degraded");
     expect(manifest.sectionCoverage).toMatchObject({ uncovered: ["business"], failedTargets: ["business"] });
   });
+
+  it("does not require runtime coverage for a declared but unavailable publisher taxonomy", async () => {
+    const unavailableSource: SourceConfig = {
+      ...source,
+      sections: (source.sections ?? []).map((section) => ({ ...section, discoverable: false })),
+    };
+    const output = await mkdtemp(path.join(os.tmpdir(), "jojo-times-raw-writer-"));
+    const runRoot = path.join(output, "raw", "news", "example", "run-1");
+    const networkFile = path.join(runRoot, "network", "exchanges.jsonl.gz");
+    await mkdir(path.dirname(networkFile), { recursive: true });
+    await writeFile(networkFile, "");
+    const manifest = await writeSourceCapture(runRoot, "run-1", "2026-08-25T00:00:00Z", {
+      source: unavailableSource,
+      transport: "official-rss",
+      fetchedAt: "2026-08-25T00:00:00Z",
+      upstream: {},
+      candidates: [candidate],
+    }, networkFile, 0);
+
+    expect(manifest.healthStatus).toBe("healthy");
+    expect(manifest.sectionCoverage).toBeUndefined();
+  });
 });

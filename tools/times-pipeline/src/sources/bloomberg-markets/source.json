@@ -55,11 +55,17 @@
           "asia"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.bloomberg.com/asia",
-          "articlePathPrefixes": [
-            "/news/articles/"
+          "kind": "source-adapter",
+          "adapter": "bloomberg",
+          "driver": "http",
+          "pageId": "phoenix-asia",
+          "moduleIds": [
+            "lede",
+            "well-1",
+            "well-2",
+            "well-3",
+            "well-4",
+            "more-top-stories"
           ],
           "maximumItems": 50
         }
@@ -110,11 +116,19 @@
           "ai"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.bloomberg.com/ai",
-          "articlePathPrefixes": [
-            "/news/articles/"
+          "kind": "source-adapter",
+          "adapter": "bloomberg",
+          "driver": "http",
+          "pageId": "phx-ai",
+          "moduleIds": [
+            "top_single_story",
+            "feature_story",
+            "top_stories",
+            "top_stories_1",
+            "topic_package_3",
+            "topic_package_1",
+            "topic_package_2",
+            "archive_story_list"
           ],
           "maximumItems": 50
         }

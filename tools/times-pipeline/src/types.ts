@@ -16,6 +16,7 @@ export interface DiscoveryRuntime {
 
 export interface SourcePagePolicy {
   capture: "browser" | "http";
+  captureUrl?: "canonical" | "source";
   bodySelectors: string[];
 }
 
@@ -46,6 +47,14 @@ export type DiscoveryEndpoint =
       adapter: "dw";
       driver: DiscoveryDriver;
       navigationId: string;
+      maximumItems: number;
+    }
+  | {
+      kind: "source-adapter";
+      adapter: "bloomberg";
+      driver: DiscoveryDriver;
+      pageId: string;
+      moduleIds: string[];
       maximumItems: number;
     }
   | { kind: "official-rss"; url: string }
@@ -82,6 +91,7 @@ export interface PublisherSectionConfig {
   name: string;
   url: string;
   kind: PublisherSectionKind;
+  discoverable?: boolean;
   match?: {
     urlPrefixes?: string[];
     publisherCategories?: string[];

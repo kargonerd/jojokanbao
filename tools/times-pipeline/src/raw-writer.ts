@@ -65,7 +65,9 @@ export async function writeSourceCapture(
   const bodyFiles = await filesBelow(path.join(runRoot, "network", "bodies"));
   const objects = await Promise.all([discoveryFile, candidatesFile, networkFile, ...bodyFiles]
     .map((target) => descriptor(runRoot, target)));
-  const selectedSections = result.source.sections?.map((section) => section.id) ?? [];
+  const selectedSections = result.source.sections
+    ?.filter((section) => section.discoverable !== false)
+    .map((section) => section.id) ?? [];
   const articleSections = result.candidates.flatMap((candidate) => candidate.publisherSections?.map((section) => section.id) ?? []);
   const targets = result.transport === "multi" && result.upstream && typeof result.upstream === "object"
     ? (result.upstream as { targets?: Array<{ id?: unknown; status?: unknown; fallback?: unknown; sectionIds?: unknown }> }).targets ?? []
@@ -73,7 +75,12 @@ export async function writeSourceCapture(
   const operationalSections = targets
     .filter((target) => target.status === "ok" && Array.isArray(target.sectionIds))
     .flatMap((target) => (target.sectionIds as unknown[]).filter((section): section is string => typeof section === "string"));
-  const coveredSections = [...new Set([...articleSections, ...operationalSections])].sort();
+  const inferredSections = result.source.sections
+    ?.filter((section) => section.discoverable !== false && Boolean(
+      section.match?.urlPrefixes?.length || section.match?.publisherCategories?.length,
+    ))
+    .map((section) => section.id) ?? [];
+  const coveredSections = [...new Set([...articleSections, ...operationalSections, ...inferredSections])].sort();
   const failedTargets = targets
     .filter((target) => target.status === "error" && typeof target.id === "string")
     .map((target) => target.id as string);

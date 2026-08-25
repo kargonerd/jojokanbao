@@ -104,6 +104,51 @@ describe("native source modules", () => {
     expect(result.pagePolicy?.bodySelectors).toContain("main article");
   });
 
+  it("discovers Bloomberg curation modules through its lightweight lineup API", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      top_stories: {
+        items: [{
+          id: "ABC123",
+          url: "/news/articles/2026-08-25/ai-story?srnd=phx-ai",
+          headline: "AI story",
+          summary: "A useful summary.",
+          publishedAt: "2026-08-25T10:00:00Z",
+          byline: "Reporter One",
+          brand: "technology",
+          eyebrow: { text: "AI" },
+        }, {
+          id: "VIDEO1",
+          url: "/news/videos/2026-08-25/video-story",
+          headline: "Video story",
+          publishedAt: "2026-08-25T11:00:00Z",
+        }],
+      },
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const config = source("bloomberg-markets", {
+      kind: "source-adapter",
+      adapter: "bloomberg",
+      driver: "http",
+      pageId: "phx-ai",
+      moduleIds: ["top_stories"],
+      maximumItems: 10,
+    });
+
+    const result = await discoverSource(config, "2026-08-25T00:00:00Z", 0);
+
+    expect(result.candidates).toEqual([expect.objectContaining({
+      canonicalUrl: "https://www.bloomberg.com/news/articles/2026-08-25/ai-story",
+      title: "AI story",
+      contentStatus: "summary",
+      authors: ["Reporter One"],
+      publisherCategories: ["technology", "AI"],
+    })]);
+    const requested = new URL(String(
+      (fetchMock.mock.calls as unknown as Array<[RequestInfo | URL]>)[0]?.[0],
+    ));
+    expect(requested.pathname).toContain("/lineup-next/api/page/phx-ai/module/top_stories");
+  });
+
   it("runs a source process hook before Canonical without mutating the input", () => {
     const candidate = {
       publisherCategories: ["World", "World"],
@@ -115,5 +160,6 @@ describe("native source modules", () => {
 
   it("exposes Reuters direct paragraph blocks as a source page policy", () => {
     expect(sourcePagePolicy("reuters")?.bodySelectors).toEqual(["[data-testid^='paragraph-']"]);
+    expect(sourcePagePolicy("reuters")?.captureUrl).toBe("source");
   });
 });

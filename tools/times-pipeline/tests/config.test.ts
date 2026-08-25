@@ -37,6 +37,7 @@ describe("sources v2", () => {
       : []);
     for (const source of sources) {
       for (const section of source.sections ?? []) {
+        if (section.discoverable === false) continue;
         const hasInferenceRule = Boolean(section.match?.urlPrefixes?.length || section.match?.publisherCategories?.length);
         expect(
           configuredSections.includes(`${source.id}:${section.id}`) || hasInferenceRule,

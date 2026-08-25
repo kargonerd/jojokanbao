@@ -68,6 +68,19 @@ function parseDiscoveryEndpoint(value: unknown, field: string): DiscoveryEndpoin
       if (!/^\d+$/u.test(navigationId)) throw new Error(`${field}.navigationId must contain only digits`);
       return { kind, adapter, driver, navigationId, maximumItems: maximumItems as number };
     }
+    if (adapter === "bloomberg") {
+      const pageId = requiredString(row.pageId, `${field}.pageId`);
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(pageId)) throw new Error(`${field}.pageId is invalid`);
+      if (!Array.isArray(row.moduleIds) || row.moduleIds.length === 0 || row.moduleIds.length > 30) {
+        throw new Error(`${field}.moduleIds must contain 1 to 30 module ids`);
+      }
+      const moduleIds = [...new Set(row.moduleIds.map((value, index) => {
+        const moduleId = requiredString(value, `${field}.moduleIds[${index}]`);
+        if (!/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/u.test(moduleId)) throw new Error(`${field}.moduleIds[${index}] is invalid`);
+        return moduleId;
+      }))];
+      return { kind, adapter, driver, pageId, moduleIds, maximumItems: maximumItems as number };
+    }
     throw new Error(`${field}.adapter is unsupported: ${adapter}`);
   }
   if (kind === "official-rss-list") {
@@ -188,6 +201,7 @@ function parseSections(value: unknown, sourceId: string): PublisherSectionConfig
       name: requiredString(row.name, `${sourceId}.${id}.name`),
       url: credentialFreeHttpsUrl(row.url, `${sourceId}.${id}.url`),
       kind,
+      ...(row.discoverable === false ? { discoverable: false } : {}),
       ...(match && Object.keys(match).length ? { match } : {}),
     };
   });

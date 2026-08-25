@@ -17,6 +17,7 @@ small files it actually needs:
 ├─ discover.ts  # optional publisher API/listing -> normalized candidates
 ├─ page.ts      # page capture mode and source-specific body selectors
 ├─ process.ts   # source normalization before Canonical is written
+├─ *.ts         # optional source-local transport/parser helpers when genuinely needed
 └─ index.ts     # module wiring
 ```
 

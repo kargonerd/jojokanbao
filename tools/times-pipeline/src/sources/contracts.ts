@@ -22,6 +22,6 @@ export interface SourceModule {
     fetchedAt: string,
     browser: BrowserDiscoveryRuntime,
   ) => Promise<DiscoveryResult>;
-  page: SourcePagePolicy;
-  process(candidate: Candidate): Candidate;
+  page?: SourcePagePolicy;
+  process?(candidate: Candidate): Candidate;
 }

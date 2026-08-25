@@ -14,12 +14,17 @@ Financial Times、Axios、NPR、Nikkei Asia、联合早报、Al Jazeera、SCMP�
 发现和正文是两套独立策略：
 
 - JOJO 原生来源适配器：直接调用出版方的轻量入口。来源特例按
-  `src/sources/{source}/discover.ts|page.ts|process.ts` 组织；AP、Nikkei、财联社和 DW 当前使用该结构。
+  `src/sources/{source}/discover.ts|page.ts|process.ts` 组织；AP、Bloomberg、Nikkei、财联社和 DW
+  当前使用原生发现器，Reuters 另有页面 URL/正文选择策略。
 - 官方 RSS / RSS 列表：直接抓取并保留原始 XML。
 - Sitemap：目前用于 Reuters 官方 URL 发现。
 - Multi：合并同一媒体的多个选定栏目入口，按文章 ID 去重并保留所有命中的出版方栏目。
-- HTML 栏目页适配器：用于 Bloomberg Asia/AI、Axios、Nikkei 地区页、新华网、人民网大湾区和
-  Agência Brasil 英文版等没有可用 RSS 的栏目；可用 CSS selector 只选择文章卡片，避免把导航链接当文章。
+- HTML 栏目页适配器：用于 Nikkei 地区页、新华网、人民网大湾区和 Agência Brasil 英文版等没有
+  可用 RSS/API 的栏目；可用 CSS selector 只选择文章卡片，避免把导航链接当文章。
+- Bloomberg Asia/AI 读取其一方 `lineup-next` JSON；当 Node TLS 指纹被拒绝时，Bloomberg 来源独占
+  一个轻量 curl+Mihomo 节点重试阶段，不启动发现浏览器，也不影响其他 21 家并行发现。
+- Axios 使用官方全文 feed。官网保留 5 个栏目定义和链接，但 feed 不提供可靠栏目字段，因此这些栏目
+  明确标为不可分类，不再请求会返回 Cloudflare 403 的栏目 HTML，也不会伪造文章栏目归属。
 - 官方内容 API 适配器：澎湃频道直接读取其频道 API 和文章页 `__NEXT_DATA__`，并在发现阶段跳过视频。
 - 发现驱动：来源适配器显式声明 `driver: http | browser`。当前 AP 使用 `http`；浏览器 runtime 已作为
   注入接口保留，但尚未给任何生产发现适配器启用，误配会直接失败而不是静默降级。
@@ -35,9 +40,8 @@ AP 是第一条 JOJO 原生完整参考流：4 个栏目只产生 4 次发现请
 归档，随后生成按媒体 Canonical 和 B2 格式 Delivery。2026-08-25 的本地两小时回归发现 18 篇，
 18/18 页面存档成功、18/18 全文、0 个降级；WACZ 中 18 个主文档均非空。
 
-无代理直连回归中 22 家均能发现文章，20 家的 153 个栏目入口全部健康；Axios 的 5 个分类页及
-Bloomberg 的 Asia/AI 页面会由 Action 中的 Mihomo 代理重试。即使这些分类页临时 403，Axios 官方
-feed 全文和 Bloomberg 其余官方分类 feed 仍会保留，manifest 明确标记 fallback/栏目降级。
+Axios 的栏目目录不计入运行时栏目健康度；其他支持 URL 前缀推断的栏目即使本轮没有新稿，也不会因
+“24 小时内零篇”被误报为实现故障。真正的目标请求失败仍会记录在 source manifest 中。
 
 ## 本地运行
 
@@ -51,7 +55,8 @@ node tools/times-pipeline/dist/src/capture-cli.js `
   --config tools/times-pipeline/sources.v2.json `
   --output "$env:TEMP/jojo-times-v2" `
   --since-hours 24 `
-  --workers 4
+  --workers 4 `
+  --serial-sources bloomberg-markets
 ```
 
 从 capture 输出取得 `runManifest` 后：
@@ -136,7 +141,8 @@ Raw 存档累计而线性增长。
 
 代理订阅只从 `JOJO_TIMES_PROXY_SUBSCRIPTION` Secret 读取。任务使用固定 Mihomo 二进制生成临时配置；
 首次页面抓取走延迟优选节点；网络层 401/403 或连接失败时，归档器从已通过健康检查的节点中混合
-低延迟和分散位置抽样，正式任务最多切换 8 个不同节点重试。
+低延迟和分散位置抽样，正式任务最多切换 8 个不同节点重试。Bloomberg 的两个一方 JSON 入口也会
+在独占发现阶段最多抽样 12 个节点；结束后恢复自动路由。
 订阅 URL、节点名、Cookie 和 Authorization 不会进入日志、manifest、WACZ 请求头或 artifact。
 
 验证命令：

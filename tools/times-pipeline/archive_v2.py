@@ -223,6 +223,8 @@ def _articles(workspace: Path, run: dict[str, Any], config: dict[str, Any]) -> l
         if result.get("status") != "ok" or not manifest_object or source is None:
             continue
         manifest_path = workspace.joinpath(*manifest_object.split("/"))
+        manifest = _read_json(manifest_path)
+        capture_url = (manifest.get("pagePolicy") or {}).get("captureUrl")
         for row in _read_candidates(manifest_path.parent / "candidates.jsonl.gz"):
             articles.append(Article(
                 id=row["articleId"],
@@ -230,7 +232,7 @@ def _articles(workspace: Path, run: dict[str, Any], config: dict[str, Any]) -> l
                 summary=row.get("summary"),
                 body=row.get("discoveryBody") or row.get("summary") or "",
                 content_status=row["contentStatus"],
-                url=row["canonicalUrl"],
+                url=row["sourceUrl"] if capture_url == "source" else row["canonicalUrl"],
                 published_at=row["publishedAt"],
                 source=source,
             ))
