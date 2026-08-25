@@ -567,7 +567,7 @@ async def _capture_articles_browser(
     retries: int,
 ) -> list[ArticleCapture]:
     try:
-        from playwright.async_api import async_playwright
+        from playwright.async_api import Error as PlaywrightError, async_playwright
     except ImportError as exc:
         raise RuntimeError("Browser capture requires the playwright Python package") from exc
 
@@ -600,6 +600,7 @@ async def _capture_articles_browser(
         profile_directory = None
         if browser_extension_path:
             profile_directory = tempfile.mkdtemp(prefix="jojo-times-browser-")
+            launch_options["channel"] = "chromium"
             shared_context = await playwright.chromium.launch_persistent_context(
                 profile_directory,
                 locale="en-US",
@@ -611,6 +612,11 @@ async def _capture_articles_browser(
             browser = shared_context.browser
             if browser is None:
                 raise RuntimeError("Persistent Chromium context did not expose a browser")
+            if not shared_context.service_workers:
+                try:
+                    await shared_context.wait_for_event("serviceworker", timeout=10_000)
+                except PlaywrightError:
+                    raise RuntimeError("Configured browser extension did not start") from None
         else:
             browser = await playwright.chromium.launch(**launch_options)
         try:

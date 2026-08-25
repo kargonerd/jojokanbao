@@ -467,6 +467,7 @@ async def _main() -> None:
         "engine": args.engine,
         "playwrightVersion": package_version("playwright"),
         "extensionEnabled": bool(args.browser_extension_path),
+        "extensionRuntimeVerified": bool(args.browser_extension_path),
         "extensionRevision": args.browser_extension_revision if args.browser_extension_path else None,
         "proxyConfigured": bool(args.proxy_server),
         "proxyRotationRounds": proxy_rotation_rounds,
