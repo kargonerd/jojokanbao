@@ -114,7 +114,9 @@ describe("native source modules", () => {
   });
 
   it("exposes Reuters direct paragraph blocks as a source page policy", () => {
-    expect(sourcePagePolicy("reuters")?.bodySelectors).toEqual(["[data-testid^='paragraph-']"]);
+    expect(sourcePagePolicy("reuters")?.bodySelectors).toEqual([
+      "[data-testid^='paragraph-'], [data-testid^='unordered-'] [data-testid='Body'], [data-testid='SignOff'] [data-testid='Body']",
+    ]);
     expect(sourcePagePolicy("reuters")?.captureUrl).toBe("source");
   });
 });

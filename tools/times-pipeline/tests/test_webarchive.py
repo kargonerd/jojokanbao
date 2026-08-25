@@ -292,6 +292,31 @@ def test_browser_body_groups_source_selected_direct_text_blocks() -> None:
     assert body.count("<p>") == 3
 
 
+def test_browser_body_combines_reuters_paragraphs_and_article_list_blocks() -> None:
+    intro = '<div data-testid="paragraph-0">' + "Reuters introduction. " * 20 + "</div>"
+    details = "".join(
+        '<div data-testid="unordered-0"><div data-testid="Body">'
+        + f"Article detail {index}. " * 15
+        + "</div></div>"
+        for index in range(4)
+    )
+    unrelated = '<div data-testid="Body">Company widget that must not be included.</div>'
+    selector = (
+        "[data-testid^='paragraph-'], "
+        "[data-testid^='unordered-'] [data-testid='Body'], "
+        "[data-testid='SignOff'] [data-testid='Body']"
+    )
+
+    body = _browser_article_body(
+        f"<html><body>{intro}{details}{unrelated}</body></html>".encode(),
+        (selector,),
+    )
+
+    assert body is not None
+    assert body.count("<p>") == 5
+    assert "Company widget" not in body
+
+
 def test_browser_extension_waits_for_default_sites_and_session_rules() -> None:
     worker = FakeExtensionWorker([
         {"siteCount": 0, "sessionRuleCount": 0},
