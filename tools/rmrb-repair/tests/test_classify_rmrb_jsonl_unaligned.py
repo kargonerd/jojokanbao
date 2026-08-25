@@ -402,6 +402,55 @@ def test_single_leading_section_heading_matches_unique_same_page_candidate():
     assert resolved[0]["derivedSourceTitle"] == "江西省人民委员会来信："
 
 
+def test_serialized_piece_matches_installment_title_after_marker_series_and_byline():
+    source_row = {
+        **source("1980-02-22", 8, "老舍的童年"),
+        "content": (
+            "连载\n\n老舍的童年\n舒乙整理\n埋葬了爸爸的布袜子\n"
+            "老舍一岁半的时候，爸爸在战斗中负伤阵亡。"
+        ),
+        "preservedOrdinal": 93,
+    }
+    missing = [{
+        "date": "1980-02-22",
+        "page": 8,
+        "ordinal": 80,
+        "title": "埋葬了爸爸的布袜子",
+        "href": "/80",
+    }]
+
+    remaining, resolved = MODULE.resolve_generic_section_heading_groups(
+        [source_row], missing
+    )
+
+    assert remaining == []
+    assert resolved[0]["ordinal"] == 80
+    assert resolved[0]["title"] == "埋葬了爸爸的布袜子"
+    assert resolved[0]["sourceTitle"] == "老舍的童年"
+    assert resolved[0]["derivedSourceTitle"] == "埋葬了爸爸的布袜子"
+
+
+def test_non_serial_body_does_not_scan_arbitrary_opening_lines_for_titles():
+    source_row = {
+        **source("1980-02-22", 8, "普通文章"),
+        "content": "导语\n普通文章\n作者署名\n另一篇目录标题\n正文",
+        "preservedOrdinal": 93,
+    }
+    missing = [{
+        "date": "1980-02-22",
+        "page": 8,
+        "ordinal": 80,
+        "title": "另一篇目录标题",
+    }]
+
+    remaining, resolved = MODULE.resolve_generic_section_heading_groups(
+        [source_row], missing
+    )
+
+    assert remaining == [source_row]
+    assert resolved == []
+
+
 def test_repeated_section_exact_match_records_derived_title_provenance():
     source_row = {
         **source("1951-10-28", 2, "经济生活简评"),

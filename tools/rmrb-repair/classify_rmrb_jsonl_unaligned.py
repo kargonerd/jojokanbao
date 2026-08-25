@@ -31,6 +31,7 @@ from merge_rmrb_peopledata_xlsx import (
 
 
 NORMALIZED_GENERIC_IMAGE_TITLES = {norm(value) for value in GENERIC_IMAGE_TITLES}
+NORMALIZED_SERIAL_MARKERS = {norm("连载")}
 
 
 def candidate_has_empty_difference(value: Any, reference: Any) -> bool:
@@ -106,6 +107,45 @@ def content_heading_after_leading_title(row: dict[str, Any]) -> str:
         if norm(line) != section:
             return line
     return ""
+
+
+def leading_content_heading_candidates(
+    row: dict[str, Any], *, limit: int = 8
+) -> list[str]:
+    """Collect plausible catalog headings from the opening body lines.
+
+    Serialised pieces can place a marker, series title, and byline before the
+    installment title.  Candidate lines are only hints: the resolver still
+    requires exactly one matching PeopleData title on the same issue and page.
+    """
+    source_title = norm(primary_title(row.get("title")))
+    lines = [
+        line.strip()
+        for line in str(row.get("content") or "").splitlines()
+        if line.strip()
+    ][:limit]
+    result: list[str] = []
+    seen: set[str] = set()
+    preferred = content_heading_after_leading_title(row)
+    raw_candidates = [preferred] if preferred else []
+    if lines and norm(lines[0]) in NORMALIZED_SERIAL_MARKERS:
+        source_index = next(
+            (
+                index
+                for index, line in enumerate(lines[1:4], 1)
+                if norm(line) == source_title
+            ),
+            None,
+        )
+        if source_index is not None:
+            raw_candidates.extend(lines[source_index + 1 : source_index + 4])
+    for line in raw_candidates:
+        normalized = norm(line)
+        if len(normalized) < 4 or normalized == source_title or normalized in seen:
+            continue
+        seen.add(normalized)
+        result.append(line)
+    return result
 
 
 def normalized_primary_title(row: dict[str, Any]) -> str:
@@ -317,34 +357,38 @@ def resolve_generic_section_heading_groups(
     resolved_candidate_keys: set[tuple[str, int, int]] = set()
     resolved: list[dict[str, Any]] = []
     for index, source in enumerate(source_rows):
-        derived_title = content_heading_after_leading_title(source)
-        heading = norm(derived_title)
-        if len(heading) < 4:
+        headings = [
+            (line, norm(line)) for line in leading_content_heading_candidates(source)
+        ]
+        if not headings:
             continue
         issue_date = str(source.get("date") or "")[:10]
         page = int(page_number(source.get("page")) or 0)
-        candidates = [
-            candidate
-            for candidate in missing_by_issue_page.get((issue_date, page), [])
-            if norm(primary_title(candidate.get("title"))).startswith(heading)
-            and not candidate_has_empty_difference(
-                candidate.get("title"), source.get("title")
-            )
-            and (
+        matches: dict[tuple[str, int, int], tuple[dict[str, Any], str]] = {}
+        for candidate in missing_by_issue_page.get((issue_date, page), []):
+            candidate_key = (
                 issue_date,
                 int(page_number(candidate.get("page")) or 0),
                 int(candidate.get("ordinal", -1)),
             )
-            not in resolved_candidate_keys
-        ]
-        if len(candidates) != 1:
+            if candidate_key in resolved_candidate_keys or candidate_has_empty_difference(
+                candidate.get("title"), source.get("title")
+            ):
+                continue
+            candidate_title = norm(primary_title(candidate.get("title")))
+            derived_title = next(
+                (
+                    line
+                    for line, heading in headings
+                    if candidate_title.startswith(heading)
+                ),
+                "",
+            )
+            if derived_title:
+                matches[candidate_key] = (candidate, derived_title)
+        if len(matches) != 1:
             continue
-        candidate = candidates[0]
-        candidate_key = (
-            issue_date,
-            int(page_number(candidate.get("page")) or 0),
-            int(candidate["ordinal"]),
-        )
+        candidate_key, (candidate, derived_title) = next(iter(matches.items()))
         resolved_candidate_keys.add(candidate_key)
         resolved_indexes.add(index)
         canonical = canonicalize_exact_group_pair(source, candidate)
