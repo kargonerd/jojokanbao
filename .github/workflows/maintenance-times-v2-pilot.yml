@@ -134,6 +134,7 @@ jobs:
             --retry-hours 2
             --browser-extension-path "$BPC_EXTENSION_PATH"
             --browser-extension-revision "$BPC_REVISION"
+            --headed
           )
           if [ -n "$JOJO_TIMES_PROXY_URI" ]; then
             args+=(
@@ -143,7 +144,7 @@ jobs:
               --proxy-retry-timeout 12
             )
           fi
-          python tools/times-pipeline/archive_v2.py "${args[@]}" > "$RUNNER_TEMP/archive-result.json"
+          xvfb-run -a python tools/times-pipeline/archive_v2.py "${args[@]}" > "$RUNNER_TEMP/archive-result.json"
 
       - name: Build Canonical validation output
         run: >-

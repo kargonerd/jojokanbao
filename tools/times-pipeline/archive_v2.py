@@ -129,6 +129,7 @@ async def _capture_with_proxy_rotation(
             engine=args.engine,
             proxy_server=args.proxy_server,
             browser_extension_path=args.browser_extension_path,
+            browser_headless=not args.headed,
             browser_retries=0,
             maximum_page_bytes=args.maximum_page_bytes,
         )
@@ -390,6 +391,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--proxy-retry-timeout", type=float, default=15)
     parser.add_argument("--browser-extension-path")
     parser.add_argument("--browser-extension-revision")
+    parser.add_argument("--headed", action="store_true", help="Run Chromium with a display instead of headless mode")
     args = parser.parse_args()
     if args.proxy_rotation_attempts < 0 or args.proxy_retry_timeout <= 0:
         parser.error("proxy rotation attempts and retry timeout must be valid")
@@ -469,6 +471,7 @@ async def _main() -> None:
         "extensionEnabled": bool(args.browser_extension_path),
         "extensionRuntimeVerified": bool(args.browser_extension_path),
         "extensionRevision": args.browser_extension_revision if args.browser_extension_path else None,
+        "headless": not args.headed,
         "proxyConfigured": bool(args.proxy_server),
         "proxyRotationRounds": proxy_rotation_rounds,
         "workers": args.workers,

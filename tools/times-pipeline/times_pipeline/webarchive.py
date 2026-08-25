@@ -325,6 +325,7 @@ async def capture_articles(
     proxy_server: str | None = None,
     browser_executable: str | None = None,
     browser_extension_path: str | None = None,
+    browser_headless: bool = True,
     browser_retries: int = 4,
     maximum_page_bytes: int = 25_000_000,
 ) -> list[ArticleCapture]:
@@ -348,6 +349,7 @@ async def capture_articles(
             proxy_server=proxy_server,
             browser_executable=browser_executable,
             browser_extension_path=browser_extension_path,
+            browser_headless=browser_headless,
             retries=browser_retries,
         )
     if engine != "http":
@@ -618,6 +620,7 @@ async def _capture_articles_browser(
     proxy_server: str | None,
     browser_executable: str | None,
     browser_extension_path: str | None,
+    browser_headless: bool,
     retries: int,
 ) -> list[ArticleCapture]:
     try:
@@ -642,7 +645,7 @@ async def _capture_articles_browser(
             extension = str(Path(browser_extension_path).resolve())
             browser_args.extend([f"--disable-extensions-except={extension}", f"--load-extension={extension}"])
         launch_options: dict[str, Any] = {
-            "headless": True,
+            "headless": browser_headless,
             "ignore_default_args": ["--enable-automation", "--hide-scrollbars"],
             "args": browser_args,
         }
