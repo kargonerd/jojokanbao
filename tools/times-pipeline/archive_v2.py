@@ -314,11 +314,53 @@ def _browser_article_body(body: bytes, source_selectors: tuple[str, ...] = ()) -
     return "".join(f"<p>{html.escape(part)}</p>" for part in best_paragraphs)
 
 
+def _bloomberg_rich_text(value: Any) -> str:
+    if isinstance(value, list):
+        return "".join(_bloomberg_rich_text(child) for child in value)
+    if not isinstance(value, dict):
+        return ""
+    if value.get("type") == "text" and isinstance(value.get("value"), str):
+        return value["value"]
+    return _bloomberg_rich_text(value.get("content"))
+
+
+def _bloomberg_next_body(body: bytes) -> str | None:
+    if not body:
+        return None
+    document = BeautifulSoup(body, "html.parser")
+    script = document.select_one("script#__NEXT_DATA__")
+    if script is None:
+        return None
+    try:
+        value = json.loads(script.get_text())
+        blocks = value["props"]["pageProps"]["story"]["body"]["content"]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return None
+    if not isinstance(blocks, list):
+        return None
+    ignored = {"ad", "embed", "inline-newsletter", "inline-recirc", "media", "tabularData"}
+    paragraphs = []
+    for block in blocks:
+        if not isinstance(block, dict) or block.get("type") in ignored:
+            continue
+        text = re.sub(r"\s+", " ", _bloomberg_rich_text(block)).strip()
+        if len(text) >= 20:
+            paragraphs.append(text)
+    if len(paragraphs) < 3 or sum(map(len, paragraphs)) < 800:
+        return None
+    return "".join(f"<p>{html.escape(part)}</p>" for part in paragraphs)
+
+
 def _captured_article_body(
     rendered_body: bytes,
     response_body: bytes,
     source_selectors: tuple[str, ...] = (),
+    body_extractor: str | None = None,
 ) -> str | None:
+    if body_extractor == "bloomberg-next-data":
+        embedded = _bloomberg_next_body(response_body)
+        if embedded:
+            return embedded
     return (
         _browser_article_body(rendered_body, source_selectors)
         or _browser_article_body(response_body, source_selectors)
@@ -342,6 +384,7 @@ def _apply_capture_results(
         manifest = _read_json(manifest_path)
         configured_selectors = (manifest.get("pagePolicy") or {}).get("bodySelectors") or []
         source_selectors = tuple(value for value in configured_selectors if isinstance(value, str) and value.strip())
+        body_extractor = (manifest.get("pagePolicy") or {}).get("bodyExtractor")
         rows = _read_candidates(candidates_path)
         attempts = succeeded = failed = extracted = 0
         for row in rows:
@@ -359,7 +402,12 @@ def _apply_capture_results(
                 failed += 1
                 continue
             succeeded += 1
-            browser_body = _captured_article_body(capture.rendered_body, final.body, source_selectors)
+            browser_body = _captured_article_body(
+                capture.rendered_body,
+                final.body,
+                source_selectors,
+                body_extractor if isinstance(body_extractor, str) else None,
+            )
             if browser_body:
                 row["browserBody"] = browser_body
                 row["contentStatus"] = "full"

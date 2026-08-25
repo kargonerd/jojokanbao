@@ -18,6 +18,7 @@ export interface SourcePagePolicy {
   capture: "browser" | "http";
   captureUrl?: "canonical" | "source";
   bodySelectors: string[];
+  bodyExtractor?: "bloomberg-next-data";
 }
 
 export type DiscoveryEndpoint =

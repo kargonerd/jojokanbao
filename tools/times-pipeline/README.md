@@ -17,7 +17,7 @@ Financial Times、Axios、NPR、Nikkei Asia、联合早报、Al Jazeera、SCMP�
 
 - JOJO 原生来源适配器：直接调用出版方的轻量入口。来源特例按
   `src/sources/{source}/discover.ts|page.ts|process.ts` 组织；AP、Nikkei、财联社和 DW
-  当前使用原生发现器，Reuters 另有页面 URL/正文选择策略。
+  当前使用原生发现器；Bloomberg 和 Reuters 另有页面正文策略。
 - 官方 RSS / RSS 列表：直接抓取并保留原始 XML。
 - Sitemap：目前用于 Reuters 官方 URL 发现。
 - Multi：合并同一媒体的多个选定栏目入口，按文章 ID 去重并保留所有命中的出版方栏目。
@@ -32,8 +32,8 @@ Financial Times、Axios、NPR、Nikkei Asia、联合早报、Al Jazeera、SCMP�
   注入接口保留，但尚未给任何生产发现适配器启用，误配会直接失败而不是静默降级。
 - `discovery-body`：逐篇质量门槛通过后直接标为全文。
 - Chromium（可加载 BPC）：每轮最多 50 个新页面或到期重试页面，生成标准 WARC 1.1/CDXJ/WACZ，并把通过
-  通用正文质量门槛的页面回填为全文。WACZ 保留出版方原始 HTTP 响应；Canonical 正文优先从 BPC
-  处理后的 rendered DOM 提取，失败时再读取原始响应，两种用途不会互相覆盖。
+  通用正文质量门槛的页面回填为全文。WACZ 保留出版方原始 HTTP 响应；Canonical 正文优先读取来源
+  指定的结构化正文或 BPC 处理后的 rendered DOM，失败时再读取原始响应，两种用途不会互相覆盖。
 - `discovery-summary`：正文不可用时保留真实摘要，绝不把 metadata-only 伪装成摘要。
 
 同一入口内允许全文与摘要混合，正文质量逐篇判定。栏目健康度按入口是否可用计算；栏目入口正常但

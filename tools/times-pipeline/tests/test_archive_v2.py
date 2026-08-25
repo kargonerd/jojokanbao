@@ -61,3 +61,28 @@ def test_canonical_extraction_prefers_bpc_rendered_dom_over_raw_preview() -> Non
     assert body.count("<p>") == 4
     assert "Full rendered paragraph" in body
     assert "Short publisher preview" not in body
+
+
+def test_bloomberg_embedded_body_recovers_full_text_without_accepting_the_preview() -> None:
+    blocks = [
+        {"type": "paragraph", "content": [
+            {"type": "text", "value": f"Bloomberg full paragraph {index}. " + "Article sentence. " * 20},
+        ]}
+        for index in range(4)
+    ]
+    blocks.append({"type": "inline-newsletter", "content": [
+        {"type": "text", "value": "Newsletter promotion that is not article text."},
+    ]})
+    raw = (
+        "<html><article><p>Short publisher preview.</p></article>"
+        f'<script id="__NEXT_DATA__" type="application/json">{json.dumps({"props": {"pageProps": {"story": {"body": {"content": blocks}}}}})}</script>'
+        "</html>"
+    ).encode()
+
+    body = archive_v2._captured_article_body(b"", raw, body_extractor="bloomberg-next-data")
+
+    assert body is not None
+    assert body.count("<p>") == 4
+    assert "Bloomberg full paragraph" in body
+    assert "Newsletter promotion" not in body
+    assert "Short publisher preview" not in body

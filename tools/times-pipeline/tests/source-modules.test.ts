@@ -119,4 +119,11 @@ describe("native source modules", () => {
     ]);
     expect(sourcePagePolicy("reuters")?.captureUrl).toBe("source");
   });
+
+  it("exposes Bloomberg's embedded article body strategy", () => {
+    expect(sourcePagePolicy("bloomberg-markets")).toEqual(expect.objectContaining({
+      bodyExtractor: "bloomberg-next-data",
+      capture: "browser",
+    }));
+  });
 });
