@@ -122,7 +122,7 @@ async function writeRawPage(workspace: string, article: ArticleBundle, page: Cap
     capturedAt: page.capturedAt,
     originalHtml: page.originalHtml ? "original.html.gz" : null,
     renderedHtml: page.renderedHtml ? "rendered.html.gz" : null,
-    error: error ?? page.error ?? null,
+    error: page.error ?? error ?? null,
   }, null, 2)}\n`);
   return path.relative(workspace, metadataPath).replaceAll(path.sep, "/");
 }

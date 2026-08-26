@@ -56,10 +56,18 @@ function safeChild(root: string, name: string | undefined): string | undefined {
 
 async function runDocker(args: string[]): Promise<number> {
   return new Promise((resolve, reject) => {
-    const child = spawn("docker", args, { stdio: ["ignore", "ignore", "pipe"] });
+    const child = spawn("docker", args, { stdio: ["ignore", "pipe", "pipe"] });
+    let output = "";
+    child.stdout.on("data", (chunk: Buffer) => {
+      output = `${output}${chunk.toString("utf8")}`.slice(-32_000);
+    });
     child.stderr.on("data", (chunk: Buffer) => process.stderr.write(chunk));
     child.on("error", reject);
-    child.on("close", (code) => resolve(code ?? 1));
+    child.on("close", (code) => {
+      const exitCode = code ?? 1;
+      if (exitCode !== 0 && output.trim()) process.stderr.write(`[browsertrix] exit ${exitCode}\n${output.trim()}\n`);
+      resolve(exitCode);
+    });
   });
 }
 
