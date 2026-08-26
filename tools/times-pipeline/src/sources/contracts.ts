@@ -23,5 +23,6 @@ export interface SourceModule {
     browser: BrowserDiscoveryRuntime,
   ) => Promise<DiscoveryResult>;
   page?: SourcePagePolicy;
+  accept?(candidate: Candidate): boolean;
   process?(candidate: Candidate): Candidate;
 }

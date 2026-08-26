@@ -1,6 +1,6 @@
 import { discoverOfficialRss } from "./rss.js";
 import { discoverSitemap } from "./sitemap.js";
-import { discoverWithSourceModule, sourcePagePolicy } from "../sources/registry.js";
+import { acceptSourceCandidate, discoverWithSourceModule, sourcePagePolicy } from "../sources/registry.js";
 import type {
   Candidate,
   DiscoveryEndpoint,
@@ -74,7 +74,9 @@ export async function discoverSource(source: SourceConfig, fetchedAt: string, cu
   if (source.discovery.kind !== "multi") {
     const result = await discoverEndpoint(source, source.discovery, fetchedAt, cutoff, runtime);
     result.source = source;
-    result.candidates = result.candidates.filter((candidate) => !isUnsupportedMedia(candidate)).map((candidate) => annotate(source, candidate, []));
+    result.candidates = result.candidates
+      .filter((candidate) => !isUnsupportedMedia(candidate) && acceptSourceCandidate(source.id, candidate))
+      .map((candidate) => annotate(source, candidate, []));
     return result;
   }
 
@@ -108,7 +110,8 @@ export async function discoverSource(source: SourceConfig, fetchedAt: string, cu
     const errors = targets.map((target) => `${target.id}: ${target.error ?? "failed"}`).join("; ");
     throw new Error(`${source.id}: every discovery target failed: ${errors}`);
   }
-  const values = [...candidates.values()].filter((candidate) => !isUnsupportedMedia(candidate));
+  const values = [...candidates.values()]
+    .filter((candidate) => !isUnsupportedMedia(candidate) && acceptSourceCandidate(source.id, candidate));
   const taggedCount = values.filter((candidate) => candidate.publisherSections?.length).length;
   const selected = values.filter((candidate) => !source.sections?.length
     || candidate.publisherSections?.length

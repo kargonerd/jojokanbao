@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { discoverSource } from "../src/discovery/multi.js";
-import { processSourceCandidate, sourcePagePolicy } from "../src/sources/registry.js";
+import { acceptSourceCandidate, processSourceCandidate, sourcePagePolicy } from "../src/sources/registry.js";
 import type { Candidate, DiscoveryEndpoint, SourceConfig } from "../src/types.js";
 
 function source(id: string, discovery: DiscoveryEndpoint): SourceConfig {
@@ -133,5 +133,20 @@ describe("native source modules", () => {
     expect(sourcePagePolicy("focus-taiwan")?.bodySelectors).toContain(".paragraph");
     expect(sourcePagePolicy("nikkei")?.bodySelectors).toContain("[class*='FeatureArticleBody_featureArticleBody']");
     expect(sourcePagePolicy("people")?.bodySelectors).toContain("#rm_txt_zw");
+  });
+
+  it("drops Focus Taiwan's homepage placeholder and normalizes Xinhua wire flashes", () => {
+    const candidate = {
+      title: "Taiwan headline news",
+      contentStatus: "summary",
+    } as Candidate;
+    expect(acceptSourceCandidate("focus-taiwan", candidate)).toBe(false);
+
+    const flash = processSourceCandidate("xinhua", {
+      ...candidate,
+      title: "新华社消息丨这条标题就是原站发布的完整短消息",
+    });
+    expect(flash.contentStatus).toBe("full");
+    expect(flash.discoveryBody).toContain("完整短消息");
   });
 });

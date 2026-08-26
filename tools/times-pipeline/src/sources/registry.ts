@@ -62,6 +62,10 @@ export function sourcePagePolicy(sourceId: string): SourcePagePolicy | undefined
   return modules.get(sourceId)?.page;
 }
 
+export function acceptSourceCandidate(sourceId: string, candidate: Candidate): boolean {
+  return modules.get(sourceId)?.accept?.(candidate) ?? true;
+}
+
 export function processSourceCandidate(sourceId: string, candidate: Candidate): Candidate {
   return modules.get(sourceId)?.process?.(candidate) ?? candidate;
 }
