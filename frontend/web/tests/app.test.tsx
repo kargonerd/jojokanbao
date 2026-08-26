@@ -16,6 +16,10 @@ vi.mock("@jojo/pdf-viewer", () => ({
   usePdfDocument: appPdfMocks.usePdfDocument,
 }));
 
+vi.mock("../src/rag/pages/ReaderPage", () => ({
+  ReaderPage: () => <h1>书籍阅读器</h1>,
+}));
+
 function renderAt(path: string) {
   window.history.replaceState({}, "", path);
   return render(<App />);
@@ -125,6 +129,13 @@ describe("JOJO Web routes and Archive homepage", () => {
       view.unmount();
       cleanup();
     }
+  });
+
+  it("keeps public book reading available independently of the unfinished RAG module", async () => {
+    renderAt("/book/mao/volume-1");
+
+    expect(await screen.findByRole("heading", { name: "书籍阅读器" })).toBeTruthy();
+    expect(window.location.pathname).toBe("/book/mao/volume-1");
   });
 
   it("renders the not-found page for unknown routes", () => {

@@ -8,6 +8,7 @@ import { PUBLICATIONS, PUBLICATION_NAMES } from "./archive/publications";
 import { NotFoundPage } from "./NotFoundPage";
 import { AppLayout } from "./shell/AppLayout";
 import { HomePage } from "./home/HomePage";
+import { BookshelfPage } from "./library/BookshelfPage";
 import { LibraryPage } from "./library/LibraryPage";
 import { NotificationsPage } from "./notifications/NotificationsPage";
 import { PERIODICALS } from "./library/catalog";
@@ -136,6 +137,7 @@ function RedesignedRoutes() {
 
         <Route element={<AppLayout />}>
           <Route index element={<HomePage periodicals={PERIODICALS} />} />
+          <Route path="bookshelf" element={<BookshelfPage />} />
           <Route path="library" element={<LibraryPage periodicals={PERIODICALS} />} />
           <Route path="library/:datasetId" element={<LibraryPage periodicals={PERIODICALS} />} />
           <Route path="search" element={<div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage platformRedesign /></div>} />
@@ -149,9 +151,7 @@ function RedesignedRoutes() {
           )}
         </Route>
 
-        {rollout.rag && (
-          <Route path="/book/:notebookId/:sourceId" element={<AuthenticatedRoute><LazyRoute><BookReaderPage /></LazyRoute></AuthenticatedRoute>} />
-        )}
+        <Route path="/book/:notebookId/:sourceId" element={<LazyRoute><BookReaderPage /></LazyRoute>} />
         {archiveRoute(true)}
         <Route path="/reader/*" element={<ArchiveRedirect stripPrefix="/reader" />} />
         <Route path="/legacy/*" element={<Navigate to="/" replace />} />

@@ -1,15 +1,12 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@jojo/ui";
-import { useAccountSessionStore } from "../account/session";
-import { useFeatureFlag, useFeatureFlagStore } from "../featureFlags";
 import { BookCover } from "../library/BookCover";
 import { bookCoverTone } from "../library/bookCatalog";
 import { fuzzyBookTitleScore } from "../library/bookSearch";
 import type { PeriodicalEntry } from "../library/catalog";
 import { useRecentReadingStore, type RecentReadingItem } from "../library/recentReadingStore";
 import { notebookApi } from "../rag/api";
-import { loadBookshelf, type BookshelfEntry } from "../rag/readerData";
 import type { RagNotebook } from "../rag/types";
 import { dailyQuote } from "./dailyQuote";
 
@@ -51,13 +48,8 @@ export function HomePage({ periodicals = [] }: { periodicals?: readonly Periodic
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [books, setBooks] = useState<RagNotebook[]>([]);
-  const [shelfItems, setShelfItems] = useState<BookshelfEntry[]>([]);
-  const [shelfError, setShelfError] = useState("");
   const [searchAttempted, setSearchAttempted] = useState(false);
   const storedRecentItems = useRecentReadingStore((state) => state.items);
-  const userId = useAccountSessionStore((state) => state.userId);
-  const flagsInitialized = useFeatureFlagStore((state) => state.initialized);
-  const bookshelfEnabled = useFeatureFlag("library.bookshelf");
   const includePeriodicals = periodicals.length > 0;
   const recentItems = storedRecentItems.filter((item) => includePeriodicals || item.kind === "book").slice(0, 4);
   const quote = useMemo(() => dailyQuote(), []);
@@ -69,23 +61,6 @@ export function HomePage({ periodicals = [] }: { periodicals?: readonly Periodic
     }).catch(() => undefined);
     return () => { active = false; };
   }, []);
-
-  useEffect(() => {
-    if (!userId || !bookshelfEnabled) {
-      setShelfItems([]);
-      setShelfError("");
-      return;
-    }
-    let active = true;
-    void loadBookshelf().then((items) => {
-      if (!active) return;
-      setShelfItems(items);
-      setShelfError("");
-    }).catch(() => {
-      if (active) setShelfError("书架暂时无法载入");
-    });
-    return () => { active = false; };
-  }, [bookshelfEnabled, userId]);
 
   const matches = useMemo(() => {
     if (!query.trim()) return [];
@@ -140,44 +115,10 @@ export function HomePage({ periodicals = [] }: { periodicals?: readonly Periodic
         </blockquote>
       </section>
 
-      <section className="home-shelf" aria-labelledby="book-shelf-title">
-        <div className="section-heading">
-          <h2 id="book-shelf-title">我的书架</h2>
-          <Link to="/library?type=book">去选书</Link>
-        </div>
-        {!userId ? (
-          <div className="shelf-empty">
-            <p>登录后查看你的书架</p>
-            <Link to="/account?returnTo=/">登录&nbsp;→</Link>
-          </div>
-        ) : !flagsInitialized ? (
-          <div className="shelf-empty"><p>正在确认书架权限</p></div>
-        ) : !bookshelfEnabled ? (
-          <div className="shelf-empty"><p>书架功能暂未向你的账号开放</p></div>
-        ) : shelfError ? (
-          <div className="shelf-empty"><p>{shelfError}</p></div>
-        ) : shelfItems.length > 0 ? (
-          <div className="shelf-grid">
-            {shelfItems.map((book) => (
-              <Link key={`${book.datasetId}:${book.itemId}`} className="shelf-book-card" to={`/book/${encodeURIComponent(book.datasetId)}/${encodeURIComponent(book.itemId)}`}>
-                <BookCover title={book.title} tone={bookCoverTone(`${book.datasetId}:${book.itemId}`)} datasetId={book.datasetId} itemKey={book.itemId} />
-                <strong>{book.title}</strong>
-                <small>打开阅读</small>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <div className="shelf-empty">
-            <p>书架还是空的</p>
-            <Link to="/library?type=book">去资料库选书&nbsp;→</Link>
-          </div>
-        )}
-      </section>
-
       <section className="home-reading" aria-labelledby="recent-reading-title">
         <div className="section-heading">
           <h2 id="recent-reading-title">继续阅读</h2>
-          <Link to="/library">资料库</Link>
+          <Link to="/bookshelf">我的书架</Link>
         </div>
         {recentItems.length > 0 ? (
           <div className="recent-grid">
