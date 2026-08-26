@@ -151,6 +151,7 @@ describe("Times Delivery writer", () => {
         language: "zh-CN",
         itemCount: 1,
         indexObject: "content/books/reader/index.jox",
+        aiEnabled: true,
         publicationStatus: "published",
         access: "public",
       }],
@@ -190,5 +191,7 @@ describe("Times Delivery writer", () => {
     const catalogBytes = new Uint8Array(await readFile(path.join(deliveryRoot, "catalog.jox")));
     const catalog = await gunzipJoxJson<JojoCatalog>(catalogBytes, "catalog.jox");
     expect(catalog.datasets.map((dataset) => dataset.datasetId)).toEqual(["reader", "times"]);
+    expect(catalog.datasets.find((dataset) => dataset.datasetId === "reader")?.aiEnabled).toBe(true);
+    expect(catalog.datasets.find((dataset) => dataset.datasetId === "times")?.aiEnabled).toBe(false);
   });
 });

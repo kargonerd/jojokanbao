@@ -46,12 +46,12 @@ function insertAssets(html: string, assetUrls: Record<string, string>): string {
   return result;
 }
 
-function withoutDuplicateLeadingTitle(html: string, title: string): string {
+function hasDuplicateLeadingTitle(html: string, title: string): boolean {
   const heading = /^\s*<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1\s*>/i.exec(html);
-  if (!heading) return html;
+  if (!heading) return false;
   const headingText = heading[2]!.replace(/<[^>]+>/g, "").replace(/\s+/g, "").trim();
   const titleText = title.replace(/\s+/g, "").trim();
-  return headingText === titleText ? html.slice(heading[0].length) : html;
+  return headingText === titleText;
 }
 
 function annotationDisplayLabel(label: string | undefined): string {
@@ -102,11 +102,13 @@ function enhanceAnnotationMarkers(fragment: JojoFragment, html: string): string 
 }
 
 export function createBookDocument({ fragment, assetUrls, textScale, lineHeight, firstLineIndent, eInk, readingMode, paperColor }: BookDocumentOptions): string {
+  const sourceBody = insertAssets(safeBody(fragment), assetUrls);
+  const bodyHasTitle = hasDuplicateLeadingTitle(sourceBody, fragment.title);
   const body = enhanceAnnotationMarkers(
     fragment,
-    withoutDuplicateLeadingTitle(insertAssets(safeBody(fragment), assetUrls), fragment.title),
+    sourceBody,
   );
-  const showTitle = fragment.title !== "封面" && fragment.title !== "插图";
+  const showTitle = fragment.title !== "封面" && fragment.title !== "插图" && !bodyHasTitle;
   const annotations = fragment.annotations.length
     ? `<section class="notes"><h2>本章注释</h2>${fragment.annotations.map((note) => {
       const reference = annotationReference(note.body.value);
@@ -197,5 +199,5 @@ export function createBookDocument({ fragment, assetUrls, textScale, lineHeight,
   h1, h2, h3, h4 { break-after: avoid-column; }
   figure, blockquote, .notes { break-inside: avoid-column; }
   ${readingLayout}
-</style></head><body data-reading-mode="${readingMode}"><article>${showTitle ? `<h1>${escapeHtml(fragment.title)}</h1>` : ""}${body}${annotations}</article></body></html>`;
+</style></head><body data-reading-mode="${readingMode}"><article>${showTitle ? `<h1>${escapeHtml(fragment.title)}</h1>` : ""}<div data-book-content data-target-id="${escapeHtml(fragment.fragmentId)}">${body}</div>${annotations}</article></body></html>`;
 }

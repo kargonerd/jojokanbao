@@ -38,6 +38,8 @@ export interface JojoCatalogEntry {
   language: string;
   itemCount?: number;
   indexObject: string;
+  /** Only an explicit true exposes this Dataset to AI retrieval. */
+  aiEnabled?: boolean;
   publicationStatus?: JojoPublicationStatus;
   access?: JojoContentAccess;
 }
@@ -68,6 +70,8 @@ export interface JojoDatasetIndex {
   title: string;
   language: string;
   description?: string;
+  /** Only an explicit true exposes this Dataset to AI retrieval. */
+  aiEnabled?: boolean;
   publicationStatus?: JojoPublicationStatus;
   access?: JojoContentAccess;
   availability?: JojoItemAvailability | JojoPeriodicalAvailability;
@@ -81,6 +85,8 @@ export interface JojoCanonicalDataset {
   type: JojoDatasetType;
   title: string;
   language: string;
+  /** Only an explicit true exposes this Dataset to AI retrieval. */
+  aiEnabled?: boolean;
   publicationStatus?: JojoPublicationStatus;
   access?: JojoContentAccess;
   description?: string;

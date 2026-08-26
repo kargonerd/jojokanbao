@@ -52,7 +52,11 @@ describe("BookReader", () => {
     vi.unstubAllGlobals();
   });
 
-  function renderReader(onChapterChange = vi.fn(), onInternalLink = vi.fn()) {
+  function renderReader(
+    onChapterChange = vi.fn(),
+    onInternalLink = vi.fn(),
+    focus?: { anchorId?: string; text?: string },
+  ) {
     const view = render(
       <MemoryRouter>
         <BookReader
@@ -69,6 +73,8 @@ describe("BookReader", () => {
           ]}
           activeChapterId="chapter-1"
           chapterKey="chapter-1"
+          focusAnchorId={focus?.anchorId}
+          focusText={focus?.text ? { text: focus.text, token: 1 } : undefined}
           backHref="/rag/chat"
           onChapterChange={onChapterChange}
           onLocate={vi.fn()}
@@ -76,7 +82,7 @@ describe("BookReader", () => {
           onSearch={vi.fn(async () => [])}
         >
           <h1>第一章</h1>
-          <p>这是正文。</p>
+          <p id="citation-target">这是正文。</p>
           <p><a href="#annotation-test">[1]</a></p>
           <p id="annotation-test">这是注释。</p>
           <img src="blob:test-image" alt="测试插图" />
@@ -138,6 +144,21 @@ describe("BookReader", () => {
     const target = screen.getByText("这是注释。");
     expect(target.getAttribute("data-book-jump-target")).toBe("true");
     expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ behavior: "auto", block: "center" });
+  });
+
+  it("keeps a stable citation anchor focused when its quote cannot be matched", async () => {
+    vi.useFakeTimers();
+    window.localStorage.setItem("jojo-reader-mode", "scroll");
+    renderReader(vi.fn(), vi.fn(), {
+      anchorId: "citation-target",
+      text: "这段摘录已被截断，无法逐字匹配",
+    });
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+
+    const target = document.getElementById("citation-target");
+    expect(target?.getAttribute("data-book-jump-target")).toBe("true");
+    expect(document.activeElement).toBe(target);
   });
 
   it("routes imported cross-chapter links through stable chapter and anchor ids", () => {

@@ -124,6 +124,8 @@ content/newspapers/times/
 
 日期 manifest、index 和 catalog 是短缓存可变指针；正文对象按内容寻址并使用 immutable 缓存。
 Delivery 构建会合并旧 index，所以滚动历史不会在下一轮消失。不存在 `latest.jox`。
+JOJO 时事的 Dataset index 与 catalog 条目固定写入 `aiEnabled: false`；它可以继续在
+资料库和时事页面展示，但不会进入馆藏 AI 的检索范围。
 
 ## GitHub Actions
 

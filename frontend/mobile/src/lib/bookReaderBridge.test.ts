@@ -62,6 +62,8 @@ describe("book reader bridge", () => {
     expect(startScript).toContain("revealElement(target)");
     expect(startScript).toContain("event.preventDefault()");
     expect(startScript).toContain("data-book-jump-target");
+    expect(startScript).toContain("attachSearchBlockAnchors");
+    expect(startScript).toContain('"jojo-search-block:" + targetId + ":" + blockNumber');
     expect(startScript).toContain("startAtEnd = false");
     expect(endScript).toContain("startAtEnd = true");
   });

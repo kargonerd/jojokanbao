@@ -5,6 +5,10 @@ import type {
   JojoBookSearchIndex,
   JojoCanonicalChapter,
 } from "@jojo/content";
+import {
+  JOJO_BOOK_SEARCH_BLOCK_SELECTOR,
+  bookSearchBlockAnchorId,
+} from "@jojo/content";
 import { htmlToText } from "./semantic-html";
 
 export interface JojoSearchDocument {
@@ -28,8 +32,6 @@ export interface JojoSearchDocument {
   fragmentObject: string;
 }
 
-const SEARCH_BLOCK_SELECTOR = "p,h1,h2,h3,h4,h5,h6,blockquote,li,figcaption";
-
 function cleanText(value: string): string {
   return value.normalize("NFKC").replace(/\s+/g, " ").trim();
 }
@@ -40,18 +42,23 @@ function chapterBlocks(chapter: JojoCanonicalChapter): Array<Omit<JojoBookSearch
       .split(/\n\s*\n/g)
       .map(cleanText)
       .filter(Boolean)
-      .map((text) => ({ targetId: chapter.id, text }));
+      .map((text, index) => ({
+        targetId: chapter.id,
+        anchorId: bookSearchBlockAnchorId(chapter.id, index + 1),
+        text,
+      }));
     return blocks.length > 0 ? blocks : [];
   }
 
   const $ = cheerio.load(chapter.body.value);
   const blocks: Array<Omit<JojoBookSearchBlock, "order">> = [];
-  $(SEARCH_BLOCK_SELECTOR).each((_index, element) => {
+  $(JOJO_BOOK_SEARCH_BLOCK_SELECTOR).each((_index, element) => {
     const node = $(element);
-    if (node.parents(SEARCH_BLOCK_SELECTOR).length > 0) return;
+    if (node.parents(JOJO_BOOK_SEARCH_BLOCK_SELECTOR).length > 0) return;
     const text = cleanText(node.text());
     if (!text) return;
-    const anchorId = node.attr("id")?.trim();
+    const anchorId = node.attr("id")?.trim()
+      || bookSearchBlockAnchorId(chapter.id, blocks.length + 1);
     blocks.push({
       targetId: chapter.id,
       ...(anchorId ? { anchorId } : {}),
@@ -60,7 +67,11 @@ function chapterBlocks(chapter: JojoCanonicalChapter): Array<Omit<JojoBookSearch
   });
   if (blocks.length > 0) return blocks;
   const text = cleanText($.root().text());
-  return text ? [{ targetId: chapter.id, text }] : [];
+  return text ? [{
+    targetId: chapter.id,
+    anchorId: bookSearchBlockAnchorId(chapter.id, 1),
+    text,
+  }] : [];
 }
 
 export function bookSearchIndex(input: {

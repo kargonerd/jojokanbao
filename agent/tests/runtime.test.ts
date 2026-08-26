@@ -7,22 +7,41 @@ import {
 } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 import { runPlatformAgent, type PlatformAgentEvent } from "../src";
-import { toolSourceReferences } from "../src/runtime";
+import { answerSourceReferences, toolSourceReferences } from "../src/runtime";
 
 describe("runPlatformAgent", () => {
+  it("keeps only references explicitly used by the answer", () => {
+    const references = [
+      { citationId: "Jused", targetId: "chapter:1" },
+      { citationId: "Junused", targetId: "chapter:2" },
+    ];
+    expect(answerSourceReferences("结论[cite:Jused]", references)).toEqual([references[0]]);
+  });
+
   it("exposes compact source locations without streaming full tool results", () => {
     expect(toolSourceReferences({
       details: {
-        hits: [{ datasetId: "books", itemId: "book:one", targetId: "chapter:2", targetTitle: "第二章", text: "命中正文", fragmentObject: "content/books/one/chapter-2.jox" }],
+        hits: [{ citationId: "Jchapter2", datasetId: "books", datasetTitle: "测试书库", itemId: "book:one", itemTitle: "第一卷", targetId: "chapter:2", anchorId: "paragraph:7", targetTitle: "第二章", text: "命中正文", fragmentObject: "content/books/one/chapter-2.jox" }],
       },
     })).toEqual([{
+      citationId: "Jchapter2",
       datasetId: "books",
+      datasetTitle: "测试书库",
       itemId: "book:one",
+      itemTitle: "第一卷",
       targetId: "chapter:2",
+      anchorId: "paragraph:7",
       title: "第二章",
       excerpt: "命中正文",
       fragmentObject: "content/books/one/chapter-2.jox",
     }]);
+    expect(toolSourceReferences({
+      details: {
+        datasetId: "books",
+        itemId: "book:one",
+        entries: [{ targetId: "chapter:3", title: "第三章" }],
+      },
+    })).toEqual([]);
   });
 
   it("runs a Pi tool loop and exposes product-neutral events", async () => {
@@ -35,7 +54,14 @@ describe("runPlatformAgent", () => {
     const parameters = Type.Object({ left: Type.Number(), right: Type.Number() });
     const execute = vi.fn(async (_callId: string, args: { left: number; right: number }) => ({
       content: [{ type: "text" as const, text: String(args.left * args.right) }],
-      details: { result: args.left * args.right },
+      details: {
+        result: args.left * args.right,
+        datasetId: "books",
+        itemId: "book:one",
+        targetId: "chapter:2",
+        title: "第二章",
+        text: "六乘以七等于四十二",
+      },
     }));
     const tool: AgentTool<typeof parameters> = {
       name: "multiply",
@@ -45,12 +71,16 @@ describe("runPlatformAgent", () => {
       execute,
     };
     const events: PlatformAgentEvent[] = [];
-    const stream: StreamFn = (model, context, options) =>
-      faux.provider.streamSimple(model, context, options);
+    let receivedSessionId: string | undefined;
+    const stream: StreamFn = (model, context, options) => {
+      receivedSessionId = options?.sessionId;
+      return faux.provider.streamSimple(model, context, options);
+    };
 
     const result = await runPlatformAgent({
       systemPrompt: "Use the multiply tool.",
       prompt: "What is 6 times 7?",
+      sessionId: "conversation-cache-key",
       tools: [tool],
       model: faux.getModel(),
       stream,
@@ -60,9 +90,18 @@ describe("runPlatformAgent", () => {
     });
 
     expect(execute).toHaveBeenCalledOnce();
+    expect(receivedSessionId).toBe("conversation-cache-key");
     expect(result.answer).toBe("42");
     expect(result.turns).toBe(2);
     expect(result.toolCalls).toBe(1);
+    expect(result.references).toEqual([{
+      citationId: expect.stringMatching(/^J[a-z0-9]+$/),
+      datasetId: "books",
+      itemId: "book:one",
+      targetId: "chapter:2",
+      title: "第二章",
+      excerpt: "六乘以七等于四十二",
+    }]);
     expect(events).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: "tool_start", name: "multiply" }),
       expect.objectContaining({ type: "tool_end", name: "multiply", isError: false }),
@@ -100,7 +139,7 @@ describe("runPlatformAgent", () => {
       maxTurns: 1,
     })).rejects.toMatchObject({
       name: "AgentBudgetError",
-      message: "agent turn budget exceeded (1)",
+      message: "本次回答步骤过多，请缩小问题范围后重试（1）",
     });
   });
 

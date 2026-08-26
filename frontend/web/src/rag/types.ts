@@ -1,7 +1,11 @@
 export interface RagReference {
+  citationId?: string;
   datasetId?: string;
   itemId?: string;
+  datasetTitle?: string;
+  itemTitle?: string;
   targetId?: string;
+  anchorId?: string;
   title?: string;
   excerpt?: string;
   fragmentObject?: string;
@@ -24,6 +28,7 @@ export interface RagNotebook {
   sources_count?: number;
   type?: string;
   indexObject?: string;
+  aiEnabled?: boolean;
 }
 
 export interface RagSource {
@@ -37,7 +42,30 @@ export interface RagSource {
 }
 
 export interface RagMessage {
+  id?: string;
   role: "user" | "assistant";
   content: string;
+  createdAt?: number;
   references?: RagReference[];
+}
+
+export interface RagConversationScope {
+  mode?: "all" | "selected";
+  datasetIds?: string[];
+  itemIds?: string[];
+  manifestObjects?: string[];
+}
+
+export interface RagConversationSummary {
+  id: string;
+  title: string;
+  createdAt?: number;
+  lastMessageAt?: number;
+  messageCount: number;
+  scope?: RagConversationScope;
+}
+
+export interface RagConversationDetail {
+  conversation: RagConversationSummary;
+  messages: RagMessage[];
 }

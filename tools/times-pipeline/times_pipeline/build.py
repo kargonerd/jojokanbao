@@ -421,6 +421,7 @@ def build_times_release(
         "title": DATASET_TITLE,
         "language": "mul",
         "description": "每十分钟更新的多来源时事索引。",
+        "aiEnabled": False,
         "publicationStatus": "published",
         "access": "public",
         "items": sorted_items,
@@ -432,6 +433,7 @@ def build_times_release(
         "type": "newspaper",
         "title": DATASET_TITLE,
         "language": "mul",
+        "aiEnabled": False,
         "publicationStatus": "published",
         "access": "public",
         "description": dataset_index["description"],
@@ -489,6 +491,7 @@ def build_times_release(
         "title": DATASET_TITLE,
         "language": "mul",
         "indexObject": DATASET_INDEX_OBJECT,
+        "aiEnabled": False,
         "publicationStatus": "published",
         "access": "public",
     }

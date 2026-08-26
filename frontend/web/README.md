@@ -30,7 +30,13 @@ Times 与 RAG 馆藏都直接读取 B2 CDN 已发布的 Jox 内容；Times 默�
 `/gateway/ask`，再由 Reader Cloud Function 转发到国际 Agent。浏览器不配置模块 API
 Base 或直连 Agent 域名。AI 与时事入口仍只向已登录读者显示；账号、Agent 和划线评论等
 写操作继续校验 Supabase access token。本地 Vite 服务器使用服务端
-`JOJO_AGENT_GATEWAY_URL` 代理同一个 `/gateway/ask` 路径。
+`JOJO_AGENT_URL` 把同一个 `/gateway/ask` 路径流式转发到国际 `/rag`。
+历史记录按登录账号保存在浏览器 IndexedDB，不设置自动过期。每轮请求只携带最近 20
+条用户/助手消息，国际问答服务不保存聊天历史。以后云同步只需同步同一套会话、消息和
+引用结构。单本提问
+优先使用书籍随附的静态搜索索引，回答引用可直接跳转到 Reader 章节和原文。AI 首页默认直接在
+所有 `catalog.jox` 中显式标记 `aiEnabled: true` 的书籍里提问；选择一本或多本书籍只是
+可选的范围收窄。字段缺失或为 `false` 的报刊、杂志和 JOJO 时事不会出现在 AI 资料列表中。
 
 ## 划线评论
 
@@ -46,8 +52,15 @@ Base 或直连 Agent 域名。AI 与时事入口仍只向已登录读者显示�
 然后运行：
 
 ```bash
+pnpm dev:reader-search
+pnpm dev:agent
 pnpm --filter @jojo/web dev
 ```
+
+本地 Agent 默认监听 `127.0.0.1:8789`，读取本机 Codex OAuth。Web 对话保存在浏览器
+IndexedDB，因此重启本地 Agent 不会清空历史。`.env.local` 可用
+`JOJO_AGENT_URL=http://127.0.0.1:8789/rag` 让 Web 开发代理连接它。正式环境不使用这套
+进程内聊天存储；国际 EdgeOne Makers Agent 只负责流式回答，Web 历史仍留在用户浏览器。
 
 `VITE_ENABLE_PLATFORM_REDESIGN` 是整站构建开关。关闭时不会注册新版首页、资料库、公开书籍阅读和新版账号入口，共享的 Archive 导航、搜索、反馈页也按旧版呈现。仓库的正式部署工作流默认把它设为 `false`；合并代码不会开放新版，只有显式设置仓库变量为 `true` 并重新部署 Reader 才会切换。
 

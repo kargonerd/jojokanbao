@@ -1,41 +1,46 @@
 import {
   JoxClient,
+  asJojoBookSearchIndex,
+  asJojoCatalog,
+  asJojoDatasetIndex,
   asJojoFragment,
   asJojoItemManifest,
   gunzipJoxJson,
   resolveJoxObject,
+  searchJojoBookIndex,
+  supportsJojoDatasetAi,
+  type JojoBookSearchIndex,
+  type JojoCatalog,
+  type JojoCatalogEntry,
+  type JojoDatasetIndex,
+  type JojoDatasetItemSummary,
   type JojoFragment,
   type JojoItemManifest,
   type JojoTocNode,
 } from "@jojo/content";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
+import { addCitationIds } from "./citations";
 
 export interface RagScope {
+  mode?: "all" | "selected";
   datasetIds?: string[];
   itemIds?: string[];
   manifestObjects?: string[];
 }
 
 export interface RagToolOptions {
-  searchUrl?: string;
   contentCdnBase: string;
   scope?: RagScope;
   fetchFn?: typeof fetch;
   fullItemByteBudget?: number;
+  searchIndexByteBudget?: number;
 }
 
-interface SearchHit {
-  datasetId: string;
-  datasetTitle: string;
-  itemId: string;
-  itemTitle: string;
-  targetId: string;
-  targetTitle: string;
-  text: string;
-  manifestObject: string;
-  fragmentObject: string;
-  score?: number;
+interface LoadedDataset {
+  entry: JojoCatalogEntry;
+  index: JojoDatasetIndex & { items: JojoDatasetItemSummary[] };
+  indexObject: string;
 }
 
 function safeObjectKey(value: string): string {
@@ -70,15 +75,11 @@ function textBody(fragment: JojoFragment): string {
 }
 
 function result(value: unknown) {
+  const enriched = addCitationIds(value);
   return {
-    content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }],
-    details: value,
+    content: [{ type: "text" as const, text: JSON.stringify(enriched, null, 2) }],
+    details: enriched,
   };
-}
-
-function scoped(values: string[] | undefined, allowed: string[] | undefined): string[] | undefined {
-  if (allowed?.length) return allowed;
-  return values?.length ? values : undefined;
 }
 
 function occurrences(text: string, terms: string[]): number {
@@ -143,9 +144,50 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
   const fetchFn = options.fetchFn ?? fetch;
   const jox = new JoxClient(options.contentCdnBase, fetchFn);
   const scope = options.scope ?? {};
+  let catalogPromise: Promise<JojoCatalog> | undefined;
+  const datasetCache = new Map<string, Promise<LoadedDataset>>();
   const manifestCache = new Map<string, JojoItemManifest>();
+  const bookSearchCache = new Map<string, JojoBookSearchIndex>();
   const inspectedManifests = new Set<string>();
   const fullItemByteBudget = options.fullItemByteBudget ?? 32 * 1024 * 1024;
+  const searchIndexByteBudget = options.searchIndexByteBudget ?? 16 * 1024 * 1024;
+  let residentSearchIndexBytes = 0;
+
+  function allowedCatalogEntry(entry: JojoCatalogEntry): boolean {
+    return supportsJojoDatasetAi(entry)
+      && (entry.type === "book" || entry.type === "book-series")
+      && entry.publicationStatus !== "draft"
+      && (!scope.datasetIds?.length || scope.datasetIds.includes(entry.datasetId));
+  }
+
+  async function loadCatalog(signal?: AbortSignal): Promise<JojoCatalog> {
+    catalogPromise ??= jox.fetchJson<JojoCatalog>("catalog.jox", signal, "no-store")
+      .then(asJojoCatalog);
+    return catalogPromise;
+  }
+
+  async function loadDataset(datasetId: string, signal?: AbortSignal): Promise<LoadedDataset> {
+    let promise = datasetCache.get(datasetId);
+    if (!promise) {
+      promise = (async () => {
+        const catalog = await loadCatalog(signal);
+        const entry = catalog.datasets.find((candidate) => candidate.datasetId === datasetId);
+        if (!entry || !allowedCatalogEntry(entry)) {
+          throw new Error("该 Dataset 不支持馆藏问答或不在用户选择范围内");
+        }
+        const indexObject = safeObjectKey(entry.indexObject);
+        const index = asJojoDatasetIndex(
+          await jox.fetchJson<JojoDatasetIndex>(indexObject, signal),
+        );
+        if (index.datasetId !== entry.datasetId) {
+          throw new Error("Dataset Index 与馆藏目录不匹配");
+        }
+        return { entry, index, indexObject };
+      })();
+      datasetCache.set(datasetId, promise);
+    }
+    return promise;
+  }
 
   function enforceManifestScope(manifest: JojoItemManifest): void {
     if (scope.datasetIds?.length && !scope.datasetIds.includes(manifest.datasetId)) {
@@ -169,40 +211,366 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
   async function loadManifest(object: string, signal?: AbortSignal): Promise<JojoItemManifest> {
     const cached = manifestCache.get(object);
     if (cached) return cached;
-    const manifest = asJojoItemManifest(await jox.fetchJson<JojoItemManifest>(object, signal));
+    const manifest = asJojoItemManifest(
+      await jox.fetchJson<JojoItemManifest>(object, signal, "no-store"),
+    );
     enforceManifestScope(manifest);
     manifestCache.set(object, manifest);
     return manifest;
   }
 
-  const searchParameters = Type.Object({
-    query: Type.String({ description: "要检索的原文关键词或问题" }),
+  function itemManifestObject(
+    dataset: LoadedDataset,
+    item: JojoDatasetItemSummary,
+  ): string {
+    return safeObjectKey(resolveJoxObject(dataset.indexObject, item.manifestObject));
+  }
+
+  function uniqueStrings(values: string[] | undefined, limit = 100): string[] {
+    return [...new Set((values ?? []).map((value) => value.trim()).filter(Boolean))]
+      .slice(0, limit);
+  }
+
+  async function candidateDatasetIds(
+    requested: string[] | undefined,
+    signal?: AbortSignal,
+  ): Promise<{ ids: string[]; needsSelection?: boolean }> {
+    const explicit = uniqueStrings(requested, 9);
+    const fallback = scope.datasetIds?.length === 1 ? scope.datasetIds : [];
+    const ids = explicit.length ? explicit : fallback;
+    if (!ids.length) return { ids: [], needsSelection: true };
+    if (ids.length > 8) return { ids, needsSelection: true };
+    const allowed = new Set(
+      (await loadCatalog(signal)).datasets.filter(allowedCatalogEntry)
+        .map((entry) => entry.datasetId),
+    );
+    const invalid = ids.filter((id) => !allowed.has(id));
+    if (invalid.length) {
+      throw new Error(`这些 Dataset 不支持馆藏问答或超出选择范围：${invalid.join("、")}`);
+    }
+    return { ids };
+  }
+
+  function datasetIdFromObject(object: string): string | undefined {
+    return object.match(/^content\/(?:books|newspapers|magazines)\/([^/]+)\//)?.[1];
+  }
+
+  const listLibraryParameters = Type.Object({
+    titleQuery: Type.Optional(Type.String({ description: "可选的书名关键词；不传则列出全部可用书籍" })),
+    limit: Type.Optional(Type.Number({ minimum: 1, maximum: 100 })),
+  });
+  const listLibraryTool: AgentTool<typeof listLibraryParameters> = {
+    name: "list_library_books",
+    label: "查看可问答书籍",
+    description: "读取很小的馆藏目录，只列出支持 AI 的书籍，不下载正文。默认全馆提问时先据此挑选最可能相关的多本候选书。",
+    parameters: listLibraryParameters,
+    async execute(_callId, args, signal) {
+      const catalog = await loadCatalog(signal);
+      const needle = args.titleQuery?.normalize("NFKC").toLocaleLowerCase().trim();
+      const limit = Math.max(1, Math.min(100, Math.floor(args.limit ?? 100)));
+      const books = catalog.datasets.filter(allowedCatalogEntry)
+        .filter((entry) => !needle || entry.title.normalize("NFKC").toLocaleLowerCase().includes(needle))
+        .slice(0, limit)
+        .map((entry) => ({
+          datasetId: entry.datasetId,
+          title: entry.title,
+          type: entry.type,
+          itemCount: entry.itemCount,
+        }));
+      return result({
+        total: books.length,
+        books,
+        scopeMode: scope.mode ?? (scope.datasetIds?.length ? "selected" : "all"),
+        advice: "从书名挑选最多 8 个候选 datasetId，再调用 list_book_items 或 search_content。",
+      });
+    },
+  };
+
+  const listBookItemsParameters = Type.Object({
+    datasetIds: Type.Optional(Type.Array(Type.String(), { maxItems: 8 })),
+  });
+  const listBookItemsTool: AgentTool<typeof listBookItemsParameters> = {
+    name: "list_book_items",
+    label: "查看书籍分卷",
+    description: "读取候选书的小型 Dataset Index，列出各册/各卷和 manifestObject，不下载目录或正文。",
+    parameters: listBookItemsParameters,
+    async execute(_callId, args, signal) {
+      const candidates = await candidateDatasetIds(args.datasetIds, signal);
+      if (candidates.needsSelection) {
+        return result({
+          needsSelection: true,
+          advice: "请先用 list_library_books 选择最多 8 本候选书，再传入 datasetIds。",
+        });
+      }
+      const datasets = await Promise.all(
+        candidates.ids.map((datasetId) => loadDataset(datasetId, signal)),
+      );
+      return result({
+        datasets: datasets.map((dataset) => ({
+          datasetId: dataset.entry.datasetId,
+          title: dataset.entry.title,
+          items: dataset.index.items
+            .filter((item) => item.publicationStatus !== "draft")
+            .map((item) => ({
+              itemId: item.itemId,
+              itemKey: item.itemKey,
+              title: item.title,
+              manifestObject: itemManifestObject(dataset, item),
+            })),
+        })),
+        advice: "可把相关 itemId 交给 search_content；没有静态索引时，再用 manifestObject 查看目录并按章读取。",
+      });
+    },
+  };
+
+  const selectedSearchParameters = Type.Object({
+    query: Type.String({ description: "要在当前书内精确查找的关键词或短语" }),
     size: Type.Optional(Type.Number({ minimum: 1, maximum: 20 })),
-    datasetIds: Type.Optional(Type.Array(Type.String())),
-    itemIds: Type.Optional(Type.Array(Type.String())),
+    manifestObject: Type.Optional(Type.String({ description: "当前已选书籍的 manifestObject；只选中一本时可省略" })),
+  });
+  const selectedSearchTool: AgentTool<typeof selectedSearchParameters> = {
+    name: "search_selected_item",
+    label: "搜索当前书籍",
+    description: "把当前书随书发布的轻量静态索引下载到本次问答内存中精确检索。请使用原文中可能出现的关键词或短语。",
+    parameters: selectedSearchParameters,
+    async execute(_callId, args, signal) {
+      const manifestObject = resolveManifestObject(args.manifestObject);
+      const manifest = await loadManifest(manifestObject, signal);
+      if (!manifest.search) {
+        return result({
+          available: false,
+          total: 0,
+          hits: [],
+          advice: "当前书籍还没有静态索引，请调用 list_item_toc，根据目录只读取最相关的几个章节。",
+        });
+      }
+      const indexObject = resolveJoxObject(manifestObject, manifest.search.object);
+      let index = bookSearchCache.get(indexObject);
+      if (!index) {
+        if (residentSearchIndexBytes + manifest.search.size > searchIndexByteBudget) {
+          return result({
+            available: false,
+            total: 0,
+            hits: [],
+            reason: "本次运行的静态索引内存预算不足",
+            searchIndexSize: manifest.search.size,
+            residentSearchIndexBytes,
+            searchIndexByteBudget,
+            advice: "请根据目录只读取最相关的几个章节。",
+          });
+        }
+        index = asJojoBookSearchIndex(
+          await jox.fetchJson<JojoBookSearchIndex>(indexObject, signal),
+        );
+        if (index.itemId !== manifest.itemId) {
+          throw new Error("书内搜索文件与当前书籍不匹配");
+        }
+        bookSearchCache.set(indexObject, index);
+        residentSearchIndexBytes += manifest.search.size;
+      }
+      const chapters = new Map(
+        (manifest.content.chapters ?? []).map((chapter) => [chapter.id, chapter]),
+      );
+      const size = Math.max(1, Math.min(20, Math.floor(args.size ?? 8)));
+      const hits = searchJojoBookIndex(index, args.query, {
+        limit: size,
+        before: 180,
+        after: 420,
+      }).map((match) => {
+        const chapter = chapters.get(match.targetId);
+        return {
+          datasetId: manifest.datasetId,
+          itemId: manifest.itemId,
+          itemTitle: manifest.title,
+          targetId: match.targetId,
+          ...(match.anchorId ? { anchorId: match.anchorId } : {}),
+          targetTitle: chapter?.title ?? "正文",
+          title: chapter?.title ?? "正文",
+          text: match.excerpt,
+          manifestObject,
+          ...(chapter
+            ? { fragmentObject: resolveJoxObject(manifestObject, chapter.object) }
+            : {}),
+        };
+      });
+      return result({
+        available: true,
+        strategy: "static-book-index-memory",
+        total: hits.length,
+        hits,
+        ...(hits.length
+          ? {}
+          : { advice: "没有精确命中。换用更接近原文的短关键词重试，或查看目录后只读取相关章节。" }),
+      });
+    },
+  };
+
+  const searchParameters = Type.Object({
+    query: Type.String({ description: "最可能出现在原文中的关键词或短语；不要直接传整句问题" }),
+    alternateQueries: Type.Optional(Type.Array(Type.String(), {
+      maxItems: 5,
+      description: "最多 5 个同义或相关的原文关键词，用于提高精确检索召回率",
+    })),
+    size: Type.Optional(Type.Number({ minimum: 1, maximum: 20 })),
+    datasetIds: Type.Optional(Type.Array(Type.String(), { maxItems: 8 })),
+    itemIds: Type.Optional(Type.Array(Type.String(), { maxItems: 16 })),
   });
   const searchTool: AgentTool<typeof searchParameters> = {
     name: "search_content",
-    label: "搜索馆藏",
-    description: "在 Elasticsearch 中搜索书籍、报纸和杂志。先调用它定位证据；结果给出可继续读取的 manifestObject 和 fragmentObject。",
+    label: "搜索候选书籍",
+    description: "把候选书随书发布的 search.jox 下载到本次问答内存中检索，不使用 Elasticsearch，也不下载正文。先用书名挑选最多 8 本候选书；结果给出可继续读取的章节路径。",
     parameters: searchParameters,
     async execute(_callId, args, signal) {
-      if (!options.searchUrl) throw new Error("搜索服务未配置");
-      const response = await fetchFn(options.searchUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: args.query,
-          size: Math.max(1, Math.min(20, Math.floor(args.size ?? 8))),
-          datasetIds: scoped(args.datasetIds, scope.datasetIds),
-          itemIds: scoped(args.itemIds, scope.itemIds),
-        }),
-        signal,
+      const candidates = await candidateDatasetIds(args.datasetIds, signal);
+      if (candidates.needsSelection) {
+        return result({
+          needsSelection: true,
+          total: 0,
+          hits: [],
+          advice: "默认全馆范围较大。请先调用 list_library_books，从书名选出最多 8 本候选书，再传入 datasetIds。",
+        });
+      }
+
+      const requestedItemIds = new Set(uniqueStrings(args.itemIds, 16));
+      const scopedItemIds = new Set(scope.itemIds ?? []);
+      const datasets = await Promise.all(
+        candidates.ids.map((datasetId) => loadDataset(datasetId, signal)),
+      );
+      const targets = datasets.flatMap((dataset) => dataset.index.items
+        .filter((item) => item.publicationStatus !== "draft")
+        .filter((item) => !requestedItemIds.size || requestedItemIds.has(item.itemId))
+        .filter((item) => !scopedItemIds.size || scopedItemIds.has(item.itemId))
+        .map((item) => ({
+          dataset,
+          item,
+          manifestObject: itemManifestObject(dataset, item),
+        })));
+      if (targets.length > 16) {
+        return result({
+          needsSelection: true,
+          total: 0,
+          hits: [],
+          candidateItemCount: targets.length,
+          advice: "候选分卷超过 16 个。请先调用 list_book_items，再把最多 16 个相关 itemId 传给 search_content。",
+        });
+      }
+
+      const queries = uniqueStrings([args.query, ...(args.alternateQueries ?? [])], 6);
+      if (!queries.length) throw new Error("至少需要一个原文关键词");
+      const size = Math.max(1, Math.min(20, Math.floor(args.size ?? 8)));
+      const hits: Array<{
+        datasetId: string;
+        datasetTitle: string;
+        itemId: string;
+        itemTitle: string;
+        targetId: string;
+        anchorId?: string;
+        targetTitle: string;
+        text: string;
+        matchedQuery: string;
+        manifestObject: string;
+        fragmentObject?: string;
+      }> = [];
+      const unindexedItems: Array<{
+        datasetId: string;
+        datasetTitle: string;
+        itemId: string;
+        itemTitle: string;
+        manifestObject: string;
+        reason: string;
+      }> = [];
+      const skippedItems: Array<{ itemId: string; title: string; reason: string }> = [];
+      const seen = new Set<string>();
+      let loadedSearchBytes = 0;
+      let searchedItemCount = 0;
+
+      for (const target of targets) {
+        const manifest = await loadManifest(target.manifestObject, signal);
+        if (!manifest.search) {
+          unindexedItems.push({
+            datasetId: target.dataset.entry.datasetId,
+            datasetTitle: target.dataset.entry.title,
+            itemId: target.item.itemId,
+            itemTitle: target.item.title,
+            manifestObject: target.manifestObject,
+            reason: "书籍未提供静态正文索引",
+          });
+          continue;
+        }
+        const indexObject = resolveJoxObject(target.manifestObject, manifest.search.object);
+        let index = bookSearchCache.get(indexObject);
+        if (!index && residentSearchIndexBytes + manifest.search.size > searchIndexByteBudget) {
+          skippedItems.push({
+            itemId: target.item.itemId,
+            title: target.item.title,
+            reason: "本次运行的静态索引内存预算不足",
+          });
+          continue;
+        }
+        if (!index) {
+          index = asJojoBookSearchIndex(
+            await jox.fetchJson<JojoBookSearchIndex>(indexObject, signal),
+          );
+          if (index.itemId !== manifest.itemId) {
+            throw new Error("书内搜索文件与当前书籍不匹配");
+          }
+          bookSearchCache.set(indexObject, index);
+          loadedSearchBytes += manifest.search.size;
+          residentSearchIndexBytes += manifest.search.size;
+        }
+        searchedItemCount += 1;
+        const chapters = new Map(
+          (manifest.content.chapters ?? []).map((chapter) => [chapter.id, chapter]),
+        );
+        for (const query of queries) {
+          for (const match of searchJojoBookIndex(index, query, {
+            limit: size,
+            before: 180,
+            after: 420,
+          })) {
+            const key = `${manifest.itemId}\0${match.targetId}\0${match.anchorId ?? ""}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const chapter = chapters.get(match.targetId);
+            hits.push({
+              datasetId: manifest.datasetId,
+              datasetTitle: target.dataset.entry.title,
+              itemId: manifest.itemId,
+              itemTitle: manifest.title,
+              targetId: match.targetId,
+              ...(match.anchorId ? { anchorId: match.anchorId } : {}),
+              targetTitle: chapter?.title ?? "正文",
+              text: match.excerpt,
+              matchedQuery: query,
+              manifestObject: target.manifestObject,
+              ...(chapter
+                ? { fragmentObject: resolveJoxObject(target.manifestObject, chapter.object) }
+                : {}),
+            });
+            if (hits.length >= size) break;
+          }
+          if (hits.length >= size) break;
+        }
+        if (hits.length >= size) break;
+      }
+
+      return result({
+        strategy: "candidate-static-index-memory",
+        queries,
+        total: hits.length,
+        hits,
+        searchedItemCount,
+        loadedSearchBytes,
+        residentSearchIndexBytes,
+        searchIndexByteBudget,
+        unindexedItems,
+        skippedItems,
+        ...(!hits.length
+          ? { advice: unindexedItems.length
+            ? "候选书缺少静态索引。请对最相关的 manifestObject 调用 list_item_toc，再只读取目录中最相关的几个章节。"
+            : "没有精确命中。请换用更接近原文的短关键词重试，或查看候选书目录后按章读取。" }
+          : {}),
       });
-      if (!response.ok) throw new Error(`搜索服务返回 HTTP ${response.status}`);
-      const payload = await response.json() as { data?: { total?: number; results?: SearchHit[] }; results?: SearchHit[] };
-      const hits = payload.data?.results ?? payload.results ?? [];
-      return result({ total: payload.data?.total ?? hits.length, hits });
     },
   };
 
@@ -223,6 +591,9 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
       const text = textBody(fragment);
       const maxChars = Math.max(500, Math.min(20_000, Math.floor(args.maxChars ?? 12_000)));
       return result({
+        datasetId: scope.datasetIds?.length === 1
+          ? scope.datasetIds[0]
+          : datasetIdFromObject(object),
         itemId: fragment.itemId,
         targetId: fragment.fragmentId,
         title: fragment.title,
@@ -335,7 +706,7 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
       }
       const terms = [...new Set(args.terms.map((term) => term.trim()).filter(Boolean))].slice(0, 12);
       if (!terms.length) throw new Error("扫描整本至少需要一个关键词");
-      const evidence: Array<{ chapterId: string; title: string; occurrences: number; text: string; fragmentObject: string }> = [];
+      const evidence: Array<{ datasetId: string; itemId: string; itemTitle: string; chapterId: string; title: string; occurrences: number; text: string; fragmentObject: string }> = [];
       const termTotals = new Map(terms.map((term) => [term, 0]));
       let downloadedBytes = 0;
       for (const chapter of chapters) {
@@ -346,6 +717,9 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
         const text = textBody(fragment);
         for (const term of terms) termTotals.set(term, termTotals.get(term)! + occurrences(text, [term]));
         evidence.push({
+          datasetId: manifest.datasetId,
+          itemId: manifest.itemId,
+          itemTitle: manifest.title,
           chapterId: fragment.fragmentId,
           title: fragment.title,
           occurrences: occurrences(text, terms),
@@ -371,7 +745,10 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
     },
   };
   return [
-    ...(options.searchUrl ? [searchTool] : []),
+    listLibraryTool,
+    listBookItemsTool,
+    ...(scope.manifestObjects?.length === 1 ? [selectedSearchTool] : []),
+    searchTool,
     fragmentTool,
     inspectTool,
     tocTool,

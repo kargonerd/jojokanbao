@@ -65,21 +65,15 @@ export {
   createEdgeOneAgentHandler,
   createEdgeOneAgentHealthHandler,
 } from "./edgeone/handler";
-export {
-  AGENT_SERVICE_AUTH_HEADERS,
-  authorizeAgentServiceRequest,
-  createAgentServiceSignatureHeaders,
-} from "./edgeone/service-auth";
-export type {
-  AgentServiceAuthorizationOptions,
-  AgentServiceSignatureInput,
-} from "./edgeone/service-auth";
 export type {
   AgentRequestBody,
   AuthorizedAgentUser,
   CreateEdgeOneAgentHandlerOptions,
   EdgeOneAgentContext,
   EdgeOneAgentRequest,
-  EdgeOneConversationStore,
+  EdgeOneMessageStore,
   EdgeOneStoredMessage,
+  EdgeOneTraceAttributes,
+  EdgeOneTracer,
+  EdgeOneTraceSpan,
 } from "./edgeone/types";

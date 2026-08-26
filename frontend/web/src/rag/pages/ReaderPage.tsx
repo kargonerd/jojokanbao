@@ -2,7 +2,13 @@ import DOMPurify from "dompurify";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { LoadingSpinner } from "@jojo/ui";
-import type { JojoAnnotation, JojoFragment, JojoTocNode } from "@jojo/content";
+import {
+  JOJO_BOOK_SEARCH_BLOCK_SELECTOR,
+  bookSearchBlockAnchorId,
+  type JojoAnnotation,
+  type JojoFragment,
+  type JojoTocNode,
+} from "@jojo/content";
 import {
   downloadExport,
   loadAssetUrl,
@@ -111,6 +117,13 @@ export function renderedBody(fragment: JojoFragment, assetUrls: Record<string, s
   const clean = DOMPurify.sanitize(source);
   const document = new DOMParser().parseFromString(`<main>${clean}</main>`, "text/html");
   const main = document.querySelector("main");
+  let searchBlockNumber = 0;
+  for (const element of document.querySelectorAll<HTMLElement>(JOJO_BOOK_SEARCH_BLOCK_SELECTOR)) {
+    if (element.parentElement?.closest(JOJO_BOOK_SEARCH_BLOCK_SELECTOR)) continue;
+    if (!element.textContent?.normalize("NFKC").replace(/\s+/g, " ").trim()) continue;
+    searchBlockNumber += 1;
+    if (!element.id) element.id = bookSearchBlockAnchorId(fragment.fragmentId, searchBlockNumber);
+  }
   const firstContentElement = [...(main?.children ?? [])].find((element) => (
     element.tagName !== "HR"
     && (element.textContent?.replace(/\s+/g, "").length || element.querySelector("img,figure,svg"))
@@ -186,7 +199,8 @@ export function ReaderPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const requestedChapter = searchParams.get("chapter") || "";
-  const requestedAnnotation = searchParams.get("annotation") || "";
+  const requestedAnnotation = searchParams.get("anchor") || searchParams.get("annotation") || "";
+  const requestedQuote = searchParams.get("quote") || "";
   const [loaded, setLoaded] = useState<LoadedItem>();
   const [fragment, setFragment] = useState<JojoFragment>();
   const [activeChapter, setActiveChapter] = useState("");
@@ -220,9 +234,16 @@ export function ReaderPage() {
       setLoaded(value);
       const requested = value.manifest.content.chapters?.find((chapter) => chapter.id === requestedChapter);
       setFocusAnchorId(requestedAnnotation);
+      const normalizedQuote = requestedQuote
+        .replace(/^…+|…+$/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      setFocusText(normalizedQuote
+        ? { text: normalizedQuote.slice(0, 80), token: Date.now() }
+        : undefined);
       setActiveChapter(requested?.id || value.manifest.content.chapters?.[0]?.id || "");
     }).catch((reason: Error) => setError(reason.message)).finally(() => setLoading(false));
-  }, [datasetId, itemKey, requestedAnnotation, requestedChapter]);
+  }, [datasetId, itemKey, requestedAnnotation, requestedChapter, requestedQuote]);
 
   useEffect(() => {
     if (!loaded || !activeChapter) return;

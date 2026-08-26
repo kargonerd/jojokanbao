@@ -1,13 +1,13 @@
 import { parseCredentialFile } from "../credentials";
 import type { AgentEnvironment } from "../models";
 import { createEdgeOneCredentialStore } from "./credential-store";
-import type { EdgeOneConversationStore } from "./types";
+import type { EdgeOneMessageStore } from "./types";
 
 const MAX_CREDENTIAL_BYTES = 64 * 1024;
 
 export interface CredentialAdminContext {
   agent?: {
-    store?: EdgeOneConversationStore;
+    store?: EdgeOneMessageStore;
   };
   env?: AgentEnvironment;
   request: Request;

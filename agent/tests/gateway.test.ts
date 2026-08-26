@@ -11,16 +11,14 @@ function context(pathname: string) {
 }
 
 describe("EdgeOne gateway", () => {
-  it("routes the public query endpoint to the Agent proxy", async () => {
+  it("does not expose the removed buffered Agent proxy", async () => {
     const response = await onRequest(context("/gateway/ask"));
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toEqual({
-      error: "Agent service authentication is not configured",
-    });
+    expect(response.status).toBe(404);
   });
 
   it("routes credential administration and rejects unknown paths", async () => {
     expect((await onRequest(context("/gateway/credentials"))).status).toBe(405);
+    expect((await onRequest(context("/gateway/conversations"))).status).toBe(404);
     expect((await onRequest(context("/gateway/unknown"))).status).toBe(404);
   });
 });

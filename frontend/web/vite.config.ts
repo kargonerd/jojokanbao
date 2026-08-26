@@ -6,13 +6,14 @@ import { viteStaticCopy } from "vite-plugin-static-copy";
 import { pdfViewerStaticCopyTargets } from "@jojo/pdf-viewer/vite";
 
 const repositoryRoot = resolve(__dirname, "../..");
-const defaultAgentGateway = "https://agent-global.jojokanbao.cn/gateway/ask";
+const defaultDevelopmentAgentUrl = "http://127.0.0.1:8789/rag";
 
 export default defineConfig(({ mode }) => {
   const environment = loadEnv(mode, repositoryRoot, "");
-  const agentGatewayOrigin = new URL(
-    environment.JOJO_AGENT_GATEWAY_URL || defaultAgentGateway,
-  ).origin;
+  const agentTarget = new URL(
+    environment.JOJO_AGENT_URL || defaultDevelopmentAgentUrl,
+  );
+  const agentPath = agentTarget.pathname.replace(/\/$/, "");
   return {
     envDir: repositoryRoot,
     plugins: [
@@ -37,9 +38,13 @@ export default defineConfig(({ mode }) => {
           rewrite: (path) => path.replace(/^\/content-cdn/, ""),
         },
         "/gateway": {
-          target: agentGatewayOrigin,
+          target: agentTarget.origin,
           changeOrigin: true,
           headers: { Origin: "" },
+          rewrite: (path) => path.replace(
+            /^\/gateway\/ask(?=\?|$)/,
+            agentPath,
+          ),
         },
       },
     },
