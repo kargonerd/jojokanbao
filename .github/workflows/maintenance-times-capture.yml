@@ -168,7 +168,8 @@ jobs:
               --proxy-rotation-attempts 8
             )
           fi
-          xvfb-run -a node tools/times-pipeline/dist/src/page-capture-cli.js "${args[@]}"
+          xvfb-run --server-num=99 --server-args='-screen 0 1440x1200x24 -ac -nolisten tcp' \
+            node tools/times-pipeline/dist/src/page-capture-cli.js "${args[@]}"
 
       - name: Commit Raw as one HF Dataset revision
         if: env.TIMES_PUBLISH == 'true'

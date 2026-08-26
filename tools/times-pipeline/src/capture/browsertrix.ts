@@ -81,6 +81,12 @@ export function browsertrixArguments(options: BrowsertrixBatchOptions, temporary
     "--volume", `${path.resolve(options.driverPath)}:/jojo/driver.mjs:ro`,
     "--env", "JOJO_RENDERED_MAX_BYTES=25000000",
   ];
+  if (process.env.DISPLAY) {
+    args.push("--env", `DISPLAY=${process.env.DISPLAY}`, "--volume", "/tmp/.X11-unix:/tmp/.X11-unix:rw");
+    if (process.env.XAUTHORITY) {
+      args.push("--env", "XAUTHORITY=/jojo/.Xauthority", "--volume", `${path.resolve(process.env.XAUTHORITY)}:/jojo/.Xauthority:ro`);
+    }
+  }
   if (options.extensionPath) {
     args.push(
       "--volume", `${path.resolve(options.extensionPath)}:/jojo/bpc:ro`,
@@ -89,9 +95,6 @@ export function browsertrixArguments(options: BrowsertrixBatchOptions, temporary
   }
   args.push(
     options.image ?? BROWSERTRIX_IMAGE,
-    "xvfb-run",
-    "--server-num=99",
-    "--server-args=-screen 0 1360x1020x16 -ac -nolisten tcp",
     "crawl",
     "--seedFile=/crawls/seeds.txt",
     "--collection=transient",
