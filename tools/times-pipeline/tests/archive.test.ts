@@ -40,6 +40,24 @@ describe("page capture orchestration", () => {
     expect(selected.map((value) => value.articleId)).not.toContain("expired");
   });
 
+  it("retries a failed article on the next ten-minute schedule", () => {
+    const failed = article("failed");
+    const state = new Map([["example", {
+      formatVersion: "jojo-page-capture-state/1" as const,
+      articles: {
+        failed: {
+          fingerprint: articleFingerprint(failed),
+          lastAttempt: "2026-08-22T11:50:30Z",
+          error: "FullTextNotExtracted",
+        },
+      },
+    }]]);
+    expect(pendingArticles(
+      [failed], state,
+      { now, retentionDays: 7, refreshHours: 168, retryHours: 0.15 },
+    ).map((value) => value.articleId)).toEqual(["failed"]);
+  });
+
   it("keeps article images as owned asset references and filters tracking pixels", () => {
     const images = discoverArticleImages(`<html><head><meta property="og:image" content="/lead.jpg"></head><body><article>
       <p>Article body</p><figure><img src="/inside.jpg" width="1200" height="800" alt="Inside"><figcaption>Photo credit</figcaption></figure>

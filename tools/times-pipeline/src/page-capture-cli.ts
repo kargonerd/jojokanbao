@@ -311,7 +311,6 @@ async function main(): Promise<void> {
       const nativeBrowser = async (): Promise<BrowserSourceSession> => {
         nativeSession ??= await BrowserSourceSession.open({
           ...(proxyServer ? { proxyServer } : {}),
-          ...(browserKind === "brave" && bravePath ? { executablePath: bravePath } : {}),
           requireExtension: false,
         });
         return nativeSession;
