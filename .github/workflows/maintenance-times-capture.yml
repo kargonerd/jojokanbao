@@ -122,8 +122,10 @@ jobs:
           package="$RUNNER_TEMP/brave-browser.deb"
           curl -fsSL "https://github.com/brave/brave-browser/releases/download/v${BRAVE_VERSION}/brave-browser_${BRAVE_VERSION}_amd64.deb" -o "$package"
           echo "$BRAVE_SHA256  $package" | sha256sum -c -
-          sudo apt-get install -y "$package"
-          brave_path="$(command -v brave-browser)"
+          mkdir -p "$RUNNER_TEMP/brave"
+          dpkg-deb --extract "$package" "$RUNNER_TEMP/brave"
+          brave_path="$RUNNER_TEMP/brave/opt/brave.com/brave/brave-browser"
+          test -x "$brave_path"
           "$brave_path" --version
           echo "JOJO_TIMES_BRAVE_PATH=$brave_path" >> "$GITHUB_ENV"
 
