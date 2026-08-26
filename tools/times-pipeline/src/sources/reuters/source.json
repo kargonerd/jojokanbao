@@ -63,7 +63,9 @@
       "captured-page",
       "discovery-summary"
     ],
-    "parser": "reuters"
+    "parser": "reuters",
+    "minimumFullCharacters": 300,
+    "minimumFullParagraphs": 2
   },
   "fetch": {
     "strategy": "browser-first",

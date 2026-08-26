@@ -36,8 +36,10 @@ export class BrowserSourceSession {
     ] : [];
     if (options.requireExtension && !options.extensionPath) throw new Error("BPC extension path is required by this source");
     try {
+      const channel = process.env.JOJO_TIMES_BROWSER_CHANNEL?.trim();
       const context = await chromium.launchPersistentContext(userDataDirectory, {
         headless: process.env.JOJO_TIMES_HEADLESS === "1",
+        ...(channel ? { channel } : {}),
         viewport: { width: 1440, height: 1200 },
         locale: "en-US",
         ignoreHTTPSErrors: true,
