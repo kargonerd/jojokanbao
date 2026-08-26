@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { discoverHtmlListing } from "../src/discovery/html-listing.js";
 import { discoverPeople } from "../src/sources/people/discover.js";
+import { discoverXinhua } from "../src/sources/xinhua/discover.js";
 import type { RouteDiscoveryEndpoint, SourceConfig } from "../src/types.js";
 
 const endpoint: RouteDiscoveryEndpoint = {
@@ -94,5 +95,58 @@ describe("HTML listing discovery mechanics", () => {
       title: "真正的文章标题",
       publishedAt: "2026-08-25T00:44:00.000Z",
     });
+  });
+
+  it("excludes Xinhua video-only pages but keeps articles with substantial text", async () => {
+    const xinhuaEndpoint: RouteDiscoveryEndpoint = {
+      kind: "source-adapter",
+      adapter: "xinhua",
+      driver: "http",
+      route: "taiwan",
+      maximumItems: 20,
+    };
+    const xinhua: SourceConfig = {
+      ...source,
+      id: "xinhua",
+      name: "新华网",
+      language: "zh-CN",
+      sections: [{ id: "taiwan", name: "台湾", url: "https://www.news.cn/tw/index.html" }],
+      discovery: xinhuaEndpoint,
+    };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/tw/index.html")) {
+        return new Response([
+          '<a href="/tw/20260826/video/c.html">Video</a>',
+          '<a href="/tw/20260826/mixed/c.html">Mixed</a>',
+        ].join(""), { status: 200 });
+      }
+      if (url.includes("/mixed/")) {
+        return new Response(`
+          <meta name="publishdate" content="2026-08-26 20:14:58">
+          <h1>带视频的图文报道</h1>
+          <div id="detailContent">
+            <span class="pageVideo" video_src="https://vod.example.test/mixed.mp4"></span>
+            <p>这是与视频共同发布的第一段实质正文，包含事件背景、现场情况以及相关人士的完整说明。</p>
+            <p>这是第二段实质正文，继续补充报道细节，文本总量足以作为一篇独立的图文新闻阅读。</p>
+            <p>新华社音视频部制作</p>
+          </div>
+        `, { status: 200 });
+      }
+      return new Response(`
+        <meta name="publishdate" content="2026-08-26 20:13:58">
+        <h1>新华社消息｜视频标题</h1>
+        <div id="detailContent">
+          <span class="pageVideo" video_src="https://vod.example.test/video.mp4"></span>
+          <p>新华社音视频部制作</p>
+        </div>
+      `, { status: 200 });
+    }));
+
+    const result = await discoverXinhua(xinhua, xinhuaEndpoint, "2026-08-26T12:20:00Z");
+
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]).toMatchObject({ title: "带视频的图文报道", contentStatus: "full" });
+    expect(result.upstream).toMatchObject({ unsupportedMediaCount: 1 });
   });
 });

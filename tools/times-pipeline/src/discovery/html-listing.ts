@@ -13,6 +13,7 @@ export interface HtmlListingProfile {
   linkSelector?: string;
   bodySelectors?: string[];
   publicationDateSelectors?: string[];
+  isUnsupportedMedia?: (html: string, sourceUrl: string) => boolean;
   version: string;
 }
 
@@ -187,9 +188,15 @@ export async function discoverHtmlListing(
   const listingHtml = await fetchHtml(source.id, profile.listingUrl);
   const links = articleLinks(profile, listingHtml);
   let failedPages = 0;
+  let unsupportedMediaPages = 0;
   const candidates = await mapLimit<Candidate>(links, 8, async (sourceUrl) => {
     try {
-      return candidateFromArticle(source, profile, sourceUrl, await fetchHtml(source.id, sourceUrl));
+      const html = await fetchHtml(source.id, sourceUrl);
+      if (profile.isUnsupportedMedia?.(html, sourceUrl)) {
+        unsupportedMediaPages += 1;
+        return undefined;
+      }
+      return candidateFromArticle(source, profile, sourceUrl, html);
     } catch {
       failedPages += 1;
       return undefined;
@@ -205,6 +212,7 @@ export async function discoverHtmlListing(
       articleUrls: links,
       parsedArticleCount: candidates.length,
       failedArticleCount: failedPages,
+      unsupportedMediaCount: unsupportedMediaPages,
     },
     candidates,
   };

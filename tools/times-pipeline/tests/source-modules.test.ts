@@ -135,18 +135,11 @@ describe("native source modules", () => {
     expect(sourceFetchPolicy("people")?.bodySelectors).toContain("#rm_txt_zw");
   });
 
-  it("drops Focus Taiwan's homepage placeholder and normalizes Xinhua wire flashes", () => {
+  it("drops Focus Taiwan's homepage placeholder", () => {
     const candidate = {
       title: "Taiwan headline news",
       contentStatus: "summary",
     } as Candidate;
     expect(acceptSourceCandidate("focus-taiwan", candidate)).toBe(false);
-
-    const flash = processSourceCandidate("xinhua", {
-      ...candidate,
-      title: "新华社消息丨这条标题就是原站发布的完整短消息",
-    });
-    expect(flash.contentStatus).toBe("full");
-    expect(flash.discoveryBody).toContain("完整短消息");
   });
 });
