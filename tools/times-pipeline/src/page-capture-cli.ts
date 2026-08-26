@@ -359,7 +359,7 @@ async function main(): Promise<void> {
         if (!failed.length) break;
         await selectProxy(controlUrl, proxyGroup, alternative);
         await new Promise((resolve) => setTimeout(resolve, 250));
-        const probes = groupArticlesBySource(failed).flatMap((batch) => batch.articles.slice(0, 2));
+        const probes = groupArticlesBySource(failed).flatMap((batch) => batch.articles.slice(0, 1));
         await captureRound(probes, true);
         const usableSources = new Set(probes.filter((article) => {
           const outcome = best.get(article.articleId);

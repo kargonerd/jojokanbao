@@ -50,7 +50,8 @@ contentHash  = SHA-256(title + publishedAt + canonical body + asset hashes)
 
 媒体之间最多八路并行；同一媒体始终串行并复用浏览器上下文、Cookie 和 BPC。代理轮换按全局回合进行，
 避免多个并行媒体同时修改 Mihomo 路由。只有 browser-first 媒体且前一回合正文仍不完整的 URL 才进入
-下一节点，最多验证八个健康且分散的备用节点。Browsertrix 内部同样固定为单 worker，不会让同一媒体并行。
+下一节点。每个节点只探测一篇，最多验证 32 个健康且分散的备用节点；命中后才补抓该媒体剩余文章。
+Browsertrix 内部同样固定为单 worker，不会让同一媒体并行。
 
 ## 4. 来源与页面抓取
 

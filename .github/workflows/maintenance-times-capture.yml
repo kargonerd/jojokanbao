@@ -165,7 +165,7 @@ jobs:
             args+=(
               --proxy-server "$JOJO_TIMES_PROXY_URI"
               --proxy-control-url http://127.0.0.1:9090
-              --proxy-rotation-attempts 8
+              --proxy-rotation-attempts 32
             )
           fi
           xvfb-run --server-num=99 --server-args='-screen 0 1440x1200x24 -ac -nolisten tcp' \
