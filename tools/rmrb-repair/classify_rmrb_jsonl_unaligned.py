@@ -340,6 +340,62 @@ def resolve_whitespace_only_same_date_groups(
     return remaining, resolved
 
 
+def resolve_same_page_title_typo_groups(
+    source_rows: list[dict[str, Any]],
+    missing_rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Bind a unique same-page catalog typo while keeping the JSONL title."""
+    missing_by_issue_page: dict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
+    for candidate in missing_rows:
+        key = (
+            str(candidate.get("date") or "")[:10],
+            int(page_number(candidate.get("page")) or 0),
+        )
+        missing_by_issue_page[key].append(candidate)
+
+    proposals: dict[
+        tuple[str, int, int], list[tuple[int, dict[str, Any], dict[str, Any]]]
+    ] = defaultdict(list)
+    for index, source in enumerate(source_rows):
+        issue_date = str(source.get("date") or "")[:10]
+        page = int(page_number(source.get("page")) or 0)
+        source_title = normalized_primary_title(source)
+        if len(source_title) < 4:
+            continue
+        candidates = [
+            candidate
+            for candidate in missing_by_issue_page.get((issue_date, page), [])
+            if is_single_character_edit(
+                source_title, norm(primary_title(candidate.get("title")))
+            )
+            and not candidate_has_empty_difference(
+                candidate.get("title"), source.get("title")
+            )
+        ]
+        if len(candidates) != 1:
+            continue
+        candidate = candidates[0]
+        candidate_key = (issue_date, page, int(candidate.get("ordinal", -1)))
+        proposals[candidate_key].append((index, source, candidate))
+
+    resolved_indexes: set[int] = set()
+    resolved: list[dict[str, Any]] = []
+    for claims in proposals.values():
+        if len(claims) != 1:
+            continue
+        index, source, candidate = claims[0]
+        resolved_indexes.add(index)
+        canonical = canonicalize_exact_group_pair(source, candidate)
+        canonical["title"] = primary_title(source.get("title")).strip()
+        canonical["matchMethod"] = "same_page_title_typo_jsonl"
+        canonical["peopleDataTitle"] = str(candidate.get("title") or "").strip()
+        resolved.append(canonical)
+
+    remaining = [row for index, row in enumerate(source_rows) if index not in resolved_indexes]
+    resolved.sort(key=lambda row: (row["date"], row["page"], row["ordinal"]))
+    return remaining, resolved
+
+
 def resolve_generic_section_heading_groups(
     source_rows: list[dict[str, Any]],
     missing_rows: list[dict[str, Any]],
@@ -577,10 +633,19 @@ def main() -> None:
             rows, missing_rows
         )
         missing_rows = without_resolved_candidates(missing_rows, whitespace_merged)
+        rows, same_page_typo_merged = resolve_same_page_title_typo_groups(
+            rows, missing_rows
+        )
+        missing_rows = without_resolved_candidates(missing_rows, same_page_typo_merged)
         rows, section_heading_merged = resolve_generic_section_heading_groups(
             rows, missing_rows
         )
-        auto_merged = same_page_merged + whitespace_merged + section_heading_merged
+        auto_merged = (
+            same_page_merged
+            + whitespace_merged
+            + same_page_typo_merged
+            + section_heading_merged
+        )
     source_titles = {
         title for row in rows if (title := normalized_primary_title(row))
     }
@@ -600,6 +665,9 @@ def main() -> None:
     counters["autoMergedSamePageRows"] = len(same_page_merged) if args.peopledata_unmatched else 0
     counters["autoMergedWhitespaceSameDateRows"] = (
         len(whitespace_merged) if args.peopledata_unmatched else 0
+    )
+    counters["autoMergedSamePageTypoRows"] = (
+        len(same_page_typo_merged) if args.peopledata_unmatched else 0
     )
     counters["autoMergedGenericSectionHeadingRows"] = (
         len(section_heading_merged) if args.peopledata_unmatched else 0

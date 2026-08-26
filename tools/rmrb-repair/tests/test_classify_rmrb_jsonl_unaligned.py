@@ -300,6 +300,51 @@ def test_whitespace_rule_does_not_ignore_punctuation_difference():
     assert resolved == []
 
 
+def test_same_page_title_typo_uses_jsonl_title_and_peopledata_identity():
+    source_row = {
+        **source(
+            "1984-01-11",
+            5,
+            "批判资产阶级人道主义，宣传社会主义人道主义\n汝信",
+        ),
+        "preservedOrdinal": 74,
+    }
+    missing = [{
+        "date": "1984-01-11",
+        "page": 5,
+        "ordinal": 43,
+        "title": "批判资产阶段人道主义，宣传社会主义人道主义",
+        "href": "/43",
+    }]
+
+    remaining, resolved = MODULE.resolve_same_page_title_typo_groups(
+        [source_row], missing
+    )
+
+    assert remaining == []
+    assert resolved[0]["date"] == "1984-01-11"
+    assert resolved[0]["page"] == 5
+    assert resolved[0]["ordinal"] == 43
+    assert resolved[0]["title"] == "批判资产阶级人道主义，宣传社会主义人道主义"
+    assert resolved[0]["peopleDataTitle"] == "批判资产阶段人道主义，宣传社会主义人道主义"
+    assert resolved[0]["matchMethod"] == "same_page_title_typo_jsonl"
+
+
+def test_same_page_title_typo_requires_unique_candidate():
+    source_row = source("1984-01-11", 5, "资产阶级人道主义")
+    missing = [
+        {"date": "1984-01-11", "page": 5, "ordinal": 43, "title": "资产阶段人道主义"},
+        {"date": "1984-01-11", "page": 5, "ordinal": 44, "title": "资产阶层人道主义"},
+    ]
+
+    remaining, resolved = MODULE.resolve_same_page_title_typo_groups(
+        [source_row], missing
+    )
+
+    assert remaining == [source_row]
+    assert resolved == []
+
+
 def test_reader_letters_uses_first_real_body_heading():
     row = source("1951-01-05", 2, "读者来信")
     row["content"] = "读者来信\n\n  读者来信\n  从消极怠工到创新纪录\n正文"
