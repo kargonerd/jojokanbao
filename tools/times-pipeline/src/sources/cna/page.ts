@@ -1,6 +1,6 @@
 import type { SourcePagePolicy } from "../../types.js";
 
-export const cnaPage: SourcePagePolicy = {
+export const cnaPage = {
   capture: "browser",
   bodySelectors: [
     ".text-long",
@@ -8,4 +8,4 @@ export const cnaPage: SourcePagePolicy = {
     ".content-detail__body",
     "[data-component='text-block']",
   ],
-};
+} satisfies SourcePagePolicy;

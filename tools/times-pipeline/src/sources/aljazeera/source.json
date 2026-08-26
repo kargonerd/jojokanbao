@@ -1,5 +1,5 @@
 {
-  "id": "aljazeera-english",
+  "id": "aljazeera",
   "name": "Al Jazeera",
   "language": "en",
   "sections": [
@@ -69,7 +69,7 @@
         ],
         "discovery": {
           "kind": "source-adapter",
-          "adapter": "aljazeera-english",
+          "adapter": "aljazeera",
           "driver": "http",
           "route": "news",
           "maximumItems": 30
@@ -82,7 +82,7 @@
         ],
         "discovery": {
           "kind": "source-adapter",
-          "adapter": "aljazeera-english",
+          "adapter": "aljazeera",
           "driver": "http",
           "route": "africa",
           "maximumItems": 30
@@ -95,7 +95,7 @@
         ],
         "discovery": {
           "kind": "source-adapter",
-          "adapter": "aljazeera-english",
+          "adapter": "aljazeera",
           "driver": "http",
           "route": "asia",
           "maximumItems": 30
@@ -108,7 +108,7 @@
         ],
         "discovery": {
           "kind": "source-adapter",
-          "adapter": "aljazeera-english",
+          "adapter": "aljazeera",
           "driver": "http",
           "route": "us-canada",
           "maximumItems": 30
@@ -121,7 +121,7 @@
         ],
         "discovery": {
           "kind": "source-adapter",
-          "adapter": "aljazeera-english",
+          "adapter": "aljazeera",
           "driver": "http",
           "route": "latin-america",
           "maximumItems": 30
@@ -134,7 +134,7 @@
         ],
         "discovery": {
           "kind": "source-adapter",
-          "adapter": "aljazeera-english",
+          "adapter": "aljazeera",
           "driver": "http",
           "route": "europe",
           "maximumItems": 30
@@ -147,7 +147,7 @@
         ],
         "discovery": {
           "kind": "source-adapter",
-          "adapter": "aljazeera-english",
+          "adapter": "aljazeera",
           "driver": "http",
           "route": "asia-pacific",
           "maximumItems": 30
@@ -160,7 +160,7 @@
         ],
         "discovery": {
           "kind": "source-adapter",
-          "adapter": "aljazeera-english",
+          "adapter": "aljazeera",
           "driver": "http",
           "route": "middle-east",
           "maximumItems": 30
@@ -173,7 +173,7 @@
         ],
         "discovery": {
           "kind": "source-adapter",
-          "adapter": "aljazeera-english",
+          "adapter": "aljazeera",
           "driver": "http",
           "route": "explained",
           "maximumItems": 30
@@ -186,7 +186,7 @@
         ],
         "discovery": {
           "kind": "source-adapter",
-          "adapter": "aljazeera-english",
+          "adapter": "aljazeera",
           "driver": "http",
           "route": "economy",
           "maximumItems": 30
@@ -199,7 +199,7 @@
         ],
         "discovery": {
           "kind": "source-adapter",
-          "adapter": "aljazeera-english",
+          "adapter": "aljazeera",
           "driver": "http",
           "route": "human-rights",
           "maximumItems": 30

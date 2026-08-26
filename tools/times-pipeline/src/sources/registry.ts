@@ -1,11 +1,11 @@
 import { africanewsSource } from "./africanews/index.js";
 import { agenciaBrasilSource } from "./agencia-brasil/index.js";
-import { alJazeeraSource } from "./aljazeera-english/index.js";
+import { alJazeeraSource } from "./aljazeera/index.js";
 import { apSource } from "./ap/index.js";
-import { bloombergSource } from "./bloomberg-markets/index.js";
+import { bloombergSource } from "./bloomberg/index.js";
 import { chinanewsSource } from "./chinanews/index.js";
 import { clsSource } from "./cls/index.js";
-import { cnaSource } from "./cna-singapore/index.js";
+import { cnaSource } from "./cna/index.js";
 import { dwSource } from "./dw/index.js";
 import { focusTaiwanSource } from "./focus-taiwan/index.js";
 import { nikkeiSource } from "./nikkei/index.js";

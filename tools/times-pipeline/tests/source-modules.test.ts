@@ -121,7 +121,7 @@ describe("native source modules", () => {
   });
 
   it("exposes Bloomberg's embedded article body strategy", () => {
-    expect(sourcePagePolicy("bloomberg-markets")).toEqual(expect.objectContaining({
+    expect(sourcePagePolicy("bloomberg")).toEqual(expect.objectContaining({
       bodyExtractor: "bloomberg-next-data",
       capture: "browser",
     }));

@@ -10,8 +10,37 @@ describe("sources v2", () => {
     const catalog = JSON.parse(await readFile(path.join(root, "sources.v2.json"), "utf8")) as { sourceFiles: string[] };
     expect(catalog.sourceFiles).toHaveLength(22);
     expect(catalog.sourceFiles.every((file) => /^src\/sources\/[a-z0-9-]+\/source\.json$/u.test(file))).toBe(true);
+    for (const sourceFile of catalog.sourceFiles) {
+      const configured = JSON.parse(await readFile(path.join(root, sourceFile), "utf8")) as { id: string };
+      expect(configured.id, `${sourceFile} must use its publisher directory as the source id`)
+        .toBe(path.basename(path.dirname(sourceFile)));
+    }
     const sources = await loadSources(path.join(root, "sources.v2.json"));
     expect(sources).toHaveLength(22);
+    expect(sources.map((source) => source.id).toSorted()).toEqual([
+      "africanews",
+      "agencia-brasil",
+      "aljazeera",
+      "ap",
+      "axios",
+      "bloomberg",
+      "chinanews",
+      "cls",
+      "cna",
+      "dw",
+      "focus-taiwan",
+      "ft",
+      "guardian",
+      "nikkei",
+      "npr",
+      "nyt",
+      "people",
+      "reuters",
+      "scmp",
+      "thepaper",
+      "xinhua",
+      "zaobao",
+    ]);
     expect(sources.map((source) => source.id)).not.toContain("cctv");
     expect(sources.map((source) => source.id)).toContain("agencia-brasil");
     expect(sources.every((source) => Boolean(source.sections?.length))).toBe(true);
@@ -21,7 +50,7 @@ describe("sources v2", () => {
     expect(sources.find((source) => source.id === "reuters")?.discovery.kind).toBe("multi");
     expect(sources.find((source) => source.id === "guardian")?.discovery.kind).toBe("multi");
     expect(sources.find((source) => source.id === "scmp")?.archive.bpc).toBe(true);
-    expect(sources.find((source) => source.id === "cna-singapore")?.discovery.kind).toBe("multi");
+    expect(sources.find((source) => source.id === "cna")?.discovery.kind).toBe("multi");
     const ap = sources.find((source) => source.id === "ap");
     expect(ap?.discovery.kind).toBe("multi");
     if (ap?.discovery.kind === "multi") {
@@ -32,7 +61,7 @@ describe("sources v2", () => {
         && target.discovery.driver === "http"
       )).toBe(true);
     }
-    const bloombergSections = sources.find((source) => source.id === "bloomberg-markets")?.sections;
+    const bloombergSections = sources.find((source) => source.id === "bloomberg")?.sections;
     expect(bloombergSections)
       .toContainEqual(expect.objectContaining({ id: "asia", url: "https://www.bloomberg.com/asia", discoverable: false }));
     expect(bloombergSections)

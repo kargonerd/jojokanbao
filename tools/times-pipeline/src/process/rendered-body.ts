@@ -1,12 +1,9 @@
 import { load } from "cheerio";
+import { extractBloombergBody } from "../sources/bloomberg/process.js";
 import type { SourcePagePolicy } from "../types.js";
+import { semanticParagraphs, type RenderedBodyQuality } from "./paragraphs.js";
 
 type JsonObject = Record<string, unknown>;
-
-export interface BodyQuality {
-  minimumCharacters?: number;
-  minimumParagraphs?: number;
-}
 
 function object(value: unknown): JsonObject | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : undefined;
@@ -22,56 +19,14 @@ function articleBodies(value: unknown): string[] {
   ];
 }
 
-function escapeHtml(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-}
-
-function semanticParagraphs(values: string[], quality: BodyQuality = {}): string | undefined {
-  const seen = new Set<string>();
-  const paragraphs = values.map((value) => value.replaceAll(/\s+/gu, " ").trim())
-    .filter((value) => value.length >= 20 && !seen.has(value) && Boolean(seen.add(value)));
-  const text = paragraphs.join("\n");
-  const paywallHints = ["subscribe to continue", "sign in to continue", "register to continue", "already a subscriber"];
-  if (text.length < (quality.minimumCharacters ?? 800) || paragraphs.length < (quality.minimumParagraphs ?? 3)) return undefined;
-  if (text.length < 2_000 && paywallHints.some((hint) => text.toLowerCase().includes(hint))) return undefined;
-  return paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
-}
-
-function richText(value: unknown): string {
-  if (Array.isArray(value)) return value.map(richText).join("");
-  const row = object(value);
-  if (!row) return "";
-  if (row.type === "text" && typeof row.value === "string") return row.value;
-  return richText(row.content);
-}
-
-function bloombergBody(html: string, quality: BodyQuality): string | undefined {
-  const document = load(html);
-  const value = document("script#__NEXT_DATA__").text();
-  if (!value) return undefined;
-  try {
-    const root = object(JSON.parse(value));
-    const props = object(root?.props);
-    const pageProps = object(props?.pageProps);
-    const story = object(pageProps?.story);
-    const body = object(story?.body);
-    const blocks = Array.isArray(body?.content) ? body.content : [];
-    const ignored = new Set(["ad", "embed", "inline-newsletter", "inline-recirc", "media", "tabularData"]);
-    return semanticParagraphs(blocks.flatMap((value) => {
-      const block = object(value);
-      if (!block || (typeof block.type === "string" && ignored.has(block.type))) return [];
-      const text = richText(block).trim();
-      return text ? [text] : [];
-    }), quality);
-  } catch {
-    return undefined;
-  }
-}
-
-export function extractRenderedBody(html: string, policy?: SourcePagePolicy, quality: BodyQuality = {}): string | undefined {
+export function extractRenderedBody(
+  html: string,
+  policy?: SourcePagePolicy,
+  quality: RenderedBodyQuality = {},
+): string | undefined {
   if (!html.trim()) return undefined;
   if (policy?.bodyExtractor === "bloomberg-next-data") {
-    const extracted = bloombergBody(html, quality);
+    const extracted = extractBloombergBody(html, quality);
     if (extracted) return extracted;
   }
   const document = load(html);

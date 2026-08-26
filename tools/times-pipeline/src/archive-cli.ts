@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { parseArgs, requiredArg } from "./args.js";
-import { extractRenderedBody } from "./archive/body.js";
+import { extractRenderedBody } from "./process/rendered-body.js";
 import { proxyCandidates, selectProxy } from "./archive/proxy.js";
 import { mapSourceBatches } from "./archive/schedule.js";
 import {

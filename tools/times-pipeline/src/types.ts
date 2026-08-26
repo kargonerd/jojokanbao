@@ -24,9 +24,9 @@ export interface SourcePagePolicy {
 export type RouteSourceAdapter =
   | "africanews"
   | "agencia-brasil"
-  | "aljazeera-english"
+  | "aljazeera"
   | "chinanews"
-  | "cna-singapore"
+  | "cna"
   | "people"
   | "thepaper"
   | "xinhua"

@@ -1,5 +1,5 @@
 {
-  "id": "cna-singapore",
+  "id": "cna",
   "name": "CNA",
   "language": "en",
   "sections": [
@@ -69,7 +69,7 @@
         ],
         "discovery": {
           "kind": "source-adapter",
-          "adapter": "cna-singapore",
+          "adapter": "cna",
           "driver": "http",
           "route": "top-stories",
           "maximumItems": 50
