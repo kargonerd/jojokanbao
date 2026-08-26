@@ -8,6 +8,7 @@ type JsonObject = Record<string, unknown>;
 const AP_ROOT = "https://apnews.com";
 const AP_API = `${AP_ROOT}/graphql/delivery/ap/v1`;
 const PERSISTED_QUERY = "3bc305abbf62e9e632403a74cc86dc1cba51156d2313f09b3779efec51fc3acb";
+const EXCLUDED_RECOMMENDATION_CATEGORIES = new Set(["entertainment", "lifestyle", "sports"]);
 
 function object(value: unknown): JsonObject | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : undefined;
@@ -33,6 +34,8 @@ function candidate(source: SourceConfig, item: JsonObject): Candidate | undefine
   const rawLink = optionalString(item.url);
   const publishedAt = publisherDate(item.publishDateStamp, source.publicationTimeZone);
   if (!title || !rawLink || !publishedAt) return;
+  const publisherCategories = stringList(item.category);
+  if (publisherCategories.some((category) => EXCLUDED_RECOMMENDATION_CATEGORIES.has(category.toLowerCase()))) return;
   let canonicalUrl: string;
   try { canonicalUrl = normalizeArticleUrl(new URL(rawLink, AP_ROOT).href); } catch { return; }
   const summary = plainText(item.description).slice(0, 1_000) || undefined;
@@ -42,7 +45,7 @@ function candidate(source: SourceConfig, item: JsonObject): Candidate | undefine
     language: source.language, sourceUrl: new URL(rawLink, AP_ROOT).href, canonicalUrl,
     title: title.slice(0, 1_000), ...(summary ? { summary } : {}),
     contentStatus: summary ? "summary" : "metadata", publishedAt, authors: [],
-    publisherCategories: stringList(item.category), ...(upstreamId ? { upstreamId } : {}),
+    publisherCategories, ...(upstreamId ? { upstreamId } : {}),
   };
 }
 
