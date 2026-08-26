@@ -12,7 +12,7 @@ import { BrowserSourceSession } from "./capture/browser.js";
 import { downloadDirectAsset, fetchDirectPage, type CapturedHtmlPage } from "./capture/http.js";
 import { articleFingerprint, pendingArticles, type PageArticle, type PageCaptureState } from "./capture/pending.js";
 import { proxyCandidates, selectProxy } from "./capture/proxy.js";
-import { groupArticlesBySource, mapSourceBatches } from "./capture/schedule.js";
+import { mapSourceBatches, rotatingSourceProbes } from "./capture/schedule.js";
 import type { Candidate, SourceCaptureManifest, SourceConfig, SourceFetchPolicy } from "./types.js";
 
 interface RawRunManifest {
@@ -351,6 +351,7 @@ async function main(): Promise<void> {
   const controlUrl = args.get("proxy-control-url");
   const proxyGroup = args.get("proxy-group") ?? "JOJO-TIMES-ROUTE";
   const automaticName = args.get("proxy-automatic-name") ?? "JOJO-TIMES-AUTO";
+  const probeOffsets = new Map<string, number>();
   let rotationRounds = 0;
   if (pending.length && proxyServer && controlUrl && rotationAttempts > 0) {
     try {
@@ -360,7 +361,7 @@ async function main(): Promise<void> {
         if (!failed.length) break;
         await selectProxy(controlUrl, proxyGroup, alternative);
         await new Promise((resolve) => setTimeout(resolve, 250));
-        const probes = groupArticlesBySource(failed).flatMap((batch) => batch.articles.slice(0, 1));
+        const probes = rotatingSourceProbes(failed, probeOffsets);
         await captureRound(probes, true);
         const usableSources = new Set(probes.filter((article) => {
           const outcome = best.get(article.articleId);

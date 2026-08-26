@@ -13,6 +13,17 @@ export function groupArticlesBySource<T extends { sourceId: string }>(articles: 
   return [...grouped].map(([sourceId, rows]) => ({ sourceId, articles: rows }));
 }
 
+export function rotatingSourceProbes<T extends { sourceId: string }>(
+  articles: readonly T[],
+  offsets: Map<string, number>,
+): T[] {
+  return groupArticlesBySource(articles).map((batch) => {
+    const offset = offsets.get(batch.sourceId) ?? 0;
+    offsets.set(batch.sourceId, offset + 1);
+    return batch.articles[offset % batch.articles.length]!;
+  });
+}
+
 export async function mapSourceBatches<T extends { sourceId: string }, R>(
   articles: readonly T[],
   concurrency: number,

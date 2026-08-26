@@ -23,5 +23,8 @@ export function unavailablePageReason(input: {
   )) return "UnsupportedMedia";
   if (input.sourceId === "xinhua" && /新华社音视频部制作/u.test(html)) return "UnsupportedMedia";
   if (input.sourceId === "scmp" && /SCMP Plus subscription is required for access/iu.test(html)) return "HardPaywall";
+  if (input.sourceId === "nyt"
+    && /preview view of this article while we are checking your access/iu.test(html)
+    && /subscribe for all of The Times/iu.test(html)) return "HardPaywall";
   return undefined;
 }

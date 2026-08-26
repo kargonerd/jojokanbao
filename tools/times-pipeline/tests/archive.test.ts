@@ -3,7 +3,7 @@ import { bodyWithAssets, discoverArticleImages } from "../src/capture/article-co
 import { unavailablePageReason } from "../src/capture/availability.js";
 import { articleFingerprint, pendingArticles, type PageArticle } from "../src/capture/pending.js";
 import { selectProxy, selectProxyCandidates } from "../src/capture/proxy.js";
-import { groupArticlesBySource, mapSourceBatches } from "../src/capture/schedule.js";
+import { groupArticlesBySource, mapSourceBatches, rotatingSourceProbes } from "../src/capture/schedule.js";
 
 const now = new Date("2026-08-22T12:00:00Z");
 
@@ -62,8 +62,20 @@ describe("page capture orchestration", () => {
       sourceId: "scmp", title: "Plus story", url: "https://www.scmp.com/plus/story", html: "SCMP Plus subscription is required for access.", hasFullBody: false,
     })).toBe("HardPaywall");
     expect(unavailablePageReason({
+      sourceId: "nyt", title: "Subscriber story", url: "https://www.nytimes.com/story", hasFullBody: false,
+      html: "You have a preview view of this article while we are checking your access. Subscribe for all of The Times.",
+    })).toBe("HardPaywall");
+    expect(unavailablePageReason({
       sourceId: "bloomberg", title: "Story", url: "https://www.bloomberg.com/news/articles/story", html: "Subscribe to continue", hasFullBody: false,
     })).toBeUndefined();
+  });
+
+  it("rotates proxy probes across the failed articles for each publisher", () => {
+    const rows = [article("a-1", "a"), article("a-2", "a"), article("b-1", "b")];
+    const offsets = new Map<string, number>();
+    expect(rotatingSourceProbes(rows, offsets).map((row) => row.articleId)).toEqual(["a-1", "b-1"]);
+    expect(rotatingSourceProbes(rows, offsets).map((row) => row.articleId)).toEqual(["a-2", "b-1"]);
+    expect(rotatingSourceProbes(rows, offsets).map((row) => row.articleId)).toEqual(["a-1", "b-1"]);
   });
 
   it("selects healthy and spread Mihomo nodes without reusing the active route", () => {
