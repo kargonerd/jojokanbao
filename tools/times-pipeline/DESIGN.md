@@ -63,7 +63,8 @@ API 合约不得放入假定所有网站相同的通用适配器。
 
 direct-first 只有在主文档为 HTML 且正文质量通过时才停止；否则进入浏览器。browser-first 不执行
 已知无意义的直连。浏览器默认开启 JavaScript，使用持久上下文加载锁定 BPC。所有浏览器都由
-Playwright 控制；NYT 使用锁定 Brave，其他来源默认使用与 Playwright 配套的锁定 Chromium。流水线不生成 WARC/WACZ。
+Playwright 控制；NYT 使用锁定 Brave，其他来源默认使用与 Playwright 配套的锁定 Chromium。NYT 的
+BPC 请求若被站点拒绝，会在同一节点以新的原生 Brave profile 重试。流水线不生成 WARC/WACZ。
 
 主文档保存两份：
 

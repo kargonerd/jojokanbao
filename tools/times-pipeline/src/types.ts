@@ -142,6 +142,7 @@ export interface SourceConfig {
     strategy: PageFetchStrategy;
     bpc: boolean;
     browser?: "chromium" | "brave";
+    retryWithoutBpcOnBlocked?: boolean;
     proxyPolicy?: "none" | "rotate";
   };
   health: {

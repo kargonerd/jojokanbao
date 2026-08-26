@@ -291,8 +291,6 @@ async function main(): Promise<void> {
   const captureRound = async (values: ArticleBundle[], forceBrowser: boolean): Promise<void> => {
     await mapSourceBatches(values, sourceWorkers, async (batch) => {
       const batchStartedAt = Date.now();
-      let captured = 0;
-      let failed = 0;
       process.stderr.write(`[page-capture] ${batch.sourceId}: ${forceBrowser ? "proxy retry" : "initial"} ${batch.articles.length} article(s)\n`);
       const source = sources.get(batch.sourceId)!;
       const browserKind = source.fetch.browser ?? "chromium";
@@ -300,6 +298,7 @@ async function main(): Promise<void> {
         throw new Error(`${source.id} requires JOJO_TIMES_BRAVE_PATH`);
       }
       let session: BrowserSourceSession | undefined;
+      let nativeSession: BrowserSourceSession | undefined;
       const browser = async (): Promise<BrowserSourceSession> => {
         session ??= await BrowserSourceSession.open({
           ...(proxyServer ? { proxyServer } : {}),
@@ -309,18 +308,40 @@ async function main(): Promise<void> {
         });
         return session;
       };
+      const nativeBrowser = async (): Promise<BrowserSourceSession> => {
+        nativeSession ??= await BrowserSourceSession.open({
+          ...(proxyServer ? { proxyServer } : {}),
+          ...(browserKind === "brave" && bravePath ? { executablePath: bravePath } : {}),
+          requireExtension: false,
+        });
+        return nativeSession;
+      };
       const record = (articleId: string, outcome: CaptureOutcome): void => {
         const previous = best.get(articleId);
         if (!previous || successfulPage(outcome.page, outcome.fullBody) || retryableOutcome(previous)) best.set(articleId, outcome);
-        if (outcome.fullBody) captured += 1;
-        else failed += 1;
       };
       try {
         for (const article of batch.articles) {
           record(article.articleId, await captureOne(workspace, article, timeoutSeconds, browser, forceBrowser));
         }
+        if (source.fetch.retryWithoutBpcOnBlocked) {
+          const blocked = batch.articles.filter((article) => {
+            const outcome = best.get(article.articleId);
+            return retryableOutcome(outcome) && [401, 403, 429].includes(outcome?.page.status ?? 0);
+          });
+          if (blocked.length) {
+            process.stderr.write(`[page-capture] ${batch.sourceId}: retrying ${blocked.length} blocked article(s) with a native browser profile\n`);
+            for (const article of blocked) {
+              record(article.articleId, await captureOne(workspace, article, timeoutSeconds, nativeBrowser, true));
+            }
+          }
+        }
       } finally {
         await session?.close();
+        await nativeSession?.close();
+        const outcomes = batch.articles.map((article) => best.get(article.articleId));
+        const captured = outcomes.filter((outcome) => outcome?.fullBody).length;
+        const failed = outcomes.length - captured;
         process.stderr.write(`[page-capture] ${batch.sourceId}: ${captured} full, ${failed} failed in ${Math.ceil((Date.now() - batchStartedAt) / 1_000)}s\n`);
       }
     });

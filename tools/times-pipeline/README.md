@@ -24,6 +24,7 @@ Brasil。央视新闻、财新、WSJ、第一财经、Indian Express 和证券�
 - direct-first：普通 HTML 能稳定给出全文的媒体先直连，正文不足再启动浏览器；
 - browser-first：Bloomberg、NYT、Reuters、FT、Axios、Nikkei、联合早报和 SCMP 直接进入浏览器；
 - 所有浏览器都由 Playwright 持久上下文控制，启用 JavaScript 和锁定版本 BPC；NYT 由 Playwright 直接控制锁定 Brave，其余媒体使用锁定 Playwright Chromium；
+- NYT 的 BPC 请求若被 401/403/429 拒绝，会在同一节点用新的 Playwright Brave 原生 profile 重试，避免 BPC 的站点 UA 规则本身触发拦截；
 - 同一媒体串行复用 Cookie，不同媒体默认最多八路并行；
 - 401/403/429、JS challenge 或正文不完整不会被判成硬付费墙；需要代理的媒体每个备用节点只探测一篇，最多验证 32 个分散的 Mihomo 节点，命中后才补抓该媒体剩余文章；
 - 视频和图集在发现阶段跳过；只有完整正文进入 Canonical/Delivery，摘要只留在 Raw 审计数据。

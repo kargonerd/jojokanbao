@@ -51,6 +51,7 @@ describe("sources v2", () => {
     expect(sources.find((source) => source.id === "guardian")?.discovery.kind).toBe("multi");
     expect(sources.find((source) => source.id === "scmp")?.fetch).toMatchObject({ strategy: "browser-first", bpc: true });
     expect(sources.find((source) => source.id === "nyt")?.fetch.browser).toBe("brave");
+    expect(sources.find((source) => source.id === "nyt")?.fetch.retryWithoutBpcOnBlocked).toBe(true);
     expect(sources.find((source) => source.id === "cna")?.discovery.kind).toBe("multi");
     const ap = sources.find((source) => source.id === "ap");
     expect(ap?.discovery.kind).toBe("multi");

@@ -125,6 +125,7 @@
     "strategy": "browser-first",
     "bpc": true,
     "browser": "brave",
+    "retryWithoutBpcOnBlocked": true,
     "proxyPolicy": "rotate"
   },
   "health": {

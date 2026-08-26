@@ -213,6 +213,10 @@ function parseSource(value: unknown, position: number): SourceConfig | null {
   if (browser !== undefined && browser !== "chromium" && browser !== "brave") {
     throw new Error(`${id}.fetch.browser must be chromium or brave`);
   }
+  const retryWithoutBpcOnBlocked = pageFetch.retryWithoutBpcOnBlocked;
+  if (retryWithoutBpcOnBlocked !== undefined && typeof retryWithoutBpcOnBlocked !== "boolean") {
+    throw new Error(`${id}.fetch.retryWithoutBpcOnBlocked must be a boolean`);
+  }
   const health = row.health as Record<string, unknown> | undefined;
   const minimumCandidates = health?.minimumCandidates;
   if (!Number.isInteger(minimumCandidates) || (minimumCandidates as number) < 0) {
@@ -234,6 +238,7 @@ function parseSource(value: unknown, position: number): SourceConfig | null {
       strategy: strategy as SourceConfig["fetch"]["strategy"],
       bpc: pageFetch.bpc,
       ...(browser ? { browser: browser as NonNullable<SourceConfig["fetch"]["browser"]> } : {}),
+      ...(retryWithoutBpcOnBlocked !== undefined ? { retryWithoutBpcOnBlocked } : {}),
       ...(proxyPolicy ? { proxyPolicy } : {}),
     },
     health: { minimumCandidates: minimumCandidates as number },
