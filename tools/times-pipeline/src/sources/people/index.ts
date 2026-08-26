@@ -1,5 +1,6 @@
 import type { SourceModule } from "../contracts.js";
 import { discoverPeople } from "./discover.js";
+import { peoplePage } from "./page.js";
 
 export const peopleSource: SourceModule = {
   id: "people",
@@ -7,4 +8,5 @@ export const peopleSource: SourceModule = {
     if (endpoint.adapter !== "people") throw new Error(`${source.id}: expected People endpoint`);
     return discoverPeople(source, endpoint, fetchedAt);
   },
+  page: peoplePage,
 };

@@ -89,8 +89,9 @@ export function extractRenderedBody(html: string, policy?: SourcePagePolicy, qua
     if (result) return result;
   }
   document("script, style, nav, footer, header, aside, form, noscript").remove();
+  const sourceSelectors = policy?.bodySelectors ?? [];
   const selectors = [
-    ...(policy?.bodySelectors ?? []),
+    ...sourceSelectors,
     "[itemprop='articleBody']",
     "article",
     ".article-body",
@@ -102,14 +103,18 @@ export function extractRenderedBody(html: string, policy?: SourcePagePolicy, qua
     "main",
   ];
   let best: string | undefined;
-  for (const selector of selectors) {
+  for (const [index, selector] of selectors.entries()) {
     const values: string[] = [];
     document(selector).each((_, container) => {
       const elements = document(container).find("p, h2, h3, blockquote").toArray();
       if (elements.length) values.push(...elements.map((element) => document(element).text()));
       else values.push(document(container).text());
     });
-    const candidate = semanticParagraphs(values, quality);
+    let candidate = semanticParagraphs(values, quality);
+    if (!candidate && index < sourceSelectors.length) {
+      const completeContainers = document(selector).toArray().map((container) => document(container).text());
+      candidate = semanticParagraphs(completeContainers, quality);
+    }
     if (candidate && (!best || candidate.length > best.length)) best = candidate;
   }
   return best;

@@ -1,5 +1,6 @@
 import { discoverHtmlListing, sectionUrl } from "../../discovery/html-listing.js";
 import type { RouteDiscoveryEndpoint, SourceConfig } from "../../types.js";
+import { cnaPage } from "./page.js";
 
 type Endpoint = RouteDiscoveryEndpoint;
 
@@ -9,7 +10,7 @@ export function discoverCna(source: SourceConfig, endpoint: Endpoint, fetchedAt:
     listingUrl: sectionUrl(source, endpoint.route),
     articlePathPrefixes: ["/asia/", "/east-asia/", "/singapore/", "/world/", "/business/"],
     maximumItems: endpoint.maximumItems,
-    bodySelectors: [".text-long", ".article-content"],
+    bodySelectors: cnaPage.bodySelectors,
     version: "cna-html/1",
   });
 }

@@ -196,7 +196,7 @@
       "discovery-summary"
     ],
     "parser": "people",
-    "minimumFullCharacters": 100,
+    "minimumFullCharacters": 40,
     "minimumFullParagraphs": 1
   },
   "archive": {

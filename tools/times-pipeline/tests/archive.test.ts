@@ -113,6 +113,16 @@ describe("browser archive orchestration", () => {
     expect(body).toContain("完整但很短的快讯正文");
   });
 
+  it("uses the complete source-owned container when an article mixes paragraphs and text nodes", () => {
+    const body = extractRenderedBody(
+      `<div id="publisher-body">${"正文直接文本。".repeat(30)}<p>来源信息不会让直接文本丢失。</p></div>`,
+      { capture: "browser", bodySelectors: ["#publisher-body"] },
+      { minimumCharacters: 100, minimumParagraphs: 1 },
+    );
+
+    expect(body).toContain("正文直接文本");
+  });
+
   it("pins Browsertrix and mounts BPC without passing secrets into the container", () => {
     const args = browsertrixArguments({
       workspace: "/workspace",

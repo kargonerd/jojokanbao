@@ -7,6 +7,7 @@ import { chinanewsSource } from "./chinanews/index.js";
 import { clsSource } from "./cls/index.js";
 import { cnaSource } from "./cna-singapore/index.js";
 import { dwSource } from "./dw/index.js";
+import { focusTaiwanSource } from "./focus-taiwan/index.js";
 import { nikkeiSource } from "./nikkei/index.js";
 import { peopleSource } from "./people/index.js";
 import { reutersSource } from "./reuters/index.js";
@@ -26,6 +27,7 @@ const modules = new Map<string, SourceModule>([
   clsSource,
   cnaSource,
   dwSource,
+  focusTaiwanSource,
   nikkeiSource,
   peopleSource,
   reutersSource,

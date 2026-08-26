@@ -193,7 +193,13 @@ export async function runBrowsertrixAttempt(options: BrowsertrixRunOptions): Pro
       ...(capturedAt ? { capturedAt } : {}),
       ...(renderedHtml ? { renderedHtml } : {}),
       waczObject,
-      ...(!succeeded ? { error: status === undefined ? "BrowsertrixMissingPage" : `HTTPStatus${status}` } : {}),
+      ...(!succeeded ? {
+        error: status === undefined
+          ? "BrowsertrixMissingPage"
+          : status >= 200 && status < 400
+            ? "BrowsertrixMissingRenderedDom"
+            : `HTTPStatus${status}`,
+      } : {}),
     };
   }));
   return {

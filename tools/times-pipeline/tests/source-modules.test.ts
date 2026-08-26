@@ -126,4 +126,11 @@ describe("native source modules", () => {
       capture: "browser",
     }));
   });
+
+  it("keeps publisher-owned selectors for changing article layouts", () => {
+    expect(sourcePagePolicy("cls")?.bodySelectors).toContain(".detail-content");
+    expect(sourcePagePolicy("chinanews")?.bodySelectors).toContain("#cont_1_1_2");
+    expect(sourcePagePolicy("focus-taiwan")?.bodySelectors).toContain(".paragraph");
+    expect(sourcePagePolicy("nikkei")?.bodySelectors).toContain("[class*='FeatureArticleBody_featureArticleBody']");
+  });
 });

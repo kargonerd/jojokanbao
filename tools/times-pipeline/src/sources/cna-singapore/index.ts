@@ -1,5 +1,6 @@
 import type { SourceModule } from "../contracts.js";
 import { discoverCna } from "./discover.js";
+import { cnaPage } from "./page.js";
 
 export const cnaSource: SourceModule = {
   id: "cna-singapore",
@@ -7,4 +8,5 @@ export const cnaSource: SourceModule = {
     if (endpoint.adapter !== "cna-singapore") throw new Error(`${source.id}: expected CNA endpoint`);
     return discoverCna(source, endpoint, fetchedAt);
   },
+  page: cnaPage,
 };

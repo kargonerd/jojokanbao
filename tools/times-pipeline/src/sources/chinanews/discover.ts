@@ -1,5 +1,6 @@
 import { discoverHtmlListing, sectionUrl } from "../../discovery/html-listing.js";
 import type { RouteDiscoveryEndpoint, SourceConfig } from "../../types.js";
+import { chinanewsPage } from "./page.js";
 
 type Endpoint = RouteDiscoveryEndpoint;
 
@@ -18,7 +19,7 @@ export function discoverChinanews(source: SourceConfig, endpoint: Endpoint, fetc
     listingUrl: sectionUrl(source, endpoint.route),
     articlePathPrefixes: prefixes,
     maximumItems: endpoint.maximumItems,
-    bodySelectors: [".left_zw", ".content_desc"],
+    bodySelectors: chinanewsPage.bodySelectors,
     publicationDateSelectors: ["#pubtime_baidu", ".pubtime", ".content_left_time"],
     version: "chinanews-html/1",
   });
