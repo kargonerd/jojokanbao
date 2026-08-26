@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "capture": "node dist/src/capture-cli.js",
-    "archive": "node dist/src/archive-cli.js",
+    "capture-pages": "node dist/src/page-capture-cli.js",
     "prepare-proxy": "node dist/src/prepare-proxy-cli.js",
     "hf": "node dist/src/hf-cli.js",
     "process": "node dist/src/process-cli.js",
@@ -23,6 +23,7 @@
     "@jojo/content": "workspace:*",
     "cheerio": "1.2.0",
     "fast-xml-parser": "5.2.5",
+    "playwright": "1.60.0",
     "undici": "8.10.0",
     "yaml": "2.9.0"
   },

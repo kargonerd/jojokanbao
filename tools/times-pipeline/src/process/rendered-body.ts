@@ -1,6 +1,6 @@
 import { load } from "cheerio";
 import { extractBloombergBody } from "../sources/bloomberg/process.js";
-import type { SourcePagePolicy } from "../types.js";
+import type { SourceFetchPolicy } from "../types.js";
 import { semanticParagraphs, type RenderedBodyQuality } from "./paragraphs.js";
 
 type JsonObject = Record<string, unknown>;
@@ -21,7 +21,7 @@ function articleBodies(value: unknown): string[] {
 
 export function extractRenderedBody(
   html: string,
-  policy?: SourcePagePolicy,
+  policy?: SourceFetchPolicy,
   quality: RenderedBodyQuality = {},
 ): string | undefined {
   if (!html.trim()) return undefined;

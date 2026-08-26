@@ -1,6 +1,6 @@
 import { discoverOfficialRss } from "./rss.js";
 import { discoverSitemap } from "./sitemap.js";
-import { acceptSourceCandidate, discoverWithSourceModule, sourcePagePolicy } from "../sources/registry.js";
+import { acceptSourceCandidate, discoverWithSourceModule, sourceFetchPolicy } from "../sources/registry.js";
 import type {
   Candidate,
   DiscoveryEndpoint,
@@ -83,12 +83,12 @@ export async function discoverSource(source: SourceConfig, fetchedAt: string, cu
   const candidates = new Map<string, Candidate>();
   const fallbackCandidateIds = new Set<string>();
   const targets: Array<Record<string, unknown>> = [];
-  let pagePolicy: DiscoveryResult["pagePolicy"];
+  let fetchPolicy: DiscoveryResult["fetchPolicy"];
   let successfulTargets = 0;
   for (const target of source.discovery.targets) {
     try {
       const result = await discoverEndpoint(source, target.discovery, fetchedAt, cutoff, runtime);
-      pagePolicy ??= result.pagePolicy;
+      fetchPolicy ??= result.fetchPolicy;
       successfulTargets += 1;
       targets.push({ id: target.id, sectionIds: target.sectionIds, fallback: target.fallback === true, status: "ok", transport: result.transport, data: result.upstream });
       for (const candidate of result.candidates) {
@@ -116,13 +116,13 @@ export async function discoverSource(source: SourceConfig, fetchedAt: string, cu
   const selected = values.filter((candidate) => !source.sections?.length
     || candidate.publisherSections?.length
     || (taggedCount === 0 && fallbackCandidateIds.has(candidate.articleId)));
-  const effectivePagePolicy = pagePolicy ?? sourcePagePolicy(source.id);
+  const effectiveFetchPolicy = fetchPolicy ?? sourceFetchPolicy(source.id);
   return {
     source,
     transport: "multi",
     fetchedAt,
     upstream: { targets },
     candidates: selected,
-    ...(effectivePagePolicy ? { pagePolicy: effectivePagePolicy } : {}),
+    ...(effectiveFetchPolicy ? { fetchPolicy: effectiveFetchPolicy } : {}),
   };
 }

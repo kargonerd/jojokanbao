@@ -2,7 +2,7 @@ import { gunzipSync } from "node:zlib";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs, requiredArg } from "./args.js";
-import { writeCanonicalSource } from "./canonical-writer.js";
+import { writeCanonicalSource, type CanonicalWriteResult } from "./canonical-writer.js";
 import { loadSources } from "./config.js";
 import { processSourceCandidate } from "./sources/registry.js";
 import type { Candidate, SourceCaptureManifest } from "./types.js";
@@ -20,7 +20,7 @@ async function main(): Promise<void> {
   const rawRevision = args.get("raw-revision") ?? "local";
   const sources = new Map((await loadSources(configPath)).map((source) => [source.id, source]));
   const run = JSON.parse(await readFile(runManifestPath, "utf8")) as RawRunManifest;
-  const results: Array<{ sourceId: string; dates: string[]; articles: number; skippedMetadata: number }> = [];
+  const results: CanonicalWriteResult[] = [];
   for (const row of run.sources) {
     if (row.status !== "ok" || !row.output?.manifest) continue;
     const source = sources.get(row.sourceId);
@@ -33,10 +33,10 @@ async function main(): Promise<void> {
       .map((line) => processSourceCandidate(source.id, JSON.parse(line) as Candidate));
     results.push(await writeCanonicalSource(output, source, manifest, row.output.manifest, candidates, rawRevision));
   }
-  const reportPath = path.join(output, "canonical", "news", "runs", `${run.runId}.json`);
+  const reportPath = path.join(output, "canonical", "runs", `${run.runId}.json`);
   await mkdir(path.dirname(reportPath), { recursive: true });
   await writeFile(reportPath, `${JSON.stringify({
-    formatVersion: "jojo-times-canonical-run/1",
+    formatVersion: "jojo-times-canonical-run/2",
     runId: run.runId,
     rawRevision,
     processedAt: new Date().toISOString(),

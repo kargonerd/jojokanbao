@@ -1,6 +1,6 @@
 import type { SourceModule } from "../contracts.js";
 import { discoverChinanews } from "./discover.js";
-import { chinanewsPage } from "./page.js";
+import { chinanewsFetch } from "./fetch.js";
 
 export const chinanewsSource: SourceModule = {
   id: "chinanews",
@@ -8,5 +8,5 @@ export const chinanewsSource: SourceModule = {
     if (endpoint.adapter !== "chinanews") throw new Error(`${source.id}: expected China News endpoint`);
     return discoverChinanews(source, endpoint, fetchedAt);
   },
-  page: chinanewsPage,
+  fetch: chinanewsFetch,
 };

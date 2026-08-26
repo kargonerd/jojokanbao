@@ -14,7 +14,7 @@ export interface DiscoveryRuntime {
   browser?: BrowserDiscoveryRuntime;
 }
 
-export interface SourcePagePolicy {
+export interface SourceFetchPolicy {
   capture: "browser" | "http";
   captureUrl?: "canonical" | "source";
   bodySelectors: string[];
@@ -106,7 +106,25 @@ export interface PublisherSectionRef {
   name: string;
 }
 
-export type ContentPriority = "discovery-body" | "browser-parser" | "discovery-summary";
+export type ContentPriority = "discovery-body" | "captured-page" | "discovery-summary";
+
+export type PageFetchStrategy = "direct-first" | "browser-first";
+
+export interface CapturedAsset {
+  id: string;
+  type: "image";
+  role: "lead" | "content";
+  sourceUrl: string;
+  rawObject: string;
+  mediaType: string;
+  size: number;
+  sha256: string;
+  alt?: string;
+  caption?: string;
+  credit?: string;
+  width?: number;
+  height?: number;
+}
 
 export interface SourceConfig {
   id: string;
@@ -120,8 +138,8 @@ export interface SourceConfig {
     minimumFullCharacters?: number;
     minimumFullParagraphs?: number;
   };
-  archive: {
-    mode: "browser" | "http" | "none";
+  fetch: {
+    strategy: PageFetchStrategy;
     bpc: boolean;
     proxyPolicy?: string;
   };
@@ -141,10 +159,13 @@ export interface Candidate {
   title: string;
   summary?: string;
   discoveryBody?: string;
-  browserBody?: string;
-  browserCapturedAt?: string;
-  browserHttpStatus?: number;
-  browserArchiveObject?: string;
+  capturedBody?: string;
+  capturedAt?: string;
+  captureHttpStatus?: number;
+  rawPageObject?: string;
+  captureStatus?: "pending" | "captured" | "unchanged" | "failed" | "hard-paywall";
+  captureMethod?: "direct" | "browser";
+  assets?: CapturedAsset[];
   contentStatus: "full" | "summary" | "metadata";
   publishedAt: string;
   updatedAt?: string;
@@ -161,7 +182,7 @@ export interface DiscoveryResult {
   upstream: unknown;
   candidates: Candidate[];
   version?: string;
-  pagePolicy?: SourcePagePolicy;
+  fetchPolicy?: SourceFetchPolicy;
 }
 
 export interface RecordedExchange {
@@ -187,7 +208,7 @@ export interface RecordedExchange {
 }
 
 export interface SourceCaptureManifest {
-  formatVersion: "jojo-times-raw-source-run/1";
+  formatVersion: "jojo-times-raw-source-run/2";
   runId: string;
   sourceId: string;
   sourceName: string;
@@ -199,7 +220,7 @@ export interface SourceCaptureManifest {
   summaryCount: number;
   metadataCount: number;
   networkExchangeCount: number;
-  pagePolicy?: SourcePagePolicy;
+  fetchPolicy?: SourceFetchPolicy;
   sectionCoverage?: {
     selected: string[];
     covered: string[];
@@ -208,7 +229,16 @@ export interface SourceCaptureManifest {
     fallbackUsed: boolean;
   };
   objects: Array<{ path: string; size: number; sha256: string }>;
-  archiveStatus: "recorded-http" | "wacz-complete";
+  captureStatus: "discovery-complete" | "pages-complete";
+  pageCapture?: {
+    planned: number;
+    captured: number;
+    unchanged: number;
+    failed: number;
+    direct: number;
+    browser: number;
+    assets: number;
+  };
   healthStatus: "healthy" | "degraded" | "empty";
   complete: boolean;
 }

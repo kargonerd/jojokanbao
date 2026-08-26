@@ -23,7 +23,7 @@ the environments that need different runners or dependencies:
 - root-level Homepage content
 - Supabase migrations and the shared Auth contract
 - EdgeOne Python Cloud API tests
-- the Times offline-pipeline tests and archive-manifest checks
+- the Times offline-pipeline tests and Raw/Canonical contract checks
 
 The `build-and-test` aggregate job and `e2e` browser job keep stable check
 names because the `master` ruleset requires those contexts. The aggregate job
@@ -79,10 +79,8 @@ Scheduled and manually operated data tasks remain independent workflows:
 - `maintenance-bloomberg-archive.yml`
 - `maintenance-purge-archive-pdf-cache.yml`
 - `maintenance-sync-rmrb.yml`
-- `maintenance-times-capture.yml` — every ten minutes, captures all Times sources and commits HTTP/WACZ Raw to the private HF Dataset
-- `maintenance-times-process.yml` — at minutes 5/15/25/35/45/55, commits Canonical to the same HF Dataset and publishes B2 Delivery in pointer-safe order
-- `maintenance-times-v2-pilot.yml` — manual, non-publishing v2 validation
-- `maintenance-times.yml` — legacy v1 manual validation only; it has no schedule
+- `maintenance-times-capture.yml` — every ten minutes, captures pending article pages and images and commits Raw to the private HF Dataset
+- `maintenance-times-process.yml` — after a scheduled Capture succeeds, commits Canonical to the same HF Dataset and publishes B2 Delivery in pointer-safe order
 
 Do not add a feature-specific CI workflow. Add a package script or a focused
 job to `ci.yml`; create another workflow only when its trigger, permissions, or

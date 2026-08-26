@@ -49,7 +49,7 @@ describe("sources v2", () => {
       + (source.sections?.filter((section) => section.discoverable !== false).length ?? 0), 0)).toBe(146);
     expect(sources.find((source) => source.id === "reuters")?.discovery.kind).toBe("multi");
     expect(sources.find((source) => source.id === "guardian")?.discovery.kind).toBe("multi");
-    expect(sources.find((source) => source.id === "scmp")?.archive.bpc).toBe(true);
+    expect(sources.find((source) => source.id === "scmp")?.fetch).toMatchObject({ strategy: "browser-first", bpc: true });
     expect(sources.find((source) => source.id === "cna")?.discovery.kind).toBe("multi");
     const ap = sources.find((source) => source.id === "ap");
     expect(ap?.discovery.kind).toBe("multi");

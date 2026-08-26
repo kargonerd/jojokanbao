@@ -4,7 +4,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const RAW_RUN_ROOT = "raw/news/runs";
+const RAW_RUN_ROOT = "raw/runs";
 const DATASET_REPO_TYPE = "dataset" as const;
 
 interface RunSourceRow {
@@ -55,11 +55,22 @@ export function candidateDates(compressed: Uint8Array): Set<string> {
 }
 
 export function canonicalObjects(sourceId: string, dates: ReadonlySet<string>): Set<string> {
-  const root = path.posix.join("canonical", "news", sourceId);
+  const root = path.posix.join("canonical", sourceId);
   return new Set([
     path.posix.join(root, "dataset.json"),
-    ...[...dates].map((date) => path.posix.join(root, "articles", date.slice(0, 4), date.slice(5, 7), `${date}.jsonl.gz`)),
+    ...[...dates].map((date) => path.posix.join(root, "dates", date.slice(0, 4), date.slice(5, 7), `${date}.json.gz`)),
   ]);
+}
+
+export function candidateAssets(compressed: Uint8Array): Set<string> {
+  const objects = new Set<string>();
+  for (const line of gunzipSync(compressed).toString("utf8").split(/\r?\n/u)) {
+    if (!line.trim()) continue;
+    const assets = (JSON.parse(line) as { assets?: Array<{ rawObject?: unknown }> }).assets;
+    if (!Array.isArray(assets)) continue;
+    for (const asset of assets) if (typeof asset.rawObject === "string") objects.add(asset.rawObject);
+  }
+  return objects;
 }
 
 function localObjectPath(output: string, objectName: string): string {
@@ -142,9 +153,13 @@ export class HfTimesDataset {
     return target;
   }
 
-  async restoreState(objectName = "raw/web-archives/times/state.json.gz"): Promise<{ restored: boolean; path?: string }> {
-    const target = await this.downloadObject(objectName);
-    return target ? { restored: true, path: target } : { restored: false };
+  async restoreState(): Promise<{ restored: number; objects: string[] }> {
+    const revision = await this.revision();
+    const states = [...await this.treeFiles("raw", revision)]
+      .filter((objectName) => /^raw\/[^/]+\/state\.json\.gz$/u.test(objectName))
+      .sort();
+    await mapLimit(states, 8, async (objectName) => this.downloadObject(objectName, revision));
+    return { restored: states.length, objects: states };
   }
 
   async latestCompleteRun(): Promise<{ revision: string; objectName: string; file: string; run: RawRunManifest }> {
@@ -178,11 +193,15 @@ export class HfTimesDataset {
       const candidatesObject = candidateObject(manifestObject, manifest);
       const candidatesFile = await this.downloadObject(candidatesObject, latest.revision);
       if (!candidatesFile) throw new Error(`HF Raw candidates object is missing: ${candidatesObject}`);
-      return { sourceId, dates: candidateDates(await readFile(candidatesFile)) };
+      const bytes = await readFile(candidatesFile);
+      return { sourceId, dates: candidateDates(bytes), assets: candidateAssets(bytes) };
     });
+    const rawAssets = new Set<string>();
+    for (const bundle of bundles) for (const objectName of bundle.assets) rawAssets.add(objectName);
+    await mapLimit([...rawAssets], 8, async (objectName) => this.downloadObject(objectName, latest.revision));
     const wanted = new Set<string>();
     for (const bundle of bundles) for (const objectName of canonicalObjects(bundle.sourceId, bundle.dates)) wanted.add(objectName);
-    const existing = await this.treeFiles("canonical/news", latest.revision);
+    const existing = await this.treeFiles("canonical", latest.revision);
     const canonical = [...wanted].filter((objectName) => existing.has(objectName)).sort();
     await mapLimit(canonical, 8, async (objectName) => this.downloadObject(objectName, latest.revision));
     return {
@@ -191,7 +210,7 @@ export class HfTimesDataset {
       runObject: latest.objectName,
       runManifest: path.resolve(latest.file),
       sources: rows.length,
-      rawFiles: 1 + rows.length * 2,
+      rawFiles: 1 + rows.length * 2 + rawAssets.size,
       canonicalFiles: canonical.length,
     };
   }

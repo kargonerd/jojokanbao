@@ -84,15 +84,15 @@
   "content": {
     "priority": [
       "discovery-body",
-      "browser-parser",
+      "captured-page",
       "discovery-summary"
     ],
     "parser": "cls",
     "minimumFullCharacters": 100,
     "minimumFullParagraphs": 1
   },
-  "archive": {
-    "mode": "browser",
+  "fetch": {
+    "strategy": "direct-first",
     "bpc": true,
     "proxyPolicy": "direct-first"
   },

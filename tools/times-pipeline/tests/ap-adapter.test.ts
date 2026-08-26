@@ -21,8 +21,8 @@ const source: SourceConfig = {
       },
     }],
   },
-  content: { priority: ["browser-parser", "discovery-summary"], parser: "ap" },
-  archive: { mode: "browser", bpc: true },
+  content: { priority: ["captured-page", "discovery-summary"], parser: "ap" },
+  fetch: { strategy: "direct-first", bpc: true },
   health: { minimumCandidates: 1 },
   enabled: true,
 };
@@ -65,7 +65,7 @@ describe("AP source adapter", () => {
     const result = await discoverSource(source, "2026-08-25T04:10:00Z", Date.parse("2026-08-24T04:10:00Z"));
 
     expect(result.candidates).toHaveLength(1);
-    expect(result.pagePolicy).toEqual(expect.objectContaining({ capture: "browser" }));
+    expect(result.fetchPolicy).toEqual(expect.objectContaining({ capture: "browser" }));
     expect(result.candidates[0]).toEqual(expect.objectContaining({
       canonicalUrl: "https://apnews.com/article/world-headline",
       title: "World headline",

@@ -1,6 +1,6 @@
 import type { SourceModule } from "../contracts.js";
 import { discoverNikkei } from "./discover.js";
-import { nikkeiPage } from "./page.js";
+import { nikkeiFetch } from "./fetch.js";
 import { processNikkei } from "./process.js";
 
 export const nikkeiSource: SourceModule = {
@@ -9,6 +9,6 @@ export const nikkeiSource: SourceModule = {
     if (endpoint.adapter !== "nikkei") throw new Error(`${source.id}: expected Nikkei endpoint`);
     return discoverNikkei(source, endpoint, fetchedAt);
   },
-  page: nikkeiPage,
+  fetch: nikkeiFetch,
   process: processNikkei,
 };

@@ -2,58 +2,22 @@ import { createHash } from "node:crypto";
 import { gzipSync, gunzipSync } from "node:zlib";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { load } from "cheerio";
 import type {
   JojoArticleDescriptor,
+  JojoAssetDescriptor,
   JojoCatalog,
   JojoFragment,
   TimesDateManifest,
   TimesDeliveryArticle,
-  TimesDeliveryIndex,
-  TimesSourceHealth,
-  TimesUnavailableCase,
+  TimesSourceIndex,
+  TimesTimelineDay,
+  TimesTimelineIndex,
 } from "@jojo/content";
-import type { CanonicalArticle } from "./canonical-writer.js";
+import type { CanonicalArticle, CanonicalWriteResult } from "./canonical-writer.js";
 import { sha256 } from "./identity.js";
 import { plainText, removeParserArtifacts } from "./text.js";
-import type { Candidate, SourceCaptureManifest, SourceConfig } from "./types.js";
-
-interface RawWorkerOutput {
-  manifest?: string;
-}
-
-interface RawWorkerResult {
-  sourceId: string;
-  status: "ok" | "empty" | "error";
-  error?: string;
-  output?: RawWorkerOutput;
-}
-
-export interface RawRunManifest {
-  runId: string;
-  startedAt: string;
-  completedAt: string;
-  windowHours?: number;
-  sources: RawWorkerResult[];
-  browserArchive?: {
-    captureBySource?: Array<{ sourceId: string; attempts: number; succeeded: number; failed: number }>;
-    failedCases?: Array<{
-      articleId: string;
-      sourceId: string;
-      title?: string;
-      url?: string;
-      httpStatus?: number | null;
-      error?: string | null;
-    }>;
-  };
-}
-
-interface SourceDeliveryData {
-  source: SourceConfig;
-  manifest?: SourceCaptureManifest;
-  candidates: Candidate[];
-  canonical: CanonicalArticle[];
-  worker: RawWorkerResult;
-}
+import type { SourceConfig } from "./types.js";
 
 const JOX_SALT = 0x4a4f5831;
 
@@ -79,9 +43,7 @@ function maskByte(position: number, objectSeed: number): number {
 function transformJoxBytes(bytes: Uint8Array, objectKey: string): Uint8Array {
   const result = new Uint8Array(bytes.length);
   const seed = fnv1a(objectKey.replaceAll("\\", "/").replace(/^\/+/, ""));
-  for (let index = 0; index < bytes.length; index += 1) {
-    result[index] = bytes[index]! ^ maskByte(index, seed);
-  }
+  for (let index = 0; index < bytes.length; index += 1) result[index] = bytes[index]! ^ maskByte(index, seed);
   return result;
 }
 
@@ -89,8 +51,18 @@ export function readJoxJson<T>(bytes: Uint8Array, objectKey: string): T {
   return JSON.parse(gunzipSync(transformJoxBytes(bytes, objectKey)).toString("utf8")) as T;
 }
 
-function roundedRate(value: number): number {
-  return Math.round(value * 10_000) / 10_000;
+async function writeJoxJson(root: string, objectKey: string, value: unknown): Promise<{ size: number; sha256: string }> {
+  const clear = Buffer.from(`${JSON.stringify(value)}\n`, "utf8");
+  const target = path.join(root, ...objectKey.split("/"));
+  await mkdir(path.dirname(target), { recursive: true });
+  await writeFile(target, transformJoxBytes(gzipSync(clear, { level: 9 }), objectKey));
+  return { size: clear.length, sha256: sha256(clear) };
+}
+
+async function writeJoxBytes(root: string, objectKey: string, clear: Uint8Array): Promise<void> {
+  const target = path.join(root, ...objectKey.split("/"));
+  await mkdir(path.dirname(target), { recursive: true });
+  await writeFile(target, transformJoxBytes(clear, objectKey));
 }
 
 function dateParts(date: string): [string, string] {
@@ -99,353 +71,249 @@ function dateParts(date: string): [string, string] {
   return [year, month];
 }
 
-async function writeJoxJson(root: string, objectKey: string, value: unknown): Promise<{ size: number; sha256: string }> {
-  const clear = Buffer.from(`${JSON.stringify(value)}\n`, "utf8");
-  const compressed = gzipSync(clear, { level: 9 });
-  const target = path.join(root, ...objectKey.split("/"));
-  await mkdir(path.dirname(target), { recursive: true });
-  await writeFile(target, transformJoxBytes(compressed, objectKey));
-  return { size: clear.length, sha256: sha256(clear) };
+async function canonicalArticles(workspaceRoot: string, process: { sources: CanonicalWriteResult[] }): Promise<CanonicalArticle[]> {
+  const refs = process.sources.flatMap((source) => source.articles);
+  return Promise.all(refs.map(async (ref) => JSON.parse(gunzipSync(
+    await readFile(path.join(workspaceRoot, ...ref.object.split("/"))),
+  ).toString("utf8")) as CanonicalArticle));
 }
 
-async function readJsonLinesGzip<T>(target: string): Promise<T[]> {
-  try {
-    return gunzipSync(await readFile(target)).toString("utf8")
-      .split(/\r?\n/)
-      .filter(Boolean)
-      .map((line) => JSON.parse(line) as T);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw error;
-  }
+function bodyForDelivery(article: CanonicalArticle, availableAssets: ReadonlySet<string>): CanonicalArticle["body"] {
+  const $ = load(removeParserArtifacts(article.body.value), undefined, false);
+  $("figure[data-asset-id]").each((_index, element) => {
+    const current = $(element);
+    if (!availableAssets.has(current.attr("data-asset-id") ?? "")) current.remove();
+  });
+  return { ...article.body, value: $.html().trim() };
 }
 
-async function sourceData(
+async function deliveryArticle(
   workspaceRoot: string,
-  source: SourceConfig,
-  worker: RawWorkerResult,
-): Promise<SourceDeliveryData> {
-  if (!worker.output?.manifest) return { source, candidates: [], canonical: [], worker };
-  const manifestPath = path.join(workspaceRoot, ...worker.output.manifest.split("/"));
-  const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as SourceCaptureManifest;
-  const candidates = await readJsonLinesGzip<Candidate>(path.join(path.dirname(manifestPath), "candidates.jsonl.gz"));
-  const byDate = new Map<string, Set<string>>();
-  for (const candidate of candidates) {
-    const date = new Date(candidate.publishedAt).toISOString().slice(0, 10);
-    const ids = byDate.get(date) ?? new Set<string>();
-    ids.add(candidate.articleId);
-    byDate.set(date, ids);
+  deliveryRoot: string,
+  canonical: CanonicalArticle,
+): Promise<{ article: TimesDeliveryArticle; descriptor: JojoArticleDescriptor; fragment: JojoFragment }> {
+  const sourcePrefix = `content/newspapers/${canonical.source.id}`;
+  const assets: JojoAssetDescriptor[] = [];
+  for (const asset of canonical.assets) {
+    try {
+      const clear = new Uint8Array(await readFile(path.join(workspaceRoot, ...asset.rawObject.split("/"))));
+      const object = `${sourcePrefix}/assets/${asset.sha256}.jox`;
+      await writeJoxBytes(deliveryRoot, object, clear);
+      assets.push({
+        id: asset.id,
+        type: "image",
+        role: asset.role,
+        mediaType: asset.mediaType,
+        object,
+        size: clear.byteLength,
+        sha256: asset.sha256,
+        ...(asset.alt ? { alt: asset.alt } : {}),
+        ...(asset.caption ? { caption: asset.caption } : {}),
+        ...(asset.width ? { width: asset.width } : {}),
+        ...(asset.height ? { height: asset.height } : {}),
+      });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
   }
-  const canonical: CanonicalArticle[] = [];
-  for (const [date, ids] of byDate) {
-    const [year, month] = dateParts(date);
-    const rows = await readJsonLinesGzip<CanonicalArticle>(path.join(
-      workspaceRoot,
-      "canonical",
-      "news",
-      source.id,
-      "articles",
-      year,
-      month,
-      `${date}.jsonl.gz`,
-    ));
-    canonical.push(...rows.filter((article) => ids.has(article.articleId)));
-  }
-  return { source, manifest, candidates, canonical, worker };
-}
-
-function unavailableCases(data: SourceDeliveryData, deliveredIds: Set<string>): TimesUnavailableCase[] {
-  const source = { id: data.source.id, name: data.source.name, language: data.source.language };
-  const canonicalById = new Map(data.canonical.map((article) => [article.articleId, article]));
-  if (data.worker.status === "error") {
-    return [{
-      id: `${data.source.id}:source-error`,
-      source,
-      reason: "source-error",
-      stage: "discovery",
-      message: data.worker.error || "来源任务执行失败，未生成 Raw manifest。",
-    }];
-  }
-  if (data.candidates.length === 0) {
-    return [{
-      id: `${data.source.id}:source-empty`,
-      source,
-      reason: "source-empty",
-      stage: "discovery",
-      message: "过去一天没有发现可处理的文章。",
-    }];
-  }
-  return data.candidates
-    .filter((candidate) => !deliveredIds.has(candidate.articleId))
-    .map((candidate) => {
-      const canonical = canonicalById.get(candidate.articleId);
-      const summaryOnly = canonical?.contentStatus === "summary" || candidate.contentStatus === "summary";
-      return {
-        id: candidate.articleId,
-        source,
-        reason: candidate.contentStatus === "metadata"
-          ? "metadata-only" as const
-          : summaryOnly ? "full-text-pending" as const : "canonical-missing" as const,
-        stage: candidate.contentStatus === "metadata" || summaryOnly ? "capture" as const : "canonical" as const,
-        message: candidate.contentStatus === "metadata"
-          ? "已发现链接，但尚未取得正文。"
-          : summaryOnly
-            ? "已取得摘要，但尚未取得全文，因此不进入 Delivery。"
-            : "Raw 候选存在，但本次 Canonical 没有对应文章。",
-        title: candidate.title,
-        url: candidate.canonicalUrl,
-        publishedAt: candidate.publishedAt,
-      };
-    });
-}
-
-function sourceHealth(
-  data: SourceDeliveryData,
-  cases: TimesUnavailableCase[],
-  browser = { attempts: 0, succeeded: 0, failed: 0 },
-): TimesSourceHealth {
-  const source = { id: data.source.id, name: data.source.name, language: data.source.language };
-  const discovered = data.candidates.length;
-  const full = data.canonical.filter((article) => article.contentStatus === "full").length;
-  const summary = data.canonical.filter((article) => article.contentStatus === "summary").length;
-  const delivered = full;
-  const unavailable = cases.length;
-  const availabilityRate = discovered ? delivered / discovered : 0;
-  const fullTextRate = discovered ? full / discovered : 0;
-  const healthScore = discovered ? (full / discovered) * 100 : 0;
+  const body = bodyForDelivery(canonical, new Set(assets.map((asset) => asset.id)));
+  const issueDate = canonical.publishedAt.slice(0, 10);
+  const fragment: JojoFragment = {
+    formatVersion: "jojo-fragment/1",
+    itemId: `${canonical.source.id}:${issueDate}`,
+    fragmentId: canonical.articleId,
+    type: "article",
+    order: 1,
+    title: canonical.title,
+    body,
+    assetRefs: assets.map((asset) => asset.id),
+    annotations: [],
+  };
+  const clear = Buffer.from(`${JSON.stringify(fragment)}\n`, "utf8");
+  const opaque = createHash("sha256").update(clear).digest("hex");
+  const articleObject = `${sourcePrefix}/articles/${opaque}.jox`;
+  const info = await writeJoxJson(deliveryRoot, articleObject, fragment);
+  const summary = plainText(body.value).slice(0, 300) || undefined;
   return {
-    source,
-    status: delivered === 0 ? "unavailable" : unavailable > 0 || summary > 0 || browser.failed > 0 ? "degraded" : "healthy",
-    discovered,
-    delivered,
-    full,
-    summary,
-    unavailable,
-    availabilityRate: roundedRate(availabilityRate),
-    fullTextRate: roundedRate(fullTextRate),
-    healthScore: Math.round(healthScore * 10) / 10,
-    networkExchanges: data.manifest?.networkExchangeCount ?? 0,
-    browserAttempts: browser.attempts,
-    browserSucceeded: browser.succeeded,
-    browserFailed: browser.failed,
-    updatedAt: data.manifest?.completedAt ?? new Date().toISOString(),
+    fragment,
+    descriptor: {
+      id: canonical.articleId,
+      order: 1,
+      title: canonical.title,
+      characterCount: plainText(body.value).length,
+      status: "available",
+      object: articleObject,
+      ...info,
+    },
+    article: {
+      id: canonical.articleId,
+      title: canonical.title,
+      ...(summary ? { summary } : {}),
+      contentStatus: "full",
+      url: canonical.canonicalUrl,
+      publishedAt: canonical.publishedAt,
+      issueDate,
+      language: canonical.language,
+      source: { id: canonical.source.id, name: canonical.source.name, language: canonical.language },
+      ...(canonical.publisherSections.length ? { publisherSections: canonical.publisherSections } : {}),
+      articleObject,
+      assets,
+    },
   };
 }
 
-function articleSummary(candidate: Candidate | undefined, canonical: CanonicalArticle): string | undefined {
-  const value = candidate?.summary || plainText(canonical.body.value);
-  return value ? value.slice(0, 300) : undefined;
+function mergeArticles(previous: readonly TimesDeliveryArticle[], current: readonly TimesDeliveryArticle[]): TimesDeliveryArticle[] {
+  const merged = new Map(previous.map((article) => [article.id, article]));
+  for (const article of current) merged.set(article.id, article);
+  return [...merged.values()].sort((left, right) => right.publishedAt.localeCompare(left.publishedAt) || left.id.localeCompare(right.id));
 }
 
-export async function buildTimesDelivery(input: {
+export async function buildNewsDelivery(input: {
   workspaceRoot: string;
   deliveryRoot: string;
-  run: RawRunManifest;
+  generatedAt: string;
   sources: SourceConfig[];
-  windowHours: number;
-  previousIndex?: TimesDeliveryIndex;
+  process: { sources: CanonicalWriteResult[] };
+  previousTimelineIndex?: TimesTimelineIndex;
+  previousTimelineDays?: ReadonlyMap<string, TimesTimelineDay>;
+  previousSourceIndexes?: ReadonlyMap<string, TimesSourceIndex>;
   previousCatalog?: JojoCatalog;
-}): Promise<{
-  indexObject: string;
-  articles: number;
-  sourceHealth: TimesSourceHealth[];
-  unavailableCases: TimesUnavailableCase[];
-}> {
-  const sourceById = new Map(input.sources.map((source) => [source.id, source]));
-  const rows = await Promise.all(input.run.sources.map(async (worker) => {
-    const source = sourceById.get(worker.sourceId);
-    return source ? sourceData(input.workspaceRoot, source, worker) : undefined;
-  }));
-  const values = rows.filter((row): row is SourceDeliveryData => Boolean(row));
-  const cases: TimesUnavailableCase[] = [];
-  const health: TimesSourceHealth[] = [];
-  const articleRows: Array<{ canonical: CanonicalArticle; candidate?: Candidate }> = [];
-  const browserBySource = new Map((input.run.browserArchive?.captureBySource ?? []).map((row) => [row.sourceId, row]));
+}): Promise<{ timelineIndexObject: string; articles: number; sources: number; dates: string[] }> {
+  const canonical = await canonicalArticles(input.workspaceRoot, input.process);
+  const built = await Promise.all(canonical.map((article) => deliveryArticle(input.workspaceRoot, input.deliveryRoot, article)));
+  const currentByDate = new Map<string, TimesDeliveryArticle[]>();
+  const builtById = new Map(built.map((row) => [row.article.id, row]));
+  for (const row of built) currentByDate.set(row.article.issueDate, [...(currentByDate.get(row.article.issueDate) ?? []), row.article]);
 
-  for (const data of values) {
-    const fullArticles = data.canonical.filter((article) => article.contentStatus === "full");
-    const deliveredIds = new Set(fullArticles.map((article) => article.articleId));
-    const sourceCases = unavailableCases(data, deliveredIds);
-    cases.push(...sourceCases);
-    health.push(sourceHealth(data, sourceCases, browserBySource.get(data.source.id)));
-    const candidateById = new Map(data.candidates.map((candidate) => [candidate.articleId, candidate]));
-    articleRows.push(...fullArticles.map((canonical) => {
-      const candidate = candidateById.get(canonical.articleId);
-      return candidate ? { canonical, candidate } : { canonical };
-    }));
+  const timelineRefs = new Map((input.previousTimelineIndex?.dates ?? []).map((date) => [date.date, date]));
+  const mergedDays = new Map<string, TimesTimelineDay>();
+  for (const [date, current] of currentByDate) {
+    const articles = mergeArticles(input.previousTimelineDays?.get(date)?.articles ?? [], current);
+    const object = `content/timeline/dates/${date.slice(0, 4)}/${date.slice(5, 7)}/${date}.jox`;
+    const day: TimesTimelineDay = { formatVersion: "jojo-news-timeline-day/1", date, updatedAt: input.generatedAt, articles };
+    await writeJoxJson(input.deliveryRoot, object, day);
+    mergedDays.set(date, day);
+    timelineRefs.set(date, { date, object: `dates/${date.slice(0, 4)}/${date.slice(5, 7)}/${date}.jox`, articleCount: articles.length });
   }
 
-  for (const failure of input.run.browserArchive?.failedCases ?? []) {
-    const source = sourceById.get(failure.sourceId);
-    if (!source) continue;
-    const status = failure.httpStatus ? `HTTP ${failure.httpStatus}` : failure.error || "未取得主文档响应";
-    cases.push({
-      id: `${failure.articleId}:browser-capture`,
-      source: { id: source.id, name: source.name, language: source.language },
-      reason: "browser-capture-failed",
-      stage: "capture",
-      message: `Chromium 原页归档失败：${status}。没有其他全文来源时，文章不会进入 Delivery。`,
-      ...(failure.title ? { title: failure.title } : {}),
-      ...(failure.url ? { url: failure.url } : {}),
-    });
-  }
-
-  articleRows.sort((left, right) => right.canonical.publishedAt.localeCompare(left.canonical.publishedAt));
-  const byDate = new Map<string, Array<{ canonical: CanonicalArticle; candidate?: Candidate }>>();
-  for (const row of articleRows) {
-    const date = row.canonical.publishedAt.slice(0, 10);
-    byDate.set(date, [...(byDate.get(date) ?? []), row]);
-  }
-
-  const itemSummaries: TimesDeliveryIndex["items"] = [];
-  const sortedDates = [...byDate.keys()].sort().reverse();
-  for (const [dateIndex, date] of sortedDates.entries()) {
-    const rowsForDate = byDate.get(date) ?? [];
+  const sourceItems = new Map<string, NonNullable<TimesSourceIndex["items"]>>();
+  for (const source of input.sources) sourceItems.set(source.id, [...(input.previousSourceIndexes?.get(source.id)?.items ?? [])]);
+  for (const [date, day] of mergedDays) {
     const [year, month] = dateParts(date);
-    const itemId = `times:${date}`;
-    const itemPrefix = `content/newspapers/times/items/${year}/${month}/${date}`;
-    const articles: TimesDeliveryArticle[] = [];
-    const descriptors: JojoArticleDescriptor[] = [];
-
-    for (const [articleIndex, row] of rowsForDate.entries()) {
-      const body = {
-        ...row.canonical.body,
-        value: removeParserArtifacts(row.canonical.body.value).trim(),
-      };
-      const fragment: JojoFragment = {
-        formatVersion: "jojo-fragment/1",
-        itemId,
-        fragmentId: row.canonical.articleId,
-        type: "article",
-        order: articleIndex + 1,
-        title: row.canonical.title,
-        body,
-        assetRefs: [],
-        annotations: [],
-      };
-      const clear = Buffer.from(`${JSON.stringify(fragment)}\n`, "utf8");
-      const opaque = createHash("sha256").update(clear).digest("hex");
-      const relativeObject = `articles/${opaque}.jox`;
-      const articleObject = `${itemPrefix}/${relativeObject}`;
-      const info = await writeJoxJson(input.deliveryRoot, articleObject, fragment);
-      descriptors.push({
-        id: row.canonical.articleId,
-        order: articleIndex + 1,
-        title: row.canonical.title,
-        characterCount: plainText(body.value).length,
-        status: "available",
-        object: relativeObject,
-        ...info,
+    for (const source of input.sources) {
+      const articles = day.articles.filter((article) => article.source.id === source.id);
+      if (!articles.length) continue;
+      const prefix = `content/newspapers/${source.id}`;
+      const manifestObject = `${prefix}/dates/${year}/${month}/${date}.jox`;
+      const descriptors = articles.map((article, index) => {
+        const row = builtById.get(article.id);
+        return row ? { ...row.descriptor, order: index + 1 } : {
+          id: article.id,
+          order: index + 1,
+          title: article.title,
+          characterCount: 0,
+          status: "available" as const,
+          object: article.articleObject,
+        };
       });
-      const summary = articleSummary(row.candidate, row.canonical);
-      articles.push({
-        id: row.canonical.articleId,
-        title: row.canonical.title,
-        ...(summary ? { summary } : {}),
-        contentStatus: row.canonical.contentStatus,
-        url: row.canonical.canonicalUrl,
-        publishedAt: row.canonical.publishedAt,
-        issueDate: date,
-        language: row.canonical.language,
-        source: {
-          id: row.canonical.source.id,
-          name: row.canonical.source.name,
-          language: row.canonical.language,
+      const assets = [...new Map(articles.flatMap((article) => article.assets).map((asset) => [asset.id, asset])).values()];
+      const manifest: TimesDateManifest = {
+        formatVersion: "jojo-item-manifest/1",
+        revision: Date.parse(input.generatedAt),
+        itemId: `${source.id}:${date}`,
+        datasetId: `news-${source.id}`,
+        type: "newspaper",
+        title: `${source.name} · ${date}`,
+        language: source.language,
+        publicationStatus: "published",
+        access: "authenticated",
+        identifiers: { issueDate: date },
+        metadata: {
+          formatVersion: "jojo-news-source-date/1",
+          issueDate: date,
+          generatedAt: input.generatedAt,
+          source: { id: source.id, name: source.name, language: source.language },
+          articles,
         },
-        ...(row.canonical.publisherSections?.length ? { publisherSections: row.canonical.publisherSections } : {}),
-        articleObject,
-      });
+        content: { schema: "jojo-content/newspaper/1", articles: descriptors },
+        contentStats: {
+          articleCount: articles.length,
+          availableArticleCount: articles.length,
+          missingArticleCount: 0,
+          rejectedArticleCount: 0,
+          characterCount: descriptors.reduce((sum, descriptor) => sum + descriptor.characterCount, 0),
+        },
+        assets,
+        exports: [],
+      };
+      await writeJoxJson(input.deliveryRoot, manifestObject, manifest);
+      const items = sourceItems.get(source.id) ?? [];
+      const withoutDate = items.filter((item) => item.itemKey !== date);
+      sourceItems.set(source.id, [{
+        itemId: manifest.itemId,
+        itemKey: date,
+        type: "newspaper",
+        order: 1,
+        title: manifest.title,
+        manifestObject: `dates/${year}/${month}/${date}.jox`,
+        publicationStatus: "published",
+        access: "authenticated",
+      }, ...withoutDate]);
     }
-
-    const manifestObject = `${itemPrefix}/manifest.jox`;
-    const manifest: TimesDateManifest = {
-      formatVersion: "jojo-item-manifest/1",
-      revision: Date.parse(input.run.completedAt),
-      itemId,
-      datasetId: "times",
-      type: "newspaper",
-      title: `时事 · ${date}`,
-      language: "mul",
-      publicationStatus: "published",
-      access: "authenticated",
-      identifiers: { issueDate: date },
-      metadata: {
-        formatVersion: "jojo-times-date-metadata/1",
-        issueDate: date,
-        generatedAt: input.run.completedAt,
-        articles,
-      },
-      content: { schema: "jojo-content/newspaper/1", articles: descriptors },
-      contentStats: {
-        articleCount: articles.length,
-        availableArticleCount: articles.length,
-        missingArticleCount: 0,
-        rejectedArticleCount: 0,
-        characterCount: descriptors.reduce((sum, descriptor) => sum + descriptor.characterCount, 0),
-      },
-      assets: [],
-      exports: [],
-    };
-    await writeJoxJson(input.deliveryRoot, manifestObject, manifest);
-    itemSummaries.push({
-      itemId,
-      itemKey: date,
-      type: "newspaper",
-      order: dateIndex + 1,
-      title: manifest.title,
-      manifestObject: `items/${year}/${month}/${date}/manifest.jox`,
-      publicationStatus: "published",
-      access: "authenticated",
-    });
   }
 
-  const currentItemKeys = new Set(itemSummaries.map((item) => item.itemKey));
-  const mergedItems = [
-    ...itemSummaries,
-    ...(input.previousIndex?.items ?? []).filter((item) => !currentItemKeys.has(item.itemKey)),
-  ]
-    .sort((left, right) => right.itemKey.localeCompare(left.itemKey))
-    .map((item, index) => ({ ...item, order: index + 1 }));
-  const indexObject = "content/newspapers/times/index.jox";
-  const to = input.run.completedAt;
-  const from = new Date(new Date(input.run.startedAt).valueOf() - input.windowHours * 3_600_000).toISOString();
-  const index: TimesDeliveryIndex = {
-    formatVersion: "jojo-delivery-index/1",
-    revision: Date.parse(input.run.completedAt),
-    datasetId: "times",
-    type: "newspaper",
-    title: "JOJO 时事",
-    language: "mul",
-    description: "过去一天的跨媒体新闻与抓取健康审计。",
-    publicationStatus: "published",
-    access: "authenticated",
-    items: mergedItems,
-    updatedAt: input.run.completedAt,
-    window: { from, to, hours: input.windowHours },
-    sourceHealth: health.sort((left, right) => left.source.name.localeCompare(right.source.name)),
-    unavailableCases: cases.sort((left, right) => (right.publishedAt ?? "").localeCompare(left.publishedAt ?? "")),
-  };
-  await writeJoxJson(input.deliveryRoot, indexObject, index);
+  for (const source of input.sources) {
+    const items = (sourceItems.get(source.id) ?? []).sort((left, right) => right.itemKey.localeCompare(left.itemKey))
+      .map((item, index) => ({ ...item, order: index + 1 }));
+    const index: TimesSourceIndex = {
+      formatVersion: "jojo-delivery-index/1",
+      revision: Date.parse(input.generatedAt),
+      datasetId: `news-${source.id}`,
+      type: "newspaper",
+      title: source.name,
+      language: source.language,
+      publicationStatus: "published",
+      access: "authenticated",
+      source: { id: source.id, name: source.name, language: source.language },
+      items,
+      updatedAt: input.generatedAt,
+    };
+    await writeJoxJson(input.deliveryRoot, `content/newspapers/${source.id}/index.jox`, index);
+  }
 
-  const timesDataset = {
-    datasetId: "times",
-    type: "newspaper" as const,
-    title: index.title,
-    language: index.language,
-    itemCount: mergedItems.length,
-    indexObject,
-    publicationStatus: "published" as const,
-    access: "authenticated" as const,
+  const timelineIndexObject = "content/timeline/index.jox";
+  const timelineIndex: TimesTimelineIndex = {
+    formatVersion: "jojo-news-timeline-index/1",
+    updatedAt: input.generatedAt,
+    dates: [...timelineRefs.values()].sort((left, right) => right.date.localeCompare(left.date)),
+    sources: input.sources.map((source) => ({ id: source.id, name: source.name, language: source.language })),
   };
+  await writeJoxJson(input.deliveryRoot, timelineIndexObject, timelineIndex);
+
+  const sourceIds = new Set(input.sources.map((source) => `news-${source.id}`));
   const catalog: JojoCatalog = {
     formatVersion: "jojo-catalog/1",
-    revision: index.revision,
-    updatedAt: index.updatedAt,
+    revision: Date.parse(input.generatedAt),
+    updatedAt: input.generatedAt,
     datasets: [
-      ...(input.previousCatalog?.datasets ?? []).filter((dataset) => dataset.datasetId !== "times"),
-      timesDataset,
+      ...(input.previousCatalog?.datasets ?? []).filter((dataset) => !sourceIds.has(dataset.datasetId) && dataset.datasetId !== "times"),
+      ...input.sources.map((source) => ({
+        datasetId: `news-${source.id}`,
+        type: "newspaper" as const,
+        title: source.name,
+        language: source.language,
+        itemCount: sourceItems.get(source.id)?.length ?? 0,
+        indexObject: `content/newspapers/${source.id}/index.jox`,
+        publicationStatus: "published" as const,
+        access: "authenticated" as const,
+      })),
     ],
   };
   await writeJoxJson(input.deliveryRoot, "catalog.jox", catalog);
-  return { indexObject, articles: articleRows.length, sourceHealth: index.sourceHealth, unavailableCases: index.unavailableCases };
+  return {
+    timelineIndexObject,
+    articles: built.length,
+    sources: input.sources.length,
+    dates: [...currentByDate.keys()].sort(),
+  };
 }

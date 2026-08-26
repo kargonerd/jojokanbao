@@ -111,15 +111,15 @@
   "content": {
     "priority": [
       "discovery-body",
-      "browser-parser",
+      "captured-page",
       "discovery-summary"
     ],
     "parser": "zaobao",
     "minimumFullCharacters": 200,
     "minimumFullParagraphs": 3
   },
-  "archive": {
-    "mode": "browser",
+  "fetch": {
+    "strategy": "browser-first",
     "bpc": true,
     "proxyPolicy": "zaobao"
   },

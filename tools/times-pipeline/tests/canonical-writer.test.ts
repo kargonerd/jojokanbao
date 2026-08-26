@@ -16,8 +16,8 @@ const source: SourceConfig = {
     url: "https://www.reuters.com/arc/outboundfeeds/sitemap-index/?outputType=xml",
     maximumPages: 20,
   },
-  content: { priority: ["browser-parser", "discovery-summary"], parser: "reuters" },
-  archive: { mode: "browser", bpc: true },
+  content: { priority: ["captured-page", "discovery-summary"], parser: "reuters" },
+  fetch: { strategy: "browser-first", bpc: true },
   health: { minimumCandidates: 1 },
   enabled: true,
 };
@@ -28,10 +28,10 @@ describe("canonical writer", () => {
       .toBe("<p>Before</p> <p>After</p>");
   });
 
-  it("writes one media/day JSONL shard without a Times canonical copy", async () => {
+  it("writes one immutable article plus a per-source date index and skips summaries", async () => {
     const output = await mkdtemp(path.join(os.tmpdir(), "jojo-times-canonical-"));
     const manifest: SourceCaptureManifest = {
-      formatVersion: "jojo-times-raw-source-run/1",
+      formatVersion: "jojo-times-raw-source-run/2",
       runId: "run-1",
       sourceId: "reuters",
       sourceName: "Reuters",
@@ -39,12 +39,12 @@ describe("canonical writer", () => {
       completedAt: "2026-08-23T10:01:00Z",
       discovery: source.discovery,
       candidateCount: 1,
-      fullCount: 0,
+      fullCount: 1,
       summaryCount: 1,
       metadataCount: 0,
       networkExchangeCount: 1,
       objects: [],
-      archiveStatus: "recorded-http",
+      captureStatus: "discovery-complete",
       healthStatus: "healthy",
       complete: true,
     };
@@ -57,20 +57,41 @@ describe("canonical writer", () => {
       canonicalUrl: "https://www.reuters.com/world/one",
       title: "One",
       summary: "Summary",
-      contentStatus: "summary",
+      capturedBody: '<figure data-asset-id="asset:image"></figure><p>Complete Reuters article body.</p>',
+      contentStatus: "full",
+      assets: [{
+        id: "asset:image",
+        type: "image",
+        role: "lead",
+        sourceUrl: "https://example.test/image.jpg",
+        rawObject: "raw/reuters/assets/image.jpg",
+        mediaType: "image/jpeg",
+        size: 10,
+        sha256: "image",
+      }],
       publishedAt: "2026-08-23T10:00:00Z",
       authors: [],
       publisherCategories: ["World"],
       publisherSections: [{ id: "world", name: "World" }],
     };
-    await writeCanonicalSource(output, source, manifest, "raw/news/reuters/run/manifest.json", [candidate], "raw-sha");
-    const shard = path.join(output, "canonical", "news", "reuters", "articles", "2026", "08", "2026-08-23.jsonl.gz");
-    const row = JSON.parse(gunzipSync(await readFile(shard)).toString("utf8")) as Record<string, unknown>;
+    const result = await writeCanonicalSource(output, source, manifest, "raw/reuters/runs/run/manifest.json", [
+      candidate,
+      { ...candidate, articleId: "reuters:summary", capturedBody: "", assets: [], contentStatus: "summary" },
+    ], "raw-sha");
+    expect(result.articles).toHaveLength(1);
+    expect(result.skippedWithoutFullText).toBe(1);
+    const articleFile = path.join(output, ...result.articles[0]!.object.split("/"));
+    const row = JSON.parse(gunzipSync(await readFile(articleFile)).toString("utf8")) as Record<string, unknown>;
     expect(row).toMatchObject({
       articleId: "reuters:one",
-      contentStatus: "summary",
+      contentStatus: "full",
       publisherSections: [{ id: "world", name: "World" }],
+      assets: [{ id: "asset:image", rawObject: "raw/reuters/assets/image.jpg" }],
     });
+    const date = JSON.parse(gunzipSync(await readFile(path.join(
+      output, "canonical", "reuters", "dates", "2026", "08", "2026-08-23.json.gz",
+    ))).toString("utf8")) as { articles: Array<{ articleId: string }> };
+    expect(date.articles.map((article) => article.articleId)).toEqual(["reuters:one"]);
     await expect(readFile(path.join(output, "canonical", "newspapers", "times", "dataset.json"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

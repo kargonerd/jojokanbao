@@ -210,15 +210,15 @@
   "content": {
     "priority": [
       "discovery-body",
-      "browser-parser",
+      "captured-page",
       "discovery-summary"
     ],
     "parser": "aljazeera",
     "minimumFullCharacters": 1000,
     "minimumFullParagraphs": 5
   },
-  "archive": {
-    "mode": "browser",
+  "fetch": {
+    "strategy": "direct-first",
     "bpc": true,
     "proxyPolicy": "direct-first"
   },

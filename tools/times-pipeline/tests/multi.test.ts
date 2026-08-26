@@ -18,7 +18,7 @@ const source: SourceConfig = {
     ],
   },
   content: { priority: ["discovery-summary"] },
-  archive: { mode: "browser", bpc: true },
+  fetch: { strategy: "direct-first", bpc: true },
   health: { minimumCandidates: 1 },
   enabled: true,
 };

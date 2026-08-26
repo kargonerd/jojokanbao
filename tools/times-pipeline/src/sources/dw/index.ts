@@ -1,6 +1,6 @@
 import type { SourceModule } from "../contracts.js";
 import { discoverDw } from "./discover.js";
-import { dwPage } from "./page.js";
+import { dwFetch } from "./fetch.js";
 import { processDw } from "./process.js";
 
 export const dwSource: SourceModule = {
@@ -9,6 +9,6 @@ export const dwSource: SourceModule = {
     if (endpoint.adapter !== "dw") throw new Error(`${source.id}: expected DW endpoint`);
     return discoverDw(source, endpoint, fetchedAt);
   },
-  page: dwPage,
+  fetch: dwFetch,
   process: processDw,
 };

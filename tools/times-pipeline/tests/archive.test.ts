@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { BROWSERTRIX_IMAGE, browsertrixArguments } from "../src/archive/browsertrix.js";
-import { selectProxy, selectProxyCandidates } from "../src/archive/proxy.js";
-import { groupArticlesBySource, mapSourceBatches } from "../src/archive/schedule.js";
-import { articleFingerprint, selectArticlesForCapture, type ArchiveArticle } from "../src/archive/select.js";
+import { bodyWithAssets, discoverArticleImages } from "../src/capture/article-content.js";
+import { articleFingerprint, pendingArticles, type PageArticle } from "../src/capture/pending.js";
+import { selectProxy, selectProxyCandidates } from "../src/capture/proxy.js";
+import { groupArticlesBySource, mapSourceBatches } from "../src/capture/schedule.js";
 
 const now = new Date("2026-08-22T12:00:00Z");
 
-function article(articleId: string, sourceId = "example", publishedAt = now.toISOString()): ArchiveArticle {
+function article(articleId: string, sourceId = "example", publishedAt = now.toISOString()): PageArticle {
   return {
     articleId,
     sourceId,
@@ -14,67 +14,57 @@ function article(articleId: string, sourceId = "example", publishedAt = now.toIS
     canonicalUrl: `https://news.example.test/${articleId}`,
     captureUrl: `https://news.example.test/${articleId}`,
     publishedAt,
+    needsBody: true,
   };
 }
 
-describe("browser archive orchestration", () => {
-  it("prioritizes new and changed pages, then due refreshes", () => {
+describe("page capture orchestration", () => {
+  it("captures every pending URL without a global page limit", () => {
     const changed = article("changed");
-    const refresh = article("refresh");
+    const deduplicated = article("deduplicated");
     const recent = article("recent");
-    const selected = selectArticlesForCapture(
-      [recent, refresh, changed, article("new"), article("expired", "example", "2026-08-14T12:00:00Z")],
-      { formatVersion: "jojo-web-archive-state/1", articles: {
-        changed: { fingerprint: "different", lastAttempt: now.toISOString(), httpStatus: 200 },
-        refresh: { fingerprint: articleFingerprint(refresh), lastAttempt: "2026-08-21T11:00:00Z", httpStatus: 200 },
-        recent: { fingerprint: articleFingerprint(recent), lastAttempt: "2026-08-22T11:00:00Z", httpStatus: 200 },
-      } },
-      { now, retentionDays: 7, maximumPages: 3, refreshHours: 24, retryHours: 2 },
+    const values = Array.from({ length: 80 }, (_value, index) => article(`new-${index}`));
+    const selected = pendingArticles(
+      [recent, deduplicated, changed, ...values, article("expired", "example", "2026-08-14T12:00:00Z")],
+      new Map([["example", { formatVersion: "jojo-page-capture-state/1", articles: {
+        changed: { fingerprint: "different", lastAttempt: now.toISOString(), rawPageObject: "raw/example/page.json", error: null },
+        deduplicated: { fingerprint: articleFingerprint(deduplicated), lastAttempt: "2026-08-21T11:00:00Z", rawPageObject: "raw/example/page.json", error: null },
+        recent: { fingerprint: articleFingerprint(recent), lastAttempt: "2026-08-22T11:00:00Z", rawPageObject: "raw/example/page.json", error: null },
+      } }]]),
+      { now, retentionDays: 7, refreshHours: 168, retryHours: 2 },
     );
-
-    expect(selected.map((value) => value.articleId)).toEqual(["new", "changed", "refresh"]);
+    expect(selected).toHaveLength(81);
+    expect(selected.map((value) => value.articleId)).not.toContain("recent");
+    expect(selected.map((value) => value.articleId)).not.toContain("deduplicated");
+    expect(selected.map((value) => value.articleId)).not.toContain("expired");
   });
 
-  it("represents each publisher before filling remaining slots", () => {
-    const selected = selectArticlesForCapture(
-      [article("newest"), article("older", "example", "2026-08-22T11:59:00Z"), article("other", "second", "2026-08-22T11:58:00Z")],
-      { formatVersion: "jojo-web-archive-state/1", articles: {} },
-      { now, retentionDays: 7, maximumPages: 2, refreshHours: 24, retryHours: 2 },
-    );
-
-    expect(selected.map((value) => value.articleId)).toEqual(["newest", "other"]);
+  it("keeps article images as owned asset references and filters tracking pixels", () => {
+    const images = discoverArticleImages(`<html><head><meta property="og:image" content="/lead.jpg"></head><body><article>
+      <p>Article body</p><figure><img src="/inside.jpg" width="1200" height="800" alt="Inside"><figcaption>Photo credit</figcaption></figure>
+      <img src="/tracking-pixel.gif" width="1" height="1"></article></body></html>`, "https://example.test/story");
+    expect(images.map((image) => image.sourceUrl)).toEqual([
+      "https://example.test/lead.jpg",
+      "https://example.test/inside.jpg",
+    ]);
+    expect(bodyWithAssets("<p>Body</p>", [{
+      id: "asset:lead", type: "image", role: "lead", sourceUrl: images[0]!.sourceUrl,
+      rawObject: "raw/example/assets/lead.jpg", mediaType: "image/jpeg", size: 1, sha256: "lead",
+    }])).toBe('<figure data-asset-id="asset:lead"></figure><p>Body</p>');
   });
 
-  it("fills remaining slots with missing bodies before archive-only pages", () => {
-    const alreadyFull = article("already-full", "first", "2026-08-22T12:00:00Z");
-    const missingOlder = { ...article("missing-older", "first", "2026-08-22T11:00:00Z"), needsBody: true };
-    const otherSource = article("other-source", "second", "2026-08-22T10:00:00Z");
-    const selected = selectArticlesForCapture(
-      [alreadyFull, missingOlder, otherSource],
-      { formatVersion: "jojo-web-archive-state/1", articles: {} },
-      { now, retentionDays: 7, maximumPages: 3, refreshHours: 24, retryHours: 2 },
-    );
-
-    expect(selected.map((value) => value.articleId)).toEqual(["missing-older", "other-source", "already-full"]);
-  });
-
-  it("selects fast and spread Mihomo nodes without reusing the active route", () => {
-    const selected = selectProxyCandidates(
-      { all: ["JOJO-TIMES-AUTO", "node-a", "node-b", "node-c", "node-d", "node-e", "node-f"], now: "JOJO-TIMES-AUTO" },
+  it("selects healthy and spread Mihomo nodes without reusing the active route", () => {
+    expect(selectProxyCandidates(
+      { all: ["JOJO-TIMES-AUTO", "node-a", "node-b", "node-c", "node-d", "node-e"], now: "JOJO-TIMES-AUTO" },
       { now: "node-a" },
       { proxies: {
-        "node-a": { history: [{ delay: 10 }] },
-        "node-b": { history: [{ delay: 20 }] },
-        "node-c": { history: [{ delay: 30 }] },
-        "node-d": { history: [{ delay: 40 }] },
+        "node-a": { history: [{ delay: 10 }] }, "node-b": { history: [{ delay: 20 }] },
+        "node-c": { history: [{ delay: 30 }] }, "node-d": { history: [{ delay: 40 }] },
         "node-e": { history: [{ delay: 200 }] },
-        "node-f": { history: [{ delay: 300 }] },
       } },
       "JOJO-TIMES-AUTO",
       4,
-    );
-
-    expect(selected).toEqual(["node-b", "node-c", "node-d", "node-e"]);
+    )).toEqual(["node-b", "node-c", "node-d", "node-e"]);
   });
 
   it("accepts Mihomo's empty 204 response when switching routes", async () => {
@@ -87,64 +77,19 @@ describe("browser archive orchestration", () => {
     }
   });
 
-  it("pins Browsertrix and mounts BPC without passing secrets into the container", () => {
-    const args = browsertrixArguments({
-      workspace: "/workspace",
-      temporaryRoot: "/tmp/crawl",
-      rawArchiveRoot: "/workspace/raw/web-archives/times",
-      runId: "run",
-      round: 0,
-      sourceId: "example",
-      articles: [article("one")],
-      timeoutSeconds: 25,
-      proxyServer: "http://127.0.0.1:7890",
-      extensionPath: "/workspace/bpc",
-      driverPath: "/workspace/driver.mjs",
-    });
-
-    expect(BROWSERTRIX_IMAGE).toMatch(/^webrecorder\/browsertrix-crawler:1\.14\.1@sha256:[a-f0-9]{64}$/u);
-    expect(args).toContain("--extraChromeArgs=--load-extension=/jojo/bpc");
-    expect(args).toContain("--proxyServer=http://127.0.0.1:7890");
-    expect(args).toContain("--workers=1");
-    expect(args.join(" ")).not.toContain("subscription");
-  });
-
-  it("groups every publisher into one serial Browsertrix batch", () => {
-    const batches = groupArticlesBySource([
-      article("a-1", "a"),
-      article("b-1", "b"),
-      article("a-2", "a"),
-      article("c-1", "c"),
-      article("b-2", "b"),
-    ]);
-
-    expect(batches.map((batch) => [batch.sourceId, batch.articles.map((row) => row.articleId)])).toEqual([
-      ["a", ["a-1", "a-2"]],
-      ["b", ["b-1", "b-2"]],
-      ["c", ["c-1"]],
-    ]);
-  });
-
   it("runs publishers concurrently without overlapping a publisher", async () => {
-    let activeSources = 0;
-    let maximumActiveSources = 0;
-    const seen: string[][] = [];
-    await mapSourceBatches([
-      article("a-1", "a"),
-      article("a-2", "a"),
-      article("b-1", "b"),
-      article("c-1", "c"),
-    ], 2, async (batch) => {
-      activeSources += 1;
-      maximumActiveSources = Math.max(maximumActiveSources, activeSources);
-      seen.push(batch.articles.map((row) => row.articleId));
+    const grouped = groupArticlesBySource([article("a-1", "a"), article("b-1", "b"), article("a-2", "a")]);
+    expect(grouped.map((batch) => [batch.sourceId, batch.articles.map((row) => row.articleId)])).toEqual([
+      ["a", ["a-1", "a-2"]], ["b", ["b-1"]],
+    ]);
+    let active = 0;
+    let maximum = 0;
+    await mapSourceBatches([...grouped.flatMap((batch) => batch.articles), article("c-1", "c")], 2, async () => {
+      active += 1;
+      maximum = Math.max(maximum, active);
       await new Promise((resolve) => setTimeout(resolve, 5));
-      activeSources -= 1;
+      active -= 1;
     });
-
-    expect(maximumActiveSources).toBe(2);
-    expect(seen).toContainEqual(["a-1", "a-2"]);
-    expect(seen).toContainEqual(["b-1"]);
-    expect(seen).toContainEqual(["c-1"]);
+    expect(maximum).toBe(2);
   });
 });

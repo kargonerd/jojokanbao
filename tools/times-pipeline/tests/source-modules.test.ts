@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { discoverSource } from "../src/discovery/multi.js";
-import { acceptSourceCandidate, processSourceCandidate, sourcePagePolicy } from "../src/sources/registry.js";
+import { acceptSourceCandidate, processSourceCandidate, sourceFetchPolicy } from "../src/sources/registry.js";
 import type { Candidate, DiscoveryEndpoint, SourceConfig } from "../src/types.js";
 
 function source(id: string, discovery: DiscoveryEndpoint): SourceConfig {
@@ -9,8 +9,8 @@ function source(id: string, discovery: DiscoveryEndpoint): SourceConfig {
     name: id,
     language: id === "cls" ? "zh-CN" : "en",
     discovery,
-    content: { priority: ["browser-parser", "discovery-summary"] },
-    archive: { mode: "browser", bpc: true },
+    content: { priority: ["captured-page", "discovery-summary"] },
+    fetch: { strategy: "browser-first", bpc: true },
     health: { minimumCandidates: 1 },
     enabled: true,
   };
@@ -41,7 +41,7 @@ describe("native source modules", () => {
       publisherCategories: ["Technology"],
       upstreamId: "nikkei-1",
     }));
-    expect(result.pagePolicy?.bodySelectors[0]).toContain("NewsArticle");
+    expect(result.fetchPolicy?.bodySelectors[0]).toContain("NewsArticle");
   });
 
   it("signs and maps the CLS official depth API", async () => {
@@ -64,7 +64,7 @@ describe("native source modules", () => {
     }));
     const requestedUrl = String((fetchMock.mock.calls as unknown as Array<[RequestInfo | URL]>)[0]?.[0]);
     expect(new URL(requestedUrl).searchParams.get("sign")).toMatch(/^[a-f0-9]{32}$/u);
-    expect(result.pagePolicy?.capture).toBe("browser");
+    expect(result.fetchPolicy?.capture).toBe("browser");
   });
 
   it("falls back to the CLS website API host when its primary API host is unavailable", async () => {
@@ -101,7 +101,7 @@ describe("native source modules", () => {
     const result = await discoverSource(config, "2026-08-25T00:00:00Z", 0);
 
     expect(result.candidates.map((candidate) => candidate.title)).toEqual(["Story"]);
-    expect(result.pagePolicy?.bodySelectors).toContain("main article");
+    expect(result.fetchPolicy?.bodySelectors).toContain("main article");
   });
 
   it("runs a source process hook before Canonical without mutating the input", () => {
@@ -114,25 +114,25 @@ describe("native source modules", () => {
   });
 
   it("exposes Reuters direct paragraph blocks as a source page policy", () => {
-    expect(sourcePagePolicy("reuters")?.bodySelectors).toEqual([
+    expect(sourceFetchPolicy("reuters")?.bodySelectors).toEqual([
       "[data-testid^='paragraph-'], [data-testid^='unordered-'] [data-testid='Body'], [data-testid='SignOff'] [data-testid='Body']",
     ]);
-    expect(sourcePagePolicy("reuters")?.captureUrl).toBe("source");
+    expect(sourceFetchPolicy("reuters")?.captureUrl).toBe("source");
   });
 
   it("exposes Bloomberg's embedded article body strategy", () => {
-    expect(sourcePagePolicy("bloomberg")).toEqual(expect.objectContaining({
+    expect(sourceFetchPolicy("bloomberg")).toEqual(expect.objectContaining({
       bodyExtractor: "bloomberg-next-data",
       capture: "browser",
     }));
   });
 
   it("keeps publisher-owned selectors for changing article layouts", () => {
-    expect(sourcePagePolicy("cls")?.bodySelectors).toContain(".detail-content");
-    expect(sourcePagePolicy("chinanews")?.bodySelectors).toContain("#cont_1_1_2");
-    expect(sourcePagePolicy("focus-taiwan")?.bodySelectors).toContain(".paragraph");
-    expect(sourcePagePolicy("nikkei")?.bodySelectors).toContain("[class*='FeatureArticleBody_featureArticleBody']");
-    expect(sourcePagePolicy("people")?.bodySelectors).toContain("#rm_txt_zw");
+    expect(sourceFetchPolicy("cls")?.bodySelectors).toContain(".detail-content");
+    expect(sourceFetchPolicy("chinanews")?.bodySelectors).toContain("#cont_1_1_2");
+    expect(sourceFetchPolicy("focus-taiwan")?.bodySelectors).toContain(".paragraph");
+    expect(sourceFetchPolicy("nikkei")?.bodySelectors).toContain("[class*='FeatureArticleBody_featureArticleBody']");
+    expect(sourceFetchPolicy("people")?.bodySelectors).toContain("#rm_txt_zw");
   });
 
   it("drops Focus Taiwan's homepage placeholder and normalizes Xinhua wire flashes", () => {

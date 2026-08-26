@@ -1,32 +1,21 @@
 # Source modules
 
-Every publisher owns a directory. Its `source.json` keeps the selected sections, native discovery
-endpoints, content policy, and archive policy together:
+每个出版方拥有一个目录，边界以真实媒体为单位：
 
-```text
+~~~text
 {source}/
-└─ source.json
-```
+├─ source.json  # 栏目、发现入口、正文门槛、direct/browser 策略
+├─ discover.ts  # 可选：出版方 API/栏目协议 → Candidate
+├─ fetch.ts     # 页面 URL、正文 selector、来源抓取特例
+├─ process.ts   # 可选：Canonical 前的来源修正
+└─ index.ts     # 模块装配
+~~~
 
-Only real publisher-specific code is added alongside that file. A custom source module uses the
-small files it actually needs:
+共享层只提供 HTTP、RSS/XML、sitemap、浏览器、代理、去重、质量门槛和存储原语。出版方 URL、selector、
+API 合约和过滤规则不得放入一个假定所有网站相同的通用 site adapter。
 
-```text
-{source}/
-├─ source.json  # sections, discovery endpoints, content/archive policy
-├─ discover.ts  # optional publisher API/listing -> normalized candidates
-├─ page.ts      # page capture mode and source-specific body selectors
-├─ process.ts   # source normalization before Canonical is written
-├─ *.ts         # optional source-local transport/parser helpers when genuinely needed
-└─ index.ts     # module wiring
-```
+发现层默认轻量且不逐篇抓正文；接口保留 browser discovery 能力，但只有媒体自身明确需要时才能启用。
+页面层处理发现到的每个待抓 URL。fetch.ts 只描述该媒体，不能引用另一个媒体目录。
 
-HTTP recording, RSS/XML parsing, sitemap parsing, generic HTML mechanics, Browsertrix/WACZ capture,
-quality gates, Raw writing, and Canonical writing remain shared. Publisher URLs, selectors, API
-contracts, and filtering rules never live in a generic site adapter. A publisher that works with shared adapters keeps only
-`source.json`; it does not get empty TypeScript wrappers. Add a source module only when the publisher
-needs real custom behavior.
-
-`discover.ts` must use the publisher's own endpoint and must not publish Canonical data. `page.ts` is
-serialized into the Raw source manifest and consumed by the browser body extractor. `process.ts` runs
-after capture and immediately before Canonical generation.
+process.ts 不负责联网。视频和图集应尽量在 discover.ts 或 accept 中排除；摘要、metadata 和抓取失败
+可以进入 Raw 审计，但不能伪装成全文进入 Canonical 或 Delivery。

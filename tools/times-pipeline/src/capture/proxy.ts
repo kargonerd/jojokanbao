@@ -25,7 +25,8 @@ export function selectProxyCandidates(
   const healthy = available.filter((name) => delay(name) !== undefined);
   const pool = healthy.length ? healthy : available;
   if (pool.length <= maximum) return pool;
-  const selected = [...pool].sort((left, right) => (delay(left) ?? Number.MAX_SAFE_INTEGER) - (delay(right) ?? Number.MAX_SAFE_INTEGER))
+  const selected = [...pool]
+    .sort((left, right) => (delay(left) ?? Number.MAX_SAFE_INTEGER) - (delay(right) ?? Number.MAX_SAFE_INTEGER))
     .slice(0, Math.min(3, maximum));
   const remaining = maximum - selected.length;
   for (let index = 0; index < remaining; index += 1) {
@@ -38,10 +39,7 @@ export function selectProxyCandidates(
 }
 
 async function mihomoJson(controlUrl: string, pathname: string, init?: RequestInit): Promise<unknown> {
-  const response = await fetch(new URL(pathname, controlUrl), {
-    ...init,
-    signal: AbortSignal.timeout(5_000),
-  });
+  const response = await fetch(new URL(pathname, controlUrl), { ...init, signal: AbortSignal.timeout(5_000) });
   if (!response.ok) throw new Error(`Mihomo control API returned HTTP ${response.status}`);
   const body = await response.text();
   return body ? JSON.parse(body) : undefined;

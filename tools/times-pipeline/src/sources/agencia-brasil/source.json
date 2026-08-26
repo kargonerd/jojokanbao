@@ -120,15 +120,15 @@
   "content": {
     "priority": [
       "discovery-body",
-      "browser-parser",
+      "captured-page",
       "discovery-summary"
     ],
     "parser": "agencia-brasil",
     "minimumFullCharacters": 500,
     "minimumFullParagraphs": 3
   },
-  "archive": {
-    "mode": "browser",
+  "fetch": {
+    "strategy": "direct-first",
     "bpc": true,
     "proxyPolicy": "direct-first"
   },

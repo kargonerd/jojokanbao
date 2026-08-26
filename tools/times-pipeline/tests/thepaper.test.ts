@@ -20,7 +20,7 @@ describe("The Paper discovery", () => {
       sections: [{ id: "current-affairs", name: "时事", url: "https://www.thepaper.cn/channel_25950" }],
       discovery: endpoint,
       content: { priority: ["discovery-body", "discovery-summary"], minimumFullCharacters: 20, minimumFullParagraphs: 1 },
-      archive: { mode: "browser", bpc: false },
+      fetch: { strategy: "direct-first", bpc: false },
       health: { minimumCandidates: 1 },
       enabled: true,
     };

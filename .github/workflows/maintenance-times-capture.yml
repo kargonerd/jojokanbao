@@ -32,7 +32,7 @@ jobs:
   capture:
     runs-on: ubuntu-latest
     environment: maintenance
-    timeout-minutes: 9
+    timeout-minutes: 15
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       HF_TIMES_DATASET_REPO: ${{ secrets.HF_TIMES_DATASET_REPO || secrets.HF_DATASET_REPO }}
@@ -41,7 +41,6 @@ jobs:
       TIMES_PUBLISH: ${{ github.event_name == 'schedule' || inputs.publish }}
       JOJO_TIMES_PROXY_URI: ${{ secrets.JOJO_TIMES_PROXY_URI }}
       JOJO_TIMES_PROXY_SUBSCRIPTION: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION }}
-      BROWSERTRIX_IMAGE: webrecorder/browsertrix-crawler:1.14.1@sha256:591ee8b591fd1aed8983ffce08be1b16fb7a850239969aa364bff17cfbdb4588
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -67,7 +66,7 @@ jobs:
           pnpm --filter @jojo/times-pipeline test
           pnpm --filter @jojo/times-pipeline build
 
-      - name: Restore browser archive state from HF
+      - name: Restore per-source capture state from HF
         if: env.TIMES_PUBLISH == 'true'
         run: |
           node tools/times-pipeline/dist/src/hf-cli.js \
@@ -111,6 +110,9 @@ jobs:
           echo "BPC_EXTENSION_PATH=$RUNNER_TEMP/bpc/bypass-paywalls-chrome-clean-master" >> "$GITHUB_ENV"
           echo "BPC_REVISION=$BPC_REVISION" >> "$GITHUB_ENV"
 
+      - name: Install Chromium for page capture
+        run: pnpm --filter @jojo/times-pipeline exec playwright install --with-deps chromium
+
       - name: Capture all enabled sources
         run: |
           args=(
@@ -128,23 +130,18 @@ jobs:
         run: |
           node -e 'const fs=require("node:fs");const result=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+"/capture-result.json","utf8"));fs.appendFileSync(process.env.GITHUB_ENV,"TIMES_RUN_MANIFEST="+result.runManifest+"\n")'
 
-      - name: Capture up to 50 replayable Browsertrix pages
-        id: browser_archive
-        continue-on-error: true
+      - name: Capture every pending article page and image
+        id: page_capture
         run: |
-          docker pull "$BROWSERTRIX_IMAGE"
           args=(
             --config tools/times-pipeline/sources.v2.json
             --output "$RUNNER_TEMP/jojo-times"
             --run-manifest "$TIMES_RUN_MANIFEST"
-            --max-pages 50
-            --source-workers 8
-            --timeout 25
-            --refresh-hours 24
+            --source-workers 4
+            --timeout 30
+            --refresh-hours 168
             --retry-hours 2
-            --browsertrix-image "$BROWSERTRIX_IMAGE"
             --browser-extension-path "$BPC_EXTENSION_PATH"
-            --browser-extension-revision "$BPC_REVISION"
           )
           if [ -n "$JOJO_TIMES_PROXY_URI" ]; then
             args+=(
@@ -153,7 +150,7 @@ jobs:
               --proxy-rotation-attempts 8
             )
           fi
-          node tools/times-pipeline/dist/src/archive-cli.js "${args[@]}" > "$RUNNER_TEMP/archive-result.json"
+          xvfb-run -a node tools/times-pipeline/dist/src/page-capture-cli.js "${args[@]}" > "$RUNNER_TEMP/page-capture-result.json"
 
       - name: Commit Raw as one HF Dataset revision
         if: env.TIMES_PUBLISH == 'true'
@@ -172,7 +169,7 @@ jobs:
           path: |
             ${{ runner.temp }}/jojo-times/raw
             ${{ runner.temp }}/capture-result.json
-            ${{ runner.temp }}/archive-result.json
+            ${{ runner.temp }}/page-capture-result.json
           if-no-files-found: error
           retention-days: 3
 
@@ -194,15 +191,16 @@ jobs:
           console.log(`- Candidates: ${rows.reduce((sum, row) => sum + (row.output?.candidates || 0), 0)}`);
           console.log(`- Errors: ${rows.filter((row) => row.status === "error").length}`);
           console.log(`- Published to HF: ${process.env.TIMES_PUBLISH === "true" ? "yes" : "no (artifact only)"}`);
-          const archivePath = process.env.RUNNER_TEMP + "/archive-result.json";
-          let archive;
+          const capturePath = process.env.RUNNER_TEMP + "/page-capture-result.json";
+          let pages;
           try {
-            const body = fs.existsSync(archivePath) ? fs.readFileSync(archivePath, "utf8").trim() : "";
-            archive = body ? JSON.parse(body) : undefined;
+            const body = fs.existsSync(capturePath) ? fs.readFileSync(capturePath, "utf8").trim() : "";
+            pages = body ? JSON.parse(body) : undefined;
           } catch {}
-          if (archive) {
-            console.log(`- Browsertrix archive: ${archive.selected} pages, ${archive.articleFailures} failures, ${archive.extractedFullBodies} full bodies, ${(archive.waczBytes / 1024 / 1024).toFixed(1)} MiB`);
+          if (pages) {
+            console.log(`- Page capture: ${pages.captured}/${pages.planned} full pages, ${pages.failed} failures`);
+            console.log(`- Methods: ${pages.direct} direct, ${pages.browser} browser; images: ${pages.assets}`);
           } else {
-            console.log("- Browsertrix archive: failed or skipped; Raw discovery remains available");
+            console.log("- Page capture result is missing");
           }
           NODE

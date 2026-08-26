@@ -79,7 +79,7 @@ async function main(): Promise<void> {
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, sources.length) }, consume));
   const date = started.toISOString().slice(0, 10).replaceAll("-", "/");
-  const runManifest = path.join(output, "raw", "news", "runs", ...date.split("/"), `${id}.json`);
+  const runManifest = path.join(output, "raw", "runs", ...date.split("/"), `${id}.json`);
   await mkdir(path.dirname(runManifest), { recursive: true });
   await writeFile(runManifest, `${JSON.stringify({
     formatVersion: "jojo-times-raw-run/1",
@@ -95,7 +95,9 @@ async function main(): Promise<void> {
     complete: true,
   }, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify({ runId: id, runManifest, results }, null, 2)}\n`);
-  if (results.some((result) => result.status === "error")) process.exitCode = 1;
+  // A partial discovery outage must not discard healthy sources from this run.
+  // The manifest and workflow summary retain per-source errors for monitoring.
+  if (results.length > 0 && results.every((result) => result.status === "error")) process.exitCode = 1;
 }
 
 main().catch((error: unknown) => {

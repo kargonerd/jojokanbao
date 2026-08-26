@@ -1,6 +1,6 @@
 import { discoverHtmlListing, sectionUrl } from "../../discovery/html-listing.js";
 import type { RouteDiscoveryEndpoint, SourceConfig } from "../../types.js";
-import { peoplePage } from "./page.js";
+import { peopleFetch } from "./fetch.js";
 
 type Endpoint = RouteDiscoveryEndpoint;
 
@@ -17,7 +17,7 @@ export function discoverPeople(source: SourceConfig, endpoint: Endpoint, fetched
     listingUrl: url.href,
     articlePathPrefixes: ["/n1/"],
     maximumItems: endpoint.maximumItems,
-    bodySelectors: peoplePage.bodySelectors,
+    bodySelectors: peopleFetch.bodySelectors,
     publicationDateSelectors: ["#newstime", "#pubtime_baidu", ".pubtime", ".content_left_time", ".mheader .info"],
     version: "people-html/1",
   });

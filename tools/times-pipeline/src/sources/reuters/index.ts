@@ -1,9 +1,9 @@
 import type { SourceModule } from "../contracts.js";
-import { reutersPage } from "./page.js";
+import { reutersFetch } from "./fetch.js";
 import { processReuters } from "./process.js";
 
 export const reutersSource: SourceModule = {
   id: "reuters",
-  page: reutersPage,
+  fetch: reutersFetch,
   process: processReuters,
 };

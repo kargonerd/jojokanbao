@@ -7,8 +7,8 @@ const guardian: SourceConfig = {
   name: "The Guardian",
   language: "en",
   discovery: { kind: "official-rss", url: "https://www.theguardian.com/world/rss" },
-  content: { priority: ["browser-parser", "discovery-summary"], parser: "guardian" },
-  archive: { mode: "browser", bpc: true },
+  content: { priority: ["captured-page", "discovery-summary"], parser: "guardian" },
+  fetch: { strategy: "direct-first", bpc: true },
   health: { minimumCandidates: 1 },
   enabled: true,
 };

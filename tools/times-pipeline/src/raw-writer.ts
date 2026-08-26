@@ -35,7 +35,7 @@ export function sourceRunRoot(output: string, sourceId: string, runId: string, s
   const year = String(date.getUTCFullYear());
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
   const day = String(date.getUTCDate()).padStart(2, "0");
-  return path.join(output, "raw", "news", sourceId, year, month, day, runId);
+  return path.join(output, "raw", sourceId, "runs", year, month, day, runId);
 }
 
 export async function writeSourceCapture(
@@ -94,7 +94,7 @@ export async function writeSourceCapture(
   } : undefined;
   const hasCandidates = result.candidates.length >= result.source.health.minimumCandidates;
   const manifest: SourceCaptureManifest = {
-    formatVersion: "jojo-times-raw-source-run/1",
+    formatVersion: "jojo-times-raw-source-run/2",
     runId,
     sourceId: result.source.id,
     sourceName: result.source.name,
@@ -106,10 +106,10 @@ export async function writeSourceCapture(
     summaryCount: result.candidates.filter((candidate) => candidate.contentStatus === "summary").length,
     metadataCount: result.candidates.filter((candidate) => candidate.contentStatus === "metadata").length,
     networkExchangeCount,
-    ...(result.pagePolicy ? { pagePolicy: result.pagePolicy } : {}),
+    ...(result.fetchPolicy ? { fetchPolicy: result.fetchPolicy } : {}),
     ...(sectionCoverage ? { sectionCoverage } : {}),
     objects,
-    archiveStatus: "recorded-http",
+    captureStatus: "discovery-complete",
     healthStatus: !hasCandidates
       ? "empty"
       : sectionCoverage && (sectionCoverage.uncovered.length > 0 || sectionCoverage.fallbackUsed)

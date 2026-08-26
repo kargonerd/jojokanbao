@@ -192,15 +192,15 @@
   "content": {
     "priority": [
       "discovery-body",
-      "browser-parser",
+      "captured-page",
       "discovery-summary"
     ],
     "parser": "people",
     "minimumFullCharacters": 40,
     "minimumFullParagraphs": 1
   },
-  "archive": {
-    "mode": "browser",
+  "fetch": {
+    "strategy": "direct-first",
     "bpc": true,
     "proxyPolicy": "direct-first"
   },

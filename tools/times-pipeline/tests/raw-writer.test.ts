@@ -21,7 +21,7 @@ const source: SourceConfig = {
     ],
   },
   content: { priority: ["discovery-summary"], parser: "generic" },
-  archive: { mode: "browser", bpc: false },
+  fetch: { strategy: "direct-first", bpc: false },
   health: { minimumCandidates: 1 },
   enabled: true,
 };
@@ -43,7 +43,7 @@ const candidate: Candidate = {
 
 async function writeResult(targets: Array<Record<string, unknown>>) {
   const output = await mkdtemp(path.join(os.tmpdir(), "jojo-times-raw-writer-"));
-  const runRoot = path.join(output, "raw", "news", "example", "run-1");
+  const runRoot = path.join(output, "raw", "example", "runs", "run-1");
   const networkFile = path.join(runRoot, "network", "exchanges.jsonl.gz");
   await mkdir(path.dirname(networkFile), { recursive: true });
   await writeFile(networkFile, "");

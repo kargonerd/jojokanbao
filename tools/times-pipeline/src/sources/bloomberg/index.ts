@@ -1,7 +1,7 @@
 import type { SourceModule } from "../contracts.js";
-import { bloombergPage } from "./page.js";
+import { bloombergFetch } from "./fetch.js";
 
 export const bloombergSource: SourceModule = {
   id: "bloomberg",
-  page: bloombergPage,
+  fetch: bloombergFetch,
 };

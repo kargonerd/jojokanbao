@@ -1,8 +1,9 @@
 name: Maintenance · Times Canonical and B2 Delivery
 
 on:
-  schedule:
-    - cron: "5,15,25,35,45,55 * * * *"
+  workflow_run:
+    workflows: ["Maintenance · Times capture to HF Raw"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       publish:
@@ -20,6 +21,7 @@ concurrency:
 
 jobs:
   process:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'schedule')
     runs-on: ubuntu-latest
     environment: maintenance
     timeout-minutes: 9
@@ -29,7 +31,7 @@ jobs:
       B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
       B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
       JOJO_DELIVERY_REMOTE: jojo-b2:${{ secrets.B2_BUCKET || 'jojo-newspaper' }}
-      TIMES_PUBLISH: ${{ github.event_name == 'schedule' || inputs.publish }}
+      TIMES_PUBLISH: ${{ github.event_name == 'workflow_run' || inputs.publish }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -91,41 +93,49 @@ jobs:
             --run-manifest "$TIMES_RUN_MANIFEST" \
             --process-result "$RUNNER_TEMP/process-result.json"
 
-      - name: Configure B2 and restore mutable Delivery pointers
+      - name: Configure B2 and restore mutable Delivery indexes
         if: env.TIMES_PUBLISH == 'true'
         run: |
           rclone config create jojo-b2 b2 account "$B2_KEY_ID" key "$B2_APPLICATION_KEY" --non-interactive
           mkdir -p "$RUNNER_TEMP/previous-delivery"
-          if rclone lsf "$JOJO_DELIVERY_REMOTE/content/newspapers/times" --files-only --include index.jox | grep -qx 'index.jox'; then
-            rclone copyto "$JOJO_DELIVERY_REMOTE/content/newspapers/times/index.jox" "$RUNNER_TEMP/previous-delivery/index.jox"
-          fi
+          rclone copy "$JOJO_DELIVERY_REMOTE/content/newspapers" "$RUNNER_TEMP/previous-delivery/content/newspapers" \
+            --include '*/index.jox' --exclude '*' || true
+          rclone copyto "$JOJO_DELIVERY_REMOTE/content/timeline/index.jox" \
+            "$RUNNER_TEMP/previous-delivery/content/timeline/index.jox" || true
           if rclone lsf "$JOJO_DELIVERY_REMOTE" --files-only --include catalog.jox | grep -qx 'catalog.jox'; then
             rclone copyto "$JOJO_DELIVERY_REMOTE/catalog.jox" "$RUNNER_TEMP/previous-delivery/catalog.jox"
           fi
+          node -e 'const r=require(process.env.RUNNER_TEMP+"/process-result.json"); for(const d of new Set(r.sources.flatMap(s=>s.dates))) console.log(d)' > "$RUNNER_TEMP/process-dates.txt"
+          while read -r date; do
+            [ -n "$date" ] || continue
+            object="content/timeline/dates/${date:0:4}/${date:5:2}/${date}.jox"
+            mkdir -p "$RUNNER_TEMP/previous-delivery/$(dirname "$object")"
+            rclone copyto "$JOJO_DELIVERY_REMOTE/$object" "$RUNNER_TEMP/previous-delivery/$object" || true
+          done < "$RUNNER_TEMP/process-dates.txt"
 
-      - name: Build Delivery with historical index
+      - name: Build per-source Delivery and global timeline
         run: |
           node tools/times-pipeline/dist/src/delivery-cli.js \
             --config tools/times-pipeline/sources.v2.json \
             --output "$RUNNER_TEMP/jojo-times" \
-            --run-manifest "$TIMES_RUN_MANIFEST" \
+            --process-result "$RUNNER_TEMP/process-result.json" \
             --delivery-output "$RUNNER_TEMP/jojo-times-delivery" \
-            --previous-index "$RUNNER_TEMP/previous-delivery/index.jox" \
-            --previous-catalog "$RUNNER_TEMP/previous-delivery/catalog.jox" \
+            --previous-delivery "$RUNNER_TEMP/previous-delivery" \
             > "$RUNNER_TEMP/delivery-result.json"
 
       - name: Publish B2 Delivery in commit order
         if: env.TIMES_PUBLISH == 'true'
         run: |
           delivery="$RUNNER_TEMP/jojo-times-delivery"
-          remote="$JOJO_DELIVERY_REMOTE/content/newspapers/times"
-          rclone copy "$delivery/content/newspapers/times/items" "$remote/items" \
-            --include '**/articles/*.jox' --include '**/assets/*.jox' --exclude '*' \
+          rclone copy "$delivery/content/newspapers" "$JOJO_DELIVERY_REMOTE/content/newspapers" \
+            --include '*/articles/*.jox' --include '*/assets/*.jox' --exclude '*' \
             --checksum --transfers 16 --header-upload 'Cache-Control: public, max-age=31536000, immutable'
-          rclone copy "$delivery/content/newspapers/times/items" "$remote/items" \
-            --include '**/manifest.jox' --exclude '*' \
+          rclone copy "$delivery/content/newspapers" "$JOJO_DELIVERY_REMOTE/content/newspapers" \
+            --include '*/dates/**/*.jox' --include '*/index.jox' --exclude '*' \
             --checksum --transfers 8 --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
-          rclone copyto "$delivery/content/newspapers/times/index.jox" "$remote/index.jox" \
+          rclone copy "$delivery/content/timeline/dates" "$JOJO_DELIVERY_REMOTE/content/timeline/dates" \
+            --checksum --transfers 8 --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
+          rclone copyto "$delivery/content/timeline/index.jox" "$JOJO_DELIVERY_REMOTE/content/timeline/index.jox" \
             --checksum --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
           rclone copyto "$delivery/catalog.jox" "$JOJO_DELIVERY_REMOTE/catalog.jox" \
             --checksum --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
@@ -157,8 +167,8 @@ jobs:
           }
           const report = JSON.parse(fs.readFileSync(path, "utf8"));
           console.log(`- Articles: ${report.articles}`);
-          console.log(`- Sources: ${report.sourceHealth.length}`);
-          console.log(`- Unavailable cases: ${report.unavailableCaseCount}`);
-          console.log(`- Delivery index: \`${report.indexObject}\``);
+          console.log(`- Sources: ${report.sources}`);
+          console.log(`- Dates updated: ${report.dates.length}`);
+          console.log(`- Timeline index: \`${report.timelineIndexObject}\``);
           console.log(`- Published: ${process.env.TIMES_PUBLISH === "true" ? "HF + B2" : "no (artifact only)"}`);
           NODE

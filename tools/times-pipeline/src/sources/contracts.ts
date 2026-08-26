@@ -4,7 +4,7 @@ import type {
   DiscoveryEndpoint,
   DiscoveryResult,
   SourceConfig,
-  SourcePagePolicy,
+  SourceFetchPolicy,
 } from "../types.js";
 
 export type SourceAdapterEndpoint = Extract<DiscoveryEndpoint, { kind: "source-adapter" }>;
@@ -22,7 +22,7 @@ export interface SourceModule {
     fetchedAt: string,
     browser: BrowserDiscoveryRuntime,
   ) => Promise<DiscoveryResult>;
-  page?: SourcePagePolicy;
+  fetch?: SourceFetchPolicy;
   accept?(candidate: Candidate): boolean;
   process?(candidate: Candidate): Candidate;
 }

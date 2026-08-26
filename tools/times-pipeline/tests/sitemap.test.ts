@@ -11,8 +11,8 @@ const reuters: SourceConfig = {
     url: "https://www.reuters.com/arc/outboundfeeds/sitemap-index/?outputType=xml",
     maximumPages: 20,
   },
-  content: { priority: ["browser-parser", "discovery-summary"], parser: "reuters" },
-  archive: { mode: "browser", bpc: true, proxyPolicy: "reuters" },
+  content: { priority: ["captured-page", "discovery-summary"], parser: "reuters" },
+  fetch: { strategy: "browser-first", bpc: true, proxyPolicy: "reuters" },
   health: { minimumCandidates: 1 },
   enabled: true,
 };

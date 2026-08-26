@@ -155,13 +155,13 @@
   },
   "content": {
     "priority": [
-      "browser-parser",
+      "captured-page",
       "discovery-summary"
     ],
     "parser": "dw"
   },
-  "archive": {
-    "mode": "browser",
+  "fetch": {
+    "strategy": "direct-first",
     "bpc": true,
     "proxyPolicy": "direct-first"
   },

@@ -41,15 +41,15 @@
   "content": {
     "priority": [
       "discovery-body",
-      "browser-parser",
+      "captured-page",
       "discovery-summary"
     ],
     "parser": "axios",
     "minimumFullCharacters": 500,
     "minimumFullParagraphs": 3
   },
-  "archive": {
-    "mode": "browser",
+  "fetch": {
+    "strategy": "browser-first",
     "bpc": true,
     "proxyPolicy": "axios"
   },

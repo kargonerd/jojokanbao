@@ -1,0 +1,345 @@
+import { createHash } from "node:crypto";
+import { gzipSync, gunzipSync } from "node:zlib";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { parseArgs, requiredArg } from "./args.js";
+import { loadSources } from "./config.js";
+import { extractRenderedBody } from "./process/rendered-body.js";
+import { bodyWithAssets, extractArticleContent } from "./capture/article-content.js";
+import { captureArticleAssets } from "./capture/assets.js";
+import { BrowserSourceSession } from "./capture/browser.js";
+import { downloadDirectAsset, fetchDirectPage, type CapturedHtmlPage } from "./capture/http.js";
+import { articleFingerprint, pendingArticles, type PageArticle, type PageCaptureState } from "./capture/pending.js";
+import { proxyCandidates, selectProxy } from "./capture/proxy.js";
+import { mapSourceBatches } from "./capture/schedule.js";
+import type { Candidate, SourceCaptureManifest, SourceConfig, SourceFetchPolicy } from "./types.js";
+
+interface RawRunManifest {
+  runId: string;
+  completedAt: string;
+  sources: Array<{
+    sourceId: string;
+    status: "ok" | "empty" | "error";
+    output?: { manifest?: string };
+    error?: string;
+  }>;
+  pageCapture?: unknown;
+}
+
+interface ArticleBundle extends PageArticle {
+  source: SourceConfig;
+  candidate: Candidate;
+  manifestPath: string;
+  fetchPolicy?: SourceFetchPolicy;
+}
+
+interface CaptureOutcome {
+  article: ArticleBundle;
+  page: CapturedHtmlPage;
+  fullBody: boolean;
+  assetCount: number;
+  rawPageObject: string;
+}
+
+function json<T>(body: string): T {
+  return JSON.parse(body) as T;
+}
+
+async function readCandidates(target: string): Promise<Candidate[]> {
+  return gunzipSync(await readFile(target)).toString("utf8").split(/\r?\n/u).filter(Boolean).map((line) => json<Candidate>(line));
+}
+
+async function loadState(target: string): Promise<PageCaptureState> {
+  try {
+    const state = json<PageCaptureState>(gunzipSync(await readFile(target)).toString("utf8"));
+    if (state.formatVersion === "jojo-page-capture-state/1") return state;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") process.stderr.write(`Ignoring invalid capture state: ${target}\n`);
+  }
+  return { formatVersion: "jojo-page-capture-state/1", articles: {} };
+}
+
+async function filesBelow(root: string): Promise<string[]> {
+  let entries;
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  const files: string[] = [];
+  for (const entry of entries) {
+    const target = path.join(root, entry.name);
+    if (entry.isDirectory()) files.push(...await filesBelow(target));
+    else if (entry.isFile()) files.push(target);
+  }
+  return files;
+}
+
+async function descriptor(root: string, target: string): Promise<{ path: string; size: number; sha256: string }> {
+  const body = await readFile(target);
+  return {
+    path: path.relative(root, target).replaceAll(path.sep, "/"),
+    size: (await stat(target)).size,
+    sha256: createHash("sha256").update(body).digest("hex"),
+  };
+}
+
+function quality(source: SourceConfig): { minimumCharacters?: number; minimumParagraphs?: number } {
+  return {
+    ...(source.content.minimumFullCharacters !== undefined ? { minimumCharacters: source.content.minimumFullCharacters } : {}),
+    ...(source.content.minimumFullParagraphs !== undefined ? { minimumParagraphs: source.content.minimumFullParagraphs } : {}),
+  };
+}
+
+function successfulPage(page: CapturedHtmlPage, fullBody: boolean): boolean {
+  return fullBody && Boolean(page.renderedHtml) && (!page.status || page.status < 500);
+}
+
+async function writeRawPage(workspace: string, article: ArticleBundle, page: CapturedHtmlPage, error?: string): Promise<string> {
+  const runRoot = path.dirname(article.manifestPath);
+  const pageKey = createHash("sha256").update(article.articleId).digest("hex").slice(0, 32);
+  const pageRoot = path.join(runRoot, "pages", pageKey);
+  await mkdir(pageRoot, { recursive: true });
+  if (page.originalHtml) await writeFile(path.join(pageRoot, "original.html.gz"), gzipSync(page.originalHtml, { level: 9 }));
+  if (page.renderedHtml) await writeFile(path.join(pageRoot, "rendered.html.gz"), gzipSync(page.renderedHtml, { level: 9 }));
+  const metadataPath = path.join(pageRoot, "metadata.json");
+  await writeFile(metadataPath, `${JSON.stringify({
+    formatVersion: "jojo-raw-page/1",
+    articleId: article.articleId,
+    sourceId: article.sourceId,
+    requestedUrl: page.requestedUrl,
+    finalUrl: page.finalUrl,
+    method: page.method,
+    status: page.status ?? null,
+    capturedAt: page.capturedAt,
+    originalHtml: page.originalHtml ? "original.html.gz" : null,
+    renderedHtml: page.renderedHtml ? "rendered.html.gz" : null,
+    error: error ?? page.error ?? null,
+  }, null, 2)}\n`);
+  return path.relative(workspace, metadataPath).replaceAll(path.sep, "/");
+}
+
+async function captureOne(
+  workspace: string,
+  article: ArticleBundle,
+  timeoutSeconds: number,
+  browser: () => Promise<BrowserSourceSession>,
+  forceBrowser: boolean,
+): Promise<CaptureOutcome> {
+  let page = !forceBrowser && article.source.fetch.strategy === "direct-first"
+    ? await fetchDirectPage(article.captureUrl, timeoutSeconds)
+    : undefined;
+  let extracted = page?.renderedHtml
+    ? extractArticleContent(page.renderedHtml, page.finalUrl, article.fetchPolicy, quality(article.source))
+    : { body: undefined, images: [] };
+  if (!page || !extracted.body) {
+    const session = await browser();
+    page = await session.capture(article.captureUrl, timeoutSeconds);
+    extracted = page.renderedHtml
+      ? extractArticleContent(page.renderedHtml, page.finalUrl, article.fetchPolicy, quality(article.source))
+      : { body: undefined, images: [] };
+  }
+  const discoveryFallback = !extracted.body && article.candidate.discoveryBody
+    ? extractRenderedBody(article.candidate.discoveryBody, article.fetchPolicy, quality(article.source))
+    : undefined;
+  const selectedBody = extracted.body ?? discoveryFallback;
+  const session = page.method === "browser" ? await browser() : undefined;
+  const assets = await captureArticleAssets({
+    workspace,
+    sourceId: article.sourceId,
+    pageUrl: page.finalUrl,
+    images: extracted.images,
+    download: (url, referer) => session
+      ? session.downloadAsset(url, referer, timeoutSeconds)
+      : downloadDirectAsset(url, referer, timeoutSeconds),
+  });
+  if (selectedBody) {
+    article.candidate.capturedBody = bodyWithAssets(selectedBody, assets);
+    article.candidate.contentStatus = "full";
+  }
+  article.candidate.assets = assets;
+  article.candidate.capturedAt = page.capturedAt;
+  article.candidate.captureMethod = page.method;
+  if (page.status !== undefined) article.candidate.captureHttpStatus = page.status;
+  const fullBody = article.candidate.contentStatus === "full" && Boolean(article.candidate.capturedBody || article.candidate.discoveryBody);
+  article.candidate.captureStatus = fullBody ? "captured" : "failed";
+  const rawPageObject = await writeRawPage(workspace, article, page, fullBody ? undefined : "FullTextNotExtracted");
+  article.candidate.rawPageObject = rawPageObject;
+  return { article, page, fullBody, assetCount: assets.length, rawPageObject };
+}
+
+async function loadArticles(workspace: string, run: RawRunManifest, sources: Map<string, SourceConfig>): Promise<ArticleBundle[]> {
+  const articles: ArticleBundle[] = [];
+  for (const result of run.sources) {
+    if (result.status !== "ok" || !result.output?.manifest) continue;
+    const source = sources.get(result.sourceId);
+    if (!source) continue;
+    const manifestPath = path.join(workspace, ...result.output.manifest.split("/"));
+    const manifest = json<SourceCaptureManifest>(await readFile(manifestPath, "utf8"));
+    for (const candidate of await readCandidates(path.join(path.dirname(manifestPath), "candidates.jsonl.gz"))) {
+      articles.push({
+        articleId: candidate.articleId,
+        sourceId: source.id,
+        title: candidate.title,
+        canonicalUrl: candidate.canonicalUrl,
+        captureUrl: manifest.fetchPolicy?.captureUrl === "source" ? candidate.sourceUrl : candidate.canonicalUrl,
+        publishedAt: candidate.publishedAt,
+        needsBody: candidate.contentStatus !== "full",
+        source,
+        candidate,
+        manifestPath,
+        ...(manifest.fetchPolicy ? { fetchPolicy: manifest.fetchPolicy } : {}),
+      });
+    }
+  }
+  return articles;
+}
+
+async function persistSources(workspace: string, articles: ArticleBundle[], states: Map<string, PageCaptureState>): Promise<void> {
+  const byManifest = new Map<string, ArticleBundle[]>();
+  for (const article of articles) byManifest.set(article.manifestPath, [...(byManifest.get(article.manifestPath) ?? []), article]);
+  for (const [manifestPath, rows] of byManifest) {
+    const runRoot = path.dirname(manifestPath);
+    const candidatePath = path.join(runRoot, "candidates.jsonl.gz");
+    await writeFile(candidatePath, gzipSync(`${rows.map((row) => JSON.stringify(row.candidate)).join("\n")}\n`, { level: 9 }));
+    const manifest = json<SourceCaptureManifest>(await readFile(manifestPath, "utf8"));
+    const candidates = rows.map((row) => row.candidate);
+    const runFiles = (await filesBelow(runRoot)).filter((target) => target !== manifestPath);
+    manifest.fullCount = candidates.filter((candidate) => candidate.contentStatus === "full").length;
+    manifest.summaryCount = candidates.filter((candidate) => candidate.contentStatus === "summary").length;
+    manifest.metadataCount = candidates.filter((candidate) => candidate.contentStatus === "metadata").length;
+    manifest.captureStatus = "pages-complete";
+    manifest.pageCapture = {
+      planned: candidates.filter((candidate) => candidate.captureStatus !== "unchanged").length,
+      captured: candidates.filter((candidate) => candidate.captureStatus === "captured").length,
+      unchanged: candidates.filter((candidate) => candidate.captureStatus === "unchanged").length,
+      failed: candidates.filter((candidate) => candidate.captureStatus === "failed").length,
+      direct: candidates.filter((candidate) => candidate.captureMethod === "direct").length,
+      browser: candidates.filter((candidate) => candidate.captureMethod === "browser").length,
+      assets: candidates.reduce((sum, candidate) => sum + (candidate.assets?.length ?? 0), 0),
+    };
+    manifest.objects = await Promise.all(runFiles.map((target) => descriptor(runRoot, target)));
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  }
+  for (const [sourceId, state] of states) {
+    const target = path.join(workspace, "raw", sourceId, "state.json.gz");
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, gzipSync(`${JSON.stringify(state)}\n`, { level: 9 }));
+  }
+}
+
+async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
+  const workspace = path.resolve(requiredArg(args, "output"));
+  const runPath = path.resolve(requiredArg(args, "run-manifest"));
+  const configPath = path.resolve(requiredArg(args, "config"));
+  const sourceWorkers = Number(args.get("source-workers") ?? args.get("workers") ?? "4");
+  const timeoutSeconds = Number(args.get("timeout") ?? "30");
+  const refreshHours = Number(args.get("refresh-hours") ?? "24");
+  const retryHours = Number(args.get("retry-hours") ?? "2");
+  const rotationAttempts = Number(args.get("proxy-rotation-attempts") ?? "0");
+  if (![sourceWorkers, timeoutSeconds, refreshHours, retryHours, rotationAttempts].every(Number.isFinite)
+    || !Number.isInteger(sourceWorkers) || sourceWorkers < 1 || timeoutSeconds <= 0 || refreshHours <= 0 || retryHours <= 0 || rotationAttempts < 0) {
+    throw new Error("Capture workers, timeouts and retry intervals must be valid");
+  }
+  const run = json<RawRunManifest>(await readFile(runPath, "utf8"));
+  const sources = new Map((await loadSources(configPath)).map((source) => [source.id, source]));
+  const requested = new Set((args.get("sources") ?? "").split(",").map((value) => value.trim()).filter(Boolean));
+  const articles = (await loadArticles(workspace, run, sources)).filter((article) => !requested.size || requested.has(article.sourceId));
+  const states = new Map<string, PageCaptureState>();
+  for (const sourceId of new Set(articles.map((article) => article.sourceId))) {
+    states.set(sourceId, await loadState(path.join(workspace, "raw", sourceId, "state.json.gz")));
+  }
+  const generatedAt = new Date();
+  const pending = pendingArticles(articles, states, { now: generatedAt, retentionDays: 7, refreshHours, retryHours }) as ArticleBundle[];
+  const pendingIds = new Set(pending.map((article) => article.articleId));
+  for (const article of articles) if (!pendingIds.has(article.articleId)) article.candidate.captureStatus = "unchanged";
+  const best = new Map<string, CaptureOutcome>();
+  const extensionPath = args.get("browser-extension-path") ? path.resolve(args.get("browser-extension-path")!) : undefined;
+  const proxyServer = args.get("proxy-server");
+
+  const captureRound = async (values: ArticleBundle[], forceBrowser: boolean): Promise<void> => {
+    await mapSourceBatches(values, sourceWorkers, async (batch) => {
+      let session: BrowserSourceSession | undefined;
+      const browser = async (): Promise<BrowserSourceSession> => {
+        session ??= await BrowserSourceSession.open({
+          ...(proxyServer ? { proxyServer } : {}),
+          ...(extensionPath ? { extensionPath } : {}),
+          requireExtension: sources.get(batch.sourceId)?.fetch.bpc ?? false,
+        });
+        return session;
+      };
+      try {
+        for (const article of batch.articles) {
+          const outcome = await captureOne(workspace, article as ArticleBundle, timeoutSeconds, browser, forceBrowser);
+          const previous = best.get(article.articleId);
+          if (!previous || successfulPage(outcome.page, outcome.fullBody) || !successfulPage(previous.page, previous.fullBody)) {
+            best.set(article.articleId, outcome);
+          }
+        }
+      } finally {
+        await session?.close();
+      }
+    });
+  };
+
+  await captureRound(pending, false);
+  const controlUrl = args.get("proxy-control-url");
+  const proxyGroup = args.get("proxy-group") ?? "JOJO-TIMES-ROUTE";
+  const automaticName = args.get("proxy-automatic-name") ?? "JOJO-TIMES-AUTO";
+  let rotationRounds = 0;
+  if (pending.length && proxyServer && controlUrl && rotationAttempts > 0) {
+    try {
+      for (const alternative of await proxyCandidates(controlUrl, proxyGroup, automaticName, rotationAttempts)) {
+        const failed = pending.filter((article) => !successfulPage(best.get(article.articleId)?.page ?? { method: "browser", requestedUrl: article.captureUrl, finalUrl: article.captureUrl, capturedAt: generatedAt.toISOString() }, best.get(article.articleId)?.fullBody ?? false));
+        if (!failed.length) break;
+        await selectProxy(controlUrl, proxyGroup, alternative);
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        await captureRound(failed, true);
+        rotationRounds += 1;
+      }
+    } finally {
+      await selectProxy(controlUrl, proxyGroup, automaticName);
+    }
+  }
+
+  for (const article of pending) {
+    const outcome = best.get(article.articleId);
+    const state = states.get(article.sourceId)!;
+    state.articles[article.articleId] = {
+      fingerprint: articleFingerprint(article),
+      lastAttempt: generatedAt.toISOString(),
+      ...(outcome?.page.capturedAt ? { capturedAt: outcome.page.capturedAt } : {}),
+      ...(outcome?.page.status !== undefined ? { httpStatus: outcome.page.status } : {}),
+      error: outcome?.fullBody ? null : outcome?.page.error ?? "FullTextNotExtracted",
+      ...(outcome?.rawPageObject ? { rawPageObject: outcome.rawPageObject } : {}),
+    };
+    state.updatedAt = generatedAt.toISOString();
+  }
+  await persistSources(workspace, articles, states);
+  const outcomes = [...best.values()];
+  const report = {
+    formatVersion: "jojo-page-capture-run/1",
+    runId: run.runId,
+    generatedAt: generatedAt.toISOString(),
+    discovered: articles.length,
+    planned: pending.length,
+    captured: outcomes.filter((outcome) => outcome.fullBody).length,
+    failed: pending.length - outcomes.filter((outcome) => outcome.fullBody).length,
+    assets: outcomes.reduce((sum, outcome) => sum + outcome.assetCount, 0),
+    direct: outcomes.filter((outcome) => outcome.page.method === "direct").length,
+    browser: outcomes.filter((outcome) => outcome.page.method === "browser").length,
+    sourceWorkers,
+    perSourceWorkers: 1,
+    proxyRotationRounds: rotationRounds,
+  };
+  run.pageCapture = report;
+  await writeFile(runPath, `${JSON.stringify(run, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+}
+
+main().catch((error: unknown) => {
+  process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+  process.exitCode = 1;
+});

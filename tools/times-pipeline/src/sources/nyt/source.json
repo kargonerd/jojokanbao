@@ -116,13 +116,13 @@
   },
   "content": {
     "priority": [
-      "browser-parser",
+      "captured-page",
       "discovery-summary"
     ],
     "parser": "nyt"
   },
-  "archive": {
-    "mode": "browser",
+  "fetch": {
+    "strategy": "browser-first",
     "bpc": true,
     "proxyPolicy": "nyt"
   },

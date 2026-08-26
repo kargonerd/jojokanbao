@@ -18,9 +18,7 @@ export async function mapSourceBatches<T extends { sourceId: string }, R>(
   concurrency: number,
   work: (batch: SourceBatch<T>) => Promise<R>,
 ): Promise<R[]> {
-  if (!Number.isInteger(concurrency) || concurrency < 1) {
-    throw new Error("Source concurrency must be a positive integer");
-  }
+  if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error("Source concurrency must be a positive integer");
   const batches = groupArticlesBySource(articles);
   const results = new Array<R>(batches.length);
   let cursor = 0;

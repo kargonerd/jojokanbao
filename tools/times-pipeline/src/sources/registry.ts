@@ -2,35 +2,47 @@ import { africanewsSource } from "./africanews/index.js";
 import { agenciaBrasilSource } from "./agencia-brasil/index.js";
 import { alJazeeraSource } from "./aljazeera/index.js";
 import { apSource } from "./ap/index.js";
+import { axiosSource } from "./axios/index.js";
 import { bloombergSource } from "./bloomberg/index.js";
 import { chinanewsSource } from "./chinanews/index.js";
 import { clsSource } from "./cls/index.js";
 import { cnaSource } from "./cna/index.js";
 import { dwSource } from "./dw/index.js";
 import { focusTaiwanSource } from "./focus-taiwan/index.js";
+import { ftSource } from "./ft/index.js";
+import { guardianSource } from "./guardian/index.js";
 import { nikkeiSource } from "./nikkei/index.js";
+import { nprSource } from "./npr/index.js";
+import { nytSource } from "./nyt/index.js";
 import { peopleSource } from "./people/index.js";
 import { reutersSource } from "./reuters/index.js";
+import { scmpSource } from "./scmp/index.js";
 import { thepaperSource } from "./thepaper/index.js";
 import { xinhuaSource } from "./xinhua/index.js";
 import { zaobaoSource } from "./zaobao/index.js";
 import type { SourceModule } from "./contracts.js";
-import type { Candidate, DiscoveryResult, DiscoveryRuntime, SourceConfig, SourcePagePolicy } from "../types.js";
+import type { Candidate, DiscoveryResult, DiscoveryRuntime, SourceConfig, SourceFetchPolicy } from "../types.js";
 
 const modules = new Map<string, SourceModule>([
   africanewsSource,
   agenciaBrasilSource,
   alJazeeraSource,
   apSource,
+  axiosSource,
   bloombergSource,
   chinanewsSource,
   clsSource,
   cnaSource,
   dwSource,
   focusTaiwanSource,
+  ftSource,
+  guardianSource,
   nikkeiSource,
+  nprSource,
+  nytSource,
   peopleSource,
   reutersSource,
+  scmpSource,
   thepaperSource,
   xinhuaSource,
   zaobaoSource,
@@ -54,12 +66,12 @@ export async function discoverWithSourceModule(
     if (!module.discoverBrowser) throw new Error(`${source.id}: ${endpoint.adapter} does not support browser discovery`);
     result = await module.discoverBrowser(source, endpoint, fetchedAt, runtime.browser);
   }
-  if (module.page) result.pagePolicy = module.page;
+  if (module.fetch) result.fetchPolicy = module.fetch;
   return result;
 }
 
-export function sourcePagePolicy(sourceId: string): SourcePagePolicy | undefined {
-  return modules.get(sourceId)?.page;
+export function sourceFetchPolicy(sourceId: string): SourceFetchPolicy | undefined {
+  return modules.get(sourceId)?.fetch;
 }
 
 export function acceptSourceCandidate(sourceId: string, candidate: Candidate): boolean {

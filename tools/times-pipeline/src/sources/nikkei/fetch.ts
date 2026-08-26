@@ -1,6 +1,6 @@
-import type { SourcePagePolicy } from "../../types.js";
+import type { SourceFetchPolicy } from "../../types.js";
 
-export const nikkeiPage: SourcePagePolicy = {
+export const nikkeiFetch = {
   capture: "browser",
   bodySelectors: [
     "div[class^='NewsArticle_newsArticleContentContainerWrapper']",
@@ -9,4 +9,4 @@ export const nikkeiPage: SourcePagePolicy = {
     "[id^='article-body']",
     "[itemprop='articleBody']",
   ],
-};
+} satisfies SourceFetchPolicy;

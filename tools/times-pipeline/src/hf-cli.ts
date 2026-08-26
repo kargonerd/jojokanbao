@@ -5,7 +5,7 @@ import { collectFolderFiles, HfTimesDataset } from "./hf.js";
 
 interface ProcessResult {
   report: string;
-  sources: Array<{ sourceId: string; dates: string[] }>;
+  sources: Array<{ sourceId: string; files: string[] }>;
 }
 
 interface RawRun {
@@ -21,22 +21,17 @@ function token(args: Map<string, string>): string {
 
 async function canonicalFiles(output: string, processResultFile: string): Promise<Array<{ local: string; objectName: string }>> {
   const result = JSON.parse(await readFile(path.resolve(processResultFile), "utf8")) as ProcessResult;
-  const canonical = path.join(path.resolve(output), "canonical");
-  const files: Array<{ local: string; objectName: string }> = [];
+  const files = new Map<string, { local: string; objectName: string }>();
   for (const source of result.sources) {
-    const relative = [path.posix.join("news", source.sourceId, "dataset.json")];
-    relative.push(...source.dates.map((date) => (
-      path.posix.join("news", source.sourceId, "articles", date.slice(0, 4), date.slice(5, 7), `${date}.jsonl.gz`)
-    )));
-    for (const objectName of relative) {
-      files.push({ local: path.join(canonical, ...objectName.split("/")), objectName: path.posix.join("canonical", objectName) });
+    for (const objectName of source.files) {
+      files.set(objectName, { local: path.join(path.resolve(output), ...objectName.split("/")), objectName });
     }
   }
   const report = path.resolve(result.report);
-  const reportRelative = path.relative(canonical, report).split(path.sep).join("/");
+  const reportRelative = path.relative(path.resolve(output), report).split(path.sep).join("/");
   if (reportRelative.startsWith("../") || reportRelative === "..") throw new Error("Canonical report is outside the output root");
-  files.push({ local: report, objectName: path.posix.join("canonical", reportRelative) });
-  return files;
+  files.set(reportRelative, { local: report, objectName: reportRelative });
+  return [...files.values()];
 }
 
 async function main(): Promise<void> {

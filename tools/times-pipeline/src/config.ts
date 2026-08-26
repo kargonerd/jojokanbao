@@ -10,7 +10,7 @@ import type {
 } from "./types.js";
 
 const SOURCE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const PRIORITIES = new Set<ContentPriority>(["discovery-body", "browser-parser", "discovery-summary"]);
+const PRIORITIES = new Set<ContentPriority>(["discovery-body", "captured-page", "discovery-summary"]);
 const ROUTE_SOURCE_ADAPTERS = new Set<RouteSourceAdapter>([
   "africanews",
   "agencia-brasil",
@@ -192,10 +192,10 @@ function parseSource(value: unknown, position: number): SourceConfig | null {
   if (!Array.isArray(priorities) || priorities.length === 0 || priorities.some((item) => !PRIORITIES.has(item as ContentPriority))) {
     throw new Error(`${id}.content.priority is invalid`);
   }
-  const archive = row.archive as Record<string, unknown> | undefined;
-  const mode = archive?.mode;
-  if (!new Set(["browser", "http", "none"]).has(mode as string)) throw new Error(`${id}.archive.mode is invalid`);
-  if (typeof archive?.bpc !== "boolean") throw new Error(`${id}.archive.bpc must be a boolean`);
+  const pageFetch = row.fetch as Record<string, unknown> | undefined;
+  const strategy = pageFetch?.strategy;
+  if (!new Set(["direct-first", "browser-first"]).has(strategy as string)) throw new Error(`${id}.fetch.strategy is invalid`);
+  if (typeof pageFetch?.bpc !== "boolean") throw new Error(`${id}.fetch.bpc must be a boolean`);
   const parser = typeof content?.parser === "string" && content.parser.trim() ? content.parser.trim() : undefined;
   const minimumFullCharacters = content?.minimumFullCharacters;
   const minimumFullParagraphs = content?.minimumFullParagraphs;
@@ -205,7 +205,7 @@ function parseSource(value: unknown, position: number): SourceConfig | null {
   if (minimumFullParagraphs !== undefined && (!Number.isInteger(minimumFullParagraphs) || (minimumFullParagraphs as number) < 0)) {
     throw new Error(`${id}.content.minimumFullParagraphs must be a non-negative integer`);
   }
-  const proxyPolicy = typeof archive.proxyPolicy === "string" && archive.proxyPolicy.trim() ? archive.proxyPolicy.trim() : undefined;
+  const proxyPolicy = typeof pageFetch.proxyPolicy === "string" && pageFetch.proxyPolicy.trim() ? pageFetch.proxyPolicy.trim() : undefined;
   const health = row.health as Record<string, unknown> | undefined;
   const minimumCandidates = health?.minimumCandidates;
   if (!Number.isInteger(minimumCandidates) || (minimumCandidates as number) < 0) {
@@ -223,7 +223,11 @@ function parseSource(value: unknown, position: number): SourceConfig | null {
       ...(minimumFullCharacters !== undefined ? { minimumFullCharacters: minimumFullCharacters as number } : {}),
       ...(minimumFullParagraphs !== undefined ? { minimumFullParagraphs: minimumFullParagraphs as number } : {}),
     },
-    archive: { mode: mode as SourceConfig["archive"]["mode"], bpc: archive.bpc, ...(proxyPolicy ? { proxyPolicy } : {}) },
+    fetch: {
+      strategy: strategy as SourceConfig["fetch"]["strategy"],
+      bpc: pageFetch.bpc,
+      ...(proxyPolicy ? { proxyPolicy } : {}),
+    },
     health: { minimumCandidates: minimumCandidates as number },
     enabled: true,
   };

@@ -18,7 +18,7 @@ const source: SourceConfig = {
   sections: [{ id: "markets", name: "Markets", url: "https://example.test/world" }],
   discovery: endpoint,
   content: { priority: ["discovery-body", "discovery-summary"], minimumFullCharacters: 20, minimumFullParagraphs: 1 },
-  archive: { mode: "browser", bpc: true },
+  fetch: { strategy: "direct-first", bpc: true },
   health: { minimumCandidates: 1 },
   enabled: true,
 };

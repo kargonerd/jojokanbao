@@ -74,13 +74,13 @@
   },
   "content": {
     "priority": [
-      "browser-parser",
+      "captured-page",
       "discovery-summary"
     ],
     "parser": "africanews"
   },
-  "archive": {
-    "mode": "browser",
+  "fetch": {
+    "strategy": "direct-first",
     "bpc": true,
     "proxyPolicy": "direct-first"
   },

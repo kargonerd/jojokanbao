@@ -1,6 +1,6 @@
-import type { SourcePagePolicy } from "../../types.js";
+import type { SourceFetchPolicy } from "../../types.js";
 
-export const clsPage: SourcePagePolicy = {
+export const clsFetch = {
   capture: "browser",
   bodySelectors: [".detail-content", ".article-content", "[itemprop='articleBody']", "article"],
-};
+} satisfies SourceFetchPolicy;

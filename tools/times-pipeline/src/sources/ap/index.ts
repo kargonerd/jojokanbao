@@ -1,6 +1,6 @@
 import type { SourceModule } from "../contracts.js";
 import { discoverAp } from "./discover.js";
-import { apPage } from "./page.js";
+import { apFetch } from "./fetch.js";
 import { processAp } from "./process.js";
 
 export const apSource: SourceModule = {
@@ -9,6 +9,6 @@ export const apSource: SourceModule = {
     if (endpoint.adapter !== "ap") throw new Error(`${source.id}: expected AP endpoint`);
     return discoverAp(source, endpoint, fetchedAt);
   },
-  page: apPage,
+  fetch: apFetch,
   process: processAp,
 };
