@@ -3,6 +3,8 @@ import { appendFile, mkdir, writeFile } from "node:fs/promises";
 
 let extensionReady;
 
+const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
 async function waitForExtension(page) {
   if (process.env.JOJO_REQUIRE_EXTENSION !== "1") return;
   extensionReady ??= (async () => {
@@ -19,7 +21,7 @@ async function waitForExtension(page) {
         })}\n`);
         return;
       }
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await wait(100);
     }
     throw new Error("The configured Chromium extension did not start");
   })();
@@ -34,7 +36,22 @@ export default async function jojoTimesDriver({ page, data, crawler, seed }) {
     // Browsertrix may time out after the document has rendered enough to archive.
     // Preserve that DOM and let the caller judge its HTTP status and body quality.
   }
-  await new Promise((resolve) => setTimeout(resolve, 750));
+  await wait(750);
+  const initialStatus = data.status;
+  let status = initialStatus;
+  if ([401, 403, 429].includes(Number(initialStatus))) {
+    // Anti-bot challenge responses often establish a browser cookie before the
+    // next navigation. Retry in the same browser context before proxy rotation
+    // creates another cold session.
+    await wait(1_500);
+    try {
+      const response = await page.reload({ waitUntil: "domcontentloaded", timeout: 25_000 });
+      status = response?.status() ?? status;
+      await wait(750);
+    } catch {
+      // Keep the initial response and let the outer route retry policy decide.
+    }
+  }
   const html = await page.content();
   const maximumBytes = Number(process.env.JOJO_RENDERED_MAX_BYTES || "25000000");
   if (Buffer.byteLength(html, "utf8") > maximumBytes) return;
@@ -45,7 +62,8 @@ export default async function jojoTimesDriver({ page, data, crawler, seed }) {
     seedUrl: data.url,
     finalUrl: page.url(),
     file: `${name}.html`,
-    status: data.status,
+    status,
+    ...(status !== initialStatus ? { initialStatus } : {}),
     capturedAt: new Date().toISOString(),
   })}\n`);
 }
