@@ -6,6 +6,11 @@ on:
     types: [completed]
   workflow_dispatch:
     inputs:
+      capture_run_id:
+        description: Optional Capture workflow run id to process as a dry run
+        type: string
+        default: ""
+        required: false
       publish:
         description: Commit Canonical to HF and publish Delivery to B2
         type: boolean
@@ -14,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: times-hf-dataset-writer
@@ -24,7 +30,7 @@ jobs:
     if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'schedule')
     runs-on: ubuntu-latest
     environment: maintenance
-    timeout-minutes: 9
+    timeout-minutes: 20
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       HF_TIMES_DATASET_REPO: ${{ secrets.HF_TIMES_DATASET_REPO || secrets.HF_DATASET_REPO }}
@@ -32,6 +38,7 @@ jobs:
       B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
       JOJO_DELIVERY_REMOTE: jojo-b2:${{ secrets.B2_BUCKET || 'jojo-newspaper' }}
       TIMES_PUBLISH: ${{ github.event_name == 'workflow_run' || inputs.publish }}
+      TIMES_CAPTURE_RUN_ID: ${{ inputs.capture_run_id || '' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -43,6 +50,7 @@ jobs:
           cache: pnpm
 
       - name: Validate HF input configuration
+        if: env.TIMES_CAPTURE_RUN_ID == ''
         run: |
           test -n "$HF_TOKEN" || (echo "HF_TOKEN is not configured" >&2 && exit 1)
           test -n "$HF_TIMES_DATASET_REPO" || (echo "HF_TIMES_DATASET_REPO is not configured" >&2 && exit 1)
@@ -50,6 +58,7 @@ jobs:
       - name: Validate publication configuration
         if: env.TIMES_PUBLISH == 'true'
         run: |
+          test -z "$TIMES_CAPTURE_RUN_ID" || (echo "capture_run_id is available only for a non-publishing dry run" >&2 && exit 1)
           test -n "$B2_KEY_ID" || (echo "B2_KEY_ID is not configured" >&2 && exit 1)
           test -n "$B2_APPLICATION_KEY" || (echo "B2_APPLICATION_KEY is not configured" >&2 && exit 1)
 
@@ -65,7 +74,28 @@ jobs:
       - name: Build Times pipeline
         run: pnpm --filter @jojo/times-pipeline build
 
+      - name: Download Raw from a Capture dry run
+        if: env.TIMES_CAPTURE_RUN_ID != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: times-raw-${{ env.TIMES_CAPTURE_RUN_ID }}
+          path: ${{ runner.temp }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.TIMES_CAPTURE_RUN_ID }}
+
+      - name: Resolve Capture artifact input
+        if: env.TIMES_CAPTURE_RUN_ID != ''
+        run: |
+          manifest="$(find "$RUNNER_TEMP/jojo-times/raw/runs" -type f -name '*.json' | sort | tail -n 1)"
+          test -n "$manifest" || (echo "Capture artifact has no Raw run manifest" >&2 && exit 1)
+          test -f "$manifest" || (echo "Capture artifact Raw run manifest is missing" >&2 && exit 1)
+          echo "TIMES_RAW_REVISION=github-actions/$TIMES_CAPTURE_RUN_ID" >> "$GITHUB_ENV"
+          echo "TIMES_RUN_MANIFEST=$manifest" >> "$GITHUB_ENV"
+          node -e 'const fs=require("node:fs");fs.writeFileSync(process.env.RUNNER_TEMP+"/capture-input-result.json",JSON.stringify({captureRunId:process.env.TIMES_CAPTURE_RUN_ID,runManifest:process.argv[1]},null,2)+"\n")' "$manifest"
+
       - name: Download the latest processable HF snapshot
+        if: env.TIMES_CAPTURE_RUN_ID == ''
         run: |
           node tools/times-pipeline/dist/src/hf-cli.js \
             --action download-snapshot \
@@ -149,6 +179,7 @@ jobs:
             ${{ runner.temp }}/jojo-times/canonical
             ${{ runner.temp }}/jojo-times-delivery
             ${{ runner.temp }}/hf-snapshot-result.json
+            ${{ runner.temp }}/capture-input-result.json
             ${{ runner.temp }}/process-result.json
             ${{ runner.temp }}/delivery-result.json
           if-no-files-found: error

@@ -152,15 +152,16 @@ jobs:
             --refresh-hours 168
             --retry-hours 2
             --browser-extension-path "$BPC_EXTENSION_PATH"
+            --report "$RUNNER_TEMP/page-capture-result.json"
           )
           if [ -n "$JOJO_TIMES_PROXY_URI" ]; then
             args+=(
               --proxy-server "$JOJO_TIMES_PROXY_URI"
               --proxy-control-url http://127.0.0.1:9090
-              --proxy-rotation-attempts 3
+              --proxy-rotation-attempts 8
             )
           fi
-          xvfb-run -a node tools/times-pipeline/dist/src/page-capture-cli.js "${args[@]}" > "$RUNNER_TEMP/page-capture-result.json"
+          xvfb-run -a node tools/times-pipeline/dist/src/page-capture-cli.js "${args[@]}"
 
       - name: Commit Raw as one HF Dataset revision
         if: env.TIMES_PUBLISH == 'true'
@@ -209,6 +210,7 @@ jobs:
           } catch {}
           if (pages) {
             console.log(`- Page capture: ${pages.captured}/${pages.planned} full pages, ${pages.failed} failures`);
+            console.log(`- Excluded: ${pages.skipped} non-text media, ${pages.hardPaywall} hard paywall`);
             console.log(`- Methods: ${pages.direct} direct, ${pages.browser} browser; images: ${pages.assets}`);
           } else {
             console.log("- Page capture result is missing");

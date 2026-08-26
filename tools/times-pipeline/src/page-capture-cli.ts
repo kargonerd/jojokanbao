@@ -7,11 +7,12 @@ import { loadSources } from "./config.js";
 import { extractRenderedBody } from "./process/rendered-body.js";
 import { bodyWithAssets, extractArticleContent } from "./capture/article-content.js";
 import { captureArticleAssets } from "./capture/assets.js";
+import { unavailablePageReason, type UnavailablePageReason } from "./capture/availability.js";
 import { BrowserSourceSession } from "./capture/browser.js";
 import { downloadDirectAsset, fetchDirectPage, type CapturedHtmlPage } from "./capture/http.js";
 import { articleFingerprint, pendingArticles, type PageArticle, type PageCaptureState } from "./capture/pending.js";
 import { proxyCandidates, selectProxy } from "./capture/proxy.js";
-import { mapSourceBatches } from "./capture/schedule.js";
+import { groupArticlesBySource, mapSourceBatches } from "./capture/schedule.js";
 import type { Candidate, SourceCaptureManifest, SourceConfig, SourceFetchPolicy } from "./types.js";
 
 interface RawRunManifest {
@@ -37,6 +38,7 @@ interface CaptureOutcome {
   article: ArticleBundle;
   page: CapturedHtmlPage;
   fullBody: boolean;
+  unavailableReason?: UnavailablePageReason;
   assetCount: number;
   rawPageObject: string;
 }
@@ -94,6 +96,10 @@ function quality(source: SourceConfig): { minimumCharacters?: number; minimumPar
 
 function successfulPage(page: CapturedHtmlPage, fullBody: boolean): boolean {
   return fullBody && Boolean(page.renderedHtml) && (!page.status || page.status < 500);
+}
+
+function retryableOutcome(outcome: CaptureOutcome | undefined): boolean {
+  return !outcome?.fullBody && !outcome?.unavailableReason;
 }
 
 async function writeRawPage(workspace: string, article: ArticleBundle, page: CapturedHtmlPage, error?: string): Promise<string> {
@@ -154,6 +160,13 @@ async function captureOne(
       ? session.downloadAsset(url, referer, timeoutSeconds)
       : downloadDirectAsset(url, referer, timeoutSeconds),
   });
+  const unavailableReason = unavailablePageReason({
+    sourceId: article.sourceId,
+    title: article.title,
+    url: page.finalUrl,
+    ...(page.renderedHtml ? { html: page.renderedHtml } : {}),
+    hasFullBody: Boolean(selectedBody),
+  });
   if (selectedBody) {
     article.candidate.capturedBody = bodyWithAssets(selectedBody, assets);
     article.candidate.contentStatus = "full";
@@ -163,10 +176,16 @@ async function captureOne(
   article.candidate.captureMethod = page.method;
   if (page.status !== undefined) article.candidate.captureHttpStatus = page.status;
   const fullBody = article.candidate.contentStatus === "full" && Boolean(article.candidate.capturedBody || article.candidate.discoveryBody);
-  article.candidate.captureStatus = fullBody ? "captured" : "failed";
-  const rawPageObject = await writeRawPage(workspace, article, page, fullBody ? undefined : "FullTextNotExtracted");
+  article.candidate.captureStatus = fullBody
+    ? "captured"
+    : unavailableReason === "HardPaywall"
+      ? "hard-paywall"
+      : unavailableReason === "UnsupportedMedia"
+        ? "skipped"
+        : "failed";
+  const rawPageObject = await writeRawPage(workspace, article, page, fullBody ? undefined : unavailableReason ?? "FullTextNotExtracted");
   article.candidate.rawPageObject = rawPageObject;
-  return { article, page, fullBody, assetCount: assets.length, rawPageObject };
+  return { article, page, fullBody, ...(unavailableReason ? { unavailableReason } : {}), assetCount: assets.length, rawPageObject };
 }
 
 async function loadArticles(workspace: string, run: RawRunManifest, sources: Map<string, SourceConfig>): Promise<ArticleBundle[]> {
@@ -215,6 +234,8 @@ async function persistSources(workspace: string, articles: ArticleBundle[], stat
       captured: candidates.filter((candidate) => candidate.captureStatus === "captured").length,
       unchanged: candidates.filter((candidate) => candidate.captureStatus === "unchanged").length,
       failed: candidates.filter((candidate) => candidate.captureStatus === "failed").length,
+      skipped: candidates.filter((candidate) => candidate.captureStatus === "skipped").length,
+      hardPaywall: candidates.filter((candidate) => candidate.captureStatus === "hard-paywall").length,
       direct: candidates.filter((candidate) => candidate.captureMethod === "direct").length,
       browser: candidates.filter((candidate) => candidate.captureMethod === "browser").length,
       assets: candidates.reduce((sum, candidate) => sum + (candidate.assets?.length ?? 0), 0),
@@ -278,7 +299,7 @@ async function main(): Promise<void> {
         for (const article of batch.articles) {
           const outcome = await captureOne(workspace, article as ArticleBundle, timeoutSeconds, browser, forceBrowser);
           const previous = best.get(article.articleId);
-          if (!previous || successfulPage(outcome.page, outcome.fullBody) || !successfulPage(previous.page, previous.fullBody)) {
+          if (!previous || successfulPage(outcome.page, outcome.fullBody) || retryableOutcome(previous)) {
             best.set(article.articleId, outcome);
           }
           if (outcome.fullBody) captured += 1;
@@ -300,11 +321,18 @@ async function main(): Promise<void> {
     try {
       for (const alternative of await proxyCandidates(controlUrl, proxyGroup, automaticName, rotationAttempts)) {
         const failed = pending.filter((article) => article.source.fetch.proxyPolicy === "rotate"
-          && !successfulPage(best.get(article.articleId)?.page ?? { method: "browser", requestedUrl: article.captureUrl, finalUrl: article.captureUrl, capturedAt: generatedAt.toISOString() }, best.get(article.articleId)?.fullBody ?? false));
+          && retryableOutcome(best.get(article.articleId)));
         if (!failed.length) break;
         await selectProxy(controlUrl, proxyGroup, alternative);
         await new Promise((resolve) => setTimeout(resolve, 250));
-        await captureRound(failed, true);
+        const probes = groupArticlesBySource(failed).flatMap((batch) => batch.articles.slice(0, 2));
+        await captureRound(probes, true);
+        const usableSources = new Set(probes.filter((article) => {
+          const outcome = best.get(article.articleId);
+          return Boolean(outcome && successfulPage(outcome.page, outcome.fullBody));
+        }).map((article) => article.sourceId));
+        const remaining = failed.filter((article) => usableSources.has(article.sourceId) && retryableOutcome(best.get(article.articleId)));
+        if (remaining.length) await captureRound(remaining, true);
         rotationRounds += 1;
       }
     } finally {
@@ -320,7 +348,8 @@ async function main(): Promise<void> {
       lastAttempt: generatedAt.toISOString(),
       ...(outcome?.page.capturedAt ? { capturedAt: outcome.page.capturedAt } : {}),
       ...(outcome?.page.status !== undefined ? { httpStatus: outcome.page.status } : {}),
-      error: outcome?.fullBody ? null : outcome?.page.error ?? "FullTextNotExtracted",
+      error: outcome?.fullBody || outcome?.unavailableReason ? null : outcome?.page.error ?? "FullTextNotExtracted",
+      ...(outcome?.unavailableReason ? { unavailableReason: outcome.unavailableReason } : {}),
       ...(outcome?.rawPageObject ? { rawPageObject: outcome.rawPageObject } : {}),
     };
     state.updatedAt = generatedAt.toISOString();
@@ -336,7 +365,9 @@ async function main(): Promise<void> {
       discovered: sourceArticles.length,
       planned: sourcePending.length,
       captured: sourceOutcomes.filter((outcome) => outcome.fullBody).length,
-      failed: sourcePending.length - sourceOutcomes.filter((outcome) => outcome.fullBody).length,
+      failed: sourceOutcomes.filter((outcome) => !outcome.fullBody && !outcome.unavailableReason).length,
+      skipped: sourceOutcomes.filter((outcome) => outcome.unavailableReason === "UnsupportedMedia").length,
+      hardPaywall: sourceOutcomes.filter((outcome) => outcome.unavailableReason === "HardPaywall").length,
       unchanged: sourceArticles.length - sourcePending.length,
       assets: sourceOutcomes.reduce((sum, outcome) => sum + outcome.assetCount, 0),
     };
@@ -348,7 +379,9 @@ async function main(): Promise<void> {
     discovered: articles.length,
     planned: pending.length,
     captured: outcomes.filter((outcome) => outcome.fullBody).length,
-    failed: pending.length - outcomes.filter((outcome) => outcome.fullBody).length,
+    failed: outcomes.filter((outcome) => !outcome.fullBody && !outcome.unavailableReason).length,
+    skipped: outcomes.filter((outcome) => outcome.unavailableReason === "UnsupportedMedia").length,
+    hardPaywall: outcomes.filter((outcome) => outcome.unavailableReason === "HardPaywall").length,
     assets: outcomes.reduce((sum, outcome) => sum + outcome.assetCount, 0),
     direct: outcomes.filter((outcome) => outcome.page.method === "direct").length,
     browser: outcomes.filter((outcome) => outcome.page.method === "browser").length,
@@ -359,7 +392,14 @@ async function main(): Promise<void> {
   };
   run.pageCapture = report;
   await writeFile(runPath, `${JSON.stringify(run, null, 2)}\n`);
-  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  const reportBody = `${JSON.stringify(report, null, 2)}\n`;
+  const reportPath = args.get("report");
+  if (reportPath) {
+    await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
+    await writeFile(path.resolve(reportPath), reportBody);
+  } else {
+    process.stdout.write(reportBody);
+  }
 }
 
 main().catch((error: unknown) => {

@@ -43,7 +43,8 @@ export function discoverArticleImages(html: string, pageUrl: string, policy?: So
   const lead = absoluteImageUrl($("meta[property='og:image']").attr("content") ?? $("meta[name='twitter:image']").attr("content"), pageUrl);
   if (lead) add({ sourceUrl: lead, role: "lead" });
   const selectors = [...(policy?.bodySelectors ?? []), "[itemprop='articleBody']", "article", ".article-body", ".article__body", ".story-body", ".entry-content", "main"];
-  const containers = $(selectors.join(","));
+  const selectedSelector = selectors.find((selector) => $(selector).length > 0);
+  const containers = selectedSelector ? $(selectedSelector) : $("body");
   const images = containers.length ? containers.find("img") : $("img");
   images.each((_index, element) => {
     const image = $(element);

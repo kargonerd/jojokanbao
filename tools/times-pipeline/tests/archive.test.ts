@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { bodyWithAssets, discoverArticleImages } from "../src/capture/article-content.js";
+import { unavailablePageReason } from "../src/capture/availability.js";
 import { articleFingerprint, pendingArticles, type PageArticle } from "../src/capture/pending.js";
 import { selectProxy, selectProxyCandidates } from "../src/capture/proxy.js";
 import { groupArticlesBySource, mapSourceBatches } from "../src/capture/schedule.js";
@@ -53,6 +54,18 @@ describe("page capture orchestration", () => {
     }])).toBe('<figure data-asset-id="asset:lead"></figure><p>Body</p>');
   });
 
+  it("separates non-text media and an explicit hard paywall from fetch failures", () => {
+    expect(unavailablePageReason({
+      sourceId: "npr", title: "Audio brief", url: "https://www.npr.org/story", html: '<body class="no-transcript">', hasFullBody: false,
+    })).toBe("UnsupportedMedia");
+    expect(unavailablePageReason({
+      sourceId: "scmp", title: "Plus story", url: "https://www.scmp.com/plus/story", html: "SCMP Plus subscription is required for access.", hasFullBody: false,
+    })).toBe("HardPaywall");
+    expect(unavailablePageReason({
+      sourceId: "bloomberg", title: "Story", url: "https://www.bloomberg.com/news/articles/story", html: "Subscribe to continue", hasFullBody: false,
+    })).toBeUndefined();
+  });
+
   it("selects healthy and spread Mihomo nodes without reusing the active route", () => {
     expect(selectProxyCandidates(
       { all: ["JOJO-TIMES-AUTO", "node-a", "node-b", "node-c", "node-d", "node-e"], now: "JOJO-TIMES-AUTO" },
@@ -63,8 +76,8 @@ describe("page capture orchestration", () => {
         "node-e": { history: [{ delay: 200 }] },
       } },
       "JOJO-TIMES-AUTO",
-      4,
-    )).toEqual(["node-b", "node-c", "node-d", "node-e"]);
+      3,
+    )).toEqual(["node-b", "node-d", "node-e"]);
   });
 
   it("accepts Mihomo's empty 204 response when switching routes", async () => {

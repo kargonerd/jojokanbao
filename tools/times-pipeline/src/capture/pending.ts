@@ -16,6 +16,7 @@ export interface PageCaptureStateRow {
   capturedAt?: string;
   httpStatus?: number;
   error?: string | null;
+  unavailableReason?: "UnsupportedMedia" | "HardPaywall";
   rawPageObject?: string;
 }
 

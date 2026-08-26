@@ -30,16 +30,28 @@ export async function captureArticleAssets(options: {
   images: readonly PageImageCandidate[];
   download: (url: string, referer: string) => Promise<{ body: Buffer; mediaType: string } | undefined>;
 }): Promise<CapturedAsset[]> {
+  const images = [...new Map(options.images.map((image) => [image.sourceUrl, image])).values()];
+  const downloaded = new Array<{ image: PageImageCandidate; result: { body: Buffer; mediaType: string } } | undefined>(images.length);
+  let cursor = 0;
+  const consume = async (): Promise<void> => {
+    while (cursor < images.length) {
+      const index = cursor++;
+      const image = images[index]!;
+      const result = await options.download(image.sourceUrl, options.pageUrl);
+      if (result?.mediaType.startsWith("image/")) downloaded[index] = { image, result };
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, images.length) }, consume));
   const assets = new Map<string, CapturedAsset>();
-  for (const image of options.images) {
-    const downloaded = await options.download(image.sourceUrl, options.pageUrl);
-    if (!downloaded || !downloaded.mediaType.startsWith("image/")) continue;
-    const sha256 = createHash("sha256").update(downloaded.body).digest("hex");
-    const suffix = extension(downloaded.mediaType, image.sourceUrl);
+  for (const entry of downloaded) {
+    if (!entry) continue;
+    const { image, result } = entry;
+    const sha256 = createHash("sha256").update(result.body).digest("hex");
+    const suffix = extension(result.mediaType, image.sourceUrl);
     const objectName = `raw/${options.sourceId}/assets/${sha256}.${suffix}`;
     const target = path.join(options.workspace, ...objectName.split("/"));
     await mkdir(path.dirname(target), { recursive: true });
-    await writeFile(target, downloaded.body);
+    await writeFile(target, result.body);
     const id = `asset:${sha256}`;
     const previous = assets.get(id);
     assets.set(id, {
@@ -48,8 +60,8 @@ export async function captureArticleAssets(options: {
       role: previous?.role === "lead" ? "lead" : image.role,
       sourceUrl: image.sourceUrl,
       rawObject: objectName,
-      mediaType: downloaded.mediaType,
-      size: downloaded.body.byteLength,
+      mediaType: result.mediaType,
+      size: result.body.byteLength,
       sha256,
       ...(image.alt ? { alt: image.alt } : {}),
       ...(image.caption ? { caption: image.caption } : {}),

@@ -4,8 +4,6 @@ import path from "node:path";
 import { chromium, type BrowserContext, type Page, type Response } from "playwright";
 import type { CapturedHtmlPage } from "./http.js";
 
-const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-
 async function responseText(response: Response | null): Promise<string | undefined> {
   try {
     const contentType = (await response?.headerValue("content-type")) ?? "";
@@ -40,7 +38,6 @@ export class BrowserSourceSession {
     try {
       const context = await chromium.launchPersistentContext(userDataDirectory, {
         headless: process.env.JOJO_TIMES_HEADLESS === "1",
-        userAgent: USER_AGENT,
         viewport: { width: 1440, height: 1200 },
         locale: "en-US",
         ignoreHTTPSErrors: true,

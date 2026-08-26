@@ -163,7 +163,7 @@ export interface Candidate {
   capturedAt?: string;
   captureHttpStatus?: number;
   rawPageObject?: string;
-  captureStatus?: "pending" | "captured" | "unchanged" | "failed" | "hard-paywall";
+  captureStatus?: "pending" | "captured" | "unchanged" | "failed" | "hard-paywall" | "skipped";
   captureMethod?: "direct" | "browser";
   assets?: CapturedAsset[];
   contentStatus: "full" | "summary" | "metadata";
@@ -235,6 +235,8 @@ export interface SourceCaptureManifest {
     captured: number;
     unchanged: number;
     failed: number;
+    skipped: number;
+    hardPaywall: number;
     direct: number;
     browser: number;
     assets: number;
