@@ -5,16 +5,8 @@ import {
   gunzipJoxJson,
   transformJoxBytes,
   type JojoCatalog,
-  type JojoCatalogEntry,
   type JojoDatasetIndex,
 } from "@jojo/content";
-
-function migrateBookAiCapability(entry: JojoCatalogEntry): JojoCatalogEntry {
-  if (entry.aiEnabled !== undefined) return entry;
-  return entry.type === "book" || entry.type === "book-series"
-    ? { ...entry, aiEnabled: true }
-    : entry;
-}
 
 async function readJox<T>(root: string, objectKey: string): Promise<T | undefined> {
   try {
@@ -46,13 +38,9 @@ export async function mergeDeliveryMetadata(input: {
   const local = await readJox<JojoCatalog>(input.localRoot, "catalog.jox");
   if (!local) throw new Error("本次构建缺少 delivery/catalog.jox");
   const remote = await readJox<JojoCatalog>(input.remoteRoot, "catalog.jox");
-  const entries = new Map((remote?.datasets ?? []).map((entry) => {
-    const migrated = migrateBookAiCapability(entry);
-    return [migrated.datasetId, migrated];
-  }));
+  const entries = new Map((remote?.datasets ?? []).map((entry) => [entry.datasetId, entry]));
   for (const datasetId of input.removeDatasetIds ?? []) entries.delete(datasetId);
-  for (const rawEntry of local.datasets) {
-    const entry = migrateBookAiCapability(rawEntry);
+  for (const entry of local.datasets) {
     for (const [remoteId, remoteEntry] of entries) {
       const bothBooks = [entry.type, remoteEntry.type].every((type) => type === "book" || type === "book-series");
       if (remoteId !== entry.datasetId && bothBooks && remoteEntry.title === entry.title) entries.delete(remoteId);

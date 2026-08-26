@@ -5,8 +5,6 @@
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit",
-    "backfill-book-search": "tsx src/backfill-book-search-cli.ts",
-    "validate-book-search-backfill": "tsx src/validate-book-search-backfill-cli.ts",
     "cli": "tsx src/cli.ts",
     "merge-delivery": "tsx src/merge-delivery-cli.ts",
     "validate": "tsx src/validate-cli.ts",

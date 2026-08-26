@@ -493,7 +493,7 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
             itemId: target.item.itemId,
             itemTitle: target.item.title,
             manifestObject: target.manifestObject,
-            reason: "search.jox 尚未回填",
+            reason: "书籍未提供静态正文索引",
           });
           continue;
         }

@@ -32,7 +32,7 @@ reader.jojokanbao.cn                  agent-global.jojokanbao.cn
 - 默认全馆提问时，Agent 先读取 `catalog.jox` 选最多 8 本候选书，再把这些书随附的
   `jojo-book-search/1` 下载到本次运行内存中检索，只下载命中的少量章节正文。只选中一个
   Item 时，Web 与 Mobile 会把 `manifestObject` 放进请求 scope，Agent 可直接书内查找。
-  这条书籍问答链路不再依赖 ES；旧书尚无静态索引时先看目录再按章读取。
+  这条书籍问答链路不再依赖 ES；书籍未提供静态索引时先看目录再按章读取。
 
 `pnpm prepare:agent-deploy` 会生成 `.edgeone/agent-deploy`，其中包括根目录
 `middleware.ts`、Makers Agent、凭据管理 Cloud Function 及工作区依赖。

@@ -106,7 +106,7 @@ def test_build_merges_previous_latest_and_dataset_index(tmp_path: Path) -> None:
     assert not (second / "delivery" / "catalog.jox").exists()
 
 
-def test_build_migrates_legacy_book_ai_capability_in_catalog(tmp_path: Path) -> None:
+def test_build_does_not_rewrite_catalog_for_unrelated_capability_fields(tmp_path: Path) -> None:
     first = tmp_path / "first"
     build(first, [article("article-one", 10)])
     previous = tmp_path / "previous"
@@ -125,12 +125,7 @@ def test_build_migrates_legacy_book_ai_capability_in_catalog(tmp_path: Path) -> 
 
     second = tmp_path / "second"
     build(second, [article("article-one", 10)], previous)
-    migrated = read_jox_json(second / "delivery" / "catalog.jox", CATALOG_OBJECT)
-
-    legacy_book = next(row for row in migrated["datasets"] if row["datasetId"] == "legacy-book")
-    assert legacy_book["aiEnabled"] is True
-    times = next(row for row in migrated["datasets"] if row["datasetId"] == "times")
-    assert times["aiEnabled"] is False
+    assert not (second / "delivery" / "catalog.jox").exists()
 
 
 def test_build_does_not_emit_expired_or_unchanged_article_objects(tmp_path: Path) -> None:

@@ -151,6 +151,7 @@ describe("Times Delivery writer", () => {
         language: "zh-CN",
         itemCount: 1,
         indexObject: "content/books/reader/index.jox",
+        aiEnabled: true,
         publicationStatus: "published",
         access: "public",
       }],

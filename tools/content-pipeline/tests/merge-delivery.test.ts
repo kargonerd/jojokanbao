@@ -29,6 +29,7 @@ describe("delivery metadata merge", () => {
       title,
       language: "zh-CN",
       indexObject: `content/books/${id}/index.jox`,
+      aiEnabled: true,
     });
     await put(remote, "catalog.jox", {
       formatVersion: "jojo-catalog/1",
@@ -73,7 +74,7 @@ describe("delivery metadata merge", () => {
     expect(index.type).toBe("book-series");
   });
 
-  it("migrates legacy books without enabling non-book Datasets", async () => {
+  it("preserves capability fields without inferring them from Dataset type", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "jojo-merge-ai-capability-"));
     const remote = path.join(root, "remote");
     const local = path.join(root, "local");
@@ -99,7 +100,7 @@ describe("delivery metadata merge", () => {
       new Uint8Array(await readFile(path.join(output, "catalog.jox"))),
       "catalog.jox",
     );
-    expect(catalog.datasets.find((item) => item.datasetId === "book")?.aiEnabled).toBe(true);
+    expect(catalog.datasets.find((item) => item.datasetId === "book")?.aiEnabled).toBeUndefined();
     expect(catalog.datasets.find((item) => item.datasetId === "times")?.aiEnabled).toBeUndefined();
   });
 

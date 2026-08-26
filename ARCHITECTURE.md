@@ -65,7 +65,7 @@ EdgeOne 专有入口位于 `infrastructure/edgeone/functions`，只导入
   用户或会话追加记录。
 - Agent 先读取 `catalog.jox` 选择最多 8 本候选书，再把候选书随 Jox 发布的
   `jojo-book-search/1` 静态索引下载到本次运行内存中检索；只下载命中的少量章节正文，
-  不依赖 Elasticsearch。旧书尚无静态索引时改为先看真实目录、再按章读取。通用聊天和
+  不依赖 Elasticsearch。书籍未提供静态索引时改为先看真实目录、再按章读取。通用聊天和
   书内面板共享同一套可跳转引用结构。
 - Pi Agent 使用 Makers Agents Runtime，不塞进 Node Cloud Functions。
 

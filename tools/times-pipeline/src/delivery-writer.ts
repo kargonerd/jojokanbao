@@ -434,13 +434,7 @@ export async function buildTimesDelivery(input: {
     updatedAt: index.updatedAt,
     datasets: [
       ...(input.previousCatalog?.datasets ?? [])
-        .filter((dataset) => dataset.datasetId !== "times")
-        .map((dataset) => (
-          dataset.aiEnabled === undefined
-          && (dataset.type === "book" || dataset.type === "book-series")
-            ? { ...dataset, aiEnabled: true }
-            : dataset
-        )),
+        .filter((dataset) => dataset.datasetId !== "times"),
       timesDataset,
     ],
   };
