@@ -21,8 +21,9 @@ small files it actually needs:
 └─ index.ts     # module wiring
 ```
 
-HTTP recording, RSS/XML parsing, sitemap parsing, browser/WACZ capture, quality gates, Raw writing,
-and Canonical writing remain shared. A publisher that works with those shared adapters keeps only
+HTTP recording, RSS/XML parsing, sitemap parsing, generic HTML mechanics, Browsertrix/WACZ capture,
+quality gates, Raw writing, and Canonical writing remain shared. Publisher URLs, selectors, API
+contracts, and filtering rules never live in a generic site adapter. A publisher that works with shared adapters keeps only
 `source.json`; it does not get empty TypeScript wrappers. Add a source module only when the publisher
 needs real custom behavior.
 

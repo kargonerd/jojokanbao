@@ -11,15 +11,20 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "capture": "node dist/src/capture-cli.js",
+    "archive": "node dist/src/archive-cli.js",
+    "prepare-proxy": "node dist/src/prepare-proxy-cli.js",
+    "hf": "node dist/src/hf-cli.js",
     "process": "node dist/src/process-cli.js",
     "delivery": "node dist/src/delivery-cli.js",
     "serve": "node dist/src/serve-cli.js"
   },
   "dependencies": {
+    "@huggingface/hub": "2.16.0",
     "@jojo/content": "workspace:*",
     "cheerio": "1.2.0",
     "fast-xml-parser": "5.2.5",
-    "undici": "8.10.0"
+    "undici": "8.10.0",
+    "yaml": "2.9.0"
   },
   "devDependencies": {
     "@types/node": "24.3.0",

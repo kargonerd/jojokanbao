@@ -27,8 +27,8 @@ Capture workflow（每 10 分钟）
   │
   ├─ JOJO 来源适配器 / 官方 RSS / sitemap / 官方栏目页
   ├─ canonical URL、稳定 article id、发布时间和来源分类
-  ├─ 新文章与到期重试进入 Playwright Chromium + BPC
-  ├─ 原始请求、响应和页面资源写入 WARC/WACZ
+  ├─ 新文章与到期重试进入 Browsertrix Crawler + BPC
+  ├─ Browsertrix 将原始请求、响应和页面资源写入标准 WARC/WACZ
   └─ 单次原子 commit → HF raw/news/{source}/...
 
 Process workflow（错开 5 分钟）
@@ -74,13 +74,14 @@ Capture 成功以 HF Raw commit 成功为准。Process 先提交 HF Canonical，
 
 发现策略：
 
-- `source-adapter`：JOJO 自己维护的出版方轻量适配器。AP 直接调用官网使用的 persisted GraphQL，
+- `source-adapter`：JOJO 自己维护的出版方适配器。AP 直接调用官网使用的 persisted GraphQL，
   从 4 个栏目入口取得 URL、标题、摘要、发布时间和出版方分类。
 - `official-rss`：直接读取出版方 RSS/Atom。
 - `sitemap`：读取出版方官方 sitemap，只负责发现 URL 和更新时间。
 - `official-rss-list`：合并同一媒体的多个官方分类 feed，例如 CNA。
-- `site-adapter/html-news-page`：抓取没有稳定 feed 的栏目页，支持限定 URL 前缀和文章卡片 selector。
-- `site-adapter/thepaper-channel`：直接读取澎湃官方频道 API 与文章页数据，并跳过视频。
+- 没有稳定 feed/API 的栏目由该媒体自己的 `discover.ts` 读取栏目 HTML；共享代码只提供 HTTP、HTML
+  解析和候选转换机制，不持有出版方 URL、selector 或内容规则。
+- 澎湃的 `discover.ts` 直接读取官方频道 API 和文章页数据，并在来源模块内跳过视频。
 
 `source-adapter` 同时声明 `driver: http | browser`。HTTP 是当前默认；浏览器发现通过
 `DiscoveryRuntime.browser.open()` 注入，因此将来遇到必须渲染栏目页的媒体不需要改变适配器契约。
@@ -95,15 +96,11 @@ Capture 成功以 HF Raw commit 成功为准。Process 先提交 HF Canonical，
   质量门槛提取正文；需要来源特例时在 JOJO 来源适配器或解析器中实现并锁定测试样本。
 - `discovery-summary`：正文失败时保留摘要，但必须标记 `contentStatus=summary`。
 
-浏览器抓取可加载固定版本 BPC。BPC 解决页面内付费墙逻辑，不解决网络层 401/403；这类响应由
+浏览器抓取使用按镜像 digest 锁定的 Browsertrix Crawler，并可加载固定版本 BPC。BPC 解决页面内付费墙逻辑，不解决网络层 401/403；这类响应由
 Mihomo 路由组切换不同订阅节点重试，manifest 只记录轮数，不记录节点名。代理状态、Chromium 和
-BPC 版本都记录到脱敏 manifest。归档器直接生成标准 WARC 1.1、CDXJ 和 WACZ 1.2，
-可供 ReplayWeb.page 等兼容读取器重放；当前实现不依赖 Browsertrix 服务。
-
-归档器优先读取主导航响应，再读取页面资源，避免大型 HTML 与几十个子资源竞争 DevTools 读取超时。
-如果浏览器确实无法返回主响应 body，则使用渲染后 DOM 兜底，并在响应中写入
-`X-JOJO-Capture-Source: browser-dom-fallback`；原始响应可读时绝不替换。Canonical 仍只消费通过质量
-门槛的正文，Raw 可区分网络原文和 DOM 兜底。
+BPC 版本都记录到脱敏 manifest。Browsertrix 直接生成标准 WARC、CDXJ 和 WACZ，供 ReplayWeb.page
+等兼容读取器重放。自定义 driver 只额外保存 BPC 执行后的 rendered DOM，供本轮正文解析使用；原始
+HTML 和子资源始终以 Browsertrix 捕获的网络响应为 Raw 权威内容，rendered DOM 不冒充原始响应。
 
 每家来源在独立 Node worker 中运行，隔离来源代码和代理状态。父进程限制并发；单个 worker
 崩溃、超时或代理失败不影响其他媒体。
@@ -115,8 +112,9 @@ Times、Axios、NPR、Nikkei Asia、联合早报、Al Jazeera、SCMP、新华网
 澎湃新闻、财联社、CNA、Deutsche Welle、Focus Taiwan、Africanews 和 Agência Brasil。央视新闻不在
 生产目录中。
 
-每家媒体的 `sections` 是经产品选择后的出版方栏目白名单，保存稳定栏目 ID、官网 URL 和地区/主题/
-综合流类型。`multi` discovery 可以为同一媒体绑定多个 JOJO 来源适配器、官方 RSS、sitemap 或栏目页适配器；
+每家媒体的 `sections` 是经产品选择后的出版方栏目白名单，只保存稳定栏目 ID、名称、官网 URL 和可选
+匹配规则，不维护没有运行时消费者的 `stream/edition/region/topic` 人工类型。`multi` discovery 可以为
+同一媒体绑定多个 JOJO 来源适配器、官方 RSS、sitemap 或来源自己的栏目发现；
 同一文章命中多个父子栏目时按稳定 article id 合并，并在 Raw、Canonical 和 Delivery 中保留全部
 `publisherSections`，供前端筛选和后续分类模型使用。
 
@@ -146,7 +144,8 @@ raw/news/runs/YYYY/MM/DD/RUN_ID.json
 raw/web-archives/times/state.json.gz
 raw/web-archives/times/YYYY/MM/DD/RUN_ID/
 ├─ run.json
-└─ times-RUN_ID.wacz
+├─ browsertrix-00.wacz
+└─ browsertrix-NN.wacz
 ```
 
 `discovery.json.gz` 保存来源 API 数据、官方 XML、栏目 HTML 的解析结果或 sitemap 输出；发现阶段的原始 HTTP
@@ -188,7 +187,7 @@ canonical/news/{source}/
   "contentHash": "sha256:...",
   "provenance": {
     "rawRevision": "HF commit SHA",
-    "rawObject": "raw/web-archives/times/.../times-RUN_ID.wacz",
+    "rawObject": "raw/web-archives/times/.../browsertrix-00.wacz",
     "parserVersion": "reuters"
   }
 }
@@ -257,7 +256,8 @@ URL 归一化去掉追踪参数和 fragment，跟随重定向并采用 `rel=cano
 
 - `maintenance-times-capture.yml`：每十分钟，single-flight，只需要 HF 写权限和媒体抓取代理配置。
 - `maintenance-times-process.yml`：错开五分钟，读取同一 HF repo 的 Raw，提交 Canonical，再使用 B2 凭据发布 Delivery。
-- Chromium、BPC 和 Python/Node 依赖都锁定版本。
+- Browsertrix 镜像、BPC、Mihomo 和 Node 依赖都锁定版本；Times 不依赖 Python 运行时。
+- 两个 workflow 的手动运行默认只产出 Actions artifact；定时任务或显式 `publish=true` 才写 HF/B2。
 - 代理订阅只存在于 GitHub Secret；运行时由固定版本 Mihomo 写入临时配置，日志和上传产物不记录
   订阅 URL、节点名、Cookie、Authorization 或控制密钥。
 - 捕获任务设置软预算，停止领取新浏览器页面后仍预留时间完成 WACZ 和 HF commit。

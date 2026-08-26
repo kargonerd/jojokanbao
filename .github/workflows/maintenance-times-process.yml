@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "5,15,25,35,45,55 * * * *"
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Commit Canonical to HF and publish Delivery to B2
+        type: boolean
+        default: false
+        required: true
 
 permissions:
   contents: read
@@ -23,6 +29,7 @@ jobs:
       B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
       B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
       JOJO_DELIVERY_REMOTE: jojo-b2:${{ secrets.B2_BUCKET || 'jojo-newspaper' }}
+      TIMES_PUBLISH: ${{ github.event_name == 'schedule' || inputs.publish }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -33,21 +40,23 @@ jobs:
           node-version: "24.15.0"
           cache: pnpm
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.12"
-
-      - name: Validate publication configuration
+      - name: Validate HF input configuration
         run: |
           test -n "$HF_TOKEN" || (echo "HF_TOKEN is not configured" >&2 && exit 1)
           test -n "$HF_TIMES_DATASET_REPO" || (echo "HF_TIMES_DATASET_REPO is not configured" >&2 && exit 1)
+
+      - name: Validate publication configuration
+        if: env.TIMES_PUBLISH == 'true'
+        run: |
           test -n "$B2_KEY_ID" || (echo "B2_KEY_ID is not configured" >&2 && exit 1)
           test -n "$B2_APPLICATION_KEY" || (echo "B2_APPLICATION_KEY is not configured" >&2 && exit 1)
 
-      - name: Install locked dependencies and rclone
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install rclone for publication
+        if: env.TIMES_PUBLISH == 'true'
         run: |
-          pnpm install --frozen-lockfile
-          python -m pip install -r tools/times-pipeline/requirements.txt
           sudo apt-get update
           sudo apt-get install -y rclone
 
@@ -56,22 +65,14 @@ jobs:
 
       - name: Download the latest processable HF snapshot
         run: |
-          python tools/times-pipeline/download_hf_snapshot.py \
+          node tools/times-pipeline/dist/src/hf-cli.js \
+            --action download-snapshot \
             --repo "$HF_TIMES_DATASET_REPO" \
             --output "$RUNNER_TEMP/jojo-times" \
             > "$RUNNER_TEMP/hf-snapshot-result.json"
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
+          node -e 'const fs=require("node:fs");const result=require(process.env.RUNNER_TEMP+"/hf-snapshot-result.json");fs.appendFileSync(process.env.GITHUB_ENV,`TIMES_RAW_REVISION=${result.revision}\nTIMES_RUN_MANIFEST=${result.runManifest}\n`)'
 
-          result = json.loads((Path(os.environ["RUNNER_TEMP"]) / "hf-snapshot-result.json").read_text())
-          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
-              output.write(f"TIMES_RAW_REVISION={result['revision']}\n")
-              output.write(f"TIMES_RUN_MANIFEST={result['runManifest']}\n")
-          PY
-
-      - name: Build and commit Canonical
+      - name: Build Canonical
         run: |
           node tools/times-pipeline/dist/src/process-cli.js \
             --config tools/times-pipeline/sources.v2.json \
@@ -79,42 +80,19 @@ jobs:
             --run-manifest "$TIMES_RUN_MANIFEST" \
             --raw-revision "$TIMES_RAW_REVISION" \
             > "$RUNNER_TEMP/process-result.json"
-          python - <<'PY'
-          import json
-          import os
-          import shutil
-          from pathlib import Path
-          from huggingface_hub import HfApi
 
-          run = json.loads(Path(os.environ["TIMES_RUN_MANIFEST"]).read_text())
-          result = json.loads((Path(os.environ["RUNNER_TEMP"]) / "process-result.json").read_text())
-          canonical = Path(os.environ["RUNNER_TEMP"]) / "jojo-times" / "canonical"
-          staging = Path(os.environ["RUNNER_TEMP"]) / "canonical-staging"
-          for source in result["sources"]:
-              source_id = source["sourceId"]
-              relative_files = [Path("news") / source_id / "dataset.json"]
-              relative_files.extend(
-                  Path("news") / source_id / "articles" / date[:4] / date[5:7] / f"{date}.jsonl.gz"
-                  for date in source["dates"]
-              )
-              for relative in relative_files:
-                  target = staging / relative
-                  target.parent.mkdir(parents=True, exist_ok=True)
-                  shutil.copy2(canonical / relative, target)
-          run_report = Path(result["report"])
-          report_relative = run_report.relative_to(canonical)
-          (staging / report_relative).parent.mkdir(parents=True, exist_ok=True)
-          shutil.copy2(run_report, staging / report_relative)
-          HfApi(token=os.environ["HF_TOKEN"]).upload_folder(
-              repo_id=os.environ["HF_TIMES_DATASET_REPO"],
-              repo_type="dataset",
-              folder_path=staging,
-              path_in_repo="canonical",
-              commit_message=f"times canonical {run['runId']}",
-          )
-          PY
+      - name: Commit Canonical to HF
+        if: env.TIMES_PUBLISH == 'true'
+        run: |
+          node tools/times-pipeline/dist/src/hf-cli.js \
+            --action upload-canonical \
+            --repo "$HF_TIMES_DATASET_REPO" \
+            --output "$RUNNER_TEMP/jojo-times" \
+            --run-manifest "$TIMES_RUN_MANIFEST" \
+            --process-result "$RUNNER_TEMP/process-result.json"
 
       - name: Configure B2 and restore mutable Delivery pointers
+        if: env.TIMES_PUBLISH == 'true'
         run: |
           rclone config create jojo-b2 b2 account "$B2_KEY_ID" key "$B2_APPLICATION_KEY" --non-interactive
           mkdir -p "$RUNNER_TEMP/previous-delivery"
@@ -137,6 +115,7 @@ jobs:
             > "$RUNNER_TEMP/delivery-result.json"
 
       - name: Publish B2 Delivery in commit order
+        if: env.TIMES_PUBLISH == 'true'
         run: |
           delivery="$RUNNER_TEMP/jojo-times-delivery"
           remote="$JOJO_DELIVERY_REMOTE/content/newspapers/times"
@@ -150,6 +129,20 @@ jobs:
             --checksum --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
           rclone copyto "$delivery/catalog.jox" "$JOJO_DELIVERY_REMOTE/catalog.jox" \
             --checksum --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
+
+      - name: Upload dry-run Canonical and Delivery artifact
+        if: env.TIMES_PUBLISH != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: times-canonical-delivery-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/jojo-times/canonical
+            ${{ runner.temp }}/jojo-times-delivery
+            ${{ runner.temp }}/hf-snapshot-result.json
+            ${{ runner.temp }}/process-result.json
+            ${{ runner.temp }}/delivery-result.json
+          if-no-files-found: error
+          retention-days: 3
 
       - name: Publish processing summary
         if: always()
@@ -167,4 +160,5 @@ jobs:
           console.log(`- Sources: ${report.sourceHealth.length}`);
           console.log(`- Unavailable cases: ${report.unavailableCaseCount}`);
           console.log(`- Delivery index: \`${report.indexObject}\``);
+          console.log(`- Published: ${process.env.TIMES_PUBLISH === "true" ? "HF + B2" : "no (artifact only)"}`);
           NODE

@@ -1,6 +1,5 @@
 import { discoverOfficialRss } from "./rss.js";
 import { discoverSitemap } from "./sitemap.js";
-import { discoverSiteAdapter } from "./site-adapter.js";
 import { discoverWithSourceModule, sourcePagePolicy } from "../sources/registry.js";
 import type {
   Candidate,
@@ -68,8 +67,7 @@ async function discoverEndpoint(
   const endpointSource: SourceConfig = { ...source, discovery };
   if (discovery.kind === "source-adapter") return discoverWithSourceModule(endpointSource, fetchedAt, runtime);
   if (discovery.kind === "official-rss" || discovery.kind === "official-rss-list") return discoverOfficialRss(endpointSource, fetchedAt);
-  if (discovery.kind === "sitemap") return discoverSitemap(endpointSource, fetchedAt, cutoff);
-  return discoverSiteAdapter(endpointSource, fetchedAt);
+  return discoverSitemap(endpointSource, fetchedAt, cutoff);
 }
 
 export async function discoverSource(source: SourceConfig, fetchedAt: string, cutoff: number, runtime: DiscoveryRuntime = {}): Promise<DiscoveryResult> {

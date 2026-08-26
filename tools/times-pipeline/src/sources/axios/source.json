@@ -7,35 +7,30 @@
       "id": "politics-policy",
       "name": "Politics & Policy",
       "url": "https://www.axios.com/politics-policy",
-      "kind": "topic",
       "discoverable": false
     },
     {
       "id": "business",
       "name": "Business",
       "url": "https://www.axios.com/business",
-      "kind": "topic",
       "discoverable": false
     },
     {
       "id": "technology",
       "name": "Technology",
       "url": "https://www.axios.com/technology",
-      "kind": "topic",
       "discoverable": false
     },
     {
       "id": "world",
       "name": "World",
       "url": "https://www.axios.com/world",
-      "kind": "region",
       "discoverable": false
     },
     {
       "id": "economy",
       "name": "Economy",
       "url": "https://www.axios.com/economy",
-      "kind": "topic",
       "discoverable": false
     }
   ],

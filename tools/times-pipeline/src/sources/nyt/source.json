@@ -6,44 +6,37 @@
     {
       "id": "world",
       "name": "World",
-      "url": "https://www.nytimes.com/section/world",
-      "kind": "region"
+      "url": "https://www.nytimes.com/section/world"
     },
     {
       "id": "us",
       "name": "U.S.",
-      "url": "https://www.nytimes.com/section/us",
-      "kind": "region"
+      "url": "https://www.nytimes.com/section/us"
     },
     {
       "id": "politics",
       "name": "Politics",
-      "url": "https://www.nytimes.com/section/politics",
-      "kind": "topic"
+      "url": "https://www.nytimes.com/section/politics"
     },
     {
       "id": "new-york",
       "name": "New York",
-      "url": "https://www.nytimes.com/section/nyregion",
-      "kind": "region"
+      "url": "https://www.nytimes.com/section/nyregion"
     },
     {
       "id": "business",
       "name": "Business",
-      "url": "https://www.nytimes.com/section/business",
-      "kind": "topic"
+      "url": "https://www.nytimes.com/section/business"
     },
     {
       "id": "economy",
       "name": "Economy",
-      "url": "https://www.nytimes.com/section/business/economy",
-      "kind": "topic"
+      "url": "https://www.nytimes.com/section/business/economy"
     },
     {
       "id": "technology",
       "name": "Technology",
-      "url": "https://www.nytimes.com/section/technology",
-      "kind": "topic"
+      "url": "https://www.nytimes.com/section/technology"
     }
   ],
   "discovery": {

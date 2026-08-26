@@ -21,6 +21,25 @@ export interface SourcePagePolicy {
   bodyExtractor?: "bloomberg-next-data";
 }
 
+export type RouteSourceAdapter =
+  | "africanews"
+  | "agencia-brasil"
+  | "aljazeera-english"
+  | "chinanews"
+  | "cna-singapore"
+  | "people"
+  | "thepaper"
+  | "xinhua"
+  | "zaobao";
+
+export interface RouteDiscoveryEndpoint {
+  kind: "source-adapter";
+  adapter: RouteSourceAdapter;
+  driver: DiscoveryDriver;
+  route: string;
+  maximumItems: number;
+}
+
 export type DiscoveryEndpoint =
   | {
       kind: "source-adapter";
@@ -38,6 +57,13 @@ export type DiscoveryEndpoint =
     }
   | {
       kind: "source-adapter";
+      adapter: "nikkei";
+      driver: DiscoveryDriver;
+      route: string;
+      maximumItems: number;
+    }
+  | {
+      kind: "source-adapter";
       adapter: "cls";
       driver: DiscoveryDriver;
       categoryId: string;
@@ -50,23 +76,10 @@ export type DiscoveryEndpoint =
       navigationId: string;
       maximumItems: number;
     }
+  | RouteDiscoveryEndpoint
   | { kind: "official-rss"; url: string }
   | { kind: "official-rss-list"; urls: string[] }
-  | { kind: "sitemap"; url: string; maximumPages: number }
-  | {
-      kind: "site-adapter";
-      adapter: "html-news-page";
-      url: string;
-      articlePathPrefixes: string[];
-      linkSelector?: string;
-      maximumItems: number;
-    }
-  | {
-      kind: "site-adapter";
-      adapter: "thepaper-channel";
-      channelId: string;
-      maximumItems: number;
-    };
+  | { kind: "sitemap"; url: string; maximumPages: number };
 
 export interface DiscoveryTarget {
   id: string;
@@ -77,13 +90,10 @@ export interface DiscoveryTarget {
 
 export type DiscoveryConfig = DiscoveryEndpoint | { kind: "multi"; targets: DiscoveryTarget[] };
 
-export type PublisherSectionKind = "stream" | "edition" | "region" | "topic";
-
 export interface PublisherSectionConfig {
   id: string;
   name: string;
   url: string;
-  kind: PublisherSectionKind;
   discoverable?: boolean;
   match?: {
     urlPrefixes?: string[];
@@ -146,7 +156,7 @@ export interface Candidate {
 
 export interface DiscoveryResult {
   source: SourceConfig;
-  transport: "source-adapter" | "official-rss" | "official-rss-list" | "sitemap" | "site-adapter" | "multi";
+  transport: "source-adapter" | "official-rss" | "official-rss-list" | "sitemap" | "multi";
   fetchedAt: string;
   upstream: unknown;
   candidates: Candidate[];

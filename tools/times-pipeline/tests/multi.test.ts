@@ -7,8 +7,8 @@ const source: SourceConfig = {
   name: "Example",
   language: "en",
   sections: [
-    { id: "world", name: "World", url: "https://example.test/world", kind: "region" },
-    { id: "business", name: "Business", url: "https://example.test/business", kind: "topic" },
+    { id: "world", name: "World", url: "https://example.test/world" },
+    { id: "business", name: "Business", url: "https://example.test/business" },
   ],
   discovery: {
     kind: "multi",

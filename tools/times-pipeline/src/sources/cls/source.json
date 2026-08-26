@@ -6,26 +6,22 @@
     {
       "id": "headlines",
       "name": "头条",
-      "url": "https://www.cls.cn/depth?id=1000",
-      "kind": "stream"
+      "url": "https://www.cls.cn/depth?id=1000"
     },
     {
       "id": "stocks",
       "name": "股市",
-      "url": "https://www.cls.cn/depth?id=1003",
-      "kind": "topic"
+      "url": "https://www.cls.cn/depth?id=1003"
     },
     {
       "id": "hong-kong-stocks",
       "name": "港股",
-      "url": "https://www.cls.cn/depth?id=1135",
-      "kind": "topic"
+      "url": "https://www.cls.cn/depth?id=1135"
     },
     {
       "id": "global",
       "name": "环球",
-      "url": "https://www.cls.cn/depth?id=1007",
-      "kind": "region"
+      "url": "https://www.cls.cn/depth?id=1007"
     }
   ],
   "discovery": {

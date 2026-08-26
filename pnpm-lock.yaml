@@ -576,6 +576,9 @@ importers:
 
   tools/times-pipeline:
     dependencies:
+      '@huggingface/hub':
+        specifier: 2.16.0
+        version: 2.16.0
       '@jojo/content':
         specifier: workspace:*
         version: link:../../frontend/packages/content
@@ -588,6 +591,9 @@ importers:
       undici:
         specifier: 8.10.0
         version: 8.10.0
+      yaml:
+        specifier: 2.9.0
+        version: 2.9.0
     devDependencies:
       '@types/node':
         specifier: 24.3.0
@@ -2126,6 +2132,20 @@ packages:
     peerDependenciesMeta:
       '@modelcontextprotocol/sdk':
         optional: true
+
+  '@huggingface/blake3-jit@0.0.2':
+    resolution: {integrity: sha512-Bq7B5qabyjrJfhBsl85Jd2QBtf+HzRD7h7A9GfN2lzrrsABhOa5evVPgzoCTxR7Ub0QFj7YDK1YkYRWBU25+2w==}
+
+  '@huggingface/hub@2.16.0':
+    resolution: {integrity: sha512-03sZFAiuxCuxWs2WC1w4s1uKCghvfxLsNm053EWDezk/eefvaiRpNjIKXNe7vbO8NBtLDAmlN6/cyf5n3IGaqw==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  '@huggingface/tasks@0.21.37':
+    resolution: {integrity: sha512-W+kgNexZai8vet3GvWESgJ8jx+KRHn9o6iFTKY8WKiA19E1bvPcgUUcUl9Qh6cgQ2khOJfhvBeKLGqNFGHn/jg==}
+
+  '@huggingface/xetchunk-wasm@0.2.0':
+    resolution: {integrity: sha512-cmp7oAAWeCpZGrVQTP/LxDtJdzGMfpxwkEVsZsk5jZQ2FwP2njm8LnyobhnQvLpkSAcJJwUzFJC0PYS9ZsqeTg==}
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -3996,6 +4016,10 @@ packages:
     resolution: {integrity: sha512-8lgKz8LmCRYZZQDpRyT2m5rKJ08TnU4tR9FFFW2rxpxR1FzWi4PQ/NfyODchAatHaUgnSPVcx/R5w6NuTBzFiw==}
     engines: {node: '>=4'}
 
+  cli-progress@3.12.0:
+    resolution: {integrity: sha512-tRkV3HJ1ASwm19THiiLIXLO7Im7wlTuKnvkYaTkyoAPefqjNg7W7DHKUlGRxy9vxDvbyCYQkQozvptuMkGCg8A==}
+    engines: {node: '>=4'}
+
   cli-spinners@2.9.2:
     resolution: {integrity: sha512-ywqV+5MmyL4E7ybXgKys4DugZbX0FC6LnwrhjuykIjnK9k8OQacQ7axGKnjDXWNhns0xot3bZI5h55H8yo9cJg==}
     engines: {node: '>=6'}
@@ -4897,6 +4921,9 @@ packages:
   gcp-metadata@8.1.2:
     resolution: {integrity: sha512-zV/5HKTfCeKWnxG0Dmrw51hEWFGfcF2xiXqcA3+J90WDuP0SvoiSO5ORvcBsifmx/FoIjgQN3oNOGaQ5PhLFkg==}
     engines: {node: '>=18'}
+
+  gearhash-jit@1.0.2:
+    resolution: {integrity: sha512-UhzJL4KXSdqAKepy/tZwmi2Rcy0YMmtiC4DQS4SURCuIWdh8ECZtnXK2ePRMLigfB61hRKdLK/Vgg2bSw73izQ==}
 
   gensync@1.0.0-beta.2:
     resolution: {integrity: sha512-3hN7NaskYvMDLQY55gnW3NQ+mesEAepTqlg+VEbj7zzqEMBVNhzcGYYeqFo/TlYz6eQiFcp1HcsCZO+nGgS8zg==}
@@ -9871,6 +9898,22 @@ snapshots:
       - supports-color
       - utf-8-validate
 
+  '@huggingface/blake3-jit@0.0.2': {}
+
+  '@huggingface/hub@2.16.0':
+    dependencies:
+      '@huggingface/tasks': 0.21.37
+      '@huggingface/xetchunk-wasm': 0.2.0
+    optionalDependencies:
+      cli-progress: 3.12.0
+
+  '@huggingface/tasks@0.21.37': {}
+
+  '@huggingface/xetchunk-wasm@0.2.0':
+    dependencies:
+      '@huggingface/blake3-jit': 0.0.2
+      gearhash-jit: 1.0.2
+
   '@humanfs/core@0.19.2':
     dependencies:
       '@humanfs/types': 0.15.0
@@ -11996,6 +12039,11 @@ snapshots:
     dependencies:
       restore-cursor: 2.0.0
 
+  cli-progress@3.12.0:
+    dependencies:
+      string-width: 4.2.3
+    optional: true
+
   cli-spinners@2.9.2: {}
 
   cliui@8.0.1:
@@ -13030,6 +13078,8 @@ snapshots:
       json-bigint: 1.0.0
     transitivePeerDependencies:
       - supports-color
+
+  gearhash-jit@1.0.2: {}
 
   gensync@1.0.0-beta.2: {}
 

@@ -5,13 +5,23 @@ import type {
   DiscoveryConfig,
   DiscoveryEndpoint,
   PublisherSectionConfig,
-  PublisherSectionKind,
+  RouteSourceAdapter,
   SourceConfig,
 } from "./types.js";
 
 const SOURCE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const PRIORITIES = new Set<ContentPriority>(["discovery-body", "browser-parser", "discovery-summary"]);
-const SECTION_KINDS = new Set<PublisherSectionKind>(["stream", "edition", "region", "topic"]);
+const ROUTE_SOURCE_ADAPTERS = new Set<RouteSourceAdapter>([
+  "africanews",
+  "agencia-brasil",
+  "aljazeera-english",
+  "chinanews",
+  "cna-singapore",
+  "people",
+  "thepaper",
+  "xinhua",
+  "zaobao",
+]);
 
 function requiredString(value: unknown, field: string): string {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${field} must be a non-empty string`);
@@ -23,15 +33,6 @@ function credentialFreeHttpsUrl(value: unknown, field: string): string {
   const parsed = new URL(url);
   if (parsed.protocol !== "https:" || parsed.username || parsed.password) {
     throw new Error(`${field} must be a credential-free HTTPS URL`);
-  }
-  return url;
-}
-
-function credentialFreeWebUrl(value: unknown, field: string): string {
-  const url = requiredString(value, field);
-  const parsed = new URL(url);
-  if ((parsed.protocol !== "https:" && parsed.protocol !== "http:") || parsed.username || parsed.password) {
-    throw new Error(`${field} must be a credential-free HTTP(S) URL`);
   }
   return url;
 }
@@ -54,9 +55,18 @@ function parseDiscoveryEndpoint(value: unknown, field: string): DiscoveryEndpoin
       return { kind, adapter, driver, path: sectionPath, maximumItems: maximumItems as number };
     }
     if (adapter === "nikkei") {
-      const stream = requiredString(row.stream, `${field}.stream`);
-      if (stream !== "latest") throw new Error(`${field}.stream must be latest`);
-      return { kind, adapter, driver, stream, maximumItems: maximumItems as number };
+      if (row.stream !== undefined) {
+        const stream = requiredString(row.stream, `${field}.stream`);
+        if (stream !== "latest") throw new Error(`${field}.stream must be latest`);
+        return { kind, adapter, driver, stream, maximumItems: maximumItems as number };
+      }
+      return {
+        kind,
+        adapter,
+        driver,
+        route: requiredString(row.route, `${field}.route`),
+        maximumItems: maximumItems as number,
+      };
     }
     if (adapter === "cls") {
       const categoryId = requiredString(row.categoryId, `${field}.categoryId`);
@@ -67,6 +77,15 @@ function parseDiscoveryEndpoint(value: unknown, field: string): DiscoveryEndpoin
       const navigationId = requiredString(row.navigationId, `${field}.navigationId`);
       if (!/^\d+$/u.test(navigationId)) throw new Error(`${field}.navigationId must contain only digits`);
       return { kind, adapter, driver, navigationId, maximumItems: maximumItems as number };
+    }
+    if (ROUTE_SOURCE_ADAPTERS.has(adapter as RouteSourceAdapter)) {
+      return {
+        kind,
+        adapter: adapter as RouteSourceAdapter,
+        driver,
+        route: requiredString(row.route, `${field}.route`),
+        maximumItems: maximumItems as number,
+      };
     }
     throw new Error(`${field}.adapter is unsupported: ${adapter}`);
   }
@@ -87,36 +106,6 @@ function parseDiscoveryEndpoint(value: unknown, field: string): DiscoveryEndpoin
       return { kind, url, maximumPages: maximumPages as number };
     }
     return { kind, url };
-  }
-  if (kind === "site-adapter") {
-    const adapter = requiredString(row.adapter, `${field}.adapter`);
-    const maximumItems = row.maximumItems;
-    if (!Number.isInteger(maximumItems) || (maximumItems as number) < 1 || (maximumItems as number) > 100) {
-      throw new Error(`${field}.maximumItems must be an integer from 1 to 100`);
-    }
-    if (adapter === "thepaper-channel") {
-      const channelId = requiredString(row.channelId, `${field}.channelId`);
-      if (!/^\d+$/u.test(channelId)) throw new Error(`${field}.channelId must contain only digits`);
-      return { kind, adapter, channelId, maximumItems: maximumItems as number };
-    }
-    if (adapter !== "html-news-page") throw new Error(`${field}.adapter is unsupported: ${adapter}`);
-    if (!Array.isArray(row.articlePathPrefixes) || row.articlePathPrefixes.length === 0 || row.articlePathPrefixes.length > 20) {
-      throw new Error(`${field}.articlePathPrefixes must contain 1 to 20 paths`);
-    }
-    const articlePathPrefixes = [...new Set(row.articlePathPrefixes.map((value, index) => {
-      const prefix = requiredString(value, `${field}.articlePathPrefixes[${index}]`);
-      if (!prefix.startsWith("/")) throw new Error(`${field}.articlePathPrefixes[${index}] must start with /`);
-      return prefix;
-    }))];
-    const linkSelector = row.linkSelector === undefined ? undefined : requiredString(row.linkSelector, `${field}.linkSelector`);
-    return {
-      kind,
-      adapter,
-      url: credentialFreeWebUrl(row.url, `${field}.url`),
-      articlePathPrefixes,
-      ...(linkSelector ? { linkSelector } : {}),
-      maximumItems: maximumItems as number,
-    };
   }
   throw new Error(`${field}.kind is unsupported: ${kind}`);
 }
@@ -164,8 +153,6 @@ function parseSections(value: unknown, sourceId: string): PublisherSectionConfig
     if (!SOURCE_ID.test(id)) throw new Error(`${sourceId}.section id is invalid: ${id}`);
     if (seen.has(id)) throw new Error(`${sourceId}.section id is duplicated: ${id}`);
     seen.add(id);
-    const kind = requiredString(row.kind, `${sourceId}.${id}.kind`) as PublisherSectionKind;
-    if (!SECTION_KINDS.has(kind)) throw new Error(`${sourceId}.${id}.kind is invalid`);
     let match: PublisherSectionConfig["match"];
     if (row.match !== undefined) {
       if (!row.match || typeof row.match !== "object") throw new Error(`${sourceId}.${id}.match must be an object`);
@@ -187,7 +174,6 @@ function parseSections(value: unknown, sourceId: string): PublisherSectionConfig
       id,
       name: requiredString(row.name, `${sourceId}.${id}.name`),
       url: credentialFreeHttpsUrl(row.url, `${sourceId}.${id}.url`),
-      kind,
       ...(row.discoverable === false ? { discoverable: false } : {}),
       ...(match && Object.keys(match).length ? { match } : {}),
     };

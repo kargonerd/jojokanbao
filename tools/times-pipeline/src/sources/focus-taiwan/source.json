@@ -6,14 +6,12 @@
     {
       "id": "latest",
       "name": "Latest",
-      "url": "https://focustaiwan.tw/",
-      "kind": "stream"
+      "url": "https://focustaiwan.tw/"
     },
     {
       "id": "politics",
       "name": "Politics",
       "url": "https://focustaiwan.tw/politics",
-      "kind": "topic",
       "match": {
         "urlPrefixes": [
           "https://focustaiwan.tw/politics/"
@@ -24,7 +22,6 @@
       "id": "business",
       "name": "Business",
       "url": "https://focustaiwan.tw/business",
-      "kind": "topic",
       "match": {
         "urlPrefixes": [
           "https://focustaiwan.tw/business/"
@@ -35,7 +32,6 @@
       "id": "society",
       "name": "Society",
       "url": "https://focustaiwan.tw/society",
-      "kind": "topic",
       "match": {
         "urlPrefixes": [
           "https://focustaiwan.tw/society/"
@@ -46,7 +42,6 @@
       "id": "science-technology",
       "name": "Science & Tech",
       "url": "https://focustaiwan.tw/sci-tech",
-      "kind": "topic",
       "match": {
         "urlPrefixes": [
           "https://focustaiwan.tw/sci-tech/"

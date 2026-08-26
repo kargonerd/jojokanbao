@@ -6,68 +6,57 @@
     {
       "id": "news",
       "name": "News",
-      "url": "https://www.aljazeera.com/news/",
-      "kind": "stream"
+      "url": "https://www.aljazeera.com/news/"
     },
     {
       "id": "africa",
       "name": "Africa",
-      "url": "https://www.aljazeera.com/where/africa/",
-      "kind": "region"
+      "url": "https://www.aljazeera.com/where/africa/"
     },
     {
       "id": "asia",
       "name": "Asia",
-      "url": "https://www.aljazeera.com/where/asia/",
-      "kind": "region"
+      "url": "https://www.aljazeera.com/where/asia/"
     },
     {
       "id": "us-canada",
       "name": "US & Canada",
-      "url": "https://www.aljazeera.com/where/us-canada/",
-      "kind": "region"
+      "url": "https://www.aljazeera.com/where/us-canada/"
     },
     {
       "id": "latin-america",
       "name": "Latin America",
-      "url": "https://www.aljazeera.com/where/latin-america/",
-      "kind": "region"
+      "url": "https://www.aljazeera.com/where/latin-america/"
     },
     {
       "id": "europe",
       "name": "Europe",
-      "url": "https://www.aljazeera.com/where/europe/",
-      "kind": "region"
+      "url": "https://www.aljazeera.com/where/europe/"
     },
     {
       "id": "asia-pacific",
       "name": "Asia Pacific",
-      "url": "https://www.aljazeera.com/where/asia-pacific/",
-      "kind": "region"
+      "url": "https://www.aljazeera.com/where/asia-pacific/"
     },
     {
       "id": "middle-east",
       "name": "Middle East",
-      "url": "https://www.aljazeera.com/where/middle-east/",
-      "kind": "region"
+      "url": "https://www.aljazeera.com/where/middle-east/"
     },
     {
       "id": "explained",
       "name": "Explained",
-      "url": "https://www.aljazeera.com/tag/explainer/",
-      "kind": "topic"
+      "url": "https://www.aljazeera.com/tag/explainer/"
     },
     {
       "id": "economy",
       "name": "Economy",
-      "url": "https://www.aljazeera.com/economy/",
-      "kind": "topic"
+      "url": "https://www.aljazeera.com/economy/"
     },
     {
       "id": "human-rights",
       "name": "Human Rights",
-      "url": "https://www.aljazeera.com/tag/human-rights/",
-      "kind": "topic"
+      "url": "https://www.aljazeera.com/tag/human-rights/"
     }
   ],
   "discovery": {
@@ -79,14 +68,10 @@
           "news"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.aljazeera.com/news/",
-          "articlePathPrefixes": [
-            "/news/",
-            "/features/"
-          ],
-          "linkSelector": ".u-clickable-card__link[href]",
+          "kind": "source-adapter",
+          "adapter": "aljazeera-english",
+          "driver": "http",
+          "route": "news",
           "maximumItems": 30
         }
       },
@@ -96,14 +81,10 @@
           "africa"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.aljazeera.com/where/africa/",
-          "articlePathPrefixes": [
-            "/news/",
-            "/features/"
-          ],
-          "linkSelector": ".u-clickable-card__link[href]",
+          "kind": "source-adapter",
+          "adapter": "aljazeera-english",
+          "driver": "http",
+          "route": "africa",
           "maximumItems": 30
         }
       },
@@ -113,14 +94,10 @@
           "asia"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.aljazeera.com/where/asia/",
-          "articlePathPrefixes": [
-            "/news/",
-            "/features/"
-          ],
-          "linkSelector": ".u-clickable-card__link[href]",
+          "kind": "source-adapter",
+          "adapter": "aljazeera-english",
+          "driver": "http",
+          "route": "asia",
           "maximumItems": 30
         }
       },
@@ -130,14 +107,10 @@
           "us-canada"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.aljazeera.com/where/us-canada/",
-          "articlePathPrefixes": [
-            "/news/",
-            "/features/"
-          ],
-          "linkSelector": ".u-clickable-card__link[href]",
+          "kind": "source-adapter",
+          "adapter": "aljazeera-english",
+          "driver": "http",
+          "route": "us-canada",
           "maximumItems": 30
         }
       },
@@ -147,14 +120,10 @@
           "latin-america"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.aljazeera.com/where/latin-america/",
-          "articlePathPrefixes": [
-            "/news/",
-            "/features/"
-          ],
-          "linkSelector": ".u-clickable-card__link[href]",
+          "kind": "source-adapter",
+          "adapter": "aljazeera-english",
+          "driver": "http",
+          "route": "latin-america",
           "maximumItems": 30
         }
       },
@@ -164,14 +133,10 @@
           "europe"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.aljazeera.com/where/europe/",
-          "articlePathPrefixes": [
-            "/news/",
-            "/features/"
-          ],
-          "linkSelector": ".u-clickable-card__link[href]",
+          "kind": "source-adapter",
+          "adapter": "aljazeera-english",
+          "driver": "http",
+          "route": "europe",
           "maximumItems": 30
         }
       },
@@ -181,14 +146,10 @@
           "asia-pacific"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.aljazeera.com/where/asia-pacific/",
-          "articlePathPrefixes": [
-            "/news/",
-            "/features/"
-          ],
-          "linkSelector": ".u-clickable-card__link[href]",
+          "kind": "source-adapter",
+          "adapter": "aljazeera-english",
+          "driver": "http",
+          "route": "asia-pacific",
           "maximumItems": 30
         }
       },
@@ -198,14 +159,10 @@
           "middle-east"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.aljazeera.com/where/middle-east/",
-          "articlePathPrefixes": [
-            "/news/",
-            "/features/"
-          ],
-          "linkSelector": ".u-clickable-card__link[href]",
+          "kind": "source-adapter",
+          "adapter": "aljazeera-english",
+          "driver": "http",
+          "route": "middle-east",
           "maximumItems": 30
         }
       },
@@ -215,14 +172,10 @@
           "explained"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.aljazeera.com/tag/explainer/",
-          "articlePathPrefixes": [
-            "/news/",
-            "/features/"
-          ],
-          "linkSelector": ".u-clickable-card__link[href]",
+          "kind": "source-adapter",
+          "adapter": "aljazeera-english",
+          "driver": "http",
+          "route": "explained",
           "maximumItems": 30
         }
       },
@@ -232,15 +185,10 @@
           "economy"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.aljazeera.com/economy/",
-          "articlePathPrefixes": [
-            "/economy/",
-            "/news/",
-            "/features/"
-          ],
-          "linkSelector": ".u-clickable-card__link[href]",
+          "kind": "source-adapter",
+          "adapter": "aljazeera-english",
+          "driver": "http",
+          "route": "economy",
           "maximumItems": 30
         }
       },
@@ -250,14 +198,10 @@
           "human-rights"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.aljazeera.com/tag/human-rights/",
-          "articlePathPrefixes": [
-            "/news/",
-            "/features/"
-          ],
-          "linkSelector": ".u-clickable-card__link[href]",
+          "kind": "source-adapter",
+          "adapter": "aljazeera-english",
+          "driver": "http",
+          "route": "human-rights",
           "maximumItems": 30
         }
       }

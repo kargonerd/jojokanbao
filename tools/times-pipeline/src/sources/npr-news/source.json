@@ -6,32 +6,27 @@
     {
       "id": "national",
       "name": "National",
-      "url": "https://www.npr.org/sections/national/",
-      "kind": "region"
+      "url": "https://www.npr.org/sections/national/"
     },
     {
       "id": "world",
       "name": "World",
-      "url": "https://www.npr.org/sections/world/",
-      "kind": "region"
+      "url": "https://www.npr.org/sections/world/"
     },
     {
       "id": "politics",
       "name": "Politics",
-      "url": "https://www.npr.org/sections/politics/",
-      "kind": "topic"
+      "url": "https://www.npr.org/sections/politics/"
     },
     {
       "id": "business",
       "name": "Business",
-      "url": "https://www.npr.org/sections/business/",
-      "kind": "topic"
+      "url": "https://www.npr.org/sections/business/"
     },
     {
       "id": "economy",
       "name": "Economy",
-      "url": "https://www.npr.org/sections/economy/",
-      "kind": "topic"
+      "url": "https://www.npr.org/sections/economy/"
     }
   ],
   "discovery": {

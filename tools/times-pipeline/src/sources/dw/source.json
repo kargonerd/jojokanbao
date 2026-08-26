@@ -6,50 +6,42 @@
     {
       "id": "germany",
       "name": "Germany",
-      "url": "https://www.dw.com/en/germany/s-1432",
-      "kind": "region"
+      "url": "https://www.dw.com/en/germany/s-1432"
     },
     {
       "id": "europe",
       "name": "Europe",
-      "url": "https://www.dw.com/en/europe/s-1433",
-      "kind": "region"
+      "url": "https://www.dw.com/en/europe/s-1433"
     },
     {
       "id": "world",
       "name": "World",
-      "url": "https://www.dw.com/en/world/s-1429",
-      "kind": "region"
+      "url": "https://www.dw.com/en/world/s-1429"
     },
     {
       "id": "africa",
       "name": "Africa",
-      "url": "https://www.dw.com/en/africa/s-12756",
-      "kind": "region"
+      "url": "https://www.dw.com/en/africa/s-12756"
     },
     {
       "id": "asia",
       "name": "Asia",
-      "url": "https://www.dw.com/en/asia/s-12758",
-      "kind": "region"
+      "url": "https://www.dw.com/en/asia/s-12758"
     },
     {
       "id": "americas",
       "name": "Americas",
-      "url": "https://www.dw.com/en/americas/s-12757",
-      "kind": "region"
+      "url": "https://www.dw.com/en/americas/s-12757"
     },
     {
       "id": "middle-east",
       "name": "Middle East",
-      "url": "https://www.dw.com/en/middle-east/s-14207",
-      "kind": "region"
+      "url": "https://www.dw.com/en/middle-east/s-14207"
     },
     {
       "id": "business",
       "name": "Business",
-      "url": "https://www.dw.com/en/business/s-1431",
-      "kind": "topic"
+      "url": "https://www.dw.com/en/business/s-1431"
     }
   ],
   "discovery": {

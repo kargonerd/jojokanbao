@@ -6,26 +6,22 @@
     {
       "id": "world",
       "name": "World",
-      "url": "https://apnews.com/world-news",
-      "kind": "region"
+      "url": "https://apnews.com/world-news"
     },
     {
       "id": "us",
       "name": "U.S.",
-      "url": "https://apnews.com/us-news",
-      "kind": "region"
+      "url": "https://apnews.com/us-news"
     },
     {
       "id": "politics",
       "name": "Politics",
-      "url": "https://apnews.com/politics",
-      "kind": "topic"
+      "url": "https://apnews.com/politics"
     },
     {
       "id": "business",
       "name": "Business",
-      "url": "https://apnews.com/business",
-      "kind": "topic"
+      "url": "https://apnews.com/business"
     }
   ],
   "discovery": {

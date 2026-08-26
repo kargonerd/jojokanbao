@@ -1,4 +1,5 @@
 import { articleId, normalizeArticleUrl } from "../../identity.js";
+import { discoverHtmlListing, sectionUrl } from "../../discovery/html-listing.js";
 import { isoDate, optionalString, plainText, stringList } from "../../text.js";
 import type { Candidate, DiscoveryEndpoint, DiscoveryResult, SourceConfig } from "../../types.js";
 
@@ -43,7 +44,8 @@ function mapCandidate(source: SourceConfig, item: JsonObject): Candidate | undef
   };
 }
 
-export async function discoverNikkei(source: SourceConfig, endpoint: NikkeiEndpoint, fetchedAt: string): Promise<DiscoveryResult> {
+async function discoverLatest(source: SourceConfig, endpoint: NikkeiEndpoint, fetchedAt: string): Promise<DiscoveryResult> {
+  if (!("stream" in endpoint)) throw new Error(`${source.id}: expected latest stream endpoint`);
   const url = new URL(API);
   url.searchParams.set("operationName", "GetLatestHeadlinesStream");
   url.searchParams.set("variables", "{}");
@@ -75,4 +77,34 @@ export async function discoverNikkei(source: SourceConfig, endpoint: NikkeiEndpo
       .slice(0, endpoint.maximumItems),
     version: "nikkei-graphql/1",
   };
+}
+
+const pathPrefixes: Record<string, string[]> = {
+  china: ["/"],
+  japan: ["/"],
+  "southeast-asia": ["/"],
+  india: ["/"],
+  "east-asia": ["/"],
+  "south-asia": ["/"],
+  "central-asia": ["/"],
+  oceania: ["/"],
+  business: ["/business/"],
+  markets: ["/business/markets/"],
+  tech: ["/business/technology/", "/business/tech/"],
+  politics: ["/politics/"],
+  economy: ["/economy/"],
+};
+
+export async function discoverNikkei(source: SourceConfig, endpoint: NikkeiEndpoint, fetchedAt: string): Promise<DiscoveryResult> {
+  if ("stream" in endpoint) return discoverLatest(source, endpoint, fetchedAt);
+  const prefixes = pathPrefixes[endpoint.route];
+  if (!prefixes) throw new Error(`${source.id}: unsupported route: ${endpoint.route}`);
+  return discoverHtmlListing(source, fetchedAt, {
+    listingUrl: sectionUrl(source, endpoint.route),
+    articlePathPrefixes: prefixes,
+    linkSelector: "[class*='ArticleCard'][class*='Headline'] a[href]",
+    maximumItems: endpoint.maximumItems,
+    bodySelectors: [".article-body", ".article__body"],
+    version: "nikkei-html/1",
+  });
 }

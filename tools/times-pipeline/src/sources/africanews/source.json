@@ -6,26 +6,22 @@
     {
       "id": "news",
       "name": "News",
-      "url": "https://www.africanews.com/news/",
-      "kind": "stream"
+      "url": "https://www.africanews.com/news/"
     },
     {
       "id": "business",
       "name": "Business",
-      "url": "https://www.africanews.com/business/",
-      "kind": "topic"
+      "url": "https://www.africanews.com/business/"
     },
     {
       "id": "markets",
       "name": "Markets",
-      "url": "https://www.africanews.com/business/markets/",
-      "kind": "topic"
+      "url": "https://www.africanews.com/business/markets/"
     },
     {
       "id": "science-technology",
       "name": "Science & Technology",
-      "url": "https://www.africanews.com/science-technology/",
-      "kind": "topic"
+      "url": "https://www.africanews.com/science-technology/"
     }
   ],
   "discovery": {
@@ -57,12 +53,10 @@
           "markets"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.africanews.com/business/markets/",
-          "articlePathPrefixes": [
-            "/202"
-          ],
+          "kind": "source-adapter",
+          "adapter": "africanews",
+          "driver": "http",
+          "route": "markets",
           "maximumItems": 50
         }
       },

@@ -6,38 +6,32 @@
     {
       "id": "featured",
       "name": "要闻/精选",
-      "url": "https://www.thepaper.cn/channel_25949",
-      "kind": "stream"
+      "url": "https://www.thepaper.cn/channel_25949"
     },
     {
       "id": "international",
       "name": "国际",
-      "url": "https://www.thepaper.cn/channel_122908",
-      "kind": "region"
+      "url": "https://www.thepaper.cn/channel_122908"
     },
     {
       "id": "current-affairs",
       "name": "时事",
-      "url": "https://www.thepaper.cn/channel_25950",
-      "kind": "topic"
+      "url": "https://www.thepaper.cn/channel_25950"
     },
     {
       "id": "finance",
       "name": "财经",
-      "url": "https://www.thepaper.cn/channel_25951",
-      "kind": "topic"
+      "url": "https://www.thepaper.cn/channel_25951"
     },
     {
       "id": "thought",
       "name": "思想",
-      "url": "https://www.thepaper.cn/channel_25952",
-      "kind": "topic"
+      "url": "https://www.thepaper.cn/channel_25952"
     },
     {
       "id": "technology",
       "name": "科技",
-      "url": "https://www.thepaper.cn/channel_119908",
-      "kind": "topic"
+      "url": "https://www.thepaper.cn/channel_119908"
     }
   ],
   "discovery": {
@@ -49,9 +43,10 @@
           "featured"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "thepaper-channel",
-          "channelId": "25949",
+          "kind": "source-adapter",
+          "adapter": "thepaper",
+          "driver": "http",
+          "route": "featured",
           "maximumItems": 100
         }
       },
@@ -61,9 +56,10 @@
           "international"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "thepaper-channel",
-          "channelId": "122908",
+          "kind": "source-adapter",
+          "adapter": "thepaper",
+          "driver": "http",
+          "route": "international",
           "maximumItems": 100
         }
       },
@@ -73,9 +69,10 @@
           "current-affairs"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "thepaper-channel",
-          "channelId": "25950",
+          "kind": "source-adapter",
+          "adapter": "thepaper",
+          "driver": "http",
+          "route": "current-affairs",
           "maximumItems": 100
         }
       },
@@ -85,9 +82,10 @@
           "finance"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "thepaper-channel",
-          "channelId": "25951",
+          "kind": "source-adapter",
+          "adapter": "thepaper",
+          "driver": "http",
+          "route": "finance",
           "maximumItems": 100
         }
       },
@@ -97,9 +95,10 @@
           "thought"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "thepaper-channel",
-          "channelId": "25952",
+          "kind": "source-adapter",
+          "adapter": "thepaper",
+          "driver": "http",
+          "route": "thought",
           "maximumItems": 100
         }
       },
@@ -109,9 +108,10 @@
           "technology"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "thepaper-channel",
-          "channelId": "119908",
+          "kind": "source-adapter",
+          "adapter": "thepaper",
+          "driver": "http",
+          "route": "technology",
           "maximumItems": 100
         }
       }

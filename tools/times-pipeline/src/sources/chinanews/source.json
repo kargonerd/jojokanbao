@@ -6,32 +6,27 @@
     {
       "id": "latest",
       "name": "即时",
-      "url": "https://www.chinanews.com.cn/scroll-news/news1.html",
-      "kind": "stream"
+      "url": "https://www.chinanews.com.cn/scroll-news/news1.html"
     },
     {
       "id": "politics",
       "name": "时政",
-      "url": "https://www.chinanews.com.cn/china/",
-      "kind": "topic"
+      "url": "https://www.chinanews.com.cn/china/"
     },
     {
       "id": "finance",
       "name": "财经",
-      "url": "https://www.chinanews.com.cn/finance/",
-      "kind": "topic"
+      "url": "https://www.chinanews.com.cn/finance/"
     },
     {
       "id": "world",
       "name": "国际",
-      "url": "https://www.chinanews.com.cn/world/",
-      "kind": "region"
+      "url": "https://www.chinanews.com.cn/world/"
     },
     {
       "id": "society",
       "name": "社会",
-      "url": "https://www.chinanews.com.cn/society/",
-      "kind": "topic"
+      "url": "https://www.chinanews.com.cn/society/"
     }
   ],
   "discovery": {
@@ -43,15 +38,10 @@
           "latest"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.chinanews.com.cn/scroll-news/news1.html",
-          "articlePathPrefixes": [
-            "/gn/",
-            "/cj/",
-            "/gj/",
-            "/sh/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "chinanews",
+          "driver": "http",
+          "route": "latest",
           "maximumItems": 100
         }
       },
@@ -61,12 +51,10 @@
           "politics"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.chinanews.com.cn/china/",
-          "articlePathPrefixes": [
-            "/gn/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "chinanews",
+          "driver": "http",
+          "route": "politics",
           "maximumItems": 50
         }
       },
@@ -76,12 +64,10 @@
           "finance"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.chinanews.com.cn/finance/",
-          "articlePathPrefixes": [
-            "/cj/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "chinanews",
+          "driver": "http",
+          "route": "finance",
           "maximumItems": 50
         }
       },
@@ -91,12 +77,10 @@
           "world"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.chinanews.com.cn/world/",
-          "articlePathPrefixes": [
-            "/gj/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "chinanews",
+          "driver": "http",
+          "route": "world",
           "maximumItems": 50
         }
       },
@@ -106,12 +90,10 @@
           "society"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.chinanews.com.cn/society/",
-          "articlePathPrefixes": [
-            "/sh/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "chinanews",
+          "driver": "http",
+          "route": "society",
           "maximumItems": 50
         }
       }

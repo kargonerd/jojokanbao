@@ -6,38 +6,32 @@
     {
       "id": "latest",
       "name": "最新",
-      "url": "https://www.zaobao.com.sg/realtime",
-      "kind": "stream"
+      "url": "https://www.zaobao.com.sg/realtime"
     },
     {
       "id": "singapore",
       "name": "新加坡",
-      "url": "https://www.zaobao.com.sg/news/singapore",
-      "kind": "region"
+      "url": "https://www.zaobao.com.sg/news/singapore"
     },
     {
       "id": "world",
       "name": "国际",
-      "url": "https://www.zaobao.com.sg/news/world",
-      "kind": "region"
+      "url": "https://www.zaobao.com.sg/news/world"
     },
     {
       "id": "china",
       "name": "中国",
-      "url": "https://www.zaobao.com.sg/news/china",
-      "kind": "region"
+      "url": "https://www.zaobao.com.sg/news/china"
     },
     {
       "id": "southeast-asia",
       "name": "东南亚",
-      "url": "https://www.zaobao.com.sg/news/sea",
-      "kind": "region"
+      "url": "https://www.zaobao.com.sg/news/sea"
     },
     {
       "id": "finance",
       "name": "财经",
-      "url": "https://www.zaobao.com.sg/finance",
-      "kind": "topic"
+      "url": "https://www.zaobao.com.sg/finance"
     }
   ],
   "discovery": {
@@ -50,14 +44,10 @@
           "china"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.zaobao.com/realtime/china",
-          "articlePathPrefixes": [
-            "/realtime/",
-            "/news/"
-          ],
-          "linkSelector": ".card-listing .card .content-header a[href], [data-testid='article-list'] article a.article-link[href]",
+          "kind": "source-adapter",
+          "adapter": "zaobao",
+          "driver": "http",
+          "route": "latest-china",
           "maximumItems": 100
         }
       },
@@ -68,14 +58,10 @@
           "singapore"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.zaobao.com/realtime/singapore",
-          "articlePathPrefixes": [
-            "/realtime/",
-            "/news/"
-          ],
-          "linkSelector": ".card-listing .card .content-header a[href], [data-testid='article-list'] article a.article-link[href]",
+          "kind": "source-adapter",
+          "adapter": "zaobao",
+          "driver": "http",
+          "route": "latest-singapore",
           "maximumItems": 100
         }
       },
@@ -86,14 +72,10 @@
           "world"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.zaobao.com/realtime/world",
-          "articlePathPrefixes": [
-            "/realtime/",
-            "/news/"
-          ],
-          "linkSelector": ".card-listing .card .content-header a[href], [data-testid='article-list'] article a.article-link[href]",
+          "kind": "source-adapter",
+          "adapter": "zaobao",
+          "driver": "http",
+          "route": "latest-world",
           "maximumItems": 100
         }
       },
@@ -104,14 +86,10 @@
           "finance"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.zaobao.com/realtime/finance",
-          "articlePathPrefixes": [
-            "/realtime/",
-            "/finance/"
-          ],
-          "linkSelector": ".card-listing .card .content-header a[href], [data-testid='article-list'] article a.article-link[href]",
+          "kind": "source-adapter",
+          "adapter": "zaobao",
+          "driver": "http",
+          "route": "latest-finance",
           "maximumItems": 100
         }
       },
@@ -121,14 +99,10 @@
           "southeast-asia"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.zaobao.com/news/sea",
-          "articlePathPrefixes": [
-            "/news/",
-            "/realtime/"
-          ],
-          "linkSelector": ".card-listing .card .content-header a[href], [data-testid='article-list'] article a.article-link[href]",
+          "kind": "source-adapter",
+          "adapter": "zaobao",
+          "driver": "http",
+          "route": "southeast-asia",
           "maximumItems": 100
         }
       }

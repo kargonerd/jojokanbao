@@ -6,56 +6,47 @@
     {
       "id": "politics",
       "name": "时政",
-      "url": "https://www.news.cn/politics/index.html",
-      "kind": "topic"
+      "url": "https://www.news.cn/politics/index.html"
     },
     {
       "id": "world",
       "name": "国际",
-      "url": "https://www.news.cn/world/index.html",
-      "kind": "region"
+      "url": "https://www.news.cn/world/index.html"
     },
     {
       "id": "fortune",
       "name": "财经",
-      "url": "https://www.news.cn/fortune/index.htm",
-      "kind": "topic"
+      "url": "https://www.news.cn/fortune/index.htm"
     },
     {
       "id": "comments",
       "name": "网评",
-      "url": "https://www.news.cn/comments/index.html",
-      "kind": "topic"
+      "url": "https://www.news.cn/comments/index.html"
     },
     {
       "id": "hong-kong-macao",
       "name": "港澳",
-      "url": "https://www.news.cn/gangao/index.html",
-      "kind": "region"
+      "url": "https://www.news.cn/gangao/index.html"
     },
     {
       "id": "taiwan",
       "name": "台湾",
-      "url": "https://www.news.cn/tw/index.html",
-      "kind": "region"
+      "url": "https://www.news.cn/tw/index.html"
     },
     {
       "id": "military",
       "name": "军事",
-      "url": "https://www.news.cn/milpro/index.htm",
-      "kind": "topic"
+      "url": "https://www.news.cn/milpro/index.htm"
     },
     {
       "id": "law",
       "name": "法律",
-      "url": "https://www.news.cn/law/index.html",
-      "kind": "topic"
+      "url": "https://www.news.cn/law/index.html"
     },
     {
       "id": "finance",
       "name": "金融",
-      "url": "https://www.news.cn/money/index.html",
-      "kind": "topic"
+      "url": "https://www.news.cn/money/index.html"
     }
   ],
   "discovery": {
@@ -67,12 +58,10 @@
           "politics"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.news.cn/politics/index.html",
-          "articlePathPrefixes": [
-            "/politics/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "xinhua",
+          "driver": "http",
+          "route": "politics",
           "maximumItems": 30
         }
       },
@@ -82,12 +71,10 @@
           "world"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.news.cn/world/index.html",
-          "articlePathPrefixes": [
-            "/world/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "xinhua",
+          "driver": "http",
+          "route": "world",
           "maximumItems": 30
         }
       },
@@ -97,12 +84,10 @@
           "fortune"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.news.cn/fortune/index.htm",
-          "articlePathPrefixes": [
-            "/fortune/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "xinhua",
+          "driver": "http",
+          "route": "fortune",
           "maximumItems": 30
         }
       },
@@ -112,12 +97,10 @@
           "comments"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.news.cn/comments/index.html",
-          "articlePathPrefixes": [
-            "/comments/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "xinhua",
+          "driver": "http",
+          "route": "comments",
           "maximumItems": 30
         }
       },
@@ -127,12 +110,10 @@
           "hong-kong-macao"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.news.cn/gangao/index.html",
-          "articlePathPrefixes": [
-            "/gangao/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "xinhua",
+          "driver": "http",
+          "route": "hong-kong-macao",
           "maximumItems": 30
         }
       },
@@ -142,12 +123,10 @@
           "taiwan"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.news.cn/tw/index.html",
-          "articlePathPrefixes": [
-            "/tw/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "xinhua",
+          "driver": "http",
+          "route": "taiwan",
           "maximumItems": 30
         }
       },
@@ -157,13 +136,10 @@
           "military"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.news.cn/milpro/index.htm",
-          "articlePathPrefixes": [
-            "/mil/",
-            "/milpro/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "xinhua",
+          "driver": "http",
+          "route": "military",
           "maximumItems": 30
         }
       },
@@ -173,12 +149,10 @@
           "law"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.news.cn/law/index.html",
-          "articlePathPrefixes": [
-            "/law/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "xinhua",
+          "driver": "http",
+          "route": "law",
           "maximumItems": 30
         }
       },
@@ -188,12 +162,10 @@
           "finance"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.news.cn/money/index.html",
-          "articlePathPrefixes": [
-            "/money/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "xinhua",
+          "driver": "http",
+          "route": "finance",
           "maximumItems": 30
         }
       }

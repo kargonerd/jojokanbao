@@ -6,14 +6,12 @@
     {
       "id": "top-stories",
       "name": "Top Stories",
-      "url": "https://www.channelnewsasia.com/",
-      "kind": "stream"
+      "url": "https://www.channelnewsasia.com/"
     },
     {
       "id": "asia",
       "name": "Asia",
       "url": "https://www.channelnewsasia.com/asia",
-      "kind": "region",
       "match": {
         "urlPrefixes": [
           "https://www.channelnewsasia.com/asia/"
@@ -24,7 +22,6 @@
       "id": "east-asia",
       "name": "East Asia",
       "url": "https://www.channelnewsasia.com/east-asia",
-      "kind": "region",
       "match": {
         "urlPrefixes": [
           "https://www.channelnewsasia.com/east-asia/"
@@ -35,7 +32,6 @@
       "id": "singapore",
       "name": "Singapore",
       "url": "https://www.channelnewsasia.com/singapore",
-      "kind": "region",
       "match": {
         "urlPrefixes": [
           "https://www.channelnewsasia.com/singapore/"
@@ -46,7 +42,6 @@
       "id": "world",
       "name": "World",
       "url": "https://www.channelnewsasia.com/world",
-      "kind": "region",
       "match": {
         "urlPrefixes": [
           "https://www.channelnewsasia.com/world/"
@@ -57,7 +52,6 @@
       "id": "business",
       "name": "Business",
       "url": "https://www.channelnewsasia.com/business",
-      "kind": "topic",
       "match": {
         "urlPrefixes": [
           "https://www.channelnewsasia.com/business/"
@@ -74,16 +68,10 @@
           "top-stories"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://www.channelnewsasia.com/",
-          "articlePathPrefixes": [
-            "/asia/",
-            "/east-asia/",
-            "/singapore/",
-            "/world/",
-            "/business/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "cna-singapore",
+          "driver": "http",
+          "route": "top-stories",
           "maximumItems": 50
         }
       },

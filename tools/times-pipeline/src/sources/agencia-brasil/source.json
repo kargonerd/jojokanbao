@@ -6,38 +6,32 @@
     {
       "id": "culture",
       "name": "Culture",
-      "url": "https://agenciabrasil.ebc.com.br/en/cultura",
-      "kind": "topic"
+      "url": "https://agenciabrasil.ebc.com.br/en/cultura"
     },
     {
       "id": "economy",
       "name": "Economy",
-      "url": "https://agenciabrasil.ebc.com.br/en/economia",
-      "kind": "topic"
+      "url": "https://agenciabrasil.ebc.com.br/en/economia"
     },
     {
       "id": "education",
       "name": "Education",
-      "url": "https://agenciabrasil.ebc.com.br/en/educacao",
-      "kind": "topic"
+      "url": "https://agenciabrasil.ebc.com.br/en/educacao"
     },
     {
       "id": "general",
       "name": "General",
-      "url": "https://agenciabrasil.ebc.com.br/en/geral",
-      "kind": "topic"
+      "url": "https://agenciabrasil.ebc.com.br/en/geral"
     },
     {
       "id": "health",
       "name": "Health",
-      "url": "https://agenciabrasil.ebc.com.br/en/saude",
-      "kind": "topic"
+      "url": "https://agenciabrasil.ebc.com.br/en/saude"
     },
     {
       "id": "human-rights",
       "name": "Human Rights",
-      "url": "https://agenciabrasil.ebc.com.br/en/direitos-humanos",
-      "kind": "topic"
+      "url": "https://agenciabrasil.ebc.com.br/en/direitos-humanos"
     }
   ],
   "discovery": {
@@ -49,12 +43,10 @@
           "culture"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://agenciabrasil.ebc.com.br/en/cultura",
-          "articlePathPrefixes": [
-            "/en/cultura/noticia/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "agencia-brasil",
+          "driver": "http",
+          "route": "culture",
           "maximumItems": 50
         }
       },
@@ -64,12 +56,10 @@
           "economy"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://agenciabrasil.ebc.com.br/en/economia",
-          "articlePathPrefixes": [
-            "/en/economia/noticia/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "agencia-brasil",
+          "driver": "http",
+          "route": "economy",
           "maximumItems": 50
         }
       },
@@ -79,12 +69,10 @@
           "education"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://agenciabrasil.ebc.com.br/en/educacao",
-          "articlePathPrefixes": [
-            "/en/educacao/noticia/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "agencia-brasil",
+          "driver": "http",
+          "route": "education",
           "maximumItems": 50
         }
       },
@@ -94,12 +82,10 @@
           "general"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://agenciabrasil.ebc.com.br/en/geral",
-          "articlePathPrefixes": [
-            "/en/geral/noticia/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "agencia-brasil",
+          "driver": "http",
+          "route": "general",
           "maximumItems": 50
         }
       },
@@ -109,12 +95,10 @@
           "health"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://agenciabrasil.ebc.com.br/en/saude",
-          "articlePathPrefixes": [
-            "/en/saude/noticia/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "agencia-brasil",
+          "driver": "http",
+          "route": "health",
           "maximumItems": 50
         }
       },
@@ -124,12 +108,10 @@
           "human-rights"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://agenciabrasil.ebc.com.br/en/direitos-humanos",
-          "articlePathPrefixes": [
-            "/en/direitos-humanos/noticia/"
-          ],
+          "kind": "source-adapter",
+          "adapter": "agencia-brasil",
+          "driver": "http",
+          "route": "human-rights",
           "maximumItems": 50
         }
       }

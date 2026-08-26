@@ -7,7 +7,6 @@
       "id": "china",
       "name": "China",
       "url": "https://asia.nikkei.com/location/east-asia/china",
-      "kind": "region",
       "match": {
         "urlPrefixes": [
           "https://asia.nikkei.com/location/east-asia/china/"
@@ -18,7 +17,6 @@
       "id": "japan",
       "name": "Japan",
       "url": "https://asia.nikkei.com/location/east-asia/japan",
-      "kind": "region",
       "match": {
         "urlPrefixes": [
           "https://asia.nikkei.com/location/east-asia/japan/"
@@ -29,7 +27,6 @@
       "id": "southeast-asia",
       "name": "Southeast Asia",
       "url": "https://asia.nikkei.com/location/southeast-asia",
-      "kind": "region",
       "match": {
         "urlPrefixes": [
           "https://asia.nikkei.com/location/southeast-asia/"
@@ -40,7 +37,6 @@
       "id": "india",
       "name": "India",
       "url": "https://asia.nikkei.com/location/south-asia/india",
-      "kind": "region",
       "match": {
         "urlPrefixes": [
           "https://asia.nikkei.com/location/south-asia/india/"
@@ -51,7 +47,6 @@
       "id": "east-asia",
       "name": "East Asia",
       "url": "https://asia.nikkei.com/location/east-asia",
-      "kind": "region",
       "match": {
         "urlPrefixes": [
           "https://asia.nikkei.com/location/east-asia/"
@@ -62,7 +57,6 @@
       "id": "south-asia",
       "name": "South Asia",
       "url": "https://asia.nikkei.com/location/south-asia",
-      "kind": "region",
       "match": {
         "urlPrefixes": [
           "https://asia.nikkei.com/location/south-asia/"
@@ -73,7 +67,6 @@
       "id": "central-asia",
       "name": "Central Asia",
       "url": "https://asia.nikkei.com/location/central-asia",
-      "kind": "region",
       "match": {
         "urlPrefixes": [
           "https://asia.nikkei.com/location/central-asia/"
@@ -84,7 +77,6 @@
       "id": "oceania",
       "name": "Oceania",
       "url": "https://asia.nikkei.com/location/oceania",
-      "kind": "region",
       "match": {
         "urlPrefixes": [
           "https://asia.nikkei.com/location/oceania/"
@@ -95,7 +87,6 @@
       "id": "business",
       "name": "Business",
       "url": "https://asia.nikkei.com/business",
-      "kind": "topic",
       "match": {
         "urlPrefixes": [
           "https://asia.nikkei.com/business/"
@@ -106,7 +97,6 @@
       "id": "markets",
       "name": "Markets",
       "url": "https://asia.nikkei.com/business/markets",
-      "kind": "topic",
       "match": {
         "urlPrefixes": [
           "https://asia.nikkei.com/business/markets/"
@@ -117,7 +107,6 @@
       "id": "tech",
       "name": "Tech",
       "url": "https://asia.nikkei.com/business/tech",
-      "kind": "topic",
       "match": {
         "urlPrefixes": [
           "https://asia.nikkei.com/business/technology/",
@@ -129,7 +118,6 @@
       "id": "politics",
       "name": "Politics",
       "url": "https://asia.nikkei.com/politics",
-      "kind": "topic",
       "match": {
         "urlPrefixes": [
           "https://asia.nikkei.com/politics/"
@@ -140,7 +128,6 @@
       "id": "economy",
       "name": "Economy",
       "url": "https://asia.nikkei.com/economy",
-      "kind": "topic",
       "match": {
         "urlPrefixes": [
           "https://asia.nikkei.com/economy/"
@@ -168,13 +155,10 @@
           "china"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://asia.nikkei.com/location/east-asia/china",
-          "articlePathPrefixes": [
-            "/"
-          ],
-          "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]",
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "china",
           "maximumItems": 50
         }
       },
@@ -184,13 +168,10 @@
           "japan"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://asia.nikkei.com/location/east-asia/japan",
-          "articlePathPrefixes": [
-            "/"
-          ],
-          "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]",
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "japan",
           "maximumItems": 50
         }
       },
@@ -200,13 +181,10 @@
           "southeast-asia"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://asia.nikkei.com/location/southeast-asia",
-          "articlePathPrefixes": [
-            "/"
-          ],
-          "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]",
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "southeast-asia",
           "maximumItems": 50
         }
       },
@@ -216,13 +194,10 @@
           "india"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://asia.nikkei.com/location/south-asia/india",
-          "articlePathPrefixes": [
-            "/"
-          ],
-          "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]",
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "india",
           "maximumItems": 50
         }
       },
@@ -232,13 +207,10 @@
           "east-asia"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://asia.nikkei.com/location/east-asia",
-          "articlePathPrefixes": [
-            "/"
-          ],
-          "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]",
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "east-asia",
           "maximumItems": 50
         }
       },
@@ -248,13 +220,10 @@
           "south-asia"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://asia.nikkei.com/location/south-asia",
-          "articlePathPrefixes": [
-            "/"
-          ],
-          "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]",
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "south-asia",
           "maximumItems": 50
         }
       },
@@ -264,13 +233,10 @@
           "central-asia"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://asia.nikkei.com/location/central-asia",
-          "articlePathPrefixes": [
-            "/"
-          ],
-          "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]",
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "central-asia",
           "maximumItems": 50
         }
       },
@@ -280,13 +246,10 @@
           "oceania"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://asia.nikkei.com/location/oceania",
-          "articlePathPrefixes": [
-            "/"
-          ],
-          "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]",
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "oceania",
           "maximumItems": 50
         }
       },
@@ -296,13 +259,10 @@
           "business"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://asia.nikkei.com/business",
-          "articlePathPrefixes": [
-            "/business/"
-          ],
-          "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]",
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "business",
           "maximumItems": 50
         }
       },
@@ -312,13 +272,10 @@
           "markets"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://asia.nikkei.com/business/markets",
-          "articlePathPrefixes": [
-            "/business/markets/"
-          ],
-          "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]",
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "markets",
           "maximumItems": 50
         }
       },
@@ -328,14 +285,10 @@
           "tech"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://asia.nikkei.com/business/tech",
-          "articlePathPrefixes": [
-            "/business/technology/",
-            "/business/tech/"
-          ],
-          "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]",
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "tech",
           "maximumItems": 50
         }
       },
@@ -345,13 +298,10 @@
           "politics"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://asia.nikkei.com/politics",
-          "articlePathPrefixes": [
-            "/politics/"
-          ],
-          "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]",
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "politics",
           "maximumItems": 50
         }
       },
@@ -361,13 +311,10 @@
           "economy"
         ],
         "discovery": {
-          "kind": "site-adapter",
-          "adapter": "html-news-page",
-          "url": "https://asia.nikkei.com/economy",
-          "articlePathPrefixes": [
-            "/economy/"
-          ],
-          "linkSelector": "[class*='ArticleCard'][class*='Headline'] a[href]",
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "economy",
           "maximumItems": 50
         }
       }

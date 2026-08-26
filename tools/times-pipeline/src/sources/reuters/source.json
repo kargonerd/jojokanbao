@@ -7,7 +7,6 @@
       "id": "world",
       "name": "World",
       "url": "https://www.reuters.com/world/",
-      "kind": "region",
       "match": {
         "urlPrefixes": [
           "https://www.reuters.com/world/"
@@ -18,7 +17,6 @@
       "id": "business",
       "name": "Business",
       "url": "https://www.reuters.com/business/",
-      "kind": "topic",
       "match": {
         "urlPrefixes": [
           "https://www.reuters.com/business/"
@@ -29,7 +27,6 @@
       "id": "markets",
       "name": "Markets",
       "url": "https://www.reuters.com/markets/",
-      "kind": "topic",
       "match": {
         "urlPrefixes": [
           "https://www.reuters.com/markets/"
@@ -40,7 +37,6 @@
       "id": "technology",
       "name": "Technology",
       "url": "https://www.reuters.com/technology/",
-      "kind": "topic",
       "match": {
         "urlPrefixes": [
           "https://www.reuters.com/technology/"

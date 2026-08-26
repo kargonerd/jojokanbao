@@ -6,50 +6,42 @@
     {
       "id": "news",
       "name": "News",
-      "url": "https://www.scmp.com/news",
-      "kind": "stream"
+      "url": "https://www.scmp.com/news"
     },
     {
       "id": "china",
       "name": "China",
-      "url": "https://www.scmp.com/news/china",
-      "kind": "region"
+      "url": "https://www.scmp.com/news/china"
     },
     {
       "id": "hong-kong",
       "name": "Hong Kong",
-      "url": "https://www.scmp.com/news/hong-kong",
-      "kind": "region"
+      "url": "https://www.scmp.com/news/hong-kong"
     },
     {
       "id": "asia",
       "name": "Asia",
-      "url": "https://www.scmp.com/news/asia",
-      "kind": "region"
+      "url": "https://www.scmp.com/news/asia"
     },
     {
       "id": "world",
       "name": "World",
-      "url": "https://www.scmp.com/news/world",
-      "kind": "region"
+      "url": "https://www.scmp.com/news/world"
     },
     {
       "id": "business",
       "name": "Business",
-      "url": "https://www.scmp.com/business",
-      "kind": "topic"
+      "url": "https://www.scmp.com/business"
     },
     {
       "id": "economy",
       "name": "Economy",
-      "url": "https://www.scmp.com/economy",
-      "kind": "topic"
+      "url": "https://www.scmp.com/economy"
     },
     {
       "id": "tech",
       "name": "Tech",
-      "url": "https://www.scmp.com/tech",
-      "kind": "topic"
+      "url": "https://www.scmp.com/tech"
     }
   ],
   "discovery": {

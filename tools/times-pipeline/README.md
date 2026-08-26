@@ -17,12 +17,13 @@ Financial Times、Axios、NPR、Nikkei Asia、联合早报、Al Jazeera、SCMP�
 
 - JOJO 原生来源适配器：直接调用出版方的轻量入口。来源特例按
   `src/sources/{source}/discover.ts|page.ts|process.ts` 组织；AP、Nikkei、财联社和 DW
-  当前使用原生发现器；Bloomberg 和 Reuters 另有页面正文策略。
+  以及需要读取官网栏目页/API 的媒体都把发现规则放在自己的目录中；Bloomberg 和 Reuters 另有页面正文策略。
 - 官方 RSS / RSS 列表：直接抓取并保留原始 XML。
 - Sitemap：目前用于 Reuters 官方 URL 发现。
 - Multi：合并同一媒体的多个选定栏目入口，按文章 ID 去重并保留所有命中的出版方栏目。
-- HTML 栏目页适配器：用于 Nikkei 地区页、新华网、人民网大湾区和 Agência Brasil 英文版等没有
-  可用 RSS/API 的栏目；可用 CSS selector 只选择文章卡片，避免把导航链接当文章。
+- HTML 栏目发现：用于 Nikkei 地区页、新华网、人民网大湾区和 Agência Brasil 英文版等没有
+  可用 RSS/API 的栏目。共享层只提供 HTTP、HTML 和候选转换机制；URL、selector 和过滤规则属于各媒体的
+  `discover.ts`，不存在假设所有网站结构相同的通用媒体适配器。
 - Bloomberg 使用 5 个稳定的官方主题 RSS。Asia/AI 仍保留为出版方栏目链接，但目前没有稳定的轻量
   Feed/API，明确标为仅声明栏目；流水线不会请求分类页，也不会把其他稿件伪标成 Asia/AI。
 - Axios 使用官方全文 feed。官网保留 5 个栏目定义和链接，但 feed 不提供可靠栏目字段，因此这些栏目
@@ -31,7 +32,7 @@ Financial Times、Axios、NPR、Nikkei Asia、联合早报、Al Jazeera、SCMP�
 - 发现驱动：来源适配器显式声明 `driver: http | browser`。当前 AP 使用 `http`；浏览器 runtime 已作为
   注入接口保留，但尚未给任何生产发现适配器启用，误配会直接失败而不是静默降级。
 - `discovery-body`：逐篇质量门槛通过后直接标为全文。
-- Chromium（可加载 BPC）：每轮最多 50 个新页面或到期重试页面，生成标准 WARC 1.1/CDXJ/WACZ，并把通过
+- Browsertrix Crawler（Brave/Chromium，可加载 BPC）：每轮最多 50 个新页面或到期重试页面，生成标准 WARC/CDXJ/WACZ，并把通过
   通用正文质量门槛的页面回填为全文。WACZ 保留出版方原始 HTTP 响应；Canonical 正文优先读取来源
   指定的结构化正文或 BPC 处理后的 rendered DOM，失败时再读取原始响应，两种用途不会互相覆盖。
 - `discovery-summary`：正文不可用时保留真实摘要，绝不把 metadata-only 伪装成摘要。
@@ -64,11 +65,10 @@ node tools/times-pipeline/dist/src/capture-cli.js `
 从 capture 输出取得 `runManifest` 后：
 
 ```powershell
-python tools/times-pipeline/archive_v2.py `
+node tools/times-pipeline/dist/src/archive-cli.js `
   --config tools/times-pipeline/sources.v2.json `
   --output "$env:TEMP/jojo-times-v2" `
   --run-manifest "<runManifest>" `
-  --engine browser `
   --max-pages 50
 
 node tools/times-pipeline/dist/src/process-cli.js `
@@ -109,7 +109,8 @@ raw/news/runs/YYYY/MM/DD/{RUN_ID}.json
 raw/web-archives/times/state.json.gz
 raw/web-archives/times/YYYY/MM/DD/{RUN_ID}/
 ├─ run.json
-└─ times-{RUN_ID}.wacz
+├─ browsertrix-00.wacz
+└─ browsertrix-01.wacz  # 仅在换代理节点重试时出现
 
 canonical/news/{source}/
 ├─ dataset.json
@@ -137,9 +138,12 @@ Delivery 构建会合并旧 index，所以滚动历史不会在下一轮消失�
 - `maintenance-times-process.yml`：错开 5 分钟读取最新完整 Raw commit，增量提交 Canonical，然后按
   Article/Asset → 日期 manifest → index → catalog 的顺序发布 B2 Delivery。
 
-Process 不下载 WACZ 或整个历史 Dataset。`download_hf_snapshot.py` 只恢复最新完整 run、对应的 source
+Process 不下载 WACZ 或整个历史 Dataset。Node HF 同步器只恢复最新完整 run、对应的 source
 manifest/candidates，以及这些候选日期已经存在的 Canonical 分片；同日增量可以合并，下载量不会随
 Raw 存档累计而线性增长。
+
+两个 workflow 手动运行时默认 `publish=false`，只上传短期 Actions artifact，便于验证而不改 HF/B2；
+定时运行或显式选择 `publish=true` 才写正式存储。
 
 代理订阅只从 `JOJO_TIMES_PROXY_SUBSCRIPTION` Secret 读取。任务使用固定 Mihomo 二进制生成临时配置；
 轻量发现默认直连，只有连接失败或 400/401/403/429 才通过当前代理节点重试。首次页面抓取走延迟
@@ -152,7 +156,8 @@ Raw 存档累计而线性增长。
 ```powershell
 pnpm --filter @jojo/times-pipeline typecheck
 pnpm --filter @jojo/times-pipeline test
-python -m pytest tools/times-pipeline/tests/test_webarchive.py tools/times-pipeline/tests/test_prepare_proxy.py -q
 ```
 
-旧 Python v1 采集入口已经移除；v2 不依赖外部聚合服务、`jojo-news-archive-runner` 或 Olds API。
+Times 流水线只使用 TypeScript/Node 和锁定镜像的 Browsertrix Crawler，不再维护 Python 入口；v2 不依赖
+外部聚合服务、`jojo-news-archive-runner` 或 Olds API。本地执行归档需要 Docker；无 Docker 时仍可运行
+发现、处理、Delivery 和全部单元测试，Browsertrix 集成由 GitHub Actions 验证。

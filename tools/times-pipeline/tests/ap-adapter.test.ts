@@ -6,7 +6,7 @@ const source: SourceConfig = {
   id: "ap",
   name: "AP News",
   language: "en",
-  sections: [{ id: "world", name: "World", url: "https://apnews.com/world-news", kind: "region" }],
+  sections: [{ id: "world", name: "World", url: "https://apnews.com/world-news" }],
   discovery: {
     kind: "multi",
     targets: [{

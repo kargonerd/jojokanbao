@@ -1,0 +1,10 @@
+import type { SourceModule } from "../contracts.js";
+import { discoverChinanews } from "./discover.js";
+
+export const chinanewsSource: SourceModule = {
+  id: "chinanews",
+  discoverHttp: (source, endpoint, fetchedAt) => {
+    if (endpoint.adapter !== "chinanews") throw new Error(`${source.id}: expected China News endpoint`);
+    return discoverChinanews(source, endpoint, fetchedAt);
+  },
+};
