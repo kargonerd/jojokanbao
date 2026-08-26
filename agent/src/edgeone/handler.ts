@@ -6,11 +6,7 @@ import {
   type PlatformModelRuntime,
 } from "../models";
 import { runPlatformAgent } from "../runtime";
-import type {
-  AgentUsage,
-  AgentSourceReference,
-  PlatformAgentEvent,
-} from "../types";
+import type { PlatformAgentEvent } from "../types";
 import type {
   AgentMessage,
   AgentTool,
@@ -23,7 +19,6 @@ import type {
   AuthorizedAgentUser,
   CreateEdgeOneAgentHandlerOptions,
   EdgeOneAgentContext,
-  EdgeOneStoredMessage,
   EdgeOneTraceSpan,
   EdgeOneTracer,
 } from "./types";
@@ -72,10 +67,6 @@ function requestBody(value: unknown): AgentRequestBody {
   const mode = scope?.mode === "all" || scope?.mode === "selected"
     ? scope.mode
     : undefined;
-  const rawHistoryMode = (value as { historyMode?: unknown }).historyMode;
-  if (rawHistoryMode !== undefined && rawHistoryMode !== "store" && rawHistoryMode !== "client") {
-    throw new AgentHttpError(400, "historyMode must be store or client");
-  }
   const rawHistory = (value as { history?: unknown }).history;
   if (rawHistory !== undefined && !Array.isArray(rawHistory)) {
     throw new AgentHttpError(400, "history must be an array");
@@ -104,7 +95,6 @@ function requestBody(value: unknown): AgentRequestBody {
   }
   return {
     message: message.trim(),
-    ...(rawHistoryMode ? { historyMode: rawHistoryMode } : {}),
     ...(history.length ? { history } : {}),
     ...(mode || datasetIds || itemIds || manifestObjects
       ? { scope: {
@@ -129,7 +119,7 @@ function emptyUsage(): AssistantMessage["usage"] {
 }
 
 function historyMessage(
-  message: EdgeOneStoredMessage,
+  message: NonNullable<AgentRequestBody["history"]>[number],
   runtime: PlatformModelRuntime,
 ): AgentMessage | undefined {
   if (typeof message.content !== "string") return undefined;
@@ -153,23 +143,6 @@ function historyMessage(
     };
   }
   return undefined;
-}
-
-async function loadHistory(
-  context: EdgeOneAgentContext,
-  conversationId: string,
-  runtime: PlatformModelRuntime,
-): Promise<AgentMessage[]> {
-  if (!context.store) return [];
-  const stored = await context.store.getMessages({
-    conversationId,
-    limit: 20,
-    order: "desc",
-  });
-  return stored.reverse().flatMap((message) => {
-    const converted = historyMessage(message, runtime);
-    return converted ? [converted] : [];
-  });
 }
 
 async function defaultModelRuntime(
@@ -319,32 +292,6 @@ function positiveEnvironmentInteger(
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-async function saveMessage(
-  context: EdgeOneAgentContext,
-  input: {
-    conversationId: string;
-    role: "user" | "assistant";
-    content: string;
-    user: AuthorizedAgentUser;
-    usage?: AgentUsage;
-    references?: AgentSourceReference[];
-    scope?: AgentRequestBody["scope"];
-  },
-): Promise<void> {
-  const metadata = {
-    ...(input.usage ? { usage: input.usage } : {}),
-    ...(input.references?.length ? { references: input.references } : {}),
-    ...(input.scope ? { scope: input.scope } : {}),
-  };
-  await context.store?.appendMessage({
-    conversationId: input.conversationId,
-    role: input.role,
-    content: input.content,
-    userId: input.user.id,
-    ...(Object.keys(metadata).length ? { metadata } : {}),
-  });
-}
-
 export function createEdgeOneAgentHandler(
   options: CreateEdgeOneAgentHandlerOptions,
 ) {
@@ -375,38 +322,12 @@ export function createEdgeOneAgentHandler(
     }
 
     const conversationId = context.conversation_id || crypto.randomUUID();
-    const storageConversationId = `${user.id}:${conversationId}`;
-    const usesClientHistory = body.historyMode === "client";
-    let history: AgentMessage[];
+    const history = clientHistory(body.history ?? [], runtime);
     let tools: AgentTool[];
     try {
       tools = tracedTools(await options.tools?.(context, user) ?? [], context.tracer);
     } catch {
       return jsonResponse(503, { error: "馆藏问答工具暂时不可用" });
-    }
-    if (usesClientHistory) {
-      history = clientHistory(body.history ?? [], runtime);
-    } else {
-      try {
-        history = await loadHistory(context, storageConversationId, runtime);
-        await saveMessage(context, {
-          conversationId: storageConversationId,
-          role: "user",
-          content: body.message,
-          user,
-          scope: body.scope,
-        });
-        await context.store?.updateConversation?.({
-          conversationId: storageConversationId,
-          metadata: {
-            kind: "rag-chat",
-            ...(history.length === 0 ? { title: body.message.slice(0, 80) } : {}),
-            ...(body.scope ? { scope: body.scope } : {}),
-          },
-        });
-      } catch {
-        return jsonResponse(503, { error: "会话记录暂时不可用" });
-      }
     }
     const environment = context.env ?? process.env;
 
@@ -469,16 +390,6 @@ export function createEdgeOneAgentHandler(
               "agent.history_messages": history.length,
             },
           );
-          if (!usesClientHistory) {
-            await saveMessage(context, {
-              conversationId: storageConversationId,
-              role: "assistant",
-              content: result.answer,
-              user,
-              usage: result.usage,
-              references: result.references,
-            });
-          }
           controller.enqueue(sseFrame("done", {
             conversationId,
             usage: result.usage,

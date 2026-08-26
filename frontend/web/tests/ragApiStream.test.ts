@@ -43,7 +43,6 @@ describe("askStream references", () => {
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(JSON.parse(String(init.body))).toMatchObject({
       message: "继续解释",
-      historyMode: "client",
       history: [
         { role: "user", content: "上一问" },
         { role: "assistant", content: "上一答" },

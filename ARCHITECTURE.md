@@ -59,9 +59,8 @@ EdgeOne 专有入口位于 `infrastructure/edgeone/functions`，只导入
   Agent 再做最终用户鉴权，不再使用 Node Cloud Function 嵌套转发或 HMAC 服务签名。
 - 会话采用客户端管理的通用结构（`conversation + messages + references`）。Web 将完整历史
   按账号保存在 IndexedDB，不自动过期；每次只把最近 20 条上下文随请求发送给 Agent，
-  Agent 不再为 Web 读写 Makers Store。Desktop 与 Mobile 可用同一结构接入各自的本地
-  SQLite，未来云同步作为独立可选层添加，不改变问答协议。
-- `/gateway/conversations` 暂时只服务尚未迁移到本地会话的原生客户端，不再是 Web 依赖。
+  服务端不保存聊天历史。Desktop 与 Mobile 可用同一结构接入各自的本地 SQLite，未来云
+  同步作为独立可选层添加，不改变问答协议。
 - Codex OAuth 只在 Store 中保留一条加密系统消息；凭据刷新覆盖同一 message，不随请求、
   用户或会话追加记录。
 - Agent 先读取 `catalog.jox` 选择最多 8 本候选书，再把候选书随 Jox 发布的

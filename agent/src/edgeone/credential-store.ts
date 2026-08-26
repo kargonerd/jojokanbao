@@ -5,7 +5,7 @@ import {
   type CredentialPersistence,
 } from "../credentials";
 import type { AgentEnvironment } from "../models";
-import type { EdgeOneConversationStore } from "./types";
+import type { EdgeOneMessageStore } from "./types";
 
 const CREDENTIAL_CONVERSATION_ID = "jojo-platform-credentials-v1";
 
@@ -95,7 +95,7 @@ export class EdgeOneEncryptedCredentialPersistence implements CredentialPersiste
   private messageId: string | undefined;
 
   constructor(
-    private readonly store: EdgeOneConversationStore,
+    private readonly store: EdgeOneMessageStore,
     private readonly rawKey: Uint8Array,
   ) {}
 
@@ -147,7 +147,7 @@ export class EdgeOneEncryptedCredentialPersistence implements CredentialPersiste
 
 export function createEdgeOneCredentialStore(
   environment: AgentEnvironment,
-  store: EdgeOneConversationStore | undefined,
+  store: EdgeOneMessageStore | undefined,
 ) {
   if (!store) {
     throw new Error("问答凭证存储暂时不可用");

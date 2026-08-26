@@ -15,19 +15,13 @@ type ReaderGatewayContext = {
 export async function onRequest(context: ReaderGatewayContext): Promise<Response> {
   const incoming = new URL(context.request.url);
   const pathname = incoming.pathname.replace(/\/+$/, "");
-  const isAgentRequest = pathname === "/gateway/ask";
-  const isConversationRequest = pathname === "/gateway/conversations"
-    || pathname.startsWith("/gateway/conversations/");
-  if (!isAgentRequest && !isConversationRequest) {
+  if (pathname !== "/gateway/ask") {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
-  const allowedMethod = isAgentRequest
-    ? context.request.method === "POST"
-    : context.request.method === "GET" || context.request.method === "DELETE";
-  if (!allowedMethod) {
+  if (context.request.method !== "POST") {
     return Response.json({ error: "Method not allowed" }, {
       status: 405,
-      headers: { Allow: isAgentRequest ? "POST" : "GET, DELETE" },
+      headers: { Allow: "POST" },
     });
   }
 
@@ -36,25 +30,20 @@ export async function onRequest(context: ReaderGatewayContext): Promise<Response
     const agent = new URL(
       context.env?.JOJO_AGENT_URL?.trim() || DEFAULT_AGENT_URL,
     );
-    target = isAgentRequest
-      ? agent
-      : new URL(`${pathname}${incoming.search}`, `${agent.origin}/`);
+    target = agent;
   } catch {
     return Response.json({ error: "问答服务暂未配置" }, { status: 503 });
   }
   if (target.protocol !== "https:") {
     return Response.json({ error: "问答服务暂未配置" }, { status: 503 });
   }
-  let body: ArrayBuffer | undefined;
-  if (isAgentRequest) {
-    const declaredLength = Number(context.request.headers.get("Content-Length") ?? "0");
-    if (declaredLength > MAX_REQUEST_BYTES) {
-      return Response.json({ error: "问答内容过长" }, { status: 413 });
-    }
-    body = await context.request.arrayBuffer();
-    if (body.byteLength > MAX_REQUEST_BYTES) {
-      return Response.json({ error: "问答内容过长" }, { status: 413 });
-    }
+  const declaredLength = Number(context.request.headers.get("Content-Length") ?? "0");
+  if (declaredLength > MAX_REQUEST_BYTES) {
+    return Response.json({ error: "问答内容过长" }, { status: 413 });
+  }
+  const body = await context.request.arrayBuffer();
+  if (body.byteLength > MAX_REQUEST_BYTES) {
+    return Response.json({ error: "问答内容过长" }, { status: 413 });
   }
   const headers = new Headers();
   for (const name of FORWARDED_HEADERS) {
@@ -66,7 +55,7 @@ export async function onRequest(context: ReaderGatewayContext): Promise<Response
     upstream = await fetch(target, {
       method: context.request.method,
       headers,
-      ...(body ? { body } : {}),
+      body,
       redirect: "manual",
       signal: context.request.signal,
     });

@@ -4,9 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRagAgentDefinition } from "./applications";
 import { PersistentCredentialStore, type CredentialFile } from "./credentials";
-import { createConversationAdminHandler } from "./edgeone/conversation-admin";
 import { createEdgeOneAgentHandler } from "./edgeone/handler";
-import { MemoryConversationStore } from "./edgeone/memory-store";
 import { createPlatformModelRuntime, resolvePlatformModelConfig, type AgentEnvironment } from "./models";
 import { loadLocalCodexCredential } from "./local-codex-credential";
 import { createRagTools, type RagScope } from "./rag-tools";
@@ -120,7 +118,6 @@ const credentialStore = new PersistentCredentialStore({
   read: async () => credentialFile,
   write: async (next) => { credentialFile = next; },
 });
-const conversationStore = new MemoryConversationStore();
 const definition = createRagAgentDefinition();
 const handleAgent = createEdgeOneAgentHandler({
   systemPrompt: definition.systemPrompt,
@@ -136,7 +133,6 @@ const handleAgent = createEdgeOneAgentHandler({
     });
   },
 });
-const handleConversations = createConversationAdminHandler();
 const port = Number(environment.JOJO_AGENT_DEV_PORT ?? "8789");
 
 if (!Number.isInteger(port) || port < 1 || port > 65_535) {
@@ -169,24 +165,8 @@ const server = createServer(async (request, response) => {
         request: {
           body,
           headers,
-          method: request.method,
           signal: abortController.signal,
         },
-        store: conversationStore,
-      });
-    } else if (
-      url.pathname === "/gateway/conversations"
-      || url.pathname.startsWith("/gateway/conversations/")
-    ) {
-      const fetchRequest = new Request(url, {
-        method: request.method,
-        headers,
-        signal: abortController.signal,
-      });
-      result = await handleConversations({
-        env: environment,
-        request: fetchRequest,
-        agent: { store: conversationStore },
       });
     } else if (url.pathname === "/health") {
       result = Response.json({ ok: true, model: resolvePlatformModelConfig(environment).model });

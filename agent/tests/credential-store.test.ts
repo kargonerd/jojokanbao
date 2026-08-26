@@ -4,7 +4,7 @@ import {
   EdgeOneEncryptedCredentialPersistence,
 } from "../src";
 
-class MemoryConversationStore {
+class MemoryMessageStore {
   values: string[] = [];
 
   async getMessages() {
@@ -38,7 +38,7 @@ function key(byte: number): Uint8Array {
 
 describe("EdgeOneEncryptedCredentialPersistence", () => {
   it("uses the deployed encryption key without storing plaintext tokens", async () => {
-    const store = new MemoryConversationStore();
+    const store = new MemoryMessageStore();
     const credentials = createEdgeOneCredentialStore(
       {
         JOJO_CREDENTIAL_ENCRYPTION_KEY: Buffer.from(key(3)).toString("base64"),
@@ -81,7 +81,7 @@ describe("EdgeOneEncryptedCredentialPersistence", () => {
   });
 
   it("cannot decrypt credentials with a different project key", async () => {
-    const store = new MemoryConversationStore();
+    const store = new MemoryMessageStore();
     const first = new EdgeOneEncryptedCredentialPersistence(
       store,
       key(1),

@@ -10,11 +10,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createEdgeOneAgentHandler,
   type EdgeOneTracer,
-  type EdgeOneStoredMessage,
 } from "../src";
 
 describe("createEdgeOneAgentHandler", () => {
-  it("streams a real Pi Agent run and persists the conversation", async () => {
+  it("streams a real Pi Agent run", async () => {
     const faux = fauxProvider({
       provider: "openai-codex",
       tokensPerSecond: 100_000,
@@ -23,25 +22,6 @@ describe("createEdgeOneAgentHandler", () => {
     const models = createModels();
     models.setProvider(faux.provider);
     const model = faux.getModel();
-    const messages: EdgeOneStoredMessage[] = [];
-    const getMessages = vi.fn(async () => []);
-    const updateConversation = vi.fn(async (input: {
-      conversationId: string;
-      metadata: Record<string, unknown>;
-    }) => ({
-      conversationId: input.conversationId,
-      createdAt: 1,
-      lastMessageAt: 1,
-      messageCount: 1,
-      metadata: input.metadata,
-    }));
-    const appendMessage = vi.fn(async (input: {
-      role: EdgeOneStoredMessage["role"];
-      content: unknown;
-    }) => {
-      messages.push({ role: input.role, content: input.content });
-      return `msg-${messages.length}`;
-    });
     const handle = createEdgeOneAgentHandler({
       authorize: async () => ({ id: "user-1" }),
       createModelRuntime: async () => ({
@@ -68,11 +48,6 @@ describe("createEdgeOneAgentHandler", () => {
           },
         },
       },
-      store: {
-        getMessages,
-        appendMessage,
-        updateConversation,
-      },
     });
     const body = await response.text();
 
@@ -81,44 +56,6 @@ describe("createEdgeOneAgentHandler", () => {
     expect(body).toContain("你好，JOJO。");
     expect(body).toContain("event: usage");
     expect(body).toContain("event: done");
-    expect(appendMessage).toHaveBeenCalledTimes(2);
-    expect(getMessages).toHaveBeenCalledWith({
-      conversationId: "user-1:conversation-1",
-      limit: 20,
-      order: "desc",
-    });
-    expect(appendMessage).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        conversationId: "user-1:conversation-1",
-        userId: "user-1",
-        metadata: {
-          scope: {
-            mode: "selected",
-            datasetIds: ["book-a"],
-            itemIds: ["book-a:item-a"],
-            manifestObjects: ["content/book-a/manifest.jox"],
-          },
-        },
-      }),
-    );
-    expect(updateConversation).toHaveBeenCalledWith({
-      conversationId: "user-1:conversation-1",
-      metadata: {
-        kind: "rag-chat",
-        title: "你好",
-        scope: {
-          mode: "selected",
-          datasetIds: ["book-a"],
-          itemIds: ["book-a:item-a"],
-          manifestObjects: ["content/book-a/manifest.jox"],
-        },
-      },
-    });
-    expect(messages).toEqual([
-      { role: "user", content: "你好" },
-      { role: "assistant", content: "你好，JOJO。" },
-    ]);
   });
 
   it("does not initialize a model for unauthenticated requests", async () => {
@@ -138,7 +75,7 @@ describe("createEdgeOneAgentHandler", () => {
     expect(createModelRuntime).not.toHaveBeenCalled();
   });
 
-  it("uses client-supplied history without reading or writing conversation Store", async () => {
+  it("uses client-supplied history", async () => {
     const faux = fauxProvider({
       provider: "openai-codex",
       tokensPerSecond: 100_000,
@@ -147,9 +84,6 @@ describe("createEdgeOneAgentHandler", () => {
     const models = createModels();
     models.setProvider(faux.provider);
     const model = faux.getModel();
-    const getMessages = vi.fn(async () => []);
-    const appendMessage = vi.fn(async () => "message-id");
-    const updateConversation = vi.fn();
     const handle = createEdgeOneAgentHandler({
       authorize: async () => ({ id: "user-1" }),
       createModelRuntime: async () => ({
@@ -165,21 +99,16 @@ describe("createEdgeOneAgentHandler", () => {
       request: {
         body: {
           message: "继续说",
-          historyMode: "client",
           history: [
             { role: "user", content: "上一问" },
             { role: "assistant", content: "上一答" },
           ],
         },
       },
-      store: { getMessages, appendMessage, updateConversation },
     });
 
     expect(response.status).toBe(200);
     expect(await response.text()).toContain("接着上一轮回答。");
-    expect(getMessages).not.toHaveBeenCalled();
-    expect(appendMessage).not.toHaveBeenCalled();
-    expect(updateConversation).not.toHaveBeenCalled();
   });
 
   it("manually traces the custom Pi Agent run and each tool call", async () => {
@@ -269,7 +198,6 @@ describe("createEdgeOneAgentHandler", () => {
     const response = await handle({
       conversation_id: "conversation-1",
       request: {
-        method: "POST",
         body: {},
       },
     });

@@ -135,7 +135,6 @@ export function askStream(params: { datasetIds: string[]; scopeMode: "all" | "se
       },
       body: JSON.stringify({
         message: params.question,
-        historyMode: "client",
         history: (params.history ?? []).slice(-20).map((message) => ({
           role: message.role,
           content: message.content.replace(/\[cite:[A-Za-z0-9_-]+\]/g, ""),

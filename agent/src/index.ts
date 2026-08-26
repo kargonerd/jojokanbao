@@ -53,13 +53,6 @@ export {
 export {
   createCredentialAdminHandler,
 } from "./edgeone/credential-admin";
-export {
-  createConversationAdminHandler,
-} from "./edgeone/conversation-admin";
-export type {
-  ConversationAdminContext,
-  CreateConversationAdminHandlerOptions,
-} from "./edgeone/conversation-admin";
 export type {
   CredentialAdminContext,
   CreateCredentialAdminHandlerOptions,
@@ -78,9 +71,7 @@ export type {
   CreateEdgeOneAgentHandlerOptions,
   EdgeOneAgentContext,
   EdgeOneAgentRequest,
-  EdgeOneConversationStore,
-  EdgeOneConversationMeta,
-  EdgeOneConversationList,
+  EdgeOneMessageStore,
   EdgeOneStoredMessage,
   EdgeOneTraceAttributes,
   EdgeOneTracer,

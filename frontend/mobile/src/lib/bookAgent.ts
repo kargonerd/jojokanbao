@@ -7,6 +7,7 @@ export interface MobileBookAgentRequest {
   manifestObject: string;
   question: string;
   conversationId?: string;
+  history?: MobileBookAgentMessage[];
 }
 
 export interface MobileBookAgentReference {
@@ -19,43 +20,16 @@ export interface MobileBookAgentReference {
   fragmentObject?: string;
 }
 
-export interface MobileBookAgentConversationScope {
-  mode?: "all" | "selected";
-  datasetIds?: string[];
-  itemIds?: string[];
-  manifestObjects?: string[];
-}
-
-export interface MobileBookAgentConversation {
-  id: string;
-  title: string;
-  createdAt?: number;
-  lastMessageAt?: number;
-  messageCount: number;
-  scope?: MobileBookAgentConversationScope;
-}
-
 export interface MobileBookAgentMessage {
-  id?: string;
   role: "user" | "assistant";
   content: string;
-  createdAt?: number;
   references?: MobileBookAgentReference[];
-}
-
-export interface MobileBookAgentConversationDetail {
-  conversation: MobileBookAgentConversation;
-  messages: MobileBookAgentMessage[];
 }
 
 type AgentEvent = Record<string, unknown>;
 
 function conversationId(): string {
   return `conv_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`.slice(0, 36);
-}
-
-function conversationBaseUrl(): string {
-  return new URL("/gateway/conversations", AGENT_URL).toString().replace(/\/$/, "");
 }
 
 async function mobileAccessToken(): Promise<string> {
@@ -65,47 +39,6 @@ async function mobileAccessToken(): Promise<string> {
   const token = data.session?.access_token;
   if (!token) throw new Error("请先在「我」中登录后使用书内 AI");
   return token;
-}
-
-async function conversationRequest<T>(path = "", init: RequestInit = {}): Promise<T> {
-  const headers = new Headers(init.headers);
-  headers.set("Authorization", `Bearer ${await mobileAccessToken()}`);
-  headers.set("Accept", "application/json");
-  const response = await fetch(`${conversationBaseUrl()}${path}`, {
-    ...init,
-    headers,
-  });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({})) as { error?: string };
-    throw new Error(payload.error || `历史记录返回 HTTP ${response.status}`);
-  }
-  return response.status === 204
-    ? undefined as T
-    : response.json() as Promise<T>;
-}
-
-export async function listMobileBookAgentConversations(
-  itemId: string,
-): Promise<MobileBookAgentConversation[]> {
-  const payload = await conversationRequest<{
-    conversations?: MobileBookAgentConversation[];
-  }>("?limit=100");
-  return (Array.isArray(payload.conversations) ? payload.conversations : [])
-    .filter((conversation) => conversation.scope?.itemIds?.includes(itemId));
-}
-
-export function getMobileBookAgentConversation(
-  conversationId: string,
-): Promise<MobileBookAgentConversationDetail> {
-  return conversationRequest(`/${encodeURIComponent(conversationId)}`);
-}
-
-export async function deleteMobileBookAgentConversation(
-  conversationId: string,
-): Promise<void> {
-  await conversationRequest<void>(`/${encodeURIComponent(conversationId)}`, {
-    method: "DELETE",
-  });
 }
 
 export function parseAgentSseFrames(
@@ -151,6 +84,10 @@ export function askMobileBookAgent(
       },
       body: JSON.stringify({
         message: request.question,
+        history: (request.history ?? []).slice(-20).map((message) => ({
+          role: message.role,
+          content: message.content.replace(/\[cite:[A-Za-z0-9_-]+\]/g, ""),
+        })),
         scope: {
           mode: "selected",
           datasetIds: [request.datasetId],

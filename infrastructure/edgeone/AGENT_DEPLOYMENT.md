@@ -9,8 +9,8 @@ reader.jojokanbao.cn                  agent-global.jojokanbao.cn
 ┌──────────────────────┐             ┌──────────────────────────┐
 │ Web + Python API     │             │ Edge Middleware          │
 │ /gateway/ask relay   │ ── SSE ───▶ │ /rag   Makers Agent      │
-│ IndexedDB Web history │             │ /gateway/conversations* │
-│ JOJO/Supabase 登录   │             │ /gateway/credentials     │
+│ IndexedDB Web history │             │ /gateway/credentials     │
+│ JOJO/Supabase 登录   │             │ encrypted OAuth Store    │
 └──────────────────────┘             └──────────────────────────┘
 ```
 
@@ -27,16 +27,8 @@ reader.jojokanbao.cn                  agent-global.jojokanbao.cn
 - `/gateway/credentials` 仍是平台通用的凭据管理 Cloud Function，不返回凭据。当前只
   注册 `agent/openai-codex`，以后由其他业务注册自己的 scope/provider 和校验器。加密
   凭据固定覆盖同一条 Store message，不因 OAuth 刷新持续增长。
-- Web 历史按账号保存在 IndexedDB，请求 `/rag` 时使用 `historyMode: "client"` 并附带
-  最近 20 条上下文；Agent 不读取或写入会话 Store。浏览器不自动清理历史。
-- `/gateway/conversations` 暂时是原生客户端的历史索引；详情与删除使用
-  `/gateway/conversations/:id`。Reader 只做同源中继，国际 Cloud Function 通过
-  Supabase Token 鉴权，再读取 `context.agent.store`。Store 内部使用用户前缀隔离
-  conversation id，并用 `userId` 索引列表。
-- Mobile 原生客户端直接访问国际 `/gateway/conversations`，书内 AI 面板按当前
-  `itemId` 筛选历史，可恢复、删除和开始新对话；不依赖旧网关兼容入口。
-- 用户消息保存提问范围，助手消息保存引用位置。刷新或重新打开历史后，引用按钮仍可
-  跳到 `/book/:datasetId/:itemId` 的章节并按 excerpt 聚焦原文。
+- Web 历史按账号保存在 IndexedDB，浏览器不自动清理；Mobile 当前面板的最近对话保留在
+  客户端内存。两端每轮都附带最近 20 条上下文，问答服务不读取或写入聊天 Store。
 - 默认全馆提问时，Agent 先读取 `catalog.jox` 选最多 8 本候选书，再把这些书随附的
   `jojo-book-search/1` 下载到本次运行内存中检索，只下载命中的少量章节正文。只选中一个
   Item 时，Web 与 Mobile 会把 `manifestObject` 放进请求 scope，Agent 可直接书内查找。
@@ -97,7 +89,7 @@ $adminBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
 
 1. 部署国际 Agent、Reader 和 Mobile。
 2. 验证首个 `text_delta` 能在回答结束前到达。
-3. 验证同一账号可以列出、恢复和删除 Makers Store 中的历史对话。
+3. 验证 Web 刷新后可从 IndexedDB 恢复历史，并继续携带上下文提问。
 
 当前产品尚未上线，不保留旧 `/gateway/ask` 国际入口或旧 Mobile 兼容分支。
 
@@ -134,14 +126,14 @@ Authorization: Bearer <supabase-access-token>
 Content-Type: application/json
 Makers-Conversation-Id: conv_a1b2c3d4
 
-{"message":"继续解释","historyMode":"client","history":[{"role":"user","content":"上一问"},{"role":"assistant","content":"上一答"}],"scope":{"datasetIds":["book-a"],"itemIds":["book-a:item-a"],"manifestObjects":["content/books/book-a/items/item-a/manifest.jox"]}}
+{"message":"继续解释","history":[{"role":"user","content":"上一问"},{"role":"assistant","content":"上一答"}],"scope":{"datasetIds":["book-a"],"itemIds":["book-a:item-a"],"manifestObjects":["content/books/book-a/items/item-a/manifest.jox"]}}
 ```
 
 Reader 将同一请求流式转发到国际 `/rag`。Mobile 则直接使用完整 `/rag` URL。
 `Makers-Conversation-Id` 必须是客户端生成并持续复用的 6–36 位 URL-safe 会话 ID。
 SSE 的 `usage` 与 `done` 事件均包含 token 数和 Pi 提供的美元成本估算。
 `tool_end` 事件只携带精简引用位置，不把整段工具结果塞进 SSE；Web 将最终助手消息和
-同一组引用写入 IndexedDB。未设置 `historyMode: "client"` 的过渡客户端仍沿用 Store。
+同一组引用写入 IndexedDB。服务端不提供聊天历史的列表、恢复或删除接口。
 
 可选预算：
 

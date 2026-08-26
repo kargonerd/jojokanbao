@@ -51,23 +51,4 @@ describe("Reader Agent gateway", () => {
     expect((await onRequest(oversized)).status).toBe(413);
     expect(fetchMock).not.toHaveBeenCalled();
   });
-
-  it("relays authenticated conversation history to the Agent origin", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(Response.json({ conversations: [] }));
-    vi.stubGlobal("fetch", fetchMock);
-    const historyContext = context("/gateway/conversations?limit=20");
-    historyContext.request = new Request(
-      "https://reader.jojokanbao.cn/gateway/conversations?limit=20",
-      { headers: { Authorization: "Bearer reader-token" } },
-    );
-    historyContext.env = {
-      JOJO_AGENT_URL: "https://agent-global.jojokanbao.cn/rag",
-    };
-
-    expect((await onRequest(historyContext)).status).toBe(200);
-    const [target, init] = fetchMock.mock.calls[0]!;
-    expect(String(target)).toBe("https://agent-global.jojokanbao.cn/gateway/conversations?limit=20");
-    expect(new Headers(init.headers).get("authorization")).toBe("Bearer reader-token");
-    expect(init.body).toBeUndefined();
-  });
 });
