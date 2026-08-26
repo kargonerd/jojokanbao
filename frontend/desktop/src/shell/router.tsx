@@ -12,6 +12,7 @@ import {
   ArchiveLayout,
   ArchiveReaderPage,
   AccountEntry,
+  BookshelfPage,
   BookReaderPage,
   LibraryPage,
   PERIODICALS,
@@ -172,6 +173,7 @@ export function createDesktopRoutes(): RouteObject[] {
           element: <DesktopAppLayout />,
           children: [
             { index: true, element: <HomePage periodicals={PERIODICALS} /> },
+            { path: 'bookshelf', element: <BookshelfPage /> },
             { path: 'library', element: <LibraryPage periodicals={PERIODICALS} /> },
             { path: 'library/:datasetId', element: <LibraryPage periodicals={PERIODICALS} /> },
             {
@@ -193,9 +195,7 @@ export function createDesktopRoutes(): RouteObject[] {
             ...archiveReaderRoutes,
           ],
         },
-        ...(rollout.rag
-          ? [{ path: 'book/:notebookId/:sourceId', element: <AuthenticatedRoute><BookReaderPage /></AuthenticatedRoute> }]
-          : []),
+        { path: 'book/:notebookId/:sourceId', element: <BookReaderPage /> },
         { path: 'account', element: <DesktopAccountRoute /> },
         {
           path: 'account/confirm',
