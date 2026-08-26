@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { extractRenderedBody } from "../src/archive/body.js";
 import { BROWSERTRIX_IMAGE, browsertrixArguments } from "../src/archive/browsertrix.js";
-import { selectProxyCandidates } from "../src/archive/proxy.js";
+import { selectProxy, selectProxyCandidates } from "../src/archive/proxy.js";
 import { articleFingerprint, selectArticlesForCapture, type ArchiveArticle } from "../src/archive/select.js";
 
 const now = new Date("2026-08-22T12:00:00Z");
@@ -62,6 +62,16 @@ describe("browser archive orchestration", () => {
     );
 
     expect(selected).toEqual(["node-b", "node-c", "node-d", "node-e"]);
+  });
+
+  it("accepts Mihomo's empty 204 response when switching routes", async () => {
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response(null, { status: 204 });
+    try {
+      await expect(selectProxy("http://127.0.0.1:9090", "JOJO-TIMES-ROUTE", "node-b")).resolves.toBeUndefined();
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
   });
 
   it("extracts only Reuters-owned paragraph and list blocks from rendered DOM", () => {

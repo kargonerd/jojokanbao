@@ -43,7 +43,8 @@ async function mihomoJson(controlUrl: string, pathname: string, init?: RequestIn
     signal: AbortSignal.timeout(5_000),
   });
   if (!response.ok) throw new Error(`Mihomo control API returned HTTP ${response.status}`);
-  return response.json();
+  const body = await response.text();
+  return body ? JSON.parse(body) : undefined;
 }
 
 export async function proxyCandidates(controlUrl: string, group: string, automatic: string, maximum: number): Promise<string[]> {

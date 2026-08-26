@@ -128,7 +128,7 @@ jobs:
         run: |
           node -e 'const fs=require("node:fs");const result=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+"/capture-result.json","utf8"));fs.appendFileSync(process.env.GITHUB_ENV,"TIMES_RUN_MANIFEST="+result.runManifest+"\n")'
 
-      - name: Capture up to 50 replayable Chromium pages
+      - name: Capture up to 50 replayable Browsertrix pages
         id: browser_archive
         continue-on-error: true
         run: |
@@ -151,7 +151,6 @@ jobs:
               --proxy-server "$JOJO_TIMES_PROXY_URI"
               --proxy-control-url http://127.0.0.1:9090
               --proxy-rotation-attempts 8
-              --proxy-retry-timeout 12
             )
           fi
           node tools/times-pipeline/dist/src/archive-cli.js "${args[@]}" > "$RUNNER_TEMP/archive-result.json"
@@ -196,10 +195,14 @@ jobs:
           console.log(`- Errors: ${rows.filter((row) => row.status === "error").length}`);
           console.log(`- Published to HF: ${process.env.TIMES_PUBLISH === "true" ? "yes" : "no (artifact only)"}`);
           const archivePath = process.env.RUNNER_TEMP + "/archive-result.json";
-          if (fs.existsSync(archivePath)) {
-            const archive = JSON.parse(fs.readFileSync(archivePath, "utf8"));
-            console.log(`- Chromium archive: ${archive.selected} pages, ${archive.articleFailures} failures, ${archive.extractedFullBodies} full bodies, ${(archive.waczBytes / 1024 / 1024).toFixed(1)} MiB`);
+          let archive;
+          try {
+            const body = fs.existsSync(archivePath) ? fs.readFileSync(archivePath, "utf8").trim() : "";
+            archive = body ? JSON.parse(body) : undefined;
+          } catch {}
+          if (archive) {
+            console.log(`- Browsertrix archive: ${archive.selected} pages, ${archive.articleFailures} failures, ${archive.extractedFullBodies} full bodies, ${(archive.waczBytes / 1024 / 1024).toFixed(1)} MiB`);
           } else {
-            console.log("- Chromium archive: failed or skipped; Raw discovery was still committed");
+            console.log("- Browsertrix archive: failed or skipped; Raw discovery remains available");
           }
           NODE
