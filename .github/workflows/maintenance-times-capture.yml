@@ -120,8 +120,11 @@ jobs:
           docker pull "$BROWSERTRIX_IMAGE"
           container="$(docker create "$BROWSERTRIX_IMAGE")"
           trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
-          docker cp "$container:/opt/brave.com/brave" "$RUNNER_TEMP/browsertrix-brave"
-          brave="$(find "$RUNNER_TEMP/browsertrix-brave" -maxdepth 2 -type f -name brave -print -quit)"
+          browser_path="$(docker run --rm --entrypoint sh "$BROWSERTRIX_IMAGE" -c 'readlink -f "$(command -v "$BROWSER_BIN")"')"
+          test -n "$browser_path" || (echo "Pinned Browsertrix image did not resolve its browser" >&2 && exit 1)
+          browser_name="$(basename "$browser_path")"
+          docker cp "$container:$(dirname "$browser_path")" "$RUNNER_TEMP/browsertrix-brave"
+          brave="$(find "$RUNNER_TEMP/browsertrix-brave" -type f -name "$browser_name" -print -quit)"
           test -n "$brave" || (echo "Pinned Browsertrix image has no Brave executable" >&2 && exit 1)
           chmod 700 "$brave"
           "$brave" --version
