@@ -120,6 +120,7 @@ describe("page capture orchestration", () => {
     const args = browsertrixArguments(options, "/tmp/transient");
     expect(BROWSERTRIX_IMAGE).toMatch(/^webrecorder\/browsertrix-crawler:1\.14\.1@sha256:[a-f0-9]{64}$/u);
     expect(args).toContain("--workers=1");
+    expect(args).toContain("--server-num=99");
     expect(args).toContain("--extraChromeArgs=--load-extension=/jojo/bpc");
     expect(args).toContain("--proxyServer=http://127.0.0.1:7890");
     expect(args).not.toContain("--generateWACZ");

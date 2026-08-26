@@ -89,6 +89,9 @@ export function browsertrixArguments(options: BrowsertrixBatchOptions, temporary
   }
   args.push(
     options.image ?? BROWSERTRIX_IMAGE,
+    "xvfb-run",
+    "--server-num=99",
+    "--server-args=-screen 0 1360x1020x16 -ac -nolisten tcp",
     "crawl",
     "--seedFile=/crawls/seeds.txt",
     "--collection=transient",
