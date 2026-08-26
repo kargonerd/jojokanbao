@@ -28,7 +28,12 @@ async function waitForExtension(page) {
 
 export default async function jojoTimesDriver({ page, data, crawler, seed }) {
   await waitForExtension(page);
-  await crawler.loadPage(page, data, seed);
+  try {
+    await crawler.loadPage(page, data, seed);
+  } catch {
+    // Browsertrix may time out after the document has rendered enough to archive.
+    // Preserve that DOM and let the caller judge its HTTP status and body quality.
+  }
   await new Promise((resolve) => setTimeout(resolve, 750));
   const html = await page.content();
   const maximumBytes = Number(process.env.JOJO_RENDERED_MAX_BYTES || "25000000");

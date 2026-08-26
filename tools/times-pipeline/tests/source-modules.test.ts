@@ -132,5 +132,6 @@ describe("native source modules", () => {
     expect(sourcePagePolicy("chinanews")?.bodySelectors).toContain("#cont_1_1_2");
     expect(sourcePagePolicy("focus-taiwan")?.bodySelectors).toContain(".paragraph");
     expect(sourcePagePolicy("nikkei")?.bodySelectors).toContain("[class*='FeatureArticleBody_featureArticleBody']");
+    expect(sourcePagePolicy("people")?.bodySelectors).toContain("#rm_txt_zw");
   });
 });
