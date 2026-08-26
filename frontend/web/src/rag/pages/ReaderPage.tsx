@@ -290,7 +290,7 @@ export function ReaderPage() {
   if (access === "authenticated" && (!authState.initialized || !authState.signedIn)) {
     if (!authState.initialized) return <LoadingSpinner text="正在确认登录状态" fullscreen />;
     const returnTo = `${window.location.pathname}${window.location.search}`;
-    return <main className="flex min-h-screen items-center justify-center bg-paper px-6 text-center"><div className="max-w-md border-l-2 border-red pl-6 text-left"><p className="m-0 text-xs tracking-[.18em] text-red">登录后阅读</p><h1 className="my-4 text-2xl">{loaded.manifest.title}</h1><p className="text-sm leading-7 text-muted">这份内容设置了登录软门槛。登录后会回到当前书籍。</p><Link className="text-sm font-bold text-red no-underline" to={`/account?returnTo=${encodeURIComponent(returnTo)}`}>登录 / 注册 →</Link></div></main>;
+    return <main className="flex min-h-screen items-center justify-center bg-paper px-6 text-center"><div className="max-w-md border-l-2 border-red pl-6 text-left"><p className="m-0 text-xs tracking-[.18em] text-red">登录后阅读</p><h1 className="my-4 text-2xl">{loaded.manifest.title}</h1><p className="text-sm leading-7 text-muted">这本书需要登录后阅读。登录后会回到这里。</p><Link className="text-sm font-bold text-red no-underline" to={`/account?returnTo=${encodeURIComponent(returnTo)}`}>登录 / 注册 →</Link></div></main>;
   }
   const chapters = loaded.manifest.content.chapters ?? [];
   const activeChapterIndex = Math.max(0, chapters.findIndex((chapter) => chapter.id === activeChapter));

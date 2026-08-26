@@ -188,7 +188,8 @@ describe("JOJO Web navigation", () => {
   it("keeps the account route visible when local auth configuration is absent", () => {
     renderAt("/account");
 
-    expect(screen.getByRole("heading", { name: "登录服务未配置" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "登录暂不可用" })).toBeTruthy();
+    expect(screen.queryByText(/Supabase|部署环境/)).toBeNull();
     expect(screen.getByRole("link", { name: /返回首页/ }).getAttribute("href")).toBe("/");
   });
 

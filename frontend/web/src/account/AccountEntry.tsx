@@ -19,10 +19,9 @@ export function AccountEntry() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-paper px-6 text-ink">
       <div className="max-w-md border-l-2 border-red pl-6">
-        <p className="m-0 text-xs font-bold tracking-[.18em] text-red">JOJO ACCOUNT</p>
-        <h1 className="my-4 text-3xl font-medium">登录服务未配置</h1>
+        <h1 className="my-4 text-3xl font-medium">登录暂不可用</h1>
         <p className="mb-5 text-sm leading-7 text-muted">
-          当前本地环境缺少 Supabase 公开配置；部署环境配置完成后，这里会显示现有登录与邀请注册页面。
+          当前无法连接登录服务，请稍后再试。
         </p>
         <Link className="text-sm font-bold text-red" to="/">返回首页 →</Link>
       </div>
