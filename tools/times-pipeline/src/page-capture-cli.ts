@@ -315,15 +315,21 @@ async function main(): Promise<void> {
       };
       try {
         if (browserKind === "browsertrix-brave") {
-          const pages = await captureBrowsertrixBatch({
+          const browsertrix = async (withExtension: boolean): Promise<Map<string, CapturedHtmlPage>> => captureBrowsertrixBatch({
             articles: batch.articles,
             driverPath: browsertrixDriver,
             timeoutSeconds,
             image: browsertrixImage,
             ...(proxyServer ? { proxyServer } : {}),
-            ...(extensionPath ? { extensionPath } : {}),
-            requireExtension: source.fetch.bpc,
+            ...(withExtension && extensionPath ? { extensionPath } : {}),
+            requireExtension: withExtension && source.fetch.bpc,
           });
+          const pages = await browsertrix(source.fetch.bpc);
+          if (!forceBrowser && source.fetch.bpc && [...pages.values()].every((page) => !page.renderedHtml)) {
+            process.stderr.write(`[page-capture] ${batch.sourceId}: BPC request produced no DOM; retrying once with the native browser profile\n`);
+            const nativePages = await browsertrix(false);
+            for (const [articleId, page] of nativePages) if (page.renderedHtml) pages.set(articleId, page);
+          }
           for (const article of batch.articles) {
             const page = pages.get(article.articleId) ?? {
               method: "browser",
