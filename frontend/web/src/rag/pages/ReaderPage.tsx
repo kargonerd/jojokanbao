@@ -284,7 +284,7 @@ export function ReaderPage() {
 
   const toc = useMemo(() => flattenToc(loaded?.manifest.content.toc), [loaded]);
   const html = useMemo(() => fragment ? renderedBody(fragment, assetUrls) : "", [assetUrls, fragment]);
-  if (loading) return <LoadingSpinner text="正在解码 Jox Manifest" fullscreen />;
+  if (loading) return <LoadingSpinner text="正在打开书籍" fullscreen />;
   if (!loaded) return <div className="p-8 text-center text-muted">{error || "内容不存在"}</div>;
   const access = loaded.manifest.access ?? loaded.item.access ?? loaded.index.access ?? loaded.entry.access ?? "public";
   if (access === "authenticated" && (!authState.initialized || !authState.signedIn)) {
