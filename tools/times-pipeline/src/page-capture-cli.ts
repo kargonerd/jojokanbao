@@ -392,6 +392,19 @@ async function main(): Promise<void> {
   }
   await persistSources(workspace, articles, states);
   const outcomes = [...best.values()];
+  const failures = pending.flatMap((article) => {
+    const outcome = best.get(article.articleId);
+    if (outcome?.fullBody || outcome?.unavailableReason) return [];
+    return [{
+      sourceId: article.sourceId,
+      articleId: article.articleId,
+      title: article.candidate.title,
+      canonicalUrl: article.candidate.canonicalUrl,
+      publishedAt: article.candidate.publishedAt,
+      ...(outcome?.page.status !== undefined ? { httpStatus: outcome.page.status } : {}),
+      error: outcome?.page.error ?? "FullTextNotExtracted",
+    }];
+  });
   const perSource = [...new Set(articles.map((article) => article.sourceId))].sort().map((sourceId) => {
     const sourceArticles = articles.filter((article) => article.sourceId === sourceId);
     const sourcePending = pending.filter((article) => article.sourceId === sourceId);
@@ -425,6 +438,7 @@ async function main(): Promise<void> {
     perSourceWorkers: 1,
     proxyRotationRounds: rotationRounds,
     perSource,
+    failures,
   };
   run.pageCapture = report;
   await writeFile(runPath, `${JSON.stringify(run, null, 2)}\n`);

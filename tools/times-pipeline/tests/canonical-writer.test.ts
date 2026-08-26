@@ -82,6 +82,13 @@ describe("canonical writer", () => {
     ], "raw-sha");
     expect(result.articles).toHaveLength(1);
     expect(result.skippedWithoutFullText).toBe(1);
+    expect(result.skippedArticles).toEqual([
+      expect.objectContaining({
+        articleId: "reuters:summary",
+        reason: "full-text-missing",
+        contentStatus: "summary",
+      }),
+    ]);
     const articleFile = path.join(output, ...result.articles[0]!.object.split("/"));
     const row = JSON.parse(gunzipSync(await readFile(articleFile)).toString("utf8")) as Record<string, unknown>;
     expect(row).toMatchObject({

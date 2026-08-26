@@ -55,6 +55,16 @@ export interface CanonicalWriteResult {
   articles: CanonicalArticleRef[];
   files: string[];
   skippedWithoutFullText: number;
+  skippedArticles: Array<{
+    articleId: string;
+    title: string;
+    canonicalUrl: string;
+    publishedAt: string;
+    reason: "hard-paywall" | "unsupported-media" | "full-text-missing";
+    contentStatus: Candidate["contentStatus"];
+    captureStatus?: Candidate["captureStatus"];
+    captureHttpStatus?: number;
+  }>;
 }
 
 function bodyValue(candidate: Candidate): string | undefined {
@@ -157,11 +167,24 @@ export async function writeCanonicalSource(
   const created: CanonicalArticleRef[] = [];
   const files = [datasetObject];
   const byDate = new Map<string, CanonicalArticleRef[]>();
-  let skippedWithoutFullText = 0;
+  const skippedArticles: CanonicalWriteResult["skippedArticles"] = [];
   for (const candidate of candidates) {
     const value = bodyValue(candidate);
     if (!value) {
-      skippedWithoutFullText += 1;
+      skippedArticles.push({
+        articleId: candidate.articleId,
+        title: candidate.title,
+        canonicalUrl: candidate.canonicalUrl,
+        publishedAt: candidate.publishedAt,
+        reason: candidate.captureStatus === "hard-paywall"
+          ? "hard-paywall"
+          : candidate.captureStatus === "skipped"
+            ? "unsupported-media"
+            : "full-text-missing",
+        contentStatus: candidate.contentStatus,
+        ...(candidate.captureStatus ? { captureStatus: candidate.captureStatus } : {}),
+        ...(candidate.captureHttpStatus !== undefined ? { captureHttpStatus: candidate.captureHttpStatus } : {}),
+      });
       continue;
     }
     const article = canonicalArticle(candidate, value, manifest, manifestObject, rawRevision, source.content.parser);
@@ -200,6 +223,7 @@ export async function writeCanonicalSource(
     dates: [...byDate.keys()].sort(),
     articles: created,
     files: [...new Set(files)],
-    skippedWithoutFullText,
+    skippedWithoutFullText: skippedArticles.length,
+    skippedArticles,
   };
 }
