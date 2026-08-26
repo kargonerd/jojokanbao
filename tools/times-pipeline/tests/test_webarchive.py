@@ -14,6 +14,7 @@ from times_pipeline.webarchive import (
     ArticleCapture,
     HttpExchange,
     _limit_browser_response_rows,
+    _page_body_with_dom_fallback,
     capture_articles,
     select_articles_for_capture,
     write_web_archive,
@@ -197,6 +198,15 @@ def test_browser_response_limit_preserves_page_and_bounds_subresources() -> None
     assert len(selected) == 16
     assert selected[:15] == rows[:15]
     assert selected[-1] == rows[150]
+
+
+def test_browser_dom_is_only_a_fallback_for_an_empty_final_page() -> None:
+    raw = b"<html>raw response</html>"
+    rendered = b"<html>rendered DOM</html>"
+
+    assert _page_body_with_dom_fallback(raw, rendered, is_final_page=True) == (raw, False)
+    assert _page_body_with_dom_fallback(b"", rendered, is_final_page=False) == (b"", False)
+    assert _page_body_with_dom_fallback(b"", rendered, is_final_page=True) == (rendered, True)
 
 
 def _fingerprint(value: Article) -> str:

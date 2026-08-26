@@ -119,7 +119,7 @@ export function NotificationsPage() {
       </header>
       {error ? <p className="notifications-error" role="alert">{error}</p> : null}
       {loading ? <p className="notifications-empty">正在读取通知…</p> : null}
-      {!loading && items.length === 0 ? <p className="notifications-empty">还没有通知。有人回复你的评论时，会出现在这里。</p> : null}
+      {!loading && items.length === 0 ? <p className="notifications-empty">还没有通知。</p> : null}
       <ol className="notification-list">
         {items.map((item, index) => {
           const showSeenDivider = index > 0 && !items[index - 1]?.readAt && Boolean(item.readAt);

@@ -20,7 +20,16 @@ describe('Desktop shell routes', () => {
     expect(screen.getByRole('link', { name: '设置' })).toHaveAttribute('href', '/settings');
     expect(screen.getByRole('link', { name: '设置' }).querySelector('svg')).toHaveAttribute('data-icon', 'adjustments');
     expect(navigation).not.toHaveTextContent(/书刊制作|Press|JOJO Times|时事/i);
-    expect(screen.getByRole('heading', { name: '我的书架' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '继续阅读' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '我的书架' })).toHaveAttribute('href', '/bookshelf');
+  });
+
+  it('opens the bookshelf as a separate desktop page', () => {
+    const router = createMemoryRouter(createDesktopRoutes(), { initialEntries: ['/bookshelf'] });
+    render(<RouterProvider router={router} />);
+
+    expect(screen.getByRole('heading', { name: '书架' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '我的书架' })).not.toBeInTheDocument();
   });
 
   it('reuses the Web About page and navigation entry', () => {

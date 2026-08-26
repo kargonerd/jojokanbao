@@ -47,7 +47,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
   const [sources, setSources] = useState<RagSource[]>([]);
   const [libraryQuery, setLibraryQuery] = useState("");
   const [shelfItems, setShelfItems] = useState<BookshelfEntry[]>([]);
-  const [shelfBusyId, setShelfBusyId] = useState("");
+  const [shelfBusyKey, setShelfBusyKey] = useState("");
   const [shelfError, setShelfError] = useState("");
   const [loading, setLoading] = useState(true);
   const [sourceLoading, setSourceLoading] = useState(false);
@@ -62,6 +62,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
   const availableLibraryTypes = includePeriodicals
     ? libraryTypes
     : libraryTypes.filter((item) => item.id === "book");
+  const openFirstSource = searchParams.get("open") === "first";
 
   useEffect(() => {
     let active = true;
@@ -112,7 +113,25 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
     setSourceLoading(true);
     void notebookApi.getSources(datasetId)
       .then((items) => {
-        if (active) setSources(items.filter((item) => item.published !== false));
+        if (!active) return;
+        const publishedSources = items.filter((item) => item.published !== false);
+        setSources(publishedSources);
+        if (openFirstSource && publishedSources.length === 1) {
+          const source = publishedSources[0]!;
+          const itemKey = source.itemKey || source.id;
+          const title = source.title || source.name || "未命名书籍";
+          remember({
+            id: `book:${datasetId}:${itemKey}`,
+            kind: "book",
+            datasetId,
+            itemKey,
+            title,
+            subtitle: books.find((book) => book.id === datasetId)?.title || "书籍",
+            href: `/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(itemKey)}`,
+            progress: 0,
+          });
+          navigate(`/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(itemKey)}`, { replace: true });
+        }
       })
       .catch(() => {
         if (active) setError("这套书的分卷目录暂时无法载入。");
@@ -121,7 +140,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
         if (active) setSourceLoading(false);
       });
     return () => { active = false; };
-  }, [datasetId]);
+  }, [datasetId, navigate, openFirstSource, remember]);
 
   function selectType(nextType: LibraryType) {
     setSearchParams(nextType === "all" ? {} : { type: nextType });
@@ -152,48 +171,76 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
     });
   }
 
-  async function toggleBookShelf(book: RagNotebook) {
-    const title = book.title || book.name || "未命名书籍";
+  function requireShelfAccess(): boolean {
     if (!userId) {
       const returnTo = `${location.pathname}${location.search}`;
       navigate(`/account?returnTo=${encodeURIComponent(returnTo)}`);
-      return;
+      return false;
     }
     if (!bookshelfEnabled) {
       setShelfError("书架功能暂未向你的账号开放。");
-      return;
+      return false;
     }
+    return true;
+  }
 
-    const existingEntries = shelfItems.filter((item) => item.datasetId === book.id);
-    setShelfBusyId(book.id);
+  async function updateShelf(entry: BookshelfEntry, added: boolean, busyKey: string) {
+    setShelfBusyKey(busyKey);
     setShelfError("");
     try {
-      if (existingEntries.length > 0) {
-        await Promise.all(existingEntries.map((entry) => setBookshelf({
-          datasetId: entry.datasetId,
-          itemId: entry.itemId,
-          title: entry.title,
-          added: false,
-        })));
-        setShelfItems((items) => items.filter((item) => item.datasetId !== book.id));
-        return;
-      }
-
-      const bookSources = await notebookApi.getSources(book.id);
-      const firstSource = bookSources.find((source) => source.published !== false);
-      if (!firstSource) {
-        setShelfError("这本书暂时没有可加入书架的分卷。");
-        return;
-      }
-      const itemId = firstSource.itemKey || firstSource.id;
-      const shelfTitle = firstSource.title || firstSource.name || title;
-      await setBookshelf({ datasetId: book.id, itemId, title: shelfTitle, added: true });
-      setShelfItems((items) => [{ datasetId: book.id, itemId, title: shelfTitle }, ...items]);
+      await setBookshelf({ ...entry, added });
+      setShelfItems((items) => added
+        ? [entry, ...items.filter((item) => !(item.datasetId === entry.datasetId && item.itemId === entry.itemId))]
+        : items.filter((item) => !(item.datasetId === entry.datasetId && item.itemId === entry.itemId)));
     } catch {
       setShelfError("书架操作失败，请稍后重试。");
     } finally {
-      setShelfBusyId("");
+      setShelfBusyKey("");
     }
+  }
+
+  async function toggleSingleBookShelf(book: RagNotebook) {
+    if (!requireShelfAccess()) return;
+    const existing = shelfItems.find((item) => item.datasetId === book.id);
+    const busyKey = `book:${book.id}`;
+    if (existing) {
+      await updateShelf(existing, false, busyKey);
+      return;
+    }
+
+    setShelfBusyKey(busyKey);
+    setShelfError("");
+    try {
+      const bookSources = await notebookApi.getSources(book.id);
+      const publishedSources = bookSources.filter((source) => source.published !== false);
+      if (publishedSources.length !== 1) {
+        setShelfError("分册目录已更新，请打开书目选择要加入的分册。");
+        return;
+      }
+      const source = publishedSources[0]!;
+      const entry = {
+        datasetId: book.id,
+        itemId: source.itemKey || source.id,
+        title: source.title || source.name || book.title || book.name || "未命名书籍",
+      };
+      await setBookshelf({ ...entry, added: true });
+      setShelfItems((items) => [entry, ...items]);
+    } catch {
+      setShelfError("书架操作失败，请稍后重试。");
+    } finally {
+      setShelfBusyKey("");
+    }
+  }
+
+  async function toggleSourceShelf(source: RagSource) {
+    if (!datasetId || !requireShelfAccess()) return;
+    const entry = {
+      datasetId,
+      itemId: source.itemKey || source.id,
+      title: source.title || source.name || "未命名书籍",
+    };
+    const onShelf = shelfItems.some((item) => item.datasetId === entry.datasetId && item.itemId === entry.itemId);
+    await updateShelf(entry, !onShelf, `source:${entry.datasetId}:${entry.itemId}`);
   }
 
   const showPeriodicals = includePeriodicals && !datasetId && (type === "all" || type === "periodical");
@@ -224,6 +271,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
             <div>
               <Link className="library-back" to="/library?type=book">← 返回书籍</Link>
               <h1>{selectedBook?.title || "书籍分卷"}</h1>
+              <small>{(selectedBook?.sources_count ?? sources.length) > 1 ? `共 ${selectedBook?.sources_count ?? sources.length} 册` : "单册"}</small>
             </div>
           </div>
         )}
@@ -253,22 +301,29 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
             ))}
             {!loading && showBooks && visibleBooks.map((book) => {
               const title = book.title || book.name || "未命名书籍";
+              const sourceCount = book.sources_count ?? 0;
+              const isSingle = sourceCount === 1;
               const onShelf = shelfItems.some((item) => item.datasetId === book.id);
               return (
                 <article key={book.id} className="cover-card-shell">
-                  <Link className="cover-card" to={`/library/${encodeURIComponent(book.id)}`}>
+                  <Link className="cover-card" to={`/library/${encodeURIComponent(book.id)}${isSingle ? "?open=first" : ""}`}>
                     <BookCover title={title} tone={bookCoverTone(book.id)} datasetId={book.id} />
                     <strong>{title}</strong>
+                    <small className={isSingle ? "book-card-meta" : "book-card-meta is-series"}>
+                      {isSingle ? "单册 · 直接阅读" : sourceCount > 1 ? `${sourceCount} 册 · 选择分册` : "查看分册"}
+                    </small>
                   </Link>
-                  <button
-                    type="button"
-                    className={`shelf-toggle${onShelf ? " is-shelved" : ""}`}
-                    aria-label={`${onShelf ? "移出书架" : userId ? bookshelfEnabled ? "加入书架" : "书架暂未开放" : "登录后加入书架"}：${title}`}
-                    disabled={!accountInitialized || Boolean(userId && (!flagsInitialized || !bookshelfEnabled)) || shelfBusyId === book.id}
-                    onClick={() => void toggleBookShelf(book)}
-                  >
-                    {!accountInitialized || shelfBusyId === book.id ? "处理中…" : onShelf ? "已在书架" : userId ? !flagsInitialized ? "检查权限…" : bookshelfEnabled ? "+ 书架" : "暂未开放" : "登录后加入"}
-                  </button>
+                  {isSingle ? (
+                    <button
+                      type="button"
+                      className={`shelf-toggle${onShelf ? " is-shelved" : ""}`}
+                      aria-label={`${onShelf ? "移出书架" : userId ? bookshelfEnabled ? "加入书架" : "书架暂未开放" : "登录后加入书架"}：${title}`}
+                      disabled={!accountInitialized || Boolean(userId && (!flagsInitialized || !bookshelfEnabled)) || shelfBusyKey === `book:${book.id}`}
+                      onClick={() => void toggleSingleBookShelf(book)}
+                    >
+                      {!accountInitialized || shelfBusyKey === `book:${book.id}` ? "处理中…" : onShelf ? "已在书架" : userId ? !flagsInitialized ? "检查权限…" : bookshelfEnabled ? "+ 书架" : "暂未开放" : "登录后加入"}
+                    </button>
+                  ) : null}
                 </article>
               );
             })}
@@ -277,19 +332,31 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
 
         {datasetId && !sourceLoading && (
           <div className="cover-grid">
-            {visibleSources.map((source, index) => {
+            {visibleSources.map((source) => {
               const itemKey = source.itemKey || source.id;
               const title = source.title || source.name || "未命名书籍";
+              const onShelf = shelfItems.some((item) => item.datasetId === datasetId && item.itemId === itemKey);
+              const busyKey = `source:${datasetId}:${itemKey}`;
               return (
-                <Link
-                  key={source.id}
-                  className="cover-card"
-                  to={`/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(itemKey)}`}
-                  onClick={() => rememberBook(source)}
-                >
-                  <BookCover title={title} tone={bookCoverTone(`${datasetId}:${source.id}`)} datasetId={datasetId} itemKey={itemKey} />
-                  <strong>{title}</strong><small>打开阅读</small>
-                </Link>
+                <article key={source.id} className="cover-card-shell">
+                  <Link
+                    className="cover-card"
+                    to={`/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(itemKey)}`}
+                    onClick={() => rememberBook(source)}
+                  >
+                    <BookCover title={title} tone={bookCoverTone(`${datasetId}:${source.id}`)} datasetId={datasetId} itemKey={itemKey} />
+                    <strong>{title}</strong><small>打开阅读</small>
+                  </Link>
+                  <button
+                    type="button"
+                    className={`shelf-toggle${onShelf ? " is-shelved" : ""}`}
+                    aria-label={`${onShelf ? "移出书架" : userId ? bookshelfEnabled ? "加入书架" : "书架暂未开放" : "登录后加入书架"}：${title}`}
+                    disabled={!accountInitialized || Boolean(userId && (!flagsInitialized || !bookshelfEnabled)) || shelfBusyKey === busyKey}
+                    onClick={() => void toggleSourceShelf(source)}
+                  >
+                    {!accountInitialized || shelfBusyKey === busyKey ? "处理中…" : onShelf ? "已在书架" : userId ? !flagsInitialized ? "检查权限…" : bookshelfEnabled ? "+ 书架" : "暂未开放" : "登录后加入"}
+                  </button>
+                </article>
               );
             })}
           </div>

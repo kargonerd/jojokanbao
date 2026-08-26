@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { gzipSync, gunzipSync } from "node:zlib";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { getGlobalDispatcher, ProxyAgent, setGlobalDispatcher, type Dispatcher } from "undici";
 import type { RecordedExchange } from "./types.js";
 
 const REDACTED_REQUEST_HEADERS = new Set(["authorization", "cookie", "proxy-authorization", "x-api-key"]);
@@ -53,6 +54,10 @@ export class RecordingFetch {
 
   install(): () => void {
     const recorder = this;
+    const proxyUri = process.env.JOJO_TIMES_PROXY_URI?.trim();
+    const previousDispatcher: Dispatcher | undefined = proxyUri ? getGlobalDispatcher() : undefined;
+    const proxyAgent = proxyUri ? new ProxyAgent(proxyUri) : undefined;
+    if (proxyAgent) setGlobalDispatcher(proxyAgent);
     globalThis.fetch = async function recordingFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
       const sequence = ++recorder.#sequence;
       const startedAt = new Date().toISOString();
@@ -79,6 +84,8 @@ export class RecordingFetch {
     return () => {
       Reflect.deleteProperty(globalThis, RSSHUB_FETCH_HOOK);
       globalThis.fetch = this.nativeFetch;
+      if (previousDispatcher) setGlobalDispatcher(previousDispatcher);
+      if (proxyAgent) void proxyAgent.close();
     };
   }
 

@@ -67,7 +67,7 @@ export function AccountMenu() {
       {open ? <section className="app-account-popover" role="menu" aria-label="读者菜单">
         <nav aria-label="账号快捷入口">
           <Link role="menuitem" to="/notifications" onClick={() => setOpen(false)}><span>通知</span>{unreadCount ? <b>{countLabel}</b> : null}</Link>
-          <Link role="menuitem" to="/#book-shelf-title" onClick={() => setOpen(false)}><span>我的书架</span></Link>
+          <Link role="menuitem" to="/bookshelf" onClick={() => setOpen(false)}><span>我的书架</span></Link>
           <Link role="menuitem" to="/account" onClick={() => setOpen(false)}><span>账号</span></Link>
         </nav>
         {error ? <p role="alert">{error}</p> : null}

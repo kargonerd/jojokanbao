@@ -25,6 +25,7 @@ export interface TimesDeliveryArticle {
   issueDate: string;
   language: string;
   source: TimesSourceRef;
+  publisherSections?: Array<{ id: string; name: string }>;
   articleObject: string;
   translations?: Record<string, unknown>;
 }

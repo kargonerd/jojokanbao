@@ -70,13 +70,13 @@ export function loadCatalog(): Promise<JojoCatalog> {
 export async function loadDataset(datasetId: string): Promise<LoadedDataset> {
   const catalog = await loadCatalog();
   const entry = catalog.datasets.find((candidate) => candidate.datasetId === datasetId);
-  if (!entry) throw new Error("Dataset 不存在");
+  if (!entry) throw new Error("找不到对应的书目");
   const sources = datasetSources.get(datasetId) ?? [{ entry, client }];
   const loadedIndexes = await Promise.all(sources.map(async (source) => ({
     source,
     index: asJojoDatasetIndex(await source.client.fetchJson<JojoDatasetIndex>(source.entry.indexObject)),
   })));
-  if (loadedIndexes.some(({ index }) => index.datasetId !== datasetId)) throw new Error("Dataset Index 格式无效");
+  if (loadedIndexes.some(({ index }) => index.datasetId !== datasetId)) throw new Error("书目暂时无法读取");
   const itemClients = new Map<string, JoxClient>();
   const items = new Map<string, JojoDatasetItemSummary>();
   for (const { source, index } of [...loadedIndexes].reverse()) {
@@ -98,13 +98,13 @@ export async function loadDataset(datasetId: string): Promise<LoadedDataset> {
 export async function loadItem(datasetId: string, itemKey: string): Promise<LoadedItem> {
   const dataset = await loadDataset(datasetId);
   const item = dataset.index.items.find((candidate) => candidate.itemKey === itemKey || candidate.itemId === itemKey);
-  if (!item) throw new Error("Item 不存在");
+  if (!item) throw new Error("找不到对应的书籍");
   const itemClient = dataset.itemClients.get(item.itemId) ?? dataset.client;
   const manifestObject = resolveJoxObject(dataset.entry.indexObject, item.manifestObject);
   const manifest = asJojoItemManifest(
     await itemClient.fetchJson<JojoItemManifest>(manifestObject, undefined, "no-store"),
   );
-  if (manifest.itemId !== item.itemId) throw new Error("Item Manifest 格式无效");
+  if (manifest.itemId !== item.itemId) throw new Error("书籍暂时无法读取");
   return { ...dataset, client: itemClient, item, manifest, manifestObject };
 }
 
