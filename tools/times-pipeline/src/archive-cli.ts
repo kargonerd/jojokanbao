@@ -109,6 +109,7 @@ async function applyCaptureResults(
   workspace: string,
   run: RawRunManifest,
   captures: Map<string, BrowsertrixCapture>,
+  sources: Map<string, SourceConfig>,
 ): Promise<number> {
   let fullBodies = 0;
   for (const result of run.sources) {
@@ -135,7 +136,15 @@ async function applyCaptureResults(
         continue;
       }
       succeeded += 1;
-      const body = capture.renderedHtml ? extractRenderedBody(capture.renderedHtml, manifest.pagePolicy) : undefined;
+      const source = sources.get(row.sourceId);
+      const body = capture.renderedHtml ? extractRenderedBody(capture.renderedHtml, manifest.pagePolicy, {
+        ...(source?.content.minimumFullCharacters !== undefined
+          ? { minimumCharacters: source.content.minimumFullCharacters }
+          : {}),
+        ...(source?.content.minimumFullParagraphs !== undefined
+          ? { minimumParagraphs: source.content.minimumFullParagraphs }
+          : {}),
+      }) : undefined;
       if (!body) continue;
       row.browserBody = body;
       row.contentStatus = "full";
@@ -263,7 +272,7 @@ async function main(): Promise<void> {
     }
   }
 
-  const extractedFullBodies = await applyCaptureResults(workspace, run, best);
+  const extractedFullBodies = await applyCaptureResults(workspace, run, best, sources);
   await mkdir(archiveRoot, { recursive: true });
   for (const article of selected) {
     const result = best.get(article.articleId);

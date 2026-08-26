@@ -3,6 +3,11 @@ import type { SourcePagePolicy } from "../types.js";
 
 type JsonObject = Record<string, unknown>;
 
+export interface BodyQuality {
+  minimumCharacters?: number;
+  minimumParagraphs?: number;
+}
+
 function object(value: unknown): JsonObject | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : undefined;
 }
@@ -21,13 +26,13 @@ function escapeHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
-function semanticParagraphs(values: string[]): string | undefined {
+function semanticParagraphs(values: string[], quality: BodyQuality = {}): string | undefined {
   const seen = new Set<string>();
   const paragraphs = values.map((value) => value.replaceAll(/\s+/gu, " ").trim())
     .filter((value) => value.length >= 20 && !seen.has(value) && Boolean(seen.add(value)));
   const text = paragraphs.join("\n");
   const paywallHints = ["subscribe to continue", "sign in to continue", "register to continue", "already a subscriber"];
-  if (text.length < 800 || paragraphs.length < 3) return undefined;
+  if (text.length < (quality.minimumCharacters ?? 800) || paragraphs.length < (quality.minimumParagraphs ?? 3)) return undefined;
   if (text.length < 2_000 && paywallHints.some((hint) => text.toLowerCase().includes(hint))) return undefined;
   return paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
 }
@@ -40,7 +45,7 @@ function richText(value: unknown): string {
   return richText(row.content);
 }
 
-function bloombergBody(html: string): string | undefined {
+function bloombergBody(html: string, quality: BodyQuality): string | undefined {
   const document = load(html);
   const value = document("script#__NEXT_DATA__").text();
   if (!value) return undefined;
@@ -57,16 +62,16 @@ function bloombergBody(html: string): string | undefined {
       if (!block || (typeof block.type === "string" && ignored.has(block.type))) return [];
       const text = richText(block).trim();
       return text ? [text] : [];
-    }));
+    }), quality);
   } catch {
     return undefined;
   }
 }
 
-export function extractRenderedBody(html: string, policy?: SourcePagePolicy): string | undefined {
+export function extractRenderedBody(html: string, policy?: SourcePagePolicy, quality: BodyQuality = {}): string | undefined {
   if (!html.trim()) return undefined;
   if (policy?.bodyExtractor === "bloomberg-next-data") {
-    const extracted = bloombergBody(html);
+    const extracted = bloombergBody(html, quality);
     if (extracted) return extracted;
   }
   const document = load(html);
@@ -79,8 +84,8 @@ export function extractRenderedBody(html: string, policy?: SourcePagePolicy): st
     }
   });
   const jsonBody = jsonBodies.toSorted((left, right) => right.length - left.length)[0];
-  if (jsonBody && jsonBody.length >= 800) {
-    const result = semanticParagraphs(jsonBody.split(/\r?\n(?:\s*\r?\n)*/u));
+  if (jsonBody && jsonBody.length >= (quality.minimumCharacters ?? 800)) {
+    const result = semanticParagraphs(jsonBody.split(/\r?\n(?:\s*\r?\n)*/u), quality);
     if (result) return result;
   }
   document("script, style, nav, footer, header, aside, form, noscript").remove();
@@ -104,7 +109,7 @@ export function extractRenderedBody(html: string, policy?: SourcePagePolicy): st
       if (elements.length) values.push(...elements.map((element) => document(element).text()));
       else values.push(document(container).text());
     });
-    const candidate = semanticParagraphs(values);
+    const candidate = semanticParagraphs(values, quality);
     if (candidate && (!best || candidate.length > best.length)) best = candidate;
   }
   return best;

@@ -104,6 +104,15 @@ describe("browser archive orchestration", () => {
     expect(body).not.toContain("Company widget");
   });
 
+  it("uses the source's quality threshold for short complete news articles", () => {
+    const body = extractRenderedBody("<article><p>这是一篇完整但很短的快讯正文，来源会明确允许单段短稿进入全文。</p></article>", undefined, {
+      minimumCharacters: 20,
+      minimumParagraphs: 1,
+    });
+
+    expect(body).toContain("完整但很短的快讯正文");
+  });
+
   it("pins Browsertrix and mounts BPC without passing secrets into the container", () => {
     const args = browsertrixArguments({
       workspace: "/workspace",
