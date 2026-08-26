@@ -23,8 +23,7 @@ Brasil。央视新闻、财新、WSJ、第一财经、Indian Express 和证券�
 
 - direct-first：普通 HTML 能稳定给出全文的媒体先直连，正文不足再启动浏览器；
 - browser-first：Bloomberg、NYT、Reuters、FT、Axios、Nikkei、联合早报和 SCMP 直接进入浏览器；
-- 浏览器由 Playwright 持久上下文控制，启用 JavaScript 和锁定版本 BPC；NYT 使用锁定 Browsertrix 镜像内的 Brave，其余媒体使用锁定 Playwright Chromium；
-- NYT 首轮 BPC 请求若全部被站点在网络层拒绝且没有生成 DOM，会用原生 Brave 请求特征在当前节点回退一次；代理轮换不重复这次对照；
+- 所有浏览器都由 Playwright 持久上下文控制，启用 JavaScript 和锁定版本 BPC；NYT 由 Playwright 直接控制锁定 Brave，其余媒体使用锁定 Playwright Chromium；
 - 同一媒体串行复用 Cookie，不同媒体默认最多八路并行；
 - 401/403/429、JS challenge 或正文不完整不会被判成硬付费墙；需要代理的媒体每个备用节点只探测一篇，最多验证 32 个分散的 Mihomo 节点，命中后才补抓该媒体剩余文章；
 - 视频和图集在发现阶段跳过；只有完整正文进入 Canonical/Delivery，摘要只留在 Raw 审计数据。
@@ -37,6 +36,7 @@ pnpm --filter @jojo/times-pipeline exec playwright install chromium
 pnpm --filter @jojo/times-pipeline build
 
 Expand-Archive tools/times-pipeline/vendor/bpc/bypass-paywalls-chrome-clean.zip -DestinationPath $env:TEMP/bpc
+$env:JOJO_TIMES_BRAVE_PATH = '<本机 Brave 可执行文件路径>'
 
 node tools/times-pipeline/dist/src/capture-cli.js --config tools/times-pipeline/sources.v2.json --output $env:TEMP/jojo-times --since-hours 24 --workers 8
 node tools/times-pipeline/dist/src/page-capture-cli.js --config tools/times-pipeline/sources.v2.json --output $env:TEMP/jojo-times --run-manifest '<runManifest>' --source-workers 8 --browser-extension-path $env:TEMP/bpc/bypass-paywalls-chrome-clean-master
@@ -73,8 +73,7 @@ canonical/runs/{RUN_ID}.json
 ~~~
 
 original.html.gz 是主文档响应，rendered.html.gz 是 BPC/JavaScript 执行后的 DOM。正文图片下载到
-raw/{source}/assets/，按字节 SHA-256 去重。NYT 批次在锁定 Browsertrix 容器中运行 Brave；容器抓取目录只作
-单次任务的临时交换区，页面写回上述 Raw 结构后立即删除，不生成需要发布的 WARC/WACZ，也不上传 WACZ。
+raw/{source}/assets/，按字节 SHA-256 去重。流水线不生成或上传 WARC/WACZ。
 
 B2 只保存 Delivery：
 

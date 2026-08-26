@@ -28,8 +28,8 @@ export class BrowserSourceSession {
     this.requireExtension = requireExtension;
   }
 
-  static async open(options: { proxyServer?: string; extensionPath?: string; requireExtension: boolean }): Promise<BrowserSourceSession> {
-    const userDataDirectory = await mkdtemp(path.join(os.tmpdir(), "jojo-times-chromium-"));
+  static async open(options: { proxyServer?: string; extensionPath?: string; executablePath?: string; requireExtension: boolean }): Promise<BrowserSourceSession> {
+    const userDataDirectory = await mkdtemp(path.join(os.tmpdir(), "jojo-times-browser-"));
     const extensionArgs = options.extensionPath ? [
       `--disable-extensions-except=${options.extensionPath}`,
       `--load-extension=${options.extensionPath}`,
@@ -41,6 +41,7 @@ export class BrowserSourceSession {
         viewport: { width: 1440, height: 1200 },
         locale: "en-US",
         ignoreHTTPSErrors: true,
+        ...(options.executablePath ? { executablePath: options.executablePath } : {}),
         ...(options.proxyServer ? { proxy: { server: options.proxyServer } } : {}),
         args: ["--disable-blink-features=AutomationControlled", "--disable-dev-shm-usage", ...extensionArgs],
       });

@@ -41,7 +41,6 @@ jobs:
       TIMES_PUBLISH: ${{ github.event_name == 'schedule' || inputs.publish }}
       JOJO_TIMES_PROXY_URI: ${{ secrets.JOJO_TIMES_PROXY_URI }}
       JOJO_TIMES_PROXY_SUBSCRIPTION: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION }}
-      BROWSERTRIX_IMAGE: webrecorder/browsertrix-crawler:1.14.1@sha256:591ee8b591fd1aed8983ffce08be1b16fb7a850239969aa364bff17cfbdb4588
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -115,8 +114,18 @@ jobs:
         run: |
           pnpm --filter @jojo/times-pipeline exec playwright install --with-deps chromium
 
-      - name: Pull pinned Browsertrix for NYT
-        run: docker pull "$BROWSERTRIX_IMAGE"
+      - name: Install pinned Brave for Playwright
+        env:
+          BRAVE_VERSION: 1.93.138
+          BRAVE_SHA256: cf18b2d443f067241e13662484c4b9523f13ff089ba1fc27c88f67911586ac9f
+        run: |
+          package="$RUNNER_TEMP/brave-browser.deb"
+          curl -fsSL "https://github.com/brave/brave-browser/releases/download/v${BRAVE_VERSION}/brave-browser_${BRAVE_VERSION}_amd64.deb" -o "$package"
+          echo "$BRAVE_SHA256  $package" | sha256sum -c -
+          sudo apt-get install -y "$package"
+          brave_path="$(command -v brave-browser)"
+          "$brave_path" --version
+          echo "JOJO_TIMES_BRAVE_PATH=$brave_path" >> "$GITHUB_ENV"
 
       - name: Capture all enabled sources
         run: |
@@ -157,8 +166,6 @@ jobs:
             --refresh-hours 168
             --retry-hours 2
             --browser-extension-path "$BPC_EXTENSION_PATH"
-            --browsertrix-image "$BROWSERTRIX_IMAGE"
-            --browsertrix-driver tools/times-pipeline/browsertrix/driver.mjs
             --report "$RUNNER_TEMP/page-capture-result.json"
           )
           if [ -n "$JOJO_TIMES_PROXY_URI" ]; then

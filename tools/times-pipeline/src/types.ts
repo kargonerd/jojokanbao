@@ -141,7 +141,7 @@ export interface SourceConfig {
   fetch: {
     strategy: PageFetchStrategy;
     bpc: boolean;
-    browser?: "chromium" | "browsertrix-brave";
+    browser?: "chromium" | "brave";
     proxyPolicy?: "none" | "rotate";
   };
   health: {

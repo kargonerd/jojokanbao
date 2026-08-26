@@ -210,8 +210,8 @@ function parseSource(value: unknown, position: number): SourceConfig | null {
     throw new Error(`${id}.fetch.proxyPolicy must be none or rotate`);
   }
   const browser = pageFetch.browser;
-  if (browser !== undefined && browser !== "chromium" && browser !== "browsertrix-brave") {
-    throw new Error(`${id}.fetch.browser must be chromium or browsertrix-brave`);
+  if (browser !== undefined && browser !== "chromium" && browser !== "brave") {
+    throw new Error(`${id}.fetch.browser must be chromium or brave`);
   }
   const health = row.health as Record<string, unknown> | undefined;
   const minimumCandidates = health?.minimumCandidates;

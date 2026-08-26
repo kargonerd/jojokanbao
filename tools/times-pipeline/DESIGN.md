@@ -20,7 +20,7 @@ Raw 与 Canonical 位于同一个 HF repo。B2 不保存 Raw、Canonical、代�
   发现栏目 URL
     → 规范 URL / articleId 去重
     → 每个媒体选择 direct-first 或 browser-first
-    → Playwright Chromium 或锁定 Browsertrix/Brave + BPC（需要时切换代理节点）
+    → Playwright 控制锁定 Chromium/Brave + BPC（需要时切换代理节点）
     → 保存 original HTML、rendered DOM、正文图片
     → HF Raw commit
 
@@ -51,7 +51,6 @@ contentHash  = SHA-256(title + publishedAt + canonical body + asset hashes)
 媒体之间最多八路并行；同一媒体始终串行并复用浏览器上下文、Cookie 和 BPC。代理轮换按全局回合进行，
 避免多个并行媒体同时修改 Mihomo 路由。只有 browser-first 媒体且前一回合正文仍不完整的 URL 才进入
 下一节点。每个节点只探测一篇，最多验证 32 个健康且分散的备用节点；命中后才补抓该媒体剩余文章。
-Browsertrix 内部同样固定为单 worker，不会让同一媒体并行。
 
 ## 4. 来源与页面抓取
 
@@ -63,8 +62,8 @@ API 合约不得放入假定所有网站相同的通用适配器。
 契约中，但当前只有媒体明确需要时才允许启用。
 
 direct-first 只有在主文档为 HTML 且正文质量通过时才停止；否则进入浏览器。browser-first 不执行
-已知无意义的直连。浏览器默认开启 JavaScript，使用持久上下文加载锁定 BPC。NYT 使用锁定
-Browsertrix 镜像内的 Brave 批量执行，其临时抓取目录在页面 HTML 回写 Raw 后删除，不保存 WARC/WACZ。
+已知无意义的直连。浏览器默认开启 JavaScript，使用持久上下文加载锁定 BPC。所有浏览器都由
+Playwright 控制；NYT 使用锁定 Brave，其他来源默认使用与 Playwright 配套的锁定 Chromium。流水线不生成 WARC/WACZ。
 
 主文档保存两份：
 

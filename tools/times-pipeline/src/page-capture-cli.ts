@@ -9,7 +9,6 @@ import { bodyWithAssets, extractArticleContent } from "./capture/article-content
 import { captureArticleAssets } from "./capture/assets.js";
 import { unavailablePageReason, type UnavailablePageReason } from "./capture/availability.js";
 import { BrowserSourceSession } from "./capture/browser.js";
-import { BROWSERTRIX_IMAGE, captureBrowsertrixBatch } from "./capture/browsertrix.js";
 import { downloadDirectAsset, fetchDirectPage, type CapturedHtmlPage } from "./capture/http.js";
 import { articleFingerprint, pendingArticles, type PageArticle, type PageCaptureState } from "./capture/pending.js";
 import { proxyCandidates, selectProxy } from "./capture/proxy.js";
@@ -287,8 +286,7 @@ async function main(): Promise<void> {
   const best = new Map<string, CaptureOutcome>();
   const extensionPath = args.get("browser-extension-path") ? path.resolve(args.get("browser-extension-path")!) : undefined;
   const proxyServer = args.get("proxy-server");
-  const browsertrixImage = args.get("browsertrix-image") ?? BROWSERTRIX_IMAGE;
-  const browsertrixDriver = path.resolve(args.get("browsertrix-driver") ?? "tools/times-pipeline/browsertrix/driver.mjs");
+  const bravePath = process.env.JOJO_TIMES_BRAVE_PATH?.trim();
 
   const captureRound = async (values: ArticleBundle[], forceBrowser: boolean): Promise<void> => {
     await mapSourceBatches(values, sourceWorkers, async (batch) => {
@@ -298,11 +296,15 @@ async function main(): Promise<void> {
       process.stderr.write(`[page-capture] ${batch.sourceId}: ${forceBrowser ? "proxy retry" : "initial"} ${batch.articles.length} article(s)\n`);
       const source = sources.get(batch.sourceId)!;
       const browserKind = source.fetch.browser ?? "chromium";
+      if (browserKind === "brave" && !bravePath) {
+        throw new Error(`${source.id} requires JOJO_TIMES_BRAVE_PATH`);
+      }
       let session: BrowserSourceSession | undefined;
       const browser = async (): Promise<BrowserSourceSession> => {
         session ??= await BrowserSourceSession.open({
           ...(proxyServer ? { proxyServer } : {}),
           ...(extensionPath ? { extensionPath } : {}),
+          ...(browserKind === "brave" && bravePath ? { executablePath: bravePath } : {}),
           requireExtension: source.fetch.bpc,
         });
         return session;
@@ -314,36 +316,8 @@ async function main(): Promise<void> {
         else failed += 1;
       };
       try {
-        if (browserKind === "browsertrix-brave") {
-          const browsertrix = async (withExtension: boolean): Promise<Map<string, CapturedHtmlPage>> => captureBrowsertrixBatch({
-            articles: batch.articles,
-            driverPath: browsertrixDriver,
-            timeoutSeconds,
-            image: browsertrixImage,
-            ...(proxyServer ? { proxyServer } : {}),
-            ...(withExtension && extensionPath ? { extensionPath } : {}),
-            requireExtension: withExtension && source.fetch.bpc,
-          });
-          const pages = await browsertrix(source.fetch.bpc);
-          if (!forceBrowser && source.fetch.bpc && [...pages.values()].every((page) => !page.renderedHtml)) {
-            process.stderr.write(`[page-capture] ${batch.sourceId}: BPC request produced no DOM; retrying once with the native browser profile\n`);
-            const nativePages = await browsertrix(false);
-            for (const [articleId, page] of nativePages) if (page.renderedHtml) pages.set(articleId, page);
-          }
-          for (const article of batch.articles) {
-            const page = pages.get(article.articleId) ?? {
-              method: "browser",
-              requestedUrl: article.captureUrl,
-              finalUrl: article.captureUrl,
-              capturedAt: new Date().toISOString(),
-              error: "BrowsertrixMissingPage",
-            };
-            record(article.articleId, await completeCapture(workspace, article, timeoutSeconds, page));
-          }
-        } else {
-          for (const article of batch.articles) {
-            record(article.articleId, await captureOne(workspace, article, timeoutSeconds, browser, forceBrowser));
-          }
+        for (const article of batch.articles) {
+          record(article.articleId, await captureOne(workspace, article, timeoutSeconds, browser, forceBrowser));
         }
       } finally {
         await session?.close();
