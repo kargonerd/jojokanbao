@@ -45,6 +45,19 @@ describe("browser archive orchestration", () => {
     expect(selected.map((value) => value.articleId)).toEqual(["newest", "other"]);
   });
 
+  it("fills remaining slots with missing bodies before archive-only pages", () => {
+    const alreadyFull = article("already-full", "first", "2026-08-22T12:00:00Z");
+    const missingOlder = { ...article("missing-older", "first", "2026-08-22T11:00:00Z"), needsBody: true };
+    const otherSource = article("other-source", "second", "2026-08-22T10:00:00Z");
+    const selected = selectArticlesForCapture(
+      [alreadyFull, missingOlder, otherSource],
+      { formatVersion: "jojo-web-archive-state/1", articles: {} },
+      { now, retentionDays: 7, maximumPages: 3, refreshHours: 24, retryHours: 2 },
+    );
+
+    expect(selected.map((value) => value.articleId)).toEqual(["missing-older", "other-source", "already-full"]);
+  });
+
   it("selects fast and spread Mihomo nodes without reusing the active route", () => {
     const selected = selectProxyCandidates(
       { all: ["JOJO-TIMES-AUTO", "node-a", "node-b", "node-c", "node-d", "node-e", "node-f"], now: "JOJO-TIMES-AUTO" },

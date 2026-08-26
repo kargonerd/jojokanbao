@@ -7,6 +7,7 @@ export interface ArchiveArticle {
   canonicalUrl: string;
   captureUrl: string;
   publishedAt: string;
+  needsBody?: boolean;
 }
 
 export interface ArchiveStateRow {
@@ -72,7 +73,7 @@ export function selectArticlesForCapture(
       if (lastAttempt !== undefined && options.now.valueOf() - lastAttempt < waitHours * 3_600_000) continue;
       rank = succeeded ? 3 : 2;
     }
-    ranked.push({ rank, published, article });
+    ranked.push({ rank: rank + (article.needsBody ? 0 : 10), published, article });
   }
   ranked.sort((left, right) => left.rank - right.rank
     || right.published - left.published

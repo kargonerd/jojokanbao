@@ -87,6 +87,7 @@ async function loadArticles(
         canonicalUrl: candidate.canonicalUrl,
         captureUrl: manifest.pagePolicy?.captureUrl === "source" ? candidate.sourceUrl : candidate.canonicalUrl,
         publishedAt: candidate.publishedAt,
+        needsBody: candidate.contentStatus !== "full",
         source,
         manifestPath,
         ...(manifest.pagePolicy ? { pagePolicy: manifest.pagePolicy } : {}),
