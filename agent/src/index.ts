@@ -53,6 +53,13 @@ export {
 export {
   createCredentialAdminHandler,
 } from "./edgeone/credential-admin";
+export {
+  createConversationAdminHandler,
+} from "./edgeone/conversation-admin";
+export type {
+  ConversationAdminContext,
+  CreateConversationAdminHandlerOptions,
+} from "./edgeone/conversation-admin";
 export type {
   CredentialAdminContext,
   CreateCredentialAdminHandlerOptions,
@@ -65,15 +72,6 @@ export {
   createEdgeOneAgentHandler,
   createEdgeOneAgentHealthHandler,
 } from "./edgeone/handler";
-export {
-  AGENT_SERVICE_AUTH_HEADERS,
-  authorizeAgentServiceRequest,
-  createAgentServiceSignatureHeaders,
-} from "./edgeone/service-auth";
-export type {
-  AgentServiceAuthorizationOptions,
-  AgentServiceSignatureInput,
-} from "./edgeone/service-auth";
 export type {
   AgentRequestBody,
   AuthorizedAgentUser,
@@ -81,5 +79,10 @@ export type {
   EdgeOneAgentContext,
   EdgeOneAgentRequest,
   EdgeOneConversationStore,
+  EdgeOneConversationMeta,
+  EdgeOneConversationList,
   EdgeOneStoredMessage,
+  EdgeOneTraceAttributes,
+  EdgeOneTracer,
+  EdgeOneTraceSpan,
 } from "./edgeone/types";

@@ -10,6 +10,38 @@ pnpm --filter @jojo/content-pipeline cli -- `
 pnpm --filter @jojo/content-pipeline validate -- "C:\path\to\build"
 ```
 
+已有 Delivery 书籍缺少 `search.jox` 时，可以直接从 CDN 的 Manifest/章节安全回填，
+不需要重建或覆盖 Canonical、目录、正文和 EPUB：
+
+```powershell
+pnpm --filter @jojo/content-pipeline backfill-book-search -- `
+  --output "C:\path\to\empty-backfill" `
+  --cdn-base "https://blacknews.jojokanbao.cn/"
+```
+
+输出只包含新增的 `search/text.jox`、更新后的 `manifest.jox` 和审计报告。发布时必须先
+上传全部 Search 对象并验证，再上传 Manifest，避免产生悬空指针。
+网络中断后可对同一输出目录增加 `--resume`；工具会先解码并核对已完成的 Search/Manifest
+断点，再从第一个缺失 Item 继续。
+
+上传前应对暂存文件及其来源章节做完整复核。下面的命令会重新读取线上章节、重建索引并逐块
+比对 `targetId`、`anchorId`、原文、顺序、大小和 SHA-256：
+
+```powershell
+pnpm --filter @jojo/content-pipeline validate-book-search-backfill -- `
+  --output "C:\path\to\backfill" `
+  --cdn-base "https://blacknews.jojokanbao.cn/"
+```
+
+发布完成后可再逐对象比对 CDN 上的 Manifest/Search 与回填产物，专门发现旧缓存或漏传：
+
+```powershell
+pnpm --filter @jojo/content-pipeline validate-book-search-backfill -- `
+  --output "C:\path\to\backfill" `
+  --cdn-base "https://blacknews.jojokanbao.cn/" `
+  --local-only --verify-published
+```
+
 `--input-dir` 会递归扫描子目录，适合直接从 B2 Raw 的本地镜像重建完整馆藏。
 迁移或灾备重建时可以使用 `--asset-cache <旧 canonical 目录>`，按原始 `sourceUrl` 复用本地
 已下载媒体；缓存没有命中的资源仍会从来源地址获取。
@@ -20,6 +52,12 @@ pnpm --filter @jojo/content-pipeline validate -- "C:\path\to\build"
 `书名--来源ID.扩展名` 平铺；Canonical 只保存 `dataset.json`、`items/` 和 `assets/`，不上传
 目录或 ES 搜索副本；Delivery 按 `content/books/`、`content/newspapers/` 和
 `content/magazines/` 分类。
+
+Delivery `catalog.jox` 的 Dataset 条目使用 `aiEnabled` 声明是否能够进入 AI
+检索范围。只有显式的 `true` 才表示支持；字段缺失或 `false` 都按不支持处理。
+书籍流水线会在 catalog、Dataset index 和 Canonical Dataset 中写入
+`aiEnabled: true`。合并旧 catalog 时，已有的 `book` / `book-series` 条目会被
+迁移为显式支持，报刊和时事资料不会因此自动开放 AI。
 
 导入前会用章节 CID 对照微信读书 TOC，检查应有正文数、实际匹配数和缺失章节。默认模式下
 缺少正文或章节解码失败都会拒绝该源文件；只有显式传入 `--allow-partial` 才会生成部分数据并

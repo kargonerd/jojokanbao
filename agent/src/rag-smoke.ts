@@ -1,7 +1,8 @@
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_CODEX_REASONING,
-  JsonCredentialStore,
+  PersistentCredentialStore,
   createPlatformModelRuntime,
   createRagAgentDefinition,
   createRagTools,
@@ -9,26 +10,32 @@ import {
   resolvePlatformModelConfig,
   runPlatformAgent,
 } from "./index";
+import { loadLocalCodexCredential } from "./local-codex-credential";
 
 const prompt = process.argv.slice(2).join(" ").trim()
   || "《毛泽东自述》的童年时代主要讲了什么？请依据馆藏原文简要回答并注明书名和章节。";
-const searchUrl = process.env.JOJO_CONTENT_SEARCH_URL?.trim();
 const contentCdnBase = process.env.JOJO_CONTENT_CDN_BASE?.trim();
-if (!searchUrl || !contentCdnBase) {
-  throw new Error("JOJO_CONTENT_SEARCH_URL and JOJO_CONTENT_CDN_BASE are required");
+if (!contentCdnBase) {
+  throw new Error("JOJO_CONTENT_CDN_BASE is required");
 }
 
 const config = resolvePlatformModelConfig(process.env);
-const credentials = new JsonCredentialStore(
-  process.env.JOJO_AGENT_AUTH_PATH?.trim()
-    || fileURLToPath(new URL("../auth.json", import.meta.url)),
+const repositoryRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
 );
+const { credential } = await loadLocalCodexCredential(repositoryRoot, process.env);
+let credentialFile = { "openai-codex": credential };
+const credentials = new PersistentCredentialStore({
+  read: async () => credentialFile,
+  write: async (next) => { credentialFile = next as typeof credentialFile; },
+});
 const runtime = await createPlatformModelRuntime({ config, environment: process.env, credentials });
 if (!runtime.configured) throw new Error(`${config.provider}/${config.model} is not configured`);
 
 const definition = createRagAgentDefinition();
 const tools = createRagTools({
-  searchUrl,
   contentCdnBase,
   scope: {
     datasetIds: process.env.JOJO_CONTENT_DATASET_ID?.trim()
@@ -60,6 +67,7 @@ process.stdout.write(`\n\n${JSON.stringify({
   provider: config.provider,
   model: config.model,
   tools: toolNames,
+  references: result.references,
   turns: result.turns,
   toolCalls: result.toolCalls,
   tokens: result.usage.totalTokens,

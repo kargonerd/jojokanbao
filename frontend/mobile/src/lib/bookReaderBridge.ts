@@ -1,3 +1,5 @@
+import { JOJO_BOOK_SEARCH_BLOCK_SELECTOR } from "@jojo/content";
+
 export type BookReadingMode = "paged" | "scroll";
 export type BookChapterEdge = "start" | "end";
 
@@ -138,6 +140,22 @@ export function createBookReaderBridgeScript(
       var touchStartY = 0;
       var lastSwipeAt = 0;
       var measureTimer = 0;
+      var searchBlockSelector = ${jsonArgument(JOJO_BOOK_SEARCH_BLOCK_SELECTOR)};
+
+      function attachSearchBlockAnchors() {
+        var content = document.querySelector("[data-book-content]");
+        if (!content) return;
+        var targetId = content.getAttribute("data-target-id") || "chapter";
+        var blockNumber = 0;
+        content.querySelectorAll(searchBlockSelector).forEach(function (element) {
+          if (element.parentElement && element.parentElement.closest(searchBlockSelector)) return;
+          if (!(element.textContent || "").normalize("NFKC").replace(/\\s+/g, " ").trim()) return;
+          blockNumber += 1;
+          if (!element.id) element.id = "jojo-search-block:" + targetId + ":" + blockNumber;
+        });
+      }
+
+      attachSearchBlockAnchors();
 
       function post(message) {
         if (window.ReactNativeWebView) {

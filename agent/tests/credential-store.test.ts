@@ -9,12 +9,26 @@ class MemoryConversationStore {
 
   async getMessages() {
     const content = this.values.at(-1);
-    return content === undefined ? [] : [{ role: "system" as const, content }];
+    return content === undefined ? [] : [{
+      messageId: `message-${this.values.length}`,
+      role: "system" as const,
+      content,
+    }];
   }
 
   async appendMessage(input: { content: unknown }) {
     this.values.push(String(input.content));
     return `message-${this.values.length}`;
+  }
+
+  async updateMessage(input: { messageId: string; content?: unknown }) {
+    const index = Number(input.messageId.replace("message-", "")) - 1;
+    this.values[index] = String(input.content);
+    return {
+      messageId: input.messageId,
+      role: "system" as const,
+      content: input.content,
+    };
   }
 }
 
@@ -47,6 +61,12 @@ describe("EdgeOneEncryptedCredentialPersistence", () => {
     });
     expect(store.values.at(-1)).not.toContain("private-access-token");
     expect(store.values.at(-1)).not.toContain("private-refresh-token");
+
+    await credentials.modify("openai-codex", async (current) => ({
+      ...current!,
+      access: "refreshed-access-token",
+    }));
+    expect(store.values).toHaveLength(1);
 
     const secondInstance = createEdgeOneCredentialStore(
       {

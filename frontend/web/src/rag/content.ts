@@ -1,6 +1,7 @@
 import {
   JoxClient,
   resolveJoxObject,
+  searchJojoBookIndex,
   asJojoBookSearchIndex,
   asJojoCatalog,
   asJojoDatasetIndex,
@@ -100,7 +101,9 @@ export async function loadItem(datasetId: string, itemKey: string): Promise<Load
   if (!item) throw new Error("Item 不存在");
   const itemClient = dataset.itemClients.get(item.itemId) ?? dataset.client;
   const manifestObject = resolveJoxObject(dataset.entry.indexObject, item.manifestObject);
-  const manifest = asJojoItemManifest(await itemClient.fetchJson<JojoItemManifest>(manifestObject));
+  const manifest = asJojoItemManifest(
+    await itemClient.fetchJson<JojoItemManifest>(manifestObject, undefined, "no-store"),
+  );
   if (manifest.itemId !== item.itemId) throw new Error("Item Manifest 格式无效");
   return { ...dataset, client: itemClient, item, manifest, manifestObject };
 }
@@ -153,51 +156,29 @@ function escapeHighlight(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
-function normalizedSearchText(value: string): string {
-  return value.normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, " ").trim();
-}
-
 function searchIndexResults(
   loaded: LoadedItem,
   index: JojoBookSearchIndex,
   query: string,
   size: number,
 ): RagSearchHit[] {
-  const needle = normalizedSearchText(query);
   const chapterTitles = new Map(
     (loaded.manifest.content.chapters ?? []).map((chapter) => [chapter.id, chapter.title]),
   );
-  const results: RagSearchHit[] = [];
-  for (const block of index.blocks) {
-    const text = block.text.replace(/\s+/g, " ").trim();
-    const normalized = normalizedSearchText(text);
-    const normalizedIndex = normalized.indexOf(needle);
-    if (normalizedIndex < 0) continue;
-
-    // NFKC normally preserves offsets for Chinese prose. If it does not, use
-    // the original query offset; otherwise keep a readable result without
-    // inventing a location that is not present in the chapter.
-    const directIndex = text.toLocaleLowerCase().indexOf(query.trim().toLocaleLowerCase());
-    const matchIndex = directIndex >= 0 ? directIndex : Math.min(normalizedIndex, text.length);
-    const matchLength = directIndex >= 0 ? query.trim().length : Math.min(needle.length, text.length - matchIndex);
-    const excerptStart = Math.max(0, matchIndex - 70);
-    const excerptEnd = Math.min(text.length, matchIndex + matchLength + 120);
-    const before = text.slice(excerptStart, matchIndex);
-    const match = text.slice(matchIndex, matchIndex + matchLength);
-    const after = text.slice(matchIndex + matchLength, excerptEnd);
-    const title = chapterTitles.get(block.targetId) ?? "正文";
-    results.push({
+  return searchJojoBookIndex(index, query, { limit: size }).map((match) => {
+    const title = chapterTitles.get(match.targetId) ?? "正文";
+    const escapedExcerpt = escapeHighlight(match.excerpt);
+    const escapedMatch = escapeHighlight(match.matchText);
+    return {
       datasetId: loaded.manifest.datasetId,
       itemId: loaded.manifest.itemId,
-      targetId: block.targetId,
+      targetId: match.targetId,
       targetTitle: title,
       title,
-      text: `${excerptStart > 0 ? "…" : ""}${text.slice(excerptStart, excerptEnd)}${excerptEnd < text.length ? "…" : ""}`,
-      highlights: [`${excerptStart > 0 ? "…" : ""}${escapeHighlight(before)}<mark>${escapeHighlight(match)}</mark>${escapeHighlight(after)}${excerptEnd < text.length ? "…" : ""}`],
-    });
-    if (results.length >= size) break;
-  }
-  return results;
+      text: match.excerpt,
+      highlights: [escapedExcerpt.replace(escapedMatch, `<mark>${escapedMatch}</mark>`)],
+    };
+  });
 }
 
 async function loadBookSearchIndex(loaded: LoadedItem): Promise<JojoBookSearchIndex | undefined> {
@@ -216,7 +197,7 @@ async function loadBookSearchIndex(loaded: LoadedItem): Promise<JojoBookSearchIn
 }
 
 export async function searchLoadedBook(loaded: LoadedItem, query: string, size = 30): Promise<RagSearchHit[]> {
-  const needle = normalizedSearchText(query);
+  const needle = query.normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, " ").trim();
   if (!needle) return [];
   const staticIndex = await loadBookSearchIndex(loaded);
   if (staticIndex) return searchIndexResults(loaded, staticIndex, query, size);
@@ -227,7 +208,7 @@ export async function searchLoadedBook(loaded: LoadedItem, query: string, size =
     const fragments = await Promise.all(batch.map((chapter) => loadFragment(loaded, chapter.id)));
     for (const fragment of fragments) {
       const text = searchableText(fragment).replace(/\s+/g, " ").trim();
-      const index = normalizedSearchText(text).indexOf(needle);
+      const index = text.normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, " ").trim().indexOf(needle);
       if (index < 0) continue;
       const excerptStart = Math.max(0, index - 70);
       const excerptEnd = Math.min(text.length, index + query.length + 120);

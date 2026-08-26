@@ -454,11 +454,18 @@ class Publisher:
             "rmhb": ("magazine", "人民画报"),
             "sjzs": ("magazine", "世界知识"),
         }
-        datasets = [row for row in catalog.get("datasets", []) if row.get("datasetId") not in replacements]
+        datasets = [
+            {**row, "aiEnabled": True}
+            if "aiEnabled" not in row and row.get("type") in {"book", "book-series"}
+            else row
+            for row in catalog.get("datasets", [])
+            if row.get("datasetId") not in replacements
+        ]
         for dataset_id, (kind, title) in replacements.items():
             datasets.append({
                 "datasetId": dataset_id, "type": kind, "title": title, "language": "zh-CN",
                 "indexObject": f"content/newspapers/{dataset_id}/index.jox",
+                "aiEnabled": False,
                 "publicationStatus": "published", "access": "public",
             })
         catalog.update({

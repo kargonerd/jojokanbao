@@ -176,7 +176,9 @@ export function loadMobileBookCover(book: MobileBook, itemKey?: string): Promise
         : volumes[0];
       if (!volume) return undefined;
       const manifestObject = resolveJoxObject(book.indexObject, volume.manifestObject);
-      const manifest = asJojoItemManifest(await client.fetchJson<JojoItemManifest>(manifestObject));
+      const manifest = asJojoItemManifest(
+        await client.fetchJson<JojoItemManifest>(manifestObject, undefined, "no-store"),
+      );
       const cover = manifest.assets.find((asset) => asset.type === "image" && asset.role === "cover");
       if (!cover) return undefined;
       const object = resolveJoxObject(manifestObject, cover.object);
@@ -199,7 +201,9 @@ export async function loadMobileBookItem(datasetId: string, itemKey: string): Pr
   const volume = volumes.find((candidate) => candidate.itemKey === itemKey || candidate.itemId === itemKey);
   if (!volume) throw new Error("分卷不存在");
   const manifestObject = resolveJoxObject(book.indexObject, volume.manifestObject);
-  const manifest = asJojoItemManifest(await client.fetchJson<unknown>(manifestObject));
+  const manifest = asJojoItemManifest(
+    await client.fetchJson<unknown>(manifestObject, undefined, "no-store"),
+  );
   if (manifest.datasetId !== datasetId || manifest.itemId !== volume.itemId) {
     throw new Error("书籍内容格式无效");
   }

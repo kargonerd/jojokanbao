@@ -68,8 +68,39 @@ describe("delivery metadata merge", () => {
       "content/books/series/index.jox",
     );
     expect(catalog.datasets.map((item) => item.datasetId).sort()).toEqual(["existing", "series"]);
+    expect(catalog.datasets.every((item) => item.aiEnabled === true)).toBe(true);
     expect(index.items?.map((item) => item.itemId)).toEqual(["series:v1", "series:v2"]);
     expect(index.type).toBe("book-series");
+  });
+
+  it("migrates legacy books without enabling non-book Datasets", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "jojo-merge-ai-capability-"));
+    const remote = path.join(root, "remote");
+    const local = path.join(root, "local");
+    const output = path.join(root, "output");
+    await put(remote, "catalog.jox", {
+      formatVersion: "jojo-catalog/1",
+      revision: 1,
+      updatedAt: "old",
+      datasets: [
+        { datasetId: "book", type: "book", title: "书籍", language: "zh-CN", indexObject: "content/books/book/index.jox" },
+        { datasetId: "times", type: "newspaper", title: "JOJO 时事", language: "mul", indexObject: "content/newspapers/times/index.jox" },
+      ],
+    } satisfies JojoCatalog);
+    await put(local, "catalog.jox", {
+      formatVersion: "jojo-catalog/1",
+      revision: 1,
+      updatedAt: "new",
+      datasets: [],
+    } satisfies JojoCatalog);
+
+    await mergeDeliveryMetadata({ localRoot: local, remoteRoot: remote, outputRoot: output });
+    const catalog = await gunzipJoxJson<JojoCatalog>(
+      new Uint8Array(await readFile(path.join(output, "catalog.jox"))),
+      "catalog.jox",
+    );
+    expect(catalog.datasets.find((item) => item.datasetId === "book")?.aiEnabled).toBe(true);
+    expect(catalog.datasets.find((item) => item.datasetId === "times")?.aiEnabled).toBeUndefined();
   });
 
   it("removes explicitly superseded Dataset entries", async () => {

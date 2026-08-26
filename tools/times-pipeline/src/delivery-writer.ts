@@ -406,6 +406,7 @@ export async function buildTimesDelivery(input: {
     title: "JOJO 时事",
     language: "mul",
     description: "过去一天的跨媒体新闻与抓取健康审计。",
+    aiEnabled: false,
     publicationStatus: "published",
     access: "authenticated",
     items: mergedItems,
@@ -423,6 +424,7 @@ export async function buildTimesDelivery(input: {
     language: index.language,
     itemCount: mergedItems.length,
     indexObject,
+    aiEnabled: false,
     publicationStatus: "published" as const,
     access: "authenticated" as const,
   };
@@ -431,7 +433,14 @@ export async function buildTimesDelivery(input: {
     revision: index.revision,
     updatedAt: index.updatedAt,
     datasets: [
-      ...(input.previousCatalog?.datasets ?? []).filter((dataset) => dataset.datasetId !== "times"),
+      ...(input.previousCatalog?.datasets ?? [])
+        .filter((dataset) => dataset.datasetId !== "times")
+        .map((dataset) => (
+          dataset.aiEnabled === undefined
+          && (dataset.type === "book" || dataset.type === "book-series")
+            ? { ...dataset, aiEnabled: true }
+            : dataset
+        )),
       timesDataset,
     ],
   };

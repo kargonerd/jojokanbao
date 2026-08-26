@@ -421,6 +421,7 @@ def build_times_release(
         "title": DATASET_TITLE,
         "language": "mul",
         "description": "每十分钟更新的多来源时事索引。",
+        "aiEnabled": False,
         "publicationStatus": "published",
         "access": "public",
         "items": sorted_items,
@@ -432,6 +433,7 @@ def build_times_release(
         "type": "newspaper",
         "title": DATASET_TITLE,
         "language": "mul",
+        "aiEnabled": False,
         "publicationStatus": "published",
         "access": "public",
         "description": dataset_index["description"],
@@ -483,17 +485,23 @@ def build_times_release(
         )
         if isinstance(entry, dict) and isinstance(entry.get("datasetId"), str)
     }
+    catalog_migrated = False
+    for dataset_id, entry in list(catalog_entries.items()):
+        if "aiEnabled" not in entry and entry.get("type") in {"book", "book-series"}:
+            catalog_entries[dataset_id] = {**entry, "aiEnabled": True}
+            catalog_migrated = True
     times_catalog_entry = {
         "datasetId": DATASET_ID,
         "type": "newspaper",
         "title": DATASET_TITLE,
         "language": "mul",
         "indexObject": DATASET_INDEX_OBJECT,
+        "aiEnabled": False,
         "publicationStatus": "published",
         "access": "public",
     }
     existing_times_entry = catalog_entries.get(DATASET_ID)
-    catalog_changed = not isinstance(existing_times_entry, dict) or any(
+    catalog_changed = catalog_migrated or not isinstance(existing_times_entry, dict) or any(
         existing_times_entry.get(key) != value for key, value in times_catalog_entry.items()
     )
     if catalog_changed:

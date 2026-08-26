@@ -36,6 +36,8 @@ describe("RAG content Reader annotations", () => {
 
     const document = new DOMParser().parseFromString(renderedBody(fragment, {}), "text/html");
     expect(document.querySelector('p[data-align="right"]')?.textContent).toBe("1935年2月");
+    expect(document.querySelector("p")?.id).toBe("jojo-search-block:chapter:poem:1");
+    expect(document.querySelectorAll("p")[1]?.id).toBe("jojo-search-block:chapter:poem:2");
   });
 
   it("renders block and inline semantic assets without changing their flow", () => {

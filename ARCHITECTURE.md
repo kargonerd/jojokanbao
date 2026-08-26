@@ -48,13 +48,26 @@ EdgeOne 专有入口位于 `infrastructure/edgeone/functions`，只导入
 ## Agent
 
 - `agent`：单一 `@jojo/agent` 包，包含 Pi Agent 运行层、Codex 模型与凭证配置。
-- `agent/src/edgeone`：同一包内的 EdgeOne 登录、SSE、服务鉴权和加密 Store
+- `agent/src/edgeone`：同一包内的 EdgeOne 登录、SSE 和加密 Store
   适配。
 - `agent/src/applications.ts`：RAG、JOJO Times 的最小业务占位函数；功能增长后再拆分。
 - Codex Agent 使用不含中国大陆的独立 Makers 项目和域名；其他模型后续通过
   Makers Models 接入。
-- Agent 项目用一个不运行 Pi 的 Node Cloud Function 处理浏览器 CORS 预检，再把
-  SSE 请求转给同项目的 Makers Agent。
+- 浏览器请求 Reader 同源 `/gateway/ask`，由 Reader 流式转发到国际 Agent 的内部
+  `/rag` 入口；Mobile 直接请求国际 `/rag`。
+  国际项目的 Edge Middleware 在进入 Agent 前校验 Supabase Bearer Token，随后由
+  Agent 再做最终用户鉴权，不再使用 Node Cloud Function 嵌套转发或 HMAC 服务签名。
+- 会话采用客户端管理的通用结构（`conversation + messages + references`）。Web 将完整历史
+  按账号保存在 IndexedDB，不自动过期；每次只把最近 20 条上下文随请求发送给 Agent，
+  Agent 不再为 Web 读写 Makers Store。Desktop 与 Mobile 可用同一结构接入各自的本地
+  SQLite，未来云同步作为独立可选层添加，不改变问答协议。
+- `/gateway/conversations` 暂时只服务尚未迁移到本地会话的原生客户端，不再是 Web 依赖。
+- Codex OAuth 只在 Store 中保留一条加密系统消息；凭据刷新覆盖同一 message，不随请求、
+  用户或会话追加记录。
+- Agent 先读取 `catalog.jox` 选择最多 8 本候选书，再把候选书随 Jox 发布的
+  `jojo-book-search/1` 静态索引下载到本次运行内存中检索；只下载命中的少量章节正文，
+  不依赖 Elasticsearch。旧书尚无静态索引时改为先看真实目录、再按章读取。通用聊天和
+  书内面板共享同一套可跳转引用结构。
 - Pi Agent 使用 Makers Agents Runtime，不塞进 Node Cloud Functions。
 
 ## Tools and infrastructure

@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "turbo dev",
+    "dev:agent": "pnpm --filter @jojo/agent dev",
     "build": "turbo build",
     "test": "turbo test",
     "typecheck": "turbo typecheck",
@@ -19,7 +20,7 @@
     "prepare:web-deploy": "node infrastructure/edgeone/prepare-web-deploy.mjs",
     "prepare:agent-deploy": "node infrastructure/edgeone/prepare-agent-deploy.mjs",
     "push:credentials": "pnpm --filter @jojo/agent credentials:push",
-    "dev:reader-search": "cd infrastructure/tencent-scf/search && python app.py",
+    "dev:reader-search": "python tools/jojo-admin/server/content_search_app.py",
     "dev:admin-web": "pnpm --filter @jojo/admin dev",
     "build:admin": "pnpm --filter @jojo/admin build",
     "dev:admin-api": "cd tools/jojo-admin/server && python app.py",

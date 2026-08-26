@@ -1,22 +1,19 @@
 import { createRagTools } from "./rag-tools";
 
 const query = process.argv.slice(2).join(" ").trim() || "童年时代";
-const searchUrl = process.env.JOJO_CONTENT_SEARCH_URL?.trim();
 const contentCdnBase = process.env.JOJO_CONTENT_CDN_BASE?.trim();
-if (!searchUrl || !contentCdnBase) {
-  throw new Error("JOJO_CONTENT_SEARCH_URL and JOJO_CONTENT_CDN_BASE are required");
+const datasetId = process.env.JOJO_CONTENT_DATASET_ID?.trim();
+if (!contentCdnBase || !datasetId) {
+  throw new Error("JOJO_CONTENT_CDN_BASE and JOJO_CONTENT_DATASET_ID are required");
 }
 
-const datasetIds = process.env.JOJO_CONTENT_DATASET_ID?.trim()
-  ? [process.env.JOJO_CONTENT_DATASET_ID.trim()]
-  : undefined;
+const datasetIds = [datasetId];
 const itemIds = process.env.JOJO_CONTENT_ITEM_ID?.trim()
   ? [process.env.JOJO_CONTENT_ITEM_ID.trim()]
   : undefined;
 const tools = createRagTools({
-  searchUrl,
   contentCdnBase,
-  scope: { datasetIds, itemIds },
+  scope: { mode: "selected", datasetIds, itemIds },
 });
 const search = tools.find((tool) => tool.name === "search_content")!;
 const read = tools.find((tool) => tool.name === "read_fragment")!;
@@ -27,12 +24,37 @@ const signal = new AbortController().signal;
 
 const searchResult = await search.execute(
   "content-smoke-search",
-  { query, size: 5 },
+  { query, size: 5, datasetIds },
   signal,
 ) as { details?: { total?: number; hits?: Array<Record<string, unknown>> } };
 const hits = searchResult.details?.hits ?? [];
 if (!hits.length) throw new Error(`No content search hits for ${JSON.stringify(query)}`);
 const first = hits[0]!;
+const firstHit = {
+  datasetId: first.datasetId,
+  itemId: first.itemId,
+  title: first.targetTitle,
+  targetId: first.targetId,
+  anchorId: first.anchorId,
+  fragmentObject: first.fragmentObject,
+};
+if (process.env.JOJO_CONTENT_SMOKE_SEARCH_ONLY?.toLowerCase() === "true") {
+  process.stdout.write(`${JSON.stringify({
+    query,
+    total: searchResult.details?.total,
+    hitCount: hits.length,
+    firstHit,
+    hits: hits.map((hit) => ({
+      datasetId: hit.datasetId,
+      itemId: hit.itemId,
+      targetId: hit.targetId,
+      anchorId: hit.anchorId,
+      title: hit.targetTitle,
+      text: typeof hit.text === "string" ? hit.text.slice(0, 240) : undefined,
+    })),
+  }, null, 2)}\n`);
+  process.exit(0);
+}
 
 const readResult = await read.execute(
   "content-smoke-read",
@@ -69,12 +91,7 @@ process.stdout.write(`${JSON.stringify({
   query,
   total: searchResult.details?.total,
   hitCount: hits.length,
-  firstHit: {
-    datasetId: first.datasetId,
-    itemId: first.itemId,
-    title: first.targetTitle,
-    fragmentObject: first.fragmentObject,
-  },
+  firstHit,
   read: readResult.details,
   inspect: inspectResult.details,
   toc: tocResult.details,

@@ -9,7 +9,7 @@ import shutil
 
 from times_pipeline.build import CATALOG_OBJECT, DATASET_INDEX_OBJECT, LATEST_OBJECT, build_times_release
 from times_pipeline.feeds import Article, RawFeed, Source
-from times_pipeline.jox import read_jox_json
+from times_pipeline.jox import read_jox_json, write_jox_json
 
 
 NOW = datetime(2026, 8, 22, 12, 0, tzinfo=timezone.utc)
@@ -79,6 +79,7 @@ def test_build_uses_newspaper_layout_and_emits_es_ready_documents(tmp_path: Path
         "title": "今日时事",
         "language": "mul",
         "indexObject": DATASET_INDEX_OBJECT,
+        "aiEnabled": False,
         "publicationStatus": "published",
         "access": "public",
     }]
@@ -103,6 +104,33 @@ def test_build_merges_previous_latest_and_dataset_index(tmp_path: Path) -> None:
     assert len(index["items"]) == 1
     assert index["revision"] == 2
     assert not (second / "delivery" / "catalog.jox").exists()
+
+
+def test_build_migrates_legacy_book_ai_capability_in_catalog(tmp_path: Path) -> None:
+    first = tmp_path / "first"
+    build(first, [article("article-one", 10)])
+    previous = tmp_path / "previous"
+    previous.mkdir()
+    shutil.copy2(first / "delivery" / Path(*LATEST_OBJECT.split("/")), previous / "latest.jox")
+    shutil.copy2(first / "delivery" / Path(*DATASET_INDEX_OBJECT.split("/")), previous / "index.jox")
+    catalog = read_jox_json(first / "delivery" / "catalog.jox", CATALOG_OBJECT)
+    catalog["datasets"].append({
+        "datasetId": "legacy-book",
+        "type": "book",
+        "title": "旧书",
+        "language": "zh-CN",
+        "indexObject": "content/books/legacy-book/index.jox",
+    })
+    write_jox_json(previous, CATALOG_OBJECT, catalog)
+
+    second = tmp_path / "second"
+    build(second, [article("article-one", 10)], previous)
+    migrated = read_jox_json(second / "delivery" / "catalog.jox", CATALOG_OBJECT)
+
+    legacy_book = next(row for row in migrated["datasets"] if row["datasetId"] == "legacy-book")
+    assert legacy_book["aiEnabled"] is True
+    times = next(row for row in migrated["datasets"] if row["datasetId"] == "times")
+    assert times["aiEnabled"] is False
 
 
 def test_build_does_not_emit_expired_or_unchanged_article_objects(tmp_path: Path) -> None:

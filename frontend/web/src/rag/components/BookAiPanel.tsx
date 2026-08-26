@@ -1,7 +1,8 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { askStream } from "../api";
-import type { RagMessage, RagReference } from "../types";
+import type { RagMessage } from "../types";
 import { formatChatMarkdown } from "../utils/markdown";
+import { ReferenceButtons } from "./ReferenceButtons";
 
 interface BookAiPanelProps {
   bookTitle: string;
@@ -13,14 +14,14 @@ interface BookAiPanelProps {
   explanationQuote?: string;
   panelClass: string;
   onClose: () => void;
-  onJump: (reference: RagReference) => void;
   onExplanationComplete?: (quote: string, answer: string) => void;
 }
 
-export function BookAiPanel({ bookTitle, datasetId, itemId, manifestObject, initialQuestion, initialAnswer, explanationQuote, panelClass, onClose, onJump, onExplanationComplete }: BookAiPanelProps) {
+export function BookAiPanel({ bookTitle, datasetId, itemId, manifestObject, initialQuestion, initialAnswer, explanationQuote, panelClass, onClose, onExplanationComplete }: BookAiPanelProps) {
   const [messages, setMessages] = useState<RagMessage[]>(initialAnswer ? [{ role: "assistant", content: initialAnswer }] : []);
   const [input, setInput] = useState("");
   const [streamContent, setStreamContent] = useState("");
+  const [streamStatus, setStreamStatus] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState("");
   const [conversationId, setConversationId] = useState<string>();
@@ -29,7 +30,7 @@ export function BookAiPanel({ bookTitle, datasetId, itemId, manifestObject, init
   const initialQuestionSentRef = useRef(false);
 
   useEffect(() => () => cancelRef.current?.(), []);
-  useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [messages, streamContent]);
+  useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [messages, streamContent, streamStatus]);
 
   function ask(question: string): void {
     if (!question || streaming) return;
@@ -39,22 +40,26 @@ export function BookAiPanel({ bookTitle, datasetId, itemId, manifestObject, init
     setError("");
     setStreaming(true);
     setStreamContent("");
+    setStreamStatus("正在准备本书检索…");
     let answer = "";
     cancelRef.current = askStream(
-      { datasetIds: [datasetId], itemIds: [itemId], manifestObjects: [manifestObject], question, conversationId },
+      { datasetIds: [datasetId], scopeMode: "selected", itemIds: [itemId], manifestObjects: [manifestObject], question, conversationId, history: messages },
       (chunk) => { answer += chunk; setStreamContent(answer); },
       (references, nextConversationId) => {
         setMessages([...nextMessages, { role: "assistant", content: answer, references }]);
         setConversationId(nextConversationId);
         setStreaming(false);
         setStreamContent("");
+        setStreamStatus("");
         if (explanationQuote && answer) onExplanationComplete?.(explanationQuote, answer);
       },
       (message) => {
         setError(message);
         setStreaming(false);
         setStreamContent("");
+        setStreamStatus("");
       },
+      (activity) => setStreamStatus(activity.message),
     );
   }
 
@@ -77,16 +82,14 @@ export function BookAiPanel({ bookTitle, datasetId, itemId, manifestObject, init
       <button type="button" onClick={onClose} className="border-0 bg-transparent text-2xl text-current cursor-pointer" aria-label="关闭书内 AI">×</button>
     </header>
     <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
-      {messages.length === 0 && !streaming && <div className="border-l-2 border-red pl-4"><p className="m-0 text-base">针对当前这本书提问</p><p className="mb-0 mt-2 font-sans text-xs leading-6 text-muted">回答会限定在本书范围内；找到原文位置时可以直接跳回正文。</p></div>}
+      {messages.length === 0 && !streaming && <div className="border-l-2 border-red pl-4"><p className="m-0 text-base">针对当前这本书提问</p><p className="mb-0 mt-2 font-sans text-xs leading-6 text-muted">回答会限定在本书范围内；找到原文位置时可在新标签页打开正文。</p></div>}
       {messages.map((message, index) => <article key={index} className={`mb-6 ${message.role === "user" ? "ml-10 border-r-2 border-red pr-4 text-right" : ""}`}>
         {message.role === "user" ? <p className="m-0 whitespace-pre-wrap text-sm leading-7">{message.content}</p> : <>
-          <div className="book-ai-answer text-sm leading-7" dangerouslySetInnerHTML={{ __html: formatChatMarkdown(message.content) }} />
-          {message.references?.some((reference) => reference.targetId) && <div className="mt-4 flex flex-wrap gap-2 font-sans text-xs">
-            {message.references.filter((reference) => reference.targetId).slice(0, 6).map((reference, referenceIndex) => <button key={`${reference.targetId}-${referenceIndex}`} type="button" onClick={() => onJump(reference)} className="border border-rule bg-transparent px-2.5 py-1.5 text-current cursor-pointer hover:border-red hover:text-red">{reference.title || `原文位置 ${referenceIndex + 1}`}</button>)}
-          </div>}
+          <div className="book-ai-answer text-sm leading-7" dangerouslySetInnerHTML={{ __html: formatChatMarkdown(message.content, message.references) }} />
+          <ReferenceButtons content={message.content} references={message.references} />
         </>}
       </article>)}
-      {streaming && <article className="mb-6"><div className="book-ai-answer text-sm leading-7" dangerouslySetInnerHTML={{ __html: formatChatMarkdown(streamContent || "正在查找原文……") }} /></article>}
+      {streaming && <article className="mb-6"><div role="status" className="mb-3 flex items-center gap-2 font-sans text-xs text-muted"><span aria-hidden="true" className="inline-block h-2 w-2 shrink-0 bg-red motion-safe:animate-pulse" />{streamStatus || "正在分析问题并选择资料…"}</div>{streamContent ? <div className="book-ai-answer text-sm leading-7" dangerouslySetInnerHTML={{ __html: formatChatMarkdown(streamContent) }} /> : null}</article>}
       {error && <p role="alert" className="border-l-2 border-red pl-3 font-sans text-xs leading-6 text-red">{error}</p>}
       <div ref={endRef} />
     </div>

@@ -44,6 +44,7 @@ describe("createBookDocument", () => {
     expect(html).toContain("height: 100vh");
     expect(html).toContain("orientation: landscape");
     expect(html).toContain('data-reading-mode="paged"');
+    expect(html).toContain('data-book-content data-target-id="chapter-1"');
     expect(html).toContain("background: #ffffff");
     expect(html).not.toContain("onclick");
     expect(html).not.toContain("<script");

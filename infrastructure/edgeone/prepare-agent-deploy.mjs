@@ -29,9 +29,8 @@ await cp(
   { recursive: true },
 );
 await cp(
-  path.join(edgeoneRoot, "functions", "_shared"),
-  path.join(cloudFunctionsOutput, "_shared"),
-  { recursive: true },
+  path.join(edgeoneRoot, "agent-middleware.ts"),
+  path.join(outputDirectory, "middleware.ts"),
 );
 
 const edgeoneConfig = JSON.parse(
@@ -56,8 +55,8 @@ await writeFile(
     '<html lang="zh-CN">',
     '<meta charset="utf-8">',
     '<meta name="robots" content="noindex">',
-    "<title>JOJO Agent</title>",
-    "<p>JOJO Agent service</p>",
+    "<title>JOJO 问答</title>",
+    "<p>JOJO 问答服务</p>",
     "</html>",
     "",
   ].join("\n"),

@@ -92,6 +92,8 @@ async function decryptCredentials(
 }
 
 export class EdgeOneEncryptedCredentialPersistence implements CredentialPersistence {
+  private messageId: string | undefined;
+
   constructor(
     private readonly store: EdgeOneConversationStore,
     private readonly rawKey: Uint8Array,
@@ -104,6 +106,7 @@ export class EdgeOneEncryptedCredentialPersistence implements CredentialPersiste
       order: "desc",
     });
     const stored = messages[0]?.content;
+    this.messageId = messages[0]?.messageId;
     if (typeof stored === "string" && stored) {
       return decryptCredentials(stored, this.rawKey);
     }
@@ -111,14 +114,33 @@ export class EdgeOneEncryptedCredentialPersistence implements CredentialPersiste
   }
 
   async write(credentials: CredentialFile): Promise<void> {
-    await this.store.appendMessage({
+    const content = await encryptCredentials(credentials, this.rawKey);
+    if (!this.messageId) {
+      const messages = await this.store.getMessages({
+        conversationId: CREDENTIAL_CONVERSATION_ID,
+        limit: 1,
+        order: "desc",
+      });
+      this.messageId = messages[0]?.messageId;
+    }
+    const metadata = {
+      kind: "encrypted-platform-credentials",
+      version: 1,
+    };
+    if (this.messageId && this.store.updateMessage) {
+      await this.store.updateMessage({
+        conversationId: CREDENTIAL_CONVERSATION_ID,
+        messageId: this.messageId,
+        content,
+        metadata,
+      });
+      return;
+    }
+    this.messageId = await this.store.appendMessage({
       conversationId: CREDENTIAL_CONVERSATION_ID,
       role: "system",
-      content: await encryptCredentials(credentials, this.rawKey),
-      metadata: {
-        kind: "encrypted-platform-credentials",
-        version: 1,
-      },
+      content,
+      metadata,
     });
   }
 }
@@ -128,7 +150,7 @@ export function createEdgeOneCredentialStore(
   store: EdgeOneConversationStore | undefined,
 ) {
   if (!store) {
-    throw new Error("Makers Agent conversation store is unavailable");
+    throw new Error("问答凭证存储暂时不可用");
   }
   const persistence = new EdgeOneEncryptedCredentialPersistence(
     store,

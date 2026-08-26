@@ -55,7 +55,7 @@ jobs:
     env:
       EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
       EXPO_PUBLIC_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-      EXPO_PUBLIC_AGENT_API_URL: https://agent-global.jojokanbao.cn/gateway/ask
+      EXPO_PUBLIC_AGENT_API_URL: https://agent-global.jojokanbao.cn/rag
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5

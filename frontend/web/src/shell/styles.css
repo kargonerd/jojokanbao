@@ -17,6 +17,18 @@
   text-decoration: none;
 }
 
+/* Inline evidence markers must remain the editorial red inside AppShell links. */
+.app-shell a.jojo-citation,
+.jojo-citation {
+  color: var(--color-red);
+}
+
+.app-shell a.jojo-citation:hover,
+a.jojo-citation:hover {
+  color: var(--color-paper);
+  background: var(--color-red);
+}
+
 .app-search-page {
   background: var(--app-canvas);
 }
