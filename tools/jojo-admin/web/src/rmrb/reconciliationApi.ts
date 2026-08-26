@@ -33,6 +33,7 @@ export type RmrbReconciliationItem = {
   signals: string[];
   signalLabels: string[];
   sourcePageHref: string;
+  jojoPageHref: string;
   candidates: RmrbReconciliationCandidate[];
   decision?: RmrbReconciliationDecision | null;
 };

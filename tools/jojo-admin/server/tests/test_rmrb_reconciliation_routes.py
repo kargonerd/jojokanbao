@@ -86,6 +86,10 @@ class RmrbReconciliationRoutesTest(unittest.TestCase):
         self.assertEqual(payload["counts"]["pending"], 2)
         first = payload["items"][0]
         self.assertEqual(first["title"], "梁漱溟发表谈话")
+        self.assertEqual(
+            first["jojoPageHref"],
+            "https://reader.jojokanbao.cn/reader/rmrb/19460723#page-1",
+        )
         self.assertEqual(first["candidates"][0]["candidateKey"], "1946-07-23|1|9")
         self.assertIn("pageNum", first["candidates"][0]["peopleDataHref"])
         self.assertIn("%221%22", first["candidates"][0]["peopleDataHref"])

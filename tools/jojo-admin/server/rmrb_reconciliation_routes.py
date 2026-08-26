@@ -38,6 +38,9 @@ PEOPLE_DATA_BASE = (
     "https://webvpn.zju.edu.cn/https/"
     "77726476706e69737468656265737421f4f6559d69206d5f6e048ce29b5a2e7b74a4/rmrb"
 )
+JOJO_READER_BASE = os.environ.get(
+    "JOJO_READER_BASE_URL", "https://reader.jojokanbao.cn"
+).rstrip("/")
 DECISION_LOCK = threading.Lock()
 ALLOWED_RESOLUTIONS = {
     "jsonl_correct",
@@ -170,6 +173,10 @@ def _source_page_href(day: str, page: int) -> str:
     return f"{PEOPLE_DATA_BASE}/{day.replace('-', '')}/{page}"
 
 
+def _jojo_page_href(day: str, page: int) -> str:
+    return f"{JOJO_READER_BASE}/reader/rmrb/{day.replace('-', '')}#page-{page}"
+
+
 def _candidates(row: dict[str, Any]) -> list[dict[str, Any]]:
     candidates: dict[str, dict[str, Any]] = {}
     inputs = (
@@ -220,6 +227,7 @@ def _public_row(
         "signals": signals,
         "signalLabels": [SIGNAL_LABELS.get(value, value) for value in signals],
         "sourcePageHref": _source_page_href(key[0], key[1]),
+        "jojoPageHref": _jojo_page_href(key[0], key[1]),
         "candidates": _candidates(row),
         "decision": decision,
     }

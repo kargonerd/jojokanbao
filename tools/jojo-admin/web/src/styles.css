@@ -1876,6 +1876,12 @@ button {
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
+.rmrb-reconcile-source-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px 14px;
+}
 .rmrb-reconcile-source-title {
   margin-bottom: 18px;
   padding: 13px 14px;

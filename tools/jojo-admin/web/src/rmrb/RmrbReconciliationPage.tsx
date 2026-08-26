@@ -299,7 +299,10 @@ export function RmrbReconciliationPage() {
                 </section>
                 <header>
                   <b>JSONL 正文</b>
-                  <a href={current.sourcePageHref} target="_blank" rel="noreferrer">查看当天版面</a>
+                  <nav className="rmrb-reconcile-source-links" aria-label="版面链接">
+                    <a href={current.sourcePageHref} target="_blank" rel="noreferrer">打开人民数据版面</a>
+                    <a href={current.jojoPageHref} target="_blank" rel="noreferrer">打开 JOJO 看报版面</a>
+                  </nav>
                 </header>
                 <pre className={expanded ? "expanded" : ""}>{current.content}</pre>
                 <button className="text-button" type="button" onClick={() => setExpanded((value) => !value)}>
