@@ -25,7 +25,7 @@ Brasil。央视新闻、财新、WSJ、第一财经、Indian Express 和证券�
 - browser-first：Bloomberg、NYT、Reuters、FT、Axios、Nikkei、联合早报和 SCMP 直接进入浏览器；
 - 浏览器由 Playwright 持久上下文控制，启用 JavaScript 和锁定版本 BPC；NYT 使用锁定 Browsertrix 镜像内的 Brave，其余媒体使用锁定 Playwright Chromium；
 - 同一媒体串行复用 Cookie，不同媒体默认最多八路并行；
-- 401/403/429、JS challenge 或正文不完整不会被判成硬付费墙；browser-first 媒体失败后最多切换三个 Mihomo 备用节点；
+- 401/403/429、JS challenge 或正文不完整不会被判成硬付费墙；需要代理的媒体失败后最多验证八个分散的 Mihomo 备用节点；
 - 视频和图集在发现阶段跳过；只有完整正文进入 Canonical/Delivery，摘要只留在 Raw 审计数据。
 
 ## 本地运行
@@ -72,7 +72,8 @@ canonical/runs/{RUN_ID}.json
 ~~~
 
 original.html.gz 是主文档响应，rendered.html.gz 是 BPC/JavaScript 执行后的 DOM。正文图片下载到
-raw/{source}/assets/，按字节 SHA-256 去重；Browsertrix 只提供锁定的 Brave 可执行文件，Raw 不生成或保存 WARC/WACZ。
+raw/{source}/assets/，按字节 SHA-256 去重。NYT 批次在锁定 Browsertrix 容器中运行 Brave；容器抓取目录只作
+单次任务的临时交换区，页面写回上述 Raw 结构后立即删除，不生成需要发布的 WARC/WACZ，也不上传 WACZ。
 
 B2 只保存 Delivery：
 

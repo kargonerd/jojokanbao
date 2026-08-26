@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { bodyWithAssets, discoverArticleImages } from "../src/capture/article-content.js";
 import { unavailablePageReason } from "../src/capture/availability.js";
+import { BROWSERTRIX_IMAGE, browsertrixArguments } from "../src/capture/browsertrix.js";
 import { articleFingerprint, pendingArticles, type PageArticle } from "../src/capture/pending.js";
 import { selectProxy, selectProxyCandidates } from "../src/capture/proxy.js";
 import { groupArticlesBySource, mapSourceBatches } from "../src/capture/schedule.js";
@@ -104,5 +105,23 @@ describe("page capture orchestration", () => {
       active -= 1;
     });
     expect(maximum).toBe(2);
+  });
+
+  it("runs pinned Browsertrix serially and keeps its archive transient", () => {
+    const options = {
+      articles: [article("one")],
+      driverPath: "/workspace/driver.mjs",
+      timeoutSeconds: 30,
+      image: BROWSERTRIX_IMAGE,
+      proxyServer: "http://127.0.0.1:7890",
+      extensionPath: "/workspace/bpc",
+      requireExtension: true,
+    };
+    const args = browsertrixArguments(options, "/tmp/transient");
+    expect(BROWSERTRIX_IMAGE).toMatch(/^webrecorder\/browsertrix-crawler:1\.14\.1@sha256:[a-f0-9]{64}$/u);
+    expect(args).toContain("--workers=1");
+    expect(args).toContain("--extraChromeArgs=--load-extension=/jojo/bpc");
+    expect(args).toContain("--proxyServer=http://127.0.0.1:7890");
+    expect(args).not.toContain("--generateWACZ");
   });
 });

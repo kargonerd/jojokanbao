@@ -115,26 +115,8 @@ jobs:
         run: |
           pnpm --filter @jojo/times-pipeline exec playwright install --with-deps chromium
 
-      - name: Extract pinned Browsertrix Brave for NYT
-        run: |
-          docker pull "$BROWSERTRIX_IMAGE"
-          container="$(docker create "$BROWSERTRIX_IMAGE")"
-          trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
-          browser_path="$(docker run --rm --entrypoint sh "$BROWSERTRIX_IMAGE" -c '
-            for binary in "$BROWSER_BIN" chromium-browser brave-origin brave-browser google-chrome; do
-              candidate="$(command -v "$binary" 2>/dev/null || true)"
-              if [ -n "$candidate" ]; then readlink -f "$candidate"; exit 0; fi
-            done
-            find /opt /usr/lib -type f -perm /111 \( -name "brave*" -o -name chrome \) -print -quit 2>/dev/null
-          ')"
-          test -n "$browser_path" || (echo "Pinned Browsertrix image did not resolve its browser" >&2 && exit 1)
-          browser_name="$(basename "$browser_path")"
-          docker cp "$container:$(dirname "$browser_path")" "$RUNNER_TEMP/browsertrix-brave"
-          brave="$(find "$RUNNER_TEMP/browsertrix-brave" -type f -name "$browser_name" -print -quit)"
-          test -n "$brave" || (echo "Pinned Browsertrix image has no Brave executable" >&2 && exit 1)
-          chmod 700 "$brave"
-          "$brave" --version
-          echo "JOJO_TIMES_BROWSERTRIX_BRAVE_PATH=$brave" >> "$GITHUB_ENV"
+      - name: Pull pinned Browsertrix for NYT
+        run: docker pull "$BROWSERTRIX_IMAGE"
 
       - name: Capture all enabled sources
         run: |
@@ -175,6 +157,8 @@ jobs:
             --refresh-hours 168
             --retry-hours 2
             --browser-extension-path "$BPC_EXTENSION_PATH"
+            --browsertrix-image "$BROWSERTRIX_IMAGE"
+            --browsertrix-driver tools/times-pipeline/browsertrix/driver.mjs
             --report "$RUNNER_TEMP/page-capture-result.json"
           )
           if [ -n "$JOJO_TIMES_PROXY_URI" ]; then

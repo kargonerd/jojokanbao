@@ -9,6 +9,7 @@ import { bodyWithAssets, extractArticleContent } from "./capture/article-content
 import { captureArticleAssets } from "./capture/assets.js";
 import { unavailablePageReason, type UnavailablePageReason } from "./capture/availability.js";
 import { BrowserSourceSession } from "./capture/browser.js";
+import { BROWSERTRIX_IMAGE, captureBrowsertrixBatch } from "./capture/browsertrix.js";
 import { downloadDirectAsset, fetchDirectPage, type CapturedHtmlPage } from "./capture/http.js";
 import { articleFingerprint, pendingArticles, type PageArticle, type PageCaptureState } from "./capture/pending.js";
 import { proxyCandidates, selectProxy } from "./capture/proxy.js";
@@ -126,31 +127,21 @@ async function writeRawPage(workspace: string, article: ArticleBundle, page: Cap
   return path.relative(workspace, metadataPath).replaceAll(path.sep, "/");
 }
 
-async function captureOne(
+async function completeCapture(
   workspace: string,
   article: ArticleBundle,
   timeoutSeconds: number,
-  browser: () => Promise<BrowserSourceSession>,
-  forceBrowser: boolean,
+  page: CapturedHtmlPage,
+  browser?: () => Promise<BrowserSourceSession>,
 ): Promise<CaptureOutcome> {
-  let page = !forceBrowser && article.source.fetch.strategy === "direct-first"
-    ? await fetchDirectPage(article.captureUrl, timeoutSeconds)
-    : undefined;
-  let extracted = page?.renderedHtml
+  const extracted = page.renderedHtml
     ? extractArticleContent(page.renderedHtml, page.finalUrl, article.fetchPolicy, quality(article.source))
     : { body: undefined, images: [] };
-  if (!page || !extracted.body) {
-    const session = await browser();
-    page = await session.capture(article.captureUrl, timeoutSeconds);
-    extracted = page.renderedHtml
-      ? extractArticleContent(page.renderedHtml, page.finalUrl, article.fetchPolicy, quality(article.source))
-      : { body: undefined, images: [] };
-  }
   const discoveryFallback = !extracted.body && article.candidate.discoveryBody
     ? extractRenderedBody(article.candidate.discoveryBody, article.fetchPolicy, quality(article.source))
     : undefined;
   const selectedBody = extracted.body ?? discoveryFallback;
-  const session = page.method === "browser" ? await browser() : undefined;
+  const session = page.method === "browser" && browser ? await browser() : undefined;
   const assets = await captureArticleAssets({
     workspace,
     sourceId: article.sourceId,
@@ -186,6 +177,23 @@ async function captureOne(
   const rawPageObject = await writeRawPage(workspace, article, page, fullBody ? undefined : unavailableReason ?? "FullTextNotExtracted");
   article.candidate.rawPageObject = rawPageObject;
   return { article, page, fullBody, ...(unavailableReason ? { unavailableReason } : {}), assetCount: assets.length, rawPageObject };
+}
+
+async function captureOne(
+  workspace: string,
+  article: ArticleBundle,
+  timeoutSeconds: number,
+  browser: () => Promise<BrowserSourceSession>,
+  forceBrowser: boolean,
+): Promise<CaptureOutcome> {
+  let page = !forceBrowser && article.source.fetch.strategy === "direct-first"
+    ? await fetchDirectPage(article.captureUrl, timeoutSeconds)
+    : undefined;
+  const directBody = page?.renderedHtml
+    ? extractArticleContent(page.renderedHtml, page.finalUrl, article.fetchPolicy, quality(article.source)).body
+    : undefined;
+  if (!page || !directBody) page = await (await browser()).capture(article.captureUrl, timeoutSeconds);
+  return completeCapture(workspace, article, timeoutSeconds, page, browser);
 }
 
 async function loadArticles(workspace: string, run: RawRunManifest, sources: Map<string, SourceConfig>): Promise<ArticleBundle[]> {
@@ -279,6 +287,8 @@ async function main(): Promise<void> {
   const best = new Map<string, CaptureOutcome>();
   const extensionPath = args.get("browser-extension-path") ? path.resolve(args.get("browser-extension-path")!) : undefined;
   const proxyServer = args.get("proxy-server");
+  const browsertrixImage = args.get("browsertrix-image") ?? BROWSERTRIX_IMAGE;
+  const browsertrixDriver = path.resolve(args.get("browsertrix-driver") ?? "tools/times-pipeline/browsertrix/driver.mjs");
 
   const captureRound = async (values: ArticleBundle[], forceBrowser: boolean): Promise<void> => {
     await mapSourceBatches(values, sourceWorkers, async (batch) => {
@@ -286,28 +296,48 @@ async function main(): Promise<void> {
       let captured = 0;
       let failed = 0;
       process.stderr.write(`[page-capture] ${batch.sourceId}: ${forceBrowser ? "proxy retry" : "initial"} ${batch.articles.length} article(s)\n`);
+      const source = sources.get(batch.sourceId)!;
+      const browserKind = source.fetch.browser ?? "chromium";
       let session: BrowserSourceSession | undefined;
       const browser = async (): Promise<BrowserSourceSession> => {
-        const browserKind = sources.get(batch.sourceId)?.fetch.browser ?? "chromium";
-        const executablePath = browserKind === "browsertrix-brave" ? process.env.JOJO_TIMES_BROWSERTRIX_BRAVE_PATH?.trim() : undefined;
-        if (browserKind === "browsertrix-brave" && !executablePath) throw new Error(`${batch.sourceId}: Browsertrix Brave is required but unavailable`);
         session ??= await BrowserSourceSession.open({
           ...(proxyServer ? { proxyServer } : {}),
           ...(extensionPath ? { extensionPath } : {}),
-          ...(executablePath ? { executablePath } : {}),
-          requireExtension: sources.get(batch.sourceId)?.fetch.bpc ?? false,
+          requireExtension: source.fetch.bpc,
         });
         return session;
       };
+      const record = (articleId: string, outcome: CaptureOutcome): void => {
+        const previous = best.get(articleId);
+        if (!previous || successfulPage(outcome.page, outcome.fullBody) || retryableOutcome(previous)) best.set(articleId, outcome);
+        if (outcome.fullBody) captured += 1;
+        else failed += 1;
+      };
       try {
-        for (const article of batch.articles) {
-          const outcome = await captureOne(workspace, article as ArticleBundle, timeoutSeconds, browser, forceBrowser);
-          const previous = best.get(article.articleId);
-          if (!previous || successfulPage(outcome.page, outcome.fullBody) || retryableOutcome(previous)) {
-            best.set(article.articleId, outcome);
+        if (browserKind === "browsertrix-brave") {
+          const pages = await captureBrowsertrixBatch({
+            articles: batch.articles,
+            driverPath: browsertrixDriver,
+            timeoutSeconds,
+            image: browsertrixImage,
+            ...(proxyServer ? { proxyServer } : {}),
+            ...(extensionPath ? { extensionPath } : {}),
+            requireExtension: source.fetch.bpc,
+          });
+          for (const article of batch.articles) {
+            const page = pages.get(article.articleId) ?? {
+              method: "browser",
+              requestedUrl: article.captureUrl,
+              finalUrl: article.captureUrl,
+              capturedAt: new Date().toISOString(),
+              error: "BrowsertrixMissingPage",
+            };
+            record(article.articleId, await completeCapture(workspace, article, timeoutSeconds, page));
           }
-          if (outcome.fullBody) captured += 1;
-          else failed += 1;
+        } else {
+          for (const article of batch.articles) {
+            record(article.articleId, await captureOne(workspace, article, timeoutSeconds, browser, forceBrowser));
+          }
         }
       } finally {
         await session?.close();
