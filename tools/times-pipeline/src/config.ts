@@ -205,7 +205,10 @@ function parseSource(value: unknown, position: number): SourceConfig | null {
   if (minimumFullParagraphs !== undefined && (!Number.isInteger(minimumFullParagraphs) || (minimumFullParagraphs as number) < 0)) {
     throw new Error(`${id}.content.minimumFullParagraphs must be a non-negative integer`);
   }
-  const proxyPolicy = typeof pageFetch.proxyPolicy === "string" && pageFetch.proxyPolicy.trim() ? pageFetch.proxyPolicy.trim() : undefined;
+  const proxyPolicy = pageFetch.proxyPolicy;
+  if (proxyPolicy !== undefined && proxyPolicy !== "none" && proxyPolicy !== "rotate") {
+    throw new Error(`${id}.fetch.proxyPolicy must be none or rotate`);
+  }
   const health = row.health as Record<string, unknown> | undefined;
   const minimumCandidates = health?.minimumCandidates;
   if (!Number.isInteger(minimumCandidates) || (minimumCandidates as number) < 0) {

@@ -220,7 +220,7 @@
   "fetch": {
     "strategy": "direct-first",
     "bpc": true,
-    "proxyPolicy": "direct-first"
+    "proxyPolicy": "none"
   },
   "health": {
     "minimumCandidates": 1

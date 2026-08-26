@@ -121,7 +121,7 @@
   "fetch": {
     "strategy": "browser-first",
     "bpc": true,
-    "proxyPolicy": "zaobao"
+    "proxyPolicy": "rotate"
   },
   "health": {
     "minimumCandidates": 1

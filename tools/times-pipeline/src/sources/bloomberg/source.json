@@ -106,7 +106,7 @@
   "fetch": {
     "strategy": "browser-first",
     "bpc": true,
-    "proxyPolicy": "bloomberg"
+    "proxyPolicy": "rotate"
   },
   "health": {
     "minimumCandidates": 1

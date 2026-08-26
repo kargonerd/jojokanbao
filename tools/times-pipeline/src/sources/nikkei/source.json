@@ -333,7 +333,7 @@
   "fetch": {
     "strategy": "browser-first",
     "bpc": true,
-    "proxyPolicy": "nikkei"
+    "proxyPolicy": "rotate"
   },
   "health": {
     "minimumCandidates": 1

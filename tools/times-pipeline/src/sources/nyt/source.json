@@ -124,7 +124,7 @@
   "fetch": {
     "strategy": "browser-first",
     "bpc": true,
-    "proxyPolicy": "nyt"
+    "proxyPolicy": "rotate"
   },
   "health": {
     "minimumCandidates": 1

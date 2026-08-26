@@ -187,7 +187,7 @@
   "fetch": {
     "strategy": "browser-first",
     "bpc": true,
-    "proxyPolicy": "ft"
+    "proxyPolicy": "rotate"
   },
   "health": {
     "minimumCandidates": 1

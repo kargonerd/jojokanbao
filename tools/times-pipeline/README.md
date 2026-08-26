@@ -24,8 +24,8 @@ Brasil。央视新闻、财新、WSJ、第一财经、Indian Express 和证券�
 - direct-first：普通 HTML 能稳定给出全文的媒体先直连，正文不足再启动浏览器；
 - browser-first：Bloomberg、NYT、Reuters、FT、Axios、Nikkei、联合早报和 SCMP 直接进入 Chromium；
 - Chromium 使用 Playwright 持久上下文，启用 JavaScript 和锁定版本 BPC；
-- 同一媒体串行复用 Cookie，不同媒体按 source-workers 并行；
-- 401/403/429、JS challenge 或正文不完整不会被判成硬付费墙，失败后才切换 Mihomo 节点；
+- 同一媒体串行复用 Cookie，不同媒体默认最多八路并行；
+- 401/403/429、JS challenge 或正文不完整不会被判成硬付费墙；browser-first 媒体失败后最多切换三个 Mihomo 备用节点；
 - 视频和图集在发现阶段跳过；只有完整正文进入 Canonical/Delivery，摘要只留在 Raw 审计数据。
 
 ## 本地运行
@@ -37,8 +37,8 @@ pnpm --filter @jojo/times-pipeline build
 
 Expand-Archive tools/times-pipeline/vendor/bpc/bypass-paywalls-chrome-clean.zip -DestinationPath $env:TEMP/bpc
 
-node tools/times-pipeline/dist/src/capture-cli.js --config tools/times-pipeline/sources.v2.json --output $env:TEMP/jojo-times --since-hours 24 --workers 4
-node tools/times-pipeline/dist/src/page-capture-cli.js --config tools/times-pipeline/sources.v2.json --output $env:TEMP/jojo-times --run-manifest '<runManifest>' --source-workers 4 --browser-extension-path $env:TEMP/bpc/bypass-paywalls-chrome-clean-master
+node tools/times-pipeline/dist/src/capture-cli.js --config tools/times-pipeline/sources.v2.json --output $env:TEMP/jojo-times --since-hours 24 --workers 8
+node tools/times-pipeline/dist/src/page-capture-cli.js --config tools/times-pipeline/sources.v2.json --output $env:TEMP/jojo-times --run-manifest '<runManifest>' --source-workers 8 --browser-extension-path $env:TEMP/bpc/bypass-paywalls-chrome-clean-master
 node tools/times-pipeline/dist/src/process-cli.js --config tools/times-pipeline/sources.v2.json --output $env:TEMP/jojo-times --run-manifest '<runManifest>' --raw-revision local
 node tools/times-pipeline/dist/src/delivery-cli.js --config tools/times-pipeline/sources.v2.json --output $env:TEMP/jojo-times --process-result '<process-result.json>' --delivery-output $env:TEMP/jojo-times-delivery
 ~~~

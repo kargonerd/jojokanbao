@@ -68,7 +68,7 @@
   "fetch": {
     "strategy": "browser-first",
     "bpc": true,
-    "proxyPolicy": "reuters"
+    "proxyPolicy": "rotate"
   },
   "health": {
     "minimumCandidates": 1

@@ -261,6 +261,10 @@ async function main(): Promise<void> {
 
   const captureRound = async (values: ArticleBundle[], forceBrowser: boolean): Promise<void> => {
     await mapSourceBatches(values, sourceWorkers, async (batch) => {
+      const batchStartedAt = Date.now();
+      let captured = 0;
+      let failed = 0;
+      process.stderr.write(`[page-capture] ${batch.sourceId}: ${forceBrowser ? "proxy retry" : "initial"} ${batch.articles.length} article(s)\n`);
       let session: BrowserSourceSession | undefined;
       const browser = async (): Promise<BrowserSourceSession> => {
         session ??= await BrowserSourceSession.open({
@@ -277,9 +281,12 @@ async function main(): Promise<void> {
           if (!previous || successfulPage(outcome.page, outcome.fullBody) || !successfulPage(previous.page, previous.fullBody)) {
             best.set(article.articleId, outcome);
           }
+          if (outcome.fullBody) captured += 1;
+          else failed += 1;
         }
       } finally {
         await session?.close();
+        process.stderr.write(`[page-capture] ${batch.sourceId}: ${captured} full, ${failed} failed in ${Math.ceil((Date.now() - batchStartedAt) / 1_000)}s\n`);
       }
     });
   };
@@ -292,7 +299,8 @@ async function main(): Promise<void> {
   if (pending.length && proxyServer && controlUrl && rotationAttempts > 0) {
     try {
       for (const alternative of await proxyCandidates(controlUrl, proxyGroup, automaticName, rotationAttempts)) {
-        const failed = pending.filter((article) => !successfulPage(best.get(article.articleId)?.page ?? { method: "browser", requestedUrl: article.captureUrl, finalUrl: article.captureUrl, capturedAt: generatedAt.toISOString() }, best.get(article.articleId)?.fullBody ?? false));
+        const failed = pending.filter((article) => article.source.fetch.proxyPolicy === "rotate"
+          && !successfulPage(best.get(article.articleId)?.page ?? { method: "browser", requestedUrl: article.captureUrl, finalUrl: article.captureUrl, capturedAt: generatedAt.toISOString() }, best.get(article.articleId)?.fullBody ?? false));
         if (!failed.length) break;
         await selectProxy(controlUrl, proxyGroup, alternative);
         await new Promise((resolve) => setTimeout(resolve, 250));
@@ -319,6 +327,20 @@ async function main(): Promise<void> {
   }
   await persistSources(workspace, articles, states);
   const outcomes = [...best.values()];
+  const perSource = [...new Set(articles.map((article) => article.sourceId))].sort().map((sourceId) => {
+    const sourceArticles = articles.filter((article) => article.sourceId === sourceId);
+    const sourcePending = pending.filter((article) => article.sourceId === sourceId);
+    const sourceOutcomes = sourcePending.map((article) => best.get(article.articleId)).filter((outcome): outcome is CaptureOutcome => Boolean(outcome));
+    return {
+      sourceId,
+      discovered: sourceArticles.length,
+      planned: sourcePending.length,
+      captured: sourceOutcomes.filter((outcome) => outcome.fullBody).length,
+      failed: sourcePending.length - sourceOutcomes.filter((outcome) => outcome.fullBody).length,
+      unchanged: sourceArticles.length - sourcePending.length,
+      assets: sourceOutcomes.reduce((sum, outcome) => sum + outcome.assetCount, 0),
+    };
+  });
   const report = {
     formatVersion: "jojo-page-capture-run/1",
     runId: run.runId,
@@ -333,6 +355,7 @@ async function main(): Promise<void> {
     sourceWorkers,
     perSourceWorkers: 1,
     proxyRotationRounds: rotationRounds,
+    perSource,
   };
   run.pageCapture = report;
   await writeFile(runPath, `${JSON.stringify(run, null, 2)}\n`);

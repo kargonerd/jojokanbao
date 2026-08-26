@@ -12,7 +12,7 @@ const reuters: SourceConfig = {
     maximumPages: 20,
   },
   content: { priority: ["captured-page", "discovery-summary"], parser: "reuters" },
-  fetch: { strategy: "browser-first", bpc: true, proxyPolicy: "reuters" },
+  fetch: { strategy: "browser-first", bpc: true, proxyPolicy: "rotate" },
   health: { minimumCandidates: 1 },
   enabled: true,
 };

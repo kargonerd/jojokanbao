@@ -51,7 +51,7 @@
   "fetch": {
     "strategy": "browser-first",
     "bpc": true,
-    "proxyPolicy": "axios"
+    "proxyPolicy": "rotate"
   },
   "health": {
     "minimumCandidates": 1

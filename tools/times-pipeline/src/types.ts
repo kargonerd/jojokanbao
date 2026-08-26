@@ -141,7 +141,7 @@ export interface SourceConfig {
   fetch: {
     strategy: PageFetchStrategy;
     bpc: boolean;
-    proxyPolicy?: string;
+    proxyPolicy?: "none" | "rotate";
   };
   health: {
     minimumCandidates: number;
