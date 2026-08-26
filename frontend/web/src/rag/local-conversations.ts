@@ -1,4 +1,3 @@
-import { authClient } from "../account/auth";
 import type {
   RagConversationDetail,
   RagConversationSummary,
@@ -56,6 +55,7 @@ function openDatabase(): Promise<IDBDatabase> {
 }
 
 async function currentOwnerId(): Promise<string> {
+  const { authClient } = await import("../account/auth");
   const { data, error } = await authClient.auth.getSession();
   if (error) throw error;
   const ownerId = data.session?.user.id;
