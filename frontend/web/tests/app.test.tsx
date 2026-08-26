@@ -16,6 +16,10 @@ vi.mock("@jojo/pdf-viewer", () => ({
   usePdfDocument: appPdfMocks.usePdfDocument,
 }));
 
+vi.mock("../src/rag/pages/ReaderPage", () => ({
+  ReaderPage: () => <h1>书籍阅读器</h1>,
+}));
+
 function renderAt(path: string) {
   window.history.replaceState({}, "", path);
   return render(<App />);
@@ -127,6 +131,13 @@ describe("JOJO Web routes and Archive homepage", () => {
     }
   });
 
+  it("keeps public book reading available independently of the unfinished RAG module", async () => {
+    renderAt("/book/mao/volume-1");
+
+    expect(await screen.findByRole("heading", { name: "书籍阅读器" })).toBeTruthy();
+    expect(window.location.pathname).toBe("/book/mao/volume-1");
+  });
+
   it("renders the not-found page for unknown routes", () => {
     renderAt("/not-a-reader-route");
     expect(screen.getByRole("heading", { name: "404 Not Found" })).toBeTruthy();
@@ -177,7 +188,8 @@ describe("JOJO Web navigation", () => {
   it("keeps the account route visible when local auth configuration is absent", () => {
     renderAt("/account");
 
-    expect(screen.getByRole("heading", { name: "登录服务未配置" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "登录暂不可用" })).toBeTruthy();
+    expect(screen.queryByText(/Supabase|部署环境/)).toBeNull();
     expect(screen.getByRole("link", { name: /返回首页/ }).getAttribute("href")).toBe("/");
   });
 

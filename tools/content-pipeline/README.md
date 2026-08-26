@@ -21,6 +21,11 @@ pnpm --filter @jojo/content-pipeline validate -- "C:\path\to\build"
 目录或 ES 搜索副本；Delivery 按 `content/books/`、`content/newspapers/` 和
 `content/magazines/` 分类。
 
+Delivery `catalog.jox` 的 Dataset 条目使用 `aiEnabled` 声明是否能够进入 AI
+检索范围。只有显式的 `true` 才表示支持；字段缺失或 `false` 都按不支持处理。
+书籍流水线会在 catalog、Dataset index 和 Canonical Dataset 中写入
+`aiEnabled: true`。合并 Delivery 时不会根据 Dataset 类型推断或改写该字段。
+
 导入前会用章节 CID 对照微信读书 TOC，检查应有正文数、实际匹配数和缺失章节。默认模式下
 缺少正文或章节解码失败都会拒绝该源文件；只有显式传入 `--allow-partial` 才会生成部分数据并
 在 `report.json` 中保留 warning。多个导出具有同一 Book ID 时，优先选择章节覆盖率更高的

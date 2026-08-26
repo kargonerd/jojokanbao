@@ -918,6 +918,7 @@ export async function buildContentPipeline(
       title: dataset.title,
       language: dataset.language,
       description: dataset.description,
+      aiEnabled: true,
       publicationStatus,
       access,
       items: dataset.itemSummaries,
@@ -929,6 +930,7 @@ export async function buildContentPipeline(
       title: dataset.title,
       language: dataset.language,
       description: dataset.description,
+      aiEnabled: true,
       publicationStatus,
       access,
       itemPath: "items/{itemKey}/item.json.gz",
@@ -962,6 +964,7 @@ export async function buildContentPipeline(
       language: dataset.language,
       itemCount: dataset.items.length,
       indexObject: `content/books/${dataset.datasetId}/index.jox`,
+      aiEnabled: true,
       publicationStatus,
       access,
     });

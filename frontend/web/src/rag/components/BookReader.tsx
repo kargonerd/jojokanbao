@@ -17,7 +17,7 @@ import { useFeatureFlag } from "../../featureFlags";
 import { AccountMenu } from "../../account/AccountMenu";
 import { useAccountSessionStore } from "../../account/session";
 import { rollout } from "../../rollout";
-import type { RagReference, RagSearchHit } from "../types";
+import type { RagSearchHit } from "../types";
 import { BookAiPanel } from "./BookAiPanel";
 import { BookSearchPanel } from "./BookSearchPanel";
 import "./BookReader.css";
@@ -497,11 +497,13 @@ export function BookReader({
         }
         node = walker.nextNode();
       }
+      const anchorTarget = focusAnchorId ? document.getElementById(focusAnchorId) : null;
+      if (anchorTarget) return;
       const title = root.querySelector<HTMLElement>("h1,h2,h3");
       if (title) revealElement(title);
     }, 140);
     return () => window.clearTimeout(timer);
-  }, [contentLoading, focusText, mode, pageMetrics.step, revealElement]);
+  }, [contentLoading, focusAnchorId, focusText, mode, pageMetrics.step, revealElement]);
 
   function handleReaderClick(event: ReactMouseEvent<HTMLDivElement>): void {
     const image = (event.target as Element).closest<HTMLImageElement>("img");
@@ -660,12 +662,6 @@ export function BookReader({
     setThoughtOpen(false);
   }
 
-  function locateReference(reference: RagReference): void {
-    if (!reference.targetId) return;
-    setAiOpen(false);
-    onLocate(reference.targetId, reference.excerpt);
-  }
-
   function locateSearchResult(hit: RagSearchHit, matchText: string): void {
     setSearchOpen(false);
     onLocate(hit.targetId, matchText);
@@ -726,7 +722,7 @@ export function BookReader({
 
     {searchOpen && <><button type="button" aria-label="关闭全书搜索" onClick={() => setSearchOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookSearchPanel bookTitle={bookTitle} panelClass={panelClass} onClose={() => setSearchOpen(false)} onJump={locateSearchResult} onSearch={onSearch} /></>}
 
-    {agentAccess && aiOpen && <><button type="button" aria-label="关闭书内 AI" onClick={() => setAiOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookAiPanel key={`${aiQuestion || "book-ai"}:${aiInitialAnswer || ""}`} bookTitle={bookTitle} datasetId={datasetId} itemId={itemId} manifestObject={manifestObject} initialQuestion={aiQuestion} initialAnswer={aiInitialAnswer} explanationQuote={aiExplanationQuote} panelClass={panelClass} onClose={() => setAiOpen(false)} onJump={locateReference} onExplanationComplete={annotationsEnabled ? (quote, answer) => void saveExplanation({ datasetId, itemId, chapterId: activeChapterId, quote, answer }) : undefined} /></>}
+    {agentAccess && aiOpen && <><button type="button" aria-label="关闭书内 AI" onClick={() => setAiOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookAiPanel key={`${aiQuestion || "book-ai"}:${aiInitialAnswer || ""}`} bookTitle={bookTitle} datasetId={datasetId} itemId={itemId} manifestObject={manifestObject} initialQuestion={aiQuestion} initialAnswer={aiInitialAnswer} explanationQuote={aiExplanationQuote} panelClass={panelClass} onClose={() => setAiOpen(false)} onExplanationComplete={annotationsEnabled ? (quote, answer) => void saveExplanation({ datasetId, itemId, chapterId: activeChapterId, quote, answer }) : undefined} /></>}
 
     {activeAnnotation && currentUserId ? <AnnotationDiscussionPanel key={activeAnnotation.id}
       thread={activeAnnotation}

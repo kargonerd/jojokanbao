@@ -6,6 +6,7 @@
   "include": [
     "src",
     "tests",
+    "../infrastructure/edgeone/agent-middleware.ts",
     "../infrastructure/edgeone/agents/**/*.ts",
     "../infrastructure/edgeone/functions/**/*.ts"
   ]

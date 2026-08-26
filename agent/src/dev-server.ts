@@ -1,0 +1,200 @@
+import { readFile } from "node:fs/promises";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { createRagAgentDefinition } from "./applications";
+import { PersistentCredentialStore, type CredentialFile } from "./credentials";
+import { createEdgeOneAgentHandler } from "./edgeone/handler";
+import { createPlatformModelRuntime, resolvePlatformModelConfig, type AgentEnvironment } from "./models";
+import { loadLocalCodexCredential } from "./local-codex-credential";
+import { createRagTools, type RagScope } from "./rag-tools";
+
+const repositoryRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+);
+const MAX_REQUEST_BYTES = 64 * 1024;
+
+function parsedEnvLine(line: string): [string, string] | undefined {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith("#")) return undefined;
+  const separator = trimmed.indexOf("=");
+  if (separator < 1) return undefined;
+  const key = trimmed.slice(0, separator).trim();
+  let value = trimmed.slice(separator + 1).trim();
+  if (
+    value.length >= 2
+    && ((value.startsWith('"') && value.endsWith('"'))
+      || (value.startsWith("'") && value.endsWith("'")))
+  ) {
+    value = value.slice(1, -1);
+  }
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ? [key, value] : undefined;
+}
+
+async function developmentEnvironment(): Promise<AgentEnvironment> {
+  const values: Record<string, string | undefined> = {};
+  for (const name of [".env", ".env.local"]) {
+    try {
+      const content = await readFile(path.join(repositoryRoot, name), "utf8");
+      for (const line of content.split(/\r?\n/)) {
+        const parsed = parsedEnvLine(line);
+        if (parsed) values[parsed[0]] = parsed[1];
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+  return {
+    ...values,
+    ...process.env,
+    JOJO_CONTENT_CDN_BASE: process.env.JOJO_CONTENT_CDN_BASE?.trim()
+      || values.JOJO_CONTENT_CDN_BASE?.trim()
+      || "https://blacknews.jojokanbao.cn/",
+  };
+}
+
+function requestHeaders(request: IncomingMessage): Headers {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(request.headers)) {
+    if (Array.isArray(value)) value.forEach((item) => headers.append(name, item));
+    else if (value !== undefined) headers.set(name, value);
+  }
+  return headers;
+}
+
+async function readRequestBody(request: IncomingMessage): Promise<Uint8Array> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.byteLength;
+    if (size > MAX_REQUEST_BYTES) throw new Error("REQUEST_TOO_LARGE");
+    chunks.push(buffer);
+  }
+  return new Uint8Array(Buffer.concat(chunks));
+}
+
+async function writeResponse(response: Response, target: ServerResponse): Promise<void> {
+  target.statusCode = response.status;
+  response.headers.forEach((value, name) => target.setHeader(name, value));
+  target.flushHeaders();
+  if (!response.body) {
+    target.end();
+    return;
+  }
+  const reader = response.body.getReader();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!target.write(Buffer.from(value))) {
+      await new Promise<void>((resolve) => target.once("drain", resolve));
+    }
+  }
+  target.end();
+}
+
+function scopeFrom(value: unknown): RagScope {
+  if (!value || typeof value !== "object") return {};
+  const scope = (value as { scope?: unknown }).scope;
+  if (!scope || typeof scope !== "object") return {};
+  const input = scope as Record<string, unknown>;
+  const strings = (candidate: unknown) => Array.isArray(candidate)
+    ? candidate.filter((item): item is string => typeof item === "string").slice(0, 100)
+    : undefined;
+  return {
+    mode: input.mode === "all" || input.mode === "selected" ? input.mode : undefined,
+    datasetIds: strings(input.datasetIds),
+    itemIds: strings(input.itemIds),
+    manifestObjects: strings(input.manifestObjects),
+  };
+}
+
+const environment = await developmentEnvironment();
+const { credential, source } = await loadLocalCodexCredential(repositoryRoot, environment);
+let credentialFile: CredentialFile = { "openai-codex": credential };
+const credentialStore = new PersistentCredentialStore({
+  read: async () => credentialFile,
+  write: async (next) => { credentialFile = next; },
+});
+const definition = createRagAgentDefinition();
+const handleAgent = createEdgeOneAgentHandler({
+  systemPrompt: definition.systemPrompt,
+  createModelRuntime: () => createPlatformModelRuntime({
+    config: resolvePlatformModelConfig(environment),
+    environment,
+    credentials: credentialStore,
+  }),
+  tools(context) {
+    return createRagTools({
+      contentCdnBase: environment.JOJO_CONTENT_CDN_BASE!,
+      scope: scopeFrom(context.request.body),
+    });
+  },
+});
+const port = Number(environment.JOJO_AGENT_DEV_PORT ?? "8789");
+
+if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+  throw new Error("JOJO_AGENT_DEV_PORT must be a valid port");
+}
+
+const server = createServer(async (request, response) => {
+  const abortController = new AbortController();
+  request.once("aborted", () => abortController.abort());
+  response.once("close", () => {
+    if (!response.writableEnded) abortController.abort();
+  });
+  try {
+    const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `127.0.0.1:${port}`}`);
+    const headers = requestHeaders(request);
+    let result: Response;
+    if (url.pathname === "/rag" && request.method === "POST") {
+      const rawBody = await readRequestBody(request);
+      let body: unknown;
+      try {
+        body = JSON.parse(new TextDecoder().decode(rawBody));
+      } catch {
+        result = Response.json({ error: "问答请求格式无效" }, { status: 400 });
+        await writeResponse(result, response);
+        return;
+      }
+      result = await handleAgent({
+        env: environment,
+        conversation_id: headers.get("Makers-Conversation-Id") ?? undefined,
+        request: {
+          body,
+          headers,
+          signal: abortController.signal,
+        },
+      });
+    } else if (url.pathname === "/health") {
+      result = Response.json({ ok: true, model: resolvePlatformModelConfig(environment).model });
+    } else {
+      result = Response.json({ error: "Not found" }, { status: 404 });
+    }
+    await writeResponse(result, response);
+  } catch (error) {
+    if (response.headersSent) {
+      response.destroy(error instanceof Error ? error : undefined);
+      return;
+    }
+    const status = error instanceof Error && error.message === "REQUEST_TOO_LARGE" ? 413 : 500;
+    await writeResponse(Response.json({
+      error: status === 413 ? "问答内容过长" : "本地问答服务失败",
+    }, { status }), response);
+  }
+});
+
+server.listen(port, "127.0.0.1", () => {
+  process.stdout.write([
+    `JOJO local Q&A listening on http://127.0.0.1:${port}`,
+    `Codex OAuth: ${path.relative(repositoryRoot, source) || source}`,
+    `Content CDN: ${environment.JOJO_CONTENT_CDN_BASE}`,
+    "",
+  ].join("\n"));
+});
+
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, () => server.close(() => process.exit(0)));
+}

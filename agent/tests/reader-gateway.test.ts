@@ -29,7 +29,8 @@ describe("Reader Agent gateway", () => {
     const response = await onRequest(context("/gateway/ask"));
 
     expect(response.status).toBe(200);
-    const [, init] = fetchMock.mock.calls[0]!;
+    const [target, init] = fetchMock.mock.calls[0]!;
+    expect(String(target)).toBe("https://agent-global.jojokanbao.cn/rag");
     const headers = new Headers(init.headers);
     expect(headers.get("authorization")).toBe("Bearer reader-token");
     expect(headers.get("x-jojo-service-signature")).toBeNull();
@@ -42,7 +43,7 @@ describe("Reader Agent gateway", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const invalid = context("/gateway/ask");
-    invalid.env = { JOJO_AGENT_GATEWAY_URL: "http://agent.example/gateway/ask" };
+    invalid.env = { JOJO_AGENT_URL: "http://agent.example/rag" };
     expect((await onRequest(invalid)).status).toBe(503);
 
     const oversized = context("/gateway/ask");

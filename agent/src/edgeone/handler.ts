@@ -6,10 +6,7 @@ import {
   type PlatformModelRuntime,
 } from "../models";
 import { runPlatformAgent } from "../runtime";
-import type {
-  AgentUsage,
-  PlatformAgentEvent,
-} from "../types";
+import type { PlatformAgentEvent } from "../types";
 import type {
   AgentMessage,
   AgentTool,
@@ -17,13 +14,13 @@ import type {
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { AgentHttpError, authorizeSupabaseUser } from "./auth";
 import { createEdgeOneCredentialStore } from "./credential-store";
-import { authorizeAgentServiceRequest } from "./service-auth";
 import type {
   AgentRequestBody,
   AuthorizedAgentUser,
   CreateEdgeOneAgentHandlerOptions,
   EdgeOneAgentContext,
-  EdgeOneStoredMessage,
+  EdgeOneTraceSpan,
+  EdgeOneTracer,
 } from "./types";
 
 const encoder = new TextEncoder();
@@ -52,7 +49,62 @@ function requestBody(value: unknown): AgentRequestBody {
   if (message.length > 10_000) {
     throw new AgentHttpError(413, "message exceeds 10000 characters");
   }
-  return { message: message.trim() };
+  const rawScope = (value as { scope?: unknown }).scope;
+  const scope = rawScope && typeof rawScope === "object"
+    ? rawScope as Record<string, unknown>
+    : undefined;
+  const stringList = (candidate: unknown): string[] | undefined => {
+    if (!Array.isArray(candidate)) return undefined;
+    const strings = candidate
+      .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+      .map((item) => item.trim())
+      .slice(0, 100);
+    return strings.length ? strings : undefined;
+  };
+  const datasetIds = stringList(scope?.datasetIds);
+  const itemIds = stringList(scope?.itemIds);
+  const manifestObjects = stringList(scope?.manifestObjects);
+  const mode = scope?.mode === "all" || scope?.mode === "selected"
+    ? scope.mode
+    : undefined;
+  const rawHistory = (value as { history?: unknown }).history;
+  if (rawHistory !== undefined && !Array.isArray(rawHistory)) {
+    throw new AgentHttpError(400, "history must be an array");
+  }
+  let historyCharacters = 0;
+  const history = (rawHistory ?? []).slice(-20).map((candidate: unknown) => {
+    if (!candidate || typeof candidate !== "object") {
+      throw new AgentHttpError(400, "history contains an invalid message");
+    }
+    const rawRole = (candidate as { role?: unknown }).role;
+    const content = (candidate as { content?: unknown }).content;
+    if ((rawRole !== "user" && rawRole !== "assistant") || typeof content !== "string") {
+      throw new AgentHttpError(400, "history contains an invalid message");
+    }
+    const role: "user" | "assistant" = rawRole;
+    const trimmed = content.trim();
+    const maxCharacters = role === "user" ? 10_000 : 20_000;
+    if (!trimmed || trimmed.length > maxCharacters) {
+      throw new AgentHttpError(413, "history message is too large");
+    }
+    historyCharacters += trimmed.length;
+    return { role, content: trimmed };
+  });
+  if (historyCharacters > 100_000) {
+    throw new AgentHttpError(413, "history exceeds 100000 characters");
+  }
+  return {
+    message: message.trim(),
+    ...(history.length ? { history } : {}),
+    ...(mode || datasetIds || itemIds || manifestObjects
+      ? { scope: {
+        ...(mode ? { mode } : {}),
+        ...(datasetIds ? { datasetIds } : {}),
+        ...(itemIds ? { itemIds } : {}),
+        ...(manifestObjects ? { manifestObjects } : {}),
+      } }
+      : {}),
+  };
 }
 
 function emptyUsage(): AssistantMessage["usage"] {
@@ -67,7 +119,7 @@ function emptyUsage(): AssistantMessage["usage"] {
 }
 
 function historyMessage(
-  message: EdgeOneStoredMessage,
+  message: NonNullable<AgentRequestBody["history"]>[number],
   runtime: PlatformModelRuntime,
 ): AgentMessage | undefined {
   if (typeof message.content !== "string") return undefined;
@@ -91,23 +143,6 @@ function historyMessage(
     };
   }
   return undefined;
-}
-
-async function loadHistory(
-  context: EdgeOneAgentContext,
-  conversationId: string,
-  runtime: PlatformModelRuntime,
-): Promise<AgentMessage[]> {
-  if (!context.store) return [];
-  const stored = await context.store.getMessages({
-    conversationId,
-    limit: 20,
-    order: "desc",
-  });
-  return stored.reverse().flatMap((message) => {
-    const converted = historyMessage(message, runtime);
-    return converted ? [converted] : [];
-  });
 }
 
 async function defaultModelRuntime(
@@ -150,31 +185,111 @@ function eventPayload(event: PlatformAgentEvent): unknown {
   return event.usage;
 }
 
+function clientHistory(
+  messages: NonNullable<AgentRequestBody["history"]>,
+  runtime: PlatformModelRuntime,
+): AgentMessage[] {
+  return messages.flatMap((message) => {
+    const converted = historyMessage(message, runtime);
+    return converted ? [converted] : [];
+  });
+}
+
+function traceJson(value: unknown, maxChars = 4_000): string {
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(value);
+  } catch {
+    serialized = String(value);
+  }
+  return serialized.length <= maxChars
+    ? serialized
+    : `${serialized.slice(0, maxChars)}…`;
+}
+
+function traceResultSummary(value: unknown): string {
+  if (!value || typeof value !== "object") return traceJson(value, 1_000);
+  const details = "details" in value && value.details && typeof value.details === "object"
+    ? value.details as Record<string, unknown>
+    : value as Record<string, unknown>;
+  const summary = Object.fromEntries(
+    [
+      "strategy",
+      "available",
+      "needsSelection",
+      "total",
+      "searchedItemCount",
+      "loadedSearchBytes",
+      "chapterCount",
+      "scannedChapterCount",
+      "downloadedBytes",
+      "truncated",
+    ].flatMap((key) => (
+      typeof details[key] === "string"
+      || typeof details[key] === "number"
+      || typeof details[key] === "boolean"
+        ? [[key, details[key]]]
+        : []
+    )),
+  );
+  return traceJson(summary, 1_000);
+}
+
+async function traced<T>(
+  tracer: EdgeOneTracer | undefined,
+  name: string,
+  callback: (span: EdgeOneTraceSpan) => Promise<T>,
+  attributes?: Record<string, string | number | boolean>,
+): Promise<T> {
+  if (tracer?.span) return tracer.span(name, callback, attributes);
+  return callback({});
+}
+
+function tracedTools(tools: AgentTool[], tracer: EdgeOneTracer | undefined): AgentTool[] {
+  if (!tracer?.span) return tools;
+  return tools.map((tool) => {
+    const execute = tool.execute;
+    return {
+      ...tool,
+      execute: async (...args: Parameters<typeof execute>) => traced(
+        tracer,
+        `jojo.tool.${tool.name}`,
+        async (span) => {
+          const startedAt = Date.now();
+          try {
+            const output = await execute(...args);
+            span.setAttributes?.({
+              "tool.status": "ok",
+              "tool.duration_ms": Date.now() - startedAt,
+              "tool.result_summary": traceResultSummary(output),
+            });
+            return output;
+          } catch (error) {
+            span.setAttributes?.({
+              "tool.status": "error",
+              "tool.duration_ms": Date.now() - startedAt,
+              "error.type": error instanceof Error ? error.name : "Error",
+              "error.message": error instanceof Error ? error.message : String(error),
+            });
+            throw error;
+          }
+        },
+        {
+          "openinference.span.kind": "TOOL",
+          "tool.name": tool.name,
+          "tool.arguments": traceJson(args[1]),
+        },
+      ),
+    } as AgentTool;
+  });
+}
+
 function positiveEnvironmentInteger(
   value: string | undefined,
   fallback: number,
 ): number {
   const parsed = value === undefined ? fallback : Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-async function saveMessage(
-  context: EdgeOneAgentContext,
-  input: {
-    conversationId: string;
-    role: "user" | "assistant";
-    content: string;
-    user: AuthorizedAgentUser;
-    usage?: AgentUsage;
-  },
-): Promise<void> {
-  await context.store?.appendMessage({
-    conversationId: input.conversationId,
-    role: input.role,
-    content: input.content,
-    userId: input.user.id,
-    ...(input.usage ? { metadata: { usage: input.usage } } : {}),
-  });
 }
 
 export function createEdgeOneAgentHandler(
@@ -185,7 +300,6 @@ export function createEdgeOneAgentHandler(
     let user: AuthorizedAgentUser;
     let runtime: PlatformModelRuntime;
     try {
-      await (options.authorizeService ?? authorizeAgentServiceRequest)(context);
       body = requestBody(context.request.body);
       user = await (options.authorize ?? authorizeSupabaseUser)(context);
       runtime = await (
@@ -203,25 +317,17 @@ export function createEdgeOneAgentHandler(
         return jsonResponse(error.status, { error: error.message });
       }
       return jsonResponse(503, {
-        error: error instanceof Error ? error.message : "Agent configuration failed",
+        error: error instanceof Error ? error.message : "问答服务配置失败",
       });
     }
 
     const conversationId = context.conversation_id || crypto.randomUUID();
-    const storageConversationId = `${user.id}:${conversationId}`;
-    let history: AgentMessage[];
+    const history = clientHistory(body.history ?? [], runtime);
     let tools: AgentTool[];
     try {
-      history = await loadHistory(context, storageConversationId, runtime);
-      tools = await options.tools?.(context, user) ?? [];
-      await saveMessage(context, {
-        conversationId: storageConversationId,
-        role: "user",
-        content: body.message,
-        user,
-      });
+      tools = tracedTools(await options.tools?.(context, user) ?? [], context.tracer);
     } catch {
-      return jsonResponse(503, { error: "Agent conversation store unavailable" });
+      return jsonResponse(503, { error: "馆藏问答工具暂时不可用" });
     }
     const environment = context.env ?? process.env;
 
@@ -239,41 +345,58 @@ export function createEdgeOneAgentHandler(
             model: runtime.config.model,
             conversationId,
           }));
-          const result = await runPlatformAgent({
-            systemPrompt: systemPrompt(options, context),
-            prompt: body.message,
-            history,
-            tools,
-            model: runtime.model,
-            stream: modelRuntimeStream(runtime),
-            signal: context.request.signal,
-            reasoning: DEFAULT_CODEX_REASONING,
-            maxTurns: positiveEnvironmentInteger(
-              environment.JOJO_AGENT_MAX_TURNS,
-              8,
-            ),
-            maxToolCalls: positiveEnvironmentInteger(
-              environment.JOJO_AGENT_MAX_TOOL_CALLS,
-              20,
-            ),
-            onEvent(event) {
-              controller.enqueue(sseFrame(event.type, eventPayload(event)));
+          const result = await traced(
+            context.tracer,
+            "jojo.rag_agent",
+            async (span) => {
+              const output = await runPlatformAgent({
+                systemPrompt: systemPrompt(options, context),
+                prompt: body.message,
+                history,
+                sessionId: conversationId,
+                tools,
+                model: runtime.model,
+                stream: modelRuntimeStream(runtime),
+                signal: context.request.signal,
+                reasoning: DEFAULT_CODEX_REASONING,
+                maxTurns: positiveEnvironmentInteger(
+                  environment.JOJO_AGENT_MAX_TURNS,
+                  8,
+                ),
+                maxToolCalls: positiveEnvironmentInteger(
+                  environment.JOJO_AGENT_MAX_TOOL_CALLS,
+                  20,
+                ),
+                onEvent(event) {
+                  controller.enqueue(sseFrame(event.type, eventPayload(event)));
+                },
+              });
+              span.setAttributes?.({
+                "agent.status": "ok",
+                "agent.turns": output.turns,
+                "agent.tool_calls": output.toolCalls,
+                "agent.duration_ms": output.durationMs,
+                "llm.token_count.total": output.usage.totalTokens,
+                "llm.token_count.prompt": output.usage.inputTokens,
+                "llm.token_count.completion": output.usage.outputTokens,
+              });
+              return output;
             },
-          });
-          await saveMessage(context, {
-            conversationId: storageConversationId,
-            role: "assistant",
-            content: result.answer,
-            user,
-            usage: result.usage,
-          });
+            {
+              "openinference.span.kind": "AGENT",
+              "agent.name": "jojo-rag",
+              "agent.conversation_id": conversationId,
+              "agent.scope_mode": body.scope?.mode ?? "all",
+              "agent.history_messages": history.length,
+            },
+          );
           controller.enqueue(sseFrame("done", {
             conversationId,
             usage: result.usage,
           }));
         } catch (error) {
           controller.enqueue(sseFrame("error", {
-            message: error instanceof Error ? error.message : "Agent run failed",
+            message: error instanceof Error ? error.message : "回答生成失败",
             name: error instanceof Error ? error.name : "Error",
           }));
           controller.enqueue(sseFrame("done", {
@@ -290,15 +413,9 @@ export function createEdgeOneAgentHandler(
   };
 }
 
-export function createEdgeOneAgentHealthHandler(
-  options: Pick<CreateEdgeOneAgentHandlerOptions, "authorizeService"> = {},
-) {
+export function createEdgeOneAgentHealthHandler() {
   return async function onRequest(context: EdgeOneAgentContext): Promise<Response> {
     try {
-      await (options.authorizeService ?? authorizeAgentServiceRequest)(
-        context,
-        { method: "GET" },
-      );
       const runtime = await defaultModelRuntime(context);
       return jsonResponse(200, {
         ok: true,
@@ -314,7 +431,7 @@ export function createEdgeOneAgentHealthHandler(
       return jsonResponse(200, {
         ok: false,
         configured: false,
-        error: error instanceof Error ? error.message : "Agent configuration failed",
+        error: error instanceof Error ? error.message : "问答服务配置失败",
       });
     }
   };

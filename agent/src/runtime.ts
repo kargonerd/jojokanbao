@@ -11,6 +11,7 @@ import {
   type PlatformAgentResult,
   type RunPlatformAgentOptions,
 } from "./types";
+import { citationIdForLocation } from "./citations";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -20,16 +21,32 @@ function stringField(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
-function sourceReference(value: unknown): AgentSourceReference | undefined {
+function sourceReference(
+  value: unknown,
+  inherited: Record<string, unknown> = {},
+): AgentSourceReference | undefined {
   if (!isRecord(value)) return undefined;
   const targetId = stringField(value.targetId) ?? stringField(value.chapterId);
   if (!targetId) return undefined;
   const source = isRecord(value.source) ? value.source : undefined;
   const excerpt = stringField(value.text);
+  const citationId = stringField(value.citationId) ?? citationIdForLocation(value);
   return {
-    ...(stringField(value.datasetId) ? { datasetId: stringField(value.datasetId) } : {}),
-    ...(stringField(value.itemId) ? { itemId: stringField(value.itemId) } : {}),
+    ...(citationId ? { citationId } : {}),
+    ...(stringField(value.datasetId) || stringField(inherited.datasetId)
+      ? { datasetId: stringField(value.datasetId) ?? stringField(inherited.datasetId) }
+      : {}),
+    ...(stringField(value.itemId) || stringField(inherited.itemId)
+      ? { itemId: stringField(value.itemId) ?? stringField(inherited.itemId) }
+      : {}),
+    ...(stringField(value.datasetTitle) || stringField(inherited.datasetTitle)
+      ? { datasetTitle: stringField(value.datasetTitle) ?? stringField(inherited.datasetTitle) }
+      : {}),
+    ...(stringField(value.itemTitle) || stringField(inherited.itemTitle)
+      ? { itemTitle: stringField(value.itemTitle) ?? stringField(inherited.itemTitle) }
+      : {}),
     targetId,
+    ...(stringField(value.anchorId) ? { anchorId: stringField(value.anchorId) } : {}),
     ...(stringField(value.targetTitle) || stringField(value.title)
       ? { title: stringField(value.targetTitle) ?? stringField(value.title) }
       : {}),
@@ -38,6 +55,36 @@ function sourceReference(value: unknown): AgentSourceReference | undefined {
       ? { fragmentObject: stringField(value.fragmentObject) ?? stringField(source?.fragmentObject) }
       : {}),
   };
+}
+
+function storeSourceReference(
+  references: Map<string, AgentSourceReference>,
+  reference: AgentSourceReference,
+): void {
+  const key = [
+    reference.datasetId || "",
+    reference.itemId || "",
+    reference.targetId,
+    reference.anchorId || "",
+  ].join("\0");
+  references.set(key, { ...references.get(key), ...reference });
+}
+
+export function answerSourceReferences(
+  answer: string,
+  references: AgentSourceReference[],
+): AgentSourceReference[] {
+  const citationIds = [...answer.matchAll(/\[cite:([A-Za-z0-9_-]+)\]/g)]
+    .map((match) => match[1])
+    .filter((citationId): citationId is string => Boolean(citationId));
+  if (!citationIds.length) return references;
+  const byCitationId = new Map(references.flatMap((reference) => reference.citationId
+    ? [[reference.citationId, reference] as const]
+    : []));
+  return [...new Set(citationIds)].flatMap((citationId) => {
+    const reference = byCitationId.get(citationId);
+    return reference ? [reference] : [];
+  });
 }
 
 export function toolSourceReferences(result: unknown): AgentSourceReference[] {
@@ -50,9 +97,9 @@ export function toolSourceReferences(result: unknown): AgentSourceReference[] {
   ];
   const references = new Map<string, AgentSourceReference>();
   for (const candidate of candidates) {
-    const reference = sourceReference(candidate);
+    const reference = sourceReference(candidate, details);
     if (!reference) continue;
-    references.set(`${reference.itemId || ""}:${reference.targetId}:${reference.fragmentObject || ""}`, reference);
+    storeSourceReference(references, reference);
     if (references.size >= 8) break;
   }
   return [...references.values()];
@@ -149,7 +196,7 @@ function terminalError(stopReason: "error" | "aborted", message?: string): Error
 }
 
 function budgetError(maxTurns: number): Error {
-  const error = new Error(`agent turn budget exceeded (${maxTurns})`);
+  const error = new Error(`本次回答步骤过多，请缩小问题范围后重试（${maxTurns}）`);
   error.name = "AgentBudgetError";
   return error;
 }
@@ -176,12 +223,14 @@ export async function runPlatformAgent(
   let turns = 0;
   let toolCalls = 0;
   let failure: Error | undefined;
+  const sourceReferences = new Map<string, AgentSourceReference>();
 
   if (options.signal?.aborted) {
-    throw terminalError("aborted", "agent run aborted before it started");
+    throw terminalError("aborted", "回答已停止");
   }
 
   const agent = new Agent({
+    sessionId: options.sessionId,
     initialState: {
       systemPrompt: options.systemPrompt,
       messages: initialMessages,
@@ -225,6 +274,9 @@ export async function runPlatformAgent(
 
     if (event.type === "tool_execution_end") {
       const references = toolSourceReferences(event.result);
+      for (const reference of references) {
+        storeSourceReference(sourceReferences, reference);
+      }
       await options.onEvent?.({
         type: "tool_end",
         callId: event.toolCallId,
@@ -287,8 +339,10 @@ export async function runPlatformAgent(
       && Boolean(assistantText(message)),
     );
 
+  const answerContent = answer ? assistantText(answer) : "";
   return {
-    answer: answer ? assistantText(answer) : "",
+    answer: answerContent,
+    references: answerSourceReferences(answerContent, [...sourceReferences.values()]),
     messages,
     usage: publicUsage(usage),
     turns,

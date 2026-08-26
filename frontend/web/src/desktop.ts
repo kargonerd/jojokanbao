@@ -12,6 +12,7 @@ export {
   type AppNavigationItem,
 } from "./shell/AppHeader";
 export { AppLayout } from "./shell/AppLayout";
+export { BookshelfPage } from "./library/BookshelfPage";
 export { LibraryPage } from "./library/LibraryPage";
 export { PERIODICALS } from "./library/catalog";
 export { Layout as ArchiveLayout } from "./archive/components/Layout";

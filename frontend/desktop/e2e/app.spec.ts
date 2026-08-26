@@ -27,7 +27,7 @@ test.describe('Desktop renderer', () => {
   test('account entry uses the same shared Web state', async ({ page }) => {
     await page.goto('/account');
 
-    await expect(page.getByRole('heading', { name: '登录服务未配置' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '登录暂不可用' })).toBeVisible();
     await expect(page.getByRole('link', { name: /返回首页/ })).toHaveAttribute('href', '/');
   });
 

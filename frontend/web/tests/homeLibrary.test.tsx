@@ -24,6 +24,10 @@ vi.mock("../src/rag/content", () => ({
   loadBookCoverUrl: catalogMocks.loadBookCoverUrl,
 }));
 
+vi.mock("../src/rag/pages/ReaderPage", () => ({
+  ReaderPage: () => <h1>书籍阅读器</h1>,
+}));
+
 vi.mock("../src/rag/readerData", async (importOriginal) => ({
   ...await importOriginal<typeof import("../src/rag/readerData")>(),
   loadBookshelf: shelfMocks.loadBookshelf,
@@ -57,12 +61,15 @@ beforeEach(() => {
   shelfMocks.setBookshelf.mockResolvedValue(undefined);
   catalogMocks.list.mockResolvedValue([
     { id: "mao", title: "毛泽东文集", type: "book-series", sources_count: 2 },
+    { id: "solo", title: "青年政治经济学读本", type: "book", sources_count: 1 },
     { id: "paper-data", title: "报刊测试集", type: "newspaper", sources_count: 1 },
   ]);
-  catalogMocks.getSources.mockResolvedValue([
-    { id: "mao-1", itemKey: "volume-1", title: "毛泽东文集 第一卷", published: true },
-    { id: "mao-2", itemKey: "volume-2", title: "毛泽东文集 第二卷", published: true },
-  ]);
+  catalogMocks.getSources.mockImplementation(async (datasetId: string) => datasetId === "solo"
+    ? [{ id: "solo-full", itemKey: "full-book", title: "青年政治经济学读本", published: true }]
+    : [
+        { id: "mao-1", itemKey: "volume-1", title: "毛泽东文集 第一卷", published: true },
+        { id: "mao-2", itemKey: "volume-2", title: "毛泽东文集 第二卷", published: true },
+      ]);
 });
 
 afterEach(() => {
@@ -77,6 +84,7 @@ describe("app homepage", () => {
     const navigation = screen.getByRole("navigation", { name: "主导航" });
     expect(navigation).toBeTruthy();
     expect(screen.getByRole("link", { name: "首页" }).className).toContain("is-active");
+    expect(within(navigation).queryByRole("link", { name: "书架" })).toBeNull();
     expect(within(navigation).getByRole("link", { name: "资料库" })).toBeTruthy();
     expect(within(navigation).getByRole("link", { name: "搜索" })).toBeTruthy();
     expect(within(navigation).getByRole("link", { name: "关于" })).toBeTruthy();
@@ -98,7 +106,7 @@ describe("app homepage", () => {
 
     const menu = await screen.findByRole("menu", { name: "读者菜单" });
     expect(within(menu).getByRole("menuitem", { name: /通知/ }).getAttribute("href")).toBe("/notifications");
-    expect(within(menu).getByRole("menuitem", { name: /我的书架/ }).getAttribute("href")).toBe("/#book-shelf-title");
+    expect(within(menu).getByRole("menuitem", { name: /我的书架/ }).getAttribute("href")).toBe("/bookshelf");
     expect(within(menu).getByRole("menuitem", { name: "账号" }).getAttribute("href")).toBe("/account");
     expect(within(menu).getByRole("menuitem", { name: "退出登录" })).toBeTruthy();
     expect(within(menu).queryByText("JOJO 读者账号")).toBeNull();
@@ -129,14 +137,49 @@ describe("app homepage", () => {
     await waitFor(() => expect(window.location.pathname).toBe("/library/mao"));
   });
 
-  it("shows a separate personal bookshelf without the removed shortcut blocks", () => {
+  it("keeps the homepage focused on continuing to read", () => {
     renderAt("/");
 
-    expect(screen.getByRole("heading", { name: "我的书架" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "继续阅读" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "我的书架" })).toBeNull();
+    expect(screen.getByRole("link", { name: "我的书架" }).getAttribute("href")).toBe("/bookshelf");
+    expect(shelfMocks.loadBookshelf).not.toHaveBeenCalled();
+  });
+
+  it("opens the personal bookshelf as a separate page", () => {
+    renderAt("/bookshelf");
+
+    expect(screen.getByRole("heading", { name: "书架" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "我的书架" })).toBeNull();
     expect(screen.getByText("登录后查看你的书架")).toBeTruthy();
-    expect(screen.getByRole("link", { name: /^登录\s*→$/ }).getAttribute("href")).toBe("/account?returnTo=/");
-    expect(screen.queryByLabelText("资料库快捷入口")).toBeNull();
-    expect(screen.queryByText("JOJO READING ROOM")).toBeNull();
+    expect(screen.getByRole("link", { name: /^登录\s*→$/ }).getAttribute("href")).toBe("/account?returnTo=%2Fbookshelf");
+    expect(within(screen.getByRole("navigation", { name: "主导航" })).queryByRole("link", { name: "书架" })).toBeNull();
+  });
+
+  it("loads and manages the signed-in reader's bookshelf", async () => {
+    shelfMocks.loadBookshelf.mockResolvedValue([
+      { datasetId: "mao", itemId: "volume-1", title: "毛泽东文集 第一卷" },
+    ]);
+
+    renderAt("/bookshelf");
+    act(() => useAccountSessionStore.setState({ initialized: true, userId: "reader-1", displayName: "测试读者" }));
+    act(() => useFeatureFlagStore.setState((state) => ({
+      ...state,
+      initialized: true,
+      flags: { ...state.flags, "library.bookshelf": true },
+    })));
+
+    const book = await screen.findByRole("link", { name: /毛泽东文集 第一卷/ });
+    expect(book.getAttribute("href")).toBe("/book/mao/volume-1");
+    expect(screen.queryByText("1 项收藏，最近加入的排在前面")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "移出书架：毛泽东文集 第一卷" }));
+    await waitFor(() => expect(shelfMocks.setBookshelf).toHaveBeenCalledWith({
+      datasetId: "mao",
+      itemId: "volume-1",
+      title: "毛泽东文集 第一卷",
+      added: false,
+    }));
+    expect(await screen.findByText("书架还是空的")).toBeTruthy();
   });
 
   it("keeps search and feedback inside the new app navigation", () => {
@@ -202,10 +245,23 @@ describe("app library", () => {
     expect(catalogMocks.getSources).toHaveBeenCalledWith("mao");
   });
 
+  it("distinguishes single books from collections and opens a single book in one click", async () => {
+    renderAt("/library?type=book");
+
+    const single = await screen.findByRole("link", { name: /青年政治经济学读本/ });
+    const collection = screen.getByRole("link", { name: /毛泽东文集/ });
+    expect(within(single).getByText("单册 · 直接阅读")).toBeTruthy();
+    expect(within(collection).getByText("2 册 · 选择分册")).toBeTruthy();
+
+    fireEvent.click(single);
+    await waitFor(() => expect(window.location.pathname).toBe("/book/solo/full-book"));
+    expect(await screen.findByRole("heading", { name: "书籍阅读器" })).toBeTruthy();
+  });
+
   it("sends signed-out readers to login before changing the bookshelf", async () => {
     renderAt("/library?type=book");
 
-    const addButton = await screen.findByRole("button", { name: "登录后加入书架：毛泽东文集" });
+    const addButton = await screen.findByRole("button", { name: "登录后加入书架：青年政治经济学读本" });
     fireEvent.click(addButton);
 
     await waitFor(() => expect(window.location.pathname).toBe("/account"));
@@ -222,22 +278,42 @@ describe("app library", () => {
       flags: { ...state.flags, "library.bookshelf": true },
     })));
 
-    const addButton = await screen.findByRole("button", { name: "加入书架：毛泽东文集" });
+    const addButton = await screen.findByRole("button", { name: "加入书架：青年政治经济学读本" });
     fireEvent.click(addButton);
     await waitFor(() => expect(shelfMocks.setBookshelf).toHaveBeenCalledWith({
-      datasetId: "mao",
-      itemId: "volume-1",
-      title: "毛泽东文集 第一卷",
+      datasetId: "solo",
+      itemId: "full-book",
+      title: "青年政治经济学读本",
       added: true,
     }));
-    const removeButton = await screen.findByRole("button", { name: "移出书架：毛泽东文集" });
+    const removeButton = await screen.findByRole("button", { name: "移出书架：青年政治经济学读本" });
     fireEvent.click(removeButton);
     await waitFor(() => expect(shelfMocks.setBookshelf).toHaveBeenLastCalledWith({
-      datasetId: "mao",
-      itemId: "volume-1",
-      title: "毛泽东文集 第一卷",
+      datasetId: "solo",
+      itemId: "full-book",
+      title: "青年政治经济学读本",
       added: false,
     }));
+  });
+
+  it("lets readers add individual volumes from a multi-volume collection", async () => {
+    renderAt("/library/mao");
+    act(() => useAccountSessionStore.setState({ initialized: true, userId: "reader-1", displayName: "测试读者" }));
+    act(() => useFeatureFlagStore.setState((state) => ({
+      ...state,
+      initialized: true,
+      flags: { ...state.flags, "library.bookshelf": true },
+    })));
+
+    const addSecondVolume = await screen.findByRole("button", { name: "加入书架：毛泽东文集 第二卷" });
+    fireEvent.click(addSecondVolume);
+    await waitFor(() => expect(shelfMocks.setBookshelf).toHaveBeenCalledWith({
+      datasetId: "mao",
+      itemId: "volume-2",
+      title: "毛泽东文集 第二卷",
+      added: true,
+    }));
+    expect(await screen.findByRole("button", { name: "移出书架：毛泽东文集 第二卷" })).toBeTruthy();
   });
 
   it("removes the redundant library heading, date and search controls", async () => {

@@ -10,10 +10,7 @@ async function rpc(name: string, params: Record<string, unknown> = {}) {
 }
 
 function resultOrThrow<T>(data: T | null, error: { code?: string; message?: string } | null, fallback: string): T {
-  if (error) {
-    const rpcMissing = error.code === "PGRST202" || error.message?.includes("Could not find the function");
-    throw new Error(rpcMissing ? "通知服务尚未完成数据库配置，请先部署最新 Supabase migration。" : error.message || fallback);
-  }
+  if (error) throw new Error(fallback);
   if (data === null) throw new Error(fallback);
   return data;
 }

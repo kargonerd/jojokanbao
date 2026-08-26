@@ -31,9 +31,13 @@ export interface AgentUsage {
 export type PlatformAgentStatus = "placeholder" | "available";
 
 export interface AgentSourceReference {
+  citationId?: string;
   datasetId?: string;
   itemId?: string;
+  datasetTitle?: string;
+  itemTitle?: string;
   targetId: string;
+  anchorId?: string;
   title?: string;
   excerpt?: string;
   fragmentObject?: string;
@@ -66,6 +70,8 @@ export interface RunPlatformAgentOptions {
   prompt: string | AgentMessage[];
   /** Existing conversation messages visible to the model. */
   history?: AgentMessage[];
+  /** Stable client conversation id forwarded to cache-aware model providers. */
+  sessionId?: string;
   /** Product-owned capabilities, such as document search or news lookup. */
   tools?: AgentTool[];
   /** Model selection remains an application/deployment concern. */
@@ -100,6 +106,8 @@ export interface RunPlatformAgentOptions {
 
 export interface PlatformAgentResult {
   answer: string;
+  /** Deduplicated source locations emitted by successful tool calls. */
+  references: AgentSourceReference[];
   /** Messages produced by this run, including the supplied prompt but excluding prior history. */
   messages: AgentMessage[];
   usage: AgentUsage;

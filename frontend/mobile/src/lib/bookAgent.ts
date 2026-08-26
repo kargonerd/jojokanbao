@@ -1,5 +1,5 @@
 const AGENT_URL = process.env.EXPO_PUBLIC_AGENT_API_URL?.trim()
-  || "https://agent-global.jojokanbao.cn/gateway/ask";
+  || "https://agent-global.jojokanbao.cn/rag";
 
 export interface MobileBookAgentRequest {
   datasetId: string;
@@ -7,21 +7,38 @@ export interface MobileBookAgentRequest {
   manifestObject: string;
   question: string;
   conversationId?: string;
+  history?: MobileBookAgentMessage[];
 }
 
 export interface MobileBookAgentReference {
   datasetId?: string;
   itemId?: string;
   targetId?: string;
+  anchorId?: string;
   title?: string;
   excerpt?: string;
   fragmentObject?: string;
+}
+
+export interface MobileBookAgentMessage {
+  role: "user" | "assistant";
+  content: string;
+  references?: MobileBookAgentReference[];
 }
 
 type AgentEvent = Record<string, unknown>;
 
 function conversationId(): string {
   return `conv_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`.slice(0, 36);
+}
+
+async function mobileAccessToken(): Promise<string> {
+  const { mobileAuthClient } = await import("../account/auth");
+  const { data, error } = await mobileAuthClient.auth.getSession();
+  if (error) throw error;
+  const token = data.session?.access_token;
+  if (!token) throw new Error("请先在「我」中登录后使用书内 AI");
+  return token;
 }
 
 export function parseAgentSseFrames(
@@ -57,11 +74,7 @@ export function askMobileBookAgent(
   const references = new Map<string, MobileBookAgentReference>();
 
   void (async () => {
-    const { mobileAuthClient } = await import("../account/auth");
-    const { data, error } = await mobileAuthClient.auth.getSession();
-    if (error) throw error;
-    const token = data.session?.access_token;
-    if (!token) throw new Error("请先在「我」中登录后使用书内 AI");
+    const token = await mobileAccessToken();
     const response = await fetch(AGENT_URL, {
       method: "POST",
       headers: {
@@ -71,7 +84,12 @@ export function askMobileBookAgent(
       },
       body: JSON.stringify({
         message: request.question,
+        history: (request.history ?? []).slice(-20).map((message) => ({
+          role: message.role,
+          content: message.content.replace(/\[cite:[A-Za-z0-9_-]+\]/g, ""),
+        })),
         scope: {
+          mode: "selected",
           datasetIds: [request.datasetId],
           itemIds: [request.itemId],
           manifestObjects: [request.manifestObject],
@@ -81,9 +99,9 @@ export function askMobileBookAgent(
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({})) as { error?: string };
-      throw new Error(payload.error || `Agent 服务返回 HTTP ${response.status}`);
+      throw new Error(payload.error || `问答服务返回 HTTP ${response.status}`);
     }
-    if (!response.body) throw new Error("Agent 服务没有返回数据流");
+    if (!response.body) throw new Error("问答服务没有返回数据");
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -95,11 +113,11 @@ export function askMobileBookAgent(
         for (const candidate of payload.references) {
           if (typeof candidate !== "object" || candidate === null) continue;
           const reference = candidate as MobileBookAgentReference;
-          const key = `${reference.itemId ?? ""}:${reference.targetId ?? ""}:${reference.fragmentObject ?? ""}`;
+          const key = `${reference.itemId ?? ""}:${reference.targetId ?? ""}:${reference.anchorId ?? ""}:${reference.fragmentObject ?? ""}`;
           references.set(key, reference);
         }
       }
-      if (eventName === "error") throw new Error(typeof payload.message === "string" ? payload.message : "Agent 流式请求失败");
+      if (eventName === "error") throw new Error(typeof payload.message === "string" ? payload.message.replace(/\bAgent\b/gi, "问答服务") : "回答生成失败，请重试");
       if (eventName === "done") doneEvent = true;
     };
     while (!doneEvent) {

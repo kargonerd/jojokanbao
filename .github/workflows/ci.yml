@@ -319,13 +319,14 @@ jobs:
           test ! -e .edgeone/web-deploy/cloud-functions/requirements-dev.txt
           node -e 'const config = require("./.edgeone/web-deploy/edgeone.json"); if ("devCommand" in config) process.exit(1)'
           node infrastructure/edgeone/prepare-agent-deploy.mjs
-          test -f .edgeone/agent-deploy/agents/jojo/index.ts
-          test -f .edgeone/agent-deploy/agents/jojo/health.ts
+          test -f .edgeone/agent-deploy/agents/rag/index.ts
+          test -f .edgeone/agent-deploy/agents/rag/health.ts
           test -f .edgeone/agent-deploy/packages/agent/src/runtime.ts
           test -f .edgeone/agent-deploy/packages/agent/src/edgeone/handler.ts
           test -f .edgeone/agent-deploy/packages/content/src/jox.ts
           node -e 'const p=require("./.edgeone/agent-deploy/packages/agent/package.json"); if(p.dependencies["@jojo/content"]!=="file:../content") process.exit(1)'
           test -f '.edgeone/agent-deploy/cloud-functions/gateway/[[default]].ts'
+          test -f .edgeone/agent-deploy/middleware.ts
           test -f .edgeone/agent-deploy/edgeone.json
           test -f .edgeone/agent-deploy/index.html
           test -f .edgeone/agent-deploy/package.json

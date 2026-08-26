@@ -3,7 +3,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import JSZip from "jszip";
 import { afterEach, describe, expect, it } from "vitest";
-import { gunzipJoxJson, resolveJoxObject, type JojoBookSearchIndex, type JojoItemManifest } from "@jojo/content";
+import {
+  gunzipJoxJson,
+  resolveJoxObject,
+  type JojoBookSearchIndex,
+  type JojoCatalog,
+  type JojoDatasetIndex,
+  type JojoItemManifest,
+} from "@jojo/content";
 import { buildContentPipeline } from "../src";
 import { validatePipelineOutput } from "../src/validate-output";
 
@@ -70,6 +77,20 @@ describe("approved B2 layout", () => {
     expect(await exists(path.join(output, "raw", "catalog.json"))).toBe(false);
     expect(await exists(path.join(output, "raw", "epub", "index.json"))).toBe(false);
     expect(await exists(path.join(output, "delivery", "content", "books", "ce-shi-shu", "index.jox"))).toBe(true);
+    const catalog = await gunzipJoxJson<JojoCatalog>(
+      new Uint8Array(await readFile(path.join(output, "delivery", "catalog.jox"))),
+      "catalog.jox",
+    );
+    expect(catalog.datasets[0]).toMatchObject({
+      datasetId: "ce-shi-shu",
+      aiEnabled: true,
+    });
+    const datasetIndexObject = catalog.datasets[0]!.indexObject;
+    const datasetIndex = await gunzipJoxJson<JojoDatasetIndex>(
+      new Uint8Array(await readFile(path.join(output, "delivery", ...datasetIndexObject.split("/")))),
+      datasetIndexObject,
+    );
+    expect(datasetIndex.aiEnabled).toBe(true);
     const manifestObject = report.itemsBuilt[0]!.manifestObject;
     const manifest = await gunzipJoxJson<JojoItemManifest>(
       new Uint8Array(await readFile(path.join(output, "delivery", ...manifestObject.split("/")))),

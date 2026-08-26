@@ -9,7 +9,10 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import { ReaderEnvironment } from "../components/ReaderEnvironment";
 import { IS_EINK_RELEASE } from "../config/appVariant";
-import { askMobileBookAgent, type MobileBookAgentReference } from "../lib/bookAgent";
+import {
+  askMobileBookAgent,
+  type MobileBookAgentReference,
+} from "../lib/bookAgent";
 import { createBookDocument } from "../lib/bookDocument";
 import {
   createBookReaderApplyAnnotationScript,
@@ -69,6 +72,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const webViewRef = useRef<WebView>(null);
   const pendingLocateRef = useRef<PendingLocate | undefined>(undefined);
   const cancelAgentRef = useRef<(() => void) | undefined>(undefined);
+  const aiBookRouteRef = useRef("");
 
   const textScale = useMobileStore((state) => state.textScale);
   const setTextScale = useMobileStore((state) => state.setTextScale);
@@ -131,6 +135,20 @@ export function BookReaderScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     let active = true;
+    const routeBook = `${datasetId}\0${itemKey}`;
+    const bookChanged = aiBookRouteRef.current !== routeBook;
+    aiBookRouteRef.current = routeBook;
+    if (bookChanged) {
+      cancelAgentRef.current?.();
+      cancelAgentRef.current = undefined;
+      setAiMessages([]);
+      setAiStream("");
+      setAiError("");
+      setAiLoading(false);
+      setConversationId(undefined);
+    }
+    setLoaded(undefined);
+    setChapter(undefined);
     setLoading(true);
     setError("");
     void loadMobileBookItem(datasetId, itemKey)
@@ -337,7 +355,14 @@ export function BookReaderScreen({ route, navigation }: Props) {
     if (!loaded || !reference.targetId) return;
     setReaderNotice("");
     if (!reference.itemId || reference.itemId === loaded.volume.itemId) {
-      if (reference.excerpt) locateText(reference.targetId, reference.excerpt);
+      if (reference.anchorId) {
+        if (reference.targetId === activeChapterId && chapter) {
+          webViewRef.current?.injectJavaScript(createBookReaderRevealAnchorScript(reference.anchorId));
+        } else {
+          pendingLocateRef.current = { chapterId: reference.targetId, anchorId: reference.anchorId };
+          chooseChapter(reference.targetId);
+        }
+      } else if (reference.excerpt) locateText(reference.targetId, reference.excerpt);
       else chooseChapter(reference.targetId);
       return;
     }
@@ -351,6 +376,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
         title: volume.title,
         bookTitle: loaded.book.title,
         initialChapterId: reference.targetId,
+        initialAnchorId: reference.anchorId,
         initialText: reference.excerpt,
         returnToReference: true,
       });
@@ -417,6 +443,16 @@ export function BookReaderScreen({ route, navigation }: Props) {
       setSearching(false);
     }
   }
+  function clearAiConversation() {
+    setConversationId(undefined);
+    setAiMessages([]);
+    setAiStream("");
+    setAiError("");
+  }
+  function startNewAiConversation() {
+    if (aiLoading) return;
+    clearAiConversation();
+  }
   function askAi(question: string) {
     const value = question.trim();
     if (!loaded || !value || aiLoading) return;
@@ -432,6 +468,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
       manifestObject: loaded.manifestObject,
       question: value,
       conversationId,
+      history: aiMessages,
     }, (chunk) => {
       answer += chunk;
       setAiStream(answer);
@@ -516,13 +553,21 @@ export function BookReaderScreen({ route, navigation }: Props) {
         </View> : null}
 
         {activeTool === "ai" ? <View style={[styles.toolSheet, styles.fullSheet, { top: insets.top + 64, bottom: sheetBottom, borderColor: theme.ruleDark, backgroundColor: theme.paper }]}>
-          <SheetHeader title="书内 AI" meta={title} theme={theme} />
-          <ScrollView style={styles.aiHistory} contentContainerStyle={styles.aiHistoryContent} keyboardDismissMode="on-drag">
-            {aiMessages.map((message, index) => <View key={`${message.role}:${index}`} style={[styles.aiMessage, message.role === "user" ? styles.aiUser : styles.aiAssistant, { borderColor: theme.red }]}><Text style={[styles.aiMessageText, { color: theme.ink, fontFamily: theme.serif }]}>{message.content}</Text>{message.references?.some((reference) => reference.targetId) ? <View style={styles.aiReferences}>{message.references.filter((reference) => reference.targetId).slice(0, 6).map((reference, referenceIndex) => <Pressable key={`${reference.itemId ?? ""}:${reference.targetId}:${referenceIndex}`} onPress={() => void openAgentReference(reference)} style={[styles.aiReferenceButton, { borderColor: theme.rule }]}><Text numberOfLines={1} style={[styles.aiReferenceText, { color: theme.red, fontFamily: theme.sans }]}>{reference.title || `原文位置 ${referenceIndex + 1}`}</Text></Pressable>)}</View> : null}</View>)}
-            {aiLoading ? <View style={[styles.aiMessage, styles.aiAssistant, { borderColor: theme.red }]}>{!IS_EINK_RELEASE && !aiStream ? <ActivityIndicator size="small" color={theme.red} /> : null}<Text style={[styles.aiMessageText, { color: theme.ink, fontFamily: theme.serif }]}>{aiStream || "正在查找原文"}</Text></View> : null}
-            {aiError ? <PanelError message={aiError} theme={theme} /> : null}
-          </ScrollView>
-          <View style={[styles.aiComposer, { borderTopColor: theme.rule }]}><TextInput value={aiInput} onChangeText={setAiInput} placeholder="问这本书……" placeholderTextColor={theme.muted} multiline style={[styles.aiInput, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.serif }]} /><Pressable disabled={!aiInput.trim() || aiLoading} onPress={() => askAi(aiInput)} style={styles.aiSubmit}><Text style={[styles.searchSubmit, { color: theme.red, opacity: !aiInput.trim() || aiLoading ? 0.35 : 1, fontFamily: theme.sans }]}>提问 →</Text></Pressable></View>
+          <AiPanelHeader
+            title={title}
+            disabled={aiLoading}
+            onNewConversation={startNewAiConversation}
+            theme={theme}
+          />
+          <>
+            <ScrollView style={styles.aiHistory} contentContainerStyle={styles.aiHistoryContent} keyboardDismissMode="on-drag">
+              {aiMessages.length === 0 && !aiLoading ? <View style={[styles.aiEmpty, { borderLeftColor: theme.red }]}><Text style={[styles.aiEmptyTitle, { color: theme.ink, fontFamily: theme.serif }]}>从这本书开始问</Text><Text style={[styles.aiEmptyText, { color: theme.muted, fontFamily: theme.sans }]}>回答会引用原文，并可继续追问。</Text></View> : null}
+              {aiMessages.map((message, index) => <View key={`${message.role}:${index}`} style={[styles.aiMessage, message.role === "user" ? styles.aiUser : styles.aiAssistant, { borderColor: theme.red }]}><Text style={[styles.aiMessageText, { color: theme.ink, fontFamily: theme.serif }]}>{message.content}</Text>{message.references?.some((reference) => reference.targetId) ? <View style={styles.aiReferences}>{message.references.filter((reference) => reference.targetId).slice(0, 6).map((reference, referenceIndex) => <Pressable key={`${reference.itemId ?? ""}:${reference.targetId}:${referenceIndex}`} onPress={() => void openAgentReference(reference)} style={[styles.aiReferenceButton, { borderColor: theme.rule }]}><Text numberOfLines={1} style={[styles.aiReferenceText, { color: theme.red, fontFamily: theme.sans }]}>{`[${referenceIndex + 1}] ${reference.title || "原文位置"}`}</Text></Pressable>)}</View> : null}</View>)}
+              {aiLoading ? <View style={[styles.aiMessage, styles.aiAssistant, { borderColor: theme.red }]}>{!IS_EINK_RELEASE && !aiStream ? <ActivityIndicator size="small" color={theme.red} /> : null}<Text style={[styles.aiMessageText, { color: theme.ink, fontFamily: theme.serif }]}>{aiStream || "正在查找原文"}</Text></View> : null}
+              {aiError ? <PanelError message={aiError} theme={theme} /> : null}
+            </ScrollView>
+            <View style={[styles.aiComposer, { borderTopColor: theme.rule }]}><TextInput value={aiInput} onChangeText={setAiInput} placeholder="问这本书……" placeholderTextColor={theme.muted} multiline style={[styles.aiInput, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.serif }]} /><Pressable disabled={!aiInput.trim() || aiLoading} onPress={() => askAi(aiInput)} style={styles.aiSubmit}><Text style={[styles.searchSubmit, { color: theme.red, opacity: !aiInput.trim() || aiLoading ? 0.35 : 1, fontFamily: theme.sans }]}>提问 →</Text></Pressable></View>
+          </>
         </View> : null}
 
         {activeTool === "progress" ? <View style={[styles.toolSheet, styles.compactSheet, { bottom: sheetBottom, borderColor: theme.ruleDark, backgroundColor: theme.paper }]}>
@@ -572,6 +617,14 @@ export function BookReaderScreen({ route, navigation }: Props) {
 function SheetHeader({ title, meta, theme, accentMeta = false }: { title: string; meta: string; theme: MobileTheme; accentMeta?: boolean }) {
   return <View style={[styles.sheetHeader, { borderBottomColor: theme.rule }]}><Text style={[styles.sheetTitle, { color: theme.ink, fontFamily: theme.serif }]}>{title}</Text><Text numberOfLines={1} style={[styles.sheetMeta, { color: accentMeta ? theme.red : theme.muted, fontFamily: theme.sans }]}>{meta}</Text></View>;
 }
+function AiPanelHeader({ title, disabled, onNewConversation, theme }: {
+  title: string;
+  disabled: boolean;
+  onNewConversation: () => void;
+  theme: MobileTheme;
+}) {
+  return <View style={[styles.aiPanelHeader, { borderBottomColor: theme.rule }]}><View style={styles.aiPanelHeading}><Text style={[styles.aiPanelTitle, { color: theme.ink, fontFamily: theme.serif }]}>书内 AI</Text><Text numberOfLines={1} style={[styles.aiPanelBook, { color: theme.muted, fontFamily: theme.sans }]}>{title}</Text></View><Pressable accessibilityRole="button" disabled={disabled} onPress={onNewConversation} hitSlop={8}><Text style={[styles.aiNewConversation, { color: theme.red, opacity: disabled ? 0.35 : 1, fontFamily: theme.sans }]}>＋ 新对话</Text></Pressable></View>;
+}
 function SettingGroup({ label, children, theme }: { label: string; children: ReactNode; theme: MobileTheme }) {
   return <View style={styles.settingGroup}><Text style={[styles.settingsLabel, { color: theme.muted, fontFamily: theme.sans }]}>{label}</Text><View style={styles.scaleRow}>{children}</View></View>;
 }
@@ -601,7 +654,8 @@ const styles = StyleSheet.create({
   toolSheet: { position: "absolute", zIndex: 3, left: 0, right: 0, borderTopWidth: 1 }, fullSheet: { minHeight: 220 }, compactSheet: { minHeight: 218, paddingHorizontal: 18 }, displaySheet: { minHeight: 300 }, displayContent: { paddingHorizontal: 18, paddingVertical: 10 },
   sheetHeader: { minHeight: 52, marginHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", gap: 20 }, sheetTitle: { flex: 1, fontSize: 16, fontWeight: "900" }, sheetMeta: { maxWidth: "60%", fontSize: 10, fontWeight: "800" },
   searchHeader: { paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth }, searchBox: { marginTop: 12, height: 42, borderBottomWidth: 1, flexDirection: "row", alignItems: "center", gap: 10 }, searchInput: { flex: 1, height: 42, paddingVertical: 0, fontSize: 14 }, searchSubmit: { fontSize: 11, fontWeight: "900" }, tocSearch: { marginHorizontal: 18, height: 42, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", gap: 9 }, tocSearchInput: { flex: 1, height: 42, paddingVertical: 0, fontSize: 12 }, resultRow: { borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 20, paddingVertical: 15 }, resultTitle: { fontSize: 13, fontWeight: "900" }, resultExcerpt: { marginTop: 7, fontSize: 12, lineHeight: 22 }, panelStatus: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 20, paddingVertical: 18 }, panelStatusText: { fontSize: 11, fontWeight: "700" }, panelError: { margin: 18, borderLeftWidth: 2, paddingLeft: 10, fontSize: 11, lineHeight: 20 },
-  aiHistory: { flex: 1 }, aiHistoryContent: { padding: 18, gap: 16 }, aiMessage: { maxWidth: "88%", borderLeftWidth: 2, paddingLeft: 12 }, aiUser: { alignSelf: "flex-end", borderLeftWidth: 0, borderRightWidth: 2, paddingLeft: 0, paddingRight: 12 }, aiAssistant: { alignSelf: "flex-start" }, aiMessageText: { fontSize: 13, lineHeight: 23 }, aiReferences: { marginTop: 10, gap: 6 }, aiReferenceButton: { borderWidth: 1, paddingHorizontal: 9, paddingVertical: 7 }, aiReferenceText: { fontSize: 10, fontWeight: "800" }, aiComposer: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 18, paddingVertical: 12, flexDirection: "row", alignItems: "flex-end", gap: 14 }, aiInput: { flex: 1, minHeight: 42, maxHeight: 92, borderBottomWidth: 1, paddingVertical: 8, fontSize: 13 }, aiSubmit: { minHeight: 42, justifyContent: "center" },
+  aiPanelHeader: { minHeight: 62, marginHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", gap: 14 }, aiPanelHeading: { flex: 1, minWidth: 0 }, aiPanelTitle: { fontSize: 16, fontWeight: "900" }, aiPanelBook: { marginTop: 3, fontSize: 8, fontWeight: "700" }, aiNewConversation: { fontSize: 10, fontWeight: "900" },
+  aiHistory: { flex: 1 }, aiHistoryContent: { padding: 18, gap: 16 }, aiEmpty: { borderLeftWidth: 2, paddingLeft: 12, paddingVertical: 3 }, aiEmptyTitle: { fontSize: 14, fontWeight: "900" }, aiEmptyText: { marginTop: 6, fontSize: 10, lineHeight: 18 }, aiMessage: { maxWidth: "88%", borderLeftWidth: 2, paddingLeft: 12 }, aiUser: { alignSelf: "flex-end", borderLeftWidth: 0, borderRightWidth: 2, paddingLeft: 0, paddingRight: 12 }, aiAssistant: { alignSelf: "flex-start" }, aiMessageText: { fontSize: 13, lineHeight: 23 }, aiReferences: { marginTop: 10, gap: 6 }, aiReferenceButton: { borderWidth: 1, paddingHorizontal: 9, paddingVertical: 7 }, aiReferenceText: { fontSize: 10, fontWeight: "800" }, aiComposer: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 18, paddingVertical: 12, flexDirection: "row", alignItems: "flex-end", gap: 14 }, aiInput: { flex: 1, minHeight: 42, maxHeight: 92, borderBottomWidth: 1, paddingVertical: 8, fontSize: 13 }, aiSubmit: { minHeight: 42, justifyContent: "center" },
   chapterStepper: { minHeight: 80, flexDirection: "row", alignItems: "center" }, stepButton: { width: 52, height: 52, alignItems: "center", justifyContent: "center" }, stepCopy: { flex: 1, alignItems: "center", paddingHorizontal: 10 }, stepTitle: { fontSize: 15, fontWeight: "900" }, stepMeta: { marginTop: 5, fontSize: 9, fontWeight: "700" }, pageProgress: { paddingTop: 16 }, progressRail: { height: 4, marginHorizontal: 10, justifyContent: "center" }, progressFill: { position: "absolute", left: 0, height: 4 }, progressThumb: { position: "absolute", width: 18, height: 18, marginLeft: -9 }, pageLabel: { marginTop: 15, textAlign: "center", fontSize: 10, fontWeight: "700" },
   settingGroup: { minHeight: 59, flexDirection: "row", alignItems: "center" }, settingsLabel: { width: 72, fontSize: 10, fontWeight: "800" }, scaleRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: 7 }, scaleButton: { flex: 1, height: 38, borderWidth: 1, alignItems: "center", justifyContent: "center" }, scaleButtonText: { fontSize: 10, fontWeight: "900" }, brightnessSlider: { flex: 1, height: 40 },
   chapterRow: { minHeight: 68, marginHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", paddingHorizontal: 12 }, chapterNumber: { width: 38, fontSize: 9, fontWeight: "700" }, chapterCopy: { flex: 1 }, chapterRowTitle: { flex: 1, fontSize: 14, fontWeight: "700", lineHeight: 21 }, currentChapter: { marginTop: 3, fontSize: 8, fontWeight: "900" },

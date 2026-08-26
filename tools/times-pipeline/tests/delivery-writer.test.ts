@@ -84,8 +84,14 @@ describe("news Delivery writer", () => {
     const previousCatalog: JojoCatalog = {
       formatVersion: "jojo-catalog/1", revision: 1, updatedAt: "2026-08-22T00:00:00Z",
       datasets: [
-        { datasetId: "reader", type: "book", title: "Reader", language: "zh-CN", indexObject: "content/books/reader/index.jox" },
-        { datasetId: "times", type: "newspaper", title: "Old Times", language: "mul", indexObject: "content/newspapers/times/index.jox" },
+        {
+          datasetId: "reader", type: "book", title: "Reader", language: "zh-CN", itemCount: 1,
+          indexObject: "content/books/reader/index.jox", aiEnabled: true, publicationStatus: "published", access: "public",
+        },
+        {
+          datasetId: "times", type: "newspaper", title: "Old Times", language: "mul", itemCount: 1,
+          indexObject: "content/newspapers/times/index.jox", aiEnabled: false, publicationStatus: "published", access: "authenticated",
+        },
       ],
     };
     const result = await buildNewsDelivery({
@@ -123,6 +129,9 @@ describe("news Delivery writer", () => {
     expect(Buffer.from(transformJoxBytes(new Uint8Array(await readFile(path.join(deliveryRoot, ...assetObject.split("/")))), assetObject)).toString()).toBe("image-bytes");
     const catalog = await gunzipJoxJson<JojoCatalog>(new Uint8Array(await readFile(path.join(deliveryRoot, "catalog.jox"))), "catalog.jox");
     expect(catalog.datasets.map((dataset) => dataset.datasetId)).toEqual(["reader", "news-example"]);
+    expect(catalog.datasets.find((dataset) => dataset.datasetId === "reader")?.aiEnabled).toBe(true);
+    expect(catalog.datasets.find((dataset) => dataset.datasetId === "news-example")?.aiEnabled).toBe(false);
+    expect(sourceIndex.aiEnabled).toBe(false);
     await expect(readFile(path.join(deliveryRoot, "content/newspapers/times/index.jox"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

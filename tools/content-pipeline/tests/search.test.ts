@@ -23,8 +23,8 @@ describe("bookSearchIndex", () => {
       itemId: "example:full-book",
       blocks: [
         { targetId: "chapter:1", anchorId: "opening", order: 1, text: "第一章" },
-        { targetId: "chapter:1", order: 2, text: "第一段 正文" },
-        { targetId: "chapter:1", order: 3, text: "引文" },
+        { targetId: "chapter:1", anchorId: "jojo-search-block:chapter:1:2", order: 2, text: "第一段 正文" },
+        { targetId: "chapter:1", anchorId: "jojo-search-block:chapter:1:3", order: 3, text: "引文" },
       ],
     });
   });
@@ -40,6 +40,9 @@ describe("bookSearchIndex", () => {
         assetRefs: [],
       }],
     });
-    expect(search.blocks.map((block) => block.text)).toEqual(["第一段", "第二段"]);
+    expect(search.blocks).toEqual([
+      { targetId: "chapter:plain", anchorId: "jojo-search-block:chapter:plain:1", order: 1, text: "第一段" },
+      { targetId: "chapter:plain", anchorId: "jojo-search-block:chapter:plain:2", order: 2, text: "第二段" },
+    ]);
   });
 });

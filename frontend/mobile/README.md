@@ -8,6 +8,8 @@
 - 报刊目录、期号格式、CDN/搜索地址与特殊 PDF 文件规则来自 `@jojo/content`，Web 和 Mobile 共用一份领域代码。
 - 阅读页复用 `reader.jojokanbao.cn` 的 PDF.js 阅读内核，通过轻量 WebView bridge 同步页码和阅读记录。线上 PDF 带 JOJO 字节掩码保护；这种方式可以继续使用 Range 分段加载，避免在手机内存中一次性解密整份大 PDF。
 - 原生栈负责 iOS 侧滑返回、Android 系统返回、系统分享、安全区、触感反馈、日期选择和底部导航。
+- 书籍阅读页的书内 AI 直接流式请求国际 Makers Agent；当前面板中的最近对话随请求发送，
+  服务端不保存聊天历史。客户端持久化和云同步后续统一实现。
 - 标准版与 Android 墨水屏版是两个独立 release，不提供运行时切换。墨水版固定使用黑白高对比主题，关闭动画、过渡、阴影与列表回弹，并可与 Android 标准版同时安装；墨水版不发布 iOS。
 
 ## 本地开发
@@ -29,6 +31,8 @@ pnpm --filter @jojo/mobile start:eink
 EXPO_PUBLIC_READER_BASE=https://reader.jojokanbao.cn
 EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+# 默认 https://agent-global.jojokanbao.cn/rag
+EXPO_PUBLIC_AGENT_API_URL=https://agent-global.jojokanbao.cn/rag
 ```
 
 质量检查：
