@@ -6,6 +6,7 @@ const guardian: SourceConfig = {
   id: "guardian",
   name: "The Guardian",
   language: "en",
+  publicationTimeZone: "Europe/London",
   discovery: { kind: "official-rss", url: "https://www.theguardian.com/world/rss" },
   content: { priority: ["captured-page", "discovery-summary"], parser: "guardian" },
   fetch: { strategy: "direct-first", bpc: true },

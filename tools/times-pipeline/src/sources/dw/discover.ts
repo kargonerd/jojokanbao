@@ -1,5 +1,5 @@
 import { articleId, normalizeArticleUrl } from "../../identity.js";
-import { isoDate, optionalString, plainText, stringList } from "../../text.js";
+import { publisherDate, optionalString, plainText, stringList } from "../../text.js";
 import type { Candidate, DiscoveryEndpoint, DiscoveryResult, SourceConfig } from "../../types.js";
 
 type DwEndpoint = Extract<DiscoveryEndpoint, { kind: "source-adapter"; adapter: "dw" }>;
@@ -32,7 +32,7 @@ function mapCandidate(source: SourceConfig, item: JsonObject): Candidate | undef
   const id = optionalString(item.id);
   const namedUrl = optionalString(item.namedUrl);
   const title = plainText(item.title ?? item.name);
-  const publishedAt = isoDate(item.contentDate);
+  const publishedAt = publisherDate(item.contentDate, source.publicationTimeZone);
   if (!id || !namedUrl || !title || !publishedAt) return undefined;
   const sourceUrl = new URL(namedUrl, ROOT).href;
   const canonicalUrl = normalizeArticleUrl(sourceUrl);

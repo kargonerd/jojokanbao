@@ -21,6 +21,7 @@ export function discoverChinanews(source: SourceConfig, endpoint: Endpoint, fetc
     maximumItems: endpoint.maximumItems,
     bodySelectors: chinanewsFetch.bodySelectors,
     publicationDateSelectors: ["#pubtime_baidu", ".pubtime", ".content_left_time"],
+    publicationDateMode: "wall-clock",
     version: "chinanews-html/1",
   });
 }

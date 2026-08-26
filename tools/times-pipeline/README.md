@@ -18,6 +18,11 @@ Brasil。央视新闻、财新、WSJ、第一财经、Indian Express 和证券�
 - process.ts：仅在 Canonical 前需要来源修正时存在；
 - index.ts：来源模块装配。
 
+每个 `source.json` 还必须声明 `publicationTimeZone`（IANA 时区）。Epoch 和带 `Z/±offset` 的时间直接归一化；
+不带时区的发布时间按该媒体声明的时区解释。新华网、人民网、中国新闻网和联合早报的 HTML 使用
+`wall-clock` 模式，以纠正源站把本地墙上时间错误标作 UTC 的情况。发现窗口同时检查起点和终点，默认只
+允许最多 120 秒的出版方时钟偏差，超出窗口的条目留在 Raw 审计计数中但不进入正文抓取。
+
 发现默认使用官方 RSS、sitemap 或出版方轻量 API，不逐篇启动浏览器。正文阶段处理所有尚未成功抓取
 的新 URL，没有全局抽样或 50 篇上限：
 

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { articleId, normalizeArticleUrl } from "../../identity.js";
-import { isoDate, optionalString, plainText, stringList } from "../../text.js";
+import { publisherDate, optionalString, plainText, stringList } from "../../text.js";
 import type { Candidate, DiscoveryEndpoint, DiscoveryResult, SourceConfig } from "../../types.js";
 
 type ClsEndpoint = Extract<DiscoveryEndpoint, { kind: "source-adapter"; adapter: "cls" }>;
@@ -29,7 +29,7 @@ function mapCandidate(source: SourceConfig, row: JsonObject): Candidate | undefi
   const id = optionalString(row.id);
   const title = plainText(row.title ?? row.brief);
   const timestamp = typeof row.ctime === "number" ? row.ctime * 1_000 : row.ctime;
-  const publishedAt = isoDate(timestamp);
+  const publishedAt = publisherDate(timestamp, source.publicationTimeZone);
   if (!id || !title || !publishedAt) return undefined;
   const sourceUrl = `${ROOT}/detail/${id}`;
   const canonicalUrl = normalizeArticleUrl(sourceUrl);

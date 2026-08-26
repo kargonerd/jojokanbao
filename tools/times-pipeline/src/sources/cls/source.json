@@ -2,6 +2,7 @@
   "id": "cls",
   "name": "财联社",
   "language": "zh-CN",
+  "publicationTimeZone": "Asia/Shanghai",
   "sections": [
     {
       "id": "headlines",

@@ -1,6 +1,7 @@
 import { load } from "cheerio";
 import { articleId, normalizeArticleUrl } from "../identity.js";
-import { isFullDiscoveryBody, isoDate, plainText, stringList } from "../text.js";
+import { isFullDiscoveryBody, plainText, publisherDate, stringList } from "../text.js";
+import type { PublisherDateMode } from "../text.js";
 import type { Candidate, DiscoveryResult, SourceConfig } from "../types.js";
 import { fetchHtml, mapLimit } from "./http.js";
 
@@ -13,6 +14,7 @@ export interface HtmlListingProfile {
   linkSelector?: string;
   bodySelectors?: string[];
   publicationDateSelectors?: string[];
+  publicationDateMode?: PublisherDateMode;
   isUnsupportedMedia?: (html: string, sourceUrl: string) => boolean;
   version: string;
 }
@@ -85,24 +87,6 @@ function bodyHtml(value: string): string {
   return paragraphs.map((part) => `<p>${part}</p>`).join("");
 }
 
-function publicationDate(value: unknown, language: string): string | undefined {
-  const raw = text(value);
-  if (!raw) return undefined;
-  if (language.toLowerCase().startsWith("zh")) {
-    const isoLocal = raw.match(/(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}(?::\d{2})?))?/u);
-    if (isoLocal) {
-      const local = isoLocal[2] ? `${isoLocal[1]}T${isoLocal[2]}+08:00` : `${isoLocal[1]}T00:00:00+08:00`;
-      return isoDate(local);
-    }
-    const chinese = raw.match(/(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})(?::(\d{2}))?/u);
-    if (chinese) {
-      const [, year, month, day, hour, minute, second = "00"] = chinese;
-      return isoDate(`${year}-${month?.padStart(2, "0")}-${day?.padStart(2, "0")}T${hour?.padStart(2, "0")}:${minute}:${second}+08:00`);
-    }
-  }
-  return isoDate(raw);
-}
-
 function firstSelectedText(document: ReturnType<typeof load>, selectors: string[]): string | undefined {
   return selectors.flatMap((selector) => document(selector).toArray())
     .map((element) => plainText(document(element).text()))
@@ -134,11 +118,13 @@ function candidateFromArticle(
     heading,
     document("title").text(),
   ].map(plainText).find(Boolean)?.trim() ?? "";
-  const publishedAt = publicationDate(json?.datePublished, source.language)
-    ?? publicationDate(document('meta[property="article:published_time"]').attr("content"), source.language)
-    ?? publicationDate(firstSelectedText(document, profile.publicationDateSelectors ?? []), source.language)
-    ?? publicationDate(document('meta[name="publishdate"], meta[name="date"]').first().attr("content"), source.language)
-    ?? publicationDate(document("time[datetime]").first().attr("datetime"), source.language);
+  const selectorDate = firstSelectedText(document, profile.publicationDateSelectors ?? []);
+  const dateValues = profile.publicationDateMode === "wall-clock"
+    ? [selectorDate, json?.datePublished, document('meta[property="article:published_time"]').attr("content"), document('meta[name="publishdate"], meta[name="date"]').first().attr("content"), document("time[datetime]").first().attr("datetime")]
+    : [json?.datePublished, document('meta[property="article:published_time"]').attr("content"), selectorDate, document('meta[name="publishdate"], meta[name="date"]').first().attr("content"), document("time[datetime]").first().attr("datetime")];
+  const publishedAt = dateValues
+    .map((value) => publisherDate(text(value), source.publicationTimeZone, profile.publicationDateMode))
+    .find((value): value is string => Boolean(value));
   if (!title || !publishedAt) return undefined;
   const declaredUrl = text(json?.url) ?? document('link[rel="canonical"]').attr("href") ?? sourceUrl;
   const canonicalUrl = normalizeArticleUrl(new URL(declaredUrl, sourceUrl).toString());

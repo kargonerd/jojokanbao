@@ -2,6 +2,7 @@
   "id": "thepaper",
   "name": "澎湃新闻",
   "language": "zh-CN",
+  "publicationTimeZone": "Asia/Shanghai",
   "sections": [
     {
       "id": "featured",

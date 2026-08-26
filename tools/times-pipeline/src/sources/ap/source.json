@@ -2,6 +2,7 @@
   "id": "ap",
   "name": "AP News",
   "language": "en",
+  "publicationTimeZone": "UTC",
   "sections": [
     {
       "id": "world",

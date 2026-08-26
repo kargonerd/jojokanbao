@@ -2,6 +2,7 @@
   "id": "chinanews",
   "name": "中国新闻网",
   "language": "zh-CN",
+  "publicationTimeZone": "Asia/Shanghai",
   "sections": [
     {
       "id": "latest",

@@ -2,6 +2,7 @@
   "id": "scmp",
   "name": "South China Morning Post",
   "language": "en",
+  "publicationTimeZone": "Asia/Hong_Kong",
   "sections": [
     {
       "id": "news",

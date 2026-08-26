@@ -6,6 +6,7 @@ const source: SourceConfig = {
   id: "example",
   name: "Example",
   language: "en",
+  publicationTimeZone: "UTC",
   sections: [
     { id: "world", name: "World", url: "https://example.test/world" },
     { id: "business", name: "Business", url: "https://example.test/business" },

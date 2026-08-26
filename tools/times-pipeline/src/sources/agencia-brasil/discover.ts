@@ -20,6 +20,8 @@ export function discoverAgenciaBrasil(source: SourceConfig, endpoint: Endpoint, 
     articlePathPrefixes: prefixes,
     maximumItems: endpoint.maximumItems,
     bodySelectors: [".field--name-body", ".content_desc"],
+    publicationDateSelectors: [".data"],
+    publicationDateMode: "wall-clock",
     version: "agencia-brasil-html/1",
   });
 }

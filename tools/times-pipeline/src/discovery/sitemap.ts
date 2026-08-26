@@ -1,6 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 import { articleId, normalizeArticleUrl } from "../identity.js";
-import { isoDate, optionalString } from "../text.js";
+import { publisherDate, optionalString } from "../text.js";
 import type { Candidate, DiscoveryResult, SourceConfig } from "../types.js";
 
 const parser = new XMLParser({
@@ -44,7 +44,7 @@ export function parseSitemap(source: SourceConfig, xml: string, fetchedAt: strin
   for (const value of array(urlset?.url)) {
     const row = object(value);
     const sourceUrl = valueText(row?.loc);
-    const publishedAt = isoDate(valueText(row?.lastmod));
+    const publishedAt = publisherDate(valueText(row?.lastmod), source.publicationTimeZone);
     if (!sourceUrl || !publishedAt) continue;
     let canonicalUrl: string;
     try {

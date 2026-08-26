@@ -2,6 +2,7 @@
   "id": "bloomberg",
   "name": "Bloomberg",
   "language": "en",
+  "publicationTimeZone": "America/New_York",
   "sections": [
     {
       "id": "asia",

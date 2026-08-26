@@ -2,6 +2,7 @@ import path from "node:path";
 import { parseArgs, requiredArg } from "./args.js";
 import { loadSources } from "./config.js";
 import { discoverSource } from "./discovery/multi.js";
+import { filterDiscoveryWindow } from "./discovery/window.js";
 import { RecordingFetch } from "./recording-fetch.js";
 import { sourceRunRoot, writeSourceCapture } from "./raw-writer.js";
 
@@ -13,7 +14,11 @@ async function main(): Promise<void> {
   const runId = requiredArg(args, "run-id");
   const startedAt = requiredArg(args, "started-at");
   const sinceHours = Number(args.get("since-hours") ?? "24");
+  const futureToleranceSeconds = Number(args.get("future-tolerance-seconds") ?? "120");
   if (!Number.isFinite(sinceHours) || sinceHours <= 0) throw new Error("--since-hours must be positive");
+  if (!Number.isInteger(futureToleranceSeconds) || futureToleranceSeconds < 0 || futureToleranceSeconds > 900) {
+    throw new Error("--future-tolerance-seconds must be an integer from 0 to 900");
+  }
   const source = (await loadSources(configPath)).find((candidate) => candidate.id === sourceId);
   if (!source) throw new Error(`Unknown or disabled source: ${sourceId}`);
   const runRoot = sourceRunRoot(output, source.id, runId, startedAt);
@@ -23,7 +28,9 @@ async function main(): Promise<void> {
     const fetchedAt = new Date().toISOString();
     const cutoff = new Date(startedAt).valueOf() - sinceHours * 3_600_000;
     const result = await discoverSource(source, fetchedAt, cutoff);
-    result.candidates = result.candidates.filter((candidate) => new Date(candidate.publishedAt).valueOf() >= cutoff);
+    const filtered = filterDiscoveryWindow(result.candidates, { startedAt, sinceHours, futureToleranceSeconds });
+    result.candidates = filtered.candidates;
+    result.window = filtered.window;
     const networkFile = await recorder.flush();
     const manifest = await writeSourceCapture(runRoot, runId, startedAt, result, networkFile, recorder.exchanges.length);
     const status = manifest.healthStatus === "empty" ? "empty" : "ok";

@@ -2,6 +2,7 @@
   "id": "africanews",
   "name": "Africanews",
   "language": "en",
+  "publicationTimeZone": "Africa/Lagos",
   "sections": [
     {
       "id": "news",

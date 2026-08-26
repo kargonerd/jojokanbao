@@ -16,6 +16,7 @@ const source: SourceConfig = {
   id: "africanews",
   name: "Example",
   language: "en",
+  publicationTimeZone: "UTC",
   sections: [{ id: "markets", name: "Markets", url: "https://example.test/world" }],
   discovery: endpoint,
   content: { priority: ["discovery-body", "discovery-summary"], minimumFullCharacters: 20, minimumFullParagraphs: 1 },
@@ -73,6 +74,7 @@ describe("HTML listing discovery mechanics", () => {
       ...source,
       id: "people",
       language: "zh-CN",
+      publicationTimeZone: "Asia/Shanghai",
       sections: [{ id: "politics", name: "时政", url: "https://news.example.test/" }],
       discovery: peopleEndpoint,
     };
@@ -110,6 +112,7 @@ describe("HTML listing discovery mechanics", () => {
       id: "xinhua",
       name: "新华网",
       language: "zh-CN",
+      publicationTimeZone: "Asia/Shanghai",
       sections: [{ id: "taiwan", name: "台湾", url: "https://www.news.cn/tw/index.html" }],
       discovery: xinhuaEndpoint,
     };

@@ -6,6 +6,7 @@ const reuters: SourceConfig = {
   id: "reuters",
   name: "Reuters",
   language: "en",
+  publicationTimeZone: "UTC",
   discovery: {
     kind: "sitemap",
     url: "https://www.reuters.com/arc/outboundfeeds/sitemap-index/?outputType=xml",

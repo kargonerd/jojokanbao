@@ -2,6 +2,7 @@
   "id": "nyt",
   "name": "The New York Times",
   "language": "en",
+  "publicationTimeZone": "America/New_York",
   "sections": [
     {
       "id": "world",

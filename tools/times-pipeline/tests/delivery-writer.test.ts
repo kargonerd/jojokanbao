@@ -21,6 +21,7 @@ const source: SourceConfig = {
   id: "example",
   name: "Example News",
   language: "en",
+  publicationTimeZone: "UTC",
   discovery: { kind: "official-rss", url: "https://example.test/feed.xml" },
   content: { priority: ["discovery-body", "captured-page"] },
   fetch: { strategy: "direct-first", bpc: true },

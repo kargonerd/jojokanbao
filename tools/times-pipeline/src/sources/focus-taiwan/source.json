@@ -2,6 +2,7 @@
   "id": "focus-taiwan",
   "name": "Focus Taiwan",
   "language": "en",
+  "publicationTimeZone": "Asia/Taipei",
   "sections": [
     {
       "id": "latest",

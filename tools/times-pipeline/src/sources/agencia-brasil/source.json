@@ -2,6 +2,7 @@
   "id": "agencia-brasil",
   "name": "Agência Brasil",
   "language": "en",
+  "publicationTimeZone": "America/Sao_Paulo",
   "sections": [
     {
       "id": "culture",

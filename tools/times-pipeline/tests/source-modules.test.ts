@@ -8,6 +8,7 @@ function source(id: string, discovery: DiscoveryEndpoint): SourceConfig {
     id,
     name: id,
     language: id === "cls" ? "zh-CN" : "en",
+    publicationTimeZone: id === "cls" ? "Asia/Shanghai" : "UTC",
     discovery,
     content: { priority: ["captured-page", "discovery-summary"] },
     fetch: { strategy: "browser-first", bpc: true },

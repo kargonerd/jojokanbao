@@ -2,6 +2,7 @@
   "id": "people",
   "name": "人民网",
   "language": "zh-CN",
+  "publicationTimeZone": "Asia/Shanghai",
   "sections": [
     {
       "id": "politics",

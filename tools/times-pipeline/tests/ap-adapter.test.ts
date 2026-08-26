@@ -6,6 +6,7 @@ const source: SourceConfig = {
   id: "ap",
   name: "AP News",
   language: "en",
+  publicationTimeZone: "UTC",
   sections: [{ id: "world", name: "World", url: "https://apnews.com/world-news" }],
   discovery: {
     kind: "multi",

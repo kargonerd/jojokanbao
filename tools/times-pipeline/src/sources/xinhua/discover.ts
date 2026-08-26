@@ -53,6 +53,7 @@ export function discoverXinhua(source: SourceConfig, endpoint: Endpoint, fetched
     maximumItems: endpoint.maximumItems,
     bodySelectors: ["#detailContent"],
     publicationDateSelectors: ["#pubtime_baidu", ".header-time", ".mheader .info"],
+    publicationDateMode: "wall-clock",
     isUnsupportedMedia: (html) => isXinhuaVideoOnlyPage(html, source),
     version: "xinhua-html/1",
   });

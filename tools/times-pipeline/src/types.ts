@@ -130,6 +130,7 @@ export interface SourceConfig {
   id: string;
   name: string;
   language: string;
+  publicationTimeZone: string;
   sections?: PublisherSectionConfig[];
   discovery: DiscoveryConfig;
   content: {
@@ -185,6 +186,23 @@ export interface DiscoveryResult {
   candidates: Candidate[];
   version?: string;
   fetchPolicy?: SourceFetchPolicy;
+  window?: {
+    startInclusive: string;
+    endInclusive: string;
+    futureToleranceSeconds: number;
+    discovered: number;
+    accepted: number;
+    beforeWindow: number;
+    afterWindow: number;
+    invalidTimestamp: number;
+    anomalies: Array<{
+      articleId: string;
+      title: string;
+      canonicalUrl: string;
+      publishedAt: string;
+      reason: "after-window" | "invalid-timestamp";
+    }>;
+  };
 }
 
 export interface RecordedExchange {
@@ -214,6 +232,7 @@ export interface SourceCaptureManifest {
   runId: string;
   sourceId: string;
   sourceName: string;
+  publicationTimeZone: string;
   startedAt: string;
   completedAt: string;
   discovery: SourceConfig["discovery"];
@@ -222,6 +241,7 @@ export interface SourceCaptureManifest {
   summaryCount: number;
   metadataCount: number;
   networkExchangeCount: number;
+  window?: NonNullable<DiscoveryResult["window"]>;
   fetchPolicy?: SourceFetchPolicy;
   sectionCoverage?: {
     selected: string[];

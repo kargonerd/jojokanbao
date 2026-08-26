@@ -19,6 +19,7 @@ export function discoverPeople(source: SourceConfig, endpoint: Endpoint, fetched
     maximumItems: endpoint.maximumItems,
     bodySelectors: peopleFetch.bodySelectors,
     publicationDateSelectors: ["#newstime", "#pubtime_baidu", ".pubtime", ".content_left_time", ".mheader .info"],
+    publicationDateMode: "wall-clock",
     version: "people-html/1",
   });
 }

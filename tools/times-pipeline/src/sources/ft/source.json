@@ -2,6 +2,7 @@
   "id": "ft",
   "name": "Financial Times",
   "language": "en",
+  "publicationTimeZone": "Europe/London",
   "sections": [
     {
       "id": "world",

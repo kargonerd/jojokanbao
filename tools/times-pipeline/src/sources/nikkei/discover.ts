@@ -1,6 +1,6 @@
 import { articleId, normalizeArticleUrl } from "../../identity.js";
 import { discoverHtmlListing, sectionUrl } from "../../discovery/html-listing.js";
-import { isoDate, optionalString, plainText, stringList } from "../../text.js";
+import { publisherDate, optionalString, plainText, stringList } from "../../text.js";
 import type { Candidate, DiscoveryEndpoint, DiscoveryResult, SourceConfig } from "../../types.js";
 
 type NikkeiEndpoint = Extract<DiscoveryEndpoint, { kind: "source-adapter"; adapter: "nikkei" }>;
@@ -22,7 +22,7 @@ function mapCandidate(source: SourceConfig, item: JsonObject): Candidate | undef
   const title = plainText(item.name);
   const path = optionalString(item.path);
   const timestamp = typeof item.displayDate === "number" ? item.displayDate * 1_000 : item.displayDate;
-  const publishedAt = isoDate(timestamp);
+  const publishedAt = publisherDate(timestamp, source.publicationTimeZone);
   if (!title || !path || !publishedAt) return undefined;
   const sourceUrl = new URL(path, ROOT).href;
   const canonicalUrl = normalizeArticleUrl(sourceUrl);

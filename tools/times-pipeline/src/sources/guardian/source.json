@@ -2,6 +2,7 @@
   "id": "guardian",
   "name": "The Guardian",
   "language": "en",
+  "publicationTimeZone": "Europe/London",
   "sections": [
     {
       "id": "world",

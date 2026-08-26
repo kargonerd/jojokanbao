@@ -20,6 +20,7 @@ export function discoverZaobao(source: SourceConfig, endpoint: Endpoint, fetched
     linkSelector: ".card-listing .card .content-header a[href], [data-testid='article-list'] article a.article-link[href]",
     maximumItems: endpoint.maximumItems,
     bodySelectors: [".article-content-rawhtml", ".article-body"],
+    publicationDateMode: "wall-clock",
     version: "zaobao-html/1",
   });
 }

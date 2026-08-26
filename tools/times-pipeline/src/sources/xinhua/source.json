@@ -2,6 +2,7 @@
   "id": "xinhua",
   "name": "新华网",
   "language": "zh-CN",
+  "publicationTimeZone": "Asia/Shanghai",
   "sections": [
     {
       "id": "politics",

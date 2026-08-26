@@ -2,6 +2,7 @@
   "id": "reuters",
   "name": "Reuters",
   "language": "en",
+  "publicationTimeZone": "UTC",
   "sections": [
     {
       "id": "world",

@@ -17,6 +17,30 @@ describe("sources v2", () => {
     }
     const sources = await loadSources(path.join(root, "sources.v2.json"));
     expect(sources).toHaveLength(22);
+    expect(Object.fromEntries(sources.map((source) => [source.id, source.publicationTimeZone]))).toEqual({
+      "africanews": "Africa/Lagos",
+      "agencia-brasil": "America/Sao_Paulo",
+      "aljazeera": "Asia/Qatar",
+      "ap": "UTC",
+      "axios": "America/New_York",
+      "bloomberg": "America/New_York",
+      "chinanews": "Asia/Shanghai",
+      "cls": "Asia/Shanghai",
+      "cna": "Asia/Singapore",
+      "dw": "Europe/Berlin",
+      "focus-taiwan": "Asia/Taipei",
+      "ft": "Europe/London",
+      "guardian": "Europe/London",
+      "nikkei": "Asia/Tokyo",
+      "npr": "America/New_York",
+      "nyt": "America/New_York",
+      "people": "Asia/Shanghai",
+      "reuters": "UTC",
+      "scmp": "Asia/Hong_Kong",
+      "thepaper": "Asia/Shanghai",
+      "xinhua": "Asia/Shanghai",
+      "zaobao": "Asia/Singapore",
+    });
     expect(sources.map((source) => source.id).toSorted()).toEqual([
       "africanews",
       "agencia-brasil",

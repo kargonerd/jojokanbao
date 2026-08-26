@@ -2,6 +2,7 @@
   "id": "dw",
   "name": "Deutsche Welle",
   "language": "en",
+  "publicationTimeZone": "Europe/Berlin",
   "sections": [
     {
       "id": "germany",

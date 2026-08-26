@@ -1,7 +1,7 @@
 import { load } from "cheerio";
 import { fetchHtml, mapLimit } from "../../discovery/http.js";
 import { articleId, normalizeArticleUrl } from "../../identity.js";
-import { isFullDiscoveryBody, isoDate, plainText, stringList } from "../../text.js";
+import { isFullDiscoveryBody, publisherDate, plainText, stringList } from "../../text.js";
 import type { Candidate, DiscoveryResult, RouteDiscoveryEndpoint, SourceConfig } from "../../types.js";
 
 type Endpoint = RouteDiscoveryEndpoint;
@@ -81,7 +81,8 @@ export async function discoverThepaper(
         return undefined;
       }
       const title = plainText(text(detail.name) ?? text(detail.shareName) ?? text(row.name)).trim();
-      const publishedAt = isoDate(detail.publishTime) ?? isoDate(row.pubTimeLong);
+      const publishedAt = publisherDate(detail.publishTime, source.publicationTimeZone)
+        ?? publisherDate(row.pubTimeLong, source.publicationTimeZone);
       if (!title || !publishedAt) return undefined;
       const canonicalUrl = normalizeArticleUrl(`https://www.thepaper.cn/newsDetail_forward_${contId}`);
       const renderedBody = text(detail.content);

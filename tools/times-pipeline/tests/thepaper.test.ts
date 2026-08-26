@@ -17,6 +17,7 @@ describe("The Paper discovery", () => {
       id: "thepaper",
       name: "澎湃新闻",
       language: "zh-CN",
+      publicationTimeZone: "Asia/Shanghai",
       sections: [{ id: "current-affairs", name: "时事", url: "https://www.thepaper.cn/channel_25950" }],
       discovery: endpoint,
       content: { priority: ["discovery-body", "discovery-summary"], minimumFullCharacters: 20, minimumFullParagraphs: 1 },

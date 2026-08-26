@@ -1,5 +1,5 @@
 import { articleId, normalizeArticleUrl } from "../../identity.js";
-import { isoDate, optionalString, plainText, stringList } from "../../text.js";
+import { publisherDate, optionalString, plainText, stringList } from "../../text.js";
 import type { Candidate, DiscoveryEndpoint, DiscoveryResult, SourceConfig } from "../../types.js";
 
 type ApEndpoint = Extract<DiscoveryEndpoint, { kind: "source-adapter"; adapter: "ap" }>;
@@ -31,7 +31,7 @@ function pagePromos(payload: unknown): JsonObject[] {
 function candidate(source: SourceConfig, item: JsonObject): Candidate | undefined {
   const title = plainText(item.title);
   const rawLink = optionalString(item.url);
-  const publishedAt = isoDate(item.publishDateStamp);
+  const publishedAt = publisherDate(item.publishDateStamp, source.publicationTimeZone);
   if (!title || !rawLink || !publishedAt) return;
   let canonicalUrl: string;
   try { canonicalUrl = normalizeArticleUrl(new URL(rawLink, AP_ROOT).href); } catch { return; }

@@ -2,6 +2,7 @@
   "id": "zaobao",
   "name": "联合早报",
   "language": "zh-CN",
+  "publicationTimeZone": "Asia/Singapore",
   "sections": [
     {
       "id": "latest",

@@ -2,6 +2,7 @@
   "id": "axios",
   "name": "Axios",
   "language": "en",
+  "publicationTimeZone": "America/New_York",
   "sections": [
     {
       "id": "politics-policy",

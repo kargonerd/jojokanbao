@@ -37,6 +37,16 @@ function credentialFreeHttpsUrl(value: unknown, field: string): string {
   return url;
 }
 
+function publicationTimeZone(value: unknown, field: string): string {
+  const timeZone = requiredString(value, field);
+  try {
+    new Intl.DateTimeFormat("en", { timeZone }).format(0);
+  } catch {
+    throw new Error(`${field} must be a valid IANA time zone`);
+  }
+  return timeZone;
+}
+
 function parseDiscoveryEndpoint(value: unknown, field: string): DiscoveryEndpoint {
   if (!value || typeof value !== "object") throw new Error(`${field} must be an object`);
   const row = value as Record<string, unknown>;
@@ -226,6 +236,7 @@ function parseSource(value: unknown, position: number): SourceConfig | null {
     id,
     name: requiredString(row.name, `${id}.name`),
     language: requiredString(row.language, `${id}.language`),
+    publicationTimeZone: publicationTimeZone(row.publicationTimeZone, `${id}.publicationTimeZone`),
     ...(sections ? { sections } : {}),
     discovery: parseDiscovery(row.discovery, id, new Set(sections?.map((section) => section.id) ?? [])),
     content: {

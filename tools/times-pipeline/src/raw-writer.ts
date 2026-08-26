@@ -55,6 +55,7 @@ export async function writeSourceCapture(
     transport: result.transport,
     fetchedAt: result.fetchedAt,
     ...(result.version ? { version: result.version } : {}),
+    ...(result.window ? { window: result.window } : {}),
     data: result.upstream,
   };
   await writeFile(discoveryFile, gzipSync(`${JSON.stringify(discovery)}\n`, { level: 9 }));
@@ -98,6 +99,7 @@ export async function writeSourceCapture(
     runId,
     sourceId: result.source.id,
     sourceName: result.source.name,
+    publicationTimeZone: result.source.publicationTimeZone,
     startedAt,
     completedAt: new Date().toISOString(),
     discovery: result.source.discovery,
@@ -106,6 +108,7 @@ export async function writeSourceCapture(
     summaryCount: result.candidates.filter((candidate) => candidate.contentStatus === "summary").length,
     metadataCount: result.candidates.filter((candidate) => candidate.contentStatus === "metadata").length,
     networkExchangeCount,
+    ...(result.window ? { window: result.window } : {}),
     ...(result.fetchPolicy ? { fetchPolicy: result.fetchPolicy } : {}),
     ...(sectionCoverage ? { sectionCoverage } : {}),
     objects,

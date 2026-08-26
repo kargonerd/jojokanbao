@@ -2,6 +2,7 @@
   "id": "aljazeera",
   "name": "Al Jazeera",
   "language": "en",
+  "publicationTimeZone": "Asia/Qatar",
   "sections": [
     {
       "id": "news",

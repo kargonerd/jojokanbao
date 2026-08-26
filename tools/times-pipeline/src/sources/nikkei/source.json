@@ -2,6 +2,7 @@
   "id": "nikkei",
   "name": "Nikkei Asia",
   "language": "en",
+  "publicationTimeZone": "Asia/Tokyo",
   "sections": [
     {
       "id": "china",

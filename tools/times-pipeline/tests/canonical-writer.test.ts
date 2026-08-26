@@ -11,6 +11,7 @@ const source: SourceConfig = {
   id: "reuters",
   name: "Reuters",
   language: "en",
+  publicationTimeZone: "UTC",
   discovery: {
     kind: "sitemap",
     url: "https://www.reuters.com/arc/outboundfeeds/sitemap-index/?outputType=xml",
@@ -35,6 +36,7 @@ describe("canonical writer", () => {
       runId: "run-1",
       sourceId: "reuters",
       sourceName: "Reuters",
+      publicationTimeZone: "UTC",
       startedAt: "2026-08-23T10:00:00Z",
       completedAt: "2026-08-23T10:01:00Z",
       discovery: source.discovery,

@@ -2,6 +2,7 @@
   "id": "cna",
   "name": "CNA",
   "language": "en",
+  "publicationTimeZone": "Asia/Singapore",
   "sections": [
     {
       "id": "top-stories",
