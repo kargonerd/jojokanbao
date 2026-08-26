@@ -199,6 +199,7 @@ async function main(): Promise<void> {
   const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
   const driverPath = path.join(packageRoot, "browsertrix", "driver.mjs");
   const attempts: BrowsertrixAttempt[] = [];
+  const attemptErrors: Array<{ round: number; error: string }> = [];
   const best = new Map<string, BrowsertrixCapture>();
   const proxyServer = args.get("proxy-server");
   const controlUrl = args.get("proxy-control-url");
@@ -206,8 +207,8 @@ async function main(): Promise<void> {
   const automaticName = args.get("proxy-automatic-name") ?? "JOJO-TIMES-AUTO";
   let proxyRotationRounds = 0;
 
-  const capture = async (values: ArticleBundle[], round: number): Promise<void> => {
-    if (!values.length) return;
+  const capture = async (values: ArticleBundle[], round: number): Promise<boolean> => {
+    if (!values.length) return true;
     const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), `jojo-browsertrix-${round}-`));
     try {
       const attempt = await runBrowsertrixAttempt({
@@ -229,6 +230,15 @@ async function main(): Promise<void> {
         const previous = best.get(result.articleId);
         if (captureSucceeded(result) || !captureSucceeded(previous)) best.set(result.articleId, result);
       }
+      return true;
+    } catch (error) {
+      attemptErrors.push({
+        round,
+        error: error instanceof Error && error.message.startsWith("Browsertrix did not produce a WACZ")
+          ? "BrowsertrixWaczMissing"
+          : "BrowsertrixAttemptFailed",
+      });
+      return false;
     } finally {
       await rm(temporaryRoot, { recursive: true, force: true });
     }
@@ -243,8 +253,9 @@ async function main(): Promise<void> {
         if (!retry.length) break;
         await selectProxy(controlUrl, proxyGroup, alternative);
         await new Promise((resolve) => setTimeout(resolve, 250));
-        await capture(retry, attempts.length);
+        const completed = await capture(retry, attempts.length);
         proxyRotationRounds += 1;
+        if (!completed) break;
       }
     } finally {
       await selectProxy(controlUrl, proxyGroup, automaticName);
@@ -300,6 +311,7 @@ async function main(): Promise<void> {
     articleAttempts: selected.length,
     articleFailures: failedCases.length,
     extractedFullBodies,
+    attemptErrors,
     captureBySource: [...captureBySource.values()].sort((left, right) => left.sourceId.localeCompare(right.sourceId)),
     failedCases,
     browser: {
