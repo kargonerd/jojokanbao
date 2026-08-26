@@ -288,9 +288,13 @@ async function main(): Promise<void> {
       process.stderr.write(`[page-capture] ${batch.sourceId}: ${forceBrowser ? "proxy retry" : "initial"} ${batch.articles.length} article(s)\n`);
       let session: BrowserSourceSession | undefined;
       const browser = async (): Promise<BrowserSourceSession> => {
+        const browserKind = sources.get(batch.sourceId)?.fetch.browser ?? "chromium";
+        const executablePath = browserKind === "browsertrix-brave" ? process.env.JOJO_TIMES_BROWSERTRIX_BRAVE_PATH?.trim() : undefined;
+        if (browserKind === "browsertrix-brave" && !executablePath) throw new Error(`${batch.sourceId}: Browsertrix Brave is required but unavailable`);
         session ??= await BrowserSourceSession.open({
           ...(proxyServer ? { proxyServer } : {}),
           ...(extensionPath ? { extensionPath } : {}),
+          ...(executablePath ? { executablePath } : {}),
           requireExtension: sources.get(batch.sourceId)?.fetch.bpc ?? false,
         });
         return session;

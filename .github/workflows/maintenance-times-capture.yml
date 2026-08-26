@@ -41,7 +41,7 @@ jobs:
       TIMES_PUBLISH: ${{ github.event_name == 'schedule' || inputs.publish }}
       JOJO_TIMES_PROXY_URI: ${{ secrets.JOJO_TIMES_PROXY_URI }}
       JOJO_TIMES_PROXY_SUBSCRIPTION: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION }}
-      JOJO_TIMES_BROWSER_CHANNEL: chrome
+      BROWSERTRIX_IMAGE: webrecorder/browsertrix-crawler:1.14.1@sha256:591ee8b591fd1aed8983ffce08be1b16fb7a850239969aa364bff17cfbdb4588
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -113,8 +113,19 @@ jobs:
 
       - name: Install Chromium for page capture
         run: |
-          google-chrome --version
-          pnpm --filter @jojo/times-pipeline exec playwright install-deps chromium
+          pnpm --filter @jojo/times-pipeline exec playwright install --with-deps chromium
+
+      - name: Extract pinned Browsertrix Brave for NYT
+        run: |
+          docker pull "$BROWSERTRIX_IMAGE"
+          container="$(docker create "$BROWSERTRIX_IMAGE")"
+          trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
+          docker cp "$container:/opt/brave.com/brave" "$RUNNER_TEMP/browsertrix-brave"
+          brave="$(find "$RUNNER_TEMP/browsertrix-brave" -maxdepth 2 -type f -name brave -print -quit)"
+          test -n "$brave" || (echo "Pinned Browsertrix image has no Brave executable" >&2 && exit 1)
+          chmod 700 "$brave"
+          "$brave" --version
+          echo "JOJO_TIMES_BROWSERTRIX_BRAVE_PATH=$brave" >> "$GITHUB_ENV"
 
       - name: Capture all enabled sources
         run: |
@@ -161,7 +172,7 @@ jobs:
             args+=(
               --proxy-server "$JOJO_TIMES_PROXY_URI"
               --proxy-control-url http://127.0.0.1:9090
-              --proxy-rotation-attempts 12
+              --proxy-rotation-attempts 8
             )
           fi
           xvfb-run -a node tools/times-pipeline/dist/src/page-capture-cli.js "${args[@]}"

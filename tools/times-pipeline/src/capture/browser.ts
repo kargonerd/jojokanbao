@@ -28,7 +28,7 @@ export class BrowserSourceSession {
     this.requireExtension = requireExtension;
   }
 
-  static async open(options: { proxyServer?: string; extensionPath?: string; requireExtension: boolean }): Promise<BrowserSourceSession> {
+  static async open(options: { proxyServer?: string; extensionPath?: string; executablePath?: string; requireExtension: boolean }): Promise<BrowserSourceSession> {
     const userDataDirectory = await mkdtemp(path.join(os.tmpdir(), "jojo-times-chromium-"));
     const extensionArgs = options.extensionPath ? [
       `--disable-extensions-except=${options.extensionPath}`,
@@ -36,10 +36,9 @@ export class BrowserSourceSession {
     ] : [];
     if (options.requireExtension && !options.extensionPath) throw new Error("BPC extension path is required by this source");
     try {
-      const channel = process.env.JOJO_TIMES_BROWSER_CHANNEL?.trim();
       const context = await chromium.launchPersistentContext(userDataDirectory, {
         headless: process.env.JOJO_TIMES_HEADLESS === "1",
-        ...(channel ? { channel } : {}),
+        ...(options.executablePath ? { executablePath: options.executablePath } : {}),
         viewport: { width: 1440, height: 1200 },
         locale: "en-US",
         ignoreHTTPSErrors: true,
