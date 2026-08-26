@@ -113,6 +113,21 @@ jobs:
             --raw-revision "$TIMES_RAW_REVISION" \
             > "$RUNNER_TEMP/process-result.json"
 
+      - name: Report Canonical coverage
+        run: |
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const report = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/process-result.json", "utf8"));
+          for (const source of report.sources || []) {
+            console.log(`${source.sourceId}: ${source.articles.length} canonical, ${source.skippedArticles?.length || 0} excluded`);
+            for (const article of source.skippedArticles || []) {
+              const title = String(article.title || article.articleId).replace(/[\r\n|]/g, " ").slice(0, 180);
+              const status = article.captureHttpStatus ? `HTTP ${article.captureHttpStatus}` : article.reason;
+              console.log(`  ${article.reason}: ${title} | ${status} | ${article.canonicalUrl}`);
+            }
+          }
+          NODE
+
       - name: Commit Canonical to HF
         if: env.TIMES_PUBLISH == 'true'
         run: |
