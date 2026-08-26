@@ -138,7 +138,7 @@ jobs:
             --output "$RUNNER_TEMP/jojo-times"
             --run-manifest "$TIMES_RUN_MANIFEST"
             --max-pages 50
-            --workers 8
+            --source-workers 8
             --timeout 25
             --refresh-hours 24
             --retry-hours 2

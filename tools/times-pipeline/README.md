@@ -69,7 +69,8 @@ node tools/times-pipeline/dist/src/archive-cli.js `
   --config tools/times-pipeline/sources.v2.json `
   --output "$env:TEMP/jojo-times-v2" `
   --run-manifest "<runManifest>" `
-  --max-pages 50
+  --max-pages 50 `
+  --source-workers 8
 
 node tools/times-pipeline/dist/src/process-cli.js `
   --config tools/times-pipeline/sources.v2.json `
@@ -109,8 +110,8 @@ raw/news/runs/YYYY/MM/DD/{RUN_ID}.json
 raw/web-archives/times/state.json.gz
 raw/web-archives/times/YYYY/MM/DD/{RUN_ID}/
 ├─ run.json
-├─ browsertrix-00.wacz
-└─ browsertrix-01.wacz  # 仅在换代理节点重试时出现
+├─ browsertrix-00-{source}.wacz
+└─ browsertrix-01-{source}.wacz  # 仅在换代理节点重试时出现
 
 canonical/news/{source}/
 ├─ dataset.json

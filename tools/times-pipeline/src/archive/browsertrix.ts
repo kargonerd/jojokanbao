@@ -36,6 +36,7 @@ export interface BrowsertrixCapture {
 
 export interface BrowsertrixAttempt {
   round: number;
+  sourceId: string;
   exitCode: number;
   waczObject: string;
   waczBytes: number;
@@ -49,8 +50,8 @@ export interface BrowsertrixRunOptions {
   rawArchiveRoot: string;
   runId: string;
   round: number;
+  sourceId: string;
   articles: ArchiveArticle[];
-  workers: number;
   timeoutSeconds: number;
   proxyServer?: string;
   extensionPath?: string;
@@ -120,7 +121,7 @@ export function browsertrixArguments(options: BrowsertrixRunOptions): string[] {
     "--collection=capture",
     "--scopeType=page",
     `--pageLimit=${options.articles.length}`,
-    `--workers=${options.workers}`,
+    "--workers=1",
     `--pageLoadTimeout=${options.timeoutSeconds}`,
     "--waitUntil=domcontentloaded",
     "--postLoadDelay=1",
@@ -152,7 +153,8 @@ export async function runBrowsertrixAttempt(options: BrowsertrixRunOptions): Pro
   const generatedWacz = path.join(collection, "capture.wacz");
   const archiveDirectory = path.join(options.rawArchiveRoot, ...new Date().toISOString().slice(0, 10).split("-"), options.runId);
   await mkdir(archiveDirectory, { recursive: true });
-  const archiveName = `browsertrix-${String(options.round).padStart(2, "0")}.wacz`;
+  const sourceKey = options.sourceId.toLowerCase().replace(/[^a-z0-9._-]+/gu, "-");
+  const archiveName = `browsertrix-${String(options.round).padStart(2, "0")}-${sourceKey}.wacz`;
   const archiveFile = path.join(archiveDirectory, archiveName);
   try {
     await copyFile(generatedWacz, archiveFile);
@@ -204,6 +206,7 @@ export async function runBrowsertrixAttempt(options: BrowsertrixRunOptions): Pro
   }));
   return {
     round: options.round,
+    sourceId: options.sourceId,
     exitCode,
     waczObject,
     waczBytes: (await stat(archiveFile)).size,

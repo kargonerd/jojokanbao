@@ -144,12 +144,13 @@ raw/news/runs/YYYY/MM/DD/RUN_ID.json
 raw/web-archives/times/state.json.gz
 raw/web-archives/times/YYYY/MM/DD/RUN_ID/
 ├─ run.json
-├─ browsertrix-00.wacz
-└─ browsertrix-NN.wacz
+├─ browsertrix-00-{source}.wacz
+└─ browsertrix-NN-{source}.wacz
 ```
 
 `discovery.json.gz` 保存来源 API 数据、官方 XML、栏目 HTML 的解析结果或 sitemap 输出；发现阶段的原始 HTTP
-交换写入 `network/`，浏览器页面及其资源写入共享 WACZ。`candidates.jsonl.gz` 是统一文章候选清单。
+交换写入 `network/`，浏览器页面及其资源按媒体写入 WACZ。同一媒体只使用一个 Browsertrix worker 串行抓取，
+不同媒体按 `--source-workers` 并行。`candidates.jsonl.gz` 是统一文章候选清单。
 `manifest.json` 记录对象 SHA-256、
 媒体、抓取方式、版本、计数、错误和完成状态，但不记录 Cookie、Authorization、代理 URI、订阅地址
 或其他凭据。
@@ -187,7 +188,7 @@ canonical/news/{source}/
   "contentHash": "sha256:...",
   "provenance": {
     "rawRevision": "HF commit SHA",
-    "rawObject": "raw/web-archives/times/.../browsertrix-00.wacz",
+    "rawObject": "raw/web-archives/times/.../browsertrix-00-reuters.wacz",
     "parserVersion": "reuters"
   }
 }

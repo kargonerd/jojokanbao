@@ -7,6 +7,7 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import { parseArgs, requiredArg } from "./args.js";
 import { extractRenderedBody } from "./archive/body.js";
 import { proxyCandidates, selectProxy } from "./archive/proxy.js";
+import { mapSourceBatches } from "./archive/schedule.js";
 import {
   BROWSERTRIX_IMAGE,
   runBrowsertrixAttempt,
@@ -181,14 +182,15 @@ async function main(): Promise<void> {
   const runPath = path.resolve(requiredArg(args, "run-manifest"));
   const configPath = path.resolve(requiredArg(args, "config"));
   const maximumPages = Number(args.get("max-pages") ?? "50");
-  const workers = Number(args.get("workers") ?? "8");
+  const sourceWorkers = Number(args.get("source-workers") ?? args.get("workers") ?? "8");
   const timeoutSeconds = Number(args.get("timeout") ?? "25");
   const refreshHours = Number(args.get("refresh-hours") ?? "24");
   const retryHours = Number(args.get("retry-hours") ?? "2");
   const rotationAttempts = Number(args.get("proxy-rotation-attempts") ?? "0");
-  if (![maximumPages, workers, timeoutSeconds, refreshHours, retryHours, rotationAttempts].every(Number.isFinite)
-    || maximumPages < 0 || workers < 1 || timeoutSeconds <= 0 || refreshHours <= 0 || retryHours <= 0 || rotationAttempts < 0) {
-    throw new Error("Archive limits, workers and timeouts must be valid");
+  if (![maximumPages, sourceWorkers, timeoutSeconds, refreshHours, retryHours, rotationAttempts].every(Number.isFinite)
+    || maximumPages < 0 || !Number.isInteger(sourceWorkers) || sourceWorkers < 1
+    || timeoutSeconds <= 0 || refreshHours <= 0 || retryHours <= 0 || rotationAttempts < 0) {
+    throw new Error("Archive limits, source workers and timeouts must be valid");
   }
   const run = await jsonFile<RawRunManifest>(runPath);
   const sources = new Map((await loadSources(configPath)).map((source) => [source.id, source]));
@@ -209,7 +211,7 @@ async function main(): Promise<void> {
   const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
   const driverPath = path.join(packageRoot, "browsertrix", "driver.mjs");
   const attempts: BrowsertrixAttempt[] = [];
-  const attemptErrors: Array<{ round: number; error: string }> = [];
+  const attemptErrors: Array<{ round: number; sourceId: string; error: string }> = [];
   const best = new Map<string, BrowsertrixCapture>();
   const proxyServer = args.get("proxy-server");
   const controlUrl = args.get("proxy-control-url");
@@ -219,53 +221,56 @@ async function main(): Promise<void> {
 
   const capture = async (values: ArticleBundle[], round: number): Promise<boolean> => {
     if (!values.length) return true;
-    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), `jojo-browsertrix-${round}-`));
-    try {
-      const attempt = await runBrowsertrixAttempt({
-        image: args.get("browsertrix-image") ?? BROWSERTRIX_IMAGE,
-        workspace,
-        temporaryRoot,
-        rawArchiveRoot: archiveRoot,
-        runId: run.runId,
-        round,
-        articles: values,
-        workers,
-        timeoutSeconds,
-        ...(proxyServer ? { proxyServer } : {}),
-        ...(args.get("browser-extension-path") ? { extensionPath: path.resolve(args.get("browser-extension-path")!) } : {}),
-        driverPath,
-      });
-      attempts.push(attempt);
-      for (const result of attempt.captures) {
-        const previous = best.get(result.articleId);
-        if (captureSucceeded(result) || !captureSucceeded(previous)) best.set(result.articleId, result);
+    const completed = await mapSourceBatches(values, sourceWorkers, async (batch): Promise<boolean> => {
+      const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), `jojo-browsertrix-${round}-${batch.sourceId}-`));
+      try {
+        const attempt = await runBrowsertrixAttempt({
+          image: args.get("browsertrix-image") ?? BROWSERTRIX_IMAGE,
+          workspace,
+          temporaryRoot,
+          rawArchiveRoot: archiveRoot,
+          runId: run.runId,
+          round,
+          sourceId: batch.sourceId,
+          articles: batch.articles,
+          timeoutSeconds,
+          ...(proxyServer ? { proxyServer } : {}),
+          ...(args.get("browser-extension-path") ? { extensionPath: path.resolve(args.get("browser-extension-path")!) } : {}),
+          driverPath,
+        });
+        attempts.push(attempt);
+        for (const result of attempt.captures) {
+          const previous = best.get(result.articleId);
+          if (captureSucceeded(result) || !captureSucceeded(previous)) best.set(result.articleId, result);
+        }
+        return true;
+      } catch (error) {
+        attemptErrors.push({
+          round,
+          sourceId: batch.sourceId,
+          error: error instanceof Error && error.message.startsWith("Browsertrix did not produce a WACZ")
+            ? "BrowsertrixWaczMissing"
+            : "BrowsertrixAttemptFailed",
+        });
+        return false;
+      } finally {
+        await rm(temporaryRoot, { recursive: true, force: true });
       }
-      return true;
-    } catch (error) {
-      attemptErrors.push({
-        round,
-        error: error instanceof Error && error.message.startsWith("Browsertrix did not produce a WACZ")
-          ? "BrowsertrixWaczMissing"
-          : "BrowsertrixAttemptFailed",
-      });
-      return false;
-    } finally {
-      await rm(temporaryRoot, { recursive: true, force: true });
-    }
+    });
+    return completed.every(Boolean);
   };
 
   await capture(selected, 0);
   if (selected.length && proxyServer && controlUrl && rotationAttempts > 0) {
     try {
       const alternatives = await proxyCandidates(controlUrl, proxyGroup, automaticName, rotationAttempts);
-      for (const alternative of alternatives) {
+      for (const [index, alternative] of alternatives.entries()) {
         const retry = selected.filter((article) => !captureSucceeded(best.get(article.articleId)));
         if (!retry.length) break;
         await selectProxy(controlUrl, proxyGroup, alternative);
         await new Promise((resolve) => setTimeout(resolve, 250));
-        const completed = await capture(retry, attempts.length);
+        await capture(retry, index + 1);
         proxyRotationRounds += 1;
-        if (!completed) break;
       }
     } finally {
       await selectProxy(controlUrl, proxyGroup, automaticName);
@@ -288,11 +293,12 @@ async function main(): Promise<void> {
   state.updatedAt = generatedAt.toISOString();
   await writeFile(statePath, gzipSync(`${JSON.stringify(state)}\n`, { level: 9 }));
 
+  const orderedAttempts = [...attempts].sort((left, right) => left.round - right.round || left.sourceId.localeCompare(right.sourceId));
   const captureBySource = new Map<string, { sourceId: string; attempts: number; routeAttempts: number; succeeded: number; failed: number }>();
   for (const article of selected) {
     const row = captureBySource.get(article.sourceId) ?? { sourceId: article.sourceId, attempts: 0, routeAttempts: 0, succeeded: 0, failed: 0 };
     row.attempts += 1;
-    row.routeAttempts += attempts.reduce((count, attempt) => count + Number(attempt.captures.some((capture) => capture.articleId === article.articleId)), 0);
+    row.routeAttempts += orderedAttempts.reduce((count, attempt) => count + Number(attempt.captures.some((capture) => capture.articleId === article.articleId)), 0);
     row[captureSucceeded(best.get(article.articleId)) ? "succeeded" : "failed"] += 1;
     captureBySource.set(article.sourceId, row);
   }
@@ -305,7 +311,7 @@ async function main(): Promise<void> {
       url: article.captureUrl,
       httpStatus: result?.status,
       error: result?.error ?? "BrowsertrixMissingPage",
-      routeAttempts: attempts.reduce((count, attempt) => count + Number(attempt.captures.some((capture) => capture.articleId === article.articleId)), 0),
+      routeAttempts: orderedAttempts.reduce((count, attempt) => count + Number(attempt.captures.some((capture) => capture.articleId === article.articleId)), 0),
     }];
   });
   const archiveDirectory = path.join(archiveRoot, ...generatedAt.toISOString().slice(0, 10).split("-"), run.runId);
@@ -316,8 +322,8 @@ async function main(): Promise<void> {
     generatedAt: generatedAt.toISOString(),
     discovered: articles.length,
     selected: selected.length,
-    waczObjects: attempts.map((attempt) => attempt.waczObject),
-    waczBytes: attempts.reduce((sum, attempt) => sum + attempt.waczBytes, 0),
+    waczObjects: orderedAttempts.map((attempt) => attempt.waczObject),
+    waczBytes: orderedAttempts.reduce((sum, attempt) => sum + attempt.waczBytes, 0),
     articleAttempts: selected.length,
     articleFailures: failedCases.length,
     extractedFullBodies,
@@ -331,7 +337,8 @@ async function main(): Promise<void> {
       extensionRevision: args.get("browser-extension-revision") ?? null,
       proxyConfigured: Boolean(proxyServer),
       proxyRotationRounds,
-      workers,
+      sourceWorkers,
+      perSourceWorkers: 1,
       maximumPages,
     },
   };

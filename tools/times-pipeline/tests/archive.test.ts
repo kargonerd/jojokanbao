@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { extractRenderedBody } from "../src/archive/body.js";
 import { BROWSERTRIX_IMAGE, browsertrixArguments } from "../src/archive/browsertrix.js";
 import { selectProxy, selectProxyCandidates } from "../src/archive/proxy.js";
+import { groupArticlesBySource, mapSourceBatches } from "../src/archive/schedule.js";
 import { articleFingerprint, selectArticlesForCapture, type ArchiveArticle } from "../src/archive/select.js";
 
 const now = new Date("2026-08-22T12:00:00Z");
@@ -130,8 +131,8 @@ describe("browser archive orchestration", () => {
       rawArchiveRoot: "/workspace/raw/web-archives/times",
       runId: "run",
       round: 0,
+      sourceId: "example",
       articles: [article("one")],
-      workers: 2,
       timeoutSeconds: 25,
       proxyServer: "http://127.0.0.1:7890",
       extensionPath: "/workspace/bpc",
@@ -141,6 +142,46 @@ describe("browser archive orchestration", () => {
     expect(BROWSERTRIX_IMAGE).toMatch(/^webrecorder\/browsertrix-crawler:1\.14\.1@sha256:[a-f0-9]{64}$/u);
     expect(args).toContain("--extraChromeArgs=--load-extension=/jojo/bpc");
     expect(args).toContain("--proxyServer=http://127.0.0.1:7890");
+    expect(args).toContain("--workers=1");
     expect(args.join(" ")).not.toContain("subscription");
+  });
+
+  it("groups every publisher into one serial Browsertrix batch", () => {
+    const batches = groupArticlesBySource([
+      article("a-1", "a"),
+      article("b-1", "b"),
+      article("a-2", "a"),
+      article("c-1", "c"),
+      article("b-2", "b"),
+    ]);
+
+    expect(batches.map((batch) => [batch.sourceId, batch.articles.map((row) => row.articleId)])).toEqual([
+      ["a", ["a-1", "a-2"]],
+      ["b", ["b-1", "b-2"]],
+      ["c", ["c-1"]],
+    ]);
+  });
+
+  it("runs publishers concurrently without overlapping a publisher", async () => {
+    let activeSources = 0;
+    let maximumActiveSources = 0;
+    const seen: string[][] = [];
+    await mapSourceBatches([
+      article("a-1", "a"),
+      article("a-2", "a"),
+      article("b-1", "b"),
+      article("c-1", "c"),
+    ], 2, async (batch) => {
+      activeSources += 1;
+      maximumActiveSources = Math.max(maximumActiveSources, activeSources);
+      seen.push(batch.articles.map((row) => row.articleId));
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      activeSources -= 1;
+    });
+
+    expect(maximumActiveSources).toBe(2);
+    expect(seen).toContainEqual(["a-1", "a-2"]);
+    expect(seen).toContainEqual(["b-1"]);
+    expect(seen).toContainEqual(["c-1"]);
   });
 });
