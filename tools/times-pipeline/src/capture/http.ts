@@ -1,3 +1,5 @@
+import { BROWSER_USER_AGENT } from "../network/headers.js";
+
 export interface CapturedHtmlPage {
   method: "direct" | "browser";
   requestedUrl: string;
@@ -9,8 +11,6 @@ export interface CapturedHtmlPage {
   error?: string;
 }
 
-const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 JOJO-Times/3.0";
-
 export async function fetchDirectPage(url: string, timeoutSeconds: number): Promise<CapturedHtmlPage> {
   const capturedAt = new Date().toISOString();
   try {
@@ -19,7 +19,7 @@ export async function fetchDirectPage(url: string, timeoutSeconds: number): Prom
       headers: {
         accept: "text/html,application/xhtml+xml",
         "accept-language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
-        "user-agent": USER_AGENT,
+        "user-agent": BROWSER_USER_AGENT,
       },
       signal: AbortSignal.timeout(timeoutSeconds * 1_000),
     });
@@ -49,7 +49,7 @@ export async function downloadDirectAsset(url: string, referer: string, timeoutS
   try {
     const response = await fetch(url, {
       redirect: "follow",
-      headers: { accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8", referer, "user-agent": USER_AGENT },
+      headers: { accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8", referer, "user-agent": BROWSER_USER_AGENT },
       signal: AbortSignal.timeout(timeoutSeconds * 1_000),
     });
     if (!response.ok) return undefined;

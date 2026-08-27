@@ -1,6 +1,7 @@
 import { load } from "cheerio";
 import { fetchHtml, mapLimit } from "../../discovery/http.js";
 import { articleId, normalizeArticleUrl } from "../../identity.js";
+import { BROWSER_USER_AGENT } from "../../network/headers.js";
 import { isFullDiscoveryBody, publisherDate, plainText, stringList } from "../../text.js";
 import type { Candidate, DiscoveryResult, RouteDiscoveryEndpoint, SourceConfig } from "../../types.js";
 
@@ -44,7 +45,7 @@ export async function discoverThepaper(
     headers: {
       accept: "application/json",
       "content-type": "application/json",
-      "user-agent": "JOJO-Times-Offline/2.0 (+https://jojokanbao.cn)",
+      "user-agent": BROWSER_USER_AGENT,
     },
     body: JSON.stringify({ channelId }),
     signal: AbortSignal.timeout(70_000),

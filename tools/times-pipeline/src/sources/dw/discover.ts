@@ -1,4 +1,5 @@
 import { articleId, normalizeArticleUrl } from "../../identity.js";
+import { BROWSER_USER_AGENT } from "../../network/headers.js";
 import { publisherDate, optionalString, plainText, stringList } from "../../text.js";
 import type { Candidate, DiscoveryEndpoint, DiscoveryResult, SourceConfig } from "../../types.js";
 
@@ -57,7 +58,7 @@ function mapCandidate(source: SourceConfig, item: JsonObject): Candidate | undef
 export async function discoverDw(source: SourceConfig, endpoint: DwEndpoint, fetchedAt: string): Promise<DiscoveryResult> {
   const url = `${ROOT}/graph-api/en/content/navigation/${endpoint.navigationId}`;
   const response = await fetch(url, {
-    headers: { accept: "application/json", "user-agent": "JOJO-Times-Offline/2.0 (+https://jojokanbao.cn)" },
+    headers: { accept: "application/json", "user-agent": BROWSER_USER_AGENT },
     signal: AbortSignal.timeout(70_000),
   });
   if (!response.ok) throw new Error(`${source.id}: DW API returned HTTP ${response.status}`);

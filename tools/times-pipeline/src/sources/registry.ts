@@ -22,7 +22,15 @@ import { xinhuaSource } from "./xinhua/index.js";
 import { zaobaoSource } from "./zaobao/index.js";
 import type { SourceModule } from "./contracts.js";
 import type { ArticleBodyExtractor } from "../content/body.js";
-import type { Candidate, DiscoveryResult, DiscoveryRuntime, SourceConfig, SourceFetchPolicy } from "../types.js";
+import type {
+  Candidate,
+  DiscoveryResult,
+  DiscoveryRuntime,
+  PageAvailabilityInput,
+  SourceConfig,
+  SourceFetchPolicy,
+  UnavailablePageReason,
+} from "../types.js";
 
 const modules = new Map<string, SourceModule>([
   africanewsSource,
@@ -77,6 +85,13 @@ export function sourceFetchPolicy(sourceId: string): SourceFetchPolicy | undefin
 
 export function sourceBodyExtractor(sourceId: string): ArticleBodyExtractor | undefined {
   return modules.get(sourceId)?.extractBody;
+}
+
+export function sourceUnavailablePageReason(
+  source: SourceConfig,
+  input: PageAvailabilityInput,
+): UnavailablePageReason | undefined {
+  return modules.get(source.id)?.classifyUnavailable?.(input, source);
 }
 
 export function acceptSourceCandidate(sourceId: string, candidate: Candidate): boolean {

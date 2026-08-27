@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { BROWSER_USER_AGENT } from "../../network/headers.js";
 import { articleId, normalizeArticleUrl } from "../../identity.js";
 import { publisherDate, optionalString, plainText, stringList } from "../../text.js";
 import type { Candidate, DiscoveryEndpoint, DiscoveryResult, SourceConfig } from "../../types.js";
@@ -65,7 +66,7 @@ export async function discoverCls(source: SourceConfig, endpoint: ClsEndpoint, f
         headers: {
           accept: "application/json",
           referer: `${ROOT}/`,
-          "user-agent": "JOJO-Times-Offline/2.0 (+https://jojokanbao.cn)",
+          "user-agent": BROWSER_USER_AGENT,
         },
         signal: AbortSignal.timeout(35_000),
       });

@@ -54,7 +54,7 @@ contentHash  = SHA-256(title + publishedAt + canonical body + asset hashes)
 
 ## 4. 来源与页面抓取
 
-每家媒体自己的目录包含 source.json、可选 discover.ts、fetch.ts、可选 process.ts 和 index.ts。
+每家媒体自己的目录包含 source.json、可选 discover.ts、fetch.ts、可选 availability.ts、可选 process.ts 和 index.ts。
 共享层只提供 HTTP、RSS、sitemap、浏览器、代理、质量门槛、去重和存储原语。媒体 URL、selector 和
 API 合约不得放入假定所有网站相同的通用适配器。
 

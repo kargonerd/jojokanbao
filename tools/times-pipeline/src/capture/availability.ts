@@ -1,30 +1,13 @@
-export type UnavailablePageReason = "UnsupportedMedia" | "HardPaywall";
+import type { PageAvailabilityInput, UnavailablePageReason } from "../types.js";
 
-export function unavailablePageReason(input: {
-  sourceId: string;
-  title: string;
-  url: string;
-  html?: string;
-  hasFullBody: boolean;
-}): UnavailablePageReason | undefined {
+export function unavailablePageReason(input: PageAvailabilityInput): UnavailablePageReason | undefined {
   if (input.hasFullBody) return undefined;
-  const html = input.html ?? "";
   let pathname = "";
   try {
     pathname = new URL(input.url).pathname;
   } catch {
-    // Classification can continue from the captured markup.
+    return undefined;
   }
   if (/\/(?:video|videos|gallery|galleries|picture|pictures)(?:\/|$)/iu.test(pathname)) return "UnsupportedMedia";
-  if (input.sourceId === "npr" && /\bno-transcript\b/iu.test(html)) return "UnsupportedMedia";
-  if (input.sourceId === "cls" && (
-    /<video\b|点击按住可拖动视频/iu.test(html)
-    || /(?:一图看懂|航拍画面)/u.test(input.title)
-  )) return "UnsupportedMedia";
-  if (input.sourceId === "xinhua" && /新华社音视频部制作/u.test(html)) return "UnsupportedMedia";
-  if (input.sourceId === "scmp" && /SCMP Plus subscription is required for access/iu.test(html)) return "HardPaywall";
-  if (input.sourceId === "nyt"
-    && /preview view of this article while we are checking your access/iu.test(html)
-    && /subscribe for all of The Times/iu.test(html)) return "HardPaywall";
   return undefined;
 }

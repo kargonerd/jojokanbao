@@ -73,19 +73,15 @@ describe("page capture orchestration", () => {
     }])).toBe('<figure data-asset-id="asset:lead"></figure><p>Body</p>');
   });
 
-  it("separates non-text media and an explicit hard paywall from fetch failures", () => {
+  it("classifies generic media URLs without mistaking text pages for hard paywalls", () => {
     expect(unavailablePageReason({
-      sourceId: "npr", title: "Audio brief", url: "https://www.npr.org/story", html: '<body class="no-transcript">', hasFullBody: false,
+      title: "Video brief", url: "https://news.example.test/videos/brief", hasFullBody: false,
     })).toBe("UnsupportedMedia");
     expect(unavailablePageReason({
-      sourceId: "scmp", title: "Plus story", url: "https://www.scmp.com/plus/story", html: "SCMP Plus subscription is required for access.", hasFullBody: false,
-    })).toBe("HardPaywall");
+      title: "Article with video", url: "https://news.example.test/articles/story", html: "Subscribe to continue", hasFullBody: false,
+    })).toBeUndefined();
     expect(unavailablePageReason({
-      sourceId: "nyt", title: "Subscriber story", url: "https://www.nytimes.com/story", hasFullBody: false,
-      html: "You have a preview view of this article while we are checking your access. Subscribe for all of The Times.",
-    })).toBe("HardPaywall");
-    expect(unavailablePageReason({
-      sourceId: "bloomberg", title: "Story", url: "https://www.bloomberg.com/news/articles/story", html: "Subscribe to continue", hasFullBody: false,
+      title: "Video with a transcript", url: "https://news.example.test/video/brief", hasFullBody: true,
     })).toBeUndefined();
   });
 

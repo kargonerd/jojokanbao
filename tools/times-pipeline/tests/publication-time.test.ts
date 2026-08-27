@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterDiscoveryWindow } from "../src/discovery/window.js";
+import { filterPublicationWindow } from "../src/discovery/publication-window.js";
 import { publisherDate } from "../src/text.js";
 import type { Candidate } from "../src/types.js";
 
@@ -43,7 +43,7 @@ describe("publisher time normalization", () => {
   });
 
   it("enforces both sides of a discovery window with bounded clock skew", () => {
-    const result = filterDiscoveryWindow([
+    const result = filterPublicationWindow([
       candidate("old", "2026-08-26T12:32:12.000Z"),
       candidate("inside", "2026-08-26T12:40:00.000Z"),
       candidate("skew", "2026-08-26T12:43:30.000Z"),

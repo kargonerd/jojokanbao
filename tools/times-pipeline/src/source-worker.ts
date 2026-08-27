@@ -2,7 +2,7 @@ import path from "node:path";
 import { parseArgs, requiredArg } from "./args.js";
 import { loadSources } from "./config.js";
 import { discoverSource } from "./discovery/multi.js";
-import { filterDiscoveryWindow } from "./discovery/window.js";
+import { filterPublicationWindow } from "./discovery/publication-window.js";
 import { RecordingFetch } from "./recording-fetch.js";
 import { sourceRunRoot, writeSourceCapture } from "./raw-writer.js";
 
@@ -28,7 +28,7 @@ async function main(): Promise<void> {
     const fetchedAt = new Date().toISOString();
     const cutoff = new Date(startedAt).valueOf() - sinceHours * 3_600_000;
     const result = await discoverSource(source, fetchedAt, cutoff);
-    const filtered = filterDiscoveryWindow(result.candidates, { startedAt, sinceHours, futureToleranceSeconds });
+    const filtered = filterPublicationWindow(result.candidates, { startedAt, sinceHours, futureToleranceSeconds });
     result.candidates = filtered.candidates;
     result.window = filtered.window;
     const networkFile = await recorder.flush();

@@ -6,7 +6,8 @@
 {source}/
 ├─ source.json  # 栏目、发现入口、正文门槛、direct/browser 策略
 ├─ discover.ts  # 可选：出版方 API/栏目协议 → Candidate
-├─ fetch.ts     # 页面 URL、正文 selector、来源抓取特例
+├─ fetch.ts     # 页面 URL 与正文 selector
+├─ availability.ts # 可选：视频、图集、明确硬付费墙等来源规则
 ├─ process.ts   # 可选：来源专属正文解析与 Canonical 前修正
 └─ index.ts     # 模块装配
 ~~~
@@ -15,7 +16,7 @@
 API 合约和过滤规则不得放入一个假定所有网站相同的通用 site adapter。
 
 发现层默认轻量且不逐篇抓正文；接口保留 browser discovery 能力，但只有媒体自身明确需要时才能启用。
-页面层处理发现到的每个待抓 URL。fetch.ts 只描述该媒体，不能引用另一个媒体目录。
+页面层处理发现到的每个待抓 URL。fetch.ts 和 availability.ts 只描述该媒体，不能引用另一个媒体目录。
 
 process.ts 不负责联网。视频和图集应尽量在 discover.ts 或 accept 中排除；摘要、metadata 和抓取失败
 可以进入 Raw 审计，但不能伪装成全文进入 Canonical 或 Delivery。

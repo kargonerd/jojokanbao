@@ -1,5 +1,6 @@
 import { articleId, normalizeArticleUrl } from "../../identity.js";
 import { discoverHtmlListing, sectionUrl } from "../../discovery/html-listing.js";
+import { BROWSER_USER_AGENT } from "../../network/headers.js";
 import { publisherDate, optionalString, plainText, stringList } from "../../text.js";
 import type { Candidate, DiscoveryEndpoint, DiscoveryResult, SourceConfig } from "../../types.js";
 
@@ -54,7 +55,7 @@ async function discoverLatest(source: SourceConfig, endpoint: NikkeiEndpoint, fe
     headers: {
       accept: "application/json",
       "content-type": "application/json",
-      "user-agent": "JOJO-Times-Offline/2.0 (+https://jojokanbao.cn)",
+      "user-agent": BROWSER_USER_AGENT,
     },
     signal: AbortSignal.timeout(70_000),
   });

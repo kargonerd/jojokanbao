@@ -14,7 +14,8 @@ Brasil。央视新闻、财新、WSJ、第一财经、Indian Express 和证券�
 
 - source.json：栏目、发现入口、正文门槛、页面抓取策略；
 - discover.ts：仅在出版方需要自有 API/栏目协议时存在；
-- fetch.ts：正文容器、browser-first/direct-first 和页面特例；
+- fetch.ts：正文容器和页面抓取策略；
+- availability.ts：仅在媒体有视频、图集或明确硬付费墙规则时存在；
 - process.ts：仅在 Canonical 前需要来源修正时存在；
 - index.ts：来源模块装配。
 

@@ -3,8 +3,10 @@ import type {
   Candidate,
   DiscoveryEndpoint,
   DiscoveryResult,
+  PageAvailabilityInput,
   SourceConfig,
   SourceFetchPolicy,
+  UnavailablePageReason,
 } from "../types.js";
 import type { ArticleBodyExtractor } from "../content/body.js";
 
@@ -25,6 +27,10 @@ export interface SourceModule {
   ) => Promise<DiscoveryResult>;
   fetch?: SourceFetchPolicy;
   extractBody?: ArticleBodyExtractor;
+  classifyUnavailable?(
+    input: PageAvailabilityInput,
+    source: SourceConfig,
+  ): UnavailablePageReason | undefined;
   accept?(candidate: Candidate): boolean;
   process?(candidate: Candidate): Candidate;
 }

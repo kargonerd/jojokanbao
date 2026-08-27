@@ -6,7 +6,7 @@ import { parseArgs, requiredArg } from "./args.js";
 import { loadSources } from "./config.js";
 import { bodyQuality, hasArticleBody } from "./content/body.js";
 import { captureArticleAssets } from "./capture/assets.js";
-import { unavailablePageReason, type UnavailablePageReason } from "./capture/availability.js";
+import { unavailablePageReason } from "./capture/availability.js";
 import { BrowserSourceSession } from "./capture/browser.js";
 import { downloadDirectAsset, fetchDirectPage, type CapturedHtmlPage } from "./capture/http.js";
 import { discoverArticleImages } from "./capture/page-images.js";
@@ -14,8 +14,8 @@ import { articleFingerprint, pendingArticles, type PageArticle, type PageCapture
 import { proxyCandidates, selectProxy } from "./capture/proxy.js";
 import { writeRawPage } from "./capture/raw-page.js";
 import { mapSourceBatches, rotatingSourceProbes } from "./capture/schedule.js";
-import { sourceBodyExtractor } from "./sources/registry.js";
-import type { Candidate, SourceCaptureManifest, SourceConfig, SourceFetchPolicy } from "./types.js";
+import { sourceBodyExtractor, sourceUnavailablePageReason } from "./sources/registry.js";
+import type { Candidate, SourceCaptureManifest, SourceConfig, SourceFetchPolicy, UnavailablePageReason } from "./types.js";
 
 interface RawRunManifest {
   runId: string;
@@ -126,13 +126,14 @@ async function completeCapture(
       ? session.downloadAsset(url, referer, timeoutSeconds)
       : downloadDirectAsset(url, referer, timeoutSeconds),
   });
-  const unavailableReason = unavailablePageReason({
-    sourceId: article.sourceId,
+  const availabilityInput = {
     title: article.title,
     url: page.finalUrl,
     ...(page.renderedHtml ? { html: page.renderedHtml } : {}),
     hasFullBody,
-  });
+  };
+  const unavailableReason = unavailablePageReason(availabilityInput)
+    ?? sourceUnavailablePageReason(article.source, availabilityInput);
   article.candidate.contentStatus = hasFullBody
     ? "full"
     : article.candidate.summary?.trim()

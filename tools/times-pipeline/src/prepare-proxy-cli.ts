@@ -10,7 +10,7 @@ async function downloadSubscription(url: string): Promise<string> {
   const timer = setTimeout(() => controller.abort(), 45_000);
   try {
     const response = await fetch(url, {
-      headers: { "user-agent": "JOJO-Times-Offline/2.0" },
+      headers: { "user-agent": "mihomo" },
       signal: controller.signal,
     });
     if (!response.ok || !response.body) throw new Error();

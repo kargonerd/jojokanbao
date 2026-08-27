@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { discoverSource } from "../src/discovery/multi.js";
-import { acceptSourceCandidate, processSourceCandidate, sourceBodyExtractor, sourceFetchPolicy } from "../src/sources/registry.js";
+import {
+  acceptSourceCandidate,
+  processSourceCandidate,
+  sourceBodyExtractor,
+  sourceFetchPolicy,
+  sourceUnavailablePageReason,
+} from "../src/sources/registry.js";
 import type { Candidate, DiscoveryEndpoint, SourceConfig } from "../src/types.js";
 
 function source(id: string, discovery: DiscoveryEndpoint): SourceConfig {
@@ -10,7 +16,10 @@ function source(id: string, discovery: DiscoveryEndpoint): SourceConfig {
     language: id === "cls" ? "zh-CN" : "en",
     publicationTimeZone: id === "cls" ? "Asia/Shanghai" : "UTC",
     discovery,
-    content: { priority: ["captured-page", "discovery-summary"] },
+    content: {
+      priority: ["captured-page", "discovery-summary"],
+      ...(id === "xinhua" ? { minimumFullCharacters: 80, minimumFullParagraphs: 1 } : {}),
+    },
     fetch: { strategy: "browser-first", bpc: true },
     health: { minimumCandidates: 1 },
     enabled: true,
@@ -132,6 +141,33 @@ describe("native source modules", () => {
     expect(sourceFetchPolicy("focus-taiwan")?.bodySelectors).toContain(".paragraph");
     expect(sourceFetchPolicy("nikkei")?.bodySelectors).toContain("[class*='FeatureArticleBody_featureArticleBody']");
     expect(sourceFetchPolicy("people")?.bodySelectors).toContain("#rm_txt_zw");
+  });
+
+  it("keeps publisher-specific availability rules inside source modules", () => {
+    const endpoint: DiscoveryEndpoint = { kind: "official-rss", url: "https://example.test/feed.xml" };
+    const input = (overrides: Partial<Parameters<typeof sourceUnavailablePageReason>[1]> = {}) => ({
+      title: "Article",
+      url: "https://example.test/article",
+      hasFullBody: false,
+      ...overrides,
+    });
+
+    expect(sourceUnavailablePageReason(source("npr", endpoint), input({
+      html: '<body class="no-transcript">',
+    }))).toBe("UnsupportedMedia");
+    expect(sourceUnavailablePageReason(source("cls", endpoint), input({
+      title: "航拍画面",
+      html: "<video></video>",
+    }))).toBe("UnsupportedMedia");
+    expect(sourceUnavailablePageReason(source("xinhua", endpoint), input({
+      html: '<div id="detailContent"><div class="pageVideo" video_src="movie.mp4"></div><p>新华社音视频部制作</p></div>',
+    }))).toBe("UnsupportedMedia");
+    expect(sourceUnavailablePageReason(source("scmp", endpoint), input({
+      html: "SCMP Plus subscription is required for access.",
+    }))).toBe("HardPaywall");
+    expect(sourceUnavailablePageReason(source("nyt", endpoint), input({
+      html: "You have a preview view of this article while we are checking your access. Subscribe for all of The Times.",
+    }))).toBeUndefined();
   });
 
   it("drops Focus Taiwan's homepage placeholder", () => {

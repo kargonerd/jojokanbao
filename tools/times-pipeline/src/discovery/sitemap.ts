@@ -1,4 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
+import { BROWSER_USER_AGENT } from "../network/headers.js";
 import { articleId, normalizeArticleUrl } from "../identity.js";
 import { publisherDate, optionalString } from "../text.js";
 import type { Candidate, DiscoveryResult, SourceConfig } from "../types.js";
@@ -86,7 +87,7 @@ async function fetchXml(sourceId: string, url: string): Promise<string> {
   const response = await fetch(url, {
     headers: {
       accept: "application/xml, text/xml",
-      "user-agent": "JOJO-Times-Offline/2.0 (+https://jojokanbao.cn)",
+      "user-agent": BROWSER_USER_AGENT,
     },
     redirect: "follow",
     signal: AbortSignal.timeout(70_000),

@@ -20,6 +20,15 @@ export interface SourceFetchPolicy {
   bodySelectors: string[];
 }
 
+export type UnavailablePageReason = "UnsupportedMedia" | "HardPaywall";
+
+export interface PageAvailabilityInput {
+  title: string;
+  url: string;
+  html?: string;
+  hasFullBody: boolean;
+}
+
 export type RouteSourceAdapter =
   | "africanews"
   | "agencia-brasil"

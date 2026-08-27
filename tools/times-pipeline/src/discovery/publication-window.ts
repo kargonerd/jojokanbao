@@ -1,14 +1,14 @@
 import type { Candidate, DiscoveryResult } from "../types.js";
 
-export interface DiscoveryWindowOptions {
+export interface PublicationWindowOptions {
   startedAt: string;
   sinceHours: number;
   futureToleranceSeconds: number;
 }
 
-export function filterDiscoveryWindow(
+export function filterPublicationWindow(
   candidates: Candidate[],
-  options: DiscoveryWindowOptions,
+  options: PublicationWindowOptions,
 ): { candidates: Candidate[]; window: NonNullable<DiscoveryResult["window"]> } {
   const startedAt = new Date(options.startedAt).valueOf();
   if (!Number.isFinite(startedAt) || options.sinceHours <= 0 || options.futureToleranceSeconds < 0) {

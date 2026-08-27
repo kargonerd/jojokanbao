@@ -1,3 +1,5 @@
+import { BROWSER_USER_AGENT } from "../network/headers.js";
+
 const htmlCache = new Map<string, Promise<string>>();
 
 export async function fetchHtml(sourceId: string, url: string): Promise<string> {
@@ -7,7 +9,7 @@ export async function fetchHtml(sourceId: string, url: string): Promise<string> 
     const response = await fetch(url, {
       headers: {
         accept: "text/html,application/xhtml+xml",
-        "user-agent": "JOJO-Times-Offline/2.0 (+https://jojokanbao.cn)",
+        "user-agent": BROWSER_USER_AGENT,
       },
       redirect: "follow",
       signal: AbortSignal.timeout(70_000),

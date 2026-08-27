@@ -1,4 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
+import { BROWSER_USER_AGENT } from "../network/headers.js";
 import { articleId, normalizeArticleUrl } from "../identity.js";
 import { isFullDiscoveryBody, publisherDate, optionalString, plainText, stringList } from "../text.js";
 import type { Candidate, DiscoveryResult, SourceConfig } from "../types.js";
@@ -122,7 +123,7 @@ export async function discoverOfficialRss(source: SourceConfig, fetchedAt: strin
     const response = await fetch(url, {
       headers: {
         accept: "application/rss+xml, application/atom+xml, application/xml, text/xml",
-        "user-agent": "JOJO-Times-Offline/2.0 (+https://jojokanbao.cn)",
+        "user-agent": BROWSER_USER_AGENT,
       },
       redirect: "follow",
       signal: AbortSignal.timeout(70_000),

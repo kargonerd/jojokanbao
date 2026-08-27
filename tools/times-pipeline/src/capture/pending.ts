@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { UnavailablePageReason } from "../types.js";
 
 export interface PageArticle {
   articleId: string;
@@ -16,7 +17,7 @@ export interface PageCaptureStateRow {
   capturedAt?: string;
   httpStatus?: number;
   error?: string | null;
-  unavailableReason?: "UnsupportedMedia" | "HardPaywall";
+  unavailableReason?: UnavailablePageReason;
   rawPageObject?: string;
 }
 
