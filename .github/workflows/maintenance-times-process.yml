@@ -209,6 +209,17 @@ jobs:
           rclone copyto "$delivery/catalog.jox" "$JOJO_DELIVERY_REMOTE/catalog.jox" \
             --checksum --header-upload "X-Bz-Info-b2-cache-control: $mutable_cache_control"
 
+          origin_url="$(rclone link "$JOJO_DELIVERY_REMOTE/content/timeline/index.jox" --expire 5m)"
+          curl --silent --show-error --fail \
+            --dump-header "$RUNNER_TEMP/timeline-origin-headers.txt" \
+            --output /dev/null \
+            "$origin_url"
+          if ! grep -Eiq '^cache-control:.*max-age=60([^0-9]|$)' "$RUNNER_TEMP/timeline-origin-headers.txt"; then
+            echo "B2 did not expose the mutable timeline index with max-age=60" >&2
+            exit 1
+          fi
+          echo "B2 serves the mutable timeline index with a 60-second cache policy."
+
       - name: Purge mutable EdgeOne objects and verify the timeline index
         if: env.TIMES_PUBLISH == 'true'
         run: |
@@ -242,15 +253,19 @@ jobs:
               --dump-header "$RUNNER_TEMP/timeline-headers.txt" \
               --output "$RUNNER_TEMP/timeline-index.jox" \
               "$timeline_url" \
-              && cmp --silent "$expected" "$RUNNER_TEMP/timeline-index.jox" \
-              && grep -Eiq '^cache-control:.*max-age=60([^0-9]|$)' "$RUNNER_TEMP/timeline-headers.txt"; then
-              echo "EdgeOne serves the current timeline index with a 60-second cache policy."
+              && cmp --silent "$expected" "$RUNNER_TEMP/timeline-index.jox"; then
+              if grep -Eiq '^cache-control:.*max-age=60([^0-9]|$)' "$RUNNER_TEMP/timeline-headers.txt"; then
+                echo "EdgeOne serves the current timeline index with a 60-second browser cache policy."
+              else
+                cache_control="$(grep -Ei '^cache-control:' "$RUNNER_TEMP/timeline-headers.txt" | tr -d '\r' | tail -1)"
+                echo "::warning::EdgeOne overrides the B2 browser cache policy (${cache_control:-header missing}); mutable app requests use cache=no-store and this run verified the purged bytes."
+              fi
               exit 0
             fi
-            echo "Attempt ${attempt}: EdgeOne still serves a stale index or cache policy; retrying..."
+            echo "Attempt ${attempt}: EdgeOne still serves a stale timeline index; retrying..."
             sleep 10
           done
-          echo "EdgeOne did not expose the current timeline index with max-age=60" >&2
+          echo "EdgeOne did not expose the current timeline index after purge" >&2
           exit 1
 
       - name: Upload dry-run Canonical and Delivery artifact
