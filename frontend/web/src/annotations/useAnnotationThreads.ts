@@ -9,6 +9,7 @@ import type {
   AnnotationReportReason,
   AnnotationSubject,
   AnnotationThread,
+  AnnotationVisibility,
   TextAnchor,
 } from "./types";
 
@@ -64,9 +65,9 @@ export function useAnnotationThreads(subject: AnnotationSubject, enabled: boolea
   }, [refresh]);
 
   const actions = useMemo(() => ({
-    async create(anchor: TextAnchor, initialComment?: string) {
+    async create(anchor: TextAnchor, initialComment?: string, visibility: AnnotationVisibility = "public") {
       const actionSubjectKey = subjectKey;
-      const created = await createAnnotation(stableSubject, anchor, initialComment);
+      const created = await createAnnotation(stableSubject, anchor, initialComment, visibility);
       if (activeSubjectKey.current === actionSubjectKey) {
         setThreads((current) => current.some((thread) => thread.id === created.id)
           ? current.map((thread) => thread.id === created.id ? created : thread)
@@ -74,9 +75,9 @@ export function useAnnotationThreads(subject: AnnotationSubject, enabled: boolea
       }
       return created;
     },
-    async comment(annotationId: string, body: string, parentCommentId?: string) {
+    async comment(annotationId: string, body: string, parentCommentId?: string, visibility: AnnotationVisibility = "public") {
       const actionSubjectKey = subjectKey;
-      const created = await addAnnotationComment(annotationId, body, parentCommentId);
+      const created = await addAnnotationComment(annotationId, body, parentCommentId, visibility);
       if (activeSubjectKey.current === actionSubjectKey) {
         setThreads((current) => current.map((thread) => thread.id === annotationId
           ? { ...thread, comments: [...thread.comments, created] }

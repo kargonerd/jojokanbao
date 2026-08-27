@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { ANNOTATION_REPORT_LABELS, type AnnotationReportReason, type AnnotationThread } from "./types";
+import { CommentVisibilityControl } from "./CommentVisibilityControl";
+import { ANNOTATION_REPORT_LABELS, type AnnotationReportReason, type AnnotationThread, type AnnotationVisibility } from "./types";
 import "./annotations.css";
 
 interface AnnotationDiscussionPanelProps {
   thread: AnnotationThread;
   currentUserId: string;
   onClose: () => void;
-  onComment: (body: string, parentCommentId?: string) => Promise<unknown>;
+  onComment: (body: string, parentCommentId?: string, visibility?: AnnotationVisibility) => Promise<unknown>;
   onReport: (commentId: string, reason: AnnotationReportReason, details?: string) => Promise<unknown>;
 }
 
@@ -16,6 +17,7 @@ function displayTime(value: string): string {
 
 export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onComment, onReport }: AnnotationDiscussionPanelProps) {
   const [draft, setDraft] = useState("");
+  const [visibility, setVisibility] = useState<AnnotationVisibility>("public");
   const [replyTo, setReplyTo] = useState<string>();
   const [reporting, setReporting] = useState<string>();
   const [reportReason, setReportReason] = useState<AnnotationReportReason>("spam");
@@ -29,9 +31,10 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
     setBusy(true);
     setNotice("");
     try {
-      await onComment(draft.trim(), replyTo);
+      await onComment(draft.trim(), replyTo, visibility);
       setDraft("");
       setReplyTo(undefined);
+      setVisibility("public");
     } catch (reason) {
       setNotice(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -69,17 +72,17 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
           const parent = thread.comments.find((candidate) => candidate.id === comment.parentCommentId);
           return (
             <li key={comment.id}>
-              <div className="annotation-comment__byline"><b>{comment.authorName}</b><time>{displayTime(comment.createdAt)}</time></div>
+              <div className="annotation-comment__byline"><span><b>{comment.authorName}</b>{comment.visibility === "private" ? <em>仅自己可见</em> : null}</span><time>{displayTime(comment.createdAt)}</time></div>
               {parent ? <small>回复 {parent.authorName}</small> : null}
               <p>{comment.body}</p>
-              <div className="annotation-comment__actions">
+              {comment.visibility !== "private" ? <div className="annotation-comment__actions">
                 <button type="button" onClick={() => { setReplyTo(comment.id); setReporting(undefined); }}>回复</button>
                 {comment.authorId !== currentUserId ? (
                   <button type="button" disabled={comment.reportedByMe} onClick={() => { setReporting(comment.id); setReplyTo(undefined); }}>
                     {comment.reportedByMe ? "已举报" : "举报"}
                   </button>
                 ) : null}
-              </div>
+              </div> : null}
               {reporting === comment.id ? (
                 <div className="annotation-report-form">
                   <select value={reportReason} onChange={(event) => setReportReason(event.target.value as AnnotationReportReason)} aria-label="举报原因">
@@ -98,6 +101,7 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
       <footer className="annotation-composer">
         {reply ? <div>回复 {reply.authorName}<button type="button" onClick={() => setReplyTo(undefined)}>取消</button></div> : null}
         <textarea value={draft} maxLength={2000} onChange={(event) => setDraft(event.target.value)} placeholder="接着评论……" />
+        <CommentVisibilityControl value={visibility} onChange={setVisibility} disabled={busy} />
         <button type="button" disabled={busy || !draft.trim()} onClick={() => void submitComment()}>{busy ? "发送中…" : "发表评论"}</button>
         {notice ? <p role="status">{notice}</p> : null}
       </footer>

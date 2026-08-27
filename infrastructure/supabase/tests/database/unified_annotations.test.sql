@@ -1,12 +1,19 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(14);
+select extensions.plan(20);
 
 select extensions.hasnt_table(
   'private',
   'annotation_moderation_events',
   'annotation moderation does not keep an unused event table'
+);
+
+select extensions.has_column(
+  'public',
+  'annotation_comments',
+  'visibility',
+  'annotation comments have an explicit visibility column'
 );
 
 create temporary table annotation_test_state (
@@ -16,6 +23,7 @@ create temporary table annotation_test_state (
   pager_id uuid not null default extensions.gen_random_uuid(),
   annotation_id uuid,
   comment_id uuid,
+  private_comment_id uuid,
   report_id uuid
 );
 insert into annotation_test_state default values;
@@ -120,6 +128,45 @@ select extensions.throws_ok(
   'a reader cannot report their own comment through the RPC'
 );
 
+update annotation_test_state
+set private_comment_id = (
+  public.add_annotation_comment(annotation_id, '只给自己看的想法', null, 'private')->>'id'
+)::uuid;
+
+select extensions.is(
+  (
+    select visibility
+    from public.annotation_comments comment, annotation_test_state state
+    where comment.id = state.private_comment_id
+  ),
+  'private',
+  'a reader can save a private thought'
+);
+
+select extensions.is(
+  (
+    select count(*)::integer
+    from public.user_notifications notification, annotation_test_state state
+    where notification.recipient_id = state.author_id
+      and notification.kind = 'annotation.comment'
+  ),
+  1,
+  'a private thought does not notify the annotation author'
+);
+
+select extensions.is(
+  (
+    select count(*)::integer
+    from jsonb_array_elements(public.get_annotation_threads('book', 'book-1', 'chapter-1')) thread,
+      jsonb_array_elements(thread->'comments') comment,
+      annotation_test_state state
+    where comment->>'id' = state.private_comment_id::text
+      and comment->>'visibility' = 'private'
+  ),
+  1,
+  'the private thought is returned to its author'
+);
+
 do $$
 begin
   perform pg_catalog.set_config(
@@ -129,6 +176,29 @@ begin
   );
 end;
 $$;
+
+select extensions.is(
+  (
+    select count(*)::integer
+    from jsonb_array_elements(public.get_annotation_threads('book', 'book-1', 'chapter-1')) thread,
+      jsonb_array_elements(thread->'comments') comment,
+      annotation_test_state state
+    where comment->>'id' = state.private_comment_id::text
+  ),
+  0,
+  'a private thought is omitted from another reader snapshot'
+);
+
+select extensions.throws_ok(
+  $$select public.report_annotation_comment(
+    (select private_comment_id from annotation_test_state),
+    'spam',
+    null
+  )$$,
+  'P0002',
+  'Comment not found',
+  'another reader cannot discover a private thought by reporting its id'
+);
 
 update annotation_test_state
 set report_id = (

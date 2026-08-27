@@ -3,6 +3,7 @@ import type {
   AnnotationReportReason,
   AnnotationSubject,
   AnnotationThread,
+  AnnotationVisibility,
   TextAnchor,
 } from "./types";
 
@@ -44,6 +45,7 @@ export async function createAnnotation(
   subject: AnnotationSubject,
   anchor: TextAnchor,
   initialComment?: string,
+  initialCommentVisibility: AnnotationVisibility = "public",
 ): Promise<AnnotationThread> {
   const { data, error } = await rpc("create_content_annotation", {
     ...subjectParams(subject),
@@ -55,6 +57,7 @@ export async function createAnnotation(
     p_start_offset: anchor.startOffset,
     p_end_offset: anchor.endOffset,
     p_initial_comment: initialComment?.trim() || null,
+    p_initial_comment_visibility: initialCommentVisibility,
   });
   return resultOrThrow<AnnotationThread>(data, error);
 }
@@ -63,11 +66,13 @@ export async function addAnnotationComment(
   annotationId: string,
   body: string,
   parentCommentId?: string,
+  visibility: AnnotationVisibility = "public",
 ): Promise<AnnotationComment> {
   const { data, error } = await rpc("add_annotation_comment", {
     p_annotation_id: annotationId,
     p_body: body.trim(),
     p_parent_comment_id: parentCommentId || null,
+    p_visibility: visibility,
   });
   return resultOrThrow<AnnotationComment>(data, error);
 }

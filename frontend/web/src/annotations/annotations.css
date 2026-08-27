@@ -55,6 +55,8 @@
 .annotation-comments { margin: 0; padding: 0 24px 20px; overflow-y: auto; list-style: none; }
 .annotation-comments > li { padding: 16px 0; border-top: 1px solid var(--color-rule, #ddd); }
 .annotation-comment__byline { display: flex; justify-content: space-between; gap: 12px; font: 12px/1.4 sans-serif; }
+.annotation-comment__byline > span { display: flex; align-items: center; gap: 7px; }
+.annotation-comment__byline em { border: 1px solid var(--color-rule, #bbb); padding: 2px 4px; color: var(--color-muted, #777); font: normal 8px/1 sans-serif; letter-spacing: .04em; }
 .annotation-comment__byline time, .annotation-comments small { color: var(--color-muted, #777); font-size: 10px; }
 .annotation-comments p { margin: 8px 0 0; font-size: 13px; line-height: 1.8; white-space: pre-wrap; }
 .annotation-comment__actions { display: flex; gap: 12px; margin-top: 8px; }
@@ -70,6 +72,12 @@
 .annotation-report-form div { display: flex; justify-content: flex-end; gap: 14px; }
 .annotation-composer { padding: 16px 24px 22px; border-top: 3px double var(--color-rule, #aaa); background: var(--color-paper); }
 .annotation-composer > div { display: flex; justify-content: space-between; margin-bottom: 6px; color: var(--color-muted, #777); font: 11px sans-serif; }
+.annotation-visibility { display: inline-flex; width: fit-content; border: 1px solid var(--color-rule, #bbb); background: transparent; }
+.annotation-visibility button { border: 0; border-right: 1px solid var(--color-rule, #bbb); padding: 5px 8px; color: var(--color-muted, #777); background: transparent; font: 10px/1 sans-serif; cursor: pointer; }
+.annotation-visibility button:last-child { border-right: 0; }
+.annotation-visibility button[aria-checked="true"] { color: #fff; background: var(--color-red); }
+.annotation-visibility button:disabled { cursor: default; opacity: .55; }
+.annotation-composer > .annotation-visibility { display: inline-flex; justify-content: flex-start; margin: 10px 0 0; color: inherit; }
 .annotation-composer > button { display: block; margin: 12px 0 0 auto; border: 1px solid var(--color-red); padding: 8px 14px; color: #fff; background: var(--color-red); font: 700 11px sans-serif; cursor: pointer; }
 .annotation-composer > button:disabled { opacity: .4; cursor: default; }
 .annotation-composer > p { margin: 9px 0 0; color: var(--color-red); font: 11px/1.5 sans-serif; }

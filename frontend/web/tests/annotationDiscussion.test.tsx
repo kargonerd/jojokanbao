@@ -25,6 +25,7 @@ const thread = {
     authorId: "user-2",
     authorName: "其他读者-BBB",
     body: "第一条评论",
+    visibility: "public" as const,
     createdAt: "2026-08-18T10:01:00Z",
     reportedByMe: false,
   }],
@@ -38,7 +39,7 @@ describe("AnnotationDiscussionPanel", () => {
     expect(screen.getByText("回复 其他读者-BBB")).toBeTruthy();
     fireEvent.change(screen.getByPlaceholderText("接着评论……"), { target: { value: "接着讨论" } });
     fireEvent.click(screen.getByRole("button", { name: "发表评论" }));
-    await waitFor(() => expect(onComment).toHaveBeenCalledWith("接着讨论", "comment-1"));
+    await waitFor(() => expect(onComment).toHaveBeenCalledWith("接着讨论", "comment-1", "public"));
   });
 
   it("submits a categorized report for another reader's comment", async () => {
@@ -67,5 +68,17 @@ describe("AnnotationDiscussionPanel", () => {
     expect(screen.getByText("<script>alert(2)</script>")).toBeTruthy();
     expect(screen.getByText("<svg onload=alert(3)>")).toBeTruthy();
     expect(container.querySelector("script, svg[onload], img[onerror]")).toBeNull();
+  });
+
+  it("labels a private thought without exposing discussion actions", () => {
+    const privateThread = {
+      ...thread,
+      comments: [{ ...thread.comments[0]!, authorId: "user-1", visibility: "private" as const }],
+    };
+    render(<AnnotationDiscussionPanel thread={privateThread} currentUserId="user-1" onClose={vi.fn()} onComment={vi.fn()} onReport={vi.fn()} />);
+
+    expect(document.querySelector(".annotation-comment__byline em")?.textContent).toBe("仅自己可见");
+    expect(screen.queryByRole("button", { name: "回复" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "举报" })).toBeNull();
   });
 });

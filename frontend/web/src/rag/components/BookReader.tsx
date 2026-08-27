@@ -10,13 +10,14 @@ import {
 } from "react";
 import { Link } from "react-router-dom";
 import { AnnotationDiscussionPanel } from "../../annotations/AnnotationDiscussionPanel";
+import { CommentVisibilityControl } from "../../annotations/CommentVisibilityControl";
 import {
   clearReaderExplanationMarks,
   renderAnnotationMarks,
   renderReaderExplanationMarks,
   textAnchorFromRange,
 } from "../../annotations/domAnchors";
-import type { TextAnchor } from "../../annotations/types";
+import type { AnnotationVisibility, TextAnchor } from "../../annotations/types";
 import { useAnnotationThreads } from "../../annotations/useAnnotationThreads";
 import { useFeatureFlag } from "../../featureFlags";
 import { AccountMenu } from "../../account/AccountMenu";
@@ -165,6 +166,7 @@ export function BookReader({
   const [textSelection, setTextSelection] = useState<ReaderTextSelection>();
   const [thoughtOpen, setThoughtOpen] = useState(false);
   const [thought, setThought] = useState("");
+  const [thoughtVisibility, setThoughtVisibility] = useState<AnnotationVisibility>("private");
   const [aiQuestion, setAiQuestion] = useState<string>();
   const [aiInitialAnswer, setAiInitialAnswer] = useState<string>();
   const [aiInitialReferences, setAiInitialReferences] = useState<RagReference[]>();
@@ -605,9 +607,9 @@ export function BookReader({
     if (!anchor) return;
     setAnnotationSaving(true);
     try {
-      const saved = await annotations.create(anchor);
+      await annotations.create(anchor);
       clearSelection();
-      setActiveAnnotationId(saved.id);
+      setReaderNotice("已划线");
     } catch (reason) { setReaderNotice(reason instanceof Error ? reason.message : String(reason)); }
     finally { setAnnotationSaving(false); }
   }
@@ -618,10 +620,11 @@ export function BookReader({
     if (!anchor) return;
     setAnnotationSaving(true);
     try {
-      const saved = await annotations.create(anchor, thought.trim());
+      const saved = await annotations.create(anchor, thought.trim(), thoughtVisibility);
       clearSelection();
       setActiveAnnotationId(saved.id);
       setThought("");
+      setThoughtVisibility("private");
     } catch (reason) { setReaderNotice(reason instanceof Error ? reason.message : String(reason)); }
     finally { setAnnotationSaving(false); }
   }
@@ -782,7 +785,7 @@ export function BookReader({
       thread={activeAnnotation}
       currentUserId={currentUserId}
       onClose={() => setActiveAnnotationId(undefined)}
-      onComment={(body, parentCommentId) => annotations.comment(activeAnnotation.id, body, parentCommentId)}
+      onComment={(body, parentCommentId, visibility) => annotations.comment(activeAnnotation.id, body, parentCommentId, visibility)}
       onReport={(commentId, reason, details) => annotations.report(activeAnnotation.id, commentId, reason, details)}
     /> : null}
 
@@ -808,7 +811,7 @@ export function BookReader({
       </div>
       {thoughtOpen && <div className={`mt-1 w-72 border p-3 shadow-[3px_6px_20px_rgba(0,0,0,.16)] ${panelClass}`}>
         <textarea autoFocus value={thought} onChange={(event) => setThought(event.target.value)} placeholder="写下此刻的想法……" rows={3} className="book-thought-input block w-full resize-none border-0 border-b border-rule bg-transparent px-0 py-1 font-serif text-sm leading-6 text-current" />
-        <div className="mt-2 flex justify-end"><button type="button" disabled={annotationSaving || !thought.trim()} onClick={() => void saveThought()} className="border-0 bg-transparent p-0 text-xs font-bold text-red cursor-pointer disabled:opacity-30">{annotationSaving ? "保存中…" : "保存"}</button></div>
+        <div className="mt-2 flex items-center justify-between gap-3"><CommentVisibilityControl value={thoughtVisibility} onChange={setThoughtVisibility} disabled={annotationSaving} /><button type="button" disabled={annotationSaving || !thought.trim()} onClick={() => void saveThought()} className="border-0 bg-transparent p-0 text-xs font-bold text-red cursor-pointer disabled:opacity-30">{annotationSaving ? "保存中…" : "保存"}</button></div>
       </div>}
     </div>}
 

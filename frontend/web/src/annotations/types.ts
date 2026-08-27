@@ -16,6 +16,8 @@ export interface TextAnchor {
   endOffset: number | null;
 }
 
+export type AnnotationVisibility = "public" | "private";
+
 export interface AnnotationComment {
   id: string;
   annotationId: string;
@@ -23,6 +25,7 @@ export interface AnnotationComment {
   authorId: string;
   authorName: string;
   body: string;
+  visibility: AnnotationVisibility;
   createdAt: string;
   reportedByMe: boolean;
 }

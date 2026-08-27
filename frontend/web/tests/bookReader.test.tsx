@@ -329,14 +329,54 @@ describe("BookReader", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "写想法" }));
     fireEvent.change(screen.getByPlaceholderText("写下此刻的想法……"), { target: { value: "值得继续讨论" } });
+    expect(screen.getByRole("radio", { name: "仅自己可见" }).getAttribute("aria-checked")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(annotationApi.createAnnotation).toHaveBeenCalledWith(
       expect.objectContaining({ contentType: "book", sectionId: "chapter-1" }),
       expect.objectContaining({ quote: "这是正文。" }),
       "值得继续讨论",
+      "private",
     ));
     expect(await screen.findByRole("complementary", { name: "划线评论" })).toBeTruthy();
+  });
+
+  it("saves a plain underline without opening the discussion panel", async () => {
+    annotationApi.createAnnotation.mockResolvedValue({
+      id: "annotation-underline-1",
+      contentType: "book",
+      contentId: "test-books:test-books:full-book",
+      sectionId: "chapter-1",
+      contentTitle: "测试书 · 第一章",
+      contentUrl: "/book/test-books/test-books:full-book",
+      authorId: "11111111-1111-4111-8111-111111111111",
+      authorName: "测试读者-ABC",
+      quote: "这是正文。",
+      prefix: "第一章",
+      suffix: "[1]这是注释。",
+      startOffset: 3,
+      endOffset: 8,
+      createdAt: "2026-08-18T10:00:00Z",
+      comments: [],
+    });
+    const { container } = renderReader();
+    const paragraph = screen.getByText("这是正文。");
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent.pointerUp(container.querySelector("[data-book-page-flow]")!);
+
+    fireEvent.click(await screen.findByRole("button", { name: "划线" }));
+
+    await waitFor(() => expect(annotationApi.createAnnotation).toHaveBeenCalledWith(
+      expect.objectContaining({ contentType: "book", sectionId: "chapter-1" }),
+      expect.objectContaining({ quote: "这是正文。" }),
+      undefined,
+      "public",
+    ));
+    expect(screen.queryByRole("complementary", { name: "划线评论" })).toBeNull();
+    expect(screen.getByText("已划线")).toBeTruthy();
   });
 
   it("keeps AI available while hiding bookshelf and annotation writes when their flags are off", async () => {
