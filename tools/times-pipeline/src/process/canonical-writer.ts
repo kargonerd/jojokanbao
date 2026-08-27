@@ -2,9 +2,10 @@ import { gzipSync, gunzipSync } from "node:zlib";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { load } from "cheerio";
-import { sha256 } from "./identity.js";
-import { removeParserArtifacts } from "./text.js";
-import type { CapturedAsset, Candidate, PublisherSectionRef, SourceCaptureManifest, SourceConfig } from "./types.js";
+import { sha256 } from "../identity.js";
+import { removeParserArtifacts } from "../text.js";
+import type { CapturedAsset, Candidate, PublisherSectionRef, SourceCaptureManifest, SourceConfig } from "../types.js";
+import type { ProcessedCandidate } from "./article.js";
 
 export interface CanonicalArticle {
   formatVersion: "jojo-news-article/2";
@@ -67,8 +68,8 @@ export interface CanonicalWriteResult {
   }>;
 }
 
-function bodyValue(candidate: Candidate): string | undefined {
-  const value = candidate.capturedBody ?? candidate.discoveryBody;
+function bodyValue(candidate: ProcessedCandidate): string | undefined {
+  const value = candidate.processedBody;
   if (!value?.trim() || candidate.contentStatus !== "full") return undefined;
   const $ = load(removeParserArtifacts(value), undefined, false);
   $("script,style,noscript,iframe,video,audio,picture,source").remove();
@@ -91,7 +92,7 @@ function bodyValue(candidate: Candidate): string | undefined {
 }
 
 function canonicalArticle(
-  candidate: Candidate,
+  candidate: ProcessedCandidate,
   value: string,
   manifest: SourceCaptureManifest,
   manifestObject: string,
@@ -149,7 +150,7 @@ export async function writeCanonicalSource(
   source: SourceConfig,
   manifest: SourceCaptureManifest,
   manifestObject: string,
-  candidates: Candidate[],
+  candidates: ProcessedCandidate[],
   rawRevision: string,
 ): Promise<CanonicalWriteResult> {
   const sourceRoot = path.join(output, "canonical", source.id);

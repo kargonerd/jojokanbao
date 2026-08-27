@@ -1,4 +1,4 @@
-export interface RenderedBodyQuality {
+export interface BodyQuality {
   minimumCharacters?: number;
   minimumParagraphs?: number;
 }
@@ -9,7 +9,7 @@ function escapeHtml(value: string): string {
 
 export function semanticParagraphs(
   values: string[],
-  quality: RenderedBodyQuality = {},
+  quality: BodyQuality = {},
 ): string | undefined {
   const seen = new Set<string>();
   const paragraphs = values.map((value) => value.replaceAll(/\s+/gu, " ").trim())

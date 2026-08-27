@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { CapturedAsset } from "../types.js";
-import type { PageImageCandidate } from "./article-content.js";
+import type { PageImageCandidate } from "./page-images.js";
 
 function extension(mediaType: string, sourceUrl: string): string {
   const byType: Record<string, string> = {

@@ -13,7 +13,7 @@ import {
   type TimesTimelineIndex,
 } from "@jojo/content";
 import { describe, expect, it } from "vitest";
-import type { CanonicalArticle, CanonicalWriteResult } from "../src/canonical-writer.js";
+import type { CanonicalArticle, CanonicalWriteResult } from "../src/process/canonical-writer.js";
 import { buildNewsDelivery } from "../src/delivery-writer.js";
 import type { SourceConfig } from "../src/types.js";
 

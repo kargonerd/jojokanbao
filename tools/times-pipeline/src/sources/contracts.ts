@@ -6,6 +6,7 @@ import type {
   SourceConfig,
   SourceFetchPolicy,
 } from "../types.js";
+import type { ArticleBodyExtractor } from "../content/body.js";
 
 export type SourceAdapterEndpoint = Extract<DiscoveryEndpoint, { kind: "source-adapter" }>;
 
@@ -23,6 +24,7 @@ export interface SourceModule {
     browser: BrowserDiscoveryRuntime,
   ) => Promise<DiscoveryResult>;
   fetch?: SourceFetchPolicy;
+  extractBody?: ArticleBodyExtractor;
   accept?(candidate: Candidate): boolean;
   process?(candidate: Candidate): Candidate;
 }

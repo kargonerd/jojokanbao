@@ -4,15 +4,17 @@ import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs, requiredArg } from "./args.js";
 import { loadSources } from "./config.js";
-import { extractRenderedBody } from "./process/rendered-body.js";
-import { bodyWithAssets, extractArticleContent } from "./capture/article-content.js";
+import { bodyQuality, hasArticleBody } from "./content/body.js";
 import { captureArticleAssets } from "./capture/assets.js";
 import { unavailablePageReason, type UnavailablePageReason } from "./capture/availability.js";
 import { BrowserSourceSession } from "./capture/browser.js";
 import { downloadDirectAsset, fetchDirectPage, type CapturedHtmlPage } from "./capture/http.js";
+import { discoverArticleImages } from "./capture/page-images.js";
 import { articleFingerprint, pendingArticles, type PageArticle, type PageCaptureState } from "./capture/pending.js";
 import { proxyCandidates, selectProxy } from "./capture/proxy.js";
+import { writeRawPage } from "./capture/raw-page.js";
 import { mapSourceBatches, rotatingSourceProbes } from "./capture/schedule.js";
+import { sourceBodyExtractor } from "./sources/registry.js";
 import type { Candidate, SourceCaptureManifest, SourceConfig, SourceFetchPolicy } from "./types.js";
 
 interface RawRunManifest {
@@ -87,43 +89,12 @@ async function descriptor(root: string, target: string): Promise<{ path: string;
   };
 }
 
-function quality(source: SourceConfig): { minimumCharacters?: number; minimumParagraphs?: number } {
-  return {
-    ...(source.content.minimumFullCharacters !== undefined ? { minimumCharacters: source.content.minimumFullCharacters } : {}),
-    ...(source.content.minimumFullParagraphs !== undefined ? { minimumParagraphs: source.content.minimumFullParagraphs } : {}),
-  };
-}
-
 function successfulPage(page: CapturedHtmlPage, fullBody: boolean): boolean {
   return fullBody && Boolean(page.renderedHtml) && (!page.status || page.status < 500);
 }
 
 function retryableOutcome(outcome: CaptureOutcome | undefined): boolean {
   return !outcome?.fullBody && !outcome?.unavailableReason;
-}
-
-async function writeRawPage(workspace: string, article: ArticleBundle, page: CapturedHtmlPage, error?: string): Promise<string> {
-  const runRoot = path.dirname(article.manifestPath);
-  const pageKey = createHash("sha256").update(article.articleId).digest("hex").slice(0, 32);
-  const pageRoot = path.join(runRoot, "pages", pageKey);
-  await mkdir(pageRoot, { recursive: true });
-  if (page.originalHtml) await writeFile(path.join(pageRoot, "original.html.gz"), gzipSync(page.originalHtml, { level: 9 }));
-  if (page.renderedHtml) await writeFile(path.join(pageRoot, "rendered.html.gz"), gzipSync(page.renderedHtml, { level: 9 }));
-  const metadataPath = path.join(pageRoot, "metadata.json");
-  await writeFile(metadataPath, `${JSON.stringify({
-    formatVersion: "jojo-raw-page/1",
-    articleId: article.articleId,
-    sourceId: article.sourceId,
-    requestedUrl: page.requestedUrl,
-    finalUrl: page.finalUrl,
-    method: page.method,
-    status: page.status ?? null,
-    capturedAt: page.capturedAt,
-    originalHtml: page.originalHtml ? "original.html.gz" : null,
-    renderedHtml: page.renderedHtml ? "rendered.html.gz" : null,
-    error: page.error ?? error ?? null,
-  }, null, 2)}\n`);
-  return path.relative(workspace, metadataPath).replaceAll(path.sep, "/");
 }
 
 async function completeCapture(
@@ -133,19 +104,24 @@ async function completeCapture(
   page: CapturedHtmlPage,
   browser?: () => Promise<BrowserSourceSession>,
 ): Promise<CaptureOutcome> {
-  const extracted = page.renderedHtml
-    ? extractArticleContent(page.renderedHtml, page.finalUrl, article.fetchPolicy, quality(article.source))
-    : { body: undefined, images: [] };
-  const discoveryFallback = !extracted.body && article.candidate.discoveryBody
-    ? extractRenderedBody(article.candidate.discoveryBody, article.fetchPolicy, quality(article.source))
-    : undefined;
-  const selectedBody = extracted.body ?? discoveryFallback;
+  const quality = bodyQuality(article.source);
+  const sourceExtractor = sourceBodyExtractor(article.sourceId);
+  const pageHasBody = page.renderedHtml
+    ? hasArticleBody(page.renderedHtml, article.fetchPolicy, quality, sourceExtractor)
+    : false;
+  const discoveryHasBody = !pageHasBody && article.candidate.discoveryBody
+    ? hasArticleBody(article.candidate.discoveryBody, article.fetchPolicy, quality, sourceExtractor)
+    : false;
+  const hasFullBody = pageHasBody || discoveryHasBody;
+  const images = page.renderedHtml
+    ? discoverArticleImages(page.renderedHtml, page.finalUrl, article.fetchPolicy)
+    : [];
   const session = page.method === "browser" && browser ? await browser() : undefined;
   const assets = await captureArticleAssets({
     workspace,
     sourceId: article.sourceId,
     pageUrl: page.finalUrl,
-    images: extracted.images,
+    images,
     download: (url, referer) => session
       ? session.downloadAsset(url, referer, timeoutSeconds)
       : downloadDirectAsset(url, referer, timeoutSeconds),
@@ -155,17 +131,18 @@ async function completeCapture(
     title: article.title,
     url: page.finalUrl,
     ...(page.renderedHtml ? { html: page.renderedHtml } : {}),
-    hasFullBody: Boolean(selectedBody),
+    hasFullBody,
   });
-  if (selectedBody) {
-    article.candidate.capturedBody = bodyWithAssets(selectedBody, assets);
-    article.candidate.contentStatus = "full";
-  }
+  article.candidate.contentStatus = hasFullBody
+    ? "full"
+    : article.candidate.summary?.trim()
+      ? "summary"
+      : "metadata";
   article.candidate.assets = assets;
   article.candidate.capturedAt = page.capturedAt;
   article.candidate.captureMethod = page.method;
   if (page.status !== undefined) article.candidate.captureHttpStatus = page.status;
-  const fullBody = article.candidate.contentStatus === "full" && Boolean(article.candidate.capturedBody || article.candidate.discoveryBody);
+  const fullBody = hasFullBody;
   article.candidate.captureStatus = fullBody
     ? "captured"
     : unavailableReason === "HardPaywall"
@@ -188,10 +165,10 @@ async function captureOne(
   let page = !forceBrowser && article.source.fetch.strategy === "direct-first"
     ? await fetchDirectPage(article.captureUrl, timeoutSeconds)
     : undefined;
-  const directBody = page?.renderedHtml
-    ? extractArticleContent(page.renderedHtml, page.finalUrl, article.fetchPolicy, quality(article.source)).body
-    : undefined;
-  if (!page || !directBody) page = await (await browser()).capture(article.captureUrl, timeoutSeconds);
+  const directHasBody = page?.renderedHtml
+    ? hasArticleBody(page.renderedHtml, article.fetchPolicy, bodyQuality(article.source), sourceBodyExtractor(article.sourceId))
+    : false;
+  if (!page || !directHasBody) page = await (await browser()).capture(article.captureUrl, timeoutSeconds);
   return completeCapture(workspace, article, timeoutSeconds, page, browser);
 }
 

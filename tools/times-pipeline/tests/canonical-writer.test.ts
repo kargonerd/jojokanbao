@@ -3,9 +3,10 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { writeCanonicalSource } from "../src/canonical-writer.js";
+import { writeCanonicalSource } from "../src/process/canonical-writer.js";
+import type { ProcessedCandidate } from "../src/process/article.js";
 import { removeParserArtifacts } from "../src/text.js";
-import type { Candidate, SourceCaptureManifest, SourceConfig } from "../src/types.js";
+import type { SourceCaptureManifest, SourceConfig } from "../src/types.js";
 
 const source: SourceConfig = {
   id: "reuters",
@@ -50,7 +51,7 @@ describe("canonical writer", () => {
       healthStatus: "healthy",
       complete: true,
     };
-    const candidate: Candidate = {
+    const candidate: ProcessedCandidate = {
       articleId: "reuters:one",
       sourceId: "reuters",
       sourceName: "Reuters",
@@ -59,7 +60,7 @@ describe("canonical writer", () => {
       canonicalUrl: "https://www.reuters.com/world/one",
       title: "One",
       summary: "Summary",
-      capturedBody: '<figure data-asset-id="asset:image"></figure><p>Complete Reuters article body.</p>',
+      processedBody: '<figure data-asset-id="asset:image"></figure><p>Complete Reuters article body.</p>',
       contentStatus: "full",
       assets: [{
         id: "asset:image",
@@ -78,7 +79,7 @@ describe("canonical writer", () => {
     };
     const result = await writeCanonicalSource(output, source, manifest, "raw/reuters/runs/run/manifest.json", [
       candidate,
-      { ...candidate, articleId: "reuters:summary", capturedBody: "", assets: [], contentStatus: "summary" },
+      { ...candidate, articleId: "reuters:summary", processedBody: "", assets: [], contentStatus: "summary" },
     ], "raw-sha");
     expect(result.articles).toHaveLength(1);
     expect(result.skippedWithoutFullText).toBe(1);

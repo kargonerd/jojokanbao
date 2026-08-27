@@ -18,7 +18,6 @@ export interface SourceFetchPolicy {
   capture: "browser" | "http";
   captureUrl?: "canonical" | "source";
   bodySelectors: string[];
-  bodyExtractor?: "bloomberg-next-data";
 }
 
 export type RouteSourceAdapter =
@@ -162,7 +161,6 @@ export interface Candidate {
   title: string;
   summary?: string;
   discoveryBody?: string;
-  capturedBody?: string;
   capturedAt?: string;
   captureHttpStatus?: number;
   rawPageObject?: string;

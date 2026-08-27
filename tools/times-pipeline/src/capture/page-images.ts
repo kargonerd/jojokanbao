@@ -1,7 +1,5 @@
 import { load } from "cheerio";
-import type { CapturedAsset, SourceFetchPolicy } from "../types.js";
-import { extractRenderedBody } from "../process/rendered-body.js";
-import type { RenderedBodyQuality } from "../process/paragraphs.js";
+import type { SourceFetchPolicy } from "../types.js";
 
 export interface PageImageCandidate {
   sourceUrl: string;
@@ -62,26 +60,4 @@ export function discoverArticleImages(html: string, pageUrl: string, policy?: So
     add({ sourceUrl, role: sourceUrl === lead ? "lead" : "content", ...(alt ? { alt } : {}), ...(caption ? { caption } : {}), ...(width ? { width } : {}), ...(height ? { height } : {}) });
   });
   return [...values.values()];
-}
-
-function escapeHtml(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
-}
-
-export function bodyWithAssets(body: string, assets: readonly CapturedAsset[]): string {
-  const figures = assets.map((asset) => `<figure data-asset-id="${escapeHtml(asset.id)}">${asset.caption ? `<figcaption>${escapeHtml(asset.caption)}</figcaption>` : ""}</figure>`);
-  const lead = assets.findIndex((asset) => asset.role === "lead");
-  if (lead < 0) return `${body}${figures.join("")}`;
-  const [leadFigure] = figures.splice(lead, 1);
-  return `${leadFigure ?? ""}${body}${figures.join("")}`;
-}
-
-export function extractArticleContent(
-  html: string,
-  pageUrl: string,
-  policy?: SourceFetchPolicy,
-  quality: RenderedBodyQuality = {},
-): { body?: string; images: PageImageCandidate[] } {
-  const body = extractRenderedBody(html, policy, quality);
-  return { ...(body ? { body } : {}), images: discoverArticleImages(html, pageUrl, policy) };
 }

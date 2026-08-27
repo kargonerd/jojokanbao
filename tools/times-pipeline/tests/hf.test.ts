@@ -1,6 +1,6 @@
 import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { candidateDates, candidateObject, canonicalObjects } from "../src/hf.js";
+import { candidateDates, candidateObject, candidateRawPages, canonicalObjects } from "../src/hf.js";
 
 describe("HF snapshot selection", () => {
   it("resolves candidates beside the source manifest", () => {
@@ -28,6 +28,18 @@ describe("HF snapshot selection", () => {
       "canonical/ap/dataset.json",
       "canonical/ap/dates/2026/08/2026-08-22.json.gz",
       "canonical/ap/dates/2026/08/2026-08-23.json.gz",
+    ]));
+  });
+
+  it("selects Raw page metadata needed by Process", () => {
+    const compressed = gzipSync([
+      JSON.stringify({ rawPageObject: "raw/ap/runs/run/pages/one/metadata.json" }),
+      JSON.stringify({ rawPageObject: "raw/ap/runs/run/pages/one/metadata.json" }),
+      JSON.stringify({ title: "No captured page" }),
+      "",
+    ].join("\n"));
+    expect(candidateRawPages(compressed)).toEqual(new Set([
+      "raw/ap/runs/run/pages/one/metadata.json",
     ]));
   });
 });

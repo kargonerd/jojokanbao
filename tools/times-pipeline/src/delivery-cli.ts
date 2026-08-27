@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { JojoCatalog, TimesSourceIndex, TimesTimelineDay, TimesTimelineIndex } from "@jojo/content";
-import type { CanonicalWriteResult } from "./canonical-writer.js";
+import type { CanonicalWriteResult } from "./process/canonical-writer.js";
 import { parseArgs, requiredArg } from "./args.js";
 import { loadSources } from "./config.js";
 import { buildNewsDelivery, readJoxJson } from "./delivery-writer.js";

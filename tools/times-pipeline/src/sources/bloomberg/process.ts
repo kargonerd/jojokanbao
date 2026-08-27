@@ -1,5 +1,5 @@
 import { load } from "cheerio";
-import { semanticParagraphs, type RenderedBodyQuality } from "../../process/paragraphs.js";
+import { semanticParagraphs, type BodyQuality } from "../../content/paragraphs.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -15,7 +15,7 @@ function richText(value: unknown): string {
   return richText(row.content);
 }
 
-export function extractBloombergBody(html: string, quality: RenderedBodyQuality): string | undefined {
+export function extractBloombergBody(html: string, quality: BodyQuality): string | undefined {
   const document = load(html);
   const value = document("script#__NEXT_DATA__").text();
   if (!value) return undefined;

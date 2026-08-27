@@ -1,9 +1,10 @@
 import { load } from "cheerio";
-import { extractBloombergBody } from "../sources/bloomberg/process.js";
-import type { SourceFetchPolicy } from "../types.js";
-import { semanticParagraphs, type RenderedBodyQuality } from "./paragraphs.js";
+import type { SourceConfig, SourceFetchPolicy } from "../types.js";
+import { semanticParagraphs, type BodyQuality } from "./paragraphs.js";
 
 type JsonObject = Record<string, unknown>;
+
+export type ArticleBodyExtractor = (html: string, quality: BodyQuality) => string | undefined;
 
 function object(value: unknown): JsonObject | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : undefined;
@@ -19,16 +20,22 @@ function articleBodies(value: unknown): string[] {
   ];
 }
 
-export function extractRenderedBody(
+export function bodyQuality(source: SourceConfig): BodyQuality {
+  return {
+    ...(source.content.minimumFullCharacters !== undefined ? { minimumCharacters: source.content.minimumFullCharacters } : {}),
+    ...(source.content.minimumFullParagraphs !== undefined ? { minimumParagraphs: source.content.minimumFullParagraphs } : {}),
+  };
+}
+
+export function extractArticleBody(
   html: string,
   policy?: SourceFetchPolicy,
-  quality: RenderedBodyQuality = {},
+  quality: BodyQuality = {},
+  sourceExtractor?: ArticleBodyExtractor,
 ): string | undefined {
   if (!html.trim()) return undefined;
-  if (policy?.bodyExtractor === "bloomberg-next-data") {
-    const extracted = extractBloombergBody(html, quality);
-    if (extracted) return extracted;
-  }
+  const sourceBody = sourceExtractor?.(html, quality);
+  if (sourceBody) return sourceBody;
   const document = load(html);
   const jsonBodies: string[] = [];
   document('script[type="application/ld+json"]').each((_, element) => {
@@ -73,4 +80,13 @@ export function extractRenderedBody(
     if (candidate && (!best || candidate.length > best.length)) best = candidate;
   }
   return best;
+}
+
+export function hasArticleBody(
+  html: string,
+  policy?: SourceFetchPolicy,
+  quality: BodyQuality = {},
+  sourceExtractor?: ArticleBodyExtractor,
+): boolean {
+  return Boolean(extractArticleBody(html, policy, quality, sourceExtractor));
 }

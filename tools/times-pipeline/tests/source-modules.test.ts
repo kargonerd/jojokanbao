@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { discoverSource } from "../src/discovery/multi.js";
-import { acceptSourceCandidate, processSourceCandidate, sourceFetchPolicy } from "../src/sources/registry.js";
+import { acceptSourceCandidate, processSourceCandidate, sourceBodyExtractor, sourceFetchPolicy } from "../src/sources/registry.js";
 import type { Candidate, DiscoveryEndpoint, SourceConfig } from "../src/types.js";
 
 function source(id: string, discovery: DiscoveryEndpoint): SourceConfig {
@@ -122,10 +122,8 @@ describe("native source modules", () => {
   });
 
   it("exposes Bloomberg's embedded article body strategy", () => {
-    expect(sourceFetchPolicy("bloomberg")).toEqual(expect.objectContaining({
-      bodyExtractor: "bloomberg-next-data",
-      capture: "browser",
-    }));
+    expect(sourceFetchPolicy("bloomberg")?.capture).toBe("browser");
+    expect(sourceBodyExtractor("bloomberg")).toBeTypeOf("function");
   });
 
   it("keeps publisher-owned selectors for changing article layouts", () => {

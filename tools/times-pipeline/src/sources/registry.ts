@@ -21,6 +21,7 @@ import { thepaperSource } from "./thepaper/index.js";
 import { xinhuaSource } from "./xinhua/index.js";
 import { zaobaoSource } from "./zaobao/index.js";
 import type { SourceModule } from "./contracts.js";
+import type { ArticleBodyExtractor } from "../content/body.js";
 import type { Candidate, DiscoveryResult, DiscoveryRuntime, SourceConfig, SourceFetchPolicy } from "../types.js";
 
 const modules = new Map<string, SourceModule>([
@@ -72,6 +73,10 @@ export async function discoverWithSourceModule(
 
 export function sourceFetchPolicy(sourceId: string): SourceFetchPolicy | undefined {
   return modules.get(sourceId)?.fetch;
+}
+
+export function sourceBodyExtractor(sourceId: string): ArticleBodyExtractor | undefined {
+  return modules.get(sourceId)?.extractBody;
 }
 
 export function acceptSourceCandidate(sourceId: string, candidate: Candidate): boolean {

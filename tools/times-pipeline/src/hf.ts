@@ -73,6 +73,16 @@ export function candidateAssets(compressed: Uint8Array): Set<string> {
   return objects;
 }
 
+export function candidateRawPages(compressed: Uint8Array): Set<string> {
+  const objects = new Set<string>();
+  for (const line of gunzipSync(compressed).toString("utf8").split(/\r?\n/u)) {
+    if (!line.trim()) continue;
+    const rawPageObject = (JSON.parse(line) as { rawPageObject?: unknown }).rawPageObject;
+    if (typeof rawPageObject === "string") objects.add(rawPageObject);
+  }
+  return objects;
+}
+
 function localObjectPath(output: string, objectName: string): string {
   const normalized = objectName.replaceAll("\\", "/");
   if (normalized.startsWith("/") || normalized.split("/").includes("..")) {
@@ -140,6 +150,7 @@ export class HfTimesDataset {
   }
 
   async downloadObject(objectName: string, revision = "main"): Promise<string | null> {
+    const target = localObjectPath(this.output, objectName);
     const blob = await downloadFile({
       repo: this.repo,
       accessToken: this.accessToken,
@@ -147,7 +158,6 @@ export class HfTimesDataset {
       revision,
     });
     if (!blob) return null;
-    const target = localObjectPath(this.output, objectName);
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, new Uint8Array(await blob.arrayBuffer()));
     return target;
@@ -194,11 +204,30 @@ export class HfTimesDataset {
       const candidatesFile = await this.downloadObject(candidatesObject, latest.revision);
       if (!candidatesFile) throw new Error(`HF Raw candidates object is missing: ${candidatesObject}`);
       const bytes = await readFile(candidatesFile);
-      return { sourceId, dates: candidateDates(bytes), assets: candidateAssets(bytes) };
+      return {
+        sourceId,
+        dates: candidateDates(bytes),
+        assets: candidateAssets(bytes),
+        rawPages: candidateRawPages(bytes),
+      };
     });
     const rawAssets = new Set<string>();
     for (const bundle of bundles) for (const objectName of bundle.assets) rawAssets.add(objectName);
     await mapLimit([...rawAssets], 8, async (objectName) => this.downloadObject(objectName, latest.revision));
+    const rawPages = new Set<string>();
+    for (const bundle of bundles) for (const objectName of bundle.rawPages) rawPages.add(objectName);
+    const rawPageFileCounts = await mapLimit([...rawPages], 8, async (metadataObject) => {
+      const metadataFile = await this.downloadObject(metadataObject, latest.revision);
+      if (!metadataFile) throw new Error(`HF Raw page metadata is missing: ${metadataObject}`);
+      const metadata = JSON.parse(await readFile(metadataFile, "utf8")) as { renderedHtml?: unknown };
+      if (metadata.renderedHtml === null || metadata.renderedHtml === undefined) return 1;
+      if (typeof metadata.renderedHtml !== "string") throw new Error(`HF Raw page metadata is invalid: ${metadataObject}`);
+      const renderedObject = safeRawObject(metadataObject, metadata.renderedHtml);
+      if (!await this.downloadObject(renderedObject, latest.revision)) {
+        throw new Error(`HF Raw rendered page is missing: ${renderedObject}`);
+      }
+      return 2;
+    });
     const wanted = new Set<string>();
     for (const bundle of bundles) for (const objectName of canonicalObjects(bundle.sourceId, bundle.dates)) wanted.add(objectName);
     const existing = await this.treeFiles("canonical", latest.revision);
@@ -210,7 +239,7 @@ export class HfTimesDataset {
       runObject: latest.objectName,
       runManifest: path.resolve(latest.file),
       sources: rows.length,
-      rawFiles: 1 + rows.length * 2 + rawAssets.size,
+      rawFiles: 1 + rows.length * 2 + rawAssets.size + rawPageFileCounts.reduce((sum, count) => sum + count, 0),
       canonicalFiles: canonical.length,
     };
   }

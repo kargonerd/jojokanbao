@@ -14,7 +14,7 @@ import type {
   TimesTimelineDay,
   TimesTimelineIndex,
 } from "@jojo/content";
-import type { CanonicalArticle, CanonicalWriteResult } from "./canonical-writer.js";
+import type { CanonicalArticle, CanonicalWriteResult } from "./process/canonical-writer.js";
 import { sha256 } from "./identity.js";
 import { plainText, removeParserArtifacts } from "./text.js";
 import type { SourceConfig } from "./types.js";

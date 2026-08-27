@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { bodyWithAssets, discoverArticleImages } from "../src/capture/article-content.js";
+import { discoverArticleImages } from "../src/capture/page-images.js";
+import { attachAssetsToBody } from "../src/process/article.js";
 import { unavailablePageReason } from "../src/capture/availability.js";
 import { articleFingerprint, pendingArticles, type PageArticle } from "../src/capture/pending.js";
 import { selectProxy, selectProxyCandidates } from "../src/capture/proxy.js";
@@ -66,7 +67,7 @@ describe("page capture orchestration", () => {
       "https://example.test/lead.jpg",
       "https://example.test/inside.jpg",
     ]);
-    expect(bodyWithAssets("<p>Body</p>", [{
+    expect(attachAssetsToBody("<p>Body</p>", [{
       id: "asset:lead", type: "image", role: "lead", sourceUrl: images[0]!.sourceUrl,
       rawObject: "raw/example/assets/lead.jpg", mediaType: "image/jpeg", size: 1, sha256: "lead",
     }])).toBe('<figure data-asset-id="asset:lead"></figure><p>Body</p>');

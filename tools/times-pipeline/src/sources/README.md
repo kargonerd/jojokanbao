@@ -7,7 +7,7 @@
 ├─ source.json  # 栏目、发现入口、正文门槛、direct/browser 策略
 ├─ discover.ts  # 可选：出版方 API/栏目协议 → Candidate
 ├─ fetch.ts     # 页面 URL、正文 selector、来源抓取特例
-├─ process.ts   # 可选：Canonical 前的来源修正
+├─ process.ts   # 可选：来源专属正文解析与 Canonical 前修正
 └─ index.ts     # 模块装配
 ~~~
 
@@ -19,3 +19,16 @@ API 合约和过滤规则不得放入一个假定所有网站相同的通用 sit
 
 process.ts 不负责联网。视频和图集应尽量在 discover.ts 或 accept 中排除；摘要、metadata 和抓取失败
 可以进入 Raw 审计，但不能伪装成全文进入 Canonical 或 Delivery。
+
+## Pipeline stage boundaries
+
+~~~text
+discovery/  媒体入口 → Candidate 和 URL，不抓逐篇正文
+capture/    URL → 原始/渲染 HTML、页面 metadata、图片对象和抓取状态
+content/    纯 HTML 正文识别原语；Capture 只用它做质量探测
+process/    读取 Raw rendered HTML → 正文、资源引用和 Canonical
+delivery-* Canonical → B2/CDN 使用的时间线与各媒体对象
+~~~
+
+Raw Candidate 不保存解析后的正文。`process/article.ts` 必须从 `rawPageObject` 读取存档后再解析，保证解析器
+升级时可以离线重跑；`page-capture-cli.ts` 和 `process-cli.ts` 只负责各自阶段的编排。
