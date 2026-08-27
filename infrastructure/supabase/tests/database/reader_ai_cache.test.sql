@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(18);
+select extensions.plan(19);
 
 select extensions.has_table(
   'public',
@@ -132,6 +132,16 @@ select extensions.is(
   ),
   1::bigint,
   'a different context keeps an independent query count'
+);
+select extensions.is(
+  (
+    select count(*)::integer
+    from public.get_popular_reader_ai_explanations(
+      'book-a', 'book-a:item-a', 'chapter:1', 'reader-focus-v1'
+    )
+  ),
+  0,
+  'an explanation queried fewer than three times stays out of the chapter display'
 );
 
 select public.put_reader_ai_explanation_cache(

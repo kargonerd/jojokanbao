@@ -300,7 +300,7 @@ begin
     and cache.item_id = v_item_id
     and cache.chapter_id = v_chapter_id
     and cache.prompt_version = v_prompt_version
-    and cache.query_count >= 2
+    and cache.query_count >= 3
   order by cache.query_count desc, cache.quote
   limit 50;
 end;
