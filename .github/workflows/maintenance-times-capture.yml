@@ -2,7 +2,8 @@ name: Maintenance · Times capture to HF Raw
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    # Keep the 10-minute cadence away from GitHub Actions' top-of-hour load spike.
+    - cron: "3,13,23,33,43,53 * * * *"
   workflow_dispatch:
     inputs:
       since_hours:
