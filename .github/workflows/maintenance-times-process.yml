@@ -143,13 +143,25 @@ jobs:
         run: |
           rclone config create jojo-b2 b2 account "$B2_KEY_ID" key "$B2_APPLICATION_KEY" --non-interactive
           mkdir -p "$RUNNER_TEMP/previous-delivery"
-          rclone copy "$JOJO_DELIVERY_REMOTE/content/newspapers" "$RUNNER_TEMP/previous-delivery/content/newspapers" \
-            --include '*/index.jox' --exclude '*' || true
+          node - <<'NODE' > "$RUNNER_TEMP/source-ids.txt"
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const configPath = path.resolve("tools/times-pipeline/sources.v2.json");
+          const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+          for (const sourceFile of config.sourceFiles) {
+            const source = JSON.parse(fs.readFileSync(path.resolve(path.dirname(configPath), sourceFile), "utf8"));
+            if (source.enabled !== false) console.log(source.id);
+          }
+          NODE
+          while read -r source; do
+            [ -n "$source" ] || continue
+            object="content/newspapers/$source/index.jox"
+            mkdir -p "$RUNNER_TEMP/previous-delivery/$(dirname "$object")"
+            rclone copyto "$JOJO_DELIVERY_REMOTE/$object" "$RUNNER_TEMP/previous-delivery/$object" || true
+          done < "$RUNNER_TEMP/source-ids.txt"
           rclone copyto "$JOJO_DELIVERY_REMOTE/content/timeline/index.jox" \
             "$RUNNER_TEMP/previous-delivery/content/timeline/index.jox" || true
-          if rclone lsf "$JOJO_DELIVERY_REMOTE" --files-only --include catalog.jox | grep -qx 'catalog.jox'; then
-            rclone copyto "$JOJO_DELIVERY_REMOTE/catalog.jox" "$RUNNER_TEMP/previous-delivery/catalog.jox"
-          fi
+          rclone copyto "$JOJO_DELIVERY_REMOTE/catalog.jox" "$RUNNER_TEMP/previous-delivery/catalog.jox" || true
           node -e 'const r=require(process.env.RUNNER_TEMP+"/process-result.json"); for(const d of new Set(r.sources.flatMap(s=>s.dates))) console.log(d)' > "$RUNNER_TEMP/process-dates.txt"
           while read -r date; do
             [ -n "$date" ] || continue
@@ -174,12 +186,12 @@ jobs:
           delivery="$RUNNER_TEMP/jojo-times-delivery"
           rclone copy "$delivery/content/newspapers" "$JOJO_DELIVERY_REMOTE/content/newspapers" \
             --include '*/articles/*.jox' --include '*/assets/*.jox' --exclude '*' \
-            --checksum --transfers 16 --header-upload 'Cache-Control: public, max-age=31536000, immutable'
+            --checksum --no-traverse --transfers 16 --header-upload 'Cache-Control: public, max-age=31536000, immutable'
           rclone copy "$delivery/content/newspapers" "$JOJO_DELIVERY_REMOTE/content/newspapers" \
             --include '*/dates/**/*.jox' --include '*/index.jox' --exclude '*' \
-            --checksum --transfers 8 --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
+            --checksum --no-traverse --transfers 8 --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
           rclone copy "$delivery/content/timeline/dates" "$JOJO_DELIVERY_REMOTE/content/timeline/dates" \
-            --checksum --transfers 8 --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
+            --checksum --no-traverse --transfers 8 --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
           rclone copyto "$delivery/content/timeline/index.jox" "$JOJO_DELIVERY_REMOTE/content/timeline/index.jox" \
             --checksum --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
           rclone copyto "$delivery/catalog.jox" "$JOJO_DELIVERY_REMOTE/catalog.jox" \
