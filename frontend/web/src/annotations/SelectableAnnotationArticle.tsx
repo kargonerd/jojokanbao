@@ -23,7 +23,7 @@ export function SelectableAnnotationArticle({ subject, children }: { subject: An
   const [selection, setSelection] = useState<SelectionState>();
   const [commentOpen, setCommentOpen] = useState(false);
   const [comment, setComment] = useState("");
-  const [commentVisibility, setCommentVisibility] = useState<AnnotationVisibility>("private");
+  const [commentVisibility, setCommentVisibility] = useState<AnnotationVisibility>("public");
   const [activeId, setActiveId] = useState<string>();
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
@@ -77,7 +77,7 @@ export function SelectableAnnotationArticle({ subject, children }: { subject: An
       const created = await annotations.create(selection.anchor, initialComment, visibility);
       clearSelection();
       setComment("");
-      setCommentVisibility("private");
+      setCommentVisibility("public");
       if (initialComment) setActiveId(created.id);
       else setNotice("已划线");
     } catch (reason) {

@@ -166,7 +166,7 @@ export function BookReader({
   const [textSelection, setTextSelection] = useState<ReaderTextSelection>();
   const [thoughtOpen, setThoughtOpen] = useState(false);
   const [thought, setThought] = useState("");
-  const [thoughtVisibility, setThoughtVisibility] = useState<AnnotationVisibility>("private");
+  const [thoughtVisibility, setThoughtVisibility] = useState<AnnotationVisibility>("public");
   const [aiQuestion, setAiQuestion] = useState<string>();
   const [aiInitialAnswer, setAiInitialAnswer] = useState<string>();
   const [aiInitialReferences, setAiInitialReferences] = useState<RagReference[]>();
@@ -624,7 +624,7 @@ export function BookReader({
       clearSelection();
       setActiveAnnotationId(saved.id);
       setThought("");
-      setThoughtVisibility("private");
+      setThoughtVisibility("public");
     } catch (reason) { setReaderNotice(reason instanceof Error ? reason.message : String(reason)); }
     finally { setAnnotationSaving(false); }
   }

@@ -39,8 +39,7 @@ describe("SelectableAnnotationArticle", () => {
     fireEvent.pointerUp(paragraph, { pointerType: "touch" });
     fireEvent.click(await screen.findByRole("button", { name: "写想法" }));
     fireEvent.change(screen.getByPlaceholderText("写下此刻的想法……"), { target: { value: "报刊评论" } });
-    expect(screen.getByRole("radio", { name: "仅自己可见" }).getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(screen.getByRole("radio", { name: "公开" }));
+    expect(screen.getByRole("radio", { name: "公开" }).getAttribute("aria-checked")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "保存想法" }));
     await waitFor(() => expect(annotationApi.createAnnotation).toHaveBeenCalledWith(
       expect.objectContaining({ contentType: "newspaper", contentId: "news-1" }),

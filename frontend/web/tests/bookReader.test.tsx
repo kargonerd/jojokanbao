@@ -329,14 +329,14 @@ describe("BookReader", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "写想法" }));
     fireEvent.change(screen.getByPlaceholderText("写下此刻的想法……"), { target: { value: "值得继续讨论" } });
-    expect(screen.getByRole("radio", { name: "仅自己可见" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("radio", { name: "公开" }).getAttribute("aria-checked")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(annotationApi.createAnnotation).toHaveBeenCalledWith(
       expect.objectContaining({ contentType: "book", sectionId: "chapter-1" }),
       expect.objectContaining({ quote: "这是正文。" }),
       "值得继续讨论",
-      "private",
+      "public",
     ));
     expect(await screen.findByRole("complementary", { name: "划线评论" })).toBeTruthy();
   });
