@@ -66,11 +66,12 @@ test.describe("JOJO Web", () => {
     await expect(page).toHaveURL(/\/archive\/hq\/196419\?from=preview#page-2$/);
   });
 
-  test("unfinished modules remain disabled", async ({ page }) => {
-    for (const path of ["/rag", "/times"]) {
-      await page.goto(path);
-      await expect(page.getByRole("heading", { name: "404 Not Found" })).toBeVisible();
-    }
+  test("local AI routes require login while Times remains disabled", async ({ page }) => {
+    await page.goto("/rag");
+    await expect(page.getByRole("heading", { name: "读者入口" })).toBeVisible();
+
+    await page.goto("/times");
+    await expect(page.getByRole("heading", { name: "404 Not Found" })).toBeVisible();
   });
 
   test("404 page shows for unknown routes", async ({ page }) => {
