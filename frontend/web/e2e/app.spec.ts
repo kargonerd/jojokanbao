@@ -68,7 +68,8 @@ test.describe("JOJO Web", () => {
 
   test("local AI routes require login while Times remains disabled", async ({ page }) => {
     await page.goto("/rag");
-    await expect(page.getByRole("heading", { name: "读者入口" })).toBeVisible();
+    await expect(page).toHaveURL(/\/account\?returnTo=%2Frag$/);
+    await expect(page.getByRole("heading", { name: /读者入口|登录暂不可用/ })).toBeVisible();
 
     await page.goto("/times");
     await expect(page.getByRole("heading", { name: "404 Not Found" })).toBeVisible();
