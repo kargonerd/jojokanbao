@@ -189,18 +189,25 @@ jobs:
         if: env.TIMES_PUBLISH == 'true'
         run: |
           delivery="$RUNNER_TEMP/jojo-times-delivery"
+          immutable_cache_control="$(node -p "encodeURIComponent('public, max-age=31536000, immutable')")"
+          mutable_cache_control="$(node -p "encodeURIComponent('public, max-age=60, must-revalidate')")"
+          if [[ "$immutable_cache_control" != 'public%2C%20max-age%3D31536000%2C%20immutable' \
+            || "$mutable_cache_control" != 'public%2C%20max-age%3D60%2C%20must-revalidate' ]]; then
+            echo "Failed to encode B2 Cache-Control metadata" >&2
+            exit 1
+          fi
           rclone copy "$delivery/content/newspapers" "$JOJO_DELIVERY_REMOTE/content/newspapers" \
             --include '*/articles/*.jox' --include '*/assets/*.jox' \
-            --checksum --no-traverse --transfers 16 --header-upload 'X-Bz-Info-b2-cache-control: public, max-age=31536000, immutable'
+            --checksum --no-traverse --transfers 16 --header-upload "X-Bz-Info-b2-cache-control: $immutable_cache_control"
           rclone copy "$delivery/content/newspapers" "$JOJO_DELIVERY_REMOTE/content/newspapers" \
             --include '*/dates/**/*.jox' --include '*/index.jox' \
-            --checksum --no-traverse --transfers 8 --header-upload 'X-Bz-Info-b2-cache-control: public, max-age=60, must-revalidate'
+            --checksum --no-traverse --transfers 8 --header-upload "X-Bz-Info-b2-cache-control: $mutable_cache_control"
           rclone copy "$delivery/content/timeline/dates" "$JOJO_DELIVERY_REMOTE/content/timeline/dates" \
-            --checksum --no-traverse --transfers 8 --header-upload 'X-Bz-Info-b2-cache-control: public, max-age=60, must-revalidate'
+            --checksum --no-traverse --transfers 8 --header-upload "X-Bz-Info-b2-cache-control: $mutable_cache_control"
           rclone copyto "$delivery/content/timeline/index.jox" "$JOJO_DELIVERY_REMOTE/content/timeline/index.jox" \
-            --checksum --header-upload 'X-Bz-Info-b2-cache-control: public, max-age=60, must-revalidate'
+            --checksum --header-upload "X-Bz-Info-b2-cache-control: $mutable_cache_control"
           rclone copyto "$delivery/catalog.jox" "$JOJO_DELIVERY_REMOTE/catalog.jox" \
-            --checksum --header-upload 'X-Bz-Info-b2-cache-control: public, max-age=60, must-revalidate'
+            --checksum --header-upload "X-Bz-Info-b2-cache-control: $mutable_cache_control"
 
       - name: Purge mutable EdgeOne objects and verify the timeline index
         if: env.TIMES_PUBLISH == 'true'
