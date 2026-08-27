@@ -79,7 +79,7 @@ export async function reusableExplanation(
     quote: result.quote,
     answer: result.answer,
     count: Number(result.query_count),
-    references: Array.isArray(result.references) ? result.references as RagReference[] : [],
+    references: Array.isArray(result.reference_data) ? result.reference_data as RagReference[] : [],
     ...(typeof result.prefix === "string" && result.prefix ? { prefix: result.prefix } : {}),
     ...(typeof result.suffix === "string" && result.suffix ? { suffix: result.suffix } : {}),
   } : undefined;
@@ -93,7 +93,7 @@ export async function popularExplanations(datasetId: string, itemId: string, cha
     quote: row.quote,
     answer: row.answer,
     count: Number(row.query_count),
-    references: Array.isArray(row.references) ? row.references as RagReference[] : [],
+    references: Array.isArray(row.reference_data) ? row.reference_data as RagReference[] : [],
     ...(typeof row.prefix === "string" && row.prefix ? { prefix: row.prefix } : {}),
     ...(typeof row.suffix === "string" && row.suffix ? { suffix: row.suffix } : {}),
   }));

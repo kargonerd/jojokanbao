@@ -13,7 +13,7 @@ create table public.reader_ai_explanation_cache (
   prefix text not null default '' check (char_length(prefix) <= 1200),
   suffix text not null default '' check (char_length(suffix) <= 1200),
   answer text not null check (char_length(trim(answer)) between 1 and 40000),
-  references jsonb not null default '[]'::jsonb check (jsonb_typeof(references) = 'array'),
+  reference_data jsonb not null default '[]'::jsonb check (jsonb_typeof(reference_data) = 'array'),
   model text not null default 'unknown' check (char_length(model) between 1 and 200),
   query_count bigint not null default 1 check (query_count >= 1),
   created_at timestamptz not null default timezone('utc', now()),
@@ -58,7 +58,7 @@ returns table(
   prefix text,
   suffix text,
   answer text,
-  references jsonb,
+  reference_data jsonb,
   model text,
   prompt_version text,
   query_count bigint
@@ -113,7 +113,7 @@ begin
     cache.prefix,
     cache.suffix,
     cache.answer,
-    cache.references,
+    cache.reference_data,
     cache.model,
     cache.prompt_version,
     cache.query_count;
@@ -200,7 +200,7 @@ begin
     prefix,
     suffix,
     answer,
-    references,
+    reference_data,
     model,
     query_count,
     updated_at,
@@ -246,7 +246,7 @@ returns table(
   prefix text,
   suffix text,
   answer text,
-  references jsonb,
+  reference_data jsonb,
   model text,
   prompt_version text,
   query_count bigint
@@ -290,7 +290,7 @@ begin
     cache.prefix,
     cache.suffix,
     cache.answer,
-    cache.references,
+    cache.reference_data,
     cache.model,
     cache.prompt_version,
     cache.query_count

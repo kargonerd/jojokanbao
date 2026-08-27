@@ -40,7 +40,7 @@ describe("reader data anchors", () => {
         data: [{
           quote: "这段原文",
           answer: "解释[cite:Jfocus]",
-          references: [reference],
+          reference_data: [reference],
           query_count: 3,
           prefix: "前文",
           suffix: "后文",
