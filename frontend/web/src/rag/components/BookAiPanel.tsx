@@ -18,6 +18,7 @@ interface BookAiPanelProps {
   initialQuestion?: string;
   initialAnswer?: string;
   initialReferences?: RagReference[];
+  preparing?: boolean;
   explanationQuote?: string;
   focus?: RagFocusContext;
   panelClass: string;
@@ -25,7 +26,7 @@ interface BookAiPanelProps {
   onExplanationComplete?: (quote: string, answer: string, references?: RagReference[], metadata?: RagAnswerMetadata) => void;
 }
 
-export function BookAiPanel({ bookTitle, datasetId, itemId, manifestObject, initialQuestion, initialAnswer, initialReferences, explanationQuote, focus, panelClass, onClose, onExplanationComplete }: BookAiPanelProps) {
+export function BookAiPanel({ bookTitle, datasetId, itemId, manifestObject, initialQuestion, initialAnswer, initialReferences, preparing = false, explanationQuote, focus, panelClass, onClose, onExplanationComplete }: BookAiPanelProps) {
   const [messages, setMessages] = useState<RagMessage[]>(initialAnswer ? [{ role: "assistant", content: initialAnswer, references: initialReferences }] : []);
   const [input, setInput] = useState("");
   const [streamContent, setStreamContent] = useState("");
@@ -80,8 +81,12 @@ export function BookAiPanel({ bookTitle, datasetId, itemId, manifestObject, init
 
   useEffect(() => {
     if (!initialQuestion || initialQuestionSentRef.current) return;
-    initialQuestionSentRef.current = true;
-    ask(initialQuestion);
+    const timer = window.setTimeout(() => {
+      if (initialQuestionSentRef.current) return;
+      initialQuestionSentRef.current = true;
+      ask(initialQuestion);
+    }, 0);
+    return () => window.clearTimeout(timer);
   // The panel is remounted for each selection-driven explanation.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialQuestion]);
@@ -93,7 +98,8 @@ export function BookAiPanel({ bookTitle, datasetId, itemId, manifestObject, init
     </header>
     <AiExperimentalNotice className="mx-6 mt-5 shrink-0" />
     <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-      {messages.length === 0 && !streaming && <div className="border-l-2 border-red pl-4"><p className="m-0 text-base">针对当前这本书提问</p><p className="mb-0 mt-2 font-sans text-xs leading-6 text-muted">回答会限定在本书范围内；找到原文位置时可在新标签页打开正文。</p></div>}
+      {preparing && messages.length === 0 && !streaming && <div role="status" className="flex items-center gap-2 font-sans text-xs text-muted"><span aria-hidden="true" className="inline-block h-2 w-2 shrink-0 bg-red motion-safe:animate-pulse" />正在查找已有解释…</div>}
+      {!preparing && messages.length === 0 && !streaming && <div className="border-l-2 border-red pl-4"><p className="m-0 text-base">针对当前这本书提问</p><p className="mb-0 mt-2 font-sans text-xs leading-6 text-muted">回答会限定在本书范围内；找到原文位置时可在新标签页打开正文。</p></div>}
       {messages.map((message, index) => <article key={index} className={`mb-6 ${message.role === "user" ? "ml-10 border-r-2 border-red pr-4 text-right" : ""}`}>
         {message.role === "user" ? <p className="m-0 whitespace-pre-wrap text-sm leading-7">{message.content}</p> : <>
           <div className="book-ai-answer text-sm leading-7" dangerouslySetInnerHTML={{ __html: formatChatMarkdown(message.content, message.references) }} />
@@ -105,8 +111,8 @@ export function BookAiPanel({ bookTitle, datasetId, itemId, manifestObject, init
       <div ref={endRef} />
     </div>
     <form onSubmit={submit} className="border-t border-rule p-4">
-      <label className="block"><span className="sr-only">向本书提问</span><textarea autoFocus rows={2} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submit(); } }} placeholder="问这本书……" className="book-ai-input block min-h-16 w-full resize-none border-0 border-b border-rule bg-transparent px-0 py-2 font-serif text-sm leading-6 text-current" /></label>
-      <div className="mt-3 flex items-center justify-between"><span className="font-sans text-[10px] text-muted">仅检索当前书籍</span><button type="submit" disabled={!input.trim() || streaming} className="border-0 bg-transparent px-0 py-1 font-sans text-xs font-bold text-red cursor-pointer disabled:cursor-default disabled:opacity-35">提问 →</button></div>
+      <label className="block"><span className="sr-only">向本书提问</span><textarea autoFocus={!preparing} disabled={preparing} rows={2} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submit(); } }} placeholder={preparing ? "正在准备这段文字的解释……" : "问这本书……"} className="book-ai-input block min-h-16 w-full resize-none border-0 border-b border-rule bg-transparent px-0 py-2 font-serif text-sm leading-6 text-current disabled:opacity-50" /></label>
+      <div className="mt-3 flex items-center justify-between"><span className="font-sans text-[10px] text-muted">仅检索当前书籍</span><button type="submit" disabled={preparing || !input.trim() || streaming} className="border-0 bg-transparent px-0 py-1 font-sans text-xs font-bold text-red cursor-pointer disabled:cursor-default disabled:opacity-35">提问 →</button></div>
     </form>
   </aside>;
 }

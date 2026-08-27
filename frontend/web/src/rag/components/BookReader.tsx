@@ -168,6 +168,7 @@ export function BookReader({
   const [aiQuestion, setAiQuestion] = useState<string>();
   const [aiInitialAnswer, setAiInitialAnswer] = useState<string>();
   const [aiInitialReferences, setAiInitialReferences] = useState<RagReference[]>();
+  const [aiPreparing, setAiPreparing] = useState(false);
   const [aiExplanationQuote, setAiExplanationQuote] = useState<string>();
   const [aiFocus, setAiFocus] = useState<RagFocusContext>();
   const [activeAnnotationId, setActiveAnnotationId] = useState<string>();
@@ -188,6 +189,7 @@ export function BookReader({
   const pendingPageRef = useRef<"start" | "end" | null>("start");
   const transitionTimerRef = useRef<number | undefined>(undefined);
   const jumpTimerRef = useRef<number | undefined>(undefined);
+  const aiPreparationRef = useRef(0);
 
   const activeChapterIndex = Math.max(0, chapters.findIndex((chapter) => chapter.id === activeChapterId));
   const annotationSubject = useMemo(() => ({
@@ -626,6 +628,7 @@ export function BookReader({
 
   async function explainSelection(): Promise<void> {
     if (!textSelection) return;
+    const preparationId = ++aiPreparationRef.current;
     const quote = textSelection.text;
     setAiFocus({
       chapterId: activeChapterId,
@@ -635,14 +638,16 @@ export function BookReader({
       suffix: textSelection.anchor.suffix,
     });
     setAiExplanationQuote(quote);
+    setAiQuestion(undefined);
     setAiInitialAnswer(undefined);
     setAiInitialReferences(undefined);
     const question = `请结合《${bookTitle}》的上下文解释这段话：\n\n“${quote}”`;
+    setTextSelection(undefined);
+    setThoughtOpen(false);
+    setAiPreparing(quote.length <= 2_000);
+    openPanel("ai");
     if (quote.length > 2_000) {
       setAiQuestion(question);
-      setTextSelection(undefined);
-      setThoughtOpen(false);
-      openPanel("ai");
       return;
     }
     try {
@@ -650,6 +655,7 @@ export function BookReader({
         prefix: textSelection.anchor.prefix,
         suffix: textSelection.anchor.suffix,
       });
+      if (preparationId !== aiPreparationRef.current) return;
       if (reusable) {
         setAiQuestion(undefined);
         setAiInitialAnswer(reusable.answer);
@@ -658,11 +664,17 @@ export function BookReader({
         setAiQuestion(question);
       }
     } catch {
+      if (preparationId !== aiPreparationRef.current) return;
       setAiQuestion(question);
+    } finally {
+      if (preparationId === aiPreparationRef.current) setAiPreparing(false);
     }
-    setTextSelection(undefined);
-    setThoughtOpen(false);
-    openPanel("ai");
+  }
+
+  function closeAiPanel(): void {
+    aiPreparationRef.current += 1;
+    setAiPreparing(false);
+    setAiOpen(false);
   }
 
   async function toggleBookshelf(): Promise<void> {
@@ -724,7 +736,7 @@ export function BookReader({
     <nav data-book-toolbar aria-label="阅读工具" className={`fixed bottom-2 left-2 right-2 z-30 flex gap-1 overflow-x-auto border p-1 backdrop-blur-md md:bottom-auto md:left-auto md:right-5 md:top-1/2 md:-translate-y-1/2 md:flex-col md:gap-2 md:overflow-visible md:border-0 md:p-0 ${chromeClass}`}>
       <button type="button" onClick={() => openPanel("toc")} className={controlClass} aria-label="打开目录" title="目录">目录</button>
       <button type="button" onClick={() => openPanel("search")} className={controlClass} aria-label="搜索全书" title="搜索全书">搜索</button>
-      {agentAccess && <button type="button" onClick={() => { setAiQuestion(undefined); setAiInitialAnswer(undefined); setAiInitialReferences(undefined); setAiExplanationQuote(undefined); setAiFocus(undefined); openPanel("ai"); }} className={`${controlClass} relative`} aria-label="打开书内 AI" title="书内 AI · Beta（实验功能）">AI<span aria-hidden="true" className="absolute right-1.5 top-1.5 text-[6px] font-bold leading-none tracking-normal text-red">Beta</span></button>}
+      {agentAccess && <button type="button" onClick={() => { aiPreparationRef.current += 1; setAiPreparing(false); setAiQuestion(undefined); setAiInitialAnswer(undefined); setAiInitialReferences(undefined); setAiExplanationQuote(undefined); setAiFocus(undefined); openPanel("ai"); }} className={`${controlClass} relative`} aria-label="打开书内 AI" title="书内 AI · Beta（实验功能）">AI<span aria-hidden="true" className="absolute right-1.5 top-1.5 text-[6px] font-bold leading-none tracking-normal text-red">Beta</span></button>}
       <button type="button" onClick={() => openTool("font")} className={controlClass} aria-label="调整字号" title="字号">字号</button>
       <button type="button" onClick={() => openTool("color")} className={controlClass} aria-label="选择纸张颜色" title="纸张颜色"><span className={`h-4 w-4 border ${isDark ? "border-white/50 bg-[#202321]" : paperColor === "white" ? "border-[#aaa] bg-white" : "border-[#b8ad96] bg-[#fbfaf6]"}`} aria-hidden="true" /></button>
       <button type="button" aria-pressed={paperTexture} onClick={() => setPaperTexture((value) => !value)} className={`${controlClass} ${paperTexture ? "text-red" : ""}`} aria-label="切换纸张纹理" title={paperTexture ? "关闭纸张纹理" : "开启纸张纹理"}>纹理</button>
@@ -752,7 +764,7 @@ export function BookReader({
 
     {searchOpen && <><button type="button" aria-label="关闭全书搜索" onClick={() => setSearchOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookSearchPanel bookTitle={bookTitle} panelClass={panelClass} onClose={() => setSearchOpen(false)} onJump={locateSearchResult} onSearch={onSearch} /></>}
 
-    {agentAccess && aiOpen && <><button type="button" aria-label="关闭书内 AI" onClick={() => setAiOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookAiPanel key={`${aiQuestion || "book-ai"}:${aiInitialAnswer || ""}`} bookTitle={bookTitle} datasetId={datasetId} itemId={itemId} manifestObject={manifestObject} initialQuestion={aiQuestion} initialAnswer={aiInitialAnswer} initialReferences={aiInitialReferences} explanationQuote={aiExplanationQuote} focus={aiFocus} panelClass={panelClass} onClose={() => setAiOpen(false)} onExplanationComplete={(quote: string, answer: string, references?: RagReference[], metadata?: RagAnswerMetadata) => {
+    {agentAccess && aiOpen && <><button type="button" aria-label="关闭书内 AI" onClick={closeAiPanel} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookAiPanel key={`${aiQuestion || "book-ai"}:${aiInitialAnswer || ""}`} bookTitle={bookTitle} datasetId={datasetId} itemId={itemId} manifestObject={manifestObject} initialQuestion={aiQuestion} initialAnswer={aiInitialAnswer} initialReferences={aiInitialReferences} preparing={aiPreparing} explanationQuote={aiExplanationQuote} focus={aiFocus} panelClass={panelClass} onClose={closeAiPanel} onExplanationComplete={(quote: string, answer: string, references?: RagReference[], metadata?: RagAnswerMetadata) => {
       if (quote.length <= 2_000) void saveExplanation({
         datasetId,
         itemId,

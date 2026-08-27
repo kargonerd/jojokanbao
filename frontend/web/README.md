@@ -24,7 +24,7 @@ VITE_SUPABASE_PUBLISHABLE_KEY=
 VITE_ENABLE_TIMES=false
 ```
 
-Git worktree 自己没有 `.env` 时，Web 和 Desktop 会自动读取主工作区的 `.env` 和 `.env.local`；
+Git worktree 自己没有 `.env` 时，Web、Desktop 和本地 Agent 会自动读取主工作区的 `.env` 和 `.env.local`；
 当前 worktree 若存在自己的环境文件，则优先使用自己的配置。真实值不会写入或提交到功能分支。
 
 Times 与 RAG 馆藏都直接读取 B2 CDN 已发布的 Jox 内容；Times 默认使用

@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -78,8 +79,9 @@ describe("BookReader", () => {
     onChapterChange = vi.fn(),
     onInternalLink = vi.fn(),
     focus?: { anchorId?: string; text?: string },
+    strict = false,
   ) {
-    const view = render(
+    const reader = (
       <MemoryRouter>
         <BookReader
           bookTitle="测试书"
@@ -109,8 +111,9 @@ describe("BookReader", () => {
           <p id="annotation-test">这是注释。</p>
           <img src="blob:test-image" alt="测试插图" />
         </BookReader>
-      </MemoryRouter>,
+      </MemoryRouter>
     );
+    const view = render(strict ? <StrictMode>{reader}</StrictMode> : reader);
     return { ...view, onChapterChange, onInternalLink };
   }
 
@@ -379,6 +382,46 @@ describe("BookReader", () => {
       expect.any(Function),
       expect.any(Function),
     ));
+  });
+
+  it("opens the AI panel before checking the shared explanation cache", async () => {
+    let finishCacheLookup: ((value: undefined) => void) | undefined;
+    readerDataApi.reusableExplanation.mockImplementationOnce(() => new Promise<undefined>((resolve) => {
+      finishCacheLookup = resolve;
+    }));
+    const { container } = renderReader();
+    const paragraph = screen.getByText("这是正文。");
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent.pointerUp(container.querySelector("[data-book-page-flow]")!);
+
+    fireEvent.click(await screen.findByRole("button", { name: "AI 解释" }));
+
+    expect(screen.getByRole("complementary", { name: "书内 AI" })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("正在查找已有解释");
+    expect(ragApi.askStream).not.toHaveBeenCalled();
+
+    await act(async () => finishCacheLookup?.(undefined));
+    await waitFor(() => expect(ragApi.askStream).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not cancel the selection-driven AI request during the StrictMode effect check", async () => {
+    const cancelStream = vi.fn();
+    ragApi.askStream.mockReturnValueOnce(cancelStream);
+    const { container } = renderReader(vi.fn(), vi.fn(), undefined, true);
+    const paragraph = screen.getByText("这是正文。");
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent.pointerUp(container.querySelector("[data-book-page-flow]")!);
+
+    fireEvent.click(await screen.findByRole("button", { name: "AI 解释" }));
+
+    await waitFor(() => expect(ragApi.askStream).toHaveBeenCalledTimes(1));
+    expect(cancelStream).not.toHaveBeenCalled();
   });
 
   it("stores only the first selection explanation in the shared cache", async () => {

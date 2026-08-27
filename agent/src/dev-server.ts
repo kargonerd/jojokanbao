@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
@@ -15,6 +17,29 @@ const repositoryRoot = path.resolve(
   "..",
 );
 const MAX_REQUEST_BYTES = 64 * 1024;
+
+function developmentEnvironmentDirectory(): string {
+  if ([".env", ".env.local"].some((name) => existsSync(path.join(repositoryRoot, name)))) {
+    return repositoryRoot;
+  }
+  try {
+    const commonGitDirectory = execFileSync(
+      "git",
+      ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+      { cwd: repositoryRoot, encoding: "utf8", windowsHide: true },
+    ).trim();
+    const primaryWorktree = path.resolve(path.dirname(commonGitDirectory));
+    if (
+      primaryWorktree !== repositoryRoot
+      && [".env", ".env.local"].some((name) => existsSync(path.join(primaryWorktree, name)))
+    ) {
+      return primaryWorktree;
+    }
+  } catch {
+    // Source archives may not expose Git worktree metadata.
+  }
+  return repositoryRoot;
+}
 
 function parsedEnvLine(line: string): [string, string] | undefined {
   const trimmed = line.trim();
@@ -35,9 +60,10 @@ function parsedEnvLine(line: string): [string, string] | undefined {
 
 async function developmentEnvironment(): Promise<AgentEnvironment> {
   const values: Record<string, string | undefined> = {};
+  const environmentDirectory = developmentEnvironmentDirectory();
   for (const name of [".env", ".env.local"]) {
     try {
-      const content = await readFile(path.join(repositoryRoot, name), "utf8");
+      const content = await readFile(path.join(environmentDirectory, name), "utf8");
       for (const line of content.split(/\r?\n/)) {
         const parsed = parsedEnvLine(line);
         if (parsed) values[parsed[0]] = parsed[1];
