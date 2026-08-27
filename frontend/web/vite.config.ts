@@ -4,18 +4,20 @@ import tailwindcss from "@tailwindcss/vite";
 import { resolve } from "node:path";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 import { pdfViewerStaticCopyTargets } from "@jojo/pdf-viewer/vite";
+import { resolveViteEnvironmentDirectory } from "../tooling/vite-worktree-env";
 
 const repositoryRoot = resolve(__dirname, "../..");
 const defaultDevelopmentAgentUrl = "http://127.0.0.1:8789/rag";
 
 export default defineConfig(({ mode }) => {
-  const environment = loadEnv(mode, repositoryRoot, "");
+  const envDir = resolveViteEnvironmentDirectory(repositoryRoot, mode);
+  const environment = loadEnv(mode, envDir, "");
   const agentTarget = new URL(
     environment.JOJO_AGENT_URL || defaultDevelopmentAgentUrl,
   );
   const agentPath = agentTarget.pathname.replace(/\/$/, "");
   return {
-    envDir: repositoryRoot,
+    envDir,
     plugins: [
       react(),
       tailwindcss(),

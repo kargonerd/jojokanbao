@@ -26,7 +26,6 @@ import {
   SupportPage,
   defaultArchiveIssuePath,
   refreshFeatureFlags,
-  rollout,
   startAccountSessionSync,
   type AppNavigationItem,
   useAccountSessionStore,
@@ -47,7 +46,7 @@ function DesktopRuntime() {
   }, [accountInitialized, userId]);
   useEffect(() => {
     if (accountInitialized) {
-      window.jojoDesktop?.setFeatureAvailability?.({ rag: rollout.rag && Boolean(userId) });
+      window.jojoDesktop?.setFeatureAvailability?.({ rag: Boolean(userId) });
     }
   }, [accountInitialized, userId]);
   return null;
@@ -62,7 +61,7 @@ function useDesktopNavigation(): readonly AppNavigationItem[] {
   const userId = useAccountSessionStore((state) => state.userId);
   return [
     ...coreDesktopNavigation,
-    ...(rollout.rag && accountInitialized && userId ? [{ label: 'AI', href: '/rag', badge: 'Beta' }] : []),
+    ...(accountInitialized && userId ? [{ label: 'AI', href: '/rag', badge: 'Beta' }] : []),
     ...aboutDesktopNavigation,
   ];
 }
@@ -182,9 +181,7 @@ export function createDesktopRoutes(): RouteObject[] {
             },
             { path: 'support', element: <SupportPage platformRedesign /> },
             { path: 'settings', element: <SettingsPage /> },
-            ...(rollout.rag
-              ? [{ path: 'rag/*', element: <AuthenticatedRoute><RagRoutes /></AuthenticatedRoute> }]
-              : []),
+            { path: 'rag/*', element: <AuthenticatedRoute><RagRoutes /></AuthenticatedRoute> },
           ],
         },
         {

@@ -15,9 +15,7 @@ export default defineConfig({
     timeout: 120_000,
     env: {
       VITE_ENABLE_PLATFORM_REDESIGN: "true",
-      VITE_ENABLE_ACCOUNT: "false",
       VITE_ENABLE_TIMES: "false",
-      VITE_ENABLE_RAG: "false",
     },
   },
   use: {
