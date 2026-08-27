@@ -31,6 +31,7 @@ class CanonicalPatch:
     root: Path
     accepted_count: int = 0
     changed_article_count: int = 0
+    removed_article_count: int = 0
     files: dict[str, Path] = field(default_factory=dict)
     issue_files: dict[str, Path] = field(default_factory=dict)
     dataset: dict[str, Any] = field(default_factory=dict)
@@ -42,6 +43,7 @@ class CanonicalPatch:
 class DeliveryPatch:
     root: Path
     changed_article_count: int = 0
+    removed_article_count: int = 0
     files: dict[str, Path] = field(default_factory=dict)
 
 
@@ -888,6 +890,390 @@ def prepare_delivery_jsonl_supplement_append(
             target = output / manifest_key
             _write_jox(target, manifest_key, manifest)
             patch.files[manifest_key] = target
+    if canonical.dataset_changed:
+        index_key = "content/newspapers/rmrb/index.jox"
+        index = _decode_jox(delivery_file(index_key), index_key)
+        index["availability"] = canonical.dataset["availability"]
+        index["revision"] = int(index.get("revision") or 0) + 1
+        target = output / index_key
+        _write_jox(target, index_key, index)
+        patch.files[index_key] = target
+    return patch
+
+
+def _reconciliation_extension(row: dict[str, object]) -> dict[str, object]:
+    extension: dict[str, object] = {
+        "contentSource": "jsonl",
+        "matchMethod": str(row.get("matchMethod") or ""),
+    }
+    source_date = str(row.get("sourceDate") or "")[:10]
+    source_page = row.get("sourcePage")
+    source_ordinal = row.get("sourceOrdinal")
+    source_title = str(row.get("sourceTitle") or "").strip()
+    if source_date and source_page is not None and source_ordinal is not None:
+        extension["source"] = {
+            "date": source_date,
+            "page": int(source_page),
+            "ordinal": int(source_ordinal),
+            "title": source_title,
+        }
+    return extension
+
+
+def prepare_canonical_jsonl_reconciliation(
+    upserts: dict[tuple[str, int, int], dict[str, object]],
+    removals: dict[tuple[str, int, int], dict[str, object]],
+    source_file: SourceFile,
+    output: Path,
+) -> CanonicalPatch:
+    """Apply the final JSONL reconciliation against an already-published snapshot.
+
+    ``upserts`` contains only rows whose final representation differs from the
+    previously published snapshot.  A ``jsonl_directory_omission`` row is
+    appended as a real article; every other match method fills an existing
+    PeopleData catalog row.  ``removals`` retracts obsolete omission articles
+    that an earlier conservative pass published before their catalog match was
+    known.
+    """
+    patch = CanonicalPatch(root=output, accepted_count=len(upserts))
+    dataset_path = source_file("newspapers/rmrb/dataset.json")
+    patch.dataset = json.loads(dataset_path.read_text(encoding="utf-8"))
+    affected_days = {key[0] for key in upserts} | {key[0] for key in removals}
+    upserts_by_day: dict[
+        str, list[tuple[tuple[str, int, int], dict[str, object]]]
+    ] = {}
+    removals_by_day: dict[
+        str, list[tuple[tuple[str, int, int], dict[str, object]]]
+    ] = {}
+    for key, row in upserts.items():
+        upserts_by_day.setdefault(key[0], []).append((key, row))
+    for key, row in removals.items():
+        removals_by_day.setdefault(key[0], []).append((key, row))
+    years = sorted({day[:4] for day in affected_days})
+    day_text_after: dict[str, bool] = {}
+
+    for year in years:
+        shard_name = f"newspapers/rmrb/data/articles/{year}.jsonl.gz"
+        viewer_rows = _read_jsonl_gz(source_file(shard_name))
+        viewer_index = {
+            (str(row["date"]), int(row["page"]), int(row["ordinal"])): row
+            for row in viewer_rows
+        }
+        day_pdf: dict[str, object] = {}
+        day_available_count: dict[str, int] = {}
+        for viewer_key, viewer_row in viewer_index.items():
+            viewer_day = viewer_key[0]
+            if viewer_row.get("pdf") and viewer_day not in day_pdf:
+                day_pdf[viewer_day] = viewer_row["pdf"]
+            if str(viewer_row.get("status")) == "available":
+                day_available_count[viewer_day] = day_available_count.get(viewer_day, 0) + 1
+        viewer_changed = False
+        year_days = sorted(day for day in affected_days if day.startswith(f"{year}-"))
+        for day in year_days:
+            item_name = f"newspapers/rmrb/items/{day[:4]}/{day[5:7]}/{day}.json.gz"
+            item_source = source_file(item_name)
+            item = _read_json_gz(item_source)
+            articles = {str(row["id"]): row for row in item["content"]["articles"]}
+            placements = {
+                str(row["articleId"]): row
+                for row in item["content"].get("placements") or []
+            }
+            pages = {
+                int(row["number"]): row for row in item["content"].get("pages") or []
+            }
+            placement_order: dict[int, int] = {}
+            for placement in placements.values():
+                try:
+                    page_number = int(str(placement.get("pageId") or "").rsplit(":", 1)[-1])
+                except ValueError:
+                    continue
+                placement_order[page_number] = max(
+                    placement_order.get(page_number, 0), int(placement.get("order") or 0)
+                )
+            item_changed = False
+
+            for key, previous in sorted(removals_by_day.get(day, [])):
+                article_id = _article_id(*key)
+                article = articles.get(article_id)
+                viewer = viewer_index.get(key)
+                if article is None and viewer is None:
+                    continue
+                if article is None or viewer is None:
+                    raise ValueError(f"Obsolete JSONL row is only partially present: {key}")
+                rmrb = (article.get("extensions") or {}).get("rmrb") or {}
+                if (
+                    rmrb.get("contentSource") != "jsonl"
+                    or rmrb.get("matchMethod") != "jsonl_directory_omission"
+                ):
+                    raise ValueError(f"Refusing to remove a non-omission article: {key}")
+                expected_content = str(previous.get("content") or "").strip()
+                if expected_content and str(article.get("body", {}).get("value") or "").strip() != expected_content:
+                    raise ValueError(f"Published omission body changed unexpectedly: {key}")
+                if str(viewer.get("status")) == "available":
+                    day_available_count[day] = day_available_count.get(day, 0) - 1
+                del articles[article_id]
+                placements.pop(article_id, None)
+                del viewer_index[key]
+                item_changed = True
+                viewer_changed = True
+                patch.removed_article_count += 1
+                patch.changed_keys.add(key)
+
+            pdf = day_pdf.get(day)
+            for key, final in sorted(upserts_by_day.get(day, [])):
+                _, page, ordinal = key
+                title = str(final.get("title") or "").strip()
+                content = str(final.get("content") or "").strip()
+                method = str(final.get("matchMethod") or "")
+                if not title or not content or not method:
+                    raise ValueError(f"Final reconciliation row is incomplete: {key}")
+                article_id = _article_id(*key)
+                article = articles.get(article_id)
+                is_omission = method == "jsonl_directory_omission"
+                if article is None and not is_omission:
+                    raise ValueError(f"PeopleData target article is absent: {key}")
+                if article is None:
+                    article = {
+                        "id": article_id,
+                        "order": ordinal + 1,
+                        "title": title,
+                        "authors": [],
+                        "contentState": "available",
+                        "body": {"format": "text", "value": content},
+                        "assetRefs": [],
+                        "extensions": {"rmrb": _reconciliation_extension(final)},
+                    }
+                    articles[article_id] = article
+                    item_changed = True
+                    patch.changed_article_count += 1
+                else:
+                    if is_omission:
+                        rmrb = (article.get("extensions") or {}).get("rmrb") or {}
+                        if (
+                            rmrb.get("contentSource") != "jsonl"
+                            or rmrb.get("matchMethod") != "jsonl_directory_omission"
+                            or str(article.get("title") or "").strip() != title
+                            or str(article.get("body", {}).get("value") or "").strip() != content
+                        ):
+                            raise ValueError(f"Published omission conflicts with final row: {key}")
+                    else:
+                        desired_extensions = dict(article.get("extensions") or {})
+                        desired_extensions["rmrb"] = {
+                            **dict(desired_extensions.get("rmrb") or {}),
+                            **_reconciliation_extension(final),
+                        }
+                        desired = {
+                            **article,
+                            "title": title,
+                            "contentState": "available",
+                            "body": {"format": "text", "value": content},
+                            "extensions": desired_extensions,
+                        }
+                        if desired != article:
+                            articles[article_id] = article = desired
+                            item_changed = True
+                            patch.changed_article_count += 1
+
+                if page not in pages:
+                    if not is_omission:
+                        raise ValueError(f"PeopleData target page is absent: {key}")
+                    pages[page] = {
+                        "id": f"page:{page:02d}",
+                        "order": max(
+                            (int(value.get("order") or 0) for value in pages.values()),
+                            default=0,
+                        )
+                        + 1,
+                        "number": page,
+                        "label": f"第{page}版",
+                        "title": None,
+                        "assetRefs": [],
+                    }
+                    item_changed = True
+                if article_id not in placements:
+                    if not is_omission:
+                        raise ValueError(f"PeopleData target placement is absent: {key}")
+                    placement_order[page] = placement_order.get(page, 0) + 1
+                    placements[article_id] = {
+                        "id": f"placement:{_stable_suffix('rmrb', day, page, ordinal)}",
+                        "pageId": f"page:{page:02d}",
+                        "articleId": article_id,
+                        "order": placement_order[page],
+                        "role": "complete",
+                    }
+                    item_changed = True
+
+                desired_viewer = {
+                    "date": day,
+                    "page": page,
+                    "ordinal": ordinal,
+                    "title": title,
+                    "content": content,
+                    "status": "available",
+                    "pdf": (viewer_index.get(key) or {}).get("pdf") or pdf,
+                }
+                previous_viewer = viewer_index.get(key)
+                if previous_viewer != desired_viewer:
+                    if previous_viewer is None or str(previous_viewer.get("status")) != "available":
+                        day_available_count[day] = day_available_count.get(day, 0) + 1
+                    viewer_index[key] = desired_viewer
+                    viewer_changed = True
+                patch.changed_keys.add(key)
+
+            if item_changed:
+                item["content"]["articles"] = sorted(
+                    articles.values(), key=lambda value: int(value["order"])
+                )
+                item["content"]["placements"] = sorted(
+                    placements.values(),
+                    key=lambda value: (
+                        str(value.get("pageId") or ""), int(value.get("order") or 0)
+                    ),
+                )
+                item["content"]["pages"] = sorted(
+                    pages.values(), key=lambda value: int(value["order"])
+                )
+                item["revision"] = int(item.get("revision") or 0) + 1
+                target = output / item_name
+                _write_json_gz(target, item)
+                patch.files[item_name] = target
+                patch.issue_files[day] = target
+            else:
+                patch.issue_files[day] = item_source
+            day_text_after[day] = day_available_count.get(day, 0) > 0
+
+        if viewer_changed:
+            target = output / shard_name
+            _write_jsonl_gz(
+                target,
+                (
+                    viewer_index[key]
+                    for key in sorted(viewer_index)
+                ),
+            )
+            patch.files[shard_name] = target
+
+    target_catalog_keys = {
+        key
+        for key, row in upserts.items()
+        if str(row.get("matchMethod") or "") != "jsonl_directory_omission"
+    }
+    if target_catalog_keys:
+        missing_rows = _read_jsonl_gz(source_file(MISSING_INDEX))
+        missing_by_key = {
+            (str(row["date"]), int(row["page"]), int(row["ordinal"])): row
+            for row in missing_rows
+        }
+        for key in target_catalog_keys:
+            missing_by_key.pop(key, None)
+        target = output / MISSING_INDEX
+        _write_jsonl_gz(target, (missing_by_key[key] for key in sorted(missing_by_key)))
+        patch.files[MISSING_INDEX] = target
+
+    text_calendar = patch.dataset["availability"]["text"]
+    available = _available_dates(text_calendar)
+    for day, is_available in day_text_after.items():
+        if is_available:
+            available.add(day)
+        else:
+            available.discard(day)
+    new_calendar = _adaptive_calendar(text_calendar, available)
+    if new_calendar != text_calendar:
+        patch.dataset["availability"]["text"] = new_calendar
+        target = output / "newspapers/rmrb/dataset.json"
+        _write_json(target, patch.dataset)
+        patch.files["newspapers/rmrb/dataset.json"] = target
+        patch.dataset_changed = True
+    return patch
+
+
+def prepare_delivery_jsonl_reconciliation(
+    upserts: dict[tuple[str, int, int], dict[str, object]],
+    removals: dict[tuple[str, int, int], dict[str, object]],
+    canonical: CanonicalPatch,
+    delivery_file: DeliveryFile,
+    output: Path,
+) -> DeliveryPatch:
+    """Derive Delivery changes for a final JSONL reconciliation migration."""
+    patch = DeliveryPatch(root=output)
+    affected_days = sorted({key[0] for key in upserts} | {key[0] for key in removals})
+    upsert_keys_by_day: dict[str, list[tuple[str, int, int]]] = {}
+    removal_keys_by_day: dict[str, list[tuple[str, int, int]]] = {}
+    for key in upserts:
+        upsert_keys_by_day.setdefault(key[0], []).append(key)
+    for key in removals:
+        removal_keys_by_day.setdefault(key[0], []).append(key)
+    for day in affected_days:
+        item = _read_json_gz(canonical.issue_files[day])
+        articles = {str(row["id"]): row for row in item["content"]["articles"]}
+        prefix = f"content/newspapers/rmrb/items/{day[:4]}/{day[5:7]}/{day}"
+        manifest_key = f"{prefix}/manifest.jox"
+        manifest = _decode_jox(delivery_file(manifest_key), manifest_key)
+        descriptors = {str(row["id"]): row for row in manifest["content"]["articles"]}
+        manifest_changed = False
+
+        for key in sorted(removal_keys_by_day.get(day, [])):
+            article_id = _article_id(*key)
+            if descriptors.pop(article_id, None) is not None:
+                manifest_changed = True
+                patch.removed_article_count += 1
+
+        for key in sorted(upsert_keys_by_day.get(day, [])):
+            article_id = _article_id(*key)
+            article = articles.get(article_id)
+            if article is None:
+                raise ValueError(f"Canonical reconciliation row is absent: {key}")
+            fragment = {
+                "formatVersion": "jojo-fragment/1",
+                "itemId": item["itemId"],
+                "fragmentId": article_id,
+                "type": "article",
+                "order": article["order"],
+                "title": article["title"],
+                "status": "available",
+                "body": article["body"],
+                "assetRefs": article.get("assetRefs") or [],
+                "annotations": [],
+            }
+            clear = _json_bytes(fragment)
+            relative_object = f"articles/{_opaque_name(clear)}.jox"
+            object_key = f"{prefix}/{relative_object}"
+            target = output / object_key
+            size, digest = _write_jox(target, object_key, fragment)
+            desired = {
+                "id": article_id,
+                "order": article["order"],
+                "title": article["title"],
+                "characterCount": len(str(upserts[key].get("content") or "")),
+                "status": "available",
+                "object": relative_object,
+                "size": size,
+                "sha256": digest,
+            }
+            if descriptors.get(article_id) != desired:
+                descriptors[article_id] = desired
+                patch.files[object_key] = target
+                patch.changed_article_count += 1
+                manifest_changed = True
+
+        if manifest_changed:
+            values = sorted(descriptors.values(), key=lambda value: int(value["order"]))
+            manifest["content"]["articles"] = values
+            manifest["revision"] = int(manifest.get("revision") or 0) + 1
+            manifest["availability"]["text"] = (
+                "available" if any(row["status"] == "available" for row in values) else "missing"
+            )
+            manifest["contentStats"] = {
+                "articleCount": len(values),
+                "availableArticleCount": sum(row["status"] == "available" for row in values),
+                "missingArticleCount": sum(row["status"] == "missing" for row in values),
+                "rejectedArticleCount": sum(row["status"] == "rejected" for row in values),
+                "characterCount": sum(int(row.get("characterCount") or 0) for row in values),
+            }
+            target = output / manifest_key
+            _write_jox(target, manifest_key, manifest)
+            patch.files[manifest_key] = target
+
     if canonical.dataset_changed:
         index_key = "content/newspapers/rmrb/index.jox"
         index = _decode_jox(delivery_file(index_key), index_key)

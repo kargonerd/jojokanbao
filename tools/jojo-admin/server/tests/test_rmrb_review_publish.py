@@ -295,6 +295,89 @@ class RmrbReviewPublishTest(unittest.TestCase):
         fragment_key = f"content/newspapers/rmrb/items/1950/01/{self.day}/{descriptors[-1]['object']}"
         self.assertIn(fragment_key, delivery.files)
 
+    def test_final_reconciliation_moves_an_obsolete_omission_into_catalog(self):
+        old_key = (self.day, 2, 5)
+        old_id = publish._article_id(*old_key)
+        target_item_path = self.hf / f"newspapers/rmrb/items/1950/01/{self.day}.json.gz"
+        item = publish._read_json_gz(target_item_path)
+        item["content"].update({
+            "pages": [
+                {"id": "page:01", "order": 1, "number": 1, "label": "第1版", "title": None, "assetRefs": []},
+                {"id": "page:02", "order": 2, "number": 2, "label": "第2版", "title": None, "assetRefs": []},
+            ],
+            "placements": [
+                {"id": "placement:target", "pageId": "page:01", "articleId": self.article_id, "order": 1, "role": "complete"},
+                {"id": "placement:old", "pageId": "page:02", "articleId": old_id, "order": 1, "role": "complete"},
+            ],
+        })
+        item["content"]["articles"].append({
+            "id": old_id,
+            "order": 6,
+            "title": "旧目录漏收题",
+            "authors": [],
+            "contentState": "available",
+            "body": {"format": "text", "value": "迁移正文。"},
+            "assetRefs": [],
+            "extensions": {"rmrb": {"contentSource": "jsonl", "matchMethod": "jsonl_directory_omission"}},
+        })
+        publish._write_json_gz(target_item_path, item)
+        shard = self.hf / "newspapers/rmrb/data/articles/1950.jsonl.gz"
+        viewer = publish._read_jsonl_gz(shard)
+        viewer.append({
+            "date": self.day, "page": 2, "ordinal": 5, "title": "旧目录漏收题",
+            "content": "迁移正文。", "status": "available", "pdf": None,
+        })
+        publish._write_jsonl_gz(shard, viewer)
+
+        manifest_key = f"content/newspapers/rmrb/items/1950/01/{self.day}/manifest.jox"
+        manifest_path = self.delivery / manifest_key
+        manifest = publish._decode_jox(manifest_path, manifest_key)
+        manifest["content"]["articles"].append({
+            "id": old_id, "order": 6, "title": "旧目录漏收题", "characterCount": 5,
+            "status": "available", "object": "articles/old.jox", "size": 1, "sha256": "0" * 64,
+        })
+        publish._write_jox(manifest_path, manifest_key, manifest)
+
+        upserts = {self.key: {
+            "date": self.day,
+            "page": 1,
+            "ordinal": 0,
+            "title": "JSONL 校正题",
+            "content": "迁移正文。",
+            "contentSource": "jsonl",
+            "matchMethod": "human_review_merge_candidate",
+            "sourceDate": self.day,
+            "sourcePage": 2,
+            "sourceOrdinal": 5,
+            "sourceTitle": "旧目录漏收题",
+        }}
+        removals = {old_key: {
+            "date": self.day, "page": 2, "ordinal": 5,
+            "title": "旧目录漏收题", "content": "迁移正文。",
+        }}
+        canonical = publish.prepare_canonical_jsonl_reconciliation(
+            upserts, removals, lambda name: self.hf / name, self.output / "canonical-final",
+        )
+        self.assertEqual(canonical.changed_article_count, 1)
+        self.assertEqual(canonical.removed_article_count, 1)
+        final_item = publish._read_json_gz(canonical.issue_files[self.day])
+        final_articles = {row["id"]: row for row in final_item["content"]["articles"]}
+        self.assertNotIn(old_id, final_articles)
+        self.assertEqual(final_articles[self.article_id]["title"], "JSONL 校正题")
+        self.assertEqual(final_articles[self.article_id]["body"]["value"], "迁移正文。")
+        self.assertEqual(publish._read_jsonl_gz(canonical.files[publish.MISSING_INDEX]), [])
+
+        delivery = publish.prepare_delivery_jsonl_reconciliation(
+            upserts, removals, canonical, lambda name: self.delivery / name,
+            self.output / "delivery-final",
+        )
+        self.assertEqual(delivery.changed_article_count, 1)
+        self.assertEqual(delivery.removed_article_count, 1)
+        final_manifest = publish._decode_jox(delivery.files[manifest_key], manifest_key)
+        descriptors = {row["id"]: row for row in final_manifest["content"]["articles"]}
+        self.assertNotIn(old_id, descriptors)
+        self.assertEqual(descriptors[self.article_id]["title"], "JSONL 校正题")
+
 
 if __name__ == "__main__":
     unittest.main()
