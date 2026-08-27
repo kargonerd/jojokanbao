@@ -6,7 +6,8 @@ const source: SourceConfig = {
   id: "ap",
   name: "AP News",
   language: "en",
-  sections: [{ id: "world", name: "World", url: "https://apnews.com/world-news", kind: "region" }],
+  publicationTimeZone: "UTC",
+  sections: [{ id: "world", name: "World", url: "https://apnews.com/world-news" }],
   discovery: {
     kind: "multi",
     targets: [{
@@ -21,8 +22,8 @@ const source: SourceConfig = {
       },
     }],
   },
-  content: { priority: ["browser-parser", "discovery-summary"], parser: "ap" },
-  archive: { mode: "browser", bpc: true },
+  content: { priority: ["captured-page", "discovery-summary"], parser: "ap" },
+  fetch: { strategy: "direct-first", bpc: true },
   health: { minimumCandidates: 1 },
   enabled: true,
 };
@@ -54,6 +55,14 @@ describe("AP source adapter", () => {
                   title: "Undated story",
                   url: "/article/undated",
                 },
+                {
+                  __typename: "PagePromo",
+                  id: "entertainment-recommendation",
+                  title: "Entertainment quiz promoted inside the section page",
+                  url: "/article/entertainment-quiz",
+                  publishDateStamp: "2026-08-25T04:05:00Z",
+                  category: "Entertainment",
+                },
               ],
             }],
           }],
@@ -65,6 +74,7 @@ describe("AP source adapter", () => {
     const result = await discoverSource(source, "2026-08-25T04:10:00Z", Date.parse("2026-08-24T04:10:00Z"));
 
     expect(result.candidates).toHaveLength(1);
+    expect(result.fetchPolicy).toEqual(expect.objectContaining({ capture: "browser" }));
     expect(result.candidates[0]).toEqual(expect.objectContaining({
       canonicalUrl: "https://apnews.com/article/world-headline",
       title: "World headline",

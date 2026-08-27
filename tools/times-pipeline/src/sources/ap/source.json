@@ -1,0 +1,101 @@
+{
+  "id": "ap",
+  "name": "AP News",
+  "language": "en",
+  "publicationTimeZone": "UTC",
+  "sections": [
+    {
+      "id": "world",
+      "name": "World",
+      "url": "https://apnews.com/world-news"
+    },
+    {
+      "id": "us",
+      "name": "U.S.",
+      "url": "https://apnews.com/us-news"
+    },
+    {
+      "id": "politics",
+      "name": "Politics",
+      "url": "https://apnews.com/politics"
+    },
+    {
+      "id": "business",
+      "name": "Business",
+      "url": "https://apnews.com/business"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "world",
+        "sectionIds": [
+          "world"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "ap",
+          "driver": "http",
+          "path": "/world-news",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "us",
+        "sectionIds": [
+          "us"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "ap",
+          "driver": "http",
+          "path": "/us-news",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "politics",
+        "sectionIds": [
+          "politics"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "ap",
+          "driver": "http",
+          "path": "/politics",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "business",
+        "sectionIds": [
+          "business"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "ap",
+          "driver": "http",
+          "path": "/business",
+          "maximumItems": 100
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "captured-page",
+      "discovery-summary"
+    ],
+    "parser": "ap"
+  },
+  "fetch": {
+    "strategy": "direct-first",
+    "bpc": true,
+    "proxyPolicy": "none"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

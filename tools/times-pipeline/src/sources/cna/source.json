@@ -1,0 +1,131 @@
+{
+  "id": "cna",
+  "name": "CNA",
+  "language": "en",
+  "publicationTimeZone": "Asia/Singapore",
+  "sections": [
+    {
+      "id": "top-stories",
+      "name": "Top Stories",
+      "url": "https://www.channelnewsasia.com/"
+    },
+    {
+      "id": "asia",
+      "name": "Asia",
+      "url": "https://www.channelnewsasia.com/asia",
+      "match": {
+        "urlPrefixes": [
+          "https://www.channelnewsasia.com/asia/"
+        ]
+      }
+    },
+    {
+      "id": "east-asia",
+      "name": "East Asia",
+      "url": "https://www.channelnewsasia.com/east-asia",
+      "match": {
+        "urlPrefixes": [
+          "https://www.channelnewsasia.com/east-asia/"
+        ]
+      }
+    },
+    {
+      "id": "singapore",
+      "name": "Singapore",
+      "url": "https://www.channelnewsasia.com/singapore",
+      "match": {
+        "urlPrefixes": [
+          "https://www.channelnewsasia.com/singapore/"
+        ]
+      }
+    },
+    {
+      "id": "world",
+      "name": "World",
+      "url": "https://www.channelnewsasia.com/world",
+      "match": {
+        "urlPrefixes": [
+          "https://www.channelnewsasia.com/world/"
+        ]
+      }
+    },
+    {
+      "id": "business",
+      "name": "Business",
+      "url": "https://www.channelnewsasia.com/business",
+      "match": {
+        "urlPrefixes": [
+          "https://www.channelnewsasia.com/business/"
+        ]
+      }
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "top-stories",
+        "sectionIds": [
+          "top-stories"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "cna",
+          "driver": "http",
+          "route": "top-stories",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "asia",
+        "sectionIds": [],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6511"
+        }
+      },
+      {
+        "id": "singapore",
+        "sectionIds": [],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=10416"
+        }
+      },
+      {
+        "id": "world",
+        "sectionIds": [],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6311"
+        }
+      },
+      {
+        "id": "business",
+        "sectionIds": [],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6936"
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "captured-page",
+      "discovery-summary"
+    ],
+    "parser": "cna",
+    "minimumFullCharacters": 200,
+    "minimumFullParagraphs": 2
+  },
+  "fetch": {
+    "strategy": "direct-first",
+    "bpc": true,
+    "proxyPolicy": "none"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

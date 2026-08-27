@@ -1,0 +1,104 @@
+{
+  "id": "cls",
+  "name": "财联社",
+  "language": "zh-CN",
+  "publicationTimeZone": "Asia/Shanghai",
+  "sections": [
+    {
+      "id": "headlines",
+      "name": "头条",
+      "url": "https://www.cls.cn/depth?id=1000"
+    },
+    {
+      "id": "stocks",
+      "name": "股市",
+      "url": "https://www.cls.cn/depth?id=1003"
+    },
+    {
+      "id": "hong-kong-stocks",
+      "name": "港股",
+      "url": "https://www.cls.cn/depth?id=1135"
+    },
+    {
+      "id": "global",
+      "name": "环球",
+      "url": "https://www.cls.cn/depth?id=1007"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "headlines",
+        "sectionIds": [
+          "headlines"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "cls",
+          "driver": "http",
+          "categoryId": "1000",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "stocks",
+        "sectionIds": [
+          "stocks"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "cls",
+          "driver": "http",
+          "categoryId": "1003",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "hong-kong-stocks",
+        "sectionIds": [
+          "hong-kong-stocks"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "cls",
+          "driver": "http",
+          "categoryId": "1135",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "global",
+        "sectionIds": [
+          "global"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "cls",
+          "driver": "http",
+          "categoryId": "1007",
+          "maximumItems": 100
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "discovery-body",
+      "captured-page",
+      "discovery-summary"
+    ],
+    "parser": "cls",
+    "minimumFullCharacters": 100,
+    "minimumFullParagraphs": 1
+  },
+  "fetch": {
+    "strategy": "direct-first",
+    "bpc": true,
+    "proxyPolicy": "none"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

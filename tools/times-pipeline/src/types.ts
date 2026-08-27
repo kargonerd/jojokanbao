@@ -14,8 +14,41 @@ export interface DiscoveryRuntime {
   browser?: BrowserDiscoveryRuntime;
 }
 
+export interface SourceFetchPolicy {
+  capture: "browser" | "http";
+  captureUrl?: "canonical" | "source";
+  bodySelectors: string[];
+}
+
+export type UnavailablePageReason = "UnsupportedMedia" | "HardPaywall";
+
+export interface PageAvailabilityInput {
+  title: string;
+  url: string;
+  html?: string;
+  hasFullBody: boolean;
+}
+
+export type RouteSourceAdapter =
+  | "africanews"
+  | "agencia-brasil"
+  | "aljazeera"
+  | "chinanews"
+  | "cna"
+  | "people"
+  | "thepaper"
+  | "xinhua"
+  | "zaobao";
+
+export interface RouteDiscoveryEndpoint {
+  kind: "source-adapter";
+  adapter: RouteSourceAdapter;
+  driver: DiscoveryDriver;
+  route: string;
+  maximumItems: number;
+}
+
 export type DiscoveryEndpoint =
-  | { kind: "rsshub-package"; route: string }
   | {
       kind: "source-adapter";
       adapter: "ap";
@@ -23,23 +56,38 @@ export type DiscoveryEndpoint =
       path: string;
       maximumItems: number;
     }
-  | { kind: "official-rss"; url: string }
-  | { kind: "official-rss-list"; urls: string[] }
-  | { kind: "sitemap"; url: string; maximumPages: number }
   | {
-      kind: "site-adapter";
-      adapter: "html-news-page";
-      url: string;
-      articlePathPrefixes: string[];
-      linkSelector?: string;
+      kind: "source-adapter";
+      adapter: "nikkei";
+      driver: DiscoveryDriver;
+      stream: "latest";
       maximumItems: number;
     }
   | {
-      kind: "site-adapter";
-      adapter: "thepaper-channel";
-      channelId: string;
+      kind: "source-adapter";
+      adapter: "nikkei";
+      driver: DiscoveryDriver;
+      route: string;
       maximumItems: number;
-    };
+    }
+  | {
+      kind: "source-adapter";
+      adapter: "cls";
+      driver: DiscoveryDriver;
+      categoryId: string;
+      maximumItems: number;
+    }
+  | {
+      kind: "source-adapter";
+      adapter: "dw";
+      driver: DiscoveryDriver;
+      navigationId: string;
+      maximumItems: number;
+    }
+  | RouteDiscoveryEndpoint
+  | { kind: "official-rss"; url: string }
+  | { kind: "official-rss-list"; urls: string[] }
+  | { kind: "sitemap"; url: string; maximumPages: number };
 
 export interface DiscoveryTarget {
   id: string;
@@ -50,13 +98,11 @@ export interface DiscoveryTarget {
 
 export type DiscoveryConfig = DiscoveryEndpoint | { kind: "multi"; targets: DiscoveryTarget[] };
 
-export type PublisherSectionKind = "stream" | "edition" | "region" | "topic";
-
 export interface PublisherSectionConfig {
   id: string;
   name: string;
   url: string;
-  kind: PublisherSectionKind;
+  discoverable?: boolean;
   match?: {
     urlPrefixes?: string[];
     publisherCategories?: string[];
@@ -68,12 +114,31 @@ export interface PublisherSectionRef {
   name: string;
 }
 
-export type ContentPriority = "discovery-body" | "browser-parser" | "discovery-summary";
+export type ContentPriority = "discovery-body" | "captured-page" | "discovery-summary";
+
+export type PageFetchStrategy = "direct-first" | "browser-first";
+
+export interface CapturedAsset {
+  id: string;
+  type: "image";
+  role: "lead" | "content";
+  sourceUrl: string;
+  rawObject: string;
+  mediaType: string;
+  size: number;
+  sha256: string;
+  alt?: string;
+  caption?: string;
+  credit?: string;
+  width?: number;
+  height?: number;
+}
 
 export interface SourceConfig {
   id: string;
   name: string;
   language: string;
+  publicationTimeZone: string;
   sections?: PublisherSectionConfig[];
   discovery: DiscoveryConfig;
   content: {
@@ -82,10 +147,12 @@ export interface SourceConfig {
     minimumFullCharacters?: number;
     minimumFullParagraphs?: number;
   };
-  archive: {
-    mode: "browser" | "http" | "none";
+  fetch: {
+    strategy: PageFetchStrategy;
     bpc: boolean;
-    proxyPolicy?: string;
+    browser?: "chromium" | "brave";
+    retryWithoutBpcOnBlocked?: boolean;
+    proxyPolicy?: "none" | "rotate";
   };
   health: {
     minimumCandidates: number;
@@ -103,10 +170,12 @@ export interface Candidate {
   title: string;
   summary?: string;
   discoveryBody?: string;
-  browserBody?: string;
-  browserCapturedAt?: string;
-  browserHttpStatus?: number;
-  browserArchiveObject?: string;
+  capturedAt?: string;
+  captureHttpStatus?: number;
+  rawPageObject?: string;
+  captureStatus?: "pending" | "captured" | "unchanged" | "failed" | "hard-paywall" | "skipped";
+  captureMethod?: "direct" | "browser";
+  assets?: CapturedAsset[];
   contentStatus: "full" | "summary" | "metadata";
   publishedAt: string;
   updatedAt?: string;
@@ -118,11 +187,29 @@ export interface Candidate {
 
 export interface DiscoveryResult {
   source: SourceConfig;
-  transport: "rsshub-package" | "source-adapter" | "official-rss" | "official-rss-list" | "sitemap" | "site-adapter" | "multi";
+  transport: "source-adapter" | "official-rss" | "official-rss-list" | "sitemap" | "multi";
   fetchedAt: string;
   upstream: unknown;
   candidates: Candidate[];
   version?: string;
+  fetchPolicy?: SourceFetchPolicy;
+  window?: {
+    startInclusive: string;
+    endInclusive: string;
+    futureToleranceSeconds: number;
+    discovered: number;
+    accepted: number;
+    beforeWindow: number;
+    afterWindow: number;
+    invalidTimestamp: number;
+    anomalies: Array<{
+      articleId: string;
+      title: string;
+      canonicalUrl: string;
+      publishedAt: string;
+      reason: "after-window" | "invalid-timestamp";
+    }>;
+  };
 }
 
 export interface RecordedExchange {
@@ -148,10 +235,11 @@ export interface RecordedExchange {
 }
 
 export interface SourceCaptureManifest {
-  formatVersion: "jojo-times-raw-source-run/1";
+  formatVersion: "jojo-times-raw-source-run/2";
   runId: string;
   sourceId: string;
   sourceName: string;
+  publicationTimeZone: string;
   startedAt: string;
   completedAt: string;
   discovery: SourceConfig["discovery"];
@@ -160,6 +248,8 @@ export interface SourceCaptureManifest {
   summaryCount: number;
   metadataCount: number;
   networkExchangeCount: number;
+  window?: NonNullable<DiscoveryResult["window"]>;
+  fetchPolicy?: SourceFetchPolicy;
   sectionCoverage?: {
     selected: string[];
     covered: string[];
@@ -168,7 +258,18 @@ export interface SourceCaptureManifest {
     fallbackUsed: boolean;
   };
   objects: Array<{ path: string; size: number; sha256: string }>;
-  archiveStatus: "recorded-http" | "wacz-complete";
+  captureStatus: "discovery-complete" | "pages-complete";
+  pageCapture?: {
+    planned: number;
+    captured: number;
+    unchanged: number;
+    failed: number;
+    skipped: number;
+    hardPaywall: number;
+    direct: number;
+    browser: number;
+    assets: number;
+  };
   healthStatus: "healthy" | "degraded" | "empty";
   complete: boolean;
 }

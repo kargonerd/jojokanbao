@@ -1,0 +1,122 @@
+{
+  "id": "chinanews",
+  "name": "中国新闻网",
+  "language": "zh-CN",
+  "publicationTimeZone": "Asia/Shanghai",
+  "sections": [
+    {
+      "id": "latest",
+      "name": "即时",
+      "url": "https://www.chinanews.com.cn/scroll-news/news1.html"
+    },
+    {
+      "id": "politics",
+      "name": "时政",
+      "url": "https://www.chinanews.com.cn/china/"
+    },
+    {
+      "id": "finance",
+      "name": "财经",
+      "url": "https://www.chinanews.com.cn/finance/"
+    },
+    {
+      "id": "world",
+      "name": "国际",
+      "url": "https://www.chinanews.com.cn/world/"
+    },
+    {
+      "id": "society",
+      "name": "社会",
+      "url": "https://www.chinanews.com.cn/society/"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "latest",
+        "sectionIds": [
+          "latest"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "chinanews",
+          "driver": "http",
+          "route": "latest",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "politics",
+        "sectionIds": [
+          "politics"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "chinanews",
+          "driver": "http",
+          "route": "politics",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "finance",
+        "sectionIds": [
+          "finance"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "chinanews",
+          "driver": "http",
+          "route": "finance",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "world",
+        "sectionIds": [
+          "world"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "chinanews",
+          "driver": "http",
+          "route": "world",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "society",
+        "sectionIds": [
+          "society"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "chinanews",
+          "driver": "http",
+          "route": "society",
+          "maximumItems": 50
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "discovery-body",
+      "captured-page",
+      "discovery-summary"
+    ],
+    "parser": "chinanews",
+    "minimumFullCharacters": 100,
+    "minimumFullParagraphs": 1
+  },
+  "fetch": {
+    "strategy": "direct-first",
+    "bpc": true,
+    "proxyPolicy": "none"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

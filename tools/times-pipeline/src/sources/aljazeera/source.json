@@ -1,0 +1,230 @@
+{
+  "id": "aljazeera",
+  "name": "Al Jazeera",
+  "language": "en",
+  "publicationTimeZone": "Asia/Qatar",
+  "sections": [
+    {
+      "id": "news",
+      "name": "News",
+      "url": "https://www.aljazeera.com/news/"
+    },
+    {
+      "id": "africa",
+      "name": "Africa",
+      "url": "https://www.aljazeera.com/where/africa/"
+    },
+    {
+      "id": "asia",
+      "name": "Asia",
+      "url": "https://www.aljazeera.com/where/asia/"
+    },
+    {
+      "id": "us-canada",
+      "name": "US & Canada",
+      "url": "https://www.aljazeera.com/where/us-canada/"
+    },
+    {
+      "id": "latin-america",
+      "name": "Latin America",
+      "url": "https://www.aljazeera.com/where/latin-america/"
+    },
+    {
+      "id": "europe",
+      "name": "Europe",
+      "url": "https://www.aljazeera.com/where/europe/"
+    },
+    {
+      "id": "asia-pacific",
+      "name": "Asia Pacific",
+      "url": "https://www.aljazeera.com/where/asia-pacific/"
+    },
+    {
+      "id": "middle-east",
+      "name": "Middle East",
+      "url": "https://www.aljazeera.com/where/middle-east/"
+    },
+    {
+      "id": "explained",
+      "name": "Explained",
+      "url": "https://www.aljazeera.com/tag/explainer/"
+    },
+    {
+      "id": "economy",
+      "name": "Economy",
+      "url": "https://www.aljazeera.com/economy/"
+    },
+    {
+      "id": "human-rights",
+      "name": "Human Rights",
+      "url": "https://www.aljazeera.com/tag/human-rights/"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "news",
+        "sectionIds": [
+          "news"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "aljazeera",
+          "driver": "http",
+          "route": "news",
+          "maximumItems": 30
+        }
+      },
+      {
+        "id": "africa",
+        "sectionIds": [
+          "africa"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "aljazeera",
+          "driver": "http",
+          "route": "africa",
+          "maximumItems": 30
+        }
+      },
+      {
+        "id": "asia",
+        "sectionIds": [
+          "asia"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "aljazeera",
+          "driver": "http",
+          "route": "asia",
+          "maximumItems": 30
+        }
+      },
+      {
+        "id": "us-canada",
+        "sectionIds": [
+          "us-canada"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "aljazeera",
+          "driver": "http",
+          "route": "us-canada",
+          "maximumItems": 30
+        }
+      },
+      {
+        "id": "latin-america",
+        "sectionIds": [
+          "latin-america"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "aljazeera",
+          "driver": "http",
+          "route": "latin-america",
+          "maximumItems": 30
+        }
+      },
+      {
+        "id": "europe",
+        "sectionIds": [
+          "europe"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "aljazeera",
+          "driver": "http",
+          "route": "europe",
+          "maximumItems": 30
+        }
+      },
+      {
+        "id": "asia-pacific",
+        "sectionIds": [
+          "asia-pacific"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "aljazeera",
+          "driver": "http",
+          "route": "asia-pacific",
+          "maximumItems": 30
+        }
+      },
+      {
+        "id": "middle-east",
+        "sectionIds": [
+          "middle-east"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "aljazeera",
+          "driver": "http",
+          "route": "middle-east",
+          "maximumItems": 30
+        }
+      },
+      {
+        "id": "explained",
+        "sectionIds": [
+          "explained"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "aljazeera",
+          "driver": "http",
+          "route": "explained",
+          "maximumItems": 30
+        }
+      },
+      {
+        "id": "economy",
+        "sectionIds": [
+          "economy"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "aljazeera",
+          "driver": "http",
+          "route": "economy",
+          "maximumItems": 30
+        }
+      },
+      {
+        "id": "human-rights",
+        "sectionIds": [
+          "human-rights"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "aljazeera",
+          "driver": "http",
+          "route": "human-rights",
+          "maximumItems": 30
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "discovery-body",
+      "captured-page",
+      "discovery-summary"
+    ],
+    "parser": "aljazeera",
+    "minimumFullCharacters": 1000,
+    "minimumFullParagraphs": 5
+  },
+  "fetch": {
+    "strategy": "direct-first",
+    "bpc": true,
+    "proxyPolicy": "none"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

@@ -51,8 +51,13 @@ async function main(): Promise<void> {
   const output = path.resolve(args.get("output") ?? path.join(os.tmpdir(), "jojo-times-v2"));
   const concurrency = Number(args.get("workers") ?? "3");
   const sinceHours = args.get("since-hours") ?? "24";
+  const futureToleranceSeconds = args.get("future-tolerance-seconds") ?? "120";
   const windowHours = Number(sinceHours);
+  const toleranceSeconds = Number(futureToleranceSeconds);
   if (!Number.isFinite(windowHours) || windowHours <= 0) throw new Error("--since-hours must be positive");
+  if (!Number.isInteger(toleranceSeconds) || toleranceSeconds < 0 || toleranceSeconds > 900) {
+    throw new Error("--future-tolerance-seconds must be an integer from 0 to 900");
+  }
   if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error("--workers must be a positive integer");
   const requested = new Set((args.get("sources") ?? "").split(",").map((value) => value.trim()).filter(Boolean));
   const sources = (await loadSources(config)).filter((source) => requested.size === 0 || requested.has(source.id));
@@ -74,12 +79,13 @@ async function main(): Promise<void> {
         "--run-id", id,
         "--started-at", started.toISOString(),
         "--since-hours", sinceHours,
+        "--future-tolerance-seconds", futureToleranceSeconds,
       ], source.id));
     }
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, sources.length) }, consume));
   const date = started.toISOString().slice(0, 10).replaceAll("-", "/");
-  const runManifest = path.join(output, "raw", "news", "runs", ...date.split("/"), `${id}.json`);
+  const runManifest = path.join(output, "raw", "runs", ...date.split("/"), `${id}.json`);
   await mkdir(path.dirname(runManifest), { recursive: true });
   await writeFile(runManifest, `${JSON.stringify({
     formatVersion: "jojo-times-raw-run/1",
@@ -87,6 +93,7 @@ async function main(): Promise<void> {
     startedAt: started.toISOString(),
     completedAt: new Date().toISOString(),
     windowHours,
+    futureToleranceSeconds: toleranceSeconds,
     sourceCount: sources.length,
     succeeded: results.filter((result) => result.status === "ok").length,
     degraded: results.filter((result) => result.status === "empty").length,
@@ -95,7 +102,9 @@ async function main(): Promise<void> {
     complete: true,
   }, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify({ runId: id, runManifest, results }, null, 2)}\n`);
-  if (results.every((result) => result.status === "error")) process.exitCode = 1;
+  // A partial discovery outage must not discard healthy sources from this run.
+  // The manifest and workflow summary retain per-source errors for monitoring.
+  if (results.length > 0 && results.every((result) => result.status === "error")) process.exitCode = 1;
 }
 
 main().catch((error: unknown) => {
