@@ -52,8 +52,7 @@ export function extractArticleBody(
   }
   document("script, style, nav, footer, header, aside, form, noscript").remove();
   const sourceSelectors = policy?.bodySelectors ?? [];
-  const selectors = [
-    ...sourceSelectors,
+  const genericSelectors = [
     "[itemprop='articleBody']",
     "article",
     ".article-body",
@@ -64,22 +63,25 @@ export function extractArticleBody(
     ".post-content",
     "main",
   ];
-  let best: string | undefined;
-  for (const [index, selector] of selectors.entries()) {
-    const values: string[] = [];
-    document(selector).each((_, container) => {
-      const elements = document(container).find("p, h2, h3, blockquote").toArray();
-      if (elements.length) values.push(...elements.map((element) => document(element).text()));
-      else values.push(document(container).text());
-    });
-    let candidate = semanticParagraphs(values, quality);
-    if (!candidate && index < sourceSelectors.length) {
-      const completeContainers = document(selector).toArray().map((container) => document(container).text());
-      candidate = semanticParagraphs(completeContainers, quality);
+  const bestBody = (selectors: readonly string[], completeContainerFallback: boolean): string | undefined => {
+    let best: string | undefined;
+    for (const selector of selectors) {
+      const values: string[] = [];
+      document(selector).each((_, container) => {
+        const elements = document(container).find("p, h2, h3, blockquote").toArray();
+        if (elements.length) values.push(...elements.map((element) => document(element).text()));
+        else values.push(document(container).text());
+      });
+      let candidate = semanticParagraphs(values, quality);
+      if (!candidate && completeContainerFallback) {
+        const completeContainers = document(selector).toArray().map((container) => document(container).text());
+        candidate = semanticParagraphs(completeContainers, quality);
+      }
+      if (candidate && (!best || candidate.length > best.length)) best = candidate;
     }
-    if (candidate && (!best || candidate.length > best.length)) best = candidate;
-  }
-  return best;
+    return best;
+  };
+  return bestBody(sourceSelectors, true) ?? bestBody(genericSelectors, false);
 }
 
 export function hasArticleBody(

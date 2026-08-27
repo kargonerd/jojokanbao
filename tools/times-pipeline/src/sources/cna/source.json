@@ -115,7 +115,9 @@
       "captured-page",
       "discovery-summary"
     ],
-    "parser": "cna"
+    "parser": "cna",
+    "minimumFullCharacters": 200,
+    "minimumFullParagraphs": 2
   },
   "fetch": {
     "strategy": "direct-first",

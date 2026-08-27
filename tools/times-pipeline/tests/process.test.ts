@@ -15,7 +15,7 @@ describe("article processing", () => {
       `<div data-testid="unordered-0"><div data-testid="Body">${`Article detail ${index}. `.repeat(15)}</div></div>`
     ).join("");
     const unrelated = '<div data-testid="Body">Company widget that must not be included.</div>';
-    const body = extractArticleBody(`<html><body>${intro}${details}${unrelated}</body></html>`, {
+    const body = extractArticleBody(`<html><body><article>${intro}${details}${unrelated}</article></body></html>`, {
       capture: "browser",
       bodySelectors: [
         "[data-testid^='paragraph-'], [data-testid^='unordered-'] [data-testid='Body'], [data-testid='SignOff'] [data-testid='Body']",
@@ -43,6 +43,21 @@ describe("article processing", () => {
     );
 
     expect(body).toContain("正文直接文本");
+  });
+
+  it("removes access-check boilerplate without rejecting the publisher's full article", () => {
+    const body = extractArticleBody(
+      `<section name="articleBody">
+        <p>${"First reported paragraph. ".repeat(12)}</p>
+        <p>${"Second reported paragraph. ".repeat(12)}</p>
+        <p>Thank you for your patience while we verify access. Already a subscriber? Log in.</p>
+      </section>`,
+      { capture: "browser", bodySelectors: ["section[name='articleBody']"] },
+      { minimumCharacters: 200, minimumParagraphs: 2 },
+    );
+
+    expect(body).toContain("First reported paragraph");
+    expect(body).not.toContain("verify access");
   });
 
   it("delegates Bloomberg's embedded body format to its publisher process module", () => {
