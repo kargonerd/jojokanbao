@@ -344,7 +344,7 @@ export function BookReader({
       if (!explanation) return;
       setAiExplanationQuote(explanation.quote);
       setAiQuestion(undefined);
-      setAiInitialAnswer(`${explanation.answer}\n\n这段话已查询 ${explanation.count} 次。`);
+      setAiInitialAnswer(explanation.answer);
       setAiInitialReferences(explanation.references);
       setAiFocus({
         chapterId: activeChapterId,
@@ -652,7 +652,7 @@ export function BookReader({
       });
       if (reusable) {
         setAiQuestion(undefined);
-        setAiInitialAnswer(`${reusable.answer}\n\n这段话已查询 ${reusable.count} 次。`);
+        setAiInitialAnswer(reusable.answer);
         setAiInitialReferences(reusable.references);
       } else {
         setAiQuestion(question);

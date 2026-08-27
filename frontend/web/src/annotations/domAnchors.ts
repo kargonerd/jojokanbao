@@ -169,10 +169,10 @@ function wrapReaderExplanationSlice(
   if (end - start < selected.data.length) selected.splitText(end - start);
   const mark = document.createElement("mark");
   mark.dataset.readerExplanation = "true";
-  mark.title = `这段话已查询 ${explanation.count} 次，点击查看解释`;
+  mark.title = "点击查看 AI 解释";
   mark.tabIndex = 0;
   mark.setAttribute("role", "button");
-  mark.setAttribute("aria-label", `查看 AI 解释，这段话已查询 ${explanation.count} 次`);
+  mark.setAttribute("aria-label", "查看 AI 解释");
   const open = (event: Event) => {
     event.stopPropagation();
     onOpen(explanation);

@@ -94,6 +94,8 @@ describe("shared annotation DOM anchors", () => {
 
     expect(renderReaderExplanationMarks(root, explanations, opened)).toBe(2);
     expect(root.querySelectorAll("mark[data-reader-explanation]")).toHaveLength(2);
+    expect(root.querySelector<HTMLElement>("mark[data-reader-explanation]")?.title).toBe("点击查看 AI 解释");
+    expect(root.querySelector<HTMLElement>("mark[data-reader-explanation]")?.getAttribute("aria-label")).toBe("查看 AI 解释");
     root.querySelectorAll<HTMLElement>("mark[data-reader-explanation]")[1]!.click();
     expect(opened).toHaveBeenCalledWith(explanations[1]);
 
