@@ -37,6 +37,9 @@ jobs:
       B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
       B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
       JOJO_DELIVERY_REMOTE: jojo-b2:${{ secrets.B2_BUCKET || 'jojo-newspaper' }}
+      TENCENTCLOUD_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
+      TENCENTCLOUD_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
+      TIMES_CDN_BASE: https://blacknews.jojokanbao.cn/
       TIMES_PUBLISH: ${{ github.event_name == 'workflow_run' || inputs.publish }}
       TIMES_CAPTURE_RUN_ID: ${{ inputs.capture_run_id || '' }}
     steps:
@@ -61,6 +64,8 @@ jobs:
           test -z "$TIMES_CAPTURE_RUN_ID" || (echo "capture_run_id is available only for a non-publishing dry run" >&2 && exit 1)
           test -n "$B2_KEY_ID" || (echo "B2_KEY_ID is not configured" >&2 && exit 1)
           test -n "$B2_APPLICATION_KEY" || (echo "B2_APPLICATION_KEY is not configured" >&2 && exit 1)
+          test -n "$TENCENTCLOUD_SECRET_ID" || (echo "COS_SECRET_ID is not configured for EdgeOne purge" >&2 && exit 1)
+          test -n "$TENCENTCLOUD_SECRET_KEY" || (echo "COS_SECRET_KEY is not configured for EdgeOne purge" >&2 && exit 1)
 
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
@@ -185,17 +190,61 @@ jobs:
         run: |
           delivery="$RUNNER_TEMP/jojo-times-delivery"
           rclone copy "$delivery/content/newspapers" "$JOJO_DELIVERY_REMOTE/content/newspapers" \
-            --include '*/articles/*.jox' --include '*/assets/*.jox' --exclude '*' \
-            --checksum --no-traverse --transfers 16 --header-upload 'Cache-Control: public, max-age=31536000, immutable'
+            --include '*/articles/*.jox' --include '*/assets/*.jox' \
+            --checksum --no-traverse --transfers 16 --header-upload 'X-Bz-Info-b2-cache-control: public, max-age=31536000, immutable'
           rclone copy "$delivery/content/newspapers" "$JOJO_DELIVERY_REMOTE/content/newspapers" \
-            --include '*/dates/**/*.jox' --include '*/index.jox' --exclude '*' \
-            --checksum --no-traverse --transfers 8 --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
+            --include '*/dates/**/*.jox' --include '*/index.jox' \
+            --checksum --no-traverse --transfers 8 --header-upload 'X-Bz-Info-b2-cache-control: public, max-age=60, must-revalidate'
           rclone copy "$delivery/content/timeline/dates" "$JOJO_DELIVERY_REMOTE/content/timeline/dates" \
-            --checksum --no-traverse --transfers 8 --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
+            --checksum --no-traverse --transfers 8 --header-upload 'X-Bz-Info-b2-cache-control: public, max-age=60, must-revalidate'
           rclone copyto "$delivery/content/timeline/index.jox" "$JOJO_DELIVERY_REMOTE/content/timeline/index.jox" \
-            --checksum --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
+            --checksum --header-upload 'X-Bz-Info-b2-cache-control: public, max-age=60, must-revalidate'
           rclone copyto "$delivery/catalog.jox" "$JOJO_DELIVERY_REMOTE/catalog.jox" \
-            --checksum --header-upload 'Cache-Control: public, max-age=60, must-revalidate'
+            --checksum --header-upload 'X-Bz-Info-b2-cache-control: public, max-age=60, must-revalidate'
+
+      - name: Purge mutable EdgeOne objects and verify the timeline index
+        if: env.TIMES_PUBLISH == 'true'
+        run: |
+          node - <<'NODE' > "$RUNNER_TEMP/delivery-purge-targets.txt"
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const base = new URL(process.env.TIMES_CDN_BASE);
+          const processResult = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/process-result.json", "utf8"));
+          const configPath = path.resolve("tools/times-pipeline/sources.v2.json");
+          const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+          const targets = new Set(["catalog.jox", "content/timeline/index.jox"]);
+          for (const sourceFile of config.sourceFiles) {
+            const source = JSON.parse(fs.readFileSync(path.resolve(path.dirname(configPath), sourceFile), "utf8"));
+            if (source.enabled !== false) targets.add(`content/newspapers/${source.id}/index.jox`);
+          }
+          for (const source of processResult.sources || []) {
+            for (const date of source.dates || []) {
+              targets.add(`content/newspapers/${source.sourceId}/dates/${date.slice(0, 4)}/${date.slice(5, 7)}/${date}.jox`);
+              targets.add(`content/timeline/dates/${date.slice(0, 4)}/${date.slice(5, 7)}/${date}.jox`);
+            }
+          }
+          for (const target of targets) console.log(new URL(target, base).href);
+          NODE
+          mapfile -t targets < "$RUNNER_TEMP/delivery-purge-targets.txt"
+          node tools/archive-pdf/purge-cache.mjs "${targets[@]}"
+
+          timeline_url="${TIMES_CDN_BASE%/}/content/timeline/index.jox"
+          expected="$RUNNER_TEMP/jojo-times-delivery/content/timeline/index.jox"
+          for attempt in $(seq 1 18); do
+            if curl --silent --show-error --fail \
+              --dump-header "$RUNNER_TEMP/timeline-headers.txt" \
+              --output "$RUNNER_TEMP/timeline-index.jox" \
+              "$timeline_url" \
+              && cmp --silent "$expected" "$RUNNER_TEMP/timeline-index.jox" \
+              && grep -Eiq '^cache-control:.*max-age=60([^0-9]|$)' "$RUNNER_TEMP/timeline-headers.txt"; then
+              echo "EdgeOne serves the current timeline index with a 60-second cache policy."
+              exit 0
+            fi
+            echo "Attempt ${attempt}: EdgeOne still serves a stale index or cache policy; retrying..."
+            sleep 10
+          done
+          echo "EdgeOne did not expose the current timeline index with max-age=60" >&2
+          exit 1
 
       - name: Upload dry-run Canonical and Delivery artifact
         if: env.TIMES_PUBLISH != 'true'
