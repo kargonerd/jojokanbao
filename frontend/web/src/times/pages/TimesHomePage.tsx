@@ -1,12 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import type { TimesTimelineIndex } from "@jojo/content";
 import { timesApi, type TimesNewsItem } from "../api";
-
-function articleTime(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? "—" : new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
-}
+import { TimelineArticle } from "../components/TimelineArticle";
 
 function dayLabel(value: string): { date: string; weekday: string } {
   const date = new Date(`${value}T00:00:00Z`);
@@ -127,24 +123,7 @@ export function TimesHomePage() {
                 </div>
               </div>
               <div className="bg-paper">
-                {day.articles.map((article) => (
-                  <article key={article.id} className="group grid grid-cols-[52px_minmax(0,1fr)] border-b border-rule px-3 py-5 last:border-b-0 sm:grid-cols-[72px_minmax(0,1fr)] sm:px-5 lg:grid-cols-[84px_minmax(0,1fr)_180px] lg:gap-5 lg:px-7 lg:py-6">
-                    <time className="pt-0.5 font-sans text-[11px] font-bold tabular-nums text-muted">{articleTime(article.publishedAt)}</time>
-                    <Link to={`/times/${article.issueDate}/${encodeURIComponent(article.id)}`} className="min-w-0 text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-red">
-                      <span className="flex flex-wrap items-center gap-x-3 gap-y-1 font-sans text-[10px] font-black uppercase tracking-[0.08em] text-red">
-                        <span>{article.source.name}</span>
-                        {article.publisherSections?.slice(0, 2).map((section) => <span key={section.id} className="font-medium normal-case tracking-normal text-muted">{section.name}</span>)}
-                      </span>
-                      <strong className="mt-1.5 block text-lg leading-snug transition-colors group-hover:text-red sm:text-xl">{article.title}</strong>
-                      {article.summary ? <span className="mt-2 line-clamp-2 block text-sm leading-6 text-muted">{article.summary}</span> : null}
-                    </Link>
-                    <div className="hidden items-start justify-end lg:flex">
-                      {article.assets.find((asset) => asset.role === "lead") ? (
-                        <span className="border-l-2 border-red pl-3 font-sans text-[10px] font-bold uppercase tracking-[0.15em] text-muted">图文存档</span>
-                      ) : <span className="font-sans text-[10px] text-muted">全文</span>}
-                    </div>
-                  </article>
-                ))}
+                {day.articles.map((article) => <TimelineArticle key={article.id} article={article} />)}
               </div>
             </section>
           );

@@ -97,6 +97,23 @@ describe("Times B2 CDN client", () => {
     expect(createObjectURL).toHaveBeenCalledOnce();
   });
 
+  it("decodes an immutable image object for a timeline card", async () => {
+    vi.stubGlobal("Blob", NodeBlob);
+    const NativeUrl = URL;
+    const createObjectURL = vi.fn().mockReturnValue("blob:jojo-timeline-image");
+    class TestUrl extends NativeUrl {
+      static createObjectURL = createObjectURL;
+      static revokeObjectURL = vi.fn();
+    }
+    vi.stubGlobal("URL", TestUrl);
+    const fetchMock = timelineFetch(true);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(timesApi.assetObjectUrl(item.assets[0]!)).resolves.toBe("blob:jojo-timeline-image");
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(`https://blacknews.jojokanbao.cn/${assetObject}`);
+    expect(createObjectURL).toHaveBeenCalledOnce();
+  });
+
   it("rejects an HTML fallback instead of rendering an empty feed", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("<!doctype html>")));
     await expect(timesApi.timelineIndex()).rejects.toThrow();

@@ -1,6 +1,7 @@
 import {
   JoxClient,
   resolveJoxObject,
+  type JojoAssetDescriptor,
   type JojoFragment,
   type TimesDeliveryArticle,
   type TimesTimelineDay,
@@ -52,6 +53,11 @@ function safeAssetObject(value: string): string {
 let indexPromise: Promise<TimesTimelineIndex> | undefined;
 const dayPromises = new Map<string, Promise<TimesTimelineDay>>();
 
+async function assetObjectUrl(asset: JojoAssetDescriptor, signal?: AbortSignal): Promise<string> {
+  const bytes = await client.fetchDecodedBytes(safeAssetObject(asset.object), signal);
+  return URL.createObjectURL(new Blob([Uint8Array.from(bytes).buffer], { type: asset.mediaType }));
+}
+
 async function timelineIndex(refresh = false): Promise<TimesTimelineIndex> {
   if (refresh || !indexPromise) {
     indexPromise = client.fetchJson<TimesTimelineIndex>(TIMELINE_INDEX_OBJECT, undefined, "no-store").then(asTimelineIndex);
@@ -83,6 +89,7 @@ async function timelineDay(date: string, refresh = false): Promise<TimesTimeline
 export const timesApi = {
   timelineIndex,
   timelineDay,
+  assetObjectUrl,
 
   invalidate() {
     indexPromise = undefined;
@@ -98,9 +105,7 @@ export const timesApi = {
     }
     const pairs = await Promise.all(item.assets.map(async (asset) => {
       try {
-        const bytes = await client.fetchDecodedBytes(safeAssetObject(asset.object));
-        const url = URL.createObjectURL(new Blob([Uint8Array.from(bytes).buffer], { type: asset.mediaType }));
-        return [asset.id, url] as const;
+        return [asset.id, await assetObjectUrl(asset)] as const;
       } catch {
         return undefined;
       }
