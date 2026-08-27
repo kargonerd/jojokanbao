@@ -73,6 +73,7 @@ describe("RAG chat page", () => {
     await screen.findByRole("textbox", { name: "输入问题" });
 
     expect(screen.getByRole("form", { name: "提问" })).toBeTruthy();
+    expect(screen.getByRole("note", { name: "AI 实验功能说明" }).textContent).toContain("回答可能不准确、遗漏或误解原文");
     expect(screen.getByLabelText("选择书籍，当前全部书籍")).toBeTruthy();
     expect(screen.queryByText("馆藏原文 · 随问随查")).toBeNull();
     expect(screen.queryByText("想了解什么，直接问。")).toBeNull();
@@ -144,7 +145,7 @@ describe("RAG chat page", () => {
     }));
 
     expect(screen.getByRole("status").textContent).toContain("正在候选书籍中检索原文");
-    expect(screen.getByText("JOJO 正在查找")).toBeTruthy();
+    expect(screen.getByText("正在查找")).toBeTruthy();
   });
 
   it("does not expose the implementation name in a surfaced service error", async () => {

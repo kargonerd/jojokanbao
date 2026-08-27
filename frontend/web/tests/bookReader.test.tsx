@@ -11,8 +11,26 @@ const annotationApi = vi.hoisted(() => ({
   addAnnotationComment: vi.fn(),
   reportAnnotationComment: vi.fn(),
 }));
+const readerDataApi = vi.hoisted(() => ({
+  bookshelfContains: vi.fn(async () => false),
+  popularExplanations: vi.fn(async () => []),
+  reusableExplanation: vi.fn(async () => undefined),
+  saveExplanation: vi.fn(async () => undefined),
+  setBookshelf: vi.fn(async () => undefined),
+}));
+const ragApi = vi.hoisted(() => ({
+  askStream: vi.fn((
+    _params: unknown,
+    _onChunk: (text: string) => void,
+    _onDone: (references?: unknown[], conversationId?: string, metadata?: unknown) => void,
+    _onError: (message: string) => void,
+    _onActivity?: (activity: unknown) => void,
+  ) => vi.fn()),
+}));
 
 vi.mock("../src/annotations/api", () => annotationApi);
+vi.mock("../src/rag/readerData", () => readerDataApi);
+vi.mock("../src/rag/api", () => ragApi);
 
 class ResizeObserverMock {
   observe(): void {}
@@ -36,6 +54,10 @@ describe("BookReader", () => {
     annotationApi.createAnnotation.mockReset();
     annotationApi.addAnnotationComment.mockReset();
     annotationApi.reportAnnotationComment.mockReset();
+    readerDataApi.reusableExplanation.mockResolvedValue(undefined);
+    readerDataApi.saveExplanation.mockResolvedValue(undefined);
+    readerDataApi.popularExplanations.mockResolvedValue([]);
+    ragApi.askStream.mockClear();
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 1200, writable: true });
     vi.stubGlobal("ResizeObserver", ResizeObserverMock);
     Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value: vi.fn() });
@@ -270,7 +292,7 @@ describe("BookReader", () => {
     expect(toolbar.textContent).toContain("复制");
     expect(toolbar.textContent).toContain("划线");
     expect(toolbar.textContent).toContain("写想法");
-    expect(toolbar.textContent).toContain("AI 解释");
+    expect(screen.getByRole("button", { name: "AI 解释" }).textContent).toContain("Beta");
     fireEvent.click(screen.getByRole("button", { name: "复制" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("这是正文。"));
     expect(screen.queryByRole("toolbar", { name: "选中文字工具" })).toBeNull();
@@ -322,6 +344,9 @@ describe("BookReader", () => {
     const { container } = renderReader();
     expect(screen.queryByRole("button", { name: "加入书架" })).toBeNull();
     expect(screen.getByRole("button", { name: "打开书内 AI" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "打开书内 AI" }));
+    expect(screen.getByRole("note", { name: "AI 实验功能说明" }).textContent).toContain("回答可能不准确、遗漏或误解原文");
+    fireEvent.click(screen.getAllByRole("button", { name: "关闭书内 AI" })[0]!);
 
     const paragraph = screen.getByText("这是正文。");
     const range = document.createRange();
@@ -331,7 +356,76 @@ describe("BookReader", () => {
     fireEvent.pointerUp(container.querySelector("[data-book-page-flow]")!);
 
     const toolbar = await screen.findByRole("toolbar", { name: "选中文字工具" });
-    expect(toolbar.textContent).toBe("复制AI 解释");
+    expect(toolbar.textContent).toContain("复制");
+    expect(screen.getByRole("button", { name: "AI 解释" }).textContent).toContain("Beta");
+    fireEvent.click(screen.getByRole("button", { name: "AI 解释" }));
+
+    await waitFor(() => expect(ragApi.askStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        datasetIds: ["test-books"],
+        itemIds: ["test-books:full-book"],
+        manifestObjects: ["content/books/test-books/items/full-book/manifest.jox"],
+        scopeMode: "selected",
+        focus: expect.objectContaining({
+          chapterId: "chapter-1",
+          chapterTitle: "第一章",
+          quote: "这是正文。",
+          prefix: expect.any(String),
+          suffix: expect.any(String),
+        }),
+      }),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+    ));
+  });
+
+  it("stores only the first selection explanation in the shared cache", async () => {
+    readerDataApi.saveExplanation.mockClear();
+    const { container } = renderReader();
+    const paragraph = screen.getByText("这是正文。");
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent.pointerUp(container.querySelector("[data-book-page-flow]")!);
+    fireEvent.click(await screen.findByRole("button", { name: "AI 解释" }));
+
+    await waitFor(() => expect(ragApi.askStream).toHaveBeenCalledTimes(1));
+    const firstCall = ragApi.askStream.mock.calls[0]!;
+    const reference = {
+      citationId: "Jfocus",
+      datasetId: "test-books",
+      itemId: "test-books:full-book",
+      targetId: "chapter-1",
+    };
+    act(() => {
+      (firstCall[1] as (chunk: string) => void)("首次解释[cite:Jfocus]");
+      (firstCall[2] as (references: typeof reference[], conversationId: string, metadata: { provider: string; model: string }) => void)(
+        [reference],
+        "conv-1",
+        { provider: "openai-codex", model: "gpt-test" },
+      );
+    });
+    await waitFor(() => expect(readerDataApi.saveExplanation).toHaveBeenCalledWith(expect.objectContaining({
+      chapterId: "chapter-1",
+      quote: "这是正文。",
+      answer: "首次解释[cite:Jfocus]",
+      references: [reference],
+      metadata: { provider: "openai-codex", model: "gpt-test" },
+    })));
+
+    fireEvent.change(screen.getByRole("textbox", { name: "向本书提问" }), { target: { value: "继续追问" } });
+    fireEvent.click(screen.getByRole("button", { name: "提问 →" }));
+    await waitFor(() => expect(ragApi.askStream).toHaveBeenCalledTimes(2));
+    const followUpCall = ragApi.askStream.mock.calls[1]!;
+    act(() => {
+      (followUpCall[1] as (chunk: string) => void)("追问答案");
+      (followUpCall[2] as (references: unknown[], conversationId: string) => void)([], "conv-1");
+    });
+
+    expect(readerDataApi.saveExplanation).toHaveBeenCalledTimes(1);
   });
 
   it("does not load or expose shared comments to a signed-out reader", async () => {

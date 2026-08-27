@@ -7,7 +7,7 @@ import { PersistentCredentialStore, type CredentialFile } from "./credentials";
 import { createEdgeOneAgentHandler } from "./edgeone/handler";
 import { createPlatformModelRuntime, resolvePlatformModelConfig, type AgentEnvironment } from "./models";
 import { loadLocalCodexCredential } from "./local-codex-credential";
-import { createRagTools, type RagScope } from "./rag-tools";
+import { createRagTools } from "./rag-tools";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -95,22 +95,6 @@ async function writeResponse(response: Response, target: ServerResponse): Promis
   target.end();
 }
 
-function scopeFrom(value: unknown): RagScope {
-  if (!value || typeof value !== "object") return {};
-  const scope = (value as { scope?: unknown }).scope;
-  if (!scope || typeof scope !== "object") return {};
-  const input = scope as Record<string, unknown>;
-  const strings = (candidate: unknown) => Array.isArray(candidate)
-    ? candidate.filter((item): item is string => typeof item === "string").slice(0, 100)
-    : undefined;
-  return {
-    mode: input.mode === "all" || input.mode === "selected" ? input.mode : undefined,
-    datasetIds: strings(input.datasetIds),
-    itemIds: strings(input.itemIds),
-    manifestObjects: strings(input.manifestObjects),
-  };
-}
-
 const environment = await developmentEnvironment();
 const { credential, source } = await loadLocalCodexCredential(repositoryRoot, environment);
 let credentialFile: CredentialFile = { "openai-codex": credential };
@@ -126,10 +110,11 @@ const handleAgent = createEdgeOneAgentHandler({
     environment,
     credentials: credentialStore,
   }),
-  tools(context) {
+  tools(_context, _user, body) {
     return createRagTools({
       contentCdnBase: environment.JOJO_CONTENT_CDN_BASE!,
-      scope: scopeFrom(context.request.body),
+      scope: body.scope,
+      focus: body.focus,
     });
   },
 });

@@ -1,7 +1,13 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { askStream } from "../api";
-import type { RagMessage } from "../types";
+import type {
+  RagAnswerMetadata,
+  RagFocusContext,
+  RagMessage,
+  RagReference,
+} from "../types";
 import { formatChatMarkdown } from "../utils/markdown";
+import { AiExperimentalNotice } from "./AiBetaNotice";
 import { ReferenceButtons } from "./ReferenceButtons";
 
 interface BookAiPanelProps {
@@ -11,14 +17,16 @@ interface BookAiPanelProps {
   manifestObject: string;
   initialQuestion?: string;
   initialAnswer?: string;
+  initialReferences?: RagReference[];
   explanationQuote?: string;
+  focus?: RagFocusContext;
   panelClass: string;
   onClose: () => void;
-  onExplanationComplete?: (quote: string, answer: string) => void;
+  onExplanationComplete?: (quote: string, answer: string, references?: RagReference[], metadata?: RagAnswerMetadata) => void;
 }
 
-export function BookAiPanel({ bookTitle, datasetId, itemId, manifestObject, initialQuestion, initialAnswer, explanationQuote, panelClass, onClose, onExplanationComplete }: BookAiPanelProps) {
-  const [messages, setMessages] = useState<RagMessage[]>(initialAnswer ? [{ role: "assistant", content: initialAnswer }] : []);
+export function BookAiPanel({ bookTitle, datasetId, itemId, manifestObject, initialQuestion, initialAnswer, initialReferences, explanationQuote, focus, panelClass, onClose, onExplanationComplete }: BookAiPanelProps) {
+  const [messages, setMessages] = useState<RagMessage[]>(initialAnswer ? [{ role: "assistant", content: initialAnswer, references: initialReferences }] : []);
   const [input, setInput] = useState("");
   const [streamContent, setStreamContent] = useState("");
   const [streamStatus, setStreamStatus] = useState("");
@@ -43,15 +51,17 @@ export function BookAiPanel({ bookTitle, datasetId, itemId, manifestObject, init
     setStreamStatus("正在准备本书检索…");
     let answer = "";
     cancelRef.current = askStream(
-      { datasetIds: [datasetId], scopeMode: "selected", itemIds: [itemId], manifestObjects: [manifestObject], question, conversationId, history: messages },
+      { datasetIds: [datasetId], scopeMode: "selected", itemIds: [itemId], manifestObjects: [manifestObject], question, conversationId, history: messages, focus },
       (chunk) => { answer += chunk; setStreamContent(answer); },
-      (references, nextConversationId) => {
+      (references, nextConversationId, metadata) => {
         setMessages([...nextMessages, { role: "assistant", content: answer, references }]);
         setConversationId(nextConversationId);
         setStreaming(false);
         setStreamContent("");
         setStreamStatus("");
-        if (explanationQuote && answer) onExplanationComplete?.(explanationQuote, answer);
+        if (explanationQuote && initialQuestion && question === initialQuestion && answer) {
+          onExplanationComplete?.(explanationQuote, answer, references, metadata);
+        }
       },
       (message) => {
         setError(message);
@@ -78,10 +88,11 @@ export function BookAiPanel({ bookTitle, datasetId, itemId, manifestObject, init
 
   return <aside aria-label="书内 AI" className={`fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l shadow-[-18px_0_50px_rgba(0,0,0,.12)] sm:w-[min(92vw,480px)] ${panelClass}`}>
     <header className="flex items-start justify-between gap-5 border-b border-rule px-6 py-5">
-      <div><p className="m-0 font-sans text-[11px] tracking-[.18em] text-red">书内 AI</p><h2 className="mb-0 mt-2 text-lg leading-snug">{bookTitle}</h2></div>
+      <div><p className="m-0 font-sans text-[11px] tracking-[.18em] text-red"><span className="relative inline-block">书内 AI<span className="absolute -right-5 -top-1 font-sans text-[6px] font-bold tracking-normal">Beta</span></span></p><h2 className="mb-0 mt-2 text-lg leading-snug">{bookTitle}</h2></div>
       <button type="button" onClick={onClose} className="border-0 bg-transparent text-2xl text-current cursor-pointer" aria-label="关闭书内 AI">×</button>
     </header>
-    <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+    <AiExperimentalNotice className="mx-6 mt-5 shrink-0" />
+    <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
       {messages.length === 0 && !streaming && <div className="border-l-2 border-red pl-4"><p className="m-0 text-base">针对当前这本书提问</p><p className="mb-0 mt-2 font-sans text-xs leading-6 text-muted">回答会限定在本书范围内；找到原文位置时可在新标签页打开正文。</p></div>}
       {messages.map((message, index) => <article key={index} className={`mb-6 ${message.role === "user" ? "ml-10 border-r-2 border-red pr-4 text-right" : ""}`}>
         {message.role === "user" ? <p className="m-0 whitespace-pre-wrap text-sm leading-7">{message.content}</p> : <>

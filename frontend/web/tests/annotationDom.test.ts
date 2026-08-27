@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clearAnnotationMarks, renderAnnotationMarks, textAnchorFromRange } from "../src/annotations/domAnchors";
+import {
+  clearAnnotationMarks,
+  clearReaderExplanationMarks,
+  renderAnnotationMarks,
+  renderReaderExplanationMarks,
+  textAnchorFromRange,
+} from "../src/annotations/domAnchors";
 import type { AnnotationThread } from "../src/annotations/types";
 
 afterEach(() => { document.body.innerHTML = ""; });
@@ -74,5 +80,26 @@ describe("shared annotation DOM anchors", () => {
     root.querySelector<HTMLElement>("mark[data-content-annotation='inner']")!.click();
     expect(opened).toHaveBeenCalledTimes(1);
     expect(opened).toHaveBeenCalledWith("inner");
+  });
+
+  it("locates repeated Reader AI quotes by context without nesting marks", () => {
+    const root = document.createElement("div");
+    root.textContent = "甲前文同一句甲后文。乙前文同一句乙后文";
+    document.body.append(root);
+    const explanations = [
+      { quote: "同一句", prefix: "甲前文", suffix: "甲后文", startOffset: null, endOffset: null, count: 2 },
+      { quote: "同一句", prefix: "乙前文", suffix: "乙后文", startOffset: null, endOffset: null, count: 4 },
+    ];
+    const opened = vi.fn();
+
+    expect(renderReaderExplanationMarks(root, explanations, opened)).toBe(2);
+    expect(root.querySelectorAll("mark[data-reader-explanation]")).toHaveLength(2);
+    root.querySelectorAll<HTMLElement>("mark[data-reader-explanation]")[1]!.click();
+    expect(opened).toHaveBeenCalledWith(explanations[1]);
+
+    expect(renderReaderExplanationMarks(root, explanations, opened)).toBe(2);
+    expect(root.querySelectorAll("mark[data-reader-explanation]")).toHaveLength(2);
+    clearReaderExplanationMarks(root);
+    expect(root.querySelector("mark[data-reader-explanation]")).toBeNull();
   });
 });

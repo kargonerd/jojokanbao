@@ -67,6 +67,46 @@ function requestBody(value: unknown): AgentRequestBody {
   const mode = scope?.mode === "all" || scope?.mode === "selected"
     ? scope.mode
     : undefined;
+  const rawFocus = (value as { focus?: unknown }).focus;
+  let focus: AgentRequestBody["focus"];
+  if (rawFocus !== undefined) {
+    if (!rawFocus || typeof rawFocus !== "object") {
+      throw new AgentHttpError(400, "focus must be an object");
+    }
+    const input = rawFocus as Record<string, unknown>;
+    const chapterId = typeof input.chapterId === "string" ? input.chapterId.trim() : "";
+    const quote = typeof input.quote === "string" ? input.quote : "";
+    if (!chapterId || chapterId.length > 500 || !quote.trim() || quote.length > 4_000) {
+      throw new AgentHttpError(400, "focus contains an invalid chapter or quote");
+    }
+    const optionalText = (
+      name: string,
+      maxCharacters: number,
+      preserveWhitespace = false,
+    ): string | undefined => {
+      const candidate = input[name];
+      if (candidate === undefined) return undefined;
+      if (typeof candidate !== "string" || candidate.length > maxCharacters) {
+        throw new AgentHttpError(400, `focus.${name} is invalid`);
+      }
+      if (preserveWhitespace) return candidate || undefined;
+      const normalized = candidate.trim();
+      return normalized || undefined;
+    };
+    const chapterTitle = optionalText("chapterTitle", 500);
+    const prefix = optionalText("prefix", 1_200, true);
+    const suffix = optionalText("suffix", 1_200, true);
+    focus = {
+      chapterId,
+      quote,
+      ...(chapterTitle ? { chapterTitle } : {}),
+      ...(prefix ? { prefix } : {}),
+      ...(suffix ? { suffix } : {}),
+    };
+    if (itemIds?.length !== 1 || manifestObjects?.length !== 1) {
+      throw new AgentHttpError(400, "focus requires one selected book item");
+    }
+  }
   const rawHistory = (value as { history?: unknown }).history;
   if (rawHistory !== undefined && !Array.isArray(rawHistory)) {
     throw new AgentHttpError(400, "history must be an array");
@@ -104,6 +144,7 @@ function requestBody(value: unknown): AgentRequestBody {
         ...(manifestObjects ? { manifestObjects } : {}),
       } }
       : {}),
+    ...(focus ? { focus } : {}),
   };
 }
 
@@ -325,7 +366,7 @@ export function createEdgeOneAgentHandler(
     const history = clientHistory(body.history ?? [], runtime);
     let tools: AgentTool[];
     try {
-      tools = tracedTools(await options.tools?.(context, user) ?? [], context.tracer);
+      tools = tracedTools(await options.tools?.(context, user, body) ?? [], context.tracer);
     } catch {
       return jsonResponse(503, { error: "馆藏问答工具暂时不可用" });
     }
@@ -335,6 +376,7 @@ export function createEdgeOneAgentHandler(
       "agent.provider": runtime.config.provider,
       "agent.model": runtime.config.model,
       "agent.conversation_id": conversationId,
+      "agent.has_focus_context": Boolean(body.focus),
     });
 
     const stream = new ReadableStream<Uint8Array>({
@@ -387,6 +429,7 @@ export function createEdgeOneAgentHandler(
               "agent.name": "jojo-rag",
               "agent.conversation_id": conversationId,
               "agent.scope_mode": body.scope?.mode ?? "all",
+              "agent.has_focus_context": Boolean(body.focus),
               "agent.history_messages": history.length,
             },
           );

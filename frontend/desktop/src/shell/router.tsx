@@ -62,7 +62,7 @@ function useDesktopNavigation(): readonly AppNavigationItem[] {
   const userId = useAccountSessionStore((state) => state.userId);
   return [
     ...coreDesktopNavigation,
-    ...(rollout.rag && accountInitialized && userId ? [{ label: 'AI', href: '/rag' }] : []),
+    ...(rollout.rag && accountInitialized && userId ? [{ label: 'AI', href: '/rag', badge: 'Beta' }] : []),
     ...aboutDesktopNavigation,
   ];
 }

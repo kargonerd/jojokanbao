@@ -177,6 +177,10 @@ describe("JOJO Web navigation", () => {
     expect(buildAppNavigationItems(true, { rag: true, times: true }).map((item) => item.label)).toEqual([
       "首页", "资料库", "搜索", "AI", "时事", "关于",
     ]);
+    expect(buildAppNavigationItems(true, { rag: true, times: true }).find((item) => item.href === "/rag")).toMatchObject({
+      label: "AI",
+      badge: "Beta",
+    });
   });
 
   it("keeps the login entry visible", () => {

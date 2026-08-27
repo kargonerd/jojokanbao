@@ -3,6 +3,7 @@ import type {
   AgentEnvironment,
   PlatformModelRuntime,
 } from "../models";
+import type { RagFocusContext } from "../rag-tools";
 
 export interface EdgeOneStoredMessage {
   messageId?: string;
@@ -67,6 +68,7 @@ export interface CreateEdgeOneAgentHandlerOptions {
   tools?: (
     context: EdgeOneAgentContext,
     user: AuthorizedAgentUser,
+    body: AgentRequestBody,
   ) => AgentTool[] | Promise<AgentTool[]>;
   authorize?: (
     context: EdgeOneAgentContext,
@@ -88,4 +90,5 @@ export interface AgentRequestBody {
     itemIds?: string[];
     manifestObjects?: string[];
   };
+  focus?: RagFocusContext;
 }

@@ -191,6 +191,38 @@ describe("RAG content tools", () => {
         fragmentObject: chapterOneObject,
       }],
     });
+    const focusedTools = createRagTools({
+      contentCdnBase: "https://cdn.test/",
+      scope: {
+        mode: "selected",
+        datasetIds: ["book-a"],
+        itemIds: ["book-a:full-book"],
+        manifestObjects: [manifestObject],
+      },
+      focus: {
+        chapterId: "chapter:1",
+        chapterTitle: "第一章",
+        quote: "苹果和梨",
+        prefix: "第一章",
+        suffix: "",
+      },
+      fetchFn: fetchFn as typeof fetch,
+    });
+    const focused = await focusedTools
+      .find((tool) => tool.name === "read_focus_context")!
+      .execute("focus", {}, undefined);
+    expect(focused.details).toMatchObject({
+      available: true,
+      strategy: "reader-focus-context",
+      datasetId: "book-a",
+      itemId: "book-a:full-book",
+      targetId: "chapter:1",
+      title: "第一章",
+      selectedQuote: "苹果和梨",
+      text: "苹果和梨",
+      citationId: expect.stringMatching(/^J/),
+      source: { fragmentObject: chapterOneObject },
+    });
     const noSearchTools = createRagTools({
       contentCdnBase: "https://cdn.test/",
       scope: {
@@ -276,6 +308,6 @@ describe("RAG content tools", () => {
       estimatedBytes: 400,
       byteBudget: 300,
     });
-    expect(fetchFn).toHaveBeenCalledTimes(12);
+    expect(fetchFn).toHaveBeenCalledTimes(14);
   });
 });

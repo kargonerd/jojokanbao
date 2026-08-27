@@ -10,14 +10,19 @@ import {
 } from "react";
 import { Link } from "react-router-dom";
 import { AnnotationDiscussionPanel } from "../../annotations/AnnotationDiscussionPanel";
-import { renderAnnotationMarks, textAnchorFromRange } from "../../annotations/domAnchors";
+import {
+  clearReaderExplanationMarks,
+  renderAnnotationMarks,
+  renderReaderExplanationMarks,
+  textAnchorFromRange,
+} from "../../annotations/domAnchors";
 import type { TextAnchor } from "../../annotations/types";
 import { useAnnotationThreads } from "../../annotations/useAnnotationThreads";
 import { useFeatureFlag } from "../../featureFlags";
 import { AccountMenu } from "../../account/AccountMenu";
 import { useAccountSessionStore } from "../../account/session";
 import { rollout } from "../../rollout";
-import type { RagSearchHit } from "../types";
+import type { RagAnswerMetadata, RagFocusContext, RagReference, RagSearchHit } from "../types";
 import { BookAiPanel } from "./BookAiPanel";
 import { BookSearchPanel } from "./BookSearchPanel";
 import "./BookReader.css";
@@ -147,6 +152,7 @@ export function BookReader({
   const currentUserId = useAccountSessionStore((state) => state.userId);
   const bookshelfEnabled = useFeatureFlag("library.bookshelf");
   const agentAccess = Boolean(currentUserId);
+  const activeChapterTitle = chapters.find((chapter) => chapter.id === activeChapterId)?.title;
   const [fontSize, setFontSize] = useState(storedFontSize);
   const [paperColor, setPaperColor] = useState<BookReaderPaperColor>(storedPaperColor);
   const [paperTexture, setPaperTexture] = useState(storedPaperTexture);
@@ -161,7 +167,9 @@ export function BookReader({
   const [thought, setThought] = useState("");
   const [aiQuestion, setAiQuestion] = useState<string>();
   const [aiInitialAnswer, setAiInitialAnswer] = useState<string>();
+  const [aiInitialReferences, setAiInitialReferences] = useState<RagReference[]>();
   const [aiExplanationQuote, setAiExplanationQuote] = useState<string>();
+  const [aiFocus, setAiFocus] = useState<RagFocusContext>();
   const [activeAnnotationId, setActiveAnnotationId] = useState<string>();
   const [annotationSaving, setAnnotationSaving] = useState(false);
   const [onBookshelf, setOnBookshelf] = useState(false);
@@ -288,7 +296,7 @@ export function BookReader({
   }, [chapterKey]);
 
   useEffect(() => {
-    if (!annotationsEnabled) {
+    if (!agentAccess) {
       setPopular([]);
       return;
     }
@@ -297,7 +305,7 @@ export function BookReader({
       .then((value) => { if (!cancelled) setPopular(value); })
       .catch(() => { if (!cancelled) setPopular([]); });
     return () => { cancelled = true; };
-  }, [activeChapterId, annotationsEnabled, datasetId, itemId]);
+  }, [activeChapterId, agentAccess, datasetId, itemId]);
 
   useEffect(() => {
     if (!bookshelfEnabled) {
@@ -319,32 +327,36 @@ export function BookReader({
 
   useEffect(() => {
     const root = mode === "paged" ? flowRef.current : scrollRef.current;
-    if (!root || contentLoading || !popular.length) return;
-    for (const explanation of popular) {
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      let node = walker.nextNode();
-      while (node) {
-        const value = node.textContent || "";
-        const index = value.indexOf(explanation.quote);
-        if (index >= 0) {
-          const range = document.createRange();
-          range.setStart(node, index); range.setEnd(node, index + explanation.quote.length);
-          const marker = document.createElement("mark");
-          marker.dataset.readerExplanation = "true";
-          marker.title = `${explanation.count} 位读者查询过，点击查看解释`;
-          marker.addEventListener("click", () => {
-            setAiExplanationQuote(explanation.quote);
-            setAiQuestion(undefined);
-            setAiInitialAnswer(`${explanation.answer}\n\n已有 ${explanation.count} 位读者查询过这段话。`);
-            openPanel("ai");
-          });
-          range.surroundContents(marker);
-          break;
-        }
-        node = walker.nextNode();
-      }
-    }
-  }, [contentLoading, mode, pageMetrics.step, popular]);
+    if (!root || contentLoading) return;
+    renderReaderExplanationMarks(root, popular.map((explanation) => ({
+      quote: explanation.quote,
+      prefix: explanation.prefix ?? "",
+      suffix: explanation.suffix ?? "",
+      startOffset: null,
+      endOffset: null,
+      count: explanation.count,
+    })), (anchor) => {
+      const explanation = popular.find((candidate) => (
+        candidate.quote === anchor.quote
+        && (candidate.prefix ?? "") === anchor.prefix
+        && (candidate.suffix ?? "") === anchor.suffix
+      ));
+      if (!explanation) return;
+      setAiExplanationQuote(explanation.quote);
+      setAiQuestion(undefined);
+      setAiInitialAnswer(`${explanation.answer}\n\n这段话已查询 ${explanation.count} 次。`);
+      setAiInitialReferences(explanation.references);
+      setAiFocus({
+        chapterId: activeChapterId,
+        ...(activeChapterTitle ? { chapterTitle: activeChapterTitle } : {}),
+        quote: explanation.quote,
+        ...(explanation.prefix ? { prefix: explanation.prefix } : {}),
+        ...(explanation.suffix ? { suffix: explanation.suffix } : {}),
+      });
+      openPanel("ai");
+    });
+    return () => clearReaderExplanationMarks(root);
+  }, [activeChapterId, activeChapterTitle, contentLoading, mode, pageMetrics.step, popular]);
 
   useEffect(() => {
     currentPageRef.current = 0;
@@ -538,7 +550,7 @@ export function BookReader({
     const ancestor = range.commonAncestorContainer;
     const insideReader = Boolean(flowRef.current?.contains(ancestor) || scrollRef.current?.contains(ancestor));
     const root = mode === "paged" ? flowRef.current : scrollRef.current;
-    const anchor = root && textAnchorFromRange(root, range);
+    const anchor = root && textAnchorFromRange(root, range, 1_200);
     if (!insideReader || !anchor) return;
     const rect = range.getBoundingClientRect();
     const toolbarHalfWidth = Math.min(128, Math.max(0, window.innerWidth / 2 - 8));
@@ -613,22 +625,40 @@ export function BookReader({
   }
 
   async function explainSelection(): Promise<void> {
-    if (!annotationsEnabled) return;
     if (!textSelection) return;
     const quote = textSelection.text;
+    setAiFocus({
+      chapterId: activeChapterId,
+      ...(activeChapterTitle ? { chapterTitle: activeChapterTitle } : {}),
+      quote,
+      prefix: textSelection.anchor.prefix,
+      suffix: textSelection.anchor.suffix,
+    });
     setAiExplanationQuote(quote);
     setAiInitialAnswer(undefined);
+    setAiInitialReferences(undefined);
+    const question = `请结合《${bookTitle}》的上下文解释这段话：\n\n“${quote}”`;
+    if (quote.length > 2_000) {
+      setAiQuestion(question);
+      setTextSelection(undefined);
+      setThoughtOpen(false);
+      openPanel("ai");
+      return;
+    }
     try {
-      const reusable = await reusableExplanation(datasetId, itemId, quote);
+      const reusable = await reusableExplanation(datasetId, itemId, activeChapterId, quote, {
+        prefix: textSelection.anchor.prefix,
+        suffix: textSelection.anchor.suffix,
+      });
       if (reusable) {
         setAiQuestion(undefined);
-        setAiInitialAnswer(`${reusable.answer}\n\n已有 ${reusable.count} 位读者查询过这段话。`);
+        setAiInitialAnswer(`${reusable.answer}\n\n这段话已查询 ${reusable.count} 次。`);
+        setAiInitialReferences(reusable.references);
       } else {
-        await saveExplanation({ datasetId, itemId, chapterId: activeChapterId, quote });
-        setAiQuestion(`请结合《${bookTitle}》的上下文解释这段话：\n\n“${quote}”`);
+        setAiQuestion(question);
       }
     } catch {
-      setAiQuestion(`请结合《${bookTitle}》的上下文解释这段话：\n\n“${quote}”`);
+      setAiQuestion(question);
     }
     setTextSelection(undefined);
     setThoughtOpen(false);
@@ -694,7 +724,7 @@ export function BookReader({
     <nav data-book-toolbar aria-label="阅读工具" className={`fixed bottom-2 left-2 right-2 z-30 flex gap-1 overflow-x-auto border p-1 backdrop-blur-md md:bottom-auto md:left-auto md:right-5 md:top-1/2 md:-translate-y-1/2 md:flex-col md:gap-2 md:overflow-visible md:border-0 md:p-0 ${chromeClass}`}>
       <button type="button" onClick={() => openPanel("toc")} className={controlClass} aria-label="打开目录" title="目录">目录</button>
       <button type="button" onClick={() => openPanel("search")} className={controlClass} aria-label="搜索全书" title="搜索全书">搜索</button>
-      {agentAccess && <button type="button" onClick={() => { setAiQuestion(undefined); setAiInitialAnswer(undefined); setAiExplanationQuote(undefined); openPanel("ai"); }} className={controlClass} aria-label="打开书内 AI" title="书内 AI">AI</button>}
+      {agentAccess && <button type="button" onClick={() => { setAiQuestion(undefined); setAiInitialAnswer(undefined); setAiInitialReferences(undefined); setAiExplanationQuote(undefined); setAiFocus(undefined); openPanel("ai"); }} className={`${controlClass} relative`} aria-label="打开书内 AI" title="书内 AI · Beta（实验功能）">AI<span aria-hidden="true" className="absolute right-1.5 top-1.5 text-[6px] font-bold leading-none tracking-normal text-red">Beta</span></button>}
       <button type="button" onClick={() => openTool("font")} className={controlClass} aria-label="调整字号" title="字号">字号</button>
       <button type="button" onClick={() => openTool("color")} className={controlClass} aria-label="选择纸张颜色" title="纸张颜色"><span className={`h-4 w-4 border ${isDark ? "border-white/50 bg-[#202321]" : paperColor === "white" ? "border-[#aaa] bg-white" : "border-[#b8ad96] bg-[#fbfaf6]"}`} aria-hidden="true" /></button>
       <button type="button" aria-pressed={paperTexture} onClick={() => setPaperTexture((value) => !value)} className={`${controlClass} ${paperTexture ? "text-red" : ""}`} aria-label="切换纸张纹理" title={paperTexture ? "关闭纸张纹理" : "开启纸张纹理"}>纹理</button>
@@ -722,7 +752,19 @@ export function BookReader({
 
     {searchOpen && <><button type="button" aria-label="关闭全书搜索" onClick={() => setSearchOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookSearchPanel bookTitle={bookTitle} panelClass={panelClass} onClose={() => setSearchOpen(false)} onJump={locateSearchResult} onSearch={onSearch} /></>}
 
-    {agentAccess && aiOpen && <><button type="button" aria-label="关闭书内 AI" onClick={() => setAiOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookAiPanel key={`${aiQuestion || "book-ai"}:${aiInitialAnswer || ""}`} bookTitle={bookTitle} datasetId={datasetId} itemId={itemId} manifestObject={manifestObject} initialQuestion={aiQuestion} initialAnswer={aiInitialAnswer} explanationQuote={aiExplanationQuote} panelClass={panelClass} onClose={() => setAiOpen(false)} onExplanationComplete={annotationsEnabled ? (quote, answer) => void saveExplanation({ datasetId, itemId, chapterId: activeChapterId, quote, answer }) : undefined} /></>}
+    {agentAccess && aiOpen && <><button type="button" aria-label="关闭书内 AI" onClick={() => setAiOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookAiPanel key={`${aiQuestion || "book-ai"}:${aiInitialAnswer || ""}`} bookTitle={bookTitle} datasetId={datasetId} itemId={itemId} manifestObject={manifestObject} initialQuestion={aiQuestion} initialAnswer={aiInitialAnswer} initialReferences={aiInitialReferences} explanationQuote={aiExplanationQuote} focus={aiFocus} panelClass={panelClass} onClose={() => setAiOpen(false)} onExplanationComplete={(quote: string, answer: string, references?: RagReference[], metadata?: RagAnswerMetadata) => {
+      if (quote.length <= 2_000) void saveExplanation({
+        datasetId,
+        itemId,
+        chapterId: aiFocus?.chapterId ?? activeChapterId,
+        quote,
+        prefix: aiFocus?.prefix,
+        suffix: aiFocus?.suffix,
+        answer,
+        references,
+        metadata,
+      }).catch(() => undefined);
+    }} /></>}
 
     {activeAnnotation && currentUserId ? <AnnotationDiscussionPanel key={activeAnnotation.id}
       thread={activeAnnotation}
@@ -750,7 +792,7 @@ export function BookReader({
         <button type="button" onClick={() => void copySelection()} className="book-selection-action">复制</button>
         {annotationAccess && <><button type="button" disabled={annotationSaving} onClick={() => void underlineSelection()} className="book-selection-action">划线</button>
         <button type="button" disabled={annotationSaving} onClick={() => setThoughtOpen((value) => !value)} className="book-selection-action">写想法</button></>}
-        {agentAccess && <button type="button" onClick={() => void explainSelection()} className="book-selection-action text-red">AI 解释</button>}
+        {agentAccess && <button type="button" onClick={() => void explainSelection()} className="book-selection-action relative text-red" aria-label="AI 解释">AI 解释<span aria-hidden="true" className="absolute right-1 top-1 text-[6px] font-bold leading-none tracking-normal">Beta</span></button>}
       </div>
       {thoughtOpen && <div className={`mt-1 w-72 border p-3 shadow-[3px_6px_20px_rgba(0,0,0,.16)] ${panelClass}`}>
         <textarea autoFocus value={thought} onChange={(event) => setThought(event.target.value)} placeholder="写下此刻的想法……" rows={3} className="book-thought-input block w-full resize-none border-0 border-b border-rule bg-transparent px-0 py-1 font-serif text-sm leading-6 text-current" />
