@@ -113,6 +113,25 @@ describe("article processing", () => {
     expect(body?.match(/<p>/gu)).toHaveLength(6);
   });
 
+  it("accepts a complete three-paragraph AP bulletin below the global length threshold", () => {
+    const paragraphs = [
+      "The administration announced an agreement on Friday and described the arrangement as an immediate change in policy. Officials said implementation would begin after agencies complete the required operational review.",
+      "The announcement followed several days of negotiations between senior officials. The parties said the agreement covers the principal terms, while technical details will be published separately.",
+      "Lawmakers from both parties requested additional information about oversight and timing. The administration said it would brief Congress and answer questions as the arrangement moves forward.",
+    ];
+    const body = extractArticleBody(
+      `<div class="RichTextStoryBody">${paragraphs.map((paragraph) => `<p>${paragraph}</p>`).join("")}</div>`,
+      { capture: "browser", bodySelectors: [".RichTextStoryBody", "[itemprop='articleBody']"] },
+      { minimumCharacters: 400, minimumParagraphs: 3 },
+      extractApBody,
+    );
+
+    expect(paragraphs.join(" ").length).toBeGreaterThanOrEqual(400);
+    expect(paragraphs.join(" ").length).toBeLessThan(800);
+    expect(body?.match(/<p>/gu)).toHaveLength(3);
+    expect(body).toContain("Lawmakers from both parties");
+  });
+
   it("extracts The Paper content from Next.js data and persisted discovery fragments", () => {
     const content = [
       "邮储银行中期业绩正文第一段，包含足够的信息用于验证澎湃新闻的专用正文解析。",

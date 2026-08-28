@@ -79,6 +79,7 @@ describe("sources v2", () => {
     expect(sources.find((source) => source.id === "cna")?.discovery.kind).toBe("multi");
     const ap = sources.find((source) => source.id === "ap");
     expect(ap?.discovery.kind).toBe("multi");
+    expect(ap?.content).toMatchObject({ minimumFullCharacters: 400, minimumFullParagraphs: 3 });
     if (ap?.discovery.kind === "multi") {
       expect(ap.discovery.targets).toHaveLength(4);
       expect(ap.discovery.targets.every((target) =>
