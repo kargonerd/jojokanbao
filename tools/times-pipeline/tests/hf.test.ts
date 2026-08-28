@@ -1,6 +1,13 @@
 import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { candidateDates, candidateObject, candidateRawPages, canonicalObjects, rawRunMatchesGitHubRunId } from "../src/hf.js";
+import {
+  candidateDates,
+  candidateObject,
+  candidateRawPages,
+  canonicalObjects,
+  rawRunMatchesGitHubRunId,
+  retryTransientHf,
+} from "../src/hf.js";
 
 describe("HF snapshot selection", () => {
   it("resolves candidates beside the source manifest", () => {
@@ -47,5 +54,27 @@ describe("HF snapshot selection", () => {
     expect(rawRunMatchesGitHubRunId("20260828T151354001Z-33183877345", "33183877345")).toBe(true);
     expect(rawRunMatchesGitHubRunId("20260828T151354001Z-133183877345", "33183877345")).toBe(false);
     expect(rawRunMatchesGitHubRunId("20260828T151354001Z-33183877345", "not-a-run")).toBe(false);
+  });
+
+  it("retries transient HF responses and network failures", async () => {
+    let calls = 0;
+    const result = await retryTransientHf(async () => {
+      calls += 1;
+      if (calls === 1) throw Object.assign(new Error("gateway timeout"), { statusCode: 504 });
+      if (calls === 2) throw new TypeError("fetch failed");
+      return "downloaded";
+    }, { attempts: 4, delayMs: 0, label: "test object" });
+
+    expect(result).toBe("downloaded");
+    expect(calls).toBe(3);
+  });
+
+  it("does not retry deterministic HF authorization failures", async () => {
+    let calls = 0;
+    await expect(retryTransientHf(async () => {
+      calls += 1;
+      throw Object.assign(new Error("forbidden"), { statusCode: 403 });
+    }, { attempts: 4, delayMs: 0 })).rejects.toThrow("forbidden");
+    expect(calls).toBe(1);
   });
 });

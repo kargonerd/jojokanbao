@@ -115,6 +115,50 @@ async function mapLimit<T, R>(values: readonly T[], concurrency: number, work: (
   return output;
 }
 
+interface HfRetryOptions {
+  attempts?: number;
+  delayMs?: number;
+  label?: string;
+}
+
+function hfStatusCode(error: unknown): number | undefined {
+  if (error instanceof HubApiError) return error.statusCode;
+  if (!error || typeof error !== "object") return undefined;
+  const value = (error as { statusCode?: unknown }).statusCode;
+  return typeof value === "number" && Number.isInteger(value) ? value : undefined;
+}
+
+function transientHfError(error: unknown): boolean {
+  const status = hfStatusCode(error);
+  return error instanceof TypeError
+    || status === 408
+    || status === 425
+    || status === 429
+    || (status !== undefined && status >= 500 && status <= 599);
+}
+
+export async function retryTransientHf<T>(
+  work: () => Promise<T>,
+  options: HfRetryOptions = {},
+): Promise<T> {
+  const attempts = options.attempts ?? 4;
+  const delayMs = options.delayMs ?? 1_000;
+  if (!Number.isInteger(attempts) || attempts < 1) throw new Error("HF retry attempts must be a positive integer");
+  if (!Number.isFinite(delayMs) || delayMs < 0) throw new Error("HF retry delay must be non-negative");
+  for (let attempt = 1;; attempt += 1) {
+    try {
+      return await work();
+    } catch (error) {
+      if (attempt >= attempts || !transientHfError(error)) throw error;
+      const status = hfStatusCode(error);
+      const reason = status ? `HTTP ${status}` : error instanceof Error ? error.name : "network error";
+      const waitMs = Math.min(delayMs * 2 ** (attempt - 1), 10_000);
+      process.stderr.write(`[hf] ${options.label ?? "request"} returned ${reason}; retry ${attempt + 1}/${attempts} in ${waitMs}ms\n`);
+      await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
+    }
+  }
+}
+
 export class HfTimesDataset {
   readonly repo: { type: typeof DATASET_REPO_TYPE; name: string };
 
@@ -127,45 +171,50 @@ export class HfTimesDataset {
   }
 
   async revision(): Promise<string> {
-    const info = await datasetInfo({
+    const info = await retryTransientHf(() => datasetInfo({
       name: this.repo.name,
       accessToken: this.accessToken,
       additionalFields: ["sha"],
-    });
+    }), { label: "dataset metadata" });
     if (typeof info.sha !== "string" || !info.sha) throw new Error("HF Dataset did not return a revision");
     return info.sha;
   }
 
   async treeFiles(root: string, revision: string): Promise<Set<string>> {
-    const files = new Set<string>();
     try {
-      for await (const row of listFiles({
-        repo: this.repo,
-        accessToken: this.accessToken,
-        path: root,
-        revision,
-        recursive: true,
-      })) {
-        if (row.type === "file") files.add(row.path);
-      }
+      return await retryTransientHf(async () => {
+        const files = new Set<string>();
+        for await (const row of listFiles({
+          repo: this.repo,
+          accessToken: this.accessToken,
+          path: root,
+          revision,
+          recursive: true,
+        })) {
+          if (row.type === "file") files.add(row.path);
+        }
+        return files;
+      }, { label: `dataset tree ${root}` });
     } catch (error) {
-      if (error instanceof HubApiError && error.statusCode === 404) return files;
+      if (error instanceof HubApiError && error.statusCode === 404) return new Set<string>();
       throw error;
     }
-    return files;
   }
 
   async downloadObject(objectName: string, revision = "main"): Promise<string | null> {
     const target = localObjectPath(this.output, objectName);
-    const blob = await downloadFile({
-      repo: this.repo,
-      accessToken: this.accessToken,
-      path: objectName,
-      revision,
-    });
-    if (!blob) return null;
+    const body = await retryTransientHf(async () => {
+      const blob = await downloadFile({
+        repo: this.repo,
+        accessToken: this.accessToken,
+        path: objectName,
+        revision,
+      });
+      return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
+    }, { label: `download ${objectName}` });
+    if (!body) return null;
     await mkdir(path.dirname(target), { recursive: true });
-    await writeFile(target, new Uint8Array(await blob.arrayBuffer()));
+    await writeFile(target, body);
     return target;
   }
 
