@@ -99,7 +99,7 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
       </ol>
 
       <footer className="annotation-composer">
-        {reply ? <div>回复 {reply.authorName}<button type="button" onClick={() => setReplyTo(undefined)}>取消</button></div> : null}
+        {reply ? <div className="annotation-composer__reply">回复 {reply.authorName}<button type="button" onClick={() => setReplyTo(undefined)}>取消</button></div> : null}
         <textarea value={draft} maxLength={2000} onChange={(event) => setDraft(event.target.value)} placeholder="接着评论……" />
         <CommentVisibilityControl value={visibility} onChange={setVisibility} disabled={busy} />
         <button type="button" disabled={busy || !draft.trim()} onClick={() => void submitComment()}>{busy ? "发送中…" : "发表评论"}</button>

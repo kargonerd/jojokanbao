@@ -23,8 +23,8 @@
 .annotation-selection-tools > div button:last-child { border-right: 0; color: var(--color-red); }
 .annotation-selection-tools > section { display: grid; gap: 10px; margin-top: 5px; padding: 12px; background: var(--color-paper); border: 1px solid var(--color-rule, #bbb); box-shadow: 4px 6px 18px rgba(32,32,32,.14); }
 .annotation-selection-tools textarea { width: 100%; border: 0; border-bottom: 1px solid var(--color-rule, #bbb); padding: 5px 0; background: transparent; resize: vertical; }
-.annotation-selection-tools section button { justify-self: end; border: 0; color: var(--color-red); background: transparent; font-weight: 700; cursor: pointer; }
-.annotation-selection-tools section button:disabled { opacity: .35; cursor: default; }
+.annotation-selection-tools section > button { justify-self: end; border: 0; color: var(--color-red); background: transparent; font-weight: 700; cursor: pointer; }
+.annotation-selection-tools section > button:disabled { opacity: .35; cursor: default; }
 .annotation-notice { position: fixed; bottom: 24px; left: 50%; z-index: 75; transform: translateX(-50%); border: 1px solid var(--color-red); padding: 9px 14px; color: var(--color-red); background: var(--color-paper); box-shadow: 4px 4px 0 rgba(139,26,26,.12); cursor: pointer; }
 .annotation-panel {
   position: fixed;
@@ -62,7 +62,7 @@
 .annotation-comment__actions { display: flex; gap: 12px; margin-top: 8px; }
 .annotation-comment__actions button,
 .annotation-report-form button,
-.annotation-composer div button { border: 0; padding: 0; color: var(--color-red); background: transparent; font: 11px sans-serif; cursor: pointer; }
+.annotation-composer__reply button { border: 0; padding: 0; color: var(--color-red); background: transparent; font: 11px sans-serif; cursor: pointer; }
 .annotation-comment__actions button:disabled { color: var(--color-muted, #777); cursor: default; }
 .annotation-comments__empty { color: var(--color-muted, #777); font-size: 12px; line-height: 1.8; }
 .annotation-report-form { display: grid; gap: 8px; margin-top: 12px; padding: 12px; background: rgba(139, 26, 26, .05); border-left: 2px solid var(--color-red); }
@@ -71,13 +71,17 @@
 .annotation-composer textarea { width: 100%; border: 0; border-bottom: 1px solid var(--color-rule, #bbb); padding: 8px 0; color: inherit; background: transparent; font: 12px/1.7 inherit; resize: vertical; }
 .annotation-report-form div { display: flex; justify-content: flex-end; gap: 14px; }
 .annotation-composer { padding: 16px 24px 22px; border-top: 3px double var(--color-rule, #aaa); background: var(--color-paper); }
-.annotation-composer > div { display: flex; justify-content: space-between; margin-bottom: 6px; color: var(--color-muted, #777); font: 11px sans-serif; }
-.annotation-visibility { display: inline-flex; width: fit-content; border: 1px solid var(--color-rule, #bbb); background: transparent; }
-.annotation-visibility button { border: 0; border-right: 1px solid var(--color-rule, #bbb); padding: 5px 8px; color: var(--color-muted, #777); background: transparent; font: 10px/1 sans-serif; cursor: pointer; }
-.annotation-visibility button:last-child { border-right: 0; }
-.annotation-visibility button[aria-checked="true"] { color: #fff; background: var(--color-red); }
+.annotation-composer__reply { display: flex; justify-content: space-between; margin-bottom: 6px; color: var(--color-muted, #777); font: 11px sans-serif; }
+.annotation-visibility { display: inline-flex; align-items: center; width: fit-content; gap: 14px; color: var(--color-muted, #777); background: transparent; font-family: sans-serif; }
+.annotation-visibility__label { padding-right: 1px; color: var(--color-muted, #777); font: 10px/1 sans-serif; letter-spacing: .08em; }
+.annotation-visibility button { display: inline-flex; align-items: center; gap: 6px; border: 0; padding: 4px 0; color: var(--color-muted, #777); background: transparent; font: 11px/1 sans-serif; cursor: pointer; }
+.annotation-visibility button::before { width: 7px; height: 7px; border: 1px solid currentColor; background: transparent; content: ""; }
+.annotation-visibility button:hover { color: var(--color-red); }
+.annotation-visibility button:focus-visible { outline: 1px solid var(--color-red); outline-offset: 3px; }
+.annotation-visibility button[aria-checked="true"] { color: var(--color-ink); font-weight: 700; }
+.annotation-visibility button[aria-checked="true"]::before { border-color: var(--color-red); background: var(--color-red); }
 .annotation-visibility button:disabled { cursor: default; opacity: .55; }
-.annotation-composer > .annotation-visibility { display: inline-flex; justify-content: flex-start; margin: 10px 0 0; color: inherit; }
+.annotation-composer > .annotation-visibility { margin: 10px 0 0; }
 .annotation-composer > button { display: block; margin: 12px 0 0 auto; border: 1px solid var(--color-red); padding: 8px 14px; color: #fff; background: var(--color-red); font: 700 11px sans-serif; cursor: pointer; }
 .annotation-composer > button:disabled { opacity: .4; cursor: default; }
 .annotation-composer > p { margin: 9px 0 0; color: var(--color-red); font: 11px/1.5 sans-serif; }
