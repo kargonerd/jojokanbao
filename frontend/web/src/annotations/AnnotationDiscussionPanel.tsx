@@ -72,7 +72,6 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
         <blockquote>{thread.quote}</blockquote>
         <div className="annotation-panel__meta">
           <b><i aria-hidden="true" />{underlineCount} 人划线</b>
-          {thread.underlinedByMe && !thread.publiclyVisible ? <span>仅在你的阅读器显示</span> : null}
         </div>
       </section>
 
@@ -111,9 +110,13 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
 
       <footer className="annotation-composer">
         {reply ? <div className="annotation-composer__reply">回复 {reply.authorName}<button type="button" onClick={() => setReplyTo(undefined)}>取消</button></div> : null}
-        <textarea value={draft} maxLength={2000} onChange={(event) => setDraft(event.target.value)} placeholder="写下你的想法……" />
-        <CommentVisibilityControl value={visibility} onChange={setVisibility} disabled={busy} />
-        <button type="button" disabled={busy || !draft.trim()} onClick={() => void submitComment()}>{busy ? "保存中…" : "发表想法"}</button>
+        <div className="annotation-composer__field">
+          <textarea className="annotation-composer__input" rows={2} value={draft} maxLength={2000} onChange={(event) => setDraft(event.target.value)} placeholder="写下你的想法……" />
+        </div>
+        <div className="annotation-composer__toolbar">
+          <CommentVisibilityControl value={visibility} onChange={setVisibility} disabled={busy} />
+          <button type="button" disabled={busy || !draft.trim()} onClick={() => void submitComment()}>{busy ? "保存中…" : "发表想法"}</button>
+        </div>
         {notice ? <p role="status">{notice}</p> : null}
       </footer>
     </aside>

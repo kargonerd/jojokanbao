@@ -93,4 +93,17 @@ describe("AnnotationDiscussionPanel", () => {
     expect(screen.getByText("4 人划线")).toBeTruthy();
     expect(screen.queryByText("划线者-AAA 划线", { exact: false })).toBeNull();
   });
+
+  it("does not add a private-visibility note beside a personal underline", () => {
+    render(<AnnotationDiscussionPanel
+      thread={{ ...thread, underlineCount: 1, underlinedByMe: true, publiclyVisible: false }}
+      currentUserId="user-1"
+      onClose={vi.fn()}
+      onComment={vi.fn()}
+      onReport={vi.fn()}
+    />);
+
+    expect(screen.getByText("1 人划线")).toBeTruthy();
+    expect(screen.queryByText("仅在你的阅读器显示")).toBeNull();
+  });
 });
