@@ -5,11 +5,20 @@ import {
   candidateObject,
   candidateRawPages,
   canonicalObjects,
+  rawStateObjects,
   rawRunMatchesGitHubRunId,
   retryTransientHf,
 } from "../src/hf.js";
 
 describe("HF snapshot selection", () => {
+  it("addresses source state objects directly without scanning Raw history", () => {
+    expect(rawStateObjects(["reuters", "ap", "reuters"])).toEqual([
+      "raw/ap/state.json.gz",
+      "raw/reuters/state.json.gz",
+    ]);
+    expect(() => rawStateObjects(["../unsafe"])).toThrow("Invalid source id");
+  });
+
   it("resolves candidates beside the source manifest", () => {
     expect(candidateObject("raw/ap/runs/2026/08/23/run/manifest.json", {
       objects: [{ path: "candidates.jsonl.gz" }],

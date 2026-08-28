@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs, requiredArg } from "./args.js";
+import { loadSources } from "./config.js";
 import { collectFolderFiles, HfTimesDataset } from "./hf.js";
 
 interface ProcessResult {
@@ -40,7 +41,8 @@ async function main(): Promise<void> {
   const output = path.resolve(requiredArg(args, "output"));
   const dataset = new HfTimesDataset(requiredArg(args, "repo"), output, token(args));
   if (action === "restore-state") {
-    process.stdout.write(`${JSON.stringify(await dataset.restoreState(), null, 2)}\n`);
+    const sources = await loadSources(path.resolve(requiredArg(args, "config")));
+    process.stdout.write(`${JSON.stringify(await dataset.restoreState(sources.map((source) => source.id)), null, 2)}\n`);
     return;
   }
   if (action === "download-snapshot") {

@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 
 const RAW_RUN_ROOT = "raw/runs";
 const DATASET_REPO_TYPE = "dataset" as const;
+const SOURCE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 
 interface RunSourceRow {
   sourceId?: unknown;
@@ -26,6 +27,14 @@ export function rawRunMatchesGitHubRunId(runId: unknown, githubRunId: string): b
   return /^\d+$/u.test(githubRunId)
     && typeof runId === "string"
     && runId.endsWith(`-${githubRunId}`);
+}
+
+export function rawStateObjects(sourceIds: readonly string[]): string[] {
+  const unique = [...new Set(sourceIds)].sort();
+  for (const sourceId of unique) {
+    if (!SOURCE_ID.test(sourceId)) throw new Error(`Invalid source id for HF state: ${sourceId}`);
+  }
+  return unique.map((sourceId) => path.posix.join("raw", sourceId, "state.json.gz"));
 }
 
 export function safeRawObject(baseObject: string, relativeObject: string): string {
@@ -218,13 +227,13 @@ export class HfTimesDataset {
     return target;
   }
 
-  async restoreState(): Promise<{ restored: number; objects: string[] }> {
+  async restoreState(sourceIds: readonly string[]): Promise<{ restored: number; objects: string[] }> {
     const revision = await this.revision();
-    const states = [...await this.treeFiles("raw", revision)]
-      .filter((objectName) => /^raw\/[^/]+\/state\.json\.gz$/u.test(objectName))
-      .sort();
-    await mapLimit(states, 8, async (objectName) => this.downloadObject(objectName, revision));
-    return { restored: states.length, objects: states };
+    const states = rawStateObjects(sourceIds);
+    const restored = (await mapLimit(states, 8, async (objectName) => (
+      await this.downloadObject(objectName, revision) ? objectName : null
+    ))).filter((objectName): objectName is string => objectName !== null);
+    return { restored: restored.length, objects: restored };
   }
 
   async completeRun(githubRunId?: string): Promise<{ revision: string; objectName: string; file: string; run: RawRunManifest }> {
