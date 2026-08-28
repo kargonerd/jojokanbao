@@ -4,6 +4,9 @@ This Cloudflare Worker is the clock for the ten-minute Times pipeline. It does
 not fetch or process articles. Each Cron Trigger calls GitHub's workflow
 dispatch API for `maintenance-times-capture.yml`; GitHub Actions then runs the
 existing Capture -> HF Raw -> Process -> HF Canonical/B2 Delivery chain.
+Before dispatching, the Worker checks both Capture and Process workflow runs.
+If either workflow is queued or running, that tick is skipped so the shared HF
+writer lock cannot accumulate a backlog or starve Process.
 
 ## Security
 
@@ -30,8 +33,6 @@ pnpm --filter @jojo/times-scheduler build
 pnpm --filter @jojo/times-scheduler deploy
 ```
 
-The production Cron expression is `*/10 * * * *` in UTC. The workflow's native
-GitHub schedule remains enabled during migration. After at least one successful
-Cloudflare-triggered Capture and its automatic Process run have been observed,
-remove the native `schedule` block to avoid duplicate discovery runs. The
-Worker has no public HTTP route; only its Cron Trigger can invoke it.
+The production Cron expression is `*/10 * * * *` in UTC. The Worker has no
+public HTTP route; only its Cron Trigger can invoke it. GitHub Actions has no
+native schedule fallback, so Cloudflare is the single production clock.
