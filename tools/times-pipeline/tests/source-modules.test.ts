@@ -135,6 +135,11 @@ describe("native source modules", () => {
     expect(sourceBodyExtractor("bloomberg")).toBeTypeOf("function");
   });
 
+  it("exposes publisher-owned Next.js body extractors", () => {
+    expect(sourceBodyExtractor("thepaper")).toBeTypeOf("function");
+    expect(sourceBodyExtractor("cls")).toBeTypeOf("function");
+  });
+
   it("keeps publisher-owned selectors for changing article layouts", () => {
     expect(sourceFetchPolicy("cls")?.bodySelectors).toContain(".detail-content");
     expect(sourceFetchPolicy("chinanews")?.bodySelectors).toContain("#cont_1_1_2");
