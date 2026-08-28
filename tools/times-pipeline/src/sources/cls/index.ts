@@ -2,7 +2,7 @@ import type { SourceModule } from "../contracts.js";
 import { classifyClsUnavailablePage } from "./availability.js";
 import { discoverCls } from "./discover.js";
 import { clsFetch } from "./fetch.js";
-import { processCls } from "./process.js";
+import { extractClsBody, processCls } from "./process.js";
 
 export const clsSource: SourceModule = {
   id: "cls",
@@ -11,6 +11,7 @@ export const clsSource: SourceModule = {
     return discoverCls(source, endpoint, fetchedAt);
   },
   fetch: clsFetch,
+  extractBody: extractClsBody,
   classifyUnavailable: classifyClsUnavailablePage,
   process: processCls,
 };

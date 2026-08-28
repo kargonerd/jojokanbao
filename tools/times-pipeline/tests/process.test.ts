@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 import { extractArticleBody } from "../src/content/body.js";
 import { processArticle } from "../src/process/article.js";
 import { extractBloombergBody } from "../src/sources/bloomberg/process.js";
+import { extractClsBody } from "../src/sources/cls/process.js";
+import { extractThepaperBody } from "../src/sources/thepaper/process.js";
 import type { Candidate, SourceConfig } from "../src/types.js";
 
 describe("article processing", () => {
@@ -78,6 +80,51 @@ describe("article processing", () => {
     expect(body).toContain("First Bloomberg paragraph");
     expect(body).toContain("Second Bloomberg paragraph");
     expect(body).not.toContain("Advertisement");
+  });
+
+  it("extracts The Paper content from Next.js data and persisted discovery fragments", () => {
+    const content = [
+      "邮储银行中期业绩正文第一段，包含足够的信息用于验证澎湃新闻的专用正文解析。",
+      "邮储银行中期业绩正文第二段，浏览器页面不需要存在传统的 article 正文容器。",
+    ];
+    const nextData = {
+      props: { pageProps: { detailData: { contentDetail: {
+        content: content.map((paragraph) => `<p>${paragraph}</p>`).join(""),
+      } } } },
+    };
+    const quality = { minimumCharacters: 50, minimumParagraphs: 2 };
+    const pageBody = extractArticleBody(
+      `<html><body><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(nextData)}</script></body></html>`,
+      { capture: "browser", bodySelectors: [".index_cententWrap", ".news_txt", "article"] },
+      quality,
+      extractThepaperBody,
+    );
+    const discoveryBody = extractArticleBody(
+      content.map((paragraph) => `<p>${paragraph}</p>`).join(""),
+      { capture: "browser", bodySelectors: [".index_cententWrap", ".news_txt", "article"] },
+      quality,
+      extractThepaperBody,
+    );
+
+    expect(pageBody).toContain(content[0]);
+    expect(pageBody?.match(/<p>/gu)).toHaveLength(2);
+    expect(discoveryBody).toBe(pageBody);
+  });
+
+  it("extracts CLS plain-text content from Next.js data without a DOM body container", () => {
+    const content = "财联社8月28日电，公司发布半年度报告，营业收入同比增长，归属于上市公司股东的净利润实现扭亏为盈。".repeat(3);
+    const nextData = {
+      props: { pageProps: { articleDetail: { id: 2_467_941, content } } },
+    };
+    const body = extractArticleBody(
+      `<html><body><div id="__next"></div><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(nextData)}</script></body></html>`,
+      { capture: "browser", bodySelectors: [".detail-content", ".article-content", "article"] },
+      { minimumCharacters: 100, minimumParagraphs: 1 },
+      extractClsBody,
+    );
+
+    expect(body).toContain("财联社8月28日电");
+    expect(body?.match(/<p>/gu)).toHaveLength(1);
   });
 
   it("builds processed content from the persisted Raw rendered page without mutating Raw", async () => {
