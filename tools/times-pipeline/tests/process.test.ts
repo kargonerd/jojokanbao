@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { extractArticleBody } from "../src/content/body.js";
 import { processArticle } from "../src/process/article.js";
+import { extractApBody } from "../src/sources/ap/process.js";
 import { extractBloombergBody } from "../src/sources/bloomberg/process.js";
 import { extractClsBody } from "../src/sources/cls/process.js";
 import { extractThepaperBody } from "../src/sources/thepaper/process.js";
@@ -80,6 +81,36 @@ describe("article processing", () => {
     expect(body).toContain("First Bloomberg paragraph");
     expect(body).toContain("Second Bloomberg paragraph");
     expect(body).not.toContain("Advertisement");
+  });
+
+  it("extracts all AP live-blog updates from publisher JSON-LD", () => {
+    const liveBlog = [{
+      "@context": "https://schema.org",
+      "@type": "LiveBlogPosting",
+      headline: "Trial live updates",
+      liveBlogUpdate: [
+        {
+          "@type": "BlogPosting",
+          headline: "Jury asks to see evidence",
+          articleBody: "The jury asked to review evidence from the trial.<br/><br/>The judge consulted both legal teams before responding.",
+        },
+        {
+          "@type": "BlogPosting",
+          headline: "Court returns to session",
+          articleBody: "The court returned to session on Friday morning.<br/><br/>Jurors then resumed their deliberations.",
+        },
+      ],
+    }];
+    const body = extractArticleBody(
+      `<script type="application/ld+json">${JSON.stringify(liveBlog)}</script>`,
+      { capture: "browser", bodySelectors: [".RichTextStoryBody"] },
+      { minimumCharacters: 150, minimumParagraphs: 4 },
+      extractApBody,
+    );
+
+    expect(body).toContain("Jury asks to see evidence");
+    expect(body).toContain("Jurors then resumed their deliberations");
+    expect(body?.match(/<p>/gu)).toHaveLength(6);
   });
 
   it("extracts The Paper content from Next.js data and persisted discovery fragments", () => {
