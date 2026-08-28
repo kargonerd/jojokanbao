@@ -79,8 +79,13 @@ Scheduled and manually operated data tasks remain independent workflows:
 - `maintenance-bloomberg-archive.yml`
 - `maintenance-purge-archive-pdf-cache.yml`
 - `maintenance-sync-rmrb.yml`
-- `maintenance-times-capture.yml` — every ten minutes, captures pending article pages and images and commits Raw to the private HF Dataset
-- `maintenance-times-process.yml` — after a scheduled Capture succeeds, commits Canonical to the same HF Dataset and publishes B2 Delivery in pointer-safe order
+- `maintenance-times-capture.yml` — accepts the external ten-minute Cloudflare trigger, captures pending article pages and images, and commits Raw to the private HF Dataset; its native schedule remains only as a migration fallback
+- `maintenance-times-process.yml` — after an automatic Capture succeeds, commits Canonical to the same HF Dataset and publishes B2 Delivery in pointer-safe order
+
+The scheduler implementation and deployment instructions live in
+`infrastructure/cloudflare/times-scheduler`. Cloudflare only supplies the
+clock; browser capture and publication continue to run on GitHub-hosted
+runners.
 
 Do not add a feature-specific CI workflow. Add a package script or a focused
 job to `ci.yml`; create another workflow only when its trigger, permissions, or

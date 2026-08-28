@@ -1,11 +1,20 @@
 name: Maintenance · Times capture to HF Raw
+run-name: >-
+  ${{ github.event_name == 'schedule' && 'Times capture [github-cron]' ||
+      (inputs.automatic && 'Times capture [cloudflare-cron]' || 'Times capture [manual]') }}
 
 on:
   schedule:
-    # Keep the 10-minute cadence away from GitHub Actions' top-of-hour load spike.
+    # Migration fallback. Remove after the Cloudflare scheduler has been observed
+    # triggering successful Capture -> Process runs in production.
     - cron: "3,13,23,33,43,53 * * * *"
   workflow_dispatch:
     inputs:
+      automatic:
+        description: Internal flag for the external Cloudflare scheduler
+        type: boolean
+        default: false
+        required: true
       since_hours:
         description: Discovery window in hours
         type: string
@@ -37,13 +46,19 @@ jobs:
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       HF_TIMES_DATASET_REPO: ${{ secrets.HF_TIMES_DATASET_REPO || secrets.HF_DATASET_REPO }}
-      TIMES_SINCE_HOURS: ${{ github.event_name == 'schedule' && '1' || inputs.since_hours || '24' }}
+      TIMES_SINCE_HOURS: ${{ (github.event_name == 'schedule' || inputs.automatic) && '1' || inputs.since_hours || '24' }}
       TIMES_SOURCES: ${{ inputs.sources || '' }}
-      TIMES_PUBLISH: ${{ github.event_name == 'schedule' || inputs.publish }}
+      TIMES_PUBLISH: ${{ github.event_name == 'schedule' || inputs.automatic || inputs.publish }}
       JOJO_TIMES_PROXY_URI: ${{ secrets.JOJO_TIMES_PROXY_URI }}
       JOJO_TIMES_PROXY_SUBSCRIPTION: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Validate external scheduler inputs
+        if: inputs.automatic && (inputs.since_hours != '1' || inputs.sources != '' || inputs.publish != true)
+        run: |
+          echo "Automatic runs must use since_hours=1, all sources, and publish=true" >&2
+          exit 1
 
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
 
