@@ -18,7 +18,7 @@ export function SelectableAnnotationArticle({ subject, children }: { subject: An
   const enabled = useFeatureFlag("reader.annotations");
   const currentUserId = useAccountSessionStore((state) => state.userId);
   const access = enabled && Boolean(currentUserId);
-  const annotations = useAnnotationThreads(subject, access);
+  const annotations = useAnnotationThreads(subject, access, currentUserId);
   const rootRef = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<SelectionState>();
   const [commentOpen, setCommentOpen] = useState(false);

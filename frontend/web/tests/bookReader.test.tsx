@@ -340,7 +340,7 @@ describe("BookReader", () => {
       "值得继续讨论",
       "public",
     ));
-    expect(await screen.findByRole("complementary", { name: "划线评论" })).toBeTruthy();
+    expect(await screen.findByRole("complementary", { name: "划线详情" })).toBeTruthy();
   });
 
   it("saves a plain underline without opening the discussion panel", async () => {
@@ -377,7 +377,7 @@ describe("BookReader", () => {
       undefined,
       "public",
     ));
-    expect(screen.queryByRole("complementary", { name: "划线评论" })).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "划线详情" })).toBeNull();
     expect(screen.getByText("已划线")).toBeTruthy();
   });
 
@@ -518,7 +518,7 @@ describe("BookReader", () => {
     annotationApi.loadAnnotationThreads.mockClear();
     renderReader();
     expect(screen.queryByRole("button", { name: "打开书内 AI" })).toBeNull();
-    expect(screen.queryByRole("complementary", { name: "划线评论" })).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "划线详情" })).toBeNull();
     expect(annotationApi.loadAnnotationThreads).not.toHaveBeenCalled();
   });
 });

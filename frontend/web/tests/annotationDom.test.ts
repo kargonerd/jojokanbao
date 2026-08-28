@@ -39,6 +39,8 @@ describe("shared annotation DOM anchors", () => {
     expect(renderAnnotationMarks(root, [thread], opened)).toBe(1);
     const marks = root.querySelectorAll("mark[data-content-annotation='annotation-1']");
     expect(Array.from(marks).map((mark) => mark.textContent).join("")).toBe(anchor.quote);
+    expect(marks[0]?.classList.contains("content-annotation-mark")).toBe(true);
+    expect(marks[0]?.getAttribute("aria-label")).toBe("查看这处划线，1 人划线");
     (marks[0] as HTMLElement).click();
     expect(opened).toHaveBeenCalledWith("annotation-1");
     clearAnnotationMarks(root);
@@ -80,6 +82,38 @@ describe("shared annotation DOM anchors", () => {
     root.querySelector<HTMLElement>("mark[data-content-annotation='inner']")!.click();
     expect(opened).toHaveBeenCalledTimes(1);
     expect(opened).toHaveBeenCalledWith("inner");
+  });
+
+  it("exposes aggregate count and ownership on a rendered underline", () => {
+    const root = document.createElement("div");
+    root.textContent = "多人都划过的一句话";
+    document.body.append(root);
+    const opened = vi.fn();
+
+    renderAnnotationMarks(root, [{
+      id: "shared",
+      contentType: "book",
+      contentId: "book-1",
+      sectionId: "chapter-1",
+      contentTitle: "测试书",
+      authorId: "user-1",
+      authorName: "读者",
+      quote: "都划过",
+      prefix: "多人",
+      suffix: "的一句话",
+      startOffset: 2,
+      endOffset: 5,
+      createdAt: "2026-08-19T10:00:00Z",
+      underlineCount: 3,
+      underlinedByMe: true,
+      publiclyVisible: true,
+      comments: [],
+    }], opened);
+
+    const mark = root.querySelector<HTMLElement>("mark[data-content-annotation='shared']")!;
+    expect(mark.dataset.underlineCount).toBe("3");
+    expect(mark.dataset.underlinedByMe).toBe("true");
+    expect(mark.title).toBe("3 人划线");
   });
 
   it("locates repeated Reader AI quotes by context without nesting marks", () => {

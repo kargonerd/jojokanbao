@@ -200,7 +200,7 @@ export function BookReader({
     contentUrl: `${window.location.pathname}?${new URLSearchParams({ chapter: activeChapterId })}`,
   }), [activeChapterId, activeChapterIndex, bookTitle, chapters, datasetId, itemId]);
   const annotationAccess = annotationsEnabled && Boolean(currentUserId);
-  const annotations = useAnnotationThreads(annotationSubject, annotationAccess);
+  const annotations = useAnnotationThreads(annotationSubject, annotationAccess, currentUserId);
   const activeAnnotation = annotations.threads.find((thread) => thread.id === activeAnnotationId);
   const previousChapter = chapters[activeChapterIndex - 1];
   const nextChapter = chapters[activeChapterIndex + 1];

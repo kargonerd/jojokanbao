@@ -125,17 +125,21 @@ export function clearAnnotationMarks(root: HTMLElement): void {
   root.normalize();
 }
 
-function wrapTextSlice(node: Text, start: number, end: number, annotationId: string, onOpen: (id: string) => void): void {
+function wrapTextSlice(node: Text, start: number, end: number, thread: AnnotationThread, onOpen: (id: string) => void): void {
   if (end <= start) return;
   const selected = start > 0 ? node.splitText(start) : node;
   if (end - start < selected.data.length) selected.splitText(end - start);
   const mark = document.createElement("mark");
-  mark.dataset.contentAnnotation = annotationId;
+  const underlineCount = Math.max(1, Math.trunc(thread.underlineCount ?? 1));
+  mark.dataset.contentAnnotation = thread.id;
+  mark.dataset.underlineCount = String(underlineCount);
+  if (thread.underlinedByMe) mark.dataset.underlinedByMe = "true";
   mark.className = "content-annotation-mark";
+  mark.title = `${underlineCount} 人划线`;
   mark.tabIndex = 0;
   mark.setAttribute("role", "button");
-  mark.setAttribute("aria-label", "打开这处划线的评论");
-  const open = () => onOpen(annotationId);
+  mark.setAttribute("aria-label", `查看这处划线，${underlineCount} 人划线`);
+  const open = () => onOpen(thread.id);
   mark.addEventListener("click", (event) => {
     event.stopPropagation();
     open();
@@ -222,7 +226,7 @@ export function renderAnnotationMarks(
     const located = locateAnchor(fullText, thread);
     if (!located) continue;
     const slices = textSlices(nodes, ...located);
-    for (const slice of slices.reverse()) wrapTextSlice(slice.node, slice.start, slice.end, thread.id, onOpen);
+    for (const slice of slices.reverse()) wrapTextSlice(slice.node, slice.start, slice.end, thread, onOpen);
     rendered += 1;
   }
   return rendered;

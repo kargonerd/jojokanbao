@@ -1,15 +1,19 @@
 .content-annotation-mark {
   padding: 0;
   color: inherit;
-  background: linear-gradient(transparent 72%, rgba(139, 26, 26, .22) 72%);
-  border-bottom: 1px solid rgba(139, 26, 26, .62);
+  background: transparent;
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: var(--color-red);
+  text-decoration-thickness: 1px;
+  text-underline-offset: .17em;
   cursor: pointer;
 }
 .content-annotation-mark:hover,
 .content-annotation-mark:focus-visible {
-  background: rgba(139, 26, 26, .12);
-  outline: 1px solid var(--color-red);
-  outline-offset: 2px;
+  color: var(--color-red);
+  background: rgba(139, 26, 26, .06);
+  outline: 0;
 }
 .annotation-selection-tools {
   position: fixed;
@@ -26,32 +30,43 @@
 .annotation-selection-tools section > button { justify-self: end; border: 0; color: var(--color-red); background: transparent; font-weight: 700; cursor: pointer; }
 .annotation-selection-tools section > button:disabled { opacity: .35; cursor: default; }
 .annotation-notice { position: fixed; bottom: 24px; left: 50%; z-index: 75; transform: translateX(-50%); border: 1px solid var(--color-red); padding: 9px 14px; color: var(--color-red); background: var(--color-paper); box-shadow: 4px 4px 0 rgba(139,26,26,.12); cursor: pointer; }
+.annotation-panel-backdrop { position: fixed; inset: 0; z-index: 79; border: 0; padding: 0; background: rgba(25, 25, 22, .28); backdrop-filter: blur(1px); cursor: default; }
 .annotation-panel {
   position: fixed;
   inset: 0 0 0 auto;
   z-index: 80;
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr) auto;
-  width: min(100%, 430px);
+  width: min(100%, 440px);
   color: var(--color-ink);
   background: var(--color-paper);
   border-left: 1px solid var(--color-rule, #d2d0c9);
-  box-shadow: -14px 0 36px rgba(32, 32, 32, .16);
+  box-shadow: -18px 0 44px rgba(32, 32, 32, .18);
   font-family: "Noto Serif SC", serif;
 }
 .annotation-panel__header {
+  position: relative;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  padding: 22px 24px 18px;
-  color: #fff;
-  background: var(--color-red);
+  padding: 20px 24px 17px;
+  color: var(--color-ink);
+  background: var(--color-paper);
+  border-bottom: 3px double var(--color-rule, #aaa);
 }
-.annotation-panel__header span { font: 700 9px/1 sans-serif; letter-spacing: .2em; opacity: .72; }
-.annotation-panel__header h2 { margin: 7px 0 0; font-size: 23px; }
+.annotation-panel__header > div { padding-left: 12px; border-left: 3px solid var(--color-red); }
+.annotation-panel__header span { display: block; max-width: 300px; overflow: hidden; color: var(--color-muted, #777); font: 10px/1.4 sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.annotation-panel__header h2 { margin: 5px 0 0; color: var(--color-red); font-size: 23px; line-height: 1; }
 .annotation-panel__header button { border: 0; padding: 0; color: inherit; background: transparent; font-size: 28px; cursor: pointer; }
-.annotation-panel blockquote { margin: 22px 24px 8px; padding: 0 0 0 15px; border-left: 3px solid var(--color-red); font-size: 14px; line-height: 1.9; }
-.annotation-panel__meta { padding: 0 24px 18px 42px; color: var(--color-muted, #777); font: 11px/1.5 sans-serif; }
+.annotation-highlight-summary { position: relative; margin: 20px 24px 16px; padding: 20px 18px 14px; overflow: hidden; border-top: 1px solid var(--color-rule, #d2d0c9); border-bottom: 1px solid var(--color-rule, #d2d0c9); background: rgba(139, 26, 26, .035); }
+.annotation-highlight-summary__quote { position: absolute; top: 6px; left: 13px; color: var(--color-red); font: 52px/.9 Georgia, serif; opacity: .25; }
+.annotation-highlight-summary blockquote { position: relative; margin: 0; padding: 12px 2px 14px 25px; border: 0; font-size: 16px; line-height: 2; }
+.annotation-panel__meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 11px; border-top: 1px solid rgba(139, 26, 26, .16); color: var(--color-muted, #777); font: 10px/1.5 sans-serif; }
+.annotation-panel__meta b { display: inline-flex; align-items: center; gap: 7px; color: var(--color-ink); font-size: 12px; }
+.annotation-panel__meta i { width: 7px; height: 7px; background: var(--color-red); }
+.annotation-panel__meta span { color: var(--color-muted, #777); }
+.annotation-comments__heading { display: flex; align-items: center; gap: 8px; padding: 0 24px 9px; color: var(--color-ink); font: 700 11px/1 sans-serif; letter-spacing: .1em; }
+.annotation-comments__heading b { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; border: 1px solid var(--color-rule, #bbb); color: var(--color-muted, #777); font: 9px/1 sans-serif; letter-spacing: 0; }
 .annotation-comments { margin: 0; padding: 0 24px 20px; overflow-y: auto; list-style: none; }
 .annotation-comments > li { padding: 16px 0; border-top: 1px solid var(--color-rule, #ddd); }
 .annotation-comment__byline { display: flex; justify-content: space-between; gap: 12px; font: 12px/1.4 sans-serif; }
@@ -64,7 +79,7 @@
 .annotation-report-form button,
 .annotation-composer__reply button { border: 0; padding: 0; color: var(--color-red); background: transparent; font: 11px sans-serif; cursor: pointer; }
 .annotation-comment__actions button:disabled { color: var(--color-muted, #777); cursor: default; }
-.annotation-comments__empty { color: var(--color-muted, #777); font-size: 12px; line-height: 1.8; }
+.annotation-comments__empty { padding: 18px 0; color: var(--color-muted, #777); font-size: 12px; line-height: 1.8; }
 .annotation-report-form { display: grid; gap: 8px; margin-top: 12px; padding: 12px; background: rgba(139, 26, 26, .05); border-left: 2px solid var(--color-red); }
 .annotation-report-form select,
 .annotation-report-form textarea,
@@ -87,5 +102,8 @@
 .annotation-composer > p { margin: 9px 0 0; color: var(--color-red); font: 11px/1.5 sans-serif; }
 
 @media (max-width: 560px) {
-  .annotation-panel { top: 48px; }
+  .annotation-panel { inset: auto 0 0; width: 100%; height: min(78vh, 720px); border-top: 1px solid var(--color-rule, #d2d0c9); border-left: 0; box-shadow: 0 -18px 44px rgba(32, 32, 32, .2); }
+  .annotation-panel__header { padding-top: 26px; }
+  .annotation-panel__header::before { position: absolute; top: 9px; left: 50%; width: 36px; height: 2px; transform: translateX(-50%); background: var(--color-rule, #aaa); content: ""; }
+  .annotation-highlight-summary { margin-top: 14px; }
 }

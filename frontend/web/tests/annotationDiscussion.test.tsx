@@ -37,8 +37,8 @@ describe("AnnotationDiscussionPanel", () => {
     render(<AnnotationDiscussionPanel thread={thread} currentUserId="user-1" onClose={vi.fn()} onComment={onComment} onReport={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "回复" }));
     expect(screen.getByText("回复 其他读者-BBB")).toBeTruthy();
-    fireEvent.change(screen.getByPlaceholderText("接着评论……"), { target: { value: "接着讨论" } });
-    fireEvent.click(screen.getByRole("button", { name: "发表评论" }));
+    fireEvent.change(screen.getByPlaceholderText("写下你的想法……"), { target: { value: "接着讨论" } });
+    fireEvent.click(screen.getByRole("button", { name: "发表想法" }));
     await waitFor(() => expect(onComment).toHaveBeenCalledWith("接着讨论", "comment-1", "public"));
   });
 
@@ -64,7 +64,6 @@ describe("AnnotationDiscussionPanel", () => {
     };
     const { container } = render(<AnnotationDiscussionPanel thread={unsafeThread} currentUserId="user-1" onClose={vi.fn()} onComment={vi.fn()} onReport={vi.fn()} />);
 
-    expect(screen.getByText("<img src=x onerror=alert(1)> 划线", { exact: false })).toBeTruthy();
     expect(screen.getByText("<script>alert(2)</script>")).toBeTruthy();
     expect(screen.getByText("<svg onload=alert(3)>")).toBeTruthy();
     expect(container.querySelector("script, svg[onload], img[onerror]")).toBeNull();
@@ -80,5 +79,18 @@ describe("AnnotationDiscussionPanel", () => {
     expect(document.querySelector(".annotation-comment__byline em")?.textContent).toBe("仅自己可见");
     expect(screen.queryByRole("button", { name: "回复" })).toBeNull();
     expect(screen.queryByRole("button", { name: "举报" })).toBeNull();
+  });
+
+  it("shows the aggregated underline count without listing reader identities", () => {
+    render(<AnnotationDiscussionPanel
+      thread={{ ...thread, underlineCount: 4, underlinedByMe: false, publiclyVisible: true }}
+      currentUserId="user-1"
+      onClose={vi.fn()}
+      onComment={vi.fn()}
+      onReport={vi.fn()}
+    />);
+
+    expect(screen.getByText("4 人划线")).toBeTruthy();
+    expect(screen.queryByText("划线者-AAA 划线", { exact: false })).toBeNull();
   });
 });

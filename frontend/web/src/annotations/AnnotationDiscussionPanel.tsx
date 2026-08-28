@@ -25,6 +25,7 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const reply = thread.comments.find((comment) => comment.id === replyTo);
+  const underlineCount = Math.max(1, Math.trunc(thread.underlineCount ?? 1));
 
   async function submitComment() {
     if (!draft.trim() || busy) return;
@@ -58,14 +59,24 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
     }
   }
 
-  return (
-    <aside className="annotation-panel" aria-label="划线评论">
+  return <>
+    <button type="button" className="annotation-panel-backdrop" aria-label="关闭划线详情" onClick={onClose} />
+    <aside className="annotation-panel" aria-label="划线详情">
       <header className="annotation-panel__header">
-        <div><span>READER MARGINALIA</span><h2>划线评论</h2></div>
-        <button type="button" onClick={onClose} aria-label="关闭划线评论">×</button>
+        <div><span>{thread.contentTitle}</span><h2>划线</h2></div>
+        <button type="button" onClick={onClose} aria-label="关闭划线详情">×</button>
       </header>
-      <blockquote>{thread.quote}</blockquote>
-      <div className="annotation-panel__meta">{thread.authorName} 划线 · {displayTime(thread.createdAt)}</div>
+
+      <section className="annotation-highlight-summary" aria-label="划线原文">
+        <span className="annotation-highlight-summary__quote" aria-hidden="true">“</span>
+        <blockquote>{thread.quote}</blockquote>
+        <div className="annotation-panel__meta">
+          <b><i aria-hidden="true" />{underlineCount} 人划线</b>
+          {thread.underlinedByMe && !thread.publiclyVisible ? <span>仅在你的阅读器显示</span> : null}
+        </div>
+      </section>
+
+      <div className="annotation-comments__heading"><span>想法</span><b>{thread.comments.length}</b></div>
 
       <ol className="annotation-comments">
         {thread.comments.map((comment) => {
@@ -95,16 +106,16 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
             </li>
           );
         })}
-        {thread.comments.length === 0 ? <li className="annotation-comments__empty">还没有评论。写下第一条回应。</li> : null}
+        {thread.comments.length === 0 ? <li className="annotation-comments__empty">还没有想法。</li> : null}
       </ol>
 
       <footer className="annotation-composer">
         {reply ? <div className="annotation-composer__reply">回复 {reply.authorName}<button type="button" onClick={() => setReplyTo(undefined)}>取消</button></div> : null}
-        <textarea value={draft} maxLength={2000} onChange={(event) => setDraft(event.target.value)} placeholder="接着评论……" />
+        <textarea value={draft} maxLength={2000} onChange={(event) => setDraft(event.target.value)} placeholder="写下你的想法……" />
         <CommentVisibilityControl value={visibility} onChange={setVisibility} disabled={busy} />
-        <button type="button" disabled={busy || !draft.trim()} onClick={() => void submitComment()}>{busy ? "发送中…" : "发表评论"}</button>
+        <button type="button" disabled={busy || !draft.trim()} onClick={() => void submitComment()}>{busy ? "保存中…" : "发表想法"}</button>
         {notice ? <p role="status">{notice}</p> : null}
       </footer>
     </aside>
-  );
+  </>;
 }

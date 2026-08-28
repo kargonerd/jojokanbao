@@ -13,7 +13,29 @@ import type {
   TextAnchor,
 } from "./types";
 
-export function useAnnotationThreads(subject: AnnotationSubject, enabled: boolean) {
+function compatibleThread(
+  thread: AnnotationThread,
+  currentUserId: string | null | undefined,
+  assumeCurrentReader = false,
+): AnnotationThread | undefined {
+  const hasAggregateFields = Number.isFinite(thread.underlineCount)
+    && typeof thread.underlinedByMe === "boolean"
+    && typeof thread.publiclyVisible === "boolean";
+  const underlinedByMe = hasAggregateFields
+    ? Boolean(thread.underlinedByMe)
+    : assumeCurrentReader || Boolean(currentUserId && thread.authorId === currentUserId);
+  // Before the aggregation migration, the RPC returned every reader's marks.
+  // Fail closed so a legacy database only exposes the current reader's marks.
+  if (!hasAggregateFields && !underlinedByMe) return undefined;
+  return {
+    ...thread,
+    underlineCount: Math.max(1, Math.trunc(thread.underlineCount ?? 1)),
+    underlinedByMe,
+    publiclyVisible: hasAggregateFields ? Boolean(thread.publiclyVisible) : false,
+  };
+}
+
+export function useAnnotationThreads(subject: AnnotationSubject, enabled: boolean, currentUserId?: string | null) {
   const [threads, setThreads] = useState<AnnotationThread[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -47,7 +69,11 @@ export function useAnnotationThreads(subject: AnnotationSubject, enabled: boolea
     try {
       const loaded = await loadAnnotationThreads(stableSubject);
       if (requestId.current === currentRequest) {
-        setThreads((current) => current.length === 0 && loaded.length === 0 ? current : loaded);
+        const compatible = loaded.flatMap((thread) => {
+          const normalized = compatibleThread(thread, currentUserId);
+          return normalized ? [normalized] : [];
+        });
+        setThreads((current) => current.length === 0 && compatible.length === 0 ? current : compatible);
       }
     } catch (reason) {
       if (requestId.current === currentRequest) {
@@ -57,7 +83,7 @@ export function useAnnotationThreads(subject: AnnotationSubject, enabled: boolea
     } finally {
       if (requestId.current === currentRequest) setLoading(false);
     }
-  }, [enabled, stableSubject, subjectKey]);
+  }, [currentUserId, enabled, stableSubject, subjectKey]);
 
   useEffect(() => {
     void refresh();
@@ -68,12 +94,13 @@ export function useAnnotationThreads(subject: AnnotationSubject, enabled: boolea
     async create(anchor: TextAnchor, initialComment?: string, visibility: AnnotationVisibility = "public") {
       const actionSubjectKey = subjectKey;
       const created = await createAnnotation(stableSubject, anchor, initialComment, visibility);
+      const compatible = compatibleThread(created, currentUserId, true)!;
       if (activeSubjectKey.current === actionSubjectKey) {
-        setThreads((current) => current.some((thread) => thread.id === created.id)
-          ? current.map((thread) => thread.id === created.id ? created : thread)
-          : [...current, created]);
+        setThreads((current) => current.some((thread) => thread.id === compatible.id)
+          ? current.map((thread) => thread.id === compatible.id ? compatible : thread)
+          : [...current, compatible]);
       }
-      return created;
+      return compatible;
     },
     async comment(annotationId: string, body: string, parentCommentId?: string, visibility: AnnotationVisibility = "public") {
       const actionSubjectKey = subjectKey;
@@ -94,7 +121,7 @@ export function useAnnotationThreads(subject: AnnotationSubject, enabled: boolea
           : thread));
       }
     },
-  }), [stableSubject, subjectKey]);
+  }), [currentUserId, stableSubject, subjectKey]);
 
   return { threads, loading, error, refresh, ...actions };
 }
