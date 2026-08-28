@@ -37,6 +37,20 @@ describe("article processing", () => {
     expect(body).toContain("完整但很短的快讯正文");
   });
 
+  it("accepts Africanews video stories that also contain a substantial single-paragraph report", () => {
+    const report = "Around a dozen activists gathered outside the representative offices and called for a stronger response. ".repeat(8);
+    const body = extractArticleBody(
+      `<main><article class="teaser teaser--wide clearfix"><h1>Video report</h1><p>${report}</p></article></main>
+       <aside><article><p>Unrelated recommendation must not enter the article body.</p></article></aside>`,
+      { capture: "browser", bodySelectors: [".article-content", ".article__body", "article"] },
+      { minimumCharacters: 500, minimumParagraphs: 1 },
+    );
+
+    expect(body).toContain("Around a dozen activists");
+    expect(body?.match(/<p>/gu)).toHaveLength(1);
+    expect(body).not.toContain("Unrelated recommendation");
+  });
+
   it("uses the complete source-owned container when an article mixes paragraphs and text nodes", () => {
     const body = extractArticleBody(
       `<div id="publisher-body">${"正文直接文本。".repeat(30)}<p>来源信息不会让直接文本丢失。</p></div>`,
