@@ -221,7 +221,7 @@ begin
 
   insert into public.content_annotation_marks(annotation_id, user_id)
   values (annotation_id, reader_id)
-  on conflict (annotation_id, user_id) do nothing;
+  on conflict on constraint content_annotation_marks_pkey do nothing;
 
   if normalized_comment is not null then
     insert into public.annotation_comments(annotation_id, user_id, body, visibility)
