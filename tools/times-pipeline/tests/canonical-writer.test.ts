@@ -80,6 +80,7 @@ describe("canonical writer", () => {
     const result = await writeCanonicalSource(output, source, manifest, "raw/reuters/runs/run/manifest.json", [
       candidate,
       { ...candidate, articleId: "reuters:summary", processedBody: "", assets: [], contentStatus: "summary" },
+      { ...candidate, articleId: "reuters:unchanged", processedBody: "", assets: [], contentStatus: "summary", captureStatus: "unchanged" },
     ], "raw-sha");
     expect(result.articles).toHaveLength(1);
     expect(result.skippedWithoutFullText).toBe(1);

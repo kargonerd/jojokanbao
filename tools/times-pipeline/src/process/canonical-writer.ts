@@ -172,6 +172,9 @@ export async function writeCanonicalSource(
   for (const candidate of candidates) {
     const value = bodyValue(candidate);
     if (!value) {
+      // An unchanged candidate was already handled by the Capture run that
+      // owns its Raw page. It is incremental context, not a new exclusion.
+      if (candidate.captureStatus === "unchanged") continue;
       skippedArticles.push({
         articleId: candidate.articleId,
         title: candidate.title,

@@ -1,6 +1,6 @@
 import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { candidateDates, candidateObject, candidateRawPages, canonicalObjects } from "../src/hf.js";
+import { candidateDates, candidateObject, candidateRawPages, canonicalObjects, rawRunMatchesGitHubRunId } from "../src/hf.js";
 
 describe("HF snapshot selection", () => {
   it("resolves candidates beside the source manifest", () => {
@@ -41,5 +41,11 @@ describe("HF snapshot selection", () => {
     expect(candidateRawPages(compressed)).toEqual(new Set([
       "raw/ap/runs/run/pages/one/metadata.json",
     ]));
+  });
+
+  it("matches a Raw run to the exact GitHub Actions Capture run", () => {
+    expect(rawRunMatchesGitHubRunId("20260828T151354001Z-33183877345", "33183877345")).toBe(true);
+    expect(rawRunMatchesGitHubRunId("20260828T151354001Z-133183877345", "33183877345")).toBe(false);
+    expect(rawRunMatchesGitHubRunId("20260828T151354001Z-33183877345", "not-a-run")).toBe(false);
   });
 });

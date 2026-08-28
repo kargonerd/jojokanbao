@@ -22,6 +22,12 @@ interface SourceManifest {
   objects?: unknown;
 }
 
+export function rawRunMatchesGitHubRunId(runId: unknown, githubRunId: string): boolean {
+  return /^\d+$/u.test(githubRunId)
+    && typeof runId === "string"
+    && runId.endsWith(`-${githubRunId}`);
+}
+
 export function safeRawObject(baseObject: string, relativeObject: string): string {
   const normalized = relativeObject.replaceAll("\\", "/");
   if (normalized.startsWith("/") || normalized.split("/").includes("..")) {
@@ -172,23 +178,34 @@ export class HfTimesDataset {
     return { restored: states.length, objects: states };
   }
 
-  async latestCompleteRun(): Promise<{ revision: string; objectName: string; file: string; run: RawRunManifest }> {
+  async completeRun(githubRunId?: string): Promise<{ revision: string; objectName: string; file: string; run: RawRunManifest }> {
+    if (githubRunId !== undefined && !/^\d+$/u.test(githubRunId)) {
+      throw new Error(`Invalid GitHub Actions Capture run id: ${githubRunId}`);
+    }
     const revision = await this.revision();
     const runObjects = [...await this.treeFiles(RAW_RUN_ROOT, revision)]
       .filter((objectName) => objectName.endsWith(".json"))
       .sort()
       .reverse();
-    for (const objectName of runObjects) {
+    const candidates = githubRunId === undefined
+      ? runObjects
+      : runObjects.filter((objectName) => path.posix.basename(objectName).endsWith(`-${githubRunId}.json`));
+    for (const objectName of candidates) {
       const file = await this.downloadObject(objectName, revision);
       if (!file) continue;
       const run = JSON.parse(await readFile(file, "utf8")) as RawRunManifest;
-      if (run.complete === true) return { revision, objectName, file, run };
+      if (run.complete === true && (githubRunId === undefined || rawRunMatchesGitHubRunId(run.runId, githubRunId))) {
+        return { revision, objectName, file, run };
+      }
+    }
+    if (githubRunId !== undefined) {
+      throw new Error(`HF Raw has no complete Times run for GitHub Actions Capture run ${githubRunId}`);
     }
     throw new Error("HF Raw has no complete Times run manifest");
   }
 
-  async downloadLatestSnapshot(): Promise<Record<string, unknown>> {
-    const latest = await this.latestCompleteRun();
+  async downloadSnapshot(githubRunId?: string): Promise<Record<string, unknown>> {
+    const latest = await this.completeRun(githubRunId);
     const rows = Array.isArray(latest.run.sources)
       ? (latest.run.sources as RunSourceRow[]).filter((row) => (
           typeof row.sourceId === "string" && typeof row.output?.manifest === "string"
@@ -242,6 +259,10 @@ export class HfTimesDataset {
       rawFiles: 1 + rows.length * 2 + rawAssets.size + rawPageFileCounts.reduce((sum, count) => sum + count, 0),
       canonicalFiles: canonical.length,
     };
+  }
+
+  async downloadLatestSnapshot(): Promise<Record<string, unknown>> {
+    return this.downloadSnapshot();
   }
 
   async uploadLocalFiles(files: Array<{ local: string; objectName: string }>, title: string): Promise<string | undefined> {

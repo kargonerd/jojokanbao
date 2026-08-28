@@ -11,6 +11,11 @@ on:
         type: string
         default: ""
         required: false
+      hf_capture_run_id:
+        description: Optional published Capture workflow run id to replay from HF Raw
+        type: string
+        default: ""
+        required: false
       publish:
         description: Commit Canonical to HF and publish Delivery to B2
         type: boolean
@@ -44,6 +49,7 @@ jobs:
       JOJO_DELIVERY_REMOTE: jojo-b2:${{ secrets.B2_BUCKET || 'jojo-newspaper' }}
       TIMES_PUBLISH: ${{ github.event_name == 'workflow_run' || inputs.publish }}
       TIMES_CAPTURE_RUN_ID: ${{ inputs.capture_run_id || '' }}
+      TIMES_HF_CAPTURE_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.hf_capture_run_id || '' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -53,6 +59,10 @@ jobs:
         with:
           node-version: "24.15.0"
           cache: pnpm
+
+      - name: Validate Process inputs
+        run: |
+          test -z "$TIMES_CAPTURE_RUN_ID" || test -z "$TIMES_HF_CAPTURE_RUN_ID" || (echo "capture_run_id and hf_capture_run_id are mutually exclusive" >&2 && exit 1)
 
       - name: Validate HF input configuration
         if: env.TIMES_CAPTURE_RUN_ID == ''
@@ -99,15 +109,19 @@ jobs:
           echo "TIMES_RUN_MANIFEST=$manifest" >> "$GITHUB_ENV"
           node -e 'const fs=require("node:fs");fs.writeFileSync(process.env.RUNNER_TEMP+"/capture-input-result.json",JSON.stringify({captureRunId:process.env.TIMES_CAPTURE_RUN_ID,runManifest:process.argv[1]},null,2)+"\n")' "$manifest"
 
-      - name: Download the latest processable HF snapshot
+      - name: Download the selected processable HF snapshot
         if: env.TIMES_CAPTURE_RUN_ID == ''
         run: |
-          node tools/times-pipeline/dist/src/hf-cli.js \
-            --action download-snapshot \
-            --repo "$HF_TIMES_DATASET_REPO" \
-            --output "$RUNNER_TEMP/jojo-times" \
-            > "$RUNNER_TEMP/hf-snapshot-result.json"
-          node -e 'const fs=require("node:fs");const result=require(process.env.RUNNER_TEMP+"/hf-snapshot-result.json");fs.appendFileSync(process.env.GITHUB_ENV,`TIMES_RAW_REVISION=${result.revision}\nTIMES_RUN_MANIFEST=${result.runManifest}\n`)'
+          args=(
+            --action download-snapshot
+            --repo "$HF_TIMES_DATASET_REPO"
+            --output "$RUNNER_TEMP/jojo-times"
+          )
+          if [ -n "$TIMES_HF_CAPTURE_RUN_ID" ]; then
+            args+=(--github-run-id "$TIMES_HF_CAPTURE_RUN_ID")
+          fi
+          node tools/times-pipeline/dist/src/hf-cli.js "${args[@]}" > "$RUNNER_TEMP/hf-snapshot-result.json"
+          node -e 'const fs=require("node:fs");const result=require(process.env.RUNNER_TEMP+"/hf-snapshot-result.json");fs.appendFileSync(process.env.GITHUB_ENV,`TIMES_RAW_REVISION=${result.revision}\nTIMES_RUN_MANIFEST=${result.runManifest}\n`);console.log(`Selected HF Raw run ${result.runId} at ${result.revision}`)'
 
       - name: Build Canonical
         run: |

@@ -44,7 +44,7 @@ async function main(): Promise<void> {
     return;
   }
   if (action === "download-snapshot") {
-    process.stdout.write(`${JSON.stringify(await dataset.downloadLatestSnapshot(), null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(await dataset.downloadSnapshot(args.get("github-run-id")), null, 2)}\n`);
     return;
   }
   if (action === "upload-raw") {
