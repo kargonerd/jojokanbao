@@ -1,13 +1,8 @@
 name: Maintenance · Times capture to HF Raw
 run-name: >-
-  ${{ github.event_name == 'schedule' && 'Times capture [github-cron]' ||
-      (inputs.automatic && 'Times capture [cloudflare-cron]' || 'Times capture [manual]') }}
+  ${{ inputs.automatic && 'Times capture [cloudflare-cron]' || 'Times capture [manual]' }}
 
 on:
-  schedule:
-    # Migration fallback. Remove after the Cloudflare scheduler has been observed
-    # triggering successful Capture -> Process runs in production.
-    - cron: "3,13,23,33,43,53 * * * *"
   workflow_dispatch:
     inputs:
       automatic:
@@ -46,9 +41,9 @@ jobs:
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       HF_TIMES_DATASET_REPO: ${{ secrets.HF_TIMES_DATASET_REPO || secrets.HF_DATASET_REPO }}
-      TIMES_SINCE_HOURS: ${{ (github.event_name == 'schedule' || inputs.automatic) && '1' || inputs.since_hours || '24' }}
+      TIMES_SINCE_HOURS: ${{ inputs.automatic && '1' || inputs.since_hours || '24' }}
       TIMES_SOURCES: ${{ inputs.sources || '' }}
-      TIMES_PUBLISH: ${{ github.event_name == 'schedule' || inputs.automatic || inputs.publish }}
+      TIMES_PUBLISH: ${{ inputs.automatic || inputs.publish }}
       JOJO_TIMES_PROXY_URI: ${{ secrets.JOJO_TIMES_PROXY_URI }}
       JOJO_TIMES_PROXY_SUBSCRIPTION: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION }}
     steps:
