@@ -57,7 +57,11 @@ export async function createAnnotation(
     p_start_offset: anchor.startOffset,
     p_end_offset: anchor.endOffset,
     p_initial_comment: initialComment?.trim() || null,
-    p_initial_comment_visibility: initialCommentVisibility,
+    // Public is also the database default. Omitting it keeps underline-only and
+    // public-comment writes compatible while the visibility migration rolls out.
+    ...(initialCommentVisibility === "private"
+      ? { p_initial_comment_visibility: initialCommentVisibility }
+      : {}),
   });
   return resultOrThrow<AnnotationThread>(data, error);
 }
@@ -72,7 +76,7 @@ export async function addAnnotationComment(
     p_annotation_id: annotationId,
     p_body: body.trim(),
     p_parent_comment_id: parentCommentId || null,
-    p_visibility: visibility,
+    ...(visibility === "private" ? { p_visibility: visibility } : {}),
   });
   return resultOrThrow<AnnotationComment>(data, error);
 }
