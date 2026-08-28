@@ -3,6 +3,7 @@ packages:
   - "frontend/*"
   - "frontend/packages/*"
   - "frontend/tooling/*"
+  - "infrastructure/cloudflare/*"
   - "tools/content-pipeline"
   - "tools/times-pipeline"
   - "tools/*/web"

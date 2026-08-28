@@ -27,7 +27,12 @@ concurrency:
 
 jobs:
   process:
-    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'schedule')
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       (github.event.workflow_run.event == 'schedule' ||
+        (github.event.workflow_run.event == 'workflow_dispatch' &&
+         github.event.workflow_run.display_title == 'Times capture [cloudflare-cron]')))
     runs-on: ubuntu-latest
     environment: maintenance
     timeout-minutes: 20

@@ -1,0 +1,18 @@
+{
+  "name": "@jojo/times-scheduler",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260827.1",
+    "typescript": "5.9.2",
+    "vitest": "3.2.4",
+    "wrangler": "4.127.0"
+  }
+}
