@@ -1,14 +1,22 @@
 import { gzipSync } from "node:zlib";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   candidateDates,
   candidateObject,
   candidateRawPages,
   canonicalObjects,
+  HfTimesDataset,
   rawStateObjects,
   rawRunMatchesGitHubRunId,
   retryTransientHf,
 } from "../src/hf.js";
+
+const { uploadFilesMock } = vi.hoisted(() => ({ uploadFilesMock: vi.fn() }));
+
+vi.mock("@huggingface/hub", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@huggingface/hub")>(),
+  uploadFiles: uploadFilesMock,
+}));
 
 describe("HF snapshot selection", () => {
   it("addresses source state objects directly without scanning Raw history", () => {
@@ -85,5 +93,26 @@ describe("HF snapshot selection", () => {
       throw Object.assign(new Error("forbidden"), { statusCode: 403 });
     }, { attempts: 4, delayMs: 0 })).rejects.toThrow("forbidden");
     expect(calls).toBe(1);
+  });
+
+  it("retries transient HF preupload failures when committing files", async () => {
+    vi.useFakeTimers();
+    try {
+      uploadFilesMock
+        .mockRejectedValueOnce(Object.assign(new Error("preupload failed"), { statusCode: 502 }))
+        .mockResolvedValueOnce({ commit: { oid: "raw-revision" } });
+      const dataset = new HfTimesDataset("owner/dataset", ".", "token");
+      const uploaded = dataset.uploadLocalFiles([
+        { local: "package.json", objectName: "raw/ap/state.json.gz" },
+      ], "Times Raw test-run");
+
+      await vi.runAllTimersAsync();
+
+      await expect(uploaded).resolves.toBe("raw-revision");
+      expect(uploadFilesMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+      uploadFilesMock.mockReset();
+    }
   });
 });

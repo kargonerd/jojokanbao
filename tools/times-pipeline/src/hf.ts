@@ -325,14 +325,14 @@ export class HfTimesDataset {
 
   async uploadLocalFiles(files: Array<{ local: string; objectName: string }>, title: string): Promise<string | undefined> {
     if (files.length === 0) throw new Error("No files were selected for HF upload");
-    const result = await uploadFiles({
+    const result = await retryTransientHf(() => uploadFiles({
       repo: this.repo,
       accessToken: this.accessToken,
       commitTitle: title,
       files: files.map((file) => ({ path: file.objectName, content: pathToFileURL(file.local) })),
       useWebWorkers: false,
       useXet: true,
-    });
+    }), { label: `upload ${title}` });
     return result?.commit.oid;
   }
 }
