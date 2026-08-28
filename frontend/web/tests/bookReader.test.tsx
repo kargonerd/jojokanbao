@@ -128,6 +128,8 @@ describe("BookReader", () => {
     expect(toolbar?.className).not.toContain("left-5");
     expect(toolbar?.contains(bookshelfButton)).toBe(false);
     expect(bookshelfButton.closest("header")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /账号菜单/ })).toBeNull();
+    expect(screen.queryByText("测试读者-ABC")).toBeNull();
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "切换阅读模式" }).dataset.readerMode).toBe("paged");
     expect(screen.queryByRole("button", { name: "阅读设置" })).toBeNull();
     expect(screen.getByRole("button", { name: "调整字号" })).toBeTruthy();

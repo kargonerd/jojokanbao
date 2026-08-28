@@ -20,9 +20,7 @@ import {
 import type { AnnotationVisibility, TextAnchor } from "../../annotations/types";
 import { useAnnotationThreads } from "../../annotations/useAnnotationThreads";
 import { useFeatureFlag } from "../../featureFlags";
-import { AccountMenu } from "../../account/AccountMenu";
 import { useAccountSessionStore } from "../../account/session";
-import { rollout } from "../../rollout";
 import type { RagAnswerMetadata, RagFocusContext, RagReference, RagSearchHit } from "../types";
 import { BookAiPanel } from "./BookAiPanel";
 import { BookSearchPanel } from "./BookSearchPanel";
@@ -844,7 +842,6 @@ export function BookReader({
         <span className="min-w-0 flex-1" aria-hidden="true" />
         <span className="hidden max-w-[42%] truncate text-muted md:block">{chapters[activeChapterIndex]?.title}</span>
         <span className="hidden tabular-nums text-muted md:inline">全书 {bookProgress}%</span>
-        {rollout.platformRedesign && <AccountMenu />}
       </div>
     </header>
 
