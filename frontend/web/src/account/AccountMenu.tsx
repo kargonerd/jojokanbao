@@ -6,6 +6,7 @@ import { signOutAccount, useAccountSessionStore } from "./session";
 export function AccountMenu() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
+  const initialized = useAccountSessionStore((state) => state.initialized);
   const displayName = useAccountSessionStore((state) => state.displayName);
   const { userId, unreadCount } = useUnreadNotifications();
   const [open, setOpen] = useState(false);
@@ -31,6 +32,10 @@ export function AccountMenu() {
     };
   }, [open]);
 
+  // An unknown session is not the same thing as a signed-out session. Keeping
+  // this space quiet avoids flashing an incorrect login action while Supabase
+  // restores the persisted session and reader profile.
+  if (!initialized) return null;
   if (!userId) return <Link className="app-login" to="/account">登录</Link>;
 
   const name = displayName || "账号";
