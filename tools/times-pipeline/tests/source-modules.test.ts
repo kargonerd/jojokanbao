@@ -144,6 +144,8 @@ describe("native source modules", () => {
     expect(sourceBodyExtractor("thepaper")).toBeTypeOf("function");
     expect(sourceBodyExtractor("cls")).toBeTypeOf("function");
     expect(sourceBodyExtractor("chinanews")).toBeTypeOf("function");
+    expect(sourceBodyExtractor("zaobao")).toBeTypeOf("function");
+    expect(sourceImageExtractor("zaobao")).toBeTypeOf("function");
   });
 
   it("keeps publisher-owned selectors for changing article layouts", () => {
