@@ -65,6 +65,10 @@ export function AccountMenu() {
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
+        <svg className="app-account-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="8" r="3.25" />
+          <path d="M5.5 20c.5-4 2.7-6 6.5-6s6 2 6.5 6" />
+        </svg>
         <span className="app-login-label">{name}</span>
         {unreadCount ? <b aria-hidden="true">{countLabel}</b> : null}
       </button>

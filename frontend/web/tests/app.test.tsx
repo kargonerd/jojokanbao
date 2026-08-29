@@ -3,6 +3,7 @@ import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App, AppRoutes } from "../src/App";
+import { useAccountSessionStore } from "../src/account/session";
 import { AppLayout, buildAppNavigationItems } from "../src/shell/AppLayout";
 
 const appPdfMocks = vi.hoisted(() => ({
@@ -26,6 +27,7 @@ function renderAt(path: string) {
 }
 
 beforeEach(() => {
+  useAccountSessionStore.setState({ initialized: true, userId: null, displayName: null });
   appPdfMocks.usePdfDocument.mockReset();
   appPdfMocks.usePdfDocument.mockReturnValue({ document: null, numPages: 0, loading: false, error: null });
 });
@@ -189,6 +191,26 @@ describe("JOJO Web navigation", () => {
     });
   });
 
+  it("uses three public mobile tabs and adds AI and Times after sign-in", () => {
+    const navigationItems = buildAppNavigationItems(true, { rag: true, times: true });
+    const view = render(
+      <MemoryRouter>
+        <AppLayout navigationItems={navigationItems}><main /></AppLayout>
+      </MemoryRouter>,
+    );
+    const publicNavigation = screen.getByRole("navigation", { name: "移动端导航" });
+    expect(within(publicNavigation).getAllByRole("link").map((link) => link.textContent)).toEqual(["首页", "资料库", "搜索"]);
+
+    useAccountSessionStore.setState({ initialized: true, userId: "reader-1", displayName: "读者" });
+    view.rerender(
+      <MemoryRouter>
+        <AppLayout navigationItems={navigationItems}><main /></AppLayout>
+      </MemoryRouter>,
+    );
+    const memberNavigation = screen.getByRole("navigation", { name: "移动端导航" });
+    expect(within(memberNavigation).getAllByRole("link").map((link) => link.textContent)).toEqual(["首页", "资料库", "搜索", "AI", "时事"]);
+  });
+
   it("keeps the login entry visible", () => {
     renderAt("/archive");
 
@@ -210,23 +232,24 @@ describe("JOJO Web navigation", () => {
     expect(homeLink.classList.contains("is-active")).toBe(false);
     expect(screen.getByRole("link", { name: "资料库" }).classList.contains("is-active")).toBe(false);
     expect(screen.queryByRole("button", { name: "杂志" })).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "移动端导航" })).toBeNull();
   });
 
   it("navigates to search and marks the route active", async () => {
     renderAt("/archive");
-    fireEvent.click(screen.getByRole("link", { name: "搜索" }));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "搜索" }));
 
     await waitFor(() => expect(window.location.pathname).toBe("/search"));
     expect(screen.getByPlaceholderText("在JOJO看报上搜索")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "搜索" }).className).toContain("is-active");
+    expect(within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "搜索" }).className).toContain("is-active");
   });
 
   it("opens the library from the archive through the shared navigation", async () => {
     renderAt("/archive");
-    fireEvent.click(screen.getByRole("link", { name: "资料库" }));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "资料库" }));
 
     await waitFor(() => expect(window.location.pathname).toBe("/library"));
-    expect(screen.getByRole("link", { name: "资料库" }).className).toContain("is-active");
+    expect(within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "资料库" }).className).toContain("is-active");
   });
 
   it("uses the same About entry instead of the old feedback menu", async () => {

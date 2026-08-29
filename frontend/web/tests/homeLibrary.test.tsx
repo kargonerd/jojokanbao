@@ -83,7 +83,7 @@ describe("app homepage", () => {
 
     const navigation = screen.getByRole("navigation", { name: "主导航" });
     expect(navigation).toBeTruthy();
-    expect(screen.getByRole("link", { name: "首页" }).className).toContain("is-active");
+    expect(within(navigation).getByRole("link", { name: "首页" }).className).toContain("is-active");
     expect(within(navigation).queryByRole("link", { name: "书架" })).toBeNull();
     expect(within(navigation).getByRole("link", { name: "资料库" })).toBeTruthy();
     expect(within(navigation).getByRole("link", { name: "搜索" })).toBeTruthy();
@@ -184,7 +184,7 @@ describe("app homepage", () => {
 
   it("keeps search and feedback inside the new app navigation", () => {
     const searchView = renderAt("/search");
-    expect(screen.getByRole("link", { name: "搜索" }).className).toContain("is-active");
+    expect(within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "搜索" }).className).toContain("is-active");
     expect(screen.getByPlaceholderText("在JOJO看报上搜索")).toBeTruthy();
     searchView.unmount();
     cleanup();
