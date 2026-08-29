@@ -255,7 +255,16 @@ describe("app library", () => {
 
     fireEvent.click(single);
     await waitFor(() => expect(window.location.pathname).toBe("/book/solo/full-book"));
+    expect(window.location.search).toBe("?returnTo=%2Flibrary%3Ftype%3Dbook");
     expect(await screen.findByRole("heading", { name: "书籍阅读器" })).toBeTruthy();
+  });
+
+  it("never leaves a single book on the collection page", async () => {
+    renderAt("/library/solo");
+
+    await waitFor(() => expect(window.location.pathname).toBe("/book/solo/full-book"));
+    expect(window.location.search).toBe("?returnTo=%2Flibrary%3Ftype%3Dbook");
+    expect(screen.queryByRole("heading", { name: "青年政治经济学读本" })).toBeNull();
   });
 
   it("sends signed-out readers to login before changing the bookshelf", async () => {

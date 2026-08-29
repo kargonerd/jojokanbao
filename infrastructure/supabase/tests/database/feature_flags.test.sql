@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(28);
+select extensions.plan(35);
 
 select extensions.has_table('private', 'feature_flags', 'feature flag configuration uses one private table');
 select extensions.has_table('private', 'feature_flag_operator_secret', 'only the operator token digest has separate storage');
@@ -13,6 +13,12 @@ select extensions.ok(
   'browser users cannot download raw feature rules or history'
 );
 select extensions.col_type_is('private', 'feature_flags', 'rules', 'jsonb', 'ordered rules are stored as JSONB');
+select extensions.col_type_is('private', 'feature_flags', 'config', 'jsonb', 'flag-specific runtime config stays on the same row');
+select extensions.is(
+  private.feature_flag_normalize_config('{"futureSetting":{"enabled":true}}'::jsonb),
+  '{"futureSetting":{"enabled":true}}'::jsonb,
+  'generic config accepts future keys without a database schema change'
+);
 
 create temporary table feature_flag_test_state (
   allowed_id uuid not null default extensions.gen_random_uuid(),
@@ -73,6 +79,12 @@ select extensions.is(
 );
 
 select extensions.is(
+  public.operator_get_feature_flag(repeat('o', 32), 'reader.annotations')->'config'->>'publicMarkThreshold',
+  '2',
+  'the protected runtime read returns the annotation public threshold'
+);
+
+select extensions.is(
   public.operator_publish_feature_flag(
     repeat('o', 32),
     'reader.annotations',
@@ -93,6 +105,7 @@ select extensions.is(
         'isFallback', true
       )
     ),
+    jsonb_build_object('publicMarkThreshold', 3),
     1,
     'Enable internal reader',
     'feature-test-1'
@@ -127,12 +140,19 @@ select extensions.is(
   'publishing appends the new complete snapshot to the history field'
 );
 
+select extensions.is(
+  private.feature_flag_snapshot('reader.annotations')->'config'->>'publicMarkThreshold',
+  '3',
+  'publishing changes the structured config with the rules'
+);
+
 select extensions.throws_ok(
   $$
     select public.operator_publish_feature_flag(
       repeat('o', 32),
       'reader.annotations',
       '[{"name":"Invalid fraction","conditionType":"percentage","serve":true,"percentage":0,"bucketBy":"user","enabled":true,"isFallback":false},{"name":"Default","conditionType":"global","serve":false,"enabled":true,"isFallback":true}]'::jsonb,
+      jsonb_build_object('publicMarkThreshold', 3),
       2,
       'Invalid percentage test',
       null
@@ -149,6 +169,7 @@ select extensions.throws_ok(
       repeat('o', 32),
       'reader.annotations',
       '[{"name":"Not a fallback","conditionType":"users","serve":true,"enabled":true,"isFallback":false,"userIds":[]}]'::jsonb,
+      jsonb_build_object('publicMarkThreshold', 3),
       2,
       'Invalid fallback test',
       null
@@ -168,6 +189,7 @@ select extensions.is(
       jsonb_build_object('name', '内部读者', 'conditionType', 'users', 'serve', true, 'enabled', true, 'isFallback', false, 'userIds', jsonb_build_array((select allowed_id from feature_flag_test_state))),
       jsonb_build_object('name', '默认关闭', 'conditionType', 'global', 'serve', false, 'enabled', true, 'isFallback', true)
     ),
+    jsonb_build_object('publicMarkThreshold', 4),
     2,
     'Put global off first',
     'feature-test-2'
@@ -196,6 +218,12 @@ select extensions.is(
   )->>'revision',
   '4',
   'rolling back publishes the selected snapshot as a new revision'
+);
+
+select extensions.is(
+  private.feature_flag_snapshot('reader.annotations')->'config'->>'publicMarkThreshold',
+  '3',
+  'rollback restores the selected config together with its rules'
 );
 
 select extensions.is(
@@ -232,12 +260,27 @@ select extensions.is(
   'history retains the request id for each modification'
 );
 
+select extensions.is(
+  private.feature_flag_snapshot('reader.annotations')->'history'->1->'config'->>'publicMarkThreshold',
+  '3',
+  'history retains the complete config snapshot for each modification'
+);
+
+select extensions.is(
+  private.feature_flag_config_integer(
+    'reader.annotations', array['publicMarkThreshold'], 2, 4, 100
+  ),
+  2,
+  'the generic integer reader falls back when a stored value is outside caller bounds'
+);
+
 select extensions.throws_ok(
   $$
     select public.operator_publish_feature_flag(
       repeat('o', 32),
       'reader.annotations',
       '[{"name":"Default","conditionType":"global","serve":false,"enabled":true,"isFallback":true}]'::jsonb,
+      jsonb_build_object('publicMarkThreshold', 3),
       3,
       'Stale update test',
       null

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@jojo/ui";
 import { BookCover } from "../library/BookCover";
 import { bookCoverTone } from "../library/bookCatalog";
@@ -7,6 +7,7 @@ import { fuzzyBookTitleScore } from "../library/bookSearch";
 import type { PeriodicalEntry } from "../library/catalog";
 import { useRecentReadingStore, type RecentReadingItem } from "../library/recentReadingStore";
 import { notebookApi } from "../rag/api";
+import { readerReturnState, withReaderReturnTo } from "../rag/readerNavigation";
 import type { RagNotebook } from "../rag/types";
 import { dailyQuote } from "./dailyQuote";
 
@@ -46,6 +47,7 @@ function RecentCover({ item, periodicals }: { item: RecentReadingItem; periodica
 
 export function HomePage({ periodicals = [] }: { periodicals?: readonly PeriodicalEntry[] }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [query, setQuery] = useState("");
   const [books, setBooks] = useState<RagNotebook[]>([]);
   const [searchAttempted, setSearchAttempted] = useState(false);
@@ -75,7 +77,10 @@ export function HomePage({ periodicals = [] }: { periodicals?: readonly Periodic
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (matches[0]) {
-      navigate(`/library/${encodeURIComponent(matches[0].id)}`);
+      navigate(withReaderReturnTo(
+        `/library/${encodeURIComponent(matches[0].id)}`,
+        `${location.pathname}${location.search}`,
+      ));
       return;
     }
     setSearchAttempted(true);
@@ -101,7 +106,10 @@ export function HomePage({ periodicals = [] }: { periodicals?: readonly Periodic
           {query.trim() && (
             <div className="home-book-results" role="listbox" aria-label="书名匹配结果">
               {matches.map((book) => (
-                <button key={book.id} type="button" role="option" onClick={() => navigate(`/library/${encodeURIComponent(book.id)}`)}>
+                <button key={book.id} type="button" role="option" onClick={() => navigate(withReaderReturnTo(
+                  `/library/${encodeURIComponent(book.id)}`,
+                  `${location.pathname}${location.search}`,
+                ))}>
                   <span>{book.title || book.name || "未命名书籍"}</span>
                 </button>
               ))}
@@ -123,7 +131,7 @@ export function HomePage({ periodicals = [] }: { periodicals?: readonly Periodic
         {recentItems.length > 0 ? (
           <div className="recent-grid">
             {recentItems.map((item) => (
-              <Link key={item.id} className="recent-card" to={item.href}>
+              <Link key={item.id} className="recent-card" to={item.href} state={readerReturnState(`${location.pathname}${location.search}`)}>
                 <RecentCover item={item} periodicals={periodicals} />
                 <div className="recent-copy">
                   <strong>{item.title}</strong>

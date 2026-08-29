@@ -56,13 +56,14 @@ def search_feature_users():
 @feature_flags_blueprint.post("/api/features/publish")
 def publish_feature():
     body = request.get_json(silent=True) or {}
-    required = ("key", "rules", "expectedRevision", "reason", "requestId")
+    required = ("key", "rules", "config", "expectedRevision", "reason", "requestId")
     if any(name not in body for name in required):
         return jsonify({"success": False, "message": "发布参数不完整"}), 400
     try:
         flag = SupabaseFeatureFlagAdminClient().publish({
             "p_key": body["key"],
             "p_rules": body["rules"],
+            "p_config": body["config"],
             "p_expected_revision": body["expectedRevision"],
             "p_reason": body["reason"],
             "p_request_id": body["requestId"],

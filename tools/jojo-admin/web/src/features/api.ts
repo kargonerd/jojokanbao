@@ -13,6 +13,7 @@ export const featureFlagApi = {
   publish: async (input: {
     key: string;
     rules: FeatureFlagRule[];
+    config: Record<string, unknown>;
     expectedRevision: number;
     reason: string;
     requestId: string;

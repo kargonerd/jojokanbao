@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(30);
+select extensions.plan(32);
 
 select extensions.hasnt_table(
   'private',
@@ -13,6 +13,20 @@ select extensions.hasnt_table(
   'public',
   'reader_marks',
   'the unused personal mark prototype is removed'
+);
+
+select extensions.hasnt_table(
+  'private',
+  'annotation_settings',
+  'the annotation threshold does not need a one-row settings table'
+);
+
+select extensions.is(
+  private.feature_flag_config_integer(
+    'reader.annotations', array['publicMarkThreshold'], 9, 1, 100
+  ),
+  2,
+  'the annotation threshold is read through the generic feature config accessor'
 );
 
 select extensions.has_column(

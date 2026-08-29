@@ -24,6 +24,7 @@ const fallbackClient = import.meta.env.VITE_CONTENT_CDN_FALLBACK_BASE
 let catalogPromise: Promise<JojoCatalog> | undefined;
 const datasetSources = new Map<string, Array<{ entry: JojoCatalogEntry; client: JoxClient }>>();
 const bookSearchPromises = new Map<string, Promise<JojoBookSearchIndex>>();
+const bookCoverPromises = new Map<string, Promise<string | undefined>>();
 type LoadedDatasetIndex = JojoDatasetIndex & { items: JojoDatasetItemSummary[] };
 
 export interface LoadedDataset {
@@ -121,15 +122,32 @@ export async function loadAssetUrl(loaded: LoadedItem, assetId: string): Promise
   return URL.createObjectURL(new Blob([bytes.slice().buffer], { type: asset.mediaType }));
 }
 
-export async function loadBookCoverUrl(datasetId: string, itemKey?: string): Promise<string | undefined> {
-  const dataset = await loadDataset(datasetId);
-  const summary = itemKey
-    ? dataset.index.items.find((item) => item.itemKey === itemKey || item.itemId === itemKey)
-    : dataset.index.items.find((item) => item.publicationStatus !== "draft");
-  if (!summary) return undefined;
-  const loaded = await loadItem(datasetId, summary.itemKey);
-  const cover = loaded.manifest.assets.find((asset) => asset.type === "image" && asset.role === "cover");
-  return cover ? loadAssetUrl(loaded, cover.id) : undefined;
+export function loadBookCoverUrl(datasetId: string, itemKey?: string): Promise<string | undefined> {
+  const cacheKey = `${datasetId}:${itemKey ?? ""}`;
+  const cached = bookCoverPromises.get(cacheKey);
+  if (cached) return cached;
+
+  const promise = (async () => {
+    const dataset = await loadDataset(datasetId);
+    const summary = itemKey
+      ? dataset.index.items.find((item) => item.itemKey === itemKey || item.itemId === itemKey)
+      : dataset.index.items.find((item) => item.publicationStatus !== "draft");
+    if (!summary) return undefined;
+    const itemClient = dataset.itemClients.get(summary.itemId) ?? dataset.client;
+    const manifestObject = resolveJoxObject(dataset.entry.indexObject, summary.manifestObject);
+    const manifest = asJojoItemManifest(
+      await itemClient.fetchJson<JojoItemManifest>(manifestObject, undefined, "no-store"),
+    );
+    const cover = manifest.assets.find((asset) => asset.type === "image" && asset.role === "cover");
+    if (!cover) return undefined;
+    const bytes = await itemClient.fetchDecodedBytes(resolveJoxObject(manifestObject, cover.object));
+    return URL.createObjectURL(new Blob([bytes.slice().buffer], { type: cover.mediaType }));
+  })().catch((error: unknown) => {
+    bookCoverPromises.delete(cacheKey);
+    throw error;
+  });
+  bookCoverPromises.set(cacheKey, promise);
+  return promise;
 }
 
 export async function downloadExport(loaded: LoadedItem, exportId: string): Promise<void> {

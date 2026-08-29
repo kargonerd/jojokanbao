@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { LoadingSpinner } from "@jojo/ui";
 import { useAccountSessionStore } from "../account/session";
 import { useFeatureFlag, useFeatureFlagStore } from "../featureFlags";
 import { loadBookshelf, setBookshelf, type BookshelfEntry } from "../rag/readerData";
+import { readerReturnState } from "../rag/readerNavigation";
 import { BookCover } from "./BookCover";
 import { bookCoverTone } from "./bookCatalog";
 import { useRecentReadingStore } from "./recentReadingStore";
@@ -13,6 +14,7 @@ function entryKey(entry: BookshelfEntry): string {
 }
 
 export function BookshelfPage() {
+  const location = useLocation();
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
   const flagsInitialized = useFeatureFlagStore((state) => state.initialized);
@@ -118,7 +120,10 @@ export function BookshelfPage() {
             const recent = recentItems.find((candidate) => candidate.kind === "book" && candidate.datasetId === item.datasetId && candidate.itemKey === item.itemId);
             return (
               <article key={key} className="bookshelf-card">
-                <Link to={`/book/${encodeURIComponent(item.datasetId)}/${encodeURIComponent(item.itemId)}`}>
+                <Link
+                  to={`/book/${encodeURIComponent(item.datasetId)}/${encodeURIComponent(item.itemId)}`}
+                  state={readerReturnState(`${location.pathname}${location.search}`)}
+                >
                   <BookCover
                     className="bookshelf-cover"
                     title={item.title}

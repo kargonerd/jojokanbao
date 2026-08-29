@@ -5,6 +5,7 @@ import { useAccountSessionStore } from "../account/session";
 import { useFeatureFlag, useFeatureFlagStore } from "../featureFlags";
 import { notebookApi } from "../rag/api";
 import { loadBookshelf, setBookshelf, type BookshelfEntry } from "../rag/readerData";
+import { readerReturnState, safeReaderReturnPath, withReaderReturnTo } from "../rag/readerNavigation";
 import type { RagNotebook, RagSource } from "../rag/types";
 import { BookCover } from "./BookCover";
 import { bookCoverTone, issueLabel } from "./bookCatalog";
@@ -62,7 +63,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
   const availableLibraryTypes = includePeriodicals
     ? libraryTypes
     : libraryTypes.filter((item) => item.id === "book");
-  const openFirstSource = searchParams.get("open") === "first";
+  const returnToBeforeCollection = safeReaderReturnPath(searchParams.get("returnTo"));
 
   useEffect(() => {
     let active = true;
@@ -116,7 +117,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
         if (!active) return;
         const publishedSources = items.filter((item) => item.published !== false);
         setSources(publishedSources);
-        if (openFirstSource && publishedSources.length === 1) {
+        if (publishedSources.length === 1) {
           const source = publishedSources[0]!;
           const itemKey = source.itemKey || source.id;
           const title = source.title || source.name || "未命名书籍";
@@ -130,7 +131,10 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
             href: `/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(itemKey)}`,
             progress: 0,
           });
-          navigate(`/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(itemKey)}`, { replace: true });
+          navigate(withReaderReturnTo(
+            `/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(itemKey)}`,
+            returnToBeforeCollection,
+          ), { replace: true });
         }
       })
       .catch(() => {
@@ -140,7 +144,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
         if (active) setSourceLoading(false);
       });
     return () => { active = false; };
-  }, [datasetId, navigate, openFirstSource, remember]);
+  }, [datasetId, navigate, remember, returnToBeforeCollection]);
 
   function selectType(nextType: LibraryType) {
     setSearchParams(nextType === "all" ? {} : { type: nextType });
@@ -306,7 +310,12 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
               const onShelf = shelfItems.some((item) => item.datasetId === book.id);
               return (
                 <article key={book.id} className="cover-card-shell">
-                  <Link className="cover-card" to={`/library/${encodeURIComponent(book.id)}${isSingle ? "?open=first" : ""}`}>
+                  <Link
+                    className="cover-card"
+                    to={isSingle
+                      ? withReaderReturnTo(`/library/${encodeURIComponent(book.id)}`, `${location.pathname}${location.search}`)
+                      : `/library/${encodeURIComponent(book.id)}`}
+                  >
                     <BookCover title={title} tone={bookCoverTone(book.id)} datasetId={book.id} />
                     <strong>{title}</strong>
                     <small className={isSingle ? "book-card-meta" : "book-card-meta is-series"}>
@@ -342,6 +351,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
                   <Link
                     className="cover-card"
                     to={`/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(itemKey)}`}
+                    state={readerReturnState(`${location.pathname}${location.search}`)}
                     onClick={() => rememberBook(source)}
                   >
                     <BookCover title={title} tone={bookCoverTone(`${datasetId}:${source.id}`)} datasetId={datasetId} itemKey={itemKey} />

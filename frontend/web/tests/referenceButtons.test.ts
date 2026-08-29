@@ -25,6 +25,7 @@ describe("referenceHref", () => {
 
   it("opens a cited reader location in a new tab", () => {
     render(createElement(ReferenceButtons, {
+      returnTo: "/rag?book=book-a",
       references: [{
         datasetId: "book-a",
         itemId: "book-a:item-a",
@@ -38,6 +39,7 @@ describe("referenceHref", () => {
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");
     expect(link.getAttribute("href")).toContain("anchor=paragraph%3A2");
+    expect(link.getAttribute("href")).toContain("returnTo=%2Frag%3Fbook%3Dbook-a");
   });
 
   it("shows only references used inline and groups repeated anchors from one chapter", () => {

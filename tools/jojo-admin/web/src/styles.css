@@ -1075,6 +1075,33 @@ button {
 .feature-revision { display: grid; gap: 4px; padding: 7px 9px; background: #eeeae2; color: #746d64; text-align: right; }
 .feature-revision b { font: 10px ui-monospace, monospace; }
 .feature-revision span { font-size: 10px; }
+.feature-config-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 118px;
+  gap: 24px;
+  align-items: center;
+  margin-top: 22px;
+  border: 1px solid #bdb4a8;
+  border-left: 4px solid var(--color-red);
+  padding: 16px 18px;
+  background: #faf8f3;
+}
+.feature-config-strip h3 { margin: 3px 0 5px; color: #403a34; font-size: 18px; }
+.feature-config-strip > div > span { color: #777067; font-size: 11px; line-height: 1.65; }
+.feature-config-strip label { display: grid; gap: 6px; color: #665f56; font-size: 10px; letter-spacing: .08em; }
+.feature-config-strip label > div { display: grid; grid-template-columns: 1fr auto; align-items: stretch; border-bottom: 3px solid var(--color-red); background: #fff; }
+.feature-config-strip input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #aaa197;
+  border-bottom: 0;
+  padding: 8px 10px;
+  color: var(--color-ink);
+  background: transparent;
+  font: 700 20px ui-monospace, monospace;
+}
+.feature-config-strip input:focus-visible { position: relative; outline: 2px solid var(--color-red); outline-offset: 2px; }
+.feature-config-strip label b { display: grid; min-width: 38px; place-items: center; border: 1px solid #aaa197; border-bottom: 0; border-left: 0; color: var(--color-red); font-size: 11px; }
 .feature-history { margin-top: 22px; border: 1px solid #bdb4a8; border-left: 4px solid var(--color-red); background: #f5f1e9; }
 .feature-history > header { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; border-bottom: 1px solid #cfc7bc; padding: 13px 15px; }
 .feature-history > header div { display: grid; gap: 3px; }
@@ -1208,6 +1235,7 @@ button {
 @media (max-width: 560px) {
   .feature-index,
   .rule-fields { grid-template-columns: 1fr; }
+  .feature-config-strip { grid-template-columns: 1fr; }
   .feature-history li { grid-template-columns: 38px minmax(0, 1fr); }
   .feature-history li > button,
   .feature-history li > em { grid-column: 2; justify-self: start; }

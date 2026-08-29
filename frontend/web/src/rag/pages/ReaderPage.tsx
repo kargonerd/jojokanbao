@@ -1,6 +1,6 @@
 import DOMPurify from "dompurify";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { LoadingSpinner } from "@jojo/ui";
 import {
   JOJO_BOOK_SEARCH_BLOCK_SELECTOR,
@@ -17,6 +17,7 @@ import {
   searchLoadedBook,
   type LoadedItem,
 } from "../content";
+import { readerReturnPathFromState, safeReaderReturnPath } from "../readerNavigation";
 import { BookReader } from "../components/BookReader";
 
 function flattenToc(nodes: JojoTocNode[] = [], depth = 0): Array<JojoTocNode & { depth: number }> {
@@ -197,10 +198,15 @@ export function shouldRenderChapterTitle(fragment: JojoFragment, html: string): 
 export function ReaderPage() {
   const { notebookId: datasetId, sourceId: itemKey } = useParams<{ notebookId: string; sourceId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const requestedChapter = searchParams.get("chapter") || "";
   const requestedAnnotation = searchParams.get("anchor") || searchParams.get("annotation") || "";
   const requestedQuote = searchParams.get("quote") || "";
+  const requestedReturnTo = searchParams.get("returnTo");
+  const readerReturnTo = safeReaderReturnPath(
+    requestedReturnTo || readerReturnPathFromState(location.state),
+  );
   const [loaded, setLoaded] = useState<LoadedItem>();
   const [fragment, setFragment] = useState<JojoFragment>();
   const [activeChapter, setActiveChapter] = useState("");
@@ -297,7 +303,10 @@ export function ReaderPage() {
         chapter: targetChapter.id,
         annotation: targetAnnotation.id,
       });
-      navigate(`/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(targetSummary.itemKey)}?${query}`);
+      if (requestedReturnTo) query.set("returnTo", readerReturnTo);
+      navigate(`/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(targetSummary.itemKey)}?${query}`, {
+        state: location.state,
+      });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     }
@@ -336,7 +345,7 @@ export function ReaderPage() {
     focusText={focusText}
     contentLoading={!fragment}
     error={error}
-    backHref={`/library/${encodeURIComponent(loaded.manifest.datasetId)}`}
+    backHref={readerReturnTo}
     onChapterChange={(chapterId) => {
       setFragment(undefined);
       setFocusText(undefined);

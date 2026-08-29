@@ -17,6 +17,7 @@ const flag = {
   description: "RAG 工作区路由与请求",
   revision: 7,
   updatedAt: "2026-08-16T01:30:00.000Z",
+  config: {},
   rules: [
     {
       id: "10000000-0000-4000-8000-000000000001",
@@ -51,6 +52,7 @@ const flag = {
     {
       revision: 6,
       rules: [],
+      config: {},
       reason: "仅对白名单开放",
       requestId: "request-6",
       updatedAt: "2026-08-15T01:30:00.000Z",
@@ -58,11 +60,28 @@ const flag = {
     {
       revision: 7,
       rules: [],
+      config: {},
       reason: "调整内部名单",
       requestId: "request-7",
       updatedAt: "2026-08-16T01:30:00.000Z",
     },
   ],
+};
+
+const annotationFlag = {
+  ...flag,
+  key: "reader.annotations",
+  description: "划线、想法和 AI 解释数据",
+  revision: 1,
+  config: { publicMarkThreshold: 2 },
+  history: [{
+    revision: 1,
+    rules: flag.rules,
+    config: { publicMarkThreshold: 2 },
+    reason: "初始配置",
+    requestId: null,
+    updatedAt: "2026-08-16T01:30:00.000Z",
+  }],
 };
 
 describe("FeatureFlagsPage", () => {
@@ -92,10 +111,11 @@ describe("FeatureFlagsPage", () => {
 
     await screen.findByText("修改记录");
     fireEvent.change(screen.getByPlaceholderText("说明为什么修改这组规则"), { target: { value: "调整灰度规则" } });
-    fireEvent.click(screen.getByRole("button", { name: "发布规则" }));
+    fireEvent.click(screen.getByRole("button", { name: "发布更改" }));
 
     await waitFor(() => expect(api.publish).toHaveBeenCalledWith(expect.objectContaining({
       key: "rag.workspace",
+      config: {},
       expectedRevision: 7,
       reason: "调整灰度规则",
     })));
@@ -109,6 +129,7 @@ describe("FeatureFlagsPage", () => {
       history: [...flag.history, {
         revision: 8,
         rules: [],
+        config: {},
         reason: "回滚到 revision 6",
         requestId: "request-8",
         updatedAt: "2026-08-16T02:30:00.000Z",
@@ -124,6 +145,29 @@ describe("FeatureFlagsPage", () => {
       expectedRevision: 7,
     })));
     expect(await screen.findByText("已回滚到 revision 6，当前为 revision 8")).toBeInTheDocument();
+  });
+
+  it("publishes the annotation visibility threshold with the same revision", async () => {
+    api.list.mockResolvedValue([annotationFlag]);
+    api.publish.mockResolvedValue({
+      ...annotationFlag,
+      revision: 2,
+      config: { publicMarkThreshold: 5 },
+    });
+    render(<FeatureFlagsPage />);
+
+    const threshold = await screen.findByRole("spinbutton", { name: "划线公开阈值" });
+    expect(threshold).toHaveValue(2);
+    fireEvent.change(threshold, { target: { value: "5" } });
+    await waitFor(() => expect(screen.getByRole("spinbutton", { name: "划线公开阈值" })).toHaveValue(5));
+    fireEvent.change(screen.getByPlaceholderText("说明为什么修改这组规则"), { target: { value: "调整公开人数" } });
+    fireEvent.click(screen.getByRole("button", { name: "发布更改" }));
+
+    await waitFor(() => expect(api.publish).toHaveBeenCalledWith(expect.objectContaining({
+      key: "reader.annotations",
+      config: { publicMarkThreshold: 5 },
+      expectedRevision: 1,
+    })));
   });
 
   it("shows a useful local configuration error", async () => {
