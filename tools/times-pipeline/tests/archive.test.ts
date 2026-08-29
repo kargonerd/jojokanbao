@@ -5,6 +5,7 @@ import { unavailablePageReason } from "../src/capture/availability.js";
 import { articleFingerprint, pendingArticles, type PageArticle } from "../src/capture/pending.js";
 import { selectProxy, selectProxyCandidates } from "../src/capture/proxy.js";
 import { groupArticlesBySource, mapSourceBatches, rotatingSourceProbes } from "../src/capture/schedule.js";
+import { thepaperFetch } from "../src/sources/thepaper/fetch.js";
 
 const now = new Date("2026-08-22T12:00:00Z");
 
@@ -71,6 +72,16 @@ describe("page capture orchestration", () => {
       id: "asset:lead", type: "image", role: "lead", sourceUrl: images[0]!.sourceUrl,
       rawObject: "raw/example/assets/lead.jpg", mediaType: "image/jpeg", size: 1, sha256: "lead",
     }])).toBe('<figure data-asset-id="asset:lead"></figure><p>Body</p>');
+  });
+
+  it("limits The Paper assets to its hashed article-content container", () => {
+    const images = discoverArticleImages(`<main>
+      <img src="/navigation.png" width="400" height="400">
+      <div class="cententWrap__UojXm"><img src="/report.webp" width="1022" height="3183"></div>
+      <img src="/download-app.png" width="400" height="400">
+    </main>`, "https://www.thepaper.cn/newsDetail_forward_33971197", thepaperFetch);
+
+    expect(images.map((image) => image.sourceUrl)).toEqual(["https://www.thepaper.cn/report.webp"]);
   });
 
   it("classifies generic media URLs without mistaking text pages for hard paywalls", () => {
