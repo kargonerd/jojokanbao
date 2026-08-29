@@ -99,10 +99,10 @@ describe("Times timeline images", () => {
     await screen.findByText(article.title);
     expect(screen.queryByText("Global wire · ten-minute edition")).toBeNull();
     expect(screen.queryByLabelText("阅读状态筛选")).toBeNull();
-    const mediaSelect = screen.getByRole("combobox", { name: "选择媒体" }) as HTMLSelectElement;
-    expect(mediaSelect.value).toBe("all");
-    expect(screen.getByRole("button", { name: /所有媒体/ })).toBeTruthy();
-    const sourceButton = screen.getByRole("button", { name: new RegExp(source.name) });
+    const mediaFilter = screen.getByRole("button", { name: "筛选媒体，当前：所有媒体" });
+    expect(mediaFilter.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getAllByRole("button", { name: /所有媒体/ })).toHaveLength(2);
+    const sourceButton = screen.getAllByRole("button", { name: new RegExp(source.name) })[0]!;
     expect(sourceButton).toBeTruthy();
     expect(within(sourceButton).queryByText("1")).toBeNull();
     expect(sourceButton.querySelector(`[data-source-logo="${source.id}"]`)).toBeTruthy();
@@ -110,11 +110,15 @@ describe("Times timeline images", () => {
 
     fireEvent.click(screen.getByRole("button", { name: new RegExp(source.name) }));
     await waitFor(() => expect(screen.getByRole("heading", { name: source.name })).toBeTruthy());
-    expect(mediaSelect.value).toBe(source.id);
+    expect(screen.getByRole("button", { name: `筛选媒体，当前：${source.name}` })).toBeTruthy();
 
-    fireEvent.change(mediaSelect, { target: { value: "all" } });
+    fireEvent.click(screen.getByRole("button", { name: `筛选媒体，当前：${source.name}` }));
+    const sourceDialog = screen.getByRole("dialog", { name: "筛选媒体" });
+    expect(within(sourceDialog).getByText(`当前：${source.name}`)).toBeTruthy();
+    fireEvent.click(within(sourceDialog).getByRole("button", { name: "所有媒体" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "时事" })).toBeTruthy());
-    fireEvent.change(mediaSelect, { target: { value: source.id } });
+    fireEvent.click(screen.getByRole("button", { name: "筛选媒体，当前：所有媒体" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "筛选媒体" })).getByRole("button", { name: source.name }));
     await waitFor(() => expect(screen.getByRole("heading", { name: source.name })).toBeTruthy());
   });
 

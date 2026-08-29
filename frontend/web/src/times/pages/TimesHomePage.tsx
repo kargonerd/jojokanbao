@@ -17,6 +17,7 @@ export function TimesHomePage() {
   const [index, setIndex] = useState<TimesTimelineIndex | null>(null);
   const [days, setDays] = useState<Array<{ date: string; articles: TimesNewsItem[] }>>([]);
   const [selectedSource, setSelectedSource] = useState("all");
+  const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
   const [nextDay, setNextDay] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -100,6 +101,7 @@ export function TimesHomePage() {
 
   function chooseSource(sourceId: string) {
     setSelectedSource(sourceId);
+    setSourcePickerOpen(false);
     navigate("/times", { replace: true });
   }
 
@@ -128,23 +130,35 @@ export function TimesHomePage() {
         </nav>
       </aside>
 
-      <section className={`${showingMobileDetail ? "hidden lg:flex" : "flex"} min-h-0 flex-col border-r border-rule bg-paper`} aria-label="文章列表">
-        <header className="flex h-10 shrink-0 items-center gap-2 border-b border-ink px-4 sm:px-5">
+      <section className={`${showingMobileDetail ? "hidden lg:flex" : "flex"} h-full min-h-0 flex-col border-r border-rule bg-paper`} aria-label="文章列表">
+        <header className="hidden h-10 shrink-0 items-center gap-2 border-b border-ink px-5 lg:flex">
           {selectedSource !== "all" && firstVisibleArticle ? <SourceLogo article={firstVisibleArticle} size="header" /> : null}
           <h1 className="truncate text-base font-black leading-tight">{selectedSourceName}</h1>
-          <label className="ml-auto flex min-w-0 items-center gap-1.5 font-sans text-[10px] font-bold text-muted lg:hidden">
-            <span className="shrink-0">媒体</span>
-            <select
-              aria-label="选择媒体"
-              value={selectedSource}
-              onChange={(event) => chooseSource(event.target.value)}
-              className="min-w-0 max-w-[52vw] border-0 border-b border-rule bg-transparent py-1 pl-1 pr-5 font-sans text-xs font-bold text-red focus:border-red focus:outline-none"
-            >
-              <option value="all">所有媒体</option>
-              {index?.sources.map((source) => <option key={source.id} value={source.id}>{timesSourceName(source)}</option>)}
-            </select>
-          </label>
         </header>
+        <button
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded={sourcePickerOpen}
+          aria-label={`筛选媒体，当前：${selectedSource === "all" ? "所有媒体" : selectedSourceName}`}
+          onClick={() => setSourcePickerOpen(true)}
+          className="flex h-11 w-full shrink-0 items-center gap-3 border-b border-ink bg-paper px-4 text-left font-sans lg:hidden"
+        >
+          {selectedSource !== "all" && firstVisibleArticle ? <SourceLogo article={firstVisibleArticle} size="header" /> : (
+            <span aria-hidden="true" className="grid h-6 w-6 shrink-0 place-content-center bg-red">
+              <span className="grid grid-cols-2 gap-[2px]">
+                <i className="h-1 w-1 bg-paper" /><i className="h-1 w-1 bg-paper" />
+                <i className="h-1 w-1 bg-paper" /><i className="h-1 w-1 bg-paper" />
+              </span>
+            </span>
+          )}
+          <span className="min-w-0 flex-1 truncate text-sm font-black text-ink">
+            {selectedSource === "all" ? "所有媒体" : selectedSourceName}
+          </span>
+          <span className="flex shrink-0 items-center gap-1 text-xs font-bold text-red">
+            筛选
+            <span aria-hidden="true">⌄</span>
+          </span>
+        </button>
         <div ref={listViewport} className="min-h-0 flex-1 overflow-y-auto">
           {loading ? <p className="px-5 py-10 font-sans text-sm text-muted">正在加载新闻…</p> : null}
           {error ? <div role="alert" className="m-5 border-2 border-red bg-paper p-5 font-sans text-sm text-red">{error}</div> : null}
@@ -172,6 +186,73 @@ export function TimesHomePage() {
           </div>
         )}
       </section>
+
+      {sourcePickerOpen && !showingMobileDetail ? (
+        <div className="fixed inset-0 z-[90] lg:hidden">
+          <button
+            type="button"
+            aria-label="关闭媒体筛选"
+            className="absolute inset-0 h-full w-full bg-ink/35"
+            onClick={() => setSourcePickerOpen(false)}
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="times-source-picker-title"
+            className="absolute inset-x-0 bottom-0 flex max-h-[72dvh] flex-col border-t-2 border-red bg-paper shadow-[0_-8px_30px_rgba(32,32,32,0.18)]"
+          >
+            <header className="flex shrink-0 items-center border-b border-rule px-5 py-4">
+              <div className="min-w-0 flex-1">
+                <h2 id="times-source-picker-title" className="text-lg font-black">筛选媒体</h2>
+                <p className="mt-0.5 truncate font-sans text-xs text-muted">
+                  当前：{selectedSource === "all" ? "所有媒体" : selectedSourceName}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="关闭"
+                className="grid h-9 w-9 place-content-center font-sans text-2xl leading-none text-red"
+                onClick={() => setSourcePickerOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+            <div className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-[calc(12px+env(safe-area-inset-bottom))] pt-2">
+              <button
+                type="button"
+                aria-pressed={selectedSource === "all"}
+                onClick={() => chooseSource("all")}
+                className={`flex w-full items-center gap-3 border-l-2 px-3 py-3 text-left font-sans text-base ${selectedSource === "all" ? "border-red bg-red/[0.06] font-black text-red" : "border-transparent font-bold text-ink"}`}
+              >
+                <span aria-hidden="true" className="grid h-8 w-8 shrink-0 place-content-center bg-red">
+                  <span className="grid grid-cols-2 gap-[2px]">
+                    <i className="h-1.5 w-1.5 bg-paper" /><i className="h-1.5 w-1.5 bg-paper" />
+                    <i className="h-1.5 w-1.5 bg-paper" /><i className="h-1.5 w-1.5 bg-paper" />
+                  </span>
+                </span>
+                <span className="min-w-0 flex-1">所有媒体</span>
+                {selectedSource === "all" ? <span aria-hidden="true">✓</span> : null}
+              </button>
+              {index?.sources.map((source) => {
+                const active = selectedSource === source.id;
+                return (
+                  <button
+                    key={source.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => chooseSource(source.id)}
+                    className={`flex w-full items-center gap-3 border-l-2 px-3 py-3 text-left font-sans text-base ${active ? "border-red bg-red/[0.06] font-black text-red" : "border-transparent font-bold text-ink"}`}
+                  >
+                    <SourceLogo source={source} size="rail" />
+                    <span className="min-w-0 flex-1 break-words">{timesSourceName(source)}</span>
+                    {active ? <span aria-hidden="true">✓</span> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }
