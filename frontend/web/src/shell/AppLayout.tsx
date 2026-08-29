@@ -14,7 +14,7 @@ export function buildAppNavigationItems(
   return [
     ...primaryItems,
     ...(authenticated && capabilities.rag ? [{ label: "AI", href: "/rag", badge: "Beta" }] : []),
-    ...(authenticated && capabilities.times ? [{ label: "时事", href: "/times" }] : []),
+    ...(authenticated && capabilities.times ? [{ label: "时事", href: "/times", badge: "Beta" }] : []),
     ...(aboutItem ? [aboutItem] : []),
   ];
 }

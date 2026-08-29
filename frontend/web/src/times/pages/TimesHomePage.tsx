@@ -1,27 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import type { TimesTimelineIndex } from "@jojo/content";
 import { timesApi, type TimesNewsItem } from "../api";
+import { SourceLogo } from "../components/SourceLogo";
 import { TimelineArticle } from "../components/TimelineArticle";
-
-function dayLabel(value: string): { date: string; weekday: string } {
-  const date = new Date(`${value}T00:00:00Z`);
-  return {
-    date: new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", timeZone: "UTC" }).format(date),
-    weekday: new Intl.DateTimeFormat("zh-CN", { weekday: "long", timeZone: "UTC" }).format(date),
-  };
-}
+import { TimesDetailPage } from "./TimesDetailPage";
 
 export function TimesHomePage() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const selectedSource = searchParams.get("source") || "all";
+  const navigate = useNavigate();
+  const { issueDate = "", newsId = "" } = useParams();
   const [index, setIndex] = useState<TimesTimelineIndex | null>(null);
   const [days, setDays] = useState<Array<{ date: string; articles: TimesNewsItem[] }>>([]);
+  const [selectedSource, setSelectedSource] = useState("all");
   const [nextDay, setNextDay] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sentinel = useRef<HTMLDivElement | null>(null);
+  const listViewport = useRef<HTMLDivElement | null>(null);
 
   const loadMore = useCallback(async () => {
     if (!index || loadingMore || nextDay >= index.dates.length) return;
@@ -67,78 +63,83 @@ export function TimesHomePage() {
     if (!node || !index) return;
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) void loadMore();
-    }, { rootMargin: "500px 0px" });
+    }, { root: listViewport.current, rootMargin: "500px 0px" });
     observer.observe(node);
     return () => observer.disconnect();
   }, [index, loadMore]);
 
   const visibleDays = useMemo(() => days.map((day) => ({
     ...day,
-    articles: day.articles.filter((article) => selectedSource === "all" || article.source.id === selectedSource),
+    articles: selectedSource === "all"
+      ? day.articles
+      : day.articles.filter((article) => article.source.id === selectedSource),
   })).filter((day) => day.articles.length), [days, selectedSource]);
 
+  const firstVisibleArticle = visibleDays[0]?.articles[0];
+  const activeIssueDate = issueDate || firstVisibleArticle?.issueDate || "";
+  const activeNewsId = newsId || firstVisibleArticle?.id || "";
+  const showingMobileDetail = Boolean(issueDate && newsId);
+  const selectedSourceName = selectedSource === "all"
+    ? "时事"
+    : index?.sources.find((source) => source.id === selectedSource)?.name || "时事";
+
   function chooseSource(sourceId: string) {
-    const next = new URLSearchParams(searchParams);
-    if (sourceId === "all") next.delete("source");
-    else next.set("source", sourceId);
-    setSearchParams(next, { replace: true });
+    setSelectedSource(sourceId);
+    navigate("/times", { replace: true });
   }
 
   return (
-    <main className="min-h-[calc(100vh-64px)] bg-[var(--app-canvas)] text-ink">
-      <header className="sticky top-0 z-20 border-b-2 border-ink bg-paper/95 backdrop-blur-sm">
-        <div className="mx-auto max-w-[1480px] px-4 py-4 md:px-8">
-          <div className="flex items-end justify-between gap-5">
-            <div className="flex items-baseline gap-4">
-              <h1 className="text-3xl font-black tracking-[0.08em] md:text-4xl">时事</h1>
-              <p className="hidden font-sans text-[10px] font-bold uppercase tracking-[0.22em] text-red sm:block">Global wire · ten-minute edition</p>
-            </div>
-            <p className="font-sans text-[10px] text-muted">
-              {index ? `更新于 ${new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(new Date(index.updatedAt))}` : "读取中"}
-            </p>
-          </div>
-          <div className="-mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:-mx-8 md:px-8">
-            <button type="button" onClick={() => chooseSource("all")} className={`shrink-0 border px-3 py-1.5 font-sans text-xs font-bold transition-colors ${selectedSource === "all" ? "border-red bg-red text-paper" : "border-rule-dark bg-paper hover:border-red hover:text-red"}`}>全部</button>
-            {index?.sources.map((source) => (
-              <button key={source.id} type="button" onClick={() => chooseSource(source.id)} className={`shrink-0 border px-3 py-1.5 font-sans text-xs font-bold transition-colors ${selectedSource === source.id ? "border-red bg-red text-paper" : "border-rule-dark bg-paper hover:border-red hover:text-red"}`}>
-                {source.name}
+    <main className="h-[calc(100vh-64px)] overflow-hidden bg-[var(--app-canvas)] text-ink lg:grid lg:grid-cols-[220px_390px_minmax(0,1fr)] xl:grid-cols-[240px_450px_minmax(0,1fr)]">
+      <aside aria-label="媒体来源" className="hidden min-h-0 flex-col border-r border-rule bg-[var(--app-canvas)] lg:flex">
+        <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4" aria-label="选择媒体">
+          <p className="px-2 pb-2 font-sans text-[10px] font-black tracking-[0.16em] text-muted">媒体来源</p>
+          <button type="button" onClick={() => chooseSource("all")} className={`flex w-full items-center gap-2.5 border-l-2 px-3 py-1.5 text-left font-sans text-sm font-bold ${selectedSource === "all" ? "border-red bg-paper text-red" : "border-transparent hover:bg-paper"}`}>
+            <span aria-hidden="true" className="grid h-6 w-6 shrink-0 place-content-center bg-red">
+              <span className="grid grid-cols-2 gap-[2px]">
+                <i className="h-1 w-1 bg-paper" /><i className="h-1 w-1 bg-paper" />
+                <i className="h-1 w-1 bg-paper" /><i className="h-1 w-1 bg-paper" />
+              </span>
+            </span>
+            <span>所有媒体</span>
+          </button>
+          {index?.sources.map((source) => {
+            return (
+              <button key={source.id} type="button" onClick={() => chooseSource(source.id)} className={`flex w-full items-center gap-2.5 border-l-2 px-3 py-1.5 text-left font-sans text-sm ${selectedSource === source.id ? "border-red bg-paper font-bold text-red" : "border-transparent hover:bg-paper"}`}>
+                <SourceLogo source={source} size="rail" />
+                <span className="min-w-0 truncate">{source.name}</span>
               </button>
-            ))}
+            );
+          })}
+        </nav>
+      </aside>
+
+      <section className={`${showingMobileDetail ? "hidden lg:flex" : "flex"} min-h-0 flex-col border-r border-rule bg-paper`} aria-label="文章列表">
+        <header className="flex h-16 shrink-0 items-center gap-3 border-b-2 border-ink px-4 sm:px-5">
+          {selectedSource !== "all" && firstVisibleArticle ? <SourceLogo article={firstVisibleArticle} size="header" /> : null}
+          <h1 className="truncate text-2xl font-black leading-tight">{selectedSourceName}</h1>
+        </header>
+        <div ref={listViewport} className="min-h-0 flex-1 overflow-y-auto">
+          {loading ? <p className="px-5 py-10 font-sans text-sm text-muted">正在编排最新时间线…</p> : null}
+          {error ? <div role="alert" className="m-5 border-2 border-red bg-paper p-5 font-sans text-sm text-red">{error}</div> : null}
+          {visibleDays.flatMap((day) => day.articles).map((article) => (
+            <TimelineArticle key={article.id} article={article} active={article.issueDate === activeIssueDate && article.id === activeNewsId} />
+          ))}
+          {!loading && !visibleDays.length && !error ? <p className="px-5 py-16 text-center text-lg font-black">暂无文章</p> : null}
+          <div ref={sentinel} className="flex h-20 items-center justify-center font-sans text-xs text-muted">
+            {loadingMore ? "正在加载更早的日期…" : index && nextDay >= index.dates.length ? "已到达时间线起点" : ""}
           </div>
         </div>
-      </header>
+      </section>
 
-      <div className="mx-auto max-w-[1480px] px-4 pb-20 md:px-8">
-        {loading ? <p className="border-b border-rule py-10 font-sans text-sm text-muted">正在编排最新时间线…</p> : null}
-        {error ? <div role="alert" className="my-6 border-2 border-red bg-paper p-5 font-sans text-sm text-red">{error}</div> : null}
-
-        {visibleDays.map((day) => {
-          const label = dayLabel(day.date);
-          return (
-            <section key={day.date} className="grid border-b-2 border-ink md:grid-cols-[150px_minmax(0,1fr)] lg:grid-cols-[190px_minmax(0,1fr)]">
-              <div className="border-b border-rule bg-[var(--app-canvas)] py-5 md:border-b-0 md:border-r md:py-7">
-                <div className="md:sticky md:top-[138px]">
-                  <p className="text-2xl font-black md:text-3xl">{label.date}</p>
-                  <p className="mt-1 font-sans text-[10px] font-bold uppercase tracking-[0.18em] text-red">{label.weekday} · {day.articles.length} 篇</p>
-                </div>
-              </div>
-              <div className="bg-paper">
-                {day.articles.map((article) => <TimelineArticle key={article.id} article={article} />)}
-              </div>
-            </section>
-          );
-        })}
-
-        {!loading && !visibleDays.length && !error ? (
-          <div className="border-b-2 border-ink bg-paper py-16 text-center">
-            <p className="text-xl font-black">这个媒体在已加载日期里没有文章</p>
-            <button type="button" onClick={() => chooseSource("all")} className="mt-4 border-b border-red font-sans text-sm font-bold text-red">查看全部媒体</button>
+      <section className={`${showingMobileDetail ? "flex" : "hidden lg:flex"} min-h-0 flex-col bg-paper`} aria-label="文章正文">
+        {activeIssueDate && activeNewsId ? (
+          <TimesDetailPage issueDate={activeIssueDate} newsId={activeNewsId} embedded />
+        ) : (
+          <div className="flex h-full items-center justify-center px-8 text-center text-muted">
+            <p className="font-sans text-sm">选择一篇文章开始阅读</p>
           </div>
-        ) : null}
-        <div ref={sentinel} className="flex h-24 items-center justify-center font-sans text-xs text-muted">
-          {loadingMore ? "正在加载更早的日期…" : index && nextDay >= index.dates.length ? "已到达时间线起点" : ""}
-        </div>
-      </div>
+        )}
+      </section>
     </main>
   );
 }
