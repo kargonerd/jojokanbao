@@ -53,10 +53,20 @@ function editableRules(rules: FeatureFlagRule[]): FeatureFlagRule[] {
   }));
 }
 
+function editableConfig(config: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  return structuredClone(config ?? {});
+}
+
+function annotationThreshold(config: Record<string, unknown>): number {
+  const value = config.publicMarkThreshold;
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 100 ? value : 2;
+}
+
 export function FeatureFlagsPage() {
   const [flags, setFlags] = useState<FeatureFlagDefinition[]>([]);
   const [selectedKey, setSelectedKey] = useState("");
   const [draftRules, setDraftRules] = useState<FeatureFlagRule[]>([]);
+  const [draftConfig, setDraftConfig] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -67,8 +77,11 @@ export function FeatureFlagsPage() {
     let active = true;
     void featureFlagApi.list().then((next) => {
       if (!active) return;
+      const initial = next[0];
       setFlags(next);
-      setSelectedKey((current) => current || next[0]?.key || "");
+      setSelectedKey(initial?.key ?? "");
+      setDraftRules(initial ? editableRules(initial.rules) : []);
+      setDraftConfig(initial ? editableConfig(initial.config) : {});
       setLoadError("");
     }).catch((error: unknown) => {
       if (active) setLoadError(error instanceof Error ? error.message : "无法读取功能开关");
@@ -79,12 +92,14 @@ export function FeatureFlagsPage() {
   }, []);
 
   const selected = flags.find((flag) => flag.key === selectedKey);
-  useEffect(() => {
-    const next = flags.find((flag) => flag.key === selectedKey);
-    setDraftRules(next ? editableRules(next.rules) : []);
+
+  function selectFlag(flag: FeatureFlagDefinition) {
+    setSelectedKey(flag.key);
+    setDraftRules(editableRules(flag.rules));
+    setDraftConfig(editableConfig(flag.config));
     setReason("");
     setNotice("");
-  }, [selectedKey]);
+  }
 
   function updateRule(index: number, patch: Partial<FeatureFlagRule>) {
     setDraftRules((rules) => rules.map((rule, position) => position === index ? { ...rule, ...patch } : rule));
@@ -124,12 +139,14 @@ export function FeatureFlagsPage() {
       const updated = await featureFlagApi.publish({
         key: selected.key,
         rules,
+        config: draftConfig,
         expectedRevision: selected.revision,
         reason: reason.trim(),
         requestId: crypto.randomUUID(),
       });
       setFlags((items) => items.map((item) => item.key === updated.key ? updated : item));
       setDraftRules(editableRules(updated.rules));
+      setDraftConfig(editableConfig(updated.config));
       setNotice(`已发布 revision ${updated.revision}`);
       setReason("");
     } catch (error) {
@@ -153,6 +170,7 @@ export function FeatureFlagsPage() {
       });
       setFlags((items) => items.map((item) => item.key === updated.key ? updated : item));
       setDraftRules(editableRules(updated.rules));
+      setDraftConfig(editableConfig(updated.config));
       setReason("");
       setNotice(`已回滚到 revision ${targetRevision}，当前为 revision ${updated.revision}`);
     } catch (error) {
@@ -185,7 +203,7 @@ export function FeatureFlagsPage() {
       <main className="feature-workspace">
         <aside className="feature-index" aria-label="功能开关列表">
           {flags.map((flag) => (
-            <button key={flag.key} type="button" className={flag.key === selectedKey ? "active" : ""} onClick={() => setSelectedKey(flag.key)}>
+            <button key={flag.key} type="button" className={flag.key === selectedKey ? "active" : ""} onClick={() => selectFlag(flag)}>
               <b>{flag.key}</b><span>{flag.rules.length} 条规则 · r{flag.revision}</span>
             </button>
           ))}
@@ -193,8 +211,35 @@ export function FeatureFlagsPage() {
         {selected && (
           <section className="feature-editor">
             <header><div><p className="eyebrow">{selected.key}</p><h2>{selected.description}</h2></div><div className="feature-revision" title="由本机 Operator 修改"><b>revision {selected.revision}</b><span>{publishedAt(selected.updatedAt)}</span></div></header>
+            {selected.key === "reader.annotations" && (
+              <section className="feature-config-strip" aria-labelledby="annotation-threshold-title">
+                <div>
+                  <p className="eyebrow">PUBLIC DISPLAY / 公开展示</p>
+                  <h3 id="annotation-threshold-title">划线公开阈值</h3>
+                  <span>达到该人数，或存在至少一条公开想法时，向其他读者展示。</span>
+                </div>
+                <label>
+                  <span>读者人数</span>
+                  <div>
+                    <input
+                      aria-label="划线公开阈值"
+                      type="number"
+                      min="1"
+                      max="100"
+                      step="1"
+                      value={annotationThreshold(draftConfig)}
+                      onChange={(event) => {
+                        const publicMarkThreshold = Math.max(1, Math.min(100, Math.round(Number(event.target.value) || 1)));
+                        setDraftConfig((current) => ({ ...current, publicMarkThreshold }));
+                      }}
+                    />
+                    <b>人</b>
+                  </div>
+                </label>
+              </section>
+            )}
             <section className="feature-history" aria-label="修改记录">
-              <header><div><b>修改记录</b><span>回滚会恢复当时的整条规则链，并生成新的 revision。</span></div><small>{selected.history.length} 个版本</small></header>
+              <header><div><b>修改记录</b><span>回滚会恢复当时的规则和配置，并生成新的 revision。</span></div><small>{selected.history.length} 个版本</small></header>
               <ol>
                 {[...selected.history].reverse().map((entry) => {
                   const current = entry.revision === selected.revision;
@@ -228,7 +273,7 @@ export function FeatureFlagsPage() {
             </div>
             <footer className="feature-publish">
               <label>发布原因<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="说明为什么修改这组规则" /></label>
-              <button className="primary-button" type="button" disabled={saving || reason.trim().length < 3} onClick={() => void publish()}>{saving ? "发布中…" : "发布规则"}</button>
+              <button className="primary-button" type="button" disabled={saving || reason.trim().length < 3} onClick={() => void publish()}>{saving ? "发布中…" : "发布更改"}</button>
               {notice && <p role="status">{notice}</p>}
               {loadError && <p className="content-error" role="alert">{loadError}</p>}
             </footer>

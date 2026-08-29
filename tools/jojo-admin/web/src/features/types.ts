@@ -21,12 +21,14 @@ export interface FeatureFlagDefinition {
   revision: number;
   updatedAt: string;
   rules: FeatureFlagRule[];
+  config: Record<string, unknown>;
   history: FeatureFlagHistoryEntry[];
 }
 
 export interface FeatureFlagHistoryEntry {
   revision: number;
   rules: FeatureFlagRule[];
+  config: Record<string, unknown>;
   reason: string;
   requestId: string | null;
   updatedAt: string;
