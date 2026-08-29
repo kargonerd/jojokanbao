@@ -26,6 +26,7 @@ const article = {
   language: "en",
   source,
   url: "https://example.com/article-one",
+  publisherSections: [{ id: "world", name: "World News" }],
   articleObject: "content/newspapers/example/articles/article-one.jox",
   assets: [{
     id: "asset:lead",
@@ -116,6 +117,8 @@ describe("Times timeline images", () => {
     const time = document.querySelector(`time[datetime="${article.publishedAt}"]`);
     expect(time?.textContent).toMatch(/^(刚刚|\d+(分钟前|小时前|天前|周前|个月前|年前))$/);
     expect(time?.getAttribute("title")).toContain("2026");
+    expect(screen.queryByText("World News")).toBeNull();
+    expect(within(screen.getByRole("region", { name: "文章列表" })).getByText(source.name).className).toContain("flex-1");
   });
 
   it("shows the archived lead image instead of a text badge", async () => {

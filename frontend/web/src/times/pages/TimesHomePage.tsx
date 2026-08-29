@@ -127,9 +127,9 @@ export function TimesHomePage() {
       </aside>
 
       <section className={`${showingMobileDetail ? "hidden lg:flex" : "flex"} min-h-0 flex-col border-r border-rule bg-paper`} aria-label="文章列表">
-        <header className="flex h-16 shrink-0 items-center gap-3 border-b-2 border-ink px-4 sm:px-5">
+        <header className="flex h-12 shrink-0 items-center gap-3 border-b border-ink px-4 sm:px-5">
           {selectedSource !== "all" && firstVisibleArticle ? <SourceLogo article={firstVisibleArticle} size="header" /> : null}
-          <h1 className="truncate text-2xl font-black leading-tight">{selectedSourceName}</h1>
+          <h1 className="truncate text-xl font-black leading-tight">{selectedSourceName}</h1>
         </header>
         <div ref={listViewport} className="min-h-0 flex-1 overflow-y-auto">
           {loading ? <p className="px-5 py-10 font-sans text-sm text-muted">正在加载新闻…</p> : null}

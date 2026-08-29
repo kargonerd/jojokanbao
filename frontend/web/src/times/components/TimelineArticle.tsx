@@ -133,10 +133,8 @@ export function TimelineArticle({
       </div>
       <Link to={`/times/${article.issueDate}/${encodeURIComponent(article.id)}`} className={`min-w-0 text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-red ${read ? "opacity-60" : ""}`}>
         <span className="flex min-w-0 items-center gap-2 font-sans text-[10px] font-bold text-muted">
-          <span className={`truncate ${read ? "text-muted" : "text-red"}`}>{article.source.name}</span>
-          <span aria-hidden="true">·</span>
+          <span className={`min-w-0 flex-1 truncate ${read ? "text-muted" : "text-red"}`}>{article.source.name}</span>
           <time dateTime={article.publishedAt} title={exactArticleTime(article.publishedAt)} className="shrink-0 tabular-nums">{relativeArticleTime(article.publishedAt)}</time>
-          {article.publisherSections?.slice(0, 1).map((section) => <span key={section.id} className="truncate">· {section.name}</span>)}
         </span>
         <strong
           className={`mt-1 overflow-hidden text-[15px] leading-5 transition-colors group-hover:text-red ${read ? "font-medium text-muted" : "font-black text-ink"}`}
