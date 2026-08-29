@@ -1,17 +1,12 @@
 import DOMPurify from "dompurify";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useAccountSessionStore } from "../../account/session";
 import { SelectableAnnotationArticle } from "../../annotations/SelectableAnnotationArticle";
 import type { TextAnchor } from "../../annotations/types";
 import { explainTimesSelection, type TimesExplanationMetadata } from "../ai";
 import { timesApi, type TimesNewsItem } from "../api";
 import { TimesExplanationPanel } from "../components/TimesExplanationPanel";
-import {
-  markTimesArticleRead,
-  markTimesArticleUnread,
-  useTimesReadStore,
-} from "../readStore";
+import { markTimesArticleRead } from "../readStore";
 
 function safeNewsUrl(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -71,7 +66,6 @@ export function TimesDetailPage({
   const newsId = providedNewsId || params.newsId || "";
   const [news, setNews] = useState<TimesNewsItem | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [readNotice, setReadNotice] = useState("");
   const [explanation, setExplanation] = useState<{
     anchor: TextAnchor;
     answer: string;
@@ -80,8 +74,6 @@ export function TimesDetailPage({
     metadata?: TimesExplanationMetadata;
   }>();
   const cancelExplanation = useRef<() => void>(() => {});
-  const userId = useAccountSessionStore((state) => state.userId);
-  const read = useTimesReadStore((state) => Boolean(state.readById[newsId]));
   const originalUrl = safeNewsUrl(news?.url);
   const articleHtml = useMemo(() => news ? materializeAssets(news) : null, [news]);
 
@@ -90,18 +82,13 @@ export function TimesDetailPage({
     let urls: string[] = [];
     setNews(null);
     setError(null);
-    setReadNotice("");
     cancelExplanation.current();
     setExplanation(undefined);
     void timesApi.getNews(issueDate, newsId).then((value) => {
       urls = Object.values(value.assetUrls ?? {});
       if (active) {
         setNews(value);
-        if (markReadOnOpen) {
-          void markTimesArticleRead(value.id, value.issueDate, userId).catch((reason: unknown) => {
-            if (active) setReadNotice(reason instanceof Error ? reason.message : String(reason));
-          });
-        }
+        if (markReadOnOpen) markTimesArticleRead(value.id);
       }
       else for (const url of urls) URL.revokeObjectURL(url);
     }).catch((reason: unknown) => {
@@ -112,7 +99,7 @@ export function TimesDetailPage({
       cancelExplanation.current();
       for (const url of urls) URL.revokeObjectURL(url);
     };
-  }, [issueDate, markReadOnOpen, newsId, userId]);
+  }, [issueDate, markReadOnOpen, newsId]);
 
   function startExplanation(anchor: TextAnchor): void {
     if (!news) return;
@@ -140,18 +127,6 @@ export function TimesDetailPage({
     setExplanation(undefined);
   }
 
-  async function toggleRead(): Promise<void> {
-    if (!news) return;
-    setReadNotice("");
-    try {
-      if (read) await markTimesArticleUnread(news.id, news.issueDate, userId);
-      else await markTimesArticleRead(news.id, news.issueDate, userId);
-      setReadNotice(read ? "已标为未读" : "已标为已读");
-    } catch (reason) {
-      setReadNotice(reason instanceof Error ? reason.message : String(reason));
-    }
-  }
-
   const content = (
     <div className="mx-auto w-full max-w-4xl px-5 pb-16 pt-6 md:px-10 lg:px-12 lg:pt-10 xl:px-16">
       <Link to="/times" className="mb-5 inline-block font-sans text-xs font-bold text-red lg:hidden">← 返回文章列表</Link>
@@ -162,10 +137,6 @@ export function TimesDetailPage({
           <p className="font-sans text-[10px] font-black tracking-[0.12em] text-red">
             {news.source.name} · {new Intl.DateTimeFormat("zh-CN", { dateStyle: "long", timeStyle: "short" }).format(new Date(news.publishedAt))}
           </p>
-          <div className="mt-3 flex items-center gap-3 font-sans text-[10px]">
-            <button type="button" onClick={() => void toggleRead()} className="border border-rule bg-paper px-2.5 py-1 font-bold text-red">{read ? "标为未读" : "标为已读"}</button>
-            {readNotice ? <span role="status" className="text-muted">{readNotice}</span> : null}
-          </div>
           <h1 className="mt-4 text-3xl font-black leading-tight xl:text-4xl">{news.title}</h1>
           <SelectableAnnotationArticle subject={{
             contentType: "newspaper",

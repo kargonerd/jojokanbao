@@ -1,73 +1,50 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const readApi = vi.hoisted(() => ({
-  loadTimesArticleReads: vi.fn(),
-  markTimesArticleRead: vi.fn(),
-  markTimesArticleUnread: vi.fn(),
-}));
-vi.mock("../src/times/readApi", () => readApi);
-
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   hydrateTimesReadState,
   markTimesArticleRead,
-  markTimesArticleUnread,
   useTimesReadStore,
 } from "../src/times/readStore";
 
+const LOCAL_STORAGE_KEY = "jojo-times-read-articles-v1";
+
 beforeEach(() => {
-  vi.clearAllMocks();
   window.localStorage.clear();
-  useTimesReadStore.setState({ ownerKey: "", readById: {}, loadedById: {}, error: "" });
-  readApi.loadTimesArticleReads.mockResolvedValue([{ articleId: "read-one", readAt: "2026-08-29T00:00:00Z" }]);
-  readApi.markTimesArticleRead.mockResolvedValue(undefined);
-  readApi.markTimesArticleUnread.mockResolvedValue(undefined);
+  useTimesReadStore.setState({ readById: {} });
 });
 
-describe("Times read state", () => {
-  it("hydrates the current reader in one batch and persists toggles", async () => {
-    await hydrateTimesReadState(["read-one", "unread-one"], "user-1");
-    expect(readApi.loadTimesArticleReads).toHaveBeenCalledWith(["read-one", "unread-one"]);
-    expect(useTimesReadStore.getState().readById).toMatchObject({ "read-one": true, "unread-one": false });
+describe("Times viewed history", () => {
+  it("restores locally viewed articles without an account or backend", () => {
+    markTimesArticleRead("article-one");
+    useTimesReadStore.setState({ readById: {} });
 
-    await markTimesArticleRead("unread-one", "2026-08-29", "user-1");
-    expect(readApi.markTimesArticleRead).toHaveBeenCalledWith("unread-one", "2026-08-29");
-    await markTimesArticleUnread("read-one", "2026-08-29", "user-1");
-    expect(readApi.markTimesArticleUnread).toHaveBeenCalledWith("read-one");
-    expect(useTimesReadStore.getState().readById).toMatchObject({ "read-one": false, "unread-one": true });
+    hydrateTimesReadState(["article-one", "article-two"]);
+
+    expect(useTimesReadStore.getState().readById).toEqual({
+      "article-one": true,
+      "article-two": false,
+    });
   });
 
-  it("keeps guest audit read state locally", async () => {
-    await markTimesArticleRead("guest-one", "2026-08-29", null);
-    useTimesReadStore.setState({ ownerKey: "", readById: {}, loadedById: {}, error: "" });
-    await hydrateTimesReadState(["guest-one", "guest-two"], null);
-    expect(useTimesReadStore.getState().readById).toMatchObject({ "guest-one": true, "guest-two": false });
-    expect(readApi.loadTimesArticleReads).not.toHaveBeenCalled();
+  it("keeps a bounded, recency-ordered local history", () => {
+    window.localStorage.setItem(
+      LOCAL_STORAGE_KEY,
+      JSON.stringify(Array.from({ length: 5_000 }, (_, index) => `article-${index}`)),
+    );
+
+    markTimesArticleRead("article-0");
+    markTimesArticleRead("newest-article");
+
+    const stored = JSON.parse(window.localStorage.getItem(LOCAL_STORAGE_KEY) || "[]") as string[];
+    expect(stored).toHaveLength(5_000);
+    expect(stored).not.toContain("article-1");
+    expect(stored.at(-2)).toBe("article-0");
+    expect(stored.at(-1)).toBe("newest-article");
   });
 
-  it("hydrates long infinite timelines in bounded batches", async () => {
-    readApi.loadTimesArticleReads.mockResolvedValue([]);
-    const ids = Array.from({ length: 501 }, (_, index) => `article-${index}`);
+  it("ignores malformed local storage instead of blocking the timeline", () => {
+    window.localStorage.setItem(LOCAL_STORAGE_KEY, "not json");
 
-    await hydrateTimesReadState(ids, "user-1");
-
-    expect(readApi.loadTimesArticleReads).toHaveBeenCalledTimes(2);
-    expect(readApi.loadTimesArticleReads.mock.calls[0]![0]).toHaveLength(500);
-    expect(readApi.loadTimesArticleReads.mock.calls[1]![0]).toEqual(["article-500"]);
-    expect(useTimesReadStore.getState().loadedById["article-500"]).toBe(true);
-  });
-
-  it("does not let a stale hydration overwrite a newer read mutation", async () => {
-    let resolveReads!: (rows: Array<{ articleId: string; readAt: string }>) => void;
-    readApi.loadTimesArticleReads.mockImplementation(() => new Promise((resolve) => {
-      resolveReads = resolve;
-    }));
-
-    const hydrating = hydrateTimesReadState(["article-1"], "user-1");
-    await markTimesArticleRead("article-1", "2026-08-29", "user-1");
-    resolveReads([]);
-    await hydrating;
-
-    expect(useTimesReadStore.getState().readById["article-1"]).toBe(true);
-    expect(useTimesReadStore.getState().loadedById["article-1"]).toBe(true);
+    expect(() => hydrateTimesReadState(["article-one"])).not.toThrow();
+    expect(useTimesReadStore.getState().readById["article-one"]).toBe(false);
   });
 });

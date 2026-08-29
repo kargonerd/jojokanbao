@@ -93,7 +93,7 @@ function TimelineLeadImage({
       ref={frame}
       to={`/times/${article.issueDate}/${encodeURIComponent(article.id)}`}
       aria-label={`打开：${article.title}`}
-      className="relative col-start-3 row-start-1 aspect-[4/3] w-24 self-center overflow-hidden border-l-2 border-red bg-[var(--app-canvas)] focus:outline-none focus-visible:ring-2 focus-visible:ring-red xl:w-28"
+      className="relative col-start-3 row-start-1 aspect-[4/3] w-24 self-center overflow-hidden bg-[var(--app-canvas)] focus:outline-none focus-visible:ring-2 focus-visible:ring-red xl:w-28"
     >
       {url ? (
         <img
@@ -113,12 +113,10 @@ export function TimelineArticle({
   article,
   active = false,
   read = false,
-  onToggleRead,
 }: {
   article: TimesNewsItem;
   active?: boolean;
   read?: boolean;
-  onToggleRead?(): void;
 }) {
   const asset = leadImage(article);
   const [imageAvailable, setImageAvailable] = useState(Boolean(asset));
@@ -128,19 +126,8 @@ export function TimelineArticle({
 
   return (
     <article data-read={read ? "true" : "false"} className={`group grid items-start gap-x-3 border-b border-rule px-3 py-3 transition-colors sm:px-4 ${active ? "border-l-4 border-l-red bg-[color-mix(in_srgb,var(--color-red)_5%,var(--color-paper))] pl-2 sm:pl-3" : "border-l-4 border-l-transparent bg-paper hover:bg-[var(--app-canvas)]"} ${read ? "text-muted" : "text-ink"} ${asset && imageAvailable ? "grid-cols-[40px_minmax(0,1fr)_auto]" : "grid-cols-[40px_minmax(0,1fr)]"}`}>
-      <div className="col-start-1 row-start-1 flex flex-col items-center gap-2">
+      <div className="col-start-1 row-start-1 flex flex-col items-center">
         <SourceLogo article={article} />
-        {onToggleRead ? (
-          <button
-            type="button"
-            onClick={onToggleRead}
-            aria-label={read ? `将“${article.title}”标为未读` : `将“${article.title}”标为已读`}
-            title={read ? "标为未读" : "标为已读"}
-            className="grid h-7 w-7 place-items-center border-0 bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-red"
-          >
-            <span aria-hidden="true" className={`h-2.5 w-2.5 border ${read ? "border-muted bg-transparent" : "border-red bg-red"}`} />
-          </button>
-        ) : null}
       </div>
       <Link to={`/times/${article.issueDate}/${encodeURIComponent(article.id)}`} className="min-w-0 text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-red">
         <span className="flex min-w-0 items-center gap-2 font-sans text-[10px] font-bold text-muted">

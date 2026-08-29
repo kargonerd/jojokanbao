@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const timesMocks = vi.hoisted(() => ({
@@ -12,6 +12,7 @@ const timesMocks = vi.hoisted(() => ({
 vi.mock("../src/times/api", () => ({ timesApi: timesMocks }));
 
 import { TimesHomePage } from "../src/times/pages/TimesHomePage";
+import TimesRoutes from "../src/times/TimesRoutes";
 import { useTimesReadStore } from "../src/times/readStore";
 
 const source = { id: "ap", name: "AP News", language: "en" };
@@ -56,7 +57,7 @@ class TestIntersectionObserver implements IntersectionObserver {
 
 beforeEach(() => {
   window.localStorage.clear();
-  useTimesReadStore.setState({ ownerKey: "", readById: {}, loadedById: {}, error: "" });
+  useTimesReadStore.setState({ readById: {} });
   timesMocks.timelineIndex.mockResolvedValue({
     formatVersion: "jojo-news-timeline-index/1",
     updatedAt: "2026-08-27T05:00:00.000Z",
@@ -96,7 +97,7 @@ describe("Times timeline images", () => {
 
     await screen.findByText(article.title);
     expect(screen.queryByText("Global wire · ten-minute edition")).toBeNull();
-    expect(screen.getByRole("button", { name: "全部" })).toBeTruthy();
+    expect(screen.queryByLabelText("阅读状态筛选")).toBeNull();
     expect(screen.getByRole("button", { name: /所有媒体/ })).toBeTruthy();
     const sourceButton = screen.getByRole("button", { name: new RegExp(source.name) });
     expect(sourceButton).toBeTruthy();
@@ -125,6 +126,7 @@ describe("Times timeline images", () => {
     const title = within(articleList).getByText(article.title);
     const summary = within(articleList).getByText(article.summary);
     expect(image.getAttribute("src")).toBe("blob:timeline-lead");
+    expect(image.closest("a")?.className).not.toContain("border-l-2");
     expect(title.style.webkitLineClamp).toBe("2");
     expect(summary.style.webkitLineClamp).toBe("3");
     await screen.findByText("Archived article body");
@@ -142,17 +144,22 @@ describe("Times timeline images", () => {
     expect(screen.queryByRole("img")).toBeNull();
   });
 
-  it("shows unread state and lets the reader mark an article read or unread", async () => {
-    render(<MemoryRouter><TimesHomePage /></MemoryRouter>);
+  it("subtly styles an article as viewed after it is explicitly opened", async () => {
+    render(<MemoryRouter initialEntries={["/times"]}><Routes><Route path="/times/*" element={<TimesRoutes />} /></Routes></MemoryRouter>);
 
     await screen.findByText(article.title);
-    const markRead = screen.getByRole("button", { name: `将“${article.title}”标为已读` });
-    expect(markRead.closest("article")?.getAttribute("data-read")).toBe("false");
-    fireEvent.click(markRead);
+    const articleList = screen.getByRole("region", { name: "文章列表" });
+    const title = within(articleList).getByText(article.title);
+    const articleRow = title.closest("article");
+    expect(articleRow?.getAttribute("data-read")).toBe("false");
+    expect(title.className).toContain("font-black");
+    expect(screen.queryByText(/未读/u)).toBeNull();
 
-    await waitFor(() => expect(screen.getByRole("button", { name: `将“${article.title}”标为未读` })).toBeTruthy());
-    expect(screen.getByRole("button", { name: "未读 0" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: `将“${article.title}”标为未读` }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "未读 1" })).toBeTruthy());
+    fireEvent.click(within(articleList).getAllByRole("link", { name: new RegExp(article.title) })[0]!);
+    await waitFor(() => expect(useTimesReadStore.getState().readById[article.id]).toBe(true));
+    expect(articleRow?.getAttribute("data-read")).toBe("true");
+    expect(title.className).toContain("font-medium");
+    expect(title.className).toContain("text-muted");
+    expect(screen.queryByRole("button", { name: /标为/u })).toBeNull();
   });
 });
