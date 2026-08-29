@@ -31,11 +31,12 @@ FastAPI 当前不在 RAG 请求链路里，因此不承担 Feature Flag 查询�
 | `key` | 稳定键，例如 `rag.workspace` |
 | `description` | 管理说明 |
 | `rules jsonb` | 按执行顺序保存完整规则链，用户集合也在规则内 |
+| `config jsonb` | 少量、按 Flag 定义的运行时配置；例如划线公开人数阈值 |
 | `revision bigint` | 只增不减的乐观锁版本 |
-| `history jsonb` | 每次发布后的完整快照、原因、请求 ID 和时间 |
+| `history jsonb` | 每次发布后的规则与配置快照、原因、请求 ID 和时间 |
 | `updated_at` | 最后修改时间 |
 
-不拆 Feature、规则和规则用户三张表。发布时原子替换整份 `rules` 文档。
+不拆 Feature、规则、规则用户或单行设置表。发布时原子替换整份 `rules` 和 `config` 文档。
 
 规则字段包括：
 
@@ -48,7 +49,9 @@ FastAPI 当前不在 RAG 请求链路里，因此不承担 Feature Flag 查询�
 - `enabled`、`isFallback`
 - `userIds`
 
-`revision` 用于防止旧页面覆盖新修改。回滚不是把 revision 倒退，而是把历史快照重新发布成一个新 revision，因此回滚操作本身也有记录。
+`revision` 用于防止旧页面覆盖新修改。回滚不是把 revision 倒退，而是把历史中的规则和配置一起重新发布成一个新 revision，因此回滚操作本身也有记录。
+
+`reader.annotations` 当前使用 `config.publicMarkThreshold = 2`。数据库函数读取该值决定划线何时对其他读者公开；配置缺失或损坏时回退到 2。阈值不放在前端，避免绕过客户端后读取未达到公开条件的划线。
 
 ## 3. 判定规则
 
@@ -145,7 +148,7 @@ RAG 页面和 RAG 请求统一使用一个 Flag：`rag.workspace`，不再另设
 
 ## 8. 管理台与测试
 
-“JOJO 管理台”位于 `tools/jojo-admin`，本地通过 `pnpm dev:admin` 启动。功能开关页面支持规则增删、暂停、排序、时间窗、整数百分比、发布原因、revision 冲突提示、修改记录和一键回滚。
+“JOJO 管理台”位于 `tools/jojo-admin`，本地通过 `pnpm dev:admin` 启动。功能开关页面支持规则增删、暂停、排序、时间窗、整数百分比、按 Flag 编辑结构化配置、发布原因、revision 冲突提示、修改记录和一键回滚。
 
 测试覆盖：
 

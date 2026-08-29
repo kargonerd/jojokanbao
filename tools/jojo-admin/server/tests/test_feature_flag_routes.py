@@ -74,6 +74,7 @@ def test_routes_list_and_publish_without_browser_login():
         "key": "rag.workspace",
         "revision": 8,
         "rules": [],
+        "config": {},
         "history": [],
     }
     with patch("feature_flag_routes.SupabaseFeatureFlagAdminClient") as client_class:
@@ -83,6 +84,7 @@ def test_routes_list_and_publish_without_browser_login():
         published = client.post("/api/features/publish", json={
             "key": "rag.workspace",
             "rules": [],
+            "config": {},
             "expectedRevision": 7,
             "reason": "调整规则",
             "requestId": "request-1",
@@ -93,12 +95,13 @@ def test_routes_list_and_publish_without_browser_login():
     assert published.status_code == 200
     call = client_class.return_value.publish.call_args.args[0]
     assert call["p_expected_revision"] == 7
+    assert call["p_config"] == {}
     assert "operatorToken" not in published.get_json()
 
 
 def test_route_rolls_back_without_exposing_the_operator_token():
     client = app.test_client()
-    updated = {"key": "rag.workspace", "revision": 9, "rules": [], "history": []}
+    updated = {"key": "rag.workspace", "revision": 9, "rules": [], "config": {}, "history": []}
     with patch("feature_flag_routes.SupabaseFeatureFlagAdminClient") as client_class:
         client_class.return_value.rollback.return_value = updated
         response = client.post("/api/features/rollback", json={
