@@ -20,6 +20,11 @@ on:
         type: string
         default: ""
         required: false
+      proxy_rotation_attempts:
+        description: Proxy candidates for a manual maintenance run (1-50; automatic runs always use 12)
+        type: string
+        default: "12"
+        required: true
       publish:
         description: Commit Raw to the configured HF Dataset
         type: boolean
@@ -44,16 +49,25 @@ jobs:
       TIMES_SINCE_HOURS: ${{ inputs.automatic && '1' || inputs.since_hours || '24' }}
       TIMES_SOURCES: ${{ inputs.sources || '' }}
       TIMES_PUBLISH: ${{ inputs.automatic || inputs.publish }}
+      TIMES_PROXY_ROTATION_ATTEMPTS: ${{ inputs.automatic && '12' || inputs.proxy_rotation_attempts || '12' }}
       JOJO_TIMES_PROXY_URI: ${{ secrets.JOJO_TIMES_PROXY_URI }}
       JOJO_TIMES_PROXY_SUBSCRIPTION: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Validate external scheduler inputs
-        if: inputs.automatic && (inputs.since_hours != '1' || inputs.sources != '' || inputs.publish != true)
+        if: inputs.automatic && (inputs.since_hours != '1' || inputs.sources != '' || inputs.proxy_rotation_attempts != '12' || inputs.publish != true)
         run: |
-          echo "Automatic runs must use since_hours=1, all sources, and publish=true" >&2
+          echo "Automatic runs must use since_hours=1, all sources, proxy_rotation_attempts=12, and publish=true" >&2
           exit 1
+
+      - name: Validate capture inputs
+        run: |
+          if ! [[ "$TIMES_PROXY_ROTATION_ATTEMPTS" =~ ^[1-9][0-9]*$ ]] \
+            || (( TIMES_PROXY_ROTATION_ATTEMPTS > 50 )); then
+            echo "proxy_rotation_attempts must be an integer from 1 to 50" >&2
+            exit 1
+          fi
 
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
 
@@ -219,7 +233,7 @@ jobs:
             args+=(
               --proxy-server "$JOJO_TIMES_PROXY_URI"
               --proxy-control-url http://127.0.0.1:9090
-              --proxy-rotation-attempts 12
+              --proxy-rotation-attempts "$TIMES_PROXY_ROTATION_ATTEMPTS"
               --proxy-exhaustive-tail 3
             )
           fi

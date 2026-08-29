@@ -107,7 +107,6 @@
   "fetch": {
     "strategy": "browser-first",
     "bpc": true,
-    "retryWithoutBpcOnBlocked": true,
     "proxyPolicy": "rotate"
   },
   "health": {
