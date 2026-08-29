@@ -364,5 +364,12 @@ describe("article processing", () => {
     expect(processed.contentStatus).toBe("full");
     expect(candidate).not.toHaveProperty("processedBody");
     expect(candidate.contentStatus).toBe("summary");
+
+    const skipped = await processArticle(output, source, {
+      ...candidate,
+      captureStatus: "skipped",
+    }, { capture: "http", bodySelectors: ["article"] });
+    expect(skipped.processedBody).toBeUndefined();
+    expect(skipped.contentStatus).toBe("summary");
   });
 });

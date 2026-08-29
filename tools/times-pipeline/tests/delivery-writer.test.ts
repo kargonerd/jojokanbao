@@ -137,4 +137,96 @@ describe("news Delivery writer", () => {
     expect(sourceIndex.aiEnabled).toBe(false);
     await expect(readFile(path.join(deliveryRoot, "content/newspapers/times/index.jox"))).rejects.toMatchObject({ code: "ENOENT" });
   });
+
+  it("removes newly classified unsupported media from mutable Delivery indexes", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "jojo-news-removal-workspace-"));
+    const deliveryRoot = await mkdtemp(path.join(os.tmpdir(), "jojo-news-removal-output-"));
+    const date = "2026-08-23";
+    const removedId = "example:transcript";
+    const keptId = "example:written";
+    const article = (id: string, title: string) => ({
+      id,
+      title,
+      contentStatus: "full" as const,
+      url: `https://example.test/${id}`,
+      publishedAt: "2026-08-23T09:30:00.000Z",
+      issueDate: date,
+      language: "en",
+      source: { id: source.id, name: source.name, language: source.language },
+      articleObject: `content/newspapers/example/articles/${id}.jox`,
+      assets: [],
+    });
+    const previousDay: TimesTimelineDay = {
+      formatVersion: "jojo-news-timeline-day/1",
+      date,
+      updatedAt: "2026-08-23T09:00:00.000Z",
+      articles: [article(removedId, "Audio transcript"), article(keptId, "Written report")],
+    };
+    const previousTimeline: TimesTimelineIndex = {
+      formatVersion: "jojo-news-timeline-index/1",
+      updatedAt: previousDay.updatedAt,
+      dates: [{ date, object: "dates/2026/08/2026-08-23.jox", articleCount: 2 }],
+      sources: [{ id: source.id, name: source.name, language: source.language }],
+    };
+    const previousSource: TimesSourceIndex = {
+      formatVersion: "jojo-delivery-index/1",
+      revision: 1,
+      datasetId: "news-example",
+      type: "newspaper",
+      title: source.name,
+      language: source.language,
+      source: { id: source.id, name: source.name, language: source.language },
+      items: [{
+        itemId: `example:${date}`,
+        itemKey: date,
+        type: "newspaper",
+        order: 1,
+        title: `Example News · ${date}`,
+        manifestObject: "dates/2026/08/2026-08-23.jox",
+      }],
+      updatedAt: previousDay.updatedAt,
+    };
+    const processSource: CanonicalWriteResult = {
+      sourceId: source.id,
+      dates: [date],
+      articles: [],
+      files: [],
+      skippedWithoutFullText: 1,
+      unchangedWithoutRefresh: 0,
+      unchangedArticles: [],
+      skippedArticles: [{
+        articleId: removedId,
+        title: "Audio transcript",
+        canonicalUrl: "https://example.test/transcript",
+        publishedAt: "2026-08-23T09:30:00.000Z",
+        reason: "unsupported-media",
+        contentStatus: "summary",
+        captureStatus: "skipped",
+      }],
+    };
+
+    await buildNewsDelivery({
+      workspaceRoot,
+      deliveryRoot,
+      generatedAt: "2026-08-23T10:00:00.000Z",
+      sources: [source],
+      process: { sources: [processSource] },
+      previousTimelineIndex: previousTimeline,
+      previousTimelineDays: new Map([[date, previousDay]]),
+      previousSourceIndexes: new Map([[source.id, previousSource]]),
+    });
+
+    const dayObject = "content/timeline/dates/2026/08/2026-08-23.jox";
+    const day = await gunzipJoxJson<TimesTimelineDay>(
+      new Uint8Array(await readFile(path.join(deliveryRoot, ...dayObject.split("/")))),
+      dayObject,
+    );
+    expect(day.articles.map((row) => row.id)).toEqual([keptId]);
+    const manifestObject = "content/newspapers/example/dates/2026/08/2026-08-23.jox";
+    const manifest = await gunzipJoxJson<TimesDateManifest>(
+      new Uint8Array(await readFile(path.join(deliveryRoot, ...manifestObject.split("/")))),
+      manifestObject,
+    );
+    expect(manifest.metadata.articles.map((row) => row.id)).toEqual([keptId]);
+  });
 });

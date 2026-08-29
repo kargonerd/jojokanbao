@@ -62,3 +62,24 @@ export function pendingArticles(
     || right.publishedAt.localeCompare(left.publishedAt)
     || left.articleId.localeCompare(right.articleId));
 }
+
+export function selectRunArticles<T extends PageArticle>(
+  articles: readonly T[],
+  pending: readonly T[],
+  options: { now: Date; processWindowHours: number },
+): { articles: T[]; recoveryArticleIds: Set<string> } {
+  if (!Number.isFinite(options.processWindowHours) || options.processWindowHours <= 0) {
+    throw new Error("Process window must be positive");
+  }
+  const cutoff = options.now.valueOf() - options.processWindowHours * 3_600_000;
+  const pendingIds = new Set(pending.map((article) => article.articleId));
+  const recoveryArticleIds = new Set<string>();
+  const selected = articles.filter((article) => {
+    const published = timestamp(article.publishedAt);
+    if (published !== undefined && published >= cutoff) return true;
+    if (!pendingIds.has(article.articleId)) return false;
+    recoveryArticleIds.add(article.articleId);
+    return true;
+  });
+  return { articles: selected, recoveryArticleIds };
+}

@@ -33,7 +33,7 @@ Brasil。央视新闻、财新、WSJ、第一财经、Indian Express 和证券�
 - NYT 的 BPC 请求若被 401/403/429 拒绝，会在同一节点用新的 Playwright Brave 原生 profile 重试，避免 BPC 的站点 UA 规则本身触发拦截；
 - 同一媒体串行复用 Cookie，不同媒体默认最多八路并行；
 - 401/403/429、JS challenge 或正文不完整不会被判成硬付费墙；需要代理的媒体在失败文章之间轮换探针，每个备用节点只探测一篇，最多验证 12 个分散的 Mihomo 节点，命中后才补抓该媒体剩余文章；
-- 视频和图集在发现阶段跳过；只有完整正文进入 Canonical/Delivery，摘要只留在 Raw 审计数据。
+- 无正文的视频在发现阶段跳过；完整文字新闻和由出版方图片构成的图文报道进入 Canonical/Delivery，摘要只留在 Raw 审计数据。
 
 ## 本地运行
 
@@ -50,6 +50,9 @@ node tools/times-pipeline/dist/src/page-capture-cli.js --config tools/times-pipe
 node tools/times-pipeline/dist/src/process-cli.js --config tools/times-pipeline/sources.v2.json --output $env:TEMP/jojo-times --run-manifest '<runManifest>' --raw-revision local
 node tools/times-pipeline/dist/src/delivery-cli.js --config tools/times-pipeline/sources.v2.json --output $env:TEMP/jojo-times --process-result '<process-result.json>' --delivery-output $env:TEMP/jojo-times-delivery
 ~~~
+
+自动轮次使用 24 小时发现回看，但只把最近 1 小时以及状态缓存中从未见过或仍需重试的 URL 送入页面抓取和
+Canonical 处理。这样可以补到媒体延迟加入栏目页的文章，又不会每十分钟重复处理整天数据。
 
 ## 存储
 

@@ -87,6 +87,9 @@ export async function processArticle(
   fetchPolicy?: SourceFetchPolicy,
   sourceExtractor?: ArticleBodyExtractor,
 ): Promise<ProcessedCandidate> {
+  if (candidate.captureStatus === "skipped" || candidate.captureStatus === "hard-paywall") {
+    return { ...candidate };
+  }
   const renderedHtml = await renderedPageHtml(output, candidate);
   const quality = bodyQuality(source);
   const pageBody = renderedHtml

@@ -177,6 +177,7 @@ export async function writeCanonicalSource(
   const created: CanonicalArticleRef[] = [];
   const files = [datasetObject];
   const byDate = new Map<string, CanonicalArticleRef[]>();
+  const removedByDate = new Map<string, Set<string>>();
   const skippedArticles: CanonicalWriteResult["skippedArticles"] = [];
   const unchangedArticles: CanonicalWriteResult["unchangedArticles"] = [];
   for (const candidate of candidates) {
@@ -207,6 +208,10 @@ export async function writeCanonicalSource(
         ...(candidate.captureStatus ? { captureStatus: candidate.captureStatus } : {}),
         ...(candidate.captureHttpStatus !== undefined ? { captureHttpStatus: candidate.captureHttpStatus } : {}),
       });
+      if (candidate.captureStatus === "skipped") {
+        const date = new Date(candidate.publishedAt).toISOString().slice(0, 10);
+        removedByDate.set(date, new Set([...(removedByDate.get(date) ?? []), candidate.articleId]));
+      }
       continue;
     }
     const article = canonicalArticle(candidate, value, manifest, manifestObject, rawRevision, source.content.parser);
@@ -221,13 +226,18 @@ export async function writeCanonicalSource(
     byDate.set(date, [...(byDate.get(date) ?? []), ref]);
   }
 
-  for (const [date, refs] of byDate) {
+  const affectedDates = new Set([...byDate.keys(), ...removedByDate.keys()]);
+  for (const date of affectedDates) {
+    const refs = byDate.get(date) ?? [];
     const [year, month] = date.split("-");
     if (!year || !month) continue;
     const object = `canonical/${source.id}/dates/${year}/${month}/${date}.json.gz`;
     const target = path.join(output, ...object.split("/"));
     const previous = await existingDate(target);
-    const merged = new Map((previous?.articles ?? []).map((article) => [article.articleId, article]));
+    const removed = removedByDate.get(date) ?? new Set<string>();
+    const merged = new Map((previous?.articles ?? [])
+      .filter((article) => !removed.has(article.articleId))
+      .map((article) => [article.articleId, article]));
     for (const ref of refs) merged.set(ref.articleId, ref);
     const dateIndex: CanonicalDateIndex = {
       formatVersion: "jojo-news-date/1",
@@ -242,7 +252,7 @@ export async function writeCanonicalSource(
   }
   return {
     sourceId: source.id,
-    dates: [...byDate.keys()].sort(),
+    dates: [...affectedDates].sort(),
     articles: created,
     files: [...new Set(files)],
     skippedWithoutFullText: skippedArticles.length,
