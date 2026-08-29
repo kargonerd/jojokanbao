@@ -263,6 +263,9 @@ export interface SourceCaptureManifest {
   objects: Array<{ path: string; size: number; sha256: string }>;
   captureStatus: "discovery-complete" | "pages-complete";
   pageCapture?: {
+    lookbackCandidates?: number;
+    processWindowHours?: number;
+    recoveryCandidates?: number;
     planned: number;
     captured: number;
     unchanged: number;

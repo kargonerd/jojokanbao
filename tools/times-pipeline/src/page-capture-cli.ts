@@ -10,7 +10,13 @@ import { unavailablePageReason } from "./capture/availability.js";
 import { BrowserSourceSession } from "./capture/browser.js";
 import { downloadDirectAsset, fetchDirectPage, type CapturedHtmlPage } from "./capture/http.js";
 import { discoverArticleImages } from "./capture/page-images.js";
-import { articleFingerprint, pendingArticles, type PageArticle, type PageCaptureState } from "./capture/pending.js";
+import {
+  articleFingerprint,
+  pendingArticles,
+  selectRunArticles,
+  type PageArticle,
+  type PageCaptureState,
+} from "./capture/pending.js";
 import { proxyCandidates, selectProxy } from "./capture/proxy.js";
 import { writeRawPage } from "./capture/raw-page.js";
 import {
@@ -120,10 +126,19 @@ async function completeCapture(
     ? hasArticleBody(article.candidate.discoveryBody, article.fetchPolicy, quality, sourceExtractor, article.canonicalUrl)
     : false;
   const hasFullBody = pageHasBody || discoveryHasBody;
-  const images = page.renderedHtml
+  const availabilityInput = {
+    title: article.title,
+    url: page.finalUrl,
+    ...(page.renderedHtml ? { html: page.renderedHtml } : {}),
+    hasFullBody,
+  };
+  const unavailableReason = unavailablePageReason(availabilityInput)
+    ?? sourceUnavailablePageReason(article.source, availabilityInput);
+  const fullBody = hasFullBody && unavailableReason === undefined;
+  const images = fullBody && page.renderedHtml
     ? discoverArticleImages(page.renderedHtml, page.finalUrl, article.fetchPolicy, sourceImageExtractor(article.sourceId))
     : [];
-  const session = page.method === "browser" && browser ? await browser() : undefined;
+  const session = images.length > 0 && page.method === "browser" && browser ? await browser() : undefined;
   const assets = await captureArticleAssets({
     workspace,
     sourceId: article.sourceId,
@@ -133,15 +148,7 @@ async function completeCapture(
       ? session.downloadAsset(url, referer, timeoutSeconds)
       : downloadDirectAsset(url, referer, timeoutSeconds),
   });
-  const availabilityInput = {
-    title: article.title,
-    url: page.finalUrl,
-    ...(page.renderedHtml ? { html: page.renderedHtml } : {}),
-    hasFullBody,
-  };
-  const unavailableReason = unavailablePageReason(availabilityInput)
-    ?? sourceUnavailablePageReason(article.source, availabilityInput);
-  article.candidate.contentStatus = hasFullBody
+  article.candidate.contentStatus = fullBody
     ? "full"
     : article.candidate.summary?.trim()
       ? "summary"
@@ -150,7 +157,6 @@ async function completeCapture(
   article.candidate.capturedAt = page.capturedAt;
   article.candidate.captureMethod = page.method;
   if (page.status !== undefined) article.candidate.captureHttpStatus = page.status;
-  const fullBody = hasFullBody;
   article.candidate.captureStatus = fullBody
     ? "captured"
     : unavailableReason === "HardPaywall"
@@ -208,8 +214,16 @@ async function loadArticles(workspace: string, run: RawRunManifest, sources: Map
   return articles;
 }
 
-async function persistSources(workspace: string, articles: ArticleBundle[], states: Map<string, PageCaptureState>): Promise<void> {
+async function persistSources(
+  workspace: string,
+  articles: ArticleBundle[],
+  lookbackArticles: ArticleBundle[],
+  states: Map<string, PageCaptureState>,
+  processWindowHours: number,
+  recoveryArticleIds: ReadonlySet<string>,
+): Promise<void> {
   const byManifest = new Map<string, ArticleBundle[]>();
+  for (const article of lookbackArticles) if (!byManifest.has(article.manifestPath)) byManifest.set(article.manifestPath, []);
   for (const article of articles) byManifest.set(article.manifestPath, [...(byManifest.get(article.manifestPath) ?? []), article]);
   for (const [manifestPath, rows] of byManifest) {
     const runRoot = path.dirname(manifestPath);
@@ -217,12 +231,18 @@ async function persistSources(workspace: string, articles: ArticleBundle[], stat
     await writeFile(candidatePath, gzipSync(`${rows.map((row) => JSON.stringify(row.candidate)).join("\n")}\n`, { level: 9 }));
     const manifest = json<SourceCaptureManifest>(await readFile(manifestPath, "utf8"));
     const candidates = rows.map((row) => row.candidate);
+    const lookbackCandidates = lookbackArticles.filter((article) => article.manifestPath === manifestPath).length;
     const runFiles = (await filesBelow(runRoot)).filter((target) => target !== manifestPath);
+    manifest.candidateCount = candidates.length;
     manifest.fullCount = candidates.filter((candidate) => candidate.contentStatus === "full").length;
     manifest.summaryCount = candidates.filter((candidate) => candidate.contentStatus === "summary").length;
     manifest.metadataCount = candidates.filter((candidate) => candidate.contentStatus === "metadata").length;
     manifest.captureStatus = "pages-complete";
+    manifest.healthStatus = candidates.length ? "healthy" : "empty";
     manifest.pageCapture = {
+      lookbackCandidates,
+      processWindowHours,
+      recoveryCandidates: rows.filter((row) => recoveryArticleIds.has(row.articleId)).length,
       planned: candidates.filter((candidate) => candidate.captureStatus !== "unchanged").length,
       captured: candidates.filter((candidate) => candidate.captureStatus === "captured").length,
       unchanged: candidates.filter((candidate) => candidate.captureStatus === "unchanged").length,
@@ -250,12 +270,14 @@ async function main(): Promise<void> {
   const configPath = path.resolve(requiredArg(args, "config"));
   const sourceWorkers = Number(args.get("source-workers") ?? args.get("workers") ?? "4");
   const timeoutSeconds = Number(args.get("timeout") ?? "30");
+  const processWindowHours = Number(args.get("process-window-hours") ?? "24");
   const refreshHours = Number(args.get("refresh-hours") ?? "24");
   const retryHours = Number(args.get("retry-hours") ?? "2");
   const rotationAttempts = Number(args.get("proxy-rotation-attempts") ?? "0");
   const proxyExhaustiveTail = Number(args.get("proxy-exhaustive-tail") ?? "0");
-  if (![sourceWorkers, timeoutSeconds, refreshHours, retryHours, rotationAttempts, proxyExhaustiveTail].every(Number.isFinite)
-    || !Number.isInteger(sourceWorkers) || sourceWorkers < 1 || timeoutSeconds <= 0 || refreshHours <= 0 || retryHours <= 0
+  if (![sourceWorkers, timeoutSeconds, processWindowHours, refreshHours, retryHours, rotationAttempts, proxyExhaustiveTail].every(Number.isFinite)
+    || !Number.isInteger(sourceWorkers) || sourceWorkers < 1 || timeoutSeconds <= 0 || processWindowHours <= 0
+    || refreshHours <= 0 || retryHours <= 0
     || !Number.isInteger(rotationAttempts) || rotationAttempts < 0
     || !Number.isInteger(proxyExhaustiveTail) || proxyExhaustiveTail < 0) {
     throw new Error("Capture workers, timeouts and retry intervals must be valid");
@@ -270,8 +292,10 @@ async function main(): Promise<void> {
   }
   const generatedAt = new Date();
   const pending = pendingArticles(articles, states, { now: generatedAt, retentionDays: 7, refreshHours, retryHours }) as ArticleBundle[];
+  const selection = selectRunArticles(articles, pending, { now: generatedAt, processWindowHours });
+  const selectedArticles = selection.articles;
   const pendingIds = new Set(pending.map((article) => article.articleId));
-  for (const article of articles) if (!pendingIds.has(article.articleId)) article.candidate.captureStatus = "unchanged";
+  for (const article of selectedArticles) if (!pendingIds.has(article.articleId)) article.candidate.captureStatus = "unchanged";
   const best = new Map<string, CaptureOutcome>();
   const extensionPath = args.get("browser-extension-path") ? path.resolve(args.get("browser-extension-path")!) : undefined;
   const proxyServer = args.get("proxy-server");
@@ -411,7 +435,14 @@ async function main(): Promise<void> {
     };
     state.updatedAt = generatedAt.toISOString();
   }
-  await persistSources(workspace, articles, states);
+  await persistSources(
+    workspace,
+    selectedArticles,
+    articles,
+    states,
+    processWindowHours,
+    selection.recoveryArticleIds,
+  );
   const outcomes = [...best.values()];
   const failures = pending.flatMap((article) => {
     const outcome = best.get(article.articleId);
@@ -429,12 +460,15 @@ async function main(): Promise<void> {
     }];
   });
   const perSource = [...new Set(articles.map((article) => article.sourceId))].sort().map((sourceId) => {
-    const sourceArticles = articles.filter((article) => article.sourceId === sourceId);
+    const sourceArticles = selectedArticles.filter((article) => article.sourceId === sourceId);
+    const sourceLookbackArticles = articles.filter((article) => article.sourceId === sourceId);
     const sourcePending = pending.filter((article) => article.sourceId === sourceId);
     const sourceOutcomes = sourcePending.map((article) => best.get(article.articleId)).filter((outcome): outcome is CaptureOutcome => Boolean(outcome));
     return {
       sourceId,
       discovered: sourceArticles.length,
+      lookbackDiscovered: sourceLookbackArticles.length,
+      recoveryCandidates: sourceArticles.filter((article) => selection.recoveryArticleIds.has(article.articleId)).length,
       planned: sourcePending.length,
       captured: sourceOutcomes.filter((outcome) => outcome.fullBody).length,
       failed: sourceOutcomes.filter((outcome) => !outcome.fullBody && !outcome.unavailableReason).length,
@@ -448,7 +482,10 @@ async function main(): Promise<void> {
     formatVersion: "jojo-page-capture-run/1",
     runId: run.runId,
     generatedAt: generatedAt.toISOString(),
-    discovered: articles.length,
+    discovered: selectedArticles.length,
+    lookbackDiscovered: articles.length,
+    processWindowHours,
+    recoveryCandidates: selection.recoveryArticleIds.size,
     planned: pending.length,
     captured: outcomes.filter((outcome) => outcome.fullBody).length,
     failed: outcomes.filter((outcome) => !outcome.fullBody && !outcome.unavailableReason).length,

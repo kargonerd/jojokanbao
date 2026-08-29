@@ -11,7 +11,7 @@ on:
         default: false
         required: true
       since_hours:
-        description: Discovery window in hours
+        description: Primary processing window in hours
         type: string
         default: "24"
         required: true
@@ -46,7 +46,8 @@ jobs:
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       HF_TIMES_DATASET_REPO: ${{ secrets.HF_TIMES_DATASET_REPO || secrets.HF_DATASET_REPO }}
-      TIMES_SINCE_HOURS: ${{ inputs.automatic && '1' || inputs.since_hours || '24' }}
+      TIMES_DISCOVERY_HOURS: ${{ inputs.automatic && '24' || inputs.since_hours || '24' }}
+      TIMES_PROCESS_WINDOW_HOURS: ${{ inputs.automatic && '1' || inputs.since_hours || '24' }}
       TIMES_SOURCES: ${{ inputs.sources || '' }}
       TIMES_PUBLISH: ${{ inputs.automatic || inputs.publish }}
       TIMES_PROXY_ROTATION_ATTEMPTS: ${{ inputs.automatic && '12' || inputs.proxy_rotation_attempts || '12' }}
@@ -63,6 +64,12 @@ jobs:
 
       - name: Validate capture inputs
         run: |
+          if ! [[ "$TIMES_DISCOVERY_HOURS" =~ ^[1-9][0-9]*$ ]] \
+            || ! [[ "$TIMES_PROCESS_WINDOW_HOURS" =~ ^[1-9][0-9]*$ ]] \
+            || (( TIMES_PROCESS_WINDOW_HOURS > TIMES_DISCOVERY_HOURS )); then
+            echo "Discovery and process windows must be positive integers, with process no larger than discovery" >&2
+            exit 1
+          fi
           if ! [[ "$TIMES_PROXY_ROTATION_ATTEMPTS" =~ ^[1-9][0-9]*$ ]] \
             || (( TIMES_PROXY_ROTATION_ATTEMPTS > 50 )); then
             echo "proxy_rotation_attempts must be an integer from 1 to 50" >&2
@@ -180,7 +187,7 @@ jobs:
           args=(
             --config tools/times-pipeline/sources.v2.json
             --output "$RUNNER_TEMP/jojo-times"
-            --since-hours "$TIMES_SINCE_HOURS"
+            --since-hours "$TIMES_DISCOVERY_HOURS"
             --workers 8
           )
           if [ -n "$TIMES_SOURCES" ]; then
@@ -208,7 +215,7 @@ jobs:
             console.log([
               `${row.sourceId}: ${row.status}, ${row.output?.candidates || 0} candidate(s)`,
               manifest?.publicationTimeZone ? `timezone=${manifest.publicationTimeZone}` : undefined,
-              window ? `window=${window.accepted}/${window.discovered}` : undefined,
+              window ? `lookback=${window.accepted}/${window.discovered}` : undefined,
               window ? `future=${window.afterWindow}` : undefined,
               window ? `invalid=${window.invalidTimestamp}` : undefined,
             ].filter(Boolean).join(", "));
@@ -224,6 +231,7 @@ jobs:
             --run-manifest "$TIMES_RUN_MANIFEST"
             --source-workers 8
             --timeout 30
+            --process-window-hours "$TIMES_PROCESS_WINDOW_HOURS"
             --refresh-hours 168
             --retry-hours 0.15
             --browser-extension-path "$BPC_EXTENSION_PATH"
@@ -274,17 +282,22 @@ jobs:
           }
           const report = JSON.parse(fs.readFileSync(path, "utf8"));
           const rows = report.results || [];
-          console.log(`- Run: \`${report.runId}\``);
-          console.log(`- Sources: ${rows.filter((row) => row.status === "ok").length}/${rows.length}`);
-          console.log(`- Candidates: ${rows.reduce((sum, row) => sum + (row.output?.candidates || 0), 0)}`);
-          console.log(`- Errors: ${rows.filter((row) => row.status === "error").length}`);
-          console.log(`- Published to HF: ${process.env.TIMES_PUBLISH === "true" ? "yes" : "no (artifact only)"}`);
           const capturePath = process.env.RUNNER_TEMP + "/page-capture-result.json";
           let pages;
           try {
             const body = fs.existsSync(capturePath) ? fs.readFileSync(capturePath, "utf8").trim() : "";
             pages = body ? JSON.parse(body) : undefined;
           } catch {}
+          console.log(`- Run: \`${report.runId}\``);
+          const selectedSources = pages?.perSource?.filter((row) => row.discovered > 0).length;
+          console.log(`- Sources: ${selectedSources ?? rows.filter((row) => row.status === "ok").length}/${rows.length}`);
+          console.log(`- Candidates: ${pages?.discovered ?? rows.reduce((sum, row) => sum + (row.output?.candidates || 0), 0)}`);
+          if (pages?.lookbackDiscovered !== undefined) {
+            console.log(`- Discovery lookback: ${pages.lookbackDiscovered} candidates; process window: ${pages.processWindowHours || 1}h`);
+            console.log(`- Recovery candidates: ${pages.recoveryCandidates || 0}`);
+          }
+          console.log(`- Errors: ${rows.filter((row) => row.status === "error").length}`);
+          console.log(`- Published to HF: ${process.env.TIMES_PUBLISH === "true" ? "yes" : "no (artifact only)"}`);
           if (pages) {
             console.log(`- Page capture: ${pages.captured}/${pages.planned} full pages, ${pages.failed} failures`);
             console.log(`- Excluded: ${pages.skipped} non-text media, ${pages.hardPaywall} hard paywall`);
