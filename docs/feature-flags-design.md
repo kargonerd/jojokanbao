@@ -139,8 +139,8 @@ RAG 页面和 RAG 请求统一使用一个 Flag：`rag.workspace`，不再另设
 | `reader.annotations` | `authenticated → ON`，`global → OFF` | 划线、想法、AI 解释写入和对应 RLS |
 | `rag.workspace` | `users(空) → ON`，`global → OFF` | RAG 页面和真实请求 |
 
-首页、资料库、搜索、关于、登录、基础阅读和 Times 不放入首批 Flag。RAG 同时使用
-`VITE_ENABLE_RAG` 构建开关和 `rag.workspace` 服务端开关；Times 只使用
+首页、资料库、搜索、关于、登录、基础阅读和 RAG 路由随新版 Web 一起构建，不再维护
+账号或 RAG 的独立构建开关。`rag.workspace` 是唯一的 RAG 功能权限开关；Times 仍使用
 `VITE_ENABLE_TIMES` 构建开关，不依赖 Supabase 运行时配置。
 
 ## 8. 管理台与测试

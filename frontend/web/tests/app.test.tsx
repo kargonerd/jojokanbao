@@ -122,16 +122,18 @@ describe("JOJO Web routes and Archive homepage", () => {
     await waitFor(() => expect(window.location.pathname).toBe("/library"));
   });
 
-  it("keeps unfinished modules disabled by default", () => {
-    for (const path of ["/rag", "/times"]) {
-      const view = renderAt(path);
-      expect(screen.getByRole("heading", { name: "404 Not Found" })).toBeTruthy();
-      view.unmount();
-      cleanup();
-    }
+  it("ships account and AI with the redesigned platform while Times stays gated", async () => {
+    const rag = renderAt("/rag");
+    await waitFor(() => expect(window.location.pathname).toBe("/account"));
+    expect(screen.getByRole("heading", { name: "登录暂不可用" })).toBeTruthy();
+    rag.unmount();
+    cleanup();
+
+    renderAt("/times");
+    expect(screen.getByRole("heading", { name: "404 Not Found" })).toBeTruthy();
   });
 
-  it("keeps public book reading available independently of the unfinished RAG module", async () => {
+  it("keeps public book reading available outside the authenticated AI route", async () => {
     renderAt("/book/mao/volume-1");
 
     expect(await screen.findByRole("heading", { name: "书籍阅读器" })).toBeTruthy();
@@ -177,6 +179,10 @@ describe("JOJO Web navigation", () => {
     expect(buildAppNavigationItems(true, { rag: true, times: true }).map((item) => item.label)).toEqual([
       "首页", "资料库", "搜索", "AI", "时事", "关于",
     ]);
+    expect(buildAppNavigationItems(true, { rag: true, times: true }).find((item) => item.href === "/rag")).toMatchObject({
+      label: "AI",
+      badge: "Beta",
+    });
   });
 
   it("keeps the login entry visible", () => {

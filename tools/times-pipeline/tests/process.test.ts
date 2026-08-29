@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { extractArticleBody } from "../src/content/body.js";
 import { processArticle } from "../src/process/article.js";
 import { extractAlJazeeraBody } from "../src/sources/aljazeera/process.js";
+import { extractApBody } from "../src/sources/ap/process.js";
 import { extractBloombergBody } from "../src/sources/bloomberg/process.js";
 import { extractClsBody } from "../src/sources/cls/process.js";
 import { extractThepaperBody } from "../src/sources/thepaper/process.js";
@@ -29,6 +30,23 @@ describe("article processing", () => {
     expect(body).not.toContain("Company widget");
   });
 
+  it("accepts a complete one-paragraph Reuters brief above the publisher threshold", () => {
+    const paragraph = "Aug 28 (Reuters) - Iran's Revolutionary Guards Corps Navy rejected U.S. claims that the Strait of Hormuz was open, calling them an attempt to control oil prices and conceal what it described as U.S. failures. It said the restrictions would continue until U.S. military actions against Iran end and relevant commitments are implemented, according to a statement.";
+    const body = extractArticleBody(
+      `<div data-testid="paragraph-0">${paragraph}</div>`,
+      {
+        capture: "browser",
+        bodySelectors: [
+          "[data-testid^='paragraph-'], [data-testid^='unordered-'] [data-testid='Body'], [data-testid='SignOff'] [data-testid='Body']",
+        ],
+      },
+      { minimumCharacters: 300, minimumParagraphs: 1 },
+    );
+
+    expect(body).toContain("Strait of Hormuz");
+    expect(body?.match(/<p>/gu)).toHaveLength(1);
+  });
+
   it("uses the source's quality threshold for short complete news articles", () => {
     const body = extractArticleBody("<article><p>这是一篇完整但很短的快讯正文，来源会明确允许单段短稿进入全文。</p></article>", undefined, {
       minimumCharacters: 20,
@@ -36,6 +54,20 @@ describe("article processing", () => {
     });
 
     expect(body).toContain("完整但很短的快讯正文");
+  });
+
+  it("accepts Africanews video stories that also contain a substantial single-paragraph report", () => {
+    const report = "Around a dozen activists gathered outside the representative offices and called for a stronger response. ".repeat(8);
+    const body = extractArticleBody(
+      `<main><article class="teaser teaser--wide clearfix"><h1>Video report</h1><p>${report}</p></article></main>
+       <aside><article><p>Unrelated recommendation must not enter the article body.</p></article></aside>`,
+      { capture: "browser", bodySelectors: [".article-content", ".article__body", "article"] },
+      { minimumCharacters: 500, minimumParagraphs: 1 },
+    );
+
+    expect(body).toContain("Around a dozen activists");
+    expect(body?.match(/<p>/gu)).toHaveLength(1);
+    expect(body).not.toContain("Unrelated recommendation");
   });
 
   it("uses the complete source-owned container when an article mixes paragraphs and text nodes", () => {
@@ -121,6 +153,55 @@ describe("article processing", () => {
     expect(body).not.toContain("More to come");
   });
 
+  it("extracts all AP live-blog updates from publisher JSON-LD", () => {
+    const liveBlog = [{
+      "@context": "https://schema.org",
+      "@type": "LiveBlogPosting",
+      headline: "Trial live updates",
+      liveBlogUpdate: [
+        {
+          "@type": "BlogPosting",
+          headline: "Jury asks to see evidence",
+          articleBody: "The jury asked to review evidence from the trial.<br/><br/>The judge consulted both legal teams before responding.",
+        },
+        {
+          "@type": "BlogPosting",
+          headline: "Court returns to session",
+          articleBody: "The court returned to session on Friday morning.<br/><br/>Jurors then resumed their deliberations.",
+        },
+      ],
+    }];
+    const body = extractArticleBody(
+      `<script type="application/ld+json">${JSON.stringify(liveBlog)}</script>`,
+      { capture: "browser", bodySelectors: [".RichTextStoryBody"] },
+      { minimumCharacters: 150, minimumParagraphs: 4 },
+      extractApBody,
+    );
+
+    expect(body).toContain("Jury asks to see evidence");
+    expect(body).toContain("Jurors then resumed their deliberations");
+    expect(body?.match(/<p>/gu)).toHaveLength(6);
+  });
+
+  it("accepts a complete three-paragraph AP bulletin below the global length threshold", () => {
+    const paragraphs = [
+      "The administration announced an agreement on Friday and described the arrangement as an immediate change in policy. Officials said implementation would begin after agencies complete the required operational review.",
+      "The announcement followed several days of negotiations between senior officials. The parties said the agreement covers the principal terms, while technical details will be published separately.",
+      "Lawmakers from both parties requested additional information about oversight and timing. The administration said it would brief Congress and answer questions as the arrangement moves forward.",
+    ];
+    const body = extractArticleBody(
+      `<div class="RichTextStoryBody">${paragraphs.map((paragraph) => `<p>${paragraph}</p>`).join("")}</div>`,
+      { capture: "browser", bodySelectors: [".RichTextStoryBody", "[itemprop='articleBody']"] },
+      { minimumCharacters: 400, minimumParagraphs: 3 },
+      extractApBody,
+    );
+
+    expect(paragraphs.join(" ").length).toBeGreaterThanOrEqual(400);
+    expect(paragraphs.join(" ").length).toBeLessThan(800);
+    expect(body?.match(/<p>/gu)).toHaveLength(3);
+    expect(body).toContain("Lawmakers from both parties");
+  });
+
   it("extracts The Paper content from Next.js data and persisted discovery fragments", () => {
     const content = [
       "邮储银行中期业绩正文第一段，包含足够的信息用于验证澎湃新闻的专用正文解析。",
@@ -148,6 +229,22 @@ describe("article processing", () => {
     expect(pageBody).toContain(content[0]);
     expect(pageBody?.match(/<p>/gu)).toHaveLength(2);
     expect(discoveryBody).toBe(pageBody);
+  });
+
+  it("accepts a The Paper image-only report as publisher-owned content", () => {
+    const nextData = {
+      props: { pageProps: { detailData: { contentDetail: {
+        content: '<img class="img_default" data-src="https://imgpai.thepaper.cn/report.webp" width="1022" height="3183">',
+      } } } },
+    };
+    const body = extractArticleBody(
+      `<html><body><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(nextData)}</script></body></html>`,
+      { capture: "browser", bodySelectors: ["[class*='cententWrap__']", "article"] },
+      { minimumCharacters: 300, minimumParagraphs: 2 },
+      extractThepaperBody,
+    );
+
+    expect(body).toContain("data-publisher-image-only");
   });
 
   it("extracts CLS plain-text content from Next.js data without a DOM body container", () => {

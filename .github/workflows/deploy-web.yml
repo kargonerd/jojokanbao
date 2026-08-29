@@ -35,8 +35,6 @@ jobs:
       # Merging redesign code is production-safe. The current site remains active
       # until this repository variable is explicitly enabled for a Reader build.
       VITE_ENABLE_PLATFORM_REDESIGN: ${{ vars.VITE_ENABLE_PLATFORM_REDESIGN || 'false' }}
-      VITE_ENABLE_ACCOUNT: ${{ vars.VITE_ENABLE_ACCOUNT || 'false' }}
-      VITE_ENABLE_RAG: ${{ vars.VITE_ENABLE_RAG || 'true' }}
       VITE_ENABLE_TIMES: ${{ vars.VITE_ENABLE_TIMES || 'true' }}
       VITE_TIMES_AUDIT_PUBLIC: ${{ vars.VITE_TIMES_AUDIT_PUBLIC || 'false' }}
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}

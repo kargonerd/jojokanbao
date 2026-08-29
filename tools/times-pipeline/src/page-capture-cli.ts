@@ -190,6 +190,7 @@ async function loadArticles(workspace: string, run: RawRunManifest, sources: Map
         captureUrl: manifest.fetchPolicy?.captureUrl === "source" ? candidate.sourceUrl : candidate.canonicalUrl,
         publishedAt: candidate.publishedAt,
         needsBody: candidate.contentStatus !== "full",
+        ...(manifest.fetchPolicy?.revision ? { captureRevision: manifest.fetchPolicy.revision } : {}),
         source,
         candidate,
         manifestPath,

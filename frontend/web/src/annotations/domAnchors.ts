@@ -1,6 +1,11 @@
 import type { AnnotationThread, TextAnchor } from "./types";
 
 const MARK_SELECTOR = "mark[data-content-annotation]";
+const EXPLANATION_MARK_SELECTOR = "mark[data-reader-explanation]";
+
+export interface ReaderExplanationAnchor extends TextAnchor {
+  count: number;
+}
 
 function textNodes(root: HTMLElement): Text[] {
   const nodes: Text[] = [];
@@ -53,7 +58,11 @@ function nodeOffset(nodes: Text[], target: Node, localOffset: number, edge: "sta
   return null;
 }
 
-export function textAnchorFromRange(root: HTMLElement, range: Range): TextAnchor | undefined {
+export function textAnchorFromRange(
+  root: HTMLElement,
+  range: Range,
+  contextCharacters = 80,
+): TextAnchor | undefined {
   if (!root.contains(range.commonAncestorContainer)) return undefined;
   const nodes = textNodes(root);
   const startOffset = nodeOffset(nodes, range.startContainer, range.startOffset, "start");
@@ -64,8 +73,8 @@ export function textAnchorFromRange(root: HTMLElement, range: Range): TextAnchor
   if (!quote.trim() || quote.length > 4000) return undefined;
   return {
     quote,
-    prefix: fullText.slice(Math.max(0, startOffset - 80), startOffset),
-    suffix: fullText.slice(endOffset, endOffset + 80),
+    prefix: fullText.slice(Math.max(0, startOffset - contextCharacters), startOffset),
+    suffix: fullText.slice(endOffset, endOffset + contextCharacters),
     startOffset,
     endOffset,
   };
@@ -91,22 +100,46 @@ function locateAnchor(text: string, anchor: TextAnchor): [number, number] | unde
   return candidates.length === 1 ? [candidates[0]!, candidates[0]! + anchor.quote.length] : undefined;
 }
 
+function textSlices(
+  nodes: Text[],
+  start: number,
+  end: number,
+): Array<{ node: Text; start: number; end: number }> {
+  let position = 0;
+  const slices: Array<{ node: Text; start: number; end: number }> = [];
+  for (const node of nodes) {
+    const nodeStart = position;
+    const nodeEnd = position + node.data.length;
+    const sliceStart = Math.max(start, nodeStart);
+    const sliceEnd = Math.min(end, nodeEnd);
+    if (sliceEnd > sliceStart) {
+      slices.push({ node, start: sliceStart - nodeStart, end: sliceEnd - nodeStart });
+    }
+    position = nodeEnd;
+  }
+  return slices;
+}
+
 export function clearAnnotationMarks(root: HTMLElement): void {
   root.querySelectorAll<HTMLElement>(MARK_SELECTOR).forEach((mark) => mark.replaceWith(...mark.childNodes));
   root.normalize();
 }
 
-function wrapTextSlice(node: Text, start: number, end: number, annotationId: string, onOpen: (id: string) => void): void {
+function wrapTextSlice(node: Text, start: number, end: number, thread: AnnotationThread, onOpen: (id: string) => void): void {
   if (end <= start) return;
   const selected = start > 0 ? node.splitText(start) : node;
   if (end - start < selected.data.length) selected.splitText(end - start);
   const mark = document.createElement("mark");
-  mark.dataset.contentAnnotation = annotationId;
+  const underlineCount = Math.max(1, Math.trunc(thread.underlineCount ?? 1));
+  mark.dataset.contentAnnotation = thread.id;
+  mark.dataset.underlineCount = String(underlineCount);
+  if (thread.underlinedByMe) mark.dataset.underlinedByMe = "true";
   mark.className = "content-annotation-mark";
+  mark.title = `${underlineCount} 人划线`;
   mark.tabIndex = 0;
   mark.setAttribute("role", "button");
-  mark.setAttribute("aria-label", "打开这处划线的评论");
-  const open = () => onOpen(annotationId);
+  mark.setAttribute("aria-label", `查看这处划线，${underlineCount} 人划线`);
+  const open = () => onOpen(thread.id);
   mark.addEventListener("click", (event) => {
     event.stopPropagation();
     open();
@@ -122,6 +155,64 @@ function wrapTextSlice(node: Text, start: number, end: number, annotationId: str
   mark.append(selected);
 }
 
+export function clearReaderExplanationMarks(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>(EXPLANATION_MARK_SELECTOR)
+    .forEach((mark) => mark.replaceWith(...mark.childNodes));
+  root.normalize();
+}
+
+function wrapReaderExplanationSlice(
+  node: Text,
+  start: number,
+  end: number,
+  explanation: ReaderExplanationAnchor,
+  onOpen: (explanation: ReaderExplanationAnchor) => void,
+): void {
+  if (end <= start) return;
+  const selected = start > 0 ? node.splitText(start) : node;
+  if (end - start < selected.data.length) selected.splitText(end - start);
+  const mark = document.createElement("mark");
+  mark.dataset.readerExplanation = "true";
+  mark.title = "点击查看 AI 解释";
+  mark.tabIndex = 0;
+  mark.setAttribute("role", "button");
+  mark.setAttribute("aria-label", "查看 AI 解释");
+  const open = (event: Event) => {
+    event.stopPropagation();
+    onOpen(explanation);
+  };
+  mark.addEventListener("click", open);
+  mark.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      open(event);
+    }
+  });
+  selected.replaceWith(mark);
+  mark.append(selected);
+}
+
+export function renderReaderExplanationMarks(
+  root: HTMLElement,
+  explanations: ReaderExplanationAnchor[],
+  onOpen: (explanation: ReaderExplanationAnchor) => void,
+): number {
+  clearReaderExplanationMarks(root);
+  let rendered = 0;
+  for (const explanation of explanations) {
+    const nodes = textNodes(root);
+    const fullText = nodes.map((node) => node.data).join("");
+    const located = locateAnchor(fullText, explanation);
+    if (!located) continue;
+    const slices = textSlices(nodes, ...located);
+    for (const slice of slices.reverse()) {
+      wrapReaderExplanationSlice(slice.node, slice.start, slice.end, explanation, onOpen);
+    }
+    rendered += 1;
+  }
+  return rendered;
+}
+
 export function renderAnnotationMarks(
   root: HTMLElement,
   threads: AnnotationThread[],
@@ -134,20 +225,8 @@ export function renderAnnotationMarks(
     const fullText = nodes.map((node) => node.data).join("");
     const located = locateAnchor(fullText, thread);
     if (!located) continue;
-    const [start, end] = located;
-    let position = 0;
-    const slices: Array<{ node: Text; start: number; end: number }> = [];
-    for (const node of nodes) {
-      const nodeStart = position;
-      const nodeEnd = position + node.data.length;
-      const sliceStart = Math.max(start, nodeStart);
-      const sliceEnd = Math.min(end, nodeEnd);
-      if (sliceEnd > sliceStart) {
-        slices.push({ node, start: sliceStart - nodeStart, end: sliceEnd - nodeStart });
-      }
-      position = nodeEnd;
-    }
-    for (const slice of slices.reverse()) wrapTextSlice(slice.node, slice.start, slice.end, thread.id, onOpen);
+    const slices = textSlices(nodes, ...located);
+    for (const slice of slices.reverse()) wrapTextSlice(slice.node, slice.start, slice.end, thread, onOpen);
     rendered += 1;
   }
   return rendered;

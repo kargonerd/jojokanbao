@@ -3,8 +3,8 @@ function enabled(value: string | undefined): boolean {
 }
 
 export const rollout = {
-  platformRedesign: enabled(import.meta.env.VITE_ENABLE_PLATFORM_REDESIGN),
-  account: enabled(import.meta.env.VITE_ENABLE_ACCOUNT),
+  // Local development always runs the current platform. Production keeps one
+  // coarse rollback switch for the whole redesigned Web runtime.
+  platformRedesign: import.meta.env.DEV || enabled(import.meta.env.VITE_ENABLE_PLATFORM_REDESIGN),
   times: enabled(import.meta.env.VITE_ENABLE_TIMES),
-  rag: enabled(import.meta.env.VITE_ENABLE_RAG),
 } as const;

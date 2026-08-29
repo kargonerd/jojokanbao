@@ -87,7 +87,9 @@
       "captured-page",
       "discovery-summary"
     ],
-    "parser": "ap"
+    "parser": "ap",
+    "minimumFullCharacters": 400,
+    "minimumFullParagraphs": 3
   },
   "fetch": {
     "strategy": "direct-first",

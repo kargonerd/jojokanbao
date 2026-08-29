@@ -5,6 +5,7 @@ import { unavailablePageReason } from "../src/capture/availability.js";
 import { articleFingerprint, pendingArticles, type PageArticle } from "../src/capture/pending.js";
 import { selectProxy, selectProxyCandidates } from "../src/capture/proxy.js";
 import { groupArticlesBySource, mapSourceBatches, rotatingSourceProbes } from "../src/capture/schedule.js";
+import { thepaperFetch } from "../src/sources/thepaper/fetch.js";
 
 const now = new Date("2026-08-22T12:00:00Z");
 
@@ -59,6 +60,27 @@ describe("page capture orchestration", () => {
     ).map((value) => value.articleId)).toEqual(["failed"]);
   });
 
+  it("recaptures successful articles after a publisher capture-policy revision", () => {
+    const previous = { ...article("policy-change", "thepaper"), captureRevision: "image-body-v1" };
+    const state = new Map([["thepaper", {
+      formatVersion: "jojo-page-capture-state/1" as const,
+      articles: {
+        "policy-change": {
+          fingerprint: articleFingerprint(previous),
+          lastAttempt: "2026-08-22T11:50:30Z",
+          rawPageObject: "raw/thepaper/page.json",
+          error: null,
+        },
+      },
+    }]]);
+    const current = { ...previous, captureRevision: "image-body-v2" };
+
+    expect(pendingArticles(
+      [current], state,
+      { now, retentionDays: 7, refreshHours: 168, retryHours: 2 },
+    ).map((value) => value.articleId)).toEqual(["policy-change"]);
+  });
+
   it("keeps article images as owned asset references and filters tracking pixels", () => {
     const images = discoverArticleImages(`<html><head><meta property="og:image" content="/lead.jpg"></head><body><article>
       <p>Article body</p><figure><img src="/inside.jpg" width="1200" height="800" alt="Inside"><figcaption>Photo credit</figcaption></figure>
@@ -71,6 +93,16 @@ describe("page capture orchestration", () => {
       id: "asset:lead", type: "image", role: "lead", sourceUrl: images[0]!.sourceUrl,
       rawObject: "raw/example/assets/lead.jpg", mediaType: "image/jpeg", size: 1, sha256: "lead",
     }])).toBe('<figure data-asset-id="asset:lead"></figure><p>Body</p>');
+  });
+
+  it("limits The Paper assets to its hashed article-content container", () => {
+    const images = discoverArticleImages(`<main>
+      <img src="/navigation.png" width="400" height="400">
+      <div class="cententWrap__UojXm"><img src="/report.webp" width="1022" height="3183"></div>
+      <img src="/download-app.png" width="400" height="400">
+    </main>`, "https://www.thepaper.cn/newsDetail_forward_33971197", thepaperFetch);
+
+    expect(images.map((image) => image.sourceUrl)).toEqual(["https://www.thepaper.cn/report.webp"]);
   });
 
   it("classifies generic media URLs without mistaking text pages for hard paywalls", () => {

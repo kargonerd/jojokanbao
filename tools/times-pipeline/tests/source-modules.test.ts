@@ -136,6 +136,7 @@ describe("native source modules", () => {
   });
 
   it("exposes publisher-owned Next.js body extractors", () => {
+    expect(sourceBodyExtractor("ap")).toBeTypeOf("function");
     expect(sourceBodyExtractor("thepaper")).toBeTypeOf("function");
     expect(sourceBodyExtractor("cls")).toBeTypeOf("function");
   });

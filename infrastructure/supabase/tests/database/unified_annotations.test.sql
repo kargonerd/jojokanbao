@@ -1,12 +1,31 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(14);
+select extensions.plan(30);
 
 select extensions.hasnt_table(
   'private',
   'annotation_moderation_events',
   'annotation moderation does not keep an unused event table'
+);
+
+select extensions.hasnt_table(
+  'public',
+  'reader_marks',
+  'the unused personal mark prototype is removed'
+);
+
+select extensions.has_column(
+  'public',
+  'annotation_comments',
+  'visibility',
+  'annotation comments have an explicit visibility column'
+);
+
+select extensions.has_table(
+  'public',
+  'content_annotation_marks',
+  'reader underline membership is stored separately from shared anchors'
 );
 
 create temporary table annotation_test_state (
@@ -16,6 +35,7 @@ create temporary table annotation_test_state (
   pager_id uuid not null default extensions.gen_random_uuid(),
   annotation_id uuid,
   comment_id uuid,
+  private_comment_id uuid,
   report_id uuid
 );
 insert into annotation_test_state default values;
@@ -74,6 +94,81 @@ set annotation_id = (
 
 do $$
 begin
+  perform public.create_content_annotation(
+    'book', 'book-1', 'chapter-public-comment', '测试书 · 公开想法', '/book/book-1?chapter=chapter-public-comment',
+    '只有一人划线但有公开想法', '', '', 0, 13, '公开想法', 'public'
+  );
+  perform public.create_content_annotation(
+    'book', 'book-1', 'chapter-private-comment', '测试书 · 私密想法', '/book/book-1?chapter=chapter-private-comment',
+    '只有一人划线且仅有私密想法', '', '', 0, 15, '私密想法', 'private'
+  );
+end;
+$$;
+
+do $$
+begin
+  perform pg_catalog.set_config(
+    'request.jwt.claim.sub',
+    (select commenter_id::text from annotation_test_state),
+    true
+  );
+end;
+$$;
+
+select extensions.is(
+  jsonb_array_length(public.get_annotation_threads('book', 'book-1', 'chapter-1')),
+  0,
+  'a below-threshold underline is hidden from readers who did not create it'
+);
+
+select extensions.is(
+  jsonb_build_object(
+    'threads', jsonb_array_length(public.get_annotation_threads('book', 'book-1', 'chapter-public-comment')),
+    'count', public.get_annotation_threads('book', 'book-1', 'chapter-public-comment')->0->'underlineCount',
+    'public', public.get_annotation_threads('book', 'book-1', 'chapter-public-comment')->0->'publiclyVisible'
+  ),
+  '{"threads": 1, "count": 1, "public": true}'::jsonb,
+  'one visible public comment makes a single-reader underline public'
+);
+
+select extensions.is(
+  jsonb_array_length(public.get_annotation_threads('book', 'book-1', 'chapter-private-comment')),
+  0,
+  'a private thought does not make a single-reader underline public'
+);
+
+select extensions.is(
+  (
+    public.create_content_annotation(
+      'book', 'book-1', 'chapter-1', '测试书 · 第一章', '/book/book-1?chapter=chapter-1',
+      '被划线的原文', '', '', 0, 7, null
+    )->>'underlineCount'
+  )::integer,
+  2,
+  'an identical underline increments the distinct-reader aggregate'
+);
+
+do $$
+begin
+  perform pg_catalog.set_config(
+    'request.jwt.claim.sub',
+    (select reporter_id::text from annotation_test_state),
+    true
+  );
+end;
+$$;
+
+select extensions.is(
+  jsonb_build_object(
+    'count', public.get_annotation_threads('book', 'book-1', 'chapter-1')->0->'underlineCount',
+    'mine', public.get_annotation_threads('book', 'book-1', 'chapter-1')->0->'underlinedByMe'
+  ),
+  '{"count": 2, "mine": false}'::jsonb,
+  'two distinct readers reach the configured public threshold'
+);
+
+do $$
+begin
   perform pg_catalog.set_config(
     'request.jwt.claim.sub',
     (select commenter_id::text from annotation_test_state),
@@ -118,6 +213,114 @@ select extensions.throws_ok(
   '22023',
   'You cannot report your own comment',
   'a reader cannot report their own comment through the RPC'
+);
+
+update annotation_test_state
+set private_comment_id = (
+  public.add_annotation_comment(annotation_id, '只给自己看的想法', null, 'private')->>'id'
+)::uuid;
+
+select extensions.is(
+  (
+    select visibility
+    from public.annotation_comments comment, annotation_test_state state
+    where comment.id = state.private_comment_id
+  ),
+  'private',
+  'a reader can save a private thought'
+);
+
+select extensions.is(
+  (
+    select count(*)::integer
+    from public.user_notifications notification, annotation_test_state state
+    where notification.recipient_id = state.author_id
+      and notification.kind = 'annotation.comment'
+  ),
+  1,
+  'a private thought does not notify the annotation author'
+);
+
+select extensions.is(
+  (
+    select count(*)::integer
+    from jsonb_array_elements(public.get_annotation_threads('book', 'book-1', 'chapter-1')) thread,
+      jsonb_array_elements(thread->'comments') comment,
+      annotation_test_state state
+    where comment->>'id' = state.private_comment_id::text
+      and comment->>'visibility' = 'private'
+  ),
+  1,
+  'the private thought is returned to its author'
+);
+
+do $$
+begin
+  perform pg_catalog.set_config(
+    'request.jwt.claim.sub',
+    (select reporter_id::text from annotation_test_state),
+    true
+  );
+end;
+$$;
+
+select extensions.is(
+  jsonb_array_length(public.get_annotation_threads('book', 'book-1', 'chapter-1')),
+  1,
+  'a threshold underline remains visible to another reader'
+);
+
+select extensions.is(
+  (
+    select count(*)::integer
+    from jsonb_array_elements(public.get_annotation_threads('book', 'book-1', 'chapter-1')) thread,
+      jsonb_array_elements(thread->'comments') comment,
+      annotation_test_state state
+    where comment->>'id' = state.private_comment_id::text
+  ),
+  0,
+  'a private thought is omitted from another reader snapshot'
+);
+
+select extensions.throws_ok(
+  $$select public.report_annotation_comment(
+    (select private_comment_id from annotation_test_state),
+    'spam',
+    null
+  )$$,
+  'P0002',
+  'Comment not found',
+  'another reader cannot discover a private thought by reporting its id'
+);
+
+select extensions.is(
+  (
+    public.create_content_annotation(
+      'book', 'book-1', 'chapter-1', '测试书 · 第一章', '/book/book-1?chapter=chapter-1',
+      '被划线的原文', '', '', 0, 7, null
+    )->>'underlineCount'
+  )::integer,
+  3,
+  'a third distinct reader increments the public aggregate'
+);
+
+do $$
+begin
+  perform pg_catalog.set_config(
+    'request.jwt.claim.sub',
+    (select pager_id::text from annotation_test_state),
+    true
+  );
+end;
+$$;
+
+select extensions.is(
+  jsonb_build_object(
+    'count', public.get_annotation_threads('book', 'book-1', 'chapter-1')->0->'underlineCount',
+    'mine', public.get_annotation_threads('book', 'book-1', 'chapter-1')->0->'underlinedByMe'
+  ),
+  '{"count": 3, "mine": false}'::jsonb,
+  'a threshold underline is public without exposing reader identities'
 );
 
 do $$

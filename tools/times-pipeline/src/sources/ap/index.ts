@@ -1,7 +1,7 @@
 import type { SourceModule } from "../contracts.js";
 import { discoverAp } from "./discover.js";
 import { apFetch } from "./fetch.js";
-import { processAp } from "./process.js";
+import { extractApBody, processAp } from "./process.js";
 
 export const apSource: SourceModule = {
   id: "ap",
@@ -10,5 +10,6 @@ export const apSource: SourceModule = {
     return discoverAp(source, endpoint, fetchedAt);
   },
   fetch: apFetch,
+  extractBody: extractApBody,
   process: processAp,
 };

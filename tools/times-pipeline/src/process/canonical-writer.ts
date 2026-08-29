@@ -56,6 +56,15 @@ export interface CanonicalWriteResult {
   articles: CanonicalArticleRef[];
   files: string[];
   skippedWithoutFullText: number;
+  unchangedWithoutRefresh: number;
+  unchangedArticles: Array<{
+    articleId: string;
+    title: string;
+    canonicalUrl: string;
+    publishedAt: string;
+    contentStatus: Candidate["contentStatus"];
+    captureStatus: "unchanged";
+  }>;
   skippedArticles: Array<{
     articleId: string;
     title: string;
@@ -169,9 +178,21 @@ export async function writeCanonicalSource(
   const files = [datasetObject];
   const byDate = new Map<string, CanonicalArticleRef[]>();
   const skippedArticles: CanonicalWriteResult["skippedArticles"] = [];
+  const unchangedArticles: CanonicalWriteResult["unchangedArticles"] = [];
   for (const candidate of candidates) {
     const value = bodyValue(candidate);
     if (!value) {
+      if (candidate.captureStatus === "unchanged") {
+        unchangedArticles.push({
+          articleId: candidate.articleId,
+          title: candidate.title,
+          canonicalUrl: candidate.canonicalUrl,
+          publishedAt: candidate.publishedAt,
+          contentStatus: candidate.contentStatus,
+          captureStatus: "unchanged",
+        });
+        continue;
+      }
       skippedArticles.push({
         articleId: candidate.articleId,
         title: candidate.title,
@@ -225,6 +246,8 @@ export async function writeCanonicalSource(
     articles: created,
     files: [...new Set(files)],
     skippedWithoutFullText: skippedArticles.length,
+    unchangedWithoutRefresh: unchangedArticles.length,
+    unchangedArticles,
     skippedArticles,
   };
 }

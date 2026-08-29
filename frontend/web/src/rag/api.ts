@@ -1,6 +1,8 @@
 import { supportsJojoDatasetAi } from "@jojo/content";
 import { loadCatalog, loadDataset } from "./content";
 import type {
+  RagAnswerMetadata,
+  RagFocusContext,
   RagNotebook,
   RagMessage,
   RagReference,
@@ -34,6 +36,8 @@ function toolActivity(name: unknown, args: unknown, isError?: boolean): RagStrea
   const query = shortArgument(args, "query") || shortArgument(args, "titleQuery");
   const suffix = query ? `：“${query}”` : "…";
   switch (name) {
+    case "read_focus_context":
+      return { phase: "reading", message: "正在读取选中文字的前后文…" };
     case "list_library_books":
       return { phase: "searching", message: `正在筛选可能相关的书籍${suffix}` };
     case "list_book_items":
@@ -88,12 +92,13 @@ export const notebookApi = {
 };
 
 // Chat (streaming)
-export function askStream(params: { datasetIds: string[]; scopeMode: "all" | "selected"; question: string; conversationId?: string; itemIds?: string[]; manifestObjects?: string[]; history?: RagMessage[] }, onChunk: (text: string) => void, onDone: (refs?: RagReference[], conversationId?: string) => void, onError: (err: string) => void, onActivity?: (activity: RagStreamActivity) => void) {
+export function askStream(params: { datasetIds: string[]; scopeMode: "all" | "selected"; question: string; conversationId?: string; itemIds?: string[]; manifestObjects?: string[]; history?: RagMessage[]; focus?: RagFocusContext }, onChunk: (text: string) => void, onDone: (refs?: RagReference[], conversationId?: string, metadata?: RagAnswerMetadata) => void, onError: (err: string) => void, onActivity?: (activity: RagStreamActivity) => void) {
   const ctrl = new AbortController();
   let settled = false;
   const conversationId = params.conversationId || `conv_${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`;
   const references = new Map<string, RagReference>();
   let answer = "";
+  let answerMetadata: RagAnswerMetadata | undefined;
   const mergeReference = (reference: RagReference) => {
     const key = [
       reference.datasetId || "",
@@ -110,7 +115,7 @@ export function askStream(params: { datasetIds: string[]; scopeMode: "all" | "se
       .map((match) => match[1])
       .filter((citationId): citationId is string => Boolean(citationId));
     if (!citationIds.length) {
-      onDone(candidates, conversationId);
+      onDone(candidates, conversationId, answerMetadata);
       return;
     }
     const byCitationId = new Map((candidates ?? []).flatMap((reference) => reference.citationId
@@ -119,13 +124,13 @@ export function askStream(params: { datasetIds: string[]; scopeMode: "all" | "se
     onDone([...new Set(citationIds)].flatMap((citationId) => {
       const reference = byCitationId.get(citationId);
       return reference ? [reference] : [];
-    }), conversationId);
+    }), conversationId, answerMetadata);
   };
 
   void (async () => {
     onActivity?.({ phase: "connecting", message: "正在确认登录状态…" });
     const token = await accessToken();
-    onActivity?.({ phase: "connecting", message: "JOJO 正在连接馆藏…" });
+    onActivity?.({ phase: "connecting", message: "正在连接馆藏…" });
     const response = await fetch(AGENT_URL, {
       method: "POST",
       headers: {
@@ -145,6 +150,7 @@ export function askStream(params: { datasetIds: string[]; scopeMode: "all" | "se
           itemIds: params.itemIds ?? [],
           manifestObjects: params.manifestObjects ?? [],
         },
+        ...(params.focus ? { focus: params.focus } : {}),
       }),
       signal: ctrl.signal,
     });
@@ -171,6 +177,10 @@ export function askStream(params: { datasetIds: string[]; scopeMode: "all" | "se
         if (!payloadText) continue;
         const event = JSON.parse(payloadText) as Record<string, unknown>;
         if (eventName === "status") {
+          answerMetadata = {
+            ...(typeof event.provider === "string" ? { provider: event.provider } : {}),
+            ...(typeof event.model === "string" ? { model: event.model } : {}),
+          };
           onActivity?.({ phase: "thinking", message: "正在分析问题并选择资料…" });
         } else if (eventName === "tool_start") {
           onActivity?.(toolActivity(event.name, event.args));

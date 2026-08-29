@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { clearCachedDisplayName, readCachedDisplayName, writeCachedDisplayName } from "./profileCache";
 
 interface AccountSessionState {
   initialized: boolean;
@@ -9,6 +10,10 @@ interface AccountSessionState {
 export const accountSessionConfigured = Boolean(
   import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
 );
+
+// Begin fetching the authentication chunk as soon as the application shell is
+// evaluated, while the public page continues rendering in parallel.
+const authModule = accountSessionConfigured ? import("./auth") : undefined;
 
 export const useAccountSessionStore = create<AccountSessionState>(() => ({
   initialized: !accountSessionConfigured,
@@ -26,14 +31,18 @@ export function startAccountSessionSync(): () => void {
   let stopAuthSync = () => {};
   let unsubscribe = () => {};
 
-  void import("../account/auth").then(({ startAuthSync, useAuthStore }) => {
+  void authModule!.then(({ startAuthSync, useAuthStore }) => {
     if (!active) return;
     const update = () => {
       const { initialized, user, profile } = useAuthStore.getState();
+      const userId = user?.id || null;
+      const freshDisplayName = profile?.display_name?.trim() || null;
+      if (userId && freshDisplayName) writeCachedDisplayName(userId, freshDisplayName);
+      else if (initialized && !userId) clearCachedDisplayName();
       useAccountSessionStore.setState({
         initialized,
-        userId: user?.id || null,
-        displayName: profile?.display_name?.trim() || null,
+        userId,
+        displayName: freshDisplayName || (userId ? readCachedDisplayName(userId) : null),
       });
     };
     unsubscribe = useAuthStore.subscribe(update);
@@ -49,6 +58,6 @@ export function startAccountSessionSync(): () => void {
 }
 
 export async function signOutAccount(): Promise<void> {
-  const { useAuthStore } = await import("../account/auth");
+  const { useAuthStore } = await (authModule ?? import("./auth"));
   await useAuthStore.getState().signOut();
 }
