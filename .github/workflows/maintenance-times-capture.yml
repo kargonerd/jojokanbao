@@ -296,7 +296,10 @@ jobs:
               console.log("\n### Final capture failures\n");
               for (const failure of pages.failures) {
                 const title = String(failure.title || failure.articleId).replace(/[\r\n|]/g, " ").slice(0, 180);
-                const status = failure.httpStatus ? `HTTP ${failure.httpStatus}` : String(failure.error || "FullTextNotExtracted");
+                const status = [
+                  failure.httpStatus ? `HTTP ${failure.httpStatus}` : "",
+                  String(failure.error || "FullTextNotExtracted"),
+                ].filter(Boolean).join("; ");
                 const proxyCoverage = failure.proxyCandidatesSelected
                   ? `; selected proxy candidates tried ${failure.proxyCandidatesTried}/${failure.proxyCandidatesSelected}`
                   : "";

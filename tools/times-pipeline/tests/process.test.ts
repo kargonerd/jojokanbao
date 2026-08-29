@@ -115,6 +115,28 @@ describe("article processing", () => {
     expect(body).not.toContain("Advertisement");
   });
 
+  it("extracts Bloomberg live-blog posts from embedded page data", () => {
+    const post = (index: number) => ({
+      body: { content: [{ type: "div", content: [
+        { type: "text", value: `Bloomberg live update ${index} contains the reported development and enough context for readers. ` },
+        { type: "link", content: [{ type: "text", value: "Related official statement." }] },
+      ] }] },
+    });
+    const nextData = {
+      props: { pageProps: { liveblog: { posts: [post(1), post(2), post(3)] } } },
+    };
+    const body = extractArticleBody(
+      `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(nextData)}</script>`,
+      { capture: "browser", bodySelectors: [] },
+      { minimumCharacters: 200, minimumParagraphs: 3 },
+      extractBloombergBody,
+    );
+
+    expect(body?.match(/<p>/gu)).toHaveLength(3);
+    expect(body).toContain("Bloomberg live update 1");
+    expect(body).toContain("Related official statement");
+  });
+
   it("aggregates Al Jazeera live-blog list updates as article paragraphs", () => {
     const update = (index: number) =>
       `<li>Live update ${index}: ${"Publisher reporting provides verified context and material developments. ".repeat(3)}</li>`;
