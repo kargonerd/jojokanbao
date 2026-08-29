@@ -84,7 +84,7 @@ describe("sources v2", () => {
     });
     expect(sources.find((source) => source.id === "nyt")?.fetch.browser).toBe("brave");
     expect(sources.find((source) => source.id === "nyt")?.fetch.retryWithoutBpcOnBlocked).toBe(true);
-    expect(sources.find((source) => source.id === "bloomberg")?.fetch.browser).toBe("brave");
+    expect(sources.find((source) => source.id === "bloomberg")?.fetch.retryWithoutBpcOnBlocked).toBe(true);
     expect(sources.find((source) => source.id === "cna")?.discovery.kind).toBe("multi");
     const ap = sources.find((source) => source.id === "ap");
     expect(ap?.discovery.kind).toBe("multi");
