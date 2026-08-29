@@ -56,7 +56,8 @@ a.jojo-citation:hover {
 .app-brand-mark { display: none; width: 34px; height: 34px; }
 .app-mobile-title,
 .app-mobile-navigation,
-.app-account-icon { display: none; }
+.app-mobile-account-link,
+.app-mobile-back { display: none; }
 
 .app-header > nav {
   display: flex;
@@ -736,11 +737,27 @@ a.jojo-citation:hover {
 
 @media (max-width: 720px) {
   .app-header {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(72px, 1fr) auto minmax(72px, 1fr);
     column-gap: 12px;
     min-height: 58px;
     padding: 0 12px;
   }
+  .app-brand { justify-self: start; }
+  .app-header.has-mobile-back .app-brand { display: none; }
+  .app-mobile-back {
+    display: inline-flex;
+    align-items: center;
+    justify-self: start;
+    gap: 5px;
+    border: 0;
+    padding: 7px 0;
+    color: var(--color-red);
+    background: transparent;
+    font: 800 .72rem/1 var(--font-sans);
+    cursor: pointer;
+  }
+  .app-mobile-back > span { font-size: 1rem; }
+  .app-mobile-back:focus-visible { outline: 2px solid var(--color-red); outline-offset: 3px; }
   .app-brand-full { display: none; }
   .app-brand-mark { display: block; width: 32px; height: 32px; }
   .app-header > nav { display: none; }
@@ -757,15 +774,17 @@ a.jojo-citation:hover {
     white-space: nowrap;
   }
   .app-header-actions { gap: 10px; }
-  .app-account-trigger { width: 32px; height: 32px; justify-content: center; padding: 0; }
-  .app-account-trigger .app-login-label { display: none; }
-  .app-account-icon {
+  .app-account-menu { display: none; }
+  .app-mobile-account-link {
     display: block;
-    width: 20px;
-    height: 20px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.8;
+    max-width: min(25vw, 92px);
+    overflow: hidden;
+    color: var(--color-red) !important;
+    font-size: .75rem;
+    font-weight: 800;
+    letter-spacing: .02em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .app-login { min-width: 32px; justify-content: center; font-size: .72rem; }
   .app-mobile-navigation {

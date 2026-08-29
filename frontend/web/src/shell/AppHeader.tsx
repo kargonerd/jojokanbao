@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AccountMenu } from "../account/AccountMenu";
 import { useAccountSessionStore } from "../account/session";
 
@@ -39,6 +39,15 @@ function hidesMobileNavigation(pathname: string): boolean {
     || pathname.startsWith("/book/");
 }
 
+function isPrimaryMobilePage(pathname: string): boolean {
+  return pathname === "/"
+    || pathname === "/library"
+    || pathname === "/search"
+    || pathname === "/times"
+    || pathname === "/rag"
+    || pathname === "/rag/chat";
+}
+
 function MobileNavigationIcon({ href }: { href: string }) {
   if (href === "/") return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 10 8-7 8 7v10h-6v-6h-4v6H4z" /></svg>;
   if (href === "/library") return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h5v16H4zM11 4h4v16h-4zM17 5l3-1 3 15-3 1z" /></svg>;
@@ -56,7 +65,9 @@ export function AppHeader({
   navigationLabel?: string;
   actions?: ReactNode;
 } = {}) {
-  const { pathname } = useLocation();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { pathname } = location;
   const brandBase = import.meta.env.BASE_URL;
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
@@ -66,13 +77,22 @@ export function AppHeader({
   );
   const mobileTitle = mobilePageTitle(pathname, navigationItems);
   const showMobileNavigation = !hidesMobileNavigation(pathname);
+  const showMobileBack = !isPrimaryMobilePage(pathname);
+
+  const navigateBack = () => {
+    if (location.key !== "default" && window.history.length > 1) navigate(-1);
+    else navigate("/", { replace: true });
+  };
 
   return <>
-    <header className="app-header">
+    <header className={`app-header${showMobileBack ? " has-mobile-back" : ""}`}>
       <Link className="app-brand" to="/" aria-label="JOJO 看报首页">
         <img className="app-brand-full" src={`${brandBase}brand/jojo-kanbao-logo.png`} alt="" />
         <img className="app-brand-mark" src={`${brandBase}brand/jojo-kanbao-mark.png`} alt="" />
       </Link>
+      {showMobileBack ? <button type="button" className="app-mobile-back" onClick={navigateBack} aria-label="返回上一页">
+        <span aria-hidden="true">←</span>返回
+      </button> : null}
       <span className="app-mobile-title">{mobileTitle}</span>
       <nav aria-label={navigationLabel}>
         {navigationItems.map((item) => {

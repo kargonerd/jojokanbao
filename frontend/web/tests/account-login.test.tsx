@@ -60,6 +60,7 @@ describe("account access", () => {
     const view = render(<MemoryRouter><AccountLogin /></MemoryRouter>);
 
     expect(auth.startAuthSync).toHaveBeenCalledOnce();
+    expect(screen.getByRole("link", { name: /关于 JOJO 看报/ }).getAttribute("href")).toBe("/support");
     view.unmount();
     expect(auth.stopAuthSync).toHaveBeenCalledOnce();
   });

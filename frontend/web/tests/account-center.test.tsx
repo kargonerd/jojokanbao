@@ -120,7 +120,9 @@ describe("account center", () => {
     expect(screen.getByRole("heading", { name: "邀请码" })).toBeTruthy();
     expect(screen.getByLabelText("邀请码 K7MP4X")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "换一个邀请码" })).toBeNull();
-    expect(screen.queryByText("我的书架")).toBeNull();
+    expect(screen.getByRole("link", { name: /通知/ }).getAttribute("href")).toBe("/notifications");
+    expect(screen.getByRole("link", { name: /我的书架/ }).getAttribute("href")).toBe("/bookshelf");
+    expect(screen.getByRole("link", { name: /关于 JOJO 看报/ }).getAttribute("href")).toBe("/support");
     expect(screen.queryByText(/Account dossier/i)).toBeNull();
     expect(screen.queryByText("你的统一账号")).toBeNull();
     expect(screen.getByText("账号资料")).toBeTruthy();

@@ -211,6 +211,23 @@ describe("JOJO Web navigation", () => {
     expect(within(memberNavigation).getAllByRole("link").map((link) => link.textContent)).toEqual(["首页", "资料库", "搜索", "AI", "时事"]);
   });
 
+  it("shows a mobile back action on secondary pages but not primary tabs", () => {
+    const primary = render(
+      <MemoryRouter initialEntries={["/library"]}>
+        <AppLayout><main /></AppLayout>
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole("button", { name: "返回上一页" })).toBeNull();
+    primary.unmount();
+
+    render(
+      <MemoryRouter initialEntries={["/notifications"]}>
+        <AppLayout><main /></AppLayout>
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("button", { name: "返回上一页" })).toBeTruthy();
+  });
+
   it("keeps the login entry visible", () => {
     renderAt("/archive");
 

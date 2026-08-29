@@ -264,7 +264,7 @@ describe("app library", () => {
 
     await waitFor(() => expect(window.location.pathname).toBe("/book/solo/full-book"));
     expect(window.location.search).toBe("?returnTo=%2Flibrary%3Ftype%3Dbook");
-    expect(screen.queryByRole("heading", { name: "青年政治经济学读本" })).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "青年政治经济学读本" })).toBeNull());
   });
 
   it("sends signed-out readers to login before changing the bookshelf", async () => {
