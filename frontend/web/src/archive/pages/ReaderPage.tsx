@@ -1,10 +1,11 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { fetchPdfDownloadBytes, PdfViewer, usePdfDocument } from "@jojo/pdf-viewer";
-import { archivePdfUrl } from "@jojo/content";
+import { archivePdfUrl, formatArchiveIssueLabel } from "@jojo/content";
 import { EmptyState, LoadingSpinner, DatePicker, Toolbar, YearPicker } from "@jojo/ui";
 import { PUBLICATIONS, type PublicationName } from "../publications";
 import { archiveIssuePath } from "../../routes";
+import { useRecentReadingStore } from "../../library/recentReadingStore";
 
 const PAGE_SCROLL_GAP = 16;
 const READER_TOOLBAR_MAX_HEIGHT = 61;
@@ -251,6 +252,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
+  const rememberRecentReading = useRecentReadingStore((state) => state.remember);
   const containerRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
   const seqDropdownRef = useRef<HTMLDivElement>(null);
@@ -262,6 +264,22 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const pdfUrl = routeId ? archivePdfUrl(name, routeId) : "";
   const { document: pdfDoc, loading, error, numPages } = usePdfDocument({ url: pdfUrl, protectedPdf: "auto" });
   const downloadFilename = `${name}-${routeId}.pdf`;
+
+  useEffect(() => {
+    if (!routeId) return;
+    const issueHref = archiveIssuePath(name, routeId);
+    const href = currentPage > 1 ? `${issueHref}#page-${currentPage}` : issueHref;
+    const progress = numPages > 1 ? ((currentPage - 1) / (numPages - 1)) * 100 : 0;
+    rememberRecentReading({
+      id: `periodical:${name}`,
+      kind: "periodical",
+      publicationId: name,
+      title: config.label,
+      subtitle: formatArchiveIssueLabel(routeId),
+      href,
+      progress,
+    });
+  }, [config.label, currentPage, name, numPages, rememberRecentReading, routeId]);
 
   // ─── Hash navigation ───
   const getHashPageNum = useCallback((): number => {

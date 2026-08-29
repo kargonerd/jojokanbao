@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReaderPage } from "../src/archive/pages/ReaderPage";
 import type { PublicationName } from "../src/archive/publications";
+import { useRecentReadingStore } from "../src/library/recentReadingStore";
 
 const pdfMocks = vi.hoisted(() => ({
   fetchPdfDownloadBytes: vi.fn(),
@@ -94,6 +95,8 @@ function setPdfState(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  window.localStorage.clear();
+  useRecentReadingStore.setState({ items: [] });
   pdfMocks.fetchPdfDownloadBytes.mockReset();
   pdfMocks.usePdfDocument.mockReset();
   pdfMocks.viewerProps.length = 0;
@@ -161,6 +164,12 @@ describe("ReaderPage document states", () => {
       zoomEnabled: false,
       initialPage: 1,
       enableTextLayer: true,
+    });
+    expect(useRecentReadingStore.getState().items[0]).toMatchObject({
+      id: "periodical:rmrb",
+      title: "人民日报",
+      subtitle: "1976 年 10 月 9 日",
+      href: "/archive/rmrb/19761009",
     });
   });
 
@@ -264,6 +273,13 @@ describe("ReaderPage newspaper navigation", () => {
 describe("ReaderPage magazine navigation", () => {
   it("shows all issues, marks the current one, and navigates to a supplement", async () => {
     renderReader("/hq/196419", { type: "magazine", name: "hq" });
+
+    expect(useRecentReadingStore.getState().items[0]).toMatchObject({
+      id: "periodical:hq",
+      title: "红旗",
+      subtitle: "1964 年第 19 期",
+      href: "/archive/hq/196419",
+    });
 
     const trigger = screen.getByRole("button", { name: "第19期" });
     fireEvent.click(trigger);
@@ -514,6 +530,11 @@ describe("ReaderPage toolbar interactions", () => {
 
     expect(screen.getByText("5 / 6")).toBeTruthy();
     expect(window.location.hash).toBe("#page-5");
+    expect(useRecentReadingStore.getState().items[0]).toMatchObject({
+      subtitle: "1976 年 10 月 9 日",
+      href: "/archive/rmrb/19761009#page-5",
+      progress: 80,
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "复制阅读链接" }));
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith("http://localhost:3000/rmrb/19761009#page-5"));
