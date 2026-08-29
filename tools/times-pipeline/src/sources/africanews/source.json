@@ -78,7 +78,9 @@
       "captured-page",
       "discovery-summary"
     ],
-    "parser": "africanews"
+    "parser": "africanews",
+    "minimumFullCharacters": 500,
+    "minimumFullParagraphs": 1
   },
   "fetch": {
     "strategy": "direct-first",
