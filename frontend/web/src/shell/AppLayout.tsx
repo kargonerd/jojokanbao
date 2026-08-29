@@ -7,13 +7,13 @@ import "./styles.css";
 
 export function buildAppNavigationItems(
   authenticated: boolean,
-  capabilities = { rag: rollout.rag, times: rollout.times },
+  capabilities = { rag: true, times: rollout.times },
 ): readonly AppNavigationItem[] {
   const primaryItems = APP_NAVIGATION_ITEMS.filter((item) => item.href !== "/support");
   const aboutItem = APP_NAVIGATION_ITEMS.find((item) => item.href === "/support");
   return [
     ...primaryItems,
-    ...(authenticated && capabilities.rag ? [{ label: "AI", href: "/rag" }] : []),
+    ...(authenticated && capabilities.rag ? [{ label: "AI", href: "/rag", badge: "Beta" }] : []),
     ...(authenticated && capabilities.times ? [{ label: "时事", href: "/times" }] : []),
     ...(aboutItem ? [aboutItem] : []),
   ];

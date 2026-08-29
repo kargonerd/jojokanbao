@@ -22,8 +22,10 @@ describe("createEdgeOneAgentHandler", () => {
     const models = createModels();
     models.setProvider(faux.provider);
     const model = faux.getModel();
+    const tools = vi.fn(async () => []);
     const handle = createEdgeOneAgentHandler({
       authorize: async () => ({ id: "user-1" }),
+      tools,
       createModelRuntime: async () => ({
         config: {
           provider: "openai-codex",
@@ -46,6 +48,13 @@ describe("createEdgeOneAgentHandler", () => {
             itemIds: ["book-a:item-a"],
             manifestObjects: ["content/book-a/manifest.jox"],
           },
+          focus: {
+            chapterId: "chapter:18",
+            chapterTitle: "第十八章",
+            quote: " 选中的原文\n",
+            prefix: "前文\n",
+            suffix: "\n后文",
+          },
         },
       },
     });
@@ -56,6 +65,19 @@ describe("createEdgeOneAgentHandler", () => {
     expect(body).toContain("你好，JOJO。");
     expect(body).toContain("event: usage");
     expect(body).toContain("event: done");
+    expect(tools).toHaveBeenCalledWith(
+      expect.any(Object),
+      { id: "user-1" },
+      expect.objectContaining({
+        focus: {
+          chapterId: "chapter:18",
+          chapterTitle: "第十八章",
+          quote: " 选中的原文\n",
+          prefix: "前文\n",
+          suffix: "\n后文",
+        },
+      }),
+    );
   });
 
   it("does not initialize a model for unauthenticated requests", async () => {

@@ -5,6 +5,7 @@ import { AccountMenu } from "../account/AccountMenu";
 export type AppNavigationItem = {
   label: string;
   href: string;
+  badge?: string;
 };
 
 export const APP_NAVIGATION_ITEMS = [
@@ -44,7 +45,10 @@ export function AppHeader({
             to={item.href}
             className={isActive(pathname, item.href) ? "is-active" : undefined}
           >
-            {item.label}
+            <span className="app-navigation-label">
+              {item.label}
+              {item.badge ? <span className="app-navigation-badge">{item.badge}</span> : null}
+            </span>
           </Link>
         ))}
       </nav>

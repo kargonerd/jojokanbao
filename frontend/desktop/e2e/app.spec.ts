@@ -40,13 +40,13 @@ test.describe('Desktop renderer', () => {
     await expect(page.getByRole('link', { name: /人民日报/ })).toBeVisible();
   });
 
-  test('disabled modules and unknown routes provide a clear recovery path', async ({ page }) => {
+  test('gated modules and unknown routes provide a clear recovery path', async ({ page }) => {
     await page.goto('/press');
     await expect(page.getByRole('heading', { name: '没有找到这个页面' })).toBeVisible();
     await expect(page.getByRole('heading', { name: '我的项目' })).toHaveCount(0);
     await page.goto('/rag');
-    await expect(page.getByRole('heading', { name: '没有找到这个页面' })).toBeVisible();
-    await expect(page.getByRole('link', { name: '返回今日阅读' })).toHaveAttribute('href', '/');
+    await expect(page).toHaveURL(/\/account\?returnTo=/);
+    await expect(page.getByRole('heading', { name: '登录暂不可用' })).toBeVisible();
     await page.goto('/times');
     await expect(page.getByRole('heading', { name: '没有找到这个页面' })).toBeVisible();
   });
@@ -87,9 +87,10 @@ test.describe('Desktop renderer', () => {
     expect(navigationOwnsItsPixels).toBe(true);
   });
 
-  test('RAG stays unavailable while the shared runtime flag is off', async ({ page }) => {
+  test('RAG requires a signed-in account', async ({ page }) => {
     await page.goto('/rag/chat');
-    await expect(page.getByRole('heading', { name: '没有找到这个页面' })).toBeVisible();
+    await expect(page).toHaveURL(/\/account\?returnTo=/);
+    await expect(page.getByRole('heading', { name: '登录暂不可用' })).toBeVisible();
     await expect(page.getByRole('region', { name: '提问范围' })).toHaveCount(0);
   });
 

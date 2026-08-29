@@ -12,7 +12,7 @@ vi.mock("../src/account/auth", () => ({
 }));
 
 import { askStream } from "../src/rag/api";
-import type { RagReference } from "../src/rag/types";
+import type { RagAnswerMetadata, RagReference } from "../src/rag/types";
 
 const originalFetch = globalThis.fetch;
 
@@ -31,8 +31,17 @@ describe("askStream references", () => {
     await new Promise<void>((resolve, reject) => {
       askStream({
         datasetIds: ["book-a"],
-        scopeMode: "all",
+        scopeMode: "selected",
+        itemIds: ["book-a:item-a"],
+        manifestObjects: ["content/books/book-a/items/item-a/manifest.jox"],
         question: "继续解释",
+        focus: {
+          chapterId: "chapter:1",
+          chapterTitle: "第一章",
+          quote: "这段原文",
+          prefix: "前文",
+          suffix: "后文",
+        },
         history: [
           { role: "user", content: "上一问" },
           { role: "assistant", content: "上一答[cite:Jold]" },
@@ -47,6 +56,13 @@ describe("askStream references", () => {
         { role: "user", content: "上一问" },
         { role: "assistant", content: "上一答" },
       ],
+      focus: {
+        chapterId: "chapter:1",
+        chapterTitle: "第一章",
+        quote: "这段原文",
+        prefix: "前文",
+        suffix: "后文",
+      },
     });
   });
 
@@ -112,7 +128,7 @@ describe("askStream references", () => {
       `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`
     );
     globalThis.fetch = vi.fn().mockResolvedValue(new Response([
-      frame("status", { model: "test" }),
+      frame("status", { provider: "openai-codex", model: "test" }),
       frame("tool_start", { name: "search_content", args: { query: "剩余价值" } }),
       frame("tool_end", { name: "search_content", isError: false }),
       frame("tool_start", { name: "read_fragment", args: {} }),
@@ -121,25 +137,30 @@ describe("askStream references", () => {
     ].join(""))) as typeof fetch;
 
     const activities: string[] = [];
+    let metadata: RagAnswerMetadata | undefined;
     await new Promise<void>((resolve, reject) => {
       askStream({
         datasetIds: [],
         scopeMode: "all",
         question: "什么是剩余价值",
         conversationId: "conv_activity",
-      }, () => undefined, () => resolve(), reject, (activity) => {
+      }, () => undefined, (_references, _conversationId, answerMetadata) => {
+        metadata = answerMetadata;
+        resolve();
+      }, reject, (activity) => {
         activities.push(activity.message);
       });
     });
 
     expect(activities).toEqual(expect.arrayContaining([
       "正在确认登录状态…",
-      "JOJO 正在连接馆藏…",
+      "正在连接馆藏…",
       "正在分析问题并选择资料…",
       "正在候选书籍中检索原文：“剩余价值”",
       "已取得一批资料，正在判断是否需要继续查找…",
       "正在读取命中的相关章节…",
       "正在根据原文组织回答…",
     ]));
+    expect(metadata).toEqual({ provider: "openai-codex", model: "test" });
   });
 });

@@ -1,7 +1,15 @@
+import type { RagAnswerMetadata, RagReference } from "./types";
+
+const READER_AI_PROMPT_VERSION = "reader-focus-v1";
+const READER_AI_CONTEXT_KEY_CHARACTERS = 240;
+
 export interface ReusableExplanation {
   quote: string;
   answer: string;
   count: number;
+  references: RagReference[];
+  prefix?: string;
+  suffix?: string;
 }
 
 export interface BookshelfEntry { datasetId: string; itemId: string; title: string; }
@@ -44,27 +52,68 @@ export async function setBookshelf(input: { datasetId: string; itemId: string; t
 }
 
 export function phraseKey(value: string): string {
-  return value.normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, " ").trim();
+  return value.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-export async function reusableExplanation(datasetId: string, itemId: string, quote: string): Promise<ReusableExplanation | undefined> {
+export function explanationContextKey(quote: string, prefix = "", suffix = ""): string {
+  return JSON.stringify([
+    phraseKey(prefix).slice(-READER_AI_CONTEXT_KEY_CHARACTERS),
+    phraseKey(quote),
+    phraseKey(suffix).slice(0, READER_AI_CONTEXT_KEY_CHARACTERS),
+  ]);
+}
+
+export async function reusableExplanation(
+  datasetId: string,
+  itemId: string,
+  chapterId: string,
+  quote: string,
+  context: { prefix?: string; suffix?: string } = {},
+): Promise<ReusableExplanation | undefined> {
   const { client } = await sessionClient();
-  const key = phraseKey(quote);
-  const { data, error } = await client.rpc("get_reusable_reader_explanation", { p_dataset_id: datasetId, p_item_id: itemId, p_phrase_key: key });
+  const key = explanationContextKey(quote, context.prefix, context.suffix);
+  const { data, error } = await client.rpc("get_reader_ai_explanation_cache", { p_dataset_id: datasetId, p_item_id: itemId, p_chapter_id: chapterId, p_context_key: key, p_prompt_version: READER_AI_PROMPT_VERSION });
   if (error) throw error;
   const result = data?.[0];
-  return result?.answer ? { quote: result.quote, answer: result.answer, count: Number(result.explanation_count) } : undefined;
+  return result?.answer ? {
+    quote: result.quote,
+    answer: result.answer,
+    count: Number(result.query_count),
+    references: Array.isArray(result.reference_data) ? result.reference_data as RagReference[] : [],
+    ...(typeof result.prefix === "string" && result.prefix ? { prefix: result.prefix } : {}),
+    ...(typeof result.suffix === "string" && result.suffix ? { suffix: result.suffix } : {}),
+  } : undefined;
 }
 
 export async function popularExplanations(datasetId: string, itemId: string, chapterId: string): Promise<ReusableExplanation[]> {
   const { client } = await sessionClient();
-  const { data, error } = await client.rpc("get_popular_reader_explanations", { p_dataset_id: datasetId, p_item_id: itemId, p_chapter_id: chapterId });
+  const { data, error } = await client.rpc("get_popular_reader_ai_explanations", { p_dataset_id: datasetId, p_item_id: itemId, p_chapter_id: chapterId, p_prompt_version: READER_AI_PROMPT_VERSION });
   if (error) throw error;
-  return (data ?? []).map((row: any) => ({ quote: row.quote, answer: row.answer, count: Number(row.explanation_count) }));
+  return (data ?? []).map((row: any) => ({
+    quote: row.quote,
+    answer: row.answer,
+    count: Number(row.query_count),
+    references: Array.isArray(row.reference_data) ? row.reference_data as RagReference[] : [],
+    ...(typeof row.prefix === "string" && row.prefix ? { prefix: row.prefix } : {}),
+    ...(typeof row.suffix === "string" && row.suffix ? { suffix: row.suffix } : {}),
+  }));
 }
 
-export async function saveExplanation(input: { datasetId: string; itemId: string; chapterId: string; quote: string; answer?: string }): Promise<void> {
-  const { client, userId: id } = await sessionClient();
-  const { error } = await client.from("reader_ai_explanations").upsert({ user_id: id, dataset_id: input.datasetId, item_id: input.itemId, chapter_id: input.chapterId, phrase_key: phraseKey(input.quote), quote: input.quote, answer: input.answer ?? null, updated_at: new Date().toISOString() }, { onConflict: "user_id,dataset_id,item_id,phrase_key" });
+export async function saveExplanation(input: { datasetId: string; itemId: string; chapterId: string; quote: string; prefix?: string; suffix?: string; answer: string; references?: RagReference[]; metadata?: RagAnswerMetadata }): Promise<void> {
+  const { client } = await sessionClient();
+  const model = [input.metadata?.provider, input.metadata?.model].filter(Boolean).join("/") || "unknown";
+  const { error } = await client.rpc("put_reader_ai_explanation_cache", {
+    p_dataset_id: input.datasetId,
+    p_item_id: input.itemId,
+    p_chapter_id: input.chapterId,
+    p_context_key: explanationContextKey(input.quote, input.prefix, input.suffix),
+    p_quote: input.quote,
+    p_prefix: input.prefix ?? "",
+    p_suffix: input.suffix ?? "",
+    p_answer: input.answer,
+    p_references: input.references ?? [],
+    p_model: model,
+    p_prompt_version: READER_AI_PROMPT_VERSION,
+  });
   if (error) throw error;
 }

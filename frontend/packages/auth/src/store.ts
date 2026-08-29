@@ -30,6 +30,19 @@ export interface JojoAuthController {
 
 export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController {
   const profiles = createProfileRepository(client);
+  const pendingProfiles = new Map<string, ReturnType<typeof profiles.getOrCreate>>();
+
+  const loadProfile = (userId: string) => {
+    const pending = pendingProfiles.get(userId);
+    if (pending) return pending;
+    const promise = profiles.getOrCreate(userId);
+    pendingProfiles.set(userId, promise);
+    void promise.then(
+      () => { if (pendingProfiles.get(userId) === promise) pendingProfiles.delete(userId); },
+      () => { if (pendingProfiles.get(userId) === promise) pendingProfiles.delete(userId); },
+    );
+    return promise;
+  };
 
   const useAuthStore = create<AuthStore>((set, get) => ({
     session: null,
@@ -48,7 +61,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
       try {
         const { data, error } = await client.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        const profile = data.user ? await profiles.getOrCreate(data.user.id) : null;
+        const profile = data.user ? await loadProfile(data.user.id) : null;
         set({ session: data.session, user: data.user, profile, busy: false });
       } catch (error) {
         set({ busy: false, error: getAuthErrorMessage(error) });
@@ -94,7 +107,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
           type: "email",
         });
         if (error) throw error;
-        const profile = data.user ? await profiles.getOrCreate(data.user.id) : null;
+        const profile = data.user ? await loadProfile(data.user.id) : null;
         set({
           session: data.session,
           user: data.user,
@@ -155,7 +168,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
           type: "recovery",
         });
         if (error) throw error;
-        const profile = data.user ? await profiles.getOrCreate(data.user.id) : null;
+        const profile = data.user ? await loadProfile(data.user.id) : null;
         set({
           session: data.session,
           user: data.user,
@@ -236,7 +249,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
       const user = get().user;
       if (!user) return;
       try {
-        set({ profile: await profiles.getOrCreate(user.id) });
+        set({ profile: await loadProfile(user.id) });
       } catch (error) {
         set({ error: getAuthErrorMessage(error) });
       }
@@ -244,7 +257,10 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
 
   }));
 
-  const syncSession = async (session: Session | null) => {
+  let sessionRevision = 0;
+
+  const syncSession = (session: Session | null) => {
+    const revision = ++sessionRevision;
     if (!session?.user) {
       useAuthStore.setState({
         session: null,
@@ -255,38 +271,58 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
       });
       return;
     }
-    try {
-      const profile = await profiles.getOrCreate(session.user.id);
-      useAuthStore.setState({ session, user: session.user, profile, initialized: true });
-    } catch (error) {
-      useAuthStore.setState({
-        session,
-        user: session.user,
-        profile: null,
-        initialized: true,
-        error: getAuthErrorMessage(error),
-      });
-    }
+    const userId = session.user.id;
+    const current = useAuthStore.getState();
+    const profile = current.user?.id === userId ? current.profile : null;
+
+    // The persisted session is enough to establish identity. Profile hydration
+    // is cosmetic and must not hold the whole application in an unknown state.
+    useAuthStore.setState({ session, user: session.user, profile, initialized: true });
+    if (profile) return;
+
+    void loadProfile(userId).then((nextProfile) => {
+      if (revision !== sessionRevision || useAuthStore.getState().user?.id !== userId) return;
+      useAuthStore.setState({ profile: nextProfile, error: null });
+    }).catch((error) => {
+      if (revision !== sessionRevision || useAuthStore.getState().user?.id !== userId) return;
+      useAuthStore.setState({ error: getAuthErrorMessage(error) });
+    });
   };
 
+  let syncConsumers = 0;
+  let stopSharedSync: (() => void) | undefined;
+
   const startAuthSync = () => {
-    let active = true;
-    void client.auth.getSession().then(({ data, error }) => {
-      if (!active) return;
-      if (error) {
-        useAuthStore.setState({ initialized: true, error: getAuthErrorMessage(error) });
-        return;
-      }
-      void syncSession(data.session);
-    });
+    syncConsumers += 1;
+    if (!stopSharedSync) {
+      let active = true;
+      void client.auth.getSession().then(({ data, error }) => {
+        if (!active) return;
+        if (error) {
+          useAuthStore.setState({ initialized: true, error: getAuthErrorMessage(error) });
+          return;
+        }
+        syncSession(data.session);
+      });
 
-    const { data } = client.auth.onAuthStateChange((_event, session) => {
-      if (active) void syncSession(session);
-    });
+      const { data } = client.auth.onAuthStateChange((_event, session) => {
+        if (active) syncSession(session);
+      });
+      stopSharedSync = () => {
+        active = false;
+        data.subscription.unsubscribe();
+      };
+    }
 
+    let stopped = false;
     return () => {
-      active = false;
-      data.subscription.unsubscribe();
+      if (stopped) return;
+      stopped = true;
+      syncConsumers = Math.max(0, syncConsumers - 1);
+      if (syncConsumers > 0) return;
+      const stop = stopSharedSync;
+      stopSharedSync = undefined;
+      stop?.();
     };
   };
 

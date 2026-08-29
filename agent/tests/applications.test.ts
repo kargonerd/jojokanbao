@@ -12,6 +12,7 @@ describe("Agent application definitions", () => {
     expect(definition.systemPrompt).toContain("search_content");
     expect(definition.systemPrompt).toContain("inspect_item");
     expect(definition.systemPrompt).toContain("list_item_toc");
+    expect(definition.systemPrompt).toContain("read_focus_context");
   });
 
   it("keeps Times as a placeholder without fake tools", () => {

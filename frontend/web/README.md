@@ -5,8 +5,9 @@
 ## 路由与整站发布开关
 
 - 生产默认（`VITE_ENABLE_PLATFORM_REDESIGN=false`）：保持原站路由和界面，`/` 跳转 `/archive`
-- 新版预览（`VITE_ENABLE_PLATFORM_REDESIGN=true`）：开放 `/`、`/library`、`/search`、`/support`、`/account`、`/book/:datasetId/:itemKey`，并保留 `/archive/*`
-- 待发布：`/rag/*`、`/times/*`
+- 新版预览（`VITE_ENABLE_PLATFORM_REDESIGN=true`）：一次开放新版首页、资料库、账号、RAG 和阅读器，并保留 `/archive/*`
+- 本地 `vite dev`：始终使用新版，不需要配置发布开关
+- 待发布：`/times/*`
 
 旧 Reader 地址（例如 `/rmrb/19761009#page-5`）以及短暂使用过的 `/reader/*` 前缀会迁移到 `/archive/*`，并保留查询参数和锚点。静态托管必须将未知路径回退到 `index.html`，否则深链接会返回 404。
 
@@ -20,10 +21,11 @@
 ```dotenv
 VITE_SUPABASE_URL=
 VITE_SUPABASE_PUBLISHABLE_KEY=
-VITE_ENABLE_PLATFORM_REDESIGN=true
-VITE_ENABLE_RAG=false
 VITE_ENABLE_TIMES=false
 ```
+
+Git worktree 自己没有 `.env` 时，Web、Desktop 和本地 Agent 会自动读取主工作区的 `.env` 和 `.env.local`；
+当前 worktree 若存在自己的环境文件，则优先使用自己的配置。真实值不会写入或提交到功能分支。
 
 Times 与 RAG 馆藏都直接读取 B2 CDN 已发布的 Jox 内容；Times 默认使用
 `VITE_CONTENT_CDN_BASE`，也可由 `VITE_TIMES_CDN_BASE` 单独覆盖。Agent 请求走
@@ -62,9 +64,9 @@ IndexedDB，因此重启本地 Agent 不会清空历史。`.env.local` 可用
 `JOJO_AGENT_URL=http://127.0.0.1:8789/rag` 让 Web 开发代理连接它。正式环境不使用这套
 进程内聊天存储；国际 EdgeOne Makers Agent 只负责流式回答，Web 历史仍留在用户浏览器。
 
-`VITE_ENABLE_PLATFORM_REDESIGN` 是整站构建开关。关闭时不会注册新版首页、资料库、公开书籍阅读和新版账号入口，共享的 Archive 导航、搜索、反馈页也按旧版呈现。仓库的正式部署工作流默认把它设为 `false`；合并代码不会开放新版，只有显式设置仓库变量为 `true` 并重新部署 Reader 才会切换。
+`VITE_ENABLE_PLATFORM_REDESIGN` 是生产环境唯一的整站构建开关。关闭时不会注册新版首页、资料库、账号、RAG 和公开书籍阅读入口，共享的 Archive 导航、搜索、反馈页也按旧版呈现。仓库的正式部署工作流默认把它设为 `false`；合并代码不会开放新版，只有显式设置仓库变量为 `true` 并重新部署 Reader 才会切换。本地开发不读取这个回滚开关，始终启动新版。
 
-其他未完成模块默认不可路由、不会显示在导航中，但源码仍会随项目进行类型检查和单元测试。本地开发某个模块时，将对应的 `VITE_ENABLE_*` 改为 `true` 并重启 Vite。账号模块需要配置根目录 `.env.example` 列出的 Supabase 浏览器端公开值。
+其他未完成模块默认不可路由、不会显示在导航中，但源码仍会随项目进行类型检查和单元测试。账号模块需要配置根目录 `.env.example` 列出的 Supabase 浏览器端公开值。
 
 RAG 与 JOJO Times 的旧管理页面源码暂时保留用于迁移对照，但不注册路由。它们必须先接入统一账号的权限模型，才能在后续变更中开放。
 

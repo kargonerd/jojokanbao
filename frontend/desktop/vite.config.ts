@@ -4,9 +4,10 @@ import tailwindcss from "@tailwindcss/vite";
 import { resolve } from "path";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 import { pdfViewerStaticCopyTargets } from "@jojo/pdf-viewer/vite";
+import { resolveViteEnvironmentDirectory } from "../tooling/vite-worktree-env";
 
-export default defineConfig({
-  envDir: resolve(__dirname, "../.."),
+export default defineConfig(({ mode }) => ({
+  envDir: resolveViteEnvironmentDirectory(resolve(__dirname, "../.."), mode),
   base: "./",
   publicDir: resolve(__dirname, "../web/public"),
   plugins: [
@@ -25,4 +26,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

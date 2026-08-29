@@ -77,11 +77,12 @@ describe('Desktop shell routes', () => {
     expect(screen.queryByRole('heading', { name: '时事' })).not.toBeInTheDocument();
   });
 
-  it('guards JOJO Q&A with the same runtime feature flag as Web', async () => {
+  it('keeps JOJO Q&A routed and requires an account', async () => {
     const router = createMemoryRouter(createDesktopRoutes(), { initialEntries: ['/rag'] });
     render(<RouterProvider router={router} />);
 
-    expect(await screen.findByRole('heading', { name: '没有找到这个页面' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '登录暂不可用' })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/account');
     expect(screen.queryByRole('region', { name: '提问范围' })).not.toBeInTheDocument();
   });
 });

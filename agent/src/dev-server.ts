@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
@@ -7,7 +9,7 @@ import { PersistentCredentialStore, type CredentialFile } from "./credentials";
 import { createEdgeOneAgentHandler } from "./edgeone/handler";
 import { createPlatformModelRuntime, resolvePlatformModelConfig, type AgentEnvironment } from "./models";
 import { loadLocalCodexCredential } from "./local-codex-credential";
-import { createRagTools, type RagScope } from "./rag-tools";
+import { createRagTools } from "./rag-tools";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -15,6 +17,29 @@ const repositoryRoot = path.resolve(
   "..",
 );
 const MAX_REQUEST_BYTES = 64 * 1024;
+
+function developmentEnvironmentDirectory(): string {
+  if ([".env", ".env.local"].some((name) => existsSync(path.join(repositoryRoot, name)))) {
+    return repositoryRoot;
+  }
+  try {
+    const commonGitDirectory = execFileSync(
+      "git",
+      ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+      { cwd: repositoryRoot, encoding: "utf8", windowsHide: true },
+    ).trim();
+    const primaryWorktree = path.resolve(path.dirname(commonGitDirectory));
+    if (
+      primaryWorktree !== repositoryRoot
+      && [".env", ".env.local"].some((name) => existsSync(path.join(primaryWorktree, name)))
+    ) {
+      return primaryWorktree;
+    }
+  } catch {
+    // Source archives may not expose Git worktree metadata.
+  }
+  return repositoryRoot;
+}
 
 function parsedEnvLine(line: string): [string, string] | undefined {
   const trimmed = line.trim();
@@ -35,9 +60,10 @@ function parsedEnvLine(line: string): [string, string] | undefined {
 
 async function developmentEnvironment(): Promise<AgentEnvironment> {
   const values: Record<string, string | undefined> = {};
+  const environmentDirectory = developmentEnvironmentDirectory();
   for (const name of [".env", ".env.local"]) {
     try {
-      const content = await readFile(path.join(repositoryRoot, name), "utf8");
+      const content = await readFile(path.join(environmentDirectory, name), "utf8");
       for (const line of content.split(/\r?\n/)) {
         const parsed = parsedEnvLine(line);
         if (parsed) values[parsed[0]] = parsed[1];
@@ -95,22 +121,6 @@ async function writeResponse(response: Response, target: ServerResponse): Promis
   target.end();
 }
 
-function scopeFrom(value: unknown): RagScope {
-  if (!value || typeof value !== "object") return {};
-  const scope = (value as { scope?: unknown }).scope;
-  if (!scope || typeof scope !== "object") return {};
-  const input = scope as Record<string, unknown>;
-  const strings = (candidate: unknown) => Array.isArray(candidate)
-    ? candidate.filter((item): item is string => typeof item === "string").slice(0, 100)
-    : undefined;
-  return {
-    mode: input.mode === "all" || input.mode === "selected" ? input.mode : undefined,
-    datasetIds: strings(input.datasetIds),
-    itemIds: strings(input.itemIds),
-    manifestObjects: strings(input.manifestObjects),
-  };
-}
-
 const environment = await developmentEnvironment();
 const { credential, source } = await loadLocalCodexCredential(repositoryRoot, environment);
 let credentialFile: CredentialFile = { "openai-codex": credential };
@@ -126,10 +136,11 @@ const handleAgent = createEdgeOneAgentHandler({
     environment,
     credentials: credentialStore,
   }),
-  tools(context) {
+  tools(_context, _user, body) {
     return createRagTools({
       contentCdnBase: environment.JOJO_CONTENT_CDN_BASE!,
-      scope: scopeFrom(context.request.body),
+      scope: body.scope,
+      focus: body.focus,
     });
   },
 });

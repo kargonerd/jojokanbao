@@ -25,6 +25,9 @@ function createClient() {
   const signOut = vi.fn().mockResolvedValue({ error: null });
   const invoke = vi.fn().mockResolvedValue({ data: {}, error: null });
   const getSession = vi.fn().mockResolvedValue({ data: { session }, error: null });
+  const onAuthStateChange = vi.fn().mockReturnValue({
+    data: { subscription: { unsubscribe } },
+  });
 
   const client = {
     auth: {
@@ -36,9 +39,7 @@ function createClient() {
       updateUser,
       signOut,
       getSession,
-      onAuthStateChange: vi.fn().mockReturnValue({
-        data: { subscription: { unsubscribe } },
-      }),
+      onAuthStateChange,
     },
     functions: { invoke },
     from: vi.fn().mockReturnValue({
@@ -54,6 +55,8 @@ function createClient() {
     session,
     unsubscribe,
     getSession,
+    onAuthStateChange,
+    maybeSingle,
     signInWithPassword,
     signUp,
     verifyOtp,
@@ -66,15 +69,41 @@ function createClient() {
 }
 
 describe("createJojoAuthStore", () => {
-  it("hydrates the current session and disposes its auth subscription", async () => {
-    const { client, getSession, unsubscribe, user } = createClient();
+  it("restores identity before profile hydration and coalesces the initial profile read", async () => {
+    let resolveProfile!: (value: { data: Profile; error: null }) => void;
+    const delayedProfile = new Promise<{ data: Profile; error: null }>((resolve) => {
+      resolveProfile = resolve;
+    });
+    const { client, getSession, onAuthStateChange, maybeSingle, session, unsubscribe, user } = createClient();
+    maybeSingle.mockReturnValueOnce(delayedProfile);
     const controller = createJojoAuthStore(client);
     const stop = controller.startAuthSync();
 
     await vi.waitFor(() => expect(controller.useAuthStore.getState().initialized).toBe(true));
     expect(getSession).toHaveBeenCalledOnce();
-    expect(controller.useAuthStore.getState()).toMatchObject({ user, profile });
+    expect(controller.useAuthStore.getState()).toMatchObject({ user, profile: null });
+
+    const initialSession = onAuthStateChange.mock.calls[0]?.[0] as ((event: string, value: typeof session) => void);
+    initialSession("INITIAL_SESSION", session);
+    expect(maybeSingle).toHaveBeenCalledOnce();
+
+    resolveProfile({ data: profile, error: null });
+    await vi.waitFor(() => expect(controller.useAuthStore.getState().profile).toEqual(profile));
     stop();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
+  it("shares one underlying auth subscription between multiple consumers", async () => {
+    const { client, getSession, onAuthStateChange, unsubscribe } = createClient();
+    const controller = createJojoAuthStore(client);
+    const stopFirst = controller.startAuthSync();
+    const stopSecond = controller.startAuthSync();
+
+    await vi.waitFor(() => expect(getSession).toHaveBeenCalledOnce());
+    expect(onAuthStateChange).toHaveBeenCalledOnce();
+    stopFirst();
+    expect(unsubscribe).not.toHaveBeenCalled();
+    stopSecond();
     expect(unsubscribe).toHaveBeenCalledOnce();
   });
 

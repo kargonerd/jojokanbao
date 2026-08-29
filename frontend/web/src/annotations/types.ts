@@ -16,6 +16,8 @@ export interface TextAnchor {
   endOffset: number | null;
 }
 
+export type AnnotationVisibility = "public" | "private";
+
 export interface AnnotationComment {
   id: string;
   annotationId: string;
@@ -23,15 +25,22 @@ export interface AnnotationComment {
   authorId: string;
   authorName: string;
   body: string;
+  visibility: AnnotationVisibility;
   createdAt: string;
   reportedByMe: boolean;
 }
 
 export interface AnnotationThread extends AnnotationSubject, TextAnchor {
   id: string;
-  authorId: string;
+  authorId: string | null;
   authorName: string;
   createdAt: string;
+  /** Present after the aggregated-underlines migration. */
+  underlineCount?: number;
+  /** Present after the aggregated-underlines migration. */
+  underlinedByMe?: boolean;
+  /** Present after the aggregated-underlines migration. */
+  publiclyVisible?: boolean;
   comments: AnnotationComment[];
 }
 

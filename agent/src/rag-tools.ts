@@ -29,9 +29,18 @@ export interface RagScope {
   manifestObjects?: string[];
 }
 
+export interface RagFocusContext {
+  chapterId: string;
+  chapterTitle?: string;
+  quote: string;
+  prefix?: string;
+  suffix?: string;
+}
+
 export interface RagToolOptions {
   contentCdnBase: string;
   scope?: RagScope;
+  focus?: RagFocusContext;
   fetchFn?: typeof fetch;
   fullItemByteBudget?: number;
   searchIndexByteBudget?: number;
@@ -102,6 +111,52 @@ function excerpt(text: string, terms: string[], maxChars: number): string {
   return `${start > 0 ? "…" : ""}${text.slice(start, start + maxChars)}${start + maxChars < text.length ? "…" : ""}`;
 }
 
+function readerFocusExcerpt(
+  text: string,
+  focus: RagFocusContext,
+): string | undefined {
+  const candidates: number[] = [];
+  let cursor = text.indexOf(focus.quote);
+  while (cursor >= 0) {
+    candidates.push(cursor);
+    cursor = text.indexOf(focus.quote, cursor + Math.max(1, focus.quote.length));
+  }
+  if (!candidates.length) return undefined;
+  const suffixScore = (value: string, expected: string): number => {
+    const limit = Math.min(value.length, expected.length, 240);
+    let score = 0;
+    for (let index = 1; index <= limit; index += 1) {
+      if (value.at(-index) !== expected.at(-index)) break;
+      score += 1;
+    }
+    return score;
+  };
+  const prefixScore = (value: string, expected: string): number => {
+    const limit = Math.min(value.length, expected.length, 240);
+    let score = 0;
+    for (let index = 0; index < limit; index += 1) {
+      if (value[index] !== expected[index]) break;
+      score += 1;
+    }
+    return score;
+  };
+  const selected = candidates
+    .map((start) => ({
+      start,
+      score: suffixScore(text.slice(0, start), focus.prefix ?? "")
+        + prefixScore(text.slice(start + focus.quote.length), focus.suffix ?? ""),
+    }))
+    .sort((left, right) => right.score - left.score || left.start - right.start)[0]!;
+  const quoteEnd = selected.start + focus.quote.length;
+  const hardStart = Math.max(0, selected.start - 1_200);
+  const hardEnd = Math.min(text.length, quoteEnd + 1_200);
+  const paragraphStart = text.lastIndexOf("\n\n", selected.start);
+  const paragraphEnd = text.indexOf("\n\n", quoteEnd);
+  const start = paragraphStart >= hardStart ? paragraphStart + 2 : hardStart;
+  const end = paragraphEnd >= quoteEnd && paragraphEnd <= hardEnd ? paragraphEnd : hardEnd;
+  return `${start > 0 ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`;
+}
+
 interface AgentTocEntry {
   id: string;
   order: number;
@@ -144,6 +199,7 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
   const fetchFn = options.fetchFn ?? fetch;
   const jox = new JoxClient(options.contentCdnBase, fetchFn);
   const scope = options.scope ?? {};
+  const focus = options.focus;
   let catalogPromise: Promise<JojoCatalog> | undefined;
   const datasetCache = new Map<string, Promise<LoadedDataset>>();
   const manifestCache = new Map<string, JojoItemManifest>();
@@ -328,6 +384,55 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
     size: Type.Optional(Type.Number({ minimum: 1, maximum: 20 })),
     manifestObject: Type.Optional(Type.String({ description: "当前已选书籍的 manifestObject；只选中一本时可省略" })),
   });
+  const focusParameters = Type.Object({});
+  const focusTool: AgentTool<typeof focusParameters> = {
+    name: "read_focus_context",
+    label: "读取当前选区上下文",
+    description: "读取并核验用户在阅读器当前章节选中的原文及其前后段落。选区提问必须先调用本工具；上下文不足时再搜索当前书籍。",
+    parameters: focusParameters,
+    async execute(_callId, _args, signal) {
+      if (!focus) throw new Error("当前请求没有阅读器选区上下文");
+      const manifestObject = resolveManifestObject(undefined);
+      const manifest = await loadManifest(manifestObject, signal);
+      const chapter = (manifest.content.chapters ?? []).find((candidate) => (
+        candidate.id === focus.chapterId
+      ));
+      if (!chapter) {
+        return result({
+          available: false,
+          strategy: "reader-focus-context",
+          advice: "当前章节已发生变化，请搜索选中文字或查看目录后读取相关章节。",
+        });
+      }
+      const fragmentObject = resolveJoxObject(manifestObject, chapter.object);
+      const fragment = asJojoFragment(await jox.fetchJson<JojoFragment>(fragmentObject, signal));
+      if (fragment.itemId !== manifest.itemId) throw new Error("当前章节与所选书籍不匹配");
+      const text = readerFocusExcerpt(textBody(fragment), focus);
+      if (!text) {
+        return result({
+          available: false,
+          strategy: "reader-focus-context",
+          itemId: manifest.itemId,
+          title: chapter.title,
+          targetId: chapter.id,
+          advice: "未能在当前章节重新定位选中文字，请调用 search_selected_item 搜索关键词。",
+          source: { fragmentObject },
+        });
+      }
+      return result({
+        available: true,
+        strategy: "reader-focus-context",
+        datasetId: manifest.datasetId,
+        itemId: manifest.itemId,
+        itemTitle: manifest.title,
+        targetId: fragment.fragmentId,
+        title: fragment.title,
+        selectedQuote: focus.quote,
+        text,
+        source: { fragmentObject },
+      });
+    },
+  };
   const selectedSearchTool: AgentTool<typeof selectedSearchParameters> = {
     name: "search_selected_item",
     label: "搜索当前书籍",
@@ -747,6 +852,7 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
   return [
     listLibraryTool,
     listBookItemsTool,
+    ...(focus && scope.manifestObjects?.length === 1 ? [focusTool] : []),
     ...(scope.manifestObjects?.length === 1 ? [selectedSearchTool] : []),
     searchTool,
     fragmentTool,
