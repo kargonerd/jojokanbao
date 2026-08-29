@@ -77,8 +77,11 @@ export function FeatureFlagsPage() {
     let active = true;
     void featureFlagApi.list().then((next) => {
       if (!active) return;
+      const initial = next[0];
       setFlags(next);
-      setSelectedKey((current) => current || next[0]?.key || "");
+      setSelectedKey(initial?.key ?? "");
+      setDraftRules(initial ? editableRules(initial.rules) : []);
+      setDraftConfig(initial ? editableConfig(initial.config) : {});
       setLoadError("");
     }).catch((error: unknown) => {
       if (active) setLoadError(error instanceof Error ? error.message : "无法读取功能开关");
@@ -89,13 +92,14 @@ export function FeatureFlagsPage() {
   }, []);
 
   const selected = flags.find((flag) => flag.key === selectedKey);
-  useEffect(() => {
-    const next = flags.find((flag) => flag.key === selectedKey);
-    setDraftRules(next ? editableRules(next.rules) : []);
-    setDraftConfig(next ? editableConfig(next.config) : {});
+
+  function selectFlag(flag: FeatureFlagDefinition) {
+    setSelectedKey(flag.key);
+    setDraftRules(editableRules(flag.rules));
+    setDraftConfig(editableConfig(flag.config));
     setReason("");
     setNotice("");
-  }, [selectedKey]);
+  }
 
   function updateRule(index: number, patch: Partial<FeatureFlagRule>) {
     setDraftRules((rules) => rules.map((rule, position) => position === index ? { ...rule, ...patch } : rule));
@@ -199,7 +203,7 @@ export function FeatureFlagsPage() {
       <main className="feature-workspace">
         <aside className="feature-index" aria-label="功能开关列表">
           {flags.map((flag) => (
-            <button key={flag.key} type="button" className={flag.key === selectedKey ? "active" : ""} onClick={() => setSelectedKey(flag.key)}>
+            <button key={flag.key} type="button" className={flag.key === selectedKey ? "active" : ""} onClick={() => selectFlag(flag)}>
               <b>{flag.key}</b><span>{flag.rules.length} 条规则 · r{flag.revision}</span>
             </button>
           ))}
