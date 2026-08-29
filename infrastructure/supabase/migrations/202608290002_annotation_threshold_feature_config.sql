@@ -54,10 +54,7 @@ as $$
   where flag.key = p_key
 $$;
 
-create or replace function private.feature_flag_normalize_config(
-  p_key text,
-  p_config jsonb
-)
+create or replace function private.feature_flag_normalize_config(p_config jsonb)
 returns jsonb
 language plpgsql
 security definer
@@ -65,35 +62,12 @@ set search_path = ''
 as $$
 declare
   normalized_config jsonb := coalesce(p_config, '{}'::jsonb);
-  public_mark_threshold integer;
 begin
   if jsonb_typeof(normalized_config) is distinct from 'object' then
     raise invalid_parameter_value using message = 'Feature flag config must be a JSON object';
   end if;
   if octet_length(normalized_config::text) > 16384 then
     raise invalid_parameter_value using message = 'Feature flag config is too large';
-  end if;
-
-  if p_key = 'reader.annotations' then
-    if exists (
-      select 1
-      from jsonb_object_keys(normalized_config) as config_key(value)
-      where config_key.value <> 'publicMarkThreshold'
-    ) then
-      raise invalid_parameter_value using message = 'Reader annotation config contains an unknown key';
-    end if;
-    if normalized_config ? 'publicMarkThreshold' and (
-      jsonb_typeof(normalized_config->'publicMarkThreshold') is distinct from 'number'
-      or normalized_config->>'publicMarkThreshold' !~ '^([1-9]|[1-9][0-9]|100)$'
-    ) then
-      raise invalid_parameter_value using message = 'Reader annotation public mark threshold must be an integer from 1 to 100';
-    end if;
-
-    public_mark_threshold := coalesce(
-      (normalized_config->>'publicMarkThreshold')::integer,
-      2
-    );
-    return jsonb_build_object('publicMarkThreshold', public_mark_threshold);
   end if;
 
   return normalized_config;
@@ -152,7 +126,7 @@ begin
     raise invalid_parameter_value using message = 'A change reason of at least 3 characters is required';
   end if;
   normalized_rules := private.feature_flag_normalize_rules(p_rules);
-  normalized_config := private.feature_flag_normalize_config(p_key, p_config);
+  normalized_config := private.feature_flag_normalize_config(p_config);
 
   select flag.revision
   into current_revision
@@ -232,29 +206,183 @@ $$;
 
 drop function public.operator_publish_feature_flag(text, text, jsonb, bigint, text, text);
 
-create or replace function private.annotation_public_mark_threshold()
+create or replace function private.feature_flag_config_integer(
+  p_key text,
+  p_config_path text[],
+  p_default integer,
+  p_minimum integer default null,
+  p_maximum integer default null
+)
 returns integer
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  config_value jsonb;
+  numeric_value numeric;
+begin
+  if coalesce(cardinality(p_config_path), 0) = 0 then
+    return p_default;
+  end if;
+
+  select flag.config #> p_config_path
+  into config_value
+  from private.feature_flags as flag
+  where flag.key = p_key;
+
+  if jsonb_typeof(config_value) is distinct from 'number' then
+    return p_default;
+  end if;
+
+  begin
+    numeric_value := config_value::text::numeric;
+  exception when others then
+    return p_default;
+  end;
+
+  if trunc(numeric_value) <> numeric_value
+    or numeric_value < -2147483648
+    or numeric_value > 2147483647
+    or (p_minimum is not null and numeric_value < p_minimum)
+    or (p_maximum is not null and numeric_value > p_maximum)
+  then
+    return p_default;
+  end if;
+
+  return numeric_value::integer;
+end;
+$$;
+
+create or replace function private.annotation_snapshot(p_annotation_id uuid)
+returns jsonb
 language sql
 stable
 security definer
 set search_path = ''
 as $$
-  select coalesce((
-    select (flag.config->>'publicMarkThreshold')::integer
-    from private.feature_flags as flag
-    where flag.key = 'reader.annotations'
-      and jsonb_typeof(flag.config->'publicMarkThreshold') = 'number'
-      and flag.config->>'publicMarkThreshold' ~ '^([1-9]|[1-9][0-9]|100)$'
-  ), 2)
+  select jsonb_build_object(
+    'id', annotation.id,
+    'contentType', annotation.content_type,
+    'contentId', annotation.content_id,
+    'sectionId', annotation.section_id,
+    'contentTitle', annotation.content_title,
+    'contentUrl', annotation.content_url,
+    'authorId', annotation.user_id,
+    'authorName', coalesce(profile.display_name, 'JOJO 读者'),
+    'quote', annotation.quote,
+    'prefix', annotation.prefix,
+    'suffix', annotation.suffix,
+    'startOffset', annotation.start_offset,
+    'endOffset', annotation.end_offset,
+    'createdAt', annotation.created_at,
+    'underlineCount', mark_summary.reader_count,
+    'underlinedByMe', mark_summary.underlined_by_me,
+    'publiclyVisible',
+      mark_summary.reader_count >= private.feature_flag_config_integer(
+        'reader.annotations', array['publicMarkThreshold'], 2, 1, 100
+      )
+      or exists (
+        select 1
+        from public.annotation_comments public_comment
+        where public_comment.annotation_id = annotation.id
+          and public_comment.visibility = 'public'
+          and public_comment.moderation_status = 'visible'
+      ),
+    'comments', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', comment.id,
+        'annotationId', comment.annotation_id,
+        'parentCommentId', comment.parent_comment_id,
+        'authorId', comment.user_id,
+        'authorName', coalesce(comment_profile.display_name, 'JOJO 读者'),
+        'body', comment.body,
+        'visibility', comment.visibility,
+        'createdAt', comment.created_at,
+        'reportedByMe', exists (
+          select 1 from public.annotation_comment_reports report
+          where report.comment_id = comment.id and report.reporter_id = auth.uid()
+        )
+      ) order by comment.created_at)
+      from public.annotation_comments comment
+      left join public.profiles comment_profile on comment_profile.id = comment.user_id
+      where comment.annotation_id = annotation.id
+        and comment.moderation_status = 'visible'
+        and (comment.visibility = 'public' or comment.user_id = auth.uid())
+    ), '[]'::jsonb)
+  )
+  from public.content_annotations annotation
+  left join public.profiles profile on profile.id = annotation.user_id
+  cross join lateral (
+    select
+      count(*)::integer as reader_count,
+      coalesce(bool_or(mark.user_id = auth.uid()), false) as underlined_by_me
+    from public.content_annotation_marks mark
+    where mark.annotation_id = annotation.id
+  ) mark_summary
+  where annotation.id = p_annotation_id
+    and annotation.moderation_status = 'visible'
 $$;
+
+create or replace function public.get_annotation_threads(
+  p_content_type text,
+  p_content_id text,
+  p_section_id text
+)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  reader_id uuid := private.require_annotation_reader();
+  public_threshold integer := private.feature_flag_config_integer(
+    'reader.annotations', array['publicMarkThreshold'], 2, 1, 100
+  );
+begin
+  return coalesce((
+    select jsonb_agg(private.annotation_snapshot(annotation.id) order by annotation.created_at)
+    from public.content_annotations annotation
+    where annotation.content_type = p_content_type
+      and annotation.content_id = p_content_id
+      and annotation.section_id = p_section_id
+      and annotation.moderation_status = 'visible'
+      and (
+        exists (
+          select 1
+          from public.content_annotation_marks own_mark
+          where own_mark.annotation_id = annotation.id
+            and own_mark.user_id = reader_id
+        )
+        or public_threshold <= (
+          select count(*)
+          from public.content_annotation_marks shared_mark
+          where shared_mark.annotation_id = annotation.id
+        )
+        or exists (
+          select 1
+          from public.annotation_comments public_comment
+          where public_comment.annotation_id = annotation.id
+            and public_comment.visibility = 'public'
+            and public_comment.moderation_status = 'visible'
+        )
+      )
+  ), '[]'::jsonb);
+end;
+$$;
+
+drop function private.annotation_public_mark_threshold();
 
 drop table private.annotation_settings;
 
-revoke all on function private.feature_flag_normalize_config(text, jsonb) from public, anon, authenticated;
+revoke all on function private.feature_flag_normalize_config(jsonb) from public, anon, authenticated;
+revoke all on function private.feature_flag_config_integer(text, text[], integer, integer, integer) from public, anon, authenticated;
 revoke all on function public.operator_publish_feature_flag(text, text, jsonb, jsonb, bigint, text, text) from public;
 grant execute on function public.operator_publish_feature_flag(text, text, jsonb, jsonb, bigint, text, text) to anon, authenticated;
 
 comment on column private.feature_flags.config is
   'Small flag-specific runtime values published and rolled back with rules.';
-comment on function private.annotation_public_mark_threshold() is
-  'Returns reader.annotations config.publicMarkThreshold, falling back to 2 for invalid or missing private configuration.';
+comment on function private.feature_flag_config_integer(text, text[], integer, integer, integer) is
+  'Reads any integer feature config path with caller-provided default and bounds.';

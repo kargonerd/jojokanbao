@@ -22,9 +22,11 @@ select extensions.hasnt_table(
 );
 
 select extensions.is(
-  private.annotation_public_mark_threshold(),
+  private.feature_flag_config_integer(
+    'reader.annotations', array['publicMarkThreshold'], 9, 1, 100
+  ),
   2,
-  'the annotation threshold is read from reader.annotations config'
+  'the annotation threshold is read through the generic feature config accessor'
 );
 
 select extensions.has_column(

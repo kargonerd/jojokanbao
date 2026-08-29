@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(34);
+select extensions.plan(35);
 
 select extensions.has_table('private', 'feature_flags', 'feature flag configuration uses one private table');
 select extensions.has_table('private', 'feature_flag_operator_secret', 'only the operator token digest has separate storage');
@@ -14,6 +14,11 @@ select extensions.ok(
 );
 select extensions.col_type_is('private', 'feature_flags', 'rules', 'jsonb', 'ordered rules are stored as JSONB');
 select extensions.col_type_is('private', 'feature_flags', 'config', 'jsonb', 'flag-specific runtime config stays on the same row');
+select extensions.is(
+  private.feature_flag_normalize_config('{"futureSetting":{"enabled":true}}'::jsonb),
+  '{"futureSetting":{"enabled":true}}'::jsonb,
+  'generic config accepts future keys without a database schema change'
+);
 
 create temporary table feature_flag_test_state (
   allowed_id uuid not null default extensions.gen_random_uuid(),
@@ -261,21 +266,12 @@ select extensions.is(
   'history retains the complete config snapshot for each modification'
 );
 
-select extensions.throws_ok(
-  $$
-    select public.operator_publish_feature_flag(
-      repeat('o', 32),
-      'reader.annotations',
-      private.feature_flag_snapshot('reader.annotations')->'rules',
-      jsonb_build_object('publicMarkThreshold', 0),
-      4,
-      'Invalid annotation threshold',
-      null
-    )
-  $$,
-  '22023',
-  'Reader annotation public mark threshold must be an integer from 1 to 100',
-  'annotation threshold rejects values outside the supported range'
+select extensions.is(
+  private.feature_flag_config_integer(
+    'reader.annotations', array['publicMarkThreshold'], 2, 4, 100
+  ),
+  2,
+  'the generic integer reader falls back when a stored value is outside caller bounds'
 );
 
 select extensions.throws_ok(
