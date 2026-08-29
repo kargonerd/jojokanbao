@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { extractArticleBody } from "../src/content/body.js";
 import { processArticle } from "../src/process/article.js";
+import { extractAlJazeeraBody } from "../src/sources/aljazeera/process.js";
 import { extractApBody } from "../src/sources/ap/process.js";
 import { extractBloombergBody } from "../src/sources/bloomberg/process.js";
 import { extractClsBody } from "../src/sources/cls/process.js";
@@ -112,6 +113,44 @@ describe("article processing", () => {
     expect(body).toContain("First Bloomberg paragraph");
     expect(body).toContain("Second Bloomberg paragraph");
     expect(body).not.toContain("Advertisement");
+  });
+
+  it("aggregates Al Jazeera live-blog list updates as article paragraphs", () => {
+    const update = (index: number) =>
+      `<li>Live update ${index}: ${"Publisher reporting provides verified context and material developments. ".repeat(3)}</li>`;
+    const body = extractArticleBody(
+      `<html><body>
+        <header><div class="wysiwyg"><ul>${update(1)}${update(2)}</ul></div></header>
+        <main>
+          <article><div class="wysiwyg"><ul>${update(3)}${update(4)}${update(5)}</ul></div></article>
+          <article><div class="wysiwyg"><ul>${update(6)}${update(7)}${update(8)}</ul></div></article>
+        </main>
+      </body></html>`,
+      { capture: "browser", bodySelectors: [".wysiwyg", "article"] },
+      { minimumCharacters: 1_000, minimumParagraphs: 5 },
+      extractAlJazeeraBody,
+    );
+
+    expect(body?.match(/<p>/gu)).toHaveLength(8);
+    expect(body).toContain("Live update 8");
+  });
+
+  it("keeps complete Al Jazeera breaking briefs below the general article threshold", () => {
+    const paragraphs = [
+      "Sustained gunfire and explosions rang out across several areas of the capital early on Saturday, according to two witnesses who were present in the city.",
+      "Shots were heard around the international airport and near the presidential palace, one witness said while describing the developing security situation.",
+      "There have been exchanges of heavy gunfire and the shooting is continuing around the presidential palace, according to a second witness in the capital.",
+    ];
+    const body = extractArticleBody(
+      `<article><div class="wysiwyg">${paragraphs.map((paragraph) => `<p>${paragraph}</p>`).join("")}<p>More to come…</p></div></article>`,
+      { capture: "browser", bodySelectors: [".wysiwyg", "article"] },
+      { minimumCharacters: 800, minimumParagraphs: 3 },
+      extractAlJazeeraBody,
+    );
+
+    expect(body?.match(/<p>/gu)).toHaveLength(3);
+    expect(body).toContain("Sustained gunfire");
+    expect(body).not.toContain("More to come");
   });
 
   it("extracts all AP live-blog updates from publisher JSON-LD", () => {
