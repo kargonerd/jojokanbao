@@ -7,6 +7,7 @@ import { explainTimesSelection, type TimesExplanationMetadata } from "../ai";
 import { timesApi, type TimesNewsItem } from "../api";
 import { TimesExplanationPanel } from "../components/TimesExplanationPanel";
 import { markTimesArticleRead } from "../readStore";
+import { timesSourceName } from "../sourceNames";
 
 function safeNewsUrl(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -135,7 +136,7 @@ export function TimesDetailPage({
       {news ? (
         <article>
           <p className="font-sans text-[10px] font-black tracking-[0.12em] text-red">
-            {news.source.name} · {new Intl.DateTimeFormat("zh-CN", { dateStyle: "long", timeStyle: "short" }).format(new Date(news.publishedAt))}
+            {timesSourceName(news.source)} · {new Intl.DateTimeFormat("zh-CN", { dateStyle: "long", timeStyle: "short" }).format(new Date(news.publishedAt))}
           </p>
           <h1 className="mt-4 text-3xl font-black leading-tight xl:text-4xl">{news.title}</h1>
           <SelectableAnnotationArticle subject={{

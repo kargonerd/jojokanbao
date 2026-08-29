@@ -2,6 +2,7 @@ import type { JojoAssetDescriptor } from "@jojo/content";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { timesApi, type TimesNewsItem } from "../api";
+import { timesSourceName } from "../sourceNames";
 import { SourceLogo } from "./SourceLogo";
 
 function exactArticleTime(value: string): string {
@@ -133,7 +134,7 @@ export function TimelineArticle({
       </div>
       <Link to={`/times/${article.issueDate}/${encodeURIComponent(article.id)}`} className={`min-w-0 text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-red ${read ? "opacity-60" : ""}`}>
         <span className="flex min-w-0 items-center gap-2 font-sans text-[10px] font-bold text-muted">
-          <span className={`min-w-0 flex-1 truncate ${read ? "text-muted" : "text-red"}`}>{article.source.name}</span>
+          <span className={`min-w-0 flex-1 truncate ${read ? "text-muted" : "text-red"}`}>{timesSourceName(article.source)}</span>
           <time dateTime={article.publishedAt} title={exactArticleTime(article.publishedAt)} className="shrink-0 tabular-nums">{relativeArticleTime(article.publishedAt)}</time>
         </span>
         <strong
