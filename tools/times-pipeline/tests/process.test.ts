@@ -29,6 +29,23 @@ describe("article processing", () => {
     expect(body).not.toContain("Company widget");
   });
 
+  it("accepts a complete one-paragraph Reuters brief above the publisher threshold", () => {
+    const paragraph = "Aug 28 (Reuters) - Iran's Revolutionary Guards Corps Navy rejected U.S. claims that the Strait of Hormuz was open, calling them an attempt to control oil prices and conceal what it described as U.S. failures. It said the restrictions would continue until U.S. military actions against Iran end and relevant commitments are implemented, according to a statement.";
+    const body = extractArticleBody(
+      `<div data-testid="paragraph-0">${paragraph}</div>`,
+      {
+        capture: "browser",
+        bodySelectors: [
+          "[data-testid^='paragraph-'], [data-testid^='unordered-'] [data-testid='Body'], [data-testid='SignOff'] [data-testid='Body']",
+        ],
+      },
+      { minimumCharacters: 300, minimumParagraphs: 1 },
+    );
+
+    expect(body).toContain("Strait of Hormuz");
+    expect(body?.match(/<p>/gu)).toHaveLength(1);
+  });
+
   it("uses the source's quality threshold for short complete news articles", () => {
     const body = extractArticleBody("<article><p>这是一篇完整但很短的快讯正文，来源会明确允许单段短稿进入全文。</p></article>", undefined, {
       minimumCharacters: 20,
