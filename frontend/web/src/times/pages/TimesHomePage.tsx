@@ -11,6 +11,14 @@ import {
 import { timesSourceName } from "../sourceNames";
 import { TimesDetailPage } from "./TimesDetailPage";
 
+function AllSourcesIcon({ className }: { className: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className={`${className} shrink-0 text-red`} fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M3.75 3.75h6.5v6.5h-6.5zM13.75 3.75h6.5v6.5h-6.5zM3.75 13.75h6.5v6.5h-6.5zM13.75 13.75h6.5v6.5h-6.5z" />
+    </svg>
+  );
+}
+
 export function TimesHomePage() {
   const navigate = useNavigate();
   const { issueDate = "", newsId = "" } = useParams();
@@ -111,12 +119,7 @@ export function TimesHomePage() {
         <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4" aria-label="选择媒体">
           <p className="px-2 pb-2 font-sans text-[10px] font-black tracking-[0.16em] text-muted">媒体来源</p>
           <button type="button" onClick={() => chooseSource("all")} className={`flex w-full items-center gap-2.5 border-l-2 px-3 py-1.5 text-left font-sans text-sm font-bold ${selectedSource === "all" ? "border-red bg-paper text-red" : "border-transparent hover:bg-paper"}`}>
-            <span aria-hidden="true" className="grid h-6 w-6 shrink-0 place-content-center bg-red">
-              <span className="grid grid-cols-2 gap-[2px]">
-                <i className="h-1 w-1 bg-paper" /><i className="h-1 w-1 bg-paper" />
-                <i className="h-1 w-1 bg-paper" /><i className="h-1 w-1 bg-paper" />
-              </span>
-            </span>
+            <AllSourcesIcon className="h-6 w-6" />
             <span>所有媒体</span>
           </button>
           {index?.sources.map((source) => {
@@ -144,12 +147,7 @@ export function TimesHomePage() {
           className="flex h-11 w-full shrink-0 items-center gap-3 border-b border-ink bg-paper px-4 text-left font-sans lg:hidden"
         >
           {selectedSource !== "all" && firstVisibleArticle ? <SourceLogo article={firstVisibleArticle} size="header" /> : (
-            <span aria-hidden="true" className="grid h-6 w-6 shrink-0 place-content-center bg-red">
-              <span className="grid grid-cols-2 gap-[2px]">
-                <i className="h-1 w-1 bg-paper" /><i className="h-1 w-1 bg-paper" />
-                <i className="h-1 w-1 bg-paper" /><i className="h-1 w-1 bg-paper" />
-              </span>
-            </span>
+            <AllSourcesIcon className="h-6 w-6" />
           )}
           <span className="min-w-0 flex-1 truncate text-sm font-black text-ink">
             {selectedSource === "all" ? "所有媒体" : selectedSourceName}
@@ -224,12 +222,7 @@ export function TimesHomePage() {
                 onClick={() => chooseSource("all")}
                 className={`flex w-full items-center gap-3 border-l-2 px-3 py-3 text-left font-sans text-base ${selectedSource === "all" ? "border-red bg-red/[0.06] font-black text-red" : "border-transparent font-bold text-ink"}`}
               >
-                <span aria-hidden="true" className="grid h-8 w-8 shrink-0 place-content-center bg-red">
-                  <span className="grid grid-cols-2 gap-[2px]">
-                    <i className="h-1.5 w-1.5 bg-paper" /><i className="h-1.5 w-1.5 bg-paper" />
-                    <i className="h-1.5 w-1.5 bg-paper" /><i className="h-1.5 w-1.5 bg-paper" />
-                  </span>
-                </span>
+                <AllSourcesIcon className="h-8 w-8" />
                 <span className="min-w-0 flex-1">所有媒体</span>
                 {selectedSource === "all" ? <span aria-hidden="true">✓</span> : null}
               </button>
