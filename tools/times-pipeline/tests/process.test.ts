@@ -111,6 +111,22 @@ describe("article processing", () => {
     expect(discoveryBody).toBe(pageBody);
   });
 
+  it("accepts a The Paper image-only report as publisher-owned content", () => {
+    const nextData = {
+      props: { pageProps: { detailData: { contentDetail: {
+        content: '<img class="img_default" data-src="https://imgpai.thepaper.cn/report.webp" width="1022" height="3183">',
+      } } } },
+    };
+    const body = extractArticleBody(
+      `<html><body><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(nextData)}</script></body></html>`,
+      { capture: "browser", bodySelectors: ["[class*='cententWrap__']", "article"] },
+      { minimumCharacters: 300, minimumParagraphs: 2 },
+      extractThepaperBody,
+    );
+
+    expect(body).toContain("data-publisher-image-only");
+  });
+
   it("extracts CLS plain-text content from Next.js data without a DOM body container", () => {
     const content = "财联社8月28日电，公司发布半年度报告，营业收入同比增长，归属于上市公司股东的净利润实现扭亏为盈。".repeat(3);
     const nextData = {

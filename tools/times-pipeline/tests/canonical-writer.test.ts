@@ -30,7 +30,7 @@ describe("canonical writer", () => {
       .toBe("<p>Before</p> <p>After</p>");
   });
 
-  it("writes one immutable article plus a per-source date index and skips summaries", async () => {
+  it("writes immutable text and image-only articles plus a per-source date index", async () => {
     const output = await mkdtemp(path.join(os.tmpdir(), "jojo-times-canonical-"));
     const manifest: SourceCaptureManifest = {
       formatVersion: "jojo-times-raw-source-run/2",
@@ -77,11 +77,17 @@ describe("canonical writer", () => {
       publisherCategories: ["World"],
       publisherSections: [{ id: "world", name: "World" }],
     };
+    const imageOnly = {
+      ...candidate,
+      articleId: "reuters:image-only",
+      title: "Image-only report",
+      processedBody: '<figure data-publisher-image-only="true"></figure><figure data-asset-id="asset:image"></figure>',
+    };
     const result = await writeCanonicalSource(output, source, manifest, "raw/reuters/runs/run/manifest.json", [
-      candidate,
+      candidate, imageOnly,
       { ...candidate, articleId: "reuters:summary", processedBody: "", assets: [], contentStatus: "summary" },
     ], "raw-sha");
-    expect(result.articles).toHaveLength(1);
+    expect(result.articles).toHaveLength(2);
     expect(result.skippedWithoutFullText).toBe(1);
     expect(result.skippedArticles).toEqual([
       expect.objectContaining({
@@ -98,10 +104,15 @@ describe("canonical writer", () => {
       publisherSections: [{ id: "world", name: "World" }],
       assets: [{ id: "asset:image", rawObject: "raw/reuters/assets/image.jpg" }],
     });
+    const imageOnlyRef = result.articles.find((article) => article.articleId === "reuters:image-only");
+    const imageOnlyRow = JSON.parse(gunzipSync(await readFile(path.join(
+      output, ...imageOnlyRef!.object.split("/"),
+    ))).toString("utf8")) as { body: { value: string } };
+    expect(imageOnlyRow.body.value).toBe('<figure data-asset-id="asset:image"></figure>');
     const date = JSON.parse(gunzipSync(await readFile(path.join(
       output, "canonical", "reuters", "dates", "2026", "08", "2026-08-23.json.gz",
     ))).toString("utf8")) as { articles: Array<{ articleId: string }> };
-    expect(date.articles.map((article) => article.articleId)).toEqual(["reuters:one"]);
+    expect(date.articles.map((article) => article.articleId).toSorted()).toEqual(["reuters:image-only", "reuters:one"]);
     await expect(readFile(path.join(output, "canonical", "newspapers", "times", "dataset.json"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

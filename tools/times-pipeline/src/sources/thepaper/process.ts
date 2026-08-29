@@ -3,6 +3,8 @@ import { semanticParagraphs, type BodyQuality } from "../../content/paragraphs.j
 
 type JsonObject = Record<string, unknown>;
 
+const IMAGE_ONLY_BODY = '<figure data-publisher-image-only="true"></figure>';
+
 function object(value: unknown): JsonObject | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : undefined;
 }
@@ -13,7 +15,8 @@ function semanticPublisherBody(value: string, quality: BodyQuality): string | un
   const paragraphs = blocks.length
     ? blocks.map((element) => fragment(element).text())
     : [fragment.root().text()];
-  return semanticParagraphs(paragraphs, quality);
+  return semanticParagraphs(paragraphs, quality)
+    ?? (fragment("img[src], img[data-src]").length ? IMAGE_ONLY_BODY : undefined);
 }
 
 function embeddedBody(html: string): string | undefined {
