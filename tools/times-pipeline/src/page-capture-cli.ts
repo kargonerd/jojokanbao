@@ -13,7 +13,12 @@ import { discoverArticleImages } from "./capture/page-images.js";
 import { articleFingerprint, pendingArticles, type PageArticle, type PageCaptureState } from "./capture/pending.js";
 import { proxyCandidates, selectProxy } from "./capture/proxy.js";
 import { writeRawPage } from "./capture/raw-page.js";
-import { mapSourceBatches, rotatingSourceProbes } from "./capture/schedule.js";
+import {
+  mapSourceBatches,
+  proxyTailSourceIds,
+  rotatingSourceProbes,
+  untriedProxyArticles,
+} from "./capture/schedule.js";
 import { sourceBodyExtractor, sourceUnavailablePageReason } from "./sources/registry.js";
 import type { Candidate, SourceCaptureManifest, SourceConfig, SourceFetchPolicy, UnavailablePageReason } from "./types.js";
 
@@ -246,8 +251,11 @@ async function main(): Promise<void> {
   const refreshHours = Number(args.get("refresh-hours") ?? "24");
   const retryHours = Number(args.get("retry-hours") ?? "2");
   const rotationAttempts = Number(args.get("proxy-rotation-attempts") ?? "0");
-  if (![sourceWorkers, timeoutSeconds, refreshHours, retryHours, rotationAttempts].every(Number.isFinite)
-    || !Number.isInteger(sourceWorkers) || sourceWorkers < 1 || timeoutSeconds <= 0 || refreshHours <= 0 || retryHours <= 0 || rotationAttempts < 0) {
+  const proxyExhaustiveTail = Number(args.get("proxy-exhaustive-tail") ?? "0");
+  if (![sourceWorkers, timeoutSeconds, refreshHours, retryHours, rotationAttempts, proxyExhaustiveTail].every(Number.isFinite)
+    || !Number.isInteger(sourceWorkers) || sourceWorkers < 1 || timeoutSeconds <= 0 || refreshHours <= 0 || retryHours <= 0
+    || !Number.isInteger(rotationAttempts) || rotationAttempts < 0
+    || !Number.isInteger(proxyExhaustiveTail) || proxyExhaustiveTail < 0) {
     throw new Error("Capture workers, timeouts and retry intervals must be valid");
   }
   const run = json<RawRunManifest>(await readFile(runPath, "utf8"));
@@ -266,11 +274,19 @@ async function main(): Promise<void> {
   const extensionPath = args.get("browser-extension-path") ? path.resolve(args.get("browser-extension-path")!) : undefined;
   const proxyServer = args.get("proxy-server");
   const bravePath = process.env.JOJO_TIMES_BRAVE_PATH?.trim();
+  const proxyAttempts = new Map<string, Set<string>>();
+  const recordProxyAttempts = (values: readonly ArticleBundle[], candidate: string): void => {
+    for (const article of values) {
+      const attempts = proxyAttempts.get(article.articleId) ?? new Set<string>();
+      attempts.add(candidate);
+      proxyAttempts.set(article.articleId, attempts);
+    }
+  };
 
-  const captureRound = async (values: ArticleBundle[], forceBrowser: boolean): Promise<void> => {
+  const captureRound = async (values: ArticleBundle[], forceBrowser: boolean, label = forceBrowser ? "proxy retry" : "initial"): Promise<void> => {
     await mapSourceBatches(values, sourceWorkers, async (batch) => {
       const batchStartedAt = Date.now();
-      process.stderr.write(`[page-capture] ${batch.sourceId}: ${forceBrowser ? "proxy retry" : "initial"} ${batch.articles.length} article(s)\n`);
+      process.stderr.write(`[page-capture] ${batch.sourceId}: ${label} ${batch.articles.length} article(s)\n`);
       const source = sources.get(batch.sourceId)!;
       const browserKind = source.fetch.browser ?? "chromium";
       if (browserKind === "brave" && !bravePath) {
@@ -331,23 +347,48 @@ async function main(): Promise<void> {
   const automaticName = args.get("proxy-automatic-name") ?? "JOJO-TIMES-AUTO";
   const probeOffsets = new Map<string, number>();
   let rotationRounds = 0;
+  let proxyTailRounds = 0;
+  let selectedProxyCandidates: string[] = [];
   if (pending.length && proxyServer && controlUrl && rotationAttempts > 0) {
     try {
-      for (const alternative of await proxyCandidates(controlUrl, proxyGroup, automaticName, rotationAttempts)) {
+      selectedProxyCandidates = await proxyCandidates(controlUrl, proxyGroup, automaticName, rotationAttempts);
+      for (const alternative of selectedProxyCandidates) {
         const failed = pending.filter((article) => article.source.fetch.proxyPolicy === "rotate"
           && retryableOutcome(best.get(article.articleId)));
         if (!failed.length) break;
         await selectProxy(controlUrl, proxyGroup, alternative);
         await new Promise((resolve) => setTimeout(resolve, 250));
         const probes = rotatingSourceProbes(failed, probeOffsets);
+        recordProxyAttempts(probes, alternative);
         await captureRound(probes, true);
         const usableSources = new Set(probes.filter((article) => {
           const outcome = best.get(article.articleId);
           return Boolean(outcome && successfulPage(outcome.page, outcome.fullBody));
         }).map((article) => article.sourceId));
         const remaining = failed.filter((article) => usableSources.has(article.sourceId) && retryableOutcome(best.get(article.articleId)));
-        if (remaining.length) await captureRound(remaining, true);
+        if (remaining.length) {
+          recordProxyAttempts(remaining, alternative);
+          await captureRound(remaining, true);
+        }
         rotationRounds += 1;
+      }
+
+      const failedAfterProbes = pending.filter((article) => article.source.fetch.proxyPolicy === "rotate"
+        && retryableOutcome(best.get(article.articleId)));
+      const tailSources = proxyTailSourceIds(failedAfterProbes, proxyExhaustiveTail);
+      if (tailSources.size) {
+        process.stderr.write(`[page-capture] exhaustive proxy tail: ${failedAfterProbes.filter((article) => tailSources.has(article.sourceId)).length} article(s) across ${tailSources.size} source(s)\n`);
+      }
+      for (const alternative of selectedProxyCandidates) {
+        const stillFailed = pending.filter((article) => article.source.fetch.proxyPolicy === "rotate"
+          && retryableOutcome(best.get(article.articleId)));
+        const untried = untriedProxyArticles(stillFailed, tailSources, proxyAttempts, alternative);
+        if (!untried.length) continue;
+        await selectProxy(controlUrl, proxyGroup, alternative);
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        recordProxyAttempts(untried, alternative);
+        await captureRound(untried, true, "exhaustive proxy tail");
+        proxyTailRounds += 1;
       }
     } finally {
       await selectProxy(controlUrl, proxyGroup, automaticName);
@@ -381,6 +422,8 @@ async function main(): Promise<void> {
       publishedAt: article.candidate.publishedAt,
       ...(outcome?.page.status !== undefined ? { httpStatus: outcome.page.status } : {}),
       error: outcome?.page.error ?? "FullTextNotExtracted",
+      proxyCandidatesTried: proxyAttempts.get(article.articleId)?.size ?? 0,
+      proxyCandidatesSelected: selectedProxyCandidates.length,
     }];
   });
   const perSource = [...new Set(articles.map((article) => article.sourceId))].sort().map((sourceId) => {
@@ -415,6 +458,9 @@ async function main(): Promise<void> {
     sourceWorkers,
     perSourceWorkers: 1,
     proxyRotationRounds: rotationRounds,
+    proxyTailRounds,
+    proxyCandidatesSelected: selectedProxyCandidates.length,
+    proxyExhaustiveTail,
     perSource,
     failures,
   };
