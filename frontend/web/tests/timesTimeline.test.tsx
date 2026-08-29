@@ -160,6 +160,8 @@ describe("Times timeline images", () => {
 
     fireEvent.click(within(articleList).getAllByRole("link", { name: new RegExp(article.title) })[0]!);
     await waitFor(() => expect(useTimesReadStore.getState().readById[article.id]).toBe(true));
+    expect(document.querySelector("main")?.className).toContain("min-h-[calc(100dvh-64px)] overflow-visible");
+    expect(document.querySelector("main")?.className).toContain("lg:overflow-hidden");
     expect(articleRow?.getAttribute("data-read")).toBe("true");
     expect(title.className).toContain("font-medium");
     expect(title.className).toContain("text-muted");

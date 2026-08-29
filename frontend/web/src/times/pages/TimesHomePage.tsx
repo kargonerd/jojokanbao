@@ -104,7 +104,7 @@ export function TimesHomePage() {
   }
 
   return (
-    <main className="h-[calc(100vh-64px)] overflow-hidden bg-[var(--app-canvas)] text-ink lg:grid lg:grid-cols-[220px_390px_minmax(0,1fr)] xl:grid-cols-[240px_450px_minmax(0,1fr)]">
+    <main className={`${showingMobileDetail ? "min-h-[calc(100dvh-64px)] overflow-visible" : "h-[calc(100dvh-64px)] overflow-hidden"} bg-[var(--app-canvas)] text-ink lg:grid lg:h-[calc(100vh-64px)] lg:min-h-0 lg:grid-cols-[220px_390px_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[240px_450px_minmax(0,1fr)]`}>
       <aside aria-label="媒体来源" className="hidden min-h-0 flex-col border-r border-rule bg-[var(--app-canvas)] lg:flex">
         <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4" aria-label="选择媒体">
           <p className="px-2 pb-2 font-sans text-[10px] font-black tracking-[0.16em] text-muted">媒体来源</p>
