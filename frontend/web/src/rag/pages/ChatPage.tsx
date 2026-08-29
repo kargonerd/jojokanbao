@@ -364,7 +364,11 @@ export function ChatPage() {
                       className={assistantTextClass}
                       dangerouslySetInnerHTML={{ __html: formatChatMarkdown(message.content, message.references) }}
                     />
-                    <ReferenceButtons content={message.content} references={message.references} />
+                    <ReferenceButtons
+                      content={message.content}
+                      references={message.references}
+                      returnTo="/rag"
+                    />
                   </article>
                 )
               ))}
