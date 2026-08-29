@@ -108,4 +108,18 @@ describe("Times AI explanation", () => {
     expect(chunks).toEqual(["不完整"]);
     expect(error).toContain("连接意外中断");
   });
+
+  it("shows a useful message when the local or deployed agent cannot be reached", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    const error = await new Promise<string>((resolve, reject) => {
+      explainTimesSelection(news, anchor, {
+        onStatus: vi.fn(),
+        onChunk: vi.fn(),
+        onDone: () => reject(new Error("an unreachable agent must not complete")),
+        onError: resolve,
+      });
+    });
+
+    expect(error).toBe("暂时无法连接 AI 解释服务，请稍后重试");
+  });
 });

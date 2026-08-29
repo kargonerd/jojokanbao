@@ -117,6 +117,20 @@ jobs:
               --header 'Makers-Conversation-Id: jojo-deploy-health' \
               "$check_url")" || status="000"
           fi
+          if [ "$status" = "200" ] && [ "$EDGEONE_DEPLOY_ENV" = "production" ]; then
+            check_url="${EDGEONE_AGENT_BASE_URL%/}/times/health"
+            status=""
+            for attempt in $(seq 1 6); do
+              status="$(curl --silent --show-error --output "$RUNNER_TEMP/agent-health.json" \
+                --connect-timeout 5 \
+                --max-time 10 \
+                --write-out '%{http_code}' \
+                --header 'Makers-Conversation-Id: jojo-deploy-health' \
+                "$check_url")" || status="000"
+              [ "$status" != "000" ] && [ "$status" != "404" ] && break
+              sleep 10
+            done
+          fi
           test ! -f "$RUNNER_TEMP/agent-health.json" || cat "$RUNNER_TEMP/agent-health.json"
           if [ "$status" != "$expected_status" ]; then
             project_id="$(grep -oE 'makers-[a-z0-9]+' "$RUNNER_TEMP/edgeone-deploy-clean.log" | tail -1)"

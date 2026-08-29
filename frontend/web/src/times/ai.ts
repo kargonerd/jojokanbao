@@ -214,7 +214,10 @@ export function explainTimesSelection(
     callbacks.onDone(metadata);
   })().catch((error: unknown) => {
     if (error instanceof DOMException && error.name === "AbortError") return;
-    callbacks.onError(error instanceof Error ? error.message : String(error));
+    const message = error instanceof Error ? error.message : String(error);
+    callbacks.onError(message === "Failed to fetch"
+      ? "暂时无法连接 AI 解释服务，请稍后重试"
+      : message);
   });
   return () => controller.abort();
 }
