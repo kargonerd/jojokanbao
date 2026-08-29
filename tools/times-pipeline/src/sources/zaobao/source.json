@@ -1,0 +1,131 @@
+{
+  "id": "zaobao",
+  "name": "联合早报",
+  "language": "zh-CN",
+  "publicationTimeZone": "Asia/Singapore",
+  "sections": [
+    {
+      "id": "latest",
+      "name": "最新",
+      "url": "https://www.zaobao.com.sg/realtime"
+    },
+    {
+      "id": "singapore",
+      "name": "新加坡",
+      "url": "https://www.zaobao.com.sg/news/singapore"
+    },
+    {
+      "id": "world",
+      "name": "国际",
+      "url": "https://www.zaobao.com.sg/news/world"
+    },
+    {
+      "id": "china",
+      "name": "中国",
+      "url": "https://www.zaobao.com.sg/news/china"
+    },
+    {
+      "id": "southeast-asia",
+      "name": "东南亚",
+      "url": "https://www.zaobao.com.sg/news/sea"
+    },
+    {
+      "id": "finance",
+      "name": "财经",
+      "url": "https://www.zaobao.com.sg/finance"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "latest-china",
+        "sectionIds": [
+          "latest",
+          "china"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "zaobao",
+          "driver": "http",
+          "route": "latest-china",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "latest-singapore",
+        "sectionIds": [
+          "latest",
+          "singapore"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "zaobao",
+          "driver": "http",
+          "route": "latest-singapore",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "latest-world",
+        "sectionIds": [
+          "latest",
+          "world"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "zaobao",
+          "driver": "http",
+          "route": "latest-world",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "latest-finance",
+        "sectionIds": [
+          "latest",
+          "finance"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "zaobao",
+          "driver": "http",
+          "route": "latest-finance",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "southeast-asia",
+        "sectionIds": [
+          "southeast-asia"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "zaobao",
+          "driver": "http",
+          "route": "southeast-asia",
+          "maximumItems": 100
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "discovery-body",
+      "captured-page",
+      "discovery-summary"
+    ],
+    "parser": "zaobao",
+    "minimumFullCharacters": 200,
+    "minimumFullParagraphs": 3
+  },
+  "fetch": {
+    "strategy": "browser-first",
+    "bpc": true,
+    "proxyPolicy": "rotate"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

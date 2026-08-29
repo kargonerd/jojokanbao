@@ -1,0 +1,343 @@
+{
+  "id": "nikkei",
+  "name": "Nikkei Asia",
+  "language": "en",
+  "publicationTimeZone": "Asia/Tokyo",
+  "sections": [
+    {
+      "id": "china",
+      "name": "China",
+      "url": "https://asia.nikkei.com/location/east-asia/china",
+      "match": {
+        "urlPrefixes": [
+          "https://asia.nikkei.com/location/east-asia/china/"
+        ]
+      }
+    },
+    {
+      "id": "japan",
+      "name": "Japan",
+      "url": "https://asia.nikkei.com/location/east-asia/japan",
+      "match": {
+        "urlPrefixes": [
+          "https://asia.nikkei.com/location/east-asia/japan/"
+        ]
+      }
+    },
+    {
+      "id": "southeast-asia",
+      "name": "Southeast Asia",
+      "url": "https://asia.nikkei.com/location/southeast-asia",
+      "match": {
+        "urlPrefixes": [
+          "https://asia.nikkei.com/location/southeast-asia/"
+        ]
+      }
+    },
+    {
+      "id": "india",
+      "name": "India",
+      "url": "https://asia.nikkei.com/location/south-asia/india",
+      "match": {
+        "urlPrefixes": [
+          "https://asia.nikkei.com/location/south-asia/india/"
+        ]
+      }
+    },
+    {
+      "id": "east-asia",
+      "name": "East Asia",
+      "url": "https://asia.nikkei.com/location/east-asia",
+      "match": {
+        "urlPrefixes": [
+          "https://asia.nikkei.com/location/east-asia/"
+        ]
+      }
+    },
+    {
+      "id": "south-asia",
+      "name": "South Asia",
+      "url": "https://asia.nikkei.com/location/south-asia",
+      "match": {
+        "urlPrefixes": [
+          "https://asia.nikkei.com/location/south-asia/"
+        ]
+      }
+    },
+    {
+      "id": "central-asia",
+      "name": "Central Asia",
+      "url": "https://asia.nikkei.com/location/central-asia",
+      "match": {
+        "urlPrefixes": [
+          "https://asia.nikkei.com/location/central-asia/"
+        ]
+      }
+    },
+    {
+      "id": "oceania",
+      "name": "Oceania",
+      "url": "https://asia.nikkei.com/location/oceania",
+      "match": {
+        "urlPrefixes": [
+          "https://asia.nikkei.com/location/oceania/"
+        ]
+      }
+    },
+    {
+      "id": "business",
+      "name": "Business",
+      "url": "https://asia.nikkei.com/business",
+      "match": {
+        "urlPrefixes": [
+          "https://asia.nikkei.com/business/"
+        ]
+      }
+    },
+    {
+      "id": "markets",
+      "name": "Markets",
+      "url": "https://asia.nikkei.com/business/markets",
+      "match": {
+        "urlPrefixes": [
+          "https://asia.nikkei.com/business/markets/"
+        ]
+      }
+    },
+    {
+      "id": "tech",
+      "name": "Tech",
+      "url": "https://asia.nikkei.com/business/tech",
+      "match": {
+        "urlPrefixes": [
+          "https://asia.nikkei.com/business/technology/",
+          "https://asia.nikkei.com/business/tech/"
+        ]
+      }
+    },
+    {
+      "id": "politics",
+      "name": "Politics",
+      "url": "https://asia.nikkei.com/politics",
+      "match": {
+        "urlPrefixes": [
+          "https://asia.nikkei.com/politics/"
+        ]
+      }
+    },
+    {
+      "id": "economy",
+      "name": "Economy",
+      "url": "https://asia.nikkei.com/economy",
+      "match": {
+        "urlPrefixes": [
+          "https://asia.nikkei.com/economy/"
+        ]
+      }
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "latest",
+        "sectionIds": [],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "stream": "latest",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "china",
+        "sectionIds": [
+          "china"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "china",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "japan",
+        "sectionIds": [
+          "japan"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "japan",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "southeast-asia",
+        "sectionIds": [
+          "southeast-asia"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "southeast-asia",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "india",
+        "sectionIds": [
+          "india"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "india",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "east-asia",
+        "sectionIds": [
+          "east-asia"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "east-asia",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "south-asia",
+        "sectionIds": [
+          "south-asia"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "south-asia",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "central-asia",
+        "sectionIds": [
+          "central-asia"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "central-asia",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "oceania",
+        "sectionIds": [
+          "oceania"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "oceania",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "business",
+        "sectionIds": [
+          "business"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "business",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "markets",
+        "sectionIds": [
+          "markets"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "markets",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "tech",
+        "sectionIds": [
+          "tech"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "tech",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "politics",
+        "sectionIds": [
+          "politics"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "politics",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "economy",
+        "sectionIds": [
+          "economy"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "nikkei",
+          "driver": "http",
+          "route": "economy",
+          "maximumItems": 50
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "discovery-body",
+      "captured-page",
+      "discovery-summary"
+    ],
+    "parser": "nikkei",
+    "minimumFullCharacters": 1000,
+    "minimumFullParagraphs": 5
+  },
+  "fetch": {
+    "strategy": "browser-first",
+    "bpc": true,
+    "proxyPolicy": "rotate"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

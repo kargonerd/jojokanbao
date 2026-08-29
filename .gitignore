@@ -8,6 +8,9 @@ dist-electron
 .env
 .env.local
 .env.*.local
+.dev.vars
+.dev.vars.*
+.wrangler/
 *.tsbuildinfo
 coverage
 .vite

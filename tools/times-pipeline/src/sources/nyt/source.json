@@ -1,0 +1,136 @@
+{
+  "id": "nyt",
+  "name": "The New York Times",
+  "language": "en",
+  "publicationTimeZone": "America/New_York",
+  "sections": [
+    {
+      "id": "world",
+      "name": "World",
+      "url": "https://www.nytimes.com/section/world"
+    },
+    {
+      "id": "us",
+      "name": "U.S.",
+      "url": "https://www.nytimes.com/section/us"
+    },
+    {
+      "id": "politics",
+      "name": "Politics",
+      "url": "https://www.nytimes.com/section/politics"
+    },
+    {
+      "id": "new-york",
+      "name": "New York",
+      "url": "https://www.nytimes.com/section/nyregion"
+    },
+    {
+      "id": "business",
+      "name": "Business",
+      "url": "https://www.nytimes.com/section/business"
+    },
+    {
+      "id": "economy",
+      "name": "Economy",
+      "url": "https://www.nytimes.com/section/business/economy"
+    },
+    {
+      "id": "technology",
+      "name": "Technology",
+      "url": "https://www.nytimes.com/section/technology"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "world",
+        "sectionIds": [
+          "world"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
+        }
+      },
+      {
+        "id": "us",
+        "sectionIds": [
+          "us"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://rss.nytimes.com/services/xml/rss/nyt/US.xml"
+        }
+      },
+      {
+        "id": "politics",
+        "sectionIds": [
+          "politics"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml"
+        }
+      },
+      {
+        "id": "new-york",
+        "sectionIds": [
+          "new-york"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://rss.nytimes.com/services/xml/rss/nyt/NYRegion.xml"
+        }
+      },
+      {
+        "id": "business",
+        "sectionIds": [
+          "business"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml"
+        }
+      },
+      {
+        "id": "economy",
+        "sectionIds": [
+          "economy"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://rss.nytimes.com/services/xml/rss/nyt/Economy.xml"
+        }
+      },
+      {
+        "id": "technology",
+        "sectionIds": [
+          "technology"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml"
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "captured-page",
+      "discovery-summary"
+    ],
+    "parser": "nyt"
+  },
+  "fetch": {
+    "strategy": "browser-first",
+    "bpc": true,
+    "browser": "brave",
+    "retryWithoutBpcOnBlocked": true,
+    "proxyPolicy": "rotate"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

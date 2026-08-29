@@ -1,0 +1,92 @@
+{
+  "id": "africanews",
+  "name": "Africanews",
+  "language": "en",
+  "publicationTimeZone": "Africa/Lagos",
+  "sections": [
+    {
+      "id": "news",
+      "name": "News",
+      "url": "https://www.africanews.com/news/"
+    },
+    {
+      "id": "business",
+      "name": "Business",
+      "url": "https://www.africanews.com/business/"
+    },
+    {
+      "id": "markets",
+      "name": "Markets",
+      "url": "https://www.africanews.com/business/markets/"
+    },
+    {
+      "id": "science-technology",
+      "name": "Science & Technology",
+      "url": "https://www.africanews.com/science-technology/"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "news",
+        "sectionIds": [
+          "news"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.africanews.com/feed/rss?themes=news"
+        }
+      },
+      {
+        "id": "business",
+        "sectionIds": [
+          "business"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.africanews.com/feed/rss?themes=business"
+        }
+      },
+      {
+        "id": "markets",
+        "sectionIds": [
+          "markets"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "africanews",
+          "driver": "http",
+          "route": "markets",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "science-technology",
+        "sectionIds": [
+          "science-technology"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.africanews.com/feed/rss?themes=science_technology"
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "captured-page",
+      "discovery-summary"
+    ],
+    "parser": "africanews"
+  },
+  "fetch": {
+    "strategy": "direct-first",
+    "bpc": true,
+    "proxyPolicy": "none"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

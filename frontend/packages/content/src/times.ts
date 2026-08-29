@@ -1,13 +1,7 @@
-import type { JojoDatasetIndex, JojoDatasetItemSummary, JojoItemManifest } from "./types.js";
+import type { JojoAssetDescriptor, JojoDatasetIndex, JojoDatasetItemSummary, JojoItemManifest } from "./types.js";
 
-export type TimesContentStatus = "full" | "partial" | "summary";
+export type TimesContentStatus = "full";
 export type TimesSourceHealthStatus = "healthy" | "degraded" | "unavailable";
-export type TimesUnavailableReason =
-  | "source-error"
-  | "source-empty"
-  | "metadata-only"
-  | "canonical-missing"
-  | "browser-capture-failed";
 
 export interface TimesSourceRef {
   id: string;
@@ -27,7 +21,50 @@ export interface TimesDeliveryArticle {
   source: TimesSourceRef;
   publisherSections?: Array<{ id: string; name: string }>;
   articleObject: string;
+  assets: JojoAssetDescriptor[];
   translations?: Record<string, unknown>;
+}
+
+export interface TimesTimelineDayRef {
+  date: string;
+  object: string;
+  articleCount: number;
+}
+
+export interface TimesTimelineIndex {
+  formatVersion: "jojo-news-timeline-index/1";
+  updatedAt: string;
+  dates: TimesTimelineDayRef[];
+  sources: TimesSourceRef[];
+}
+
+export interface TimesTimelineDay {
+  formatVersion: "jojo-news-timeline-day/1";
+  date: string;
+  updatedAt: string;
+  articles: TimesDeliveryArticle[];
+}
+
+export interface TimesSourceIndex extends JojoDatasetIndex {
+  datasetId: string;
+  type: "newspaper";
+  source: TimesSourceRef;
+  items: JojoDatasetItemSummary[];
+  updatedAt: string;
+}
+
+export interface TimesDateMetadata extends Record<string, unknown> {
+  formatVersion: "jojo-news-source-date/1";
+  issueDate: string;
+  generatedAt: string;
+  source: TimesSourceRef;
+  articles: TimesDeliveryArticle[];
+}
+
+export interface TimesDateManifest extends Omit<JojoItemManifest, "metadata"> {
+  datasetId: string;
+  type: "newspaper";
+  metadata: TimesDateMetadata;
 }
 
 export interface TimesSourceHealth {
@@ -36,52 +73,14 @@ export interface TimesSourceHealth {
   discovered: number;
   delivered: number;
   full: number;
-  summary: number;
   unavailable: number;
   availabilityRate: number;
   fullTextRate: number;
   healthScore: number;
   networkExchanges: number;
-  browserAttempts: number;
-  browserSucceeded: number;
-  browserFailed: number;
+  pageAttempts: number;
+  pageSucceeded: number;
+  pageFailed: number;
+  imageAssets: number;
   updatedAt: string;
-}
-
-export interface TimesUnavailableCase {
-  id: string;
-  source: TimesSourceRef;
-  reason: TimesUnavailableReason;
-  stage: "discovery" | "capture" | "canonical";
-  message: string;
-  title?: string;
-  url?: string;
-  publishedAt?: string;
-}
-
-export interface TimesDeliveryIndex extends JojoDatasetIndex {
-  datasetId: "times";
-  type: "newspaper";
-  items: JojoDatasetItemSummary[];
-  updatedAt: string;
-  window: {
-    from: string;
-    to: string;
-    hours: number;
-  };
-  sourceHealth: TimesSourceHealth[];
-  unavailableCases: TimesUnavailableCase[];
-}
-
-export interface TimesDateMetadata extends Record<string, unknown> {
-  formatVersion: "jojo-times-date-metadata/1";
-  issueDate: string;
-  generatedAt: string;
-  articles: TimesDeliveryArticle[];
-}
-
-export interface TimesDateManifest extends Omit<JojoItemManifest, "metadata"> {
-  datasetId: "times";
-  type: "newspaper";
-  metadata: TimesDateMetadata;
 }

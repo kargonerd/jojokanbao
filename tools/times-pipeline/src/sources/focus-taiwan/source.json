@@ -1,0 +1,84 @@
+{
+  "id": "focus-taiwan",
+  "name": "Focus Taiwan",
+  "language": "en",
+  "publicationTimeZone": "Asia/Taipei",
+  "sections": [
+    {
+      "id": "latest",
+      "name": "Latest",
+      "url": "https://focustaiwan.tw/"
+    },
+    {
+      "id": "politics",
+      "name": "Politics",
+      "url": "https://focustaiwan.tw/politics",
+      "match": {
+        "urlPrefixes": [
+          "https://focustaiwan.tw/politics/"
+        ]
+      }
+    },
+    {
+      "id": "business",
+      "name": "Business",
+      "url": "https://focustaiwan.tw/business",
+      "match": {
+        "urlPrefixes": [
+          "https://focustaiwan.tw/business/"
+        ]
+      }
+    },
+    {
+      "id": "society",
+      "name": "Society",
+      "url": "https://focustaiwan.tw/society",
+      "match": {
+        "urlPrefixes": [
+          "https://focustaiwan.tw/society/"
+        ]
+      }
+    },
+    {
+      "id": "science-technology",
+      "name": "Science & Tech",
+      "url": "https://focustaiwan.tw/sci-tech",
+      "match": {
+        "urlPrefixes": [
+          "https://focustaiwan.tw/sci-tech/"
+        ]
+      }
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "latest",
+        "sectionIds": [
+          "latest"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://feeds.feedburner.com/rsscna/engnews/"
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "captured-page",
+      "discovery-summary"
+    ],
+    "parser": "focus-taiwan"
+  },
+  "fetch": {
+    "strategy": "direct-first",
+    "bpc": true,
+    "proxyPolicy": "none"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

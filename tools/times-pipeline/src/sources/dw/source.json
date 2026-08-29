@@ -1,0 +1,173 @@
+{
+  "id": "dw",
+  "name": "Deutsche Welle",
+  "language": "en",
+  "publicationTimeZone": "Europe/Berlin",
+  "sections": [
+    {
+      "id": "germany",
+      "name": "Germany",
+      "url": "https://www.dw.com/en/germany/s-1432"
+    },
+    {
+      "id": "europe",
+      "name": "Europe",
+      "url": "https://www.dw.com/en/europe/s-1433"
+    },
+    {
+      "id": "world",
+      "name": "World",
+      "url": "https://www.dw.com/en/world/s-1429"
+    },
+    {
+      "id": "africa",
+      "name": "Africa",
+      "url": "https://www.dw.com/en/africa/s-12756"
+    },
+    {
+      "id": "asia",
+      "name": "Asia",
+      "url": "https://www.dw.com/en/asia/s-12758"
+    },
+    {
+      "id": "americas",
+      "name": "Americas",
+      "url": "https://www.dw.com/en/americas/s-12757"
+    },
+    {
+      "id": "middle-east",
+      "name": "Middle East",
+      "url": "https://www.dw.com/en/middle-east/s-14207"
+    },
+    {
+      "id": "business",
+      "name": "Business",
+      "url": "https://www.dw.com/en/business/s-1431"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "germany",
+        "sectionIds": [
+          "germany"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "dw",
+          "driver": "http",
+          "navigationId": "1432",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "europe",
+        "sectionIds": [
+          "europe"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "dw",
+          "driver": "http",
+          "navigationId": "1433",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "world",
+        "sectionIds": [
+          "world"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "dw",
+          "driver": "http",
+          "navigationId": "1429",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "africa",
+        "sectionIds": [
+          "africa"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "dw",
+          "driver": "http",
+          "navigationId": "12756",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "asia",
+        "sectionIds": [
+          "asia"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "dw",
+          "driver": "http",
+          "navigationId": "12758",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "americas",
+        "sectionIds": [
+          "americas"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "dw",
+          "driver": "http",
+          "navigationId": "12757",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "middle-east",
+        "sectionIds": [
+          "middle-east"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "dw",
+          "driver": "http",
+          "navigationId": "14207",
+          "maximumItems": 100
+        }
+      },
+      {
+        "id": "business",
+        "sectionIds": [
+          "business"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "dw",
+          "driver": "http",
+          "navigationId": "1431",
+          "maximumItems": 100
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "captured-page",
+      "discovery-summary"
+    ],
+    "parser": "dw"
+  },
+  "fetch": {
+    "strategy": "direct-first",
+    "bpc": true,
+    "proxyPolicy": "none"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

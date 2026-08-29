@@ -11,16 +11,21 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "capture": "node dist/src/capture-cli.js",
+    "capture-pages": "node dist/src/page-capture-cli.js",
+    "prepare-proxy": "node dist/src/prepare-proxy-cli.js",
+    "hf": "node dist/src/hf-cli.js",
     "process": "node dist/src/process-cli.js",
     "delivery": "node dist/src/delivery-cli.js",
     "serve": "node dist/src/serve-cli.js"
   },
   "dependencies": {
+    "@huggingface/hub": "2.16.0",
     "@jojo/content": "workspace:*",
     "cheerio": "1.2.0",
     "fast-xml-parser": "5.2.5",
-    "rsshub": "1.0.0-master.5151c32",
-    "undici": "8.10.0"
+    "playwright": "1.60.0",
+    "undici": "8.10.0",
+    "yaml": "2.9.0"
   },
   "devDependencies": {
     "@types/node": "24.3.0",

@@ -30,7 +30,7 @@ Homepage 已启用 Astro React integration，可以直接复用 `@jojo/ui` 组�
 - RAG 由独立 Agent 运行层承载，不在 Python 后端维护第二套实现；浏览器统一请求
   Reader 的 `/gateway/ask`，由同源 Cloud Function 转发到国际 Agent。
 - Times 由 `tools/times-pipeline` 每十分钟离线采集，以 WARC 1.1/WACZ 1.2 保存原始 HTTP；
-  正文优先使用进程内锁定的 RSSHub route，缺失时由 Chromium+BPC 原页归档和通用正文回填，
+  发现直接使用出版方官方 RSS、API、sitemap 或栏目页，正文由 Chromium+BPC 原页归档和来源/通用解析器回填，
   再生成媒体 Canonical 与 Delivery Jox。Raw/Canonical 写入同一个 HF Dataset，GitHub Actions
   按对象依赖顺序只把 Delivery 发布到 B2。Web 与 Mobile 直接读取 B2 CDN，不在读者请求路径中
   抓取出版方或调用 Python API，也不依赖 `jojo-news-archive-runner`。

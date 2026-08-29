@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "jojokanbao-times-scheduler",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-28",
+  "workers_dev": false,
+  "observability": {
+    "enabled": true
+  },
+  "triggers": {
+    "crons": ["*/10 * * * *"]
+  },
+  "vars": {
+    "GITHUB_OWNER": "kargonerd",
+    "GITHUB_REPO": "jojokanbao",
+    "GITHUB_WORKFLOW": "maintenance-times-capture.yml",
+    "GITHUB_PROCESS_WORKFLOW": "maintenance-times-process.yml",
+    "GITHUB_REF": "master"
+  },
+  "secrets": {
+    "required": ["GITHUB_TOKEN"]
+  }
+}

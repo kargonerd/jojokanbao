@@ -1,6 +1,7 @@
 import { XMLParser } from "fast-xml-parser";
+import { BROWSER_USER_AGENT } from "../network/headers.js";
 import { articleId, normalizeArticleUrl } from "../identity.js";
-import { isFullDiscoveryBody, isoDate, optionalString, plainText, stringList } from "../text.js";
+import { isFullDiscoveryBody, publisherDate, optionalString, plainText, stringList } from "../text.js";
 import type { Candidate, DiscoveryResult, SourceConfig } from "../types.js";
 
 const parser = new XMLParser({
@@ -71,7 +72,7 @@ export function parseOfficialFeed(source: SourceConfig, xml: string, fetchedAt: 
   for (const row of feedEntries(upstream)) {
     const title = plainText(text(localValue(row, ["title"])));
     const sourceUrl = entryLink(row, resolvedFeedUrl);
-    const publishedAt = isoDate(text(localValue(row, ["pubdate", "date", "published", "updated"])));
+    const publishedAt = publisherDate(text(localValue(row, ["pubdate", "date", "published", "updated"])), source.publicationTimeZone);
     if (!title || !sourceUrl || !publishedAt) continue;
     let canonicalUrl: string;
     try {
@@ -89,7 +90,7 @@ export function parseOfficialFeed(source: SourceConfig, xml: string, fetchedAt: 
       source.content.minimumFullCharacters,
       source.content.minimumFullParagraphs,
     ) ? rawBody.slice(0, 1_000_000) : undefined;
-    const updatedAt = isoDate(text(localValue(row, ["updated"])));
+    const updatedAt = publisherDate(text(localValue(row, ["updated"])), source.publicationTimeZone);
     const upstreamId = text(localValue(row, ["guid", "id"]));
     candidates.push({
       articleId: id,
@@ -122,7 +123,7 @@ export async function discoverOfficialRss(source: SourceConfig, fetchedAt: strin
     const response = await fetch(url, {
       headers: {
         accept: "application/rss+xml, application/atom+xml, application/xml, text/xml",
-        "user-agent": "JOJO-Times-Offline/2.0 (+https://jojokanbao.cn)",
+        "user-agent": BROWSER_USER_AGENT,
       },
       redirect: "follow",
       signal: AbortSignal.timeout(70_000),

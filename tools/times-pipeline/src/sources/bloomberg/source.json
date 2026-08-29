@@ -1,0 +1,116 @@
+{
+  "id": "bloomberg",
+  "name": "Bloomberg",
+  "language": "en",
+  "publicationTimeZone": "America/New_York",
+  "sections": [
+    {
+      "id": "asia",
+      "name": "Asia",
+      "url": "https://www.bloomberg.com/asia",
+      "discoverable": false
+    },
+    {
+      "id": "markets",
+      "name": "Markets",
+      "url": "https://www.bloomberg.com/markets"
+    },
+    {
+      "id": "economics",
+      "name": "Economics",
+      "url": "https://www.bloomberg.com/economics"
+    },
+    {
+      "id": "industries",
+      "name": "Industries",
+      "url": "https://www.bloomberg.com/industries"
+    },
+    {
+      "id": "technology",
+      "name": "Technology",
+      "url": "https://www.bloomberg.com/technology"
+    },
+    {
+      "id": "ai",
+      "name": "AI",
+      "url": "https://www.bloomberg.com/ai",
+      "discoverable": false
+    },
+    {
+      "id": "politics",
+      "name": "Politics",
+      "url": "https://www.bloomberg.com/politics"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "markets",
+        "sectionIds": [
+          "markets"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://feeds.bloomberg.com/markets/news.rss"
+        }
+      },
+      {
+        "id": "economics",
+        "sectionIds": [
+          "economics"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://feeds.bloomberg.com/economics/news.rss"
+        }
+      },
+      {
+        "id": "industries",
+        "sectionIds": [
+          "industries"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://feeds.bloomberg.com/industries/news.rss"
+        }
+      },
+      {
+        "id": "technology",
+        "sectionIds": [
+          "technology"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://feeds.bloomberg.com/technology/news.rss"
+        }
+      },
+      {
+        "id": "politics",
+        "sectionIds": [
+          "politics"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://feeds.bloomberg.com/politics/news.rss"
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "captured-page",
+      "discovery-summary"
+    ],
+    "parser": "bloomberg"
+  },
+  "fetch": {
+    "strategy": "browser-first",
+    "bpc": true,
+    "proxyPolicy": "rotate"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

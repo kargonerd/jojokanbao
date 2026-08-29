@@ -1,0 +1,140 @@
+{
+  "id": "agencia-brasil",
+  "name": "Agência Brasil",
+  "language": "en",
+  "publicationTimeZone": "America/Sao_Paulo",
+  "sections": [
+    {
+      "id": "culture",
+      "name": "Culture",
+      "url": "https://agenciabrasil.ebc.com.br/en/cultura"
+    },
+    {
+      "id": "economy",
+      "name": "Economy",
+      "url": "https://agenciabrasil.ebc.com.br/en/economia"
+    },
+    {
+      "id": "education",
+      "name": "Education",
+      "url": "https://agenciabrasil.ebc.com.br/en/educacao"
+    },
+    {
+      "id": "general",
+      "name": "General",
+      "url": "https://agenciabrasil.ebc.com.br/en/geral"
+    },
+    {
+      "id": "health",
+      "name": "Health",
+      "url": "https://agenciabrasil.ebc.com.br/en/saude"
+    },
+    {
+      "id": "human-rights",
+      "name": "Human Rights",
+      "url": "https://agenciabrasil.ebc.com.br/en/direitos-humanos"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "culture",
+        "sectionIds": [
+          "culture"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "agencia-brasil",
+          "driver": "http",
+          "route": "culture",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "economy",
+        "sectionIds": [
+          "economy"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "agencia-brasil",
+          "driver": "http",
+          "route": "economy",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "education",
+        "sectionIds": [
+          "education"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "agencia-brasil",
+          "driver": "http",
+          "route": "education",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "general",
+        "sectionIds": [
+          "general"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "agencia-brasil",
+          "driver": "http",
+          "route": "general",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "health",
+        "sectionIds": [
+          "health"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "agencia-brasil",
+          "driver": "http",
+          "route": "health",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "human-rights",
+        "sectionIds": [
+          "human-rights"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "agencia-brasil",
+          "driver": "http",
+          "route": "human-rights",
+          "maximumItems": 50
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "discovery-body",
+      "captured-page",
+      "discovery-summary"
+    ],
+    "parser": "agencia-brasil",
+    "minimumFullCharacters": 500,
+    "minimumFullParagraphs": 3
+  },
+  "fetch": {
+    "strategy": "direct-first",
+    "bpc": true,
+    "proxyPolicy": "none"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

@@ -1,0 +1,194 @@
+{
+  "id": "xinhua",
+  "name": "新华网",
+  "language": "zh-CN",
+  "publicationTimeZone": "Asia/Shanghai",
+  "sections": [
+    {
+      "id": "politics",
+      "name": "时政",
+      "url": "https://www.news.cn/politics/index.html"
+    },
+    {
+      "id": "world",
+      "name": "国际",
+      "url": "https://www.news.cn/world/index.html"
+    },
+    {
+      "id": "fortune",
+      "name": "财经",
+      "url": "https://www.news.cn/fortune/index.htm"
+    },
+    {
+      "id": "comments",
+      "name": "网评",
+      "url": "https://www.news.cn/comments/index.html"
+    },
+    {
+      "id": "hong-kong-macao",
+      "name": "港澳",
+      "url": "https://www.news.cn/gangao/index.html"
+    },
+    {
+      "id": "taiwan",
+      "name": "台湾",
+      "url": "https://www.news.cn/tw/index.html"
+    },
+    {
+      "id": "military",
+      "name": "军事",
+      "url": "https://www.news.cn/milpro/index.htm"
+    },
+    {
+      "id": "law",
+      "name": "法律",
+      "url": "https://www.news.cn/law/index.html"
+    },
+    {
+      "id": "finance",
+      "name": "金融",
+      "url": "https://www.news.cn/money/index.html"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "politics",
+        "sectionIds": [
+          "politics"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "xinhua",
+          "driver": "http",
+          "route": "politics",
+          "maximumItems": 30
+        }
+      },
+      {
+        "id": "world",
+        "sectionIds": [
+          "world"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "xinhua",
+          "driver": "http",
+          "route": "world",
+          "maximumItems": 30
+        }
+      },
+      {
+        "id": "fortune",
+        "sectionIds": [
+          "fortune"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "xinhua",
+          "driver": "http",
+          "route": "fortune",
+          "maximumItems": 30
+        }
+      },
+      {
+        "id": "comments",
+        "sectionIds": [
+          "comments"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "xinhua",
+          "driver": "http",
+          "route": "comments",
+          "maximumItems": 30
+        }
+      },
+      {
+        "id": "hong-kong-macao",
+        "sectionIds": [
+          "hong-kong-macao"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "xinhua",
+          "driver": "http",
+          "route": "hong-kong-macao",
+          "maximumItems": 30
+        }
+      },
+      {
+        "id": "taiwan",
+        "sectionIds": [
+          "taiwan"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "xinhua",
+          "driver": "http",
+          "route": "taiwan",
+          "maximumItems": 30
+        }
+      },
+      {
+        "id": "military",
+        "sectionIds": [
+          "military"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "xinhua",
+          "driver": "http",
+          "route": "military",
+          "maximumItems": 30
+        }
+      },
+      {
+        "id": "law",
+        "sectionIds": [
+          "law"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "xinhua",
+          "driver": "http",
+          "route": "law",
+          "maximumItems": 30
+        }
+      },
+      {
+        "id": "finance",
+        "sectionIds": [
+          "finance"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "xinhua",
+          "driver": "http",
+          "route": "finance",
+          "maximumItems": 30
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "discovery-body",
+      "captured-page",
+      "discovery-summary"
+    ],
+    "parser": "xinhua",
+    "minimumFullCharacters": 80,
+    "minimumFullParagraphs": 1
+  },
+  "fetch": {
+    "strategy": "direct-first",
+    "bpc": true,
+    "proxyPolicy": "none"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

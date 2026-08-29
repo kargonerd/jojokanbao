@@ -1,0 +1,212 @@
+{
+  "id": "people",
+  "name": "人民网",
+  "language": "zh-CN",
+  "publicationTimeZone": "Asia/Shanghai",
+  "sections": [
+    {
+      "id": "politics",
+      "name": "党网·时政",
+      "url": "https://cpc.people.com.cn/"
+    },
+    {
+      "id": "personnel",
+      "name": "人事",
+      "url": "https://renshi.people.com.cn/"
+    },
+    {
+      "id": "anti-corruption",
+      "name": "反腐",
+      "url": "https://fanfu.people.com.cn/"
+    },
+    {
+      "id": "theory",
+      "name": "理论",
+      "url": "https://theory.people.com.cn/"
+    },
+    {
+      "id": "economy-technology",
+      "name": "经济·科技",
+      "url": "https://finance.people.com.cn/"
+    },
+    {
+      "id": "society-law",
+      "name": "社会·法治",
+      "url": "https://society.people.com.cn/"
+    },
+    {
+      "id": "world",
+      "name": "国际",
+      "url": "https://world.people.com.cn/"
+    },
+    {
+      "id": "military",
+      "name": "军事",
+      "url": "https://military.people.com.cn/"
+    },
+    {
+      "id": "greater-bay-area",
+      "name": "大湾区",
+      "url": "https://gba.people.cn/"
+    },
+    {
+      "id": "taiwan",
+      "name": "台湾",
+      "url": "https://tw.people.com.cn/"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "politics",
+        "sectionIds": [
+          "politics"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "people",
+          "driver": "http",
+          "route": "politics",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "personnel",
+        "sectionIds": [
+          "personnel"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "people",
+          "driver": "http",
+          "route": "personnel",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "anti-corruption",
+        "sectionIds": [
+          "anti-corruption"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "people",
+          "driver": "http",
+          "route": "anti-corruption",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "theory",
+        "sectionIds": [
+          "theory"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "people",
+          "driver": "http",
+          "route": "theory",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "economy-technology",
+        "sectionIds": [
+          "economy-technology"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "people",
+          "driver": "http",
+          "route": "economy-technology",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "society-law",
+        "sectionIds": [
+          "society-law"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "people",
+          "driver": "http",
+          "route": "society-law",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "world",
+        "sectionIds": [
+          "world"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "people",
+          "driver": "http",
+          "route": "world",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "military",
+        "sectionIds": [
+          "military"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "people",
+          "driver": "http",
+          "route": "military",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "greater-bay-area",
+        "sectionIds": [
+          "greater-bay-area"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "people",
+          "driver": "http",
+          "route": "greater-bay-area",
+          "maximumItems": 50
+        }
+      },
+      {
+        "id": "taiwan",
+        "sectionIds": [
+          "taiwan"
+        ],
+        "discovery": {
+          "kind": "source-adapter",
+          "adapter": "people",
+          "driver": "http",
+          "route": "taiwan",
+          "maximumItems": 50
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "discovery-body",
+      "captured-page",
+      "discovery-summary"
+    ],
+    "parser": "people",
+    "minimumFullCharacters": 40,
+    "minimumFullParagraphs": 1
+  },
+  "fetch": {
+    "strategy": "direct-first",
+    "bpc": true,
+    "proxyPolicy": "none"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

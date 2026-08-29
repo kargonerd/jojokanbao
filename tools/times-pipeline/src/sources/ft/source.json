@@ -1,0 +1,197 @@
+{
+  "id": "ft",
+  "name": "Financial Times",
+  "language": "en",
+  "publicationTimeZone": "Europe/London",
+  "sections": [
+    {
+      "id": "world",
+      "name": "World",
+      "url": "https://www.ft.com/world"
+    },
+    {
+      "id": "global-economy",
+      "name": "Global Economy",
+      "url": "https://www.ft.com/global-economy"
+    },
+    {
+      "id": "uk",
+      "name": "UK",
+      "url": "https://www.ft.com/uk"
+    },
+    {
+      "id": "us",
+      "name": "US",
+      "url": "https://www.ft.com/us"
+    },
+    {
+      "id": "china",
+      "name": "China",
+      "url": "https://www.ft.com/china"
+    },
+    {
+      "id": "africa",
+      "name": "Africa",
+      "url": "https://www.ft.com/africa"
+    },
+    {
+      "id": "asia-pacific",
+      "name": "Asia Pacific",
+      "url": "https://www.ft.com/asia-pacific"
+    },
+    {
+      "id": "emerging-markets",
+      "name": "Emerging Markets",
+      "url": "https://www.ft.com/emerging-markets"
+    },
+    {
+      "id": "europe",
+      "name": "Europe",
+      "url": "https://www.ft.com/europe"
+    },
+    {
+      "id": "americas",
+      "name": "Americas",
+      "url": "https://www.ft.com/americas"
+    },
+    {
+      "id": "middle-east-north-africa",
+      "name": "Middle East & North Africa",
+      "url": "https://www.ft.com/middle-east-north-africa"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "world",
+        "sectionIds": [
+          "world"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.ft.com/rss/world"
+        }
+      },
+      {
+        "id": "global-economy",
+        "sectionIds": [
+          "global-economy"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.ft.com/rss/global-economy"
+        }
+      },
+      {
+        "id": "uk",
+        "sectionIds": [
+          "uk"
+        ],
+        "discovery": {
+          "kind": "official-rss-list",
+          "urls": [
+            "https://www.ft.com/rss/uk-politics-policy",
+            "https://www.ft.com/rss/uk-business-economy"
+          ]
+        }
+      },
+      {
+        "id": "us",
+        "sectionIds": [
+          "us"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.ft.com/rss/us"
+        }
+      },
+      {
+        "id": "china",
+        "sectionIds": [
+          "china"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.ft.com/rss/china"
+        }
+      },
+      {
+        "id": "africa",
+        "sectionIds": [
+          "africa"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.ft.com/rss/africa"
+        }
+      },
+      {
+        "id": "asia-pacific",
+        "sectionIds": [
+          "asia-pacific"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.ft.com/rss/asia-pacific"
+        }
+      },
+      {
+        "id": "emerging-markets",
+        "sectionIds": [
+          "emerging-markets"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.ft.com/rss/emerging-markets"
+        }
+      },
+      {
+        "id": "europe",
+        "sectionIds": [
+          "europe"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.ft.com/rss/europe"
+        }
+      },
+      {
+        "id": "americas",
+        "sectionIds": [
+          "americas"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.ft.com/rss/americas"
+        }
+      },
+      {
+        "id": "middle-east-north-africa",
+        "sectionIds": [
+          "middle-east-north-africa"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.ft.com/rss/middle-east-north-africa"
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "captured-page",
+      "discovery-summary"
+    ],
+    "parser": "ft"
+  },
+  "fetch": {
+    "strategy": "browser-first",
+    "bpc": true,
+    "proxyPolicy": "rotate"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

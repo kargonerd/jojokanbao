@@ -1,0 +1,164 @@
+{
+  "id": "guardian",
+  "name": "The Guardian",
+  "language": "en",
+  "publicationTimeZone": "Europe/London",
+  "sections": [
+    {
+      "id": "world",
+      "name": "World",
+      "url": "https://www.theguardian.com/world"
+    },
+    {
+      "id": "uk",
+      "name": "UK",
+      "url": "https://www.theguardian.com/uk-news"
+    },
+    {
+      "id": "us",
+      "name": "US",
+      "url": "https://www.theguardian.com/us-news"
+    },
+    {
+      "id": "us-politics",
+      "name": "US Politics",
+      "url": "https://www.theguardian.com/us-news/us-politics"
+    },
+    {
+      "id": "australia",
+      "name": "Australia",
+      "url": "https://www.theguardian.com/australia-news"
+    },
+    {
+      "id": "europe",
+      "name": "Europe",
+      "url": "https://www.theguardian.com/world/europe-news"
+    },
+    {
+      "id": "middle-east",
+      "name": "Middle East",
+      "url": "https://www.theguardian.com/world/middleeast"
+    },
+    {
+      "id": "uk-politics",
+      "name": "UK Politics",
+      "url": "https://www.theguardian.com/politics"
+    },
+    {
+      "id": "business",
+      "name": "Business",
+      "url": "https://www.theguardian.com/business"
+    }
+  ],
+  "discovery": {
+    "kind": "multi",
+    "targets": [
+      {
+        "id": "world",
+        "sectionIds": [
+          "world"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.theguardian.com/world/rss"
+        }
+      },
+      {
+        "id": "uk",
+        "sectionIds": [
+          "uk"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.theguardian.com/uk-news/rss"
+        }
+      },
+      {
+        "id": "us",
+        "sectionIds": [
+          "us"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.theguardian.com/us-news/rss"
+        }
+      },
+      {
+        "id": "us-politics",
+        "sectionIds": [
+          "us-politics"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.theguardian.com/us-news/us-politics/rss"
+        }
+      },
+      {
+        "id": "australia",
+        "sectionIds": [
+          "australia"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.theguardian.com/australia-news/rss"
+        }
+      },
+      {
+        "id": "europe",
+        "sectionIds": [
+          "europe"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.theguardian.com/world/europe-news/rss"
+        }
+      },
+      {
+        "id": "middle-east",
+        "sectionIds": [
+          "middle-east"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.theguardian.com/world/middleeast/rss"
+        }
+      },
+      {
+        "id": "uk-politics",
+        "sectionIds": [
+          "uk-politics"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.theguardian.com/politics/rss"
+        }
+      },
+      {
+        "id": "business",
+        "sectionIds": [
+          "business"
+        ],
+        "discovery": {
+          "kind": "official-rss",
+          "url": "https://www.theguardian.com/business/rss"
+        }
+      }
+    ]
+  },
+  "content": {
+    "priority": [
+      "captured-page",
+      "discovery-summary"
+    ],
+    "parser": "guardian"
+  },
+  "fetch": {
+    "strategy": "direct-first",
+    "bpc": true,
+    "proxyPolicy": "none"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}

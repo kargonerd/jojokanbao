@@ -1,6 +1,7 @@
 import { XMLParser } from "fast-xml-parser";
+import { BROWSER_USER_AGENT } from "../network/headers.js";
 import { articleId, normalizeArticleUrl } from "../identity.js";
-import { isoDate, optionalString } from "../text.js";
+import { publisherDate, optionalString } from "../text.js";
 import type { Candidate, DiscoveryResult, SourceConfig } from "../types.js";
 
 const parser = new XMLParser({
@@ -44,7 +45,7 @@ export function parseSitemap(source: SourceConfig, xml: string, fetchedAt: strin
   for (const value of array(urlset?.url)) {
     const row = object(value);
     const sourceUrl = valueText(row?.loc);
-    const publishedAt = isoDate(valueText(row?.lastmod));
+    const publishedAt = publisherDate(valueText(row?.lastmod), source.publicationTimeZone);
     if (!sourceUrl || !publishedAt) continue;
     let canonicalUrl: string;
     try {
@@ -86,7 +87,7 @@ async function fetchXml(sourceId: string, url: string): Promise<string> {
   const response = await fetch(url, {
     headers: {
       accept: "application/xml, text/xml",
-      "user-agent": "JOJO-Times-Offline/2.0 (+https://jojokanbao.cn)",
+      "user-agent": BROWSER_USER_AGENT,
     },
     redirect: "follow",
     signal: AbortSignal.timeout(70_000),

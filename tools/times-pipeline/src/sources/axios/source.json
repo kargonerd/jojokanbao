@@ -1,0 +1,61 @@
+{
+  "id": "axios",
+  "name": "Axios",
+  "language": "en",
+  "publicationTimeZone": "America/New_York",
+  "sections": [
+    {
+      "id": "politics-policy",
+      "name": "Politics & Policy",
+      "url": "https://www.axios.com/politics-policy",
+      "discoverable": false
+    },
+    {
+      "id": "business",
+      "name": "Business",
+      "url": "https://www.axios.com/business",
+      "discoverable": false
+    },
+    {
+      "id": "technology",
+      "name": "Technology",
+      "url": "https://www.axios.com/technology",
+      "discoverable": false
+    },
+    {
+      "id": "world",
+      "name": "World",
+      "url": "https://www.axios.com/world",
+      "discoverable": false
+    },
+    {
+      "id": "economy",
+      "name": "Economy",
+      "url": "https://www.axios.com/economy",
+      "discoverable": false
+    }
+  ],
+  "discovery": {
+    "kind": "official-rss",
+    "url": "https://api.axios.com/feed/"
+  },
+  "content": {
+    "priority": [
+      "discovery-body",
+      "captured-page",
+      "discovery-summary"
+    ],
+    "parser": "axios",
+    "minimumFullCharacters": 500,
+    "minimumFullParagraphs": 3
+  },
+  "fetch": {
+    "strategy": "browser-first",
+    "bpc": true,
+    "proxyPolicy": "rotate"
+  },
+  "health": {
+    "minimumCandidates": 1
+  },
+  "enabled": true
+}
