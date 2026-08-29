@@ -3,7 +3,7 @@ import { dispatchTimesCapture, type SchedulerEnv } from "./dispatch";
 export default {
   scheduled(controller, env, context): void {
     context.waitUntil(
-      dispatchTimesCapture(env).then((result) => {
+      dispatchTimesCapture(env, { scheduledTime: controller.scheduledTime }).then((result) => {
         console.log(
           JSON.stringify({
             event: "times_capture_dispatched",

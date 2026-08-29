@@ -86,6 +86,7 @@ describe("canonical writer", () => {
     const result = await writeCanonicalSource(output, source, manifest, "raw/reuters/runs/run/manifest.json", [
       candidate, imageOnly,
       { ...candidate, articleId: "reuters:summary", processedBody: "", assets: [], contentStatus: "summary" },
+      { ...candidate, articleId: "reuters:unchanged", processedBody: "", assets: [], contentStatus: "summary", captureStatus: "unchanged" },
     ], "raw-sha");
     expect(result.articles).toHaveLength(2);
     expect(result.skippedWithoutFullText).toBe(1);
@@ -94,6 +95,13 @@ describe("canonical writer", () => {
         articleId: "reuters:summary",
         reason: "full-text-missing",
         contentStatus: "summary",
+      }),
+    ]);
+    expect(result.unchangedWithoutRefresh).toBe(1);
+    expect(result.unchangedArticles).toEqual([
+      expect.objectContaining({
+        articleId: "reuters:unchanged",
+        captureStatus: "unchanged",
       }),
     ]);
     const articleFile = path.join(output, ...result.articles[0]!.object.split("/"));
