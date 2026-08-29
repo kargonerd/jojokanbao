@@ -1,12 +1,18 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(29);
+select extensions.plan(30);
 
 select extensions.hasnt_table(
   'private',
   'annotation_moderation_events',
   'annotation moderation does not keep an unused event table'
+);
+
+select extensions.hasnt_table(
+  'public',
+  'reader_marks',
+  'the unused personal mark prototype is removed'
 );
 
 select extensions.has_column(

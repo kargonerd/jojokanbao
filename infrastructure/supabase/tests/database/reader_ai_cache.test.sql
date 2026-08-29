@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(19);
+select extensions.plan(21);
 
 select extensions.has_table(
   'public',
@@ -18,6 +18,22 @@ select extensions.hasnt_column(
   'reader_ai_explanation_cache',
   'user_id',
   'the shared cache stores no reader identifier'
+);
+select extensions.hasnt_column(
+  'public',
+  'reader_ai_explanation_cache',
+  'scope_key',
+  'popular cache lookups use the ordinary scope columns directly'
+);
+select extensions.ok(
+  (
+    select index_definition.indexdef like '%(dataset_id, item_id, chapter_id, prompt_version, query_count DESC, last_used_at DESC)%'
+    from pg_catalog.pg_indexes index_definition
+    where index_definition.schemaname = 'public'
+      and index_definition.tablename = 'reader_ai_explanation_cache'
+      and index_definition.indexname = 'reader_ai_explanation_cache_popular'
+  ),
+  'popular cache lookups use a composite scope and ranking index'
 );
 select extensions.ok(
   not pg_catalog.has_table_privilege('authenticated', 'public.reader_ai_explanation_cache', 'select'),
