@@ -81,6 +81,56 @@ describe("page capture orchestration", () => {
     ).map((value) => value.articleId)).toEqual(["policy-change"]);
   });
 
+  it("rechecks publisher media that can gain a transcript without refreshing every successful page", () => {
+    const transcriptPending = {
+      ...article("transcript-pending", "npr", "2026-08-22T10:00:00Z"),
+      unsupportedMediaRefreshHours: 2,
+    };
+    const transcriptWaiting = {
+      ...article("transcript-waiting", "npr", "2026-08-22T10:00:00Z"),
+      unsupportedMediaRefreshHours: 2,
+    };
+    const ordinaryMedia = article("ordinary-media", "example", "2026-08-22T10:00:00Z");
+    const state = new Map([
+      ["npr", {
+        formatVersion: "jojo-page-capture-state/1" as const,
+        articles: {
+          "transcript-pending": {
+            fingerprint: articleFingerprint(transcriptPending),
+            lastAttempt: "2026-08-22T09:59:00Z",
+            rawPageObject: "raw/npr/pending.json",
+            error: null,
+            unavailableReason: "UnsupportedMedia" as const,
+          },
+          "transcript-waiting": {
+            fingerprint: articleFingerprint(transcriptWaiting),
+            lastAttempt: "2026-08-22T10:30:00Z",
+            rawPageObject: "raw/npr/waiting.json",
+            error: null,
+            unavailableReason: "UnsupportedMedia" as const,
+          },
+        },
+      }],
+      ["example", {
+        formatVersion: "jojo-page-capture-state/1" as const,
+        articles: {
+          "ordinary-media": {
+            fingerprint: articleFingerprint(ordinaryMedia),
+            lastAttempt: "2026-08-22T09:59:00Z",
+            rawPageObject: "raw/example/media.json",
+            error: null,
+            unavailableReason: "UnsupportedMedia" as const,
+          },
+        },
+      }],
+    ]);
+
+    expect(pendingArticles(
+      [transcriptPending, transcriptWaiting, ordinaryMedia], state,
+      { now, retentionDays: 7, refreshHours: 168, retryHours: 0.15 },
+    ).map((value) => value.articleId)).toEqual(["transcript-pending"]);
+  });
+
   it("keeps the current process window plus unseen late arrivals", () => {
     const recent = article("recent", "example", "2026-08-22T11:30:00Z");
     const late = article("late", "example", "2026-08-21T18:00:00Z");

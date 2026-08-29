@@ -10,6 +10,7 @@ export interface PageArticle {
   publishedAt: string;
   needsBody: boolean;
   captureRevision?: string;
+  unsupportedMediaRefreshHours?: number;
 }
 
 export interface PageCaptureStateRow {
@@ -49,6 +50,10 @@ export function pendingArticles(
   }
   const cutoff = options.now.valueOf() - options.retentionDays * 86_400_000;
   return articles.filter((article) => {
+    if (article.unsupportedMediaRefreshHours !== undefined
+      && (!Number.isFinite(article.unsupportedMediaRefreshHours) || article.unsupportedMediaRefreshHours <= 0)) {
+      throw new Error("Unsupported-media refresh interval must be positive");
+    }
     const published = timestamp(article.publishedAt);
     if (published === undefined || published < cutoff) return false;
     const previous = stateBySource.get(article.sourceId)?.articles[article.articleId];
@@ -56,7 +61,12 @@ export function pendingArticles(
     const lastAttempt = timestamp(previous.lastAttempt);
     if (lastAttempt === undefined) return true;
     const succeeded = previous.error == null && previous.rawPageObject !== undefined;
-    const waitHours = succeeded ? options.refreshHours : options.retryHours;
+    const waitHours = previous.unavailableReason === "UnsupportedMedia"
+      && article.unsupportedMediaRefreshHours !== undefined
+      ? article.unsupportedMediaRefreshHours
+      : succeeded
+        ? options.refreshHours
+        : options.retryHours;
     return options.now.valueOf() - lastAttempt >= waitHours * 3_600_000;
   }).sort((left, right) => Number(right.needsBody) - Number(left.needsBody)
     || right.publishedAt.localeCompare(left.publishedAt)

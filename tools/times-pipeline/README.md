@@ -53,6 +53,7 @@ node tools/times-pipeline/dist/src/delivery-cli.js --config tools/times-pipeline
 
 自动轮次使用 24 小时发现回看，但只把最近 1 小时以及状态缓存中从未见过或仍需重试的 URL 送入页面抓取和
 Canonical 处理。这样可以补到媒体延迟加入栏目页的文章，又不会每十分钟重复处理整天数据。
+NPR 首发时没有文字稿的音频仍不进入 Delivery，但会在 24 小时回看期内每两小时复查一次，以补到发布后新增的 transcript。
 
 ## 存储
 

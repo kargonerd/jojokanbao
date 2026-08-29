@@ -202,6 +202,9 @@ async function loadArticles(workspace: string, run: RawRunManifest, sources: Map
         publishedAt: candidate.publishedAt,
         needsBody: candidate.contentStatus !== "full",
         ...(manifest.fetchPolicy?.revision ? { captureRevision: manifest.fetchPolicy.revision } : {}),
+        ...(manifest.fetchPolicy?.unsupportedMediaRefreshHours !== undefined
+          ? { unsupportedMediaRefreshHours: manifest.fetchPolicy.unsupportedMediaRefreshHours }
+          : {}),
         source,
         candidate,
         manifestPath,
