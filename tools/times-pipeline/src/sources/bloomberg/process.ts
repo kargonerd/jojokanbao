@@ -43,10 +43,14 @@ export function extractBloombergBody(html: string, quality: BodyQuality): string
       const post = object(entry);
       return contentParagraphs(object(post?.body)?.content);
     });
+    const embeddedBodyQuality = {
+      minimumCharacters: quality.minimumCharacters ?? 250,
+      minimumParagraphs: quality.minimumParagraphs ?? 2,
+    };
     return semanticParagraphs([
       ...contentParagraphs(body?.content),
       ...liveblogParagraphs,
-    ], quality);
+    ], embeddedBodyQuality);
   } catch {
     return undefined;
   }

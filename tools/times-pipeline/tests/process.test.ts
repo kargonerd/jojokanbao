@@ -137,6 +137,30 @@ describe("article processing", () => {
     expect(body).toContain("Related official statement");
   });
 
+  it("accepts a short Bloomberg bulletin only when it comes from embedded publisher data", () => {
+    const paragraphs = [
+      "OpenAI said it will end its partnership with Cursor after the coding agent changed ownership, according to a company statement.",
+      "The company said it informed Cursor that it would wind down the contract and proposed a final service date later this year.",
+      "OpenAI attributed the decision to concerns about whether its technology would continue to be used under the agreed terms of service.",
+    ];
+    const nextData = {
+      props: { pageProps: { story: { body: { content: paragraphs.map((value) => ({ type: "text", value })) } } } },
+    };
+
+    expect(extractArticleBody(
+      `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(nextData)}</script>`,
+      { capture: "browser", bodySelectors: ["article", "main"] },
+      {},
+      extractBloombergBody,
+    )).toContain("partnership with Cursor");
+    expect(extractArticleBody(
+      `<article>${paragraphs.map((value) => `<p>${value}</p>`).join("")}</article>`,
+      { capture: "browser", bodySelectors: ["article", "main"] },
+      {},
+      extractBloombergBody,
+    )).toBeUndefined();
+  });
+
   it("aggregates Al Jazeera live-blog list updates as article paragraphs", () => {
     const update = (index: number) =>
       `<li>Live update ${index}: ${"Publisher reporting provides verified context and material developments. ".repeat(3)}</li>`;
