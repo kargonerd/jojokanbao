@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { loadBookCoverUrl } from "../rag/content";
+
+const loadedCoverUrls = new Map<string, string>();
 
 export function BookCover({
   className = "library-cover",
@@ -14,46 +16,36 @@ export function BookCover({
   datasetId: string;
   itemKey?: string;
 }) {
-  const coverRef = useRef<HTMLDivElement>(null);
-  const [shouldLoad, setShouldLoad] = useState(false);
-  const [imageUrl, setImageUrl] = useState("");
+  const cacheKey = `${datasetId}:${itemKey ?? ""}`;
+  const [imageUrl, setImageUrl] = useState(() => loadedCoverUrls.get(cacheKey) ?? "");
+  const [loaded, setLoaded] = useState(() => loadedCoverUrls.has(cacheKey));
 
   useEffect(() => {
-    const element = coverRef.current;
-    if (!element || shouldLoad) return;
-    if (!("IntersectionObserver" in window)) {
-      setShouldLoad(true);
+    const cached = loadedCoverUrls.get(cacheKey);
+    if (cached) {
+      setImageUrl(cached);
+      setLoaded(true);
       return;
     }
-    const observer = new IntersectionObserver(([entry]) => {
-      if (!entry?.isIntersecting) return;
-      setShouldLoad(true);
-      observer.disconnect();
-    }, { rootMargin: "180px" });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [shouldLoad]);
-
-  useEffect(() => {
-    if (!shouldLoad) return;
     let active = true;
-    let objectUrl = "";
+    setImageUrl("");
+    setLoaded(false);
     void loadBookCoverUrl(datasetId, itemKey).then((url) => {
-      if (!active || !url) return;
-      objectUrl = url;
-      setImageUrl(url);
-    }).catch(() => undefined);
-    return () => {
-      active = false;
-      if (objectUrl.startsWith("blob:") && typeof URL.revokeObjectURL === "function") {
-        URL.revokeObjectURL(objectUrl);
+      if (!active) return;
+      if (url) {
+        loadedCoverUrls.set(cacheKey, url);
+        setImageUrl(url);
       }
-    };
-  }, [datasetId, itemKey, shouldLoad]);
+      setLoaded(true);
+    }).catch(() => {
+      if (active) setLoaded(true);
+    });
+    return () => { active = false; };
+  }, [cacheKey, datasetId, itemKey]);
 
   return (
-    <div ref={coverRef} className={`${className} book-cover book-cover-${tone}${imageUrl ? " has-image" : ""}`}>
-      {imageUrl ? <img src={imageUrl} alt="" /> : <b>{title}</b>}
+    <div className={`${className} book-cover book-cover-${tone}${imageUrl ? " has-image" : loaded ? "" : " is-loading"}`}>
+      {imageUrl ? <img src={imageUrl} alt="" /> : loaded ? <b>{title}</b> : null}
     </div>
   );
 }

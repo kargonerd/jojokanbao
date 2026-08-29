@@ -1,11 +1,12 @@
 import type { RagReference } from "../types";
+import { withReaderReturnTo } from "../readerNavigation";
 
 export interface AnswerCitation {
   number: number;
   reference: RagReference;
 }
 
-export function referenceHref(reference: RagReference): string | undefined {
+export function referenceHref(reference: RagReference, returnTo?: string): string | undefined {
   if (!reference.datasetId || !reference.itemId || !reference.targetId) {
     return undefined;
   }
@@ -17,7 +18,8 @@ export function referenceHref(reference: RagReference): string | undefined {
     .trim()
     .slice(0, 160);
   if (quote) query.set("quote", quote);
-  return `/book/${encodeURIComponent(reference.datasetId)}/${encodeURIComponent(reference.itemId)}?${query}`;
+  const href = `/book/${encodeURIComponent(reference.datasetId)}/${encodeURIComponent(reference.itemId)}?${query}`;
+  return returnTo ? withReaderReturnTo(href, returnTo) : href;
 }
 
 function exactReferenceKey(reference: RagReference): string {
@@ -82,9 +84,11 @@ export function answerCitations(
 export function ReferenceButtons({
   content = "",
   references,
+  returnTo,
 }: {
   content?: string;
   references?: RagReference[];
+  returnTo?: string;
 }) {
   const citations = answerCitations(content, references)
     .filter(({ reference }) => reference.targetId);
@@ -117,7 +121,7 @@ export function ReferenceButtons({
           const label = book && !chapter.includes(book) ? `《${book}》 · ${chapter}` : chapter;
           const numberedLabel = `[${numbers.join(", ")}] ${label}`;
           const className = "border border-rule bg-transparent px-2.5 py-1.5 text-current no-underline cursor-pointer hover:border-red hover:text-red focus-visible:outline-2 focus-visible:outline-red";
-          const href = referenceHref(reference);
+          const href = referenceHref(reference, returnTo);
           return href ? (
             <a
               key={`${reference.itemId ?? ""}:${reference.targetId}`}

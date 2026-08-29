@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { askStream } from "../api";
 import type {
   RagAnswerMetadata,
@@ -27,6 +28,7 @@ interface BookAiPanelProps {
 }
 
 export function BookAiPanel({ bookTitle, datasetId, itemId, manifestObject, initialQuestion, initialAnswer, initialReferences, preparing = false, explanationQuote, focus, panelClass, onClose, onExplanationComplete }: BookAiPanelProps) {
+  const location = useLocation();
   const [messages, setMessages] = useState<RagMessage[]>(initialAnswer ? [{ role: "assistant", content: initialAnswer, references: initialReferences }] : []);
   const [input, setInput] = useState("");
   const [streamContent, setStreamContent] = useState("");
@@ -103,7 +105,11 @@ export function BookAiPanel({ bookTitle, datasetId, itemId, manifestObject, init
       {messages.map((message, index) => <article key={index} className={`mb-6 ${message.role === "user" ? "ml-10 border-r-2 border-red pr-4 text-right" : ""}`}>
         {message.role === "user" ? <p className="m-0 whitespace-pre-wrap text-sm leading-7">{message.content}</p> : <>
           <div className="book-ai-answer text-sm leading-7" dangerouslySetInnerHTML={{ __html: formatChatMarkdown(message.content, message.references) }} />
-          <ReferenceButtons content={message.content} references={message.references} />
+          <ReferenceButtons
+            content={message.content}
+            references={message.references}
+            returnTo={`${location.pathname}${location.search}`}
+          />
         </>}
       </article>)}
       {streaming && <article className="mb-6"><div role="status" className="mb-3 flex items-center gap-2 font-sans text-xs text-muted"><span aria-hidden="true" className="inline-block h-2 w-2 shrink-0 bg-red motion-safe:animate-pulse" />{streamStatus || "正在分析问题并选择资料…"}</div>{streamContent ? <div className="book-ai-answer text-sm leading-7" dangerouslySetInnerHTML={{ __html: formatChatMarkdown(streamContent) }} /> : null}</article>}
