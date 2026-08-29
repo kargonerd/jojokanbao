@@ -39,10 +39,12 @@ function leadImage(article: TimesNewsItem): JojoAssetDescriptor | undefined {
 function TimelineLeadImage({
   article,
   asset,
+  read,
   onUnavailable,
 }: {
   article: TimesNewsItem;
   asset: JojoAssetDescriptor;
+  read: boolean;
   onUnavailable(): void;
 }) {
   const frame = useRef<HTMLAnchorElement | null>(null);
@@ -102,7 +104,7 @@ function TimelineLeadImage({
           loading="lazy"
           decoding="async"
           onError={onUnavailable}
-          className="h-full w-full object-cover motion-safe:transition-transform motion-safe:duration-300 group-hover:scale-[1.02] motion-reduce:transform-none"
+          className={`h-full w-full object-cover motion-safe:transition-[filter,opacity,transform] motion-safe:duration-300 group-hover:scale-[1.02] motion-reduce:transform-none ${read ? "opacity-55 grayscale-[25%]" : ""}`}
         />
       ) : null}
     </Link>
@@ -129,11 +131,12 @@ export function TimelineArticle({
       <div className="col-start-1 row-start-1 flex flex-col items-center">
         <SourceLogo article={article} />
       </div>
-      <Link to={`/times/${article.issueDate}/${encodeURIComponent(article.id)}`} className="min-w-0 text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-red">
+      <Link to={`/times/${article.issueDate}/${encodeURIComponent(article.id)}`} className={`min-w-0 text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-red ${read ? "opacity-60" : ""}`}>
         <span className="flex min-w-0 items-center gap-2 font-sans text-[10px] font-bold text-muted">
-          <span className="truncate text-red">{article.source.name}</span>
+          <span className={`truncate ${read ? "text-muted" : "text-red"}`}>{article.source.name}</span>
           <span aria-hidden="true">·</span>
           <time dateTime={article.publishedAt} title={exactArticleTime(article.publishedAt)} className="shrink-0 tabular-nums">{relativeArticleTime(article.publishedAt)}</time>
+          {read ? <span className="shrink-0 font-medium">已看</span> : null}
           {article.publisherSections?.slice(0, 1).map((section) => <span key={section.id} className="truncate">· {section.name}</span>)}
         </span>
         <strong
@@ -151,7 +154,7 @@ export function TimelineArticle({
           </span>
         ) : null}
       </Link>
-      {asset && imageAvailable ? <TimelineLeadImage article={article} asset={asset} onUnavailable={markUnavailable} /> : null}
+      {asset && imageAvailable ? <TimelineLeadImage article={article} asset={asset} read={read} onUnavailable={markUnavailable} /> : null}
     </article>
   );
 }
