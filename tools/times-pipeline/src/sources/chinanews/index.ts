@@ -1,6 +1,7 @@
 import type { SourceModule } from "../contracts.js";
 import { discoverChinanews } from "./discover.js";
 import { chinanewsFetch } from "./fetch.js";
+import { extractChinanewsBody } from "./process.js";
 
 export const chinanewsSource: SourceModule = {
   id: "chinanews",
@@ -9,4 +10,5 @@ export const chinanewsSource: SourceModule = {
     return discoverChinanews(source, endpoint, fetchedAt);
   },
   fetch: chinanewsFetch,
+  extractBody: extractChinanewsBody,
 };

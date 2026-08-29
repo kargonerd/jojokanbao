@@ -6,4 +6,5 @@ export const reutersFetch = {
   bodySelectors: [
     "[data-testid^='paragraph-'], [data-testid^='unordered-'] [data-testid='Body'], [data-testid='SignOff'] [data-testid='Body']",
   ],
+  revision: "fusion-content-v2",
 } satisfies SourceFetchPolicy;

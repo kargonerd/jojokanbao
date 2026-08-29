@@ -147,7 +147,7 @@ export function TimesDetailPage({
           }} onExplain={startExplanation}>
             {articleHtml ? (
               <div
-                className="prose-editorial mt-8 text-base leading-8 [&_blockquote]:border-l-2 [&_blockquote]:border-red [&_blockquote]:pl-5 [&_figcaption]:mt-2 [&_figcaption]:font-sans [&_figcaption]:text-xs [&_figcaption]:leading-5 [&_figcaption]:text-muted [&_figure]:my-8 [&_h2]:mb-3 [&_h2]:mt-9 [&_h2]:text-2xl [&_h2]:font-black [&_img]:mx-auto [&_img]:max-h-[70vh] [&_img]:max-w-full [&_img]:object-contain [&_p]:my-[1.1em] [&_p]:text-justify [&_p]:indent-[2em]"
+                className="prose-editorial mt-8 text-base leading-8 [&_a]:font-medium [&_a]:text-red [&_a]:underline [&_a]:decoration-1 [&_a]:underline-offset-2 [&_blockquote]:border-l-2 [&_blockquote]:border-red [&_blockquote]:pl-5 [&_figcaption]:mt-2 [&_figcaption]:font-sans [&_figcaption]:text-xs [&_figcaption]:leading-5 [&_figcaption]:text-muted [&_figure]:my-8 [&_h2]:mb-3 [&_h2]:mt-9 [&_h2]:text-2xl [&_h2]:font-black [&_h3]:mb-3 [&_h3]:mt-8 [&_h3]:text-xl [&_h3]:font-black [&_img]:mx-auto [&_img]:h-auto [&_img]:max-h-[70vh] [&_img]:max-w-full [&_img]:object-contain [&_li]:my-2 [&_ol]:my-5 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-[1.1em] [&_p]:text-justify [&_p]:indent-[2em] [&_ul]:my-5 [&_ul]:list-disc [&_ul]:pl-6"
                 dangerouslySetInnerHTML={{ __html: articleHtml }}
               />
             ) : <div className="mt-8 whitespace-pre-wrap text-base leading-8">{news.content || "暂无正文。"}</div>}

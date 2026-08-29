@@ -1,6 +1,7 @@
 import { gunzipSync } from "node:zlib";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { load } from "cheerio";
 import { bodyQuality, extractArticleBody, type ArticleBodyExtractor } from "../content/body.js";
 import type { CapturedAsset, Candidate, SourceConfig, SourceFetchPolicy } from "../types.js";
 
@@ -53,11 +54,30 @@ function escapeHtml(value: string): string {
 }
 
 export function attachAssetsToBody(body: string, assets: readonly CapturedAsset[]): string {
-  const figures = assets.map((asset) => `<figure data-asset-id="${escapeHtml(asset.id)}">${asset.caption ? `<figcaption>${escapeHtml(asset.caption)}</figcaption>` : ""}</figure>`);
-  const lead = assets.findIndex((asset) => asset.role === "lead");
-  if (lead < 0) return `${body}${figures.join("")}`;
-  const [leadFigure] = figures.splice(lead, 1);
-  return `${leadFigure ?? ""}${body}${figures.join("")}`;
+  const figure = (asset: CapturedAsset) => `<figure data-asset-id="${escapeHtml(asset.id)}">${asset.caption ? `<figcaption>${escapeHtml(asset.caption)}</figcaption>` : ""}</figure>`;
+  const lead = assets.filter((asset) => asset.role === "lead");
+  const content = assets.filter((asset) => asset.role !== "lead");
+  const positioned = new Map<number, CapturedAsset[]>();
+  const trailing: CapturedAsset[] = [];
+  for (const asset of content) {
+    if (asset.afterBlock === undefined) trailing.push(asset);
+    else positioned.set(asset.afterBlock, [...(positioned.get(asset.afterBlock) ?? []), asset]);
+  }
+  const document = load(body, undefined, false);
+  const blocks = new Set(["blockquote", "h2", "h3", "h4", "ol", "p", "pre", "ul"]);
+  let blockIndex = 0;
+  let value = `${lead.map(figure).join("")}${(positioned.get(0) ?? []).map(figure).join("")}`;
+  for (const element of document.root().children().toArray()) {
+    value += document.html(element);
+    if (blocks.has(element.tagName.toLowerCase())) {
+      blockIndex += 1;
+      value += (positioned.get(blockIndex) ?? []).map(figure).join("");
+    }
+  }
+  const overflow = [...positioned.entries()]
+    .filter(([index]) => index > blockIndex)
+    .flatMap(([, values]) => values);
+  return `${value}${[...overflow, ...trailing].map(figure).join("")}`;
 }
 
 export async function processArticle(
@@ -70,10 +90,10 @@ export async function processArticle(
   const renderedHtml = await renderedPageHtml(output, candidate);
   const quality = bodyQuality(source);
   const pageBody = renderedHtml
-    ? extractArticleBody(renderedHtml, fetchPolicy, quality, sourceExtractor)
+    ? extractArticleBody(renderedHtml, fetchPolicy, quality, sourceExtractor, candidate.canonicalUrl)
     : undefined;
   const discoveryBody = !pageBody && candidate.discoveryBody
-    ? extractArticleBody(candidate.discoveryBody, fetchPolicy, quality, sourceExtractor)
+    ? extractArticleBody(candidate.discoveryBody, fetchPolicy, quality, sourceExtractor, candidate.canonicalUrl)
     : undefined;
   const body = pageBody ?? discoveryBody;
   return {
