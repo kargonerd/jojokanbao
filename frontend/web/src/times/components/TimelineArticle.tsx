@@ -136,7 +136,6 @@ export function TimelineArticle({
           <span className={`truncate ${read ? "text-muted" : "text-red"}`}>{article.source.name}</span>
           <span aria-hidden="true">·</span>
           <time dateTime={article.publishedAt} title={exactArticleTime(article.publishedAt)} className="shrink-0 tabular-nums">{relativeArticleTime(article.publishedAt)}</time>
-          {read ? <span className="shrink-0 font-medium">已看</span> : null}
           {article.publisherSections?.slice(0, 1).map((section) => <span key={section.id} className="truncate">· {section.name}</span>)}
         </span>
         <strong

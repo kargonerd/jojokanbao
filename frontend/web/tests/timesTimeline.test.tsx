@@ -153,7 +153,6 @@ describe("Times timeline images", () => {
     const articleRow = title.closest("article");
     expect(articleRow?.getAttribute("data-read")).toBe("false");
     expect(title.className).toContain("font-black");
-    expect(within(articleRow!).queryByText("已看")).toBeNull();
     expect(screen.queryByText(/未读/u)).toBeNull();
 
     fireEvent.click(within(articleList).getAllByRole("link", { name: new RegExp(article.title) })[0]!);
@@ -161,7 +160,6 @@ describe("Times timeline images", () => {
     expect(articleRow?.getAttribute("data-read")).toBe("true");
     expect(title.className).toContain("font-medium");
     expect(title.className).toContain("text-muted");
-    expect(within(articleRow!).getByText("已看")).toBeTruthy();
     expect(title.closest("a")?.className).toContain("opacity-60");
     expect(screen.queryByRole("button", { name: /标为/u })).toBeNull();
   });
