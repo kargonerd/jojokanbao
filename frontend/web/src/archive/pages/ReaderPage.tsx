@@ -781,7 +781,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
                 const options = config?.seqConfig?.[y];
                 if (!options?.length) return;
                 const firstSeq = options[0];
-                navigate(archiveIssuePath(name, `${y}${String(firstSeq).padStart(2, '0')}`));
+                navigate(archiveIssuePath(name, `${y}${String(firstSeq).padStart(2, '0')}`), { replace: true });
               }}
               disabledYear={(year) => !config?.seqConfig?.[year]?.length}
               min={name === "sjzs" ? 1934 : name === "hq" ? 1958 : 1950}
@@ -854,7 +854,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             <span className="hidden shrink-0 text-xs font-bold text-muted tracking-wide sm:inline sm:text-[13px]">日期</span>
             <DatePicker
               value={date}
-              onChange={(ds) => navigate(archiveIssuePath(name, ds))}
+              onChange={(ds) => navigate(archiveIssuePath(name, ds), { replace: true })}
               disabledDate={config?.disabledDate}
               unavailableLabel="暂无该期"
               className="min-w-0 flex-1 sm:flex-none"

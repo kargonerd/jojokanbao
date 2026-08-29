@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReaderPage } from "../src/archive/pages/ReaderPage";
 import type { PublicationName } from "../src/archive/publications";
@@ -58,22 +58,31 @@ function LocationProbe() {
   return <output data-testid="location">{location.pathname}{location.hash}</output>;
 }
 
+function HistoryBackProbe() {
+  const navigate = useNavigate();
+  return <button type="button" onClick={() => navigate(-1)}>模拟返回上页</button>;
+}
+
 function renderReader(
   path: string,
-  { type = "newspaper", name = "rmrb" }: {
+  { type = "newspaper", name = "rmrb", from }: {
     type?: "newspaper" | "magazine";
     name?: PublicationName;
+    from?: string;
   } = {},
 ) {
   window.history.replaceState({}, "", path);
   const route = `/${name}/:id`;
+  const initialEntries = from ? [from, path] : [path];
   return render(
-    <MemoryRouter initialEntries={[path]}>
+    <MemoryRouter initialEntries={initialEntries} initialIndex={initialEntries.length - 1}>
       <Routes>
         <Route path={route} element={<ReaderPage type={type} name={name} />} />
         <Route path={`/archive${route}`} element={<ReaderPage type={type} name={name} />} />
+        <Route path="/library" element={null} />
       </Routes>
       <LocationProbe />
+      <HistoryBackProbe />
     </MemoryRouter>,
   );
 }
@@ -259,6 +268,17 @@ describe("ReaderPage newspaper navigation", () => {
     });
   });
 
+  it("returns to the page before the reader after changing dates", async () => {
+    renderReader("/archive/rmrb/19761009", { from: "/library" });
+
+    fireEvent.click(screen.getByRole("button", { name: "1976年10月09日" }));
+    fireEvent.click(screen.getByRole("button", { name: "8" }));
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/archive/rmrb/19761008"));
+
+    fireEvent.click(screen.getByRole("button", { name: "模拟返回上页" }));
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/library"));
+  });
+
   it("prevents selecting a publication date known to be missing", () => {
     renderReader("/rmrb/19460627");
     fireEvent.click(screen.getByRole("button", { name: "1946年06月27日" }));
@@ -336,12 +356,14 @@ describe("ReaderPage magazine navigation", () => {
   });
 
   it("selects the first available issue when changing magazine year", async () => {
-    renderReader("/hq/196419", { type: "magazine", name: "hq" });
+    renderReader("/hq/196419", { type: "magazine", name: "hq", from: "/library" });
 
     fireEvent.click(screen.getByRole("button", { name: "1964年" }));
     fireEvent.click(screen.getByRole("button", { name: "1965" }));
 
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/archive/hq/196501"));
+    fireEvent.click(screen.getByRole("button", { name: "模拟返回上页" }));
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/library"));
   });
 });
 
