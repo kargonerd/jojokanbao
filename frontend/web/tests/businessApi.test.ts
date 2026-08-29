@@ -42,7 +42,7 @@ function joxResponse(objectKey: string, value: unknown): Response {
   return new Response(transformJoxBytes(compressed, objectKey).slice().buffer);
 }
 
-function timelineFetch(includeArticle = false) {
+function timelineFetch(includeArticle = false, articleAssetRefs = ["asset:image-one"]) {
   return vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const url = String(input);
     if (url.endsWith(indexObject)) return joxResponse(indexObject, index);
@@ -52,7 +52,7 @@ function timelineFetch(includeArticle = false) {
         formatVersion: "jojo-fragment/1", itemId: "example:2026-08-22", fragmentId: "article-one",
         type: "article", order: 1, title: "Headline",
         body: { format: "html", profile: "jojo-semantic-html/1", value: "<p>Full body</p>" },
-        assetRefs: [], annotations: [],
+        assetRefs: articleAssetRefs, annotations: [],
       });
     }
     if (includeArticle && url.endsWith(assetObject)) {
@@ -95,6 +95,25 @@ describe("Times B2 CDN client", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(createObjectURL).toHaveBeenCalledOnce();
+  });
+
+  it("does not render stale timeline images that the article object no longer references", async () => {
+    vi.stubGlobal("Blob", NodeBlob);
+    const NativeUrl = URL;
+    const createObjectURL = vi.fn().mockReturnValue("blob:stale-image");
+    class TestUrl extends NativeUrl {
+      static createObjectURL = createObjectURL;
+      static revokeObjectURL = vi.fn();
+    }
+    vi.stubGlobal("URL", TestUrl);
+    const fetchMock = timelineFetch(true, []);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(timesApi.getNews("2026-08-22", "article-one")).resolves.toMatchObject({
+      assets: [], assetUrls: {},
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(createObjectURL).not.toHaveBeenCalled();
   });
 
   it("decodes an immutable image object for a timeline card", async () => {

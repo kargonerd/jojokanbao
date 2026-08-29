@@ -11,6 +11,6 @@ export function discoverCna(source: SourceConfig, endpoint: CnaDiscoveryEndpoint
     articlePathPrefixes: ["/asia/", "/east-asia/", "/singapore/", "/world/", "/business/"],
     maximumItems: endpoint.maximumItems,
     bodySelectors: cnaFetch.bodySelectors,
-    version: "cna-html/1",
+    version: "cna-html/2",
   });
 }

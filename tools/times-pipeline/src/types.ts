@@ -18,6 +18,7 @@ export interface SourceFetchPolicy {
   capture: "browser" | "http";
   captureUrl?: "canonical" | "source";
   bodySelectors: string[];
+  imageSelectors?: string[];
   revision?: string;
 }
 
@@ -133,6 +134,7 @@ export interface CapturedAsset {
   credit?: string;
   width?: number;
   height?: number;
+  afterBlock?: number;
 }
 
 export interface SourceConfig {

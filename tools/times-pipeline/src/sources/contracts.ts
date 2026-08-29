@@ -9,6 +9,7 @@ import type {
   UnavailablePageReason,
 } from "../types.js";
 import type { ArticleBodyExtractor } from "../content/body.js";
+import type { ArticleImageExtractor } from "../capture/page-images.js";
 
 export type SourceAdapterEndpoint = Extract<DiscoveryEndpoint, { kind: "source-adapter" }>;
 
@@ -27,6 +28,7 @@ export interface SourceModule {
   ) => Promise<DiscoveryResult>;
   fetch?: SourceFetchPolicy;
   extractBody?: ArticleBodyExtractor;
+  extractImages?: ArticleImageExtractor;
   classifyUnavailable?(
     input: PageAvailabilityInput,
     source: SourceConfig,

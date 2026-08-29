@@ -8,7 +8,11 @@ export interface PageImageCandidate {
   caption?: string;
   width?: number;
   height?: number;
+  afterBlock?: number;
+  credit?: string;
 }
+
+export type ArticleImageExtractor = (html: string, pageUrl: string) => PageImageCandidate[];
 
 function absoluteImageUrl(value: string | undefined, pageUrl: string): string | undefined {
   if (!value || value.startsWith("data:") || value.startsWith("blob:")) return undefined;
@@ -29,21 +33,45 @@ function ignoredImage(url: string, alt: string, width?: number, height?: number)
   return /(?:logo|avatar|icon|sprite|pixel|tracking|badge|author|profile|advert|promo|placeholder)/iu.test(`${url} ${alt}`);
 }
 
-export function discoverArticleImages(html: string, pageUrl: string, policy?: SourceFetchPolicy): PageImageCandidate[] {
+export function discoverArticleImages(
+  html: string,
+  pageUrl: string,
+  policy?: SourceFetchPolicy,
+  sourceExtractor?: ArticleImageExtractor,
+): PageImageCandidate[] {
   const $ = load(html);
   const values = new Map<string, PageImageCandidate>();
   const add = (candidate: PageImageCandidate): void => {
     if (!ignoredImage(candidate.sourceUrl, candidate.alt ?? "", candidate.width, candidate.height)) {
       const previous = values.get(candidate.sourceUrl);
-      values.set(candidate.sourceUrl, previous?.role === "lead" ? previous : candidate);
+      const alt = candidate.alt ?? previous?.alt;
+      const caption = candidate.caption ?? previous?.caption;
+      const credit = candidate.credit ?? previous?.credit;
+      values.set(candidate.sourceUrl, {
+        ...previous,
+        ...candidate,
+        role: previous?.role === "lead" || candidate.role === "lead" ? "lead" : "content",
+        ...(alt ? { alt } : {}),
+        ...(caption ? { caption } : {}),
+        ...(credit ? { credit } : {}),
+      });
     }
   };
+  const publisherImages = sourceExtractor?.(html, pageUrl) ?? [];
+  if (publisherImages.length) {
+    for (const candidate of publisherImages) add(candidate);
+    return [...values.values()];
+  }
   const lead = absoluteImageUrl($("meta[property='og:image']").attr("content") ?? $("meta[name='twitter:image']").attr("content"), pageUrl);
   if (lead) add({ sourceUrl: lead, role: "lead" });
-  const selectors = [...(policy?.bodySelectors ?? []), "[itemprop='articleBody']", "article", ".article-body", ".article__body", ".story-body", ".entry-content", "main"];
-  const selectedSelector = selectors.find((selector) => $(selector).length > 0);
-  const containers = selectedSelector ? $(selectedSelector) : $("body");
-  const images = containers.length ? containers.find("img") : $("img");
+  const selectors = policy?.imageSelectors?.length
+    ? policy.imageSelectors
+    : [...(policy?.bodySelectors ?? []), "[itemprop='articleBody']", "article", ".article-body", ".article__body", ".story-body", ".entry-content", "main"];
+  const selectedSelectors = policy?.imageSelectors?.length
+    ? selectors.filter((selector) => $(selector).length > 0)
+    : selectors.filter((selector) => $(selector).length > 0).slice(0, 1);
+  const containers = selectedSelectors.length ? $(selectedSelectors.join(",")) : $("body");
+  const images = containers.filter("img").add(containers.find("img"));
   images.each((_index, element) => {
     const image = $(element);
     if (image.closest("nav,header,footer,aside,[class*='advert'],[class*='recommend'],[class*='share']").length) return;

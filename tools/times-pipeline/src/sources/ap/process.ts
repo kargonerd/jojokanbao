@@ -1,5 +1,5 @@
 import { load } from "cheerio";
-import { semanticParagraphs, type BodyQuality } from "../../content/paragraphs.js";
+import { semanticHtmlBlocks, type BodyQuality } from "../../content/paragraphs.js";
 import type { Candidate } from "../../types.js";
 
 type JsonObject = Record<string, unknown>;
@@ -27,22 +27,24 @@ function liveBlog(value: unknown): JsonObject | undefined {
   return undefined;
 }
 
-function text(value: string): string {
-  const fragment = load(value, undefined, false);
-  return fragment.root().text().replaceAll(/\s+/gu, " ").trim();
+function escapeHtml(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 function bodyParagraphs(value: string): string[] {
   const fragment = load(value, undefined, false);
-  fragment("br").replaceWith("\n");
-  fragment("hr, bsp-hr").replaceWith("\n\n");
-  fragment("p, h2, h3, blockquote, li").each((_, element) => {
-    fragment(element).prepend("\n").append("\n");
-  });
-  return fragment.root().text().split(/\n+/u).map((paragraph) => paragraph.trim()).filter(Boolean);
+  fragment("hr, bsp-hr").remove();
+  const blocks = fragment("p, h2, h3, blockquote, li").toArray();
+  if (blocks.length) return blocks.map((element) => fragment(element).is("li")
+    ? `<p>${fragment(element).html() ?? fragment(element).text()}</p>`
+    : fragment.html(element));
+  return fragment.html().split(/(?:<br\s*\/?>\s*)+/iu)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph) => `<p>${paragraph}</p>`);
 }
 
-export function extractApBody(html: string, quality: BodyQuality): string | undefined {
+export function extractApBody(html: string, quality: BodyQuality, pageUrl?: string): string | undefined {
   const document = load(html);
   const paragraphs: string[] = [];
   document('script[type="application/ld+json"]').each((_, element) => {
@@ -52,14 +54,14 @@ export function extractApBody(html: string, quality: BodyQuality): string | unde
       for (const value of blog.liveBlogUpdate) {
         const update = object(value);
         if (!update) continue;
-        if (typeof update.headline === "string") paragraphs.push(text(update.headline));
+        if (typeof update.headline === "string") paragraphs.push(`<h2>${escapeHtml(update.headline)}</h2>`);
         if (typeof update.articleBody === "string") paragraphs.push(...bodyParagraphs(update.articleBody));
       }
     } catch {
       // Continue with another publisher-owned JSON-LD block.
     }
   });
-  return semanticParagraphs(paragraphs, quality);
+  return semanticHtmlBlocks(paragraphs, quality, pageUrl);
 }
 
 export function processAp(candidate: Candidate): Candidate {

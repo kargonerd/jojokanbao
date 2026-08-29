@@ -1,5 +1,5 @@
 import { load } from "cheerio";
-import { semanticParagraphs, type BodyQuality } from "../../content/paragraphs.js";
+import { semanticHtmlBlocks, type BodyQuality } from "../../content/paragraphs.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -9,13 +9,13 @@ function object(value: unknown): JsonObject | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : undefined;
 }
 
-function semanticPublisherBody(value: string, quality: BodyQuality): string | undefined {
+function semanticPublisherBody(value: string, quality: BodyQuality, pageUrl?: string): string | undefined {
   const fragment = load(value, undefined, false);
   const blocks = fragment("p, h2, h3, blockquote").toArray();
   const paragraphs = blocks.length
-    ? blocks.map((element) => fragment(element).text())
-    : [fragment.root().text()];
-  return semanticParagraphs(paragraphs, quality)
+    ? blocks.map((element) => fragment.html(element))
+    : [`<p>${fragment.html()}</p>`];
+  return semanticHtmlBlocks(paragraphs, quality, pageUrl)
     ?? (fragment("img[src], img[data-src]").length ? IMAGE_ONLY_BODY : undefined);
 }
 
@@ -37,11 +37,11 @@ function embeddedBody(html: string): string | undefined {
   }
 }
 
-export function extractThepaperBody(html: string, quality: BodyQuality): string | undefined {
+export function extractThepaperBody(html: string, quality: BodyQuality, pageUrl?: string): string | undefined {
   const value = embeddedBody(html);
-  if (value) return semanticPublisherBody(value, quality);
+  if (value) return semanticPublisherBody(value, quality, pageUrl);
 
   // Discovery persists the publisher-owned content fragment rather than a full page.
-  if (!/<(?:html|body)\b/iu.test(html)) return semanticPublisherBody(html, quality);
+  if (!/<(?:html|body)\b/iu.test(html)) return semanticPublisherBody(html, quality, pageUrl);
   return undefined;
 }

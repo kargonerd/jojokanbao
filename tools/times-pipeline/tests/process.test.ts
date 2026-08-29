@@ -226,7 +226,8 @@ describe("article processing", () => {
 
     expect(body).toContain("Jury asks to see evidence");
     expect(body).toContain("Jurors then resumed their deliberations");
-    expect(body?.match(/<p>/gu)).toHaveLength(6);
+    expect(body?.match(/<p>/gu)).toHaveLength(4);
+    expect(body?.match(/<h2>/gu)).toHaveLength(2);
   });
 
   it("accepts a complete three-paragraph AP bulletin below the global length threshold", () => {
