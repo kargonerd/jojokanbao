@@ -11,8 +11,18 @@ const env: SchedulerEnv = {
   GITHUB_REF: "master",
 };
 
-function workflowRuns(statuses: string[] = []): Response {
-  return Response.json({ workflow_runs: statuses.map((status) => ({ status })) });
+const scheduledTime = Date.parse("2026-08-29T00:20:00.000Z");
+
+interface TestRun {
+  status: string;
+  created_at?: string;
+  display_title?: string;
+}
+
+function workflowRuns(runs: Array<string | TestRun> = []): Response {
+  return Response.json({
+    workflow_runs: runs.map((run) => (typeof run === "string" ? { status: run } : run)),
+  });
 }
 
 describe("dispatchTimesCapture", () => {
@@ -23,13 +33,14 @@ describe("dispatchTimesCapture", () => {
       .mockResolvedValueOnce(workflowRuns(["completed"]))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
 
-    const result = await dispatchTimesCapture(env, fetcher);
+    const result = await dispatchTimesCapture(env, { fetcher, scheduledTime });
 
     expect(result).toEqual({
       owner: "kargonerd",
       repo: "jojokanbao",
       workflow: "maintenance-times-capture.yml",
       ref: "master",
+      slotStartedAt: "2026-08-29T00:20:00.000Z",
       outcome: "dispatched",
       status: 204,
     });
@@ -57,22 +68,94 @@ describe("dispatchTimesCapture", () => {
       .mockResolvedValueOnce(workflowRuns(["in_progress"]))
       .mockResolvedValueOnce(workflowRuns(["queued"]));
 
-    await expect(dispatchTimesCapture(env, fetcher)).resolves.toEqual({
+    await expect(dispatchTimesCapture(env, { fetcher, scheduledTime })).resolves.toEqual({
       owner: "kargonerd",
       repo: "jojokanbao",
       workflow: "maintenance-times-capture.yml",
       ref: "master",
+      slotStartedAt: "2026-08-29T00:20:00.000Z",
       outcome: "skipped",
+      reason: "active-workflows",
       activeWorkflows: ["maintenance-times-capture.yml", "maintenance-times-process.yml"],
     });
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("skips a slot that already has an automatic capture run", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        workflowRuns([
+          {
+            status: "completed",
+            display_title: "Times capture [cloudflare-cron]",
+            created_at: "2026-08-29T00:20:53Z",
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(workflowRuns(["completed"]));
+
+    await expect(dispatchTimesCapture(env, { fetcher, scheduledTime })).resolves.toEqual({
+      owner: "kargonerd",
+      repo: "jojokanbao",
+      workflow: "maintenance-times-capture.yml",
+      ref: "master",
+      slotStartedAt: "2026-08-29T00:20:00.000Z",
+      outcome: "skipped",
+      reason: "slot-already-dispatched",
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("catches up after the previous slot finishes", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        workflowRuns([
+          {
+            status: "completed",
+            display_title: "Times capture [cloudflare-cron]",
+            created_at: "2026-08-29T00:10:53Z",
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(workflowRuns(["completed"]))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    await expect(
+      dispatchTimesCapture(env, {
+        fetcher,
+        scheduledTime: Date.parse("2026-08-29T00:23:00Z"),
+      }),
+    ).resolves.toMatchObject({ outcome: "dispatched", slotStartedAt: "2026-08-29T00:20:00.000Z" });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not let a completed manual run consume the automatic slot", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        workflowRuns([
+          {
+            status: "completed",
+            display_title: "Times capture [manual]",
+            created_at: "2026-08-29T00:21:00Z",
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(workflowRuns())
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    await expect(dispatchTimesCapture(env, { fetcher, scheduledTime })).resolves.toMatchObject({
+      outcome: "dispatched",
+    });
   });
 
   it("fails without making a request when a required value is empty", async () => {
     const fetcher = vi.fn<typeof fetch>();
 
     await expect(
-      dispatchTimesCapture({ ...env, GITHUB_TOKEN: " " }, fetcher),
+      dispatchTimesCapture({ ...env, GITHUB_TOKEN: " " }, { fetcher, scheduledTime }),
     ).rejects.toThrow("GITHUB_TOKEN is not configured");
     expect(fetcher).not.toHaveBeenCalled();
   });
@@ -82,7 +165,7 @@ describe("dispatchTimesCapture", () => {
       .fn<typeof fetch>()
       .mockImplementation(async () => new Response("permission denied", { status: 403 }));
 
-    await expect(dispatchTimesCapture(env, fetcher)).rejects.toThrow(
+    await expect(dispatchTimesCapture(env, { fetcher, scheduledTime })).rejects.toThrow(
       "GitHub workflow activity check failed for maintenance-times-capture.yml with HTTP 403: permission denied",
     );
   });

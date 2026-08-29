@@ -12,6 +12,7 @@ interface ResultBase {
   repo: string;
   workflow: string;
   ref: string;
+  slotStartedAt: string;
 }
 
 export interface DispatchedResult extends ResultBase {
@@ -19,18 +20,41 @@ export interface DispatchedResult extends ResultBase {
   status: number;
 }
 
-export interface SkippedResult extends ResultBase {
+export interface ActiveWorkflowsSkippedResult extends ResultBase {
   outcome: "skipped";
+  reason: "active-workflows";
   activeWorkflows: string[];
 }
 
-export type DispatchResult = DispatchedResult | SkippedResult;
+export interface SlotAlreadyDispatchedResult extends ResultBase {
+  outcome: "skipped";
+  reason: "slot-already-dispatched";
+}
+
+export type DispatchResult =
+  | DispatchedResult
+  | ActiveWorkflowsSkippedResult
+  | SlotAlreadyDispatchedResult;
 
 type Fetcher = typeof fetch;
 
-interface WorkflowRunsResponse {
-  workflow_runs?: Array<{ status?: string }>;
+interface WorkflowRun {
+  status?: string;
+  created_at?: string;
+  display_title?: string;
 }
+
+interface WorkflowRunsResponse {
+  workflow_runs?: WorkflowRun[];
+}
+
+export interface DispatchOptions {
+  fetcher?: Fetcher;
+  scheduledTime?: number;
+}
+
+const SLOT_DURATION_MS = 10 * 60 * 1_000;
+const AUTOMATIC_CAPTURE_TITLE = "Times capture [cloudflare-cron]";
 
 function requireValue(name: keyof SchedulerEnv, value: string | undefined): string {
   const normalized = value?.trim();
@@ -50,12 +74,12 @@ function workflowEndpoint(owner: string, repo: string, workflow: string): string
   ].join("/");
 }
 
-async function hasActiveRun(
+async function getWorkflowRuns(
   endpoint: string,
   workflow: string,
   headers: HeadersInit,
   fetcher: Fetcher,
-): Promise<boolean> {
+): Promise<WorkflowRun[]> {
   const response = await fetcher(`${endpoint}/runs?per_page=10`, { headers });
   if (!response.ok) {
     const responseBody = (await response.text()).slice(0, 1_000);
@@ -65,13 +89,30 @@ async function hasActiveRun(
   }
 
   const payload = (await response.json()) as WorkflowRunsResponse;
-  return (payload.workflow_runs ?? []).some((run) => run.status !== "completed");
+  return payload.workflow_runs ?? [];
+}
+
+function isRunInSlot(run: WorkflowRun, slotStartedAt: number): boolean {
+  if (run.display_title !== AUTOMATIC_CAPTURE_TITLE || !run.created_at) {
+    return false;
+  }
+
+  const createdAt = Date.parse(run.created_at);
+  return (
+    Number.isFinite(createdAt) &&
+    createdAt >= slotStartedAt &&
+    createdAt < slotStartedAt + SLOT_DURATION_MS
+  );
 }
 
 export async function dispatchTimesCapture(
   env: SchedulerEnv,
-  fetcher: Fetcher = fetch,
+  options: DispatchOptions = {},
 ): Promise<DispatchResult> {
+  const fetcher = options.fetcher ?? fetch;
+  const scheduledTime = options.scheduledTime ?? Date.now();
+  const slotStartedAtMs = Math.floor(scheduledTime / SLOT_DURATION_MS) * SLOT_DURATION_MS;
+  const slotStartedAt = new Date(slotStartedAtMs).toISOString();
   const token = requireValue("GITHUB_TOKEN", env.GITHUB_TOKEN);
   const owner = requireValue("GITHUB_OWNER", env.GITHUB_OWNER);
   const repo = requireValue("GITHUB_REPO", env.GITHUB_REPO);
@@ -88,15 +129,39 @@ export async function dispatchTimesCapture(
     "User-Agent": "jojokanbao-times-scheduler",
     "X-GitHub-Api-Version": "2026-03-10",
   };
-  const active = await Promise.all(
+  const workflowRuns = await Promise.all(
     workflowEndpoints.map(async ({ endpoint, name }) => ({
       name,
-      active: await hasActiveRun(endpoint, name, headers, fetcher),
+      runs: await getWorkflowRuns(endpoint, name, headers, fetcher),
     })),
   );
-  const activeWorkflows = active.filter((item) => item.active).map((item) => item.name);
+  const activeWorkflows = workflowRuns
+    .filter((item) => item.runs.some((run) => run.status !== "completed"))
+    .map((item) => item.name);
   if (activeWorkflows.length > 0) {
-    return { owner, repo, workflow, ref, outcome: "skipped", activeWorkflows };
+    return {
+      owner,
+      repo,
+      workflow,
+      ref,
+      slotStartedAt,
+      outcome: "skipped",
+      reason: "active-workflows",
+      activeWorkflows,
+    };
+  }
+
+  const captureRuns = workflowRuns.find((item) => item.name === workflow)?.runs ?? [];
+  if (captureRuns.some((run) => isRunInSlot(run, slotStartedAtMs))) {
+    return {
+      owner,
+      repo,
+      workflow,
+      ref,
+      slotStartedAt,
+      outcome: "skipped",
+      reason: "slot-already-dispatched",
+    };
   }
 
   const response = await fetcher(`${workflowEndpoints[0]?.endpoint}/dispatches`, {
@@ -123,5 +188,13 @@ export async function dispatchTimesCapture(
     );
   }
 
-  return { owner, repo, workflow, ref, outcome: "dispatched", status: response.status };
+  return {
+    owner,
+    repo,
+    workflow,
+    ref,
+    slotStartedAt,
+    outcome: "dispatched",
+    status: response.status,
+  };
 }
