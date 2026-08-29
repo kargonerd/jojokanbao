@@ -58,6 +58,16 @@ a.jojo-citation:hover {
 .app-mobile-navigation,
 .app-mobile-account-link,
 .app-mobile-back { display: none; }
+.app-mobile-title-badge {
+  position: relative;
+  top: -.55em;
+  margin-left: 3px;
+  color: var(--color-red);
+  font-family: var(--font-sans);
+  font-size: 6px;
+  font-weight: 800;
+  letter-spacing: .01em;
+}
 
 .app-header > nav {
   display: flex;

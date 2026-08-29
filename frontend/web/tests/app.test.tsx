@@ -211,6 +211,25 @@ describe("JOJO Web navigation", () => {
     expect(within(memberNavigation).getAllByRole("link").map((link) => link.textContent)).toEqual(["首页", "资料库", "搜索", "AI", "时事"]);
   });
 
+  it("shows the Beta badge beside mobile AI and Times page titles", () => {
+    const navigationItems = buildAppNavigationItems(true, { rag: true, times: true });
+    const view = render(
+      <MemoryRouter initialEntries={["/times"]}>
+        <AppLayout navigationItems={navigationItems}><main /></AppLayout>
+      </MemoryRouter>,
+    );
+    expect(document.querySelector(".app-mobile-title")?.textContent).toBe("时事Beta");
+    expect(document.querySelector(".app-mobile-title-badge")?.textContent).toBe("Beta");
+
+    view.unmount();
+    render(
+      <MemoryRouter initialEntries={["/rag"]}>
+        <AppLayout navigationItems={navigationItems}><main /></AppLayout>
+      </MemoryRouter>,
+    );
+    expect(document.querySelector(".app-mobile-title")?.textContent).toBe("AIBeta");
+  });
+
   it("shows a mobile back action on secondary pages but not primary tabs", () => {
     const primary = render(
       <MemoryRouter initialEntries={["/library"]}>

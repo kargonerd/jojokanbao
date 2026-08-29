@@ -76,6 +76,7 @@ export function AppHeader({
     MOBILE_PRIMARY_HREFS.has(item.href) && (authenticated || (item.href !== "/rag" && item.href !== "/times")),
   );
   const mobileTitle = mobilePageTitle(pathname, navigationItems);
+  const mobileTitleBadge = navigationItems.find((item) => isActive(pathname, item.href))?.badge;
   const showMobileNavigation = !hidesMobileNavigation(pathname);
   const showMobileBack = !isPrimaryMobilePage(pathname);
 
@@ -93,7 +94,10 @@ export function AppHeader({
       {showMobileBack ? <button type="button" className="app-mobile-back" onClick={navigateBack} aria-label="返回上一页">
         <span aria-hidden="true">←</span>返回
       </button> : null}
-      <span className="app-mobile-title">{mobileTitle}</span>
+      <span className="app-mobile-title">
+        {mobileTitle}
+        {mobileTitleBadge ? <sup className="app-mobile-title-badge">{mobileTitleBadge}</sup> : null}
+      </span>
       <nav aria-label={navigationLabel}>
         {navigationItems.map((item) => {
           const active = isActive(pathname, item.href);
