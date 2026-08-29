@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 
 const RAW_RUN_ROOT = "raw/runs";
 const DATASET_REPO_TYPE = "dataset" as const;
+const SOURCE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 
 interface RunSourceRow {
   sourceId?: unknown;
@@ -20,6 +21,20 @@ interface RawRunManifest {
 
 interface SourceManifest {
   objects?: unknown;
+}
+
+export function rawRunMatchesGitHubRunId(runId: unknown, githubRunId: string): boolean {
+  return /^\d+$/u.test(githubRunId)
+    && typeof runId === "string"
+    && runId.endsWith(`-${githubRunId}`);
+}
+
+export function rawStateObjects(sourceIds: readonly string[]): string[] {
+  const unique = [...new Set(sourceIds)].sort();
+  for (const sourceId of unique) {
+    if (!SOURCE_ID.test(sourceId)) throw new Error(`Invalid source id for HF state: ${sourceId}`);
+  }
+  return unique.map((sourceId) => path.posix.join("raw", sourceId, "state.json.gz"));
 }
 
 export function safeRawObject(baseObject: string, relativeObject: string): string {
@@ -60,17 +75,6 @@ export function canonicalObjects(sourceId: string, dates: ReadonlySet<string>): 
     path.posix.join(root, "dataset.json"),
     ...[...dates].map((date) => path.posix.join(root, "dates", date.slice(0, 4), date.slice(5, 7), `${date}.json.gz`)),
   ]);
-}
-
-export function rawStateObjects(sourceIds: readonly string[]): string[] {
-  const normalized = new Set<string>();
-  for (const sourceId of sourceIds) {
-    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(sourceId)) {
-      throw new Error(`Invalid source id for Raw state: ${sourceId}`);
-    }
-    normalized.add(sourceId);
-  }
-  return [...normalized].sort().map((sourceId) => path.posix.join("raw", sourceId, "state.json.gz"));
 }
 
 export function candidateAssets(compressed: Uint8Array): Set<string> {
@@ -120,6 +124,50 @@ async function mapLimit<T, R>(values: readonly T[], concurrency: number, work: (
   return output;
 }
 
+interface HfRetryOptions {
+  attempts?: number;
+  delayMs?: number;
+  label?: string;
+}
+
+function hfStatusCode(error: unknown): number | undefined {
+  if (error instanceof HubApiError) return error.statusCode;
+  if (!error || typeof error !== "object") return undefined;
+  const value = (error as { statusCode?: unknown }).statusCode;
+  return typeof value === "number" && Number.isInteger(value) ? value : undefined;
+}
+
+function transientHfError(error: unknown): boolean {
+  const status = hfStatusCode(error);
+  return error instanceof TypeError
+    || status === 408
+    || status === 425
+    || status === 429
+    || (status !== undefined && status >= 500 && status <= 599);
+}
+
+export async function retryTransientHf<T>(
+  work: () => Promise<T>,
+  options: HfRetryOptions = {},
+): Promise<T> {
+  const attempts = options.attempts ?? 4;
+  const delayMs = options.delayMs ?? 1_000;
+  if (!Number.isInteger(attempts) || attempts < 1) throw new Error("HF retry attempts must be a positive integer");
+  if (!Number.isFinite(delayMs) || delayMs < 0) throw new Error("HF retry delay must be non-negative");
+  for (let attempt = 1;; attempt += 1) {
+    try {
+      return await work();
+    } catch (error) {
+      if (attempt >= attempts || !transientHfError(error)) throw error;
+      const status = hfStatusCode(error);
+      const reason = status ? `HTTP ${status}` : error instanceof Error ? error.name : "network error";
+      const waitMs = Math.min(delayMs * 2 ** (attempt - 1), 10_000);
+      process.stderr.write(`[hf] ${options.label ?? "request"} returned ${reason}; retry ${attempt + 1}/${attempts} in ${waitMs}ms\n`);
+      await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
+    }
+  }
+}
+
 export class HfTimesDataset {
   readonly repo: { type: typeof DATASET_REPO_TYPE; name: string };
 
@@ -132,45 +180,50 @@ export class HfTimesDataset {
   }
 
   async revision(): Promise<string> {
-    const info = await datasetInfo({
+    const info = await retryTransientHf(() => datasetInfo({
       name: this.repo.name,
       accessToken: this.accessToken,
       additionalFields: ["sha"],
-    });
+    }), { label: "dataset metadata" });
     if (typeof info.sha !== "string" || !info.sha) throw new Error("HF Dataset did not return a revision");
     return info.sha;
   }
 
   async treeFiles(root: string, revision: string): Promise<Set<string>> {
-    const files = new Set<string>();
     try {
-      for await (const row of listFiles({
-        repo: this.repo,
-        accessToken: this.accessToken,
-        path: root,
-        revision,
-        recursive: true,
-      })) {
-        if (row.type === "file") files.add(row.path);
-      }
+      return await retryTransientHf(async () => {
+        const files = new Set<string>();
+        for await (const row of listFiles({
+          repo: this.repo,
+          accessToken: this.accessToken,
+          path: root,
+          revision,
+          recursive: true,
+        })) {
+          if (row.type === "file") files.add(row.path);
+        }
+        return files;
+      }, { label: `dataset tree ${root}` });
     } catch (error) {
-      if (error instanceof HubApiError && error.statusCode === 404) return files;
+      if (error instanceof HubApiError && error.statusCode === 404) return new Set<string>();
       throw error;
     }
-    return files;
   }
 
   async downloadObject(objectName: string, revision = "main"): Promise<string | null> {
     const target = localObjectPath(this.output, objectName);
-    const blob = await downloadFile({
-      repo: this.repo,
-      accessToken: this.accessToken,
-      path: objectName,
-      revision,
-    });
-    if (!blob) return null;
+    const body = await retryTransientHf(async () => {
+      const blob = await downloadFile({
+        repo: this.repo,
+        accessToken: this.accessToken,
+        path: objectName,
+        revision,
+      });
+      return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
+    }, { label: `download ${objectName}` });
+    if (!body) return null;
     await mkdir(path.dirname(target), { recursive: true });
-    await writeFile(target, new Uint8Array(await blob.arrayBuffer()));
+    await writeFile(target, body);
     return target;
   }
 
@@ -185,23 +238,34 @@ export class HfTimesDataset {
     return { restored: objects.length, objects };
   }
 
-  async latestCompleteRun(): Promise<{ revision: string; objectName: string; file: string; run: RawRunManifest }> {
+  async completeRun(githubRunId?: string): Promise<{ revision: string; objectName: string; file: string; run: RawRunManifest }> {
+    if (githubRunId !== undefined && !/^\d+$/u.test(githubRunId)) {
+      throw new Error(`Invalid GitHub Actions Capture run id: ${githubRunId}`);
+    }
     const revision = await this.revision();
     const runObjects = [...await this.treeFiles(RAW_RUN_ROOT, revision)]
       .filter((objectName) => objectName.endsWith(".json"))
       .sort()
       .reverse();
-    for (const objectName of runObjects) {
+    const candidates = githubRunId === undefined
+      ? runObjects
+      : runObjects.filter((objectName) => path.posix.basename(objectName).endsWith(`-${githubRunId}.json`));
+    for (const objectName of candidates) {
       const file = await this.downloadObject(objectName, revision);
       if (!file) continue;
       const run = JSON.parse(await readFile(file, "utf8")) as RawRunManifest;
-      if (run.complete === true) return { revision, objectName, file, run };
+      if (run.complete === true && (githubRunId === undefined || rawRunMatchesGitHubRunId(run.runId, githubRunId))) {
+        return { revision, objectName, file, run };
+      }
+    }
+    if (githubRunId !== undefined) {
+      throw new Error(`HF Raw has no complete Times run for GitHub Actions Capture run ${githubRunId}`);
     }
     throw new Error("HF Raw has no complete Times run manifest");
   }
 
-  async downloadLatestSnapshot(): Promise<Record<string, unknown>> {
-    const latest = await this.latestCompleteRun();
+  async downloadSnapshot(githubRunId?: string): Promise<Record<string, unknown>> {
+    const latest = await this.completeRun(githubRunId);
     const rows = Array.isArray(latest.run.sources)
       ? (latest.run.sources as RunSourceRow[]).filter((row) => (
           typeof row.sourceId === "string" && typeof row.output?.manifest === "string"
@@ -257,16 +321,20 @@ export class HfTimesDataset {
     };
   }
 
+  async downloadLatestSnapshot(): Promise<Record<string, unknown>> {
+    return this.downloadSnapshot();
+  }
+
   async uploadLocalFiles(files: Array<{ local: string; objectName: string }>, title: string): Promise<string | undefined> {
     if (files.length === 0) throw new Error("No files were selected for HF upload");
-    const result = await uploadFiles({
+    const result = await retryTransientHf(() => uploadFiles({
       repo: this.repo,
       accessToken: this.accessToken,
       commitTitle: title,
       files: files.map((file) => ({ path: file.objectName, content: pathToFileURL(file.local) })),
       useWebWorkers: false,
       useXet: true,
-    });
+    }), { label: `upload ${title}` });
     return result?.commit.oid;
   }
 }

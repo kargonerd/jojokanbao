@@ -84,6 +84,7 @@ jobs:
             --action restore-state \
             --config tools/times-pipeline/sources.v2.json \
             --repo "$HF_TIMES_DATASET_REPO" \
+            --config tools/times-pipeline/sources.v2.json \
             --output "$RUNNER_TEMP/jojo-times"
 
       - name: Start pinned Mihomo for a configured subscription
