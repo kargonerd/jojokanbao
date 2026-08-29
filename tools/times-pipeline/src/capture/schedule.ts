@@ -24,6 +24,29 @@ export function rotatingSourceProbes<T extends { sourceId: string }>(
   });
 }
 
+export function proxyTailSourceIds<T extends { sourceId: string }>(
+  articles: readonly T[],
+  maximumArticlesPerSource: number,
+): Set<string> {
+  if (!Number.isInteger(maximumArticlesPerSource) || maximumArticlesPerSource < 0) {
+    throw new Error("Proxy tail size must be a non-negative integer");
+  }
+  if (maximumArticlesPerSource === 0) return new Set();
+  return new Set(groupArticlesBySource(articles)
+    .filter((batch) => batch.articles.length <= maximumArticlesPerSource)
+    .map((batch) => batch.sourceId));
+}
+
+export function untriedProxyArticles<T extends { articleId: string; sourceId: string }>(
+  articles: readonly T[],
+  sourceIds: ReadonlySet<string>,
+  attempts: ReadonlyMap<string, ReadonlySet<string>>,
+  proxyCandidate: string,
+): T[] {
+  return articles.filter((article) => sourceIds.has(article.sourceId)
+    && !attempts.get(article.articleId)?.has(proxyCandidate));
+}
+
 export async function mapSourceBatches<T extends { sourceId: string }, R>(
   articles: readonly T[],
   concurrency: number,
