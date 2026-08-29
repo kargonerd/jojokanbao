@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { AppShell, NavBar, type NavItem } from "@jojo/ui";
 import { rollout } from "../../rollout";
@@ -36,42 +36,6 @@ export function Layout({
     ...coreNavItems,
     { label: "反馈", href: archivePath("support") },
   ];
-  const [accountLabel, setAccountLabel] = useState("登录");
-  const [hasReaderCode, setHasReaderCode] = useState(false);
-
-  useEffect(() => {
-    if (platformRedesign || !rollout.account) return;
-
-    let active = true;
-    let stopAuthSync = () => {};
-    let unsubscribe = () => {};
-
-    void import("../../account/auth").then(({ startAuthSync, useAuthStore }) => {
-      if (!active) return;
-
-      const updateLabel = () => {
-        const { user, profile } = useAuthStore.getState();
-        const displayName = profile?.display_name?.trim();
-        setAccountLabel(
-          user
-            ? displayName || "账号"
-            : "登录",
-        );
-        setHasReaderCode(Boolean(user && displayName));
-      };
-
-      unsubscribe = useAuthStore.subscribe(updateLabel);
-      stopAuthSync = startAuthSync();
-      updateLabel();
-    });
-
-    return () => {
-      active = false;
-      unsubscribe();
-      stopAuthSync();
-    };
-  }, [platformRedesign]);
-
   if (platformRedesign) {
     return (
       <div className={["app-shell flex h-screen flex-col overflow-hidden", className].filter(Boolean).join(" ")}>
@@ -88,13 +52,7 @@ export function Layout({
       header={
         <NavBar
           items={navItems}
-          actions={platformRedesign || rollout.account
-            ? [{
-                label: accountLabel,
-                href: "/account",
-                hint: hasReaderCode ? "读者" : undefined,
-              }]
-            : []}
+          actions={[]}
           mobileTitle="JOJO看报"
           onNavigate={(href) => navigate(href)}
           isActive={(href) =>

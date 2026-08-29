@@ -230,10 +230,12 @@ export class HfTimesDataset {
   async restoreState(sourceIds: readonly string[]): Promise<{ restored: number; objects: string[] }> {
     const revision = await this.revision();
     const states = rawStateObjects(sourceIds);
-    const restored = (await mapLimit(states, 8, async (objectName) => (
-      await this.downloadObject(objectName, revision) ? objectName : null
-    ))).filter((objectName): objectName is string => objectName !== null);
-    return { restored: restored.length, objects: restored };
+    const restored = await mapLimit(states, 8, async (objectName) => ({
+      objectName,
+      file: await this.downloadObject(objectName, revision),
+    }));
+    const objects = restored.filter((row) => row.file !== null).map((row) => row.objectName);
+    return { restored: objects.length, objects };
   }
 
   async completeRun(githubRunId?: string): Promise<{ revision: string; objectName: string; file: string; run: RawRunManifest }> {

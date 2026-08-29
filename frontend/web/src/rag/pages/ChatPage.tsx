@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@jojo/ui";
+import { AiExperimentalNotice } from "../components/AiBetaNotice";
 import { ReferenceButtons } from "../components/ReferenceButtons";
 import { useChatStore } from "../stores/chatStore";
 import { formatChatMarkdown } from "../utils/markdown";
@@ -323,6 +324,8 @@ export function ChatPage() {
         <ConversationHistory compact />
       </details>
 
+      <AiExperimentalNotice className="shrink-0 border-b border-rule px-4 md:px-5" />
+
       <div className="flex min-h-0 flex-1 flex-col bg-[var(--app-canvas)]">
         {!hasThread ? (
           <section aria-label="开始提问" className="flex min-h-0 flex-1 items-center px-5 pb-[10vh] pt-8 md:px-8">
@@ -369,7 +372,7 @@ export function ChatPage() {
               {streaming ? (
                 <article className="max-w-[47rem] border-l-2 border-red pl-5 md:pl-7">
                   <p className="mb-3 mt-0 font-sans text-[10px] font-bold text-red">
-                    {streamContent ? "JOJO 正在回答" : "JOJO 正在查找"}
+                    {streamContent ? "正在回答" : "正在查找"}
                   </p>
                   <div role="status" className={`flex items-center gap-3 font-sans text-xs text-muted ${streamContent ? "mb-4" : ""}`}>
                     <span aria-hidden="true" className="inline-block h-2 w-2 shrink-0 bg-red motion-safe:animate-pulse" />

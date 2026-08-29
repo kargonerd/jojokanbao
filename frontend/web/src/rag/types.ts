@@ -49,6 +49,19 @@ export interface RagMessage {
   references?: RagReference[];
 }
 
+export interface RagFocusContext {
+  chapterId: string;
+  chapterTitle?: string;
+  quote: string;
+  prefix?: string;
+  suffix?: string;
+}
+
+export interface RagAnswerMetadata {
+  provider?: string;
+  model?: string;
+}
+
 export interface RagConversationScope {
   mode?: "all" | "selected";
   datasetIds?: string[];

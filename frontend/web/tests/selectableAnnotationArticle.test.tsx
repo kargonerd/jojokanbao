@@ -37,13 +37,15 @@ describe("SelectableAnnotationArticle", () => {
     window.getSelection()?.removeAllRanges();
     window.getSelection()?.addRange(range);
     fireEvent.pointerUp(paragraph, { pointerType: "touch" });
-    fireEvent.click(await screen.findByRole("button", { name: "评论" }));
-    fireEvent.change(screen.getByPlaceholderText("写下你的评论……"), { target: { value: "报刊评论" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存划线评论" }));
+    fireEvent.click(await screen.findByRole("button", { name: "写想法" }));
+    fireEvent.change(screen.getByPlaceholderText("写下此刻的想法……"), { target: { value: "报刊评论" } });
+    expect(screen.getByRole("radio", { name: "公开" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "保存想法" }));
     await waitFor(() => expect(annotationApi.createAnnotation).toHaveBeenCalledWith(
       expect.objectContaining({ contentType: "newspaper", contentId: "news-1" }),
       expect.objectContaining({ quote: "报刊正文" }),
       "报刊评论",
+      "public",
     ));
   });
 

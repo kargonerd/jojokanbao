@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clearAnnotationMarks, renderAnnotationMarks, textAnchorFromRange } from "../src/annotations/domAnchors";
+import {
+  clearAnnotationMarks,
+  clearReaderExplanationMarks,
+  renderAnnotationMarks,
+  renderReaderExplanationMarks,
+  textAnchorFromRange,
+} from "../src/annotations/domAnchors";
 import type { AnnotationThread } from "../src/annotations/types";
 
 afterEach(() => { document.body.innerHTML = ""; });
@@ -33,6 +39,8 @@ describe("shared annotation DOM anchors", () => {
     expect(renderAnnotationMarks(root, [thread], opened)).toBe(1);
     const marks = root.querySelectorAll("mark[data-content-annotation='annotation-1']");
     expect(Array.from(marks).map((mark) => mark.textContent).join("")).toBe(anchor.quote);
+    expect(marks[0]?.classList.contains("content-annotation-mark")).toBe(true);
+    expect(marks[0]?.getAttribute("aria-label")).toBe("查看这处划线，1 人划线");
     (marks[0] as HTMLElement).click();
     expect(opened).toHaveBeenCalledWith("annotation-1");
     clearAnnotationMarks(root);
@@ -74,5 +82,60 @@ describe("shared annotation DOM anchors", () => {
     root.querySelector<HTMLElement>("mark[data-content-annotation='inner']")!.click();
     expect(opened).toHaveBeenCalledTimes(1);
     expect(opened).toHaveBeenCalledWith("inner");
+  });
+
+  it("exposes aggregate count and ownership on a rendered underline", () => {
+    const root = document.createElement("div");
+    root.textContent = "多人都划过的一句话";
+    document.body.append(root);
+    const opened = vi.fn();
+
+    renderAnnotationMarks(root, [{
+      id: "shared",
+      contentType: "book",
+      contentId: "book-1",
+      sectionId: "chapter-1",
+      contentTitle: "测试书",
+      authorId: "user-1",
+      authorName: "读者",
+      quote: "都划过",
+      prefix: "多人",
+      suffix: "的一句话",
+      startOffset: 2,
+      endOffset: 5,
+      createdAt: "2026-08-19T10:00:00Z",
+      underlineCount: 3,
+      underlinedByMe: true,
+      publiclyVisible: true,
+      comments: [],
+    }], opened);
+
+    const mark = root.querySelector<HTMLElement>("mark[data-content-annotation='shared']")!;
+    expect(mark.dataset.underlineCount).toBe("3");
+    expect(mark.dataset.underlinedByMe).toBe("true");
+    expect(mark.title).toBe("3 人划线");
+  });
+
+  it("locates repeated Reader AI quotes by context without nesting marks", () => {
+    const root = document.createElement("div");
+    root.textContent = "甲前文同一句甲后文。乙前文同一句乙后文";
+    document.body.append(root);
+    const explanations = [
+      { quote: "同一句", prefix: "甲前文", suffix: "甲后文", startOffset: null, endOffset: null, count: 2 },
+      { quote: "同一句", prefix: "乙前文", suffix: "乙后文", startOffset: null, endOffset: null, count: 4 },
+    ];
+    const opened = vi.fn();
+
+    expect(renderReaderExplanationMarks(root, explanations, opened)).toBe(2);
+    expect(root.querySelectorAll("mark[data-reader-explanation]")).toHaveLength(2);
+    expect(root.querySelector<HTMLElement>("mark[data-reader-explanation]")?.title).toBe("点击查看 AI 解释");
+    expect(root.querySelector<HTMLElement>("mark[data-reader-explanation]")?.getAttribute("aria-label")).toBe("查看 AI 解释");
+    root.querySelectorAll<HTMLElement>("mark[data-reader-explanation]")[1]!.click();
+    expect(opened).toHaveBeenCalledWith(explanations[1]);
+
+    expect(renderReaderExplanationMarks(root, explanations, opened)).toBe(2);
+    expect(root.querySelectorAll("mark[data-reader-explanation]")).toHaveLength(2);
+    clearReaderExplanationMarks(root);
+    expect(root.querySelector("mark[data-reader-explanation]")).toBeNull();
   });
 });

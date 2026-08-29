@@ -138,7 +138,7 @@ jobs:
           const fs = require("node:fs");
           const report = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/process-result.json", "utf8"));
           for (const source of report.sources || []) {
-            console.log(`${source.sourceId}: ${source.articles.length} canonical, ${source.skippedArticles?.length || 0} excluded`);
+            console.log(`${source.sourceId}: ${source.articles.length} canonical, ${source.unchangedArticles?.length || 0} unchanged, ${source.skippedArticles?.length || 0} excluded`);
             for (const article of source.skippedArticles || []) {
               const title = String(article.title || article.articleId).replace(/[\r\n|]/g, " ").slice(0, 180);
               const status = article.captureHttpStatus ? `HTTP ${article.captureHttpStatus}` : article.reason;
@@ -268,7 +268,9 @@ jobs:
           console.log(`- Published: ${process.env.TIMES_PUBLISH === "true" ? "HF + B2" : "no (artifact only)"}`);
           const processPath = process.env.RUNNER_TEMP + "/process-result.json";
           const processed = fs.existsSync(processPath) ? JSON.parse(fs.readFileSync(processPath, "utf8")) : undefined;
+          const unchanged = processed?.sources?.flatMap((source) => source.unchangedArticles || []) || [];
           const skipped = processed?.sources?.flatMap((source) => source.skippedArticles || []) || [];
+          console.log(`- Unchanged without refresh: ${unchanged.length}`);
           console.log(`- Excluded from Delivery: ${skipped.length}`);
           if (skipped.length) {
             console.log("\n### Articles excluded from Delivery\n");

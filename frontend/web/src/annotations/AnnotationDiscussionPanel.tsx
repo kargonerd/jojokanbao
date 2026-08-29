@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { ANNOTATION_REPORT_LABELS, type AnnotationReportReason, type AnnotationThread } from "./types";
+import { CommentVisibilityControl } from "./CommentVisibilityControl";
+import { ANNOTATION_REPORT_LABELS, type AnnotationReportReason, type AnnotationThread, type AnnotationVisibility } from "./types";
 import "./annotations.css";
 
 interface AnnotationDiscussionPanelProps {
   thread: AnnotationThread;
   currentUserId: string;
   onClose: () => void;
-  onComment: (body: string, parentCommentId?: string) => Promise<unknown>;
+  onComment: (body: string, parentCommentId?: string, visibility?: AnnotationVisibility) => Promise<unknown>;
   onReport: (commentId: string, reason: AnnotationReportReason, details?: string) => Promise<unknown>;
 }
 
@@ -16,6 +17,7 @@ function displayTime(value: string): string {
 
 export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onComment, onReport }: AnnotationDiscussionPanelProps) {
   const [draft, setDraft] = useState("");
+  const [visibility, setVisibility] = useState<AnnotationVisibility>("public");
   const [replyTo, setReplyTo] = useState<string>();
   const [reporting, setReporting] = useState<string>();
   const [reportReason, setReportReason] = useState<AnnotationReportReason>("spam");
@@ -23,15 +25,17 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const reply = thread.comments.find((comment) => comment.id === replyTo);
+  const underlineCount = Math.max(1, Math.trunc(thread.underlineCount ?? 1));
 
   async function submitComment() {
     if (!draft.trim() || busy) return;
     setBusy(true);
     setNotice("");
     try {
-      await onComment(draft.trim(), replyTo);
+      await onComment(draft.trim(), replyTo, visibility);
       setDraft("");
       setReplyTo(undefined);
+      setVisibility("public");
     } catch (reason) {
       setNotice(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -55,52 +59,79 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
     }
   }
 
-  return (
-    <aside className="annotation-panel" aria-label="划线评论">
+  return <>
+    <button type="button" className="annotation-panel-backdrop" aria-label="关闭划线详情" onClick={onClose} />
+    <aside className="annotation-panel" aria-label="划线详情">
       <header className="annotation-panel__header">
-        <div><span>READER MARGINALIA</span><h2>划线评论</h2></div>
-        <button type="button" onClick={onClose} aria-label="关闭划线评论">×</button>
+        <div><span>{thread.contentTitle}</span><h2>划线</h2></div>
+        <button type="button" onClick={onClose} aria-label="关闭划线详情">×</button>
       </header>
-      <blockquote>{thread.quote}</blockquote>
-      <div className="annotation-panel__meta">{thread.authorName} 划线 · {displayTime(thread.createdAt)}</div>
+
+      <section className="annotation-highlight-summary" aria-label="划线原文">
+        <span className="annotation-highlight-summary__quote" aria-hidden="true">“</span>
+        <blockquote>{thread.quote}</blockquote>
+        <div className="annotation-panel__meta">
+          <b><i aria-hidden="true" />{underlineCount} 人划线</b>
+        </div>
+      </section>
+
+      <div className="annotation-comments__heading"><span>想法</span><b>{thread.comments.length}</b></div>
 
       <ol className="annotation-comments">
         {thread.comments.map((comment) => {
           const parent = thread.comments.find((candidate) => candidate.id === comment.parentCommentId);
           return (
             <li key={comment.id}>
-              <div className="annotation-comment__byline"><b>{comment.authorName}</b><time>{displayTime(comment.createdAt)}</time></div>
+              <div className="annotation-comment__byline"><span><b>{comment.authorName}</b>{comment.visibility === "private" ? <em>仅自己可见</em> : null}</span><time>{displayTime(comment.createdAt)}</time></div>
               {parent ? <small>回复 {parent.authorName}</small> : null}
               <p>{comment.body}</p>
-              <div className="annotation-comment__actions">
+              {comment.visibility !== "private" ? <div className="annotation-comment__actions">
                 <button type="button" onClick={() => { setReplyTo(comment.id); setReporting(undefined); }}>回复</button>
                 {comment.authorId !== currentUserId ? (
                   <button type="button" disabled={comment.reportedByMe} onClick={() => { setReporting(comment.id); setReplyTo(undefined); }}>
                     {comment.reportedByMe ? "已举报" : "举报"}
                   </button>
                 ) : null}
-              </div>
+              </div> : null}
               {reporting === comment.id ? (
                 <div className="annotation-report-form">
-                  <select value={reportReason} onChange={(event) => setReportReason(event.target.value as AnnotationReportReason)} aria-label="举报原因">
-                    {Object.entries(ANNOTATION_REPORT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
-                  <textarea value={reportDetails} maxLength={1000} onChange={(event) => setReportDetails(event.target.value)} placeholder="补充说明（选填）" />
-                  <div><button type="button" onClick={() => setReporting(undefined)}>取消</button><button type="button" disabled={busy} onClick={() => void submitReport(comment.id)}>提交举报</button></div>
+                  <div className="annotation-report-form__heading">选择原因</div>
+                  <div className="annotation-report-reasons" role="radiogroup" aria-label="举报原因">
+                    {Object.entries(ANNOTATION_REPORT_LABELS).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        role="radio"
+                        aria-checked={reportReason === value}
+                        onClick={() => setReportReason(value as AnnotationReportReason)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="annotation-report-form__details">
+                    <textarea rows={2} value={reportDetails} maxLength={1000} onChange={(event) => setReportDetails(event.target.value)} placeholder="补充说明（选填）" />
+                  </div>
+                  <div className="annotation-report-form__actions"><button type="button" onClick={() => setReporting(undefined)}>取消</button><button type="button" disabled={busy} onClick={() => void submitReport(comment.id)}>提交举报</button></div>
                 </div>
               ) : null}
             </li>
           );
         })}
-        {thread.comments.length === 0 ? <li className="annotation-comments__empty">还没有评论。写下第一条回应。</li> : null}
+        {thread.comments.length === 0 ? <li className="annotation-comments__empty">还没有想法。</li> : null}
       </ol>
 
       <footer className="annotation-composer">
-        {reply ? <div>回复 {reply.authorName}<button type="button" onClick={() => setReplyTo(undefined)}>取消</button></div> : null}
-        <textarea value={draft} maxLength={2000} onChange={(event) => setDraft(event.target.value)} placeholder="接着评论……" />
-        <button type="button" disabled={busy || !draft.trim()} onClick={() => void submitComment()}>{busy ? "发送中…" : "发表评论"}</button>
+        {reply ? <div className="annotation-composer__reply">回复 {reply.authorName}<button type="button" onClick={() => setReplyTo(undefined)}>取消</button></div> : null}
+        <div className="annotation-composer__field">
+          <textarea className="annotation-composer__input" rows={2} value={draft} maxLength={2000} onChange={(event) => setDraft(event.target.value)} placeholder="写下你的想法……" />
+        </div>
+        <div className="annotation-composer__toolbar">
+          <CommentVisibilityControl value={visibility} onChange={setVisibility} disabled={busy} />
+          <button type="button" disabled={busy || !draft.trim()} onClick={() => void submitComment()}>{busy ? "保存中…" : "发表想法"}</button>
+        </div>
         {notice ? <p role="status">{notice}</p> : null}
       </footer>
     </aside>
-  );
+  </>;
 }

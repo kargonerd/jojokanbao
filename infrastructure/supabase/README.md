@@ -16,7 +16,6 @@ SUPABASE_PROJECT_REF=
 # Public browser configuration.
 VITE_SUPABASE_URL=
 VITE_SUPABASE_PUBLISHABLE_KEY=
-VITE_ENABLE_ACCOUNT=true
 
 # Existing local operator secret. Do not prefix it with VITE_.
 JOJO_OPERATOR_TOKEN=

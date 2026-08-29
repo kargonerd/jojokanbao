@@ -3,7 +3,12 @@ export {
   createRagAgentDefinition,
 } from "./applications";
 export { runPlatformAgent } from "./runtime";
-export { createRagTools, type RagScope, type RagToolOptions } from "./rag-tools";
+export {
+  createRagTools,
+  type RagFocusContext,
+  type RagScope,
+  type RagToolOptions,
+} from "./rag-tools";
 export {
   JsonCredentialStore,
   PersistentCredentialStore,

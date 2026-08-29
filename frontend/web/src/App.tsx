@@ -18,7 +18,6 @@ import { refreshFeatureFlags } from "./featureFlags";
 import { AccountEntry } from "./account/AccountEntry";
 import { startAccountSessionSync, useAccountSessionStore } from "./account/session";
 
-const AccountLogin = lazy(() => import("./account/AccountLogin"));
 const AccountConfirmation = lazy(() => import("./account/AccountConfirmation"));
 const ReaderPage = lazy(() =>
   import("./archive/pages/ReaderPage").then(({ ReaderPage }) => ({ default: ReaderPage })),
@@ -105,14 +104,6 @@ function archiveRoute(platformRedesign: boolean) {
 function LegacyRoutes() {
   return (
     <Routes>
-      {rollout.account && (
-        <>
-          <Route path="/account" element={<LazyRoute><AccountLogin /></LazyRoute>} />
-          <Route path="/account/confirm" element={<LazyRoute><AccountConfirmation /></LazyRoute>} />
-          <Route path="/login" element={<Navigate to="/account" replace />} />
-        </>
-      )}
-
       <Route path="/" element={<Navigate to={ARCHIVE_ROOT} replace />} />
       {archiveRoute(false)}
       <Route path="/reader/*" element={<ArchiveRedirect stripPrefix="/reader" />} />
@@ -143,9 +134,7 @@ function RedesignedRoutes() {
           <Route path="search" element={<div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage platformRedesign /></div>} />
           <Route path="support" element={<SupportPage platformRedesign />} />
           <Route path="notifications" element={<NotificationsPage />} />
-          {rollout.rag && (
-            <Route path="rag/*" element={<AuthenticatedRoute><LazyRoute><RagRoutes /></LazyRoute></AuthenticatedRoute>} />
-          )}
+          <Route path="rag/*" element={<AuthenticatedRoute><LazyRoute><RagRoutes /></LazyRoute></AuthenticatedRoute>} />
           {rollout.times && (
             <Route path="times/*" element={<TimesAccessRoute><LazyRoute><TimesRoutes /></LazyRoute></TimesAccessRoute>} />
           )}

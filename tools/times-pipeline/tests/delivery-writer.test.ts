@@ -68,6 +68,8 @@ describe("news Delivery writer", () => {
       articles: [{ articleId: canonical.articleId, object: canonicalObject, contentHash: canonical.contentHash, publishedAt: canonical.publishedAt }],
       files: [canonicalObject],
       skippedWithoutFullText: 0,
+      unchangedWithoutRefresh: 0,
+      unchangedArticles: [],
       skippedArticles: [],
     };
     const previousTimeline: TimesTimelineIndex = {

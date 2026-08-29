@@ -51,7 +51,7 @@ describe("useAnnotationThreads", () => {
     ));
 
     const { result, rerender } = renderHook(
-      ({ sectionId }) => useAnnotationThreads(subject(sectionId), true),
+      ({ sectionId }) => useAnnotationThreads(subject(sectionId), true, "user-1"),
       { initialProps: { sectionId: "chapter-1" } },
     );
     rerender({ sectionId: "chapter-2" });
@@ -59,5 +59,26 @@ describe("useAnnotationThreads", () => {
     await waitFor(() => expect(result.current.threads[0]?.sectionId).toBe("chapter-2"));
     await act(async () => { resolveFirst([thread("chapter-1")]); });
     expect(result.current.threads[0]?.sectionId).toBe("chapter-2");
+  });
+
+  it("fails closed for legacy responses while accepting aggregated public marks", async () => {
+    annotationApi.loadAnnotationThreads.mockResolvedValue([
+      thread("chapter-1"),
+      { ...thread("chapter-1"), id: "legacy-other", authorId: "user-2" },
+      {
+        ...thread("chapter-1"),
+        id: "shared",
+        authorId: "user-2",
+        underlineCount: 3,
+        underlinedByMe: false,
+        publiclyVisible: true,
+      },
+    ]);
+
+    const { result } = renderHook(() => useAnnotationThreads(subject("chapter-1"), true, "user-1"));
+
+    await waitFor(() => expect(result.current.threads).toHaveLength(2));
+    expect(result.current.threads.map((value) => value.id)).toEqual(["annotation-chapter-1", "shared"]);
+    expect(result.current.threads[0]).toMatchObject({ underlineCount: 1, underlinedByMe: true, publiclyVisible: false });
   });
 });

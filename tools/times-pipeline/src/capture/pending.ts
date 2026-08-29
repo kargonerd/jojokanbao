@@ -9,6 +9,7 @@ export interface PageArticle {
   captureUrl: string;
   publishedAt: string;
   needsBody: boolean;
+  captureRevision?: string;
 }
 
 export interface PageCaptureStateRow {
@@ -28,7 +29,8 @@ export interface PageCaptureState {
 }
 
 export function articleFingerprint(article: PageArticle): string {
-  return createHash("sha256").update(`${article.captureUrl}\0${article.title}\0${article.publishedAt}`).digest("hex");
+  const identity = `${article.captureUrl}\0${article.title}\0${article.publishedAt}`;
+  return createHash("sha256").update(article.captureRevision ? `${identity}\0${article.captureRevision}` : identity).digest("hex");
 }
 
 function timestamp(value: string | undefined): number | undefined {
