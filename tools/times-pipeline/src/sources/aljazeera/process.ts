@@ -1,10 +1,10 @@
 import { load } from "cheerio";
-import { semanticParagraphs, type BodyQuality } from "../../content/paragraphs.js";
+import { semanticHtmlBlocks, type BodyQuality } from "../../content/paragraphs.js";
 
 const SEMANTIC_BLOCKS = "p, h2, h3, blockquote, li";
 const BRIEF_QUALITY = { minimumCharacters: 350, minimumParagraphs: 3 };
 
-export function extractAlJazeeraBody(html: string, quality: BodyQuality): string | undefined {
+export function extractAlJazeeraBody(html: string, quality: BodyQuality, pageUrl?: string): string | undefined {
   const document = load(html);
   const paragraphs: string[] = [];
 
@@ -13,11 +13,13 @@ export function extractAlJazeeraBody(html: string, quality: BodyQuality): string
       // A list item can wrap paragraphs. Keep only the innermost semantic block
       // so the same publisher text is not emitted twice.
       if (document(element).find(SEMANTIC_BLOCKS).length === 0) {
-        paragraphs.push(document(element).text());
+        paragraphs.push(document(element).is("li")
+          ? `<p>${document(element).html() ?? document(element).text()}</p>`
+          : document.html(element));
       }
     });
   });
 
-  return semanticParagraphs(paragraphs, quality)
-    ?? semanticParagraphs(paragraphs, BRIEF_QUALITY);
+  return semanticHtmlBlocks(paragraphs, quality, pageUrl)
+    ?? semanticHtmlBlocks(paragraphs, BRIEF_QUALITY, pageUrl);
 }

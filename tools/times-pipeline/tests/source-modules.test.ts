@@ -5,6 +5,7 @@ import {
   processSourceCandidate,
   sourceBodyExtractor,
   sourceFetchPolicy,
+  sourceImageExtractor,
   sourceUnavailablePageReason,
 } from "../src/sources/registry.js";
 import type { Candidate, DiscoveryEndpoint, SourceConfig } from "../src/types.js";
@@ -128,6 +129,9 @@ describe("native source modules", () => {
       "[data-testid^='paragraph-'], [data-testid^='unordered-'] [data-testid='Body'], [data-testid='SignOff'] [data-testid='Body']",
     ]);
     expect(sourceFetchPolicy("reuters")?.captureUrl).toBe("source");
+    expect(sourceBodyExtractor("reuters")).toBeTypeOf("function");
+    expect(sourceImageExtractor("reuters")).toBeTypeOf("function");
+    expect(sourceImageExtractor("cna")).toBeTypeOf("function");
   });
 
   it("exposes Bloomberg's embedded article body strategy", () => {
@@ -139,11 +143,14 @@ describe("native source modules", () => {
     expect(sourceBodyExtractor("ap")).toBeTypeOf("function");
     expect(sourceBodyExtractor("thepaper")).toBeTypeOf("function");
     expect(sourceBodyExtractor("cls")).toBeTypeOf("function");
+    expect(sourceBodyExtractor("chinanews")).toBeTypeOf("function");
+    expect(sourceBodyExtractor("zaobao")).toBeTypeOf("function");
+    expect(sourceImageExtractor("zaobao")).toBeTypeOf("function");
   });
 
   it("keeps publisher-owned selectors for changing article layouts", () => {
     expect(sourceFetchPolicy("cls")?.bodySelectors).toContain(".detail-content");
-    expect(sourceFetchPolicy("chinanews")?.bodySelectors).toContain("#cont_1_1_2");
+    expect(sourceFetchPolicy("chinanews")?.bodySelectors).toEqual([".left_zw", ".content_desc"]);
     expect(sourceFetchPolicy("focus-taiwan")?.bodySelectors).toContain(".paragraph");
     expect(sourceFetchPolicy("nikkei")?.bodySelectors).toContain("[class*='FeatureArticleBody_featureArticleBody']");
     expect(sourceFetchPolicy("people")?.bodySelectors).toContain("#rm_txt_zw");

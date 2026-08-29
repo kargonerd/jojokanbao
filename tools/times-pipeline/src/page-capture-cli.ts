@@ -19,7 +19,7 @@ import {
   rotatingSourceProbes,
   untriedProxyArticles,
 } from "./capture/schedule.js";
-import { sourceBodyExtractor, sourceUnavailablePageReason } from "./sources/registry.js";
+import { sourceBodyExtractor, sourceImageExtractor, sourceUnavailablePageReason } from "./sources/registry.js";
 import type { Candidate, SourceCaptureManifest, SourceConfig, SourceFetchPolicy, UnavailablePageReason } from "./types.js";
 
 interface RawRunManifest {
@@ -49,6 +49,8 @@ interface CaptureOutcome {
   assetCount: number;
   rawPageObject: string;
 }
+
+const CAPTURE_PIPELINE_REVISION = "semantic-html-media-v2";
 
 function json<T>(body: string): T {
   return JSON.parse(body) as T;
@@ -112,14 +114,14 @@ async function completeCapture(
   const quality = bodyQuality(article.source);
   const sourceExtractor = sourceBodyExtractor(article.sourceId);
   const pageHasBody = page.renderedHtml
-    ? hasArticleBody(page.renderedHtml, article.fetchPolicy, quality, sourceExtractor)
+    ? hasArticleBody(page.renderedHtml, article.fetchPolicy, quality, sourceExtractor, page.finalUrl)
     : false;
   const discoveryHasBody = !pageHasBody && article.candidate.discoveryBody
-    ? hasArticleBody(article.candidate.discoveryBody, article.fetchPolicy, quality, sourceExtractor)
+    ? hasArticleBody(article.candidate.discoveryBody, article.fetchPolicy, quality, sourceExtractor, article.canonicalUrl)
     : false;
   const hasFullBody = pageHasBody || discoveryHasBody;
   const images = page.renderedHtml
-    ? discoverArticleImages(page.renderedHtml, page.finalUrl, article.fetchPolicy)
+    ? discoverArticleImages(page.renderedHtml, page.finalUrl, article.fetchPolicy, sourceImageExtractor(article.sourceId))
     : [];
   const session = page.method === "browser" && browser ? await browser() : undefined;
   const assets = await captureArticleAssets({
@@ -172,7 +174,7 @@ async function captureOne(
     ? await fetchDirectPage(article.captureUrl, timeoutSeconds)
     : undefined;
   const directHasBody = page?.renderedHtml
-    ? hasArticleBody(page.renderedHtml, article.fetchPolicy, bodyQuality(article.source), sourceBodyExtractor(article.sourceId))
+    ? hasArticleBody(page.renderedHtml, article.fetchPolicy, bodyQuality(article.source), sourceBodyExtractor(article.sourceId), page.finalUrl)
     : false;
   if (!page || !directHasBody) page = await (await browser()).capture(article.captureUrl, timeoutSeconds);
   return completeCapture(workspace, article, timeoutSeconds, page, browser);
@@ -195,7 +197,7 @@ async function loadArticles(workspace: string, run: RawRunManifest, sources: Map
         captureUrl: manifest.fetchPolicy?.captureUrl === "source" ? candidate.sourceUrl : candidate.canonicalUrl,
         publishedAt: candidate.publishedAt,
         needsBody: candidate.contentStatus !== "full",
-        ...(manifest.fetchPolicy?.revision ? { captureRevision: manifest.fetchPolicy.revision } : {}),
+        captureRevision: [CAPTURE_PIPELINE_REVISION, manifest.fetchPolicy?.revision].filter(Boolean).join("+"),
         source,
         candidate,
         manifestPath,

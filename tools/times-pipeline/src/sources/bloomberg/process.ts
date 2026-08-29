@@ -1,5 +1,5 @@
 import { load } from "cheerio";
-import { semanticParagraphs, type BodyQuality } from "../../content/paragraphs.js";
+import { semanticHtmlBlocks, type BodyQuality } from "../../content/paragraphs.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -7,12 +7,21 @@ function object(value: unknown): JsonObject | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : undefined;
 }
 
+function escapeHtml(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+}
+
 function richText(value: unknown): string {
   if (Array.isArray(value)) return value.map(richText).join("");
   const row = object(value);
   if (!row) return "";
-  if (row.type === "text" && typeof row.value === "string") return row.value;
-  return richText(row.content);
+  if (row.type === "text" && typeof row.value === "string") return escapeHtml(row.value);
+  const content = richText(row.content);
+  if (row.type === "link") {
+    const href = [row.url, row.href, row.webUrl].find((candidate): candidate is string => typeof candidate === "string");
+    return href ? `<a href="${escapeHtml(href)}">${content}</a>` : content;
+  }
+  return content;
 }
 
 const ignoredBlockTypes = new Set(["ad", "embed", "inline-newsletter", "inline-recirc", "media", "tabularData"]);
@@ -23,11 +32,12 @@ function contentParagraphs(value: unknown): string[] {
     const block = object(entry);
     if (!block || (typeof block.type === "string" && ignoredBlockTypes.has(block.type))) return [];
     const text = richText(block).trim();
-    return text ? [text] : [];
+    if (!text) return [];
+    return [block.type === "header" || block.type === "heading" ? `<h2>${text}</h2>` : `<p>${text}</p>`];
   });
 }
 
-export function extractBloombergBody(html: string, quality: BodyQuality): string | undefined {
+export function extractBloombergBody(html: string, quality: BodyQuality, pageUrl?: string): string | undefined {
   const document = load(html);
   const value = document("script#__NEXT_DATA__").text();
   if (!value) return undefined;
@@ -47,10 +57,10 @@ export function extractBloombergBody(html: string, quality: BodyQuality): string
       minimumCharacters: quality.minimumCharacters ?? 250,
       minimumParagraphs: quality.minimumParagraphs ?? 2,
     };
-    return semanticParagraphs([
+    return semanticHtmlBlocks([
       ...contentParagraphs(body?.content),
       ...liveblogParagraphs,
-    ], embeddedBodyQuality);
+    ], embeddedBodyQuality, pageUrl);
   } catch {
     return undefined;
   }

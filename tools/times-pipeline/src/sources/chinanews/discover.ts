@@ -22,6 +22,6 @@ export function discoverChinanews(source: SourceConfig, endpoint: Endpoint, fetc
     bodySelectors: chinanewsFetch.bodySelectors,
     publicationDateSelectors: ["#pubtime_baidu", ".pubtime", ".content_left_time"],
     publicationDateMode: "wall-clock",
-    version: "chinanews-html/1",
+    version: "chinanews-html/2",
   });
 }
