@@ -72,13 +72,22 @@ describe("sources v2", () => {
     expect(sources.reduce((count, source) => count
       + (source.sections?.filter((section) => section.discoverable !== false).length ?? 0), 0)).toBe(146);
     expect(sources.find((source) => source.id === "reuters")?.discovery.kind).toBe("multi");
+    expect(sources.find((source) => source.id === "reuters")?.content).toMatchObject({
+      minimumFullCharacters: 300,
+      minimumFullParagraphs: 1,
+    });
     expect(sources.find((source) => source.id === "guardian")?.discovery.kind).toBe("multi");
     expect(sources.find((source) => source.id === "scmp")?.fetch).toMatchObject({ strategy: "browser-first", bpc: true });
+    expect(sources.find((source) => source.id === "africanews")?.content).toMatchObject({
+      minimumFullCharacters: 500,
+      minimumFullParagraphs: 1,
+    });
     expect(sources.find((source) => source.id === "nyt")?.fetch.browser).toBe("brave");
     expect(sources.find((source) => source.id === "nyt")?.fetch.retryWithoutBpcOnBlocked).toBe(true);
     expect(sources.find((source) => source.id === "cna")?.discovery.kind).toBe("multi");
     const ap = sources.find((source) => source.id === "ap");
     expect(ap?.discovery.kind).toBe("multi");
+    expect(ap?.content).toMatchObject({ minimumFullCharacters: 400, minimumFullParagraphs: 3 });
     if (ap?.discovery.kind === "multi") {
       expect(ap.discovery.targets).toHaveLength(4);
       expect(ap.discovery.targets.every((target) =>
