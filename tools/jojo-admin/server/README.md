@@ -71,6 +71,60 @@ Operator-only fields such as the
 repair reason remain in the migration file and are not indexed in ES. Existing
 documents are never physically overwritten.
 
+## Unified ES sync
+
+`es_sync.py` reads the public Hugging Face Canonical Dataset directly. It does
+not read local JSONL, PDFs, or a B2 Delivery mirror. Books are indexed one
+document per chapter; newspaper and Times content are indexed one document per
+article. Every document has the same small business shape:
+
+```json
+{
+  "type": "book | newspaper | news",
+  "title": "search result title",
+  "content": "plain searchable text",
+  "date": "optional ISO date or timestamp",
+  "source": "book, newspaper, or publisher name",
+  "metadata": { "type-specific navigation fields": "stored here" }
+}
+```
+
+Tencent Serverless also requires `@timestamp`. Search only queries `title` and
+`content`; `metadata` is returned for navigation and is not included in search
+queries. A Console-created index may disable metadata indexing. Existing
+Serverless data streams reject `PUT _mapping`, so the synchronizer accepts their
+bounded dynamic metadata fields and reports that limitation.
+
+Preview one real document of every type without writing ES:
+
+```powershell
+python tools/jojo-admin/server/es_sync.py `
+  --types book newspaper news `
+  --publication rmrb `
+  --news-source ap `
+  --limit-per-type 1 `
+  --dry-run
+```
+
+Write the same three-document smoke test to the configured test index:
+
+```powershell
+python tools/jojo-admin/server/es_sync.py `
+  --index aitest-1tk2lxru `
+  --types book newspaper news `
+  --publication rmrb `
+  --news-source ap `
+  --limit-per-type 1
+```
+
+For a full initial load, use a newly created empty Serverless index and omit
+`--limit-per-type`. Re-running the same command is the incremental path: stable
+IDs are written with `_create`, identical rows are counted as unchanged, and a
+changed Canonical row stops as a conflict instead of silently leaving two live
+versions. Apply such corrections with the existing append-only repair page.
+`--since YYYY-MM-DD` and `--until YYYY-MM-DD` limit Times date indexes; repeat
+`--news-source` or `--publication` to select sources.
+
 ## Storage Backends
 
 Storage is configured in `config.json` under `storage.backends`. Publications

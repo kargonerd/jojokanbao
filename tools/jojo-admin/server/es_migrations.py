@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from es_repair import KibanaConsoleClient, revision_id
+from es_repair import KibanaConsoleClient, clean_repair_document, revision_id
 
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "es_migrations"
@@ -36,11 +36,9 @@ def preview_migration(
         "reason": reason.strip(),
         "state": "pending",
     }
-    es_payload = {
-        **clean,
-        "@timestamp": GENERATED_AT_PREVIEW,
-        "replacedDocumentId": replaced_document_id,
-    }
+    es_payload = {**clean, "@timestamp": GENERATED_AT_PREVIEW}
+    if "type" not in clean:
+        es_payload["replacedDocumentId"] = replaced_document_id
     canonical = json.dumps(
         {"migration": migration, "esPayload": es_payload},
         ensure_ascii=False,
@@ -154,11 +152,7 @@ def _safe_path(migration_id: str, directory: Path) -> Path:
 
 
 def _clean_document(document: dict[str, Any]) -> dict[str, Any]:
-    return {
-        key: document.get(key)
-        for key in ("title", "content", "date", "page", "source")
-        if document.get(key) not in (None, "")
-    }
+    return clean_repair_document(document)
 
 
 def _write(path: Path, payload: dict[str, Any]) -> None:

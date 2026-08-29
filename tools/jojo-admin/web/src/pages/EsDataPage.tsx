@@ -222,6 +222,7 @@ export function EsDataPage() {
                   >
                     <b>{item.title || "(无标题)"}</b>
                     <span>
+                      {item.type ? `${item.type} · ` : ""}
                       {item.date || "未知日期"} · {item.source || "未知来源"}
                     </span>
                     <p>{item.content?.slice(0, 150)}</p>
@@ -270,15 +271,17 @@ export function EsDataPage() {
                   }
                 />
               </Field>
-              <Field label="页码">
-                <TextInput
-                  type="number"
-                  value={draft.page || 0}
-                  onChange={(event) =>
-                    setDraft({ ...draft, page: Number(event.target.value) })
-                  }
-                />
-              </Field>
+              {!draft.type && (
+                <Field label="页码">
+                  <TextInput
+                    type="number"
+                    value={draft.page || 0}
+                    onChange={(event) =>
+                      setDraft({ ...draft, page: Number(event.target.value) })
+                    }
+                  />
+                </Field>
+              )}
             </div>
             <Field label="来源">
               <TextInput

@@ -68,6 +68,11 @@ Dataset Viewer 分片、缺失正文索引和必要的 availability；B2 会先�
 生成合并队列和自动补全图片记录的命令见
 [`tools/rmrb-repair/README.md`](../rmrb-repair/README.md)。
 
+书籍、报刊和时事新闻的统一 ES 同步命令见
+[`server/README.md`](server/README.md#unified-es-sync)。同步器直接读取 HF
+Canonical：书籍按章节、报刊和时事按文章写入；重复执行只为新内容追加稳定逻辑 ID，正文变化则要求
+通过 ES repair 的 migration 人工确认。
+
 Publication configuration is read from the repository `.env`:
 
 ```text

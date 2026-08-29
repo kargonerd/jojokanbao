@@ -120,11 +120,13 @@ export interface VuePreview extends ApiResult {
 
 export interface SearchDocument {
   documentId: string;
+  type?: "book" | "newspaper" | "news";
   title?: string;
   content?: string;
   date?: string;
   page?: number;
   source?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface Migration {

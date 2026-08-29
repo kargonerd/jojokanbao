@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from es_repair import active_query, revision_id
+from es_repair import active_query, clean_repair_document, revision_id
 from es_migrations import (
     apply_migration,
     create_migration,
@@ -106,6 +106,42 @@ class RepairLogicTest(unittest.TestCase):
 
         self.assertNotEqual(base["previewHash"], changed_reason["previewHash"])
         self.assertNotEqual(base["previewHash"], changed_document["previewHash"])
+
+    def test_unified_repair_keeps_the_six_business_fields(self):
+        document = {
+            "@timestamp": "2026-08-29T00:00:00Z",
+            "type": "newspaper",
+            "title": "修订标题",
+            "content": "修订正文",
+            "date": "1988-09-09",
+            "source": "人民日报",
+            "metadata": {"publicationId": "rmrb", "page": 4, "ordinal": 12},
+            "repairReason": "不应进入 ES",
+        }
+        clean = clean_repair_document(document)
+        preview = preview_migration(
+            "old-id",
+            document,
+            deleted=False,
+            reason="线上反馈",
+            index="test-index",
+        )
+
+        self.assertEqual(
+            set(clean),
+            {"type", "title", "content", "date", "source", "metadata"},
+        )
+        self.assertNotIn("replacedDocumentId", preview["esPayload"])
+        self.assertNotIn("repairReason", preview["esPayload"])
+
+    def test_unified_repair_rejects_missing_metadata(self):
+        with self.assertRaisesRegex(ValueError, "metadata"):
+            clean_repair_document({
+                "type": "book",
+                "title": "章节",
+                "content": "正文",
+                "source": "书名",
+            })
 
     def test_applied_migrations_build_index_scoped_exclusions(self):
         with TemporaryDirectory() as temp:

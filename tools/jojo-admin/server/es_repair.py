@@ -67,6 +67,28 @@ def revision_id(replaced_document_id: str, document: dict[str, Any], deleted: bo
     return "repair-" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:40]
 
 
+def clean_repair_document(document: dict[str, Any]) -> dict[str, Any]:
+    """Keep a repair in the same schema as the document it replaces."""
+    if document.get("type") in {"book", "newspaper", "news"}:
+        clean = {
+            key: document.get(key)
+            for key in ("type", "title", "content", "date", "source", "metadata")
+            if document.get(key) not in (None, "")
+        }
+        missing = [key for key in ("type", "title", "content", "source", "metadata") if key not in clean]
+        if missing:
+            raise ValueError("统一 ES 修订缺少字段：" + ", ".join(missing))
+        if not isinstance(clean["metadata"], dict):
+            raise ValueError("统一 ES 修订的 metadata 必须是对象")
+        # Reject values that cannot be serialized before a migration is saved.
+        return json.loads(json.dumps(clean, ensure_ascii=False))
+    return {
+        key: document.get(key)
+        for key in ("title", "content", "date", "page", "source")
+        if document.get(key) not in (None, "")
+    }
+
+
 def active_query(query: dict[str, Any], excluded_ids: set[str]) -> dict[str, Any]:
     """Wrap a query with the exclusions recorded by applied migrations."""
     wrapped: dict[str, Any] = {"must": [query]}
@@ -190,17 +212,16 @@ class KibanaConsoleClient:
         *,
         deleted: bool = False,
     ) -> dict[str, Any]:
-        clean = {
-            key: document.get(key)
-            for key in ("title", "content", "date", "page", "source")
-            if document.get(key) not in (None, "")
-        }
+        clean = clean_repair_document(document)
         now = datetime.now(timezone.utc).isoformat()
         revision = {
             **clean,
             "@timestamp": now,
-            "replacedDocumentId": replaced_document_id,
         }
+        if "type" not in clean:
+            # Preserve compatibility with the old ad-hoc repair index.  New
+            # unified documents keep operator/revision fields out of ES.
+            revision["replacedDocumentId"] = replaced_document_id
         # Exclude timestamps so retrying the same migration is idempotent.
         doc_id = revision_id(replaced_document_id, clean, deleted)
         status, payload = self.request(

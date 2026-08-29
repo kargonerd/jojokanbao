@@ -84,6 +84,37 @@ class SearchRevisionApiTests(unittest.TestCase):
             [{"ids": {"values": ["base-id"]}}],
         )
 
+    def test_unified_content_search_uses_common_fields_and_repair_exclusions(self):
+        (search_app.migrations_dir / "repair-content.json").write_text(
+            json.dumps({
+                "id": "repair-content",
+                "index": search_app.content_index_name,
+                "operation": "repair",
+                "replacedDocumentId": "old-content-id",
+                "state": "applied",
+            }),
+            encoding="utf-8",
+        )
+        response = self.client.post("/content/search", json={
+            "query": "最终正文",
+            "types": ["newspaper"],
+            "sources": ["人民日报"],
+        })
+
+        self.assertEqual(response.status_code, 200)
+        result = response.get_json()["data"]["results"][0]
+        self.assertEqual(result["documentId"], "revision-2")
+        query = self.fake_es.search_query["query"]
+        self.assertEqual(
+            query["bool"]["must_not"],
+            [{"ids": {"values": ["old-content-id"]}}],
+        )
+        inner = query["bool"]["must"][0]["bool"]
+        fields = inner["must"][0]["multi_match"]["fields"]
+        self.assertIn("title^4", fields)
+        self.assertIn("content", fields)
+        self.assertIn({"terms": {"type": ["newspaper"]}}, inner["filter"])
+
 
 if __name__ == "__main__":
     unittest.main()

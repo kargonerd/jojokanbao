@@ -92,6 +92,8 @@ def content_search():
   filters = []
   dataset_ids = _string_list(payload.get('datasetIds'))
   item_ids = _string_list(payload.get('itemIds'))
+  document_types = _string_list(payload.get('types'))
+  sources = _string_list(payload.get('sources'))
   if content_release_id:
     filters.append({'term': {'releaseId': content_release_id}})
     if dataset_ids:
@@ -103,35 +105,52 @@ def content_search():
       filters.append({'terms': {'datasetId': dataset_ids}})
     if item_ids:
       filters.append({'terms': {'itemId': item_ids}})
+  if document_types:
+    filters.append({'terms': {'type': document_types}})
+  if sources:
+    filters.append({'bool': {
+      'should': [{'match_phrase': {'source': value}} for value in sources],
+      'minimum_should_match': 1,
+    }})
+  query = {
+    'bool': {
+      'must': [{
+        'multi_match': {
+          'query': query_text,
+          'fields': [
+            'title^4', 'content',
+            'datasetTitle^4', 'itemTitle^4', 'targetTitle^3', 'text',
+          ],
+          'type': 'best_fields',
+          'operator': 'and',
+        }
+      }],
+      'should': [
+        {'match_phrase': {'content': {'query': query_text, 'boost': 8}}},
+        {'match_phrase': {'text': {'query': query_text, 'boost': 8}}},
+      ],
+      'filter': filters,
+    }
+  }
+  excluded = load_excluded_ids(migrations_dir, content_index_name)
+  if excluded:
+    query = build_active_query(query, excluded)
   body = {
     # A long chapter can produce several ES chunks. Overfetch so the API can
     # return distinct source fragments instead of spending every slot on one.
     'size': min(size * 5, 100),
     '_source': [
+      'type', 'title', 'content', 'date', 'source', 'metadata',
       'datasetId', 'datasetTitle', 'itemId', 'itemTitle', 'itemType',
       'targetId', 'targetTitle', 'chunkId', 'order', 'text', 'authors',
       'publishedDate', 'manifestObject', 'fragmentObject'
     ],
-    'query': {
-      'bool': {
-        'must': [{
-          'multi_match': {
-            'query': query_text,
-            'fields': ['datasetTitle^4', 'itemTitle^4', 'targetTitle^3', 'text'],
-            'type': 'best_fields',
-            'operator': 'and',
-          }
-        }],
-        'should': [{
-          'match_phrase': {
-            'text': {'query': query_text, 'boost': 8},
-          }
-        }],
-        'filter': filters,
-      }
-    },
+    'query': query,
     'highlight': {
-      'fields': {'text': {'fragment_size': 260, 'number_of_fragments': 2}},
+      'fields': {
+        'content': {'fragment_size': 260, 'number_of_fragments': 2},
+        'text': {'fragment_size': 260, 'number_of_fragments': 2},
+      },
       'pre_tags': ['<mark>'],
       'post_tags': ['</mark>'],
     },
@@ -154,8 +173,9 @@ def content_search():
     highlights = (hit.get('highlight') or {}).get('text') or []
     results.append({
       **source,
+      'documentId': hit.get('_id'),
       'score': hit.get('_score'),
-      'highlights': highlights,
+      'highlights': ((hit.get('highlight') or {}).get('content') or highlights),
     })
     if len(results) >= size:
       break
