@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 const LOCAL_STORAGE_KEY = "jojo-times-read-articles-v1";
-const MAX_VIEWED_ARTICLES = 5_000;
+const MAX_VIEWED_ARTICLES = 500;
 
 interface TimesReadState {
   readById: Record<string, boolean>;

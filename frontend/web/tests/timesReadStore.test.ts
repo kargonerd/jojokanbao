@@ -28,14 +28,14 @@ describe("Times viewed history", () => {
   it("keeps a bounded, recency-ordered local history", () => {
     window.localStorage.setItem(
       LOCAL_STORAGE_KEY,
-      JSON.stringify(Array.from({ length: 5_000 }, (_, index) => `article-${index}`)),
+      JSON.stringify(Array.from({ length: 500 }, (_, index) => `article-${index}`)),
     );
 
     markTimesArticleRead("article-0");
     markTimesArticleRead("newest-article");
 
     const stored = JSON.parse(window.localStorage.getItem(LOCAL_STORAGE_KEY) || "[]") as string[];
-    expect(stored).toHaveLength(5_000);
+    expect(stored).toHaveLength(500);
     expect(stored).not.toContain("article-1");
     expect(stored.at(-2)).toBe("article-0");
     expect(stored.at(-1)).toBe("newest-article");
