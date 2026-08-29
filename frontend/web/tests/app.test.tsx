@@ -183,6 +183,10 @@ describe("JOJO Web navigation", () => {
       label: "AI",
       badge: "Beta",
     });
+    expect(buildAppNavigationItems(true, { rag: true, times: true }).find((item) => item.href === "/times")).toMatchObject({
+      label: "时事",
+      badge: "Beta",
+    });
   });
 
   it("keeps the login entry visible", () => {

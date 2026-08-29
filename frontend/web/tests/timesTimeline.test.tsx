@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,13 +6,14 @@ const timesMocks = vi.hoisted(() => ({
   timelineIndex: vi.fn(),
   timelineDay: vi.fn(),
   assetObjectUrl: vi.fn(),
+  getNews: vi.fn(),
 }));
 
 vi.mock("../src/times/api", () => ({ timesApi: timesMocks }));
 
 import { TimesHomePage } from "../src/times/pages/TimesHomePage";
 
-const source = { id: "example", name: "Example News", language: "en" };
+const source = { id: "ap", name: "AP News", language: "en" };
 const article = {
   id: "article-one",
   title: "Headline with an archived photograph",
@@ -22,6 +23,7 @@ const article = {
   issueDate: "2026-08-27",
   language: "en",
   source,
+  url: "https://example.com/article-one",
   articleObject: "content/newspapers/example/articles/article-one.jox",
   assets: [{
     id: "asset:lead",
@@ -65,6 +67,12 @@ beforeEach(() => {
     articles: [article],
   });
   timesMocks.assetObjectUrl.mockResolvedValue("blob:timeline-lead");
+  timesMocks.getNews.mockResolvedValue({
+    ...article,
+    content: "Archived article body",
+    contentFormat: "text",
+    assetUrls: {},
+  });
   vi.stubGlobal("IntersectionObserver", TestIntersectionObserver);
   const NativeUrl = URL;
   class TestUrl extends NativeUrl {
@@ -80,11 +88,44 @@ afterEach(() => {
 });
 
 describe("Times timeline images", () => {
+  it("moves source selection into the dedicated media rail", async () => {
+    render(<MemoryRouter><TimesHomePage /></MemoryRouter>);
+
+    await screen.findByText(article.title);
+    expect(screen.queryByText("Global wire · ten-minute edition")).toBeNull();
+    expect(screen.queryByRole("button", { name: "全部" })).toBeNull();
+    expect(screen.getByRole("button", { name: /所有媒体/ })).toBeTruthy();
+    const sourceButton = screen.getByRole("button", { name: new RegExp(source.name) });
+    expect(sourceButton).toBeTruthy();
+    expect(within(sourceButton).queryByText("1")).toBeNull();
+    expect(sourceButton.querySelector(`[data-source-logo="${source.id}"]`)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "时事" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(source.name) }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: source.name })).toBeTruthy());
+  });
+
+  it("shows relative list times with the exact timestamp on hover", async () => {
+    render(<MemoryRouter><TimesHomePage /></MemoryRouter>);
+
+    await screen.findByText(article.title);
+    const time = document.querySelector(`time[datetime="${article.publishedAt}"]`);
+    expect(time?.textContent).toMatch(/^(刚刚|\d+(分钟前|小时前|天前|周前|个月前|年前))$/);
+    expect(time?.getAttribute("title")).toContain("2026");
+  });
+
   it("shows the archived lead image instead of a text badge", async () => {
     render(<MemoryRouter><TimesHomePage /></MemoryRouter>);
 
     const image = await screen.findByRole("img", { name: "Photograph from the publisher" });
+    const articleList = screen.getByRole("region", { name: "文章列表" });
+    const title = within(articleList).getByText(article.title);
+    const summary = within(articleList).getByText(article.summary);
     expect(image.getAttribute("src")).toBe("blob:timeline-lead");
+    expect(title.style.webkitLineClamp).toBe("2");
+    expect(summary.style.webkitLineClamp).toBe("3");
+    await screen.findByText("Archived article body");
+    expect(screen.getAllByText(article.summary)).toHaveLength(1);
     expect(screen.queryByText("图文存档")).toBeNull();
     expect(timesMocks.assetObjectUrl).toHaveBeenCalledWith(article.assets[0], expect.any(AbortSignal));
   });

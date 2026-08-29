@@ -2,10 +2,33 @@ import type { JojoAssetDescriptor } from "@jojo/content";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { timesApi, type TimesNewsItem } from "../api";
+import { SourceLogo } from "./SourceLogo";
 
-function articleTime(value: string): string {
+function exactArticleTime(value: string): string {
   const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? "—" : new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
+  return Number.isNaN(date.valueOf()) ? "时间未知" : new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+function relativeArticleTime(value: string): string {
+  const timestamp = new Date(value).valueOf();
+  if (Number.isNaN(timestamp)) return "时间未知";
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
+  if (elapsedMinutes < 1) return "刚刚";
+  if (elapsedMinutes < 60) return `${elapsedMinutes}分钟前`;
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) return `${elapsedHours}小时前`;
+  const elapsedDays = Math.floor(elapsedHours / 24);
+  if (elapsedDays < 7) return `${elapsedDays}天前`;
+  if (elapsedDays < 30) return `${Math.floor(elapsedDays / 7)}周前`;
+  if (elapsedDays < 365) return `${Math.floor(elapsedDays / 30)}个月前`;
+  return `${Math.floor(elapsedDays / 365)}年前`;
 }
 
 function leadImage(article: TimesNewsItem): JojoAssetDescriptor | undefined {
@@ -70,7 +93,7 @@ function TimelineLeadImage({
       ref={frame}
       to={`/times/${article.issueDate}/${encodeURIComponent(article.id)}`}
       aria-label={`打开：${article.title}`}
-      className="relative col-start-2 mt-4 block aspect-[16/9] w-full max-w-xl overflow-hidden border-l-4 border-red bg-[var(--app-canvas)] focus:outline-none focus-visible:ring-2 focus-visible:ring-red lg:col-start-3 lg:row-start-1 lg:mt-0 lg:aspect-[16/10] lg:max-w-none"
+      className="relative col-start-3 row-start-1 aspect-[4/3] w-24 self-center overflow-hidden border-l-2 border-red bg-[var(--app-canvas)] focus:outline-none focus-visible:ring-2 focus-visible:ring-red xl:w-28"
     >
       {url ? (
         <img
@@ -86,7 +109,7 @@ function TimelineLeadImage({
   );
 }
 
-export function TimelineArticle({ article }: { article: TimesNewsItem }) {
+export function TimelineArticle({ article, active = false }: { article: TimesNewsItem; active?: boolean }) {
   const asset = leadImage(article);
   const [imageAvailable, setImageAvailable] = useState(Boolean(asset));
   const markUnavailable = useCallback(() => setImageAvailable(false), []);
@@ -94,15 +117,29 @@ export function TimelineArticle({ article }: { article: TimesNewsItem }) {
   useEffect(() => setImageAvailable(Boolean(asset)), [asset]);
 
   return (
-    <article className={`group grid grid-cols-[52px_minmax(0,1fr)] border-b border-rule px-3 py-5 last:border-b-0 sm:grid-cols-[72px_minmax(0,1fr)] sm:px-5 lg:gap-5 lg:px-7 lg:py-6 ${asset && imageAvailable ? "lg:grid-cols-[84px_minmax(0,1fr)_220px]" : "lg:grid-cols-[84px_minmax(0,1fr)]"}`}>
-      <time className="pt-0.5 font-sans text-[11px] font-bold tabular-nums text-muted">{articleTime(article.publishedAt)}</time>
+    <article className={`group grid items-start gap-x-3 border-b border-rule px-3 py-3 transition-colors sm:px-4 ${active ? "border-l-4 border-l-red bg-[color-mix(in_srgb,var(--color-red)_5%,var(--color-paper))] pl-2 sm:pl-3" : "border-l-4 border-l-transparent bg-paper hover:bg-[var(--app-canvas)]"} ${asset && imageAvailable ? "grid-cols-[40px_minmax(0,1fr)_auto]" : "grid-cols-[40px_minmax(0,1fr)]"}`}>
+      <SourceLogo article={article} />
       <Link to={`/times/${article.issueDate}/${encodeURIComponent(article.id)}`} className="min-w-0 text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-red">
-        <span className="flex flex-wrap items-center gap-x-3 gap-y-1 font-sans text-[10px] font-black uppercase tracking-[0.08em] text-red">
-          <span>{article.source.name}</span>
-          {article.publisherSections?.slice(0, 2).map((section) => <span key={section.id} className="font-medium normal-case tracking-normal text-muted">{section.name}</span>)}
+        <span className="flex min-w-0 items-center gap-2 font-sans text-[10px] font-bold text-muted">
+          <span className="truncate text-red">{article.source.name}</span>
+          <span aria-hidden="true">·</span>
+          <time dateTime={article.publishedAt} title={exactArticleTime(article.publishedAt)} className="shrink-0 tabular-nums">{relativeArticleTime(article.publishedAt)}</time>
+          {article.publisherSections?.slice(0, 1).map((section) => <span key={section.id} className="truncate">· {section.name}</span>)}
         </span>
-        <strong className="mt-1.5 block text-lg leading-snug transition-colors group-hover:text-red sm:text-xl">{article.title}</strong>
-        {article.summary ? <span className="mt-2 line-clamp-2 block text-sm leading-6 text-muted">{article.summary}</span> : null}
+        <strong
+          className="mt-1 overflow-hidden text-[15px] leading-5 transition-colors group-hover:text-red"
+          style={{ display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 2 }}
+        >
+          {article.title}
+        </strong>
+        {article.summary ? (
+          <span
+            className="mt-1 overflow-hidden text-xs leading-[18px] text-muted"
+            style={{ display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 3 }}
+          >
+            {article.summary}
+          </span>
+        ) : null}
       </Link>
       {asset && imageAvailable ? <TimelineLeadImage article={article} asset={asset} onUnavailable={markUnavailable} /> : null}
     </article>
