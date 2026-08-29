@@ -2,6 +2,7 @@ import { load } from "cheerio";
 import { semanticParagraphs, type BodyQuality } from "../../content/paragraphs.js";
 
 const SEMANTIC_BLOCKS = "p, h2, h3, blockquote, li";
+const BRIEF_QUALITY = { minimumCharacters: 350, minimumParagraphs: 3 };
 
 export function extractAlJazeeraBody(html: string, quality: BodyQuality): string | undefined {
   const document = load(html);
@@ -17,5 +18,6 @@ export function extractAlJazeeraBody(html: string, quality: BodyQuality): string
     });
   });
 
-  return semanticParagraphs(paragraphs, quality);
+  return semanticParagraphs(paragraphs, quality)
+    ?? semanticParagraphs(paragraphs, BRIEF_QUALITY);
 }

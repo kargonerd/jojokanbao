@@ -103,6 +103,24 @@ describe("article processing", () => {
     expect(body).toContain("Live update 8");
   });
 
+  it("keeps complete Al Jazeera breaking briefs below the general article threshold", () => {
+    const paragraphs = [
+      "Sustained gunfire and explosions rang out across several areas of the capital early on Saturday, according to two witnesses who were present in the city.",
+      "Shots were heard around the international airport and near the presidential palace, one witness said while describing the developing security situation.",
+      "There have been exchanges of heavy gunfire and the shooting is continuing around the presidential palace, according to a second witness in the capital.",
+    ];
+    const body = extractArticleBody(
+      `<article><div class="wysiwyg">${paragraphs.map((paragraph) => `<p>${paragraph}</p>`).join("")}<p>More to come…</p></div></article>`,
+      { capture: "browser", bodySelectors: [".wysiwyg", "article"] },
+      { minimumCharacters: 800, minimumParagraphs: 3 },
+      extractAlJazeeraBody,
+    );
+
+    expect(body?.match(/<p>/gu)).toHaveLength(3);
+    expect(body).toContain("Sustained gunfire");
+    expect(body).not.toContain("More to come");
+  });
+
   it("extracts The Paper content from Next.js data and persisted discovery fragments", () => {
     const content = [
       "邮储银行中期业绩正文第一段，包含足够的信息用于验证澎湃新闻的专用正文解析。",
