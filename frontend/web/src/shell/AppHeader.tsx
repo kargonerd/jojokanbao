@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { AccountMenu } from "../account/AccountMenu";
 
@@ -31,6 +31,11 @@ export function AppHeader({
 } = {}) {
   const { pathname } = useLocation();
   const brandBase = import.meta.env.BASE_URL;
+  const activeLinkRef = useRef<HTMLAnchorElement>(null);
+
+  useEffect(() => {
+    activeLinkRef.current?.scrollIntoView?.({ block: "nearest", inline: "center" });
+  }, [pathname]);
 
   return (
     <header className="app-header">
@@ -39,18 +44,22 @@ export function AppHeader({
         <img className="app-brand-mark" src={`${brandBase}brand/jojo-kanbao-mark.png`} alt="" />
       </Link>
       <nav aria-label={navigationLabel}>
-        {navigationItems.map((item) => (
-          <Link
-            key={item.href}
-            to={item.href}
-            className={isActive(pathname, item.href) ? "is-active" : undefined}
-          >
-            <span className="app-navigation-label">
-              {item.label}
-              {item.badge ? <span className="app-navigation-badge">{item.badge}</span> : null}
-            </span>
-          </Link>
-        ))}
+        {navigationItems.map((item) => {
+          const active = isActive(pathname, item.href);
+          return (
+            <Link
+              key={item.href}
+              ref={active ? activeLinkRef : undefined}
+              to={item.href}
+              className={active ? "is-active" : undefined}
+            >
+              <span className="app-navigation-label">
+                {item.label}
+                {item.badge ? <span className="app-navigation-badge">{item.badge}</span> : null}
+              </span>
+            </Link>
+          );
+        })}
       </nav>
       <div className="app-header-actions">
         {actions}

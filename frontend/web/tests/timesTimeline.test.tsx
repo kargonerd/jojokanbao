@@ -99,6 +99,8 @@ describe("Times timeline images", () => {
     await screen.findByText(article.title);
     expect(screen.queryByText("Global wire · ten-minute edition")).toBeNull();
     expect(screen.queryByLabelText("阅读状态筛选")).toBeNull();
+    const mediaSelect = screen.getByRole("combobox", { name: "选择媒体" }) as HTMLSelectElement;
+    expect(mediaSelect.value).toBe("all");
     expect(screen.getByRole("button", { name: /所有媒体/ })).toBeTruthy();
     const sourceButton = screen.getByRole("button", { name: new RegExp(source.name) });
     expect(sourceButton).toBeTruthy();
@@ -107,6 +109,12 @@ describe("Times timeline images", () => {
     expect(screen.getByRole("heading", { name: "时事" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: new RegExp(source.name) }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: source.name })).toBeTruthy());
+    expect(mediaSelect.value).toBe(source.id);
+
+    fireEvent.change(mediaSelect, { target: { value: "all" } });
+    await waitFor(() => expect(screen.getByRole("heading", { name: "时事" })).toBeTruthy());
+    fireEvent.change(mediaSelect, { target: { value: source.id } });
     await waitFor(() => expect(screen.getByRole("heading", { name: source.name })).toBeTruthy());
   });
 
@@ -118,7 +126,8 @@ describe("Times timeline images", () => {
     expect(time?.textContent).toMatch(/^(刚刚|\d+(分钟前|小时前|天前|周前|个月前|年前))$/);
     expect(time?.getAttribute("title")).toContain("2026");
     expect(screen.queryByText("World News")).toBeNull();
-    expect(within(screen.getByRole("region", { name: "文章列表" })).getByText(source.name).className).toContain("flex-1");
+    const sourceLabel = screen.getByRole("region", { name: "文章列表" }).querySelector("article a:not([aria-label]) > span > span");
+    expect(sourceLabel?.className).toContain("flex-1");
   });
 
   it("shows the archived lead image instead of a text badge", async () => {
@@ -160,7 +169,7 @@ describe("Times timeline images", () => {
 
     fireEvent.click(within(articleList).getAllByRole("link", { name: new RegExp(article.title) })[0]!);
     await waitFor(() => expect(useTimesReadStore.getState().readById[article.id]).toBe(true));
-    expect(document.querySelector("main")?.className).toContain("min-h-[calc(100dvh-64px)] overflow-visible");
+    expect(document.querySelector("main")?.className).toContain("min-h-[calc(100dvh-58px)] overflow-visible");
     expect(document.querySelector("main")?.className).toContain("lg:overflow-hidden");
     expect(articleRow?.getAttribute("data-read")).toBe("true");
     expect(title.className).toContain("font-medium");

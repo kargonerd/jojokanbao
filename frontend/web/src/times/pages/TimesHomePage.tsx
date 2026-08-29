@@ -104,7 +104,7 @@ export function TimesHomePage() {
   }
 
   return (
-    <main className={`${showingMobileDetail ? "min-h-[calc(100dvh-64px)] overflow-visible" : "h-[calc(100dvh-64px)] overflow-hidden"} bg-[var(--app-canvas)] text-ink lg:grid lg:h-[calc(100vh-64px)] lg:min-h-0 lg:grid-cols-[220px_390px_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[240px_450px_minmax(0,1fr)]`}>
+    <main className={`${showingMobileDetail ? "min-h-[calc(100dvh-58px)] overflow-visible" : "h-[calc(100dvh-58px)] overflow-hidden"} bg-[var(--app-canvas)] text-ink lg:grid lg:h-[calc(100vh-64px)] lg:min-h-0 lg:grid-cols-[220px_390px_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[240px_450px_minmax(0,1fr)]`}>
       <aside aria-label="媒体来源" className="hidden min-h-0 flex-col border-r border-rule bg-[var(--app-canvas)] lg:flex">
         <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4" aria-label="选择媒体">
           <p className="px-2 pb-2 font-sans text-[10px] font-black tracking-[0.16em] text-muted">媒体来源</p>
@@ -132,6 +132,18 @@ export function TimesHomePage() {
         <header className="flex h-10 shrink-0 items-center gap-2 border-b border-ink px-4 sm:px-5">
           {selectedSource !== "all" && firstVisibleArticle ? <SourceLogo article={firstVisibleArticle} size="header" /> : null}
           <h1 className="truncate text-base font-black leading-tight">{selectedSourceName}</h1>
+          <label className="ml-auto flex min-w-0 items-center gap-1.5 font-sans text-[10px] font-bold text-muted lg:hidden">
+            <span className="shrink-0">媒体</span>
+            <select
+              aria-label="选择媒体"
+              value={selectedSource}
+              onChange={(event) => chooseSource(event.target.value)}
+              className="min-w-0 max-w-[52vw] border-0 border-b border-rule bg-transparent py-1 pl-1 pr-5 font-sans text-xs font-bold text-red focus:border-red focus:outline-none"
+            >
+              <option value="all">所有媒体</option>
+              {index?.sources.map((source) => <option key={source.id} value={source.id}>{timesSourceName(source)}</option>)}
+            </select>
+          </label>
         </header>
         <div ref={listViewport} className="min-h-0 flex-1 overflow-y-auto">
           {loading ? <p className="px-5 py-10 font-sans text-sm text-muted">正在加载新闻…</p> : null}
