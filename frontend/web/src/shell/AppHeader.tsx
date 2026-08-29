@@ -95,8 +95,10 @@ export function AppHeader({
         <span aria-hidden="true">←</span>返回
       </button> : null}
       <span className="app-mobile-title">
-        {mobileTitle}
-        {mobileTitleBadge ? <sup className="app-mobile-title-badge">{mobileTitleBadge}</sup> : null}
+        <span className="app-mobile-title-text">
+          {mobileTitle}
+          {mobileTitleBadge ? <sup className="app-mobile-title-badge">{mobileTitleBadge}</sup> : null}
+        </span>
       </span>
       <nav aria-label={navigationLabel}>
         {navigationItems.map((item) => {

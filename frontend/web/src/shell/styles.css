@@ -59,13 +59,14 @@ a.jojo-citation:hover {
 .app-mobile-account-link,
 .app-mobile-back { display: none; }
 .app-mobile-title-badge {
-  position: relative;
-  top: -.55em;
-  margin-left: 3px;
+  position: absolute;
+  top: -3px;
+  left: calc(100% + 3px);
   color: var(--color-red);
   font-family: var(--font-sans);
-  font-size: 6px;
-  font-weight: 800;
+  font-size: 7px;
+  font-weight: 900;
+  line-height: 1;
   letter-spacing: .01em;
 }
 
@@ -774,7 +775,7 @@ a.jojo-citation:hover {
   .app-mobile-title {
     display: block;
     min-width: 0;
-    overflow: hidden;
+    overflow: visible;
     font-family: var(--font-serif);
     font-size: .95rem;
     font-weight: 900;
@@ -783,6 +784,7 @@ a.jojo-citation:hover {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .app-mobile-title-text { position: relative; display: inline-block; }
   .app-header-actions { gap: 10px; }
   .app-account-menu { display: none; }
   .app-mobile-account-link {
