@@ -168,6 +168,18 @@ function mergeArticles(previous: readonly TimesDeliveryArticle[], current: reado
   return [...merged.values()].sort((left, right) => right.publishedAt.localeCompare(left.publishedAt) || left.id.localeCompare(right.id));
 }
 
+function deliveryRemovals(process: { sources: CanonicalWriteResult[] }): Map<string, Set<string>> {
+  const byDate = new Map<string, Set<string>>();
+  for (const source of process.sources) {
+    for (const article of source.skippedArticles) {
+      if (article.reason !== "unsupported-media") continue;
+      const date = new Date(article.publishedAt).toISOString().slice(0, 10);
+      byDate.set(date, new Set([...(byDate.get(date) ?? []), article.articleId]));
+    }
+  }
+  return byDate;
+}
+
 export async function buildNewsDelivery(input: {
   workspaceRoot: string;
   deliveryRoot: string;
@@ -184,16 +196,25 @@ export async function buildNewsDelivery(input: {
   const currentByDate = new Map<string, TimesDeliveryArticle[]>();
   const builtById = new Map(built.map((row) => [row.article.id, row]));
   for (const row of built) currentByDate.set(row.article.issueDate, [...(currentByDate.get(row.article.issueDate) ?? []), row.article]);
+  const removalsByDate = deliveryRemovals(input.process);
+  for (const date of removalsByDate.keys()) if (!currentByDate.has(date)) currentByDate.set(date, []);
 
   const timelineRefs = new Map((input.previousTimelineIndex?.dates ?? []).map((date) => [date.date, date]));
   const mergedDays = new Map<string, TimesTimelineDay>();
   for (const [date, current] of currentByDate) {
-    const articles = mergeArticles(input.previousTimelineDays?.get(date)?.articles ?? [], current);
+    const removed = removalsByDate.get(date) ?? new Set<string>();
+    const previous = (input.previousTimelineDays?.get(date)?.articles ?? [])
+      .filter((article) => !removed.has(article.id));
+    const articles = mergeArticles(previous, current);
     const object = `content/timeline/dates/${date.slice(0, 4)}/${date.slice(5, 7)}/${date}.jox`;
     const day: TimesTimelineDay = { formatVersion: "jojo-news-timeline-day/1", date, updatedAt: input.generatedAt, articles };
     await writeJoxJson(input.deliveryRoot, object, day);
     mergedDays.set(date, day);
-    timelineRefs.set(date, { date, object: `dates/${date.slice(0, 4)}/${date.slice(5, 7)}/${date}.jox`, articleCount: articles.length });
+    if (articles.length > 0) {
+      timelineRefs.set(date, { date, object: `dates/${date.slice(0, 4)}/${date.slice(5, 7)}/${date}.jox`, articleCount: articles.length });
+    } else {
+      timelineRefs.delete(date);
+    }
   }
 
   const sourceItems = new Map<string, NonNullable<TimesSourceIndex["items"]>>();
@@ -202,7 +223,10 @@ export async function buildNewsDelivery(input: {
     const [year, month] = dateParts(date);
     for (const source of input.sources) {
       const articles = day.articles.filter((article) => article.source.id === source.id);
-      if (!articles.length) continue;
+      if (!articles.length) {
+        sourceItems.set(source.id, (sourceItems.get(source.id) ?? []).filter((item) => item.itemKey !== date));
+        continue;
+      }
       const prefix = `content/newspapers/${source.id}`;
       const manifestObject = `${prefix}/dates/${year}/${month}/${date}.jox`;
       const descriptors = articles.map((article, index) => {

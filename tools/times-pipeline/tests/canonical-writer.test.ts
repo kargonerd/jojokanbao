@@ -121,6 +121,21 @@ describe("canonical writer", () => {
       output, "canonical", "reuters", "dates", "2026", "08", "2026-08-23.json.gz",
     ))).toString("utf8")) as { articles: Array<{ articleId: string }> };
     expect(date.articles.map((article) => article.articleId).toSorted()).toEqual(["reuters:image-only", "reuters:one"]);
+
+    const removal = await writeCanonicalSource(output, source, manifest, "raw/reuters/runs/run/manifest.json", [{
+      ...candidate,
+      processedBody: "",
+      contentStatus: "summary",
+      captureStatus: "skipped",
+    }], "raw-sha-2");
+    expect(removal.dates).toEqual(["2026-08-23"]);
+    expect(removal.skippedArticles).toEqual([
+      expect.objectContaining({ articleId: "reuters:one", reason: "unsupported-media" }),
+    ]);
+    const dateAfterRemoval = JSON.parse(gunzipSync(await readFile(path.join(
+      output, "canonical", "reuters", "dates", "2026", "08", "2026-08-23.json.gz",
+    ))).toString("utf8")) as { articles: Array<{ articleId: string }> };
+    expect(dateAfterRemoval.articles.map((article) => article.articleId)).toEqual(["reuters:image-only"]);
     await expect(readFile(path.join(output, "canonical", "newspapers", "times", "dataset.json"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
