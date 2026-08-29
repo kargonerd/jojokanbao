@@ -1,4 +1,4 @@
-import { load } from "cheerio";
+import { load, type CheerioAPI } from "cheerio";
 import { articleId, normalizeArticleUrl } from "../identity.js";
 import { isFullDiscoveryBody, plainText, publisherDate, stringList } from "../text.js";
 import type { PublisherDateMode } from "../text.js";
@@ -14,6 +14,7 @@ export interface HtmlListingProfile {
   linkSelector?: string;
   bodySelectors?: string[];
   publicationDateSelectors?: string[];
+  publicationDateExtractor?: (document: CheerioAPI) => string | undefined;
   publicationDateMode?: PublisherDateMode;
   isUnsupportedMedia?: (html: string, sourceUrl: string) => boolean;
   version: string;
@@ -119,9 +120,10 @@ function candidateFromArticle(
     document("title").text(),
   ].map(plainText).find(Boolean)?.trim() ?? "";
   const selectorDate = firstSelectedText(document, profile.publicationDateSelectors ?? []);
+  const extractedDate = profile.publicationDateExtractor?.(document);
   const dateValues = profile.publicationDateMode === "wall-clock"
-    ? [selectorDate, json?.datePublished, document('meta[property="article:published_time"]').attr("content"), document('meta[name="publishdate"], meta[name="date"]').first().attr("content"), document("time[datetime]").first().attr("datetime")]
-    : [json?.datePublished, document('meta[property="article:published_time"]').attr("content"), selectorDate, document('meta[name="publishdate"], meta[name="date"]').first().attr("content"), document("time[datetime]").first().attr("datetime")];
+    ? [extractedDate, selectorDate, json?.datePublished, document('meta[property="article:published_time"]').attr("content"), document('meta[name="publishdate"], meta[name="date"]').first().attr("content"), document("time[datetime]").first().attr("datetime")]
+    : [extractedDate, json?.datePublished, document('meta[property="article:published_time"]').attr("content"), selectorDate, document('meta[name="publishdate"], meta[name="date"]').first().attr("content"), document("time[datetime]").first().attr("datetime")];
   const publishedAt = dateValues
     .map((value) => publisherDate(text(value), source.publicationTimeZone, profile.publicationDateMode))
     .find((value): value is string => Boolean(value));

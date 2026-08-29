@@ -1,4 +1,4 @@
-import { load } from "cheerio";
+import { load, type CheerioAPI } from "cheerio";
 import { discoverHtmlListing, sectionUrl } from "../../discovery/html-listing.js";
 import { isFullDiscoveryBody, plainText } from "../../text.js";
 import type { RouteDiscoveryEndpoint, SourceConfig } from "../../types.js";
@@ -44,6 +44,18 @@ const articlePrefixes: Record<string, string[]> = {
   finance: ["/money/"],
 };
 
+export function xinhuaPublicationDate(document: CheerioAPI): string | undefined {
+  const header = document(".header-time").first();
+  if (!header.length) return undefined;
+  const year = plainText(header.find(".year").text()).match(/\d{4}/u)?.[0];
+  const monthAndDay = plainText(header.find(".day").text()).match(/\d{1,2}/gu);
+  const time = plainText(header.find(".time").text()).match(/\d{1,2}:\d{2}(?::\d{2})?/u)?.[0];
+  if (!year || !monthAndDay || monthAndDay.length < 2 || !time) return undefined;
+  const month = monthAndDay[0]!.padStart(2, "0");
+  const day = monthAndDay[1]!.padStart(2, "0");
+  return `${year}-${month}-${day} ${time}`;
+}
+
 export function discoverXinhua(source: SourceConfig, endpoint: Endpoint, fetchedAt: string) {
   const prefixes = articlePrefixes[endpoint.route];
   if (!prefixes) throw new Error(`${source.id}: unsupported route: ${endpoint.route}`);
@@ -53,8 +65,9 @@ export function discoverXinhua(source: SourceConfig, endpoint: Endpoint, fetched
     maximumItems: endpoint.maximumItems,
     bodySelectors: ["#detailContent"],
     publicationDateSelectors: ["#pubtime_baidu", ".header-time", ".mheader .info"],
+    publicationDateExtractor: xinhuaPublicationDate,
     publicationDateMode: "wall-clock",
     isUnsupportedMedia: (html) => isXinhuaVideoOnlyPage(html, source),
-    version: "xinhua-html/1",
+    version: "xinhua-html/2",
   });
 }

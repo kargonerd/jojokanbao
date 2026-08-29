@@ -126,8 +126,13 @@ describe("HTML listing discovery mechanics", () => {
       }
       if (url.includes("/mixed/")) {
         return new Response(`
-          <meta name="publishdate" content="2026-08-26 20:14:58">
+          <meta name="publishdate" content="2026-08-26">
           <h1>带视频的图文报道</h1>
+          <div class="header-time">
+            <span class="year"><em>2026</em></span>
+            <span class="day"><em>08</em>/<em>26</em></span>
+            <span class="time">20:14:58</span>
+          </div>
           <div id="detailContent">
             <span class="pageVideo" video_src="https://vod.example.test/mixed.mp4"></span>
             <p>这是与视频共同发布的第一段实质正文，包含事件背景、现场情况以及相关人士的完整说明。</p>
@@ -149,7 +154,11 @@ describe("HTML listing discovery mechanics", () => {
     const result = await discoverXinhua(xinhua, xinhuaEndpoint, "2026-08-26T12:20:00Z");
 
     expect(result.candidates).toHaveLength(1);
-    expect(result.candidates[0]).toMatchObject({ title: "带视频的图文报道", contentStatus: "full" });
+    expect(result.candidates[0]).toMatchObject({
+      title: "带视频的图文报道",
+      contentStatus: "full",
+      publishedAt: "2026-08-26T12:14:58.000Z",
+    });
     expect(result.upstream).toMatchObject({ unsupportedMediaCount: 1 });
   });
 });
