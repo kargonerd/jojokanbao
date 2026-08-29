@@ -92,7 +92,8 @@ jobs:
           MIHOMO_SHA256: cf06ce2c7d1421bdbda14ee4a5b6046672dc35ebf8eecd8e77504ec3c0ed9a84
         run: |
           mkdir -p "$RUNNER_TEMP/mihomo"
-          curl -fsSL "https://github.com/MetaCubeX/mihomo/releases/download/v${MIHOMO_VERSION}/mihomo-linux-amd64-v${MIHOMO_VERSION}.gz" \
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 300 \
+            "https://github.com/MetaCubeX/mihomo/releases/download/v${MIHOMO_VERSION}/mihomo-linux-amd64-v${MIHOMO_VERSION}.gz" \
             -o "$RUNNER_TEMP/mihomo/mihomo.gz"
           echo "$MIHOMO_SHA256  $RUNNER_TEMP/mihomo/mihomo.gz" | sha256sum -c -
           gzip -d "$RUNNER_TEMP/mihomo/mihomo.gz"
@@ -131,7 +132,9 @@ jobs:
           BRAVE_SHA256: cf18b2d443f067241e13662484c4b9523f13ff089ba1fc27c88f67911586ac9f
         run: |
           package="$RUNNER_TEMP/brave-browser.deb"
-          curl -fsSL "https://github.com/brave/brave-browser/releases/download/v${BRAVE_VERSION}/brave-browser_${BRAVE_VERSION}_amd64.deb" -o "$package"
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 300 \
+            "https://github.com/brave/brave-browser/releases/download/v${BRAVE_VERSION}/brave-browser_${BRAVE_VERSION}_amd64.deb" \
+            -o "$package"
           echo "$BRAVE_SHA256  $package" | sha256sum -c -
           mkdir -p "$RUNNER_TEMP/brave"
           dpkg-deb --extract "$package" "$RUNNER_TEMP/brave"
