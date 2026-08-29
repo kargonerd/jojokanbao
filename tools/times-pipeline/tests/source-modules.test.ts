@@ -168,12 +168,50 @@ describe("native source modules", () => {
     expect(sourceUnavailablePageReason(source("xinhua", endpoint), input({
       html: '<div id="detailContent"><div class="pageVideo" video_src="movie.mp4"></div><p>新华社音视频部制作</p></div>',
     }))).toBe("UnsupportedMedia");
+    expect(sourceUnavailablePageReason(source("nikkei", endpoint), input({
+      html: '<script type="application/ld+json">{"@type":"NewsArticle","isAccessibleForFree":false}</script><p>Preview</p>',
+    }))).toBe("HardPaywall");
     expect(sourceUnavailablePageReason(source("scmp", endpoint), input({
       html: "SCMP Plus subscription is required for access.",
     }))).toBe("HardPaywall");
     expect(sourceUnavailablePageReason(source("nyt", endpoint), input({
       html: "You have a preview view of this article while we are checking your access. Subscribe for all of The Times.",
     }))).toBeUndefined();
+  });
+
+  it("keeps Xinhua image stories as image-led articles", () => {
+    const extractor = sourceBodyExtractor("xinhua");
+    expect(extractor?.(`<div id="detailContent">
+      <div class="image"><img src="poster-1.jpg"></div>
+      <div class="image"><img src="poster-2.jpg"></div>
+      <p>文案：张晓洁</p><p>海报制作：贾稀荃、许涵毅</p><p>新华社国内部出品</p>
+    </div>`, { minimumCharacters: 80, minimumParagraphs: 1 })).toBe(
+      "<p>文案：张晓洁</p><p>海报制作：贾稀荃、许涵毅</p><p>新华社国内部出品</p>",
+    );
+    expect(extractor?.(`<div id="detailContent">
+      <div class="image"><img src="lead.jpg"></div><p>这是包含完整正文的普通新闻。</p>
+    </div>`, { minimumCharacters: 80, minimumParagraphs: 1 })).toBeUndefined();
+    expect(extractor?.(`<div id="detailContent">
+      <div class="image"><img src="lead.jpg"></div><p>记者调查发现当地居民生活已经恢复正常。</p>
+    </div>`, { minimumCharacters: 80, minimumParagraphs: 1 })).toBeUndefined();
+  });
+
+  it("accepts a publisher-declared free Nikkei short article without lowering paywall thresholds", () => {
+    const extractor = sourceBodyExtractor("nikkei");
+    const paragraphs = [
+      "China removed two senior military officers from their posts after investigations into suspected violations of discipline and law.",
+      "The announcement concerned their positions in the state military commission and followed probes announced earlier in the year.",
+      "The officers have not been publicly stripped of their parallel posts in the ruling party military commission.",
+    ];
+    const body = `<script type="application/ld+json">${JSON.stringify({
+      "@type": "NewsArticle", isAccessibleForFree: true,
+    })}</script><div class="ArticleBodyWithTracking_articleBodyWithTrackingTranslationWrapper"><div>
+      ${paragraphs.map((value) => `<p>${value}</p>`).join("")}
+    </div></div>`;
+    expect(extractor?.(body, { minimumCharacters: 1_000, minimumParagraphs: 5 })).toContain(paragraphs[2]);
+    expect(extractor?.(body.replace("true", "false"), {
+      minimumCharacters: 1_000, minimumParagraphs: 5,
+    })).toBeUndefined();
   });
 
   it("drops Focus Taiwan's homepage placeholder", () => {

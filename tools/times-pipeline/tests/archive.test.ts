@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { discoverArticleImages } from "../src/capture/page-images.js";
 import { attachAssetsToBody } from "../src/process/article.js";
 import { unavailablePageReason } from "../src/capture/availability.js";
-import { articleFingerprint, pendingArticles, type PageArticle } from "../src/capture/pending.js";
+import { articleFingerprint, pendingArticles, selectRunArticles, type PageArticle } from "../src/capture/pending.js";
 import { selectProxy, selectProxyCandidates } from "../src/capture/proxy.js";
 import { groupArticlesBySource, mapSourceBatches, rotatingSourceProbes } from "../src/capture/schedule.js";
 import { thepaperFetch } from "../src/sources/thepaper/fetch.js";
@@ -79,6 +79,31 @@ describe("page capture orchestration", () => {
       [current], state,
       { now, retentionDays: 7, refreshHours: 168, retryHours: 2 },
     ).map((value) => value.articleId)).toEqual(["policy-change"]);
+  });
+
+  it("keeps the current process window plus unseen late arrivals", () => {
+    const recent = article("recent", "example", "2026-08-22T11:30:00Z");
+    const late = article("late", "example", "2026-08-21T18:00:00Z");
+    const oldUnchanged = article("old-unchanged", "example", "2026-08-21T17:00:00Z");
+    const state = new Map([["example", {
+      formatVersion: "jojo-page-capture-state/1" as const,
+      articles: {
+        "old-unchanged": {
+          fingerprint: articleFingerprint(oldUnchanged),
+          lastAttempt: "2026-08-22T11:00:00Z",
+          rawPageObject: "raw/example/page.json",
+          error: null,
+        },
+      },
+    }]]);
+    const values = [recent, late, oldUnchanged];
+    const pending = pendingArticles(values, state, {
+      now, retentionDays: 7, refreshHours: 168, retryHours: 2,
+    });
+    const selected = selectRunArticles(values, pending, { now, processWindowHours: 1 });
+
+    expect(selected.articles.map((value) => value.articleId)).toEqual(["recent", "late"]);
+    expect([...selected.recoveryArticleIds]).toEqual(["late"]);
   });
 
   it("keeps article images as owned asset references and filters tracking pixels", () => {
