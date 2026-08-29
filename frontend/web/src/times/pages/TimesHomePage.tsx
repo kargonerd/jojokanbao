@@ -132,7 +132,7 @@ export function TimesHomePage() {
           <h1 className="truncate text-2xl font-black leading-tight">{selectedSourceName}</h1>
         </header>
         <div ref={listViewport} className="min-h-0 flex-1 overflow-y-auto">
-          {loading ? <p className="px-5 py-10 font-sans text-sm text-muted">正在编排最新时间线…</p> : null}
+          {loading ? <p className="px-5 py-10 font-sans text-sm text-muted">正在加载新闻…</p> : null}
           {error ? <div role="alert" className="m-5 border-2 border-red bg-paper p-5 font-sans text-sm text-red">{error}</div> : null}
           {visibleDays.flatMap((day) => day.articles).map((article) => (
             <TimelineArticle
