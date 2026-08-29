@@ -1,10 +1,10 @@
 import { load } from "cheerio";
 import type { SourceConfig, SourceFetchPolicy } from "../types.js";
-import { semanticParagraphs, type BodyQuality } from "./paragraphs.js";
+import { semanticHtmlBlocks, semanticParagraphs, type BodyQuality } from "./paragraphs.js";
 
 type JsonObject = Record<string, unknown>;
 
-export type ArticleBodyExtractor = (html: string, quality: BodyQuality) => string | undefined;
+export type ArticleBodyExtractor = (html: string, quality: BodyQuality, pageUrl?: string) => string | undefined;
 
 function object(value: unknown): JsonObject | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : undefined;
@@ -32,10 +32,11 @@ export function extractArticleBody(
   policy?: SourceFetchPolicy,
   quality: BodyQuality = {},
   sourceExtractor?: ArticleBodyExtractor,
+  pageUrl?: string,
 ): string | undefined {
   if (!html.trim()) return undefined;
-  const sourceBody = sourceExtractor?.(html, quality);
-  if (sourceBody) return sourceBody;
+  const extractedSourceBody = sourceExtractor?.(html, quality, pageUrl);
+  if (extractedSourceBody) return extractedSourceBody;
   const document = load(html);
   const jsonBodies: string[] = [];
   document('script[type="application/ld+json"]').each((_, element) => {
@@ -45,11 +46,6 @@ export function extractArticleBody(
       // Continue with source-owned DOM selectors.
     }
   });
-  const jsonBody = jsonBodies.toSorted((left, right) => right.length - left.length)[0];
-  if (jsonBody && jsonBody.length >= (quality.minimumCharacters ?? 800)) {
-    const result = semanticParagraphs(jsonBody.split(/\r?\n(?:\s*\r?\n)*/u), quality);
-    if (result) return result;
-  }
   document("script, style, nav, footer, header, aside, form, noscript").remove();
   const sourceSelectors = policy?.bodySelectors ?? [];
   const genericSelectors = [
@@ -68,11 +64,11 @@ export function extractArticleBody(
     for (const selector of selectors) {
       const values: string[] = [];
       document(selector).each((_, container) => {
-        const elements = document(container).find("p, h2, h3, blockquote").toArray();
-        if (elements.length) values.push(...elements.map((element) => document(element).text()));
-        else values.push(document(container).text());
+        const elements = document(container).find("p, h2, h3, h4, blockquote, ul, ol, pre").toArray();
+        if (elements.length) values.push(...elements.map((element) => document.html(element)));
+        else values.push(`<p>${document(container).html() ?? document(container).text()}</p>`);
       });
-      let candidate = semanticParagraphs(values, quality);
+      let candidate = semanticHtmlBlocks(values, quality, pageUrl);
       if (!candidate && completeContainerFallback) {
         const completeContainers = document(selector).toArray().map((container) => document(container).text());
         candidate = semanticParagraphs(completeContainers, quality);
@@ -81,7 +77,14 @@ export function extractArticleBody(
     }
     return best;
   };
-  return bestBody(sourceSelectors, true) ?? bestBody(genericSelectors, false);
+  const selectedSourceBody = bestBody(sourceSelectors, true);
+  if (selectedSourceBody) return selectedSourceBody;
+  const jsonBody = jsonBodies.toSorted((left, right) => right.length - left.length)[0];
+  if (jsonBody && jsonBody.length >= (quality.minimumCharacters ?? 800)) {
+    const result = semanticParagraphs(jsonBody.split(/\r?\n(?:\s*\r?\n)*/u), quality);
+    if (result) return result;
+  }
+  return bestBody(genericSelectors, false);
 }
 
 export function hasArticleBody(
@@ -89,6 +92,7 @@ export function hasArticleBody(
   policy?: SourceFetchPolicy,
   quality: BodyQuality = {},
   sourceExtractor?: ArticleBodyExtractor,
+  pageUrl?: string,
 ): boolean {
-  return Boolean(extractArticleBody(html, policy, quality, sourceExtractor));
+  return Boolean(extractArticleBody(html, policy, quality, sourceExtractor, pageUrl));
 }

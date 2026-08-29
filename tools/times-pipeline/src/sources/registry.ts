@@ -22,6 +22,7 @@ import { xinhuaSource } from "./xinhua/index.js";
 import { zaobaoSource } from "./zaobao/index.js";
 import type { SourceModule } from "./contracts.js";
 import type { ArticleBodyExtractor } from "../content/body.js";
+import type { ArticleImageExtractor } from "../capture/page-images.js";
 import type {
   Candidate,
   DiscoveryResult,
@@ -85,6 +86,10 @@ export function sourceFetchPolicy(sourceId: string): SourceFetchPolicy | undefin
 
 export function sourceBodyExtractor(sourceId: string): ArticleBodyExtractor | undefined {
   return modules.get(sourceId)?.extractBody;
+}
+
+export function sourceImageExtractor(sourceId: string): ArticleImageExtractor | undefined {
+  return modules.get(sourceId)?.extractImages;
 }
 
 export function sourceUnavailablePageReason(

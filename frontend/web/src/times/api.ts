@@ -103,7 +103,9 @@ export const timesApi = {
     if (fragment.formatVersion !== "jojo-fragment/1" || fragment.type !== "article" || fragment.fragmentId !== item.id) {
       throw new Error("时事文章对象格式无效");
     }
-    const pairs = await Promise.all(item.assets.map(async (asset) => {
+    const referencedAssetIds = new Set(fragment.assetRefs);
+    const assets = item.assets.filter((asset) => referencedAssetIds.has(asset.id));
+    const pairs = await Promise.all(assets.map(async (asset) => {
       try {
         return [asset.id, await assetObjectUrl(asset)] as const;
       } catch {
@@ -112,6 +114,7 @@ export const timesApi = {
     }));
     return {
       ...item,
+      assets,
       content: fragment.body.value,
       contentFormat: fragment.body.format,
       assetUrls: Object.fromEntries(pairs.filter((pair): pair is readonly [string, string] => Boolean(pair))),

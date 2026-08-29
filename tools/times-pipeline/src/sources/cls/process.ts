@@ -1,5 +1,5 @@
 import { load } from "cheerio";
-import { semanticParagraphs, type BodyQuality } from "../../content/paragraphs.js";
+import { semanticHtmlBlocks, type BodyQuality } from "../../content/paragraphs.js";
 import type { Candidate } from "../../types.js";
 
 type JsonObject = Record<string, unknown>;
@@ -8,7 +8,7 @@ function object(value: unknown): JsonObject | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : undefined;
 }
 
-export function extractClsBody(html: string, quality: BodyQuality): string | undefined {
+export function extractClsBody(html: string, quality: BodyQuality, pageUrl?: string): string | undefined {
   const document = load(html);
   const value = document("script#__NEXT_DATA__").text();
   if (!value) return undefined;
@@ -19,9 +19,10 @@ export function extractClsBody(html: string, quality: BodyQuality): string | und
     if (typeof article?.content !== "string") return undefined;
     const fragment = load(article.content, undefined, false);
     const blocks = fragment("p, h2, h3, blockquote").toArray();
-    return semanticParagraphs(
-      blocks.length ? blocks.map((element) => fragment(element).text()) : [fragment.root().text()],
+    return semanticHtmlBlocks(
+      blocks.length ? blocks.map((element) => fragment.html(element)) : [`<p>${fragment.html()}</p>`],
       quality,
+      pageUrl,
     );
   } catch {
     return undefined;

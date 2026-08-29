@@ -89,6 +89,7 @@ describe("page capture orchestration", () => {
       "https://example.test/lead.jpg",
       "https://example.test/inside.jpg",
     ]);
+    expect(images[1]?.caption).toBe("Photo credit");
     expect(attachAssetsToBody("<p>Body</p>", [{
       id: "asset:lead", type: "image", role: "lead", sourceUrl: images[0]!.sourceUrl,
       rawObject: "raw/example/assets/lead.jpg", mediaType: "image/jpeg", size: 1, sha256: "lead",
