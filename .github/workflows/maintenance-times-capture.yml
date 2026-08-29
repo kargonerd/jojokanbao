@@ -82,6 +82,7 @@ jobs:
         run: |
           node tools/times-pipeline/dist/src/hf-cli.js \
             --action restore-state \
+            --config tools/times-pipeline/sources.v2.json \
             --repo "$HF_TIMES_DATASET_REPO" \
             --output "$RUNNER_TEMP/jojo-times"
 
