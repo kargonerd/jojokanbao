@@ -46,7 +46,7 @@ describe("AnnotationDiscussionPanel", () => {
     const onReport = vi.fn(async () => undefined);
     render(<AnnotationDiscussionPanel thread={thread} currentUserId="user-1" onClose={vi.fn()} onComment={vi.fn()} onReport={onReport} />);
     fireEvent.click(screen.getByRole("button", { name: "举报" }));
-    fireEvent.change(screen.getByRole("combobox", { name: "举报原因" }), { target: { value: "abuse" } });
+    fireEvent.click(screen.getByRole("radio", { name: "辱骂或攻击" }));
     fireEvent.change(screen.getByPlaceholderText("补充说明（选填）"), { target: { value: "包含人身攻击" } });
     fireEvent.click(screen.getByRole("button", { name: "提交举报" }));
     await waitFor(() => expect(onReport).toHaveBeenCalledWith("comment-1", "abuse", "包含人身攻击"));

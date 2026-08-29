@@ -75,14 +75,24 @@
 .annotation-comments p { margin: 8px 0 0; font-size: 13px; line-height: 1.8; white-space: pre-wrap; }
 .annotation-comment__actions { display: flex; gap: 12px; margin-top: 8px; }
 .annotation-comment__actions button,
-.annotation-report-form button,
 .annotation-composer__reply button { border: 0; padding: 0; color: var(--color-red); background: transparent; font: 11px sans-serif; cursor: pointer; }
 .annotation-comment__actions button:disabled { color: var(--color-muted, #777); cursor: default; }
 .annotation-comments__empty { padding: 18px 0; color: var(--color-muted, #777); font-size: 12px; line-height: 1.8; }
-.annotation-report-form { display: grid; gap: 8px; margin-top: 12px; padding: 12px; background: rgba(139, 26, 26, .05); border-left: 2px solid var(--color-red); }
-.annotation-report-form select,
-.annotation-report-form textarea { width: 100%; border: 0; border-bottom: 1px solid var(--color-rule, #bbb); padding: 8px 0; color: inherit; background: transparent; font: 12px/1.7 inherit; resize: vertical; }
-.annotation-report-form div { display: flex; justify-content: flex-end; gap: 14px; }
+.annotation-report-form { display: grid; gap: 10px; margin-top: 12px; padding: 14px; border-left: 2px solid var(--color-red); background: rgba(139, 26, 26, .045); }
+.annotation-report-form__heading { color: var(--color-muted, #777); font: 700 10px/1 sans-serif; letter-spacing: .1em; }
+.annotation-report-reasons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.annotation-report-reasons button { border: 1px solid var(--color-rule, #c8c5bc); padding: 7px 9px; color: var(--color-muted, #777); background: var(--color-paper); font: 11px/1.35 sans-serif; text-align: left; cursor: pointer; }
+.annotation-report-reasons button:hover { border-color: rgba(139, 26, 26, .48); color: var(--color-red); }
+.annotation-report-reasons button:focus-visible { outline: 1px solid var(--color-red); outline-offset: 2px; }
+.annotation-report-reasons button[aria-checked="true"] { border-color: rgba(139, 26, 26, .38); color: var(--color-ink); box-shadow: inset 3px 0 0 var(--color-red); font-weight: 700; }
+.annotation-report-form__details { padding: 8px 10px 7px; border-bottom: 1px solid var(--color-rule, #c8c5bc); border-left: 2px solid transparent; background: rgba(255, 255, 255, .5); }
+.annotation-report-form__details:focus-within { border-left-color: var(--color-red); background: var(--color-paper); }
+.annotation-report-form .annotation-report-form__details textarea { display: block; box-sizing: border-box; width: 100%; min-height: 44px; border: 0 !important; outline: 0 !important; padding: 0 !important; color: var(--color-ink); background: transparent !important; box-shadow: none !important; font: 12px/1.7 "Noto Serif SC", serif; resize: none; }
+.annotation-report-form__details textarea::placeholder { color: var(--color-muted, #777); opacity: .72; }
+.annotation-report-form__actions { display: flex; justify-content: flex-end; gap: 14px; }
+.annotation-report-form__actions button { border: 0; padding: 4px 0; color: var(--color-muted, #777); background: transparent; font: 700 11px/1 sans-serif; cursor: pointer; }
+.annotation-report-form__actions button:last-child { color: var(--color-red); }
+.annotation-report-form__actions button:disabled { cursor: default; opacity: .4; }
 .annotation-composer { padding: 16px 24px 22px; border-top: 3px double var(--color-rule, #aaa); background: var(--color-paper); }
 .annotation-composer__reply { display: flex; justify-content: space-between; margin-bottom: 6px; color: var(--color-muted, #777); font: 11px sans-serif; }
 .annotation-composer__field { padding: 10px 12px 8px; border-bottom: 1px solid var(--color-rule, #c8c5bc); border-left: 2px solid transparent; background: rgba(32, 32, 32, .025); transition: border-color .15s ease, background-color .15s ease; }

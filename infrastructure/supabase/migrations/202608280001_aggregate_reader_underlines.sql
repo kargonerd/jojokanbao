@@ -1,15 +1,15 @@
 -- Aggregate identical reader underlines without exposing individual readers.
--- A reader always sees their own marks; an anchor becomes shared once the
--- configurable distinct-reader threshold is reached.
+-- A reader always sees their own marks. An anchor becomes shared once the
+-- configurable distinct-reader threshold is reached or it has a public thought.
 
 create table if not exists private.annotation_settings (
   singleton boolean primary key default true check (singleton),
-  public_mark_threshold integer not null default 3 check (public_mark_threshold between 1 and 100),
+  public_mark_threshold integer not null default 2 check (public_mark_threshold between 1 and 100),
   updated_at timestamptz not null default timezone('utc', now())
 );
 
 insert into private.annotation_settings(singleton, public_mark_threshold)
-values (true, 3)
+values (true, 2)
 on conflict (singleton) do nothing;
 
 create or replace function private.annotation_public_mark_threshold()
@@ -23,7 +23,7 @@ as $$
     select settings.public_mark_threshold
     from private.annotation_settings settings
     where settings.singleton
-  ), 3)
+  ), 2)
 $$;
 
 create table if not exists public.content_annotation_marks (
@@ -79,7 +79,15 @@ as $$
     'createdAt', annotation.created_at,
     'underlineCount', mark_summary.reader_count,
     'underlinedByMe', mark_summary.underlined_by_me,
-    'publiclyVisible', mark_summary.reader_count >= private.annotation_public_mark_threshold(),
+    'publiclyVisible',
+      mark_summary.reader_count >= private.annotation_public_mark_threshold()
+      or exists (
+        select 1
+        from public.annotation_comments public_comment
+        where public_comment.annotation_id = annotation.id
+          and public_comment.visibility = 'public'
+          and public_comment.moderation_status = 'visible'
+      ),
     'comments', coalesce((
       select jsonb_agg(jsonb_build_object(
         'id', comment.id,
@@ -148,6 +156,13 @@ begin
           select count(*)
           from public.content_annotation_marks shared_mark
           where shared_mark.annotation_id = annotation.id
+        )
+        or exists (
+          select 1
+          from public.annotation_comments public_comment
+          where public_comment.annotation_id = annotation.id
+            and public_comment.visibility = 'public'
+            and public_comment.moderation_status = 'visible'
         )
       )
   ), '[]'::jsonb);
@@ -237,4 +252,4 @@ comment on table private.annotation_settings is
 comment on table public.content_annotation_marks is
   'Private per-reader membership for aggregated text underline anchors.';
 comment on column private.annotation_settings.public_mark_threshold is
-  'Distinct reader count at which an underline is shown to other authenticated readers.';
+  'Distinct reader count at which an underline is shown to other authenticated readers; a public comment also makes it visible.';

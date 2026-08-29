@@ -95,11 +95,24 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
               </div> : null}
               {reporting === comment.id ? (
                 <div className="annotation-report-form">
-                  <select value={reportReason} onChange={(event) => setReportReason(event.target.value as AnnotationReportReason)} aria-label="举报原因">
-                    {Object.entries(ANNOTATION_REPORT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
-                  <textarea value={reportDetails} maxLength={1000} onChange={(event) => setReportDetails(event.target.value)} placeholder="补充说明（选填）" />
-                  <div><button type="button" onClick={() => setReporting(undefined)}>取消</button><button type="button" disabled={busy} onClick={() => void submitReport(comment.id)}>提交举报</button></div>
+                  <div className="annotation-report-form__heading">选择原因</div>
+                  <div className="annotation-report-reasons" role="radiogroup" aria-label="举报原因">
+                    {Object.entries(ANNOTATION_REPORT_LABELS).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        role="radio"
+                        aria-checked={reportReason === value}
+                        onClick={() => setReportReason(value as AnnotationReportReason)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="annotation-report-form__details">
+                    <textarea rows={2} value={reportDetails} maxLength={1000} onChange={(event) => setReportDetails(event.target.value)} placeholder="补充说明（选填）" />
+                  </div>
+                  <div className="annotation-report-form__actions"><button type="button" onClick={() => setReporting(undefined)}>取消</button><button type="button" disabled={busy} onClick={() => void submitReport(comment.id)}>提交举报</button></div>
                 </div>
               ) : null}
             </li>
