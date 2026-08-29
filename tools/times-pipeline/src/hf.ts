@@ -62,6 +62,17 @@ export function canonicalObjects(sourceId: string, dates: ReadonlySet<string>): 
   ]);
 }
 
+export function rawStateObjects(sourceIds: readonly string[]): string[] {
+  const normalized = new Set<string>();
+  for (const sourceId of sourceIds) {
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(sourceId)) {
+      throw new Error(`Invalid source id for Raw state: ${sourceId}`);
+    }
+    normalized.add(sourceId);
+  }
+  return [...normalized].sort().map((sourceId) => path.posix.join("raw", sourceId, "state.json.gz"));
+}
+
 export function candidateAssets(compressed: Uint8Array): Set<string> {
   const objects = new Set<string>();
   for (const line of gunzipSync(compressed).toString("utf8").split(/\r?\n/u)) {
@@ -163,13 +174,15 @@ export class HfTimesDataset {
     return target;
   }
 
-  async restoreState(): Promise<{ restored: number; objects: string[] }> {
+  async restoreState(sourceIds: readonly string[]): Promise<{ restored: number; objects: string[] }> {
     const revision = await this.revision();
-    const states = [...await this.treeFiles("raw", revision)]
-      .filter((objectName) => /^raw\/[^/]+\/state\.json\.gz$/u.test(objectName))
-      .sort();
-    await mapLimit(states, 8, async (objectName) => this.downloadObject(objectName, revision));
-    return { restored: states.length, objects: states };
+    const states = rawStateObjects(sourceIds);
+    const restored = await mapLimit(states, 8, async (objectName) => ({
+      objectName,
+      file: await this.downloadObject(objectName, revision),
+    }));
+    const objects = restored.filter((row) => row.file !== null).map((row) => row.objectName);
+    return { restored: objects.length, objects };
   }
 
   async latestCompleteRun(): Promise<{ revision: string; objectName: string; file: string; run: RawRunManifest }> {

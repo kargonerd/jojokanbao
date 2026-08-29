@@ -1,6 +1,6 @@
 import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { candidateDates, candidateObject, candidateRawPages, canonicalObjects } from "../src/hf.js";
+import { candidateDates, candidateObject, candidateRawPages, canonicalObjects, rawStateObjects } from "../src/hf.js";
 
 describe("HF snapshot selection", () => {
   it("resolves candidates beside the source manifest", () => {
@@ -41,5 +41,13 @@ describe("HF snapshot selection", () => {
     expect(candidateRawPages(compressed)).toEqual(new Set([
       "raw/ap/runs/run/pages/one/metadata.json",
     ]));
+  });
+
+  it("addresses capture state directly from configured source ids", () => {
+    expect(rawStateObjects(["reuters", "ap", "reuters"])).toEqual([
+      "raw/ap/state.json.gz",
+      "raw/reuters/state.json.gz",
+    ]);
+    expect(() => rawStateObjects(["../runs"])).toThrow("Invalid source id for Raw state");
   });
 });
