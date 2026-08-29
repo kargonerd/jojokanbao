@@ -19,7 +19,6 @@ export interface SourceFetchPolicy {
   captureUrl?: "canonical" | "source";
   bodySelectors: string[];
   revision?: string;
-  unsupportedMediaRefreshHours?: number;
 }
 
 export type UnavailablePageReason = "UnsupportedMedia" | "HardPaywall";

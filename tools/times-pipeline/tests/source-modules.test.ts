@@ -161,6 +161,14 @@ describe("native source modules", () => {
     expect(sourceUnavailablePageReason(source("npr", endpoint), input({
       html: '<body class="no-transcript">',
     }))).toBe("UnsupportedMedia");
+    expect(sourceUnavailablePageReason(source("npr", endpoint), input({
+      hasFullBody: true,
+      html: '<body class="has-transcript"><div class="transcript storytext" aria-label="Transcript"><p>Host: Welcome.</p></div></body>',
+    }))).toBe("UnsupportedMedia");
+    expect(sourceUnavailablePageReason(source("npr", endpoint), input({
+      hasFullBody: true,
+      html: '<body><div id="storytext"><p>Original written report.</p></div></body>',
+    }))).toBeUndefined();
     expect(sourceUnavailablePageReason(source("cls", endpoint), input({
       title: "航拍画面",
       html: "<video></video>",

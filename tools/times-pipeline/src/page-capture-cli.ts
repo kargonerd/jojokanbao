@@ -124,10 +124,19 @@ async function completeCapture(
     ? hasArticleBody(article.candidate.discoveryBody, article.fetchPolicy, quality, sourceExtractor)
     : false;
   const hasFullBody = pageHasBody || discoveryHasBody;
-  const images = page.renderedHtml
+  const availabilityInput = {
+    title: article.title,
+    url: page.finalUrl,
+    ...(page.renderedHtml ? { html: page.renderedHtml } : {}),
+    hasFullBody,
+  };
+  const unavailableReason = unavailablePageReason(availabilityInput)
+    ?? sourceUnavailablePageReason(article.source, availabilityInput);
+  const fullBody = hasFullBody && unavailableReason === undefined;
+  const images = fullBody && page.renderedHtml
     ? discoverArticleImages(page.renderedHtml, page.finalUrl, article.fetchPolicy)
     : [];
-  const session = page.method === "browser" && browser ? await browser() : undefined;
+  const session = images.length > 0 && page.method === "browser" && browser ? await browser() : undefined;
   const assets = await captureArticleAssets({
     workspace,
     sourceId: article.sourceId,
@@ -137,15 +146,7 @@ async function completeCapture(
       ? session.downloadAsset(url, referer, timeoutSeconds)
       : downloadDirectAsset(url, referer, timeoutSeconds),
   });
-  const availabilityInput = {
-    title: article.title,
-    url: page.finalUrl,
-    ...(page.renderedHtml ? { html: page.renderedHtml } : {}),
-    hasFullBody,
-  };
-  const unavailableReason = unavailablePageReason(availabilityInput)
-    ?? sourceUnavailablePageReason(article.source, availabilityInput);
-  article.candidate.contentStatus = hasFullBody
+  article.candidate.contentStatus = fullBody
     ? "full"
     : article.candidate.summary?.trim()
       ? "summary"
@@ -154,7 +155,6 @@ async function completeCapture(
   article.candidate.capturedAt = page.capturedAt;
   article.candidate.captureMethod = page.method;
   if (page.status !== undefined) article.candidate.captureHttpStatus = page.status;
-  const fullBody = hasFullBody;
   article.candidate.captureStatus = fullBody
     ? "captured"
     : unavailableReason === "HardPaywall"
@@ -202,9 +202,6 @@ async function loadArticles(workspace: string, run: RawRunManifest, sources: Map
         publishedAt: candidate.publishedAt,
         needsBody: candidate.contentStatus !== "full",
         ...(manifest.fetchPolicy?.revision ? { captureRevision: manifest.fetchPolicy.revision } : {}),
-        ...(manifest.fetchPolicy?.unsupportedMediaRefreshHours !== undefined
-          ? { unsupportedMediaRefreshHours: manifest.fetchPolicy.unsupportedMediaRefreshHours }
-          : {}),
         source,
         candidate,
         manifestPath,
