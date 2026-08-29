@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { extractArticleBody } from "../src/content/body.js";
 import { processArticle } from "../src/process/article.js";
+import { extractApBody } from "../src/sources/ap/process.js";
 import { extractBloombergBody } from "../src/sources/bloomberg/process.js";
 import { extractClsBody } from "../src/sources/cls/process.js";
 import { extractThepaperBody } from "../src/sources/thepaper/process.js";
@@ -80,6 +81,55 @@ describe("article processing", () => {
     expect(body).toContain("First Bloomberg paragraph");
     expect(body).toContain("Second Bloomberg paragraph");
     expect(body).not.toContain("Advertisement");
+  });
+
+  it("extracts all AP live-blog updates from publisher JSON-LD", () => {
+    const liveBlog = [{
+      "@context": "https://schema.org",
+      "@type": "LiveBlogPosting",
+      headline: "Trial live updates",
+      liveBlogUpdate: [
+        {
+          "@type": "BlogPosting",
+          headline: "Jury asks to see evidence",
+          articleBody: "The jury asked to review evidence from the trial.<br/><br/>The judge consulted both legal teams before responding.",
+        },
+        {
+          "@type": "BlogPosting",
+          headline: "Court returns to session",
+          articleBody: "The court returned to session on Friday morning.<br/><br/>Jurors then resumed their deliberations.",
+        },
+      ],
+    }];
+    const body = extractArticleBody(
+      `<script type="application/ld+json">${JSON.stringify(liveBlog)}</script>`,
+      { capture: "browser", bodySelectors: [".RichTextStoryBody"] },
+      { minimumCharacters: 150, minimumParagraphs: 4 },
+      extractApBody,
+    );
+
+    expect(body).toContain("Jury asks to see evidence");
+    expect(body).toContain("Jurors then resumed their deliberations");
+    expect(body?.match(/<p>/gu)).toHaveLength(6);
+  });
+
+  it("accepts a complete three-paragraph AP bulletin below the global length threshold", () => {
+    const paragraphs = [
+      "The administration announced an agreement on Friday and described the arrangement as an immediate change in policy. Officials said implementation would begin after agencies complete the required operational review.",
+      "The announcement followed several days of negotiations between senior officials. The parties said the agreement covers the principal terms, while technical details will be published separately.",
+      "Lawmakers from both parties requested additional information about oversight and timing. The administration said it would brief Congress and answer questions as the arrangement moves forward.",
+    ];
+    const body = extractArticleBody(
+      `<div class="RichTextStoryBody">${paragraphs.map((paragraph) => `<p>${paragraph}</p>`).join("")}</div>`,
+      { capture: "browser", bodySelectors: [".RichTextStoryBody", "[itemprop='articleBody']"] },
+      { minimumCharacters: 400, minimumParagraphs: 3 },
+      extractApBody,
+    );
+
+    expect(paragraphs.join(" ").length).toBeGreaterThanOrEqual(400);
+    expect(paragraphs.join(" ").length).toBeLessThan(800);
+    expect(body?.match(/<p>/gu)).toHaveLength(3);
+    expect(body).toContain("Lawmakers from both parties");
   });
 
   it("extracts The Paper content from Next.js data and persisted discovery fragments", () => {
