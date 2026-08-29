@@ -72,10 +72,16 @@ def clean_repair_document(document: dict[str, Any]) -> dict[str, Any]:
     if document.get("type") in {"book", "newspaper", "news"}:
         clean = {
             key: document.get(key)
-            for key in ("type", "title", "content", "date", "source", "metadata")
+            for key in (
+                "type", "datasetId", "itemId", "title", "content", "date", "source", "metadata",
+            )
             if document.get(key) not in (None, "")
         }
-        missing = [key for key in ("type", "title", "content", "source", "metadata") if key not in clean]
+        missing = [
+            key
+            for key in ("type", "datasetId", "itemId", "title", "content", "source", "metadata")
+            if key not in clean
+        ]
         if missing:
             raise ValueError("统一 ES 修订缺少字段：" + ", ".join(missing))
         if not isinstance(clean["metadata"], dict):

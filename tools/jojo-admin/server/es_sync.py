@@ -3,7 +3,7 @@
 The indexed business document is intentionally small and shared by books,
 newspapers, and current news::
 
-    type, title, content, date, source, metadata
+    type, datasetId, itemId, title, content, date, source, metadata
 
 ``@timestamp`` is added only because Tencent ES Serverless stores the target as
 a data stream.  ``metadata`` is stored but disabled in the mapping, so
@@ -33,7 +33,9 @@ from es_repair import KibanaConsoleClient, _load_root_env, repair_config
 
 DEFAULT_HF_REPO = "luoxiaozhuang/marxism-dataset"
 DOCUMENT_TYPES = ("book", "newspaper", "news")
-BUSINESS_FIELDS = ("type", "title", "content", "date", "source", "metadata")
+BUSINESS_FIELDS = (
+    "type", "datasetId", "itemId", "title", "content", "date", "source", "metadata",
+)
 
 UNIFIED_MAPPING: dict[str, Any] = {
     "_meta": {"jojoSchema": "jojo-search/1"},
@@ -41,6 +43,8 @@ UNIFIED_MAPPING: dict[str, Any] = {
     "properties": {
         "@timestamp": {"type": "date"},
         "type": {"type": "keyword"},
+        "datasetId": {"type": "keyword"},
+        "itemId": {"type": "keyword"},
         "title": {
             "type": "text",
             "fields": {"keyword": {"type": "keyword", "ignore_above": 512}},
@@ -122,6 +126,8 @@ def _json_value(value: Any) -> Any:
 def unified_document(
     *,
     document_type: str,
+    dataset_id: Any,
+    item_id: Any,
     title: Any,
     content: Any,
     source: Any,
@@ -135,6 +141,8 @@ def unified_document(
     result = {
         "@timestamp": timestamp or clean_date or datetime.now(timezone.utc).isoformat(),
         "type": document_type,
+        "datasetId": _required(dataset_id, "datasetId"),
+        "itemId": _required(item_id, "itemId"),
         "title": _required(title, "title"),
         "content": _required(content, "content"),
         "source": _required(source, "source"),
@@ -183,8 +191,6 @@ def book_documents(
         if not content:
             continue
         metadata = {
-            "datasetId": dataset_id,
-            "itemId": item_id,
             "itemTitle": item_title,
             "chapterId": chapter_id,
             "chapterOrder": int(chapter.get("order") or position),
@@ -197,6 +203,8 @@ def book_documents(
             stable_document_id("book", dataset_id, item_id, chapter_id),
             unified_document(
                 document_type="book",
+                dataset_id=dataset_id,
+                item_id=item_id,
                 title=chapter.get("title") or item_title,
                 content=content,
                 date=published_date,
@@ -225,12 +233,13 @@ def newspaper_document(
         stable_document_id("newspaper", publication_id, date, page, ordinal),
         unified_document(
             document_type="newspaper",
+            dataset_id=publication_id,
+            item_id=f"{publication_id}:{date}",
             title=row.get("title"),
             content=content,
             date=date,
             source=publication_title,
             metadata={
-                "publicationId": publication_id,
                 "page": page,
                 "ordinal": ordinal,
                 "pdf": row.get("pdf"),
@@ -255,13 +264,13 @@ def news_document(article: dict[str, Any], *, canonical_object: str) -> IndexedD
         stable_document_id("news", source_id, article_id),
         unified_document(
             document_type="news",
+            dataset_id=source_id,
+            item_id=article_id,
             title=article.get("title"),
             content=content,
             date=published_at,
             source=source.get("name") or source_id,
             metadata={
-                "sourceId": source_id,
-                "articleId": article_id,
                 "url": article.get("canonicalUrl"),
                 "authors": article.get("authors") or [],
                 "language": article.get("language"),
@@ -544,11 +553,17 @@ class AppendOnlySync:
         *,
         batch_size: int = 250,
         max_batch_bytes: int = 5 * 1024 * 1024,
+        revision_heads: dict[str, str | None] | None = None,
     ):
+        if revision_heads is None:
+            from es_migrations import active_revision_heads
+
+            revision_heads = active_revision_heads(index)
         self.client = client
         self.index = index
         self.batch_size = max(1, min(batch_size, 500))
         self.max_batch_bytes = max(1024, max_batch_bytes)
+        self.revision_heads = revision_heads
 
     def _existing(self, document_ids: list[str]) -> dict[str, dict[str, Any]]:
         if not document_ids:
@@ -566,8 +581,43 @@ class AppendOnlySync:
         }
 
     def _batch(self, rows: Sequence[IndexedDocument], result: SyncResult) -> None:
-        lines: list[str] = []
+        direct_rows: list[IndexedDocument] = []
+        revised_rows: list[tuple[IndexedDocument, str]] = []
         for row in rows:
+            active_id = self.revision_heads.get(row.document_id, row.document_id)
+            if active_id is None:
+                # An applied deletion remains authoritative until an operator
+                # explicitly restores it with another migration.
+                result.unchanged += 1
+            elif active_id != row.document_id:
+                revised_rows.append((row, active_id))
+            else:
+                direct_rows.append(row)
+
+        active_documents = self._existing([active_id for _row, active_id in revised_rows])
+        for row, active_id in revised_rows:
+            existing = active_documents.get(active_id)
+            if existing is None:
+                result.failed += 1
+                if result.conflict_ids is None:
+                    result.conflict_ids = []
+                if len(result.conflict_ids) < 20:
+                    result.conflict_ids.append(active_id)
+            elif _same_business_document(existing, row.document):
+                result.unchanged += 1
+            else:
+                # Report the active repair ID so the next repair supersedes
+                # the current version instead of branching from the base ID.
+                result.conflicts += 1
+                if result.conflict_ids is None:
+                    result.conflict_ids = []
+                if len(result.conflict_ids) < 20:
+                    result.conflict_ids.append(active_id)
+
+        if not direct_rows:
+            return
+        lines: list[str] = []
+        for row in direct_rows:
             lines.append(json.dumps({
                 "create": {"_index": self.index, "_id": row.document_id}
             }, ensure_ascii=False, separators=(",", ":")))
@@ -576,10 +626,10 @@ class AppendOnlySync:
         if status >= 400:
             raise RuntimeError(f"ES bulk 请求失败：{payload}")
         items = payload.get("items") or []
-        if len(items) != len(rows):
+        if len(items) != len(direct_rows):
             raise RuntimeError("ES bulk 返回数量与请求不一致")
         existing_rows: list[IndexedDocument] = []
-        for row, item in zip(rows, items, strict=True):
+        for row, item in zip(direct_rows, items, strict=True):
             detail = item.get("create") or {}
             item_status = int(detail.get("status") or 0)
             if item_status in {200, 201}:

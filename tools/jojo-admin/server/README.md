@@ -67,6 +67,9 @@ Repairs and removals first create a deterministic JSON migration in
 `es_migrations/`, then use append-only `_create`: a repair appends a complete
 new version and a removal appends a tombstone. Search builds its excluded ID
 set from applied migrations instead of scanning ES revision documents.
+The Canonical synchronizer resolves the same applied migration chain before it
+compares a stable ID, so an already-repaired document is compared with its
+current repair rather than repeatedly conflicting with the original version.
 Operator-only fields such as the
 repair reason remain in the migration file and are not indexed in ES. Existing
 documents are never physically overwritten.
@@ -81,6 +84,8 @@ article. Every document has the same small business shape:
 ```json
 {
   "type": "book | newspaper | news",
+  "datasetId": "filterable Dataset identity",
+  "itemId": "filterable book volume, newspaper issue, or news article identity",
   "title": "search result title",
   "content": "plain searchable text",
   "date": "optional ISO date or timestamp",

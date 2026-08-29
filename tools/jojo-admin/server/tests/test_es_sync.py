@@ -63,6 +63,8 @@ class UnifiedDocumentTest(unittest.TestCase):
         self.assertEqual(rows[0].document["content"], "第一章正文")
         self.assertEqual(rows[0].document["source"], "测试文集")
         self.assertEqual(rows[0].document["date"], "2020-01-02")
+        self.assertEqual(rows[0].document["datasetId"], "book-a")
+        self.assertEqual(rows[0].document["itemId"], "book-a:volume-1")
         self.assertEqual(rows[0].document["metadata"]["itemTitle"], "测试文集 第一卷")
         self.assertEqual(rows[0].document["metadata"]["chapterId"], "chapter:1")
         self.assertNotEqual(rows[0].document_id, rows[1].document_id)
@@ -95,6 +97,8 @@ class UnifiedDocumentTest(unittest.TestCase):
         self.assertIsNotNone(available)
         assert available is not None
         self.assertEqual(available.document["type"], "newspaper")
+        self.assertEqual(available.document["datasetId"], "rmrb")
+        self.assertEqual(available.document["itemId"], "rmrb:1988-09-09")
         self.assertEqual(available.document["metadata"]["page"], 4)
         self.assertEqual(available.document["metadata"]["ordinal"], 12)
         self.assertIsNone(missing)
@@ -118,9 +122,14 @@ class UnifiedDocumentTest(unittest.TestCase):
         assert row is not None
         self.assertEqual(
             set(row.document),
-            {"@timestamp", "type", "title", "content", "date", "source", "metadata"},
+            {
+                "@timestamp", "type", "datasetId", "itemId", "title", "content",
+                "date", "source", "metadata",
+            },
         )
         self.assertEqual(row.document["type"], "news")
+        self.assertEqual(row.document["datasetId"], "ap")
+        self.assertEqual(row.document["itemId"], "ap-123")
         self.assertEqual(row.document["content"], "Full story.")
 
     def test_news_keeps_only_the_latest_canonical_object_per_article(self):
@@ -232,6 +241,8 @@ class AppendOnlySyncTest(unittest.TestCase):
         base = {
             "@timestamp": "1988-09-09",
             "type": "newspaper",
+            "datasetId": "rmrb",
+            "itemId": "rmrb:1988-09-09",
             "title": "失明以后",
             "content": "原正文",
             "date": "1988-09-09",
@@ -254,6 +265,8 @@ class AppendOnlySyncTest(unittest.TestCase):
         document = {
             "@timestamp": "2026-08-29",
             "type": "news",
+            "datasetId": "xinhua",
+            "itemId": "xinhua:one",
             "title": "标题",
             "content": "正文",
             "date": "2026-08-29",
@@ -265,6 +278,79 @@ class AppendOnlySyncTest(unittest.TestCase):
 
         self.assertEqual(result.unchanged, 1)
         self.assertEqual(result.conflicts, 0)
+
+    def test_sync_compares_canonical_with_the_active_repair(self):
+        base = {
+            "@timestamp": "1988-09-09",
+            "type": "newspaper",
+            "datasetId": "rmrb",
+            "itemId": "rmrb:1988-09-09",
+            "title": "失明以后",
+            "content": "正文 B",
+            "date": "1988-09-09",
+            "source": "人民日报",
+            "metadata": {"page": 4, "ordinal": 12},
+        }
+        client = FakeClient(existing={
+            "base-id": {**base, "content": "正文 A"},
+            "repair-id": base,
+        })
+        result = AppendOnlySync(
+            client,
+            "test",
+            revision_heads={"base-id": "repair-id"},
+        ).run([IndexedDocument("base-id", base)])
+
+        self.assertEqual(result.unchanged, 1)
+        self.assertEqual(result.conflicts, 0)
+        self.assertEqual(result.created, 0)
+
+    def test_sync_reports_conflict_against_the_active_repair_id(self):
+        canonical = {
+            "@timestamp": "1988-09-09",
+            "type": "newspaper",
+            "datasetId": "rmrb",
+            "itemId": "rmrb:1988-09-09",
+            "title": "失明以后",
+            "content": "正文 C",
+            "date": "1988-09-09",
+            "source": "人民日报",
+            "metadata": {"page": 4, "ordinal": 12},
+        }
+        client = FakeClient(existing={
+            "base-id": {**canonical, "content": "正文 A"},
+            "repair-id": {**canonical, "content": "正文 B"},
+        })
+        result = AppendOnlySync(
+            client,
+            "test",
+            revision_heads={"base-id": "repair-id"},
+        ).run([IndexedDocument("base-id", canonical)])
+
+        self.assertEqual(result.conflicts, 1)
+        self.assertEqual(result.conflict_ids, ["repair-id"])
+
+    def test_sync_respects_an_applied_deletion(self):
+        document = {
+            "@timestamp": "2026-08-29",
+            "type": "news",
+            "datasetId": "xinhua",
+            "itemId": "xinhua:one",
+            "title": "标题",
+            "content": "正文",
+            "date": "2026-08-29",
+            "source": "新华社",
+            "metadata": {},
+        }
+        result = AppendOnlySync(
+            FakeClient(existing={"base-id": document}),
+            "test",
+            revision_heads={"base-id": None},
+        ).run([IndexedDocument("base-id", document)])
+
+        self.assertEqual(result.unchanged, 1)
+        self.assertEqual(result.conflicts, 0)
+        self.assertEqual(result.created, 0)
 
 
 if __name__ == "__main__":

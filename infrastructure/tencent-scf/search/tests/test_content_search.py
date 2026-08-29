@@ -1,5 +1,4 @@
 import sys
-import hashlib
 import unittest
 from pathlib import Path
 
@@ -43,15 +42,12 @@ class ContentSearchEs:
 class ContentSearchTests(unittest.TestCase):
     def setUp(self):
         self.original_es = search_app.es
-        self.original_release_id = search_app.content_release_id
-        search_app.content_release_id = ''
         self.fake_es = ContentSearchEs()
         search_app.es = self.fake_es
         self.client = search_app.app.test_client()
 
     def tearDown(self):
         search_app.es = self.original_es
-        search_app.content_release_id = self.original_release_id
 
     def test_search_applies_stable_dataset_and_item_filters(self):
         response = self.client.post("/content/search", json={
@@ -66,22 +62,20 @@ class ContentSearchTests(unittest.TestCase):
         self.assertEqual(payload["results"][0]["targetId"], "chapter:1")
         self.assertEqual(self.fake_es.index, search_app.content_index_name)
         self.assertEqual(self.fake_es.body["query"]["bool"]["filter"], [
-            {"terms": {"datasetId": ["book-a"]}},
-            {"terms": {"itemId": ["book-a:full-book"]}},
-        ])
-
-    def test_append_only_release_uses_exact_hashed_scope_filters(self):
-        search_app.content_release_id = 'r123456'
-        response = self.client.post('/content/search', json={
-            'query': '苹果',
-            'datasetIds': ['book-a'],
-            'itemIds': ['book-a:full-book'],
-        })
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(self.fake_es.body['query']['bool']['filter'], [
-            {'term': {'releaseId': 'r123456'}},
-            {'terms': {'datasetFilterKey': [hashlib.sha256(b'book-a').hexdigest()]}},
-            {'terms': {'itemFilterKey': [hashlib.sha256(b'book-a:full-book').hexdigest()]}},
+            {"bool": {
+                "should": [
+                    {"terms": {"datasetId": ["book-a"]}},
+                    {"match_phrase": {"datasetId": "book-a"}},
+                ],
+                "minimum_should_match": 1,
+            }},
+            {"bool": {
+                "should": [
+                    {"terms": {"itemId": ["book-a:full-book"]}},
+                    {"match_phrase": {"itemId": "book-a:full-book"}},
+                ],
+                "minimum_should_match": 1,
+            }},
         ])
 
     def test_search_returns_distinct_fragments_after_chunk_overfetch(self):

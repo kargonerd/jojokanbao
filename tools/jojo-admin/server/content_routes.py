@@ -15,7 +15,6 @@ from content_publish import (
     ROOT,
     publication_status,
     publish_b2,
-    publish_elasticsearch,
     publish_huggingface,
 )
 from content_search import search_content
@@ -254,7 +253,7 @@ def import_files():
 @content_blueprint.post("/api/content/jobs/<job_id>/publish")
 def publish(job_id: str):
     data = request.get_json(silent=True) or {}
-    targets = [name for name in ("huggingface", "b2", "elasticsearch") if name in (data.get("targets") or [])]
+    targets = [name for name in ("huggingface", "b2") if name in (data.get("targets") or [])]
     with _lock:
         value = _jobs.get(job_id)
         if not value:
@@ -274,7 +273,6 @@ def publish(job_id: str):
 def _publish(job_id: str, targets: list[str]) -> None:
     publishers = {
         "b2": publish_b2,
-        "elasticsearch": publish_elasticsearch,
         "huggingface": publish_huggingface,
     }
     build_root = Path(_jobs[job_id]["outputDirectory"])

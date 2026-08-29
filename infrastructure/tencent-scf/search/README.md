@@ -25,18 +25,16 @@ newspapers and magazines. Configure a normal ES index with:
 $env:ELASTICSEARCH_CONTENT_INDEX="jojo-content-v1"
 ```
 
-Tencent ES Serverless is append-only. Publish each build as an immutable
-release and set both values returned by Workbench publication:
+Tencent ES Serverless is append-only. The unified synchronizer writes stable
+logical document IDs and does not use a release selector:
 
 ```powershell
 $env:ELASTICSEARCH_CONTENT_INDEX="aitest-1tk2lxru"
-$env:ELASTICSEARCH_CONTENT_RELEASE_ID="r3ca3503a48d9f9d83c03"
 ```
 
-When a release is configured, Dataset and Item scope use SHA-256 filter keys so
-exact filtering remains reliable even if a legacy Serverless index dynamically
-mapped the original IDs as `text`. The API overfetches ES chunks and returns
-distinct `fragmentObject` results.
+`datasetId` and `itemId` are top-level keyword fields used for exact scope
+filtering. The API still reads legacy chunk fields during migration, but the
+book workbench no longer publishes those documents.
 
 ### Migration exclusions
 

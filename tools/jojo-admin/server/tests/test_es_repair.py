@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from es_repair import active_query, clean_repair_document, revision_id
 from es_migrations import (
+    active_revision_heads,
     apply_migration,
     create_migration,
     excluded_document_ids,
@@ -107,10 +108,12 @@ class RepairLogicTest(unittest.TestCase):
         self.assertNotEqual(base["previewHash"], changed_reason["previewHash"])
         self.assertNotEqual(base["previewHash"], changed_document["previewHash"])
 
-    def test_unified_repair_keeps_the_six_business_fields(self):
+    def test_unified_repair_keeps_filterable_ids_and_business_fields(self):
         document = {
             "@timestamp": "2026-08-29T00:00:00Z",
             "type": "newspaper",
+            "datasetId": "rmrb",
+            "itemId": "rmrb:1988-09-09",
             "title": "修订标题",
             "content": "修订正文",
             "date": "1988-09-09",
@@ -129,7 +132,7 @@ class RepairLogicTest(unittest.TestCase):
 
         self.assertEqual(
             set(clean),
-            {"type", "title", "content", "date", "source", "metadata"},
+            {"type", "datasetId", "itemId", "title", "content", "date", "source", "metadata"},
         )
         self.assertNotIn("replacedDocumentId", preview["esPayload"])
         self.assertNotIn("repairReason", preview["esPayload"])
@@ -138,6 +141,8 @@ class RepairLogicTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "metadata"):
             clean_repair_document({
                 "type": "book",
+                "datasetId": "book-a",
+                "itemId": "book-a:main",
                 "title": "章节",
                 "content": "正文",
                 "source": "书名",
@@ -179,6 +184,56 @@ class RepairLogicTest(unittest.TestCase):
                 {"base-id", repair["id"], delete["id"]},
             )
             self.assertEqual(excluded_document_ids("other", directory), set())
+
+    def test_applied_migrations_resolve_the_current_revision(self):
+        with TemporaryDirectory() as temp:
+            directory = Path(temp)
+            first = create_migration(
+                "base-id",
+                {"title": "第二版", "content": "正文 B"},
+                deleted=False,
+                reason="",
+                index="news",
+                directory=directory,
+            )
+            second = create_migration(
+                first["id"],
+                {"title": "第三版", "content": "正文 C"},
+                deleted=False,
+                reason="",
+                index="news",
+                directory=directory,
+            )
+            for migration in (first, second):
+                migration["state"] = "applied"
+                migration["result"] = {"documentId": migration["id"]}
+                (directory / f"{migration['id']}.json").write_text(
+                    json.dumps(migration), encoding="utf-8",
+                )
+
+            self.assertEqual(
+                active_revision_heads("news", directory),
+                {"base-id": second["id"], first["id"]: second["id"]},
+            )
+
+    def test_deleted_revision_resolves_to_no_active_document(self):
+        with TemporaryDirectory() as temp:
+            directory = Path(temp)
+            deletion = create_migration(
+                "base-id",
+                {"title": "标题", "content": "正文"},
+                deleted=True,
+                reason="",
+                index="news",
+                directory=directory,
+            )
+            deletion["state"] = "applied"
+            deletion["result"] = {"documentId": deletion["id"]}
+            (directory / f"{deletion['id']}.json").write_text(
+                json.dumps(deletion), encoding="utf-8",
+            )
+
+            self.assertEqual(active_revision_heads("news", directory), {"base-id": None})
 
 
 if __name__ == "__main__":

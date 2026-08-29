@@ -1,5 +1,4 @@
 import os
-import hashlib
 from pathlib import Path
 from flask import Flask, jsonify, request
 from elasticsearch import Elasticsearch
@@ -30,7 +29,6 @@ def create_elasticsearch_client():
 es = create_elasticsearch_client()
 index_name = os.environ.get('ELASTICSEARCH_INDEX', 'jojo-67f10bu8')
 content_index_name = os.environ.get('ELASTICSEARCH_CONTENT_INDEX', 'jojo-content-v1')
-content_release_id = os.environ.get('ELASTICSEARCH_CONTENT_RELEASE_ID', '').strip()
 overlay_enabled = os.environ.get('SEARCH_OVERLAY', '').lower() in ('1', 'true', 'yes', 'on')
 base_index_name = os.environ.get('ELASTICSEARCH_BASE_INDEX')
 delta_index_name = os.environ.get('ELASTICSEARCH_DELTA_INDEX')
@@ -72,8 +70,15 @@ def _string_list(value, limit=100):
   return [item for item in value[:limit] if isinstance(item, str) and item]
 
 
-def _content_filter_key(value):
-  return hashlib.sha256(value.encode('utf-8')).hexdigest()
+def _identity_filter(field, values):
+  """Match IDs on both the intended keyword mapping and old dynamic text mappings."""
+  return {'bool': {
+    'should': [
+      {'terms': {field: values}},
+      *({'match_phrase': {field: value}} for value in values),
+    ],
+    'minimum_should_match': 1,
+  }}
 
 
 @app.route("/content/search", methods=["POST"])
@@ -94,17 +99,10 @@ def content_search():
   item_ids = _string_list(payload.get('itemIds'))
   document_types = _string_list(payload.get('types'))
   sources = _string_list(payload.get('sources'))
-  if content_release_id:
-    filters.append({'term': {'releaseId': content_release_id}})
-    if dataset_ids:
-      filters.append({'terms': {'datasetFilterKey': [_content_filter_key(value) for value in dataset_ids]}})
-    if item_ids:
-      filters.append({'terms': {'itemFilterKey': [_content_filter_key(value) for value in item_ids]}})
-  else:
-    if dataset_ids:
-      filters.append({'terms': {'datasetId': dataset_ids}})
-    if item_ids:
-      filters.append({'terms': {'itemId': item_ids}})
+  if dataset_ids:
+    filters.append(_identity_filter('datasetId', dataset_ids))
+  if item_ids:
+    filters.append(_identity_filter('itemId', item_ids))
   if document_types:
     filters.append({'terms': {'type': document_types}})
   if sources:
@@ -165,6 +163,10 @@ def content_search():
   seen_fragments = set()
   for hit in hits.get('hits') or []:
     source = hit.get('_source') or {}
+    if dataset_ids and source.get('datasetId') not in dataset_ids:
+      continue
+    if item_ids and source.get('itemId') not in item_ids:
+      continue
     fragment_object = source.get('fragmentObject')
     if fragment_object and fragment_object in seen_fragments:
       continue

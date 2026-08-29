@@ -109,8 +109,7 @@ HF 发布结果显示为 **Marxism Dataset**。默认发布为公开 Dataset；�
 本地联调 Reader/Agent 的真实 ES 搜索时，可只启动轻量搜索入口：
 
 ```powershell
-$env:ES_CONTENT_INDEX="<管理台发布返回的索引>"
-$env:ES_CONTENT_RELEASE_ID="<管理台发布返回的 releaseId>"
+$env:ES_CONTENT_INDEX="<统一同步器写入的索引>"
 python server/content_search_app.py
 ```
 
@@ -118,9 +117,8 @@ python server/content_search_app.py
 `POST /content/search`，不会启动旧报刊处理器。
 
 Tencent ES Serverless indexes must be created in the Tencent console first;
-they cannot be created with `PUT /index`. The publisher detects append-only
-Serverless behavior, emits an immutable `releaseId`, and refuses to mix a
-partial release with a retry.
+they cannot be created with `PUT /index`. The book workbench no longer writes
+ES directly; publish Canonical to Hugging Face, then run the unified ES sync.
 
 For the production-style local launcher, run `server/start.bat`. It builds the
 web client and serves it together with the API at `http://127.0.0.1:5000/`.

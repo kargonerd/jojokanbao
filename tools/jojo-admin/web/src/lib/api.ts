@@ -121,6 +121,8 @@ export interface VuePreview extends ApiResult {
 export interface SearchDocument {
   documentId: string;
   type?: "book" | "newspaper" | "news";
+  datasetId?: string;
+  itemId?: string;
   title?: string;
   content?: string;
   date?: string;

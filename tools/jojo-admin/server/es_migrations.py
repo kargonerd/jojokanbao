@@ -141,6 +141,48 @@ def excluded_document_ids(
     return excluded
 
 
+def active_revision_heads(
+    index: str,
+    directory: Path = MIGRATIONS_DIR,
+) -> dict[str, str | None]:
+    """Resolve every applied repair chain to its current searchable document.
+
+    A value of ``None`` means that the logical document was deleted.  Both the
+    original document ID and intermediate repair IDs are included so callers
+    can start resolution at any point in a chain.
+    """
+    edges: dict[str, str | None] = {}
+    for migration in list_migrations(directory):
+        if migration.get("state") != "applied" or migration.get("index") != index:
+            continue
+        replaced_document_id = str(
+            migration.get("replacedDocumentId") or migration.get("supersedesId") or ""
+        ).strip()
+        if not replaced_document_id:
+            continue
+        replacement_id = (
+            None
+            if migration.get("operation") == "delete"
+            else str((migration.get("result") or {}).get("documentId") or migration["id"])
+        )
+        previous = edges.get(replaced_document_id, replacement_id)
+        if replaced_document_id in edges and previous != replacement_id:
+            raise ValueError(f"ES migration 出现分叉：{replaced_document_id}")
+        edges[replaced_document_id] = replacement_id
+
+    def resolve(start: str) -> str | None:
+        current: str | None = start
+        visited: set[str] = set()
+        while current is not None and current in edges:
+            if current in visited:
+                raise ValueError(f"ES migration 出现循环：{start}")
+            visited.add(current)
+            current = edges[current]
+        return current
+
+    return {document_id: resolve(document_id) for document_id in edges}
+
+
 def _safe_path(migration_id: str, directory: Path) -> Path:
     digest = migration_id.removeprefix("repair-")
     if not migration_id.startswith("repair-") or len(digest) != 40 or any(c not in "0123456789abcdef" for c in digest):
