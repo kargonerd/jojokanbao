@@ -65,6 +65,7 @@ describe("createEdgeOneAgentHandler", () => {
     expect(body).toContain("你好，JOJO。");
     expect(body).toContain("event: usage");
     expect(body).toContain("event: done");
+    expect(body).toContain('"stopReason":"stop"');
     expect(tools).toHaveBeenCalledWith(
       expect.any(Object),
       { id: "user-1" },

@@ -1,4 +1,5 @@
 import type { TextAnchor } from "../../annotations/types";
+import { renderMarkdown } from "../../rag/utils/markdown";
 import type { TimesExplanationMetadata } from "../ai";
 
 export function TimesExplanationPanel({
@@ -28,7 +29,12 @@ export function TimesExplanationPanel({
         <div aria-live="polite" className="min-h-0 flex-1 overflow-y-auto px-6 pb-8">
           {status ? <p className="mb-4 font-sans text-[11px] font-bold text-muted">{status}</p> : null}
           {error ? <p role="alert" className="border-l-2 border-red pl-4 text-sm leading-7 text-red">{error}</p> : null}
-          {answer ? <div className="whitespace-pre-wrap text-[15px] leading-8">{answer}</div> : null}
+          {answer ? (
+            <div
+              className="text-[15px] leading-7 [&_blockquote]:my-5 [&_blockquote]:border-l-2 [&_blockquote]:border-red [&_blockquote]:pl-4 [&_li]:my-2 [&_ol]:my-4 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-4 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_strong]:font-black [&_ul]:my-4 [&_ul]:list-disc [&_ul]:pl-5"
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(answer) }}
+            />
+          ) : null}
         </div>
         {metadata ? <footer className="border-t border-rule px-6 py-3 font-sans text-[9px] text-muted">{metadata.imageCount ? `已结合 ${metadata.imageCount} 张随文图片` : "本次仅使用文字上下文"}{metadata.model ? ` · ${metadata.model}` : ""}</footer> : null}
       </aside>

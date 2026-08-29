@@ -7,6 +7,13 @@ const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 700_000;
 const MAX_IMAGE_EDGE = 1_280;
 const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+const COMPLETION_MARKER = "<!-- JOJO_TIMES_COMPLETE -->";
+
+function completedAnswer(value: string): string | null {
+  const normalized = value.trimEnd();
+  if (!normalized.endsWith(COMPLETION_MARKER)) return null;
+  return normalized.slice(0, -COMPLETION_MARKER.length).trimEnd();
+}
 
 export interface TimesAgentImage {
   data: string;
@@ -139,7 +146,7 @@ export function explainTimesSelection(
   callbacks: {
     onStatus(status: string): void;
     onChunk(text: string): void;
-    onDone(metadata: TimesExplanationMetadata): void;
+    onDone(metadata: TimesExplanationMetadata, answer: string): void;
     onError(message: string): void;
   },
 ): () => void {
@@ -174,6 +181,7 @@ export function explainTimesSelection(
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let answerText = "";
     let receivedDone = false;
     const processFrame = (frame: string): void => {
       const lines = frame.split("\n");
@@ -187,10 +195,17 @@ export function explainTimesSelection(
         callbacks.onStatus("正在理解选中文字与图片…");
       } else if (eventName === "text_delta" && typeof event.delta === "string") {
         callbacks.onStatus("正在生成解释…");
+        answerText += event.delta;
         callbacks.onChunk(event.delta);
       } else if (eventName === "error") {
         throw new Error(typeof event.message === "string" ? event.message : "AI 解释失败");
       } else if (eventName === "done") {
+        if (event.stopReason === "length") {
+          throw new Error("AI 解释生成到一半就停止了，请重试");
+        }
+        if (!completedAnswer(answerText)) {
+          throw new Error("AI 解释似乎没有生成完整，请重试");
+        }
         receivedDone = true;
       }
     };
@@ -211,7 +226,7 @@ export function explainTimesSelection(
       if (receivedDone) break;
     }
     if (!receivedDone) throw new Error("AI 解释连接意外中断，请重试");
-    callbacks.onDone(metadata);
+    callbacks.onDone(metadata, completedAnswer(answerText)!);
   })().catch((error: unknown) => {
     if (error instanceof DOMException && error.name === "AbortError") return;
     const message = error instanceof Error ? error.message : String(error);

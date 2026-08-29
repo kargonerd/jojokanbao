@@ -92,6 +92,7 @@ describe("runPlatformAgent", () => {
     expect(execute).toHaveBeenCalledOnce();
     expect(receivedSessionId).toBe("conversation-cache-key");
     expect(result.answer).toBe("42");
+    expect(result.stopReason).toBe("stop");
     expect(result.turns).toBe(2);
     expect(result.toolCalls).toBe(1);
     expect(result.references).toEqual([{
@@ -108,6 +109,22 @@ describe("runPlatformAgent", () => {
       expect.objectContaining({ type: "text_delta", delta: "42" }),
       expect.objectContaining({ type: "usage" }),
     ]));
+  });
+
+  it("reports when the provider stops at its output limit", async () => {
+    const faux = fauxProvider({ provider: "jojo-length-test", tokensPerSecond: 100_000 });
+    faux.setResponses([fauxAssistantMessage("partial answer", { stopReason: "length" })]);
+
+    const result = await runPlatformAgent({
+      systemPrompt: "Answer briefly.",
+      prompt: "Hello",
+      model: faux.getModel(),
+      stream: (model, context, options) =>
+        faux.provider.streamSimple(model, context, options),
+    });
+
+    expect(result.answer).toBe("partial answer");
+    expect(result.stopReason).toBe("length");
   });
 
   it("rejects an unfinished tool loop after the configured turn budget", async () => {

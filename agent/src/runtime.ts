@@ -342,6 +342,7 @@ export async function runPlatformAgent(
   const answerContent = answer ? assistantText(answer) : "";
   return {
     answer: answerContent,
+    stopReason: answer?.stopReason ?? "stop",
     references: answerSourceReferences(answerContent, [...sourceReferences.values()]),
     messages,
     usage: publicUsage(usage),

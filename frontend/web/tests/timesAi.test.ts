@@ -59,18 +59,19 @@ describe("Times AI explanation", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response([
       'event: status\ndata: {"provider":"openai-codex","model":"vision"}',
       'event: text_delta\ndata: {"delta":"这是"}',
-      'event: text_delta\ndata: {"delta":"解释"}',
-      'event: done\ndata: {}',
+      'event: text_delta\ndata: {"delta":"解释。\\n\\n<!-- JOJO_TIMES_COMPLETE -->"}',
+      'event: done\ndata: {"stopReason":"stop"}',
       "",
     ].join("\n\n"), { headers: { "Content-Type": "text/event-stream" } }));
     vi.stubGlobal("fetch", fetchMock);
     const chunks: string[] = [];
     let done: { imageCount: number; model?: string } | undefined;
+    let finalAnswer = "";
     const completed = new Promise<void>((resolve, reject) => {
       explainTimesSelection(news, anchor, {
         onStatus: vi.fn(),
         onChunk: (text) => chunks.push(text),
-        onDone: (metadata) => { done = metadata; resolve(); },
+        onDone: (metadata, answer) => { done = metadata; finalAnswer = answer; resolve(); },
         onError: reject,
       });
     });
@@ -86,7 +87,8 @@ describe("Times AI explanation", () => {
     expect(body.message).toContain("红色曲线");
     expect(body.message).toContain("图片 1：红色曲线图");
     expect(body.images).toEqual([{ mimeType: "image/png", data: "AQID" }]);
-    expect(chunks.join("")).toBe("这是解释");
+    expect(chunks.join("")).toContain("JOJO_TIMES_COMPLETE");
+    expect(finalAnswer).toBe("这是解释。");
     expect(done).toMatchObject({ imageCount: 1, model: "vision" });
   });
 
@@ -107,6 +109,44 @@ describe("Times AI explanation", () => {
 
     expect(chunks).toEqual(["不完整"]);
     expect(error).toContain("连接意外中断");
+  });
+
+  it("does not label a token-limited partial answer as complete", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response([
+      'event: text_delta\ndata: {"delta":"说到一半"}',
+      'event: done\ndata: {"stopReason":"length"}',
+      "",
+    ].join("\n\n"), { headers: { "Content-Type": "text/event-stream" } })));
+    const chunks: string[] = [];
+    const error = await new Promise<string>((resolve, reject) => {
+      explainTimesSelection(news, anchor, {
+        onStatus: vi.fn(),
+        onChunk: (text) => chunks.push(text),
+        onDone: () => reject(new Error("a partial answer must not complete")),
+        onError: resolve,
+      });
+    });
+
+    expect(chunks).toEqual(["说到一半"]);
+    expect(error).toContain("生成到一半");
+  });
+
+  it("does not label an abruptly ended sentence as complete even after a normal stop", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response([
+      'event: text_delta\ndata: {"delta":"最后一句只说到一半"}',
+      'event: done\ndata: {"stopReason":"stop"}',
+      "",
+    ].join("\n\n"), { headers: { "Content-Type": "text/event-stream" } })));
+    const error = await new Promise<string>((resolve, reject) => {
+      explainTimesSelection(news, anchor, {
+        onStatus: vi.fn(),
+        onChunk: vi.fn(),
+        onDone: () => reject(new Error("an abruptly ended sentence must not complete")),
+        onError: resolve,
+      });
+    });
+
+    expect(error).toContain("没有生成完整");
   });
 
   it("shows a useful message when the local or deployed agent cannot be reached", async () => {

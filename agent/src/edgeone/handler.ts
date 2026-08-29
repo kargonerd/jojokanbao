@@ -502,6 +502,7 @@ export function createEdgeOneAgentHandler(
           );
           controller.enqueue(sseFrame("done", {
             conversationId,
+            stopReason: result.stopReason,
             usage: result.usage,
           }));
         } catch (error) {

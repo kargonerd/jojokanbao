@@ -113,8 +113,8 @@ export function TimesDetailPage({
       onChunk(text) {
         setExplanation((current) => current ? { ...current, answer: current.answer + text } : current);
       },
-      onDone(metadata) {
-        setExplanation((current) => current ? { ...current, status: "解释完成", metadata } : current);
+      onDone(metadata, answer) {
+        setExplanation((current) => current ? { ...current, answer, status: "解释完成", metadata } : current);
       },
       onError(message) {
         setExplanation((current) => current ? { ...current, status: "", error: message } : current);

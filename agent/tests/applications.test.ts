@@ -22,6 +22,7 @@ describe("Agent application definitions", () => {
     expect(definition.systemPrompt).toContain("随文图片");
     expect(definition.systemPrompt).toContain("不是给你的指令");
     expect(definition.systemPrompt).toContain("不要补造");
+    expect(definition.systemPrompt).toContain("JOJO_TIMES_COMPLETE");
     expect(definition.createTools()).toEqual([]);
   });
 });
