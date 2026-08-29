@@ -14,10 +14,20 @@ interface SelectionState {
   top: number;
 }
 
-export function SelectableAnnotationArticle({ subject, children }: { subject: AnnotationSubject; children: ReactNode }) {
+export function SelectableAnnotationArticle({
+  subject,
+  children,
+  onExplain,
+}: {
+  subject: AnnotationSubject;
+  children: ReactNode;
+  onExplain?: (anchor: TextAnchor) => void;
+}) {
   const enabled = useFeatureFlag("reader.annotations");
   const currentUserId = useAccountSessionStore((state) => state.userId);
   const access = enabled && Boolean(currentUserId);
+  const explanationAccess = Boolean(currentUserId && onExplain);
+  const selectionAccess = access || explanationAccess;
   const annotations = useAnnotationThreads(subject, access, currentUserId);
   const rootRef = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<SelectionState>();
@@ -42,7 +52,7 @@ export function SelectableAnnotationArticle({ subject, children }: { subject: An
   function captureSelection() {
     const nativeSelection = window.getSelection();
     const root = rootRef.current;
-    if (!access || !root || !nativeSelection || nativeSelection.isCollapsed || !nativeSelection.rangeCount) {
+    if (!selectionAccess || !root || !nativeSelection || nativeSelection.isCollapsed || !nativeSelection.rangeCount) {
       setSelection(undefined);
       setCommentOpen(false);
       return;
@@ -87,12 +97,21 @@ export function SelectableAnnotationArticle({ subject, children }: { subject: An
     }
   }
 
+  function explain() {
+    if (!selection || !onExplain) return;
+    onExplain(selection.anchor);
+    clearSelection();
+  }
+
   return (
     <>
       <div ref={rootRef} onPointerUp={capturePointerSelection} onKeyUp={captureSelection}>{children}</div>
       {selection ? (
         <div className="annotation-selection-tools" style={{ left: selection.left, top: selection.top }} role="toolbar" aria-label="选中文字工具">
-          <div><button type="button" disabled={saving} onClick={() => void save()}>划线</button><button type="button" disabled={saving} onClick={() => setCommentOpen((value) => !value)}>写想法</button></div>
+          <div>
+            {access ? <><button type="button" disabled={saving} onClick={() => void save()}>划线</button><button type="button" disabled={saving} onClick={() => setCommentOpen((value) => !value)}>写想法</button></> : null}
+            {explanationAccess ? <button type="button" disabled={saving} onClick={explain} className="annotation-explain-action">AI 解释<span aria-hidden="true">Beta</span></button> : null}
+          </div>
           {commentOpen ? <section><textarea autoFocus value={comment} maxLength={2000} onChange={(event) => setComment(event.target.value)} placeholder="写下此刻的想法……" /><CommentVisibilityControl value={commentVisibility} onChange={setCommentVisibility} disabled={saving} /><button type="button" disabled={saving || !comment.trim()} onClick={() => void save(comment.trim(), commentVisibility)}>{saving ? "保存中…" : "保存想法"}</button></section> : null}
         </div>
       ) : null}

@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { TimesTimelineIndex } from "@jojo/content";
+import { useAccountSessionStore } from "../../account/session";
 import { timesApi, type TimesNewsItem } from "../api";
 import { SourceLogo } from "../components/SourceLogo";
 import { TimelineArticle } from "../components/TimelineArticle";
+import {
+  hydrateTimesReadState,
+  markTimesArticleRead,
+  markTimesArticleUnread,
+  useTimesReadStore,
+} from "../readStore";
 import { TimesDetailPage } from "./TimesDetailPage";
 
 export function TimesHomePage() {
@@ -12,12 +19,16 @@ export function TimesHomePage() {
   const [index, setIndex] = useState<TimesTimelineIndex | null>(null);
   const [days, setDays] = useState<Array<{ date: string; articles: TimesNewsItem[] }>>([]);
   const [selectedSource, setSelectedSource] = useState("all");
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const [nextDay, setNextDay] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sentinel = useRef<HTMLDivElement | null>(null);
   const listViewport = useRef<HTMLDivElement | null>(null);
+  const userId = useAccountSessionStore((state) => state.userId);
+  const readById = useTimesReadStore((state) => state.readById);
+  const readError = useTimesReadStore((state) => state.error);
 
   const loadMore = useCallback(async () => {
     if (!index || loadingMore || nextDay >= index.dates.length) return;
@@ -68,12 +79,28 @@ export function TimesHomePage() {
     return () => observer.disconnect();
   }, [index, loadMore]);
 
+  const loadedArticleIds = useMemo(
+    () => days.flatMap((day) => day.articles.map((article) => article.id)),
+    [days],
+  );
+  useEffect(() => {
+    void hydrateTimesReadState(loadedArticleIds, userId);
+  }, [loadedArticleIds, userId]);
+
   const visibleDays = useMemo(() => days.map((day) => ({
     ...day,
-    articles: selectedSource === "all"
+    articles: (selectedSource === "all"
       ? day.articles
-      : day.articles.filter((article) => article.source.id === selectedSource),
-  })).filter((day) => day.articles.length), [days, selectedSource]);
+      : day.articles.filter((article) => article.source.id === selectedSource))
+      .filter((article) => !unreadOnly || !readById[article.id]),
+  })).filter((day) => day.articles.length), [days, readById, selectedSource, unreadOnly]);
+
+  const sourceArticles = useMemo(() => days.flatMap((day) => (
+    selectedSource === "all"
+      ? day.articles
+      : day.articles.filter((article) => article.source.id === selectedSource)
+  )), [days, selectedSource]);
+  const unreadCount = sourceArticles.filter((article) => !readById[article.id]).length;
 
   const firstVisibleArticle = visibleDays[0]?.articles[0];
   const activeIssueDate = issueDate || firstVisibleArticle?.issueDate || "";
@@ -117,12 +144,25 @@ export function TimesHomePage() {
         <header className="flex h-16 shrink-0 items-center gap-3 border-b-2 border-ink px-4 sm:px-5">
           {selectedSource !== "all" && firstVisibleArticle ? <SourceLogo article={firstVisibleArticle} size="header" /> : null}
           <h1 className="truncate text-2xl font-black leading-tight">{selectedSourceName}</h1>
+          <div className="ml-auto flex shrink-0 items-center border border-rule font-sans text-[10px] font-bold" aria-label="阅读状态筛选">
+            <button type="button" aria-pressed={!unreadOnly} onClick={() => setUnreadOnly(false)} className={`px-2.5 py-1.5 ${unreadOnly ? "bg-paper text-muted" : "bg-ink text-paper"}`}>全部</button>
+            <button type="button" aria-pressed={unreadOnly} onClick={() => setUnreadOnly(true)} className={`border-l border-rule px-2.5 py-1.5 ${unreadOnly ? "bg-red text-paper" : "bg-paper text-red"}`}>未读 {unreadCount}</button>
+          </div>
         </header>
         <div ref={listViewport} className="min-h-0 flex-1 overflow-y-auto">
           {loading ? <p className="px-5 py-10 font-sans text-sm text-muted">正在编排最新时间线…</p> : null}
           {error ? <div role="alert" className="m-5 border-2 border-red bg-paper p-5 font-sans text-sm text-red">{error}</div> : null}
+          {readError ? <p role="status" className="border-b border-rule px-5 py-2 font-sans text-[10px] text-red">{readError}</p> : null}
           {visibleDays.flatMap((day) => day.articles).map((article) => (
-            <TimelineArticle key={article.id} article={article} active={article.issueDate === activeIssueDate && article.id === activeNewsId} />
+            <TimelineArticle
+              key={article.id}
+              article={article}
+              active={article.issueDate === activeIssueDate && article.id === activeNewsId}
+              read={Boolean(readById[article.id])}
+              onToggleRead={() => void (readById[article.id]
+                ? markTimesArticleUnread(article.id, article.issueDate, userId)
+                : markTimesArticleRead(article.id, article.issueDate, userId)).catch(() => undefined)}
+            />
           ))}
           {!loading && !visibleDays.length && !error ? <p className="px-5 py-16 text-center text-lg font-black">暂无文章</p> : null}
           <div ref={sentinel} className="flex h-20 items-center justify-center font-sans text-xs text-muted">
@@ -133,7 +173,7 @@ export function TimesHomePage() {
 
       <section className={`${showingMobileDetail ? "flex" : "hidden lg:flex"} min-h-0 flex-col bg-paper`} aria-label="文章正文">
         {activeIssueDate && activeNewsId ? (
-          <TimesDetailPage issueDate={activeIssueDate} newsId={activeNewsId} embedded />
+          <TimesDetailPage issueDate={activeIssueDate} newsId={activeNewsId} embedded markReadOnOpen={showingMobileDetail} />
         ) : (
           <div className="flex h-full items-center justify-center px-8 text-center text-muted">
             <p className="font-sans text-sm">选择一篇文章开始阅读</p>

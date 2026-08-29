@@ -133,6 +133,63 @@ describe("createEdgeOneAgentHandler", () => {
     expect(await response.text()).toContain("接着上一轮回答。");
   });
 
+  it("validates and forwards image inputs as multimodal user content", async () => {
+    let capturedContext: unknown;
+    const faux = fauxProvider({
+      provider: "openai-codex",
+      models: [{ id: "vision-test", input: ["text", "image"] }],
+      tokensPerSecond: 100_000,
+    });
+    faux.setResponses([(context) => {
+      capturedContext = context;
+      return fauxAssistantMessage("图中信息已纳入解释。");
+    }]);
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const model = faux.getModel();
+    const handle = createEdgeOneAgentHandler({
+      agentId: "times",
+      authorize: async () => ({ id: "user-1" }),
+      createModelRuntime: async () => ({
+        config: { provider: "openai-codex", model: model.id },
+        models,
+        model,
+        configured: true,
+      }),
+    });
+
+    const response = await handle({
+      request: {
+        body: {
+          message: "解释图表",
+          images: [{ mimeType: "image/png", data: "AQID" }],
+        },
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("图中信息已纳入解释。");
+    const context = capturedContext as { messages: Array<{ role: string; content: unknown }> };
+    expect([...context.messages].reverse().find((message) => message.role === "user")).toMatchObject({
+      role: "user",
+      content: [
+        { type: "text", text: "解释图表" },
+        { type: "image", mimeType: "image/png", data: "AQID" },
+      ],
+    });
+  });
+
+  it("rejects malformed image input before auth", async () => {
+    const authorize = vi.fn(async () => ({ id: "user-1" }));
+    const handle = createEdgeOneAgentHandler({ authorize });
+    const response = await handle({
+      request: { body: { message: "解释", images: [{ mimeType: "image/svg+xml", data: "not-base64" }] } },
+    });
+
+    expect(response.status).toBe(400);
+    expect(authorize).not.toHaveBeenCalled();
+  });
+
   it("manually traces the custom Pi Agent run and each tool call", async () => {
     const faux = fauxProvider({
       provider: "openai-codex",

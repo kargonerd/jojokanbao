@@ -61,4 +61,21 @@ describe("SelectableAnnotationArticle", () => {
 
     expect(await screen.findByRole("toolbar", { name: "选中文字工具" })).toBeTruthy();
   });
+
+  it("offers AI explanation independently from the annotation feature flag", async () => {
+    useFeatureFlagStore.setState({ initialized: true, revision: "test", flags: { "library.bookshelf": false, "reader.annotations": false } });
+    const onExplain = vi.fn();
+    render(<SelectableAnnotationArticle subject={{ contentType: "newspaper", contentId: "news-1", sectionId: "body", contentTitle: "新闻标题" }} onExplain={onExplain}><p>图表中的红色曲线</p></SelectableAnnotationArticle>);
+    const paragraph = screen.getByText("图表中的红色曲线");
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+
+    fireEvent.pointerUp(paragraph);
+    fireEvent.click(await screen.findByRole("button", { name: "AI 解释" }));
+
+    expect(onExplain).toHaveBeenCalledWith(expect.objectContaining({ quote: "图表中的红色曲线" }));
+    expect(screen.queryByRole("button", { name: "划线" })).toBeNull();
+  });
 });

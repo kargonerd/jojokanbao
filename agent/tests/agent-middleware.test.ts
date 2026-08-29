@@ -20,8 +20,8 @@ function request(token?: string): Request {
 describe("international Agent middleware", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("matches only the conversational Agent endpoint", () => {
-    expect(config).toEqual({ matcher: "/rag" });
+  it("matches only the RAG and Times Agent endpoints", () => {
+    expect(config).toEqual({ matcher: ["/rag", "/times"] });
   });
 
   it("rejects requests without a login before invoking the Agent", async () => {

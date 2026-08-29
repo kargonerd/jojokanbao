@@ -12,6 +12,7 @@ const timesMocks = vi.hoisted(() => ({
 vi.mock("../src/times/api", () => ({ timesApi: timesMocks }));
 
 import { TimesHomePage } from "../src/times/pages/TimesHomePage";
+import { useTimesReadStore } from "../src/times/readStore";
 
 const source = { id: "ap", name: "AP News", language: "en" };
 const article = {
@@ -54,6 +55,8 @@ class TestIntersectionObserver implements IntersectionObserver {
 }
 
 beforeEach(() => {
+  window.localStorage.clear();
+  useTimesReadStore.setState({ ownerKey: "", readById: {}, loadedById: {}, error: "" });
   timesMocks.timelineIndex.mockResolvedValue({
     formatVersion: "jojo-news-timeline-index/1",
     updatedAt: "2026-08-27T05:00:00.000Z",
@@ -93,7 +96,7 @@ describe("Times timeline images", () => {
 
     await screen.findByText(article.title);
     expect(screen.queryByText("Global wire · ten-minute edition")).toBeNull();
-    expect(screen.queryByRole("button", { name: "全部" })).toBeNull();
+    expect(screen.getByRole("button", { name: "全部" })).toBeTruthy();
     expect(screen.getByRole("button", { name: /所有媒体/ })).toBeTruthy();
     const sourceButton = screen.getByRole("button", { name: new RegExp(source.name) });
     expect(sourceButton).toBeTruthy();
@@ -137,5 +140,19 @@ describe("Times timeline images", () => {
     await screen.findByText(article.title);
     await waitFor(() => expect(screen.queryByRole("link", { name: `打开：${article.title}` })).toBeNull());
     expect(screen.queryByRole("img")).toBeNull();
+  });
+
+  it("shows unread state and lets the reader mark an article read or unread", async () => {
+    render(<MemoryRouter><TimesHomePage /></MemoryRouter>);
+
+    await screen.findByText(article.title);
+    const markRead = screen.getByRole("button", { name: `将“${article.title}”标为已读` });
+    expect(markRead.closest("article")?.getAttribute("data-read")).toBe("false");
+    fireEvent.click(markRead);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: `将“${article.title}”标为未读` })).toBeTruthy());
+    expect(screen.getByRole("button", { name: "未读 0" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: `将“${article.title}”标为未读` }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "未读 1" })).toBeTruthy());
   });
 });

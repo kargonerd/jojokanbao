@@ -109,7 +109,17 @@ function TimelineLeadImage({
   );
 }
 
-export function TimelineArticle({ article, active = false }: { article: TimesNewsItem; active?: boolean }) {
+export function TimelineArticle({
+  article,
+  active = false,
+  read = false,
+  onToggleRead,
+}: {
+  article: TimesNewsItem;
+  active?: boolean;
+  read?: boolean;
+  onToggleRead?(): void;
+}) {
   const asset = leadImage(article);
   const [imageAvailable, setImageAvailable] = useState(Boolean(asset));
   const markUnavailable = useCallback(() => setImageAvailable(false), []);
@@ -117,8 +127,21 @@ export function TimelineArticle({ article, active = false }: { article: TimesNew
   useEffect(() => setImageAvailable(Boolean(asset)), [asset]);
 
   return (
-    <article className={`group grid items-start gap-x-3 border-b border-rule px-3 py-3 transition-colors sm:px-4 ${active ? "border-l-4 border-l-red bg-[color-mix(in_srgb,var(--color-red)_5%,var(--color-paper))] pl-2 sm:pl-3" : "border-l-4 border-l-transparent bg-paper hover:bg-[var(--app-canvas)]"} ${asset && imageAvailable ? "grid-cols-[40px_minmax(0,1fr)_auto]" : "grid-cols-[40px_minmax(0,1fr)]"}`}>
-      <SourceLogo article={article} />
+    <article data-read={read ? "true" : "false"} className={`group grid items-start gap-x-3 border-b border-rule px-3 py-3 transition-colors sm:px-4 ${active ? "border-l-4 border-l-red bg-[color-mix(in_srgb,var(--color-red)_5%,var(--color-paper))] pl-2 sm:pl-3" : "border-l-4 border-l-transparent bg-paper hover:bg-[var(--app-canvas)]"} ${read ? "text-muted" : "text-ink"} ${asset && imageAvailable ? "grid-cols-[40px_minmax(0,1fr)_auto]" : "grid-cols-[40px_minmax(0,1fr)]"}`}>
+      <div className="col-start-1 row-start-1 flex flex-col items-center gap-2">
+        <SourceLogo article={article} />
+        {onToggleRead ? (
+          <button
+            type="button"
+            onClick={onToggleRead}
+            aria-label={read ? `将“${article.title}”标为未读` : `将“${article.title}”标为已读`}
+            title={read ? "标为未读" : "标为已读"}
+            className="grid h-7 w-7 place-items-center border-0 bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-red"
+          >
+            <span aria-hidden="true" className={`h-2.5 w-2.5 border ${read ? "border-muted bg-transparent" : "border-red bg-red"}`} />
+          </button>
+        ) : null}
+      </div>
       <Link to={`/times/${article.issueDate}/${encodeURIComponent(article.id)}`} className="min-w-0 text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-red">
         <span className="flex min-w-0 items-center gap-2 font-sans text-[10px] font-bold text-muted">
           <span className="truncate text-red">{article.source.name}</span>
@@ -127,7 +150,7 @@ export function TimelineArticle({ article, active = false }: { article: TimesNew
           {article.publisherSections?.slice(0, 1).map((section) => <span key={section.id} className="truncate">· {section.name}</span>)}
         </span>
         <strong
-          className="mt-1 overflow-hidden text-[15px] leading-5 transition-colors group-hover:text-red"
+          className={`mt-1 overflow-hidden text-[15px] leading-5 transition-colors group-hover:text-red ${read ? "font-medium text-muted" : "font-black text-ink"}`}
           style={{ display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 2 }}
         >
           {article.title}

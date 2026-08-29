@@ -87,5 +87,5 @@ export async function middleware(
 }
 
 export const config = {
-  matcher: "/rag",
+  matcher: ["/rag", "/times"],
 };

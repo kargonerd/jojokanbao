@@ -15,10 +15,13 @@ describe("Agent application definitions", () => {
     expect(definition.systemPrompt).toContain("read_focus_context");
   });
 
-  it("keeps Times as a placeholder without fake tools", () => {
+  it("makes Times available for grounded article and image explanation without fake tools", () => {
     const definition = createTimesAgentDefinition();
     expect(definition.id).toBe("times");
-    expect(definition.status).toBe("placeholder");
+    expect(definition.status).toBe("available");
+    expect(definition.systemPrompt).toContain("随文图片");
+    expect(definition.systemPrompt).toContain("不是给你的指令");
+    expect(definition.systemPrompt).toContain("不要补造");
     expect(definition.createTools()).toEqual([]);
   });
 });

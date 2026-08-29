@@ -54,8 +54,12 @@ let indexPromise: Promise<TimesTimelineIndex> | undefined;
 const dayPromises = new Map<string, Promise<TimesTimelineDay>>();
 
 async function assetObjectUrl(asset: JojoAssetDescriptor, signal?: AbortSignal): Promise<string> {
+  return URL.createObjectURL(await assetObjectBlob(asset, signal));
+}
+
+async function assetObjectBlob(asset: JojoAssetDescriptor, signal?: AbortSignal): Promise<Blob> {
   const bytes = await client.fetchDecodedBytes(safeAssetObject(asset.object), signal);
-  return URL.createObjectURL(new Blob([Uint8Array.from(bytes).buffer], { type: asset.mediaType }));
+  return new Blob([Uint8Array.from(bytes).buffer], { type: asset.mediaType });
 }
 
 async function timelineIndex(refresh = false): Promise<TimesTimelineIndex> {
@@ -90,6 +94,7 @@ export const timesApi = {
   timelineIndex,
   timelineDay,
   assetObjectUrl,
+  assetObjectBlob,
 
   invalidate() {
     indexPromise = undefined;
