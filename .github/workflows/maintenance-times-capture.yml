@@ -122,6 +122,14 @@ jobs:
           echo "BPC_EXTENSION_PATH=$RUNNER_TEMP/bpc/bypass-paywalls-chrome-clean-master" >> "$GITHUB_ENV"
           echo "BPC_REVISION=$BPC_REVISION" >> "$GITHUB_ENV"
 
+      - name: Restore pinned browser cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ${{ runner.temp }}/brave-cache
+          key: times-capture-browsers-${{ runner.os }}-${{ runner.arch }}-playwright-1.60.0-brave-1.93.138
+
       - name: Install Chromium for page capture
         run: |
           pnpm --filter @jojo/times-pipeline exec playwright install --with-deps chromium
@@ -131,14 +139,22 @@ jobs:
           BRAVE_VERSION: 1.93.138
           BRAVE_SHA256: cf18b2d443f067241e13662484c4b9523f13ff089ba1fc27c88f67911586ac9f
         run: |
-          package="$RUNNER_TEMP/brave-browser.deb"
-          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 300 \
-            "https://github.com/brave/brave-browser/releases/download/v${BRAVE_VERSION}/brave-browser_${BRAVE_VERSION}_amd64.deb" \
-            -o "$package"
+          cache="$RUNNER_TEMP/brave-cache/$BRAVE_VERSION"
+          package="$cache/brave-browser.deb"
+          brave_root="$cache/root"
+          brave_path="$brave_root/opt/brave.com/brave/brave-browser"
+          mkdir -p "$cache"
+          if ! test -f "$package" || ! echo "$BRAVE_SHA256  $package" | sha256sum -c -; then
+            rm -f "$package"
+            curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 300 \
+              "https://github.com/brave/brave-browser/releases/download/v${BRAVE_VERSION}/brave-browser_${BRAVE_VERSION}_amd64.deb" \
+              -o "$package"
+          fi
           echo "$BRAVE_SHA256  $package" | sha256sum -c -
-          mkdir -p "$RUNNER_TEMP/brave"
-          dpkg-deb --extract "$package" "$RUNNER_TEMP/brave"
-          brave_path="$RUNNER_TEMP/brave/opt/brave.com/brave/brave-browser"
+          if ! test -x "$brave_path"; then
+            mkdir -p "$brave_root"
+            dpkg-deb --extract "$package" "$brave_root"
+          fi
           test -x "$brave_path"
           "$brave_path" --version
           echo "JOJO_TIMES_BRAVE_PATH=$brave_path" >> "$GITHUB_ENV"
