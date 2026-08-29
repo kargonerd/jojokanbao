@@ -107,6 +107,7 @@
   "fetch": {
     "strategy": "browser-first",
     "bpc": true,
+    "browser": "brave",
     "proxyPolicy": "rotate"
   },
   "health": {
