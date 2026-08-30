@@ -114,4 +114,103 @@ describe("Times Process translation integration", () => {
       else process.env.GEMINI_API_KEY = previousKey;
     }
   });
+
+  it("retries an unchanged article that still lacks a Chinese translation", async () => {
+    const output = await mkdtemp(path.join(os.tmpdir(), "jojo-process-translation-retry-"));
+    const manifestObject = "raw/africanews/runs/2026/08/30/retry/manifest.json";
+    const manifestPath = path.join(output, ...manifestObject.split("/"));
+    const candidatesPath = path.join(path.dirname(manifestPath), "candidates.jsonl.gz");
+    const source = JSON.parse(await readFile(path.resolve("src/sources/africanews/source.json"), "utf8")) as { discovery: unknown };
+    const paragraph = "This unchanged English article needs another translation attempt with facts, dates, attribution, and sufficient detail. ";
+    const candidate = {
+      articleId: "africanews:translation-retry",
+      sourceId: "africanews",
+      sourceName: "Africanews",
+      language: "en",
+      sourceUrl: "https://www.africanews.com/translation-retry/",
+      canonicalUrl: "https://www.africanews.com/translation-retry/",
+      title: "Retry story",
+      discoveryBody: `<article><div class="article-content"><p>${paragraph.repeat(6)}</p></div></article>`,
+      captureStatus: "captured",
+      contentStatus: "full",
+      publishedAt: "2026-08-30T00:00:00Z",
+      authors: [],
+      publisherCategories: ["News"],
+      publisherSections: [{ id: "news", name: "News" }],
+      assets: [],
+    };
+    await mkdir(path.dirname(manifestPath), { recursive: true });
+    await writeFile(manifestPath, `${JSON.stringify({
+      formatVersion: "jojo-times-raw-source-run/2",
+      runId: "run-translation-retry",
+      sourceId: "africanews",
+      sourceName: "Africanews",
+      publicationTimeZone: "Africa/Lagos",
+      startedAt: "2026-08-30T00:00:00Z",
+      completedAt: "2026-08-30T00:01:00Z",
+      discovery: source.discovery,
+      candidateCount: 1,
+      fullCount: 1,
+      summaryCount: 0,
+      metadataCount: 0,
+      networkExchangeCount: 0,
+      objects: [],
+      captureStatus: "page-capture-complete",
+      healthStatus: "healthy",
+      complete: true,
+    })}\n`, "utf8");
+    await writeFile(candidatesPath, gzipSync(`${JSON.stringify(candidate)}\n`));
+    const runManifestPath = path.join(output, "raw", "runs", "run-translation-retry.json");
+    await mkdir(path.dirname(runManifestPath), { recursive: true });
+    await writeFile(runManifestPath, `${JSON.stringify({
+      runId: "run-translation-retry",
+      sources: [{ sourceId: "africanews", status: "ok", output: { manifest: manifestObject } }],
+    })}\n`, "utf8");
+
+    let rejectTranslation = true;
+    const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      if (rejectTranslation) {
+        return new Response(JSON.stringify({ error: { message: "temporary model failure" } }), {
+          status: 503,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return translatedResponse(init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const previousKey = process.env.GEMINI_API_KEY;
+    process.env.GEMINI_API_KEY = "integration-test-key";
+    const args = new Map([
+      ["config", path.resolve("sources.v2.json")],
+      ["output", output],
+      ["run-manifest", runManifestPath],
+      ["raw-revision", "retry-revision"],
+      ["translate", "true"],
+    ]);
+    try {
+      const failed = await runProcess(args);
+      expect(failed.translation).toMatchObject({ enabled: true, eligible: 1, translated: 0, failed: 1, requests: 2 });
+
+      const unchanged = { ...candidate, discoveryBody: undefined, captureStatus: "unchanged" };
+      await writeFile(candidatesPath, gzipSync(`${JSON.stringify(unchanged)}\n`));
+      rejectTranslation = false;
+      fetchMock.mockClear();
+
+      const retried = await runProcess(args);
+      expect(retried.translation).toMatchObject({ enabled: true, eligible: 1, translated: 1, cacheHits: 0, failed: 0, requests: 1 });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const articleRef = retried.sources[0]!.articles[0]!;
+      const article = JSON.parse(gunzipSync(await readFile(path.join(output, ...articleRef.object.split("/")))).toString("utf8")) as CanonicalArticle;
+      expect(article.translations?.["zh-CN"]?.title).toBe("中译：Retry story");
+
+      fetchMock.mockClear();
+      const alreadyTranslated = await runProcess(args);
+      expect(alreadyTranslated.translation).toMatchObject({ enabled: true, eligible: 0, translated: 0, failed: 0, requests: 0 });
+      expect(alreadyTranslated.sources[0]?.unchangedWithoutRefresh).toBe(1);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      if (previousKey === undefined) delete process.env.GEMINI_API_KEY;
+      else process.env.GEMINI_API_KEY = previousKey;
+    }
+  });
 });

@@ -70,6 +70,18 @@ export function candidateDates(compressed: Uint8Array): Set<string> {
   return dates;
 }
 
+export function candidateUnchangedArticleIds(compressed: Uint8Array): Set<string> {
+  const articleIds = new Set<string>();
+  for (const line of gunzipSync(compressed).toString("utf8").split(/\r?\n/u)) {
+    if (!line.trim()) continue;
+    const candidate = JSON.parse(line) as { articleId?: unknown; captureStatus?: unknown };
+    if (candidate.captureStatus === "unchanged" && typeof candidate.articleId === "string") {
+      articleIds.add(candidate.articleId);
+    }
+  }
+  return articleIds;
+}
+
 export function canonicalObjects(sourceId: string, dates: ReadonlySet<string>): Set<string> {
   const root = path.posix.join("canonical", sourceId);
   return new Set([
@@ -91,6 +103,36 @@ export function canonicalTranslationObjects(
     if (sourceId && date && datesBySource.get(sourceId)?.has(date)) selected.add(objectName);
   }
   return selected;
+}
+
+export function referencedCanonicalArticleObjects(
+  compressed: Uint8Array,
+  sourceId: string,
+  articleIds: ReadonlySet<string>,
+): Set<string> {
+  const parsed = JSON.parse(gunzipSync(compressed).toString("utf8")) as {
+    articles?: Array<{ articleId?: unknown; object?: unknown }>;
+  };
+  const selected = new Set<string>();
+  const expectedRoot = path.posix.join("canonical", sourceId, "articles");
+  for (const row of parsed.articles ?? []) {
+    if (typeof row.articleId !== "string" || !articleIds.has(row.articleId) || typeof row.object !== "string") continue;
+    const normalized = row.object.replaceAll("\\", "/");
+    if (path.posix.dirname(normalized) !== expectedRoot || !normalized.endsWith(".json.gz")) {
+      throw new Error(`Invalid Canonical article object for ${row.articleId}: ${row.object}`);
+    }
+    selected.add(normalized);
+  }
+  return selected;
+}
+
+export function canonicalArticleAssets(compressed: Uint8Array): Set<string> {
+  const parsed = JSON.parse(gunzipSync(compressed).toString("utf8")) as {
+    assets?: Array<{ rawObject?: unknown }>;
+  };
+  return new Set((parsed.assets ?? [])
+    .map((asset) => asset.rawObject)
+    .filter((objectName): objectName is string => typeof objectName === "string"));
 }
 
 export function candidateAssets(compressed: Uint8Array): Set<string> {
@@ -300,6 +342,7 @@ export class HfTimesDataset {
       return {
         sourceId,
         dates: candidateDates(bytes),
+        unchangedArticleIds: candidateUnchangedArticleIds(bytes),
         assets: candidateAssets(bytes),
         rawPages: candidateRawPages(bytes),
       };
@@ -328,14 +371,34 @@ export class HfTimesDataset {
     for (const objectName of canonicalTranslationObjects(existing, datesBySource)) wanted.add(objectName);
     const canonical = [...wanted].filter((objectName) => existing.has(objectName)).sort();
     await mapLimit(canonical, 8, async (objectName) => this.downloadObject(objectName, latest.revision));
+    const canonicalArticles = new Set<string>();
+    for (const bundle of bundles) {
+      for (const date of bundle.dates) {
+        const indexObject = path.posix.join("canonical", bundle.sourceId, "dates", date.slice(0, 4), date.slice(5, 7), `${date}.json.gz`);
+        if (!existing.has(indexObject)) continue;
+        const indexFile = localObjectPath(this.output, indexObject);
+        for (const objectName of referencedCanonicalArticleObjects(await readFile(indexFile), bundle.sourceId, bundle.unchangedArticleIds)) {
+          if (existing.has(objectName)) canonicalArticles.add(objectName);
+        }
+      }
+    }
+    await mapLimit([...canonicalArticles], 8, async (objectName) => this.downloadObject(objectName, latest.revision));
+    const restoredCanonicalAssets = new Set<string>();
+    for (const objectName of canonicalArticles) {
+      const articleFile = localObjectPath(this.output, objectName);
+      for (const assetObject of canonicalArticleAssets(await readFile(articleFile))) {
+        if (!rawAssets.has(assetObject)) restoredCanonicalAssets.add(assetObject);
+      }
+    }
+    await mapLimit([...restoredCanonicalAssets], 8, async (objectName) => this.downloadObject(objectName, latest.revision));
     return {
       revision: latest.revision,
       runId: latest.run.runId,
       runObject: latest.objectName,
       runManifest: path.resolve(latest.file),
       sources: rows.length,
-      rawFiles: 1 + rows.length * 2 + rawAssets.size + rawPageFileCounts.reduce((sum, count) => sum + count, 0),
-      canonicalFiles: canonical.length,
+      rawFiles: 1 + rows.length * 2 + rawAssets.size + restoredCanonicalAssets.size + rawPageFileCounts.reduce((sum, count) => sum + count, 0),
+      canonicalFiles: canonical.length + canonicalArticles.size,
     };
   }
 
