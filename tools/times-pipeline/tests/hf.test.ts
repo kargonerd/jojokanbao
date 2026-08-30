@@ -1,12 +1,15 @@
 import { gzipSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
 import {
+  candidateUnchangedArticleIds,
+  canonicalArticleAssets,
   candidateDates,
   candidateObject,
   candidateRawPages,
   canonicalObjects,
   canonicalTranslationObjects,
   HfTimesDataset,
+  referencedCanonicalArticleObjects,
   rawStateObjects,
   rawRunMatchesGitHubRunId,
   retryTransientHf,
@@ -55,6 +58,36 @@ describe("HF snapshot selection", () => {
       "canonical/ap/dates/2026/08/2026-08-22.json.gz",
       "canonical/ap/dates/2026/08/2026-08-23.json.gz",
       "canonical/ap/dates/2026/08/2026-08-24.json.gz",
+    ]));
+  });
+
+  it("selects Canonical articles and assets needed to retry unchanged translations", () => {
+    const candidates = gzipSync([
+      JSON.stringify({ articleId: "ap:retry", captureStatus: "unchanged" }),
+      JSON.stringify({ articleId: "ap:captured", captureStatus: "captured" }),
+      "",
+    ].join("\n"));
+    const unchanged = candidateUnchangedArticleIds(candidates);
+    expect(unchanged).toEqual(new Set(["ap:retry"]));
+
+    const articleObject = "canonical/ap/articles/retry.json.gz";
+    const dateIndex = gzipSync(JSON.stringify({
+      articles: [
+        { articleId: "ap:retry", object: articleObject },
+        { articleId: "ap:other", object: "canonical/ap/articles/other.json.gz" },
+      ],
+    }));
+    expect(referencedCanonicalArticleObjects(dateIndex, "ap", unchanged)).toEqual(new Set([articleObject]));
+
+    const article = gzipSync(JSON.stringify({
+      assets: [
+        { rawObject: "raw/ap/assets/one.jpg" },
+        { rawObject: "raw/ap/assets/two.jpg" },
+      ],
+    }));
+    expect(canonicalArticleAssets(article)).toEqual(new Set([
+      "raw/ap/assets/one.jpg",
+      "raw/ap/assets/two.jpg",
     ]));
   });
 
