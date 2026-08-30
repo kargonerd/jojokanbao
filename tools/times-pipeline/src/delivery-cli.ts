@@ -30,7 +30,10 @@ async function main(): Promise<void> {
   const previousRoot = args.get("previous-delivery");
   const sources = await loadSources(configPath);
   const previousTimelineIndex = await optionalJox<TimesTimelineIndex>(previousRoot, "content/timeline/index.jox");
-  const dates = new Set(processResult.sources.flatMap((source) => source.dates));
+  const dates = new Set([
+    ...processResult.sources.flatMap((source) => source.dates),
+    ...(previousTimelineIndex?.dates.map((date) => date.date) ?? []),
+  ]);
   const previousTimelineDays = new Map<string, TimesTimelineDay>();
   for (const date of dates) {
     const object = `content/timeline/dates/${date.slice(0, 4)}/${date.slice(5, 7)}/${date}.jox`;

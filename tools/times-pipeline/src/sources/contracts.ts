@@ -33,6 +33,7 @@ export interface SourceModule {
     input: PageAvailabilityInput,
     source: SourceConfig,
   ): UnavailablePageReason | undefined;
+  acceptUrl?(url: string): boolean;
   accept?(candidate: Candidate): boolean;
   process?(candidate: Candidate): Candidate;
 }

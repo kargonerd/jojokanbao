@@ -176,7 +176,7 @@ export interface Candidate {
   capturedAt?: string;
   captureHttpStatus?: number;
   rawPageObject?: string;
-  captureStatus?: "pending" | "captured" | "unchanged" | "failed" | "hard-paywall" | "skipped";
+  captureStatus?: "pending" | "captured" | "unchanged" | "failed" | "hard-paywall" | "skipped" | "duplicate";
   captureMethod?: "direct" | "browser";
   assets?: CapturedAsset[];
   contentStatus: "full" | "summary" | "metadata";

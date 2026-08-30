@@ -100,7 +100,13 @@ export function sourceUnavailablePageReason(
 }
 
 export function acceptSourceCandidate(sourceId: string, candidate: Candidate): boolean {
-  return modules.get(sourceId)?.accept?.(candidate) ?? true;
+  const module = modules.get(sourceId);
+  return (module?.acceptUrl?.(candidate.canonicalUrl) ?? true)
+    && (module?.accept?.(candidate) ?? true);
+}
+
+export function acceptSourceUrl(sourceId: string, url: string): boolean {
+  return modules.get(sourceId)?.acceptUrl?.(url) ?? true;
 }
 
 export function processSourceCandidate(sourceId: string, candidate: Candidate): Candidate {

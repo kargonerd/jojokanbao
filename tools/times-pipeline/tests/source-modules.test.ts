@@ -240,4 +240,28 @@ describe("native source modules", () => {
     } as Candidate;
     expect(acceptSourceCandidate("focus-taiwan", candidate)).toBe(false);
   });
+
+  it("keeps NYT live parents and excludes duplicate deep updates", () => {
+    const candidate = (canonicalUrl: string): Candidate => ({
+      articleId: "nyt:test",
+      sourceId: "nyt",
+      sourceName: "The New York Times",
+      language: "en",
+      sourceUrl: canonicalUrl,
+      canonicalUrl,
+      title: "NYT story",
+      contentStatus: "summary",
+      publishedAt: "2026-08-29T00:00:00.000Z",
+      authors: [],
+      publisherCategories: [],
+    });
+    const parent = candidate("https://www.nytimes.com/live/2026/08/28/world/nepal-tibet-flash-floods");
+    const update = candidate("https://www.nytimes.com/live/2026/08/28/world/nepal-tibet-flash-floods/bharatpur-bodies-morgues");
+    const article = candidate("https://www.nytimes.com/2026/08/28/world/asia/nepal-bodies-morgues.html");
+
+    expect(acceptSourceCandidate("nyt", parent)).toBe(true);
+    expect(acceptSourceCandidate("nyt", update)).toBe(false);
+    expect(acceptSourceCandidate("nyt", article)).toBe(true);
+    expect(processSourceCandidate("nyt", update)).toEqual(expect.objectContaining({ captureStatus: "duplicate" }));
+  });
 });
