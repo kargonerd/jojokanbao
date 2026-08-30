@@ -335,6 +335,7 @@ export function ReaderPage() {
     bookTitle={loaded.manifest.title}
     datasetId={loaded.manifest.datasetId}
     itemId={loaded.manifest.itemId}
+    itemKey={loaded.item.itemKey}
     manifestObject={loaded.manifestObject}
     characterCount={loaded.manifest.contentStats.characterCount}
     logicalChapterCount={logicalChapterCount}

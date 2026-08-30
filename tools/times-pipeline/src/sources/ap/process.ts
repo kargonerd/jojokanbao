@@ -44,6 +44,37 @@ function bodyParagraphs(value: string): string[] {
     .map((paragraph) => `<p>${paragraph}</p>`);
 }
 
+const AP_SEPARATOR = /^_{3,}$/u;
+const AP_TRAILING_NOTE = /^(?:For more on .+?:|The Associated Press receives (?:financial )?support\b|Find AP(?:'|’)?s standards for working with philanthropies\b)/iu;
+
+function storyBody(document: ReturnType<typeof load>, quality: BodyQuality, pageUrl?: string): string | undefined {
+  const container = document(".RichTextStoryBody, [itemprop='articleBody']").first();
+  if (!container.length) return undefined;
+  const values: string[] = [];
+  const contentValues: string[] = [];
+  let separatorIndex = 0;
+  for (const element of container.children().toArray()) {
+    const node = document(element);
+    if (!node.is("p,h2,h3,h4,blockquote,ul,ol,pre")) continue;
+    const text = node.text().replaceAll(/\s+/gu, " ").trim();
+    if (AP_TRAILING_NOTE.test(text)) {
+      while (values.at(-1)?.startsWith("<p>JOJO_AP_SEPARATOR_")) values.pop();
+      break;
+    }
+    if (node.is("p") && AP_SEPARATOR.test(text)) {
+      values.push(`<p>JOJO_AP_SEPARATOR_${separatorIndex}_DO_NOT_DISPLAY</p>`);
+      separatorIndex += 1;
+      continue;
+    }
+    const html = document.html(element);
+    values.push(html);
+    contentValues.push(html);
+  }
+  if (!semanticHtmlBlocks(contentValues, quality, pageUrl)) return undefined;
+  return semanticHtmlBlocks(values, { minimumCharacters: 0, minimumParagraphs: 0 }, pageUrl)
+    ?.replaceAll(/<p>JOJO_AP_SEPARATOR_\d+_DO_NOT_DISPLAY<\/p>/gu, "<hr>");
+}
+
 export function extractApBody(html: string, quality: BodyQuality, pageUrl?: string): string | undefined {
   const document = load(html);
   const paragraphs: string[] = [];
@@ -61,7 +92,7 @@ export function extractApBody(html: string, quality: BodyQuality, pageUrl?: stri
       // Continue with another publisher-owned JSON-LD block.
     }
   });
-  return semanticHtmlBlocks(paragraphs, quality, pageUrl);
+  return semanticHtmlBlocks(paragraphs, quality, pageUrl) ?? storyBody(document, quality, pageUrl);
 }
 
 export function processAp(candidate: Candidate): Candidate {

@@ -1,5 +1,5 @@
 import DOMPurify from "dompurify";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { createElement, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import { SelectableAnnotationArticle } from "../../annotations/SelectableAnnotationArticle";
 import type { TextAnchor } from "../../annotations/types";
@@ -7,6 +7,7 @@ import { ReadingLoadingState } from "../../reading/ReadingLoadingState";
 import { explainTimesSelection, type TimesExplanationMetadata } from "../ai";
 import { timesApi, type TimesNewsItem } from "../api";
 import { TimesExplanationPanel } from "../components/TimesExplanationPanel";
+import { TimesImageCarousel, type TimesCarouselItem } from "../components/TimesImageCarousel";
 import { useTimesPreferencesStore } from "../preferencesStore";
 import { markTimesArticleRead } from "../readStore";
 import { timesSourceName } from "../sourceNames";
@@ -21,7 +22,11 @@ function safeNewsUrl(value: string | null | undefined): string | null {
   }
 }
 
-function materializeAssets(news: TimesNewsItem): string | null {
+function materializeAssets(news: TimesNewsItem): ReactNode[] | null {
+  const htmlVoidElements = new Set([
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "param", "source", "track", "wbr",
+  ]);
   if (!news.content || news.contentFormat !== "html") return null;
   // Sanitize publisher HTML before adding object URLs that were created from
   // our own decoded Delivery objects. DOMPurify intentionally removes blob:
@@ -29,6 +34,22 @@ function materializeAssets(news: TimesNewsItem): string | null {
   // archived image disappear.
   const safeContent = DOMPurify.sanitize(news.content, { ADD_ATTR: ["data-asset-id"] });
   const document = new DOMParser().parseFromString(safeContent, "text/html");
+  for (const paragraph of document.body.querySelectorAll("p")) {
+    const trimLeadingPublisherWhitespace = (node: Node): boolean => {
+      for (const child of [...node.childNodes]) {
+        if (child.nodeType === 3) {
+          const value = child.textContent ?? "";
+          const trimmed = value.replace(/^[\s\u00a0\u3000]+/u, "");
+          if (trimmed !== value) child.textContent = trimmed;
+          if (trimmed) return true;
+        } else if (child.nodeType === 1 && trimLeadingPublisherWhitespace(child)) {
+          return true;
+        }
+      }
+      return false;
+    };
+    trimLeadingPublisherWhitespace(paragraph);
+  }
   const assets = new Map(news.assets.map((asset) => [asset.id, asset]));
   for (const figure of document.querySelectorAll<HTMLElement>("figure[data-asset-id]")) {
     const id = figure.dataset.assetId;
@@ -50,7 +71,77 @@ function materializeAssets(news: TimesNewsItem): string | null {
       figure.append(caption);
     }
   }
-  return document.body.innerHTML;
+  const figures = [...document.body.querySelectorAll<HTMLElement>(":scope > figure[data-asset-id]")];
+  const bodyChildren = [...document.body.children];
+  const firstFigureIndex = bodyChildren.findIndex((element) => element === figures[0]);
+  const allFiguresAreTrailing = figures.length > 1
+    && firstFigureIndex >= 0
+    && bodyChildren.slice(firstFigureIndex).every((element) => element.matches("figure[data-asset-id]"));
+  if (allFiguresAreTrailing) {
+    // Older delivery objects lost publisher image positions and appended every
+    // content image at the end. Spread only those legacy trailing runs through
+    // the article; newly captured objects already carry exact figure anchors.
+    const blocks = [...document.body.querySelectorAll<HTMLElement>(":scope > p, :scope > h2, :scope > h3, :scope > h4, :scope > blockquote, :scope > ol, :scope > pre, :scope > ul")];
+    if (blocks.length > figures.length) {
+      figures.forEach((figure, index) => {
+        const target = Math.max(0, Math.round(((index + 1) * blocks.length) / (figures.length + 1)) - 1);
+        blocks[target]?.after(figure);
+      });
+    }
+  }
+
+  const carouselGroups = new Map<string, TimesCarouselItem[]>();
+  for (const asset of news.assets) {
+    const presentation = asset.presentation;
+    const url = news.assetUrls?.[asset.id];
+    if (presentation?.type !== "carousel" || !url) continue;
+    carouselGroups.set(presentation.id, [
+      ...(carouselGroups.get(presentation.id) ?? []),
+      { asset, url },
+    ]);
+  }
+  for (const items of carouselGroups.values()) {
+    items.sort((left, right) => left.asset.presentation!.order - right.asset.presentation!.order);
+  }
+  const renderedCarousels = new Set<string>();
+
+  const renderNode = (node: Node, key: string): ReactNode => {
+    if (node.nodeType === 3) return node.textContent;
+    if (node.nodeType !== 1) return null;
+    const element = node as HTMLElement;
+    const tag = element.tagName.toLowerCase();
+    if (tag === "figure" && element.dataset.assetId) {
+      const asset = assets.get(element.dataset.assetId);
+      if (!asset) return null;
+      const presentation = asset.presentation;
+      if (presentation?.type === "carousel") {
+        if (renderedCarousels.has(presentation.id)) return null;
+        renderedCarousels.add(presentation.id);
+        const items = carouselGroups.get(presentation.id) ?? [];
+        if (items.length > 1) {
+          return <TimesImageCarousel key={`${news.id}:${presentation.id}`} id={presentation.id} items={items} />;
+        }
+      }
+      const url = news.assetUrls?.[asset.id];
+      if (!url) return null;
+      return (
+        <figure key={key} data-asset-id={asset.id}>
+          <img src={url} alt={asset.alt || asset.caption || ""} loading="lazy" decoding="async" />
+          {asset.caption ? <figcaption>{asset.caption}</figcaption> : null}
+        </figure>
+      );
+    }
+    const props: Record<string, unknown> = { key };
+    for (const attribute of [...element.attributes]) {
+      if (attribute.name === "style") continue;
+      const name = attribute.name === "class" ? "className" : attribute.name === "tabindex" ? "tabIndex" : attribute.name;
+      props[name] = attribute.value;
+    }
+    if (htmlVoidElements.has(tag)) return createElement(tag, props);
+    return createElement(tag, props, [...element.childNodes].map((child, index) => renderNode(child, `${key}.${index}`)));
+  };
+
+  return [...document.body.childNodes].map((node, index) => renderNode(node, `body.${index}`));
 }
 
 export function TimesDetailPage({
@@ -80,7 +171,7 @@ export function TimesDetailPage({
   }>();
   const cancelExplanation = useRef<() => void>(() => {});
   const originalUrl = safeNewsUrl(news?.url);
-  const articleHtml = useMemo(() => news ? materializeAssets(news) : null, [news]);
+  const articleBody = useMemo(() => news ? materializeAssets(news) : null, [news]);
 
   useEffect(() => {
     let active = true;
@@ -165,11 +256,10 @@ export function TimesDetailPage({
             contentTitle: news.title,
             contentUrl: window.location.pathname,
           }} onExplain={startExplanation}>
-            {articleHtml ? (
+            {articleBody ? (
               <div
-                className="prose-editorial mt-8 text-base leading-8 [&_a]:font-medium [&_a]:text-red [&_a]:underline [&_a]:decoration-1 [&_a]:underline-offset-2 [&_blockquote]:border-l-2 [&_blockquote]:border-red [&_blockquote]:pl-5 [&_figcaption]:mt-2 [&_figcaption]:font-sans [&_figcaption]:text-xs [&_figcaption]:leading-5 [&_figcaption]:text-muted [&_figure]:my-8 [&_h2]:mb-3 [&_h2]:mt-9 [&_h2]:text-2xl [&_h2]:font-black [&_h3]:mb-3 [&_h3]:mt-8 [&_h3]:text-xl [&_h3]:font-black [&_img]:mx-auto [&_img]:h-auto [&_img]:max-h-[70vh] [&_img]:max-w-full [&_img]:object-contain [&_li]:my-2 [&_ol]:my-5 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-[1.1em] [&_p]:text-justify [&_p]:indent-[2em] [&_ul]:my-5 [&_ul]:list-disc [&_ul]:pl-6"
-                dangerouslySetInnerHTML={{ __html: articleHtml }}
-              />
+                className="times-article-body prose-editorial mt-8 text-base leading-8 [&_a]:border-b [&_a]:border-red [&_a]:font-black [&_a]:!text-red [&_a]:no-underline [&_a]:transition-colors [&_a:hover]:bg-red/[0.06] [&_a:focus-visible]:outline [&_a:focus-visible]:outline-2 [&_a:focus-visible]:outline-offset-2 [&_a:focus-visible]:outline-red [&_blockquote]:border-l-2 [&_blockquote]:border-red [&_blockquote]:pl-5 [&_figcaption]:mt-2 [&_figcaption]:font-sans [&_figcaption]:text-xs [&_figcaption]:leading-5 [&_figcaption]:text-muted [&_figure]:my-8 [&_h2]:mb-3 [&_h2]:mt-9 [&_h2]:text-2xl [&_h2]:font-black [&_h3]:mb-3 [&_h3]:mt-8 [&_h3]:text-xl [&_h3]:font-black [&_hr]:my-7 [&_hr]:h-px [&_hr]:border-0 [&_hr]:bg-rule [&_img]:mx-auto [&_img]:h-auto [&_img]:max-h-[70vh] [&_img]:max-w-full [&_img]:object-contain [&_li]:my-2 [&_ol]:my-5 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-[1.1em] [&_p]:text-justify [&_p]:indent-[2em] [&_ul]:my-5 [&_ul]:list-disc [&_ul]:pl-6"
+              >{articleBody}</div>
             ) : <div className="mt-8 whitespace-pre-wrap text-base leading-8">{news.content || "暂无正文。"}</div>}
           </SelectableAnnotationArticle>
           {originalUrl ? <a className="mt-8 inline-block border-b border-red font-sans text-xs font-bold text-red" href={originalUrl} target="_blank" rel="noreferrer">查看出版方原文 ↗</a> : null}

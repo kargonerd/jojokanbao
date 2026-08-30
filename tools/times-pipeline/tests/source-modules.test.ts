@@ -131,6 +131,7 @@ describe("native source modules", () => {
     expect(sourceFetchPolicy("reuters")?.captureUrl).toBe("source");
     expect(sourceBodyExtractor("reuters")).toBeTypeOf("function");
     expect(sourceImageExtractor("reuters")).toBeTypeOf("function");
+    expect(sourceImageExtractor("ap")).toBeTypeOf("function");
     expect(sourceImageExtractor("cna")).toBeTypeOf("function");
   });
 

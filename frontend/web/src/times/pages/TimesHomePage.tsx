@@ -4,7 +4,6 @@ import type { TimesTimelineDay, TimesTimelineIndex } from "@jojo/content";
 import { timesApi } from "../api";
 import { SourceLogo } from "../components/SourceLogo";
 import { TimelineArticle } from "../components/TimelineArticle";
-import { TimesLanguageSetting } from "../components/TimesLanguageSetting";
 import { ReadingLoadingState } from "../../reading/ReadingLoadingState";
 import { presentTimesArticle } from "../language";
 import { useTimesPreferencesStore } from "../preferencesStore";
@@ -30,15 +29,18 @@ export function TimesHomePage() {
   const [days, setDays] = useState<TimesTimelineDay[]>([]);
   const [selectedSource, setSelectedSource] = useState("all");
   const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
-  const [languagePickerOpen, setLanguagePickerOpen] = useState(false);
   const [nextDay, setNextDay] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sentinel = useRef<HTMLDivElement | null>(null);
   const listViewport = useRef<HTMLDivElement | null>(null);
+  const sourceRail = useRef<HTMLElement | null>(null);
+  const [sourceRailHasMore, setSourceRailHasMore] = useState(false);
   const readById = useTimesReadStore((state) => state.readById);
   const languagePreference = useTimesPreferencesStore((state) => state.foreignContentLanguage);
+  const disabledSourceIds = useTimesPreferencesStore((state) => state.disabledSourceIds);
+  const disabledSources = useMemo(() => new Set(disabledSourceIds), [disabledSourceIds]);
 
   const loadMore = useCallback(async () => {
     if (!index || loadingMore || nextDay >= index.dates.length) return;
@@ -100,9 +102,10 @@ export function TimesHomePage() {
   const visibleDays = useMemo(() => days.map((day) => ({
     ...day,
     articles: day.articles
+      .filter((article) => !disabledSources.has(article.source.id))
       .filter((article) => selectedSource === "all" || article.source.id === selectedSource)
       .map((article) => presentTimesArticle(article, languagePreference)),
-  })).filter((day) => day.articles.length), [days, languagePreference, selectedSource]);
+  })).filter((day) => day.articles.length), [days, disabledSources, languagePreference, selectedSource]);
 
   const firstVisibleArticle = visibleDays[0]?.articles[0];
   const activeIssueDate = issueDate || firstVisibleArticle?.issueDate || "";
@@ -113,6 +116,30 @@ export function TimesHomePage() {
     : index?.sources.find((source) => source.id === selectedSource);
   const selectedSourceName = selectedSourceItem ? timesSourceName(selectedSourceItem) : "时事";
 
+  const updateSourceRailOverflow = useCallback(() => {
+    const node = sourceRail.current;
+    setSourceRailHasMore(Boolean(node && node.scrollHeight - node.scrollTop - node.clientHeight > 2));
+  }, []);
+
+  const scrollSourceRailForward = useCallback(() => {
+    const node = sourceRail.current;
+    if (!node) return;
+    node.scrollBy({ top: Math.max(160, node.clientHeight * 0.7), behavior: "smooth" });
+  }, []);
+
+  useEffect(() => {
+    updateSourceRailOverflow();
+    window.addEventListener("resize", updateSourceRailOverflow);
+    return () => window.removeEventListener("resize", updateSourceRailOverflow);
+  }, [disabledSources, index, updateSourceRailOverflow]);
+
+  useEffect(() => {
+    if (selectedSource !== "all" && disabledSources.has(selectedSource)) {
+      setSelectedSource("all");
+      navigate("/times", { replace: true });
+    }
+  }, [disabledSources, navigate, selectedSource]);
+
   function chooseSource(sourceId: string) {
     setSelectedSource(sourceId);
     setSourcePickerOpen(false);
@@ -122,22 +149,31 @@ export function TimesHomePage() {
   return (
     <main className={`${showingMobileDetail ? "min-h-[calc(100dvh-58px)] overflow-visible" : "h-[calc(100dvh-58px)] overflow-hidden"} bg-[var(--app-canvas)] text-ink lg:grid lg:h-[calc(100vh-64px)] lg:min-h-0 lg:grid-cols-[220px_390px_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[240px_450px_minmax(0,1fr)]`}>
       <aside aria-label="媒体来源" className="hidden min-h-0 flex-col border-r border-rule bg-[var(--app-canvas)] lg:flex">
-        <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4" aria-label="选择媒体">
-          <p className="px-2 pb-2 font-sans text-[10px] font-black tracking-[0.16em] text-muted">媒体来源</p>
-          <button type="button" onClick={() => chooseSource("all")} className={`flex w-full items-center gap-2.5 border-l-2 px-3 py-1.5 text-left font-sans text-sm font-bold ${selectedSource === "all" ? "border-red bg-paper text-red" : "border-transparent hover:bg-paper"}`}>
-            <AllSourcesIcon className="h-6 w-6" />
-            <span>所有媒体</span>
-          </button>
-          {index?.sources.map((source) => {
-            return (
-              <button key={source.id} type="button" onClick={() => chooseSource(source.id)} className={`flex w-full items-center gap-2.5 border-l-2 px-3 py-1.5 text-left font-sans text-sm ${selectedSource === source.id ? "border-red bg-paper font-bold text-red" : "border-transparent hover:bg-paper"}`}>
-                <SourceLogo source={source} size="rail" />
-                <span className="min-w-0 truncate">{timesSourceName(source)}</span>
-              </button>
-            );
-          })}
-        </nav>
-        <TimesLanguageSetting className="shrink-0 border-t border-rule px-5 py-4" />
+        <div className="relative min-h-0 flex-1">
+          <nav ref={sourceRail} onScroll={updateSourceRailOverflow} className="times-source-scroller h-full overflow-y-auto overscroll-contain px-3 py-4" aria-label="选择媒体">
+            <p className="px-2 pb-2 font-sans text-[10px] font-black tracking-[0.16em] text-muted">媒体来源</p>
+            <button type="button" onClick={() => chooseSource("all")} className={`flex w-full items-center gap-2.5 border-l-2 px-3 py-1.5 text-left font-sans text-sm font-bold ${selectedSource === "all" ? "border-red bg-paper text-red" : "border-transparent hover:bg-paper"}`}>
+              <AllSourcesIcon className="h-6 w-6" />
+              <span>所有媒体</span>
+            </button>
+            {index?.sources.filter((source) => !disabledSources.has(source.id)).map((source) => {
+              return (
+                <button key={source.id} type="button" onClick={() => chooseSource(source.id)} className={`flex w-full items-center gap-2.5 border-l-2 px-3 py-1.5 text-left font-sans text-sm ${selectedSource === source.id ? "border-red bg-paper font-bold text-red" : "border-transparent hover:bg-paper"}`}>
+                  <SourceLogo source={source} size="rail" />
+                  <span className="min-w-0 truncate">{timesSourceName(source)}</span>
+                </button>
+              );
+            })}
+          </nav>
+          {sourceRailHasMore ? (
+            <button type="button" onClick={scrollSourceRailForward} className="times-source-overflow-hint" aria-label="向下查看更多媒体">
+              <span>向下查看更多媒体</span>
+              <svg aria-hidden="true" viewBox="0 0 16 16" fill="none">
+                <path d="m3.5 6 4.5 4 4.5-4" />
+              </svg>
+            </button>
+          ) : null}
+        </div>
       </aside>
 
       <section className={`${showingMobileDetail ? "hidden lg:flex" : "flex"} h-full min-h-0 flex-col border-r border-rule bg-paper`} aria-label="文章列表">
@@ -151,10 +187,7 @@ export function TimesHomePage() {
             aria-haspopup="dialog"
             aria-expanded={sourcePickerOpen}
             aria-label={`筛选媒体，当前：${selectedSource === "all" ? "所有媒体" : selectedSourceName}`}
-            onClick={() => {
-              setLanguagePickerOpen(false);
-              setSourcePickerOpen(true);
-            }}
+            onClick={() => setSourcePickerOpen(true)}
             className="flex min-w-0 flex-1 items-center gap-3 px-4 text-left"
           >
             {selectedSource !== "all" && firstVisibleArticle ? <SourceLogo article={firstVisibleArticle} size="header" /> : (
@@ -166,20 +199,6 @@ export function TimesHomePage() {
             <span className="flex shrink-0 items-center gap-1 text-xs font-bold text-red">
               筛选<span aria-hidden="true">⌄</span>
             </span>
-          </button>
-          <button
-            type="button"
-            aria-haspopup="dialog"
-            aria-expanded={languagePickerOpen}
-            aria-label={`外文内容语言：${languagePreference === "zh-CN" ? "中文译文" : "原文"}`}
-            onClick={() => {
-              setSourcePickerOpen(false);
-              setLanguagePickerOpen(true);
-            }}
-            className="flex w-[74px] shrink-0 flex-col items-center justify-center border-l border-rule px-2 text-red"
-          >
-            <span className="text-[9px] font-bold tracking-[0.12em] text-muted">语言</span>
-            <span className="text-xs font-black">{languagePreference === "zh-CN" ? "中文" : "原文"}</span>
           </button>
         </div>
         <div ref={listViewport} className="min-h-0 flex-1 overflow-y-auto">
@@ -251,7 +270,7 @@ export function TimesHomePage() {
                 <span className="min-w-0 flex-1">所有媒体</span>
                 {selectedSource === "all" ? <span aria-hidden="true">✓</span> : null}
               </button>
-              {index?.sources.map((source) => {
+              {index?.sources.filter((source) => !disabledSources.has(source.id)).map((source) => {
                 const active = selectedSource === source.id;
                 return (
                   <button
@@ -268,38 +287,6 @@ export function TimesHomePage() {
                 );
               })}
             </div>
-          </section>
-        </div>
-      ) : null}
-      {languagePickerOpen && !showingMobileDetail ? (
-        <div className="fixed inset-0 z-[90] lg:hidden">
-          <button
-            type="button"
-            aria-label="关闭语言设置"
-            className="absolute inset-0 h-full w-full bg-ink/35"
-            onClick={() => setLanguagePickerOpen(false)}
-          />
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="times-language-picker-title"
-            className="absolute inset-x-0 bottom-0 border-t-2 border-red bg-paper px-5 pb-[calc(20px+env(safe-area-inset-bottom))] pt-4 shadow-[0_-8px_30px_rgba(32,32,32,0.18)]"
-          >
-            <header className="mb-5 flex items-center">
-              <div className="min-w-0 flex-1">
-                <h2 id="times-language-picker-title" className="text-lg font-black">阅读设置</h2>
-                <p className="mt-0.5 font-sans text-xs text-muted">选择外文新闻默认显示的语言</p>
-              </div>
-              <button
-                type="button"
-                aria-label="关闭"
-                className="grid h-9 w-9 place-content-center font-sans text-2xl leading-none text-red"
-                onClick={() => setLanguagePickerOpen(false)}
-              >
-                ×
-              </button>
-            </header>
-            <TimesLanguageSetting />
           </section>
         </div>
       ) : null}

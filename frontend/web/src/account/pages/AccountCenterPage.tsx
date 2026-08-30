@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../auth";
 import { PersonalInvitationPanel } from "../components/PersonalInvitationPanel";
+import { TimesLanguagePreference } from "../components/TimesLanguagePreference";
 
 interface AccountCenterPageProps {
   userId: string;
@@ -153,6 +154,20 @@ export function AccountCenterPage({ userId, onForgotPassword }: AccountCenterPag
               <Link to="/bookshelf" className={accountLinkClass}><span>我的书架</span><span aria-hidden="true">→</span></Link>
               <Link to="/support" className={accountLinkClass}><span>关于 JOJO 看报</span><span aria-hidden="true">→</span></Link>
             </nav>
+          </section>
+
+          <section aria-labelledby="reading-preferences-title" className="grid gap-4 border-t border-rule py-6 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-8">
+            <h2 id="reading-preferences-title" className="m-0 font-sans text-xs font-black tracking-[0.16em] text-red">阅读偏好</h2>
+            <div className="border-y border-rule">
+              <TimesLanguagePreference />
+              <Link to="/account/times-sources" className="flex items-center justify-between gap-5 border-t border-rule py-4 text-ink hover:text-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red">
+                <div>
+                  <h3 className="m-0 font-serif text-base font-black">时事媒体源</h3>
+                  <p className="mb-0 mt-1 text-xs font-bold leading-6 text-muted">选择在时事时间线中显示的媒体。</p>
+                </div>
+                <span aria-hidden="true" className="shrink-0 font-serif font-black text-red">→</span>
+              </Link>
+            </div>
           </section>
 
           <section aria-labelledby="security-title" className="grid gap-4 border-t border-rule py-6 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-8">

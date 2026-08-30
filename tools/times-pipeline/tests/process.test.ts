@@ -10,9 +10,23 @@ import { extractApBody } from "../src/sources/ap/process.js";
 import { extractBloombergBody } from "../src/sources/bloomberg/process.js";
 import { extractClsBody } from "../src/sources/cls/process.js";
 import { extractThepaperBody } from "../src/sources/thepaper/process.js";
+import { extractThepaperImages } from "../src/sources/thepaper/images.js";
 import type { Candidate, SourceConfig } from "../src/types.js";
 
 describe("article processing", () => {
+  it("removes publisher indentation before applying the reader's two-character indent", () => {
+    const body = extractArticleBody(
+      `<article><p>　　<a href="/source">中新网</a>${"报道正文内容。".repeat(20)}</p></article>`,
+      { capture: "http", bodySelectors: ["article"] },
+      { minimumCharacters: 50, minimumParagraphs: 1 },
+      undefined,
+      "https://example.test/story",
+    );
+
+    expect(body).toMatch(/^<p><a /u);
+    expect(body).not.toContain("　　");
+  });
+
   it("extracts only Reuters-owned paragraph and list blocks from rendered DOM", () => {
     const intro = `<div data-testid="paragraph-0">${"Reuters introduction. ".repeat(20)}</div>`;
     const details = Array.from({ length: 4 }, (_, index) =>
@@ -249,6 +263,32 @@ describe("article processing", () => {
     expect(body).toContain("Lawmakers from both parties");
   });
 
+  it("preserves AP story separators and removes promotion and funding notes", () => {
+    const paragraph = (value: string) => `<p>${value}</p>`;
+    const body = extractArticleBody(
+      `<div class="RichTextStoryBody">
+        ${paragraph("Midwifery has traditionally been viewed as women’s work in Lesotho, but more men are entering the profession to reduce deaths around childbirth.")}
+        ${paragraph("___")}
+        ${paragraph("This is part of a series on maternal mortality in sub-Saharan Africa, which accounts for most global maternal deaths each year.")}
+        ${paragraph("___")}
+        ${paragraph("Lesotho remains a conservative society, and some patients are still hesitant about receiving intimate care from a male midwife.")}
+        ${paragraph("Further reporting explains how health workers are addressing the shortage across rural clinics and building trust with patients.")}
+        ${paragraph("___")}
+        ${paragraph('For more on Africa and development: <a href="https://apnews.com/hub/africa-pulse">Africa Pulse</a>')}
+        ${paragraph("The Associated Press receives financial support for global health and development coverage in Africa from the Gates Foundation.")}
+      </div>`,
+      { capture: "browser", bodySelectors: [".RichTextStoryBody"] },
+      { minimumCharacters: 300, minimumParagraphs: 4 },
+      extractApBody,
+      "https://apnews.com/article/example",
+    );
+
+    expect(body?.match(/<hr>/gu)).toHaveLength(2);
+    expect(body).toContain("This is part of a series");
+    expect(body).not.toContain("For more on Africa");
+    expect(body).not.toContain("Gates Foundation");
+  });
+
   it("extracts The Paper content from Next.js data and persisted discovery fragments", () => {
     const content = [
       "邮储银行中期业绩正文第一段，包含足够的信息用于验证澎湃新闻的专用正文解析。",
@@ -276,6 +316,25 @@ describe("article processing", () => {
     expect(pageBody).toContain(content[0]);
     expect(pageBody?.match(/<p>/gu)).toHaveLength(2);
     expect(discoveryBody).toBe(pageBody);
+  });
+
+  it("keeps The Paper images at their publisher body positions", () => {
+    const content = [
+      "第一段正文包含足够的信息，用于确认第一张图片出现在这一段之后。",
+      '<img data-src="https://imgpai.thepaper.cn/first.jpg" width="600" height="400">',
+      "第二段正文包含足够的信息，用于确认第二张图片继续保持原文顺序。",
+      '<img data-src="https://imgpai.thepaper.cn/second.jpg" width="800" height="600">',
+      "第三段正文包含足够的信息，位于两张图片之后。",
+    ].map((value) => value.startsWith("<img") ? value : `<p>${value}</p>`).join("");
+    const nextData = { props: { pageProps: { detailData: { contentDetail: { content } } } } };
+    const html = `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(nextData)}</script>`;
+
+    const images = extractThepaperImages(html, "https://www.thepaper.cn/newsDetail_forward_1");
+
+    expect(images).toMatchObject([
+      { sourceUrl: "https://imgpai.thepaper.cn/first.jpg", role: "content", afterBlock: 1 },
+      { sourceUrl: "https://imgpai.thepaper.cn/second.jpg", role: "content", afterBlock: 2 },
+    ]);
   });
 
   it("accepts a The Paper image-only report as publisher-owned content", () => {

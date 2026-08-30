@@ -16,6 +16,7 @@ import { rollout } from "./rollout";
 import { ARCHIVE_ROOT, defaultArchiveIssuePath } from "./routes";
 import { refreshFeatureFlags } from "./featureFlags";
 import { AccountEntry } from "./account/AccountEntry";
+import { TimesSourceSettingsPage } from "./account/pages/TimesSourceSettingsPage";
 import { startAccountSessionSync, useAccountSessionStore } from "./account/session";
 
 const AccountConfirmation = lazy(() => import("./account/AccountConfirmation"));
@@ -118,6 +119,7 @@ function RedesignedRoutes() {
       <RuntimeBootstrap />
       <Routes>
         <Route path="/account" element={<AccountRoute />} />
+        <Route path="/account/times-sources" element={<AuthenticatedRoute><AppLayout><TimesSourceSettingsPage /></AppLayout></AuthenticatedRoute>} />
         <Route path="/account/confirm" element={<LazyRoute><AccountConfirmation /></LazyRoute>} />
         <Route path="/login" element={<Navigate to="/account" replace />} />
 

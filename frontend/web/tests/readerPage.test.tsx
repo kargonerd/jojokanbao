@@ -252,6 +252,16 @@ describe("ReaderPage document states", () => {
     renderReader("/rmrb/19761009#page-99");
     expect(latestViewerProps().initialPage).toBe(1);
   });
+
+  it("remembers the last newspaper page without treating an issue as completable", () => {
+    renderReader("/rmrb/19761009#page-4");
+
+    expect(useRecentReadingStore.getState().items[0]).toMatchObject({
+      subtitle: "1976 年 10 月 9 日 · 第 4 页",
+      href: "/archive/rmrb/19761009#page-4",
+      progress: 0,
+    });
+  });
 });
 
 describe("ReaderPage newspaper navigation", () => {
@@ -553,9 +563,9 @@ describe("ReaderPage toolbar interactions", () => {
     expect(screen.getByText("5 / 6")).toBeTruthy();
     expect(window.location.hash).toBe("#page-5");
     expect(useRecentReadingStore.getState().items[0]).toMatchObject({
-      subtitle: "1976 年 10 月 9 日",
+      subtitle: "1976 年 10 月 9 日 · 第 5 页",
       href: "/archive/rmrb/19761009#page-5",
-      progress: 80,
+      progress: 0,
     });
 
     fireEvent.click(screen.getByRole("button", { name: "复制阅读链接" }));

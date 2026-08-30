@@ -19,7 +19,7 @@ function semanticPublisherBody(value: string, quality: BodyQuality, pageUrl?: st
     ?? (fragment("img[src], img[data-src]").length ? IMAGE_ONLY_BODY : undefined);
 }
 
-function embeddedBody(html: string): string | undefined {
+export function embeddedThepaperBody(html: string): string | undefined {
   const document = load(html);
   const value = document("script#__NEXT_DATA__").text();
   if (!value) return undefined;
@@ -38,7 +38,7 @@ function embeddedBody(html: string): string | undefined {
 }
 
 export function extractThepaperBody(html: string, quality: BodyQuality, pageUrl?: string): string | undefined {
-  const value = embeddedBody(html);
+  const value = embeddedThepaperBody(html);
   if (value) return semanticPublisherBody(value, quality, pageUrl);
 
   // Discovery persists the publisher-owned content fragment rather than a full page.

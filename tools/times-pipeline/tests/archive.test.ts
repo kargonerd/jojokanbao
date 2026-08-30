@@ -108,13 +108,14 @@ describe("page capture orchestration", () => {
 
   it("keeps article images as owned asset references and filters tracking pixels", () => {
     const images = discoverArticleImages(`<html><head><meta property="og:image" content="/lead.jpg"></head><body><article>
-      <p>Article body</p><figure><img src="/inside.jpg" width="1200" height="800" alt="Inside"><figcaption>Photo credit</figcaption></figure>
+      <p>Article body contains enough publisher text to remain a semantic content block.</p><figure><img src="/inside.jpg" width="1200" height="800" alt="Inside"><figcaption>Photo credit</figcaption></figure>
       <img src="/tracking-pixel.gif" width="1" height="1"></article></body></html>`, "https://example.test/story");
     expect(images.map((image) => image.sourceUrl)).toEqual([
       "https://example.test/lead.jpg",
       "https://example.test/inside.jpg",
     ]);
     expect(images[1]?.caption).toBe("Photo credit");
+    expect(images[1]?.afterBlock).toBe(1);
     expect(attachAssetsToBody("<p>Body</p>", [{
       id: "asset:lead", type: "image", role: "lead", sourceUrl: images[0]!.sourceUrl,
       rawObject: "raw/example/assets/lead.jpg", mediaType: "image/jpeg", size: 1, sha256: "lead",

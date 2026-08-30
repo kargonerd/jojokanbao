@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BookReader } from "../src/rag/components/BookReader";
 import { useFeatureFlagStore } from "../src/featureFlags";
 import { useAccountSessionStore } from "../src/account/session";
+import { useRecentReadingStore } from "../src/library/recentReadingStore";
 
 const annotationApi = vi.hoisted(() => ({
   loadAnnotationThreads: vi.fn(async () => []),
@@ -47,6 +48,7 @@ function LocationProbe() {
 describe("BookReader", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    useRecentReadingStore.setState({ items: [] });
     useFeatureFlagStore.setState({
       initialized: true,
       revision: "reader-test",
@@ -85,6 +87,7 @@ describe("BookReader", () => {
     onInternalLink = vi.fn(),
     focus?: { anchorId?: string; text?: string },
     strict = false,
+    activeChapterId = "chapter-1",
   ) {
     const reader = (
       <MemoryRouter initialEntries={["/book/test-books/test-books:full-book"]}>
@@ -92,6 +95,7 @@ describe("BookReader", () => {
           bookTitle="测试书"
           datasetId="test-books"
           itemId="test-books:full-book"
+          itemKey="full-book"
           manifestObject="content/books/test-books/items/full-book/manifest.jox"
           characterCount={12000}
           logicalChapterCount={40}
@@ -100,8 +104,8 @@ describe("BookReader", () => {
             { id: "toc-1", targetId: "chapter-1", title: "第一章", depth: 0 },
             { id: "toc-2", targetId: "chapter-2", title: "第二章", depth: 0 },
           ]}
-          activeChapterId="chapter-1"
-          chapterKey="chapter-1"
+          activeChapterId={activeChapterId}
+          chapterKey={activeChapterId}
           focusAnchorId={focus?.anchorId}
           focusText={focus?.text ? { text: focus.text, token: 1 } : undefined}
           backHref="/rag/chat"
@@ -143,6 +147,20 @@ describe("BookReader", () => {
     expect(screen.getByRole("button", { name: "切换纸张纹理" })).toBeTruthy();
     expect(screen.queryByText("上一节")).toBeNull();
     expect(screen.queryByText(/按 ← →/)).toBeNull();
+  });
+
+  it("records the current chapter and actual book progress for continuing later", async () => {
+    renderReader(vi.fn(), vi.fn(), undefined, false, "chapter-2");
+
+    await waitFor(() => expect(useRecentReadingStore.getState().items[0]).toMatchObject({
+      id: "book:test-books:full-book",
+      datasetId: "test-books",
+      itemKey: "full-book",
+      title: "测试书",
+      subtitle: "第二章",
+      href: "/book/test-books/full-book?chapter=chapter-2",
+    }));
+    expect(useRecentReadingStore.getState().items[0]?.progress).toBeGreaterThanOrEqual(50);
   });
 
   it("switches to scrolling mode and remembers the choice", async () => {

@@ -227,6 +227,56 @@ describe("app homepage", () => {
     const card = screen.getByRole("link", { name: /毛泽东文集 第一卷/ });
     await waitFor(() => expect(card.querySelector("img")?.getAttribute("src")).toBe("blob:book-cover"));
   });
+
+  it("shows the last book chapter once and keeps progress exclusive to books", () => {
+    useRecentReadingStore.setState({
+      items: [
+        {
+          id: "book:philosophy-new:full-book",
+          kind: "book",
+          datasetId: "philosophy-new",
+          itemKey: "full-book",
+          title: "大众哲学",
+          subtitle: "第六章 真理是怎样发现的",
+          href: "/book/philosophy-new/full-book?chapter=chapter-6",
+          progress: 38,
+          updatedAt: 3,
+        },
+        {
+          id: "book:philosophy-old:legacy",
+          kind: "book",
+          datasetId: "philosophy-old",
+          itemKey: "legacy",
+          title: "大众哲学",
+          subtitle: "大众哲学",
+          href: "/book/philosophy-old/legacy",
+          progress: 0,
+          updatedAt: 2,
+        },
+        {
+          id: "periodical:rmrb",
+          kind: "periodical",
+          publicationId: "rmrb",
+          title: "人民日报",
+          subtitle: "1989 年 11 月 17 日 · 第 4 页",
+          href: "/archive/rmrb/19891117#page-4",
+          progress: 0,
+          updatedAt: 1,
+        },
+      ],
+    });
+
+    renderAt("/");
+
+    expect(screen.getAllByText("大众哲学")).toHaveLength(1);
+    expect(screen.getByText("上次读到 · 第六章 真理是怎样发现的")).toBeTruthy();
+    const book = screen.getByRole("link", { name: /大众哲学/ });
+    expect(within(book).getByText("38%", { selector: "span" })).toBeTruthy();
+    const newspaper = screen.getByRole("link", { name: /人民日报/ });
+    expect(within(newspaper).getByText("1989 年 11 月 17 日 · 第 4 页")).toBeTruthy();
+    expect(newspaper.querySelector("progress")).toBeNull();
+    expect(within(newspaper).queryByText("0%")).toBeNull();
+  });
 });
 
 describe("app library", () => {

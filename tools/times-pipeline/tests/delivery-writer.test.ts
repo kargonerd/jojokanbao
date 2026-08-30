@@ -64,6 +64,7 @@ describe("news Delivery writer", () => {
       assets: [{
         id: "asset:image", type: "image", role: "lead", sourceUrl: "https://example.test/image.jpg",
         rawObject: imageObject, mediaType: "image/jpeg", size: 11, sha256: "image", alt: "Lead image",
+        presentation: { type: "carousel", id: "primary-gallery", order: 0, total: 1 },
       }],
       contentStatus: "full",
       contentHash: "full-hash",
@@ -128,7 +129,11 @@ describe("news Delivery writer", () => {
     expect(index.dates.map((date) => date.date)).toEqual(["2026-08-23", "2026-08-22"]);
     const dayObject = "content/timeline/dates/2026/08/2026-08-23.jox";
     const day = await gunzipJoxJson<TimesTimelineDay>(new Uint8Array(await readFile(path.join(deliveryRoot, ...dayObject.split("/")))), dayObject);
-    expect(day.articles[0]).toMatchObject({ id: "example:full", source: { id: "example" }, assets: [{ id: "asset:image" }] });
+    expect(day.articles[0]).toMatchObject({
+      id: "example:full",
+      source: { id: "example" },
+      assets: [{ id: "asset:image", presentation: { type: "carousel", id: "primary-gallery", order: 0, total: 1 } }],
+    });
     expect(day.articles[0]!.articleObject).toMatch(/^content\/newspapers\/example\/articles\/[a-f0-9]+\.jox$/u);
     expect(day.articles[0]!.translations?.["zh-CN"]).toMatchObject({
       language: "zh-CN",
