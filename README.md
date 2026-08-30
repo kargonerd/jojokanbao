@@ -18,7 +18,7 @@ backend/
 agent/
   runtime/             通用 Pi Agent、Codex OAuth 与凭证
   edgeone/             Makers Agent 的认证、SSE 和持久化适配
-tools/                 JOJO 管理台、Archive PDF 工具和管理员命令
+tools/                 Times、历史新闻归档、Archive PDF、管理台和管理员命令
 infrastructure/        EdgeOne、Cloudflare、Supabase 与线上腾讯 SCF Search
 content/blog/          博客内容
 ```

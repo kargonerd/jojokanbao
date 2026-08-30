@@ -29,11 +29,14 @@ Homepage 已启用 Astro React integration，可以直接复用 `@jojo/ui` 组�
 - `backend/src/app/account`：已启用的账号 API。
 - RAG 由独立 Agent 运行层承载，不在 Python 后端维护第二套实现；浏览器统一请求
   Reader 的 `/gateway/ask`，由同源 Cloud Function 转发到国际 Agent。
-- Times 由 `tools/times-pipeline` 每十分钟离线采集，以 WARC 1.1/WACZ 1.2 保存原始 HTTP；
+- Times 由 `tools/times-pipeline` 每十分钟离线采集，保存原始 HTML、渲染 DOM、抓取元数据和原始图片；
   发现直接使用出版方官方 RSS、API、sitemap 或栏目页，正文由 Chromium+BPC 原页归档和来源/通用解析器回填，
   再生成媒体 Canonical 与 Delivery Jox。Raw/Canonical 写入同一个 HF Dataset，GitHub Actions
   按对象依赖顺序只把 Delivery 发布到 B2。Web 与 Mobile 直接读取 B2 CDN，不在读者请求路径中
-  抓取出版方或调用 Python API，也不依赖 `jojo-news-archive-runner`。
+  抓取出版方或调用 Python API。
+- 历史新闻发现、归档和逐年解析器验证位于 `tools/news-archive`。存储迁移完成后，
+  它将使用独立的 `raw/archive/` HF 命名空间，并通过 Times 的同一 Canonical writer
+  进入 `jojo-news-article/2`；迁移完成前其运行 workflow 保持禁用。
 
 本地运行主 API：
 
@@ -73,8 +76,8 @@ EdgeOne 专有入口位于 `infrastructure/edgeone/functions`，只导入
 
 - `tools/jojo-admin`：本机 JOJO 管理台。
 - `tools/archive-pdf`：Archive PDF 人工操作与发布工具。
-- `tools/bloomberg-archive`：定时 Bloomberg 数据归档工具。
-- `tools/times-pipeline`：Times 新闻源采集、Raw/Canonical 构建、WACZ 归档及 B2 Delivery 发布工具。
+- `tools/news-archive`：历史新闻归档、解析器验证及 Canonical 接入工具。
+- `tools/times-pipeline`：Times 新闻源采集、Raw/Canonical 构建及 B2 Delivery 发布工具。
 - `infrastructure/supabase`：数据库 migrations。
 - `infrastructure/edgeone`：EdgeOne 配置、入口和部署组装脚本。
 - `infrastructure/tencent-scf/search`：Reader 当前线上 Flask Search，独立运行。

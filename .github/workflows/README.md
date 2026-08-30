@@ -24,6 +24,7 @@ the environments that need different runners or dependencies:
 - Supabase migrations and the shared Auth contract
 - EdgeOne Python Cloud API tests
 - the Times offline-pipeline tests and Raw/Canonical contract checks
+- the historical news archive parser, validation, schema, and manifest checks
 
 The `build-and-test` aggregate job and `e2e` browser job keep stable check
 names because the `master` ruleset requires those contexts. The aggregate job
@@ -33,7 +34,7 @@ Turborepo selects affected workspace packages and their consumers using the
 exact base and head commits emitted by the `changes` job. This includes the
 internal Data Workbench Web package. Root files that are not workspace
 packages, such as `content/blog/`, `infrastructure/supabase/`, `backend/`,
-and `tools/bloomberg-archive/`, are
+and `tools/news-archive/`, are
 classified explicitly where they have dedicated checks.
 
 Every JavaScript or TypeScript workspace should expose the applicable standard
