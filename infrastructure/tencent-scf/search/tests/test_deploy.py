@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import zipfile
 import subprocess
 
@@ -110,6 +110,40 @@ class DeployPackageTests(unittest.TestCase):
                     namespace="default",
                     profile="",
                 )
+
+    def test_upload_uses_cos_sdk_with_environment_credentials(self):
+        client = MagicMock()
+        with patch.object(deploy, "_cos_client", return_value=client):
+            deploy._upload(
+                Path("search.zip"),
+                bucket="jojo-search-1314955862",
+                region="ap-beijing",
+                key="runtime/scf-builds/search.zip",
+                profile="",
+            )
+
+        client.upload_file.assert_called_once_with(
+            Bucket="jojo-search-1314955862",
+            Key="runtime/scf-builds/search.zip",
+            LocalFilePath="search.zip",
+            PartSize=1,
+            MAXThread=5,
+        )
+
+    def test_delete_uses_cos_sdk_with_environment_credentials(self):
+        client = MagicMock()
+        with patch.object(deploy, "_cos_client", return_value=client):
+            deploy._delete_upload(
+                bucket="jojo-search-1314955862",
+                region="ap-beijing",
+                key="runtime/scf-builds/search.zip",
+                profile="",
+            )
+
+        client.delete_object.assert_called_once_with(
+            Bucket="jojo-search-1314955862",
+            Key="runtime/scf-builds/search.zip",
+        )
 
 
 if __name__ == "__main__":

@@ -333,7 +333,35 @@ def _verify_function_access(
         raise RuntimeError(f"目标 SCF 不可用：{response.get('StatusDesc') or status}")
 
 
+def _cos_client(region: str) -> Any | None:
+    secret_id = os.getenv("TENCENTCLOUD_SECRET_ID", "")
+    secret_key = os.getenv("TENCENTCLOUD_SECRET_KEY", "")
+    if not secret_id or not secret_key:
+        return None
+    from qcloud_cos import CosConfig, CosS3Client
+
+    config = CosConfig(
+        Region=region,
+        SecretId=secret_id,
+        SecretKey=secret_key,
+        Token=os.getenv("TENCENTCLOUD_TOKEN") or None,
+        Scheme="https",
+        Timeout=60,
+    )
+    return CosS3Client(config)
+
+
 def _upload(package: Path, *, bucket: str, region: str, key: str, profile: str) -> None:
+    client = _cos_client(region)
+    if client is not None:
+        client.upload_file(
+            Bucket=bucket,
+            Key=key,
+            LocalFilePath=str(package),
+            PartSize=1,
+            MAXThread=5,
+        )
+        return
     _run(_tccli(
         profile,
         "cos",
@@ -352,6 +380,10 @@ def _upload(package: Path, *, bucket: str, region: str, key: str, profile: str) 
 
 
 def _delete_upload(*, bucket: str, region: str, key: str, profile: str) -> None:
+    client = _cos_client(region)
+    if client is not None:
+        client.delete_object(Bucket=bucket, Key=key)
+        return
     _run(_tccli(
         profile,
         "cos",
