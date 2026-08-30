@@ -9,12 +9,12 @@ import sqlite3
 
 import pytest
 
-from jojo_olds_api.news_models import (
+from jojo_news_archive.news_models import (
     CaptureCandidate,
     CaptureProvider,
     RawCapture,
 )
-from jojo_olds_api.parser_validation import (
+from jojo_news_archive.parser_validation import (
     _has_generic_interface_noise,
     _has_publisher_interface_noise,
     _validation_article_identity,
@@ -28,7 +28,7 @@ from jojo_olds_api.parser_validation import (
     pending_parser_validation_urls,
     record_parser_validation,
 )
-from jojo_olds_api.news_parser import _terminal_tandem_repeat_length
+from jojo_news_archive.news_parser import _terminal_tandem_repeat_length
 
 
 def test_terminal_tandem_repeat_requires_long_punctuated_exact_suffix():
@@ -59,7 +59,7 @@ def test_generic_interface_noise_does_not_match_editorial_share_sentence():
     assert not _has_generic_interface_noise(
         ["by the way, share this article. please."]
     )
-from jojo_olds_api.raw_archive_capture import (
+from jojo_news_archive.raw_archive_capture import (
     completed_raw_capture,
     initialize_capture_schema,
     load_capture_manifest,

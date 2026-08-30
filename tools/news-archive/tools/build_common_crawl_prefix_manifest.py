@@ -12,12 +12,12 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_olds_api.archive_sources import (
+from jojo_news_archive.archive_sources import (
     ArchiveSourceSpec,
     archive_source_variant,
 )
-from jojo_olds_api.bloomberg_archive_download import ArchiveClient
-from jojo_olds_api.common_crawl_prefix_manifest import (
+from jojo_news_archive.bloomberg_archive_download import ArchiveClient
+from jojo_news_archive.common_crawl_prefix_manifest import (
     CommonCrawlPrefixClient,
     export_prefix_manifest,
     initialize_prefix_schema,

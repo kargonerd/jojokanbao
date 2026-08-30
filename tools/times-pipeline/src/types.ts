@@ -100,7 +100,15 @@ export interface DiscoveryTarget {
   discovery: DiscoveryEndpoint;
 }
 
-export type DiscoveryConfig = DiscoveryEndpoint | { kind: "multi"; targets: DiscoveryTarget[] };
+export interface HistoricalArchiveDiscovery {
+  kind: "historical-archive";
+  providers: string[];
+  recordCount: number;
+}
+
+export type DiscoveryConfig =
+  | DiscoveryEndpoint
+  | { kind: "multi"; targets: DiscoveryTarget[] };
 
 export interface PublisherSectionConfig {
   id: string;
@@ -248,7 +256,7 @@ export interface SourceCaptureManifest {
   publicationTimeZone: string;
   startedAt: string;
   completedAt: string;
-  discovery: SourceConfig["discovery"];
+  discovery: SourceConfig["discovery"] | HistoricalArchiveDiscovery;
   candidateCount: number;
   fullCount: number;
   summaryCount: number;

@@ -13,7 +13,7 @@ import time
 SERVICE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SERVICE_DIR))
 
-from jojo_olds_api.bloomberg_archive_download import (  # noqa: E402
+from jojo_news_archive.bloomberg_archive_download import (  # noqa: E402
     ArchiveClient,
     ManifestArticle,
     download_article,

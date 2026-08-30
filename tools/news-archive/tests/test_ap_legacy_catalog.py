@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from jojo_olds_api.ap_legacy_catalog import (
+from jojo_news_archive.ap_legacy_catalog import (
     ap_google_hosted_page_metadata,
     ap_huff_wire_page_metadata,
     ap_partner_publication_datetime,
@@ -10,7 +10,7 @@ from jojo_olds_api.ap_legacy_catalog import (
     build_ap_hosted_manifest_rows,
     normalize_ap_partner_url,
 )
-from jojo_olds_api.news_models import CaptureProvider
+from jojo_news_archive.news_models import CaptureProvider
 
 
 def _row(

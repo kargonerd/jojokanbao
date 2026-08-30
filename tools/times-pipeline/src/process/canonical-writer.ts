@@ -30,7 +30,7 @@ export interface CanonicalArticle {
     rawRunId: string;
     rawManifest: string;
     rawPage?: string;
-    discovery: SourceConfig["discovery"];
+    discovery: SourceCaptureManifest["discovery"];
     parserVersion?: string;
     captureMethod?: "direct" | "browser";
   };
@@ -262,7 +262,14 @@ export async function writeCanonicalSource(
       }
       continue;
     }
-    const article = canonicalArticle(candidate, value, manifest, manifestObject, rawRevision, source.content.parser);
+    const article = canonicalArticle(
+      candidate,
+      value,
+      manifest,
+      manifestObject,
+      rawRevision,
+      candidate.parserVersion ?? source.content.parser,
+    );
     const object = `canonical/${source.id}/articles/${article.contentHash}.json.gz`;
     const target = path.join(output, ...object.split("/"));
     await mkdir(path.dirname(target), { recursive: true });

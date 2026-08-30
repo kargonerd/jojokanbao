@@ -9,7 +9,7 @@ import shutil
 import sqlite3
 import tempfile
 
-from jojo_olds_api.archive_sources import (
+from jojo_news_archive.archive_sources import (
     archive_source_spec,
     article_deduplication_key,
 )

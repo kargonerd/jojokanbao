@@ -4,7 +4,7 @@ import gzip
 from pathlib import Path
 import sqlite3
 
-from jojo_olds_api.parser_validation import initialize_parser_validation_schema
+from jojo_news_archive.parser_validation import initialize_parser_validation_schema
 from tools.audit_parser_validation_rotation import audit_rotation
 
 

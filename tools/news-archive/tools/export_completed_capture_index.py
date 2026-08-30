@@ -12,7 +12,7 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_olds_api.source_capture_import import (
+from jojo_news_archive.source_capture_import import (
     export_completed_capture_index,
 )
 
