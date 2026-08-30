@@ -130,9 +130,7 @@ function RedesignedRoutes() {
           <Route path="support" element={<SupportPage platformRedesign />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="rag/*" element={<AuthenticatedRoute><LazyRoute><RagRoutes /></LazyRoute></AuthenticatedRoute>} />
-          {rollout.times && (
-            <Route path="times/*" element={<AuthenticatedRoute><LazyRoute><TimesRoutes /></LazyRoute></AuthenticatedRoute>} />
-          )}
+          <Route path="times/*" element={<AuthenticatedRoute><LazyRoute><TimesRoutes /></LazyRoute></AuthenticatedRoute>} />
         </Route>
 
         <Route path="/book/:notebookId/:sourceId" element={<LazyRoute><BookReaderPage /></LazyRoute>} />

@@ -5,7 +5,6 @@ import { resolve } from "path";
 export default defineConfig({
   define: {
     "import.meta.env.VITE_ENABLE_PLATFORM_REDESIGN": JSON.stringify("true"),
-    "import.meta.env.VITE_ENABLE_TIMES": JSON.stringify("false"),
   },
   plugins: [react()],
   resolve: {

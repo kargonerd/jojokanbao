@@ -1,20 +1,16 @@
 import { Fragment, type ReactNode } from "react";
 import { Outlet } from "react-router-dom";
 import { useAccountSessionStore } from "../account/session";
-import { rollout } from "../rollout";
 import { APP_NAVIGATION_ITEMS, AppHeader, type AppNavigationItem } from "./AppHeader";
 import "./styles.css";
 
-export function buildAppNavigationItems(
-  authenticated: boolean,
-  capabilities = { rag: true, times: rollout.times },
-): readonly AppNavigationItem[] {
+export function buildAppNavigationItems(authenticated: boolean): readonly AppNavigationItem[] {
   const primaryItems = APP_NAVIGATION_ITEMS.filter((item) => item.href !== "/support");
   const aboutItem = APP_NAVIGATION_ITEMS.find((item) => item.href === "/support");
   return [
     ...primaryItems,
-    ...(authenticated && capabilities.rag ? [{ label: "AI", href: "/rag", badge: "Beta" }] : []),
-    ...(authenticated && capabilities.times ? [{ label: "时事", href: "/times", badge: "Beta" }] : []),
+    ...(authenticated ? [{ label: "AI", href: "/rag", badge: "Beta" }] : []),
+    ...(authenticated ? [{ label: "时事", href: "/times", badge: "Beta" }] : []),
     ...(aboutItem ? [aboutItem] : []),
   ];
 }

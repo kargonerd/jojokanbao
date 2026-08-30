@@ -5,9 +5,8 @@
 ## 路由与整站发布开关
 
 - 生产默认（`VITE_ENABLE_PLATFORM_REDESIGN=false`）：保持原站路由和界面，`/` 跳转 `/archive`
-- 新版预览（`VITE_ENABLE_PLATFORM_REDESIGN=true`）：一次开放新版首页、资料库、账号、RAG 和阅读器，并保留 `/archive/*`
+- 新版预览（`VITE_ENABLE_PLATFORM_REDESIGN=true`）：一次开放新版首页、资料库、账号、RAG、时事和阅读器，并保留 `/archive/*`
 - 本地 `vite dev`：始终使用新版，不需要配置发布开关
-- 待发布：`/times/*`
 
 旧 Reader 地址（例如 `/rmrb/19761009#page-5`）以及短暂使用过的 `/reader/*` 前缀会迁移到 `/archive/*`，并保留查询参数和锚点。静态托管必须将未知路径回退到 `index.html`，否则深链接会返回 404。
 
@@ -21,7 +20,6 @@
 ```dotenv
 VITE_SUPABASE_URL=
 VITE_SUPABASE_PUBLISHABLE_KEY=
-VITE_ENABLE_TIMES=false
 ```
 
 Git worktree 自己没有 `.env` 时，Web、Desktop 和本地 Agent 会自动读取主工作区的 `.env` 和 `.env.local`；

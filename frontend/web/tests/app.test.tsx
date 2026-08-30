@@ -4,7 +4,6 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App, AppRoutes } from "../src/App";
 import { useAccountSessionStore } from "../src/account/session";
-import { rollout } from "../src/rollout";
 import { AppLayout, buildAppNavigationItems } from "../src/shell/AppLayout";
 
 const appPdfMocks = vi.hoisted(() => ({
@@ -132,14 +131,9 @@ describe("JOJO Web routes and Archive homepage", () => {
     rag.unmount();
     cleanup();
 
-    Object.assign(rollout, { times: true });
-    try {
-      renderAt("/times");
-      await waitFor(() => expect(window.location.pathname).toBe("/account"));
-      expect(screen.getByRole("heading", { name: "登录暂不可用" })).toBeTruthy();
-    } finally {
-      Object.assign(rollout, { times: false });
-    }
+    renderAt("/times");
+    await waitFor(() => expect(window.location.pathname).toBe("/account"));
+    expect(screen.getByRole("heading", { name: "登录暂不可用" })).toBeTruthy();
   });
 
   it("keeps public book reading available outside the authenticated AI route", async () => {
@@ -182,24 +176,24 @@ describe("JOJO Web navigation", () => {
   });
 
   it("shows AI and Times only to signed-in readers and keeps About last", () => {
-    expect(buildAppNavigationItems(false, { rag: true, times: true }).map((item) => item.label)).toEqual([
+    expect(buildAppNavigationItems(false).map((item) => item.label)).toEqual([
       "首页", "资料库", "搜索", "关于",
     ]);
-    expect(buildAppNavigationItems(true, { rag: true, times: true }).map((item) => item.label)).toEqual([
+    expect(buildAppNavigationItems(true).map((item) => item.label)).toEqual([
       "首页", "资料库", "搜索", "AI", "时事", "关于",
     ]);
-    expect(buildAppNavigationItems(true, { rag: true, times: true }).find((item) => item.href === "/rag")).toMatchObject({
+    expect(buildAppNavigationItems(true).find((item) => item.href === "/rag")).toMatchObject({
       label: "AI",
       badge: "Beta",
     });
-    expect(buildAppNavigationItems(true, { rag: true, times: true }).find((item) => item.href === "/times")).toMatchObject({
+    expect(buildAppNavigationItems(true).find((item) => item.href === "/times")).toMatchObject({
       label: "时事",
       badge: "Beta",
     });
   });
 
   it("uses three public mobile tabs and adds AI and Times after sign-in", () => {
-    const navigationItems = buildAppNavigationItems(true, { rag: true, times: true });
+    const navigationItems = buildAppNavigationItems(true);
     const view = render(
       <MemoryRouter>
         <AppLayout navigationItems={navigationItems}><main /></AppLayout>
@@ -219,7 +213,7 @@ describe("JOJO Web navigation", () => {
   });
 
   it("shows the Beta badge beside mobile AI and Times page titles", () => {
-    const navigationItems = buildAppNavigationItems(true, { rag: true, times: true });
+    const navigationItems = buildAppNavigationItems(true);
     const view = render(
       <MemoryRouter initialEntries={["/times"]}>
         <AppLayout navigationItems={navigationItems}><main /></AppLayout>
