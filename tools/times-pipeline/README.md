@@ -56,12 +56,12 @@ Canonical 处理。这样可以补到媒体延迟加入栏目页的文章，又�
 
 ## 非中文新闻翻译
 
-Process 在 `GEMINI_API_KEY` 存在时自动翻译本轮新增的非中文全文；没有密钥的本地 dry run 保持原有行为，也可用
+Process 在 `GEMINI_API_KEYS` 或 `GEMINI_API_KEY` 存在时自动翻译本轮新增的非中文全文；没有密钥的本地 dry run 保持原有行为，也可用
 `--translate true|false` 显式控制。生产策略为：
 
 - `gemma-4-31b-it` 主翻译，单个失败 chunk 自动降级到 `gemma-4-26b-a4b-it`；
 - 正文严格按语义块边界切成最多约 20,000 源字符的 chunk，译后按 block id 重组；单请求默认最多等待 240 秒；
-- 默认八路 worker，每个模型独立按 28 RPM / 14K TPM 保守限流；原文解析与不同文章的翻译并行，不串行拖慢整批；
+- 默认八路 worker；每个 API 项目、每个模型独立按 28 RPM / 14K TPM 保守限流，请求在项目池中轮询并发，单个项目返回 429 时自动尝试下一个项目；
 - 默认整批最多占用 8 分钟；到达预算会中止在途翻译并 fail-open，给 20 分钟工作流保留 Canonical/HF/Delivery 时间；
 - 译文按源标题、正文、语言和翻译策略的 hash 缓存。刷新到同一内容时从 HF Canonical 恢复缓存，不重复请求 API；
 - 两个模型都不可用时 fail-open 发布原文，并在 Process report 和 Actions Summary 中列出失败，不阻断新闻发布；
@@ -69,8 +69,29 @@ Process 在 `GEMINI_API_KEY` 存在时自动翻译本轮新增的非中文全文
 
 可选调优变量：`JOJO_TIMES_TRANSLATION_WORKERS`、`JOJO_TIMES_TRANSLATION_MODEL`、
 `JOJO_TIMES_TRANSLATION_FALLBACK_MODEL`、`JOJO_TIMES_TRANSLATION_REQUEST_TIMEOUT_MS` 和
-`JOJO_TIMES_TRANSLATION_BATCH_TIMEOUT_MS`、`JOJO_TIMES_TRANSLATION_CHUNK_CHARACTERS`。GitHub `maintenance` environment 必须配置 `GEMINI_API_KEY` Secret，
-发布轮次会在密钥缺失时提前失败，避免悄悄发布未翻译内容。
+`JOJO_TIMES_TRANSLATION_BATCH_TIMEOUT_MS`、`JOJO_TIMES_TRANSLATION_CHUNK_CHARACTERS`。
+
+本地可继续使用单项目变量，也可增加任意数量的数字后缀；CLI 会按数字顺序去重并组成项目池：
+
+~~~dotenv
+GEMINI_API_KEY=project-one-key
+GEMINI_API_KEY_2=project-two-key
+GEMINI_API_KEY_3=project-three-key
+~~~
+
+使用 `.env.local` 时通过 Node 显式加载：
+
+~~~powershell
+node --env-file=.env.local tools/times-pipeline/dist/src/process-cli.js `
+  --config tools/times-pipeline/sources.v2.json `
+  --output $env:TEMP/jojo-times `
+  --run-manifest '<runManifest>' `
+  --raw-revision local
+~~~
+
+也可以设置逗号、分号或空白分隔的 `GEMINI_API_KEYS`，它会作为显式有序池并覆盖单个/数字后缀变量。GitHub
+`maintenance` environment 推荐配置一个 `GEMINI_API_KEYS` Secret，例如 `key-one,key-two,key-three`；旧的
+`GEMINI_API_KEY` Secret 保持兼容。发布轮次会在两者都缺失时提前失败，避免悄悄发布未翻译内容。
 
 ## 存储
 

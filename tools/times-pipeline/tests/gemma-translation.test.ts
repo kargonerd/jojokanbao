@@ -134,6 +134,69 @@ describe("Gemma production translation", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("round-robins concurrent translations across independently limited API projects", async () => {
+    const output = await mkdtemp(path.join(os.tmpdir(), "jojo-gemma-key-pool-"));
+    const requestedKeys: string[] = [];
+    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      requestedKeys.push(new Headers(init?.headers).get("x-goog-api-key") ?? "");
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return translatedResponse(init);
+    }) as typeof fetch;
+    const result = await translateProcessedCandidates(
+      output,
+      Array.from({ length: 6 }, (_value, index) => candidate(`pool-${index + 1}`)),
+      {
+        apiKeys: ["project-a", "project-b", "project-c"],
+        workers: 6,
+        fetchImpl,
+        requestsPerMinute: 100,
+        tokensPerMinute: 1_000_000,
+      },
+    );
+
+    expect(result.stats).toMatchObject({
+      translated: 6,
+      failed: 0,
+      requests: 6,
+      configuredProjects: 3,
+      quotaKeySwitches: 0,
+    });
+    expect(requestedKeys).toEqual([
+      "project-a", "project-b", "project-c", "project-a", "project-b", "project-c",
+    ]);
+  });
+
+  it("retries a project-scoped 429 on the next configured API project", async () => {
+    const output = await mkdtemp(path.join(os.tmpdir(), "jojo-gemma-key-rotation-"));
+    const requestedKeys: string[] = [];
+    const progress: string[] = [];
+    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      const key = new Headers(init?.headers).get("x-goog-api-key") ?? "";
+      requestedKeys.push(key);
+      return key === "project-a"
+        ? new Response(JSON.stringify({ error: { message: "project quota exhausted" } }), { status: 429 })
+        : translatedResponse(init);
+    }) as typeof fetch;
+    const result = await translateProcessedCandidates(output, [candidate("quota-rotation")], {
+      apiKeys: ["project-a", "project-b"],
+      fetchImpl,
+      requestsPerMinute: 100,
+      tokensPerMinute: 1_000_000,
+      onProgress: (message) => progress.push(message),
+    });
+
+    expect(result.stats).toMatchObject({
+      translated: 1,
+      failed: 0,
+      requests: 2,
+      configuredProjects: 2,
+      quotaKeySwitches: 1,
+    });
+    expect(result.candidates[0]?.translation?.model).toBe("gemma-4-31b-it");
+    expect(requestedKeys).toEqual(["project-a", "project-b"]);
+    expect(progress).toContain("[translation] gemma-4-31b-it project 1/2 returned 429; retrying project 2/2");
+  });
+
   it("falls back per chunk from 31B to 26B without failing the article", async () => {
     const output = await mkdtemp(path.join(os.tmpdir(), "jojo-gemma-fallback-"));
     const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => (

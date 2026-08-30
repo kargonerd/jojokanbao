@@ -4,6 +4,7 @@ import path from "node:path";
 import { load, type CheerioAPI } from "cheerio";
 import { sha256 } from "../identity.js";
 import type { ProcessedArticleTranslation, ProcessedCandidate } from "../process/article.js";
+import { normalizeGeminiApiKeys } from "./api-keys.js";
 
 const TRANSLATION_FORMAT = "jojo-times-translation/1" as const;
 const TRANSLATION_FAILURE_FORMAT = "jojo-times-translation-failure/1" as const;
@@ -76,7 +77,8 @@ interface StoredTranslationFailure {
 type TranslationCacheEntry = StoredTranslation | StoredTranslationFailure;
 
 export interface GemmaTranslationOptions {
-  apiKey: string;
+  apiKey?: string;
+  apiKeys?: readonly string[];
   primaryModel?: string;
   fallbackModel?: string;
   workers?: number;
@@ -108,6 +110,8 @@ export interface TranslationBatchStats {
   fallbackChunks: number;
   promptTokens: number;
   outputTokens: number;
+  configuredProjects: number;
+  quotaKeySwitches: number;
   durationMs: number;
   failures: TranslationFailure[];
 }
@@ -148,6 +152,27 @@ class MinuteRateLimiter {
       await new Promise((resolve) => setTimeout(resolve, waitMs));
     }
   }
+}
+
+class GeminiHttpError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = "GeminiHttpError";
+  }
+}
+
+interface GemmaProjectSlot {
+  apiKey: string;
+  limiters: Map<string, MinuteRateLimiter>;
+}
+
+interface GemmaClientOptions {
+  apiKeys: readonly string[];
+  requestTimeoutMs: number;
+  requestsPerMinute: number;
+  tokensPerMinute: number;
+  fetchImpl: typeof fetch;
+  onProgress: ((message: string) => void) | undefined;
 }
 
 function positiveInteger(value: number | undefined, fallback: number, name: string): number {
@@ -337,26 +362,38 @@ function failureRetryDelayMs(attempts: number): number {
 }
 
 class GemmaClient {
-  private readonly limiters = new Map<string, MinuteRateLimiter>();
+  private readonly projects: GemmaProjectSlot[];
+  private readonly modelCursors = new Map<string, number>();
   private requestCount = 0;
   private promptTokenCount = 0;
   private outputTokenCount = 0;
+  private quotaKeySwitchCount = 0;
 
-  constructor(private readonly options: Required<Pick<GemmaTranslationOptions,
-    "apiKey" | "requestTimeoutMs" | "requestsPerMinute" | "tokensPerMinute" | "fetchImpl">>) {}
-
-  metrics(): { requests: number; promptTokens: number; outputTokens: number } {
-    return { requests: this.requestCount, promptTokens: this.promptTokenCount, outputTokens: this.outputTokenCount };
+  constructor(private readonly options: GemmaClientOptions) {
+    this.projects = options.apiKeys.map((apiKey) => ({ apiKey, limiters: new Map() }));
   }
 
-  async translate(model: string, prompt: string, deadlineAt: number): Promise<string> {
-    if (Date.now() >= deadlineAt) throw new Error("Translation batch deadline exceeded");
-    let limiter = this.limiters.get(model);
+  metrics(): { requests: number; promptTokens: number; outputTokens: number; quotaKeySwitches: number } {
+    return {
+      requests: this.requestCount,
+      promptTokens: this.promptTokenCount,
+      outputTokens: this.outputTokenCount,
+      quotaKeySwitches: this.quotaKeySwitchCount,
+    };
+  }
+
+  private limiter(project: GemmaProjectSlot, model: string): MinuteRateLimiter {
+    let limiter = project.limiters.get(model);
     if (!limiter) {
       limiter = new MinuteRateLimiter(this.options.requestsPerMinute, this.options.tokensPerMinute);
-      this.limiters.set(model, limiter);
+      project.limiters.set(model, limiter);
     }
-    const event = await limiter.acquire(estimatedPromptTokens(prompt), deadlineAt);
+    return limiter;
+  }
+
+  private async translateWithProject(project: GemmaProjectSlot, model: string, prompt: string, deadlineAt: number): Promise<string> {
+    if (Date.now() >= deadlineAt) throw new Error("Translation batch deadline exceeded");
+    const event = await this.limiter(project, model).acquire(estimatedPromptTokens(prompt), deadlineAt);
     const remainingMs = deadlineAt - Date.now();
     if (remainingMs <= 0) throw new Error("Translation batch deadline exceeded");
     const controller = new AbortController();
@@ -365,7 +402,7 @@ class GemmaClient {
     try {
       const response = await this.options.fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
         method: "POST",
-        headers: { "content-type": "application/json", "x-goog-api-key": this.options.apiKey },
+        headers: { "content-type": "application/json", "x-goog-api-key": project.apiKey },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
@@ -378,7 +415,7 @@ class GemmaClient {
         signal: controller.signal,
       });
       const payload = await response.json() as GeminiResponse;
-      if (!response.ok) throw new Error(payload.error?.message ?? `Gemini returned HTTP ${response.status}`);
+      if (!response.ok) throw new GeminiHttpError(response.status, payload.error?.message ?? `Gemini returned HTTP ${response.status}`);
       const candidate = payload.candidates?.[0];
       const text = candidate?.content?.parts?.filter((part) => !part.thought).map((part) => part.text ?? "").join("").trim() ?? "";
       if (!text) throw new Error(`Gemma returned no final text (${candidate?.finishReason ?? "unknown"})`);
@@ -390,6 +427,28 @@ class GemmaClient {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  async translate(model: string, prompt: string, deadlineAt: number): Promise<string> {
+    const start = this.modelCursors.get(model) ?? 0;
+    this.modelCursors.set(model, (start + 1) % this.projects.length);
+    let lastQuotaError: GeminiHttpError | undefined;
+    for (let offset = 0; offset < this.projects.length; offset += 1) {
+      const projectIndex = (start + offset) % this.projects.length;
+      try {
+        return await this.translateWithProject(this.projects[projectIndex]!, model, prompt, deadlineAt);
+      } catch (error) {
+        if (!(error instanceof GeminiHttpError) || error.status !== 429) throw error;
+        lastQuotaError = error;
+        if (offset + 1 >= this.projects.length) break;
+        this.quotaKeySwitchCount += 1;
+        const nextProject = (projectIndex + 1) % this.projects.length;
+        this.options.onProgress?.(
+          `[translation] ${model} project ${projectIndex + 1}/${this.projects.length} returned 429; retrying project ${nextProject + 1}/${this.projects.length}`,
+        );
+      }
+    }
+    throw lastQuotaError ?? new Error("Gemini translation has no configured API project");
   }
 }
 
@@ -412,7 +471,8 @@ export async function translateProcessedCandidates(
   candidates: readonly ProcessedCandidate[],
   options: GemmaTranslationOptions,
 ): Promise<TranslationBatchResult> {
-  if (!options.apiKey.trim()) throw new Error("Gemma translation requires a non-empty API key");
+  const apiKeys = normalizeGeminiApiKeys(options.apiKeys, options.apiKey);
+  if (apiKeys.length === 0) throw new Error("Gemma translation requires at least one non-empty API key");
   const workers = positiveInteger(options.workers, TIMES_TRANSLATION_DEFAULTS.workers, "Translation workers");
   const requestTimeoutMs = positiveInteger(options.requestTimeoutMs, TIMES_TRANSLATION_DEFAULTS.requestTimeoutMs, "Translation request timeout");
   const batchTimeoutMs = positiveInteger(options.batchTimeoutMs, TIMES_TRANSLATION_DEFAULTS.batchTimeoutMs, "Translation batch timeout");
@@ -423,11 +483,12 @@ export async function translateProcessedCandidates(
   const fallbackModel = options.fallbackModel?.trim() || "gemma-4-26b-a4b-it";
   const now = options.now ?? (() => new Date());
   const client = new GemmaClient({
-    apiKey: options.apiKey,
+    apiKeys,
     requestTimeoutMs,
     requestsPerMinute,
     tokensPerMinute,
     fetchImpl: options.fetchImpl ?? fetch,
+    onProgress: options.onProgress,
   });
   const started = Date.now();
   const deadlineAt = started + batchTimeoutMs;
@@ -565,6 +626,8 @@ export async function translateProcessedCandidates(
       fallbackChunks: rows.reduce((sum, row) => sum + row.fallbackChunks, 0),
       promptTokens: metrics.promptTokens,
       outputTokens: metrics.outputTokens,
+      configuredProjects: apiKeys.length,
+      quotaKeySwitches: metrics.quotaKeySwitches,
       durationMs: Date.now() - started,
       failures: rows.flatMap((row) => row.failure ? [row.failure] : []),
     },
