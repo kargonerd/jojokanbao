@@ -1,0 +1,2 @@
+-r requirements.txt
+tencentcloud-sdk-python==3.1.166

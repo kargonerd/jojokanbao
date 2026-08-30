@@ -84,7 +84,7 @@ class DeployPackageTests(unittest.TestCase):
     def test_verify_function_access_reads_target_before_upload(self):
         with patch.object(
             deploy,
-            "_json_command",
+            "_get_function",
             return_value={"Status": "Active"},
         ) as command:
             deploy._verify_function_access(
@@ -94,13 +94,15 @@ class DeployPackageTests(unittest.TestCase):
                 profile="",
             )
 
-        self.assertIn("GetFunction", command.call_args.args[0])
-        self.assertIn("flask_jojo_search_staging", command.call_args.args[0])
+        self.assertEqual(
+            command.call_args.args[0],
+            "flask_jojo_search_staging",
+        )
 
     def test_verify_function_access_rejects_failed_target(self):
         with patch.object(
             deploy,
-            "_json_command",
+            "_get_function",
             return_value={"Status": "Failed", "StatusDesc": "denied"},
         ):
             with self.assertRaisesRegex(RuntimeError, "denied"):

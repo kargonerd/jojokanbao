@@ -288,17 +288,12 @@ def _wait_for_function(
     attempts: int = 30,
 ) -> None:
     for attempt in range(attempts):
-        response = _json_command(_tccli(
-            profile,
-            "scf",
-            "GetFunction",
-            "--FunctionName",
+        response = _get_function(
             function,
-            "--Namespace",
-            namespace,
-            "--region",
-            region,
-        ))
+            region=region,
+            namespace=namespace,
+            profile=profile,
+        )
         status = str(response.get("Status") or "")
         available = str(response.get("AvailableStatus") or "")
         if status.lower() in {"failed", "error"}:
@@ -318,17 +313,12 @@ def _verify_function_access(
     profile: str,
 ) -> None:
     """Fail before uploading a package when the target cannot be read."""
-    response = _json_command(_tccli(
-        profile,
-        "scf",
-        "GetFunction",
-        "--FunctionName",
+    response = _get_function(
         function,
-        "--Namespace",
-        namespace,
-        "--region",
-        region,
-    ))
+        region=region,
+        namespace=namespace,
+        profile=profile,
+    )
     status = str(response.get("Status") or "")
     if status.lower() in {"failed", "error"}:
         raise RuntimeError(f"目标 SCF 不可用：{response.get('StatusDesc') or status}")
@@ -375,6 +365,36 @@ def _scf_client(region: str) -> Any | None:
         region,
         ClientProfile(httpProfile=http_profile),
     )
+
+
+def _get_function(
+    function: str,
+    *,
+    region: str,
+    namespace: str,
+    profile: str,
+) -> dict[str, Any]:
+    client = _scf_client(region)
+    if client is not None:
+        from tencentcloud.scf.v20180416 import models
+
+        request = models.GetFunctionRequest()
+        request.from_json_string(json.dumps({
+            "FunctionName": function,
+            "Namespace": namespace,
+        }))
+        return json.loads(client.GetFunction(request).to_json_string())
+    return _json_command(_tccli(
+        profile,
+        "scf",
+        "GetFunction",
+        "--FunctionName",
+        function,
+        "--Namespace",
+        namespace,
+        "--region",
+        region,
+    ))
 
 
 def _upload(package: Path, *, bucket: str, region: str, key: str, profile: str) -> None:

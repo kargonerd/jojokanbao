@@ -135,9 +135,10 @@ corresponding Tencent CAM identity must be limited to the `jojo-search`
 deployment bucket and the two Reader Search SCF functions, including the SCF
 read/update actions used by `deploy.py`.
 
-The command calls the authenticated local `tccli`; it never stores Tencent
-credentials in the repository. `UpdateFunctionCode` preserves the function's
-environment and network configuration.
+GitHub Actions uses the Tencent Cloud Python SDK with repository secrets. Local
+profile-based fallback calls the authenticated `tccli`; neither mode stores
+Tencent credentials in the repository. `UpdateFunctionCode` preserves the
+function's environment and network configuration.
 
 ## Overlay Search Test
 

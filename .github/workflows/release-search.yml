@@ -52,13 +52,12 @@ jobs:
         with:
           python-version: "3.9"
           cache: pip
-          cache-dependency-path: infrastructure/tencent-scf/search/requirements.txt
+          cache-dependency-path: infrastructure/tencent-scf/search/requirements-deploy.txt
 
       - name: Install deployment dependencies
         run: >-
           python -m pip install --disable-pip-version-check
-          -r infrastructure/tencent-scf/search/requirements.txt
-          tccli==3.1.159.1
+          -r infrastructure/tencent-scf/search/requirements-deploy.txt
 
       - name: Verify credentials
         shell: bash
@@ -92,13 +91,12 @@ jobs:
         with:
           python-version: "3.9"
           cache: pip
-          cache-dependency-path: infrastructure/tencent-scf/search/requirements.txt
+          cache-dependency-path: infrastructure/tencent-scf/search/requirements-deploy.txt
 
       - name: Install deployment dependencies
         run: >-
           python -m pip install --disable-pip-version-check
-          -r infrastructure/tencent-scf/search/requirements.txt
-          tccli==3.1.159.1
+          -r infrastructure/tencent-scf/search/requirements-deploy.txt
 
       - name: Verify credentials
         shell: bash
