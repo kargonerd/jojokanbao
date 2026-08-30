@@ -75,6 +75,7 @@ export interface GemmaTranslationOptions {
   apiKeys?: readonly string[];
   primaryModel?: string;
   fallbackModel?: string;
+  rescueModel?: string;
   workers?: number;
   requestTimeoutMs?: number;
   batchTimeoutMs?: number;
@@ -102,10 +103,12 @@ export interface TranslationBatchStats {
   notRequired: number;
   requests: number;
   fallbackChunks: number;
+  rescueChunks: number;
   promptTokens: number;
   outputTokens: number;
   configuredProjects: number;
   quotaKeySwitches: number;
+  transientKeySwitches: number;
   durationMs: number;
   failures: TranslationFailure[];
 }
@@ -120,6 +123,7 @@ interface ArticleTranslationResult {
   status: "translated" | "cached" | "failed" | "deferred" | "not-required";
   requests: number;
   fallbackChunks: number;
+  rescueChunks: number;
   promptTokens: number;
   outputTokens: number;
   failure?: TranslationFailure;
@@ -152,6 +156,13 @@ class GeminiHttpError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
     this.name = "GeminiHttpError";
+  }
+}
+
+class TranslationStructureError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TranslationStructureError";
   }
 }
 
@@ -238,6 +249,20 @@ function plainFormattingCounts(document: CheerioAPI, element: ReturnType<Cheerio
   return counts;
 }
 
+function normalizeAddedFlexibleFormatting(
+  sourceDocument: CheerioAPI,
+  sourceElement: ReturnType<CheerioAPI>[number],
+  translatedDocument: CheerioAPI,
+  translatedElement: ReturnType<CheerioAPI>[number],
+): void {
+  const sourceFormatting = plainFormattingCounts(sourceDocument, sourceElement);
+  for (const child of translatedDocument(translatedElement).find("*").toArray().reverse()) {
+    const tag = String(translatedDocument(child).prop("tagName") ?? "").toLowerCase();
+    if (!FLEXIBLE_FORMATTING_TAGS.has(tag) || Object.keys(attributes(translatedDocument, child)).length > 0) continue;
+    if ((sourceFormatting.get(tag) ?? 0) === 0) translatedDocument(child).replaceWith(translatedDocument(child).contents());
+  }
+}
+
 function validateTranslatedBlock(
   sourceDocument: CheerioAPI,
   sourceElement: ReturnType<CheerioAPI>[number],
@@ -245,11 +270,12 @@ function validateTranslatedBlock(
   translatedElement: ReturnType<CheerioAPI>[number],
   index: number,
 ): void {
+  normalizeAddedFlexibleFormatting(sourceDocument, sourceElement, translatedDocument, translatedElement);
   if (elementSignature(sourceDocument, sourceElement) !== elementSignature(translatedDocument, translatedElement)) {
-    throw new Error(`Translated block ${index} changed its outer tag or attributes`);
+    throw new TranslationStructureError(`Translated block ${index} changed its outer tag or attributes`);
   }
   if (!translatedDocument(translatedElement).text().replace(/\s+/gu, " ").trim()) {
-    throw new Error(`Translated block ${index} is empty`);
+    throw new TranslationStructureError(`Translated block ${index} is empty`);
   }
 
   const protectedSignatures = (
@@ -264,17 +290,7 @@ function validateTranslatedBlock(
     protectedSignatures(sourceDocument, sourceElement),
     protectedSignatures(translatedDocument, translatedElement),
   );
-  if (protectedDifference) throw new Error(`Translated block ${index} changed protected HTML: ${protectedDifference}`);
-
-  const sourceFormatting = plainFormattingCounts(sourceDocument, sourceElement);
-  const translatedFormatting = plainFormattingCounts(translatedDocument, translatedElement);
-  for (const tag of FLEXIBLE_FORMATTING_TAGS) {
-    const expected = sourceFormatting.get(tag) ?? 0;
-    const actual = translatedFormatting.get(tag) ?? 0;
-    if ((expected === 0) !== (actual === 0)) {
-      throw new Error(`Translated block ${index} changed <${tag}> formatting: expected ${expected}, received ${actual}`);
-    }
-  }
+  if (protectedDifference) throw new TranslationStructureError(`Translated block ${index} changed protected HTML: ${protectedDifference}`);
 }
 
 function singleRootElement(html: string, label: string): { document: CheerioAPI; element: ReturnType<CheerioAPI>[number] } {
@@ -360,7 +376,7 @@ function parseTranslatedChunk(value: string, expected: TranslationChunk): Transl
   });
   const expectedCount = expected.blocks.length + (expected.includesTitle ? 1 : 0);
   if (hasOtherContent || elements.length !== expectedCount) {
-    throw new Error(`Gemma returned invalid HTML block structure: expected ${expectedCount}, received ${elements.length}`);
+    throw new TranslationStructureError(`Gemma returned invalid HTML block structure: expected ${expectedCount}, received ${elements.length}`);
   }
 
   let offset = 0;
@@ -369,10 +385,10 @@ function parseTranslatedChunk(value: string, expected: TranslationChunk): Transl
     const titleElement = elements[0]!;
     const titleTag = String(document(titleElement).prop("tagName") ?? "").toLowerCase();
     if (titleTag !== "h1" || document(titleElement).find("*").length > 0) {
-      throw new Error("Gemma changed the title HTML structure");
+      throw new TranslationStructureError("Gemma changed the title HTML structure");
     }
     translatedTitle = document(titleElement).text().replace(/\s+/gu, " ").trim();
-    if (!translatedTitle) throw new Error("Gemma returned an empty translated title");
+    if (!translatedTitle) throw new TranslationStructureError("Gemma returned an empty translated title");
     offset = 1;
   }
 
@@ -454,24 +470,35 @@ class GemmaClient {
   private promptTokenCount = 0;
   private outputTokenCount = 0;
   private quotaKeySwitchCount = 0;
+  private transientKeySwitchCount = 0;
 
   constructor(private readonly options: GemmaClientOptions) {
     this.projects = options.apiKeys.map((apiKey) => ({ apiKey, limiters: new Map() }));
   }
 
-  metrics(): { requests: number; promptTokens: number; outputTokens: number; quotaKeySwitches: number } {
+  metrics(): {
+    requests: number;
+    promptTokens: number;
+    outputTokens: number;
+    quotaKeySwitches: number;
+    transientKeySwitches: number;
+  } {
     return {
       requests: this.requestCount,
       promptTokens: this.promptTokenCount,
       outputTokens: this.outputTokenCount,
       quotaKeySwitches: this.quotaKeySwitchCount,
+      transientKeySwitches: this.transientKeySwitchCount,
     };
   }
 
   private limiter(project: GemmaProjectSlot, model: string): MinuteRateLimiter {
     let limiter = project.limiters.get(model);
     if (!limiter) {
-      limiter = new MinuteRateLimiter(this.options.requestsPerMinute, this.options.tokensPerMinute);
+      const requestsPerMinute = model.startsWith("gemini-")
+        ? Math.min(this.options.requestsPerMinute, 5)
+        : this.options.requestsPerMinute;
+      limiter = new MinuteRateLimiter(requestsPerMinute, this.options.tokensPerMinute);
       project.limiters.set(model, limiter);
     }
     return limiter;
@@ -494,7 +521,7 @@ class GemmaClient {
           generationConfig: {
             temperature: 0.1,
             maxOutputTokens: 32_768,
-            thinkingConfig: { thinkingLevel: "minimal" },
+            thinkingConfig: { thinkingLevel: model.startsWith("gemini-") ? "low" : "minimal" },
           },
         }),
         signal: controller.signal,
@@ -517,23 +544,24 @@ class GemmaClient {
   async translate(model: string, prompt: string, deadlineAt: number): Promise<string> {
     const start = this.modelCursors.get(model) ?? 0;
     this.modelCursors.set(model, (start + 1) % this.projects.length);
-    let lastQuotaError: GeminiHttpError | undefined;
+    let lastRetryableError: GeminiHttpError | undefined;
     for (let offset = 0; offset < this.projects.length; offset += 1) {
       const projectIndex = (start + offset) % this.projects.length;
       try {
         return await this.translateWithProject(this.projects[projectIndex]!, model, prompt, deadlineAt);
       } catch (error) {
-        if (!(error instanceof GeminiHttpError) || error.status !== 429) throw error;
-        lastQuotaError = error;
+        if (!(error instanceof GeminiHttpError) || ![429, 500, 502, 503, 504].includes(error.status)) throw error;
+        lastRetryableError = error;
         if (offset + 1 >= this.projects.length) break;
-        this.quotaKeySwitchCount += 1;
+        if (error.status === 429) this.quotaKeySwitchCount += 1;
+        else this.transientKeySwitchCount += 1;
         const nextProject = (projectIndex + 1) % this.projects.length;
         this.options.onProgress?.(
-          `[translation] ${model} project ${projectIndex + 1}/${this.projects.length} returned 429; retrying project ${nextProject + 1}/${this.projects.length}`,
+          `[translation] ${model} project ${projectIndex + 1}/${this.projects.length} returned ${error.status}; retrying project ${nextProject + 1}/${this.projects.length}`,
         );
       }
     }
-    throw lastQuotaError ?? new Error("Gemini translation has no configured API project");
+    throw lastRetryableError ?? new Error("Gemini translation has no configured API project");
   }
 }
 
@@ -566,6 +594,7 @@ export async function translateProcessedCandidates(
   const tokensPerMinute = positiveInteger(options.tokensPerMinute, TIMES_TRANSLATION_DEFAULTS.tokensPerMinute, "Translation TPM");
   const primaryModel = options.primaryModel?.trim() || "gemma-4-31b-it";
   const fallbackModel = options.fallbackModel?.trim() || "gemma-4-26b-a4b-it";
+  const rescueModel = options.rescueModel?.trim() || "gemini-3.5-flash";
   const now = options.now ?? (() => new Date());
   const client = new GemmaClient({
     apiKeys,
@@ -580,7 +609,7 @@ export async function translateProcessedCandidates(
 
   const rows = await mapLimit(candidates, workers, async (candidate, index): Promise<ArticleTranslationResult> => {
     if (!candidate.processedBody || candidate.contentStatus !== "full" || chineseLanguage(candidate.language)) {
-      return { candidate, status: "not-required", requests: 0, fallbackChunks: 0, promptTokens: 0, outputTokens: 0 };
+      return { candidate, status: "not-required", requests: 0, fallbackChunks: 0, rescueChunks: 0, promptTokens: 0, outputTokens: 0 };
     }
     const hash = translationSourceHash(candidate);
     const cacheObject = translationCacheObject(candidate, hash);
@@ -597,6 +626,7 @@ export async function translateProcessedCandidates(
         status: "cached",
         requests: 0,
         fallbackChunks: 0,
+        rescueChunks: 0,
         promptTokens: 0,
         outputTokens: 0,
       };
@@ -613,6 +643,7 @@ export async function translateProcessedCandidates(
         status: "deferred",
         requests: 0,
         fallbackChunks: 0,
+        rescueChunks: 0,
         promptTokens: 0,
         outputTokens: 0,
       };
@@ -620,24 +651,42 @@ export async function translateProcessedCandidates(
     options.onProgress?.(`[translation] ${index + 1}/${candidates.length} ${candidate.sourceId} ${candidate.title.slice(0, 80)}`);
     const before = client.metrics();
     let fallbackChunks = 0;
+    let rescueChunks = 0;
     try {
       const blocks = extractArticleTranslationBlocks(candidate.processedBody);
       if (!blocks.length) throw new Error("Article body has no translatable semantic blocks");
       const chunks = splitBlocks(candidate.title, blocks, maxChunkCharacters);
       const translated: TranslatedChunk = { blocks: [] };
       const usedModels = new Set<string>();
-      for (const chunk of chunks) {
+      const translateChunk = async (chunk: TranslationChunk): Promise<TranslatedChunk> => {
         const prompt = translationPrompt(candidate.title, candidate.language, chunk);
-        let payload: TranslatedChunk;
         try {
-          payload = parseTranslatedChunk(await client.translate(primaryModel, prompt, deadlineAt), chunk);
+          const payload = parseTranslatedChunk(await client.translate(primaryModel, prompt, deadlineAt), chunk);
           usedModels.add(primaryModel);
+          return payload;
         } catch (primaryError) {
           fallbackChunks += 1;
           options.onProgress?.(`[translation] fallback ${candidate.articleId}: ${primaryError instanceof Error ? primaryError.message : String(primaryError)}`);
-          payload = parseTranslatedChunk(await client.translate(fallbackModel, prompt, deadlineAt), chunk);
-          usedModels.add(fallbackModel);
+          try {
+            const payload = parseTranslatedChunk(await client.translate(fallbackModel, prompt, deadlineAt), chunk);
+            usedModels.add(fallbackModel);
+            return payload;
+          } catch (fallbackError) {
+            const structuralError = fallbackError instanceof TranslationStructureError
+              ? fallbackError
+              : primaryError instanceof TranslationStructureError ? primaryError : undefined;
+            if (!structuralError) throw fallbackError;
+
+            rescueChunks += 1;
+            options.onProgress?.(`[translation] structural rescue ${candidate.articleId} with ${rescueModel}: ${structuralError.message}`);
+            const payload = parseTranslatedChunk(await client.translate(rescueModel, prompt, deadlineAt), chunk);
+            usedModels.add(rescueModel);
+            return payload;
+          }
         }
+      };
+      for (const chunk of chunks) {
+        const payload = await translateChunk(chunk);
         if (!translated.title && payload.title) translated.title = payload.title;
         translated.blocks.push(...payload.blocks);
       }
@@ -666,6 +715,7 @@ export async function translateProcessedCandidates(
         status: "translated",
         requests: after.requests - before.requests,
         fallbackChunks,
+        rescueChunks,
         promptTokens: after.promptTokens - before.promptTokens,
         outputTokens: after.outputTokens - before.outputTokens,
       };
@@ -691,6 +741,7 @@ export async function translateProcessedCandidates(
         status: "failed",
         requests: after.requests - before.requests,
         fallbackChunks,
+        rescueChunks,
         promptTokens: after.promptTokens - before.promptTokens,
         outputTokens: after.outputTokens - before.outputTokens,
         failure: { articleId: candidate.articleId, sourceId: candidate.sourceId, title: candidate.title, error: message },
@@ -710,10 +761,12 @@ export async function translateProcessedCandidates(
       notRequired: rows.filter((row) => row.status === "not-required").length,
       requests: metrics.requests,
       fallbackChunks: rows.reduce((sum, row) => sum + row.fallbackChunks, 0),
+      rescueChunks: rows.reduce((sum, row) => sum + row.rescueChunks, 0),
       promptTokens: metrics.promptTokens,
       outputTokens: metrics.outputTokens,
       configuredProjects: apiKeys.length,
       quotaKeySwitches: metrics.quotaKeySwitches,
+      transientKeySwitches: metrics.transientKeySwitches,
       durationMs: Date.now() - started,
       failures: rows.flatMap((row) => row.failure ? [row.failure] : []),
     },

@@ -30,7 +30,10 @@ function candidate(id: string, language = "en"): ProcessedCandidate {
   };
 }
 
-function translatedResponse(init: RequestInit | undefined): Response {
+function translatedResponse(
+  init: RequestInit | undefined,
+  mutate?: (document: ReturnType<typeof load>) => void,
+): Response {
   const request = JSON.parse(String(init?.body)) as {
     contents: Array<{ parts: Array<{ text: string }> }>;
     generationConfig?: Record<string, unknown>;
@@ -44,6 +47,7 @@ function translatedResponse(init: RequestInit | undefined): Response {
     for (const child of node.children ?? []) translate(child);
   };
   for (const node of document.root().contents().toArray()) translate(node as InlineNode);
+  mutate?.(document);
   return new Response(JSON.stringify({
     candidates: [{ content: { parts: [{ text: document.html() }] }, finishReason: "STOP" }],
     usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 80 },
@@ -90,6 +94,14 @@ describe("Gemma production translation", () => {
       tag: "p",
       html: '<p><em>更多信息请<a href="https://example.test/story">点击这里</a>查看。</em></p>',
     }])).toBe('<p><em>更多信息请<a href="https://example.test/story">点击这里</a>查看。</em></p>');
+  });
+
+  it("does not reject an article for plain emphasis drift", () => {
+    const body = "<p><em>Emphasized source text.</em></p><p>Plain source text.</p>";
+    expect(applyArticleTranslation(body, [
+      { tag: "p", html: "<p>未保留斜体的译文。</p>" },
+      { tag: "p", html: "<p><strong>模型新增强调的译文。</strong></p>" },
+    ])).toBe("<p>未保留斜体的译文。</p><p>模型新增强调的译文。</p>");
   });
 
   it("translates with bounded concurrency and reuses the content-addressed cache", async () => {
@@ -165,6 +177,7 @@ describe("Gemma production translation", () => {
       requests: 6,
       configuredProjects: 3,
       quotaKeySwitches: 0,
+      transientKeySwitches: 0,
     });
     expect(requestedKeys).toEqual([
       "project-a", "project-b", "project-c", "project-a", "project-b", "project-c",
@@ -202,6 +215,37 @@ describe("Gemma production translation", () => {
     expect(progress).toContain("[translation] gemma-4-31b-it project 1/2 returned 429; retrying project 2/2");
   });
 
+  it("retries a transient 503 on the next configured API project", async () => {
+    const output = await mkdtemp(path.join(os.tmpdir(), "jojo-gemma-transient-rotation-"));
+    const requestedKeys: string[] = [];
+    const progress: string[] = [];
+    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      const key = new Headers(init?.headers).get("x-goog-api-key") ?? "";
+      requestedKeys.push(key);
+      return key === "project-a"
+        ? new Response(JSON.stringify({ error: { message: "model is temporarily overloaded" } }), { status: 503 })
+        : translatedResponse(init);
+    }) as typeof fetch;
+    const result = await translateProcessedCandidates(output, [candidate("transient-rotation")], {
+      apiKeys: ["project-a", "project-b"],
+      fetchImpl,
+      requestsPerMinute: 100,
+      tokensPerMinute: 1_000_000,
+      onProgress: (message) => progress.push(message),
+    });
+
+    expect(result.stats).toMatchObject({
+      translated: 1,
+      failed: 0,
+      requests: 2,
+      configuredProjects: 2,
+      quotaKeySwitches: 0,
+      transientKeySwitches: 1,
+    });
+    expect(requestedKeys).toEqual(["project-a", "project-b"]);
+    expect(progress).toContain("[translation] gemma-4-31b-it project 1/2 returned 503; retrying project 2/2");
+  });
+
   it("falls back per chunk from 31B to 26B without failing the article", async () => {
     const output = await mkdtemp(path.join(os.tmpdir(), "jojo-gemma-fallback-"));
     const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => (
@@ -232,7 +276,7 @@ describe("Gemma production translation", () => {
       expect(prompt).not.toContain("data-jojo-id");
       expect(prompt).not.toContain('"segments"');
       expect(request.generationConfig?.responseMimeType).toBeUndefined();
-      document("a,strong").each((_index, element) => {
+      document("a").each((_index, element) => {
         document(element).replaceWith(document(element).text());
       });
       return new Response(JSON.stringify({
@@ -256,15 +300,85 @@ describe("Gemma production translation", () => {
     const result = await translateProcessedCandidates(output, [value], {
       apiKey: "test-key",
       fetchImpl,
-      maxChunkCharacters: 100,
+      maxChunkCharacters: 20_000,
       requestsPerMinute: 100,
       tokensPerMinute: 1_000_000,
     });
 
-    expect(result.stats).toMatchObject({ translated: 1, failed: 0, requests: 4, fallbackChunks: 2 });
+    expect(result.stats).toMatchObject({ translated: 1, failed: 0, requests: 2, fallbackChunks: 1 });
     expect(result.candidates[0]?.translation?.model).toBe("gemma-4-26b-a4b-it");
     expect(result.candidates[0]?.translation?.body.value).toContain('<a href="https://example.test/first">中译：linked paragraph</a>');
     expect(result.candidates[0]?.translation?.body.value).toContain("<strong>中译：emphasized paragraph</strong>");
+  });
+
+  it("uses Gemini Flash once when both Gemma models change protected HTML", async () => {
+    const output = await mkdtemp(path.join(os.tmpdir(), "jojo-gemma-structural-rescue-"));
+    const progress: string[] = [];
+    const thinkingLevels: Array<{ model: string; level: unknown }> = [];
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const model = String(input).match(/models\/([^:]+):/)?.[1] ?? "unknown";
+      const request = JSON.parse(String(init?.body)) as { generationConfig?: { thinkingConfig?: { thinkingLevel?: unknown } } };
+      thinkingLevels.push({ model, level: request.generationConfig?.thinkingConfig?.thinkingLevel });
+      return model === "gemini-3.5-flash"
+        ? translatedResponse(init)
+        : translatedResponse(init, (document) => document("p").first().append("<br>"));
+    }) as typeof fetch;
+    const value = {
+      ...candidate("structural-rescue"),
+      processedBody: [
+        '<p>First <a href="https://example.test/first">linked paragraph</a>.</p>',
+        "<p>Second paragraph.</p>",
+        "<p>Third paragraph.</p>",
+        "<p>Fourth paragraph.</p>",
+      ].join(""),
+    };
+    const result = await translateProcessedCandidates(output, [value], {
+      apiKey: "test-key",
+      fetchImpl,
+      maxChunkCharacters: 20_000,
+      requestsPerMinute: 100,
+      tokensPerMinute: 1_000_000,
+      onProgress: (message) => progress.push(message),
+    });
+
+    expect(result.stats).toMatchObject({
+      translated: 1,
+      failed: 0,
+      requests: 3,
+      fallbackChunks: 1,
+      rescueChunks: 1,
+    });
+    expect(result.candidates[0]?.translation?.model).toBe("gemini-3.5-flash");
+    expect(result.candidates[0]?.translation?.body.value).toContain('<a href="https://example.test/first">中译：linked paragraph</a>');
+    expect(result.candidates[0]?.translation?.body.value).toContain("<p>中译：Fourth paragraph.</p>");
+    expect(progress.some((message) => message.includes("structural rescue wire:structural-rescue with gemini-3.5-flash"))).toBe(true);
+    expect(thinkingLevels).toEqual([
+      { model: "gemma-4-31b-it", level: "minimal" },
+      { model: "gemma-4-26b-a4b-it", level: "minimal" },
+      { model: "gemini-3.5-flash", level: "low" },
+    ]);
+  });
+
+  it("fails after one structural rescue instead of recursively multiplying requests", async () => {
+    const output = await mkdtemp(path.join(os.tmpdir(), "jojo-gemma-bounded-rescue-"));
+    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => (
+      translatedResponse(init, (document) => document("p").first().append("<br>"))
+    )) as typeof fetch;
+    const result = await translateProcessedCandidates(output, [candidate("bounded-rescue")], {
+      apiKey: "test-key",
+      fetchImpl,
+      requestsPerMinute: 100,
+      tokensPerMinute: 1_000_000,
+    });
+
+    expect(result.stats).toMatchObject({
+      translated: 0,
+      failed: 1,
+      requests: 3,
+      fallbackChunks: 1,
+      rescueChunks: 1,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
   it("backs off repeated failures and retries after the persisted delay", async () => {
