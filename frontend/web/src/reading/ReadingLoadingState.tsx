@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 const READING_LOADING_QUOTES = {
   periodical: [
@@ -23,29 +23,20 @@ export type ReadingLoadingKind = keyof typeof READING_LOADING_QUOTES;
 export function ReadingLoadingState({
   kind,
   status,
-  delayMs = 650,
   fullscreen = false,
   spacingClassName = "px-5 py-8",
   className = "",
 }: {
   kind: ReadingLoadingKind;
   status: string;
-  delayMs?: number;
   fullscreen?: boolean;
   spacingClassName?: string;
   className?: string;
 }) {
-  const [showQuote, setShowQuote] = useState(delayMs === 0);
   const [quote] = useState(() => {
     const quotes = READING_LOADING_QUOTES[kind];
     return quotes[Math.floor(Math.random() * quotes.length)]!;
   });
-
-  useEffect(() => {
-    if (delayMs === 0) return;
-    const timer = window.setTimeout(() => setShowQuote(true), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [delayMs]);
 
   return (
     <section
@@ -60,12 +51,10 @@ export function ReadingLoadingState({
           <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 bg-red motion-safe:animate-pulse" />
           {status}
         </p>
-        {showQuote ? (
-          <blockquote className="mb-0 mt-4 border-l border-rule pl-3 text-muted">
-            <p className="m-0 text-[12px] font-normal leading-6">“{quote.text}”</p>
-            <footer className="mt-1 font-sans text-[9px] tracking-[0.04em] opacity-70">——{quote.source}</footer>
-          </blockquote>
-        ) : null}
+        <blockquote className="mb-0 mt-4 border-l border-rule pl-3 text-muted">
+          <p className="m-0 text-[12px] font-normal leading-6">“{quote.text}”</p>
+          <footer className="mt-1 font-sans text-[9px] tracking-[0.04em] opacity-70">——{quote.source}</footer>
+        </blockquote>
       </div>
     </section>
   );
