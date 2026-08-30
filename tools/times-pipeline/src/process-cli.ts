@@ -87,10 +87,12 @@ export async function runProcess(args: Map<string, string>): Promise<{
     }
     const primaryModel = args.get("translation-model") ?? process.env.JOJO_TIMES_TRANSLATION_MODEL;
     const fallbackModel = args.get("translation-fallback-model") ?? process.env.JOJO_TIMES_TRANSLATION_FALLBACK_MODEL;
+    const rescueModel = args.get("translation-rescue-model") ?? process.env.JOJO_TIMES_TRANSLATION_RESCUE_MODEL;
     const translated = await translateProcessedCandidates(output, batches.flatMap((batch) => batch.candidates), {
       apiKeys,
       ...(primaryModel ? { primaryModel } : {}),
       ...(fallbackModel ? { fallbackModel } : {}),
+      ...(rescueModel ? { rescueModel } : {}),
       workers: positiveInteger(args.get("translation-workers") ?? process.env.JOJO_TIMES_TRANSLATION_WORKERS, TIMES_TRANSLATION_DEFAULTS.workers, "Translation workers"),
       requestTimeoutMs: positiveInteger(args.get("translation-request-timeout-ms") ?? process.env.JOJO_TIMES_TRANSLATION_REQUEST_TIMEOUT_MS, TIMES_TRANSLATION_DEFAULTS.requestTimeoutMs, "Translation request timeout"),
       batchTimeoutMs: positiveInteger(args.get("translation-batch-timeout-ms") ?? process.env.JOJO_TIMES_TRANSLATION_BATCH_TIMEOUT_MS, TIMES_TRANSLATION_DEFAULTS.batchTimeoutMs, "Translation batch timeout"),
