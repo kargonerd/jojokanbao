@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { SelectableAnnotationArticle } from "../../annotations/SelectableAnnotationArticle";
 import type { TextAnchor } from "../../annotations/types";
+import { ReadingLoadingState } from "../../reading/ReadingLoadingState";
 import { explainTimesSelection, type TimesExplanationMetadata } from "../ai";
 import { timesApi, type TimesNewsItem } from "../api";
 import { TimesExplanationPanel } from "../components/TimesExplanationPanel";
@@ -131,7 +132,7 @@ export function TimesDetailPage({
   const content = (
     <div className="mx-auto w-full max-w-4xl px-5 pb-16 pt-6 md:px-10 lg:px-12 lg:pt-10 xl:px-16">
       {error ? <div role="alert" className="border-2 border-red bg-paper p-5 font-sans text-sm text-red">{error}</div> : null}
-      {!news && !error ? <p className="font-sans text-sm text-muted">正在读取全文和图片…</p> : null}
+      {!news && !error ? <ReadingLoadingState kind="times" status="正在读取全文和图片…" spacingClassName="px-0 py-4" /> : null}
       {news ? (
         <article>
           <p className="font-sans text-[10px] font-black tracking-[0.12em] text-red">

@@ -4,6 +4,7 @@ import type { TimesTimelineIndex } from "@jojo/content";
 import { timesApi, type TimesNewsItem } from "../api";
 import { SourceLogo } from "../components/SourceLogo";
 import { TimelineArticle } from "../components/TimelineArticle";
+import { ReadingLoadingState } from "../../reading/ReadingLoadingState";
 import {
   hydrateTimesReadState,
   useTimesReadStore,
@@ -158,7 +159,7 @@ export function TimesHomePage() {
           </span>
         </button>
         <div ref={listViewport} className="min-h-0 flex-1 overflow-y-auto">
-          {loading ? <p className="px-5 py-10 font-sans text-sm text-muted">正在加载新闻…</p> : null}
+          {loading ? <ReadingLoadingState kind="times" status="正在加载新闻…" /> : null}
           {error ? <div role="alert" className="m-5 border-2 border-red bg-paper p-5 font-sans text-sm text-red">{error}</div> : null}
           {visibleDays.flatMap((day) => day.articles).map((article) => (
             <TimelineArticle
