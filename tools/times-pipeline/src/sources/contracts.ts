@@ -10,6 +10,7 @@ import type {
 } from "../types.js";
 import type { ArticleBodyExtractor } from "../content/body.js";
 import type { ArticleImageExtractor } from "../capture/page-images.js";
+import type { CapturedHtmlPage } from "../capture/http.js";
 
 export type SourceAdapterEndpoint = Extract<DiscoveryEndpoint, { kind: "source-adapter" }>;
 
@@ -27,6 +28,7 @@ export interface SourceModule {
     browser: BrowserDiscoveryRuntime,
   ) => Promise<DiscoveryResult>;
   fetch?: SourceFetchPolicy;
+  capturePage?: (url: string, timeoutSeconds: number) => Promise<CapturedHtmlPage | undefined>;
   extractBody?: ArticleBodyExtractor;
   extractImages?: ArticleImageExtractor;
   classifyUnavailable?(

@@ -25,7 +25,7 @@ import {
   rotatingSourceProbes,
   untriedProxyArticles,
 } from "./capture/schedule.js";
-import { sourceBodyExtractor, sourceImageExtractor, sourceUnavailablePageReason } from "./sources/registry.js";
+import { sourceBodyExtractor, sourceImageExtractor, sourcePageCapture, sourceUnavailablePageReason } from "./sources/registry.js";
 import type { Candidate, SourceCaptureManifest, SourceConfig, SourceFetchPolicy, UnavailablePageReason } from "./types.js";
 
 interface RawRunManifest {
@@ -176,9 +176,12 @@ async function captureOne(
   browser: () => Promise<BrowserSourceSession>,
   forceBrowser: boolean,
 ): Promise<CaptureOutcome> {
-  let page = !forceBrowser && article.source.fetch.strategy === "direct-first"
-    ? await fetchDirectPage(article.captureUrl, timeoutSeconds)
-    : undefined;
+  const publisherCapture = sourcePageCapture(article.sourceId);
+  let page = !forceBrowser && publisherCapture
+    ? await publisherCapture(article.captureUrl, timeoutSeconds)
+    : !forceBrowser && article.source.fetch.strategy === "direct-first"
+      ? await fetchDirectPage(article.captureUrl, timeoutSeconds)
+      : undefined;
   const directHasBody = page?.renderedHtml
     ? hasArticleBody(page.renderedHtml, article.fetchPolicy, bodyQuality(article.source), sourceBodyExtractor(article.sourceId), page.finalUrl)
     : false;

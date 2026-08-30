@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { discoverSource } from "../src/discovery/multi.js";
 import {
   acceptSourceCandidate,
+  acceptSourceUrl,
   processSourceCandidate,
   sourceBodyExtractor,
   sourceFetchPolicy,
@@ -266,5 +267,16 @@ describe("native source modules", () => {
     expect(acceptSourceCandidate("nyt", update)).toBe(false);
     expect(acceptSourceCandidate("nyt", article)).toBe(true);
     expect(processSourceCandidate("nyt", update)).toEqual(expect.objectContaining({ captureStatus: "duplicate" }));
+  });
+
+  it("excludes Guardian audio pages while retaining written reports", () => {
+    expect(acceptSourceUrl(
+      "guardian",
+      "https://www.theguardian.com/australia-news/audio/2026/aug/31/full-story-podcast",
+    )).toBe(false);
+    expect(acceptSourceUrl(
+      "guardian",
+      "https://www.theguardian.com/world/2026/aug/31/written-report",
+    )).toBe(true);
   });
 });
