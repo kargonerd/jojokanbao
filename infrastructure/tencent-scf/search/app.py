@@ -1,4 +1,6 @@
+import json
 import os
+from pathlib import Path
 from flask import Flask, jsonify, request
 from elasticsearch import Elasticsearch
 import re
@@ -36,6 +38,18 @@ delta_index_name = os.environ.get('ELASTICSEARCH_DELTA_INDEX')
 patch_state_path = os.environ.get('SEARCH_PATCH_STATE_FILE')
 overfetch_multiplier = int(os.environ.get('SEARCH_OVERFETCH_MULTIPLIER', '5'))
 search_state = CosSearchState.from_environment()
+
+
+def _build_info():
+  path = Path(__file__).with_name('build_info.json')
+  try:
+    payload = json.loads(path.read_text(encoding='utf-8'))
+    return payload if isinstance(payload, dict) else {}
+  except (OSError, ValueError):
+    return {'gitCommit': 'development', 'sourceFingerprint': 'development'}
+
+
+build_info = _build_info()
         
 IS_SERVERLESS = bool(os.environ.get('SERVERLESS'))
 
@@ -49,6 +63,7 @@ CORS(app, origins=['https://jojokanbao.cn', 'https://reader.jojokanbao.cn', 'htt
 def health():
   return jsonify({
     'status': 'ok',
+    'build': build_info,
     'elasticsearch': 'configured' if es else 'not_configured',
     'contentElasticsearch': (
       'configured' if content_es and content_index_name else 'not_configured'
@@ -72,14 +87,7 @@ def _string_list(value, limit=100):
 
 
 def _identity_filter(field, values):
-  """Match IDs on both the intended keyword mapping and old dynamic text mappings."""
-  return {'bool': {
-    'should': [
-      {'terms': {field: values}},
-      *({'match_phrase': {field: value}} for value in values),
-    ],
-    'minimum_should_match': 1,
-  }}
+  return {'terms': {field: values}}
 
 
 @app.route("/content/search", methods=["POST"])
@@ -107,26 +115,19 @@ def content_search():
   if document_types:
     filters.append({'terms': {'type': document_types}})
   if sources:
-    filters.append({'bool': {
-      'should': [{'match_phrase': {'source': value}} for value in sources],
-      'minimum_should_match': 1,
-    }})
+    filters.append({'terms': {'source': sources}})
   query = {
     'bool': {
       'must': [{
         'multi_match': {
           'query': query_text,
-          'fields': [
-            'title^4', 'content',
-            'datasetTitle^4', 'itemTitle^4', 'targetTitle^3', 'text',
-          ],
+          'fields': ['title^4', 'content'],
           'type': 'best_fields',
           'operator': 'and',
         }
       }],
       'should': [
         {'match_phrase': {'content': {'query': query_text, 'boost': 8}}},
-        {'match_phrase': {'text': {'query': query_text, 'boost': 8}}},
       ],
       'filter': filters,
     }
@@ -139,20 +140,12 @@ def content_search():
   if excluded:
     query = build_active_query(query, excluded)
   body = {
-    # A long chapter can produce several ES chunks. Overfetch so the API can
-    # return distinct source fragments instead of spending every slot on one.
-    'size': min(size * 5, 100),
-    '_source': [
-      'type', 'title', 'content', 'date', 'source', 'metadata',
-      'datasetId', 'datasetTitle', 'itemId', 'itemTitle', 'itemType',
-      'targetId', 'targetTitle', 'chunkId', 'order', 'text', 'authors',
-      'publishedDate', 'manifestObject', 'fragmentObject'
-    ],
+    'size': size,
+    '_source': ['type', 'datasetId', 'itemId', 'title', 'content', 'date', 'source', 'metadata'],
     'query': query,
     'highlight': {
       'fields': {
         'content': {'fragment_size': 260, 'number_of_fragments': 2},
-        'text': {'fragment_size': 260, 'number_of_fragments': 2},
       },
       'pre_tags': ['<mark>'],
       'post_tags': ['</mark>'],
@@ -165,24 +158,17 @@ def content_search():
     return jsonify({'error': '搜索服务暂时不可用'}), 502
   hits = (data.get('hits') or {})
   results = []
-  seen_fragments = set()
   for hit in hits.get('hits') or []:
     source = hit.get('_source') or {}
     if dataset_ids and source.get('datasetId') not in dataset_ids:
       continue
     if item_ids and source.get('itemId') not in item_ids:
       continue
-    fragment_object = source.get('fragmentObject')
-    if fragment_object and fragment_object in seen_fragments:
-      continue
-    if fragment_object:
-      seen_fragments.add(fragment_object)
-    highlights = (hit.get('highlight') or {}).get('text') or []
     results.append({
       **source,
       'documentId': hit.get('_id'),
       'score': hit.get('_score'),
-      'highlights': ((hit.get('highlight') or {}).get('content') or highlights),
+      'highlights': ((hit.get('highlight') or {}).get('content') or []),
     })
     if len(results) >= size:
       break

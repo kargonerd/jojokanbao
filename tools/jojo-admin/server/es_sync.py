@@ -36,25 +36,8 @@ DOCUMENT_TYPES = ("book", "newspaper", "news")
 BUSINESS_FIELDS = (
     "type", "datasetId", "itemId", "title", "content", "date", "source", "metadata",
 )
-
-UNIFIED_MAPPING: dict[str, Any] = {
-    "_meta": {"jojoSchema": "jojo-search/1"},
-    "dynamic": "strict",
-    "properties": {
-        "@timestamp": {"type": "date"},
-        "type": {"type": "keyword"},
-        "datasetId": {"type": "keyword"},
-        "itemId": {"type": "keyword"},
-        "title": {
-            "type": "text",
-            "fields": {"keyword": {"type": "keyword", "ignore_above": 512}},
-        },
-        "content": {"type": "text"},
-        "date": {"type": "date", "ignore_malformed": True},
-        "source": {"type": "keyword"},
-        "metadata": {"type": "object", "enabled": False},
-    },
-}
+MAPPING_PATH = Path(__file__).with_name("es_mapping.json")
+UNIFIED_MAPPING: dict[str, Any] = json.loads(MAPPING_PATH.read_text(encoding="utf-8"))
 
 
 class _PlainTextParser(HTMLParser):
@@ -468,56 +451,61 @@ class HuggingFaceCanonical:
                         yield result
 
 
-def _mapping_properties(payload: Any) -> dict[str, Any]:
+def _mapping_definition(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {}
     for value in payload.values():
         if isinstance(value, dict) and isinstance(value.get("mappings"), dict):
-            return value["mappings"].get("properties") or {}
+            return value["mappings"]
     mappings = payload.get("mappings")
-    return mappings.get("properties") or {} if isinstance(mappings, dict) else {}
+    return mappings if isinstance(mappings, dict) else {}
+
+
+def _mapping_errors(mapping: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    schema = (mapping.get("_meta") or {}).get("jojoSchema")
+    expected_schema = UNIFIED_MAPPING["_meta"]["jojoSchema"]
+    if schema != expected_schema:
+        errors.append(f"_meta.jojoSchema 应为 {expected_schema}，当前为 {schema or '未设置'}")
+    if mapping.get("dynamic") != "strict":
+        errors.append(f"dynamic 必须是 strict，当前为 {mapping.get('dynamic', '未设置')}")
+    expected = UNIFIED_MAPPING["properties"]
+    existing = mapping.get("properties") if isinstance(mapping.get("properties"), dict) else {}
+    missing = sorted(set(expected) - set(existing))
+    extra = sorted(set(existing) - set(expected))
+    if missing:
+        errors.append("缺少字段：" + ", ".join(missing))
+    if extra:
+        errors.append("存在旧格式字段：" + ", ".join(extra))
+    for name, definition in expected.items():
+        actual = existing.get(name)
+        if not isinstance(actual, dict):
+            continue
+        if actual.get("type") != definition.get("type"):
+            errors.append(
+                f"{name}.type 应为 {definition.get('type')}，当前为 {actual.get('type')}"
+            )
+        if name == "metadata" and actual.get("enabled") is not False:
+            errors.append("metadata.enabled 必须是 false")
+    return errors
 
 
 def ensure_unified_mapping(client: KibanaConsoleClient, index: str) -> dict[str, Any]:
     status, payload = client.request("GET", f"{index}/_mapping")
     if status >= 400:
-        raise RuntimeError(f"读取 ES mapping 失败：{payload}")
-    existing = _mapping_properties(payload)
-    metadata = existing.get("metadata")
-    metadata_warning = None
-    if metadata and metadata.get("enabled") is not False:
-        # Existing Tencent Serverless data streams use dynamic mappings and do
-        # not expose a mapping update API.  The metadata keys emitted by this
-        # module are bounded and search queries never include metadata.*.
-        metadata_warning = "metadata 使用 Serverless 动态 mapping；同步器不会查询 metadata.*"
-    missing = {
-        name: definition
-        for name, definition in UNIFIED_MAPPING["properties"].items()
-        if name not in existing
-    }
-    if missing:
-        status, result = client.request("PUT", f"{index}/_mapping", {
-            "_meta": UNIFIED_MAPPING["_meta"],
-            "properties": missing,
-        })
-        if status >= 400:
-            if "Serverless index does not support" in str(result):
-                # Tencent Serverless indexes are created and mapped in its
-                # console.  The HTTP compatibility layer still permits
-                # dynamic fields, so keep the document contract strict in our
-                # code and report that ES could not persist the mapping hint.
-                return {
-                    "managed": False,
-                    "existing": sorted(existing),
-                    "added": [],
-                    "warning": "Tencent Serverless 禁止 PUT _mapping；使用现有动态 mapping",
-                }
-            raise RuntimeError(f"写入 ES mapping 失败：{result}")
+        raise RuntimeError(
+            f"读取 ES mapping 失败：{payload}。请先按 {MAPPING_PATH.name} 创建空索引"
+        )
+    mapping = _mapping_definition(payload)
+    errors = _mapping_errors(mapping)
+    if errors:
+        raise ValueError(
+            f"索引 {index} 不是干净的 JOJO Search 索引，已拒绝写入：" + "；".join(errors)
+        )
     return {
-        "managed": metadata_warning is None,
-        "existing": sorted(existing),
-        "added": sorted(missing),
-        **({"warning": metadata_warning} if metadata_warning else {}),
+        "valid": True,
+        "schema": UNIFIED_MAPPING["_meta"]["jojoSchema"],
+        "fields": sorted(UNIFIED_MAPPING["properties"]),
     }
 
 
@@ -709,12 +697,16 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--max-batch-mb", type=int, default=5)
     result.add_argument("--download-workers", type=int, default=8)
     result.add_argument("--dry-run", action="store_true")
+    result.add_argument("--print-mapping", action="store_true")
     return result
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     argument_parser = parser()
     args = argument_parser.parse_args(argv)
+    if args.print_mapping:
+        print(json.dumps(UNIFIED_MAPPING, ensure_ascii=False, indent=2))
+        return 0
     if not args.dry_run and not args.index:
         argument_parser.error("写入 ES 时必须显式传 --index 或配置 ES_SYNC_INDEX")
     source = HuggingFaceCanonical(

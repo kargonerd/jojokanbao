@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from es_sync import (
     AppendOnlySync,
     IndexedDocument,
+    UNIFIED_MAPPING,
     book_documents,
     ensure_unified_mapping,
     latest_news_references,
@@ -172,20 +173,13 @@ class UnifiedDocumentTest(unittest.TestCase):
 
 
 class FakeClient:
-    def __init__(self, mapping=None, existing=None, mapping_status=200):
-        self.mapping = mapping or {}
+    def __init__(self, mapping=None, existing=None):
+        self.mapping = mapping or UNIFIED_MAPPING
         self.existing = existing or {}
-        self.mapping_status = mapping_status
-        self.mapping_writes = []
 
     def request(self, method, path, body=None):
         if path.endswith("/_mapping") and method == "GET":
-            return 200, {"backing-index": {"mappings": {"properties": self.mapping}}}
-        if path.endswith("/_mapping") and method == "PUT":
-            self.mapping_writes.append(body)
-            if self.mapping_status >= 400:
-                return self.mapping_status, {"error": "Serverless index does not support uri"}
-            return 200, {"acknowledged": True}
+            return 200, {"backing-index": {"mappings": self.mapping}}
         if path.endswith("/_search") and method == "POST":
             document_ids = body["query"]["ids"]["values"]
             hits = [
@@ -208,34 +202,35 @@ class FakeClient:
 
 
 class AppendOnlySyncTest(unittest.TestCase):
-    def test_mapping_disables_metadata_indexing(self):
-        client = FakeClient(mapping={"@timestamp": {"type": "date"}})
+    def test_mapping_accepts_only_the_strict_unified_contract(self):
+        client = FakeClient(mapping=UNIFIED_MAPPING)
         result = ensure_unified_mapping(client, "test")
 
-        self.assertIn("metadata", result["added"])
-        self.assertTrue(result["managed"])
-        self.assertEqual(client.mapping_writes[0]["properties"]["metadata"]["enabled"], False)
+        self.assertTrue(result["valid"])
+        self.assertEqual(result["schema"], "jojo-search/1")
+        self.assertEqual(UNIFIED_MAPPING["properties"]["metadata"]["enabled"], False)
 
-    def test_serverless_mapping_rejection_is_reported_without_blocking_sync(self):
-        client = FakeClient(mapping={"@timestamp": {"type": "date"}}, mapping_status=400)
-        result = ensure_unified_mapping(client, "test")
-
-        self.assertFalse(result["managed"])
-        self.assertIn("Serverless", result["warning"])
-
-    def test_existing_dynamic_metadata_does_not_block_reruns(self):
+    def test_polluted_dynamic_mapping_is_rejected_before_sync(self):
         client = FakeClient(mapping={
-            "@timestamp": {"type": "date"},
-            "type": {"type": "text"},
-            "title": {"type": "text"},
-            "content": {"type": "text"},
-            "source": {"type": "text"},
-            "metadata": {"properties": {"publicationId": {"type": "text"}}},
+            "dynamic": True,
+            "properties": {
+                **UNIFIED_MAPPING["properties"],
+                "releaseId": {"type": "text"},
+                "metadata": {"properties": {"publicationId": {"type": "text"}}},
+            },
         })
-        result = ensure_unified_mapping(client, "test")
 
-        self.assertFalse(result["managed"])
-        self.assertIn("metadata", result["warning"])
+        with self.assertRaisesRegex(ValueError, "dynamic.*strict.*旧格式字段.*releaseId"):
+            ensure_unified_mapping(client, "test")
+
+    def test_incomplete_mapping_is_rejected_instead_of_mutated(self):
+        client = FakeClient(mapping={
+            "dynamic": "strict",
+            "properties": {"@timestamp": {"type": "date"}},
+        })
+
+        with self.assertRaisesRegex(ValueError, "缺少字段"):
+            ensure_unified_mapping(client, "test")
 
     def test_rerun_is_unchanged_but_different_body_is_a_conflict(self):
         base = {

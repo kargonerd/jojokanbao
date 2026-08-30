@@ -36,8 +36,9 @@ logical document IDs and does not use a release selector. Until all four
 with HTTP 503 while the existing `/search` route remains available.
 
 `datasetId` and `itemId` are top-level keyword fields used for exact scope
-filtering. The API still reads legacy chunk fields during migration, but the
-book workbench no longer publishes those documents.
+filtering. The unified endpoint reads only the nine fields in the strict JOJO
+Search mapping; it does not query the old chunk, repair, vector, or release
+fields.
 
 ### Search revision state
 
@@ -84,6 +85,40 @@ python tools/jojo-admin/server/publish_search_state.py `
   --bucket private-bucket-1250000000 `
   --region ap-beijing
 ```
+
+## Deploying search code
+
+`deploy.py` is the only supported SCF code-release path. It builds a clean zip
+with pinned dependencies, normalizes `scf_bootstrap` to Linux line endings,
+uploads the package temporarily to the private `jojo-search` COS bucket,
+updates one function, waits for it to become Active, verifies `/health`, and
+then removes the temporary COS object. The health response exposes the Git
+commit and source fingerprint that are actually running.
+
+Build locally without changing cloud state:
+
+```powershell
+python infrastructure/tencent-scf/search/deploy.py --build-only
+```
+
+Deploy and verify staging:
+
+```powershell
+python infrastructure/tencent-scf/search/deploy.py --target staging
+```
+
+Production refuses to deploy unless staging is healthy and is running the same
+source fingerprint. The production flag must also be explicit:
+
+```powershell
+python infrastructure/tencent-scf/search/deploy.py `
+  --target production `
+  --confirm-production
+```
+
+The command calls the authenticated local `tccli`; it never stores Tencent
+credentials in the repository. `UpdateFunctionCode` preserves the function's
+environment and network configuration.
 
 ## Overlay Search Test
 

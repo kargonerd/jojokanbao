@@ -107,9 +107,22 @@ article. Every document has the same small business shape:
 
 Tencent Serverless also requires `@timestamp`. Search only queries `title` and
 `content`; `metadata` is returned for navigation and is not included in search
-queries. A Console-created index may disable metadata indexing. Existing
-Serverless data streams reject `PUT _mapping`, so the synchronizer accepts their
-bounded dynamic metadata fields and reports that limitation.
+queries. The target must be created from `es_mapping.json` before any document
+is written. That contract contains only `@timestamp` plus the eight business
+fields above, uses `dynamic: strict`, and stores `metadata` with
+`enabled: false`. The synchronizer validates the complete mapping and refuses
+an index with missing fields, dynamic text identity fields, indexed metadata,
+or any legacy fields; it never tries to repair a polluted mapping in place.
+
+Print the exact mapping for the Tencent console:
+
+```powershell
+python tools/jojo-admin/server/es_sync.py --print-mapping
+```
+
+Elasticsearch cannot remove mapped fields. An index previously used for chunk,
+vector, release, or repair experiments must be replaced with a clean index; it
+must not be reused for the formal import.
 
 Preview one real document of every type without writing ES:
 

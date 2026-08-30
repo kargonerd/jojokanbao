@@ -55,3 +55,5 @@ tools/data-workbench/server/.runtime/
 
 # Local scratch directories used during migration/cleanup
 .tmp-empty-delete/
+# Local deployment builds and cloud-code backups.
+/.runtime/

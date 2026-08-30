@@ -1,0 +1,37 @@
+{
+  "_meta": {
+    "jojoSchema": "jojo-search/1"
+  },
+  "dynamic": "strict",
+  "properties": {
+    "@timestamp": {
+      "type": "date"
+    },
+    "type": {
+      "type": "keyword"
+    },
+    "datasetId": {
+      "type": "keyword"
+    },
+    "itemId": {
+      "type": "keyword"
+    },
+    "title": {
+      "type": "text"
+    },
+    "content": {
+      "type": "text"
+    },
+    "date": {
+      "type": "date",
+      "ignore_malformed": true
+    },
+    "source": {
+      "type": "keyword"
+    },
+    "metadata": {
+      "type": "object",
+      "enabled": false
+    }
+  }
+}
