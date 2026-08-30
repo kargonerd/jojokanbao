@@ -9,5 +9,5 @@ export const nikkeiFetch = {
     "[id^='article-body']",
     "[itemprop='articleBody']",
   ],
-  revision: "short-free-articles-v1",
+  revision: "publisher-payload-v2",
 } satisfies SourceFetchPolicy;

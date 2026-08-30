@@ -45,7 +45,7 @@ function bodyParagraphs(value: string): string[] {
 }
 
 const AP_SEPARATOR = /^_{3,}$/u;
-const AP_TRAILING_NOTE = /^(?:For more on .+?:|The Associated Press receives (?:financial )?support\b|Find AP(?:'|’)?s standards for working with philanthropies\b)/iu;
+const AP_TRAILING_NOTE = /^(?:For more on .+?:|(?:The Associated Press(?:['’]s?)?(?: [^.]{0,180}\bcoverage)?|Global health and development coverage) receives (?:financial )?support\b|Find AP(?:'|’)?s standards for working with philanthropies\b)/iu;
 
 function storyBody(document: ReturnType<typeof load>, quality: BodyQuality, pageUrl?: string): string | undefined {
   const container = document(".RichTextStoryBody, [itemprop='articleBody']").first();

@@ -1,6 +1,8 @@
 import type { SourceModule } from "../contracts.js";
 import { discoverDw } from "./discover.js";
 import { dwFetch } from "./fetch.js";
+import { extractDwBody } from "./body.js";
+import { extractDwImages } from "./images.js";
 import { processDw } from "./process.js";
 
 export const dwSource: SourceModule = {
@@ -10,5 +12,7 @@ export const dwSource: SourceModule = {
     return discoverDw(source, endpoint, fetchedAt);
   },
   fetch: dwFetch,
+  extractBody: extractDwBody,
+  extractImages: extractDwImages,
   process: processDw,
 };

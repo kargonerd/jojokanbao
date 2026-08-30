@@ -180,10 +180,11 @@ describe("article processing", () => {
       `<li>Live update ${index}: ${"Publisher reporting provides verified context and material developments. ".repeat(3)}</li>`;
     const body = extractArticleBody(
       `<html><body>
-        <header><div class="wysiwyg"><ul>${update(1)}${update(2)}</ul></div></header>
-        <main>
-          <article><div class="wysiwyg"><ul>${update(3)}${update(4)}${update(5)}</ul></div></article>
-          <article><div class="wysiwyg"><ul>${update(6)}${update(7)}${update(8)}</ul></div></article>
+        <header><div class="wysiwyg"><ul><li>This page-header module is not article content.</li></ul></div></header>
+        <main data-component="live-blog">
+          <header class="compact-featured-area"><div class="wysiwyg-content"><div class="wysiwyg wysiwyg--all-content"><ul>${update(1)}${update(2)}</ul></div></div></header>
+          <article data-component="live-blog-post"><div class="wysiwyg"><ul>${update(3)}${update(4)}${update(5)}</ul></div></article>
+          <article data-component="live-blog-post"><div class="wysiwyg"><ul>${update(6)}${update(7)}${update(8)}</ul></div></article>
         </main>
       </body></html>`,
       { capture: "browser", bodySelectors: [".wysiwyg", "article"] },
@@ -287,6 +288,26 @@ describe("article processing", () => {
     expect(body).toContain("This is part of a series");
     expect(body).not.toContain("For more on Africa");
     expect(body).not.toContain("Gates Foundation");
+  });
+
+  it("removes AP coverage-specific funding disclosures and their separator", () => {
+    const body = extractArticleBody(
+      `<div class="RichTextStoryBody">
+        <p>The first paragraph reports the current conditions and explains why officials changed their response after reviewing the latest evidence.</p>
+        <p>The second paragraph gives readers more context about the communities affected and the work now under way across the region.</p>
+        <p>The third paragraph records the response from local officials and describes the next steps expected during the coming week.</p>
+        <p>___</p>
+        <p>The Associated Press’ climate and environmental coverage receives financial support from multiple private foundations. AP is solely responsible for all content.</p>
+      </div>`,
+      { capture: "browser", bodySelectors: [".RichTextStoryBody"] },
+      { minimumCharacters: 250, minimumParagraphs: 3 },
+      extractApBody,
+      "https://apnews.com/article/example",
+    );
+
+    expect(body?.match(/<p>/gu)).toHaveLength(3);
+    expect(body).not.toContain("private foundations");
+    expect(body).not.toContain("<hr>");
   });
 
   it("extracts The Paper content from Next.js data and persisted discovery fragments", () => {

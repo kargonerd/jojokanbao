@@ -9,14 +9,25 @@ function number(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
-function deliveryImage(value: ReutersJsonObject): { sourceUrl?: string; width?: number; height?: number } {
+function absoluteUrl(value: unknown, pageUrl: string): string | undefined {
+  const source = string(value);
+  if (!source || source.startsWith("data:") || source.startsWith("blob:")) return undefined;
+  try {
+    const url = new URL(source, pageUrl);
+    return ["http:", "https:"].includes(url.protocol) ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function deliveryImage(value: ReutersJsonObject, pageUrl: string): { sourceUrl?: string; width?: number; height?: number } {
   const originalWidth = number(value.width);
   const originalHeight = number(value.height);
-  const resizer = string(value.resizer_url);
+  const originalUrl = absoluteUrl(value.url, pageUrl);
+  const resizer = absoluteUrl(value.resizer_url, pageUrl);
   if (!resizer) {
-    const sourceUrl = string(value.url);
     return {
-      ...(sourceUrl ? { sourceUrl } : {}),
+      ...(originalUrl ? { sourceUrl: originalUrl } : {}),
       ...(originalWidth ? { width: originalWidth } : {}),
       ...(originalHeight ? { height: originalHeight } : {}),
     };
@@ -33,24 +44,29 @@ function deliveryImage(value: ReutersJsonObject): { sourceUrl?: string; width?: 
       ...(originalWidth && originalHeight ? { height: Math.round(originalHeight * 1920 / originalWidth) } : {}),
     };
   } catch {
-    const sourceUrl = string(value.url);
     return {
-      ...(sourceUrl ? { sourceUrl } : {}),
+      ...(originalUrl ? { sourceUrl: originalUrl } : {}),
       ...(originalWidth ? { width: originalWidth } : {}),
       ...(originalHeight ? { height: originalHeight } : {}),
     };
   }
 }
 
-function imageCandidate(value: unknown, role: "lead" | "content", afterBlock?: number): PageImageCandidate | undefined {
+function imageCandidate(
+  value: unknown,
+  pageUrl: string,
+  role: "lead" | "content",
+  afterBlock?: number,
+): PageImageCandidate | undefined {
   const image = reutersObject(value);
   if (image?.type !== "image") return undefined;
-  const delivered = deliveryImage(image);
+  const delivered = deliveryImage(image, pageUrl);
   const sourceUrl = delivered.sourceUrl;
   if (!sourceUrl) return undefined;
   const alt = string(image.alt_text) ?? string(image.subtitle);
-  const caption = string(image.caption);
   const credit = string(image.authors) ?? string(image.company);
+  const description = string(image.caption);
+  const caption = [...new Set([description, credit].filter((value): value is string => Boolean(value)))].join(" ") || undefined;
   const width = delivered.width;
   const height = delivered.height;
   return {
@@ -74,7 +90,7 @@ function galleryImages(result: ReutersJsonObject): unknown[] {
   });
 }
 
-export function extractReutersImages(html: string): PageImageCandidate[] {
+export function extractReutersImages(html: string, pageUrl = "https://www.reuters.com/"): PageImageCandidate[] {
   const result = reutersFusionResult(html);
   if (!result) return [];
   const gallery = galleryImages(result);
@@ -84,8 +100,17 @@ export function extractReutersImages(html: string): PageImageCandidate[] {
       .flatMap((value) => Array.isArray(value) ? value : [value]);
   const images: PageImageCandidate[] = [];
   for (const value of values) {
-    const candidate = imageCandidate(value, images.length ? "content" : "lead", images.length ? 0 : undefined);
+    const candidate = imageCandidate(value, pageUrl, images.length ? "content" : "lead", images.length ? 0 : undefined);
     if (candidate && !images.some((image) => image.sourceUrl === candidate.sourceUrl)) images.push(candidate);
   }
-  return images;
+  if (!gallery.length || images.length < 2) return images;
+  return images.map((image, order) => ({
+    ...image,
+    presentation: {
+      type: "carousel",
+      id: "reuters-primary-gallery",
+      order,
+      total: images.length,
+    },
+  }));
 }
