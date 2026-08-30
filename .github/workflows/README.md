@@ -76,7 +76,6 @@ Internal local tools participate in CI but do not need a deployment workflow.
 
 Scheduled and manually operated data tasks remain independent workflows:
 
-- `maintenance-bloomberg-archive.yml`
 - `maintenance-purge-archive-pdf-cache.yml`
 - `maintenance-sync-rmrb.yml`
 - `maintenance-times-capture.yml` — accepts the external ten-minute Cloudflare trigger, checks a 24-hour discovery lookback for late URLs, captures the primary one-hour window plus unseen/retry pages and images, and commits Raw to the private HF Dataset

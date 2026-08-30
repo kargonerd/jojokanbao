@@ -1,9 +1,10 @@
 # Bloomberg archive
 
-This directory contains the standalone data-archiving tool used by the
-`Maintenance · Bloomberg archive` workflow. It downloads a bounded, resumable batch,
-publishes content-addressed objects to Backblaze B2, uploads the SQLite
-checkpoint last, and dispatches the next batch.
+This directory contains the retired standalone Bloomberg data-archiving tool.
+Its GitHub Actions workflow has been removed, and this code is retained only
+until the historical archive implementation and manifest are folded into
+`tools/news-archive`. Do not use it to publish archive Raw or checkpoints to
+Backblaze B2.
 
 ```text
 bloomberg_archive/  Download and storage implementation
