@@ -1,5 +1,5 @@
 import { StrictMode } from "react";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BookReader } from "../src/rag/components/BookReader";
@@ -297,6 +297,7 @@ describe("BookReader", () => {
     expect(toolbar.textContent).toContain("复制");
     expect(toolbar.textContent).toContain("划线");
     expect(toolbar.textContent).toContain("写想法");
+    expect(within(toolbar).getAllByRole("button").every((button) => button.classList.contains("reader-selection-action"))).toBe(true);
     expect(screen.getByRole("button", { name: "AI 解释" }).textContent).toContain("Beta");
     fireEvent.click(screen.getByRole("button", { name: "复制" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("这是正文。"));

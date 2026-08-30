@@ -113,6 +113,7 @@ export function AccountBook({
           <button type="button" disabled={busy} onClick={() => openAccount("login")}>登录</button>
           <button type="button" disabled={busy} onClick={() => openAccount("register")}>注册</button>
         </div>
+        <Link className="login-book-entry__about" to="/support">关于 JOJO 看报 →</Link>
       </section>
 
       <dialog
@@ -152,7 +153,7 @@ export function AccountBook({
                 </div>
                 <footer className="login-page__folio">
                   <span>登记日期：二〇二六年</span>
-                  <Link to="/">JOJO 看报</Link>
+                  <span><Link to="/">首页</Link> · <Link to="/support">关于</Link></span>
                 </footer>
               </article>
             </div>

@@ -1,5 +1,7 @@
 const DEFAULT_AGENT_URL = "https://agent-global.jojokanbao.cn/rag";
-const MAX_REQUEST_BYTES = 64 * 1024;
+const DEFAULT_TIMES_AGENT_URL = "https://agent-global.jojokanbao.cn/times";
+const MAX_RAG_REQUEST_BYTES = 64 * 1024;
+const MAX_TIMES_REQUEST_BYTES = 6 * 1024 * 1024;
 const FORWARDED_HEADERS = [
   "Accept",
   "Authorization",
@@ -15,7 +17,18 @@ type ReaderGatewayContext = {
 export async function onRequest(context: ReaderGatewayContext): Promise<Response> {
   const incoming = new URL(context.request.url);
   const pathname = incoming.pathname.replace(/\/+$/, "");
-  if (pathname !== "/gateway/ask") {
+  const route = pathname === "/gateway/ask"
+    ? {
+      target: context.env?.JOJO_AGENT_URL?.trim() || DEFAULT_AGENT_URL,
+      maxBytes: MAX_RAG_REQUEST_BYTES,
+    }
+    : pathname === "/gateway/times/explain"
+      ? {
+        target: context.env?.JOJO_TIMES_AGENT_URL?.trim() || DEFAULT_TIMES_AGENT_URL,
+        maxBytes: MAX_TIMES_REQUEST_BYTES,
+      }
+      : undefined;
+  if (!route) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
   if (context.request.method !== "POST") {
@@ -28,7 +41,7 @@ export async function onRequest(context: ReaderGatewayContext): Promise<Response
   let target: URL;
   try {
     const agent = new URL(
-      context.env?.JOJO_AGENT_URL?.trim() || DEFAULT_AGENT_URL,
+      route.target,
     );
     target = agent;
   } catch {
@@ -38,11 +51,11 @@ export async function onRequest(context: ReaderGatewayContext): Promise<Response
     return Response.json({ error: "问答服务暂未配置" }, { status: 503 });
   }
   const declaredLength = Number(context.request.headers.get("Content-Length") ?? "0");
-  if (declaredLength > MAX_REQUEST_BYTES) {
+  if (declaredLength > route.maxBytes) {
     return Response.json({ error: "问答内容过长" }, { status: 413 });
   }
   const body = await context.request.arrayBuffer();
-  if (body.byteLength > MAX_REQUEST_BYTES) {
+  if (body.byteLength > route.maxBytes) {
     return Response.json({ error: "问答内容过长" }, { status: 413 });
   }
   const headers = new Headers();

@@ -35,12 +35,16 @@ describe("Reader Agent gateway", () => {
     expect(headers.get("authorization")).toBe("Bearer reader-token");
     expect(headers.get("x-jojo-service-signature")).toBeNull();
     expect(new TextDecoder().decode(init.body as ArrayBuffer)).toBe(JSON.stringify({ message: "你好" }));
+    await onRequest(context("/gateway/times/explain"));
+    expect(String(fetchMock.mock.calls[1]![0])).toBe("https://agent-global.jojokanbao.cn/times");
     expect((await onRequest(context("/gateway/credentials"))).status).toBe(404);
     expect((await onRequest(context("/gateway/unknown"))).status).toBe(404);
   });
 
   it("rejects unsafe configuration and oversized requests before fetching", async () => {
-    const fetchMock = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue(new Response("event: done\n\n", {
+      headers: { "Content-Type": "text/event-stream" },
+    }));
     vi.stubGlobal("fetch", fetchMock);
     const invalid = context("/gateway/ask");
     invalid.env = { JOJO_AGENT_URL: "http://agent.example/rag" };
@@ -50,5 +54,10 @@ describe("Reader Agent gateway", () => {
     oversized.request.headers.set("Content-Length", String(64 * 1024 + 1));
     expect((await onRequest(oversized)).status).toBe(413);
     expect(fetchMock).not.toHaveBeenCalled();
+
+    const timesRequest = context("/gateway/times/explain");
+    timesRequest.env = { JOJO_TIMES_AGENT_URL: "https://times-agent.example/explain" };
+    await onRequest(timesRequest);
+    expect(String(fetchMock.mock.calls[0]![0])).toBe("https://times-agent.example/explain");
   });
 });

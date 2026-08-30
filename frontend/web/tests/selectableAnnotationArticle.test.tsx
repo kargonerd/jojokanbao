@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SelectableAnnotationArticle } from "../src/annotations/SelectableAnnotationArticle";
 import { useFeatureFlagStore } from "../src/featureFlags";
@@ -40,7 +40,7 @@ describe("SelectableAnnotationArticle", () => {
     fireEvent.click(await screen.findByRole("button", { name: "写想法" }));
     fireEvent.change(screen.getByPlaceholderText("写下此刻的想法……"), { target: { value: "报刊评论" } });
     expect(screen.getByRole("radio", { name: "公开" }).getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(screen.getByRole("button", { name: "保存想法" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(annotationApi.createAnnotation).toHaveBeenCalledWith(
       expect.objectContaining({ contentType: "newspaper", contentId: "news-1" }),
       expect.objectContaining({ quote: "报刊正文" }),
@@ -59,6 +59,48 @@ describe("SelectableAnnotationArticle", () => {
 
     fireEvent.keyUp(paragraph, { key: "ArrowRight", shiftKey: true });
 
-    expect(await screen.findByRole("toolbar", { name: "选中文字工具" })).toBeTruthy();
+    const toolbar = await screen.findByRole("toolbar", { name: "选中文字工具" });
+    expect(toolbar.textContent).toContain("复制");
+    expect(within(toolbar).getAllByRole("button").every((button) => button.classList.contains("reader-selection-action"))).toBe(true);
+  });
+
+  it("copies selected text with the shared reader action", async () => {
+    const originalClipboard = navigator.clipboard;
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    try {
+      render(<SelectableAnnotationArticle subject={{ contentType: "newspaper", contentId: "news-1", sectionId: "body", contentTitle: "新闻标题" }}><p>复制这段报刊正文</p></SelectableAnnotationArticle>);
+      const paragraph = screen.getByText("复制这段报刊正文");
+      const range = document.createRange();
+      range.selectNodeContents(paragraph);
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(range);
+
+      fireEvent.pointerUp(paragraph);
+      fireEvent.click(await screen.findByRole("button", { name: "复制" }));
+
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith("复制这段报刊正文"));
+      expect(screen.queryByRole("toolbar", { name: "选中文字工具" })).toBeNull();
+    } finally {
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: originalClipboard });
+    }
+  });
+
+  it("offers AI explanation independently from the annotation feature flag", async () => {
+    useFeatureFlagStore.setState({ initialized: true, revision: "test", flags: { "library.bookshelf": false, "reader.annotations": false } });
+    const onExplain = vi.fn();
+    render(<SelectableAnnotationArticle subject={{ contentType: "newspaper", contentId: "news-1", sectionId: "body", contentTitle: "新闻标题" }} onExplain={onExplain}><p>图表中的红色曲线</p></SelectableAnnotationArticle>);
+    const paragraph = screen.getByText("图表中的红色曲线");
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+
+    fireEvent.pointerUp(paragraph);
+    fireEvent.click(await screen.findByRole("button", { name: "AI 解释" }));
+
+    expect(onExplain).toHaveBeenCalledWith(expect.objectContaining({ quote: "图表中的红色曲线" }));
+    expect(screen.queryByRole("button", { name: "复制" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "划线" })).toBeNull();
   });
 });

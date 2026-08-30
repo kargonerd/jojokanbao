@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createRagAgentDefinition } from "./applications";
+import { createRagAgentDefinition, createTimesAgentDefinition } from "./applications";
 import { PersistentCredentialStore, type CredentialFile } from "./credentials";
 import { createEdgeOneAgentHandler } from "./edgeone/handler";
 import { createPlatformModelRuntime, resolvePlatformModelConfig, type AgentEnvironment } from "./models";
@@ -16,7 +16,10 @@ const repositoryRoot = path.resolve(
   "..",
   "..",
 );
-const MAX_REQUEST_BYTES = 64 * 1024;
+// Times explanations can include up to 4 MB of decoded image data. Base64 and
+// JSON framing make the HTTP payload larger than that, so keep the local limit
+// aligned with the production handler instead of dropping image requests.
+const MAX_REQUEST_BYTES = 6 * 1024 * 1024;
 
 function developmentEnvironmentDirectory(): string {
   if ([".env", ".env.local"].some((name) => existsSync(path.join(repositoryRoot, name)))) {
@@ -128,14 +131,17 @@ const credentialStore = new PersistentCredentialStore({
   read: async () => credentialFile,
   write: async (next) => { credentialFile = next; },
 });
-const definition = createRagAgentDefinition();
-const handleAgent = createEdgeOneAgentHandler({
-  systemPrompt: definition.systemPrompt,
-  createModelRuntime: () => createPlatformModelRuntime({
-    config: resolvePlatformModelConfig(environment),
-    environment,
-    credentials: credentialStore,
-  }),
+const ragDefinition = createRagAgentDefinition();
+const timesDefinition = createTimesAgentDefinition();
+const createModelRuntime = () => createPlatformModelRuntime({
+  config: resolvePlatformModelConfig(environment),
+  environment,
+  credentials: credentialStore,
+});
+const handleRagAgent = createEdgeOneAgentHandler({
+  agentId: ragDefinition.id,
+  systemPrompt: ragDefinition.systemPrompt,
+  createModelRuntime,
   tools(_context, _user, body) {
     return createRagTools({
       contentCdnBase: environment.JOJO_CONTENT_CDN_BASE!,
@@ -143,6 +149,11 @@ const handleAgent = createEdgeOneAgentHandler({
       focus: body.focus,
     });
   },
+});
+const handleTimesAgent = createEdgeOneAgentHandler({
+  agentId: timesDefinition.id,
+  systemPrompt: timesDefinition.systemPrompt,
+  createModelRuntime,
 });
 const port = Number(environment.JOJO_AGENT_DEV_PORT ?? "8789");
 
@@ -160,7 +171,7 @@ const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `127.0.0.1:${port}`}`);
     const headers = requestHeaders(request);
     let result: Response;
-    if (url.pathname === "/rag" && request.method === "POST") {
+    if ((url.pathname === "/rag" || url.pathname === "/times") && request.method === "POST") {
       const rawBody = await readRequestBody(request);
       let body: unknown;
       try {
@@ -170,6 +181,7 @@ const server = createServer(async (request, response) => {
         await writeResponse(result, response);
         return;
       }
+      const handleAgent = url.pathname === "/times" ? handleTimesAgent : handleRagAgent;
       result = await handleAgent({
         env: environment,
         conversation_id: headers.get("Makers-Conversation-Id") ?? undefined,
@@ -179,7 +191,7 @@ const server = createServer(async (request, response) => {
           signal: abortController.signal,
         },
       });
-    } else if (url.pathname === "/health") {
+    } else if (["/health", "/rag/health", "/times/health"].includes(url.pathname)) {
       result = Response.json({ ok: true, model: resolvePlatformModelConfig(environment).model });
     } else {
       result = Response.json({ error: "Not found" }, { status: 404 });
@@ -199,7 +211,7 @@ const server = createServer(async (request, response) => {
 
 server.listen(port, "127.0.0.1", () => {
   process.stdout.write([
-    `JOJO local Q&A listening on http://127.0.0.1:${port}`,
+    `JOJO local agents listening on http://127.0.0.1:${port} (/rag, /times)`,
     `Codex OAuth: ${path.relative(repositoryRoot, source) || source}`,
     `Content CDN: ${environment.JOJO_CONTENT_CDN_BASE}`,
     "",

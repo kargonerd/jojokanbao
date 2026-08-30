@@ -23,7 +23,10 @@ export function AccountEntry() {
         <p className="mb-5 text-sm leading-7 text-muted">
           当前无法连接登录服务，请稍后再试。
         </p>
-        <Link className="text-sm font-bold text-red" to="/">返回首页 →</Link>
+        <div className="flex gap-5 text-sm font-bold text-red">
+          <Link to="/">返回首页 →</Link>
+          <Link to="/support">关于 JOJO 看报 →</Link>
+        </div>
       </div>
     </main>
   );

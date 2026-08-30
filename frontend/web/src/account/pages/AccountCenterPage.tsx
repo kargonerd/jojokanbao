@@ -1,6 +1,6 @@
 import { Modal } from "@jojo/ui";
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../auth";
 import { PersonalInvitationPanel } from "../components/PersonalInvitationPanel";
 
@@ -19,6 +19,9 @@ const primaryButtonClass =
 
 const secondaryButtonClass =
   "min-h-11 border border-rule-dark bg-paper px-5 font-serif text-sm font-black tracking-[0.08em] text-ink hover:border-red hover:text-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red disabled:cursor-wait disabled:opacity-60";
+
+const accountLinkClass =
+  "flex items-center justify-between gap-4 py-4 font-serif text-base font-black text-ink hover:text-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red";
 
 export function AccountCenterPage({ userId, onForgotPassword }: AccountCenterPageProps) {
   const navigate = useNavigate();
@@ -142,6 +145,15 @@ export function AccountCenterPage({ userId, onForgotPassword }: AccountCenterPag
           </section>
 
           <PersonalInvitationPanel userId={userId} />
+
+          <section aria-labelledby="reader-links-title" className="grid gap-4 border-t border-rule py-6 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-8">
+            <h2 id="reader-links-title" className="m-0 font-sans text-xs font-black tracking-[0.16em] text-red">我的</h2>
+            <nav aria-label="我的快捷入口" className="divide-y divide-rule border-y border-rule">
+              <Link to="/notifications" className={accountLinkClass}><span>通知</span><span aria-hidden="true">→</span></Link>
+              <Link to="/bookshelf" className={accountLinkClass}><span>我的书架</span><span aria-hidden="true">→</span></Link>
+              <Link to="/support" className={accountLinkClass}><span>关于 JOJO 看报</span><span aria-hidden="true">→</span></Link>
+            </nav>
+          </section>
 
           <section aria-labelledby="security-title" className="grid gap-4 border-t border-rule py-6 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-8">
             <h2 id="security-title" className="m-0 font-sans text-xs font-black tracking-[0.16em] text-red">账号与安全</h2>

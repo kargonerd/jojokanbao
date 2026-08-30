@@ -1,28 +1,29 @@
 # Codex Agent deployment
 
 Codex Agent 运行时只部署在不含中国大陆的独立 EdgeOne Makers 项目。Reader 项目仅部署
-同源 `/gateway/ask` 流式中继，不包含 Agent 运行时或任何签名密钥；Python 业务 API
+同源 `/gateway/ask` 与 `/gateway/times/explain` 流式中继，不包含 Agent 运行时或任何签名密钥；Python 业务 API
 不承载 RAG。
 
 ```text
 reader.jojokanbao.cn                  agent-global.jojokanbao.cn
 ┌──────────────────────┐             ┌──────────────────────────┐
 │ Web + Python API     │             │ Edge Middleware          │
-│ /gateway/ask relay   │ ── SSE ───▶ │ /rag   Makers Agent      │
+│ /gateway/* relay     │ ── SSE ───▶ │ /rag, /times Agents      │
 │ IndexedDB Web history │             │ /gateway/credentials     │
 │ JOJO/Supabase 登录   │             │ encrypted OAuth Store    │
 └──────────────────────┘             └──────────────────────────┘
 ```
 
-- Web 始终请求 Reader 同源 `/gateway/ask`。Reader 只转发允许的请求头和请求体，并将
+- 馆藏问答请求 Reader 同源 `/gateway/ask`，Times 随文解释请求同源
+  `/gateway/times/explain`。Reader 只转发允许的请求头和请求体，并将
   上游 `ReadableStream` 原样返回；它不读取 Token 内容，也不缓冲 SSE。
 - Mobile 直接请求国际 `/rag`，不再经过国际 `/gateway/ask`。
-- 国际项目根部 `middleware.ts` 只匹配 `/rag`。它先向 Supabase Auth 校验 Bearer
+- 国际项目根部 `middleware.ts` 只匹配 `/rag` 与 `/times`。它先向 Supabase Auth 校验 Bearer
   Token，再用 `context.next()` 在项目内部进入 Makers Agent，因此没有第二次 HTTP
   转发或 Node Cloud Function 响应缓冲。
-- `/rag` 内部仍会再次校验 Supabase Token。Middleware 是低成本的前置拒绝，Agent
+- `/rag` 与 `/times` 内部仍会再次校验 Supabase Token。Middleware 是低成本的前置拒绝，Agent
   鉴权才是执行模型前的最终边界。
-- `/rag/health` 不匹配 Middleware，可用于部署健康检查；它只报告模型配置状态，不
+- `/rag/health` 与 `/times/health` 不匹配 Middleware，可用于部署健康检查；它们只报告模型配置状态，不
   执行模型。
 - `/gateway/credentials` 仍是平台通用的凭据管理 Cloud Function，不返回凭据。当前只
   注册 `agent/openai-codex`，以后由其他业务注册自己的 scope/provider 和校验器。加密
@@ -46,6 +47,7 @@ Reader 项目只需要配置国际 Agent 地址；未配置时使用代码中的
 
 ```dotenv
 JOJO_AGENT_URL=https://agent-global.jojokanbao.cn/rag
+JOJO_TIMES_AGENT_URL=https://agent-global.jojokanbao.cn/times
 ```
 
 国际 Agent 项目配置：
@@ -65,7 +67,7 @@ Agent 默认使用 Luna，推理强度固定为 `low`，优先控制 MVP 阶段�
 ## Trace
 
 JOJO 使用的 Pi Agent 不在 Makers 自动适配框架列表中，因此 Handler 会通过
-`context.tracer.span()` 手动创建 `jojo.rag_agent`，并为每次馆藏工具调用创建
+`context.tracer.span()` 手动创建 `jojo.rag_agent` 或 `jojo.times_agent`，并为每次馆藏工具调用创建
 `jojo.tool.*` 子 span。云端控制台只汇总已经部署到该 Makers 项目的真实 `/rag`
 请求；`pnpm dev:rag-agent` 的本地请求不会出现在云端控制台。若使用
 `edgeone makers dev`，本地 Trace 在 `http://localhost:8088/agent-metrics` 查看。

@@ -92,6 +92,17 @@
   outline-offset: 4px;
 }
 
+.login-book-entry__about {
+  color: var(--book-red);
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-decoration: none;
+}
+
+.login-book-entry__about:hover { text-decoration: underline; text-underline-offset: 4px; }
+.login-book-entry__about:focus-visible { outline: 2px solid var(--book-red); outline-offset: 4px; }
+
 .book-login-dialog {
   width: 100vw;
   max-width: none;

@@ -9,7 +9,7 @@ import type {
   StreamFn,
   ToolExecutionMode,
 } from "@earendil-works/pi-agent-core";
-import type { Api, Message, Model, ThinkingLevel } from "@earendil-works/pi-ai";
+import type { Api, Message, Model, StopReason, ThinkingLevel } from "@earendil-works/pi-ai";
 
 export interface AgentUsage {
   inputTokens: number;
@@ -91,6 +91,8 @@ export interface RunPlatformAgentOptions {
   toolExecution?: ToolExecutionMode;
   maxTurns?: number;
   maxToolCalls?: number;
+  /** Retry a text-only response that the provider stopped at its output budget. */
+  maxLengthContinuations?: number;
   convertToLlm?: AgentLoopConfig["convertToLlm"];
   beforeToolCall?: (
     context: BeforeToolCallContext,
@@ -106,6 +108,8 @@ export interface RunPlatformAgentOptions {
 
 export interface PlatformAgentResult {
   answer: string;
+  /** Why the final provider response ended; `length` means the answer is partial. */
+  stopReason: StopReason;
   /** Deduplicated source locations emitted by successful tool calls. */
   references: AgentSourceReference[];
   /** Messages produced by this run, including the supplied prompt but excluding prior history. */
