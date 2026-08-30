@@ -59,7 +59,7 @@ describe("Gemma production translation", () => {
     expect(TIMES_TRANSLATION_DEFAULTS).toEqual({
       workers: 8,
       requestTimeoutMs: 240_000,
-      batchTimeoutMs: 720_000,
+      batchTimeoutMs: 1_440_000,
       maxChunkCharacters: 20_000,
       requestsPerMinute: 28,
       tokensPerMinute: 14_000,
@@ -406,7 +406,7 @@ describe("Gemma production translation", () => {
       requestsPerMinute: 100,
       tokensPerMinute: 1_000_000,
     });
-    expect(deferred.stats).toMatchObject({ failed: 0, deferred: 1, requests: 0 });
+    expect(deferred.stats).toMatchObject({ failed: 0, deferred: 1, deadlineDeferred: 0, requests: 0 });
     expect(deferred.candidates[0]?.translationStatus).toBe("deferred");
     expect(fetchMock).not.toHaveBeenCalled();
 
@@ -419,6 +419,36 @@ describe("Gemma production translation", () => {
       tokensPerMinute: 1_000_000,
     });
     expect(retried.stats).toMatchObject({ translated: 1, deferred: 0, failed: 0, requests: 1 });
+  });
+
+  it("retries persisted batch-deadline failures without honoring their backoff", async () => {
+    const output = await mkdtemp(path.join(os.tmpdir(), "jojo-gemma-deadline-cache-"));
+    let available = false;
+    const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => (
+      available
+        ? translatedResponse(init)
+        : new Response(JSON.stringify({ error: { message: "Translation batch deadline exceeded" } }), { status: 503 })
+    ));
+    const first = await translateProcessedCandidates(output, [candidate("deadline-cache")], {
+      apiKey: "test-key",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      now: () => new Date("2026-08-30T01:00:00Z"),
+      requestsPerMinute: 100,
+      tokensPerMinute: 1_000_000,
+    });
+    expect(first.stats).toMatchObject({ translated: 0, failed: 1, deferred: 0, requests: 2 });
+
+    available = true;
+    fetchMock.mockClear();
+    const retried = await translateProcessedCandidates(output, [candidate("deadline-cache")], {
+      apiKey: "test-key",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      now: () => new Date("2026-08-30T01:01:00Z"),
+      requestsPerMinute: 100,
+      tokensPerMinute: 1_000_000,
+    });
+    expect(retried.stats).toMatchObject({ translated: 1, failed: 0, deferred: 0, requests: 1 });
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("regenerates a corrupt cache instead of failing the Process", async () => {
@@ -475,7 +505,7 @@ describe("Gemma production translation", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("enforces a hard batch deadline so translation cannot hold the Process indefinitely", async () => {
+  it("defers deadline work without poisoning the failure cache so the next Process can retry", async () => {
     const output = await mkdtemp(path.join(os.tmpdir(), "jojo-gemma-deadline-"));
     const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
       const abort = () => reject(new DOMException("aborted", "AbortError"));
@@ -483,7 +513,8 @@ describe("Gemma production translation", () => {
       else init?.signal?.addEventListener("abort", abort, { once: true });
     }));
     const started = Date.now();
-    const result = await translateProcessedCandidates(output, [candidate("one"), candidate("two")], {
+    const values = [candidate("one"), candidate("two")];
+    const result = await translateProcessedCandidates(output, values, {
       apiKey: "test-key",
       workers: 1,
       requestTimeoutMs: 1_000,
@@ -492,7 +523,29 @@ describe("Gemma production translation", () => {
       tokensPerMinute: 1_000_000,
       fetchImpl: fetchMock as unknown as typeof fetch,
     });
-    expect(result.stats).toMatchObject({ eligible: 2, translated: 0, failed: 2, requests: 1 });
+    expect(result.stats).toMatchObject({
+      eligible: 2,
+      translated: 0,
+      failed: 0,
+      deferred: 2,
+      deadlineDeferred: 2,
+      requests: 1,
+      fallbackChunks: 0,
+    });
+    expect(result.candidates.map((value) => value.translationStatus)).toEqual(["deferred", "deferred"]);
     expect(Date.now() - started).toBeLessThan(500);
+
+    const retryFetch = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => translatedResponse(init));
+    const retried = await translateProcessedCandidates(output, values, {
+      apiKey: "test-key",
+      workers: 1,
+      requestTimeoutMs: 1_000,
+      batchTimeoutMs: 1_000,
+      requestsPerMinute: 100,
+      tokensPerMinute: 1_000_000,
+      fetchImpl: retryFetch as unknown as typeof fetch,
+    });
+    expect(retried.stats).toMatchObject({ eligible: 2, translated: 2, failed: 0, deferred: 0, requests: 2 });
+    expect(retryFetch).toHaveBeenCalledTimes(2);
   });
 });
