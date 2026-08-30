@@ -12,7 +12,7 @@ export const TIMES_TRANSLATION_POLICY = "gemma-news-zh-v2" as const;
 export const TIMES_TRANSLATION_DEFAULTS = {
   workers: 8,
   requestTimeoutMs: 240_000,
-  batchTimeoutMs: 720_000,
+  batchTimeoutMs: 1_440_000,
   maxChunkCharacters: 20_000,
   requestsPerMinute: 28,
   tokensPerMinute: 14_000,
@@ -48,6 +48,19 @@ interface GeminiResponse {
 interface RateEvent {
   at: number;
   tokens: number;
+}
+
+const TRANSLATION_BATCH_DEADLINE_MESSAGE = "Translation batch deadline exceeded";
+
+class TranslationBatchDeadlineError extends Error {
+  constructor(message = TRANSLATION_BATCH_DEADLINE_MESSAGE) {
+    super(message);
+    this.name = "TranslationBatchDeadlineError";
+  }
+}
+
+function batchDeadlineFailure(message: string): boolean {
+  return message.startsWith(TRANSLATION_BATCH_DEADLINE_MESSAGE);
 }
 
 interface StoredTranslation extends ProcessedArticleTranslation {
@@ -100,6 +113,7 @@ export interface TranslationBatchStats {
   cacheHits: number;
   failed: number;
   deferred: number;
+  deadlineDeferred: number;
   notRequired: number;
   requests: number;
   fallbackChunks: number;
@@ -126,6 +140,7 @@ interface ArticleTranslationResult {
   rescueChunks: number;
   promptTokens: number;
   outputTokens: number;
+  deadlineDeferred?: boolean;
   failure?: TranslationFailure;
 }
 
@@ -146,7 +161,9 @@ class MinuteRateLimiter {
         return event;
       }
       const waitMs = Math.max(50, 60_050 - (now - (this.events[0]?.at ?? now)));
-      if (deadlineAt !== undefined && now + waitMs >= deadlineAt) throw new Error("Translation batch deadline exceeded while rate limited");
+      if (deadlineAt !== undefined && now + waitMs >= deadlineAt) {
+        throw new TranslationBatchDeadlineError(`${TRANSLATION_BATCH_DEADLINE_MESSAGE} while rate limited`);
+      }
       await new Promise((resolve) => setTimeout(resolve, waitMs));
     }
   }
@@ -505,11 +522,12 @@ class GemmaClient {
   }
 
   private async translateWithProject(project: GemmaProjectSlot, model: string, prompt: string, deadlineAt: number): Promise<string> {
-    if (Date.now() >= deadlineAt) throw new Error("Translation batch deadline exceeded");
+    if (Date.now() >= deadlineAt) throw new TranslationBatchDeadlineError();
     const event = await this.limiter(project, model).acquire(estimatedPromptTokens(prompt), deadlineAt);
     const remainingMs = deadlineAt - Date.now();
-    if (remainingMs <= 0) throw new Error("Translation batch deadline exceeded");
+    if (remainingMs <= 0) throw new TranslationBatchDeadlineError();
     const controller = new AbortController();
+    const deadlineControlsTimeout = remainingMs <= this.options.requestTimeoutMs;
     const timeout = setTimeout(() => controller.abort(), Math.min(this.options.requestTimeoutMs, remainingMs));
     this.requestCount += 1;
     try {
@@ -536,6 +554,9 @@ class GemmaClient {
       this.promptTokenCount += promptTokens;
       this.outputTokenCount += payload.usageMetadata?.candidatesTokenCount ?? 0;
       return text;
+    } catch (error) {
+      if (deadlineControlsTimeout && controller.signal.aborted) throw new TranslationBatchDeadlineError();
+      throw error;
     } finally {
       clearTimeout(timeout);
     }
@@ -631,7 +652,11 @@ export async function translateProcessedCandidates(
         outputTokens: 0,
       };
     }
-    if (cached?.formatVersion === TRANSLATION_FAILURE_FORMAT && new Date(cached.retryAfter).getTime() > now().getTime()) {
+    if (
+      cached?.formatVersion === TRANSLATION_FAILURE_FORMAT
+      && !batchDeadlineFailure(cached.error)
+      && new Date(cached.retryAfter).getTime() > now().getTime()
+    ) {
       options.onProgress?.(`[translation] deferred ${candidate.articleId} until ${cached.retryAfter}: ${cached.error}`);
       return {
         candidate: {
@@ -648,8 +673,31 @@ export async function translateProcessedCandidates(
         outputTokens: 0,
       };
     }
-    options.onProgress?.(`[translation] ${index + 1}/${candidates.length} ${candidate.sourceId} ${candidate.title.slice(0, 80)}`);
     const before = client.metrics();
+    const deferForBatchDeadline = (message: string, fallbackChunks = 0, rescueChunks = 0): ArticleTranslationResult => {
+      const after = client.metrics();
+      options.onProgress?.(`[translation] deferred ${candidate.articleId} to the next Process run: ${message}`);
+      return {
+        candidate: {
+          ...candidate,
+          translationCacheObject: cacheObject,
+          translationStatus: "deferred",
+          translationError: message,
+        },
+        status: "deferred",
+        requests: after.requests - before.requests,
+        fallbackChunks,
+        rescueChunks,
+        promptTokens: after.promptTokens - before.promptTokens,
+        outputTokens: after.outputTokens - before.outputTokens,
+        deadlineDeferred: true,
+      };
+    };
+    if (Date.now() >= deadlineAt) return deferForBatchDeadline(TRANSLATION_BATCH_DEADLINE_MESSAGE);
+    if (cached?.formatVersion === TRANSLATION_FAILURE_FORMAT && batchDeadlineFailure(cached.error)) {
+      options.onProgress?.(`[translation] retrying ${candidate.articleId} immediately after an earlier batch deadline`);
+    }
+    options.onProgress?.(`[translation] ${index + 1}/${candidates.length} ${candidate.sourceId} ${candidate.title.slice(0, 80)}`);
     let fallbackChunks = 0;
     let rescueChunks = 0;
     try {
@@ -665,6 +713,7 @@ export async function translateProcessedCandidates(
           usedModels.add(primaryModel);
           return payload;
         } catch (primaryError) {
+          if (primaryError instanceof TranslationBatchDeadlineError) throw primaryError;
           fallbackChunks += 1;
           options.onProgress?.(`[translation] fallback ${candidate.articleId}: ${primaryError instanceof Error ? primaryError.message : String(primaryError)}`);
           try {
@@ -672,6 +721,7 @@ export async function translateProcessedCandidates(
             usedModels.add(fallbackModel);
             return payload;
           } catch (fallbackError) {
+            if (fallbackError instanceof TranslationBatchDeadlineError) throw fallbackError;
             const structuralError = fallbackError instanceof TranslationStructureError
               ? fallbackError
               : primaryError instanceof TranslationStructureError ? primaryError : undefined;
@@ -721,6 +771,9 @@ export async function translateProcessedCandidates(
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (error instanceof TranslationBatchDeadlineError || Date.now() >= deadlineAt) {
+        return deferForBatchDeadline(message, fallbackChunks, rescueChunks);
+      }
       const after = client.metrics();
       options.onProgress?.(`[translation] failed ${candidate.articleId}: ${message}`);
       const failedAt = now();
@@ -758,6 +811,7 @@ export async function translateProcessedCandidates(
       cacheHits: rows.filter((row) => row.status === "cached").length,
       failed: rows.filter((row) => row.status === "failed").length,
       deferred: rows.filter((row) => row.status === "deferred").length,
+      deadlineDeferred: rows.filter((row) => row.deadlineDeferred).length,
       notRequired: rows.filter((row) => row.status === "not-required").length,
       requests: metrics.requests,
       fallbackChunks: rows.reduce((sum, row) => sum + row.fallbackChunks, 0),

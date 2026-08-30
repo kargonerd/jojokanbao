@@ -40,7 +40,7 @@ jobs:
          github.event.workflow_run.display_title == 'Times capture [cloudflare-cron]')))
     runs-on: ubuntu-latest
     environment: maintenance
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       HF_TIMES_DATASET_REPO: ${{ secrets.HF_TIMES_DATASET_REPO || secrets.HF_DATASET_REPO }}
@@ -50,7 +50,7 @@ jobs:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       JOJO_TIMES_TRANSLATION_WORKERS: "8"
       JOJO_TIMES_TRANSLATION_REQUEST_TIMEOUT_MS: "240000"
-      JOJO_TIMES_TRANSLATION_BATCH_TIMEOUT_MS: "720000"
+      JOJO_TIMES_TRANSLATION_BATCH_TIMEOUT_MS: "1440000"
       JOJO_TIMES_TRANSLATION_CHUNK_CHARACTERS: "20000"
       JOJO_DELIVERY_REMOTE: jojo-b2:${{ secrets.B2_BUCKET || 'jojo-newspaper' }}
       HEALTHCHECKS_TIMES_PIPELINE_URL: ${{ secrets.HEALTHCHECKS_TIMES_PIPELINE_URL }}
@@ -146,7 +146,7 @@ jobs:
           const fs = require("node:fs");
           const report = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/process-result.json", "utf8"));
           const translation = report.translation || { enabled: false };
-          console.log(`Translation: ${translation.enabled ? `${translation.translated} translated, ${translation.cacheHits} cached, ${translation.failed} failed, ${translation.deferred || 0} deferred, ${translation.configuredProjects || 1} projects, ${translation.quotaKeySwitches || 0} quota switches, ${translation.transientKeySwitches || 0} transient switches, ${translation.rescueChunks || 0} structural rescues in ${(translation.durationMs / 1000).toFixed(1)}s` : "disabled"}`);
+          console.log(`Translation: ${translation.enabled ? `${translation.translated} translated, ${translation.cacheHits} cached, ${translation.failed} failed, ${translation.deferred || 0} deferred (${translation.deadlineDeferred || 0} batch-deadline), ${translation.configuredProjects || 1} projects, ${translation.quotaKeySwitches || 0} quota switches, ${translation.transientKeySwitches || 0} transient switches, ${translation.rescueChunks || 0} structural rescues in ${(translation.durationMs / 1000).toFixed(1)}s` : "disabled"}`);
           for (const source of report.sources || []) {
             console.log(`${source.sourceId}: ${source.articles.length} canonical, ${source.unchangedArticles?.length || 0} unchanged, ${source.skippedArticles?.length || 0} excluded`);
             for (const article of source.skippedArticles || []) {
@@ -292,7 +292,7 @@ jobs:
           const unchanged = processed?.sources?.flatMap((source) => source.unchangedArticles || []) || [];
           const skipped = processed?.sources?.flatMap((source) => source.skippedArticles || []) || [];
           const translation = processed?.translation || { enabled: false };
-          console.log(`- Translation: ${translation.enabled ? `${translation.translated} translated, ${translation.cacheHits} cached, ${translation.failed} failed, ${translation.deferred || 0} deferred, ${translation.configuredProjects || 1} projects, ${translation.quotaKeySwitches || 0} quota switches, ${translation.transientKeySwitches || 0} transient switches, ${translation.rescueChunks || 0} structural rescues, ${(translation.durationMs / 1000).toFixed(1)}s` : "disabled"}`);
+          console.log(`- Translation: ${translation.enabled ? `${translation.translated} translated, ${translation.cacheHits} cached, ${translation.failed} failed, ${translation.deferred || 0} deferred (${translation.deadlineDeferred || 0} batch-deadline), ${translation.configuredProjects || 1} projects, ${translation.quotaKeySwitches || 0} quota switches, ${translation.transientKeySwitches || 0} transient switches, ${translation.rescueChunks || 0} structural rescues, ${(translation.durationMs / 1000).toFixed(1)}s` : "disabled"}`);
           console.log(`- Unchanged without refresh: ${unchanged.length}`);
           console.log(`- Excluded from Delivery: ${skipped.length}`);
           if (skipped.length) {

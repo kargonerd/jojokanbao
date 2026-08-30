@@ -63,7 +63,7 @@ Process 在 `GEMINI_API_KEYS` 或 `GEMINI_API_KEY` 存在时自动翻译本轮�
 - 标题和正文以原始完整 HTML blocks 输入，不拆 text node、不添加 ID、不要求 JSON；仅在约 20,000 源字符处按 block 边界分 chunk；
 - 本地校验 block 顺序、链接及全部 HTML 属性后再回填译文；纯 `b/em/i/strong` 强调差异不阻断文章，模型新增的无属性强调标签会被移除；
 - 默认八路 worker；每个 API 项目、每个模型独立按 28 RPM / 14K TPM 保守限流，Gemini 救援模型额外限制为每项目 5 RPM；请求在项目池中轮询并发，单个项目返回 429 或临时 5xx 时自动尝试下一个项目；
-- 单请求默认最多等待 240 秒，整批最多占用 12 分钟；到达预算会中止在途翻译并 fail-open，给 20 分钟工作流保留 Canonical/HF/Delivery 时间；
+- 单请求默认最多等待 240 秒，整批最多占用 24 分钟；到达预算会中止在途翻译并将未完成文章留给下轮立即重试，不写失败退避缓存，给 30 分钟工作流保留 Canonical/HF/Delivery 时间；
 - 译文按源标题、正文、语言和翻译策略的 hash 缓存。刷新到同一内容时从 HF Canonical 恢复缓存，不重复请求 API；
 - 三个模型都不可用时 fail-open 发布原文，并在 Process report 和 Actions Summary 中列出失败，不阻断新闻发布；
 - Delivery 同时保存原文和 `zh-CN` fragment。中文 Web 默认读取译文对象，译文对象缺失或损坏时回退原文。
