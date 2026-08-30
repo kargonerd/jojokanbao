@@ -124,6 +124,24 @@ class UnifiedDocumentTest(unittest.TestCase):
         assert legacy is not None
         self.assertEqual(legacy.document["content"], "旧格式正文")
 
+    def test_newspaper_indexes_legacy_nonmissing_statuses(self):
+        for ordinal, status in enumerate(("repaired", "image", "image-placeholder"), start=1):
+            with self.subTest(status=status):
+                row = newspaper_document(
+                    {
+                        "date": "1950-01-01",
+                        "page": 1,
+                        "ordinal": ordinal,
+                        "title": status,
+                        "body": "【图片】" if status.startswith("image") else "人工修订正文",
+                        "status": status,
+                    },
+                    publication_id="rmrb",
+                    publication_title="人民日报",
+                    canonical_object="newspapers/rmrb/data/articles/1950.jsonl.gz",
+                )
+                self.assertIsNotNone(row)
+
     def test_current_news_uses_same_business_fields(self):
         row = news_document({
             "articleId": "ap-123",

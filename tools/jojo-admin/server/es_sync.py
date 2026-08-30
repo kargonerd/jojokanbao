@@ -204,7 +204,12 @@ def newspaper_document(
     publication_title: str,
     canonical_object: str,
 ) -> IndexedDocument | None:
-    if str(row.get("status") or "") != "available":
+    # The first HF newspaper publication used three additional states before
+    # the canonical available/missing/rejected contract was finalized.  They
+    # all carry an intentional non-empty body and remain valid read-only rows.
+    if str(row.get("status") or "") not in {
+        "available", "repaired", "image", "image-placeholder",
+    }:
         return None
     # jojo-newspaper-article-row/1 stores the canonical article text in
     # ``body``.  Keep ``content`` as a fallback for older imported rows that
