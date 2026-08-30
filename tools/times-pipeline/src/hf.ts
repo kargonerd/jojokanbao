@@ -1,6 +1,8 @@
 import { datasetInfo, downloadFile, HubApiError, listFiles, uploadFiles } from "@huggingface/hub";
+import { createHash, randomUUID } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { gunzipSync } from "node:zlib";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { TIMES_TRANSLATION_POLICY } from "./translation/gemma.js";
@@ -22,6 +24,155 @@ interface RawRunManifest {
 
 interface SourceManifest {
   objects?: unknown;
+}
+
+export interface HfFileSetEntry {
+  localPath: string;
+  objectName: string;
+  size: number;
+  sha256: string;
+  required: boolean;
+}
+
+export interface HfFileSetManifest {
+  formatVersion: "jojo-hf-file-set/1";
+  files: HfFileSetEntry[];
+}
+
+export type HfConflictStrategy = "fail" | "retry-disjoint";
+
+function strictRelativePath(value: unknown, label: string): string {
+  if (typeof value !== "string" || !value || value.includes("\\") || value.includes("\0")) {
+    throw new Error(`Invalid ${label}: ${String(value)}`);
+  }
+  const components = value.split("/");
+  if (
+    path.posix.isAbsolute(value)
+    || path.win32.isAbsolute(value)
+    || /^[a-z]:/iu.test(value)
+    || components.some((component) => !component || component === "." || component === "..")
+    || path.posix.normalize(value) !== value
+  ) {
+    throw new Error(`Unsafe ${label}: ${value}`);
+  }
+  return value;
+}
+
+export function parseHfFileSetManifest(value: unknown): HfFileSetManifest {
+  if (!value || typeof value !== "object") throw new Error("HF file-set manifest must be an object");
+  const input = value as { formatVersion?: unknown; files?: unknown };
+  const topLevelFields = Object.keys(input);
+  if (topLevelFields.length !== 2 || !topLevelFields.includes("formatVersion") || !topLevelFields.includes("files")) {
+    throw new Error("HF file-set manifest must contain only formatVersion and files");
+  }
+  if (input.formatVersion !== "jojo-hf-file-set/1") {
+    throw new Error(`Unsupported HF file-set format: ${String(input.formatVersion)}`);
+  }
+  if (!Array.isArray(input.files)) throw new Error("HF file-set manifest files must be an array");
+  const objectNames = new Set<string>();
+  const localPaths = new Set<string>();
+  const files = input.files.map((file, index): HfFileSetEntry => {
+    if (!file || typeof file !== "object") throw new Error(`HF file-set entry ${index} must be an object`);
+    const row = file as {
+      localPath?: unknown;
+      objectName?: unknown;
+      size?: unknown;
+      sha256?: unknown;
+      required?: unknown;
+    };
+    const allowedFields = new Set(["localPath", "objectName", "size", "sha256", "required"]);
+    const rowFields = Object.keys(row);
+    if (rowFields.some((field) => !allowedFields.has(field))) {
+      throw new Error(`HF file-set entry ${index} has unsupported fields`);
+    }
+    const localPath = strictRelativePath(row.localPath, `HF local path at entry ${index}`);
+    const objectName = strictRelativePath(row.objectName, `HF object path at entry ${index}`);
+    if (!Number.isSafeInteger(row.size) || (row.size as number) < 0) {
+      throw new Error(`Invalid HF file size at entry ${index}: ${String(row.size)}`);
+    }
+    if (typeof row.sha256 !== "string" || !/^[a-f0-9]{64}$/u.test(row.sha256)) {
+      throw new Error(`Invalid HF SHA-256 at entry ${index}: ${String(row.sha256)}`);
+    }
+    if (row.required !== undefined && typeof row.required !== "boolean") {
+      throw new Error(`Invalid HF required flag at entry ${index}: ${String(row.required)}`);
+    }
+    if (objectNames.has(objectName)) throw new Error(`Duplicate HF object name: ${objectName}`);
+    if (localPaths.has(localPath)) throw new Error(`Duplicate HF local path: ${localPath}`);
+    objectNames.add(objectName);
+    localPaths.add(localPath);
+    return {
+      localPath,
+      objectName,
+      size: row.size as number,
+      sha256: row.sha256,
+      required: row.required ?? true,
+    };
+  });
+  return { formatVersion: "jojo-hf-file-set/1", files };
+}
+
+export async function readHfFileSetManifest(file: string): Promise<HfFileSetManifest> {
+  return parseHfFileSetManifest(JSON.parse(await readFile(path.resolve(file), "utf8")) as unknown);
+}
+
+function resolvedOutputPath(output: string, localPath: string): string {
+  const root = path.resolve(output);
+  const target = path.resolve(root, ...localPath.split("/"));
+  const relative = path.relative(root, target);
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error(`Unsafe HF local path: ${localPath}`);
+  }
+  return target;
+}
+
+function pathIsWithin(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+}
+
+function missingFileError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = (error as { code?: unknown }).code;
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+
+async function fileSha256(file: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(file)) hash.update(chunk as Buffer);
+  return hash.digest("hex");
+}
+
+async function existingFileWithinOutput(output: string, localPath: string): Promise<string> {
+  const root = await realpath(path.resolve(output));
+  const candidate = resolvedOutputPath(output, localPath);
+  const physical = await realpath(candidate);
+  if (!pathIsWithin(root, physical)) throw new Error(`HF local path escapes the output root: ${localPath}`);
+  return physical;
+}
+
+async function nearestExistingDirectory(directory: string): Promise<string> {
+  let candidate = directory;
+  for (;;) {
+    try {
+      return await realpath(candidate);
+    } catch (error) {
+      if (!missingFileError(error)) throw error;
+      const parent = path.dirname(candidate);
+      if (parent === candidate) throw error;
+      candidate = parent;
+    }
+  }
+}
+
+async function downloadTargetWithinOutput(output: string, outputRoot: string, localPath: string): Promise<string> {
+  const target = resolvedOutputPath(output, localPath);
+  const parent = path.dirname(target);
+  const ancestor = await nearestExistingDirectory(parent);
+  if (!pathIsWithin(outputRoot, ancestor)) throw new Error(`HF local path escapes the output root: ${localPath}`);
+  await mkdir(parent, { recursive: true });
+  const physicalParent = await realpath(parent);
+  if (!pathIsWithin(outputRoot, physicalParent)) throw new Error(`HF local path escapes the output root: ${localPath}`);
+  return target;
 }
 
 export function rawRunMatchesGitHubRunId(runId: unknown, githubRunId: string): boolean {
@@ -247,11 +398,12 @@ export class HfTimesDataset {
     this.repo = { type: DATASET_REPO_TYPE, name: repoId };
   }
 
-  async revision(): Promise<string> {
+  async revision(requestedRevision?: string): Promise<string> {
     const info = await retryTransientHf(() => datasetInfo({
       name: this.repo.name,
       accessToken: this.accessToken,
       additionalFields: ["sha"],
+      ...(requestedRevision ? { revision: requestedRevision } : {}),
     }), { label: "dataset metadata" });
     if (typeof info.sha !== "string" || !info.sha) throw new Error("HF Dataset did not return a revision");
     return info.sha;
@@ -420,6 +572,134 @@ export class HfTimesDataset {
 
   async downloadLatestSnapshot(): Promise<Record<string, unknown>> {
     return this.downloadSnapshot();
+  }
+
+  async uploadFileSet(
+    manifestValue: HfFileSetManifest,
+    title: string,
+    conflictStrategy: HfConflictStrategy = "fail",
+  ): Promise<{ revision: string; uploaded: number; skipped: string[] }> {
+    const manifest = parseHfFileSetManifest(manifestValue);
+    if (conflictStrategy !== "fail" && conflictStrategy !== "retry-disjoint") {
+      throw new Error(`Unsupported HF conflict strategy: ${String(conflictStrategy)}`);
+    }
+
+    const selected: Array<{ local: string; objectName: string }> = [];
+    const skipped: string[] = [];
+    for (const entry of manifest.files) {
+      let local: string;
+      try {
+        local = await existingFileWithinOutput(this.output, entry.localPath);
+      } catch (error) {
+        if (!missingFileError(error)) throw error;
+        if (entry.required) throw new Error(`Required HF upload file is missing: ${entry.localPath}`, { cause: error });
+        skipped.push(entry.objectName);
+        continue;
+      }
+      const metadata = await stat(local);
+      if (!metadata.isFile()) throw new Error(`HF upload path is not a file: ${entry.localPath}`);
+      if (metadata.size !== entry.size) {
+        throw new Error(`HF upload size mismatch for ${entry.localPath}: expected ${entry.size}, got ${metadata.size}`);
+      }
+      const digest = await fileSha256(local);
+      if (digest !== entry.sha256) {
+        throw new Error(`HF upload SHA-256 mismatch for ${entry.localPath}: expected ${entry.sha256}, got ${digest}`);
+      }
+      selected.push({ local, objectName: entry.objectName });
+    }
+
+    let parentRevision = await this.revision();
+    if (selected.length === 0) return { revision: parentRevision, uploaded: 0, skipped };
+    const conflictAttempts = conflictStrategy === "retry-disjoint" ? 4 : 1;
+    for (let attempt = 1;; attempt += 1) {
+      try {
+        const result = await retryTransientHf(() => uploadFiles({
+          repo: this.repo,
+          accessToken: this.accessToken,
+          commitTitle: title,
+          parentCommit: parentRevision,
+          files: selected.map((file) => ({ path: file.objectName, content: pathToFileURL(file.local) })),
+          useWebWorkers: false,
+          useXet: true,
+        }), { label: `upload ${title}` });
+        return { revision: result?.commit.oid ?? parentRevision, uploaded: selected.length, skipped };
+      } catch (error) {
+        if (hfStatusCode(error) !== 409 || attempt >= conflictAttempts) throw error;
+        process.stderr.write(`[hf] upload ${title} conflicted; refreshing the parent revision for disjoint retry ${attempt + 1}/${conflictAttempts}\n`);
+        parentRevision = await this.revision();
+      }
+    }
+  }
+
+  async downloadFileSet(
+    manifestValue: HfFileSetManifest,
+    requestedRevision?: string,
+  ): Promise<{ revision: string; downloaded: number; skipped: string[] }> {
+    const manifest = parseHfFileSetManifest(manifestValue);
+    await mkdir(path.resolve(this.output), { recursive: true });
+    const outputRoot = await realpath(path.resolve(this.output));
+    const revision = await this.revision(requestedRevision);
+    const prepared = await mapLimit(manifest.files, 8, async (entry) => {
+      let temporary: string | undefined;
+      try {
+        const target = await downloadTargetWithinOutput(this.output, outputRoot, entry.localPath);
+        let body: Uint8Array | null;
+        try {
+          body = await retryTransientHf(async () => {
+            const blob = await downloadFile({
+              repo: this.repo,
+              accessToken: this.accessToken,
+              path: entry.objectName,
+              revision,
+            });
+            return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
+          }, { label: `download ${entry.objectName}` });
+        } catch (error) {
+          if (hfStatusCode(error) !== 404) throw error;
+          body = null;
+        }
+        if (!body) {
+          if (entry.required) throw new Error(`Required HF object is missing at revision ${revision}: ${entry.objectName}`);
+          return { kind: "skipped" as const, entry };
+        }
+        temporary = path.join(path.dirname(target), `.${path.basename(target)}.${randomUUID()}.tmp`);
+        await writeFile(temporary, body, { flag: "wx" });
+        const metadata = await stat(temporary);
+        if (metadata.size !== entry.size) {
+          throw new Error(`HF download size mismatch for ${entry.objectName}: expected ${entry.size}, got ${metadata.size}`);
+        }
+        const digest = await fileSha256(temporary);
+        if (digest !== entry.sha256) {
+          throw new Error(`HF download SHA-256 mismatch for ${entry.objectName}: expected ${entry.sha256}, got ${digest}`);
+        }
+        return { kind: "downloaded" as const, entry, target, temporary };
+      } catch (error) {
+        return { kind: "error" as const, entry, error, temporary };
+      }
+    });
+    const failed = prepared.find((row) => row.kind === "error");
+    if (failed?.kind === "error") {
+      await Promise.all(prepared.map(async (row) => {
+        if (row.temporary) await rm(row.temporary, { force: true });
+      }));
+      throw failed.error;
+    }
+    const downloaded = prepared.filter((row) => row.kind === "downloaded");
+    try {
+      for (const row of downloaded) {
+        if (row.kind === "downloaded") await rename(row.temporary, row.target);
+      }
+    } catch (error) {
+      await Promise.all(downloaded.map(async (row) => {
+        if (row.kind === "downloaded") await rm(row.temporary, { force: true });
+      }));
+      throw error;
+    }
+    return {
+      revision,
+      downloaded: downloaded.length,
+      skipped: prepared.filter((row) => row.kind === "skipped").map((row) => row.entry.objectName),
+    };
   }
 
   async uploadLocalFiles(files: Array<{ local: string; objectName: string }>, title: string): Promise<string | undefined> {

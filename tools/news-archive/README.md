@@ -43,9 +43,9 @@ schemas/             Internal RawCapture and parser-result JSON Schemas
 workflow-templates/  Inactive legacy workflows awaiting HF conversion
 ```
 
-The previous B2 layout is documented only to support a verified one-time
-migration in [LEGACY_B2_LAYOUT.md](LEGACY_B2_LAYOUT.md). Parser convergence
-history is retained in [VALIDATION_STATUS.md](VALIDATION_STATUS.md).
+The one-time B2-to-HF state mapping and cutover gates are documented in
+[MIGRATION.md](MIGRATION.md). Generated validation reports and historical run
+logs belong in HF Raw, not in this source tree.
 
 ## Test
 
@@ -55,3 +55,23 @@ python -m pytest -q tools/news-archive/tests
 python tools/news-archive/tools/export_news_schemas.py --output-dir /tmp/news-schemas
 diff -ru tools/news-archive/schemas /tmp/news-schemas
 ```
+
+## HF migration batches
+
+Downloaded legacy B2 prefixes are inventoried into four exact file sets. The
+order is immutable Raw, catalog, checkpoint, then completion marker:
+
+```bash
+python tools/news-archive/tools/prepare_hf_archive_batch.py \
+  --root .archive-work/migration-batch \
+  --output-dir .archive-work/file-sets
+python tools/news-archive/tools/verify_hf_archive_batch.py \
+  --root .archive-work/migration-batch \
+  --manifest-dir .archive-work/file-sets
+```
+
+The TypeScript HF client uploads only the files named by one file set; it does
+not scan or re-upload the whole output tree. Later validation-state batches may
+pass previously verified v1 file sets with repeated
+`--available-file-manifest` arguments so references can be checked without
+downloading the same Raw corpus again.
