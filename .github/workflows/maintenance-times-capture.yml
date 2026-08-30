@@ -53,6 +53,7 @@ jobs:
       TIMES_PROXY_ROTATION_ATTEMPTS: ${{ inputs.automatic && '12' || inputs.proxy_rotation_attempts || '12' }}
       JOJO_TIMES_PROXY_URI: ${{ secrets.JOJO_TIMES_PROXY_URI }}
       JOJO_TIMES_PROXY_SUBSCRIPTION: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION }}
+      HEALTHCHECKS_TIMES_PIPELINE_URL: ${{ secrets.HEALTHCHECKS_TIMES_PIPELINE_URL }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -323,3 +324,14 @@ jobs:
             console.log("- Page capture result is missing");
           }
           NODE
+
+      - name: Report automatic Capture failure
+        if: ${{ always() && inputs.automatic && job.status != 'success' }}
+        continue-on-error: true
+        env:
+          HEALTHCHECKS_PING_URL: ${{ env.HEALTHCHECKS_TIMES_PIPELINE_URL }}
+          HEALTHCHECKS_SIGNAL: fail
+          HEALTHCHECKS_STAGE: times-capture
+          HEALTHCHECKS_STATUS: ${{ job.status }}
+          HEALTHCHECKS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash tools/monitoring/ping-healthchecks.sh

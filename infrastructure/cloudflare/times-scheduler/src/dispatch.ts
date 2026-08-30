@@ -5,6 +5,8 @@ export interface SchedulerEnv {
   GITHUB_WORKFLOW: string;
   GITHUB_PROCESS_WORKFLOW: string;
   GITHUB_REF: string;
+  HEALTHCHECKS_TIMES_SCHEDULER_URL?: string;
+  HEALTHCHECKS_TIMES_PIPELINE_URL?: string;
 }
 
 interface ResultBase {
@@ -49,7 +51,7 @@ interface WorkflowRunsResponse {
 }
 
 export interface DispatchOptions {
-  fetcher?: Fetcher;
+  fetcher?: Fetcher | undefined;
   scheduledTime?: number;
 }
 
