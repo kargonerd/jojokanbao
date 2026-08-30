@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import zipfile
+import subprocess
 
 
 SERVICE_DIR = Path(__file__).resolve().parents[1]
@@ -69,6 +70,16 @@ class DeployPackageTests(unittest.TestCase):
             run.call_args.args[0],
             ["tccli", "scf", "GetFunction", "--output", "json"],
         )
+        self.assertEqual(run.call_args.kwargs["timeout"], 60)
+
+    def test_run_reports_command_timeout(self):
+        with patch.object(
+            deploy.subprocess,
+            "run",
+            side_effect=subprocess.TimeoutExpired(["tccli"], 5),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "命令超时.*tccli"):
+                deploy._run(["tccli"], timeout=5)
 
     def test_verify_function_access_reads_target_before_upload(self):
         with patch.object(

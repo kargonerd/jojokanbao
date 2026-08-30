@@ -42,6 +42,7 @@ jobs:
     environment: search-staging
     timeout-minutes: 15
     env:
+      PYTHONUNBUFFERED: "1"
       TENCENTCLOUD_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
       TENCENTCLOUD_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
     steps:
@@ -81,6 +82,7 @@ jobs:
     environment: search-production
     timeout-minutes: 15
     env:
+      PYTHONUNBUFFERED: "1"
       TENCENTCLOUD_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
       TENCENTCLOUD_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
     steps:

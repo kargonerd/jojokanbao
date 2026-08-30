@@ -48,14 +48,24 @@ def _linux_newlines(data: bytes) -> bytes:
     return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
 
 
-def _run(command: Sequence[str], *, capture: bool = True) -> str:
+def _run(
+    command: Sequence[str],
+    *,
+    capture: bool = True,
+    timeout: float | None = None,
+) -> str:
     try:
         result = subprocess.run(
             list(command),
             check=True,
             text=True,
             capture_output=capture,
+            timeout=timeout,
         )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"命令超时（{timeout:g}s）：{Path(command[0]).name}"
+        ) from exc
     except subprocess.CalledProcessError as exc:
         detail = str(exc.stderr or exc.stdout or "").strip()
         raise RuntimeError(
@@ -236,7 +246,7 @@ def _json_command(command: Sequence[str]) -> dict[str, Any]:
     prepared = list(command)
     if "--output" not in prepared:
         prepared.extend(["--output", "json"])
-    payload = json.loads(_run(prepared) or "{}")
+    payload = json.loads(_run(prepared, timeout=60) or "{}")
     response = payload.get("Response")
     return response if isinstance(response, dict) else payload
 
@@ -338,7 +348,7 @@ def _upload(package: Path, *, bucket: str, region: str, key: str, profile: str) 
         key,
         "--content_type",
         "application/zip",
-    ))
+    ), timeout=120)
 
 
 def _delete_upload(*, bucket: str, region: str, key: str, profile: str) -> None:
@@ -352,7 +362,7 @@ def _delete_upload(*, bucket: str, region: str, key: str, profile: str) -> None:
         region,
         "--cos_key",
         key,
-    ))
+    ), timeout=60)
 
 
 def _update_function(
