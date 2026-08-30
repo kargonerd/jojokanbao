@@ -253,4 +253,136 @@ describe("news Delivery writer", () => {
     );
     expect(manifest.metadata.articles.map((row) => row.id)).toEqual([keptId]);
   });
+
+  it("removes NYT live deep updates and moves a refreshed live parent to its new date", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "jojo-news-nyt-live-workspace-"));
+    const deliveryRoot = await mkdtemp(path.join(os.tmpdir(), "jojo-news-nyt-live-output-"));
+    const nyt: SourceConfig = {
+      ...source,
+      id: "nyt",
+      name: "The New York Times",
+      discovery: { kind: "official-rss", url: "https://rss.nytimes.com/services/xml/rss/nyt/World.xml" },
+    };
+    const oldDate = "2026-08-28";
+    const newDate = "2026-08-29";
+    const liveId = "nyt:live-parent";
+    const liveUrl = "https://www.nytimes.com/live/2026/08/28/world/nepal-tibet-flash-floods";
+    const previousArticle = (id: string, url: string, title: string) => ({
+      id,
+      title,
+      contentStatus: "full" as const,
+      url,
+      publishedAt: `${oldDate}T22:53:12.000Z`,
+      issueDate: oldDate,
+      language: "en",
+      source: { id: nyt.id, name: nyt.name, language: nyt.language },
+      articleObject: `content/newspapers/nyt/articles/${id}.jox`,
+      assets: [],
+    });
+    const previousDay: TimesTimelineDay = {
+      formatVersion: "jojo-news-timeline-day/1",
+      date: oldDate,
+      updatedAt: `${oldDate}T23:00:00.000Z`,
+      articles: [
+        previousArticle(liveId, liveUrl, "Live Updates"),
+        previousArticle("nyt:deep-update", `${liveUrl}/bharatpur-bodies-morgues`, "A Nepali city struggles"),
+      ],
+    };
+    const canonical: CanonicalArticle = {
+      formatVersion: "jojo-news-article/2",
+      articleId: liveId,
+      source: { id: nyt.id, name: nyt.name },
+      canonicalUrl: liveUrl,
+      title: "Updated live coverage",
+      authors: [],
+      language: "en",
+      publishedAt: `${newDate}T09:25:20.000Z`,
+      publisherCategories: [],
+      publisherSections: [{ id: "world", name: "World" }],
+      categories: [],
+      body: { format: "html", profile: "jojo-semantic-html/1", value: "<p>Updated live body.</p>" },
+      assets: [],
+      contentStatus: "full",
+      contentHash: "nyt-live-hash",
+      provenance: {
+        rawRevision: "raw-revision",
+        rawRunId: "run-nyt-live",
+        rawManifest: "raw/nyt/manifest.json",
+        discovery: nyt.discovery,
+      },
+    };
+    const canonicalObject = "canonical/nyt/articles/nyt-live-hash.json.gz";
+    await mkdir(path.dirname(path.join(workspaceRoot, ...canonicalObject.split("/"))), { recursive: true });
+    await writeFile(path.join(workspaceRoot, ...canonicalObject.split("/")), gzipSync(`${JSON.stringify(canonical)}\n`));
+    const processSource: CanonicalWriteResult = {
+      sourceId: nyt.id,
+      dates: [newDate],
+      articles: [{ articleId: liveId, object: canonicalObject, contentHash: canonical.contentHash, publishedAt: canonical.publishedAt }],
+      files: [canonicalObject],
+      skippedWithoutFullText: 0,
+      unchangedWithoutRefresh: 0,
+      unchangedArticles: [],
+      skippedArticles: [],
+    };
+    const previousTimeline: TimesTimelineIndex = {
+      formatVersion: "jojo-news-timeline-index/1",
+      updatedAt: previousDay.updatedAt,
+      dates: [{ date: oldDate, object: `dates/2026/08/${oldDate}.jox`, articleCount: 2 }],
+      sources: [{ id: nyt.id, name: nyt.name, language: nyt.language }],
+    };
+    const previousSource: TimesSourceIndex = {
+      formatVersion: "jojo-delivery-index/1",
+      revision: 1,
+      datasetId: "news-nyt",
+      type: "newspaper",
+      title: nyt.name,
+      language: nyt.language,
+      source: { id: nyt.id, name: nyt.name, language: nyt.language },
+      items: [{
+        itemId: `nyt:${oldDate}`,
+        itemKey: oldDate,
+        type: "newspaper",
+        order: 1,
+        title: `${nyt.name} · ${oldDate}`,
+        manifestObject: `dates/2026/08/${oldDate}.jox`,
+      }],
+      updatedAt: previousDay.updatedAt,
+    };
+
+    await buildNewsDelivery({
+      workspaceRoot,
+      deliveryRoot,
+      generatedAt: `${newDate}T10:00:00.000Z`,
+      sources: [nyt],
+      process: { sources: [processSource] },
+      previousTimelineIndex: previousTimeline,
+      previousTimelineDays: new Map([[oldDate, previousDay]]),
+      previousSourceIndexes: new Map([[nyt.id, previousSource]]),
+    });
+
+    const oldDayObject = `content/timeline/dates/2026/08/${oldDate}.jox`;
+    const oldDay = await gunzipJoxJson<TimesTimelineDay>(
+      new Uint8Array(await readFile(path.join(deliveryRoot, ...oldDayObject.split("/")))),
+      oldDayObject,
+    );
+    expect(oldDay.articles).toEqual([]);
+    const newDayObject = `content/timeline/dates/2026/08/${newDate}.jox`;
+    const newDay = await gunzipJoxJson<TimesTimelineDay>(
+      new Uint8Array(await readFile(path.join(deliveryRoot, ...newDayObject.split("/")))),
+      newDayObject,
+    );
+    expect(newDay.articles).toEqual([expect.objectContaining({ id: liveId, title: "Updated live coverage" })]);
+    const indexObject = "content/timeline/index.jox";
+    const index = await gunzipJoxJson<TimesTimelineIndex>(
+      new Uint8Array(await readFile(path.join(deliveryRoot, ...indexObject.split("/")))),
+      indexObject,
+    );
+    expect(index.dates.map((date) => date.date)).toEqual([newDate]);
+    const sourceIndexObject = "content/newspapers/nyt/index.jox";
+    const sourceIndex = await gunzipJoxJson<TimesSourceIndex>(
+      new Uint8Array(await readFile(path.join(deliveryRoot, ...sourceIndexObject.split("/")))),
+      sourceIndexObject,
+    );
+    expect(sourceIndex.items.map((item) => item.itemKey)).toEqual([newDate]);
+  });
 });

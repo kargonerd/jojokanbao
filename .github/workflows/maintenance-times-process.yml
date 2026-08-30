@@ -189,7 +189,18 @@ jobs:
           rclone copyto "$JOJO_DELIVERY_REMOTE/content/timeline/index.jox" \
             "$RUNNER_TEMP/previous-delivery/content/timeline/index.jox" || true
           rclone copyto "$JOJO_DELIVERY_REMOTE/catalog.jox" "$RUNNER_TEMP/previous-delivery/catalog.jox" || true
-          node -e 'const r=require(process.env.RUNNER_TEMP+"/process-result.json"); for(const d of new Set(r.sources.flatMap(s=>s.dates))) console.log(d)' > "$RUNNER_TEMP/process-dates.txt"
+          node --input-type=module - <<'NODE' > "$RUNNER_TEMP/process-dates.txt"
+          import fs from "node:fs";
+          import { readJoxJson } from "./tools/times-pipeline/dist/src/delivery-writer.js";
+          const result = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/process-result.json", "utf8"));
+          const dates = new Set(result.sources.flatMap((source) => source.dates));
+          const indexObject = process.env.RUNNER_TEMP + "/previous-delivery/content/timeline/index.jox";
+          if (fs.existsSync(indexObject)) {
+            const index = readJoxJson(new Uint8Array(fs.readFileSync(indexObject)), "content/timeline/index.jox");
+            for (const date of index.dates ?? []) dates.add(date.date);
+          }
+          for (const date of [...dates].sort()) console.log(date);
+          NODE
           while read -r date; do
             [ -n "$date" ] || continue
             object="content/timeline/dates/${date:0:4}/${date:5:2}/${date}.jox"

@@ -16,6 +16,7 @@ import type {
 } from "@jojo/content";
 import type { CanonicalArticle, CanonicalWriteResult } from "./process/canonical-writer.js";
 import { sha256 } from "./identity.js";
+import { acceptSourceUrl } from "./sources/registry.js";
 import { plainText, removeParserArtifacts } from "./text.js";
 import type { SourceConfig } from "./types.js";
 
@@ -195,7 +196,7 @@ function deliveryRemovals(process: { sources: CanonicalWriteResult[] }): Map<str
   const byDate = new Map<string, Set<string>>();
   for (const source of process.sources) {
     for (const article of source.skippedArticles) {
-      if (article.reason !== "unsupported-media") continue;
+      if (article.reason !== "unsupported-media" && article.reason !== "duplicate-live-update") continue;
       const date = new Date(article.publishedAt).toISOString().slice(0, 10);
       byDate.set(date, new Set([...(byDate.get(date) ?? []), article.articleId]));
     }
@@ -214,20 +215,34 @@ export async function buildNewsDelivery(input: {
   previousSourceIndexes?: ReadonlyMap<string, TimesSourceIndex>;
   previousCatalog?: JojoCatalog;
 }): Promise<{ timelineIndexObject: string; articles: number; sources: number; dates: string[] }> {
-  const canonical = await canonicalArticles(input.workspaceRoot, input.process);
+  const canonical = (await canonicalArticles(input.workspaceRoot, input.process))
+    .filter((article) => acceptSourceUrl(article.source.id, article.canonicalUrl));
   const built = await Promise.all(canonical.map((article) => deliveryArticle(input.workspaceRoot, input.deliveryRoot, article)));
   const currentByDate = new Map<string, TimesDeliveryArticle[]>();
   const builtById = new Map(built.map((row) => [row.article.id, row]));
   for (const row of built) currentByDate.set(row.article.issueDate, [...(currentByDate.get(row.article.issueDate) ?? []), row.article]);
   const removalsByDate = deliveryRemovals(input.process);
   for (const date of removalsByDate.keys()) if (!currentByDate.has(date)) currentByDate.set(date, []);
+  for (const [date, day] of input.previousTimelineDays ?? []) {
+    const requiresCleanup = day.articles.some((article) => {
+      const replacement = builtById.get(article.id)?.article;
+      return (article.url !== null && article.url !== undefined && !acceptSourceUrl(article.source.id, article.url))
+        || (replacement !== undefined && replacement.issueDate !== date);
+    });
+    if (requiresCleanup && !currentByDate.has(date)) currentByDate.set(date, []);
+  }
 
   const timelineRefs = new Map((input.previousTimelineIndex?.dates ?? []).map((date) => [date.date, date]));
   const mergedDays = new Map<string, TimesTimelineDay>();
   for (const [date, current] of currentByDate) {
     const removed = removalsByDate.get(date) ?? new Set<string>();
     const previous = (input.previousTimelineDays?.get(date)?.articles ?? [])
-      .filter((article) => !removed.has(article.id));
+      .filter((article) => !removed.has(article.id))
+      .filter((article) => article.url === null || article.url === undefined || acceptSourceUrl(article.source.id, article.url))
+      .filter((article) => {
+        const replacement = builtById.get(article.id)?.article;
+        return replacement === undefined || replacement.issueDate === date;
+      });
     const articles = mergeArticles(previous, current);
     const object = `content/timeline/dates/${date.slice(0, 4)}/${date.slice(5, 7)}/${date}.jox`;
     const day: TimesTimelineDay = { formatVersion: "jojo-news-timeline-day/1", date, updatedAt: input.generatedAt, articles };

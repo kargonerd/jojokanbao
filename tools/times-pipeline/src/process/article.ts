@@ -101,7 +101,7 @@ export async function processArticle(
   fetchPolicy?: SourceFetchPolicy,
   sourceExtractor?: ArticleBodyExtractor,
 ): Promise<ProcessedCandidate> {
-  if (candidate.captureStatus === "skipped" || candidate.captureStatus === "hard-paywall") {
+  if (["skipped", "hard-paywall", "duplicate"].includes(candidate.captureStatus ?? "")) {
     return { ...candidate };
   }
   const renderedHtml = await renderedPageHtml(output, candidate);

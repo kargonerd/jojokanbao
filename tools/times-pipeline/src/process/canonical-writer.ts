@@ -81,7 +81,7 @@ export interface CanonicalWriteResult {
     title: string;
     canonicalUrl: string;
     publishedAt: string;
-    reason: "hard-paywall" | "unsupported-media" | "full-text-missing";
+    reason: "hard-paywall" | "unsupported-media" | "duplicate-live-update" | "full-text-missing";
     contentStatus: Candidate["contentStatus"];
     captureStatus?: Candidate["captureStatus"];
     captureHttpStatus?: number;
@@ -227,7 +227,9 @@ export async function writeCanonicalSource(
         title: candidate.title,
         canonicalUrl: candidate.canonicalUrl,
         publishedAt: candidate.publishedAt,
-        reason: candidate.captureStatus === "hard-paywall"
+        reason: candidate.captureStatus === "duplicate"
+          ? "duplicate-live-update"
+          : candidate.captureStatus === "hard-paywall"
           ? "hard-paywall"
           : candidate.captureStatus === "skipped"
             ? "unsupported-media"
@@ -236,7 +238,7 @@ export async function writeCanonicalSource(
         ...(candidate.captureStatus ? { captureStatus: candidate.captureStatus } : {}),
         ...(candidate.captureHttpStatus !== undefined ? { captureHttpStatus: candidate.captureHttpStatus } : {}),
       });
-      if (candidate.captureStatus === "skipped") {
+      if (candidate.captureStatus === "skipped" || candidate.captureStatus === "duplicate") {
         const date = new Date(candidate.publishedAt).toISOString().slice(0, 10);
         removedByDate.set(date, new Set([...(removedByDate.get(date) ?? []), candidate.articleId]));
       }
