@@ -129,11 +129,11 @@ git push origin search-v2026.08.30.1
 `.github/workflows/release-search.yml` rejects tags whose commit is not already
 in `master`, deploys and verifies staging first, and then waits on the dedicated
 GitHub `search-production` Environment before deploying production. Configure
-`SCF_SECRET_ID` and `SCF_SECRET_KEY` in both `search-staging` and
-`search-production`; the Tencent identity must be limited to the `jojo-search`
-deployment bucket and the two Reader Search SCF functions. Keep required
-reviewers on `search-production` so a tag cannot overwrite production without
-approval.
+the repository's long-lived `COS_SECRET_ID` and `COS_SECRET_KEY` secrets. The
+corresponding Tencent CAM identity must be limited to the `jojo-search`
+deployment bucket and the two Reader Search SCF functions, including the SCF
+read/update actions used by `deploy.py`. Keep required reviewers on
+`search-production` so a tag cannot overwrite production without approval.
 
 The command calls the authenticated local `tccli`; it never stores Tencent
 credentials in the repository. `UpdateFunctionCode` preserves the function's

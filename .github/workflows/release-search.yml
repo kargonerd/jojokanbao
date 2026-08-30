@@ -42,8 +42,8 @@ jobs:
     environment: search-staging
     timeout-minutes: 15
     env:
-      TENCENTCLOUD_SECRET_ID: ${{ secrets.SCF_SECRET_ID }}
-      TENCENTCLOUD_SECRET_KEY: ${{ secrets.SCF_SECRET_KEY }}
+      TENCENTCLOUD_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
+      TENCENTCLOUD_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -60,11 +60,11 @@ jobs:
         shell: bash
         run: |
           test -n "$TENCENTCLOUD_SECRET_ID" || {
-            echo "SCF_SECRET_ID is not configured." >&2
+            echo "COS_SECRET_ID is not configured." >&2
             exit 1
           }
           test -n "$TENCENTCLOUD_SECRET_KEY" || {
-            echo "SCF_SECRET_KEY is not configured." >&2
+            echo "COS_SECRET_KEY is not configured." >&2
             exit 1
           }
 
@@ -78,8 +78,8 @@ jobs:
     environment: search-production
     timeout-minutes: 15
     env:
-      TENCENTCLOUD_SECRET_ID: ${{ secrets.SCF_SECRET_ID }}
-      TENCENTCLOUD_SECRET_KEY: ${{ secrets.SCF_SECRET_KEY }}
+      TENCENTCLOUD_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
+      TENCENTCLOUD_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -96,11 +96,11 @@ jobs:
         shell: bash
         run: |
           test -n "$TENCENTCLOUD_SECRET_ID" || {
-            echo "SCF_SECRET_ID is not configured." >&2
+            echo "COS_SECRET_ID is not configured." >&2
             exit 1
           }
           test -n "$TENCENTCLOUD_SECRET_KEY" || {
-            echo "SCF_SECRET_KEY is not configured." >&2
+            echo "COS_SECRET_KEY is not configured." >&2
             exit 1
           }
 
