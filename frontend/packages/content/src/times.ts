@@ -9,6 +9,15 @@ export interface TimesSourceRef {
   language: string;
 }
 
+export interface TimesArticleTranslation {
+  language: string;
+  title: string;
+  summary?: string | null;
+  articleObject: string;
+  provider: "google-gemini-api";
+  model: string;
+}
+
 export interface TimesDeliveryArticle {
   id: string;
   title: string;
@@ -22,7 +31,7 @@ export interface TimesDeliveryArticle {
   publisherSections?: Array<{ id: string; name: string }>;
   articleObject: string;
   assets: JojoAssetDescriptor[];
-  translations?: Record<string, unknown>;
+  translations?: Record<string, TimesArticleTranslation>;
 }
 
 export interface TimesTimelineDayRef {

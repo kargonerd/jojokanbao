@@ -3,6 +3,7 @@ import { gunzipSync } from "node:zlib";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { TIMES_TRANSLATION_POLICY } from "./translation/gemma.js";
 
 const RAW_RUN_ROOT = "raw/runs";
 const DATASET_REPO_TYPE = "dataset" as const;
@@ -62,9 +63,9 @@ export function candidateDates(compressed: Uint8Array): Set<string> {
   for (const line of gunzipSync(compressed).toString("utf8").split(/\r?\n/u)) {
     if (!line.trim()) continue;
     const value = (JSON.parse(line) as { publishedAt?: unknown }).publishedAt;
-    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}/u.test(value)) continue;
-    const candidate = value.slice(0, 10);
-    if (!Number.isNaN(Date.parse(`${candidate}T00:00:00Z`))) dates.add(candidate);
+    if (typeof value !== "string") continue;
+    const publishedAt = new Date(value);
+    if (!Number.isNaN(publishedAt.getTime())) dates.add(publishedAt.toISOString().slice(0, 10));
   }
   return dates;
 }
@@ -75,6 +76,21 @@ export function canonicalObjects(sourceId: string, dates: ReadonlySet<string>): 
     path.posix.join(root, "dataset.json"),
     ...[...dates].map((date) => path.posix.join(root, "dates", date.slice(0, 4), date.slice(5, 7), `${date}.json.gz`)),
   ]);
+}
+
+export function canonicalTranslationObjects(
+  existing: ReadonlySet<string>,
+  datesBySource: ReadonlyMap<string, ReadonlySet<string>>,
+): Set<string> {
+  const selected = new Set<string>();
+  const pattern = new RegExp(`^canonical/([a-z0-9]+(?:-[a-z0-9]+)*)/translations/${TIMES_TRANSLATION_POLICY}/(\\d{4})/(\\d{2})/(\\d{4}-\\d{2}-\\d{2})/[a-f0-9]{64}\\.json\\.gz$`, "u");
+  for (const objectName of existing) {
+    const match = pattern.exec(objectName);
+    const sourceId = match?.[1];
+    const date = match?.[4];
+    if (sourceId && date && datesBySource.get(sourceId)?.has(date)) selected.add(objectName);
+  }
+  return selected;
 }
 
 export function candidateAssets(compressed: Uint8Array): Set<string> {
@@ -308,6 +324,8 @@ export class HfTimesDataset {
     const wanted = new Set<string>();
     for (const bundle of bundles) for (const objectName of canonicalObjects(bundle.sourceId, bundle.dates)) wanted.add(objectName);
     const existing = await this.treeFiles("canonical", latest.revision);
+    const datesBySource = new Map(bundles.map((bundle) => [bundle.sourceId, bundle.dates]));
+    for (const objectName of canonicalTranslationObjects(existing, datesBySource)) wanted.add(objectName);
     const canonical = [...wanted].filter((objectName) => existing.has(objectName)).sort();
     await mapLimit(canonical, 8, async (objectName) => this.downloadObject(objectName, latest.revision));
     return {

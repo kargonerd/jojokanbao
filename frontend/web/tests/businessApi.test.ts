@@ -7,6 +7,7 @@ import { timesApi } from "../src/times/api";
 const indexObject = "content/timeline/index.jox";
 const dayObject = "content/timeline/dates/2026/08/2026-08-22.jox";
 const articleObject = "content/newspapers/example/articles/article-one.jox";
+const translatedArticleObject = "content/newspapers/example/articles/article-one-zh.jox";
 const assetObject = "content/newspapers/example/assets/image-one.jox";
 const item = {
   id: "article-one",
@@ -95,6 +96,82 @@ describe("Times B2 CDN client", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(createObjectURL).toHaveBeenCalledOnce();
+  });
+
+  it("uses the Simplified Chinese timeline metadata and translated fragment when available", async () => {
+    vi.stubGlobal("Blob", NodeBlob);
+    const translatedItem = {
+      ...item,
+      assets: [],
+      translations: {
+        "zh-CN": {
+          language: "zh-CN",
+          title: "中文标题",
+          summary: "中文摘要",
+          articleObject: translatedArticleObject,
+          provider: "google-gemini-api" as const,
+          model: "gemma-4-31b-it",
+        },
+      },
+    };
+    const translatedDay = { ...day, articles: [translatedItem] };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith(indexObject)) return joxResponse(indexObject, index);
+      if (url.endsWith(dayObject)) return joxResponse(dayObject, translatedDay);
+      if (url.endsWith(translatedArticleObject)) return joxResponse(translatedArticleObject, {
+        formatVersion: "jojo-fragment/1", itemId: "example:2026-08-22", fragmentId: "article-one",
+        type: "article", order: 1, title: "中文标题",
+        body: { format: "html", profile: "jojo-semantic-html/1", value: "<p>中文正文</p>" },
+        assetRefs: [], annotations: [],
+      });
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(timesApi.timelineDay("2026-08-22")).resolves.toMatchObject({
+      articles: [{ title: "中文标题", summary: "中文摘要", language: "zh-CN" }],
+    });
+    await expect(timesApi.getNews("2026-08-22", "article-one")).resolves.toMatchObject({
+      title: "中文标题", content: "<p>中文正文</p>", language: "zh-CN",
+    });
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith(translatedArticleObject))).toBe(true);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith(articleObject))).toBe(false);
+  });
+
+  it("falls back to the publisher-language fragment when a translated object is unavailable", async () => {
+    vi.stubGlobal("Blob", NodeBlob);
+    const translatedDay = {
+      ...day,
+      articles: [{
+        ...item,
+        assets: [],
+        translations: {
+          "zh-CN": {
+            language: "zh-CN", title: "中文标题", articleObject: translatedArticleObject,
+            provider: "google-gemini-api" as const, model: "gemma-4-31b-it",
+          },
+        },
+      }],
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith(indexObject)) return joxResponse(indexObject, index);
+      if (url.endsWith(dayObject)) return joxResponse(dayObject, translatedDay);
+      if (url.endsWith(translatedArticleObject)) return new Response("not found", { status: 404 });
+      if (url.endsWith(articleObject)) return joxResponse(articleObject, {
+        formatVersion: "jojo-fragment/1", itemId: "example:2026-08-22", fragmentId: "article-one",
+        type: "article", order: 1, title: "Headline",
+        body: { format: "html", profile: "jojo-semantic-html/1", value: "<p>Full body</p>" },
+        assetRefs: [], annotations: [],
+      });
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(timesApi.getNews("2026-08-22", "article-one")).resolves.toMatchObject({
+      title: "Headline", summary: null, content: "<p>Full body</p>", language: "en",
+    });
   });
 
   it("does not render stale timeline images that the article object no longer references", async () => {

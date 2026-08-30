@@ -49,6 +49,17 @@ describe("news Delivery writer", () => {
       publisherSections: [{ id: "world", name: "World" }],
       categories: [],
       body: { format: "html", profile: "jojo-semantic-html/1", value: '<figure data-asset-id="asset:image"></figure><p>Full body</p>' },
+      translations: {
+        "zh-CN": {
+          language: "zh-CN",
+          title: "完整报道",
+          body: { format: "html", profile: "jojo-semantic-html/1", value: '<figure data-asset-id="asset:image"></figure><p>完整正文</p>' },
+          provider: "google-gemini-api",
+          model: "gemma-4-31b-it",
+          translatedAt: "2026-08-23T09:35:00.000Z",
+          sourceHash: "source-hash",
+        },
+      },
       assets: [{
         id: "asset:image", type: "image", role: "lead", sourceUrl: "https://example.test/image.jpg",
         rawObject: imageObject, mediaType: "image/jpeg", size: 11, sha256: "image", alt: "Lead image",
@@ -118,6 +129,12 @@ describe("news Delivery writer", () => {
     const day = await gunzipJoxJson<TimesTimelineDay>(new Uint8Array(await readFile(path.join(deliveryRoot, ...dayObject.split("/")))), dayObject);
     expect(day.articles[0]).toMatchObject({ id: "example:full", source: { id: "example" }, assets: [{ id: "asset:image" }] });
     expect(day.articles[0]!.articleObject).toMatch(/^content\/newspapers\/example\/articles\/[a-f0-9]+\.jox$/u);
+    expect(day.articles[0]!.translations?.["zh-CN"]).toMatchObject({
+      language: "zh-CN",
+      title: "完整报道",
+      summary: "完整正文",
+      model: "gemma-4-31b-it",
+    });
 
     const sourceIndexObject = "content/newspapers/example/index.jox";
     const sourceIndex = await gunzipJoxJson<TimesSourceIndex>(new Uint8Array(await readFile(path.join(deliveryRoot, ...sourceIndexObject.split("/")))), sourceIndexObject);
@@ -128,6 +145,13 @@ describe("news Delivery writer", () => {
     const fragmentObject = day.articles[0]!.articleObject;
     const fragment = await gunzipJoxJson<JojoFragment>(new Uint8Array(await readFile(path.join(deliveryRoot, ...fragmentObject.split("/")))), fragmentObject);
     expect(fragment.assetRefs).toEqual(["asset:image"]);
+    expect(fragment.title).toBe("Full story");
+    const translatedObject = day.articles[0]!.translations!["zh-CN"]!.articleObject;
+    const translatedFragment = await gunzipJoxJson<JojoFragment>(
+      new Uint8Array(await readFile(path.join(deliveryRoot, ...translatedObject.split("/")))),
+      translatedObject,
+    );
+    expect(translatedFragment).toMatchObject({ title: "完整报道", body: { value: '<figure data-asset-id="asset:image"></figure><p>完整正文</p>' } });
     const assetObject = day.articles[0]!.assets[0]!.object;
     expect(Buffer.from(transformJoxBytes(new Uint8Array(await readFile(path.join(deliveryRoot, ...assetObject.split("/")))), assetObject)).toString()).toBe("image-bytes");
     const catalog = await gunzipJoxJson<JojoCatalog>(new Uint8Array(await readFile(path.join(deliveryRoot, "catalog.jox"))), "catalog.jox");
