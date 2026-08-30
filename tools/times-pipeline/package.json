@@ -16,6 +16,7 @@
     "hf": "node dist/src/hf-cli.js",
     "process": "node dist/src/process-cli.js",
     "delivery": "node dist/src/delivery-cli.js",
+    "benchmark:translation": "node dist/src/translation-benchmark-cli.js",
     "serve": "node dist/src/serve-cli.js"
   },
   "dependencies": {

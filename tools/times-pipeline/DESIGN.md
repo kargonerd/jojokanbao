@@ -27,6 +27,7 @@ Raw 与 Canonical 位于同一个 HF repo。B2 不保存 Raw、Canonical、代�
 Capture 成功后触发 Process/Publish
   最新完整 Raw commit
     → 仅接受完整正文
+    → 非中文语义块并发翻译（Gemma 31B，26B 降级，失败保留原文）
     → 单篇 Canonical Article + 媒体每日引用
     → HF Canonical commit
     → B2 媒体 Article/Asset
@@ -42,7 +43,7 @@ Capture 和 Process 可独立重试。B2 失败时从 Canonical 重发，不重�
 articleId    = SHA-256(sourceId + normalized canonical URL)
 fingerprint  = SHA-256(capture URL + title + publishedAt)
 assetId      = SHA-256(image bytes)
-contentHash  = SHA-256(title + publishedAt + canonical body + asset hashes)
+contentHash  = SHA-256(title + publishedAt + canonical body + asset hashes + translations)
 ~~~
 
 每个媒体的 state.json.gz 只决定 URL 是否已经成功抓取：成功页面在七天保留窗口内不重复抓，失败页面
@@ -90,12 +91,14 @@ raw/runs/YYYY/MM/DD/{RUN_ID}.json
 
 canonical/{source}/dataset.json
 canonical/{source}/articles/{contentHash}.json.gz
+canonical/{source}/translations/gemma-news-zh-v1/YYYY/MM/YYYY-MM-DD/{sourceHash}.json.gz
 canonical/{source}/dates/YYYY/MM/YYYY-MM-DD.json.gz
 canonical/runs/{RUN_ID}.json
 ~~~
 
 Source run 保存本轮发现和抓取证据；单篇 Canonical Article 是不可变内容对象；每日 Canonical 只引用
-文章，不复制正文。历史修订由新的 content hash 和 HF commit 历史保留。
+文章，不复制正文。翻译缓存以原始标题、正文、语言和翻译策略的 sourceHash 寻址，模型或提示词策略升级时
+通过新的策略版本目录失效。历史修订由新的 content hash 和 HF commit 历史保留。
 
 ## 7. B2 契约与提交顺序
 
@@ -111,7 +114,7 @@ catalog.jox
 
 发布顺序保证指针不引用未上传对象：
 
-1. Asset、Article（长期 immutable）；
+1. Asset、原文 Article 和译文 Article（长期 immutable）；
 2. 媒体日期、媒体 index（短缓存）；
 3. timeline 日期、timeline index（短缓存）；
 4. catalog（短缓存）。
@@ -119,7 +122,10 @@ catalog.jox
 没有 content/newspapers/times、latest.jox、B2 Raw 或 B2 Canonical。前端读取 timeline index 的第一天，
 到达列表底部后继续读取下一天；打开文章时才读取正文与图片。
 
+Timeline 文章保留原文 `articleObject`，并在 `translations.zh-CN.articleObject` 指向中文 fragment；列表所需的
+中文标题和摘要随翻译引用一起保存。中文客户端优先读取译文，译文对象不可用时回退原文。
+
 ## 8. 后续能力
 
-翻译、实体抽取和 Elasticsearch 只消费 Canonical Article，以 articleId、contentHash 和处理器版本幂等
-执行。它们的失败不能阻断原文 Capture、Canonical 或 Delivery。
+实体抽取和 Elasticsearch 只消费 Canonical Article，以 articleId、contentHash 和处理器版本幂等执行。
+Gemma 翻译在 Process 内以受控并发执行并使用独立内容缓存；翻译服务失败不能阻断原文 Canonical 或 Delivery。

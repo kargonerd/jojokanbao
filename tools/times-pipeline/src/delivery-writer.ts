@@ -78,13 +78,13 @@ async function canonicalArticles(workspaceRoot: string, process: { sources: Cano
   ).toString("utf8")) as CanonicalArticle));
 }
 
-function bodyForDelivery(article: CanonicalArticle, availableAssets: ReadonlySet<string>): CanonicalArticle["body"] {
-  const $ = load(removeParserArtifacts(article.body.value), undefined, false);
+function bodyForDelivery(body: CanonicalArticle["body"], availableAssets: ReadonlySet<string>): CanonicalArticle["body"] {
+  const $ = load(removeParserArtifacts(body.value), undefined, false);
   $("figure[data-asset-id]").each((_index, element) => {
     const current = $(element);
     if (!availableAssets.has(current.attr("data-asset-id") ?? "")) current.remove();
   });
-  return { ...article.body, value: $.html().trim() };
+  return { ...body, value: $.html().trim() };
 }
 
 async function deliveryArticle(
@@ -116,7 +116,8 @@ async function deliveryArticle(
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
-  const body = bodyForDelivery(canonical, new Set(assets.map((asset) => asset.id)));
+  const availableAssets = new Set(assets.map((asset) => asset.id));
+  const body = bodyForDelivery(canonical.body, availableAssets);
   const issueDate = canonical.publishedAt.slice(0, 10);
   const fragment: JojoFragment = {
     formatVersion: "jojo-fragment/1",
@@ -134,6 +135,27 @@ async function deliveryArticle(
   const articleObject = `${sourcePrefix}/articles/${opaque}.jox`;
   const info = await writeJoxJson(deliveryRoot, articleObject, fragment);
   const summary = plainText(body.value).slice(0, 300) || undefined;
+  const translations = Object.fromEntries(await Promise.all(Object.entries(canonical.translations ?? {}).map(async ([language, translation]) => {
+    const translatedBody = bodyForDelivery(translation.body, availableAssets);
+    const translatedFragment: JojoFragment = {
+      ...fragment,
+      title: translation.title,
+      body: translatedBody,
+    };
+    const translatedClear = Buffer.from(`${JSON.stringify(translatedFragment)}\n`, "utf8");
+    const translatedOpaque = createHash("sha256").update(translatedClear).digest("hex");
+    const translatedObject = `${sourcePrefix}/articles/${translatedOpaque}.jox`;
+    await writeJoxJson(deliveryRoot, translatedObject, translatedFragment);
+    const translatedSummary = plainText(translatedBody.value).slice(0, 300) || undefined;
+    return [language, {
+      language: translation.language,
+      title: translation.title,
+      ...(translatedSummary ? { summary: translatedSummary } : {}),
+      articleObject: translatedObject,
+      provider: translation.provider,
+      model: translation.model,
+    }] as const;
+  })));
   return {
     fragment,
     descriptor: {
@@ -158,6 +180,7 @@ async function deliveryArticle(
       ...(canonical.publisherSections.length ? { publisherSections: canonical.publisherSections } : {}),
       articleObject,
       assets,
+      ...(Object.keys(translations).length ? { translations } : {}),
     },
   };
 }

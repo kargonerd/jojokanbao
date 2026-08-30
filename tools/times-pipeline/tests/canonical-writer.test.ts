@@ -83,8 +83,22 @@ describe("canonical writer", () => {
       title: "Image-only report",
       processedBody: '<figure data-publisher-image-only="true"></figure><figure data-asset-id="asset:image"></figure>',
     };
+    const translatedCandidate: ProcessedCandidate = {
+      ...candidate,
+      translation: {
+        language: "zh-CN",
+        title: "第一篇报道",
+        body: { format: "html", profile: "jojo-semantic-html/1", value: '<figure data-asset-id="asset:image"></figure><p>路透社完整报道正文。</p>' },
+        provider: "google-gemini-api",
+        model: "gemma-4-31b-it",
+        translatedAt: "2026-08-23T10:02:00Z",
+        sourceHash: "source-hash",
+      },
+      translationCacheObject: "canonical/reuters/translations/gemma-news-zh-v1/2026/08/2026-08-23/cache.json.gz",
+      translationStatus: "translated",
+    };
     const result = await writeCanonicalSource(output, source, manifest, "raw/reuters/runs/run/manifest.json", [
-      candidate, imageOnly,
+      translatedCandidate, imageOnly,
       { ...candidate, articleId: "reuters:summary", processedBody: "", assets: [], contentStatus: "summary" },
       { ...candidate, articleId: "reuters:unchanged", processedBody: "", assets: [], contentStatus: "summary", captureStatus: "unchanged" },
     ], "raw-sha");
@@ -111,7 +125,15 @@ describe("canonical writer", () => {
       contentStatus: "full",
       publisherSections: [{ id: "world", name: "World" }],
       assets: [{ id: "asset:image", rawObject: "raw/reuters/assets/image.jpg" }],
+      translations: {
+        "zh-CN": {
+          title: "第一篇报道",
+          model: "gemma-4-31b-it",
+          body: { value: '<figure data-asset-id="asset:image"></figure><p>路透社完整报道正文。</p>' },
+        },
+      },
     });
+    expect(result.files).toContain(translatedCandidate.translationCacheObject);
     const imageOnlyRef = result.articles.find((article) => article.articleId === "reuters:image-only");
     const imageOnlyRow = JSON.parse(gunzipSync(await readFile(path.join(
       output, ...imageOnlyRef!.object.split("/"),

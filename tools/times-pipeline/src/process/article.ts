@@ -12,6 +12,20 @@ interface RawPageMetadata {
 
 export interface ProcessedCandidate extends Candidate {
   processedBody?: string;
+  translation?: ProcessedArticleTranslation;
+  translationCacheObject?: string;
+  translationStatus?: "translated" | "cached" | "failed";
+  translationError?: string;
+}
+
+export interface ProcessedArticleTranslation {
+  language: "zh-CN";
+  title: string;
+  body: { format: "html"; profile: "jojo-semantic-html/1"; value: string };
+  provider: "google-gemini-api";
+  model: string;
+  translatedAt: string;
+  sourceHash: string;
 }
 
 function localObjectPath(output: string, objectName: string): string {

@@ -5,6 +5,7 @@ import {
   candidateObject,
   candidateRawPages,
   canonicalObjects,
+  canonicalTranslationObjects,
   HfTimesDataset,
   rawStateObjects,
   rawRunMatchesGitHubRunId,
@@ -43,16 +44,28 @@ describe("HF snapshot selection", () => {
     const compressed = gzipSync([
       JSON.stringify({ publishedAt: "2026-08-22T23:59:00Z" }),
       JSON.stringify({ publishedAt: "2026-08-23T08:00:00Z" }),
+      JSON.stringify({ publishedAt: "2026-08-23T23:30:00-04:00" }),
       JSON.stringify({ publishedAt: "not-a-date" }),
       "",
     ].join("\n"));
     const dates = candidateDates(compressed);
-    expect(dates).toEqual(new Set(["2026-08-22", "2026-08-23"]));
+    expect(dates).toEqual(new Set(["2026-08-22", "2026-08-23", "2026-08-24"]));
     expect(canonicalObjects("ap", dates)).toEqual(new Set([
       "canonical/ap/dataset.json",
       "canonical/ap/dates/2026/08/2026-08-22.json.gz",
       "canonical/ap/dates/2026/08/2026-08-23.json.gz",
+      "canonical/ap/dates/2026/08/2026-08-24.json.gz",
     ]));
+  });
+
+  it("restores only translation caches matching the current source dates", () => {
+    const matching = "canonical/ap/translations/gemma-news-zh-v1/2026/08/2026-08-23/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.gz";
+    expect(canonicalTranslationObjects(new Set([
+      matching,
+      "canonical/ap/translations/gemma-news-zh-v1/2026/08/2026-08-22/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json.gz",
+      "canonical/reuters/translations/gemma-news-zh-v1/2026/08/2026-08-23/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.json.gz",
+      "canonical/ap/articles/article.json.gz",
+    ]), new Map([["ap", new Set(["2026-08-23"])]]))).toEqual(new Set([matching]));
   });
 
   it("selects Raw page metadata needed by Process", () => {

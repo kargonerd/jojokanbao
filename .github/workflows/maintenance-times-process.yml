@@ -46,6 +46,11 @@ jobs:
       HF_TIMES_DATASET_REPO: ${{ secrets.HF_TIMES_DATASET_REPO || secrets.HF_DATASET_REPO }}
       B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
       B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      JOJO_TIMES_TRANSLATION_WORKERS: "8"
+      JOJO_TIMES_TRANSLATION_REQUEST_TIMEOUT_MS: "120000"
+      JOJO_TIMES_TRANSLATION_BATCH_TIMEOUT_MS: "480000"
+      JOJO_TIMES_TRANSLATION_CHUNK_CHARACTERS: "9000"
       JOJO_DELIVERY_REMOTE: jojo-b2:${{ secrets.B2_BUCKET || 'jojo-newspaper' }}
       TIMES_PUBLISH: ${{ github.event_name == 'workflow_run' || inputs.publish }}
       TIMES_CAPTURE_RUN_ID: ${{ inputs.capture_run_id || '' }}
@@ -76,6 +81,7 @@ jobs:
           test -z "$TIMES_CAPTURE_RUN_ID" || (echo "capture_run_id is available only for a non-publishing dry run" >&2 && exit 1)
           test -n "$B2_KEY_ID" || (echo "B2_KEY_ID is not configured" >&2 && exit 1)
           test -n "$B2_APPLICATION_KEY" || (echo "B2_APPLICATION_KEY is not configured" >&2 && exit 1)
+          test -n "$GEMINI_API_KEY" || (echo "GEMINI_API_KEY is not configured" >&2 && exit 1)
 
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
@@ -137,6 +143,8 @@ jobs:
           node - <<'NODE'
           const fs = require("node:fs");
           const report = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/process-result.json", "utf8"));
+          const translation = report.translation || { enabled: false };
+          console.log(`Translation: ${translation.enabled ? `${translation.translated} translated, ${translation.cacheHits} cached, ${translation.failed} failed in ${(translation.durationMs / 1000).toFixed(1)}s` : "disabled"}`);
           for (const source of report.sources || []) {
             console.log(`${source.sourceId}: ${source.articles.length} canonical, ${source.unchangedArticles?.length || 0} unchanged, ${source.skippedArticles?.length || 0} excluded`);
             for (const article of source.skippedArticles || []) {
@@ -270,6 +278,8 @@ jobs:
           const processed = fs.existsSync(processPath) ? JSON.parse(fs.readFileSync(processPath, "utf8")) : undefined;
           const unchanged = processed?.sources?.flatMap((source) => source.unchangedArticles || []) || [];
           const skipped = processed?.sources?.flatMap((source) => source.skippedArticles || []) || [];
+          const translation = processed?.translation || { enabled: false };
+          console.log(`- Translation: ${translation.enabled ? `${translation.translated} translated, ${translation.cacheHits} cached, ${translation.failed} failed, ${(translation.durationMs / 1000).toFixed(1)}s` : "disabled"}`);
           console.log(`- Unchanged without refresh: ${unchanged.length}`);
           console.log(`- Excluded from Delivery: ${skipped.length}`);
           if (skipped.length) {

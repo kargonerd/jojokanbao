@@ -3,6 +3,7 @@ import {
   resolveJoxObject,
   type JojoAssetDescriptor,
   type JojoFragment,
+  type TimesArticleTranslation,
   type TimesDeliveryArticle,
   type TimesTimelineDay,
   type TimesTimelineIndex,
@@ -31,7 +32,24 @@ function asTimelineDay(value: TimesTimelineDay, date: string): TimesTimelineDay 
   if (value.formatVersion !== "jojo-news-timeline-day/1" || value.date !== date || !Array.isArray(value.articles)) {
     throw new Error(`${date} 的时事时间线格式无效`);
   }
-  return value;
+  return { ...value, articles: value.articles.map(localizedArticle) };
+}
+
+function preferredTranslation(article: TimesDeliveryArticle): TimesArticleTranslation | undefined {
+  const translation = article.translations?.["zh-CN"];
+  if (!translation || translation.language !== "zh-CN" || typeof translation.title !== "string"
+    || typeof translation.articleObject !== "string") return undefined;
+  return translation;
+}
+
+function localizedArticle(article: TimesDeliveryArticle): TimesDeliveryArticle {
+  const translation = preferredTranslation(article);
+  return translation ? {
+    ...article,
+    title: translation.title,
+    summary: translation.summary ?? null,
+    language: translation.language,
+  } : article;
 }
 
 function safeArticleObject(value: string): string {
@@ -99,9 +117,22 @@ export const timesApi = {
   async getNews(issueDate: string, newsId: string): Promise<TimesNewsItem> {
     const item = (await timelineDay(issueDate)).articles.find((candidate) => candidate.id === newsId);
     if (!item) throw new Error("新闻不存在");
-    const fragment = await client.fetchJson<JojoFragment>(safeArticleObject(item.articleObject));
-    if (fragment.formatVersion !== "jojo-fragment/1" || fragment.type !== "article" || fragment.fragmentId !== item.id) {
-      throw new Error("时事文章对象格式无效");
+    const translation = preferredTranslation(item);
+    const fetchFragment = async (object: string): Promise<JojoFragment> => {
+      const fragment = await client.fetchJson<JojoFragment>(safeArticleObject(object));
+      if (fragment.formatVersion !== "jojo-fragment/1" || fragment.type !== "article" || fragment.fragmentId !== item.id) {
+        throw new Error("时事文章对象格式无效");
+      }
+      return fragment;
+    };
+    let fragment: JojoFragment;
+    let usingTranslation = Boolean(translation);
+    try {
+      fragment = await fetchFragment(translation?.articleObject ?? item.articleObject);
+    } catch (error) {
+      if (!translation) throw error;
+      fragment = await fetchFragment(item.articleObject);
+      usingTranslation = false;
     }
     const referencedAssetIds = new Set(fragment.assetRefs);
     const assets = item.assets.filter((asset) => referencedAssetIds.has(asset.id));
@@ -114,6 +145,7 @@ export const timesApi = {
     }));
     return {
       ...item,
+      ...(!usingTranslation && translation ? { title: fragment.title, summary: null, language: item.source.language } : {}),
       assets,
       content: fragment.body.value,
       contentFormat: fragment.body.format,

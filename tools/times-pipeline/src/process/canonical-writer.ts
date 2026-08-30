@@ -21,6 +21,7 @@ export interface CanonicalArticle {
   publisherSections: PublisherSectionRef[];
   categories: string[];
   body: { format: "html"; profile: "jojo-semantic-html/1"; value: string };
+  translations?: Record<string, CanonicalArticleTranslation>;
   assets: CapturedAsset[];
   contentStatus: "full";
   contentHash: string;
@@ -33,6 +34,16 @@ export interface CanonicalArticle {
     parserVersion?: string;
     captureMethod?: "direct" | "browser";
   };
+}
+
+export interface CanonicalArticleTranslation {
+  language: "zh-CN";
+  title: string;
+  body: { format: "html"; profile: "jojo-semantic-html/1"; value: string };
+  provider: "google-gemini-api";
+  model: string;
+  translatedAt: string;
+  sourceHash: string;
 }
 
 export interface CanonicalArticleRef {
@@ -77,8 +88,7 @@ export interface CanonicalWriteResult {
   }>;
 }
 
-function bodyValue(candidate: ProcessedCandidate): string | undefined {
-  const value = candidate.processedBody;
+function cleanedBody(value: string | undefined, candidate: ProcessedCandidate): string | undefined {
   if (!value?.trim() || candidate.contentStatus !== "full") return undefined;
   const $ = load(removeParserArtifacts(value), undefined, false);
   $("script,style,noscript,iframe,video,audio,picture,source").remove();
@@ -100,6 +110,10 @@ function bodyValue(candidate: ProcessedCandidate): string | undefined {
   return cleaned || undefined;
 }
 
+function bodyValue(candidate: ProcessedCandidate): string | undefined {
+  return cleanedBody(candidate.processedBody, candidate);
+}
+
 function canonicalArticle(
   candidate: ProcessedCandidate,
   value: string,
@@ -110,11 +124,24 @@ function canonicalArticle(
 ): CanonicalArticle {
   const body = { format: "html" as const, profile: "jojo-semantic-html/1" as const, value };
   const assets = candidate.assets ?? [];
+  const translatedBody = cleanedBody(candidate.translation?.body.value, candidate);
+  const translations = candidate.translation && translatedBody ? {
+    [candidate.translation.language]: {
+      language: candidate.translation.language,
+      title: candidate.translation.title,
+      body: { ...candidate.translation.body, value: translatedBody },
+      provider: candidate.translation.provider,
+      model: candidate.translation.model,
+      translatedAt: candidate.translation.translatedAt,
+      sourceHash: candidate.translation.sourceHash,
+    } satisfies CanonicalArticleTranslation,
+  } : undefined;
   const contentHash = sha256(JSON.stringify({
     title: candidate.title,
     publishedAt: candidate.publishedAt,
     body,
     assets: assets.map((asset) => [asset.id, asset.sha256]),
+    translations,
   }));
   return {
     formatVersion: "jojo-news-article/2",
@@ -130,6 +157,7 @@ function canonicalArticle(
     publisherSections: candidate.publisherSections ?? [],
     categories: [],
     body,
+    ...(translations ? { translations } : {}),
     assets,
     contentStatus: "full",
     contentHash,
@@ -222,6 +250,7 @@ export async function writeCanonicalSource(
     const ref = { articleId: article.articleId, object, contentHash: article.contentHash, publishedAt: article.publishedAt };
     created.push(ref);
     files.push(object);
+    if (candidate.translationCacheObject) files.push(candidate.translationCacheObject);
     const date = new Date(article.publishedAt).toISOString().slice(0, 10);
     byDate.set(date, [...(byDate.get(date) ?? []), ref]);
   }
