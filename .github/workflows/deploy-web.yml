@@ -37,7 +37,7 @@ jobs:
       VITE_ENABLE_PLATFORM_REDESIGN: ${{ vars.VITE_ENABLE_PLATFORM_REDESIGN || 'false' }}
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
-      VITE_TIMES_CDN_BASE: ${{ vars.VITE_TIMES_CDN_BASE || 'https://blacknews.jojokanbao.cn/' }}
+      VITE_CONTENT_CDN_BASE: ${{ vars.VITE_CONTENT_CDN_BASE || 'https://blacknews.jojokanbao.cn/' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 

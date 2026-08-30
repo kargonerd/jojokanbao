@@ -13,11 +13,9 @@ import {
   type TimesPresentedArticle,
 } from "./language";
 
-const TIMES_CDN = import.meta.env.VITE_TIMES_CDN_BASE
-  || import.meta.env.VITE_CONTENT_CDN_BASE
-  || "https://blacknews.jojokanbao.cn/";
+const CONTENT_CDN = import.meta.env.VITE_CONTENT_CDN_BASE || "https://blacknews.jojokanbao.cn/";
 const TIMELINE_INDEX_OBJECT = "content/timeline/index.jox";
-const client = new JoxClient(TIMES_CDN, (input, init) => fetch(input, init));
+const client = new JoxClient(CONTENT_CDN, (input, init) => fetch(input, init));
 
 export type TimesNewsItem = TimesPresentedArticle & {
   content?: string | null;
