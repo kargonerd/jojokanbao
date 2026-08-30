@@ -7,12 +7,12 @@ from search_overlay import build_search_query, load_patch_state_file, merge_sear
 from migration_exclusions import build_active_query, hit_to_active_result
 from search_state import CosSearchState, SearchStateUnavailable
 
-def create_elasticsearch_client():
-  url = os.environ.get('ELASTICSEARCH_URL')
-  username = os.environ.get('ELASTICSEARCH_USERNAME')
-  password = os.environ.get('ELASTICSEARCH_PASSWORD')
+def create_elasticsearch_client(prefix='ELASTICSEARCH', require_auth=False):
+  url = os.environ.get(f'{prefix}_URL')
+  username = os.environ.get(f'{prefix}_USERNAME')
+  password = os.environ.get(f'{prefix}_PASSWORD')
 
-  if not url:
+  if not url or (require_auth and not (username and password)):
     return None
 
   kwargs = {
@@ -28,7 +28,8 @@ def create_elasticsearch_client():
 
 es = create_elasticsearch_client()
 index_name = os.environ.get('ELASTICSEARCH_INDEX', 'jojo-67f10bu8')
-content_index_name = os.environ.get('ELASTICSEARCH_CONTENT_INDEX', 'jojo-content-v1')
+content_es = create_elasticsearch_client('CONTENT_ELASTICSEARCH', require_auth=True)
+content_index_name = os.environ.get('CONTENT_ELASTICSEARCH_INDEX', '').strip()
 overlay_enabled = os.environ.get('SEARCH_OVERLAY', '').lower() in ('1', 'true', 'yes', 'on')
 base_index_name = os.environ.get('ELASTICSEARCH_BASE_INDEX')
 delta_index_name = os.environ.get('ELASTICSEARCH_DELTA_INDEX')
@@ -49,6 +50,9 @@ def health():
   return jsonify({
     'status': 'ok',
     'elasticsearch': 'configured' if es else 'not_configured',
+    'contentElasticsearch': (
+      'configured' if content_es and content_index_name else 'not_configured'
+    ),
     'overlay': 'enabled' if overlay_enabled else 'disabled',
     'revisionFiltering': search_state.status(),
   })
@@ -81,7 +85,7 @@ def _identity_filter(field, values):
 @app.route("/content/search", methods=["POST"])
 def content_search():
   """Search the unified JOJO content index for both readers and Agent tools."""
-  if es is None:
+  if content_es is None or not content_index_name:
     return jsonify({'error': 'search backend is not configured'}), 503
   payload = request.get_json(silent=True) or {}
   query_text = str(payload.get('query') or '').strip()
@@ -155,10 +159,10 @@ def content_search():
     },
   }
   try:
-    data = es.search(index=content_index_name, body=body)
-  except Exception as exc:
+    data = content_es.search(index=content_index_name, body=body)
+  except Exception:
     app.logger.exception('unified content search failed')
-    return jsonify({'error': str(exc)}), 502
+    return jsonify({'error': '搜索服务暂时不可用'}), 502
   hits = (data.get('hits') or {})
   results = []
   seen_fragments = set()

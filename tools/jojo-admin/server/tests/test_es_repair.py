@@ -17,6 +17,11 @@ from es_migrations import (
     search_state_payload,
     write_search_state,
 )
+from publish_search_state import (
+    merge_search_state,
+    publish_applied_search_state,
+    validate_publication_target,
+)
 
 
 class RepairLogicTest(unittest.TestCase):
@@ -250,6 +255,69 @@ class RepairLogicTest(unittest.TestCase):
             )
 
             self.assertEqual(active_revision_heads("news", directory), {"base-id": None})
+
+    def test_remote_state_is_merged_and_unconfigured_indexes_are_removed(self):
+        merged = merge_search_state(
+            {
+                "excludedIds": {
+                    "news": ["remote-old"],
+                    "aitest-1tk2lxru": ["test-only"],
+                }
+            },
+            {"excludedIds": {"news": ["local-new"]}},
+            ["news"],
+        )
+        self.assertEqual(
+            merged,
+            {"excludedIds": {"news": ["local-new", "remote-old"]}},
+        )
+
+    def test_publish_preserves_remote_repairs_from_another_workstation(self):
+        with TemporaryDirectory() as temp:
+            directory = Path(temp)
+            migration = create_migration(
+                "local-old",
+                {"title": "修复", "content": "正文"},
+                deleted=False,
+                reason="",
+                index="news",
+                directory=directory,
+            )
+            migration["state"] = "applied"
+            migration["result"] = {"documentId": migration["id"]}
+            (directory / f"{migration['id']}.json").write_text(
+                json.dumps(migration), encoding="utf-8"
+            )
+            uploaded = []
+            result = publish_applied_search_state(
+                "news",
+                directory=directory,
+                config={
+                    "bucket": "private-bucket",
+                    "region": "ap-beijing",
+                    "key": "runtime/search/search-state.json",
+                    "profile": "",
+                    "indices": ["news"],
+                },
+                remote_loader=lambda _: {"excludedIds": {"news": ["remote-old"]}},
+                uploader=lambda _, payload: uploaded.append(payload),
+            )
+
+            self.assertEqual(
+                uploaded,
+                [{"excludedIds": {"news": ["local-old", "remote-old"]}}],
+            )
+            self.assertEqual(result["excluded"], 2)
+
+    def test_repair_target_must_be_an_explicit_served_index(self):
+        with self.assertRaisesRegex(ValueError, "不在 SEARCH_STATE_INDICES"):
+            validate_publication_target("aitest-1tk2lxru", {
+                "bucket": "private-bucket",
+                "region": "ap-beijing",
+                "key": "runtime/search/search-state.json",
+                "profile": "",
+                "indices": ["production"],
+            })
 
 
 if __name__ == "__main__":

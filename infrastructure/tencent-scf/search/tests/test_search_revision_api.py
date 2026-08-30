@@ -42,9 +42,14 @@ class SearchEs:
 class SearchRevisionApiTests(unittest.TestCase):
     def setUp(self):
         self.original_es = search_app.es
+        self.original_content_es = search_app.content_es
+        self.original_content_index_name = search_app.content_index_name
         self.original_search_state = search_app.search_state
         self.fake_es = SearchEs()
+        self.fake_content_es = SearchEs()
         search_app.es = self.fake_es
+        search_app.content_es = self.fake_content_es
+        search_app.content_index_name = "content-test"
         self.excluded_ids = {"base-id"}
         search_app.search_state = type("FakeSearchState", (), {
             "excluded_ids": lambda inner_self, index: frozenset(self.excluded_ids),
@@ -53,6 +58,8 @@ class SearchRevisionApiTests(unittest.TestCase):
 
     def tearDown(self):
         search_app.es = self.original_es
+        search_app.content_es = self.original_content_es
+        search_app.content_index_name = self.original_content_index_name
         search_app.search_state = self.original_search_state
 
     def test_search_filters_chain_before_pagination_and_returns_document_id(self):
@@ -109,7 +116,9 @@ class SearchRevisionApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.get_json()["data"]["results"][0]
         self.assertEqual(result["documentId"], "revision-2")
-        query = self.fake_es.search_query["query"]
+        self.assertEqual(self.fake_es.calls, 0)
+        self.assertEqual(self.fake_content_es.calls, 1)
+        query = self.fake_content_es.search_query["query"]
         self.assertEqual(
             query["bool"]["must_not"],
             [{"ids": {"values": ["old-content-id"]}}],

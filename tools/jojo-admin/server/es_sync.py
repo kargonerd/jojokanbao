@@ -698,7 +698,7 @@ def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument("--repo", default=os.getenv("ES_SYNC_HF_REPO", DEFAULT_HF_REPO))
     result.add_argument("--revision", default="main")
-    result.add_argument("--index", default=os.getenv("ES_SYNC_INDEX", "aitest-1tk2lxru"))
+    result.add_argument("--index", default=os.getenv("ES_SYNC_INDEX", "").strip())
     result.add_argument("--types", nargs="+", choices=DOCUMENT_TYPES, default=list(DOCUMENT_TYPES))
     result.add_argument("--publication", action="append", dest="publications")
     result.add_argument("--news-source", action="append", dest="news_sources")
@@ -713,7 +713,10 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = parser().parse_args(argv)
+    argument_parser = parser()
+    args = argument_parser.parse_args(argv)
+    if not args.dry_run and not args.index:
+        argument_parser.error("写入 ES 时必须显式传 --index 或配置 ES_SYNC_INDEX")
     source = HuggingFaceCanonical(
         args.repo,
         revision=args.revision,
@@ -740,7 +743,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(json.dumps({
         "repo": args.repo,
         "revision": source_sha,
-        "index": args.index,
+        "index": args.index or None,
         "types": args.types,
         "dryRun": args.dry_run,
     }, ensure_ascii=False))

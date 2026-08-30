@@ -57,8 +57,9 @@ overview. PDF intake lives at `/pdf`, and ES repair lives at `/es` (the old
 `/es-repair` URL redirects in the React router).
 The ES page
 reads `KIBANA_URL`, `ELASTICSEARCH_USERNAME`, and `ELASTICSEARCH_PASSWORD` from
-the repository root `.env`. It uses `aitest-1tk2lxru` by default; set
-`ES_REPAIR_INDEX` to override it.
+the repository root `.env`. `ES_REPAIR_INDEX` is required and has no default,
+so opening the workbench can never silently target either a test or production
+index.
 The local client defaults `ES_VERIFY_TLS` to `false` because Tencent's public
 Kibana `:5601` endpoint may terminate verified TLS handshakes; set it to `true`
 when the endpoint certificate path works in your environment.
@@ -67,9 +68,16 @@ Repairs and removals first create a deterministic JSON migration in
 `es_migrations/`, then use append-only `_create`: a repair appends a complete
 new version and a removal appends a tombstone. Search builds its excluded ID
 set from applied migrations instead of scanning ES revision documents. Reader
-Search does not receive those migration files. Run
-`publish_search_state.py --bucket <bucket> --region <region>` after applying a
-repair to replace the single `runtime/search/search-state.json` COS snapshot.
+Search does not receive those migration files. After ES accepts a repair, the
+workbench automatically merges its applied exclusions into the single private
+COS object `runtime/search/search-state.json`. It reads the remote object first
+and takes a per-index union, so a second computer with no local migration
+history cannot erase earlier repairs. A failed COS publication is reported as
+a partial success and can be retried through
+`POST /api/es-repair/publish-state` without appending another ES revision.
+Set `SEARCH_STATE_INDICES` to the comma-separated indexes actually served by
+SCF. A repair index outside that allow-list is rejected before ES is written;
+this prevents test indexes from entering the production search state.
 The Canonical synchronizer resolves the same applied migration chain before it
 compares a stable ID, so an already-repaired document is compared with its
 current repair rather than repeatedly conflicting with the original version.
@@ -118,7 +126,7 @@ Write the same three-document smoke test to the configured test index:
 
 ```powershell
 python tools/jojo-admin/server/es_sync.py `
-  --index aitest-1tk2lxru `
+  --index <test-index> `
   --types book newspaper news `
   --publication rmrb `
   --news-source ap `

@@ -1,5 +1,6 @@
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 
@@ -41,13 +42,16 @@ class ContentSearchEs:
 
 class ContentSearchTests(unittest.TestCase):
     def setUp(self):
-        self.original_es = search_app.es
+        self.original_content_es = search_app.content_es
+        self.original_content_index_name = search_app.content_index_name
         self.fake_es = ContentSearchEs()
-        search_app.es = self.fake_es
+        search_app.content_es = self.fake_es
+        search_app.content_index_name = "content-test"
         self.client = search_app.app.test_client()
 
     def tearDown(self):
-        search_app.es = self.original_es
+        search_app.content_es = self.original_content_es
+        search_app.content_index_name = self.original_content_index_name
 
     def test_search_applies_stable_dataset_and_item_filters(self):
         response = self.client.post("/content/search", json={
@@ -78,6 +82,15 @@ class ContentSearchTests(unittest.TestCase):
             }},
         ])
 
+    def test_content_client_requires_its_own_complete_credentials(self):
+        with patch.dict("os.environ", {
+            "CONTENT_ELASTICSEARCH_URL": "https://content.example",
+            "CONTENT_ELASTICSEARCH_USERNAME": "elastic",
+        }, clear=True):
+            self.assertIsNone(search_app.create_elasticsearch_client(
+                "CONTENT_ELASTICSEARCH", require_auth=True
+            ))
+
     def test_search_returns_distinct_fragments_after_chunk_overfetch(self):
         class DuplicateChunks(ContentSearchEs):
             def search(inner_self, *, index, body):
@@ -99,7 +112,7 @@ class ContentSearchTests(unittest.TestCase):
                 return base
 
         self.fake_es = DuplicateChunks()
-        search_app.es = self.fake_es
+        search_app.content_es = self.fake_es
         response = self.client.post('/content/search', json={'query': '苹果', 'size': 2})
         results = response.get_json()['data']['results']
         self.assertEqual(self.fake_es.body['size'], 10)

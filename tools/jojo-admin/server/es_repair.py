@@ -38,7 +38,8 @@ def repair_config() -> dict[str, Any]:
         "kibana_url": url,
         "username": os.getenv("ELASTICSEARCH_USERNAME", ""),
         "password": os.getenv("ELASTICSEARCH_PASSWORD", ""),
-        "index": os.getenv("ES_REPAIR_INDEX", "aitest-1tk2lxru"),
+        # Repairs are writes, so never silently choose a test or production index.
+        "index": os.getenv("ES_REPAIR_INDEX", "").strip(),
         "space_id": os.getenv("KIBANA_SPACE_ID") or _space_id_from_url(url),
         # Tencent's public Kibana :5601 endpoint currently closes some verified
         # TLS handshakes. This is a localhost-only operator tool; opt back in

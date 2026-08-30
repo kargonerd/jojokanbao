@@ -19,18 +19,21 @@ python app.py
 ## Unified content search
 
 `POST /content/search` serves Reader and Agent queries over JOJO books,
-newspapers and magazines. Configure a normal ES index with:
+newspapers and magazines. It deliberately uses a separate client so the
+existing `/search` cluster and account are unaffected. Configure the new
+content cluster with:
 
 ```powershell
-$env:ELASTICSEARCH_CONTENT_INDEX="jojo-content-v1"
+$env:CONTENT_ELASTICSEARCH_URL="https://your-new-content-es-endpoint"
+$env:CONTENT_ELASTICSEARCH_USERNAME="elastic"
+$env:CONTENT_ELASTICSEARCH_PASSWORD="..."
+$env:CONTENT_ELASTICSEARCH_INDEX="jojo-content-v1"
 ```
 
 Tencent ES Serverless is append-only. The unified synchronizer writes stable
-logical document IDs and does not use a release selector:
-
-```powershell
-$env:ELASTICSEARCH_CONTENT_INDEX="aitest-1tk2lxru"
-```
+logical document IDs and does not use a release selector. Until all four
+`CONTENT_ELASTICSEARCH_*` values are configured, `/content/search` fails closed
+with HTTP 503 while the existing `/search` route remains available.
 
 `datasetId` and `itemId` are top-level keyword fields used for exact scope
 filtering. The API still reads legacy chunk fields during migration, but the
@@ -69,8 +72,10 @@ the function configuration. Package `cos-python-sdk-v5` with the function;
 the Python 3.9 Web runtime does not expose it on `PYTHONPATH` consistently.
 
 The local migration history remains auditable but is never deployed with SCF.
-Publish the complete applied state atomically as one COS object with the logged
-in TCCLI profile:
+The repair workbench publishes automatically after each successful repair. The
+CLI below is the recovery/manual path. It downloads the current object first
+and unions old exclusions with local applied migrations, so another workstation
+cannot erase earlier repair state:
 
 ```powershell
 python tools/jojo-admin/server/publish_search_state.py `
