@@ -15,7 +15,7 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_news_archive.wayback_manifest import _decode_google_news_url
+from jojo_news_archive.discovery.wayback import _decode_google_news_url
 
 
 def resolve(headline: str) -> list[str]:

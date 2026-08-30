@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import sqlite3
 
-from jojo_news_archive.raw_archive_capture import initialize_capture_schema
+from jojo_news_archive.capture.raw import initialize_capture_schema
 from tools import preindex_arquivo_pt_catalog as tool
 
 

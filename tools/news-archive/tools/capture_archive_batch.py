@@ -19,15 +19,15 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_news_archive.bloomberg_archive_download import ArchiveClient
-from jojo_news_archive.ft_infini_direct_catalog import (
+from jojo_news_archive.discovery.client import ArchiveClient
+from jojo_news_archive.discovery.ft_infini import (
     discover_ft_infini_direct_candidates,
 )
-from jojo_news_archive.ft_syndication_catalog import (
+from jojo_news_archive.discovery.ft_syndication import (
     load_ft_syndication_title_index,
 )
-from jojo_news_archive.publisher_specs import publisher_spec
-from jojo_news_archive.parser_validation import (
+from jojo_news_archive.sources.specs import publisher_spec
+from jojo_news_archive.parsing.validation import (
     DEFAULT_SEED,
     ensure_parser_validation_plan,
     is_parser_validation_sample,
@@ -36,7 +36,7 @@ from jojo_news_archive.parser_validation import (
     pending_completed_parser_validation_files,
     record_parser_validation,
 )
-from jojo_news_archive.raw_archive_capture import (
+from jojo_news_archive.capture.raw import (
     ManifestItem,
     archive_fallback_policy,
     capture_item,

@@ -9,7 +9,7 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_news_archive.capture_checkpoint import checkpoint_json
+from jojo_news_archive.capture.checkpoint import checkpoint_json
 
 
 def parse_args() -> argparse.Namespace:

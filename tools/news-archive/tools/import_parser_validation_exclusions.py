@@ -12,8 +12,8 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_news_archive.parser_validation import initialize_parser_validation_schema
-from jojo_news_archive.archive_sources import (
+from jojo_news_archive.parsing.validation import initialize_parser_validation_schema
+from jojo_news_archive.sources.registry import (
     archive_source_spec,
     normalize_article_url,
 )

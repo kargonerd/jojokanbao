@@ -6,7 +6,7 @@ import sqlite3
 import subprocess
 import sys
 
-from jojo_news_archive.parser_validation import initialize_parser_validation_schema
+from jojo_news_archive.parsing.validation import initialize_parser_validation_schema
 
 
 TOOL = (

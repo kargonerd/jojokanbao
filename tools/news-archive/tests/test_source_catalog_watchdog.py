@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from importlib.util import module_from_spec, spec_from_file_location
 
-from jojo_news_archive.source_catalog_watchdog import (
+from jojo_news_archive.orchestration.catalog_watchdog import (
     CATALOG_STATUS_FORMAT_VERSION,
     SOURCE_CATALOG_TARGETS,
     SourceCatalogTarget,

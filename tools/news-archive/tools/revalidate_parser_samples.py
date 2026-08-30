@@ -11,13 +11,13 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_news_archive.parser_validation import (
+from jojo_news_archive.parsing.validation import (
     failed_completed_parser_validation_files,
     parser_validation_summary,
     pending_completed_parser_validation_files,
     record_parser_validation,
 )
-from jojo_news_archive.raw_archive_capture import (
+from jojo_news_archive.capture.raw import (
     capture_summary,
     completed_capture_rejection_reason,
     completed_raw_capture,

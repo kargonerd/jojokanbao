@@ -1,4 +1,4 @@
-from jojo_news_archive.news_models import JojoArticle, RawCapture
+from jojo_news_archive.models import JojoArticle, RawCapture
 
 
 def test_public_schema_versions_and_required_fields():

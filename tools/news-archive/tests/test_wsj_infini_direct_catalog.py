@@ -7,14 +7,14 @@ from pathlib import Path
 
 import pyarrow as pa
 
-from jojo_news_archive import wsj_infini_direct_catalog as catalog
-from jojo_news_archive.archive_sources import archive_source_spec
-from jojo_news_archive.wayback_manifest import (
+from jojo_news_archive.discovery import wsj_infini_direct as catalog
+from jojo_news_archive.sources.registry import archive_source_spec
+from jojo_news_archive.discovery.wayback import (
     discovery_summary,
     export_capture_manifest,
     initialize_discovery_schema,
 )
-from jojo_news_archive.wsj_infini_catalog import initialize_wsj_infini_schema
+from jojo_news_archive.discovery.wsj_infini import initialize_wsj_infini_schema
 
 
 NEWS_ARCHIVE_ROOT = Path(__file__).resolve().parents[1]

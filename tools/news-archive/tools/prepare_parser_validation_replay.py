@@ -11,13 +11,13 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_news_archive.parser_validation import (
+from jojo_news_archive.parsing.validation import (
     DEFAULT_SEED,
     ensure_parser_validation_plan,
     failed_completed_parser_validation_files,
     pending_completed_parser_validation_files,
 )
-from jojo_news_archive.raw_archive_capture import initialize_capture_schema
+from jojo_news_archive.capture.raw import initialize_capture_schema
 
 
 def parse_args() -> argparse.Namespace:

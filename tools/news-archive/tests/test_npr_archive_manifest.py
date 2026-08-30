@@ -5,12 +5,12 @@ import json
 from pathlib import Path
 import sqlite3
 
-from jojo_news_archive.archive_sources import (
+from jojo_news_archive.sources.registry import (
     archive_source_spec,
     article_deduplication_key,
     article_url_publication_year,
 )
-from jojo_news_archive.npr_archive_manifest import (
+from jojo_news_archive.discovery.npr import (
     export_npr_archive_manifest,
     initialize_npr_archive_schema,
     next_npr_archive_query,

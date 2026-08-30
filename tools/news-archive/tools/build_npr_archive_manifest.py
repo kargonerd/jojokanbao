@@ -11,8 +11,8 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_news_archive.archive_sources import archive_source_spec
-from jojo_news_archive.npr_archive_manifest import (
+from jojo_news_archive.sources.registry import archive_source_spec
+from jojo_news_archive.discovery.npr import (
     NprArchiveClient,
     export_npr_archive_manifest,
     initialize_npr_archive_schema,

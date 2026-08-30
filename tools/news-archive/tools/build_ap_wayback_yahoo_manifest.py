@@ -16,11 +16,11 @@ if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
 
-from jojo_news_archive.ap_legacy_catalog import (
+from jojo_news_archive.discovery.ap_legacy import (
     build_ap_partner_manifest_rows,
     write_ap_manifest_rows,
 )
-from jojo_news_archive.news_models import CaptureProvider
+from jojo_news_archive.models import CaptureProvider
 
 
 WAYBACK_CDX_ENDPOINT = "https://web.archive.org/cdx/search/cdx"

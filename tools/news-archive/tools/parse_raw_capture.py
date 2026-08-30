@@ -12,8 +12,8 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_news_archive.news_models import RawCapture
-from jojo_news_archive.news_parser import parse_article
+from jojo_news_archive.models import RawCapture
+from jojo_news_archive.parsing.parser import parse_article
 
 
 def parse_args() -> argparse.Namespace:

@@ -9,11 +9,11 @@ import time
 import httpx
 import pytest
 
-from jojo_news_archive.bloomberg_archive_download import (
+from jojo_news_archive.discovery.client import (
     ArchiveClient,
     RetryableArchiveError,
 )
-from jojo_news_archive.common_crawl import (
+from jojo_news_archive.discovery.common_crawl import (
     CommonCrawlCircuitOpenError,
     COLLECTION_INFO_URL,
     DATA_BASE_URL,
@@ -21,8 +21,8 @@ from jojo_news_archive.common_crawl import (
     discover_common_crawl_candidates,
     fetch_common_crawl_candidate,
 )
-from jojo_news_archive.news_models import CaptureCandidate, CaptureProvider
-from jojo_news_archive.raw_archive_capture import ManifestItem, capture_item
+from jojo_news_archive.models import CaptureCandidate, CaptureProvider
+from jojo_news_archive.capture.raw import ManifestItem, capture_item
 
 
 CANONICAL_URL = (

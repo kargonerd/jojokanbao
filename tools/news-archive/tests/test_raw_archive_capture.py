@@ -14,8 +14,8 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 import brotli
 import pytest
 
-from jojo_news_archive.ghostarchive import ghostarchive_search_url
-from jojo_news_archive.news_models import (
+from jojo_news_archive.discovery.ghostarchive import ghostarchive_search_url
+from jojo_news_archive.models import (
     ArticleStatus,
     CaptureCandidate,
     CaptureProvider,
@@ -23,8 +23,8 @@ from jojo_news_archive.news_models import (
     ContentType,
     RawCapture,
 )
-from jojo_news_archive.news_parser import parse_article
-from jojo_news_archive.raw_archive_capture import (
+from jojo_news_archive.parsing.parser import parse_article
+from jojo_news_archive.capture.raw import (
     AP_SYNDICATION_MINIMUM_BODY_CHARACTERS,
     AP_KNOWN_SYNDICATION_COPIES,
     BLOOMBERG_SYNDICATION_MINIMUM_BODY_CHARACTERS,
@@ -1828,7 +1828,7 @@ def test_ft_dynamic_syndication_keeps_searching_before_common_crawl(
         )
 
     monkeypatch.setattr(
-        "jojo_news_archive.raw_archive_capture."
+        "jojo_news_archive.capture.raw."
         "discover_ft_syndication_candidates",
         fake_discovery,
     )
@@ -5031,7 +5031,7 @@ def test_nikkei_validation_keeps_timemap_and_stages_slow_fallbacks():
 
 
 def test_nikkei_candidate_order_prefers_large_commoncrawl_records():
-    from jojo_news_archive.raw_archive_capture import _nikkei_candidate_sort_key
+    from jojo_news_archive.capture.raw import _nikkei_candidate_sort_key
 
     wayback = CaptureCandidate(
         provider=CaptureProvider.WAYBACK,
@@ -6754,7 +6754,7 @@ def test_ft_syndication_uses_allowed_partner_sitemap(
         }
     )
     monkeypatch.setattr(
-        "jojo_news_archive.raw_archive_capture._ft_known_partner_urls",
+        "jojo_news_archive.capture.raw._ft_known_partner_urls",
         None,
     )
 
@@ -8425,7 +8425,7 @@ def test_wsj_capture_parser_evidence_uses_formal_validation_mode(
         )
 
     monkeypatch.setattr(
-        "jojo_news_archive.news_parser.parse_article",
+        "jojo_news_archive.parsing.parser.parse_article",
         fake_parse_article,
     )
 
@@ -8514,7 +8514,7 @@ def test_axios_capture_parser_evidence_rejects_visual_redirect_stub(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setattr(
-        "jojo_news_archive.news_parser.parse_article",
+        "jojo_news_archive.parsing.parser.parse_article",
         lambda *args, **kwargs: SimpleNamespace(
             content_type=ContentType.ARTICLE,
             quality=SimpleNamespace(
@@ -8542,7 +8542,7 @@ def test_axios_capture_parser_evidence_rejects_empty_article_shell(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setattr(
-        "jojo_news_archive.news_parser.parse_article",
+        "jojo_news_archive.parsing.parser.parse_article",
         lambda *args, **kwargs: SimpleNamespace(
             content_type=ContentType.ARTICLE,
             quality=SimpleNamespace(
@@ -8583,7 +8583,7 @@ def test_axios_capture_parser_evidence_keeps_non_stub_formats(
     images_selected: int,
 ):
     monkeypatch.setattr(
-        "jojo_news_archive.news_parser.parse_article",
+        "jojo_news_archive.parsing.parser.parse_article",
         lambda *args, **kwargs: SimpleNamespace(
             content_type=content_type,
             quality=SimpleNamespace(
@@ -8636,7 +8636,7 @@ def test_stored_axios_visual_redirect_stub_is_requeued(
         raw_html=blob,
     )
     monkeypatch.setattr(
-        "jojo_news_archive.raw_archive_capture._axios_capture_parser_evidence",
+        "jojo_news_archive.capture.raw._axios_capture_parser_evidence",
         lambda *args, **kwargs: (
             False,
             {"axiosCaptureVisualRedirectStub": True},

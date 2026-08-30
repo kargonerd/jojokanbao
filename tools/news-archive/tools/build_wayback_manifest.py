@@ -14,8 +14,8 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_news_archive.archive_sources import archive_source_spec
-from jojo_news_archive.wayback_manifest import (
+from jojo_news_archive.sources.registry import archive_source_spec
+from jojo_news_archive.discovery.wayback import (
     ARCHIVED_DATE_HYDRATION_PUBLISHERS,
     WaybackCDXClient,
     discovery_summary,
@@ -39,18 +39,18 @@ from jojo_news_archive.wayback_manifest import (
     wsj_google_news_is_only_catalog_gap,
     wsj_google_news_should_continue,
 )
-from jojo_news_archive.wsj_syndication_catalog import (
+from jojo_news_archive.discovery.wsj_syndication import (
     DEFAULT_RESOLUTIONS_PER_RUN,
     initialize_wsj_syndication_schema,
     process_wsj_syndication_catalog,
     process_wsj_syndication_resolutions,
 )
-from jojo_news_archive.wsj_infini_catalog import (
+from jojo_news_archive.discovery.wsj_infini import (
     initialize_wsj_infini_schema,
     process_wsj_infini_documents,
     process_wsj_infini_queries,
 )
-from jojo_news_archive.wsj_infini_direct_catalog import (
+from jojo_news_archive.discovery.wsj_infini_direct import (
     initialize_wsj_infini_direct_schema,
     process_wsj_infini_direct_catalog,
 )
