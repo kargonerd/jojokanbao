@@ -43,6 +43,7 @@ export async function restoreTranslationContext(
   output: string,
   candidates: readonly ProcessedCandidate[],
   targetLanguage = "zh-CN",
+  targetPolicy?: string,
 ): Promise<ProcessedCandidate[]> {
   const dateIndexes = new Map<string, Promise<ExistingDateIndex | undefined>>();
   return Promise.all(candidates.map(async (candidate) => {
@@ -74,7 +75,7 @@ export async function restoreTranslationContext(
       return Object.keys(previousTranslations).length ? { ...candidate, previousTranslations } : candidate;
     }
     const target = previousTranslations[targetLanguage];
-    if (target && target.stale !== true) return candidate;
+    if (target && target.stale !== true && (!targetPolicy || target.policy === targetPolicy)) return candidate;
     const body = article.body?.value;
     if (typeof body !== "string" || !body.trim()) return candidate;
     return {

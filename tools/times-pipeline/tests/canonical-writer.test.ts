@@ -94,7 +94,7 @@ describe("canonical writer", () => {
         translatedAt: "2026-08-23T10:02:00Z",
         sourceHash: "source-hash",
       },
-      translationCacheObject: "canonical/reuters/translations/gemma-news-zh-v1/2026/08/2026-08-23/cache.json.gz",
+      translationCacheObject: "canonical/reuters/translations/gemma-news-zh-v2/2026/08/2026-08-23/cache.json.gz",
       translationStatus: "translated",
     };
     const result = await writeCanonicalSource(output, source, manifest, "raw/reuters/runs/run/manifest.json", [

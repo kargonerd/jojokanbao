@@ -9,7 +9,12 @@ import { writeCanonicalSource, type CanonicalWriteResult } from "./process/canon
 import { restoreTranslationContext } from "./process/translation-retry.js";
 import { processSourceCandidate, sourceBodyExtractor, sourceFetchPolicy } from "./sources/registry.js";
 import { geminiApiKeysFromEnvironment } from "./translation/api-keys.js";
-import { TIMES_TRANSLATION_DEFAULTS, translateProcessedCandidates, type TranslationBatchStats } from "./translation/gemma.js";
+import {
+  TIMES_TRANSLATION_DEFAULTS,
+  TIMES_TRANSLATION_POLICY,
+  translateProcessedCandidates,
+  type TranslationBatchStats,
+} from "./translation/gemma.js";
 import type { Candidate, SourceCaptureManifest } from "./types.js";
 import type { ProcessedCandidate } from "./process/article.js";
 
@@ -78,7 +83,7 @@ export async function runProcess(args: Map<string, string>): Promise<{
   let translation: ({ enabled: true } & TranslationBatchStats) | { enabled: false } = { enabled: false };
   if (translationEnabled) {
     for (const batch of batches) {
-      batch.candidates = await restoreTranslationContext(output, batch.candidates);
+      batch.candidates = await restoreTranslationContext(output, batch.candidates, "zh-CN", TIMES_TRANSLATION_POLICY);
     }
     const primaryModel = args.get("translation-model") ?? process.env.JOJO_TIMES_TRANSLATION_MODEL;
     const fallbackModel = args.get("translation-fallback-model") ?? process.env.JOJO_TIMES_TRANSLATION_FALLBACK_MODEL;

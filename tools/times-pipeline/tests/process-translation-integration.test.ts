@@ -2,6 +2,7 @@ import { gzipSync, gunzipSync } from "node:zlib";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { load } from "cheerio";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runProcess } from "../src/process-cli.js";
 import type { CanonicalArticle } from "../src/process/canonical-writer.js";
@@ -9,19 +10,15 @@ import type { CanonicalArticle } from "../src/process/canonical-writer.js";
 function translatedResponse(init: RequestInit | undefined): Response {
   const request = JSON.parse(String(init?.body)) as { contents: Array<{ parts: Array<{ text: string }> }> };
   const prompt = request.contents[0]!.parts[0]!.text;
-  const input = JSON.parse(prompt.slice(prompt.indexOf("INPUT:\n") + 7)) as {
-    title: string;
-    blocks: Array<{ id: string; segments: Array<{ id: string; text: string }> }>;
+  const document = load(prompt.slice(prompt.indexOf("HTML:\n") + 6), undefined, false);
+  type InlineNode = { type: string; data?: string; children?: InlineNode[] };
+  const translate = (node: InlineNode): void => {
+    if (node.type === "text" && (node.data ?? "").trim()) node.data = `中译：${node.data ?? ""}`;
+    for (const child of node.children ?? []) translate(child);
   };
-  const translation = {
-    title: `中译：${input.title}`,
-    blocks: input.blocks.map((block) => ({
-      id: block.id,
-      segments: block.segments.map((segment) => ({ id: segment.id, text: `中译：${segment.text}` })),
-    })),
-  };
+  for (const node of document.root().contents().toArray()) translate(node as InlineNode);
   return new Response(JSON.stringify({
-    candidates: [{ content: { parts: [{ text: JSON.stringify(translation) }] }, finishReason: "STOP" }],
+    candidates: [{ content: { parts: [{ text: document.html() }] }, finishReason: "STOP" }],
     usageMetadata: { promptTokenCount: 300, candidatesTokenCount: 220 },
   }), { status: 200, headers: { "content-type": "application/json" } });
 }
@@ -102,11 +99,12 @@ describe("Times Process translation integration", () => {
       const article = JSON.parse(gunzipSync(await readFile(path.join(output, ...articleRef.object.split("/")))).toString("utf8")) as CanonicalArticle;
       expect(article.translations?.["zh-CN"]).toMatchObject({
         title: "中译：Integration story",
+        policy: "gemma-news-zh-v2",
         provider: "google-gemini-api",
         model: "gemma-4-31b-it",
       });
       expect(article.translations?.["zh-CN"]?.body.value).toContain("中译：This is a complete English news paragraph");
-      expect(first.sources[0]!.files.some((objectName) => objectName.includes("/translations/gemma-news-zh-v1/"))).toBe(true);
+      expect(first.sources[0]!.files.some((objectName) => objectName.includes("/translations/gemma-news-zh-v2/"))).toBe(true);
 
       fetchMock.mockClear();
       const second = await runProcess(args);
@@ -193,7 +191,7 @@ describe("Times Process translation integration", () => {
     try {
       const failed = await runProcess(args);
       expect(failed.translation).toMatchObject({ enabled: true, eligible: 1, translated: 0, failed: 1, requests: 2 });
-      const failureRoot = path.join(output, "canonical", "africanews", "translations", "gemma-news-zh-v1", "2026", "08", "2026-08-30");
+      const failureRoot = path.join(output, "canonical", "africanews", "translations", "gemma-news-zh-v2", "2026", "08", "2026-08-30");
       const [failureFile] = await readdir(failureRoot);
       await rm(path.join(failureRoot, failureFile!), { force: true });
 

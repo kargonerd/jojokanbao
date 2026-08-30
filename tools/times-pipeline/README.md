@@ -60,7 +60,8 @@ Process 在 `GEMINI_API_KEYS` 或 `GEMINI_API_KEY` 存在时自动翻译本轮�
 `--translate true|false` 显式控制。生产策略为：
 
 - `gemma-4-31b-it` 主翻译，单个失败 chunk 自动降级到 `gemma-4-26b-a4b-it`；
-- 正文严格按语义块边界切成最多约 20,000 源字符的 chunk，译后按 block id 重组；单请求默认最多等待 240 秒；
+- 标题和正文以原始完整 HTML blocks 输入，不拆 text node、不添加 ID、不要求 JSON；仅在约 20,000 源字符处按 block 边界分 chunk；
+- 本地校验 block 顺序、链接及全部 HTML 属性后再回填译文；链接或受保护标签发生变化时自动降级重试，单请求默认最多等待 240 秒；
 - 默认八路 worker；每个 API 项目、每个模型独立按 28 RPM / 14K TPM 保守限流，请求在项目池中轮询并发，单个项目返回 429 时自动尝试下一个项目；
 - 默认整批最多占用 8 分钟；到达预算会中止在途翻译并 fail-open，给 20 分钟工作流保留 Canonical/HF/Delivery 时间；
 - 译文按源标题、正文、语言和翻译策略的 hash 缓存。刷新到同一内容时从 HF Canonical 恢复缓存，不重复请求 API；
@@ -116,7 +117,7 @@ raw/runs/YYYY/MM/DD/{RUN_ID}.json
 canonical/{source}/
 ├─ dataset.json
 ├─ articles/{content-hash}.json.gz
-├─ translations/gemma-news-zh-v1/YYYY/MM/YYYY-MM-DD/{source-hash}.json.gz
+├─ translations/gemma-news-zh-v2/YYYY/MM/YYYY-MM-DD/{source-hash}.json.gz
 └─ dates/YYYY/MM/YYYY-MM-DD.json.gz
 
 canonical/runs/{RUN_ID}.json

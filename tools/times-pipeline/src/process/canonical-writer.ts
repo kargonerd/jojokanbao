@@ -38,6 +38,7 @@ export interface CanonicalArticle {
 
 export interface CanonicalArticleTranslation {
   language: "zh-CN";
+  policy?: string;
   title: string;
   body: { format: "html"; profile: "jojo-semantic-html/1"; value: string };
   provider: "google-gemini-api";
@@ -139,6 +140,7 @@ function canonicalArticle(
   const currentTranslation = candidate.translation && translatedBody ? {
     [candidate.translation.language]: {
       language: candidate.translation.language,
+      ...(candidate.translation.policy ? { policy: candidate.translation.policy } : {}),
       title: candidate.translation.title,
       body: { ...candidate.translation.body, value: translatedBody },
       provider: candidate.translation.provider,

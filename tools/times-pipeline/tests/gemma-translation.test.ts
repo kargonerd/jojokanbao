@@ -2,6 +2,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
 import os from "node:os";
 import path from "node:path";
+import { load } from "cheerio";
 import { describe, expect, it, vi } from "vitest";
 import type { ProcessedCandidate } from "../src/process/article.js";
 import {
@@ -30,21 +31,21 @@ function candidate(id: string, language = "en"): ProcessedCandidate {
 }
 
 function translatedResponse(init: RequestInit | undefined): Response {
-  const request = JSON.parse(String(init?.body)) as { contents: Array<{ parts: Array<{ text: string }> }> };
+  const request = JSON.parse(String(init?.body)) as {
+    contents: Array<{ parts: Array<{ text: string }> }>;
+    generationConfig?: Record<string, unknown>;
+  };
   const prompt = request.contents[0]!.parts[0]!.text;
-  const input = JSON.parse(prompt.slice(prompt.indexOf("INPUT:\n") + 7)) as {
-    title: string;
-    blocks: Array<{ id: string; segments: Array<{ id: string; text: string }> }>;
+  const html = prompt.slice(prompt.indexOf("HTML:\n") + 6);
+  const document = load(html, undefined, false);
+  type InlineNode = { type: string; data?: string; children?: InlineNode[] };
+  const translate = (node: InlineNode): void => {
+    if (node.type === "text" && (node.data ?? "").trim()) node.data = `中译：${node.data ?? ""}`;
+    for (const child of node.children ?? []) translate(child);
   };
-  const payload = {
-    title: `中译：${input.title}`,
-    blocks: input.blocks.map((block) => ({
-      id: block.id,
-      segments: block.segments.map((segment) => ({ id: segment.id, text: `中译：${segment.text}` })),
-    })),
-  };
+  for (const node of document.root().contents().toArray()) translate(node as InlineNode);
   return new Response(JSON.stringify({
-    candidates: [{ content: { parts: [{ text: JSON.stringify(payload) }] }, finishReason: "STOP" }],
+    candidates: [{ content: { parts: [{ text: document.html() }] }, finishReason: "STOP" }],
     usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 80 },
   }), { status: 200, headers: { "content-type": "application/json" } });
 }
@@ -61,30 +62,34 @@ describe("Gemma production translation", () => {
     });
   });
 
-  it("extracts leaf blocks and safely applies translated text while retaining article structure", () => {
+  it("extracts and applies complete HTML blocks while retaining article structure", () => {
     const body = '<blockquote><p>Quoted <strong>text</strong></p></blockquote><figure data-asset-id="lead"><figcaption>Caption</figcaption></figure>';
     expect(extractArticleTranslationBlocks(body)).toEqual([
-      { id: "b1", tag: "p", segments: [{ id: "s1", text: "Quoted" }, { id: "s2", text: "text" }] },
-      { id: "b2", tag: "figcaption", segments: [{ id: "s1", text: "Caption" }] },
+      { tag: "p", html: "<p>Quoted <strong>text</strong></p>" },
+      { tag: "figcaption", html: "<figcaption>Caption</figcaption>" },
     ]);
     expect(applyArticleTranslation(body, [
-      { id: "b1", segments: [{ id: "s1", text: "译文" }, { id: "s2", text: "<不会成为标签>" }] },
-      { id: "b2", segments: [{ id: "s1", text: "图片说明" }] },
+      { tag: "p", html: "<p>译文<strong>&lt;不会成为标签&gt;</strong></p>" },
+      { tag: "figcaption", html: "<figcaption>图片说明</figcaption>" },
     ])).toBe('<blockquote><p>译文<strong>&lt;不会成为标签&gt;</strong></p></blockquote><figure data-asset-id="lead"><figcaption>图片说明</figcaption></figure>');
   });
 
-  it("rejects changed segment structure instead of silently dropping article links", () => {
+  it("rejects changed protected HTML instead of silently dropping article links", () => {
     const body = '<p>Read <a href="https://example.test/story">the full story</a>.</p>';
-    expect(() => applyArticleTranslation(body, [{ id: "b1", segments: [{ id: "s1", text: "阅读全文" }] }]))
-      .toThrow("Translated segment structure mismatch");
+    expect(() => applyArticleTranslation(body, [{ tag: "p", html: "<p>阅读全文。</p>" }]))
+      .toThrow("changed protected HTML");
     expect(applyArticleTranslation(body, [{
-      id: "b1",
-      segments: [
-        { id: "s1", text: "阅读" },
-        { id: "s2", text: "完整报道" },
-        { id: "s3", text: "。" },
-      ],
+      tag: "p",
+      html: '<p>阅读<a href="https://example.test/story">完整报道</a>。</p>',
     }])).toBe('<p>阅读<a href="https://example.test/story">完整报道</a>。</p>');
+  });
+
+  it("accepts visually equivalent consolidation of plain emphasis around a preserved link", () => {
+    const body = '<p><em>Before </em><a href="https://example.test/story">clicking here</a><em> for more.</em></p>';
+    expect(applyArticleTranslation(body, [{
+      tag: "p",
+      html: '<p><em>更多信息请<a href="https://example.test/story">点击这里</a>查看。</em></p>',
+    }])).toBe('<p><em>更多信息请<a href="https://example.test/story">点击这里</a>查看。</em></p>');
   });
 
   it("translates with bounded concurrency and reuses the content-addressed cache", async () => {
@@ -214,25 +219,25 @@ describe("Gemma production translation", () => {
     expect(result.candidates[0]?.translation?.model).toBe("gemma-4-26b-a4b-it");
   });
 
-  it("falls back per chunk when the primary model changes segment structure", async () => {
+  it("falls back per chunk when the primary model changes protected HTML", async () => {
     const output = await mkdtemp(path.join(os.tmpdir(), "jojo-gemma-marker-fallback-"));
     const primaryResponse = (init: RequestInit | undefined): Response => {
-      const request = JSON.parse(String(init?.body)) as { contents: Array<{ parts: Array<{ text: string }> }> };
-      const prompt = request.contents[0]!.parts[0]!.text;
-      const input = JSON.parse(prompt.slice(prompt.indexOf("INPUT:\n") + 7)) as {
-        title: string;
-        blocks: Array<{ id: string; segments: Array<{ id: string; text: string }> }>;
+      const request = JSON.parse(String(init?.body)) as {
+        contents: Array<{ parts: Array<{ text: string }> }>;
+        generationConfig?: Record<string, unknown>;
       };
+      const prompt = request.contents[0]!.parts[0]!.text;
+      const document = load(prompt.slice(prompt.indexOf("HTML:\n") + 6), undefined, false);
       expect(prompt).not.toContain("JOJO_INLINE");
+      expect(prompt).not.toContain("data-jojo-id");
+      expect(prompt).not.toContain('"segments"');
+      expect(request.generationConfig?.responseMimeType).toBeUndefined();
+      document("a,strong").each((_index, element) => {
+        document(element).replaceWith(document(element).text());
+      });
       return new Response(JSON.stringify({
         candidates: [{
-          content: { parts: [{ text: JSON.stringify({
-            title: `中译：${input.title}`,
-            blocks: input.blocks.map((block) => ({
-              id: block.id,
-              segments: block.segments.slice(0, -1),
-            })),
-          }) }] },
+          content: { parts: [{ text: document.html() }] },
           finishReason: "STOP",
         }],
       }), { status: 200, headers: { "content-type": "application/json" } });
