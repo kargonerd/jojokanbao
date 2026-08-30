@@ -51,7 +51,7 @@ describe("Gemma production translation", () => {
     expect(TIMES_TRANSLATION_DEFAULTS).toEqual({
       workers: 8,
       requestTimeoutMs: 240_000,
-      batchTimeoutMs: 480_000,
+      batchTimeoutMs: 720_000,
       maxChunkCharacters: 20_000,
       requestsPerMinute: 28,
       tokensPerMinute: 14_000,
@@ -141,6 +141,53 @@ describe("Gemma production translation", () => {
     });
     expect(result.stats).toMatchObject({ translated: 1, failed: 0, requests: 2, fallbackChunks: 1 });
     expect(result.candidates[0]?.translation?.model).toBe("gemma-4-26b-a4b-it");
+  });
+
+  it("falls back per chunk when the primary model changes inline markers", async () => {
+    const output = await mkdtemp(path.join(os.tmpdir(), "jojo-gemma-marker-fallback-"));
+    const primaryResponse = (init: RequestInit | undefined): Response => {
+      const request = JSON.parse(String(init?.body)) as { contents: Array<{ parts: Array<{ text: string }> }> };
+      const prompt = request.contents[0]!.parts[0]!.text;
+      const input = JSON.parse(prompt.slice(prompt.indexOf("INPUT:\n") + 7)) as {
+        title: string;
+        blocks: Array<{ id: string; text: string }>;
+      };
+      return new Response(JSON.stringify({
+        candidates: [{
+          content: { parts: [{ text: JSON.stringify({
+            title: `中译：${input.title}`,
+            blocks: input.blocks.map((block) => ({
+              id: block.id,
+              text: `中译：${block.text.replace(/\[\[JOJO_INLINE_[^\]]+\]\]/gu, "")}`,
+            })),
+          }) }] },
+          finishReason: "STOP",
+        }],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    };
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => (
+      String(input).includes("gemma-4-31b-it") ? primaryResponse(init) : translatedResponse(init)
+    )) as typeof fetch;
+
+    const value = {
+      ...candidate("marker-fallback"),
+      processedBody: [
+        '<p>First <a href="https://example.test/first">linked paragraph</a> keeps its URL.</p>',
+        '<p>Second <strong>emphasized paragraph</strong> keeps its formatting.</p>',
+      ].join(""),
+    };
+    const result = await translateProcessedCandidates(output, [value], {
+      apiKey: "test-key",
+      fetchImpl,
+      maxChunkCharacters: 100,
+      requestsPerMinute: 100,
+      tokensPerMinute: 1_000_000,
+    });
+
+    expect(result.stats).toMatchObject({ translated: 1, failed: 0, requests: 4, fallbackChunks: 2 });
+    expect(result.candidates[0]?.translation?.model).toBe("gemma-4-26b-a4b-it");
+    expect(result.candidates[0]?.translation?.body.value).toContain('<a href="https://example.test/first">linked paragraph</a>');
+    expect(result.candidates[0]?.translation?.body.value).toContain("<strong>emphasized paragraph</strong>");
   });
 
   it("regenerates a corrupt cache instead of failing the Process", async () => {

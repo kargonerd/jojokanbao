@@ -10,7 +10,7 @@ export const TIMES_TRANSLATION_POLICY = "gemma-news-zh-v1" as const;
 export const TIMES_TRANSLATION_DEFAULTS = {
   workers: 8,
   requestTimeoutMs: 240_000,
-  batchTimeoutMs: 480_000,
+  batchTimeoutMs: 720_000,
   maxChunkCharacters: 20_000,
   requestsPerMinute: 28,
   tokensPerMinute: 14_000,
@@ -206,6 +206,21 @@ function markerTokens(value: string): string[] {
   return [...value.matchAll(INLINE_MARKER)].map((match) => match[0]);
 }
 
+function assertInlineMarkers(originalText: string, translatedText: string): void {
+  const expectedMarkers = markerTokens(originalText);
+  const receivedMarkers = markerTokens(translatedText);
+  if (expectedMarkers.length !== receivedMarkers.length
+    || expectedMarkers.some((marker, index) => marker !== receivedMarkers[index])) {
+    throw new Error("Gemma changed inline element markers");
+  }
+}
+
+function validatePayloadMarkers(expected: TranslationBlock[], payload: TranslationPayload): void {
+  for (let index = 0; index < expected.length; index += 1) {
+    assertInlineMarkers(expected[index]!.text, payload.blocks[index]!.text);
+  }
+}
+
 function escapeTranslatedText(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
@@ -216,12 +231,7 @@ function translatedBlockHtml(
   originalText: string,
   translatedText: string,
 ): string {
-  const expectedMarkers = markerTokens(originalText);
-  const receivedMarkers = markerTokens(translatedText);
-  if (expectedMarkers.length !== receivedMarkers.length
-    || expectedMarkers.some((marker, index) => marker !== receivedMarkers[index])) {
-    throw new Error("Gemma changed inline element markers");
-  }
+  assertInlineMarkers(originalText, translatedText);
   const templates = inlineTemplates(document, element);
   const stack: string[] = [];
   let html = "";
@@ -496,11 +506,13 @@ export async function translateProcessedCandidates(
         let payload: TranslationPayload;
         try {
           payload = parsePayload(await client.translate(primaryModel, prompt, deadlineAt), chunk);
+          validatePayloadMarkers(chunk, payload);
           usedModels.add(primaryModel);
         } catch (primaryError) {
           fallbackChunks += 1;
           options.onProgress?.(`[translation] fallback ${candidate.articleId}: ${primaryError instanceof Error ? primaryError.message : String(primaryError)}`);
           payload = parsePayload(await client.translate(fallbackModel, prompt, deadlineAt), chunk);
+          validatePayloadMarkers(chunk, payload);
           usedModels.add(fallbackModel);
         }
         if (!translated.title) translated.title = payload.title;
