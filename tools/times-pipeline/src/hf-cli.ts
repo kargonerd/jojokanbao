@@ -2,7 +2,12 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs, requiredArg } from "./args.js";
 import { loadSources } from "./config.js";
-import { collectFolderFiles, HfTimesDataset } from "./hf.js";
+import {
+  collectFolderFiles,
+  type HfConflictStrategy,
+  HfTimesDataset,
+  readHfFileSetManifest,
+} from "./hf.js";
 
 interface ProcessResult {
   report: string;
@@ -47,6 +52,25 @@ async function main(): Promise<void> {
   }
   if (action === "download-snapshot") {
     process.stdout.write(`${JSON.stringify(await dataset.downloadSnapshot(args.get("github-run-id")), null, 2)}\n`);
+    return;
+  }
+  if (action === "download-files") {
+    const manifest = await readHfFileSetManifest(path.resolve(requiredArg(args, "file-manifest")));
+    process.stdout.write(`${JSON.stringify(await dataset.downloadFileSet(manifest, args.get("revision")), null, 2)}\n`);
+    return;
+  }
+  if (action === "upload-files") {
+    const manifest = await readHfFileSetManifest(path.resolve(requiredArg(args, "file-manifest")));
+    const conflictStrategy = args.get("conflict-strategy") ?? "fail";
+    if (conflictStrategy !== "fail" && conflictStrategy !== "retry-disjoint") {
+      throw new Error(`Unsupported HF conflict strategy: ${conflictStrategy}`);
+    }
+    const result = await dataset.uploadFileSet(
+      manifest,
+      requiredArg(args, "title"),
+      conflictStrategy as HfConflictStrategy,
+    );
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return;
   }
   if (action === "upload-raw") {

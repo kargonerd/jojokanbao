@@ -26,6 +26,12 @@ contract and writer. Raw commits may cover disjoint prefixes and retry HF 409
 conflicts. Canonical and date-index commits must use the existing
 `times-hf-dataset-writer` concurrency group.
 
+Each local transfer batch uses `jojo-hf-file-set/1` and is published in four
+commits: immutable Raw, catalog, checkpoint, then completion marker. Every
+entry contains an output-root-relative path, exact HF object name, byte count,
+SHA-256, and required flag. A v2-only batch must supply the previously verified
+v1 file-set manifests that satisfy its SQLite Raw references.
+
 ## Cutover gates
 
 1. Keep all migrated workflows inactive while HF upload/download and

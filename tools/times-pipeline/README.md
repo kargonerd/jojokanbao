@@ -104,6 +104,11 @@ canonical/runs/{RUN_ID}.json
 original.html.gz 是主文档响应，rendered.html.gz 是 BPC/JavaScript 执行后的 DOM。正文图片下载到
 raw/{source}/assets/，按字节 SHA-256 去重。流水线不生成或上传 WARC/WACZ。
 
+历史归档迁移使用 `hf` CLI 的 `upload-files` / `download-files` 动作和
+`jojo-hf-file-set/1` 精确清单。清单中的本地路径必须位于 `--output` 内，每个对象都校验大小与
+SHA-256；这两个动作不会递归扫描整个 Raw 目录。`retry-disjoint` 只供已经证明 key 不相交的
+Raw 批次处理 HF 409，Canonical 和可变 checkpoint 保持默认 `fail`。
+
 B2 只保存 Delivery：
 
 ~~~text
