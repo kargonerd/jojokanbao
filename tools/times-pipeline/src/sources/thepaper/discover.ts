@@ -27,6 +27,11 @@ function text(value: unknown): string | undefined {
   return row ? text(row.name) : undefined;
 }
 
+function cursor(value: unknown): string | number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return text(value);
+}
+
 function isVideo(detail: JsonObject): boolean {
   return [detail.videos, detail.videoDTOList, detail.audioVisualList]
     .some((value) => Array.isArray(value) ? value.length > 0 : Boolean(object(value)));
@@ -40,27 +45,39 @@ export async function discoverThepaper(
   const channelId = channelIds[endpoint.route];
   if (!channelId) throw new Error(`${source.id}: unsupported route: ${endpoint.route}`);
   const api = "https://api.thepaper.cn/contentapi/nodeCont/getByChannelId";
-  const response = await fetch(api, {
-    method: "POST",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-      "user-agent": BROWSER_USER_AGENT,
-    },
-    body: JSON.stringify({ channelId }),
-    signal: AbortSignal.timeout(70_000),
-  });
-  if (!response.ok) throw new Error(`${source.id}: The Paper channel API returned HTTP ${response.status}`);
-  const payload = object(await response.json());
-  const data = object(payload?.data);
-  const rows: JsonObject[] = (Array.isArray(data?.list) ? data.list : [])
-    .map(object)
-    .filter((value): value is JsonObject => value !== undefined)
-    .slice(0, endpoint.maximumItems);
-  const rowById = new Map(rows.flatMap((row) => {
-    const id = text(row.contId);
-    return id ? [[id, row] as const] : [];
-  }));
+  const rowById = new Map<string, JsonObject>();
+  const seenCursors = new Set<string>();
+  let startTime: string | number | undefined;
+  let channelPageCount = 0;
+  while (rowById.size < endpoint.maximumItems) {
+    const response = await fetch(api, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        "user-agent": BROWSER_USER_AGENT,
+      },
+      body: JSON.stringify({ channelId, ...(startTime === undefined ? {} : { startTime }) }),
+      signal: AbortSignal.timeout(70_000),
+    });
+    if (!response.ok) throw new Error(`${source.id}: The Paper channel API returned HTTP ${response.status}`);
+    const payload = object(await response.json());
+    const data = object(payload?.data);
+    channelPageCount += 1;
+    for (const row of (Array.isArray(data?.list) ? data.list : []).map(object)) {
+      if (!row) continue;
+      const id = text(row.contId);
+      if (id && !rowById.has(id)) rowById.set(id, row);
+      if (rowById.size >= endpoint.maximumItems) break;
+    }
+    if (data?.hasNext !== true) break;
+    const nextStartTime = cursor(data.startTime);
+    if (nextStartTime === undefined) break;
+    const cursorKey = `${typeof nextStartTime}:${nextStartTime}`;
+    if (seenCursors.has(cursorKey)) break;
+    seenCursors.add(cursorKey);
+    startTime = nextStartTime;
+  }
   let failedPages = 0;
   let skippedVideos = 0;
   const candidates = await mapLimit<Candidate>([...rowById.keys()], 8, async (contId) => {
@@ -128,10 +145,11 @@ export async function discoverThepaper(
     source,
     transport: "source-adapter",
     fetchedAt,
-    version: "thepaper-channel/1",
+    version: "thepaper-channel/2",
     upstream: {
       endpoint: api,
       channelId,
+      channelPageCount,
       articleIds: [...rowById.keys()],
       parsedArticleCount: candidates.length,
       failedArticleCount: failedPages,
