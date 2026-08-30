@@ -64,11 +64,6 @@ function AuthenticatedRoute({ children }: { children: ReactNode }) {
   return children;
 }
 
-function TimesAccessRoute({ children }: { children: ReactNode }) {
-  const publicAudit = import.meta.env.VITE_TIMES_AUDIT_PUBLIC === "true";
-  return publicAudit ? children : <AuthenticatedRoute>{children}</AuthenticatedRoute>;
-}
-
 function AccountRoute() {
   const initialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
@@ -136,7 +131,7 @@ function RedesignedRoutes() {
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="rag/*" element={<AuthenticatedRoute><LazyRoute><RagRoutes /></LazyRoute></AuthenticatedRoute>} />
           {rollout.times && (
-            <Route path="times/*" element={<TimesAccessRoute><LazyRoute><TimesRoutes /></LazyRoute></TimesAccessRoute>} />
+            <Route path="times/*" element={<AuthenticatedRoute><LazyRoute><TimesRoutes /></LazyRoute></AuthenticatedRoute>} />
           )}
         </Route>
 

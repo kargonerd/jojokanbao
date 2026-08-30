@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App, AppRoutes } from "../src/App";
 import { useAccountSessionStore } from "../src/account/session";
+import { rollout } from "../src/rollout";
 import { AppLayout, buildAppNavigationItems } from "../src/shell/AppLayout";
 
 const appPdfMocks = vi.hoisted(() => ({
@@ -124,15 +125,21 @@ describe("JOJO Web routes and Archive homepage", () => {
     await waitFor(() => expect(window.location.pathname).toBe("/library"));
   });
 
-  it("ships account and AI with the redesigned platform while Times stays gated", async () => {
+  it("requires authentication for both AI and Times", async () => {
     const rag = renderAt("/rag");
     await waitFor(() => expect(window.location.pathname).toBe("/account"));
     expect(screen.getByRole("heading", { name: "登录暂不可用" })).toBeTruthy();
     rag.unmount();
     cleanup();
 
-    renderAt("/times");
-    expect(screen.getByRole("heading", { name: "404 Not Found" })).toBeTruthy();
+    Object.assign(rollout, { times: true });
+    try {
+      renderAt("/times");
+      await waitFor(() => expect(window.location.pathname).toBe("/account"));
+      expect(screen.getByRole("heading", { name: "登录暂不可用" })).toBeTruthy();
+    } finally {
+      Object.assign(rollout, { times: false });
+    }
   });
 
   it("keeps public book reading available outside the authenticated AI route", async () => {

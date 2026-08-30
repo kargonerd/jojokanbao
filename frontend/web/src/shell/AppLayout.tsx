@@ -36,9 +36,8 @@ export function AppLayout({
 } = {}) {
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
-  const publicTimesAudit = import.meta.env.VITE_TIMES_AUDIT_PUBLIC === "true";
   const resolvedNavigationItems =
-    navigationItems || buildAppNavigationItems((accountInitialized && Boolean(userId)) || publicTimesAudit);
+    navigationItems || buildAppNavigationItems(accountInitialized && Boolean(userId));
   return (
     <div className={["app-shell", className].filter(Boolean).join(" ")}>
       {showHeader ? <AppHeader key="app-header" actions={headerActions} navigationItems={resolvedNavigationItems} navigationLabel={navigationLabel} /> : null}
