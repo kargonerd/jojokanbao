@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AnnotationDiscussionPanel } from "../../annotations/AnnotationDiscussionPanel";
 import { CommentVisibilityControl } from "../../annotations/CommentVisibilityControl";
 import {
@@ -36,6 +36,24 @@ import {
 
 export type BookReaderPaperColor = "ivory" | "white" | "dark";
 export type BookReaderMode = "paged" | "scroll";
+type ReaderToolPopover = "font" | "color" | "display" | "progress";
+type ReaderToolIconName = "toc" | "search" | "ai" | "progress" | "display";
+
+function ReaderToolIcon({ name }: { name: ReaderToolIconName }) {
+  if (name === "ai") {
+    return <span className="relative font-serif text-[17px] font-bold leading-none" aria-hidden="true">AI<span className="absolute -right-2 -top-2 text-[9px] text-red">✦</span></span>;
+  }
+  if (name === "display") {
+    return <span className="font-serif text-[22px] font-semibold leading-none" aria-hidden="true">A</span>;
+  }
+  if (name === "toc") {
+    return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h2M4 12h2M4 18h2M9 6h11M9 12h11M9 18h11" /></svg>;
+  }
+  if (name === "search") {
+    return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></svg>;
+  }
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18" /><rect x="9" y="8" width="6" height="8" /></svg>;
+}
 
 export interface BookReaderChapter {
   id: string;
@@ -147,6 +165,8 @@ export function BookReader({
   onDownload,
   children,
 }: BookReaderProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const annotationsEnabled = useFeatureFlag("reader.annotations");
   const currentUserId = useAccountSessionStore((state) => state.userId);
   const bookshelfEnabled = useFeatureFlag("library.bookshelf");
@@ -160,7 +180,7 @@ export function BookReader({
   const [searchOpen, setSearchOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [tocQuery, setTocQuery] = useState("");
-  const [toolPopover, setToolPopover] = useState<"font" | "color">();
+  const [toolPopover, setToolPopover] = useState<ReaderToolPopover>();
   const [textSelection, setTextSelection] = useState<ReaderTextSelection>();
   const [thoughtOpen, setThoughtOpen] = useState(false);
   const [thought, setThought] = useState("");
@@ -179,6 +199,7 @@ export function BookReader({
   const [expandedImage, setExpandedImage] = useState<ExpandedImage>();
   const [readingProgress, setReadingProgress] = useState(0);
   const [columnsPerSpread, setColumnsPerSpread] = useState(() => window.innerWidth >= 900 ? 2 : 1);
+  const [mobileViewport, setMobileViewport] = useState(() => window.innerWidth < 768);
   const [pageMetrics, setPageMetrics] = useState<PageMetrics>(DEFAULT_PAGE_METRICS);
   const [trailingBlankPage, setTrailingBlankPage] = useState(false);
   const [pageTransitioning, setPageTransitioning] = useState(false);
@@ -282,9 +303,12 @@ export function BookReader({
   }, []);
 
   useEffect(() => {
-    const updateColumns = (): void => setColumnsPerSpread(window.innerWidth >= 900 ? 2 : 1);
-    window.addEventListener("resize", updateColumns);
-    return () => window.removeEventListener("resize", updateColumns);
+    const updateViewport = (): void => {
+      setColumnsPerSpread(window.innerWidth >= 900 ? 2 : 1);
+      setMobileViewport(window.innerWidth < 768);
+    };
+    window.addEventListener("resize", updateViewport);
+    return () => window.removeEventListener("resize", updateViewport);
   }, []);
 
   useEffect(() => {
@@ -696,7 +720,7 @@ export function BookReader({
     setThoughtOpen(false);
   }
 
-  function openTool(tool: "font" | "color"): void {
+  function openTool(tool: ReaderToolPopover): void {
     setToolPopover((current) => current === tool ? undefined : tool);
     setTocOpen(false);
     setSearchOpen(false);
@@ -719,6 +743,36 @@ export function BookReader({
     setThoughtOpen(false);
   }
 
+  function openBookAi(): void {
+    if (!agentAccess) {
+      const returnTo = `${location.pathname}${location.search}${location.hash}`;
+      navigate(`/account?returnTo=${encodeURIComponent(returnTo)}`);
+      return;
+    }
+    aiPreparationRef.current += 1;
+    setAiPreparing(false);
+    setAiQuestion(undefined);
+    setAiInitialAnswer(undefined);
+    setAiInitialReferences(undefined);
+    setAiExplanationQuote(undefined);
+    setAiFocus(undefined);
+    openPanel("ai");
+  }
+
+  function seekReadingProgress(progress: number): void {
+    const bounded = Math.max(0, Math.min(100, progress));
+    if (mode === "paged") {
+      const targetPage = Math.round((bounded / 100) * Math.max(0, pageMetrics.spreads - 1));
+      goToPage(targetPage, "auto");
+      return;
+    }
+    const reader = scrollRef.current;
+    if (!reader) return;
+    const range = Math.max(0, reader.scrollHeight - reader.clientHeight);
+    reader.scrollTo({ top: (bounded / 100) * range, behavior: "auto" });
+    setReadingProgress(bounded);
+  }
+
   const isDark = paperColor === "dark";
   const shellClass = isDark ? "bg-[#151716] text-[#deded8]" : paperColor === "white" ? "bg-[#edf0f0] text-ink" : "bg-[#e8e9e4] text-ink";
   const pageClass = isDark ? "bg-[#202321]" : paperColor === "white" ? "bg-white" : "bg-[#fbfaf6]";
@@ -734,16 +788,32 @@ export function BookReader({
   </nav>;
 
   return <div className={`h-screen overflow-hidden ${isDark ? "book-reader-dark" : ""} ${shellClass}`}>
-    <nav data-book-toolbar aria-label="阅读工具" className={`fixed bottom-2 left-2 right-2 z-30 flex gap-1 overflow-x-auto border p-1 backdrop-blur-md md:bottom-auto md:left-auto md:right-5 md:top-1/2 md:-translate-y-1/2 md:flex-col md:gap-2 md:overflow-visible md:border-0 md:p-0 ${chromeClass}`}>
+    {mobileViewport ? <nav data-book-toolbar data-reader-mobile-toolbar aria-label="阅读工具" className={`book-mobile-toolbar z-30 grid-cols-5 border-t backdrop-blur-md ${chromeClass}`}>
+      <button type="button" onClick={() => openPanel("toc")} className="book-mobile-tool" aria-label="打开目录" aria-pressed={tocOpen}>
+        <ReaderToolIcon name="toc" /><span>目录</span>
+      </button>
+      <button type="button" onClick={() => openPanel("search")} className="book-mobile-tool" aria-label="搜索全书" aria-pressed={searchOpen}>
+        <ReaderToolIcon name="search" /><span>搜索</span>
+      </button>
+      <button type="button" onClick={openBookAi} className="book-mobile-tool" aria-label="打开书内 AI" aria-pressed={aiOpen}>
+        <ReaderToolIcon name="ai" /><span>AI</span>
+      </button>
+      <button type="button" onClick={() => openTool("progress")} className="book-mobile-tool" aria-label="阅读进度" aria-pressed={toolPopover === "progress"}>
+        <ReaderToolIcon name="progress" /><span>{bookProgress}%</span>
+      </button>
+      <button type="button" onClick={() => openTool("display")} className="book-mobile-tool" aria-label="显示设置" aria-pressed={toolPopover === "display"}>
+        <ReaderToolIcon name="display" /><span>显示</span>
+      </button>
+    </nav> : <nav data-book-toolbar aria-label="阅读工具" className={`fixed bottom-auto left-auto right-5 top-1/2 z-30 flex -translate-y-1/2 flex-col gap-2 overflow-visible border-0 p-0 backdrop-blur-md ${chromeClass}`}>
       <button type="button" onClick={() => openPanel("toc")} className={controlClass} aria-label="打开目录" title="目录">目录</button>
       <button type="button" onClick={() => openPanel("search")} className={controlClass} aria-label="搜索全书" title="搜索全书">搜索</button>
-      {agentAccess && <button type="button" onClick={() => { aiPreparationRef.current += 1; setAiPreparing(false); setAiQuestion(undefined); setAiInitialAnswer(undefined); setAiInitialReferences(undefined); setAiExplanationQuote(undefined); setAiFocus(undefined); openPanel("ai"); }} className={`${controlClass} relative`} aria-label="打开书内 AI" title="书内 AI · Beta（实验功能）">AI<span aria-hidden="true" className="absolute right-1.5 top-1.5 text-[6px] font-bold leading-none tracking-normal text-red">Beta</span></button>}
+      <button type="button" onClick={openBookAi} className={`${controlClass} relative`} aria-label="打开书内 AI" title={agentAccess ? "书内 AI · Beta（实验功能）" : "登录后使用书内 AI"}>AI<span aria-hidden="true" className="absolute right-1.5 top-1.5 text-[6px] font-bold leading-none tracking-normal text-red">Beta</span></button>
       <button type="button" onClick={() => openTool("font")} className={controlClass} aria-label="调整字号" title="字号">字号</button>
       <button type="button" onClick={() => openTool("color")} className={controlClass} aria-label="选择纸张颜色" title="纸张颜色"><span className={`h-4 w-4 border ${isDark ? "border-white/50 bg-[#202321]" : paperColor === "white" ? "border-[#aaa] bg-white" : "border-[#b8ad96] bg-[#fbfaf6]"}`} aria-hidden="true" /></button>
       <button type="button" aria-pressed={paperTexture} onClick={() => setPaperTexture((value) => !value)} className={`${controlClass} ${paperTexture ? "text-red" : ""}`} aria-label="切换纸张纹理" title={paperTexture ? "关闭纸张纹理" : "开启纸张纹理"}>纹理</button>
       <button type="button" data-reader-mode={mode} onClick={() => changeMode(mode === "paged" ? "scroll" : "paged")} className={controlClass} aria-label="切换阅读模式" title={mode === "paged" ? "切换为上下滚动" : "切换为双页阅读"}>{mode === "paged" ? "双页" : "滚动"}</button>
-      {onDownload && <button type="button" onClick={onDownload} className={`${controlClass} md:mt-3`} aria-label="下载整本 EPUB" title="下载整本 EPUB"><svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 20h14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" /></svg></button>}
-    </nav>
+      {onDownload && <button type="button" onClick={onDownload} className={`${controlClass} mt-3`} aria-label="下载整本 EPUB" title="下载整本 EPUB"><svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 20h14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" /></svg></button>}
+    </nav>}
 
     {tocOpen && <>
       <button type="button" aria-label="关闭目录" onClick={() => setTocOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" />
@@ -788,9 +858,37 @@ export function BookReader({
     /> : null}
 
     {toolPopover && <>
-      <button type="button" aria-label="关闭阅读工具" onClick={() => setToolPopover(undefined)} className="fixed inset-0 z-20 border-0 bg-transparent cursor-default" />
-      <section className={`fixed bottom-16 left-2 right-2 z-40 border p-4 shadow-[6px_10px_30px_rgba(0,0,0,.14)] md:bottom-auto md:left-auto md:right-20 md:top-1/2 md:w-64 md:-translate-y-1/2 ${panelClass}`} aria-label={toolPopover === "font" ? "字号工具" : "纸张颜色工具"}>
-        {toolPopover === "font" ? <>
+      <button type="button" aria-label="关闭阅读工具" onClick={() => setToolPopover(undefined)} className={`fixed inset-0 z-20 border-0 cursor-default ${mobileViewport ? "bg-black/15" : "bg-transparent"}`} />
+      <section className={`${mobileViewport ? "book-mobile-sheet fixed inset-x-0 z-40 border-t px-5 pb-5 pt-3 shadow-[0_-16px_45px_rgba(0,0,0,.16)]" : "fixed bottom-auto left-auto right-20 top-1/2 z-40 w-64 -translate-y-1/2 border p-4 shadow-[6px_10px_30px_rgba(0,0,0,.14)]"} ${panelClass}`} aria-label={toolPopover === "font" ? "字号工具" : toolPopover === "color" ? "纸张颜色工具" : toolPopover === "progress" ? "阅读进度面板" : "显示设置面板"}>
+        {mobileViewport && <div className="mb-3 flex items-center justify-between border-b border-rule pb-3">
+          <div><p className="m-0 font-sans text-[10px] font-bold tracking-[.18em] text-red">阅读工具</p><h2 className="mb-0 mt-1 font-serif text-lg">{toolPopover === "progress" ? "阅读进度" : "显示设置"}</h2></div>
+          <button type="button" onClick={() => setToolPopover(undefined)} className="flex h-10 w-10 items-center justify-center border-0 bg-transparent text-2xl text-current" aria-label="关闭阅读工具">×</button>
+        </div>}
+        {toolPopover === "progress" ? <div className="pb-2">
+          <div className="mb-5 grid grid-cols-2 divide-x divide-rule border-y border-rule py-4 text-center font-sans">
+            <div><strong className="block font-serif text-2xl font-semibold text-red">{bookProgress}%</strong><span className="mt-1 block text-[11px] text-muted">全书进度</span></div>
+            <div><strong className="block font-serif text-base font-semibold">{mode === "paged" ? `${firstPhysicalPage}${firstPhysicalPage === lastPhysicalPage ? "" : `–${lastPhysicalPage}`} / ${pageMetrics.physicalPages} 页` : `本章 ${readingProgress}%`}</strong><span className="mt-2 block max-w-[15rem] truncate px-3 text-[11px] text-muted">{chapters[activeChapterIndex]?.title || "正文"}</span></div>
+          </div>
+          <label className="mb-2 flex items-center justify-between font-sans text-[11px] text-muted"><span>本章开头</span><span>本章结尾</span></label>
+          <input type="range" min="0" max="100" value={readingProgress} onChange={(event) => seekReadingProgress(+event.target.value)} className="book-reader-range book-reader-range--mobile w-full" aria-label="本章进度" />
+        </div> : toolPopover === "display" ? <div className="space-y-5 pb-1">
+          <div>
+            <div className="mb-2 flex items-center justify-between font-sans text-xs text-muted"><span>字号</span><span className="font-serif text-base text-current">{fontSize}px</span></div>
+            <div className="grid grid-cols-[24px_1fr_28px] items-center gap-3"><span className="font-serif text-sm">A</span><input type="range" min="14" max="24" value={fontSize} onChange={(event) => setFontSize(+event.target.value)} className="book-reader-range book-reader-range--mobile w-full" aria-label="字号" /><span className="font-serif text-2xl">A</span></div>
+          </div>
+          <div>
+            <p className="mb-2 mt-0 font-sans text-xs text-muted">纸张颜色</p>
+            <div className="grid grid-cols-3 gap-2">{(["ivory", "white", "dark"] as BookReaderPaperColor[]).map((value) => <button type="button" key={value} aria-pressed={paperColor === value} onClick={() => setPaperColor(value)} className={`book-paper-choice h-14 border font-sans text-xs ${value === "ivory" ? "bg-[#fbfaf6] text-ink" : value === "white" ? "bg-white text-ink" : "bg-[#202321] text-white"} ${paperColor === value ? "border-red outline outline-2 outline-offset-[-3px] outline-red" : "border-rule"}`}>{value === "ivory" ? "米白" : value === "white" ? "纯白" : "夜间"}</button>)}</div>
+          </div>
+          <div className="grid grid-cols-2 gap-2 font-sans text-xs">
+            <button type="button" aria-label="纸张纹理" aria-pressed={paperTexture} onClick={() => setPaperTexture((value) => !value)} className={`book-setting-choice ${paperTexture ? "is-active" : ""}`}><span>纸张纹理</span><strong>{paperTexture ? "开" : "关"}</strong></button>
+            <div className="grid grid-cols-2 border border-rule p-1">
+              <button type="button" aria-pressed={mode === "paged"} onClick={() => changeMode("paged")} className={`border-0 px-1 py-3 ${mode === "paged" ? "bg-red text-white" : "bg-transparent text-current"}`}>翻页</button>
+              <button type="button" aria-pressed={mode === "scroll"} onClick={() => changeMode("scroll")} className={`border-0 px-1 py-3 ${mode === "scroll" ? "bg-red text-white" : "bg-transparent text-current"}`}>滚动</button>
+            </div>
+          </div>
+          {onDownload && <button type="button" onClick={onDownload} className="book-download-action">下载整本 EPUB</button>}
+        </div> : toolPopover === "font" ? <>
           <label className="mb-3 flex items-center justify-between font-sans text-xs text-muted"><span>字号</span><span>{fontSize}px</span></label>
           <input type="range" min="14" max="24" value={fontSize} onChange={(event) => setFontSize(+event.target.value)} className="book-reader-range w-full" aria-label="字号" />
         </> : <>
@@ -805,7 +903,7 @@ export function BookReader({
         <button type="button" onClick={() => void copySelection()} className="reader-selection-action">复制</button>
         {annotationAccess && <><button type="button" disabled={annotationSaving} onClick={() => void underlineSelection()} className="reader-selection-action">划线</button>
         <button type="button" disabled={annotationSaving} onClick={() => setThoughtOpen((value) => !value)} className="reader-selection-action">写想法</button></>}
-        {agentAccess && <button type="button" onClick={() => void explainSelection()} className="reader-selection-action relative text-red" aria-label="AI 解释">AI 解释<span aria-hidden="true" className="absolute right-1 top-1 text-[6px] font-bold leading-none tracking-normal">Beta</span></button>}
+        <button type="button" onClick={() => agentAccess ? void explainSelection() : openBookAi()} className="reader-selection-action relative text-red" aria-label="AI 解释">AI 解释<span aria-hidden="true" className="absolute right-1 top-1 text-[6px] font-bold leading-none tracking-normal">Beta</span></button>
       </div>
       {thoughtOpen && <div className={`mt-1 w-72 border p-3 shadow-[3px_6px_20px_rgba(0,0,0,.16)] ${panelClass}`}>
         <textarea autoFocus value={thought} onChange={(event) => setThought(event.target.value)} placeholder="写下此刻的想法……" rows={3} className="reader-thought-input block w-full resize-none border-0 border-b border-rule bg-transparent px-0 py-1 font-serif text-sm leading-6 text-current" />
@@ -855,23 +953,23 @@ export function BookReader({
 
     {mode === "scroll" ? <div ref={scrollRef} onScroll={updateScrollProgress} onClick={handleReaderClick} onPointerUp={capturePointerTextSelection} onKeyUp={captureTextSelection} className="h-[calc(100%-48px)] overflow-y-auto">
       <main className="mx-auto max-w-[920px] px-0 py-0 md:px-5 md:py-8">
-        <article className={`relative min-h-full border-0 px-6 pb-24 pt-10 shadow-none sm:px-12 md:min-h-[calc(100vh-96px)] md:border-x md:px-20 md:py-20 md:shadow-[0_16px_50px_rgba(32,32,28,.10)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#ddddd6]"}`} style={{ fontSize: `${fontSize}px`, lineHeight: 2.05 }}>
+        <article className={`relative min-h-full border-0 px-6 pb-32 pt-10 shadow-none sm:px-12 md:min-h-[calc(100vh-96px)] md:border-x md:px-20 md:py-20 md:shadow-[0_16px_50px_rgba(32,32,28,.10)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#ddddd6]"}`} style={{ fontSize: `${fontSize}px`, lineHeight: 2.05 }}>
           <div className="mx-auto max-w-[730px]">{error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}{children}{chapterNavigation}</div>
         </article>
       </main>
     </div> : <main className="relative h-[calc(100%-48px)] px-0 py-0 md:px-20 md:py-6">
       <div className="relative mx-auto h-full max-w-[1180px]">
-        <article className={`relative h-full overflow-hidden border-0 px-6 pb-20 pt-10 shadow-none sm:px-10 md:border md:px-16 md:py-14 md:shadow-[0_16px_55px_rgba(32,32,28,.14)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#d8d8d1]"}`}>
+        <article className={`relative h-full overflow-hidden border-0 px-6 pb-32 pt-10 shadow-none sm:px-10 md:border md:px-16 md:py-14 md:shadow-[0_16px_55px_rgba(32,32,28,.14)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#d8d8d1]"}`}>
           {columnsPerSpread === 2 && <div className={`pointer-events-none absolute inset-y-0 left-1/2 z-10 w-10 -translate-x-1/2 ${isDark ? "bg-[linear-gradient(90deg,transparent,rgba(0,0,0,.22),transparent)]" : "bg-[linear-gradient(90deg,transparent,rgba(77,75,66,.09),transparent)]"}`} aria-hidden="true" />}
           <div ref={flowRef} data-book-page-flow onClick={handleReaderClick} onPointerUp={capturePointerTextSelection} onKeyUp={captureTextSelection} className={`relative h-full overflow-hidden [column-fill:auto] [&_img]:cursor-zoom-in [&_figure]:break-inside-avoid [&_h1]:[break-after:avoid-column] [&_h2]:[break-after:avoid-column] [&_li]:break-inside-avoid ${pageTransitioning ? "book-page-content-arrive" : ""}`} style={{ columnCount: columnsPerSpread, columnGap: columnsPerSpread === 2 ? "80px" : "48px", fontSize: `${fontSize}px`, lineHeight: 1.95 }}>
             {error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}{children}
             {trailingBlankPage && <span data-book-trailing-page className="book-page-trailing-blank" aria-hidden="true" />}
           </div>
         </article>
-        <button type="button" onClick={previousPage} disabled={pageTransitioning || (!previousChapter && pageMetrics.page === 0)} className={`absolute bottom-4 left-5 z-30 flex h-9 items-center justify-center gap-1 border px-3 font-sans text-xs shadow-[2px_4px_14px_rgba(0,0,0,.08)] cursor-pointer transition-colors disabled:cursor-default disabled:opacity-20 sm:left-8 ${panelClass}`} aria-label="上一页" title="上一页（←）"><span aria-hidden="true">‹</span> 上一页</button>
-        <button type="button" onClick={nextPage} disabled={pageTransitioning || (!nextChapter && pageMetrics.page >= pageMetrics.spreads - 1)} className={`absolute bottom-4 right-5 z-30 flex h-9 items-center justify-center gap-1 border px-3 font-sans text-xs shadow-[2px_4px_14px_rgba(0,0,0,.08)] cursor-pointer transition-colors disabled:cursor-default disabled:opacity-20 sm:right-8 ${panelClass}`} aria-label="下一页" title="下一页（→ 或空格）">下一页 <span aria-hidden="true">›</span></button>
+        <button type="button" onClick={previousPage} disabled={pageTransitioning || (!previousChapter && pageMetrics.page === 0)} className={`book-page-turn-control absolute left-5 z-30 flex h-10 items-center justify-center gap-1 border px-3 font-sans text-xs shadow-[2px_4px_14px_rgba(0,0,0,.08)] cursor-pointer transition-colors disabled:cursor-default disabled:opacity-20 sm:left-8 ${panelClass}`} aria-label="上一页" title="上一页（←）"><span aria-hidden="true">‹</span> 上一页</button>
+        <button type="button" onClick={nextPage} disabled={pageTransitioning || (!nextChapter && pageMetrics.page >= pageMetrics.spreads - 1)} className={`book-page-turn-control absolute right-5 z-30 flex h-10 items-center justify-center gap-1 border px-3 font-sans text-xs shadow-[2px_4px_14px_rgba(0,0,0,.08)] cursor-pointer transition-colors disabled:cursor-default disabled:opacity-20 sm:right-8 ${panelClass}`} aria-label="下一页" title="下一页（→ 或空格）">下一页 <span aria-hidden="true">›</span></button>
       </div>
-      <div className="pointer-events-none absolute inset-x-0 bottom-1 flex items-center justify-center gap-4 font-sans text-[10px] text-muted md:bottom-2">
+      <div className="book-page-number pointer-events-none absolute inset-x-0 flex items-center justify-center gap-4 font-sans text-[10px] text-muted">
         <span>{firstPhysicalPage === lastPhysicalPage ? firstPhysicalPage : `${firstPhysicalPage}–${lastPhysicalPage}`} / {pageMetrics.physicalPages} 页</span>
       </div>
     </main>}

@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BookReader } from "../src/rag/components/BookReader";
 import { useFeatureFlagStore } from "../src/featureFlags";
@@ -37,6 +37,11 @@ class ResizeObserverMock {
   observe(): void {}
   disconnect(): void {}
   unobserve(): void {}
+}
+
+function LocationProbe() {
+  const location = useLocation();
+  return <span hidden data-testid="reader-location">{`${location.pathname}${location.search}${location.hash}`}</span>;
 }
 
 describe("BookReader", () => {
@@ -82,7 +87,7 @@ describe("BookReader", () => {
     strict = false,
   ) {
     const reader = (
-      <MemoryRouter>
+      <MemoryRouter initialEntries={["/book/test-books/test-books:full-book"]}>
         <BookReader
           bookTitle="测试书"
           datasetId="test-books"
@@ -111,6 +116,7 @@ describe("BookReader", () => {
           <p id="annotation-test">这是注释。</p>
           <img src="blob:test-image" alt="测试插图" />
         </BookReader>
+        <LocationProbe />
       </MemoryRouter>
     );
     const view = render(strict ? <StrictMode>{reader}</StrictMode> : reader);
@@ -151,6 +157,49 @@ describe("BookReader", () => {
     expect(screen.getByRole("button", { name: "切换阅读模式" }).textContent).toContain("双页");
     fireEvent.click(screen.getByRole("button", { name: "调整字号" }));
     expect(screen.getByRole("slider", { name: "字号" }).className).toContain("book-reader-range");
+  });
+
+  it("groups the mobile reader into five thumb-friendly primary tools", () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390, writable: true });
+    const { container } = renderReader();
+    const toolbar = container.querySelector<HTMLElement>("[data-reader-mobile-toolbar]");
+
+    expect(toolbar).not.toBeNull();
+    expect(within(toolbar!).getAllByRole("button")).toHaveLength(5);
+    expect(within(toolbar!).getByRole("button", { name: "打开目录" })).toBeTruthy();
+    expect(within(toolbar!).getByRole("button", { name: "搜索全书" })).toBeTruthy();
+    expect(within(toolbar!).getByRole("button", { name: "打开书内 AI" })).toBeTruthy();
+    expect(within(toolbar!).getByRole("button", { name: "阅读进度" })).toBeTruthy();
+    expect(within(toolbar!).getByRole("button", { name: "显示设置" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "切换纸张纹理" })).toBeNull();
+  });
+
+  it("puts mobile typography, paper, texture, and reading mode in one display sheet", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390, writable: true });
+    renderReader();
+
+    fireEvent.click(screen.getByRole("button", { name: "显示设置" }));
+    expect(screen.getByRole("region", { name: "显示设置面板" })).toBeTruthy();
+    expect(screen.getByRole("slider", { name: "字号" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "夜间" }));
+    fireEvent.click(screen.getByRole("button", { name: "纸张纹理" }));
+    fireEvent.click(screen.getByRole("button", { name: "翻页" }));
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem("jojo-reader-paper-color")).toBe("dark");
+      expect(window.localStorage.getItem("jojo-reader-paper-texture")).toBe("false");
+      expect(window.localStorage.getItem("jojo-reader-mode")).toBe("paged");
+    });
+  });
+
+  it("shows a dedicated mobile progress sheet", () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390, writable: true });
+    renderReader();
+
+    fireEvent.click(screen.getByRole("button", { name: "阅读进度" }));
+    expect(screen.getByRole("region", { name: "阅读进度面板" })).toBeTruthy();
+    expect(screen.getByRole("slider", { name: "本章进度" })).toBeTruthy();
+    expect(screen.getByText("全书进度")).toBeTruthy();
   });
 
   it("stores paper color and texture independently", async () => {
@@ -514,11 +563,12 @@ describe("BookReader", () => {
     expect(readerDataApi.saveExplanation).toHaveBeenCalledTimes(1);
   });
 
-  it("does not load or expose shared comments to a signed-out reader", async () => {
+  it("keeps AI visible for a signed-out reader and sends them through login", async () => {
     useAccountSessionStore.setState({ initialized: true, userId: null, displayName: null });
     annotationApi.loadAnnotationThreads.mockClear();
     renderReader();
-    expect(screen.queryByRole("button", { name: "打开书内 AI" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "打开书内 AI" }));
+    expect(screen.getByTestId("reader-location").textContent).toBe("/account?returnTo=%2Fbook%2Ftest-books%2Ftest-books%3Afull-book");
     expect(screen.queryByRole("complementary", { name: "划线详情" })).toBeNull();
     expect(annotationApi.loadAnnotationThreads).not.toHaveBeenCalled();
   });
