@@ -53,8 +53,11 @@ jobs:
           cache: pip
           cache-dependency-path: infrastructure/tencent-scf/search/requirements.txt
 
-      - name: Install Tencent Cloud CLI
-        run: python -m pip install --disable-pip-version-check tccli==3.1.159.1
+      - name: Install deployment dependencies
+        run: >-
+          python -m pip install --disable-pip-version-check
+          -r infrastructure/tencent-scf/search/requirements.txt
+          tccli==3.1.159.1
 
       - name: Verify credentials
         shell: bash
@@ -89,8 +92,11 @@ jobs:
           cache: pip
           cache-dependency-path: infrastructure/tencent-scf/search/requirements.txt
 
-      - name: Install Tencent Cloud CLI
-        run: python -m pip install --disable-pip-version-check tccli==3.1.159.1
+      - name: Install deployment dependencies
+        run: >-
+          python -m pip install --disable-pip-version-check
+          -r infrastructure/tencent-scf/search/requirements.txt
+          tccli==3.1.159.1
 
       - name: Verify credentials
         shell: bash
