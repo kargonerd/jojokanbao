@@ -1,0 +1,111 @@
+name: Release · Reader Search
+
+on:
+  push:
+    tags:
+      - "search-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reader-search-production
+  cancel-in-progress: false
+
+jobs:
+  verify-release:
+    name: Verify release tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      - name: Require a tagged master commit
+        shell: bash
+        run: |
+          git fetch origin master
+          test "$(git cat-file -t "$GITHUB_REF")" = "tag" || {
+            echo "Search releases require an annotated tag." >&2
+            exit 1
+          }
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/master || {
+            echo "Search releases must tag a commit already merged into master." >&2
+            exit 1
+          }
+
+  deploy-staging:
+    name: Deploy staging
+    needs: verify-release
+    runs-on: ubuntu-latest
+    environment: search-staging
+    timeout-minutes: 15
+    env:
+      TENCENTCLOUD_SECRET_ID: ${{ secrets.SCF_SECRET_ID }}
+      TENCENTCLOUD_SECRET_KEY: ${{ secrets.SCF_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.9"
+          cache: pip
+          cache-dependency-path: infrastructure/tencent-scf/search/requirements.txt
+
+      - name: Install Tencent Cloud CLI
+        run: python -m pip install --disable-pip-version-check tccli==3.1.159.1
+
+      - name: Verify credentials
+        shell: bash
+        run: |
+          test -n "$TENCENTCLOUD_SECRET_ID" || {
+            echo "SCF_SECRET_ID is not configured." >&2
+            exit 1
+          }
+          test -n "$TENCENTCLOUD_SECRET_KEY" || {
+            echo "SCF_SECRET_KEY is not configured." >&2
+            exit 1
+          }
+
+      - name: Deploy and verify staging
+        run: python infrastructure/tencent-scf/search/deploy.py --target staging
+
+  deploy-production:
+    name: Approve and deploy production
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment: search-production
+    timeout-minutes: 15
+    env:
+      TENCENTCLOUD_SECRET_ID: ${{ secrets.SCF_SECRET_ID }}
+      TENCENTCLOUD_SECRET_KEY: ${{ secrets.SCF_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.9"
+          cache: pip
+          cache-dependency-path: infrastructure/tencent-scf/search/requirements.txt
+
+      - name: Install Tencent Cloud CLI
+        run: python -m pip install --disable-pip-version-check tccli==3.1.159.1
+
+      - name: Verify credentials
+        shell: bash
+        run: |
+          test -n "$TENCENTCLOUD_SECRET_ID" || {
+            echo "SCF_SECRET_ID is not configured." >&2
+            exit 1
+          }
+          test -n "$TENCENTCLOUD_SECRET_KEY" || {
+            echo "SCF_SECRET_KEY is not configured." >&2
+            exit 1
+          }
+
+      - name: Deploy and verify production
+        run: >-
+          python infrastructure/tencent-scf/search/deploy.py
+          --target production
+          --confirm-production
