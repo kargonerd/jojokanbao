@@ -6,7 +6,7 @@ import time
 
 import httpx
 
-from jojo_news_archive.bloomberg_archive_download import (
+from jojo_news_archive.discovery.client import (
     ArchiveClient,
     derived_image_candidates,
     detect_image_type,

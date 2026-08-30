@@ -13,10 +13,10 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_news_archive.news_models import CaptureCandidate, CaptureProvider
-from jojo_news_archive.news_parser import parse_article
-from jojo_news_archive.parser_validation import record_parser_validation
-from jojo_news_archive.raw_archive_capture import (
+from jojo_news_archive.models import CaptureCandidate, CaptureProvider
+from jojo_news_archive.parsing.parser import parse_article
+from jojo_news_archive.parsing.validation import record_parser_validation
+from jojo_news_archive.capture.raw import (
     ManifestItem,
     capture_item,
     record_capture_result,

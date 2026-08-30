@@ -5,11 +5,10 @@ parser-validation tooling. It is intentionally a Python tool rather than a
 backend service or pnpm workspace.
 
 The code is being migrated from the temporary public
-`jojo-news-archive-runner` repository. The workflow files below
-`workflow-templates/` are inert migration inputs: GitHub does not execute
-workflows outside the repository-level `.github/workflows` directory. They
-must not be copied into the active workflow directory until their storage
-steps use Hugging Face and the controlled cutover has passed.
+`jojo-news-archive-runner` repository. Legacy B2 workflows remain only in that
+temporary runner while it drains; they are intentionally not duplicated here.
+New workflows in this repository must be designed around Hugging Face rather
+than ported from the legacy storage implementation.
 
 ## Storage boundary
 
@@ -36,12 +35,24 @@ existing Times `nikkei` source.
 ## Layout
 
 ```text
-jojo_news_archive/  Historical capture and parser library
-tools/              Python command-line entry points
-tests/              Parser, capture, validation, and workflow-contract tests
+jojo_news_archive/
+  models.py         Shared immutable Raw/parser models
+  capture/          Raw capture, checkpoints, and capture imports
+  discovery/        Archive clients and historical catalog builders
+  parsing/          Article parser, QA policy, and validation
+  sources/          Publisher URL rules and parser specifications
+  orchestration/    Bounded planners and watchdog logic
+  migration/        One-time legacy B2-to-HF mapping and verification only
+tools/              Thin Python command-line entry points
+tests/              Parser, capture, validation, and architecture tests
 schemas/            Internal RawCapture and parser-result JSON Schemas
-workflow-templates/ Inactive legacy workflows awaiting HF conversion
 ```
+
+Library modules use explicit absolute imports across these feature areas. The
+root package is intentionally limited to `models.py`; architecture tests reject
+new flat compatibility modules. `B2_ARCHIVE_*` credentials are forbidden from
+the runtime library and future new-repository runners. Only the quarantined
+one-time `migration/` code understands legacy B2 object names.
 
 The one-time B2-to-HF state mapping and cutover gates are documented in
 [MIGRATION.md](MIGRATION.md). Generated validation reports and historical run

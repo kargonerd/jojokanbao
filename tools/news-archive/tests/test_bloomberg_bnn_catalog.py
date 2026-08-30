@@ -7,7 +7,7 @@ from pathlib import Path
 import sqlite3
 from urllib.parse import urlencode
 
-from jojo_news_archive.bloomberg_bnn_catalog import (
+from jojo_news_archive.discovery.bloomberg import (
     BNN_DAILY_SITEMAP_TEMPLATE,
     _sample_occurrence_ranks,
     bloomberg_bnn_summary,
@@ -20,9 +20,9 @@ from jojo_news_archive.bloomberg_bnn_catalog import (
     process_bloomberg_bnn_pages,
     process_bloomberg_bnn_sitemaps,
 )
-from jojo_news_archive.news_models import CaptureCandidate, CaptureProvider
-from jojo_news_archive.raw_archive_capture import ManifestItem, capture_item
-from jojo_news_archive.sitemap_manifest import (
+from jojo_news_archive.models import CaptureCandidate, CaptureProvider
+from jojo_news_archive.capture.raw import ManifestItem, capture_item
+from jojo_news_archive.discovery.sitemap import (
     export_sitemap_manifest,
     initialize_sitemap_schema,
     sitemap_source,

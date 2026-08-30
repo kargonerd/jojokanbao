@@ -10,12 +10,12 @@ import sqlite3
 import httpx
 import pytest
 
-from jojo_news_archive.archive_sources import (
+from jojo_news_archive.sources.registry import (
     archive_source_spec,
     archive_source_variant,
     normalize_article_url,
 )
-from jojo_news_archive.common_crawl_prefix_manifest import (
+from jojo_news_archive.discovery.common_crawl_prefix import (
     COMMON_CRAWL_DATE_HYDRATION_PUBLISHERS,
     CommonCrawlPrefixClient,
     PrefixCollection,
@@ -30,12 +30,12 @@ from jojo_news_archive.common_crawl_prefix_manifest import (
     record_prefix_page_count,
     reconcile_prefix_year_targets,
 )
-from jojo_news_archive.common_crawl_prefix_manifest import (
+from jojo_news_archive.discovery.common_crawl_prefix import (
     _nikkei_article_year_hint,
     _npr_story_id,
 )
-from jojo_news_archive.news_models import CaptureProvider
-from jojo_news_archive.raw_archive_capture import manifest_item_from_row
+from jojo_news_archive.models import CaptureProvider
+from jojo_news_archive.capture.raw import manifest_item_from_row
 from tools.build_common_crawl_prefix_manifest import (
     initialize_with_collection_refresh,
 )

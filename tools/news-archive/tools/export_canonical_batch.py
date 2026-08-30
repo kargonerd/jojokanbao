@@ -16,9 +16,9 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_news_archive.news_models import ArticleStatus, BlobReference, RawCapture
-from jojo_news_archive.news_parser import parse_article
-from jojo_news_archive.parser_qa_policy import qa_policy_revision
+from jojo_news_archive.models import ArticleStatus, BlobReference, RawCapture
+from jojo_news_archive.parsing.parser import parse_article
+from jojo_news_archive.parsing.policy import qa_policy_revision
 
 
 FORMAT_VERSION = "jojo-news-canonical-input/1"

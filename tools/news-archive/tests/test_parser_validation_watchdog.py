@@ -5,12 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from jojo_news_archive.parser_validation_watchdog import (
+from jojo_news_archive.parsing.watchdog import (
     plan_validation_dispatch,
 )
-from jojo_news_archive.parser_validation import qa_policy_revision
-from jojo_news_archive.parser_qa_policy import CONTENT_AUDIT_FORMAT_VERSION
-from jojo_news_archive.publisher_specs import publisher_spec
+from jojo_news_archive.parsing.validation import qa_policy_revision
+from jojo_news_archive.parsing.policy import CONTENT_AUDIT_FORMAT_VERSION
+from jojo_news_archive.sources.specs import publisher_spec
 
 
 def _write_summary(

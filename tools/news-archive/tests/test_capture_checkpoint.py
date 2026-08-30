@@ -4,7 +4,7 @@ import gzip
 from pathlib import Path
 import sqlite3
 
-from jojo_news_archive.capture_checkpoint import write_capture_checkpoint
+from jojo_news_archive.capture.checkpoint import write_capture_checkpoint
 
 
 def test_capture_checkpoint_includes_committed_wal_rows(tmp_path: Path):

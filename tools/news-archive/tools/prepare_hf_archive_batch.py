@@ -10,7 +10,7 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_news_archive.hf_layout import (
+from jojo_news_archive.migration.legacy_b2 import (
     PHASE_ORDER,
     load_file_set,
     prepare_archive_batch,

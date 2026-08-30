@@ -20,7 +20,7 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_news_archive.raw_archive_capture import (
+from jojo_news_archive.capture.raw import (
     arquivo_pt_prefix_cdx_url,
     preindex_arquivo_pt_prefix_candidates,
 )

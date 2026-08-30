@@ -4,12 +4,12 @@ import json
 from pathlib import Path
 import sqlite3
 
-from jojo_news_archive.raw_archive_capture import (
+from jojo_news_archive.capture.raw import (
     initialize_capture_schema,
     load_capture_manifest,
 )
-from jojo_news_archive.parser_validation import ensure_parser_validation_plan
-from jojo_news_archive.source_capture_import import (
+from jojo_news_archive.parsing.validation import ensure_parser_validation_plan
+from jojo_news_archive.capture.importers import (
     export_completed_capture_index,
     import_selected_source_captures,
 )

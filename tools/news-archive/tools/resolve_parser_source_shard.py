@@ -9,7 +9,7 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_news_archive.parser_source_shards import parser_source_manifest_shard
+from jojo_news_archive.parsing.shards import parser_source_manifest_shard
 
 
 def main() -> int:

@@ -1,6 +1,6 @@
 import pytest
 
-from jojo_news_archive.parser_source_shards import (
+from jojo_news_archive.parsing.shards import (
     parser_source_manifest_shard,
     parser_supplemental_manifest_shards,
 )

@@ -18,7 +18,7 @@ if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
 
-from jojo_news_archive.ap_legacy_catalog import (
+from jojo_news_archive.discovery.ap_legacy import (
     ARQUIVO_PT_REPLAY_ENDPOINT,
     ap_google_hosted_page_metadata,
     ap_huff_wire_page_metadata,
@@ -28,7 +28,7 @@ from jojo_news_archive.ap_legacy_catalog import (
     normalize_ap_partner_url,
     write_ap_manifest_rows,
 )
-from jojo_news_archive.archive_sources import (
+from jojo_news_archive.sources.registry import (
     ap_hosted_publication_datetime,
     archive_source_spec,
     normalize_article_url,

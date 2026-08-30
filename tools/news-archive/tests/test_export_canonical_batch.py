@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from jojo_news_archive.news_models import (
+from jojo_news_archive.models import (
     BlobReference,
     CaptureCandidate,
     CaptureProvider,

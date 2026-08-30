@@ -5,13 +5,13 @@ import json
 from pathlib import Path
 import sqlite3
 
-from jojo_news_archive.archive_sources import archive_source_spec
-from jojo_news_archive.wayback_manifest import (
+from jojo_news_archive.sources.registry import archive_source_spec
+from jojo_news_archive.discovery.wayback import (
     export_capture_manifest,
     initialize_discovery_schema,
     wsj_catalog_count_for_year,
 )
-from jojo_news_archive.wsj_infini_catalog import (
+from jojo_news_archive.discovery.wsj_infini import (
     initialize_wsj_infini_schema,
     process_wsj_infini_documents,
     process_wsj_infini_queries,

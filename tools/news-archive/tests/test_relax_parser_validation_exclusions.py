@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from jojo_news_archive.parser_validation import initialize_parser_validation_schema
+from jojo_news_archive.parsing.validation import initialize_parser_validation_schema
 from tools.relax_parser_validation_exclusions import (
     finalize_overlap_audit,
     relax_exclusions_if_under_target,
