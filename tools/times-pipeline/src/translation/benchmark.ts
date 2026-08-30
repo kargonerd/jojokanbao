@@ -3,6 +3,7 @@ import path from "node:path";
 import { load } from "cheerio";
 import type { JojoFragment, TimesDeliveryArticle, TimesTimelineDay, TimesTimelineIndex } from "@jojo/content";
 import { readJoxJson } from "../delivery-writer.js";
+import { TIMES_TRANSLATION_DEFAULTS } from "./gemma.js";
 
 export interface TranslationBlock {
   id: string;
@@ -265,7 +266,10 @@ export function buildTranslationPrompt(article: BenchmarkArticle): string {
   ].join("\n");
 }
 
-export function splitArticleForTranslation(article: BenchmarkArticle, maxCharacters = 9_000): BenchmarkArticle[] {
+export function splitArticleForTranslation(
+  article: BenchmarkArticle,
+  maxCharacters: number = TIMES_TRANSLATION_DEFAULTS.maxChunkCharacters,
+): BenchmarkArticle[] {
   if (maxCharacters < 1) throw new Error("maxCharacters must be positive");
   const groups: TranslationBlock[][] = [];
   let current: TranslationBlock[] = [];

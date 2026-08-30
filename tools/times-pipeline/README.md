@@ -60,7 +60,7 @@ Process 在 `GEMINI_API_KEY` 存在时自动翻译本轮新增的非中文全文
 `--translate true|false` 显式控制。生产策略为：
 
 - `gemma-4-31b-it` 主翻译，单个失败 chunk 自动降级到 `gemma-4-26b-a4b-it`；
-- 正文严格按语义块边界切成最多约 9,000 源字符的 chunk，译后按 block id 重组；
+- 正文严格按语义块边界切成最多约 20,000 源字符的 chunk，译后按 block id 重组；单请求默认最多等待 240 秒；
 - 默认八路 worker，每个模型独立按 28 RPM / 14K TPM 保守限流；原文解析与不同文章的翻译并行，不串行拖慢整批；
 - 默认整批最多占用 8 分钟；到达预算会中止在途翻译并 fail-open，给 20 分钟工作流保留 Canonical/HF/Delivery 时间；
 - 译文按源标题、正文、语言和翻译策略的 hash 缓存。刷新到同一内容时从 HF Canonical 恢复缓存，不重复请求 API；

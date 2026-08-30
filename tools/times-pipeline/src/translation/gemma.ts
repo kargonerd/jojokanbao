@@ -7,8 +7,29 @@ import type { ProcessedArticleTranslation, ProcessedCandidate } from "../process
 
 const TRANSLATION_FORMAT = "jojo-times-translation/1" as const;
 export const TIMES_TRANSLATION_POLICY = "gemma-news-zh-v1" as const;
+export const TIMES_TRANSLATION_DEFAULTS = {
+  workers: 8,
+  requestTimeoutMs: 240_000,
+  batchTimeoutMs: 480_000,
+  maxChunkCharacters: 20_000,
+  requestsPerMinute: 28,
+  tokensPerMinute: 14_000,
+} as const;
 const TARGET_LANGUAGE = "zh-CN" as const;
 const BLOCK_SELECTOR = "p,h1,h2,h3,h4,blockquote,figcaption,li,td,th";
+const INLINE_MARKER = /\[\[JOJO_INLINE_(i\d+)_(START|END|EMPTY)\]\]/gu;
+
+interface InlineNode {
+  type: string;
+  data?: string;
+  children?: InlineNode[];
+}
+
+interface InlineTemplate {
+  opening: string;
+  closing: string;
+  empty: boolean;
+}
 
 interface TranslationBlock {
   id: string;
@@ -137,12 +158,102 @@ function leafBlockElements(document: CheerioAPI): ReturnType<CheerioAPI>[number]
   return elements;
 }
 
+function inlineMarker(id: string, kind: "START" | "END" | "EMPTY"): string {
+  return `[[JOJO_INLINE_${id}_${kind}]]`;
+}
+
+function markedBlockText(document: CheerioAPI, element: ReturnType<CheerioAPI>[number]): string {
+  let inlineIndex = 0;
+  const render = (node: InlineNode): string => {
+    if (node.type === "text") return node.data ?? "";
+    if (node.type !== "tag") return (node.children ?? []).map(render).join("");
+    const id = `i${++inlineIndex}`;
+    const children = (node.children ?? []).map(render).join("");
+    return children
+      ? `${inlineMarker(id, "START")}${children}${inlineMarker(id, "END")}`
+      : inlineMarker(id, "EMPTY");
+  };
+  return document(element).contents().toArray().map((node) => render(node as InlineNode)).join("").replace(/\s+/gu, " ").trim();
+}
+
+function inlineTemplates(document: CheerioAPI, element: ReturnType<CheerioAPI>[number]): Map<string, InlineTemplate> {
+  const templates = new Map<string, InlineTemplate>();
+  let inlineIndex = 0;
+  const visit = (node: InlineNode): void => {
+    if (node.type !== "tag") {
+      for (const child of node.children ?? []) visit(child);
+      return;
+    }
+    const id = `i${++inlineIndex}`;
+    const selected = document(node as ReturnType<CheerioAPI>[number]);
+    const outer = document.html(selected);
+    const openingEnd = outer.indexOf(">");
+    if (openingEnd < 0) throw new Error(`Cannot preserve inline element ${id}`);
+    const tag = String(selected.prop("tagName") ?? "").toLowerCase();
+    const hasChildren = (node.children?.length ?? 0) > 0;
+    templates.set(id, {
+      opening: outer.slice(0, openingEnd + 1),
+      closing: hasChildren ? `</${tag}>` : outer.slice(openingEnd + 1),
+      empty: !hasChildren,
+    });
+    for (const child of node.children ?? []) visit(child);
+  };
+  for (const node of document(element).contents().toArray()) visit(node as InlineNode);
+  return templates;
+}
+
+function markerTokens(value: string): string[] {
+  return [...value.matchAll(INLINE_MARKER)].map((match) => match[0]);
+}
+
+function escapeTranslatedText(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+function translatedBlockHtml(
+  document: CheerioAPI,
+  element: ReturnType<CheerioAPI>[number],
+  originalText: string,
+  translatedText: string,
+): string {
+  const expectedMarkers = markerTokens(originalText);
+  const receivedMarkers = markerTokens(translatedText);
+  if (expectedMarkers.length !== receivedMarkers.length
+    || expectedMarkers.some((marker, index) => marker !== receivedMarkers[index])) {
+    throw new Error("Gemma changed inline element markers");
+  }
+  const templates = inlineTemplates(document, element);
+  const stack: string[] = [];
+  let html = "";
+  let cursor = 0;
+  for (const match of translatedText.matchAll(INLINE_MARKER)) {
+    html += escapeTranslatedText(translatedText.slice(cursor, match.index));
+    cursor = match.index + match[0].length;
+    const id = match[1]!;
+    const kind = match[2]!;
+    const template = templates.get(id);
+    if (!template) throw new Error(`Gemma returned unknown inline marker ${id}`);
+    if (kind === "START" && !template.empty) {
+      stack.push(id);
+      html += template.opening;
+    } else if (kind === "END" && !template.empty && stack.pop() === id) {
+      html += template.closing;
+    } else if (kind === "EMPTY" && template.empty) {
+      html += `${template.opening}${template.closing}`;
+    } else {
+      throw new Error(`Gemma returned invalid inline marker ${id} ${kind}`);
+    }
+  }
+  if (stack.length) throw new Error("Gemma returned unclosed inline markers");
+  return `${html}${escapeTranslatedText(translatedText.slice(cursor))}`;
+}
+
 export function extractArticleTranslationBlocks(body: string): TranslationBlock[] {
   const document = load(body, undefined, false);
   return leafBlockElements(document).map((element, index) => ({
     id: `b${index + 1}`,
     tag: String(document(element).prop("tagName") ?? "p").toLowerCase(),
-    text: document(element).text().replace(/\s+/gu, " ").trim(),
+    text: markedBlockText(document, element),
   }));
 }
 
@@ -153,7 +264,9 @@ export function applyArticleTranslation(body: string, blocks: TranslationPayload
     throw new Error(`Translated block structure mismatch: expected ${elements.length}, received ${blocks.length}`);
   }
   for (let index = 0; index < elements.length; index += 1) {
-    document(elements[index]!).text(blocks[index]!.text);
+    const element = elements[index]!;
+    const originalText = markedBlockText(document, element);
+    document(element).html(translatedBlockHtml(document, element, originalText, blocks[index]!.text));
   }
   return document.html().trim();
 }
@@ -183,8 +296,9 @@ function translationPrompt(title: string, sourceLanguage: string, blocks: Transl
     "1. Translate the title and every block. Do not summarize, omit, merge, add, explain, or fact-check.",
     "2. Preserve meaning, uncertainty, tone, quotations, names, numbers, dates, currencies, units, and acronyms.",
     "3. Keep every block id and the original block order exactly. Return one translated block for every input block.",
-    "4. Preserve email addresses, URLs, author names, and identifiers when they should not be translated.",
-    "5. Output JSON only: {\"title\":\"...\",\"blocks\":[{\"id\":\"b1\",\"text\":\"...\"}]}",
+    "4. Preserve every [[JOJO_INLINE_iN_START]], [[JOJO_INLINE_iN_END]], and [[JOJO_INLINE_iN_EMPTY]] marker exactly, in the same order. Translate only the surrounding text.",
+    "5. Preserve email addresses, URLs, author names, and identifiers when they should not be translated.",
+    "6. Output JSON only: {\"title\":\"...\",\"blocks\":[{\"id\":\"b1\",\"text\":\"...\"}]}",
     "INPUT:",
     JSON.stringify({ title, blocks: blocks.map(({ id, text }) => ({ id, text })) }),
   ].join("\n");
@@ -326,12 +440,12 @@ export async function translateProcessedCandidates(
   options: GemmaTranslationOptions,
 ): Promise<TranslationBatchResult> {
   if (!options.apiKey.trim()) throw new Error("Gemma translation requires a non-empty API key");
-  const workers = positiveInteger(options.workers, 8, "Translation workers");
-  const requestTimeoutMs = positiveInteger(options.requestTimeoutMs, 120_000, "Translation request timeout");
-  const batchTimeoutMs = positiveInteger(options.batchTimeoutMs, 480_000, "Translation batch timeout");
-  const maxChunkCharacters = positiveInteger(options.maxChunkCharacters, 9_000, "Translation chunk size");
-  const requestsPerMinute = positiveInteger(options.requestsPerMinute, 28, "Translation RPM");
-  const tokensPerMinute = positiveInteger(options.tokensPerMinute, 14_000, "Translation TPM");
+  const workers = positiveInteger(options.workers, TIMES_TRANSLATION_DEFAULTS.workers, "Translation workers");
+  const requestTimeoutMs = positiveInteger(options.requestTimeoutMs, TIMES_TRANSLATION_DEFAULTS.requestTimeoutMs, "Translation request timeout");
+  const batchTimeoutMs = positiveInteger(options.batchTimeoutMs, TIMES_TRANSLATION_DEFAULTS.batchTimeoutMs, "Translation batch timeout");
+  const maxChunkCharacters = positiveInteger(options.maxChunkCharacters, TIMES_TRANSLATION_DEFAULTS.maxChunkCharacters, "Translation chunk size");
+  const requestsPerMinute = positiveInteger(options.requestsPerMinute, TIMES_TRANSLATION_DEFAULTS.requestsPerMinute, "Translation RPM");
+  const tokensPerMinute = positiveInteger(options.tokensPerMinute, TIMES_TRANSLATION_DEFAULTS.tokensPerMinute, "Translation TPM");
   const primaryModel = options.primaryModel?.trim() || "gemma-4-31b-it";
   const fallbackModel = options.fallbackModel?.trim() || "gemma-4-26b-a4b-it";
   const now = options.now ?? (() => new Date());
@@ -373,6 +487,7 @@ export async function translateProcessedCandidates(
     let fallbackChunks = 0;
     try {
       const blocks = extractArticleTranslationBlocks(candidate.processedBody);
+      if (!blocks.length) throw new Error("Article body has no translatable semantic blocks");
       const chunks = splitBlocks(candidate.title, blocks, maxChunkCharacters);
       const translated: TranslationPayload = { title: "", blocks: [] };
       const usedModels = new Set<string>();

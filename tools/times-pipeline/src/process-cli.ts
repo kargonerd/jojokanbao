@@ -7,7 +7,7 @@ import { loadSources } from "./config.js";
 import { processArticle } from "./process/article.js";
 import { writeCanonicalSource, type CanonicalWriteResult } from "./process/canonical-writer.js";
 import { processSourceCandidate, sourceBodyExtractor, sourceFetchPolicy } from "./sources/registry.js";
-import { translateProcessedCandidates, type TranslationBatchStats } from "./translation/gemma.js";
+import { TIMES_TRANSLATION_DEFAULTS, translateProcessedCandidates, type TranslationBatchStats } from "./translation/gemma.js";
 import type { Candidate, SourceCaptureManifest } from "./types.js";
 import type { ProcessedCandidate } from "./process/article.js";
 
@@ -79,10 +79,10 @@ export async function runProcess(args: Map<string, string>): Promise<{
       apiKey,
       ...(primaryModel ? { primaryModel } : {}),
       ...(fallbackModel ? { fallbackModel } : {}),
-      workers: positiveInteger(args.get("translation-workers") ?? process.env.JOJO_TIMES_TRANSLATION_WORKERS, 8, "Translation workers"),
-      requestTimeoutMs: positiveInteger(args.get("translation-request-timeout-ms") ?? process.env.JOJO_TIMES_TRANSLATION_REQUEST_TIMEOUT_MS, 120_000, "Translation request timeout"),
-      batchTimeoutMs: positiveInteger(args.get("translation-batch-timeout-ms") ?? process.env.JOJO_TIMES_TRANSLATION_BATCH_TIMEOUT_MS, 480_000, "Translation batch timeout"),
-      maxChunkCharacters: positiveInteger(args.get("translation-chunk-characters") ?? process.env.JOJO_TIMES_TRANSLATION_CHUNK_CHARACTERS, 9_000, "Translation chunk size"),
+      workers: positiveInteger(args.get("translation-workers") ?? process.env.JOJO_TIMES_TRANSLATION_WORKERS, TIMES_TRANSLATION_DEFAULTS.workers, "Translation workers"),
+      requestTimeoutMs: positiveInteger(args.get("translation-request-timeout-ms") ?? process.env.JOJO_TIMES_TRANSLATION_REQUEST_TIMEOUT_MS, TIMES_TRANSLATION_DEFAULTS.requestTimeoutMs, "Translation request timeout"),
+      batchTimeoutMs: positiveInteger(args.get("translation-batch-timeout-ms") ?? process.env.JOJO_TIMES_TRANSLATION_BATCH_TIMEOUT_MS, TIMES_TRANSLATION_DEFAULTS.batchTimeoutMs, "Translation batch timeout"),
+      maxChunkCharacters: positiveInteger(args.get("translation-chunk-characters") ?? process.env.JOJO_TIMES_TRANSLATION_CHUNK_CHARACTERS, TIMES_TRANSLATION_DEFAULTS.maxChunkCharacters, "Translation chunk size"),
       onProgress: (message) => { process.stderr.write(`${message}\n`); },
     });
     const byId = new Map(translated.candidates.map((candidate) => [candidate.articleId, candidate]));
