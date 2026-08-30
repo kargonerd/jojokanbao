@@ -56,28 +56,33 @@ export function AccountMenu() {
   }
 
   return (
-    <div className="app-account-menu" ref={rootRef}>
-      <button
-        type="button"
-        className="app-account-trigger"
-        aria-label={`${name}，账号菜单${unreadCount ? `，${unreadCount} 条未读通知` : ""}`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <span className="app-login-label">{name}</span>
-        {unreadCount ? <b aria-hidden="true">{countLabel}</b> : null}
-      </button>
+    <>
+      <Link className="app-mobile-account-link" to="/account" aria-label={`${name}，进入我的页面`}>
+        {name}
+      </Link>
+      <div className="app-account-menu" ref={rootRef}>
+        <button
+          type="button"
+          className="app-account-trigger"
+          aria-label={`${name}，账号菜单${unreadCount ? `，${unreadCount} 条未读通知` : ""}`}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+        >
+          <span className="app-login-label">{name}</span>
+          {unreadCount ? <b aria-hidden="true">{countLabel}</b> : null}
+        </button>
 
-      {open ? <section className="app-account-popover" role="menu" aria-label="读者菜单">
-        <nav aria-label="账号快捷入口">
-          <Link role="menuitem" to="/notifications" onClick={() => setOpen(false)}><span>通知</span>{unreadCount ? <b>{countLabel}</b> : null}</Link>
-          <Link role="menuitem" to="/bookshelf" onClick={() => setOpen(false)}><span>我的书架</span></Link>
-          <Link role="menuitem" to="/account" onClick={() => setOpen(false)}><span>账号</span></Link>
-        </nav>
-        {error ? <p role="alert">{error}</p> : null}
-        <button type="button" role="menuitem" className="app-account-signout" disabled={busy} onClick={() => void signOut()}>{busy ? "正在退出…" : "退出登录"}</button>
-      </section> : null}
-    </div>
+        {open ? <section className="app-account-popover" role="menu" aria-label="读者菜单">
+          <nav aria-label="账号快捷入口">
+            <Link role="menuitem" to="/notifications" onClick={() => setOpen(false)}><span>通知</span>{unreadCount ? <b>{countLabel}</b> : null}</Link>
+            <Link role="menuitem" to="/bookshelf" onClick={() => setOpen(false)}><span>我的书架</span></Link>
+            <Link role="menuitem" to="/account" onClick={() => setOpen(false)}><span>账号</span></Link>
+          </nav>
+          {error ? <p role="alert">{error}</p> : null}
+          <button type="button" role="menuitem" className="app-account-signout" disabled={busy} onClick={() => void signOut()}>{busy ? "正在退出…" : "退出登录"}</button>
+        </section> : null}
+      </div>
+    </>
   );
 }

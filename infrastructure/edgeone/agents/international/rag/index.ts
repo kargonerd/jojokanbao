@@ -6,6 +6,7 @@ import {
 
 const definition = createRagAgentDefinition();
 const handle = createEdgeOneAgentHandler({
+  agentId: definition.id,
   systemPrompt: definition.systemPrompt,
   tools(context, _user, body) {
     const environment = context.env ?? process.env;

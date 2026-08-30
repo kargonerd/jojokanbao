@@ -29,6 +29,16 @@ const SSE_HEADERS = {
   "Cache-Control": "no-cache, no-transform",
   "X-Accel-Buffering": "no",
 };
+type SupportedImageMediaType = NonNullable<AgentRequestBody["images"]>[number]["mimeType"];
+const IMAGE_MEDIA_TYPES = new Set<SupportedImageMediaType>([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+] as const);
+const MAX_IMAGE_COUNT = 4;
+const MAX_IMAGE_BYTES = 1_500_000;
+const MAX_TOTAL_IMAGE_BYTES = 4_000_000;
 
 function jsonResponse(status: number, body: Record<string, unknown>): Response {
   return Response.json(body, { status });
@@ -49,6 +59,41 @@ function requestBody(value: unknown): AgentRequestBody {
   if (message.length > 10_000) {
     throw new AgentHttpError(413, "message exceeds 10000 characters");
   }
+  const rawImages = (value as { images?: unknown }).images;
+  if (rawImages !== undefined && !Array.isArray(rawImages)) {
+    throw new AgentHttpError(400, "images must be an array");
+  }
+  if (Array.isArray(rawImages) && rawImages.length > MAX_IMAGE_COUNT) {
+    throw new AgentHttpError(413, `images exceed ${MAX_IMAGE_COUNT} items`);
+  }
+  let totalImageBytes = 0;
+  const images = (rawImages ?? []).map((candidate: unknown) => {
+    if (!candidate || typeof candidate !== "object") {
+      throw new AgentHttpError(400, "images contains an invalid image");
+    }
+    const input = candidate as Record<string, unknown>;
+    const mimeType = input.mimeType;
+    const data = typeof input.data === "string" ? input.data.trim() : "";
+    if (
+      typeof mimeType !== "string"
+      || !IMAGE_MEDIA_TYPES.has(mimeType as SupportedImageMediaType)
+      || !data
+      || data.length % 4 !== 0
+      || !/^[A-Za-z0-9+/]+={0,2}$/u.test(data)
+    ) {
+      throw new AgentHttpError(400, "images contains an invalid image");
+    }
+    const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+    const imageBytes = (data.length / 4) * 3 - padding;
+    totalImageBytes += imageBytes;
+    if (imageBytes > MAX_IMAGE_BYTES || totalImageBytes > MAX_TOTAL_IMAGE_BYTES) {
+      throw new AgentHttpError(413, "images are too large");
+    }
+    return {
+      data,
+      mimeType: mimeType as NonNullable<AgentRequestBody["images"]>[number]["mimeType"],
+    };
+  });
   const rawScope = (value as { scope?: unknown }).scope;
   const scope = rawScope && typeof rawScope === "object"
     ? rawScope as Record<string, unknown>
@@ -135,6 +180,7 @@ function requestBody(value: unknown): AgentRequestBody {
   }
   return {
     message: message.trim(),
+    ...(images.length ? { images } : {}),
     ...(history.length ? { history } : {}),
     ...(mode || datasetIds || itemIds || manifestObjects
       ? { scope: {
@@ -146,6 +192,22 @@ function requestBody(value: unknown): AgentRequestBody {
       : {}),
     ...(focus ? { focus } : {}),
   };
+}
+
+function requestPrompt(body: AgentRequestBody): string | AgentMessage[] {
+  if (!body.images?.length) return body.message;
+  return [{
+    role: "user",
+    content: [
+      { type: "text", text: body.message },
+      ...body.images.map((image) => ({
+        type: "image" as const,
+        data: image.data,
+        mimeType: image.mimeType,
+      })),
+    ],
+    timestamp: Date.now(),
+  }];
 }
 
 function emptyUsage(): AssistantMessage["usage"] {
@@ -353,6 +415,9 @@ export function createEdgeOneAgentHandler(
           `${runtime.config.provider}/${runtime.config.model} is not configured`,
         );
       }
+      if (body.images?.length && !runtime.model.input.includes("image")) {
+        throw new AgentHttpError(503, "current model does not support image input");
+      }
     } catch (error) {
       if (error instanceof AgentHttpError) {
         return jsonResponse(error.status, { error: error.message });
@@ -377,6 +442,7 @@ export function createEdgeOneAgentHandler(
       "agent.model": runtime.config.model,
       "agent.conversation_id": conversationId,
       "agent.has_focus_context": Boolean(body.focus),
+      "agent.image_count": body.images?.length ?? 0,
     });
 
     const stream = new ReadableStream<Uint8Array>({
@@ -389,11 +455,11 @@ export function createEdgeOneAgentHandler(
           }));
           const result = await traced(
             context.tracer,
-            "jojo.rag_agent",
+            `jojo.${options.agentId || "rag"}_agent`,
             async (span) => {
               const output = await runPlatformAgent({
                 systemPrompt: systemPrompt(options, context),
-                prompt: body.message,
+                prompt: requestPrompt(body),
                 history,
                 sessionId: conversationId,
                 tools,
@@ -409,6 +475,7 @@ export function createEdgeOneAgentHandler(
                   environment.JOJO_AGENT_MAX_TOOL_CALLS,
                   20,
                 ),
+                maxLengthContinuations: options.agentId === "times" ? 1 : 0,
                 onEvent(event) {
                   controller.enqueue(sseFrame(event.type, eventPayload(event)));
                 },
@@ -418,23 +485,27 @@ export function createEdgeOneAgentHandler(
                 "agent.turns": output.turns,
                 "agent.tool_calls": output.toolCalls,
                 "agent.duration_ms": output.durationMs,
+                "agent.stop_reason": output.stopReason,
                 "llm.token_count.total": output.usage.totalTokens,
                 "llm.token_count.prompt": output.usage.inputTokens,
                 "llm.token_count.completion": output.usage.outputTokens,
+                "llm.token_count.reasoning": output.usage.reasoningTokens ?? 0,
               });
               return output;
             },
             {
               "openinference.span.kind": "AGENT",
-              "agent.name": "jojo-rag",
+              "agent.name": `jojo-${options.agentId || "rag"}`,
               "agent.conversation_id": conversationId,
               "agent.scope_mode": body.scope?.mode ?? "all",
               "agent.has_focus_context": Boolean(body.focus),
               "agent.history_messages": history.length,
+              "agent.image_count": body.images?.length ?? 0,
             },
           );
           controller.enqueue(sseFrame("done", {
             conversationId,
+            stopReason: result.stopReason,
             usage: result.usage,
           }));
         } catch (error) {

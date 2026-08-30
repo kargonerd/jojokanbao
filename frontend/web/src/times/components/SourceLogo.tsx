@@ -48,7 +48,7 @@ export function SourceLogo({
   const [candidateIndex, setCandidateIndex] = useState(0);
   useEffect(() => setCandidateIndex(0), [source.id]);
 
-  const dimensions = size === "rail" ? "h-6 w-6" : "h-10 w-10";
+  const dimensions = size === "rail" ? "h-6 w-6" : size === "header" ? "h-7 w-7" : "h-10 w-10";
   const src = candidates[candidateIndex];
   const isCroppedClsWordmark = source.id === "cls" && candidateIndex === 0;
   if (src) {

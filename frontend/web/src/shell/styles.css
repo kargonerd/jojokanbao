@@ -54,6 +54,21 @@ a.jojo-citation:hover {
 
 .app-brand-full { display: block; width: 154px; height: auto; }
 .app-brand-mark { display: none; width: 34px; height: 34px; }
+.app-mobile-title,
+.app-mobile-navigation,
+.app-mobile-account-link,
+.app-mobile-back { display: none; }
+.app-mobile-title-badge {
+  position: absolute;
+  top: -3px;
+  left: calc(100% + 3px);
+  color: var(--color-red);
+  font-family: var(--font-sans);
+  font-size: 7px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: .01em;
+}
 
 .app-header > nav {
   display: flex;
@@ -733,12 +748,108 @@ a.jojo-citation:hover {
 
 @media (max-width: 720px) {
   .app-header {
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: minmax(72px, 1fr) auto minmax(72px, 1fr);
+    column-gap: 12px;
     min-height: 58px;
-    padding: 0 16px;
+    padding: 0 12px;
   }
-  .app-header > nav { gap: 17px; }
-  .app-header > nav > a { font-size: .78rem; }
+  .app-brand { justify-self: start; }
+  .app-header.has-mobile-back .app-brand { display: none; }
+  .app-mobile-back {
+    display: inline-flex;
+    align-items: center;
+    justify-self: start;
+    gap: 5px;
+    border: 0;
+    padding: 7px 0;
+    color: var(--color-red);
+    background: transparent;
+    font: 800 .72rem/1 var(--font-sans);
+    cursor: pointer;
+  }
+  .app-mobile-back > span { font-size: 1rem; }
+  .app-mobile-back:focus-visible { outline: 2px solid var(--color-red); outline-offset: 3px; }
+  .app-brand-full { display: none; }
+  .app-brand-mark { display: block; width: 32px; height: 32px; }
+  .app-header > nav { display: none; }
+  .app-mobile-title {
+    display: block;
+    min-width: 0;
+    overflow: visible;
+    font-family: var(--font-serif);
+    font-size: .95rem;
+    font-weight: 900;
+    letter-spacing: .08em;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .app-mobile-title-text { position: relative; display: inline-block; }
+  .app-header-actions { gap: 10px; }
+  .app-account-menu { display: none; }
+  .app-mobile-account-link {
+    display: block;
+    max-width: min(25vw, 92px);
+    overflow: hidden;
+    color: var(--color-red) !important;
+    font-size: .75rem;
+    font-weight: 800;
+    letter-spacing: .02em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .app-login { min-width: 32px; justify-content: center; font-size: .72rem; }
+  .app-mobile-navigation {
+    position: fixed;
+    z-index: 75;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    height: calc(56px + env(safe-area-inset-bottom));
+    padding: 0 max(8px, env(safe-area-inset-left)) env(safe-area-inset-bottom) max(8px, env(safe-area-inset-right));
+    border-top: 1px solid var(--app-line);
+    background: rgba(255, 255, 255, .98);
+    box-shadow: 0 -8px 24px rgba(32, 32, 32, .06);
+  }
+  .app-mobile-navigation > a {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    color: var(--app-gray);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .04em;
+  }
+  .app-mobile-navigation > a::before {
+    position: absolute;
+    top: -1px;
+    width: 22px;
+    height: 3px;
+    background: transparent;
+    content: "";
+  }
+  .app-mobile-navigation > a.is-active { color: var(--color-red); }
+  .app-mobile-navigation > a.is-active::before { background: var(--color-red); }
+  .app-mobile-navigation svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
+    stroke-width: 1.6;
+  }
+  .app-shell > .app-mobile-navigation + * {
+    box-sizing: border-box;
+    padding-bottom: calc(56px + env(safe-area-inset-bottom));
+  }
   .app-login { font-size: .78rem; }
   .app-home { min-height: calc(100vh - 58px); padding: 38px 20px 40px; }
   .home-search { margin-bottom: 38px; }
@@ -771,10 +882,6 @@ a.jojo-citation:hover {
 }
 
 @media (max-width: 430px) {
-  .app-brand-full { display: none; }
-  .app-brand-mark { display: block; }
-  .app-header > nav { gap: 13px; }
-  .app-header > nav > a { font-size: .72rem; letter-spacing: 0; }
   .app-account-popover { position: fixed; top: 58px; right: 10px; width: min(168px, calc(100vw - 20px)); }
   .app-search-box { gap: 8px; padding-left: 12px; }
   .bookshelf-grid { grid-template-columns: repeat(2, minmax(100px, 1fr)); }

@@ -64,6 +64,7 @@ export interface AuthorizedAgentUser {
 }
 
 export interface CreateEdgeOneAgentHandlerOptions {
+  agentId?: string;
   systemPrompt?: string | ((context: EdgeOneAgentContext) => string);
   tools?: (
     context: EdgeOneAgentContext,
@@ -80,6 +81,10 @@ export interface CreateEdgeOneAgentHandlerOptions {
 
 export interface AgentRequestBody {
   message: string;
+  images?: Array<{
+    data: string;
+    mimeType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+  }>;
   history?: Array<{
     role: "user" | "assistant";
     content: string;

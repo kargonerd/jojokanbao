@@ -107,6 +107,7 @@ export function toolSourceReferences(result: unknown): AgentSourceReference[] {
 
 const DEFAULT_MAX_TURNS = 8;
 const DEFAULT_MAX_TOOL_CALLS = 20;
+const LENGTH_CONTINUATION_PROMPT = "请从上一条回复被截断的位置继续，紧接最后一个字，不要重复已经输出的内容；只完成原来的回答。";
 
 function emptyUsage(): Usage {
   return {
@@ -178,6 +179,14 @@ function positiveInteger(value: number | undefined, fallback: number, name: stri
   return resolved;
 }
 
+function nonNegativeInteger(value: number | undefined, fallback: number, name: string): number {
+  const resolved = value ?? fallback;
+  if (!Number.isInteger(resolved) || resolved < 0) {
+    throw new Error(`${name} must be a non-negative integer`);
+  }
+  return resolved;
+}
+
 function promptMessages(prompt: RunPlatformAgentOptions["prompt"]): AgentMessage[] {
   if (typeof prompt !== "string") {
     if (prompt.length === 0) throw new Error("prompt must contain at least one message");
@@ -218,11 +227,18 @@ export async function runPlatformAgent(
     DEFAULT_MAX_TOOL_CALLS,
     "maxToolCalls",
   );
+  const maxLengthContinuations = nonNegativeInteger(
+    options.maxLengthContinuations,
+    0,
+    "maxLengthContinuations",
+  );
   const initialMessages = [...(options.history ?? [])];
   const usage = emptyUsage();
   let turns = 0;
   let toolCalls = 0;
   let failure: Error | undefined;
+  let lengthContinuations = 0;
+  let continuedAnswerPrefix = "";
   const sourceReferences = new Map<string, AgentSourceReference>();
 
   if (options.signal?.aborted) {
@@ -298,6 +314,19 @@ export async function runPlatformAgent(
           event.message.errorMessage,
         );
       }
+      if (
+        event.message.stopReason === "length"
+        && !hasToolCall(event.message)
+        && lengthContinuations < maxLengthContinuations
+      ) {
+        continuedAnswerPrefix += assistantText(event.message);
+        lengthContinuations += 1;
+        agent.followUp({
+          role: "user",
+          content: LENGTH_CONTINUATION_PROMPT,
+          timestamp: Date.now(),
+        });
+      }
       await options.onEvent?.({ type: "usage", usage: publicUsage(usage) });
       return;
     }
@@ -339,9 +368,10 @@ export async function runPlatformAgent(
       && Boolean(assistantText(message)),
     );
 
-  const answerContent = answer ? assistantText(answer) : "";
+  const answerContent = continuedAnswerPrefix + (answer ? assistantText(answer) : "");
   return {
     answer: answerContent,
+    stopReason: answer?.stopReason ?? "stop",
     references: answerSourceReferences(answerContent, [...sourceReferences.values()]),
     messages,
     usage: publicUsage(usage),

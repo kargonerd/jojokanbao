@@ -802,13 +802,13 @@ export function BookReader({
 
     {textSelection && <div className={`book-selection-tools fixed z-[65] -translate-x-1/2 font-sans ${textSelection.above ? "-translate-y-full" : ""}`} style={{ left: textSelection.left, top: textSelection.top }}>
       <div className={`flex border shadow-[3px_6px_20px_rgba(0,0,0,.18)] ${panelClass}`} role="toolbar" aria-label="选中文字工具">
-        <button type="button" onClick={() => void copySelection()} className="book-selection-action">复制</button>
-        {annotationAccess && <><button type="button" disabled={annotationSaving} onClick={() => void underlineSelection()} className="book-selection-action">划线</button>
-        <button type="button" disabled={annotationSaving} onClick={() => setThoughtOpen((value) => !value)} className="book-selection-action">写想法</button></>}
-        {agentAccess && <button type="button" onClick={() => void explainSelection()} className="book-selection-action relative text-red" aria-label="AI 解释">AI 解释<span aria-hidden="true" className="absolute right-1 top-1 text-[6px] font-bold leading-none tracking-normal">Beta</span></button>}
+        <button type="button" onClick={() => void copySelection()} className="reader-selection-action">复制</button>
+        {annotationAccess && <><button type="button" disabled={annotationSaving} onClick={() => void underlineSelection()} className="reader-selection-action">划线</button>
+        <button type="button" disabled={annotationSaving} onClick={() => setThoughtOpen((value) => !value)} className="reader-selection-action">写想法</button></>}
+        {agentAccess && <button type="button" onClick={() => void explainSelection()} className="reader-selection-action relative text-red" aria-label="AI 解释">AI 解释<span aria-hidden="true" className="absolute right-1 top-1 text-[6px] font-bold leading-none tracking-normal">Beta</span></button>}
       </div>
       {thoughtOpen && <div className={`mt-1 w-72 border p-3 shadow-[3px_6px_20px_rgba(0,0,0,.16)] ${panelClass}`}>
-        <textarea autoFocus value={thought} onChange={(event) => setThought(event.target.value)} placeholder="写下此刻的想法……" rows={3} className="book-thought-input block w-full resize-none border-0 border-b border-rule bg-transparent px-0 py-1 font-serif text-sm leading-6 text-current" />
+        <textarea autoFocus value={thought} onChange={(event) => setThought(event.target.value)} placeholder="写下此刻的想法……" rows={3} className="reader-thought-input block w-full resize-none border-0 border-b border-rule bg-transparent px-0 py-1 font-serif text-sm leading-6 text-current" />
         <div className="mt-2 flex items-center justify-between gap-3"><CommentVisibilityControl value={thoughtVisibility} onChange={setThoughtVisibility} disabled={annotationSaving} /><button type="button" disabled={annotationSaving || !thought.trim()} onClick={() => void saveThought()} className="border-0 bg-transparent p-0 text-xs font-bold text-red cursor-pointer disabled:opacity-30">{annotationSaving ? "保存中…" : "保存"}</button></div>
       </div>}
     </div>}

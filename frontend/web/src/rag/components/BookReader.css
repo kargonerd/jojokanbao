@@ -235,30 +235,6 @@ mark[data-book-search-target] {
   font-weight: 700;
 }
 
-.book-selection-action {
-  min-width: 52px;
-  height: 38px;
-  border: 0;
-  border-right: 1px solid var(--color-rule);
-  background: transparent;
-  color: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.book-selection-action:last-child {
-  border-right: 0;
-}
-
-.book-selection-action:hover,
-.book-selection-action:focus-visible {
-  color: var(--color-red);
-  background: color-mix(in srgb, var(--color-red) 7%, transparent);
-  outline: 0;
-  transform: none;
-  box-shadow: none;
-}
-
 .book-reader-user-underline {
   color: inherit;
   background: transparent;
@@ -274,11 +250,7 @@ mark[data-book-search-target] {
 .book-ai-input,
 .book-ai-input:hover,
 .book-ai-input:focus,
-.book-ai-input:focus-visible,
-.book-thought-input,
-.book-thought-input:hover,
-.book-thought-input:focus,
-.book-thought-input:focus-visible {
+.book-ai-input:focus-visible {
   border-top: 0 !important;
   border-left: 0 !important;
   border-right: 0 !important;

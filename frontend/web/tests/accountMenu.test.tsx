@@ -24,6 +24,7 @@ describe("AccountMenu", () => {
     }));
 
     expect(screen.getByRole("button", { name: /雪豹-TGH，账号菜单/ })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "雪豹-TGH，进入我的页面" }).getAttribute("href")).toBe("/account");
     expect(screen.queryByRole("link", { name: "登录" })).toBeNull();
   });
 

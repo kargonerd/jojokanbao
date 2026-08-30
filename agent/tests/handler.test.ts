@@ -65,6 +65,7 @@ describe("createEdgeOneAgentHandler", () => {
     expect(body).toContain("你好，JOJO。");
     expect(body).toContain("event: usage");
     expect(body).toContain("event: done");
+    expect(body).toContain('"stopReason":"stop"');
     expect(tools).toHaveBeenCalledWith(
       expect.any(Object),
       { id: "user-1" },
@@ -131,6 +132,95 @@ describe("createEdgeOneAgentHandler", () => {
 
     expect(response.status).toBe(200);
     expect(await response.text()).toContain("接着上一轮回答。");
+  });
+
+  it("validates and forwards image inputs as multimodal user content", async () => {
+    let capturedContext: unknown;
+    const faux = fauxProvider({
+      provider: "openai-codex",
+      models: [{ id: "vision-test", input: ["text", "image"] }],
+      tokensPerSecond: 100_000,
+    });
+    faux.setResponses([(context) => {
+      capturedContext = context;
+      return fauxAssistantMessage("图中信息已纳入解释。");
+    }]);
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const model = faux.getModel();
+    const handle = createEdgeOneAgentHandler({
+      agentId: "times",
+      authorize: async () => ({ id: "user-1" }),
+      createModelRuntime: async () => ({
+        config: { provider: "openai-codex", model: model.id },
+        models,
+        model,
+        configured: true,
+      }),
+    });
+
+    const response = await handle({
+      request: {
+        body: {
+          message: "解释图表",
+          images: [{ mimeType: "image/png", data: "AQID" }],
+        },
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("图中信息已纳入解释。");
+    const context = capturedContext as { messages: Array<{ role: string; content: unknown }> };
+    expect([...context.messages].reverse().find((message) => message.role === "user")).toMatchObject({
+      role: "user",
+      content: [
+        { type: "text", text: "解释图表" },
+        { type: "image", mimeType: "image/png", data: "AQID" },
+      ],
+    });
+  });
+
+  it("automatically continues a Times response stopped at the provider budget", async () => {
+    const faux = fauxProvider({
+      provider: "openai-codex",
+      tokensPerSecond: 100_000,
+    });
+    faux.setResponses([
+      fauxAssistantMessage("解释被截", { stopReason: "length" }),
+      fauxAssistantMessage("断后继续完成。\n<!-- JOJO_TIMES_COMPLETE -->"),
+    ]);
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const model = faux.getModel();
+    const handle = createEdgeOneAgentHandler({
+      agentId: "times",
+      authorize: async () => ({ id: "user-1" }),
+      createModelRuntime: async () => ({
+        config: { provider: "openai-codex", model: model.id },
+        models,
+        model,
+        configured: true,
+      }),
+    });
+
+    const response = await handle({ request: { body: { message: "解释这段话" } } });
+    const body = await response.text();
+
+    expect(body).toContain("解释被截");
+    expect(body).toContain("断后继续完成");
+    expect(body).toContain('"stopReason":"stop"');
+    expect(faux.state.callCount).toBe(2);
+  });
+
+  it("rejects malformed image input before auth", async () => {
+    const authorize = vi.fn(async () => ({ id: "user-1" }));
+    const handle = createEdgeOneAgentHandler({ authorize });
+    const response = await handle({
+      request: { body: { message: "解释", images: [{ mimeType: "image/svg+xml", data: "not-base64" }] } },
+    });
+
+    expect(response.status).toBe(400);
+    expect(authorize).not.toHaveBeenCalled();
   });
 
   it("manually traces the custom Pi Agent run and each tool call", async () => {

@@ -43,10 +43,12 @@ export default defineConfig(({ mode }) => {
           target: agentTarget.origin,
           changeOrigin: true,
           headers: { Origin: "" },
-          rewrite: (path) => path.replace(
-            /^\/gateway\/ask(?=\?|$)/,
-            agentPath,
-          ),
+          rewrite: (path) => {
+            if (/^\/gateway\/times\/explain(?=\?|$)/.test(path)) {
+              return path.replace(/^\/gateway\/times\/explain(?=\?|$)/, "/times");
+            }
+            return path.replace(/^\/gateway\/ask(?=\?|$)/, agentPath);
+          },
         },
       },
     },
