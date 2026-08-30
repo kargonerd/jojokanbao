@@ -79,7 +79,7 @@ jobs:
           write_flag cloud_api '^(backend/|tools/times-pipeline/|infrastructure/edgeone/|\.github/workflows/(ci|deploy-web|maintenance-times[^/]*)\.yml$)'
           write_flag database '^(infrastructure/supabase/|\.github/workflows/ci\.yml$)'
           write_flag search_scf '^(infrastructure/tencent-scf/search/|\.github/workflows/ci\.yml$)'
-          write_flag bloomberg_archive '^(tools/bloomberg-archive/|\.github/workflows/(maintenance-bloomberg-archive|ci)\.yml$)'
+          write_flag bloomberg_archive '^(tools/bloomberg-archive/|\.github/workflows/ci\.yml$)'
 
   node:
     name: Node workspaces
