@@ -27,7 +27,7 @@ Raw 与 Canonical 位于同一个 HF repo。B2 不保存 Raw、Canonical、代�
 Capture 成功后触发 Process/Publish
   最新完整 Raw commit
     → 仅接受完整正文
-    → 非中文语义块并发翻译（Gemma 31B，26B 降级，失败保留原文）
+    → 非中文完整 HTML blocks 并发翻译与结构校验（Gemma 31B，26B 降级，失败保留原文）
     → 单篇 Canonical Article + 媒体每日引用
     → HF Canonical commit
     → B2 媒体 Article/Asset
@@ -91,7 +91,7 @@ raw/runs/YYYY/MM/DD/{RUN_ID}.json
 
 canonical/{source}/dataset.json
 canonical/{source}/articles/{contentHash}.json.gz
-canonical/{source}/translations/gemma-news-zh-v1/YYYY/MM/YYYY-MM-DD/{sourceHash}.json.gz
+canonical/{source}/translations/gemma-news-zh-v2/YYYY/MM/YYYY-MM-DD/{sourceHash}.json.gz
 canonical/{source}/dates/YYYY/MM/YYYY-MM-DD.json.gz
 canonical/runs/{RUN_ID}.json
 ~~~

@@ -4,10 +4,11 @@ import path from "node:path";
 import { load, type CheerioAPI } from "cheerio";
 import { sha256 } from "../identity.js";
 import type { ProcessedArticleTranslation, ProcessedCandidate } from "../process/article.js";
+import { normalizeGeminiApiKeys } from "./api-keys.js";
 
 const TRANSLATION_FORMAT = "jojo-times-translation/1" as const;
 const TRANSLATION_FAILURE_FORMAT = "jojo-times-translation-failure/1" as const;
-export const TIMES_TRANSLATION_POLICY = "gemma-news-zh-v1" as const;
+export const TIMES_TRANSLATION_POLICY = "gemma-news-zh-v2" as const;
 export const TIMES_TRANSLATION_DEFAULTS = {
   workers: 8,
   requestTimeoutMs: 240_000,
@@ -18,27 +19,21 @@ export const TIMES_TRANSLATION_DEFAULTS = {
 } as const;
 const TARGET_LANGUAGE = "zh-CN" as const;
 const BLOCK_SELECTOR = "p,h1,h2,h3,h4,blockquote,figcaption,li,td,th";
-
-interface InlineNode {
-  type: string;
-  data?: string;
-  children?: InlineNode[];
-}
-
-interface TranslationSegment {
-  id: string;
-  text: string;
-}
+const FLEXIBLE_FORMATTING_TAGS = new Set(["b", "em", "i", "strong"]);
 
 interface TranslationBlock {
-  id: string;
   tag: string;
-  segments: TranslationSegment[];
+  html: string;
 }
 
-interface TranslationPayload {
-  title: string;
-  blocks: Array<{ id: string; segments: TranslationSegment[] }>;
+interface TranslationChunk {
+  includesTitle: boolean;
+  blocks: TranslationBlock[];
+}
+
+interface TranslatedChunk {
+  title?: string;
+  blocks: TranslationBlock[];
 }
 
 interface GeminiResponse {
@@ -76,7 +71,8 @@ interface StoredTranslationFailure {
 type TranslationCacheEntry = StoredTranslation | StoredTranslationFailure;
 
 export interface GemmaTranslationOptions {
-  apiKey: string;
+  apiKey?: string;
+  apiKeys?: readonly string[];
   primaryModel?: string;
   fallbackModel?: string;
   workers?: number;
@@ -108,6 +104,8 @@ export interface TranslationBatchStats {
   fallbackChunks: number;
   promptTokens: number;
   outputTokens: number;
+  configuredProjects: number;
+  quotaKeySwitches: number;
   durationMs: number;
   failures: TranslationFailure[];
 }
@@ -150,6 +148,27 @@ class MinuteRateLimiter {
   }
 }
 
+class GeminiHttpError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = "GeminiHttpError";
+  }
+}
+
+interface GemmaProjectSlot {
+  apiKey: string;
+  limiters: Map<string, MinuteRateLimiter>;
+}
+
+interface GemmaClientOptions {
+  apiKeys: readonly string[];
+  requestTimeoutMs: number;
+  requestsPerMinute: number;
+  tokensPerMinute: number;
+  fetchImpl: typeof fetch;
+  onProgress: ((message: string) => void) | undefined;
+}
+
 function positiveInteger(value: number | undefined, fallback: number, name: string): number {
   const selected = value ?? fallback;
   if (!Number.isInteger(selected) || selected < 1) throw new Error(`${name} must be a positive integer`);
@@ -171,112 +190,204 @@ function leafBlockElements(document: CheerioAPI): ReturnType<CheerioAPI>[number]
   return elements;
 }
 
-function translatableTextNodes(document: CheerioAPI, element: ReturnType<CheerioAPI>[number]): InlineNode[] {
-  const nodes: InlineNode[] = [];
-  const visit = (node: InlineNode): void => {
-    if (node.type === "text") {
-      if ((node.data ?? "").replace(/\s+/gu, " ").trim()) nodes.push(node);
-      return;
-    }
-    for (const child of node.children ?? []) visit(child);
-  };
-  for (const node of document(element).contents().toArray()) visit(node as InlineNode);
-  return nodes;
-}
-
 export function extractArticleTranslationBlocks(body: string): TranslationBlock[] {
   const document = load(body, undefined, false);
-  return leafBlockElements(document).map((element, index) => ({
-    id: `b${index + 1}`,
+  return leafBlockElements(document).map((element) => ({
     tag: String(document(element).prop("tagName") ?? "p").toLowerCase(),
-    segments: translatableTextNodes(document, element).map((node, segmentIndex) => ({
-      id: `s${segmentIndex + 1}`,
-      text: (node.data ?? "").replace(/\s+/gu, " ").trim(),
-    })),
+    html: document.html(element),
   }));
 }
 
-export function applyArticleTranslation(body: string, blocks: TranslationPayload["blocks"]): string {
-  const document = load(body, undefined, false);
-  const elements = leafBlockElements(document);
-  const expected = extractArticleTranslationBlocks(body);
-  if (elements.length !== blocks.length || elements.some((_element, index) => blocks[index]?.id !== expected[index]?.id)) {
-    throw new Error(`Translated block structure mismatch: expected ${elements.length}, received ${blocks.length}`);
-  }
-  for (let index = 0; index < elements.length; index += 1) {
-    const element = elements[index]!;
-    const nodes = translatableTextNodes(document, element);
-    const translatedSegments = blocks[index]!.segments;
-    const expectedSegments = expected[index]!.segments;
-    if (translatedSegments.length !== nodes.length || translatedSegments.some((segment, segmentIndex) => (
-      segment.id !== expectedSegments[segmentIndex]?.id || typeof segment.text !== "string" || !segment.text.trim()
-    ))) {
-      throw new Error(`Translated segment structure mismatch for ${expected[index]!.id}: expected ${nodes.length}, received ${translatedSegments.length}`);
-    }
-    for (let segmentIndex = 0; segmentIndex < nodes.length; segmentIndex += 1) {
-      nodes[segmentIndex]!.data = translatedSegments[segmentIndex]!.text.trim();
-    }
-  }
-  return document.html().trim();
+function attributes(document: CheerioAPI, element: ReturnType<CheerioAPI>[number]): Record<string, string> {
+  return document(element).attr() ?? {};
 }
 
-function splitBlocks(title: string, blocks: TranslationBlock[], maxCharacters: number): TranslationBlock[][] {
-  if (!blocks.length) return [[]];
-  const chunks: TranslationBlock[][] = [];
+function elementSignature(document: CheerioAPI, element: ReturnType<CheerioAPI>[number]): string {
+  const tag = String(document(element).prop("tagName") ?? "").toLowerCase();
+  const serializedAttributes = Object.entries(attributes(document, element))
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, value]) => `${name}=${value}`)
+    .join("|");
+  return `${tag}[${serializedAttributes}]`;
+}
+
+function signatureCounts(values: readonly string[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+  return counts;
+}
+
+function firstSignatureDifference(expected: readonly string[], actual: readonly string[]): string | undefined {
+  const expectedCounts = signatureCounts(expected);
+  const actualCounts = signatureCounts(actual);
+  for (const signature of new Set([...expectedCounts.keys(), ...actualCounts.keys()])) {
+    const expectedCount = expectedCounts.get(signature) ?? 0;
+    const actualCount = actualCounts.get(signature) ?? 0;
+    if (expectedCount !== actualCount) return `${signature} expected ${expectedCount}, received ${actualCount}`;
+  }
+  return undefined;
+}
+
+function plainFormattingCounts(document: CheerioAPI, element: ReturnType<CheerioAPI>[number]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const child of document(element).find("*").toArray()) {
+    const tag = String(document(child).prop("tagName") ?? "").toLowerCase();
+    if (!FLEXIBLE_FORMATTING_TAGS.has(tag) || Object.keys(attributes(document, child)).length > 0) continue;
+    counts.set(tag, (counts.get(tag) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function validateTranslatedBlock(
+  sourceDocument: CheerioAPI,
+  sourceElement: ReturnType<CheerioAPI>[number],
+  translatedDocument: CheerioAPI,
+  translatedElement: ReturnType<CheerioAPI>[number],
+  index: number,
+): void {
+  if (elementSignature(sourceDocument, sourceElement) !== elementSignature(translatedDocument, translatedElement)) {
+    throw new Error(`Translated block ${index} changed its outer tag or attributes`);
+  }
+  if (!translatedDocument(translatedElement).text().replace(/\s+/gu, " ").trim()) {
+    throw new Error(`Translated block ${index} is empty`);
+  }
+
+  const protectedSignatures = (
+    document: CheerioAPI,
+    element: ReturnType<CheerioAPI>[number],
+  ): string[] => document(element).find("*").toArray().flatMap((child) => {
+    const tag = String(document(child).prop("tagName") ?? "").toLowerCase();
+    const flexible = FLEXIBLE_FORMATTING_TAGS.has(tag) && Object.keys(attributes(document, child)).length === 0;
+    return flexible ? [] : [elementSignature(document, child)];
+  });
+  const protectedDifference = firstSignatureDifference(
+    protectedSignatures(sourceDocument, sourceElement),
+    protectedSignatures(translatedDocument, translatedElement),
+  );
+  if (protectedDifference) throw new Error(`Translated block ${index} changed protected HTML: ${protectedDifference}`);
+
+  const sourceFormatting = plainFormattingCounts(sourceDocument, sourceElement);
+  const translatedFormatting = plainFormattingCounts(translatedDocument, translatedElement);
+  for (const tag of FLEXIBLE_FORMATTING_TAGS) {
+    const expected = sourceFormatting.get(tag) ?? 0;
+    const actual = translatedFormatting.get(tag) ?? 0;
+    if ((expected === 0) !== (actual === 0)) {
+      throw new Error(`Translated block ${index} changed <${tag}> formatting: expected ${expected}, received ${actual}`);
+    }
+  }
+}
+
+function singleRootElement(html: string, label: string): { document: CheerioAPI; element: ReturnType<CheerioAPI>[number] } {
+  const document = load(html, undefined, false);
+  const elements = document.root().children().toArray();
+  const elementNodes = new Set<unknown>(elements);
+  const hasOtherContent = document.root().contents().toArray().some((node) => {
+    if (elementNodes.has(node)) return false;
+    return node.type !== "text" || ((node as { data?: string }).data ?? "").trim().length > 0;
+  });
+  if (elements.length !== 1 || hasOtherContent) throw new Error(`${label} must contain exactly one root HTML element`);
+  return { document, element: elements[0]! };
+}
+
+export function applyArticleTranslation(body: string, blocks: TranslationBlock[]): string {
+  const sourceDocument = load(body, undefined, false);
+  const sourceElements = leafBlockElements(sourceDocument);
+  if (sourceElements.length !== blocks.length) {
+    throw new Error(`Translated block structure mismatch: expected ${sourceElements.length}, received ${blocks.length}`);
+  }
+  for (let index = 0; index < sourceElements.length; index += 1) {
+    const sourceElement = sourceElements[index]!;
+    const translatedBlock = blocks[index]!;
+    const translated = singleRootElement(translatedBlock.html, `Translated block ${index + 1}`);
+    if (translatedBlock.tag !== String(translated.document(translated.element).prop("tagName") ?? "").toLowerCase()) {
+      throw new Error(`Translated block ${index + 1} tag metadata does not match its HTML`);
+    }
+    validateTranslatedBlock(sourceDocument, sourceElement, translated.document, translated.element, index + 1);
+    sourceDocument(sourceElement).html(translated.document(translated.element).html() ?? "");
+  }
+  return sourceDocument.html().trim();
+}
+
+function splitBlocks(title: string, blocks: TranslationBlock[], maxCharacters: number): TranslationChunk[] {
+  const chunks: TranslationChunk[] = [];
   let current: TranslationBlock[] = [];
   let characters = title.length;
   for (const block of blocks) {
-    const blockCharacters = block.segments.reduce((sum, segment) => sum + segment.text.length, 0);
+    const blockCharacters = block.html.length;
     if (current.length > 0 && characters + blockCharacters > maxCharacters) {
-      chunks.push(current);
+      chunks.push({ includesTitle: chunks.length === 0, blocks: current });
       current = [];
-      characters = title.length;
+      characters = 0;
     }
     current.push(block);
     characters += blockCharacters;
   }
-  if (current.length > 0) chunks.push(current);
+  if (current.length > 0) chunks.push({ includesTitle: chunks.length === 0, blocks: current });
   return chunks;
 }
 
-function translationPrompt(title: string, sourceLanguage: string, blocks: TranslationBlock[]): string {
+function escapeHtml(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+function translationPrompt(title: string, sourceLanguage: string, chunk: TranslationChunk): string {
+  const html = [
+    ...(chunk.includesTitle ? [`<h1>${escapeHtml(title)}</h1>`] : []),
+    ...chunk.blocks.map((block) => block.html),
+  ].join("\n");
   return [
-    `Translate the complete news content from ${sourceLanguage} into accurate, natural Simplified Chinese.`,
+    `Translate the following complete HTML news blocks from ${sourceLanguage} into accurate, natural Simplified Chinese.`,
     "Rules:",
-    "1. Translate the title and every block. Do not summarize, omit, merge, add, explain, or fact-check.",
+    "1. Translate all visible source-language text completely. Do not summarize, omit, merge, add, explain, or fact-check.",
     "2. Preserve meaning, uncertainty, tone, quotations, names, numbers, dates, currencies, units, and acronyms.",
-    "3. Keep every block id, segment id, and their order exactly. Return one translated segment for every input segment.",
-    "4. Each segment is a text node inside publisher-controlled HTML. Translate only its text; never add, remove, merge, or move segments.",
+    "3. Keep every block and its block-level tag in the original order. Preserve every HTML attribute exactly.",
+    "4. Preserve links and visual formatting. A complete inline element may move within its own block for natural Chinese word order, but never change which text it describes.",
     "5. Preserve email addresses, URLs, author names, and identifiers when they should not be translated.",
-    "6. Output JSON only: {\"title\":\"...\",\"blocks\":[{\"id\":\"b1\",\"segments\":[{\"id\":\"s1\",\"text\":\"...\"}]}]}",
-    "INPUT:",
-    JSON.stringify({ title, blocks: blocks.map(({ id, segments }) => ({ id, segments })) }),
+    "6. Return only the translated HTML fragment, with no JSON, Markdown fence, or explanation.",
+    "HTML:",
+    html,
   ].join("\n");
 }
 
-function parsePayload(value: string, expected: TranslationBlock[]): TranslationPayload {
-  const text = value.trim().replace(/^```(?:json)?\s*/iu, "").replace(/\s*```$/u, "");
-  const parsed = JSON.parse(text) as Partial<TranslationPayload>;
-  if (typeof parsed.title !== "string" || !parsed.title.trim() || !Array.isArray(parsed.blocks)) {
-    throw new Error("Gemma returned an invalid translation payload");
+function parseTranslatedChunk(value: string, expected: TranslationChunk): TranslatedChunk {
+  const text = value.trim().replace(/^```(?:html)?\s*/iu, "").replace(/\s*```$/u, "");
+  const document = load(text, undefined, false);
+  const elements = document.root().children().toArray();
+  const elementNodes = new Set<unknown>(elements);
+  const hasOtherContent = document.root().contents().toArray().some((node) => {
+    if (elementNodes.has(node)) return false;
+    return node.type !== "text" || ((node as { data?: string }).data ?? "").trim().length > 0;
+  });
+  const expectedCount = expected.blocks.length + (expected.includesTitle ? 1 : 0);
+  if (hasOtherContent || elements.length !== expectedCount) {
+    throw new Error(`Gemma returned invalid HTML block structure: expected ${expectedCount}, received ${elements.length}`);
   }
-  if (parsed.blocks.length !== expected.length || parsed.blocks.some((block, index) => {
-    const expectedBlock = expected[index];
-    return !block || block.id !== expectedBlock?.id || !Array.isArray(block.segments)
-      || block.segments.length !== expectedBlock.segments.length
-      || block.segments.some((segment, segmentIndex) => (
-        !segment || segment.id !== expectedBlock.segments[segmentIndex]?.id
-        || typeof segment.text !== "string" || !segment.text.trim()
-      ));
-  })) {
-    throw new Error(`Gemma returned invalid block structure: expected ${expected.length}, received ${parsed.blocks.length}`);
+
+  let offset = 0;
+  let translatedTitle: string | undefined;
+  if (expected.includesTitle) {
+    const titleElement = elements[0]!;
+    const titleTag = String(document(titleElement).prop("tagName") ?? "").toLowerCase();
+    if (titleTag !== "h1" || document(titleElement).find("*").length > 0) {
+      throw new Error("Gemma changed the title HTML structure");
+    }
+    translatedTitle = document(titleElement).text().replace(/\s+/gu, " ").trim();
+    if (!translatedTitle) throw new Error("Gemma returned an empty translated title");
+    offset = 1;
   }
+
+  const blocks = expected.blocks.map((sourceBlock, index) => {
+    const translatedElement = elements[index + offset]!;
+    const source = singleRootElement(sourceBlock.html, `Source block ${index + 1}`);
+    validateTranslatedBlock(source.document, source.element, document, translatedElement, index + 1);
+    return {
+      tag: String(document(translatedElement).prop("tagName") ?? "").toLowerCase(),
+      html: document.html(translatedElement),
+    };
+  });
   return {
-    title: parsed.title.trim(),
-    blocks: parsed.blocks.map((block) => ({
-      id: block.id,
-      segments: block.segments.map((segment) => ({ id: segment.id, text: segment.text.trim() })),
-    })),
+    ...(translatedTitle ? { title: translatedTitle } : {}),
+    blocks,
   };
 }
 
@@ -337,26 +448,38 @@ function failureRetryDelayMs(attempts: number): number {
 }
 
 class GemmaClient {
-  private readonly limiters = new Map<string, MinuteRateLimiter>();
+  private readonly projects: GemmaProjectSlot[];
+  private readonly modelCursors = new Map<string, number>();
   private requestCount = 0;
   private promptTokenCount = 0;
   private outputTokenCount = 0;
+  private quotaKeySwitchCount = 0;
 
-  constructor(private readonly options: Required<Pick<GemmaTranslationOptions,
-    "apiKey" | "requestTimeoutMs" | "requestsPerMinute" | "tokensPerMinute" | "fetchImpl">>) {}
-
-  metrics(): { requests: number; promptTokens: number; outputTokens: number } {
-    return { requests: this.requestCount, promptTokens: this.promptTokenCount, outputTokens: this.outputTokenCount };
+  constructor(private readonly options: GemmaClientOptions) {
+    this.projects = options.apiKeys.map((apiKey) => ({ apiKey, limiters: new Map() }));
   }
 
-  async translate(model: string, prompt: string, deadlineAt: number): Promise<string> {
-    if (Date.now() >= deadlineAt) throw new Error("Translation batch deadline exceeded");
-    let limiter = this.limiters.get(model);
+  metrics(): { requests: number; promptTokens: number; outputTokens: number; quotaKeySwitches: number } {
+    return {
+      requests: this.requestCount,
+      promptTokens: this.promptTokenCount,
+      outputTokens: this.outputTokenCount,
+      quotaKeySwitches: this.quotaKeySwitchCount,
+    };
+  }
+
+  private limiter(project: GemmaProjectSlot, model: string): MinuteRateLimiter {
+    let limiter = project.limiters.get(model);
     if (!limiter) {
       limiter = new MinuteRateLimiter(this.options.requestsPerMinute, this.options.tokensPerMinute);
-      this.limiters.set(model, limiter);
+      project.limiters.set(model, limiter);
     }
-    const event = await limiter.acquire(estimatedPromptTokens(prompt), deadlineAt);
+    return limiter;
+  }
+
+  private async translateWithProject(project: GemmaProjectSlot, model: string, prompt: string, deadlineAt: number): Promise<string> {
+    if (Date.now() >= deadlineAt) throw new Error("Translation batch deadline exceeded");
+    const event = await this.limiter(project, model).acquire(estimatedPromptTokens(prompt), deadlineAt);
     const remainingMs = deadlineAt - Date.now();
     if (remainingMs <= 0) throw new Error("Translation batch deadline exceeded");
     const controller = new AbortController();
@@ -365,20 +488,19 @@ class GemmaClient {
     try {
       const response = await this.options.fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
         method: "POST",
-        headers: { "content-type": "application/json", "x-goog-api-key": this.options.apiKey },
+        headers: { "content-type": "application/json", "x-goog-api-key": project.apiKey },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.1,
             maxOutputTokens: 32_768,
-            responseMimeType: "application/json",
             thinkingConfig: { thinkingLevel: "minimal" },
           },
         }),
         signal: controller.signal,
       });
       const payload = await response.json() as GeminiResponse;
-      if (!response.ok) throw new Error(payload.error?.message ?? `Gemini returned HTTP ${response.status}`);
+      if (!response.ok) throw new GeminiHttpError(response.status, payload.error?.message ?? `Gemini returned HTTP ${response.status}`);
       const candidate = payload.candidates?.[0];
       const text = candidate?.content?.parts?.filter((part) => !part.thought).map((part) => part.text ?? "").join("").trim() ?? "";
       if (!text) throw new Error(`Gemma returned no final text (${candidate?.finishReason ?? "unknown"})`);
@@ -390,6 +512,28 @@ class GemmaClient {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  async translate(model: string, prompt: string, deadlineAt: number): Promise<string> {
+    const start = this.modelCursors.get(model) ?? 0;
+    this.modelCursors.set(model, (start + 1) % this.projects.length);
+    let lastQuotaError: GeminiHttpError | undefined;
+    for (let offset = 0; offset < this.projects.length; offset += 1) {
+      const projectIndex = (start + offset) % this.projects.length;
+      try {
+        return await this.translateWithProject(this.projects[projectIndex]!, model, prompt, deadlineAt);
+      } catch (error) {
+        if (!(error instanceof GeminiHttpError) || error.status !== 429) throw error;
+        lastQuotaError = error;
+        if (offset + 1 >= this.projects.length) break;
+        this.quotaKeySwitchCount += 1;
+        const nextProject = (projectIndex + 1) % this.projects.length;
+        this.options.onProgress?.(
+          `[translation] ${model} project ${projectIndex + 1}/${this.projects.length} returned 429; retrying project ${nextProject + 1}/${this.projects.length}`,
+        );
+      }
+    }
+    throw lastQuotaError ?? new Error("Gemini translation has no configured API project");
   }
 }
 
@@ -412,7 +556,8 @@ export async function translateProcessedCandidates(
   candidates: readonly ProcessedCandidate[],
   options: GemmaTranslationOptions,
 ): Promise<TranslationBatchResult> {
-  if (!options.apiKey.trim()) throw new Error("Gemma translation requires a non-empty API key");
+  const apiKeys = normalizeGeminiApiKeys(options.apiKeys, options.apiKey);
+  if (apiKeys.length === 0) throw new Error("Gemma translation requires at least one non-empty API key");
   const workers = positiveInteger(options.workers, TIMES_TRANSLATION_DEFAULTS.workers, "Translation workers");
   const requestTimeoutMs = positiveInteger(options.requestTimeoutMs, TIMES_TRANSLATION_DEFAULTS.requestTimeoutMs, "Translation request timeout");
   const batchTimeoutMs = positiveInteger(options.batchTimeoutMs, TIMES_TRANSLATION_DEFAULTS.batchTimeoutMs, "Translation batch timeout");
@@ -423,11 +568,12 @@ export async function translateProcessedCandidates(
   const fallbackModel = options.fallbackModel?.trim() || "gemma-4-26b-a4b-it";
   const now = options.now ?? (() => new Date());
   const client = new GemmaClient({
-    apiKey: options.apiKey,
+    apiKeys,
     requestTimeoutMs,
     requestsPerMinute,
     tokensPerMinute,
     fetchImpl: options.fetchImpl ?? fetch,
+    onProgress: options.onProgress,
   });
   const started = Date.now();
   const deadlineAt = started + batchTimeoutMs;
@@ -478,23 +624,24 @@ export async function translateProcessedCandidates(
       const blocks = extractArticleTranslationBlocks(candidate.processedBody);
       if (!blocks.length) throw new Error("Article body has no translatable semantic blocks");
       const chunks = splitBlocks(candidate.title, blocks, maxChunkCharacters);
-      const translated: TranslationPayload = { title: "", blocks: [] };
+      const translated: TranslatedChunk = { blocks: [] };
       const usedModels = new Set<string>();
       for (const chunk of chunks) {
         const prompt = translationPrompt(candidate.title, candidate.language, chunk);
-        let payload: TranslationPayload;
+        let payload: TranslatedChunk;
         try {
-          payload = parsePayload(await client.translate(primaryModel, prompt, deadlineAt), chunk);
+          payload = parseTranslatedChunk(await client.translate(primaryModel, prompt, deadlineAt), chunk);
           usedModels.add(primaryModel);
         } catch (primaryError) {
           fallbackChunks += 1;
           options.onProgress?.(`[translation] fallback ${candidate.articleId}: ${primaryError instanceof Error ? primaryError.message : String(primaryError)}`);
-          payload = parsePayload(await client.translate(fallbackModel, prompt, deadlineAt), chunk);
+          payload = parseTranslatedChunk(await client.translate(fallbackModel, prompt, deadlineAt), chunk);
           usedModels.add(fallbackModel);
         }
-        if (!translated.title) translated.title = payload.title;
+        if (!translated.title && payload.title) translated.title = payload.title;
         translated.blocks.push(...payload.blocks);
       }
+      if (!translated.title) throw new Error("Gemma returned no translated title");
       const stored: StoredTranslation = {
         formatVersion: TRANSLATION_FORMAT,
         policy: TIMES_TRANSLATION_POLICY,
@@ -565,6 +712,8 @@ export async function translateProcessedCandidates(
       fallbackChunks: rows.reduce((sum, row) => sum + row.fallbackChunks, 0),
       promptTokens: metrics.promptTokens,
       outputTokens: metrics.outputTokens,
+      configuredProjects: apiKeys.length,
+      quotaKeySwitches: metrics.quotaKeySwitches,
       durationMs: Date.now() - started,
       failures: rows.flatMap((row) => row.failure ? [row.failure] : []),
     },

@@ -21,6 +21,7 @@ export interface ProcessedCandidate extends Candidate {
 
 export interface ProcessedArticleTranslation {
   language: "zh-CN";
+  policy?: string;
   title: string;
   body: { format: "html"; profile: "jojo-semantic-html/1"; value: string };
   provider: "google-gemini-api";

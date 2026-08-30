@@ -115,11 +115,11 @@ describe("HF snapshot selection", () => {
   });
 
   it("restores only translation caches matching the current source dates", () => {
-    const matching = "canonical/ap/translations/gemma-news-zh-v1/2026/08/2026-08-23/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.gz";
+    const matching = "canonical/ap/translations/gemma-news-zh-v2/2026/08/2026-08-23/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.gz";
     expect(canonicalTranslationObjects(new Set([
       matching,
-      "canonical/ap/translations/gemma-news-zh-v1/2026/08/2026-08-22/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json.gz",
-      "canonical/reuters/translations/gemma-news-zh-v1/2026/08/2026-08-23/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.json.gz",
+      "canonical/ap/translations/gemma-news-zh-v2/2026/08/2026-08-22/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json.gz",
+      "canonical/reuters/translations/gemma-news-zh-v2/2026/08/2026-08-23/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.json.gz",
       "canonical/ap/articles/article.json.gz",
     ]), new Map([["ap", new Set(["2026-08-23"])]]))).toEqual(new Set([matching]));
   });

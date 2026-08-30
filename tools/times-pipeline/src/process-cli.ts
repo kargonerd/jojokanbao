@@ -8,7 +8,13 @@ import { processArticle } from "./process/article.js";
 import { writeCanonicalSource, type CanonicalWriteResult } from "./process/canonical-writer.js";
 import { restoreTranslationContext } from "./process/translation-retry.js";
 import { processSourceCandidate, sourceBodyExtractor, sourceFetchPolicy } from "./sources/registry.js";
-import { TIMES_TRANSLATION_DEFAULTS, translateProcessedCandidates, type TranslationBatchStats } from "./translation/gemma.js";
+import { geminiApiKeysFromEnvironment } from "./translation/api-keys.js";
+import {
+  TIMES_TRANSLATION_DEFAULTS,
+  TIMES_TRANSLATION_POLICY,
+  translateProcessedCandidates,
+  type TranslationBatchStats,
+} from "./translation/gemma.js";
 import type { Candidate, SourceCaptureManifest } from "./types.js";
 import type { ProcessedCandidate } from "./process/article.js";
 
@@ -46,9 +52,11 @@ export async function runProcess(args: Map<string, string>): Promise<{
   const runManifestPath = path.resolve(requiredArg(args, "run-manifest"));
   const configPath = path.resolve(requiredArg(args, "config"));
   const rawRevision = args.get("raw-revision") ?? "local";
-  const apiKey = process.env.GEMINI_API_KEY?.trim() ?? "";
-  const translationEnabled = enabled(args.get("translate"), Boolean(apiKey));
-  if (translationEnabled && !apiKey) throw new Error("GEMINI_API_KEY is required when Times translation is enabled");
+  const apiKeys = geminiApiKeysFromEnvironment();
+  const translationEnabled = enabled(args.get("translate"), apiKeys.length > 0);
+  if (translationEnabled && apiKeys.length === 0) {
+    throw new Error("GEMINI_API_KEYS or GEMINI_API_KEY is required when Times translation is enabled");
+  }
   const sources = new Map((await loadSources(configPath)).map((source) => [source.id, source]));
   const run = JSON.parse(await readFile(runManifestPath, "utf8")) as RawRunManifest;
   const results: CanonicalWriteResult[] = [];
@@ -75,12 +83,12 @@ export async function runProcess(args: Map<string, string>): Promise<{
   let translation: ({ enabled: true } & TranslationBatchStats) | { enabled: false } = { enabled: false };
   if (translationEnabled) {
     for (const batch of batches) {
-      batch.candidates = await restoreTranslationContext(output, batch.candidates);
+      batch.candidates = await restoreTranslationContext(output, batch.candidates, "zh-CN", TIMES_TRANSLATION_POLICY);
     }
     const primaryModel = args.get("translation-model") ?? process.env.JOJO_TIMES_TRANSLATION_MODEL;
     const fallbackModel = args.get("translation-fallback-model") ?? process.env.JOJO_TIMES_TRANSLATION_FALLBACK_MODEL;
     const translated = await translateProcessedCandidates(output, batches.flatMap((batch) => batch.candidates), {
-      apiKey,
+      apiKeys,
       ...(primaryModel ? { primaryModel } : {}),
       ...(fallbackModel ? { fallbackModel } : {}),
       workers: positiveInteger(args.get("translation-workers") ?? process.env.JOJO_TIMES_TRANSLATION_WORKERS, TIMES_TRANSLATION_DEFAULTS.workers, "Translation workers"),

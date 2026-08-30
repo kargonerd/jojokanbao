@@ -67,6 +67,18 @@ describe("translation retry context", () => {
     const [fresh] = await restoreTranslationContext(output, [candidate()]);
     expect(fresh?.processedBody).toBeUndefined();
 
+    const [outdatedPolicy] = await restoreTranslationContext(output, [candidate()], "zh-CN", "gemma-news-zh-v2");
+    expect(outdatedPolicy?.processedBody).toBe("<p>Current source article.</p>");
+
+    await writeFile(articleFile, gzipSync(JSON.stringify({
+      articleId: "ap:stale",
+      body: { value: "<p>Current source article.</p>" },
+      translations: { "zh-CN": { ...translation, policy: "gemma-news-zh-v2", stale: undefined } },
+      assets: [],
+    })));
+    const [currentPolicy] = await restoreTranslationContext(output, [candidate()], "zh-CN", "gemma-news-zh-v2");
+    expect(currentPolicy?.processedBody).toBeUndefined();
+
     const changed = { ...candidate(), captureStatus: "captured" as const, processedBody: "<p>New source body.</p>" };
     const [withPrevious] = await restoreTranslationContext(output, [changed]);
     expect(withPrevious?.previousTranslations?.["zh-CN"]?.title).toBe("实时文章");
