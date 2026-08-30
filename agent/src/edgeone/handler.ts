@@ -475,6 +475,7 @@ export function createEdgeOneAgentHandler(
                   environment.JOJO_AGENT_MAX_TOOL_CALLS,
                   20,
                 ),
+                maxLengthContinuations: options.agentId === "times" ? 1 : 0,
                 onEvent(event) {
                   controller.enqueue(sseFrame(event.type, eventPayload(event)));
                 },
@@ -484,9 +485,11 @@ export function createEdgeOneAgentHandler(
                 "agent.turns": output.turns,
                 "agent.tool_calls": output.toolCalls,
                 "agent.duration_ms": output.durationMs,
+                "agent.stop_reason": output.stopReason,
                 "llm.token_count.total": output.usage.totalTokens,
                 "llm.token_count.prompt": output.usage.inputTokens,
                 "llm.token_count.completion": output.usage.outputTokens,
+                "llm.token_count.reasoning": output.usage.reasoningTokens ?? 0,
               });
               return output;
             },

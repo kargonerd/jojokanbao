@@ -180,6 +180,38 @@ describe("createEdgeOneAgentHandler", () => {
     });
   });
 
+  it("automatically continues a Times response stopped at the provider budget", async () => {
+    const faux = fauxProvider({
+      provider: "openai-codex",
+      tokensPerSecond: 100_000,
+    });
+    faux.setResponses([
+      fauxAssistantMessage("解释被截", { stopReason: "length" }),
+      fauxAssistantMessage("断后继续完成。\n<!-- JOJO_TIMES_COMPLETE -->"),
+    ]);
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const model = faux.getModel();
+    const handle = createEdgeOneAgentHandler({
+      agentId: "times",
+      authorize: async () => ({ id: "user-1" }),
+      createModelRuntime: async () => ({
+        config: { provider: "openai-codex", model: model.id },
+        models,
+        model,
+        configured: true,
+      }),
+    });
+
+    const response = await handle({ request: { body: { message: "解释这段话" } } });
+    const body = await response.text();
+
+    expect(body).toContain("解释被截");
+    expect(body).toContain("断后继续完成");
+    expect(body).toContain('"stopReason":"stop"');
+    expect(faux.state.callCount).toBe(2);
+  });
+
   it("rejects malformed image input before auth", async () => {
     const authorize = vi.fn(async () => ({ id: "user-1" }));
     const handle = createEdgeOneAgentHandler({ authorize });

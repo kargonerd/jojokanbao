@@ -127,6 +127,27 @@ describe("runPlatformAgent", () => {
     expect(result.stopReason).toBe("length");
   });
 
+  it("continues a truncated text answer when the product enables it", async () => {
+    const faux = fauxProvider({ provider: "jojo-length-continuation-test", tokensPerSecond: 100_000 });
+    faux.setResponses([
+      fauxAssistantMessage("第一段未完", { stopReason: "length" }),
+      fauxAssistantMessage("，这里接着完成。\n<!-- JOJO_TIMES_COMPLETE -->"),
+    ]);
+
+    const result = await runPlatformAgent({
+      systemPrompt: "Explain the selection.",
+      prompt: "Explain this.",
+      model: faux.getModel(),
+      stream: faux.provider.streamSimple,
+      maxLengthContinuations: 1,
+    });
+
+    expect(result.answer).toBe("第一段未完，这里接着完成。\n<!-- JOJO_TIMES_COMPLETE -->");
+    expect(result.stopReason).toBe("stop");
+    expect(result.turns).toBe(2);
+    expect(faux.state.callCount).toBe(2);
+  });
+
   it("rejects an unfinished tool loop after the configured turn budget", async () => {
     const faux = fauxProvider({ provider: "jojo-budget-test", tokensPerSecond: 100_000 });
     faux.setResponses([

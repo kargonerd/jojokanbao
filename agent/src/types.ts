@@ -91,6 +91,8 @@ export interface RunPlatformAgentOptions {
   toolExecution?: ToolExecutionMode;
   maxTurns?: number;
   maxToolCalls?: number;
+  /** Retry a text-only response that the provider stopped at its output budget. */
+  maxLengthContinuations?: number;
   convertToLlm?: AgentLoopConfig["convertToLlm"];
   beforeToolCall?: (
     context: BeforeToolCallContext,
