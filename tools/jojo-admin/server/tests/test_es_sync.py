@@ -255,6 +255,11 @@ class AppendOnlySyncTest(unittest.TestCase):
         self.assertEqual(result.unchanged, 1)
         self.assertEqual(result.conflicts, 1)
         self.assertEqual(result.conflict_ids, ["changed"])
+        bulk_actions = [
+            json.loads(line)["create"]["_id"]
+            for line in client.last_bulk.strip().splitlines()[::2]
+        ]
+        self.assertEqual(bulk_actions, ["new"])
 
     def test_serverless_id_search_makes_rerun_idempotent(self):
         document = {

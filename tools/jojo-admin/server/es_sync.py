@@ -604,8 +604,30 @@ class AppendOnlySync:
 
         if not direct_rows:
             return
-        lines: list[str] = []
+        # Tencent ES Serverless runs this index in append-only mode. Unlike a
+        # regular Elasticsearch index, it can accept another ``_create`` with
+        # the same caller-supplied ``_id`` instead of returning 409. Always
+        # resolve existing IDs before bulk creation so a resumed sync remains
+        # idempotent on the real target, not only on standard Elasticsearch.
+        existing_direct = self._existing([row.document_id for row in direct_rows])
+        rows_to_create: list[IndexedDocument] = []
         for row in direct_rows:
+            existing = existing_direct.get(row.document_id)
+            if existing is None:
+                rows_to_create.append(row)
+            elif _same_business_document(existing, row.document):
+                result.unchanged += 1
+            else:
+                result.conflicts += 1
+                if result.conflict_ids is None:
+                    result.conflict_ids = []
+                if len(result.conflict_ids) < 20:
+                    result.conflict_ids.append(row.document_id)
+
+        if not rows_to_create:
+            return
+        lines: list[str] = []
+        for row in rows_to_create:
             lines.append(json.dumps({
                 "create": {"_index": self.index, "_id": row.document_id}
             }, ensure_ascii=False, separators=(",", ":")))
@@ -614,10 +636,10 @@ class AppendOnlySync:
         if status >= 400:
             raise RuntimeError(f"ES bulk 请求失败：{payload}")
         items = payload.get("items") or []
-        if len(items) != len(direct_rows):
+        if len(items) != len(rows_to_create):
             raise RuntimeError("ES bulk 返回数量与请求不一致")
         existing_rows: list[IndexedDocument] = []
-        for row, item in zip(direct_rows, items, strict=True):
+        for row, item in zip(rows_to_create, items, strict=True):
             detail = item.get("create") or {}
             item_status = int(detail.get("status") or 0)
             if item_status in {200, 201}:
