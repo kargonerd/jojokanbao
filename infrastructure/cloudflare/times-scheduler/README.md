@@ -19,9 +19,18 @@ Create a fine-grained GitHub personal access token restricted to the
 it as a Cloudflare Worker secret. Never add the token to `wrangler.jsonc`, a
 `.dev.vars` file committed to Git, or a GitHub Actions log.
 
+Create `JOJO Times Scheduler` and `JOJO Times Pipeline` checks in
+Healthchecks.io. The scheduler check receives a success ping after every
+successful probe and a failure ping when the GitHub API cannot be queried or
+dispatched. A successful dispatch sends the pipeline check a start signal;
+GitHub Actions later reports Capture failure or the final Process outcome.
+Store both private ping URLs as Worker secrets as well.
+
 ```bash
 pnpm --filter @jojo/times-scheduler exec wrangler login
 pnpm --filter @jojo/times-scheduler exec wrangler secret put GITHUB_TOKEN
+pnpm --filter @jojo/times-scheduler exec wrangler secret put HEALTHCHECKS_TIMES_SCHEDULER_URL
+pnpm --filter @jojo/times-scheduler exec wrangler secret put HEALTHCHECKS_TIMES_PIPELINE_URL
 ```
 
 Cloudflare holds the long-lived token. The dispatched GitHub workflow continues
@@ -41,4 +50,5 @@ The production Cron expression is `* * * * *` in UTC. The one-minute cadence is
 only a catch-up probe; Capture still runs at most once per ten-minute slot. The
 Worker has no public HTTP route; only its Cron Trigger can invoke it. GitHub
 Actions has no native schedule fallback, so Cloudflare is the single production
-clock.
+clock. Healthchecks delivery is best effort and never blocks dispatch; a missed
+heartbeat still causes the external check to alert after its grace period.

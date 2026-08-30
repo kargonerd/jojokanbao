@@ -30,8 +30,20 @@ jobs:
       B2_REMOTE: jojo-b2
       TENCENTCLOUD_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
       TENCENTCLOUD_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
+      HEALTHCHECKS_RMRB_SYNC_URL: ${{ secrets.HEALTHCHECKS_RMRB_SYNC_URL }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Report scheduled RMRB sync start
+        if: ${{ github.event_name == 'schedule' }}
+        continue-on-error: true
+        env:
+          HEALTHCHECKS_PING_URL: ${{ env.HEALTHCHECKS_RMRB_SYNC_URL }}
+          HEALTHCHECKS_SIGNAL: start
+          HEALTHCHECKS_STAGE: rmrb-sync
+          HEALTHCHECKS_STATUS: started
+          HEALTHCHECKS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash tools/monitoring/ping-healthchecks.sh
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -95,3 +107,14 @@ jobs:
 
           echo "Public URL did not switch to the protected PDF in time." >&2
           exit 1
+
+      - name: Report scheduled RMRB sync outcome
+        if: ${{ always() && github.event_name == 'schedule' }}
+        continue-on-error: true
+        env:
+          HEALTHCHECKS_PING_URL: ${{ env.HEALTHCHECKS_RMRB_SYNC_URL }}
+          HEALTHCHECKS_SIGNAL: ${{ job.status == 'success' && 'success' || 'fail' }}
+          HEALTHCHECKS_STAGE: rmrb-sync
+          HEALTHCHECKS_STATUS: ${{ job.status }}
+          HEALTHCHECKS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash tools/monitoring/ping-healthchecks.sh

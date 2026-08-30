@@ -79,13 +79,32 @@ Scheduled and manually operated data tasks remain independent workflows:
 - `maintenance-bloomberg-archive.yml`
 - `maintenance-purge-archive-pdf-cache.yml`
 - `maintenance-sync-rmrb.yml`
-- `maintenance-times-capture.yml` — accepts the external ten-minute Cloudflare trigger, checks a 24-hour discovery lookback for late URLs, captures the primary one-hour window plus unseen/retry pages and images, and commits Raw to the private HF Dataset; its native schedule remains only as a migration fallback
+- `maintenance-times-capture.yml` — accepts the external ten-minute Cloudflare trigger, checks a 24-hour discovery lookback for late URLs, captures the primary one-hour window plus unseen/retry pages and images, and commits Raw to the private HF Dataset
 - `maintenance-times-process.yml` — after an automatic Capture succeeds, commits Canonical to the same HF Dataset and publishes B2 Delivery in pointer-safe order
 
 The scheduler implementation and deployment instructions live in
 `infrastructure/cloudflare/times-scheduler`. Cloudflare only supplies the
 clock; browser capture and publication continue to run on GitHub-hosted
 runners.
+
+## Maintenance monitoring
+
+Healthchecks.io provides the external dead-man switch, with a Feishu webhook
+assigned to each check. The maintenance environment holds private ping URLs in
+these secrets:
+
+- `HEALTHCHECKS_TIMES_PIPELINE_URL` — shared by automatic Capture and Process;
+  Capture reports only failure, and Process reports the final pipeline outcome
+- `HEALTHCHECKS_RMRB_SYNC_URL` — scheduled RMRB runs report start and final
+  outcome; manual runs do not affect the production check
+
+The Cloudflare scheduler separately holds
+`HEALTHCHECKS_TIMES_SCHEDULER_URL` and the same
+`HEALTHCHECKS_TIMES_PIPELINE_URL`; see its README for provisioning commands.
+Monitoring calls use `tools/monitoring/ping-healthchecks.sh`, attach the GitHub
+run URL as diagnostic text, and are best effort so a monitoring outage cannot
+block data publication. A missing success ping still produces an alert after
+the check's configured grace period.
 
 Do not add a feature-specific CI workflow. Add a package script or a focused
 job to `ci.yml`; create another workflow only when its trigger, permissions, or
