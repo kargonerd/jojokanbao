@@ -145,7 +145,7 @@ jobs:
           const fs = require("node:fs");
           const report = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/process-result.json", "utf8"));
           const translation = report.translation || { enabled: false };
-          console.log(`Translation: ${translation.enabled ? `${translation.translated} translated, ${translation.cacheHits} cached, ${translation.failed} failed in ${(translation.durationMs / 1000).toFixed(1)}s` : "disabled"}`);
+          console.log(`Translation: ${translation.enabled ? `${translation.translated} translated, ${translation.cacheHits} cached, ${translation.failed} failed, ${translation.deferred || 0} deferred in ${(translation.durationMs / 1000).toFixed(1)}s` : "disabled"}`);
           for (const source of report.sources || []) {
             console.log(`${source.sourceId}: ${source.articles.length} canonical, ${source.unchangedArticles?.length || 0} unchanged, ${source.skippedArticles?.length || 0} excluded`);
             for (const article of source.skippedArticles || []) {
@@ -291,7 +291,7 @@ jobs:
           const unchanged = processed?.sources?.flatMap((source) => source.unchangedArticles || []) || [];
           const skipped = processed?.sources?.flatMap((source) => source.skippedArticles || []) || [];
           const translation = processed?.translation || { enabled: false };
-          console.log(`- Translation: ${translation.enabled ? `${translation.translated} translated, ${translation.cacheHits} cached, ${translation.failed} failed, ${(translation.durationMs / 1000).toFixed(1)}s` : "disabled"}`);
+          console.log(`- Translation: ${translation.enabled ? `${translation.translated} translated, ${translation.cacheHits} cached, ${translation.failed} failed, ${translation.deferred || 0} deferred, ${(translation.durationMs / 1000).toFixed(1)}s` : "disabled"}`);
           console.log(`- Unchanged without refresh: ${unchanged.length}`);
           console.log(`- Excluded from Delivery: ${skipped.length}`);
           if (skipped.length) {

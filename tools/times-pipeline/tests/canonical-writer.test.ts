@@ -3,7 +3,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { writeCanonicalSource } from "../src/process/canonical-writer.js";
+import { writeCanonicalSource, type CanonicalArticle } from "../src/process/canonical-writer.js";
 import type { ProcessedCandidate } from "../src/process/article.js";
 import { removeParserArtifacts } from "../src/text.js";
 import type { SourceCaptureManifest, SourceConfig } from "../src/types.js";
@@ -134,6 +134,21 @@ describe("canonical writer", () => {
       },
     });
     expect(result.files).toContain(translatedCandidate.translationCacheObject);
+    const failedRefresh = await writeCanonicalSource(output, source, manifest, "raw/reuters/runs/run/manifest.json", [{
+      ...candidate,
+      processedBody: '<figure data-asset-id="asset:image"></figure><p>Updated Reuters article body.</p>',
+      previousTranslations: { "zh-CN": translatedCandidate.translation! },
+      translationStatus: "failed",
+      translationError: "temporary model failure",
+    }], "raw-sha-refresh");
+    const failedRefreshRow = JSON.parse(gunzipSync(await readFile(path.join(
+      output, ...failedRefresh.articles[0]!.object.split("/"),
+    ))).toString("utf8")) as CanonicalArticle;
+    expect(failedRefreshRow.body.value).toContain("Updated Reuters article body");
+    expect(failedRefreshRow.translations?.["zh-CN"]).toMatchObject({
+      title: "第一篇报道",
+      stale: true,
+    });
     const imageOnlyRef = result.articles.find((article) => article.articleId === "reuters:image-only");
     const imageOnlyRow = JSON.parse(gunzipSync(await readFile(path.join(
       output, ...imageOnlyRef!.object.split("/"),

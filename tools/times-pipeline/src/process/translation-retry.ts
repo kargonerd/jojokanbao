@@ -2,7 +2,7 @@ import { gunzipSync } from "node:zlib";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { CapturedAsset } from "../types.js";
-import type { ProcessedCandidate } from "./article.js";
+import type { ProcessedArticleTranslation, ProcessedCandidate } from "./article.js";
 
 interface ExistingDateIndex {
   articles?: Array<{ articleId?: unknown; object?: unknown }>;
@@ -10,8 +10,10 @@ interface ExistingDateIndex {
 
 interface ExistingCanonicalArticle {
   articleId?: unknown;
+  title?: unknown;
+  language?: unknown;
   body?: { value?: unknown };
-  translations?: Record<string, unknown>;
+  translations?: Record<string, ProcessedArticleTranslation>;
   assets?: CapturedAsset[];
 }
 
@@ -37,14 +39,15 @@ async function optionalGzipJson<T>(target: string): Promise<T | undefined> {
   }
 }
 
-export async function restoreUntranslatedUnchangedCandidates(
+export async function restoreTranslationContext(
   output: string,
   candidates: readonly ProcessedCandidate[],
   targetLanguage = "zh-CN",
 ): Promise<ProcessedCandidate[]> {
   const dateIndexes = new Map<string, Promise<ExistingDateIndex | undefined>>();
   return Promise.all(candidates.map(async (candidate) => {
-    if (candidate.captureStatus !== "unchanged" || candidate.processedBody || candidate.language.toLowerCase().startsWith("zh")) {
+    if (candidate.language.toLowerCase().startsWith("zh")
+      || (!candidate.processedBody && candidate.captureStatus !== "unchanged")) {
       return candidate;
     }
     const date = new Date(candidate.publishedAt);
@@ -65,7 +68,13 @@ export async function restoreUntranslatedUnchangedCandidates(
       throw new Error(`Invalid Canonical article object for ${candidate.articleId}: ${articleObject}`);
     }
     const article = await optionalGzipJson<ExistingCanonicalArticle>(localCanonicalPath(output, normalizedObject));
-    if (!article || article.articleId !== candidate.articleId || article.translations?.[targetLanguage]) return candidate;
+    if (!article || article.articleId !== candidate.articleId) return candidate;
+    const previousTranslations = article.translations ?? {};
+    if (candidate.processedBody) {
+      return Object.keys(previousTranslations).length ? { ...candidate, previousTranslations } : candidate;
+    }
+    const target = previousTranslations[targetLanguage];
+    if (target && target.stale !== true) return candidate;
     const body = article.body?.value;
     if (typeof body !== "string" || !body.trim()) return candidate;
     return {
@@ -73,6 +82,7 @@ export async function restoreUntranslatedUnchangedCandidates(
       contentStatus: "full",
       processedBody: body,
       assets: article.assets ?? candidate.assets ?? [],
+      ...(Object.keys(previousTranslations).length ? { previousTranslations } : {}),
     };
   }));
 }

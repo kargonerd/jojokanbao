@@ -1,6 +1,7 @@
 import { gzipSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
 import {
+  candidateArticleIds,
   candidateUnchangedArticleIds,
   canonicalArticleAssets,
   candidateDates,
@@ -69,6 +70,7 @@ describe("HF snapshot selection", () => {
     ].join("\n"));
     const unchanged = candidateUnchangedArticleIds(candidates);
     expect(unchanged).toEqual(new Set(["ap:retry"]));
+    expect(candidateArticleIds(candidates)).toEqual(new Set(["ap:retry", "ap:captured"]));
 
     const articleObject = "canonical/ap/articles/retry.json.gz";
     const dateIndex = gzipSync(JSON.stringify({

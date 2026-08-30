@@ -82,6 +82,16 @@ export function candidateUnchangedArticleIds(compressed: Uint8Array): Set<string
   return articleIds;
 }
 
+export function candidateArticleIds(compressed: Uint8Array): Set<string> {
+  const articleIds = new Set<string>();
+  for (const line of gunzipSync(compressed).toString("utf8").split(/\r?\n/u)) {
+    if (!line.trim()) continue;
+    const articleId = (JSON.parse(line) as { articleId?: unknown }).articleId;
+    if (typeof articleId === "string") articleIds.add(articleId);
+  }
+  return articleIds;
+}
+
 export function canonicalObjects(sourceId: string, dates: ReadonlySet<string>): Set<string> {
   const root = path.posix.join("canonical", sourceId);
   return new Set([
@@ -342,6 +352,7 @@ export class HfTimesDataset {
       return {
         sourceId,
         dates: candidateDates(bytes),
+        articleIds: candidateArticleIds(bytes),
         unchangedArticleIds: candidateUnchangedArticleIds(bytes),
         assets: candidateAssets(bytes),
         rawPages: candidateRawPages(bytes),
@@ -372,19 +383,24 @@ export class HfTimesDataset {
     const canonical = [...wanted].filter((objectName) => existing.has(objectName)).sort();
     await mapLimit(canonical, 8, async (objectName) => this.downloadObject(objectName, latest.revision));
     const canonicalArticles = new Set<string>();
+    const retryCanonicalArticles = new Set<string>();
     for (const bundle of bundles) {
       for (const date of bundle.dates) {
         const indexObject = path.posix.join("canonical", bundle.sourceId, "dates", date.slice(0, 4), date.slice(5, 7), `${date}.json.gz`);
         if (!existing.has(indexObject)) continue;
         const indexFile = localObjectPath(this.output, indexObject);
-        for (const objectName of referencedCanonicalArticleObjects(await readFile(indexFile), bundle.sourceId, bundle.unchangedArticleIds)) {
+        const indexBytes = await readFile(indexFile);
+        for (const objectName of referencedCanonicalArticleObjects(indexBytes, bundle.sourceId, bundle.articleIds)) {
           if (existing.has(objectName)) canonicalArticles.add(objectName);
+        }
+        for (const objectName of referencedCanonicalArticleObjects(indexBytes, bundle.sourceId, bundle.unchangedArticleIds)) {
+          if (existing.has(objectName)) retryCanonicalArticles.add(objectName);
         }
       }
     }
     await mapLimit([...canonicalArticles], 8, async (objectName) => this.downloadObject(objectName, latest.revision));
     const restoredCanonicalAssets = new Set<string>();
-    for (const objectName of canonicalArticles) {
+    for (const objectName of retryCanonicalArticles) {
       const articleFile = localObjectPath(this.output, objectName);
       for (const assetObject of canonicalArticleAssets(await readFile(articleFile))) {
         if (!rawAssets.has(assetObject)) restoredCanonicalAssets.add(assetObject);

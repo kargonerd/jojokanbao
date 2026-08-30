@@ -16,6 +16,7 @@ export interface TimesArticleTranslation {
   articleObject: string;
   provider: "google-gemini-api";
   model: string;
+  stale?: boolean;
 }
 
 export interface TimesDeliveryArticle {
