@@ -19,42 +19,126 @@ python app.py
 ## Unified content search
 
 `POST /content/search` serves Reader and Agent queries over JOJO books,
-newspapers and magazines. Configure a normal ES index with:
+newspapers and magazines. It deliberately uses a separate client so the
+existing `/search` cluster and account are unaffected. Configure the new
+content cluster with:
 
 ```powershell
-$env:ELASTICSEARCH_CONTENT_INDEX="jojo-content-v1"
+$env:CONTENT_ELASTICSEARCH_URL="https://your-new-content-es-endpoint"
+$env:CONTENT_ELASTICSEARCH_USERNAME="elastic"
+$env:CONTENT_ELASTICSEARCH_PASSWORD="..."
+$env:CONTENT_ELASTICSEARCH_INDEX="jojo-content-v1"
 ```
 
-Tencent ES Serverless is append-only. Publish each build as an immutable
-release and set both values returned by Workbench publication:
+Tencent ES Serverless is append-only. The unified synchronizer writes stable
+logical document IDs and does not use a release selector. Until all four
+`CONTENT_ELASTICSEARCH_*` values are configured, `/content/search` fails closed
+with HTTP 503 while the existing `/search` route remains available.
 
-```powershell
-$env:ELASTICSEARCH_CONTENT_INDEX="aitest-1tk2lxru"
-$env:ELASTICSEARCH_CONTENT_RELEASE_ID="r3ca3503a48d9f9d83c03"
-```
+`datasetId` and `itemId` are top-level keyword fields used for exact scope
+filtering. The unified endpoint reads only the nine fields in the strict JOJO
+Search mapping; it does not query the old chunk, repair, vector, or release
+fields.
 
-When a release is configured, Dataset and Item scope use SHA-256 filter keys so
-exact filtering remains reliable even if a legacy Serverless index dynamically
-mapped the original IDs as `text`. The API overfetches ES chunks and returns
-distinct `fragmentObject` results.
-
-### Migration exclusions
+### Search revision state
 
 Reader Search supports append-only repairs without Elasticsearch update/delete
-operations. It reads reviewed migration JSON files from
-`tools/jojo-admin/server/es_migrations/` and adds one `must_not.ids`
-filter to each search request:
+operations. The SCF runtime reads one plain JSON object from private COS and
+adds one `must_not.ids` filter to each search request:
+
+```json
+{"excludedIds":{"jojo-content-v1":["superseded-document-id"]}}
+```
 
 - a repair excludes the superseded document ID;
 - a deletion excludes the superseded document ID and its new tombstone ID.
 
-Only applied migrations for the current Elasticsearch index are used. This
-keeps filtering before pagination without an extra ES revision scan. When this
-service is deployed separately, point it at the deployed migration directory:
+The file is cached in each warm SCF instance. After 60 seconds the runtime uses
+COS `HEAD Object` to compare ETags and downloads it only when changed. A refresh
+failure keeps the last good state; a cold start without any readable state
+fails closed with HTTP 503.
+
+Configure the function with the bucket, region, and one fixed object key:
 
 ```powershell
-$env:SEARCH_MIGRATIONS_DIR="C:\path\to\reviewed\migrations"
+$env:SEARCH_STATE_COS_BUCKET="private-bucket-1250000000"
+$env:SEARCH_STATE_COS_REGION="ap-beijing"
+$env:SEARCH_STATE_COS_KEY="runtime/search/search-state.json"
 ```
+
+Bind an SCF execution role with `cos:HeadObject` and `cos:GetObject` restricted
+to that object. SCF supplies temporary credentials through its built-in
+`TENCENTCLOUD_*` environment variables, so permanent COS keys are not stored in
+the function configuration. Package `cos-python-sdk-v5` with the function;
+the Python 3.9 Web runtime does not expose it on `PYTHONPATH` consistently.
+
+The local migration history remains auditable but is never deployed with SCF.
+The repair workbench publishes automatically after each successful repair. The
+CLI below is the recovery/manual path. It downloads the current object first
+and unions old exclusions with local applied migrations, so another workstation
+cannot erase earlier repair state:
+
+```powershell
+python tools/jojo-admin/server/publish_search_state.py `
+  --index jojo-content-v1 `
+  --index jojo-67f10bu8 `
+  --bucket private-bucket-1250000000 `
+  --region ap-beijing
+```
+
+## Deploying search code
+
+`deploy.py` is the only supported SCF code-release path. It builds a clean zip
+with pinned dependencies, normalizes `scf_bootstrap` to Linux line endings,
+submits the small package directly to the SCF API, waits for the function to
+become Active, and verifies `/health`. Local profile-based deployments retain
+the temporary private-COS fallback. The health response exposes the Git commit
+and source fingerprint that are actually running.
+
+Build locally without changing cloud state:
+
+```powershell
+python infrastructure/tencent-scf/search/deploy.py --build-only
+```
+
+Deploy and verify staging:
+
+```powershell
+python infrastructure/tencent-scf/search/deploy.py --target staging
+```
+
+Production refuses to deploy unless staging is healthy and is running the same
+source fingerprint. The production flag must also be explicit:
+
+```powershell
+python infrastructure/tencent-scf/search/deploy.py `
+  --target production `
+  --confirm-production
+```
+
+Normal production releases are tag-driven. After the change is merged into
+`master`, create and push an annotated `search-v*` tag:
+
+```powershell
+git switch master
+git pull --ff-only
+git tag -a search-v2026.08.30.1 -m "Release Reader Search"
+git push origin search-v2026.08.30.1
+```
+
+`.github/workflows/release-search.yml` rejects tags whose commit is not already
+in `master`, deploys and verifies staging first, and then automatically deploys
+production. The dedicated GitHub Environments keep staging and production
+deployment history separate but do not require manual approval. Configure the
+repository's long-lived `COS_SECRET_ID` and `COS_SECRET_KEY` secrets. The
+corresponding Tencent CAM identity must be limited to the `jojo-search`
+deployment bucket and the two Reader Search SCF functions, including the SCF
+read/update actions used by `deploy.py`.
+
+GitHub Actions uses the Tencent Cloud Python SDK with repository secrets. Local
+profile-based fallback calls the authenticated `tccli`; neither mode stores
+Tencent credentials in the repository. `UpdateFunctionCode` preserves the
+function's environment and network configuration.
 
 ## Overlay Search Test
 

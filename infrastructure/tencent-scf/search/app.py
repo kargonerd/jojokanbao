@@ -1,19 +1,20 @@
+import json
 import os
-import hashlib
 from pathlib import Path
 from flask import Flask, jsonify, request
 from elasticsearch import Elasticsearch
 import re
 from flask_cors import CORS
 from search_overlay import build_search_query, load_patch_state_file, merge_search_hits
-from migration_exclusions import build_active_query, hit_to_active_result, load_excluded_ids
+from migration_exclusions import build_active_query, hit_to_active_result
+from search_state import CosSearchState, SearchStateUnavailable
 
-def create_elasticsearch_client():
-  url = os.environ.get('ELASTICSEARCH_URL')
-  username = os.environ.get('ELASTICSEARCH_USERNAME')
-  password = os.environ.get('ELASTICSEARCH_PASSWORD')
+def create_elasticsearch_client(prefix='ELASTICSEARCH', require_auth=False):
+  url = os.environ.get(f'{prefix}_URL')
+  username = os.environ.get(f'{prefix}_USERNAME')
+  password = os.environ.get(f'{prefix}_PASSWORD')
 
-  if not url:
+  if not url or (require_auth and not (username and password)):
     return None
 
   kwargs = {
@@ -29,17 +30,26 @@ def create_elasticsearch_client():
 
 es = create_elasticsearch_client()
 index_name = os.environ.get('ELASTICSEARCH_INDEX', 'jojo-67f10bu8')
-content_index_name = os.environ.get('ELASTICSEARCH_CONTENT_INDEX', 'jojo-content-v1')
-content_release_id = os.environ.get('ELASTICSEARCH_CONTENT_RELEASE_ID', '').strip()
+content_es = create_elasticsearch_client('CONTENT_ELASTICSEARCH', require_auth=True)
+content_index_name = os.environ.get('CONTENT_ELASTICSEARCH_INDEX', '').strip()
 overlay_enabled = os.environ.get('SEARCH_OVERLAY', '').lower() in ('1', 'true', 'yes', 'on')
 base_index_name = os.environ.get('ELASTICSEARCH_BASE_INDEX')
 delta_index_name = os.environ.get('ELASTICSEARCH_DELTA_INDEX')
 patch_state_path = os.environ.get('SEARCH_PATCH_STATE_FILE')
 overfetch_multiplier = int(os.environ.get('SEARCH_OVERFETCH_MULTIPLIER', '5'))
-migrations_dir = Path(os.environ.get(
-  'SEARCH_MIGRATIONS_DIR',
-  Path(__file__).resolve().parents[3] / 'tools' / 'jojo-admin' / 'server' / 'es_migrations',
-))
+search_state = CosSearchState.from_environment()
+
+
+def _build_info():
+  path = Path(__file__).with_name('build_info.json')
+  try:
+    payload = json.loads(path.read_text(encoding='utf-8'))
+    return payload if isinstance(payload, dict) else {}
+  except (OSError, ValueError):
+    return {'gitCommit': 'development', 'sourceFingerprint': 'development'}
+
+
+build_info = _build_info()
         
 IS_SERVERLESS = bool(os.environ.get('SERVERLESS'))
 
@@ -53,9 +63,13 @@ CORS(app, origins=['https://jojokanbao.cn', 'https://reader.jojokanbao.cn', 'htt
 def health():
   return jsonify({
     'status': 'ok',
+    'build': build_info,
     'elasticsearch': 'configured' if es else 'not_configured',
+    'contentElasticsearch': (
+      'configured' if content_es and content_index_name else 'not_configured'
+    ),
     'overlay': 'enabled' if overlay_enabled else 'disabled',
-    'revisionFiltering': 'enabled'
+    'revisionFiltering': search_state.status(),
   })
 
 def processKeyword(keyword):
@@ -72,14 +86,14 @@ def _string_list(value, limit=100):
   return [item for item in value[:limit] if isinstance(item, str) and item]
 
 
-def _content_filter_key(value):
-  return hashlib.sha256(value.encode('utf-8')).hexdigest()
+def _identity_filter(field, values):
+  return {'terms': {field: values}}
 
 
 @app.route("/content/search", methods=["POST"])
 def content_search():
   """Search the unified JOJO content index for both readers and Agent tools."""
-  if es is None:
+  if content_es is None or not content_index_name:
     return jsonify({'error': 'search backend is not configured'}), 503
   payload = request.get_json(silent=True) or {}
   query_text = str(payload.get('query') or '').strip()
@@ -92,70 +106,69 @@ def content_search():
   filters = []
   dataset_ids = _string_list(payload.get('datasetIds'))
   item_ids = _string_list(payload.get('itemIds'))
-  if content_release_id:
-    filters.append({'term': {'releaseId': content_release_id}})
-    if dataset_ids:
-      filters.append({'terms': {'datasetFilterKey': [_content_filter_key(value) for value in dataset_ids]}})
-    if item_ids:
-      filters.append({'terms': {'itemFilterKey': [_content_filter_key(value) for value in item_ids]}})
-  else:
-    if dataset_ids:
-      filters.append({'terms': {'datasetId': dataset_ids}})
-    if item_ids:
-      filters.append({'terms': {'itemId': item_ids}})
+  document_types = _string_list(payload.get('types'))
+  sources = _string_list(payload.get('sources'))
+  if dataset_ids:
+    filters.append(_identity_filter('datasetId', dataset_ids))
+  if item_ids:
+    filters.append(_identity_filter('itemId', item_ids))
+  if document_types:
+    filters.append({'terms': {'type': document_types}})
+  if sources:
+    filters.append({'terms': {'source': sources}})
+  query = {
+    'bool': {
+      'must': [{
+        'multi_match': {
+          'query': query_text,
+          'fields': ['title^4', 'content'],
+          'type': 'best_fields',
+          'operator': 'and',
+        }
+      }],
+      'should': [
+        {'match_phrase': {'content': {'query': query_text, 'boost': 8}}},
+      ],
+      'filter': filters,
+    }
+  }
+  try:
+    excluded = search_state.excluded_ids(content_index_name)
+  except SearchStateUnavailable as exc:
+    app.logger.error('search state unavailable: %s', exc)
+    return jsonify({'error': '搜索修订状态暂时不可用'}), 503
+  if excluded:
+    query = build_active_query(query, excluded)
   body = {
-    # A long chapter can produce several ES chunks. Overfetch so the API can
-    # return distinct source fragments instead of spending every slot on one.
-    'size': min(size * 5, 100),
-    '_source': [
-      'datasetId', 'datasetTitle', 'itemId', 'itemTitle', 'itemType',
-      'targetId', 'targetTitle', 'chunkId', 'order', 'text', 'authors',
-      'publishedDate', 'manifestObject', 'fragmentObject'
-    ],
-    'query': {
-      'bool': {
-        'must': [{
-          'multi_match': {
-            'query': query_text,
-            'fields': ['datasetTitle^4', 'itemTitle^4', 'targetTitle^3', 'text'],
-            'type': 'best_fields',
-            'operator': 'and',
-          }
-        }],
-        'should': [{
-          'match_phrase': {
-            'text': {'query': query_text, 'boost': 8},
-          }
-        }],
-        'filter': filters,
-      }
-    },
+    'size': size,
+    '_source': ['type', 'datasetId', 'itemId', 'title', 'content', 'date', 'source', 'metadata'],
+    'query': query,
     'highlight': {
-      'fields': {'text': {'fragment_size': 260, 'number_of_fragments': 2}},
+      'fields': {
+        'content': {'fragment_size': 260, 'number_of_fragments': 2},
+      },
       'pre_tags': ['<mark>'],
       'post_tags': ['</mark>'],
     },
   }
   try:
-    data = es.search(index=content_index_name, body=body)
-  except Exception as exc:
+    data = content_es.search(index=content_index_name, body=body)
+  except Exception:
     app.logger.exception('unified content search failed')
-    return jsonify({'error': str(exc)}), 502
+    return jsonify({'error': '搜索服务暂时不可用'}), 502
   hits = (data.get('hits') or {})
   results = []
-  seen_fragments = set()
   for hit in hits.get('hits') or []:
     source = hit.get('_source') or {}
-    fragment_object = source.get('fragmentObject')
-    if fragment_object and fragment_object in seen_fragments:
+    if dataset_ids and source.get('datasetId') not in dataset_ids:
       continue
-    if fragment_object:
-      seen_fragments.add(fragment_object)
-    highlights = (hit.get('highlight') or {}).get('text') or []
+    if item_ids and source.get('itemId') not in item_ids:
+      continue
     results.append({
       **source,
+      'documentId': hit.get('_id'),
       'score': hit.get('_score'),
-      'highlights': highlights,
+      'highlights': ((hit.get('highlight') or {}).get('content') or []),
     })
     if len(results) >= size:
       break
@@ -163,11 +176,6 @@ def content_search():
   if isinstance(total, dict):
     total = total.get('value', 0)
   return jsonify({'data': {'total': total, 'results': results}})
-
-
-def is_quoted_only_query(query):
-  pattern = r'^"[^"]+"$'
-  return bool(re.match(pattern, query))
 
 
 def get_sort_query(sort_order):
@@ -280,118 +288,58 @@ def search():
                   }
               }
           }
-          if is_quoted_only_query(query_str):
-              quoted_text = query_str[1:-1]
-              query = {
-                  "query": {
-                      "bool": {
-                          "should": [
-                              {
-                                  "wildcard": {
-                                      "title.keyword": f"*{quoted_text}*"
-                                  }
-                              },
-                              {
-                                  "wildcard": {
-                                      "content.keyword": f"*{quoted_text}*"
-                                  }
+          query = {
+              "query": {
+                  "bool": {
+                      "must": [
+                          {
+                              "query_string": {
+                                "query": query_str,
+                                "fields": ["title^2", "content"],
+                                "default_operator": "OR",
+                                "minimum_should_match": "60%",
+                                "analyzer": "ik_smart"
                               }
-                          ],
-                          "minimum_should_match": 1
-                      }
+                          },
+                          date_range_query
+                      ]
+                  }
+              },
+              "highlight": {
+                  "fields": {
+                      "title": {},
+                      "content": {}
                   },
-                  "highlight": {
-                      "fields": {
-                          "title": {},
-                          "content": {}
-                      }, 
-                      "fragment_size": 2147483647,
-                      "pre_tags": "@highlight@",
-                      "post_tags": "@/highlight@"
-                  },
-                  "from": from_num,
-                  "size": size,
-              }
-          else:
-              query = {
-                  "query": {
-                      "bool": {
-                          "must": [
-                              {
-                                  "query_string": {
-                                    "query": query_str,
-                                    "fields": ["title^2", "content"]
-                                  }
-                              },
-                              date_range_query
-                          ]
-                      }
-                  },
-                  "highlight": {
-                      "fields": {
-                          "title": {},
-                          "content": {}
-                      }, 
-                      "fragment_size": 2147483647,
-                      "pre_tags": "@highlight@",
-                      "post_tags": "@/highlight@"
-                  },
-                  "from": from_num,
-                  "size": size,
-              }
+                  "fragment_size": 2147483647,
+                  "pre_tags": "@highlight@",
+                  "post_tags": "@/highlight@"
+              },
+              "from": from_num,
+              "size": size,
+          }
       else:
-          if is_quoted_only_query(query_str):
-              quoted_text = query_str[1:-1]
-              query = {
-                  "query": {
-                      "bool": {
-                          "should": [
-                              {
-                                  "wildcard": {
-                                      "title.keyword": f"*{quoted_text}*"
-                                  }
-                              },
-                              {
-                                  "wildcard": {
-                                      "content.keyword": f"*{quoted_text}*"
-                                  }
-                              }
-                          ],
-                          "minimum_should_match": 1
-                      }
+          query = {
+              "query": {
+                   "query_string": {
+                        "query": query_str,
+                        "fields": ["title^2", "content"],
+                        "default_operator": "OR",
+                        "minimum_should_match": "60%",
+                        "analyzer": "ik_smart"
+                    }
+              },
+              "highlight": {
+                  "fields": {
+                      "title": {},
+                      "content": {}
                   },
-                  "highlight": {
-                      "fields": {
-                          "title": {},
-                          "content": {}
-                      }, 
-                      "fragment_size": 2147483647,
-                      "pre_tags": "@highlight@",
-                      "post_tags": "@/highlight@"
-                  },
-                  "from": from_num,
-                  "size": size,
-              }
-          else:
-              query = {
-                  "query": {
-                       "query_string": {
-                            "query": query_str,
-                            "fields": ["title^2", "content"]                      
-                        }
-                  },
-                  "highlight": {
-                      "fields": {
-                          "title": {},
-                          "content": {}
-                      }, 
-                      "fragment_size": 2147483647,
-                      "pre_tags": "@highlight@",
-                      "post_tags": "@/highlight@"
-                  },
-                  "from": from_num,
-                  "size": size,
-              }
+                  "fragment_size": 2147483647,
+                  "pre_tags": "@highlight@",
+                  "post_tags": "@/highlight@"
+              },
+              "from": from_num,
+              "size": size,
+          }
 
       sort_order = request.args.get('sort')
       sort_query = get_sort_query(sort_order)
@@ -400,7 +348,7 @@ def search():
         query['sort'] = sort_query
       query['query'] = build_active_query(
         query['query'],
-        load_excluded_ids(migrations_dir, index_name),
+        search_state.excluded_ids(index_name),
       )
       data = es.search(index=index_name, body=query)
       if not data:
@@ -434,8 +382,11 @@ def search():
           continue
         results.append(hit_to_active_result(hit))
       return jsonify({'data': {'total': total_num, 'results': results}})
+    except SearchStateUnavailable as e:
+      app.logger.error("search state unavailable: %s", e)
+      return jsonify({"error": "搜索修订状态暂时不可用"}), 503
     except Exception as e:
-      app.logger.error("search from ES error:", e)
+      app.logger.error("search from ES error: %s", e)
       return jsonify({"error": "服务端错误"})
 
 

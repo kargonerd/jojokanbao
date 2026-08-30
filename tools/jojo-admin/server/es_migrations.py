@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from es_repair import KibanaConsoleClient, revision_id
+from es_repair import KibanaConsoleClient, clean_repair_document, revision_id
 
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "es_migrations"
@@ -36,11 +36,9 @@ def preview_migration(
         "reason": reason.strip(),
         "state": "pending",
     }
-    es_payload = {
-        **clean,
-        "@timestamp": GENERATED_AT_PREVIEW,
-        "replacedDocumentId": replaced_document_id,
-    }
+    es_payload = {**clean, "@timestamp": GENERATED_AT_PREVIEW}
+    if "type" not in clean:
+        es_payload["replacedDocumentId"] = replaced_document_id
     canonical = json.dumps(
         {"migration": migration, "esPayload": es_payload},
         ensure_ascii=False,
@@ -143,6 +141,78 @@ def excluded_document_ids(
     return excluded
 
 
+def search_state_payload(
+    indices: list[str],
+    directory: Path = MIGRATIONS_DIR,
+) -> dict[str, dict[str, list[str]]]:
+    """Build the complete remote state consumed by Reader Search."""
+    return {
+        "excludedIds": {
+            index: sorted(excluded_document_ids(index, directory))
+            for index in sorted(set(indices))
+        }
+    }
+
+
+def write_search_state(
+    path: Path,
+    indices: list[str],
+    directory: Path = MIGRATIONS_DIR,
+) -> dict[str, dict[str, list[str]]]:
+    """Atomically write the one plain JSON object published to COS."""
+    payload = search_state_payload(indices, directory)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_suffix(path.suffix + ".tmp")
+    temp.write_text(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    temp.replace(path)
+    return payload
+
+
+def active_revision_heads(
+    index: str,
+    directory: Path = MIGRATIONS_DIR,
+) -> dict[str, str | None]:
+    """Resolve every applied repair chain to its current searchable document.
+
+    A value of ``None`` means that the logical document was deleted.  Both the
+    original document ID and intermediate repair IDs are included so callers
+    can start resolution at any point in a chain.
+    """
+    edges: dict[str, str | None] = {}
+    for migration in list_migrations(directory):
+        if migration.get("state") != "applied" or migration.get("index") != index:
+            continue
+        replaced_document_id = str(
+            migration.get("replacedDocumentId") or migration.get("supersedesId") or ""
+        ).strip()
+        if not replaced_document_id:
+            continue
+        replacement_id = (
+            None
+            if migration.get("operation") == "delete"
+            else str((migration.get("result") or {}).get("documentId") or migration["id"])
+        )
+        previous = edges.get(replaced_document_id, replacement_id)
+        if replaced_document_id in edges and previous != replacement_id:
+            raise ValueError(f"ES migration 出现分叉：{replaced_document_id}")
+        edges[replaced_document_id] = replacement_id
+
+    def resolve(start: str) -> str | None:
+        current: str | None = start
+        visited: set[str] = set()
+        while current is not None and current in edges:
+            if current in visited:
+                raise ValueError(f"ES migration 出现循环：{start}")
+            visited.add(current)
+            current = edges[current]
+        return current
+
+    return {document_id: resolve(document_id) for document_id in edges}
+
+
 def _safe_path(migration_id: str, directory: Path) -> Path:
     digest = migration_id.removeprefix("repair-")
     if not migration_id.startswith("repair-") or len(digest) != 40 or any(c not in "0123456789abcdef" for c in digest):
@@ -154,11 +224,7 @@ def _safe_path(migration_id: str, directory: Path) -> Path:
 
 
 def _clean_document(document: dict[str, Any]) -> dict[str, Any]:
-    return {
-        key: document.get(key)
-        for key in ("title", "content", "date", "page", "source")
-        if document.get(key) not in (None, "")
-    }
+    return clean_repair_document(document)
 
 
 def _write(path: Path, payload: dict[str, Any]) -> None:

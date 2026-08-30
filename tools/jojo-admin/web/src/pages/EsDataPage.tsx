@@ -40,6 +40,7 @@ export function EsDataPage() {
   const [preview, setPreview] = useState<MigrationPreview>();
   const [previewLoading, setPreviewLoading] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [publishingState, setPublishingState] = useState(false);
 
   const loadStatus = useCallback(() => {
     apiGet<{ success: boolean; index: string; activeDocuments: number }>(
@@ -134,8 +135,8 @@ export function EsDataPage() {
         mode: "success",
         title: data.message,
         message: data.alreadyExists
-          ? "相同 migration 此前已执行，本次没有产生重复版本。"
-          : "新版本已写入，搜索索引可能需要几十秒完成刷新。",
+          ? "相同 migration 此前已执行；远端搜索修订状态也已同步。"
+          : "新版本和远端搜索修订状态均已写入，搜索索引可能需要几十秒完成刷新。",
         details: [
           { label: "Migration", value: data.migration.id },
           { label: "Document ID", value: data.documentId },
@@ -169,6 +170,30 @@ export function EsDataPage() {
         title: "重试失败",
         message: (error as Error).message,
       });
+    }
+  }
+
+  async function publishState() {
+    setPublishingState(true);
+    try {
+      const data = await apiPost<{
+        success: boolean;
+        searchState: { object: string; excluded: number };
+      }>("/api/es-repair/publish-state");
+      setDialog({
+        mode: "success",
+        title: "搜索修订状态已发布",
+        message: `当前共排除 ${data.searchState.excluded} 个旧版本。`,
+        details: [{ label: "COS Object", value: data.searchState.object }],
+      });
+    } catch (error) {
+      setDialog({
+        mode: "error",
+        title: "状态发布失败",
+        message: (error as Error).message,
+      });
+    } finally {
+      setPublishingState(false);
     }
   }
 
@@ -222,6 +247,7 @@ export function EsDataPage() {
                   >
                     <b>{item.title || "(无标题)"}</b>
                     <span>
+                      {item.type ? `${item.type} · ` : ""}
                       {item.date || "未知日期"} · {item.source || "未知来源"}
                     </span>
                     <p>{item.content?.slice(0, 150)}</p>
@@ -270,15 +296,17 @@ export function EsDataPage() {
                   }
                 />
               </Field>
-              <Field label="页码">
-                <TextInput
-                  type="number"
-                  value={draft.page || 0}
-                  onChange={(event) =>
-                    setDraft({ ...draft, page: Number(event.target.value) })
-                  }
-                />
-              </Field>
+              {!draft.type && (
+                <Field label="页码">
+                  <TextInput
+                    type="number"
+                    value={draft.page || 0}
+                    onChange={(event) =>
+                      setDraft({ ...draft, page: Number(event.target.value) })
+                    }
+                  />
+                </Field>
+              )}
             </div>
             <Field label="来源">
               <TextInput
@@ -316,7 +344,16 @@ export function EsDataPage() {
               migration 文件。
             </p>
             <div className="migration-list">
-              <h3>最近 migrations</h3>
+              <div className="button-row">
+                <h3>最近 migrations</h3>
+                <Button
+                  variant="text"
+                  disabled={publishingState}
+                  onClick={() => void publishState()}
+                >
+                  {publishingState ? "正在发布状态…" : "重新发布搜索状态"}
+                </Button>
+              </div>
               {migrations.length === 0 ? (
                 <p>尚无 migration 文件</p>
               ) : (

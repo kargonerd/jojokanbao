@@ -1,6 +1,6 @@
 import sys
-import hashlib
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 
@@ -24,17 +24,15 @@ class ContentSearchEs:
                 "hits": [{
                     "_score": 4.2,
                     "_source": {
+                        "type": "book",
                         "datasetId": "book-a",
-                        "datasetTitle": "测试书库",
                         "itemId": "book-a:full-book",
-                        "itemTitle": "测试书",
-                        "targetId": "chapter:1",
-                        "targetTitle": "第一章",
-                        "text": "苹果正文",
-                        "manifestObject": "content/books/book-a/items/full-book/manifest.jox",
-                        "fragmentObject": "content/books/book-a/items/full-book/chapters/a.jox",
+                        "title": "第一章",
+                        "content": "苹果正文",
+                        "source": "测试书库",
+                        "metadata": {"chapterId": "chapter:1"},
                     },
-                    "highlight": {"text": ["<mark>苹果</mark>正文"]},
+                    "highlight": {"content": ["<mark>苹果</mark>正文"]},
                 }],
             },
         }
@@ -42,16 +40,16 @@ class ContentSearchEs:
 
 class ContentSearchTests(unittest.TestCase):
     def setUp(self):
-        self.original_es = search_app.es
-        self.original_release_id = search_app.content_release_id
-        search_app.content_release_id = ''
+        self.original_content_es = search_app.content_es
+        self.original_content_index_name = search_app.content_index_name
         self.fake_es = ContentSearchEs()
-        search_app.es = self.fake_es
+        search_app.content_es = self.fake_es
+        search_app.content_index_name = "content-test"
         self.client = search_app.app.test_client()
 
     def tearDown(self):
-        search_app.es = self.original_es
-        search_app.content_release_id = self.original_release_id
+        search_app.content_es = self.original_content_es
+        search_app.content_index_name = self.original_content_index_name
 
     def test_search_applies_stable_dataset_and_item_filters(self):
         response = self.client.post("/content/search", json={
@@ -63,53 +61,34 @@ class ContentSearchTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()["data"]
         self.assertEqual(payload["total"], 1)
-        self.assertEqual(payload["results"][0]["targetId"], "chapter:1")
+        self.assertEqual(payload["results"][0]["metadata"]["chapterId"], "chapter:1")
         self.assertEqual(self.fake_es.index, search_app.content_index_name)
         self.assertEqual(self.fake_es.body["query"]["bool"]["filter"], [
             {"terms": {"datasetId": ["book-a"]}},
             {"terms": {"itemId": ["book-a:full-book"]}},
         ])
 
-    def test_append_only_release_uses_exact_hashed_scope_filters(self):
-        search_app.content_release_id = 'r123456'
-        response = self.client.post('/content/search', json={
-            'query': '苹果',
-            'datasetIds': ['book-a'],
-            'itemIds': ['book-a:full-book'],
-        })
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(self.fake_es.body['query']['bool']['filter'], [
-            {'term': {'releaseId': 'r123456'}},
-            {'terms': {'datasetFilterKey': [hashlib.sha256(b'book-a').hexdigest()]}},
-            {'terms': {'itemFilterKey': [hashlib.sha256(b'book-a:full-book').hexdigest()]}},
-        ])
+    def test_content_client_requires_its_own_complete_credentials(self):
+        with patch.dict("os.environ", {
+            "CONTENT_ELASTICSEARCH_URL": "https://content.example",
+            "CONTENT_ELASTICSEARCH_USERNAME": "elastic",
+        }, clear=True):
+            self.assertIsNone(search_app.create_elasticsearch_client(
+                "CONTENT_ELASTICSEARCH", require_auth=True
+            ))
 
-    def test_search_returns_distinct_fragments_after_chunk_overfetch(self):
-        class DuplicateChunks(ContentSearchEs):
-            def search(inner_self, *, index, body):
-                inner_self.index = index
-                inner_self.body = body
-                base = super(DuplicateChunks, inner_self).search(index=index, body=body)
-                first = base['hits']['hits'][0]
-                second = {
-                    **first,
-                    '_source': {
-                        **first['_source'],
-                        'targetId': 'chapter:2',
-                        'targetTitle': '第二章',
-                        'fragmentObject': 'content/books/book-a/items/full-book/chapters/b.jox',
-                    },
-                }
-                base['hits']['hits'] = [first, first, second]
-                base['hits']['total'] = {'value': 3}
-                return base
-
-        self.fake_es = DuplicateChunks()
-        search_app.es = self.fake_es
+    def test_search_uses_only_the_unified_canonical_fields(self):
         response = self.client.post('/content/search', json={'query': '苹果', 'size': 2})
         results = response.get_json()['data']['results']
-        self.assertEqual(self.fake_es.body['size'], 10)
-        self.assertEqual([item['targetId'] for item in results], ['chapter:1', 'chapter:2'])
+        self.assertEqual(len(results), 1)
+        self.assertEqual(self.fake_es.body['size'], 2)
+        self.assertEqual(
+            self.fake_es.body['query']['bool']['must'][0]['multi_match']['fields'],
+            ['title^4', 'content'],
+        )
+        self.assertEqual(self.fake_es.body['_source'], [
+            'type', 'datasetId', 'itemId', 'title', 'content', 'date', 'source', 'metadata',
+        ])
 
 
 if __name__ == "__main__":

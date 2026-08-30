@@ -148,6 +148,85 @@ class WorkspaceRoutesTest(unittest.TestCase):
         create.assert_not_called()
         apply.assert_not_called()
 
+    @patch("es_repair_routes.KibanaConsoleClient")
+    def test_es_apply_publishes_search_state_after_revision(self, client_class):
+        client_class.return_value.config = {"index": "news-test"}
+        with (
+            patch(
+                "es_repair_routes.preview_migration",
+                return_value={"previewHash": "confirmed"},
+            ),
+            patch(
+                "es_repair_routes.create_migration",
+                return_value={"id": "repair-" + "a" * 40},
+            ),
+            patch(
+                "es_repair_routes.apply_migration",
+                return_value={
+                    "index": "news-test",
+                    "result": {"documentId": "revision-id", "created": True},
+                },
+            ) as apply,
+            patch("es_repair_routes.validate_publication_target") as validate,
+            patch(
+                "es_repair_routes.publish_applied_search_state",
+                return_value={"excluded": 1},
+            ) as publish,
+        ):
+            response = self.client.post(
+                "/api/es-repair/apply",
+                json={
+                    "replacedDocumentId": "old-id",
+                    "document": {"title": "修复稿", "content": "正文"},
+                    "previewHash": "confirmed",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()["success"])
+        validate.assert_called_once_with("news-test")
+        apply.assert_called_once()
+        publish.assert_called_once_with("news-test")
+
+    @patch("es_repair_routes.KibanaConsoleClient")
+    def test_es_apply_reports_partial_success_when_state_publish_fails(self, client_class):
+        client_class.return_value.config = {"index": "news-test"}
+        with (
+            patch(
+                "es_repair_routes.preview_migration",
+                return_value={"previewHash": "confirmed"},
+            ),
+            patch(
+                "es_repair_routes.create_migration",
+                return_value={"id": "repair-" + "b" * 40},
+            ),
+            patch(
+                "es_repair_routes.apply_migration",
+                return_value={
+                    "index": "news-test",
+                    "result": {"documentId": "revision-id", "created": True},
+                },
+            ),
+            patch("es_repair_routes.validate_publication_target"),
+            patch(
+                "es_repair_routes.publish_applied_search_state",
+                side_effect=RuntimeError("COS unavailable"),
+            ),
+        ):
+            response = self.client.post(
+                "/api/es-repair/apply",
+                json={
+                    "replacedDocumentId": "old-id",
+                    "document": {"title": "修复稿", "content": "正文"},
+                    "previewHash": "confirmed",
+                },
+            )
+
+        self.assertEqual(response.status_code, 502)
+        payload = response.get_json()
+        self.assertTrue(payload["repairApplied"])
+        self.assertIn("可直接重试发布", payload["message"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -57,8 +57,9 @@ overview. PDF intake lives at `/pdf`, and ES repair lives at `/es` (the old
 `/es-repair` URL redirects in the React router).
 The ES page
 reads `KIBANA_URL`, `ELASTICSEARCH_USERNAME`, and `ELASTICSEARCH_PASSWORD` from
-the repository root `.env`. It uses `aitest-1tk2lxru` by default; set
-`ES_REPAIR_INDEX` to override it.
+the repository root `.env`. `ES_REPAIR_INDEX` is required and has no default,
+so opening the workbench can never silently target either a test or production
+index.
 The local client defaults `ES_VERIFY_TLS` to `false` because Tencent's public
 Kibana `:5601` endpoint may terminate verified TLS handshakes; set it to `true`
 when the endpoint certificate path works in your environment.
@@ -66,10 +67,92 @@ when the endpoint certificate path works in your environment.
 Repairs and removals first create a deterministic JSON migration in
 `es_migrations/`, then use append-only `_create`: a repair appends a complete
 new version and a removal appends a tombstone. Search builds its excluded ID
-set from applied migrations instead of scanning ES revision documents.
+set from applied migrations instead of scanning ES revision documents. Reader
+Search does not receive those migration files. After ES accepts a repair, the
+workbench automatically merges its applied exclusions into the single private
+COS object `runtime/search/search-state.json`. It reads the remote object first
+and takes a per-index union, so a second computer with no local migration
+history cannot erase earlier repairs. A failed COS publication is reported as
+a partial success and can be retried through
+`POST /api/es-repair/publish-state` without appending another ES revision.
+Set `SEARCH_STATE_INDICES` to the comma-separated indexes actually served by
+SCF. A repair index outside that allow-list is rejected before ES is written;
+this prevents test indexes from entering the production search state.
+The Canonical synchronizer resolves the same applied migration chain before it
+compares a stable ID, so an already-repaired document is compared with its
+current repair rather than repeatedly conflicting with the original version.
 Operator-only fields such as the
 repair reason remain in the migration file and are not indexed in ES. Existing
 documents are never physically overwritten.
+
+## Unified ES sync
+
+`es_sync.py` reads the public Hugging Face Canonical Dataset directly. It does
+not read local JSONL, PDFs, or a B2 Delivery mirror. Books are indexed one
+document per chapter; newspaper and Times content are indexed one document per
+article. Every document has the same small business shape:
+
+```json
+{
+  "type": "book | newspaper | news",
+  "datasetId": "filterable Dataset identity",
+  "itemId": "filterable book volume, newspaper issue, or news article identity",
+  "title": "search result title",
+  "content": "plain searchable text",
+  "date": "optional ISO date or timestamp",
+  "source": "book, newspaper, or publisher name",
+  "metadata": { "type-specific navigation fields": "stored here" }
+}
+```
+
+Tencent Serverless also requires `@timestamp`. Search only queries `title` and
+`content`; `metadata` is returned for navigation and is not included in search
+queries. The target must be created from `es_mapping.json` before any document
+is written. That contract contains only `@timestamp` plus the eight business
+fields above, uses `dynamic: strict`, and stores `metadata` with
+`enabled: false`. The synchronizer validates the complete mapping and refuses
+an index with missing fields, dynamic text identity fields, indexed metadata,
+or any legacy fields; it never tries to repair a polluted mapping in place.
+
+Print the exact mapping for the Tencent console:
+
+```powershell
+python tools/jojo-admin/server/es_sync.py --print-mapping
+```
+
+Elasticsearch cannot remove mapped fields. An index previously used for chunk,
+vector, release, or repair experiments must be replaced with a clean index; it
+must not be reused for the formal import.
+
+Preview one real document of every type without writing ES:
+
+```powershell
+python tools/jojo-admin/server/es_sync.py `
+  --types book newspaper news `
+  --publication rmrb `
+  --news-source ap `
+  --limit-per-type 1 `
+  --dry-run
+```
+
+Write the same three-document smoke test to the configured test index:
+
+```powershell
+python tools/jojo-admin/server/es_sync.py `
+  --index <test-index> `
+  --types book newspaper news `
+  --publication rmrb `
+  --news-source ap `
+  --limit-per-type 1
+```
+
+For a full initial load, use a newly created empty Serverless index and omit
+`--limit-per-type`. Re-running the same command is the incremental path: stable
+IDs are written with `_create`, identical rows are counted as unchanged, and a
+changed Canonical row stops as a conflict instead of silently leaving two live
+versions. Apply such corrections with the existing append-only repair page.
+`--since YYYY-MM-DD` and `--until YYYY-MM-DD` limit Times date indexes; repeat
+`--news-source` or `--publication` to select sources.
 
 ## Storage Backends
 

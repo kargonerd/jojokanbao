@@ -78,7 +78,7 @@ jobs:
           write_flag homepage_external '^(content/blog/|\.github/workflows/deploy-homepage\.yml$)'
           write_flag cloud_api '^(backend/|tools/times-pipeline/|infrastructure/edgeone/|\.github/workflows/(ci|deploy-web|maintenance-times[^/]*)\.yml$)'
           write_flag database '^(infrastructure/supabase/|\.github/workflows/ci\.yml$)'
-          write_flag search_scf '^(infrastructure/tencent-scf/search/|\.github/workflows/ci\.yml$)'
+          write_flag search_scf '^(infrastructure/tencent-scf/search/|\.github/workflows/(ci|release-search)\.yml$)'
           write_flag news_archive '^(tools/news-archive/|\.github/workflows/ci\.yml$)'
 
   node:
@@ -389,11 +389,13 @@ jobs:
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: "3.12"
+          # Match the Tencent SCF runtime so dependency/syntax drift is caught
+          # before a release tag can reach staging.
+          python-version: "3.9"
           cache: pip
-          cache-dependency-path: infrastructure/tencent-scf/search/requirements.txt
+          cache-dependency-path: infrastructure/tencent-scf/search/requirements-deploy.txt
 
-      - run: python -m pip install -r infrastructure/tencent-scf/search/requirements.txt pytest
+      - run: python -m pip install -r infrastructure/tencent-scf/search/requirements-deploy.txt pytest
       - run: python -m pytest infrastructure/tencent-scf/search/tests -q
 
   required:

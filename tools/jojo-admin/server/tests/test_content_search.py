@@ -22,18 +22,22 @@ class FakeClient:
 
 
 class ContentSearchTest(unittest.TestCase):
-    def test_release_search_hashes_scopes_and_deduplicates_fragments(self):
+    def test_search_filters_top_level_scopes_and_deduplicates_fragments(self):
         client = FakeClient()
         with patch.dict(os.environ, {
             "ES_CONTENT_INDEX": "content-index",
-            "ES_CONTENT_RELEASE_ID": "release-1",
         }, clear=False):
             result = search_content({"query": "童年时代", "datasetIds": ["books"], "size": 5}, client)
 
         self.assertEqual(client.call[1], "content-index/_search")
         filters = client.call[2]["query"]["bool"]["filter"]
-        self.assertEqual(filters[0], {"term": {"releaseId": "release-1"}})
-        self.assertEqual(len(filters[1]["terms"]["datasetFilterKey"][0]), 64)
+        self.assertEqual(filters, [{"bool": {
+            "should": [
+                {"terms": {"datasetId": ["books"]}},
+                {"match_phrase": {"datasetId": "books"}},
+            ],
+            "minimum_should_match": 1,
+        }}])
         self.assertEqual(result["data"]["total"], 2)
         self.assertEqual(len(result["data"]["results"]), 1)
 
