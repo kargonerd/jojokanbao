@@ -7,6 +7,7 @@ import { ReadingLoadingState } from "../../reading/ReadingLoadingState";
 import { explainTimesSelection, type TimesExplanationMetadata } from "../ai";
 import { timesApi, type TimesNewsItem } from "../api";
 import { TimesExplanationPanel } from "../components/TimesExplanationPanel";
+import { useTimesPreferencesStore } from "../preferencesStore";
 import { markTimesArticleRead } from "../readStore";
 import { timesSourceName } from "../sourceNames";
 
@@ -68,6 +69,8 @@ export function TimesDetailPage({
   const newsId = providedNewsId || params.newsId || "";
   const [news, setNews] = useState<TimesNewsItem | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const languagePreference = useTimesPreferencesStore((state) => state.foreignContentLanguage);
+  const setLanguagePreference = useTimesPreferencesStore((state) => state.setForeignContentLanguage);
   const [explanation, setExplanation] = useState<{
     anchor: TextAnchor;
     answer: string;
@@ -86,7 +89,7 @@ export function TimesDetailPage({
     setError(null);
     cancelExplanation.current();
     setExplanation(undefined);
-    void timesApi.getNews(issueDate, newsId).then((value) => {
+    void timesApi.getNews(issueDate, newsId, languagePreference).then((value) => {
       urls = Object.values(value.assetUrls ?? {});
       if (active) {
         setNews(value);
@@ -101,7 +104,7 @@ export function TimesDetailPage({
       cancelExplanation.current();
       for (const url of urls) URL.revokeObjectURL(url);
     };
-  }, [issueDate, markReadOnOpen, newsId]);
+  }, [issueDate, languagePreference, markReadOnOpen, newsId]);
 
   function startExplanation(anchor: TextAnchor): void {
     if (!news) return;
@@ -135,9 +138,25 @@ export function TimesDetailPage({
       {!news && !error ? <ReadingLoadingState kind="times" status="正在读取全文和图片…" spacingClassName="px-0 py-4" /> : null}
       {news ? (
         <article>
-          <p className="font-sans text-[10px] font-black tracking-[0.12em] text-red">
-            {timesSourceName(news.source)} · {new Intl.DateTimeFormat("zh-CN", { dateStyle: "long", timeStyle: "short" }).format(new Date(news.publishedAt))}
-          </p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 font-sans">
+            <p className="m-0 text-[10px] font-black tracking-[0.12em] text-red">
+              {timesSourceName(news.source)} · {new Intl.DateTimeFormat("zh-CN", { dateStyle: "long", timeStyle: "short" }).format(new Date(news.publishedAt))}
+            </p>
+            {news.usingTranslation ? (
+              <span title="此内容由 AI 翻译" className="border border-red/40 px-1.5 py-0.5 text-[9px] font-black tracking-[0.1em] text-red">
+                AI 翻译
+              </span>
+            ) : null}
+            {news.translationAvailable ? (
+              <button
+                type="button"
+                onClick={() => setLanguagePreference(news.usingTranslation ? "original" : "zh-CN")}
+                className="border-b border-red text-[10px] font-bold text-red hover:text-ink"
+              >
+                {news.usingTranslation ? "查看原文" : "查看中文译文"}
+              </button>
+            ) : null}
+          </div>
           <h1 className="mt-4 text-3xl font-black leading-tight xl:text-4xl">{news.title}</h1>
           <SelectableAnnotationArticle subject={{
             contentType: "newspaper",

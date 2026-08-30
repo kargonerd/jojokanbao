@@ -12,7 +12,9 @@ const timesMocks = vi.hoisted(() => ({
 vi.mock("../src/times/api", () => ({ timesApi: timesMocks }));
 
 import { TimesHomePage } from "../src/times/pages/TimesHomePage";
+import { TimesDetailPage } from "../src/times/pages/TimesDetailPage";
 import TimesRoutes from "../src/times/TimesRoutes";
+import { useTimesPreferencesStore } from "../src/times/preferencesStore";
 import { useTimesReadStore } from "../src/times/readStore";
 
 const source = { id: "ap", name: "AP News", language: "en" };
@@ -59,6 +61,7 @@ class TestIntersectionObserver implements IntersectionObserver {
 beforeEach(() => {
   window.localStorage.clear();
   useTimesReadStore.setState({ readById: {} });
+  useTimesPreferencesStore.setState({ foreignContentLanguage: "zh-CN" });
   timesMocks.timelineIndex.mockResolvedValue({
     formatVersion: "jojo-news-timeline-index/1",
     updatedAt: "2026-08-27T05:00:00.000Z",
@@ -77,6 +80,9 @@ beforeEach(() => {
     content: "Archived article body",
     contentFormat: "text",
     assetUrls: {},
+    originalLanguage: "en",
+    translationAvailable: false,
+    usingTranslation: false,
   });
   vi.stubGlobal("IntersectionObserver", TestIntersectionObserver);
   const NativeUrl = URL;
@@ -132,6 +138,71 @@ describe("Times timeline images", () => {
     expect(screen.queryByText("World News")).toBeNull();
     const sourceLabel = screen.getByRole("region", { name: "文章列表" }).querySelector("article a:not([aria-label]) > span > span");
     expect(sourceLabel?.className).toContain("flex-1");
+  });
+
+  it("marks AI translations and persists the publisher-language preference", async () => {
+    timesMocks.timelineDay.mockResolvedValue({
+      formatVersion: "jojo-news-timeline-day/1",
+      date: "2026-08-27",
+      updatedAt: "2026-08-27T05:00:00.000Z",
+      articles: [{
+        ...article,
+        translations: {
+          "zh-CN": {
+            language: "zh-CN",
+            title: "中文新闻标题",
+            summary: "中文新闻摘要",
+            articleObject: "content/newspapers/example/articles/article-one-zh.jox",
+            provider: "google-gemini-api",
+            model: "gemma-4-31b-it",
+          },
+        },
+      }],
+    });
+    render(<MemoryRouter><TimesHomePage /></MemoryRouter>);
+
+    await screen.findByText("中文新闻标题");
+    expect(screen.getByText("AI 翻译")).toBeTruthy();
+    const languageButton = screen.getByRole("button", { name: "外文内容语言：中文译文" });
+    fireEvent.click(languageButton);
+    const dialog = screen.getByRole("dialog", { name: "阅读设置" });
+    fireEvent.click(within(dialog).getByRole("radio", { name: "原文" }));
+
+    await screen.findByText(article.title);
+    expect(screen.queryByText("中文新闻标题")).toBeNull();
+    expect(screen.queryByText("AI 翻译")).toBeNull();
+    expect(useTimesPreferencesStore.getState().foreignContentLanguage).toBe("original");
+    expect(JSON.parse(window.localStorage.getItem("jojo-times-preferences") ?? "{}").state.foreignContentLanguage).toBe("original");
+  });
+
+  it("switches the article body between AI translation and publisher original", async () => {
+    timesMocks.getNews.mockImplementation(async (_issueDate: string, _newsId: string, language: string) => ({
+      ...article,
+      title: language === "original" ? article.title : "中文新闻标题",
+      summary: language === "original" ? article.summary : "中文新闻摘要",
+      language: language === "original" ? "en" : "zh-CN",
+      content: language === "original" ? "Publisher body" : "中文正文",
+      contentFormat: "text",
+      assetUrls: {},
+      originalLanguage: "en",
+      translationAvailable: true,
+      usingTranslation: language !== "original",
+    }));
+    render(
+      <MemoryRouter>
+        <TimesDetailPage issueDate={article.issueDate} newsId={article.id} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "中文新闻标题" })).toBeTruthy();
+    expect(screen.getByText("AI 翻译")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "查看原文" }));
+
+    expect(await screen.findByRole("heading", { name: article.title })).toBeTruthy();
+    expect(screen.getByText("Publisher body")).toBeTruthy();
+    expect(screen.queryByText("AI 翻译")).toBeNull();
+    expect(screen.getByRole("button", { name: "查看中文译文" })).toBeTruthy();
+    expect(timesMocks.getNews).toHaveBeenLastCalledWith(article.issueDate, article.id, "original");
   });
 
   it("shows the archived lead image instead of a text badge", async () => {
