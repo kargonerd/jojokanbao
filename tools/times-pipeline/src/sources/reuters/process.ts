@@ -6,6 +6,15 @@ function escapeHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
+function listItem(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  const row = reutersObject(value);
+  for (const candidate of [row?.content, row?.text, row?.value]) {
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+  return undefined;
+}
+
 export function extractReutersBody(html: string, quality: BodyQuality, pageUrl?: string): string | undefined {
   const result = reutersFusionResult(html);
   const elements = Array.isArray(result?.content_elements) ? result.content_elements : [];
@@ -13,15 +22,26 @@ export function extractReutersBody(html: string, quality: BodyQuality, pageUrl?:
     ? result.dateline.find((value): value is string => typeof value === "string" && Boolean(value.trim()))
     : undefined;
   const blocks: string[] = [];
+  let usedDateline = false;
   for (const value of elements) {
     const element = reutersObject(value);
     const content = typeof element?.content === "string" ? element.content.trim() : "";
-    if (!content) continue;
     if (element?.type === "header") {
-      blocks.push(`<h2>${content}</h2>`);
+      if (content) blocks.push(`<h2>${content}</h2>`);
     } else if (element?.type === "paragraph") {
-      const prefix = blocks.length === 0 && dateline ? `${escapeHtml(dateline)} - ` : "";
+      if (!content) continue;
+      const prefix = !usedDateline && dateline ? `${escapeHtml(dateline)} - ` : "";
+      usedDateline = true;
       blocks.push(`<p>${prefix}${content}</p>`);
+    } else if (["list", "ordered-list", "unordered-list"].includes(String(element?.type))) {
+      const rawItems = [element?.items, element?.list_items, element?.content].find(Array.isArray) ?? [];
+      const items = rawItems.map(listItem).filter((item): item is string => Boolean(item));
+      if (items.length) {
+        const tag = element?.type === "ordered-list" || element?.ordered === true ? "ol" : "ul";
+        blocks.push(`<${tag}>${items.map((item) => `<li>${item}</li>`).join("")}</${tag}>`);
+      }
+    } else if (["quote", "blockquote"].includes(String(element?.type)) && content) {
+      blocks.push(`<blockquote>${content}</blockquote>`);
     }
   }
   return semanticHtmlBlocks(blocks, quality, pageUrl);

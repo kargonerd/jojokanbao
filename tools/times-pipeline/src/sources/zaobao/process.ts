@@ -16,6 +16,8 @@ export function extractZaobaoBody(html: string, quality: BodyQuality, pageUrl?: 
     "script",
     "style",
   ].join(",")).remove();
+  body.find("h2,h3,h4").filter((_index, element) =>
+    /^(?:延伸阅读|推荐阅读|相关阅读)$/u.test(document(element).text().replaceAll(/\s+/gu, " ").trim())).remove();
   const blocks = body.find("p,h2,h3,h4,blockquote,ul,ol,pre")
     .toArray()
     .map((element) => document.html(element));

@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { discoverSource } from "../src/discovery/multi.js";
 import { discoverArticleImages } from "../src/capture/page-images.js";
+import { attachAssetsToBody } from "../src/process/article.js";
 import { apFetch } from "../src/sources/ap/fetch.js";
 import { extractApImages } from "../src/sources/ap/images.js";
-import type { SourceConfig } from "../src/types.js";
+import { extractApBody } from "../src/sources/ap/process.js";
+import type { CapturedAsset, SourceConfig } from "../src/types.js";
 
 const source: SourceConfig = {
   id: "ap",
@@ -54,6 +56,39 @@ describe("AP source adapter", () => {
       { type: "carousel", id: "ap-primary-gallery", order: 0, total: 2 },
       { type: "carousel", id: "ap-primary-gallery", order: 1, total: 2 },
     ]);
+  });
+
+  it("keeps the AP carousel ahead of the first body block when attaching body and images", () => {
+    const pageUrl = "https://apnews.com/article/ordered-gallery";
+    const slide = (id: string, caption: string) => `<div class="Carousel-slide"><div class="CarouselSlide">
+      <img alt="${caption}" data-flickity-lazyload="/${id}.jpg" width="1200" height="800">
+    </div></div>`;
+    const html = `<main>
+      <div class="Carousel-slides">${slide("lead", "Lead AP image")}${slide("second", "Second AP image")}</div>
+      <div class="RichTextStoryBody">
+        <p>The first AP paragraph contains enough reporting detail to establish the start of the article body.</p>
+        <p>The second AP paragraph adds context and confirms that the gallery remains ahead of the prose.</p>
+      </div>
+    </main>`;
+    const body = extractApBody(html, { minimumCharacters: 100, minimumParagraphs: 2 }, pageUrl)!;
+    const images = extractApImages(html, pageUrl);
+    const assets: CapturedAsset[] = images.map((image, index) => ({
+      ...image,
+      id: `ap-gallery-${index}`,
+      type: "image",
+      rawObject: `raw/ap/assets/gallery-${index}.jpg`,
+      mediaType: "image/jpeg",
+      size: 1,
+      sha256: `ap-gallery-${index}`,
+    }));
+    const attached = attachAssetsToBody(body, assets);
+
+    expect(images).toMatchObject([
+      { role: "lead" },
+      { role: "content", afterBlock: 0 },
+    ]);
+    expect(attached.indexOf('data-asset-id="ap-gallery-0"')).toBeLessThan(attached.indexOf('data-asset-id="ap-gallery-1"'));
+    expect(attached.indexOf('data-asset-id="ap-gallery-1"')).toBeLessThan(attached.indexOf("The first AP paragraph"));
   });
 
   it("discovers article metadata from the AP persisted GraphQL query", async () => {

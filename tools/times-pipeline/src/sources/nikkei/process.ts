@@ -1,8 +1,27 @@
 import { load } from "cheerio";
-import { semanticParagraphs, type BodyQuality } from "../../content/paragraphs.js";
+import { semanticHtmlBlocks, type BodyQuality } from "../../content/paragraphs.js";
 import type { Candidate } from "../../types.js";
 
 type JsonObject = Record<string, unknown>;
+
+function object(value: unknown): JsonObject | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : undefined;
+}
+
+export function nikkeiPageData(html: string): JsonObject | undefined {
+  const document = load(html);
+  const script = document("#__NEXT_DATA__").text();
+  if (!script) return undefined;
+  try {
+    return object(object(object(JSON.parse(script))?.props)?.pageProps)?.data as JsonObject | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function escaped(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
 
 function newsArticleAccess(value: unknown): boolean | undefined {
   if (Array.isArray(value)) {
@@ -40,21 +59,38 @@ export function nikkeiArticleAccess(html: string): boolean | undefined {
   return access;
 }
 
-export function extractNikkeiFreeArticleBody(html: string, quality: BodyQuality): string | undefined {
+export function extractNikkeiFreeArticleBody(html: string, quality: BodyQuality, pageUrl?: string): string | undefined {
   const document = load(html);
   if (nikkeiArticleAccess(html) !== true) return undefined;
+  const pageData = nikkeiPageData(html);
+  const embeddedBody = typeof pageData?.body === "string" ? pageData.body : undefined;
+  if (embeddedBody) {
+    const body = load(embeddedBody, undefined, false);
+    const blocks = body("p,h2,h3,h4,blockquote,ul,ol,pre").toArray()
+      .filter((element) => !body(element).parents("p,h2,h3,h4,blockquote,ul,ol,pre").length)
+      .map((element) => body.html(element));
+    const subhead = typeof pageData?.subhead === "string" && pageData.subhead.trim()
+      ? `<p><strong>${escaped(pageData.subhead.trim())}</strong></p>`
+      : undefined;
+    const extracted = semanticHtmlBlocks(subhead ? [subhead, ...blocks] : blocks, {
+      minimumCharacters: Math.min(quality.minimumCharacters ?? 300, 300),
+      minimumParagraphs: Math.min(quality.minimumParagraphs ?? 3, 3),
+    }, pageUrl);
+    if (extracted) return extracted;
+  }
   const selector = [
     "[class*='ArticleBodyWithTracking_articleBodyWithTracking']",
     "[class*='FeatureArticleBody_featureArticleBody']",
     "[id^='article-body']",
     "[itemprop='articleBody']",
   ].join(", ");
-  const values = document(selector).first().find("p, h2, h3, blockquote").toArray()
-    .map((element) => document(element).text());
-  return semanticParagraphs(values, {
+  const values = document(selector).first().find("p,h2,h3,h4,blockquote,ul,ol,pre").toArray()
+    .filter((element) => !document(element).parents("p,h2,h3,h4,blockquote,ul,ol,pre").length)
+    .map((element) => document.html(element));
+  return semanticHtmlBlocks(values, {
     minimumCharacters: Math.min(quality.minimumCharacters ?? 300, 300),
     minimumParagraphs: Math.min(quality.minimumParagraphs ?? 3, 3),
-  });
+  }, pageUrl);
 }
 
 export function processNikkei(candidate: Candidate): Candidate {

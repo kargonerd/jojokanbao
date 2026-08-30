@@ -2,6 +2,7 @@ import type { SourceModule } from "../contracts.js";
 import { classifyNikkeiUnavailablePage } from "./availability.js";
 import { discoverNikkei } from "./discover.js";
 import { nikkeiFetch } from "./fetch.js";
+import { extractNikkeiImages } from "./images.js";
 import { extractNikkeiFreeArticleBody, processNikkei } from "./process.js";
 
 export const nikkeiSource: SourceModule = {
@@ -12,6 +13,7 @@ export const nikkeiSource: SourceModule = {
   },
   fetch: nikkeiFetch,
   extractBody: extractNikkeiFreeArticleBody,
+  extractImages: extractNikkeiImages,
   classifyUnavailable: classifyNikkeiUnavailablePage,
   process: processNikkei,
 };

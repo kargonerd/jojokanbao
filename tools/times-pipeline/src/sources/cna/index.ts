@@ -2,6 +2,7 @@ import type { SourceModule } from "../contracts.js";
 import { discoverCna } from "./discover.js";
 import { cnaFetch } from "./fetch.js";
 import { extractCnaImages } from "./images.js";
+import { extractCnaBody } from "./process.js";
 
 export const cnaSource: SourceModule = {
   id: "cna",
@@ -10,5 +11,6 @@ export const cnaSource: SourceModule = {
     return discoverCna(source, endpoint, fetchedAt);
   },
   fetch: cnaFetch,
+  extractBody: extractCnaBody,
   extractImages: extractCnaImages,
 };

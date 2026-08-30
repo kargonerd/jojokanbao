@@ -7,5 +7,5 @@ export const cnaFetch = {
     ".content-detail__body",
     "[data-component='text-block']",
   ],
-  revision: "semantic-media-v2",
+  revision: "semantic-media-v3",
 } satisfies SourceFetchPolicy;

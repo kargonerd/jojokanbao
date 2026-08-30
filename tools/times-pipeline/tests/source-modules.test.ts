@@ -133,6 +133,8 @@ describe("native source modules", () => {
     expect(sourceImageExtractor("reuters")).toBeTypeOf("function");
     expect(sourceImageExtractor("ap")).toBeTypeOf("function");
     expect(sourceImageExtractor("cna")).toBeTypeOf("function");
+    expect(sourceBodyExtractor("nyt")).toBeTypeOf("function");
+    expect(sourceImageExtractor("nyt")).toBeTypeOf("function");
   });
 
   it("exposes Bloomberg's embedded article body strategy", () => {
