@@ -45,6 +45,21 @@ function RecentCover({ item, periodicals }: { item: RecentReadingItem; periodica
   );
 }
 
+function recentReadingIdentity(item: RecentReadingItem): string {
+  if (item.kind === "periodical") return `periodical:${item.publicationId ?? item.id}`;
+  return `book:${item.title.normalize("NFKC").replaceAll(/\s+/gu, "").toLocaleLowerCase()}`;
+}
+
+function uniqueRecentReading(items: RecentReadingItem[]): RecentReadingItem[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const identity = recentReadingIdentity(item);
+    if (seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
+}
+
 export function HomePage({ periodicals = [] }: { periodicals?: readonly PeriodicalEntry[] }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -53,7 +68,9 @@ export function HomePage({ periodicals = [] }: { periodicals?: readonly Periodic
   const [searchAttempted, setSearchAttempted] = useState(false);
   const storedRecentItems = useRecentReadingStore((state) => state.items);
   const includePeriodicals = periodicals.length > 0;
-  const recentItems = storedRecentItems.filter((item) => includePeriodicals || item.kind === "book").slice(0, 4);
+  const recentItems = uniqueRecentReading(
+    storedRecentItems.filter((item) => includePeriodicals || item.kind === "book"),
+  ).slice(0, 4);
   const quote = useMemo(() => dailyQuote(), []);
 
   useEffect(() => {
@@ -131,12 +148,15 @@ export function HomePage({ periodicals = [] }: { periodicals?: readonly Periodic
         {recentItems.length > 0 ? (
           <div className="recent-grid">
             {recentItems.map((item) => (
-              <Link key={item.id} className="recent-card" to={item.href} state={readerReturnState(`${location.pathname}${location.search}`)}>
+              <Link key={item.id} className={`recent-card${item.kind === "periodical" ? " recent-card-periodical" : ""}`} to={item.href} state={readerReturnState(`${location.pathname}${location.search}`)}>
                 <RecentCover item={item} periodicals={periodicals} />
                 <div className="recent-copy">
                   <strong>{item.title}</strong>
-                  <div className="recent-meta"><p>{item.subtitle}</p><span>{Math.round(item.progress)}%</span></div>
-                  <progress max="100" value={item.progress}>{item.progress}%</progress>
+                  <div className="recent-meta">
+                    <p>{item.kind === "book" && item.subtitle !== item.title ? `上次读到 · ${item.subtitle}` : item.subtitle}</p>
+                    {item.kind === "book" ? <span>{Math.round(item.progress)}%</span> : null}
+                  </div>
+                  {item.kind === "book" ? <progress max="100" value={item.progress}>{item.progress}%</progress> : null}
                 </div>
               </Link>
             ))}

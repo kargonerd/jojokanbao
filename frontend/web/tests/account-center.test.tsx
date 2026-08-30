@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AccountLogin from "@/account/AccountLogin";
 import { AccountCenterPage } from "@/account/pages/AccountCenterPage";
+import { useTimesPreferencesStore } from "@/times/preferencesStore";
 
 const account = vi.hoisted(() => ({
   auth: {
@@ -68,6 +69,8 @@ vi.mock("@/account/invitationStore", () => ({
 }));
 
 beforeEach(() => {
+  window.localStorage.clear();
+  useTimesPreferencesStore.setState({ foreignContentLanguage: "zh-CN", disabledSourceIds: [] });
   account.auth.user = { id: "reader-1", email: "reader@example.com" };
   account.auth.recoveryPending = false;
   account.auth.profile.display_name = "雪豹-TGH";
@@ -123,6 +126,9 @@ describe("account center", () => {
     expect(screen.getByRole("link", { name: /通知/ }).getAttribute("href")).toBe("/notifications");
     expect(screen.getByRole("link", { name: /我的书架/ }).getAttribute("href")).toBe("/bookshelf");
     expect(screen.getByRole("link", { name: /关于 JOJO 看报/ }).getAttribute("href")).toBe("/support");
+    expect(screen.getByRole("heading", { name: "阅读偏好" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "时事外文内容默认语言：中文译文" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /时事媒体源/ }).getAttribute("href")).toBe("/account/times-sources");
     expect(screen.queryByText(/Account dossier/i)).toBeNull();
     expect(screen.queryByText("你的统一账号")).toBeNull();
     expect(screen.getByText("账号资料")).toBeTruthy();
@@ -132,6 +138,19 @@ describe("account center", () => {
     expect(screen.getByRole("button", { name: "修改密码" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "注销账号" })).toBeTruthy();
     await waitFor(() => expect(account.invitation.load).toHaveBeenCalledWith("reader-1"));
+  });
+
+  it("stores the Times language preference with Chinese translation as the default", () => {
+    render(<MemoryRouter><AccountLogin /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole("button", { name: "时事外文内容默认语言：中文译文" }));
+    const choices = screen.getByRole("listbox", { name: "时事外文内容默认语言" });
+    expect(within(choices).getByRole("option", { name: "中文译文" }).getAttribute("aria-selected")).toBe("true");
+    fireEvent.click(within(choices).getByRole("option", { name: "原文" }));
+
+    expect(useTimesPreferencesStore.getState().foreignContentLanguage).toBe("original");
+    expect(JSON.parse(window.localStorage.getItem("jojo-times-preferences") ?? "{}").state.foreignContentLanguage).toBe("original");
+    expect(screen.getByRole("button", { name: "时事外文内容默认语言：原文" })).toBeTruthy();
   });
 
   it("shows an explicit pending state when an older profile has no reader code", () => {

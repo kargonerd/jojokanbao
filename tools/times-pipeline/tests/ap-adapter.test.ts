@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { discoverSource } from "../src/discovery/multi.js";
+import { discoverArticleImages } from "../src/capture/page-images.js";
+import { apFetch } from "../src/sources/ap/fetch.js";
+import { extractApImages } from "../src/sources/ap/images.js";
 import type { SourceConfig } from "../src/types.js";
 
 const source: SourceConfig = {
@@ -31,6 +34,28 @@ const source: SourceConfig = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("AP source adapter", () => {
+  it("archives only the AP story carousel without duplicate overlay or unrelated images", () => {
+    const slide = (id: string, caption: string) => `<div class="Carousel-slide"><div class="CarouselSlide">
+      <picture><source media="(min-width: 1024px)" width="1440" height="960" data-flickity-lazyload-srcset="https://dims.apnews.com/${id}-1440.jpg 1x, https://dims.apnews.com/${id}-2880.jpg 2x">
+      <img alt="${caption}" src="data:image/svg+xml,placeholder"></picture>
+    </div></div>`;
+    const html = `<main><img src="https://example.com/unrelated.jpg" width="1200" height="800">
+      <div class="Carousel-slides">${slide("photo-one", "First AP photo")}${slide("photo-two", "Second AP photo")}</div>
+      <div class="CarouselOverlay-slidesColumn"><div class="CarouselSlide"><img alt="Duplicate overlay" data-flickity-lazyload="https://dims.apnews.com/overlay-copy.jpg"></div></div>
+    </main>`;
+
+    const images = discoverArticleImages(html, "https://apnews.com/article/example", apFetch, extractApImages);
+
+    expect(images).toEqual([
+      expect.objectContaining({ sourceUrl: "https://dims.apnews.com/photo-one-1440.jpg", role: "lead", caption: "First AP photo" }),
+      expect.objectContaining({ sourceUrl: "https://dims.apnews.com/photo-two-1440.jpg", role: "content", afterBlock: 0, caption: "Second AP photo" }),
+    ]);
+    expect(images.map((image) => image.presentation)).toEqual([
+      { type: "carousel", id: "ap-primary-gallery", order: 0, total: 2 },
+      { type: "carousel", id: "ap-primary-gallery", order: 1, total: 2 },
+    ]);
+  });
+
   it("discovers article metadata from the AP persisted GraphQL query", async () => {
     const fetchMock = vi.fn(async (_input: Parameters<typeof fetch>[0]) => new Response(JSON.stringify({
       data: {

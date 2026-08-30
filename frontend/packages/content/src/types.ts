@@ -134,6 +134,15 @@ export interface JojoArticleDescriptor {
   sha256?: string;
 }
 
+export interface JojoCarouselAssetPresentation {
+  type: "carousel";
+  id: string;
+  order: number;
+  total: number;
+}
+
+export type JojoAssetPresentation = JojoCarouselAssetPresentation;
+
 export interface JojoAssetDescriptor extends JojoObjectDescriptor {
   id: string;
   type: JojoAssetType;
@@ -147,6 +156,7 @@ export interface JojoAssetDescriptor extends JojoObjectDescriptor {
   durationSeconds?: number;
   posterAssetId?: string;
   transcript?: string;
+  presentation?: JojoAssetPresentation;
 }
 
 export interface JojoExportDescriptor extends JojoObjectDescriptor {

@@ -21,6 +21,7 @@ import type { AnnotationVisibility, TextAnchor } from "../../annotations/types";
 import { useAnnotationThreads } from "../../annotations/useAnnotationThreads";
 import { useFeatureFlag } from "../../featureFlags";
 import { useAccountSessionStore } from "../../account/session";
+import { useRecentReadingStore } from "../../library/recentReadingStore";
 import type { RagAnswerMetadata, RagFocusContext, RagReference, RagSearchHit } from "../types";
 import { BookAiPanel } from "./BookAiPanel";
 import { BookSearchPanel } from "./BookSearchPanel";
@@ -69,6 +70,7 @@ export interface BookReaderProps {
   bookTitle: string;
   datasetId: string;
   itemId: string;
+  itemKey: string;
   manifestObject: string;
   characterCount: number;
   logicalChapterCount?: number;
@@ -146,6 +148,7 @@ export function BookReader({
   bookTitle,
   datasetId,
   itemId,
+  itemKey,
   manifestObject,
   characterCount,
   logicalChapterCount,
@@ -168,6 +171,7 @@ export function BookReader({
   const location = useLocation();
   const navigate = useNavigate();
   const annotationsEnabled = useFeatureFlag("reader.annotations");
+  const rememberRecentReading = useRecentReadingStore((state) => state.remember);
   const currentUserId = useAccountSessionStore((state) => state.userId);
   const bookshelfEnabled = useFeatureFlag("library.bookshelf");
   const agentAccess = Boolean(currentUserId);
@@ -228,6 +232,23 @@ export function BookReader({
   const bookProgress = chapters.length
     ? Math.min(100, Math.round(((activeChapterIndex + readingProgress / 100) / chapters.length) * 100))
     : 0;
+
+  useEffect(() => {
+    if (contentLoading || !activeChapterId) return;
+    const query = new URLSearchParams({ chapter: activeChapterId });
+    const returnTo = new URLSearchParams(window.location.search).get("returnTo");
+    if (returnTo) query.set("returnTo", returnTo);
+    rememberRecentReading({
+      id: `book:${datasetId}:${itemKey}`,
+      kind: "book",
+      datasetId,
+      itemKey,
+      title: bookTitle,
+      subtitle: activeChapterTitle || "正文",
+      href: `/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(itemKey)}?${query}`,
+      progress: bookProgress,
+    });
+  }, [activeChapterId, activeChapterTitle, bookProgress, bookTitle, contentLoading, datasetId, itemKey, rememberRecentReading]);
 
   useEffect(() => {
     const requested = new URLSearchParams(window.location.search).get("discussion");

@@ -156,7 +156,7 @@ function canonicalArticle(
     title: candidate.title,
     publishedAt: candidate.publishedAt,
     body,
-    assets: assets.map((asset) => [asset.id, asset.sha256]),
+    assets: assets.map((asset) => [asset.id, asset.sha256, asset.role, asset.afterBlock, asset.presentation]),
     translations: hasTranslations ? translations : undefined,
   }));
   return {

@@ -13,11 +13,13 @@ vi.mock("../src/times/api", () => ({ timesApi: timesMocks }));
 
 import { TimesHomePage } from "../src/times/pages/TimesHomePage";
 import { TimesDetailPage } from "../src/times/pages/TimesDetailPage";
+import { TimesSourceSettingsPage } from "../src/account/pages/TimesSourceSettingsPage";
 import TimesRoutes from "../src/times/TimesRoutes";
 import { useTimesPreferencesStore } from "../src/times/preferencesStore";
 import { useTimesReadStore } from "../src/times/readStore";
 
 const source = { id: "ap", name: "AP News", language: "en" };
+const secondSource = { id: "reuters", name: "Reuters", language: "en" };
 const article = {
   id: "article-one",
   title: "Headline with an archived photograph",
@@ -61,7 +63,7 @@ class TestIntersectionObserver implements IntersectionObserver {
 beforeEach(() => {
   window.localStorage.clear();
   useTimesReadStore.setState({ readById: {} });
-  useTimesPreferencesStore.setState({ foreignContentLanguage: "zh-CN" });
+  useTimesPreferencesStore.setState({ foreignContentLanguage: "zh-CN", disabledSourceIds: [] });
   timesMocks.timelineIndex.mockResolvedValue({
     formatVersion: "jojo-news-timeline-index/1",
     updatedAt: "2026-08-27T05:00:00.000Z",
@@ -140,7 +142,7 @@ describe("Times timeline images", () => {
     expect(sourceLabel?.className).toContain("flex-1");
   });
 
-  it("marks AI translations and persists the publisher-language preference", async () => {
+  it("marks AI translations without showing a language setting in Times", async () => {
     timesMocks.timelineDay.mockResolvedValue({
       formatVersion: "jojo-news-timeline-day/1",
       date: "2026-08-27",
@@ -163,16 +165,97 @@ describe("Times timeline images", () => {
 
     await screen.findByText("中文新闻标题");
     expect(screen.getByText("AI 翻译")).toBeTruthy();
-    const languageButton = screen.getByRole("button", { name: "外文内容语言：中文译文" });
-    fireEvent.click(languageButton);
-    const dialog = screen.getByRole("dialog", { name: "阅读设置" });
-    fireEvent.click(within(dialog).getByRole("radio", { name: "原文" }));
+    expect(screen.queryByRole("button", { name: /外文内容语言/ })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "阅读设置" })).toBeNull();
+  });
 
-    await screen.findByText(article.title);
-    expect(screen.queryByText("中文新闻标题")).toBeNull();
-    expect(screen.queryByText("AI 翻译")).toBeNull();
-    expect(useTimesPreferencesStore.getState().foreignContentLanguage).toBe("original");
-    expect(JSON.parse(window.localStorage.getItem("jojo-times-preferences") ?? "{}").state.foreignContentLanguage).toBe("original");
+  it("configures media sources separately and always keeps one enabled", async () => {
+    timesMocks.timelineIndex.mockResolvedValue({
+      formatVersion: "jojo-news-timeline-index/1",
+      updatedAt: "2026-08-27T05:00:00.000Z",
+      dates: [],
+      sources: [source, secondSource],
+    });
+    render(<MemoryRouter><TimesSourceSettingsPage /></MemoryRouter>);
+
+    const apSwitch = await screen.findByRole("switch", { name: "关闭AP News" });
+    expect(apSwitch.getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("switch", { name: "关闭Reuters" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("switch", { name: "关闭全部媒体" }).getAttribute("aria-checked")).toBe("true");
+
+    fireEvent.click(apSwitch);
+
+    expect(screen.getByRole("switch", { name: "开启AP News" }).getAttribute("aria-checked")).toBe("false");
+    const lastSource = screen.getByRole<HTMLButtonElement>("switch", { name: "关闭Reuters" });
+    expect(lastSource.disabled).toBe(true);
+    expect(useTimesPreferencesStore.getState().disabledSourceIds).toEqual(["ap"]);
+    expect(JSON.parse(window.localStorage.getItem("jojo-times-preferences") ?? "{}").state.disabledSourceIds).toEqual(["ap"]);
+
+    fireEvent.click(screen.getByRole("switch", { name: "开启全部媒体" }));
+    expect(screen.getByRole("switch", { name: "关闭AP News" })).toBeTruthy();
+    expect(useTimesPreferencesStore.getState().disabledSourceIds).toEqual([]);
+
+    fireEvent.click(screen.getByRole("switch", { name: "关闭全部媒体" }));
+    expect(useTimesPreferencesStore.getState().disabledSourceIds).toEqual(["reuters"]);
+    expect(screen.getByRole<HTMLButtonElement>("switch", { name: "关闭AP News" }).disabled).toBe(true);
+  });
+
+  it("hides disabled media from the Times rail and timeline", async () => {
+    const reutersArticle = { ...article, id: "article-two", title: "Reuters headline", source: secondSource, assets: [] };
+    timesMocks.timelineIndex.mockResolvedValue({
+      formatVersion: "jojo-news-timeline-index/1",
+      updatedAt: "2026-08-27T05:00:00.000Z",
+      dates: [{ date: "2026-08-27", object: "dates/2026/08/2026-08-27.jox", articleCount: 2 }],
+      sources: [source, secondSource],
+    });
+    timesMocks.timelineDay.mockResolvedValue({
+      formatVersion: "jojo-news-timeline-day/1",
+      date: "2026-08-27",
+      updatedAt: "2026-08-27T05:00:00.000Z",
+      articles: [article, reutersArticle],
+    });
+    useTimesPreferencesStore.getState().setSourceEnabled("ap", false, ["ap", "reuters"]);
+
+    render(<MemoryRouter><TimesHomePage /></MemoryRouter>);
+
+    await screen.findByText("Reuters headline");
+    expect(screen.queryByText(article.title)).toBeNull();
+    expect(screen.queryByRole("button", { name: /AP News/ })).toBeNull();
+  });
+
+  it("keeps the active article marker and reveals an explicit source overflow hint", async () => {
+    render(
+      <MemoryRouter initialEntries={[`/times/${article.issueDate}/${article.id}`]}>
+        <Routes>
+          <Route path="/times/:issueDate/:newsId" element={<TimesHomePage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findAllByText(article.title);
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "文章列表" }).querySelector("article")).toBeTruthy();
+    });
+    const articleRow = screen.getByRole("region", { name: "文章列表" }).querySelector("article")!;
+    expect(articleRow.className).toContain("border-l-4 border-l-red");
+    expect(articleRow.className).toContain("var(--color-red)_5%");
+    const sourceRail = screen.getByRole("navigation", { name: "选择媒体" });
+    expect(sourceRail.className).toContain("times-source-scroller");
+
+    Object.defineProperties(sourceRail, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 500 },
+      scrollTop: { configurable: true, writable: true, value: 0 },
+      scrollBy: { configurable: true, value: vi.fn() },
+    });
+    fireEvent(window, new Event("resize"));
+    const overflowHint = await screen.findByRole("button", { name: "向下查看更多媒体" });
+    fireEvent.click(overflowHint);
+    expect(sourceRail.scrollBy).toHaveBeenCalledWith({ top: 160, behavior: "smooth" });
+
+    sourceRail.scrollTop = 300;
+    fireEvent.scroll(sourceRail);
+    await waitFor(() => expect(screen.queryByRole("button", { name: "向下查看更多媒体" })).toBeNull());
   });
 
   it("switches the article body between AI translation and publisher original", async () => {
@@ -203,6 +286,97 @@ describe("Times timeline images", () => {
     expect(screen.queryByText("AI 翻译")).toBeNull();
     expect(screen.getByRole("button", { name: "查看中文译文" })).toBeTruthy();
     expect(timesMocks.getNews).toHaveBeenLastCalledWith(article.issueDate, article.id, "original");
+  });
+
+  it("spreads legacy trailing images through the article body", async () => {
+    timesMocks.getNews.mockResolvedValue({
+      ...article,
+      content: [
+        "<p>第一段正文</p>",
+        "<p>第二段正文</p>",
+        "<p>第三段正文</p>",
+        "<p>第四段正文</p>",
+        '<figure data-asset-id="asset:first"></figure>',
+        '<figure data-asset-id="asset:second"></figure>',
+      ].join(""),
+      contentFormat: "html",
+      assets: [
+        { ...article.assets[0], id: "asset:first" },
+        { ...article.assets[0], id: "asset:second" },
+      ],
+      assetUrls: { "asset:first": "blob:first", "asset:second": "blob:second" },
+      originalLanguage: "en",
+      translationAvailable: false,
+      usingTranslation: false,
+    });
+
+    render(<MemoryRouter><TimesDetailPage issueDate={article.issueDate} newsId={article.id} /></MemoryRouter>);
+
+    expect(await screen.findAllByRole("img", { name: "Photograph from the publisher" })).toHaveLength(2);
+    const articleBody = document.querySelector(".prose-editorial");
+    expect([...articleBody!.children].map((element) => element.tagName)).toEqual([
+      "P", "FIGURE", "P", "P", "FIGURE", "P",
+    ]);
+  });
+
+  it("renders a carousel group with controls, keyboard navigation and swipe", async () => {
+    const galleryAssets = [0, 1, 2].map((order) => ({
+      ...article.assets[0],
+      id: `asset:gallery-${order + 1}`,
+      alt: `Gallery photo ${order + 1}`,
+      caption: `Caption ${order + 1}`,
+      presentation: { type: "carousel" as const, id: "primary-gallery", order, total: 3 },
+    }));
+    timesMocks.getNews.mockResolvedValue({
+      ...article,
+      content: galleryAssets.map((asset) => `<figure data-asset-id="${asset.id}"><figcaption>${asset.caption}</figcaption></figure>`).join("") + "<p>Article body after the gallery.</p>",
+      contentFormat: "html",
+      assets: galleryAssets,
+      assetUrls: Object.fromEntries(galleryAssets.map((asset, index) => [asset.id, `blob:gallery-${index + 1}`])),
+      originalLanguage: "en",
+      translationAvailable: false,
+      usingTranslation: false,
+    });
+
+    render(<MemoryRouter><TimesDetailPage issueDate={article.issueDate} newsId={article.id} /></MemoryRouter>);
+
+    const carousel = await screen.findByLabelText("图片轮播，共 3 张");
+    expect(screen.getByRole("img", { name: "Gallery photo 1" }).getAttribute("src")).toBe("blob:gallery-1");
+    expect(screen.getByText("Caption 1")).toBeTruthy();
+    expect(document.querySelectorAll(".times-article-body > figure")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "下一张图片" }));
+    expect(screen.getByRole("img", { name: "Gallery photo 2" })).toBeTruthy();
+    expect(screen.getByText("Caption 2")).toBeTruthy();
+
+    fireEvent.keyDown(carousel, { key: "ArrowLeft" });
+    expect(screen.getByRole("img", { name: "Gallery photo 1" })).toBeTruthy();
+
+    fireEvent.touchStart(carousel, { touches: [{ clientX: 120 }] });
+    fireEvent.touchEnd(carousel, { changedTouches: [{ clientX: 40 }] });
+    expect(screen.getByRole("img", { name: "Gallery photo 2" })).toBeTruthy();
+  });
+
+  it("keeps publisher links obvious without doubling Chinese paragraph indentation", async () => {
+    timesMocks.getNews.mockResolvedValue({
+      ...article,
+      content: '<p>　　<a href="https://example.com/source">中新网</a>正文内容</p><hr><p>分隔后的正文内容</p>',
+      contentFormat: "html",
+      assets: [],
+      assetUrls: {},
+      originalLanguage: "zh-CN",
+      translationAvailable: false,
+      usingTranslation: false,
+    });
+
+    render(<MemoryRouter><TimesDetailPage issueDate={article.issueDate} newsId={article.id} /></MemoryRouter>);
+
+    const link = await screen.findByRole("link", { name: "中新网" });
+    expect(link.parentElement?.textContent).toBe("中新网正文内容");
+    expect(document.querySelector(".times-article-body")?.className).toContain("[&_a]:!text-red");
+    expect(document.querySelector(".times-article-body")?.className).toContain("[&_hr]:bg-rule");
+    expect(document.querySelector(".times-article-body hr")).toBeTruthy();
+    expect(link.getAttribute("href")).toBe("https://example.com/source");
   });
 
   it("shows the archived lead image instead of a text badge", async () => {

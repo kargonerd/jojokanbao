@@ -53,6 +53,7 @@ function sanitizeBlock(value: string, baseUrl?: string): { html: string; text: s
   const rootIsContent = rootElements.some((element) => "tagName" in element && CONTENT_ELEMENTS.has(element.tagName.toLowerCase()));
   if (rootIsContent && text.length < 20) return undefined;
   let html = fragment.html().trim();
+  html = html.replace(/^(<(?:blockquote|li|p|pre)>)(?:(?:&nbsp;)|[\s\u00a0\u3000])+/iu, "$1");
   let contentBlocks = rootElements.filter((element) => "tagName" in element && CONTENT_ELEMENTS.has(element.tagName.toLowerCase())).length;
   if (!rootElements.length || rootElements.every((element) => !("tagName" in element) || !SAFE_ELEMENTS.has(element.tagName.toLowerCase()))) {
     html = `<p>${escapeHtml(text)}</p>`;

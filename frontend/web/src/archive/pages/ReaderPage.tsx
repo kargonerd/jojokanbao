@@ -270,15 +270,14 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     if (!routeId) return;
     const issueHref = archiveIssuePath(name, routeId);
     const href = currentPage > 1 ? `${issueHref}#page-${currentPage}` : issueHref;
-    const progress = numPages > 1 ? ((currentPage - 1) / (numPages - 1)) * 100 : 0;
     rememberRecentReading({
       id: `periodical:${name}`,
       kind: "periodical",
       publicationId: name,
       title: config.label,
-      subtitle: formatArchiveIssueLabel(routeId),
+      subtitle: `${formatArchiveIssueLabel(routeId)}${currentPage > 1 ? ` · 第 ${currentPage} 页` : ""}`,
       href,
-      progress,
+      progress: 0,
     });
   }, [config.label, currentPage, name, numPages, rememberRecentReading, routeId]);
 

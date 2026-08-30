@@ -1,3 +1,5 @@
+import type { JojoAssetPresentation } from "@jojo/content";
+
 export type DiscoveryDriver = "http" | "browser";
 
 export interface BrowserDiscoveryPage {
@@ -135,6 +137,7 @@ export interface CapturedAsset {
   width?: number;
   height?: number;
   afterBlock?: number;
+  presentation?: JojoAssetPresentation;
 }
 
 export interface SourceConfig {

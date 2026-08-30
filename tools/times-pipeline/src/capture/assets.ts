@@ -69,6 +69,7 @@ export async function captureArticleAssets(options: {
       ...(image.width ? { width: image.width } : {}),
       ...(image.height ? { height: image.height } : {}),
       ...(image.afterBlock !== undefined ? { afterBlock: image.afterBlock } : {}),
+      ...(image.presentation ? { presentation: image.presentation } : {}),
     });
   }
   return [...assets.values()];

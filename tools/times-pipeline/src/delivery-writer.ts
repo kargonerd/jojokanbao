@@ -112,6 +112,7 @@ async function deliveryArticle(
         ...(asset.caption ? { caption: asset.caption } : {}),
         ...(asset.width ? { width: asset.width } : {}),
         ...(asset.height ? { height: asset.height } : {}),
+        ...(asset.presentation ? { presentation: asset.presentation } : {}),
       });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;

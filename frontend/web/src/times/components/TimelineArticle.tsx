@@ -143,7 +143,7 @@ export function TimelineArticle({
           <time dateTime={article.publishedAt} title={exactArticleTime(article.publishedAt)} className="shrink-0 tabular-nums">{relativeArticleTime(article.publishedAt)}</time>
         </span>
         <strong
-          className={`mt-1 overflow-hidden text-[15px] leading-5 transition-colors group-hover:text-red ${read ? "font-medium text-muted" : "font-black text-ink"}`}
+          className={`mt-1 overflow-hidden text-[15px] leading-5 transition-colors group-hover:text-red ${read ? "font-medium text-muted" : active ? "font-black text-red" : "font-black text-ink"}`}
           style={{ display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 2 }}
         >
           {article.title}
