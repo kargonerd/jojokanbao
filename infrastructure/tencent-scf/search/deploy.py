@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import base64
 import hashlib
 import json
 import os
@@ -351,6 +352,31 @@ def _cos_client(region: str) -> Any | None:
     return CosS3Client(config)
 
 
+def _scf_client(region: str) -> Any | None:
+    secret_id = os.getenv("TENCENTCLOUD_SECRET_ID", "")
+    secret_key = os.getenv("TENCENTCLOUD_SECRET_KEY", "")
+    if not secret_id or not secret_key:
+        return None
+    from tencentcloud.common import credential
+    from tencentcloud.common.profile.client_profile import ClientProfile
+    from tencentcloud.common.profile.http_profile import HttpProfile
+    from tencentcloud.scf.v20180416 import scf_client
+
+    credentials = credential.Credential(
+        secret_id,
+        secret_key,
+        os.getenv("TENCENTCLOUD_TOKEN") or None,
+    )
+    http_profile = HttpProfile()
+    http_profile.endpoint = "scf.tencentcloudapi.com"
+    http_profile.reqTimeout = 60
+    return scf_client.ScfClient(
+        credentials,
+        region,
+        ClientProfile(httpProfile=http_profile),
+    )
+
+
 def _upload(package: Path, *, bucket: str, region: str, key: str, profile: str) -> None:
     client = _cos_client(region)
     if client is not None:
@@ -400,34 +426,49 @@ def _delete_upload(*, bucket: str, region: str, key: str, profile: str) -> None:
 def _update_function(
     function: str,
     *,
+    package: Path | None,
     bucket: str,
     region: str,
     namespace: str,
     key: str,
     profile: str,
 ) -> None:
-    custom_bucket = bucket.rsplit("-", 1)[0]
-    _json_command(_tccli(
-        profile,
-        "scf",
-        "UpdateFunctionCode",
-        "--FunctionName",
-        function,
-        "--Namespace",
-        namespace,
-        "--CodeSource",
-        "Cos",
-        "--CosBucketName",
-        custom_bucket,
-        "--CosBucketRegion",
-        region,
-        "--CosObjectName",
-        "/" + key.lstrip("/"),
-        "--Handler",
-        "app.app",
-        "--region",
-        region,
-    ))
+    client = _scf_client(region)
+    if client is not None and package is not None:
+        from tencentcloud.scf.v20180416 import models
+
+        request = models.UpdateFunctionCodeRequest()
+        request.from_json_string(json.dumps({
+            "FunctionName": function,
+            "Namespace": namespace,
+            "CodeSource": "ZipFile",
+            "ZipFile": base64.b64encode(package.read_bytes()).decode("ascii"),
+            "Handler": "app.app",
+        }))
+        client.UpdateFunctionCode(request)
+    else:
+        custom_bucket = bucket.rsplit("-", 1)[0]
+        _json_command(_tccli(
+            profile,
+            "scf",
+            "UpdateFunctionCode",
+            "--FunctionName",
+            function,
+            "--Namespace",
+            namespace,
+            "--CodeSource",
+            "Cos",
+            "--CosBucketName",
+            custom_bucket,
+            "--CosBucketRegion",
+            region,
+            "--CosObjectName",
+            "/" + key.lstrip("/"),
+            "--Handler",
+            "app.app",
+            "--region",
+            region,
+        ))
     _wait_for_function(
         function,
         region=region,
@@ -484,6 +525,7 @@ def main() -> int:
     )
     health_url = args.production_health if args.target == "production" else args.staging_health
     key = f"runtime/scf-builds/{fingerprint[:12]}.zip"
+    inline_package = output if _scf_client(args.region) is not None else None
     uploaded = False
     try:
         print(f"检查 SCF 读取权限：{function}")
@@ -493,12 +535,16 @@ def main() -> int:
             namespace=args.namespace,
             profile=args.profile,
         )
-        print(f"上传代码包：cos://{args.bucket}/{key}")
-        _upload(output, bucket=args.bucket, region=args.region, key=key, profile=args.profile)
-        uploaded = True
+        if inline_package is None:
+            print(f"上传代码包：cos://{args.bucket}/{key}")
+            _upload(output, bucket=args.bucket, region=args.region, key=key, profile=args.profile)
+            uploaded = True
+        else:
+            print("直接提交代码包到 SCF API")
         print(f"更新 SCF：{function}")
         _update_function(
             function,
+            package=inline_package,
             bucket=args.bucket,
             region=args.region,
             namespace=args.namespace,

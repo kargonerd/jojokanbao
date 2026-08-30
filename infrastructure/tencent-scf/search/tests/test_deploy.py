@@ -145,6 +145,35 @@ class DeployPackageTests(unittest.TestCase):
             Key="runtime/scf-builds/search.zip",
         )
 
+    def test_update_function_submits_inline_zip_with_environment_credentials(self):
+        client = MagicMock()
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "search.zip"
+            package.write_bytes(b"zip-content")
+            with (
+                patch.object(deploy, "_scf_client", return_value=client),
+                patch.object(deploy, "_wait_for_function") as wait,
+            ):
+                deploy._update_function(
+                    "flask_jojo_search_staging",
+                    package=package,
+                    bucket="jojo-search-1314955862",
+                    region="ap-beijing",
+                    namespace="default",
+                    key="unused.zip",
+                    profile="",
+                )
+
+        request = client.UpdateFunctionCode.call_args.args[0]
+        payload = json.loads(request.to_json_string())
+        self.assertEqual(payload["CodeSource"], "ZipFile")
+        self.assertEqual(payload["FunctionName"], "flask_jojo_search_staging")
+        self.assertEqual(
+            deploy.base64.b64decode(payload["ZipFile"]),
+            b"zip-content",
+        )
+        wait.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

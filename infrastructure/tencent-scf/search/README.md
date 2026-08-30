@@ -90,10 +90,10 @@ python tools/jojo-admin/server/publish_search_state.py `
 
 `deploy.py` is the only supported SCF code-release path. It builds a clean zip
 with pinned dependencies, normalizes `scf_bootstrap` to Linux line endings,
-uploads the package with the COS Python SDK to the private `jojo-search` bucket,
-updates one function, waits for it to become Active, verifies `/health`, and
-then removes the temporary COS object. The health response exposes the Git
-commit and source fingerprint that are actually running.
+submits the small package directly to the SCF API, waits for the function to
+become Active, and verifies `/health`. Local profile-based deployments retain
+the temporary private-COS fallback. The health response exposes the Git commit
+and source fingerprint that are actually running.
 
 Build locally without changing cloud state:
 
