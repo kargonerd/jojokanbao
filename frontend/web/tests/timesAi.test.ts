@@ -39,6 +39,9 @@ const news = {
   content: "正文提到图表中的红色曲线正在上升。",
   contentFormat: "text" as const,
   assetUrls: {},
+  originalLanguage: "en",
+  translationAvailable: false,
+  usingTranslation: false,
 };
 const anchor = { quote: "红色曲线", prefix: "图表中的", suffix: "正在上升", startOffset: 6, endOffset: 10 };
 

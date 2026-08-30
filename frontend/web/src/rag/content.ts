@@ -18,11 +18,7 @@ import type { RagSearchHit } from "./types";
 
 const CONTENT_CDN = import.meta.env.VITE_CONTENT_CDN_BASE || "https://blacknews.jojokanbao.cn/";
 const client = new JoxClient(CONTENT_CDN);
-const fallbackClient = import.meta.env.VITE_CONTENT_CDN_FALLBACK_BASE
-  ? new JoxClient(import.meta.env.VITE_CONTENT_CDN_FALLBACK_BASE)
-  : undefined;
 let catalogPromise: Promise<JojoCatalog> | undefined;
-const datasetSources = new Map<string, Array<{ entry: JojoCatalogEntry; client: JoxClient }>>();
 const bookSearchPromises = new Map<string, Promise<JojoBookSearchIndex>>();
 const bookCoverPromises = new Map<string, Promise<string | undefined>>();
 type LoadedDatasetIndex = JojoDatasetIndex & { items: JojoDatasetItemSummary[] };
@@ -31,7 +27,6 @@ export interface LoadedDataset {
   entry: JojoCatalogEntry;
   index: LoadedDatasetIndex;
   client: JoxClient;
-  itemClients: Map<string, JoxClient>;
 }
 
 export interface LoadedItem extends LoadedDataset {
@@ -41,30 +36,7 @@ export interface LoadedItem extends LoadedDataset {
 }
 
 export function loadCatalog(): Promise<JojoCatalog> {
-  catalogPromise ??= (async () => {
-    const primary = asJojoCatalog(await client.fetchJson<JojoCatalog>("catalog.jox", undefined, "no-store"));
-    const fallback = fallbackClient
-      ? await fallbackClient.fetchJson<JojoCatalog>("catalog.jox", undefined, "no-store").then(asJojoCatalog).catch(() => undefined)
-      : undefined;
-    const entries = new Map<string, JojoCatalogEntry>();
-    datasetSources.clear();
-    for (const source of [
-      ...(fallback && fallbackClient ? [{ catalog: fallback, client: fallbackClient }] : []),
-      { catalog: primary, client },
-    ]) {
-      for (const entry of source.catalog.datasets) {
-        entries.set(entry.datasetId, entry);
-        const existing = datasetSources.get(entry.datasetId) ?? [];
-        datasetSources.set(entry.datasetId, [{ entry, client: source.client }, ...existing]);
-      }
-    }
-    return {
-      formatVersion: "jojo-catalog/1",
-      revision: Math.max(primary.revision, fallback?.revision ?? 0),
-      updatedAt: primary.updatedAt,
-      datasets: [...entries.values()].sort((left, right) => left.title.localeCompare(right.title, "zh-CN")),
-    };
-  })();
+  catalogPromise ??= client.fetchJson<JojoCatalog>("catalog.jox", undefined, "no-store").then(asJojoCatalog);
   return catalogPromise;
 }
 
@@ -72,41 +44,21 @@ export async function loadDataset(datasetId: string): Promise<LoadedDataset> {
   const catalog = await loadCatalog();
   const entry = catalog.datasets.find((candidate) => candidate.datasetId === datasetId);
   if (!entry) throw new Error("找不到对应的书目");
-  const sources = datasetSources.get(datasetId) ?? [{ entry, client }];
-  const loadedIndexes = await Promise.all(sources.map(async (source) => ({
-    source,
-    index: asJojoDatasetIndex(await source.client.fetchJson<JojoDatasetIndex>(source.entry.indexObject)),
-  })));
-  if (loadedIndexes.some(({ index }) => index.datasetId !== datasetId)) throw new Error("书目暂时无法读取");
-  const itemClients = new Map<string, JoxClient>();
-  const items = new Map<string, JojoDatasetItemSummary>();
-  for (const { source, index } of [...loadedIndexes].reverse()) {
-    for (const item of index.items) {
-      items.set(item.itemId, item);
-      itemClients.set(item.itemId, source.client);
-    }
-  }
-  const primary = loadedIndexes[0]!;
-  const index: LoadedDatasetIndex = {
-    ...primary.index,
-    revision: Math.max(...loadedIndexes.map((value) => value.index.revision)),
-    type: items.size > 1 && primary.index.type === "book" ? "book-series" : primary.index.type,
-    items: [...items.values()].sort((left, right) => left.order - right.order || left.title.localeCompare(right.title, "zh-CN")),
-  };
-  return { entry, index, client: primary.source.client, itemClients };
+  const index = asJojoDatasetIndex(await client.fetchJson<JojoDatasetIndex>(entry.indexObject));
+  if (index.datasetId !== datasetId) throw new Error("书目暂时无法读取");
+  return { entry, index, client };
 }
 
 export async function loadItem(datasetId: string, itemKey: string): Promise<LoadedItem> {
   const dataset = await loadDataset(datasetId);
   const item = dataset.index.items.find((candidate) => candidate.itemKey === itemKey || candidate.itemId === itemKey);
   if (!item) throw new Error("找不到对应的书籍");
-  const itemClient = dataset.itemClients.get(item.itemId) ?? dataset.client;
   const manifestObject = resolveJoxObject(dataset.entry.indexObject, item.manifestObject);
   const manifest = asJojoItemManifest(
-    await itemClient.fetchJson<JojoItemManifest>(manifestObject, undefined, "no-store"),
+    await dataset.client.fetchJson<JojoItemManifest>(manifestObject, undefined, "no-store"),
   );
   if (manifest.itemId !== item.itemId) throw new Error("书籍暂时无法读取");
-  return { ...dataset, client: itemClient, item, manifest, manifestObject };
+  return { ...dataset, item, manifest, manifestObject };
 }
 
 export async function loadFragment(loaded: LoadedItem, chapterId: string): Promise<JojoFragment> {
@@ -133,14 +85,13 @@ export function loadBookCoverUrl(datasetId: string, itemKey?: string): Promise<s
       ? dataset.index.items.find((item) => item.itemKey === itemKey || item.itemId === itemKey)
       : dataset.index.items.find((item) => item.publicationStatus !== "draft");
     if (!summary) return undefined;
-    const itemClient = dataset.itemClients.get(summary.itemId) ?? dataset.client;
     const manifestObject = resolveJoxObject(dataset.entry.indexObject, summary.manifestObject);
     const manifest = asJojoItemManifest(
-      await itemClient.fetchJson<JojoItemManifest>(manifestObject, undefined, "no-store"),
+      await dataset.client.fetchJson<JojoItemManifest>(manifestObject, undefined, "no-store"),
     );
     const cover = manifest.assets.find((asset) => asset.type === "image" && asset.role === "cover");
     if (!cover) return undefined;
-    const bytes = await itemClient.fetchDecodedBytes(resolveJoxObject(manifestObject, cover.object));
+    const bytes = await dataset.client.fetchDecodedBytes(resolveJoxObject(manifestObject, cover.object));
     return URL.createObjectURL(new Blob([bytes.slice().buffer], { type: cover.mediaType }));
   })().catch((error: unknown) => {
     bookCoverPromises.delete(cacheKey);

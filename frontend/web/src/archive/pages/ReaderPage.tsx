@@ -2,10 +2,11 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { fetchPdfDownloadBytes, PdfViewer, usePdfDocument } from "@jojo/pdf-viewer";
 import { archivePdfUrl, formatArchiveIssueLabel } from "@jojo/content";
-import { EmptyState, LoadingSpinner, DatePicker, Toolbar, YearPicker } from "@jojo/ui";
+import { EmptyState, DatePicker, Toolbar, YearPicker } from "@jojo/ui";
 import { PUBLICATIONS, type PublicationName } from "../publications";
 import { archiveIssuePath } from "../../routes";
 import { useRecentReadingStore } from "../../library/recentReadingStore";
+import { ReadingLoadingState } from "../../reading/ReadingLoadingState";
 
 const PAGE_SCROLL_GAP = 16;
 const READER_TOOLBAR_MAX_HEIGHT = 61;
@@ -876,7 +877,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       {/* Content */}
       <div className="px-4 py-4">
         {routeError && <EmptyState title="阅读链接无效" description={routeError} />}
-        {showInitialLoading && <LoadingSpinner text={initialLoadingText} fullscreen />}
+        {showInitialLoading && <ReadingLoadingState kind="periodical" status={initialLoadingText} fullscreen />}
         {error && (
           <EmptyState title="没有当天文档或数据缺失" description={error} />
         )}

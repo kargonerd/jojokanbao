@@ -18,6 +18,7 @@ import {
   type LoadedItem,
 } from "../content";
 import { readerReturnPathFromState, safeReaderReturnPath } from "../readerNavigation";
+import { ReadingLoadingState } from "../../reading/ReadingLoadingState";
 import { BookReader } from "../components/BookReader";
 
 function flattenToc(nodes: JojoTocNode[] = [], depth = 0): Array<JojoTocNode & { depth: number }> {
@@ -314,7 +315,7 @@ export function ReaderPage() {
 
   const toc = useMemo(() => flattenToc(loaded?.manifest.content.toc), [loaded]);
   const html = useMemo(() => fragment ? renderedBody(fragment, assetUrls) : "", [assetUrls, fragment]);
-  if (loading) return <LoadingSpinner text="正在打开书籍" fullscreen />;
+  if (loading) return <ReadingLoadingState kind="book" status="正在打开书籍" fullscreen />;
   if (!loaded) return <div className="p-8 text-center text-muted">{error || "内容不存在"}</div>;
   const access = loaded.manifest.access ?? loaded.item.access ?? loaded.index.access ?? loaded.entry.access ?? "public";
   if (access === "authenticated" && (!authState.initialized || !authState.signedIn)) {
@@ -389,6 +390,6 @@ export function ReaderPage() {
             if (asset.type === "video") return [<video key={id} controls className="w-full mt-5" src={url} />];
             return [];
           })}
-    </> : <LoadingSpinner text="正在读取章节" />}
+    </> : <ReadingLoadingState kind="book" status="正在读取章节" spacingClassName="py-12" className="mx-auto max-w-sm" />}
   </BookReader>;
 }

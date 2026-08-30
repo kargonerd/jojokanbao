@@ -3,19 +3,21 @@ import {
   resolveJoxObject,
   type JojoAssetDescriptor,
   type JojoFragment,
-  type TimesArticleTranslation,
-  type TimesDeliveryArticle,
   type TimesTimelineDay,
   type TimesTimelineIndex,
 } from "@jojo/content";
+import {
+  preferredTimesTranslation,
+  presentTimesArticle,
+  type TimesForeignContentLanguage,
+  type TimesPresentedArticle,
+} from "./language";
 
-const TIMES_CDN = import.meta.env.VITE_TIMES_CDN_BASE
-  || import.meta.env.VITE_CONTENT_CDN_BASE
-  || "https://blacknews.jojokanbao.cn/";
+const CONTENT_CDN = import.meta.env.VITE_CONTENT_CDN_BASE || "https://blacknews.jojokanbao.cn/";
 const TIMELINE_INDEX_OBJECT = "content/timeline/index.jox";
-const client = new JoxClient(TIMES_CDN, (input, init) => fetch(input, init));
+const client = new JoxClient(CONTENT_CDN, (input, init) => fetch(input, init));
 
-export type TimesNewsItem = TimesDeliveryArticle & {
+export type TimesNewsItem = TimesPresentedArticle & {
   content?: string | null;
   contentFormat?: "html" | "text";
   assetUrls?: Record<string, string>;
@@ -32,24 +34,7 @@ function asTimelineDay(value: TimesTimelineDay, date: string): TimesTimelineDay 
   if (value.formatVersion !== "jojo-news-timeline-day/1" || value.date !== date || !Array.isArray(value.articles)) {
     throw new Error(`${date} 的时事时间线格式无效`);
   }
-  return { ...value, articles: value.articles.map(localizedArticle) };
-}
-
-function preferredTranslation(article: TimesDeliveryArticle): TimesArticleTranslation | undefined {
-  const translation = article.translations?.["zh-CN"];
-  if (!translation || translation.language !== "zh-CN" || typeof translation.title !== "string"
-    || typeof translation.articleObject !== "string") return undefined;
-  return translation;
-}
-
-function localizedArticle(article: TimesDeliveryArticle): TimesDeliveryArticle {
-  const translation = preferredTranslation(article);
-  return translation ? {
-    ...article,
-    title: translation.title,
-    summary: translation.summary ?? null,
-    language: translation.language,
-  } : article;
+  return value;
 }
 
 function safeArticleObject(value: string): string {
@@ -119,10 +104,14 @@ export const timesApi = {
     dayPromises.clear();
   },
 
-  async getNews(issueDate: string, newsId: string): Promise<TimesNewsItem> {
+  async getNews(
+    issueDate: string,
+    newsId: string,
+    languagePreference: TimesForeignContentLanguage = "zh-CN",
+  ): Promise<TimesNewsItem> {
     const item = (await timelineDay(issueDate)).articles.find((candidate) => candidate.id === newsId);
     if (!item) throw new Error("新闻不存在");
-    const translation = preferredTranslation(item);
+    const translation = languagePreference === "zh-CN" ? preferredTimesTranslation(item) : undefined;
     const fetchFragment = async (object: string): Promise<JojoFragment> => {
       const fragment = await client.fetchJson<JojoFragment>(safeArticleObject(object));
       if (fragment.formatVersion !== "jojo-fragment/1" || fragment.type !== "article" || fragment.fragmentId !== item.id) {
@@ -149,7 +138,7 @@ export const timesApi = {
       }
     }));
     return {
-      ...item,
+      ...presentTimesArticle(item, usingTranslation ? "zh-CN" : "original"),
       ...(!usingTranslation && translation ? { title: fragment.title, summary: null, language: item.source.language } : {}),
       assets,
       content: fragment.body.value,

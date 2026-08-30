@@ -3,6 +3,7 @@ import { gzipSync } from "node:zlib";
 import { transformJoxBytes } from "@jojo/content";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { timesApi } from "../src/times/api";
+import { presentTimesArticle } from "../src/times/language";
 
 const indexObject = "content/timeline/index.jox";
 const dayObject = "content/timeline/dates/2026/08/2026-08-22.jox";
@@ -125,18 +126,32 @@ describe("Times B2 CDN client", () => {
         body: { format: "html", profile: "jojo-semantic-html/1", value: "<p>中文正文</p>" },
         assetRefs: [], annotations: [],
       });
+      if (url.endsWith(articleObject)) return joxResponse(articleObject, {
+        formatVersion: "jojo-fragment/1", itemId: "example:2026-08-22", fragmentId: "article-one",
+        type: "article", order: 1, title: "Headline",
+        body: { format: "html", profile: "jojo-semantic-html/1", value: "<p>Full body</p>" },
+        assetRefs: [], annotations: [],
+      });
       return new Response("not found", { status: 404 });
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(timesApi.timelineDay("2026-08-22")).resolves.toMatchObject({
-      articles: [{ title: "中文标题", summary: "中文摘要", language: "zh-CN" }],
+    const timeline = await timesApi.timelineDay("2026-08-22");
+    expect(timeline.articles[0]).toMatchObject({ title: "Headline", summary: "Summary", language: "en" });
+    expect(presentTimesArticle(timeline.articles[0]!, "zh-CN")).toMatchObject({
+      title: "中文标题", summary: "中文摘要", language: "zh-CN", usingTranslation: true,
     });
     await expect(timesApi.getNews("2026-08-22", "article-one")).resolves.toMatchObject({
       title: "中文标题", content: "<p>中文正文</p>", language: "zh-CN",
+      translationAvailable: true, usingTranslation: true,
     });
     expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith(translatedArticleObject))).toBe(true);
     expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith(articleObject))).toBe(false);
+    await expect(timesApi.getNews("2026-08-22", "article-one", "original")).resolves.toMatchObject({
+      title: "Headline", summary: "Summary", content: "<p>Full body</p>", language: "en",
+      translationAvailable: true, usingTranslation: false,
+    });
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith(articleObject))).toBe(true);
   });
 
   it("falls back to the publisher-language fragment when a translated object is unavailable", async () => {

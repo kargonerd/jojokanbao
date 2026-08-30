@@ -135,6 +135,11 @@ export function TimelineArticle({
       <Link to={`/times/${article.issueDate}/${encodeURIComponent(article.id)}`} className={`min-w-0 text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-red ${read ? "opacity-60" : ""}`}>
         <span className="flex min-w-0 items-center gap-2 font-sans text-[10px] font-bold text-muted">
           <span className={`min-w-0 flex-1 truncate ${read ? "text-muted" : "text-red"}`}>{timesSourceName(article.source)}</span>
+          {article.usingTranslation ? (
+            <span title="此内容由 AI 翻译" className="shrink-0 border border-red/35 px-1 py-px text-[8px] font-black tracking-[0.08em] text-red">
+              AI 翻译
+            </span>
+          ) : null}
           <time dateTime={article.publishedAt} title={exactArticleTime(article.publishedAt)} className="shrink-0 tabular-nums">{relativeArticleTime(article.publishedAt)}</time>
         </span>
         <strong

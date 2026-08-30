@@ -146,7 +146,7 @@ RAG 页面和 RAG 请求统一使用一个 Flag：`rag.workspace`，不再另设
 
 首页、资料库、搜索、关于、登录、基础阅读和 RAG 路由随新版 Web 一起构建，不再维护
 账号或 RAG 的独立构建开关。`rag.workspace` 是唯一的 RAG 功能权限开关；Times 仍使用
-`VITE_ENABLE_TIMES` 构建开关，不依赖 Supabase 运行时配置。
+Times 随整站新版构建开关 `VITE_ENABLE_PLATFORM_REDESIGN` 注册，不再维护独立构建开关。
 
 ## 8. 管理台与测试
 

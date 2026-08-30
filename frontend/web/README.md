@@ -5,9 +5,8 @@
 ## 路由与整站发布开关
 
 - 生产默认（`VITE_ENABLE_PLATFORM_REDESIGN=false`）：保持原站路由和界面，`/` 跳转 `/archive`
-- 新版预览（`VITE_ENABLE_PLATFORM_REDESIGN=true`）：一次开放新版首页、资料库、账号、RAG 和阅读器，并保留 `/archive/*`
+- 新版预览（`VITE_ENABLE_PLATFORM_REDESIGN=true`）：一次开放新版首页、资料库、账号、RAG、时事和阅读器，并保留 `/archive/*`
 - 本地 `vite dev`：始终使用新版，不需要配置发布开关
-- 待发布：`/times/*`
 
 旧 Reader 地址（例如 `/rmrb/19761009#page-5`）以及短暂使用过的 `/reader/*` 前缀会迁移到 `/archive/*`，并保留查询参数和锚点。静态托管必须将未知路径回退到 `index.html`，否则深链接会返回 404。
 
@@ -21,14 +20,13 @@
 ```dotenv
 VITE_SUPABASE_URL=
 VITE_SUPABASE_PUBLISHABLE_KEY=
-VITE_ENABLE_TIMES=false
 ```
 
 Git worktree 自己没有 `.env` 时，Web、Desktop 和本地 Agent 会自动读取主工作区的 `.env` 和 `.env.local`；
 当前 worktree 若存在自己的环境文件，则优先使用自己的配置。真实值不会写入或提交到功能分支。
 
-Times 与 RAG 馆藏都直接读取 B2 CDN 已发布的 Jox 内容；Times 默认使用
-`VITE_CONTENT_CDN_BASE`，也可由 `VITE_TIMES_CDN_BASE` 单独覆盖。Agent 请求走
+报刊、书籍、RAG 馆藏与 Times 都通过 `VITE_CONTENT_CDN_BASE` 读取 B2 CDN 已发布的
+Jox 内容，不为不同模块配置额外的内容源。Agent 请求走
 `/gateway/ask`，再由 Reader Cloud Function 转发到国际 Agent。浏览器不配置模块 API
 Base 或直连 Agent 域名。AI 与时事入口仍只向已登录读者显示；账号、Agent 和划线评论等
 写操作继续校验 Supabase access token。本地 Vite 服务器使用服务端

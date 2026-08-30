@@ -25,7 +25,6 @@ function loadedBook(search?: JojoItemManifest["search"]): LoadedItem {
     entry: { datasetId: "example", type: "book", title: "示例书", language: "zh-CN", indexObject: "content/books/example/index.jox" },
     index: { formatVersion: "jojo-delivery-index/1", revision: 1, datasetId: "example", type: "book", title: "示例书", language: "zh-CN", items: [] },
     client: { fetchJson: vi.fn() } as unknown as LoadedItem["client"],
-    itemClients: new Map(),
     item: { itemId: manifest.itemId, itemKey: "full-book", type: "book", order: 1, title: manifest.title, manifestObject: "items/full-book/manifest.jox" },
     manifest,
     manifestObject: "content/books/example/items/full-book/manifest.jox",
