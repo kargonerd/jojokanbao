@@ -1,0 +1,627 @@
+{
+  "$defs": {
+    "ArticleStatus": {
+      "enum": [
+        "complete",
+        "partial",
+        "error",
+        "unsupported"
+      ],
+      "title": "ArticleStatus",
+      "type": "string"
+    },
+    "Author": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "role": {
+          "default": "author",
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Author",
+      "type": "object"
+    },
+    "BlobReference": {
+      "additionalProperties": false,
+      "properties": {
+        "byteCount": {
+          "minimum": 0,
+          "title": "Bytecount",
+          "type": "integer"
+        },
+        "contentEncoding": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contentencoding"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "storedByteCount": {
+          "minimum": 0,
+          "title": "Storedbytecount",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "byteCount",
+        "storedByteCount"
+      ],
+      "title": "BlobReference",
+      "type": "object"
+    },
+    "BlockType": {
+      "enum": [
+        "paragraph",
+        "heading",
+        "image",
+        "quote",
+        "list",
+        "table",
+        "embed",
+        "divider"
+      ],
+      "title": "BlockType",
+      "type": "string"
+    },
+    "CaptureProvider": {
+      "enum": [
+        "wayback",
+        "arquivo-pt",
+        "commoncrawl",
+        "infini-news",
+        "live-origin",
+        "other"
+      ],
+      "title": "CaptureProvider",
+      "type": "string"
+    },
+    "CaptureReference": {
+      "additionalProperties": false,
+      "properties": {
+        "captureId": {
+          "title": "Captureid",
+          "type": "string"
+        },
+        "capturedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Capturedat"
+        },
+        "provider": {
+          "$ref": "#/$defs/CaptureProvider"
+        },
+        "rawHtml": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlobReference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "snapshotUrl": {
+          "title": "Snapshoturl",
+          "type": "string"
+        }
+      },
+      "required": [
+        "captureId",
+        "provider",
+        "snapshotUrl"
+      ],
+      "title": "CaptureReference",
+      "type": "object"
+    },
+    "ContentBlock": {
+      "additionalProperties": false,
+      "properties": {
+        "assetId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Assetid"
+        },
+        "caption": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Caption"
+        },
+        "credit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Credit"
+        },
+        "embedUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Embedurl"
+        },
+        "html": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Html"
+        },
+        "items": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "level": {
+          "anyOf": [
+            {
+              "maximum": 6,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Level"
+        },
+        "position": {
+          "minimum": 0,
+          "title": "Position",
+          "type": "integer"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        },
+        "type": {
+          "$ref": "#/$defs/BlockType"
+        }
+      },
+      "required": [
+        "type",
+        "position"
+      ],
+      "title": "ContentBlock",
+      "type": "object"
+    },
+    "ContentType": {
+      "enum": [
+        "article",
+        "opinion",
+        "liveblog",
+        "newsletter",
+        "transcript",
+        "gallery",
+        "video",
+        "audio",
+        "interactive"
+      ],
+      "title": "ContentType",
+      "type": "string"
+    },
+    "Extraction": {
+      "additionalProperties": false,
+      "properties": {
+        "parsedAt": {
+          "format": "date-time",
+          "title": "Parsedat",
+          "type": "string"
+        },
+        "parser": {
+          "title": "Parser",
+          "type": "string"
+        },
+        "parserVersion": {
+          "title": "Parserversion",
+          "type": "string"
+        },
+        "sourceCaptureId": {
+          "title": "Sourcecaptureid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "parser",
+        "parserVersion",
+        "parsedAt",
+        "sourceCaptureId"
+      ],
+      "title": "Extraction",
+      "type": "object"
+    },
+    "ImageCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "alt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Alt"
+        },
+        "assetId": {
+          "title": "Assetid",
+          "type": "string"
+        },
+        "candidateUrls": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Candidateurls",
+          "type": "array"
+        },
+        "caption": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Caption"
+        },
+        "credit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Credit"
+        },
+        "height": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Height"
+        },
+        "originalUrl": {
+          "title": "Originalurl",
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/ImageRole"
+        },
+        "selectionReasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Selectionreasons",
+          "type": "array"
+        },
+        "shouldArchive": {
+          "title": "Shouldarchive",
+          "type": "boolean"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Width"
+        }
+      },
+      "required": [
+        "assetId",
+        "role",
+        "originalUrl",
+        "shouldArchive"
+      ],
+      "title": "ImageCandidate",
+      "type": "object"
+    },
+    "ImageRole": {
+      "enum": [
+        "lead",
+        "body",
+        "chart",
+        "infographic",
+        "author-avatar",
+        "recommendation",
+        "advertisement",
+        "logo",
+        "icon",
+        "tracking",
+        "unknown"
+      ],
+      "title": "ImageRole",
+      "type": "string"
+    },
+    "Quality": {
+      "additionalProperties": false,
+      "properties": {
+        "blockCount": {
+          "minimum": 0,
+          "title": "Blockcount",
+          "type": "integer"
+        },
+        "bodyCharacters": {
+          "minimum": 0,
+          "title": "Bodycharacters",
+          "type": "integer"
+        },
+        "imagesReferenced": {
+          "minimum": 0,
+          "title": "Imagesreferenced",
+          "type": "integer"
+        },
+        "imagesSelected": {
+          "minimum": 0,
+          "title": "Imagesselected",
+          "type": "integer"
+        },
+        "status": {
+          "$ref": "#/$defs/ArticleStatus"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "status",
+        "bodyCharacters",
+        "blockCount",
+        "imagesReferenced",
+        "imagesSelected"
+      ],
+      "title": "Quality",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "articleId": {
+      "title": "Articleid",
+      "type": "string"
+    },
+    "authors": {
+      "items": {
+        "$ref": "#/$defs/Author"
+      },
+      "title": "Authors",
+      "type": "array"
+    },
+    "blocks": {
+      "items": {
+        "$ref": "#/$defs/ContentBlock"
+      },
+      "title": "Blocks",
+      "type": "array"
+    },
+    "bodyHtml": {
+      "title": "Bodyhtml",
+      "type": "string"
+    },
+    "canonicalUrl": {
+      "title": "Canonicalurl",
+      "type": "string"
+    },
+    "contentType": {
+      "$ref": "#/$defs/ContentType"
+    },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Description"
+    },
+    "edition": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Edition"
+    },
+    "extraction": {
+      "$ref": "#/$defs/Extraction"
+    },
+    "formatVersion": {
+      "default": "jojo-article/1",
+      "title": "Formatversion",
+      "type": "string"
+    },
+    "headline": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Headline"
+    },
+    "images": {
+      "items": {
+        "$ref": "#/$defs/ImageCandidate"
+      },
+      "title": "Images",
+      "type": "array"
+    },
+    "language": {
+      "title": "Language",
+      "type": "string"
+    },
+    "modifiedAt": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Modifiedat"
+    },
+    "plainText": {
+      "title": "Plaintext",
+      "type": "string"
+    },
+    "publishedAt": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Publishedat"
+    },
+    "publisher": {
+      "title": "Publisher",
+      "type": "string"
+    },
+    "quality": {
+      "$ref": "#/$defs/Quality"
+    },
+    "section": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Section"
+    },
+    "sourceCapture": {
+      "$ref": "#/$defs/CaptureReference"
+    }
+  },
+  "required": [
+    "articleId",
+    "publisher",
+    "canonicalUrl",
+    "language",
+    "contentType",
+    "plainText",
+    "bodyHtml",
+    "blocks",
+    "images",
+    "sourceCapture",
+    "extraction",
+    "quality"
+  ],
+  "title": "JojoArticle",
+  "type": "object"
+}

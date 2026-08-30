@@ -1,0 +1,102 @@
+{
+  "formatVersion": "jojo-parser-validation-rotation-evidence/1",
+  "publisher": "npr",
+  "yearWindow": {
+    "from": 2010,
+    "to": 2015
+  },
+  "targetPerYear": 800,
+  "previousState": {
+    "objectKey": "news-archive/v1/npr/2010-2015/wayback-urlkey/state/capture.sqlite3-v2026-08-09-090448-293.gz",
+    "compressedSha1": "45a4a51e06c073ad6e98ac7120cdf82c8dc7e386",
+    "parserVersion": "npr-parser/0.1.16"
+  },
+  "currentState": {
+    "objectKey": "news-archive/v1/npr/2010-2015/wayback-urlkey/state/capture.sqlite3.gz",
+    "compressedSha1": "187529522be6af85d636881c281c3bc43bfab508",
+    "parserVersion": "npr-parser/0.1.17",
+    "finishedAt": "2026-08-09T14:27:53.380406+00:00"
+  },
+  "passed": true,
+  "issues": [],
+  "years": {
+    "2010": {
+      "previousEvaluated": 420,
+      "currentPlanned": 1200,
+      "currentEvaluated": 811,
+      "priorCohortOverlap": 0,
+      "exclusionOverlap": 0,
+      "missingPriorExclusions": 0,
+      "wrongExclusionCohortLabels": 0,
+      "qaPassRate": 1.0,
+      "completeRate": 1.0,
+      "parserErrors": 0,
+      "unboundCaptureInputs": 0
+    },
+    "2011": {
+      "previousEvaluated": 419,
+      "currentPlanned": 1200,
+      "currentEvaluated": 810,
+      "priorCohortOverlap": 0,
+      "exclusionOverlap": 0,
+      "missingPriorExclusions": 0,
+      "wrongExclusionCohortLabels": 0,
+      "qaPassRate": 1.0,
+      "completeRate": 1.0,
+      "parserErrors": 0,
+      "unboundCaptureInputs": 0
+    },
+    "2012": {
+      "previousEvaluated": 414,
+      "currentPlanned": 1200,
+      "currentEvaluated": 800,
+      "priorCohortOverlap": 0,
+      "exclusionOverlap": 0,
+      "missingPriorExclusions": 0,
+      "wrongExclusionCohortLabels": 0,
+      "qaPassRate": 1.0,
+      "completeRate": 1.0,
+      "parserErrors": 0,
+      "unboundCaptureInputs": 0
+    },
+    "2013": {
+      "previousEvaluated": 414,
+      "currentPlanned": 1200,
+      "currentEvaluated": 800,
+      "priorCohortOverlap": 0,
+      "exclusionOverlap": 0,
+      "missingPriorExclusions": 0,
+      "wrongExclusionCohortLabels": 0,
+      "qaPassRate": 1.0,
+      "completeRate": 0.9988,
+      "parserErrors": 0,
+      "unboundCaptureInputs": 0
+    },
+    "2014": {
+      "previousEvaluated": 415,
+      "currentPlanned": 1200,
+      "currentEvaluated": 800,
+      "priorCohortOverlap": 0,
+      "exclusionOverlap": 0,
+      "missingPriorExclusions": 0,
+      "wrongExclusionCohortLabels": 0,
+      "qaPassRate": 1.0,
+      "completeRate": 1.0,
+      "parserErrors": 0,
+      "unboundCaptureInputs": 0
+    },
+    "2015": {
+      "previousEvaluated": 415,
+      "currentPlanned": 1200,
+      "currentEvaluated": 801,
+      "priorCohortOverlap": 0,
+      "exclusionOverlap": 0,
+      "missingPriorExclusions": 0,
+      "wrongExclusionCohortLabels": 0,
+      "qaPassRate": 1.0,
+      "completeRate": 1.0,
+      "parserErrors": 0,
+      "unboundCaptureInputs": 0
+    }
+  }
+}

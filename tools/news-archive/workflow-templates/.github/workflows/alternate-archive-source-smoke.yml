@@ -1,0 +1,27 @@
+name: Alternate archive source smoke
+
+run-name: alternate-source-smoke-wsj-2017
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12.13"
+
+      - name: Probe read-only alternate coverage
+        run: >-
+          python tools/news-archive/tools/probe_alternate_archive_sources.py
+          --input tools/news-archive/data/wsj-2017-alternate-source-smoke.txt
+          --workers 4
+          --timeout 25

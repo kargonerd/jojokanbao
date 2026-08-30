@@ -28,7 +28,7 @@ jobs:
       homepage_external: ${{ steps.filter.outputs.homepage_external }}
       node: ${{ steps.filter.outputs.node }}
       search_scf: ${{ steps.filter.outputs.search_scf }}
-      bloomberg_archive: ${{ steps.filter.outputs.bloomberg_archive }}
+      news_archive: ${{ steps.filter.outputs.news_archive }}
       web_e2e: ${{ steps.filter.outputs.web_e2e }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -79,7 +79,7 @@ jobs:
           write_flag cloud_api '^(backend/|tools/times-pipeline/|infrastructure/edgeone/|\.github/workflows/(ci|deploy-web|maintenance-times[^/]*)\.yml$)'
           write_flag database '^(infrastructure/supabase/|\.github/workflows/ci\.yml$)'
           write_flag search_scf '^(infrastructure/tencent-scf/search/|\.github/workflows/ci\.yml$)'
-          write_flag bloomberg_archive '^(tools/bloomberg-archive/|\.github/workflows/ci\.yml$)'
+          write_flag news_archive '^(tools/news-archive/|\.github/workflows/ci\.yml$)'
 
   node:
     name: Node workspaces
@@ -262,15 +262,15 @@ jobs:
         working-directory: infrastructure
         run: pnpm dlx supabase@2.114.0 stop --no-backup
 
-  bloomberg-archive-tests:
-    name: Bloomberg archive tests
+  news-archive-tests:
+    name: Historical news archive
     needs: changes
-    if: needs.changes.outputs.bloomberg_archive == 'true'
+    if: needs.changes.outputs.news_archive == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     defaults:
       run:
-        working-directory: tools/bloomberg-archive
+        working-directory: tools/news-archive
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -278,10 +278,56 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: tools/bloomberg-archive/requirements.txt
+          cache-dependency-path: tools/news-archive/requirements.txt
 
-      - run: python -m pip install -r requirements.txt pytest
+      - run: python -m pip install -r requirements.txt "pytest>=8,<10"
       - run: python -m pytest -q
+
+      - name: Verify committed JSON Schemas
+        shell: bash
+        run: |
+          python tools/export_news_schemas.py --output-dir "$RUNNER_TEMP/schemas"
+          diff -ru schemas "$RUNNER_TEMP/schemas"
+
+      - name: Validate committed Bloomberg manifest
+        shell: python
+        run: |
+          import gzip
+          import json
+          from pathlib import Path
+
+          path = Path("data/bloomberg-2020-archive-manifest.jsonl.gz")
+          rows = 0
+          downloadable = 0
+          required = {
+              "url",
+              "catalog_date",
+              "section",
+              "wayback_timestamp",
+              "wayback_snapshot_url",
+          }
+
+          with gzip.open(path, "rt", encoding="utf-8") as handle:
+              for line in handle:
+                  row = json.loads(line)
+                  rows += 1
+                  missing = required.difference(row)
+                  if missing:
+                      raise SystemExit(
+                          f"row {rows} missing: {sorted(missing)}"
+                      )
+                  downloadable += row.get("wayback_status") == "found"
+
+          if rows != 83_258 or downloadable != 69_629:
+              raise SystemExit(
+                  "unexpected manifest counts: "
+                  f"rows={rows}, downloadable={downloadable}"
+              )
+
+          print(
+              f"validated {rows} rows "
+              f"({downloadable} downloadable snapshots)"
+          )
 
   cloud-api:
     name: Cloud API tests
@@ -350,62 +396,6 @@ jobs:
       - run: python -m pip install -r infrastructure/tencent-scf/search/requirements.txt pytest
       - run: python -m pytest infrastructure/tencent-scf/search/tests -q
 
-  bloomberg-archive-manifest:
-    name: Bloomberg archive manifest
-    needs: changes
-    if: needs.changes.outputs.bloomberg_archive == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.12"
-
-      - name: Validate downloader CLI and manifest
-        run: |
-          python -m py_compile \
-            tools/bloomberg-archive/scripts/download_bloomberg_year.py \
-            tools/bloomberg-archive/scripts/bloomberg_action_state.py \
-            tools/bloomberg-archive/scripts/verify_b2_private_bucket.py
-          python - <<'PY'
-          import gzip
-          import json
-          from pathlib import Path
-
-          path = Path(
-              "tools/bloomberg-archive/data/"
-              "bloomberg-2020-archive-manifest.jsonl.gz"
-          )
-          required = {
-              "url",
-              "catalog_date",
-              "section",
-              "wayback_timestamp",
-              "wayback_snapshot_url",
-          }
-          count = 0
-          downloadable = 0
-          with gzip.open(path, "rt", encoding="utf-8") as stream:
-              for line in stream:
-                  row = json.loads(line)
-                  missing = required.difference(row)
-                  if missing:
-                      raise SystemExit(f"Manifest row missing {sorted(missing)}")
-                  count += 1
-                  downloadable += row.get("wayback_status") == "found"
-          if count != 83258 or downloadable != 69629:
-              raise SystemExit(
-                  "Expected 83258 catalog rows and 69629 downloadable rows; "
-                  f"found {count} and {downloadable}"
-              )
-          print(
-              f"Validated {count} catalog rows and "
-              f"{downloadable} downloadable rows."
-          )
-          PY
-
   required:
     # This aggregate check is required by the master branch ruleset.
     name: build-and-test
@@ -420,8 +410,7 @@ jobs:
       - web-cross-browser
       - homepage-external
       - database
-      - bloomberg-archive-tests
-      - bloomberg-archive-manifest
+      - news-archive-tests
     runs-on: ubuntu-latest
     steps:
       - name: Confirm required jobs

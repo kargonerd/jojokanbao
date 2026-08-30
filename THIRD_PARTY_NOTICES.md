@@ -36,7 +36,7 @@ Python 依赖及版本范围记录在 `backend/requirements*.txt`、各 `tools/`
 
 ## 数据清单
 
-`tools/bloomberg-archive/data/bloomberg-2020-archive-manifest.jsonl.gz` 是 Bloomberg
+`tools/news-archive/data/bloomberg-2020-archive-manifest.jsonl.gz` 是 Bloomberg
 archive 工具使用的清单数据，不是 JOJO 看报的原创软件代码，也不因本仓库采用
 AGPL 而获得额外授权。使用、再分发或基于该清单访问内容前，应自行确认数据来源及
 适用条款。

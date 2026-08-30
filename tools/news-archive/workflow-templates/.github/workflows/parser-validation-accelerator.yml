@@ -1,0 +1,1960 @@
+name: Parser validation accelerator
+
+run-name: parser-${{ inputs.cohort }}-${{ inputs.publisher }}-${{ inputs.year }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      publisher:
+        description: "Publisher parser to validate."
+        required: true
+        type: choice
+        options:
+          - ap
+          - wsj
+          - bloomberg
+          - nyt
+          - reuters
+          - ft
+          - axios
+          - npr
+          - nikkei
+          - zaobao
+          - aljazeera
+          - scmp
+          - caixin
+      cohort:
+        description: "Independent parser-QA cohort: validation or holdout-vN."
+        required: true
+        default: "validation"
+        type: string
+      year:
+        description: "Single publication year to sample."
+        required: true
+        default: "2026"
+        type: string
+      source_manifest_shard:
+        description: "Existing publisher/year-window/mode manifest shard."
+        required: true
+        type: string
+      max_captures:
+        description: "Maximum raw captures in this bounded run."
+        required: true
+        default: "800"
+        type: string
+      workers:
+        description: "Concurrent archive replay downloads."
+        required: true
+        default: "4"
+        type: string
+      max_runtime_minutes:
+        description: "Stop starting captures after this many minutes."
+        required: true
+        default: "300"
+        type: string
+      auto_continue:
+        description: "Dispatch another batch until the year passes QA."
+        required: true
+        default: true
+        type: boolean
+      enable_ft_infini_direct_discovery:
+        description: "Opt in to the expensive direct FT Infini-News corpus scan."
+        required: true
+        default: false
+        type: boolean
+      runner_os:
+        description: "Standard GitHub-hosted runner network."
+        required: true
+        default: "ubuntu-latest"
+        type: choice
+        options:
+          - ubuntu-latest
+          - macos-15-intel
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: parser-${{ inputs.cohort }}-${{ inputs.publisher }}-${{ inputs.year }}
+  cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: "1"
+  PYTHONPATH: ${{ github.workspace }}/tools/news-archive
+  B2_ARCHIVE_KEY_ID: ${{ secrets.B2_ARCHIVE_KEY_ID }}
+  B2_ARCHIVE_APPLICATION_KEY: ${{ secrets.B2_ARCHIVE_APPLICATION_KEY }}
+  B2_ARCHIVE_BUCKET: ${{ secrets.B2_ARCHIVE_BUCKET }}
+  B2_REMOTE: jojo-b2
+  ARCHIVE_ROOT: ${{ github.workspace }}/.archive-work
+  PUBLISHER: ${{ inputs.publisher }}
+  COHORT: ${{ inputs.cohort }}
+  SAMPLE_YEAR: ${{ inputs.year }}
+  SOURCE_MANIFEST_SHARD: ${{ inputs.source_manifest_shard }}
+  MAX_CAPTURES: ${{ inputs.max_captures }}
+  DOWNLOAD_WORKERS: ${{ inputs.workers }}
+  MAX_RUNTIME_MINUTES: ${{ inputs.max_runtime_minutes }}
+  MAX_RECORD_ATTEMPTS: "3"
+  # Every independently sampled cohort must meet the project-wide 800 article
+  # gate.  A smaller holdout can expose regressions, but cannot establish
+  # parser convergence.
+  VALIDATION_TARGET: "800"
+  VALIDATION_SEED: >-
+    ${{ (startsWith(inputs.cohort, 'holdout-v') || startsWith(inputs.cohort, 'smoke-v')) && format('jojo-parser-{0}', inputs.cohort) || 'jojo-parser-validation-v1' }}
+  ENABLE_FT_INFINI_DIRECT_DISCOVERY: >-
+    ${{ inputs.enable_ft_infini_direct_discovery }}
+
+jobs:
+  validate:
+    runs-on: ${{ inputs.runner_os }}
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          # Use the latest available 3.12 patch across Linux and macOS runners.
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tools/news-archive/requirements.txt
+
+      - name: Install archive dependencies
+        run: |
+          python -m pip install -r tools/news-archive/requirements.txt
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            if ! command -v rclone >/dev/null 2>&1; then
+              # apt mirrors occasionally leave a hosted runner hanging for
+              # an unbounded time. Keep the validation slot recoverable and
+              # fall back to the upstream static binary when that happens.
+              if ! timeout 120 sudo apt-get update || \
+                 ! timeout 120 sudo apt-get install -y rclone; then
+                rclone_tmp="$(mktemp -d)"
+                curl -fsSL --retry 4 --retry-delay 2 \
+                  -o "$rclone_tmp/rclone.zip" \
+                  https://downloads.rclone.org/rclone-current-linux-amd64.zip
+                unzip -q "$rclone_tmp/rclone.zip" -d "$rclone_tmp"
+                rclone_binary="$(find "$rclone_tmp" -type f -name rclone -print -quit)"
+                test -n "$rclone_binary"
+                sudo install -m 0755 "$rclone_binary" /usr/local/bin/rclone
+              fi
+            fi
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            brew install rclone coreutils
+            echo "$(brew --prefix coreutils)/libexec/gnubin" \
+              >> "$GITHUB_PATH"
+          else
+            echo "Unsupported runner OS: $RUNNER_OS" >&2
+            exit 2
+          fi
+
+      - name: Start optional Mihomo archive proxy pool
+        shell: bash
+        env:
+          # Keep the subscription URL in Actions secrets.  The setup script
+          # reads it from the environment and never prints or checkpoints it.
+          CLASH_SUBSCRIPTION_URL: ${{ secrets.CLASH_SUBSCRIPTION_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLASH_SUBSCRIPTION_URL:-}" ]; then
+            echo "CLASH_SUBSCRIPTION_URL is not configured; using the runner network."
+            exit 0
+          fi
+          if [ "$RUNNER_OS" != "Linux" ]; then
+            echo "::warning::The optional Mihomo pool is currently enabled only on Linux; using the runner network."
+            exit 0
+          fi
+          mihomo_version="v1.19.19"
+          mihomo_dir="$RUNNER_TEMP/mihomo"
+          mkdir -p "$mihomo_dir"
+          archive="$mihomo_dir/mihomo.gz"
+          binary="$mihomo_dir/mihomo"
+          # The proxy pool is an optional transport accelerator. A stale
+          # subscription node or a transient binary download must never stop
+          # parser validation before B2 restore/capture starts. Run setup in
+          # a strict subshell, but fall back to the hosted-runner network when
+          # any part of it fails; ARCHIVE_HTTP_PROXY is only written after the
+          # local listener has opened successfully.
+          if ! (
+            set -euo pipefail
+            curl -fsSL --retry 4 --retry-delay 2 \
+              -o "$archive" \
+              "https://github.com/MetaCubeX/mihomo/releases/download/${mihomo_version}/mihomo-linux-amd64-compatible-${mihomo_version}.gz"
+            echo "45fbee22e63ec27319573efe1ccc8aa829c3f98c16ffc94a2d5ea86531e358b0  $archive" \
+              | sha256sum --check --status -
+            gzip -dc "$archive" > "$binary"
+            chmod 700 "$binary"
+            python tools/news-archive/tools/start_mihomo_proxy.py \
+              --mihomo-binary "$binary" \
+              --state-dir "$mihomo_dir/state" \
+              --github-env "$GITHUB_ENV"
+          ); then
+            echo "::warning::Optional Mihomo pool unavailable; continuing on the runner network."
+          fi
+
+      - name: Validate private B2 storage
+        run: |
+          python tools/news-archive/tools/verify_b2_private_bucket.py
+          rclone config create "$B2_REMOTE" b2 \
+            account "$B2_ARCHIVE_KEY_ID" \
+            key "$B2_ARCHIVE_APPLICATION_KEY" \
+            --non-interactive
+
+      - name: Resolve validation paths
+        id: paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$SAMPLE_YEAR" =~ ^(19|20)[0-9]{2}$ ]]; then
+            echo "year must be a four-digit 19xx or 20xx value." >&2
+            exit 2
+          fi
+          if [[ ! "$SOURCE_MANIFEST_SHARD" =~ ^[a-z0-9-]+/[0-9]{4}-[0-9]{4}/[a-z0-9-]+$ ]]; then
+            echo "source_manifest_shard has an invalid shape." >&2
+            exit 2
+          fi
+          if [[ "$SOURCE_MANIFEST_SHARD" != "$PUBLISHER/"* ]]; then
+            echo "source manifest publisher does not match." >&2
+            exit 2
+          fi
+          expected_source_shard="$(
+            python tools/news-archive/tools/resolve_parser_source_shard.py \
+              --publisher "$PUBLISHER" \
+              --year "$SAMPLE_YEAR"
+          )"
+          if [ "$SOURCE_MANIFEST_SHARD" != "$expected_source_shard" ]; then
+            echo "source_manifest_shard must be ${expected_source_shard}." >&2
+            exit 2
+          fi
+          # Smoke cohorts are intentionally isolated from formal validation
+          # and holdout cohorts; they only qualify a new source/parser for
+          # the later independent 800-article gates.
+          if [[ ! "$COHORT" =~ ^(validation|holdout-v[1-9][0-9]*|smoke-v[1-9][0-9]*)$ ]]; then
+            echo "unsupported cohort" >&2
+            exit 2
+          fi
+          # A parser-validation cohort is execution state, not a second archive.
+          # Keep only its compact manifest/checkpoint/summary under v2; every raw
+          # object and capture record is read from or written to the canonical
+          # source archive below.  In particular, never create holdout-v*/raw
+          # copies in B2.
+          local_root="${ARCHIVE_ROOT}/${COHORT}/${PUBLISHER}/${SAMPLE_YEAR}"
+          remote_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v2/validation-state/${COHORT}/${PUBLISHER}/${SAMPLE_YEAR}"
+          source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/${SOURCE_MANIFEST_SHARD}"
+          # WSJ 2016+ validation migrated to the broader replay manifest.
+          # Existing verified captures remain in the prior URL-key root and
+          # must stay readable for later parser revalidation without copying
+          # content-addressed raw objects into a second B2 prefix.
+          legacy_source_root=""
+          if [ "$PUBLISHER" = "wsj" ] && [ "$SAMPLE_YEAR" -ge 2016 ]; then
+            legacy_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/wsj/2016-2026/wayback-urlkey"
+          fi
+          supplemental_source_root=""
+          auxiliary_source_root=""
+          tertiary_source_root=""
+          quaternary_source_root=""
+          quinary_source_root=""
+          if [ "$PUBLISHER" = "npr" ]; then
+            # NPR Common Crawl discovery is checkpointed per publication
+            # year.  The primary Wayback shard spans a wider source window,
+            # so reusing that window here silently ignores the new catalog.
+            supplemental_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/npr/${SAMPLE_YEAR}-${SAMPLE_YEAR}/commoncrawl-prefix"
+            if [ "$SAMPLE_YEAR" -ge 2012 ] && [ "$SAMPLE_YEAR" -le 2016 ]; then
+              # The broad 2012--2016 catalog has a much larger dated pool
+              # than the thin per-year supplements. Merge it as a second
+              # independent source without replacing the year checkpoint.
+              auxiliary_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/npr/2012-2016/commoncrawl-prefix"
+            fi
+            if [ "$SAMPLE_YEAR" -ge 2013 ]; then
+              # Keep a second broad checkpoint for newer Common Crawl
+              # collections. It is merged after the original 2012--2016
+              # catalog, so either source can independently reopen a thin
+              # year without replacing the older checkpoint.
+              tertiary_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/npr/2013-2026/commoncrawl-prefix"
+            fi
+            if [ "$SAMPLE_YEAR" -le 2015 ]; then
+              # This completed legacy checkpoint is a distinct catalog from
+              # both the per-year scan and the two broader later-collection
+              # scans.  Keep it as a fourth additive input so early NPR cells
+              # do not silently discard still-unseen story IDs.
+              quaternary_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/npr/2010-2015/commoncrawl-prefix"
+            fi
+            # NPR's public date archive enumerates sectioned canonical URLs
+            # that are absent from the root-only Wayback/Common Crawl
+            # prefixes. Keep it additive and per-year so every accepted
+            # validation item still uses the canonical raw archive root.
+            quinary_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/npr/${SAMPLE_YEAR}-${SAMPLE_YEAR}/official-archive"
+          elif [ "$PUBLISHER" = "axios" ]; then
+            # Keep the official monthly sitemap as the primary supplement;
+            # Common Crawl is a second independent catalog and materially
+            # improves older Axios years. Validation captures missing source
+            # URLs into the canonical primary raw root, so both remain
+            # catalog-only supplements here.
+            supplemental_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/axios/2017-2026/sitemap-wayback"
+            auxiliary_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/axios/2017-2026/commoncrawl-prefix"
+            tertiary_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/axios/2017-2026/axios-local-sitemap"
+          elif [ "$PUBLISHER" = "nikkei" ]; then
+            source_window="$(cut -d/ -f2 <<<"$SOURCE_MANIFEST_SHARD")"
+            supplemental_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/nikkei/${source_window}/commoncrawl-prefix"
+            if [ "$SAMPLE_YEAR" -le 2016 ]; then
+              auxiliary_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/nikkei/2010-2016/commoncrawl-asia-probe"
+            fi
+          elif [ "$PUBLISHER" = "wsj" ]; then
+            # Early WSJ URL-key coverage is below the 800-row gate for a few
+            # years. Merge the independent Common Crawl catalog when it is
+            # available; the capture step still writes selected raw objects
+            # into the canonical WSJ source root.
+            source_window="$(cut -d/ -f2 <<<"$SOURCE_MANIFEST_SHARD")"
+            supplemental_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/wsj/${source_window}/commoncrawl-prefix"
+            if [ "$SAMPLE_YEAR" -le 2013 ]; then
+              auxiliary_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/wsj/2010-2013/commoncrawl-legacy-probe"
+            fi
+          elif [ "$PUBLISHER" = "scmp" ]; then
+            source_window="$(cut -d/ -f2 <<<"$SOURCE_MANIFEST_SHARD")"
+            # The official monthly archive is the broadest independent URL
+            # enumeration source. Common Crawl remains an additive fallback;
+            # both are catalog-only and selected raw HTML is still written to
+            # the canonical primary SCMP source root.
+            supplemental_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/scmp/${source_window}/sitemap-wayback"
+            auxiliary_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/scmp/${source_window}/commoncrawl-prefix"
+          elif [ "$PUBLISHER" = "caixin" ]; then
+            supplemental_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/caixin/${SAMPLE_YEAR}-${SAMPLE_YEAR}/commoncrawl-prefix"
+          elif [ "$PUBLISHER" = "ft" ]; then
+            # FT's Wayback catalog contains many subscription shells. Merge a
+            # separately checkpointed Common Crawl catalog so the capture
+            # worker can try an independent response for the same year.
+            source_window="$(cut -d/ -f2 <<<"$SOURCE_MANIFEST_SHARD")"
+            supplemental_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/ft/${source_window}/commoncrawl-prefix"
+          elif [ "$PUBLISHER" = "reuters" ]; then
+            source_window="$(cut -d/ -f2 <<<"$SOURCE_MANIFEST_SHARD")"
+            supplemental_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/reuters/${source_window}/commoncrawl-prefix"
+          elif [ "$PUBLISHER" = "aljazeera" ]; then
+            source_window="$(cut -d/ -f2 <<<"$SOURCE_MANIFEST_SHARD")"
+            supplemental_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/aljazeera/${source_window}/commoncrawl-prefix"
+            # Older years can exhaust the broad sitemap after several
+            # independent holdouts. A broad URL-key catalog adds legacy paths
+            # outside that sitemap and can find later snapshots of older
+            # articles; missing auxiliary roots remain optional.
+            auxiliary_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/aljazeera/${source_window}/wayback-urlkey"
+          elif [ "$PUBLISHER" = "ap" ]; then
+            source_window="$(cut -d/ -f2 <<<"$SOURCE_MANIFEST_SHARD")"
+            supplemental_source_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/ap/${source_window}/legacy-archive"
+          fi
+          mkdir -p "$local_root/catalog" "$local_root/raw"
+          {
+            echo "local_root=$local_root"
+            echo "remote_root=$remote_root"
+            echo "source_root=$source_root"
+            echo "legacy_source_root=$legacy_source_root"
+            echo "supplemental_source_root=$supplemental_source_root"
+            echo "auxiliary_source_root=$auxiliary_source_root"
+            echo "tertiary_source_root=$tertiary_source_root"
+            echo "quaternary_source_root=$quaternary_source_root"
+            echo "quinary_source_root=$quinary_source_root"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Restore filtered manifest and validation checkpoint
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+          REMOTE_ROOT: ${{ steps.paths.outputs.remote_root }}
+          SOURCE_ROOT: ${{ steps.paths.outputs.source_root }}
+          LEGACY_SOURCE_ROOT: ${{ steps.paths.outputs.legacy_source_root }}
+          SUPPLEMENTAL_SOURCE_ROOT: ${{ steps.paths.outputs.supplemental_source_root }}
+          AUXILIARY_SOURCE_ROOT: ${{ steps.paths.outputs.auxiliary_source_root }}
+          TERTIARY_SOURCE_ROOT: ${{ steps.paths.outputs.tertiary_source_root }}
+          QUATERNARY_SOURCE_ROOT: ${{ steps.paths.outputs.quaternary_source_root }}
+          QUINARY_SOURCE_ROOT: ${{ steps.paths.outputs.quinary_source_root }}
+        run: |
+          set -euo pipefail
+          restore_if_present() {
+            remote_file="$1"
+            local_file="$2"
+            remote_dir="${remote_file%/*}"
+            remote_name="${remote_file##*/}"
+            listing="$RUNNER_TEMP/rclone-listing.txt"
+            errors="$RUNNER_TEMP/rclone-listing-errors.txt"
+            if ! rclone lsf "$remote_dir" --files-only \
+                >"$listing" 2>"$errors"; then
+              if grep -qiE "directory not found|object not found" "$errors"; then
+                return 0
+              fi
+              cat "$errors" >&2
+              return 1
+            fi
+            if grep -Fxq "$remote_name" "$listing"; then
+              mkdir -p "$(dirname "$local_file")"
+              rclone copyto "$remote_file" "$local_file" \
+                --retries 8 --low-level-retries 20
+            fi
+          }
+
+          # Revalidation cohorts must exclude every earlier holdout, but
+          # probing each cohort directory separately turns a high-numbered
+          # continuation into hundreds of serial B2 list requests.  Build one
+          # recursive index for the v2 validation-state prefix and use exact
+          # relative-path matches for the prior-cohort restores below.  The
+          # actual object copies and all exclusion imports remain unchanged.
+          validation_state_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v2/validation-state"
+          validation_state_listing="$RUNNER_TEMP/validation-state-recursive-listing.txt"
+          validation_state_listing_ready=0
+          load_validation_state_listing() {
+            if [ "$validation_state_listing_ready" -eq 1 ]; then
+              return 0
+            fi
+            if ! rclone lsf "$validation_state_root" --recursive --files-only \
+                >"$validation_state_listing" \
+                2>"$RUNNER_TEMP/validation-state-listing-errors.txt"; then
+              cat "$RUNNER_TEMP/validation-state-listing-errors.txt" >&2
+              return 1
+            fi
+            validation_state_listing_ready=1
+          }
+          restore_validation_state_if_present() {
+            remote_file="$1"
+            local_file="$2"
+            relative_file="${remote_file#${validation_state_root}/}"
+            if [ "$relative_file" = "$remote_file" ]; then
+              echo "Validation-state path is outside the indexed prefix: $remote_file" >&2
+              return 1
+            fi
+            load_validation_state_listing
+            if grep -Fxq "$relative_file" "$validation_state_listing"; then
+              mkdir -p "$(dirname "$local_file")"
+              rclone copyto "$remote_file" "$local_file" \
+                --retries 8 --low-level-retries 20
+            fi
+          }
+
+          manifest="$LOCAL_ROOT/catalog/manifest.jsonl.gz"
+          restore_if_present \
+            "${REMOTE_ROOT}/catalog/manifest.jsonl.gz" \
+            "$manifest"
+          source_manifest="$RUNNER_TEMP/source-manifest.jsonl.gz"
+          effective_source_manifest="$source_manifest"
+          legacy_source_manifest="$RUNNER_TEMP/legacy-source-manifest.jsonl.gz"
+          merged_source_manifest="$RUNNER_TEMP/merged-source-manifest.jsonl.gz"
+          supplemental_source_manifest="$RUNNER_TEMP/supplemental-source-manifest.jsonl.gz"
+          supplemental_merged_source_manifest="$RUNNER_TEMP/supplemental-merged-source-manifest.jsonl.gz"
+          auxiliary_source_manifest="$RUNNER_TEMP/auxiliary-source-manifest.jsonl.gz"
+          auxiliary_merged_source_manifest="$RUNNER_TEMP/auxiliary-merged-source-manifest.jsonl.gz"
+          tertiary_source_manifest="$RUNNER_TEMP/tertiary-source-manifest.jsonl.gz"
+          tertiary_merged_source_manifest="$RUNNER_TEMP/tertiary-merged-source-manifest.jsonl.gz"
+          quaternary_source_manifest="$RUNNER_TEMP/quaternary-source-manifest.jsonl.gz"
+          quaternary_merged_source_manifest="$RUNNER_TEMP/quaternary-merged-source-manifest.jsonl.gz"
+          quinary_source_manifest="$RUNNER_TEMP/quinary-source-manifest.jsonl.gz"
+          quinary_merged_source_manifest="$RUNNER_TEMP/quinary-merged-source-manifest.jsonl.gz"
+          ap_wayback_yahoo_manifest="$RUNNER_TEMP/ap-wayback-yahoo-manifest.jsonl.gz"
+          ap_wayback_yahoo_merged_manifest="$RUNNER_TEMP/ap-wayback-yahoo-merged-manifest.jsonl.gz"
+          ap_wayback_bigstory_manifest="$RUNNER_TEMP/ap-wayback-bigstory-manifest.jsonl.gz"
+          ap_wayback_bigstory_merged_manifest="$RUNNER_TEMP/ap-wayback-bigstory-merged-manifest.jsonl.gz"
+          refreshed_manifest="$RUNNER_TEMP/refreshed-manifest.jsonl.gz"
+          if rclone copyto \
+              "${SOURCE_ROOT}/catalog/manifest.jsonl.gz" \
+              "$source_manifest" \
+              --retries 8 --low-level-retries 20 \
+              && [ -f "$source_manifest" ]; then
+            if [ -n "$LEGACY_SOURCE_ROOT" ]; then
+              restore_if_present \
+                "${LEGACY_SOURCE_ROOT}/catalog/manifest.jsonl.gz" \
+                "$legacy_source_manifest"
+              if [ -f "$legacy_source_manifest" ]; then
+                python tools/news-archive/tools/merge_archive_manifests.py \
+                  --publisher "$PUBLISHER" \
+                  --input "$source_manifest" \
+                  --input "$legacy_source_manifest" \
+                  --output "$merged_source_manifest"
+                effective_source_manifest="$merged_source_manifest"
+              fi
+            fi
+            if [ -n "$SUPPLEMENTAL_SOURCE_ROOT" ]; then
+              restore_if_present \
+                "${SUPPLEMENTAL_SOURCE_ROOT}/catalog/manifest.jsonl.gz" \
+                "$supplemental_source_manifest"
+              if [ -f "$supplemental_source_manifest" ]; then
+                python tools/news-archive/tools/merge_archive_manifests.py \
+                  --publisher "$PUBLISHER" \
+                  --input "$effective_source_manifest" \
+                  --input "$supplemental_source_manifest" \
+                  --output "$supplemental_merged_source_manifest"
+                effective_source_manifest="$supplemental_merged_source_manifest"
+              fi
+            fi
+            if [ -n "$AUXILIARY_SOURCE_ROOT" ]; then
+              restore_if_present \
+                "${AUXILIARY_SOURCE_ROOT}/catalog/manifest.jsonl.gz" \
+                "$auxiliary_source_manifest"
+              if [ -f "$auxiliary_source_manifest" ]; then
+                python tools/news-archive/tools/merge_archive_manifests.py \
+                  --publisher "$PUBLISHER" \
+                  --input "$effective_source_manifest" \
+                  --input "$auxiliary_source_manifest" \
+                  --output "$auxiliary_merged_source_manifest"
+                effective_source_manifest="$auxiliary_merged_source_manifest"
+              fi
+            fi
+            if [ -n "$TERTIARY_SOURCE_ROOT" ]; then
+              restore_if_present \
+                "${TERTIARY_SOURCE_ROOT}/catalog/manifest.jsonl.gz" \
+                "$tertiary_source_manifest"
+              if [ -f "$tertiary_source_manifest" ]; then
+                python tools/news-archive/tools/merge_archive_manifests.py \
+                  --publisher "$PUBLISHER" \
+                  --input "$effective_source_manifest" \
+                  --input "$tertiary_source_manifest" \
+                  --output "$tertiary_merged_source_manifest"
+                effective_source_manifest="$tertiary_merged_source_manifest"
+              fi
+            fi
+            if [ -n "$QUATERNARY_SOURCE_ROOT" ]; then
+              restore_if_present \
+                "${QUATERNARY_SOURCE_ROOT}/catalog/manifest.jsonl.gz" \
+                "$quaternary_source_manifest"
+              if [ -f "$quaternary_source_manifest" ]; then
+                python tools/news-archive/tools/merge_archive_manifests.py \
+                  --publisher "$PUBLISHER" \
+                  --input "$effective_source_manifest" \
+                  --input "$quaternary_source_manifest" \
+                  --output "$quaternary_merged_source_manifest"
+                effective_source_manifest="$quaternary_merged_source_manifest"
+              fi
+            fi
+            if [ -n "$QUINARY_SOURCE_ROOT" ]; then
+              restore_if_present \
+                "${QUINARY_SOURCE_ROOT}/catalog/manifest.jsonl.gz" \
+                "$quinary_source_manifest"
+              if [ -f "$quinary_source_manifest" ]; then
+                python tools/news-archive/tools/merge_archive_manifests.py \
+                  --publisher "$PUBLISHER" \
+                  --input "$effective_source_manifest" \
+                  --input "$quinary_source_manifest" \
+                  --output "$quinary_merged_source_manifest"
+                effective_source_manifest="$quinary_merged_source_manifest"
+              fi
+            fi
+            if [ "$PUBLISHER" = "ap" ] && [ -n "$SUPPLEMENTAL_SOURCE_ROOT" ]; then
+              restore_if_present \
+                "${SUPPLEMENTAL_SOURCE_ROOT}/catalog/wayback-yahoo-manifest.jsonl.gz" \
+                "$ap_wayback_yahoo_manifest"
+              if [ -f "$ap_wayback_yahoo_manifest" ]; then
+                python tools/news-archive/tools/merge_archive_manifests.py \
+                  --publisher ap \
+                  --input "$effective_source_manifest" \
+                  --input "$ap_wayback_yahoo_manifest" \
+                  --output "$ap_wayback_yahoo_merged_manifest"
+                effective_source_manifest="$ap_wayback_yahoo_merged_manifest"
+              fi
+              restore_if_present \
+                "${SUPPLEMENTAL_SOURCE_ROOT}/catalog/wayback-bigstory-manifest.jsonl.gz" \
+                "$ap_wayback_bigstory_manifest"
+              if [ -f "$ap_wayback_bigstory_manifest" ]; then
+                python tools/news-archive/tools/merge_archive_manifests.py \
+                  --publisher ap \
+                  --input "$effective_source_manifest" \
+                  --input "$ap_wayback_bigstory_manifest" \
+                  --output "$ap_wayback_bigstory_merged_manifest"
+                effective_source_manifest="$ap_wayback_bigstory_merged_manifest"
+              fi
+            fi
+            python tools/news-archive/tools/filter_archive_manifest.py \
+              --input "$effective_source_manifest" \
+              --output "$refreshed_manifest" \
+              --publisher "$PUBLISHER" \
+              --from-year "$SAMPLE_YEAR" \
+              --to-year "$SAMPLE_YEAR"
+            cp "$refreshed_manifest" "$manifest"
+            rclone copyto \
+              "$manifest" \
+              "${REMOTE_ROOT}/catalog/manifest.jsonl.gz" \
+              --retries 8 --low-level-retries 20
+          elif [ ! -f "$manifest" ]; then
+            echo "No source or cached validation manifest is available." >&2
+            exit 1
+          else
+            echo "::warning::Using cached validation manifest because the source refresh failed."
+          fi
+
+          if [ "$PUBLISHER" = "ft" ]; then
+            restore_if_present \
+              "${SOURCE_ROOT}/catalog/discovery.sqlite3.gz" \
+              "$RUNNER_TEMP/ft-discovery.sqlite3.gz"
+            if [ -f "$RUNNER_TEMP/ft-discovery.sqlite3.gz" ]; then
+              gzip -dc "$RUNNER_TEMP/ft-discovery.sqlite3.gz" \
+                > "$LOCAL_ROOT/catalog/source-discovery.sqlite3"
+            fi
+            restore_if_present \
+              "${REMOTE_ROOT}/state/folo-access-links.json" \
+              "$LOCAL_ROOT/catalog/folo-access-links.json"
+          fi
+
+          restore_if_present \
+            "${REMOTE_ROOT}/state/capture.sqlite3.gz" \
+            "$RUNNER_TEMP/capture.sqlite3.gz"
+          if [ -f "$RUNNER_TEMP/capture.sqlite3.gz" ]; then
+            gzip -dc "$RUNNER_TEMP/capture.sqlite3.gz" \
+              > "$LOCAL_ROOT/raw/capture.sqlite3"
+          fi
+          if [[ "$COHORT" =~ ^holdout-v([1-9][0-9]*)$ ]]; then
+            cohort_number="${BASH_REMATCH[1]}"
+            # Import every place an original validation cohort may have lived.
+            # A newer v2 placeholder can legitimately exist with zero samples;
+            # it must not suppress the older v1 source checkpoint containing
+            # the samples that this holdout is required to exclude.
+            restore_if_present \
+              "${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v2/validation-state/validation/${PUBLISHER}/${SAMPLE_YEAR}/state/capture.sqlite3.gz" \
+              "$RUNNER_TEMP/exclusion-validation-v2.sqlite3.gz"
+            # Older formal validation cohorts lived in the canonical v1
+            # source checkpoint before execution state moved to v2. They
+            # remain mandatory exclusions; otherwise a holdout can silently
+            # reuse the exact samples it is meant to independently test.
+            restore_if_present \
+              "${SOURCE_ROOT}/state/capture.sqlite3.gz" \
+              "$RUNNER_TEMP/exclusion-validation-v1.sqlite3.gz"
+            if [ -n "$LEGACY_SOURCE_ROOT" ]; then
+              restore_if_present \
+                "${LEGACY_SOURCE_ROOT}/state/capture.sqlite3.gz" \
+                "$RUNNER_TEMP/exclusion-validation-legacy.sqlite3.gz"
+            fi
+            shopt -s nullglob
+            original_exclusion_gzips=(
+              "$RUNNER_TEMP"/exclusion-validation-*.sqlite3.gz
+            )
+            for exclusion_gzip in "${original_exclusion_gzips[@]}"; do
+              gzip -dc "$exclusion_gzip" \
+                > "${exclusion_gzip%.gz}"
+            done
+            original_exclusion_states=(
+              "$RUNNER_TEMP"/exclusion-validation-*.sqlite3
+            )
+            if [ "${#original_exclusion_states[@]}" -eq 0 ] && \
+               [ "$SAMPLE_YEAR" -ge 2016 ]; then
+              echo "Original validation state required for 2016+ disjoint holdout." >&2
+              exit 1
+            elif [ "${#original_exclusion_states[@]}" -eq 0 ]; then
+              echo "::notice::No original validation state exists for this pre-2016 cell."
+            fi
+            if [ "$cohort_number" -gt 1 ]; then
+              # A revalidation cohort must be disjoint from every earlier
+              # cohort, not merely the latest one. If a finite publisher/year
+              # catalog cannot supply 800 unseen articles, report that fact
+              # rather than silently reusing an older validation sample.
+              for previous_number in $(seq $((cohort_number - 1)) -1 1); do
+                previous_cohort="holdout-v${previous_number}"
+                previous_gzip="$RUNNER_TEMP/exclusion-${previous_cohort}.sqlite3.gz"
+                previous_state="$RUNNER_TEMP/exclusion-${previous_cohort}.sqlite3"
+                restore_validation_state_if_present \
+                  "${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v2/validation-state/${previous_cohort}/${PUBLISHER}/${SAMPLE_YEAR}/state/capture.sqlite3.gz" \
+                  "$previous_gzip"
+                if [ -f "$previous_gzip" ]; then
+                  gzip -dc "$previous_gzip" > "$previous_state"
+                  echo "Using ${previous_cohort} as a holdout exclusion."
+                else
+                  echo "::notice::No ${previous_cohort} state exists; skipping it."
+                fi
+              done
+            fi
+          fi
+          restore_if_present \
+            "${SOURCE_ROOT}/state/completed-captures.sqlite3.gz" \
+            "$RUNNER_TEMP/source-capture.sqlite3.gz"
+          if [ -f "$RUNNER_TEMP/source-capture.sqlite3.gz" ]; then
+            gzip -dc "$RUNNER_TEMP/source-capture.sqlite3.gz" \
+              > "$RUNNER_TEMP/source-capture.sqlite3"
+          elif [ "$PUBLISHER" = "wsj" ]; then
+            # Compatibility fallback for the small pre-index WSJ checkpoint.
+            restore_if_present \
+              "${SOURCE_ROOT}/state/capture.sqlite3.gz" \
+              "$RUNNER_TEMP/source-capture.sqlite3.gz"
+            if [ -f "$RUNNER_TEMP/source-capture.sqlite3.gz" ]; then
+              gzip -dc "$RUNNER_TEMP/source-capture.sqlite3.gz" \
+                > "$RUNNER_TEMP/source-capture.sqlite3"
+            fi
+          fi
+          if [ -n "$LEGACY_SOURCE_ROOT" ]; then
+            restore_if_present \
+              "${LEGACY_SOURCE_ROOT}/state/completed-captures.sqlite3.gz" \
+              "$RUNNER_TEMP/legacy-source-capture.sqlite3.gz"
+            if [ -f "$RUNNER_TEMP/legacy-source-capture.sqlite3.gz" ]; then
+              gzip -dc "$RUNNER_TEMP/legacy-source-capture.sqlite3.gz" \
+                > "$RUNNER_TEMP/legacy-source-capture.sqlite3"
+            else
+              restore_if_present \
+                "${LEGACY_SOURCE_ROOT}/state/capture.sqlite3.gz" \
+                "$RUNNER_TEMP/legacy-source-capture.sqlite3.gz"
+              if [ -f "$RUNNER_TEMP/legacy-source-capture.sqlite3.gz" ]; then
+                gzip -dc "$RUNNER_TEMP/legacy-source-capture.sqlite3.gz" \
+                  > "$RUNNER_TEMP/legacy-source-capture.sqlite3"
+              fi
+            fi
+          fi
+
+      - name: Initialize validation state schema
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import sqlite3
+          from pathlib import Path
+
+          from jojo_olds_api.parser_validation import (
+              initialize_parser_validation_schema,
+          )
+          from jojo_olds_api.raw_archive_capture import (
+              initialize_capture_schema,
+          )
+
+          state = Path(os.environ["LOCAL_ROOT"]) / "raw" / "capture.sqlite3"
+          state.parent.mkdir(parents=True, exist_ok=True)
+          connection = sqlite3.connect(state)
+          try:
+              initialize_capture_schema(
+                  connection,
+                  publisher=os.environ["PUBLISHER"],
+                  authorization_reference="user-provided-authorization",
+              )
+              initialize_parser_validation_schema(connection)
+              connection.commit()
+          finally:
+              connection.close()
+          PY
+
+      - name: Reject stale numbered holdout checkpoint
+        id: reject_stale_holdout
+        if: ${{ startsWith(inputs.cohort, 'holdout-v') }}
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          checkpoint="$(python - <<'PY'
+          import os
+          import sqlite3
+          from pathlib import Path
+
+          from jojo_olds_api.publisher_specs import publisher_spec
+
+          publisher = os.environ["PUBLISHER"]
+          year = int(os.environ["SAMPLE_YEAR"])
+          state = Path(os.environ["LOCAL_ROOT"]) / "raw" / "capture.sqlite3"
+          connection = sqlite3.connect(state)
+          try:
+              configured_row = connection.execute(
+                  "SELECT parser_version FROM parser_validation_config "
+                  "WHERE sample_year = ?",
+                  (year,),
+              ).fetchone()
+              selected = int(
+                  connection.execute(
+                      "SELECT COUNT(*) FROM parser_validation_samples "
+                      "WHERE sample_year = ?",
+                      (year,),
+                  ).fetchone()[0]
+              )
+          finally:
+              connection.close()
+
+          configured = (
+              str(configured_row[0])
+              if configured_row and configured_row[0]
+              else ""
+          )
+          current = publisher_spec(publisher).parser_version
+          print(f"{configured}\t{current}\t{selected}")
+          PY
+          )"
+          configured="${checkpoint%%$'\t'*}"
+          remainder="${checkpoint#*$'\t'}"
+          current="${remainder%%$'\t'*}"
+          selected="${remainder#*$'\t'}"
+          if [ -z "$configured" ] || [ "$configured" = "$current" ] || \
+             [ "$selected" -eq 0 ]; then
+            echo "Numbered holdout checkpoint is fresh: configured=${configured:-empty} current=$current selected=$selected."
+            exit 0
+          fi
+
+          if [[ ! "$COHORT" =~ ^holdout-v([1-9][0-9]*)$ ]]; then
+            echo "Unexpected numbered holdout: $COHORT" >&2
+            exit 1
+          fi
+          next_cohort="holdout-v$((BASH_REMATCH[1] + 1))"
+          next_title="parser-${next_cohort}-${PUBLISHER}-${SAMPLE_YEAR}"
+          active_next="$(
+            gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow parser-validation-accelerator.yml \
+              --limit 1000 \
+              --json displayTitle,status \
+            | jq -r --arg title "$next_title" '
+                .[]
+                | select(.displayTitle == $title)
+                | select(
+                    .status == "in_progress" or
+                    .status == "queued" or
+                    .status == "waiting" or
+                    .status == "pending" or
+                    .status == "requested"
+                  )
+                | .displayTitle
+              ' \
+            | head -n 1
+          )"
+          if [ -z "$active_next" ]; then
+            for attempt in 1 2 3 4 5; do
+              if gh workflow run parser-validation-accelerator.yml \
+                  --ref "$GITHUB_REF_NAME" \
+                  -f publisher="$PUBLISHER" \
+                  -f cohort="$next_cohort" \
+                  -f year="$SAMPLE_YEAR" \
+                  -f source_manifest_shard="$SOURCE_MANIFEST_SHARD" \
+                  -f max_captures="$MAX_CAPTURES" \
+                  -f workers="$DOWNLOAD_WORKERS" \
+                  -f max_runtime_minutes="$MAX_RUNTIME_MINUTES" \
+                  -f auto_continue=true \
+                  -f enable_ft_infini_direct_discovery="$ENABLE_FT_INFINI_DIRECT_DISCOVERY" \
+                  -f runner_os="${{ inputs.runner_os }}"; then
+                break
+              fi
+              if [ "$attempt" -eq 5 ]; then
+                echo "Unable to dispatch $next_cohort after 5 attempts." >&2
+                exit 1
+              fi
+              sleep $((attempt * 5))
+            done
+            echo "Dispatched $next_cohort for $PUBLISHER/$SAMPLE_YEAR after detecting stale $COHORT."
+          else
+            echo "$next_cohort is already active for $PUBLISHER/$SAMPLE_YEAR."
+          fi
+          echo "Refusing to replay $selected selected URLs from $configured as $current inside $COHORT; the fresh zero-overlap $next_cohort has been scheduled." >&2
+          exit 1
+
+      - name: Import original-cohort exclusions
+        if: ${{ startsWith(inputs.cohort, 'holdout-v') }}
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          shopt -s nullglob
+          exclusion_states=("$RUNNER_TEMP"/exclusion-*.sqlite3)
+          if [ "${#exclusion_states[@]}" -eq 0 ]; then
+            echo "No earlier cohort exists for this pre-2016 cell."
+            exit 0
+          fi
+          reset_args=(--reset-target-exclusions)
+          imported_exclusion_states=0
+          for exclusion_state in "${exclusion_states[@]}"; do
+            source_cohort="$(basename "$exclusion_state" .sqlite3)"
+            source_cohort="${source_cohort#exclusion-}"
+            import_output="$(
+              python tools/news-archive/tools/import_parser_validation_exclusions.py \
+              --source-state "$exclusion_state" \
+              --target-state "$LOCAL_ROOT/raw/capture.sqlite3" \
+              --source-cohort "$source_cohort" \
+              --publisher "$PUBLISHER" \
+              --sample-year "$SAMPLE_YEAR" \
+              --accepted-target-only \
+              --exclude-inherited \
+              "${reset_args[@]}"
+            )"
+            echo "$import_output"
+            if [ "$(jq -r '.skippedPlaceholder // false' <<<"$import_output")" = "true" ]; then
+              echo "Skipped empty validation placeholder: $source_cohort"
+              continue
+            fi
+            reset_args=()
+            imported_exclusion_states=$((imported_exclusion_states + 1))
+          done
+          if [ "$SAMPLE_YEAR" -ge 2016 ] && [ "$imported_exclusion_states" -eq 0 ]; then
+            echo "No usable earlier cohort exists for this 2016+ holdout cell." >&2
+            exit 1
+          fi
+
+      - name: Seed validation from source archive
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+          REMOTE_ROOT: ${{ steps.paths.outputs.remote_root }}
+          SOURCE_ROOT: ${{ steps.paths.outputs.source_root }}
+          LEGACY_SOURCE_ROOT: ${{ steps.paths.outputs.legacy_source_root }}
+        run: |
+          set -euo pipefail
+          target_plan_ready=0
+          import_source() {
+            local source_state="$1"
+            local source_root="$2"
+            local files_from="$3"
+            if [ ! -f "$source_state" ]; then
+              return 0
+            fi
+            reuse_plan_args=()
+            if [ "$target_plan_ready" -eq 1 ]; then
+              reuse_plan_args+=(--reuse-target-plan)
+            fi
+            python tools/news-archive/tools/import_validation_source_captures.py \
+              --source-state "$source_state" \
+              --target-state "$LOCAL_ROOT/raw/capture.sqlite3" \
+              --manifest "$LOCAL_ROOT/catalog/manifest.jsonl.gz" \
+              --publisher "$PUBLISHER" \
+              --year "$SAMPLE_YEAR" \
+              --target-per-year "$VALIDATION_TARGET" \
+              --seed "$VALIDATION_SEED" \
+              --reserve-per-year 0 \
+              --max-record-attempts "$MAX_RECORD_ATTEMPTS" \
+              "${reuse_plan_args[@]}" \
+              --files-from "$files_from"
+            target_plan_ready=1
+            if [ -s "$files_from" ]; then
+              rclone copy \
+                "${source_root}/raw" \
+                "$LOCAL_ROOT/raw" \
+                --files-from "$files_from" \
+                --transfers 16 --checkers 32 \
+                --retries 8 --low-level-retries 20 \
+                --stats 30s
+            fi
+          }
+
+          source_files="$RUNNER_TEMP/source-import-files.txt"
+          legacy_files="$RUNNER_TEMP/legacy-source-import-files.txt"
+          import_source \
+            "$RUNNER_TEMP/source-capture.sqlite3" \
+            "$SOURCE_ROOT" \
+            "$source_files"
+          if [ -n "$LEGACY_SOURCE_ROOT" ]; then
+            import_source \
+              "$RUNNER_TEMP/legacy-source-capture.sqlite3" \
+              "$LEGACY_SOURCE_ROOT" \
+              "$legacy_files"
+          fi
+          # Earlier validation checkpoints can contain successful downloads
+          # that never entered their accepted 800-article cohort (for example,
+          # when a run was cancelled or its parser result failed QA). Reuse
+          # those durable objects only after importing the accepted samples as
+          # exclusions above. import_validation_source_captures selects solely
+          # from the current disjoint plan, so excluded articles cannot return.
+          shopt -s nullglob
+          reusable_states=("$RUNNER_TEMP"/exclusion-*.sqlite3)
+          reusable_index=0
+          for reusable_state in "${reusable_states[@]}"; do
+            reusable_index=$((reusable_index + 1))
+            reusable_root="$SOURCE_ROOT"
+            if [[ "$reusable_state" == *"exclusion-validation-legacy.sqlite3" ]] && \
+               [ -n "$LEGACY_SOURCE_ROOT" ]; then
+              reusable_root="$LEGACY_SOURCE_ROOT"
+            fi
+            import_source \
+              "$reusable_state" \
+              "$reusable_root" \
+              "$RUNNER_TEMP/prior-cohort-import-${reusable_index}.txt"
+          done
+          # Raw objects are addressed by the SHA-256 of uncompressed HTML.
+          # Old clients can encode identical gzip payloads with a different
+          # header, so retain an existing addressed object instead of rejecting
+          # an otherwise identical source document.
+          if [ -s "$source_files" ]; then
+            rclone copy \
+              "$LOCAL_ROOT/raw" \
+              "${SOURCE_ROOT}/raw" \
+              --files-from "$source_files" \
+              --checksum --ignore-existing \
+              --transfers 16 --checkers 32 \
+              --retries 8 --low-level-retries 20 \
+              --stats 30s
+          fi
+
+      - name: Plan parser replay
+        id: replay
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          python tools/news-archive/tools/prepare_parser_validation_replay.py \
+            --publisher "$PUBLISHER" \
+            --state "$LOCAL_ROOT/raw/capture.sqlite3" \
+            --from-year "$SAMPLE_YEAR" \
+            --to-year "$SAMPLE_YEAR" \
+            --target-per-year "$VALIDATION_TARGET" \
+            --seed "$VALIDATION_SEED" \
+            --reserve-per-year 20000 \
+            --max-record-attempts "$MAX_RECORD_ATTEMPTS" \
+            --max-replays 1000 \
+            --files-from "$RUNNER_TEMP/parser-validation-files.txt" \
+            --all-result-files-from \
+              "$RUNNER_TEMP/parser-validation-all-files.txt" \
+            --github-output "$GITHUB_OUTPUT"
+          # The upload exclusion set is frozen after the restore step.  A
+          # requested replay path is not proof that the object still exists
+          # in B2; excluding requested-but-missing paths would also suppress a
+          # replacement downloaded later in this run.
+          : > "$RUNNER_TEMP/restored-object-excludes.txt"
+
+      - name: Restore previous parser sample HTML
+        if: ${{ steps.replay.outputs.replays != '0' }}
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+          SOURCE_ROOT: ${{ steps.paths.outputs.source_root }}
+          LEGACY_SOURCE_ROOT: ${{ steps.paths.outputs.legacy_source_root }}
+        run: |
+          rclone copy \
+            "${SOURCE_ROOT}/raw" \
+            "$LOCAL_ROOT/raw" \
+            --files-from "$RUNNER_TEMP/parser-validation-files.txt" \
+            --transfers 16 --checkers 32 \
+            --retries 8 --low-level-retries 20 \
+            --stats 30s
+          if [ -n "$LEGACY_SOURCE_ROOT" ]; then
+            rclone copy \
+              "${LEGACY_SOURCE_ROOT}/raw" \
+              "$LOCAL_ROOT/raw" \
+              --files-from "$RUNNER_TEMP/parser-validation-files.txt" \
+              --transfers 16 --checkers 32 \
+              --retries 8 --low-level-retries 20 \
+              --stats 30s
+          fi
+
+      - name: Freeze restored object exclusions
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          set -euo pipefail
+          : > "$RUNNER_TEMP/restored-object-excludes.txt"
+          if [ -d "$LOCAL_ROOT/raw/objects" ]; then
+            (
+              cd "$LOCAL_ROOT/raw/objects"
+              find . -type f ! -name '*.tmp' -print \
+                | sed 's#^\./##'
+            ) | sort -u > "$RUNNER_TEMP/restored-object-excludes.txt"
+          fi
+
+      - name: Replay current parser
+        if: ${{ steps.replay.outputs.replays != '0' }}
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          python tools/news-archive/tools/revalidate_parser_samples.py \
+            --publisher "$PUBLISHER" \
+            --state "$LOCAL_ROOT/raw/capture.sqlite3" \
+            --archive-root "$LOCAL_ROOT/raw" \
+            --max-replays 1000 \
+            --progress-every 50 \
+            --summary "$LOCAL_ROOT/raw/summary.json"
+
+      - name: Plan capture batch
+        id: before
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          python tools/news-archive/tools/capture_action_state.py \
+            --state "$LOCAL_ROOT/raw/capture.sqlite3" \
+            --max-record-attempts "$MAX_RECORD_ATTEMPTS" \
+            --stop-at-validation-target \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Pre-index WSJ Arquivo.pt prefix candidates
+        id: wsj_arquivo_preindex
+        if: ${{ inputs.publisher == 'wsj' }}
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          # Arquivo.pt is an optional supplement. Its prefix index can stall
+          # for several minutes on sparse WSJ years, so never let it consume
+          # the capture window indefinitely; exact per-article fallbacks are
+          # still attempted by the replay client after this bounded stage.
+          if ! timeout --kill-after=15s 180s python \
+              tools/news-archive/tools/preindex_arquivo_pt_catalog.py \
+              --publisher wsj \
+              --year "$SAMPLE_YEAR" \
+              --state "$LOCAL_ROOT/raw/capture.sqlite3" \
+              --github-output "$GITHUB_OUTPUT"; then
+            echo "::warning::Arquivo.pt prefix pre-index timed out or failed; continuing with exact URL fallbacks."
+          fi
+
+      - name: Pre-index validated FT mirror candidates
+        id: ft_preindex
+        if: ${{ inputs.publisher == 'ft' }}
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          # Mirror discovery is an optional acceleration path.  A degraded
+          # partner or archive circuit must never hold the validation batch
+          # indefinitely; the primary Wayback/Common Crawl replay remains
+          # sufficient to make progress and will resume this lookup later.
+          # Mirror enrichment is optional. Keep it strictly bounded so a
+          # slow partner/index cannot consume the entire validation batch;
+          # the primary Wayback/Common Crawl replay remains authoritative.
+          if ! timeout --kill-after=15s 180s python \
+              tools/news-archive/tools/enrich_ft_validation_candidates.py \
+              --state "$LOCAL_ROOT/raw/capture.sqlite3" \
+              --output-dir "$LOCAL_ROOT/raw" \
+              --limit 200 \
+              --workers "$DOWNLOAD_WORKERS" \
+              --github-output "$GITHUB_OUTPUT"; then
+            echo "::warning::FT mirror pre-index timed out or failed; continuing with archive replay."
+          fi
+
+      - name: Capture FT links preserved by Folo
+        if: >-
+          ${{
+            inputs.publisher == 'ft' &&
+            hashFiles('.archive-work/**/catalog/folo-access-links.json') != ''
+          }}
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          set -euo pipefail
+          python tools/news-archive/tools/capture_ft_folo_access_links.py \
+            --state "$LOCAL_ROOT/raw/capture.sqlite3" \
+            --output-dir "$LOCAL_ROOT/raw" \
+            --year "$SAMPLE_YEAR" \
+            --links-file "$LOCAL_ROOT/catalog/folo-access-links.json" \
+            --workers 2
+
+      - name: Capture random year sample
+        id: capture
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+          REMOTE_ROOT: ${{ steps.paths.outputs.remote_root }}
+          SOURCE_ROOT: ${{ steps.paths.outputs.source_root }}
+        run: |
+          set -uo pipefail
+          live_checkpoint() {
+            local checkpoint="$RUNNER_TEMP/capture-live.sqlite3.gz"
+            if ! python \
+              tools/news-archive/tools/checkpoint_capture_state.py \
+              --state "$LOCAL_ROOT/raw/capture.sqlite3" \
+              --output "$checkpoint"; then
+              echo "::warning::Could not snapshot live validation state."
+              return 0
+            fi
+            if ! python \
+              tools/news-archive/tools/write_capture_summary.py \
+              --state "$LOCAL_ROOT/raw/capture.sqlite3" \
+              --archive-root "$LOCAL_ROOT/raw" \
+              --output "$LOCAL_ROOT/raw/summary.json"; then
+              echo "::warning::Could not refresh live validation summary."
+            fi
+            if [ -d "$LOCAL_ROOT/raw/objects" ]; then
+              # A live checkpoint must never hold the capture process hostage
+              # when B2 temporarily stalls.  The final publish step retains
+              # its full retry budget; this periodic recovery checkpoint is
+              # deliberately bounded and best-effort.
+              if ! timeout 120 rclone copy \
+                  "$LOCAL_ROOT/raw/objects" \
+                  "${SOURCE_ROOT}/raw/objects" \
+                  --exclude '*.tmp' \
+                  --exclude-from "$RUNNER_TEMP/restored-object-excludes.txt" \
+                  --checksum --ignore-existing --no-traverse \
+                  --transfers 32 --checkers 64 \
+                  --timeout 30s --contimeout 10s \
+                  --retries 2 --low-level-retries 2; then
+                echo "::warning::Live object upload failed; state withheld."
+                return 0
+              fi
+            fi
+            if [ -d "$LOCAL_ROOT/raw/records" ]; then
+              if ! timeout 120 rclone copy \
+                  "$LOCAL_ROOT/raw/records" \
+                  "${SOURCE_ROOT}/raw/records" \
+                  --exclude '*.tmp' \
+                  --checksum --no-traverse \
+                  --transfers 32 --checkers 64 \
+                  --timeout 30s --contimeout 10s \
+                  --retries 2 --low-level-retries 2; then
+                echo "::warning::Live record upload failed; state withheld."
+                return 0
+              fi
+            fi
+            if [ -f "$LOCAL_ROOT/raw/summary.json" ]; then
+              if ! timeout 30 rclone copyto \
+                  "$LOCAL_ROOT/raw/summary.json" \
+                  "${REMOTE_ROOT}/state/summary.json" \
+                  --timeout 20s --contimeout 10s \
+                  --retries 2 --low-level-retries 2; then
+                echo "::warning::Live validation summary upload timed out."
+              fi
+            fi
+            if ! timeout 30 rclone copyto \
+                "$checkpoint" \
+                "${REMOTE_ROOT}/state/capture.sqlite3.gz" \
+                --timeout 20s --contimeout 10s \
+                --retries 2 --low-level-retries 2; then
+              echo "::warning::Live validation-state upload timed out."
+              return 0
+            fi
+            echo "Published live validation checkpoint."
+          }
+
+          request_interval=0.5
+          request_timeout=30
+          if [ "$PUBLISHER" = "nyt" ]; then
+            request_interval=1.5
+          fi
+          if [ "$PUBLISHER" = "ft" ]; then
+            # FT's first-pass Wayback candidates are already bounded and the
+            # secondary archives should get a chance when Wayback stalls.
+            request_timeout=15
+          fi
+          if [ "$PUBLISHER" = "wsj" ]; then
+            # WSJ's current Wayback endpoint is returning 503/slow reads.
+            # Keep the first manifest pass responsive; retry continuations
+            # still use the same candidates plus the staged archives.
+            request_timeout=10
+          fi
+          effective_max_captures="$MAX_CAPTURES"
+          # The historical FT replay queue spends a material part of each
+          # bounded batch on archive admission and fallback setup.  Keep the
+          # checkpointed continuation contract, but avoid repeatedly paying
+          # that fixed cost for very short (15-minute) batches.  The outer
+          # job timeout remains 350 minutes and the subprocess still has a
+          # hard deadline below, so this only increases useful capture time.
+          effective_runtime_minutes="$MAX_RUNTIME_MINUTES"
+          if [ "$PUBLISHER" = "ft" ]; then
+            if [ -n "${ARCHIVE_HTTP_PROXY:-}" ]; then
+              # A configured subscription currently exposes roughly two
+              # hundred load-balanced nodes.  Give sparse FT cohorts a larger
+              # bounded batch so they do not repay B2 restore/setup after
+              # every 800 mostly-paywall attempts.  Live checkpoints retain
+              # recovery state throughout the longer capture window.
+              if [ "$effective_max_captures" -lt 1600 ]; then
+                effective_max_captures=1600
+              fi
+              if [ "$effective_runtime_minutes" -lt 60 ]; then
+                effective_runtime_minutes=60
+              fi
+            elif [ "$effective_runtime_minutes" -lt 30 ]; then
+              effective_runtime_minutes=30
+            fi
+          fi
+          archive_attempts=2
+          if [ "$PUBLISHER" = "ft" ]; then
+            # FT's Wayback candidates frequently return retryable timemap
+            # errors. A second application-level replay only delays the
+            # Common Crawl/Arquivo fallbacks; keep one bounded attempt for
+            # FT while retaining two attempts for other publishers.
+            archive_attempts=1
+          fi
+          if [ "$PUBLISHER" = "wsj" ]; then
+            # Wayback 503s otherwise make each manifest URL spend a second
+            # application retry behind the shared circuit breaker. A later
+            # continuation retries errored rows with the full fallback policy.
+            archive_attempts=1
+          fi
+          capture_workers="$DOWNLOAD_WORKERS"
+          if [ -n "${ARCHIVE_HTTP_PROXY:-}" ] && [ "$capture_workers" -lt 32 ]; then
+            # ArchiveClient gives each proxy-pool worker its own bounded
+            # cadence. Use a larger, still bounded floor so a subscription
+            # with many healthy nodes can hide archive latency; never turn
+            # the node pool into an unbounded fan-out.
+            capture_workers=32
+          fi
+          if [ "$PUBLISHER" = "ft" ] && \
+             [ -n "${ARCHIVE_HTTP_PROXY:-}" ] && \
+             [ "$capture_workers" -lt 64 ]; then
+            # FT's usable-capture rate is only a few percent because most
+            # archive responses are subscription shells.  Sixty-four workers
+            # still average below one request per second per pool node while
+            # materially reducing the time spent waiting on dead snapshots.
+            capture_workers=64
+          fi
+          args=(
+            --publisher "$PUBLISHER"
+            --manifest "$LOCAL_ROOT/catalog/manifest.jsonl.gz"
+            --output-dir "$LOCAL_ROOT/raw"
+            --workers "$capture_workers"
+            --min-request-interval "$request_interval"
+            --timeout "$request_timeout"
+            --attempts "$archive_attempts"
+            --max-captures "$effective_max_captures"
+            --max-runtime-minutes "$effective_runtime_minutes"
+            --max-record-attempts "$MAX_RECORD_ATTEMPTS"
+            --validation-sample-per-year "$VALIDATION_TARGET"
+            --validation-seed "$VALIDATION_SEED"
+            --validation-reserve-per-year 20000
+            --validation-from-year "$SAMPLE_YEAR"
+            --validation-to-year "$SAMPLE_YEAR"
+            --stop-when-validation-ready
+            --stop-when-validation-target-reached
+            --progress-every 25
+            --minimum-free-gb 2
+          )
+          if [ "$PUBLISHER" = "wsj" ]; then
+            # Wayback/Arquivo shell failures are currently dominant for WSJ.
+            # Checkpoint early and let the next continuation try Common Crawl
+            # instead of spending the whole batch repeating the same shells.
+            args+=(--stop-after-errors 500)
+          fi
+          if [ "${{ steps.before.outputs.retry_errors }}" = "true" ]; then
+            args+=(--retry-errors)
+          fi
+          if [ "$PUBLISHER" = "ft" ] || \
+             [ "$PUBLISHER" = "wsj" ] || \
+             [ "$PUBLISHER" = "nikkei" ]; then
+            args+=(
+              --enable-arquivo-pt-fallback
+              --enable-common-crawl-fallback
+            )
+          fi
+          if [ "$PUBLISHER" = "ft" ]; then
+            # Infini-News begins in 2016. Keep the opt-in enabled across
+            # auto-continuations, but do not pass an unsupported year to the
+            # direct catalog scanner.
+            if [ "$ENABLE_FT_INFINI_DIRECT_DISCOVERY" = "true" ] &&
+               [ "$SAMPLE_YEAR" -ge 2016 ]; then
+              args+=(--enable-ft-infini-direct-discovery)
+            fi
+            if [ -f "$LOCAL_ROOT/catalog/source-discovery.sqlite3" ]; then
+              args+=(
+                --ft-syndication-catalog \
+                "$LOCAL_ROOT/catalog/source-discovery.sqlite3"
+              )
+            fi
+          fi
+          set +e
+          python tools/news-archive/tools/capture_archive_batch.py "${args[@]}" &
+          capture_pid=$!
+          # capture_archive_batch has its own admission deadline, but a
+          # provider request can still leave a worker future unresolved while
+          # the executor shuts down.  Bound the whole subprocess as well so a
+          # bad archive cannot consume an entire hosted runner.  The live
+          # checkpoint written below makes the batch safely resumable.
+          hard_deadline=$((SECONDS + effective_runtime_minutes * 60 + 120))
+          capture_timed_out=false
+          while kill -0 "$capture_pid" 2>/dev/null; do
+            if [ "$SECONDS" -ge "$hard_deadline" ]; then
+              echo "::warning::Capture subprocess exceeded its hard deadline; terminating for checkpointed continuation."
+              kill -TERM "$capture_pid" 2>/dev/null || true
+              sleep 10
+              kill -KILL "$capture_pid" 2>/dev/null || true
+              capture_timed_out=true
+              break
+            fi
+            # Wake frequently enough to enforce the hard deadline even when
+            # the capture process has no completed future to report.
+            timeout 30 tail --pid="$capture_pid" -f /dev/null
+            wait_code=$?
+            if [ "$wait_code" -eq 124 ]; then
+              live_checkpoint
+            else
+              break
+            fi
+          done
+          wait "$capture_pid"
+          code=$?
+          if [ "$capture_timed_out" = true ]; then
+            live_checkpoint
+            # This is a resumable infrastructure stop, not a parser failure.
+            # A zero capture exit code allows the normal auto-continue gate to
+            # dispatch the next bounded batch from the saved SQLite state.
+            code=0
+          fi
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Diagnose Axios legacy smoke markup
+        if: ${{ inputs.publisher == 'axios' && inputs.cohort == 'smoke-v4' }}
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          python - <<'PY'
+          from collections import Counter
+          import gzip
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import sqlite3
+
+          from bs4 import BeautifulSoup
+
+          root = Path(os.environ["LOCAL_ROOT"]) / "raw"
+          connection = sqlite3.connect(root / "capture.sqlite3")
+          rows = connection.execute(
+              "SELECT canonical_url, raw_path FROM captures "
+              "WHERE status='complete' AND raw_path IS NOT NULL "
+              "ORDER BY canonical_url LIMIT 3"
+          ).fetchall()
+          for url, raw_path in rows:
+              html = gzip.decompress((root / raw_path).read_bytes()).decode(
+                  "utf-8", errors="replace"
+              )
+              soup = BeautifulSoup(html, "html.parser")
+              classes = Counter(
+                  value
+                  for node in soup.find_all(True)
+                  for value in node.get("class", [])
+              )
+              ids = Counter(
+                  str(node.get("id"))
+                  for node in soup.find_all(id=True)
+              )
+              json_keys = Counter(re.findall(r'"([A-Za-z][A-Za-z0-9_]{2,})"\\s*:', html))
+              print(json.dumps({
+                  "url": url,
+                  "htmlBytes": len(html),
+                  "tags": Counter(node.name for node in soup.find_all(True)).most_common(20),
+                  "classes": classes.most_common(40),
+                  "ids": ids.most_common(30),
+                  "jsonKeys": json_keys.most_common(40),
+              }, ensure_ascii=False))
+          PY
+
+      - name: Assess validation state before reproducibility gate
+        id: pre_repro_readiness
+        if: >-
+          ${{
+            always() &&
+            !cancelled() &&
+            hashFiles('.archive-work/**/raw/capture.sqlite3') != ''
+          }}
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          python tools/news-archive/tools/capture_action_state.py \
+            --state "$LOCAL_ROOT/raw/capture.sqlite3" \
+            --max-record-attempts "$MAX_RECORD_ATTEMPTS" \
+            --stop-at-validation-target \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Verify saved parser results are reproducible
+        if: >-
+          ${{
+            always() &&
+            !cancelled() &&
+            hashFiles('.archive-work/**/raw/capture.sqlite3') != '' &&
+            (
+              steps.pre_repro_readiness.outputs.validation_ready == 'true' ||
+              steps.pre_repro_readiness.outputs.validation_target_reached == 'true'
+            )
+          }}
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+          SOURCE_ROOT: ${{ steps.paths.outputs.source_root }}
+          LEGACY_SOURCE_ROOT: ${{ steps.paths.outputs.legacy_source_root }}
+        run: |
+          if [ -s "$RUNNER_TEMP/parser-validation-all-files.txt" ]; then
+            rclone copy \
+              "${SOURCE_ROOT}/raw" \
+              "$LOCAL_ROOT/raw" \
+              --files-from \
+                "$RUNNER_TEMP/parser-validation-all-files.txt" \
+              --transfers 32 --checkers 64 \
+              --retries 8 --low-level-retries 20 \
+              --stats 30s
+            if [ -n "$LEGACY_SOURCE_ROOT" ]; then
+              rclone copy \
+                "${LEGACY_SOURCE_ROOT}/raw" \
+                "$LOCAL_ROOT/raw" \
+                --files-from \
+                  "$RUNNER_TEMP/parser-validation-all-files.txt" \
+                --transfers 32 --checkers 64 \
+                --retries 8 --low-level-retries 20 \
+                --stats 30s
+            fi
+          fi
+          python tools/news-archive/tools/revalidate_parser_samples.py \
+            --publisher "$PUBLISHER" \
+            --state "$LOCAL_ROOT/raw/capture.sqlite3" \
+            --archive-root "$LOCAL_ROOT/raw" \
+            --max-replays 1000 \
+            --progress-every 50 \
+            --force-existing \
+            --preserve-missing \
+            --summary "$LOCAL_ROOT/raw/summary.json"
+
+      - name: Ensure holdout audit schema
+        if: >-
+          ${{
+            always() &&
+            !cancelled() &&
+            hashFiles('.archive-work/**/raw/capture.sqlite3') != ''
+          }}
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import sqlite3
+          from pathlib import Path
+
+          from jojo_olds_api.parser_validation import (
+              initialize_parser_validation_schema,
+          )
+
+          state = Path(os.environ["LOCAL_ROOT"]) / "raw" / "capture.sqlite3"
+          connection = sqlite3.connect(state)
+          try:
+              initialize_parser_validation_schema(connection)
+              connection.commit()
+          finally:
+              connection.close()
+          PY
+
+      - name: Assess validation state before publication
+        id: rotation_readiness
+        if: >-
+          ${{
+            always() &&
+            !cancelled() &&
+            hashFiles('.archive-work/**/raw/capture.sqlite3') != ''
+          }}
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          python tools/news-archive/tools/capture_action_state.py \
+            --state "$LOCAL_ROOT/raw/capture.sqlite3" \
+            --max-record-attempts "$MAX_RECORD_ATTEMPTS" \
+            --stop-at-validation-target \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Audit completed holdout rotation
+        id: rotation_audit
+        if: >-
+          ${{
+            startsWith(inputs.cohort, 'holdout-v') &&
+            (
+              steps.rotation_readiness.outputs.validation_ready == 'true' ||
+              steps.rotation_readiness.outputs.validation_target_reached == 'true'
+            )
+          }}
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          previous_states=("$RUNNER_TEMP"/exclusion-*.sqlite3)
+          previous_args=()
+          if [ "${#previous_states[@]}" -eq 0 ]; then
+            echo "::notice::First holdout has no earlier cohort; auditing against an empty prior union."
+            previous_args+=(--allow-empty-previous)
+          fi
+          audit_args=()
+          for previous_state in "${previous_states[@]}"; do
+            label="$(basename "$previous_state" .sqlite3)"
+            label="${label#exclusion-}"
+            audit_args+=(--previous-state "${label}=${previous_state}")
+          done
+          parser_version="$(
+            python -c 'import os; from jojo_olds_api.publisher_specs import publisher_spec; print(publisher_spec(os.environ["PUBLISHER"]).parser_version)'
+          )"
+          python tools/news-archive/tools/audit_parser_validation_holdout.py \
+            "${audit_args[@]}" \
+            "${previous_args[@]}" \
+            --current-state "$LOCAL_ROOT/raw/capture.sqlite3" \
+            --publisher "$PUBLISHER" \
+            --expected-parser-version "$parser_version" \
+            --from-year "$SAMPLE_YEAR" \
+            --to-year "$SAMPLE_YEAR" \
+            --target-per-year "$VALIDATION_TARGET" \
+            --require-complete \
+            --output "$LOCAL_ROOT/raw/rotation-audit.json"
+
+      - name: Audit completed sample content
+        id: content_audit
+        if: >-
+          ${{
+            always() &&
+            !cancelled() &&
+            (
+              steps.rotation_readiness.outputs.validation_ready == 'true' ||
+              steps.rotation_readiness.outputs.validation_target_reached == 'true'
+            ) &&
+            (
+              !startsWith(inputs.cohort, 'holdout-v') ||
+              steps.rotation_audit.outcome == 'success'
+            )
+          }}
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          set -euo pipefail
+          parser_version="$(
+            python -c 'import os; from jojo_olds_api.publisher_specs import publisher_spec; print(publisher_spec(os.environ["PUBLISHER"]).parser_version)'
+          )"
+          python tools/news-archive/tools/audit_parser_validation_content.py \
+            --state "$LOCAL_ROOT/raw/capture.sqlite3" \
+            --archive-root "$LOCAL_ROOT/raw" \
+            --publisher "$PUBLISHER" \
+            --year "$SAMPLE_YEAR" \
+            --target "$VALIDATION_TARGET" \
+            --expected-parser-version "$parser_version" \
+            --output "$LOCAL_ROOT/raw/content-audit.json"
+
+      - name: Publish failed content audit
+        if: >-
+          ${{
+            always() &&
+            steps.content_audit.outcome == 'failure' &&
+            hashFiles('.archive-work/**/raw/content-audit.json') != ''
+          }}
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+          REMOTE_ROOT: ${{ steps.paths.outputs.remote_root }}
+        run: |
+          rclone copyto \
+            "$LOCAL_ROOT/raw/content-audit.json" \
+            "${REMOTE_ROOT}/state/content-audit.json" \
+            --retries 8 --low-level-retries 20
+
+      - name: Report failed content audit details
+        if: >-
+          ${{
+            always() &&
+            steps.content_audit.outcome == 'failure' &&
+            hashFiles('.archive-work/**/raw/content-audit.json') != ''
+          }}
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["LOCAL_ROOT"]) / "raw" / "content-audit.json"
+          report = json.loads(path.read_text(encoding="utf-8"))
+          print(json.dumps({
+              "hardAnomalies": report.get("hardAnomalies", []),
+              "reviewCandidates": report.get("reviewCandidates", []),
+          }, ensure_ascii=False))
+          PY
+
+      - name: Checkpoint validation state
+        if: >-
+          ${{
+            always() &&
+            !cancelled() &&
+            steps.rotation_readiness.outcome != 'failure' &&
+            (
+              !startsWith(inputs.cohort, 'holdout-v') ||
+              steps.rotation_readiness.outputs.validation_ready != 'true' ||
+              steps.rotation_audit.outcome == 'success'
+            ) &&
+            hashFiles('.archive-work/**/raw/capture.sqlite3') != ''
+          }}
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          set -euo pipefail
+          python tools/news-archive/tools/checkpoint_capture_state.py \
+            --state "$LOCAL_ROOT/raw/capture.sqlite3" \
+            --output "$RUNNER_TEMP/capture.sqlite3.gz"
+
+      - name: Publish validation objects and checkpoint
+        if: >-
+          ${{
+            always() &&
+            !cancelled() &&
+            steps.rotation_readiness.outcome != 'failure' &&
+            (
+              !startsWith(inputs.cohort, 'holdout-v') ||
+              steps.rotation_readiness.outputs.validation_ready != 'true' ||
+              steps.rotation_audit.outcome == 'success'
+            ) &&
+            hashFiles('.archive-work/**/raw/capture.sqlite3') != ''
+          }}
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+          REMOTE_ROOT: ${{ steps.paths.outputs.remote_root }}
+          SOURCE_ROOT: ${{ steps.paths.outputs.source_root }}
+        run: |
+          set -euo pipefail
+          if [ -d "$LOCAL_ROOT/raw/objects" ]; then
+            rclone copy \
+              "$LOCAL_ROOT/raw/objects" \
+              "${SOURCE_ROOT}/raw/objects" \
+              --exclude '*.tmp' \
+              --exclude-from "$RUNNER_TEMP/restored-object-excludes.txt" \
+              --checksum --ignore-existing --no-traverse \
+              --transfers 32 --checkers 64 \
+              --retries 8 --low-level-retries 20 \
+              --stats 30s
+          fi
+          if [ -d "$LOCAL_ROOT/raw/records" ]; then
+            rclone copy \
+              "$LOCAL_ROOT/raw/records" \
+              "${SOURCE_ROOT}/raw/records" \
+              --exclude '*.tmp' \
+              --checksum --no-traverse \
+              --transfers 32 --checkers 64 \
+              --retries 8 --low-level-retries 20 \
+              --stats 30s
+          fi
+          # Publish the summary last.  The watchdog treats summary.json as
+          # the commit marker for a validation checkpoint and immediately
+          # looks for the matching audits.  Uploading the summary first can
+          # expose a transient half-published state and dispatch a duplicate
+          # run even though the formal content audit has already passed.
+          if [ -f "$LOCAL_ROOT/raw/rotation-audit.json" ]; then
+            rclone copyto \
+              "$LOCAL_ROOT/raw/rotation-audit.json" \
+              "${REMOTE_ROOT}/state/rotation-audit.json" \
+              --retries 8 --low-level-retries 20
+          fi
+          if [ -f "$LOCAL_ROOT/raw/content-audit.json" ]; then
+            rclone copyto \
+              "$LOCAL_ROOT/raw/content-audit.json" \
+              "${REMOTE_ROOT}/state/content-audit.json" \
+              --retries 8 --low-level-retries 20
+          fi
+          rclone copyto \
+            "$RUNNER_TEMP/capture.sqlite3.gz" \
+            "${REMOTE_ROOT}/state/capture.sqlite3.gz" \
+            --retries 8 --low-level-retries 20
+          if [ -f "$LOCAL_ROOT/raw/summary.json" ]; then
+            rclone copyto \
+              "$LOCAL_ROOT/raw/summary.json" \
+              "${REMOTE_ROOT}/state/summary.json" \
+              --retries 8 --low-level-retries 20
+          fi
+
+      - name: Report validation state
+        id: after
+        if: >-
+          ${{
+            always() &&
+            !cancelled() &&
+            steps.rotation_readiness.outcome != 'failure' &&
+            (
+              !startsWith(inputs.cohort, 'holdout-v') ||
+              steps.rotation_readiness.outputs.validation_ready != 'true' ||
+              steps.rotation_audit.outcome == 'success'
+            ) &&
+            hashFiles('.archive-work/**/raw/capture.sqlite3') != ''
+          }}
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          python tools/news-archive/tools/capture_action_state.py \
+            --state "$LOCAL_ROOT/raw/capture.sqlite3" \
+            --max-record-attempts "$MAX_RECORD_ATTEMPTS" \
+            --stop-at-validation-target \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Guard stale parser continuation
+        id: parser_freshness
+        if: >-
+          ${{
+            always() &&
+            !cancelled() &&
+            hashFiles('.archive-work/**/raw/capture.sqlite3') != ''
+          }}
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          configured_parser="$(python - "$LOCAL_ROOT/raw/capture.sqlite3" "$PUBLISHER" "$SAMPLE_YEAR" <<'PY'
+          import sqlite3
+          import sys
+
+          from jojo_olds_api.publisher_specs import publisher_spec
+
+          connection = sqlite3.connect(sys.argv[1])
+          try:
+              row = connection.execute(
+                  "SELECT parser_version FROM parser_validation_config "
+                  "WHERE sample_year = ?",
+                  (int(sys.argv[3]),),
+              ).fetchone()
+          except sqlite3.OperationalError:
+              row = None
+          configured = str(row[0]) if row and row[0] else ""
+          current = publisher_spec(sys.argv[2]).parser_version
+          print(f"{configured}\t{current}")
+          PY
+          )"
+          configured_version="${configured_parser%%$'\t'*}"
+          current_version="${configured_parser#*$'\t'}"
+          if [ -z "$configured_version" ] || [ "$configured_version" = "$current_version" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+            echo "Parser cohort is current: $current_version"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Skipping auto-continuation for stale parser cohort "
+            echo "$configured_version (current is $current_version)."
+          fi
+
+      - name: Guard superseded holdout continuation
+        id: cohort_freshness
+        if: >-
+          ${{
+            always() &&
+            !cancelled() &&
+            hashFiles('.archive-work/**/raw/capture.sqlite3') != ''
+          }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "current=true" >> "$GITHUB_OUTPUT"
+          if [[ ! "$COHORT" =~ ^holdout-v([1-9][0-9]*)$ ]]; then
+            exit 0
+          fi
+          cohort_number="${BASH_REMATCH[1]}"
+          newer_active="$(
+            gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow parser-validation-accelerator.yml \
+              --branch "$GITHUB_REF_NAME" \
+              --limit 100 \
+              --json displayTitle,status \
+            | jq -r \
+                --arg publisher "$PUBLISHER" \
+                --arg year "$SAMPLE_YEAR" \
+                --argjson current "$cohort_number" \
+                '
+                  .[]
+                  | select(
+                      .status == "in_progress" or
+                      .status == "queued" or
+                      .status == "waiting" or
+                      .status == "pending" or
+                      .status == "requested"
+                    )
+                  | .displayTitle
+                  | capture("^parser-holdout-v(?<number>[0-9]+)-(?<publisher>[a-z0-9-]+)-(?<year>[0-9]{4})$")
+                  | select(
+                      .publisher == $publisher and
+                      .year == $year and
+                      (.number | tonumber) > $current
+                    )
+                  | .number
+                ' \
+            | head -n 1
+          )"
+          if [ -n "$newer_active" ]; then
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Skipping auto-continuation for superseded holdout "
+            echo "$COHORT; newer active cohort holdout-v${newer_active} exists for "
+            echo "$PUBLISHER/$SAMPLE_YEAR."
+          fi
+
+      - name: Dispatch next validation batch
+        if: >-
+          ${{
+            inputs.auto_continue &&
+            steps.rotation_readiness.outcome != 'failure' &&
+            steps.rotation_readiness.outputs.validation_target_reached != 'true' &&
+            steps.content_audit.outcome != 'failure' &&
+            steps.parser_freshness.outputs.current == 'true' &&
+            steps.cohort_freshness.outputs.current == 'true' &&
+            (
+              !startsWith(inputs.cohort, 'holdout-v') ||
+              steps.rotation_readiness.outputs.validation_ready != 'true' ||
+              steps.rotation_audit.outcome == 'success'
+            ) &&
+            steps.capture.outputs.exit_code == '0' &&
+            steps.after.outputs.should_continue == 'true'
+          }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          next_workers="$DOWNLOAD_WORKERS"
+          if [ -n "${ARCHIVE_HTTP_PROXY:-}" ] && [ "$next_workers" -lt 32 ]; then
+            next_workers=32
+          fi
+          if [ "$PUBLISHER" = "ft" ] && \
+             [ -n "${ARCHIVE_HTTP_PROXY:-}" ] && \
+             [ "$next_workers" -lt 64 ]; then
+            next_workers=64
+          fi
+          if [ "$PUBLISHER" = "ft" ] || [ "$PUBLISHER" = "wsj" ]; then
+            # Their archive responses are slow. Keep at least four workers to
+            # overlap response latency; with a proxy pool each worker has its
+            # own bounded cadence while no-proxy runs retain the global
+            # 0.5-second request limiter.
+            if [ "$next_workers" -lt 4 ]; then
+              next_workers=4
+            fi
+          fi
+          if [ "$PUBLISHER" = "axios" ] && [ "$next_workers" -gt 8 ]; then
+            # Wayback starts returning connection/time-out errors when the
+            # Axios sitemap queue is replayed at the larger generic fan-out.
+            # Keep the current batch intact, but make future continuations
+            # less wasteful and more likely to obtain usable captures.
+            next_workers=8
+          fi
+          # A continuation may inherit a broad source window from the
+          # previous batch even when this year belongs to another shard
+          # (for example, Nikkei 2010/2011 versus 2016-2026, or Axios 2026).
+          # Resolve the canonical shard for this exact publisher/year before
+          # dispatching the next checkpoint.
+          next_source_manifest_shard="$(
+            python tools/news-archive/tools/resolve_parser_source_shard.py \
+              --publisher "$PUBLISHER" \
+              --year "$SAMPLE_YEAR"
+          )"
+          for attempt in 1 2 3 4 5; do
+            if gh workflow run parser-validation-accelerator.yml \
+              --ref "$GITHUB_REF_NAME" \
+              -f publisher="$PUBLISHER" \
+              -f cohort="$COHORT" \
+              -f year="$SAMPLE_YEAR" \
+              -f source_manifest_shard="$next_source_manifest_shard" \
+              -f max_captures="$MAX_CAPTURES" \
+              -f workers="$next_workers" \
+              -f max_runtime_minutes="$MAX_RUNTIME_MINUTES" \
+              -f auto_continue=true \
+              -f enable_ft_infini_direct_discovery="$ENABLE_FT_INFINI_DIRECT_DISCOVERY" \
+              -f runner_os="${{ inputs.runner_os }}"; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              echo "::warning::Validation dispatch failed; retrying ($attempt/5)."
+              sleep $((attempt * 5))
+            fi
+          done
+          echo "Unable to dispatch the next validation batch after 5 attempts." >&2
+          exit 1
+
+      - name: Wake parser validation watchdog
+        if: ${{ always() && !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/kick-parser-watchdog.sh
+
+      - name: Propagate capture failure after checkpoint
+        if: ${{ steps.capture.outputs.exit_code != '0' }}
+        run: |
+          echo "Capture process exited with code ${{ steps.capture.outputs.exit_code }}." >&2
+          exit 1
+
+      - name: Stop optional Mihomo archive proxy pool
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set +e
+          if [ -n "${MIHOMO_PID_FILE:-}" ] && [ -f "$MIHOMO_PID_FILE" ]; then
+            pid="$(cat "$MIHOMO_PID_FILE")"
+            kill "$pid" 2>/dev/null || true
+            for _ in 1 2 3 4 5; do
+              kill -0 "$pid" 2>/dev/null || break
+              sleep 1
+            done
+            kill -KILL "$pid" 2>/dev/null || true
+          fi
+          if [ -n "${MIHOMO_STATE_DIR:-}" ]; then
+            rm -rf "$MIHOMO_STATE_DIR"
+          fi

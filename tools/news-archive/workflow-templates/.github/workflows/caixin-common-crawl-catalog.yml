@@ -1,0 +1,214 @@
+name: Caixin Common Crawl catalog
+
+run-name: caixin-common-crawl-${{ inputs.year }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      year:
+        description: "Caixin publication year to discover."
+        required: true
+        default: "2010"
+        type: string
+      max_pages:
+        description: "Maximum Common Crawl index pages in this bounded run."
+        required: true
+        default: "20"
+        type: string
+      max_queries:
+        description: "Maximum prefix-query advances, including empty indexes."
+        required: true
+        default: "80"
+        type: string
+      auto_continue:
+        description: "Dispatch the next bounded run after checkpointing."
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: caixin-common-crawl-${{ inputs.year }}
+  cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: "1"
+  B2_ARCHIVE_KEY_ID: ${{ secrets.B2_ARCHIVE_KEY_ID }}
+  B2_ARCHIVE_APPLICATION_KEY: ${{ secrets.B2_ARCHIVE_APPLICATION_KEY }}
+  B2_ARCHIVE_BUCKET: ${{ secrets.B2_ARCHIVE_BUCKET }}
+  B2_REMOTE: jojo-b2
+  SAMPLE_YEAR: ${{ inputs.year }}
+  MAX_PAGES: ${{ inputs.max_pages }}
+  MAX_QUERIES: ${{ inputs.max_queries }}
+  AUTO_CONTINUE: ${{ inputs.auto_continue }}
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12.13"
+          cache: pip
+          cache-dependency-path: tools/news-archive/requirements.txt
+
+      - name: Install archive dependencies
+        run: |
+          python -m pip install -r tools/news-archive/requirements.txt
+          sudo apt-get update
+          sudo apt-get install -y rclone
+
+      - name: Validate private B2 storage
+        run: |
+          python tools/news-archive/tools/verify_b2_private_bucket.py
+          rclone config create "$B2_REMOTE" b2 \
+            account "$B2_ARCHIVE_KEY_ID" \
+            key "$B2_ARCHIVE_APPLICATION_KEY" \
+            --non-interactive
+
+      - name: Resolve catalog paths
+        id: paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! [[ "$SAMPLE_YEAR" =~ ^20[0-9]{2}$ ]] ||
+             [ "$SAMPLE_YEAR" -lt 2010 ] ||
+             [ "$SAMPLE_YEAR" -gt 2026 ]; then
+            echo "Invalid Caixin publication year." >&2
+            exit 2
+          fi
+          for value in "$MAX_PAGES" "$MAX_QUERIES"; do
+            if ! [[ "$value" =~ ^[1-9][0-9]*$ ]]; then
+              echo "Batch limits must be positive." >&2
+              exit 2
+            fi
+          done
+          local_root="$RUNNER_TEMP/caixin-common-crawl-${SAMPLE_YEAR}"
+          remote_root="${B2_REMOTE}:${B2_ARCHIVE_BUCKET}/news-archive/v1/caixin/${SAMPLE_YEAR}-${SAMPLE_YEAR}/commoncrawl-prefix"
+          mkdir -p "$local_root/catalog" "$local_root/state"
+          {
+            echo "local_root=$local_root"
+            echo "remote_root=$remote_root"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Restore discovery checkpoint
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+          REMOTE_ROOT: ${{ steps.paths.outputs.remote_root }}
+        run: |
+          set -euo pipefail
+          if rclone lsf "${REMOTE_ROOT}/catalog" --files-only \
+              | grep -Fxq "discovery.sqlite3.gz"; then
+            rclone copyto \
+              "${REMOTE_ROOT}/catalog/discovery.sqlite3.gz" \
+              "$RUNNER_TEMP/discovery.sqlite3.gz" \
+              --retries 8 --low-level-retries 20
+            gzip -dc "$RUNNER_TEMP/discovery.sqlite3.gz" \
+              > "$LOCAL_ROOT/catalog/discovery.sqlite3"
+          fi
+
+      - name: Advance bounded prefix discovery
+        id: discovery
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          collection_from_year="$SAMPLE_YEAR"
+          if [ "$collection_from_year" -lt 2012 ]; then
+            collection_from_year=2012
+          fi
+          # Recent indexes retain materially more of Caixin's dated legacy
+          # URLs than the earliest 2012--2014 indexes. Completed queries in
+          # the checkpoint stay complete, so this only prioritizes the
+          # remaining high-yield collections and does not duplicate work.
+          python tools/news-archive/tools/build_common_crawl_prefix_manifest.py \
+            --publisher caixin \
+            --from-year "$SAMPLE_YEAR" \
+            --to-year "$SAMPLE_YEAR" \
+            --collection-from-year "$collection_from_year" \
+            --collection-order newest \
+            --state "$LOCAL_ROOT/catalog/discovery.sqlite3" \
+            --output "$LOCAL_ROOT/catalog/manifest.jsonl.gz" \
+            --summary "$LOCAL_ROOT/state/summary.json" \
+            --max-pages "$MAX_PAGES" \
+            --max-queries "$MAX_QUERIES" \
+            --max-errors 12 \
+            --target-articles-per-year 3000 \
+            --min-request-interval 3 \
+            --timeout 45 \
+            --attempts 4 \
+            --page-size 1 \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Publish manifest and checkpoint
+        shell: bash
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+          REMOTE_ROOT: ${{ steps.paths.outputs.remote_root }}
+        run: |
+          set -euo pipefail
+          python tools/news-archive/tools/summarize_archive_manifest.py \
+            --manifest "$LOCAL_ROOT/catalog/manifest.jsonl.gz" \
+            --publisher caixin \
+            --output "$LOCAL_ROOT/catalog/manifest-summary.json"
+          python tools/news-archive/tools/checkpoint_capture_state.py \
+            --state "$LOCAL_ROOT/catalog/discovery.sqlite3" \
+            --output "$RUNNER_TEMP/discovery.sqlite3.gz"
+          rclone copyto \
+            "$RUNNER_TEMP/discovery.sqlite3.gz" \
+            "${REMOTE_ROOT}/catalog/discovery.sqlite3.gz" \
+            --retries 8 --low-level-retries 20
+          rclone copyto \
+            "$LOCAL_ROOT/catalog/manifest.jsonl.gz" \
+            "${REMOTE_ROOT}/catalog/manifest.jsonl.gz" \
+            --retries 8 --low-level-retries 20
+          rclone copyto \
+            "$LOCAL_ROOT/catalog/manifest-summary.json" \
+            "${REMOTE_ROOT}/catalog/manifest-summary.json" \
+            --retries 8 --low-level-retries 20
+          rclone copyto \
+            "$LOCAL_ROOT/state/summary.json" \
+            "${REMOTE_ROOT}/state/summary.json" \
+            --retries 8 --low-level-retries 20
+
+      - name: Report catalog progress
+        env:
+          LOCAL_ROOT: ${{ steps.paths.outputs.local_root }}
+        run: |
+          {
+            echo "### Caixin ${SAMPLE_YEAR} Common Crawl prefix catalog"
+            echo
+            echo '```json'
+            cat "$LOCAL_ROOT/state/summary.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dispatch next bounded run
+        if: >-
+          ${{
+            inputs.auto_continue &&
+            steps.discovery.outputs.should_continue == 'true' &&
+            steps.discovery.outputs.advances != '0'
+          }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run caixin-common-crawl-catalog.yml \
+            --ref "$GITHUB_REF_NAME" \
+            -f year="$SAMPLE_YEAR" \
+            -f max_pages="$MAX_PAGES" \
+            -f max_queries="$MAX_QUERIES" \
+            -f auto_continue=true
+
+      - name: Wake parser validation watchdog
+        if: ${{ always() && !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/kick-parser-watchdog.sh
