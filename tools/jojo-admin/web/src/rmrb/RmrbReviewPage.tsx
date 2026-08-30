@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ClipboardEvent, FormEvent } from "react";
 import { PageTopbar } from "../components/PageTopbar";
 import {
@@ -69,13 +69,14 @@ export function RmrbReviewPage() {
   const [syncStatus, setSyncStatus] = useState<RmrbSyncStatus>();
   const [message, setMessage] = useState("");
   const editorRef = useRef<HTMLDivElement>(null);
+  const imagesRef = useRef<DraftImage[]>([]);
 
   const current = items[selected];
   const currentKey = current
     ? `${current.date}|${current.page}|${current.peopleDataOrdinal}`
     : "";
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!editorRef.current) return;
     editorRef.current.textContent = current?.decision?.content || "";
   }, [currentKey]);
@@ -93,6 +94,7 @@ export function RmrbReviewPage() {
       setStats(latestStats.counts);
       setSelected(Math.min(preferredIndex, Math.max(queue.items.length - 1, 0)));
       setContent("");
+      imagesRef.current = [];
       setImages([]);
       setReason("");
     } catch (error) {
@@ -157,6 +159,7 @@ export function RmrbReviewPage() {
   function choose(index: number) {
     setSelected(index);
     setContent(items[index]?.decision?.content || "");
+    imagesRef.current = [];
     setImages([]);
     setReason(items[index]?.decision?.reason || "");
     setMessage("");
@@ -176,10 +179,11 @@ export function RmrbReviewPage() {
       [...editor.querySelectorAll<HTMLImageElement>("img[data-rmrb-image-id]")]
         .map((image) => image.dataset.rmrbImageId || ""),
     );
-    setImages((currentImages) => {
-      const remaining = currentImages.filter((image) => visibleImageIds.has(image.id));
-      return remaining.length === currentImages.length ? currentImages : remaining;
-    });
+    const remaining = imagesRef.current.filter((image) => visibleImageIds.has(image.id));
+    if (remaining.length !== imagesRef.current.length) {
+      imagesRef.current = remaining;
+      setImages(remaining);
+    }
   }
 
   function captureEmbeddedImages(): DraftImage[] {
@@ -202,7 +206,9 @@ export function RmrbReviewPage() {
       });
     }
     if (captured.length) {
-      setImages((currentImages) => [...currentImages, ...captured].slice(0, MAX_PASTED_IMAGES));
+      const nextImages = [...imagesRef.current, ...captured].slice(0, MAX_PASTED_IMAGES);
+      imagesRef.current = nextImages;
+      setImages(nextImages);
       setMessage(`已识别 ${captured.length} 张网页图片，可直接暂存。`);
     }
     return captured;
@@ -249,7 +255,7 @@ export function RmrbReviewPage() {
       setMessage("图片需为 PNG、JPEG、WebP 或 GIF，且单张不超过 15 MB。");
       return;
     }
-    const remaining = Math.max(0, MAX_PASTED_IMAGES - images.length);
+    const remaining = Math.max(0, MAX_PASTED_IMAGES - imagesRef.current.length);
     if (!remaining) {
       setMessage("一篇文章最多暂存 10 张图片。");
       return;
@@ -260,7 +266,9 @@ export function RmrbReviewPage() {
         ...image,
         id: `pasted-${Date.now()}-${index}-${Math.random().toString(16).slice(2)}`,
       }));
-      setImages((currentImages) => [...currentImages, ...pasted].slice(0, MAX_PASTED_IMAGES));
+      const nextImages = [...imagesRef.current, ...pasted].slice(0, MAX_PASTED_IMAGES);
+      imagesRef.current = nextImages;
+      setImages(nextImages);
       pasted.forEach(insertEditorImage);
       setMessage(`已贴入 ${pasted.length} 张图片，可继续粘贴正文或直接暂存。`);
     } catch (error) {
@@ -270,8 +278,8 @@ export function RmrbReviewPage() {
 
   async function submit(decision: "accept" | "reject") {
     if (!current || busy) return;
-    const capturedImages = decision === "accept" ? captureEmbeddedImages() : [];
-    const submissionImages = [...images, ...capturedImages].slice(0, MAX_PASTED_IMAGES);
+    if (decision === "accept") captureEmbeddedImages();
+    const submissionImages = imagesRef.current.slice(0, MAX_PASTED_IMAGES);
     if (decision === "accept" && !content.trim() && !submissionImages.length) {
       setMessage("Accept 需要先粘贴正文或图片。");
       return;
