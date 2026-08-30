@@ -70,6 +70,36 @@ class DeployPackageTests(unittest.TestCase):
             ["tccli", "scf", "GetFunction", "--output", "json"],
         )
 
+    def test_verify_function_access_reads_target_before_upload(self):
+        with patch.object(
+            deploy,
+            "_json_command",
+            return_value={"Status": "Active"},
+        ) as command:
+            deploy._verify_function_access(
+                "flask_jojo_search_staging",
+                region="ap-beijing",
+                namespace="default",
+                profile="",
+            )
+
+        self.assertIn("GetFunction", command.call_args.args[0])
+        self.assertIn("flask_jojo_search_staging", command.call_args.args[0])
+
+    def test_verify_function_access_rejects_failed_target(self):
+        with patch.object(
+            deploy,
+            "_json_command",
+            return_value={"Status": "Failed", "StatusDesc": "denied"},
+        ):
+            with self.assertRaisesRegex(RuntimeError, "denied"):
+                deploy._verify_function_access(
+                    "flask_jojo_search_staging",
+                    region="ap-beijing",
+                    namespace="default",
+                    profile="",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

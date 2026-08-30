@@ -72,7 +72,7 @@ jobs:
         run: python infrastructure/tencent-scf/search/deploy.py --target staging
 
   deploy-production:
-    name: Approve and deploy production
+    name: Deploy production
     needs: deploy-staging
     runs-on: ubuntu-latest
     environment: search-production

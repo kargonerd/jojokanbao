@@ -299,6 +299,30 @@ def _wait_for_function(
     raise RuntimeError(f"SCF 长时间未恢复 Active：{function}")
 
 
+def _verify_function_access(
+    function: str,
+    *,
+    region: str,
+    namespace: str,
+    profile: str,
+) -> None:
+    """Fail before uploading a package when the target cannot be read."""
+    response = _json_command(_tccli(
+        profile,
+        "scf",
+        "GetFunction",
+        "--FunctionName",
+        function,
+        "--Namespace",
+        namespace,
+        "--region",
+        region,
+    ))
+    status = str(response.get("Status") or "")
+    if status.lower() in {"failed", "error"}:
+        raise RuntimeError(f"目标 SCF 不可用：{response.get('StatusDesc') or status}")
+
+
 def _upload(package: Path, *, bucket: str, region: str, key: str, profile: str) -> None:
     _run(_tccli(
         profile,
@@ -420,6 +444,13 @@ def main() -> int:
     key = f"runtime/scf-builds/{fingerprint[:12]}.zip"
     uploaded = False
     try:
+        print(f"检查 SCF 读取权限：{function}")
+        _verify_function_access(
+            function,
+            region=args.region,
+            namespace=args.namespace,
+            profile=args.profile,
+        )
         print(f"上传代码包：cos://{args.bucket}/{key}")
         _upload(output, bucket=args.bucket, region=args.region, key=key, profile=args.profile)
         uploaded = True
