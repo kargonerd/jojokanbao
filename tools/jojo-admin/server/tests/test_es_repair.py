@@ -14,6 +14,8 @@ from es_migrations import (
     excluded_document_ids,
     list_migrations,
     preview_migration,
+    search_state_payload,
+    write_search_state,
 )
 
 
@@ -184,6 +186,20 @@ class RepairLogicTest(unittest.TestCase):
                 {"base-id", repair["id"], delete["id"]},
             )
             self.assertEqual(excluded_document_ids("other", directory), set())
+
+            self.assertEqual(
+                search_state_payload(["news", "other"], directory),
+                {"excludedIds": {
+                    "news": ["base-id", delete["id"], repair["id"]],
+                    "other": [],
+                }},
+            )
+            output = directory / "runtime" / "search-state.json"
+            write_search_state(output, ["news", "other"], directory)
+            self.assertEqual(
+                json.loads(output.read_text(encoding="utf-8")),
+                search_state_payload(["news", "other"], directory),
+            )
 
     def test_applied_migrations_resolve_the_current_revision(self):
         with TemporaryDirectory() as temp:

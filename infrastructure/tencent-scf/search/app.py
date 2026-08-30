@@ -1,11 +1,11 @@
 import os
-from pathlib import Path
 from flask import Flask, jsonify, request
 from elasticsearch import Elasticsearch
 import re
 from flask_cors import CORS
 from search_overlay import build_search_query, load_patch_state_file, merge_search_hits
-from migration_exclusions import build_active_query, hit_to_active_result, load_excluded_ids
+from migration_exclusions import build_active_query, hit_to_active_result
+from search_state import CosSearchState, SearchStateUnavailable
 
 def create_elasticsearch_client():
   url = os.environ.get('ELASTICSEARCH_URL')
@@ -34,10 +34,7 @@ base_index_name = os.environ.get('ELASTICSEARCH_BASE_INDEX')
 delta_index_name = os.environ.get('ELASTICSEARCH_DELTA_INDEX')
 patch_state_path = os.environ.get('SEARCH_PATCH_STATE_FILE')
 overfetch_multiplier = int(os.environ.get('SEARCH_OVERFETCH_MULTIPLIER', '5'))
-migrations_dir = Path(os.environ.get(
-  'SEARCH_MIGRATIONS_DIR',
-  Path(__file__).resolve().parents[3] / 'tools' / 'jojo-admin' / 'server' / 'es_migrations',
-))
+search_state = CosSearchState.from_environment()
         
 IS_SERVERLESS = bool(os.environ.get('SERVERLESS'))
 
@@ -53,7 +50,7 @@ def health():
     'status': 'ok',
     'elasticsearch': 'configured' if es else 'not_configured',
     'overlay': 'enabled' if overlay_enabled else 'disabled',
-    'revisionFiltering': 'enabled'
+    'revisionFiltering': search_state.status(),
   })
 
 def processKeyword(keyword):
@@ -130,7 +127,11 @@ def content_search():
       'filter': filters,
     }
   }
-  excluded = load_excluded_ids(migrations_dir, content_index_name)
+  try:
+    excluded = search_state.excluded_ids(content_index_name)
+  except SearchStateUnavailable as exc:
+    app.logger.error('search state unavailable: %s', exc)
+    return jsonify({'error': '搜索修订状态暂时不可用'}), 503
   if excluded:
     query = build_active_query(query, excluded)
   body = {
@@ -185,11 +186,6 @@ def content_search():
   if isinstance(total, dict):
     total = total.get('value', 0)
   return jsonify({'data': {'total': total, 'results': results}})
-
-
-def is_quoted_only_query(query):
-  pattern = r'^"[^"]+"$'
-  return bool(re.match(pattern, query))
 
 
 def get_sort_query(sort_order):
@@ -302,118 +298,58 @@ def search():
                   }
               }
           }
-          if is_quoted_only_query(query_str):
-              quoted_text = query_str[1:-1]
-              query = {
-                  "query": {
-                      "bool": {
-                          "should": [
-                              {
-                                  "wildcard": {
-                                      "title.keyword": f"*{quoted_text}*"
-                                  }
-                              },
-                              {
-                                  "wildcard": {
-                                      "content.keyword": f"*{quoted_text}*"
-                                  }
+          query = {
+              "query": {
+                  "bool": {
+                      "must": [
+                          {
+                              "query_string": {
+                                "query": query_str,
+                                "fields": ["title^2", "content"],
+                                "default_operator": "OR",
+                                "minimum_should_match": "60%",
+                                "analyzer": "ik_smart"
                               }
-                          ],
-                          "minimum_should_match": 1
-                      }
+                          },
+                          date_range_query
+                      ]
+                  }
+              },
+              "highlight": {
+                  "fields": {
+                      "title": {},
+                      "content": {}
                   },
-                  "highlight": {
-                      "fields": {
-                          "title": {},
-                          "content": {}
-                      }, 
-                      "fragment_size": 2147483647,
-                      "pre_tags": "@highlight@",
-                      "post_tags": "@/highlight@"
-                  },
-                  "from": from_num,
-                  "size": size,
-              }
-          else:
-              query = {
-                  "query": {
-                      "bool": {
-                          "must": [
-                              {
-                                  "query_string": {
-                                    "query": query_str,
-                                    "fields": ["title^2", "content"]
-                                  }
-                              },
-                              date_range_query
-                          ]
-                      }
-                  },
-                  "highlight": {
-                      "fields": {
-                          "title": {},
-                          "content": {}
-                      }, 
-                      "fragment_size": 2147483647,
-                      "pre_tags": "@highlight@",
-                      "post_tags": "@/highlight@"
-                  },
-                  "from": from_num,
-                  "size": size,
-              }
+                  "fragment_size": 2147483647,
+                  "pre_tags": "@highlight@",
+                  "post_tags": "@/highlight@"
+              },
+              "from": from_num,
+              "size": size,
+          }
       else:
-          if is_quoted_only_query(query_str):
-              quoted_text = query_str[1:-1]
-              query = {
-                  "query": {
-                      "bool": {
-                          "should": [
-                              {
-                                  "wildcard": {
-                                      "title.keyword": f"*{quoted_text}*"
-                                  }
-                              },
-                              {
-                                  "wildcard": {
-                                      "content.keyword": f"*{quoted_text}*"
-                                  }
-                              }
-                          ],
-                          "minimum_should_match": 1
-                      }
+          query = {
+              "query": {
+                   "query_string": {
+                        "query": query_str,
+                        "fields": ["title^2", "content"],
+                        "default_operator": "OR",
+                        "minimum_should_match": "60%",
+                        "analyzer": "ik_smart"
+                    }
+              },
+              "highlight": {
+                  "fields": {
+                      "title": {},
+                      "content": {}
                   },
-                  "highlight": {
-                      "fields": {
-                          "title": {},
-                          "content": {}
-                      }, 
-                      "fragment_size": 2147483647,
-                      "pre_tags": "@highlight@",
-                      "post_tags": "@/highlight@"
-                  },
-                  "from": from_num,
-                  "size": size,
-              }
-          else:
-              query = {
-                  "query": {
-                       "query_string": {
-                            "query": query_str,
-                            "fields": ["title^2", "content"]                      
-                        }
-                  },
-                  "highlight": {
-                      "fields": {
-                          "title": {},
-                          "content": {}
-                      }, 
-                      "fragment_size": 2147483647,
-                      "pre_tags": "@highlight@",
-                      "post_tags": "@/highlight@"
-                  },
-                  "from": from_num,
-                  "size": size,
-              }
+                  "fragment_size": 2147483647,
+                  "pre_tags": "@highlight@",
+                  "post_tags": "@/highlight@"
+              },
+              "from": from_num,
+              "size": size,
+          }
 
       sort_order = request.args.get('sort')
       sort_query = get_sort_query(sort_order)
@@ -422,7 +358,7 @@ def search():
         query['sort'] = sort_query
       query['query'] = build_active_query(
         query['query'],
-        load_excluded_ids(migrations_dir, index_name),
+        search_state.excluded_ids(index_name),
       )
       data = es.search(index=index_name, body=query)
       if not data:
@@ -456,8 +392,11 @@ def search():
           continue
         results.append(hit_to_active_result(hit))
       return jsonify({'data': {'total': total_num, 'results': results}})
+    except SearchStateUnavailable as e:
+      app.logger.error("search state unavailable: %s", e)
+      return jsonify({"error": "搜索修订状态暂时不可用"}), 503
     except Exception as e:
-      app.logger.error("search from ES error:", e)
+      app.logger.error("search from ES error: %s", e)
       return jsonify({"error": "服务端错误"})
 
 

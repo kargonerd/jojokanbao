@@ -141,6 +141,36 @@ def excluded_document_ids(
     return excluded
 
 
+def search_state_payload(
+    indices: list[str],
+    directory: Path = MIGRATIONS_DIR,
+) -> dict[str, dict[str, list[str]]]:
+    """Build the complete remote state consumed by Reader Search."""
+    return {
+        "excludedIds": {
+            index: sorted(excluded_document_ids(index, directory))
+            for index in sorted(set(indices))
+        }
+    }
+
+
+def write_search_state(
+    path: Path,
+    indices: list[str],
+    directory: Path = MIGRATIONS_DIR,
+) -> dict[str, dict[str, list[str]]]:
+    """Atomically write the one plain JSON object published to COS."""
+    payload = search_state_payload(indices, directory)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_suffix(path.suffix + ".tmp")
+    temp.write_text(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    temp.replace(path)
+    return payload
+
+
 def active_revision_heads(
     index: str,
     directory: Path = MIGRATIONS_DIR,

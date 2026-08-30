@@ -36,22 +36,48 @@ $env:ELASTICSEARCH_CONTENT_INDEX="aitest-1tk2lxru"
 filtering. The API still reads legacy chunk fields during migration, but the
 book workbench no longer publishes those documents.
 
-### Migration exclusions
+### Search revision state
 
 Reader Search supports append-only repairs without Elasticsearch update/delete
-operations. It reads reviewed migration JSON files from
-`tools/jojo-admin/server/es_migrations/` and adds one `must_not.ids`
-filter to each search request:
+operations. The SCF runtime reads one plain JSON object from private COS and
+adds one `must_not.ids` filter to each search request:
+
+```json
+{"excludedIds":{"jojo-content-v1":["superseded-document-id"]}}
+```
 
 - a repair excludes the superseded document ID;
 - a deletion excludes the superseded document ID and its new tombstone ID.
 
-Only applied migrations for the current Elasticsearch index are used. This
-keeps filtering before pagination without an extra ES revision scan. When this
-service is deployed separately, point it at the deployed migration directory:
+The file is cached in each warm SCF instance. After 60 seconds the runtime uses
+COS `HEAD Object` to compare ETags and downloads it only when changed. A refresh
+failure keeps the last good state; a cold start without any readable state
+fails closed with HTTP 503.
+
+Configure the function with the bucket, region, and one fixed object key:
 
 ```powershell
-$env:SEARCH_MIGRATIONS_DIR="C:\path\to\reviewed\migrations"
+$env:SEARCH_STATE_COS_BUCKET="private-bucket-1250000000"
+$env:SEARCH_STATE_COS_REGION="ap-beijing"
+$env:SEARCH_STATE_COS_KEY="runtime/search/search-state.json"
+```
+
+Bind an SCF execution role with `cos:HeadObject` and `cos:GetObject` restricted
+to that object. SCF supplies temporary credentials through its built-in
+`TENCENTCLOUD_*` environment variables, so permanent COS keys are not stored in
+the function configuration. Package `cos-python-sdk-v5` with the function;
+the Python 3.9 Web runtime does not expose it on `PYTHONPATH` consistently.
+
+The local migration history remains auditable but is never deployed with SCF.
+Publish the complete applied state atomically as one COS object with the logged
+in TCCLI profile:
+
+```powershell
+python tools/jojo-admin/server/publish_search_state.py `
+  --index jojo-content-v1 `
+  --index jojo-67f10bu8 `
+  --bucket private-bucket-1250000000 `
+  --region ap-beijing
 ```
 
 ## Overlay Search Test

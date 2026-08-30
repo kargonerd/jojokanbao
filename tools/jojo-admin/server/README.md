@@ -66,7 +66,10 @@ when the endpoint certificate path works in your environment.
 Repairs and removals first create a deterministic JSON migration in
 `es_migrations/`, then use append-only `_create`: a repair appends a complete
 new version and a removal appends a tombstone. Search builds its excluded ID
-set from applied migrations instead of scanning ES revision documents.
+set from applied migrations instead of scanning ES revision documents. Reader
+Search does not receive those migration files. Run
+`publish_search_state.py --bucket <bucket> --region <region>` after applying a
+repair to replace the single `runtime/search/search-state.json` COS snapshot.
 The Canonical synchronizer resolves the same applied migration chain before it
 compares a stable ID, so an already-repaired document is compared with its
 current repair rather than repeatedly conflicting with the original version.
