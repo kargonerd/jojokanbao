@@ -77,7 +77,7 @@ class UnifiedDocumentTest(unittest.TestCase):
                 "page": 4,
                 "ordinal": 12,
                 "title": "失明以后",
-                "content": "文章正文",
+                "body": "文章正文",
                 "status": "available",
                 "pdf": "https://example.test/1988-09-09.pdf",
             },
@@ -100,9 +100,29 @@ class UnifiedDocumentTest(unittest.TestCase):
         self.assertEqual(available.document["type"], "newspaper")
         self.assertEqual(available.document["datasetId"], "rmrb")
         self.assertEqual(available.document["itemId"], "rmrb:1988-09-09")
+        self.assertEqual(available.document["content"], "文章正文")
         self.assertEqual(available.document["metadata"]["page"], 4)
         self.assertEqual(available.document["metadata"]["ordinal"], 12)
         self.assertIsNone(missing)
+
+    def test_newspaper_keeps_legacy_content_fallback(self):
+        legacy = newspaper_document(
+            {
+                "date": "1947-01-01",
+                "page": 1,
+                "ordinal": 1,
+                "title": "旧格式文章",
+                "content": "旧格式正文",
+                "status": "available",
+            },
+            publication_id="rmrb",
+            publication_title="人民日报",
+            canonical_object="newspapers/rmrb/data/articles/1947.jsonl.gz",
+        )
+
+        self.assertIsNotNone(legacy)
+        assert legacy is not None
+        self.assertEqual(legacy.document["content"], "旧格式正文")
 
     def test_current_news_uses_same_business_fields(self):
         row = news_document({

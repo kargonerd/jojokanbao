@@ -206,7 +206,10 @@ def newspaper_document(
 ) -> IndexedDocument | None:
     if str(row.get("status") or "") != "available":
         return None
-    content = plain_text(row.get("content"))
+    # jojo-newspaper-article-row/1 stores the canonical article text in
+    # ``body``.  Keep ``content`` as a fallback for older imported rows that
+    # predate that contract.
+    content = plain_text(row.get("body") or row.get("content"))
     if not content:
         return None
     date = _required(row.get("date"), "date")
