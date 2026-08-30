@@ -23,6 +23,7 @@ import { zaobaoSource } from "./zaobao/index.js";
 import type { SourceModule } from "./contracts.js";
 import type { ArticleBodyExtractor } from "../content/body.js";
 import type { ArticleImageExtractor } from "../capture/page-images.js";
+import type { CapturedHtmlPage } from "../capture/http.js";
 import type {
   Candidate,
   DiscoveryResult,
@@ -82,6 +83,12 @@ export async function discoverWithSourceModule(
 
 export function sourceFetchPolicy(sourceId: string): SourceFetchPolicy | undefined {
   return modules.get(sourceId)?.fetch;
+}
+
+export function sourcePageCapture(
+  sourceId: string,
+): ((url: string, timeoutSeconds: number) => Promise<CapturedHtmlPage | undefined>) | undefined {
+  return modules.get(sourceId)?.capturePage;
 }
 
 export function sourceBodyExtractor(sourceId: string): ArticleBodyExtractor | undefined {
