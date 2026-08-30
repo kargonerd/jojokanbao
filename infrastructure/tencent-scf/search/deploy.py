@@ -194,18 +194,19 @@ def build_package(
                 str(source / "requirements.txt"),
             ])
         _copy_runtime(source, package)
-        (package / "build_info.json").write_text(
-            json.dumps(
-                {
-                    "gitCommit": _git_commit(),
-                    "sourceFingerprint": fingerprint,
-                },
-                ensure_ascii=False,
-                separators=(",", ":"),
-            ) + "\n",
-            encoding="utf-8",
-            newline="\n",
-        )
+        with (package / "build_info.json").open(
+            "w", encoding="utf-8", newline="\n"
+        ) as stream:
+            stream.write(
+                json.dumps(
+                    {
+                        "gitCommit": _git_commit(),
+                        "sourceFingerprint": fingerprint,
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ) + "\n"
+            )
         _prune_package(package)
         _verify_python39(package)
         _write_zip(package, output)
