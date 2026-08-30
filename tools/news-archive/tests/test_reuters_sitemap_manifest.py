@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 import sqlite3
 
-from jojo_olds_api.raw_archive_capture import manifest_item_from_row
-from jojo_olds_api.reuters_sitemap_manifest import (
+from jojo_news_archive.raw_archive_capture import manifest_item_from_row
+from jojo_news_archive.reuters_sitemap_manifest import (
     discover_reuters_sitemap_captures,
     export_reuters_manifest,
     initialize_reuters_live_sitemaps,

@@ -13,9 +13,9 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_olds_api.archive_sources import archive_source_spec
-from jojo_olds_api.bloomberg_archive_download import ArchiveClient
-from jojo_olds_api.bloomberg_bnn_catalog import (
+from jojo_news_archive.archive_sources import archive_source_spec
+from jojo_news_archive.bloomberg_archive_download import ArchiveClient
+from jojo_news_archive.bloomberg_bnn_catalog import (
     bloomberg_bnn_summary,
     initialize_bloomberg_bnn_schema,
     process_bloomberg_infini_documents,
@@ -24,14 +24,14 @@ from jojo_olds_api.bloomberg_bnn_catalog import (
     process_bloomberg_bnn_pages,
     process_bloomberg_bnn_sitemaps,
 )
-from jojo_olds_api.ft_syndication_catalog import (
+from jojo_news_archive.ft_syndication_catalog import (
     initialize_ft_syndication_schema,
     ft_syndication_summary,
     process_ft_infini_documents,
     process_ft_infini_queries,
     process_ft_syndication_resolutions,
 )
-from jojo_olds_api.nyt_syndication_catalog import (
+from jojo_news_archive.nyt_syndication_catalog import (
     MAXIMUM_RESPONSE_BYTES,
     initialize_nyt_syndication_schema,
     next_nyt_syndication_query,
@@ -42,7 +42,7 @@ from jojo_olds_api.nyt_syndication_catalog import (
     record_nyt_syndication_resolution,
     resolve_nyt_syndication_search,
 )
-from jojo_olds_api.sitemap_manifest import (
+from jojo_news_archive.sitemap_manifest import (
     SitemapClient,
     export_sitemap_manifest,
     initialize_sitemap_schema,
@@ -51,7 +51,7 @@ from jojo_olds_api.sitemap_manifest import (
     sitemap_source,
     sitemap_summary,
 )
-from jojo_olds_api.wayback_manifest import (
+from jojo_news_archive.wayback_manifest import (
     WaybackCDXClient,
     discovery_summary,
     initialize_discovery_schema,

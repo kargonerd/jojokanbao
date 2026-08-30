@@ -5,7 +5,7 @@ import importlib.util
 from pathlib import Path
 import sqlite3
 
-from jojo_olds_api.news_models import CaptureCandidate, CaptureProvider
+from jojo_news_archive.news_models import CaptureCandidate, CaptureProvider
 
 
 TOOL_PATH = (

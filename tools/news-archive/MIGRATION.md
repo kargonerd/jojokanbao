@@ -13,6 +13,7 @@ raw/archive/v1/{publisher}/{window}/{mode}/
   raw/records/**
   state/**
 raw/archive/v2/validation-state/**
+raw/archive/assets/{source}/{sha256}.{ext}
 raw/archive/runs/YYYY/MM/DD/{runId}/manifest.json
 canonical/{source}/dataset.json
 canonical/{source}/articles/{contentHash}.json.gz
@@ -25,6 +26,11 @@ The archive Raw namespace is separate from Times' live
 contract and writer. Raw commits may cover disjoint prefixes and retry HF 409
 conflicts. Canonical and date-index commits must use the existing
 `times-hf-dataset-writer` concurrency group.
+
+Historical Canonical publication is two-phase: prepare and upload selected
+image bytes to HF Raw, then use that exact new Raw revision while merging and
+uploading Canonical. The write phase aborts if HF has moved since the image
+commit, preventing an unnoticed lost update.
 
 Each local transfer batch uses `jojo-hf-file-set/1` and is published in four
 commits: immutable Raw, catalog, checkpoint, then completion marker. Every

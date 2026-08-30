@@ -13,11 +13,11 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_olds_api.archive_sources import (
+from jojo_news_archive.archive_sources import (
     archive_source_spec,
     normalize_article_url,
 )
-from jojo_olds_api.wayback_manifest import infer_published_at
+from jojo_news_archive.wayback_manifest import infer_published_at
 
 
 def parse_args() -> argparse.Namespace:

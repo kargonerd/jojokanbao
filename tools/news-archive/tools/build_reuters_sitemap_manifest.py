@@ -14,8 +14,8 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_olds_api.bloomberg_archive_download import ArchiveClient
-from jojo_olds_api.reuters_sitemap_manifest import (
+from jojo_news_archive.bloomberg_archive_download import ArchiveClient
+from jojo_news_archive.reuters_sitemap_manifest import (
     discover_reuters_sitemap_captures,
     export_reuters_manifest,
     initialize_reuters_live_sitemaps,

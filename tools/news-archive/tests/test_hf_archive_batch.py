@@ -8,7 +8,7 @@ import sqlite3
 
 import pytest
 
-from jojo_olds_api.hf_layout import (
+from jojo_news_archive.hf_layout import (
     ArchivePhase,
     PHASE_FILENAMES,
     load_file_set,

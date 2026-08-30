@@ -12,6 +12,7 @@ interface RawPageMetadata {
 
 export interface ProcessedCandidate extends Candidate {
   processedBody?: string;
+  parserVersion?: string;
   translation?: ProcessedArticleTranslation;
   previousTranslations?: Record<string, ProcessedArticleTranslation>;
   translationCacheObject?: string;

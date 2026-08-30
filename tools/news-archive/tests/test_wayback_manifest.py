@@ -9,7 +9,7 @@ import sqlite3
 import httpx
 import pytest
 
-from jojo_olds_api.archive_sources import (
+from jojo_news_archive.archive_sources import (
     archive_source_spec,
     article_deduplication_key,
     article_url_publication_year,
@@ -17,15 +17,15 @@ from jojo_olds_api.archive_sources import (
     is_parser_validation_candidate,
     normalize_article_url,
 )
-from jojo_olds_api.raw_archive_capture import manifest_item_from_row
-from jojo_olds_api.wsj_syndication_catalog import (
+from jojo_news_archive.raw_archive_capture import manifest_item_from_row
+from jojo_news_archive.wsj_syndication_catalog import (
     initialize_wsj_syndication_schema,
     process_wsj_syndication_catalog,
     process_wsj_syndication_resolutions,
     resolve_wsj_original_url,
     wsj_syndication_count_for_year,
 )
-from jojo_olds_api.wayback_manifest import (
+from jojo_news_archive.wayback_manifest import (
     CDXCapture,
     CDXPage,
     candidate_rank,
@@ -669,7 +669,7 @@ def test_wsj_syndication_uses_google_news_when_yahoo_errors(
             )
 
     monkeypatch.setattr(
-        "jojo_olds_api.wayback_manifest._decode_google_news_url",
+        "jojo_news_archive.wayback_manifest._decode_google_news_url",
         lambda http_client, url: canonical_url,
     )
 
@@ -722,7 +722,7 @@ def test_wsj_syndication_rejects_stale_google_news_match(
         )
 
     monkeypatch.setattr(
-        "jojo_olds_api.wayback_manifest._decode_google_news_url",
+        "jojo_news_archive.wayback_manifest._decode_google_news_url",
         decode_google_news_url,
     )
 

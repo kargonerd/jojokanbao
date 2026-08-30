@@ -9,7 +9,7 @@ import warnings
 import pytest
 from bs4 import BeautifulSoup
 
-from jojo_olds_api.news_models import (
+from jojo_news_archive.news_models import (
     ArticleStatus,
     BlobReference,
     BlockType,
@@ -19,7 +19,7 @@ from jojo_olds_api.news_models import (
     ImageRole,
     RawCapture,
 )
-from jojo_olds_api.news_parser import (
+from jojo_news_archive.news_parser import (
     _nikkei_non_editorial_image_url,
     _npr_non_editorial_image_url,
     _scmp_non_editorial_image_url,

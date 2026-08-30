@@ -19,24 +19,24 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_olds_api.archive_sources import (
+from jojo_news_archive.archive_sources import (
     archive_source_spec,
     article_deduplication_key,
     article_url_publication_year,
     normalize_article_url,
 )
-from jojo_olds_api.news_parser import (
+from jojo_news_archive.news_parser import (
     _aljazeera_non_editorial_image_url,
     parse_article,
 )
-from jojo_olds_api.parser_qa_policy import CONTENT_AUDIT_FORMAT_VERSION
-from jojo_olds_api.parser_validation import (
+from jojo_news_archive.parser_qa_policy import CONTENT_AUDIT_FORMAT_VERSION
+from jojo_news_archive.parser_validation import (
     _read_capture_html,
     _read_dependent_resources,
     is_axios_internal_test_entry,
     publication_year_for_sample,
 )
-from jojo_olds_api.raw_archive_capture import completed_raw_capture
+from jojo_news_archive.raw_archive_capture import completed_raw_capture
 
 
 _SPACE_RE = re.compile(r"\s+")

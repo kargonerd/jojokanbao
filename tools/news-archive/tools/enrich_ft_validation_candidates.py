@@ -16,7 +16,7 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_olds_api.raw_archive_capture import (
+from jojo_news_archive.raw_archive_capture import (
     ArchiveClient,
     CaptureCandidate,
     CaptureProvider,
@@ -31,7 +31,7 @@ from jojo_olds_api.raw_archive_capture import (
     ft_syndication_search_url,
     record_capture_result,
 )
-from jojo_olds_api.parser_validation import record_parser_validation
+from jojo_news_archive.parser_validation import record_parser_validation
 
 
 @dataclass(frozen=True)

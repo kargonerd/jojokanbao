@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from jojo_olds_api.ghostarchive import (
+from jojo_news_archive.ghostarchive import (
     discover_ghostarchive_candidates,
     fetch_ghostarchive_candidate,
     ghostarchive_search_url,
 )
-from jojo_olds_api.raw_archive_capture import (
+from jojo_news_archive.raw_archive_capture import (
     ManifestItem,
     _validate_ft_ghostarchive_response,
     capture_item,

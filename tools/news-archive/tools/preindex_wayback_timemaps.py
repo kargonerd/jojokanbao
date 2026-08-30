@@ -13,9 +13,9 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from jojo_olds_api.bloomberg_archive_download import ArchiveClient
-from jojo_olds_api.news_models import CaptureCandidate
-from jojo_olds_api.raw_archive_capture import (
+from jojo_news_archive.bloomberg_archive_download import ArchiveClient
+from jojo_news_archive.news_models import CaptureCandidate
+from jojo_news_archive.raw_archive_capture import (
     ManifestItem,
     discover_wayback_timemap_candidates,
 )

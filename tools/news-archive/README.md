@@ -24,10 +24,10 @@ Historical news follows the same three-layer contract as JOJO Times:
    Canonical article is ready. Historical capture and parser validation must
    not write Raw, Canonical, or checkpoints to B2.
 
-The imported `jojo-article/1` model remains an internal parser result. A
-Canonical bridge will rebuild semantic HTML from ordered blocks, materialize
-selected images by byte hash, and call the Times Canonical writer. Renaming or
-directly publishing `jojo-article/1` is not valid.
+The imported `jojo-article/1` model remains an internal parser result. The
+Canonical bridge rebuilds semantic HTML from ordered blocks, materializes only
+parser-approved editorial images by byte hash, and calls the Times Canonical
+writer. Renaming or directly publishing `jojo-article/1` is not valid.
 
 Historical Japanese `www.nikkei.com` content maps to a distinct
 `nikkei-japan` source. Only English `asia.nikkei.com` content maps to the
@@ -36,11 +36,11 @@ existing Times `nikkei` source.
 ## Layout
 
 ```text
-jojo_olds_api/       Historical capture and parser library
-tools/               Python command-line entry points
-tests/               Parser, capture, validation, and workflow-contract tests
-schemas/             Internal RawCapture and parser-result JSON Schemas
-workflow-templates/  Inactive legacy workflows awaiting HF conversion
+jojo_news_archive/  Historical capture and parser library
+tools/              Python command-line entry points
+tests/              Parser, capture, validation, and workflow-contract tests
+schemas/            Internal RawCapture and parser-result JSON Schemas
+workflow-templates/ Inactive legacy workflows awaiting HF conversion
 ```
 
 The one-time B2-to-HF state mapping and cutover gates are documented in
@@ -75,3 +75,17 @@ not scan or re-upload the whole output tree. Later validation-state batches may
 pass previously verified v1 file sets with repeated
 `--available-file-manifest` arguments so references can be checked without
 downloading the same Raw corpus again.
+
+## Canonical bridge
+
+`tools/export_canonical_batch.py` replays verified Raw capture records through
+the historical parser and emits only QA-passing `jojo-news-canonical-input/1`
+rows. `@jojo/times-pipeline archive-canonical --action prepare` then builds
+semantic HTML and an exact HF file-set for selected image bytes. Upload that
+Raw image file-set first. Finally, `--action write` pins the resulting HF Raw
+revision, restores affected existing date indexes, and writes the shared
+`jojo-news-article/2` Canonical objects and their exact upload file-set.
+
+The bridge never requests images classified by the parser as advertisements,
+logos, avatars, recommendations, icons, or tracking assets. A failed editorial
+image is omitted without discarding the article text.
