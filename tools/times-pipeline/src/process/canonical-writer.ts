@@ -44,6 +44,7 @@ export interface CanonicalArticleTranslation {
   model: string;
   translatedAt: string;
   sourceHash: string;
+  stale?: boolean;
 }
 
 export interface CanonicalArticleRef {
@@ -124,8 +125,18 @@ function canonicalArticle(
 ): CanonicalArticle {
   const body = { format: "html" as const, profile: "jojo-semantic-html/1" as const, value };
   const assets = candidate.assets ?? [];
+  const preserveAsStale = candidate.translationStatus === "failed" || candidate.translationStatus === "deferred";
+  const previousTranslations = Object.fromEntries(Object.entries(candidate.previousTranslations ?? {}).flatMap(([language, translation]) => {
+    const previousBody = cleanedBody(translation.body.value, candidate);
+    if (!previousBody) return [];
+    return [[language, {
+      ...translation,
+      body: { ...translation.body, value: previousBody },
+      ...(preserveAsStale && language === "zh-CN" ? { stale: true } : translation.stale === true ? { stale: true } : {}),
+    } satisfies CanonicalArticleTranslation]];
+  }));
   const translatedBody = cleanedBody(candidate.translation?.body.value, candidate);
-  const translations = candidate.translation && translatedBody ? {
+  const currentTranslation = candidate.translation && translatedBody ? {
     [candidate.translation.language]: {
       language: candidate.translation.language,
       title: candidate.translation.title,
@@ -136,12 +147,17 @@ function canonicalArticle(
       sourceHash: candidate.translation.sourceHash,
     } satisfies CanonicalArticleTranslation,
   } : undefined;
+  const translations = {
+    ...previousTranslations,
+    ...currentTranslation,
+  };
+  const hasTranslations = Object.keys(translations).length > 0;
   const contentHash = sha256(JSON.stringify({
     title: candidate.title,
     publishedAt: candidate.publishedAt,
     body,
     assets: assets.map((asset) => [asset.id, asset.sha256]),
-    translations,
+    translations: hasTranslations ? translations : undefined,
   }));
   return {
     formatVersion: "jojo-news-article/2",
@@ -157,7 +173,7 @@ function canonicalArticle(
     publisherSections: candidate.publisherSections ?? [],
     categories: [],
     body,
-    ...(translations ? { translations } : {}),
+    ...(hasTranslations ? { translations } : {}),
     assets,
     contentStatus: "full",
     contentHash,

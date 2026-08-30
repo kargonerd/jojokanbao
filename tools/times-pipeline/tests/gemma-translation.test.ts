@@ -34,11 +34,14 @@ function translatedResponse(init: RequestInit | undefined): Response {
   const prompt = request.contents[0]!.parts[0]!.text;
   const input = JSON.parse(prompt.slice(prompt.indexOf("INPUT:\n") + 7)) as {
     title: string;
-    blocks: Array<{ id: string; text: string }>;
+    blocks: Array<{ id: string; segments: Array<{ id: string; text: string }> }>;
   };
   const payload = {
     title: `中译：${input.title}`,
-    blocks: input.blocks.map((block) => ({ id: block.id, text: `中译：${block.text}` })),
+    blocks: input.blocks.map((block) => ({
+      id: block.id,
+      segments: block.segments.map((segment) => ({ id: segment.id, text: `中译：${segment.text}` })),
+    })),
   };
   return new Response(JSON.stringify({
     candidates: [{ content: { parts: [{ text: JSON.stringify(payload) }] }, finishReason: "STOP" }],
@@ -61,21 +64,26 @@ describe("Gemma production translation", () => {
   it("extracts leaf blocks and safely applies translated text while retaining article structure", () => {
     const body = '<blockquote><p>Quoted <strong>text</strong></p></blockquote><figure data-asset-id="lead"><figcaption>Caption</figcaption></figure>';
     expect(extractArticleTranslationBlocks(body)).toEqual([
-      { id: "b1", tag: "p", text: "Quoted [[JOJO_INLINE_i1_START]]text[[JOJO_INLINE_i1_END]]" },
-      { id: "b2", tag: "figcaption", text: "Caption" },
+      { id: "b1", tag: "p", segments: [{ id: "s1", text: "Quoted" }, { id: "s2", text: "text" }] },
+      { id: "b2", tag: "figcaption", segments: [{ id: "s1", text: "Caption" }] },
     ]);
     expect(applyArticleTranslation(body, [
-      { id: "b1", text: "译文 [[JOJO_INLINE_i1_START]]<不会成为标签>[[JOJO_INLINE_i1_END]]" },
-      { id: "b2", text: "图片说明" },
-    ])).toBe('<blockquote><p>译文 <strong>&lt;不会成为标签&gt;</strong></p></blockquote><figure data-asset-id="lead"><figcaption>图片说明</figcaption></figure>');
+      { id: "b1", segments: [{ id: "s1", text: "译文" }, { id: "s2", text: "<不会成为标签>" }] },
+      { id: "b2", segments: [{ id: "s1", text: "图片说明" }] },
+    ])).toBe('<blockquote><p>译文<strong>&lt;不会成为标签&gt;</strong></p></blockquote><figure data-asset-id="lead"><figcaption>图片说明</figcaption></figure>');
   });
 
-  it("rejects changed inline markers instead of silently dropping article links", () => {
+  it("rejects changed segment structure instead of silently dropping article links", () => {
     const body = '<p>Read <a href="https://example.test/story">the full story</a>.</p>';
-    expect(() => applyArticleTranslation(body, [{ id: "b1", text: "阅读全文。" }])).toThrow("changed inline element markers");
+    expect(() => applyArticleTranslation(body, [{ id: "b1", segments: [{ id: "s1", text: "阅读全文" }] }]))
+      .toThrow("Translated segment structure mismatch");
     expect(applyArticleTranslation(body, [{
       id: "b1",
-      text: "阅读[[JOJO_INLINE_i1_START]]完整报道[[JOJO_INLINE_i1_END]]。",
+      segments: [
+        { id: "s1", text: "阅读" },
+        { id: "s2", text: "完整报道" },
+        { id: "s3", text: "。" },
+      ],
     }])).toBe('<p>阅读<a href="https://example.test/story">完整报道</a>。</p>');
   });
 
@@ -108,7 +116,7 @@ describe("Gemma production translation", () => {
       model: "gemma-4-31b-it",
       translatedAt: "2026-08-30T01:00:00.000Z",
     });
-    expect(first.candidates[0]?.translation?.body.value).toContain('中译：First <a href="https://example.test">paragraph</a> has 2026 facts.');
+    expect(first.candidates[0]?.translation?.body.value).toContain('<a href="https://example.test">中译：paragraph</a>');
     expect(first.candidates[0]?.translation?.body.value).toContain('figure data-asset-id="lead"');
     const cacheObject = first.candidates[0]!.translationCacheObject!;
     const cache = JSON.parse(gunzipSync(await readFile(path.join(output, ...cacheObject.split("/")))).toString("utf8")) as { sourceHash: string };
@@ -143,22 +151,23 @@ describe("Gemma production translation", () => {
     expect(result.candidates[0]?.translation?.model).toBe("gemma-4-26b-a4b-it");
   });
 
-  it("falls back per chunk when the primary model changes inline markers", async () => {
+  it("falls back per chunk when the primary model changes segment structure", async () => {
     const output = await mkdtemp(path.join(os.tmpdir(), "jojo-gemma-marker-fallback-"));
     const primaryResponse = (init: RequestInit | undefined): Response => {
       const request = JSON.parse(String(init?.body)) as { contents: Array<{ parts: Array<{ text: string }> }> };
       const prompt = request.contents[0]!.parts[0]!.text;
       const input = JSON.parse(prompt.slice(prompt.indexOf("INPUT:\n") + 7)) as {
         title: string;
-        blocks: Array<{ id: string; text: string }>;
+        blocks: Array<{ id: string; segments: Array<{ id: string; text: string }> }>;
       };
+      expect(prompt).not.toContain("JOJO_INLINE");
       return new Response(JSON.stringify({
         candidates: [{
           content: { parts: [{ text: JSON.stringify({
             title: `中译：${input.title}`,
             blocks: input.blocks.map((block) => ({
               id: block.id,
-              text: `中译：${block.text.replace(/\[\[JOJO_INLINE_[^\]]+\]\]/gu, "")}`,
+              segments: block.segments.slice(0, -1),
             })),
           }) }] },
           finishReason: "STOP",
@@ -186,8 +195,48 @@ describe("Gemma production translation", () => {
 
     expect(result.stats).toMatchObject({ translated: 1, failed: 0, requests: 4, fallbackChunks: 2 });
     expect(result.candidates[0]?.translation?.model).toBe("gemma-4-26b-a4b-it");
-    expect(result.candidates[0]?.translation?.body.value).toContain('<a href="https://example.test/first">linked paragraph</a>');
-    expect(result.candidates[0]?.translation?.body.value).toContain("<strong>emphasized paragraph</strong>");
+    expect(result.candidates[0]?.translation?.body.value).toContain('<a href="https://example.test/first">中译：linked paragraph</a>');
+    expect(result.candidates[0]?.translation?.body.value).toContain("<strong>中译：emphasized paragraph</strong>");
+  });
+
+  it("backs off repeated failures and retries after the persisted delay", async () => {
+    const output = await mkdtemp(path.join(os.tmpdir(), "jojo-gemma-backoff-"));
+    let available = false;
+    const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => (
+      available
+        ? translatedResponse(init)
+        : new Response(JSON.stringify({ error: { message: "high demand" } }), { status: 503 })
+    ));
+    const first = await translateProcessedCandidates(output, [candidate("backoff")], {
+      apiKey: "test-key",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      now: () => new Date("2026-08-30T01:00:00Z"),
+      requestsPerMinute: 100,
+      tokensPerMinute: 1_000_000,
+    });
+    expect(first.stats).toMatchObject({ failed: 1, deferred: 0, requests: 2 });
+
+    fetchMock.mockClear();
+    const deferred = await translateProcessedCandidates(output, [candidate("backoff")], {
+      apiKey: "test-key",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      now: () => new Date("2026-08-30T01:10:00Z"),
+      requestsPerMinute: 100,
+      tokensPerMinute: 1_000_000,
+    });
+    expect(deferred.stats).toMatchObject({ failed: 0, deferred: 1, requests: 0 });
+    expect(deferred.candidates[0]?.translationStatus).toBe("deferred");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    available = true;
+    const retried = await translateProcessedCandidates(output, [candidate("backoff")], {
+      apiKey: "test-key",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      now: () => new Date("2026-08-30T01:31:00Z"),
+      requestsPerMinute: 100,
+      tokensPerMinute: 1_000_000,
+    });
+    expect(retried.stats).toMatchObject({ translated: 1, deferred: 0, failed: 0, requests: 1 });
   });
 
   it("regenerates a corrupt cache instead of failing the Process", async () => {

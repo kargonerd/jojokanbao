@@ -58,6 +58,7 @@ describe("news Delivery writer", () => {
           model: "gemma-4-31b-it",
           translatedAt: "2026-08-23T09:35:00.000Z",
           sourceHash: "source-hash",
+          stale: true,
         },
       },
       assets: [{
@@ -134,6 +135,7 @@ describe("news Delivery writer", () => {
       title: "完整报道",
       summary: "完整正文",
       model: "gemma-4-31b-it",
+      stale: true,
     });
 
     const sourceIndexObject = "content/newspapers/example/index.jox";

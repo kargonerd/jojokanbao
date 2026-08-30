@@ -1,5 +1,5 @@
 import { gzipSync, gunzipSync } from "node:zlib";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,11 +11,14 @@ function translatedResponse(init: RequestInit | undefined): Response {
   const prompt = request.contents[0]!.parts[0]!.text;
   const input = JSON.parse(prompt.slice(prompt.indexOf("INPUT:\n") + 7)) as {
     title: string;
-    blocks: Array<{ id: string; text: string }>;
+    blocks: Array<{ id: string; segments: Array<{ id: string; text: string }> }>;
   };
   const translation = {
     title: `中译：${input.title}`,
-    blocks: input.blocks.map((block) => ({ id: block.id, text: `中译：${block.text}` })),
+    blocks: input.blocks.map((block) => ({
+      id: block.id,
+      segments: block.segments.map((segment) => ({ id: segment.id, text: `中译：${segment.text}` })),
+    })),
   };
   return new Response(JSON.stringify({
     candidates: [{ content: { parts: [{ text: JSON.stringify(translation) }] }, finishReason: "STOP" }],
@@ -190,6 +193,9 @@ describe("Times Process translation integration", () => {
     try {
       const failed = await runProcess(args);
       expect(failed.translation).toMatchObject({ enabled: true, eligible: 1, translated: 0, failed: 1, requests: 2 });
+      const failureRoot = path.join(output, "canonical", "africanews", "translations", "gemma-news-zh-v1", "2026", "08", "2026-08-30");
+      const [failureFile] = await readdir(failureRoot);
+      await rm(path.join(failureRoot, failureFile!), { force: true });
 
       const unchanged = { ...candidate, discoveryBody: undefined, captureStatus: "unchanged" };
       await writeFile(candidatesPath, gzipSync(`${JSON.stringify(unchanged)}\n`));

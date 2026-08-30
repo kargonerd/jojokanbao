@@ -13,8 +13,9 @@ interface RawPageMetadata {
 export interface ProcessedCandidate extends Candidate {
   processedBody?: string;
   translation?: ProcessedArticleTranslation;
+  previousTranslations?: Record<string, ProcessedArticleTranslation>;
   translationCacheObject?: string;
-  translationStatus?: "translated" | "cached" | "failed";
+  translationStatus?: "translated" | "cached" | "failed" | "deferred";
   translationError?: string;
 }
 
@@ -26,6 +27,7 @@ export interface ProcessedArticleTranslation {
   model: string;
   translatedAt: string;
   sourceHash: string;
+  stale?: boolean;
 }
 
 function localObjectPath(output: string, objectName: string): string {

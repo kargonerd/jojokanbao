@@ -155,6 +155,7 @@ async function deliveryArticle(
       articleObject: translatedObject,
       provider: translation.provider,
       model: translation.model,
+      ...(translation.stale === true ? { stale: true } : {}),
     }] as const;
   })));
   return {
