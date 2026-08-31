@@ -54,24 +54,28 @@ Hugging Face Canonical 生成的 `indexes/missing-articles.jsonl.gz`，按日期
 `tmp/rmrb-review/hf-missing-workbench.sqlite3`；该 SQLite 只是可丢弃缓存，新电脑
 无需复制旧目录或数据库。Accept/Reject 先写入本机草稿和
 `manual-review-pending-publication.json`，本地操作本身不会等待网络；工作台分别显示
-“待复核”和“待发布”，HF 与 B2 均成功后才从待发布数中移除。未发布草稿如需跨电脑
-继续处理，需要先在原电脑发布。
+“待复核”和“待发布”，完整发布成功后才从待发布数中移除。未发布草稿仍属于当前
+操作电脑；HF 已提交而派生阶段失败时则可依据 HF commit 与远端搜索版本状态安全续跑。
+四阶段收据另存为私有 COS 小对象
+`runtime/publishing/newspaper-rmrb.json`，只含条目键、哈希、commit 和阶段状态，不含正文或图片；
+新电脑会显示“继续发布”。
 正文编辑区支持直接粘贴 PNG、JPEG、WebP 和 GIF；图片先以校验和命名的本地附件暂存，
 发布时写入 HF Canonical `assets/images/` 并生成对应的 B2 Delivery Jox 资产。只有图片、
 没有文字的记录会自动以 `【图片】` 作为可检索正文标记。
-右上角“发布 N 条修订”一次同时更新 Hugging Face 和 B2。人工决定不上传远端；
+右上角“发布 N 条修订”执行固定的
+`HF Canonical → B2 Delivery → ES Search → COS Activation`，不允许单独选择目标。人工决定不上传远端；
 Hugging Face 会原子更新受影响日期的 Canonical Item、受影响年份的
 Dataset Viewer 分片、缺失正文索引和必要的 availability；B2 会先发布
-正文 fragment，再更新日期 manifest 和必要的总 index。Reject 仅用于确定为无效、
+正文 fragment，再更新日期 manifest 和必要的总 index；ES 先追加新版本，COS 再排除旧版本。
+Reject 仅用于确定为无效、
 重复或非文章的目录项，发布后写入 HF 的正式 `rejected` 状态且不会生成正文 fragment。
-此流程不修改 Elasticsearch。
 生成合并队列和自动补全图片记录的命令见
 [`tools/rmrb-repair/README.md`](../rmrb-repair/README.md)。
 
 书籍、报刊和时事新闻的统一 ES 同步命令见
 [`server/README.md`](server/README.md#unified-es-sync)。同步器直接读取 HF
-Canonical：书籍按章节、报刊和时事按文章写入；重复执行只为新内容追加稳定逻辑 ID，正文变化则要求
-通过 ES repair 的 migration 人工确认。
+Canonical：书籍按章节、报刊和时事按文章写入。正常 Canonical 修订由统一发布器自动追加 ES
+版本并激活；ES repair 只用于无法先表达为 Canonical 变更的紧急例外。
 
 Publication configuration is read from the repository `.env`:
 
@@ -88,6 +92,8 @@ HF_XET_CLIENT_READ_TIMEOUT=600s
 HF_UPLOAD_WORKERS=4
 RMRB_REVIEW_HF_REPO=luoxiaozhuang/marxism-dataset
 RMRB_REVIEW_B2_REMOTE=jojo-b2-s3:jojo-newspaper
+ES_SYNC_INDEX=<production unified search index>
+SEARCH_STATE_INDICES=<same production index>
 ```
 
 S3 兼容入口发布时会显式使用 `--s3-no-check-bucket`，避免 rclone 对既有 B2 Bucket
