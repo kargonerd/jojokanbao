@@ -57,7 +57,16 @@ IS_SERVERLESS = bool(os.environ.get('SERVERLESS'))
 app = Flask(__name__)
 app.config['DEFAULT_CONTENT_TYPE'] = 'application/json'  
 app.config['DEFAULT_CHARSET'] = 'utf-8'  
-CORS(app, origins=['https://jojokanbao.cn', 'https://reader.jojokanbao.cn', 'http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:8080', 'http://localhost:8080'])
+SEARCH_ALLOWED_ORIGINS = [
+  'https://jojokanbao.cn',
+  'https://reader.jojokanbao.cn',
+  'https://beta.jojokanbao.cn',
+  'http://127.0.0.1:5173',
+  'http://localhost:5173',
+  'http://127.0.0.1:8080',
+  'http://localhost:8080',
+]
+CORS(app, origins=SEARCH_ALLOWED_ORIGINS)
 
 
 @app.route("/health")

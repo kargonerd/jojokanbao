@@ -62,6 +62,23 @@ class SearchRevisionApiTests(unittest.TestCase):
         search_app.content_index_name = self.original_content_index_name
         search_app.search_state = self.original_search_state
 
+    def test_beta_origin_is_allowed_by_cors(self):
+        response = self.client.get(
+            "/health",
+            headers={"Origin": "https://beta.jojokanbao.cn"},
+        )
+        self.assertEqual(
+            response.headers.get("Access-Control-Allow-Origin"),
+            "https://beta.jojokanbao.cn",
+        )
+
+    def test_unknown_origin_is_not_allowed_by_cors(self):
+        response = self.client.get(
+            "/health",
+            headers={"Origin": "https://untrusted.example"},
+        )
+        self.assertIsNone(response.headers.get("Access-Control-Allow-Origin"))
+
     def test_search_filters_chain_before_pagination_and_returns_document_id(self):
         response = self.client.get("/search?keyword=最终&page=2&size=5")
         self.assertEqual(response.status_code, 200)
