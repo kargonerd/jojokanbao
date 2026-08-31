@@ -260,7 +260,7 @@ describe("Asia and international publisher extractors", () => {
     </div>`;
     const pageUrl = "https://focustaiwan.tw/politics/202608300001";
 
-    const body = extractFocusTaiwanBody(html, quality, pageUrl);
+    const body = extractArticleBody(html, undefined, quality, extractFocusTaiwanBody, pageUrl);
     const images = extractFocusTaiwanImages(html, pageUrl);
 
     expect(body).toContain('href="https://focustaiwan.tw/politics/topic"');
@@ -280,8 +280,13 @@ describe("Asia and international publisher extractors", () => {
     const strictQuality = { minimumCharacters: 800, minimumParagraphs: 3 };
     const pageUrl = "https://focustaiwan.tw/business/202608310002";
 
-    const body = extractFocusTaiwanBody(completePage, strictQuality, pageUrl);
+    const extraction = extractFocusTaiwanBody(completePage, strictQuality, pageUrl);
+    const body = extractArticleBody(completePage, undefined, strictQuality, extractFocusTaiwanBody, pageUrl);
 
+    expect(extraction).toMatchObject({
+      completeness: "publisher-complete",
+      evidence: { kind: "terminal-marker", marker: "Enditem" },
+    });
     expect(body).toContain(report);
     expect(body).not.toContain("Enditem");
     expect(extractFocusTaiwanBody(incompletePage, strictQuality, pageUrl)).toBeUndefined();
@@ -299,7 +304,7 @@ describe("Asia and international publisher extractors", () => {
     </div></div>`;
     const pageUrl = "https://focustaiwan.tw/politics/202608300099";
 
-    const body = extractFocusTaiwanBody(html, quality, pageUrl);
+    const body = extractArticleBody(html, undefined, quality, extractFocusTaiwanBody, pageUrl);
     const image = extractFocusTaiwanImages(html, pageUrl)[0];
 
     expect(body).toBeDefined();

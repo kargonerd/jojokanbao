@@ -1,10 +1,10 @@
 import { load } from "cheerio";
+import type { ArticleBodyExtraction } from "../../content/body.js";
 import { semanticHtmlBlocks, type BodyQuality } from "../../content/paragraphs.js";
 
 export const FOCUS_TAIWAN_BODY_BLOCKS = "p,h2,h3,h4,blockquote,ul,ol,pre";
 export const FOCUS_TAIWAN_EXCLUDED = ".media,.jsAdSlot,[class*='AdBox'],script,style,noscript,iframe";
 const END_ITEM = /^Enditem(?:\/\S+)?$/iu;
-const VERIFIED_BRIEF_QUALITY = { minimumCharacters: 100, minimumParagraphs: 1 } satisfies BodyQuality;
 
 type Document = ReturnType<typeof load>;
 type Selection = ReturnType<Document>;
@@ -28,7 +28,11 @@ export function focusTaiwanSemanticBlockHtml(
   return blocks;
 }
 
-export function extractFocusTaiwanBody(html: string, quality: BodyQuality, pageUrl?: string): string | undefined {
+export function extractFocusTaiwanBody(
+  html: string,
+  quality: BodyQuality,
+  pageUrl?: string,
+): string | ArticleBodyExtraction | undefined {
   const document = load(html);
   const article = document(".paragraph").first();
   if (!article.length) return undefined;
@@ -44,5 +48,13 @@ export function extractFocusTaiwanBody(html: string, quality: BodyQuality, pageU
     END_ITEM.test(document(element).text().replaceAll(/\s+/gu, " ").trim())
   ));
   if (!hasEndItem) return undefined;
-  return semanticHtmlBlocks(blocks, VERIFIED_BRIEF_QUALITY, pageUrl);
+  return {
+    html: blocks.join(""),
+    completeness: "publisher-complete",
+    evidence: {
+      kind: "terminal-marker",
+      marker: "Enditem",
+      location: ".paragraph .author p",
+    },
+  };
 }
