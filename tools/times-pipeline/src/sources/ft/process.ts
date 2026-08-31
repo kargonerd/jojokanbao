@@ -125,6 +125,22 @@ function articleFallbackAccessOffer(document: CheerioAPI): Extract<FtBodyInspect
   return undefined;
 }
 
+function truncatedAccessOffer(
+  document: CheerioAPI,
+  inspection: Extract<FtBodyInspection, { outcome: "access-offer" }>,
+): ArticleBodyExtraction {
+  return {
+    html: inspection.blockElements.map((element) => document.html(element)).join(""),
+    completeness: "truncated",
+    evidence: {
+      kind: "access-offer",
+      marker: inspection.offer.marker,
+      location: inspection.location,
+      matchedSignals: inspection.offer.matchedSignals,
+    },
+  };
+}
+
 function inspectFtBody(document: CheerioAPI): FtBodyInspection {
   const body = bestBody(document);
   if (!body.length) return articleFallbackAccessOffer(document) ?? { outcome: "unmatched" };
@@ -166,18 +182,10 @@ export function extractFtBody(
   const document = load(html);
   const inspection = inspectFtBody(document);
   if (inspection.outcome === "unmatched") return undefined;
-  if (inspection.outcome === "access-offer") {
-    return {
-      html: inspection.blockElements.map((element) => document.html(element)).join(""),
-      completeness: "truncated",
-      evidence: {
-        kind: "access-offer",
-        marker: inspection.offer.marker,
-        location: inspection.location,
-        matchedSignals: inspection.offer.matchedSignals,
-      },
-    };
-  }
+  if (inspection.outcome === "access-offer") return truncatedAccessOffer(document, inspection);
   const { structure } = inspection;
-  return semanticHtmlBlocks(structure.blockElements.map((element) => document.html(element)), quality, pageUrl);
+  const body = semanticHtmlBlocks(structure.blockElements.map((element) => document.html(element)), quality, pageUrl);
+  if (body) return body;
+  const fallbackOffer = articleFallbackAccessOffer(document);
+  return fallbackOffer ? truncatedAccessOffer(document, fallbackOffer) : undefined;
 }

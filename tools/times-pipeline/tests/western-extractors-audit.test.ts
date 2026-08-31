@@ -431,6 +431,41 @@ describe("western publisher extraction audit", () => {
     }
   });
 
+  it("rejects an FT article fallback when a tiny publisher body omits the surrounding offer", () => {
+    const quality = { minimumCharacters: 800, minimumParagraphs: 3 };
+    const pageUrl = "https://www.ft.com/content/f16c178f-b07c-4b79-a8fc-2bf4c70d43e2?syn-25a6b1a6=1";
+    const html = `<main><article>
+      <div class="article__content-body"><p>Brief unavailable article preview.</p></div>
+      <h2>Try unlimited access</h2>
+      <p>Then €69 per month. Complete digital access to quality FT journalism on any device. Cancel anytime during your trial.</p>
+      <p>${"Subscription benefits and product details shown instead of the requested report. ".repeat(12)}</p>
+      <h2>Explore our full range of subscriptions.</h2>
+      <p>Discover all the plans currently available in your country</p>
+      <p>Digital access for organisations. Includes exclusive features and content.</p>
+    </article></main>`;
+
+    expect(extractFtBody(html, quality, pageUrl)).toMatchObject({
+      completeness: "truncated",
+      evidence: {
+        kind: "access-offer",
+        marker: "consumer-subscription-offer",
+        location: "article",
+        matchedSignals: 4,
+      },
+    });
+    expect(assessArticleBody(html, ftFetch, quality, undefined, pageUrl, "captured-page")).toMatchObject({
+      extractionPath: "source-selector",
+      verdict: "accepted",
+    });
+    expect(assessArticleBody(html, ftFetch, quality, extractFtBody, pageUrl, "captured-page")).toMatchObject({
+      extractionPath: "publisher-extractor",
+      completeness: "truncated",
+      verdict: "rejected",
+      rejectReason: "publisher-truncated",
+    });
+    expect(extractArticleBody(html, ftFetch, quality, extractFtBody, pageUrl)).toBeUndefined();
+  });
+
   it("keeps the shared fallback available when no FT publisher body structure matches", () => {
     const quality = { minimumCharacters: 300, minimumParagraphs: 3 };
     const pageUrl = "https://www.ft.com/content/nonstandard-story";
