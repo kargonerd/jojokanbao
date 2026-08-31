@@ -26,6 +26,7 @@ interface DateRangePickerProps extends DateRangeValue {
   applyLabel?: string;
   ariaLabel?: string;
   className?: string;
+  widthClassName?: string;
 }
 
 function formatDate(value: string): string {
@@ -48,6 +49,7 @@ export function DateRangePicker({
   applyLabel = "应用",
   ariaLabel = "日期范围",
   className = "",
+  widthClassName = "w-[292px] sm:w-[350px]",
 }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
   const [draftStartDate, setDraftStartDate] = useState(startDate);
@@ -109,8 +111,8 @@ export function DateRangePicker({
   };
 
   return (
-    <div ref={ref} className={`relative inline-block ${className}`}>
-      <div className="flex h-9 min-w-[292px] border border-rule-dark bg-paper transition-colors focus-within:border-red sm:min-w-[350px]">
+    <div ref={ref} className={`relative inline-block ${widthClassName} ${className}`}>
+      <div className="flex h-9 w-full border border-rule-dark bg-paper transition-colors focus-within:border-red">
         <button
           type="button"
           aria-label={`${ariaLabel}：${displayValue}`}

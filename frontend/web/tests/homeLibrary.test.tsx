@@ -9,6 +9,7 @@ const catalogMocks = vi.hoisted(() => ({
   list: vi.fn(),
   getSources: vi.fn(),
   loadBookCoverUrl: vi.fn(),
+  loadCatalog: vi.fn(),
 }));
 
 const shelfMocks = vi.hoisted(() => ({
@@ -22,6 +23,7 @@ vi.mock("../src/rag/api", () => ({
 
 vi.mock("../src/rag/content", () => ({
   loadBookCoverUrl: catalogMocks.loadBookCoverUrl,
+  loadCatalog: catalogMocks.loadCatalog,
 }));
 
 vi.mock("../src/rag/pages/ReaderPage", () => ({
@@ -54,9 +56,11 @@ beforeEach(() => {
   catalogMocks.list.mockReset();
   catalogMocks.getSources.mockReset();
   catalogMocks.loadBookCoverUrl.mockReset();
+  catalogMocks.loadCatalog.mockReset();
   shelfMocks.loadBookshelf.mockReset();
   shelfMocks.setBookshelf.mockReset();
   catalogMocks.loadBookCoverUrl.mockResolvedValue(undefined);
+  catalogMocks.loadCatalog.mockResolvedValue({ datasets: [] });
   shelfMocks.loadBookshelf.mockResolvedValue([]);
   shelfMocks.setBookshelf.mockResolvedValue(undefined);
   catalogMocks.list.mockResolvedValue([
