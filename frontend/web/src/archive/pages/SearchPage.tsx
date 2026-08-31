@@ -17,6 +17,16 @@ import { loadCatalog } from "../../rag/content";
 
 type SearchContentType = "periodical" | "book";
 
+interface SearchContentTypeOption {
+  value: SearchContentType;
+  label: string;
+  sourceLabel: string;
+  selectLabel: string;
+  allLabel: string;
+  types: readonly string[];
+  supportsDate: boolean;
+}
+
 interface SearchDatasetOption {
   id: string;
   label: string;
@@ -67,10 +77,30 @@ const SEARCH_PERIODS = [
   { value: "new-era", label: "新时代", startDate: "20121108", endDate: "" },
 ] as const;
 
-const SEARCH_CONTENT_TYPES: ReadonlyArray<{ value: SearchContentType; label: string }> = [
-  { value: "periodical", label: "报刊" },
-  { value: "book", label: "书籍" },
+const SEARCH_CONTENT_TYPES: readonly SearchContentTypeOption[] = [
+  {
+    value: "periodical",
+    label: "报刊",
+    sourceLabel: "报刊来源",
+    selectLabel: "选择报刊",
+    allLabel: "全部报刊",
+    types: ["newspaper", "magazine"],
+    supportsDate: true,
+  },
+  {
+    value: "book",
+    label: "书籍",
+    sourceLabel: "书目",
+    selectLabel: "选择书籍",
+    allLabel: "全部书籍",
+    types: ["book"],
+    supportsDate: false,
+  },
 ];
+
+const SEARCH_CONTENT_TYPE_BY_ID = Object.fromEntries(
+  SEARCH_CONTENT_TYPES.map((option) => [option.value, option]),
+) as Record<SearchContentType, SearchContentTypeOption>;
 
 const PERIODICAL_DATASETS: readonly SearchDatasetOption[] = ARCHIVE_PUBLICATIONS.map((publication) => ({
   id: publication.id,
@@ -182,10 +212,16 @@ function buildSearchParams({
   return query;
 }
 
-function unifiedResultPath(result: SearchResult): string {
+function unifiedResultPath(result: SearchResult, bookDatasets: readonly SearchDatasetOption[]): string {
   if (result.type === "book" && result.datasetId && result.itemId) {
+    const canonicalDatasetId = bookDatasets.find((dataset) => dataset.label === result.source)?.id
+      || result.datasetId;
+    const itemPrefix = `${result.datasetId}:`;
+    const itemKey = result.itemId.startsWith(itemPrefix)
+      ? result.itemId.slice(itemPrefix.length)
+      : result.itemId;
     const chapter = result.chapterId ? `?chapter=${encodeURIComponent(result.chapterId)}` : "";
-    return `/book/${encodeURIComponent(result.datasetId)}/${encodeURIComponent(result.itemId)}${chapter}`;
+    return `/book/${encodeURIComponent(canonicalDatasetId)}/${encodeURIComponent(itemKey)}${chapter}`;
   }
   if (ARCHIVE_PUBLICATION_NAMES.includes(result.datasetId as ArchivePublicationName)) {
     const issueId = (result.itemId.split(":").at(-1) || result.date).replace(/\D/g, "");
@@ -226,6 +262,7 @@ export function SearchPage({
     normalizeContentType(params.get("type")),
   ));
   const [bookDatasets, setBookDatasets] = useState<SearchDatasetOption[]>([]);
+  const [bookCatalogReady, setBookCatalogReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [beforeSearch, setBeforeSearch] = useState(!params.get("keyword"));
@@ -237,6 +274,12 @@ export function SearchPage({
   const requestIdRef = useRef(0);
   const pageSize = 10;
   const paramsKey = params.toString();
+  const requestedContentType = normalizeContentType(params.get("type"));
+  const requestedDatasetId = normalizeDatasetId(params.get("dataset"), requestedContentType);
+  const selectedBookSource = requestedContentType === "book" && requestedDatasetId
+    ? bookDatasets.find((dataset) => dataset.id === requestedDatasetId)?.label || ""
+    : "";
+  const bookSearchReady = requestedContentType !== "book" || bookCatalogReady;
   const latestAvailableDate = getLatestRmrbAvailableDate();
   const disableUnavailableDate = (date: string) => date < EARLIEST_AVAILABLE_DATE || date > latestAvailableDate;
 
@@ -256,6 +299,9 @@ export function SearchPage({
       })
       .catch(() => {
         if (active) setBookDatasets([]);
+      })
+      .finally(() => {
+        if (active) setBookCatalogReady(true);
       });
     return () => { active = false; };
   }, [platformRedesign]);
@@ -268,8 +314,9 @@ export function SearchPage({
     const nextDatasetId = platformRedesign
       ? normalizeDatasetId(params.get("dataset"), nextContentType)
       : "";
-    const nextStartDate = nextContentType === "book" ? "" : params.get("startDate") || "";
-    const nextEndDate = nextContentType === "book" ? "" : params.get("endDate") || "";
+    const supportsDate = SEARCH_CONTENT_TYPE_BY_ID[nextContentType].supportsDate;
+    const nextStartDate = supportsDate ? params.get("startDate") || "" : "";
+    const nextEndDate = supportsDate ? params.get("endDate") || "" : "";
 
     setTerm(keyword);
     setPage(nextPage);
@@ -290,6 +337,13 @@ export function SearchPage({
       return;
     }
 
+    if (platformRedesign && nextContentType === "book" && !bookSearchReady) {
+      setBeforeSearch(false);
+      setLoading(true);
+      setError(null);
+      return;
+    }
+
     const controller = new AbortController();
     const requestId = ++requestIdRef.current;
     const requestParams: Record<string, string | number> = { keyword, page: nextPage, size: pageSize };
@@ -304,19 +358,25 @@ export function SearchPage({
     setError(null);
 
     const selectedPeriodical = nextDatasetId
+      && nextContentType === "periodical"
       ? ARCHIVE_PUBLICATION_BY_ID[nextDatasetId as ArchivePublicationName]
       : undefined;
-    const unifiedTypes = nextContentType === "book"
-      ? ["book"]
-      : selectedPeriodical
-        ? [selectedPeriodical.type]
-        : ["newspaper", "magazine"];
+    const selectedBook = nextDatasetId && nextContentType === "book"
+      ? bookDatasets.find((dataset) => dataset.id === nextDatasetId)
+      : undefined;
+    const unifiedTypes = selectedPeriodical
+      ? [selectedPeriodical.type]
+      : SEARCH_CONTENT_TYPE_BY_ID[nextContentType].types;
     const request = platformRedesign
       ? axios.post(CONTENT_SEARCH_API, {
           query: keyword,
           page: nextPage,
           size: pageSize,
-          ...(nextDatasetId ? { datasetIds: [nextDatasetId] } : {}),
+          ...(selectedBook
+            ? { sources: [selectedBook.label] }
+            : nextDatasetId
+              ? { datasetIds: [nextDatasetId] }
+              : {}),
           types: unifiedTypes,
           ...(nextSort ? { sort: nextSort } : {}),
           ...(nextStartDate && nextEndDate
@@ -365,7 +425,7 @@ export function SearchPage({
       });
 
     return () => controller.abort();
-  }, [paramsKey, platformRedesign, retryToken]);
+  }, [bookSearchReady, paramsKey, platformRedesign, retryToken, selectedBookSource]);
 
   useEffect(() => {
     if (!sortDropdownOpen) return;
@@ -448,7 +508,8 @@ export function SearchPage({
     setContentType(nextContentType);
     setDatasetId("");
     setPage(1);
-    if (nextContentType === "book") {
+    const supportsDate = SEARCH_CONTENT_TYPE_BY_ID[nextContentType].supportsDate;
+    if (!supportsDate) {
       setStartDate("");
       setEndDate("");
     }
@@ -456,8 +517,8 @@ export function SearchPage({
       keyword: term,
       page: 1,
       sort,
-      startDate: nextContentType === "book" ? "" : startDate,
-      endDate: nextContentType === "book" ? "" : endDate,
+      startDate: supportsDate ? startDate : "",
+      endDate: supportsDate ? endDate : "",
       contentType: nextContentType,
       datasetId: "",
     }));
@@ -478,6 +539,7 @@ export function SearchPage({
   }
 
   const selectedSortLabel = SORT_OPTIONS.find((option) => option.value === sort)?.label ?? "默认排序";
+  const contentTypeOption = SEARCH_CONTENT_TYPE_BY_ID[contentType];
   const datasetOptions = contentType === "periodical" ? PERIODICAL_DATASETS : bookDatasets;
 
   return (
@@ -515,20 +577,25 @@ export function SearchPage({
           </div>
 
           {/* Filters */}
-          <div className="mb-6 flex flex-wrap items-center gap-4 border border-rule p-3.5">
+          <section className="mb-6 border-y border-rule bg-paper" aria-label="搜索筛选">
             {platformRedesign && (
-              <div className="flex flex-wrap items-center gap-3" aria-label="搜索资料范围">
-                <fieldset className="flex h-8 border border-rule-dark" aria-label="资料类型">
-                  <legend className="sr-only">资料类型</legend>
+              <div className="flex min-h-11 items-stretch border-b border-rule px-4">
+                <span className="mr-5 flex shrink-0 items-center font-sans text-[10px] font-black tracking-[0.18em] text-muted">
+                  搜索范围
+                </span>
+                <div className="flex items-stretch" role="tablist" aria-label="检索对象">
                   {SEARCH_CONTENT_TYPES.map((option) => {
                     const selected = option.value === contentType;
                     return (
                       <button
                         key={option.value}
                         type="button"
-                        aria-pressed={selected}
-                        className={`min-w-[72px] border-0 border-r border-rule-dark px-4 text-xs font-bold transition-colors last:border-r-0 ${
-                          selected ? "bg-red text-paper" : "bg-paper text-ink hover:bg-red/10 hover:text-red"
+                        role="tab"
+                        aria-selected={selected}
+                        className={`relative min-w-[84px] border-0 bg-transparent px-5 font-serif text-sm font-black tracking-[0.08em] transition-colors after:absolute after:inset-x-4 after:bottom-[-1px] after:h-0.5 after:origin-center after:transition-transform ${
+                          selected
+                            ? "text-red after:scale-x-100 after:bg-red"
+                            : "text-ink after:scale-x-0 after:bg-red hover:text-red"
                         }`}
                         onClick={() => handleContentTypeChange(option.value)}
                       >
@@ -536,24 +603,29 @@ export function SearchPage({
                       </button>
                     );
                   })}
-                </fieldset>
-                <label className="flex h-8 items-center border border-rule-dark bg-paper">
-                  <span className="border-r border-rule px-2.5 text-[11px] font-bold tracking-[0.16em] text-muted">范围</span>
+                </div>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+                {platformRedesign && (
+                  <label className="flex h-8 min-w-[230px] items-center border border-rule-dark bg-paper">
+                    <span className="shrink-0 border-r border-rule px-2.5 text-[10px] font-black tracking-[0.12em] text-muted">
+                      {contentTypeOption.sourceLabel}
+                    </span>
                   <select
-                    aria-label={contentType === "periodical" ? "具体报刊" : "具体书籍"}
+                    aria-label={contentTypeOption.selectLabel}
                     value={datasetId}
                     onChange={(event) => handleDatasetChange(event.target.value)}
-                    className="h-full min-w-[180px] border-0 bg-paper px-3 pr-8 text-xs text-ink shadow-none focus:border-0 focus:ring-0"
+                    className="h-full min-w-0 flex-1 border-0 bg-paper px-3 pr-8 text-xs font-bold text-ink shadow-none focus:border-0 focus:ring-0"
                   >
-                    <option value="">{contentType === "periodical" ? "全部报刊" : "全部书籍"}</option>
+                    <option value="">{contentTypeOption.allLabel}</option>
                     {datasetOptions.map((option) => (
                       <option key={option.id} value={option.id}>{option.label}</option>
                     ))}
                   </select>
-                </label>
-              </div>
-            )}
-            {(!platformRedesign || contentType === "periodical") && (
+                  </label>
+                )}
+            {(!platformRedesign || contentTypeOption.supportsDate) && (
               <DateRangePicker
                 startDate={startDate}
                 endDate={endDate}
@@ -612,7 +684,8 @@ export function SearchPage({
                 </div>
               )}
             </div>
-          </div>
+            </div>
+          </section>
 
           {error && (
             <div role="alert" className="border border-red/40 px-4 py-5 text-center">
@@ -633,7 +706,7 @@ export function SearchPage({
                         {String(i + 1 + (page - 1) * pageSize).padStart(2, "0")}
                       </span>
                       <Link
-                        to={unifiedResultPath(r)}
+                        to={unifiedResultPath(r, bookDatasets)}
                         target={openResultsInNewTab ? "_blank" : undefined}
                         rel={openResultsInNewTab ? "noreferrer" : undefined}
                       >

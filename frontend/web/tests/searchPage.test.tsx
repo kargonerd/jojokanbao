@@ -205,10 +205,10 @@ describe("SearchPage results", () => {
     renderSearch("/search?keyword=刘少奇&startDate=19660701&endDate=19660731", true);
 
     await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole("button", { name: "报刊" }).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByRole("combobox", { name: "具体报刊" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "报刊" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("combobox", { name: "选择报刊" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "书籍" }));
+    fireEvent.click(screen.getByRole("tab", { name: "书籍" }));
     await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2));
     expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).toMatchObject({
       query: "刘少奇",
@@ -221,7 +221,7 @@ describe("SearchPage results", () => {
     expect(screen.queryByRole("button", { name: /日期范围/ })).toBeNull();
     expect(screen.getByTestId("location").textContent).toBe("/search?keyword=%E5%88%98%E5%B0%91%E5%A5%87&type=book");
 
-    const bookSelect = screen.getByRole("combobox", { name: "具体书籍" });
+    const bookSelect = screen.getByRole("combobox", { name: "选择书籍" });
     expect(await screen.findByRole("option", { name: "毛泽东选集" })).toBeTruthy();
     expect(screen.queryByRole("option", { name: "未发布书籍" })).toBeNull();
     fireEvent.change(bookSelect, { target: { value: "mao-selected" } });
@@ -229,8 +229,9 @@ describe("SearchPage results", () => {
     await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(3));
     expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).toMatchObject({
       types: ["book"],
-      datasetIds: ["mao-selected"],
+      sources: ["毛泽东选集"],
     });
+    expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).not.toHaveProperty("datasetIds");
     expect(screen.getByTestId("location").textContent).toContain("type=book&dataset=mao-selected");
   });
 
@@ -254,7 +255,7 @@ describe("SearchPage results", () => {
 
     const heading = await screen.findByRole("heading", { name: /论共产党员的\s*修养/ });
     expect(heading.closest("a")?.getAttribute("href")).toBe(
-      "/book/mao-selected/mao-selected%3Avolume-1?chapter=chapter-8",
+      "/book/mao-selected/volume-1?chapter=chapter-8",
     );
     expect(screen.getByText("第一卷")).toBeTruthy();
     expect(screen.getByText("毛泽东选集", { selector: ".tag" })).toBeTruthy();
