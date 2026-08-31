@@ -177,7 +177,7 @@ class GeminiHttpError extends Error {
 }
 
 class TranslationStructureError extends Error {
-  constructor(message: string) {
+  constructor(message: string, readonly blockIndices: readonly number[] = []) {
     super(message);
     this.name = "TranslationStructureError";
   }
@@ -409,19 +409,61 @@ function parseTranslatedChunk(value: string, expected: TranslationChunk): Transl
     offset = 1;
   }
 
+  const blockErrors: Array<{ index: number; message: string }> = [];
   const blocks = expected.blocks.map((sourceBlock, index) => {
     const translatedElement = elements[index + offset]!;
     const source = singleRootElement(sourceBlock.html, `Source block ${index + 1}`);
-    validateTranslatedBlock(source.document, source.element, document, translatedElement, index + 1);
+    try {
+      validateTranslatedBlock(source.document, source.element, document, translatedElement, index + 1);
+    } catch (error) {
+      if (error instanceof TranslationStructureError) {
+        blockErrors.push({ index, message: error.message });
+      } else {
+        throw error;
+      }
+    }
     return {
       tag: String(document(translatedElement).prop("tagName") ?? "").toLowerCase(),
       html: document.html(translatedElement),
     };
   });
+  if (blockErrors.length > 0) {
+    const first = blockErrors[0]!;
+    const suffix = blockErrors.length > 1 ? `; ${blockErrors.length - 1} more invalid translated block(s)` : "";
+    throw new TranslationStructureError(
+      `${first.message}${suffix}`,
+      blockErrors.map((error) => error.index),
+    );
+  }
   return {
     ...(translatedTitle ? { title: translatedTitle } : {}),
     blocks,
   };
+}
+
+function replaceTranslatedBlocks(
+  value: string,
+  expected: TranslationChunk,
+  blockIndices: readonly number[],
+  replacements: readonly TranslationBlock[],
+): string {
+  const text = value.trim().replace(/^```(?:html)?\s*/iu, "").replace(/\s*```$/u, "");
+  const document = load(text, undefined, false);
+  const elements = document.root().children().toArray();
+  const expectedCount = expected.blocks.length + (expected.includesTitle ? 1 : 0);
+  if (elements.length !== expectedCount) {
+    throw new TranslationStructureError(`Cannot repair invalid HTML block structure: expected ${expectedCount}, received ${elements.length}`);
+  }
+  if (blockIndices.length !== replacements.length) {
+    throw new TranslationStructureError(`Cannot repair ${blockIndices.length} translated blocks with ${replacements.length} replacements`);
+  }
+  for (let index = 0; index < blockIndices.length; index += 1) {
+    const blockIndex = blockIndices[index]!;
+    const target = elements[blockIndex + (expected.includesTitle ? 1 : 0)];
+    if (!target) throw new TranslationStructureError(`Cannot repair missing translated block ${blockIndex + 1}`);
+    document(target).replaceWith(replacements[index]!.html);
+  }
+  return document.root().html() ?? "";
 }
 
 function estimatedPromptTokens(prompt: string): number {
@@ -708,32 +750,79 @@ export async function translateProcessedCandidates(
       const usedModels = new Set<string>();
       const translateChunk = async (chunk: TranslationChunk): Promise<TranslatedChunk> => {
         const prompt = translationPrompt(candidate.title, candidate.language, chunk);
+        let primaryValue: string | undefined;
+        let primaryError: unknown;
         try {
-          const payload = parseTranslatedChunk(await client.translate(primaryModel, prompt, deadlineAt), chunk);
+          primaryValue = await client.translate(primaryModel, prompt, deadlineAt);
+          const payload = parseTranslatedChunk(primaryValue, chunk);
           usedModels.add(primaryModel);
           return payload;
-        } catch (primaryError) {
+        } catch (error) {
+          primaryError = error;
           if (primaryError instanceof TranslationBatchDeadlineError) throw primaryError;
           fallbackChunks += 1;
           options.onProgress?.(`[translation] fallback ${candidate.articleId}: ${primaryError instanceof Error ? primaryError.message : String(primaryError)}`);
-          try {
-            const payload = parseTranslatedChunk(await client.translate(fallbackModel, prompt, deadlineAt), chunk);
-            usedModels.add(fallbackModel);
-            return payload;
-          } catch (fallbackError) {
-            if (fallbackError instanceof TranslationBatchDeadlineError) throw fallbackError;
-            const structuralError = fallbackError instanceof TranslationStructureError
-              ? fallbackError
-              : primaryError instanceof TranslationStructureError ? primaryError : undefined;
-            if (!structuralError) throw fallbackError;
-
-            rescueChunks += 1;
-            options.onProgress?.(`[translation] structural rescue ${candidate.articleId} with ${rescueModel}: ${structuralError.message}`);
-            const payload = parseTranslatedChunk(await client.translate(rescueModel, prompt, deadlineAt), chunk);
-            usedModels.add(rescueModel);
-            return payload;
-          }
         }
+
+        let fallbackValue: string | undefined;
+        let fallbackError: unknown;
+        try {
+          fallbackValue = await client.translate(fallbackModel, prompt, deadlineAt);
+          const payload = parseTranslatedChunk(fallbackValue, chunk);
+          usedModels.add(fallbackModel);
+          return payload;
+        } catch (error) {
+          fallbackError = error;
+          if (fallbackError instanceof TranslationBatchDeadlineError) throw fallbackError;
+        }
+
+        const structuralError = fallbackError instanceof TranslationStructureError
+          ? fallbackError
+          : primaryError instanceof TranslationStructureError ? primaryError : undefined;
+        if (!structuralError) throw fallbackError;
+
+        rescueChunks += 1;
+        const targetedAttempts = [
+          { model: primaryModel, value: primaryValue, error: primaryError },
+          { model: fallbackModel, value: fallbackValue, error: fallbackError },
+        ].filter((attempt): attempt is { model: string; value: string; error: TranslationStructureError } => (
+          Boolean(attempt.value)
+          && attempt.error instanceof TranslationStructureError
+          && attempt.error.blockIndices.length > 0
+        ));
+        const targetedAttempt = targetedAttempts.reduce<(typeof targetedAttempts)[number] | undefined>(
+          (best, attempt) => !best || attempt.error.blockIndices.length < best.error.blockIndices.length ? attempt : best,
+          undefined,
+        );
+        if (targetedAttempt) {
+          const blockIndices = targetedAttempt.error.blockIndices;
+          const blockLabel = blockIndices.length === 1
+            ? `block ${blockIndices[0]! + 1}`
+            : `blocks ${blockIndices.map((index) => index + 1).join(",")}`;
+          options.onProgress?.(
+            `[translation] targeted structural rescue ${candidate.articleId} ${blockLabel} with ${rescueModel}: ${targetedAttempt.error.message}`,
+          );
+          const rescueChunk: TranslationChunk = {
+            includesTitle: false,
+            blocks: blockIndices.map((index) => chunk.blocks[index]!),
+          };
+          const rescued = parseTranslatedChunk(
+            await client.translate(rescueModel, translationPrompt(candidate.title, candidate.language, rescueChunk), deadlineAt),
+            rescueChunk,
+          );
+          const payload = parseTranslatedChunk(
+            replaceTranslatedBlocks(targetedAttempt.value, chunk, blockIndices, rescued.blocks),
+            chunk,
+          );
+          usedModels.add(targetedAttempt.model);
+          usedModels.add(rescueModel);
+          return payload;
+        }
+
+        options.onProgress?.(`[translation] structural rescue ${candidate.articleId} with ${rescueModel}: ${structuralError.message}`);
+        const payload = parseTranslatedChunk(await client.translate(rescueModel, prompt, deadlineAt), chunk);
+        usedModels.add(rescueModel);
+        return payload;
       };
       for (const chunk of chunks) {
         const payload = await translateChunk(chunk);
