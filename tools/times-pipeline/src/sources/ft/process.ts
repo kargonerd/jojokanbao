@@ -1,4 +1,5 @@
 import { load, type CheerioAPI } from "cheerio";
+import type { ArticleBodyExtraction } from "../../content/body.js";
 import { semanticHtmlBlocks, type BodyQuality } from "../../content/paragraphs.js";
 
 export type FtDocumentElement = ReturnType<CheerioAPI>[number];
@@ -31,14 +32,25 @@ const ACCESS_OFFER_SIGNALS = [
 const PROFESSIONAL_ACCESS_GATE = /activate your \d+ day complimentary access to read this article/iu;
 const PROFESSIONAL_SERVICE_OFFER = /premium service available as an addition to an FT Professional subscription/iu;
 
+type FtAccessOfferMarker = "consumer-subscription-offer" | "professional-service-offer";
+
+interface FtAccessOffer {
+  marker: FtAccessOfferMarker;
+  matchedSignals: number;
+}
+
 function normalizedText(value: string): string {
   return value.replaceAll(/\s+/gu, " ").trim();
 }
 
-function isAccessOffer(document: CheerioAPI, elements: FtDocumentElement[]): boolean {
+function accessOffer(document: CheerioAPI, elements: FtDocumentElement[]): FtAccessOffer | undefined {
   const text = normalizedText(elements.map((element) => document(element).text()).join(" "));
-  if (ACCESS_OFFER_SIGNALS.filter((signal) => signal.test(text)).length >= 3) return true;
-  return PROFESSIONAL_ACCESS_GATE.test(text) && PROFESSIONAL_SERVICE_OFFER.test(text);
+  const matchedSignals = ACCESS_OFFER_SIGNALS.filter((signal) => signal.test(text)).length;
+  if (matchedSignals >= 3) return { marker: "consumer-subscription-offer", matchedSignals };
+  if (PROFESSIONAL_ACCESS_GATE.test(text) && PROFESSIONAL_SERVICE_OFFER.test(text)) {
+    return { marker: "professional-service-offer", matchedSignals: 2 };
+  }
+  return undefined;
 }
 
 function hasBlockAncestor(element: FtDocumentElement, container: FtDocumentElement): boolean {
@@ -87,26 +99,69 @@ export interface FtBodyStructure {
   terminal?: FtDocumentElement;
 }
 
-export function ftBodyStructure(document: CheerioAPI): FtBodyStructure | undefined {
+type FtBodyInspection =
+  | { outcome: "unmatched" }
+  | {
+      outcome: "access-offer";
+      blockElements: FtDocumentElement[];
+      location: string;
+      offer: FtAccessOffer;
+    }
+  | { outcome: "article"; structure: FtBodyStructure };
+
+function inspectFtBody(document: CheerioAPI): FtBodyInspection {
   const body = bestBody(document);
-  if (!body.length) return undefined;
+  if (!body.length) return { outcome: "unmatched" };
   const standfirst = document(FT_STANDFIRST_SELECTOR).first();
   const bodyResult = blockElements(document, body[0]!, true);
-  if (isAccessOffer(document, bodyResult.values)) return undefined;
+  const offer = accessOffer(document, bodyResult.values);
+  if (offer) {
+    return {
+      outcome: "access-offer",
+      blockElements: bodyResult.values,
+      location: body.is(FT_BODY_SELECTOR) ? FT_BODY_SELECTOR : "[data-content-id]",
+      offer,
+    };
+  }
   const values = [
     ...(standfirst.length && !standfirst.is(body) ? blockElements(document, standfirst[0]!, false).values : []),
     ...bodyResult.values,
   ];
   return {
-    body,
-    blockElements: values,
-    ...(bodyResult.terminal ? { terminal: bodyResult.terminal } : {}),
+    outcome: "article",
+    structure: {
+      body,
+      blockElements: values,
+      ...(bodyResult.terminal ? { terminal: bodyResult.terminal } : {}),
+    },
   };
 }
 
-export function extractFtBody(html: string, quality: BodyQuality, pageUrl?: string): string | undefined {
+export function ftBodyStructure(document: CheerioAPI): FtBodyStructure | undefined {
+  const inspection = inspectFtBody(document);
+  return inspection.outcome === "article" ? inspection.structure : undefined;
+}
+
+export function extractFtBody(
+  html: string,
+  quality: BodyQuality,
+  pageUrl?: string,
+): string | ArticleBodyExtraction | undefined {
   const document = load(html);
-  const structure = ftBodyStructure(document);
-  if (!structure) return undefined;
+  const inspection = inspectFtBody(document);
+  if (inspection.outcome === "unmatched") return undefined;
+  if (inspection.outcome === "access-offer") {
+    return {
+      html: inspection.blockElements.map((element) => document.html(element)).join(""),
+      completeness: "truncated",
+      evidence: {
+        kind: "access-offer",
+        marker: inspection.offer.marker,
+        location: inspection.location,
+        matchedSignals: inspection.offer.matchedSignals,
+      },
+    };
+  }
+  const { structure } = inspection;
   return semanticHtmlBlocks(structure.blockElements.map((element) => document.html(element)), quality, pageUrl);
 }
