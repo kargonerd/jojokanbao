@@ -596,7 +596,7 @@ export function SearchPage({
                   searchable={contentType === "book"}
                   searchPlaceholder="搜索书名"
                   emptyText="未找到相关书籍"
-                  className="w-full min-w-0 sm:w-[360px]"
+                  className="w-full min-w-0 sm:w-[280px]"
                 />
               )}
               {(!platformRedesign || contentTypeOption.supportsDate) && (
