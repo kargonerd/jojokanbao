@@ -348,15 +348,135 @@ describe("Gemma production translation", () => {
       fallbackChunks: 1,
       rescueChunks: 1,
     });
-    expect(result.candidates[0]?.translation?.model).toBe("gemini-3.5-flash");
+    expect(result.candidates[0]?.translation?.model).toBe("gemma-4-31b-it+gemini-3.5-flash");
     expect(result.candidates[0]?.translation?.body.value).toContain('<a href="https://example.test/first">中译：linked paragraph</a>');
     expect(result.candidates[0]?.translation?.body.value).toContain("<p>中译：Fourth paragraph.</p>");
-    expect(progress.some((message) => message.includes("structural rescue wire:structural-rescue with gemini-3.5-flash"))).toBe(true);
+    expect(progress.some((message) => message.includes(
+      "targeted structural rescue wire:structural-rescue block 1 with gemini-3.5-flash",
+    ))).toBe(true);
     expect(thinkingLevels).toEqual([
       { model: "gemma-4-31b-it", level: "minimal" },
       { model: "gemma-4-26b-a4b-it", level: "minimal" },
       { model: "gemini-3.5-flash", level: "low" },
     ]);
+  });
+
+  it("rescues only block 21 when a 60-block live article loses its strikethrough", async () => {
+    const output = await mkdtemp(path.join(os.tmpdir(), "jojo-gemma-live-block-rescue-"));
+    const rescuePrompts: string[] = [];
+    const progress: string[] = [];
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const model = String(input).match(/models\/([^:]+):/)?.[1] ?? "unknown";
+      const request = JSON.parse(String(init?.body)) as { contents: Array<{ parts: Array<{ text: string }> }> };
+      const prompt = request.contents[0]!.parts[0]!.text;
+      if (model === "gemma-4-31b-it") {
+        return translatedResponse(init, (document) => {
+          document("s").each((_index, element) => {
+            document(element).replaceWith(document(element).contents());
+          });
+        });
+      }
+      if (model === "gemma-4-26b-a4b-it") {
+        return translatedResponse(init, (document) => {
+          document.root().children().slice(15).remove();
+        });
+      }
+      rescuePrompts.push(prompt);
+      return translatedResponse(init);
+    }) as typeof fetch;
+    const value = {
+      ...candidate("guardian-live-block-21"),
+      title: "US Open tennis 2026 – as it happened",
+      processedBody: Array.from({ length: 60 }, (_value, index) => (
+        index === 20
+          ? "<p>Score correction: <s>6-4</s> 6-3.</p>"
+          : `<p>Live update ${index + 1}.</p>`
+      )).join(""),
+    };
+
+    const result = await translateProcessedCandidates(output, [value], {
+      apiKey: "test-key",
+      fetchImpl,
+      maxChunkCharacters: 20_000,
+      requestsPerMinute: 100,
+      tokensPerMinute: 1_000_000,
+      onProgress: (message) => progress.push(message),
+    });
+
+    expect(result.stats).toMatchObject({
+      translated: 1,
+      failed: 0,
+      requests: 3,
+      fallbackChunks: 1,
+      rescueChunks: 1,
+    });
+    expect(result.candidates[0]?.translation?.model).toBe("gemma-4-31b-it+gemini-3.5-flash");
+    expect(result.candidates[0]?.translation?.body.value).toContain("<s>中译：6-4</s>");
+    expect(rescuePrompts).toHaveLength(1);
+    const rescueHtml = load(rescuePrompts[0]!.slice(rescuePrompts[0]!.indexOf("HTML:\n") + 6), undefined, false);
+    expect(rescueHtml.root().children()).toHaveLength(1);
+    expect(rescueHtml("h1")).toHaveLength(0);
+    expect(rescueHtml("s")).toHaveLength(1);
+    expect(progress.some((message) => message.includes(
+      "targeted structural rescue wire:guardian-live-block-21 block 21 with gemini-3.5-flash",
+    ))).toBe(true);
+  });
+
+  it("rescues multiple dropped-link blocks together in one bounded request", async () => {
+    const output = await mkdtemp(path.join(os.tmpdir(), "jojo-gemma-multi-block-rescue-"));
+    const rescuePrompts: string[] = [];
+    const progress: string[] = [];
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const model = String(input).match(/models\/([^:]+):/)?.[1] ?? "unknown";
+      if (model === "gemini-3.5-flash") {
+        const request = JSON.parse(String(init?.body)) as { contents: Array<{ parts: Array<{ text: string }> }> };
+        rescuePrompts.push(request.contents[0]!.parts[0]!.text);
+        return translatedResponse(init);
+      }
+      return translatedResponse(init, (document) => {
+        document("a").each((_index, element) => {
+          document(element).replaceWith(document(element).contents());
+        });
+      });
+    }) as typeof fetch;
+    const value = {
+      ...candidate("ap-multiple-links"),
+      processedBody: Array.from({ length: 12 }, (_value, index) => (
+        index === 5 || index === 9
+          ? `<p>Read <a href="https://example.test/story-${index + 1}">linked source ${index + 1}</a>.</p>`
+          : `<p>Article paragraph ${index + 1}.</p>`
+      )).join(""),
+    };
+
+    const result = await translateProcessedCandidates(output, [value], {
+      apiKey: "test-key",
+      fetchImpl,
+      maxChunkCharacters: 20_000,
+      requestsPerMinute: 100,
+      tokensPerMinute: 1_000_000,
+      onProgress: (message) => progress.push(message),
+    });
+
+    expect(result.stats).toMatchObject({
+      translated: 1,
+      failed: 0,
+      requests: 3,
+      fallbackChunks: 1,
+      rescueChunks: 1,
+    });
+    expect(result.candidates[0]?.translation?.body.value).toContain(
+      '<a href="https://example.test/story-6">中译：linked source 6</a>',
+    );
+    expect(result.candidates[0]?.translation?.body.value).toContain(
+      '<a href="https://example.test/story-10">中译：linked source 10</a>',
+    );
+    expect(rescuePrompts).toHaveLength(1);
+    const rescueHtml = load(rescuePrompts[0]!.slice(rescuePrompts[0]!.indexOf("HTML:\n") + 6), undefined, false);
+    expect(rescueHtml.root().children()).toHaveLength(2);
+    expect(rescueHtml("a")).toHaveLength(2);
+    expect(progress.some((message) => message.includes(
+      "targeted structural rescue wire:ap-multiple-links blocks 6,10 with gemini-3.5-flash",
+    ))).toBe(true);
   });
 
   it("fails after one structural rescue instead of recursively multiplying requests", async () => {
