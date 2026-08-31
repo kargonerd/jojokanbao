@@ -19,12 +19,12 @@ from jojo_news_archive.models import (
     ImageRole,
     RawCapture,
 )
-from jojo_news_archive.parsing.parser import (
+from jojo_news_archive.parsing.parser import parse_article
+from jojo_news_archive.sources.nikkei.parser import (
     _nikkei_non_editorial_image_url,
-    _npr_non_editorial_image_url,
-    _scmp_non_editorial_image_url,
-    parse_article,
 )
+from jojo_news_archive.sources.npr.parser import _npr_non_editorial_image_url
+from jojo_news_archive.sources.scmp.parser import _scmp_non_editorial_image_url
 
 
 CASES = [

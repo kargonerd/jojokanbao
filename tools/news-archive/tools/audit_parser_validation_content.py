@@ -25,17 +25,17 @@ from jojo_news_archive.sources.registry import (
     article_url_publication_year,
     normalize_article_url,
 )
-from jojo_news_archive.parsing.parser import (
+from jojo_news_archive.parsing.parser import parse_article
+from jojo_news_archive.sources.aljazeera.parser import (
     _aljazeera_non_editorial_image_url,
-    parse_article,
 )
 from jojo_news_archive.parsing.policy import CONTENT_AUDIT_FORMAT_VERSION
 from jojo_news_archive.parsing.validation import (
     _read_capture_html,
     _read_dependent_resources,
-    is_axios_internal_test_entry,
     publication_year_for_sample,
 )
+from jojo_news_archive.sources.axios.validation import is_internal_test_entry
 from jojo_news_archive.capture.raw import completed_raw_capture
 
 
@@ -786,7 +786,7 @@ def audit_content(
                                 },
                             }
                         )
-            if publisher == "axios" and is_axios_internal_test_entry(
+            if publisher == "axios" and is_internal_test_entry(
                 canonical_url,
                 article.headline,
             ):

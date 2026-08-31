@@ -9,16 +9,16 @@ import sqlite3
 import httpx
 import pytest
 
+from jojo_news_archive.sources.ft.spec import ft_content_uuid_creation_year
 from jojo_news_archive.sources.registry import (
     archive_source_spec,
     article_deduplication_key,
     article_url_publication_year,
-    ft_content_uuid_creation_year,
     is_parser_validation_candidate,
     normalize_article_url,
 )
 from jojo_news_archive.capture.raw import manifest_item_from_row
-from jojo_news_archive.discovery.wsj_syndication import (
+from jojo_news_archive.sources.wsj.discovery.syndication import (
     initialize_wsj_syndication_schema,
     process_wsj_syndication_catalog,
     process_wsj_syndication_resolutions,
@@ -32,22 +32,24 @@ from jojo_news_archive.discovery.wayback import (
     discovery_summary,
     export_capture_manifest,
     extract_archived_published_at,
-    extract_wsj_legacy_published_at,
     infer_published_at,
     initialize_discovery_schema,
     initialize_archived_date_schema,
+    next_discovery_query,
+    parse_cdx_json,
+    process_archived_dates,
+    record_discovery_page,
+    record_discovery_failure,
+)
+from jojo_news_archive.sources.wsj.discovery.wayback import (
+    extract_wsj_legacy_published_at,
     initialize_wsj_legacy_date_schema,
     initialize_wsj_bluesky_schema,
     initialize_wsj_google_news_schema,
     initialize_wsj_rss_schema,
-    next_discovery_query,
-    parse_cdx_json,
-    process_archived_dates,
     process_wsj_bluesky_page,
     process_wsj_google_news_feed,
     process_wsj_rss_feeds,
-    record_discovery_page,
-    record_discovery_failure,
     wsj_catalog_count_for_year,
     wsj_catalog_ready_for_capture,
     wsj_google_news_is_only_catalog_gap,

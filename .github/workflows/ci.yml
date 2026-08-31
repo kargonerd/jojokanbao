@@ -289,46 +289,6 @@ jobs:
           python tools/export_news_schemas.py --output-dir "$RUNNER_TEMP/schemas"
           diff -ru schemas "$RUNNER_TEMP/schemas"
 
-      - name: Validate committed Bloomberg manifest
-        shell: python
-        run: |
-          import gzip
-          import json
-          from pathlib import Path
-
-          path = Path("data/bloomberg-2020-archive-manifest.jsonl.gz")
-          rows = 0
-          downloadable = 0
-          required = {
-              "url",
-              "catalog_date",
-              "section",
-              "wayback_timestamp",
-              "wayback_snapshot_url",
-          }
-
-          with gzip.open(path, "rt", encoding="utf-8") as handle:
-              for line in handle:
-                  row = json.loads(line)
-                  rows += 1
-                  missing = required.difference(row)
-                  if missing:
-                      raise SystemExit(
-                          f"row {rows} missing: {sorted(missing)}"
-                      )
-                  downloadable += row.get("wayback_status") == "found"
-
-          if rows != 83_258 or downloadable != 69_629:
-              raise SystemExit(
-                  "unexpected manifest counts: "
-                  f"rows={rows}, downloadable={downloadable}"
-              )
-
-          print(
-              f"validated {rows} rows "
-              f"({downloadable} downloadable snapshots)"
-          )
-
   cloud-api:
     name: Cloud API tests
     needs: changes

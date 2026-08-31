@@ -20,13 +20,13 @@ if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
 from jojo_news_archive.discovery.client import ArchiveClient
-from jojo_news_archive.discovery.ft_infini import (
+from jojo_news_archive.sources.ft.discovery.infini import (
     discover_ft_infini_direct_candidates,
 )
-from jojo_news_archive.discovery.ft_syndication import (
+from jojo_news_archive.sources.ft.discovery.syndication import (
     load_ft_syndication_title_index,
 )
-from jojo_news_archive.sources.specs import publisher_spec
+from jojo_news_archive.sources.registry import publisher_spec
 from jojo_news_archive.parsing.validation import (
     DEFAULT_SEED,
     ensure_parser_validation_plan,

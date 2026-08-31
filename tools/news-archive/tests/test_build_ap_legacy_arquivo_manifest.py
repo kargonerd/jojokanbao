@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import httpx
 
-from jojo_news_archive.discovery.ap_legacy import build_ap_hosted_manifest_rows
+from jojo_news_archive.sources.ap.discovery import build_ap_hosted_manifest_rows
 from tools import build_ap_legacy_arquivo_manifest as tool
 
 

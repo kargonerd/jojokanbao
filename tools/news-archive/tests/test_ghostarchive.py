@@ -5,11 +5,8 @@ from jojo_news_archive.discovery.ghostarchive import (
     fetch_ghostarchive_candidate,
     ghostarchive_search_url,
 )
-from jojo_news_archive.capture.raw import (
-    ManifestItem,
-    _validate_ft_ghostarchive_response,
-    capture_item,
-)
+from jojo_news_archive.capture.raw import ManifestItem, capture_item
+from jojo_news_archive.sources.ft.capture import _validate_ft_ghostarchive_response
 
 
 CANONICAL_URL = (

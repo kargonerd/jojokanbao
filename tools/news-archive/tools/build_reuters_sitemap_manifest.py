@@ -15,7 +15,7 @@ if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
 from jojo_news_archive.discovery.client import ArchiveClient
-from jojo_news_archive.discovery.reuters import (
+from jojo_news_archive.sources.reuters.discovery import (
     discover_reuters_sitemap_captures,
     export_reuters_manifest,
     initialize_reuters_live_sitemaps,

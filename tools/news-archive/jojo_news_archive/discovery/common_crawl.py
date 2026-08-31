@@ -11,6 +11,9 @@ from urllib.parse import urlencode, urlsplit
 import zlib
 
 from jojo_news_archive.models import CaptureCandidate, CaptureProvider
+from jojo_news_archive.sources.discovery_registry import (
+    source_discovery_for_url,
+)
 
 
 COLLECTION_INFO_URL = "https://index.commoncrawl.org/collinfo.json"
@@ -483,31 +486,24 @@ def _same_article_url(first: str, second: str) -> bool:
     second_host = (
         (second_parts.hostname or "").casefold().removeprefix("www.")
     )
-    return (
-        bool(first_host)
-        and first_host == second_host
-        and _archive_article_path(first_host, first_parts.path)
-        == _archive_article_path(second_host, second_parts.path)
-    )
-
-
-def _archive_article_path(host: str, path: str) -> str:
-    normalized = path.rstrip("/")
-    if host != "bloomberg.com":
-        return normalized
-    legacy = re.fullmatch(
-        r"/news/(?P<date>\d{4}-\d{2}-\d{2})/(?P<slug>[^/]+)\.html",
-        normalized,
-    )
-    if legacy is not None:
-        return f"/news/{legacy.group('date')}/{legacy.group('slug')}"
-    current = re.fullmatch(
-        r"/news/articles/(?P<date>\d{4}-\d{2}-\d{2})/(?P<slug>[^/]+)",
-        normalized,
-    )
-    if current is not None:
-        return f"/news/{current.group('date')}/{current.group('slug')}"
-    return normalized
+    if not first_host or first_host != second_host:
+        return False
+    first_hooks = source_discovery_for_url(first)
+    second_hooks = source_discovery_for_url(second)
+    if (
+        first_hooks is not None
+        and second_hooks is not None
+        and first_hooks.publisher == second_hooks.publisher
+        and first_hooks.common_crawl_identity is not None
+    ):
+        first_identity = first_hooks.common_crawl_identity(first)
+        second_identity = first_hooks.common_crawl_identity(second)
+        return bool(
+            first_identity
+            and second_identity
+            and first_identity == second_identity
+        )
+    return first_parts.path.rstrip("/") == second_parts.path.rstrip("/")
 
 
 def _parse_datetime(value: str | None) -> datetime | None:

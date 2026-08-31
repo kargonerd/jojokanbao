@@ -16,19 +16,38 @@ from jojo_news_archive.models import (
 )
 from jojo_news_archive.parsing.validation import (
     _has_generic_interface_noise,
-    _has_publisher_interface_noise,
-    _validation_article_identity,
     ensure_parser_validation_plan,
     failed_completed_parser_validation_files,
     initialize_parser_validation_schema,
-    is_axios_internal_test_entry,
     parser_validation_target_reached,
     parser_validation_summary,
     pending_completed_parser_validation_files,
     pending_parser_validation_urls,
     record_parser_validation,
 )
-from jojo_news_archive.parsing.parser import _terminal_tandem_repeat_length
+from jojo_news_archive.parsing.primitives import (
+    terminal_tandem_repeat_length as _terminal_tandem_repeat_length,
+)
+from jojo_news_archive.sources.ap.validation import (
+    has_interface_noise as ap_interface_noise,
+)
+from jojo_news_archive.sources.axios.validation import is_internal_test_entry
+from jojo_news_archive.sources.bloomberg.validation import (
+    has_interface_noise as bloomberg_interface_noise,
+)
+from jojo_news_archive.sources.ft.validation import (
+    has_interface_noise as ft_interface_noise,
+)
+from jojo_news_archive.sources.nyt.validation import (
+    has_interface_noise as nyt_interface_noise,
+)
+from jojo_news_archive.sources.reuters.validation import (
+    has_interface_noise as reuters_interface_noise,
+)
+from jojo_news_archive.sources.scmp.validation import stable_article_identity
+from jojo_news_archive.sources.wsj.validation import (
+    has_interface_noise as wsj_interface_noise,
+)
 
 
 def test_terminal_tandem_repeat_requires_long_punctuated_exact_suffix():
@@ -70,179 +89,110 @@ from jojo_news_archive.capture.raw import (
 
 
 def test_publisher_interface_noise_detects_wsj_promo_sequences():
-    assert _has_publisher_interface_noise(
-        "wsj",
-        [
+    assert wsj_interface_noise(tuple([
             "buy side from wsj expert recommendations on products "
             "and services, independent from the wall street journal newsroom."
-        ],
-    )
-    assert _has_publisher_interface_noise(
-        "wsj",
-        [
+        ]))
+    assert wsj_interface_noise(tuple([
             "article reporting",
             "stay informed",
             "get a coronavirus briefing six days a week: sign up here.",
-        ],
-    )
-    assert _has_publisher_interface_noise(
-        "wsj",
-        [
+        ]))
+    assert wsj_interface_noise(tuple([
             "article reporting",
             "free resources",
             "live updates",
             "daily video briefing",
-        ],
-    )
-    assert not _has_publisher_interface_noise(
-        "wsj",
-        ["the article discussed free resources and live updates."],
-    )
-    assert not _has_publisher_interface_noise(
-        "wsj",
-        [
+        ]))
+    assert not wsj_interface_noise(tuple(["the article discussed free resources and live updates."]))
+    assert not wsj_interface_noise(tuple([
             "substantive reporting about the deal. (sign up for our "
             "markets newsletter, a premarkets primer packed with news, "
             "trends and ideas.)"
-        ],
-    )
+        ]))
 
 
 def test_axios_internal_fixture_detection_requires_known_slug_and_headline():
-    assert is_axios_internal_test_entry(
+    assert is_internal_test_entry(
         "https://www.axios.com/2017/12/16/axios-generate-test-1513388154",
         "Axios Generate test",
     )
-    assert is_axios_internal_test_entry(
+    assert is_internal_test_entry(
         "https://www.axios.com/2017/12/16/"
         "test-this-is-second-persons-post-1513388144",
         "TEST: This is second person's post",
     )
-    assert not is_axios_internal_test_entry(
+    assert not is_internal_test_entry(
         "https://www.axios.com/2017/12/15/"
         "trump-crams-for-100-days-test-1513301779",
         "Trump crams for 100 Days test",
     )
-    assert not is_axios_internal_test_entry(
+    assert not is_internal_test_entry(
         "https://www.axios.com/2017/12/16/axios-generate-test-1513388154",
         "Axios reports on a power generation test",
     )
 
 
 def test_publisher_interface_noise_detects_ap_terminal_period_block():
-    assert _has_publisher_interface_noise(
-        "ap",
-        ["substantive article reporting.", "."],
-    )
-    assert not _has_publisher_interface_noise(
-        "ap",
-        ["substantive article reporting."],
-    )
+    assert ap_interface_noise(tuple(["substantive article reporting.", "."]))
+    assert not ap_interface_noise(tuple(["substantive article reporting."]))
 
 
 def test_publisher_interface_noise_detects_bloomberg_promos():
-    assert _has_publisher_interface_noise(
-        "bloomberg",
-        ["article reporting", "related stories:"],
-    )
-    assert _has_publisher_interface_noise(
-        "bloomberg",
-        ["watch this next"],
-    )
-    assert _has_publisher_interface_noise(
-        "bloomberg",
-        [
+    assert bloomberg_interface_noise(tuple(["article reporting", "related stories:"]))
+    assert bloomberg_interface_noise(tuple(["watch this next"]))
+    assert bloomberg_interface_noise(tuple([
             "want to receive this post in your inbox every day? sign up "
             "for the terms of trade newsletter."
-        ],
-    )
-    assert _has_publisher_interface_noise(
-        "bloomberg",
-        [
+        ]))
+    assert bloomberg_interface_noise(tuple([
             "sign up to receive the green daily newsletter in your "
             "inbox every weekday."
-        ],
-    )
-    assert _has_publisher_interface_noise(
-        "bloomberg",
-        [
+        ]))
+    assert bloomberg_interface_noise(tuple([
             "for even more: subscribe to bloomberg all access for full "
             "global news coverage."
-        ],
-    )
-    assert _has_publisher_interface_noise(
-        "bloomberg",
-        [
+        ]))
+    assert bloomberg_interface_noise(tuple([
             "sign up to receive the brexit bulletin, a daily briefing "
             "on britain's departure from the eu."
-        ],
-    )
-    assert not _has_publisher_interface_noise(
-        "bloomberg",
-        ["investors subscribe to several market-data services."],
-    )
+        ]))
+    assert not bloomberg_interface_noise(tuple(["investors subscribe to several market-data services."]))
 
 
 def test_publisher_interface_noise_detects_nyt_newsletter_embed():
-    assert _has_publisher_interface_noise(
-        "nyt",
-        [
+    assert nyt_interface_noise(tuple([
             "sign up for weekly updates on residential real estate news "
             "from the times."
-        ],
-    )
-    assert not _has_publisher_interface_noise(
-        "nyt",
-        ["the article describes weekly updates on housing data."],
-    )
+        ]))
+    assert not nyt_interface_noise(tuple(["the article describes weekly updates on housing data."]))
 
 
 def test_publisher_interface_noise_detects_reuters_legal_suffixes():
-    assert _has_publisher_interface_noise(
-        "reuters",
-        [
+    assert reuters_interface_noise(tuple([
             "article reporting",
             "(c) reuters 2010. all rights reserved. republication or "
             "redistribution ofreuters content is prohibited.",
-        ],
-    )
-    assert _has_publisher_interface_noise(
-        "reuters",
-        ["copyright 2013, marketwire, all rights reserved."],
-    )
-    assert not _has_publisher_interface_noise(
-        "reuters",
-        ["the court reserved all rights while considering the appeal."],
-    )
+        ]))
+    assert reuters_interface_noise(tuple(["copyright 2013, marketwire, all rights reserved."]))
+    assert not reuters_interface_noise(tuple(["the court reserved all rights while considering the appeal."]))
     long_press_release = "substantive reporting. " * 100
-    assert not _has_publisher_interface_noise(
-        "reuters",
-        [
+    assert not reuters_interface_noise(tuple([
             long_press_release
             + "copyright protection exists. all rights reserved."
-        ],
-    )
+        ]))
 
 
 def test_publisher_interface_noise_detects_ft_newsletter_promos():
-    assert _has_publisher_interface_noise(
-        "ft",
-        [
+    assert ft_interface_noise(tuple([
             "how is coronavirus taking its toll on markets? stay "
             "briefed with our coronavirus newsletter"
-        ],
-    )
-    assert _has_publisher_interface_noise(
-        "ft",
-        [
+        ]))
+    assert ft_interface_noise(tuple([
             "sign up to scoreboard, our new must-read weekly briefing "
             "on the business of sport."
-        ],
-    )
-    assert not _has_publisher_interface_noise(
-        "ft",
-        ["the article analysed the business of sport."],
-    )
+        ]))
+    assert not ft_interface_noise(tuple(["the article analysed the business of sport."]))
 
 
 def _capture_candidate(year: int, suffix: int) -> CaptureCandidate:
@@ -795,13 +745,7 @@ def test_scmp_article_identity_uses_numeric_id_across_slug_aliases():
     )
 
     identities = {
-        _validation_article_identity(
-            "scmp",
-            b"",
-            url,
-            "Substantive reporting that differs slightly between captures. "
-            * 8,
-        )
+        stable_article_identity(url)
         for url in urls
     }
 

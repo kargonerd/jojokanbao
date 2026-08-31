@@ -21,9 +21,9 @@ from jojo_news_archive.capture.raw import (
     ArchiveClient,
     ManifestItem,
     capture_item,
-    discover_ft_syndication_candidates,
     record_capture_result,
 )
+from jojo_news_archive.sources.ft.capture import discover_ft_syndication_candidates
 
 
 @dataclass(frozen=True)

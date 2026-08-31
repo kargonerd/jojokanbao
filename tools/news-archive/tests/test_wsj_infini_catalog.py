@@ -9,9 +9,11 @@ from jojo_news_archive.sources.registry import archive_source_spec
 from jojo_news_archive.discovery.wayback import (
     export_capture_manifest,
     initialize_discovery_schema,
+)
+from jojo_news_archive.sources.wsj.discovery.wayback import (
     wsj_catalog_count_for_year,
 )
-from jojo_news_archive.discovery.wsj_infini import (
+from jojo_news_archive.sources.wsj.discovery.infini import (
     initialize_wsj_infini_schema,
     process_wsj_infini_documents,
     process_wsj_infini_queries,

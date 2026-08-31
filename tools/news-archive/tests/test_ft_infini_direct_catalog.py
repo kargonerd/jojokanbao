@@ -9,7 +9,7 @@ import sqlite3
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from jojo_news_archive.discovery import ft_infini as catalog
+from jojo_news_archive.sources.ft.discovery import infini as catalog
 from jojo_news_archive.models import CaptureCandidate, CaptureProvider
 from jojo_news_archive.capture.raw import (
     initialize_capture_schema,
