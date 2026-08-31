@@ -160,7 +160,7 @@ describe("SearchPage initial search", () => {
       startDate: "1960-07-01",
       endDate: "1994-07-01",
     });
-    expect(screen.getByRole("button", { name: "时间降序" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "排序" }).textContent).toContain("时间降序");
     expect(screen.getByRole("button", { name: "日期范围：1960-07-01 — 1994-07-01" })).toBeTruthy();
   });
 });
@@ -206,7 +206,10 @@ describe("SearchPage results", () => {
 
     await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1));
     expect(screen.getByRole("tab", { name: "报刊" }).getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByRole("combobox", { name: "选择报刊" })).toBeTruthy();
+    const periodicalSelect = screen.getByRole("combobox", { name: "选择报刊" });
+    fireEvent.click(periodicalSelect);
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["全部报刊", "人民日报"]);
+    fireEvent.click(periodicalSelect);
 
     fireEvent.click(screen.getByRole("tab", { name: "书籍" }));
     await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2));
@@ -222,9 +225,10 @@ describe("SearchPage results", () => {
     expect(screen.getByTestId("location").textContent).toBe("/search?keyword=%E5%88%98%E5%B0%91%E5%A5%87&type=book");
 
     const bookSelect = screen.getByRole("combobox", { name: "选择书籍" });
+    fireEvent.click(bookSelect);
     expect(await screen.findByRole("option", { name: "毛泽东选集" })).toBeTruthy();
     expect(screen.queryByRole("option", { name: "未发布书籍" })).toBeNull();
-    fireEvent.change(bookSelect, { target: { value: "mao-selected" } });
+    fireEvent.click(screen.getByRole("option", { name: "毛泽东选集" }));
 
     await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(3));
     expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).toMatchObject({
@@ -349,7 +353,7 @@ describe("SearchPage results", () => {
     renderSearch("/search?keyword=历史");
     await waitFor(() => expect(axios.get).toHaveBeenCalledTimes(1));
 
-    fireEvent.click(screen.getByRole("button", { name: "默认排序" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "排序" }));
     fireEvent.click(screen.getByRole("option", { name: "时间降序" }));
     await waitFor(() => expect(axios.get).toHaveBeenCalledTimes(2));
     resolveSecond(await searchResponse([{ ...defaultResult, title: "新的结果" }]));
@@ -413,7 +417,7 @@ describe("SearchPage filters", () => {
     renderSearch("/search?keyword=历史&page=3");
     await screen.findByRole("heading", { name: highlightedTitleName });
 
-    const trigger = screen.getByRole("button", { name: "默认排序" });
+    const trigger = screen.getByRole("combobox", { name: "排序" });
     fireEvent.click(trigger);
     expect(screen.getByRole("option", { name: "默认排序" }).getAttribute("aria-selected")).toBe("true");
     fireEvent.click(screen.getByRole("option", { name: "最佳匹配" }));
@@ -432,10 +436,10 @@ describe("SearchPage filters", () => {
     renderSearch("/search?keyword=历史");
     await screen.findByRole("heading", { name: highlightedTitleName });
     const initialCalls = vi.mocked(axios.get).mock.calls.length;
-    const trigger = screen.getByRole("button", { name: "默认排序" });
+    const trigger = screen.getByRole("combobox", { name: "排序" });
 
     fireEvent.click(trigger);
-    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.keyDown(trigger, { key: "Escape" });
     expect(screen.queryByRole("listbox", { name: "排序" })).toBeNull();
 
     fireEvent.click(trigger);

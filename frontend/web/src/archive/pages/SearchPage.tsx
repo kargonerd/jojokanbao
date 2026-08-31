@@ -9,7 +9,7 @@ import {
   CONTENT_SEARCH_API,
   type ArchivePublicationName,
 } from "@jojo/content";
-import { Button, Tag, Pagination, LoadingSpinner, DateRangePicker, type DateRangeValue } from "@jojo/ui";
+import { Button, Tag, Pagination, LoadingSpinner, DateRangePicker, Select, type DateRangeValue } from "@jojo/ui";
 import { getLatestRmrbAvailableDate } from "../dateAvailability";
 import { archiveIssuePath } from "../../routes";
 import { rollout } from "../../rollout";
@@ -102,10 +102,9 @@ const SEARCH_CONTENT_TYPE_BY_ID = Object.fromEntries(
   SEARCH_CONTENT_TYPES.map((option) => [option.value, option]),
 ) as Record<SearchContentType, SearchContentTypeOption>;
 
-const PERIODICAL_DATASETS: readonly SearchDatasetOption[] = ARCHIVE_PUBLICATIONS.map((publication) => ({
-  id: publication.id,
-  label: publication.title,
-}));
+const PERIODICAL_DATASETS: readonly SearchDatasetOption[] = ARCHIVE_PUBLICATIONS
+  .filter((publication) => publication.id === "rmrb")
+  .map((publication) => ({ id: publication.id, label: publication.title }));
 
 function renderHighlighted(value: string, replaceBreaks: boolean, strong: boolean): ReactNode[] {
   let highlighted = false;
@@ -267,9 +266,7 @@ export function SearchPage({
   const [error, setError] = useState<string | null>(null);
   const [beforeSearch, setBeforeSearch] = useState(!params.get("keyword"));
   const [retryToken, setRetryToken] = useState(0);
-  const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const sortDropdownRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef(0);
   const pageSize = 10;
@@ -427,26 +424,6 @@ export function SearchPage({
     return () => controller.abort();
   }, [bookSearchReady, paramsKey, platformRedesign, retryToken, selectedBookSource]);
 
-  useEffect(() => {
-    if (!sortDropdownOpen) return;
-
-    const handleOutsideClick = (event: MouseEvent) => {
-      if (!sortDropdownRef.current?.contains(event.target as Node)) {
-        setSortDropdownOpen(false);
-      }
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSortDropdownOpen(false);
-    };
-
-    document.addEventListener("mousedown", handleOutsideClick);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handleOutsideClick);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [sortDropdownOpen]);
-
   function handleSearch() {
     const keyword = term.trim();
     if (!keyword) return;
@@ -478,7 +455,6 @@ export function SearchPage({
 
   function handleSortChange(nextSort: string) {
     setSort(nextSort);
-    setSortDropdownOpen(false);
     setPage(1);
     setParams(buildSearchParams({
       keyword: term,
@@ -538,9 +514,12 @@ export function SearchPage({
     }));
   }
 
-  const selectedSortLabel = SORT_OPTIONS.find((option) => option.value === sort)?.label ?? "默认排序";
   const contentTypeOption = SEARCH_CONTENT_TYPE_BY_ID[contentType];
   const datasetOptions = contentType === "periodical" ? PERIODICAL_DATASETS : bookDatasets;
+  const datasetSelectOptions = [
+    { value: "", label: contentTypeOption.allLabel },
+    ...datasetOptions.map((option) => ({ value: option.id, label: option.label })),
+  ];
 
   return (
     <div
@@ -607,83 +586,39 @@ export function SearchPage({
               </div>
             )}
             <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-                {platformRedesign && (
-                  <label className="flex h-8 min-w-[230px] items-center border border-rule-dark bg-paper">
-                    <span className="shrink-0 border-r border-rule px-2.5 text-[10px] font-black tracking-[0.12em] text-muted">
-                      {contentTypeOption.sourceLabel}
-                    </span>
-                  <select
-                    aria-label={contentTypeOption.selectLabel}
-                    value={datasetId}
-                    onChange={(event) => handleDatasetChange(event.target.value)}
-                    className="h-full min-w-0 flex-1 border-0 bg-paper px-3 pr-8 text-xs font-bold text-ink shadow-none focus:border-0 focus:ring-0"
-                  >
-                    <option value="">{contentTypeOption.allLabel}</option>
-                    {datasetOptions.map((option) => (
-                      <option key={option.id} value={option.id}>{option.label}</option>
-                    ))}
-                  </select>
-                  </label>
-                )}
-            {(!platformRedesign || contentTypeOption.supportsDate) && (
-              <DateRangePicker
-                startDate={startDate}
-                endDate={endDate}
-                onChange={handleDateRangeChange}
-                disabledStartDate={disableUnavailableDate}
-                disabledEndDate={disableUnavailableDate}
-                editable
-                shortcutLabel="常用时期"
-                shortcuts={SEARCH_PERIODS.map((period) => ({
-                  ...period,
-                  endDate: period.endDate || latestAvailableDate,
-                }))}
-              />
-            )}
-            <div ref={sortDropdownRef} className="relative min-w-[120px]">
-              <button
-                type="button"
-                className="flex h-8 w-full items-center justify-between gap-3 border border-rule-dark bg-paper px-2.5 text-left text-xs text-ink transition-colors hover:border-red hover:text-red"
-                aria-haspopup="listbox"
-                aria-expanded={sortDropdownOpen}
-                onClick={() => setSortDropdownOpen((open) => !open)}
-              >
-                <span>{selectedSortLabel}</span>
-                <svg
-                  className={`h-3 w-3 shrink-0 transition-transform ${sortDropdownOpen ? "rotate-180" : ""}`}
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  aria-hidden="true"
-                >
-                  <path d="m4 6 4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-              {sortDropdownOpen && (
-                <div className="absolute left-0 top-full z-[90] mt-1 w-full border-2 border-red bg-paper shadow-[4px_4px_0_rgba(139,26,26,.14)]">
-                  <div className="py-1" role="listbox" aria-label="排序">
-                    {SORT_OPTIONS.map((option) => {
-                      const selected = option.value === sort;
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          role="option"
-                          aria-selected={selected}
-                          className={`block h-9 w-full px-4 text-left text-xs transition-colors ${
-                            selected ? "bg-red text-paper" : "text-ink hover:bg-red/10 hover:text-red"
-                          }`}
-                          onClick={() => handleSortChange(option.value)}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+              {platformRedesign && (
+                <Select
+                  ariaLabel={contentTypeOption.selectLabel}
+                  value={datasetId}
+                  options={datasetSelectOptions}
+                  onChange={handleDatasetChange}
+                  prefix={contentTypeOption.sourceLabel}
+                  className="w-full min-w-0 sm:w-[360px]"
+                  menuClassName="w-full sm:w-[520px]"
+                />
               )}
-            </div>
+              {(!platformRedesign || contentTypeOption.supportsDate) && (
+                <DateRangePicker
+                  startDate={startDate}
+                  endDate={endDate}
+                  onChange={handleDateRangeChange}
+                  disabledStartDate={disableUnavailableDate}
+                  disabledEndDate={disableUnavailableDate}
+                  editable
+                  shortcutLabel="常用时期"
+                  shortcuts={SEARCH_PERIODS.map((period) => ({
+                    ...period,
+                    endDate: period.endDate || latestAvailableDate,
+                  }))}
+                />
+              )}
+              <Select
+                ariaLabel="排序"
+                value={sort}
+                options={SORT_OPTIONS}
+                onChange={handleSortChange}
+                className="w-[150px]"
+              />
             </div>
           </section>
 
