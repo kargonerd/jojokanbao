@@ -344,6 +344,93 @@ describe("western publisher extraction audit", () => {
     expect(extractFtImages(professionalOffer, pageUrl)).toEqual([]);
   });
 
+  it("terminally rejects production FT offers before the whole-article fallback", () => {
+    const offerTail = `<h2>Explore more offers.</h2>
+      <h3>Standard Digital</h3>
+      <p>Essential digital access to quality FT journalism on any device. Pay a year upfront and save 20%.</p>
+      <ul><li>Global news &amp; analysis</li><li>Expert opinion</li><li>FT App on Android &amp; iOS</li><li>20+ curated newsletters</li></ul>
+      <h3>Premium Digital</h3>
+      <p>Complete digital access to quality FT journalism with expert analysis from industry leaders. Pay a year upfront and save 20%.</p>
+      <ul><li>20 monthly gift articles to share</li><li>Lex: FT's flagship investment column</li><li>FT Digital Edition: our digitised print edition</li></ul>
+      <p>Check whether you already have access via your university or organisation.</p>
+      <p>Terms &amp; Conditions apply</p>
+      <h2>Explore our full range of subscriptions.</h2>
+      <h3>For individuals</h3>
+      <p>Discover all the plans currently available in your country</p>
+      <h3>For multiple readers</h3>
+      <p>Digital access for organisations. Includes exclusive features and content.</p>`;
+    const productionCases = [
+      {
+        articleId: "ft:efd21a2c341e6ca713c3dc10",
+        title: "Mel Stride sacked as shadow chancellor",
+        url: "https://www.ft.com/content/f16c178f-b07c-4b79-a8fc-2bf4c70d43e2?syn-25a6b1a6=1",
+        lead: `<h2>To read this article for free</h2><p>Once registered, you can read free articles, get newsletters, follow topics and access Alphaville.</p>
+          <p>Then €69 per month. Complete digital access to quality FT journalism on any device. Cancel or change your plan anytime during your trial.</p>`,
+      },
+      {
+        articleId: "ft:d9c5727150965ff81831904c",
+        title: "Trump says US will hit Iran ‘hard’ as conflict reignites",
+        url: "https://www.ft.com/content/8b09b3fc-bb61-4d9f-aac6-bcef9883fa16?syn-25a6b1a6=1",
+        lead: `<h2>Try unlimited access</h2><p>Then ¥9000 per month. Complete digital access to quality FT journalism on any device. Cancel anytime during your trial.</p>`,
+      },
+      {
+        articleId: "ft:e0539dc614fb4cbc92e77412",
+        title: "Alejandro Betancourt: the man who would be Trump’s ‘viceroy’ in Venezuela",
+        url: "https://www.ft.com/content/9dbf9c9a-b3e2-4701-b584-dca72b349716?syn-25a6b1a6=1",
+        lead: `<h2>Try unlimited access</h2><p>Then €69 per month. Complete digital access to quality FT journalism on any device. Cancel anytime during your trial.</p>`,
+      },
+      {
+        articleId: "ft:188c7a6fb26547ff4e97c43e",
+        title: "Americans feel they have lost their agency",
+        url: "https://www.ft.com/content/63e8a4f3-7c18-4ddc-b3b7-e472159a7adf?syn-25a6b1a6=1",
+        lead: `<h2>Try unlimited access</h2><p>Then ¥9000 per month. Complete digital access to quality FT journalism on any device. Cancel anytime during your trial.</p>`,
+      },
+      {
+        articleId: "ft:30cecd9e3a6d42ee8a3fa71f",
+        title: "The cult $4.99 rotisserie chicken defying inflation",
+        url: "https://www.ft.com/content/30ac3572-06a9-4718-8043-60b1dee50c40?syn-25a6b1a6=1",
+        lead: `<h2>Try unlimited access</h2><p>Then Dkr535 per month. Complete digital access to quality FT journalism on any device. Cancel anytime during your trial.</p>`,
+      },
+    ];
+    const quality = { minimumCharacters: 800, minimumParagraphs: 3 };
+
+    for (const fixture of productionCases) {
+      // These captures have no stable FT body container. Without the FT
+      // extractor, the shared `article` selector accepts the complete offer.
+      const html = `<main><article data-production-id="${fixture.articleId}">
+        <blockquote>${fixture.title}</blockquote>${fixture.lead}${offerTail}
+      </article></main>`;
+      expect(assessArticleBody(html, ftFetch, quality, undefined, fixture.url, "captured-page")).toMatchObject({
+        extractionPath: "source-selector",
+        verdict: "accepted",
+      });
+      expect(extractFtBody(html, quality, fixture.url)).toMatchObject({
+        completeness: "truncated",
+        evidence: {
+          kind: "access-offer",
+          marker: "consumer-subscription-offer",
+          location: "article",
+          matchedSignals: 4,
+        },
+      });
+      expect(assessArticleBody(
+        html,
+        ftFetch,
+        quality,
+        extractFtBody,
+        fixture.url,
+        "captured-page",
+      )).toMatchObject({
+        extractionPath: "publisher-extractor",
+        completeness: "truncated",
+        verdict: "rejected",
+        rejectReason: "publisher-truncated",
+      });
+      expect(extractArticleBody(html, ftFetch, quality, extractFtBody, fixture.url)).toBeUndefined();
+      expect(extractFtImages(html, fixture.url)).toEqual([]);
+    }
+  });
+
   it("keeps the shared fallback available when no FT publisher body structure matches", () => {
     const quality = { minimumCharacters: 300, minimumParagraphs: 3 };
     const pageUrl = "https://www.ft.com/content/nonstandard-story";

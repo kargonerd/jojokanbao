@@ -109,9 +109,25 @@ type FtBodyInspection =
     }
   | { outcome: "article"; structure: FtBodyStructure };
 
+function articleFallbackAccessOffer(document: CheerioAPI): Extract<FtBodyInspection, { outcome: "access-offer" }> | undefined {
+  for (const article of document("article").toArray()) {
+    const values = blockElements(document, article, false).values;
+    const offer = accessOffer(document, values);
+    if (offer) {
+      return {
+        outcome: "access-offer",
+        blockElements: values,
+        location: "article",
+        offer,
+      };
+    }
+  }
+  return undefined;
+}
+
 function inspectFtBody(document: CheerioAPI): FtBodyInspection {
   const body = bestBody(document);
-  if (!body.length) return { outcome: "unmatched" };
+  if (!body.length) return articleFallbackAccessOffer(document) ?? { outcome: "unmatched" };
   const standfirst = document(FT_STANDFIRST_SELECTOR).first();
   const bodyResult = blockElements(document, body[0]!, true);
   const offer = accessOffer(document, bodyResult.values);
