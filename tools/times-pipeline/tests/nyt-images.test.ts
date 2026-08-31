@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { discoverArticleImages } from "../src/capture/page-images.js";
 import { attachAssetsToBody } from "../src/process/article.js";
 import { extractNytImages } from "../src/sources/nyt/images.js";
 import { extractNytBody } from "../src/sources/nyt/process.js";
 import type { CapturedAsset } from "../src/types.js";
 
 describe("NYT image extraction", () => {
-  it("keeps the pre-body lead and positions captioned body images without recirculation media", () => {
+  it("positions the publisher lead after the standfirst and keeps body images out of recirculation", () => {
     const html = `<!doctype html><html><head>
       <meta property="og:image" content="https://static01.nyt.com/unrelated-social-card.jpg">
     </head><body><main><article id="story">
@@ -39,7 +40,8 @@ describe("NYT image extraction", () => {
     expect(extractNytImages(html, "https://www.nytimes.com/2026/08/30/world/canada/story.html")).toEqual([
       {
         sourceUrl: "https://www.nytimes.com/maps/map-1600.jpg",
-        role: "lead",
+        role: "content",
+        afterBlock: 1,
         alt: "A Google map of Lake Ontario",
         caption: "Google Maps displayed the new Lake America label. Google Maps",
         credit: "Google Maps",
@@ -57,6 +59,26 @@ describe("NYT image extraction", () => {
         height: 800,
       },
     ]);
+  });
+
+  it("retains the publisher lead role when no standfirst precedes the story", () => {
+    const html = `<main><article>
+      <h1>A story without a publisher standfirst</h1>
+      <figure data-testid="image-lead">
+        <img src="/lead-without-summary.jpg" alt="Lead without summary" width="1200" height="800">
+        <figcaption>The lead image appears before the body.</figcaption>
+      </figure>
+      <section name="articleBody">
+        <p>The first sufficiently long reporting paragraph begins the explicit article body.</p>
+        <p>The second sufficiently long reporting paragraph provides additional context.</p>
+      </section>
+    </article></main>`;
+
+    expect(extractNytImages(html, "https://www.nytimes.com/story")[0]).toMatchObject({
+      sourceUrl: "https://www.nytimes.com/lead-without-summary.jpg",
+      role: "lead",
+    });
+    expect(extractNytImages(html, "https://www.nytimes.com/story")[0]?.afterBlock).toBeUndefined();
   });
 
   it("counts the standfirst when attaching body images and skips only the recirculation module", () => {
@@ -140,5 +162,66 @@ describe("NYT image extraction", () => {
       afterBlock: 1,
       alt: "News photo",
     }]);
+  });
+
+  it("retains official GraphQL news images containing logos but still removes decorative media", () => {
+    const html = `<main><article>
+      <p id="article-summary">The publisher standfirst explains why the branded subjects are newsworthy.</p>
+      <figure data-nyt-official-image="true">
+        <img src="/kalshi-billboard.jpg" alt="A Times Square billboard featuring Lionel Messi and the Kalshi logo" width="1200" height="800">
+      </figure>
+      <figure data-nyt-official-image="true">
+        <img src="/section-break.jpg" alt="" width="600" height="14">
+      </figure>
+      <figure>
+        <img src="/publisher-logo.svg" alt="Publisher logo" width="300" height="100">
+      </figure>
+      <section name="articleBody"><p>A sufficiently long reporting paragraph follows the official publisher media.</p></section>
+    </article></main>`;
+
+    const pageUrl = "https://www.nytimes.com/story";
+    expect(extractNytImages(html, pageUrl)).toEqual([
+      expect.objectContaining({
+        sourceUrl: "https://www.nytimes.com/kalshi-billboard.jpg",
+        role: "content",
+        afterBlock: 1,
+        publisherEditorial: true,
+      }),
+    ]);
+    expect(discoverArticleImages(html, pageUrl, undefined, extractNytImages)).toEqual([
+      expect.objectContaining({
+        sourceUrl: "https://www.nytimes.com/kalshi-billboard.jpg",
+        alt: "A Times Square billboard featuring Lionel Messi and the Kalshi logo",
+        publisherEditorial: true,
+      }),
+    ]);
+  });
+
+  it("keeps each official slideshow together as an ordered carousel", () => {
+    const html = `<main><article>
+      <p id="article-summary">A publisher standfirst precedes the complete official image slideshow.</p>
+      <figure data-nyt-official-image="true" data-nyt-slideshow-id="nyt-slideshow-2" data-nyt-slideshow-order="0" data-nyt-slideshow-total="2">
+        <img src="/slide-one.jpg" alt="First slide" width="1200" height="800">
+      </figure>
+      <figure data-nyt-official-image="true" data-nyt-slideshow-id="nyt-slideshow-2" data-nyt-slideshow-order="1" data-nyt-slideshow-total="2">
+        <img src="/slide-two.jpg" alt="Second slide" width="1200" height="800">
+      </figure>
+      <section name="articleBody"><p>A sufficiently long reporting paragraph follows the slideshow.</p></section>
+    </article></main>`;
+
+    expect(extractNytImages(html, "https://www.nytimes.com/story")).toEqual([
+      expect.objectContaining({
+        sourceUrl: "https://www.nytimes.com/slide-one.jpg",
+        role: "content",
+        afterBlock: 1,
+        presentation: { type: "carousel", id: "nyt-slideshow-2", order: 0, total: 2 },
+      }),
+      expect.objectContaining({
+        sourceUrl: "https://www.nytimes.com/slide-two.jpg",
+        role: "content",
+        afterBlock: 1,
+        presentation: { type: "carousel", id: "nyt-slideshow-2", order: 1, total: 2 },
+      }),
+    ]);
   });
 });

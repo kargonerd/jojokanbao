@@ -85,6 +85,20 @@ function dimension(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+function carouselPresentation(figure: { attr(name: string): string | undefined }): {
+  type: "carousel";
+  id: string;
+  order: number;
+  total: number;
+} | undefined {
+  const id = figure.attr("data-nyt-slideshow-id");
+  const order = Number(figure.attr("data-nyt-slideshow-order"));
+  const total = Number(figure.attr("data-nyt-slideshow-total"));
+  if (!id || !/^[A-Za-z0-9_-]{1,100}$/u.test(id)) return undefined;
+  if (!Number.isInteger(order) || order < 0 || !Number.isInteger(total) || total < 2 || order >= total) return undefined;
+  return { type: "carousel", id, order, total };
+}
+
 function imageCredit(
   document: ReturnType<typeof load>,
   captionNode: ReturnType<ReturnType<typeof load>>,
@@ -156,6 +170,7 @@ export function extractNytImages(html: string, pageUrl: string): PageImageCandid
 
     const image = node;
     const figure = image.closest("figure");
+    const isPublisherEditorial = figure.is("[data-nyt-official-image='true'],[data-nyt-publisher-editorial='true']");
     const owner = figure.length ? figure.get(0) : image.get(0);
     if (seenFigures.has(owner)) return;
     seenFigures.add(owner);
@@ -166,7 +181,7 @@ export function extractNytImages(html: string, pageUrl: string): PageImageCandid
     const width = dimension(image.attr("width"));
     const height = dimension(image.attr("height"));
     if ((width !== undefined && width <= 80) || (height !== undefined && height <= 80)) return;
-    if (/(?:logo|icon|avatar|tracking|pixel|sprite|placeholder)/iu.test(`${sourceUrl} ${alt ?? ""}`)) return;
+    if (!isPublisherEditorial && /(?:logo|icon|avatar|tracking|pixel|sprite|placeholder)/iu.test(`${sourceUrl} ${alt ?? ""}`)) return;
 
     seenUrls.add(sourceUrl);
     const captionNode = figure.find("figcaption").first();
@@ -175,17 +190,31 @@ export function extractNytImages(html: string, pageUrl: string): PageImageCandid
       .filter(Boolean)
       .join(" ") || undefined;
     const credit = captionNode.length ? imageCredit(document, captionNode) : undefined;
-    const isLead = !leadAssigned && !bodyStarted;
-    if (isLead) leadAssigned = true;
+    const presentation = carouselPresentation(figure);
+    const occupiesLeadSlot = !leadAssigned && !bodyStarted;
+    const isLead = !presentation && occupiesLeadSlot;
+    // A header carousel remains a content-positioned media group so the
+    // attachment layer does not split its first slide out as role=lead, but it
+    // still occupies the publisher's lead slot. A later pre-paragraph image
+    // must not jump ahead of the carousel during attachment.
+    if (occupiesLeadSlot) leadAssigned = true;
+    // NYT's visible standfirst precedes its lead media. The shared asset
+    // attachment path always prepends role=lead assets, so keep this adapter
+    // source-specific: when a standfirst exists, position the same publisher
+    // image after those summary blocks as content. Without a standfirst it
+    // remains a conventional lead asset.
+    const positionAfterStandfirst = isLead && summaryBlockTexts.length > 0;
     images.push({
       sourceUrl,
-      role: isLead ? "lead" : "content",
-      ...(isLead ? {} : { afterBlock: blockCount }),
+      role: isLead && !positionAfterStandfirst ? "lead" : "content",
+      ...(isLead && !positionAfterStandfirst ? {} : { afterBlock: blockCount }),
       ...(alt ? { alt } : {}),
       ...(caption ? { caption } : {}),
       ...(credit ? { credit } : {}),
       ...(width ? { width } : {}),
       ...(height ? { height } : {}),
+      ...(presentation ? { presentation } : {}),
+      ...(isPublisherEditorial ? { publisherEditorial: true } : {}),
     });
   });
   return images;
