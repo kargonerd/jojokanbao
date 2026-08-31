@@ -338,4 +338,23 @@ describe("native source modules", () => {
       "https://www.theguardian.com/world/2026/aug/31/written-report",
     )).toBe(true);
   });
+
+  it("excludes Bloomberg news audio pages without rejecting written or transcript-capable paths", () => {
+    expect(acceptSourceUrl(
+      "bloomberg",
+      "https://www.bloomberg.com/news/audio/2026-08-31/odd-lots-tom-barkin-on-the-resilient-real-economy-podcast",
+    )).toBe(false);
+    expect(acceptSourceUrl(
+      "bloomberg",
+      "https://www.bloomberg.com/news/articles/2026-08-31/bond-investors-wary-after-warsh-fans-wagers-fed-poised-to-hike",
+    )).toBe(true);
+    expect(acceptSourceUrl(
+      "bloomberg",
+      "https://www.bloomberg.com/podcasts/odd-lots/transcript",
+    )).toBe(true);
+    expect(acceptSourceUrl(
+      "bloomberg",
+      "https://example.com/news/audio/2026-08-31/written-report",
+    )).toBe(true);
+  });
 });
