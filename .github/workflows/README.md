@@ -59,7 +59,9 @@ Deployment workflows are separate because they use credentials and change
 external state:
 
 - `deploy-homepage.yml` publishes the Homepage
-- `deploy-web.yml` publishes the unified Web client
+- `deploy-web.yml` automatically publishes relevant `master` changes to the
+  public Beta Preview environment; release tags and manual Production runs
+  publish the stable Web client
 - `release-desktop.yml` builds Desktop installers on Windows, macOS (Apple Silicon
   and Intel), and Linux; `desktop-v*` tags publish the resulting files as a
   GitHub Release, starting with `desktop-v0.0.1-rc1`, while manual runs retain
