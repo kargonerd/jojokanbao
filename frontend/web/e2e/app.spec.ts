@@ -31,6 +31,24 @@ test.describe("JOJO Web", () => {
     ))).toBe(false);
   });
 
+  test("production CSS keeps component-specific input borders", async ({ page }) => {
+    await page.goto("/");
+    const homeSearch = page.getByPlaceholder("搜索书名");
+    await expect(homeSearch).toHaveCSS("border-top-width", "0px");
+    await expect(homeSearch).toHaveCSS("border-right-width", "0px");
+    await expect(homeSearch).toHaveCSS("border-bottom-width", "0px");
+    await expect(homeSearch).toHaveCSS("border-left-width", "0px");
+
+    await page.goto("/account");
+    await page.getByRole("button", { name: "登录", exact: true }).click();
+    const email = page.getByPlaceholder("name@example.com");
+    await expect(email).toHaveCSS("border-top-width", "0px");
+    await expect(email).toHaveCSS("border-right-width", "0px");
+    await expect(email).toHaveCSS("border-bottom-width", "1px");
+    await expect(email).toHaveCSS("border-left-width", "0px");
+    await expect(email).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  });
+
   test("legacy entry returns to the redesigned homepage", async ({ page }) => {
     await page.goto("/legacy");
     await expect(page).toHaveURL("/");

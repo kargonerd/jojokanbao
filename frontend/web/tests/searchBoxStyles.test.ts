@@ -4,14 +4,17 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("search box styles", () => {
-  it("keeps the input reset stronger than flattened shared input styles", async () => {
-    const css = await readFile(resolve(process.cwd(), "src/shell/styles.css"), "utf8");
+  it("keeps shared input defaults low-specificity after production flattens layers", async () => {
+    const sharedCss = await readFile(
+      resolve(process.cwd(), "../packages/ui/styles/index.css"),
+      "utf8",
+    );
+    const shellCss = await readFile(resolve(process.cwd(), "src/shell/styles.css"), "utf8");
 
-    expect(css).toContain(
-      '.app-search-box input:not([type="radio"]):not([type="checkbox"])',
+    expect(sharedCss).toContain(
+      ':where(input:not([type="radio"]):not([type="checkbox"]), select, textarea)',
     );
-    expect(css).toMatch(
-      /\.app-search-box input:not\(\[type="radio"\]\):not\(\[type="checkbox"\]\)[^{]*\{[^}]*border:\s*0;/s,
-    );
+    expect(sharedCss).not.toMatch(/^\s*input:not\(\[type="radio"\]\):not\(\[type="checkbox"\]\),/m);
+    expect(shellCss).toMatch(/\.app-search-box input,[^{]*\{[^}]*border:\s*0;/s);
   });
 });
