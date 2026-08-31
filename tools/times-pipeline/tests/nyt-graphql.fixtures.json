@@ -1,0 +1,360 @@
+{
+  "observedBlocks": {
+    "data": {
+      "article": {
+        "__typename": "Article",
+        "headline": {
+          "default": "Observed New York Times GraphQL Blocks"
+        },
+        "summary": "A publisher standfirst that must remain before the lead image in the processed article.",
+        "bylines": [
+          {
+            "creators": [
+              {
+                "__typename": "Person",
+                "displayName": "Fixture Reporter",
+                "url": "https://www.nytimes.com/by/fixture-reporter"
+              }
+            ]
+          }
+        ],
+        "body": {
+          "content": [
+            {
+              "__typename": "HeaderFullBleedVerticalBlock",
+              "ledeMedia": {
+                "__typename": "ImageBlock",
+                "media": {
+                  "__typename": "Image",
+                  "altText": "A vertical lead photograph",
+                  "caption": {
+                    "text": "The vertical lead image caption."
+                  },
+                  "credit": "Lead Photographer/The New York Times",
+                  "crops": [
+                    {
+                      "name": "MASTER",
+                      "renditions": [
+                        {
+                          "name": "superJumbo",
+                          "url": "https://static01.nyt.com/images/fixture/vertical-lead.jpg",
+                          "width": 1600,
+                          "height": 2400
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "__typename": "ParagraphBlock",
+              "content": [
+                {
+                  "__typename": "TextInline",
+                  "text": "The opening paragraph contains enough original reporting text to establish the official article body.",
+                  "formats": []
+                }
+              ]
+            },
+            {
+              "__typename": "DetailBlock",
+              "content": [
+                {
+                  "__typename": "TextInline",
+                  "text": "Fixture Contributor contributed reporting.",
+                  "formats": []
+                }
+              ]
+            },
+            {
+              "__typename": "Heading2Block",
+              "content": [
+                {
+                  "__typename": "TextInline",
+                  "text": "A linked section heading",
+                  "formats": [
+                    {
+                      "__typename": "LinkFormat",
+                      "url": "/interactive/fixture-heading.html",
+                      "title": "Heading source"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "__typename": "ParagraphBlock",
+              "content": [
+                {
+                  "__typename": "TextInline",
+                  "text": "The second paragraph follows the section heading and preserves the publisher's intended sequence.",
+                  "formats": []
+                }
+              ]
+            },
+            {
+              "__typename": "Heading3Block",
+              "content": [
+                {
+                  "__typename": "TextInline",
+                  "text": "A smaller subsection heading",
+                  "formats": []
+                }
+              ]
+            },
+            {
+              "__typename": "BlockquoteBlock",
+              "content": [
+                {
+                  "__typename": "ParagraphBlock",
+                  "content": [
+                    {
+                      "__typename": "TextInline",
+                      "text": "This quoted passage remains part of the official article.",
+                      "formats": [
+                        {
+                          "__typename": "ItalicFormat"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "__typename": "RuleBlock",
+              "type": "DEFAULT"
+            },
+            {
+              "__typename": "DiptychBlock",
+              "size": "LARGE",
+              "imageOne": {
+                "__typename": "Image",
+                "altText": "A Kalshi logo on a Times Square billboard",
+                "caption": {
+                  "text": "First diptych caption."
+                },
+                "credit": "First Photographer/The New York Times",
+                "crops": [
+                  {
+                    "name": "MASTER",
+                    "renditions": [
+                      {
+                        "name": "jumbo",
+                        "url": "https://static01.nyt.com/images/fixture/diptych-one.jpg",
+                        "width": 1024,
+                        "height": 768
+                      }
+                    ]
+                  }
+                ]
+              },
+              "imageTwo": {
+                "__typename": "Image",
+                "altText": "The second diptych image",
+                "caption": {
+                  "text": "Second diptych caption."
+                },
+                "credit": "Second Photographer/The New York Times",
+                "crops": [
+                  {
+                    "name": "MASTER",
+                    "renditions": [
+                      {
+                        "name": "jumbo",
+                        "url": "https://static01.nyt.com/images/fixture/diptych-two.jpg",
+                        "width": 1024,
+                        "height": 768
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "__typename": "InteractiveBlock",
+              "media": {
+                "__typename": "EmbeddedInteractive",
+                "compatibility": "INLINE",
+                "html": "<div><p>Interactive chart context links to <a href=\"/interactive/source.html\">the underlying source</a>.</p><img src=\"https://static01.nyt.com/images/fixture/interactive-chart.png\" alt=\"An interactive chart showing the reported trend\" width=\"1200\" height=\"800\"></div>"
+              }
+            },
+            {
+              "__typename": "InteractiveBlock",
+              "media": {
+                "__typename": "Interactive",
+                "headline": {
+                  "default": "Explore the complete interactive"
+                },
+                "summary": "The linked presentation contains additional publisher context.",
+                "url": "/interactive/complete-fixture.html"
+              }
+            },
+            {
+              "__typename": "ListBlock",
+              "style": "ORDERED",
+              "content": [
+                {
+                  "__typename": "ListItemBlock",
+                  "content": [
+                    {
+                      "__typename": "ParagraphBlock",
+                      "content": [
+                        {
+                          "__typename": "TextInline",
+                          "text": "The first list item is retained.",
+                          "formats": []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "__typename": "ListItemBlock",
+                  "content": [
+                    {
+                      "__typename": "ParagraphBlock",
+                      "content": [
+                        {
+                          "__typename": "TextInline",
+                          "text": "The second list item follows it.",
+                          "formats": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "__typename": "CommentsBlock"
+            },
+            {
+              "__typename": "RelatedLinksBlock"
+            },
+            {
+              "__typename": "ParagraphBlock",
+              "content": [
+                {
+                  "__typename": "TextInline",
+                  "text": "The final reporting paragraph proves that all audited publisher blocks retain their original order.",
+                  "formats": []
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  "emptyParagraphBeforeImage": {
+    "data": {
+      "article": {
+        "__typename": "Article",
+        "headline": {
+          "default": "Empty Publisher Paragraph Before an Image"
+        },
+        "summary": "This fixture reproduces nyt:bc4826fc0a6771e6032bbda9 without copying its article text.",
+        "bylines": [
+          {
+            "creators": [
+              {
+                "__typename": "Person",
+                "displayName": "Fixture Correspondent",
+                "url": "https://www.nytimes.com/by/fixture-correspondent"
+              }
+            ]
+          }
+        ],
+        "body": {
+          "content": [
+            {
+              "__typename": "HeaderBasicBlock",
+              "ledeMedia": {
+                "__typename": "ImageBlock",
+                "media": {
+                  "__typename": "Image",
+                  "altText": "The lead image",
+                  "caption": {
+                    "text": "Lead image caption."
+                  },
+                  "crops": [
+                    {
+                      "name": "MASTER",
+                      "renditions": [
+                        {
+                          "name": "superJumbo",
+                          "url": "https://static01.nyt.com/images/fixture/empty-case-lead.jpg",
+                          "width": 1600,
+                          "height": 1000
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "__typename": "ParagraphBlock",
+              "content": [
+                {
+                  "__typename": "TextInline",
+                  "text": "The first substantial paragraph appears before the publisher's empty media placeholder.",
+                  "formats": []
+                }
+              ]
+            },
+            {
+              "__typename": "ParagraphBlock",
+              "content": []
+            },
+            {
+              "__typename": "ImageBlock",
+              "media": {
+                "__typename": "Image",
+                "altText": "The inline museum photograph",
+                "caption": {
+                  "text": "The inline image remains in publisher order."
+                },
+                "crops": [
+                  {
+                    "name": "MASTER",
+                    "renditions": [
+                      {
+                        "name": "superJumbo",
+                        "url": "https://static01.nyt.com/images/fixture/empty-case-inline.jpg",
+                        "width": 1600,
+                        "height": 1000
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "__typename": "ParagraphBlock",
+              "content": [
+                {
+                  "__typename": "TextInline",
+                  "text": "The second substantial paragraph follows the inline image instead of being lost to browser fallback.",
+                  "formats": []
+                }
+              ]
+            },
+            {
+              "__typename": "ParagraphBlock",
+              "content": [
+                {
+                  "__typename": "TextInline",
+                  "text": "The final substantial paragraph completes the regression fixture with enough semantic text.",
+                  "formats": []
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}
