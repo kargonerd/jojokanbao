@@ -33,9 +33,9 @@ const ACCESS_OFFER_SIGNALS = [
 const PROFESSIONAL_ACCESS_GATE = /activate your \d+ day complimentary access to read this article/iu;
 const PROFESSIONAL_SERVICE_OFFER = /premium service available as an addition to an FT Professional subscription/iu;
 
-type FtAccessOfferMarker = "consumer-subscription-offer" | "professional-service-offer";
+export type FtAccessOfferMarker = "consumer-subscription-offer" | "professional-service-offer";
 
-interface FtAccessOffer {
+export interface FtAccessOffer {
   marker: FtAccessOfferMarker;
   matchedSignals: number;
 }
@@ -44,14 +44,24 @@ function normalizedText(value: string): string {
   return value.replaceAll(/\s+/gu, " ").trim();
 }
 
-function accessOffer(document: CheerioAPI, elements: FtDocumentElement[]): FtAccessOffer | undefined {
-  const text = normalizedText(elements.map((element) => document(element).text()).join(" "));
+function accessOfferText(value: string): FtAccessOffer | undefined {
+  const text = normalizedText(value);
   const matchedSignals = ACCESS_OFFER_SIGNALS.filter((signal) => signal.test(text)).length;
   if (matchedSignals >= 3) return { marker: "consumer-subscription-offer", matchedSignals };
   if (PROFESSIONAL_ACCESS_GATE.test(text) && PROFESSIONAL_SERVICE_OFFER.test(text)) {
     return { marker: "professional-service-offer", matchedSignals: 2 };
   }
   return undefined;
+}
+
+/** Classify persisted FT body HTML with the exact signals used at capture. */
+export function classifyFtAccessOffer(html: string): FtAccessOffer | undefined {
+  const document = load(html, undefined, false);
+  return accessOfferText(document.root().text());
+}
+
+function accessOffer(document: CheerioAPI, elements: FtDocumentElement[]): FtAccessOffer | undefined {
+  return accessOfferText(elements.map((element) => document(element).text()).join(" "));
 }
 
 function hasBlockAncestor(element: FtDocumentElement, container: FtDocumentElement): boolean {
