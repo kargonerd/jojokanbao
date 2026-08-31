@@ -305,8 +305,13 @@ a.jojo-citation:hover {
   color: var(--app-gray);
 }
 
-.app-search-box input,
-.library-search input {
+/*
+ * Keep these selectors more specific than the shared input base styles.
+ * Production flattens cascade layers for legacy browsers, so relying on the
+ * base/component layer order here would reintroduce the input's own border.
+ */
+.app-search-box input:not([type="radio"]):not([type="checkbox"]),
+.library-search input:not([type="radio"]):not([type="checkbox"]) {
   min-width: 0;
   border: 0;
   background: transparent;
@@ -314,7 +319,7 @@ a.jojo-citation:hover {
   font-family: var(--font-sans);
 }
 
-.app-search-box input { height: 40px; flex: 1; padding: 0; font-size: 1rem; }
+.app-search-box input:not([type="radio"]):not([type="checkbox"]) { height: 40px; flex: 1; padding: 0; font-size: 1rem; }
 .home-book-search { position: relative; }
 .home-book-results {
   position: absolute;
