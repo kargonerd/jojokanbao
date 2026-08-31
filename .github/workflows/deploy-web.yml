@@ -2,9 +2,24 @@ name: Deploy · Web
 
 on:
   push:
+    branches:
+      - master
     tags:
       - "reader-v*"
       - "reader-*"
+    paths:
+      - ".github/workflows/deploy-web.yml"
+      - ".npmrc"
+      - "backend/**"
+      - "frontend/packages/**"
+      - "frontend/patches/**"
+      - "frontend/tooling/tsconfig/**"
+      - "frontend/web/**"
+      - "infrastructure/edgeone/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "turbo.json"
   workflow_dispatch:
     inputs:
       environment:
@@ -23,19 +38,23 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: deploy-web-${{ github.event_name == 'workflow_dispatch' && inputs.environment || github.ref == 'refs/heads/master' && 'preview' || 'production' }}
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'production' }}
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || github.ref == 'refs/heads/master' && 'preview' || 'production' }}
     env:
       EDGEONE_API_TOKEN: ${{ secrets.EDGEONE_API_TOKEN }}
       EDGEONE_PROJECT_NAME: ${{ vars.EDGEONE_PROJECT_NAME || 'jojo-reader' }}
-      EDGEONE_DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'production' }}
+      EDGEONE_DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || github.ref == 'refs/heads/master' && 'preview' || 'production' }}
       EDGEONE_UPLOAD_FROM_PATH: ./.edgeone/web-deploy/
-      # Preview is the public Beta redesign channel. Production remains on the
-      # current site until its environment variable is explicitly enabled.
-      VITE_ENABLE_PLATFORM_REDESIGN: ${{ github.event_name == 'workflow_dispatch' && inputs.environment == 'preview' && 'true' || vars.VITE_ENABLE_PLATFORM_REDESIGN || 'false' }}
-      VITE_RELEASE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.environment == 'preview' && 'beta' || 'stable' }}
+      # Relevant master changes automatically publish the public Beta channel.
+      # Production tags remain stable until its redesign flag is enabled.
+      VITE_ENABLE_PLATFORM_REDESIGN: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'preview') || (github.event_name == 'push' && github.ref == 'refs/heads/master')) && 'true' || vars.VITE_ENABLE_PLATFORM_REDESIGN || 'false' }}
+      VITE_RELEASE_CHANNEL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'preview') || (github.event_name == 'push' && github.ref == 'refs/heads/master')) && 'beta' || 'stable' }}
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
       VITE_CONTENT_CDN_BASE: ${{ vars.VITE_CONTENT_CDN_BASE || 'https://blacknews.jojokanbao.cn/' }}
@@ -74,12 +93,12 @@ jobs:
           --env "$EDGEONE_DEPLOY_ENV"
 
       - name: Verify deployed web assets
-        if: ${{ inputs.verify_base_url != '' || (env.EDGEONE_DEPLOY_ENV == 'production' && vars.EDGEONE_READER_BASE_URL != '') }}
+        if: ${{ inputs.verify_base_url != '' || (env.EDGEONE_DEPLOY_ENV == 'preview' && vars.EDGEONE_BETA_BASE_URL != '') || (env.EDGEONE_DEPLOY_ENV == 'production' && vars.EDGEONE_READER_BASE_URL != '') }}
         env:
-          READER_BASE_URL: ${{ inputs.verify_base_url || vars.EDGEONE_READER_BASE_URL }}
+          READER_BASE_URL: ${{ inputs.verify_base_url || (env.EDGEONE_DEPLOY_ENV == 'preview' && vars.EDGEONE_BETA_BASE_URL) || vars.EDGEONE_READER_BASE_URL }}
           READER_DEPLOY_REVISION: ${{ github.sha }}
         run: node frontend/web/scripts/verify-deployment.mjs
 
       - name: Report deferred deployment verification
-        if: ${{ inputs.verify_base_url == '' && (env.EDGEONE_DEPLOY_ENV != 'production' || vars.EDGEONE_READER_BASE_URL == '') }}
-        run: echo "::notice::Deployment uploaded. Verify its Makers URL, then set EDGEONE_READER_BASE_URL for automatic verification."
+        if: ${{ inputs.verify_base_url == '' && ((env.EDGEONE_DEPLOY_ENV == 'preview' && vars.EDGEONE_BETA_BASE_URL == '') || (env.EDGEONE_DEPLOY_ENV == 'production' && vars.EDGEONE_READER_BASE_URL == '')) }}
+        run: echo "::notice::Deployment uploaded. Set the matching EDGEONE_BETA_BASE_URL or EDGEONE_READER_BASE_URL variable for automatic verification."
