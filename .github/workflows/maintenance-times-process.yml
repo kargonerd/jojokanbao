@@ -43,7 +43,8 @@ jobs:
     timeout-minutes: 30
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      HF_TIMES_DATASET_REPO: ${{ secrets.HF_TIMES_DATASET_REPO || secrets.HF_DATASET_REPO }}
+      HF_TIMES_DATASET_REPO: ${{ secrets.HF_TIMES_DATASET_REPO }}
+      B2_BUCKET: ${{ secrets.B2_BUCKET }}
       B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
       B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
       GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
@@ -52,7 +53,7 @@ jobs:
       JOJO_TIMES_TRANSLATION_REQUEST_TIMEOUT_MS: "240000"
       JOJO_TIMES_TRANSLATION_BATCH_TIMEOUT_MS: "1440000"
       JOJO_TIMES_TRANSLATION_CHUNK_CHARACTERS: "20000"
-      JOJO_DELIVERY_REMOTE: jojo-b2:${{ secrets.B2_BUCKET || 'jojo-newspaper' }}
+      JOJO_DELIVERY_REMOTE: jojo-b2:${{ secrets.B2_BUCKET }}
       HEALTHCHECKS_TIMES_PIPELINE_URL: ${{ secrets.HEALTHCHECKS_TIMES_PIPELINE_URL }}
       TIMES_PUBLISH: ${{ github.event_name == 'workflow_run' || inputs.publish }}
       TIMES_CAPTURE_RUN_ID: ${{ inputs.capture_run_id || '' }}
@@ -83,6 +84,7 @@ jobs:
           test -z "$TIMES_CAPTURE_RUN_ID" || (echo "capture_run_id is available only for a non-publishing dry run" >&2 && exit 1)
           test -n "$B2_KEY_ID" || (echo "B2_KEY_ID is not configured" >&2 && exit 1)
           test -n "$B2_APPLICATION_KEY" || (echo "B2_APPLICATION_KEY is not configured" >&2 && exit 1)
+          test -n "$B2_BUCKET" || (echo "B2_BUCKET is not configured" >&2 && exit 1)
           test -n "$GEMINI_API_KEYS$GEMINI_API_KEY" || (echo "GEMINI_API_KEYS or GEMINI_API_KEY is not configured" >&2 && exit 1)
 
       - name: Install locked dependencies
@@ -172,42 +174,39 @@ jobs:
         run: |
           rclone config create jojo-b2 b2 account "$B2_KEY_ID" key "$B2_APPLICATION_KEY" --non-interactive
           mkdir -p "$RUNNER_TEMP/previous-delivery"
-          node - <<'NODE' > "$RUNNER_TEMP/source-ids.txt"
-          const fs = require("node:fs");
-          const path = require("node:path");
+          node --input-type=module - <<'NODE' > "$RUNNER_TEMP/source-ids.txt"
+          import fs from "node:fs";
+          import path from "node:path";
+          import { archiveOnlySourceIds } from "./tools/times-pipeline/dist/src/archive/canonical.js";
           const configPath = path.resolve("tools/times-pipeline/sources.v2.json");
           const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+          const sourceIds = new Set(archiveOnlySourceIds());
           for (const sourceFile of config.sourceFiles) {
             const source = JSON.parse(fs.readFileSync(path.resolve(path.dirname(configPath), sourceFile), "utf8"));
-            if (source.enabled !== false) console.log(source.id);
+            if (source.enabled !== false) sourceIds.add(source.id);
           }
+          for (const sourceId of [...sourceIds].sort()) console.log(sourceId);
           NODE
           while read -r source; do
             [ -n "$source" ] || continue
             object="content/newspapers/$source/index.jox"
             mkdir -p "$RUNNER_TEMP/previous-delivery/$(dirname "$object")"
-            rclone copyto "$JOJO_DELIVERY_REMOTE/$object" "$RUNNER_TEMP/previous-delivery/$object" || true
+            rclone copyto "$JOJO_DELIVERY_REMOTE/$object" "$RUNNER_TEMP/previous-delivery/$object"
           done < "$RUNNER_TEMP/source-ids.txt"
           rclone copyto "$JOJO_DELIVERY_REMOTE/content/timeline/index.jox" \
-            "$RUNNER_TEMP/previous-delivery/content/timeline/index.jox" || true
-          rclone copyto "$JOJO_DELIVERY_REMOTE/catalog.jox" "$RUNNER_TEMP/previous-delivery/catalog.jox" || true
+            "$RUNNER_TEMP/previous-delivery/content/timeline/index.jox"
+          rclone copyto "$JOJO_DELIVERY_REMOTE/catalog.jox" "$RUNNER_TEMP/previous-delivery/catalog.jox"
           node --input-type=module - <<'NODE' > "$RUNNER_TEMP/process-dates.txt"
           import fs from "node:fs";
-          import { readJoxJson } from "./tools/times-pipeline/dist/src/delivery-writer.js";
           const result = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/process-result.json", "utf8"));
           const dates = new Set(result.sources.flatMap((source) => source.dates));
-          const indexObject = process.env.RUNNER_TEMP + "/previous-delivery/content/timeline/index.jox";
-          if (fs.existsSync(indexObject)) {
-            const index = readJoxJson(new Uint8Array(fs.readFileSync(indexObject)), "content/timeline/index.jox");
-            for (const date of index.dates ?? []) dates.add(date.date);
-          }
           for (const date of [...dates].sort()) console.log(date);
           NODE
           while read -r date; do
             [ -n "$date" ] || continue
             object="content/timeline/dates/${date:0:4}/${date:5:2}/${date}.jox"
             mkdir -p "$RUNNER_TEMP/previous-delivery/$(dirname "$object")"
-            rclone copyto "$JOJO_DELIVERY_REMOTE/$object" "$RUNNER_TEMP/previous-delivery/$object" || true
+            rclone copyto "$JOJO_DELIVERY_REMOTE/$object" "$RUNNER_TEMP/previous-delivery/$object"
           done < "$RUNNER_TEMP/process-dates.txt"
 
       - name: Build per-source Delivery and global timeline
@@ -233,7 +232,7 @@ jobs:
           fi
           rclone copy "$delivery/content/newspapers" "$JOJO_DELIVERY_REMOTE/content/newspapers" \
             --include '*/articles/*.jox' --include '*/assets/*.jox' \
-            --checksum --no-traverse --transfers 16 --header-upload "X-Bz-Info-b2-cache-control: $immutable_cache_control"
+            --checksum --immutable --no-traverse --transfers 16 --header-upload "X-Bz-Info-b2-cache-control: $immutable_cache_control"
           rclone copy "$delivery/content/newspapers" "$JOJO_DELIVERY_REMOTE/content/newspapers" \
             --include '*/dates/**/*.jox' --include '*/index.jox' \
             --checksum --no-traverse --transfers 8 --header-upload "X-Bz-Info-b2-cache-control: $mutable_cache_control"

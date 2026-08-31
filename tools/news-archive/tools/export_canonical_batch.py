@@ -162,6 +162,7 @@ def export_batch(
     raw_revision: str,
     raw_run_id: str,
     raw_run_manifest: str,
+    statistics: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     if not raw_revision.strip() or not raw_run_id.strip():
         raise ValueError("raw revision and run id must be non-empty")
@@ -169,8 +170,13 @@ def export_batch(
     if not run_manifest.startswith("raw/archive/") or not run_manifest.endswith(".json"):
         raise ValueError("Raw run manifest must be a JSON object below raw/archive/")
 
+    unique_records = sorted(set(record_objects))
+    rejected_records = 0
+    accepted_candidates = 0
+    rejection_reasons: dict[str, int] = {}
+    rejected_examples: list[dict[str, object]] = []
     selected: dict[tuple[str, str], dict[str, Any]] = {}
-    for record_object in sorted(set(record_objects)):
+    for record_object in unique_records:
         raw_root = _raw_root_object(record_object)
         record_path = _local_object(root, record_object)
         if not record_path.is_file():
@@ -194,6 +200,13 @@ def export_batch(
         )
         issues = _qa_issues(capture, article)
         if issues:
+            rejected_records += 1
+            if len(rejected_examples) < 20:
+                rejected_examples.append(
+                    {"recordObject": record_object, "issues": sorted(issues)}
+                )
+            for issue in issues:
+                rejection_reasons[issue] = rejection_reasons.get(issue, 0) + 1
             continue
         source_id = _source_id(capture)
         published_at = article.published_at
@@ -226,6 +239,7 @@ def export_batch(
             "_capture": capture,
             "_article": article,
         }
+        accepted_candidates += 1
         key = (source_id, article.canonical_url)
         previous = selected.get(key)
         if previous is None or _candidate_score(row) > _candidate_score(previous):
@@ -237,7 +251,7 @@ def export_batch(
     output: list[dict[str, Any]] = []
     for row in selected.values():
         output.append({key: value for key, value in row.items() if not key.startswith("_")})
-    return sorted(
+    output = sorted(
         output,
         key=lambda row: (
             str(row["sourceId"]),
@@ -246,6 +260,19 @@ def export_batch(
             str(row["rawHtmlObject"]),
         ),
     )
+    if statistics is not None:
+        statistics.update(
+            {
+                "inputRecords": len(unique_records),
+                "acceptedCandidates": accepted_candidates,
+                "duplicateCandidates": accepted_candidates - len(output),
+                "rejectedRecords": rejected_records,
+                "rejectionReasons": dict(sorted(rejection_reasons.items())),
+                "rejectedExamples": rejected_examples,
+                "articles": len(output),
+            }
+        )
+    return output
 
 
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -271,20 +298,32 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--raw-run-id", required=True)
     parser.add_argument("--raw-run-manifest", required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--report", type=Path)
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    statistics: dict[str, Any] = {}
     rows = export_batch(
         root=args.root,
         record_objects=_record_objects(args.record_list),
         raw_revision=args.raw_revision,
         raw_run_id=args.raw_run_id,
         raw_run_manifest=args.raw_run_manifest,
+        statistics=statistics,
     )
     write_jsonl(args.output, rows)
-    print(json.dumps({"output": str(args.output), "articles": len(rows)}))
+    report = {"output": str(args.output), **statistics}
+    if args.report is not None:
+        encoded = (
+            json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        ).encode("utf-8")
+        args.report.parent.mkdir(parents=True, exist_ok=True)
+        temporary = args.report.with_suffix(args.report.suffix + ".tmp")
+        temporary.write_bytes(encoded)
+        temporary.replace(args.report)
+    print(json.dumps(report, ensure_ascii=False, sort_keys=True))
     return 0
 
 

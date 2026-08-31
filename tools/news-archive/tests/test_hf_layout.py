@@ -96,6 +96,7 @@ def test_completion_sidecars_are_published_after_other_state():
     prefix = "raw/archive/v1/ap/2010-2026/sitemap-wayback"
     assert archive_phase(f"{prefix}/raw/records/aa/a.json") == ArchivePhase.IMMUTABLE
     assert archive_phase(f"{prefix}/catalog/manifest.jsonl.gz") == ArchivePhase.CATALOG
+    assert archive_phase(f"{prefix}/audit/deletion-receipt.json") == ArchivePhase.CHECKPOINT
     assert archive_phase(f"{prefix}/state/capture.sqlite3.gz") == ArchivePhase.CHECKPOINT
     assert archive_phase(f"{prefix}/state/wayback-yahoo-summary.json") == ArchivePhase.COMPLETION
 

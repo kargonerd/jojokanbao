@@ -85,8 +85,29 @@ cd ../..
 
 ## HF migration batches
 
+`B2_ARCHIVE_*` is a local, one-time read-only migration credential. It is not
+used by a persistent Actions runner. The B2 application key itself must be
+restricted server-side to the archive bucket/prefix with list/read permissions
+only. Plan a bounded batch before copying it:
+
+```bash
+python tools/news-archive/tools/stage_legacy_b2_batch.py \
+  --legacy-b2-prefix news-archive/v1/bloomberg/2020-2020/legacy-wayback \
+  --output-dir .archive-work/bloomberg-2020 \
+  --manifest-dir .archive-work/bloomberg-2020-manifests \
+  --max-files 2500 --max-bytes 250000000
+```
+
+Add `--execute` only after reviewing the exact object/byte count. The staging
+command never writes to or deletes from B2. It downloads one complete
+publisher/window/mode or cohort/publisher/year batch, then performs the same
+deep verification described below. A v2 batch with SQLite references into an
+already migrated v1 corpus supplies its verified v1 file sets with repeated
+`--available-file-manifest` arguments.
+
 Downloaded legacy B2 prefixes are inventoried into four exact file sets. The
-order is immutable Raw, catalog, checkpoint, then completion marker:
+order is immutable Raw, catalog, checkpoint (including small migration audit
+receipts), then a non-empty completion-summary phase:
 
 ```bash
 python tools/news-archive/tools/prepare_hf_archive_batch.py \
@@ -103,15 +124,46 @@ pass previously verified v1 file sets with repeated
 `--available-file-manifest` arguments so references can be checked without
 downloading the same Raw corpus again.
 
+After those four uploads, `tools/write_hf_archive_run_manifest.py` records each
+phase revision and packages the run manifest together with copies of all four
+exact file sets below `raw/archive/runs/`. Upload that five-file run bundle and
+use its resulting HF revision as the parser-replay revision. Canonical input is
+rejected if the run object, phase file sets, hashes, or selected Raw prefix do
+not match. `migrationComplete: true` means the exact B2 snapshot was copied and
+verified; it does not claim that the source crawl or parser-validation target
+inside that snapshot had already converged.
+
+Every `hf --action upload-files` call requires the exact current
+`--expected-parent-revision`, one exact batch `--allowed-prefix`, and an explicit
+`--existing-policy`. Immutable Raw, run-bundle, and archive-asset objects cannot
+use `replace`: an identical existing object is skipped and different bytes fail.
+The four phase revisions and the fifth run-bundle revision are distinct; the
+latter is passed to Canonical prepare as `--replay-revision` and must match every
+input row.
+
+`tools/prepare_hf_archive_replay.py` rewrites an immutable file set so both its
+local and remote paths use final HF object names. This exact manifest is used
+to download a parser-replay workspace. For a local canary, `--materialize`
+creates hard links where possible and does not duplicate Raw bytes.
+
 ## Canonical bridge
 
 `tools/export_canonical_batch.py` replays verified Raw capture records through
 the historical parser and emits only QA-passing `jojo-news-canonical-input/1`
-rows. `@jojo/times-pipeline archive-canonical --action prepare` then builds
-semantic HTML and an exact HF file-set for selected image bytes. Upload that
+rows. Its optional `--report` records input, accepted, duplicate, rejected, and
+per-reason counts. `@jojo/times-pipeline archive-canonical --action prepare`
+requires the pinned fifth-commit `--replay-revision`, then builds semantic HTML
+and an exact HF file-set for selected image bytes. Upload that
 Raw image file-set first. Finally, `--action write` pins the resulting HF Raw
 revision, restores affected existing date indexes, and writes the shared
 `jojo-news-article/2` Canonical objects and their exact upload file-set.
+Publish that file-set with `hf --action upload-archive-canonical`, using the
+report's `rawRevision` as `--expected-parent-revision`. This dedicated action
+accepts only the exact sources, articles, dates, dataset descriptors, and
+deterministic run report named by the report. It replaces date indexes and
+dataset descriptors in one parent-locked commit, while an existing article or
+run report with different bytes fails closed. Article `contentHash` is not a
+whole-file checksum, so overlaps are never overwritten automatically.
 
 The bridge never requests images classified by the parser as advertisements,
 logos, avatars, recommendations, icons, or tracking assets. A failed editorial

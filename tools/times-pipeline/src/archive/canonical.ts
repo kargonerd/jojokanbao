@@ -34,12 +34,40 @@ interface ArchiveDependentResource {
 }
 
 interface ArchiveCaptureRecord {
+  publisher: string;
   canonicalUrl: string;
   retrievedAt: string;
   finalUrl: string;
   qualityScore: number;
   selectedCandidate: { provider: string };
+  rawHtml: ArchiveBlobReference;
   dependentResources: ArchiveDependentResource[];
+}
+
+interface ArchiveRawRunManifest {
+  formatVersion?: unknown;
+  runId?: unknown;
+  migrationComplete?: unknown;
+  legacyB2Prefix?: unknown;
+  hfPrefix?: unknown;
+  sourceRevision?: unknown;
+  phases?: unknown;
+  objects?: unknown;
+  source?: unknown;
+}
+
+interface ArchiveRawRunFile {
+  size: number;
+  sha256: string;
+  required: boolean;
+}
+
+export interface ArchiveRawRunValidation {
+  runId: string;
+  hfPrefix: string;
+  publisher: string;
+  sourceRevision: string;
+  immutableFiles: ReadonlyMap<string, ArchiveRawRunFile>;
 }
 
 type ArchiveBlockType = "paragraph" | "heading" | "image" | "quote" | "list" | "table" | "embed" | "divider";
@@ -159,6 +187,14 @@ const ARCHIVE_ONLY_SOURCES: Record<string, Omit<SourceConfig, "enabled">> = {
   },
 };
 
+export function isArchiveOnlySource(sourceId: string): boolean {
+  return Object.prototype.hasOwnProperty.call(ARCHIVE_ONLY_SOURCES, sourceId);
+}
+
+export function archiveOnlySourceIds(): string[] {
+  return Object.keys(ARCHIVE_ONLY_SOURCES).sort();
+}
+
 function objectValue(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} must be an object`);
   return value as Record<string, unknown>;
@@ -195,6 +231,147 @@ function localObjectPath(workspace: string, objectName: string): string {
     throw new Error(`Archive object escapes the workspace: ${objectName}`);
   }
   return target;
+}
+
+type ArchiveRawPhase = "immutable" | "catalog" | "checkpoint" | "completion";
+
+function archiveRawPhase(objectName: string, hfPrefix: string): ArchiveRawPhase | undefined {
+  const prefix = `${hfPrefix}/`;
+  if (!objectName.startsWith(prefix)) return undefined;
+  const [area, ...relative] = objectName.slice(prefix.length).split("/");
+  if (area === "raw" && relative.length >= 2 && ["objects", "records"].includes(relative[0]!)) {
+    return "immutable";
+  }
+  if (area === "catalog" && relative.length > 0) return "catalog";
+  if (area === "audit" && relative.length > 0) return "checkpoint";
+  if (area === "state" && relative.length > 0) {
+    const filename = relative[0]!;
+    if (relative.length === 1 && (filename === "summary.json" || filename.endsWith("-summary.json"))) {
+      return "completion";
+    }
+    return "checkpoint";
+  }
+  return undefined;
+}
+
+async function validateRawRunManifest(
+  workspace: string,
+  rawRunManifest: string,
+): Promise<ArchiveRawRunValidation> {
+  if (!/^raw\/archive\/runs\/\d{4}\/\d{2}\/\d{2}\/[a-z0-9][a-z0-9.-]*\/manifest\.json$/u.test(rawRunManifest)) {
+    throw new Error(`${rawRunManifest}: historical Raw run manifest has an invalid object path`);
+  }
+  let manifest: ArchiveRawRunManifest;
+  try {
+    manifest = JSON.parse(await readFile(localObjectPath(workspace, rawRunManifest), "utf8")) as ArchiveRawRunManifest;
+  } catch (error) {
+    throw new Error(`${rawRunManifest}: historical Raw run manifest is missing or invalid`, { cause: error });
+  }
+  const pathRunId = rawRunManifest.split("/").at(-2);
+  const source = objectValue(manifest.source, "Raw run source");
+  const publisher = requiredString(source.publisher, "Raw run source publisher");
+  const window = requiredString(source.window, "Raw run source window");
+  const mode = requiredString(source.mode, "Raw run source mode");
+  if (
+    manifest.formatVersion !== "jojo-news-archive-raw-run/1"
+    || manifest.migrationComplete !== true
+    || typeof manifest.runId !== "string"
+    || pathRunId !== manifest.runId
+    || typeof manifest.hfPrefix !== "string"
+    || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(publisher)
+    || !/^\d{4}-\d{4}$/u.test(window)
+    || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(mode)
+    || manifest.legacyB2Prefix !== `news-archive/v1/${publisher}/${window}/${mode}`
+    || manifest.hfPrefix !== `raw/archive/v1/${publisher}/${window}/${mode}`
+    || typeof manifest.sourceRevision !== "string"
+    || !/^[a-f0-9]{40}$/u.test(manifest.sourceRevision)
+  ) {
+    throw new Error(`${rawRunManifest}: historical Raw run manifest is invalid`);
+  }
+  const prefix = `${manifest.hfPrefix}/`;
+  const phaseOrder = ["immutable", "catalog", "checkpoint", "completion"] as const;
+  if (!Array.isArray(manifest.phases) || manifest.phases.length !== phaseOrder.length) {
+    throw new Error(`${rawRunManifest}: historical Raw run has no complete phase provenance`);
+  }
+  const runRoot = rawRunManifest.slice(0, -"/manifest.json".length);
+  const objectNames = new Set<string>();
+  const immutableFiles = new Map<string, ArchiveRawRunFile>();
+  let totalFiles = 0;
+  let totalBytes = 0;
+  for (const [index, expectedPhase] of phaseOrder.entries()) {
+    const row = objectValue(manifest.phases[index], `Raw run ${expectedPhase} phase`);
+    const fileSet = row.fileSet;
+    const fileSetSha256 = row.fileSetSha256;
+    const revision = row.revision;
+    const expectedFileSet = `${runRoot}/file-sets/0${index + 1}-${expectedPhase}.json`;
+    if (
+      row.phase !== expectedPhase
+      || fileSet !== expectedFileSet
+      || typeof fileSetSha256 !== "string"
+      || !/^[a-f0-9]{64}$/u.test(fileSetSha256)
+      || typeof revision !== "string"
+      || !/^[a-f0-9]{40}$/u.test(revision)
+      || (expectedPhase === "completion" && revision !== manifest.sourceRevision)
+    ) {
+      throw new Error(`${rawRunManifest}: historical Raw ${expectedPhase} phase is invalid`);
+    }
+    let fileSetBytes: Buffer;
+    let files: unknown[];
+    try {
+      fileSetBytes = await readFile(localObjectPath(workspace, fileSet));
+      const payload = JSON.parse(fileSetBytes.toString("utf8")) as { formatVersion?: unknown; files?: unknown };
+      if (payload.formatVersion !== "jojo-hf-file-set/1" || !Array.isArray(payload.files)) throw new Error("invalid file set");
+      files = payload.files;
+    } catch (error) {
+      throw new Error(`${rawRunManifest}: historical Raw ${expectedPhase} file set is missing or invalid`, { cause: error });
+    }
+    if (createHash("sha256").update(fileSetBytes).digest("hex") !== fileSetSha256) {
+      throw new Error(`${rawRunManifest}: historical Raw ${expectedPhase} file-set checksum mismatch`);
+    }
+    if (expectedPhase === "completion" && files.length === 0) {
+      throw new Error(`${rawRunManifest}: historical Raw run has no completion summary`);
+    }
+    let phaseBytes = 0;
+    for (const [fileIndex, value] of files.entries()) {
+      const file = objectValue(value, `Raw run ${expectedPhase} file ${fileIndex}`);
+      const objectName = requiredString(file.objectName, `Raw run ${expectedPhase} objectName`);
+      const sha256 = requiredString(file.sha256, `Raw run ${expectedPhase} sha256`);
+      const size = file.size;
+      safeObjectName(objectName, `Raw run ${expectedPhase} objectName`);
+      if (
+        !objectName.startsWith(prefix)
+        || archiveRawPhase(objectName, manifest.hfPrefix) !== expectedPhase
+        || !/^[a-f0-9]{64}$/u.test(sha256)
+        || !Number.isSafeInteger(size)
+        || (size as number) < 0
+        || typeof file.required !== "boolean"
+        || objectNames.has(objectName)
+      ) {
+        throw new Error(`${rawRunManifest}: historical Raw ${expectedPhase} file set contains an invalid object`);
+      }
+      objectNames.add(objectName);
+      phaseBytes += size as number;
+      if (expectedPhase === "immutable") {
+        immutableFiles.set(objectName, { size: size as number, sha256, required: file.required });
+      }
+    }
+    if (row.files !== files.length || row.bytes !== phaseBytes) {
+      throw new Error(`${rawRunManifest}: historical Raw ${expectedPhase} totals do not match its file set`);
+    }
+    totalFiles += files.length;
+    totalBytes += phaseBytes;
+  }
+  const objects = objectValue(manifest.objects, "Raw run object totals");
+  if (objects.files !== totalFiles || objects.bytes !== totalBytes || totalFiles === 0) {
+    throw new Error(`${rawRunManifest}: historical Raw object totals do not match its phase file sets`);
+  }
+  return {
+    runId: manifest.runId,
+    hfPrefix: manifest.hfPrefix,
+    publisher,
+    sourceRevision: manifest.sourceRevision,
+    immutableFiles,
+  };
 }
 
 function rawRootObject(recordObject: string): string {
@@ -409,7 +586,9 @@ export function parseArchiveCanonicalInput(value: unknown): ArchiveCanonicalInpu
     ["sourceId", parsed.sourceId], ["publisher", parsed.publisher], ["canonicalUrl", parsed.canonicalUrl],
     ["recordObject", parsed.recordObject], ["rawHtmlObject", parsed.rawHtmlObject], ["rawRevision", parsed.rawRevision],
     ["rawRunId", parsed.rawRunId], ["rawRunManifest", parsed.rawRunManifest],
-    ["captureRecord.canonicalUrl", capture.canonicalUrl], ["captureRecord.retrievedAt", capture.retrievedAt],
+    ["captureRecord.publisher", capture.publisher], ["captureRecord.canonicalUrl", capture.canonicalUrl],
+    ["captureRecord.retrievedAt", capture.retrievedAt],
+    ["captureRecord.rawHtml.path", capture.rawHtml?.path], ["captureRecord.rawHtml.sha256", capture.rawHtml?.sha256],
     ["parserResult.canonicalUrl", article.canonicalUrl], ["parserResult.headline", article.headline],
     ["parserResult.publishedAt", article.publishedAt], ["parserResult.extraction.parserVersion", article.extraction?.parserVersion],
   ] as const) requiredString(item, label);
@@ -424,8 +603,14 @@ export function parseArchiveCanonicalInput(value: unknown): ArchiveCanonicalInpu
   if (
     parsed.canonicalUrl !== capture.canonicalUrl
     || parsed.canonicalUrl !== article.canonicalUrl
+    || parsed.publisher !== capture.publisher
     || validation.parserVersion !== article.extraction.parserVersion
   ) throw new Error(`${parsed.recordObject}: historical parser provenance does not match the capture`);
+  if (
+    !/^[a-f0-9]{64}$/u.test(validation.sourceRawSha256)
+    || validation.sourceRawSha256 !== capture.rawHtml.sha256
+    || blobObject(parsed.recordObject, capture.rawHtml) !== parsed.rawHtmlObject
+  ) throw new Error(`${parsed.recordObject}: historical Raw HTML provenance does not match the capture`);
   if (article.quality?.status !== "complete" || validation.qaPass !== true || validation.issues?.length !== 0) {
     throw new Error(`${parsed.recordObject}: historical parser QA has not passed`);
   }
@@ -519,8 +704,32 @@ export async function prepareArchiveRow(options: {
   workspace: string;
   download: ArchiveAssetDownload;
   imageConcurrency?: number;
+  runManifestValidationCache?: Map<string, Promise<ArchiveRawRunValidation>>;
 }): Promise<PreparedArchiveRow> {
   const input = parseArchiveCanonicalInput(options.value);
+  const validationKey = `${path.resolve(options.workspace)}\0${input.rawRunManifest}`;
+  let validation = options.runManifestValidationCache?.get(validationKey);
+  if (!validation) {
+    validation = validateRawRunManifest(options.workspace, input.rawRunManifest);
+    options.runManifestValidationCache?.set(validationKey, validation);
+  }
+  const rawRun = await validation;
+  const prefix = `${rawRun.hfPrefix}/`;
+  const record = rawRun.immutableFiles.get(input.recordObject);
+  const rawHtml = rawRun.immutableFiles.get(input.rawHtmlObject);
+  const sourceMatchesPublisher = input.sourceId === rawRun.publisher
+    || (rawRun.publisher === "nikkei" && input.sourceId === "nikkei-japan");
+  if (
+    rawRun.runId !== input.rawRunId
+    || input.publisher !== rawRun.publisher
+    || !sourceMatchesPublisher
+    || !input.recordObject.startsWith(prefix)
+    || !input.rawHtmlObject.startsWith(prefix)
+    || !record?.required
+    || !rawHtml?.required
+  ) {
+    throw new Error(`${input.recordObject}: historical Raw run manifest does not match the Canonical input`);
+  }
   const source = archiveSourceConfig(input.sourceId, options.sources);
   const images = await captureImages({
     input,

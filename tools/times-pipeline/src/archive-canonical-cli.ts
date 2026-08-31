@@ -10,6 +10,7 @@ import {
   deduplicatePreparedRows,
   prepareArchiveRow,
   writeArchiveCanonical,
+  type ArchiveRawRunValidation,
   type PreparedArchiveRow,
 } from "./archive/canonical.js";
 import { downloadDirectAsset } from "./capture/http.js";
@@ -133,14 +134,25 @@ async function prepare(args: Map<string, string>): Promise<Record<string, unknow
   const workspace = path.resolve(requiredArg(args, "output"));
   const sources = await loadSources(path.resolve(requiredArg(args, "config")));
   const values = await readJsonLines(requiredArg(args, "input"));
+  const replayRevision = requiredArg(args, "replay-revision");
+  if (!/^[a-f0-9]{40}$/u.test(replayRevision)) {
+    throw new Error("Replay revision must be a 40-character lowercase SHA");
+  }
+  for (const value of values) {
+    if (!value || typeof value !== "object" || Array.isArray(value) || (value as Record<string, unknown>).rawRevision !== replayRevision) {
+      throw new Error("Canonical input does not match the pinned HF replay revision");
+    }
+  }
   const articleWorkers = positiveInteger(args.get("article-workers"), 4, "Article workers");
   const imageWorkers = positiveInteger(args.get("image-workers"), 4, "Image workers");
   const timeout = positiveInteger(args.get("image-timeout-seconds"), 30, "Image timeout seconds");
+  const runManifestValidationCache = new Map<string, Promise<ArchiveRawRunValidation>>();
   const prepared = deduplicatePreparedRows(await mapLimit(values, articleWorkers, async (value) => prepareArchiveRow({
     value,
     sources,
     workspace,
     imageConcurrency: imageWorkers,
+    runManifestValidationCache,
     download: (url, referer) => downloadDirectAsset(url, referer, timeout),
   })));
   const preparedOutput = path.resolve(requiredArg(args, "prepared-output"));

@@ -157,6 +157,11 @@ def archive_phase(object_name: str) -> ArchivePhase:
             return ArchivePhase.IMMUTABLE
         if area == "catalog" and relative:
             return ArchivePhase.CATALOG
+        if area == "audit" and relative:
+            # Small migration/deletion receipts explain deliberate gaps in the
+            # Raw corpus. Publish them with mutable checkpoint metadata, before
+            # the completion marker, instead of silently dropping provenance.
+            return ArchivePhase.CHECKPOINT
         if area == "state" and relative:
             return (
                 ArchivePhase.COMPLETION
@@ -658,6 +663,9 @@ def verify_archive_batch(
                 f"{manifest_paths[phase]} contains objects from the wrong phase: {wrong[0]}"
             )
         loaded[phase] = entries
+
+    if not loaded[ArchivePhase.COMPLETION]:
+        raise ValueError("archive batch has no completion summary")
 
     all_entries = tuple(
         entry for phase in PHASE_ORDER for entry in loaded[phase]
