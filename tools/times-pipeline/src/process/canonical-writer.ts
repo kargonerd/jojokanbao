@@ -4,6 +4,7 @@ import path from "node:path";
 import { load } from "cheerio";
 import { sha256 } from "../identity.js";
 import { removeParserArtifacts } from "../text.js";
+import type { StaleCanonicalBodyClassifier, StaleCanonicalRemovalReason } from "../sources/contracts.js";
 import type { CapturedAsset, Candidate, PublisherSectionRef, SourceCaptureManifest, SourceConfig } from "../types.js";
 import type { ProcessedCandidate } from "./article.js";
 
@@ -83,11 +84,15 @@ export interface CanonicalWriteResult {
     title: string;
     canonicalUrl: string;
     publishedAt: string;
-    reason: "hard-paywall" | "unsupported-media" | "duplicate-live-update" | "full-text-missing";
+    reason: "hard-paywall" | "unsupported-media" | "duplicate-live-update" | "full-text-missing" | StaleCanonicalRemovalReason;
     contentStatus: Candidate["contentStatus"];
     captureStatus?: Candidate["captureStatus"];
     captureHttpStatus?: number;
   }>;
+}
+
+export interface CanonicalWriteOptions {
+  classifyStaleCanonicalBody?: StaleCanonicalBodyClassifier;
 }
 
 function cleanedBody(value: string | undefined, candidate: ProcessedCandidate): string | undefined {
@@ -200,6 +205,68 @@ async function existingDate(target: string): Promise<CanonicalDateIndex | undefi
   }
 }
 
+function localCanonicalPath(output: string, objectName: string): string {
+  const normalized = objectName.replaceAll("\\", "/");
+  if (normalized.startsWith("/") || normalized.split("/").includes("..")) {
+    throw new Error(`Unsafe Canonical object path: ${objectName}`);
+  }
+  const root = path.resolve(output);
+  const target = path.resolve(root, ...normalized.split("/"));
+  if (target !== root && !target.startsWith(`${root}${path.sep}`)) {
+    throw new Error(`Unsafe Canonical object path: ${objectName}`);
+  }
+  return target;
+}
+
+async function previousCanonicalBody(
+  output: string,
+  source: SourceConfig,
+  candidate: ProcessedCandidate,
+): Promise<string | undefined> {
+  const date = new Date(candidate.publishedAt).toISOString().slice(0, 10);
+  const [year, month] = date.split("-");
+  if (!year || !month) return undefined;
+  const index = await existingDate(path.join(output, "canonical", source.id, "dates", year, month, `${date}.json.gz`));
+  const object = index?.articles.find((article) => article.articleId === candidate.articleId)?.object;
+  if (!object) return undefined;
+  const normalized = object.replaceAll("\\", "/");
+  const expectedRoot = `canonical/${source.id}/articles/`;
+  if (!normalized.startsWith(expectedRoot) || !normalized.endsWith(".json.gz")) {
+    throw new Error(`Invalid Canonical article object for ${candidate.articleId}: ${object}`);
+  }
+  try {
+    const article = JSON.parse(gunzipSync(await readFile(localCanonicalPath(output, normalized))).toString("utf8")) as {
+      articleId?: unknown;
+      body?: { value?: unknown };
+    };
+    if (article.articleId !== candidate.articleId || typeof article.body?.value !== "string") return undefined;
+    return article.body.value.trim() ? article.body.value : undefined;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+function hasPublisherTruncatedAccessOffer(candidate: ProcessedCandidate): boolean {
+  return candidate.bodyAssessment?.attempts.some((attempt) => (
+    attempt.extractionPath === "publisher-extractor"
+      && attempt.completeness === "truncated"
+      && attempt.verdict === "rejected"
+      && attempt.rejectReason === "publisher-truncated"
+      && attempt.evidence?.kind === "access-offer"
+  )) ?? false;
+}
+
+function missingBodyReason(candidate: ProcessedCandidate): CanonicalWriteResult["skippedArticles"][number]["reason"] {
+  return candidate.captureStatus === "duplicate"
+    ? "duplicate-live-update"
+    : candidate.captureStatus === "hard-paywall"
+      ? "hard-paywall"
+      : candidate.captureStatus === "skipped"
+        ? "unsupported-media"
+        : "full-text-missing";
+}
+
 export async function writeCanonicalSource(
   output: string,
   source: SourceConfig,
@@ -207,6 +274,7 @@ export async function writeCanonicalSource(
   manifestObject: string,
   candidates: ProcessedCandidate[],
   rawRevision: string,
+  options: CanonicalWriteOptions = {},
 ): Promise<CanonicalWriteResult> {
   const sourceRoot = path.join(output, "canonical", source.id);
   await mkdir(sourceRoot, { recursive: true });
@@ -240,23 +308,25 @@ export async function writeCanonicalSource(
         });
         continue;
       }
+      let reason = missingBodyReason(candidate);
+      if (reason === "full-text-missing"
+        && options.classifyStaleCanonicalBody
+        && hasPublisherTruncatedAccessOffer(candidate)) {
+        const previousBody = await previousCanonicalBody(output, source, candidate);
+        const classified = previousBody ? options.classifyStaleCanonicalBody(previousBody) : undefined;
+        if (classified) reason = classified;
+      }
       skippedArticles.push({
         articleId: candidate.articleId,
         title: candidate.title,
         canonicalUrl: candidate.canonicalUrl,
         publishedAt: candidate.publishedAt,
-        reason: candidate.captureStatus === "duplicate"
-          ? "duplicate-live-update"
-          : candidate.captureStatus === "hard-paywall"
-          ? "hard-paywall"
-          : candidate.captureStatus === "skipped"
-            ? "unsupported-media"
-            : "full-text-missing",
+        reason,
         contentStatus: candidate.contentStatus,
         ...(candidate.captureStatus ? { captureStatus: candidate.captureStatus } : {}),
         ...(candidate.captureHttpStatus !== undefined ? { captureHttpStatus: candidate.captureHttpStatus } : {}),
       });
-      if (candidate.captureStatus === "skipped" || candidate.captureStatus === "duplicate") {
+      if (reason === "unsupported-media" || reason === "duplicate-live-update" || reason === "stale-publisher-access-offer") {
         const date = new Date(candidate.publishedAt).toISOString().slice(0, 10);
         removedByDate.set(date, new Set([...(removedByDate.get(date) ?? []), candidate.articleId]));
       }
