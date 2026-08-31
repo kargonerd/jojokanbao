@@ -45,6 +45,9 @@
     "turbo": "^2.4.0"
   },
   "pnpm": {
+    "overrides": {
+      "cheerio@1.2.0>undici": "8.10.0"
+    },
     "patchedDependencies": {
       "pdfjs-dist@5.7.284": "frontend/patches/pdfjs-dist@5.7.284.patch"
     }
