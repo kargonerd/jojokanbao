@@ -25,6 +25,7 @@ interface SearchContentTypeOption {
   allLabel: string;
   types: readonly string[];
   supportsDate: boolean;
+  supportsSort: boolean;
 }
 
 interface SearchDatasetOption {
@@ -81,11 +82,12 @@ const SEARCH_CONTENT_TYPES: readonly SearchContentTypeOption[] = [
   {
     value: "periodical",
     label: "报刊",
-    sourceLabel: "报刊来源",
+    sourceLabel: "报刊",
     selectLabel: "选择报刊",
     allLabel: "全部报刊",
     types: ["newspaper", "magazine"],
     supportsDate: true,
+    supportsSort: true,
   },
   {
     value: "book",
@@ -95,6 +97,7 @@ const SEARCH_CONTENT_TYPES: readonly SearchContentTypeOption[] = [
     allLabel: "全部书籍",
     types: ["book"],
     supportsDate: false,
+    supportsSort: false,
   },
 ];
 
@@ -201,10 +204,10 @@ function buildSearchParams({
 }): URLSearchParams {
   const query = new URLSearchParams({ keyword: keyword.trim() });
   if (page > 1) query.set("page", String(page));
-  if (sort) query.set("sort", sort);
+  if (sort && (!contentType || SEARCH_CONTENT_TYPE_BY_ID[contentType].supportsSort)) query.set("sort", sort);
   if (contentType === "book") query.set("type", "book");
   if (datasetId) query.set("dataset", datasetId);
-  if (startDate && endDate) {
+  if (startDate && endDate && (!contentType || SEARCH_CONTENT_TYPE_BY_ID[contentType].supportsDate)) {
     query.set("startDate", startDate);
     query.set("endDate", endDate);
   }
@@ -306,12 +309,13 @@ export function SearchPage({
   useEffect(() => {
     const keyword = (params.get("keyword") || "").trim();
     const nextPage = parsePage(params.get("page"));
-    const nextSort = normalizeSort(params.get("sort"));
     const nextContentType = platformRedesign ? normalizeContentType(params.get("type")) : "periodical";
+    const contentTypeOption = SEARCH_CONTENT_TYPE_BY_ID[nextContentType];
+    const nextSort = contentTypeOption.supportsSort ? normalizeSort(params.get("sort")) : "";
     const nextDatasetId = platformRedesign
       ? normalizeDatasetId(params.get("dataset"), nextContentType)
       : "";
-    const supportsDate = SEARCH_CONTENT_TYPE_BY_ID[nextContentType].supportsDate;
+    const supportsDate = contentTypeOption.supportsDate;
     const nextStartDate = supportsDate ? params.get("startDate") || "" : "";
     const nextEndDate = supportsDate ? params.get("endDate") || "" : "";
 
@@ -484,7 +488,10 @@ export function SearchPage({
     setContentType(nextContentType);
     setDatasetId("");
     setPage(1);
-    const supportsDate = SEARCH_CONTENT_TYPE_BY_ID[nextContentType].supportsDate;
+    const nextContentTypeOption = SEARCH_CONTENT_TYPE_BY_ID[nextContentType];
+    const supportsDate = nextContentTypeOption.supportsDate;
+    const nextSort = nextContentTypeOption.supportsSort ? sort : "";
+    setSort(nextSort);
     if (!supportsDate) {
       setStartDate("");
       setEndDate("");
@@ -492,7 +499,7 @@ export function SearchPage({
     setParams(buildSearchParams({
       keyword: term,
       page: 1,
-      sort,
+      sort: nextSort,
       startDate: supportsDate ? startDate : "",
       endDate: supportsDate ? endDate : "",
       contentType: nextContentType,
@@ -612,15 +619,18 @@ export function SearchPage({
                     ...period,
                     endDate: period.endDate || latestAvailableDate,
                   }))}
+                  widthClassName="w-full sm:w-[250px]"
                 />
               )}
-              <Select
-                ariaLabel="排序"
-                value={sort}
-                options={SORT_OPTIONS}
-                onChange={handleSortChange}
-                className="w-[150px]"
-              />
+              {(!platformRedesign || contentTypeOption.supportsSort) && (
+                <Select
+                  ariaLabel="排序"
+                  value={sort}
+                  options={SORT_OPTIONS}
+                  onChange={handleSortChange}
+                  className="w-[150px]"
+                />
+              )}
             </div>
           </section>
 

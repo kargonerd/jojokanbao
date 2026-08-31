@@ -202,11 +202,13 @@ describe("SearchPage results", () => {
   });
 
   it("applies the two-level periodical and book scope filters", async () => {
-    renderSearch("/search?keyword=刘少奇&startDate=19660701&endDate=19660731", true);
+    renderSearch("/search?keyword=刘少奇&sort=timeDesc&startDate=19660701&endDate=19660731", true);
 
     await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1));
     expect(screen.getByRole("tab", { name: "报刊" }).getAttribute("aria-selected")).toBe("true");
     const periodicalSelect = screen.getByRole("combobox", { name: "选择报刊" });
+    expect(periodicalSelect.textContent).toContain("报刊");
+    expect(periodicalSelect.textContent).not.toContain("来源");
     fireEvent.click(periodicalSelect);
     expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["全部报刊", "人民日报"]);
     fireEvent.click(periodicalSelect);
@@ -221,7 +223,9 @@ describe("SearchPage results", () => {
     });
     expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).not.toHaveProperty("datasetIds");
     expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).not.toHaveProperty("startDate");
+    expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).not.toHaveProperty("sort");
     expect(screen.queryByRole("button", { name: /日期范围/ })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "排序" })).toBeNull();
     expect(screen.getByTestId("location").textContent).toBe("/search?keyword=%E5%88%98%E5%B0%91%E5%A5%87&type=book");
 
     const bookSelect = screen.getByRole("combobox", { name: "选择书籍" });
@@ -256,9 +260,12 @@ describe("SearchPage results", () => {
       }],
     } } });
 
-    renderSearch("/search?keyword=修养&type=book&dataset=mao-selected", true);
+    renderSearch("/search?keyword=修养&type=book&dataset=mao-selected&sort=timeDesc&startDate=19660701&endDate=19660731", true);
 
     const heading = await screen.findByRole("heading", { name: /论共产党员的\s*修养/ });
+    expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).not.toHaveProperty("sort");
+    expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).not.toHaveProperty("startDate");
+    expect(screen.queryByRole("combobox", { name: "排序" })).toBeNull();
     expect(heading.closest("a")?.getAttribute("href")).toBe(
       "/book/mao-selected/volume-1?chapter=chapter-8",
     );
