@@ -5,6 +5,7 @@ import { semanticHtmlBlocks, type BodyQuality } from "../../content/paragraphs.j
 export type FtDocumentElement = ReturnType<CheerioAPI>[number];
 
 const BLOCK_SELECTOR = "p, h2, h3, h4, blockquote, ul, ol, pre";
+const SHARED_REMOVED_SELECTOR = "script, style, nav, footer, header, aside, form, noscript";
 export const FT_BODY_SELECTOR = ".article__content-body, [data-trackable='article-body'], [data-component='article-body']";
 export const FT_STANDFIRST_SELECTOR = ".article__standfirst, .o-topper__standfirst, [data-trackable='standfirst'], [data-component='standfirst']";
 const EXCLUDED_SELECTOR = [
@@ -114,7 +115,8 @@ function articleFallbackAccessOffer(document: CheerioAPI): Extract<FtBodyInspect
     // Match the shared source-selector fallback boundary exactly. Publisher
     // body exclusions are intentionally not applied here because the shared
     // `article` fallback would otherwise accept those same blocks.
-    const values = document(article).find(BLOCK_SELECTOR).toArray();
+    const values = document(article).find(BLOCK_SELECTOR).toArray()
+      .filter((element) => !document(element).closest(SHARED_REMOVED_SELECTOR).length);
     const offer = accessOffer(document, values);
     if (offer) {
       return {

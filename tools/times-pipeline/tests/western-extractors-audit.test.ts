@@ -488,6 +488,27 @@ describe("western publisher extraction audit", () => {
       completeness: "unknown",
       verdict: "accepted",
     });
+
+    const offerOutsideSharedFallback = html.replace("</article></main>", `<aside>
+        <p>Complete digital access to quality FT journalism on any device.</p>
+        <p>Explore our full range of subscriptions.</p>
+        <p>Discover all the plans currently available in your country</p>
+        <p>Digital access for organisations. Includes exclusive features and content.</p>
+      </aside></article></main>`);
+    expect(extractFtBody(offerOutsideSharedFallback, quality, pageUrl)).toBeUndefined();
+    const fallback = assessArticleBody(
+      offerOutsideSharedFallback,
+      ftFetch,
+      quality,
+      extractFtBody,
+      pageUrl,
+      "captured-page",
+    );
+    expect(fallback).toMatchObject({
+      extractionPath: "source-selector",
+      verdict: "accepted",
+    });
+    expect(fallback.body).not.toContain("Explore our full range of subscriptions");
   });
 
   it("extracts Axios Smart Brevity blocks and separators without byline and preferred-source UI", () => {
