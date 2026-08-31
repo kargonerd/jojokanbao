@@ -244,11 +244,6 @@ def _state_with_years(
                     f"https://www.npr.org/{year}/01/01/"
                     f"{year}{suffix:02d}/sample-{suffix}"
                 )
-            elif publisher == "caixin":
-                canonical_url = (
-                    f"https://www.caixin.com/{year}-01-01/"
-                    f"sample-{suffix}.html"
-                )
             else:
                 raise AssertionError(f"unsupported fixture: {publisher}")
             candidate = CaptureCandidate(
@@ -1600,76 +1595,6 @@ def test_validation_capacity_excludes_terminal_capture_errors(
     assert summary["years"]["2020"]["eligibleCandidates"] == 9
 
 
-def test_validation_capacity_ignores_nonarticle_desk_rows(
-    tmp_path: Path,
-):
-    connection = _state_with_years(tmp_path, publisher="caixin")
-    manifest = tmp_path / "caixin-desks.jsonl"
-    rows = [
-        {
-            "publisher": "caixin",
-            "canonical_url": (
-                "https://photos.caixin.com/2020-01-01/"
-                "photo-only.html"
-            ),
-            "published_at": "2020-01-01T00:00:00Z",
-            "candidates": [],
-        },
-        {
-            "publisher": "caixin",
-            "canonical_url": (
-                "https://video.caixin.com/2020-01-01/"
-                "video-only.html"
-            ),
-            "published_at": "2020-01-01T00:00:00Z",
-            "candidates": [],
-        },
-    ]
-    # The helper already loaded ten text-article rows for 2020; append two
-    # non-text desks with a valid archive candidate so they are visible to
-    # capacity accounting but remain ineligible for the article cohort.
-    candidate = CaptureCandidate(
-        provider=CaptureProvider.WAYBACK,
-        snapshot_url="https://web.archive.org/web/20200101000000id_/"
-        "https://photos.caixin.com/2020-01-01/photo-only.html",
-        captured_at=datetime(2020, 1, 1, tzinfo=timezone.utc),
-        mime_type="text/html",
-        status_code=200,
-    )
-    rows[0]["candidates"] = [
-        candidate.model_dump(mode="json", by_alias=True, exclude_none=True)
-    ]
-    rows[1]["candidates"] = [
-        candidate.model_copy(
-            update={
-                "snapshot_url": candidate.snapshot_url.replace(
-                    "photos.caixin.com", "video.caixin.com"
-                )
-            }
-        ).model_dump(mode="json", by_alias=True, exclude_none=True)
-    ]
-    manifest.write_text(
-        "".join(json.dumps(row, default=str) + "\n" for row in rows),
-        encoding="utf-8",
-    )
-    load_capture_manifest(
-        connection,
-        manifest_path=manifest,
-        publisher="caixin",
-    )
-    ensure_parser_validation_plan(
-        connection,
-        publisher="caixin",
-        from_year=2020,
-        to_year=2020,
-        target_per_year=2,
-        reserve_per_year=0,
-        maximum_record_attempts=3,
-    )
-
-    summary = parser_validation_summary(connection)
-    assert summary["years"]["2020"]["eligibleCandidates"] == 10
-    assert summary["years"]["2020"]["planned"] == 2
 
 
 def test_validation_only_requires_validation_prioritization(tmp_path: Path):
@@ -6286,138 +6211,8 @@ def test_malformed_axios_url_alias_does_not_fill_validation_target(
     assert summary["years"]["2025"]["screenedNonArticles"] == 1
 
 
-def test_caixin_photo_desk_does_not_fill_article_validation_target(
-    tmp_path: Path,
-):
-    canonical_url = "https://photos.caixin.com/2010-10-27/100192874.html"
-    connection = sqlite3.connect(":memory:")
-    initialize_parser_validation_schema(connection)
-    connection.execute(
-        """
-        INSERT INTO parser_validation_config(
-            sample_year, target_size, seed, parser_version, qa_revision,
-            updated_at
-            ) VALUES (2010, 1, 'test', 'caixin-parser/0.1.15', 1, 'now')
-        """
-    )
-    connection.execute(
-        """
-        INSERT INTO parser_validation_samples(
-            canonical_url, sample_year, sample_priority, selected_at
-        ) VALUES (?, 2010, 'priority', 'now')
-        """,
-        (canonical_url,),
-    )
-    html = b"""
-    <html><head>
-      <meta property="og:title" content="Caixin photo">
-      <meta property="article:published_time" content="2010-10-27T00:00:00Z">
-      <meta property="og:image" content="http://img.caixin.com/photo.jpg">
-    </head><body><div class="photoShow"><img src="http://img.caixin.com/photo.jpg"></div></body></html>
-    """
-    blob = store_raw_html(tmp_path, html)
-    capture = RawCapture(
-        article_id="caixin:" + ("c" * 64),
-        publisher="caixin",
-        canonical_url=canonical_url,
-        published_at=datetime(2010, 10, 27, tzinfo=timezone.utc),
-        selected_candidate=CaptureCandidate(
-            provider=CaptureProvider.WAYBACK,
-            snapshot_url="https://web.archive.org/web/20101028000000id_/" + canonical_url,
-        ),
-        retrieved_at=datetime.now(timezone.utc),
-        final_url=canonical_url,
-        http_status=200,
-        content_type="text/html",
-        quality_score=100,
-        raw_html=blob,
-    )
-
-    result = record_parser_validation(
-        connection,
-        capture=capture,
-        archive_root=tmp_path,
-    )
-    summary = parser_validation_summary(connection)
-
-    assert result["qaPass"] is False
-    assert "nonarticle-desk" in result["issues"]
-    assert summary["years"]["2010"]["evaluated"] == 0
-    assert summary["years"]["2010"]["screenedNonArticles"] == 1
-    assert summary["years"]["2010"]["qaPassed"] == 0
-    assert summary["ready"] is False
 
 
-def test_caixin_validation_plan_skips_photo_and_video_desks(
-    tmp_path: Path,
-):
-    manifest = tmp_path / "caixin-validation-manifest.jsonl"
-    text_url = "https://china.caixin.com/2010-01-01/100100001.html"
-    photo_url = "https://photos.caixin.com/2010-01-01/100100002.html"
-    video_url = "https://video.caixin.com/2010-01-01/100100003.html"
-    rows = []
-    for url in (text_url, photo_url, video_url):
-        rows.append(
-            {
-                "publisher": "caixin",
-                "canonical_url": url,
-                "published_at": "2010-01-01T00:00:00Z",
-                "candidates": [
-                    CaptureCandidate(
-                        provider=CaptureProvider.WAYBACK,
-                        snapshot_url=(
-                            "https://web.archive.org/web/20100102000000id_/"
-                            + url
-                        ),
-                        captured_at=datetime(
-                            2010,
-                            1,
-                            2,
-                            tzinfo=timezone.utc,
-                        ),
-                        mime_type="text/html",
-                        status_code=200,
-                    ).model_dump(
-                        mode="json",
-                        by_alias=True,
-                        exclude_none=True,
-                    )
-                ],
-            }
-        )
-    manifest.write_text(
-        "".join(json.dumps(row, default=str) + "\n" for row in rows),
-        encoding="utf-8",
-    )
-    connection = sqlite3.connect(":memory:")
-    initialize_capture_schema(
-        connection,
-        publisher="caixin",
-        authorization_reference="authorization:test",
-    )
-    load_capture_manifest(
-        connection,
-        manifest_path=manifest,
-        publisher="caixin",
-    )
-
-    ensure_parser_validation_plan(
-        connection,
-        publisher="caixin",
-        from_year=2010,
-        to_year=2010,
-        target_per_year=1,
-        reserve_per_year=0,
-        maximum_record_attempts=3,
-    )
-
-    selected = [
-        str(row[0])
-        for row in connection.execute(
-            "SELECT canonical_url FROM parser_validation_samples"
-        )
-    ]
-    assert selected == [text_url]
 
 
 @pytest.mark.parametrize(

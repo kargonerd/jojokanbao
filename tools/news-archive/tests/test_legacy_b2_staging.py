@@ -44,6 +44,18 @@ def test_rejects_broad_or_unsafe_prefixes(value: str):
         staging.validate_batch_prefix(value)
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        "news-archive/v1/caixin/2010-2015/wayback-urlkey",
+        "news-archive/v2/validation-state/holdout-v10/caixin/2010",
+    ],
+)
+def test_rejects_removed_publisher_batches(value: str):
+    with pytest.raises(ValueError, match="removed"):
+        staging.validate_batch_prefix(value)
+
+
 def test_dry_run_uses_only_the_archive_remote_and_enforces_limits(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):

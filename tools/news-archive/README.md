@@ -62,11 +62,34 @@ media-named implementations outside `sources/`.
 
 Library modules use explicit absolute imports. The root package is intentionally
 limited to `models.py`; architecture tests reject new flat compatibility
-modules. Caixin remains available only for replaying previously captured
-research data and is disabled in the active source registry. `B2_ARCHIVE_*`
-credentials are forbidden from the runtime library and future new-repository
-runners. Only the quarantined one-time `migration/` code understands legacy B2
-object names.
+modules. Caixin is removed from the archive package and registry. Its legacy
+B2/HF namespaces are explicitly rejected by the one-time migration code, so
+old research objects cannot be replayed, copied, or accidentally reactivated.
+`B2_ARCHIVE_*` credentials are forbidden from the runtime library and future
+new-repository runners. Only the quarantined one-time `migration/` code
+understands approved legacy B2 object names.
+
+## Version and retention policy
+
+Raw HTML and approved resources are immutable and content-addressed. Uploading
+identical bytes is a no-op; attempting to reuse an object name for different
+bytes fails. Parser development outputs, temporary SQLite databases, proxy
+state, and per-attempt HTML stay local and are deleted after their bounded run.
+They are never published as version-named copies such as `v203` or `v340`.
+
+HF keeps only three durable result classes: shared immutable Raw, the one
+currently active resumable checkpoint for an unfinished cell, and the final
+passing 800-article cohort. A failed formal cohort contributes a small audit
+summary and its failing examples to the regression corpus; it does not retain
+a second full copy of Raw or a complete result database. Checkpoints are
+published in bounded deltas and compacted at cell completion instead of
+rewriting one large gzip or SQLite object after every article.
+
+The mutable operational checkpoint must remain separate from immutable Raw and
+final Canonical history. Once a cell passes, its compact final audit is copied
+to the durable dataset and the operational state history is squashed. B2 Raw
+has no continuing writer after cutover, and B2 Delivery uses immutable content
+keys plus a last-version-only lifecycle for the few mutable indexes.
 
 The one-time B2-to-HF state mapping and cutover gates are documented in
 [MIGRATION.md](MIGRATION.md). Generated validation reports and historical run

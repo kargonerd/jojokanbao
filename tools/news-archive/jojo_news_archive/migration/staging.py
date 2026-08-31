@@ -63,6 +63,10 @@ def validate_batch_prefix(value: str) -> str:
             "legacy prefix must select one complete v1 publisher/window/mode "
             "or one v2 cohort/publisher/year batch"
         )
+    pieces = normalized.split("/")
+    publisher = pieces[2] if pieces[1] == "v1" else pieces[4]
+    if publisher == "caixin":
+        raise ValueError("Caixin is removed and cannot be migrated")
     return normalized
 
 

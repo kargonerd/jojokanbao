@@ -1163,56 +1163,10 @@ def test_source_url_normalization_accepts_articles_and_rejects_hubs():
         archive_source_spec("scmp"),
         "https://www.scmp.com/article/721725/corrections-clarifications",
     ) == "https://www.scmp.com/article/721725/corrections-clarifications"
-    assert normalize_article_url(
-        archive_source_spec("caixin"),
-        "https://magazine.caixin.com/2010/cw385/?utm=1",
-    ) == "https://magazine.caixin.com/2010/cw385"
-    assert normalize_article_url(
-        archive_source_spec("caixin"),
-        "https://magazine.caixin.com/2010-02-07/100116568_all.html",
-    ) == "https://magazine.caixin.com/2010-02-07/100116568.html"
-    assert normalize_article_url(
-        archive_source_spec("caixin"),
-        "https://magazine.caixin.com/2010-02-07/100116568_3.html",
-    ) == "https://magazine.caixin.com/2010-02-07/100116568.html"
 
 
-def test_caixin_wayback_patterns_shard_dated_www_paths_by_year():
-    patterns = archive_source_spec("caixin").expanded_wayback_patterns(
-        from_year=2010,
-        to_year=2011,
-    )
-
-    assert "www.caixin.com/*" in patterns
-    assert "www.caixin.com/2010-*" in patterns
-    assert "www.caixin.com/2010/*" in patterns
-    assert "www.caixin.com/2011-*" in patterns
-    assert "www.caixin.com/2011/*" in patterns
-    assert "china.caixin.com/2010-*" in patterns
-    assert "finance.caixin.com/2011-*" in patterns
-    assert "photos.caixin.com/2010-*" in patterns
-    assert "video.caixin.com/2010-*" in patterns
 
 
-def test_caixin_normalization_preserves_editorial_section_hosts():
-    spec = archive_source_spec("caixin")
-
-    assert normalize_article_url(
-        spec,
-        "http://finance.caixin.com/2010-12-22/100210230.html?from=nav",
-    ) == "https://finance.caixin.com/2010-12-22/100210230.html"
-    assert normalize_article_url(
-        spec,
-        "https://china.caixin.com/2010-04-06/100132332.html",
-    ) == "https://china.caixin.com/2010-04-06/100132332.html"
-    assert normalize_article_url(
-        spec,
-        "http://photos.caixin.com/2010-01-22/100110376_3.html",
-    ) == "https://photos.caixin.com/2010-01-22/100110376.html"
-    assert normalize_article_url(
-        spec,
-        "http://video.caixin.com/2010-01-04/100103479.html",
-    ) == "https://video.caixin.com/2010-01-04/100103479.html"
 
 
 def test_wsj_normalization_removes_encoded_whitespace_alias():
@@ -1267,12 +1221,6 @@ def test_date_inference_and_candidate_ranking_prefers_after_publication():
         "business-151594900170"
     ) == "2020-07-16T00:00:00+00:00"
     assert infer_published_at(
-        "https://magazine.caixin.com/2010-01-08/100106588.html"
-    ) == "2010-01-08T00:00:00+00:00"
-    assert infer_published_at(
-        "https://china.caixin.com/2010-04-06/100132332.html"
-    ) == "2010-04-06T00:00:00+00:00"
-    assert infer_published_at(
         "https://www.zaobao.com.sg/news/singapore/story20240102-1234567"
     ) == "2024-01-02T00:00:00+00:00"
     assert infer_published_at(
@@ -1320,38 +1268,6 @@ def test_reuters_discovery_reclassifies_legacy_ids_by_publication_date():
     ).fetchone() == ("2012-06-07T00:00:00+00:00",)
 
 
-def test_resumed_caixin_discovery_reclassifies_capture_date():
-    spec = archive_source_spec("caixin")
-    connection = sqlite3.connect(":memory:")
-    initialize_discovery_schema(
-        connection,
-        spec=spec,
-        from_year=2010,
-        to_year=2015,
-    )
-    url = "https://magazine.caixin.com/2010-01-08/100106588.html"
-    connection.execute(
-        """
-        INSERT INTO candidates(
-            canonical_url, published_at, timestamp, original_url,
-            digest, mimetype, status_code, byte_count, rank_score
-        ) VALUES (?, '2012-07-04T06:58:15+00:00', '20120704065815',
-                  ?, 'digest', 'text/html', 200, 13459, 1)
-        """,
-        (url, url),
-    )
-
-    initialize_discovery_schema(
-        connection,
-        spec=spec,
-        from_year=2010,
-        to_year=2015,
-    )
-
-    assert connection.execute(
-        "SELECT published_at FROM candidates WHERE canonical_url=?",
-        (url,),
-    ).fetchone() == ("2010-01-08T00:00:00+00:00",)
 
 
 def test_discovery_keeps_three_best_candidates_and_exports_generic_manifest(
@@ -1635,7 +1551,7 @@ def test_urlkey_discovery_round_robins_patterns():
 
 
 def test_urlkey_discovery_can_prioritize_a_publication_year():
-    spec = archive_source_spec("caixin")
+    spec = archive_source_spec("npr")
     connection = sqlite3.connect(":memory:")
     initialize_discovery_schema(
         connection,
@@ -1648,15 +1564,14 @@ def test_urlkey_discovery_can_prioritize_a_publication_year():
         """
         UPDATE discovery_queries
         SET status='complete'
-        WHERE pattern LIKE '%/2010-%'
-           OR pattern LIKE '%/2010/%'
+        WHERE pattern LIKE '%/2010/*'
         """
     )
     connection.execute(
         """
         UPDATE discovery_queries
         SET status='pending'
-        WHERE pattern='culture.caixin.com/2010-*'
+        WHERE pattern='npr.org/2010/*'
         """
     )
 
@@ -1666,8 +1581,8 @@ def test_urlkey_discovery_can_prioritize_a_publication_year():
         preferred_year=2010,
     )
 
-    assert default_pattern != "culture.caixin.com/2010-*"
-    assert prioritized_pattern == "culture.caixin.com/2010-*"
+    assert default_pattern != "npr.org/2010/*"
+    assert prioritized_pattern == "npr.org/2010/*"
 
 
 def test_urlkey_discovery_rejects_invalid_priority_year():
@@ -1798,7 +1713,7 @@ def test_initialize_discovery_schema_migrates_legacy_query_columns():
 
     initialize_discovery_schema(
         connection,
-        spec=archive_source_spec("caixin"),
+        spec=archive_source_spec("npr"),
         from_year=2010,
         to_year=2015,
         collapse="urlkey",

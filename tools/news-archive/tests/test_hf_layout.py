@@ -83,6 +83,18 @@ def test_mapping_is_reversible_and_rejects_unapproved_v2_raw():
         )
 
 
+@pytest.mark.parametrize(
+    "legacy_name",
+    [
+        "news-archive/v1/caixin/2010-2015/wayback-urlkey/state/summary.json",
+        "news-archive/v2/validation-state/holdout-v10/caixin/2010/state/summary.json",
+    ],
+)
+def test_mapping_rejects_removed_publisher(legacy_name: str):
+    with pytest.raises(ValueError, match="removed publisher"):
+        map_legacy_b2_object(legacy_name)
+
+
 @pytest.mark.parametrize("cohort", ["validation", "validation-v17", "holdout-v248", "holdout-v9999"])
 def test_all_safe_v2_cohort_names_use_the_same_layout(cohort: str):
     prefix = f"raw/archive/v2/validation-state/{cohort}/nyt/2012"

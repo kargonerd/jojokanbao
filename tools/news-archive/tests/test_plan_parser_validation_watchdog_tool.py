@@ -13,7 +13,7 @@ def test_load_source_year_capacities_uses_shard_relative_path(
 ):
     path = (
         tmp_path
-        / "caixin"
+        / "npr"
         / "2010-2015"
         / "wayback-urlkey"
         / "manifest-summary.json"
@@ -23,7 +23,7 @@ def test_load_source_year_capacities_uses_shard_relative_path(
         json.dumps(
             {
                 "formatVersion": "jojo-capture-manifest-summary/1",
-                "publisher": "caixin",
+                "publisher": "npr",
                 "yearCounts": {"2010": 1069, "2015": 1},
             }
         ),
@@ -31,7 +31,7 @@ def test_load_source_year_capacities_uses_shard_relative_path(
     )
 
     assert _load_source_year_capacities(tmp_path) == {
-        "caixin/2010-2015/wayback-urlkey": {2010: 1069, 2015: 1}
+        "npr/2010-2015/wayback-urlkey": {2010: 1069, 2015: 1}
     }
 
 

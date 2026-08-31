@@ -475,51 +475,6 @@ def test_can_limit_imported_exclusions_to_one_sample_year(tmp_path: Path):
     ]
 
 
-def test_normalizes_caixin_page_variants_before_excluding(tmp_path: Path):
-    source_path = tmp_path / "source.sqlite3"
-    target_path = tmp_path / "target.sqlite3"
-    source = sqlite3.connect(source_path)
-    source.executescript(
-        """
-        CREATE TABLE parser_validation_results (
-            canonical_url TEXT PRIMARY KEY
-        );
-        INSERT INTO parser_validation_results VALUES
-            ('https://magazine.caixin.com/2010-02-07/100116568_all.html'),
-            ('https://magazine.caixin.com/2010-02-07/100116568_2.html');
-        """
-    )
-    source.commit()
-    source.close()
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(TOOL),
-            "--source-state",
-            str(source_path),
-            "--target-state",
-            str(target_path),
-            "--source-cohort",
-            "preflight-v1",
-            "--publisher",
-            "caixin",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-    payload = json.loads(result.stdout)
-    assert payload["sourceSamples"] == 1
-    target = sqlite3.connect(target_path)
-    exclusions = target.execute(
-        "SELECT canonical_url FROM parser_validation_exclusions"
-    ).fetchall()
-    target.close()
-    assert exclusions == [
-        ("https://magazine.caixin.com/2010-02-07/100116568.html",)
-    ]
 
 
 def test_removes_existing_sample_with_normalized_npr_exclusion_overlap(
@@ -600,9 +555,9 @@ def test_inherits_transitive_exclusions_from_prior_validation_state(
             excluded_at TEXT NOT NULL
         );
         INSERT INTO parser_validation_results VALUES
-            ('https://magazine.caixin.com/2010-01-01/evaluated.html', 2010);
+            ('https://www.npr.org/2010/01/01/100000001/evaluated', 2010);
         INSERT INTO parser_validation_exclusions VALUES
-            ('https://magazine.caixin.com/2010-01-02/preflight.html',
+            ('https://www.npr.org/2010/01/02/100000002/preflight',
              'preflight-v1', 'now');
         """
     )
@@ -620,7 +575,7 @@ def test_inherits_transitive_exclusions_from_prior_validation_state(
             "--source-cohort",
             "validation-v1",
             "--publisher",
-            "caixin",
+            "npr",
             "--sample-year",
             "2010",
         ],
@@ -643,10 +598,10 @@ def test_inherits_transitive_exclusions_from_prior_validation_state(
     }
     target.close()
     assert exclusions == {
-        "https://magazine.caixin.com/2010-01-01/evaluated.html": (
+        "https://www.npr.org/2010/01/01/100000001/evaluated": (
             "validation-v1"
         ),
-        "https://magazine.caixin.com/2010-01-02/preflight.html": (
+        "https://www.npr.org/2010/01/02/100000002/preflight": (
             "preflight-v1"
         ),
     }
@@ -669,9 +624,9 @@ def test_direct_cohort_import_repairs_stale_inherited_label(tmp_path: Path):
             excluded_at TEXT NOT NULL
         );
         INSERT INTO parser_validation_results VALUES
-            ('https://magazine.caixin.com/2010-01-02/new.html', 2010);
+            ('https://www.npr.org/2010/01/02/100000002/new', 2010);
         INSERT INTO parser_validation_exclusions VALUES
-            ('https://magazine.caixin.com/2010-01-01/old.html',
+            ('https://www.npr.org/2010/01/01/100000001/old',
              'wrong-later-cohort', 'now');
         """
     )
@@ -685,7 +640,7 @@ def test_direct_cohort_import_repairs_stale_inherited_label(tmp_path: Path):
             sample_year INTEGER NOT NULL
         );
         INSERT INTO parser_validation_results VALUES
-            ('https://magazine.caixin.com/2010-01-01/old.html', 2010);
+            ('https://www.npr.org/2010/01/01/100000001/old', 2010);
         """
     )
     direct.commit()
@@ -706,7 +661,7 @@ def test_direct_cohort_import_repairs_stale_inherited_label(tmp_path: Path):
                 "--source-cohort",
                 source_cohort,
                 "--publisher",
-                "caixin",
+                "npr",
                 "--sample-year",
                 "2010",
             ],
@@ -724,6 +679,6 @@ def test_direct_cohort_import_repairs_stale_inherited_label(tmp_path: Path):
     )
     target.close()
     assert exclusions == {
-        "https://magazine.caixin.com/2010-01-01/old.html": "holdout-v1",
-        "https://magazine.caixin.com/2010-01-02/new.html": "holdout-v2",
+        "https://www.npr.org/2010/01/01/100000001/old": "holdout-v1",
+        "https://www.npr.org/2010/01/02/100000002/new": "holdout-v2",
     }

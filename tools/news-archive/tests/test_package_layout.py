@@ -19,7 +19,6 @@ EXPECTED_SOURCES = {
     "ap",
     "axios",
     "bloomberg",
-    "caixin",
     "ft",
     "nikkei",
     "npr",
@@ -122,7 +121,7 @@ def test_shared_code_does_not_import_individual_source_packages() -> None:
 def test_shared_discovery_contains_no_publisher_policy() -> None:
     discovery_root = PACKAGE_ROOT / "discovery"
     publisher_terms = re.compile(
-        r"(?i)(?:\b(?:aljazeera|apnews|axios|bloomberg|caixin|nikkei|npr|"
+        r"(?i)(?:\b(?:aljazeera|apnews|axios|bloomberg|nikkei|npr|"
         r"nytimes|reuters|scmp|wsj|zaobao)\b|"
         r"\b(?:associated press|financial times|new york times|"
         r"wall street journal)\b|\b(?:ap|ft)_(?:syndication|infini|bnn))"
