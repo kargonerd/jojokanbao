@@ -7,6 +7,7 @@ import {
   sourceBodyExtractor,
   sourceFetchPolicy,
   sourceImageExtractor,
+  sourcePageCapture,
   sourceUnavailablePageReason,
 } from "../src/sources/registry.js";
 import type { Candidate, DiscoveryEndpoint, SourceConfig } from "../src/types.js";
@@ -76,7 +77,7 @@ describe("native source modules", () => {
     }));
     const requestedUrl = String((fetchMock.mock.calls as unknown as Array<[RequestInfo | URL]>)[0]?.[0]);
     expect(new URL(requestedUrl).searchParams.get("sign")).toMatch(/^[a-f0-9]{32}$/u);
-    expect(result.fetchPolicy?.capture).toBe("browser");
+    expect(result.fetchPolicy?.capture).toBe("http");
   });
 
   it("falls back to the CLS website API host when its primary API host is unavailable", async () => {
@@ -97,6 +98,34 @@ describe("native source modules", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(new URL(String(fetchMock.mock.calls[0]?.[0])).hostname).toBe("api3.cls.cn");
     expect(new URL(String(fetchMock.mock.calls[1]?.[0])).hostname).toBe("www.cls.cn");
+  });
+
+  it("accepts CLS SSR HTML even when the publisher omits Content-Type", async () => {
+    const html = "<!DOCTYPE html><html lang=\"zh\"><body><div class=\"detail-content\"><p>财联社服务端正文。</p></div></body></html>";
+    const response = new Response(html, { status: 200 });
+    response.headers.delete("content-type");
+    vi.stubGlobal("fetch", vi.fn(async () => response));
+
+    const captured = await sourcePageCapture("cls")?.("https://www.cls.cn/detail/2469239", 10);
+
+    expect(response.headers.has("content-type")).toBe(false);
+    expect(captured).toMatchObject({
+      method: "direct",
+      requestedUrl: "https://www.cls.cn/detail/2469239",
+      status: 200,
+      originalHtml: html,
+      renderedHtml: html,
+    });
+  });
+
+  it("rejects an untyped CLS response that is not an HTML document", async () => {
+    const response = new Response('{"error":"temporary"}', { status: 200 });
+    response.headers.delete("content-type");
+    vi.stubGlobal("fetch", vi.fn(async () => response));
+
+    const captured = await sourcePageCapture("cls")?.("https://www.cls.cn/detail/2469239", 10);
+
+    expect(captured).toBeUndefined();
   });
 
   it("maps DW articles and liveblogs while omitting videos", async () => {
@@ -153,6 +182,7 @@ describe("native source modules", () => {
   });
 
   it("keeps publisher-owned selectors for changing article layouts", () => {
+    expect(sourceFetchPolicy("cls")?.capture).toBe("http");
     expect(sourceFetchPolicy("cls")?.bodySelectors).toContain(".detail-content");
     expect(sourceFetchPolicy("chinanews")?.bodySelectors).toEqual([".left_zw", ".content_desc"]);
     expect(sourceFetchPolicy("focus-taiwan")?.bodySelectors).toContain(".paragraph");

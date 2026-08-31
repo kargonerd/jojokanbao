@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { discoverArticleImages } from "../src/capture/page-images.js";
+import { extractArticleBody } from "../src/content/body.js";
 import { attachAssetsToBody } from "../src/process/article.js";
 import { extractChinanewsImages } from "../src/sources/chinanews/images.js";
 import { extractChinanewsBody } from "../src/sources/chinanews/process.js";
 import { extractClsImages } from "../src/sources/cls/images.js";
+import { clsFetch } from "../src/sources/cls/fetch.js";
 import { extractClsBody } from "../src/sources/cls/process.js";
 import { extractPeopleImages } from "../src/sources/people/images.js";
 import { extractPeopleBody } from "../src/sources/people/process.js";
@@ -263,6 +266,29 @@ describe("publisher-specific Chinese source extraction", () => {
       caption: "图表展示最新经营数据变化。",
     })]);
     expect(images.some((image) => image.sourceUrl.includes("social-cover"))).toBe(false);
+  });
+
+  it("uses CLS server-rendered article HTML when Next.js data is absent", () => {
+    const url = "https://www.cls.cn/detail/2469239";
+    const html = `<main>
+      <div class="detail-content">
+        <p><strong>财联社8月31日讯</strong>这篇报道由服务端直接输出完整正文，HTTP 抓取无需等待浏览器脚本，也不会受到页面客户端资源加载状态的影响。</p>
+        <p><img src="https://image.cls.cn/images/20260831/chart.png" alt="市场走势"></p>
+        <p>第二段继续说明市场变化、行业背景以及后续值得关注的具体影响，并补充相关公司的公开回应和时间节点。</p>
+      </div>
+    </main>`;
+
+    const body = extractArticleBody(html, clsFetch, quality, extractClsBody, url);
+    const images = discoverArticleImages(html, url, clsFetch, extractClsImages);
+
+    expect(body).toContain("服务端直接输出完整正文");
+    expect(body).toContain("第二段继续说明市场变化");
+    expect(images).toEqual([expect.objectContaining({
+      sourceUrl: "https://image.cls.cn/images/20260831/chart.png",
+      role: "content",
+      afterBlock: 1,
+      alt: "市场走势",
+    })]);
   });
 
   it("removes Zaobao recommendation cards and orphan extension headings", () => {
