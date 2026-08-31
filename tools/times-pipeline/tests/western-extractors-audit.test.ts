@@ -70,6 +70,24 @@ describe("western publisher extraction audit", () => {
     expect(attached.indexOf('data-asset-id="asset-1"')).toBeLessThan(attached.indexOf("The government said"));
   });
 
+  it("unwraps only Guardian word-internal spelling marks", () => {
+    const html = `<main><article><div data-gu-name="body">
+      <p>The home favo<s class="spelling-variant">u</s>rite held serve after a long opening game.</p>
+      <p>The liveblog retained <s>an incorrect score</s> to show readers the published correction.</p>
+      <p>Reporters then added another full paragraph describing the next game and the crowd response.</p>
+    </div></article></main>`;
+
+    const body = extractGuardianBody(
+      html,
+      { minimumCharacters: 100, minimumParagraphs: 3 },
+      "https://www.theguardian.com/sport/live/example",
+    )!;
+
+    expect(body).toContain("home favourite held serve");
+    expect(body).not.toContain("favo<s");
+    expect(body).toContain("<s>an incorrect score</s>");
+  });
+
   it("reads Bloomberg rich text, links, lists, photos and chart fallbacks from its story model", () => {
     const nextData = { props: { pageProps: { story: {
       lede: {
