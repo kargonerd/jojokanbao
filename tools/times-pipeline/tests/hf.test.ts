@@ -15,6 +15,7 @@ import {
   canonicalTranslationObjects,
   HfTimesDataset,
   parseHfFileSetManifest,
+  rawPageHtmlObjects,
   referencedCanonicalArticleObjects,
   rawStateObjects,
   rawRunMatchesGitHubRunId,
@@ -134,6 +135,29 @@ describe("HF snapshot selection", () => {
     expect(candidateRawPages(compressed)).toEqual(new Set([
       "raw/ap/runs/run/pages/one/metadata.json",
     ]));
+  });
+
+  it("selectively restores original HTML only for sources with an original-page hook", () => {
+    const metadataObject = "raw/ft/runs/run/pages/one/metadata.json";
+    const metadata = {
+      renderedHtml: "rendered.html.gz",
+      originalHtml: "original.html.gz",
+    };
+    expect(rawPageHtmlObjects(metadataObject, metadata, false)).toEqual([
+      "raw/ft/runs/run/pages/one/rendered.html.gz",
+    ]);
+    expect(rawPageHtmlObjects(metadataObject, metadata, true)).toEqual([
+      "raw/ft/runs/run/pages/one/rendered.html.gz",
+      "raw/ft/runs/run/pages/one/original.html.gz",
+    ]);
+    expect(() => rawPageHtmlObjects(metadataObject, {
+      ...metadata,
+      originalHtml: { invalid: true },
+    }, false)).not.toThrow();
+    expect(() => rawPageHtmlObjects(metadataObject, {
+      ...metadata,
+      originalHtml: { invalid: true },
+    }, true)).toThrow("originalHtml is invalid");
   });
 
   it("matches a Raw run to the exact GitHub Actions Capture run", () => {

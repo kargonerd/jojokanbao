@@ -2,17 +2,24 @@ import { gunzipSync } from "node:zlib";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { load } from "cheerio";
-import { bodyQuality, selectArticleBody, type ArticleBodyExtractor } from "../content/body.js";
+import {
+  bodyQuality,
+  selectArticleBody,
+  type ArticleBodyExtractor,
+  type OriginalPageRejectionClassifier,
+} from "../content/body.js";
 import type { CapturedAsset, Candidate, SourceConfig, SourceFetchPolicy } from "../types.js";
 
 interface RawPageMetadata {
   formatVersion?: unknown;
   finalUrl?: unknown;
+  originalHtml?: unknown;
   renderedHtml?: unknown;
 }
 
-interface RenderedPage {
-  html: string;
+interface StoredPage {
+  originalHtmlObject?: string;
+  renderedHtml?: string;
   finalUrl?: string;
 }
 
@@ -59,21 +66,38 @@ function rawPagePart(metadataObject: string, relativeObject: string): string {
   return path.posix.join(path.posix.dirname(metadataObject), normalized);
 }
 
-async function renderedPage(output: string, candidate: Candidate): Promise<RenderedPage | undefined> {
+async function storedPage(
+  output: string,
+  candidate: Candidate,
+  includeOriginalReference: boolean,
+): Promise<StoredPage | undefined> {
   if (!candidate.rawPageObject) return undefined;
-  const metadata = JSON.parse(await readFile(localObjectPath(output, candidate.rawPageObject), "utf8")) as RawPageMetadata;
+  const metadataObject = candidate.rawPageObject;
+  const metadata = JSON.parse(await readFile(localObjectPath(output, metadataObject), "utf8")) as RawPageMetadata;
   if (metadata.formatVersion !== "jojo-raw-page/1") {
     throw new Error(`${candidate.articleId}: unsupported Raw page metadata`);
   }
-  if (metadata.renderedHtml === null || metadata.renderedHtml === undefined) return undefined;
-  if (typeof metadata.renderedHtml !== "string") {
-    throw new Error(`${candidate.articleId}: invalid renderedHtml object`);
-  }
-  const objectName = rawPagePart(candidate.rawPageObject, metadata.renderedHtml);
+  const objectPart = (value: unknown, label: "originalHtml" | "renderedHtml"): string | undefined => {
+    if (value === null || value === undefined) return undefined;
+    if (typeof value !== "string") throw new Error(`${candidate.articleId}: invalid ${label} object`);
+    return rawPagePart(metadataObject, value);
+  };
+  const renderedObject = objectPart(metadata.renderedHtml, "renderedHtml");
+  const renderedHtml = renderedObject
+    ? gunzipSync(await readFile(localObjectPath(output, renderedObject))).toString("utf8")
+    : undefined;
+  const originalHtmlObject = includeOriginalReference
+    ? objectPart(metadata.originalHtml, "originalHtml")
+    : undefined;
   return {
-    html: gunzipSync(await readFile(localObjectPath(output, objectName))).toString("utf8"),
+    ...(renderedHtml ? { renderedHtml } : {}),
+    ...(originalHtmlObject ? { originalHtmlObject } : {}),
     ...(typeof metadata.finalUrl === "string" ? { finalUrl: metadata.finalUrl } : {}),
   };
+}
+
+function terminalRejection(selection: ReturnType<typeof selectArticleBody>): boolean {
+  return selection.report.attempts.some((attempt) => attempt.rejectReason === "publisher-truncated");
 }
 
 function escapeHtml(value: string): string {
@@ -113,16 +137,36 @@ export async function processArticle(
   candidate: Candidate,
   fetchPolicy?: SourceFetchPolicy,
   sourceExtractor?: ArticleBodyExtractor,
+  originalPageRejectionClassifier?: OriginalPageRejectionClassifier,
 ): Promise<ProcessedCandidate> {
   if (["unchanged", "skipped", "hard-paywall", "duplicate"].includes(candidate.captureStatus ?? "")) {
     return { ...candidate };
   }
-  const page = await renderedPage(output, candidate);
+  const page = await storedPage(output, candidate, Boolean(originalPageRejectionClassifier));
   const quality = bodyQuality(source);
-  const selection = selectArticleBody({
-    ...(page ? { capturedPage: { html: page.html, pageUrl: page.finalUrl ?? candidate.canonicalUrl } } : {}),
-    ...(candidate.discoveryBody ? { discoveryBody: { html: candidate.discoveryBody, pageUrl: candidate.canonicalUrl } } : {}),
+  const capturedPage = page?.renderedHtml
+    ? { html: page.renderedHtml, pageUrl: page.finalUrl ?? candidate.canonicalUrl }
+    : undefined;
+  const renderedSelection = selectArticleBody({
+    ...(capturedPage ? { capturedPage } : {}),
   }, fetchPolicy, quality, sourceExtractor);
+  const originalHtml = !renderedSelection.body
+    && !terminalRejection(renderedSelection)
+    && page?.originalHtmlObject
+    && originalPageRejectionClassifier
+    ? gunzipSync(await readFile(localObjectPath(output, page.originalHtmlObject))).toString("utf8")
+    : undefined;
+  const selection = renderedSelection.body || terminalRejection(renderedSelection)
+    ? renderedSelection
+    : selectArticleBody({
+        ...(capturedPage ? { capturedPage } : {}),
+        ...(originalHtml ? {
+          originalPage: { html: originalHtml, pageUrl: page?.finalUrl ?? candidate.canonicalUrl },
+        } : {}),
+        ...(candidate.discoveryBody
+          ? { discoveryBody: { html: candidate.discoveryBody, pageUrl: candidate.canonicalUrl } }
+          : {}),
+      }, fetchPolicy, quality, sourceExtractor, originalPageRejectionClassifier);
   return {
     ...candidate,
     bodyAssessment: selection.report,

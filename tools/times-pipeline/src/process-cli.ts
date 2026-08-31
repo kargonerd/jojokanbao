@@ -11,6 +11,7 @@ import {
   processSourceCandidate,
   sourceBodyExtractor,
   sourceFetchPolicy,
+  sourceOriginalPageRejectionClassifier,
   sourceStaleCanonicalBodyClassifier,
 } from "./sources/registry.js";
 import { geminiApiKeysFromEnvironment } from "./translation/api-keys.js";
@@ -82,6 +83,7 @@ export async function runProcess(args: Map<string, string>): Promise<{
       candidate,
       manifest.fetchPolicy ?? sourceFetchPolicy(source.id),
       sourceBodyExtractor(source.id),
+      sourceOriginalPageRejectionClassifier(source.id),
     )));
     batches.push({ source, manifest, manifestObject: row.output.manifest, candidates });
   }

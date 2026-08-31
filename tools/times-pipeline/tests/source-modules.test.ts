@@ -7,6 +7,7 @@ import {
   sourceBodyExtractor,
   sourceFetchPolicy,
   sourceImageExtractor,
+  sourceOriginalPageRejectionClassifier,
   sourcePageCapture,
   sourceUnavailablePageReason,
 } from "../src/sources/registry.js";
@@ -199,6 +200,12 @@ describe("native source modules", () => {
   it("exposes Bloomberg's embedded article body strategy", () => {
     expect(sourceFetchPolicy("bloomberg")?.capture).toBe("browser");
     expect(sourceBodyExtractor("bloomberg")).toBeTypeOf("function");
+  });
+
+  it("scopes original-page rejection classification to Financial Times", () => {
+    expect(sourceOriginalPageRejectionClassifier("ft")).toBeTypeOf("function");
+    expect(sourceOriginalPageRejectionClassifier("ap")).toBeUndefined();
+    expect(sourceOriginalPageRejectionClassifier("aljazeera")).toBeUndefined();
   });
 
   it("exposes publisher-owned Next.js body extractors", () => {

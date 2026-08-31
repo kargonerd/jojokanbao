@@ -41,7 +41,16 @@ export type ArticleBodyExtractor = (
   pageUrl?: string,
 ) => string | ArticleBodyExtraction | undefined;
 
-export type ArticleBodyOrigin = "captured-page" | "discovery-body";
+/**
+ * A source-owned, rejection-only classifier for the publisher response body.
+ * It can add terminal evidence, but deliberately cannot return article HTML.
+ */
+export type OriginalPageRejectionClassifier = (
+  html: string,
+  pageUrl?: string,
+) => PublisherBodyEvidence | undefined;
+
+export type ArticleBodyOrigin = "captured-page" | "original-page" | "discovery-body";
 export type ArticleBodyExtractionPath =
   | "publisher-extractor"
   | "publisher-extractor-legacy"
@@ -91,6 +100,7 @@ export interface ArticleBodyInput {
 
 export interface AvailableArticleBodies {
   capturedPage?: ArticleBodyInput;
+  originalPage?: ArticleBodyInput;
   discoveryBody?: ArticleBodyInput;
 }
 
@@ -359,6 +369,7 @@ export function selectArticleBody(
   policy?: SourceFetchPolicy,
   quality: BodyQuality = {},
   sourceExtractor?: ArticleBodyExtractor,
+  originalPageRejectionClassifier?: OriginalPageRejectionClassifier,
 ): ArticleBodySelection {
   const attempts: ArticleBodyAssessment[] = [];
   if (inputs.capturedPage) {
@@ -371,7 +382,25 @@ export function selectArticleBody(
       "captured-page",
     ));
   }
-  const terminalRejection = attempts.some((attempt) => attempt.rejectReason === "publisher-truncated");
+  let terminalRejection = attempts.some((attempt) => attempt.rejectReason === "publisher-truncated");
+  if (!terminalRejection
+    && !attempts.some((attempt) => attempt.verdict === "accepted")
+    && inputs.originalPage
+    && originalPageRejectionClassifier) {
+    const evidence = originalPageRejectionClassifier(inputs.originalPage.html, inputs.originalPage.pageUrl);
+    if (evidence) {
+      attempts.push(rejected(
+        "original-page",
+        "publisher-extractor",
+        thresholds(quality),
+        "publisher-truncated",
+        undefined,
+        "truncated",
+        evidence,
+      ));
+      terminalRejection = true;
+    }
+  }
   if (!terminalRejection
     && !attempts.some((attempt) => attempt.verdict === "accepted")
     && inputs.discoveryBody) {
