@@ -25,12 +25,23 @@ jobs:
       - name: Require a tagged master commit
         shell: bash
         run: |
-          git fetch origin master
-          test "$(git cat-file -t "$GITHUB_REF")" = "tag" || {
+          tag_ref="refs/tags/$GITHUB_REF_NAME"
+          # actions/checkout may recreate the event ref as a lightweight tag
+          # pointing at GITHUB_SHA. Fetch the remote tag object explicitly so
+          # the annotated-tag requirement checks what was actually pushed.
+          git fetch --force origin \
+            "refs/heads/master:refs/remotes/origin/master" \
+            "$tag_ref:$tag_ref"
+          test "$(git cat-file -t "$tag_ref")" = "tag" || {
             echo "Search releases require an annotated tag." >&2
             exit 1
           }
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/master || {
+          tagged_commit="$(git rev-list -n 1 "$tag_ref")"
+          test "$tagged_commit" = "$GITHUB_SHA" || {
+            echo "Search release event SHA does not match the annotated tag." >&2
+            exit 1
+          }
+          git merge-base --is-ancestor "$tagged_commit" origin/master || {
             echo "Search releases must tag a commit already merged into master." >&2
             exit 1
           }
