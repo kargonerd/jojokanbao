@@ -22,9 +22,23 @@ const EXCLUDED_SELECTOR = [
 ].join(",");
 const TERMINAL_HEADING = /^(?:Follow the topics in this article|Comments|Recommended|More from the FT)$/iu;
 const UI_TEXT = /(?:\bon (?:x|facebook|linkedin|whatsapp) \(opens in a new window\)|Some content could not load\. Check your internet connection or browser settings\.|selects (?:his|her|their) favourite stories in this .+ newsletter)/iu;
+const ACCESS_OFFER_SIGNALS = [
+  /complete digital access to quality FT journalism/iu,
+  /explore our full range of subscriptions/iu,
+  /discover all the plans currently available in your country/iu,
+  /digital access for organisations\. Includes exclusive features and content/iu,
+];
+const PROFESSIONAL_ACCESS_GATE = /activate your \d+ day complimentary access to read this article/iu;
+const PROFESSIONAL_SERVICE_OFFER = /premium service available as an addition to an FT Professional subscription/iu;
 
 function normalizedText(value: string): string {
   return value.replaceAll(/\s+/gu, " ").trim();
+}
+
+function isAccessOffer(document: CheerioAPI, elements: FtDocumentElement[]): boolean {
+  const text = normalizedText(elements.map((element) => document(element).text()).join(" "));
+  if (ACCESS_OFFER_SIGNALS.filter((signal) => signal.test(text)).length >= 3) return true;
+  return PROFESSIONAL_ACCESS_GATE.test(text) && PROFESSIONAL_SERVICE_OFFER.test(text);
 }
 
 function hasBlockAncestor(element: FtDocumentElement, container: FtDocumentElement): boolean {
@@ -78,6 +92,7 @@ export function ftBodyStructure(document: CheerioAPI): FtBodyStructure | undefin
   if (!body.length) return undefined;
   const standfirst = document(FT_STANDFIRST_SELECTOR).first();
   const bodyResult = blockElements(document, body[0]!, true);
+  if (isAccessOffer(document, bodyResult.values)) return undefined;
   const values = [
     ...(standfirst.length && !standfirst.is(body) ? blockElements(document, standfirst[0]!, false).values : []),
     ...bodyResult.values,
