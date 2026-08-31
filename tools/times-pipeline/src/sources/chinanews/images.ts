@@ -1,6 +1,7 @@
 import { load } from "cheerio";
 import type { PageImageCandidate } from "../../capture/page-images.js";
 import {
+  inspectChinanewsImageOnlyPoster,
   isChinanewsResidualPage,
   isChinanewsSemanticBlock,
 } from "./process.js";
@@ -45,6 +46,13 @@ function associatedCaption(
 }
 
 export function extractChinanewsImages(html: string, pageUrl: string): PageImageCandidate[] {
+  const poster = inspectChinanewsImageOnlyPoster(html, pageUrl);
+  if (poster.imageOnlyShell) {
+    return poster.sourceUrl
+      ? [{ sourceUrl: poster.sourceUrl, role: "content", afterBlock: 0 }]
+      : [];
+  }
+
   const document = load(html);
   const article = [".left_zw", ".content_desc"]
     .map((selector) => document(selector).first())
