@@ -15,3 +15,4 @@ export { Toolbar } from "./Toolbar";
 export { Panel } from "./Panel";
 export { Field, TextInput } from "./Form";
 export { ListItem } from "./ListItem";
+export { Select, type SelectOption } from "./Select";

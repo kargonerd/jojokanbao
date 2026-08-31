@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 from flask import Flask, jsonify, request
 from elasticsearch import Elasticsearch
@@ -56,7 +57,16 @@ IS_SERVERLESS = bool(os.environ.get('SERVERLESS'))
 app = Flask(__name__)
 app.config['DEFAULT_CONTENT_TYPE'] = 'application/json'  
 app.config['DEFAULT_CHARSET'] = 'utf-8'  
-CORS(app, origins=['https://jojokanbao.cn', 'https://reader.jojokanbao.cn', 'http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:8080', 'http://localhost:8080'])
+SEARCH_ALLOWED_ORIGINS = [
+  'https://jojokanbao.cn',
+  'https://reader.jojokanbao.cn',
+  'https://beta.jojokanbao.cn',
+  'http://127.0.0.1:5173',
+  'http://localhost:5173',
+  'http://127.0.0.1:8080',
+  'http://localhost:8080',
+]
+CORS(app, origins=SEARCH_ALLOWED_ORIGINS)
 
 
 @app.route("/health")
@@ -90,6 +100,19 @@ def _identity_filter(field, values):
   return {'terms': {field: values}}
 
 
+def _valid_date_range(start_date, end_date):
+  if bool(start_date) != bool(end_date):
+    return False
+  if not start_date:
+    return True
+  try:
+    start = datetime.strptime(start_date, '%Y-%m-%d').date()
+    end = datetime.strptime(end_date, '%Y-%m-%d').date()
+  except ValueError:
+    return False
+  return start <= end
+
+
 @app.route("/content/search", methods=["POST"])
 def content_search():
   """Search the unified JOJO content index for both readers and Agent tools."""
@@ -103,6 +126,19 @@ def content_search():
     size = max(1, min(int(payload.get('size') or 8), 20))
   except (TypeError, ValueError):
     return jsonify({'error': 'size 参数错误'}), 400
+  try:
+    page = int(payload.get('page') or 1)
+  except (TypeError, ValueError):
+    return jsonify({'error': 'page 参数错误'}), 400
+  if page < 1 or (page - 1) * size + size > 10000:
+    return jsonify({'error': 'page 参数错误'}), 400
+  sort_order = str(payload.get('sort') or '')
+  if sort_order not in ('', 'match', 'timeAsc', 'timeDesc'):
+    return jsonify({'error': 'sort 参数错误'}), 400
+  start_date = str(payload.get('startDate') or '').strip()
+  end_date = str(payload.get('endDate') or '').strip()
+  if not _valid_date_range(start_date, end_date):
+    return jsonify({'error': '日期范围参数错误'}), 400
   filters = []
   dataset_ids = _string_list(payload.get('datasetIds'))
   item_ids = _string_list(payload.get('itemIds'))
@@ -116,6 +152,8 @@ def content_search():
     filters.append({'terms': {'type': document_types}})
   if sources:
     filters.append({'terms': {'source': sources}})
+  if start_date and end_date:
+    filters.append({'range': {'date': {'gte': start_date, 'lte': end_date}}})
   query = {
     'bool': {
       'must': [{
@@ -127,6 +165,7 @@ def content_search():
         }
       }],
       'should': [
+        {'match_phrase': {'title': {'query': query_text, 'boost': 16}}},
         {'match_phrase': {'content': {'query': query_text, 'boost': 8}}},
       ],
       'filter': filters,
@@ -140,17 +179,27 @@ def content_search():
   if excluded:
     query = build_active_query(query, excluded)
   body = {
+    'from': (page - 1) * size,
     'size': size,
+    # The endpoint deliberately caps deep pagination at 10,000 results, so an
+    # exact count beyond that window only adds cluster work without helping UI.
+    'track_total_hits': 10000,
     '_source': ['type', 'datasetId', 'itemId', 'title', 'content', 'date', 'source', 'metadata'],
     'query': query,
     'highlight': {
       'fields': {
+        'title': {'number_of_fragments': 0},
         'content': {'fragment_size': 260, 'number_of_fragments': 2},
       },
       'pre_tags': ['<mark>'],
       'post_tags': ['</mark>'],
     },
   }
+  if sort_order in ('timeAsc', 'timeDesc'):
+    body['sort'] = [
+      {'date': {'order': 'asc' if sort_order == 'timeAsc' else 'desc', 'missing': '_last'}},
+      {'_score': {'order': 'desc'}},
+    ]
   try:
     data = content_es.search(index=content_index_name, body=body)
   except Exception:
@@ -168,6 +217,7 @@ def content_search():
       **source,
       'documentId': hit.get('_id'),
       'score': hit.get('_score'),
+      'titleHighlights': ((hit.get('highlight') or {}).get('title') or []),
       'highlights': ((hit.get('highlight') or {}).get('content') or []),
     })
     if len(results) >= size:

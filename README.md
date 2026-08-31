@@ -79,6 +79,8 @@ Supabase migrations 位于 `infrastructure/supabase/migrations`。邀请注册�
 - Web workflow 构建 `frontend/web`。
 - `pnpm prepare:web-deploy` 将 Web、`backend` 和 EdgeOne 薄入口组装到
   `.edgeone/web-deploy`。
+- Web Preview 的公开 Beta 通道与自动部署见
+  [`infrastructure/edgeone/WEB_BETA.md`](./infrastructure/edgeone/WEB_BETA.md)。
 - `pnpm prepare:agent-deploy` 生成 Codex Agent 的独立国际部署包。
 - `infrastructure/edgeone/functions` 只包含平台适配代码。
 - Codex Agent 的部署与环境变量见

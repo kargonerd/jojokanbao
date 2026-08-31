@@ -128,6 +128,35 @@ describe("native source modules", () => {
     expect(captured).toBeUndefined();
   });
 
+  it("retries a transient CLS direct failure before using the browser fallback", async () => {
+    const html = "<!DOCTYPE html><html lang=\"zh\"><body><div class=\"detail-content\"><p>合法的财联社短讯正文。</p></div></body></html>";
+    const response = new Response(html, { status: 200 });
+    response.headers.delete("content-type");
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } }))
+      .mockResolvedValueOnce(response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const captured = await sourcePageCapture("cls")?.("https://www.cls.cn/detail/2469313", 10);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(captured).toMatchObject({
+      method: "direct",
+      status: 200,
+      renderedHtml: html,
+    });
+  });
+
+  it("does not accept an article-shaped CLS error response", async () => {
+    const html = "<!DOCTYPE html><html><body><div class=\"detail-content\"><p>缓存中的旧正文。</p></div></body></html>";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(html, { status: 503 })));
+
+    const captured = await sourcePageCapture("cls")?.("https://www.cls.cn/detail/2469313", 10);
+
+    expect(captured).toBeUndefined();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("maps DW articles and liveblogs while omitting videos", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ data: { content: {
       contentComposition: { informationSpaces: [{ main: [{ contents: [
@@ -307,6 +336,25 @@ describe("native source modules", () => {
     expect(acceptSourceUrl(
       "guardian",
       "https://www.theguardian.com/world/2026/aug/31/written-report",
+    )).toBe(true);
+  });
+
+  it("excludes Bloomberg news audio pages without rejecting written or transcript-capable paths", () => {
+    expect(acceptSourceUrl(
+      "bloomberg",
+      "https://www.bloomberg.com/news/audio/2026-08-31/odd-lots-tom-barkin-on-the-resilient-real-economy-podcast",
+    )).toBe(false);
+    expect(acceptSourceUrl(
+      "bloomberg",
+      "https://www.bloomberg.com/news/articles/2026-08-31/bond-investors-wary-after-warsh-fans-wagers-fed-poised-to-hike",
+    )).toBe(true);
+    expect(acceptSourceUrl(
+      "bloomberg",
+      "https://www.bloomberg.com/podcasts/odd-lots/transcript",
+    )).toBe(true);
+    expect(acceptSourceUrl(
+      "bloomberg",
+      "https://example.com/news/audio/2026-08-31/written-report",
     )).toBe(true);
   });
 });

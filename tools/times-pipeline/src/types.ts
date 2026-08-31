@@ -1,4 +1,5 @@
 import type { JojoAssetPresentation } from "@jojo/content";
+import type { ArticleBodyAssessmentReport } from "./content/body.js";
 
 export type DiscoveryDriver = "http" | "browser";
 
@@ -187,6 +188,8 @@ export interface Candidate {
   capturedAt?: string;
   captureHttpStatus?: number;
   rawPageObject?: string;
+  /** Raw pipeline diagnostic; Canonical and Delivery schemas intentionally omit it. */
+  bodyAssessment?: ArticleBodyAssessmentReport;
   captureStatus?: "pending" | "captured" | "unchanged" | "failed" | "hard-paywall" | "skipped" | "duplicate";
   captureMethod?: "direct" | "browser";
   assets?: CapturedAsset[];

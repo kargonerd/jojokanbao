@@ -1,4 +1,5 @@
 import type { SourceModule } from "../contracts.js";
+import { captureAlJazeeraPage } from "./capture.js";
 import { alJazeeraFetch } from "./fetch.js";
 import { discoverAlJazeera } from "./discover.js";
 import { extractAlJazeeraImages } from "./images.js";
@@ -6,6 +7,7 @@ import { extractAlJazeeraBody } from "./process.js";
 
 export const alJazeeraSource: SourceModule = {
   id: "aljazeera",
+  capturePage: captureAlJazeeraPage,
   fetch: alJazeeraFetch,
   extractBody: extractAlJazeeraBody,
   extractImages: extractAlJazeeraImages,

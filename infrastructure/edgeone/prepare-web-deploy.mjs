@@ -9,6 +9,7 @@ const apiRoot = path.join(repositoryRoot, "backend");
 const functionSource = path.join(apiRoot, "src", "app");
 const functionEntry = path.join(repositoryRoot, "infrastructure", "edgeone", "functions", "api");
 const gatewayEntry = path.join(repositoryRoot, "infrastructure", "edgeone", "functions", "reader-gateway");
+const middlewareEntry = path.join(repositoryRoot, "infrastructure", "edgeone", "web-middleware.ts");
 const outputDirectory = path.join(repositoryRoot, ".edgeone", "web-deploy");
 
 async function requireFile(filePath) {
@@ -33,6 +34,7 @@ function includeFunctionFile(source) {
 await requireFile(path.join(webDist, "index.html"));
 await requireFile(path.join(functionEntry, "index.py"));
 await requireFile(path.join(gatewayEntry, "[[default]].ts"));
+await requireFile(middlewareEntry);
 await requireFile(path.join(apiRoot, "requirements.txt"));
 
 await rm(outputDirectory, { recursive: true, force: true });
@@ -42,6 +44,7 @@ const functionsOutput = path.join(outputDirectory, "cloud-functions");
 await mkdir(functionsOutput, { recursive: true });
 await cp(functionEntry, path.join(functionsOutput, "api"), { recursive: true });
 await cp(gatewayEntry, path.join(functionsOutput, "gateway"), { recursive: true });
+await cp(middlewareEntry, path.join(outputDirectory, "middleware.ts"));
 await cp(functionSource, path.join(functionsOutput, "app"), {
   recursive: true,
   filter: includeFunctionFile,

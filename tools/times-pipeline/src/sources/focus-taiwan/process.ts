@@ -1,10 +1,12 @@
 import { load } from "cheerio";
-import { semanticHtmlBlocks, type BodyQuality } from "../../content/paragraphs.js";
+import type { ArticleBodyExtraction } from "../../content/body.js";
+import { prepareSemanticHtmlBlocks, semanticHtmlBlocks, type BodyQuality } from "../../content/paragraphs.js";
 
 export const FOCUS_TAIWAN_BODY_BLOCKS = "p,h2,h3,h4,blockquote,ul,ol,pre";
 export const FOCUS_TAIWAN_EXCLUDED = ".media,.jsAdSlot,[class*='AdBox'],script,style,noscript,iframe";
 const END_ITEM = /^Enditem(?:\/\S+)?$/iu;
-const VERIFIED_BRIEF_QUALITY = { minimumCharacters: 100, minimumParagraphs: 1 } satisfies BodyQuality;
+const VERIFIED_BRIEF_MINIMUM_CHARACTERS = 100;
+const VERIFIED_BRIEF_MINIMUM_BLOCKS = 1;
 
 type Document = ReturnType<typeof load>;
 type Selection = ReturnType<Document>;
@@ -28,7 +30,11 @@ export function focusTaiwanSemanticBlockHtml(
   return blocks;
 }
 
-export function extractFocusTaiwanBody(html: string, quality: BodyQuality, pageUrl?: string): string | undefined {
+export function extractFocusTaiwanBody(
+  html: string,
+  quality: BodyQuality,
+  pageUrl?: string,
+): string | ArticleBodyExtraction | undefined {
   const document = load(html);
   const article = document(".paragraph").first();
   if (!article.length) return undefined;
@@ -44,5 +50,19 @@ export function extractFocusTaiwanBody(html: string, quality: BodyQuality, pageU
     END_ITEM.test(document(element).text().replaceAll(/\s+/gu, " ").trim())
   ));
   if (!hasEndItem) return undefined;
-  return semanticHtmlBlocks(blocks, VERIFIED_BRIEF_QUALITY, pageUrl);
+  const brief = prepareSemanticHtmlBlocks(blocks, pageUrl);
+  if (!brief
+    || brief.characters < VERIFIED_BRIEF_MINIMUM_CHARACTERS
+    || brief.contentBlocks < VERIFIED_BRIEF_MINIMUM_BLOCKS) return undefined;
+  return {
+    html: brief.html,
+    completeness: "publisher-complete",
+    evidence: {
+      kind: "terminal-marker",
+      marker: "Enditem",
+      location: ".paragraph .author p",
+      sourceMinimumCharacters: VERIFIED_BRIEF_MINIMUM_CHARACTERS,
+      sourceMinimumContentBlocks: VERIFIED_BRIEF_MINIMUM_BLOCKS,
+    },
+  };
 }

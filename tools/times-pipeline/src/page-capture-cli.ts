@@ -4,10 +4,11 @@ import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs, requiredArg } from "./args.js";
 import { loadSources } from "./config.js";
-import { bodyQuality, hasArticleBody } from "./content/body.js";
+import { bodyQuality, selectArticleBody, type ArticleBodyAssessmentReport } from "./content/body.js";
 import { captureArticleAssets } from "./capture/assets.js";
 import { unavailablePageReason } from "./capture/availability.js";
 import { BrowserSourceSession } from "./capture/browser.js";
+import { allowsInRunCaptureRetry, captureWithBrowserFallback } from "./capture/fallback.js";
 import { downloadDirectAsset, fetchDirectPage, type CapturedHtmlPage } from "./capture/http.js";
 import { discoverArticleImages } from "./capture/page-images.js";
 import {
@@ -54,6 +55,7 @@ interface CaptureOutcome {
   unavailableReason?: UnavailablePageReason;
   assetCount: number;
   rawPageObject: string;
+  bodyAssessment: ArticleBodyAssessmentReport;
 }
 
 const CAPTURE_PIPELINE_REVISION = "semantic-html-media-v2";
@@ -107,7 +109,7 @@ function successfulPage(page: CapturedHtmlPage, fullBody: boolean): boolean {
 }
 
 function retryableOutcome(outcome: CaptureOutcome | undefined): boolean {
-  return !outcome?.fullBody && !outcome?.unavailableReason;
+  return allowsInRunCaptureRetry(outcome?.page) && !outcome?.fullBody && !outcome?.unavailableReason;
 }
 
 async function completeCapture(
@@ -119,13 +121,13 @@ async function completeCapture(
 ): Promise<CaptureOutcome> {
   const quality = bodyQuality(article.source);
   const sourceExtractor = sourceBodyExtractor(article.sourceId);
-  const pageHasBody = page.renderedHtml
-    ? hasArticleBody(page.renderedHtml, article.fetchPolicy, quality, sourceExtractor, page.finalUrl)
-    : false;
-  const discoveryHasBody = !pageHasBody && article.candidate.discoveryBody
-    ? hasArticleBody(article.candidate.discoveryBody, article.fetchPolicy, quality, sourceExtractor, article.canonicalUrl)
-    : false;
-  const hasFullBody = pageHasBody || discoveryHasBody;
+  const selection = selectArticleBody({
+    ...(page.renderedHtml ? { capturedPage: { html: page.renderedHtml, pageUrl: page.finalUrl } } : {}),
+    ...(article.candidate.discoveryBody
+      ? { discoveryBody: { html: article.candidate.discoveryBody, pageUrl: article.canonicalUrl } }
+      : {}),
+  }, article.fetchPolicy, quality, sourceExtractor);
+  const hasFullBody = Boolean(selection.body);
   const availabilityInput = {
     title: article.title,
     url: page.finalUrl,
@@ -156,6 +158,7 @@ async function completeCapture(
   article.candidate.assets = assets;
   article.candidate.capturedAt = page.capturedAt;
   article.candidate.captureMethod = page.method;
+  article.candidate.bodyAssessment = selection.report;
   if (page.status !== undefined) article.candidate.captureHttpStatus = page.status;
   article.candidate.captureStatus = fullBody
     ? "captured"
@@ -164,9 +167,23 @@ async function completeCapture(
       : unavailableReason === "UnsupportedMedia"
         ? "skipped"
         : "failed";
-  const rawPageObject = await writeRawPage(workspace, article, page, fullBody ? undefined : unavailableReason ?? "FullTextNotExtracted");
+  const rawPageObject = await writeRawPage(
+    workspace,
+    article,
+    page,
+    fullBody ? undefined : unavailableReason ?? "FullTextNotExtracted",
+    selection.report,
+  );
   article.candidate.rawPageObject = rawPageObject;
-  return { article, page, fullBody, ...(unavailableReason ? { unavailableReason } : {}), assetCount: assets.length, rawPageObject };
+  return {
+    article,
+    page,
+    fullBody,
+    ...(unavailableReason ? { unavailableReason } : {}),
+    assetCount: assets.length,
+    rawPageObject,
+    bodyAssessment: selection.report,
+  };
 }
 
 async function captureOne(
@@ -177,15 +194,23 @@ async function captureOne(
   forceBrowser: boolean,
 ): Promise<CaptureOutcome> {
   const publisherCapture = sourcePageCapture(article.sourceId);
-  let page = !forceBrowser && publisherCapture
-    ? await publisherCapture(article.captureUrl, timeoutSeconds)
+  const direct = !forceBrowser && publisherCapture
+    ? () => publisherCapture(article.captureUrl, timeoutSeconds)
     : !forceBrowser && article.source.fetch.strategy === "direct-first"
-      ? await fetchDirectPage(article.captureUrl, timeoutSeconds)
+      ? () => fetchDirectPage(article.captureUrl, timeoutSeconds)
       : undefined;
-  const directHasBody = page?.renderedHtml
-    ? hasArticleBody(page.renderedHtml, article.fetchPolicy, bodyQuality(article.source), sourceBodyExtractor(article.sourceId), page.finalUrl)
-    : false;
-  if (!page || !directHasBody) page = await (await browser()).capture(article.captureUrl, timeoutSeconds);
+  const page = await captureWithBrowserFallback({
+    ...(direct ? { direct } : {}),
+    browser: async () => (await browser()).capture(article.captureUrl, timeoutSeconds),
+    hasBody: (captured) => captured.renderedHtml
+      ? Boolean(selectArticleBody(
+          { capturedPage: { html: captured.renderedHtml, pageUrl: captured.finalUrl } },
+          article.fetchPolicy,
+          bodyQuality(article.source),
+          sourceBodyExtractor(article.sourceId),
+        ).body)
+      : false,
+  });
   return completeCapture(workspace, article, timeoutSeconds, page, browser);
 }
 
@@ -458,6 +483,7 @@ async function main(): Promise<void> {
       publishedAt: article.candidate.publishedAt,
       ...(outcome?.page.status !== undefined ? { httpStatus: outcome.page.status } : {}),
       error: outcome?.page.error ?? "FullTextNotExtracted",
+      ...(outcome?.bodyAssessment ? { bodyAssessment: outcome.bodyAssessment } : {}),
       proxyCandidatesTried: proxyAttempts.get(article.articleId)?.size ?? 0,
       proxyCandidatesSelected: selectedProxyCandidates.length,
     }];

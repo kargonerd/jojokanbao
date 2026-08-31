@@ -5,6 +5,7 @@ import { unavailablePageReason } from "../src/capture/availability.js";
 import { articleFingerprint, pendingArticles, selectRunArticles, type PageArticle } from "../src/capture/pending.js";
 import { selectProxy, selectProxyCandidates } from "../src/capture/proxy.js";
 import { groupArticlesBySource, mapSourceBatches, rotatingSourceProbes } from "../src/capture/schedule.js";
+import { ftFetch } from "../src/sources/ft/fetch.js";
 import { thepaperFetch } from "../src/sources/thepaper/fetch.js";
 
 const now = new Date("2026-08-22T12:00:00Z");
@@ -79,6 +80,47 @@ describe("page capture orchestration", () => {
       [current], state,
       { now, retentionDays: 7, refreshHours: 168, retryHours: 2 },
     ).map((value) => value.articleId)).toEqual(["policy-change"]);
+  });
+
+  it("marks a retained, rediscovered FT page for recovery after the document-level terminal revision", () => {
+    const articleId = "ft:71b02867f01a972879871068";
+    const previous = {
+      ...article(articleId, "ft", "2026-08-28T05:15:40.000Z"),
+      title: "FirstFT: US corporate profits surge as wages lag",
+      canonicalUrl: "https://www.ft.com/content/5e6db1ad-6ea5-44db-80fd-fd7073d9e676?syn-25a6b1a6=1",
+      captureUrl: "https://www.ft.com/content/5e6db1ad-6ea5-44db-80fd-fd7073d9e676?syn-25a6b1a6=1",
+      captureRevision: "semantic-html-media-v2+ft-body-assets-v3",
+    };
+    const current = {
+      ...previous,
+      captureRevision: `semantic-html-media-v2+${ftFetch.revision}`,
+    };
+    const state = new Map([["ft", {
+      formatVersion: "jojo-page-capture-state/1" as const,
+      articles: {
+        [articleId]: {
+          fingerprint: articleFingerprint(previous),
+          lastAttempt: "2026-08-31T04:00:00.000Z",
+          rawPageObject: "raw/ft/pages/historical.json",
+          error: null,
+        },
+      },
+    }]]);
+
+    expect(ftFetch.revision).toBe("ft-body-assets-v4");
+    const pending = pendingArticles(
+      [current], state,
+      { now: new Date("2026-08-31T05:00:00.000Z"), retentionDays: 7, refreshHours: 168, retryHours: 2 },
+    );
+    expect(pending.map((value) => value.articleId)).toEqual([articleId]);
+
+    const selected = selectRunArticles(
+      [current],
+      pending,
+      { now: new Date("2026-08-31T05:00:00.000Z"), processWindowHours: 1 },
+    );
+    expect(selected.articles.map((value) => value.articleId)).toEqual([articleId]);
+    expect([...selected.recoveryArticleIds]).toEqual([articleId]);
   });
 
   it("keeps the current process window plus unseen late arrivals", () => {

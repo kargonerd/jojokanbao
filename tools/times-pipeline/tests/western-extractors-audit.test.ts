@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { PageImageCandidate } from "../src/capture/page-images.js";
+import { assessArticleBody, extractArticleBody, selectArticleBody } from "../src/content/body.js";
 import { attachAssetsToBody } from "../src/process/article.js";
 import { extractAxiosImages } from "../src/sources/axios/images.js";
 import { extractAxiosBody } from "../src/sources/axios/process.js";
 import { extractBloombergImages } from "../src/sources/bloomberg/images.js";
 import { extractBloombergBody } from "../src/sources/bloomberg/process.js";
+import { ftFetch } from "../src/sources/ft/fetch.js";
 import { extractFtImages } from "../src/sources/ft/images.js";
 import { extractFtBody } from "../src/sources/ft/process.js";
 import { extractGuardianImages } from "../src/sources/guardian/images.js";
@@ -184,7 +186,11 @@ describe("western publisher extraction audit", () => {
       </div>
     </article></main>`;
 
-    const body = extractFtBody(html, { minimumCharacters: 120, minimumParagraphs: 3 }, "https://www.ft.com/content/story");
+    const pageUrl = "https://www.ft.com/content/story";
+    const extracted = extractFtBody(html, { minimumCharacters: 120, minimumParagraphs: 3 }, pageUrl);
+    expect(typeof extracted).toBe("string");
+    if (typeof extracted !== "string") throw new Error("Expected an extracted FT article body");
+    const body = extracted;
     expect(body).toMatch(/^<p>Prime minister had faced criticism/);
     expect(body).toContain("serious offenders");
     expect(body).not.toContain("Roula Khalaf");
@@ -192,7 +198,20 @@ describe("western publisher extraction audit", () => {
     expect(body).not.toContain("Follow the topics");
     expect(body).not.toContain("Comments");
 
-    const images = extractFtImages(html, "https://www.ft.com/content/story");
+    expect(assessArticleBody(
+      html,
+      ftFetch,
+      { minimumCharacters: 120, minimumParagraphs: 3 },
+      extractFtBody,
+      pageUrl,
+      "captured-page",
+    )).toMatchObject({
+      extractionPath: "publisher-extractor-legacy",
+      completeness: "unknown",
+      verdict: "accepted",
+    });
+
+    const images = extractFtImages(html, pageUrl);
     expect(images).toEqual([
       expect.objectContaining({ sourceUrl: "https://www.ft.com/hero-1600.avif", role: "lead", caption: "Prime minister speaking in London © Photographer/FT" }),
       expect.objectContaining({ sourceUrl: "https://www.ft.com/inside.avif", role: "content", afterBlock: 2, caption: "A prison wing in England © Another Photographer/FT" }),
@@ -200,6 +219,296 @@ describe("western publisher extraction audit", () => {
     const attached = attachExtracted(body, images);
     expect(attached.indexOf("The government changed")).toBeLessThan(attached.indexOf('data-asset-id="asset-1"'));
     expect(attached.indexOf('data-asset-id="asset-1"')).toBeLessThan(attached.indexOf("Officials said"));
+  });
+
+  it("rejects the persisted FT subscription-offer artifact from the 2026-08-28 delivery", () => {
+    const historicalBody = `<p>FirstFT: US corporate profits surge as wages lag</p>
+      <p>Try unlimited access</p>
+      <p>Then $75 per month. Complete digital access to quality FT journalism on any device. Cancel anytime during your trial.</p>
+      <p>Explore more offers.</p>
+      <p>Essential digital access to quality FT journalism on any device. Pay a year upfront and save 20%.</p>
+      <p>Complete digital access to quality FT journalism with expert analysis from industry leaders. Pay a year upfront and save 20%.</p>
+      <p>Our digitised version of the FT newspaper, for easy reading on any device.</p>
+      <p>Check whether you already have access via your university or organisation.</p>
+      <p>Terms &amp; Conditions apply</p>
+      <p>Explore our full range of subscriptions.</p>
+      <p>Discover all the plans currently available in your country</p>
+      <p>For multiple readers</p>
+      <p>Digital access for organisations. Includes exclusive features and content.</p>`;
+    const html = `<main><article><div class="article__content-body">${historicalBody}</div></article></main>`;
+    const quality = { minimumCharacters: 800, minimumParagraphs: 3 };
+    const firstUrl = "https://www.ft.com/content/5e6db1ad-6ea5-44db-80fd-fd7073d9e676?syn-25a6b1a6=1";
+    const longerHistoricalOffer = html.replace(
+      "FirstFT: US corporate profits surge as wages lag",
+      "Senior German politicians call for ban on parts of far-right AfD",
+    );
+    const cases = [
+      { html, pageUrl: firstUrl },
+      {
+        html: longerHistoricalOffer,
+        pageUrl: "https://www.ft.com/content/593c2cde-cf0d-4dcd-a170-9cb1dc9ed896?syn-25a6b1a6=1",
+      },
+    ];
+
+    for (const fixture of cases) {
+      expect(extractFtBody(fixture.html, quality, fixture.pageUrl)).toMatchObject({
+        completeness: "truncated",
+        evidence: {
+          kind: "access-offer",
+          marker: "consumer-subscription-offer",
+          matchedSignals: 4,
+        },
+      });
+      expect(assessArticleBody(
+        fixture.html,
+        ftFetch,
+        quality,
+        extractFtBody,
+        fixture.pageUrl,
+        "captured-page",
+      )).toMatchObject({
+        extractionPath: "publisher-extractor",
+        completeness: "truncated",
+        verdict: "rejected",
+        rejectReason: "publisher-truncated",
+        evidence: {
+          kind: "access-offer",
+          marker: "consumer-subscription-offer",
+        },
+      });
+      expect(extractArticleBody(fixture.html, ftFetch, quality, extractFtBody, fixture.pageUrl)).toBeUndefined();
+      expect(extractFtImages(fixture.html, fixture.pageUrl)).toEqual([]);
+    }
+
+    const completeDiscoveryBody = `<article>${Array.from({ length: 3 }, (_, index) => (
+      `<p>${`Complete discovery paragraph ${index} contains enough reported detail to satisfy the configured source threshold. `.repeat(4)}</p>`
+    )).join("")}</article>`;
+    expect(extractArticleBody(completeDiscoveryBody, ftFetch, quality, extractFtBody, firstUrl)).toBeDefined();
+    const selected = selectArticleBody({
+      capturedPage: { html, pageUrl: firstUrl },
+      discoveryBody: { html: completeDiscoveryBody, pageUrl: firstUrl },
+    }, ftFetch, quality, extractFtBody);
+    expect(selected.body).toBeUndefined();
+    expect(selected.report).toEqual({
+      attempts: [expect.objectContaining({
+        origin: "captured-page",
+        extractionPath: "publisher-extractor",
+        completeness: "truncated",
+        verdict: "rejected",
+        rejectReason: "publisher-truncated",
+      })],
+    });
+  });
+
+  it("rejects FT Professional product copy in place of a publisher article", () => {
+    const professionalOffer = `<main><article><div class="article__content-body">
+      <p>Activate your 14 day complimentary access to read this article</p>
+      <p>This content is from Monetary Policy Radar, a premium service available as an addition to an FT Professional subscription.</p>
+      <p>What is Monetary Policy Radar?</p>
+      <p>Monetary Policy Radar acts as a one stop shop for monetary policy related information, helping professionals interpret central bank signals and assess interest rate risks.</p>
+      <p>Available at an additional cost to FT Professional subscribers, customers can use the full suite of product features.</p>
+      <p>Structured data and analysis strengthen forecasts and benchmark them against market consensus and proprietary indicators.</p>
+      <p>Exclusive access to central bankers helps customers interpret tone, language and policy leanings.</p>
+      <p>Our editorial team delivers analysis that turns monetary policy and political forces into actionable product insight.</p>
+      <p>This product testimonial and the surrounding marketing copy are not the requested Financial Times article.</p>
+    </div></article></main>`;
+
+    const quality = { minimumCharacters: 800, minimumParagraphs: 3 };
+    const pageUrl = "https://www.ft.com/content/0d135ccd-f8cf-4178-a7d8-0a0dfbb705e8";
+    expect(extractFtBody(professionalOffer, quality, pageUrl)).toMatchObject({
+      completeness: "truncated",
+      evidence: {
+        kind: "access-offer",
+        marker: "professional-service-offer",
+        matchedSignals: 2,
+      },
+    });
+    expect(assessArticleBody(
+      professionalOffer,
+      ftFetch,
+      quality,
+      extractFtBody,
+      pageUrl,
+      "captured-page",
+    )).toMatchObject({
+      extractionPath: "publisher-extractor",
+      completeness: "truncated",
+      verdict: "rejected",
+      rejectReason: "publisher-truncated",
+      evidence: {
+        kind: "access-offer",
+        marker: "professional-service-offer",
+      },
+    });
+    expect(extractArticleBody(professionalOffer, ftFetch, quality, extractFtBody, pageUrl)).toBeUndefined();
+    expect(extractFtImages(professionalOffer, pageUrl)).toEqual([]);
+  });
+
+  it("terminally rejects production FT offers before the whole-article fallback", () => {
+    const offerTail = `<h2>Explore more offers.</h2>
+      <h3>Standard Digital</h3>
+      <p>Essential digital access to quality FT journalism on any device. Pay a year upfront and save 20%.</p>
+      <ul><li>Global news &amp; analysis</li><li>Expert opinion</li><li>FT App on Android &amp; iOS</li><li>20+ curated newsletters</li></ul>
+      <h3>Premium Digital</h3>
+      <p>Complete digital access to quality FT journalism with expert analysis from industry leaders. Pay a year upfront and save 20%.</p>
+      <ul><li>20 monthly gift articles to share</li><li>Lex: FT's flagship investment column</li><li>FT Digital Edition: our digitised print edition</li></ul>
+      <p>Check whether you already have access via your university or organisation.</p>
+      <p>Terms &amp; Conditions apply</p>
+      <h2>Explore our full range of subscriptions.</h2>
+      <h3>For individuals</h3>
+      <p>Discover all the plans currently available in your country</p>
+      <h3>For multiple readers</h3>
+      <p>Digital access for organisations. Includes exclusive features and content.</p>`;
+    const productionCases = [
+      {
+        articleId: "ft:efd21a2c341e6ca713c3dc10",
+        title: "Mel Stride sacked as shadow chancellor",
+        url: "https://www.ft.com/content/f16c178f-b07c-4b79-a8fc-2bf4c70d43e2?syn-25a6b1a6=1",
+        lead: `<h2>To read this article for free</h2><p>Once registered, you can read free articles, get newsletters, follow topics and access Alphaville.</p>
+          <p>Then €69 per month. Complete digital access to quality FT journalism on any device. Cancel or change your plan anytime during your trial.</p>`,
+      },
+      {
+        articleId: "ft:d9c5727150965ff81831904c",
+        title: "Trump says US will hit Iran ‘hard’ as conflict reignites",
+        url: "https://www.ft.com/content/8b09b3fc-bb61-4d9f-aac6-bcef9883fa16?syn-25a6b1a6=1",
+        lead: `<h2>Try unlimited access</h2><p>Then ¥9000 per month. Complete digital access to quality FT journalism on any device. Cancel anytime during your trial.</p>`,
+      },
+      {
+        articleId: "ft:e0539dc614fb4cbc92e77412",
+        title: "Alejandro Betancourt: the man who would be Trump’s ‘viceroy’ in Venezuela",
+        url: "https://www.ft.com/content/9dbf9c9a-b3e2-4701-b584-dca72b349716?syn-25a6b1a6=1",
+        lead: `<h2>Try unlimited access</h2><p>Then €69 per month. Complete digital access to quality FT journalism on any device. Cancel anytime during your trial.</p>`,
+      },
+      {
+        articleId: "ft:188c7a6fb26547ff4e97c43e",
+        title: "Americans feel they have lost their agency",
+        url: "https://www.ft.com/content/63e8a4f3-7c18-4ddc-b3b7-e472159a7adf?syn-25a6b1a6=1",
+        lead: `<h2>Try unlimited access</h2><p>Then ¥9000 per month. Complete digital access to quality FT journalism on any device. Cancel anytime during your trial.</p>`,
+      },
+      {
+        articleId: "ft:30cecd9e3a6d42ee8a3fa71f",
+        title: "The cult $4.99 rotisserie chicken defying inflation",
+        url: "https://www.ft.com/content/30ac3572-06a9-4718-8043-60b1dee50c40?syn-25a6b1a6=1",
+        lead: `<h2>Try unlimited access</h2><p>Then Dkr535 per month. Complete digital access to quality FT journalism on any device. Cancel anytime during your trial.</p>`,
+      },
+    ];
+    const quality = { minimumCharacters: 800, minimumParagraphs: 3 };
+
+    for (const fixture of productionCases) {
+      // These captures have no stable FT body container. Without the FT
+      // extractor, the shared `article` selector accepts the complete offer.
+      const html = `<main><article data-production-id="${fixture.articleId}">
+        <blockquote>${fixture.title}</blockquote>${fixture.lead}${offerTail}
+      </article></main>`;
+      expect(assessArticleBody(html, ftFetch, quality, undefined, fixture.url, "captured-page")).toMatchObject({
+        extractionPath: "source-selector",
+        verdict: "accepted",
+      });
+      expect(extractFtBody(html, quality, fixture.url)).toMatchObject({
+        completeness: "truncated",
+        evidence: {
+          kind: "access-offer",
+          marker: "consumer-subscription-offer",
+          location: "article",
+          matchedSignals: 4,
+        },
+      });
+      expect(assessArticleBody(
+        html,
+        ftFetch,
+        quality,
+        extractFtBody,
+        fixture.url,
+        "captured-page",
+      )).toMatchObject({
+        extractionPath: "publisher-extractor",
+        completeness: "truncated",
+        verdict: "rejected",
+        rejectReason: "publisher-truncated",
+      });
+      expect(extractArticleBody(html, ftFetch, quality, extractFtBody, fixture.url)).toBeUndefined();
+      expect(extractFtImages(html, fixture.url)).toEqual([]);
+    }
+  });
+
+  it("rejects an FT article fallback when a tiny publisher body omits the surrounding offer", () => {
+    const quality = { minimumCharacters: 800, minimumParagraphs: 3 };
+    const pageUrl = "https://www.ft.com/content/f16c178f-b07c-4b79-a8fc-2bf4c70d43e2?syn-25a6b1a6=1";
+    const html = `<main><article>
+      <div class="article__content-body"><p>Brief unavailable article preview.</p></div>
+      <section class="subscription-promo">
+        <h2>Try unlimited access</h2>
+        <p>Then €69 per month. Complete digital access to quality FT journalism on any device. Cancel anytime during your trial.</p>
+        <p>${"Subscription benefits and product details shown instead of the requested report. ".repeat(12)}</p>
+        <h2>Explore our full range of subscriptions.</h2>
+        <p>Discover all the plans currently available in your country</p>
+        <p>Digital access for organisations. Includes exclusive features and content.</p>
+      </section>
+    </article></main>`;
+
+    expect(extractFtBody(html, quality, pageUrl)).toMatchObject({
+      completeness: "truncated",
+      evidence: {
+        kind: "access-offer",
+        marker: "consumer-subscription-offer",
+        location: "article",
+        matchedSignals: 4,
+      },
+    });
+    expect(assessArticleBody(html, ftFetch, quality, undefined, pageUrl, "captured-page")).toMatchObject({
+      extractionPath: "source-selector",
+      verdict: "accepted",
+    });
+    expect(assessArticleBody(html, ftFetch, quality, extractFtBody, pageUrl, "captured-page")).toMatchObject({
+      extractionPath: "publisher-extractor",
+      completeness: "truncated",
+      verdict: "rejected",
+      rejectReason: "publisher-truncated",
+    });
+    expect(extractArticleBody(html, ftFetch, quality, extractFtBody, pageUrl)).toBeUndefined();
+  });
+
+  it("keeps the shared fallback available when no FT publisher body structure matches", () => {
+    const quality = { minimumCharacters: 300, minimumParagraphs: 3 };
+    const pageUrl = "https://www.ft.com/content/nonstandard-story";
+    const html = `<main><article>${Array.from({ length: 3 }, (_, index) => (
+      `<p>Reported fallback paragraph ${index} explains the policy decision, its consequences and the response from affected organisations in enough detail for readers.</p>`
+    )).join("")}</article></main>`;
+
+    expect(extractFtBody(html, quality, pageUrl)).toBeUndefined();
+    expect(assessArticleBody(
+      html,
+      ftFetch,
+      quality,
+      extractFtBody,
+      pageUrl,
+      "captured-page",
+    )).toMatchObject({
+      extractionPath: "source-selector",
+      completeness: "unknown",
+      verdict: "accepted",
+    });
+
+    const offerOutsideSharedFallback = html.replace("</article></main>", `<aside>
+        <p>Complete digital access to quality FT journalism on any device.</p>
+        <p>Explore our full range of subscriptions.</p>
+        <p>Discover all the plans currently available in your country</p>
+        <p>Digital access for organisations. Includes exclusive features and content.</p>
+      </aside></article></main>`);
+    expect(extractFtBody(offerOutsideSharedFallback, quality, pageUrl)).toBeUndefined();
+    const fallback = assessArticleBody(
+      offerOutsideSharedFallback,
+      ftFetch,
+      quality,
+      extractFtBody,
+      pageUrl,
+      "captured-page",
+    );
+    expect(fallback).toMatchObject({
+      extractionPath: "source-selector",
+      verdict: "accepted",
+    });
+    expect(fallback.body).not.toContain("Explore our full range of subscriptions");
   });
 
   it("extracts Axios Smart Brevity blocks and separators without byline and preferred-source UI", () => {

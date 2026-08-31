@@ -1,0 +1,29 @@
+[
+  {
+    "id": "9003",
+    "link": "/news/liveblog/2026/8/31/example-live",
+    "postType": "liveblog-update",
+    "content": "<p>The latest update explains the newest development with verified reporting from the scene. Correspondents checked the timing against the statement released by local authorities and described what remained uncertain.</p><ul><li>Officials confirmed the first material fact and provided a specific time for the event.</li><li>Witnesses supplied a separate account of what happened and explained what they could see from their location.</li></ul><p>The newsroom will continue checking both accounts as further evidence becomes available.</p>",
+    "date": "2026-08-31T05:00:00",
+    "title": "Latest verified development",
+    "shouldDisplayTitle": true
+  },
+  {
+    "id": "9002",
+    "link": "/news/liveblog/2026/8/31/example-live",
+    "postType": "liveblog-update",
+    "content": "<p>The middle update provides background before the publisher image. It identifies the places shown and explains why movements through this area are important to the developing story.</p><figure><img src=\"/wp-content/uploads/live-map.jpg\" alt=\"Live map\" width=\"1200\" height=\"800\"><figcaption>Map supplied with the live update</figcaption></figure><p>Reporting continues after the image in the publisher's original order. Officials from two organisations gave consistent descriptions, although neither supplied a final assessment.</p>",
+    "date": "2026-08-31T04:50:00",
+    "title": "Background and map",
+    "shouldDisplayTitle": true
+  },
+  {
+    "id": "9001",
+    "link": "/news/liveblog/2026/8/31/example-live",
+    "postType": "liveblog-update",
+    "content": "<p>The first chronological update welcomes readers and records how the live coverage began. It summarises the overnight developments, links them to the previous day's reporting and tells readers which events the newsroom is following.</p><p>Further updates will appear in reverse chronological order as correspondents confirm new information.</p>",
+    "date": "2026-08-31T04:40:00",
+    "title": "Welcome to the liveblog",
+    "shouldDisplayTitle": true
+  }
+]

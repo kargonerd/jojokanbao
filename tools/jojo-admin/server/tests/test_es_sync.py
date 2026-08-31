@@ -77,7 +77,7 @@ class UnifiedDocumentTest(unittest.TestCase):
                 "page": 4,
                 "ordinal": 12,
                 "title": "失明以后",
-                "content": "文章正文",
+                "body": "文章正文",
                 "status": "available",
                 "pdf": "https://example.test/1988-09-09.pdf",
             },
@@ -100,9 +100,47 @@ class UnifiedDocumentTest(unittest.TestCase):
         self.assertEqual(available.document["type"], "newspaper")
         self.assertEqual(available.document["datasetId"], "rmrb")
         self.assertEqual(available.document["itemId"], "rmrb:1988-09-09")
+        self.assertEqual(available.document["content"], "文章正文")
         self.assertEqual(available.document["metadata"]["page"], 4)
         self.assertEqual(available.document["metadata"]["ordinal"], 12)
         self.assertIsNone(missing)
+
+    def test_newspaper_keeps_legacy_content_fallback(self):
+        legacy = newspaper_document(
+            {
+                "date": "1947-01-01",
+                "page": 1,
+                "ordinal": 1,
+                "title": "旧格式文章",
+                "content": "旧格式正文",
+                "status": "available",
+            },
+            publication_id="rmrb",
+            publication_title="人民日报",
+            canonical_object="newspapers/rmrb/data/articles/1947.jsonl.gz",
+        )
+
+        self.assertIsNotNone(legacy)
+        assert legacy is not None
+        self.assertEqual(legacy.document["content"], "旧格式正文")
+
+    def test_newspaper_indexes_legacy_nonmissing_statuses(self):
+        for ordinal, status in enumerate(("repaired", "image", "image-placeholder"), start=1):
+            with self.subTest(status=status):
+                row = newspaper_document(
+                    {
+                        "date": "1950-01-01",
+                        "page": 1,
+                        "ordinal": ordinal,
+                        "title": status,
+                        "body": "【图片】" if status.startswith("image") else "人工修订正文",
+                        "status": status,
+                    },
+                    publication_id="rmrb",
+                    publication_title="人民日报",
+                    canonical_object="newspapers/rmrb/data/articles/1950.jsonl.gz",
+                )
+                self.assertIsNotNone(row)
 
     def test_current_news_uses_same_business_fields(self):
         row = news_document({
@@ -255,6 +293,11 @@ class AppendOnlySyncTest(unittest.TestCase):
         self.assertEqual(result.unchanged, 1)
         self.assertEqual(result.conflicts, 1)
         self.assertEqual(result.conflict_ids, ["changed"])
+        bulk_actions = [
+            json.loads(line)["create"]["_id"]
+            for line in client.last_bulk.strip().splitlines()[::2]
+        ]
+        self.assertEqual(bulk_actions, ["new"])
 
     def test_serverless_id_search_makes_rerun_idempotent(self):
         document = {
