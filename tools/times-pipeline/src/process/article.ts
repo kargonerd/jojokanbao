@@ -2,12 +2,18 @@ import { gunzipSync } from "node:zlib";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { load } from "cheerio";
-import { bodyQuality, extractArticleBody, type ArticleBodyExtractor } from "../content/body.js";
+import { bodyQuality, selectArticleBody, type ArticleBodyExtractor } from "../content/body.js";
 import type { CapturedAsset, Candidate, SourceConfig, SourceFetchPolicy } from "../types.js";
 
 interface RawPageMetadata {
   formatVersion?: unknown;
+  finalUrl?: unknown;
   renderedHtml?: unknown;
+}
+
+interface RenderedPage {
+  html: string;
+  finalUrl?: string;
 }
 
 export interface ProcessedCandidate extends Candidate {
@@ -53,7 +59,7 @@ function rawPagePart(metadataObject: string, relativeObject: string): string {
   return path.posix.join(path.posix.dirname(metadataObject), normalized);
 }
 
-async function renderedPageHtml(output: string, candidate: Candidate): Promise<string | undefined> {
+async function renderedPage(output: string, candidate: Candidate): Promise<RenderedPage | undefined> {
   if (!candidate.rawPageObject) return undefined;
   const metadata = JSON.parse(await readFile(localObjectPath(output, candidate.rawPageObject), "utf8")) as RawPageMetadata;
   if (metadata.formatVersion !== "jojo-raw-page/1") {
@@ -64,7 +70,10 @@ async function renderedPageHtml(output: string, candidate: Candidate): Promise<s
     throw new Error(`${candidate.articleId}: invalid renderedHtml object`);
   }
   const objectName = rawPagePart(candidate.rawPageObject, metadata.renderedHtml);
-  return gunzipSync(await readFile(localObjectPath(output, objectName))).toString("utf8");
+  return {
+    html: gunzipSync(await readFile(localObjectPath(output, objectName))).toString("utf8"),
+    ...(typeof metadata.finalUrl === "string" ? { finalUrl: metadata.finalUrl } : {}),
+  };
 }
 
 function escapeHtml(value: string): string {
@@ -108,20 +117,18 @@ export async function processArticle(
   if (["unchanged", "skipped", "hard-paywall", "duplicate"].includes(candidate.captureStatus ?? "")) {
     return { ...candidate };
   }
-  const renderedHtml = await renderedPageHtml(output, candidate);
+  const page = await renderedPage(output, candidate);
   const quality = bodyQuality(source);
-  const pageBody = renderedHtml
-    ? extractArticleBody(renderedHtml, fetchPolicy, quality, sourceExtractor, candidate.canonicalUrl)
-    : undefined;
-  const discoveryBody = !pageBody && candidate.discoveryBody
-    ? extractArticleBody(candidate.discoveryBody, fetchPolicy, quality, sourceExtractor, candidate.canonicalUrl)
-    : undefined;
-  const body = pageBody ?? discoveryBody;
+  const selection = selectArticleBody({
+    ...(page ? { capturedPage: { html: page.html, pageUrl: page.finalUrl ?? candidate.canonicalUrl } } : {}),
+    ...(candidate.discoveryBody ? { discoveryBody: { html: candidate.discoveryBody, pageUrl: candidate.canonicalUrl } } : {}),
+  }, fetchPolicy, quality, sourceExtractor);
   return {
     ...candidate,
-    ...(body ? {
+    bodyAssessment: selection.report,
+    ...(selection.body ? {
       contentStatus: "full" as const,
-      processedBody: attachAssetsToBody(body, candidate.assets ?? []),
+      processedBody: attachAssetsToBody(selection.body, candidate.assets ?? []),
     } : {}),
   };
 }

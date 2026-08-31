@@ -5,6 +5,12 @@ export interface BodyQuality {
   minimumParagraphs?: number;
 }
 
+export interface SemanticBody {
+  html: string;
+  characters: number;
+  contentBlocks: number;
+}
+
 const ACCESS_BOILERPLATE = [
   "thank you for your patience while we verify access",
   "subscribe to continue",
@@ -67,6 +73,17 @@ export function semanticHtmlBlocks(
   quality: BodyQuality = {},
   baseUrl?: string,
 ): string | undefined {
+  const body = prepareSemanticHtmlBlocks(values, baseUrl);
+  if (!body
+    || body.characters < (quality.minimumCharacters ?? 800)
+    || body.contentBlocks < (quality.minimumParagraphs ?? 3)) return undefined;
+  return body.html;
+}
+
+export function prepareSemanticHtmlBlocks(
+  values: string[],
+  baseUrl?: string,
+): SemanticBody | undefined {
   const seen = new Set<string>();
   const blocks = values
     .map((value) => sanitizeBlock(value, baseUrl))
@@ -74,8 +91,12 @@ export function semanticHtmlBlocks(
     .filter((value) => !seen.has(value.text) && Boolean(seen.add(value.text)));
   const textLength = blocks.reduce((sum, block) => sum + block.text.length, 0);
   const contentBlocks = blocks.reduce((sum, block) => sum + block.contentBlocks, 0);
-  if (textLength < (quality.minimumCharacters ?? 800) || contentBlocks < (quality.minimumParagraphs ?? 3)) return undefined;
-  return blocks.map((block) => block.html).join("");
+  if (!blocks.length) return undefined;
+  return {
+    html: blocks.map((block) => block.html).join(""),
+    characters: textLength,
+    contentBlocks,
+  };
 }
 
 function escapeHtml(value: string): string {
@@ -86,11 +107,23 @@ export function semanticParagraphs(
   values: string[],
   quality: BodyQuality = {},
 ): string | undefined {
+  const body = prepareSemanticParagraphs(values);
+  if (!body
+    || body.characters < (quality.minimumCharacters ?? 800)
+    || body.contentBlocks < (quality.minimumParagraphs ?? 3)) return undefined;
+  return body.html;
+}
+
+export function prepareSemanticParagraphs(values: string[]): SemanticBody | undefined {
   const seen = new Set<string>();
   const paragraphs = values.map((value) => value.replaceAll(/\s+/gu, " ").trim())
     .filter((value) => value.length >= 20 && !ACCESS_BOILERPLATE.some((hint) => value.toLowerCase().includes(hint)))
     .filter((value) => !seen.has(value) && Boolean(seen.add(value)));
   const text = paragraphs.join("\n");
-  if (text.length < (quality.minimumCharacters ?? 800) || paragraphs.length < (quality.minimumParagraphs ?? 3)) return undefined;
-  return paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
+  if (!paragraphs.length) return undefined;
+  return {
+    html: paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join(""),
+    characters: text.length,
+    contentBlocks: paragraphs.length,
+  };
 }
