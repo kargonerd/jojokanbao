@@ -436,12 +436,14 @@ describe("western publisher extraction audit", () => {
     const pageUrl = "https://www.ft.com/content/f16c178f-b07c-4b79-a8fc-2bf4c70d43e2?syn-25a6b1a6=1";
     const html = `<main><article>
       <div class="article__content-body"><p>Brief unavailable article preview.</p></div>
-      <h2>Try unlimited access</h2>
-      <p>Then €69 per month. Complete digital access to quality FT journalism on any device. Cancel anytime during your trial.</p>
-      <p>${"Subscription benefits and product details shown instead of the requested report. ".repeat(12)}</p>
-      <h2>Explore our full range of subscriptions.</h2>
-      <p>Discover all the plans currently available in your country</p>
-      <p>Digital access for organisations. Includes exclusive features and content.</p>
+      <section class="subscription-promo">
+        <h2>Try unlimited access</h2>
+        <p>Then €69 per month. Complete digital access to quality FT journalism on any device. Cancel anytime during your trial.</p>
+        <p>${"Subscription benefits and product details shown instead of the requested report. ".repeat(12)}</p>
+        <h2>Explore our full range of subscriptions.</h2>
+        <p>Discover all the plans currently available in your country</p>
+        <p>Digital access for organisations. Includes exclusive features and content.</p>
+      </section>
     </article></main>`;
 
     expect(extractFtBody(html, quality, pageUrl)).toMatchObject({

@@ -111,7 +111,10 @@ type FtBodyInspection =
 
 function articleFallbackAccessOffer(document: CheerioAPI): Extract<FtBodyInspection, { outcome: "access-offer" }> | undefined {
   for (const article of document("article").toArray()) {
-    const values = blockElements(document, article, false).values;
+    // Match the shared source-selector fallback boundary exactly. Publisher
+    // body exclusions are intentionally not applied here because the shared
+    // `article` fallback would otherwise accept those same blocks.
+    const values = document(article).find(BLOCK_SELECTOR).toArray();
     const offer = accessOffer(document, values);
     if (offer) {
       return {
