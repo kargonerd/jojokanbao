@@ -141,6 +141,40 @@ describe("publisher body completeness evidence", () => {
     expect(assessed.body).toBeUndefined();
   });
 
+  it("does not replace captured-page truncation with an otherwise acceptable discovery body", () => {
+    const discoveryHtml = `<article>${Array.from({ length: 3 }, (_, index) => (
+      `<p>${`Complete discovery paragraph ${index} contains enough reported detail for the configured quality gate. `.repeat(3)}</p>`
+    )).join("")}</article>`;
+    const extractor: ArticleBodyExtractor = (html) => html.includes("data-publisher-truncated")
+      ? {
+          html,
+          completeness: "truncated",
+          evidence: { kind: "continuation-marker", marker: "Continue reading" },
+        }
+      : undefined;
+    const discoveryOnly = selectArticleBody({
+      discoveryBody: { html: discoveryHtml, pageUrl },
+    }, policy, { minimumCharacters: 200, minimumParagraphs: 3 }, extractor);
+    const selected = selectArticleBody({
+      capturedPage: {
+        html: `<article data-publisher-truncated><p>${"Captured excerpt is explicitly incomplete. ".repeat(8)}</p></article>`,
+        pageUrl,
+      },
+      discoveryBody: { html: discoveryHtml, pageUrl },
+    }, policy, { minimumCharacters: 200, minimumParagraphs: 3 }, extractor);
+
+    expect(discoveryOnly.body).toBeDefined();
+    expect(selected.body).toBeUndefined();
+    expect(selected.report).toEqual({
+      attempts: [expect.objectContaining({
+        origin: "captured-page",
+        completeness: "truncated",
+        verdict: "rejected",
+        rejectReason: "publisher-truncated",
+      })],
+    });
+  });
+
   it("leaves established long generic extraction output unchanged", () => {
     const paragraphs = Array.from({ length: 3 }, (_, index) => (
       `Reported paragraph ${index + 1} contains sufficient verified context for the complete article and its readers.`

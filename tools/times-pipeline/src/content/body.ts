@@ -371,7 +371,10 @@ export function selectArticleBody(
       "captured-page",
     ));
   }
-  if (!attempts.some((attempt) => attempt.verdict === "accepted") && inputs.discoveryBody) {
+  const terminalRejection = attempts.some((attempt) => attempt.rejectReason === "publisher-truncated");
+  if (!terminalRejection
+    && !attempts.some((attempt) => attempt.verdict === "accepted")
+    && inputs.discoveryBody) {
     attempts.push(assessArticleBody(
       inputs.discoveryBody.html,
       policy,

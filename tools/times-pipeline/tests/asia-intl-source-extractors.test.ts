@@ -292,6 +292,28 @@ describe("Asia and international publisher extractors", () => {
     expect(extractFocusTaiwanBody(incompletePage, strictQuality, pageUrl)).toBeUndefined();
   });
 
+  it("keeps Focus Taiwan's source-level 100-character brief floor above the shared sanitation floor", () => {
+    const page = (characters: number) => (
+      `<div class="paragraph"><p>${"x".repeat(characters)}</p><div class="author"><p>Enditem</p></div></div>`
+    );
+    const strictQuality = { minimumCharacters: 800, minimumParagraphs: 3 };
+    const pageUrl = "https://focustaiwan.tw/business/202608310003";
+    const belowSourceFloor = extractFocusTaiwanBody(page(99), strictQuality, pageUrl);
+    const atSourceFloor = extractFocusTaiwanBody(page(100), strictQuality, pageUrl);
+
+    expect(belowSourceFloor).toBeUndefined();
+    expect(atSourceFloor).toMatchObject({
+      completeness: "publisher-complete",
+      evidence: {
+        marker: "Enditem",
+        sourceMinimumCharacters: 100,
+        sourceMinimumContentBlocks: 1,
+      },
+    });
+    expect(extractArticleBody(page(99), undefined, strictQuality, extractFocusTaiwanBody, pageUrl)).toBeUndefined();
+    expect(extractArticleBody(page(100), undefined, strictQuality, extractFocusTaiwanBody, pageUrl)).toContain("x".repeat(100));
+  });
+
   it("places a Focus Taiwan image after sanitized blocks, ignoring short and duplicate paragraphs", () => {
     const repeated = "The first substantive paragraph contains enough publisher reporting to remain in the archived body.";
     const html = `<div class="PrimarySide"><div class="paragraph">
