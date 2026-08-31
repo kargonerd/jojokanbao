@@ -22,6 +22,12 @@ export default defineConfig({
     timeout: 240_000,
     env: {
       VITE_ENABLE_PLATFORM_REDESIGN: "true",
+      ...(ci ? {
+        // Load the account UI without depending on repository variables or a
+        // real auth backend. Reading an empty browser session is local-only.
+        VITE_SUPABASE_URL: `http://127.0.0.1:${webPort}`,
+        VITE_SUPABASE_PUBLISHABLE_KEY: "playwright-test-key",
+      } : {}),
     },
   },
   use: {
