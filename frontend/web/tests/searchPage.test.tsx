@@ -2,12 +2,47 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import axios from "axios";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CONTENT_SEARCH_API } from "@jojo/content";
+import { CONTENT_SEARCH_API, type JojoCatalog } from "@jojo/content";
 import { SearchPage } from "../src/archive/pages/SearchPage";
+import { loadCatalog } from "../src/rag/content";
 
 vi.mock("axios", () => ({
   default: { get: vi.fn(), post: vi.fn() },
 }));
+
+vi.mock("../src/rag/content", () => ({
+  loadCatalog: vi.fn(),
+}));
+
+const searchCatalog: JojoCatalog = {
+  formatVersion: "jojo-catalog/1",
+  revision: 1,
+  updatedAt: "2026-08-31T00:00:00Z",
+  datasets: [
+    {
+      datasetId: "mao-selected",
+      type: "book-series",
+      title: "毛泽东选集",
+      language: "zh-CN",
+      indexObject: "books/mao-selected/index.jox",
+    },
+    {
+      datasetId: "liu-shaoqi",
+      type: "book",
+      title: "刘少奇论党的建设",
+      language: "zh-CN",
+      indexObject: "books/liu-shaoqi/index.jox",
+    },
+    {
+      datasetId: "draft-book",
+      type: "book",
+      title: "未发布书籍",
+      language: "zh-CN",
+      publicationStatus: "draft",
+      indexObject: "books/draft-book/index.jox",
+    },
+  ],
+};
 
 interface ResultFixture {
   title: string;
@@ -62,8 +97,10 @@ function getLastRequestParams(): Record<string, unknown> {
 beforeEach(() => {
   vi.mocked(axios.get).mockReset();
   vi.mocked(axios.post).mockReset();
+  vi.mocked(loadCatalog).mockReset();
   vi.mocked(axios.get).mockImplementation(() => searchResponse());
   vi.mocked(axios.post).mockImplementation(() => searchResponse());
+  vi.mocked(loadCatalog).mockResolvedValue(searchCatalog);
   Object.defineProperty(HTMLElement.prototype, "scrollTo", {
     configurable: true,
     value: vi.fn(),
@@ -153,8 +190,7 @@ describe("SearchPage results", () => {
       query: "历史",
       page: 2,
       size: 10,
-      datasetIds: ["rmrb"],
-      types: ["newspaper"],
+      types: ["newspaper", "magazine"],
       sort: "timeDesc",
       startDate: "1966-07-01",
       endDate: "1966-07-31",
@@ -163,6 +199,65 @@ describe("SearchPage results", () => {
     expect(heading.closest("a")?.getAttribute("href")).toBe("/archive/rmrb/19660701#page-5");
     expect(screen.getByText("重点内容").className).toContain("search-highlight");
     expect(screen.getByText("11")).toBeTruthy();
+  });
+
+  it("applies the two-level periodical and book scope filters", async () => {
+    renderSearch("/search?keyword=刘少奇&startDate=19660701&endDate=19660731", true);
+
+    await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: "报刊" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("combobox", { name: "具体报刊" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "书籍" }));
+    await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).toMatchObject({
+      query: "刘少奇",
+      page: 1,
+      size: 10,
+      types: ["book"],
+    });
+    expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).not.toHaveProperty("datasetIds");
+    expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).not.toHaveProperty("startDate");
+    expect(screen.queryByRole("button", { name: /日期范围/ })).toBeNull();
+    expect(screen.getByTestId("location").textContent).toBe("/search?keyword=%E5%88%98%E5%B0%91%E5%A5%87&type=book");
+
+    const bookSelect = screen.getByRole("combobox", { name: "具体书籍" });
+    expect(await screen.findByRole("option", { name: "毛泽东选集" })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: "未发布书籍" })).toBeNull();
+    fireEvent.change(bookSelect, { target: { value: "mao-selected" } });
+
+    await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(3));
+    expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).toMatchObject({
+      types: ["book"],
+      datasetIds: ["mao-selected"],
+    });
+    expect(screen.getByTestId("location").textContent).toContain("type=book&dataset=mao-selected");
+  });
+
+  it("links book chapter hits back to the book reader", async () => {
+    vi.mocked(axios.post).mockResolvedValue({ data: { data: {
+      total: 1,
+      results: [{
+        type: "book",
+        datasetId: "mao-selected",
+        itemId: "mao-selected:volume-1",
+        title: "论共产党员的修养",
+        content: "书籍正文",
+        source: "毛泽东选集",
+        metadata: { itemTitle: "第一卷", chapterId: "chapter-8" },
+        titleHighlights: ["论共产党员的<mark>修养</mark>"],
+        highlights: ["书籍正文"],
+      }],
+    } } });
+
+    renderSearch("/search?keyword=修养&type=book&dataset=mao-selected", true);
+
+    const heading = await screen.findByRole("heading", { name: /论共产党员的\s*修养/ });
+    expect(heading.closest("a")?.getAttribute("href")).toBe(
+      "/book/mao-selected/mao-selected%3Avolume-1?chapter=chapter-8",
+    );
+    expect(screen.getByText("第一卷")).toBeTruthy();
+    expect(screen.getByText("毛泽东选集", { selector: ".tag" })).toBeTruthy();
   });
 
   it("keeps the legacy frontend on the existing GET search API", async () => {
