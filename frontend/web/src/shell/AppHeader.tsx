@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AccountMenu } from "../account/AccountMenu";
 import { useAccountSessionStore } from "../account/session";
+import { isBetaChannel } from "../betaChannel";
 
 export type AppNavigationItem = {
   label: string;
@@ -60,10 +61,12 @@ export function AppHeader({
   navigationItems = APP_NAVIGATION_ITEMS,
   navigationLabel = "主导航",
   actions,
+  betaChannel = isBetaChannel(),
 }: {
   navigationItems?: readonly AppNavigationItem[];
   navigationLabel?: string;
   actions?: ReactNode;
+  betaChannel?: boolean;
 } = {}) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -87,10 +90,20 @@ export function AppHeader({
 
   return <>
     <header className={`app-header${showMobileBack ? " has-mobile-back" : ""}`}>
-      <Link className="app-brand" to="/" aria-label="JOJO 看报首页">
-        <img className="app-brand-full" src={`${brandBase}brand/jojo-kanbao-logo.png`} alt="" />
-        <img className="app-brand-mark" src={`${brandBase}brand/jojo-kanbao-mark.png`} alt="" />
-      </Link>
+      <div className="app-brand-lockup">
+        <Link className="app-brand" to="/" aria-label="JOJO 看报首页">
+          <img className="app-brand-full" src={`${brandBase}brand/jojo-kanbao-logo.png`} alt="" />
+          <img className="app-brand-mark" src={`${brandBase}brand/jojo-kanbao-mark.png`} alt="" />
+        </Link>
+        {betaChannel ? <span
+          className="app-beta-channel"
+          aria-label="Beta 提前体验版"
+          title="公开测试版，功能可能持续调整"
+        >
+          <strong>BETA</strong>
+          <small>提前体验</small>
+        </span> : null}
+      </div>
       {showMobileBack ? <button type="button" className="app-mobile-back" onClick={navigateBack} aria-label="返回上一页">
         <span aria-hidden="true">←</span>返回
       </button> : null}
