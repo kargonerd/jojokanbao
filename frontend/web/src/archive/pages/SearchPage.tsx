@@ -1,7 +1,7 @@
 import { Fragment, useState, useEffect, useRef, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import axios from "axios";
-import { ARCHIVE_SEARCH_API } from "@jojo/content";
+import { ARCHIVE_SEARCH_API, CONTENT_SEARCH_API } from "@jojo/content";
 import { Button, Tag, Pagination, LoadingSpinner, DateRangePicker, type DateRangeValue } from "@jojo/ui";
 import { getLatestRmrbAvailableDate } from "../dateAvailability";
 import { archiveIssuePath } from "../../routes";
@@ -10,9 +10,19 @@ import { rollout } from "../../rollout";
 interface SearchResult {
   title: string;
   content: string;
+  preview?: string;
   date: string;
   page: number;
   ellipsis: boolean;
+}
+
+interface UnifiedSearchResult {
+  title?: unknown;
+  content?: unknown;
+  date?: unknown;
+  metadata?: unknown;
+  titleHighlights?: unknown;
+  highlights?: unknown;
 }
 
 const SORT_OPTIONS = [
@@ -63,6 +73,32 @@ function normalizeSort(value: string | null): string {
 
 function formatSearchApiDate(value: string): string {
   return value.replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3");
+}
+
+function convertUnifiedHighlight(value: string): string {
+  return value.replaceAll("<mark>", "@highlight@").replaceAll("</mark>", "@/highlight@");
+}
+
+function normalizeUnifiedResult(result: UnifiedSearchResult): SearchResult {
+  const metadata = result.metadata && typeof result.metadata === "object"
+    ? result.metadata as Record<string, unknown>
+    : {};
+  const titleHighlights = Array.isArray(result.titleHighlights)
+    ? result.titleHighlights.filter((value): value is string => typeof value === "string")
+    : [];
+  const contentHighlights = Array.isArray(result.highlights)
+    ? result.highlights.filter((value): value is string => typeof value === "string")
+    : [];
+  return {
+    title: convertUnifiedHighlight(titleHighlights[0] ?? String(result.title ?? "")),
+    content: String(result.content ?? ""),
+    preview: contentHighlights.length > 0
+      ? convertUnifiedHighlight(contentHighlights.join("\n…\n"))
+      : undefined,
+    date: String(result.date ?? ""),
+    page: Number(metadata.page) || 0,
+    ellipsis: true,
+  };
 }
 
 function buildSearchParams({
@@ -154,20 +190,41 @@ export function SearchPage({
     setLoading(true);
     setError(null);
 
-    void axios.get(ARCHIVE_SEARCH_API, { params: requestParams, signal: controller.signal })
+    const request = platformRedesign
+      ? axios.post(CONTENT_SEARCH_API, {
+          query: keyword,
+          page: nextPage,
+          size: pageSize,
+          datasetIds: ["rmrb"],
+          types: ["newspaper"],
+          ...(nextSort ? { sort: nextSort } : {}),
+          ...(nextStartDate && nextEndDate
+            ? {
+                startDate: formatSearchApiDate(nextStartDate),
+                endDate: formatSearchApiDate(nextEndDate),
+              }
+            : {}),
+        }, { signal: controller.signal })
+      : axios.get(ARCHIVE_SEARCH_API, { params: requestParams, signal: controller.signal });
+
+    void request
       .then((response) => {
         if (controller.signal.aborted || requestId !== requestIdRef.current) return;
         const data = response.data?.data;
         if (!data || !Array.isArray(data.results) || !Number.isFinite(data.total)) {
           throw new Error("Search API returned an invalid response");
         }
-        setResults(data.results.map((result: SearchResult) => ({
-          title: String(result.title ?? ""),
-          content: String(result.content ?? ""),
-          date: String(result.date ?? ""),
-          page: Number(result.page) || 0,
-          ellipsis: true,
-        })));
+        setResults(data.results.map((result: SearchResult | UnifiedSearchResult) => (
+          platformRedesign
+            ? normalizeUnifiedResult(result)
+            : {
+                title: String(result.title ?? ""),
+                content: String(result.content ?? ""),
+                date: String(result.date ?? ""),
+                page: Number((result as SearchResult).page) || 0,
+                ellipsis: true,
+              }
+        )));
         setTotal(Math.max(0, Number(data.total)));
       })
       .catch(() => {
@@ -181,7 +238,7 @@ export function SearchPage({
       });
 
     return () => controller.abort();
-  }, [paramsKey, retryToken]);
+  }, [paramsKey, platformRedesign, retryToken]);
 
   useEffect(() => {
     if (!sortDropdownOpen) return;
@@ -362,7 +419,7 @@ export function SearchPage({
                         {r.page > 0 && <Tag>第{r.page}版</Tag>}
                       </div>
                       <div className={`text-sm leading-7 text-ink/80 ${r.ellipsis ? "line-clamp-3" : ""}`}>
-                        {renderHighlighted(r.content, true, false)}
+                        {renderHighlighted(r.ellipsis && r.preview ? r.preview : r.content, true, false)}
                       </div>
                       {r.ellipsis && <button className="mt-1 text-xs font-bold text-red border-0 bg-transparent p-0 hover:text-red-dark cursor-pointer" onClick={() => { r.ellipsis = false; setResults([...results]); }}>显示全部</button>}
                     </li>

@@ -2,10 +2,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import axios from "axios";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CONTENT_SEARCH_API } from "@jojo/content";
 import { SearchPage } from "../src/archive/pages/SearchPage";
 
 vi.mock("axios", () => ({
-  default: { get: vi.fn() },
+  default: { get: vi.fn(), post: vi.fn() },
 }));
 
 interface ResultFixture {
@@ -60,7 +61,9 @@ function getLastRequestParams(): Record<string, unknown> {
 
 beforeEach(() => {
   vi.mocked(axios.get).mockReset();
+  vi.mocked(axios.post).mockReset();
   vi.mocked(axios.get).mockImplementation(() => searchResponse());
+  vi.mocked(axios.post).mockImplementation(() => searchResponse());
   Object.defineProperty(HTMLElement.prototype, "scrollTo", {
     configurable: true,
     value: vi.fn(),
@@ -126,6 +129,50 @@ describe("SearchPage initial search", () => {
 });
 
 describe("SearchPage results", () => {
+  it("uses the unified content index only in the redesigned frontend", async () => {
+    vi.mocked(axios.post).mockResolvedValue({ data: { data: {
+      total: 21,
+      results: [{
+        type: "newspaper",
+        datasetId: "rmrb",
+        itemId: "rmrb:1966-07-01",
+        title: "革命历史文献",
+        content: "完整正文",
+        date: "1966-07-01",
+        metadata: { page: 5, ordinal: 2 },
+        titleHighlights: ["革命<mark>历史</mark>文献"],
+        highlights: ["第一段\n<mark>重点内容</mark>"],
+      }],
+    } } });
+
+    renderSearch("/search?keyword=历史&page=2&sort=timeDesc&startDate=19660701&endDate=19660731", true);
+
+    const heading = await screen.findByRole("heading", { name: highlightedTitleName });
+    expect(axios.get).not.toHaveBeenCalled();
+    expect(axios.post).toHaveBeenCalledWith(CONTENT_SEARCH_API, {
+      query: "历史",
+      page: 2,
+      size: 10,
+      datasetIds: ["rmrb"],
+      types: ["newspaper"],
+      sort: "timeDesc",
+      startDate: "1966-07-01",
+      endDate: "1966-07-31",
+    }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(heading.querySelector("strong")?.textContent).toBe("历史");
+    expect(heading.closest("a")?.getAttribute("href")).toBe("/archive/rmrb/19660701#page-5");
+    expect(screen.getByText("重点内容").className).toContain("search-highlight");
+    expect(screen.getByText("11")).toBeTruthy();
+  });
+
+  it("keeps the legacy frontend on the existing GET search API", async () => {
+    renderSearch("/search?keyword=历史", false);
+    await screen.findByRole("heading", { name: highlightedTitleName });
+
+    expect(axios.get).toHaveBeenCalledTimes(1);
+    expect(axios.post).not.toHaveBeenCalled();
+  });
+
   it("renders safe result structure, highlights, line breaks, metadata, and links", async () => {
     renderSearch("/search?keyword=历史");
     const heading = await screen.findByRole("heading", { name: highlightedTitleName });
