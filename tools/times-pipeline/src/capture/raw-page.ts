@@ -37,6 +37,7 @@ export async function writeRawPage(
     originalHtml: page.originalHtml ? "original.html.gz" : null,
     renderedHtml: page.renderedHtml ? "rendered.html.gz" : null,
     error: page.error ?? error ?? null,
+    ...(page.browserFallback ? { browserFallback: page.browserFallback } : {}),
     ...(bodyAssessment ? { bodyAssessment } : {}),
   }, null, 2)}\n`);
   return path.relative(workspace, metadataPath).replaceAll(path.sep, "/");

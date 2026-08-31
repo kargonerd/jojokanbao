@@ -8,6 +8,7 @@ import { bodyQuality, selectArticleBody, type ArticleBodyAssessmentReport } from
 import { captureArticleAssets } from "./capture/assets.js";
 import { unavailablePageReason } from "./capture/availability.js";
 import { BrowserSourceSession } from "./capture/browser.js";
+import { allowsInRunCaptureRetry, captureWithBrowserFallback } from "./capture/fallback.js";
 import { downloadDirectAsset, fetchDirectPage, type CapturedHtmlPage } from "./capture/http.js";
 import { discoverArticleImages } from "./capture/page-images.js";
 import {
@@ -108,7 +109,7 @@ function successfulPage(page: CapturedHtmlPage, fullBody: boolean): boolean {
 }
 
 function retryableOutcome(outcome: CaptureOutcome | undefined): boolean {
-  return !outcome?.fullBody && !outcome?.unavailableReason;
+  return allowsInRunCaptureRetry(outcome?.page) && !outcome?.fullBody && !outcome?.unavailableReason;
 }
 
 async function completeCapture(
@@ -193,20 +194,23 @@ async function captureOne(
   forceBrowser: boolean,
 ): Promise<CaptureOutcome> {
   const publisherCapture = sourcePageCapture(article.sourceId);
-  let page = !forceBrowser && publisherCapture
-    ? await publisherCapture(article.captureUrl, timeoutSeconds)
+  const direct = !forceBrowser && publisherCapture
+    ? () => publisherCapture(article.captureUrl, timeoutSeconds)
     : !forceBrowser && article.source.fetch.strategy === "direct-first"
-      ? await fetchDirectPage(article.captureUrl, timeoutSeconds)
+      ? () => fetchDirectPage(article.captureUrl, timeoutSeconds)
       : undefined;
-  const directHasBody = page?.renderedHtml
-    ? Boolean(selectArticleBody(
-        { capturedPage: { html: page.renderedHtml, pageUrl: page.finalUrl } },
-        article.fetchPolicy,
-        bodyQuality(article.source),
-        sourceBodyExtractor(article.sourceId),
-      ).body)
-    : false;
-  if (!page || !directHasBody) page = await (await browser()).capture(article.captureUrl, timeoutSeconds);
+  const page = await captureWithBrowserFallback({
+    ...(direct ? { direct } : {}),
+    browser: async () => (await browser()).capture(article.captureUrl, timeoutSeconds),
+    hasBody: (captured) => captured.renderedHtml
+      ? Boolean(selectArticleBody(
+          { capturedPage: { html: captured.renderedHtml, pageUrl: captured.finalUrl } },
+          article.fetchPolicy,
+          bodyQuality(article.source),
+          sourceBodyExtractor(article.sourceId),
+        ).body)
+      : false,
+  });
   return completeCapture(workspace, article, timeoutSeconds, page, browser);
 }
 

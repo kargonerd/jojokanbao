@@ -9,6 +9,8 @@ export interface CapturedHtmlPage {
   renderedHtml?: string;
   capturedAt: string;
   error?: string;
+  /** A publisher adapter proved that browser fallback cannot represent the requested article. */
+  browserFallback?: "forbidden";
 }
 
 export async function fetchDirectPage(url: string, timeoutSeconds: number): Promise<CapturedHtmlPage> {
