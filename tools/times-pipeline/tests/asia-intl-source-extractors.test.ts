@@ -47,7 +47,7 @@ describe("Asia and international publisher extractors", () => {
     </main>`;
     const pageUrl = "https://www.aljazeera.com/news/example";
 
-    const body = extractAlJazeeraBody(html, quality, pageUrl);
+    const body = extractArticleBody(html, undefined, quality, extractAlJazeeraBody, pageUrl);
     const images = extractAlJazeeraImages(html, pageUrl);
 
     expect(body).toContain('href="https://www.aljazeera.com/news/topic"');
@@ -73,7 +73,7 @@ describe("Asia and international publisher extractors", () => {
     </div></main>`;
     const pageUrl = "https://www.aljazeera.com/news/live/example";
 
-    const body = extractAlJazeeraBody(html, quality, pageUrl);
+    const body = extractArticleBody(html, undefined, quality, extractAlJazeeraBody, pageUrl);
     const image = extractAlJazeeraImages(html, pageUrl)[0];
 
     expect(body).toBeDefined();
@@ -95,9 +95,9 @@ describe("Asia and international publisher extractors", () => {
         <p>The live report continues after the photograph in that second container.</p>
       </div></article>
     </main>`;
-    const pageUrl = "https://www.aljazeera.com/news/liveblog/example";
+    const pageUrl = "https://www.aljazeera.com/news/live/example-multiple-containers";
 
-    const body = extractAlJazeeraBody(html, quality, pageUrl);
+    const body = extractArticleBody(html, undefined, quality, extractAlJazeeraBody, pageUrl);
     const image = extractAlJazeeraImages(html, pageUrl)[0];
 
     expect(body).toBeDefined();
