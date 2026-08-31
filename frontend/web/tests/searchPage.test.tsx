@@ -226,6 +226,7 @@ describe("SearchPage results", () => {
 
     const bookSelect = screen.getByRole("combobox", { name: "选择书籍" });
     fireEvent.click(bookSelect);
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索书名" }), { target: { value: "毛泽东选集" } });
     expect(await screen.findByRole("option", { name: "毛泽东选集" })).toBeTruthy();
     expect(screen.queryByRole("option", { name: "未发布书籍" })).toBeNull();
     fireEvent.click(screen.getByRole("option", { name: "毛泽东选集" }));

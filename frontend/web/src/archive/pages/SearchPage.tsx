@@ -593,8 +593,10 @@ export function SearchPage({
                   options={datasetSelectOptions}
                   onChange={handleDatasetChange}
                   prefix={contentTypeOption.sourceLabel}
+                  searchable={contentType === "book"}
+                  searchPlaceholder="搜索书名"
+                  emptyText="未找到相关书籍"
                   className="w-full min-w-0 sm:w-[360px]"
-                  menuClassName="w-full sm:w-[520px]"
                 />
               )}
               {(!platformRedesign || contentTypeOption.supportsDate) && (

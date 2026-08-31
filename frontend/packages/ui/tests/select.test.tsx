@@ -50,4 +50,31 @@ describe("Select", () => {
     fireEvent.mouseDown(screen.getByRole("button", { name: "外部" }));
     expect(screen.queryByRole("listbox", { name: "选择书籍" })).toBeNull();
   });
+
+  it("filters long option lists with its built-in search", () => {
+    const onChange = vi.fn();
+    render(
+      <Select
+        value="all"
+        options={options}
+        onChange={onChange}
+        ariaLabel="选择书籍"
+        searchable
+        searchPlaceholder="搜索书名"
+        emptyText="未找到相关书籍"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("combobox", { name: "选择书籍" }));
+    const search = screen.getByRole("searchbox", { name: "搜索书名" });
+    fireEvent.change(search, { target: { value: "第二" } });
+    expect(screen.queryByRole("option", { name: "第一本书" })).toBeNull();
+    expect(screen.getByRole("option", { name: "第二本书" })).toBeTruthy();
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(onChange).toHaveBeenCalledWith("second");
+
+    fireEvent.click(screen.getByRole("combobox", { name: "选择书籍" }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索书名" }), { target: { value: "不存在" } });
+    expect(screen.getByText("未找到相关书籍")).toBeTruthy();
+  });
 });
