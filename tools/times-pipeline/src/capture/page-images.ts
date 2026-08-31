@@ -12,6 +12,8 @@ export interface PageImageCandidate {
   afterBlock?: number;
   credit?: string;
   presentation?: JojoAssetPresentation;
+  /** Publisher-authored editorial media, already vetted by a source adapter. */
+  publisherEditorial?: boolean;
 }
 
 export type ArticleImageExtractor = (html: string, pageUrl: string) => PageImageCandidate[];
@@ -30,8 +32,9 @@ function srcsetUrl(value: string | undefined): string | undefined {
   return value?.split(",").map((entry) => entry.trim().split(/\s+/u)[0]).filter(Boolean).at(-1);
 }
 
-function ignoredImage(url: string, alt: string, width?: number, height?: number): boolean {
+function ignoredImage(url: string, alt: string, width?: number, height?: number, publisherEditorial = false): boolean {
   if ((width !== undefined && width <= 80) || (height !== undefined && height <= 80)) return true;
+  if (publisherEditorial) return false;
   return /(?:logo|avatar|icon|sprite|pixel|tracking|badge|author|profile|advert|promo|placeholder)/iu.test(`${url} ${alt}`);
 }
 
@@ -71,7 +74,7 @@ export function discoverArticleImages(
   const $ = load(html);
   const values = new Map<string, PageImageCandidate>();
   const add = (candidate: PageImageCandidate): void => {
-    if (!ignoredImage(candidate.sourceUrl, candidate.alt ?? "", candidate.width, candidate.height)) {
+    if (!ignoredImage(candidate.sourceUrl, candidate.alt ?? "", candidate.width, candidate.height, candidate.publisherEditorial)) {
       const previous = values.get(candidate.sourceUrl);
       const alt = candidate.alt ?? previous?.alt;
       const caption = candidate.caption ?? previous?.caption;
