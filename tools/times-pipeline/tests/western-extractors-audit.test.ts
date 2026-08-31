@@ -8,7 +8,7 @@ import { extractBloombergImages } from "../src/sources/bloomberg/images.js";
 import { extractBloombergBody } from "../src/sources/bloomberg/process.js";
 import { ftFetch } from "../src/sources/ft/fetch.js";
 import { extractFtImages } from "../src/sources/ft/images.js";
-import { extractFtBody } from "../src/sources/ft/process.js";
+import { classifyFtAccessOffer, extractFtBody } from "../src/sources/ft/process.js";
 import { extractGuardianImages } from "../src/sources/guardian/images.js";
 import { extractGuardianBody } from "../src/sources/guardian/process.js";
 import { extractNprImages } from "../src/sources/npr/images.js";
@@ -191,6 +191,7 @@ describe("western publisher extraction audit", () => {
     expect(typeof extracted).toBe("string");
     if (typeof extracted !== "string") throw new Error("Expected an extracted FT article body");
     const body = extracted;
+    expect(classifyFtAccessOffer(body)).toBeUndefined();
     expect(body).toMatch(/^<p>Prime minister had faced criticism/);
     expect(body).toContain("serious offenders");
     expect(body).not.toContain("Roula Khalaf");
@@ -251,6 +252,10 @@ describe("western publisher extraction audit", () => {
     ];
 
     for (const fixture of cases) {
+      expect(classifyFtAccessOffer(fixture.html)).toEqual({
+        marker: "consumer-subscription-offer",
+        matchedSignals: 4,
+      });
       expect(extractFtBody(fixture.html, quality, fixture.pageUrl)).toMatchObject({
         completeness: "truncated",
         evidence: {
@@ -315,6 +320,10 @@ describe("western publisher extraction audit", () => {
 
     const quality = { minimumCharacters: 800, minimumParagraphs: 3 };
     const pageUrl = "https://www.ft.com/content/0d135ccd-f8cf-4178-a7d8-0a0dfbb705e8";
+    expect(classifyFtAccessOffer(professionalOffer)).toEqual({
+      marker: "professional-service-offer",
+      matchedSignals: 2,
+    });
     expect(extractFtBody(professionalOffer, quality, pageUrl)).toMatchObject({
       completeness: "truncated",
       evidence: {

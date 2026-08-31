@@ -7,7 +7,12 @@ import { loadSources } from "./config.js";
 import { processArticle } from "./process/article.js";
 import { writeCanonicalSource, type CanonicalWriteResult } from "./process/canonical-writer.js";
 import { restoreTranslationContext } from "./process/translation-retry.js";
-import { processSourceCandidate, sourceBodyExtractor, sourceFetchPolicy } from "./sources/registry.js";
+import {
+  processSourceCandidate,
+  sourceBodyExtractor,
+  sourceFetchPolicy,
+  sourceStaleCanonicalBodyClassifier,
+} from "./sources/registry.js";
 import { geminiApiKeysFromEnvironment } from "./translation/api-keys.js";
 import {
   TIMES_TRANSLATION_DEFAULTS,
@@ -104,6 +109,7 @@ export async function runProcess(args: Map<string, string>): Promise<{
     translation = { enabled: true, ...translated.stats };
   }
   for (const batch of batches) {
+    const classifyStaleCanonicalBody = sourceStaleCanonicalBodyClassifier(batch.source.id);
     results.push(await writeCanonicalSource(
       output,
       batch.source,
@@ -111,6 +117,9 @@ export async function runProcess(args: Map<string, string>): Promise<{
       batch.manifestObject,
       batch.candidates,
       rawRevision,
+      {
+        ...(classifyStaleCanonicalBody ? { classifyStaleCanonicalBody } : {}),
+      },
     ));
   }
   const reportPath = path.join(output, "canonical", "runs", `${run.runId}.json`);

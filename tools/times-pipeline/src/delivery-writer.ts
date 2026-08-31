@@ -198,7 +198,9 @@ function deliveryRemovals(process: { sources: CanonicalWriteResult[] }): Map<str
   const byDate = new Map<string, Set<string>>();
   for (const source of process.sources) {
     for (const article of source.skippedArticles) {
-      if (article.reason !== "unsupported-media" && article.reason !== "duplicate-live-update") continue;
+      if (article.reason !== "unsupported-media"
+        && article.reason !== "duplicate-live-update"
+        && article.reason !== "stale-publisher-access-offer") continue;
       const date = new Date(article.publishedAt).toISOString().slice(0, 10);
       byDate.set(date, new Set([...(byDate.get(date) ?? []), article.articleId]));
     }
