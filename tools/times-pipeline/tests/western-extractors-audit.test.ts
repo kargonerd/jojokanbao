@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { PageImageCandidate } from "../src/capture/page-images.js";
+import { assessArticleBody, extractArticleBody, selectArticleBody } from "../src/content/body.js";
 import { attachAssetsToBody } from "../src/process/article.js";
 import { extractAxiosImages } from "../src/sources/axios/images.js";
 import { extractAxiosBody } from "../src/sources/axios/process.js";
 import { extractBloombergImages } from "../src/sources/bloomberg/images.js";
 import { extractBloombergBody } from "../src/sources/bloomberg/process.js";
+import { ftFetch } from "../src/sources/ft/fetch.js";
 import { extractFtImages } from "../src/sources/ft/images.js";
 import { extractFtBody } from "../src/sources/ft/process.js";
 import { extractGuardianImages } from "../src/sources/guardian/images.js";
@@ -184,7 +186,11 @@ describe("western publisher extraction audit", () => {
       </div>
     </article></main>`;
 
-    const body = extractFtBody(html, { minimumCharacters: 120, minimumParagraphs: 3 }, "https://www.ft.com/content/story");
+    const pageUrl = "https://www.ft.com/content/story";
+    const extracted = extractFtBody(html, { minimumCharacters: 120, minimumParagraphs: 3 }, pageUrl);
+    expect(typeof extracted).toBe("string");
+    if (typeof extracted !== "string") throw new Error("Expected an extracted FT article body");
+    const body = extracted;
     expect(body).toMatch(/^<p>Prime minister had faced criticism/);
     expect(body).toContain("serious offenders");
     expect(body).not.toContain("Roula Khalaf");
@@ -192,7 +198,20 @@ describe("western publisher extraction audit", () => {
     expect(body).not.toContain("Follow the topics");
     expect(body).not.toContain("Comments");
 
-    const images = extractFtImages(html, "https://www.ft.com/content/story");
+    expect(assessArticleBody(
+      html,
+      ftFetch,
+      { minimumCharacters: 120, minimumParagraphs: 3 },
+      extractFtBody,
+      pageUrl,
+      "captured-page",
+    )).toMatchObject({
+      extractionPath: "publisher-extractor-legacy",
+      completeness: "unknown",
+      verdict: "accepted",
+    });
+
+    const images = extractFtImages(html, pageUrl);
     expect(images).toEqual([
       expect.objectContaining({ sourceUrl: "https://www.ft.com/hero-1600.avif", role: "lead", caption: "Prime minister speaking in London © Photographer/FT" }),
       expect.objectContaining({ sourceUrl: "https://www.ft.com/inside.avif", role: "content", afterBlock: 2, caption: "A prison wing in England © Another Photographer/FT" }),
@@ -217,22 +236,68 @@ describe("western publisher extraction audit", () => {
       <p>For multiple readers</p>
       <p>Digital access for organisations. Includes exclusive features and content.</p>`;
     const html = `<main><article><div class="article__content-body">${historicalBody}</div></article></main>`;
-
-    expect(extractFtBody(
-      html,
-      { minimumCharacters: 800, minimumParagraphs: 3 },
-      "https://www.ft.com/content/5e6db1ad-6ea5-44db-80fd-fd7073d9e676?syn-25a6b1a6=1",
-    )).toBeUndefined();
-
+    const quality = { minimumCharacters: 800, minimumParagraphs: 3 };
+    const firstUrl = "https://www.ft.com/content/5e6db1ad-6ea5-44db-80fd-fd7073d9e676?syn-25a6b1a6=1";
     const longerHistoricalOffer = html.replace(
       "FirstFT: US corporate profits surge as wages lag",
       "Senior German politicians call for ban on parts of far-right AfD",
     );
-    expect(extractFtBody(
-      longerHistoricalOffer,
-      { minimumCharacters: 800, minimumParagraphs: 3 },
-      "https://www.ft.com/content/593c2cde-cf0d-4dcd-a170-9cb1dc9ed896?syn-25a6b1a6=1",
-    )).toBeUndefined();
+    const cases = [
+      { html, pageUrl: firstUrl },
+      {
+        html: longerHistoricalOffer,
+        pageUrl: "https://www.ft.com/content/593c2cde-cf0d-4dcd-a170-9cb1dc9ed896?syn-25a6b1a6=1",
+      },
+    ];
+
+    for (const fixture of cases) {
+      expect(extractFtBody(fixture.html, quality, fixture.pageUrl)).toMatchObject({
+        completeness: "truncated",
+        evidence: {
+          kind: "access-offer",
+          marker: "consumer-subscription-offer",
+          matchedSignals: 4,
+        },
+      });
+      expect(assessArticleBody(
+        fixture.html,
+        ftFetch,
+        quality,
+        extractFtBody,
+        fixture.pageUrl,
+        "captured-page",
+      )).toMatchObject({
+        extractionPath: "publisher-extractor",
+        completeness: "truncated",
+        verdict: "rejected",
+        rejectReason: "publisher-truncated",
+        evidence: {
+          kind: "access-offer",
+          marker: "consumer-subscription-offer",
+        },
+      });
+      expect(extractArticleBody(fixture.html, ftFetch, quality, extractFtBody, fixture.pageUrl)).toBeUndefined();
+      expect(extractFtImages(fixture.html, fixture.pageUrl)).toEqual([]);
+    }
+
+    const completeDiscoveryBody = `<article>${Array.from({ length: 3 }, (_, index) => (
+      `<p>${`Complete discovery paragraph ${index} contains enough reported detail to satisfy the configured source threshold. `.repeat(4)}</p>`
+    )).join("")}</article>`;
+    expect(extractArticleBody(completeDiscoveryBody, ftFetch, quality, extractFtBody, firstUrl)).toBeDefined();
+    const selected = selectArticleBody({
+      capturedPage: { html, pageUrl: firstUrl },
+      discoveryBody: { html: completeDiscoveryBody, pageUrl: firstUrl },
+    }, ftFetch, quality, extractFtBody);
+    expect(selected.body).toBeUndefined();
+    expect(selected.report).toEqual({
+      attempts: [expect.objectContaining({
+        origin: "captured-page",
+        extractionPath: "publisher-extractor",
+        completeness: "truncated",
+        verdict: "rejected",
+        rejectReason: "publisher-truncated",
+      })],
+    });
   });
 
   it("rejects FT Professional product copy in place of a publisher article", () => {
@@ -248,11 +313,57 @@ describe("western publisher extraction audit", () => {
       <p>This product testimonial and the surrounding marketing copy are not the requested Financial Times article.</p>
     </div></article></main>`;
 
-    expect(extractFtBody(
+    const quality = { minimumCharacters: 800, minimumParagraphs: 3 };
+    const pageUrl = "https://www.ft.com/content/0d135ccd-f8cf-4178-a7d8-0a0dfbb705e8";
+    expect(extractFtBody(professionalOffer, quality, pageUrl)).toMatchObject({
+      completeness: "truncated",
+      evidence: {
+        kind: "access-offer",
+        marker: "professional-service-offer",
+        matchedSignals: 2,
+      },
+    });
+    expect(assessArticleBody(
       professionalOffer,
-      { minimumCharacters: 400, minimumParagraphs: 3 },
-      "https://www.ft.com/content/0d135ccd-f8cf-4178-a7d8-0a0dfbb705e8",
-    )).toBeUndefined();
+      ftFetch,
+      quality,
+      extractFtBody,
+      pageUrl,
+      "captured-page",
+    )).toMatchObject({
+      extractionPath: "publisher-extractor",
+      completeness: "truncated",
+      verdict: "rejected",
+      rejectReason: "publisher-truncated",
+      evidence: {
+        kind: "access-offer",
+        marker: "professional-service-offer",
+      },
+    });
+    expect(extractArticleBody(professionalOffer, ftFetch, quality, extractFtBody, pageUrl)).toBeUndefined();
+    expect(extractFtImages(professionalOffer, pageUrl)).toEqual([]);
+  });
+
+  it("keeps the shared fallback available when no FT publisher body structure matches", () => {
+    const quality = { minimumCharacters: 300, minimumParagraphs: 3 };
+    const pageUrl = "https://www.ft.com/content/nonstandard-story";
+    const html = `<main><article>${Array.from({ length: 3 }, (_, index) => (
+      `<p>Reported fallback paragraph ${index} explains the policy decision, its consequences and the response from affected organisations in enough detail for readers.</p>`
+    )).join("")}</article></main>`;
+
+    expect(extractFtBody(html, quality, pageUrl)).toBeUndefined();
+    expect(assessArticleBody(
+      html,
+      ftFetch,
+      quality,
+      extractFtBody,
+      pageUrl,
+      "captured-page",
+    )).toMatchObject({
+      extractionPath: "source-selector",
+      completeness: "unknown",
+      verdict: "accepted",
+    });
   });
 
   it("extracts Axios Smart Brevity blocks and separators without byline and preferred-source UI", () => {
