@@ -202,6 +202,59 @@ describe("western publisher extraction audit", () => {
     expect(attached.indexOf('data-asset-id="asset-1"')).toBeLessThan(attached.indexOf("Officials said"));
   });
 
+  it("rejects the persisted FT subscription-offer artifact from the 2026-08-28 delivery", () => {
+    const historicalBody = `<p>FirstFT: US corporate profits surge as wages lag</p>
+      <p>Try unlimited access</p>
+      <p>Then $75 per month. Complete digital access to quality FT journalism on any device. Cancel anytime during your trial.</p>
+      <p>Explore more offers.</p>
+      <p>Essential digital access to quality FT journalism on any device. Pay a year upfront and save 20%.</p>
+      <p>Complete digital access to quality FT journalism with expert analysis from industry leaders. Pay a year upfront and save 20%.</p>
+      <p>Our digitised version of the FT newspaper, for easy reading on any device.</p>
+      <p>Check whether you already have access via your university or organisation.</p>
+      <p>Terms &amp; Conditions apply</p>
+      <p>Explore our full range of subscriptions.</p>
+      <p>Discover all the plans currently available in your country</p>
+      <p>For multiple readers</p>
+      <p>Digital access for organisations. Includes exclusive features and content.</p>`;
+    const html = `<main><article><div class="article__content-body">${historicalBody}</div></article></main>`;
+
+    expect(extractFtBody(
+      html,
+      { minimumCharacters: 800, minimumParagraphs: 3 },
+      "https://www.ft.com/content/5e6db1ad-6ea5-44db-80fd-fd7073d9e676?syn-25a6b1a6=1",
+    )).toBeUndefined();
+
+    const longerHistoricalOffer = html.replace(
+      "FirstFT: US corporate profits surge as wages lag",
+      "Senior German politicians call for ban on parts of far-right AfD",
+    );
+    expect(extractFtBody(
+      longerHistoricalOffer,
+      { minimumCharacters: 800, minimumParagraphs: 3 },
+      "https://www.ft.com/content/593c2cde-cf0d-4dcd-a170-9cb1dc9ed896?syn-25a6b1a6=1",
+    )).toBeUndefined();
+  });
+
+  it("rejects FT Professional product copy in place of a publisher article", () => {
+    const professionalOffer = `<main><article><div class="article__content-body">
+      <p>Activate your 14 day complimentary access to read this article</p>
+      <p>This content is from Monetary Policy Radar, a premium service available as an addition to an FT Professional subscription.</p>
+      <p>What is Monetary Policy Radar?</p>
+      <p>Monetary Policy Radar acts as a one stop shop for monetary policy related information, helping professionals interpret central bank signals and assess interest rate risks.</p>
+      <p>Available at an additional cost to FT Professional subscribers, customers can use the full suite of product features.</p>
+      <p>Structured data and analysis strengthen forecasts and benchmark them against market consensus and proprietary indicators.</p>
+      <p>Exclusive access to central bankers helps customers interpret tone, language and policy leanings.</p>
+      <p>Our editorial team delivers analysis that turns monetary policy and political forces into actionable product insight.</p>
+      <p>This product testimonial and the surrounding marketing copy are not the requested Financial Times article.</p>
+    </div></article></main>`;
+
+    expect(extractFtBody(
+      professionalOffer,
+      { minimumCharacters: 400, minimumParagraphs: 3 },
+      "https://www.ft.com/content/0d135ccd-f8cf-4178-a7d8-0a0dfbb705e8",
+    )).toBeUndefined();
+  });
+
   it("extracts Axios Smart Brevity blocks and separators without byline and preferred-source UI", () => {
     const html = `<main><article>
       <ul class="author-list"><li><a href="/authors/reporter">Reporter Name</a></li></ul>
