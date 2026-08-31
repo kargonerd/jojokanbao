@@ -17,6 +17,7 @@ const EXCLUDED_SELECTOR = [
   "[class*='related']",
   "[class*='recommend']",
 ].join(",");
+const WORD_INTERNAL_SPELLING_MARK = /(?<=\p{L})<s\b[^>]*>\s*(\p{L})\s*<\/s>(?=\p{L})/giu;
 
 function hasBlockAncestor(element: GuardianDocumentElement, container: GuardianDocumentElement): boolean {
   let current = element.parent as GuardianDocumentElement | undefined;
@@ -62,5 +63,11 @@ export function extractGuardianBody(html: string, quality: BodyQuality, pageUrl?
   const document = load(html);
   const structure = guardianBodyStructure(document);
   if (!structure) return undefined;
-  return semanticHtmlBlocks(structure.blockElements.map((element) => document.html(element)), quality, pageUrl);
+  // Guardian liveblogs sometimes wrap the British-only letter in a spelling
+  // variant with <s>, for example favo<s>u</s>rite. It is editorial diff
+  // markup, not semantic strikethrough. Keep the exception publisher-local
+  // and exact so ordinary deleted words and sentences remain protected.
+  const blocks = structure.blockElements.map((element) => document.html(element)
+    .replace(WORD_INTERNAL_SPELLING_MARK, "$1"));
+  return semanticHtmlBlocks(blocks, quality, pageUrl);
 }
