@@ -128,6 +128,35 @@ describe("native source modules", () => {
     expect(captured).toBeUndefined();
   });
 
+  it("retries a transient CLS direct failure before using the browser fallback", async () => {
+    const html = "<!DOCTYPE html><html lang=\"zh\"><body><div class=\"detail-content\"><p>合法的财联社短讯正文。</p></div></body></html>";
+    const response = new Response(html, { status: 200 });
+    response.headers.delete("content-type");
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } }))
+      .mockResolvedValueOnce(response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const captured = await sourcePageCapture("cls")?.("https://www.cls.cn/detail/2469313", 10);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(captured).toMatchObject({
+      method: "direct",
+      status: 200,
+      renderedHtml: html,
+    });
+  });
+
+  it("does not accept an article-shaped CLS error response", async () => {
+    const html = "<!DOCTYPE html><html><body><div class=\"detail-content\"><p>缓存中的旧正文。</p></div></body></html>";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(html, { status: 503 })));
+
+    const captured = await sourcePageCapture("cls")?.("https://www.cls.cn/detail/2469313", 10);
+
+    expect(captured).toBeUndefined();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("maps DW articles and liveblogs while omitting videos", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ data: { content: {
       contentComposition: { informationSpaces: [{ main: [{ contents: [
