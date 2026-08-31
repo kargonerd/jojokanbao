@@ -104,6 +104,23 @@ describe("Gemma production translation", () => {
     ])).toBe("<p>未保留斜体的译文。</p><p>模型新增强调的译文。</p>");
   });
 
+  it("allows plain strikethrough drift while protecting attributed strikethrough", () => {
+    expect(applyArticleTranslation(
+      "<p>the home favo<s>u</s>rite holds serve.</p>",
+      [{ tag: "p", html: "<p>主场热门选手保发。</p>" }],
+    )).toBe("<p>主场热门选手保发。</p>");
+
+    expect(applyArticleTranslation(
+      "<p>Plain source text.</p>",
+      [{ tag: "p", html: "<p><s>模型新增删除线的译文。</s></p>" }],
+    )).toBe("<p>模型新增删除线的译文。</p>");
+
+    expect(() => applyArticleTranslation(
+      '<p>the home favo<s data-edit="spelling">u</s>rite holds serve.</p>',
+      [{ tag: "p", html: "<p>主场热门选手保发。</p>" }],
+    )).toThrow("changed protected HTML");
+  });
+
   it("translates with bounded concurrency and reuses the content-addressed cache", async () => {
     const output = await mkdtemp(path.join(os.tmpdir(), "jojo-gemma-cache-"));
     let active = 0;

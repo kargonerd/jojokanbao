@@ -19,7 +19,7 @@ export const TIMES_TRANSLATION_DEFAULTS = {
 } as const;
 const TARGET_LANGUAGE = "zh-CN" as const;
 const BLOCK_SELECTOR = "p,h1,h2,h3,h4,blockquote,figcaption,li,td,th";
-const FLEXIBLE_FORMATTING_TAGS = new Set(["b", "em", "i", "strong"]);
+const FLEXIBLE_FORMATTING_TAGS = new Set(["b", "em", "i", "s", "strong"]);
 
 interface TranslationBlock {
   tag: string;
