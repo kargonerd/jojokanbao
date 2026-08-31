@@ -26,21 +26,22 @@ test("search sort uses the editorial dropdown and sends the selected sort", asyn
   await page.goto("/search?keyword=测试", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "测试标题" })).toBeVisible();
 
-  const sortButton = page.getByRole("button", { name: "默认排序" });
-  await sortButton.click();
+  const sortSelect = page.getByRole("combobox", { name: "排序" });
+  await expect(sortSelect).toContainText("默认排序");
+  await sortSelect.click();
   const listbox = page.getByRole("listbox", { name: "排序" });
   await expect(listbox).toBeVisible();
   await expect(page.getByRole("option", { name: "默认排序" })).toHaveAttribute("aria-selected", "true");
 
   await page.getByRole("option", { name: "时间降序" }).click();
-  await expect(page.getByRole("button", { name: "时间降序" })).toBeVisible();
+  await expect(sortSelect).toContainText("时间降序");
   await expect.poll(() => requests.some((request) => request.sort === "timeDesc")).toBe(true);
 
-  await page.getByRole("button", { name: "时间降序" }).click();
+  await sortSelect.click();
   await page.keyboard.press("Escape");
   await expect(listbox).toHaveCount(0);
 
-  await page.getByRole("button", { name: "时间降序" }).click();
+  await sortSelect.click();
   await page.mouse.click(8, 180);
   await expect(listbox).toHaveCount(0);
 });
