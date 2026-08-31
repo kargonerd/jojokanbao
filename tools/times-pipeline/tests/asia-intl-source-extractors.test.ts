@@ -273,6 +273,20 @@ describe("Asia and international publisher extractors", () => {
     ]);
   });
 
+  it("accepts a publisher-verified one-paragraph Focus Taiwan wire brief without relaxing generic quality", () => {
+    const report = "Taipei, Aug. 31 (CNA) The Taiwan Stock Exchange's main index opened down 106.76 points at 46,224.69 Monday on turnover of NT$10.01 billion (US$316.28 million).";
+    const completePage = `<div class="paragraph"><p>${report}</p><div class="author"><p>(By Y.F. Low)</p><p>Enditem</p></div></div>`;
+    const incompletePage = `<div class="paragraph"><p>${report}</p><div class="author"><p>(By Y.F. Low)</p></div></div>`;
+    const strictQuality = { minimumCharacters: 800, minimumParagraphs: 3 };
+    const pageUrl = "https://focustaiwan.tw/business/202608310002";
+
+    const body = extractFocusTaiwanBody(completePage, strictQuality, pageUrl);
+
+    expect(body).toContain(report);
+    expect(body).not.toContain("Enditem");
+    expect(extractFocusTaiwanBody(incompletePage, strictQuality, pageUrl)).toBeUndefined();
+  });
+
   it("places a Focus Taiwan image after sanitized blocks, ignoring short and duplicate paragraphs", () => {
     const repeated = "The first substantive paragraph contains enough publisher reporting to remain in the archived body.";
     const html = `<div class="PrimarySide"><div class="paragraph">
