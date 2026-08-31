@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 from flask import Flask, jsonify, request
 from elasticsearch import Elasticsearch
@@ -90,6 +91,19 @@ def _identity_filter(field, values):
   return {'terms': {field: values}}
 
 
+def _valid_date_range(start_date, end_date):
+  if bool(start_date) != bool(end_date):
+    return False
+  if not start_date:
+    return True
+  try:
+    start = datetime.strptime(start_date, '%Y-%m-%d').date()
+    end = datetime.strptime(end_date, '%Y-%m-%d').date()
+  except ValueError:
+    return False
+  return start <= end
+
+
 @app.route("/content/search", methods=["POST"])
 def content_search():
   """Search the unified JOJO content index for both readers and Agent tools."""
@@ -114,7 +128,7 @@ def content_search():
     return jsonify({'error': 'sort 参数错误'}), 400
   start_date = str(payload.get('startDate') or '').strip()
   end_date = str(payload.get('endDate') or '').strip()
-  if bool(start_date) != bool(end_date):
+  if not _valid_date_range(start_date, end_date):
     return jsonify({'error': '日期范围参数错误'}), 400
   filters = []
   dataset_ids = _string_list(payload.get('datasetIds'))

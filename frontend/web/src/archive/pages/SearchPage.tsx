@@ -85,7 +85,7 @@ const SEARCH_CONTENT_TYPES: readonly SearchContentTypeOption[] = [
     sourceLabel: "报刊",
     selectLabel: "选择报刊",
     allLabel: "全部报刊",
-    types: ["newspaper", "magazine"],
+    types: ["newspaper"],
     supportsDate: true,
     supportsSort: true,
   },
@@ -146,7 +146,7 @@ function normalizeDatasetId(value: string | null, contentType: SearchContentType
   const datasetId = (value || "").trim();
   if (!datasetId) return "";
   if (contentType === "book") return datasetId;
-  return ARCHIVE_PUBLICATION_NAMES.includes(datasetId as ArchivePublicationName) ? datasetId : "";
+  return PERIODICAL_DATASETS.some((dataset) => dataset.id === datasetId) ? datasetId : "";
 }
 
 function formatSearchApiDate(value: string): string {
@@ -368,6 +368,9 @@ export function SearchPage({
     const unifiedTypes = selectedPeriodical
       ? [selectedPeriodical.type]
       : SEARCH_CONTENT_TYPE_BY_ID[nextContentType].types;
+    const periodicalDatasetIds = nextDatasetId
+      ? [nextDatasetId]
+      : PERIODICAL_DATASETS.map((dataset) => dataset.id);
     const request = platformRedesign
       ? axios.post(CONTENT_SEARCH_API, {
           query: keyword,
@@ -375,8 +378,8 @@ export function SearchPage({
           size: pageSize,
           ...(selectedBook
             ? { sources: [selectedBook.label] }
-            : nextDatasetId
-              ? { datasetIds: [nextDatasetId] }
+            : nextContentType === "periodical"
+              ? { datasetIds: periodicalDatasetIds }
               : {}),
           types: unifiedTypes,
           ...(nextSort ? { sort: nextSort } : {}),

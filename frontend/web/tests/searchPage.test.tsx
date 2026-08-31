@@ -190,7 +190,8 @@ describe("SearchPage results", () => {
       query: "历史",
       page: 2,
       size: 10,
-      types: ["newspaper", "magazine"],
+      datasetIds: ["rmrb"],
+      types: ["newspaper"],
       sort: "timeDesc",
       startDate: "1966-07-01",
       endDate: "1966-07-31",
@@ -210,6 +211,11 @@ describe("SearchPage results", () => {
     expect(periodicalSelect.textContent).toContain("报刊");
     expect(periodicalSelect.textContent).not.toContain("来源");
     fireEvent.click(periodicalSelect);
+
+    expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).toMatchObject({
+      datasetIds: ["rmrb"],
+      types: ["newspaper"],
+    });
     expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["全部报刊", "人民日报"]);
     fireEvent.click(periodicalSelect);
 
@@ -242,6 +248,17 @@ describe("SearchPage results", () => {
     });
     expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).not.toHaveProperty("datasetIds");
     expect(screen.getByTestId("location").textContent).toContain("type=book&dataset=mao-selected");
+  });
+
+  it("ignores unsupported periodical dataset parameters", async () => {
+    renderSearch("/search?keyword=历史&dataset=ckxx", true);
+
+    await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).toMatchObject({
+      datasetIds: ["rmrb"],
+      types: ["newspaper"],
+    });
+    expect(screen.getByRole("combobox", { name: "选择报刊" }).textContent).toContain("全部报刊");
   });
 
   it("links book chapter hits back to the book reader", async () => {

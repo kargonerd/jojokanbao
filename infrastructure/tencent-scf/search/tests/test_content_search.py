@@ -124,15 +124,23 @@ class ContentSearchTests(unittest.TestCase):
             {'_score': {'order': 'desc'}},
         ])
 
-    def test_rejects_incomplete_dates_and_pages_beyond_the_result_window(self):
+    def test_rejects_invalid_dates_and_pages_beyond_the_result_window(self):
         incomplete = self.client.post('/content/search', json={
             'query': '教育', 'startDate': '1988-06-01',
+        })
+        malformed = self.client.post('/content/search', json={
+            'query': '教育', 'startDate': '1988-02-30', 'endDate': '1988-03-01',
+        })
+        reversed_range = self.client.post('/content/search', json={
+            'query': '教育', 'startDate': '1988-07-01', 'endDate': '1988-06-01',
         })
         too_deep = self.client.post('/content/search', json={
             'query': '教育', 'page': 1001, 'size': 10,
         })
 
         self.assertEqual(incomplete.status_code, 400)
+        self.assertEqual(malformed.status_code, 400)
+        self.assertEqual(reversed_range.status_code, 400)
         self.assertEqual(too_deep.status_code, 400)
 
 
