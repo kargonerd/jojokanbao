@@ -23,9 +23,12 @@ from jojo_news_archive.discovery.common_crawl import (
 )
 from jojo_news_archive.models import CaptureCandidate, CaptureProvider
 from jojo_news_archive.parsing.parser import parse_article
-from jojo_news_archive.sources.specs import publisher_spec
+from jojo_news_archive.sources.registry import publisher_spec
+from jojo_news_archive.sources.discovery_registry import (
+    DISCOVERY_HOOKS,
+    source_discovery,
+)
 from jojo_news_archive.discovery.wayback import (
-    ARCHIVED_DATE_HYDRATION_PUBLISHERS,
     candidate_rank,
     infer_published_at,
 )
@@ -34,13 +37,10 @@ from jojo_news_archive.discovery.wayback import (
 SCHEMA_VERSION = "jojo-common-crawl-prefix-discovery/2"
 MANIFEST_FORMAT_VERSION = "jojo-capture-manifest/1"
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
-# FT article URLs are UUID-based and do not carry a publication year.  The
-# parser already understands FT JSON-LD/Open Graph/legacy date fields, so the
-# Common Crawl catalog can recover the year by hydrating a bounded WARC sample.
-# Keep this set local to the prefix catalog: the Wayback manifest's archived
-# date extractor has a separate publisher-specific implementation.
 COMMON_CRAWL_DATE_HYDRATION_PUBLISHERS = frozenset(
-    (*ARCHIVED_DATE_HYDRATION_PUBLISHERS, "ft", "wsj")
+    hooks.publisher
+    for hooks in DISCOVERY_HOOKS.values()
+    if hooks.supports_prefix_date_hydration
 )
 
 
@@ -300,14 +300,9 @@ def prefix_patterns(
         prefix = pattern[:-1]
         if prefix and prefix not in result:
             result.append(prefix)
-    if spec.publisher == "npr":
-        # NPR's pre-2010 CMS links remained widely captured after dated
-        # canonical URLs were introduced. Their storyId is stable, while the
-        # publication year must be recovered from archived article metadata.
-        for prefix in (
-            "www.npr.org/templates/story/story.php",
-            "npr.org/templates/story/story.php",
-        ):
+    hooks = source_discovery(spec.publisher)
+    if hooks.prefix_patterns is not None:
+        for prefix in hooks.prefix_patterns(spec, from_year, to_year):
             if prefix not in result:
                 result.append(prefix)
     if not result:
@@ -353,6 +348,7 @@ def initialize_prefix_schema(
             rows_seen INTEGER NOT NULL DEFAULT 0,
             rows_accepted INTEGER NOT NULL DEFAULT 0,
             attempts INTEGER NOT NULL DEFAULT 0,
+            source_priority INTEGER NOT NULL DEFAULT 0,
             last_error TEXT,
             updated_at TEXT NOT NULL,
             PRIMARY KEY(collection_id, pattern)
@@ -417,6 +413,15 @@ def initialize_prefix_schema(
             );
         """
     )
+    query_columns = {
+        str(row[1])
+        for row in connection.execute("PRAGMA table_info(prefix_queries)")
+    }
+    if "source_priority" not in query_columns:
+        connection.execute(
+            "ALTER TABLE prefix_queries "
+            "ADD COLUMN source_priority INTEGER NOT NULL DEFAULT 0"
+        )
     fingerprint = _fingerprint(
         spec=spec,
         from_year=from_year,
@@ -506,7 +511,7 @@ def initialize_prefix_schema(
         "WHERE key='hydration_parser_version'"
     ).fetchone()
     if (
-        spec.publisher in COMMON_CRAWL_DATE_HYDRATION_PUBLISHERS
+        source_discovery(spec.publisher).supports_prefix_date_hydration
         and (
             previous_hydration_version is None
             or str(previous_hydration_version[0]) != hydration_parser_version
@@ -541,14 +546,34 @@ def initialize_prefix_schema(
         metadata.items(),
     )
     now = _now_iso()
+    hooks = source_discovery(spec.publisher)
+
+    def query_priority(pattern: str, collection_id: str) -> int:
+        source_value = (
+            hooks.prefix_query_priority(pattern, collection_id)
+            if hooks.prefix_query_priority is not None
+            else None
+        )
+        if source_value is not None:
+            return source_value
+        return 0 if re.search(r"/20\d{2}(?:[-/]|$)", pattern) else 1
+
     connection.executemany(
         """
-        INSERT OR IGNORE INTO prefix_queries(
-            collection_id, index_url, pattern, updated_at
-        ) VALUES (?, ?, ?, ?)
+        INSERT INTO prefix_queries(
+            collection_id, index_url, pattern, source_priority, updated_at
+        ) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(collection_id, pattern) DO UPDATE SET
+            source_priority=excluded.source_priority
         """,
         (
-            (collection.identifier, collection.index_url, pattern, now)
+            (
+                collection.identifier,
+                collection.index_url,
+                pattern,
+                query_priority(pattern, collection.identifier),
+                now,
+            )
             for collection in collections
             for pattern in patterns
         ),
@@ -571,19 +596,7 @@ def next_prefix_query(
         WHERE status NOT IN ('complete', 'target-complete')
         ORDER BY
             attempts,
-            CASE
-                -- Reuters' modern CMS moved articles below section roots
-                -- (/world/, /business/, ...).  Probe those roots before the
-                -- legacy /article/<letter> families so a newly-added source
-                -- can contribute candidates without waiting for every old
-                -- prefix/collection pair to be exhausted.
-                WHEN pattern LIKE 'www.reuters.com/%/' THEN -3
-                WHEN pattern LIKE '%/templates/story/story.php'
-                  AND collection_id LIKE 'CC-MAIN-2018-%' THEN -2
-                WHEN pattern LIKE '%/templates/story/story.php' THEN -1
-                WHEN instr(pattern, '/20') > 0 THEN 0
-                ELSE 1
-            END,
+            source_priority,
             CAST(
                 substr(pattern, instr(pattern, '/20') + 1, 4)
                 AS INTEGER
@@ -680,8 +693,8 @@ def reconcile_prefix_year_targets(
             )
         }
         if configured_years and configured_years.issubset(satisfied_years):
-            # Undated legacy URL families (currently NPR storyId links) can
-            # contribute to any configured year after HTML hydration. Once
+            # Undated legacy URL families can contribute to any configured
+            # year after HTML hydration. Once
             # every year has reached its target, scanning them further is no
             # longer useful; reopen them automatically if the target grows.
             connection.execute(
@@ -876,7 +889,7 @@ def record_prefix_page(
                 )
             )
             dated_urls.add(canonical_url)
-        elif spec.publisher in COMMON_CRAWL_DATE_HYDRATION_PUBLISHERS:
+        elif source_discovery(spec.publisher).supports_prefix_date_hydration:
             undated_rows.append(
                 (*common_values, candidate_rank(timestamp, published_at=None))
             )
@@ -1038,7 +1051,8 @@ def process_prefix_date_hydration(
     maximum_attempts: int = 3,
 ) -> dict[str, object]:
     """Recover publication dates for canonical URLs without a date key."""
-    if spec.publisher not in COMMON_CRAWL_DATE_HYDRATION_PUBLISHERS:
+    hooks = source_discovery(spec.publisher)
+    if not hooks.supports_prefix_date_hydration:
         raise ValueError(
             "Common Crawl date hydration is not supported for "
             f"{spec.publisher!r}"
@@ -1090,61 +1104,14 @@ def process_prefix_date_hydration(
             str(int(window["to_year"])),
         ),
     ).fetchall()
-    if spec.publisher == "nikkei":
-        from_year = int(window["from_year"])
-        to_year = int(window["to_year"])
-        midpoint = (from_year + to_year) // 2
-        # Nikkei's opaque-looking article key usually embeds the publication
-        # year (for example, ``...C10A...`` for 2010).  Common Crawl first
-        # saw much of the historical corpus in 2019, so capture timestamp
-        # ordering otherwise puts hundreds of thousands of newer articles in
-        # front of the requested legacy year.  Treat this only as a queue
-        # hint: the archived HTML is still fetched and its parsed publication
-        # date remains authoritative.
-        pending_rows.sort(
-            key=lambda row: (
-                not (
-                    (year_hint := _nikkei_article_year_hint(str(row[0])))
-                    is not None
-                    and from_year <= year_hint <= to_year
-                ),
-                int(row[1]),
-                (
-                    abs(year_hint - midpoint)
-                    if year_hint is not None
-                    else 10_000
-                ),
-            )
-        )
     start = f"{int(window['from_year']):04d}-01-01"
     end = f"{int(window['to_year']) + 1:04d}-01-01"
-    if spec.publisher == "npr":
-        target_story_ids = sorted(
-            story_id
-            for (canonical_url,) in connection.execute(
-                """
-                SELECT DISTINCT canonical_url FROM prefix_candidates
-                WHERE published_at >= ? AND published_at < ?
-                """,
-                (start, end),
-            )
-            if (story_id := _npr_story_id(str(canonical_url))) is not None
-        )
-        if target_story_ids:
-            lower = target_story_ids[len(target_story_ids) // 100]
-            upper = target_story_ids[len(target_story_ids) * 99 // 100]
-            midpoint = (lower + upper) // 2
-            pending_rows.sort(
-                key=lambda row: (
-                    int(row[1]),
-                    not (
-                        (story_id := _npr_story_id(str(row[0]))) is not None
-                        and lower <= story_id <= upper
-                    ),
-                    abs((story_id or 0) - midpoint),
-                    str(row[0]),
-                )
-            )
+    pending_rows = hooks.prefix_hydration_order(
+        connection,
+        list(pending_rows),
+        int(window["from_year"]),
+        int(window["to_year"]),
+    )
     rows = pending_rows[:maximum]
     found = 0
     outside_window = 0
@@ -1300,25 +1267,8 @@ def process_prefix_date_hydration(
     }
 
 
-def _npr_story_id(value: str) -> int | None:
-    match = re.search(
-        r"(?i)(?:storyId=|/)(\d{6,})(?:[/?&#]|$)",
-        value,
-    )
-    return int(match.group(1)) if match is not None else None
 
 
-def _nikkei_article_year_hint(value: str) -> int | None:
-    article_key = value.split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1]
-    encoded_years = re.findall(r"C(\d{2})A", article_key)
-    if encoded_years:
-        return 2000 + int(encoded_years[-1])
-    # Some keys use the shorter ``_<letter><year digit>A`` form without a
-    # two-digit C-year segment.  That family was introduced in the 2010s.
-    short_match = re.search(r"_[A-Z](\d)A", article_key)
-    if short_match is not None:
-        return 2010 + int(short_match.group(1))
-    return None
 
 
 def _promote_undated_candidates(

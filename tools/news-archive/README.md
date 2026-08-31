@@ -5,10 +5,10 @@ parser-validation tooling. It is intentionally a Python tool rather than a
 backend service or pnpm workspace.
 
 The code is being migrated from the temporary public
-`jojo-news-archive-runner` repository. Legacy B2 workflows remain only in that
-temporary runner while it drains; they are intentionally not duplicated here.
-New workflows in this repository must be designed around Hugging Face rather
-than ported from the legacy storage implementation.
+`jojo-news-archive-runner` repository. Its legacy B2 writer workflows are
+disabled and are intentionally not duplicated here. New workflows in this
+repository must be designed around Hugging Face rather than ported from the
+legacy storage implementation.
 
 ## Storage boundary
 
@@ -37,10 +37,15 @@ existing Times `nikkei` source.
 ```text
 jojo_news_archive/
   models.py         Shared immutable Raw/parser models
-  capture/          Raw capture, checkpoints, and capture imports
-  discovery/        Archive clients and historical catalog builders
-  parsing/          Article parser, QA policy, and validation
-  sources/          Publisher URL rules and parser specifications
+  sources/
+    registry.py     Single SourceModule registry
+    contracts.py    Source contracts shared by every publisher
+    bloomberg/      Bloomberg spec, discovery, parser, capture, validation
+    wsj/            WSJ spec, discovery, parser, capture, validation
+    ...             One vertical package for each publisher
+  capture/          Publisher-neutral capture/checkpoint engine
+  discovery/        Publisher-neutral archive provider primitives
+  parsing/          Publisher-neutral parser/QA orchestration
   orchestration/    Bounded planners and watchdog logic
   migration/        One-time legacy B2-to-HF mapping and verification only
 tools/              Thin Python command-line entry points
@@ -48,11 +53,20 @@ tests/              Parser, capture, validation, and architecture tests
 schemas/            Internal RawCapture and parser-result JSON Schemas
 ```
 
-Library modules use explicit absolute imports across these feature areas. The
-root package is intentionally limited to `models.py`; architecture tests reject
-new flat compatibility modules. `B2_ARCHIVE_*` credentials are forbidden from
-the runtime library and future new-repository runners. Only the quarantined
-one-time `migration/` code understands legacy B2 object names.
+Each publisher owns its URL rules, parser specification, discovery adapters,
+capture policy, parser implementation, and validation policy below
+`sources/<publisher>/`. Shared engines load those implementations through the
+source registry/runtime boundary; they must not import individual publisher
+packages directly. Architecture tests enforce this vertical layout and reject
+media-named implementations outside `sources/`.
+
+Library modules use explicit absolute imports. The root package is intentionally
+limited to `models.py`; architecture tests reject new flat compatibility
+modules. Caixin remains available only for replaying previously captured
+research data and is disabled in the active source registry. `B2_ARCHIVE_*`
+credentials are forbidden from the runtime library and future new-repository
+runners. Only the quarantined one-time `migration/` code understands legacy B2
+object names.
 
 The one-time B2-to-HF state mapping and cutover gates are documented in
 [MIGRATION.md](MIGRATION.md). Generated validation reports and historical run
@@ -61,10 +75,12 @@ logs belong in HF Raw, not in this source tree.
 ## Test
 
 ```bash
-python -m pip install -r tools/news-archive/requirements.txt "pytest>=8,<10"
-python -m pytest -q tools/news-archive/tests
-python tools/news-archive/tools/export_news_schemas.py --output-dir /tmp/news-schemas
-diff -ru tools/news-archive/schemas /tmp/news-schemas
+cd tools/news-archive
+python -m pip install -r requirements.txt "pytest>=8,<10"
+python -m pytest -q
+python tools/export_news_schemas.py --output-dir /tmp/news-schemas
+diff -ru schemas /tmp/news-schemas
+cd ../..
 ```
 
 ## HF migration batches

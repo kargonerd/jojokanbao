@@ -15,7 +15,7 @@ if str(SERVICE_ROOT) not in sys.path:
 
 from jojo_news_archive.sources.registry import archive_source_spec
 from jojo_news_archive.discovery.client import ArchiveClient
-from jojo_news_archive.discovery.bloomberg import (
+from jojo_news_archive.sources.bloomberg.discovery import (
     bloomberg_bnn_summary,
     initialize_bloomberg_bnn_schema,
     process_bloomberg_infini_documents,
@@ -24,14 +24,14 @@ from jojo_news_archive.discovery.bloomberg import (
     process_bloomberg_bnn_pages,
     process_bloomberg_bnn_sitemaps,
 )
-from jojo_news_archive.discovery.ft_syndication import (
+from jojo_news_archive.sources.ft.discovery.syndication import (
     initialize_ft_syndication_schema,
     ft_syndication_summary,
     process_ft_infini_documents,
     process_ft_infini_queries,
     process_ft_syndication_resolutions,
 )
-from jojo_news_archive.discovery.nyt_syndication import (
+from jojo_news_archive.sources.nyt.discovery import (
     MAXIMUM_RESPONSE_BYTES,
     initialize_nyt_syndication_schema,
     next_nyt_syndication_query,

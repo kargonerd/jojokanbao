@@ -7,7 +7,7 @@ from pathlib import Path
 import sqlite3
 from urllib.parse import urlencode
 
-from jojo_news_archive.discovery.bloomberg import (
+from jojo_news_archive.sources.bloomberg.discovery import (
     BNN_DAILY_SITEMAP_TEMPLATE,
     _sample_occurrence_ranks,
     bloomberg_bnn_summary,

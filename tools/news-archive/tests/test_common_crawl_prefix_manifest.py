@@ -30,10 +30,8 @@ from jojo_news_archive.discovery.common_crawl_prefix import (
     record_prefix_page_count,
     reconcile_prefix_year_targets,
 )
-from jojo_news_archive.discovery.common_crawl_prefix import (
-    _nikkei_article_year_hint,
-    _npr_story_id,
-)
+from jojo_news_archive.sources.nikkei.discovery import _nikkei_article_year_hint
+from jojo_news_archive.sources.npr.discovery import _npr_story_id
 from jojo_news_archive.models import CaptureProvider
 from jojo_news_archive.capture.raw import manifest_item_from_row
 from tools.build_common_crawl_prefix_manifest import (

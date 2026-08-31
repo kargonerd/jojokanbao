@@ -7,26 +7,30 @@ import hashlib
 import heapq
 import json
 from pathlib import Path
-import re
 import sqlite3
 from typing import Iterable
-from urllib.parse import urlsplit
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup
 
 from jojo_news_archive.sources.registry import (
     archive_source_spec,
     article_deduplication_key,
     article_url_publication_year,
-    ft_content_uuid_creation_year,
     is_parser_validation_candidate,
     normalize_article_url,
 )
 from jojo_news_archive.models import ArticleStatus, ContentType, RawCapture
-from jojo_news_archive.parsing.parser import _terminal_tandem_repeat_length, parse_article
+from jojo_news_archive.parsing.parser import parse_article
 from jojo_news_archive.parsing.policy import qa_policy_revision
-from jojo_news_archive.sources.specs import publisher_spec
-from jojo_news_archive.discovery.infini_news import is_ft_subscription_headline
+from jojo_news_archive.parsing.validation_contracts import (
+    CapturePriorityContext,
+    ExistingSampleContext,
+    SampleCandidateContext,
+    ValidationContext,
+    has_terminal_tandem_repeat,
+)
+from jojo_news_archive.parsing.validation_registry import source_validation_hooks
+from jojo_news_archive.sources.registry import publisher_spec
 
 
 SCHEMA_VERSION = "jojo-parser-validation/2"
@@ -49,249 +53,18 @@ _PAYWALL_PHRASES = (
     "sign in to continue",
     "already a subscriber",
     "unlock this article",
-    "bloomberg professional service subscriber",
 )
 _UI_NOISE_PHRASES = (
     "promoted by taboola",
     "promoted by revcontent",
     "sponsored content from around the web",
-    "more from reuters sponsored content",
-    "our standards: the thomson reuters trust principles",
     "get livefyre",
     "text size regular medium large",
     "if you are not redirected automatically",
-    "save article log in to save subscribe to wsj",
-    "market wire, all rights reserved",
-    "copyright the financial times limited",
-    "this content requires an adobe flash plugin",
-    "your plugin is either missing or out of date",
-    "follow @financialtimesfashion on instagram",
-    "ft subscriber? sign up for the weekly working it newsletter",
-    "see acast.com/privacy for privacy and opt-out information",
 )
 _EXACT_UI_NOISE_BLOCKS = (
     "trending stories",
 )
-_PLACEHOLDER_IMAGE_MARKERS = (
-    "wsj-social-share",
-    "wsj_logo_black_social",
-    "wsj_profile_lg",
-    "wsjsection.",
-    "rcom-default.png",
-    "r-generic-hdr.png",
-    "og-ft-logo",
-    "social-default",
-    "/__assets/creatives/brand-ft/icons/v2/open-graph.png",
-)
-
-
-def _wsj_validation_article_identity(
-    html_bytes: bytes,
-    canonical_url: str,
-) -> str | None:
-    """Read WSJ's stable article id across slug and legacy URL aliases."""
-
-    url_match = re.search(r"(?i)(?:^|[/=])(SB\d{20,})(?:$|[/?&#])", canonical_url)
-    if url_match is not None:
-        return "wsj:" + url_match.group(1).upper()
-    for pattern in (
-        rb'''(?i)data-articleid\s*=\s*["'](SB\d{20,})["']''',
-        rb'''(?i)["']articleId["']\s*:\s*["'](SB\d{20,})["']''',
-        rb"(?i)(?:[?&]|\b)articleid=(SB\d{20,})(?:&|[\"'])",
-    ):
-        match = re.search(pattern, html_bytes)
-        if match is not None:
-            return "wsj:" + match.group(1).decode("ascii").upper()
-    return None
-
-
-def _validation_article_identity(
-    publisher: str,
-    html_bytes: bytes,
-    canonical_url: str,
-    plain_text: str,
-) -> str | None:
-    """Identify one editorial article across distinct public URL aliases."""
-
-    if publisher == "wsj":
-        stable_identity = _wsj_validation_article_identity(
-            html_bytes,
-            canonical_url,
-        )
-        if stable_identity is not None:
-            return stable_identity
-    if publisher == "scmp":
-        article_id = re.search(
-            r"(?i)(?:^|/)article/(\d+)(?:$|[/?#])",
-            urlsplit(canonical_url).path,
-        )
-        if article_id is not None:
-            # SCMP can republish one numeric CMS article under multiple slugs
-            # after a headline edit.  The numeric id is stable across those
-            # public aliases and must occupy only one validation slot.
-            return "scmp:article:" + article_id.group(1)
-    normalized_body = _normalize_text(plain_text)
-    if len(normalized_body) < 100:
-        return None
-    return "content-sha256:" + hashlib.sha256(
-        normalized_body.encode("utf-8")
-    ).hexdigest()
-
-
-def is_axios_internal_test_entry(
-    canonical_url: str,
-    headline: str | None,
-) -> bool:
-    """Identify confirmed Axios CMS fixtures without matching real test news."""
-    slug = urlsplit(canonical_url).path.rstrip("/").rsplit("/", 1)[-1].casefold()
-    normalized_headline = _normalize_text(headline).casefold()
-    known_fixtures = {
-        "axios-generate-test": "axios generate test",
-        "test-this-is-second-persons-post": (
-            "test: this is second person's post"
-        ),
-    }
-    return any(
-        normalized_headline == expected
-        and re.fullmatch(rf"{re.escape(prefix)}-\d+", slug) is not None
-        for prefix, expected in known_fixtures.items()
-    )
-
-
-def _has_publisher_interface_noise(
-    publisher: str,
-    blocks: list[str],
-) -> bool:
-    """Catch repeated publisher chrome that generic quality metrics miss."""
-    if publisher == "ap" and "." in blocks:
-        return True
-    if publisher == "axios":
-        return any(
-            text.rstrip(":") == "more from axios"
-            or text.startswith("subscribe to axios ")
-            for text in blocks
-        )
-    if publisher == "wsj":
-        if any(
-            text.startswith(
-                "buy side from wsj expert recommendations "
-                "on products and services"
-            )
-            for text in blocks
-        ):
-            return True
-        for index, text in enumerate(blocks):
-            nearby = " ".join(blocks[index : index + 3])
-            if (
-                text == "stay informed"
-                and "get a coronavirus briefing" in nearby
-                and "sign up here" in nearby
-            ):
-                return True
-        theme_navigation = {
-            "free resources",
-            "live updates",
-            "daily video briefing",
-        }
-        if theme_navigation.issubset(set(blocks)):
-            return True
-        if any(
-            len(text) <= 300
-            and text.startswith("sign up for our")
-            and "sign up for our" in text
-            and "newsletter" in text
-            for text in blocks
-        ):
-            return True
-    if publisher == "bloomberg":
-        return any(
-            text == "watch this next"
-            or text.rstrip(":") == "related stories"
-            or (
-                text.startswith("sign up to receive the brexit bulletin")
-                and "departure from the eu" in text
-            )
-            or (
-                text.startswith("subscribe to bloomberg benchmark")
-                and ("pocketcast" in text or "itunes" in text)
-            )
-            or (
-                "sign up to receive" in text
-                and "green daily" in text
-                and "newsletter" in text
-            )
-            or text.startswith(
-                "for even more: subscribe to bloomberg all access"
-            )
-            or (
-                text.startswith("want to receive this post in your inbox")
-                and "sign up for" in text
-                and "newsletter" in text
-            )
-            for text in blocks
-        )
-    if publisher == "nyt":
-        return any(
-            text.startswith("sign up for weekly updates on ")
-            and text.endswith(" from the times.")
-            for text in blocks
-        )
-    if publisher == "reuters":
-        return any(
-            (
-                # Reuters press releases can legitimately discuss copyright
-                # and include an ``all rights reserved`` sentence in the
-                # substantive body.  Interface footers are short standalone
-                # blocks; require a bounded block length before classifying
-                # this legal boilerplate as publisher chrome.
-                len(text) <= 1000
-                and "all rights reserved" in text
-                and any(
-                    marker in text
-                    for marker in (
-                        "copyright",
-                        "(c) reuters",
-                        "marketwire",
-                        "market wire",
-                        "business wire",
-                    )
-                )
-            )
-            or (
-                len(text) <= 1000
-                and "republication or redistribution ofreuters content" in text
-            )
-            for text in blocks
-        )
-    if publisher == "ft":
-        return any(
-            "stay briefed with our coronavirus newsletter" in text
-            or text == "."
-            or text.startswith(
-                "subscribe to the rachman review wherever you get your "
-                "podcasts"
-            )
-            or text == "sign up for the survey!"
-            or (
-                text.startswith("sign up for the britain")
-                and "healthiest workplace survey" in text
-            )
-            or text.startswith(
-                "sign up for the financial times markets news channel"
-            )
-            or re.match(
-                r"^sign up for the ft(?:'|’)s due diligence newsletter\b",
-                text,
-            ) is not None
-            or (
-                text.startswith("sign up to scoreboard")
-                and "must-read weekly briefing" in text
-            )
-            for text in blocks
-        )
-    return False
-
-
 def _has_generic_interface_noise(
     blocks: list[str],
     *,
@@ -308,8 +81,8 @@ def _has_generic_interface_noise(
         or text.startswith("share on twitter (opens new window)")
         or text.startswith("follow the topics in this ")
         # A standalone share control is interface chrome.  Do not match the
-        # phrase anywhere inside a paragraph: legacy NYT essays legitimately
-        # use prose such as “By the way, share this article. Please.”
+        # phrase anywhere inside a paragraph: essays can legitimately use it
+        # as ordinary editorial prose.
         or text == "share this article"
         or (
             text.startswith("get alerts on ")
@@ -508,6 +281,7 @@ def ensure_parser_validation_plan(
 
     initialize_parser_validation_schema(connection)
     source_spec = archive_source_spec(publisher)
+    hooks = source_validation_hooks(publisher)
     invalid_urls = [
         str(row[0])
         for row in connection.execute(
@@ -520,10 +294,11 @@ def ensure_parser_validation_plan(
         )
         if (
             article_deduplication_key(source_spec, str(row[0])) is None
-            or (
-                publisher in {"axios", "wsj"}
-                and normalize_article_url(source_spec, str(row[0]))
-                != str(row[0])
+            or not hooks.existing_sample_valid(
+                ExistingSampleContext(
+                    canonical_url=str(row[0]),
+                    sample_year=int(row[1]),
+                )
             )
             or (
                 (
@@ -534,19 +309,6 @@ def ensure_parser_validation_plan(
                 )
                 is not None
                 and embedded_year != int(row[1])
-            )
-            or (
-                publisher == "ft"
-                and (
-                    ft_created_year := ft_content_uuid_creation_year(
-                        str(row[0])
-                    )
-                )
-                is not None
-                and (
-                    ft_created_year > int(row[1])
-                    or ft_created_year < int(row[1]) - 1
-                )
             )
         )
     ]
@@ -792,29 +554,38 @@ def ensure_parser_validation_plan(
         desired_actionable = max(0, target_per_year - qa_passed) + reserve
         direct_selected: list[tuple[str, str]] = []
         exact_wayback_selected: list[tuple[str, str]] = []
-        if publisher == "ft":
-            existing_direct = int(
-                connection.execute(
-                    """
-                    SELECT COUNT(*)
-                    FROM parser_validation_samples AS sample
-                    JOIN captures AS capture
-                      ON capture.canonical_url=sample.canonical_url
-                    WHERE sample.sample_year=?
-                      AND capture.candidates_json
-                          LIKE '%"provider":"infini-news"%'
-                    """,
-                    (year,),
-                ).fetchone()[0]
-            )
-            direct_selected = _select_additional_samples(
+        for preferred_pass in hooks.preferred_sampling_passes:
+            if preferred_pass.mode == "provider-target":
+                existing_preferred = int(
+                    connection.execute(
+                        """
+                        SELECT COUNT(*)
+                        FROM parser_validation_samples AS sample
+                        JOIN captures AS capture
+                          ON capture.canonical_url=sample.canonical_url
+                        WHERE sample.sample_year=?
+                          AND capture.candidates_json LIKE ?
+                        """,
+                        (
+                            year,
+                            f'%"provider":"{preferred_pass.provider}"%',
+                        ),
+                    ).fetchone()[0]
+                )
+                preferred_limit = max(
+                    0,
+                    desired_actionable - existing_preferred,
+                )
+            else:
+                preferred_limit = max(0, desired_actionable - actionable)
+            preferred_selected = _select_additional_samples(
                 connection,
                 publisher=publisher,
                 year=year,
-                limit=max(0, desired_actionable - existing_direct),
+                limit=preferred_limit,
                 seed=seed,
                 completed_only=False,
-                direct_provider="infini-news",
+                direct_provider=preferred_pass.provider,
             )
             connection.executemany(
                 """
@@ -828,64 +599,15 @@ def ensure_parser_validation_plan(
                 """,
                 (
                     (canonical_url, year, priority, now)
-                    for priority, canonical_url in direct_selected
+                    for priority, canonical_url in preferred_selected
                 ),
             )
-            actionable += len(direct_selected)
-        if publisher == "bloomberg":
-            exact_wayback_selected = _select_additional_samples(
-                connection,
-                publisher=publisher,
-                year=year,
-                limit=max(0, desired_actionable - actionable),
-                seed=seed,
-                completed_only=False,
-                direct_provider="wayback-exact",
-            )
-            connection.executemany(
-                """
-                INSERT OR IGNORE INTO parser_validation_samples(
-                    canonical_url,
-                    sample_year,
-                    sample_priority,
-                    selected_at
-                )
-                VALUES (?, ?, ?, ?)
-                """,
-                (
-                    (canonical_url, year, priority, now)
-                    for priority, canonical_url in exact_wayback_selected
-                ),
-            )
-            actionable += len(exact_wayback_selected)
+            actionable += len(preferred_selected)
+            if preferred_pass.summary == "exact-wayback":
+                exact_wayback_selected.extend(preferred_selected)
+            else:
+                direct_selected.extend(preferred_selected)
         add_count = max(0, desired_actionable - actionable)
-        if publisher == "nyt" and add_count:
-            direct_selected = _select_additional_samples(
-                connection,
-                publisher=publisher,
-                year=year,
-                limit=add_count,
-                seed=seed,
-                completed_only=False,
-                direct_provider="other",
-            )
-            connection.executemany(
-                """
-                INSERT OR IGNORE INTO parser_validation_samples(
-                    canonical_url,
-                    sample_year,
-                    sample_priority,
-                    selected_at
-                )
-                VALUES (?, ?, ?, ?)
-                """,
-                (
-                    (canonical_url, year, priority, now)
-                    for priority, canonical_url in direct_selected
-                ),
-            )
-            actionable += len(direct_selected)
-            add_count -= len(direct_selected)
         selected = _select_additional_samples(
             connection,
             publisher=publisher,
@@ -948,6 +670,44 @@ def pending_parser_validation_urls(
             connection,
             invalidate_stale_results=False,
         )
+    def validation_priority(
+        publisher: str,
+        canonical_url: str,
+        sample_year: int,
+        status: str,
+        last_error: str | None,
+        candidates_json: str | None,
+    ) -> int:
+        try:
+            decoded = json.loads(candidates_json or "[]")
+        except (TypeError, ValueError):
+            decoded = []
+        candidates = tuple(
+            candidate for candidate in decoded if isinstance(candidate, dict)
+        )
+        priority = source_validation_hooks(publisher).capture_priority(
+            CapturePriorityContext(
+                canonical_url=canonical_url,
+                sample_year=int(sample_year),
+                status=status,
+                last_error=last_error or "",
+                candidates_json=candidates_json or "[]",
+                candidates=candidates,
+            )
+        )
+        if len(priority) != 4 or any(value < 0 or value > 99 for value in priority):
+            raise ValueError(f"invalid source validation priority: {priority!r}")
+        return sum(
+            value * scale
+            for value, scale in zip(priority, (1_000_000, 10_000, 100, 1))
+        )
+
+    connection.create_function(
+        "source_validation_priority",
+        6,
+        validation_priority,
+        deterministic=True,
+    )
     query = """
         WITH active_years AS (
             SELECT
@@ -977,206 +737,14 @@ def pending_parser_validation_urls(
                 ROW_NUMBER() OVER (
                     PARTITION BY sample.sample_year
                     ORDER BY
-                        CASE capture.status
-                            WHEN 'pending' THEN 1
-                            ELSE CASE
-                                -- A failed canonical WSJ article can use the
-                                -- independently archived AMP representation
-                                -- on its next attempt. Retry it before adding
-                                -- more first-pass subscription previews; the
-                                -- random validation cohort itself is unchanged.
-                                WHEN capture.publisher = 'wsj'
-                                  AND capture.canonical_url LIKE '%/articles/%'
-                                    THEN 0
-                                WHEN capture.last_error LIKE
-                                     '%server-placeholder-shell%'
-                                    THEN 0
-                                ELSE 2
-                            END
-                        END,
-                        CASE
-                            WHEN capture.publisher = 'ft'
-                              AND EXISTS (
-                                SELECT 1
-                                FROM json_each(capture.candidates_json)
-                                WHERE json_extract(value, '$.provider')
-                                    = 'infini-news'
-                            ) THEN 0
-                            WHEN capture.publisher != 'wsj' THEN 1
-                            -- The validation cohort remains the same random
-                            -- sample.  Only execute its already-indexed,
-                            -- provenance-bearing full-text candidates before
-                            -- low-yield replay guesses so each checkpoint
-                            -- banks the strongest evidence first.
-                            WHEN EXISTS (
-                                SELECT 1
-                                FROM json_each(capture.candidates_json)
-                                WHERE json_extract(value, '$.provider')
-                                    = 'infini-news'
-                            ) THEN 0
-                            WHEN EXISTS (
-                                SELECT 1
-                                FROM json_each(capture.candidates_json)
-                                WHERE json_extract(value, '$.provider')
-                                    = 'arquivo-pt'
-                            ) THEN 1
-                            WHEN EXISTS (
-                                SELECT 1
-                                FROM json_each(capture.candidates_json)
-                                WHERE json_extract(value, '$.provider')
-                                    = 'other'
-                            ) THEN 2
-                            ELSE 3
-                        END,
-                        CASE
-                            WHEN capture.publisher != 'wsj' THEN 0
-                            -- Calendar snapshots are date-pinned Wayback
-                            -- replays added for the current WSJ cohort.  They
-                            -- are usually much more useful than the older
-                            -- CDX candidates, even when those candidates
-                            -- advertise a larger byte count.  Keep the
-                            -- random cohort unchanged, but spend each
-                            -- validation batch on these stronger candidates
-                            -- first.
-                            WHEN capture.candidates_json LIKE '%000000id_%'
-                                THEN 0
-                            -- WSJ changed its archived page shape after the
-                            -- legacy 2016 cohort.  In 2018+ cohorts, prefer
-                            -- the larger CDX responses before the 30-50 KiB
-                            -- shells that were high-yield only in 2016.
-                            WHEN capture.candidates_json LIKE '%tpl=%'
-                                THEN CASE
-                                    WHEN sample.sample_year >= 2018 THEN 7
-                                    ELSE 5
-                                END
-                            WHEN sample.sample_year >= 2018
-                              AND COALESCE((
-                                SELECT MAX(CAST(
-                                    json_extract(value, '$.byteCount')
-                                    AS INTEGER
-                                ))
-                                FROM json_each(capture.candidates_json)
-                            ), 0) >= 200000 THEN 0
-                            WHEN sample.sample_year >= 2018
-                              AND COALESCE((
-                                SELECT MAX(CAST(
-                                    json_extract(value, '$.byteCount')
-                                    AS INTEGER
-                                ))
-                                FROM json_each(capture.candidates_json)
-                            ), 0) >= 100000 THEN 1
-                            WHEN sample.sample_year >= 2018
-                              AND capture.candidates_json LIKE '%tesla=y%'
-                                THEN 2
-                            WHEN sample.sample_year >= 2018
-                              AND COALESCE((
-                                SELECT MAX(CAST(
-                                    json_extract(value, '$.byteCount')
-                                    AS INTEGER
-                                ))
-                                FROM json_each(capture.candidates_json)
-                            ), 0) >= 50000 THEN 3
-                            WHEN sample.sample_year >= 2018
-                              AND COALESCE((
-                                SELECT MAX(CAST(
-                                    json_extract(value, '$.byteCount')
-                                    AS INTEGER
-                                ))
-                                FROM json_each(capture.candidates_json)
-                            ), 0) >= 30000 THEN 4
-                            WHEN sample.sample_year >= 2018
-                              AND COALESCE((
-                                SELECT MAX(CAST(
-                                    json_extract(value, '$.byteCount')
-                                    AS INTEGER
-                                ))
-                                FROM json_each(capture.candidates_json)
-                            ), 0) >= 20000 THEN 5
-                            WHEN sample.sample_year >= 2018 THEN 6
-                            -- In the 2016 WSJ validation cohort, every
-                            -- attempted capture whose largest CDX response
-                            -- was 30-50 KiB produced usable full text.  The
-                            -- smaller shells were overwhelmingly paywalls.
-                            WHEN COALESCE((
-                                SELECT MAX(CAST(
-                                    json_extract(value, '$.byteCount')
-                                    AS INTEGER
-                                ))
-                                FROM json_each(capture.candidates_json)
-                            ), 0) >= 30000
-                              AND COALESCE((
-                                SELECT MAX(CAST(
-                                    json_extract(value, '$.byteCount')
-                                    AS INTEGER
-                                ))
-                                FROM json_each(capture.candidates_json)
-                            ), 0) < 50000 THEN 0
-                            WHEN capture.candidates_json LIKE '%tesla=y%'
-                                THEN 1
-                            WHEN COALESCE((
-                                SELECT MAX(CAST(
-                                    json_extract(value, '$.byteCount')
-                                    AS INTEGER
-                                ))
-                                FROM json_each(capture.candidates_json)
-                            ), 0) >= 50000 THEN 2
-                            WHEN COALESCE((
-                                SELECT MAX(CAST(
-                                    json_extract(value, '$.byteCount')
-                                    AS INTEGER
-                                ))
-                                FROM json_each(capture.candidates_json)
-                            ), 0) >= 20000 THEN 3
-                            ELSE 4
-                        END,
-                        CASE
-                            -- NPR's legacy Wayback captures are frequently
-                            -- 503-limited or parser-unusable.  Keep the
-                            -- random cohort unchanged, but replay its
-                            -- provenance-bearing Common Crawl rows before
-                            -- those low-yield Wayback rows.
-                            WHEN capture.publisher = 'npr'
-                              AND EXISTS (
-                                SELECT 1
-                                FROM json_each(capture.candidates_json)
-                                WHERE json_extract(value, '$.provider')
-                                    = 'commoncrawl'
-                            ) THEN 0
-                            WHEN capture.publisher = 'npr' THEN 1
-                            -- Nikkei's indexed Wayback captures in the
-                            -- 2012-2015 cohort overwhelmingly contain only
-                            -- membership excerpts.  Keep the randomly chosen
-                            -- article cohort unchanged, but replay its
-                            -- provenance-bearing Common Crawl rows before
-                            -- low-yield Wayback rows.
-                            WHEN capture.publisher = 'nikkei'
-                              AND EXISTS (
-                                SELECT 1
-                                FROM json_each(capture.candidates_json)
-                                WHERE json_extract(value, '$.provider')
-                                    = 'commoncrawl'
-                            ) THEN 0
-                            WHEN capture.publisher = 'nikkei' THEN 1
-                            WHEN EXISTS (
-                                SELECT 1
-                                FROM json_each(capture.candidates_json)
-                                WHERE
-                                    json_extract(value, '$.provider')
-                                        = 'wayback'
-                                    AND json_extract(value, '$.digest')
-                                        IS NOT NULL
-                                    AND json_extract(value, '$.capturedAt')
-                                        IS NOT NULL
-                            )
-                            THEN 0
-                            WHEN capture.candidates_json
-                                 LIKE '%"provider":"infini-news"%'
-                            THEN 0
-                            WHEN capture.candidates_json
-                                 LIKE '%"provider":"other"%'
-                            THEN 1
-                            ELSE 2
-                        END,
+                        source_validation_priority(
+                            capture.publisher,
+                            capture.canonical_url,
+                            sample.sample_year,
+                            capture.status,
+                            capture.last_error,
+                            capture.candidates_json
+                        ),
                         sample.sample_priority
                 ) AS sample_rank
             FROM active_years
@@ -1407,12 +975,6 @@ def record_parser_validation(
             ),
             parsed_at=parsed_at,
         )
-        values["article_identity"] = _validation_article_identity(
-            capture.publisher,
-            html_bytes,
-            capture.canonical_url,
-            article.plain_text,
-        )
         embedded_year = article_url_publication_year(
             archive_source_spec(capture.publisher),
             capture.canonical_url,
@@ -1448,715 +1010,53 @@ def record_parser_validation(
             ContentType.AUDIO,
             ContentType.GALLERY,
         }
-        # Axios video landing pages can carry valid article metadata and a
-        # poster image while containing neither a transcript nor any other
-        # recoverable editorial body.  They are useful catalog records, but
-        # must not fill one of the 800 article-validation slots.
-        if (
-            capture.publisher == "axios"
-            and nontext_content
-            and article.quality.body_characters == 0
-        ):
-            issues.append("empty-nontext-content")
-        if capture.publisher == "axios" and is_axios_internal_test_entry(
-            capture.canonical_url,
-            article.headline,
-        ):
-            issues.append("nonarticle-desk")
-        # Axios video packages and subscription-confirmation routes can carry
-        # valid metadata while exposing no recoverable article prose. Keep
-        # those raw captures, but exclude them from the text-article cohort.
-        if (
-            capture.publisher == "axios"
-            and article.content_type == ContentType.VIDEO
-            and article.quality.body_characters < 200
-        ):
-            issues.append("nonarticle-desk")
-        if (
-            capture.publisher == "axios"
-            and re.search(
-                r"(?i)(?:^|/)thank-you-for-subscribing(?:/|$)",
-                urlsplit(capture.canonical_url).path,
-            )
-        ):
-            issues.append("nonarticle-desk")
-        # Axios special-report landing pages expose a headline and a poster
-        # image but only a short ``Read the story`` hand-off to the actual
-        # package. Preserve the landing page while excluding it from the
-        # text-article denominator.
-        if (
-            capture.publisher == "axios"
-            and article.quality.body_characters < 100
-        ):
-            axios_text = _normalize_text(
-                BeautifulSoup(html_bytes, "html.parser").get_text(
-                    " ",
-                    strip=True,
-                )
-            ).casefold()
-            if "special report" in axios_text and "read the story" in axios_text:
-                # A structured Axios landing page can be marked COMPLETE
-                # because its only body block is the short ``Read the story``
-                # handoff. It is still not a text article for QA purposes.
-                issues.append("nonarticle-desk")
-        # A few legacy Axios CMS test/placeholder pages are neither videos
-        # nor special-report landing pages.  They can still produce a short
-        # partial extraction (for example, ``Day 91`` or ``Latest story``),
-        # which would otherwise be counted as a parser failure and consume a
-        # validation slot.  Keep the raw capture, but screen only short,
-        # non-complete Axios shells from the text-article cohort.  Complete
-        # short-form articles are intentionally left untouched.
-        if (
-            capture.publisher == "axios"
-            and article.quality.status != ArticleStatus.COMPLETE
-            and article.quality.body_characters < 100
-            and "nonarticle-desk" not in issues
-        ):
-            issues.append("nonarticle-desk")
-        if capture.publisher == "axios" and normalize_article_url(
-            archive_source_spec("axios"),
-            capture.canonical_url,
-        ) != capture.canonical_url:
-            issues.append("nonarticle-desk")
-        # Preserve Caixin's photo/video desks in the raw archive and parser
-        # coverage, but do not let their one-image landing pages dominate the
-        # independently sampled article-validation cohort.
-        if capture.publisher == "caixin" and capture.canonical_url.startswith(
-            ("https://photos.caixin.com/", "https://video.caixin.com/")
-        ):
-            issues.append("nonarticle-desk")
-        # FT Wayback snapshots sometimes contain only the subscription shell.
-        # Its title is stable and the apparent body is entirely navigation and
-        # upsell chrome, so preserve the capture but keep it out of article QA.
-        if capture.publisher == "ft":
-            ft_soup = BeautifulSoup(html_bytes, "html.parser")
-            title = (
-                _normalize_text(ft_soup.title.get_text(" ", strip=True))
-                if ft_soup.title
-                else ""
-            ).casefold()
-            if title == "subscribe to read | financial times" and (
-                not article.headline
-                or is_ft_subscription_headline(article.headline)
-            ):
-                issues.append("nonarticle-desk")
-            # FT's sitemap can expose a generic ``/content/<uuid>`` URL that
-            # Wayback redirects to the first-party ``/video/<uuid>`` page.
-            # The archived player page retains a headline, poster and short
-            # description but no article transcript.  The canonical URL alone
-            # therefore looks like an article and cannot screen the package;
-            # use the provenance-preserved final URL to keep this video record
-            # in the raw archive without consuming a text-article QA slot.
-            if re.search(
-                r"(?i)https?://(?:www\.)?ft\.com/video/",
-                capture.final_url or "",
-            ):
-                issues.append("nonarticle-desk")
-            # Legacy FT Photo Diary records use ordinary ``/content/<uuid>``
-            # URLs and NewsArticle markup, but the source package is only a
-            # one-sentence image caption (the archived image may be absent).
-            # The stable Photo Diary navigation link distinguishes these
-            # records from genuinely short text articles. Weekend Quiz answer
-            # keys are likewise editorial game material rather than news.
-            has_photo_diary_link = ft_soup.select_one(
-                "a[href='/photo-diary'], a[href='https://www.ft.com/photo-diary']"
-            ) is not None
-            if (
-                has_photo_diary_link
-                and article.quality.body_characters <= 250
-            ) or re.fullmatch(
-                r"(?i)ft weekend quiz solutions",
-                _normalize_text(article.headline or ""),
-            ):
-                issues.append("nonarticle-desk")
-        # NYT's sitemap includes utility entries from the printed-paper
-        # package. Empty corrections notices and the one-line quotation card
-        # are editorial metadata, not news articles to count toward the
-        # article-parser cohort. Older quotation cards lived below
-        # ``/pageoneplus/`` before moving to ``/todayspaper/``; screen both
-        # URL families so a short utility card cannot fail an otherwise clean
-        # independent cohort. Keep them visible in screening statistics.
-        if capture.publisher == "nyt" and re.search(
-            r"(?i)^https://(?:www\.)?nytimes\.com/20\d{2}/\d{2}/\d{2}/(?:"
-            r"pageoneplus/(?:(?:no-)?corrections|quotation-of-the-day)"
-            r"(?:-|\.)|"
-            r"todayspaper/quotation-of-the-day(?:-|\.))",
-            capture.canonical_url,
-        ):
-            issues.append("nonarticle-desk")
-        # Al Jazeera's archived LiveBlog pages can be valid editorial
-        # packages but still expose only a short closing shell when the
-        # client-rendered update stream was not captured. Do not let such an
-        # unrecoverable dynamic package consume an article-validation slot;
-        # keep the capture and liveblog classification for later replay.
-        if (
-            capture.publisher == "aljazeera"
-            and article.content_type == ContentType.LIVEBLOG
-            and article.quality.status != ArticleStatus.COMPLETE
-        ):
-            issues.append("nonarticle-desk")
-        if (
-            capture.publisher in {"aljazeera", "nyt"}
-            and not is_parser_validation_candidate(
-                archive_source_spec(capture.publisher),
-                capture.canonical_url,
-            )
-        ):
-            # Re-screen already selected samples when a publisher's URL
-            # policy changes. This rotates templated/non-independent routes
-            # out of the denominator without deleting their raw captures.
-            issues.append("nonarticle-desk")
-        # SCMP Wayback/Common Crawl captures sometimes preserve only article
-        # metadata plus an explicit access shell (for example ``READ FULL
-        # ARTICLE``). There is no body for the parser to recover; keep the
-        # raw capture but do not count it as a parser failure.
-        if (
-            capture.publisher == "scmp"
-            and article.quality.status
-            in {ArticleStatus.UNSUPPORTED, ArticleStatus.PARTIAL}
-            and (
-                "/infographics/" in capture.canonical_url.casefold()
-                or re.search(
-                    r"(?:^|[-/])gallery(?:$|[-/?])",
-                    capture.canonical_url.casefold(),
-                )
-                or article.quality.body_characters < 100
-            )
-        ):
-            # Newsletter/image packages can be archived as valid Apollo
-            # metadata with a slideshow cover and no prose body. They use
-            # normal ``/news/article/`` URLs, so URL-only screening misses
-            # them; the Apollo marker is the reliable media-only signal.
-            apollo_media_only = bool(
-                re.search(
-                    rb"\"displaySlideShow\"\s*:\s*true",
-                    html_bytes,
-                    re.IGNORECASE,
-                )
-            )
-            carousel_media_only = bool(
-                re.search(
-                    rb"\"carousel_slideshow_items\"\s*:\s*\"[1-9]",
-                    html_bytes,
-                    re.IGNORECASE,
-                )
-            )
-            # Young Post also publishes image-led explainers below ordinary
-            # ``/yp/.../article/`` routes.  They do not carry the legacy
-            # slideshow flags: the Apollo body is intentionally one
-            # infographic followed by a short source credit, while the
-            # article summary explicitly calls the package an infographic.
-            # Keep the raw HTML and selected editorial image, but do not
-            # treat the absent prose body as a parser extraction failure.
-            scmp_infographic_media_only = bool(
-                article.quality.images_selected > 0
-                and re.search(
-                    rb"\bthis\s+infographic\b",
-                    html_bytes,
-                    re.IGNORECASE,
-                )
-                and _normalize_text(article.plain_text)
-                .casefold()
-                .startswith("all information from ")
-            )
-            short_infographic_handoff = bool(
-                article.quality.images_selected > 0
-                and re.fullmatch(
-                    r"(?i)click to view the full-size infographic(?: in high resolution)?\.?",
-                    _normalize_text(article.plain_text),
-                )
-            )
-            if (
-                "/infographics/" in capture.canonical_url.casefold()
-                or re.search(
-                    r"(?:^|[-/])gallery(?:$|[-/?])",
-                    capture.canonical_url.casefold(),
-                )
-                or apollo_media_only
-                or carousel_media_only
-                or scmp_infographic_media_only
-                or short_infographic_handoff
-            ):
-                issues.append("nonarticle-desk")
-            else:
-                raw_text = _normalize_text(
-                    BeautifulSoup(html_bytes, "html.parser").get_text(
-                        " ",
-                        strip=True,
-                    )
-                ).casefold()
-                if any(
-                    marker in raw_text
-                    for marker in (
-                        "read full article",
-                        "sign in/up",
-                        "subscribe to read",
-                        "subscribe to continue",
-                    )
-                ):
-                    issues.append("nonarticle-desk")
-        scmp_path = (
-            urlsplit(capture.canonical_url).path.casefold()
-            if capture.publisher == "scmp"
-            else ""
+        document = BeautifulSoup(html_bytes, "html.parser")
+        raw_text = _normalize_text(document.get_text(" ", strip=True))
+        normalized_blocks = tuple(text_blocks)
+        publisher_blocks = (
+            *normalized_blocks,
+            *(
+                (_normalize_text(article.description),)
+                if article.description
+                else ()
+            ),
         )
-        # SCMP's About Us and announcement sections are publisher corporate
-        # pages, not newsroom articles. Some long recruitment pages parse as
-        # COMPLETE, so screen these paths independently of extraction status.
-        if (
-            capture.publisher == "scmp"
-            and scmp_path.startswith(("/about-us/", "/announcements/"))
-            and "nonarticle-desk" not in issues
-        ):
-            issues.append("nonarticle-desk")
-        # SCMP's corporate announcements are a separate information desk,
-        # not newsroom text articles. Archived Young Post releases can also
-        # preserve an explicit article-body component that is completely
-        # empty while the rest of the document contains only recommendation
-        # cards. In both cases the raw snapshot has no body for a parser to
-        # recover, so retain it without consuming an article-validation row.
-        if (
-            capture.publisher == "scmp"
-            and article.quality.status
-            in {ArticleStatus.UNSUPPORTED, ArticleStatus.PARTIAL}
-            and "nonarticle-desk" not in issues
-        ):
-            scmp_document = BeautifulSoup(html_bytes, "html.parser")
-            empty_structured_body = scmp_document.select_one(
-                "[class*='ArticleContent__StyledBody-']"
-            )
-            unrecoverable_empty_body = bool(
-                isinstance(empty_structured_body, Tag)
-                and not _normalize_text(
-                    empty_structured_body.get_text(" ", strip=True)
-                )
-                and empty_structured_body.select_one(
-                    "img, picture, iframe, video, audio"
-                )
-                is None
-            )
-            series_label = scmp_document.select_one(
-                ".subheadline, [class*='subheadline']"
-            )
-            scmp_series_package = bool(
-                isinstance(series_label, Tag)
-                and _normalize_text(series_label.get_text(" ", strip=True)).casefold()
-                == "scmp series"
-            )
-            temporary_outage = bool(
-                _normalize_text(article.headline or "").casefold() == "sorry..."
-                and "site will be unavailable for a short period"
-                in _normalize_text(
-                    scmp_document.get_text(" ", strip=True)
-                ).casefold()
-            )
-            subscription_campaign_redirect = bool(
-                "subscribe.scmp.com/"
-                in (capture.final_url or "").casefold()
-            )
-            # Wayback can resolve an old ``/article/<id>/...`` URL to the
-            # later SCMP topic bearing the same slug. The replay is a real,
-            # substantial document, but it is a topic index with no article
-            # body. Preserve it without treating the redirect as a parser
-            # extraction failure.
-            scmp_og_type = scmp_document.select_one(
-                "meta[property='og:type']"
-            )
-            redirected_topic_index = bool(
-                "/article/" in scmp_path
-                and "/topics/"
-                in urlsplit(capture.final_url or "").path.casefold()
-                and (
-                    scmp_document.select_one(
-                        ".topic-view, .panel-content-topic, .section-topics"
-                    )
-                    is not None
-                    or (
-                        isinstance(scmp_og_type, Tag)
-                        and str(scmp_og_type.get("content", "")).casefold()
-                        == "website"
-                    )
-                )
-            )
-            young_post_answer_key = bool(
-                scmp_path.startswith("/yp/")
-                and re.match(
-                    r"(?i)^(?:turbo english|listening|(?:news )?quiz) answers\b",
-                    article.headline or "",
-                )
-            )
-            if (
-                "/announcements/" in scmp_path
-                or unrecoverable_empty_body
-                or scmp_series_package
-                or temporary_outage
-                or subscription_campaign_redirect
-                or redirected_topic_index
-                or young_post_answer_key
-            ):
-                issues.append("nonarticle-desk")
-        # Image-only SCMP graphics are valid archived media records and the
-        # parser preserves their body image as a gallery. They are not text
-        # articles for the independent 800-row article denominator. Native
-        # campaigns that redirect to multimedia.scmp.com can likewise retain
-        # only a title/social-image shell after the interactive payload is
-        # lost; preserve the raw capture and select a replacement article.
-        if (
-            capture.publisher == "scmp"
-            and article.quality.body_characters < 100
-            and "nonarticle-desk" not in issues
-        ):
-            scmp_marker_text = " ".join(
-                value
-                for value in (
-                    capture.canonical_url,
-                    article.headline,
-                    article.description,
-                )
-                if value
-            )
-            image_led_graphic = bool(
-                article.content_type == ContentType.GALLERY
-                and article.quality.images_selected > 0
-                and re.search(
-                    r"(?i)\b(?:info)?graphic\b",
-                    scmp_marker_text,
-                )
-            )
-            branded_multimedia_shell = bool(
-                article.quality.status != ArticleStatus.COMPLETE
-                and scmp_path.startswith(("/native/", "/presented/"))
-                and "multimedia.scmp.com"
-                in (capture.final_url or "").casefold()
-            )
-            if image_led_graphic or branded_multimedia_shell:
-                issues.append("nonarticle-desk")
-        # SCMP live-sport packages often archive only the introduction while
-        # the update stream is client-rendered and absent from the snapshot.
-        # Keep those raw packages and their LIVEBLOG type, but do not count a
-        # short unrecoverable shell as a text-parser extraction failure.
-        if (
-            capture.publisher == "scmp"
-            and article.content_type == ContentType.LIVEBLOG
-            and article.quality.status != ArticleStatus.COMPLETE
-            and article.quality.body_characters < 200
-        ):
-            issues.append("nonarticle-desk")
-        # Zaobao's article sitemap also contains interactive packages and
-        # horse-racing result pages.  The former can arrive through a
-        # canonical news URL but redirect to ``interactive.zaobao.com.sg``;
-        # the latter expose a short structured-results shell rather than a
-        # text article.  Keep both captures for provenance without counting
-        # them as parser extraction failures.
-        if capture.publisher == "zaobao":
-            final_url = (capture.final_url or "").casefold()
-            canonical_url = capture.canonical_url.casefold()
-            if (
-                "interactive.zaobao.com.sg" in final_url
-                or "/horse-racing/race-results/" in canonical_url
-            ):
-                issues.append("nonarticle-desk")
-            elif (
-                "/forum/" in canonical_url
-                and article.quality.status
-                in {ArticleStatus.UNSUPPORTED, ArticleStatus.PARTIAL}
-                and article.quality.body_characters < 100
-            ):
-                # Legacy Zaobao forum URLs can expose a misleading OG/title
-                # headline while replaying only a short navigation/teaser
-                # shell. Retain the capture but keep it out of the
-                # recoverable text-article denominator.
-                issues.append("nonarticle-desk")
-            elif (
-                article.quality.status != ArticleStatus.COMPLETE
-                and article.quality.body_characters < 100
-                and (
-                    article.quality.body_characters == 0
-                    or "点击视频" in article.plain_text
-                    or "视频观看" in article.plain_text
-                )
-            ):
-                # Legacy Zaobao video teasers and empty special-report shells
-                # retain a headline/images but no recoverable article prose.
-                issues.append("nonarticle-desk")
-            elif (
-                "/shorts/" in canonical_url
-                and article.content_type == ContentType.VIDEO
-                and article.quality.body_characters < 100
-            ):
-                # The modern ``shorts`` desk can be a video-first package.
-                # Its archived HTML retains the headline, poster and related
-                # stories but no text body; do not count that media shell as
-                # a parser extraction failure.
-                issues.append("nonarticle-desk")
-        # NPR's legacy audio-only pages can retain a headline and player while
-        # exposing no recoverable text body. Preserve the raw/audio record,
-        # but do not let an unrecoverable short audio shell fill an article
-        # validation slot. Audio stories with a complete transcript remain in
-        # the article cohort.
-        if (
-            capture.publisher == "npr"
-            and article.content_type == ContentType.AUDIO
-            and article.quality.status != ArticleStatus.COMPLETE
-            and article.quality.body_characters < 200
-        ):
-            issues.append("nonarticle-desk")
-        # Some WSJ Infini-News snapshots are media-only pages. They preserve
-        # the headline and a synthetic body containing the explicit
-        # ``Article Not Supported`` notice plus subscription chrome, but no
-        # recoverable prose. Keep the raw capture while excluding it from the
-        # text-article denominator.
-        if capture.publisher == "wsj":
-            wsj_document = BeautifulSoup(html_bytes, "html.parser")
-            raw_text = _normalize_text(
-                wsj_document.get_text(
-                    " ",
-                    strip=True,
-                )
-            ).casefold()
-            if (
-                article.quality.body_characters < 200
-                and "article not supported" in raw_text
-                and "to read the full story" in raw_text
-            ):
-                issues.append("nonarticle-desk")
-            # Legacy WSJ Video Center pages can retain a headline, a player,
-            # and a one-line description while the transcript is absent from
-            # the archive.  The parser correctly classifies these captures as
-            # VIDEO, but the short description must not count as an article
-            # sample.  Keep the raw capture for provenance and replace it in
-            # the independent article cohort.
-            if (
-                nontext_content
-                and article.quality.body_characters < 200
-            ):
-                issues.append("nonarticle-desk")
-            # Older WSJ Wayback snapshots often preserve a real headline and
-            # a few preview paragraphs, followed by the explicit
-            # ``Get The Full Story / Subscribe or Log In`` roadblock. The
-            # parser correctly marks these bodies as truncated; they are
-            # useful raw provenance but cannot satisfy a complete text
-            # article holdout slot. Exclude them from the QA denominator so
-            # the scheduler can select a replacement from the same year.
-            if (
-                article.quality.status != ArticleStatus.COMPLETE
-                and "truncated-body" in article.quality.warnings
-                and (
-                    "get the full story" in raw_text
-                    or "available to wsj.com subscribers" in raw_text
-                )
-                and (
-                    "subscribe or log in" in raw_text
-                    or "subscribe or sign in" in raw_text
-                )
-            ):
-                issues.append("nonarticle-desk")
-            legacy_article_panel = wsj_document.select_one(
-                "#articleTabs_panel_article"
-            )
-            if (
-                article.quality.status != ArticleStatus.COMPLETE
-                and "truncated-body" in article.quality.warnings
-                and isinstance(legacy_article_panel, Tag)
-                and legacy_article_panel.select_one(".article.story") is None
-                and "available to wsj.com subscribers" in raw_text
-            ):
-                # The legacy partner shell contains no recoverable story
-                # node. Preserve its raw HTML, but replace it with another
-                # independent article in the validation denominator.
-                issues.append("nonarticle-desk")
-            # Some metered WSJ previews contain only the dek and a hero image.
-            # The generic media classifier can therefore label the capture as
-            # a gallery even though WSJ declares a much larger article word
-            # count. The parser marks this explicit snippet template as
-            # truncated; retain it as provenance but replace it in the text-
-            # article cohort.
-            wsj_template = wsj_document.select_one(
-                "meta[name='article.template']"
-            )
-            if (
-                article.quality.status != ArticleStatus.COMPLETE
-                and "truncated-body" in article.quality.warnings
-                and isinstance(wsj_template, Tag)
-                and str(wsj_template.get("content", "")).casefold()
-                in {"snippet", "preview"}
-            ):
-                issues.append("nonarticle-desk")
-        # Some legacy NYT ``admin`` package pages survive in Wayback with
-        # only a short teaser; their client-rendered listicle body is absent
-        # from the archived HTML. Keep the raw capture, but do not count an
-        # unrecoverable teaser as a complete article sample.
-        if (
-            capture.publisher == "nyt"
-            and re.search(
-                r"(?i)^https://(?:www\.)?nytimes\.com/"
-                r"(?:interactive/)?20\d{2}/\d{2}/\d{2}/admin/",
+        source_spec = archive_source_spec(capture.publisher)
+        hooks = source_validation_hooks(capture.publisher)
+        validation_context = ValidationContext(
+            capture=capture,
+            article=article,
+            html_bytes=html_bytes,
+            document=document,
+            raw_text=raw_text,
+            sample_year=sample_year,
+            text_blocks=tuple(text_blocks),
+            normalized_blocks=normalized_blocks,
+            publisher_blocks=publisher_blocks,
+            nontext_content=nontext_content,
+            repeated_text_within_block=any(
+                has_terminal_tandem_repeat(block) for block in text_blocks
+            ),
+            canonical_url_is_normalized=(
+                normalize_article_url(source_spec, capture.canonical_url)
+                == capture.canonical_url
+            ),
+            validation_candidate=is_parser_validation_candidate(
+                source_spec,
                 capture.canonical_url,
+            ),
+        )
+        source_identity = hooks.article_identity(validation_context)
+        if source_identity is None:
+            normalized_body = _normalize_text(article.plain_text)
+            source_identity = (
+                "content-sha256:"
+                + hashlib.sha256(normalized_body.encode("utf-8")).hexdigest()
+                if len(normalized_body) >= 100
+                else None
             )
-            and article.quality.body_characters < 200
-        ):
-            issues.append("nonarticle-desk")
-        if (
-            capture.publisher == "nyt"
-            and article.quality.body_characters < 200
-            and (
-                article.content_type == ContentType.LIVEBLOG
-                or re.search(
-                    r"(?i)/opinion/editorial-cartoon(?:\.html)?$",
-                    capture.canonical_url,
-                )
-                or (
-                    article.headline
-                    and article.headline.casefold().strip()
-                    in {"editors' note", "editors’ note"}
-                )
-            )
-        ):
-            # Wayback can replay a NYT live-blog alias, an image-only
-            # editorial cartoon, or a correction placeholder under a normal
-            # article URL. Preserve the raw capture and metadata, but keep
-            # these non-recoverable packages out of the text-article cohort.
-            issues.append("nonarticle-desk")
-        if (
-            capture.publisher == "nyt"
-            and "/interactive/" in capture.canonical_url.casefold()
-            and article.content_type in {ContentType.ARTICLE, ContentType.OPINION}
-            and article.quality.body_characters < 100
-        ):
-            # Some Wayback captures retain only the interactive shell and a
-            # short visual-series description. Without the embedded graphic
-            # payload there is no recoverable article body to validate.
-            issues.append("nonarticle-desk")
-        if (
-            capture.publisher == "nyt"
-            and article.content_type == ContentType.INTERACTIVE
-            and article.quality.status == ArticleStatus.PARTIAL
-            and article.quality.body_characters < 100
-        ):
-            # Some interactive URLs retain only an empty client shell. An
-            # unsupported package is retained as a non-text record, but a
-            # short partial interactive is not recoverable article content
-            # and must be replaced in the 800-row article cohort.
-            issues.append("nonarticle-desk")
-        if (
-            capture.publisher == "nyt"
-            and article.quality.status != ArticleStatus.COMPLETE
-            and article.quality.body_characters < 200
-        ):
-            # A few NYT URLs are briefly exposed as an Editors' Note before
-            # the promised story is published. Wayback preserves that
-            # placeholder faithfully, but it is not an article body and
-            # should not consume an independent parser sample.
-            placeholder_text = article.plain_text.casefold()
-            if (
-                "published prematurely" in placeholder_text
-                and "will be available" in placeholder_text
-            ):
-                issues.append("nonarticle-desk")
-        if (
-            capture.publisher == "nyt"
-            and article.quality.status != ArticleStatus.COMPLETE
-            and article.quality.body_characters < 200
-        ):
-            # Some Wayback snapshots preserve the NYT shell and metadata but
-            # leave the canonical story container empty.  The remaining text
-            # is often an author bio or navigation fragment, not recoverable
-            # article prose.  Keep the raw capture, but exclude this
-            # source-limited shell from the article denominator.
-            nyt_soup = BeautifulSoup(html_bytes, "html.parser")
-            story = nyt_soup.find("article", id="story")
-            story_is_empty = story is not None and not _normalize_text(
-                story.get_text(" ", strip=True)
-            )
-            nyt_raw_text = _normalize_text(
-                nyt_soup.get_text(" ", strip=True)
-            ).casefold()
-            opinion_footer_shell = (
-                article.quality.body_characters < 100
-                and "the times is committed to publishing a diversity of letters"
-                in nyt_raw_text
-                and "follow the new york times opinion section"
-                in nyt_raw_text
-            )
-            # Metered NYT snapshots can preserve only the one-sentence dek
-            # inside the article body while the story paragraphs remain
-            # behind the paywall. This is a source-limited shell, not a
-            # parser failure; keep it out of the 800-article denominator.
-            metered_body_shell = (
-                article.quality.body_characters < 200
-                and nyt_soup.select_one(
-                    "section[name='articleBody'].meteredContent"
-                )
-                is not None
-            )
-            if story_is_empty or opinion_footer_shell or metered_body_shell:
-                issues.append("nonarticle-desk")
-        if (
-            capture.publisher == "aljazeera"
-            and article.quality.body_characters < 300
-            and article.plain_text.casefold().startswith(
-                "al jazeera has removed this story"
-            )
-        ):
-            # Wayback preserves a small number of publisher takedown notices
-            # in place of the original story. They are valid archive captures
-            # but not article bodies, so keep them out of the parser-error
-            # gate while retaining the raw object for provenance.
-            issues.append("nonarticle-desk")
-        if (
-            capture.publisher == "aljazeera"
-            and article.content_type == ContentType.ARTICLE
-            and article.quality.body_characters == 0
-        ):
-            # A handful of legacy Al Jazeera URLs are article shells whose
-            # archived page has no recoverable prose at all. Keep the raw
-            # capture, but do not let an empty shell consume an article slot.
-            issues.append("nonarticle-desk")
-        if (
-            capture.publisher == "aljazeera"
-            and article.quality.body_characters < 100
-        ):
-            # Legacy Al Jazeera infographics are sometimes classified as
-            # ordinary articles because the archived HTML retains the title
-            # and a single "Download a gif" link but not the interactive
-            # payload. Keep the shell for provenance without treating it as
-            # a parser extraction failure.
-            aljazeera_text = article.plain_text.casefold()
-            if (
-                "download a gif" in aljazeera_text
-                and (
-                    "interactive" in aljazeera_text
-                    or "infographic" in aljazeera_text
-                )
-            ):
-                issues.append("nonarticle-desk")
-            # Older Al Jazeera interactive packages can be archived as a
-            # normal News article even though the only body text is a handoff
-            # to a client-rendered timeline or Storify story. Keep the raw
-            # capture for provenance, but do not count the short handoff as a
-            # parser extraction failure.
-            if (
-                "view the historical context" in aljazeera_text
-                or (
-                    "view the story" in aljazeera_text
-                    and "storify" in aljazeera_text
-                )
-                or "viewing this from your mobile" in aljazeera_text
-                or (
-                    "al jazeera round table" in aljazeera_text
-                    and "expert commentary" in aljazeera_text
-                )
-            ):
-                issues.append("nonarticle-desk")
-            if (
-                article.quality.status != ArticleStatus.COMPLETE
-                and "nonarticle-desk" not in issues
-            ):
-                # A legacy Wayback replay can retain only a one-sentence
-                # teaser or the editorial-policy disclaimer.  These short
-                # partial documents have no recoverable article body; keep
-                # their raw captures, but exclude them from parser QA.
-                issues.append("nonarticle-desk")
+        values["article_identity"] = source_identity
+        issues: list[str] = list(hooks.issues(validation_context))
         if (
             article.quality.status != ArticleStatus.COMPLETE
             and not nontext_content
@@ -2184,37 +1084,15 @@ def record_parser_validation(
             issues.append("source-link-mismatch")
         if duplicate_blocks:
             issues.append("duplicate-text-blocks")
-        if (
-            capture.publisher == "zaobao"
-            and any(
-                _terminal_tandem_repeat_length(block)
-                for block in text_blocks
-            )
-        ):
-            issues.append("repeated-text-within-block")
-        normalized_blocks = [
-            _normalize_text(block.text).casefold()
-            for block in article.blocks
-            if block.text and _normalize_text(block.text)
-        ]
+        issues.extend(hooks.post_issues(validation_context))
         if (
             "nonarticle-desk" not in issues
             and (
                 _has_generic_interface_noise(
-                    normalized_blocks,
-                    allow_editorial_read_more=capture.publisher == "aljazeera",
+                    list(normalized_blocks),
+                    allow_editorial_read_more=hooks.allow_editorial_read_more,
                 )
-                or _has_publisher_interface_noise(
-                    capture.publisher,
-                    [
-                        *normalized_blocks,
-                        *(
-                            [_normalize_text(article.description).casefold()]
-                            if article.description
-                            else []
-                        ),
-                    ],
-                )
+                or hooks.interface_noise(validation_context)
             )
         ):
             issues.append("interface-noise-in-body")
@@ -2245,27 +1123,15 @@ def record_parser_validation(
             ).fetchone()
             is not None
         ):
-            # Publishers can expose one story under multiple canonical URLs;
-            # WSJ also exposes stable article ids across bodies that changed
-            # slightly. Only one public URL may fill an independent 800-item
-            # validation slot. Preserve the later raw capture but rotate it
-            # out of the article denominator.
+            # Publishers can expose one story under multiple canonical URLs.
+            # Only one public URL may fill an independent validation slot.
             issues.append("nonarticle-desk")
         if (
-            capture.publisher in {"ap", "bloomberg", "nyt", "wsj"}
+            hooks.reject_article_buttons
             and article.content_type == ContentType.ARTICLE
             and "<button" in article.body_html.casefold()
         ):
             issues.append("interactive-control-in-body")
-        if any(
-            image.should_archive
-            and any(
-                marker in image.original_url.casefold()
-                for marker in _PLACEHOLDER_IMAGE_MARKERS
-            )
-            for image in article.images
-        ):
-            issues.append("selected-placeholder-image")
         prefix = article.plain_text[:1_500].casefold()
         if (
             article.quality.body_characters < 1_000
@@ -2827,6 +1693,7 @@ def _select_additional_samples(
     if direct_provider not in {None, "wayback-exact"}:
         parameters.append(f'%"provider":"{direct_provider}"%')
     source_spec = archive_source_spec(publisher)
+    hooks = source_validation_hooks(publisher)
     excluded_normalized = {
         normalized
         for (canonical_url,) in connection.execute(
@@ -2883,23 +1750,15 @@ def _select_additional_samples(
     )
     seen_normalized = excluded_normalized | selected_normalized
     for canonical_url, candidates_json in rows:
-        if publisher == "ft" and direct_provider == "infini-news":
-            try:
-                candidates = json.loads(str(candidates_json))
-            except (TypeError, ValueError):
-                candidates = []
-            if any(
-                isinstance(candidate, dict)
-                and str(candidate.get("provider") or "") == "infini-news"
-                and is_ft_subscription_headline(
-                    candidate.get("expectedHeadline")
-                )
-                for candidate in candidates
-            ):
-                # Infini-News access-shell rows are retained in the capture
-                # state for provenance, but must not consume a direct-source
-                # validation slot. They have no article headline to validate.
-                continue
+        try:
+            decoded_candidates = json.loads(str(candidates_json))
+        except (TypeError, ValueError):
+            decoded_candidates = []
+        candidates = tuple(
+            candidate
+            for candidate in decoded_candidates
+            if isinstance(candidate, dict)
+        )
         normalized_url = article_deduplication_key(
             source_spec,
             str(canonical_url),
@@ -2911,22 +1770,14 @@ def _select_additional_samples(
             str(canonical_url),
         ):
             continue
-        if publisher == "ft":
-            ft_created_year = ft_content_uuid_creation_year(str(canonical_url))
-            if ft_created_year is not None and (
-                ft_created_year > year or ft_created_year < year - 1
-            ):
-                # UUIDv1 is generated when the FT content record is created.
-                # Keep the immediately following year for drafts that cross a
-                # calendar boundary, but avoid downloading captures whose id
-                # proves they predate the target by several years.
-                continue
-        # Do not seed a holdout with a capture whose stored URL is only a
-        # source alias. The content audit treats these as hard anomalies, and
-        # older source-state databases may predate manifest-time normalization.
-        if publisher in {"axios", "npr", "wsj"} and normalize_article_url(
-            source_spec, str(canonical_url)
-        ) != str(canonical_url):
+        if not hooks.sample_candidate_valid(
+            SampleCandidateContext(
+                canonical_url=str(canonical_url),
+                sample_year=year,
+                direct_provider=direct_provider,
+                candidates=candidates,
+            )
+        ):
             continue
         # Legacy checkpoints can contain HTTP/HTTPS, bare/www, query-string,
         # or trailing-slash variants of the same article. SQL equality cannot

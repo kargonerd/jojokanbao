@@ -7,7 +7,7 @@ from pathlib import Path
 import sqlite3
 
 from jojo_news_archive.capture.raw import manifest_item_from_row
-from jojo_news_archive.discovery.reuters import (
+from jojo_news_archive.sources.reuters.discovery import (
     discover_reuters_sitemap_captures,
     export_reuters_manifest,
     initialize_reuters_live_sitemaps,

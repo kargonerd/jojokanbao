@@ -10,7 +10,7 @@ from jojo_news_archive.sources.registry import (
     article_deduplication_key,
     article_url_publication_year,
 )
-from jojo_news_archive.discovery.npr import (
+from jojo_news_archive.sources.npr.discovery import (
     export_npr_archive_manifest,
     initialize_npr_archive_schema,
     next_npr_archive_query,

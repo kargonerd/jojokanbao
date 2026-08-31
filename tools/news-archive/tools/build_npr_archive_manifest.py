@@ -12,7 +12,7 @@ if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
 from jojo_news_archive.sources.registry import archive_source_spec
-from jojo_news_archive.discovery.npr import (
+from jojo_news_archive.sources.npr.discovery import (
     NprArchiveClient,
     export_npr_archive_manifest,
     initialize_npr_archive_schema,

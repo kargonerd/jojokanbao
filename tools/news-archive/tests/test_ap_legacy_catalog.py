@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from jojo_news_archive.discovery.ap_legacy import (
+from jojo_news_archive.sources.ap.discovery import (
     ap_google_hosted_page_metadata,
     ap_huff_wire_page_metadata,
     ap_partner_publication_datetime,

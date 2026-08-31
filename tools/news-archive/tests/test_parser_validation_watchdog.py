@@ -6,11 +6,16 @@ from pathlib import Path
 import pytest
 
 from jojo_news_archive.parsing.watchdog import (
+    PUBLISHER_ORDER,
     plan_validation_dispatch,
 )
 from jojo_news_archive.parsing.validation import qa_policy_revision
 from jojo_news_archive.parsing.policy import CONTENT_AUDIT_FORMAT_VERSION
-from jojo_news_archive.sources.specs import publisher_spec
+from jojo_news_archive.sources.registry import publisher_spec
+
+
+def test_default_watchdog_excludes_disabled_sources():
+    assert "caixin" not in PUBLISHER_ORDER
 
 
 def _write_summary(
@@ -196,7 +201,10 @@ def test_watchdog_accepts_ready_full_or_accelerator_summary(
         for task in plan["tasks"]
     }
 
-    assert plan["targetCells"] == 204
+    assert plan["targetCells"] == 187
+    assert all(
+        row["publisher"] != "caixin" for row in plan["cellProgress"]
+    )
     assert ("axios", 2016) not in {
         (row["publisher"], row["year"])
         for row in plan["cellProgress"]

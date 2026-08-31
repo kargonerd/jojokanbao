@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Iterable
 
+from jojo_news_archive.sources.registry import registered_sources
+
 
 FORMAT_VERSION = "jojo-source-catalog-watchdog/1"
 CATALOG_STATUS_FORMAT_VERSION = "jojo-source-catalog-status/1"
@@ -33,21 +35,30 @@ class SourceCatalogTarget:
         )
 
 
-# These publishers cannot enter parser validation until their historical
-# source manifests are completed. Official sitemap catalogs are cheap and go
-# first; resumable Wayback URL-key catalogs follow. Each dispatched workflow
-# auto-chains until its own durable catalog state reports complete.
-SOURCE_CATALOG_TARGETS = (
-    SourceCatalogTarget("aljazeera", 2010, 2015, "sitemap-wayback", 30),
-    SourceCatalogTarget("aljazeera", 2016, 2026, "sitemap-wayback", 30),
-    SourceCatalogTarget("zaobao", 2016, 2026, "sitemap-wayback", 30),
-    SourceCatalogTarget("scmp", 2010, 2015, "sitemap-wayback", 30),
-    SourceCatalogTarget("scmp", 2016, 2026, "sitemap-wayback", 30),
-    SourceCatalogTarget("nikkei", 2010, 2015, "wayback-urlkey", 10),
-    SourceCatalogTarget("scmp", 2010, 2015, "wayback-urlkey", 10),
-    SourceCatalogTarget("nikkei", 2016, 2026, "wayback-urlkey", 10),
-    SourceCatalogTarget("scmp", 2016, 2026, "wayback-urlkey", 10),
-)
+def _source_catalog_targets() -> tuple[SourceCatalogTarget, ...]:
+    configured = sorted(
+        (
+            (target.priority, source.id, target)
+            for source in registered_sources(enabled_only=True)
+            for target in source.catalog_targets
+        ),
+        key=lambda item: (item[0], item[1]),
+    )
+    return tuple(
+        SourceCatalogTarget(
+            publisher=source_id,
+            from_year=target.from_year,
+            to_year=target.to_year,
+            manifest_mode=target.manifest_mode,
+            max_discovery_pages=target.max_discovery_pages,
+        )
+        for _, source_id, target in configured
+    )
+
+
+# Publishers own their bootstrap targets in sources/<publisher>/spec.py. The
+# scheduler only consumes the merged priority queue.
+SOURCE_CATALOG_TARGETS = _source_catalog_targets()
 
 
 def plan_source_catalog_dispatch(
@@ -134,9 +145,8 @@ def plan_source_catalog_dispatch(
     # Otherwise a free slot could start a second catalog and crowd parser
     # validation out of the global two-run budget.
     # The dedicated Common Crawl workflow is publisher-agnostic: its run name
-    # is ``<publisher>-common-crawl-...``. Do not special-case Nikkei here;
-    # otherwise a second publisher's chain can be started while the catalog
-    # budget is already occupied by NPR, Al Jazeera, SCMP, or another source.
+    # is ``<publisher>-common-crawl-...``. Count every source uniformly so a
+    # second catalog cannot crowd parser validation out of the global budget.
     active_catalogs = sum(
         title.startswith("news-raw-") or "-common-crawl-" in title
         for title in active

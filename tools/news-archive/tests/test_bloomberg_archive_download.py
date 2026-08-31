@@ -1,13 +1,17 @@
 from pathlib import Path
 import gzip
 import sqlite3
+import sys
 import threading
 import time
 
 import httpx
+import pytest
 
 from jojo_news_archive.discovery.client import (
     ArchiveClient,
+)
+from jojo_news_archive.sources.bloomberg.legacy_download import (
     derived_image_candidates,
     detect_image_type,
     extract_article,
@@ -17,6 +21,7 @@ from jojo_news_archive.discovery.client import (
     pending_articles,
     store_object,
 )
+from tools.download_bloomberg_year import parse_args
 
 
 ARTICLE_HTML = b"""
@@ -58,6 +63,32 @@ ARTICLE_HTML = b"""
   </body>
 </html>
 """
+
+
+def test_download_cli_requires_external_manifest_and_authorization(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    monkeypatch.setattr(sys, "argv", ["download_bloomberg_year.py"])
+    with pytest.raises(SystemExit) as missing:
+        parse_args()
+    assert missing.value.code == 2
+
+    manifest = tmp_path / "manifest.jsonl.gz"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "download_bloomberg_year.py",
+            "--manifest",
+            str(manifest),
+            "--authorization-reference",
+            "license:test",
+        ],
+    )
+    args = parse_args()
+    assert args.manifest == manifest
+    assert args.authorization_reference == "license:test"
 
 
 def test_archive_client_retries_wayback_over_http_after_tls_failure():

@@ -13,8 +13,8 @@ import time
 SERVICE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SERVICE_DIR))
 
-from jojo_news_archive.discovery.client import (  # noqa: E402
-    ArchiveClient,
+from jojo_news_archive.discovery.client import ArchiveClient  # noqa: E402
+from jojo_news_archive.sources.bloomberg.legacy_download import (  # noqa: E402
     ManifestArticle,
     download_article,
     download_summary,
@@ -23,11 +23,6 @@ from jojo_news_archive.discovery.client import (  # noqa: E402
     mark_downloading,
     pending_articles,
     record_article_result,
-)
-
-
-DEFAULT_AUTHORIZATION_REFERENCE = (
-    "user-attested:personal-academic-ai-news-research:2026-07-24"
 )
 
 
@@ -40,15 +35,17 @@ def parse_args() -> argparse.Namespace:
         )
     )
     parser.add_argument("--year", type=int, default=2020)
-    parser.add_argument("--manifest", type=Path)
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        required=True,
+        help="External Bloomberg archive manifest to download.",
+    )
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument(
         "--authorization-reference",
-        default=DEFAULT_AUTHORIZATION_REFERENCE,
-        help=(
-            "Audit reference authorizing bulk storage and AI research. The default "
-            "records the authorization attested by the user on 2026-07-24."
-        ),
+        required=True,
+        help="Audit reference authorizing bulk storage and research use.",
     )
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--min-request-interval", type=float, default=0.5)
@@ -96,9 +93,7 @@ def main() -> int:
     if not args.authorization_reference.strip():
         raise SystemExit("--authorization-reference cannot be empty")
 
-    manifest = args.manifest or (
-        SERVICE_DIR / "data" / f"bloomberg-{args.year}-archive-manifest.jsonl.gz"
-    )
+    manifest = args.manifest
     output_dir = args.output_dir or (
         SERVICE_DIR / "data" / f"bloomberg-{args.year}-full"
     )

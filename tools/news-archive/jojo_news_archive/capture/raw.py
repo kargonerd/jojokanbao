@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 import gzip
@@ -27,8 +26,20 @@ from xml.etree import ElementTree
 
 from bs4 import BeautifulSoup
 import brotli
+from jojo_news_archive.capture import primitives as capture_primitives
+from jojo_news_archive.capture.primitives import capture_hooks_for_source_url
 from jojo_news_archive.discovery.client import ArchiveClient
-from jojo_news_archive.sources.registry import archive_source_spec, normalize_article_url
+from jojo_news_archive.sources.registry import (
+    registered_sources,
+    source_module,
+)
+from jojo_news_archive.sources.capture_contracts import (
+    ArchiveFallbackPolicy,
+    CandidateAssessment,
+    ManifestItem,
+    default_archive_fallback_policy,
+)
+from jojo_news_archive.sources.runtime import capture_hooks
 from jojo_news_archive.discovery.common_crawl import (
     discover_common_crawl_candidates,
     fetch_common_crawl_candidate,
@@ -36,15 +47,12 @@ from jojo_news_archive.discovery.common_crawl import (
 from jojo_news_archive.discovery.infini_news import (
     INFINI_DATASET,
     INFINI_DATASET_ROWS_ENDPOINT,
-    is_ft_subscription_headline,
 )
 from jojo_news_archive.discovery.ghostarchive import (
-    discover_ghostarchive_candidates,
     fetch_ghostarchive_candidate,
     is_ghostarchive_candidate_url,
 )
 from jojo_news_archive.models import (
-    ArticleStatus,
     BlobReference,
     CaptureCandidate,
     CaptureProvider,
@@ -56,106 +64,16 @@ from jojo_news_archive.models import (
 
 
 SCHEMA_VERSION = "jojo-raw-capture-state/1"
-CAPTURE_POLICY_VERSIONS = {
-    "ap": "ap-capture/0.6.4",
-    "aljazeera": "aljazeera-capture/0.2.0",
-    "axios": "axios-capture/0.1.1",
-    "bloomberg": "bloomberg-capture/0.10.3",
-    "caixin": "caixin-capture/0.1.1",
-    "ft": "ft-capture/0.20.2",
-    "nikkei": "nikkei-capture/0.1.0",
-    "nyt": "nyt-capture/0.9.2",
-    "npr": "npr-capture/1.2",
-    "reuters": "reuters-capture/0.7.2",
-    "wsj": "wsj-capture/0.8.9",
-    "zaobao": "zaobao-capture/1.0.1",
-}
 ACCEPTED_HTTP_STATUSES = {200, 206}
 WAYBACK_TIMEMAP_ENDPOINT = "https://web.archive.org/web/timemap/json"
 WAYBACK_TIMEMAP_MAXIMUM_BYTES = 2_000_000
 WAYBACK_TIMEMAP_MAXIMUM_CANDIDATES = 8
-WAYBACK_TIMEMAP_FALLBACK_PUBLISHERS = {
-    "bloomberg",
-    "nikkei",
-    "npr",
-    "nyt",
-    "reuters",
-    "wsj",
-}
-REUTERS_SYNDICATION_SEARCH_ENDPOINT = "https://search.yahoo.com/search"
-REUTERS_SYNDICATION_SEARCH_MAXIMUM_BYTES = 2_000_000
-REUTERS_SYNDICATION_MAXIMUM_CANDIDATES = 8
-REUTERS_SYNDICATION_MINIMUM_BODY_CHARACTERS = 400
-BLOOMBERG_SYNDICATION_MINIMUM_BODY_CHARACTERS = 400
-WSJ_SYNDICATION_MINIMUM_BODY_CHARACTERS = 400
-FT_SYNDICATION_MINIMUM_BODY_CHARACTERS = 400
-FT_CAPTURE_MINIMUM_BODY_CHARACTERS = 100
-_MINIMUM_AP_LIVE_ORIGIN_BODY_CHARACTERS = 100
-AP_SYNDICATION_SEARCH_ENDPOINT = "https://html.duckduckgo.com/html/"
-AP_SYNDICATION_SEARCH_MAXIMUM_BYTES = 2_000_000
-AP_SYNDICATION_MAXIMUM_CANDIDATES = 6
-AP_SYNDICATION_MINIMUM_BODY_CHARACTERS = 400
-AP_KNOWN_SYNDICATION_COPIES = {
-    (
-        "https://apnews.com/united-states-government-"
-        "617290f5b8324b808390f3a7263b17"
-    ): (
-        "https://www.theguardian.com/world/2013/oct/19/"
-        "usforeignpolicy-pakistan",
-        "US quietly releases $1.6bn in aid to Pakistan after thaw in relations",
-    ),
-}
-FT_IMAGE_LED_MINIMUM_IMAGES = 3
-FT_GOOGLE_NEWS_RSS_ENDPOINT = "https://news.google.com/rss/search"
-FTCHINESE_SEARCH_ENDPOINT = "https://m.ftchinese.com/search/"
-FT_GOOGLE_NEWS_MAXIMUM_PARTNER_SOURCES = 3
-FT_GOOGLE_NEWS_MAXIMUM_DATE_DELTA_DAYS = 2
-FT_SYNDICATION_MAXIMUM_DATE_DELTA_DAYS = 2
-FT_ADVISORSTREAM_MAXIMUM_DATE_DELTA_DAYS = 14
-FT_KNOWN_PARTNER_SITEMAPS = (
-    (
-        "https://www.davidruler.com",
-        "https://www.davidruler.com/sitemap.xml",
-    ),
-)
-NYT_SYNDICATION_SEARCH_ENDPOINT = REUTERS_SYNDICATION_SEARCH_ENDPOINT
-NYT_SYNDICATION_SEARCH_MAXIMUM_BYTES = 2_000_000
-NYT_SYNDICATION_MAXIMUM_CANDIDATES = 8
-NYT_SYNDICATION_MINIMUM_BODY_CHARACTERS = 1_000
-NYT_TRUSTED_WORDPRESS_ENDPOINTS = (
-    "https://www.hawaiitribune-herald.com/wp-json/wp/v2/posts",
-)
-NYT_HEADLINE_WORDPRESS_ENDPOINTS = (
-    "https://dnyuz.com/wp-json/wp/v2/posts",
-)
-COMMON_CRAWL_FALLBACK_PUBLISHERS = {"ft", "nikkei", "wsj"}
-ARQUIVO_PT_FALLBACK_PUBLISHERS = {"ft", "nikkei", "wsj"}
+SYNDICATION_SEARCH_ENDPOINT = "https://search.yahoo.com/search"
+SYNDICATION_SEARCH_MAXIMUM_BYTES = 2_000_000
 ARQUIVO_PT_CDX_ENDPOINT = "https://arquivo.pt/wayback/cdx"
 ARQUIVO_PT_REPLAY_ENDPOINT = "https://arquivo.pt/noFrame/replay"
 ARQUIVO_PT_INDEX_MAXIMUM_BYTES = 2_000_000
 ARQUIVO_PT_MAXIMUM_CANDIDATES = 3
-ARQUIVO_PT_PREFIX_URLS = {
-    "ft": "www.ft.com/content/*",
-    "wsj": "www.wsj.com/articles/*",
-}
-REUTERS_SYNDICATION_STOP_WORDS = {
-    "a",
-    "after",
-    "an",
-    "and",
-    "as",
-    "at",
-    "by",
-    "for",
-    "from",
-    "in",
-    "of",
-    "on",
-    "s",
-    "the",
-    "to",
-    "with",
-}
 _HTML_MARKERS = (
     b"<!doctype html",
     b"<html",
@@ -185,8 +103,6 @@ _AUTH_SHELL_MARKERS = (
     b"sign in to continue",
     b"log in to continue",
     b'id="myaccountauth"',
-    b'sourceapp" content="nyt-lire"',
-    b"/lire_ui/",
 )
 _ACCESS_CHALLENGE_MARKERS = (
     b"are you a robot?",
@@ -203,23 +119,14 @@ _ACCESS_CHALLENGE_MARKERS = (
 _REDIRECT_SHELL_MARKERS = (
     b"window.location = fullurl",
     b"window.location=fullurl",
-    b"<title>ny times advertisement</title>",
 )
 _SUBSCRIPTION_SHELL_MARKERS = (
     b"<title>register to read",
     b"<title>subscribe to read",
-    b"<title>become an ft subscriber to read",
-    b"<title>subscribe to a slice of the ft",
-    b"<title>try ft for free",
     b'id="barrier-page"',
     b"barrier-grid__article-title",
     b"subscribe to unlock this article",
-    b"window.zephr.outcomes['paywall']",
-    b"join over 300,000 finance professionals",
-    b"discover all the plans currently available in your country",
-    b"during your trial you will have complete digital access to ft.com",
     b"to read the full story, subscribe or sign in",
-    b'class="wsj-snippet-login"',
 )
 _PARSED_PAYWALL_PHRASES = (
     "subscribe to read",
@@ -227,7 +134,6 @@ _PARSED_PAYWALL_PHRASES = (
     "sign in to continue",
     "already a subscriber",
     "unlock this article",
-    "bloomberg professional service subscriber",
 )
 _PARSED_PAYWALL_MAXIMUM_BODY_CHARACTERS = 1_000
 _ARTICLE_BODY_MARKERS = (
@@ -238,40 +144,14 @@ _ARTICLE_BODY_MARKERS = (
     b"data-testid=\"article-body\"",
     b"story-body",
 )
+_SYNDICATION_STOP_WORDS = {
+    "a", "after", "an", "and", "as", "at", "by", "for", "from",
+    "in", "of", "on", "s", "the", "to", "with",
+}
 _WAYBACK_FINAL_RE = re.compile(
     r"https?://web\.archive\.org/web/(\d{14})(?:id_|im_|js_|cs_)?/",
     re.IGNORECASE,
 )
-_ft_known_partner_urls: dict[str, str] | None = None
-_ft_known_partner_urls_lock = Lock()
-
-
-@dataclass(frozen=True)
-class ManifestItem:
-    publisher: str
-    canonical_url: str
-    published_at: str | None
-    section: str | None
-    candidates: tuple[CaptureCandidate, ...]
-
-    @property
-    def article_id(self) -> str:
-        digest = hashlib.sha256(self.canonical_url.encode("utf-8")).hexdigest()
-        return f"{self.publisher}:{digest}"
-
-
-@dataclass(frozen=True)
-class NytSyndicationDiscovery:
-    expected_headline: str | None
-    candidates: tuple[CaptureCandidate, ...]
-
-
-@dataclass(frozen=True)
-class ApSyndicationDiscovery:
-    source_description: str | None
-    source_keywords: tuple[str, ...]
-    source_authors: tuple[str, ...]
-    candidates: tuple[CaptureCandidate, ...]
 
 
 def initialize_capture_schema(
@@ -333,10 +213,7 @@ def initialize_capture_schema(
         connection.execute(
             "ALTER TABLE captures ADD COLUMN dependent_resources_json TEXT"
         )
-    capture_policy_version = CAPTURE_POLICY_VERSIONS.get(
-        publisher,
-        f"{publisher}-capture/1",
-    )
+    capture_policy_version = source_module(publisher).capture_policy_version
     previous_policy = connection.execute(
         """
         SELECT value
@@ -470,11 +347,9 @@ def manifest_item_from_row(row: dict, *, publisher: str) -> ManifestItem:
     ).strip()
     if not canonical_url.startswith(("http://", "https://")):
         raise ValueError(f"manifest row has invalid canonical URL: {canonical_url!r}")
-    if publisher in {"axios", "npr"}:
-        normalized_url = normalize_article_url(
-            archive_source_spec(publisher),
-            canonical_url,
-        )
+    normalize_manifest_url = capture_hooks(publisher).normalize_manifest_url
+    if normalize_manifest_url is not None:
+        normalized_url = normalize_manifest_url(canonical_url)
         if normalized_url is None:
             raise ValueError(
                 f"manifest row has invalid {publisher} article URL: {canonical_url!r}"
@@ -770,1324 +645,279 @@ def mark_capture_downloading(
     connection.commit()
 
 
-def capture_item(
-    item: ManifestItem,
-    *,
-    archive_client: ArchiveClient,
-    output_dir: Path,
-    maximum_html_bytes: int,
-    enable_wayback_timemap_fallback: bool = True,
-    enable_common_crawl_fallback: bool = False,
-    enable_arquivo_pt_fallback: bool = False,
-    bloomberg_manifest_candidates_only: bool = False,
-    ft_syndication_lookup: Callable[
-        [ManifestItem, str],
-        tuple[CaptureCandidate, ...],
-    ]
-    | None = None,
-) -> dict:
-    failures: list[str] = []
-    candidates_considered = list(item.candidates)
-    best_response: tuple[
-        CaptureCandidate,
-        int,
-        bytes,
-        str,
-        str,
-        int,
-        dict[str, object],
-    ] | None = None
-    ft_raw_partner_validated = False
-    ft_infini_origin_validated = False
-    ft_title_index_attempted = False
-    ft_dynamic_syndication_attempted = False
-    ft_ghostarchive_attempted = False
-    bloomberg_legacy_timemap_attempted = False
-    wayback_timemap_attempted = False
-    wsj_amp_timemap_attempted = False
-    arquivo_pt_attempted = False
-    ft_original_headline = next(
-        (
-            candidate.expected_headline
-            for candidate in item.candidates
-            if candidate.expected_headline
-        ),
-        None,
-    )
+CaptureResponse = tuple[
+    CaptureCandidate,
+    int,
+    bytes,
+    str,
+    str,
+    int,
+    dict[str, object],
+]
+
+
+class CaptureSession:
+    """Shared transport/state engine driven by one vertical source strategy."""
+
+    def __init__(
+        self,
+        item: ManifestItem,
+        *,
+        archive_client: ArchiveClient,
+        output_dir: Path,
+        maximum_html_bytes: int,
+        enable_wayback_timemap_fallback: bool,
+        enable_common_crawl_fallback: bool,
+        enable_arquivo_pt_fallback: bool,
+        source_options: dict[str, object],
+    ) -> None:
+        self.item = item
+        self.archive_client = archive_client
+        self.output_dir = output_dir
+        self.maximum_html_bytes = maximum_html_bytes
+        self.enable_wayback_timemap_fallback = enable_wayback_timemap_fallback
+        self.enable_common_crawl_fallback = enable_common_crawl_fallback
+        self.enable_arquivo_pt_fallback = enable_arquivo_pt_fallback
+        self.source_options = source_options
+        self.source_capture = capture_hooks(item.publisher)
+        self.failures: list[str] = []
+        self.candidates_considered = list(item.candidates)
+        self.best_response: CaptureResponse | None = None
+        self.state: dict[str, object] = {}
+        self.wayback_timemap_attempted = False
+        self.arquivo_pt_attempted = False
+
+    def fail(self, label: str, exc: BaseException | str) -> None:
+        detail = type(exc).__name__ if isinstance(exc, BaseException) else str(exc)
+        self.failures.append(f"{label}:{detail}")
+
+    def unique_candidates(
+        self, candidates: Iterable[CaptureCandidate]
+    ) -> tuple[CaptureCandidate, ...]:
+        seen = {
+            (
+                candidate.snapshot_url,
+                candidate.warc_offset,
+                candidate.warc_length,
+            )
+            for candidate in self.candidates_considered
+        }
+        result: list[CaptureCandidate] = []
+        for candidate in candidates:
+            key = (
+                candidate.snapshot_url,
+                candidate.warc_offset,
+                candidate.warc_length,
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(candidate)
+        return tuple(result)
+
+    def add_candidates(
+        self, candidates: Iterable[CaptureCandidate]
+    ) -> tuple[CaptureCandidate, ...]:
+        fresh = self.unique_candidates(candidates)
+        self.candidates_considered.extend(fresh)
+        return fresh
 
     def observe_candidate_response(
-        candidate: CaptureCandidate,
-        content: bytes,
-        final_url: str,
+        self, candidate: CaptureCandidate, content: bytes, final_url: str
     ) -> None:
-        nonlocal ft_original_headline
-        if (
-            item.publisher != "ft"
-            or ft_original_headline
-            or candidate.provider == CaptureProvider.OTHER
-        ):
-            return
-        ft_original_headline = _extract_ft_original_headline(
-            content,
-            expected_published_at=item.published_at,
-            final_url=final_url,
-        )
+        hook = self.source_capture.observe_candidate_response
+        if hook is not None:
+            hook(self, candidate, content=content, final_url=final_url)
 
-    def consider_candidates(
-        candidates: Iterable[CaptureCandidate],
-    ) -> None:
-        nonlocal best_response
-        nonlocal ft_raw_partner_validated
-        nonlocal ft_infini_origin_validated
+    def consider(self, candidates: Iterable[CaptureCandidate]) -> None:
+        skip_hook = self.source_capture.should_skip_candidate
+        validate_hook = self.source_capture.validate_candidate_response
         for candidate in candidates:
-            if (
-                candidate.provider == CaptureProvider.INFINI_NEWS
-                and (
-                    ft_raw_partner_validated
-                    or ft_infini_origin_validated
-                )
-            ):
+            if skip_hook is not None and skip_hook(self, candidate):
                 continue
             response, failure = _fetch_usable_candidate(
                 candidate,
-                archive_client=archive_client,
-                maximum_html_bytes=maximum_html_bytes,
-                canonical_url=item.canonical_url,
-                publisher=item.publisher,
-                response_observer=observe_candidate_response,
+                archive_client=self.archive_client,
+                maximum_html_bytes=self.maximum_html_bytes,
+                canonical_url=self.item.canonical_url,
+                publisher=self.item.publisher,
+                response_observer=self.observe_candidate_response,
             )
             if failure:
-                failures.append(failure)
+                self.failures.append(failure)
             if response is None:
                 continue
-            if (
-                item.publisher == "nyt"
-                and candidate.provider == CaptureProvider.OTHER
-            ):
-                validated, validation_signals = (
-                    _validate_nyt_syndication_response(
-                        item,
-                        expected_headline=candidate.expected_headline,
-                        content=response[2],
-                        final_url=response[3],
-                    )
-                )
-                if not validated:
-                    failures.append(
-                        "nyt-syndication:validation:"
-                        + str(
-                            validation_signals.get("reason") or "failed"
-                        )
-                    )
-                    continue
-                response = (
-                    response[0],
-                    response[1],
-                    response[2],
-                    response[3],
-                    response[4],
-                    response[5],
-                    response[6] | validation_signals,
-                )
-            if (
-                item.publisher == "wsj"
-                and candidate.provider == CaptureProvider.INFINI_NEWS
-            ):
-                validated, validation_signals = (
-                    _validate_wsj_infini_origin_response(
-                        item,
-                        expected_source_url=candidate.source_url or "",
-                        expected_headline=candidate.expected_headline,
-                        content=response[2],
-                        final_url=response[3],
-                    )
-                )
-                if not validated:
-                    failures.append(
-                        "wsj-infini-origin:validation:"
-                        + str(
-                            validation_signals.get("reason") or "failed"
-                        )
-                    )
-                    continue
-                response = (
-                    response[0],
-                    response[1],
-                    response[2],
-                    response[3],
-                    response[4],
-                    response[5],
-                    response[6] | validation_signals,
-                )
-            if (
-                item.publisher == "wsj"
-                and candidate.provider == CaptureProvider.OTHER
-            ):
-                validated, validation_signals = (
-                    _validate_wsj_syndication_response(
-                        item,
-                        expected_headline=candidate.expected_headline,
-                        content=response[2],
-                        final_url=response[3],
-                    )
-                )
-                if not validated:
-                    failures.append(
-                        "wsj-syndication:validation:"
-                        + str(
-                            validation_signals.get("reason") or "failed"
-                        )
-                    )
-                    continue
-                response = (
-                    response[0],
-                    response[1],
-                    response[2],
-                    response[3],
-                    response[4],
-                    response[5],
-                    response[6] | validation_signals,
-                )
-            if (
-                item.publisher == "ft"
-                and candidate.provider in {
-                    CaptureProvider.OTHER,
-                    CaptureProvider.INFINI_NEWS,
-                }
-            ):
-                direct_infini_origin = bool(
-                    candidate.provider == CaptureProvider.INFINI_NEWS
-                    and _is_ft_origin_url(candidate.source_url)
-                )
-                ghostarchive_origin = bool(
-                    candidate.provider == CaptureProvider.OTHER
-                    and is_ghostarchive_candidate_url(
-                        candidate.snapshot_url
-                    )
-                )
-                archive_today_origin = bool(
-                    candidate.provider == CaptureProvider.OTHER
-                    and _is_archive_today_candidate_url(
-                        candidate.snapshot_url
-                    )
-                    and _is_ft_origin_url(candidate.source_url)
-                )
-                ftchinese_official = bool(
-                    candidate.provider == CaptureProvider.OTHER
-                    and _is_ftchinese_full_view_url(
-                        candidate.snapshot_url
-                    )
-                )
-                jina_ft_origin = bool(
-                    candidate.provider == CaptureProvider.OTHER
-                    and _is_jina_ft_reader_url(candidate.snapshot_url)
-                    and _is_ft_origin_url(candidate.source_url)
-                )
-                if ghostarchive_origin or archive_today_origin:
-                    validated, validation_signals = (
-                        _validate_ft_ghostarchive_response(
-                            item,
-                            expected_headline=candidate.expected_headline,
-                            content=response[2],
-                            final_url=response[3],
-                        )
-                    )
-                elif direct_infini_origin or jina_ft_origin:
-                    validated, validation_signals = (
-                        _validate_ft_infini_origin_response(
-                            item,
-                            expected_source_url=(
-                                candidate.source_url or ""
-                            ),
-                            expected_headline=candidate.expected_headline,
-                            content=response[2],
-                            final_url=(
-                                candidate.source_url or ""
-                                if jina_ft_origin
-                                else response[3]
-                            ),
-                        )
-                    )
-                else:
-                    validated, validation_signals = (
-                        _validate_ft_syndication_response(
-                            item,
-                            expected_partner_url=(
-                                candidate.source_url
-                                or candidate.snapshot_url
-                            ),
-                            expected_headline=candidate.expected_headline,
-                            content=response[2],
-                            final_url=response[3],
-                        )
-                    )
-                if not validated:
-                    failures.append(
-                        (
-                            "ft-archive-origin"
-                            if ghostarchive_origin or archive_today_origin
-                            else (
-                                "ft-infini-origin"
-                                if direct_infini_origin
-                                else "ft-syndication"
-                            )
-                        )
-                        + ":validation:"
-                        + str(
-                            validation_signals.get("reason") or "failed"
-                        )
-                    )
-                    continue
-                response = (
-                    response[0],
-                    response[1],
-                    response[2],
-                    response[3],
-                    response[4],
-                    (
-                        100
-                        if (
-                            direct_infini_origin
-                            or jina_ft_origin
-                            or ghostarchive_origin
-                            or archive_today_origin
-                            or ftchinese_official
-                        )
-                        else response[5]
-                    ),
-                    response[6]
-                    | validation_signals
-                    | (
-                        {"ftChineseOfficialMirrorValidated": True}
-                        if ftchinese_official
-                        else {}
-                    ),
-                )
-                if (
-                    direct_infini_origin
-                    or jina_ft_origin
-                    or ghostarchive_origin
-                    or archive_today_origin
-                ):
-                    ft_infini_origin_validated = True
-                elif candidate.provider == CaptureProvider.OTHER:
-                    ft_raw_partner_validated = True
-            if (
-                item.publisher == "bloomberg"
-                and candidate.provider == CaptureProvider.OTHER
-                and _is_bnn_wayback_candidate(candidate.snapshot_url)
-            ):
-                validated, validation_signals = (
-                    _validate_bloomberg_bnn_response(
-                        item,
-                        expected_headline=candidate.expected_headline,
-                        content=response[2],
-                        final_url=response[3],
-                    )
-                )
-                if not validated:
-                    failures.append(
-                        "bloomberg-bnn:validation:"
-                        + str(
-                            validation_signals.get("reason") or "failed"
-                        )
-                    )
-                    continue
-                response = (
-                    response[0],
-                    response[1],
-                    response[2],
-                    response[3],
-                    response[4],
-                    response[5],
-                    response[6] | validation_signals,
-                )
-            if (
-                item.publisher == "bloomberg"
-                and candidate.provider == CaptureProvider.OTHER
-                and candidate.expected_headline
-                and not _is_bnn_wayback_candidate(candidate.snapshot_url)
-            ):
-                validated, validation_signals = (
-                    _validate_bloomberg_partner_archive_response(
-                        item,
-                        expected_headline=candidate.expected_headline,
-                        content=response[2],
-                        final_url=response[3],
-                    )
-                )
-                if not validated:
-                    failures.append(
-                        "bloomberg-partner:validation:"
-                        + str(
-                            validation_signals.get("reason") or "failed"
-                        )
-                    )
-                    continue
-                response = (
-                    response[0],
-                    response[1],
-                    response[2],
-                    response[3],
-                    response[4],
-                    response[5],
-                    response[6] | validation_signals,
-                )
-            if best_response is None or response[5] > best_response[5]:
-                best_response = response
-            if response[5] == 100:
-                break
-
-    def consider_arquivo_pt() -> None:
-        nonlocal arquivo_pt_attempted
-        if (
-            arquivo_pt_attempted
-            or not enable_arquivo_pt_fallback
-            or item.publisher not in ARQUIVO_PT_FALLBACK_PUBLISHERS
-            or (best_response is not None and best_response[5] >= 100)
-        ):
-            return
-        arquivo_pt_attempted = True
-        arquivo_pt_candidates: tuple[CaptureCandidate, ...] = ()
-        for discovery_url in _common_crawl_discovery_urls(item):
-            discovery_item = ManifestItem(
-                publisher=item.publisher,
-                canonical_url=discovery_url,
-                published_at=item.published_at,
-                section=item.section,
-                candidates=item.candidates,
-            )
-            try:
-                arquivo_pt_candidates = discover_arquivo_pt_candidates(
-                    discovery_item,
-                    archive_client=archive_client,
-                )
-            except Exception as exc:
-                failures.append(f"arquivo-pt-index:{type(exc).__name__}")
-                continue
-            if arquivo_pt_candidates:
-                break
-        existing_urls = {
-            candidate.snapshot_url for candidate in candidates_considered
-        }
-        arquivo_pt_candidates = tuple(
-            candidate
-            for candidate in arquivo_pt_candidates
-            if candidate.snapshot_url not in existing_urls
-        )
-        candidates_considered.extend(arquivo_pt_candidates)
-        consider_candidates(arquivo_pt_candidates)
-
-    def consider_wsj_wayback_timemaps() -> None:
-        """Try canonical and independently archived WSJ AMP representations.
-
-        Historical canonical WSJ captures often resolve to a subscription
-        preview even when Wayback also preserved the article's AMP URL.  The
-        AMP URL is a representation of the same canonical article, so retain
-        the canonical identity while replaying exact canonical snapshots and
-        then exact AMP snapshots before lower-yield secondary archives.
-        """
-
-        nonlocal wayback_timemap_attempted
-        nonlocal wsj_amp_timemap_attempted
-        if (
-            wsj_amp_timemap_attempted
-            or item.publisher != "wsj"
-            or not enable_wayback_timemap_fallback
-            or (best_response is not None and best_response[5] >= 100)
-        ):
-            return
-        wayback_timemap_attempted = True
-        wsj_amp_timemap_attempted = True
-        amp_url = _wsj_amp_article_url(item.canonical_url)
-        timemap_items = [item]
-        if amp_url is not None:
-            timemap_items.append(
-                ManifestItem(
-                    publisher=item.publisher,
-                    canonical_url=amp_url,
-                    published_at=item.published_at,
-                    section=item.section,
-                    candidates=item.candidates,
-                )
-            )
-        for index, timemap_item in enumerate(timemap_items):
-            if best_response is not None and best_response[5] >= 100:
-                break
-            try:
-                fallback_candidates = discover_wayback_timemap_candidates(
-                    timemap_item,
-                    archive_client=archive_client,
-                    maximum_candidates=WAYBACK_TIMEMAP_MAXIMUM_CANDIDATES,
-                )
-            except Exception as exc:
-                label = "wayback-timemap" if index == 0 else "wayback-amp-timemap"
-                failures.append(f"{label}:{type(exc).__name__}")
-                continue
-            existing_urls = {
-                candidate.snapshot_url for candidate in candidates_considered
-            }
-            fallback_candidates = tuple(
-                candidate
-                for candidate in fallback_candidates
-                if candidate.snapshot_url not in existing_urls
-            )
-            candidates_considered.extend(fallback_candidates)
-            consider_candidates(fallback_candidates)
-
-    def consider_ft_title_index() -> None:
-        nonlocal ft_title_index_attempted
-        if (
-            ft_title_index_attempted
-            or best_response is not None
-            or item.publisher != "ft"
-            or ft_syndication_lookup is None
-            or not ft_original_headline
-        ):
-            return
-        ft_title_index_attempted = True
-        try:
-            indexed_candidates = ft_syndication_lookup(
-                item,
-                ft_original_headline,
-            )
-        except Exception as exc:
-            failures.append(f"ft-title-index:{type(exc).__name__}")
-            indexed_candidates = ()
-        existing_urls = {
-            candidate.snapshot_url for candidate in candidates_considered
-        }
-        indexed_candidates = tuple(
-            candidate
-            for candidate in indexed_candidates
-            if candidate.snapshot_url not in existing_urls
-        )
-        candidates_considered.extend(indexed_candidates)
-        consider_candidates(indexed_candidates)
-
-    def consider_ft_dynamic_syndication() -> None:
-        nonlocal ft_dynamic_syndication_attempted
-        if (
-            ft_dynamic_syndication_attempted
-            or best_response is not None
-            or item.publisher != "ft"
-        ):
-            return
-        headline_was_known = bool(ft_original_headline)
-        ft_dynamic_syndication_attempted = True
-        try:
-            fallback_candidates = discover_ft_syndication_candidates(
-                item,
-                archive_client=archive_client,
-                expected_headline=ft_original_headline,
-            )
-        except Exception as exc:
-            failures.append(f"ft-syndication:{type(exc).__name__}")
-            fallback_candidates = ()
-        existing_urls = {
-            candidate.snapshot_url for candidate in candidates_considered
-        }
-        fallback_candidates = tuple(
-            candidate
-            for candidate in fallback_candidates
-            if candidate.snapshot_url not in existing_urls
-        )
-        if not fallback_candidates and not headline_was_known:
-            ft_dynamic_syndication_attempted = False
-        candidates_considered.extend(fallback_candidates)
-        consider_candidates(fallback_candidates)
-        if best_response is not None or not fallback_candidates:
-            return
-        fallback_headline = next(
-            (
-                candidate.expected_headline
-                for candidate in fallback_candidates
-                if candidate.expected_headline
-            ),
-            ft_original_headline,
-        )
-        try:
-            additional_candidates = discover_ft_syndication_candidates(
-                item,
-                archive_client=archive_client,
-                expected_headline=fallback_headline,
-                skip_title_search=True,
-                exhaustive=True,
-            )
-        except Exception as exc:
-            failures.append(
-                f"ft-syndication-additional:{type(exc).__name__}"
-            )
-            additional_candidates = ()
-        existing_urls = {
-            candidate.snapshot_url for candidate in candidates_considered
-        }
-        additional_candidates = tuple(
-            candidate
-            for candidate in additional_candidates
-            if candidate.snapshot_url not in existing_urls
-        )
-        candidates_considered.extend(additional_candidates)
-        consider_candidates(additional_candidates)
-
-    def consider_ft_ghostarchive() -> None:
-        nonlocal ft_ghostarchive_attempted
-        expected_date = _parse_iso_datetime(item.published_at)
-        if (
-            ft_ghostarchive_attempted
-            or best_response is not None
-            or item.publisher != "ft"
-            or expected_date is None
-            or expected_date.year < 2022
-        ):
-            return
-        ft_ghostarchive_attempted = True
-        try:
-            ghostarchive_candidates = discover_ghostarchive_candidates(
-                item.canonical_url,
-                archive_client=archive_client,
-                expected_headline=ft_original_headline,
-            )
-        except Exception as exc:
-            failures.append(f"ghostarchive-index:{type(exc).__name__}")
-            ghostarchive_candidates = ()
-        existing_urls = {
-            candidate.snapshot_url for candidate in candidates_considered
-        }
-        ghostarchive_candidates = tuple(
-            candidate
-            for candidate in ghostarchive_candidates
-            if candidate.snapshot_url not in existing_urls
-        )
-        candidates_considered.extend(ghostarchive_candidates)
-        consider_candidates(ghostarchive_candidates)
-
-    direct_infini_candidates = tuple(
-        candidate
-        for candidate in item.candidates
-        if (
-            candidate.provider == CaptureProvider.INFINI_NEWS
-            and _is_ft_origin_url(candidate.source_url)
-        )
-    )
-    consider_candidates(direct_infini_candidates)
-    expected_publication_date = _parse_iso_datetime(item.published_at)
-    if (
-        item.publisher == "ft"
-        and expected_publication_date is not None
-        and expected_publication_date.year >= 2024
-        and all(
-            candidate.provider == CaptureProvider.WAYBACK
-            for candidate in item.candidates
-        )
-    ):
-        consider_ft_dynamic_syndication()
-    consider_ft_ghostarchive()
-
-    if item.publisher == "ft" and enable_wayback_timemap_fallback:
-        # Exact Wayback captures have historically produced far more usable FT
-        # articles than Common Crawl WARC records. Try the nearest exact
-        # snapshots first and avoid three index plus Range lookups when one is
-        # already a maximum-quality article.
-        timemap_candidates: tuple[CaptureCandidate, ...] = ()
-        if best_response is None or best_response[5] < 100:
-            try:
-                timemap_candidates = discover_wayback_timemap_candidates(
-                    item,
-                    archive_client=archive_client,
-                    maximum_candidates=WAYBACK_TIMEMAP_MAXIMUM_CANDIDATES,
-                )
-            except Exception as exc:
-                failures.append(f"wayback-timemap:{type(exc).__name__}")
-                timemap_candidates = ()
-        existing_urls = {
-            candidate.snapshot_url for candidate in candidates_considered
-        }
-        timemap_candidates = tuple(
-            candidate
-            for candidate in timemap_candidates
-            if candidate.snapshot_url not in existing_urls
-        )
-        candidates_considered.extend(timemap_candidates)
-        consider_candidates(timemap_candidates)
-
-        # Publication-near Wayback URLs are cheap to resolve and can select a
-        # useful later capture outside the bounded exact-capture shortlist.
-        # Exhaust them before the slower Common Crawl index/WARC fallback.
-        if (
-            not ft_infini_origin_validated
-            and (best_response is None or best_response[5] < 100)
-        ):
-            consider_candidates(item.candidates)
-
-        consider_ft_title_index()
-        consider_ft_dynamic_syndication()
-
-        if (
-            not ft_infini_origin_validated
-            and enable_common_crawl_fallback
-            and (best_response is None or best_response[5] < 100)
-        ):
-            try:
-                common_crawl_candidates = discover_common_crawl_candidates(
-                    item.canonical_url,
-                    published_at=item.published_at,
-                    archive_client=archive_client,
-                )
-            except Exception as exc:
-                failures.append(f"commoncrawl-index:{type(exc).__name__}")
-                common_crawl_candidates = ()
-            existing_urls = {
-                (
-                    candidate.snapshot_url,
-                    candidate.warc_offset,
-                    candidate.warc_length,
-                )
-                for candidate in candidates_considered
-            }
-            common_crawl_candidates = tuple(
-                candidate
-                for candidate in common_crawl_candidates
-                if (
-                    candidate.snapshot_url,
-                    candidate.warc_offset,
-                    candidate.warc_length,
-                )
-                not in existing_urls
-            )
-            candidates_considered.extend(common_crawl_candidates)
-            consider_candidates(common_crawl_candidates)
-    elif item.publisher == "ft":
-        # The first FT validation pass deliberately skips the expensive
-        # Wayback timemap lookup.  That must not also skip the exact Wayback
-        # candidates already present in the manifest; those are the cheapest
-        # and highest-yield captures and are the reason for deferring the
-        # timemap rather than disabling Wayback entirely.  A manifest row can
-        # contain several duplicate snapshots, though; probing all of them on
-        # the first pass makes one dead Wayback host hold a worker for minutes.
-        # Keep the first pass bounded to the first snapshot and let a retry
-        # (which enables the timemap policy) exhaust the complete set.
-        if (
-            not ft_infini_origin_validated
-            and (best_response is None or best_response[5] < 100)
-        ):
-            consider_candidates(item.candidates[:1])
-        consider_ft_title_index()
-        consider_ft_dynamic_syndication()
-        if (
-            not ft_infini_origin_validated
-            and enable_common_crawl_fallback
-            and (best_response is None or best_response[5] < 100)
-        ):
-            try:
-                common_crawl_candidates = discover_common_crawl_candidates(
-                    item.canonical_url,
-                    published_at=item.published_at,
-                    archive_client=archive_client,
-                )
-            except Exception as exc:
-                failures.append(f"commoncrawl-index:{type(exc).__name__}")
-                common_crawl_candidates = ()
-            existing_urls = {
-                (
-                    candidate.snapshot_url,
-                    candidate.warc_offset,
-                    candidate.warc_length,
-                )
-                for candidate in candidates_considered
-            }
-            common_crawl_candidates = tuple(
-                candidate
-                for candidate in common_crawl_candidates
-                if (
-                    candidate.snapshot_url,
-                    candidate.warc_offset,
-                    candidate.warc_length,
-                )
-                not in existing_urls
-            )
-            candidates_considered.extend(common_crawl_candidates)
-            consider_candidates(common_crawl_candidates)
-    else:
-        published = _parse_iso_datetime(item.published_at)
-        if (
-            item.publisher == "bloomberg"
-            and published is not None
-            and published.year <= 2015
-            and not bloomberg_manifest_candidates_only
-        ):
-            legacy_url, *_ = _common_crawl_discovery_urls(item)
-            if legacy_url != item.canonical_url:
-                bloomberg_legacy_timemap_attempted = True
-                legacy_item = ManifestItem(
-                    publisher=item.publisher,
-                    canonical_url=legacy_url,
-                    published_at=item.published_at,
-                    section=item.section,
-                    candidates=item.candidates,
-                )
-                published = _parse_iso_datetime(item.published_at)
-                timemap_items = (
-                    [item]
-                    if bloomberg_legacy_timemap_attempted
-                    else (
-                        [legacy_item, item]
-                        if published is not None and published.year <= 2015
-                        else [item, legacy_item]
-                    )
-                )
-                try:
-                    legacy_candidates = discover_wayback_timemap_candidates(
-                        legacy_item,
-                        archive_client=archive_client,
-                    )
-                except Exception as exc:
-                    failures.append(
-                        f"wayback-legacy-timemap:{type(exc).__name__}"
-                    )
-                    legacy_candidates = ()
-                existing_urls = {
-                    candidate.snapshot_url
-                    for candidate in candidates_considered
-                }
-                legacy_candidates = tuple(
-                    candidate
-                    for candidate in legacy_candidates
-                    if candidate.snapshot_url not in existing_urls
-                )
-                candidates_considered.extend(legacy_candidates)
-                consider_candidates(legacy_candidates)
-        if (
-            item.publisher == "nyt"
-            and enable_wayback_timemap_fallback
-            and item.candidates
-            and all(
-                candidate.provider == CaptureProvider.WAYBACK
-                for candidate in item.candidates
-            )
-            and not any(
-                candidate.digest and candidate.captured_at is not None
-                for candidate in item.candidates
-            )
-        ):
-            # NYT sitemap candidates are publication-near guessed timestamps.
-            # In the independent 2010 holdout they produced no successful
-            # captures, while every success came from an exact Timemap row.
-            # Query the bounded exact index first and retain the guesses as a
-            # fallback when the index is unavailable or its rows are unusable.
-            wayback_timemap_attempted = True
-            try:
-                timemap_candidates = discover_wayback_timemap_candidates(
-                    item,
-                    archive_client=archive_client,
-                    maximum_candidates=WAYBACK_TIMEMAP_MAXIMUM_CANDIDATES,
-                )
-            except Exception as exc:
-                failures.append(f"wayback-timemap:{type(exc).__name__}")
-                timemap_candidates = ()
-            existing_urls = {
-                candidate.snapshot_url
-                for candidate in candidates_considered
-            }
-            timemap_candidates = tuple(
-                candidate
-                for candidate in timemap_candidates
-                if candidate.snapshot_url not in existing_urls
-            )
-            candidates_considered.extend(timemap_candidates)
-            consider_candidates(timemap_candidates)
-        if best_response is None:
-            manifest_candidates = item.candidates
-            if item.publisher == "wsj":
-                # Independent WSJ validation cohorts overwhelmingly recover
-                # usable full text from their indexed Wayback candidates.
-                # Common Crawl and Arquivo.pt copies are still valuable
-                # fallbacks, but frequently contain the same subscription
-                # shell.  Preserve the random article cohort while trying the
-                # highest-yield source and largest captures first.
-                manifest_candidates = tuple(
-                    sorted(
-                        manifest_candidates,
-                        key=lambda candidate: _wsj_candidate_sort_key(
-                            candidate,
-                            published_at=item.published_at,
-                        ),
-                    )
-                )
-            if (
-                item.publisher == "wsj"
-                and not enable_wayback_timemap_fallback
-            ):
-                # Timemap discovery is deliberately disabled for the cheap,
-                # checkpointable WSJ pass.  Still try a few indexed snapshots
-                # carrying a digest/size: a single replay is often a
-                # subscription preview while a nearby capture contains the
-                # complete legacy body.  Synthetic midnight calendar rows
-                # remain a last resort, and the small cap prevents one URL
-                # from monopolizing a worker when Wayback is unhealthy.
-                evidenced_candidates = tuple(
-                    candidate
-                    for candidate in manifest_candidates
-                    if candidate.digest or candidate.byte_count is not None
-                )
-                calendar_candidates = tuple(
-                    candidate
-                    for candidate in manifest_candidates
-                    if (
-                        "000000id_" in candidate.snapshot_url
-                        and not candidate.digest
-                        and candidate.byte_count is None
-                    )
-                )
-                manifest_candidates = (
-                    evidenced_candidates[:3] + calendar_candidates[:2]
-                    if evidenced_candidates or calendar_candidates
-                    else item.candidates[:1]
-                )
-            elif item.publisher in {"aljazeera", "nikkei"}:
-                # The merged publisher manifests normally contain Wayback
-                # rows before their Common Crawl supplements. Wayback often
-                # serves a high-scoring shell or member excerpt, while larger
-                # Common Crawl WARC records from the same article can contain
-                # the complete body. Probe the latter first, without
-                # weakening the parser gate; failed/partial records still
-                # fall through to Wayback.
-                manifest_candidates = tuple(
-                    sorted(
-                        item.candidates,
-                        key=lambda candidate: _common_crawl_first_candidate_sort_key(
-                            candidate,
-                            published_at=item.published_at,
-                        ),
-                    )
-                )
-            consider_candidates(manifest_candidates)
-
-    # Prefer exact canonical and AMP Wayback snapshots. In the independent WSJ
-    # retry cohort, every observed secondary-archive success came from
-    # Arquivo.pt while Common Crawl contributed none, so retain Arquivo.pt as
-    # the next fallback when Wayback has no validated full-text capture.
-    if item.publisher == "wsj":
-        consider_wsj_wayback_timemaps()
-        consider_arquivo_pt()
-
-    if (
-        item.publisher != "ft"
-        and item.publisher in COMMON_CRAWL_FALLBACK_PUBLISHERS
-        and enable_common_crawl_fallback
-        and (best_response is None or best_response[5] < 100)
-    ):
-        common_crawl_candidates: tuple[CaptureCandidate, ...] = ()
-        for discovery_url in _common_crawl_discovery_urls(item):
-            try:
-                common_crawl_candidates = discover_common_crawl_candidates(
-                    discovery_url,
-                    published_at=item.published_at,
-                    archive_client=archive_client,
-                )
-            except Exception as exc:
-                failures.append(f"commoncrawl-index:{type(exc).__name__}")
-                continue
-            if common_crawl_candidates:
-                break
-        existing_urls = {
-            (
-                candidate.snapshot_url,
-                candidate.warc_offset,
-                candidate.warc_length,
-            )
-            for candidate in candidates_considered
-        }
-        common_crawl_candidates = tuple(
-            candidate
-            for candidate in common_crawl_candidates
-            if (
-                candidate.snapshot_url,
-                candidate.warc_offset,
-                candidate.warc_length,
-            )
-            not in existing_urls
-        )
-        candidates_considered.extend(common_crawl_candidates)
-        consider_candidates(common_crawl_candidates)
-
-    if (
-        item.publisher == "ap"
-        and (best_response is None or best_response[5] < 100)
-    ):
-        source_content = best_response[2] if best_response is not None else b""
-        try:
-            discovery = discover_ap_syndication_candidates(
-                item,
-                source_content=source_content,
-                archive_client=archive_client,
-            )
-        except Exception as exc:
-            failures.append(f"ap-syndication:{type(exc).__name__}")
-            discovery = ApSyndicationDiscovery(
-                source_description=None,
-                source_keywords=(),
-                source_authors=(),
-                candidates=(),
-            )
-        existing_urls = {
-            candidate.snapshot_url for candidate in candidates_considered
-        }
-        fallback_candidates = tuple(
-            candidate
-            for candidate in discovery.candidates
-            if candidate.snapshot_url not in existing_urls
-        )
-        candidates_considered.extend(fallback_candidates)
-        for candidate in fallback_candidates:
-            response, failure = _fetch_usable_candidate(
-                candidate,
-                archive_client=archive_client,
-                maximum_html_bytes=maximum_html_bytes,
-                canonical_url=item.canonical_url,
-                publisher=item.publisher,
-            )
-            if failure:
-                failures.append(failure)
-            if response is None:
-                continue
-            validated, validation_signals = (
-                _validate_ap_syndication_response(
-                    item,
-                    source_description=discovery.source_description,
-                    source_keywords=discovery.source_keywords,
-                    source_authors=discovery.source_authors,
-                    expected_headline=candidate.expected_headline,
-                    content=response[2],
-                    final_url=response[3],
-                )
-            )
-            if not validated:
-                failures.append(
-                    "ap-syndication:validation:"
-                    + str(validation_signals.get("reason") or "failed")
-                )
-                continue
-            response = (
-                response[0],
-                response[1],
-                response[2],
-                response[3],
-                response[4],
-                response[5],
-                response[6] | validation_signals,
-            )
-            if best_response is None or response[5] > best_response[5]:
-                best_response = response
-            if response[5] == 100:
-                break
-
-    if best_response is None and item.publisher == "reuters":
-        try:
-            fallback_candidates = discover_reuters_syndication_candidates(
-                item,
-                archive_client=archive_client,
-            )
-        except Exception as exc:
-            failures.append(f"reuters-syndication:{type(exc).__name__}")
-            fallback_candidates = ()
-        existing_urls = {
-            candidate.snapshot_url for candidate in candidates_considered
-        }
-        fallback_candidates = tuple(
-            candidate
-            for candidate in fallback_candidates
-            if candidate.snapshot_url not in existing_urls
-        )
-        candidates_considered.extend(fallback_candidates)
-        for candidate in fallback_candidates:
-            response, failure = _fetch_usable_candidate(
-                candidate,
-                archive_client=archive_client,
-                maximum_html_bytes=maximum_html_bytes,
-                canonical_url=item.canonical_url,
-                publisher=item.publisher,
-            )
-            if failure:
-                failures.append(failure)
-            if response is None:
-                continue
-            validated, validation_signals = (
-                _validate_reuters_syndication_response(
-                    item,
-                    expected_headline=candidate.expected_headline,
-                    content=response[2],
-                    final_url=response[3],
-                )
-            )
-            if not validated:
-                failures.append(
-                    "reuters-syndication:validation:"
-                    + str(validation_signals.get("reason") or "failed")
-                )
-                continue
-            response = (
-                response[0],
-                response[1],
-                response[2],
-                response[3],
-                response[4],
-                response[5],
-                response[6] | validation_signals,
-            )
-            if best_response is None or response[5] > best_response[5]:
-                best_response = response
-            if response[5] == 100:
-                break
-
-    if (
-        best_response is None
-        and enable_wayback_timemap_fallback
-        and not wayback_timemap_attempted
-        and item.publisher in WAYBACK_TIMEMAP_FALLBACK_PUBLISHERS
-        and not (
-            item.publisher == "bloomberg"
-            and bloomberg_manifest_candidates_only
-        )
-    ):
-        timemap_items = [item]
-        if item.publisher == "bloomberg":
-            legacy_url, *_ = _common_crawl_discovery_urls(item)
-            if legacy_url != item.canonical_url:
-                legacy_item = ManifestItem(
-                    publisher=item.publisher,
-                    canonical_url=legacy_url,
-                    published_at=item.published_at,
-                    section=item.section,
-                    candidates=item.candidates,
-                )
-        else:
-            timemap_urls = {item.canonical_url}
-            for existing_candidate in candidates_considered:
-                if existing_candidate.provider != CaptureProvider.WAYBACK:
-                    continue
-                original_url = _wayback_snapshot_original_url(
-                    existing_candidate.snapshot_url
-                )
-                if (
-                    original_url is None
-                    or original_url in timemap_urls
-                    or not _same_article_url(
-                        original_url,
-                        item.canonical_url,
-                    )
-                ):
-                    continue
-                timemap_urls.add(original_url)
-                timemap_items.append(
-                    ManifestItem(
-                        publisher=item.publisher,
-                        canonical_url=original_url,
-                        published_at=item.published_at,
-                        section=item.section,
-                        candidates=item.candidates,
-                    )
-                )
-        for timemap_item in timemap_items:
-            if best_response is not None:
-                break
-            try:
-                fallback_candidates = discover_wayback_timemap_candidates(
-                    timemap_item,
-                    archive_client=archive_client,
-                )
-            except Exception as exc:
-                failures.append(f"wayback-timemap:{type(exc).__name__}")
-                fallback_candidates = ()
-            existing_urls = {
-                candidate.snapshot_url for candidate in candidates_considered
-            }
-            fallback_candidates = tuple(
-                candidate
-                for candidate in fallback_candidates
-                if candidate.snapshot_url not in existing_urls
-            )
-            candidates_considered.extend(fallback_candidates)
-            for candidate in fallback_candidates:
-                response, failure = _fetch_usable_candidate(
-                    candidate,
-                    archive_client=archive_client,
-                    maximum_html_bytes=maximum_html_bytes,
-                    canonical_url=item.canonical_url,
-                    publisher=item.publisher,
-                )
+            if validate_hook is not None:
+                response, failure = validate_hook(self, candidate, response)
                 if failure:
-                    failures.append(failure)
+                    self.failures.append(failure)
                 if response is None:
                     continue
-                if best_response is None or response[5] > best_response[5]:
-                    best_response = response
-                if response[5] == 100:
-                    break
-
-    if (
-        best_response is None
-        and item.publisher == "bloomberg"
-        and not bloomberg_manifest_candidates_only
-    ):
-        try:
-            fallback_candidates = discover_bloomberg_syndication_candidates(
-                item,
-                archive_client=archive_client,
-            )
-        except Exception as exc:
-            failures.append(f"bloomberg-syndication:{type(exc).__name__}")
-            fallback_candidates = ()
-        existing_urls = {
-            candidate.snapshot_url for candidate in candidates_considered
-        }
-        fallback_candidates = tuple(
-            candidate
-            for candidate in fallback_candidates
-            if candidate.snapshot_url not in existing_urls
-        )
-        candidates_considered.extend(fallback_candidates)
-        for candidate in fallback_candidates:
-            response, failure = _fetch_usable_candidate(
-                candidate,
-                archive_client=archive_client,
-                maximum_html_bytes=maximum_html_bytes,
-                canonical_url=item.canonical_url,
-                publisher=item.publisher,
-            )
-            if failure:
-                failures.append(failure)
-            if response is None:
-                continue
-            validated, validation_signals = (
-                _validate_bloomberg_syndication_response(
-                    item,
-                    content=response[2],
-                    final_url=response[3],
-                )
-            )
-            if not validated:
-                failures.append(
-                    "bloomberg-syndication:validation:"
-                    + str(validation_signals.get("reason") or "failed")
-                )
-                continue
-            response = (
-                response[0],
-                response[1],
-                response[2],
-                response[3],
-                response[4],
-                response[5],
-                response[6] | validation_signals,
-            )
-            if best_response is None or response[5] > best_response[5]:
-                best_response = response
+            if self.best_response is None or response[5] > self.best_response[5]:
+                self.best_response = response
             if response[5] == 100:
                 break
 
-    if best_response is None and item.publisher == "nyt":
+    def discover_wayback(
+        self,
+        item: ManifestItem | None = None,
+        *,
+        maximum_candidates: int | None = None,
+        label: str = "wayback-timemap",
+    ) -> tuple[CaptureCandidate, ...]:
+        self.wayback_timemap_attempted = True
         try:
-            discovery = discover_nyt_syndication(
-                item,
-                archive_client=archive_client,
+            kwargs = (
+                {"maximum_candidates": maximum_candidates}
+                if maximum_candidates is not None
+                else {}
+            )
+            candidates = discover_wayback_timemap_candidates(
+                item or self.item,
+                archive_client=self.archive_client,
+                **kwargs,
             )
         except Exception as exc:
-            failures.append(f"nyt-syndication:{type(exc).__name__}")
-            discovery = NytSyndicationDiscovery(
-                expected_headline=None,
-                candidates=(),
+            self.fail(label, exc)
+            return ()
+        fresh = self.add_candidates(candidates)
+        self.consider(fresh)
+        return fresh
+
+    def discover_common_crawl(self, url: str) -> tuple[CaptureCandidate, ...]:
+        try:
+            candidates = discover_common_crawl_candidates(
+                url,
+                published_at=self.item.published_at,
+                archive_client=self.archive_client,
             )
-        existing_urls = {
-            candidate.snapshot_url for candidate in candidates_considered
-        }
-        fallback_candidates = tuple(
-            candidate
-            for candidate in discovery.candidates
-            if candidate.snapshot_url not in existing_urls
-        )
-        candidates_considered.extend(fallback_candidates)
-        for candidate in fallback_candidates:
-            response, failure = _fetch_usable_candidate(
-                candidate,
-                archive_client=archive_client,
-                maximum_html_bytes=maximum_html_bytes,
-                canonical_url=item.canonical_url,
-                publisher=item.publisher,
+        except Exception as exc:
+            self.fail("commoncrawl-index", exc)
+            return ()
+        fresh = self.add_candidates(candidates)
+        self.consider(fresh)
+        return fresh
+
+    def discover_arquivo(
+        self, item: ManifestItem | None = None
+    ) -> tuple[CaptureCandidate, ...]:
+        self.arquivo_pt_attempted = True
+        try:
+            candidates = discover_arquivo_pt_candidates(
+                item or self.item,
+                archive_client=self.archive_client,
             )
-            if failure:
-                failures.append(failure)
-            if response is None:
-                continue
-            validated, validation_signals = (
-                _validate_nyt_syndication_response(
-                    item,
-                    expected_headline=discovery.expected_headline,
-                    content=response[2],
-                    final_url=response[3],
-                )
-            )
-            if not validated:
-                failures.append(
-                    "nyt-syndication:validation:"
-                    + str(validation_signals.get("reason") or "failed")
-                )
-                continue
-            response = (
-                response[0],
-                response[1],
-                response[2],
-                response[3],
-                response[4],
-                response[5],
-                response[6] | validation_signals,
-            )
-            if best_response is None or response[5] > best_response[5]:
-                best_response = response
-            if response[5] == 100:
+        except Exception as exc:
+            self.fail("arquivo-pt-index", exc)
+            return ()
+        fresh = self.add_candidates(candidates)
+        self.consider(fresh)
+        return fresh
+
+    def consider_common_crawl(self) -> None:
+        if (
+            not self.enable_common_crawl_fallback
+            or not source_module(self.item.publisher).common_crawl_fallback
+            or (self.best_response is not None and self.best_response[5] >= 100)
+        ):
+            return
+        for url in _common_crawl_discovery_urls(self.item):
+            if self.discover_common_crawl(url):
                 break
 
-    consider_ft_title_index()
-    consider_ft_dynamic_syndication()
+    def consider_arquivo(self) -> None:
+        if (
+            self.arquivo_pt_attempted
+            or not self.enable_arquivo_pt_fallback
+            or not source_module(self.item.publisher).arquivo_pt_fallback
+            or (self.best_response is not None and self.best_response[5] >= 100)
+        ):
+            return
+        for url in _common_crawl_discovery_urls(self.item):
+            lookup_item = ManifestItem(
+                publisher=self.item.publisher,
+                canonical_url=url,
+                published_at=self.item.published_at,
+                section=self.item.section,
+                candidates=self.item.candidates,
+            )
+            if self.discover_arquivo(lookup_item):
+                break
 
-    consider_arquivo_pt()
+    def generic_timemap_items(self) -> tuple[ManifestItem, ...]:
+        hook = self.source_capture.timemap_items
+        if hook is not None:
+            return tuple(hook(self))
+        urls = [self.item.canonical_url]
+        for candidate in self.candidates_considered:
+            if candidate.provider != CaptureProvider.WAYBACK:
+                continue
+            original = _wayback_snapshot_original_url(candidate.snapshot_url)
+            if (
+                original
+                and original not in urls
+                and _same_article_url(original, self.item.canonical_url)
+            ):
+                urls.append(original)
+        return tuple(
+            ManifestItem(
+                publisher=self.item.publisher,
+                canonical_url=url,
+                published_at=self.item.published_at,
+                section=self.item.section,
+                candidates=self.item.candidates,
+            )
+            for url in urls
+        )
 
-    if (
-        best_response is not None
-        and item.publisher == "ap"
-        and best_response[0].provider == CaptureProvider.LIVE_ORIGIN
-    ):
-        live_usable, live_evidence = _ap_capture_parser_evidence(
-            best_response[2],
-            canonical_url=item.canonical_url,
-        )
-        best_response = (
-            *best_response[:6],
-            best_response[6] | live_evidence,
-        )
-        if not live_usable:
-            failures.append("ap-live-origin-parser-incomplete")
-            best_response = None
+    def consider_wayback(self) -> None:
+        if (
+            self.best_response is not None
+            or self.wayback_timemap_attempted
+            or not self.enable_wayback_timemap_fallback
+            or not source_module(self.item.publisher).wayback_timemap_fallback
+        ):
+            return
+        for item in self.generic_timemap_items():
+            if self.best_response is not None:
+                break
+            self.discover_wayback(item)
 
-    if best_response is not None:
-        (
-            candidate,
-            status_code,
-            content,
-            final_url,
-            content_type,
-            quality_score,
-            signals,
-        ) = best_response
-        raw_reference = store_raw_html(output_dir, content)
-        dependent_resources = _capture_nyt_interactive_resources(
-            item,
-            candidate=candidate,
-            html_bytes=content,
-            archive_client=archive_client,
-            output_dir=output_dir,
+    def run_default(self) -> None:
+        rank_hook = self.source_capture.rank_manifest_candidates
+        candidates = (
+            rank_hook(self.item.candidates, published_at=self.item.published_at)
+            if rank_hook is not None
+            else self.item.candidates
         )
-        retrieved_at = datetime.now(timezone.utc)
+        self.consider(candidates)
+        self.consider_common_crawl()
+        self.consider_wayback()
+        self.consider_arquivo()
+
+    def finish(self) -> dict:
+        if self.best_response is None:
+            return {
+                "canonicalUrl": self.item.canonical_url,
+                "status": "error",
+                "capture": None,
+                "recordPath": None,
+                "error": "; ".join(self.failures[-8:]) or "no usable capture candidates",
+            }
+        candidate, status_code, content, final_url, content_type, quality_score, signals = self.best_response
+        raw_reference = store_raw_html(self.output_dir, content)
+        resource_hook = self.source_capture.capture_dependent_resources
+        dependent_resources = (
+            resource_hook(
+                self.item,
+                candidate=candidate,
+                html_bytes=content,
+                archive_client=self.archive_client,
+                output_dir=self.output_dir,
+            )
+            if resource_hook is not None
+            else []
+        )
         selected_candidate = resolved_capture_candidate(
             candidate,
             final_url=final_url,
@@ -2096,14 +926,14 @@ def capture_item(
             byte_count=len(content),
         )
         capture = RawCapture(
-            article_id=item.article_id,
-            publisher=item.publisher,
-            canonical_url=item.canonical_url,
-            published_at=item.published_at,
-            section=item.section,
+            article_id=self.item.article_id,
+            publisher=self.item.publisher,
+            canonical_url=self.item.canonical_url,
+            published_at=self.item.published_at,
+            section=self.item.section,
             selected_candidate=selected_candidate,
-            candidates_considered=candidates_considered,
-            retrieved_at=retrieved_at,
+            candidates_considered=self.candidates_considered,
+            retrieved_at=datetime.now(timezone.utc),
             final_url=final_url,
             http_status=status_code,
             content_type=content_type or "text/html",
@@ -2117,32 +947,50 @@ def capture_item(
             raw_html=raw_reference,
             dependent_resources=dependent_resources,
         )
-        existing_record = reusable_capture_record(output_dir, capture)
+        existing_record = reusable_capture_record(self.output_dir, capture)
         if existing_record is not None:
             capture, record_path = existing_record
         else:
-            record_path = store_capture_record(output_dir, capture)
+            record_path = store_capture_record(self.output_dir, capture)
         return {
-            "canonicalUrl": item.canonical_url,
+            "canonicalUrl": self.item.canonical_url,
             "status": "complete",
             "capture": capture,
             "recordPath": record_path,
             "error": None,
         }
-    return {
-        "canonicalUrl": item.canonical_url,
-        "status": "error",
-        "capture": None,
-        "recordPath": None,
-        "error": "; ".join(failures[-8:]) or "no usable capture candidates",
-    }
 
 
-@dataclass(frozen=True)
-class ArchiveFallbackPolicy:
-    wayback_timemap: bool
-    common_crawl: bool
-    arquivo_pt: bool
+def capture_item(
+    item: ManifestItem,
+    *,
+    archive_client: ArchiveClient,
+    output_dir: Path,
+    maximum_html_bytes: int,
+    enable_wayback_timemap_fallback: bool = True,
+    enable_common_crawl_fallback: bool = False,
+    enable_arquivo_pt_fallback: bool = False,
+    **source_options: object,
+) -> dict:
+    # Existing source-specific keyword arguments remain accepted through this
+    # opaque mapping; only the selected vertical source strategy interprets
+    # them.
+    session = CaptureSession(
+        item,
+        archive_client=archive_client,
+        output_dir=output_dir,
+        maximum_html_bytes=maximum_html_bytes,
+        enable_wayback_timemap_fallback=enable_wayback_timemap_fallback,
+        enable_common_crawl_fallback=enable_common_crawl_fallback,
+        enable_arquivo_pt_fallback=enable_arquivo_pt_fallback,
+        source_options=source_options,
+    )
+    strategy = session.source_capture.run_capture
+    if strategy is None:
+        session.run_default()
+    else:
+        strategy(session)
+    return session.finish()
 
 
 def archive_fallback_policy(
@@ -2153,43 +1001,12 @@ def archive_fallback_policy(
 ) -> ArchiveFallbackPolicy:
     if prior_attempts < 0:
         raise ValueError("prior_attempts must not be negative")
-    if publisher == "ft" and parser_validation_enabled:
-        # FT timemap discovery is expensive and often returns retryable
-        # archive errors. Let the first pass use existing exact candidates
-        # plus the secondary archives; a retry can pay for timemap selection.
-        return ArchiveFallbackPolicy(
-            wayback_timemap=prior_attempts >= 1,
-            common_crawl=True,
-            arquivo_pt=True,
-        )
-    if publisher == "wsj" and parser_validation_enabled:
-        # Publication-near WSJ captures are frequently metered previews, but
-        # later/larger digests for the same URL can contain the full article.
-        # The first pass must nevertheless stay bounded: when Wayback is
-        # returning 503s, probing a timemap after every three manifest
-        # snapshots can hold a worker for minutes without producing a
-        # checkpoint.  Retry continuations enable the bounded timemap and
-        # secondary archives after the cheap manifest candidates are spent.
-        return ArchiveFallbackPolicy(
-            wayback_timemap=prior_attempts >= 1,
-            common_crawl=prior_attempts >= 1,
-            arquivo_pt=prior_attempts >= 1,
-        )
-    if publisher == "nikkei" and parser_validation_enabled:
-        # Indexed Common Crawl candidates are still attempted on every pass.
-        # Nikkei's Wayback Timemap adds complete legacy captures cheaply, while
-        # per-URL Common Crawl and Arquivo discovery produced no additional
-        # successes in the independent 2012-2015 preflight and more than
-        # doubled batch runtime. Stage those dynamic lookups on retries.
-        return ArchiveFallbackPolicy(
-            wayback_timemap=True,
-            common_crawl=prior_attempts >= 1,
-            arquivo_pt=prior_attempts >= 2,
-        )
-    return ArchiveFallbackPolicy(
-        wayback_timemap=True,
-        common_crawl=True,
-        arquivo_pt=True,
+    hook = capture_hooks(publisher).archive_fallback_policy
+    if hook is None:
+        hook = default_archive_fallback_policy
+    return hook(
+        parser_validation_enabled=parser_validation_enabled,
+        prior_attempts=prior_attempts,
     )
 
 
@@ -2268,13 +1085,16 @@ def _fetch_infini_news_candidate(
     ):
         raise ValueError("Infini-News headline mismatch")
     text = str(row.get("text") or "").strip()
+    source_url_capture = capture_hooks_for_source_url(candidate.source_url)
+    minimum_hook = (
+        source_url_capture.infini_minimum_body_characters
+        if source_url_capture is not None
+        else None
+    )
     minimum_body_characters = (
-        1_000
-        if (
-            _is_ft_origin_url(candidate.source_url)
-            or _is_wsj_origin_url(candidate.source_url)
-        )
-        else FT_SYNDICATION_MINIMUM_BODY_CHARACTERS
+        int(minimum_hook(candidate.source_url))
+        if minimum_hook is not None
+        else 400
     )
     if len(text) < minimum_body_characters:
         raise ValueError("Infini-News document body is too short")
@@ -2378,17 +1198,25 @@ def _fetch_usable_candidate(
     str | None,
 ]:
     transport_signals: dict[str, object] = {}
+    source_capture = capture_hooks(publisher)
     try:
-        if (
-            publisher == "ft"
-            and candidate.provider == CaptureProvider.INFINI_NEWS
-            and is_ft_subscription_headline(candidate.expected_headline)
-        ):
-            # These catalog rows are recurring access shells, not article
-            # records.  Skip them without a network request or an error so
-            # the remaining archive candidates can be tried immediately.
+        skip_hook = source_capture.skip_candidate
+        if skip_hook is not None and skip_hook(candidate):
             return None, None
-        if candidate.provider == CaptureProvider.COMMON_CRAWL:
+        custom_fetch = source_capture.fetch_candidate
+        custom_response = (
+            custom_fetch(
+                candidate,
+                archive_client=archive_client,
+                maximum_html_bytes=maximum_html_bytes,
+                canonical_url=canonical_url,
+            )
+            if custom_fetch is not None
+            else None
+        )
+        if custom_response is not None:
+            status_code, headers, content, final_url = custom_response
+        elif candidate.provider == CaptureProvider.COMMON_CRAWL:
             status_code, headers, content, final_url = (
                 fetch_common_crawl_candidate(
                     candidate,
@@ -2397,10 +1225,8 @@ def _fetch_usable_candidate(
                 )
             )
         elif candidate.provider == CaptureProvider.INFINI_NEWS:
-            if publisher not in {"ft", "wsj"}:
-                raise ValueError(
-                    "Infini-News derived capture is FT/WSJ-only"
-                )
+            if not source_capture.supports_infini_news:
+                raise ValueError("Infini-News is not supported by this source")
             status_code, headers, content, final_url = (
                 _fetch_infini_news_candidate(
                     candidate,
@@ -2424,28 +1250,6 @@ def _fetch_usable_candidate(
                 canonical_url=canonical_url,
                 archive_client=archive_client,
                 maximum_html_bytes=maximum_html_bytes,
-            )
-        elif (
-            candidate.provider == CaptureProvider.WAYBACK
-            and (urlsplit(canonical_url).hostname or "").casefold().endswith(
-                "ft.com"
-            )
-        ):
-            # Respect the batch-level retry/timeout budget.  FT historically
-            # used a hard-coded two-attempt, 30-second limited fetch here,
-            # which silently defeated the validation workflow's one-attempt
-            # first pass and could occupy a worker for minutes on a dead
-            # Wayback snapshot.
-            configured_attempts = int(getattr(archive_client, "attempts", 2))
-            configured_timeout = float(
-                getattr(archive_client, "timeout", 30.0)
-            )
-            status_code, headers, content, final_url = _fetch_limited_archive(
-                archive_client,
-                candidate.snapshot_url,
-                maximum_bytes=maximum_html_bytes,
-                attempts=max(1, min(2, configured_attempts)),
-                timeout=max(1.0, min(30.0, configured_timeout)),
             )
         else:
             status_code, headers, content, final_url = archive_client.fetch(
@@ -2473,146 +1277,46 @@ def _fetch_usable_candidate(
         and not _arquivo_pt_replay_matches(final_url, canonical_url)
     ):
         return None, "arquivo-pt:target-mismatch"
-    if (
-        publisher == "zaobao"
-        and candidate.provider == CaptureProvider.LIVE_ORIGIN
-        and not _same_article_url(final_url, canonical_url)
-    ):
-        # Zaobao sometimes redirects a missing story URL to that day's
-        # ``The Audio Brief`` landing page.  It is a substantial article-like
-        # document and therefore scores 100 under the generic raw-content
-        # checks, but it is not the requested story.  Reject it here so an
-        # archived candidate can still recover the original article.
-        return None, "live-origin:target-mismatch"
+    target_hook = source_capture.candidate_target_rejection
+    if target_hook is not None:
+        target_rejection = target_hook(
+            candidate,
+            canonical_url=canonical_url,
+            final_url=final_url,
+        )
+        if target_rejection is not None:
+            return None, target_rejection
     content_type = headers.get("content-type", "").split(";", 1)[0].strip()
     quality_score, signals = score_raw_capture(
         content,
         http_status=status_code,
         content_type=content_type,
         final_url=final_url,
+        publisher=publisher,
     )
     signals = signals | transport_signals
-    if (
-        publisher == "ap"
-        and candidate.provider == CaptureProvider.LIVE_ORIGIN
-    ):
-        ap_evidence = _ap_live_origin_content_evidence(content)
-        signals = signals | ap_evidence
-        if ap_evidence["apThinLiveOrigin"]:
-            quality_score = min(quality_score, 70)
-    bloomberg_parser_usable = True
-    if publisher == "bloomberg" and signals["looksLikeHtml"]:
-        bloomberg_parser_usable, bloomberg_evidence = (
-            _bloomberg_origin_parser_evidence(
-                content,
-                canonical_url=canonical_url,
-            )
-        )
-        signals = signals | bloomberg_evidence
-    ap_parser_usable = True
-    if (
-        publisher == "ap"
-        and candidate.provider != CaptureProvider.LIVE_ORIGIN
-        and signals["looksLikeHtml"]
-    ):
-        ap_parser_usable, ap_parser_evidence = _ap_capture_parser_evidence(
-            content,
-            canonical_url=canonical_url,
-        )
-        signals = signals | ap_parser_evidence
-    wsj_parser_usable = True
-    if publisher == "wsj" and signals["looksLikeHtml"]:
-        wsj_parser_usable, wsj_evidence = _wsj_capture_parser_evidence(
-            content,
-            canonical_url=canonical_url,
-        )
-        signals = signals | wsj_evidence
-    scmp_parser_usable = True
-    if publisher == "scmp" and signals["looksLikeHtml"]:
-        scmp_parser_usable, scmp_evidence = _scmp_capture_parser_evidence(
-            content,
-            canonical_url=canonical_url,
-        )
-        signals = signals | scmp_evidence
-    reuters_parser_usable = True
-    if publisher == "reuters" and signals["looksLikeHtml"]:
-        reuters_parser_usable, reuters_evidence = (
-            _reuters_capture_parser_evidence(
-                content,
-                canonical_url=canonical_url,
-            )
-        )
-        signals = signals | reuters_evidence
-    npr_parser_usable = True
-    if publisher == "npr" and signals["looksLikeHtml"]:
-        npr_parser_usable, npr_evidence = _npr_capture_parser_evidence(
-            content,
-            canonical_url=canonical_url,
-        )
-        signals = signals | npr_evidence
-    nikkei_parser_usable = True
-    if publisher == "nikkei" and signals["looksLikeHtml"]:
-        nikkei_parser_usable, nikkei_evidence = (
-            _nikkei_capture_parser_evidence(
-                content,
-                canonical_url=canonical_url,
-            )
-        )
-        signals = signals | nikkei_evidence
-    caixin_parser_usable = True
-    if publisher == "caixin" and signals["looksLikeHtml"]:
-        caixin_parser_usable, caixin_evidence = (
-            _caixin_capture_parser_evidence(
-                content,
-                canonical_url=canonical_url,
-            )
-        )
-        signals = signals | caixin_evidence
-    axios_parser_usable = True
-    if publisher == "axios" and signals["looksLikeHtml"]:
-        axios_parser_usable, axios_evidence = _axios_capture_parser_evidence(
-            content,
-            canonical_url=canonical_url,
-        )
-        signals = signals | axios_evidence
-    ft_parser_usable = True
-    if publisher == "ft" and signals["looksLikeHtml"]:
-        ft_parser_usable, ft_evidence = _ft_capture_parser_evidence(
-            content,
-            canonical_url=canonical_url,
-        )
-        signals = signals | ft_evidence
     if response_observer is not None:
         response_observer(candidate, content, final_url)
-    structured_subscription_article = bool(
-        signals["subscriptionShell"]
-        and _structured_subscription_article_usable(
-            content,
-            publisher=publisher,
+    assessment_hook = source_capture.assess_candidate
+    assessment = (
+        assessment_hook(
+            candidate,
+            content=content,
             canonical_url=canonical_url,
+            final_url=final_url,
+            quality_score=quality_score,
+            signals=signals,
         )
+        if assessment_hook is not None
+        else CandidateAssessment(quality_score=quality_score, signals=signals)
     )
-    if structured_subscription_article:
-        quality_score = min(100, quality_score + 60)
-        signals = signals | {
-            "structuredSubscriptionArticle": True,
-        }
+    quality_score = assessment.quality_score
+    signals = assessment.signals
     rejection_reasons = _candidate_rejection_reasons(
-        publisher=publisher,
         status_code=status_code,
         content=content,
         signals=signals,
-        structured_subscription_article=structured_subscription_article,
-        bloomberg_parser_usable=bloomberg_parser_usable,
-        ap_parser_usable=ap_parser_usable,
-        wsj_parser_usable=wsj_parser_usable,
-        reuters_parser_usable=reuters_parser_usable,
-        npr_parser_usable=npr_parser_usable,
-        axios_parser_usable=axios_parser_usable,
-        ft_parser_usable=ft_parser_usable,
-        nikkei_parser_usable=nikkei_parser_usable,
-        caixin_parser_usable=caixin_parser_usable,
-        scmp_parser_usable=scmp_parser_usable,
+        source_rejection_reasons=assessment.rejection_reasons,
     )
     if rejection_reasons:
         return (
@@ -2661,21 +1365,10 @@ def _fetch_usable_candidate(
 
 def _candidate_rejection_reasons(
     *,
-    publisher: str,
     status_code: int,
     content: bytes,
     signals: dict[str, object],
-    structured_subscription_article: bool,
-    bloomberg_parser_usable: bool,
-    ap_parser_usable: bool,
-    wsj_parser_usable: bool,
-    reuters_parser_usable: bool,
-    npr_parser_usable: bool,
-    ft_parser_usable: bool,
-    axios_parser_usable: bool = True,
-    nikkei_parser_usable: bool = True,
-    caixin_parser_usable: bool = True,
-    scmp_parser_usable: bool = True,
+    source_rejection_reasons: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
     """Return stable diagnostics for every candidate rejection predicate."""
 
@@ -2692,38 +1385,15 @@ def _candidate_rejection_reasons(
         reasons.append("server-placeholder-shell")
     if signals.get("tinyHtmlShell"):
         reasons.append("tiny-html-shell")
-    if signals["authenticationShell"] and not (
-        publisher == "wsj" and wsj_parser_usable
-    ):
+    if signals["authenticationShell"] and not signals.get("allowAuthenticationShell"):
         reasons.append("authentication-shell")
     if signals["accessChallengeShell"]:
         reasons.append("access-challenge-shell")
-    if signals["subscriptionShell"] and not structured_subscription_article:
+    if signals["subscriptionShell"] and not signals.get("allowSubscriptionShell"):
         reasons.append("subscription-shell")
-    if signals["ftTruncatedArticleShell"]:
-        reasons.append("ft-truncated-shell")
     if signals["redirectShell"]:
         reasons.append("redirect-shell")
-    if not bloomberg_parser_usable:
-        reasons.append("bloomberg-parser-unusable")
-    if not ap_parser_usable:
-        reasons.append("ap-parser-unusable")
-    if not wsj_parser_usable:
-        reasons.append("wsj-parser-unusable")
-    if not reuters_parser_usable:
-        reasons.append("reuters-parser-unusable")
-    if not npr_parser_usable:
-        reasons.append("npr-parser-unusable")
-    if not axios_parser_usable:
-        reasons.append("axios-parser-unusable")
-    if not ft_parser_usable:
-        reasons.append("ft-parser-unusable")
-    if not nikkei_parser_usable:
-        reasons.append("nikkei-parser-unusable")
-    if not caixin_parser_usable:
-        reasons.append("caixin-parser-unusable")
-    if not scmp_parser_usable:
-        reasons.append("scmp-parser-unusable")
+    reasons.extend(source_rejection_reasons)
     return tuple(reasons)
 
 
@@ -2745,7 +1415,8 @@ def arquivo_pt_prefix_cdx_url(
     year: int,
     limit: int = 100_000,
 ) -> str:
-    if publisher not in ARQUIVO_PT_PREFIX_URLS:
+    prefix_url = source_module(publisher).arquivo_pt_prefix_url
+    if prefix_url is None:
         raise ValueError(f"unsupported Arquivo.pt prefix publisher: {publisher}")
     if year < 1900 or year > 2100:
         raise ValueError("year is outside the supported range")
@@ -2753,7 +1424,7 @@ def arquivo_pt_prefix_cdx_url(
         raise ValueError("limit must be positive")
     return ARQUIVO_PT_CDX_ENDPOINT + "?" + urlencode(
         [
-            ("url", ARQUIVO_PT_PREFIX_URLS[publisher]),
+            ("url", prefix_url),
             ("output", "json"),
             ("filter", "status:200"),
             ("filter", "mime:text/html"),
@@ -2772,7 +1443,7 @@ def preindex_arquivo_pt_prefix_candidates(
     rows: Iterable[dict[str, object]],
     maximum_candidates: int = ARQUIVO_PT_MAXIMUM_CANDIDATES,
 ) -> dict[str, int]:
-    if publisher not in ARQUIVO_PT_PREFIX_URLS:
+    if source_module(publisher).arquivo_pt_prefix_url is None:
         raise ValueError(f"unsupported Arquivo.pt prefix publisher: {publisher}")
     if maximum_candidates < 1:
         raise ValueError("maximum_candidates must be positive")
@@ -2988,50 +1659,56 @@ def discover_wayback_timemap_candidates(
     *,
     archive_client: ArchiveClient,
     maximum_candidates: int = WAYBACK_TIMEMAP_MAXIMUM_CANDIDATES,
-    _include_ft_amp: bool = True,
+    _include_companions: bool = True,
 ) -> tuple[CaptureCandidate, ...]:
     if maximum_candidates < 1:
         raise ValueError("maximum_candidates must be positive")
-    amp_candidates: tuple[CaptureCandidate, ...] | None = None
-    parsed_canonical = urlsplit(item.canonical_url)
-    amp_item: ManifestItem | None = None
-    if (
-        _include_ft_amp
-        and item.publisher == "ft"
-        and parsed_canonical.hostname in {"ft.com", "www.ft.com"}
-        and parsed_canonical.path.startswith("/content/")
-    ):
-        amp_item = ManifestItem(
-            publisher=item.publisher,
-            canonical_url=f"https://amp.ft.com{parsed_canonical.path}",
-            published_at=item.published_at,
-            section=item.section,
-            candidates=(),
+    companion_candidates: tuple[CaptureCandidate, ...] | None = None
+    companion_items: tuple[ManifestItem, ...] = ()
+    companion_hook = capture_hooks(item.publisher).timemap_companion_urls
+    if _include_companions and companion_hook is not None:
+        companion_items = tuple(
+            ManifestItem(
+                publisher=item.publisher,
+                canonical_url=url,
+                published_at=item.published_at,
+                section=item.section,
+                candidates=(),
+            )
+            for url in companion_hook(item.canonical_url)
+            if url != item.canonical_url
         )
 
-    def fallback_amp_candidates() -> tuple[CaptureCandidate, ...]:
-        nonlocal amp_candidates
-        if amp_candidates is not None:
-            return amp_candidates
-        if amp_item is None:
-            amp_candidates = ()
-            return amp_candidates
-        try:
-            amp_candidates = discover_wayback_timemap_candidates(
-                amp_item,
-                archive_client=archive_client,
-                maximum_candidates=maximum_candidates,
-                _include_ft_amp=False,
-            )
-        except Exception:
-            # The canonical timemap remains authoritative when the AMP
-            # timemap circuit is unavailable; do not turn an AMP probe into
-            # a hard capture failure.
-            amp_candidates = ()
-        return amp_candidates
+    def fallback_companion_candidates() -> tuple[CaptureCandidate, ...]:
+        nonlocal companion_candidates
+        if companion_candidates is not None:
+            return companion_candidates
+        collected: list[CaptureCandidate] = []
+        for companion_item in companion_items:
+            try:
+                collected.extend(
+                    discover_wayback_timemap_candidates(
+                        companion_item,
+                        archive_client=archive_client,
+                        maximum_candidates=maximum_candidates,
+                        _include_companions=False,
+                    )
+                )
+            except Exception:
+                continue
+        companion_candidates = tuple(collected[:maximum_candidates])
+        return companion_candidates
     timemap_url = WAYBACK_TIMEMAP_ENDPOINT + "?" + urlencode(
         {"url": item.canonical_url}
     )
+    try:
+        configured_attempts = int(archive_client.attempts)
+    except AttributeError:
+        configured_attempts = 2
+    try:
+        configured_timeout = float(archive_client.timeout)
+    except AttributeError:
+        configured_timeout = 35.0
     status_code, headers, content, _ = _fetch_limited_archive(
         archive_client,
         timemap_url,
@@ -3039,41 +1716,44 @@ def discover_wayback_timemap_candidates(
         # Respect the batch-level bounds. The old fixed 2 x 35 second policy
         # made one missing Timemap occupy a worker for up to 70 seconds even
         # when the caller explicitly selected a short, single-attempt probe.
-        attempts=min(2, max(1, int(getattr(archive_client, "attempts", 2)))),
+        attempts=min(
+            2,
+            max(1, configured_attempts),
+        ),
         timeout=min(
             35.0,
-            max(0.1, float(getattr(archive_client, "timeout", 35.0))),
+            max(0.1, configured_timeout),
         ),
     )
     content_type = headers.get("content-type", "").casefold()
     if status_code != 200 or not content:
-        amp = fallback_amp_candidates()
-        if amp:
-            return amp[:maximum_candidates]
+        companions = fallback_companion_candidates()
+        if companions:
+            return companions[:maximum_candidates]
         raise ValueError(f"Wayback timemap returned HTTP {status_code}")
     if "json" not in content_type and not content.lstrip().startswith(b"["):
-        amp = fallback_amp_candidates()
-        if amp:
-            return amp[:maximum_candidates]
+        companions = fallback_companion_candidates()
+        if companions:
+            return companions[:maximum_candidates]
         raise ValueError("Wayback timemap did not return JSON")
     payload = json.loads(content)
     if not isinstance(payload, list) or not payload:
-        amp = fallback_amp_candidates()
-        if amp:
-            return amp[:maximum_candidates]
+        companions = fallback_companion_candidates()
+        if companions:
+            return companions[:maximum_candidates]
         return ()
     header = payload[0]
     if not isinstance(header, list):
-        amp = fallback_amp_candidates()
-        if amp:
-            return amp[:maximum_candidates]
+        companions = fallback_companion_candidates()
+        if companions:
+            return companions[:maximum_candidates]
         raise ValueError("Wayback timemap header is invalid")
     columns = {str(value).casefold(): index for index, value in enumerate(header)}
     required = {"timestamp", "original", "mimetype", "statuscode"}
     if not required.issubset(columns):
-        amp = fallback_amp_candidates()
-        if amp:
-            return amp[:maximum_candidates]
+        companions = fallback_companion_candidates()
+        if companions:
+            return companions[:maximum_candidates]
         raise ValueError("Wayback timemap is missing required columns")
 
     candidates: list[CaptureCandidate] = []
@@ -3116,9 +1796,9 @@ def discover_wayback_timemap_candidates(
             )
         )
 
-    amp = fallback_amp_candidates() if not candidates else ()
+    companions = fallback_companion_candidates() if not candidates else ()
     seen_urls = {candidate.snapshot_url for candidate in candidates}
-    for candidate in amp:
+    for candidate in companions:
         if candidate.snapshot_url not in seen_urls:
             candidates.append(candidate)
             seen_urls.add(candidate.snapshot_url)
@@ -3129,17 +1809,24 @@ def discover_wayback_timemap_candidates(
             published_at=item.published_at,
         )
     )
-    if item.publisher not in {"nikkei", "nyt", "wsj"}:
+    selection_hook = capture_hooks(item.publisher).select_timemap_candidates
+    if selection_hook is None:
         return tuple(candidates[:maximum_candidates])
+    return selection_hook(
+        tuple(candidates),
+        maximum_candidates=maximum_candidates,
+        published_at=item.published_at,
+    )
 
-    # WSJ, NYT, and Nikkei captures closest to publication are commonly
-    # metered previews, while later, larger digests can contain the complete
-    # article. In the NYT 2011 holdout every previously successful Wayback
-    # capture was at least 36 KiB (median 86 KiB), whereas the nearest rows
-    # were frequently only 10-20 KiB.
-    # Preserve temporal proximity for half of the bounded candidate set, but
-    # try the largest distinct captures first. This keeps the fallback bounded
-    # while avoiding a batch of near-identical membership excerpts.
+
+def _largest_distinct_timemap_candidates(
+    candidates: tuple[CaptureCandidate, ...],
+    *,
+    maximum_candidates: int,
+    published_at: str | None,
+) -> tuple[CaptureCandidate, ...]:
+    """Balance large digests with publication-near rows in a bounded set."""
+
     largest = sorted(
         candidates,
         key=lambda candidate: (
@@ -3147,7 +1834,7 @@ def discover_wayback_timemap_candidates(
             -(candidate.byte_count or 0),
             _timemap_candidate_sort_key(
                 candidate,
-                published_at=item.published_at,
+                published_at=published_at,
             ),
         ),
     )
@@ -3172,151 +1859,28 @@ def discover_wayback_timemap_candidates(
     return tuple(selected)
 
 
-def reuters_syndication_search_url(item: ManifestItem) -> str:
-    return _syndication_search_url(item, publisher_label="Reuters")
 
 
-def reuters_syndication_title_search_url(expected_headline: str) -> str:
-    return REUTERS_SYNDICATION_SEARCH_ENDPOINT + "?" + urlencode(
-        {"p": f'"{expected_headline}" Reuters'}
-    )
 
 
-def bloomberg_syndication_search_url(item: ManifestItem) -> str:
-    return _syndication_search_url(item, publisher_label="Bloomberg")
 
 
-def ft_syndication_search_url(item: ManifestItem) -> str:
-    return REUTERS_SYNDICATION_SEARCH_ENDPOINT + "?" + urlencode(
-        {"p": item.canonical_url}
-    )
 
 
-def ft_syndication_title_search_url(expected_headline: str) -> str:
-    return REUTERS_SYNDICATION_SEARCH_ENDPOINT + "?" + urlencode(
-        {"p": f'"{expected_headline}" "Financial Times"'}
-    )
 
 
-def ft_syndication_broad_title_search_url(
-    expected_headline: str,
-) -> str:
-    return REUTERS_SYNDICATION_SEARCH_ENDPOINT + "?" + urlencode(
-        {"p": expected_headline}
-    )
 
 
-def ftchinese_title_search_url(expected_headline: str) -> str:
-    return FTCHINESE_SEARCH_ENDPOINT + "?" + urlencode(
-        {
-            "keys": expected_headline,
-            "type": "name",
-        }
-    )
 
 
-def ft_google_news_headline_search_url(item: ManifestItem) -> str:
-    article_identifier = (
-        urlsplit(item.canonical_url).path.rstrip("/").rsplit("/", 1)[-1]
-    )
-    return FT_GOOGLE_NEWS_RSS_ENDPOINT + "?" + urlencode(
-        {
-            "q": f'"{article_identifier}"',
-            "hl": "en-US",
-            "gl": "US",
-            "ceid": "US:en",
-        }
-    )
 
 
-def ft_google_news_partner_search_url(
-    expected_headline: str,
-) -> str:
-    return FT_GOOGLE_NEWS_RSS_ENDPOINT + "?" + urlencode(
-        {
-            "q": f'"{expected_headline}"',
-            "hl": "en-US",
-            "gl": "US",
-            "ceid": "US:en",
-        }
-    )
 
 
-def ft_syndication_partner_site_search_url(
-    expected_headline: str,
-    source_host: str,
-) -> str:
-    return REUTERS_SYNDICATION_SEARCH_ENDPOINT + "?" + urlencode(
-        {"p": f'"{expected_headline}" site:{source_host}'}
-    )
 
 
-def _discover_ft_known_partner_candidates(
-    item: ManifestItem,
-    *,
-    archive_client: ArchiveClient,
-    expected_headline: str,
-) -> tuple[CaptureCandidate, ...]:
-    expected_date = _parse_iso_datetime(item.published_at)
-    if expected_date is None or expected_date.year != 2026:
-        return ()
-    slug = _headline_slug(expected_headline)
-    if not slug:
-        return ()
-    partner_url = _load_ft_known_partner_urls(archive_client).get(slug)
-    if not partner_url:
-        return ()
-    return (
-        CaptureCandidate(
-            provider=CaptureProvider.OTHER,
-            snapshot_url=partner_url,
-            expected_headline=expected_headline,
-        ),
-    )
 
 
-def _load_ft_known_partner_urls(
-    archive_client: ArchiveClient,
-) -> dict[str, str]:
-    global _ft_known_partner_urls
-    with _ft_known_partner_urls_lock:
-        if _ft_known_partner_urls is not None:
-            return _ft_known_partner_urls
-        discovered: dict[str, str] = {}
-        for public_origin, sitemap_url in FT_KNOWN_PARTNER_SITEMAPS:
-            try:
-                status_code, headers, content, _ = archive_client.fetch(
-                    sitemap_url,
-                    maximum_bytes=REUTERS_SYNDICATION_SEARCH_MAXIMUM_BYTES,
-                )
-                content_type = headers.get("content-type", "").casefold()
-                if (
-                    status_code != 200
-                    or not content
-                    or (
-                        "xml" not in content_type
-                        and not content.lstrip().startswith(b"<?xml")
-                    )
-                ):
-                    continue
-                root = ElementTree.fromstring(content.lstrip())
-            except Exception:
-                continue
-            for location in root.findall(".//{*}loc"):
-                source_url = (location.text or "").strip()
-                source_path = urlsplit(source_url).path.rstrip("/")
-                prefix = "/resources/articles/"
-                if not source_path.startswith(prefix):
-                    continue
-                candidate_slug = source_path.removeprefix(prefix)
-                if not candidate_slug or "/" in candidate_slug:
-                    continue
-                discovered.setdefault(
-                    candidate_slug.casefold(),
-                    public_origin.rstrip("/") + source_path,
-                )
-        _ft_known_partner_urls = discovered
-        return _ft_known_partner_urls
 
 
 def _headline_slug(value: str) -> str:
@@ -3336,258 +1900,18 @@ def _syndication_search_url(
 ) -> str:
     parsed = urlsplit(item.canonical_url)
     slug = parsed.path.rstrip("/").rsplit("/", 1)[-1]
-    if item.publisher == "reuters":
-        slug = re.sub(r"-20\d{2}-\d{2}-\d{2}$", "", slug)
+    slug_hook = capture_hooks(item.publisher).syndication_search_slug
+    if slug_hook is not None:
+        slug = slug_hook(slug)
     words = " ".join(part for part in slug.split("-") if part)
     query = f"{words} {publisher_label}"
-    return REUTERS_SYNDICATION_SEARCH_ENDPOINT + "?" + urlencode({"p": query})
+    return SYNDICATION_SEARCH_ENDPOINT + "?" + urlencode({"p": query})
 
 
-def ap_syndication_search_url(source_description: str) -> str:
-    words = re.findall(r"[A-Za-z0-9][A-Za-z0-9'’-]*", source_description)
-    phrase = " ".join(words[:10])
-    return AP_SYNDICATION_SEARCH_ENDPOINT + "?" + urlencode(
-        {"q": f'"{phrase}"'}
-    )
 
 
-def _ap_syndication_search_urls(
-    source_description: str | None,
-    keywords: Iterable[str],
-    authors: Iterable[str],
-    published_at: str | None = None,
-) -> tuple[str, ...]:
-    keyword_values = tuple(keywords)
-    queries: list[str] = []
-    words = (
-        re.findall(
-            r"[A-Za-z0-9][A-Za-z0-9'’-]*",
-            source_description.split(".", 1)[0],
-        )
-        if source_description
-        else []
-    )
-    if words:
-        queries.append(f'"{" ".join(words[:10])}"')
-    if len(words) > 6:
-        queries.append(f'"{" ".join(words[-8:])}"')
-    for keyword in keyword_values:
-        cleaned = re.sub(r"-+", " ", keyword).strip()
-        if keyword.count("-") >= 2 and cleaned:
-            queries.append(f'"{cleaned}" "Associated Press"')
-            break
-    author = next((value.strip() for value in authors if value.strip()), "")
-    topic = next(
-        (
-            re.sub(r"-+", " ", value).strip()
-            for value in keyword_values
-            if value.count("-") >= 2
-            and value.replace("-", " ").strip()
-        ),
-        "",
-    )
-    if author and topic:
-        queries.append(f'"{author}" "{topic}" "Associated Press"')
-        topic_tail = topic.split()[-1]
-        related = [
-            value
-            for value in keyword_values
-            if "-" not in value
-            and value.casefold()
-            not in {
-                "general news",
-                "united states",
-                "united states government",
-            }
-        ][:2]
-        year_match = re.match(r"(\d{4})", published_at or "")
-        year = year_match.group(1) if year_match else ""
-        queries.append(
-            " ".join(
-                [
-                    f'"{author}"',
-                    f'"{topic_tail}"',
-                    *(f'"{value}"' for value in related),
-                    year,
-                    '"Associated Press"',
-                ]
-            ).strip()
-        )
-    urls: list[str] = []
-    for query in dict.fromkeys(queries):
-        urls.append(
-            AP_SYNDICATION_SEARCH_ENDPOINT
-            + "?"
-            + urlencode({"q": query})
-        )
-        urls.append(
-            REUTERS_SYNDICATION_SEARCH_ENDPOINT
-            + "?"
-            + urlencode({"p": query})
-        )
-    return tuple(urls)
 
 
-def discover_ap_syndication_candidates(
-    item: ManifestItem,
-    *,
-    source_content: bytes,
-    archive_client: ArchiveClient,
-) -> ApSyndicationDiscovery:
-    soup = BeautifulSoup(source_content, "html.parser")
-    descriptions = [
-        value
-        for value in (
-            _meta_tag_content(soup, "property", "og:description"),
-            _meta_tag_content(soup, "name", "description"),
-        )
-        if value
-    ]
-    keywords: list[str] = []
-    authors: list[str] = []
-    for script in soup.select('script[type="application/ld+json"]'):
-        value = script.string or script.get_text()
-        if not value.strip():
-            continue
-        try:
-            payload = json.loads(value)
-        except (json.JSONDecodeError, TypeError):
-            continue
-        for row in _walk_json_dicts(payload):
-            description = row.get("description")
-            if isinstance(description, str) and description.strip():
-                descriptions.append(description.strip())
-            value = row.get("keywords")
-            if isinstance(value, str):
-                keywords.append(value)
-            elif isinstance(value, list):
-                keywords.extend(
-                    keyword
-                    for keyword in value
-                    if isinstance(keyword, str)
-                )
-            author_value = row.get("author")
-            for author in (
-                author_value
-                if isinstance(author_value, list)
-                else [author_value]
-            ):
-                if isinstance(author, str) and author.strip():
-                    authors.append(author.strip())
-                elif isinstance(author, dict):
-                    name = author.get("name")
-                    if isinstance(name, str) and name.strip():
-                        authors.append(name.strip())
-    source_description = max(descriptions, key=len) if descriptions else None
-    if (
-        (
-            not source_description
-            or len(source_description)
-            < _MINIMUM_AP_LIVE_ORIGIN_BODY_CHARACTERS
-        )
-        and not (authors and keywords)
-    ):
-        return ApSyndicationDiscovery(
-            source_description=source_description,
-            source_keywords=tuple(dict.fromkeys(keywords)),
-            source_authors=tuple(dict.fromkeys(authors)),
-            candidates=(),
-        )
-    candidates: list[CaptureCandidate] = []
-    seen: set[str] = set()
-    known_copy = AP_KNOWN_SYNDICATION_COPIES.get(item.canonical_url)
-    if known_copy is not None:
-        known_url, known_headline = known_copy
-        candidates.append(
-            CaptureCandidate(
-                provider=CaptureProvider.OTHER,
-                snapshot_url=known_url,
-                expected_headline=known_headline,
-            )
-        )
-        seen.add(known_url)
-    search_urls = _ap_syndication_search_urls(
-        source_description,
-        keywords,
-        authors,
-        item.published_at,
-    )
-    for search_url in search_urls:
-        try:
-            status_code, headers, content, _ = archive_client.fetch(
-                search_url,
-                maximum_bytes=AP_SYNDICATION_SEARCH_MAXIMUM_BYTES,
-            )
-        except Exception:
-            continue
-        content_type = headers.get("content-type", "").casefold()
-        if (
-            status_code != 200
-            or not content
-            or (
-                "html" not in content_type
-                and b"<html" not in content[:1_000].lower()
-            )
-        ):
-            continue
-        search_soup = BeautifulSoup(content, "html.parser")
-        if (urlsplit(search_url).hostname or "").endswith("yahoo.com"):
-            search_results = [
-                (candidate_url, title)
-                for _, title, candidate_url in _yahoo_search_results(
-                    search_soup
-                )
-            ]
-        else:
-            search_results = []
-            for result in search_soup.select(".result"):
-                anchor = result.select_one(".result__a")
-                if anchor is None:
-                    continue
-                candidate_url = _decode_duckduckgo_search_result(
-                    anchor.get("href")
-                )
-                if candidate_url is None:
-                    continue
-                search_results.append(
-                    (
-                        candidate_url,
-                        _clean_ap_search_result_title(
-                            anchor.get_text(" ", strip=True)
-                        ),
-                    )
-                )
-        accepted_this_search = 0
-        for candidate_url, title in search_results:
-            if (
-                candidate_url in seen
-                or not _is_public_syndication_url(
-                    candidate_url,
-                    excluded_publisher="ap",
-                )
-            ):
-                continue
-            seen.add(candidate_url)
-            candidates.append(
-                CaptureCandidate(
-                    provider=CaptureProvider.OTHER,
-                    snapshot_url=candidate_url,
-                    expected_headline=title or None,
-                )
-            )
-            accepted_this_search += 1
-            if len(candidates) >= AP_SYNDICATION_MAXIMUM_CANDIDATES:
-                break
-            if accepted_this_search >= 2:
-                break
-        if len(candidates) >= AP_SYNDICATION_MAXIMUM_CANDIDATES:
-            break
-    return ApSyndicationDiscovery(
-        source_description=source_description,
-        source_keywords=tuple(dict.fromkeys(keywords)),
-        source_authors=tuple(dict.fromkeys(authors)),
-        candidates=tuple(candidates),
-    )
 
 
 def _meta_tag_content(
@@ -3627,843 +1951,40 @@ def _decode_duckduckgo_search_result(value: object) -> str | None:
     return candidate_url
 
 
-def _clean_ap_search_result_title(value: str) -> str:
-    return re.sub(
-        r"\s+[-|]\s*[^-|]{1,60}$",
-        "",
-        value.strip(),
-    ).strip()
 
 
-def discover_reuters_syndication_candidates(
-    item: ManifestItem,
-    *,
-    archive_client: ArchiveClient,
-) -> tuple[CaptureCandidate, ...]:
-    initial_results = _fetch_syndication_search_results(
-        item,
-        archive_client=archive_client,
-        search_url=reuters_syndication_search_url(item),
-    )
-    expected_headline = next(
-        (
-            title
-            for _, title, candidate_url in initial_results
-            if title and _same_article_url(candidate_url, item.canonical_url)
-        ),
-        None,
-    )
-    all_results = list(initial_results)
-    if (
-        expected_headline
-        and len(_significant_tokens(expected_headline)) >= 4
-    ):
-        try:
-            title_results = _fetch_syndication_search_results(
-                item,
-                archive_client=archive_client,
-                search_url=reuters_syndication_title_search_url(
-                    expected_headline
-                ),
-            )
-        except ValueError:
-            title_results = []
-        if title_results:
-            offset = len(all_results)
-            all_results.extend(
-                (offset + position, title, candidate_url)
-                for position, title, candidate_url in title_results
-            )
-    return _rank_syndication_candidates(
-        all_results,
-        excluded_publisher="reuters",
-        expected_headline=expected_headline,
-    )
 
 
-def discover_bloomberg_syndication_candidates(
-    item: ManifestItem,
-    *,
-    archive_client: ArchiveClient,
-) -> tuple[CaptureCandidate, ...]:
-    return _discover_syndication_candidates(
-        item,
-        archive_client=archive_client,
-        search_url=bloomberg_syndication_search_url(item),
-        excluded_publisher="bloomberg",
-    )
 
 
-def discover_ft_syndication_candidates(
-    item: ManifestItem,
-    *,
-    archive_client: ArchiveClient,
-    expected_headline: str | None = None,
-    skip_title_search: bool = False,
-    exhaustive: bool = False,
-) -> tuple[CaptureCandidate, ...]:
-    initial_results: list[tuple[int, str, str]] = []
-    if not expected_headline:
-        try:
-            initial_results = _fetch_syndication_search_results(
-                item,
-                archive_client=archive_client,
-                search_url=ft_syndication_search_url(item),
-            )
-        except Exception:
-            initial_results = []
-        expected_headline = next(
-            (
-                title
-                for _, title, candidate_url in initial_results
-                if title
-                and _same_article_url(candidate_url, item.canonical_url)
-            ),
-            None,
-        )
-    if not expected_headline:
-        try:
-            expected_headline = (
-                _discover_ft_headline_from_google_news(
-                    item,
-                    archive_client=archive_client,
-                )
-            )
-        except Exception:
-            expected_headline = None
-    if (
-        not expected_headline
-        or len(_significant_tokens(expected_headline)) < 4
-    ):
-        return ()
-    ftchinese_ranked: tuple[CaptureCandidate, ...] = ()
-    if not exhaustive:
-        try:
-            ftchinese_ranked = _discover_ftchinese_candidates(
-                archive_client=archive_client,
-                expected_headline=expected_headline,
-            )
-        except Exception:
-            ftchinese_ranked = ()
-        if ftchinese_ranked:
-            return ftchinese_ranked
-    title_results: list[tuple[int, str, str]] = []
-    if not skip_title_search:
-        try:
-            title_results = _fetch_syndication_search_results(
-                item,
-                archive_client=archive_client,
-                search_url=ft_syndication_title_search_url(
-                    expected_headline
-                ),
-            )
-        except ValueError:
-            title_results = []
-    offset = len(initial_results)
-    all_results = initial_results + [
-        (offset + position, title, candidate_url)
-        for position, title, candidate_url in title_results
-    ]
-    ranked = _rank_syndication_candidates(
-        all_results,
-        excluded_publisher="ft",
-        expected_headline=expected_headline,
-    )
-    if ranked and not exhaustive:
-        return ranked
-    try:
-        broad_results = _fetch_syndication_search_results(
-            item,
-            archive_client=archive_client,
-            search_url=ft_syndication_broad_title_search_url(
-                expected_headline
-            ),
-        )
-    except Exception:
-        broad_results = []
-    offset = len(all_results)
-    all_results.extend(
-        (offset + position, title, candidate_url)
-        for position, title, candidate_url in broad_results
-    )
-    ranked = _rank_syndication_candidates(
-        all_results,
-        excluded_publisher="ft",
-        expected_headline=expected_headline,
-    )
-    if ranked and not exhaustive:
-        return ranked
-    if exhaustive:
-        try:
-            ftchinese_ranked = _discover_ftchinese_candidates(
-                archive_client=archive_client,
-                expected_headline=expected_headline,
-            )
-        except Exception:
-            ftchinese_ranked = ()
-    try:
-        google_news_ranked = (
-            _discover_ft_partner_candidates_from_google_news(
-                item,
-                archive_client=archive_client,
-                expected_headline=expected_headline,
-            )
-        )
-    except Exception:
-        google_news_ranked = ()
-    if not exhaustive:
-        return google_news_ranked
-    try:
-        known_partner_ranked = _discover_ft_known_partner_candidates(
-            item,
-            archive_client=archive_client,
-            expected_headline=expected_headline,
-        )
-    except Exception:
-        known_partner_ranked = ()
-    combined: list[CaptureCandidate] = []
-    seen_urls: set[str] = set()
-    for candidate in (
-        *known_partner_ranked,
-        *google_news_ranked,
-        *ftchinese_ranked,
-        *ranked,
-    ):
-        if candidate.snapshot_url in seen_urls:
-            continue
-        seen_urls.add(candidate.snapshot_url)
-        combined.append(candidate)
-    return tuple(combined)
 
 
-def _discover_ftchinese_candidates(
-    *,
-    archive_client: ArchiveClient,
-    expected_headline: str,
-    attempts: int = 2,
-    timeout: float = 30.0,
-) -> tuple[CaptureCandidate, ...]:
-    search_url = ftchinese_title_search_url(expected_headline)
-    status_code, headers, content, final_url = _fetch_limited_archive(
-        archive_client,
-        search_url,
-        maximum_bytes=REUTERS_SYNDICATION_SEARCH_MAXIMUM_BYTES,
-        attempts=attempts,
-        timeout=timeout,
-    )
-    content_type = headers.get("content-type", "").casefold()
-    final_host = (urlsplit(final_url).hostname or "").casefold()
-    if (
-        status_code != 200
-        or final_host != "m.ftchinese.com"
-        or (
-            "html" not in content_type
-            and not content.lstrip().startswith(b"<")
-        )
-    ):
-        return ()
-    soup = BeautifulSoup(content, "html.parser")
-    candidates: list[CaptureCandidate] = []
-    seen_ids: set[str] = set()
-    for anchor in soup.select("a[href]"):
-        href = anchor.get("href")
-        if not isinstance(href, str):
-            continue
-        parsed = urlsplit(href)
-        if parsed.hostname not in {None, "m.ftchinese.com"}:
-            continue
-        match = re.fullmatch(
-            r"/interactive/(\d+)(?:/en)?/?",
-            parsed.path,
-            flags=re.IGNORECASE,
-        )
-        if match is None or match.group(1) in seen_ids:
-            continue
-        seen_ids.add(match.group(1))
-        candidates.append(
-            CaptureCandidate(
-                provider=CaptureProvider.OTHER,
-                snapshot_url=(
-                    "https://m.ftchinese.com/interactive/"
-                    f"{match.group(1)}/en?full=y"
-                ),
-                expected_headline=expected_headline,
-            )
-        )
-        if len(candidates) >= 3:
-            break
-    return tuple(candidates)
 
 
-def _discover_ft_partner_candidates_from_google_news(
-    item: ManifestItem,
-    *,
-    archive_client: ArchiveClient,
-    expected_headline: str,
-) -> tuple[CaptureCandidate, ...]:
-    expected_date = _parse_iso_datetime(item.published_at)
-    if expected_date is None:
-        return ()
-    search_url = ft_google_news_partner_search_url(expected_headline)
-    status_code, headers, content, _ = archive_client.fetch(
-        search_url,
-        maximum_bytes=REUTERS_SYNDICATION_SEARCH_MAXIMUM_BYTES,
-    )
-    content_type = headers.get("content-type", "").casefold()
-    if status_code != 200 or not content:
-        raise ValueError(
-            f"FT Google News partner search returned HTTP {status_code}"
-        )
-    if (
-        "xml" not in content_type
-        and not content.lstrip().startswith((b"<?xml", b"<rss"))
-    ):
-        raise ValueError("FT Google News partner search did not return XML")
-    root = ElementTree.fromstring(content.lstrip())
-    source_hosts: list[str] = []
-    seen_hosts: set[str] = set()
-    for result in root.findall("./channel/item"):
-        result_title = _clean_syndication_search_title(
-            result.findtext("title") or ""
-        )
-        if (
-            _headline_text_overlap(expected_headline, result_title)
-            < 0.8
-        ):
-            continue
-        try:
-            published_at = parsedate_to_datetime(
-                result.findtext("pubDate") or ""
-            )
-        except (TypeError, ValueError, OverflowError):
-            continue
-        if published_at.tzinfo is None:
-            published_at = published_at.replace(tzinfo=timezone.utc)
-        if (
-            abs(
-                (
-                    published_at.astimezone(timezone.utc).date()
-                    - expected_date.date()
-                ).days
-            )
-            > FT_GOOGLE_NEWS_MAXIMUM_DATE_DELTA_DAYS
-        ):
-            continue
-        source = result.find("source")
-        source_url = (
-            source.attrib.get("url", "").strip()
-            if source is not None
-            else ""
-        )
-        source_host = (urlsplit(source_url).hostname or "").casefold()
-        if (
-            not source_host
-            or source_host in seen_hosts
-            or not _is_public_syndication_url(
-                source_url,
-                excluded_publisher="ft",
-            )
-        ):
-            continue
-        seen_hosts.add(source_host)
-        source_hosts.append(source_host)
-        if (
-            len(source_hosts)
-            >= FT_GOOGLE_NEWS_MAXIMUM_PARTNER_SOURCES
-        ):
-            break
-    all_results: list[tuple[int, str, str]] = []
-    for source_host in source_hosts:
-        try:
-            results = _fetch_syndication_search_results(
-                item,
-                archive_client=archive_client,
-                search_url=ft_syndication_partner_site_search_url(
-                    expected_headline,
-                    source_host,
-                ),
-            )
-        except Exception:
-            continue
-        offset = len(all_results)
-        all_results.extend(
-            (offset + position, title, candidate_url)
-            for position, title, candidate_url in results
-        )
-    return _rank_syndication_candidates(
-        all_results,
-        excluded_publisher="ft",
-        expected_headline=expected_headline,
-    )
 
 
-def _discover_ft_headline_from_google_news(
-    item: ManifestItem,
-    *,
-    archive_client: ArchiveClient,
-) -> str | None:
-    search_url = ft_google_news_headline_search_url(item)
-    status_code, headers, content, _ = archive_client.fetch(
-        search_url,
-        maximum_bytes=REUTERS_SYNDICATION_SEARCH_MAXIMUM_BYTES,
-    )
-    content_type = headers.get("content-type", "").casefold()
-    if status_code != 200 or not content:
-        raise ValueError(
-            f"FT Google News search returned HTTP {status_code}"
-        )
-    if (
-        "xml" not in content_type
-        and not content.lstrip().startswith((b"<?xml", b"<rss"))
-    ):
-        raise ValueError("FT Google News search did not return XML")
-    root = ElementTree.fromstring(content.lstrip())
-    expected_date = _parse_iso_datetime(item.published_at)
-    if expected_date is None:
-        return None
-    ranked: list[tuple[int, int, str]] = []
-    for position, result in enumerate(root.findall("./channel/item")):
-        source = result.find("source")
-        source_name = (source.text or "").strip() if source is not None else ""
-        source_url = (
-            source.attrib.get("url", "").strip()
-            if source is not None
-            else ""
-        )
-        source_host = (urlsplit(source_url).hostname or "").casefold()
-        if (
-            source_name.casefold() != "financial times"
-            and source_host not in {"ft.com", "www.ft.com"}
-        ):
-            continue
-        try:
-            published_at = parsedate_to_datetime(
-                result.findtext("pubDate") or ""
-            )
-        except (TypeError, ValueError, OverflowError):
-            continue
-        if published_at.tzinfo is None:
-            published_at = published_at.replace(tzinfo=timezone.utc)
-        date_delta = abs(
-            (
-                published_at.astimezone(timezone.utc).date()
-                - expected_date.date()
-            ).days
-        )
-        if date_delta > 2:
-            continue
-        cleaned = _clean_syndication_search_title(
-            result.findtext("title") or ""
-        )
-        if len(_significant_tokens(cleaned)) < 4:
-            continue
-        ranked.append((date_delta, position, cleaned))
-    if not ranked:
-        return None
-    ranked.sort()
-    return ranked[0][2]
 
 
-def discover_nyt_syndication(
-    item: ManifestItem,
-    *,
-    archive_client: ArchiveClient,
-) -> NytSyndicationDiscovery:
-    for endpoint in NYT_TRUSTED_WORDPRESS_ENDPOINTS:
-        try:
-            trusted = _discover_nyt_trusted_wordpress_copy(
-                item,
-                endpoint=endpoint,
-                archive_client=archive_client,
-            )
-        except Exception:
-            trusted = None
-        if trusted is not None:
-            return trusted
-
-    canonical_search_url = nyt_syndication_search_url(item)
-    status_code, headers, content, _ = archive_client.fetch(
-        canonical_search_url,
-        maximum_bytes=NYT_SYNDICATION_SEARCH_MAXIMUM_BYTES,
-    )
-    content_type = headers.get("content-type", "").casefold()
-    if status_code != 200 or not content:
-        raise ValueError(
-            f"NYT syndication search returned HTTP {status_code}"
-        )
-    if "html" not in content_type and b"<html" not in content[:1_000].lower():
-        raise ValueError("NYT syndication search did not return HTML")
-
-    soup = BeautifulSoup(content, "html.parser")
-    expected_headline: str | None = None
-    initial_results = _yahoo_search_results(soup)
-    for _, result_title, candidate_url in initial_results:
-        if _same_article_url(candidate_url, item.canonical_url):
-            if result_title:
-                expected_headline = result_title
-            break
-
-    if (
-        not expected_headline
-        or len(_significant_tokens(expected_headline)) < 4
-    ):
-        return NytSyndicationDiscovery(
-            expected_headline=None,
-            candidates=(),
-        )
-
-    for endpoint in NYT_HEADLINE_WORDPRESS_ENDPOINTS:
-        try:
-            trusted = _discover_nyt_headline_wordpress_copy(
-                item,
-                expected_headline=expected_headline,
-                endpoint=endpoint,
-                archive_client=archive_client,
-            )
-        except Exception:
-            trusted = None
-        if trusted is not None:
-            return trusted
-
-    title_search_url = nyt_syndication_title_search_url(expected_headline)
-    status_code, headers, content, _ = archive_client.fetch(
-        title_search_url,
-        maximum_bytes=NYT_SYNDICATION_SEARCH_MAXIMUM_BYTES,
-    )
-    content_type = headers.get("content-type", "").casefold()
-    if status_code != 200 or not content:
-        raise ValueError(
-            f"NYT title search returned HTTP {status_code}"
-        )
-    if "html" not in content_type and b"<html" not in content[:1_000].lower():
-        raise ValueError("NYT title search did not return HTML")
-    title_results = _yahoo_search_results(
-        BeautifulSoup(content, "html.parser")
-    )
-
-    ranked: list[tuple[float, int, str]] = []
-    seen: set[str] = set()
-    for position, result_title, candidate_url in (
-        initial_results + title_results
-    ):
-        if (
-            candidate_url in seen
-            or not _is_public_syndication_url(
-                candidate_url,
-                excluded_publisher="nyt",
-            )
-        ):
-            continue
-        title_overlap = _headline_text_overlap(
-            expected_headline,
-            result_title,
-        )
-        if title_overlap < 0.55:
-            continue
-        seen.add(candidate_url)
-        ranked.append((-title_overlap, position, candidate_url))
-    ranked.sort()
-    return NytSyndicationDiscovery(
-        expected_headline=expected_headline,
-        candidates=tuple(
-            CaptureCandidate(
-                provider=CaptureProvider.OTHER,
-                snapshot_url=candidate_url,
-            )
-            for _, _, candidate_url in ranked[
-                :NYT_SYNDICATION_MAXIMUM_CANDIDATES
-            ]
-        ),
-    )
 
 
-def _discover_nyt_trusted_wordpress_copy(
-    item: ManifestItem,
-    *,
-    endpoint: str,
-    archive_client: ArchiveClient,
-) -> NytSyndicationDiscovery | None:
-    search_url = nyt_trusted_wordpress_search_url(
-        item,
-        endpoint=endpoint,
-    )
-    status_code, headers, content, _ = _fetch_limited_archive(
-        archive_client,
-        search_url,
-        maximum_bytes=NYT_SYNDICATION_SEARCH_MAXIMUM_BYTES,
-        attempts=2,
-        timeout=35.0,
-    )
-    content_type = headers.get("content-type", "").casefold()
-    if status_code != 200 or not content:
-        raise ValueError(
-            f"trusted NYT syndication search returned HTTP {status_code}"
-        )
-    if "json" not in content_type and not content.lstrip().startswith(b"["):
-        raise ValueError(
-            "trusted NYT syndication search did not return JSON"
-        )
-    payload = json.loads(content)
-    if not isinstance(payload, list):
-        raise ValueError("trusted NYT syndication response is invalid")
-    expected_date = _parse_iso_datetime(item.published_at)
-    for row in payload:
-        if not isinstance(row, dict):
-            continue
-        link = row.get("link")
-        title_value = row.get("title")
-        content_value = row.get("content")
-        date_value = row.get("date_gmt") or row.get("date")
-        if (
-            not isinstance(link, str)
-            or not _is_public_syndication_url(
-                link,
-                excluded_publisher="nyt",
-            )
-            or not isinstance(title_value, dict)
-            or not isinstance(content_value, dict)
-        ):
-            continue
-        rendered_title = title_value.get("rendered")
-        rendered_content = content_value.get("rendered")
-        if (
-            not isinstance(rendered_title, str)
-            or not isinstance(rendered_content, str)
-            or not _html_links_to_article(
-                rendered_content,
-                item.canonical_url,
-            )
-        ):
-            continue
-        partner_date = _parse_iso_datetime(
-            date_value if isinstance(date_value, str) else None
-        )
-        if (
-            expected_date is not None
-            and partner_date is not None
-            and abs((partner_date.date() - expected_date.date()).days) > 2
-        ):
-            continue
-        expected_headline = _clean_nyt_search_result_title(
-            BeautifulSoup(
-                rendered_title,
-                "html.parser",
-            ).get_text(" ", strip=True)
-        )
-        if len(_significant_tokens(expected_headline)) < 4:
-            continue
-        return NytSyndicationDiscovery(
-            expected_headline=expected_headline,
-            candidates=(
-                CaptureCandidate(
-                    provider=CaptureProvider.OTHER,
-                    snapshot_url=link,
-                ),
-            ),
-        )
-    return None
 
 
-def _structured_subscription_article_usable(
-    content: bytes,
-    *,
-    publisher: str,
-    canonical_url: str,
-    raw_capture: RawCapture | None = None,
-) -> bool:
-    if publisher != "wsj":
-        return False
-    from jojo_news_archive.parsing.parser import parse_article
-
-    try:
-        article = parse_article(
-            content,
-            publisher=publisher,
-            canonical_url=canonical_url,
-            raw_capture=raw_capture,
-        )
-    except Exception:
-        return False
-    prefix = article.plain_text[:1_500].casefold()
-    suspected_paywall = (
-        article.quality.body_characters < 1_000
-        and any(
-            phrase in prefix
-            for phrase in (
-                "subscribe to read",
-                "subscribe to continue",
-                "sign in to continue",
-                "already a subscriber",
-                "unlock this article",
-            )
-        )
-    )
-    return bool(
-        article.quality.status.value == "complete"
-        and article.headline
-        and article.quality.body_characters >= 100
-        and not suspected_paywall
-    )
 
 
-def nyt_trusted_wordpress_search_url(
-    item: ManifestItem,
-    *,
-    endpoint: str = NYT_TRUSTED_WORDPRESS_ENDPOINTS[0],
-) -> str:
-    slug = urlsplit(item.canonical_url).path.rstrip("/").rsplit("/", 1)[-1]
-    slug = re.sub(r"\.html$", "", slug, flags=re.IGNORECASE)
-    query = " ".join(part for part in slug.split("-") if part)
-    return endpoint + "?" + urlencode(
-        {
-            "search": query,
-            "per_page": 10,
-            "_fields": "date,date_gmt,link,title,content",
-        }
-    )
 
 
-def _discover_nyt_headline_wordpress_copy(
-    item: ManifestItem,
-    *,
-    expected_headline: str,
-    endpoint: str,
-    archive_client: ArchiveClient,
-) -> NytSyndicationDiscovery | None:
-    search_url = nyt_headline_wordpress_search_url(
-        expected_headline,
-        endpoint=endpoint,
-    )
-    status_code, headers, content, _ = _fetch_limited_archive(
-        archive_client,
-        search_url,
-        maximum_bytes=NYT_SYNDICATION_SEARCH_MAXIMUM_BYTES,
-        attempts=2,
-        timeout=35.0,
-    )
-    content_type = headers.get("content-type", "").casefold()
-    if status_code != 200 or not content:
-        raise ValueError(
-            f"headline NYT syndication search returned HTTP {status_code}"
-        )
-    if "json" not in content_type and not content.lstrip().startswith(b"["):
-        raise ValueError(
-            "headline NYT syndication search did not return JSON"
-        )
-    payload = json.loads(content)
-    if not isinstance(payload, list):
-        raise ValueError("headline NYT syndication response is invalid")
-    expected_date = _parse_iso_datetime(item.published_at)
-    if expected_date is None:
-        return None
-    ranked: list[tuple[float, int, int, str]] = []
-    for position, row in enumerate(payload):
-        if not isinstance(row, dict):
-            continue
-        link = row.get("link")
-        title_value = row.get("title")
-        content_value = row.get("content")
-        date_value = row.get("date_gmt") or row.get("date")
-        if (
-            not isinstance(link, str)
-            or not _is_public_syndication_url(
-                link,
-                excluded_publisher="nyt",
-            )
-            or not isinstance(title_value, dict)
-            or not isinstance(content_value, dict)
-            or not isinstance(date_value, str)
-        ):
-            continue
-        rendered_title = title_value.get("rendered")
-        rendered_content = content_value.get("rendered")
-        if (
-            not isinstance(rendered_title, str)
-            or not isinstance(rendered_content, str)
-        ):
-            continue
-        candidate_headline = _clean_nyt_search_result_title(
-            BeautifulSoup(
-                rendered_title,
-                "html.parser",
-            ).get_text(" ", strip=True)
-        )
-        headline_overlap = _headline_text_overlap(
-            expected_headline,
-            candidate_headline,
-        )
-        if headline_overlap < 0.8:
-            continue
-        partner_date = _parse_iso_datetime(date_value)
-        if partner_date is None:
-            continue
-        date_delta = abs(
-            (partner_date.date() - expected_date.date()).days
-        )
-        if date_delta > 2:
-            continue
-        rendered_soup = BeautifulSoup(rendered_content, "html.parser")
-        attribution = rendered_soup.get_text(" ", strip=True)
-        if re.search(
-            r"(?i)(?:the\s+)?new\s+york\s+times|nytimes\.com",
-            attribution,
-        ) is None:
-            continue
-        canonical_linked = _html_links_to_article(
-            rendered_content,
-            item.canonical_url,
-        )
-        ranked.append(
-            (
-                -headline_overlap,
-                0 if canonical_linked else 1,
-                date_delta * 100 + position,
-                link,
-            )
-        )
-    if not ranked:
-        return None
-    _, _, _, link = min(ranked)
-    return NytSyndicationDiscovery(
-        expected_headline=expected_headline,
-        candidates=(
-            CaptureCandidate(
-                provider=CaptureProvider.OTHER,
-                snapshot_url=link,
-                expected_headline=expected_headline,
-            ),
-        ),
-    )
 
 
-def nyt_headline_wordpress_search_url(
-    expected_headline: str,
-    *,
-    endpoint: str = NYT_HEADLINE_WORDPRESS_ENDPOINTS[0],
-) -> str:
-    return endpoint + "?" + urlencode(
-        {
-            "search": expected_headline,
-            "per_page": 10,
-            "_fields": "date,date_gmt,link,title,content",
-        }
-    )
 
 
-def nyt_syndication_search_url(item: ManifestItem) -> str:
-    return NYT_SYNDICATION_SEARCH_ENDPOINT + "?" + urlencode(
-        {"p": item.canonical_url}
-    )
 
 
-def nyt_syndication_title_search_url(expected_headline: str) -> str:
-    return NYT_SYNDICATION_SEARCH_ENDPOINT + "?" + urlencode(
-        {"p": expected_headline}
-    )
 
 
 def _yahoo_search_results(
     soup: BeautifulSoup,
+    *,
+    clean_title: Callable[[str], str] | None = None,
 ) -> list[tuple[int, str, str]]:
     results: list[tuple[int, str, str]] = []
     for position, result in enumerate(soup.select("#web li")):
@@ -4478,9 +1999,8 @@ def _yahoo_search_results(
         candidate_url = _decode_yahoo_search_result(anchor.get("href"))
         if candidate_url is None:
             continue
-        result_title = _clean_nyt_search_result_title(
-            heading.get_text(" ", strip=True)
-        )
+        raw_title = heading.get_text(" ", strip=True)
+        result_title = clean_title(raw_title) if clean_title is not None else raw_title
         results.append((position, result_title, candidate_url))
     return results
 
@@ -4511,7 +2031,7 @@ def _fetch_syndication_search_results(
 ) -> list[tuple[int, str, str]]:
     status_code, headers, content, _ = archive_client.fetch(
         search_url,
-        maximum_bytes=REUTERS_SYNDICATION_SEARCH_MAXIMUM_BYTES,
+        maximum_bytes=SYNDICATION_SEARCH_MAXIMUM_BYTES,
     )
     content_type = headers.get("content-type", "").casefold()
     if status_code != 200 or not content:
@@ -4533,10 +2053,12 @@ def _fetch_syndication_search_results(
         candidate_url = _decode_yahoo_search_result(anchor.get("href"))
         if candidate_url is None:
             continue
+        cleaner = (
+            capture_hooks(item.publisher).clean_syndication_search_title
+            or _clean_syndication_search_title
+        )
         title = (
-            _clean_syndication_search_title(
-                heading.get_text(" ", strip=True)
-            )
+            cleaner(heading.get_text(" ", strip=True))
             if heading is not None
             else ""
         )
@@ -4551,12 +2073,13 @@ def _rank_syndication_candidates(
     expected_headline: str | None = None,
 ) -> tuple[CaptureCandidate, ...]:
     ranked: list[tuple[float, int, int, str]] = []
+    source_capture = capture_hooks(excluded_publisher)
+    normalize_url = source_capture.normalize_syndication_candidate_url or (lambda value: value)
+    url_priority = source_capture.syndication_candidate_priority or (lambda value: 0)
+    maximum_candidates = source_capture.syndication_maximum_candidates
     seen: set[str] = set()
     for position, result_title, candidate_url in results:
-        if excluded_publisher == "ft":
-            candidate_url = _normalize_ft_syndication_candidate_url(
-                candidate_url
-            )
+        candidate_url = normalize_url(candidate_url)
         if (
             candidate_url in seen
             or not _is_public_syndication_url(
@@ -4576,7 +2099,7 @@ def _rank_syndication_candidates(
         ranked.append(
             (
                 -headline_overlap,
-                _reuters_syndication_url_priority(candidate_url),
+                url_priority(candidate_url),
                 position,
                 candidate_url,
             )
@@ -4588,70 +2111,14 @@ def _rank_syndication_candidates(
             snapshot_url=candidate_url,
             expected_headline=expected_headline,
         )
-        for _, _, _, candidate_url in ranked[
-            :REUTERS_SYNDICATION_MAXIMUM_CANDIDATES
-        ]
+        for _, _, _, candidate_url in ranked[:maximum_candidates]
     )
 
 
-def _normalize_ft_syndication_candidate_url(value: str) -> str:
-    parsed = urlsplit(value)
-    host = (parsed.hostname or "").casefold().rstrip(".")
-    if (
-        host
-        not in {
-            "ftchinese.com",
-            "www.ftchinese.com",
-            "m.ftchinese.com",
-            "cn.ft.com",
-        }
-        or not re.fullmatch(
-            r"/interactive/\d+(?:/en)?/?",
-            parsed.path,
-            flags=re.IGNORECASE,
-        )
-    ):
-        return value
-    query = parse_qs(parsed.query, keep_blank_values=True)
-    query["full"] = ["y"]
-    return urlunsplit(
-        (
-            "https",
-            "m.ftchinese.com",
-            parsed.path,
-            urlencode(query, doseq=True),
-            "",
-        )
-    )
 
 
-def _is_ftchinese_full_view_url(value: str) -> bool:
-    parsed = urlsplit(value)
-    query = parse_qs(parsed.query, keep_blank_values=True)
-    return bool(
-        parsed.scheme == "https"
-        and (parsed.hostname or "").casefold() == "m.ftchinese.com"
-        and re.fullmatch(
-            r"/interactive/\d+/en/?",
-            parsed.path,
-            flags=re.IGNORECASE,
-        )
-        and query.get("full") == ["y"]
-    )
 
 
-def _is_jina_ft_reader_url(value: str) -> bool:
-    parsed = urlsplit(value)
-    return bool(
-        parsed.scheme == "https"
-        and (parsed.hostname or "").casefold() == "r.jina.ai"
-        and re.fullmatch(
-            r"/https://(?:www\.)?ft\.com/content/"
-            r"[0-9a-f-]+/?",
-            parsed.path,
-            flags=re.IGNORECASE,
-        )
-    )
 
 
 def _is_archive_today_candidate_url(value: str) -> bool:
@@ -4671,15 +2138,7 @@ def _is_archive_today_candidate_url(value: str) -> bool:
 
 
 def _clean_syndication_search_title(value: str) -> str:
-    cleaned = re.sub(
-        r"\s+(?:[-|]\s*)?"
-        r"(?:(?:Reuters|Bloomberg)(?:\s+News)?|"
-        r"Financial\s+Times|FT\.com)\s*$",
-        "",
-        value.strip(),
-        flags=re.IGNORECASE,
-    ).strip()
-    return re.sub(r"\s*(?:…|\.\.\.)\s*$", "", cleaned).strip()
+    return re.sub(r"\s*(?:…|\.\.\.)\s*$", "", value.strip()).strip()
 
 
 def _decode_yahoo_search_result(value: object) -> str | None:
@@ -4693,14 +2152,6 @@ def _decode_yahoo_search_result(value: object) -> str | None:
     return candidate_url
 
 
-def _clean_nyt_search_result_title(value: str) -> str:
-    cleaned = re.sub(
-        r"\s+(?:[-|]\s*)?(?:The )?New York Times\s*$",
-        "",
-        value.strip(),
-        flags=re.IGNORECASE,
-    ).strip()
-    return re.sub(r"\s*(?:…|\.\.\.)\s*$", "", cleaned).strip()
 
 
 def _html_links_to_article(html_value: str, canonical_url: str) -> bool:
@@ -4739,15 +2190,13 @@ def _is_public_syndication_url(
         address = None
     if address is not None and not address.is_global:
         return False
+    source = source_module(excluded_publisher)
     excluded_domains = {
-        "ap": "apnews.com",
-        "reuters": "reuters.com",
-        "bloomberg": "bloomberg.com",
-        "nyt": "nytimes.com",
-        "ft": "ft.com",
+        source.archive_spec.canonical_host.casefold().removeprefix("www."),
+        *(domain.casefold().removeprefix("www.") for domain in source.archive_spec.alternate_hosts),
+        *(domain.casefold().removeprefix("www.") for domain in source.parser_spec.domains),
     }
-    excluded_domain = excluded_domains[excluded_publisher]
-    if host == excluded_domain or host.endswith("." + excluded_domain):
+    if any(host == domain or host.endswith("." + domain) for domain in excluded_domains):
         return False
     if (
         host in {"search.yahoo.com", "www.google.com", "www.bing.com"}
@@ -4758,335 +2207,12 @@ def _is_public_syndication_url(
     return True
 
 
-def _reuters_syndication_url_priority(value: str) -> int:
-    parsed = urlsplit(value)
-    host = (parsed.hostname or "").casefold()
-    path = parsed.path.casefold()
-    if host == "yahoo.com" or host.endswith(".yahoo.com"):
-        return 0
-    if (
-        "/wires/reuters/" in path
-        or "/news/reuters" in path
-        or "reuters.com" in path
-    ):
-        return 1
-    return 2
 
 
-def _validate_ap_syndication_response(
-    item: ManifestItem,
-    *,
-    source_description: str | None,
-    source_keywords: tuple[str, ...] = (),
-    source_authors: tuple[str, ...] = (),
-    expected_headline: str | None,
-    content: bytes,
-    final_url: str,
-) -> tuple[bool, dict[str, object]]:
-    from jojo_news_archive.parsing.parser import parse_article
-
-    try:
-        article = parse_article(
-            content,
-            publisher="ap",
-            canonical_url=item.canonical_url,
-            allow_generic_syndication=True,
-        )
-    except Exception as exc:
-        return False, {
-            "reason": f"parser-{type(exc).__name__}",
-            "apSyndicationValidated": False,
-        }
-    normalized_body = re.sub(
-        r"\s+",
-        " ",
-        article.plain_text,
-    ).casefold()
-    normalized_description = re.sub(
-        r"\s+",
-        " ",
-        source_description or "",
-    ).casefold()
-    description_tokens = set(_significant_tokens(normalized_description))
-    body_tokens = set(_significant_tokens(normalized_body))
-    description_overlap = (
-        len(description_tokens & body_tokens) / len(description_tokens)
-        if description_tokens
-        else 0.0
-    )
-    description_matches = bool(
-        normalized_description
-        and (
-            normalized_description in normalized_body
-            or description_overlap >= 0.75
-        )
-    )
-    source_keyword_tokens = set(
-        _significant_tokens(" ".join(source_keywords))
-    )
-    metadata_token_matches = len(source_keyword_tokens & body_tokens)
-    metadata_overlap = (
-        min(
-            1.0,
-            metadata_token_matches / min(12, len(source_keyword_tokens)),
-        )
-        if source_keyword_tokens
-        else 0.0
-    )
-    headline_overlap = (
-        _headline_text_overlap(expected_headline, article.headline or "")
-        if expected_headline
-        else 0.0
-    )
-    title_matches = not expected_headline or headline_overlap >= 0.55
-    visible_text = BeautifulSoup(content, "html.parser").get_text(
-        " ",
-        strip=True,
-    )
-    author_text = " ".join(author.name for author in article.authors)
-    normalized_authorship = (author_text + "\n" + visible_text).casefold()
-    source_author_matches = any(
-        author.casefold() in normalized_authorship
-        for author in source_authors
-        if len(author.strip()) >= 4
-    )
-    attributed = re.search(
-        r"(?i)(?:^|\W)(?:the\s+)?associated\s+press(?:\W|$)|"
-        r"(?:^|\W)AP(?:\W|$)",
-        author_text + "\n" + visible_text,
-    ) is not None
-    expected_date = _parse_iso_datetime(item.published_at)
-    date_delta_days: int | None = None
-    if expected_date is not None and article.published_at is not None:
-        date_delta_days = abs(
-            (article.published_at.date() - expected_date.date()).days
-        )
-    date_matches = date_delta_days is None or date_delta_days <= 2
-    metadata_matches = bool(
-        not normalized_description
-        and expected_headline
-        and date_delta_days is not None
-        and date_matches
-        and metadata_token_matches >= 6
-        and metadata_overlap >= 0.5
-        and (source_author_matches or metadata_token_matches >= 8)
-    )
-    source_matches = description_matches or metadata_matches
-    body_characters = article.quality.body_characters
-    valid = bool(
-        article.quality.status == ArticleStatus.COMPLETE
-        and body_characters >= AP_SYNDICATION_MINIMUM_BODY_CHARACTERS
-        and source_matches
-        and title_matches
-        and attributed
-        and date_matches
-    )
-    if article.quality.status != ArticleStatus.COMPLETE:
-        reason = f"parser-{article.quality.status.value}"
-    elif body_characters < AP_SYNDICATION_MINIMUM_BODY_CHARACTERS:
-        reason = "body-too-short"
-    elif not source_matches:
-        reason = (
-            "metadata-mismatch"
-            if not normalized_description
-            else "description-mismatch"
-        )
-    elif not title_matches:
-        reason = "headline-mismatch"
-    elif not attributed:
-        reason = "missing-ap-attribution"
-    elif not date_matches:
-        reason = "date-mismatch"
-    else:
-        reason = None
-    return valid, {
-        "reason": reason,
-        "apSyndicationValidated": valid,
-        "syndicationFinalUrl": final_url,
-        "syndicationHeadlineOverlap": round(headline_overlap, 4),
-        "syndicationDescriptionOverlap": round(description_overlap, 4),
-        "syndicationMetadataOverlap": round(metadata_overlap, 4),
-        "syndicationMetadataTokenMatches": metadata_token_matches,
-        "syndicationSourceAuthorMatches": source_author_matches,
-        "syndicationBodyCharacters": body_characters,
-        "syndicationApAttributed": attributed,
-        "syndicationDateDeltaDays": date_delta_days,
-        "syndicationExpectedHeadline": expected_headline,
-    }
 
 
-def _validate_reuters_syndication_response(
-    item: ManifestItem,
-    *,
-    expected_headline: str | None = None,
-    content: bytes,
-    final_url: str,
-) -> tuple[bool, dict[str, object]]:
-    from jojo_news_archive.parsing.parser import parse_article
-
-    try:
-        article = parse_article(
-            content,
-            publisher="reuters",
-            canonical_url=item.canonical_url,
-            allow_generic_syndication=True,
-        )
-    except Exception as exc:
-        return False, {
-            "reason": f"parser-{type(exc).__name__}",
-            "reutersSyndicationValidated": False,
-        }
-    headline_overlap = _reuters_syndication_headline_overlap(
-        item.canonical_url,
-        article.headline or "",
-    )
-    if expected_headline:
-        headline_overlap = max(
-            headline_overlap,
-            _headline_text_overlap(
-                expected_headline,
-                article.headline or "",
-            ),
-        )
-    author_text = " ".join(author.name for author in article.authors)
-    attribution_text = (
-        author_text + "\n" + article.plain_text[:1_000]
-        + "\n" + article.plain_text[-1_000:]
-    )
-    attributed = re.search(
-        r"(?i)(?:^|\W)reuters(?:\W|$)",
-        attribution_text,
-    ) is not None
-    date_delta_days: int | None = None
-    expected_date = _parse_iso_datetime(item.published_at)
-    if expected_date is not None and article.published_at is not None:
-        date_delta_days = abs(
-            (article.published_at.date() - expected_date.date()).days
-        )
-    date_matches = date_delta_days is not None and date_delta_days <= 2
-    title_matches = headline_overlap >= 0.6 or (
-        date_matches and headline_overlap >= 0.35
-    )
-    body_characters = article.quality.body_characters
-    valid = (
-        article.quality.status == ArticleStatus.COMPLETE
-        and body_characters >= REUTERS_SYNDICATION_MINIMUM_BODY_CHARACTERS
-        and attributed
-        and title_matches
-    )
-    if article.quality.status != ArticleStatus.COMPLETE:
-        reason = f"parser-{article.quality.status.value}"
-    elif body_characters < REUTERS_SYNDICATION_MINIMUM_BODY_CHARACTERS:
-        reason = "body-too-short"
-    elif not attributed:
-        reason = "missing-reuters-attribution"
-    elif not title_matches:
-        reason = "headline-mismatch"
-    else:
-        reason = None
-    return valid, {
-        "reason": reason,
-        "reutersSyndicationValidated": valid,
-        "syndicationFinalUrl": final_url,
-        "syndicationHeadlineOverlap": round(headline_overlap, 4),
-        "syndicationBodyCharacters": body_characters,
-        "syndicationReutersAttributed": attributed,
-        "syndicationDateDeltaDays": date_delta_days,
-        "syndicationExpectedHeadline": expected_headline,
-    }
 
 
-def _validate_bloomberg_syndication_response(
-    item: ManifestItem,
-    *,
-    content: bytes,
-    final_url: str,
-) -> tuple[bool, dict[str, object]]:
-    from jojo_news_archive.parsing.parser import parse_article
-
-    try:
-        article = parse_article(
-            content,
-            publisher="bloomberg",
-            canonical_url=item.canonical_url,
-            allow_generic_syndication=True,
-        )
-    except Exception as exc:
-        return False, {
-            "reason": f"parser-{type(exc).__name__}",
-            "bloombergSyndicationValidated": False,
-        }
-    headline_overlap = _syndication_headline_overlap(
-        item.canonical_url,
-        article.headline or "",
-    )
-    soup = BeautifulSoup(content, "html.parser")
-    visible_text = soup.get_text(" ", strip=True)
-    author_text = " ".join(author.name for author in article.authors)
-    attribution_text = (
-        author_text
-        + "\n"
-        + visible_text[:10_000]
-        + "\n"
-        + article.plain_text[-1_000:]
-    )
-    attributed = re.search(
-        r"(?i)(?:^|\W)bloomberg(?:\s+(?:news|opinion))?(?:\W|$)",
-        attribution_text,
-    ) is not None
-    expected_date = _parse_iso_datetime(item.published_at)
-    date_delta_days: int | None = None
-    if expected_date is not None and article.published_at is not None:
-        date_delta_days = abs(
-            (article.published_at.date() - expected_date.date()).days
-        )
-    date_visible = _expected_date_visible(
-        content,
-        expected_date=expected_date,
-    )
-    date_matches = (
-        date_delta_days is not None and date_delta_days <= 2
-    ) or date_visible
-    body_characters = article.quality.body_characters
-    paywall_shell = _short_parsed_paywall_shell(
-        body_characters=body_characters,
-        plain_text=article.plain_text,
-    )
-    title_matches = headline_overlap >= 0.75
-    valid = (
-        article.quality.status == ArticleStatus.COMPLETE
-        and body_characters
-        >= BLOOMBERG_SYNDICATION_MINIMUM_BODY_CHARACTERS
-        and not paywall_shell
-        and attributed
-        and title_matches
-        and date_matches
-    )
-    if article.quality.status != ArticleStatus.COMPLETE:
-        reason = f"parser-{article.quality.status.value}"
-    elif body_characters < BLOOMBERG_SYNDICATION_MINIMUM_BODY_CHARACTERS:
-        reason = "body-too-short"
-    elif paywall_shell:
-        reason = "suspected-paywall-shell"
-    elif not attributed:
-        reason = "missing-bloomberg-attribution"
-    elif not title_matches:
-        reason = "headline-mismatch"
-    elif not date_matches:
-        reason = "publication-date-mismatch"
-    else:
-        reason = None
-    return valid, {
-        "reason": reason,
-        "bloombergSyndicationValidated": valid,
-        "syndicationFinalUrl": final_url,
-        "syndicationHeadlineOverlap": round(headline_overlap, 4),
-        "syndicationBodyCharacters": body_characters,
-        "syndicationPaywallShell": paywall_shell,
-        "syndicationBloombergAttributed": attributed,
-        "syndicationDateDeltaDays": date_delta_days,
-        "syndicationExpectedDateVisible": date_visible,
-    }
 
 
 def _short_parsed_paywall_shell(
@@ -5101,1046 +2227,34 @@ def _short_parsed_paywall_shell(
     )
 
 
-def _validate_bloomberg_bnn_response(
-    item: ManifestItem,
-    *,
-    expected_headline: str | None,
-    content: bytes,
-    final_url: str,
-) -> tuple[bool, dict[str, object]]:
-    from jojo_news_archive.parsing.parser import parse_article
-
-    partner_match = re.match(
-        r"^https?://web\.archive\.org/web/\d{14}"
-        r"(?:id_|im_|js_|cs_)?/(https?://.+)$",
-        final_url,
-        flags=re.IGNORECASE,
-    )
-    archived_partner_url = (
-        unquote(partner_match.group(1)) if partner_match else ""
-    )
-    archived_partner = urlsplit(archived_partner_url)
-    partner_validated = (
-        archived_partner.scheme in {"http", "https"}
-        and (archived_partner.hostname or "").casefold()
-        in {"bnnbloomberg.ca", "www.bnnbloomberg.ca"}
-    )
-    if not partner_validated:
-        return False, {
-            "reason": "unexpected-bnn-archive-url",
-            "bloombergBnnValidated": False,
-            "syndicationFinalUrl": final_url,
-            "syndicationPartnerHostValidated": False,
-        }
-    if not expected_headline:
-        return False, {
-            "reason": "missing-original-headline",
-            "bloombergBnnValidated": False,
-            "syndicationFinalUrl": final_url,
-            "syndicationPartnerHostValidated": True,
-        }
-    try:
-        article = parse_article(
-            content,
-            publisher="bloomberg",
-            canonical_url=item.canonical_url,
-            allow_generic_syndication=True,
-        )
-    except Exception as exc:
-        return False, {
-            "reason": f"parser-{type(exc).__name__}",
-            "bloombergBnnValidated": False,
-            "syndicationFinalUrl": final_url,
-            "syndicationPartnerHostValidated": True,
-        }
-    soup = BeautifulSoup(content, "html.parser")
-    visible_text = soup.get_text(" ", strip=True)
-    author_text = " ".join(author.name for author in article.authors)
-    attributed = re.search(
-        r"(?i)(?:^|\W)bloomberg(?:\s+news)?(?:\W|$)",
-        author_text + "\n" + visible_text[:5_000],
-    ) is not None
-    expected_date = _parse_iso_datetime(item.published_at)
-    copyright_attributed = (
-        expected_date is not None
-        and re.search(
-            rf"(?i)(?:©|\(c\)|copyright)\s*{expected_date.year}\s+"
-            r"bloomberg\s+l\.p\.",
-            visible_text,
-        )
-        is not None
-    )
-    decoded_html = content.decode(
-        "utf-8",
-        errors="ignore",
-    ).replace("\\/", "/")
-    canonical_linked = (
-        item.canonical_url.rstrip("/").casefold()
-        in decoded_html.casefold()
-    )
-    mirrored_slug_validated = _bnn_mirrored_slug_matches(
-        archived_partner_url,
-        item.canonical_url,
-    )
-    canonical_provenance_validated = (
-        canonical_linked or mirrored_slug_validated
-    )
-    headline_overlap = _headline_text_overlap(
-        expected_headline,
-        article.headline or "",
-    )
-    date_delta_days: int | None = None
-    if expected_date is not None and article.published_at is not None:
-        date_delta_days = abs(
-            (article.published_at.date() - expected_date.date()).days
-        )
-    date_visible = _expected_date_visible(
-        content,
-        expected_date=expected_date,
-    )
-    date_matches = (
-        date_delta_days is not None and date_delta_days <= 2
-    ) or date_visible
-    body_characters = article.quality.body_characters
-    valid = (
-        article.quality.status == ArticleStatus.COMPLETE
-        and body_characters
-        >= BLOOMBERG_SYNDICATION_MINIMUM_BODY_CHARACTERS
-        and attributed
-        and copyright_attributed
-        and canonical_provenance_validated
-        and headline_overlap >= 0.8
-        and date_matches
-    )
-    if article.quality.status != ArticleStatus.COMPLETE:
-        reason = f"parser-{article.quality.status.value}"
-    elif body_characters < BLOOMBERG_SYNDICATION_MINIMUM_BODY_CHARACTERS:
-        reason = "body-too-short"
-    elif not attributed:
-        reason = "missing-bloomberg-attribution"
-    elif not copyright_attributed:
-        reason = "missing-bloomberg-copyright"
-    elif not canonical_provenance_validated:
-        reason = "missing-original-url-provenance"
-    elif headline_overlap < 0.8:
-        reason = "headline-mismatch"
-    elif not date_matches:
-        reason = "publication-date-mismatch"
-    else:
-        reason = None
-    return valid, {
-        "reason": reason,
-        "bloombergBnnValidated": valid,
-        "syndicationFinalUrl": final_url,
-        "syndicationHeadlineOverlap": round(headline_overlap, 4),
-        "syndicationBodyCharacters": body_characters,
-        "syndicationBloombergAttributed": attributed,
-        "syndicationBloombergCopyrightAttributed": copyright_attributed,
-        "syndicationCanonicalArticleLinked": canonical_linked,
-        "syndicationMirroredSlugValidated": mirrored_slug_validated,
-        "syndicationDateDeltaDays": date_delta_days,
-        "syndicationExpectedDateVisible": date_visible,
-        "syndicationOriginalHeadline": expected_headline,
-        "syndicationPartnerHostValidated": partner_validated,
-        "syndicationPartnerUrl": archived_partner_url,
-    }
 
 
-def _validate_bloomberg_partner_archive_response(
-    item: ManifestItem,
-    *,
-    expected_headline: str,
-    content: bytes,
-    final_url: str,
-) -> tuple[bool, dict[str, object]]:
-    from jojo_news_archive.parsing.parser import parse_article
-
-    partner_match = re.match(
-        r"^https?://web\.archive\.org/web/\d{14}"
-        r"(?:id_|im_|js_|cs_)?/(https?://.+)$",
-        final_url,
-        flags=re.IGNORECASE,
-    )
-    archived_partner_url = (
-        unquote(partner_match.group(1)) if partner_match else ""
-    )
-    archived_partner = urlsplit(archived_partner_url)
-    partner_host = (archived_partner.hostname or "").casefold()
-    partner_validated = (
-        archived_partner.scheme in {"http", "https"}
-        and bool(partner_host)
-        and partner_host not in {"bloomberg.com", "www.bloomberg.com"}
-    )
-    if not partner_validated:
-        return False, {
-            "reason": "unexpected-partner-archive-url",
-            "bloombergPartnerValidated": False,
-            "syndicationFinalUrl": final_url,
-            "syndicationPartnerHostValidated": False,
-        }
-    try:
-        article = parse_article(
-            content,
-            publisher="bloomberg",
-            canonical_url=item.canonical_url,
-            allow_generic_syndication=True,
-        )
-    except Exception as exc:
-        return False, {
-            "reason": f"parser-{type(exc).__name__}",
-            "bloombergPartnerValidated": False,
-            "syndicationFinalUrl": final_url,
-            "syndicationPartnerHostValidated": True,
-        }
-    soup = BeautifulSoup(content, "html.parser")
-    visible_text = soup.get_text(" ", strip=True)
-    author_text = " ".join(author.name for author in article.authors)
-    attributed = re.search(
-        r"(?i)(?:^|\W)bloomberg(?:\s+news)?(?:\W|$)",
-        author_text + "\n" + visible_text[:5_000],
-    ) is not None
-    expected_date = _parse_iso_datetime(item.published_at)
-    copyright_attributed = (
-        expected_date is not None
-        and re.search(
-            rf"(?i)(?:©|\(c\)|copyright)\s*{expected_date.year}\s+"
-            r"bloomberg\s+l\.p\.",
-            visible_text,
-        )
-        is not None
-    )
-    headline_overlap = _headline_text_overlap(
-        expected_headline,
-        article.headline or "",
-    )
-    date_delta_days: int | None = None
-    if expected_date is not None and article.published_at is not None:
-        date_delta_days = abs(
-            (article.published_at.date() - expected_date.date()).days
-        )
-    date_visible = _expected_date_visible(
-        content,
-        expected_date=expected_date,
-    )
-    date_matches = (
-        date_delta_days is not None and date_delta_days <= 2
-    ) or date_visible
-    body_characters = article.quality.body_characters
-    valid = (
-        article.quality.status == ArticleStatus.COMPLETE
-        and body_characters
-        >= BLOOMBERG_SYNDICATION_MINIMUM_BODY_CHARACTERS
-        and attributed
-        and copyright_attributed
-        and headline_overlap >= 0.8
-        and date_matches
-    )
-    if article.quality.status != ArticleStatus.COMPLETE:
-        reason = f"parser-{article.quality.status.value}"
-    elif body_characters < BLOOMBERG_SYNDICATION_MINIMUM_BODY_CHARACTERS:
-        reason = "body-too-short"
-    elif not attributed:
-        reason = "missing-bloomberg-attribution"
-    elif not copyright_attributed:
-        reason = "missing-bloomberg-copyright"
-    elif headline_overlap < 0.8:
-        reason = "headline-mismatch"
-    elif not date_matches:
-        reason = "publication-date-mismatch"
-    else:
-        reason = None
-    return valid, {
-        "reason": reason,
-        "bloombergPartnerValidated": valid,
-        "syndicationFinalUrl": final_url,
-        "syndicationHeadlineOverlap": round(headline_overlap, 4),
-        "syndicationBodyCharacters": body_characters,
-        "syndicationBloombergAttributed": attributed,
-        "syndicationBloombergCopyrightAttributed": copyright_attributed,
-        "syndicationDateDeltaDays": date_delta_days,
-        "syndicationExpectedDateVisible": date_visible,
-        "syndicationOriginalHeadline": expected_headline,
-        "syndicationPartnerHostValidated": partner_validated,
-        "syndicationPartnerUrl": archived_partner_url,
-    }
 
 
-def _is_bnn_wayback_candidate(value: str) -> bool:
-    return (
-        re.match(
-            r"^https?://web\.archive\.org/web/\d{14}"
-            r"(?:id_|im_|js_|cs_)?/https?://"
-            r"(?:www\.)?bnnbloomberg\.ca/",
-            value,
-            flags=re.IGNORECASE,
-        )
-        is not None
-    )
 
 
-def _bnn_mirrored_slug_matches(
-    partner_url: str,
-    canonical_url: str,
-) -> bool:
-    partner = urlsplit(partner_url)
-    canonical = urlsplit(canonical_url)
-    partner_match = re.fullmatch(
-        r"/bloomberg/(20\d{2})/(\d{2})/(\d{2})/"
-        r"([a-z0-9][a-z0-9-]*)/?",
-        partner.path,
-        flags=re.IGNORECASE,
-    )
-    if (
-        partner_match is None
-        or (partner.hostname or "").casefold()
-        not in {"bnnbloomberg.ca", "www.bnnbloomberg.ca"}
-        or (canonical.hostname or "").casefold()
-        not in {"bloomberg.com", "www.bloomberg.com"}
-    ):
-        return False
-    expected_path = (
-        "/news/articles/"
-        f"{partner_match.group(1)}-{partner_match.group(2)}-"
-        f"{partner_match.group(3)}/{partner_match.group(4)}"
-    )
-    return canonical.path.rstrip("/").casefold() == expected_path.casefold()
 
 
-def _validate_nyt_syndication_response(
-    item: ManifestItem,
-    *,
-    expected_headline: str | None,
-    content: bytes,
-    final_url: str,
-) -> tuple[bool, dict[str, object]]:
-    from jojo_news_archive.parsing.parser import parse_article
-
-    try:
-        article = parse_article(
-            content,
-            publisher="nyt",
-            canonical_url=item.canonical_url,
-            allow_generic_syndication=True,
-        )
-    except Exception as exc:
-        return False, {
-            "reason": f"parser-{type(exc).__name__}",
-            "nytSyndicationValidated": False,
-        }
-    soup = BeautifulSoup(content, "html.parser")
-    author_text = "\n".join(author.name for author in article.authors)
-    # Attribution must prove republication, not merely mention the Times.
-    # Independent coverage often says “the New York Times reported”, while
-    # author bios and recommendation cards may mention past NYT work.  Only
-    # an article/service byline, an NYT copyright notice, or an explicit
-    # source/republication statement is accepted here.
-    author_attributed = re.search(
-        r"(?im)(?:^|,\s*)(?:the\s+)?new\s+york\s+times"
-        r"(?:\s+news\s+service)?\s*$|"
-        r"(?:nytimes|nyt)\s+news\s+service",
-        author_text,
-    ) is not None
-    copyright_attributed = re.search(
-        r"(?i)(?:copyright|©)\s*(?:©\s*)?(?:\d{4}\s*)?"
-        r"(?:the\s+)?new\s+york\s+times",
-        article.plain_text,
-    ) is not None
-    explicit_source_attributed = re.search(
-        r"(?im)(?:^|\n)\s*(?:source|credit)\s*:\s*"
-        r"(?:the\s+)?new\s+york\s+times\b|"
-        r"(?:this\s+article|the\s+post)\s+"
-        r"(?:originally\s+)?appeared\s+(?:first\s+)?(?:in|on)\s+"
-        r"(?:the\s+)?new\s+york\s+times\b",
-        article.plain_text,
-    ) is not None
-    attributed = bool(
-        author_attributed
-        or copyright_attributed
-        or explicit_source_attributed
-    )
-    expected_date = _parse_iso_datetime(item.published_at)
-    date_delta_days: int | None = None
-    if expected_date is not None and article.published_at is not None:
-        date_delta_days = abs(
-            (article.published_at.date() - expected_date.date()).days
-        )
-    date_visible = _expected_date_visible(
-        content,
-        expected_date=expected_date,
-    )
-    date_matches = (
-        date_delta_days is not None and date_delta_days <= 2
-    ) or date_visible
-    canonical_linked = _html_links_to_article(
-        content.decode("utf-8", errors="ignore"),
-        item.canonical_url,
-    )
-    has_provenance = bool(expected_headline) or canonical_linked
-    headline_overlap = (
-        _headline_text_overlap(
-            expected_headline,
-            article.headline or "",
-        )
-        if expected_headline
-        else 1.0
-        if canonical_linked
-        else 0.0
-    )
-    body_characters = article.quality.body_characters
-    title_matches = headline_overlap >= 0.75
-    valid = (
-        article.quality.status == ArticleStatus.COMPLETE
-        and body_characters >= NYT_SYNDICATION_MINIMUM_BODY_CHARACTERS
-        and attributed
-        and has_provenance
-        and title_matches
-        and date_matches
-    )
-    if article.quality.status != ArticleStatus.COMPLETE:
-        reason = f"parser-{article.quality.status.value}"
-    elif body_characters < NYT_SYNDICATION_MINIMUM_BODY_CHARACTERS:
-        reason = "body-too-short"
-    elif not attributed:
-        reason = "missing-nyt-attribution"
-    elif not has_provenance:
-        reason = "missing-original-headline"
-    elif not title_matches:
-        reason = "headline-mismatch"
-    elif not date_matches:
-        reason = "publication-date-mismatch"
-    else:
-        reason = None
-    return valid, {
-        "reason": reason,
-        "nytSyndicationValidated": valid,
-        "syndicationFinalUrl": final_url,
-        "syndicationHeadlineOverlap": round(headline_overlap, 4),
-        "syndicationBodyCharacters": body_characters,
-        "syndicationNytAttributed": attributed,
-        "syndicationNytAuthorAttributed": author_attributed,
-        "syndicationNytCopyrightAttributed": copyright_attributed,
-        "syndicationNytExplicitSourceAttributed": (
-            explicit_source_attributed
-        ),
-        "syndicationDateDeltaDays": date_delta_days,
-        "syndicationExpectedDateVisible": date_visible,
-        "syndicationOriginalHeadline": expected_headline,
-        "syndicationCanonicalArticleLinked": canonical_linked,
-    }
 
 
-def _validate_wsj_syndication_response(
-    item: ManifestItem,
-    *,
-    expected_headline: str | None,
-    content: bytes,
-    final_url: str,
-) -> tuple[bool, dict[str, object]]:
-    from jojo_news_archive.parsing.parser import parse_article
-
-    parsed_final_url = urlsplit(final_url)
-    final_host = (parsed_final_url.hostname or "").casefold()
-    partner_host_validated = (
-        parsed_final_url.scheme == "https"
-        and final_host in {"tovima.com", "www.tovima.com"}
-        and parsed_final_url.path.startswith("/wsj/")
-    )
-    if not partner_host_validated:
-        return False, {
-            "reason": "unexpected-partner-url",
-            "wsjSyndicationValidated": False,
-            "syndicationFinalUrl": final_url,
-            "syndicationPartnerHostValidated": False,
-        }
-    if not expected_headline:
-        return False, {
-            "reason": "missing-original-headline",
-            "wsjSyndicationValidated": False,
-            "syndicationFinalUrl": final_url,
-            "syndicationPartnerHostValidated": True,
-        }
-    try:
-        article = parse_article(
-            content,
-            publisher="wsj",
-            canonical_url=item.canonical_url,
-            allow_generic_syndication=True,
-        )
-    except Exception as exc:
-        return False, {
-            "reason": f"parser-{type(exc).__name__}",
-            "wsjSyndicationValidated": False,
-            "syndicationFinalUrl": final_url,
-            "syndicationPartnerHostValidated": True,
-        }
-    soup = BeautifulSoup(content, "html.parser")
-    visible_text = soup.get_text(" ", strip=True)
-    author_text = " ".join(author.name for author in article.authors)
-    attribution_text = author_text + "\n" + visible_text[:30_000]
-    attributed = re.search(
-        r"(?i)(?:the\s+)?wall\s+street\s+journal|(?:^|\W)WSJ(?:\W|$)",
-        attribution_text,
-    ) is not None
-    headline_overlap = _headline_text_overlap(
-        expected_headline,
-        article.headline or "",
-    )
-    expected_date = _parse_iso_datetime(item.published_at)
-    date_delta_days: int | None = None
-    if expected_date is not None and article.published_at is not None:
-        date_delta_days = abs(
-            (article.published_at.date() - expected_date.date()).days
-        )
-    date_visible = _expected_date_visible(
-        content,
-        expected_date=expected_date,
-    )
-    date_matches = (
-        date_delta_days is not None and date_delta_days <= 2
-    ) or date_visible
-    body_characters = article.quality.body_characters
-    valid = (
-        article.quality.status == ArticleStatus.COMPLETE
-        and body_characters >= WSJ_SYNDICATION_MINIMUM_BODY_CHARACTERS
-        and attributed
-        and headline_overlap >= 0.8
-        and date_matches
-    )
-    if article.quality.status != ArticleStatus.COMPLETE:
-        reason = f"parser-{article.quality.status.value}"
-    elif body_characters < WSJ_SYNDICATION_MINIMUM_BODY_CHARACTERS:
-        reason = "body-too-short"
-    elif not attributed:
-        reason = "missing-wsj-attribution"
-    elif headline_overlap < 0.8:
-        reason = "headline-mismatch"
-    elif not date_matches:
-        reason = "publication-date-mismatch"
-    else:
-        reason = None
-    return valid, {
-        "reason": reason,
-        "wsjSyndicationValidated": valid,
-        "syndicationFinalUrl": final_url,
-        "syndicationHeadlineOverlap": round(headline_overlap, 4),
-        "syndicationBodyCharacters": body_characters,
-        "syndicationWsjAttributed": attributed,
-        "syndicationDateDeltaDays": date_delta_days,
-        "syndicationExpectedDateVisible": date_visible,
-        "syndicationOriginalHeadline": expected_headline,
-        "syndicationPartnerHostValidated": partner_host_validated,
-    }
 
 
-def _validate_ft_syndication_response(
-    item: ManifestItem,
-    *,
-    expected_partner_url: str,
-    expected_headline: str | None,
-    content: bytes,
-    final_url: str,
-) -> tuple[bool, dict[str, object]]:
-    from jojo_news_archive.parsing.parser import parse_article
-
-    expected_host = (
-        urlsplit(expected_partner_url).hostname or ""
-    ).casefold().removeprefix("www.")
-    final_host = (
-        urlsplit(final_url).hostname or ""
-    ).casefold().removeprefix("www.")
-    partner_host_validated = (
-        bool(expected_host)
-        and final_host == expected_host
-        and final_host not in {"ft.com"}
-    )
-    if not partner_host_validated:
-        return False, {
-            "reason": "unexpected-partner-url",
-            "ftSyndicationValidated": False,
-            "syndicationFinalUrl": final_url,
-            "syndicationPartnerHostValidated": False,
-        }
-    if not expected_headline:
-        return False, {
-            "reason": "missing-original-headline",
-            "ftSyndicationValidated": False,
-            "syndicationFinalUrl": final_url,
-            "syndicationPartnerHostValidated": True,
-        }
-    try:
-        article = parse_article(
-            content,
-            publisher="ft",
-            canonical_url=item.canonical_url,
-            allow_generic_syndication=True,
-        )
-    except Exception as exc:
-        return False, {
-            "reason": f"parser-{type(exc).__name__}",
-            "ftSyndicationValidated": False,
-            "syndicationFinalUrl": final_url,
-            "syndicationPartnerHostValidated": True,
-        }
-    soup = BeautifulSoup(content, "html.parser")
-    visible_text = soup.get_text(" ", strip=True)
-    copyright_attributed = re.search(
-        r"(?i)(?:copyright|©|\(c\))\s*(?:20\d{2}\s+)?"
-        r"(?:the\s+)?financial\s+times\s+(?:limited|ltd\.?)"
-        r"(?:\s+20\d{2})?",
-        visible_text,
-    ) is not None
-    advisorstream_licensed = re.search(
-        r"(?i)(?:this(?:\s+financial\s+times)?|financial\s+times)"
-        r"\s+article\s+was\s+legally\s+licensed\s+"
-        r"(?:by|through)\s+advisorstream",
-        visible_text,
-    ) is not None
-    headline_overlap = _headline_text_overlap(
-        expected_headline,
-        article.headline or "",
-    )
-    expected_date = _parse_iso_datetime(item.published_at)
-    date_delta_days: int | None = None
-    if expected_date is not None and article.published_at is not None:
-        date_delta_days = abs(
-            (article.published_at.date() - expected_date.date()).days
-        )
-    visible_date_delta_days = _nearest_visible_date_delta_days(
-        visible_text,
-        expected_date=expected_date,
-    )
-    if visible_date_delta_days is not None and (
-        date_delta_days is None
-        or visible_date_delta_days < date_delta_days
-    ):
-        date_delta_days = visible_date_delta_days
-    date_visible = _expected_date_visible(
-        content,
-        expected_date=expected_date,
-    )
-    maximum_date_delta_days = (
-        FT_ADVISORSTREAM_MAXIMUM_DATE_DELTA_DAYS
-        if advisorstream_licensed
-        else FT_SYNDICATION_MAXIMUM_DATE_DELTA_DAYS
-    )
-    date_matches = (
-        date_delta_days is not None
-        and date_delta_days <= maximum_date_delta_days
-    ) or date_visible
-    body_characters = article.quality.body_characters
-    valid = (
-        article.quality.status == ArticleStatus.COMPLETE
-        and body_characters >= FT_SYNDICATION_MINIMUM_BODY_CHARACTERS
-        and copyright_attributed
-        and headline_overlap >= 0.8
-        and date_matches
-    )
-    if article.quality.status != ArticleStatus.COMPLETE:
-        reason = f"parser-{article.quality.status.value}"
-    elif body_characters < FT_SYNDICATION_MINIMUM_BODY_CHARACTERS:
-        reason = "body-too-short"
-    elif not copyright_attributed:
-        reason = "missing-ft-copyright"
-    elif headline_overlap < 0.8:
-        reason = "headline-mismatch"
-    elif not date_matches:
-        reason = "publication-date-mismatch"
-    else:
-        reason = None
-    return valid, {
-        "reason": reason,
-        "ftSyndicationValidated": valid,
-        "syndicationFinalUrl": final_url,
-        "syndicationHeadlineOverlap": round(headline_overlap, 4),
-        "syndicationBodyCharacters": body_characters,
-        "syndicationFtCopyrightAttributed": copyright_attributed,
-        "syndicationAdvisorStreamLicensed": advisorstream_licensed,
-        "syndicationDateDeltaDays": date_delta_days,
-        "syndicationMaximumDateDeltaDays": maximum_date_delta_days,
-        "syndicationExpectedDateVisible": date_visible,
-        "syndicationOriginalHeadline": expected_headline,
-        "syndicationPartnerHostValidated": partner_host_validated,
-    }
 
 
-def _validate_wsj_infini_origin_response(
-    item: ManifestItem,
-    *,
-    expected_source_url: str,
-    expected_headline: str | None,
-    content: bytes,
-    final_url: str,
-) -> tuple[bool, dict[str, object]]:
-    from jojo_news_archive.parsing.parser import parse_article
-
-    origin_url_validated = bool(
-        _is_wsj_origin_url(expected_source_url)
-        and _is_wsj_origin_url(item.canonical_url)
-        and _is_wsj_origin_url(final_url)
-        and _same_article_url(expected_source_url, item.canonical_url)
-        and _same_article_url(final_url, item.canonical_url)
-    )
-    if not origin_url_validated:
-        return False, {
-            "reason": "unexpected-origin-url",
-            "wsjInfiniOriginValidated": False,
-            "infiniOriginUrlValidated": False,
-            "infiniOriginFinalUrl": final_url,
-        }
-    if not expected_headline:
-        return False, {
-            "reason": "missing-original-headline",
-            "wsjInfiniOriginValidated": False,
-            "infiniOriginUrlValidated": True,
-            "infiniOriginFinalUrl": final_url,
-        }
-    try:
-        article = parse_article(
-            content,
-            publisher="wsj",
-            canonical_url=item.canonical_url,
-        )
-    except Exception as exc:
-        return False, {
-            "reason": f"parser-{type(exc).__name__}",
-            "wsjInfiniOriginValidated": False,
-            "infiniOriginUrlValidated": True,
-            "infiniOriginFinalUrl": final_url,
-        }
-    headline_overlap = _headline_text_overlap(
-        expected_headline,
-        article.headline or "",
-    )
-    expected_date = _parse_iso_datetime(item.published_at)
-    date_delta_days: int | None = None
-    if expected_date is not None and article.published_at is not None:
-        date_delta_days = abs(
-            (article.published_at.date() - expected_date.date()).days
-        )
-    date_visible = _expected_date_visible(
-        content,
-        expected_date=expected_date,
-    )
-    date_matches = (
-        date_delta_days is not None and date_delta_days <= 2
-    ) or date_visible
-    body_characters = article.quality.body_characters
-    valid = (
-        article.quality.status == ArticleStatus.COMPLETE
-        and body_characters >= 1_000
-        and headline_overlap >= 0.8
-        and date_matches
-    )
-    if article.quality.status != ArticleStatus.COMPLETE:
-        reason = f"parser-{article.quality.status.value}"
-    elif body_characters < 1_000:
-        reason = "body-too-short"
-    elif headline_overlap < 0.8:
-        reason = "headline-mismatch"
-    elif not date_matches:
-        reason = "publication-date-mismatch"
-    else:
-        reason = None
-    return valid, {
-        "reason": reason,
-        "wsjInfiniOriginValidated": valid,
-        "infiniOriginUrlValidated": origin_url_validated,
-        "infiniOriginFinalUrl": final_url,
-        "infiniOriginHeadlineOverlap": round(headline_overlap, 4),
-        "infiniOriginBodyCharacters": body_characters,
-        "infiniOriginDateDeltaDays": date_delta_days,
-        "infiniOriginExpectedDateVisible": date_visible,
-        "infiniOriginExpectedHeadline": expected_headline,
-    }
 
 
-def _validate_ft_infini_origin_response(
-    item: ManifestItem,
-    *,
-    expected_source_url: str,
-    expected_headline: str | None,
-    content: bytes,
-    final_url: str,
-) -> tuple[bool, dict[str, object]]:
-    from jojo_news_archive.parsing.parser import parse_article
-
-    origin_url_validated = (
-        _same_ft_origin_article_url(expected_source_url, item.canonical_url)
-        and _same_ft_origin_article_url(final_url, item.canonical_url)
-    )
-    if not origin_url_validated:
-        return False, {
-            "reason": "unexpected-origin-url",
-            "ftInfiniOriginValidated": False,
-            "infiniOriginUrlValidated": False,
-            "infiniOriginFinalUrl": final_url,
-        }
-    if not expected_headline:
-        return False, {
-            "reason": "missing-original-headline",
-            "ftInfiniOriginValidated": False,
-            "infiniOriginUrlValidated": True,
-            "infiniOriginFinalUrl": final_url,
-        }
-    try:
-        article = parse_article(
-            content,
-            publisher="ft",
-            canonical_url=item.canonical_url,
-        )
-    except Exception as exc:
-        return False, {
-            "reason": f"parser-{type(exc).__name__}",
-            "ftInfiniOriginValidated": False,
-            "infiniOriginUrlValidated": True,
-            "infiniOriginFinalUrl": final_url,
-        }
-    headline_overlap = _headline_text_overlap(
-        expected_headline,
-        article.headline or "",
-    )
-    expected_date = _parse_iso_datetime(item.published_at)
-    date_delta_days: int | None = None
-    if expected_date is not None and article.published_at is not None:
-        date_delta_days = abs(
-            (article.published_at.date() - expected_date.date()).days
-        )
-    date_visible = _expected_date_visible(
-        content,
-        expected_date=expected_date,
-    )
-    date_matches = (
-        date_delta_days is not None and date_delta_days <= 2
-    ) or date_visible
-    body_characters = article.quality.body_characters
-    valid = (
-        article.quality.status == ArticleStatus.COMPLETE
-        and body_characters >= 1_000
-        and headline_overlap >= 0.8
-        and date_matches
-    )
-    if article.quality.status != ArticleStatus.COMPLETE:
-        reason = f"parser-{article.quality.status.value}"
-    elif body_characters < 1_000:
-        reason = "body-too-short"
-    elif headline_overlap < 0.8:
-        reason = "headline-mismatch"
-    elif not date_matches:
-        reason = "publication-date-mismatch"
-    else:
-        reason = None
-    return valid, {
-        "reason": reason,
-        "ftInfiniOriginValidated": valid,
-        "infiniOriginUrlValidated": origin_url_validated,
-        "infiniOriginFinalUrl": final_url,
-        "infiniOriginHeadlineOverlap": round(headline_overlap, 4),
-        "infiniOriginBodyCharacters": body_characters,
-        "infiniOriginDateDeltaDays": date_delta_days,
-        "infiniOriginExpectedDateVisible": date_visible,
-        "infiniOriginExpectedHeadline": expected_headline,
-    }
 
 
-def _validate_ft_ghostarchive_response(
-    item: ManifestItem,
-    *,
-    expected_headline: str | None,
-    content: bytes,
-    final_url: str,
-) -> tuple[bool, dict[str, object]]:
-    from jojo_news_archive.parsing.parser import parse_article
-
-    origin_url_validated = _same_ft_origin_article_url(
-        final_url,
-        item.canonical_url,
-    )
-    if not origin_url_validated:
-        return False, {
-            "reason": "unexpected-origin-url",
-            "ftGhostarchiveOriginValidated": False,
-            "ghostarchiveOriginUrlValidated": False,
-            "ghostarchiveOriginFinalUrl": final_url,
-        }
-    try:
-        article = parse_article(
-            content,
-            publisher="ft",
-            canonical_url=item.canonical_url,
-        )
-    except Exception as exc:
-        return False, {
-            "reason": f"parser-{type(exc).__name__}",
-            "ftGhostarchiveOriginValidated": False,
-            "ghostarchiveOriginUrlValidated": True,
-            "ghostarchiveOriginFinalUrl": final_url,
-        }
-    parsed_headline = article.headline or ""
-    headline_present = len(_significant_tokens(parsed_headline)) >= 4
-    headline_overlap = (
-        _headline_text_overlap(expected_headline, parsed_headline)
-        if expected_headline
-        else None
-    )
-    headline_matches = (
-        headline_present
-        and (
-            headline_overlap is None
-            or headline_overlap >= 0.8
-        )
-    )
-    expected_date = _parse_iso_datetime(item.published_at)
-    date_delta_days: int | None = None
-    if expected_date is not None and article.published_at is not None:
-        date_delta_days = abs(
-            (article.published_at.date() - expected_date.date()).days
-        )
-    date_visible = _expected_date_visible(
-        content,
-        expected_date=expected_date,
-    )
-    date_matches = (
-        date_delta_days is not None
-        and date_delta_days <= FT_SYNDICATION_MAXIMUM_DATE_DELTA_DAYS
-    ) or date_visible
-    body_characters = article.quality.body_characters
-    valid = (
-        article.quality.status == ArticleStatus.COMPLETE
-        and body_characters >= 1_000
-        and headline_matches
-        and date_matches
-    )
-    if article.quality.status != ArticleStatus.COMPLETE:
-        reason = f"parser-{article.quality.status.value}"
-    elif body_characters < 1_000:
-        reason = "body-too-short"
-    elif not headline_matches:
-        reason = "headline-mismatch"
-    elif not date_matches:
-        reason = "publication-date-mismatch"
-    else:
-        reason = None
-    return valid, {
-        "reason": reason,
-        "ftGhostarchiveOriginValidated": valid,
-        "ghostarchiveOriginUrlValidated": origin_url_validated,
-        "ghostarchiveOriginFinalUrl": final_url,
-        "ghostarchiveOriginHeadline": parsed_headline,
-        "ghostarchiveOriginHeadlineOverlap": (
-            round(headline_overlap, 4)
-            if headline_overlap is not None
-            else None
-        ),
-        "ghostarchiveOriginBodyCharacters": body_characters,
-        "ghostarchiveOriginDateDeltaDays": date_delta_days,
-        "ghostarchiveOriginExpectedDateVisible": date_visible,
-        "ghostarchiveOriginExpectedHeadline": expected_headline,
-    }
-
-
-def _extract_ft_original_headline(
-    content: bytes,
-    *,
-    expected_published_at: str | None,
-    final_url: str,
-) -> str | None:
-    decoded_url = unquote(final_url).casefold()
-    if (
-        "/content/" not in decoded_url
-        or re.search(
-            r"https?://(?:[^/?#]+\.)?ft\.com(?:[/?#]|$)",
-            decoded_url,
-        )
-        is None
-    ):
-        return None
-    soup = BeautifulSoup(content, "html.parser")
-    expected_date = _parse_iso_datetime(expected_published_at)
-
-    def structured_articles(value: object) -> Iterable[dict]:
-        if isinstance(value, dict):
-            article_type = value.get("@type")
-            types = (
-                {str(item).casefold() for item in article_type}
-                if isinstance(article_type, list)
-                else {str(article_type).casefold()}
-            )
-            if types & {"article", "newsarticle", "reportagenewsarticle"}:
-                yield value
-            for child in value.values():
-                yield from structured_articles(child)
-        elif isinstance(value, list):
-            for child in value:
-                yield from structured_articles(child)
-
-    for script in soup.select('script[type="application/ld+json"]'):
-        serialized = script.string or script.get_text()
-        if not serialized.strip():
-            continue
-        try:
-            payload = json.loads(serialized)
-        except (json.JSONDecodeError, TypeError):
-            continue
-        for article in structured_articles(payload):
-            headline = article.get("headline")
-            if not isinstance(headline, str):
-                continue
-            published_at = _parse_iso_datetime(
-                article.get("datePublished")
-                if isinstance(article.get("datePublished"), str)
-                else None
-            )
-            if (
-                expected_date is not None
-                and published_at is not None
-                and abs(
-                    (published_at.date() - expected_date.date()).days
-                )
-                > 2
-            ):
-                continue
-            cleaned = _clean_syndication_search_title(
-                BeautifulSoup(
-                    headline,
-                    "html.parser",
-                ).get_text(" ", strip=True)
-            )
-            if len(_significant_tokens(cleaned)) >= 4:
-                return cleaned
-
-    for selector, attribute in (
-        ("meta[property='og:title']", "content"),
-        ("meta[name='twitter:title']", "content"),
-    ):
-        node = soup.select_one(selector)
-        value = node.get(attribute) if node is not None else None
-        if not isinstance(value, str):
-            continue
-        cleaned = _clean_syndication_search_title(value)
-        if len(_significant_tokens(cleaned)) >= 4:
-            return cleaned
-    return None
-
-
-def _reuters_syndication_headline_overlap(
-    canonical_url: str,
-    headline: str,
-) -> float:
-    return _syndication_headline_overlap(
-        canonical_url,
-        headline,
-        strip_reuters_date_suffix=True,
-    )
 
 
 def _syndication_headline_overlap(
     canonical_url: str,
     headline: str,
     *,
-    strip_reuters_date_suffix: bool = False,
+    strip_iso_date_suffix: bool = False,
 ) -> float:
     slug = urlsplit(canonical_url).path.rstrip("/").rsplit("/", 1)[-1]
-    if strip_reuters_date_suffix:
+    if strip_iso_date_suffix:
         slug = re.sub(r"-20\d{2}-\d{2}-\d{2}$", "", slug)
     slug_tokens = _significant_tokens(slug.replace("-", " "))
     headline_tokens = _significant_tokens(headline)
@@ -6240,7 +2354,7 @@ def _significant_tokens(value: str) -> set[str]:
     return {
         token
         for token in re.findall(r"[a-z0-9]+", value.casefold())
-        if token not in REUTERS_SYNDICATION_STOP_WORDS
+        if token not in _SYNDICATION_STOP_WORDS
     }
 
 
@@ -6263,18 +2377,18 @@ def _fetch_limited_archive(
     attempts: int,
     timeout: float,
 ) -> tuple[int, dict[str, str], bytes, str]:
-    limited = getattr(archive_client, "fetch_limited", None)
-    if callable(limited):
-        return limited(
+    try:
+        return archive_client.fetch_limited(
             url,
             maximum_bytes=maximum_bytes,
             attempts=attempts,
             timeout=timeout,
         )
-    return archive_client.fetch(
-        url,
-        maximum_bytes=maximum_bytes,
-    )
+    except AttributeError:
+        return archive_client.fetch(
+            url,
+            maximum_bytes=maximum_bytes,
+        )
 
 
 def _same_article_url(first: str, second: str) -> bool:
@@ -6286,7 +2400,20 @@ def _same_article_url(first: str, second: str) -> bool:
 def _archive_url_match_key(value: str) -> tuple[str, str]:
     parts = urlsplit(value)
     host = (parts.hostname or "").casefold().removeprefix("www.")
-    return host, _archive_article_path(host, parts.path)
+    normalized_path = parts.path.rstrip("/")
+    for source in registered_sources():
+        domains = {
+            domain.casefold().removeprefix("www.")
+            for domain in source.parser_spec.domains
+        }
+        domains.add(source.archive_spec.canonical_host.casefold().removeprefix("www."))
+        if host not in domains:
+            continue
+        hook = capture_hooks(source.id).archive_match_path
+        if hook is not None:
+            normalized_path = hook(host, normalized_path)
+        break
+    return host, normalized_path
 
 
 def _wayback_snapshot_original_url(value: str) -> str | None:
@@ -6306,118 +2433,19 @@ def _wayback_snapshot_original_url(value: str) -> str | None:
     return original
 
 
-def _archive_article_path(host: str, path: str) -> str:
-    normalized = path.rstrip("/")
-    if host != "bloomberg.com":
-        return normalized
-    legacy = re.fullmatch(
-        r"/news/(?P<date>\d{4}-\d{2}-\d{2})/(?P<slug>[^/]+)\.html",
-        normalized,
-    )
-    if legacy is not None:
-        return f"/news/{legacy.group('date')}/{legacy.group('slug')}"
-    current = re.fullmatch(
-        r"/news/articles/(?P<date>\d{4}-\d{2}-\d{2})/(?P<slug>[^/]+)",
-        normalized,
-    )
-    if current is not None:
-        return f"/news/{current.group('date')}/{current.group('slug')}"
-    return normalized
-
-
-def _common_crawl_discovery_urls(item: CaptureItem) -> tuple[str, ...]:
-    if item.publisher == "ft":
-        # FT's 2016-era archive records are split across HTTPS/HTTP and
-        # www/bare-host URL keys. Arquivo.pt and Common Crawl perform exact
-        # URL lookups, so query every equivalent origin form while keeping
-        # the manifest canonical URL first.
-        parsed = urlsplit(item.canonical_url)
-        hostname = (parsed.hostname or "").casefold()
-        if hostname in {"ft.com", "www.ft.com"}:
-            alternate_host = (
-                "ft.com" if hostname == "www.ft.com" else "www.ft.com"
-            )
-            variants = [item.canonical_url]
-            for scheme, host in (
-                ("https", hostname),
-                ("http", hostname),
-                ("https", alternate_host),
-                ("http", alternate_host),
-            ):
-                candidate = urlunsplit(
-                    (scheme, host, parsed.path, parsed.query, "")
-                )
-                if candidate not in variants:
-                    variants.append(candidate)
-            return tuple(variants)
-    if item.publisher == "wsj":
-        # The 2016 WSJ URL-key manifest is normalized to HTTPS, whereas many
-        # of the corresponding Wayback, Arquivo.pt, and Common Crawl records
-        # were indexed under HTTP.  These archives match exact URL keys, so a
-        # scheme-only variant is a distinct lookup rather than a duplicate.
-        parsed = urlsplit(item.canonical_url)
-        hostname = (parsed.hostname or "").casefold()
-        variants = [item.canonical_url]
-        if parsed.scheme == "https" and (
-            hostname == "wsj.com" or hostname.endswith(".wsj.com")
-        ):
-            variants.append(
-                urlunsplit(
-                    ("http", parsed.netloc, parsed.path, parsed.query, "")
-                )
-            )
-        amp_url = _wsj_amp_article_url(item.canonical_url)
-        if amp_url is not None:
-            variants.extend(
-                (amp_url, amp_url.replace("https://", "http://", 1))
-            )
-        return tuple(dict.fromkeys(variants))
-    if item.publisher != "bloomberg":
+def _common_crawl_discovery_urls(item: ManifestItem) -> tuple[str, ...]:
+    hook = capture_hooks(item.publisher).archive_discovery_urls
+    if hook is None:
         return (item.canonical_url,)
-    parsed = urlsplit(item.canonical_url)
-    match = re.fullmatch(
-        r"/news/articles/(?P<date>\d{4}-\d{2}-\d{2})/(?P<slug>[^/]+)",
-        parsed.path.rstrip("/"),
-    )
-    if match is None:
-        return (item.canonical_url,)
-    legacy = (
-        f"https://www.bloomberg.com/news/{match.group('date')}/"
-        f"{match.group('slug')}.html"
-    )
-    return legacy, item.canonical_url
+    return tuple(dict.fromkeys(hook(item.canonical_url)))
 
 
-def _wsj_amp_article_url(value: str) -> str | None:
-    parsed = urlsplit(value)
-    hostname = (parsed.hostname or "").casefold()
-    if hostname not in {"wsj.com", "www.wsj.com", "online.wsj.com"}:
-        return None
-    path = parsed.path.rstrip("/")
-    if not path.casefold().startswith("/articles/"):
-        return None
-    return urlunsplit(("https", "www.wsj.com", "/amp" + path, "", ""))
 
 
-def _is_ft_origin_url(value: str | None) -> bool:
-    hostname = (urlsplit(value or "").hostname or "").casefold()
-    return hostname == "ft.com" or hostname.endswith(".ft.com")
 
 
-def _is_wsj_origin_url(value: str | None) -> bool:
-    hostname = (urlsplit(value or "").hostname or "").casefold()
-    return hostname in {"wsj.com", "www.wsj.com", "online.wsj.com"}
 
 
-def _same_ft_origin_article_url(first: str, second: str) -> bool:
-    first_parts = urlsplit(first)
-    second_parts = urlsplit(second)
-    return bool(
-        _is_ft_origin_url(first)
-        and _is_ft_origin_url(second)
-        and first_parts.path.rstrip("/").casefold()
-        == second_parts.path.rstrip("/").casefold()
-    )
 
 
 def _arquivo_pt_replay_matches(
@@ -6472,40 +2500,8 @@ def _common_crawl_first_candidate_sort_key(
     )
 
 
-def _wsj_candidate_sort_key(
-    candidate: CaptureCandidate,
-    *,
-    published_at: str | None,
-) -> tuple[int, bool, int, tuple[float, str]]:
-    """Prefer the WSJ archive sources with the highest full-text yield."""
-
-    provider_priority = {
-        CaptureProvider.INFINI_NEWS: 0,
-        CaptureProvider.WAYBACK: 1,
-        CaptureProvider.COMMON_CRAWL: 2,
-        CaptureProvider.ARQUIVO_PT: 3,
-    }
-    return (
-        provider_priority.get(candidate.provider, 4),
-        candidate.byte_count is None,
-        -(candidate.byte_count or 0),
-        _timemap_candidate_sort_key(
-            candidate,
-            published_at=published_at,
-        ),
-    )
 
 
-def _nikkei_candidate_sort_key(
-    candidate: CaptureCandidate,
-    *,
-    published_at: str | None,
-) -> tuple[bool, bool, int, tuple[float, str]]:
-    """Backward-compatible alias for the Nikkei capture policy."""
-    return _common_crawl_first_candidate_sort_key(
-        candidate,
-        published_at=published_at,
-    )
 
 
 def _parse_iso_datetime(value: str | None) -> datetime | None:
@@ -6518,6 +2514,49 @@ def _parse_iso_datetime(value: str | None) -> datetime | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+# Compatibility aliases for legacy callers of ``capture.raw``. New vertical
+# source modules import the public names from ``capture.primitives`` directly;
+# the shared engine follows the same implementations to prevent policy drift.
+discover_wayback_timemap_candidates = (
+    capture_primitives.discover_wayback_timemap_candidates
+)
+_largest_distinct_timemap_candidates = (
+    capture_primitives.largest_distinct_timemap_candidates
+)
+_headline_slug = capture_primitives.headline_slug
+_syndication_search_url = capture_primitives.syndication_search_url
+_meta_tag_content = capture_primitives.meta_tag_content
+_walk_json_dicts = capture_primitives.walk_json_dicts
+_decode_duckduckgo_search_result = (
+    capture_primitives.decode_duckduckgo_search_result
+)
+_yahoo_search_results = capture_primitives.yahoo_search_results
+_discover_syndication_candidates = capture_primitives.discover_syndication_candidates
+_fetch_syndication_search_results = (
+    capture_primitives.fetch_syndication_search_results
+)
+_rank_syndication_candidates = capture_primitives.rank_syndication_candidates
+_is_archive_today_candidate_url = capture_primitives.is_archive_today_candidate_url
+_clean_syndication_search_title = capture_primitives.clean_syndication_search_title
+_html_links_to_article = capture_primitives.html_links_to_article
+_is_public_syndication_url = capture_primitives.is_public_syndication_url
+_short_parsed_paywall_shell = capture_primitives.short_parsed_paywall_shell
+_syndication_headline_overlap = capture_primitives.syndication_headline_overlap
+_headline_text_overlap = capture_primitives.headline_text_overlap
+_expected_date_visible = capture_primitives.expected_date_visible
+_nearest_visible_date_delta_days = capture_primitives.nearest_visible_date_delta_days
+_significant_tokens = capture_primitives.significant_tokens
+_fetch_limited_archive = capture_primitives.fetch_limited_archive
+_same_article_url = capture_primitives.same_article_url
+_archive_url_match_key = capture_primitives.archive_url_match_key
+_common_crawl_discovery_urls = capture_primitives.common_crawl_discovery_urls
+_timemap_candidate_sort_key = capture_primitives.timemap_candidate_sort_key
+_common_crawl_first_candidate_sort_key = (
+    capture_primitives.common_crawl_first_candidate_sort_key
+)
+_parse_iso_datetime = capture_primitives.parse_iso_datetime
 
 
 def resolved_capture_candidate(
@@ -6541,70 +2580,6 @@ def resolved_capture_candidate(
     return candidate.model_copy(update=updates)
 
 
-def _ft_article_body_evidence(
-    content: bytes,
-    *,
-    final_url: str,
-) -> tuple[int | None, int]:
-    decoded_url = unquote(final_url).casefold()
-    if (
-        "/content/" not in decoded_url
-        or re.search(
-            r"https?://(?:[^/?#]+\.)?ft\.com(?:[/?#]|$)",
-            decoded_url,
-        )
-        is None
-    ):
-        return None, 0
-
-    soup = BeautifulSoup(content, "html.parser")
-    body_nodes = soup.select(".article__content-body, .article-body")
-    if not body_nodes:
-        for selector in (
-            "#article-body",
-            "#storyContent",
-            "[data-trackable='article-body']",
-            "[data-testid='article-body']",
-        ):
-            body_nodes.extend(soup.select(selector))
-
-    body_characters = 0
-    body_images = 0
-    for node in body_nodes:
-        text = re.sub(r"\s+", " ", node.get_text(" ", strip=True)).strip()
-        body_characters = max(body_characters, len(text))
-        image_count = sum(
-            bool(
-                image.get("src")
-                or image.get("data-src")
-                or image.get("srcset")
-            )
-            for image in node.select("img")
-        )
-        body_images = max(body_images, image_count)
-
-    def visit(value: object) -> None:
-        nonlocal body_characters
-        if isinstance(value, dict):
-            article_body = value.get("articleBody")
-            if isinstance(article_body, str):
-                normalized = re.sub(r"\s+", " ", article_body).strip()
-                body_characters = max(body_characters, len(normalized))
-            for child in value.values():
-                visit(child)
-        elif isinstance(value, list):
-            for child in value:
-                visit(child)
-
-    for script in soup.select('script[type="application/ld+json"]'):
-        value = script.string or script.get_text()
-        if not value.strip():
-            continue
-        try:
-            visit(json.loads(value))
-        except (json.JSONDecodeError, TypeError):
-            continue
-    return body_characters, body_images
 
 
 def _decode_archived_html_content(
@@ -6638,379 +2613,24 @@ def _decode_archived_html_content(
     }
 
 
-def _bloomberg_origin_parser_evidence(
-    content: bytes,
-    *,
-    canonical_url: str,
-) -> tuple[bool, dict[str, object]]:
-    from jojo_news_archive.parsing.parser import parse_article
-
-    try:
-        article = parse_article(
-            content,
-            publisher="bloomberg",
-            canonical_url=canonical_url,
-            allow_generic_syndication=True,
-        )
-    except Exception as exc:
-        return False, {
-            "bloombergOriginParserUsable": False,
-            "bloombergOriginParserError": type(exc).__name__,
-        }
-    nontext = article.content_type in {
-        ContentType.INTERACTIVE,
-        ContentType.VIDEO,
-        ContentType.AUDIO,
-        ContentType.GALLERY,
-    }
-    usable = article.quality.status == ArticleStatus.COMPLETE or nontext
-    return usable, {
-        "bloombergOriginParserUsable": usable,
-        "bloombergOriginExtractionStatus": article.quality.status.value,
-        "bloombergOriginContentType": article.content_type.value,
-        "bloombergOriginBodyCharacters": article.quality.body_characters,
-    }
 
 
-def _wsj_capture_parser_evidence(
-    content: bytes,
-    *,
-    canonical_url: str,
-) -> tuple[bool, dict[str, object]]:
-    from jojo_news_archive.parsing.parser import parse_article
-
-    try:
-        article = parse_article(
-            content,
-            publisher="wsj",
-            canonical_url=canonical_url,
-            allow_generic_syndication=False,
-        )
-    except Exception as exc:
-        return False, {
-            "wsjCaptureParserUsable": False,
-            "wsjCaptureParserError": type(exc).__name__,
-        }
-    nontext = article.content_type in {
-        ContentType.INTERACTIVE,
-        ContentType.VIDEO,
-        ContentType.AUDIO,
-    }
-    gallery_usable = (
-        article.content_type == ContentType.GALLERY
-        and article.quality.images_selected >= 3
-    )
-    usable = (
-        gallery_usable
-        if article.content_type == ContentType.GALLERY
-        else article.quality.status == ArticleStatus.COMPLETE or nontext
-    )
-    return usable, {
-        "wsjCaptureParserUsable": usable,
-        "wsjCaptureExtractionStatus": article.quality.status.value,
-        "wsjCaptureContentType": article.content_type.value,
-        "wsjCaptureBodyCharacters": article.quality.body_characters,
-        "wsjCaptureImagesSelected": article.quality.images_selected,
-    }
 
 
-def _ap_capture_parser_evidence(
-    content: bytes,
-    *,
-    canonical_url: str,
-) -> tuple[bool, dict[str, object]]:
-    from jojo_news_archive.parsing.parser import parse_article
-
-    try:
-        article = parse_article(
-            content,
-            publisher="ap",
-            canonical_url=canonical_url,
-            allow_generic_syndication=True,
-        )
-    except Exception as exc:
-        return False, {
-            "apCaptureParserUsable": False,
-            "apCaptureParserError": type(exc).__name__,
-        }
-    nontext = article.content_type in {
-        ContentType.INTERACTIVE,
-        ContentType.VIDEO,
-        ContentType.AUDIO,
-        ContentType.GALLERY,
-    }
-    usable = article.quality.status == ArticleStatus.COMPLETE or nontext
-    return usable, {
-        "apCaptureParserUsable": usable,
-        "apCaptureExtractionStatus": article.quality.status.value,
-        "apCaptureContentType": article.content_type.value,
-        "apCaptureBodyCharacters": article.quality.body_characters,
-    }
 
 
-def _reuters_capture_parser_evidence(
-    content: bytes,
-    *,
-    canonical_url: str,
-) -> tuple[bool, dict[str, object]]:
-    from jojo_news_archive.parsing.parser import parse_article
-
-    try:
-        article = parse_article(
-            content,
-            publisher="reuters",
-            canonical_url=canonical_url,
-            allow_generic_syndication=True,
-        )
-    except Exception as exc:
-        return False, {
-            "reutersCaptureParserUsable": False,
-            "reutersCaptureParserError": type(exc).__name__,
-        }
-    nontext = article.content_type in {
-        ContentType.INTERACTIVE,
-        ContentType.VIDEO,
-        ContentType.AUDIO,
-        ContentType.GALLERY,
-    }
-    usable = article.quality.status == ArticleStatus.COMPLETE or nontext
-    return usable, {
-        "reutersCaptureParserUsable": usable,
-        "reutersCaptureExtractionStatus": article.quality.status.value,
-        "reutersCaptureContentType": article.content_type.value,
-        "reutersCaptureBodyCharacters": article.quality.body_characters,
-    }
 
 
-def _npr_capture_parser_evidence(
-    content: bytes,
-    *,
-    canonical_url: str,
-) -> tuple[bool, dict[str, object]]:
-    from jojo_news_archive.parsing.parser import parse_article
-
-    try:
-        article = parse_article(
-            content,
-            publisher="npr",
-            canonical_url=canonical_url,
-            allow_generic_syndication=False,
-        )
-    except Exception as exc:
-        return False, {
-            "nprCaptureParserUsable": False,
-            "nprCaptureParserError": type(exc).__name__,
-        }
-    nontext = article.content_type in {
-        ContentType.INTERACTIVE,
-        ContentType.VIDEO,
-        ContentType.AUDIO,
-        ContentType.GALLERY,
-    }
-    usable = article.quality.status == ArticleStatus.COMPLETE or nontext
-    return usable, {
-        "nprCaptureParserUsable": usable,
-        "nprCaptureExtractionStatus": article.quality.status.value,
-        "nprCaptureContentType": article.content_type.value,
-        "nprCaptureBodyCharacters": article.quality.body_characters,
-    }
 
 
-def _ft_capture_parser_evidence(
-    content: bytes,
-    *,
-    canonical_url: str,
-) -> tuple[bool, dict[str, object]]:
-    from jojo_news_archive.parsing.parser import parse_article
-
-    try:
-        article = parse_article(
-            content,
-            publisher="ft",
-            canonical_url=canonical_url,
-            allow_generic_syndication=True,
-        )
-    except Exception as exc:
-        return False, {
-            "ftCaptureParserUsable": False,
-            "ftCaptureParserError": type(exc).__name__,
-        }
-    nontext = article.content_type in {
-        ContentType.INTERACTIVE,
-        ContentType.VIDEO,
-        ContentType.AUDIO,
-        ContentType.GALLERY,
-    }
-    usable = article.quality.status == ArticleStatus.COMPLETE or nontext
-    return usable, {
-        "ftCaptureParserUsable": usable,
-        "ftCaptureExtractionStatus": article.quality.status.value,
-        "ftCaptureContentType": article.content_type.value,
-        "ftCaptureBodyCharacters": article.quality.body_characters,
-    }
 
 
-def _scmp_capture_parser_evidence(
-    content: bytes,
-    *,
-    canonical_url: str,
-) -> tuple[bool, dict[str, object]]:
-    """Reject legacy SCMP snapshots that archived only the document head."""
-
-    soup = BeautifulSoup(content, "html.parser")
-    visible_text = " ".join(soup.get_text(" ", strip=True).split())
-    article_route = bool(
-        re.search(r"/article/\d+(?:/|$)", urlsplit(canonical_url).path)
-    )
-    declares_news_article = bool(
-        re.search(
-            rb'(?i)["\']@type["\']\s*:\s*["\']NewsArticle["\']',
-            content,
-        )
-    )
-    recoverable_body_marker = soup.select_one(
-        "body article, body main, body [itemprop='articleBody'], "
-        "body .article-body, body .field-name-body, "
-        "body [class*='ArticleContent__StyledBody-']"
-    )
-    head_only_article_shell = bool(
-        article_route
-        and declares_news_article
-        and len(visible_text) < 300
-        and recoverable_body_marker is None
-    )
-    usable = not head_only_article_shell
-    return usable, {
-        "scmpCaptureParserUsable": usable,
-        "scmpCaptureHeadOnlyArticleShell": head_only_article_shell,
-        "scmpCaptureVisibleCharacters": len(visible_text),
-    }
 
 
-def _nikkei_capture_parser_evidence(
-    content: bytes,
-    *,
-    canonical_url: str,
-) -> tuple[bool, dict[str, object]]:
-    from jojo_news_archive.parsing.parser import parse_article
-
-    try:
-        article = parse_article(
-            content,
-            publisher="nikkei",
-            canonical_url=canonical_url,
-            allow_generic_syndication=False,
-        )
-    except Exception as exc:
-        return False, {
-            "nikkeiCaptureParserUsable": False,
-            "nikkeiCaptureParserError": type(exc).__name__,
-        }
-    nontext = article.content_type in {
-        ContentType.INTERACTIVE,
-        ContentType.VIDEO,
-        ContentType.AUDIO,
-        ContentType.GALLERY,
-    }
-    usable = article.quality.status == ArticleStatus.COMPLETE or nontext
-    return usable, {
-        "nikkeiCaptureParserUsable": usable,
-        "nikkeiCaptureExtractionStatus": article.quality.status.value,
-        "nikkeiCaptureContentType": article.content_type.value,
-        "nikkeiCaptureBodyCharacters": article.quality.body_characters,
-    }
 
 
-def _caixin_capture_parser_evidence(
-    content: bytes,
-    *,
-    canonical_url: str,
-) -> tuple[bool, dict[str, object]]:
-    """Reject archived Caixin shells that contain metadata but no full body."""
-
-    from jojo_news_archive.parsing.parser import parse_article
-
-    try:
-        article = parse_article(
-            content,
-            publisher="caixin",
-            canonical_url=canonical_url,
-            allow_generic_syndication=False,
-        )
-    except Exception as exc:
-        return False, {
-            "caixinCaptureParserUsable": False,
-            "caixinCaptureParserError": type(exc).__name__,
-        }
-    # Non-text formats still have to be complete. Archived Caixin photo
-    # stories frequently preserve only the first page of a multi-page gallery,
-    # while legacy video pages can be empty player shells. Content type alone
-    # therefore cannot admit a capture to a parser-validation cohort.
-    usable = article.quality.status == ArticleStatus.COMPLETE
-    return usable, {
-        "caixinCaptureParserUsable": usable,
-        "caixinCaptureExtractionStatus": article.quality.status.value,
-        "caixinCaptureContentType": article.content_type.value,
-        "caixinCaptureBodyCharacters": article.quality.body_characters,
-    }
 
 
-def _axios_capture_parser_evidence(
-    content: bytes,
-    *,
-    canonical_url: str,
-) -> tuple[bool, dict[str, object]]:
-    """Reject Axios captures that cannot supply the archived editorial item.
-
-    Some archived Axios URLs hydrate a valid ``__NEXT_DATA__`` story object,
-    but that object is merely a one-sentence hand-off to a separately hosted
-    visual.  It is not the archived visual project and must not occupy one of
-    the 800 article-validation slots.  Keep this deliberately narrower than a
-    generic short-article rule because Axios also publishes legitimate briefs
-    and image-led stories.
-    """
-
-    from jojo_news_archive.parsing.parser import parse_article
-
-    try:
-        article = parse_article(
-            content,
-            publisher="axios",
-            canonical_url=canonical_url,
-            allow_generic_syndication=False,
-        )
-    except Exception as exc:
-        return True, {
-            "axiosCaptureVisualRedirectStub": False,
-            "axiosCaptureParserError": type(exc).__name__,
-        }
-    plain_text = " ".join(article.plain_text.split())
-    visual_redirect_stub = bool(
-        article.content_type == ContentType.ARTICLE
-        and article.quality.status == ArticleStatus.PARTIAL
-        and article.quality.body_characters <= 250
-        and article.quality.images_selected <= 1
-        and re.match(
-            r"^See Axios Visuals(?:'|\N{RIGHT SINGLE QUOTATION MARK}) best ",
-            plain_text,
-            flags=re.IGNORECASE,
-        )
-    )
-    empty_article_shell = bool(
-        article.content_type == ContentType.ARTICLE
-        and article.quality.status == ArticleStatus.PARTIAL
-        and article.quality.body_characters == 0
-        and article.quality.images_selected == 0
-    )
-    usable = not (visual_redirect_stub or empty_article_shell)
-    return usable, {
-        "axiosCaptureVisualRedirectStub": visual_redirect_stub,
-        "axiosCaptureEmptyArticleShell": empty_article_shell,
-        "axiosCaptureExtractionStatus": article.quality.status.value,
-        "axiosCaptureContentType": article.content_type.value,
-        "axiosCaptureBodyCharacters": article.quality.body_characters,
-        "axiosCaptureImagesSelected": article.quality.images_selected,
-    }
 
 
 def score_raw_capture(
@@ -7019,6 +2639,7 @@ def score_raw_capture(
     http_status: int,
     content_type: str,
     final_url: str = "",
+    publisher: str | None = None,
 ) -> tuple[int, dict[str, object]]:
     sampled_content = (
         content
@@ -7066,96 +2687,54 @@ def score_raw_capture(
         b'"articlebody"' in prefix
         or any(marker in prefix for marker in _ARTICLE_BODY_MARKERS)
     )
-    ft_body_characters, ft_body_images = _ft_article_body_evidence(
-        sampled_content,
-        final_url=final_url,
+    source_signals: dict[str, object] = {}
+    source_penalty = False
+    source_modules = (
+        (capture_hooks(publisher),)
+        if publisher is not None
+        else tuple(capture_hooks(source.id) for source in registered_sources())
     )
-    ft_explicit_truncation_notice = all(
-        marker in sampled_content
-        for marker in (
-            "您已阅读".encode(),
-            "剩余".encode(),
-            "订阅以继续探索完整内容".encode(),
-        )
-    )
-    ft_truncated_article_shell = (
-        ft_explicit_truncation_notice
-        or (
-            ft_body_characters is not None
-            and has_article_marker
-            and has_strong_body_marker
-            and ft_body_characters < FT_CAPTURE_MINIMUM_BODY_CHARACTERS
-            and ft_body_images < FT_IMAGE_LED_MINIMUM_IMAGES
-        )
-    )
-    wsj_subscription_shell = (
-        b"continue reading" in prefix
-        and b"wsj subscription" in prefix
-        and b"already a subscriber" in prefix
-    )
-    bloomberg_subscription_shell = (
-        b"already a subscriber" in prefix
-        and b"log in to keep reading" in prefix
-        and b"bloomberg" in prefix
-    )
-    zaobao_microtransaction_shell = bool(
-        "zaobao.com.sg/" in decoded_final_url
-        and b"article-microtransaction" in prefix
-        and b"js-cta-microtransaction" in prefix
-    )
-    bloomberg_teaser_shell = bool(
-        "bloomberg.com/" in decoded_final_url
-        and (
-            b"teaser-body__" in prefix
-            or (
-                b"body-content" in prefix
-                and b"teaser-content__" in prefix
+    for source_capture in source_modules:
+        hook = source_capture.raw_shell_signals
+        if hook is None:
+            continue
+        additions = dict(
+            hook(
+                sampled_content=sampled_content,
+                prefix=prefix,
+                final_url=final_url,
+                has_article_marker=has_article_marker,
+                has_strong_body_marker=has_strong_body_marker,
             )
         )
+        source_penalty = source_penalty or bool(additions.pop("penalize", False))
+        for aggregate_key in (
+            "authenticationShell",
+            "subscriptionShell",
+            "redirectShell",
+        ):
+            if aggregate_key in additions:
+                additions[aggregate_key] = bool(
+                    additions[aggregate_key]
+                    or source_signals.get(aggregate_key)
+                )
+        source_signals.update(additions)
+    authentication_shell = bool(
+        authentication_shell or source_signals.get("authenticationShell")
     )
-    wsj_snippet_shell = bool(
-        b'"issnippetview":true' in prefix
-        or (
-            re.search(
-                br'<meta[^>]+name=["\']article\.template["\']'
-                br'[^>]+content=["\']snippet["\']',
-                prefix,
-            )
-            and b"wsj-snippet-body" in prefix
-        )
-    )
-    wsj_empty_article_shell = bool(
-        re.search(br'"headline"\s*:\s*""', prefix)
-        and re.search(br'"datepublished"\s*:\s*""', prefix)
-        and re.search(
-            br'"url"\s*:\s*"https?://(?:www\.)?wsj\.com/articles/"',
-            prefix,
-        )
-    )
-    ft_legacy_barrier_url = (
-        "authorised=false" in decoded_final_url
-        or "iab=barrier-app" in decoded_final_url
-        or "classification=conditional_standard" in decoded_final_url
-    )
-    subscription_shell = (
-        wsj_snippet_shell
-        or wsj_empty_article_shell
-        or zaobao_microtransaction_shell
+    subscription_shell = bool(
+        source_signals.get("subscriptionShell")
         or (
             not has_strong_body_marker
-            and (
-                wsj_subscription_shell
-                or bloomberg_subscription_shell
-                or ft_legacy_barrier_url
-                or any(
-                    marker in prefix
-                    for marker in _SUBSCRIPTION_SHELL_MARKERS
-                )
-            )
+            and any(marker in prefix for marker in _SUBSCRIPTION_SHELL_MARKERS)
         )
     )
-    redirect_shell = not has_strong_body_marker and any(
-        marker in prefix for marker in _REDIRECT_SHELL_MARKERS
+    redirect_shell = bool(
+        source_signals.get("redirectShell")
+        or (
+            not has_strong_body_marker
+            and any(marker in prefix for marker in _REDIRECT_SHELL_MARKERS)
+        )
     )
     substantial = len(content) >= 2_048
     tiny_html_shell = bool(
@@ -7180,13 +2759,12 @@ def score_raw_capture(
         or access_challenge_shell
         or subscription_shell
         or redirect_shell
-        or ft_truncated_article_shell
-        or bloomberg_teaser_shell
+        or source_penalty
         or server_placeholder_shell
         or tiny_html_shell
     ):
         score = max(0, score - 60)
-    return score, {
+    return score, source_signals | {
         "looksLikeHtml": looks_like_html,
         "archiveErrorPage": archive_error_page,
         "serverPlaceholderShell": server_placeholder_shell,
@@ -7196,54 +2774,12 @@ def score_raw_capture(
         "authenticationShell": authentication_shell,
         "accessChallengeShell": access_challenge_shell,
         "subscriptionShell": subscription_shell,
-        "zaobaoMicrotransactionShell": zaobao_microtransaction_shell,
-        "bloombergTeaserShell": bloomberg_teaser_shell,
-        "ftLegacyBarrierUrl": ft_legacy_barrier_url,
-        "wsjEmptyArticleShell": wsj_empty_article_shell,
         "redirectShell": redirect_shell,
-        "ftTruncatedArticleShell": ft_truncated_article_shell,
-        "ftExplicitTruncationNotice": ft_explicit_truncation_notice,
-        "ftBodyCharacters": ft_body_characters,
-        "ftBodyImages": ft_body_images,
         "substantialResponse": substantial,
         "rawBytes": len(content),
     }
 
 
-def _ap_live_origin_content_evidence(
-    content: bytes,
-) -> dict[str, object]:
-    soup = BeautifulSoup(content, "html.parser")
-    body_characters = 0
-    for selector in (
-        "[data-key='article']",
-        ".RichTextStoryBody",
-        "[data-testid='article-body']",
-    ):
-        for node in soup.select(selector):
-            normalized = re.sub(
-                r"\s+",
-                " ",
-                node.get_text(" ", strip=True),
-            ).strip()
-            body_characters = max(body_characters, len(normalized))
-    carousel_slides = len(
-        soup.select(
-            ".Page-main .Carousel .Carousel-slide, "
-            ".Page-main bsp-carousel .Carousel-slide"
-        )
-    )
-    embedded_story_html = b'"storyHTML"' in content
-    return {
-        "apLiveOriginBodyCharacters": body_characters,
-        "apLiveOriginCarouselSlides": carousel_slides,
-        "apLiveOriginEmbeddedStoryHtml": embedded_story_html,
-        "apThinLiveOrigin": bool(
-            body_characters < _MINIMUM_AP_LIVE_ORIGIN_BODY_CHARACTERS
-            and carousel_slides < 3
-            and not embedded_story_html
-        ),
-    }
 
 
 def store_raw_html(output_dir: Path, content: bytes) -> BlobReference:
@@ -7295,70 +2831,6 @@ def store_dependent_resource(
     )
 
 
-def _capture_nyt_interactive_resources(
-    item: ManifestItem,
-    *,
-    candidate: CaptureCandidate,
-    html_bytes: bytes,
-    archive_client: ArchiveClient,
-    output_dir: Path,
-) -> list[DependentResource]:
-    if item.publisher != "nyt":
-        return []
-    timestamp_match = re.search(
-        r"/web/(?P<timestamp>\d{14})(?:id_)?/",
-        candidate.snapshot_url,
-    )
-    if timestamp_match is None:
-        return []
-    soup = BeautifulSoup(html_bytes, "html.parser")
-    source_urls: list[str] = []
-    for script in soup.select(
-        "#adventure-project-container script[src], "
-        "section.interactive-content script[src]"
-    ):
-        source = str(script.get("src") or "").strip()
-        absolute = urljoin(item.canonical_url, source)
-        parts = urlsplit(absolute)
-        if (
-            parts.scheme not in {"http", "https"}
-            or (parts.hostname or "").casefold() != "int.nyt.com"
-            or "/assets/adventure/js/" not in parts.path
-            or absolute in source_urls
-        ):
-            continue
-        source_urls.append(absolute)
-        if len(source_urls) >= 3:
-            break
-    resources: list[DependentResource] = []
-    timestamp = timestamp_match.group("timestamp")
-    for source_url in source_urls:
-        snapshot_url = (
-            f"https://web.archive.org/web/{timestamp}id_/{source_url}"
-        )
-        try:
-            status, headers, content, final_url = archive_client.fetch(
-                snapshot_url,
-                maximum_bytes=5_000_000,
-            )
-        except Exception:
-            continue
-        if status != 200 or not content:
-            continue
-        content_type = (
-            headers.get("content-type")
-            or headers.get("Content-Type")
-            or "application/octet-stream"
-        ).split(";", 1)[0].strip()
-        resources.append(
-            DependentResource(
-                source_url=source_url,
-                snapshot_url=final_url or snapshot_url,
-                content_type=content_type,
-                blob=store_dependent_resource(output_dir, content),
-            )
-        )
-    return resources
 
 
 def store_capture_record(output_dir: Path, capture: RawCapture) -> str:
@@ -7610,42 +3082,41 @@ def completed_capture_rejection_reason(
     archive_root: Path,
 ) -> str | None:
     content = _read_capture_html(capture, archive_root=archive_root)
-    if (
-        capture.publisher == "zaobao"
-        and capture.selected_candidate.provider == CaptureProvider.LIVE_ORIGIN
-        and not _same_article_url(capture.final_url, capture.canonical_url)
-    ):
-        # Requeue captures admitted before the live-origin target check was
-        # introduced.  Otherwise their old quality score of 100 would keep
-        # them in every fresh parser-validation cohort indefinitely.
-        return "zaobao-live-origin-target-mismatch"
+    source_capture = capture_hooks(capture.publisher)
+    target_hook = source_capture.candidate_target_rejection
+    if target_hook is not None:
+        target_rejection = target_hook(
+            capture.selected_candidate,
+            canonical_url=capture.canonical_url,
+            final_url=capture.final_url,
+        )
+        if target_rejection is not None:
+            completed_target_hook = source_capture.completed_rejection_reason
+            if completed_target_hook is not None:
+                reason = completed_target_hook(
+                    capture, content=content, signals={}
+                )
+                if reason is not None:
+                    return reason
+            return target_rejection
     _, signals = score_raw_capture(
         content,
         http_status=capture.http_status,
         content_type=capture.content_type,
         final_url=capture.final_url,
+        publisher=capture.publisher,
     )
-    # Keep the stored-capture gate aligned with the candidate gate above.
-    # Legacy WSJ video pages commonly include the site's registration/login
-    # module even though the archived video package itself is complete.  The
-    # live candidate path already admits those pages when the WSJ parser can
-    # recover a usable video; the reproducibility pass must not requeue them
-    # merely because the generic shell detector sees the navigation marker.
-    wsj_parser_usable: bool | None = None
-    if capture.publisher == "wsj":
-        wsj_parser_usable, _ = _wsj_capture_parser_evidence(
-            content,
+    assessment_hook = source_capture.assess_candidate
+    if assessment_hook is not None:
+        assessment = assessment_hook(
+            capture.selected_candidate,
+            content=content,
             canonical_url=capture.canonical_url,
+            final_url=capture.final_url,
+            quality_score=capture.quality_score,
+            signals=signals,
         )
-    structured_subscription_article = bool(
-        signals["subscriptionShell"]
-        and _structured_subscription_article_usable(
-            content,
-            publisher=capture.publisher,
-            canonical_url=capture.canonical_url,
-            raw_capture=capture,
-        )
-    )
+        signals = assessment.signals
     checks = (
         ("empty-response", not content),
         ("not-html", not bool(signals["looksLikeHtml"])),
@@ -7656,154 +3127,24 @@ def completed_capture_rejection_reason(
         ),
         (
             "authentication-shell",
-            bool(
-                signals["authenticationShell"]
-                and not (
-                    capture.publisher == "wsj"
-                    and wsj_parser_usable is True
-                )
-            ),
+            bool(signals["authenticationShell"] and not signals.get("allowAuthenticationShell")),
         ),
         ("access-challenge-shell", bool(signals["accessChallengeShell"])),
         (
             "subscription-shell",
-            bool(
-                signals["subscriptionShell"]
-                and not structured_subscription_article
-            ),
+            bool(signals["subscriptionShell"] and not signals.get("allowSubscriptionShell")),
         ),
         ("redirect-shell", bool(signals["redirectShell"])),
-        (
-            "ft-truncated-article-shell",
-            bool(signals["ftTruncatedArticleShell"]),
-        ),
         ("tiny-html-shell", bool(signals["tinyHtmlShell"])),
     )
     for reason, rejected in checks:
         if rejected:
             return reason
-    if capture.publisher == "bloomberg":
-        usable, _ = _bloomberg_origin_parser_evidence(
-            content,
-            canonical_url=capture.canonical_url,
-        )
-        if not usable:
-            return "bloomberg-origin-parser-incomplete"
-    if capture.publisher == "wsj":
-        usable = (
-            wsj_parser_usable
-            if wsj_parser_usable is not None
-            else False
-        )
-        if not usable:
-            return "wsj-capture-parser-incomplete"
-    if capture.publisher == "scmp":
-        usable, _ = _scmp_capture_parser_evidence(
-            content,
-            canonical_url=capture.canonical_url,
-        )
-        if not usable:
-            return "scmp-capture-parser-incomplete"
-    if capture.publisher == "ap":
-        usable, _ = _ap_capture_parser_evidence(
-            content,
-            canonical_url=capture.canonical_url,
-        )
-        if not usable:
-            return "ap-capture-parser-incomplete"
-    if capture.publisher == "reuters":
-        usable, _ = _reuters_capture_parser_evidence(
-            content,
-            canonical_url=capture.canonical_url,
-        )
-        if not usable:
-            return "reuters-capture-parser-incomplete"
-    if capture.publisher == "npr":
-        usable, _ = _npr_capture_parser_evidence(
-            content,
-            canonical_url=capture.canonical_url,
-        )
-        if not usable:
-            return "npr-capture-parser-incomplete"
-    if capture.publisher == "axios":
-        usable, _ = _axios_capture_parser_evidence(
-            content,
-            canonical_url=capture.canonical_url,
-        )
-        if not usable:
-            return "axios-capture-parser-incomplete"
-    if capture.publisher == "ft":
-        usable, _ = _ft_capture_parser_evidence(
-            content,
-            canonical_url=capture.canonical_url,
-        )
-        if not usable:
-            return "ft-capture-parser-incomplete"
-    if capture.publisher == "nikkei":
-        usable, _ = _nikkei_capture_parser_evidence(
-            content,
-            canonical_url=capture.canonical_url,
-        )
-        if not usable:
-            return "nikkei-capture-parser-incomplete"
-    if capture.publisher == "caixin":
-        usable, _ = _caixin_capture_parser_evidence(
-            content,
-            canonical_url=capture.canonical_url,
-        )
-        if not usable:
-            return "caixin-capture-parser-incomplete"
-    if (
-        capture.publisher == "nyt"
-        and capture.selected_candidate.provider == CaptureProvider.OTHER
-    ):
-        expected_headline_value = capture.quality_signals.get(
-            "syndicationOriginalHeadline"
-        )
-        valid, syndication_signals = _validate_nyt_syndication_response(
-            ManifestItem(
-                publisher="nyt",
-                canonical_url=capture.canonical_url,
-                published_at=(
-                    capture.published_at.isoformat()
-                    if capture.published_at is not None
-                    else None
-                ),
-                section=capture.section,
-                candidates=(),
-            ),
-            expected_headline=(
-                str(expected_headline_value)
-                if expected_headline_value
-                else None
-            ),
-            content=content,
-            final_url=capture.final_url,
-        )
-        if not valid:
-            return "nyt-syndication-" + str(
-                syndication_signals.get("reason") or "invalid-provenance"
-            )
-    if (
-        capture.publisher == "bloomberg"
-        and capture.selected_candidate.provider == CaptureProvider.OTHER
-    ):
-        from jojo_news_archive.parsing.parser import parse_article
-
-        try:
-            article = parse_article(
-                content,
-                publisher="bloomberg",
-                canonical_url=capture.canonical_url,
-                allow_generic_syndication=True,
-            )
-        except Exception:
-            article = None
-        if article is not None and _short_parsed_paywall_shell(
-            body_characters=article.quality.body_characters,
-            plain_text=article.plain_text,
-        ):
-            return "bloomberg-syndication-paywall-shell"
+    completed_hook = source_capture.completed_rejection_reason
+    if completed_hook is not None:
+        source_reason = completed_hook(capture, content=content, signals=signals)
+        if source_reason is not None:
+            return source_reason
     if capture.http_status not in ACCEPTED_HTTP_STATUSES:
         return f"http-{capture.http_status}"
     return None
@@ -7966,21 +3307,27 @@ def _insert_manifest_batch(
         existing_json = persisted_candidates.get(str(row[0]))
         if existing_json is not None:
             existing_candidates = json.loads(existing_json)
-            publisher = str(row[2])
+            source_capture = capture_hooks(str(row[2]))
             manifest_snapshot_urls = {
                 str(candidate.get("snapshotUrl") or "")
                 for candidate in manifest_candidates
                 if isinstance(candidate, dict)
             }
-            # Arquivo.pt and dynamically discovered partner mirrors do not
-            # live in the source manifest, so retain them across refreshes.
-            # WSJ Infini-News rows do live in that manifest and are filtered
-            # there by the current minimum-text policy.  Preserving an older
-            # WSJ Infini candidate that disappeared from a refreshed manifest
-            # would bypass that policy and force every short preview through
-            # the expensive archive fallback chain.
+            # Secondary-archive and partner rows do not live in source
+            # manifests, so retain them across refreshes. Sources may reject
+            # preservation for catalog-derived providers whose current
+            # manifest policy is authoritative.
             preserved_derived_providers = {"arquivo-pt", "other"}
-            if publisher != "wsj":
+            preserve_infini = (
+                source_capture.preserve_removed_infini_candidate
+                or (lambda candidate: True)
+            )
+            if any(
+                preserve_infini(candidate)
+                for candidate in existing_candidates
+                if isinstance(candidate, dict)
+                and candidate.get("provider") == "infini-news"
+            ):
                 preserved_derived_providers.add("infini-news")
             derived_candidates = [
                 candidate

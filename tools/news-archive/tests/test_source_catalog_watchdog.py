@@ -11,6 +11,7 @@ from jojo_news_archive.orchestration.catalog_watchdog import (
     SourceCatalogTarget,
     plan_source_catalog_dispatch,
 )
+from jojo_news_archive.sources.registry import registered_sources
 
 
 MODULE_PATH = (
@@ -33,6 +34,11 @@ def test_default_targets_include_both_scmp_official_archive_windows():
     }
 
     assert scmp_sitemaps == {(2010, 2015, 30), (2016, 2026, 30)}
+
+
+def test_default_targets_only_include_enabled_sources():
+    enabled = {source.id for source in registered_sources(enabled_only=True)}
+    assert {target.publisher for target in SOURCE_CATALOG_TARGETS} <= enabled
 
 
 def _write_status(

@@ -16,7 +16,7 @@ if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
 
-from jojo_news_archive.discovery.ap_legacy import (
+from jojo_news_archive.sources.ap.discovery import (
     build_ap_bigstory_manifest_rows,
     write_ap_manifest_rows,
 )

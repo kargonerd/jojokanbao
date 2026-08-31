@@ -22,35 +22,37 @@ from jojo_news_archive.discovery.wayback import (
     export_capture_manifest,
     initialize_archived_date_schema,
     initialize_discovery_schema,
+    next_discovery_query,
+    process_archived_dates,
+    record_discovery_failure,
+    record_discovery_page,
+)
+from jojo_news_archive.sources.wsj.discovery.wayback import (
     initialize_wsj_bluesky_schema,
     initialize_wsj_google_news_schema,
     initialize_wsj_legacy_date_schema,
     initialize_wsj_rss_schema,
-    next_discovery_query,
-    process_archived_dates,
     process_wsj_bluesky_page,
     process_wsj_google_news_feed,
     process_wsj_legacy_dates,
     process_wsj_rss_feeds,
-    record_discovery_failure,
-    record_discovery_page,
     wsj_bluesky_should_continue,
     wsj_catalog_ready_for_capture,
     wsj_google_news_is_only_catalog_gap,
     wsj_google_news_should_continue,
 )
-from jojo_news_archive.discovery.wsj_syndication import (
+from jojo_news_archive.sources.wsj.discovery.syndication import (
     DEFAULT_RESOLUTIONS_PER_RUN,
     initialize_wsj_syndication_schema,
     process_wsj_syndication_catalog,
     process_wsj_syndication_resolutions,
 )
-from jojo_news_archive.discovery.wsj_infini import (
+from jojo_news_archive.sources.wsj.discovery.infini import (
     initialize_wsj_infini_schema,
     process_wsj_infini_documents,
     process_wsj_infini_queries,
 )
-from jojo_news_archive.discovery.wsj_infini_direct import (
+from jojo_news_archive.sources.wsj.discovery.infini_direct import (
     initialize_wsj_infini_direct_schema,
     process_wsj_infini_direct_catalog,
 )

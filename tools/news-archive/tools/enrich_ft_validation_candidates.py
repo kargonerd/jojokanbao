@@ -21,15 +21,17 @@ from jojo_news_archive.capture.raw import (
     CaptureCandidate,
     CaptureProvider,
     ManifestItem,
-    _discover_ft_headline_from_google_news,
-    _discover_ftchinese_candidates,
     _fetch_syndication_search_results,
     _same_article_url,
-    _validate_ft_syndication_response,
     capture_item,
+    record_capture_result,
+)
+from jojo_news_archive.sources.ft.capture import (
+    _discover_ftchinese_candidates,
+    _discover_ft_headline_from_google_news,
+    _validate_ft_syndication_response,
     discover_ft_syndication_candidates,
     ft_syndication_search_url,
-    record_capture_result,
 )
 from jojo_news_archive.parsing.validation import record_parser_validation
 

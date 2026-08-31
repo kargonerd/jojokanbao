@@ -5,7 +5,11 @@ from pathlib import Path
 import re
 from typing import Iterable, Mapping
 
-from jojo_news_archive.sources.specs import publisher_spec
+from jojo_news_archive.sources.registry import (
+    publisher_spec,
+    registered_sources,
+    source_module,
+)
 from jojo_news_archive.parsing.policy import CONTENT_AUDIT_FORMAT_VERSION, qa_policy_revision
 from jojo_news_archive.parsing.shards import (
     parser_source_manifest_shard,
@@ -21,40 +25,25 @@ MINIMUM_COMPLETE_RATE = 0.95
 # scheduler aligned with parser_validation.py rather than treating a merely
 # high pass rate as convergence.
 MINIMUM_QA_PASS_RATE = 1.0
-PUBLISHER_ORDER = (
-    "reuters",
-    "bloomberg",
-    "ft",
-    "wsj",
-    "nyt",
-    "ap",
-    "axios",
-    "npr",
-    "nikkei",
-    "zaobao",
-    "aljazeera",
-    "scmp",
-    "caixin",
+SUPPORTED_PUBLISHER_ORDER = tuple(
+    source.id
+    for source in sorted(
+        registered_sources(),
+        key=lambda source: (source.validation_priority, source.id),
+    )
 )
-# WSJ's current validation states were migrated/replayed from earlier parser
-# cohorts. They remain useful exclusion sources, but validation/source alone is
-# not independent convergence evidence even when its parser version is current.
-REQUIRED_HOLDOUT_PUBLISHERS = {"wsj"}
-# These validation-named cells were independently audited against their older
-# source cohort and proved zero-overlap. Keep the exception narrow and
-# evidence-backed; every other stale-version baseline automatically rotates to
-# a new numbered holdout.
-PROVEN_ROTATED_VALIDATION_CELLS = {
-    ("ft", 2016),
-    ("npr", 2010),
-    ("npr", 2011),
-    ("npr", 2012),
-    ("npr", 2013),
-    ("npr", 2026),
-}
+PUBLISHER_ORDER = tuple(
+    source.id
+    for source in sorted(
+        registered_sources(enabled_only=True),
+        key=lambda source: (source.validation_priority, source.id),
+    )
+)
 ACTIVE_TITLE_RE = re.compile(
     r"^parser-(?P<cohort>qa|validation|holdout-v[1-9][0-9]*)-"
-    r"(?P<publisher>aljazeera|ap|axios|bloomberg|caixin|ft|nikkei|npr|nyt|reuters|scmp|wsj|zaobao)-"
+    r"(?P<publisher>"
+    + "|".join(map(re.escape, SUPPORTED_PUBLISHER_ORDER))
+    + r")-"
     r"(?P<year>20\d{2})$"
 )
 
@@ -130,7 +119,9 @@ def plan_validation_dispatch(
         if publishers is None
         else {publisher.strip() for publisher in publishers if publisher.strip()}
     )
-    unsupported_publishers = requested_publishers - set(PUBLISHER_ORDER)
+    unsupported_publishers = requested_publishers - set(
+        SUPPORTED_PUBLISHER_ORDER
+    )
     if unsupported_publishers:
         raise ValueError(
             "unsupported watchdog publishers: "
@@ -138,7 +129,7 @@ def plan_validation_dispatch(
         )
     publisher_order = tuple(
         publisher
-        for publisher in PUBLISHER_ORDER
+        for publisher in SUPPORTED_PUBLISHER_ORDER
         if publisher in requested_publishers
     )
     available_shards = (
@@ -451,7 +442,7 @@ def plan_validation_dispatch(
                     values.get("parserVersion") is None
                     and values.get("qaRevision") is None
                     and (
-                        cell[0] == "caixin"
+                        source_module(cell[0]).allow_initial_capacity_reset
                         or _supplemental_capacity_unlocks_cell(
                             publisher=cell[0],
                             year=cell[1],
@@ -999,7 +990,7 @@ def _required_holdout_cohort(
     qa_revision: int,
 ) -> str | None:
     if (
-        (publisher, year) in PROVEN_ROTATED_VALIDATION_CELLS
+        year in source_module(publisher).proven_rotated_validation_years
         and any(name in {"source", "validation"} for name in current_rows)
     ):
         return None
@@ -1070,7 +1061,7 @@ def _required_holdout_cohort(
             return current_holdouts[max(current_holdouts)]
         next_number = max(observed_numbers, default=0) + 1
         return f"holdout-v{max(1, next_number)}"
-    if publisher in REQUIRED_HOLDOUT_PUBLISHERS and observed_baseline:
+    if source_module(publisher).requires_independent_holdout and observed_baseline:
         if current_holdouts:
             return current_holdouts[max(current_holdouts)]
         return "holdout-v1"
@@ -1151,8 +1142,8 @@ def _task(
             year,
         ),
         # macOS 15 hosted runners currently do not ship the pinned 3.12.13
-        # interpreter used by the archive workflow.  NYT capture already
-        # applies its own slower request cadence on Ubuntu.
+        # interpreter used by the archive workflow. Source-specific request
+        # pacing is handled by its capture strategy on Ubuntu.
         "runnerOs": "ubuntu-latest",
         "currentEvaluated": evaluated,
         "replayableEvaluated": replayable_evaluated,

@@ -9,7 +9,7 @@ import sqlite3
 import httpx
 
 from jojo_news_archive.sources.registry import archive_source_spec
-from jojo_news_archive.discovery.ft_syndication import (
+from jojo_news_archive.sources.ft.discovery.syndication import (
     _next_document_rows,
     _next_resolution_rows,
     ft_syndication_summary,
@@ -21,7 +21,7 @@ from jojo_news_archive.discovery.ft_syndication import (
     resolve_ft_original_url,
 )
 from jojo_news_archive.capture.raw import manifest_item_from_row
-from jojo_news_archive.discovery.nyt_syndication import (
+from jojo_news_archive.sources.nyt.discovery import (
     initialize_nyt_syndication_schema,
     next_nyt_syndication_resolution,
     next_nyt_syndication_query,
@@ -534,7 +534,7 @@ def test_ft_original_resolution_uses_strict_google_news_fallback(
         return canonical_url
 
     monkeypatch.setattr(
-        "jojo_news_archive.discovery.ft_syndication._decode_google_news_url",
+        "jojo_news_archive.sources.ft.discovery.syndication._decode_google_news_url",
         decode_google_news_url,
     )
 
@@ -583,7 +583,7 @@ def test_ft_original_resolution_uses_google_news_when_yahoo_errors(
             )
 
     monkeypatch.setattr(
-        "jojo_news_archive.discovery.ft_syndication._decode_google_news_url",
+        "jojo_news_archive.sources.ft.discovery.syndication._decode_google_news_url",
         lambda http_client, url: canonical_url,
     )
 
@@ -636,7 +636,7 @@ def test_ft_original_resolution_rejects_google_news_date_mismatch(
         )
 
     monkeypatch.setattr(
-        "jojo_news_archive.discovery.ft_syndication._decode_google_news_url",
+        "jojo_news_archive.sources.ft.discovery.syndication._decode_google_news_url",
         decode_google_news_url,
     )
 

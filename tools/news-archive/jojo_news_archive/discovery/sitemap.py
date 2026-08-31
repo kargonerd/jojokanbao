@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import gzip
 import hashlib
@@ -9,7 +8,6 @@ from pathlib import Path
 import re
 import sqlite3
 import time
-from urllib.parse import urlsplit
 import xml.etree.ElementTree as ET
 
 import httpx
@@ -20,8 +18,15 @@ from jojo_news_archive.sources.registry import (
     archive_source_spec,
     normalize_article_url,
 )
+from jojo_news_archive.sources.discovery_contracts import (
+    SitemapArticleRow,
+    SitemapSource,
+)
+from jojo_news_archive.sources.discovery_registry import (
+    sitemap_source as registered_sitemap_source,
+    source_discovery,
+)
 from jojo_news_archive.discovery.client import GlobalRateLimiter
-from jojo_news_archive.discovery.ft_syndication import infini_news_row_url
 from jojo_news_archive.discovery.wayback import (
     MANIFEST_FORMAT_VERSION,
     discovered_wayback_articles,
@@ -36,104 +41,6 @@ _BARE_XML_AMPERSAND = re.compile(
     r"&(?!#\d+;|#x[0-9a-fA-F]+;|[A-Za-z_:][A-Za-z0-9_.:-]*;)"
 )
 _ILLEGAL_XML_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
-
-
-@dataclass(frozen=True)
-class SitemapSource:
-    publisher: str
-    index_url: str
-    child_pattern: re.Pattern[str]
-    supplemental_index_urls: tuple[str, ...] = ()
-    daily_child_pattern: re.Pattern[str] | None = None
-
-
-SITEMAP_SOURCES = {
-    "ap": SitemapSource(
-        publisher="ap",
-        index_url="https://apnews.com/ap-sitemap.xml",
-        child_pattern=re.compile(r"ap-sitemap-(20\d{2})(\d{2})\.xml$"),
-    ),
-    "bloomberg": SitemapSource(
-        publisher="bloomberg",
-        index_url="https://www.bloomberg.com/sitemaps/news/index.xml",
-        child_pattern=re.compile(r"/(20\d{2})-(\d{1,2})\.xml$"),
-    ),
-    "nyt": SitemapSource(
-        publisher="nyt",
-        index_url="https://www.nytimes.com/sitemaps/new/sitemap.xml.gz",
-        child_pattern=re.compile(r"sitemap-(20\d{2})-(\d{2})\.xml\.gz$"),
-    ),
-    "ft": SitemapSource(
-        publisher="ft",
-        index_url="https://www.ft.com/sitemaps/index.xml",
-        child_pattern=re.compile(r"archive-(20\d{2})-(\d{1,2})\.xml$"),
-    ),
-    "axios": SitemapSource(
-        publisher="axios",
-        index_url="https://www.axios.com/sitemap.xml",
-        # The index also contains hundreds of local-edition sitemaps. Those
-        # use /sitemaps/<city>/<month>-<year>.xml and are intentionally kept
-        # out of the national Axios corpus. Match only the root-level monthly
-        # archive files.
-        child_pattern=re.compile(
-            r"^/sitemaps/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)-(20\d{2})\.xml$",
-            re.IGNORECASE,
-        ),
-    ),
-    "axios-local": SitemapSource(
-        publisher="axios",
-        index_url="https://www.axios.com/sitemap.xml",
-        # Axios publishes one monthly sitemap per local newsroom. Keep this
-        # high-volume corpus isolated from the national sitemap checkpoint so
-        # either source can be audited and resumed independently.
-        child_pattern=re.compile(
-            r"^/sitemaps/[^/]+/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)-(20\d{2})\.xml$",
-            re.IGNORECASE,
-        ),
-    ),
-    "aljazeera": SitemapSource(
-        publisher="aljazeera",
-        index_url=(
-            "https://www.aljazeera.com/sitemaps/article-archive.xml"
-        ),
-        child_pattern=re.compile(
-            r"/article-archive/(20\d{2})/(\d{2})\.xml$"
-        ),
-        supplemental_index_urls=(
-            "https://www.aljazeera.com/sitemaps/article-new.xml",
-        ),
-        daily_child_pattern=re.compile(
-            r"/article-new/(\d{2})-(\d{2})-(20\d{2})\.xml$"
-        ),
-    ),
-    "zaobao": SitemapSource(
-        publisher="zaobao",
-        index_url="https://www.zaobao.com.sg/sitemap.xml",
-        child_pattern=re.compile(r"/sitemap-(20\d{2})(\d{2})\.xml$"),
-    ),
-    "scmp": SitemapSource(
-        publisher="scmp",
-        index_url="https://www.scmp.com/sitemap/archives-0.xml",
-        # SCMP publishes one official archive sitemap per calendar month.
-        # The month is a three-letter English name rather than a number.
-        child_pattern=re.compile(
-            r"/archives/articles/(20\d{2})_([a-z]{3})\.xml$",
-            re.IGNORECASE,
-        ),
-    ),
-}
-
-
-_MONTH_NAME_TO_NUMBER = {
-    name: index
-    for index, name in enumerate(
-        (
-            "jan", "feb", "mar", "apr", "may", "jun",
-            "jul", "aug", "sep", "oct", "nov", "dec",
-        ),
-        start=1,
-    )
-}
 
 
 class SitemapClient:
@@ -188,14 +95,7 @@ class SitemapClient:
 
 
 def sitemap_source(publisher: str) -> SitemapSource:
-    try:
-        return SITEMAP_SOURCES[publisher]
-    except KeyError as exc:
-        supported = ", ".join(sorted(SITEMAP_SOURCES))
-        raise ValueError(
-            f"publisher {publisher!r} has no historical sitemap adapter; "
-            f"expected one of: {supported}"
-        ) from exc
+    return registered_sitemap_source(publisher)
 
 
 def parse_sitemap_index(
@@ -211,25 +111,15 @@ def parse_sitemap_index(
         if _local_name(node.tag) != "loc" or not node.text:
             continue
         url = node.text.strip()
-        match = source.child_pattern.search(urlsplit(url).path)
+        path = httpx.URL(url).path
+        match = source.child_pattern.search(path)
         if match:
-            if source.publisher == "axios":
-                month = _MONTH_NAME_TO_NUMBER[match.group(1).casefold()]
-                year = int(match.group(2))
-            elif source.publisher == "scmp":
-                year = int(match.group(1))
-                month = _MONTH_NAME_TO_NUMBER[match.group(2).casefold()]
-            else:
-                year = int(match.group(1))
-                month = int(match.group(2))
+            year, month = source.child_date(match)
         elif source.daily_child_pattern is not None:
-            daily_match = source.daily_child_pattern.search(
-                urlsplit(url).path
-            )
-            if daily_match is None:
+            daily_match = source.daily_child_pattern.search(path)
+            if daily_match is None or source.daily_child_date is None:
                 continue
-            month = int(daily_match.group(2))
-            year = int(daily_match.group(3))
+            year, month = source.daily_child_date(daily_match)
         else:
             continue
         if from_year <= year <= to_year and 1 <= month <= 12:
@@ -462,124 +352,16 @@ def export_sitemap_manifest(
     opener = gzip.open if destination.suffix == ".gz" else open
     articles = 0
     candidates = 0
-    has_nyt_syndication = (
-        publisher == "nyt"
-        and connection.execute(
-            """
-            SELECT 1
-            FROM sqlite_master
-            WHERE type='table' AND name='nyt_syndication_articles'
-            """
-        ).fetchone()
-        is not None
-    )
-    has_ft_syndication = (
-        publisher == "ft"
-        and connection.execute(
-            """
-            SELECT 1
-            FROM sqlite_master
-            WHERE type='table' AND name='ft_syndication_articles'
-            """
-        ).fetchone()
-        is not None
-    )
-    has_bloomberg_bnn = (
-        publisher == "bloomberg"
-        and connection.execute(
-            """
-            SELECT 1
-            FROM sqlite_master
-            WHERE type='table' AND name='bloomberg_bnn_articles'
-            """
-        ).fetchone()
-        is not None
-    )
-    if has_nyt_syndication:
-        article_rows = connection.execute(
-            """
-            SELECT
-                sitemap.canonical_url,
-                COALESCE(sitemap.published_at, syndication.published_at),
-                syndication.syndicated_url,
-                syndication.headline
-            FROM sitemap_articles AS sitemap
-            LEFT JOIN nyt_syndication_articles AS syndication
-              ON syndication.canonical_url=sitemap.canonical_url
-            UNION ALL
-            SELECT
-                syndication.canonical_url,
-                syndication.published_at,
-                syndication.syndicated_url,
-                syndication.headline
-            FROM nyt_syndication_articles AS syndication
-            LEFT JOIN sitemap_articles AS sitemap
-              ON sitemap.canonical_url=syndication.canonical_url
-            WHERE sitemap.canonical_url IS NULL
-            ORDER BY 1
-            """
-        )
-    elif has_bloomberg_bnn:
-        article_rows = connection.execute(
-            """
-            SELECT
-                sitemap.canonical_url,
-                COALESCE(partner.published_at, sitemap.published_at),
-                partner.archive_url,
-                partner.expected_headline
-            FROM sitemap_articles AS sitemap
-            LEFT JOIN bloomberg_bnn_articles AS partner
-              ON partner.canonical_url=sitemap.canonical_url
-            UNION ALL
-            SELECT
-                partner.canonical_url,
-                partner.published_at,
-                partner.archive_url,
-                partner.expected_headline
-            FROM bloomberg_bnn_articles AS partner
-            LEFT JOIN sitemap_articles AS sitemap
-              ON sitemap.canonical_url=partner.canonical_url
-            WHERE sitemap.canonical_url IS NULL
-            ORDER BY 1
-            """
-        )
-    elif has_ft_syndication:
-        article_rows = connection.execute(
-            """
-            SELECT
-                sitemap.canonical_url,
-                COALESCE(syndication.published_at, sitemap.published_at),
-                syndication.partner_url,
-                syndication.expected_headline,
-                syndication.source_year,
-                syndication.document_index,
-                syndication.warc_source
-            FROM sitemap_articles AS sitemap
-            LEFT JOIN ft_syndication_articles AS syndication
-              ON syndication.canonical_url=sitemap.canonical_url
-            UNION ALL
-            SELECT
-                syndication.canonical_url,
-                syndication.published_at,
-                syndication.partner_url,
-                syndication.expected_headline,
-                syndication.source_year,
-                syndication.document_index,
-                syndication.warc_source
-            FROM ft_syndication_articles AS syndication
-            LEFT JOIN sitemap_articles AS sitemap
-              ON sitemap.canonical_url=syndication.canonical_url
-            WHERE sitemap.canonical_url IS NULL
-            ORDER BY 1
-            """
-        )
+    hooks = source_discovery(publisher)
+    if hooks.sitemap_rows is not None:
+        article_rows = hooks.sitemap_rows(connection)
     else:
-        article_rows = connection.execute(
-            """
-            SELECT canonical_url, published_at, NULL, NULL
-            FROM sitemap_articles
-            ORDER BY canonical_url
-            """
+        article_rows = (
+            SitemapArticleRow(str(canonical_url), published_at)
+            for canonical_url, published_at in connection.execute(
+                "SELECT canonical_url, published_at FROM sitemap_articles "
+                "ORDER BY canonical_url"
+            )
         )
     exact_wayback = discovered_wayback_articles(
         connection,
@@ -588,17 +370,8 @@ def export_sitemap_manifest(
     )
     with opener(temporary, "wt", encoding="utf-8") as handle:
         for article_row in article_rows:
-            (
-                canonical_url,
-                published_at,
-                syndicated_url,
-                expected_headline,
-            ) = article_row[:4]
-            source_year = article_row[4] if len(article_row) > 4 else None
-            document_index = (
-                article_row[5] if len(article_row) > 5 else None
-            )
-            warc_source = article_row[6] if len(article_row) > 6 else None
+            canonical_url = article_row.canonical_url
+            published_at = article_row.published_at
             exact = exact_wayback.pop(str(canonical_url), None)
             if exact is not None and not published_at:
                 published_at = exact[0]
@@ -612,39 +385,23 @@ def export_sitemap_manifest(
                     exact[1],
                     candidate_rows,
                 )
-            if syndicated_url:
+            if hooks.sitemap_partner_candidates is not None:
+                partner_candidates = hooks.sitemap_partner_candidates(article_row)
+            elif article_row.partner_url:
                 partner_candidates = [
                     {
                         "provider": "other",
-                        "snapshotUrl": syndicated_url,
+                        "snapshotUrl": article_row.partner_url,
                         **(
-                            {"expectedHeadline": expected_headline}
-                            if expected_headline
+                            {"expectedHeadline": article_row.expected_headline}
+                            if article_row.expected_headline
                             else {}
                         ),
                     }
                 ]
-                if source_year is not None and document_index is not None:
-                    partner_candidates.append(
-                        {
-                            "provider": "infini-news",
-                            "snapshotUrl": infini_news_row_url(
-                                int(source_year),
-                                int(document_index),
-                            ),
-                            "sourceUrl": syndicated_url,
-                            **(
-                                {"expectedHeadline": expected_headline}
-                                if expected_headline
-                                else {}
-                            ),
-                            **(
-                                {"warcFilename": warc_source}
-                                if warc_source
-                                else {}
-                            ),
-                        }
-                    )
+            else:
+                partner_candidates = []
+            if partner_candidates:
                 candidate_rows = _merge_manifest_candidates(
                     partner_candidates,
                     candidate_rows,
@@ -778,15 +535,12 @@ def sitemap_wayback_candidates(
     *,
     published_at: str | None,
 ) -> list[dict[str, object]]:
-    source_urls: list[str] = []
-    parsed = urlsplit(canonical_url)
-    if (
-        publisher == "ft"
-        and parsed.hostname in {"ft.com", "www.ft.com"}
-        and parsed.path.startswith("/content/")
-    ):
-        source_urls.append(f"https://amp.ft.com{parsed.path}")
-    source_urls.append(canonical_url)
+    hooks = source_discovery(publisher)
+    source_urls = (
+        hooks.sitemap_source_urls(canonical_url)
+        if hooks.sitemap_source_urls is not None
+        else (canonical_url,)
+    )
 
     result: list[dict[str, object]] = []
     seen: set[str] = set()
@@ -800,14 +554,12 @@ def sitemap_wayback_candidates(
                 continue
             seen.add(snapshot_url)
             result.append(candidate)
-    if publisher == "ap":
-        return [
-            {
-                "provider": "live-origin",
-                "snapshotUrl": canonical_url,
-            },
-            *result,
-        ]
+    if hooks.sitemap_candidate_transform is not None:
+        result = hooks.sitemap_candidate_transform(
+            canonical_url,
+            published_at,
+            result,
+        )
     return with_current_year_live_fallback(
         result,
         canonical_url=canonical_url,

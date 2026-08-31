@@ -8,8 +8,10 @@ import zlib
 from bs4 import BeautifulSoup
 
 from jojo_news_archive.models import CaptureCandidate, CaptureProvider
-
-
+from jojo_news_archive.sources.discovery_contracts import GhostarchiveUrlPolicy
+from jojo_news_archive.sources.discovery_registry import (
+    source_discovery_for_url,
+)
 GHOSTARCHIVE_ORIGIN = "https://ghostarchive.org"
 GHOSTARCHIVE_SEARCH_ENDPOINT = GHOSTARCHIVE_ORIGIN + "/search"
 GHOSTARCHIVE_SEARCH_MAXIMUM_BYTES = 1_000_000
@@ -47,7 +49,8 @@ def discover_ghostarchive_candidates(
 ) -> tuple[CaptureCandidate, ...]:
     if maximum_candidates < 1:
         raise ValueError("maximum_candidates must be positive")
-    if not _is_ft_article_url(canonical_url):
+    policy = _url_policy(canonical_url)
+    if policy is None or not policy.is_article_url(canonical_url):
         return ()
     search_url = ghostarchive_search_url(canonical_url)
     status, headers, content, final_url = archive_client.fetch(
@@ -74,7 +77,7 @@ def discover_ghostarchive_candidates(
         if _ARCHIVE_PATH_RE.fullmatch(urlsplit(href).path) is None:
             continue
         archived_url = anchor.get_text(" ", strip=True)
-        if not _same_ft_article_url(archived_url, canonical_url):
+        if not policy.same_article_url(archived_url, canonical_url):
             continue
         snapshot_url = GHOSTARCHIVE_ORIGIN + urlsplit(href).path
         if snapshot_url in seen:
@@ -101,10 +104,12 @@ def fetch_ghostarchive_candidate(
     maximum_html_bytes: int,
 ) -> tuple[int, dict[str, str], bytes, str, dict[str, object]]:
     archive_id = _archive_id(candidate.snapshot_url)
+    policy = _url_policy(canonical_url)
     if (
         archive_id is None
+        or policy is None
         or not candidate.source_url
-        or not _same_ft_article_url(candidate.source_url, canonical_url)
+        or not policy.same_article_url(candidate.source_url, canonical_url)
     ):
         raise ValueError("invalid Ghostarchive candidate")
     wrapper_status, wrapper_headers, wrapper, wrapper_final_url = (
@@ -141,7 +146,7 @@ def fetch_ghostarchive_candidate(
         warc.scheme != "https"
         or warc.hostname != "ghostarchive.org"
         or warc.path != f"/chimurai4/{archive_id}.warc"
-        or not _same_ft_article_url(replay_url, canonical_url)
+        or not policy.same_article_url(replay_url, canonical_url)
     ):
         raise ValueError("Ghostarchive replay metadata is invalid")
     warc_status, warc_headers, warc_content, warc_final_url = (
@@ -215,7 +220,8 @@ def _decode_warc_article(
         if warc_headers.get("warc-type", "").casefold() != "response":
             continue
         target_url = warc_headers.get("warc-target-uri", "")
-        if not _same_ft_article_url(target_url, canonical_url):
+        policy = _url_policy(canonical_url)
+        if policy is None or not policy.same_article_url(target_url, canonical_url):
             continue
         payload = content[payload_start:payload_end]
         try:
@@ -398,30 +404,13 @@ def _archive_id(value: str) -> str | None:
     return match.group(1) if match else None
 
 
-def _same_ft_article_url(first: str, second: str) -> bool:
-    first_parts = urlsplit(first)
-    second_parts = urlsplit(second)
-    return bool(
-        _is_ft_article_url(first)
-        and _is_ft_article_url(second)
-        and first_parts.path.rstrip("/").casefold()
-        == second_parts.path.rstrip("/").casefold()
-    )
+def _url_policy(value: str) -> GhostarchiveUrlPolicy | None:
+    hooks = source_discovery_for_url(value)
+    return hooks.ghostarchive_policy if hooks is not None else None
 
 
-def _is_ft_article_url(value: str) -> bool:
-    parsed = urlsplit(value)
-    hostname = (parsed.hostname or "").casefold()
-    return bool(
-        parsed.scheme in {"http", "https"}
-        and (hostname == "ft.com" or hostname.endswith(".ft.com"))
-        and re.fullmatch(
-            r"/content/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
-            r"[0-9a-f]{4}-[0-9a-f]{12}/?",
-            parsed.path,
-            flags=re.IGNORECASE,
-        )
-    )
+
+
 
 
 def _optional_int(value: str | None) -> int | None:

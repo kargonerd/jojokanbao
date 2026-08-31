@@ -24,69 +24,82 @@ from jojo_news_archive.models import (
     RawCapture,
 )
 from jojo_news_archive.parsing.parser import parse_article
-from jojo_news_archive.capture.raw import (
-    AP_SYNDICATION_MINIMUM_BODY_CHARACTERS,
+from jojo_news_archive.sources.registry import source_module
+from jojo_news_archive.sources.ap.capture import (
     AP_KNOWN_SYNDICATION_COPIES,
+    AP_SYNDICATION_MINIMUM_BODY_CHARACTERS,
+    _ap_capture_parser_evidence,
+    _ap_syndication_search_urls,
+    ap_syndication_search_url,
+    discover_ap_syndication_candidates,
+)
+from jojo_news_archive.sources.axios.capture import _axios_capture_parser_evidence
+from jojo_news_archive.sources.bloomberg.capture import (
     BLOOMBERG_SYNDICATION_MINIMUM_BODY_CHARACTERS,
-    CAPTURE_POLICY_VERSIONS,
-    COMMON_CRAWL_FALLBACK_PUBLISHERS,
+    bloomberg_syndication_search_url,
+)
+from jojo_news_archive.sources.caixin.capture import _caixin_capture_parser_evidence
+from jojo_news_archive.sources.ft.capture import (
     FT_SYNDICATION_MINIMUM_BODY_CHARACTERS,
-    ManifestItem,
+    _ft_capture_parser_evidence,
+    discover_ft_syndication_candidates,
+    ft_google_news_headline_search_url,
+    ft_google_news_partner_search_url,
+    ft_syndication_broad_title_search_url,
+    ft_syndication_partner_site_search_url,
+    ft_syndication_search_url,
+    ft_syndication_title_search_url,
+    ftchinese_title_search_url,
+)
+from jojo_news_archive.sources.nikkei.capture import (
+    _nikkei_candidate_sort_key,
+    _nikkei_capture_parser_evidence,
+)
+from jojo_news_archive.sources.nyt.capture import (
     NYT_SYNDICATION_MINIMUM_BODY_CHARACTERS,
     NYT_SYNDICATION_SEARCH_ENDPOINT,
-    REUTERS_SYNDICATION_SEARCH_ENDPOINT,
-    ARQUIVO_PT_FALLBACK_PUBLISHERS,
-    WAYBACK_TIMEMAP_ENDPOINT,
-    WSJ_SYNDICATION_MINIMUM_BODY_CHARACTERS,
-    _ap_syndication_search_urls,
-    _ap_capture_parser_evidence,
-    _axios_capture_parser_evidence,
     _capture_nyt_interactive_resources,
-    _caixin_capture_parser_evidence,
+    nyt_headline_wordpress_search_url,
+    nyt_syndication_search_url,
+    nyt_syndication_title_search_url,
+    nyt_trusted_wordpress_search_url,
+)
+from jojo_news_archive.sources.reuters.capture import (
+    discover_reuters_syndication_candidates,
+    reuters_syndication_search_url,
+    reuters_syndication_title_search_url,
+)
+from jojo_news_archive.sources.scmp.capture import _scmp_capture_parser_evidence
+from jojo_news_archive.sources.wsj.capture import (
+    WSJ_SYNDICATION_MINIMUM_BODY_CHARACTERS,
+    _wsj_capture_parser_evidence,
+)
+from jojo_news_archive.capture.raw import (
+    ManifestItem,
+    SYNDICATION_SEARCH_ENDPOINT,
+    WAYBACK_TIMEMAP_ENDPOINT,
     _candidate_rejection_reasons,
     _common_crawl_first_candidate_sort_key,
     _common_crawl_discovery_urls,
     _decode_archived_html_content,
-    _ft_capture_parser_evidence,
     _fetch_usable_candidate,
-    _nikkei_capture_parser_evidence,
-    _scmp_capture_parser_evidence,
-    _wsj_capture_parser_evidence,
     archive_fallback_policy,
     arquivo_pt_cdx_url,
     arquivo_pt_prefix_cdx_url,
-    ap_syndication_search_url,
-    bloomberg_syndication_search_url,
     capture_item,
     capture_summary,
     completed_capture_rejection_reason,
     completed_raw_capture,
     discover_arquivo_pt_candidates,
-    discover_ap_syndication_candidates,
-    discover_ft_syndication_candidates,
-    discover_reuters_syndication_candidates,
     discover_wayback_timemap_candidates,
-    ft_google_news_headline_search_url,
-    ft_google_news_partner_search_url,
-    ftchinese_title_search_url,
-    ft_syndication_broad_title_search_url,
-    ft_syndication_partner_site_search_url,
-    ft_syndication_search_url,
-    ft_syndication_title_search_url,
     initialize_capture_schema,
     lease_pending_captures,
     load_capture_manifest,
     mark_capture_downloading,
-    nyt_headline_wordpress_search_url,
-    nyt_syndication_search_url,
-    nyt_syndication_title_search_url,
-    nyt_trusted_wordpress_search_url,
     pending_captures,
     preindex_arquivo_pt_prefix_candidates,
     record_capture_result,
     release_capture_leases,
-    reuters_syndication_search_url,
-    reuters_syndication_title_search_url,
     reset_completed_capture_for_retry,
     resolved_capture_candidate,
     score_raw_capture,
@@ -106,17 +119,10 @@ def test_candidate_rejection_reasons_explain_wsj_parser_rejection():
     }
 
     reasons = _candidate_rejection_reasons(
-        publisher="wsj",
         status_code=200,
         content=b"<html></html>",
         signals=signals,
-        structured_subscription_article=False,
-        bloomberg_parser_usable=True,
-        ap_parser_usable=True,
-        wsj_parser_usable=False,
-        reuters_parser_usable=True,
-        npr_parser_usable=True,
-        ft_parser_usable=True,
+        source_rejection_reasons=("wsj-parser-unusable",),
     )
 
     assert reasons == (
@@ -136,18 +142,11 @@ def test_candidate_rejection_reasons_preserve_wsj_auth_shell_exception():
         "redirectShell": False,
     }
 
+    signals["allowAuthenticationShell"] = True
     reasons = _candidate_rejection_reasons(
-        publisher="wsj",
         status_code=200,
         content=b"<html></html>",
         signals=signals,
-        structured_subscription_article=False,
-        bloomberg_parser_usable=True,
-        ap_parser_usable=True,
-        wsj_parser_usable=True,
-        reuters_parser_usable=True,
-        npr_parser_usable=True,
-        ft_parser_usable=True,
     )
 
     assert reasons == ()
@@ -165,17 +164,10 @@ def test_candidate_rejection_reasons_explain_npr_parser_rejection():
     }
 
     reasons = _candidate_rejection_reasons(
-        publisher="npr",
         status_code=200,
         content=b"<html></html>",
         signals=signals,
-        structured_subscription_article=False,
-        bloomberg_parser_usable=True,
-        ap_parser_usable=True,
-        wsj_parser_usable=True,
-        reuters_parser_usable=True,
-        npr_parser_usable=False,
-        ft_parser_usable=True,
+        source_rejection_reasons=("npr-parser-unusable",),
     )
 
     assert reasons == ("npr-parser-unusable",)
@@ -393,13 +385,15 @@ def test_caixin_capture_parser_evidence_rejects_incomplete_multipage_gallery():
 
 
 def test_wsj_archive_capture_supports_secondary_archive_fallbacks():
-    assert "wsj" in COMMON_CRAWL_FALLBACK_PUBLISHERS
-    assert "wsj" in ARQUIVO_PT_FALLBACK_PUBLISHERS
+    policy = source_module("wsj")
+    assert policy.common_crawl_fallback
+    assert policy.arquivo_pt_fallback
 
 
 def test_nikkei_archive_capture_supports_secondary_archive_fallbacks():
-    assert "nikkei" in COMMON_CRAWL_FALLBACK_PUBLISHERS
-    assert "nikkei" in ARQUIVO_PT_FALLBACK_PUBLISHERS
+    policy = source_module("nikkei")
+    assert policy.common_crawl_fallback
+    assert policy.arquivo_pt_fallback
 
 
 def test_bloomberg_common_crawl_discovery_prefers_legacy_news_url():
@@ -1828,7 +1822,7 @@ def test_ft_dynamic_syndication_keeps_searching_before_common_crawl(
         )
 
     monkeypatch.setattr(
-        "jojo_news_archive.capture.raw."
+        "jojo_news_archive.sources.ft.capture."
         "discover_ft_syndication_candidates",
         fake_discovery,
     )
@@ -2909,7 +2903,7 @@ def test_capture_policy_upgrade_retries_errors_once(tmp_path: Path):
     ).fetchone()
 
     assert first == ("pending", 0, None)
-    assert stored_version == CAPTURE_POLICY_VERSIONS["ft"]
+    assert stored_version == source_module("ft").capture_policy_version
     assert second == ("error", 2, "current policy failure")
 
 
@@ -4421,7 +4415,7 @@ def test_reuters_capture_falls_back_to_exact_timemap_snapshot(
     ).encode()
     missing = b"<html>Wayback Machine doesn't have that page archived.</html>"
     search_url = (
-        REUTERS_SYNDICATION_SEARCH_ENDPOINT
+        SYNDICATION_SEARCH_ENDPOINT
         + "?p=reactor+uses+fuel+Reuters"
     )
     client = StubArchiveClient(
@@ -5031,8 +5025,6 @@ def test_nikkei_validation_keeps_timemap_and_stages_slow_fallbacks():
 
 
 def test_nikkei_candidate_order_prefers_large_commoncrawl_records():
-    from jojo_news_archive.capture.raw import _nikkei_candidate_sort_key
-
     wayback = CaptureCandidate(
         provider=CaptureProvider.WAYBACK,
         snapshot_url="https://web.archive.org/web/20150101000000id_/"
@@ -5952,7 +5944,7 @@ def test_reuters_capture_falls_back_to_validated_syndicated_html(
         "autos-transportation%2Fboeing-justice-department-seek-"
         "judges-approval-deal-opposed-by-crash-victims-2025-07-03"
     )
-    assert search_url.startswith(REUTERS_SYNDICATION_SEARCH_ENDPOINT)
+    assert search_url.startswith(SYNDICATION_SEARCH_ENDPOINT)
     search_html = f"""
     <html><body><ol id="web"><li><h3>
       <a href="{syndicated_url}">Syndicated copy</a>
@@ -6754,7 +6746,7 @@ def test_ft_syndication_uses_allowed_partner_sitemap(
         }
     )
     monkeypatch.setattr(
-        "jojo_news_archive.capture.raw._ft_known_partner_urls",
+        "jojo_news_archive.sources.ft.capture._ft_known_partner_urls",
         None,
     )
 
@@ -8636,7 +8628,7 @@ def test_stored_axios_visual_redirect_stub_is_requeued(
         raw_html=blob,
     )
     monkeypatch.setattr(
-        "jojo_news_archive.capture.raw._axios_capture_parser_evidence",
+        "jojo_news_archive.sources.axios.capture._axios_capture_parser_evidence",
         lambda *args, **kwargs: (
             False,
             {"axiosCaptureVisualRedirectStub": True},
