@@ -16,6 +16,10 @@ export const DAILY_QUOTES: readonly DailyQuote[] = [
   { text: "踏遍青山人未老，风景这边独好。", source: "毛泽东《清平乐·会昌》" },
   { text: "红军不怕远征难，万水千山只等闲。", source: "毛泽东《七律·长征》" },
   { text: "问苍茫大地，谁主沉浮？", source: "毛泽东《沁园春·长沙》" },
+  { text: "人最宝贵的是生命。生命对于每个人只有一次。", source: "保尔·柯察金《钢铁是怎样炼成的》" },
+  { text: "其实地上本没有路，走的人多了，也便成了路。", source: "鲁迅《故乡》" },
+  { text: "横眉冷对千夫指，俯首甘为孺子牛。", source: "鲁迅《自嘲》" },
+  { text: "不在沉默中爆发，就在沉默中灭亡。", source: "鲁迅《记念刘和珍君》" },
 ] as const;
 
 function shanghaiDayNumber(date: Date): number {
