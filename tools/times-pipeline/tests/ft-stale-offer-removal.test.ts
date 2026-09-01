@@ -432,12 +432,16 @@ describe("FT stale access-offer removal", () => {
     const rawPageObject = `raw/ft/runs/2026/08/31/run-ft-168h/pages/${staleId.slice(3)}/metadata.json`;
     const rawPagePath = path.join(output, ...rawPageObject.split("/"));
     await mkdir(path.dirname(rawPagePath), { recursive: true });
+    await writeFile(path.join(path.dirname(rawPagePath), "original.html.gz"), gzipSync(
+      `<main><div data-access-offer>${CONSUMER_OFFER_BODY}</div></main>`,
+    ));
     await writeFile(path.join(path.dirname(rawPagePath), "rendered.html.gz"), gzipSync(
-      `<main><article><div class="article__content-body">${CONSUMER_OFFER_BODY}</div></article></main>`,
+      "<main><div data-ft-shell></div></main>",
     ));
     await writeFile(rawPagePath, JSON.stringify({
       formatVersion: "jojo-raw-page/1",
       finalUrl: `https://www.ft.com/content/${staleId.slice(3)}`,
+      originalHtml: "original.html.gz",
       renderedHtml: "rendered.html.gz",
     }));
     const { bodyAssessment: _bodyAssessment, ...candidateWithoutAssessment } = failedCandidate(ft, staleId);
