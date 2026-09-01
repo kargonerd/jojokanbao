@@ -8,7 +8,7 @@ import type {
   SourceFetchPolicy,
   UnavailablePageReason,
 } from "../types.js";
-import type { ArticleBodyExtractor } from "../content/body.js";
+import type { ArticleBodyExtractor, OriginalPageRejectionClassifier } from "../content/body.js";
 import type { ArticleImageExtractor } from "../capture/page-images.js";
 import type { CapturedHtmlPage } from "../capture/http.js";
 
@@ -42,6 +42,7 @@ export interface SourceModule {
   fetch?: SourceFetchPolicy;
   capturePage?: (url: string, timeoutSeconds: number) => Promise<CapturedHtmlPage | undefined>;
   extractBody?: ArticleBodyExtractor;
+  classifyOriginalPageRejection?: OriginalPageRejectionClassifier;
   extractImages?: ArticleImageExtractor;
   classifyStaleCanonicalBody?: StaleCanonicalBodyClassifier;
   classifyUnavailable?(

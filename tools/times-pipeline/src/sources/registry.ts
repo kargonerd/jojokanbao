@@ -21,7 +21,7 @@ import { thepaperSource } from "./thepaper/index.js";
 import { xinhuaSource } from "./xinhua/index.js";
 import { zaobaoSource } from "./zaobao/index.js";
 import type { SourceModule, StaleCanonicalBodyClassifier } from "./contracts.js";
-import type { ArticleBodyExtractor } from "../content/body.js";
+import type { ArticleBodyExtractor, OriginalPageRejectionClassifier } from "../content/body.js";
 import type { ArticleImageExtractor } from "../capture/page-images.js";
 import type { CapturedHtmlPage } from "../capture/http.js";
 import type {
@@ -93,6 +93,12 @@ export function sourcePageCapture(
 
 export function sourceBodyExtractor(sourceId: string): ArticleBodyExtractor | undefined {
   return modules.get(sourceId)?.extractBody;
+}
+
+export function sourceOriginalPageRejectionClassifier(
+  sourceId: string,
+): OriginalPageRejectionClassifier | undefined {
+  return modules.get(sourceId)?.classifyOriginalPageRejection;
 }
 
 export function sourceImageExtractor(sourceId: string): ArticleImageExtractor | undefined {

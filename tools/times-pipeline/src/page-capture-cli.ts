@@ -26,7 +26,13 @@ import {
   rotatingSourceProbes,
   untriedProxyArticles,
 } from "./capture/schedule.js";
-import { sourceBodyExtractor, sourceImageExtractor, sourcePageCapture, sourceUnavailablePageReason } from "./sources/registry.js";
+import {
+  sourceBodyExtractor,
+  sourceImageExtractor,
+  sourceOriginalPageRejectionClassifier,
+  sourcePageCapture,
+  sourceUnavailablePageReason,
+} from "./sources/registry.js";
 import type { Candidate, SourceCaptureManifest, SourceConfig, SourceFetchPolicy, UnavailablePageReason } from "./types.js";
 
 interface RawRunManifest {
@@ -121,12 +127,16 @@ async function completeCapture(
 ): Promise<CaptureOutcome> {
   const quality = bodyQuality(article.source);
   const sourceExtractor = sourceBodyExtractor(article.sourceId);
+  const originalPageRejectionClassifier = sourceOriginalPageRejectionClassifier(article.sourceId);
   const selection = selectArticleBody({
     ...(page.renderedHtml ? { capturedPage: { html: page.renderedHtml, pageUrl: page.finalUrl } } : {}),
+    ...(page.originalHtml && originalPageRejectionClassifier
+      ? { originalPage: { html: page.originalHtml, pageUrl: page.finalUrl } }
+      : {}),
     ...(article.candidate.discoveryBody
       ? { discoveryBody: { html: article.candidate.discoveryBody, pageUrl: article.canonicalUrl } }
       : {}),
-  }, article.fetchPolicy, quality, sourceExtractor);
+  }, article.fetchPolicy, quality, sourceExtractor, originalPageRejectionClassifier);
   const hasFullBody = Boolean(selection.body);
   const availabilityInput = {
     title: article.title,

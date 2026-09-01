@@ -5,6 +5,7 @@ import { gunzipSync } from "node:zlib";
 import { mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { sourceOriginalPageRejectionClassifier } from "./sources/registry.js";
 import { TIMES_TRANSLATION_POLICY } from "./translation/gemma.js";
 
 const RAW_RUN_ROOT = "raw/runs";
@@ -317,6 +318,22 @@ export function candidateRawPages(compressed: Uint8Array): Set<string> {
   return objects;
 }
 
+export function rawPageHtmlObjects(
+  metadataObject: string,
+  metadata: { originalHtml?: unknown; renderedHtml?: unknown },
+  includeOriginal: boolean,
+): string[] {
+  const values: string[] = [];
+  const append = (value: unknown, label: "originalHtml" | "renderedHtml"): void => {
+    if (value === null || value === undefined) return;
+    if (typeof value !== "string") throw new Error(`HF Raw page ${label} is invalid: ${metadataObject}`);
+    values.push(safeRawObject(metadataObject, value));
+  };
+  append(metadata.renderedHtml, "renderedHtml");
+  if (includeOriginal) append(metadata.originalHtml, "originalHtml");
+  return values;
+}
+
 function localObjectPath(output: string, objectName: string): string {
   const normalized = objectName.replaceAll("\\", "/");
   if (normalized.startsWith("/") || normalized.split("/").includes("..")) {
@@ -513,19 +530,27 @@ export class HfTimesDataset {
     const rawAssets = new Set<string>();
     for (const bundle of bundles) for (const objectName of bundle.assets) rawAssets.add(objectName);
     await mapLimit([...rawAssets], 8, async (objectName) => this.downloadObject(objectName, latest.revision));
-    const rawPages = new Set<string>();
-    for (const bundle of bundles) for (const objectName of bundle.rawPages) rawPages.add(objectName);
-    const rawPageFileCounts = await mapLimit([...rawPages], 8, async (metadataObject) => {
+    const rawPages = new Map<string, boolean>();
+    for (const bundle of bundles) {
+      const includeOriginal = Boolean(sourceOriginalPageRejectionClassifier(bundle.sourceId));
+      for (const objectName of bundle.rawPages) {
+        rawPages.set(objectName, (rawPages.get(objectName) ?? false) || includeOriginal);
+      }
+    }
+    const rawPageFileCounts = await mapLimit([...rawPages], 8, async ([metadataObject, includeOriginal]) => {
       const metadataFile = await this.downloadObject(metadataObject, latest.revision);
       if (!metadataFile) throw new Error(`HF Raw page metadata is missing: ${metadataObject}`);
-      const metadata = JSON.parse(await readFile(metadataFile, "utf8")) as { renderedHtml?: unknown };
-      if (metadata.renderedHtml === null || metadata.renderedHtml === undefined) return 1;
-      if (typeof metadata.renderedHtml !== "string") throw new Error(`HF Raw page metadata is invalid: ${metadataObject}`);
-      const renderedObject = safeRawObject(metadataObject, metadata.renderedHtml);
-      if (!await this.downloadObject(renderedObject, latest.revision)) {
-        throw new Error(`HF Raw rendered page is missing: ${renderedObject}`);
+      const metadata = JSON.parse(await readFile(metadataFile, "utf8")) as {
+        originalHtml?: unknown;
+        renderedHtml?: unknown;
+      };
+      const htmlObjects = rawPageHtmlObjects(metadataObject, metadata, includeOriginal);
+      for (const htmlObject of htmlObjects) {
+        if (!await this.downloadObject(htmlObject, latest.revision)) {
+          throw new Error(`HF Raw page HTML is missing: ${htmlObject}`);
+        }
       }
-      return 2;
+      return 1 + htmlObjects.length;
     });
     const wanted = new Set<string>();
     for (const bundle of bundles) for (const objectName of canonicalObjects(bundle.sourceId, bundle.dates)) wanted.add(objectName);
