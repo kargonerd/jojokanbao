@@ -14,6 +14,8 @@ describe("search box styles", () => {
     expect(sharedCss).toContain(
       ':where(input:not([type="radio"]):not([type="checkbox"]), select, textarea)',
     );
+    expect(sharedCss).toContain(":where(:focus-visible)");
+    expect(sharedCss).not.toMatch(/^\s*:focus-visible\s*\{/m);
     expect(sharedCss).not.toMatch(/^\s*input:not\(\[type="radio"\]\):not\(\[type="checkbox"\]\),/m);
     expect(shellCss).toMatch(/\.app-search-box input,[^{]*\{[^}]*border:\s*0;/s);
   });

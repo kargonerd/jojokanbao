@@ -16,8 +16,28 @@ describe("dailyQuote", () => {
     expect(DAILY_QUOTES).toContainEqual(next);
   });
 
-  it("uses only sourced quotations by Mao Zedong", () => {
-    expect(DAILY_QUOTES).toHaveLength(12);
-    expect(DAILY_QUOTES.every((quote) => quote.source.startsWith("毛泽东《"))).toBe(true);
+  it("uses only sourced quotations", () => {
+    expect(DAILY_QUOTES).toHaveLength(17);
+    expect(DAILY_QUOTES.every((quote) => quote.source.includes("《"))).toBe(true);
+    expect(DAILY_QUOTES).toContainEqual({
+      text: "人最宝贵的是生命。生命对于每个人只有一次。人的一生应当这样度过：当他回首往事的时候，他不会因为虚度年华而悔恨，也不会因为碌碌无为而羞耻；临终之际，他能够说：我的整个生命和全部精力，都献给了世界上最壮丽的事业——为人类的解放而斗争。",
+      source: "保尔·柯察金《钢铁是怎样炼成的》",
+    });
+    expect(DAILY_QUOTES).toContainEqual({
+      text: "其实地上本没有路，走的人多了，也便成了路。",
+      source: "鲁迅《故乡》",
+    });
+    expect(DAILY_QUOTES).toContainEqual({
+      text: "横眉冷对千夫指，俯首甘为孺子牛。",
+      source: "鲁迅《自嘲》",
+    });
+    expect(DAILY_QUOTES).toContainEqual({
+      text: "不在沉默中爆发，就在沉默中灭亡。",
+      source: "鲁迅《记念刘和珍君》",
+    });
+    expect(DAILY_QUOTES).toContainEqual({
+      text: "愿中国青年都摆脱冷气，只是向上走，不必听自暴自弃者流的话。能做事的做事，能发声的发声。有一分热，发一分光。就令萤火一般，也可以在黑暗里发一点光，不必等候炬火。",
+      source: "鲁迅《热风·随感录四十一》",
+    });
   });
 });

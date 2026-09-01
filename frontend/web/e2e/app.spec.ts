@@ -31,13 +31,17 @@ test.describe("JOJO Web", () => {
     ))).toBe(false);
   });
 
-  test("production CSS keeps component-specific input borders", async ({ page }) => {
+  test("production CSS keeps component-specific input states", async ({ page }) => {
     await page.goto("/");
     const homeSearch = page.getByPlaceholder("搜索书名");
     await expect(homeSearch).toHaveCSS("border-top-width", "0px");
     await expect(homeSearch).toHaveCSS("border-right-width", "0px");
     await expect(homeSearch).toHaveCSS("border-bottom-width", "0px");
     await expect(homeSearch).toHaveCSS("border-left-width", "0px");
+    await homeSearch.click();
+    await expect(homeSearch).toHaveCSS("outline-style", "none");
+    await expect(homeSearch).toHaveCSS("box-shadow", "none");
+    await expect(page.locator(".app-search-box")).toHaveCSS("border-top-color", "rgb(139, 26, 26)");
 
     await page.goto("/account");
     await page.getByRole("button", { name: "登录", exact: true }).click();
