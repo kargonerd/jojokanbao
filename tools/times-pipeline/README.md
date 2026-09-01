@@ -63,8 +63,8 @@ Process 在 `GEMINI_API_KEYS` 或 `GEMINI_API_KEY` 存在时自动翻译本轮�
 - 标题和正文以原始完整 HTML blocks 输入，不拆 text node、不添加 ID、不要求 JSON；仅在约 20,000 源字符处按 block 边界分 chunk；
 - 本地校验 block 顺序、链接及全部 HTML 属性后再回填译文；纯 `b/em/i/strong` 强调差异不阻断文章，模型新增的无属性强调标签会被移除；
 - 默认八路 worker；每个 API 项目、每个模型独立按 28 RPM / 14K TPM 保守限流，Gemini 救援模型额外限制为每项目 5 RPM；请求在项目池中轮询并发，单个项目返回 429 或临时 5xx 时自动尝试下一个项目；
-- 单请求默认最多等待 240 秒，整批最多占用 24 分钟；到达预算会中止在途翻译并将未完成文章留给下轮立即重试，不写失败退避缓存，给 30 分钟工作流保留 Canonical/HF/Delivery 时间；
-- 译文按源标题、正文、语言和翻译策略的 hash 缓存。刷新到同一内容时从 HF Canonical 恢复缓存，不重复请求 API；
+- 单请求默认最多等待 240 秒，整批最多占用 24 分钟；到达预算会中止在途翻译并将未完成文章留给下轮立即重试，不写失败退避缓存，给 30 分钟工作流保留 Process/Delivery 时间；
+- 译文按源标题、正文、语言和翻译策略的 hash 缓存。刷新到同一内容时从 Runtime Process memory 恢复缓存，不重复请求 API；
 - 三个模型都不可用时 fail-open 发布原文，并在 Process report 和 Actions Summary 中列出失败，不阻断新闻发布；
 - Delivery 同时保存原文和 `zh-CN` fragment。中文 Web 默认读取译文对象，译文对象缺失或损坏时回退原文。
 
@@ -96,38 +96,44 @@ node --env-file=.env.local tools/times-pipeline/dist/src/process-cli.js `
 
 ## 存储
 
-Raw 和 Canonical 共用一个私有 HF Dataset：
+实时流水线使用一个私有 HF Storage Bucket。Bucket 目录按用途命名，不暴露 Dataset revision、
+checkpoint 或 canonical snapshot 等内部术语：
 
 ~~~text
-raw/{source}/
-├─ state.json.gz
-├─ assets/{sha256}.{ext}
-└─ runs/YYYY/MM/DD/{RUN_ID}/
-   ├─ manifest.json
-   ├─ discovery.json.gz
-   ├─ candidates.jsonl.gz
-   ├─ network/...
-   └─ pages/{article-key}/
-      ├─ metadata.json
-      ├─ original.html.gz
-      └─ rendered.html.gz
-
-raw/runs/YYYY/MM/DD/{RUN_ID}.json
-
-canonical/{source}/
-├─ dataset.json
-├─ articles/{content-hash}.json.gz
-├─ translations/gemma-news-zh-v2/YYYY/MM/YYYY-MM-DD/{source-hash}.json.gz
-└─ dates/YYYY/MM/YYYY-MM-DD.json.gz
-
-canonical/runs/{RUN_ID}.json
+times/
+├─ capture-memory.tar.gz
+├─ process-memory.json
+├─ pending-jobs.json
+└─ jobs/{GITHUB_RUN_ID}-{GITHUB_RUN_ATTEMPT}/
+   ├─ raw.tar
+   ├─ processed-{sha256}.tar.gz
+   └─ status.json
 ~~~
 
-original.html.gz 是主文档响应，rendered.html.gz 是 BPC/JavaScript 执行后的 DOM。正文图片下载到
-raw/{source}/assets/，按字节 SHA-256 去重。流水线不生成或上传 WARC/WACZ。
+`raw.tar` 保存该轮完整 Raw：发现响应、页面、图片和新的来源状态。`status.json` 是最后上传的完成标记，
+并记录归档及每个成员的大小和 SHA-256；Process 下载后必须逐项验证。job id 使用
+`GITHUB_RUN_ID-GITHUB_RUN_ATTEMPT`，因此 Actions 重跑不会覆盖已有 Raw。Raw 和 marker 落盘后会尽力更新
+`capture-memory`；即使该记忆更新失败，已进入队列的 Raw 仍可处理，只是下一轮可能重复抓取少量文章。
 
-历史归档迁移使用 `hf` CLI 的 `upload-files` / `download-files` 动作和
-`jojo-hf-file-set/1` 精确清单。清单中的本地路径必须位于 `--output` 内，每个对象都校验大小与
+`processed-{sha256}.tar.gz` 是在发布 B2 前固化的不可变 Process 结果，包含最近八天处理闭包和本轮
+`process-result.json`。B2 失败或 runner 中断时，下一轮直接重放这一份结果，不再次调用翻译或解析。
+B2 全部提交并验证后，`process-memory.json` 才指向这个 generation；随后才推进 job 状态。首次没有
+Process memory 时发布会 fail closed，只允许人工指定 job 的一次 `bootstrap=true` 初始化，不能静默冷启动。
+单篇处理异常会把 job 标为
+`partial` 并保留待重试文章；`pending-jobs.json` 是可读的待处理队列，Process 崩溃后 job 仍在队列中，
+后续轮次直接复用 Raw。status marker 是权威来源，队列丢失、损坏或 enqueue 中断时会从所有 marker
+自动重建。抓取失败则由 Capture memory 中的短退避状态在新 job 中重新抓取。
+
+Runtime job 状态只有 `ready`、`partial` 和 `done`。`done` job 保留 14 天；未完成 job 保留 30 天并在
+清理报告中告警。每日 cleanup 默认 dry-run，自动 schedule 显式使用 apply，并且只允许删除
+`times/jobs/{id}` 下经过校验的 Raw、未提交 Process generation 和 status marker；payload 始终先于 marker
+分阶段删除。没有 status 的上传中断残留保留 30 天，当前 `process-memory.json` 指向的 generation 永不作为
+孤儿删除。一次最多处理 100 个 job。
+
+旧 HF Dataset 不再承载实时写入，可作为独立历史归档使用。历史迁移仍使用 `hf` CLI 的
+`upload-files` / `download-files` 动作和 `jojo-hf-file-set/1` 精确清单：
+
+清单中的本地路径必须位于 `--output` 内，每个对象都校验大小与
 SHA-256；这两个动作不会递归扫描整个 Raw 目录。所有 `upload-files` 调用都固定使用 `fail`
 策略，并必须显式传入当前 40 位 `--expected-parent-revision`、单一批次 `--allowed-prefix` 和
 `--existing-policy`；发生并发变更时立即失败，人工取得新 parent 后再重跑。Raw、run bundle
@@ -162,9 +168,12 @@ Delivery 构建会合并旧 index，所以滚动历史不会在下一轮消失�
 
 ## GitHub Actions
 
-- maintenance-times-capture.yml：每十分钟完成发现、URL 去重、页面/图片抓取并原子提交 HF Raw；
-- maintenance-times-process.yml：定时 Capture 成功后立即读取最新完整 Raw，提交 HF Canonical，随后按
-  Asset/Article → 媒体日期 → 媒体 index → 时间线日期 → 时间线 index → catalog 发布 B2。
+- maintenance-times-capture.yml：每十分钟完成发现、URL 去重、页面/图片抓取，上传一个 Runtime job，
+  最后更新 Capture memory；
+- maintenance-times-process.yml：从 status marker 重建 FIFO，读取最早可运行 job 和已提交 Process memory，随后按
+  Asset/Article → 媒体日期 → 媒体 index → 时间线日期 → 时间线 index → catalog 发布 B2；B2 成功后
+  才推进 Process memory 指针和 job 状态；
+- maintenance-times-runtime-cleanup.yml：每日按 14/30 天保留规则清理已完成和 dead-letter job。
 
 手动运行默认 publish=false，只产生短期 artifact。代理订阅只从 Secret 读取；订阅 URL、节点名、
 Cookie、Authorization 和 BPC 内部状态不会进入 Raw、日志或 artifact。

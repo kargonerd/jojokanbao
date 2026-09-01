@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -34,8 +35,9 @@ describe("news Delivery writer", () => {
     const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "jojo-news-delivery-workspace-"));
     const deliveryRoot = await mkdtemp(path.join(os.tmpdir(), "jojo-news-delivery-output-"));
     const imageObject = "raw/example/assets/image.jpg";
+    const imageBytes = Buffer.from("image-bytes");
     await mkdir(path.dirname(path.join(workspaceRoot, ...imageObject.split("/"))), { recursive: true });
-    await writeFile(path.join(workspaceRoot, ...imageObject.split("/")), Buffer.from("image-bytes"));
+    await writeFile(path.join(workspaceRoot, ...imageObject.split("/")), imageBytes);
     const canonical: CanonicalArticle = {
       formatVersion: "jojo-news-article/2",
       articleId: "example:full",
@@ -63,7 +65,8 @@ describe("news Delivery writer", () => {
       },
       assets: [{
         id: "asset:image", type: "image", role: "lead", sourceUrl: "https://example.test/image.jpg",
-        rawObject: imageObject, mediaType: "image/jpeg", size: 11, sha256: "image", alt: "Lead image",
+        rawObject: imageObject, mediaType: "image/jpeg", size: imageBytes.byteLength,
+        sha256: createHash("sha256").update(imageBytes).digest("hex"), alt: "Lead image",
         presentation: { type: "carousel", id: "primary-gallery", order: 0, total: 1 },
       }],
       contentStatus: "full",

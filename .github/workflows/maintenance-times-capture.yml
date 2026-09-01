@@ -1,4 +1,4 @@
-name: Maintenance · Times capture to HF Raw
+name: Maintenance · Times Capture
 run-name: >-
   ${{ inputs.automatic && 'Times capture [cloudflare-cron]' || 'Times capture [manual]' }}
 
@@ -26,7 +26,7 @@ on:
         default: "12"
         required: true
       publish:
-        description: Commit Raw to the configured HF Dataset
+        description: Publish the captured job to the Runtime Bucket
         type: boolean
         default: false
         required: true
@@ -35,21 +35,22 @@ permissions:
   contents: read
 
 concurrency:
-  group: times-hf-dataset-writer
+  group: times-runtime-writer
   cancel-in-progress: false
 
 jobs:
   capture:
     runs-on: ubuntu-latest
     environment: maintenance
-    timeout-minutes: 25
+    timeout-minutes: 35
     env:
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      HF_TIMES_DATASET_REPO: ${{ secrets.HF_TIMES_DATASET_REPO }}
+      HF_TOKEN: ${{ secrets.HF_TIMES_RUNTIME_TOKEN }}
+      HF_TIMES_RUNTIME_BUCKET: ${{ vars.HF_TIMES_RUNTIME_BUCKET || secrets.HF_TIMES_RUNTIME_BUCKET }}
       TIMES_DISCOVERY_HOURS: ${{ inputs.automatic && '24' || inputs.since_hours || '24' }}
       TIMES_PROCESS_WINDOW_HOURS: ${{ inputs.automatic && '1' || inputs.since_hours || '24' }}
       TIMES_SOURCES: ${{ inputs.sources || '' }}
       TIMES_PUBLISH: ${{ inputs.automatic || inputs.publish }}
+      TIMES_RUNTIME_JOB_ID: ${{ format('{0}-{1}', github.run_id, github.run_attempt) }}
       TIMES_PROXY_ROTATION_ATTEMPTS: ${{ inputs.automatic && '12' || inputs.proxy_rotation_attempts || '12' }}
       JOJO_TIMES_PROXY_URI: ${{ secrets.JOJO_TIMES_PROXY_URI }}
       JOJO_TIMES_PROXY_SUBSCRIPTION: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION }}
@@ -84,11 +85,11 @@ jobs:
           node-version: "24.15.0"
           cache: pnpm
 
-      - name: Validate HF configuration
+      - name: Validate Runtime Bucket configuration
         if: env.TIMES_PUBLISH == 'true'
         run: |
           test -n "$HF_TOKEN" || (echo "HF_TOKEN is not configured" >&2 && exit 1)
-          test -n "$HF_TIMES_DATASET_REPO" || (echo "HF_TIMES_DATASET_REPO is not configured" >&2 && exit 1)
+          test -n "$HF_TIMES_RUNTIME_BUCKET" || (echo "HF_TIMES_RUNTIME_BUCKET is not configured" >&2 && exit 1)
 
       - name: Install locked pipeline dependencies
         run: pnpm install --frozen-lockfile
@@ -99,14 +100,15 @@ jobs:
           pnpm --filter @jojo/times-pipeline test
           pnpm --filter @jojo/times-pipeline build
 
-      - name: Restore per-source capture state from HF
+      - name: Restore Capture memory
+        id: capture_memory_restore
         if: env.TIMES_PUBLISH == 'true'
+        continue-on-error: true
         run: |
-          node tools/times-pipeline/dist/src/hf-cli.js \
-            --action restore-state \
-            --config tools/times-pipeline/sources.v2.json \
-            --repo "$HF_TIMES_DATASET_REPO" \
-            --config tools/times-pipeline/sources.v2.json \
+          node tools/times-pipeline/dist/src/runtime-cli.js \
+            --action restore-memory \
+            --kind capture \
+            --bucket "$HF_TIMES_RUNTIME_BUCKET" \
             --output "$RUNNER_TEMP/jojo-times"
 
       - name: Start pinned Mihomo for a configured subscription
@@ -249,14 +251,31 @@ jobs:
           xvfb-run --server-num=99 --server-args='-screen 0 1440x1200x24 -ac -nolisten tcp' \
             node tools/times-pipeline/dist/src/page-capture-cli.js "${args[@]}"
 
-      - name: Commit Raw as one HF Dataset revision
+      - name: Publish durable Runtime job
         if: env.TIMES_PUBLISH == 'true'
         run: |
-          node tools/times-pipeline/dist/src/hf-cli.js \
-            --action upload-raw \
-            --repo "$HF_TIMES_DATASET_REPO" \
+          node tools/times-pipeline/dist/src/runtime-cli.js \
+            --action publish-job \
+            --bucket "$HF_TIMES_RUNTIME_BUCKET" \
             --output "$RUNNER_TEMP/jojo-times" \
-            --run-id "$(node -p 'require(process.env.RUNNER_TEMP + "/capture-result.json").runId')"
+            --work-directory "$RUNNER_TEMP/runtime" \
+            --job-id "$TIMES_RUNTIME_JOB_ID" \
+            --run-manifest "$TIMES_RUN_MANIFEST" \
+            > "$RUNNER_TEMP/runtime-job-result.json"
+
+      - name: Save Capture memory
+        id: capture_memory
+        if: env.TIMES_PUBLISH == 'true'
+        continue-on-error: true
+        run: |
+          node tools/times-pipeline/dist/src/runtime-cli.js \
+            --action publish-memory \
+            --kind capture \
+            --bucket "$HF_TIMES_RUNTIME_BUCKET" \
+            --output "$RUNNER_TEMP/jojo-times" \
+            --work-directory "$RUNNER_TEMP/runtime" \
+            --job-id "$TIMES_RUNTIME_JOB_ID" \
+            > "$RUNNER_TEMP/capture-memory-result.json"
 
       - name: Upload dry-run Raw artifact
         if: env.TIMES_PUBLISH != 'true'
@@ -272,6 +291,9 @@ jobs:
 
       - name: Publish capture summary
         if: always()
+        env:
+          CAPTURE_MEMORY_OUTCOME: ${{ steps.capture_memory.outcome }}
+          CAPTURE_MEMORY_RESTORE_OUTCOME: ${{ steps.capture_memory_restore.outcome }}
         run: |
           node - <<'NODE' | tee -a "$GITHUB_STEP_SUMMARY"
           const fs = require("node:fs");
@@ -298,7 +320,13 @@ jobs:
             console.log(`- Recovery candidates: ${pages.recoveryCandidates || 0}`);
           }
           console.log(`- Errors: ${rows.filter((row) => row.status === "error").length}`);
-          console.log(`- Published to HF: ${process.env.TIMES_PUBLISH === "true" ? "yes" : "no (artifact only)"}`);
+          console.log(`- Runtime job: ${process.env.TIMES_PUBLISH === "true" ? `\`${process.env.TIMES_RUNTIME_JOB_ID}\`` : "no (artifact only)"}`);
+          if (process.env.CAPTURE_MEMORY_OUTCOME === "failure") {
+            console.log("- Warning: Capture memory could not be updated; the durable Runtime job can still be processed, and a later Capture may refetch some articles.");
+          }
+          if (process.env.CAPTURE_MEMORY_RESTORE_OUTCOME === "failure") {
+            console.log("- Warning: Capture memory could not be restored; this run rebuilt state from publisher discovery and may refetch recent articles.");
+          }
           if (pages) {
             console.log(`- Page capture: ${pages.captured}/${pages.planned} full pages, ${pages.failed} failures`);
             console.log(`- Excluded: ${pages.skipped} non-text media, ${pages.hardPaywall} hard paywall`);

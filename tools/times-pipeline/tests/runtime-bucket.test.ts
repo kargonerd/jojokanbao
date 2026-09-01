@@ -1,0 +1,590 @@
+import { createHash } from "node:crypto";
+import { gzipSync } from "node:zlib";
+import { link, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createArchive, describeFiles, extractVerifiedArchive } from "../src/runtime-bucket/archive.js";
+import { HfRuntimeBucket } from "../src/runtime-bucket/store.js";
+import {
+  publishRuntimeJob,
+  publishRuntimeJobStatus,
+  readRuntimeJob,
+  restoreRuntimeJob,
+  statusAfterSuccessfulDelivery,
+  statusAfterRuntimeFailure,
+} from "../src/runtime-bucket/jobs.js";
+import { publishRuntimeMemory, restoreRuntimeMemory } from "../src/runtime-bucket/memory.js";
+import {
+  PROCESS_RESULT,
+  assertRuntimeProcessGenerationUncommitted,
+  promoteRuntimeProcess,
+  restoreRuntimeProcess,
+  stageRuntimeProcess,
+} from "../src/runtime-bucket/process-generation.js";
+import { enqueueRuntimeJob, selectRuntimeJob, updateRuntimeQueueAfterDelivery } from "../src/runtime-bucket/queue.js";
+import {
+  PROCESS_MEMORY_OBJECT,
+  type RuntimeJobStatus,
+  type RuntimeObjectInfo,
+  type RuntimeObjectStore,
+} from "../src/runtime-bucket/types.js";
+
+const hfHub = vi.hoisted(() => ({
+  deleteFiles: vi.fn(),
+  downloadFile: vi.fn(),
+  listFiles: vi.fn(),
+  pathsInfo: vi.fn(),
+  uploadFiles: vi.fn(),
+}));
+
+vi.mock("@huggingface/hub", () => hfHub);
+
+class MemoryStore implements RuntimeObjectStore {
+  readonly objects = new Map<string, Uint8Array>();
+  readonly uploads: string[] = [];
+  readonly failedUploads = new Set<string>();
+  readonly failedDeletes = new Set<string>();
+
+  async upload(objectName: string, localFile: string): Promise<void> {
+    if (this.failedUploads.has(objectName)) throw new Error(`injected upload failure: ${objectName}`);
+    this.objects.set(objectName, await readFile(localFile));
+    this.uploads.push(objectName);
+  }
+
+  async download(objectName: string, localFile: string): Promise<boolean> {
+    const body = this.objects.get(objectName);
+    if (!body) return false;
+    await mkdir(path.dirname(localFile), { recursive: true });
+    await writeFile(localFile, body);
+    return true;
+  }
+
+  async readText(objectName: string): Promise<string | null> {
+    const body = this.objects.get(objectName);
+    return body ? Buffer.from(body).toString("utf8") : null;
+  }
+
+  async info(objectName: string): Promise<RuntimeObjectInfo | null> {
+    const body = this.objects.get(objectName);
+    return body ? { objectName, size: body.byteLength } : null;
+  }
+
+  async list(prefix: string): Promise<RuntimeObjectInfo[]> {
+    return [...this.objects].filter(([objectName]) => objectName.startsWith(prefix))
+      .map(([objectName, body]) => ({ objectName, size: body.byteLength }));
+  }
+
+  async delete(objectNames: readonly string[]): Promise<void> {
+    for (const objectName of objectNames) {
+      if (this.failedDeletes.has(objectName)) throw new Error(`injected delete failure: ${objectName}`);
+      this.objects.delete(objectName);
+    }
+  }
+}
+
+const roots: string[] = [];
+
+async function temporaryRoot(): Promise<string> {
+  const root = await mkdtemp(path.join(tmpdir(), "jojo-runtime-test-"));
+  roots.push(root);
+  return root;
+}
+
+afterEach(async () => {
+  vi.clearAllMocks();
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+async function rawFixture(root: string): Promise<string> {
+  const runId = "20260901T100000000Z-42";
+  const sourceRoot = path.join(root, "raw", "ap", "runs", "2026", "09", "01", runId);
+  await mkdir(sourceRoot, { recursive: true });
+  await writeFile(path.join(sourceRoot, "candidates.jsonl.gz"), gzipSync([
+    JSON.stringify({ articleId: "ap:one", sourceId: "ap" }),
+    JSON.stringify({ articleId: "ap:two", sourceId: "ap" }),
+    "",
+  ].join("\n")));
+  const sourceManifest = path.relative(root, path.join(sourceRoot, "manifest.json")).split(path.sep).join("/");
+  await writeFile(path.join(sourceRoot, "manifest.json"), `${JSON.stringify({ runId, sourceId: "ap" })}\n`);
+  await mkdir(path.join(root, "raw", "ap"), { recursive: true });
+  await writeFile(path.join(root, "raw", "ap", "state.json.gz"), gzipSync(JSON.stringify({ articles: {} })));
+  const runManifest = path.join(root, "raw", "runs", "2026", "09", "01", `${runId}.json`);
+  await mkdir(path.dirname(runManifest), { recursive: true });
+  await writeFile(runManifest, `${JSON.stringify({
+    runId,
+    complete: true,
+    sources: [{ sourceId: "ap", status: "ok", output: { manifest: sourceManifest } }],
+  })}\n`);
+  return runManifest;
+}
+
+describe("Runtime archive transport", () => {
+  it("round-trips an exact file set and rejects unexpected archive entries", async () => {
+    const source = await temporaryRoot();
+    const output = await temporaryRoot();
+    await mkdir(path.join(source, "raw", "ap"), { recursive: true });
+    await writeFile(path.join(source, "raw", "ap", "one.txt"), "one");
+    const files = await describeFiles(source);
+    const archive = await createArchive(source, files, path.join(source, "job.tar"), false);
+    await extractVerifiedArchive(archive.file, output, files);
+    expect(await readFile(path.join(output, "raw", "ap", "one.txt"), "utf8")).toBe("one");
+
+    await expect(extractVerifiedArchive(archive.file, output, [{
+      path: "raw/ap/other.txt",
+      size: 3,
+      sha256: createHash("sha256").update("one").digest("hex"),
+    }])).rejects.toThrow("unexpected file");
+  });
+
+  it("rejects hard-linked producer files", async () => {
+    const source = await temporaryRoot();
+    await writeFile(path.join(source, "original.txt"), "same inode");
+    await link(path.join(source, "original.txt"), path.join(source, "alias.txt"));
+    await expect(describeFiles(source)).rejects.toThrow("hard-linked");
+  });
+
+  it("enforces entry-count, per-file, and expanded-size limits before extraction", async () => {
+    const source = await temporaryRoot();
+    const output = await temporaryRoot();
+    await writeFile(path.join(source, "one.txt"), "one");
+    await writeFile(path.join(source, "two.txt"), "two");
+    const files = await describeFiles(source);
+    const archive = await createArchive(source, files, path.join(source, "limited.tar"), false);
+    const firstFile = files[0];
+    if (!firstFile) throw new Error("missing archive test fixture");
+
+    await expect(extractVerifiedArchive(archive.file, output, [firstFile], { maxEntries: 1 }))
+      .rejects.toThrow("more than 1 entries");
+    await expect(extractVerifiedArchive(archive.file, output, files, { maxEntryBytes: 2 }))
+      .rejects.toThrow("exceeds 2 bytes");
+    await expect(extractVerifiedArchive(archive.file, output, files, { maxExpandedBytes: 5 }))
+      .rejects.toThrow("beyond 5 bytes");
+    await expect(stat(path.join(output, "one.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+});
+
+describe("Runtime Bucket reads", () => {
+  it("caps declared and streamed bytes for downloads and text", async () => {
+    const root = await temporaryRoot();
+    const bucket = new HfRuntimeBucket("jojo/runtime", "token");
+    hfHub.downloadFile.mockResolvedValueOnce(new Blob(["four"]));
+    await expect(bucket.download("times/object.bin", path.join(root, "object.bin"), { maxBytes: 3 }))
+      .rejects.toThrow("3-byte download limit");
+
+    hfHub.downloadFile.mockResolvedValueOnce({
+      size: 2,
+      stream: () => new Blob(["four"]).stream(),
+    });
+    await expect(bucket.download("times/changed.bin", path.join(root, "changed.bin"), { maxBytes: 3 }))
+      .rejects.toThrow("while streaming");
+
+    hfHub.downloadFile.mockResolvedValueOnce(new Blob(["four"]));
+    await expect(bucket.readText("times/status.json", { maxBytes: 3 }))
+      .rejects.toThrow("3-byte download limit");
+    await expect(stat(path.join(root, "object.bin"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(stat(path.join(root, "changed.bin"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+});
+
+describe("Runtime jobs", () => {
+  it("publishes Raw before the ready marker, restores exact bytes, and preserves retryable articles", async () => {
+    const output = await temporaryRoot();
+    const restored = await temporaryRoot();
+    const work = await temporaryRoot();
+    const runManifest = await rawFixture(output);
+    const store = new MemoryStore();
+    const status = await publishRuntimeJob({
+      store,
+      output,
+      runManifest,
+      jobId: "42",
+      workDirectory: work,
+      now: new Date("2026-09-01T10:01:00.000Z"),
+    });
+    expect(store.uploads).toEqual(["times/jobs/42/raw.tar", "times/jobs/42/status.json"]);
+    expect(status.state).toBe("ready");
+    expect(status.articles.pending).toHaveLength(2);
+
+    const downloaded = await restoreRuntimeJob({ store, output: restored, jobId: "42", workDirectory: work });
+    expect(downloaded.runId).toBe("20260901T100000000Z-42");
+    expect(await stat(path.join(restored, ...downloaded.runManifest.split("/")))).toBeTruthy();
+
+    const partial = statusAfterSuccessfulDelivery(status, {
+      sources: [{
+        sourceId: "ap",
+        articles: [{ articleId: "ap:one" }],
+        unchangedArticles: [],
+        skippedArticles: [],
+        processingFailures: [{ articleId: "ap:two", error: "publisher parser crashed" }],
+      }],
+    }, new Date("2026-09-01T10:05:00.000Z"));
+    expect(partial).toMatchObject({
+      state: "partial",
+      attempts: 1,
+      articles: { total: 2, completed: 1, excluded: 0, pending: [{ sourceId: "ap", articleId: "ap:two" }] },
+    });
+    await publishRuntimeJobStatus({ store, status: partial, workDirectory: work });
+    expect((await readRuntimeJob(store, "42"))?.state).toBe("partial");
+
+    const done = statusAfterSuccessfulDelivery(partial, {
+      sources: [{ sourceId: "ap", articles: [{ articleId: "ap:two" }], unchangedArticles: [], skippedArticles: [], processingFailures: [] }],
+    });
+    expect(done).toMatchObject({ state: "done", attempts: 2, articles: { total: 2, completed: 2, excluded: 0, pending: [] } });
+  });
+
+  it("detects a corrupted Raw archive before extraction", async () => {
+    const output = await temporaryRoot();
+    const restored = await temporaryRoot();
+    const work = await temporaryRoot();
+    const store = new MemoryStore();
+    await publishRuntimeJob({ store, output, runManifest: await rawFixture(output), jobId: "43", workDirectory: work });
+    store.objects.set("times/jobs/43/raw.tar", Buffer.from("corrupt"));
+    await expect(restoreRuntimeJob({ store, output: restored, jobId: "43", workDirectory: work }))
+      .rejects.toThrow(/size mismatch|SHA-256 mismatch/u);
+  });
+
+  it("does not overwrite an immutable job and accepts only an exact initial retry", async () => {
+    const output = await temporaryRoot();
+    const work = await temporaryRoot();
+    const store = new MemoryStore();
+    const runManifest = await rawFixture(output);
+    const first = await publishRuntimeJob({ store, output, runManifest, jobId: "immutable", workDirectory: work });
+    const exact = await publishRuntimeJob({ store, output, runManifest, jobId: "immutable", workDirectory: work });
+    expect(exact.raw.sha256).toBe(first.raw.sha256);
+
+    await writeFile(path.join(output, "raw", "ap", "state.json.gz"), gzipSync(JSON.stringify({ changed: true })));
+    await expect(publishRuntimeJob({ store, output, runManifest, jobId: "immutable", workDirectory: work }))
+      .rejects.toThrow("different or advanced state");
+  });
+
+  it("keeps unfinished jobs in a durable queue and backs off partial retries", async () => {
+    const output = await temporaryRoot();
+    const work = await temporaryRoot();
+    const store = new MemoryStore();
+    const runManifest = await rawFixture(output);
+    const first = await publishRuntimeJob({
+      store, output, runManifest, jobId: "queue-1", workDirectory: work,
+      now: new Date("2026-09-01T10:00:00.000Z"),
+    });
+    await enqueueRuntimeJob({ store, status: first, workDirectory: work, now: new Date("2026-09-01T10:00:01.000Z") });
+    const partial = statusAfterSuccessfulDelivery(first, {
+      sources: [{
+        sourceId: "ap", articles: [{ articleId: "ap:one" }], unchangedArticles: [], skippedArticles: [],
+        processingFailures: [{ articleId: "ap:two", error: "parser bug" }],
+      }],
+    }, new Date("2026-09-01T10:05:00.000Z"));
+    await publishRuntimeJobStatus({ store, status: partial, workDirectory: work });
+    await updateRuntimeQueueAfterDelivery({ store, status: partial, workDirectory: work, now: new Date("2026-09-01T10:05:00.000Z") });
+
+    expect(await selectRuntimeJob({ store, workDirectory: work, now: new Date("2026-09-01T10:10:00.000Z") })).toBeNull();
+    expect((await selectRuntimeJob({ store, workDirectory: work, now: new Date("2026-09-01T10:15:00.000Z") }))?.jobId)
+      .toBe("queue-1");
+
+    const done = statusAfterSuccessfulDelivery(partial, {
+      sources: [{
+        sourceId: "ap", articles: [{ articleId: "ap:two" }], unchangedArticles: [], skippedArticles: [], processingFailures: [],
+      }],
+    }, new Date("2026-09-01T10:16:00.000Z"));
+    await publishRuntimeJobStatus({ store, status: done, workDirectory: work });
+    await updateRuntimeQueueAfterDelivery({ store, status: done, workDirectory: work, now: new Date("2026-09-01T10:16:00.000Z") });
+    expect(await selectRuntimeJob({ store, workDirectory: work, now: new Date("2026-09-01T10:30:00.000Z") })).toBeNull();
+  });
+
+  it("rebuilds a missing or corrupt queue from authoritative status markers", async () => {
+    const output = await temporaryRoot();
+    const work = await temporaryRoot();
+    const store = new MemoryStore();
+    const status = await publishRuntimeJob({
+      store, output, runManifest: await rawFixture(output), jobId: "orphan-ready", workDirectory: work,
+    });
+    expect((await selectRuntimeJob({ store, workDirectory: work }))?.jobId).toBe(status.jobId);
+    store.objects.set("times/pending-jobs.json", Buffer.from("not-json"));
+    expect((await selectRuntimeJob({ store, workDirectory: work }))?.jobId).toBe(status.jobId);
+    expect(JSON.parse(Buffer.from(store.objects.get("times/pending-jobs.json")!).toString("utf8")).jobs)
+      .toEqual([expect.objectContaining({ jobId: "orphan-ready" })]);
+  });
+
+  it("backs off a whole-job Runtime failure so newer ready work can continue", async () => {
+    const output = await temporaryRoot();
+    const work = await temporaryRoot();
+    const store = new MemoryStore();
+    const failed = await publishRuntimeJob({
+      store, output, runManifest: await rawFixture(output), jobId: "poison", workDirectory: work,
+      now: new Date("2026-09-01T10:00:00.000Z"),
+    });
+    await enqueueRuntimeJob({ store, status: failed, workDirectory: work });
+    const deferred = statusAfterRuntimeFailure(failed, "raw hash mismatch", new Date("2026-09-01T10:01:00.000Z"));
+    await publishRuntimeJobStatus({ store, status: deferred, workDirectory: work });
+    await updateRuntimeQueueAfterDelivery({ store, status: deferred, workDirectory: work });
+
+    const newerOutput = await temporaryRoot();
+    const newer = await publishRuntimeJob({
+      store, output: newerOutput, runManifest: await rawFixture(newerOutput), jobId: "newer", workDirectory: work,
+      now: new Date("2026-09-01T10:02:00.000Z"),
+    });
+    await enqueueRuntimeJob({ store, status: newer, workDirectory: work });
+    expect((await selectRuntimeJob({ store, workDirectory: work, now: new Date("2026-09-01T10:05:00.000Z") }))?.jobId)
+      .toBe("newer");
+  });
+
+  it("keeps one staged Process transaction ahead of partial and exact selections", async () => {
+    const work = await temporaryRoot();
+    const store = new MemoryStore();
+    const stagedOutput = await temporaryRoot();
+    const partialOutput = await temporaryRoot();
+    const stagedBase = await publishRuntimeJob({
+      store,
+      output: stagedOutput,
+      runManifest: await rawFixture(stagedOutput),
+      jobId: "staged-head",
+      workDirectory: work,
+      now: new Date("2026-09-01T10:00:00.000Z"),
+    });
+    const partialBase = await publishRuntimeJob({
+      store,
+      output: partialOutput,
+      runManifest: await rawFixture(partialOutput),
+      jobId: "partial-other",
+      workDirectory: work,
+      now: new Date("2026-09-01T10:01:00.000Z"),
+    });
+    const withStagedProcess = (status: RuntimeJobStatus): RuntimeJobStatus => ({
+      ...status,
+      stagedProcess: {
+        objectName: `times/jobs/${status.jobId}/processed-${"a".repeat(64)}.tar.gz`,
+        createdAt: "2026-09-01T10:02:00.000Z",
+        size: 1,
+        sha256: "a".repeat(64),
+        files: [
+          { path: "runtime/memory.json", size: 1, sha256: "b".repeat(64) },
+          { path: "runtime/process-result.json", size: 1, sha256: "c".repeat(64) },
+        ],
+      },
+    });
+    const staged = withStagedProcess(stagedBase);
+    const partial = statusAfterRuntimeFailure(partialBase, "retry later", new Date("2026-09-01T10:02:00.000Z"));
+    await publishRuntimeJobStatus({ store, status: staged, workDirectory: work });
+    await publishRuntimeJobStatus({ store, status: partial, workDirectory: work });
+    await enqueueRuntimeJob({ store, status: staged, workDirectory: work });
+    await enqueueRuntimeJob({ store, status: partial, workDirectory: work });
+
+    expect((await selectRuntimeJob({ store, workDirectory: work, now: new Date("2026-09-01T10:30:00.000Z") }))?.jobId)
+      .toBe("staged-head");
+    await expect(selectRuntimeJob({
+      store,
+      workDirectory: work,
+      preferredJobId: "partial-other",
+      exactPreferred: true,
+    })).rejects.toThrow("cannot bypass staged Process job staged-head");
+    expect((await selectRuntimeJob({
+      store,
+      workDirectory: work,
+      preferredJobId: "staged-head",
+      exactPreferred: true,
+    }))?.jobId).toBe("staged-head");
+
+    await publishRuntimeJobStatus({ store, status: withStagedProcess(partial), workDirectory: work });
+    await expect(selectRuntimeJob({ store, workDirectory: work }))
+      .rejects.toThrow("multiple staged Process jobs");
+  });
+});
+
+describe("Runtime memories", () => {
+  it("restores capture memory without carrying run payloads", async () => {
+    const output = await temporaryRoot();
+    const restored = await temporaryRoot();
+    const work = await temporaryRoot();
+    const store = new MemoryStore();
+    await rawFixture(output);
+    const published = await publishRuntimeMemory({
+      store,
+      output,
+      workDirectory: work,
+      kind: "capture",
+      basedOnJobId: "44",
+      now: new Date("2026-09-01T10:00:00.000Z"),
+    });
+    expect(published.files).toBe(1);
+    const result = await restoreRuntimeMemory({ store, output: restored, workDirectory: work, kind: "capture" });
+    expect(result).toMatchObject({ restored: true, basedOnJobId: "44", files: 1 });
+    expect(await stat(path.join(restored, "raw", "ap", "state.json.gz"))).toBeTruthy();
+    await expect(stat(path.join(restored, "raw", "runs"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("rejects an over-budget memory archive before unpacking", async () => {
+    const output = await temporaryRoot();
+    const restored = await temporaryRoot();
+    const work = await temporaryRoot();
+    const store = new MemoryStore();
+    await rawFixture(output);
+    await publishRuntimeMemory({
+      store,
+      output,
+      workDirectory: work,
+      kind: "capture",
+      basedOnJobId: "memory-limit",
+    });
+    await expect(restoreRuntimeMemory({
+      store,
+      output: restored,
+      workDirectory: work,
+      kind: "capture",
+      archiveLimits: { maxEntries: 1 },
+    })).rejects.toThrow("more than 1 entries");
+    await expect(stat(path.join(restored, "raw", "ap", "state.json.gz"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("stages an immutable Process generation and promotes only its small committed pointer", async () => {
+    const output = await temporaryRoot();
+    const restored = await temporaryRoot();
+    const work = await temporaryRoot();
+    const store = new MemoryStore();
+    const ready = await publishRuntimeJob({
+      store,
+      output,
+      runManifest: await rawFixture(output),
+      jobId: "45",
+      workDirectory: work,
+      now: new Date("2026-09-01T10:00:00.000Z"),
+    });
+    const assetObject = "raw/ap/assets/image.jpg";
+    const articleObject = `canonical/ap/articles/${"a".repeat(64)}.json.gz`;
+    const dateObject = "canonical/ap/dates/2026/09/2026-09-01.json.gz";
+    for (const objectName of [assetObject, articleObject, dateObject, "canonical/ap/dataset.json"]) {
+      await mkdir(path.dirname(path.join(output, ...objectName.split("/"))), { recursive: true });
+    }
+    await writeFile(path.join(output, ...assetObject.split("/")), "image");
+    await writeFile(path.join(output, ...articleObject.split("/")), gzipSync(JSON.stringify({ assets: [{ rawObject: assetObject }] })));
+    await writeFile(path.join(output, ...dateObject.split("/")), gzipSync(JSON.stringify({ articles: [{ object: articleObject }] })));
+    await writeFile(path.join(output, "canonical", "ap", "dataset.json"), "{}\n");
+    await mkdir(path.join(output, "canonical", "ap", "dates", "2026", "08"), { recursive: true });
+    await writeFile(path.join(output, "canonical", "ap", "dates", "2026", "08", "2026-08-01.json.gz"), gzipSync(JSON.stringify({ articles: [] })));
+    const processResult = path.join(work, "process-result.json");
+    await writeFile(processResult, `${JSON.stringify({
+      sources: [{
+        sourceId: "ap",
+        articles: [{ articleId: "ap:one" }, { articleId: "ap:two" }],
+        unchangedArticles: [],
+        skippedArticles: [],
+        processingFailures: [],
+      }],
+    })}\n`);
+
+    const staged = await stageRuntimeProcess({
+      store,
+      output,
+      workDirectory: work,
+      status: ready,
+      processResultFile: processResult,
+      now: new Date("2026-09-01T12:00:00.000Z"),
+      retentionDays: 8,
+    });
+    expect(staged.stagedProcess?.files.map((file) => file.path)).toContain(PROCESS_RESULT);
+    expect(statusAfterRuntimeFailure(staged, "B2 temporarily unavailable").state).toBe("ready");
+    await publishRuntimeJobStatus({ store, status: staged, workDirectory: work });
+    const replay = await restoreRuntimeProcess({ store, output: restored, workDirectory: work, status: staged });
+    expect(replay).toMatchObject({ restored: true, replay: true, basedOnJobId: "45" });
+    expect(await readFile(path.join(restored, ...assetObject.split("/")), "utf8")).toBe("image");
+    await expect(stat(path.join(restored, "canonical", "ap", "dates", "2026", "08", "2026-08-01.json.gz")))
+      .rejects.toMatchObject({ code: "ENOENT" });
+    await promoteRuntimeProcess({ store, status: staged, workDirectory: work, now: new Date("2026-09-01T12:01:00.000Z") });
+
+    const nextOutput = await temporaryRoot();
+    const next = await publishRuntimeJob({
+      store,
+      output: nextOutput,
+      runManifest: await rawFixture(nextOutput),
+      jobId: "46",
+      workDirectory: work,
+    });
+    const committed = await restoreRuntimeProcess({ store, output: nextOutput, workDirectory: work, status: next });
+    expect(committed).toMatchObject({ restored: true, replay: false, basedOnJobId: "45" });
+  });
+
+  it("never overwrites the committed generation during a partial-job retry", async () => {
+    const output = await temporaryRoot();
+    const work = await temporaryRoot();
+    const store = new MemoryStore();
+    const ready = await publishRuntimeJob({
+      store,
+      output,
+      runManifest: await rawFixture(output),
+      jobId: "partial-generation",
+      workDirectory: work,
+      now: new Date("2026-09-01T10:00:00.000Z"),
+    });
+    const dataset = path.join(output, "canonical", "ap", "dataset.json");
+    await mkdir(path.dirname(dataset), { recursive: true });
+    await writeFile(dataset, "{\"revision\":1}\n");
+    const processResultFile = path.join(work, "partial-process-result.json");
+    const firstResult = {
+      sources: [{
+        sourceId: "ap",
+        articles: [{ articleId: "ap:one" }],
+        unchangedArticles: [],
+        skippedArticles: [],
+        processingFailures: [{ articleId: "ap:two", error: "retry" }],
+      }],
+    };
+    await writeFile(processResultFile, `${JSON.stringify(firstResult)}\n`);
+    const firstStaged = await stageRuntimeProcess({
+      store,
+      output,
+      workDirectory: work,
+      status: ready,
+      processResultFile,
+      now: new Date("2026-09-01T10:01:00.000Z"),
+    });
+    const firstObject = firstStaged.stagedProcess?.objectName;
+    if (!firstObject) throw new Error("first Process generation was not staged");
+    expect(firstObject).toMatch(/^times\/jobs\/partial-generation\/processed-[a-f0-9]{64}\.tar\.gz$/u);
+    await promoteRuntimeProcess({ store, status: firstStaged, workDirectory: work });
+    const firstBytes = store.objects.get(firstObject)?.slice();
+    const partial = statusAfterSuccessfulDelivery(firstStaged, firstResult);
+    expect(partial.state).toBe("partial");
+    expect(partial.stagedProcess).toBeUndefined();
+
+    await writeFile(dataset, "{\"revision\":2}\n");
+    const secondResult = {
+      sources: [{
+        sourceId: "ap",
+        articles: [{ articleId: "ap:two" }],
+        unchangedArticles: [],
+        skippedArticles: [],
+        processingFailures: [],
+      }],
+    };
+    await writeFile(processResultFile, `${JSON.stringify(secondResult)}\n`);
+    const secondStaged = await stageRuntimeProcess({
+      store,
+      output,
+      workDirectory: work,
+      status: partial,
+      processResultFile,
+      now: new Date("2026-09-01T10:02:00.000Z"),
+    });
+    const secondObject = secondStaged.stagedProcess?.objectName;
+    if (!secondObject) throw new Error("second Process generation was not staged");
+    expect(secondObject).not.toBe(firstObject);
+    expect(store.objects.get(firstObject)).toEqual(firstBytes);
+    expect(JSON.parse((await store.readText(PROCESS_MEMORY_OBJECT))!).generation.objectName).toBe(firstObject);
+    await expect(assertRuntimeProcessGenerationUncommitted(store, firstObject)).rejects.toThrow("committed");
+    await expect(assertRuntimeProcessGenerationUncommitted(store, secondObject)).resolves.toBeUndefined();
+
+    store.failedUploads.add(PROCESS_MEMORY_OBJECT);
+    await expect(promoteRuntimeProcess({ store, status: secondStaged, workDirectory: work }))
+      .rejects.toThrow("injected upload failure");
+    store.failedUploads.clear();
+    expect(JSON.parse((await store.readText(PROCESS_MEMORY_OBJECT))!).generation.objectName).toBe(firstObject);
+    expect(store.objects.get(firstObject)).toEqual(firstBytes);
+
+    store.failedDeletes.add(firstObject);
+    await expect(promoteRuntimeProcess({ store, status: secondStaged, workDirectory: work }))
+      .rejects.toThrow("injected delete failure");
+    expect(JSON.parse((await store.readText(PROCESS_MEMORY_OBJECT))!).generation.objectName).toBe(secondObject);
+    expect(store.objects.has(firstObject)).toBe(true);
+    expect(store.objects.has(secondObject)).toBe(true);
+    await expect(assertRuntimeProcessGenerationUncommitted(store, secondObject)).rejects.toThrow("committed");
+  });
+});

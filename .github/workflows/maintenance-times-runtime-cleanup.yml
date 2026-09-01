@@ -1,0 +1,108 @@
+name: Maintenance · Times Runtime Cleanup
+
+on:
+  schedule:
+    - cron: "35 3 * * *"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Delete jobs selected by the retention plan
+        type: boolean
+        default: false
+        required: true
+      max_delete_jobs:
+        description: Safety cap for one cleanup run
+        type: string
+        default: "100"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: times-runtime-writer
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    environment: maintenance
+    timeout-minutes: 15
+    env:
+      HF_TOKEN: ${{ secrets.HF_TIMES_RUNTIME_TOKEN }}
+      HF_TIMES_RUNTIME_BUCKET: ${{ vars.HF_TIMES_RUNTIME_BUCKET || secrets.HF_TIMES_RUNTIME_BUCKET }}
+      HEALTHCHECKS_TIMES_PIPELINE_URL: ${{ secrets.HEALTHCHECKS_TIMES_PIPELINE_URL }}
+      TIMES_CLEANUP_APPLY: ${{ github.event_name == 'schedule' || inputs.apply }}
+      TIMES_CLEANUP_MAX_JOBS: ${{ inputs.max_delete_jobs || '100' }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "24.15.0"
+          cache: pnpm
+
+      - name: Validate cleanup configuration
+        run: |
+          test -n "$HF_TOKEN" || (echo "HF_TOKEN is not configured" >&2 && exit 1)
+          test -n "$HF_TIMES_RUNTIME_BUCKET" || (echo "HF_TIMES_RUNTIME_BUCKET is not configured" >&2 && exit 1)
+          [[ "$TIMES_CLEANUP_MAX_JOBS" =~ ^[1-9][0-9]*$ ]] || (echo "max_delete_jobs must be a positive integer" >&2 && exit 1)
+
+      - name: Install and build Times pipeline
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @jojo/times-pipeline build
+
+      - name: Apply exact Runtime retention plan
+        run: |
+          node tools/times-pipeline/dist/src/runtime-cli.js \
+            --action cleanup \
+            --bucket "$HF_TIMES_RUNTIME_BUCKET" \
+            --output "$RUNNER_TEMP/jojo-times" \
+            --apply "$TIMES_CLEANUP_APPLY" \
+            --max-delete-jobs "$TIMES_CLEANUP_MAX_JOBS" \
+            > "$RUNNER_TEMP/runtime-cleanup-result.json"
+
+      - name: Publish cleanup summary
+        if: always()
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("node:fs");
+          const file = process.env.RUNNER_TEMP + "/runtime-cleanup-result.json";
+          console.log("## Times Runtime cleanup\n");
+          if (!fs.existsSync(file)) {
+            console.log("Cleanup result is missing.");
+            process.exit(0);
+          }
+          const result = JSON.parse(fs.readFileSync(file, "utf8"));
+          console.log(`- Mode: ${result.mode}`);
+          console.log(`- Jobs selected: ${result.jobs.length}`);
+          console.log(`- Objects selected: ${result.objects.length}`);
+          console.log(`- Orphan payloads selected: ${result.orphanObjects.length}`);
+          const stale = result.jobs.filter((job) => job.requiresAlert);
+          if (stale.length) {
+            console.log(`- Warning: ${stale.length} unfinished job(s) exceeded 30 days and were selected for dead-letter cleanup.`);
+            for (const job of stale) console.log(`  - ${job.jobId}: ${job.state}, updated ${job.updatedAt}`);
+          }
+          NODE
+
+      - name: Alert on deleted unfinished jobs
+        if: always()
+        env:
+          HEALTHCHECKS_PING_URL: ${{ env.HEALTHCHECKS_TIMES_PIPELINE_URL }}
+          HEALTHCHECKS_SIGNAL: fail
+          HEALTHCHECKS_STAGE: times-runtime-cleanup
+          HEALTHCHECKS_STATUS: stale-unfinished-jobs
+          HEALTHCHECKS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          result="$RUNNER_TEMP/runtime-cleanup-result.json"
+          [ -f "$result" ] || exit 0
+          mode="$(node -p 'require(process.env.RUNNER_TEMP + "/runtime-cleanup-result.json").mode')"
+          [ "$mode" = 'apply' ] || exit 0
+          stale="$(node -p 'require(process.env.RUNNER_TEMP + "/runtime-cleanup-result.json").jobs.filter((job) => job.requiresAlert).length')"
+          [ "$stale" -gt 0 ] || exit 0
+          bash tools/monitoring/ping-healthchecks.sh
+          echo "Deleted $stale unfinished Runtime job(s) after the 30-day dead-letter window" >&2
+          exit 1

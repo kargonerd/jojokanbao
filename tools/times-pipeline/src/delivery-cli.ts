@@ -69,6 +69,8 @@ export async function runDelivery(args: Map<string, string>): Promise<{
   const processResult = JSON.parse(await readFile(path.resolve(requiredArg(args, "process-result")), "utf8")) as ProcessResult;
   const deliveryRoot = path.resolve(args.get("delivery-output") ?? path.join(workspaceRoot, "delivery"));
   const previousRoot = args.get("previous-delivery");
+  const generatedAt = args.get("generated-at") ?? new Date().toISOString();
+  if (Number.isNaN(Date.parse(generatedAt))) throw new Error("--generated-at must be an ISO timestamp");
   const previousTimelineIndex = await optionalJox<TimesTimelineIndex>(previousRoot, "content/timeline/index.jox");
   const sources = await sourcesForDelivery(
     await loadSources(configPath),
@@ -92,7 +94,7 @@ export async function runDelivery(args: Map<string, string>): Promise<{
   const result = await buildNewsDelivery({
     workspaceRoot,
     deliveryRoot,
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     sources,
     process: processResult,
     ...(previousTimelineIndex ? { previousTimelineIndex } : {}),
