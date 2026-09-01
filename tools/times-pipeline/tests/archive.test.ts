@@ -89,7 +89,7 @@ describe("page capture orchestration", () => {
       title: "FirstFT: US corporate profits surge as wages lag",
       canonicalUrl: "https://www.ft.com/content/5e6db1ad-6ea5-44db-80fd-fd7073d9e676?syn-25a6b1a6=1",
       captureUrl: "https://www.ft.com/content/5e6db1ad-6ea5-44db-80fd-fd7073d9e676?syn-25a6b1a6=1",
-      captureRevision: "semantic-html-media-v2+ft-body-assets-v4",
+      captureRevision: "semantic-html-media-v2+ft-body-assets-v5",
     };
     const current = {
       ...previous,
@@ -107,7 +107,7 @@ describe("page capture orchestration", () => {
       },
     }]]);
 
-    expect(ftFetch.revision).toBe("ft-body-assets-v5");
+    expect(ftFetch.revision).toBe("ft-body-assets-v6");
     const pending = pendingArticles(
       [current], state,
       { now: new Date("2026-08-31T05:00:00.000Z"), retentionDays: 7, refreshHours: 168, retryHours: 2 },

@@ -182,12 +182,18 @@ describe("FT original-page rejection evidence", () => {
     expect(selection.report.attempts).toEqual([
       expect.objectContaining({
         origin: "captured-page",
+        verdict: "rejected",
+        rejectReason: "below-quality-threshold",
+      }),
+      expect.objectContaining({
+        origin: "original-page",
         completeness: "truncated",
         rejectReason: "publisher-truncated",
         evidence: expect.objectContaining({ kind: "access-offer", matchedSignals: 4 }),
       }),
     ]);
-    expect(classifier).not.toHaveBeenCalled();
+    expect(selection.report.attempts.filter((attempt) => attempt.rejectReason === "publisher-truncated")).toHaveLength(1);
+    expect(classifier).toHaveBeenCalledOnce();
   });
 
   it("does not read Raw HTML for hard-paywall candidates", async () => {
