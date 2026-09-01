@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@jojo/ui";
+import { useAccountSessionStore } from "../account/session";
 import { BookCover } from "../library/BookCover";
 import { bookCoverTone } from "../library/bookCatalog";
 import { fuzzyBookTitleScore } from "../library/bookSearch";
 import type { PeriodicalEntry } from "../library/catalog";
 import { useRecentReadingStore, type RecentReadingItem } from "../library/recentReadingStore";
 import { notebookApi } from "../rag/api";
+import { isContentVisible } from "../rag/contentVisibility";
 import { readerReturnState, withReaderReturnTo } from "../rag/readerNavigation";
 import type { RagNotebook } from "../rag/types";
 import { dailyQuote } from "./dailyQuote";
@@ -60,36 +62,60 @@ function uniqueRecentReading(items: RecentReadingItem[]): RecentReadingItem[] {
   });
 }
 
+function recentBookDatasetId(item: RecentReadingItem): string | undefined {
+  if (item.kind !== "book") return undefined;
+  if (item.datasetId) return item.datasetId;
+  const path = item.href.split("?")[0]?.split("/").filter(Boolean) ?? [];
+  return path[0] === "book" && path[1] ? decodeURIComponent(path[1]) : undefined;
+}
+
 export function HomePage({ periodicals = [] }: { periodicals?: readonly PeriodicalEntry[] }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [query, setQuery] = useState("");
   const [books, setBooks] = useState<RagNotebook[]>([]);
+  const [bookCatalogReady, setBookCatalogReady] = useState(false);
   const [searchAttempted, setSearchAttempted] = useState(false);
+  const accountInitialized = useAccountSessionStore((state) => state.initialized);
+  const userId = useAccountSessionStore((state) => state.userId);
+  const signedIn = Boolean(userId);
   const storedRecentItems = useRecentReadingStore((state) => state.items);
   const includePeriodicals = periodicals.length > 0;
+  const visibleBooks = useMemo(
+    () => books.filter((book) => isContentVisible(book.access, signedIn)),
+    [books, signedIn],
+  );
   const recentItems = uniqueRecentReading(
     storedRecentItems.filter((item) => includePeriodicals || item.kind === "book"),
-  ).slice(0, 4);
+  ).filter((item) => {
+    if (item.kind !== "book" || signedIn) return true;
+    if (!accountInitialized || !bookCatalogReady) return false;
+    const datasetId = recentBookDatasetId(item);
+    if (!datasetId) return true;
+    const book = books.find((candidate) => candidate.id === datasetId);
+    return !book || isContentVisible(book.access, false);
+  }).slice(0, 4);
   const quote = useMemo(() => dailyQuote(), []);
 
   useEffect(() => {
     let active = true;
     void notebookApi.list().then((items) => {
       if (active) setBooks(items.filter((item) => item.type === "book" || item.type === "book-series"));
-    }).catch(() => undefined);
+    }).catch(() => undefined).finally(() => {
+      if (active) setBookCatalogReady(true);
+    });
     return () => { active = false; };
   }, []);
 
   const matches = useMemo(() => {
     if (!query.trim()) return [];
-    return books
+    return visibleBooks
       .map((book) => ({ book, score: fuzzyBookTitleScore(book.title || book.name || "", query) }))
       .filter((result) => Number.isFinite(result.score))
       .sort((left, right) => left.score - right.score)
       .slice(0, 6)
       .map((result) => result.book);
-  }, [books, query]);
+  }, [query, visibleBooks]);
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

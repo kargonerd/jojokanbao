@@ -66,6 +66,7 @@ beforeEach(() => {
   catalogMocks.list.mockResolvedValue([
     { id: "mao", title: "毛泽东文集", type: "book-series", sources_count: 2 },
     { id: "solo", title: "青年政治经济学读本", type: "book", sources_count: 1 },
+    { id: "restricted", title: "登录后可见书籍", type: "book", sources_count: 1, access: "authenticated" },
     { id: "paper-data", title: "报刊测试集", type: "newspaper", sources_count: 1 },
   ]);
   catalogMocks.getSources.mockImplementation(async (datasetId: string) => datasetId === "solo"
@@ -228,11 +229,11 @@ describe("app homepage", () => {
     renderAt("/");
 
     await waitFor(() => expect(catalogMocks.loadBookCoverUrl).toHaveBeenCalledWith("mao", "volume-1"));
-    const card = screen.getByRole("link", { name: /毛泽东文集 第一卷/ });
+    const card = await screen.findByRole("link", { name: /毛泽东文集 第一卷/ });
     await waitFor(() => expect(card.querySelector("img")?.getAttribute("src")).toBe("blob:book-cover"));
   });
 
-  it("shows the last book chapter once and keeps progress exclusive to books", () => {
+  it("shows the last book chapter once and keeps progress exclusive to books", async () => {
     useRecentReadingStore.setState({
       items: [
         {
@@ -272,7 +273,7 @@ describe("app homepage", () => {
 
     renderAt("/");
 
-    expect(screen.getAllByText("大众哲学")).toHaveLength(1);
+    await waitFor(() => expect(screen.getAllByText("大众哲学")).toHaveLength(1));
     expect(screen.getByText("上次读到 · 第六章 真理是怎样发现的")).toBeTruthy();
     const book = screen.getByRole("link", { name: /大众哲学/ });
     expect(within(book).getByText("38%", { selector: "span" })).toBeTruthy();
@@ -281,9 +282,50 @@ describe("app homepage", () => {
     expect(newspaper.querySelector("progress")).toBeNull();
     expect(within(newspaper).queryByText("0%")).toBeNull();
   });
+
+  it("does not leak an authenticated book through signed-out recent reading", async () => {
+    useRecentReadingStore.setState({
+      items: [{
+        id: "book:restricted:full-book",
+        kind: "book",
+        datasetId: "restricted",
+        itemKey: "full-book",
+        title: "登录后可见书籍",
+        subtitle: "第一章",
+        href: "/book/restricted/full-book",
+        progress: 20,
+        updatedAt: Date.now(),
+      }],
+    });
+
+    renderAt("/");
+    await waitFor(() => expect(catalogMocks.list).toHaveBeenCalled());
+    expect(screen.queryByRole("link", { name: /登录后可见书籍/ })).toBeNull();
+
+    act(() => useAccountSessionStore.setState({ initialized: true, userId: "reader-1", displayName: "测试读者" }));
+    expect(await screen.findByRole("link", { name: /登录后可见书籍/ })).toBeTruthy();
+  });
 });
 
 describe("app library", () => {
+  it("keeps authenticated books out of the signed-out catalog", async () => {
+    renderAt("/library?type=book");
+
+    await screen.findByRole("link", { name: /毛泽东文集/ });
+    expect(screen.queryByText("登录后可见书籍")).toBeNull();
+
+    act(() => useAccountSessionStore.setState({ initialized: true, userId: "reader-1", displayName: "测试读者" }));
+    expect(await screen.findByRole("link", { name: /登录后可见书籍/ })).toBeTruthy();
+  });
+
+  it("redirects a signed-out direct catalog URL without loading restricted volumes", async () => {
+    renderAt("/library/restricted");
+
+    await waitFor(() => expect(window.location.pathname).toBe("/account"));
+    expect(window.location.search).toBe("?returnTo=%2Flibrary%2Frestricted");
+    expect(catalogMocks.getSources).not.toHaveBeenCalledWith("restricted");
+  });
+
   it("filters to books and opens a collection without exposing an Agent tab", async () => {
     renderAt("/library?type=book");
 

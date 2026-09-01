@@ -79,15 +79,20 @@ export const notebookApi = {
     type: dataset.type,
     indexObject: dataset.indexObject,
     aiEnabled: dataset.aiEnabled,
+    access: dataset.access,
   })),
-  getSources: async (nid: string): Promise<RagSource[]> => (await loadDataset(nid)).index.items.filter((item) => item.publicationStatus !== "draft").map((item) => ({
-    id: item.itemId,
-    itemId: item.itemId,
-    itemKey: item.itemKey,
-    title: item.title,
-    published: item.publicationStatus !== "draft",
-    manifestObject: item.manifestObject,
-  })),
+  getSources: async (nid: string): Promise<RagSource[]> => {
+    const loaded = await loadDataset(nid);
+    return loaded.index.items.filter((item) => item.publicationStatus !== "draft").map((item) => ({
+      id: item.itemId,
+      itemId: item.itemId,
+      itemKey: item.itemKey,
+      title: item.title,
+      published: item.publicationStatus !== "draft",
+      manifestObject: item.manifestObject,
+      access: item.access ?? loaded.index.access ?? loaded.entry.access,
+    }));
+  },
   getSourceFulltext: () => Promise.reject(new Error("请从书籍章节中按需读取内容")),
 };
 

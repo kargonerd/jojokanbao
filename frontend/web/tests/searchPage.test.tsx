@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-rou
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CONTENT_SEARCH_API, type JojoCatalog } from "@jojo/content";
 import { SearchPage } from "../src/archive/pages/SearchPage";
+import { useAccountSessionStore } from "../src/account/session";
 import { loadCatalog } from "../src/rag/content";
 
 vi.mock("axios", () => ({
@@ -40,6 +41,14 @@ const searchCatalog: JojoCatalog = {
       language: "zh-CN",
       publicationStatus: "draft",
       indexObject: "books/draft-book/index.jox",
+    },
+    {
+      datasetId: "restricted-book",
+      type: "book",
+      title: "登录后可见书籍",
+      language: "zh-CN",
+      access: "authenticated",
+      indexObject: "books/restricted-book/index.jox",
     },
   ],
 };
@@ -95,6 +104,7 @@ function getLastRequestParams(): Record<string, unknown> {
 }
 
 beforeEach(() => {
+  useAccountSessionStore.setState({ initialized: true, userId: null, displayName: null });
   vi.mocked(axios.get).mockReset();
   vi.mocked(axios.post).mockReset();
   vi.mocked(loadCatalog).mockReset();
@@ -225,9 +235,9 @@ describe("SearchPage results", () => {
       query: "刘少奇",
       page: 1,
       size: 10,
+      datasetIds: ["liu-shaoqi", "mao-selected"],
       types: ["book"],
     });
-    expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).not.toHaveProperty("datasetIds");
     expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).not.toHaveProperty("startDate");
     expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).not.toHaveProperty("sort");
     expect(screen.queryByRole("button", { name: /日期范围/ })).toBeNull();
@@ -248,6 +258,34 @@ describe("SearchPage results", () => {
     });
     expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).not.toHaveProperty("datasetIds");
     expect(screen.getByTestId("location").textContent).toContain("type=book&dataset=mao-selected");
+  });
+
+  it("hides authenticated books and their search scope until the reader signs in", async () => {
+    const signedOutView = renderSearch("/search?keyword=历史&type=book", true);
+
+    await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).toMatchObject({
+      datasetIds: ["liu-shaoqi", "mao-selected"],
+      types: ["book"],
+    });
+    const signedOutSelect = screen.getByRole("combobox", { name: "选择书籍" });
+    fireEvent.click(signedOutSelect);
+    expect(screen.queryByRole("option", { name: "登录后可见书籍" })).toBeNull();
+
+    signedOutView.unmount();
+    cleanup();
+    vi.mocked(axios.post).mockClear();
+    useAccountSessionStore.setState({ initialized: true, userId: "reader-1", displayName: "测试读者" });
+    renderSearch("/search?keyword=历史&type=book", true);
+
+    await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).toMatchObject({
+      datasetIds: ["restricted-book", "liu-shaoqi", "mao-selected"],
+      types: ["book"],
+    });
+    const signedInSelect = screen.getByRole("combobox", { name: "选择书籍" });
+    fireEvent.click(signedInSelect);
+    expect(await screen.findByRole("option", { name: "登录后可见书籍" })).toBeTruthy();
   });
 
   it("ignores unsupported periodical dataset parameters", async () => {

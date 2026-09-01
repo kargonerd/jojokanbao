@@ -10,10 +10,12 @@ import {
   type ArchivePublicationName,
 } from "@jojo/content";
 import { Button, Tag, Pagination, LoadingSpinner, DateRangePicker, Select, type DateRangeValue } from "@jojo/ui";
+import { useAccountSessionStore } from "../../account/session";
 import { getLatestRmrbAvailableDate } from "../dateAvailability";
 import { archiveIssuePath } from "../../routes";
 import { rollout } from "../../rollout";
 import { loadCatalog } from "../../rag/content";
+import { isContentVisible } from "../../rag/contentVisibility";
 
 type SearchContentType = "periodical" | "book";
 
@@ -269,6 +271,9 @@ export function SearchPage({
   const [error, setError] = useState<string | null>(null);
   const [beforeSearch, setBeforeSearch] = useState(!params.get("keyword"));
   const [retryToken, setRetryToken] = useState(0);
+  const accountInitialized = useAccountSessionStore((state) => state.initialized);
+  const userId = useAccountSessionStore((state) => state.userId);
+  const signedIn = Boolean(userId);
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef(0);
@@ -279,13 +284,22 @@ export function SearchPage({
   const selectedBookSource = requestedContentType === "book" && requestedDatasetId
     ? bookDatasets.find((dataset) => dataset.id === requestedDatasetId)?.label || ""
     : "";
+  const bookDatasetIds = bookDatasets.map((dataset) => dataset.id);
+  const bookDatasetIdsKey = bookDatasetIds.join("\0");
+  const activeBookDatasetIdsKey = requestedContentType === "book" ? bookDatasetIdsKey : "";
   const bookSearchReady = requestedContentType !== "book" || bookCatalogReady;
   const latestAvailableDate = getLatestRmrbAvailableDate();
   const disableUnavailableDate = (date: string) => date < EARLIEST_AVAILABLE_DATE || date > latestAvailableDate;
 
   useEffect(() => {
     if (!platformRedesign) return;
+    if (!accountInitialized) {
+      setBookDatasets([]);
+      setBookCatalogReady(false);
+      return;
+    }
     let active = true;
+    setBookCatalogReady(false);
     void loadCatalog()
       .then((catalog) => {
         if (!active) return;
@@ -293,6 +307,7 @@ export function SearchPage({
           .filter((dataset) => (
             (dataset.type === "book" || dataset.type === "book-series")
             && dataset.publicationStatus !== "draft"
+            && isContentVisible(dataset.access, signedIn)
           ))
           .map((dataset) => ({ id: dataset.datasetId, label: dataset.title }))
           .sort((left, right) => left.label.localeCompare(right.label, "zh-CN")));
@@ -304,7 +319,7 @@ export function SearchPage({
         if (active) setBookCatalogReady(true);
       });
     return () => { active = false; };
-  }, [platformRedesign]);
+  }, [accountInitialized, platformRedesign, signedIn]);
 
   useEffect(() => {
     const keyword = (params.get("keyword") || "").trim();
@@ -345,6 +360,18 @@ export function SearchPage({
       return;
     }
 
+    if (platformRedesign && nextContentType === "book" && (
+      bookDatasetIds.length === 0 || (nextDatasetId && !bookDatasets.some((dataset) => dataset.id === nextDatasetId))
+    )) {
+      requestIdRef.current += 1;
+      setBeforeSearch(false);
+      setResults([]);
+      setTotal(0);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     const controller = new AbortController();
     const requestId = ++requestIdRef.current;
     const requestParams: Record<string, string | number> = { keyword, page: nextPage, size: pageSize };
@@ -378,6 +405,8 @@ export function SearchPage({
           size: pageSize,
           ...(selectedBook
             ? { sources: [selectedBook.label] }
+            : nextContentType === "book"
+              ? { datasetIds: bookDatasetIds }
             : nextContentType === "periodical"
               ? { datasetIds: periodicalDatasetIds }
               : {}),
@@ -399,7 +428,7 @@ export function SearchPage({
         if (!data || !Array.isArray(data.results) || !Number.isFinite(data.total)) {
           throw new Error("Search API returned an invalid response");
         }
-        setResults(data.results.map((result: SearchResult | UnifiedSearchResult) => (
+        const normalizedResults: SearchResult[] = data.results.map((result: SearchResult | UnifiedSearchResult) => (
           platformRedesign
             ? normalizeUnifiedResult(result)
             : {
@@ -415,7 +444,11 @@ export function SearchPage({
                 chapterId: "",
                 ellipsis: true,
               }
-        )));
+        ));
+        const allowedBookDatasetIds = new Set(bookDatasetIds);
+        setResults(nextContentType === "book"
+          ? normalizedResults.filter((result) => allowedBookDatasetIds.has(result.datasetId))
+          : normalizedResults);
         setTotal(Math.max(0, Number(data.total)));
       })
       .catch(() => {
@@ -429,7 +462,7 @@ export function SearchPage({
       });
 
     return () => controller.abort();
-  }, [bookSearchReady, paramsKey, platformRedesign, retryToken, selectedBookSource]);
+  }, [activeBookDatasetIdsKey, bookSearchReady, paramsKey, platformRedesign, retryToken, selectedBookSource]);
 
   function handleSearch() {
     const keyword = term.trim();

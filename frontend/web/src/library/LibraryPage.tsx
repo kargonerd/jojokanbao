@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { LoadingSpinner } from "@jojo/ui";
 import { useAccountSessionStore } from "../account/session";
 import { useFeatureFlag, useFeatureFlagStore } from "../featureFlags";
 import { notebookApi } from "../rag/api";
+import { isContentVisible } from "../rag/contentVisibility";
 import { loadBookshelf, setBookshelf, type BookshelfEntry } from "../rag/readerData";
 import { readerReturnState, safeReaderReturnPath, withReaderReturnTo } from "../rag/readerNavigation";
 import type { RagNotebook, RagSource } from "../rag/types";
@@ -56,6 +57,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
   const remember = useRecentReadingStore((state) => state.remember);
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
+  const signedIn = Boolean(userId);
   const flagsInitialized = useFeatureFlagStore((state) => state.initialized);
   const bookshelfEnabled = useFeatureFlag("library.bookshelf");
   const includePeriodicals = periodicals.length > 0;
@@ -103,9 +105,19 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
   }, [bookshelfEnabled, userId]);
 
   const selectedBook = books.find((item) => item.id === datasetId);
+  const selectedBookVisible = isContentVisible(selectedBook?.access, signedIn);
 
   useEffect(() => {
     if (!datasetId) {
+      setSources([]);
+      setSourceLoading(false);
+      return;
+    }
+    if (!accountInitialized || loading) {
+      setSourceLoading(true);
+      return;
+    }
+    if (!selectedBook || !selectedBookVisible) {
       setSources([]);
       setSourceLoading(false);
       return;
@@ -144,7 +156,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
         if (active) setSourceLoading(false);
       });
     return () => { active = false; };
-  }, [datasetId, navigate, remember, returnToBeforeCollection]);
+  }, [accountInitialized, datasetId, loading, navigate, remember, returnToBeforeCollection, selectedBook, selectedBookVisible]);
 
   function selectType(nextType: LibraryType) {
     setSearchParams(nextType === "all" ? {} : { type: nextType });
@@ -251,8 +263,16 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
   const showBooks = !datasetId && (type === "all" || type === "book");
   const titleMatches = (value: string) => !libraryQuery.trim() || Number.isFinite(fuzzyBookTitleScore(value, libraryQuery));
   const visiblePeriodicals = periodicals.filter((entry) => titleMatches(entry.title));
-  const visibleBooks = books.filter((book) => titleMatches(book.title || book.name || ""));
-  const visibleSources = sources.filter((source) => titleMatches(source.title || source.name || ""));
+  const visibleBooks = books.filter((book) => (
+    isContentVisible(book.access, signedIn) && titleMatches(book.title || book.name || "")
+  ));
+  const visibleSources = sources.filter((source) => (
+    isContentVisible(source.access, signedIn) && titleMatches(source.title || source.name || "")
+  ));
+  if (datasetId && accountInitialized && selectedBook && !selectedBookVisible) {
+    const returnTo = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate to={`/account?returnTo=${encodeURIComponent(returnTo)}`} replace />;
+  }
   return (
     <main className="app-library">
       <aside className="library-types" aria-label="资料类型">
