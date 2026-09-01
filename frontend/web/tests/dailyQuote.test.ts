@@ -17,7 +17,7 @@ describe("dailyQuote", () => {
   });
 
   it("uses only sourced quotations", () => {
-    expect(DAILY_QUOTES).toHaveLength(16);
+    expect(DAILY_QUOTES).toHaveLength(17);
     expect(DAILY_QUOTES.every((quote) => quote.source.includes("《"))).toBe(true);
     expect(DAILY_QUOTES).toContainEqual({
       text: "人最宝贵的是生命。生命对于每个人只有一次。",
@@ -34,6 +34,10 @@ describe("dailyQuote", () => {
     expect(DAILY_QUOTES).toContainEqual({
       text: "不在沉默中爆发，就在沉默中灭亡。",
       source: "鲁迅《记念刘和珍君》",
+    });
+    expect(DAILY_QUOTES).toContainEqual({
+      text: "愿中国青年都摆脱冷气，只是向上走。",
+      source: "鲁迅《热风·随感录四十一》",
     });
   });
 });
