@@ -130,21 +130,6 @@ Runtime job 状态只有 `ready`、`partial` 和 `done`。`done` job 保留 14 �
 分阶段删除。没有 status 的上传中断残留保留 30 天，当前 `process-memory.json` 指向的 generation 永不作为
 孤儿删除。一次最多处理 100 个 job。
 
-旧 HF Dataset 不再承载实时写入，可作为独立历史归档使用。历史迁移仍使用 `hf` CLI 的
-`upload-files` / `download-files` 动作和 `jojo-hf-file-set/1` 精确清单：
-
-清单中的本地路径必须位于 `--output` 内，每个对象都校验大小与
-SHA-256；这两个动作不会递归扫描整个 Raw 目录。所有 `upload-files` 调用都固定使用 `fail`
-策略，并必须显式传入当前 40 位 `--expected-parent-revision`、单一批次 `--allowed-prefix` 和
-`--existing-policy`；发生并发变更时立即失败，人工取得新 parent 后再重跑。Raw、run bundle
-和历史图片只能用 `immutable`：同 hash 跳过、不同 hash 直接失败。
-
-历史 Canonical 使用单独的 `upload-archive-canonical` 动作。它从清单中的唯一
-`canonical/archive-runs/{run-hash}.json` 报告推导精确对象集合，并要求
-`--expected-parent-revision` 与报告记录的 Raw revision 一致。一个 CAS commit 内，日期索引和
-dataset 描述允许替换；article 与 run report 若已存在则仅接受完全相同的字节，否则停止。
-`contentHash` 不是整个 article 文件的 SHA-256，因此工具不会盲目覆盖重叠文章。
-
 B2 只保存 Delivery：
 
 ~~~text

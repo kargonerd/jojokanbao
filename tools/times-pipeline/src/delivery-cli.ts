@@ -6,7 +6,6 @@ import type { CanonicalWriteResult } from "./process/canonical-writer.js";
 import { parseArgs, requiredArg } from "./args.js";
 import { loadSources } from "./config.js";
 import { buildNewsDelivery, readJoxJson } from "./delivery-writer.js";
-import type { SourceConfig } from "./types.js";
 
 export interface ProcessResult {
   report?: string;
@@ -21,40 +20,6 @@ async function optionalJox<T>(root: string | undefined, objectKey: string): Prom
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
   }
-}
-
-function booleanArg(args: Map<string, string>, name: string): boolean {
-  const value = args.get(name);
-  if (value === undefined || value === "false") return false;
-  if (value === "true") return true;
-  throw new Error(`--${name} must be true or false`);
-}
-
-export async function sourcesForDelivery(
-  configured: readonly SourceConfig[],
-  processResult: ProcessResult,
-  includeArchiveSources: boolean,
-  previousTimelineIndex?: TimesTimelineIndex,
-): Promise<SourceConfig[]> {
-  const configuredIds = new Set(configured.map((source) => source.id));
-  const { archiveSourceConfig, isArchiveOnlySource } = await import("./archive/canonical.js");
-  const archiveIds = new Set(
-    previousTimelineIndex?.sources
-      .map((source) => source.id)
-      .filter((sourceId) => isArchiveOnlySource(sourceId))
-      ?? [],
-  );
-  if (includeArchiveSources) {
-    for (const source of processResult.sources) archiveIds.add(source.sourceId);
-  }
-  const missing = [...archiveIds]
-    .filter((sourceId) => !configuredIds.has(sourceId))
-    .sort();
-  if (!missing.length) return [...configured];
-  return [
-    ...configured,
-    ...missing.map((sourceId) => archiveSourceConfig(sourceId, configured)),
-  ];
 }
 
 export async function runDelivery(args: Map<string, string>): Promise<{
@@ -72,12 +37,7 @@ export async function runDelivery(args: Map<string, string>): Promise<{
   const generatedAt = args.get("generated-at") ?? new Date().toISOString();
   if (Number.isNaN(Date.parse(generatedAt))) throw new Error("--generated-at must be an ISO timestamp");
   const previousTimelineIndex = await optionalJox<TimesTimelineIndex>(previousRoot, "content/timeline/index.jox");
-  const sources = await sourcesForDelivery(
-    await loadSources(configPath),
-    processResult,
-    booleanArg(args, "archive-sources"),
-    previousTimelineIndex,
-  );
+  const sources = await loadSources(configPath);
   const dates = new Set(processResult.sources.flatMap((source) => source.dates));
   const previousTimelineDays = new Map<string, TimesTimelineDay>();
   for (const date of dates) {

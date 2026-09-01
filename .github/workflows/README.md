@@ -33,8 +33,7 @@ fails when any applicable CI job fails or is cancelled.
 Turborepo selects affected workspace packages and their consumers using the
 exact base and head commits emitted by the `changes` job. This includes the
 internal Data Workbench Web package. Root files that are not workspace
-packages, such as `content/blog/`, `infrastructure/supabase/`, `backend/`,
-and `tools/news-archive/`, are
+packages, such as `content/blog/`, `infrastructure/supabase/`, and `backend/`, are
 classified explicitly where they have dedicated checks.
 
 Every JavaScript or TypeScript workspace should expose the applicable standard
