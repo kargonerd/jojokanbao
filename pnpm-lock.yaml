@@ -609,6 +609,9 @@ importers:
       playwright:
         specifier: 1.60.0
         version: 1.60.0
+      tar:
+        specifier: 7.5.22
+        version: 7.5.22
       undici:
         specifier: 8.10.0
         version: 8.10.0

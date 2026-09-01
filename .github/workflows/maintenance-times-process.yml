@@ -2,7 +2,7 @@ name: Maintenance · Times Canonical and B2 Delivery
 
 on:
   workflow_run:
-    workflows: ["Maintenance · Times capture to HF Raw"]
+    workflows: ["Maintenance · Times Capture"]
     types: [completed]
   workflow_dispatch:
     inputs:
@@ -11,13 +11,18 @@ on:
         type: string
         default: ""
         required: false
-      hf_capture_run_id:
-        description: Optional published Capture workflow run id to replay from HF Raw
+      runtime_job_id:
+        description: Optional exact unfinished Runtime job id
         type: string
         default: ""
         required: false
       publish:
-        description: Commit Canonical to HF and publish Delivery to B2
+        description: Publish Delivery to B2 and advance Runtime memory
+        type: boolean
+        default: false
+        required: true
+      bootstrap:
+        description: Allow the first explicit Runtime Process without existing Process memory
         type: boolean
         default: false
         required: true
@@ -27,7 +32,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: times-hf-dataset-writer
+  group: times-runtime-writer
   cancel-in-progress: false
 
 jobs:
@@ -40,10 +45,10 @@ jobs:
          github.event.workflow_run.display_title == 'Times capture [cloudflare-cron]')))
     runs-on: ubuntu-latest
     environment: maintenance
-    timeout-minutes: 30
+    timeout-minutes: 40
     env:
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      HF_TIMES_DATASET_REPO: ${{ secrets.HF_TIMES_DATASET_REPO }}
+      HF_TOKEN: ${{ secrets.HF_TIMES_RUNTIME_TOKEN }}
+      HF_TIMES_RUNTIME_BUCKET: ${{ vars.HF_TIMES_RUNTIME_BUCKET || secrets.HF_TIMES_RUNTIME_BUCKET }}
       B2_BUCKET: ${{ secrets.B2_BUCKET }}
       B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
       B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
@@ -56,8 +61,9 @@ jobs:
       JOJO_DELIVERY_REMOTE: jojo-b2:${{ secrets.B2_BUCKET }}
       HEALTHCHECKS_TIMES_PIPELINE_URL: ${{ secrets.HEALTHCHECKS_TIMES_PIPELINE_URL }}
       TIMES_PUBLISH: ${{ github.event_name == 'workflow_run' || inputs.publish }}
+      TIMES_BOOTSTRAP: ${{ github.event_name == 'workflow_dispatch' && inputs.bootstrap || false }}
       TIMES_CAPTURE_RUN_ID: ${{ inputs.capture_run_id || '' }}
-      TIMES_HF_CAPTURE_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.hf_capture_run_id || '' }}
+      TIMES_RUNTIME_JOB_ID: ${{ github.event_name == 'workflow_run' && format('{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || inputs.runtime_job_id || '' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -70,13 +76,21 @@ jobs:
 
       - name: Validate Process inputs
         run: |
-          test -z "$TIMES_CAPTURE_RUN_ID" || test -z "$TIMES_HF_CAPTURE_RUN_ID" || (echo "capture_run_id and hf_capture_run_id are mutually exclusive" >&2 && exit 1)
+          test -z "$TIMES_CAPTURE_RUN_ID" || test -z "$TIMES_RUNTIME_JOB_ID" || (echo "capture_run_id and runtime_job_id are mutually exclusive" >&2 && exit 1)
+          if [ -n "$TIMES_CAPTURE_RUN_ID" ] && [ "$TIMES_PUBLISH" = 'true' ]; then
+            echo "capture_run_id is a dry-run artifact and cannot be published" >&2
+            exit 1
+          fi
+          if [ "$TIMES_BOOTSTRAP" = 'true' ] && { [ "$TIMES_PUBLISH" != 'true' ] || [ -z "$TIMES_RUNTIME_JOB_ID" ] || [ -n "$TIMES_CAPTURE_RUN_ID" ]; }; then
+            echo "bootstrap requires publish=true and an exact runtime_job_id" >&2
+            exit 1
+          fi
 
-      - name: Validate HF input configuration
+      - name: Validate Runtime Bucket input configuration
         if: env.TIMES_CAPTURE_RUN_ID == ''
         run: |
           test -n "$HF_TOKEN" || (echo "HF_TOKEN is not configured" >&2 && exit 1)
-          test -n "$HF_TIMES_DATASET_REPO" || (echo "HF_TIMES_DATASET_REPO is not configured" >&2 && exit 1)
+          test -n "$HF_TIMES_RUNTIME_BUCKET" || (echo "HF_TIMES_RUNTIME_BUCKET is not configured" >&2 && exit 1)
 
       - name: Validate publication configuration
         if: env.TIMES_PUBLISH == 'true'
@@ -99,6 +113,43 @@ jobs:
       - name: Build Times pipeline
         run: pnpm --filter @jojo/times-pipeline build
 
+      - name: Select the oldest ready or retryable Runtime job
+        if: env.TIMES_CAPTURE_RUN_ID == ''
+        run: |
+          args=(
+            --action select-job
+            --bucket "$HF_TIMES_RUNTIME_BUCKET"
+            --output "$RUNNER_TEMP/jojo-times"
+            --work-directory "$RUNNER_TEMP/runtime"
+            --preferred-job-id "$TIMES_RUNTIME_JOB_ID"
+          )
+          if [ "$GITHUB_EVENT_NAME" = 'workflow_dispatch' ] && [ -n "$TIMES_RUNTIME_JOB_ID" ]; then
+            args+=(--exact-job true)
+          fi
+          node tools/times-pipeline/dist/src/runtime-cli.js "${args[@]}" > "$RUNNER_TEMP/runtime-job-selection.json"
+          node -e 'const fs=require("node:fs");const result=require(process.env.RUNNER_TEMP+"/runtime-job-selection.json");fs.appendFileSync(process.env.GITHUB_ENV,`TIMES_RUNTIME_JOB_ID=${result.jobId}\n`);console.log(`Selected queued Runtime job ${result.jobId} (${result.state})`)'
+
+      - name: Restore committed or staged Process state
+        if: env.TIMES_CAPTURE_RUN_ID == ''
+        run: |
+          node tools/times-pipeline/dist/src/runtime-cli.js \
+            --action restore-process \
+            --bucket "$HF_TIMES_RUNTIME_BUCKET" \
+            --output "$RUNNER_TEMP/jojo-times" \
+            --work-directory "$RUNNER_TEMP/runtime" \
+            --job-id "$TIMES_RUNTIME_JOB_ID" \
+            > "$RUNNER_TEMP/process-memory-restore.json"
+          node -e 'const fs=require("node:fs");const result=require(process.env.RUNNER_TEMP+"/process-memory-restore.json");const rows=[`TIMES_PROCESS_REPLAY=${result.replay}`];if(result.generatedAt)rows.push(`TIMES_DELIVERY_GENERATED_AT=${result.generatedAt}`);if(result.processResultFile)rows.push(`TIMES_PROCESS_RESULT=${result.processResultFile}`);fs.appendFileSync(process.env.GITHUB_ENV,rows.join("\n")+"\n")'
+
+      - name: Require Process memory outside explicit bootstrap
+        if: env.TIMES_CAPTURE_RUN_ID == '' && env.TIMES_PUBLISH == 'true'
+        run: |
+          restored="$(node -p 'require(process.env.RUNNER_TEMP + "/process-memory-restore.json").restored')"
+          if [ "$restored" != 'true' ] && [ "$TIMES_BOOTSTRAP" != 'true' ]; then
+            echo "Process memory is missing; use one reviewed manual bootstrap run instead of publishing a cold start" >&2
+            exit 1
+          fi
+
       - name: Download Raw from a Capture dry run
         if: env.TIMES_CAPTURE_RUN_ID != ''
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -119,34 +170,41 @@ jobs:
           echo "TIMES_RUN_MANIFEST=$manifest" >> "$GITHUB_ENV"
           node -e 'const fs=require("node:fs");fs.writeFileSync(process.env.RUNNER_TEMP+"/capture-input-result.json",JSON.stringify({captureRunId:process.env.TIMES_CAPTURE_RUN_ID,runManifest:process.argv[1]},null,2)+"\n")' "$manifest"
 
-      - name: Download the selected processable HF snapshot
-        if: env.TIMES_CAPTURE_RUN_ID == ''
+      - name: Download the selected Runtime job
+        if: env.TIMES_CAPTURE_RUN_ID == '' && env.TIMES_PROCESS_REPLAY != 'true'
         run: |
-          args=(
-            --action download-snapshot
-            --repo "$HF_TIMES_DATASET_REPO"
-            --output "$RUNNER_TEMP/jojo-times"
-          )
-          if [ -n "$TIMES_HF_CAPTURE_RUN_ID" ]; then
-            args+=(--github-run-id "$TIMES_HF_CAPTURE_RUN_ID")
-          fi
-          node tools/times-pipeline/dist/src/hf-cli.js "${args[@]}" > "$RUNNER_TEMP/hf-snapshot-result.json"
-          node -e 'const fs=require("node:fs");const result=require(process.env.RUNNER_TEMP+"/hf-snapshot-result.json");fs.appendFileSync(process.env.GITHUB_ENV,`TIMES_RAW_REVISION=${result.revision}\nTIMES_RUN_MANIFEST=${result.runManifest}\n`);console.log(`Selected HF Raw run ${result.runId} at ${result.revision}`)'
+          node tools/times-pipeline/dist/src/runtime-cli.js \
+            --action restore-job \
+            --bucket "$HF_TIMES_RUNTIME_BUCKET" \
+            --output "$RUNNER_TEMP/jojo-times" \
+            --work-directory "$RUNNER_TEMP/runtime" \
+            --job-id "$TIMES_RUNTIME_JOB_ID" \
+            > "$RUNNER_TEMP/runtime-job-input.json"
+          node -e 'const fs=require("node:fs");const result=require(process.env.RUNNER_TEMP+"/runtime-job-input.json");fs.appendFileSync(process.env.GITHUB_ENV,`TIMES_RAW_REVISION=runtime/${result.jobId}/${result.raw.sha256}\nTIMES_RUN_MANIFEST=${result.localRunManifest}\nTIMES_ARTICLE_IDS_FILE=${result.pendingArticlesFile}\n`);console.log(`Selected Runtime job ${result.jobId} (${result.state})`)'
 
       - name: Build Canonical
+        if: env.TIMES_PROCESS_REPLAY != 'true'
         run: |
-          node tools/times-pipeline/dist/src/process-cli.js \
-            --config tools/times-pipeline/sources.v2.json \
-            --output "$RUNNER_TEMP/jojo-times" \
-            --run-manifest "$TIMES_RUN_MANIFEST" \
-            --raw-revision "$TIMES_RAW_REVISION" \
-            > "$RUNNER_TEMP/process-result.json"
+          args=(
+            --config tools/times-pipeline/sources.v2.json
+            --output "$RUNNER_TEMP/jojo-times"
+            --run-manifest "$TIMES_RUN_MANIFEST"
+            --raw-revision "$TIMES_RAW_REVISION"
+          )
+          if [ -n "$TIMES_ARTICLE_IDS_FILE" ]; then
+            args+=(--article-ids-file "$TIMES_ARTICLE_IDS_FILE")
+          fi
+          node tools/times-pipeline/dist/src/process-cli.js "${args[@]}" > "$RUNNER_TEMP/process-result.json"
+          echo "TIMES_PROCESS_RESULT=$RUNNER_TEMP/process-result.json" >> "$GITHUB_ENV"
+          if [ -z "$TIMES_DELIVERY_GENERATED_AT" ]; then
+            echo "TIMES_DELIVERY_GENERATED_AT=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" >> "$GITHUB_ENV"
+          fi
 
       - name: Report Canonical coverage
         run: |
           node - <<'NODE'
           const fs = require("node:fs");
-          const report = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/process-result.json", "utf8"));
+          const report = JSON.parse(fs.readFileSync(process.env.TIMES_PROCESS_RESULT, "utf8"));
           const translation = report.translation || { enabled: false };
           console.log(`Translation: ${translation.enabled ? `${translation.translated} translated, ${translation.cacheHits} cached, ${translation.failed} failed, ${translation.deferred || 0} deferred (${translation.deadlineDeferred || 0} batch-deadline), ${translation.configuredProjects || 1} projects, ${translation.quotaKeySwitches || 0} quota switches, ${translation.transientKeySwitches || 0} transient switches, ${translation.rescueChunks || 0} structural rescues in ${(translation.durationMs / 1000).toFixed(1)}s` : "disabled"}`);
           for (const source of report.sources || []) {
@@ -159,15 +217,19 @@ jobs:
           }
           NODE
 
-      - name: Commit Canonical to HF
-        if: env.TIMES_PUBLISH == 'true'
+      - name: Stage immutable Process generation before Delivery
+        if: env.TIMES_PUBLISH == 'true' && env.TIMES_PROCESS_REPLAY != 'true'
         run: |
-          node tools/times-pipeline/dist/src/hf-cli.js \
-            --action upload-canonical \
-            --repo "$HF_TIMES_DATASET_REPO" \
+          node tools/times-pipeline/dist/src/runtime-cli.js \
+            --action stage-process \
+            --bucket "$HF_TIMES_RUNTIME_BUCKET" \
             --output "$RUNNER_TEMP/jojo-times" \
-            --run-manifest "$TIMES_RUN_MANIFEST" \
-            --process-result "$RUNNER_TEMP/process-result.json"
+            --work-directory "$RUNNER_TEMP/runtime" \
+            --job-id "$TIMES_RUNTIME_JOB_ID" \
+            --process-result "$TIMES_PROCESS_RESULT" \
+            --retention-days 8 \
+            > "$RUNNER_TEMP/process-generation-result.json"
+          node -e 'const fs=require("node:fs");const result=require(process.env.RUNNER_TEMP+"/process-generation-result.json");fs.appendFileSync(process.env.GITHUB_ENV,`TIMES_DELIVERY_GENERATED_AT=${result.stagedProcess.createdAt}\n`)'
 
       - name: Configure B2 and restore mutable Delivery indexes
         if: env.TIMES_PUBLISH == 'true'
@@ -198,7 +260,7 @@ jobs:
           rclone copyto "$JOJO_DELIVERY_REMOTE/catalog.jox" "$RUNNER_TEMP/previous-delivery/catalog.jox"
           node --input-type=module - <<'NODE' > "$RUNNER_TEMP/process-dates.txt"
           import fs from "node:fs";
-          const result = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/process-result.json", "utf8"));
+          const result = JSON.parse(fs.readFileSync(process.env.TIMES_PROCESS_RESULT, "utf8"));
           const dates = new Set(result.sources.flatMap((source) => source.dates));
           for (const date of [...dates].sort()) console.log(date);
           NODE
@@ -214,9 +276,10 @@ jobs:
           node tools/times-pipeline/dist/src/delivery-cli.js \
             --config tools/times-pipeline/sources.v2.json \
             --output "$RUNNER_TEMP/jojo-times" \
-            --process-result "$RUNNER_TEMP/process-result.json" \
+            --process-result "$TIMES_PROCESS_RESULT" \
             --delivery-output "$RUNNER_TEMP/jojo-times-delivery" \
             --previous-delivery "$RUNNER_TEMP/previous-delivery" \
+            --generated-at "$TIMES_DELIVERY_GENERATED_AT" \
             > "$RUNNER_TEMP/delivery-result.json"
 
       - name: Publish B2 Delivery in commit order
@@ -254,6 +317,51 @@ jobs:
           fi
           echo "B2 serves the mutable timeline index with a 60-second cache policy."
 
+      - name: Commit Process memory pointer after B2
+        if: env.TIMES_PUBLISH == 'true'
+        run: |
+          node tools/times-pipeline/dist/src/runtime-cli.js \
+            --action promote-process \
+            --bucket "$HF_TIMES_RUNTIME_BUCKET" \
+            --output "$RUNNER_TEMP/jojo-times" \
+            --work-directory "$RUNNER_TEMP/runtime" \
+            --job-id "$TIMES_RUNTIME_JOB_ID" \
+            > "$RUNNER_TEMP/process-memory-result.json"
+
+      - name: Mark Runtime job after successful delivery
+        if: env.TIMES_PUBLISH == 'true'
+        run: |
+          node tools/times-pipeline/dist/src/runtime-cli.js \
+            --action mark-job \
+            --bucket "$HF_TIMES_RUNTIME_BUCKET" \
+            --output "$RUNNER_TEMP/jojo-times" \
+            --work-directory "$RUNNER_TEMP/runtime" \
+            --job-id "$TIMES_RUNTIME_JOB_ID" \
+            --process-result "$TIMES_PROCESS_RESULT" \
+            > "$RUNNER_TEMP/runtime-job-result.json"
+
+      - name: Defer a failed Runtime job without blocking newer jobs
+        if: failure() && env.TIMES_PUBLISH == 'true' && env.TIMES_CAPTURE_RUN_ID == '' && env.TIMES_RUNTIME_JOB_ID != ''
+        continue-on-error: true
+        run: |
+          printf '%s\n' "Process workflow failed at ${GITHUB_JOB}; inspect ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > "$RUNNER_TEMP/runtime-failure.txt"
+          node tools/times-pipeline/dist/src/runtime-cli.js \
+            --action defer-job \
+            --bucket "$HF_TIMES_RUNTIME_BUCKET" \
+            --output "$RUNNER_TEMP/jojo-times" \
+            --work-directory "$RUNNER_TEMP/runtime" \
+            --job-id "$TIMES_RUNTIME_JOB_ID" \
+            --reason-file "$RUNNER_TEMP/runtime-failure.txt"
+
+      - name: Report a partial Runtime job as degraded
+        if: success() && env.TIMES_PUBLISH == 'true'
+        run: |
+          state="$(node -p 'require(process.env.RUNNER_TEMP + "/runtime-job-result.json").state')"
+          if [ "$state" = 'partial' ]; then
+            echo "Runtime job is partial and retains articles for retry" >&2
+            exit 1
+          fi
+
       - name: Upload dry-run Canonical and Delivery artifact
         if: env.TIMES_PUBLISH != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -262,9 +370,11 @@ jobs:
           path: |
             ${{ runner.temp }}/jojo-times/canonical
             ${{ runner.temp }}/jojo-times-delivery
-            ${{ runner.temp }}/hf-snapshot-result.json
+            ${{ runner.temp }}/runtime-job-input.json
+            ${{ runner.temp }}/process-memory-restore.json
             ${{ runner.temp }}/capture-input-result.json
             ${{ runner.temp }}/process-result.json
+            ${{ runner.temp }}/jojo-times/runtime/process-result.json
             ${{ runner.temp }}/delivery-result.json
           if-no-files-found: error
           retention-days: 3
@@ -285,15 +395,24 @@ jobs:
           console.log(`- Sources: ${report.sources}`);
           console.log(`- Dates updated: ${report.dates.length}`);
           console.log(`- Timeline index: \`${report.timelineIndexObject}\``);
-          console.log(`- Published: ${process.env.TIMES_PUBLISH === "true" ? "HF + B2" : "no (artifact only)"}`);
-          const processPath = process.env.RUNNER_TEMP + "/process-result.json";
-          const processed = fs.existsSync(processPath) ? JSON.parse(fs.readFileSync(processPath, "utf8")) : undefined;
+          console.log(`- Published: ${process.env.TIMES_PUBLISH === "true" ? "B2 + Runtime memory" : "no (artifact only)"}`);
+          const processPath = process.env.TIMES_PROCESS_RESULT;
+          const processed = processPath && fs.existsSync(processPath) ? JSON.parse(fs.readFileSync(processPath, "utf8")) : undefined;
           const unchanged = processed?.sources?.flatMap((source) => source.unchangedArticles || []) || [];
           const skipped = processed?.sources?.flatMap((source) => source.skippedArticles || []) || [];
+          const processingFailures = processed?.sources?.flatMap((source) => source.processingFailures || []) || [];
           const translation = processed?.translation || { enabled: false };
           console.log(`- Translation: ${translation.enabled ? `${translation.translated} translated, ${translation.cacheHits} cached, ${translation.failed} failed, ${translation.deferred || 0} deferred (${translation.deadlineDeferred || 0} batch-deadline), ${translation.configuredProjects || 1} projects, ${translation.quotaKeySwitches || 0} quota switches, ${translation.transientKeySwitches || 0} transient switches, ${translation.rescueChunks || 0} structural rescues, ${(translation.durationMs / 1000).toFixed(1)}s` : "disabled"}`);
           console.log(`- Unchanged without refresh: ${unchanged.length}`);
           console.log(`- Excluded from Delivery: ${skipped.length}`);
+          console.log(`- Deferred Process failures: ${processingFailures.length}`);
+          if (processingFailures.length) {
+            console.log("\n### Articles retained for Process retry\n");
+            for (const article of processingFailures) {
+              const title = String(article.title || article.articleId).replace(/[\r\n|]/g, " ").slice(0, 180);
+              console.log(`- **${article.sourceId}**: [${title}](${article.canonicalUrl}) — ${String(article.error || "process-error").slice(0, 300)}`);
+            }
+          }
           if (skipped.length) {
             console.log("\n### Articles excluded from Delivery\n");
             for (const article of skipped) {

@@ -96,27 +96,28 @@ async function deliveryArticle(
   const sourcePrefix = `content/newspapers/${canonical.source.id}`;
   const assets: JojoAssetDescriptor[] = [];
   for (const asset of canonical.assets) {
-    try {
-      const clear = new Uint8Array(await readFile(path.join(workspaceRoot, ...asset.rawObject.split("/"))));
-      const object = `${sourcePrefix}/assets/${asset.sha256}.jox`;
-      await writeJoxBytes(deliveryRoot, object, clear);
-      assets.push({
-        id: asset.id,
-        type: "image",
-        role: asset.role,
-        mediaType: asset.mediaType,
-        object,
-        size: clear.byteLength,
-        sha256: asset.sha256,
-        ...(asset.alt ? { alt: asset.alt } : {}),
-        ...(asset.caption ? { caption: asset.caption } : {}),
-        ...(asset.width ? { width: asset.width } : {}),
-        ...(asset.height ? { height: asset.height } : {}),
-        ...(asset.presentation ? { presentation: asset.presentation } : {}),
-      });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    const clear = new Uint8Array(await readFile(path.join(workspaceRoot, ...asset.rawObject.split("/"))));
+    if (clear.byteLength !== asset.size) {
+      throw new Error(`Canonical asset size mismatch for ${asset.rawObject}: expected ${asset.size}, got ${clear.byteLength}`);
     }
+    const digest = createHash("sha256").update(clear).digest("hex");
+    if (digest !== asset.sha256) throw new Error(`Canonical asset SHA-256 mismatch for ${asset.rawObject}`);
+    const object = `${sourcePrefix}/assets/${asset.sha256}.jox`;
+    await writeJoxBytes(deliveryRoot, object, clear);
+    assets.push({
+      id: asset.id,
+      type: "image",
+      role: asset.role,
+      mediaType: asset.mediaType,
+      object,
+      size: clear.byteLength,
+      sha256: asset.sha256,
+      ...(asset.alt ? { alt: asset.alt } : {}),
+      ...(asset.caption ? { caption: asset.caption } : {}),
+      ...(asset.width ? { width: asset.width } : {}),
+      ...(asset.height ? { height: asset.height } : {}),
+      ...(asset.presentation ? { presentation: asset.presentation } : {}),
+    });
   }
   const availableAssets = new Set(assets.map((asset) => asset.id));
   const body = bodyForDelivery(canonical.body, availableAssets);

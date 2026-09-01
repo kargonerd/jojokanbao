@@ -34,7 +34,19 @@ interface ProcessBatch {
   manifest: SourceCaptureManifest;
   manifestObject: string;
   candidates: ProcessedCandidate[];
+  processingFailures: ProcessArticleFailure[];
 }
+
+interface ProcessArticleFailure {
+  sourceId: string;
+  articleId: string;
+  title: string;
+  canonicalUrl: string;
+  reason: "process-error";
+  error: string;
+}
+
+type ProcessSourceResult = CanonicalWriteResult & { processingFailures: ProcessArticleFailure[] };
 
 function enabled(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) return fallback;
@@ -52,7 +64,7 @@ function positiveInteger(value: string | undefined, fallback: number, name: stri
 export async function runProcess(args: Map<string, string>): Promise<{
   report: string;
   translation: ({ enabled: true } & TranslationBatchStats) | { enabled: false };
-  sources: CanonicalWriteResult[];
+  sources: ProcessSourceResult[];
 }> {
   const output = path.resolve(requiredArg(args, "output"));
   const runManifestPath = path.resolve(requiredArg(args, "run-manifest"));
@@ -65,7 +77,27 @@ export async function runProcess(args: Map<string, string>): Promise<{
   }
   const sources = new Map((await loadSources(configPath)).map((source) => [source.id, source]));
   const run = JSON.parse(await readFile(runManifestPath, "utf8")) as RawRunManifest;
-  const results: CanonicalWriteResult[] = [];
+  const articleIdsFile = args.get("article-ids-file");
+  const articleIdsValue = articleIdsFile
+    ? JSON.parse(await readFile(path.resolve(articleIdsFile), "utf8")) as unknown
+    : undefined;
+  if (articleIdsValue !== undefined && !Array.isArray(articleIdsValue)) {
+    throw new Error("Article retry list must be an array");
+  }
+  const selectedArticleKeys = articleIdsValue
+    ? new Set(articleIdsValue.map((value) => {
+        if (typeof value === "string" && value.trim()) return `\0${value}`;
+        if (value && typeof value === "object" && !Array.isArray(value)
+          && typeof (value as { sourceId?: unknown }).sourceId === "string"
+          && typeof (value as { articleId?: unknown }).articleId === "string"
+          && (value as { sourceId: string }).sourceId.trim()
+          && (value as { articleId: string }).articleId.trim()) {
+          return `${(value as { sourceId: string }).sourceId}\0${(value as { articleId: string }).articleId}`;
+        }
+        throw new Error("Article retry list contains an invalid entry");
+      }))
+    : undefined;
+  const results: ProcessSourceResult[] = [];
   const batches: ProcessBatch[] = [];
   for (const row of run.sources) {
     if (row.status !== "ok" || !row.output?.manifest) continue;
@@ -76,16 +108,34 @@ export async function runProcess(args: Map<string, string>): Promise<{
     const candidatesPath = path.join(path.dirname(manifestPath), "candidates.jsonl.gz");
     const rawCandidates = gunzipSync(await readFile(candidatesPath)).toString("utf8")
       .split(/\r?\n/).filter(Boolean)
-      .map((line) => processSourceCandidate(source.id, JSON.parse(line) as Candidate));
-    const candidates = await Promise.all(rawCandidates.map((candidate) => processArticle(
-      output,
-      source,
-      candidate,
-      manifest.fetchPolicy ?? sourceFetchPolicy(source.id),
-      sourceBodyExtractor(source.id),
-      sourceOriginalPageRejectionClassifier(source.id),
-    )));
-    batches.push({ source, manifest, manifestObject: row.output.manifest, candidates });
+      .map((line) => processSourceCandidate(source.id, JSON.parse(line) as Candidate))
+      .filter((candidate) => !selectedArticleKeys
+        || selectedArticleKeys.has(`${source.id}\0${candidate.articleId}`)
+        || selectedArticleKeys.has(`\0${candidate.articleId}`));
+    if (!rawCandidates.length) continue;
+    const settled = await Promise.allSettled(rawCandidates.map((candidate) => processArticle(
+        output,
+        source,
+        candidate,
+        manifest.fetchPolicy ?? sourceFetchPolicy(source.id),
+        sourceBodyExtractor(source.id),
+        sourceOriginalPageRejectionClassifier(source.id),
+      )));
+    const candidates: ProcessedCandidate[] = [];
+    const processingFailures: ProcessArticleFailure[] = [];
+    for (const [index, outcome] of settled.entries()) {
+      const candidate = rawCandidates[index]!;
+      if (outcome.status === "fulfilled") candidates.push(outcome.value);
+      else processingFailures.push({
+        sourceId: source.id,
+        articleId: candidate.articleId,
+        title: candidate.title,
+        canonicalUrl: candidate.canonicalUrl,
+        reason: "process-error",
+        error: outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason),
+      });
+    }
+    batches.push({ source, manifest, manifestObject: row.output.manifest, candidates, processingFailures });
   }
   let translation: ({ enabled: true } & TranslationBatchStats) | { enabled: false } = { enabled: false };
   if (translationEnabled) {
@@ -112,7 +162,7 @@ export async function runProcess(args: Map<string, string>): Promise<{
   }
   for (const batch of batches) {
     const classifyStaleCanonicalBody = sourceStaleCanonicalBodyClassifier(batch.source.id);
-    results.push(await writeCanonicalSource(
+    const written = await writeCanonicalSource(
       output,
       batch.source,
       batch.manifest,
@@ -122,7 +172,8 @@ export async function runProcess(args: Map<string, string>): Promise<{
       {
         ...(classifyStaleCanonicalBody ? { classifyStaleCanonicalBody } : {}),
       },
-    ));
+    );
+    results.push({ ...written, processingFailures: batch.processingFailures });
   }
   const reportPath = path.join(output, "canonical", "runs", `${run.runId}.json`);
   await mkdir(path.dirname(reportPath), { recursive: true });

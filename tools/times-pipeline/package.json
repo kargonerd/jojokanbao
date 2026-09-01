@@ -14,6 +14,7 @@
     "capture-pages": "node dist/src/page-capture-cli.js",
     "prepare-proxy": "node dist/src/prepare-proxy-cli.js",
     "hf": "node dist/src/hf-cli.js",
+    "runtime": "node dist/src/runtime-cli.js",
     "archive-canonical": "node dist/src/archive-canonical-cli.js",
     "process": "node dist/src/process-cli.js",
     "delivery": "node dist/src/delivery-cli.js",
@@ -26,6 +27,7 @@
     "cheerio": "1.2.0",
     "fast-xml-parser": "5.2.5",
     "playwright": "1.60.0",
+    "tar": "7.5.22",
     "undici": "8.10.0",
     "yaml": "2.9.0"
   },

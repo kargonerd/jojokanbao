@@ -1,17 +1,17 @@
 # JOJO 时事离线新闻系统设计
 
-状态：v3 实施基线，2026-08-26。
+状态：v4 Runtime Bucket 实施基线，2026-09-01。
 
 ## 1. 数据边界
 
-系统只有三个数据层：
+系统只有三个在线数据层：
 
-1. HF Raw：发现响应、原始 HTML、渲染 DOM、抓取元数据和原始图片，是可重新解析的权威来源；
-2. HF Canonical：按真实媒体保存的单篇规范文章和每日引用索引，是翻译与搜索的输入；
+1. Runtime job：发现响应、原始 HTML、渲染 DOM、抓取元数据和原始图片，是 14/30 天热重试来源；
+2. Runtime memory：Capture 去重记忆，以及 Process 最近八天的文章、译文缓存、日期索引和图片闭包；
 3. B2 Delivery：按真实媒体发布的不可变正文/图片，以及供产品滚动读取的跨媒体日期索引。
 
-Raw 与 Canonical 位于同一个 HF repo。B2 不保存 Raw、Canonical、代理状态或任务状态。实时与历史没有
-存储分界：今天和多年前使用同一日期格式，前端只是默认先加载最新日期。
+Runtime 位于独立的私有 HF Storage Bucket。B2 不保存 Raw、处理记忆、代理状态或任务状态。旧 HF Dataset
+退出实时写入，可独立作为历史归档；它不参与每十分钟流水线。
 
 ## 2. 执行流程
 
@@ -22,20 +22,26 @@ Raw 与 Canonical 位于同一个 HF repo。B2 不保存 Raw、Canonical、代�
     → 每个媒体选择 direct-first 或 browser-first
     → Playwright 控制锁定 Chromium/Brave + BPC（需要时切换代理节点）
     → 保存 original HTML、rendered DOM、正文图片
-    → HF Raw commit
+    → Runtime jobs/{id}/raw.tar
+    → Runtime jobs/{id}/status.json（最后写入的 ready 标记）
+    → 尽力更新 Capture memory（失败不丢已落盘 job）
 
 Capture 成功后触发 Process/Publish
-  最新完整 Raw commit
+  status marker 重建 FIFO，选择最早 ready 或到期 partial job + 已提交 Process memory
     → 仅接受完整正文
     → 非中文完整 HTML blocks 并发翻译与结构校验（Gemma 31B，26B 降级，失败保留原文）
     → 单篇 Canonical Article + 媒体每日引用
-    → HF Canonical commit
+    → Runtime jobs/{id}/processed-{sha256}.tar.gz（B2 前固化，重试直接重放）
     → B2 媒体 Article/Asset
     → 媒体每日/index
     → 全局 timeline 每日/index
+    → process-memory.json 指向已提交 generation
+    → job 标记为 done；单篇处理异常则标记 partial
 ~~~
 
-Capture 和 Process 可独立重试。B2 失败时从 Canonical 重发，不重新访问媒体。
+Capture 和 Process 可独立重试。Raw job 完整落盘后即使 Capture memory 更新失败也可继续 Process；
+Process 前半段失败时复用同一 `raw.tar`，B2 阶段失败时复用同一 `processed-{sha256}.tar.gz`，既不重新访问媒体，
+也不重新生成译文。Process memory 指针和 job 完成状态只在 B2 catalog 成功提交并验证后推进。
 
 ## 3. 去重与并发
 
@@ -81,24 +87,29 @@ BPC 请求若被站点拒绝，会在同一节点以新的原生 Brave profile �
 等于 80px 的图和追踪像素会被排除。下载后的图片以字节哈希存储；Canonical 正文只使用
 figure[data-asset-id]，不依赖出版方外链。图片失败会写入抓取记录，但不会删除已经取得的完整文字正文。
 
-## 6. HF 契约
+## 6. Runtime Bucket 契约
 
 ~~~text
-raw/{source}/state.json.gz
-raw/{source}/assets/{sha256}.{ext}
-raw/{source}/runs/YYYY/MM/DD/{RUN_ID}/...
-raw/runs/YYYY/MM/DD/{RUN_ID}.json
-
-canonical/{source}/dataset.json
-canonical/{source}/articles/{contentHash}.json.gz
-canonical/{source}/translations/gemma-news-zh-v2/YYYY/MM/YYYY-MM-DD/{sourceHash}.json.gz
-canonical/{source}/dates/YYYY/MM/YYYY-MM-DD.json.gz
-canonical/runs/{RUN_ID}.json
+times/capture-memory.tar.gz
+times/process-memory.json
+times/pending-jobs.json
+times/jobs/{GITHUB_RUN_ID}-{GITHUB_RUN_ATTEMPT}/raw.tar
+times/jobs/{GITHUB_RUN_ID}-{GITHUB_RUN_ATTEMPT}/processed-{sha256}.tar.gz
+times/jobs/{GITHUB_RUN_ID}-{GITHUB_RUN_ATTEMPT}/status.json
 ~~~
 
-Source run 保存本轮发现和抓取证据；单篇 Canonical Article 是不可变内容对象；每日 Canonical 只引用
-文章，不复制正文。翻译缓存以原始标题、正文、语言和翻译策略的 sourceHash 寻址，模型或提示词策略升级时
-通过新的策略版本目录失效。历史修订由新的 content hash 和 HF commit 历史保留。
+`raw.tar` 是不可变 job payload；`status.json` 保存 archive/member 的 size 与 SHA-256，并作为 marker-last
+完成标记。状态为 `ready | partial | done`。Process 下载后逐成员校验，任何缺失或损坏都 fail closed。
+`pending-jobs.json` 是可重建的 FIFO 索引，`status.json` marker 才是任务权威；queue 丢失、损坏或 marker
+与 enqueue 之间中断时，selector 会扫描 marker 并重建。partial job 按指数退避重试。
+Capture memory 只保存各媒体 `state.json.gz`。每份 `processed-{sha256}.tar.gz` 保存保留窗口内的 Canonical 日期索引、
+被引用 article、翻译缓存、被引用 Raw asset 和本轮 Process result；`process-memory.json` 只是当前已完成
+generation 的小指针。首次空状态必须通过人工审核的显式 bootstrap，发布任务不得静默从空 memory 开始。
+
+`done` job 在 14 天后清理；`ready/partial` job 在 30 天后进入 dead-letter 清理并告警。清理只接受精确
+allowlist 路径，默认 dry-run、显式 apply，一次最多删除 100 个 job。Bucket 不依赖 Git commit、revision
+或目录级递归删除。上传中断产生且没有 status marker 的 payload 在 30 天后清理，但当前 Process memory
+指针引用的 generation 永远受到保护；payload 删除成功后才删除 status marker。
 
 ## 7. B2 契约与提交顺序
 
