@@ -38,7 +38,6 @@ from jojo_news_archive.sources.bloomberg.capture import (
     BLOOMBERG_SYNDICATION_MINIMUM_BODY_CHARACTERS,
     bloomberg_syndication_search_url,
 )
-from jojo_news_archive.sources.caixin.capture import _caixin_capture_parser_evidence
 from jojo_news_archive.sources.ft.capture import (
     FT_SYNDICATION_MINIMUM_BODY_CHARACTERS,
     _ft_capture_parser_evidence,
@@ -307,81 +306,10 @@ def test_nikkei_capture_parser_evidence_rejects_modern_paywall_excerpt():
     assert evidence["nikkeiCaptureExtractionStatus"] == "partial"
 
 
-def test_caixin_capture_parser_evidence_rejects_metadata_only_shell():
-    usable, evidence = _caixin_capture_parser_evidence(
-        """
-        <html><head>
-          <meta property="og:title" content="戴姆勒在华行贿案调查">
-          <meta property="og:description" content="事涉行贿，在华涉案总额超过400万欧元">
-          <meta property="article:published_time"
-                content="2010-03-28T08:00:00+08:00">
-        </head><body><div class="content">
-          <div id="Main_Content_Val"><p>1</p></div>
-          <p>打印 意见反馈 推荐新闻 排行榜</p>
-        </div></body></html>
-        """.encode() + (b" " * 2_048),
-        canonical_url=(
-            "https://magazine.caixin.com/2010-03-28/100129838.html"
-        ),
-    )
-
-    assert usable is False
-    assert evidence["caixinCaptureParserUsable"] is False
-    assert evidence["caixinCaptureExtractionStatus"] == "partial"
-    assert evidence["caixinCaptureBodyCharacters"] < 100
 
 
-def test_caixin_capture_parser_evidence_accepts_complete_single_page_gallery():
-    usable, evidence = _caixin_capture_parser_evidence(
-        """
-        <html><body>
-          <h1>外资投行正在逐渐进入经纪业务领域</h1>
-          <div class="focusBody">
-            <ul id="pic_content"><li><table><tr><td>
-              <div class="imgBox"><table>
-                <tr><td><img src="http://img.caixin.com/photo.jpg"></td></tr>
-                <tr><td style="font-size:12px">完整单页图片报道的图注。</td></tr>
-              </table></div>
-            </td></tr></table></li></ul>
-            <div class="infobox">发表时间：2010年03月21日 20:23</div>
-            <div class="op">发表时间：2010年03月21日 20:23　1 /1</div>
-          </div>
-        </body></html>
-        """.encode(),
-        canonical_url="https://photos.caixin.com/2010-03-21/100128464.html",
-    )
-
-    assert usable is True
-    assert evidence["caixinCaptureParserUsable"] is True
-    assert evidence["caixinCaptureExtractionStatus"] == "complete"
-    assert evidence["caixinCaptureContentType"] == "gallery"
 
 
-def test_caixin_capture_parser_evidence_rejects_incomplete_multipage_gallery():
-    usable, evidence = _caixin_capture_parser_evidence(
-        """
-        <html><body>
-          <h1>多页图片报道</h1>
-          <div class="focusBody">
-            <ul id="pic_content"><li><table><tr><td>
-              <div class="imgBox"><table>
-                <tr><td><img src="http://img.caixin.com/photo.jpg"></td></tr>
-                <tr><td style="font-size:12px">这里只保存了第一张图片。</td></tr>
-              </table></div>
-            </td></tr></table></li></ul>
-            <div class="infobox">发表时间：2010年04月01日 08:05</div>
-            <div class="op">发表时间：2010年04月01日 08:05</div>
-            1 /3
-          </div>
-        </body></html>
-        """.encode(),
-        canonical_url="https://photos.caixin.com/2010-04-01/100130000.html",
-    )
-
-    assert usable is False
-    assert evidence["caixinCaptureParserUsable"] is False
-    assert evidence["caixinCaptureExtractionStatus"] == "partial"
-    assert evidence["caixinCaptureContentType"] == "gallery"
 
 
 def test_wsj_archive_capture_supports_secondary_archive_fallbacks():
@@ -564,84 +492,6 @@ class StubArchiveClient:
         return self.fetch(url, maximum_bytes=maximum_bytes)
 
 
-def test_caixin_capture_skips_shell_and_uses_complete_later_candidate(
-    tmp_path: Path,
-):
-    canonical_url = (
-        "https://magazine.caixin.com/2010-03-28/100129838.html"
-    )
-    shell_url = (
-        "https://web.archive.org/web/20150514000000id_/" + canonical_url
-    )
-    complete_url = (
-        "https://web.archive.org/web/20160416000000id_/" + canonical_url
-    )
-    shell = """
-      <html><head>
-        <meta property="og:title" content="戴姆勒在华行贿案调查">
-        <meta property="article:published_time"
-              content="2010-03-28T08:00:00+08:00">
-      </head><body><div class="content">
-        <div id="Main_Content_Val"><p>1</p></div>
-        <p>打印 意见反馈 推荐新闻 排行榜</p>
-      </div></body></html>
-    """.encode() + (b" " * 2_048)
-    complete = """
-      <html><head>
-        <meta property="og:title" content="戴姆勒在华行贿案调查">
-        <meta property="article:published_time"
-              content="2010-03-28T08:00:00+08:00">
-      </head><body><div class="content">
-        <div id="Main_Content_Val">
-          <p>监管机构披露了案件调查的主要事实，并说明相关交易、
-          涉案金额以及企业作出的正式回应。</p>
-          <p>调查材料记录了付款时间、业务背景和内部审批过程，
-          为判断事件范围提供了完整依据。</p>
-          <p>公司表示将配合后续调查并改进合规制度，相关部门也将
-          继续核查责任主体和资金流向。</p>
-        </div>
-      </div></body></html>
-    """.encode() + (b" " * 2_048)
-    client = StubArchiveClient(
-        {
-            shell_url: (
-                200,
-                {"content-type": "text/html"},
-                shell,
-                shell_url,
-            ),
-            complete_url: (
-                200,
-                {"content-type": "text/html"},
-                complete,
-                complete_url,
-            ),
-        }
-    )
-    item = ManifestItem(
-        publisher="caixin",
-        canonical_url=canonical_url,
-        published_at="2010-03-28T00:00:00Z",
-        section=None,
-        candidates=(
-            candidate(shell_url, "20150514000000"),
-            candidate(complete_url, "20160416000000"),
-        ),
-    )
-
-    result = capture_item(
-        item,
-        archive_client=client,
-        output_dir=tmp_path,
-        maximum_html_bytes=1_000_000,
-    )
-
-    assert result["status"] == "complete"
-    assert result["capture"].selected_candidate.snapshot_url == complete_url
-    assert result["capture"].quality_signals[
-        "caixinCaptureParserUsable"
-    ] is True
-    assert client.requests == [shell_url, complete_url]
 
 
 def test_archives_wayback_nyt_adventure_script_as_dependent_resource(
@@ -8917,11 +8767,6 @@ def test_stored_wsj_video_with_auth_marker_is_not_requeued(
             "wsj",
             "https://www.wsj.com/articles/incomplete-example-123",
             "wsj-capture-parser-incomplete",
-        ),
-        (
-            "caixin",
-            "https://magazine.caixin.com/2020-01-01/incomplete.html",
-            "caixin-capture-parser-incomplete",
         ),
     ],
 )

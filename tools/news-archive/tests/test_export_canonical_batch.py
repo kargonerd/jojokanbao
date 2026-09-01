@@ -17,7 +17,7 @@ from jojo_news_archive.models import (
 from tools.export_canonical_batch import export_batch, write_jsonl
 
 
-RAW_RUN_MANIFEST = "raw/archive/runs/2026/08/30/test-run.json"
+RAW_RUN_MANIFEST = "raw/archive/runs/2026/08/30/test-run/manifest.json"
 
 
 def _html(*, headline: str = "A complete archive story", repeats: int = 6) -> bytes:
@@ -114,7 +114,31 @@ def test_replays_complete_capture_with_exact_raw_provenance(tmp_path: Path):
 
 def test_excludes_incomplete_capture(tmp_path: Path):
     record = _record(tmp_path, html=b"<html><title>Only metadata</title></html>")
-    assert _export(tmp_path, [record]) == []
+    statistics: dict[str, object] = {}
+    assert export_batch(
+        root=tmp_path,
+        record_objects=[record],
+        raw_revision="a" * 40,
+        raw_run_id="archive-test-run",
+        raw_run_manifest=RAW_RUN_MANIFEST,
+        statistics=statistics,
+    ) == []
+    assert statistics == {
+        "inputRecords": 1,
+        "acceptedCandidates": 0,
+        "duplicateCandidates": 0,
+        "rejectedRecords": 1,
+        "rejectionReasons": {
+            "empty-body": 1,
+            "extraction-unsupported": 1,
+            "missing-headline": 1,
+        },
+        "rejectedExamples": [{
+            "recordObject": record,
+            "issues": ["empty-body", "extraction-unsupported", "missing-headline"],
+        }],
+        "articles": 0,
+    }
 
 
 def test_selects_best_capture_deterministically(tmp_path: Path):

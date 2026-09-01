@@ -41,6 +41,32 @@ export interface HfFileSetManifest {
 }
 
 export type HfConflictStrategy = "fail" | "retry-disjoint";
+export type HfExistingPolicy = "replace" | "immutable";
+
+interface ArchiveCanonicalSourceReport {
+  sourceId?: unknown;
+  dates?: unknown;
+  articles?: unknown;
+  files?: unknown;
+}
+
+interface ArchiveCanonicalReport {
+  formatVersion?: unknown;
+  rawRunId?: unknown;
+  rawRunManifest?: unknown;
+  sourceRawRevision?: unknown;
+  rawRevision?: unknown;
+  processedAt?: unknown;
+  sources?: unknown;
+}
+
+export interface ArchiveCanonicalUploadPlan {
+  manifest: HfFileSetManifest;
+  reportObject: string;
+  rawRevision: string;
+  immutableObjects: ReadonlySet<string>;
+  replaceObjects: ReadonlySet<string>;
+}
 
 function strictRelativePath(value: unknown, label: string): string {
   if (typeof value !== "string" || !value || value.includes("\\") || value.includes("\0")) {
@@ -110,6 +136,169 @@ export function parseHfFileSetManifest(value: unknown): HfFileSetManifest {
     };
   });
   return { formatVersion: "jojo-hf-file-set/1", files };
+}
+
+export function validateArchiveFileSetScope(
+  manifestValue: HfFileSetManifest,
+  allowedPrefix: string,
+  existingPolicy: HfExistingPolicy,
+): HfFileSetManifest {
+  const manifest = parseHfFileSetManifest(manifestValue);
+  if (existingPolicy !== "replace" && existingPolicy !== "immutable") {
+    throw new Error(`Unsupported HF existing-object policy: ${String(existingPolicy)}`);
+  }
+  if (!allowedPrefix.endsWith("/")) throw new Error("Allowed HF archive prefix must end with /");
+  const root = strictRelativePath(allowedPrefix.slice(0, -1), "HF archive allowed prefix");
+  const slug = "[a-z0-9]+(?:-[a-z0-9]+)*";
+  const approved = [
+    new RegExp(`^raw/archive/v1/${slug}/\\d{4}-\\d{4}/${slug}$`, "u"),
+    new RegExp(`^raw/archive/v2/validation-state/${slug}/${slug}/\\d{4}$`, "u"),
+    new RegExp(`^raw/archive/runs/\\d{4}/\\d{2}/\\d{2}/[a-z0-9][a-z0-9.-]*$`, "u"),
+    new RegExp(`^raw/archive/assets/${slug}$`, "u"),
+  ];
+  if (!approved.some((pattern) => pattern.test(root))) {
+    throw new Error(`HF upload prefix is outside approved archive scopes: ${allowedPrefix}`);
+  }
+  const normalizedPrefix = `${root}/`;
+  if (manifest.files.some((file) => !file.objectName.startsWith(normalizedPrefix))) {
+    throw new Error(`HF file set contains an object outside ${normalizedPrefix}`);
+  }
+  const immutableObject = (objectName: string): boolean => (
+    /^raw\/archive\/v1\/[a-z0-9]+(?:-[a-z0-9]+)*\/\d{4}-\d{4}\/[a-z0-9]+(?:-[a-z0-9]+)*\/raw\//u.test(objectName)
+    || objectName.startsWith("raw/archive/runs/")
+    || objectName.startsWith("raw/archive/assets/")
+  );
+  if (existingPolicy === "replace" && manifest.files.some((file) => immutableObject(file.objectName))) {
+    throw new Error("Immutable archive Raw, run, and asset objects cannot use replace policy");
+  }
+  return manifest;
+}
+
+function exactStringArray(value: unknown, label: string): string[] {
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+    throw new Error(`${label} must be an array of strings`);
+  }
+  const values = value as string[];
+  if (new Set(values).size !== values.length) throw new Error(`${label} contains duplicates`);
+  return values;
+}
+
+function validCalendarDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function sameStringSet(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  return left.size === right.size && [...left].every((value) => right.has(value));
+}
+
+export function validateArchiveCanonicalFileSetScope(
+  manifestValue: HfFileSetManifest,
+  reportValue: unknown,
+): ArchiveCanonicalUploadPlan {
+  const manifest = parseHfFileSetManifest(manifestValue);
+  if (!reportValue || typeof reportValue !== "object" || Array.isArray(reportValue)) {
+    throw new Error("Historical Canonical report must be an object");
+  }
+  const report = reportValue as ArchiveCanonicalReport;
+  if (
+    report.formatVersion !== "jojo-news-archive-canonical-run/1"
+    || typeof report.rawRunId !== "string"
+    || !/^[a-z0-9][a-z0-9.-]*$/u.test(report.rawRunId)
+    || typeof report.rawRunManifest !== "string"
+    || typeof report.sourceRawRevision !== "string"
+    || !/^[a-f0-9]{40}$/u.test(report.sourceRawRevision)
+    || typeof report.rawRevision !== "string"
+    || !/^[a-f0-9]{40}$/u.test(report.rawRevision)
+    || typeof report.processedAt !== "string"
+    || Number.isNaN(Date.parse(report.processedAt))
+    || !Array.isArray(report.sources)
+    || report.sources.length === 0
+  ) {
+    throw new Error("Historical Canonical report is invalid");
+  }
+  const runManifestPattern = new RegExp(
+    `^raw/archive/runs/\\d{4}/\\d{2}/\\d{2}/${report.rawRunId.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}/manifest\\.json$`,
+    "u",
+  );
+  if (!runManifestPattern.test(report.rawRunManifest)) {
+    throw new Error("Historical Canonical report does not match its Raw run manifest");
+  }
+
+  const reportObject = `canonical/archive-runs/${createHash("sha256").update(report.rawRunId).digest("hex").slice(0, 24)}.json`;
+  const expectedObjects = new Set<string>([reportObject]);
+  const immutableObjects = new Set<string>([reportObject]);
+  const replaceObjects = new Set<string>();
+  const sourceIds = new Set<string>();
+  for (const [index, sourceValue] of (report.sources as unknown[]).entries()) {
+    if (!sourceValue || typeof sourceValue !== "object" || Array.isArray(sourceValue)) {
+      throw new Error(`Historical Canonical source ${index} must be an object`);
+    }
+    const source = sourceValue as ArchiveCanonicalSourceReport;
+    if (typeof source.sourceId !== "string" || !SOURCE_ID.test(source.sourceId) || sourceIds.has(source.sourceId)) {
+      throw new Error(`Historical Canonical source ${index} has an invalid or duplicate source id`);
+    }
+    sourceIds.add(source.sourceId);
+    const dates = exactStringArray(source.dates, `Historical Canonical source ${source.sourceId} dates`);
+    if (!dates.length || dates.some((date) => !validCalendarDate(date))) {
+      throw new Error(`Historical Canonical source ${source.sourceId} has invalid dates`);
+    }
+    if (!Array.isArray(source.articles) || source.articles.length === 0) {
+      throw new Error(`Historical Canonical source ${source.sourceId} has no articles`);
+    }
+    const articleObjects = source.articles.map((article, articleIndex) => {
+      if (!article || typeof article !== "object" || Array.isArray(article)) {
+        throw new Error(`Historical Canonical source ${source.sourceId} article ${articleIndex} is invalid`);
+      }
+      const objectName = (article as { object?: unknown }).object;
+      const pattern = new RegExp(`^canonical/${source.sourceId}/articles/[a-f0-9]{64}\\.json\\.gz$`, "u");
+      if (typeof objectName !== "string" || !pattern.test(objectName)) {
+        throw new Error(`Historical Canonical source ${source.sourceId} article ${articleIndex} has an invalid object`);
+      }
+      return objectName;
+    });
+    if (new Set(articleObjects).size !== articleObjects.length) {
+      throw new Error(`Historical Canonical source ${source.sourceId} contains duplicate article objects`);
+    }
+    const datasetObject = `canonical/${source.sourceId}/dataset.json`;
+    const dateObjects = dates.map((date) => (
+      `canonical/${source.sourceId}/dates/${date.slice(0, 4)}/${date.slice(5, 7)}/${date}.json.gz`
+    ));
+    const sourceObjects = new Set([datasetObject, ...dateObjects, ...articleObjects]);
+    const reportedFiles = new Set(exactStringArray(
+      source.files,
+      `Historical Canonical source ${source.sourceId} files`,
+    ));
+    if (!sameStringSet(sourceObjects, reportedFiles)) {
+      throw new Error(`Historical Canonical source ${source.sourceId} file set is not exact`);
+    }
+    for (const objectName of sourceObjects) expectedObjects.add(objectName);
+    for (const objectName of articleObjects) immutableObjects.add(objectName);
+    replaceObjects.add(datasetObject);
+    for (const objectName of dateObjects) replaceObjects.add(objectName);
+  }
+
+  const manifestObjects = new Set(manifest.files.map((entry) => entry.objectName));
+  if (!sameStringSet(expectedObjects, manifestObjects)) {
+    throw new Error("Historical Canonical manifest does not exactly match its report");
+  }
+  if (manifest.files.some((entry) => entry.localPath !== entry.objectName || entry.required !== true)) {
+    throw new Error("Historical Canonical manifest requires exact object paths and required files");
+  }
+  if (
+    immutableObjects.size + replaceObjects.size !== manifest.files.length
+    || [...immutableObjects].some((objectName) => replaceObjects.has(objectName))
+  ) {
+    throw new Error("Historical Canonical object policies do not cover the exact manifest");
+  }
+  return {
+    manifest,
+    reportObject,
+    rawRevision: report.rawRevision,
+    immutableObjects,
+    replaceObjects,
+  };
 }
 
 export async function readHfFileSetManifest(file: string): Promise<HfFileSetManifest> {
@@ -603,10 +792,81 @@ export class HfTimesDataset {
     manifestValue: HfFileSetManifest,
     title: string,
     conflictStrategy: HfConflictStrategy = "fail",
+    expectedParentRevision?: string,
+    existingPolicy: HfExistingPolicy = "replace",
   ): Promise<{ revision: string; uploaded: number; skipped: string[] }> {
     const manifest = parseHfFileSetManifest(manifestValue);
+    return this.uploadFileSetWithPolicies(
+      manifest,
+      title,
+      conflictStrategy,
+      expectedParentRevision,
+      () => existingPolicy,
+    );
+  }
+
+  async uploadArchiveCanonicalFileSet(
+    manifestValue: HfFileSetManifest,
+    title: string,
+    expectedParentRevision: string,
+  ): Promise<{ revision: string; uploaded: number; skipped: string[] }> {
+    const manifest = parseHfFileSetManifest(manifestValue);
+    const reportEntries = manifest.files.filter((entry) => (
+      /^canonical\/archive-runs\/[a-f0-9]{24}\.json$/u.test(entry.objectName)
+    ));
+    if (reportEntries.length !== 1) {
+      throw new Error("Historical Canonical manifest must contain exactly one run report");
+    }
+    const reportEntry = reportEntries[0]!;
+    const reportFile = await existingFileWithinOutput(this.output, reportEntry.localPath);
+    const reportMetadata = await stat(reportFile);
+    if (!reportMetadata.isFile() || reportMetadata.size !== reportEntry.size) {
+      throw new Error(`Historical Canonical report size mismatch: ${reportEntry.localPath}`);
+    }
+    const reportDigest = await fileSha256(reportFile);
+    if (reportDigest !== reportEntry.sha256) {
+      throw new Error(`Historical Canonical report SHA-256 mismatch: ${reportEntry.localPath}`);
+    }
+    let report: unknown;
+    try {
+      report = JSON.parse(await readFile(reportFile, "utf8")) as unknown;
+    } catch (error) {
+      throw new Error(`Historical Canonical report is not valid JSON: ${reportEntry.localPath}`, { cause: error });
+    }
+    const plan = validateArchiveCanonicalFileSetScope(manifest, report);
+    if (reportEntry.objectName !== plan.reportObject) {
+      throw new Error("Historical Canonical run report object does not match its run id");
+    }
+    if (expectedParentRevision !== plan.rawRevision) {
+      throw new Error(
+        `Historical Canonical upload parent does not match its Raw revision: expected ${plan.rawRevision}, got ${expectedParentRevision}`,
+      );
+    }
+    return this.uploadFileSetWithPolicies(
+      plan.manifest,
+      title,
+      "fail",
+      expectedParentRevision,
+      (objectName) => plan.immutableObjects.has(objectName) ? "immutable" : "replace",
+    );
+  }
+
+  private async uploadFileSetWithPolicies(
+    manifest: HfFileSetManifest,
+    title: string,
+    conflictStrategy: HfConflictStrategy,
+    expectedParentRevision: string | undefined,
+    objectPolicy: (objectName: string) => HfExistingPolicy,
+  ): Promise<{ revision: string; uploaded: number; skipped: string[] }> {
     if (conflictStrategy !== "fail" && conflictStrategy !== "retry-disjoint") {
       throw new Error(`Unsupported HF conflict strategy: ${String(conflictStrategy)}`);
+    }
+    if (expectedParentRevision !== undefined && !/^[a-f0-9]{40}$/u.test(expectedParentRevision)) {
+      throw new Error("Expected HF parent revision must be a 40-character lowercase SHA");
+    }
+    const policies = new Map(manifest.files.map((entry) => [entry.objectName, objectPolicy(entry.objectName)]));
+    if ([...policies.values()].some((policy) => policy !== "replace" && policy !== "immutable")) {
+      throw new Error("Unsupported HF existing-object policy in file set");
     }
 
     const selected: Array<{ local: string; objectName: string }> = [];
@@ -634,7 +894,47 @@ export class HfTimesDataset {
     }
 
     let parentRevision = await this.revision();
-    if (selected.length === 0) return { revision: parentRevision, uploaded: 0, skipped };
+    if (expectedParentRevision !== undefined && parentRevision !== expectedParentRevision) {
+      throw new Error(
+        `HF changed before upload: expected parent ${expectedParentRevision}, found ${parentRevision}`,
+      );
+    }
+    let uploadable = selected;
+    const immutableSelected = selected.filter((file) => policies.get(file.objectName) === "immutable");
+    if (immutableSelected.length > 0) {
+      const expectedShaByObject = new Map(
+        manifest.files.map((entry) => [entry.objectName, entry.sha256]),
+      );
+      const existing = await mapLimit(immutableSelected, 8, async (file) => {
+        let blob: Blob | null;
+        try {
+          blob = await retryTransientHf(() => downloadFile({
+            repo: this.repo,
+            accessToken: this.accessToken,
+            path: file.objectName,
+            revision: parentRevision,
+          }), { label: `check immutable ${file.objectName}` });
+        } catch (error) {
+          if (hfStatusCode(error) === 404) return false;
+          throw error;
+        }
+        if (!blob) return false;
+        const digest = createHash("sha256").update(new Uint8Array(await blob.arrayBuffer())).digest("hex");
+        const expected = expectedShaByObject.get(file.objectName)!;
+        if (digest !== expected) {
+          throw new Error(`Immutable HF object already exists with different bytes: ${file.objectName}`);
+        }
+        return true;
+      });
+      for (const [index, present] of existing.entries()) {
+        if (present) skipped.push(immutableSelected[index]!.objectName);
+      }
+      const immutablePresent = new Set(existing.flatMap((present, index) => (
+        present ? [immutableSelected[index]!.objectName] : []
+      )));
+      uploadable = selected.filter((file) => !immutablePresent.has(file.objectName));
+    }
+    if (uploadable.length === 0) return { revision: parentRevision, uploaded: 0, skipped };
     const conflictAttempts = conflictStrategy === "retry-disjoint" ? 4 : 1;
     for (let attempt = 1;; attempt += 1) {
       try {
@@ -643,13 +943,17 @@ export class HfTimesDataset {
           accessToken: this.accessToken,
           commitTitle: title,
           parentCommit: parentRevision,
-          files: selected.map((file) => ({ path: file.objectName, content: pathToFileURL(file.local) })),
+          files: uploadable.map((file) => ({ path: file.objectName, content: pathToFileURL(file.local) })),
           useWebWorkers: false,
           useXet: true,
         }), { label: `upload ${title}` });
-        return { revision: result?.commit.oid ?? parentRevision, uploaded: selected.length, skipped };
+        return { revision: result?.commit.oid ?? parentRevision, uploaded: uploadable.length, skipped };
       } catch (error) {
-        if (hfStatusCode(error) !== 409 || attempt >= conflictAttempts) throw error;
+        if (
+          expectedParentRevision !== undefined
+          || hfStatusCode(error) !== 409
+          || attempt >= conflictAttempts
+        ) throw error;
         process.stderr.write(`[hf] upload ${title} conflicted; refreshing the parent revision for disjoint retry ${attempt + 1}/${conflictAttempts}\n`);
         parentRevision = await this.revision();
       }

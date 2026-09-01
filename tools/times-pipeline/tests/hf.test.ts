@@ -20,6 +20,8 @@ import {
   rawStateObjects,
   rawRunMatchesGitHubRunId,
   retryTransientHf,
+  validateArchiveCanonicalFileSetScope,
+  validateArchiveFileSetScope,
 } from "../src/hf.js";
 
 const { datasetInfoMock, downloadFileMock, uploadFilesMock } = vi.hoisted(() => ({
@@ -37,6 +39,38 @@ vi.mock("@huggingface/hub", async (importOriginal) => ({
 
 function sha256(value: Uint8Array | string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function archiveCanonicalFixture(rawRevision = "a".repeat(40)): {
+  report: Record<string, unknown>;
+  reportObject: string;
+  objects: { dataset: string; article: string; date: string };
+} {
+  const rawRunId = "archive-run-1";
+  const objects = {
+    dataset: "canonical/bloomberg/dataset.json",
+    article: `canonical/bloomberg/articles/${"b".repeat(64)}.json.gz`,
+    date: "canonical/bloomberg/dates/2020/01/2020-01-02.json.gz",
+  };
+  const reportObject = `canonical/archive-runs/${sha256(rawRunId).slice(0, 24)}.json`;
+  return {
+    reportObject,
+    objects,
+    report: {
+      formatVersion: "jojo-news-archive-canonical-run/1",
+      rawRunId,
+      rawRunManifest: `raw/archive/runs/2026/08/30/${rawRunId}/manifest.json`,
+      sourceRawRevision: "c".repeat(40),
+      rawRevision,
+      processedAt: "2026-08-30T12:00:00.000Z",
+      sources: [{
+        sourceId: "bloomberg",
+        dates: ["2020-01-02"],
+        articles: [{ object: objects.article }],
+        files: [objects.dataset, objects.article, objects.date],
+      }],
+    },
+  };
 }
 
 beforeEach(() => {
@@ -250,6 +284,132 @@ describe("HF exact file-set transport", () => {
     })).toThrow("unsupported fields");
   });
 
+  it("restricts generic exact uploads to one approved archive scope", () => {
+    const manifest = parseHfFileSetManifest({
+      formatVersion: "jojo-hf-file-set/1",
+      files: [{
+        localPath: "one.html",
+        objectName: "raw/archive/v1/bloomberg/2020-2020/wayback/raw/objects/html/aa/one.html.gz",
+        size: 3,
+        sha256: sha256("one"),
+      }],
+    });
+    expect(validateArchiveFileSetScope(
+      manifest,
+      "raw/archive/v1/bloomberg/2020-2020/wayback/",
+      "immutable",
+    )).toEqual(manifest);
+    expect(() => validateArchiveFileSetScope(manifest, "raw/archive/", "immutable"))
+      .toThrow("outside approved archive scopes");
+    expect(() => validateArchiveFileSetScope(
+      manifest,
+      "raw/archive/v1/bloomberg/2020-2020/wayback/",
+      "replace",
+    )).toThrow("cannot use replace policy");
+    expect(() => validateArchiveFileSetScope(
+      manifest,
+      "raw/archive/v1/wsj/2020-2020/wayback/",
+      "immutable",
+    )).toThrow("contains an object outside");
+  });
+
+  it("binds a historical Canonical manifest to one exact run report and mixed object policies", () => {
+    const fixture = archiveCanonicalFixture();
+    const manifest = parseHfFileSetManifest({
+      formatVersion: "jojo-hf-file-set/1",
+      files: [fixture.reportObject, ...Object.values(fixture.objects)].map((objectName) => ({
+        localPath: objectName,
+        objectName,
+        size: 3,
+        sha256: sha256("one"),
+        required: true,
+      })),
+    });
+    const plan = validateArchiveCanonicalFileSetScope(manifest, fixture.report);
+    expect(plan.reportObject).toBe(fixture.reportObject);
+    expect([...plan.immutableObjects].sort()).toEqual([fixture.objects.article, fixture.reportObject].sort());
+    expect([...plan.replaceObjects].sort()).toEqual([fixture.objects.dataset, fixture.objects.date].sort());
+
+    const extra = parseHfFileSetManifest({
+      ...manifest,
+      files: [...manifest.files, {
+        localPath: "canonical/bloomberg/unscoped.json",
+        objectName: "canonical/bloomberg/unscoped.json",
+        size: 3,
+        sha256: sha256("one"),
+        required: true,
+      }],
+    });
+    expect(() => validateArchiveCanonicalFileSetScope(extra, fixture.report))
+      .toThrow("does not exactly match its report");
+    expect(() => validateArchiveCanonicalFileSetScope(manifest, {
+      ...fixture.report,
+      rawRunManifest: "raw/archive/runs/2026/08/30/other-run/manifest.json",
+    })).toThrow("does not match its Raw run manifest");
+  });
+
+  it("uploads historical Canonical mutable and fail-closed objects in one pinned commit", async () => {
+    const output = await mkdtemp(path.join(tmpdir(), "jojo-hf-archive-canonical-"));
+    try {
+      const parent = "a".repeat(40);
+      const fixture = archiveCanonicalFixture(parent);
+      const bodies = new Map<string, Buffer>([
+        [fixture.objects.dataset, Buffer.from("dataset")],
+        [fixture.objects.article, Buffer.from("article")],
+        [fixture.objects.date, Buffer.from("date")],
+        [fixture.reportObject, Buffer.from(`${JSON.stringify(fixture.report)}\n`)],
+      ]);
+      for (const [objectName, body] of bodies) {
+        const file = path.join(output, ...objectName.split("/"));
+        await mkdir(path.dirname(file), { recursive: true });
+        await writeFile(file, body);
+      }
+      const manifest = parseHfFileSetManifest({
+        formatVersion: "jojo-hf-file-set/1",
+        files: [...bodies].map(([objectName, body]) => ({
+          localPath: objectName,
+          objectName,
+          size: body.byteLength,
+          sha256: sha256(body),
+          required: true,
+        })),
+      });
+      datasetInfoMock.mockResolvedValue({ sha: parent });
+      downloadFileMock.mockImplementation(({ path: objectName }: { path: string }) => (
+        objectName === fixture.objects.article ? Promise.resolve(new Blob(["article"])) : Promise.resolve(null)
+      ));
+      uploadFilesMock.mockResolvedValue({ commit: { oid: "canonical-commit" } });
+      const dataset = new HfTimesDataset("owner/dataset", output, "token");
+
+      await expect(dataset.uploadArchiveCanonicalFileSet(manifest, "archive canonical", parent)).resolves.toEqual({
+        revision: "canonical-commit",
+        uploaded: 3,
+        skipped: [fixture.objects.article],
+      });
+      expect(uploadFilesMock).toHaveBeenCalledTimes(1);
+      expect(uploadFilesMock).toHaveBeenCalledWith(expect.objectContaining({
+        parentCommit: parent,
+        files: expect.arrayContaining([
+          expect.objectContaining({ path: fixture.objects.dataset }),
+          expect.objectContaining({ path: fixture.objects.date }),
+          expect.objectContaining({ path: fixture.reportObject }),
+        ]),
+      }));
+      expect((uploadFilesMock.mock.calls[0]![0] as { files: Array<{ path: string }> }).files)
+        .not.toEqual(expect.arrayContaining([expect.objectContaining({ path: fixture.objects.article })]));
+
+      uploadFilesMock.mockReset();
+      downloadFileMock.mockImplementation(({ path: objectName }: { path: string }) => (
+        objectName === fixture.objects.article ? Promise.resolve(new Blob(["different"])) : Promise.resolve(null)
+      ));
+      await expect(dataset.uploadArchiveCanonicalFileSet(manifest, "archive canonical", parent))
+        .rejects.toThrow(`Immutable HF object already exists with different bytes: ${fixture.objects.article}`);
+      expect(uploadFilesMock).not.toHaveBeenCalled();
+    } finally {
+      await rm(output, { recursive: true, force: true });
+    }
+  });
+
   it("verifies size and SHA-256 before uploading and skips optional missing files", async () => {
     const output = await mkdtemp(path.join(tmpdir(), "jojo-hf-upload-"));
     try {
@@ -361,6 +521,77 @@ describe("HF exact file-set transport", () => {
       uploadFilesMock.mockReset().mockRejectedValue(Object.assign(new Error("precondition"), { statusCode: 412 }));
       await expect(dataset.uploadFileSet(manifest, "non-409", "retry-disjoint")).rejects.toThrow("precondition");
       expect(datasetInfoMock).toHaveBeenCalledTimes(1);
+      expect(uploadFilesMock).toHaveBeenCalledTimes(1);
+    } finally {
+      await rm(output, { recursive: true, force: true });
+    }
+  });
+
+  it("pins an expected upload parent and never refreshes it after a conflict", async () => {
+    const output = await mkdtemp(path.join(tmpdir(), "jojo-hf-pinned-parent-"));
+    try {
+      await writeFile(path.join(output, "one.txt"), "one");
+      const manifest = parseHfFileSetManifest({
+        formatVersion: "jojo-hf-file-set/1",
+        files: [{
+          localPath: "one.txt",
+          objectName: "canonical/archive/one.txt",
+          size: 3,
+          sha256: sha256("one"),
+        }],
+      });
+      const expected = "a".repeat(40);
+      const changed = "b".repeat(40);
+      const dataset = new HfTimesDataset("owner/dataset", output, "token");
+
+      datasetInfoMock.mockResolvedValue({ sha: changed });
+      await expect(dataset.uploadFileSet(manifest, "pinned", "fail", expected))
+        .rejects.toThrow(`expected parent ${expected}, found ${changed}`);
+      expect(uploadFilesMock).not.toHaveBeenCalled();
+
+      datasetInfoMock.mockReset().mockResolvedValue({ sha: expected });
+      uploadFilesMock.mockRejectedValue(Object.assign(new Error("conflict"), { statusCode: 409 }));
+      await expect(dataset.uploadFileSet(manifest, "pinned", "retry-disjoint", expected))
+        .rejects.toThrow("conflict");
+      expect(datasetInfoMock).toHaveBeenCalledTimes(1);
+      expect(uploadFilesMock).toHaveBeenCalledTimes(1);
+      expect(uploadFilesMock).toHaveBeenCalledWith(expect.objectContaining({ parentCommit: expected }));
+    } finally {
+      await rm(output, { recursive: true, force: true });
+    }
+  });
+
+  it("treats immutable HF objects as create-only and skips identical bytes", async () => {
+    const output = await mkdtemp(path.join(tmpdir(), "jojo-hf-immutable-"));
+    try {
+      await writeFile(path.join(output, "one.txt"), "one");
+      const manifest = parseHfFileSetManifest({
+        formatVersion: "jojo-hf-file-set/1",
+        files: [{
+          localPath: "one.txt",
+          objectName: "raw/archive/v1/bloomberg/2020-2020/wayback/raw/objects/one.txt",
+          size: 3,
+          sha256: sha256("one"),
+        }],
+      });
+      const parent = "a".repeat(40);
+      datasetInfoMock.mockResolvedValue({ sha: parent });
+      const dataset = new HfTimesDataset("owner/dataset", output, "token");
+
+      downloadFileMock.mockResolvedValue(new Blob(["one"]));
+      await expect(dataset.uploadFileSet(manifest, "same", "fail", parent, "immutable"))
+        .resolves.toEqual({ revision: parent, uploaded: 0, skipped: [manifest.files[0]!.objectName] });
+      expect(uploadFilesMock).not.toHaveBeenCalled();
+
+      downloadFileMock.mockResolvedValue(new Blob(["different"]));
+      await expect(dataset.uploadFileSet(manifest, "changed", "fail", parent, "immutable"))
+        .rejects.toThrow("already exists with different bytes");
+      expect(uploadFilesMock).not.toHaveBeenCalled();
+
+      downloadFileMock.mockResolvedValue(null);
+      uploadFilesMock.mockResolvedValue({ commit: { oid: "created" } });
+      await expect(dataset.uploadFileSet(manifest, "new", "fail", parent, "immutable"))
+        .resolves.toEqual({ revision: "created", uploaded: 1, skipped: [] });
       expect(uploadFilesMock).toHaveBeenCalledTimes(1);
     } finally {
       await rm(output, { recursive: true, force: true });

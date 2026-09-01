@@ -32,6 +32,7 @@ tools/news-archive/**/*.sqlite3
 tools/news-archive/**/*.sqlite3-shm
 tools/news-archive/**/*.sqlite3-wal
 tools/news-archive/.archive-work/
+/.archive-work/
 tools/news-archive/objects/
 
 # Python runtime data

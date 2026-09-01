@@ -29,7 +29,6 @@ from jojo_news_archive.parsing.shards import (
         ("zaobao", 2024, "zaobao/2016-2026/sitemap-wayback"),
         ("aljazeera", 2018, "aljazeera/2016-2026/sitemap-wayback"),
         ("scmp", 2015, "scmp/2010-2015/wayback-urlkey"),
-        ("caixin", 2021, "caixin/2016-2026/wayback-urlkey"),
     ],
 )
 def test_parser_source_manifest_shard(publisher, year, expected):
@@ -60,7 +59,6 @@ def test_parser_source_manifest_shard_rejects_unsupported_cells(
     ("publisher", "year", "expected"),
     [
         ("ap", 2012, ("ap/2010-2015/legacy-archive",)),
-        ("caixin", 2018, ("caixin/2018-2018/commoncrawl-prefix",)),
         (
             "npr",
             2010,

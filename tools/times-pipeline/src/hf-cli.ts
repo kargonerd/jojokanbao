@@ -4,9 +4,10 @@ import { parseArgs, requiredArg } from "./args.js";
 import { loadSources } from "./config.js";
 import {
   collectFolderFiles,
-  type HfConflictStrategy,
+  type HfExistingPolicy,
   HfTimesDataset,
   readHfFileSetManifest,
+  validateArchiveFileSetScope,
 } from "./hf.js";
 
 interface ProcessResult {
@@ -60,15 +61,39 @@ async function main(): Promise<void> {
     return;
   }
   if (action === "upload-files") {
-    const manifest = await readHfFileSetManifest(path.resolve(requiredArg(args, "file-manifest")));
+    const existingPolicy = requiredArg(args, "existing-policy");
+    if (existingPolicy !== "immutable" && existingPolicy !== "replace") {
+      throw new Error(`Unsupported HF existing-object policy: ${existingPolicy}`);
+    }
+    const manifest = validateArchiveFileSetScope(
+      await readHfFileSetManifest(path.resolve(requiredArg(args, "file-manifest"))),
+      requiredArg(args, "allowed-prefix"),
+      existingPolicy as HfExistingPolicy,
+    );
     const conflictStrategy = args.get("conflict-strategy") ?? "fail";
-    if (conflictStrategy !== "fail" && conflictStrategy !== "retry-disjoint") {
-      throw new Error(`Unsupported HF conflict strategy: ${conflictStrategy}`);
+    if (conflictStrategy !== "fail") {
+      throw new Error("upload-files requires conflict strategy fail with an exact parent revision");
     }
     const result = await dataset.uploadFileSet(
       manifest,
       requiredArg(args, "title"),
-      conflictStrategy as HfConflictStrategy,
+      "fail",
+      requiredArg(args, "expected-parent-revision"),
+      existingPolicy as HfExistingPolicy,
+    );
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return;
+  }
+  if (action === "upload-archive-canonical") {
+    const conflictStrategy = args.get("conflict-strategy") ?? "fail";
+    if (conflictStrategy !== "fail") {
+      throw new Error("upload-archive-canonical requires conflict strategy fail with an exact parent revision");
+    }
+    const manifest = await readHfFileSetManifest(path.resolve(requiredArg(args, "file-manifest")));
+    const result = await dataset.uploadArchiveCanonicalFileSet(
+      manifest,
+      requiredArg(args, "title"),
+      requiredArg(args, "expected-parent-revision"),
     );
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return;

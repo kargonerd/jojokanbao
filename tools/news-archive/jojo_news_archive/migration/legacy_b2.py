@@ -26,6 +26,7 @@ LEGACY_V1_PREFIX = "news-archive/v1/"
 LEGACY_V2_PREFIX = "news-archive/v2/validation-state/"
 HF_V1_PREFIX = "raw/archive/v1/"
 HF_V2_PREFIX = "raw/archive/v2/validation-state/"
+REMOVED_PUBLISHERS = frozenset({"caixin"})
 
 
 class ArchivePhase(str, Enum):
@@ -106,12 +107,17 @@ def map_legacy_b2_object(object_key: str) -> str:
     key = _safe_posix_path(object_key, label="legacy B2 object key")
     if key.startswith(LEGACY_V1_PREFIX):
         suffix = key[len(LEGACY_V1_PREFIX) :]
+        publisher = suffix.split("/", 1)[0]
         object_name = f"{HF_V1_PREFIX}{suffix}"
     elif key.startswith(LEGACY_V2_PREFIX):
         suffix = key[len(LEGACY_V2_PREFIX) :]
+        pieces = suffix.split("/")
+        publisher = pieces[1] if len(pieces) > 1 else ""
         object_name = f"{HF_V2_PREFIX}{suffix}"
     else:
         raise ValueError(f"legacy B2 object is outside the migration allowlist: {key}")
+    if publisher in REMOVED_PUBLISHERS:
+        raise ValueError(f"removed publisher cannot be migrated: {publisher}")
     # This also checks the structural shape and supported subtrees.
     archive_phase(object_name)
     return object_name
@@ -157,6 +163,11 @@ def archive_phase(object_name: str) -> ArchivePhase:
             return ArchivePhase.IMMUTABLE
         if area == "catalog" and relative:
             return ArchivePhase.CATALOG
+        if area == "audit" and relative:
+            # Small migration/deletion receipts explain deliberate gaps in the
+            # Raw corpus. Publish them with mutable checkpoint metadata, before
+            # the completion marker, instead of silently dropping provenance.
+            return ArchivePhase.CHECKPOINT
         if area == "state" and relative:
             return (
                 ArchivePhase.COMPLETION
@@ -658,6 +669,9 @@ def verify_archive_batch(
                 f"{manifest_paths[phase]} contains objects from the wrong phase: {wrong[0]}"
             )
         loaded[phase] = entries
+
+    if not loaded[ArchivePhase.COMPLETION]:
+        raise ValueError("archive batch has no completion summary")
 
     all_entries = tuple(
         entry for phase in PHASE_ORDER for entry in loaded[phase]

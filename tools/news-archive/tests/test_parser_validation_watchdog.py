@@ -13,11 +13,6 @@ from jojo_news_archive.parsing.validation import qa_policy_revision
 from jojo_news_archive.parsing.policy import CONTENT_AUDIT_FORMAT_VERSION
 from jojo_news_archive.sources.registry import publisher_spec
 
-
-def test_default_watchdog_excludes_disabled_sources():
-    assert "caixin" not in PUBLISHER_ORDER
-
-
 def _write_summary(
     root: Path,
     relative_path: str,
@@ -202,9 +197,6 @@ def test_watchdog_accepts_ready_full_or_accelerator_summary(
     }
 
     assert plan["targetCells"] == 187
-    assert all(
-        row["publisher"] != "caixin" for row in plan["cellProgress"]
-    )
     assert ("axios", 2016) not in {
         (row["publisher"], row["year"])
         for row in plan["cellProgress"]
@@ -723,25 +715,25 @@ def test_watchdog_accepts_qa_passing_unsupported_nontext_rows(
 
 
 def test_watchdog_rejects_content_audit_bound_to_wrong_parser(tmp_path: Path):
-    relative = "validation/caixin/2011/state/summary.json"
+    relative = "validation/wsj/2011/state/summary.json"
     _write_summary(
         tmp_path,
         relative,
-        publisher="caixin",
+        publisher="wsj",
         year=2011,
         evaluated=800,
     )
     audit_path = (tmp_path / relative).with_name("content-audit.json")
     audit = json.loads(audit_path.read_text(encoding="utf-8"))
-    audit["parserVersion"] = "caixin-parser/stale"
+    audit["parserVersion"] = "wsj-parser/stale"
     audit_path.write_text(json.dumps(audit), encoding="utf-8")
 
     plan = plan_validation_dispatch(
         state_root=tmp_path,
         active_titles=[],
         max_dispatch=1,
-        publishers=["caixin"],
-        available_source_shards={"caixin/2010-2015/wayback-urlkey"},
+        publishers=["wsj"],
+        available_source_shards={"wsj/2010-2015/wayback-urlkey"},
     )
 
     assert plan["readyCells"] == 0
@@ -1209,36 +1201,6 @@ def test_watchdog_does_not_count_loaded_alias_rows_as_source_growth(
     assert cell["capacityDeficient"] is True
 
 
-def test_watchdog_dispatches_fresh_parser_cohort_before_old_capacity_gate(
-    tmp_path: Path,
-):
-    shard = "caixin/2010-2015/wayback-urlkey"
-    _write_summary(
-        tmp_path,
-        "holdout-v216/caixin/2010/state/summary.json",
-        publisher="caixin",
-        year=2010,
-        evaluated=75,
-        parser_version="caixin-parser/0.1.14",
-        eligible_candidates=574,
-        excluded_candidates=5665,
-        screened_nonarticles=499,
-    )
-
-    plan = plan_validation_dispatch(
-        state_root=tmp_path,
-        active_titles=[],
-        max_dispatch=1,
-        publishers=["caixin"],
-        available_source_shards={shard},
-        source_year_capacities={shard: {2010: 5996}},
-    )
-
-    assert plan["tasks"][0]["cohort"] == "holdout-v217"
-    cell = plan["cellProgress"][0]
-    assert cell["parserVersion"] is None
-    assert cell["eligibleCandidateUpperBound"] == 75
-    assert cell["capacityDeficient"] is False
 
 
 def test_watchdog_treats_screened_nonarticles_as_exhausted_capacity(
@@ -1274,35 +1236,6 @@ def test_watchdog_treats_screened_nonarticles_as_exhausted_capacity(
     assert cell["capacityDeficient"] is True
 
 
-def test_watchdog_subtracts_unselected_nonarticle_source_tail(
-    tmp_path: Path,
-):
-    shard = "caixin/2010-2015/wayback-urlkey"
-    _write_summary(
-        tmp_path,
-        "holdout-v217/caixin/2010/state/summary.json",
-        publisher="caixin",
-        year=2010,
-        evaluated=538,
-        eligible_candidates=538,
-        excluded_candidates=5094,
-        nonarticle_candidates=954,
-    )
-
-    plan = plan_validation_dispatch(
-        state_root=tmp_path,
-        active_titles=[],
-        max_dispatch=1,
-        publishers=["caixin"],
-        available_source_shards={shard},
-        source_year_capacities={shard: {2010: 5996}},
-    )
-
-    assert plan["tasks"] == []
-    assert plan["capacityDeficientCells"] == 1
-    cell = plan["cellProgress"][0]
-    assert cell["eligibleCandidateUpperBound"] == 538
-    assert cell["capacityDeficient"] is True
 
 
 def test_watchdog_marks_terminal_capture_errors_as_exhausted_capacity(
@@ -1452,59 +1385,8 @@ def test_watchdog_reopens_scmp_after_official_sitemap_growth(
     assert cell["capacityDeficient"] is False
 
 
-def test_watchdog_excludes_years_below_manifest_capacity(tmp_path: Path):
-    shard = "caixin/2010-2015/wayback-urlkey"
-    plan = plan_validation_dispatch(
-        state_root=tmp_path,
-        active_titles=[],
-        max_dispatch=10,
-        publishers=["caixin"],
-        available_source_shards={shard},
-        source_year_capacities={
-            shard: {
-                2010: 1069,
-                2011: 1268,
-                2012: 1238,
-                2013: 1103,
-                2014: 2837,
-                2015: 1,
-            }
-        },
-    )
-
-    assert plan["targetCells"] == 5
-    assert {
-        (row["publisher"], row["year"])
-        for row in plan["cellProgress"]
-    } == {
-        ("caixin", 2010),
-        ("caixin", 2011),
-        ("caixin", 2012),
-        ("caixin", 2013),
-        ("caixin", 2014),
-    }
 
 
-def test_watchdog_admits_year_with_sufficient_supplemental_capacity(
-    tmp_path: Path,
-):
-    primary = "caixin/2016-2026/wayback-urlkey"
-    supplemental = "caixin/2018-2018/commoncrawl-prefix"
-
-    plan = plan_validation_dispatch(
-        state_root=tmp_path,
-        active_titles=[],
-        max_dispatch=10,
-        publishers=["caixin"],
-        available_source_shards={primary},
-        source_year_capacities={
-            primary: {2018: 258},
-            supplemental: {2018: 1501},
-        },
-    )
-
-    assert plan["targetCells"] == 1
-    assert plan["tasks"][0]["year"] == 2018
 
 
 def test_watchdog_admits_npr_year_from_official_archive_capacity(
@@ -1600,26 +1482,6 @@ def test_watchdog_reopens_incomplete_ap_cell_after_supplemental_growth(
     assert cell["capacityDeficient"] is False
 
 
-def test_watchdog_does_not_sum_subthreshold_sources_to_admit_year(
-    tmp_path: Path,
-):
-    primary = "caixin/2016-2026/wayback-urlkey"
-    supplemental = "caixin/2018-2018/commoncrawl-prefix"
-
-    plan = plan_validation_dispatch(
-        state_root=tmp_path,
-        active_titles=[],
-        max_dispatch=10,
-        publishers=["caixin"],
-        available_source_shards={primary},
-        source_year_capacities={
-            primary: {2018: 500},
-            supplemental: {2018: 500},
-        },
-    )
-
-    assert plan["targetCells"] == 0
-    assert plan["tasks"] == []
 
 
 def test_watchdog_prioritizes_stale_corpus_for_parser_replay(

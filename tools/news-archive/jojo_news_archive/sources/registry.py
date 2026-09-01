@@ -7,7 +7,6 @@ from jojo_news_archive.sources.aljazeera import SOURCE as ALJAZEERA_SOURCE
 from jojo_news_archive.sources.ap import SOURCE as AP_SOURCE
 from jojo_news_archive.sources.axios import SOURCE as AXIOS_SOURCE
 from jojo_news_archive.sources.bloomberg import SOURCE as BLOOMBERG_SOURCE
-from jojo_news_archive.sources.caixin import SOURCE as CAIXIN_SOURCE
 from jojo_news_archive.sources.contracts import (
     ArchiveSourceSpec,
     PublisherSpec,
@@ -37,7 +36,6 @@ _REGISTERED_SOURCES = (
     ZAOBAO_SOURCE,
     ALJAZEERA_SOURCE,
     SCMP_SOURCE,
-    CAIXIN_SOURCE,
 )
 
 

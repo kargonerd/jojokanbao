@@ -83,6 +83,18 @@ def test_mapping_is_reversible_and_rejects_unapproved_v2_raw():
         )
 
 
+@pytest.mark.parametrize(
+    "legacy_name",
+    [
+        "news-archive/v1/caixin/2010-2015/wayback-urlkey/state/summary.json",
+        "news-archive/v2/validation-state/holdout-v10/caixin/2010/state/summary.json",
+    ],
+)
+def test_mapping_rejects_removed_publisher(legacy_name: str):
+    with pytest.raises(ValueError, match="removed publisher"):
+        map_legacy_b2_object(legacy_name)
+
+
 @pytest.mark.parametrize("cohort", ["validation", "validation-v17", "holdout-v248", "holdout-v9999"])
 def test_all_safe_v2_cohort_names_use_the_same_layout(cohort: str):
     prefix = f"raw/archive/v2/validation-state/{cohort}/nyt/2012"
@@ -96,6 +108,7 @@ def test_completion_sidecars_are_published_after_other_state():
     prefix = "raw/archive/v1/ap/2010-2026/sitemap-wayback"
     assert archive_phase(f"{prefix}/raw/records/aa/a.json") == ArchivePhase.IMMUTABLE
     assert archive_phase(f"{prefix}/catalog/manifest.jsonl.gz") == ArchivePhase.CATALOG
+    assert archive_phase(f"{prefix}/audit/deletion-receipt.json") == ArchivePhase.CHECKPOINT
     assert archive_phase(f"{prefix}/state/capture.sqlite3.gz") == ArchivePhase.CHECKPOINT
     assert archive_phase(f"{prefix}/state/wayback-yahoo-summary.json") == ArchivePhase.COMPLETION
 

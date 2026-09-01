@@ -20,13 +20,13 @@ def test_summary_counts_only_explicit_publication_years(tmp_path: Path):
     manifest = tmp_path / "manifest.jsonl.gz"
     rows = [
         {
-            "publisher": "caixin",
+            "publisher": "npr",
             "canonicalUrl": "https://example.test/2010/a",
             "publishedAt": "2010-01-08T00:00:00+00:00",
             "candidates": [{"provider": "wayback"}],
         },
         {
-            "publisher": "caixin",
+            "publisher": "npr",
             "canonicalUrl": "https://example.test/2010/b",
             "publishedAt": "2010-06-01T00:00:00Z",
             "candidates": [
@@ -35,23 +35,23 @@ def test_summary_counts_only_explicit_publication_years(tmp_path: Path):
             ],
         },
         {
-            "publisher": "caixin",
+            "publisher": "npr",
             "canonicalUrl": "https://example.test/missing",
             "candidates": [],
         },
         {
-            "publisher": "caixin",
+            "publisher": "npr",
             "canonicalUrl": "https://example.test/invalid",
             "publishedAt": "not-a-date",
         },
     ]
     _write_manifest(manifest, rows)
 
-    summary = summarize_archive_manifest(manifest, publisher="caixin")
+    summary = summarize_archive_manifest(manifest, publisher="npr")
 
     assert summary == {
         "formatVersion": "jojo-capture-manifest-summary/1",
-        "publisher": "caixin",
+        "publisher": "npr",
         "manifestSha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
         "manifestBytes": manifest.stat().st_size,
         "articles": 4,
@@ -76,4 +76,4 @@ def test_summary_rejects_cross_publisher_rows(tmp_path: Path):
     )
 
     with pytest.raises(ValueError, match="does not match"):
-        summarize_archive_manifest(manifest, publisher="caixin")
+        summarize_archive_manifest(manifest, publisher="npr")

@@ -11,6 +11,7 @@ import {
   archiveAssetObjects,
   archiveSourceConfig,
   deduplicatePreparedRows,
+  parseArchiveCanonicalInput,
   prepareArchiveRow,
   writeArchiveCanonical,
   type ArchiveCanonicalInput,
@@ -26,13 +27,21 @@ function archiveInput(overrides: Partial<ArchiveCanonicalInput> = {}): ArchiveCa
     rawHtmlObject: "raw/archive/v1/wsj/2020-2020/wayback/raw/objects/html/aa/example.html.gz",
     rawRevision: "a".repeat(40),
     rawRunId: "archive-run-1",
-    rawRunManifest: "raw/archive/runs/2026/08/30/archive-run-1.json",
+    rawRunManifest: "raw/archive/runs/2026/08/30/archive-run-1/manifest.json",
     captureRecord: {
+      publisher: "wsj",
       canonicalUrl: "https://www.wsj.com/articles/example?utm_source=test",
       retrievedAt: "2026-08-30T08:00:00Z",
       finalUrl: "https://www.wsj.com/articles/example?utm_source=test",
       qualityScore: 100,
       selectedCandidate: { provider: "wayback" },
+      rawHtml: {
+        path: "objects/html/aa/example.html.gz",
+        sha256: "b".repeat(64),
+        byteCount: 1_000,
+        storedByteCount: 500,
+        contentEncoding: "gzip",
+      },
       dependentResources: [],
     },
     parserResult: {
@@ -89,9 +98,79 @@ function archiveInput(overrides: Partial<ArchiveCanonicalInput> = {}): ArchiveCa
   };
 }
 
+async function writeRawRunManifest(
+  workspace: string,
+  value: ArchiveCanonicalInput = archiveInput(),
+  options: { emptyCompletion?: boolean; wrongCompletion?: boolean } = {},
+): Promise<void> {
+  const file = path.join(workspace, ...value.rawRunManifest.split("/"));
+  await mkdir(path.dirname(file), { recursive: true });
+  const phaseOrder = ["immutable", "catalog", "checkpoint", "completion"] as const;
+  const phases = [];
+  const immutableFiles = [value.recordObject, value.rawHtmlObject].map((objectName, index) => ({
+    localPath: objectName,
+    objectName,
+    size: index + 1,
+    sha256: String(index + 1).repeat(64),
+    required: true,
+  }));
+  const completionFiles = options.emptyCompletion ? [] : [{
+    localPath: "state/summary.json",
+    objectName: options.wrongCompletion
+      ? "raw/archive/v1/wsj/2020-2020/wayback/raw/objects/html/ff/wrong.html.gz"
+      : "raw/archive/v1/wsj/2020-2020/wayback/state/summary.json",
+    size: 1,
+    sha256: "3".repeat(64),
+    required: true,
+  }];
+  let totalFiles = 0;
+  let totalBytes = 0;
+  for (const [index, phase] of phaseOrder.entries()) {
+    const fileSetObject = `${value.rawRunManifest.slice(0, -"/manifest.json".length)}/file-sets/0${index + 1}-${phase}.json`;
+    const files = phase === "immutable"
+      ? immutableFiles
+      : phase === "completion" ? completionFiles : [];
+    const fileSet = Buffer.from(JSON.stringify({ formatVersion: "jojo-hf-file-set/1", files }));
+    const target = path.join(workspace, ...fileSetObject.split("/"));
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, fileSet);
+    const byteCount = files.reduce((total, item) => total + item.size, 0);
+    totalFiles += files.length;
+    totalBytes += byteCount;
+    phases.push({
+      phase,
+      revision: phase === "completion" ? "9".repeat(40) : String(index + 1).repeat(40),
+      fileSet: fileSetObject,
+      fileSetSha256: createHash("sha256").update(fileSet).digest("hex"),
+      files: files.length,
+      bytes: byteCount,
+    });
+  }
+  await writeFile(file, JSON.stringify({
+    formatVersion: "jojo-news-archive-raw-run/1",
+    runId: value.rawRunId,
+    migrationComplete: true,
+    legacyB2Prefix: "news-archive/v1/wsj/2020-2020/wayback",
+    hfPrefix: "raw/archive/v1/wsj/2020-2020/wayback",
+    source: { publisher: "wsj", window: "2020-2020", mode: "wayback" },
+    sourceRevision: "9".repeat(40),
+    phases,
+    objects: { files: totalFiles, bytes: totalBytes },
+  }));
+}
+
 describe("historical archive canonical bridge", () => {
+  it("binds parser validation to the capture's exact Raw HTML reference", () => {
+    const value = archiveInput();
+    value.validation.sourceRawSha256 = "c".repeat(64);
+    expect(() => parseArchiveCanonicalInput(value)).toThrow(
+      "historical Raw HTML provenance does not match the capture",
+    );
+  });
+
   it("uses only parser-approved images and preserves their exact body position", async () => {
     const workspace = await mkdtemp(path.join(os.tmpdir(), "jojo-archive-canonical-"));
+    await writeRawRunManifest(workspace);
     const image = Buffer.from("editorial-image");
     const download = vi.fn(async (url: string) => url.endsWith("best.jpg")
       ? { body: image, mediaType: "image/jpeg" }
@@ -135,8 +214,51 @@ describe("historical archive canonical bridge", () => {
       .resolves.toEqual(image);
   });
 
+  it("checks each Canonical input against its Raw run even when the manifest is cached", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "jojo-archive-revision-"));
+    await writeRawRunManifest(workspace);
+    const runManifestValidationCache = new Map();
+    await prepareArchiveRow({
+      value: archiveInput(),
+      sources: [],
+      workspace,
+      runManifestValidationCache,
+      download: async () => undefined,
+    });
+    await expect(prepareArchiveRow({
+      value: archiveInput({ rawRunId: "different-run" }),
+      sources: [],
+      workspace,
+      runManifestValidationCache,
+      download: async () => undefined,
+    })).rejects.toThrow("historical Raw run manifest does not match the Canonical input");
+  });
+
+  it("rejects a Raw run without a completion summary", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "jojo-archive-incomplete-"));
+    await writeRawRunManifest(workspace, archiveInput(), { emptyCompletion: true });
+    await expect(prepareArchiveRow({
+      value: archiveInput(),
+      sources: [],
+      workspace,
+      download: async () => undefined,
+    })).rejects.toThrow("historical Raw run has no completion summary");
+  });
+
+  it("rejects a completion file set containing an object from another phase", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "jojo-archive-wrong-phase-"));
+    await writeRawRunManifest(workspace, archiveInput(), { wrongCompletion: true });
+    await expect(prepareArchiveRow({
+      value: archiveInput(),
+      sources: [],
+      workspace,
+      download: async () => undefined,
+    })).rejects.toThrow("completion file set contains an invalid object");
+  });
+
   it("reuses verified dependent image bytes without a network request", async () => {
     const workspace = await mkdtemp(path.join(os.tmpdir(), "jojo-archive-dependent-"));
+    await writeRawRunManifest(workspace);
     const body = Buffer.from("stored-image");
     const compressed = gzipSync(body);
     const blobPath = "objects/image/aa/stored.jpg.gz";
@@ -164,6 +286,7 @@ describe("historical archive canonical bridge", () => {
 
   it("omits failed images while retaining article text", async () => {
     const workspace = await mkdtemp(path.join(os.tmpdir(), "jojo-archive-no-image-"));
+    await writeRawRunManifest(workspace);
     const prepared = await prepareArchiveRow({
       value: archiveInput(), sources: [], workspace, download: async () => undefined,
     });
@@ -174,6 +297,7 @@ describe("historical archive canonical bridge", () => {
 
   it("writes Times article/2 and merges the existing date index", async () => {
     const workspace = await mkdtemp(path.join(os.tmpdir(), "jojo-archive-write-"));
+    await writeRawRunManifest(workspace);
     const prepared = await prepareArchiveRow({
       value: archiveInput(), sources: [], workspace,
       download: async () => ({ body: Buffer.from("image"), mediaType: "image/jpeg" }),
@@ -248,6 +372,7 @@ describe("historical archive canonical bridge", () => {
     const preparedFile = path.join(workspace, "prepared.jsonl.gz");
     const manifestFile = path.join(workspace, "asset-files.json");
     const value = archiveInput();
+    await writeRawRunManifest(workspace, value);
     value.parserResult.images = [];
     value.parserResult.blocks = value.parserResult.blocks.filter((block) => block.type !== "image");
     await writeFile(inputFile, `${JSON.stringify(value)}\n`);
@@ -256,6 +381,7 @@ describe("historical archive canonical bridge", () => {
       ["input", inputFile],
       ["output", workspace],
       ["config", fileURLToPath(new URL("../sources.v2.json", import.meta.url))],
+      ["replay-revision", value.rawRevision],
       ["prepared-output", preparedFile],
       ["asset-manifest", manifestFile],
     ]));

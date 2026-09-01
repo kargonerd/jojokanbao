@@ -498,12 +498,12 @@ def test_screened_nonarticle_does_not_dilute_article_qa_rate(tmp_path: Path):
             source_capture_sha256 TEXT
         );
         INSERT INTO parser_validation_config VALUES
-            (2010, 1, 'caixin-parser/0.1.8', 1);
+            (2010, 1, 'ap-parser/0.1.8', 1);
         INSERT INTO parser_validation_results VALUES
-            ('https://www.caixin.com/2010-01-01/article.html', 2010,
-             'caixin-parser/0.1.8', 1, 'complete', 1, '[]', 'article-sha'),
-            ('https://photos.caixin.com/2010-01-01/gallery.html', 2010,
-             'caixin-parser/0.1.8', 1, 'complete', 0,
+            ('https://apnews.com/article/editorial-story', 2010,
+             'ap-parser/0.1.8', 1, 'complete', 1, '[]', 'article-sha'),
+            ('https://apnews.com/article/nonarticle-gallery', 2010,
+             'ap-parser/0.1.8', 1, 'complete', 0,
              '["nonarticle-desk"]', 'gallery-sha');
         """
     )

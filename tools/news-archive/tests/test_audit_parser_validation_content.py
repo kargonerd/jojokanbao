@@ -440,15 +440,15 @@ def test_selects_only_active_qa_passing_complete_sample() -> None:
           status TEXT NOT NULL,
           raw_path TEXT
         );
-        INSERT INTO parser_validation_config VALUES (2010, 2, 'caixin-parser/1', 3);
+        INSERT INTO parser_validation_config VALUES (2010, 2, 'ap-parser/1', 3);
         INSERT INTO parser_validation_samples VALUES
           ('https://example.test/b', 2010, '02'),
           ('https://example.test/a', 2010, '01'),
           ('https://example.test/rejected', 2010, '00');
         INSERT INTO parser_validation_results VALUES
-          ('https://example.test/b', 'caixin', 2010, 'caixin-parser/1', 3, 1),
-          ('https://example.test/a', 'caixin', 2010, 'caixin-parser/1', 3, 1),
-          ('https://example.test/rejected', 'caixin', 2010, 'caixin-parser/1', 3, 0);
+          ('https://example.test/b', 'ap', 2010, 'ap-parser/1', 3, 1),
+          ('https://example.test/a', 'ap', 2010, 'ap-parser/1', 3, 1),
+          ('https://example.test/rejected', 'ap', 2010, 'ap-parser/1', 3, 0);
         INSERT INTO captures VALUES
           ('https://example.test/b', 'complete', 'objects/b.gz'),
           ('https://example.test/a', 'complete', 'objects/a.gz'),
@@ -457,11 +457,11 @@ def test_selects_only_active_qa_passing_complete_sample() -> None:
     )
     version, revision, urls = selected_validation_urls(
         connection,
-        publisher="caixin",
+        publisher="ap",
         year=2010,
         target=2,
     )
-    assert version == "caixin-parser/1"
+    assert version == "ap-parser/1"
     assert revision == 3
     assert urls == ["https://example.test/a", "https://example.test/b"]
 
@@ -543,13 +543,13 @@ def test_rejects_incomplete_target() -> None:
           status TEXT NOT NULL,
           raw_path TEXT
         );
-        INSERT INTO parser_validation_config VALUES (2010, 2, 'caixin-parser/1', 3);
+        INSERT INTO parser_validation_config VALUES (2010, 2, 'ap-parser/1', 3);
         """
     )
     with pytest.raises(ValueError, match="has 0 rows, expected 2"):
         selected_validation_urls(
             connection,
-            publisher="caixin",
+            publisher="ap",
             year=2010,
             target=2,
         )

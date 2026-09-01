@@ -80,7 +80,7 @@ def test_catalog_watchdog_prioritizes_missing_sources_and_skips_active(
         "aljazeera", 2010, 2015, "sitemap-wayback", 30
     )
     old_manifest = SourceCatalogTarget(
-        "caixin", 2010, 2015, "wayback-urlkey", 10
+        "reuters", 2010, 2015, "wayback-urlkey", 10
     )
     _write_status(
         tmp_path,

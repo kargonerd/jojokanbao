@@ -251,16 +251,16 @@ def test_holdout_audit_allows_first_cohort_without_previous_state(
     current_path = tmp_path / "first-holdout.sqlite3"
     current = _state(current_path)
     try:
-        _config(current, year=2014, version="caixin-parser/0.1.9")
+        _config(current, year=2014, version="npr-parser/0.1.9")
         current.execute(
             "UPDATE parser_validation_config SET target_size=1 "
             "WHERE sample_year=2014"
         )
         _sample(
             current,
-            url="https://magazine.caixin.com/2014-01-02/100600001.html",
+            url="https://www.npr.org/2014/01/02/100600001/example",
             year=2014,
-            version="caixin-parser/0.1.9",
+            version="npr-parser/0.1.9",
         )
         current.commit()
     finally:
@@ -269,8 +269,8 @@ def test_holdout_audit_allows_first_cohort_without_previous_state(
     result = audit_holdout(
         previous_states=(),
         current_state=current_path,
-        publisher="caixin",
-        expected_parser_version="caixin-parser/0.1.9",
+        publisher="npr",
+        expected_parser_version="npr-parser/0.1.9",
         from_year=2014,
         to_year=2014,
         target_per_year=1,
@@ -348,55 +348,3 @@ def test_holdout_audit_ignores_failed_and_reserve_attempts(tmp_path: Path):
 
     assert result["passed"] is True
     assert result["years"]["2020"]["previousUniqueEvaluated"] == 1
-
-
-def test_holdout_audit_normalizes_caixin_pagination_variants(
-    tmp_path: Path,
-):
-    previous_path = tmp_path / "previous.sqlite3"
-    current_path = tmp_path / "current.sqlite3"
-    previous = _state(previous_path)
-    current = _state(current_path)
-    base = "https://magazine.caixin.com/2010-02-07/100116568"
-    try:
-        _config(previous, year=2010, version="caixin-parser/0.1.0")
-        _config(current, year=2010, version="caixin-parser/0.1.1")
-        _sample(
-            previous,
-            url=base + "_all.html",
-            year=2010,
-            version="caixin-parser/0.1.0",
-        )
-        _sample(
-            current,
-            url=(
-                "https://magazine.caixin.com/2010-02-08/100116999.html"
-            ),
-            year=2010,
-            version=None,
-        )
-        current.execute(
-            """
-            INSERT INTO parser_validation_exclusions(
-                canonical_url, source_cohort, excluded_at
-            ) VALUES (?, 'preflight-v1', '2026-08-10T00:00:00Z')
-            """,
-            (base + ".html",),
-        )
-        previous.commit()
-        current.commit()
-    finally:
-        previous.close()
-        current.close()
-
-    result = audit_holdout(
-        previous_states=(("preflight-v1", previous_path),),
-        current_state=current_path,
-        publisher="caixin",
-        expected_parser_version="caixin-parser/0.1.1",
-        from_year=2010,
-        to_year=2010,
-    )
-
-    assert result["passed"] is True
-    assert result["years"]["2010"]["missingPriorExclusions"] == 0

@@ -45,7 +45,7 @@ jobs:
     timeout-minutes: 25
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      HF_TIMES_DATASET_REPO: ${{ secrets.HF_TIMES_DATASET_REPO || secrets.HF_DATASET_REPO }}
+      HF_TIMES_DATASET_REPO: ${{ secrets.HF_TIMES_DATASET_REPO }}
       TIMES_DISCOVERY_HOURS: ${{ inputs.automatic && '24' || inputs.since_hours || '24' }}
       TIMES_PROCESS_WINDOW_HOURS: ${{ inputs.automatic && '1' || inputs.since_hours || '24' }}
       TIMES_SOURCES: ${{ inputs.sources || '' }}

@@ -192,6 +192,24 @@ def test_every_expected_phase_manifest_exists_for_empty_phases(tmp_path: Path):
     verify_archive_batch(archive, manifests)
 
 
+def test_batch_verifier_rejects_a_missing_completion_summary(tmp_path: Path):
+    archive = tmp_path / "download"
+    paths = _complete_inventory(archive)
+    manifests = tmp_path / "manifests"
+    generated = prepare_archive_batch(archive, manifests)
+    paths["completion"].unlink()
+    completion = json.loads(
+        generated[ArchivePhase.COMPLETION].read_text(encoding="utf-8")
+    )
+    completion["files"] = []
+    generated[ArchivePhase.COMPLETION].write_text(
+        json.dumps(completion), encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="no completion summary"):
+        verify_archive_batch(archive, manifests)
+
+
 def test_v2_only_batch_can_reference_a_previously_verified_v1_manifest(
     tmp_path: Path,
 ):
