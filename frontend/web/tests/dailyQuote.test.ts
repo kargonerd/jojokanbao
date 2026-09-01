@@ -20,7 +20,7 @@ describe("dailyQuote", () => {
     expect(DAILY_QUOTES).toHaveLength(17);
     expect(DAILY_QUOTES.every((quote) => quote.source.includes("《"))).toBe(true);
     expect(DAILY_QUOTES).toContainEqual({
-      text: "人最宝贵的是生命。生命对于每个人只有一次。",
+      text: "人最宝贵的是生命。生命对于每个人只有一次。人的一生应当这样度过：当他回首往事的时候，他不会因为虚度年华而悔恨，也不会因为碌碌无为而羞耻；临终之际，他能够说：我的整个生命和全部精力，都献给了世界上最壮丽的事业——为人类的解放而斗争。",
       source: "保尔·柯察金《钢铁是怎样炼成的》",
     });
     expect(DAILY_QUOTES).toContainEqual({
