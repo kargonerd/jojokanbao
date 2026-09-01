@@ -20,7 +20,10 @@ export const DAILY_QUOTES: readonly DailyQuote[] = [
   { text: "其实地上本没有路，走的人多了，也便成了路。", source: "鲁迅《故乡》" },
   { text: "横眉冷对千夫指，俯首甘为孺子牛。", source: "鲁迅《自嘲》" },
   { text: "不在沉默中爆发，就在沉默中灭亡。", source: "鲁迅《记念刘和珍君》" },
-  { text: "愿中国青年都摆脱冷气，只是向上走。", source: "鲁迅《热风·随感录四十一》" },
+  {
+    text: "愿中国青年都摆脱冷气，只是向上走，不必听自暴自弃者流的话。能做事的做事，能发声的发声。有一分热，发一分光。就令萤火一般，也可以在黑暗里发一点光，不必等候炬火。",
+    source: "鲁迅《热风·随感录四十一》",
+  },
 ] as const;
 
 function shanghaiDayNumber(date: Date): number {
