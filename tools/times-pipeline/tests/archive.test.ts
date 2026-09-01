@@ -107,7 +107,7 @@ describe("page capture orchestration", () => {
       },
     }]]);
 
-    expect(ftFetch.revision).toBe("ft-body-assets-v5");
+    expect(ftFetch.revision).toBe("ft-body-assets-v6");
     const pending = pendingArticles(
       [current], state,
       { now: new Date("2026-08-31T05:00:00.000Z"), retentionDays: 7, refreshHours: 168, retryHours: 2 },

@@ -477,6 +477,45 @@ describe("western publisher extraction audit", () => {
     expect(extractArticleBody(html, ftFetch, quality, extractFtBody, pageUrl)).toBeUndefined();
   });
 
+  it("rejects an FT offer split across the containers combined by the shared source selector", () => {
+    const quality = { minimumCharacters: 800, minimumParagraphs: 3 };
+    const pageUrl = "https://www.ft.com/content/split-access-offer";
+    const benefits = "Subscriber benefits and product details are displayed instead of the requested report. ".repeat(8);
+    const html = `<main>
+      <div data-content-id="offer-lead">
+        <h2>Try unlimited access</h2>
+        <p>Complete digital access to quality FT journalism on any device. ${benefits}</p>
+      </div>
+      <div data-content-id="offer-individuals">
+        <h2>Explore our full range of subscriptions.</h2>
+        <p>Discover all the plans currently available in your country. ${benefits}</p>
+      </div>
+      <div data-content-id="offer-organisations">
+        <p>Digital access for organisations. Includes exclusive features and content. ${benefits}</p>
+      </div>
+    </main>`;
+
+    expect(assessArticleBody(html, ftFetch, quality, undefined, pageUrl, "captured-page")).toMatchObject({
+      extractionPath: "source-selector",
+      verdict: "accepted",
+    });
+    expect(extractFtBody(html, quality, pageUrl)).toMatchObject({
+      completeness: "truncated",
+      evidence: {
+        kind: "access-offer",
+        marker: "consumer-subscription-offer",
+        location: "[data-content-id]",
+        matchedSignals: 4,
+      },
+    });
+    expect(assessArticleBody(html, ftFetch, quality, extractFtBody, pageUrl, "captured-page")).toMatchObject({
+      extractionPath: "publisher-extractor",
+      completeness: "truncated",
+      verdict: "rejected",
+      rejectReason: "publisher-truncated",
+    });
+  });
+
   it("keeps the shared fallback available when no FT publisher body structure matches", () => {
     const quality = { minimumCharacters: 300, minimumParagraphs: 3 };
     const pageUrl = "https://www.ft.com/content/nonstandard-story";

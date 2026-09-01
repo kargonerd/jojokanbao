@@ -140,6 +140,36 @@ function articleFallbackAccessOffer(document: CheerioAPI): Extract<FtBodyInspect
   return undefined;
 }
 
+function sourceSelectorFallbackAccessOffer(
+  document: CheerioAPI,
+): Extract<FtBodyInspection, { outcome: "access-offer" }> | undefined {
+  const articleOffer = articleFallbackAccessOffer(document);
+  if (articleOffer) return articleOffer;
+
+  // The shared fallback evaluates every matching container for a selector as
+  // one candidate body. FT sometimes splits an access offer across several
+  // data-content-id containers, so inspecting only the largest container lets
+  // that combined fallback publish subscription copy as an article.
+  for (const selector of [".article__content-body", "[data-content-id]"]) {
+    const values: FtDocumentElement[] = [];
+    for (const container of document(selector).toArray()) {
+      const blocks = document(container).find(BLOCK_SELECTOR).toArray()
+        .filter((element) => !document(element).closest(SHARED_REMOVED_SELECTOR).length);
+      values.push(...(blocks.length ? blocks : [container]));
+    }
+    const offer = accessOffer(document, values);
+    if (offer) {
+      return {
+        outcome: "access-offer",
+        blockElements: values,
+        location: selector,
+        offer,
+      };
+    }
+  }
+  return undefined;
+}
+
 function truncatedAccessOffer(
   document: CheerioAPI,
   inspection: Extract<FtBodyInspection, { outcome: "access-offer" }>,
@@ -158,7 +188,7 @@ function truncatedAccessOffer(
 
 function inspectFtBody(document: CheerioAPI): FtBodyInspection {
   const body = bestBody(document);
-  if (!body.length) return articleFallbackAccessOffer(document) ?? { outcome: "unmatched" };
+  if (!body.length) return sourceSelectorFallbackAccessOffer(document) ?? { outcome: "unmatched" };
   const standfirst = document(FT_STANDFIRST_SELECTOR).first();
   const bodyResult = blockElements(document, body[0]!, true);
   const offer = accessOffer(document, bodyResult.values);
@@ -201,6 +231,6 @@ export function extractFtBody(
   const { structure } = inspection;
   const body = semanticHtmlBlocks(structure.blockElements.map((element) => document.html(element)), quality, pageUrl);
   if (body) return body;
-  const fallbackOffer = articleFallbackAccessOffer(document);
+  const fallbackOffer = sourceSelectorFallbackAccessOffer(document);
   return fallbackOffer ? truncatedAccessOffer(document, fallbackOffer) : undefined;
 }
