@@ -510,6 +510,8 @@ describe("SearchPage filters", () => {
   });
 
   it("waits for both dates before applying a date range", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-17T11:00:00Z"));
     renderSearch("/search?keyword=历史");
     await screen.findByRole("heading", { name: highlightedTitleName });
     const callsBeforeDate = vi.mocked(axios.get).mock.calls.length;
