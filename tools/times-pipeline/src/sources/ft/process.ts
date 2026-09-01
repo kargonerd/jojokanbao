@@ -1,6 +1,12 @@
 import { load, type CheerioAPI } from "cheerio";
 import type { ArticleBodyExtraction } from "../../content/body.js";
-import { semanticHtmlBlocks, type BodyQuality } from "../../content/paragraphs.js";
+import {
+  prepareSemanticHtmlBlocks,
+  prepareSemanticParagraphs,
+  semanticHtmlBlocks,
+  type BodyQuality,
+  type SemanticBody,
+} from "../../content/paragraphs.js";
 
 export type FtDocumentElement = ReturnType<CheerioAPI>[number];
 
@@ -114,68 +120,61 @@ type FtBodyInspection =
   | { outcome: "unmatched" }
   | {
       outcome: "access-offer";
-      blockElements: FtDocumentElement[];
+      html: string;
       location: string;
       offer: FtAccessOffer;
     }
   | { outcome: "article"; structure: FtBodyStructure };
 
-function articleFallbackAccessOffer(document: CheerioAPI): Extract<FtBodyInspection, { outcome: "access-offer" }> | undefined {
-  for (const article of document("article").toArray()) {
-    // Match the shared source-selector fallback boundary exactly. Publisher
-    // body exclusions are intentionally not applied here because the shared
-    // `article` fallback would otherwise accept those same blocks.
-    const values = document(article).find(BLOCK_SELECTOR).toArray()
-      .filter((element) => !document(element).closest(SHARED_REMOVED_SELECTOR).length);
-    const offer = accessOffer(document, values);
-    if (offer) {
-      return {
-        outcome: "access-offer",
-        blockElements: values,
-        location: "article",
-        offer,
-      };
-    }
-  }
-  return undefined;
-}
-
 function sourceSelectorFallbackAccessOffer(
   document: CheerioAPI,
+  quality: BodyQuality,
+  pageUrl?: string,
 ): Extract<FtBodyInspection, { outcome: "access-offer" }> | undefined {
-  const articleOffer = articleFallbackAccessOffer(document);
-  if (articleOffer) return articleOffer;
-
   // The shared fallback evaluates every matching container for a selector as
-  // one candidate body. FT sometimes splits an access offer across several
-  // data-content-id containers, so inspecting only the largest container lets
-  // that combined fallback publish subscription copy as an article.
-  for (const selector of [".article__content-body", "[data-content-id]"]) {
-    const values: FtDocumentElement[] = [];
-    for (const container of document(selector).toArray()) {
-      const blocks = document(container).find(BLOCK_SELECTOR).toArray()
-        .filter((element) => !document(element).closest(SHARED_REMOVED_SELECTOR).length);
-      values.push(...(blocks.length ? blocks : [container]));
+  // one candidate body, then picks the longest accepted selector candidate.
+  // Mirror that arbitration so page-level subscription UI cannot override a
+  // valid article candidate merely because it also matches data-content-id.
+  const sharedDocument = load(document.html());
+  sharedDocument(SHARED_REMOVED_SELECTOR).remove();
+  const accepted = (body: SemanticBody | undefined): body is SemanticBody => Boolean(
+    body
+      && body.characters >= (quality.minimumCharacters ?? 800)
+      && body.contentBlocks >= (quality.minimumParagraphs ?? 3),
+  );
+  let selected: { selector: string; body: SemanticBody } | undefined;
+  for (const selector of [".article__content-body", "[data-content-id]", "article"]) {
+    const containers = sharedDocument(selector).toArray();
+    const values: string[] = [];
+    for (const container of containers) {
+      const blocks = sharedDocument(container).find(BLOCK_SELECTOR).toArray();
+      if (blocks.length) values.push(...blocks.map((element) => sharedDocument.html(element)));
+      else values.push(`<p>${sharedDocument(container).html() ?? sharedDocument(container).text()}</p>`);
     }
-    const offer = accessOffer(document, values);
-    if (offer) {
-      return {
-        outcome: "access-offer",
-        blockElements: values,
-        location: selector,
-        offer,
-      };
+    const semantic = prepareSemanticHtmlBlocks(values, pageUrl);
+    const completeContainer = accepted(semantic)
+      ? undefined
+      : prepareSemanticParagraphs(containers.map((container) => sharedDocument(container).text()));
+    const body = accepted(semantic) ? semantic : accepted(completeContainer) ? completeContainer : undefined;
+    if (body && (!selected || body.html.length > selected.body.html.length)) {
+      selected = { selector, body };
     }
   }
-  return undefined;
+  if (!selected) return undefined;
+  const offer = classifyFtAccessOffer(selected.body.html);
+  return offer ? {
+    outcome: "access-offer",
+    html: selected.body.html,
+    location: selected.selector,
+    offer,
+  } : undefined;
 }
 
 function truncatedAccessOffer(
-  document: CheerioAPI,
   inspection: Extract<FtBodyInspection, { outcome: "access-offer" }>,
 ): ArticleBodyExtraction {
   return {
-    html: inspection.blockElements.map((element) => document.html(element)).join(""),
+    html: inspection.html,
     completeness: "truncated",
     evidence: {
       kind: "access-offer",
@@ -186,16 +185,16 @@ function truncatedAccessOffer(
   };
 }
 
-function inspectFtBody(document: CheerioAPI): FtBodyInspection {
+function inspectFtBody(document: CheerioAPI, quality: BodyQuality = {}, pageUrl?: string): FtBodyInspection {
   const body = bestBody(document);
-  if (!body.length) return sourceSelectorFallbackAccessOffer(document) ?? { outcome: "unmatched" };
+  if (!body.length) return sourceSelectorFallbackAccessOffer(document, quality, pageUrl) ?? { outcome: "unmatched" };
   const standfirst = document(FT_STANDFIRST_SELECTOR).first();
   const bodyResult = blockElements(document, body[0]!, true);
   const offer = accessOffer(document, bodyResult.values);
   if (offer) {
     return {
       outcome: "access-offer",
-      blockElements: bodyResult.values,
+      html: bodyResult.values.map((element) => document.html(element)).join(""),
       location: body.is(FT_BODY_SELECTOR) ? FT_BODY_SELECTOR : "[data-content-id]",
       offer,
     };
@@ -225,12 +224,12 @@ export function extractFtBody(
   pageUrl?: string,
 ): string | ArticleBodyExtraction | undefined {
   const document = load(html);
-  const inspection = inspectFtBody(document);
+  const inspection = inspectFtBody(document, quality, pageUrl);
   if (inspection.outcome === "unmatched") return undefined;
-  if (inspection.outcome === "access-offer") return truncatedAccessOffer(document, inspection);
+  if (inspection.outcome === "access-offer") return truncatedAccessOffer(inspection);
   const { structure } = inspection;
   const body = semanticHtmlBlocks(structure.blockElements.map((element) => document.html(element)), quality, pageUrl);
   if (body) return body;
-  const fallbackOffer = sourceSelectorFallbackAccessOffer(document);
-  return fallbackOffer ? truncatedAccessOffer(document, fallbackOffer) : undefined;
+  const fallbackOffer = sourceSelectorFallbackAccessOffer(document, quality, pageUrl);
+  return fallbackOffer ? truncatedAccessOffer(fallbackOffer) : undefined;
 }

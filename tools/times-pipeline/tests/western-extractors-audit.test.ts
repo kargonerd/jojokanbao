@@ -516,6 +516,47 @@ describe("western publisher extraction audit", () => {
     });
   });
 
+  it("keeps a longer valid FT article when smaller page-level containers contain an access offer", () => {
+    const quality = { minimumCharacters: 800, minimumParagraphs: 3 };
+    const pageUrl = "https://www.ft.com/content/nonstandard-story-with-offer-ui";
+    const article = Array.from({ length: 6 }, (_, index) => (
+      `<p>${`Reported article paragraph ${index + 1} contains verified detail, context and analysis. `.repeat(7)}</p>`
+    )).join("");
+    const html = `<main>
+      <article>${article}</article>
+      <div data-content-id="offer-lead"><p>Complete digital access to quality FT journalism.</p></div>
+      <div data-content-id="offer-individuals"><p>Explore our full range of subscriptions. Discover all the plans currently available in your country.</p></div>
+      <div data-content-id="offer-organisations"><p>Digital access for organisations. Includes exclusive features and content.</p></div>
+    </main>`;
+
+    const withoutExtractor = assessArticleBody(html, ftFetch, quality, undefined, pageUrl, "captured-page");
+    const withExtractor = assessArticleBody(html, ftFetch, quality, extractFtBody, pageUrl, "captured-page");
+    expect(withoutExtractor).toMatchObject({ extractionPath: "source-selector", verdict: "accepted" });
+    expect(withExtractor).toMatchObject({ extractionPath: "source-selector", verdict: "accepted" });
+    expect(withExtractor.body).toContain("Reported article paragraph 1");
+    expect(withExtractor.body).not.toContain("Explore our full range of subscriptions");
+  });
+
+  it("ignores split FT offer signals removed by the shared selector boundary", () => {
+    const quality = { minimumCharacters: 300, minimumParagraphs: 3 };
+    const pageUrl = "https://www.ft.com/content/nonstandard-story-with-removed-ui";
+    const html = `<main><article>${Array.from({ length: 3 }, (_, index) => (
+      `<p>${`Valid report paragraph ${index + 1} contains enough verified context and analysis for publication. `.repeat(3)}</p>`
+    )).join("")}</article>
+      <div data-content-id="removed-ui"><aside>
+        <p>Complete digital access to quality FT journalism.</p>
+        <p>Explore our full range of subscriptions.</p>
+        <p>Discover all the plans currently available in your country.</p>
+        <p>Digital access for organisations. Includes exclusive features and content.</p>
+      </aside></div>
+    </main>`;
+
+    const selected = assessArticleBody(html, ftFetch, quality, extractFtBody, pageUrl, "captured-page");
+    expect(selected).toMatchObject({ extractionPath: "source-selector", verdict: "accepted" });
+    expect(selected.body).toContain("Valid report paragraph 1");
+    expect(selected.body).not.toContain("Explore our full range of subscriptions");
+  });
+
   it("keeps the shared fallback available when no FT publisher body structure matches", () => {
     const quality = { minimumCharacters: 300, minimumParagraphs: 3 };
     const pageUrl = "https://www.ft.com/content/nonstandard-story";
