@@ -1,3 +1,5 @@
+import type { JojoContentAccess } from "@jojo/content";
+
 export interface RagReference {
   citationId?: string;
   datasetId?: string;
@@ -29,6 +31,7 @@ export interface RagNotebook {
   type?: string;
   indexObject?: string;
   aiEnabled?: boolean;
+  access?: JojoContentAccess;
 }
 
 export interface RagSource {
@@ -39,6 +42,7 @@ export interface RagSource {
   itemId?: string;
   itemKey?: string;
   manifestObject?: string;
+  access?: JojoContentAccess;
 }
 
 export interface RagMessage {
