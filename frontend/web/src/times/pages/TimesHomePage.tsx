@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import type { TimesTimelineDay, TimesTimelineIndex } from "@jojo/content";
-import { timesApi } from "../api";
+import type { TimesTimelineIndex, TimesTimelinePage } from "@jojo/content";
+import { timesApi, timesTimelinePageCount } from "../api";
 import { SourceLogo } from "../components/SourceLogo";
 import { TimelineArticle } from "../components/TimelineArticle";
 import { ReadingLoadingState } from "../../reading/ReadingLoadingState";
@@ -22,92 +22,207 @@ function AllSourcesIcon({ className }: { className: string }) {
   );
 }
 
+type TimelineCursor = { dateIndex: number; page: number };
+
+function firstTimelineCursor(index: TimesTimelineIndex): TimelineCursor | null {
+  const dateIndex = index.dates.findIndex((date) => timesTimelinePageCount(date) > 0);
+  return dateIndex >= 0 ? { dateIndex, page: 0 } : null;
+}
+
+function nextTimelineCursor(index: TimesTimelineIndex, cursor: TimelineCursor): TimelineCursor | null {
+  const current = index.dates[cursor.dateIndex];
+  if (current && cursor.page + 1 < timesTimelinePageCount(current)) {
+    return { dateIndex: cursor.dateIndex, page: cursor.page + 1 };
+  }
+  for (let dateIndex = cursor.dateIndex + 1; dateIndex < index.dates.length; dateIndex += 1) {
+    const date = index.dates[dateIndex];
+    if (date && timesTimelinePageCount(date) > 0) return { dateIndex, page: 0 };
+  }
+  return null;
+}
+
+function RefreshButton({
+  refreshing,
+  onRefresh,
+  compact = false,
+}: {
+  refreshing: boolean;
+  onRefresh(): void;
+  compact?: boolean;
+}) {
+  const tooltipId = useId();
+  return (
+    <span className="relative flex shrink-0">
+      <button
+        type="button"
+        aria-label="拉取最新新闻"
+        aria-describedby={tooltipId}
+        aria-busy={refreshing}
+        title="拉取最新"
+        disabled={refreshing}
+        onClick={onRefresh}
+        className={`peer group grid shrink-0 place-content-center border border-ink bg-paper text-ink transition-[color,transform,box-shadow] hover:-translate-y-0.5 hover:text-red hover:shadow-[2px_2px_0_var(--color-red)] focus:outline-none focus-visible:ring-2 focus-visible:ring-red disabled:translate-y-0 disabled:cursor-wait disabled:text-muted disabled:shadow-none ${compact ? "h-8 w-8" : "h-7 w-7"}`}
+      >
+        <svg aria-hidden="true" viewBox="0 0 20 20" className={`h-3.5 w-3.5 ${refreshing ? "motion-safe:animate-spin" : "transition-transform group-hover:-rotate-12"}`} fill="none" stroke="currentColor" strokeWidth="1.7">
+          <path d="M16 6.5V2.8l-1.7 1.7A7 7 0 1 0 17 10" />
+          <path d="M16 2.8h-3.7" />
+        </svg>
+      </button>
+      <span
+        id={tooltipId}
+        role="tooltip"
+        className="pointer-events-none absolute right-0 top-[calc(100%+6px)] z-30 whitespace-nowrap border border-ink bg-ink px-2 py-1 font-sans text-[11px] font-bold text-paper opacity-0 transition-opacity peer-hover:opacity-100 peer-focus-visible:opacity-100"
+      >
+        拉取最新
+      </span>
+    </span>
+  );
+}
+
 export function TimesHomePage() {
   const navigate = useNavigate();
   const { issueDate = "", newsId = "" } = useParams();
   const [index, setIndex] = useState<TimesTimelineIndex | null>(null);
-  const [days, setDays] = useState<TimesTimelineDay[]>([]);
+  const [pages, setPages] = useState<TimesTimelinePage[]>([]);
+  const [nextCursor, setNextCursor] = useState<TimelineCursor | null>(null);
   const [selectedSource, setSelectedSource] = useState("all");
   const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
-  const [nextDay, setNextDay] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreFailed, setLoadMoreFailed] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshStatus, setRefreshStatus] = useState("");
   const [error, setError] = useState<string | null>(null);
   const sentinel = useRef<HTMLDivElement | null>(null);
   const listViewport = useRef<HTMLDivElement | null>(null);
   const sourceRail = useRef<HTMLElement | null>(null);
+  const timelineGeneration = useRef(0);
+  const loadingMoreRef = useRef(false);
+  const refreshingRef = useRef(false);
   const [sourceRailHasMore, setSourceRailHasMore] = useState(false);
   const readById = useTimesReadStore((state) => state.readById);
   const languagePreference = useTimesPreferencesStore((state) => state.foreignContentLanguage);
   const disabledSourceIds = useTimesPreferencesStore((state) => state.disabledSourceIds);
   const disabledSources = useMemo(() => new Set(disabledSourceIds), [disabledSourceIds]);
 
-  const loadMore = useCallback(async () => {
-    if (!index || loadingMore || nextDay >= index.dates.length) return;
-    setLoadingMore(true);
-    const ref = index.dates[nextDay];
-    try {
-      if (!ref) return;
-      const day = await timesApi.timelineDay(ref.date);
-      setDays((current) => current.some((value) => value.date === day.date)
-        ? current
-        : [...current, day]);
-      setNextDay((value) => value + 1);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "时间线加载失败");
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [index, loadingMore, nextDay]);
-
   useEffect(() => {
     let active = true;
+    const generation = ++timelineGeneration.current;
     void timesApi.timelineIndex().then(async (value) => {
-      if (!active) return;
-      setIndex(value);
-      const first = value.dates[0];
-      if (first) {
-        const day = await timesApi.timelineDay(first.date);
-        if (active) {
-          setDays([day]);
-          setNextDay(1);
+      if (!active || generation !== timelineGeneration.current) return;
+      const first = firstTimelineCursor(value);
+      const firstDate = first ? value.dates[first.dateIndex] : undefined;
+      if (first && firstDate) {
+        const firstPage = await timesApi.timelinePage(firstDate.date, first.page);
+        if (active && generation === timelineGeneration.current) {
+          setIndex(value);
+          setPages([firstPage]);
+          setNextCursor(nextTimelineCursor(value, first));
         }
+      } else {
+        setIndex(value);
       }
     }).catch((reason: unknown) => {
-      if (active) setError(reason instanceof Error ? reason.message : "时事数据暂时不可用");
+      if (active && generation === timelineGeneration.current) {
+        setError(reason instanceof Error ? reason.message : "时事数据暂时不可用");
+      }
     }).finally(() => {
-      if (active) setLoading(false);
+      if (active && generation === timelineGeneration.current) setLoading(false);
     });
     return () => { active = false; };
   }, []);
 
+  const loadMore = useCallback(async () => {
+    const target = nextCursor;
+    if (!index || !target || loadMoreFailed || loadingMoreRef.current || refreshingRef.current) return;
+    const date = index.dates[target.dateIndex];
+    if (!date) return;
+    const generation = timelineGeneration.current;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    setError(null);
+    try {
+      const value = await timesApi.timelinePage(date.date, target.page);
+      if (generation !== timelineGeneration.current) return;
+      setPages((current) => current.some((page) => page.date === value.date && page.page === value.page)
+        ? current
+        : [...current, value]);
+      setNextCursor(nextTimelineCursor(index, target));
+    } catch (reason) {
+      if (generation === timelineGeneration.current) {
+        setError(reason instanceof Error ? reason.message : "时间线加载失败");
+        setLoadMoreFailed(true);
+      }
+    } finally {
+      if (generation === timelineGeneration.current) {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      }
+    }
+  }, [index, loadMoreFailed, nextCursor]);
+
   useEffect(() => {
     const node = sentinel.current;
-    if (!node || !index) return;
+    if (!node || !index || !nextCursor || loadMoreFailed) return;
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) void loadMore();
     }, { root: listViewport.current, rootMargin: "500px 0px" });
     observer.observe(node);
     return () => observer.disconnect();
-  }, [index, loadMore]);
+  }, [disabledSources, index, loadMore, loadingMore, loadMoreFailed, nextCursor, refreshing, selectedSource]);
+
+  const refreshLatest = useCallback(async () => {
+    if (refreshingRef.current) return;
+    const generation = ++timelineGeneration.current;
+    refreshingRef.current = true;
+    loadingMoreRef.current = true;
+    setRefreshing(true);
+    setLoadingMore(false);
+    setLoadMoreFailed(false);
+    setRefreshStatus("");
+    setError(null);
+    try {
+      const value = await timesApi.timelineIndex(true);
+      const first = firstTimelineCursor(value);
+      const firstDate = first ? value.dates[first.dateIndex] : undefined;
+      const firstPage = first && firstDate
+        ? await timesApi.timelinePage(firstDate.date, first.page, true)
+        : null;
+      if (generation !== timelineGeneration.current) return;
+      setIndex(value);
+      setPages(firstPage ? [firstPage] : []);
+      setNextCursor(first ? nextTimelineCursor(value, first) : null);
+      if (listViewport.current) listViewport.current.scrollTop = 0;
+      setRefreshStatus(firstPage ? "已拉取最新新闻" : "当前没有新闻");
+    } catch (reason) {
+      if (generation === timelineGeneration.current) {
+        setError(reason instanceof Error ? reason.message : "最新新闻拉取失败");
+        setRefreshStatus("拉取失败");
+      }
+    } finally {
+      if (generation === timelineGeneration.current) {
+        refreshingRef.current = false;
+        loadingMoreRef.current = false;
+        setRefreshing(false);
+      }
+    }
+  }, []);
 
   const loadedArticleIds = useMemo(
-    () => days.flatMap((day) => day.articles.map((article) => article.id)),
-    [days],
+    () => pages.flatMap((page) => page.articles.map((article) => article.id)),
+    [pages],
   );
   useEffect(() => {
     hydrateTimesReadState(loadedArticleIds);
   }, [loadedArticleIds]);
 
-  const visibleDays = useMemo(() => days.map((day) => ({
-    ...day,
-    articles: day.articles
+  const visibleArticles = useMemo(() => pages.flatMap((page) => page.articles)
       .filter((article) => !disabledSources.has(article.source.id))
       .filter((article) => selectedSource === "all" || article.source.id === selectedSource)
       .map((article) => presentTimesArticle(article, languagePreference)),
-  })).filter((day) => day.articles.length), [days, disabledSources, languagePreference, selectedSource]);
+  [pages, disabledSources, languagePreference, selectedSource]);
 
-  const firstVisibleArticle = visibleDays[0]?.articles[0];
+  const firstVisibleArticle = visibleArticles[0];
   const activeIssueDate = issueDate || firstVisibleArticle?.issueDate || "";
   const activeNewsId = newsId || firstVisibleArticle?.id || "";
   const showingMobileDetail = Boolean(issueDate && newsId);
@@ -140,9 +255,14 @@ export function TimesHomePage() {
     }
   }, [disabledSources, navigate, selectedSource]);
 
+  useEffect(() => {
+    setLoadMoreFailed(false);
+  }, [disabledSourceIds, selectedSource]);
+
   function chooseSource(sourceId: string) {
     setSelectedSource(sourceId);
     setSourcePickerOpen(false);
+    if (listViewport.current) listViewport.current.scrollTop = 0;
     navigate("/times", { replace: true });
   }
 
@@ -179,7 +299,8 @@ export function TimesHomePage() {
       <section className={`${showingMobileDetail ? "hidden lg:flex" : "flex"} h-full min-h-0 flex-col border-r border-rule bg-paper`} aria-label="文章列表">
         <header className="hidden h-10 shrink-0 items-center gap-2 border-b border-ink px-5 lg:flex">
           {selectedSource !== "all" && firstVisibleArticle ? <SourceLogo article={firstVisibleArticle} size="header" /> : null}
-          <h1 className="truncate text-base font-black leading-tight">{selectedSourceName}</h1>
+          <h1 className="min-w-0 flex-1 truncate text-base font-black leading-tight">{selectedSourceName}</h1>
+          <RefreshButton refreshing={refreshing} onRefresh={() => void refreshLatest()} />
         </header>
         <div className="flex h-11 w-full shrink-0 border-b border-ink bg-paper font-sans lg:hidden">
           <button
@@ -200,11 +321,15 @@ export function TimesHomePage() {
               筛选<span aria-hidden="true">⌄</span>
             </span>
           </button>
+          <div className="flex shrink-0 items-center border-l border-rule px-2">
+            <RefreshButton compact refreshing={refreshing} onRefresh={() => void refreshLatest()} />
+          </div>
         </div>
         <div ref={listViewport} className="min-h-0 flex-1 overflow-y-auto">
+          <p className="sr-only" aria-live="polite">{refreshStatus}</p>
           {loading ? <ReadingLoadingState kind="times" status="正在加载新闻…" /> : null}
           {error ? <div role="alert" className="m-5 border-2 border-red bg-paper p-5 font-sans text-sm text-red">{error}</div> : null}
-          {visibleDays.flatMap((day) => day.articles).map((article) => (
+          {visibleArticles.map((article) => (
             <TimelineArticle
               key={article.id}
               article={article}
@@ -212,9 +337,13 @@ export function TimesHomePage() {
               read={Boolean(readById[article.id])}
             />
           ))}
-          {!loading && !visibleDays.length && !error ? <p className="px-5 py-16 text-center text-lg font-black">暂无文章</p> : null}
-          <div ref={sentinel} className="flex h-20 items-center justify-center font-sans text-xs text-muted">
-            {loadingMore ? "正在加载更早的日期…" : index && nextDay >= index.dates.length ? "已到达时间线起点" : ""}
+          {!loading && !visibleArticles.length && !error ? (
+            <p className="px-5 py-16 text-center text-lg font-black">
+              {pages.length ? "已加载范围内没有该媒体的文章" : "暂无文章"}
+            </p>
+          ) : null}
+          <div ref={sentinel} className="flex min-h-20 items-center justify-center border-t border-rule px-4 font-sans text-xs text-muted">
+            {loadingMore ? "正在加载更早的新闻…" : index && !nextCursor ? "已到达时间线起点" : ""}
           </div>
         </div>
       </section>

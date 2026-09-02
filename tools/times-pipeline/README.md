@@ -142,11 +142,14 @@ content/newspapers/{source}/
 
 content/timeline/
 ├─ index.jox
-└─ dates/YYYY/MM/YYYY-MM-DD.jox
+└─ dates/YYYY/MM/
+   ├─ YYYY-MM-DD.jox
+   └─ YYYY-MM-DD/page-NNNN.jox
 ~~~
 
 content/timeline 是跨媒体排序索引，不是虚拟媒体。不存在 content/newspapers/times 或 latest.jox。
-文章和图片内容寻址并长期 immutable；当天日期对象和 index 使用 60 秒重新验证。
+时间线分页对象每页最多 50 篇，Web 只挂载当前页；完整日期对象保留给文章直达和旧客户端兼容。
+文章和图片内容寻址并长期 immutable；当天日期对象、分页对象和 index 使用 60 秒重新验证。
 Delivery 构建会合并旧 index，所以滚动历史不会在下一轮消失。不存在 `latest.jox`。
 各新闻媒体的 Dataset index 与 catalog 条目固定写入 `aiEnabled: false`；它们可以继续在
 资料库和时事页面展示，但不会进入馆藏 AI 的检索范围。
