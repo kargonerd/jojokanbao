@@ -479,6 +479,9 @@ describe("Times timeline images", () => {
     expect(screen.queryByText("AI 翻译")).toBeNull();
     expect(screen.getByRole("button", { name: "查看中文译文" })).toBeTruthy();
     expect(timesMocks.getNews).toHaveBeenLastCalledWith(article.issueDate, article.id, "original");
+    expect(useTimesPreferencesStore.getState().foreignContentLanguage).toBe("zh-CN");
+    expect(JSON.parse(window.localStorage.getItem("jojo-times-preferences") ?? "{}").state?.foreignContentLanguage)
+      .toBe("zh-CN");
   });
 
   it("shows publisher publication and update times on the detail page", async () => {
@@ -549,30 +552,32 @@ describe("Times timeline images", () => {
       ...article.assets[0],
       id: `asset:gallery-${order + 1}`,
       alt: `Gallery photo ${order + 1}`,
-      caption: `Caption ${order + 1}`,
+      caption: `Publisher caption ${order + 1}`,
       presentation: { type: "carousel" as const, id: "primary-gallery", order, total: 3 },
     }));
     timesMocks.getNews.mockResolvedValue({
       ...article,
-      content: galleryAssets.map((asset) => `<figure data-asset-id="${asset.id}"><figcaption>${asset.caption}</figcaption></figure>`).join("") + "<p>Article body after the gallery.</p>",
+      content: galleryAssets.map((asset, index) => `<figure data-asset-id="${asset.id}"><figcaption>中文图注 ${index + 1}</figcaption></figure>`).join("") + "<p>翻译后的正文。</p>",
       contentFormat: "html",
       assets: galleryAssets,
       assetUrls: Object.fromEntries(galleryAssets.map((asset, index) => [asset.id, `blob:gallery-${index + 1}`])),
       originalLanguage: "en",
-      translationAvailable: false,
-      usingTranslation: false,
+      translationAvailable: true,
+      usingTranslation: true,
     });
 
     render(<MemoryRouter><TimesDetailPage issueDate={article.issueDate} newsId={article.id} /></MemoryRouter>);
 
     const carousel = await screen.findByLabelText("图片轮播，共 3 张");
     expect(screen.getByRole("img", { name: "Gallery photo 1" }).getAttribute("src")).toBe("blob:gallery-1");
-    expect(screen.getByText("Caption 1")).toBeTruthy();
+    expect(screen.getByText("中文图注 1")).toBeTruthy();
+    expect(screen.queryByText("Publisher caption 1")).toBeNull();
     expect(document.querySelectorAll(".times-article-body > figure")).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: "下一张图片" }));
     expect(screen.getByRole("img", { name: "Gallery photo 2" })).toBeTruthy();
-    expect(screen.getByText("Caption 2")).toBeTruthy();
+    expect(screen.getByText("中文图注 2")).toBeTruthy();
+    expect(screen.queryByText("Publisher caption 2")).toBeNull();
 
     fireEvent.keyDown(carousel, { key: "ArrowLeft" });
     expect(screen.getByRole("img", { name: "Gallery photo 1" })).toBeTruthy();

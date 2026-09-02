@@ -1,5 +1,5 @@
 import { gunzipSync } from "node:zlib";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, unlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -190,5 +190,174 @@ describe("canonical writer", () => {
     ))).toString("utf8")) as { articles: Array<{ articleId: string }> };
     expect(dateAfterDuplicateRemoval.articles).toEqual([]);
     await expect(readFile(path.join(output, "canonical", "newspapers", "times", "dataset.json"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("rewrites retained Canonical articles when a source asset policy rejects a historical ad", async () => {
+    const output = await mkdtemp(path.join(os.tmpdir(), "jojo-times-canonical-asset-policy-"));
+    const manifest: SourceCaptureManifest = {
+      formatVersion: "jojo-times-raw-source-run/2",
+      runId: "run-asset-policy",
+      sourceId: source.id,
+      sourceName: source.name,
+      publicationTimeZone: source.publicationTimeZone,
+      startedAt: "2026-09-02T10:00:00Z",
+      completedAt: "2026-09-02T10:01:00Z",
+      discovery: source.discovery,
+      candidateCount: 1,
+      fullCount: 1,
+      summaryCount: 0,
+      metadataCount: 0,
+      networkExchangeCount: 1,
+      objects: [],
+      captureStatus: "pages-complete",
+      healthStatus: "healthy",
+      complete: true,
+    };
+    const editorialAsset = {
+      id: "asset:editorial",
+      type: "image" as const,
+      role: "content" as const,
+      sourceUrl: "https://image.chinanews.com/cspimp/2026/09-02/editorial.JPG",
+      rawObject: "raw/reuters/assets/editorial.jpg",
+      mediaType: "image/jpeg",
+      size: 20,
+      sha256: "editorial-sha",
+      afterBlock: 1,
+    };
+    const advertisementAsset = {
+      id: "asset:advertisement",
+      type: "image" as const,
+      role: "content" as const,
+      sourceUrl: "https://www.chinanews.com.cn/ad2008/U947P4T175D633F27513DT20260901095008.jpg",
+      rawObject: "raw/reuters/assets/advertisement.jpg",
+      mediaType: "image/jpeg",
+      size: 32_000,
+      sha256: "df88276e1087e01022ed1413f07da9ad4bb0ced782990f40ca91fc316bea561b",
+      afterBlock: 2,
+    };
+    const legacyCandidate: ProcessedCandidate = {
+      articleId: "reuters:legacy-ad",
+      sourceId: source.id,
+      sourceName: source.name,
+      language: source.language,
+      sourceUrl: "https://www.chinanews.com.cn/cj/2026/09-02/10688570.shtml",
+      canonicalUrl: "https://www.chinanews.com.cn/cj/2026/09-02/10688570.shtml",
+      title: "Historical article",
+      processedBody: [
+        "<p>First retained paragraph.</p>",
+        '<figure data-asset-id="asset:editorial"><figcaption>Editorial caption</figcaption></figure>',
+        "<p>Second retained paragraph.</p>",
+        '<figure data-asset-id="asset:advertisement"></figure>',
+      ].join(""),
+      contentStatus: "full",
+      assets: [editorialAsset, advertisementAsset],
+      translation: {
+        language: "zh-CN",
+        title: "历史文章",
+        body: {
+          format: "html",
+          profile: "jojo-semantic-html/1",
+          value: '<p>保留的译文。</p><figure data-asset-id="asset:editorial"></figure><figure data-asset-id="asset:advertisement"></figure>',
+        },
+        provider: "google-gemini-api",
+        model: "gemma-test",
+        translatedAt: "2026-09-02T10:02:00Z",
+        sourceHash: "legacy-source-hash",
+      },
+      translationStatus: "translated",
+      publishedAt: "2026-09-02T05:13:47Z",
+      authors: [],
+      publisherCategories: [],
+      publisherSections: [],
+    };
+    const first = await writeCanonicalSource(
+      output,
+      source,
+      manifest,
+      "raw/reuters/runs/run-asset-policy/manifest.json",
+      [legacyCandidate, {
+        ...legacyCandidate,
+        articleId: "reuters:hf-not-restored",
+        title: "Retained article not restored by HF",
+        sourceUrl: "https://www.reuters.com/world/not-restored",
+        canonicalUrl: "https://www.reuters.com/world/not-restored",
+        processedBody: "<p>This object remains available remotely, but not in the dry-run workspace.</p>",
+        assets: [],
+      }],
+      "raw-before-policy",
+    );
+    const legacyRef = first.articles.find((article) => article.articleId === legacyCandidate.articleId)!;
+    const notRestoredRef = first.articles.find((article) => article.articleId === "reuters:hf-not-restored")!;
+    await unlink(path.join(output, ...notRestoredRef.object.split("/")));
+
+    const currentCandidate: ProcessedCandidate = {
+      ...legacyCandidate,
+      articleId: "reuters:current",
+      sourceUrl: "https://www.reuters.com/world/current",
+      canonicalUrl: "https://www.reuters.com/world/current",
+      title: "Current article",
+      processedBody: "<p>Current article body without any assets.</p>",
+      assets: [],
+      publishedAt: "2026-09-03T05:13:47Z",
+    };
+    const second = await writeCanonicalSource(
+      output,
+      source,
+      { ...manifest, runId: "run-after-policy" },
+      "raw/reuters/runs/run-after-policy/manifest.json",
+      [],
+      "raw-after-policy",
+      {
+        acceptCanonicalAsset: (asset) => !/^\/ad(?:\d{4})?\//iu.test(new URL(asset.sourceUrl).pathname),
+      },
+    );
+
+    const migratedRef = second.articles.find((article) => article.articleId === legacyCandidate.articleId)!;
+    expect(migratedRef.object).not.toBe(legacyRef.object);
+    expect(second.dates).toEqual(["2026-09-02"]);
+    expect(second.files).toContain(migratedRef.object);
+    const migrated = JSON.parse(gunzipSync(await readFile(path.join(
+      output,
+      ...migratedRef.object.split("/"),
+    ))).toString("utf8")) as CanonicalArticle;
+    expect(migrated.assets).toEqual([editorialAsset]);
+    expect(migrated.body.value).toContain("asset:editorial");
+    expect(migrated.body.value).not.toContain("asset:advertisement");
+    expect(migrated.translations?.["zh-CN"]?.body.value).toContain("asset:editorial");
+    expect(migrated.translations?.["zh-CN"]?.body.value).not.toContain("asset:advertisement");
+
+    const oldDate = JSON.parse(gunzipSync(await readFile(path.join(
+      output,
+      "canonical",
+      source.id,
+      "dates",
+      "2026",
+      "09",
+      "2026-09-02.json.gz",
+    ))).toString("utf8")) as { articles: Array<{ articleId: string; object: string }> };
+    expect(oldDate.articles).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        articleId: legacyCandidate.articleId,
+        object: migratedRef.object,
+      }),
+      expect.objectContaining({
+        articleId: "reuters:hf-not-restored",
+        object: notRestoredRef.object,
+      }),
+    ]));
+    expect(oldDate.articles.some((article) => article.object === legacyRef.object)).toBe(false);
+
+    const idempotent = await writeCanonicalSource(
+      output,
+      source,
+      { ...manifest, runId: "run-idempotent" },
+      "raw/reuters/runs/run-idempotent/manifest.json",
+      [currentCandidate],
+      "raw-idempotent",
+      {
+        acceptCanonicalAsset: (asset) => !/^\/ad(?:\d{4})?\//iu.test(new URL(asset.sourceUrl).pathname),
+      },
+    );
+    expect(idempotent.articles.filter((article) => article.articleId === legacyCandidate.articleId)).toEqual([]);
   });
 });

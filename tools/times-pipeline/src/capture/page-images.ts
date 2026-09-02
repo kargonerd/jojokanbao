@@ -106,7 +106,7 @@ export function discoverArticleImages(
   const images = containers.filter("img").add(containers.find("img"));
   images.each((_index, element) => {
     const image = $(element);
-    if (image.closest("nav,header,footer,aside,[class*='advert'],[class*='recommend'],[class*='share']").length) return;
+    if (image.closest("nav,header,footer,aside,.adInContent,.adEditor,#function_code_page,[class*='advert'],[class*='recommend'],[class*='share']").length) return;
     const sourceUrl = absoluteImageUrl(
       image.attr("data-src") ?? image.attr("data-original") ?? image.attr("src") ?? srcsetUrl(image.attr("srcset")),
       pageUrl,

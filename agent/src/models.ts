@@ -36,7 +36,50 @@ export const DEFAULT_CODEX_REASONING = "low" as const;
 const OPENAI_CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const OPENAI_CODEX_TOKEN_URL = "https://auth.openai.com/oauth/token";
 
-async function refreshOpenAICodexCredential(
+export type OpenAICodexRefreshErrorCode =
+  | "refresh_token_reused"
+  | "refresh_failed";
+
+export class OpenAICodexRefreshError extends Error {
+  readonly oauthErrorCode: OpenAICodexRefreshErrorCode;
+
+  constructor(code: OpenAICodexRefreshErrorCode, message: string) {
+    super(message);
+    this.name = "OpenAICodexRefreshError";
+    this.oauthErrorCode = code;
+  }
+}
+
+export function openAICodexRefreshErrorCode(
+  error: unknown,
+): OpenAICodexRefreshErrorCode | undefined {
+  const seen = new Set<unknown>();
+  let current = error;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    const code = (current as { oauthErrorCode?: unknown }).oauthErrorCode;
+    if (code === "refresh_token_reused" || code === "refresh_failed") {
+      return code;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
+
+function providerOAuthErrorCode(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const direct = (value as { code?: unknown }).code;
+  if (typeof direct === "string") return direct;
+  const nested = (value as { error?: unknown }).error;
+  if (typeof nested === "string") return nested;
+  if (nested && typeof nested === "object") {
+    const code = (nested as { code?: unknown }).code;
+    if (typeof code === "string") return code;
+  }
+  return undefined;
+}
+
+export async function refreshOpenAICodexCredential(
   credential: OAuthCredential,
   signal?: AbortSignal,
 ): Promise<OAuthCredential> {
@@ -51,9 +94,16 @@ async function refreshOpenAICodexCredential(
     ...(signal ? { signal } : {}),
   });
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(
-      `OpenAI Codex token refresh failed (${response.status})${detail ? `: ${detail}` : ""}`,
+    const payload = await response.json().catch(() => undefined) as unknown;
+    if (providerOAuthErrorCode(payload) === "refresh_token_reused") {
+      throw new OpenAICodexRefreshError(
+        "refresh_token_reused",
+        "OpenAI Codex 登录已失效，请重新登录并更新 AI 凭据",
+      );
+    }
+    throw new OpenAICodexRefreshError(
+      "refresh_failed",
+      `OpenAI Codex token refresh failed (${response.status})`,
     );
   }
   const token = await response.json() as {
@@ -69,6 +119,7 @@ async function refreshOpenAICodexCredential(
     throw new Error("OpenAI Codex token refresh response is incomplete");
   }
   return {
+    ...credential,
     type: "oauth",
     access: token.access_token,
     refresh: token.refresh_token,

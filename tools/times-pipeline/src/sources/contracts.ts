@@ -1,6 +1,7 @@
 import type {
   BrowserDiscoveryRuntime,
   Candidate,
+  CapturedAsset,
   DiscoveryEndpoint,
   DiscoveryResult,
   PageAvailabilityInput,
@@ -36,6 +37,14 @@ export type StaleCanonicalBodyClassifier = (
   previousBodyHtml: string,
 ) => StaleCanonicalRemovalReason | undefined;
 
+/**
+ * Source-owned validation for both newly captured and retained Canonical
+ * assets. Keeping this hook at the source boundary lets extraction-policy
+ * upgrades clean historical articles that are no longer present in the
+ * publisher's current discovery window.
+ */
+export type CanonicalAssetAcceptor = (asset: CapturedAsset) => boolean;
+
 export interface SourceModule {
   id: string;
   discoverHttp?: (
@@ -55,6 +64,7 @@ export interface SourceModule {
   extractBody?: ArticleBodyExtractor;
   classifyOriginalPageRejection?: OriginalPageRejectionClassifier;
   extractImages?: ArticleImageExtractor;
+  acceptCanonicalAsset?: CanonicalAssetAcceptor;
   classifyStaleCanonicalBody?: StaleCanonicalBodyClassifier;
   classifyUnavailable?(
     input: PageAvailabilityInput,
