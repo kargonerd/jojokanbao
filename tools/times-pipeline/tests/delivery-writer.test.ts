@@ -51,12 +51,12 @@ describe("news Delivery writer", () => {
       publisherCategories: [],
       publisherSections: [{ id: "world", name: "World" }],
       categories: [],
-      body: { format: "html", profile: "jojo-semantic-html/1", value: '<figure data-asset-id="asset:image"></figure><p>Full body</p>' },
+      body: { format: "html", profile: "jojo-semantic-html/1", value: '<figure data-asset-id="asset:image"><figcaption>English image caption</figcaption></figure><p>Full body</p>' },
       translations: {
         "zh-CN": {
           language: "zh-CN",
           title: "完整报道",
-          body: { format: "html", profile: "jojo-semantic-html/1", value: '<figure data-asset-id="asset:image"></figure><p>完整正文</p>' },
+          body: { format: "html", profile: "jojo-semantic-html/1", value: '<figure data-asset-id="asset:image"><figcaption>中文图片说明</figcaption></figure><p>完整正文</p>' },
           provider: "google-gemini-api",
           model: "gemma-4-31b-it",
           translatedAt: "2026-08-23T09:35:00.000Z",
@@ -140,6 +140,7 @@ describe("news Delivery writer", () => {
     expect(day.articles[0]).toMatchObject({
       id: "example:full",
       source: { id: "example" },
+      summary: "Full body",
       assets: [{ id: "asset:image", presentation: { type: "carousel", id: "primary-gallery", order: 0, total: 1 } }],
     });
     const pageObject = `content/timeline/${index.dates[0]!.pages![0]!.object}`;
@@ -177,7 +178,7 @@ describe("news Delivery writer", () => {
       new Uint8Array(await readFile(path.join(deliveryRoot, ...translatedObject.split("/")))),
       translatedObject,
     );
-    expect(translatedFragment).toMatchObject({ title: "完整报道", body: { value: '<figure data-asset-id="asset:image"></figure><p>完整正文</p>' } });
+    expect(translatedFragment).toMatchObject({ title: "完整报道", body: { value: '<figure data-asset-id="asset:image"><figcaption>中文图片说明</figcaption></figure><p>完整正文</p>' } });
     const assetObject = day.articles[0]!.assets[0]!.object;
     expect(Buffer.from(transformJoxBytes(new Uint8Array(await readFile(path.join(deliveryRoot, ...assetObject.split("/")))), assetObject)).toString()).toBe("image-bytes");
     const catalog = await gunzipJoxJson<JojoCatalog>(new Uint8Array(await readFile(path.join(deliveryRoot, "catalog.jox"))), "catalog.jox");
