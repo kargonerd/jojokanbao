@@ -4,10 +4,7 @@ import { parseArgs, requiredArg } from "./args.js";
 import { loadSources } from "./config.js";
 import {
   collectFolderFiles,
-  type HfExistingPolicy,
   HfTimesDataset,
-  readHfFileSetManifest,
-  validateArchiveFileSetScope,
 } from "./hf.js";
 
 interface ProcessResult {
@@ -53,49 +50,6 @@ async function main(): Promise<void> {
   }
   if (action === "download-snapshot") {
     process.stdout.write(`${JSON.stringify(await dataset.downloadSnapshot(args.get("github-run-id")), null, 2)}\n`);
-    return;
-  }
-  if (action === "download-files") {
-    const manifest = await readHfFileSetManifest(path.resolve(requiredArg(args, "file-manifest")));
-    process.stdout.write(`${JSON.stringify(await dataset.downloadFileSet(manifest, args.get("revision")), null, 2)}\n`);
-    return;
-  }
-  if (action === "upload-files") {
-    const existingPolicy = requiredArg(args, "existing-policy");
-    if (existingPolicy !== "immutable" && existingPolicy !== "replace") {
-      throw new Error(`Unsupported HF existing-object policy: ${existingPolicy}`);
-    }
-    const manifest = validateArchiveFileSetScope(
-      await readHfFileSetManifest(path.resolve(requiredArg(args, "file-manifest"))),
-      requiredArg(args, "allowed-prefix"),
-      existingPolicy as HfExistingPolicy,
-    );
-    const conflictStrategy = args.get("conflict-strategy") ?? "fail";
-    if (conflictStrategy !== "fail") {
-      throw new Error("upload-files requires conflict strategy fail with an exact parent revision");
-    }
-    const result = await dataset.uploadFileSet(
-      manifest,
-      requiredArg(args, "title"),
-      "fail",
-      requiredArg(args, "expected-parent-revision"),
-      existingPolicy as HfExistingPolicy,
-    );
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    return;
-  }
-  if (action === "upload-archive-canonical") {
-    const conflictStrategy = args.get("conflict-strategy") ?? "fail";
-    if (conflictStrategy !== "fail") {
-      throw new Error("upload-archive-canonical requires conflict strategy fail with an exact parent revision");
-    }
-    const manifest = await readHfFileSetManifest(path.resolve(requiredArg(args, "file-manifest")));
-    const result = await dataset.uploadArchiveCanonicalFileSet(
-      manifest,
-      requiredArg(args, "title"),
-      requiredArg(args, "expected-parent-revision"),
-    );
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return;
   }
   if (action === "upload-raw") {

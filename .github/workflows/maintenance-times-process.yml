@@ -239,10 +239,9 @@ jobs:
           node --input-type=module - <<'NODE' > "$RUNNER_TEMP/source-ids.txt"
           import fs from "node:fs";
           import path from "node:path";
-          import { archiveOnlySourceIds } from "./tools/times-pipeline/dist/src/archive/canonical.js";
           const configPath = path.resolve("tools/times-pipeline/sources.v2.json");
           const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-          const sourceIds = new Set(archiveOnlySourceIds());
+          const sourceIds = new Set();
           for (const sourceFile of config.sourceFiles) {
             const source = JSON.parse(fs.readFileSync(path.resolve(path.dirname(configPath), sourceFile), "utf8"));
             if (source.enabled !== false) sourceIds.add(source.id);
