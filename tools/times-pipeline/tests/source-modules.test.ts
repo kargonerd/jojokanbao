@@ -254,6 +254,9 @@ describe("native source modules", () => {
       title: "航拍画面",
       html: "<video></video>",
     }))).toBe("UnsupportedMedia");
+    expect(sourceUnavailablePageReason(source("people", endpoint), input({
+      html: '<div id="rm_txt_zw"><div id="q_v_p-example"><div class="video-js"><video></video></div></div></div>',
+    }))).toBe("UnsupportedMedia");
     expect(sourceUnavailablePageReason(source("xinhua", endpoint), input({
       html: '<div id="detailContent"><div class="pageVideo" video_src="movie.mp4"></div><p>新华社音视频部制作</p></div>',
     }))).toBe("UnsupportedMedia");

@@ -8,6 +8,7 @@ import { extractClsImages } from "../src/sources/cls/images.js";
 import { clsFetch } from "../src/sources/cls/fetch.js";
 import { extractClsBody } from "../src/sources/cls/process.js";
 import { extractPeopleImages } from "../src/sources/people/images.js";
+import { peopleFetch } from "../src/sources/people/fetch.js";
 import { extractPeopleBody } from "../src/sources/people/process.js";
 import { extractThepaperImages } from "../src/sources/thepaper/images.js";
 import { extractThepaperBody } from "../src/sources/thepaper/process.js";
@@ -108,6 +109,27 @@ describe("publisher-specific Chinese source extraction", () => {
       afterBlock: 0,
       caption,
     })]);
+  });
+
+  it("rejects People video-player controls instead of archiving them as article text", () => {
+    const url = "http://society.people.com.cn/n1/2026/0902/video.html";
+    const html = `<div id="rm_txt_zw"><p><span>播放器占位</span></p>
+      <div id="q_v_p-example"><div class="video-js qk-videojs">
+        <ul class="vjs-menu-content"><li class="vjs-menu-title">Chapters</li></ul>
+        <ul class="vjs-menu-content"><li>descriptions off, selected</li></ul>
+        <p class="vjs-modal-dialog-description">This is a modal window.</p>
+        <p class="vjs-modal-dialog-description">Beginning of dialog window. Escape will cancel and close the window.</p>
+        <p class="vjs-modal-dialog-description">End of dialog window.</p>
+        <video src="movie.mp4"></video>
+      </div></div>
+    </div>`;
+
+    expect(extractPeopleBody(html, quality, url)).toMatchObject({
+      html: "",
+      completeness: "publisher-complete",
+      evidence: { kind: "unsupported-media", marker: "video-player" },
+    });
+    expect(extractArticleBody(html, peopleFetch, quality, extractPeopleBody, url)).toBeUndefined();
   });
 
   it("preserves China News subheads and captures sibling image descriptions", () => {
