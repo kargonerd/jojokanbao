@@ -8,6 +8,7 @@ export interface PageArticle {
   canonicalUrl: string;
   captureUrl: string;
   publishedAt: string;
+  updatedAt?: string;
   needsBody: boolean;
   captureRevision?: string;
 }
@@ -29,7 +30,7 @@ export interface PageCaptureState {
 }
 
 export function articleFingerprint(article: PageArticle): string {
-  const identity = `${article.captureUrl}\0${article.title}\0${article.publishedAt}`;
+  const identity = `${article.captureUrl}\0${article.title}\0${article.publishedAt}\0${article.updatedAt ?? ""}`;
   return createHash("sha256").update(article.captureRevision ? `${identity}\0${article.captureRevision}` : identity).digest("hex");
 }
 

@@ -27,6 +27,7 @@ import {
   untriedProxyArticles,
 } from "./capture/schedule.js";
 import {
+  sourceArticleTimestampsExtractor,
   sourceBodyExtractor,
   sourceImageExtractor,
   sourceOriginalPageRejectionClassifier,
@@ -160,6 +161,14 @@ async function completeCapture(
       ? session.downloadAsset(url, referer, timeoutSeconds)
       : downloadDirectAsset(url, referer, timeoutSeconds),
   });
+  const timestampHtml = page.renderedHtml ?? page.originalHtml;
+  const publisherTimestamps = timestampHtml
+    ? sourceArticleTimestampsExtractor(article.sourceId)?.(timestampHtml, page.finalUrl)
+    : undefined;
+  if (publisherTimestamps) {
+    article.candidate.publishedAt = publisherTimestamps.publishedAt;
+    if (publisherTimestamps.updatedAt) article.candidate.updatedAt = publisherTimestamps.updatedAt;
+  }
   article.candidate.contentStatus = fullBody
     ? "full"
     : article.candidate.summary?.trim()
@@ -240,6 +249,7 @@ async function loadArticles(workspace: string, run: RawRunManifest, sources: Map
         canonicalUrl: candidate.canonicalUrl,
         captureUrl: manifest.fetchPolicy?.captureUrl === "source" ? candidate.sourceUrl : candidate.canonicalUrl,
         publishedAt: candidate.publishedAt,
+        ...(candidate.updatedAt ? { updatedAt: candidate.updatedAt } : {}),
         needsBody: candidate.contentStatus !== "full",
         captureRevision: [CAPTURE_PIPELINE_REVISION, manifest.fetchPolicy?.revision].filter(Boolean).join("+"),
         source,

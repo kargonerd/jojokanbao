@@ -1,6 +1,7 @@
 import { load } from "cheerio";
 import { semanticHtmlBlocks, type BodyQuality } from "../../content/paragraphs.js";
 import type { Candidate } from "../../types.js";
+import type { PublisherArticleTimestamps } from "../contracts.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -25,6 +26,52 @@ function liveBlog(value: unknown): JsonObject | undefined {
     if (result) return result;
   }
   return undefined;
+}
+
+function newsArticle(value: unknown): JsonObject | undefined {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const result = newsArticle(item);
+      if (result) return result;
+    }
+    return undefined;
+  }
+  const row = object(value);
+  if (!row) return undefined;
+  const types = Array.isArray(row["@type"]) ? row["@type"] : [row["@type"]];
+  if (types.includes("NewsArticle")) return row;
+  for (const item of Object.values(row)) {
+    const result = newsArticle(item);
+    if (result) return result;
+  }
+  return undefined;
+}
+
+function timestamp(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.valueOf()) ? undefined : parsed.toISOString();
+}
+
+export function extractApTimestamps(html: string): PublisherArticleTimestamps | undefined {
+  const document = load(html);
+  let result: PublisherArticleTimestamps | undefined;
+  document('script[type="application/ld+json"]').each((_, element) => {
+    if (result) return;
+    try {
+      const article = newsArticle(JSON.parse(document(element).text()));
+      const publishedAt = timestamp(article?.datePublished);
+      if (!publishedAt) return;
+      const modifiedAt = timestamp(article?.dateModified);
+      result = {
+        publishedAt,
+        ...(modifiedAt && modifiedAt > publishedAt ? { updatedAt: modifiedAt } : {}),
+      };
+    } catch {
+      // Continue with another publisher-owned JSON-LD block.
+    }
+  });
+  return result;
 }
 
 function escapeHtml(value: string): string {

@@ -128,11 +128,12 @@ function bodyValue(candidate: ProcessedCandidate): string | undefined {
 
 function canonicalContentHash(value: Pick<
   CanonicalArticle,
-  "title" | "publishedAt" | "body" | "assets" | "translations"
+  "title" | "publishedAt" | "updatedAt" | "body" | "assets" | "translations"
 >): string {
   return sha256(JSON.stringify({
     title: value.title,
     publishedAt: value.publishedAt,
+    updatedAt: value.updatedAt,
     body: value.body,
     assets: value.assets.map((asset) => [asset.id, asset.sha256, asset.role, asset.afterBlock, asset.presentation]),
     translations: value.translations,
