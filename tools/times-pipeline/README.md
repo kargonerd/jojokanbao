@@ -51,7 +51,7 @@ node tools/times-pipeline/dist/src/process-cli.js --config tools/times-pipeline/
 node tools/times-pipeline/dist/src/delivery-cli.js --config tools/times-pipeline/sources.v2.json --output $env:TEMP/jojo-times --process-result '<process-result.json>' --delivery-output $env:TEMP/jojo-times-delivery
 ~~~
 
-自动轮次使用 24 小时发现回看，但只把最近 1 小时以及状态缓存中从未见过或仍需重试的 URL 送入页面抓取和
+自动轮次使用 3 小时发现回看，但只把最近 1 小时以及状态缓存中从未见过或仍需重试的 URL 送入页面抓取和
 Canonical 处理。这样可以补到媒体延迟加入栏目页的文章，又不会每十分钟重复处理整天数据。
 
 ## 非中文新闻翻译

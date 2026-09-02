@@ -46,7 +46,10 @@ jobs:
     env:
       HF_TOKEN: ${{ secrets.HF_TIMES_RUNTIME_TOKEN }}
       HF_TIMES_RUNTIME_BUCKET: ${{ vars.HF_TIMES_RUNTIME_BUCKET || secrets.HF_TIMES_RUNTIME_BUCKET }}
-      TIMES_DISCOVERY_HOURS: ${{ inputs.automatic && '24' || inputs.since_hours || '24' }}
+      # Keep automatic recovery aligned with the three-hour Capture bootstrap.
+      # A wider cold-start lookback makes every pre-bootstrap URL look like a
+      # late arrival and can exceed the 35-minute Capture budget.
+      TIMES_DISCOVERY_HOURS: ${{ inputs.automatic && '3' || inputs.since_hours || '24' }}
       TIMES_PROCESS_WINDOW_HOURS: ${{ inputs.automatic && '1' || inputs.since_hours || '24' }}
       TIMES_SOURCES: ${{ inputs.sources || '' }}
       TIMES_PUBLISH: ${{ inputs.automatic || inputs.publish }}
