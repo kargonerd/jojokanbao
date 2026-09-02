@@ -4,6 +4,7 @@ import { useRef, useState, type KeyboardEvent, type TouchEvent } from "react";
 export interface TimesCarouselItem {
   asset: JojoAssetDescriptor;
   url: string;
+  caption?: string;
 }
 
 function ArrowIcon({ direction }: { direction: "left" | "right" }) {
@@ -47,7 +48,7 @@ export function TimesImageCarousel({ id, items }: { id: string; items: TimesCaro
     else previous();
   }
 
-  const description = current.asset.caption || current.asset.alt || `第 ${index + 1} 张图片`;
+  const description = current.caption || current.asset.caption || current.asset.alt || `第 ${index + 1} 张图片`;
   return (
     <figure
       data-carousel-id={id}

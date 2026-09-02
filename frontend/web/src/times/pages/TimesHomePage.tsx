@@ -325,7 +325,7 @@ export function TimesHomePage() {
             <RefreshButton compact refreshing={refreshing} onRefresh={() => void refreshLatest()} />
           </div>
         </div>
-        <div ref={listViewport} className="min-h-0 flex-1 overflow-y-auto">
+        <div ref={listViewport} className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
           <p className="sr-only" aria-live="polite">{refreshStatus}</p>
           {loading ? <ReadingLoadingState kind="times" status="正在加载新闻…" /> : null}
           {error ? <div role="alert" className="m-5 border-2 border-red bg-paper p-5 font-sans text-sm text-red">{error}</div> : null}
