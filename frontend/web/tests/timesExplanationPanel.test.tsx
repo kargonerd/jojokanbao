@@ -17,6 +17,7 @@ describe("TimesExplanationPanel", () => {
     expect(screen.getByText("核心解释").tagName).toBe("STRONG");
     expect(screen.getByRole("list").textContent).toContain("外交");
     expect(screen.getByRole("list").textContent).toContain("防务");
+    expect(screen.queryByText("JOJO TIMES · BETA")).toBeNull();
     expect(container.querySelector("script")).toBeNull();
     expect(screen.queryByText("**核心解释**")).toBeNull();
   });
