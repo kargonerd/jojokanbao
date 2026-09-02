@@ -26,6 +26,7 @@ export interface TimesDeliveryArticle {
   contentStatus: TimesContentStatus;
   url?: string | null;
   publishedAt: string;
+  updatedAt?: string;
   issueDate: string;
   language: string;
   source: TimesSourceRef;

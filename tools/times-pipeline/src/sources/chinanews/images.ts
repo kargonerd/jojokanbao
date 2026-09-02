@@ -1,5 +1,6 @@
 import { load } from "cheerio";
 import type { PageImageCandidate } from "../../capture/page-images.js";
+import type { CapturedAsset } from "../../types.js";
 import {
   inspectChinanewsImageOnlyPoster,
   isChinanewsResidualPage,
@@ -8,6 +9,7 @@ import {
 
 const EXCLUDED_SELECTOR = ".adInContent,.adEditor,#function_code_page,script,style,noscript,iframe,form";
 const CAPTION_SELECTOR = ".pictext,[class*='caption'],figcaption";
+const PUBLISHER_AD_ASSET_PATH = /^\/ad(?:\d{4})?\//iu;
 
 function text(value: string): string {
   return value.replaceAll(/\s+/gu, " ").trim();
@@ -26,6 +28,16 @@ function absoluteUrl(value: string | undefined, pageUrl: string): string | undef
 function dimension(value: string | undefined): number | undefined {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+export function acceptChinanewsCanonicalAsset(asset: CapturedAsset): boolean {
+  try {
+    return !PUBLISHER_AD_ASSET_PATH.test(new URL(asset.sourceUrl).pathname);
+  } catch {
+    // Only remove assets positively identified as publisher ads. A malformed
+    // legacy URL is not enough evidence to retract an otherwise valid image.
+    return true;
+  }
 }
 
 function associatedCaption(
