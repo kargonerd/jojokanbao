@@ -39,6 +39,12 @@ export interface TimesTimelineDayRef {
   date: string;
   object: string;
   articleCount: number;
+  pages?: TimesTimelinePageRef[];
+}
+
+export interface TimesTimelinePageRef {
+  object: string;
+  articleCount: number;
 }
 
 export interface TimesTimelineIndex {
@@ -51,6 +57,14 @@ export interface TimesTimelineIndex {
 export interface TimesTimelineDay {
   formatVersion: "jojo-news-timeline-day/1";
   date: string;
+  updatedAt: string;
+  articles: TimesDeliveryArticle[];
+}
+
+export interface TimesTimelinePage {
+  formatVersion: "jojo-news-timeline-page/1";
+  date: string;
+  page: number;
   updatedAt: string;
   articles: TimesDeliveryArticle[];
 }

@@ -7,6 +7,7 @@ import { presentTimesArticle } from "../src/times/language";
 
 const indexObject = "content/timeline/index.jox";
 const dayObject = "content/timeline/dates/2026/08/2026-08-22.jox";
+const pageObject = "content/timeline/dates/2026/08/2026-08-22/page-0001.jox";
 const articleObject = "content/newspapers/example/articles/article-one.jox";
 const translatedArticleObject = "content/newspapers/example/articles/article-one-zh.jox";
 const assetObject = "content/newspapers/example/assets/image-one.jox";
@@ -78,6 +79,35 @@ describe("Times B2 CDN client", () => {
     expect(String(fetchMock.mock.calls[0]![0])).toBe(`https://blacknews.jojokanbao.cn/${indexObject}`);
     expect(fetchMock.mock.calls[0]![1]).toEqual({ cache: "no-store" });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("reads a small timeline page without downloading the full day", async () => {
+    vi.stubGlobal("Blob", NodeBlob);
+    const pagedIndex = {
+      ...index,
+      dates: [{
+        ...index.dates[0],
+        pages: [{ object: "dates/2026/08/2026-08-22/page-0001.jox", articleCount: 1 }],
+      }],
+    };
+    const page = {
+      formatVersion: "jojo-news-timeline-page/1",
+      date: "2026-08-22",
+      page: 0,
+      updatedAt: day.updatedAt,
+      articles: [item],
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith(indexObject)) return joxResponse(indexObject, pagedIndex);
+      if (url.endsWith(pageObject)) return joxResponse(pageObject, page);
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(timesApi.timelinePage("2026-08-22", 0)).resolves.toMatchObject({ articles: [item] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith(dayObject))).toBe(false);
   });
 
   it("loads immutable article content by issue date and article id", async () => {

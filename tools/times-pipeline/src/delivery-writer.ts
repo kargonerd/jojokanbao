@@ -13,6 +13,7 @@ import type {
   TimesSourceIndex,
   TimesTimelineDay,
   TimesTimelineIndex,
+  TimesTimelinePage,
 } from "@jojo/content";
 import type { CanonicalArticle, CanonicalWriteResult } from "./process/canonical-writer.js";
 import { sha256 } from "./identity.js";
@@ -195,6 +196,13 @@ function mergeArticles(previous: readonly TimesDeliveryArticle[], current: reado
   return [...merged.values()].sort((left, right) => right.publishedAt.localeCompare(left.publishedAt) || left.id.localeCompare(right.id));
 }
 
+export const TIMES_TIMELINE_PAGE_SIZE = 50;
+
+function timelinePageObject(date: string, page: number): string {
+  const number = String(page + 1).padStart(4, "0");
+  return `content/timeline/dates/${date.slice(0, 4)}/${date.slice(5, 7)}/${date}/page-${number}.jox`;
+}
+
 function deliveryRemovals(process: { sources: CanonicalWriteResult[] }): Map<string, Set<string>> {
   const byDate = new Map<string, Set<string>>();
   for (const source of process.sources) {
@@ -254,7 +262,30 @@ export async function buildNewsDelivery(input: {
     await writeJoxJson(input.deliveryRoot, object, day);
     mergedDays.set(date, day);
     if (articles.length > 0) {
-      timelineRefs.set(date, { date, object: `dates/${date.slice(0, 4)}/${date.slice(5, 7)}/${date}.jox`, articleCount: articles.length });
+      const pages = [];
+      for (let offset = 0; offset < articles.length; offset += TIMES_TIMELINE_PAGE_SIZE) {
+        const page = offset / TIMES_TIMELINE_PAGE_SIZE;
+        const pageArticles = articles.slice(offset, offset + TIMES_TIMELINE_PAGE_SIZE);
+        const pageObject = timelinePageObject(date, page);
+        const timelinePage: TimesTimelinePage = {
+          formatVersion: "jojo-news-timeline-page/1",
+          date,
+          page,
+          updatedAt: input.generatedAt,
+          articles: pageArticles,
+        };
+        await writeJoxJson(input.deliveryRoot, pageObject, timelinePage);
+        pages.push({
+          object: pageObject.replace(/^content\/timeline\//u, ""),
+          articleCount: pageArticles.length,
+        });
+      }
+      timelineRefs.set(date, {
+        date,
+        object: `dates/${date.slice(0, 4)}/${date.slice(5, 7)}/${date}.jox`,
+        articleCount: articles.length,
+        pages,
+      });
     } else {
       timelineRefs.delete(date);
     }

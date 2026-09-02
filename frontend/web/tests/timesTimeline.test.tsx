@@ -5,11 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const timesMocks = vi.hoisted(() => ({
   timelineIndex: vi.fn(),
   timelineDay: vi.fn(),
+  timelinePage: vi.fn(),
   assetObjectUrl: vi.fn(),
   getNews: vi.fn(),
 }));
 
-vi.mock("../src/times/api", () => ({ timesApi: timesMocks }));
+vi.mock("../src/times/api", () => ({
+  timesApi: timesMocks,
+  timesTimelinePageCount: (ref: { articleCount: number; pages?: unknown[] }) => ref.pages?.length ?? Math.ceil(ref.articleCount / 50),
+}));
 
 import { TimesHomePage } from "../src/times/pages/TimesHomePage";
 import { TimesDetailPage } from "../src/times/pages/TimesDetailPage";
@@ -73,6 +77,13 @@ beforeEach(() => {
   timesMocks.timelineDay.mockResolvedValue({
     formatVersion: "jojo-news-timeline-day/1",
     date: "2026-08-27",
+    updatedAt: "2026-08-27T05:00:00.000Z",
+    articles: [article],
+  });
+  timesMocks.timelinePage.mockResolvedValue({
+    formatVersion: "jojo-news-timeline-page/1",
+    date: "2026-08-27",
+    page: 0,
     updatedAt: "2026-08-27T05:00:00.000Z",
     articles: [article],
   });
@@ -143,9 +154,10 @@ describe("Times timeline images", () => {
   });
 
   it("marks AI translations without showing a language setting in Times", async () => {
-    timesMocks.timelineDay.mockResolvedValue({
-      formatVersion: "jojo-news-timeline-day/1",
+    timesMocks.timelinePage.mockResolvedValue({
+      formatVersion: "jojo-news-timeline-page/1",
       date: "2026-08-27",
+      page: 0,
       updatedAt: "2026-08-27T05:00:00.000Z",
       articles: [{
         ...article,
@@ -208,9 +220,10 @@ describe("Times timeline images", () => {
       dates: [{ date: "2026-08-27", object: "dates/2026/08/2026-08-27.jox", articleCount: 2 }],
       sources: [source, secondSource],
     });
-    timesMocks.timelineDay.mockResolvedValue({
-      formatVersion: "jojo-news-timeline-day/1",
+    timesMocks.timelinePage.mockResolvedValue({
+      formatVersion: "jojo-news-timeline-page/1",
       date: "2026-08-27",
+      page: 0,
       updatedAt: "2026-08-27T05:00:00.000Z",
       articles: [article, reutersArticle],
     });
@@ -256,6 +269,167 @@ describe("Times timeline images", () => {
     sourceRail.scrollTop = 300;
     fireEvent.scroll(sourceRail);
     await waitFor(() => expect(screen.queryByRole("button", { name: "向下查看更多媒体" })).toBeNull());
+  });
+
+  it("automatically appends one timeline page at a time without paging buttons", async () => {
+    const olderArticle = {
+      ...article,
+      id: "article-older",
+      title: "An older headline",
+      publishedAt: "2026-08-27T03:58:00.000Z",
+      assets: [],
+    };
+    timesMocks.timelineIndex.mockResolvedValue({
+      formatVersion: "jojo-news-timeline-index/1",
+      updatedAt: "2026-08-27T05:00:00.000Z",
+      dates: [{
+        date: "2026-08-27",
+        object: "dates/2026/08/2026-08-27.jox",
+        articleCount: 2,
+        pages: [
+          { object: "dates/2026/08/2026-08-27/page-0001.jox", articleCount: 1 },
+          { object: "dates/2026/08/2026-08-27/page-0002.jox", articleCount: 1 },
+        ],
+      }],
+      sources: [source],
+    });
+    timesMocks.timelinePage.mockImplementation(async (_date: string, page: number) => ({
+      formatVersion: "jojo-news-timeline-page/1",
+      date: "2026-08-27",
+      page,
+      updatedAt: "2026-08-27T05:00:00.000Z",
+      articles: page === 0 ? [article] : [olderArticle],
+    }));
+
+    render(<MemoryRouter><TimesHomePage /></MemoryRouter>);
+
+    await screen.findByText(article.title);
+    await screen.findByText(olderArticle.title);
+    expect(screen.getAllByText(article.title).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "更早的新闻" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "更新的新闻" })).toBeNull();
+    expect(timesMocks.timelinePage.mock.calls.filter(([, page]) => page === 1)).toHaveLength(1);
+    expect(screen.getByText("已到达时间线起点")).toBeTruthy();
+  });
+
+  it("pulls a fresh index and first page without reloading the browser", async () => {
+    const refreshedArticle = {
+      ...article,
+      id: "article-refreshed",
+      title: "A newly pulled headline",
+      publishedAt: "2026-08-28T01:00:00.000Z",
+      issueDate: "2026-08-28",
+      assets: [],
+    };
+    const initialIndex = {
+      formatVersion: "jojo-news-timeline-index/1",
+      updatedAt: "2026-08-27T05:00:00.000Z",
+      dates: [{ date: "2026-08-27", object: "dates/2026/08/2026-08-27.jox", articleCount: 1 }],
+      sources: [source],
+    };
+    const refreshedIndex = {
+      ...initialIndex,
+      updatedAt: "2026-08-28T01:01:00.000Z",
+      dates: [{ date: "2026-08-28", object: "dates/2026/08/2026-08-28.jox", articleCount: 1 }],
+    };
+    timesMocks.timelineIndex.mockResolvedValueOnce(initialIndex).mockResolvedValueOnce(refreshedIndex);
+    timesMocks.timelinePage.mockImplementation(async (date: string, page: number) => ({
+      formatVersion: "jojo-news-timeline-page/1",
+      date,
+      page,
+      updatedAt: date === "2026-08-28" ? refreshedIndex.updatedAt : initialIndex.updatedAt,
+      articles: date === "2026-08-28" ? [refreshedArticle] : [article],
+    }));
+
+    render(<MemoryRouter><TimesHomePage /></MemoryRouter>);
+
+    await screen.findByText(article.title);
+    const refreshButton = screen.getAllByRole("button", { name: "拉取最新新闻" })[0]!;
+    expect(refreshButton.textContent).toBe("");
+    expect(refreshButton.getAttribute("title")).toBe("拉取最新");
+    expect(screen.getAllByRole("tooltip").every((tooltip) => tooltip.textContent?.trim() === "拉取最新")).toBe(true);
+    fireEvent.click(refreshButton);
+    await screen.findByText(refreshedArticle.title);
+    expect(screen.queryByText(article.title)).toBeNull();
+    expect(timesMocks.timelineIndex).toHaveBeenLastCalledWith(true);
+    expect(timesMocks.timelinePage).toHaveBeenLastCalledWith("2026-08-28", 0, true);
+    expect(screen.getByText("已拉取最新新闻")).toBeTruthy();
+  });
+
+  it("does not append a stale automatic page after pulling a fresh timeline", async () => {
+    const staleOlderArticle = {
+      ...article,
+      id: "article-stale-older",
+      title: "A stale older headline",
+      assets: [],
+    };
+    const refreshedArticle = {
+      ...article,
+      id: "article-race-refreshed",
+      title: "The refreshed timeline headline",
+      issueDate: "2026-08-28",
+      publishedAt: "2026-08-28T01:00:00.000Z",
+      assets: [],
+    };
+    const initialIndex = {
+      formatVersion: "jojo-news-timeline-index/1",
+      updatedAt: "2026-08-27T05:00:00.000Z",
+      dates: [{
+        date: "2026-08-27",
+        object: "dates/2026/08/2026-08-27.jox",
+        articleCount: 2,
+        pages: [
+          { object: "dates/2026/08/2026-08-27/page-0001.jox", articleCount: 1 },
+          { object: "dates/2026/08/2026-08-27/page-0002.jox", articleCount: 1 },
+        ],
+      }],
+      sources: [source],
+    };
+    const refreshedIndex = {
+      ...initialIndex,
+      updatedAt: "2026-08-28T01:01:00.000Z",
+      dates: [{ date: "2026-08-28", object: "dates/2026/08/2026-08-28.jox", articleCount: 1 }],
+    };
+    let resolveOlder!: (value: unknown) => void;
+    const olderPage = new Promise((resolve) => { resolveOlder = resolve; });
+    timesMocks.timelineIndex.mockResolvedValueOnce(initialIndex).mockResolvedValueOnce(refreshedIndex);
+    timesMocks.timelinePage.mockImplementation(async (date: string, page: number) => {
+      if (date === "2026-08-28") {
+        return {
+          formatVersion: "jojo-news-timeline-page/1",
+          date,
+          page,
+          updatedAt: refreshedIndex.updatedAt,
+          articles: [refreshedArticle],
+        };
+      }
+      if (page === 1) return olderPage;
+      return {
+        formatVersion: "jojo-news-timeline-page/1",
+        date,
+        page,
+        updatedAt: initialIndex.updatedAt,
+        articles: [article],
+      };
+    });
+
+    render(<MemoryRouter><TimesHomePage /></MemoryRouter>);
+
+    await screen.findByText(article.title);
+    await waitFor(() => expect(timesMocks.timelinePage.mock.calls.some(([, page]) => page === 1)).toBe(true));
+    fireEvent.click(screen.getAllByRole("button", { name: "拉取最新新闻" })[0]!);
+    await screen.findByText(refreshedArticle.title);
+
+    resolveOlder({
+      formatVersion: "jojo-news-timeline-page/1",
+      date: "2026-08-27",
+      page: 1,
+      updatedAt: initialIndex.updatedAt,
+      articles: [staleOlderArticle],
+    });
+    await olderPage;
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(screen.queryByText(staleOlderArticle.title)).toBeNull();
   });
 
   it("switches the article body between AI translation and publisher original", async () => {
