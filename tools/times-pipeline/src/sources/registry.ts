@@ -25,6 +25,7 @@ import type { ArticleBodyExtractor, OriginalPageRejectionClassifier } from "../c
 import type { ArticleImageExtractor } from "../capture/page-images.js";
 import type { CapturedHtmlPage } from "../capture/http.js";
 import type {
+  CapturedAsset,
   Candidate,
   DiscoveryResult,
   DiscoveryRuntime,
@@ -103,6 +104,12 @@ export function sourceOriginalPageRejectionClassifier(
 
 export function sourceImageExtractor(sourceId: string): ArticleImageExtractor | undefined {
   return modules.get(sourceId)?.extractImages;
+}
+
+export function sourceCanonicalAssetAcceptor(
+  sourceId: string,
+): ((asset: CapturedAsset) => boolean) | undefined {
+  return modules.get(sourceId)?.acceptCanonicalAsset;
 }
 
 export function sourceStaleCanonicalBodyClassifier(

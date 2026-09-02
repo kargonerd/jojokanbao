@@ -1,10 +1,14 @@
 import { gzipSync, gunzipSync } from "node:zlib";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { load } from "cheerio";
 import { sha256 } from "../identity.js";
 import { removeParserArtifacts } from "../text.js";
-import type { StaleCanonicalBodyClassifier, StaleCanonicalRemovalReason } from "../sources/contracts.js";
+import type {
+  CanonicalAssetAcceptor,
+  StaleCanonicalBodyClassifier,
+  StaleCanonicalRemovalReason,
+} from "../sources/contracts.js";
 import type { CapturedAsset, Candidate, PublisherSectionRef, SourceCaptureManifest, SourceConfig } from "../types.js";
 import type { ProcessedCandidate } from "./article.js";
 
@@ -93,6 +97,7 @@ export interface CanonicalWriteResult {
 
 export interface CanonicalWriteOptions {
   classifyStaleCanonicalBody?: StaleCanonicalBodyClassifier;
+  acceptCanonicalAsset?: CanonicalAssetAcceptor;
 }
 
 function cleanedBody(value: string | undefined, candidate: ProcessedCandidate): string | undefined {
@@ -119,6 +124,19 @@ function cleanedBody(value: string | undefined, candidate: ProcessedCandidate): 
 
 function bodyValue(candidate: ProcessedCandidate): string | undefined {
   return cleanedBody(candidate.processedBody, candidate);
+}
+
+function canonicalContentHash(value: Pick<
+  CanonicalArticle,
+  "title" | "publishedAt" | "body" | "assets" | "translations"
+>): string {
+  return sha256(JSON.stringify({
+    title: value.title,
+    publishedAt: value.publishedAt,
+    body: value.body,
+    assets: value.assets.map((asset) => [asset.id, asset.sha256, asset.role, asset.afterBlock, asset.presentation]),
+    translations: value.translations,
+  }));
 }
 
 function canonicalArticle(
@@ -159,14 +177,7 @@ function canonicalArticle(
     ...currentTranslation,
   };
   const hasTranslations = Object.keys(translations).length > 0;
-  const contentHash = sha256(JSON.stringify({
-    title: candidate.title,
-    publishedAt: candidate.publishedAt,
-    body,
-    assets: assets.map((asset) => [asset.id, asset.sha256, asset.role, asset.afterBlock, asset.presentation]),
-    translations: hasTranslations ? translations : undefined,
-  }));
-  return {
+  const article: CanonicalArticle = {
     formatVersion: "jojo-news-article/2",
     articleId: candidate.articleId,
     source: { id: candidate.sourceId, name: candidate.sourceName },
@@ -183,7 +194,7 @@ function canonicalArticle(
     ...(hasTranslations ? { translations } : {}),
     assets,
     contentStatus: "full",
-    contentHash,
+    contentHash: "",
     provenance: {
       rawRevision,
       rawRunId: manifest.runId,
@@ -194,6 +205,8 @@ function canonicalArticle(
       ...(candidate.captureMethod ? { captureMethod: candidate.captureMethod } : {}),
     },
   };
+  article.contentHash = canonicalContentHash(article);
+  return article;
 }
 
 async function existingDate(target: string): Promise<CanonicalDateIndex | undefined> {
@@ -216,6 +229,148 @@ function localCanonicalPath(output: string, objectName: string): string {
     throw new Error(`Unsafe Canonical object path: ${objectName}`);
   }
   return target;
+}
+
+async function filesBelow(root: string): Promise<string[]> {
+  let entries;
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  const files: string[] = [];
+  for (const entry of entries) {
+    const target = path.join(root, entry.name);
+    if (entry.isDirectory()) files.push(...await filesBelow(target));
+    else if (entry.isFile()) files.push(target);
+  }
+  return files;
+}
+
+function bodyWithAvailableAssets(
+  body: CanonicalArticle["body"],
+  availableAssetIds: ReadonlySet<string>,
+): CanonicalArticle["body"] | undefined {
+  const $ = load(removeParserArtifacts(body.value), undefined, false);
+  $("figure").each((_index, element) => {
+    const assetId = $(element).attr("data-asset-id");
+    if (!assetId || !availableAssetIds.has(assetId)) $(element).remove();
+  });
+  const value = $.html().trim();
+  const hasContent = $.text().trim().length > 0 || $("figure[data-asset-id]").length > 0;
+  return value && hasContent ? { ...body, value } : undefined;
+}
+
+function canonicalWithAcceptedAssets(
+  article: CanonicalArticle,
+  acceptAsset: CanonicalAssetAcceptor,
+): CanonicalArticle | null | undefined {
+  const assets = article.assets.filter(acceptAsset);
+  if (assets.length === article.assets.length) return undefined;
+  const availableAssetIds = new Set(assets.map((asset) => asset.id));
+  const body = bodyWithAvailableAssets(article.body, availableAssetIds);
+  if (!body) return null;
+  const translations = Object.fromEntries(Object.entries(article.translations ?? {}).flatMap(([language, translation]) => {
+    const translatedBody = bodyWithAvailableAssets(translation.body, availableAssetIds);
+    return translatedBody ? [[language, { ...translation, body: translatedBody }]] : [];
+  }));
+  const { translations: _previousTranslations, ...withoutTranslations } = article;
+  const updated: CanonicalArticle = {
+    ...withoutTranslations,
+    body,
+    assets,
+    ...(Object.keys(translations).length ? { translations } : {}),
+    contentHash: "",
+  };
+  updated.contentHash = canonicalContentHash(updated);
+  return updated;
+}
+
+async function migrateRetainedCanonicalAssets(
+  output: string,
+  source: SourceConfig,
+  acceptAsset: CanonicalAssetAcceptor,
+  skipArticleIds: ReadonlySet<string>,
+): Promise<{
+  rewritten: Array<{ date: string; ref: CanonicalArticleRef }>;
+  removed: Array<{ date: string; article: CanonicalArticle }>;
+}> {
+  const sourceRoot = path.join(output, "canonical", source.id);
+  const datesRoot = path.join(sourceRoot, "dates");
+  const dateFiles = (await filesBelow(datesRoot)).flatMap((target) => {
+    const relative = path.relative(datesRoot, target).replaceAll("\\", "/");
+    const match = relative.match(/^(\d{4})\/(\d{2})\/(\d{4}-\d{2}-\d{2})\.json\.gz$/u);
+    return match?.[3]?.startsWith(`${match[1]}-${match[2]}-`) ? [{ target, date: match[3] }] : [];
+  });
+  const rewritten: Array<{ date: string; ref: CanonicalArticleRef }> = [];
+  const removed: Array<{ date: string; article: CanonicalArticle }> = [];
+  for (const { target: dateFile, date } of dateFiles) {
+    const index = await existingDate(dateFile);
+    if (!index
+      || index.formatVersion !== "jojo-news-date/1"
+      || index.source.id !== source.id
+      || index.issueDate !== date
+      || !Array.isArray(index.articles)) {
+      throw new Error(`Invalid retained Canonical date index: ${dateFile}`);
+    }
+    for (const ref of index?.articles ?? []) {
+      if (skipArticleIds.has(ref.articleId)) continue;
+      const normalizedObject = ref.object.replaceAll("\\", "/");
+      const expectedObject = `canonical/${source.id}/articles/${ref.contentHash}.json.gz`;
+      if (!/^[a-f0-9]{64}$/u.test(ref.contentHash) || normalizedObject !== expectedObject) {
+        throw new Error(`Invalid retained Canonical article reference for ${ref.articleId}: ${ref.object}`);
+      }
+      let compressed: Buffer;
+      try {
+        compressed = await readFile(localCanonicalPath(output, normalizedObject));
+      } catch (error) {
+        // HF dry-run restore intentionally downloads only articles involved in
+        // the selected Raw run. Keep any other retained references unchanged.
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw error;
+      }
+      const article = JSON.parse(gunzipSync(compressed).toString("utf8")) as CanonicalArticle;
+      if (article.formatVersion !== "jojo-news-article/2"
+        || article.articleId !== ref.articleId
+        || article.source.id !== source.id
+        || article.contentHash !== ref.contentHash
+        || article.publishedAt !== ref.publishedAt
+        || !Array.isArray(article.assets)
+        || typeof article.body?.value !== "string") {
+        throw new Error(`Invalid retained Canonical article for ${ref.articleId}: ${ref.object}`);
+      }
+      const migrated = canonicalWithAcceptedAssets(article, acceptAsset);
+      if (migrated === undefined) continue;
+      if (migrated === null) {
+        removed.push({ date, article });
+        continue;
+      }
+      const object = `canonical/${source.id}/articles/${migrated.contentHash}.json.gz`;
+      const target = localCanonicalPath(output, object);
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, gzipSync(`${JSON.stringify(migrated)}\n`, { level: 9 }));
+      rewritten.push({
+        date,
+        ref: {
+          articleId: migrated.articleId,
+          object,
+          contentHash: migrated.contentHash,
+          publishedAt: migrated.publishedAt,
+        },
+      });
+    }
+  }
+  return { rewritten, removed };
+}
+
+function candidateWithAcceptedAssets(
+  candidate: ProcessedCandidate,
+  acceptAsset: CanonicalAssetAcceptor | undefined,
+): ProcessedCandidate {
+  if (!acceptAsset || !candidate.assets?.length) return candidate;
+  const assets = candidate.assets.filter(acceptAsset);
+  return assets.length === candidate.assets.length ? candidate : { ...candidate, assets };
 }
 
 async function previousCanonicalBody(
@@ -294,7 +449,8 @@ export async function writeCanonicalSource(
   const removedByDate = new Map<string, Set<string>>();
   const skippedArticles: CanonicalWriteResult["skippedArticles"] = [];
   const unchangedArticles: CanonicalWriteResult["unchangedArticles"] = [];
-  for (const candidate of candidates) {
+  for (const unfilteredCandidate of candidates) {
+    const candidate = candidateWithAcceptedAssets(unfilteredCandidate, options.acceptCanonicalAsset);
     const value = bodyValue(candidate);
     if (!value) {
       if (candidate.captureStatus === "unchanged") {
@@ -350,6 +506,33 @@ export async function writeCanonicalSource(
     if (candidate.translationCacheObject) files.push(candidate.translationCacheObject);
     const date = new Date(article.publishedAt).toISOString().slice(0, 10);
     byDate.set(date, [...(byDate.get(date) ?? []), ref]);
+  }
+
+  if (options.acceptCanonicalAsset) {
+    const skipArticleIds = new Set(created.map((article) => article.articleId));
+    for (const removed of removedByDate.values()) for (const articleId of removed) skipArticleIds.add(articleId);
+    const migration = await migrateRetainedCanonicalAssets(
+      output,
+      source,
+      options.acceptCanonicalAsset,
+      skipArticleIds,
+    );
+    for (const { date, ref } of migration.rewritten) {
+      created.push(ref);
+      files.push(ref.object);
+      byDate.set(date, [...(byDate.get(date) ?? []), ref]);
+    }
+    for (const { date, article } of migration.removed) {
+      removedByDate.set(date, new Set([...(removedByDate.get(date) ?? []), article.articleId]));
+      skippedArticles.push({
+        articleId: article.articleId,
+        title: article.title,
+        canonicalUrl: article.canonicalUrl,
+        publishedAt: article.publishedAt,
+        reason: "unsupported-media",
+        contentStatus: "full",
+      });
+    }
   }
 
   const affectedDates = new Set([...byDate.keys(), ...removedByDate.keys()]);
