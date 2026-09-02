@@ -1,4 +1,5 @@
 import type { SourceModule } from "../contracts.js";
+import { classifyPeopleUnavailablePage } from "./availability.js";
 import { discoverPeople } from "./discover.js";
 import { peopleFetch } from "./fetch.js";
 import { extractPeopleImages } from "./images.js";
@@ -13,4 +14,5 @@ export const peopleSource: SourceModule = {
   fetch: peopleFetch,
   extractBody: extractPeopleBody,
   extractImages: extractPeopleImages,
+  classifyUnavailable: classifyPeopleUnavailablePage,
 };
