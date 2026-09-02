@@ -2,35 +2,9 @@ import type { JojoAssetDescriptor } from "@jojo/content";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { timesApi, type TimesNewsItem } from "../api";
+import { exactArticleTime, publisherUpdatedAt, relativeArticleTime } from "../articleTime";
 import { timesSourceName } from "../sourceNames";
 import { SourceLogo } from "./SourceLogo";
-
-function exactArticleTime(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? "时间未知" : new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
-}
-
-function relativeArticleTime(value: string): string {
-  const timestamp = new Date(value).valueOf();
-  if (Number.isNaN(timestamp)) return "时间未知";
-  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
-  if (elapsedMinutes < 1) return "刚刚";
-  if (elapsedMinutes < 60) return `${elapsedMinutes}分钟前`;
-  const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) return `${elapsedHours}小时前`;
-  const elapsedDays = Math.floor(elapsedHours / 24);
-  if (elapsedDays < 7) return `${elapsedDays}天前`;
-  if (elapsedDays < 30) return `${Math.floor(elapsedDays / 7)}周前`;
-  if (elapsedDays < 365) return `${Math.floor(elapsedDays / 30)}个月前`;
-  return `${Math.floor(elapsedDays / 365)}年前`;
-}
 
 function leadImage(article: TimesNewsItem): JojoAssetDescriptor | undefined {
   return article.assets.find((asset) => asset.type === "image" && asset.role === "lead")
@@ -122,6 +96,7 @@ export function TimelineArticle({
   read?: boolean;
 }) {
   const asset = leadImage(article);
+  const updatedAt = publisherUpdatedAt(article);
   const [imageAvailable, setImageAvailable] = useState(Boolean(asset));
   const markUnavailable = useCallback(() => setImageAvailable(false), []);
 
@@ -138,6 +113,11 @@ export function TimelineArticle({
           {article.usingTranslation ? (
             <span title="此内容由 AI 翻译" className="shrink-0 border border-red/35 px-1 py-px text-[8px] font-black tracking-[0.08em] text-red">
               AI 翻译
+            </span>
+          ) : null}
+          {updatedAt ? (
+            <span title={`出版方更新于 ${exactArticleTime(updatedAt)}`} className="shrink-0 text-[9px] font-black text-red">
+              已更新
             </span>
           ) : null}
           <time dateTime={article.publishedAt} title={exactArticleTime(article.publishedAt)} className="shrink-0 tabular-nums">{relativeArticleTime(article.publishedAt)}</time>

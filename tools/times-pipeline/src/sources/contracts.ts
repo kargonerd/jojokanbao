@@ -16,6 +16,16 @@ export type SourceAdapterEndpoint = Extract<DiscoveryEndpoint, { kind: "source-a
 
 export type StaleCanonicalRemovalReason = "stale-publisher-access-offer";
 
+export interface PublisherArticleTimestamps {
+  publishedAt: string;
+  updatedAt?: string;
+}
+
+export type PublisherArticleTimestampsExtractor = (
+  html: string,
+  pageUrl?: string,
+) => PublisherArticleTimestamps | undefined;
+
 /**
  * Source-owned classifier for content already persisted in Canonical. The
  * shared writer only invokes this after the current publisher extractor has
@@ -41,6 +51,7 @@ export interface SourceModule {
   ) => Promise<DiscoveryResult>;
   fetch?: SourceFetchPolicy;
   capturePage?: (url: string, timeoutSeconds: number) => Promise<CapturedHtmlPage | undefined>;
+  extractTimestamps?: PublisherArticleTimestampsExtractor;
   extractBody?: ArticleBodyExtractor;
   classifyOriginalPageRejection?: OriginalPageRejectionClassifier;
   extractImages?: ArticleImageExtractor;

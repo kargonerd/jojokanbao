@@ -162,6 +162,7 @@ function canonicalArticle(
   const contentHash = sha256(JSON.stringify({
     title: candidate.title,
     publishedAt: candidate.publishedAt,
+    updatedAt: candidate.updatedAt,
     body,
     assets: assets.map((asset) => [asset.id, asset.sha256, asset.role, asset.afterBlock, asset.presentation]),
     translations: hasTranslations ? translations : undefined,

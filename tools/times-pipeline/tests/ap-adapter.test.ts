@@ -4,7 +4,7 @@ import { discoverArticleImages } from "../src/capture/page-images.js";
 import { attachAssetsToBody } from "../src/process/article.js";
 import { apFetch } from "../src/sources/ap/fetch.js";
 import { extractApImages } from "../src/sources/ap/images.js";
-import { extractApBody } from "../src/sources/ap/process.js";
+import { extractApBody, extractApTimestamps } from "../src/sources/ap/process.js";
 import type { CapturedAsset, SourceConfig } from "../src/types.js";
 
 const source: SourceConfig = {
@@ -36,6 +36,42 @@ const source: SourceConfig = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("AP source adapter", () => {
+  it("reads the original publication and later update times from AP JSON-LD", () => {
+    const html = `<script type="application/ld+json">${JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "NewsArticle",
+      datePublished: "2026-09-02T14:12:37Z",
+      dateModified: "2026-09-02T14:43:57Z",
+    })}</script>`;
+
+    expect(extractApTimestamps(html)).toEqual({
+      publishedAt: "2026-09-02T14:12:37.000Z",
+      updatedAt: "2026-09-02T14:43:57.000Z",
+    });
+    expect(apFetch.revision).toBe("story-media-v3");
+  });
+
+  it("keeps story paragraphs that follow an inline AP newsletter module", () => {
+    const html = `<main><div class="RichTextStoryBody RichTextBody">
+      <p>But not all map providers have followed suit. MapQuest will keep the Lake Ontario label on its platform.</p>
+      <div class="HTMLModuleEnhancement">
+        <form><p>Sign up for Morning Wire: Our flagship newsletter breaks down the biggest headlines of the day.</p></form>
+      </div>
+      <div class="optimizelyHubpeekClass"></div>
+      <p>MapQuest, owned by California company System1, has reported a surge of downloads recently. On Wednesday, MapQuest topped the charts of free apps with new downloads in both the U.S. and Canada on Apple’s App Store.</p>
+    </div></main>`;
+
+    const body = extractApBody(
+      html,
+      { minimumCharacters: 200, minimumParagraphs: 2 },
+      "https://apnews.com/article/apple-lake-ontario-america-google-example",
+    );
+
+    expect(body).toContain("MapQuest topped the charts of free apps");
+    expect(body).not.toContain("Sign up for Morning Wire");
+    expect(body?.match(/<p>/gu)).toHaveLength(2);
+  });
+
   it("archives only the AP story carousel without duplicate overlay or unrelated images", () => {
     const slide = (id: string, caption: string) => `<div class="Carousel-slide"><div class="CarouselSlide">
       <picture><source media="(min-width: 1024px)" width="1440" height="960" data-flickity-lazyload-srcset="https://dims.apnews.com/${id}-1440.jpg 1x, https://dims.apnews.com/${id}-2880.jpg 2x">

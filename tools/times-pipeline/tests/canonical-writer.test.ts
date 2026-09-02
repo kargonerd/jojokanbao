@@ -73,6 +73,7 @@ describe("canonical writer", () => {
         sha256: "image",
       }],
       publishedAt: "2026-08-23T10:00:00Z",
+      updatedAt: "2026-08-23T10:20:00Z",
       authors: [],
       publisherCategories: ["World"],
       publisherSections: [{ id: "world", name: "World" }],
@@ -123,6 +124,8 @@ describe("canonical writer", () => {
     expect(row).toMatchObject({
       articleId: "reuters:one",
       contentStatus: "full",
+      publishedAt: "2026-08-23T10:00:00Z",
+      updatedAt: "2026-08-23T10:20:00Z",
       publisherSections: [{ id: "world", name: "World" }],
       assets: [{ id: "asset:image", rawObject: "raw/reuters/assets/image.jpg" }],
       translations: {

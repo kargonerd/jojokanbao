@@ -6,6 +6,7 @@ import type { TextAnchor } from "../../annotations/types";
 import { ReadingLoadingState } from "../../reading/ReadingLoadingState";
 import { explainTimesSelection, type TimesExplanationMetadata } from "../ai";
 import { timesApi, type TimesNewsItem } from "../api";
+import { exactArticleTime, publisherUpdatedAt } from "../articleTime";
 import { TimesExplanationPanel } from "../components/TimesExplanationPanel";
 import { TimesImageCarousel, type TimesCarouselItem } from "../components/TimesImageCarousel";
 import { useTimesPreferencesStore } from "../preferencesStore";
@@ -171,6 +172,10 @@ export function TimesDetailPage({
   }>();
   const cancelExplanation = useRef<() => void>(() => {});
   const originalUrl = safeNewsUrl(news?.url);
+  const updatedAt = news ? publisherUpdatedAt(news) : undefined;
+  const translationUpdatePending = Boolean(
+    updatedAt && news?.usingTranslation && news.translations?.["zh-CN"]?.stale,
+  );
   const articleBody = useMemo(() => news ? materializeAssets(news) : null, [news]);
 
   useEffect(() => {
@@ -230,8 +235,16 @@ export function TimesDetailPage({
       {news ? (
         <article>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 font-sans">
-            <p className="m-0 text-[10px] font-black tracking-[0.12em] text-red">
-              {timesSourceName(news.source)} · {new Intl.DateTimeFormat("zh-CN", { dateStyle: "long", timeStyle: "short" }).format(new Date(news.publishedAt))}
+            <p className="m-0 min-w-0 max-w-full text-[10px] font-bold leading-5 tracking-[0.08em] text-muted">
+              <span className="font-black text-red">{timesSourceName(news.source)}</span>
+              <span aria-hidden="true"> · </span>
+              <span>发布于 <time dateTime={news.publishedAt}>{exactArticleTime(news.publishedAt)}</time></span>
+              {updatedAt ? (
+                <span className="font-black text-red">
+                  <span aria-hidden="true"> · </span>
+                  更新于 <time dateTime={updatedAt}>{exactArticleTime(updatedAt)}</time>
+                </span>
+              ) : null}
             </p>
             {news.usingTranslation ? (
               <span title="此内容由 AI 翻译" className="border border-red/40 px-1.5 py-0.5 text-[9px] font-black tracking-[0.1em] text-red">
@@ -248,6 +261,11 @@ export function TimesDetailPage({
               </button>
             ) : null}
           </div>
+          {translationUpdatePending ? (
+            <p role="status" className="mt-3 border-l-2 border-red pl-3 font-sans text-xs leading-5 text-muted">
+              原文已更新，中文译文正在同步。
+            </p>
+          ) : null}
           <h1 className="mt-4 text-3xl font-black leading-tight xl:text-4xl">{news.title}</h1>
           <SelectableAnnotationArticle subject={{
             contentType: "newspaper",

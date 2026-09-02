@@ -179,6 +179,7 @@ async function deliveryArticle(
       contentStatus: "full",
       url: canonical.canonicalUrl,
       publishedAt: canonical.publishedAt,
+      ...(canonical.updatedAt ? { updatedAt: canonical.updatedAt } : {}),
       issueDate,
       language: canonical.language,
       source: { id: canonical.source.id, name: canonical.source.name, language: canonical.language },

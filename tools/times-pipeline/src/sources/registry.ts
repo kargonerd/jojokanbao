@@ -20,7 +20,11 @@ import { scmpSource } from "./scmp/index.js";
 import { thepaperSource } from "./thepaper/index.js";
 import { xinhuaSource } from "./xinhua/index.js";
 import { zaobaoSource } from "./zaobao/index.js";
-import type { SourceModule, StaleCanonicalBodyClassifier } from "./contracts.js";
+import type {
+  PublisherArticleTimestampsExtractor,
+  SourceModule,
+  StaleCanonicalBodyClassifier,
+} from "./contracts.js";
 import type { ArticleBodyExtractor, OriginalPageRejectionClassifier } from "../content/body.js";
 import type { ArticleImageExtractor } from "../capture/page-images.js";
 import type { CapturedHtmlPage } from "../capture/http.js";
@@ -93,6 +97,12 @@ export function sourcePageCapture(
 
 export function sourceBodyExtractor(sourceId: string): ArticleBodyExtractor | undefined {
   return modules.get(sourceId)?.extractBody;
+}
+
+export function sourceArticleTimestampsExtractor(
+  sourceId: string,
+): PublisherArticleTimestampsExtractor | undefined {
+  return modules.get(sourceId)?.extractTimestamps;
 }
 
 export function sourceOriginalPageRejectionClassifier(

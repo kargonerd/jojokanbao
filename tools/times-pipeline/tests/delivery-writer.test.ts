@@ -48,6 +48,7 @@ describe("news Delivery writer", () => {
       authors: [],
       language: "en",
       publishedAt: "2026-08-23T09:30:00.000Z",
+      updatedAt: "2026-08-23T09:45:00.000Z",
       publisherCategories: [],
       publisherSections: [{ id: "world", name: "World" }],
       categories: [],
@@ -140,6 +141,8 @@ describe("news Delivery writer", () => {
     expect(day.articles[0]).toMatchObject({
       id: "example:full",
       source: { id: "example" },
+      publishedAt: "2026-08-23T09:30:00.000Z",
+      updatedAt: "2026-08-23T09:45:00.000Z",
       assets: [{ id: "asset:image", presentation: { type: "carousel", id: "primary-gallery", order: 0, total: 1 } }],
     });
     const pageObject = `content/timeline/${index.dates[0]!.pages![0]!.object}`;

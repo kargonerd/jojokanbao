@@ -4,6 +4,7 @@ import {
   acceptSourceCandidate,
   acceptSourceUrl,
   processSourceCandidate,
+  sourceArticleTimestampsExtractor,
   sourceBodyExtractor,
   sourceFetchPolicy,
   sourceImageExtractor,
@@ -192,6 +193,8 @@ describe("native source modules", () => {
     expect(sourceBodyExtractor("reuters")).toBeTypeOf("function");
     expect(sourceImageExtractor("reuters")).toBeTypeOf("function");
     expect(sourceImageExtractor("ap")).toBeTypeOf("function");
+    expect(sourceArticleTimestampsExtractor("ap")).toBeTypeOf("function");
+    expect(sourceArticleTimestampsExtractor("reuters")).toBeUndefined();
     expect(sourceImageExtractor("cna")).toBeTypeOf("function");
     expect(sourceBodyExtractor("nyt")).toBeTypeOf("function");
     expect(sourceImageExtractor("nyt")).toBeTypeOf("function");

@@ -151,6 +151,25 @@ describe("Times timeline images", () => {
     expect(screen.queryByText("World News")).toBeNull();
     const sourceLabel = screen.getByRole("region", { name: "文章列表" }).querySelector("article a:not([aria-label]) > span > span");
     expect(sourceLabel?.className).toContain("flex-1");
+    expect(screen.queryByText("已更新")).toBeNull();
+  });
+
+  it("marks publisher updates in the list without replacing the original time", async () => {
+    const updatedAt = "2026-08-27T05:28:00.000Z";
+    timesMocks.timelinePage.mockResolvedValue({
+      formatVersion: "jojo-news-timeline-page/1",
+      date: "2026-08-27",
+      page: 0,
+      updatedAt,
+      articles: [{ ...article, updatedAt }],
+    });
+    render(<MemoryRouter><TimesHomePage /></MemoryRouter>);
+
+    await screen.findByText(article.title);
+    const articleList = screen.getByRole("region", { name: "文章列表" });
+    const marker = within(articleList).getByText("已更新");
+    expect(marker.getAttribute("title")).toContain("出版方更新于");
+    expect(articleList.querySelector(`time[datetime="${article.publishedAt}"]`)).toBeTruthy();
   });
 
   it("marks AI translations without showing a language setting in Times", async () => {
@@ -460,6 +479,38 @@ describe("Times timeline images", () => {
     expect(screen.queryByText("AI 翻译")).toBeNull();
     expect(screen.getByRole("button", { name: "查看中文译文" })).toBeTruthy();
     expect(timesMocks.getNews).toHaveBeenLastCalledWith(article.issueDate, article.id, "original");
+  });
+
+  it("shows publisher publication and update times on the detail page", async () => {
+    const updatedAt = "2026-08-27T05:28:00.000Z";
+    timesMocks.getNews.mockResolvedValue({
+      ...article,
+      updatedAt,
+      content: "Updated publisher body",
+      contentFormat: "text",
+      assetUrls: {},
+      originalLanguage: "en",
+      translations: {
+        "zh-CN": {
+          language: "zh-CN",
+          title: "更新前的中文标题",
+          articleObject: "content/newspapers/example/articles/article-one-zh.jox",
+          provider: "google-gemini-api",
+          model: "gemma-4-31b-it",
+          stale: true,
+        },
+      },
+      translationAvailable: true,
+      usingTranslation: true,
+    });
+    render(<MemoryRouter><TimesDetailPage issueDate={article.issueDate} newsId={article.id} /></MemoryRouter>);
+
+    expect(await screen.findByRole("heading", { name: article.title })).toBeTruthy();
+    const publishedTime = document.querySelector(`time[datetime="${article.publishedAt}"]`);
+    const updatedTime = document.querySelector(`time[datetime="${updatedAt}"]`);
+    expect(publishedTime?.parentElement?.textContent).toContain("发布于");
+    expect(updatedTime?.parentElement?.textContent).toContain("更新于");
+    expect(screen.getByRole("status").textContent).toContain("原文已更新，中文译文正在同步");
   });
 
   it("spreads legacy trailing images through the article body", async () => {
