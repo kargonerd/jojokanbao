@@ -2,7 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_CODEX_REASONING,
-  PersistentCredentialStore,
+  JsonCredentialStore,
   createPlatformModelRuntime,
   createRagAgentDefinition,
   createRagTools,
@@ -10,7 +10,7 @@ import {
   resolvePlatformModelConfig,
   runPlatformAgent,
 } from "./index";
-import { loadLocalCodexCredential } from "./local-codex-credential";
+import { resolveLocalAgentAuthPath } from "./local-codex-credential";
 
 const prompt = process.argv.slice(2).join(" ").trim()
   || "《毛泽东自述》的童年时代主要讲了什么？请依据馆藏原文简要回答并注明书名和章节。";
@@ -25,12 +25,9 @@ const repositoryRoot = path.resolve(
   "..",
   "..",
 );
-const { credential } = await loadLocalCodexCredential(repositoryRoot, process.env);
-let credentialFile = { "openai-codex": credential };
-const credentials = new PersistentCredentialStore({
-  read: async () => credentialFile,
-  write: async (next) => { credentialFile = next as typeof credentialFile; },
-});
+const credentials = new JsonCredentialStore(
+  resolveLocalAgentAuthPath(repositoryRoot, process.env),
+);
 const runtime = await createPlatformModelRuntime({ config, environment: process.env, credentials });
 if (!runtime.configured) throw new Error(`${config.provider}/${config.model} is not configured`);
 

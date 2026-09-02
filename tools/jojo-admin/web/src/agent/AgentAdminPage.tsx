@@ -56,7 +56,7 @@ export function AgentAdminPage() {
       <PageTopbar
         eyebrow="AGENT OPERATIONS / AGENT 运维"
         title="Agent 管理"
-        description="管理 Agent 使用的 Codex OAuth 凭据。密钥与凭据只在本机服务和部署端之间传输。"
+        description="管理 Agent 使用的专用 Codex OAuth 凭据。密钥与凭据只在本机服务和部署端之间传输。"
         aside={
           <span className={`agent-state-badge ${status?.canPush ? "ready" : "blocked"}`}>
             <i />
@@ -110,14 +110,14 @@ export function AgentAdminPage() {
 
           {!loading && status && !status.credential.available && (
             <div className="agent-guidance">
-              <strong>需要先准备本机 Codex OAuth</strong>
+              <strong>需要先准备 Agent 专用 Codex OAuth</strong>
               <p>{status.credential.error}</p>
               <code>pnpm --filter @jojo/agent auth:codex</code>
             </div>
           )}
           {!loading && status?.credential.expired && (
             <div className="agent-guidance">
-              <strong>本机凭据已经过期</strong>
+              <strong>Agent 专用凭据已经过期</strong>
               <p>重新完成 Codex 登录后再更新 Agent。</p>
             </div>
           )}
@@ -142,7 +142,7 @@ export function AgentAdminPage() {
         open={confirming}
         kicker="AGENT CREDENTIAL UPDATE"
         title="确认更新 Agent 凭据"
-        message="本机 Codex OAuth 将通过受保护接口写入部署端，并替换当前凭据。界面不会读取或展示凭据内容。"
+        message="Agent 专用 Codex OAuth 将通过受保护接口写入部署端，并替换当前凭据。上传会消费本地 rotating refresh token；如需继续在本地运行 Agent，请重新登录。界面不会读取或展示凭据内容。"
         details={[
           { label: "目标", value: status?.targetOrigin || "—" },
           { label: "范围", value: "agent / openai-codex" },
