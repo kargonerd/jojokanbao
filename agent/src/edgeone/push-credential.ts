@@ -11,6 +11,7 @@ if (!deploymentUrl || !operatorToken) {
 }
 
 const authPath = process.env.JOJO_CODEX_AUTH_PATH?.trim()
+  || process.env.JOJO_AGENT_AUTH_PATH?.trim()
   || fileURLToPath(new URL("../../auth.json", import.meta.url));
 const credentials = parseCredentialFile(await readFile(authPath, "utf8"));
 const codex = credentials["openai-codex"];

@@ -17,7 +17,8 @@ if (!prompt) {
 
 const config = resolvePlatformModelConfig(process.env);
 const credentials = new JsonCredentialStore(
-  process.env.JOJO_AGENT_AUTH_PATH?.trim()
+  process.env.JOJO_CODEX_AUTH_PATH?.trim()
+    || process.env.JOJO_AGENT_AUTH_PATH?.trim()
     || fileURLToPath(new URL("../auth.json", import.meta.url)),
 );
 const runtime = await createPlatformModelRuntime({

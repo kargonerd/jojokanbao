@@ -47,6 +47,20 @@ describe("China News article boundaries", () => {
     ]);
   });
 
+  it("does not let generic fallback reintroduce an inline publisher ad", () => {
+    const url = "https://www.chinanews.com.cn/cj/2026/09-02/10688570.shtml";
+    const html = `<div class="left_zw">
+      <p>中新网北京9月2日电，这是一段足够长的新闻正文，用于确认页面已经进入真实的文章内容区域。</p>
+      <p>第二段继续说明新闻事件，而不是任何广告或者推荐内容。</p>
+      <table class="adInContent"><tbody><tr><td>
+        <img src="/ad2008/U947P4T175D633F27513DT20260901095008.jpg" width="370" height="280" alt="境外消费广告">
+      </td></tr></tbody></table>
+    </div>`;
+
+    expect(extractChinanewsImages(html, url)).toEqual([]);
+    expect(discoverArticleImages(html, url, chinanewsFetch, extractChinanewsImages)).toEqual([]);
+  });
+
   it("keeps a publisher-owned image-only live poster as the complete report", () => {
     const url = "https://www.chinanews.com.cn/gn/2026/08-31/10687338.shtml";
     const html = `<main>

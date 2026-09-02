@@ -1,8 +1,6 @@
 """Local-only Agent credential administration for the JOJO Console."""
 from __future__ import annotations
 
-import base64
-import binascii
 import json
 import os
 from datetime import datetime, timezone
@@ -38,30 +36,11 @@ class AgentAdminError(RuntimeError):
     pass
 
 
-def _jwt_expiry(token: str) -> int:
-    try:
-        payload = token.split(".")[1]
-        payload += "=" * (-len(payload) % 4)
-        decoded = json.loads(base64.urlsafe_b64decode(payload).decode("utf-8"))
-        return int(decoded["exp"]) * 1000
-    except (
-        IndexError,
-        KeyError,
-        TypeError,
-        ValueError,
-        UnicodeDecodeError,
-        binascii.Error,
-        json.JSONDecodeError,
-    ) as error:
-        raise AgentAdminError("本机 Codex 凭据缺少有效期信息") from error
-
-
 class AgentCredentialAdmin:
     def __init__(
         self,
         *,
         transport: Any = requests,
-        home: Path | None = None,
     ) -> None:
         _load_root_env()
         self.transport = transport
@@ -70,22 +49,20 @@ class AgentCredentialAdmin:
             os.getenv("JOJO_CREDENTIAL_SERVICE_URL", "").strip()
             or DEFAULT_CREDENTIAL_SERVICE_URL
         ).rstrip("/")
-        self.home = home or Path.home()
-        configured_path = os.getenv("JOJO_CODEX_AUTH_PATH", "").strip()
-        agent_path = ROOT / "agent" / "auth.json"
+        codex_auth_path = os.getenv("JOJO_CODEX_AUTH_PATH", "").strip()
+        agent_auth_path = os.getenv("JOJO_AGENT_AUTH_PATH", "").strip()
+        configured_path = codex_auth_path or agent_auth_path
         if configured_path:
             candidate = Path(configured_path).expanduser()
             self.auth_path = candidate if candidate.is_absolute() else ROOT / candidate
             self.source_label = "指定的 Agent OAuth 文件"
-            self.path_hint = "JOJO_CODEX_AUTH_PATH"
-        elif agent_path.exists():
-            self.auth_path = agent_path
+            self.path_hint = (
+                "JOJO_CODEX_AUTH_PATH" if codex_auth_path else "JOJO_AGENT_AUTH_PATH"
+            )
+        else:
+            self.auth_path = ROOT / "agent" / "auth.json"
             self.source_label = "Agent OAuth 文件"
             self.path_hint = "agent/auth.json"
-        else:
-            self.auth_path = self.home / ".codex" / "auth.json"
-            self.source_label = "本机 Codex 登录"
-            self.path_hint = "~/.codex/auth.json"
 
     def _target(self) -> str:
         parsed = urlparse(self.service_url)
@@ -97,30 +74,25 @@ class AgentCredentialAdmin:
 
     def _credential(self) -> dict[str, Any]:
         if not self.auth_path.exists():
-            raise AgentAdminError("没有找到本机 Codex OAuth 凭据")
+            raise AgentAdminError("没有找到 Agent 专用 Codex OAuth 凭据")
         try:
             content = json.loads(self.auth_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
-            raise AgentAdminError("本机 Codex OAuth 凭据无法读取") from error
+            raise AgentAdminError("Agent 专用 Codex OAuth 凭据无法读取") from error
 
         pi_credential = content.get("openai-codex") if isinstance(content, dict) else None
-        if isinstance(pi_credential, dict) and pi_credential.get("type") == "oauth":
-            access = pi_credential.get("access")
-            refresh = pi_credential.get("refresh")
-            expires = pi_credential.get("expires")
-        else:
-            tokens = content.get("tokens") if isinstance(content, dict) else None
-            tokens = tokens if isinstance(tokens, dict) else {}
-            access = tokens.get("access_token")
-            refresh = tokens.get("refresh_token")
-            expires = _jwt_expiry(access) if isinstance(access, str) else None
+        if not isinstance(pi_credential, dict) or pi_credential.get("type") != "oauth":
+            raise AgentAdminError("Agent 专用凭据必须使用 openai-codex OAuth 格式")
+        access = pi_credential.get("access")
+        refresh = pi_credential.get("refresh")
+        expires = pi_credential.get("expires")
 
         if not isinstance(access, str) or not access:
-            raise AgentAdminError("本机文件中没有 Codex access token")
+            raise AgentAdminError("Agent 专用凭据中没有 Codex access token")
         if not isinstance(refresh, str) or not refresh:
-            raise AgentAdminError("本机文件中没有 Codex refresh token")
+            raise AgentAdminError("Agent 专用凭据中没有 Codex refresh token")
         if not isinstance(expires, (int, float)):
-            raise AgentAdminError("本机 Codex 凭据缺少有效期")
+            raise AgentAdminError("Agent 专用 Codex 凭据缺少有效期")
         return {
             "type": "oauth",
             "access": access,

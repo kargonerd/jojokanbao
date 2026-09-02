@@ -29,6 +29,12 @@ describe("createCredentialAdminHandler", () => {
     });
     const handle = createCredentialAdminHandler({
       createCredentialStore: () => credentials,
+      claimCredential: async (credential) => ({
+        ...credential,
+        access: "claimed-access",
+        refresh: "claimed-refresh",
+        expires: 456,
+      }),
     });
 
     const response = await handle({
@@ -49,7 +55,56 @@ describe("createCredentialAdminHandler", () => {
     expect(await response.text()).toBe("");
     expect(stored["openai-codex"]).toMatchObject({
       type: "oauth",
-      refresh: "refresh",
+      access: "claimed-access",
+      refresh: "claimed-refresh",
+      generation: 1,
+    });
+  });
+
+  it("claims an old upload and rejects the provider's reused-token response", async () => {
+    let stored: CredentialFile = {
+      "openai-codex": {
+        type: "oauth",
+        access: "deployed-access",
+        refresh: "deployed-refresh",
+        expires: 500,
+      },
+    };
+    const credentials = new PersistentCredentialStore({
+      read: async () => structuredClone(stored),
+      write: async (next) => {
+        stored = structuredClone(next);
+      },
+    });
+    const claimCredential = vi.fn(async () => {
+      throw Object.assign(new Error("reused"), {
+        oauthErrorCode: "refresh_token_reused",
+      });
+    });
+    const handle = createCredentialAdminHandler({
+      createCredentialStore: () => credentials,
+      claimCredential,
+    });
+
+    const response = await handle({
+      env: { JOJO_OPERATOR_TOKEN: OPERATOR_TOKEN },
+      request: request({
+        scope: "agent",
+        provider: "openai-codex",
+        credential: {
+          type: "oauth",
+          access: "stale-access",
+          refresh: "stale-refresh",
+          expires: 400,
+        },
+      }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(claimCredential).toHaveBeenCalledOnce();
+    expect(stored["openai-codex"]).toMatchObject({
+      access: "deployed-access",
+      refresh: "deployed-refresh",
     });
   });
 

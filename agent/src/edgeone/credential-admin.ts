@@ -1,7 +1,12 @@
-import { parseCredentialFile } from "../credentials";
-import type { AgentEnvironment } from "../models";
+import { credentialGeneration, parseCredentialFile } from "../credentials";
+import {
+  openAICodexRefreshErrorCode,
+  refreshOpenAICodexCredential,
+  type AgentEnvironment,
+} from "../models";
 import { createEdgeOneCredentialStore } from "./credential-store";
 import type { EdgeOneMessageStore } from "./types";
+import type { OAuthCredential } from "@earendil-works/pi-ai";
 
 const MAX_CREDENTIAL_BYTES = 64 * 1024;
 
@@ -15,6 +20,10 @@ export interface CredentialAdminContext {
 
 export interface CreateCredentialAdminHandlerOptions {
   createCredentialStore?: typeof createEdgeOneCredentialStore;
+  claimCredential?: (
+    credential: OAuthCredential,
+    signal?: AbortSignal,
+  ) => Promise<OAuthCredential>;
 }
 
 interface CredentialUpload {
@@ -138,12 +147,37 @@ export function createCredentialAdminHandler(
       const credentials = (
         options.createCredentialStore ?? createEdgeOneCredentialStore
       )(environment, context.agent?.store);
-      await credentials.modify(upload.provider, async () => credential);
+      // Claim before entering CredentialStore.modify. A claim failure belongs
+      // to the uploaded token, so it must not be mistaken for a recoverable
+      // race on the currently deployed credential.
+      const claimed = await (
+        options.claimCredential ?? refreshOpenAICodexCredential
+      )(
+        credential,
+        context.request.signal,
+      );
+      await credentials.modify(upload.provider, async (current) => {
+        return {
+          ...claimed,
+          generation: credentialGeneration(current) + 1,
+        };
+      });
       return new Response(null, {
         status: 204,
         headers: { "Cache-Control": "no-store" },
       });
-    } catch {
+    } catch (error) {
+      const refreshError = openAICodexRefreshErrorCode(error);
+      if (refreshError === "refresh_token_reused") {
+        return jsonResponse(409, {
+          error: "Codex OAuth login has already been used; sign in again before uploading",
+        });
+      }
+      if (refreshError === "refresh_failed") {
+        return jsonResponse(502, {
+          error: "Codex OAuth login could not be verified",
+        });
+      }
       return jsonResponse(503, { error: "Credential storage is unavailable" });
     }
   };
