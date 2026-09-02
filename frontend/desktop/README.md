@@ -45,7 +45,9 @@ Desktop 顶层路由：
 - `/library`、`/archive/*`、`/book/*`：与 Web 共用的报刊/书籍资料库和阅读器。
 - `/search`：与 Web 共用的报刊正文搜索。
 - `/rag/*`：AI，仅登录读者可见、可访问。
-- `/account`：登录、注册和书架同步；未配置 Supabase 时显示可操作的配置提示。
+- `/times/*`：JOJO Times 时事时间线、新闻阅读和随文 AI，仅登录读者可见、可访问。
+- `/notifications`：与 Web 共用的站内通知信箱。
+- `/account`、`/account/times-sources`：登录、注册、账号中心、书架同步和时事阅读偏好；未配置 Supabase 时显示可操作的配置提示。
 
 生产环境从 `dist/index.html` 以 hash 路由启动，开发环境使用 browser 路由。主进程启用
 `contextIsolation` 和 sandbox，禁用 renderer 的 Node.js，并拒绝页面权限请求；外部链接
@@ -57,9 +59,14 @@ Window Controls Overlay 把最小化、最大化和关闭按钮融入同一栏�
 最小化到托盘或直接退出；选择写入本机偏好，后续关闭直接执行，不再重复询问。用户可在
 `/settings`、标题栏右侧调节图标、应用菜单或托盘菜单重新进入设置并改为每次询问，也可设置是否开机启动。
 设置不占用主导航频道，页面使用紧凑的桌面偏好列表。
-首页、资料库、搜索、关于、账号与阅读器均直接复用 Web 运行时；桌面端只维护窗口与系统能力。
+首页、资料库、搜索、AI、时事、通知、关于、账号与阅读器均直接复用 Web 运行时；桌面端只维护窗口与系统能力。
 Web 与桌面端通过 `@jojo/pdf-viewer/vite` 共用 PDF.js 字体、CMap 与 WASM 打包清单。
 单击托盘图标可恢复窗口。
+
+打包版从 `file://` 运行，不能使用 Web 的同源 `/gateway/*`。桌面构建会把馆藏 AI 与
+时事随文解释请求交给 `jojo-agent://reader`；主进程只允许 `/gateway/ask` 和
+`/gateway/times/explain` 两个路径，并通过 Chromium 网络栈流式转发到 Reader。其余路径、
+请求头和响应头不会透传，renderer 仍保持 sandbox、无 Node.js 与无 `ipcRenderer` 访问。
 
 ## 本地开发
 

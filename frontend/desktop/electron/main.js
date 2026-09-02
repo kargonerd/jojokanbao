@@ -1,8 +1,14 @@
-import { BrowserWindow, Menu, Tray, app, ipcMain, nativeImage, screen, session, shell } from 'electron';
+import { BrowserWindow, Menu, Tray, app, ipcMain, nativeImage, net, protocol, screen, session, shell } from 'electron';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { closeBehaviors, normalizeCloseBehavior } from './preferences.js';
+import {
+  DESKTOP_AGENT_SCHEME,
+  handleDesktopAgentRequest,
+  registerDesktopAgentScheme,
+  resolveDesktopReaderOrigin,
+} from './agent-gateway.js';
 import { getDefaultWindowBounds, getRestorableWindowBounds } from './window-state.js';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -14,10 +20,12 @@ let isQuitting = false;
 let pendingCloseWindow;
 let closeBehavior = 'ask';
 let ragWorkspaceEnabled = false;
+let timesWorkspaceEnabled = false;
 const windowStatePath = () => path.join(app.getPath('userData'), 'window-state.json');
 const preferencesPath = () => path.join(app.getPath('userData'), 'desktop-preferences.json');
 
 app.setName('JOJO看报');
+registerDesktopAgentScheme(protocol);
 
 function isWindowBounds(value) {
   return value
@@ -201,6 +209,9 @@ function setupApplicationMenu() {
         { label: '搜索', accelerator: 'CmdOrCtrl+3', click: () => navigateTo('/search') },
         ...(ragWorkspaceEnabled
           ? [{ label: 'AI（Beta）', accelerator: 'CmdOrCtrl+4', click: () => navigateTo('/rag') }]
+          : []),
+        ...(timesWorkspaceEnabled
+          ? [{ label: '时事（Beta）', accelerator: 'CmdOrCtrl+5', click: () => navigateTo('/times') }]
           : [])
       ]
     },
@@ -317,8 +328,13 @@ ipcMain.handle('jojo-settings:launch-at-login:save', (event, value) => {
 ipcMain.on('jojo-desktop:feature-availability', (event, features) => {
   if (!mainWindow || event.sender !== mainWindow.webContents) return;
   const nextRagWorkspaceEnabled = features?.rag === true;
-  if (ragWorkspaceEnabled === nextRagWorkspaceEnabled) return;
+  const nextTimesWorkspaceEnabled = features?.times === true;
+  if (
+    ragWorkspaceEnabled === nextRagWorkspaceEnabled
+    && timesWorkspaceEnabled === nextTimesWorkspaceEnabled
+  ) return;
   ragWorkspaceEnabled = nextRagWorkspaceEnabled;
+  timesWorkspaceEnabled = nextTimesWorkspaceEnabled;
   setupApplicationMenu();
 });
 
@@ -331,6 +347,14 @@ if (!hasSingleInstanceLock) {
   });
   app.whenReady().then(async () => {
     session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+    const readerOrigin = resolveDesktopReaderOrigin(
+      process.env.JOJO_DESKTOP_READER_ORIGIN,
+      app.isPackaged,
+    );
+    protocol.handle(DESKTOP_AGENT_SCHEME, (request) => handleDesktopAgentRequest(request, {
+      fetch: (target, init) => net.fetch(target, init),
+      readerOrigin,
+    }));
     closeBehavior = await readCloseBehavior();
     setupApplicationMenu();
     setupTray();

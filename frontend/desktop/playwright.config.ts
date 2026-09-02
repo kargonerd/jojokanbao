@@ -1,11 +1,18 @@
 import { defineConfig } from "@playwright/test";
 
+const desktopRendererPort = 4183;
+
 export default defineConfig({
   testDir: "./e2e",
   webServer: {
-    command: "pnpm dev",
-    port: 4173,
-    reuseExistingServer: !process.env.CI,
+    command: `pnpm exec vite --host 127.0.0.1 --port ${desktopRendererPort} --strictPort`,
+    cwd: import.meta.dirname,
+    env: {
+      VITE_SUPABASE_URL: "",
+      VITE_SUPABASE_PUBLISHABLE_KEY: "",
+    },
+    url: `http://127.0.0.1:${desktopRendererPort}`,
+    reuseExistingServer: false,
   },
-  use: { baseURL: "http://localhost:4173" },
+  use: { baseURL: `http://127.0.0.1:${desktopRendererPort}` },
 });

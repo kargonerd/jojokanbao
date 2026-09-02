@@ -1,4 +1,5 @@
 import { supportsJojoDatasetAi } from "@jojo/content";
+import { agentGatewayUrl } from "../api/agentGateway";
 import { loadCatalog, loadDataset } from "./content";
 import type {
   RagAnswerMetadata,
@@ -9,7 +10,7 @@ import type {
   RagSource,
 } from "./types";
 
-const AGENT_URL = "/gateway/ask";
+const AGENT_URL = agentGatewayUrl("/gateway/ask");
 
 export interface RagStreamActivity {
   phase: "connecting" | "thinking" | "searching" | "reading" | "writing";

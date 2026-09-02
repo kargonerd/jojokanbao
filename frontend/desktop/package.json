@@ -1,7 +1,7 @@
 {
   "name": "@jojo/desktop",
   "version": "0.0.1-rc1",
-  "description": "JOJO看报的阅读与 AI 桌面客户端",
+  "description": "JOJO看报的阅读、AI 与时事桌面客户端",
   "author": {
     "name": "JOJO Platform Contributors",
     "email": "kargonerd@users.noreply.github.com"

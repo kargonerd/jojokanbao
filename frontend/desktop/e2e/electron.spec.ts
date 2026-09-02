@@ -1,6 +1,8 @@
 import { expect, test, _electron as electron, type ElectronApplication } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -15,12 +17,38 @@ test.describe('Real Electron client', () => {
     }
 
     const userDataDir = await mkdtemp(path.join(tmpdir(), 'jojo-desktop-e2e-'));
+    let receivedGatewayRequest: { authorization?: string; body?: string } = {};
+    const gatewayServer = createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+      request.on('end', () => {
+        receivedGatewayRequest = {
+          authorization: request.headers.authorization,
+          body: Buffer.concat(chunks).toString('utf8'),
+        };
+        response.writeHead(200, {
+          'content-type': 'text/event-stream; charset=utf-8',
+          'cache-control': 'no-store',
+        });
+        response.write('event: text_delta\ndata: {"delta":"桌面流式响应"}\n\n');
+        response.end('event: done\ndata: {}\n\n');
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      gatewayServer.once('error', reject);
+      gatewayServer.listen(0, '127.0.0.1', resolve);
+    });
+    const gatewayPort = (gatewayServer.address() as AddressInfo).port;
     let application: ElectronApplication | undefined;
     try {
       application = await electron.launch({
         args: ['electron/main.js', `--user-data-dir=${userDataDir}`],
         cwd: path.resolve(import.meta.dirname, '..'),
-        env: { ...process.env, JOJO_DESKTOP_RENDERER_URL: '' },
+        env: {
+          ...process.env,
+          JOJO_DESKTOP_RENDERER_URL: '',
+          JOJO_DESKTOP_READER_ORIGIN: `http://127.0.0.1:${gatewayPort}`,
+        },
       });
       const page = await application.firstWindow();
 
@@ -46,6 +74,34 @@ test.describe('Real Electron client', () => {
         hasRestoreMargin: true,
       });
 
+      const agentResponse = await page.evaluate(async () => {
+        const response = await fetch('jojo-agent://reader/gateway/ask', {
+          method: 'POST',
+          headers: {
+            authorization: 'Bearer desktop-test-token',
+            'content-type': 'application/json',
+            'makers-conversation-id': 'desktop-e2e',
+          },
+          body: JSON.stringify({ message: '测试桌面网关' }),
+        });
+        return {
+          status: response.status,
+          contentType: response.headers.get('content-type'),
+          body: await response.text(),
+        };
+      });
+      expect(agentResponse.status).toBe(200);
+      expect(agentResponse.contentType).toContain('text/event-stream');
+      expect(agentResponse.body).toContain('桌面流式响应');
+      expect(receivedGatewayRequest.authorization).toBe('Bearer desktop-test-token');
+      expect(receivedGatewayRequest.body).toBe('{"message":"测试桌面网关"}');
+
+      await page.evaluate(() => window.jojoDesktop?.setFeatureAvailability?.({ rag: true, times: true }));
+      await expect.poll(() => application?.evaluate(({ Menu }) => {
+        const navigationMenu = Menu.getApplicationMenu()?.items.find((item) => item.label === '前往');
+        return navigationMenu?.submenu?.items.map((item) => item.label) ?? [];
+      })).toEqual(expect.arrayContaining(['AI（Beta）', '时事（Beta）']));
+
       const navigation = page.getByRole('navigation', { name: '主导航' });
       await expect(navigation.getByText(/Press|书刊制作|JOJO Times|时事/i)).toHaveCount(0);
       await expect(navigation.getByRole('link', { name: '搜索' })).toBeVisible();
@@ -70,6 +126,7 @@ test.describe('Real Electron client', () => {
       await expect(page.getByRole('dialog', { name: '关闭窗口' })).toHaveCount(0);
     } finally {
       await application?.close();
+      await new Promise<void>((resolve) => gatewayServer.close(() => resolve()));
       await rm(userDataDir, { recursive: true, force: true });
     }
   });
