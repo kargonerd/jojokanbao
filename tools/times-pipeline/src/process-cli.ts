@@ -10,6 +10,7 @@ import { restoreTranslationContext } from "./process/translation-retry.js";
 import {
   processSourceCandidate,
   sourceBodyExtractor,
+  sourceCanonicalAssetAcceptor,
   sourceFetchPolicy,
   sourceOriginalPageRejectionClassifier,
   sourceStaleCanonicalBodyClassifier,
@@ -100,7 +101,7 @@ export async function runProcess(args: Map<string, string>): Promise<{
   const results: ProcessSourceResult[] = [];
   const batches: ProcessBatch[] = [];
   for (const row of run.sources) {
-    if (row.status !== "ok" || !row.output?.manifest) continue;
+    if ((row.status !== "ok" && row.status !== "empty") || !row.output?.manifest) continue;
     const source = sources.get(row.sourceId);
     if (!source) continue;
     const manifestPath = path.join(output, ...row.output.manifest.split("/"));
@@ -112,7 +113,10 @@ export async function runProcess(args: Map<string, string>): Promise<{
       .filter((candidate) => !selectedArticleKeys
         || selectedArticleKeys.has(`${source.id}\0${candidate.articleId}`)
         || selectedArticleKeys.has(`\0${candidate.articleId}`));
-    if (!rawCandidates.length) continue;
+    // Source-owned Canonical policies also migrate retained articles. Keep a
+    // zero-candidate batch for those sources so a targeted retry cannot defer
+    // an already-restored cleanup indefinitely.
+    if (!rawCandidates.length && !sourceCanonicalAssetAcceptor(source.id)) continue;
     const settled = await Promise.allSettled(rawCandidates.map((candidate) => processArticle(
         output,
         source,
@@ -162,6 +166,7 @@ export async function runProcess(args: Map<string, string>): Promise<{
   }
   for (const batch of batches) {
     const classifyStaleCanonicalBody = sourceStaleCanonicalBodyClassifier(batch.source.id);
+    const acceptCanonicalAsset = sourceCanonicalAssetAcceptor(batch.source.id);
     const written = await writeCanonicalSource(
       output,
       batch.source,
@@ -171,6 +176,7 @@ export async function runProcess(args: Map<string, string>): Promise<{
       rawRevision,
       {
         ...(classifyStaleCanonicalBody ? { classifyStaleCanonicalBody } : {}),
+        ...(acceptCanonicalAsset ? { acceptCanonicalAsset } : {}),
       },
     );
     results.push({ ...written, processingFailures: batch.processingFailures });
