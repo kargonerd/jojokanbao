@@ -1,6 +1,10 @@
 export const DESKTOP_AGENT_SCHEME = 'jojo-agent';
 
-const DEFAULT_READER_ORIGIN = 'https://reader.jojokanbao.cn';
+const DEFAULT_READER_ORIGIN = 'https://beta.jojokanbao.cn';
+const TRUSTED_READER_ORIGINS = new Set([
+  DEFAULT_READER_ORIGIN,
+  'https://reader.jojokanbao.cn',
+]);
 const DESKTOP_AGENT_HOST = 'reader';
 const ROUTE_LIMITS = new Map([
   ['/gateway/ask', 64 * 1024],
@@ -63,7 +67,7 @@ export function resolveDesktopReaderOrigin(configuredOrigin, isPackaged) {
     const candidate = new URL(configuredOrigin.trim());
     const loopback = ['127.0.0.1', '::1', 'localhost'].includes(candidate.hostname);
     if (!isPackaged && candidate.protocol === 'http:' && loopback) return candidate.origin;
-    if (candidate.protocol === 'https:' && candidate.origin === DEFAULT_READER_ORIGIN) {
+    if (candidate.protocol === 'https:' && TRUSTED_READER_ORIGINS.has(candidate.origin)) {
       return candidate.origin;
     }
   } catch {
@@ -107,6 +111,11 @@ export async function handleDesktopAgentRequest(request, { fetch, readerOrigin }
       body,
       redirect: 'manual',
     });
+    const contentType = upstream.headers.get('content-type')?.toLowerCase() ?? '';
+    if (upstream.ok && !contentType.includes('text/event-stream')) {
+      await upstream.body?.cancel().catch(() => undefined);
+      return jsonError(502, '问答服务入口返回了无效响应');
+    }
     return new Response(upstream.body, {
       status: upstream.status,
       headers: responseHeaders(upstream.headers),

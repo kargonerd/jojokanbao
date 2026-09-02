@@ -65,7 +65,8 @@ Web 与桌面端通过 `@jojo/pdf-viewer/vite` 共用 PDF.js 字体、CMap 与 W
 
 打包版从 `file://` 运行，不能使用 Web 的同源 `/gateway/*`。桌面构建会把馆藏 AI 与
 时事随文解释请求交给 `jojo-agent://reader`；主进程只允许 `/gateway/ask` 和
-`/gateway/times/explain` 两个路径，并通过 Chromium 网络栈流式转发到 Reader。其余路径、
+`/gateway/times/explain` 两个路径，并通过 Chromium 网络栈流式转发到当前承载新版 Web 的
+`https://beta.jojokanbao.cn` Reader 网关。其余路径、
 请求头和响应头不会透传，renderer 仍保持 sandbox、无 Node.js 与无 `ipcRenderer` 访问。
 
 ## 本地开发

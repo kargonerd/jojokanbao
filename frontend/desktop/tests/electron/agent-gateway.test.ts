@@ -25,10 +25,11 @@ describe('desktop Agent gateway', () => {
   });
 
   it('only permits local loopback overrides in development', () => {
-    expect(resolveDesktopReaderOrigin(undefined, false)).toBe('https://reader.jojokanbao.cn');
+    expect(resolveDesktopReaderOrigin(undefined, false)).toBe('https://beta.jojokanbao.cn');
     expect(resolveDesktopReaderOrigin('http://127.0.0.1:8787', false)).toBe('http://127.0.0.1:8787');
-    expect(resolveDesktopReaderOrigin('http://127.0.0.1:8787', true)).toBe('https://reader.jojokanbao.cn');
-    expect(resolveDesktopReaderOrigin('https://attacker.example', false)).toBe('https://reader.jojokanbao.cn');
+    expect(resolveDesktopReaderOrigin('http://127.0.0.1:8787', true)).toBe('https://beta.jojokanbao.cn');
+    expect(resolveDesktopReaderOrigin('https://reader.jojokanbao.cn', true)).toBe('https://reader.jojokanbao.cn');
+    expect(resolveDesktopReaderOrigin('https://attacker.example', false)).toBe('https://beta.jojokanbao.cn');
   });
 
   it('forwards an allow-listed streaming request without renderer-only headers', async () => {
@@ -99,5 +100,21 @@ describe('desktop Agent gateway', () => {
 
     expect(response.status).toBe(413);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects a successful HTML fallback instead of exposing a broken stream', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response('<!doctype html><title>JOJO</title>', {
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+    }));
+    const response = await handleDesktopAgentRequest(
+      new Request('jojo-agent://reader/gateway/times/explain', {
+        method: 'POST',
+        body: JSON.stringify({ message: '测试' }),
+      }),
+      { fetch, readerOrigin: 'https://reader.jojokanbao.cn' },
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({ error: '问答服务入口返回了无效响应' });
   });
 });
