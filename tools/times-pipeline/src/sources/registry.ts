@@ -112,8 +112,10 @@ export function sourceOriginalPageRejectionClassifier(
   return modules.get(sourceId)?.classifyOriginalPageRejection;
 }
 
-export function sourceImageExtractor(sourceId: string): ArticleImageExtractor | undefined {
-  return modules.get(sourceId)?.extractImages;
+export function sourceImageExtractor(sourceId: string): ArticleImageExtractor {
+  const module = modules.get(sourceId);
+  if (!module) throw new Error(`${sourceId}: source module is not registered`);
+  return module.extractImages;
 }
 
 export function sourceCanonicalAssetAcceptor(

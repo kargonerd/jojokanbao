@@ -2,6 +2,8 @@ import { load } from "cheerio";
 import type { PageImageCandidate } from "../../capture/page-images.js";
 import { embeddedClsBody } from "./process.js";
 
+const BODY_SELECTORS = [".detail-content", ".article-content", "[itemprop='articleBody']", "article"] as const;
+
 function absoluteUrl(value: string | undefined, pageUrl: string): string | undefined {
   if (!value || value.startsWith("data:") || value.startsWith("blob:")) return undefined;
   try {
@@ -17,8 +19,18 @@ function dimension(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+function renderedClsBody(html: string): string | undefined {
+  const page = load(html);
+  for (const selector of BODY_SELECTORS) {
+    const body = page(selector).first();
+    const value = body.html()?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
 export function extractClsImages(html: string, pageUrl: string): PageImageCandidate[] {
-  const content = embeddedClsBody(html);
+  const content = embeddedClsBody(html) ?? renderedClsBody(html);
   if (!content) return [];
   const document = load(content, undefined, false);
   const images: PageImageCandidate[] = [];
@@ -27,6 +39,7 @@ export function extractClsImages(html: string, pageUrl: string): PageImageCandid
   let blockCount = 0;
   document("p,h2,h3,h4,blockquote,ul,ol,img").each((_index, element) => {
     const node = document(element);
+    if (node.closest("aside,[class*='advert'],[class*='recommend'],[class*='related'],[class*='share']").length) return;
     if (node.is("img")) {
       const sourceUrl = absoluteUrl(node.attr("data-src") ?? node.attr("data-original") ?? node.attr("src"), pageUrl);
       if (!sourceUrl || seen.has(sourceUrl)) return;

@@ -6,6 +6,7 @@ type JsonObject = Record<string, unknown>;
 const IMAGE_ONLY_BODY = '<figure data-publisher-image-only="true"></figure>';
 const PROMOTIONAL_TEXT = /^(?:扫码下载.*澎湃新闻客户端|下载澎湃新闻客户端|澎湃新闻客户端)$/u;
 const RESIDUAL_PAGE = /(?:页面|内容|文章|稿件).{0,8}(?:不存在|已删除|已下线)|(?:访问失败|加载失败|系统错误|服务异常|请稍后重试|请登录后(?:查看|阅读)|暂无内容)/u;
+const PUBLISHER_BODY_SELECTORS = ["[class*='cententWrap__']", ".index_cententWrap", ".news_txt", "article"] as const;
 
 function object(value: unknown): JsonObject | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : undefined;
@@ -28,6 +29,16 @@ function truncatePublisherPromotion(value: string): string | undefined {
   }
   const bounded = fragment.html().trim();
   return bounded && !residualPage(bounded) ? bounded : undefined;
+}
+
+function publisherDomBody(html: string): string | undefined {
+  const document = load(html);
+  for (const selector of PUBLISHER_BODY_SELECTORS) {
+    const container = document(selector).first();
+    const value = container.html()?.trim();
+    if (value) return value;
+  }
+  return undefined;
 }
 
 function semanticPublisherBody(
@@ -88,7 +99,9 @@ export function embeddedThepaperBody(html: string): string | undefined {
  */
 export function boundedThepaperBody(html: string): string | undefined {
   const embedded = embeddedThepaperBody(html);
-  const value = embedded ?? (!/<(?:html|body)\b/iu.test(html) ? html : undefined);
+  const value = embedded
+    ?? publisherDomBody(html)
+    ?? (!/<(?:html|body)\b/iu.test(html) ? html : undefined);
   return value ? truncatePublisherPromotion(value) : undefined;
 }
 

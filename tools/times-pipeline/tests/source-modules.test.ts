@@ -200,6 +200,10 @@ describe("native source modules", () => {
     expect(sourceImageExtractor("nyt")).toBeTypeOf("function");
   });
 
+  it("fails closed when image capture has no registered source adapter", () => {
+    expect(() => sourceImageExtractor("unregistered")).toThrow("source module is not registered");
+  });
+
   it("exposes Bloomberg's embedded article body strategy", () => {
     expect(sourceFetchPolicy("bloomberg")?.capture).toBe("browser");
     expect(sourceBodyExtractor("bloomberg")).toBeTypeOf("function");

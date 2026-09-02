@@ -773,9 +773,8 @@ describe("NYT official GraphQL page capture", () => {
 
     expect(page).toMatchObject({ method: "direct", status: 200 });
     expect(page?.renderedHtml).toContain('data-nyt-document-promo-full="true"');
-    expect(discoverArticleImages(page?.renderedHtml ?? "", PAGE_URL, undefined, extractNytImages)).toContainEqual(expect.objectContaining({
+    expect(discoverArticleImages(page?.renderedHtml ?? "", PAGE_URL, extractNytImages)).toContainEqual(expect.objectContaining({
       sourceUrl: previewUrl,
-      publisherEditorial: true,
     }));
     expect(fetchMock).toHaveBeenCalledWith(previewUrl, expect.objectContaining({ method: "HEAD" }));
   });

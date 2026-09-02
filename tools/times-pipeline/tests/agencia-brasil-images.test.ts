@@ -45,7 +45,6 @@ describe("Agência Brasil article images", () => {
     const images = discoverArticleImages(
       html,
       "https://agenciabrasil.ebc.com.br/politica/noticia/2026-08/example",
-      agenciaBrasilFetch,
       extractAgenciaBrasilImages,
     );
 
@@ -92,7 +91,7 @@ describe("Agência Brasil article images", () => {
     expect(attached.indexOf('data-asset-id="agencia-positioned"')).toBeLessThan(attached.indexOf("final complete paragraph"));
   });
 
-  it("allows generic extraction for an alternate template without Drupal's body field", () => {
+  it("uses the source adapter's alternate-template extraction without Drupal's body field", () => {
     const html = `<meta property="og:image" content="/lead.jpg"><div class="node__content">
       <p>The alternate template keeps its publisher paragraph and an inline photograph in the node content.</p>
       <figure><img src="/inline.jpg" width="1200" height="800"></figure>
@@ -100,7 +99,6 @@ describe("Agência Brasil article images", () => {
     const images = discoverArticleImages(
       html,
       "https://agenciabrasil.ebc.com.br/example",
-      agenciaBrasilFetch,
       extractAgenciaBrasilImages,
     );
 

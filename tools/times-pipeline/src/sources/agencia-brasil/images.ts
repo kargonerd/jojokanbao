@@ -34,7 +34,9 @@ function normalizedText(value: string): string {
 
 export function extractAgenciaBrasilImages(html: string, pageUrl: string): PageImageCandidate[] {
   const document = load(html);
-  const body = document(".field--name-body").first();
+  const body = document(".field--name-body").first().length
+    ? document(".field--name-body").first()
+    : document(".node__content").first();
   if (!body.length) return [];
   const images: PageImageCandidate[] = [];
   const seen = new Set<string>();

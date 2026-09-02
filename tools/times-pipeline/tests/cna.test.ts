@@ -50,7 +50,7 @@ describe("CNA semantic article capture", () => {
   });
 
   it("captures hero and inline figures with complete captions and source order", () => {
-    const images = discoverArticleImages(page, pageUrl, cnaFetch, extractCnaImages);
+    const images = discoverArticleImages(page, pageUrl, extractCnaImages);
 
     expect(images.map((image) => image.sourceUrl)).toEqual([
       "https://www.channelnewsasia.com/hero.jpg",

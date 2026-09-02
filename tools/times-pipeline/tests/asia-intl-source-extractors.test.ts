@@ -350,7 +350,7 @@ describe("Asia and international publisher extractors", () => {
     </div></article>`;
 
     const body = extractArticleBody(html, cnaFetch, quality, extractCnaBody, pageUrl);
-    const images = discoverArticleImages(html, pageUrl, cnaFetch, extractCnaImages);
+    const images = discoverArticleImages(html, pageUrl, extractCnaImages);
 
     expect(body).toContain('href="https://www.channelnewsasia.com/asia/topic"');
     expect(body).not.toContain("Also worth reading");

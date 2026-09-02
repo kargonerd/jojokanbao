@@ -63,7 +63,7 @@ export interface SourceModule {
   extractTimestamps?: PublisherArticleTimestampsExtractor;
   extractBody?: ArticleBodyExtractor;
   classifyOriginalPageRejection?: OriginalPageRejectionClassifier;
-  extractImages?: ArticleImageExtractor;
+  extractImages: ArticleImageExtractor;
   acceptCanonicalAsset?: CanonicalAssetAcceptor;
   classifyStaleCanonicalBody?: StaleCanonicalBodyClassifier;
   classifyUnavailable?(

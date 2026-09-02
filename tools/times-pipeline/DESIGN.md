@@ -83,9 +83,11 @@ BPC 请求若被站点拒绝，会在同一节点以新的原生 Brave profile �
 
 ## 5. 图片
 
-图片从 og:image、img/src、data-src、srcset 和正文 figure 中发现。Logo、头像、广告、推荐图、小于
-等于 80px 的图和追踪像素会被排除。下载后的图片以字节哈希存储；Canonical 正文只使用
-figure[data-asset-id]，不依赖出版方外链。图片失败会写入抓取记录，但不会删除已经取得的完整文字正文。
+生产来源必须由各自的 `images.ts` 按出版方结构化数据和正文 DOM 提取图片；解析器返回空数组时保持为空，
+不会回退到跨媒体 DOM 扫描。Logo、头像、广告、推荐图等语义判断也由来源解析器负责，因此新闻主体本身
+包含 `logo` 等词时不会被共享规则误伤。共享层只校验 HTTP(S) URL、最小尺寸和去重；跨媒体的
+`og:image`/`img` 扫描器不再存在。下载后的图片以字节哈希存储；Canonical 正文只使用
+`figure[data-asset-id]`，不依赖出版方外链。图片失败会写入抓取记录，但不会删除已经取得的完整文字正文。
 
 ## 6. Runtime Bucket 契约
 
