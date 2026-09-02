@@ -49,7 +49,7 @@ describe('preload bridge', () => {
         appName: string;
         platform: NodeJS.Platform;
         getAppInfo: () => Promise<unknown>;
-        setFeatureAvailability: (features: { rag: boolean }) => void;
+        setFeatureAvailability: (features: { rag: boolean; times: boolean }) => void;
         onCloseChoiceRequested: (callback: () => void) => () => void;
         respondToCloseChoice: (choice: 'tray' | 'quit' | 'cancel') => void;
         settings: {
@@ -69,8 +69,8 @@ describe('preload bridge', () => {
     expect(exposedBridge.selectPdf).toBeUndefined();
     expect(exposedBridge.engine).toBeUndefined();
     expect(exposedBridge.getAppInfo).toEqual(expect.any(Function));
-    exposedBridge.setFeatureAvailability({ rag: false });
-    expect(send).toHaveBeenCalledWith('jojo-desktop:feature-availability', { rag: false });
+    exposedBridge.setFeatureAvailability({ rag: false, times: false });
+    expect(send).toHaveBeenCalledWith('jojo-desktop:feature-availability', { rag: false, times: false });
 
     expect(invoke).not.toHaveBeenCalledWith('jojo-desktop:select-pdf');
     expect(invoke).not.toHaveBeenCalledWith('jojo-engine:invoke', expect.anything(), expect.anything());
@@ -123,13 +123,16 @@ describe('preload bridge', () => {
     expect(mainSource).toContain("loadFile(path.join(currentDir, '../dist/index.html'))");
   });
 
-  it('does not initialize the disabled Press engine or its privileged PDF scheme', () => {
+  it('does not initialize the disabled Press engine and only registers the Agent gateway scheme', () => {
     const mainSource = readFileSync(new URL('../../electron/main.js', import.meta.url), 'utf8');
+    const gatewaySource = readFileSync(new URL('../../electron/agent-gateway.js', import.meta.url), 'utf8');
 
     expect(mainSource).not.toContain('new Worker(');
     expect(mainSource).not.toContain("ipcMain.handle('jojo-engine:invoke'");
-    expect(mainSource).not.toContain('protocol.registerSchemesAsPrivileged');
     expect(mainSource).not.toContain("ipcMain.handle('jojo-desktop:select-pdf'");
+    expect(mainSource).toContain('registerDesktopAgentScheme(protocol)');
+    expect(gatewaySource).toContain("export const DESKTOP_AGENT_SCHEME = 'jojo-agent'");
+    expect(gatewaySource).not.toContain('jojo-pdf');
   });
 
   it('does not expose a startup shortcut into the disabled Press flow', () => {
@@ -137,7 +140,7 @@ describe('preload bridge', () => {
 
     expect(mainSource).not.toContain('JOJO_PRESS_AUTO_UPLOAD_TEST');
     expect(mainSource).not.toContain("navigateTo('/press");
-    expect(mainSource).not.toContain("navigateTo('/times");
+    expect(mainSource).toContain("navigateTo('/times')");
   });
 
   it('only enables a remote debugging port when test configuration explicitly requests one', () => {
@@ -192,6 +195,7 @@ describe('preload bridge', () => {
     expect(mainSource).toContain("navigateTo('/search')");
     expect(mainSource).toContain("ipcMain.on('jojo-desktop:feature-availability'");
     expect(mainSource).toContain('...(ragWorkspaceEnabled');
+    expect(mainSource).toContain('...(timesWorkspaceEnabled');
     expect(mainSource).toContain("ipcMain.handle('jojo-settings:launch-at-login:get'");
     expect(mainSource).toContain("ipcMain.handle('jojo-settings:launch-at-login:save'");
     expect(mainSource).toContain('app.setLoginItemSettings({ openAtLogin: value })');

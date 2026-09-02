@@ -9,6 +9,9 @@ import { resolveViteEnvironmentDirectory } from "../tooling/vite-worktree-env";
 export default defineConfig(({ mode }) => ({
   envDir: resolveViteEnvironmentDirectory(resolve(__dirname, "../.."), mode),
   base: "./",
+  define: {
+    "import.meta.env.VITE_AGENT_GATEWAY_BASE": JSON.stringify("jojo-agent://reader"),
+  },
   publicDir: resolve(__dirname, "../web/public"),
   plugins: [
     react(),

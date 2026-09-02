@@ -69,12 +69,31 @@ describe('Desktop shell routes', () => {
     expect(screen.queryByRole('heading', { name: '我的项目' })).not.toBeInTheDocument();
   });
 
-  it('keeps the disabled Times module out of desktop routes', () => {
+  it('routes Times and its preferences through the shared account gate', async () => {
     const router = createMemoryRouter(createDesktopRoutes(), { initialEntries: ['/times'] });
     render(<RouterProvider router={router} />);
 
-    expect(screen.getByRole('heading', { name: '没有找到这个页面' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: '时事' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '登录暂不可用' })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/account');
+    expect(router.state.location.search).toContain('returnTo=%2Ftimes');
+
+    cleanup();
+    const preferencesRouter = createMemoryRouter(createDesktopRoutes(), { initialEntries: ['/account/times-sources'] });
+    render(<RouterProvider router={preferencesRouter} />);
+    expect(await screen.findByRole('heading', { name: '登录暂不可用' })).toBeInTheDocument();
+    expect(preferencesRouter.state.location.pathname).toBe('/account');
+    expect(preferencesRouter.state.location.search).toContain('returnTo=%2Faccount%2Ftimes-sources');
+  });
+
+  it('opens the shared notification inbox route', () => {
+    const router = createMemoryRouter(createDesktopRoutes(), { initialEntries: ['/notifications'] });
+    render(<RouterProvider router={router} />);
+
+    expect(screen.getByRole('heading', { name: '登录后查看通知' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /登录 \/ 注册/ })).toHaveAttribute(
+      'href',
+      '/account?returnTo=/notifications',
+    );
   });
 
   it('keeps JOJO Q&A routed and requires an account', async () => {
