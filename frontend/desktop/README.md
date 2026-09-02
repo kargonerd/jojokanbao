@@ -68,6 +68,8 @@ Web 与桌面端通过 `@jojo/pdf-viewer/vite` 共用 PDF.js 字体、CMap 与 W
 `/gateway/times/explain` 两个路径，并通过 Chromium 网络栈流式转发到当前承载新版 Web 的
 `https://beta.jojokanbao.cn` Reader 网关。其余路径、
 请求头和响应头不会透传，renderer 仍保持 sandbox、无 Node.js 与无 `ipcRenderer` 访问。
+Windows 开发窗口、任务栏、托盘与 NSIS 包统一使用 `electron/assets/icon.ico`；该文件包含
+16、20、24、32、40、48、64、128、256 像素表示，避免高 DPI 托盘把单张 16px 图标二次放大。
 
 ## 本地开发
 

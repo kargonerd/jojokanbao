@@ -12,6 +12,9 @@ import {
 import { getDefaultWindowBounds, getRestorableWindowBounds } from './window-state.js';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
+const brandIconPath = path.join(currentDir, '../dist/brand/jojo-kanbao-mark.png');
+const windowsIconPath = path.join(currentDir, 'assets/icon.ico');
+const appIconPath = process.platform === 'win32' ? windowsIconPath : brandIconPath;
 const rendererUrl = process.env.JOJO_DESKTOP_RENDERER_URL;
 const remoteDebuggingPort = process.env.JOJO_DESKTOP_REMOTE_DEBUGGING_PORT;
 let mainWindow;
@@ -25,6 +28,7 @@ const windowStatePath = () => path.join(app.getPath('userData'), 'window-state.j
 const preferencesPath = () => path.join(app.getPath('userData'), 'desktop-preferences.json');
 
 app.setName('JOJO看报');
+if (process.platform === 'win32') app.setAppUserModelId('cn.jojokanbao.desktop');
 registerDesktopAgentScheme(protocol);
 
 function isWindowBounds(value) {
@@ -132,9 +136,10 @@ function showMainWindow() {
 
 function setupTray() {
   if (tray) return;
-  const trayIcon = nativeImage
-    .createFromPath(path.join(currentDir, '../dist/brand/jojo-kanbao-mark.png'))
-    .resize({ width: 16, height: 16 });
+  const sourceIcon = nativeImage.createFromPath(appIconPath);
+  const trayIcon = process.platform === 'win32'
+    ? sourceIcon
+    : sourceIcon.resize({ width: 16, height: 16, quality: 'best' });
   if (process.platform === 'darwin') trayIcon.setTemplateImage(true);
   tray = new Tray(trayIcon);
   tray.setToolTip('JOJO看报');
@@ -244,6 +249,7 @@ async function createWindow() {
     minHeight: 720,
     show: false,
     title: 'JOJO看报',
+    icon: appIconPath,
     backgroundColor: '#f4f4f2',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     ...(process.platform === 'darwin' ? {} : {

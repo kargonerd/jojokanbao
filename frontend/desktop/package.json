@@ -76,7 +76,7 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "../web/public/brand/jojo-kanbao-mark.svg"
+      "icon": "electron/assets/icon.ico"
     },
     "mac": {
       "target": ["dmg", "zip"],
