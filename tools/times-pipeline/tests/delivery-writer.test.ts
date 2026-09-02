@@ -12,6 +12,7 @@ import {
   type TimesSourceIndex,
   type TimesTimelineDay,
   type TimesTimelineIndex,
+  type TimesTimelinePage,
 } from "@jojo/content";
 import { describe, expect, it } from "vitest";
 import type { CanonicalArticle, CanonicalWriteResult } from "../src/process/canonical-writer.js";
@@ -130,12 +131,27 @@ describe("news Delivery writer", () => {
       "content/timeline/index.jox",
     );
     expect(index.dates.map((date) => date.date)).toEqual(["2026-08-23", "2026-08-22"]);
+    expect(index.dates[0]?.pages).toEqual([{
+      object: "dates/2026/08/2026-08-23/page-0001.jox",
+      articleCount: 1,
+    }]);
     const dayObject = "content/timeline/dates/2026/08/2026-08-23.jox";
     const day = await gunzipJoxJson<TimesTimelineDay>(new Uint8Array(await readFile(path.join(deliveryRoot, ...dayObject.split("/")))), dayObject);
     expect(day.articles[0]).toMatchObject({
       id: "example:full",
       source: { id: "example" },
       assets: [{ id: "asset:image", presentation: { type: "carousel", id: "primary-gallery", order: 0, total: 1 } }],
+    });
+    const pageObject = `content/timeline/${index.dates[0]!.pages![0]!.object}`;
+    const page = await gunzipJoxJson<TimesTimelinePage>(
+      new Uint8Array(await readFile(path.join(deliveryRoot, ...pageObject.split("/")))),
+      pageObject,
+    );
+    expect(page).toMatchObject({
+      formatVersion: "jojo-news-timeline-page/1",
+      date: "2026-08-23",
+      page: 0,
+      articles: [{ id: "example:full" }],
     });
     expect(day.articles[0]!.articleObject).toMatch(/^content\/newspapers\/example\/articles\/[a-f0-9]+\.jox$/u);
     expect(day.articles[0]!.translations?.["zh-CN"]).toMatchObject({
