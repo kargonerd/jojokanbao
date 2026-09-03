@@ -6,6 +6,12 @@
   "engines": {
     "node": "^22.22.2 || ^24.15.0"
   },
+  "files": [
+    "dist/src",
+    "sources.v2.json",
+    "src/sources/**/*.json",
+    "vendor"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",

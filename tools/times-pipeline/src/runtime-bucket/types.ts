@@ -53,14 +53,26 @@ export interface RuntimeJobFailure extends RuntimeJobArticle {
   reason: string;
 }
 
-export interface RuntimeProcessGeneration {
+export interface RuntimeProcessArchive {
   objectName: string;
-  createdAt: string;
   size: number;
   sha256: string;
   files: RuntimeFileDigest[];
+}
+
+export interface RuntimeProcessGeneration extends RuntimeProcessArchive {
+  createdAt: string;
   /** Ordered Runtime jobs committed by this generation. Absent on legacy single-job generations. */
   jobIds?: string[];
+  /**
+   * A full immutable generation reused as the base for a cumulative delta.
+   * Delta generations always restore from exactly two archives: base + delta.
+   */
+  base?: RuntimeProcessArchive;
+  /** Effective Process state after applying the delta, excluding the synthetic memory manifest. */
+  stateFiles?: RuntimeFileDigest[];
+  /** Number of generations accumulated against `base` before the next full compaction. */
+  deltaDepth?: number;
 }
 
 export interface RuntimeJobStatus {
@@ -209,6 +221,129 @@ export function parseProcessGenerationObjectName(value: unknown): {
   };
 }
 
+const PROCESS_RESULT_OBJECT = "runtime/process-result.json";
+const PROCESS_MANIFEST_OBJECT = "runtime/memory.json";
+
+function parseProcessFiles(value: unknown, label: string): RuntimeFileDigest[] {
+  if (!Array.isArray(value) || value.length === 0) throw new Error(`${label} files are invalid`);
+  const paths = new Set<string>();
+  const files = value.map((file, index): RuntimeFileDigest => {
+    if (!file || typeof file !== "object" || Array.isArray(file)) {
+      throw new Error(`${label} file ${index} is invalid`);
+    }
+    const row = file as Record<string, unknown>;
+    const filePath = safeRuntimePath(row.path, `${label} file path ${index}`);
+    if (!(filePath.startsWith("canonical/")
+      || /^raw\/[a-z0-9]+(?:-[a-z0-9]+)*\/assets\//u.test(filePath)
+      || filePath === PROCESS_RESULT_OBJECT
+      || filePath === PROCESS_MANIFEST_OBJECT)) {
+      throw new Error(`${label} file is outside its allowed scope: ${filePath}`);
+    }
+    if (paths.has(filePath)) throw new Error(`Duplicate ${label} file: ${filePath}`);
+    paths.add(filePath);
+    return {
+      path: filePath,
+      size: nonNegativeInteger(row.size, `${label} file size ${index}`),
+      sha256: sha256(row.sha256, `${label} file SHA-256 ${index}`),
+    };
+  });
+  assertRuntimeFileBudget(files, `${label} manifest`);
+  return files;
+}
+
+function parseProcessArchive(value: unknown, label: string, expectedJobId?: string): RuntimeProcessArchive {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} is invalid`);
+  const row = value as Record<string, unknown>;
+  const parsedObject = parseProcessGenerationObjectName(row.objectName);
+  if (expectedJobId && parsedObject.jobId !== safeJobId(expectedJobId)) {
+    throw new Error(`${label} belongs to a different job`);
+  }
+  const archiveSha256 = sha256(row.sha256, `${label} archive SHA-256`);
+  if (parsedObject.sha256 !== archiveSha256) throw new Error(`${label} object does not match its SHA-256`);
+  const files = parseProcessFiles(row.files, label);
+  const paths = new Set(files.map((file) => file.path));
+  if (!paths.has(PROCESS_RESULT_OBJECT) || !paths.has(PROCESS_MANIFEST_OBJECT)) {
+    throw new Error(`${label} archive is missing its result or memory manifest`);
+  }
+  const size = runtimeObjectSize(row.size, `${label} archive size`);
+  if (size === 0) throw new Error(`${label} archive is empty`);
+  return {
+    objectName: parsedObject.objectName,
+    size,
+    sha256: archiveSha256,
+    files,
+  };
+}
+
+export function parseRuntimeProcessGeneration(value: unknown, expectedJobId?: string): RuntimeProcessGeneration {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Runtime Process generation is invalid");
+  }
+  const row = value as Record<string, unknown>;
+  const archive = parseProcessArchive(row, "Runtime Process generation", expectedJobId);
+  const jobId = parseProcessGenerationObjectName(archive.objectName).jobId;
+  let jobIds: string[] | undefined;
+  if (row.jobIds !== undefined) {
+    if (!Array.isArray(row.jobIds) || row.jobIds.length === 0 || row.jobIds.length > 20) {
+      throw new Error("Runtime Process generation job ids are invalid");
+    }
+    jobIds = row.jobIds.map((entry) => safeJobId(entry));
+    if (jobIds[0] !== jobId || new Set(jobIds).size !== jobIds.length) {
+      throw new Error("Runtime Process generation job ids must be unique and start with the anchor job");
+    }
+  }
+
+  const deltaFields = [row.base, row.stateFiles, row.deltaDepth];
+  const populatedDeltaFields = deltaFields.filter((field) => field !== undefined).length;
+  let delta: Pick<RuntimeProcessGeneration, "base" | "stateFiles" | "deltaDepth"> = {};
+  if (populatedDeltaFields !== 0) {
+    if (populatedDeltaFields !== deltaFields.length) {
+      throw new Error("Runtime Process delta descriptor is incomplete");
+    }
+    const base = parseProcessArchive(row.base, "Runtime Process delta base");
+    if (base.objectName === archive.objectName) throw new Error("Runtime Process delta cannot reference itself as its base");
+    const stateFiles = parseProcessFiles(row.stateFiles, "Runtime Process effective state");
+    assertRuntimeFileBudget([...base.files, ...archive.files], "Runtime Process delta layers");
+    if (stateFiles.some((file) => file.path === PROCESS_MANIFEST_OBJECT)) {
+      throw new Error("Runtime Process effective state cannot contain its synthetic memory manifest");
+    }
+    if (!stateFiles.some((file) => file.path === PROCESS_RESULT_OBJECT)) {
+      throw new Error("Runtime Process effective state is missing its result");
+    }
+    const deltaDepth = nonNegativeInteger(row.deltaDepth, "Runtime Process delta depth");
+    if (deltaDepth < 1 || deltaDepth > 12) throw new Error("Runtime Process delta depth must be from 1 to 12");
+
+    const available = new Map(base.files.map((file) => [file.path, file]));
+    for (const file of archive.files) {
+      if (file.path !== PROCESS_MANIFEST_OBJECT) available.set(file.path, file);
+    }
+    const effectivePaths = new Set(stateFiles.map((file) => file.path));
+    for (const file of archive.files) {
+      if (file.path !== PROCESS_MANIFEST_OBJECT && !effectivePaths.has(file.path)) {
+        throw new Error(`Runtime Process delta contains a file outside its effective state: ${file.path}`);
+      }
+    }
+    for (const file of stateFiles) {
+      const source = available.get(file.path);
+      if (!source || source.size !== file.size || source.sha256 !== file.sha256) {
+        throw new Error(`Runtime Process effective state is not supplied by its base or delta: ${file.path}`);
+      }
+    }
+    delta = { base, stateFiles, deltaDepth };
+  }
+
+  return {
+    ...archive,
+    createdAt: exactTimestamp(row.createdAt, "Runtime Process generation createdAt"),
+    ...(jobIds ? { jobIds } : {}),
+    ...delta,
+  };
+}
+
+export function runtimeProcessGenerationObjects(generation: RuntimeProcessGeneration): string[] {
+  return [...new Set([generation.objectName, ...(generation.base ? [generation.base.objectName] : [])])];
+}
+
 export function jobObjectNames(jobIdValue: unknown): { raw: string; status: string } {
   const jobId = safeJobId(jobIdValue);
   return {
@@ -319,61 +454,7 @@ export function parseRuntimeJobStatus(value: unknown): RuntimeJobStatus {
   if (input.state === "done" && pending.length !== 0) throw new Error("A done Runtime job cannot have pending articles");
   let stagedProcess: RuntimeProcessGeneration | undefined;
   if (input.stagedProcess !== undefined) {
-    if (!input.stagedProcess || typeof input.stagedProcess !== "object" || Array.isArray(input.stagedProcess)) {
-      throw new Error("Runtime staged Process descriptor is invalid");
-    }
-    const staged = input.stagedProcess as Record<string, unknown>;
-    if (!Array.isArray(staged.files) || staged.files.length === 0) {
-      throw new Error("Runtime staged Process files are invalid");
-    }
-    const stagedSha256 = sha256(staged.sha256, "Runtime staged Process archive SHA-256");
-    if (staged.objectName !== processGenerationObjectName(jobId, stagedSha256)) {
-      throw new Error("Runtime staged Process object does not match its job id and SHA-256");
-    }
-    const stagedPaths = new Set<string>();
-    const stagedFiles = staged.files.map((file, index): RuntimeFileDigest => {
-      if (!file || typeof file !== "object" || Array.isArray(file)) {
-        throw new Error(`Runtime staged Process file ${index} is invalid`);
-      }
-      const row = file as Record<string, unknown>;
-      const filePath = safeRuntimePath(row.path, `Runtime staged Process file path ${index}`);
-      if (!(filePath.startsWith("canonical/")
-        || /^raw\/[a-z0-9]+(?:-[a-z0-9]+)*\/assets\//u.test(filePath)
-        || filePath === "runtime/process-result.json"
-        || filePath === "runtime/memory.json")) {
-        throw new Error(`Runtime staged Process file is outside its allowed scope: ${filePath}`);
-      }
-      if (stagedPaths.has(filePath)) throw new Error(`Duplicate Runtime staged Process file: ${filePath}`);
-      stagedPaths.add(filePath);
-      return {
-        path: filePath,
-        size: nonNegativeInteger(row.size, `Runtime staged Process file size ${index}`),
-        sha256: sha256(row.sha256, `Runtime staged Process file SHA-256 ${index}`),
-      };
-    });
-    assertRuntimeFileBudget(stagedFiles, "Runtime staged Process manifest");
-    if (!stagedPaths.has("runtime/process-result.json") || !stagedPaths.has("runtime/memory.json")) {
-      throw new Error("Runtime staged Process archive is missing its result or memory manifest");
-    }
-    stagedProcess = {
-      objectName: processGenerationObjectName(jobId, stagedSha256),
-      createdAt: exactTimestamp(staged.createdAt, "Runtime staged Process createdAt"),
-      size: runtimeObjectSize(staged.size, "Runtime staged Process archive size"),
-      sha256: stagedSha256,
-      files: stagedFiles,
-      ...(staged.jobIds === undefined ? {} : {
-        jobIds: (() => {
-          if (!Array.isArray(staged.jobIds) || staged.jobIds.length === 0 || staged.jobIds.length > 20) {
-            throw new Error("Runtime staged Process job ids are invalid");
-          }
-          const jobIds = staged.jobIds.map((value) => safeJobId(value));
-          if (jobIds[0] !== jobId || new Set(jobIds).size !== jobIds.length) {
-            throw new Error("Runtime staged Process job ids must be unique and start with the anchor job");
-          }
-          return jobIds;
-        })(),
-      }),
-    };
+    stagedProcess = parseRuntimeProcessGeneration(input.stagedProcess, jobId);
   }
   return {
     formatVersion: "jojo-times-job/1",

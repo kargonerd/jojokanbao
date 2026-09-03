@@ -55,6 +55,7 @@ jobs:
       TIMES_PUBLISH: ${{ inputs.automatic || inputs.publish }}
       TIMES_RUNTIME_JOB_ID: ${{ format('{0}-{1}', github.run_id, github.run_attempt) }}
       TIMES_PROXY_ROTATION_ATTEMPTS: ${{ inputs.automatic && '12' || inputs.proxy_rotation_attempts || '12' }}
+      TIMES_RUNTIME_ROOT: ${{ github.workspace }}/.times-runtime
       JOJO_TIMES_PROXY_URI: ${{ secrets.JOJO_TIMES_PROXY_URI }}
       JOJO_TIMES_PROXY_SUBSCRIPTION: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION }}
       HEALTHCHECKS_TIMES_PIPELINE_URL: ${{ secrets.HEALTHCHECKS_TIMES_PIPELINE_URL }}
@@ -94,21 +95,26 @@ jobs:
           test -n "$HF_TOKEN" || (echo "HF_TOKEN is not configured" >&2 && exit 1)
           test -n "$HF_TIMES_RUNTIME_BUCKET" || (echo "HF_TIMES_RUNTIME_BUCKET is not configured" >&2 && exit 1)
 
-      - name: Install locked pipeline dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Restore CI-verified Times runtime
+        id: times_runtime_cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .times-runtime
+          key: ${{ runner.os }}-times-pipeline-runtime-v1-${{ hashFiles('tools/times-pipeline/src/**/*.ts', 'tools/times-pipeline/tsconfig.json', 'tools/times-pipeline/package.json', 'frontend/packages/content/src/**/*.ts', 'frontend/packages/content/package.json', 'pnpm-lock.yaml') }}
 
-      - name: Verify and build Times pipeline
+      - name: Prepare Times runtime on cache miss
+        if: steps.times_runtime_cache.outputs.cache-hit != 'true'
         run: |
-          pnpm --filter @jojo/times-pipeline typecheck
-          pnpm --filter @jojo/times-pipeline test
+          pnpm install --frozen-lockfile --filter @jojo/times-pipeline...
           pnpm --filter @jojo/times-pipeline build
+          pnpm --filter @jojo/times-pipeline --prod deploy "$TIMES_RUNTIME_ROOT"
 
       - name: Restore Capture memory
         id: capture_memory_restore
         if: env.TIMES_PUBLISH == 'true'
         continue-on-error: true
         run: |
-          node tools/times-pipeline/dist/src/runtime-cli.js \
+          node "$TIMES_RUNTIME_ROOT/dist/src/runtime-cli.js" \
             --action restore-memory \
             --kind capture \
             --bucket "$HF_TIMES_RUNTIME_BUCKET" \
@@ -127,7 +133,7 @@ jobs:
           echo "$MIHOMO_SHA256  $RUNNER_TEMP/mihomo/mihomo.gz" | sha256sum -c -
           gzip -d "$RUNNER_TEMP/mihomo/mihomo.gz"
           chmod 700 "$RUNNER_TEMP/mihomo/mihomo"
-          node tools/times-pipeline/dist/src/prepare-proxy-cli.js --output "$RUNNER_TEMP/mihomo/config.yaml"
+          node "$TIMES_RUNTIME_ROOT/dist/src/prepare-proxy-cli.js" --output "$RUNNER_TEMP/mihomo/config.yaml"
           nohup "$RUNNER_TEMP/mihomo/mihomo" -d "$RUNNER_TEMP/mihomo" -f "$RUNNER_TEMP/mihomo/config.yaml" \
             > "$RUNNER_TEMP/mihomo/runtime.log" 2>&1 &
           for attempt in $(seq 1 12); do
@@ -161,7 +167,7 @@ jobs:
 
       - name: Install Chromium for page capture
         run: |
-          pnpm --filter @jojo/times-pipeline exec playwright install --with-deps chromium
+          node "$TIMES_RUNTIME_ROOT/node_modules/playwright/cli.js" install --with-deps chromium
 
       - name: Install pinned Brave for Playwright
         env:
@@ -199,7 +205,7 @@ jobs:
           if [ -n "$TIMES_SOURCES" ]; then
             args+=(--sources "$TIMES_SOURCES")
           fi
-          node tools/times-pipeline/dist/src/capture-cli.js "${args[@]}" > "$RUNNER_TEMP/capture-result.json"
+          node "$TIMES_RUNTIME_ROOT/dist/src/capture-cli.js" "${args[@]}" > "$RUNNER_TEMP/capture-result.json"
 
       - name: Resolve capture manifest
         run: |
@@ -252,12 +258,12 @@ jobs:
             )
           fi
           xvfb-run --server-num=99 --server-args='-screen 0 1440x1200x24 -ac -nolisten tcp' \
-            node tools/times-pipeline/dist/src/page-capture-cli.js "${args[@]}"
+            node "$TIMES_RUNTIME_ROOT/dist/src/page-capture-cli.js" "${args[@]}"
 
       - name: Publish durable Runtime job
         if: env.TIMES_PUBLISH == 'true'
         run: |
-          node tools/times-pipeline/dist/src/runtime-cli.js \
+          node "$TIMES_RUNTIME_ROOT/dist/src/runtime-cli.js" \
             --action publish-job \
             --bucket "$HF_TIMES_RUNTIME_BUCKET" \
             --output "$RUNNER_TEMP/jojo-times" \
@@ -271,7 +277,7 @@ jobs:
         if: env.TIMES_PUBLISH == 'true'
         continue-on-error: true
         run: |
-          node tools/times-pipeline/dist/src/runtime-cli.js \
+          node "$TIMES_RUNTIME_ROOT/dist/src/runtime-cli.js" \
             --action publish-memory \
             --kind capture \
             --bucket "$HF_TIMES_RUNTIME_BUCKET" \

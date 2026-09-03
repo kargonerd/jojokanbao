@@ -4,13 +4,14 @@ import path from "node:path";
 import { createArchive, describeFiles, extractVerifiedArchive, fileSha256 } from "./archive.js";
 import {
   PROCESS_MEMORY_OBJECT,
-  RUNTIME_MAX_DOWNLOAD_BYTES,
-  assertRuntimeFileBudget,
   parseProcessGenerationObjectName,
+  parseRuntimeProcessGeneration,
   processGenerationObjectName,
+  runtimeProcessGenerationObjects,
   type RuntimeFileDigest,
   type RuntimeJobStatus,
   type RuntimeObjectStore,
+  type RuntimeProcessArchive,
   type RuntimeProcessGeneration,
   safeJobId,
   safeRuntimePath,
@@ -20,11 +21,14 @@ const PROCESS_MANIFEST = "runtime/memory.json";
 export const PROCESS_RESULT = "runtime/process-result.json";
 
 interface ProcessGenerationManifest {
-  formatVersion: "jojo-times-process-generation/1";
+  formatVersion: "jojo-times-process-generation/1" | "jojo-times-process-generation/2";
   jobId: string;
   jobIds?: string[];
   createdAt: string;
   files: RuntimeFileDigest[];
+  base?: RuntimeProcessArchive;
+  stateFiles?: RuntimeFileDigest[];
+  deltaDepth?: number;
 }
 
 export interface ProcessMemoryPointer {
@@ -39,21 +43,6 @@ function timestamp(value: unknown, label: string): string {
   return value;
 }
 
-function parseFiles(value: unknown, label: string): RuntimeFileDigest[] {
-  if (!Array.isArray(value) || value.length === 0) throw new Error(`${label} has no files`);
-  const seen = new Set<string>();
-  return value.map((entry, index) => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new Error(`${label} file ${index} is invalid`);
-    const row = entry as Record<string, unknown>;
-    const filePath = safeRuntimePath(row.path, `${label} file ${index}`);
-    if (seen.has(filePath)) throw new Error(`${label} contains duplicate file ${filePath}`);
-    seen.add(filePath);
-    if (!Number.isSafeInteger(row.size) || (row.size as number) < 0) throw new Error(`${label} file size is invalid`);
-    if (typeof row.sha256 !== "string" || !/^[a-f0-9]{64}$/u.test(row.sha256)) throw new Error(`${label} file SHA-256 is invalid`);
-    return { path: filePath, size: row.size as number, sha256: row.sha256 };
-  });
-}
-
 function parseBatchJobIds(value: unknown, anchorJobId: string, label: string): string[] {
   if (!Array.isArray(value) || value.length === 0 || value.length > 20) {
     throw new Error(`${label} job ids are invalid`);
@@ -65,35 +54,6 @@ function parseBatchJobIds(value: unknown, anchorJobId: string, label: string): s
   return jobIds;
 }
 
-function parseGeneration(value: unknown, expectedJobId?: string): RuntimeProcessGeneration {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Process generation is invalid");
-  const row = value as Record<string, unknown>;
-  const parsedObject = parseProcessGenerationObjectName(row.objectName);
-  const { objectName, jobId } = parsedObject;
-  if (expectedJobId && jobId !== safeJobId(expectedJobId)) throw new Error("Process generation belongs to a different job");
-  if (!Number.isSafeInteger(row.size) || (row.size as number) <= 0) throw new Error("Process generation size is invalid");
-  if ((row.size as number) > RUNTIME_MAX_DOWNLOAD_BYTES) throw new Error("Process generation exceeds the Runtime download limit");
-  if (typeof row.sha256 !== "string" || !/^[a-f0-9]{64}$/u.test(row.sha256)) throw new Error("Process generation SHA-256 is invalid");
-  if (parsedObject.sha256 !== row.sha256) throw new Error("Process generation object does not match its SHA-256");
-  const files = parseFiles(row.files, "Process generation");
-  assertRuntimeFileBudget(files, "Process generation manifest");
-  if (!files.some((file) => file.path === PROCESS_RESULT) || !files.some((file) => file.path === PROCESS_MANIFEST)) {
-    throw new Error("Process generation is missing its result or manifest");
-  }
-  let jobIds: string[] | undefined;
-  if (row.jobIds !== undefined) {
-    jobIds = parseBatchJobIds(row.jobIds, jobId, "Process generation");
-  }
-  return {
-    objectName,
-    createdAt: timestamp(row.createdAt, "Process generation createdAt"),
-    size: row.size as number,
-    sha256: row.sha256,
-    files,
-    ...(jobIds ? { jobIds } : {}),
-  };
-}
-
 function parsePointer(value: unknown): ProcessMemoryPointer {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Process memory pointer is invalid");
   const row = value as Record<string, unknown>;
@@ -103,7 +63,7 @@ function parsePointer(value: unknown): ProcessMemoryPointer {
     formatVersion: "jojo-times-process-memory/1",
     updatedAt: timestamp(row.updatedAt, "Process memory pointer updatedAt"),
     jobId,
-    generation: parseGeneration(row.generation, jobId),
+    generation: parseRuntimeProcessGeneration(row.generation, jobId),
   };
 }
 
@@ -111,26 +71,63 @@ function retainedDate(value: string, cutoff: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/u.test(value) && value >= cutoff;
 }
 
+const MAX_PROCESS_DELTA_DEPTH = 12;
+const MAX_PROCESS_DELTA_RATIO = 0.6;
+
+function archiveDescriptor(generation: RuntimeProcessGeneration): RuntimeProcessArchive {
+  return {
+    objectName: generation.objectName,
+    size: generation.size,
+    sha256: generation.sha256,
+    files: generation.files,
+  };
+}
+
+function stateFilesFromFullArchive(archive: RuntimeProcessArchive): RuntimeFileDigest[] {
+  return archive.files.filter((file) => file.path !== PROCESS_MANIFEST);
+}
+
+function sameFile(left: RuntimeFileDigest | undefined, right: RuntimeFileDigest): boolean {
+  return left?.size === right.size && left.sha256 === right.sha256;
+}
+
+function totalBytes(files: readonly RuntimeFileDigest[]): number {
+  return files.reduce((sum, file) => sum + file.size, 0);
+}
+
+function deltaPlan(
+  previous: RuntimeProcessGeneration | undefined,
+  stateFiles: readonly RuntimeFileDigest[],
+): { base: RuntimeProcessArchive; files: RuntimeFileDigest[]; depth: number } | undefined {
+  if (!previous) return undefined;
+  const base = previous.base ?? archiveDescriptor(previous);
+  const baseFiles = new Map(stateFilesFromFullArchive(base).map((file) => [file.path, file]));
+  const files = stateFiles.filter((file) => file.path === PROCESS_RESULT || !sameFile(baseFiles.get(file.path), file));
+  const depth = previous.base ? (previous.deltaDepth ?? MAX_PROCESS_DELTA_DEPTH) + 1 : 1;
+  if (depth > MAX_PROCESS_DELTA_DEPTH) return undefined;
+  if (totalBytes(files) > totalBytes(stateFiles) * MAX_PROCESS_DELTA_RATIO) return undefined;
+  return { base, files, depth };
+}
+
 async function processGenerationFiles(output: string, now: Date, retentionDays: number): Promise<RuntimeFileDigest[]> {
   if (!Number.isInteger(retentionDays) || retentionDays < 7 || retentionDays > 30) {
     throw new Error("Process memory retention must be an integer from 7 to 30 days");
   }
   const cutoffDate = new Date(now.valueOf() - retentionDays * 86_400_000).toISOString().slice(0, 10);
-  const all = await describeFiles(output);
-  const byPath = new Map(all.map((file) => [file.path, file]));
-  const selected = new Set<string>([PROCESS_RESULT]);
-  const dateIndexes: string[] = [];
-  for (const file of all) {
-    if (/^canonical\/[a-z0-9]+(?:-[a-z0-9]+)*\/dataset\.json$/u.test(file.path)) selected.add(file.path);
-    const dateMatch = file.path.match(/^canonical\/[a-z0-9]+(?:-[a-z0-9]+)*\/dates\/\d{4}\/\d{2}\/(\d{4}-\d{2}-\d{2})\.json\.gz$/u);
-    if (dateMatch?.[1] && retainedDate(dateMatch[1], cutoffDate)) {
-      selected.add(file.path);
-      dateIndexes.push(file.path);
-    }
-    const translationMatch = file.path.match(/^canonical\/[a-z0-9]+(?:-[a-z0-9]+)*\/translations\/[^/]+\/\d{4}\/\d{2}\/(\d{4}-\d{2}-\d{2})\/[a-f0-9]{64}\.json\.gz$/u);
-    if (translationMatch?.[1] && retainedDate(translationMatch[1], cutoffDate)) selected.add(file.path);
+  const coreFiles = await describeFiles(output, (file) => {
+    if (file === PROCESS_RESULT) return true;
+    if (/^canonical\/[a-z0-9]+(?:-[a-z0-9]+)*\/dataset\.json$/u.test(file)) return true;
+    const dateMatch = file.match(/^canonical\/[a-z0-9]+(?:-[a-z0-9]+)*\/dates\/\d{4}\/\d{2}\/(\d{4}-\d{2}-\d{2})\.json\.gz$/u);
+    if (dateMatch?.[1] && retainedDate(dateMatch[1], cutoffDate)) return true;
+    const translationMatch = file.match(/^canonical\/[a-z0-9]+(?:-[a-z0-9]+)*\/translations\/[^/]+\/\d{4}\/\d{2}\/(\d{4}-\d{2}-\d{2})\/[a-f0-9]{64}\.json\.gz$/u);
+    return Boolean(translationMatch?.[1] && retainedDate(translationMatch[1], cutoffDate));
+  });
+  if (!coreFiles.some((file) => file.path === PROCESS_RESULT)) {
+    throw new Error(`Process result is missing: ${PROCESS_RESULT}`);
   }
-  if (!byPath.has(PROCESS_RESULT)) throw new Error(`Process result is missing: ${PROCESS_RESULT}`);
+  const dateIndexes = coreFiles
+    .map((file) => file.path)
+    .filter((file) => /^canonical\/[a-z0-9]+(?:-[a-z0-9]+)*\/dates\//u.test(file));
   const articleObjects = new Set<string>();
   for (const indexObject of dateIndexes) {
     const index = JSON.parse(gunzipSync(await readFile(path.join(output, ...indexObject.split("/")))).toString("utf8")) as { articles?: unknown };
@@ -141,11 +138,10 @@ async function processGenerationFiles(output: string, now: Date, retentionDays: 
       if (!/^canonical\/[a-z0-9]+(?:-[a-z0-9]+)*\/articles\/[a-f0-9]{64}\.json\.gz$/u.test(objectName)) {
         throw new Error(`Canonical date index has unsafe article reference: ${objectName}`);
       }
-      if (!byPath.has(objectName)) throw new Error(`Canonical date index references a missing article: ${objectName}`);
       articleObjects.add(objectName);
-      selected.add(objectName);
     }
   }
+  const assetObjects = new Set<string>();
   for (const articleObject of articleObjects) {
     const article = JSON.parse(gunzipSync(await readFile(path.join(output, ...articleObject.split("/")))).toString("utf8")) as { assets?: unknown };
     if (!Array.isArray(article.assets)) throw new Error(`Canonical article has invalid assets: ${articleObject}`);
@@ -155,11 +151,17 @@ async function processGenerationFiles(output: string, now: Date, retentionDays: 
       if (!/^raw\/[a-z0-9]+(?:-[a-z0-9]+)*\/assets\/[A-Za-z0-9._/-]+$/u.test(rawObject)) {
         throw new Error(`Canonical article has unsafe asset reference: ${rawObject}`);
       }
-      if (!byPath.has(rawObject)) throw new Error(`Canonical article references a missing asset: ${rawObject}`);
-      selected.add(rawObject);
+      assetObjects.add(rawObject);
     }
   }
-  return [...selected].sort().map((objectName) => byPath.get(objectName)!);
+  const referencedPaths = new Set([...articleObjects, ...assetObjects]);
+  const referencedFiles = await describeFiles(output, (file) => referencedPaths.has(file));
+  const foundPaths = new Set(referencedFiles.map((file) => file.path));
+  const missingArticle = [...articleObjects].find((file) => !foundPaths.has(file));
+  if (missingArticle) throw new Error(`Canonical date index references a missing article: ${missingArticle}`);
+  const missingAsset = [...assetObjects].find((file) => !foundPaths.has(file));
+  if (missingAsset) throw new Error(`Canonical article references a missing asset: ${missingAsset}`);
+  return [...coreFiles, ...referencedFiles].sort((left, right) => left.path.localeCompare(right.path));
 }
 
 async function restoreGeneration(options: {
@@ -169,21 +171,53 @@ async function restoreGeneration(options: {
   jobId: string;
   generation: RuntimeProcessGeneration;
 }): Promise<string[]> {
-  const generation = parseGeneration(options.generation, options.jobId);
-  const archive = path.resolve(options.workDirectory, `${options.jobId}.processed-download.tar.gz`);
-  if (!await options.store.download(generation.objectName, archive, { maxBytes: generation.size })) {
-    throw new Error(`Process generation is missing: ${generation.objectName}`);
+  const generation = parseRuntimeProcessGeneration(options.generation, options.jobId);
+  const restoreArchive = async (descriptor: RuntimeProcessArchive, label: string): Promise<void> => {
+    const archive = path.resolve(options.workDirectory, `${options.jobId}.${label}-download.tar.gz`);
+    if (!await options.store.download(descriptor.objectName, archive, { maxBytes: descriptor.size })) {
+      throw new Error(`Process generation is missing: ${descriptor.objectName}`);
+    }
+    const digest = await fileSha256(archive);
+    if (digest !== descriptor.sha256) throw new Error(`Process ${label} generation SHA-256 mismatch`);
+    await extractVerifiedArchive(archive, options.output, descriptor.files);
+  };
+
+  if (generation.base) await restoreArchive(generation.base, "base");
+  await restoreArchive(generation, generation.base ? "delta" : "full");
+
+  if (generation.base && generation.stateFiles) {
+    const effectivePaths = new Set(generation.stateFiles.map((file) => file.path));
+    const archivedPaths = new Set([...generation.base.files, ...generation.files].map((file) => file.path));
+    for (const archivedPath of archivedPaths) {
+      if (archivedPath !== PROCESS_MANIFEST && !effectivePaths.has(archivedPath)) {
+        await rm(path.join(options.output, ...archivedPath.split("/")), { force: true });
+      }
+    }
+    const restoredFiles = await describeFiles(options.output, (file) => effectivePaths.has(file));
+    const restoredByPath = new Map(restoredFiles.map((file) => [file.path, file]));
+    for (const expected of generation.stateFiles) {
+      const actual = restoredByPath.get(expected.path);
+      if (!actual || actual.size !== expected.size || actual.sha256 !== expected.sha256) {
+        throw new Error(`Process delta restore did not reproduce effective state: ${expected.path}`);
+      }
+    }
   }
-  const digest = await fileSha256(archive);
-  if (digest !== generation.sha256) throw new Error("Process generation SHA-256 mismatch");
-  await extractVerifiedArchive(archive, options.output, generation.files);
+
   const manifestValue = JSON.parse(await readFile(path.join(options.output, ...PROCESS_MANIFEST.split("/")), "utf8")) as unknown;
   if (!manifestValue || typeof manifestValue !== "object" || Array.isArray(manifestValue)) {
     throw new Error("Process generation manifest is invalid");
   }
   const manifest = manifestValue as Record<string, unknown>;
-  if (manifest.formatVersion !== "jojo-times-process-generation/1" || safeJobId(manifest.jobId) !== options.jobId) {
+  const expectedFormat = generation.base ? "jojo-times-process-generation/2" : "jojo-times-process-generation/1";
+  if (manifest.formatVersion !== expectedFormat || safeJobId(manifest.jobId) !== options.jobId) {
     throw new Error("Process generation manifest does not match the selected job");
+  }
+  if (generation.base && (
+    JSON.stringify(manifest.base) !== JSON.stringify(generation.base)
+    || JSON.stringify(manifest.stateFiles) !== JSON.stringify(generation.stateFiles)
+    || manifest.deltaDepth !== generation.deltaDepth
+  )) {
+    throw new Error("Process delta manifest does not match its generation descriptor");
   }
   const generationJobIds = generation.jobIds ?? [options.jobId];
   const manifestJobIds = manifest.jobIds === undefined
@@ -215,13 +249,17 @@ export async function stageRuntimeProcess(options: {
   if (jobIds.length === 0 || jobIds.length > 20 || jobIds[0] !== options.status.jobId || new Set(jobIds).size !== jobIds.length) {
     throw new Error("Process batch job ids must be unique and start with the anchor job");
   }
-  const files = await processGenerationFiles(output, now, options.retentionDays ?? 8);
+  const stateFiles = await processGenerationFiles(output, now, options.retentionDays ?? 8);
+  const previous = await committedRuntimeProcessGeneration(options.store);
+  const delta = deltaPlan(previous?.generation, stateFiles);
+  const files = delta?.files ?? stateFiles;
   const manifest: ProcessGenerationManifest = {
-    formatVersion: "jojo-times-process-generation/1",
+    formatVersion: delta ? "jojo-times-process-generation/2" : "jojo-times-process-generation/1",
     jobId: options.status.jobId,
     jobIds,
     createdAt: now.toISOString(),
     files,
+    ...(delta ? { base: delta.base, stateFiles, deltaDepth: delta.depth } : {}),
   };
   const manifestFile = path.join(output, ...PROCESS_MANIFEST.split("/"));
   await writeFile(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
@@ -260,6 +298,7 @@ export async function stageRuntimeProcess(options: {
         sha256: archive.sha256,
         files: archiveFiles,
         jobIds,
+        ...(delta ? { base: delta.base, stateFiles, deltaDepth: delta.depth } : {}),
       },
     };
   } finally {
@@ -326,7 +365,10 @@ export async function promoteRuntimeProcess(options: {
   await mkdir(path.dirname(pointerFile), { recursive: true });
   await writeFile(pointerFile, `${JSON.stringify(pointer, null, 2)}\n`);
   await options.store.upload(PROCESS_MEMORY_OBJECT, pointerFile);
-  if (previous && previous.generation.objectName !== pointer.generation.objectName) {
-    await options.store.delete([previous.generation.objectName]);
+  if (previous) {
+    const retained = new Set(runtimeProcessGenerationObjects(pointer.generation));
+    const obsolete = runtimeProcessGenerationObjects(previous.generation)
+      .filter((objectName) => !retained.has(objectName));
+    if (obsolete.length) await options.store.delete(obsolete);
   }
 }

@@ -1,10 +1,10 @@
 # Times scheduler
 
-This Cloudflare Worker is the clock for the ten-minute Times pipeline. It does
+This Cloudflare Worker is the clock for the five-minute Times pipeline. It does
 not fetch or process articles. Each Cron Trigger calls GitHub's workflow
 dispatch API for `maintenance-times-capture.yml`; GitHub Actions then runs the
 existing Capture -> HF Raw -> Process -> HF Canonical/B2 Delivery chain.
-The Worker probes once per minute, but assigns each probe to a ten-minute time
+The Worker probes once per minute, but assigns each probe to a five-minute time
 slot. Before dispatching, it checks only Capture workflow runs. Capture has its
 own single-writer lock, while Process uses a separate Delivery lock and drains
 immutable pending-job markers in FIFO batches. This lets the next Capture run
@@ -47,7 +47,7 @@ pnpm --filter @jojo/times-scheduler deploy
 ```
 
 The production Cron expression is `* * * * *` in UTC. The one-minute cadence is
-only a catch-up probe; Capture still runs at most once per ten-minute slot. The
+only a catch-up probe; Capture still runs at most once per five-minute slot. The
 Worker has no public HTTP route; only its Cron Trigger can invoke it. GitHub
 Actions has no native schedule fallback, so Cloudflare is the single production
 clock. Healthchecks delivery is best effort and never blocks dispatch; a missed

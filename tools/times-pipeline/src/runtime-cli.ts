@@ -17,6 +17,7 @@ import {
   RUNTIME_PREFIX,
   parseRuntimeJobStatus,
   pendingJobObjectName,
+  runtimeProcessGenerationObjects,
   safeJobId,
 } from "./runtime-bucket/types.js";
 import { enqueueRuntimeJob, selectRuntimeJob, selectRuntimeJobs, updateRuntimeQueueAfterDelivery } from "./runtime-bucket/queue.js";
@@ -272,8 +273,10 @@ async function main(): Promise<void> {
     const statusObjects = jobObjects
       .filter((object) => /^times\/jobs\/[^/]+\/status\.json$/u.test(object.objectName));
     const committedProcess = await committedRuntimeProcessGeneration(store);
-    const committedProcessObject = committedProcess?.generation.objectName;
-    const referencedPayloads = new Set<string>(committedProcessObject ? [committedProcessObject] : []);
+    const committedProcessObjects = committedProcess
+      ? runtimeProcessGenerationObjects(committedProcess.generation)
+      : [];
+    const referencedPayloads = new Set<string>(committedProcessObjects);
     const summaries: RuntimeJobStatusSummary[] = [];
     for (const object of statusObjects) {
       const body = await store.readText(object.objectName);
@@ -283,7 +286,11 @@ async function main(): Promise<void> {
         throw new Error(`Runtime status path does not match its job id: ${object.objectName}`);
       }
       referencedPayloads.add(status.raw.objectName);
-      if (status.stagedProcess) referencedPayloads.add(status.stagedProcess.objectName);
+      if (status.stagedProcess) {
+        for (const objectName of runtimeProcessGenerationObjects(status.stagedProcess)) {
+          referencedPayloads.add(objectName);
+        }
+      }
       summaries.push({
         objectName: object.objectName,
         state: status.state,
@@ -309,7 +316,7 @@ async function main(): Promise<void> {
       now: new Date(),
       apply,
       ...(args.get("max-delete-jobs") ? { maxDeleteJobs: Number(args.get("max-delete-jobs")) } : {}),
-      ...(committedProcessObject ? { protectedPayloadObjects: [committedProcessObject] } : {}),
+      ...(committedProcessObjects.length ? { protectedPayloadObjects: committedProcessObjects } : {}),
     }, orphanPayloads);
     if (plan.mode === "apply") {
       const payloads = [...plan.jobs.flatMap((job) => job.objects.slice(0, -1)), ...plan.orphanObjects];

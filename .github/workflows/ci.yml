@@ -28,6 +28,7 @@ jobs:
       homepage_external: ${{ steps.filter.outputs.homepage_external }}
       node: ${{ steps.filter.outputs.node }}
       search_scf: ${{ steps.filter.outputs.search_scf }}
+      times_pipeline: ${{ steps.filter.outputs.times_pipeline }}
       web_e2e: ${{ steps.filter.outputs.web_e2e }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -78,6 +79,7 @@ jobs:
           write_flag cloud_api '^(backend/|tools/times-pipeline/|infrastructure/edgeone/|\.github/workflows/(ci|deploy-web|maintenance-times[^/]*)\.yml$)'
           write_flag database '^(infrastructure/supabase/|\.github/workflows/ci\.yml$)'
           write_flag search_scf '^(infrastructure/tencent-scf/search/|\.github/workflows/(ci|release-search)\.yml$)'
+          write_flag times_pipeline '^(tools/times-pipeline/|frontend/packages/content/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.github/workflows/(ci|maintenance-times[^/]*)\.yml$)'
 
   node:
     name: Node workspaces
@@ -99,6 +101,14 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Restore Times runtime package
+        if: needs.changes.outputs.times_pipeline == 'true'
+        id: times_runtime_cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .times-runtime
+          key: ${{ runner.os }}-times-pipeline-runtime-v1-${{ hashFiles('tools/times-pipeline/src/**/*.ts', 'tools/times-pipeline/tsconfig.json', 'tools/times-pipeline/package.json', 'frontend/packages/content/src/**/*.ts', 'frontend/packages/content/package.json', 'pnpm-lock.yaml') }}
+
       - name: Check all workspaces
         if: needs.changes.outputs.all_node == 'true'
         run: pnpm turbo run typecheck test build verify:build
@@ -109,6 +119,12 @@ jobs:
           TURBO_SCM_BASE: ${{ needs.changes.outputs.base_sha }}
           TURBO_SCM_HEAD: ${{ needs.changes.outputs.head_sha }}
         run: pnpm turbo run typecheck test build verify:build --affected
+
+      - name: Ensure Times runtime build exists
+        if: needs.changes.outputs.times_pipeline == 'true' && steps.times_runtime_cache.outputs.cache-hit != 'true'
+        run: |
+          pnpm --filter @jojo/times-pipeline build
+          pnpm --filter @jojo/times-pipeline --prod deploy "$GITHUB_WORKSPACE/.times-runtime"
 
   web-e2e:
     # Keep this stable check name in sync with the master branch ruleset.

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { link, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -552,6 +552,114 @@ describe("Runtime memories", () => {
     });
     const committed = await restoreRuntimeProcess({ store, output: nextOutput, workDirectory: work, status: next });
     expect(committed).toMatchObject({ restored: true, replay: false, basedOnJobId: "45" });
+  });
+
+  it("reuses a full Process base through bounded cumulative deltas", async () => {
+    const output = await temporaryRoot();
+    const work = await temporaryRoot();
+    const store = new MemoryStore();
+    const firstReady = await publishRuntimeJob({
+      store,
+      output,
+      runManifest: await rawFixture(output),
+      jobId: "delta-1",
+      workDirectory: work,
+    });
+    const assetObject = "raw/ap/assets/large.jpg";
+    const articleObject = `canonical/ap/articles/${"c".repeat(64)}.json.gz`;
+    const dateObject = "canonical/ap/dates/2026/09/2026-09-01.json.gz";
+    const translationObject = `canonical/ap/translations/en/2026/09/2026-09-01/${"d".repeat(64)}.json.gz`;
+    for (const objectName of [assetObject, articleObject, dateObject, translationObject, "canonical/ap/dataset.json"]) {
+      await mkdir(path.dirname(path.join(output, ...objectName.split("/"))), { recursive: true });
+    }
+    const largeAsset = randomBytes(20_000);
+    await writeFile(path.join(output, ...assetObject.split("/")), largeAsset);
+    await writeFile(path.join(output, ...articleObject.split("/")), gzipSync(JSON.stringify({ assets: [{ rawObject: assetObject }] })));
+    await writeFile(path.join(output, ...dateObject.split("/")), gzipSync(JSON.stringify({ articles: [{ object: articleObject }] })));
+    await writeFile(path.join(output, ...translationObject.split("/")), gzipSync(JSON.stringify({ translated: true })));
+    await writeFile(path.join(output, "canonical", "ap", "dataset.json"), "{\"revision\":1}\n");
+    const firstResultFile = path.join(work, "delta-result-1.json");
+    await writeFile(firstResultFile, "{\"sources\":[]}\n");
+    const first = await stageRuntimeProcess({
+      store,
+      output,
+      workDirectory: work,
+      status: firstReady,
+      processResultFile: firstResultFile,
+      now: new Date("2026-09-01T10:00:00.000Z"),
+    });
+    expect(first.stagedProcess?.base).toBeUndefined();
+    await promoteRuntimeProcess({ store, status: first, workDirectory: work });
+    const baseObject = first.stagedProcess!.objectName;
+
+    const secondOutput = await temporaryRoot();
+    const secondReady = await publishRuntimeJob({
+      store,
+      output: secondOutput,
+      runManifest: await rawFixture(secondOutput),
+      jobId: "delta-2",
+      workDirectory: work,
+    });
+    await restoreRuntimeProcess({ store, output: secondOutput, workDirectory: work, status: secondReady });
+    await writeFile(path.join(secondOutput, "canonical", "ap", "dataset.json"), "{\"revision\":2}\n");
+    await rm(path.join(secondOutput, ...translationObject.split("/")));
+    const secondResultFile = path.join(work, "delta-result-2.json");
+    await writeFile(secondResultFile, "{\"sources\":[{\"sourceId\":\"ap\"}]}\n");
+    const second = await stageRuntimeProcess({
+      store,
+      output: secondOutput,
+      workDirectory: work,
+      status: secondReady,
+      processResultFile: secondResultFile,
+      now: new Date("2026-09-01T10:05:00.000Z"),
+    });
+    expect(second.stagedProcess).toMatchObject({
+      base: { objectName: baseObject },
+      deltaDepth: 1,
+    });
+    expect(second.stagedProcess?.files.map((file) => file.path)).not.toContain(assetObject);
+    expect(second.stagedProcess?.stateFiles?.map((file) => file.path)).toContain(assetObject);
+    expect(second.stagedProcess?.stateFiles?.map((file) => file.path)).not.toContain(translationObject);
+    expect(second.stagedProcess!.size).toBeLessThan(first.stagedProcess!.size / 2);
+
+    const replayOutput = await temporaryRoot();
+    await restoreRuntimeProcess({ store, output: replayOutput, workDirectory: work, status: second });
+    expect(await readFile(path.join(replayOutput, ...assetObject.split("/")))).toEqual(largeAsset);
+    expect(await readFile(path.join(replayOutput, "canonical", "ap", "dataset.json"), "utf8")).toBe("{\"revision\":2}\n");
+    await expect(stat(path.join(replayOutput, ...translationObject.split("/"))))
+      .rejects.toMatchObject({ code: "ENOENT" });
+
+    await promoteRuntimeProcess({ store, status: second, workDirectory: work });
+    expect(store.objects.has(baseObject)).toBe(true);
+    const secondObject = second.stagedProcess!.objectName;
+
+    const thirdOutput = await temporaryRoot();
+    const thirdReady = await publishRuntimeJob({
+      store,
+      output: thirdOutput,
+      runManifest: await rawFixture(thirdOutput),
+      jobId: "delta-3",
+      workDirectory: work,
+    });
+    await restoreRuntimeProcess({ store, output: thirdOutput, workDirectory: work, status: thirdReady });
+    await writeFile(path.join(thirdOutput, "canonical", "ap", "dataset.json"), "{\"revision\":3}\n");
+    const thirdResultFile = path.join(work, "delta-result-3.json");
+    await writeFile(thirdResultFile, "{\"sources\":[{\"sourceId\":\"ap\",\"revision\":3}]}\n");
+    const third = await stageRuntimeProcess({
+      store,
+      output: thirdOutput,
+      workDirectory: work,
+      status: thirdReady,
+      processResultFile: thirdResultFile,
+      now: new Date("2026-09-01T10:10:00.000Z"),
+    });
+    expect(third.stagedProcess).toMatchObject({
+      base: { objectName: baseObject },
+      deltaDepth: 2,
+    });
+    await promoteRuntimeProcess({ store, status: third, workDirectory: work });
+    expect(store.objects.has(baseObject)).toBe(true);
+    expect(store.objects.has(secondObject)).toBe(false);
   });
 
   it("never overwrites the committed generation during a partial-job retry", async () => {

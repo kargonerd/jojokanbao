@@ -103,6 +103,28 @@ describe("dispatchTimesCapture", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
+  it("starts a new automatic capture in the next five-minute slot", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        workflowRuns([{
+          status: "completed",
+          display_title: "Times capture [cloudflare-cron]",
+          created_at: "2026-08-29T00:20:53Z",
+        }]),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    await expect(dispatchTimesCapture(env, {
+      fetcher,
+      scheduledTime: Date.parse("2026-08-29T00:25:00Z"),
+    })).resolves.toMatchObject({
+      outcome: "dispatched",
+      slotStartedAt: "2026-08-29T00:25:00.000Z",
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it("catches up after the previous slot finishes", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
