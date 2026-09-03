@@ -244,7 +244,7 @@ export function TimesHomePage() {
       if (generation !== timelineGeneration.current) return;
       const updateCount = updatedArticleCount(pages, latest.firstPage);
       applyLatestTimeline(latest, latest.firstPage
-        ? updateCount > 0 ? `已载入 ${updateCount} 条新的或更新的新闻` : "已是最新"
+        ? updateCount > 0 ? `已载入 ${updateCount} 条新动态` : "已是最新"
         : "当前没有新闻", generation);
     } catch (reason) {
       if (generation === timelineGeneration.current) {
@@ -504,7 +504,7 @@ export function TimesHomePage() {
         >
           <p className="sr-only" aria-live="polite">
             {pendingUpdateCount > 0
-              ? `发现 ${pendingUpdateCount} 条新的或更新的新闻`
+              ? `发现 ${pendingUpdateCount} 条新动态`
               : refreshing ? refreshStatus : ""}
           </p>
           <div
@@ -552,14 +552,14 @@ export function TimesHomePage() {
               type="button"
               onClick={() => applyLatestTimeline(
                 pendingLatest!,
-                `已载入 ${pendingUpdateCount} 条新的或更新的新闻`,
+                `已载入 ${pendingUpdateCount} 条新动态`,
               )}
-              className="group flex w-full items-center justify-center gap-2 border-b border-red bg-red/[0.055] px-4 py-3 font-sans text-sm font-black text-red transition-[color,transform,box-shadow] hover:-translate-y-0.5 hover:bg-paper hover:shadow-[0_3px_0_var(--color-red)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red motion-reduce:transition-none"
+              className="group flex h-8 w-full items-center justify-center gap-1.5 border-b border-rule bg-paper px-3 font-sans text-xs font-bold text-red transition-colors hover:bg-[var(--app-canvas)] hover:text-red-dark focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-red"
             >
-              <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4 transition-transform group-hover:-translate-y-0.5 motion-reduce:transition-none" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <svg aria-hidden="true" viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path d="M8 13V3M4.5 6.5 8 3l3.5 3.5" />
               </svg>
-              <span>查看 {pendingUpdateCount} 条新的或更新的新闻</span>
+              <span>查看 {pendingUpdateCount} 条新动态</span>
             </button>
           ) : null}
           {loading ? <ReadingLoadingState kind="times" status="正在加载新闻…" /> : null}

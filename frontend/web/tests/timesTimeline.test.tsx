@@ -369,7 +369,11 @@ describe("Times timeline images", () => {
       fireEvent(window, new Event("focus"));
       expect(timesMocks.timelineIndex.mock.calls.some(([refresh]) => refresh === true)).toBe(true);
     });
-    const updateNotice = await screen.findByRole("button", { name: "查看 1 条新的或更新的新闻" });
+    const updateNotice = await screen.findByRole("button", { name: "查看 1 条新动态" });
+    expect(updateNotice.className).toContain("h-8");
+    expect(updateNotice.className).toContain("bg-paper");
+    expect(updateNotice.className).toContain("border-rule");
+    expect(updateNotice.className).not.toContain("shadow");
     expect(within(articleList).getByText(article.title)).toBeTruthy();
     expect(within(articleList).queryByText(refreshedArticle.title)).toBeNull();
 
@@ -380,7 +384,7 @@ describe("Times timeline images", () => {
     expect(timesMocks.timelinePage.mock.calls.some(([date, page, refresh]) => (
       date === "2026-08-28" && page === 0 && refresh === true
     ))).toBe(true);
-    expect(screen.getByRole("status").textContent).toContain("已载入 1 条新的或更新的新闻");
+    expect(screen.getByRole("status").textContent).toContain("已载入 1 条新动态");
   });
 
   it("refreshes the timeline after a touch pull passes the threshold", async () => {
@@ -430,7 +434,7 @@ describe("Times timeline images", () => {
     expect(timesMocks.timelinePage.mock.calls.some(([date, page, refresh]) => (
       date === "2026-08-28" && page === 0 && refresh === true
     ))).toBe(true);
-    expect(screen.getByText("已载入 1 条新的或更新的新闻")).toBeTruthy();
+    expect(screen.getByText("已载入 1 条新动态")).toBeTruthy();
   });
 
   it("refreshes the timeline from the desktop refresh button", async () => {
@@ -473,7 +477,7 @@ describe("Times timeline images", () => {
       date === "2026-08-28" && page === 0 && refresh === true
     ))).toBe(true);
     const articleList = screen.getByRole("region", { name: "文章列表" });
-    expect(within(articleList).getByRole("status").textContent).toContain("已载入 1 条新的或更新的新闻");
+    expect(within(articleList).getByRole("status").textContent).toContain("已载入 1 条新动态");
   });
 
   it("counts a publisher revision of an existing article as an update", async () => {
@@ -513,7 +517,7 @@ describe("Times timeline images", () => {
       fireEvent(window, new Event("focus"));
       expect(timesMocks.timelineIndex.mock.calls.some(([refresh]) => refresh === true)).toBe(true);
     });
-    expect(await screen.findByRole("button", { name: "查看 1 条新的或更新的新闻" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "查看 1 条新动态" })).toBeTruthy();
   });
 
   it("does not append a stale automatic page after pulling a fresh timeline", async () => {
@@ -584,7 +588,7 @@ describe("Times timeline images", () => {
       fireEvent(window, new Event("focus"));
       expect(timesMocks.timelineIndex.mock.calls.some(([refresh]) => refresh === true)).toBe(true);
     });
-    fireEvent.click(await screen.findByRole("button", { name: "查看 1 条新的或更新的新闻" }));
+    fireEvent.click(await screen.findByRole("button", { name: "查看 1 条新动态" }));
     await screen.findByText(refreshedArticle.title);
 
     resolveOlder({
