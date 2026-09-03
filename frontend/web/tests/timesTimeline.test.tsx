@@ -380,7 +380,7 @@ describe("Times timeline images", () => {
     expect(timesMocks.timelinePage.mock.calls.some(([date, page, refresh]) => (
       date === "2026-08-28" && page === 0 && refresh === true
     ))).toBe(true);
-    expect(screen.getByText("已载入 1 条新的或更新的新闻")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("已载入 1 条新的或更新的新闻");
   });
 
   it("refreshes the timeline after a touch pull passes the threshold", async () => {

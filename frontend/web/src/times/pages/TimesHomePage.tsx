@@ -77,6 +77,7 @@ export function TimesHomePage() {
   const [loadMoreFailed, setLoadMoreFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState("");
+  const [refreshConfirmation, setRefreshConfirmation] = useState("");
   const [pendingLatest, setPendingLatest] = useState<LatestTimeline | null>(null);
   const [pullDistance, setPullDistance] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -176,6 +177,7 @@ export function TimesHomePage() {
     setLoadMoreFailed(false);
     setPendingLatest(null);
     setRefreshStatus(status);
+    setRefreshConfirmation(status);
     if (listViewport.current) listViewport.current.scrollTop = 0;
   }, []);
 
@@ -198,6 +200,7 @@ export function TimesHomePage() {
     setLoadingMore(false);
     setLoadMoreFailed(false);
     setRefreshStatus("正在刷新新闻…");
+    setRefreshConfirmation("");
     setError(null);
     try {
       const latest = await fetchLatestTimeline();
@@ -210,6 +213,7 @@ export function TimesHomePage() {
       if (generation === timelineGeneration.current) {
         setError(reason instanceof Error ? reason.message : "最新新闻刷新失败");
         setRefreshStatus("刷新失败");
+        setRefreshConfirmation("刷新失败，请稍后重试");
       }
     } finally {
       if (generation === timelineGeneration.current) {
@@ -219,6 +223,12 @@ export function TimesHomePage() {
       }
     }
   }, [applyLatestTimeline, fetchLatestTimeline, pages]);
+
+  useEffect(() => {
+    if (!refreshConfirmation) return;
+    const timeout = window.setTimeout(() => setRefreshConfirmation(""), 2_800);
+    return () => window.clearTimeout(timeout);
+  }, [refreshConfirmation]);
 
   const checkForLatest = useCallback(async () => {
     if (!index || loading || refreshingRef.current || checkingLatestRef.current) return;
@@ -455,7 +465,9 @@ export function TimesHomePage() {
           onPointerCancel={() => finishPull(false)}
         >
           <p className="sr-only" aria-live="polite">
-            {pendingUpdateCount > 0 ? `发现 ${pendingUpdateCount} 条新的或更新的新闻` : refreshStatus}
+            {pendingUpdateCount > 0
+              ? `发现 ${pendingUpdateCount} 条新的或更新的新闻`
+              : refreshing ? refreshStatus : ""}
           </p>
           <div
             aria-hidden="true"
@@ -482,6 +494,21 @@ export function TimesHomePage() {
               </svg>
             </span>
           </div>
+          {refreshConfirmation && pendingUpdateCount === 0 ? (
+            <p
+              role="status"
+              className="flex min-h-10 items-center justify-center gap-2 border-b border-rule bg-[var(--app-canvas)] px-4 py-2 font-sans text-xs font-bold text-muted"
+            >
+              <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4 shrink-0 text-red" fill="none" stroke="currentColor" strokeWidth="1.8">
+                {refreshConfirmation.startsWith("刷新失败") ? (
+                  <path d="M4 4l8 8m0-8-8 8" />
+                ) : (
+                  <path d="m3.5 8.5 3 3 6-7" />
+                )}
+              </svg>
+              <span>{refreshConfirmation}</span>
+            </p>
+          ) : null}
           {pendingUpdateCount > 0 ? (
             <button
               type="button"
