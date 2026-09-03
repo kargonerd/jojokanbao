@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
-  type TouchEvent as ReactTouchEvent,
 } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { TimesTimelineIndex, TimesTimelinePage } from "@jojo/content";
@@ -340,15 +339,34 @@ export function TimesHomePage() {
     if (shouldRefresh) void refreshLatest();
   }, [refreshLatest]);
 
-  const handleTouchStart = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
-    const touch = event.touches[0];
-    if (touch) beginPull(touch.clientY);
-  }, [beginPull]);
+  useEffect(() => {
+    const viewport = listViewport.current;
+    if (!viewport) return;
 
-  const handleTouchMove = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
-    const touch = event.touches[0];
-    if (touch) movePull(touch.clientY);
-  }, [movePull]);
+    const handleTouchStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (touch) beginPull(touch.clientY);
+    };
+    const handleTouchMove = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (!touch) return;
+      movePull(touch.clientY);
+      if (pullDistanceRef.current > 0 && event.cancelable) event.preventDefault();
+    };
+    const handleTouchEnd = () => finishPull();
+    const handleTouchCancel = () => finishPull(false);
+
+    viewport.addEventListener("touchstart", handleTouchStart, { passive: true });
+    viewport.addEventListener("touchmove", handleTouchMove, { passive: false });
+    viewport.addEventListener("touchend", handleTouchEnd);
+    viewport.addEventListener("touchcancel", handleTouchCancel);
+    return () => {
+      viewport.removeEventListener("touchstart", handleTouchStart);
+      viewport.removeEventListener("touchmove", handleTouchMove);
+      viewport.removeEventListener("touchend", handleTouchEnd);
+      viewport.removeEventListener("touchcancel", handleTouchCancel);
+    };
+  }, [beginPull, finishPull, movePull]);
 
   const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.pointerType !== "mouse" || event.button !== 0) return;
@@ -499,10 +517,6 @@ export function TimesHomePage() {
           ref={listViewport}
           aria-busy={refreshing}
           className="relative min-h-0 flex-1 overflow-y-auto overscroll-y-contain"
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={() => finishPull()}
-          onTouchCancel={() => finishPull(false)}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={() => finishPull()}

@@ -426,7 +426,7 @@ describe("Times timeline images", () => {
     expect(timesMocks.timelineIndex).toHaveBeenCalledTimes(1);
 
     fireEvent.touchStart(listViewport, { touches: [{ clientY: 20 }] });
-    fireEvent.touchMove(listViewport, { touches: [{ clientY: 180 }] });
+    expect(fireEvent.touchMove(listViewport, { touches: [{ clientY: 180 }] })).toBe(false);
     fireEvent.touchEnd(listViewport);
 
     expect(listViewport.getAttribute("aria-busy")).toBe("true");
