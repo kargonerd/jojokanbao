@@ -1,5 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
+  // Keep the deployed service name so this change upgrades the existing
+  // Times clock in place instead of creating a second production trigger.
   "name": "jojokanbao-times-scheduler",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-28",
@@ -13,14 +15,14 @@
   "vars": {
     "GITHUB_OWNER": "kargonerd",
     "GITHUB_REPO": "jojokanbao",
-    "GITHUB_WORKFLOW": "maintenance-times-capture.yml",
     "GITHUB_REF": "master"
   },
   "secrets": {
     "required": [
       "GITHUB_TOKEN",
       "HEALTHCHECKS_TIMES_SCHEDULER_URL",
-      "HEALTHCHECKS_TIMES_PIPELINE_URL"
+      "HEALTHCHECKS_TIMES_PIPELINE_URL",
+      "HEALTHCHECKS_RMRB_SYNC_URL"
     ]
   }
 }

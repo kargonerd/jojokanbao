@@ -1,10 +1,15 @@
 name: Maintenance · Sync RMRB daily PDF
+run-name: >-
+  ${{ inputs.automatic && 'RMRB sync [cloudflare-cron]' || 'RMRB sync [manual]' }}
 
 on:
-  schedule:
-    - cron: "0 1 * * *"
   workflow_dispatch:
     inputs:
+      automatic:
+        description: Internal flag for the external Cloudflare scheduler
+        required: true
+        default: false
+        type: boolean
       date:
         description: "Date to sync as YYYYMMDD. Empty means today."
         required: false
@@ -14,9 +19,23 @@ on:
         required: false
         default: false
         type: boolean
+      scheduled_at:
+        description: Scheduled slot time supplied by Cloudflare
+        required: false
+        default: ""
+        type: string
+      schedule_slot:
+        description: Stable scheduler slot id supplied by Cloudflare
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
+
+concurrency:
+  group: rmrb-sync
+  cancel-in-progress: false
 
 jobs:
   sync-rmrb:
@@ -34,14 +53,29 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - name: Report scheduled RMRB sync start
-        if: ${{ github.event_name == 'schedule' }}
+      - name: Validate external scheduler inputs
+        if: ${{ inputs.automatic }}
+        shell: bash
+        run: |
+          if ! [[ "${{ inputs.date }}" =~ ^[0-9]{8}$ ]] \
+            || [ -z "${{ inputs.scheduled_at }}" ] \
+            || [ -z "${{ inputs.schedule_slot }}" ] \
+            || [ "${{ inputs.force }}" = "true" ]; then
+            echo "Automatic runs require date, scheduled_at, and schedule_slot, and cannot force overwrite." >&2
+            exit 1
+          fi
+
+      - name: Report automatic RMRB execution start
+        if: ${{ inputs.automatic }}
         continue-on-error: true
         env:
           HEALTHCHECKS_PING_URL: ${{ env.HEALTHCHECKS_RMRB_SYNC_URL }}
-          HEALTHCHECKS_SIGNAL: start
+          HEALTHCHECKS_SIGNAL: log
+          HEALTHCHECKS_TASK_ID: rmrb-sync
           HEALTHCHECKS_STAGE: rmrb-sync
-          HEALTHCHECKS_STATUS: started
+          HEALTHCHECKS_STATUS: running
+          HEALTHCHECKS_SCHEDULED_AT: ${{ inputs.scheduled_at }}
+          HEALTHCHECKS_SLOT_ID: ${{ inputs.schedule_slot }}
           HEALTHCHECKS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: bash tools/monitoring/ping-healthchecks.sh
 
@@ -108,13 +142,17 @@ jobs:
           echo "Public URL did not switch to the protected PDF in time." >&2
           exit 1
 
-      - name: Report scheduled RMRB sync outcome
-        if: ${{ always() && github.event_name == 'schedule' }}
+      - name: Report automatic RMRB sync outcome
+        if: ${{ always() && inputs.automatic }}
         continue-on-error: true
         env:
           HEALTHCHECKS_PING_URL: ${{ env.HEALTHCHECKS_RMRB_SYNC_URL }}
           HEALTHCHECKS_SIGNAL: ${{ job.status == 'success' && 'success' || 'fail' }}
+          HEALTHCHECKS_TASK_ID: rmrb-sync
           HEALTHCHECKS_STAGE: rmrb-sync
           HEALTHCHECKS_STATUS: ${{ job.status }}
+          HEALTHCHECKS_FAILURE_TYPE: ${{ job.status == 'success' && '' || 'run-failed' }}
+          HEALTHCHECKS_SCHEDULED_AT: ${{ inputs.scheduled_at }}
+          HEALTHCHECKS_SLOT_ID: ${{ inputs.schedule_slot }}
           HEALTHCHECKS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: bash tools/monitoring/ping-healthchecks.sh

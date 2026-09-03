@@ -1,0 +1,67 @@
+# Maintenance scheduler
+
+This Cloudflare Worker is the shared clock for scheduled maintenance jobs. It
+does not execute product logic. A single one-minute Cron Trigger evaluates the
+versioned task registry in `src/tasks.ts`, checks the target GitHub workflow for
+an active or already-dispatched run, and calls GitHub's workflow dispatch API.
+
+The registry currently contains:
+
+- `times-capture`: every five minutes, preserving the existing Capture -> HF
+  Raw -> Process -> HF Canonical/B2 Delivery chain.
+- `rmrb-sync`: daily at 01:00 UTC, with a three-hour catch-up window and up to
+  three dispatch attempts separated by fifteen minutes.
+
+Each task owns its schedule, catch-up window, overlap policy, retry policy,
+workflow inputs, automatic run title, and Healthchecks binding. Failures are
+isolated per task, so a failed RMRB probe does not prevent Times from being
+dispatched in the same scheduler tick.
+
+## Monitoring
+
+Healthchecks.io remains outside Cloudflare as the dead-man switch:
+
+- `HEALTHCHECKS_TIMES_SCHEDULER_URL` monitors the shared one-minute clock. The
+  legacy secret name is retained so the deployed Worker can be upgraded in
+  place; `HEALTHCHECKS_SCHEDULER_URL` is also accepted at runtime.
+- `HEALTHCHECKS_TIMES_PIPELINE_URL` monitors the Times pipeline.
+- `HEALTHCHECKS_RMRB_SYNC_URL` monitors the RMRB task.
+
+The Worker sends a task start signal only after GitHub accepts a dispatch and a
+task failure signal when schedule evaluation, GitHub probing, or dispatch
+fails. GitHub Actions reports the eventual business outcome. Monitoring calls
+are best effort and never block another task.
+
+## Security
+
+Use a fine-grained GitHub token restricted to the
+`kargonerd/jojokanbao` repository with only **Actions: write** permission. Store
+all tokens and private Healthchecks ping URLs as Worker secrets; do not commit
+them to Wrangler configuration or `.dev.vars`.
+
+```bash
+pnpm --filter @jojo/maintenance-scheduler exec wrangler login
+pnpm --filter @jojo/maintenance-scheduler exec wrangler secret put GITHUB_TOKEN
+pnpm --filter @jojo/maintenance-scheduler exec wrangler secret put HEALTHCHECKS_TIMES_SCHEDULER_URL
+pnpm --filter @jojo/maintenance-scheduler exec wrangler secret put HEALTHCHECKS_TIMES_PIPELINE_URL
+pnpm --filter @jojo/maintenance-scheduler exec wrangler secret put HEALTHCHECKS_RMRB_SYNC_URL
+```
+
+The deployed Worker service name intentionally remains
+`jojokanbao-times-scheduler`. This makes the first general-scheduler deployment
+replace the existing Times Worker and its Cron Trigger instead of creating a
+second clock.
+
+## Verify and deploy
+
+```bash
+pnpm --filter @jojo/maintenance-scheduler typecheck
+pnpm --filter @jojo/maintenance-scheduler test
+pnpm --filter @jojo/maintenance-scheduler build
+pnpm --filter @jojo/maintenance-scheduler deploy
+```
+
+The production Cron expression is `* * * * *` in UTC. Adding a scheduled job
+normally means adding one registry entry and adapting an existing workflow to
+the automatic-run contract; it does not require another Cloudflare Cron
+Trigger.

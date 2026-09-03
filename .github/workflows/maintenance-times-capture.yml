@@ -10,6 +10,16 @@ on:
         type: boolean
         default: false
         required: true
+      scheduled_at:
+        description: Scheduled slot time supplied by Cloudflare
+        type: string
+        default: ""
+        required: false
+      schedule_slot:
+        description: Stable scheduler slot id supplied by Cloudflare
+        type: string
+        default: ""
+        required: false
       since_hours:
         description: Primary processing window in hours
         type: string
@@ -368,7 +378,11 @@ jobs:
         env:
           HEALTHCHECKS_PING_URL: ${{ env.HEALTHCHECKS_TIMES_PIPELINE_URL }}
           HEALTHCHECKS_SIGNAL: fail
+          HEALTHCHECKS_TASK_ID: times-capture
           HEALTHCHECKS_STAGE: times-capture
           HEALTHCHECKS_STATUS: ${{ job.status }}
+          HEALTHCHECKS_FAILURE_TYPE: run-failed
+          HEALTHCHECKS_SCHEDULED_AT: ${{ inputs.scheduled_at }}
+          HEALTHCHECKS_SLOT_ID: ${{ inputs.schedule_slot }}
           HEALTHCHECKS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: bash tools/monitoring/ping-healthchecks.sh

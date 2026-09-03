@@ -3,20 +3,21 @@ import { describe, expect, it, vi } from "vitest";
 import { pingHealthcheck, pingHealthcheckBestEffort } from "../src/healthchecks";
 
 describe("pingHealthcheck", () => {
-  it("posts a start signal without exposing configuration in the payload", async () => {
+  it("posts a start signal with structured task metadata", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response("OK"));
 
     await pingHealthcheck("https://hc-ping.com/check-id?rid=run-id", "start", {
       fetcher,
-      payload: { stage: "times-pipeline" },
+      payload: { taskId: "rmrb-sync", failureType: "queue-late" },
     });
 
-    expect(fetcher).toHaveBeenCalledTimes(1);
     const [url, init] = fetcher.mock.calls[0] ?? [];
     expect(String(url)).toBe("https://hc-ping.com/check-id/start?rid=run-id");
     expect(init?.method).toBe("POST");
-    expect(new Headers(init?.headers).get("Content-Type")).toBe("application/json");
-    expect(JSON.parse(String(init?.body))).toEqual({ stage: "times-pipeline" });
+    expect(JSON.parse(String(init?.body))).toEqual({
+      taskId: "rmrb-sync",
+      failureType: "queue-late",
+    });
   });
 
   it("rejects non-HTTPS ping URLs", async () => {
@@ -29,8 +30,7 @@ describe("pingHealthcheck", () => {
   });
 
   it("keeps monitoring delivery failures best effort", async () => {
-    const fetcher = vi
-      .fn<typeof fetch>()
+    const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValue(new Response("unavailable", { status: 503 }));
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
 

@@ -4,8 +4,12 @@ set -uo pipefail
 
 ping_url="${HEALTHCHECKS_PING_URL:-}"
 signal="${HEALTHCHECKS_SIGNAL:-success}"
+task_id="${HEALTHCHECKS_TASK_ID:-unknown}"
 stage="${HEALTHCHECKS_STAGE:-scheduled-job}"
 status="${HEALTHCHECKS_STATUS:-unknown}"
+failure_type="${HEALTHCHECKS_FAILURE_TYPE:-}"
+scheduled_at="${HEALTHCHECKS_SCHEDULED_AT:-}"
+slot_id="${HEALTHCHECKS_SLOT_ID:-}"
 run_url="${HEALTHCHECKS_RUN_URL:-}"
 
 if [ -z "$ping_url" ]; then
@@ -26,8 +30,12 @@ case "$signal" in
     ;;
 esac
 
-payload="stage=${stage}
+payload="task=${task_id}
+stage=${stage}
 status=${status}
+failure_type=${failure_type}
+scheduled_at=${scheduled_at}
+slot_id=${slot_id}
 run=${run_url}"
 
 curl --fail --silent --show-error \
