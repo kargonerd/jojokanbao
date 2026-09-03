@@ -29,7 +29,7 @@ function contentRows(content: JsonObject): JsonObject[] {
 
 function mapCandidate(source: SourceConfig, item: JsonObject): Candidate | undefined {
   const type = optionalString(item.__typename);
-  if (type !== "Article" && type !== "Liveblog") return undefined;
+  if (type !== "Article") return undefined;
   const id = optionalString(item.id);
   const namedUrl = optionalString(item.namedUrl);
   const title = plainText(item.title ?? item.name);
