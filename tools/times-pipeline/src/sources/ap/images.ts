@@ -81,7 +81,6 @@ export function extractApImages(html: string, pageUrl: string): PageImageCandida
           total: placement.carousel.total,
         },
       } : {}),
-      publisherEditorial: true,
     });
   };
 
@@ -125,7 +124,6 @@ export function extractApImages(html: string, pageUrl: string): PageImageCandida
         ...(alt ? { alt, caption: alt } : {}),
         ...(width ? { width } : {}),
         ...(height ? { height } : {}),
-        publisherEditorial: true,
       });
     }
   }

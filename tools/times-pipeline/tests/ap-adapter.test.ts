@@ -111,7 +111,7 @@ describe("AP source adapter", () => {
       <section class="Page-related"><div class="PagePromo"><img src="https://dims.apnews.com/recommended.jpg" width="980" height="653" alt="Another AP story"></div></section>
     </main></body></html>`;
 
-    const images = discoverArticleImages(html, "https://apnews.com/article/example", apFetch, extractApImages);
+    const images = discoverArticleImages(html, "https://apnews.com/article/example", extractApImages);
     expect(images).toEqual([{
       sourceUrl: "https://dims.apnews.com/story-lead.webp",
       role: "lead",
@@ -119,7 +119,6 @@ describe("AP source adapter", () => {
       caption,
       width: 980,
       height: 653,
-      publisherEditorial: true,
     }]);
     const attached = attachAssetsToBody("<p>The article body contains the publisher's reporting.</p>", [{
       ...images[0]!,
@@ -152,7 +151,6 @@ describe("AP source adapter", () => {
       caption: "Publisher photo description.",
       width: 980,
       height: 653,
-      publisherEditorial: true,
     }]);
   });
 
