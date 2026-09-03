@@ -331,7 +331,7 @@ describe("Times timeline images", () => {
     expect(screen.getByText("已到达时间线起点")).toBeTruthy();
   });
 
-  it("pulls a fresh index and first page without reloading the browser", async () => {
+  it("offers new timeline items without replacing the list until the notice is chosen", async () => {
     const refreshedArticle = {
       ...article,
       id: "article-refreshed",
@@ -363,16 +363,114 @@ describe("Times timeline images", () => {
     render(<MemoryRouter><TimesHomePage /></MemoryRouter>);
 
     await screen.findByText(article.title);
-    const refreshButton = screen.getAllByRole("button", { name: "拉取最新新闻" })[0]!;
-    expect(refreshButton.textContent).toBe("");
-    expect(refreshButton.getAttribute("title")).toBe("拉取最新");
-    expect(screen.getAllByRole("tooltip").every((tooltip) => tooltip.textContent?.trim() === "拉取最新")).toBe(true);
-    fireEvent.click(refreshButton);
+    const articleList = screen.getByRole("region", { name: "文章列表" });
+    expect(screen.queryByRole("button", { name: "拉取最新新闻" })).toBeNull();
+    await waitFor(() => {
+      fireEvent(window, new Event("focus"));
+      expect(timesMocks.timelineIndex.mock.calls.some(([refresh]) => refresh === true)).toBe(true);
+    });
+    const updateNotice = await screen.findByRole("button", { name: "查看 1 条新的或更新的新闻" });
+    expect(within(articleList).getByText(article.title)).toBeTruthy();
+    expect(within(articleList).queryByText(refreshedArticle.title)).toBeNull();
+
+    fireEvent.click(updateNotice);
+    await within(articleList).findByText(refreshedArticle.title);
+    expect(within(articleList).queryByText(article.title)).toBeNull();
+    expect(timesMocks.timelineIndex.mock.calls.some(([refresh]) => refresh === true)).toBe(true);
+    expect(timesMocks.timelinePage.mock.calls.some(([date, page, refresh]) => (
+      date === "2026-08-28" && page === 0 && refresh === true
+    ))).toBe(true);
+    expect(screen.getByText("已载入 1 条新的或更新的新闻")).toBeTruthy();
+  });
+
+  it("refreshes the timeline after a touch pull passes the threshold", async () => {
+    const refreshedArticle = {
+      ...article,
+      id: "article-pull-refreshed",
+      title: "A headline loaded by pulling",
+      publishedAt: "2026-08-28T01:00:00.000Z",
+      issueDate: "2026-08-28",
+      assets: [],
+    };
+    const initialIndex = {
+      formatVersion: "jojo-news-timeline-index/1",
+      updatedAt: "2026-08-27T05:00:00.000Z",
+      dates: [{ date: "2026-08-27", object: "dates/2026/08/2026-08-27.jox", articleCount: 1 }],
+      sources: [source],
+    };
+    const refreshedIndex = {
+      ...initialIndex,
+      updatedAt: "2026-08-28T01:01:00.000Z",
+      dates: [{ date: "2026-08-28", object: "dates/2026/08/2026-08-28.jox", articleCount: 1 }],
+    };
+    timesMocks.timelineIndex.mockResolvedValueOnce(initialIndex).mockResolvedValueOnce(refreshedIndex);
+    timesMocks.timelinePage.mockImplementation(async (date: string, page: number) => ({
+      formatVersion: "jojo-news-timeline-page/1",
+      date,
+      page,
+      updatedAt: date === "2026-08-28" ? refreshedIndex.updatedAt : initialIndex.updatedAt,
+      articles: date === "2026-08-28" ? [refreshedArticle] : [article],
+    }));
+
+    render(<MemoryRouter><TimesHomePage /></MemoryRouter>);
+
+    await screen.findByText(article.title);
+    const listViewport = screen.getByRole("region", { name: "文章列表" }).querySelector(".overflow-y-auto")!;
+    fireEvent.touchStart(listViewport, { touches: [{ clientY: 20 }] });
+    fireEvent.touchMove(listViewport, { touches: [{ clientY: 80 }] });
+    fireEvent.touchEnd(listViewport);
+    expect(timesMocks.timelineIndex).toHaveBeenCalledTimes(1);
+
+    fireEvent.touchStart(listViewport, { touches: [{ clientY: 20 }] });
+    fireEvent.touchMove(listViewport, { touches: [{ clientY: 180 }] });
+    fireEvent.touchEnd(listViewport);
+
     await screen.findByText(refreshedArticle.title);
-    expect(screen.queryByText(article.title)).toBeNull();
-    expect(timesMocks.timelineIndex).toHaveBeenLastCalledWith(true);
-    expect(timesMocks.timelinePage).toHaveBeenLastCalledWith("2026-08-28", 0, true);
-    expect(screen.getByText("已拉取最新新闻")).toBeTruthy();
+    expect(timesMocks.timelineIndex.mock.calls.some(([refresh]) => refresh === true)).toBe(true);
+    expect(timesMocks.timelinePage.mock.calls.some(([date, page, refresh]) => (
+      date === "2026-08-28" && page === 0 && refresh === true
+    ))).toBe(true);
+    expect(screen.getByText("已载入 1 条新的或更新的新闻")).toBeTruthy();
+  });
+
+  it("counts a publisher revision of an existing article as an update", async () => {
+    const initialIndex = {
+      formatVersion: "jojo-news-timeline-index/1",
+      updatedAt: "2026-08-27T05:00:00.000Z",
+      dates: [{ date: article.issueDate, object: "dates/2026/08/2026-08-27.jox", articleCount: 1 }],
+      sources: [source],
+    };
+    const refreshedIndex = { ...initialIndex, updatedAt: "2026-08-27T05:30:00.000Z" };
+    const revisedArticle = {
+      ...article,
+      title: "Headline revised by the publisher",
+      updatedAt: "2026-08-27T05:29:00.000Z",
+    };
+    timesMocks.timelineIndex.mockResolvedValueOnce(initialIndex).mockResolvedValueOnce(refreshedIndex);
+    timesMocks.timelinePage
+      .mockResolvedValueOnce({
+        formatVersion: "jojo-news-timeline-page/1",
+        date: article.issueDate,
+        page: 0,
+        updatedAt: initialIndex.updatedAt,
+        articles: [article],
+      })
+      .mockResolvedValueOnce({
+        formatVersion: "jojo-news-timeline-page/1",
+        date: article.issueDate,
+        page: 0,
+        updatedAt: refreshedIndex.updatedAt,
+        articles: [revisedArticle],
+      });
+
+    render(<MemoryRouter><TimesHomePage /></MemoryRouter>);
+
+    await screen.findByText(article.title);
+    await waitFor(() => {
+      fireEvent(window, new Event("focus"));
+      expect(timesMocks.timelineIndex.mock.calls.some(([refresh]) => refresh === true)).toBe(true);
+    });
+    expect(await screen.findByRole("button", { name: "查看 1 条新的或更新的新闻" })).toBeTruthy();
   });
 
   it("does not append a stale automatic page after pulling a fresh timeline", async () => {
@@ -435,8 +533,15 @@ describe("Times timeline images", () => {
     render(<MemoryRouter><TimesHomePage /></MemoryRouter>);
 
     await screen.findByText(article.title);
-    await waitFor(() => expect(timesMocks.timelinePage.mock.calls.some(([, page]) => page === 1)).toBe(true));
-    fireEvent.click(screen.getAllByRole("button", { name: "拉取最新新闻" })[0]!);
+    await waitFor(
+      () => expect(timesMocks.timelinePage.mock.calls.some(([, page]) => page === 1)).toBe(true),
+      { timeout: 5_000 },
+    );
+    await waitFor(() => {
+      fireEvent(window, new Event("focus"));
+      expect(timesMocks.timelineIndex.mock.calls.some(([refresh]) => refresh === true)).toBe(true);
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "查看 1 条新的或更新的新闻" }));
     await screen.findByText(refreshedArticle.title);
 
     resolveOlder({
