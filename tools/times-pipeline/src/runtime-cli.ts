@@ -14,7 +14,7 @@ import {
 import { publishRuntimeMemory, restoreRuntimeMemory, type RuntimeMemoryKind } from "./runtime-bucket/memory.js";
 import { planRuntimeBucketCleanup, type RuntimeJobStatusSummary } from "./runtime-bucket/cleanup.js";
 import {
-  PENDING_JOB_PREFIX,
+  RUNTIME_PREFIX,
   parseRuntimeJobStatus,
   pendingJobObjectName,
   safeJobId,
@@ -265,10 +265,9 @@ async function main(): Promise<void> {
     return;
   }
   if (action === "cleanup") {
-    const [jobObjects, pendingObjects] = await Promise.all([
-      store.list("times/jobs"),
-      store.list(PENDING_JOB_PREFIX),
-    ]);
+    const runtimeObjects = await store.list(RUNTIME_PREFIX);
+    const jobObjects = runtimeObjects.filter((object) => object.objectName.startsWith("times/jobs/"));
+    const pendingObjects = runtimeObjects.filter((object) => /^times\/pending\/[^/]+\.json$/u.test(object.objectName));
     const pendingObjectNames = new Set(pendingObjects.map((object) => object.objectName));
     const statusObjects = jobObjects
       .filter((object) => /^times\/jobs\/[^/]+\/status\.json$/u.test(object.objectName));
