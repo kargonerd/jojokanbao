@@ -1100,14 +1100,15 @@ const styles = StyleSheet.create({
   turningFace: {
     ...StyleSheet.absoluteFillObject,
     borderWidth: 1,
-    borderTopLeftRadius: 11,
-    borderBottomLeftRadius: 11,
-    borderTopRightRadius: 15,
-    borderBottomRightRadius: 15,
     overflow: "hidden",
     backfaceVisibility: "hidden",
   },
   turningFront: {
+    borderLeftWidth: 0,
+    borderTopLeftRadius: 0,
+    borderBottomLeftRadius: 0,
+    borderTopRightRadius: 15,
+    borderBottomRightRadius: 15,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1115,6 +1116,11 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 6,
     paddingLeft: 5,
+    borderRightWidth: 0,
+    borderTopLeftRadius: 11,
+    borderBottomLeftRadius: 11,
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
     backfaceVisibility: "visible",
     // The outer leaf uses a negative X scale after crossing the spine. Mirror
     // its back once so the quote remains readable in the settled left page.
