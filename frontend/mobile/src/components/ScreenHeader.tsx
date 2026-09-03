@@ -43,7 +43,14 @@ export function ScreenHeader({ eyebrow, title, onBack, showAccount = false }: { 
           onPress={() => navigation.navigate("Account")}
           style={styles.accountButton}
         >
-          <Text numberOfLines={1} style={[styles.accountLabel, { color: theme.red, fontFamily: theme.sans }]}>{accountLabel}</Text>
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.68}
+            style={[styles.accountLabel, { color: theme.red, fontFamily: theme.sans }]}
+          >
+            {accountLabel}
+          </Text>
         </Pressable>
       ) : <View style={styles.trailingSpacer} />}
     </View>
@@ -59,14 +66,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   copy: { flex: 1, minWidth: 0, alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },
-  backButton: { width: 72, height: 44, flexDirection: "row", alignItems: "center", gap: 5 },
+  backButton: { width: 108, height: 44, flexDirection: "row", alignItems: "center", gap: 5 },
   backLabel: { fontSize: 11, fontWeight: "800" },
   eyebrow: { fontSize: 8, fontWeight: "800", letterSpacing: 1.2 },
   title: { marginTop: 2, fontSize: 14, fontWeight: "900", letterSpacing: 1.1, textAlign: "center" },
   titleOnly: { marginTop: 0, fontSize: 15 },
-  mark: { width: 32, height: 32, marginHorizontal: 20 },
-  eInkMark: { width: 64, height: 64, marginHorizontal: 4 },
-  accountButton: { width: 72, height: 44, alignItems: "flex-end", justifyContent: "center" },
-  accountLabel: { maxWidth: 72, fontSize: 11, fontWeight: "800", letterSpacing: 0.2 },
-  trailingSpacer: { width: 72 },
+  mark: { width: 32, height: 32, marginLeft: 20, marginRight: 56 },
+  eInkMark: { width: 64, height: 64, marginLeft: 4, marginRight: 40 },
+  accountButton: { width: 108, height: 44, alignItems: "flex-end", justifyContent: "center" },
+  accountLabel: { width: 108, fontSize: 11, fontWeight: "800", letterSpacing: 0, textAlign: "right" },
+  trailingSpacer: { width: 108 },
 });

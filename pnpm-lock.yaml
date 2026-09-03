@@ -8,6 +8,9 @@ overrides:
   cheerio@1.2.0>undici: 8.10.0
 
 patchedDependencies:
+  '@react-native/gradle-plugin@0.83.10':
+    hash: nvqj2ep55o6kymeg6vnxt4dm5e
+    path: frontend/patches/@react-native__gradle-plugin@0.83.10.patch
   pdfjs-dist@5.7.284:
     hash: zahbskxuqcrzag4gobt5x7k26i
     path: frontend/patches/pdfjs-dist@5.7.284.patch
@@ -10883,7 +10886,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@react-native/gradle-plugin@0.83.10': {}
+  '@react-native/gradle-plugin@0.83.10(patch_hash=nvqj2ep55o6kymeg6vnxt4dm5e)': {}
 
   '@react-native/js-polyfills@0.83.10': {}
 
@@ -15699,7 +15702,7 @@ snapshots:
       '@react-native/assets-registry': 0.83.10
       '@react-native/codegen': 0.83.10(@babel/core@7.29.0)
       '@react-native/community-cli-plugin': 0.83.10
-      '@react-native/gradle-plugin': 0.83.10
+      '@react-native/gradle-plugin': 0.83.10(patch_hash=nvqj2ep55o6kymeg6vnxt4dm5e)
       '@react-native/js-polyfills': 0.83.10
       '@react-native/normalize-colors': 0.83.10
       '@react-native/virtualized-lists': 0.83.10(@types/react@19.2.15)(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)

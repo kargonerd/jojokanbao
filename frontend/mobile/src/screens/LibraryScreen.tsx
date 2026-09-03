@@ -19,6 +19,7 @@ import { IS_EINK_RELEASE } from "../config/appVariant";
 import {
   fuzzyBookTitleScore,
   loadMobileBooks,
+  resolveMobileBookOpenTarget,
   type MobileBook,
 } from "../lib/books";
 import { impactHaptic } from "../lib/haptics";
@@ -104,9 +105,23 @@ export function LibraryScreen() {
     setDatePublication(publication);
   }
 
-  function openBook(book: MobileBook) {
+  async function openBook(book: MobileBook) {
     void impactHaptic(hapticsEnabled);
-    navigation.navigate("BookDetails", { book });
+    try {
+      const target = await resolveMobileBookOpenTarget(book);
+      if (target.screen === "BookReader") {
+        navigation.navigate("BookReader", {
+          datasetId: target.datasetId,
+          itemKey: target.itemKey,
+          title: target.title,
+          bookTitle: target.bookTitle,
+        });
+      } else {
+        navigation.navigate("BookDetails", { book: target.book });
+      }
+    } catch {
+      navigation.navigate("BookDetails", { book });
+    }
   }
 
   const bounds = datePublication?.id === "rmrb" || datePublication?.id === "ckxx"
@@ -172,7 +187,7 @@ export function LibraryScreen() {
                 subtitle={item.book.itemCount && item.book.itemCount > 1
                   ? `${item.book.itemCount} 册 · 选择分册`
                   : "单册 · 直接阅读"}
-                onPress={() => openBook(item.book)}
+                onPress={() => void openBook(item.book)}
               />
             )}
           </View>

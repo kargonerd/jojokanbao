@@ -20,6 +20,7 @@ export interface MobileBook {
   indexObject: string;
   type: "book" | "book-series";
   itemCount?: number;
+  aiEnabled?: boolean;
 }
 
 export interface MobileBookVolume {
@@ -28,6 +29,34 @@ export interface MobileBookVolume {
   title: string;
   order: number;
   manifestObject: string;
+}
+
+export type MobileBookOpenTarget =
+  | { screen: "BookDetails"; book: MobileBook }
+  | {
+      screen: "BookReader";
+      datasetId: string;
+      itemKey: string;
+      title: string;
+      bookTitle: string;
+    };
+
+export interface LegacyBookResumeTarget {
+  chapterId: string;
+  chapterProgress: number;
+}
+
+export function resolveLegacyBookResume(
+  chapters: readonly { id: string }[],
+  progress: number,
+): LegacyBookResumeTarget | undefined {
+  if (!chapters.length || !Number.isFinite(progress) || progress <= 0) return undefined;
+  const bookPosition = Math.max(0, Math.min(1, progress / 100)) * chapters.length;
+  const chapterIndex = Math.min(chapters.length - 1, Math.floor(bookPosition));
+  return {
+    chapterId: chapters[chapterIndex]!.id,
+    chapterProgress: Math.max(0, Math.min(1, bookPosition - chapterIndex)),
+  };
 }
 
 export interface LoadedMobileBookItem {
@@ -104,6 +133,7 @@ export function selectPublishedBooks(entries: readonly JojoCatalogEntry[]): Mobi
       indexObject: entry.indexObject,
       type: entry.type,
       itemCount: entry.itemCount,
+      aiEnabled: entry.aiEnabled,
     }))
     .sort((left, right) => left.title.localeCompare(right.title, "zh-CN"));
 }
@@ -148,6 +178,18 @@ export function loadMobileBookVolumes(book: MobileBook): Promise<MobileBookVolum
     volumePromises.set(book.datasetId, promise);
   }
   return promise;
+}
+
+export async function resolveMobileBookOpenTarget(book: MobileBook): Promise<MobileBookOpenTarget> {
+  const volumes = await loadMobileBookVolumes(book);
+  const onlyVolume = volumes.length === 1 ? volumes[0] : undefined;
+  return onlyVolume ? {
+    screen: "BookReader",
+    datasetId: book.datasetId,
+    itemKey: onlyVolume.itemKey,
+    title: onlyVolume.title,
+    bookTitle: book.title,
+  } : { screen: "BookDetails", book };
 }
 
 function bytesToBase64(bytes: Uint8Array): string {

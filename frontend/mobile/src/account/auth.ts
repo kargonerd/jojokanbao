@@ -1,5 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { createJojoAuthClient, createJojoAuthStore } from "@jojo/auth";
+import {
+  createJojoAuthClient,
+  createJojoAuthStore,
+  createPersonalInvitationRepository,
+} from "@jojo/auth";
 import { AppState, Platform } from "react-native";
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -14,6 +18,9 @@ export const mobileAuthClient = createJojoAuthClient({
   storage: AsyncStorage,
   detectSessionInUrl: false,
 });
+
+export const mobilePersonalInvitationRepository =
+  createPersonalInvitationRepository(mobileAuthClient);
 
 const controller = createJojoAuthStore(mobileAuthClient);
 

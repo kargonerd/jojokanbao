@@ -14,9 +14,15 @@ import { LibraryScreen } from "./src/screens/LibraryScreen";
 import { ReaderScreen } from "./src/screens/ReaderScreen";
 import { SearchScreen } from "./src/screens/SearchScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
+import { OpenSourceLicensesScreen } from "./src/screens/OpenSourceLicensesScreen";
 import { MeScreen } from "./src/screens/MeScreen";
 import { AccountSecurityScreen } from "./src/screens/AccountSecurityScreen";
-import { startMobileAuthSync } from "./src/account/auth";
+import { startMobileAuthSync, useMobileAuthStore } from "./src/account/auth";
+import { AiScreen } from "./src/screens/AiScreen";
+import { TimesScreen } from "./src/screens/TimesScreen";
+import { TimesDetailScreen } from "./src/screens/TimesDetailScreen";
+import { NotificationsScreen } from "./src/screens/NotificationsScreen";
+import { BookshelfScreen } from "./src/screens/BookshelfScreen";
 import { IS_EINK_RELEASE } from "./src/config/appVariant";
 import { mobileTheme } from "./src/theme/tokens";
 
@@ -27,17 +33,24 @@ const tabIcons: Record<keyof MainTabParamList, ComponentProps<typeof Ionicons>["
   Today: "home-outline",
   Library: "library-outline",
   Search: "search-outline",
+  AI: "sparkles-outline",
+  Times: "newspaper-outline",
 };
 
 const tabLabels: Record<keyof MainTabParamList, string> = {
   Today: "首页",
   Library: "资料库",
   Search: "搜索",
+  AI: "AI",
+  Times: "时事",
 };
 
 function MainTabs() {
   const theme = mobileTheme;
   const insets = useSafeAreaInsets();
+  const initialized = useMobileAuthStore((state) => state.initialized);
+  const user = useMobileAuthStore((state) => state.user);
+  const authenticated = initialized && Boolean(user);
 
   return (
     <Tabs.Navigator
@@ -78,6 +91,8 @@ function MainTabs() {
       <Tabs.Screen name="Today" component={HomeScreen} />
       <Tabs.Screen name="Library" component={LibraryScreen} />
       <Tabs.Screen name="Search" component={SearchScreen} />
+      {authenticated ? <Tabs.Screen name="AI" component={AiScreen} /> : null}
+      {authenticated ? <Tabs.Screen name="Times" component={TimesScreen} /> : null}
     </Tabs.Navigator>
   );
 }
@@ -147,6 +162,33 @@ export default function App() {
             }}
           />
           <Stack.Screen
+            name="Notifications"
+            component={NotificationsScreen}
+            options={{
+              gestureEnabled: true,
+              fullScreenGestureEnabled: true,
+              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
+            }}
+          />
+          <Stack.Screen
+            name="Bookshelf"
+            component={BookshelfScreen}
+            options={{
+              gestureEnabled: true,
+              fullScreenGestureEnabled: true,
+              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
+            }}
+          />
+          <Stack.Screen
+            name="OpenSourceLicenses"
+            component={OpenSourceLicensesScreen}
+            options={{
+              gestureEnabled: true,
+              fullScreenGestureEnabled: true,
+              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
+            }}
+          />
+          <Stack.Screen
             name="Reader"
             component={ReaderScreen}
             options={{
@@ -167,6 +209,15 @@ export default function App() {
           <Stack.Screen
             name="BookReader"
             component={BookReaderScreen}
+            options={{
+              gestureEnabled: true,
+              fullScreenGestureEnabled: true,
+              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
+            }}
+          />
+          <Stack.Screen
+            name="TimesDetail"
+            component={TimesDetailScreen}
             options={{
               gestureEnabled: true,
               fullScreenGestureEnabled: true,

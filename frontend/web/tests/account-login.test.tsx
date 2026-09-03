@@ -84,6 +84,24 @@ describe("account access", () => {
     expect(await screen.findByText("Reader home")).toBeTruthy();
   });
 
+  it("lets readers reveal and hide their login password", () => {
+    render(<MemoryRouter><AccountLogin /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+
+    const password = screen.getByLabelText("密码") as HTMLInputElement;
+    const reveal = screen.getByRole("button", { name: "显示登录密码" });
+    expect(password.type).toBe("password");
+    expect(reveal.getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.click(reveal);
+    expect(password.type).toBe("text");
+    const hide = screen.getByRole("button", { name: "隐藏登录密码" });
+    expect(hide.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(hide);
+    expect(password.type).toBe("password");
+  });
+
   it("honors an explicit return target when a session already exists", async () => {
     auth.state.user = { id: "reader-1" } as never;
     render(
@@ -137,6 +155,8 @@ describe("account access", () => {
     expect(dialog.hasAttribute("open")).toBe(true);
     expect(screen.getByRole("dialog", { name: "注册" })).toBeTruthy();
     expect(screen.getByLabelText("邀请码")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "显示注册密码" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "显示确认密码" })).toBeTruthy();
     expect(
       Array.from(dialog.querySelectorAll("label > span"), (label) =>
         label.textContent,
@@ -211,6 +231,12 @@ describe("account access", () => {
     fireEvent.change(screen.getByLabelText("6 位验证码"), { target: { value: "654321" } });
     fireEvent.click(screen.getByRole("button", { name: "验证身份" }));
     await waitFor(() => expect(auth.state.verifyPasswordResetCode).toHaveBeenCalledWith("reader@example.com", "654321"));
+
+    const password = screen.getByLabelText("新密码") as HTMLInputElement;
+    expect(password.type).toBe("password");
+    fireEvent.click(screen.getByRole("button", { name: "显示新密码" }));
+    expect(password.type).toBe("text");
+    expect(screen.getByRole("button", { name: "显示确认新密码" })).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("新密码"), { target: { value: "new-password" } });
     fireEvent.change(screen.getByLabelText("再次输入新密码"), { target: { value: "new-password" } });

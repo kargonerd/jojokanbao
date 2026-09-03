@@ -3,19 +3,28 @@ import { describe, expect, it } from "vitest";
 import {
   createMobileBookSearchResult,
   fuzzyBookTitleScore,
+  resolveLegacyBookResume,
   selectPublishedBooks,
   selectPublishedBookVolumes,
 } from "./books";
 
 describe("mobile book catalog", () => {
+  it("migrates a legacy whole-book percentage to a chapter position", () => {
+    const chapters = [{ id: "one" }, { id: "two" }, { id: "three" }, { id: "four" }];
+    expect(resolveLegacyBookResume(chapters, 63)).toEqual({ chapterId: "three", chapterProgress: 0.52 });
+    expect(resolveLegacyBookResume(chapters, 100)).toEqual({ chapterId: "four", chapterProgress: 1 });
+    expect(resolveLegacyBookResume(chapters, 0)).toBeUndefined();
+  });
+
   it("keeps only published books and series in title order", () => {
     const entries = [
       { datasetId: "paper", type: "newspaper", title: "报纸", indexObject: "paper.jox", language: "zh" },
       { datasetId: "draft", type: "book", title: "草稿", indexObject: "draft.jox", language: "zh", publicationStatus: "draft" },
       { datasetId: "b", type: "book-series", title: "乙书", indexObject: "b.jox", language: "zh" },
-      { datasetId: "a", type: "book", title: "甲书", indexObject: "a.jox", language: "zh" },
+      { datasetId: "a", type: "book", title: "甲书", indexObject: "a.jox", language: "zh", aiEnabled: true },
     ] satisfies JojoCatalogEntry[];
     expect(selectPublishedBooks(entries).map((book) => book.datasetId)).toEqual(["a", "b"]);
+    expect(selectPublishedBooks(entries).find((book) => book.datasetId === "a")?.aiEnabled).toBe(true);
   });
 
   it("sorts published volumes by order and then title", () => {
