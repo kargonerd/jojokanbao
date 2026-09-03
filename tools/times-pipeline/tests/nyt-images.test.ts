@@ -185,14 +185,12 @@ describe("NYT image extraction", () => {
         sourceUrl: "https://www.nytimes.com/kalshi-billboard.jpg",
         role: "content",
         afterBlock: 1,
-        publisherEditorial: true,
       }),
     ]);
-    expect(discoverArticleImages(html, pageUrl, undefined, extractNytImages)).toEqual([
+    expect(discoverArticleImages(html, pageUrl, extractNytImages)).toEqual([
       expect.objectContaining({
         sourceUrl: "https://www.nytimes.com/kalshi-billboard.jpg",
         alt: "A Times Square billboard featuring Lionel Messi and the Kalshi logo",
-        publisherEditorial: true,
       }),
     ]);
   });

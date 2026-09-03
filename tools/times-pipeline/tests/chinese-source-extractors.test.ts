@@ -301,7 +301,7 @@ describe("publisher-specific Chinese source extraction", () => {
     </main>`;
 
     const body = extractArticleBody(html, clsFetch, quality, extractClsBody, url);
-    const images = discoverArticleImages(html, url, clsFetch, extractClsImages);
+    const images = discoverArticleImages(html, url, extractClsImages);
 
     expect(body).toContain("服务端直接输出完整正文");
     expect(body).toContain("第二段继续说明市场变化");

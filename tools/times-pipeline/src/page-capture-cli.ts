@@ -65,7 +65,7 @@ interface CaptureOutcome {
   bodyAssessment: ArticleBodyAssessmentReport;
 }
 
-const CAPTURE_PIPELINE_REVISION = "semantic-html-media-v2";
+const CAPTURE_PIPELINE_REVISION = "source-owned-media-v3";
 
 function json<T>(body: string): T {
   return JSON.parse(body) as T;
@@ -149,7 +149,7 @@ async function completeCapture(
     ?? sourceUnavailablePageReason(article.source, availabilityInput);
   const fullBody = hasFullBody && unavailableReason === undefined;
   const images = fullBody && page.renderedHtml
-    ? discoverArticleImages(page.renderedHtml, page.finalUrl, article.fetchPolicy, sourceImageExtractor(article.sourceId))
+    ? discoverArticleImages(page.renderedHtml, page.finalUrl, sourceImageExtractor(article.sourceId))
     : [];
   const session = images.length > 0 && page.method === "browser" && browser ? await browser() : undefined;
   const assets = await captureArticleAssets({

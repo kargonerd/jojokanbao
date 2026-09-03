@@ -6,7 +6,7 @@ import { articleFingerprint, pendingArticles, selectRunArticles, type PageArticl
 import { selectProxy, selectProxyCandidates } from "../src/capture/proxy.js";
 import { groupArticlesBySource, mapSourceBatches, rotatingSourceProbes } from "../src/capture/schedule.js";
 import { ftFetch } from "../src/sources/ft/fetch.js";
-import { thepaperFetch } from "../src/sources/thepaper/fetch.js";
+import { extractThepaperImages } from "../src/sources/thepaper/images.js";
 
 const now = new Date("2026-08-22T12:00:00Z");
 
@@ -181,10 +181,12 @@ describe("page capture orchestration", () => {
     expect([...selected.recoveryArticleIds]).toEqual(["late"]);
   });
 
-  it("keeps article images as owned asset references and filters tracking pixels", () => {
-    const images = discoverArticleImages(`<html><head><meta property="og:image" content="/lead.jpg"></head><body><article>
-      <p>Article body contains enough publisher text to remain a semantic content block.</p><figure><img src="/inside.jpg" width="1200" height="800" alt="Inside"><figcaption>Photo credit</figcaption></figure>
-      <img src="/tracking-pixel.gif" width="1" height="1"></article></body></html>`, "https://example.test/story");
+  it("keeps source-owned images as asset references and enforces minimum dimensions", () => {
+    const images = discoverArticleImages("", "https://example.test/story", () => [
+      { sourceUrl: "/lead.jpg", role: "lead" },
+      { sourceUrl: "/inside.jpg", role: "content", width: 1200, height: 800, alt: "Inside", caption: "Photo credit", afterBlock: 1 },
+      { sourceUrl: "/tracking-pixel.gif", role: "content", width: 1, height: 1 },
+    ]);
     expect(images.map((image) => image.sourceUrl)).toEqual([
       "https://example.test/lead.jpg",
       "https://example.test/inside.jpg",
@@ -202,7 +204,7 @@ describe("page capture orchestration", () => {
       <img src="/navigation.png" width="400" height="400">
       <div class="cententWrap__UojXm"><img src="/report.webp" width="1022" height="3183"></div>
       <img src="/download-app.png" width="400" height="400">
-    </main>`, "https://www.thepaper.cn/newsDetail_forward_33971197", thepaperFetch);
+    </main>`, "https://www.thepaper.cn/newsDetail_forward_33971197", extractThepaperImages);
 
     expect(images.map((image) => image.sourceUrl)).toEqual(["https://www.thepaper.cn/report.webp"]);
   });

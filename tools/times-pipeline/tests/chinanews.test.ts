@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { discoverArticleImages } from "../src/capture/page-images.js";
-import { chinanewsFetch } from "../src/sources/chinanews/fetch.js";
 import { acceptChinanewsCanonicalAsset, extractChinanewsImages } from "../src/sources/chinanews/images.js";
 import { extractChinanewsBody } from "../src/sources/chinanews/process.js";
 import type { CapturedAsset } from "../src/types.js";
@@ -40,7 +39,7 @@ describe("China News article boundaries", () => {
     const images = discoverArticleImages(
       articlePage,
       "https://www.chinanews.com.cn/sh/2026/08-29/10686419.shtml",
-      chinanewsFetch,
+      extractChinanewsImages,
     );
 
     expect(images.map((image) => image.sourceUrl)).toEqual([
@@ -48,7 +47,7 @@ describe("China News article boundaries", () => {
     ]);
   });
 
-  it("does not let generic fallback reintroduce an inline publisher ad", () => {
+  it("does not let shared capture reintroduce an inline publisher ad", () => {
     const url = "https://www.chinanews.com.cn/cj/2026/09-02/10688570.shtml";
     const html = `<div class="left_zw">
       <p>中新网北京9月2日电，这是一段足够长的新闻正文，用于确认页面已经进入真实的文章内容区域。</p>
@@ -59,7 +58,7 @@ describe("China News article boundaries", () => {
     </div>`;
 
     expect(extractChinanewsImages(html, url)).toEqual([]);
-    expect(discoverArticleImages(html, url, chinanewsFetch, extractChinanewsImages)).toEqual([]);
+    expect(discoverArticleImages(html, url, extractChinanewsImages)).toEqual([]);
   });
 
   it("rejects a retained China News /ad2008 asset under the current Canonical policy", () => {
@@ -95,7 +94,7 @@ describe("China News article boundaries", () => {
 
     expect(extractChinanewsBody(html, { minimumCharacters: 800, minimumParagraphs: 3 }, url))
       .toBe('<figure data-publisher-image-only="true"></figure>');
-    expect(discoverArticleImages(html, url, chinanewsFetch, extractChinanewsImages)).toEqual([
+    expect(discoverArticleImages(html, url, extractChinanewsImages)).toEqual([
       expect.objectContaining({
         sourceUrl: "https://i2.chinanews.com.cn/simg/cmshd/2026/08/31/poster.jpg",
         role: "content",

@@ -54,7 +54,6 @@ describe("Africanews article extraction", () => {
     const images = discoverArticleImages(
       html,
       "https://www.africanews.com/2026/08/30/example/",
-      africanewsFetch,
       extractAfricanewsImages,
     );
 
@@ -95,7 +94,7 @@ describe("Africanews article extraction", () => {
     expect(attached.indexOf('data-asset-id="africanews-inline"')).toBeLessThan(attached.indexOf("Residents were asked"));
   });
 
-  it("allows the generic image fallback when the publisher body container is absent", () => {
+  it("uses the source adapter's alternate-template fallback when the publisher body container is absent", () => {
     const alternate = `<meta property="og:image" content="/alternate-lead.jpg"><div class="article__body">
       <p>A complete alternate-template paragraph appears before the inline publisher photograph.</p>
       <figure><img src="/alternate-inline.jpg" width="1200" height="800"></figure>
@@ -103,7 +102,6 @@ describe("Africanews article extraction", () => {
     const images = discoverArticleImages(
       alternate,
       "https://www.africanews.com/alternate",
-      africanewsFetch,
       extractAfricanewsImages,
     );
 

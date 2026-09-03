@@ -39,7 +39,9 @@ export function extractAfricanewsImages(html: string, pageUrl: string): PageImag
   const document = load(html);
   const container = document(".article-content__text").first().length
     ? document(".article-content__text").first()
-    : document(".article-content").first();
+    : document(".article-content").first().length
+      ? document(".article-content").first()
+      : document(".article__body").first();
   if (!container.length) return [];
   const images: PageImageCandidate[] = [];
   const seen = new Set<string>();

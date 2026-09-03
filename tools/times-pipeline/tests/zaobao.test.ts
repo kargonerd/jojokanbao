@@ -43,7 +43,7 @@ describe("Zaobao semantic article capture", () => {
   });
 
   it("keeps the publisher lead and inline figures without page chrome or duplicates", () => {
-    const images = discoverArticleImages(page, pageUrl, zaobaoFetch, extractZaobaoImages);
+    const images = discoverArticleImages(page, pageUrl, extractZaobaoImages);
 
     expect(images.map((image) => image.sourceUrl)).toEqual([
       `${cassette}/lead?f=webp&o=zbimg`,

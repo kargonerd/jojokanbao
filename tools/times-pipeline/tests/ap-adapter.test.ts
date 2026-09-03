@@ -83,7 +83,7 @@ describe("AP source adapter", () => {
       <section class="Page-related"><div class="Carousel-slides">${slide("recommended-story", "Unrelated AP recommendation")}</div></section>
     </main>`;
 
-    const images = discoverArticleImages(html, "https://apnews.com/article/example", apFetch, extractApImages);
+    const images = discoverArticleImages(html, "https://apnews.com/article/example", extractApImages);
 
     expect(images).toEqual([
       expect.objectContaining({ sourceUrl: "https://dims.apnews.com/photo-one-1440.jpg", role: "lead", caption: "First AP photo" }),
