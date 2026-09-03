@@ -1,8 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
-  PENDING_JOB_PREFIX,
   PENDING_JOBS_OBJECT,
+  RUNTIME_PREFIX,
   pendingJobObjectName,
   type RuntimeJobStatus,
   type RuntimeObjectInfo,
@@ -88,18 +88,18 @@ async function activeStatusesSinceQueue(
   // recovery window so a failed marker upload survives the next Capture cycle
   // without making status reads grow forever.
   const recentThreshold = now.valueOf() - 60 * 60_000;
-  const [listedStatusObjects, listedPendingObjects] = await Promise.all([
-    store.list("times/jobs"),
-    store.list(PENDING_JOB_PREFIX),
-  ]);
-  const listedStatuses = listedStatusObjects
+  // HF's Bucket listing treats `times/pending` as a lexical prefix and may
+  // also return the legacy sibling `times/pending-jobs.json`. List the safe
+  // Runtime root once, then apply exact path filters locally.
+  const listedObjects = await store.list(RUNTIME_PREFIX);
+  const listedStatuses = listedObjects
     .map((object) => ({
       object,
       jobId: /^times\/jobs\/([^/]+)\/status\.json$/u.exec(object.objectName)?.[1],
     }))
     .filter((row): row is { object: RuntimeObjectInfo; jobId: string } => Boolean(row.jobId))
     .map((row) => ({ ...row, jobId: safeJobId(row.jobId) }));
-  const pendingIds = new Set(listedPendingObjects.map((object) => {
+  const pendingIds = new Set(listedObjects.map((object) => {
     const jobId = /^times\/pending\/([^/]+)\.json$/u.exec(object.objectName)?.[1];
     return jobId ? safeJobId(jobId) : undefined;
   }).filter((jobId): jobId is string => Boolean(jobId)));

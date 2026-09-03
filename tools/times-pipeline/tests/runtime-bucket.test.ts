@@ -49,6 +49,7 @@ vi.mock("@huggingface/hub", () => hfHub);
 class MemoryStore implements RuntimeObjectStore {
   readonly objects = new Map<string, Uint8Array>();
   readonly uploads: string[] = [];
+  readonly listedPrefixes: string[] = [];
   readonly failedUploads = new Set<string>();
   readonly failedDeletes = new Set<string>();
 
@@ -77,6 +78,7 @@ class MemoryStore implements RuntimeObjectStore {
   }
 
   async list(prefix: string): Promise<RuntimeObjectInfo[]> {
+    this.listedPrefixes.push(prefix);
     return [...this.objects].filter(([objectName]) => objectName.startsWith(prefix))
       .map(([objectName, body]) => ({ objectName, size: body.byteLength }));
   }
@@ -329,6 +331,7 @@ describe("Runtime jobs", () => {
 
     const selected = await selectRuntimeJobs({ store, workDirectory: work, maxJobs: 2 });
     expect(selected.map((status) => status.jobId)).toEqual(["batch-3", "batch-1"]);
+    expect(store.listedPrefixes).toEqual(["times"]);
     expect(store.objects.has("times/pending-jobs.json")).toBe(false);
     expect(selected.every((status) => store.objects.has(pendingJobObjectName(status.jobId)))).toBe(true);
   });
