@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { TimesTimelineIndex, TimesTimelinePage } from "@jojo/content";
 import { timesApi, timesTimelinePageCount } from "../api";
@@ -22,7 +30,51 @@ function AllSourcesIcon({ className }: { className: string }) {
   );
 }
 
+function RefreshButton({
+  refreshing,
+  onRefresh,
+}: {
+  refreshing: boolean;
+  onRefresh(): void;
+}) {
+  const tooltipId = useId();
+  return (
+    <span className="relative flex shrink-0">
+      <button
+        type="button"
+        aria-label="拉取最新新闻"
+        aria-describedby={tooltipId}
+        aria-busy={refreshing}
+        title="拉取最新"
+        disabled={refreshing}
+        onClick={onRefresh}
+        className="peer group grid h-7 w-7 shrink-0 place-content-center border border-ink bg-paper text-ink transition-[color,transform,box-shadow] hover:-translate-y-0.5 hover:text-red hover:shadow-[2px_2px_0_var(--color-red)] focus:outline-none focus-visible:ring-2 focus-visible:ring-red disabled:translate-y-0 disabled:cursor-wait disabled:text-muted disabled:shadow-none"
+      >
+        <svg aria-hidden="true" viewBox="0 0 20 20" className={`h-3.5 w-3.5 ${refreshing ? "motion-safe:animate-spin" : "transition-transform group-hover:-rotate-12"}`} fill="none" stroke="currentColor" strokeWidth="1.7">
+          <path d="M16 6.5V2.8l-1.7 1.7A7 7 0 1 0 17 10" />
+          <path d="M16 2.8h-3.7" />
+        </svg>
+      </button>
+      <span
+        id={tooltipId}
+        role="tooltip"
+        className="pointer-events-none absolute right-0 top-[calc(100%+6px)] z-30 whitespace-nowrap border border-ink bg-ink px-2 py-1 font-sans text-[11px] font-bold text-paper opacity-0 transition-opacity peer-hover:opacity-100 peer-focus-visible:opacity-100"
+      >
+        拉取最新
+      </span>
+    </span>
+  );
+}
+
 type TimelineCursor = { dateIndex: number; page: number };
+type LatestTimeline = { index: TimesTimelineIndex; firstPage: TimesTimelinePage | null };
+
+const LATEST_CHECK_INTERVAL_MS = 60_000;
+const PULL_REFRESH_THRESHOLD = 68;
+const PULL_REFRESH_MAX_DISTANCE = 104;
+const MINIMUM_REFRESH_FEEDBACK_MS = 700;
+const LATEST_CONFIRMATION_MS = 1_500;
+const DEFAULT_CONFIRMATION_MS = 2_800;
 
 function firstTimelineCursor(index: TimesTimelineIndex): TimelineCursor | null {
   const dateIndex = index.dates.findIndex((date) => timesTimelinePageCount(date) > 0);
@@ -41,42 +93,14 @@ function nextTimelineCursor(index: TimesTimelineIndex, cursor: TimelineCursor): 
   return null;
 }
 
-function RefreshButton({
-  refreshing,
-  onRefresh,
-  compact = false,
-}: {
-  refreshing: boolean;
-  onRefresh(): void;
-  compact?: boolean;
-}) {
-  const tooltipId = useId();
-  return (
-    <span className="relative flex shrink-0">
-      <button
-        type="button"
-        aria-label="拉取最新新闻"
-        aria-describedby={tooltipId}
-        aria-busy={refreshing}
-        title="拉取最新"
-        disabled={refreshing}
-        onClick={onRefresh}
-        className={`peer group grid shrink-0 place-content-center border border-ink bg-paper text-ink transition-[color,transform,box-shadow] hover:-translate-y-0.5 hover:text-red hover:shadow-[2px_2px_0_var(--color-red)] focus:outline-none focus-visible:ring-2 focus-visible:ring-red disabled:translate-y-0 disabled:cursor-wait disabled:text-muted disabled:shadow-none ${compact ? "h-8 w-8" : "h-7 w-7"}`}
-      >
-        <svg aria-hidden="true" viewBox="0 0 20 20" className={`h-3.5 w-3.5 ${refreshing ? "motion-safe:animate-spin" : "transition-transform group-hover:-rotate-12"}`} fill="none" stroke="currentColor" strokeWidth="1.7">
-          <path d="M16 6.5V2.8l-1.7 1.7A7 7 0 1 0 17 10" />
-          <path d="M16 2.8h-3.7" />
-        </svg>
-      </button>
-      <span
-        id={tooltipId}
-        role="tooltip"
-        className="pointer-events-none absolute right-0 top-[calc(100%+6px)] z-30 whitespace-nowrap border border-ink bg-ink px-2 py-1 font-sans text-[11px] font-bold text-paper opacity-0 transition-opacity peer-hover:opacity-100 peer-focus-visible:opacity-100"
-      >
-        拉取最新
-      </span>
-    </span>
-  );
+function updatedArticleCount(currentPages: TimesTimelinePage[], latestPage: TimesTimelinePage | null): number {
+  if (!latestPage) return 0;
+  const currentById = new Map(currentPages.flatMap((page) => page.articles)
+    .map((article) => [article.id, article]));
+  return latestPage.articles.filter((article) => {
+    const current = currentById.get(article.id);
+    return !current || current.updatedAt !== article.updatedAt;
+  }).length;
 }
 
 export function TimesHomePage() {
@@ -92,6 +116,9 @@ export function TimesHomePage() {
   const [loadMoreFailed, setLoadMoreFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState("");
+  const [refreshConfirmation, setRefreshConfirmation] = useState("");
+  const [pendingLatest, setPendingLatest] = useState<LatestTimeline | null>(null);
+  const [pullDistance, setPullDistance] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const sentinel = useRef<HTMLDivElement | null>(null);
   const listViewport = useRef<HTMLDivElement | null>(null);
@@ -99,6 +126,9 @@ export function TimesHomePage() {
   const timelineGeneration = useRef(0);
   const loadingMoreRef = useRef(false);
   const refreshingRef = useRef(false);
+  const checkingLatestRef = useRef(false);
+  const pullStartY = useRef<number | null>(null);
+  const pullDistanceRef = useRef(0);
   const [sourceRailHasMore, setSourceRailHasMore] = useState(false);
   const readById = useTimesReadStore((state) => state.readById);
   const languagePreference = useTimesPreferencesStore((state) => state.foreignContentLanguage);
@@ -171,6 +201,35 @@ export function TimesHomePage() {
     return () => observer.disconnect();
   }, [disabledSources, index, loadMore, loadingMore, loadMoreFailed, nextCursor, refreshing, selectedSource]);
 
+  const applyLatestTimeline = useCallback((
+    latest: LatestTimeline,
+    status: string,
+    generation = ++timelineGeneration.current,
+  ) => {
+    if (generation !== timelineGeneration.current) return;
+    loadingMoreRef.current = false;
+    setIndex(latest.index);
+    setPages(latest.firstPage ? [latest.firstPage] : []);
+    const first = firstTimelineCursor(latest.index);
+    setNextCursor(first ? nextTimelineCursor(latest.index, first) : null);
+    setLoadingMore(false);
+    setLoadMoreFailed(false);
+    setPendingLatest(null);
+    setRefreshStatus(status);
+    setRefreshConfirmation(status);
+    if (listViewport.current) listViewport.current.scrollTop = 0;
+  }, []);
+
+  const fetchLatestTimeline = useCallback(async (): Promise<LatestTimeline> => {
+    const value = await timesApi.timelineIndex(true);
+    const first = firstTimelineCursor(value);
+    const firstDate = first ? value.dates[first.dateIndex] : undefined;
+    const firstPage = first && firstDate
+      ? await timesApi.timelinePage(firstDate.date, first.page, true)
+      : null;
+    return { index: value, firstPage };
+  }, []);
+
   const refreshLatest = useCallback(async () => {
     if (refreshingRef.current) return;
     const generation = ++timelineGeneration.current;
@@ -179,25 +238,26 @@ export function TimesHomePage() {
     setRefreshing(true);
     setLoadingMore(false);
     setLoadMoreFailed(false);
-    setRefreshStatus("");
+    setRefreshStatus("正在刷新新闻…");
+    setRefreshConfirmation("");
     setError(null);
+    const minimumFeedback = new Promise<void>((resolve) => {
+      window.setTimeout(resolve, MINIMUM_REFRESH_FEEDBACK_MS);
+    });
     try {
-      const value = await timesApi.timelineIndex(true);
-      const first = firstTimelineCursor(value);
-      const firstDate = first ? value.dates[first.dateIndex] : undefined;
-      const firstPage = first && firstDate
-        ? await timesApi.timelinePage(firstDate.date, first.page, true)
-        : null;
+      const latest = await fetchLatestTimeline();
+      await minimumFeedback;
       if (generation !== timelineGeneration.current) return;
-      setIndex(value);
-      setPages(firstPage ? [firstPage] : []);
-      setNextCursor(first ? nextTimelineCursor(value, first) : null);
-      if (listViewport.current) listViewport.current.scrollTop = 0;
-      setRefreshStatus(firstPage ? "已拉取最新新闻" : "当前没有新闻");
+      const updateCount = updatedArticleCount(pages, latest.firstPage);
+      applyLatestTimeline(latest, latest.firstPage
+        ? updateCount > 0 ? `已载入 ${updateCount} 条新动态` : "已是最新"
+        : "当前没有新闻", generation);
     } catch (reason) {
+      await minimumFeedback;
       if (generation === timelineGeneration.current) {
-        setError(reason instanceof Error ? reason.message : "最新新闻拉取失败");
-        setRefreshStatus("拉取失败");
+        setError(reason instanceof Error ? reason.message : "最新新闻刷新失败");
+        setRefreshStatus("刷新失败");
+        setRefreshConfirmation("刷新失败，请稍后重试");
       }
     } finally {
       if (generation === timelineGeneration.current) {
@@ -206,7 +266,128 @@ export function TimesHomePage() {
         setRefreshing(false);
       }
     }
+  }, [applyLatestTimeline, fetchLatestTimeline, pages]);
+
+  useEffect(() => {
+    if (!refreshConfirmation) return;
+    const duration = refreshConfirmation === "已是最新"
+      ? LATEST_CONFIRMATION_MS
+      : DEFAULT_CONFIRMATION_MS;
+    const timeout = window.setTimeout(() => setRefreshConfirmation(""), duration);
+    return () => window.clearTimeout(timeout);
+  }, [refreshConfirmation]);
+
+  const checkForLatest = useCallback(async () => {
+    if (!index || loading || refreshingRef.current || checkingLatestRef.current) return;
+    const generation = timelineGeneration.current;
+    checkingLatestRef.current = true;
+    try {
+      const latestIndex = await timesApi.timelineIndex(true);
+      if (generation !== timelineGeneration.current) return;
+      const newestKnownUpdate = pendingLatest?.index.updatedAt && pendingLatest.index.updatedAt > index.updatedAt
+        ? pendingLatest.index.updatedAt
+        : index.updatedAt;
+      if (latestIndex.updatedAt <= newestKnownUpdate) return;
+      const first = firstTimelineCursor(latestIndex);
+      const firstDate = first ? latestIndex.dates[first.dateIndex] : undefined;
+      const firstPage = first && firstDate
+        ? await timesApi.timelinePage(firstDate.date, first.page, true)
+        : null;
+      if (generation !== timelineGeneration.current) return;
+      setPendingLatest({ index: latestIndex, firstPage });
+    } catch {
+      // Background checks stay quiet; an explicit pull surfaces the failure.
+    } finally {
+      checkingLatestRef.current = false;
+    }
+  }, [index, loading, pendingLatest?.index.updatedAt]);
+
+  useEffect(() => {
+    if (!index || loading) return;
+    const checkWhenVisible = () => {
+      if (document.visibilityState === "visible") void checkForLatest();
+    };
+    const interval = window.setInterval(() => void checkForLatest(), LATEST_CHECK_INTERVAL_MS);
+    window.addEventListener("focus", checkForLatest);
+    document.addEventListener("visibilitychange", checkWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", checkForLatest);
+      document.removeEventListener("visibilitychange", checkWhenVisible);
+    };
+  }, [checkForLatest, index, loading]);
+
+  const beginPull = useCallback((clientY: number) => {
+    if (loading || !listViewport.current || listViewport.current.scrollTop > 0 || refreshingRef.current) return;
+    pullStartY.current = clientY;
+    pullDistanceRef.current = 0;
+  }, [loading]);
+
+  const movePull = useCallback((clientY: number) => {
+    if (pullStartY.current === null || !listViewport.current) return;
+    const delta = clientY - pullStartY.current;
+    if (delta <= 0 || listViewport.current.scrollTop > 0) {
+      pullDistanceRef.current = 0;
+      setPullDistance(0);
+      return;
+    }
+    const distance = Math.min(PULL_REFRESH_MAX_DISTANCE, delta * 0.52);
+    pullDistanceRef.current = distance;
+    setPullDistance(distance);
   }, []);
+
+  const finishPull = useCallback((allowRefresh = true) => {
+    const shouldRefresh = allowRefresh && pullDistanceRef.current >= PULL_REFRESH_THRESHOLD;
+    pullStartY.current = null;
+    pullDistanceRef.current = 0;
+    setPullDistance(0);
+    if (shouldRefresh) void refreshLatest();
+  }, [refreshLatest]);
+
+  useEffect(() => {
+    const viewport = listViewport.current;
+    if (!viewport) return;
+
+    const handleTouchStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (touch) beginPull(touch.clientY);
+    };
+    const handleTouchMove = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (!touch) return;
+      movePull(touch.clientY);
+      if (pullDistanceRef.current > 0 && event.cancelable) event.preventDefault();
+    };
+    const handleTouchEnd = () => finishPull();
+    const handleTouchCancel = () => finishPull(false);
+
+    viewport.addEventListener("touchstart", handleTouchStart, { passive: true });
+    viewport.addEventListener("touchmove", handleTouchMove, { passive: false });
+    viewport.addEventListener("touchend", handleTouchEnd);
+    viewport.addEventListener("touchcancel", handleTouchCancel);
+    return () => {
+      viewport.removeEventListener("touchstart", handleTouchStart);
+      viewport.removeEventListener("touchmove", handleTouchMove);
+      viewport.removeEventListener("touchend", handleTouchEnd);
+      viewport.removeEventListener("touchcancel", handleTouchCancel);
+    };
+  }, [beginPull, finishPull, movePull]);
+
+  const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== "mouse" || event.button !== 0) return;
+    beginPull(event.clientY);
+  }, [beginPull]);
+
+  const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== "mouse" || pullStartY.current === null) return;
+    movePull(event.clientY);
+    if (pullDistanceRef.current > 0) {
+      event.preventDefault();
+      if (!event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+      }
+    }
+  }, [movePull]);
 
   const loadedArticleIds = useMemo(
     () => pages.flatMap((page) => page.articles.map((article) => article.id)),
@@ -221,6 +402,21 @@ export function TimesHomePage() {
       .filter((article) => selectedSource === "all" || article.source.id === selectedSource)
       .map((article) => presentTimesArticle(article, languagePreference)),
   [pages, disabledSources, languagePreference, selectedSource]);
+
+  const pendingUpdateCount = useMemo(() => {
+    if (!pendingLatest?.firstPage) return 0;
+    const visibleLatestPage: TimesTimelinePage = {
+      ...pendingLatest.firstPage,
+      articles: pendingLatest.firstPage.articles
+        .filter((article) => !disabledSources.has(article.source.id))
+        .filter((article) => selectedSource === "all" || article.source.id === selectedSource),
+    };
+    return updatedArticleCount(pages, visibleLatestPage);
+  }, [disabledSources, pages, pendingLatest, selectedSource]);
+
+  const showPullIndicator = refreshing || pullDistance > 0;
+  const shownPullDistance = refreshing ? 64 : pullDistance;
+  const pullReady = pullDistance >= PULL_REFRESH_THRESHOLD;
 
   const firstVisibleArticle = visibleArticles[0];
   const activeIssueDate = issueDate || firstVisibleArticle?.issueDate || "";
@@ -321,12 +517,77 @@ export function TimesHomePage() {
               筛选<span aria-hidden="true">⌄</span>
             </span>
           </button>
-          <div className="flex shrink-0 items-center border-l border-rule px-2">
-            <RefreshButton compact refreshing={refreshing} onRefresh={() => void refreshLatest()} />
-          </div>
         </div>
-        <div ref={listViewport} className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
-          <p className="sr-only" aria-live="polite">{refreshStatus}</p>
+        <div
+          ref={listViewport}
+          aria-busy={refreshing}
+          className="relative min-h-0 flex-1 overflow-y-auto overscroll-y-contain"
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={() => finishPull()}
+          onPointerCancel={() => finishPull(false)}
+        >
+          <p className="sr-only" aria-live="polite">
+            {pendingUpdateCount > 0
+              ? `发现 ${pendingUpdateCount} 条新动态`
+              : refreshing ? refreshStatus : ""}
+          </p>
+          <div
+            data-times-pull-indicator
+            aria-hidden="true"
+            className={`pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center transition-[opacity,transform] duration-150 motion-reduce:transition-none ${showPullIndicator ? "opacity-100" : "opacity-0"}`}
+            style={{ transform: `translateY(${shownPullDistance - 40}px)` }}
+          >
+            <span className="grid h-10 w-10 place-content-center border border-ink bg-paper text-red shadow-[3px_3px_0_rgba(32,32,32,0.14)]">
+              <svg
+                viewBox="0 0 20 20"
+                className={`h-5 w-5 ${refreshing ? "motion-safe:animate-spin" : "transition-transform duration-150 motion-reduce:transition-none"}`}
+                style={!refreshing ? { transform: `rotate(${pullReady ? 180 : 0}deg)` } : undefined}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+              >
+                {refreshing ? (
+                  <>
+                    <path d="M16 6.5V2.8l-1.7 1.7A7 7 0 1 0 17 10" />
+                    <path d="M16 2.8h-3.7" />
+                  </>
+                ) : (
+                  <path d="M10 3v12m-4-4 4 4 4-4" />
+                )}
+              </svg>
+            </span>
+          </div>
+          {refreshConfirmation && pendingUpdateCount === 0 ? (
+            <p
+              role="status"
+              className="flex min-h-10 items-center justify-center gap-2 border-b border-rule bg-[var(--app-canvas)] px-4 py-2 font-sans text-xs font-bold text-muted"
+            >
+              <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4 shrink-0 text-red" fill="none" stroke="currentColor" strokeWidth="1.8">
+                {refreshConfirmation.startsWith("刷新失败") ? (
+                  <path d="M4 4l8 8m0-8-8 8" />
+                ) : (
+                  <path d="m3.5 8.5 3 3 6-7" />
+                )}
+              </svg>
+              <span>{refreshConfirmation}</span>
+            </p>
+          ) : null}
+          {pendingUpdateCount > 0 ? (
+            <button
+              type="button"
+              onClick={() => applyLatestTimeline(
+                pendingLatest!,
+                `已载入 ${pendingUpdateCount} 条新动态`,
+              )}
+              className="group flex h-8 w-full items-center justify-center gap-1.5 border-b border-rule bg-paper px-3 font-sans text-xs font-bold text-red transition-colors hover:bg-[var(--app-canvas)] hover:text-red-dark focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-red"
+            >
+              <svg aria-hidden="true" viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M8 13V3M4.5 6.5 8 3l3.5 3.5" />
+              </svg>
+              <span>查看 {pendingUpdateCount} 条新动态</span>
+            </button>
+          ) : null}
           {loading ? <ReadingLoadingState kind="times" status="正在加载新闻…" /> : null}
           {error ? <div role="alert" className="m-5 border-2 border-red bg-paper p-5 font-sans text-sm text-red">{error}</div> : null}
           {visibleArticles.map((article) => (
