@@ -48,7 +48,7 @@ describe("AP source adapter", () => {
       publishedAt: "2026-09-02T14:12:37.000Z",
       updatedAt: "2026-09-02T14:43:57.000Z",
     });
-    expect(apFetch.revision).toBe("story-media-v3");
+    expect(apFetch.revision).toBe("story-media-v4");
   });
 
   it("keeps story paragraphs that follow an inline AP newsletter module", () => {
@@ -78,8 +78,9 @@ describe("AP source adapter", () => {
       <img alt="${caption}" src="data:image/svg+xml,placeholder"></picture>
     </div></div>`;
     const html = `<main><img src="https://example.com/unrelated.jpg" width="1200" height="800">
-      <div class="Carousel-slides">${slide("photo-one", "First AP photo")}${slide("photo-two", "Second AP photo")}</div>
+      <div class="Page-lead"><div class="Carousel-slides">${slide("photo-one", "First AP photo")}${slide("photo-two", "Second AP photo")}</div></div>
       <div class="CarouselOverlay-slidesColumn"><div class="CarouselSlide"><img alt="Duplicate overlay" data-flickity-lazyload="https://dims.apnews.com/overlay-copy.jpg"></div></div>
+      <section class="Page-related"><div class="Carousel-slides">${slide("recommended-story", "Unrelated AP recommendation")}</div></section>
     </main>`;
 
     const images = discoverArticleImages(html, "https://apnews.com/article/example", extractApImages);
@@ -94,13 +95,104 @@ describe("AP source adapter", () => {
     ]);
   });
 
+  it("archives the current AP Page-lead figure with its caption and excludes recommended stories", () => {
+    const caption = "Opposition candidate holds a photo during a campaign rally. (AP Photo/Reporter)";
+    const html = `<html><head>
+      <meta property="og:image" content="https://dims.apnews.com/og-lead.jpg">
+      <meta property="og:image:alt" content="${caption}">
+    </head><body><main>
+      <div class="Page-lead"><bsp-figure><figure class="Figure"><picture>
+        <source media="(min-width: 1280px)" type="image/webp" width="980" height="653" srcset="https://dims.apnews.com/story-lead.webp 1x">
+        <img class="Image" src="https://dims.apnews.com/story-lead-small.jpg" width="320" height="213" alt="${caption}">
+      </picture><div class="Figure-content"><figcaption class="Figure-caption"><p>
+        Opposition candidate holds a photo during a campaign rally.   (AP Photo/Reporter)
+      </p></figcaption></div></figure></bsp-figure></div>
+      <div class="RichTextStoryBody"><p>The article body contains the publisher's reporting.</p></div>
+      <section class="Page-related"><div class="PagePromo"><img src="https://dims.apnews.com/recommended.jpg" width="980" height="653" alt="Another AP story"></div></section>
+    </main></body></html>`;
+
+    const images = discoverArticleImages(html, "https://apnews.com/article/example", extractApImages);
+    expect(images).toEqual([{
+      sourceUrl: "https://dims.apnews.com/story-lead.webp",
+      role: "lead",
+      alt: caption,
+      caption,
+      width: 980,
+      height: 653,
+    }]);
+    const attached = attachAssetsToBody("<p>The article body contains the publisher's reporting.</p>", [{
+      ...images[0]!,
+      id: "ap-lead",
+      type: "image",
+      rawObject: "raw/ap/assets/lead.webp",
+      mediaType: "image/webp",
+      size: 1,
+      sha256: "ap-lead",
+    }]);
+    expect(attached).toContain(`<figure data-asset-id="ap-lead"><figcaption>${caption}</figcaption></figure>`);
+  });
+
+  it("uses AP's image description when only publisher metadata is available", () => {
+    const html = `<html><head>
+      <meta property="og:image" content="/lead.jpg">
+      <meta property="og:image:alt" content="  Publisher photo description.  ">
+      <meta property="og:image:width" content="980">
+      <meta property="og:image:height" content="653">
+    </head><body><main>
+      <section class="Page-related"><div class="Carousel-slides">
+        <div class="Carousel-slide"><div class="CarouselSlide"><img src="/unrelated.jpg" alt="Unrelated story"></div></div>
+      </div></section>
+    </main></body></html>`;
+
+    expect(extractApImages(html, "https://apnews.com/article/example")).toEqual([{
+      sourceUrl: "https://apnews.com/lead.jpg",
+      role: "lead",
+      alt: "Publisher photo description.",
+      caption: "Publisher photo description.",
+      width: 980,
+      height: 653,
+    }]);
+  });
+
+  it("keeps AP inline figures at their article-body position without collecting related promos", () => {
+    const html = `<main>
+      <div class="Page-lead"><figure><img src="/lead.jpg" width="1200" height="800" alt="Lead photo"></figure></div>
+      <div class="RichTextStoryBody">
+        <p>The first paragraph appears before the inline photograph.</p>
+        <bsp-figure><figure class="Figure"><picture>
+          <source width="1200" height="800" srcset="/inline-large.jpg 1x">
+          <img src="/inline-small.jpg" width="320" height="213" alt="Inline photo description">
+        </picture><figcaption>Inline photo caption. (AP Photo/Reporter)</figcaption></figure></bsp-figure>
+        <p>The second paragraph appears after the inline photograph.</p>
+        <aside class="RelatedStories"><figure><img src="/recommended.jpg" width="1200" height="800" alt="Recommended story"></figure></aside>
+      </div>
+    </main>`;
+
+    expect(extractApImages(html, "https://apnews.com/article/example")).toEqual([
+      expect.objectContaining({
+        sourceUrl: "https://apnews.com/lead.jpg",
+        role: "lead",
+        caption: "Lead photo",
+      }),
+      expect.objectContaining({
+        sourceUrl: "https://apnews.com/inline-large.jpg",
+        role: "content",
+        afterBlock: 1,
+        alt: "Inline photo description",
+        caption: "Inline photo caption. (AP Photo/Reporter)",
+      }),
+    ]);
+    expect(extractApImages(html, "https://apnews.com/article/example").map((image) => image.sourceUrl))
+      .not.toContain("https://apnews.com/recommended.jpg");
+  });
+
   it("keeps the AP carousel ahead of the first body block when attaching body and images", () => {
     const pageUrl = "https://apnews.com/article/ordered-gallery";
     const slide = (id: string, caption: string) => `<div class="Carousel-slide"><div class="CarouselSlide">
       <img alt="${caption}" data-flickity-lazyload="/${id}.jpg" width="1200" height="800">
     </div></div>`;
     const html = `<main>
-      <div class="Carousel-slides">${slide("lead", "Lead AP image")}${slide("second", "Second AP image")}</div>
+      <div class="Page-lead"><div class="Carousel-slides">${slide("lead", "Lead AP image")}${slide("second", "Second AP image")}</div></div>
       <div class="RichTextStoryBody">
         <p>The first AP paragraph contains enough reporting detail to establish the start of the article body.</p>
         <p>The second AP paragraph adds context and confirms that the gallery remains ahead of the prose.</p>
