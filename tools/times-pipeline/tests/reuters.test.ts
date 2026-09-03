@@ -123,4 +123,38 @@ describe("Reuters publisher metadata", () => {
       }),
     ]);
   });
+
+  it("excludes Reuters' default topic thumbnail without hiding editorial logo photos", () => {
+    const defaultThumbnail = {
+      type: "image",
+      id: "466BJJQ7PVGY5O53NZ3KL65MHM",
+      url: "https://cloudfront.example.test/reuters-default.png",
+      resizer_url: "https://www.reuters.com/resizer/v2/reuters-default.png",
+      width: 1_024,
+      height: 740,
+      alt_text: "Reuters logo",
+      subtitle: "TOPIC:DEFAULT_TOPIC_THUMBNAIL",
+    };
+    const editorialImage = {
+      type: "image",
+      url: "https://cloudfront.example.test/editorial-logo.jpg",
+      resizer_url: "https://www.reuters.com/resizer/v2/editorial-logo.jpg",
+      width: 3_000,
+      height: 2_000,
+      alt_text: "Illustration shows a company logo",
+      caption: "A company logo appears in an editorial illustration.",
+    };
+    const html = `<script id="fusion-metadata">Fusion.globalContent=${JSON.stringify({
+      statusCode: 200,
+      result: { thumbnail: defaultThumbnail, promo_items: { images: [defaultThumbnail, editorialImage] } },
+    })};Fusion.contentCache={};</script>`;
+
+    expect(discoverArticleImages(html, "https://www.reuters.com/business/example", extractReutersImages)).toEqual([
+      expect.objectContaining({
+        sourceUrl: "https://www.reuters.com/resizer/v2/editorial-logo.jpg?width=1920&quality=85",
+        role: "lead",
+        alt: "Illustration shows a company logo",
+      }),
+    ]);
+  });
 });

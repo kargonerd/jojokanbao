@@ -60,6 +60,7 @@ function imageCandidate(
 ): PageImageCandidate | undefined {
   const image = reutersObject(value);
   if (image?.type !== "image") return undefined;
+  if (string(image.subtitle)?.toUpperCase() === "TOPIC:DEFAULT_TOPIC_THUMBNAIL") return undefined;
   const delivered = deliveryImage(image, pageUrl);
   const sourceUrl = delivered.sourceUrl;
   if (!sourceUrl) return undefined;
