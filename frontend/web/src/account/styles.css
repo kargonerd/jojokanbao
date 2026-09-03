@@ -629,6 +629,62 @@
   opacity: 0.68;
 }
 
+.book-password-input {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.book-password-input > input {
+  display: block;
+  padding-right: 3rem;
+}
+
+.book-password-input__toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: grid;
+  width: 2.75rem;
+  height: 100%;
+  min-height: 2.55rem;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  color: currentColor;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.58;
+}
+
+.book-password-input__toggle svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.book-password-input__toggle:hover,
+.book-password-input__toggle[aria-pressed="true"] {
+  color: var(--book-red);
+  opacity: 1;
+}
+
+.book-password-input__toggle:focus-visible {
+  outline: 2px solid var(--book-red);
+  outline-offset: -4px;
+  opacity: 1;
+}
+
+.book-password-input__toggle:disabled {
+  cursor: wait;
+  opacity: 0.35;
+}
+
 .book-account-form__fields > button {
   min-height: 3.2rem;
   margin-top: 0.55rem;

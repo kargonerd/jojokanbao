@@ -191,6 +191,12 @@ describe("account center", () => {
     render(<MemoryRouter><AccountLogin /></MemoryRouter>);
     fireEvent.click(screen.getByRole("button", { name: "修改密码" }));
     const dialog = screen.getByRole("dialog", { name: "修改密码" });
+    const currentPassword = within(dialog).getByLabelText("当前密码") as HTMLInputElement;
+    expect(currentPassword.type).toBe("password");
+    fireEvent.click(within(dialog).getByRole("button", { name: "显示当前密码" }));
+    expect(currentPassword.type).toBe("text");
+    expect(within(dialog).getByRole("button", { name: "显示新密码" })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "显示确认新密码" })).toBeTruthy();
     fireEvent.change(within(dialog).getByLabelText("当前密码"), { target: { value: "old-password" } });
     fireEvent.change(within(dialog).getByLabelText("新密码"), { target: { value: "new-password" } });
     fireEvent.change(within(dialog).getByLabelText("再次输入新密码"), { target: { value: "new-password" } });
@@ -239,6 +245,7 @@ describe("account center", () => {
 
     const dialog = screen.getByRole("dialog", { name: "注销账号" });
     expect(within(dialog).getByLabelText("当前密码")).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "显示当前密码" })).toBeTruthy();
     expect(within(dialog).getByLabelText("输入“注销账号”确认")).toBeTruthy();
     expect(within(dialog).getByRole("button", { name: "永久注销账号" })).toBeTruthy();
   });

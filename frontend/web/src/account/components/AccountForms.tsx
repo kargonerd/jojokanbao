@@ -1,4 +1,5 @@
 import type { FormEvent } from "react";
+import { PasswordInput } from "./PasswordInput";
 
 interface FeedbackProps {
   error: string | null;
@@ -108,14 +109,16 @@ export function LoginForm({
       </label>
       <label>
         <span>密码</span>
-        <input
-          type="password"
+        <PasswordInput
+          aria-label="密码"
           name="password"
           placeholder="输入密码"
           autoComplete="current-password"
           value={password}
           disabled={busy}
           required
+          showLabel="显示登录密码"
+          hideLabel="隐藏登录密码"
           onChange={(event) => onPasswordChange(event.target.value)}
         />
       </label>
@@ -226,8 +229,8 @@ export function RegisterForm({
       </label>
       <label>
         <span>密码</span>
-        <input
-          type="password"
+        <PasswordInput
+          aria-label="密码"
           name="registrationPassword"
           placeholder="至少 8 位字符"
           autoComplete="new-password"
@@ -235,13 +238,15 @@ export function RegisterForm({
           value={password}
           disabled={busy}
           required
+          showLabel="显示注册密码"
+          hideLabel="隐藏注册密码"
           onChange={(event) => onPasswordChange(event.target.value)}
         />
       </label>
       <label>
         <span>再次输入密码</span>
-        <input
-          type="password"
+        <PasswordInput
+          aria-label="再次输入密码"
           name="registrationPasswordConfirmation"
           placeholder="重复输入密码"
           autoComplete="new-password"
@@ -249,6 +254,8 @@ export function RegisterForm({
           value={passwordConfirmation}
           disabled={busy}
           required
+          showLabel="显示确认密码"
+          hideLabel="隐藏确认密码"
           onChange={(event) => onPasswordConfirmationChange(event.target.value)}
         />
       </label>
@@ -341,25 +348,29 @@ export function RecoveryForm({
         <>
           <label>
             <span>新密码</span>
-            <input
-              type="password"
+            <PasswordInput
+              aria-label="新密码"
               autoComplete="new-password"
               minLength={8}
               value={password}
               disabled={busy}
               required
+              showLabel="显示新密码"
+              hideLabel="隐藏新密码"
               onChange={(event) => onPasswordChange(event.target.value)}
             />
           </label>
           <label>
             <span>再次输入新密码</span>
-            <input
-              type="password"
+            <PasswordInput
+              aria-label="再次输入新密码"
               autoComplete="new-password"
               minLength={8}
               value={passwordConfirmation}
               disabled={busy}
               required
+              showLabel="显示确认新密码"
+              hideLabel="隐藏确认新密码"
               onChange={(event) => onPasswordConfirmationChange(event.target.value)}
             />
           </label>
