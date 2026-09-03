@@ -1,3 +1,4 @@
+import Ionicons from "@expo/vector-icons/Ionicons";
 import {
   ARCHIVE_PUBLICATIONS,
   dateToIssueId,
@@ -31,10 +32,10 @@ type LibraryItem =
   | { kind: "periodical"; publication: ArchivePublicationSummary }
   | { kind: "book"; book: MobileBook };
 
-const libraryTypes: Array<{ id: LibraryType; label: string }> = [
-  { id: "all", label: "全部" },
-  { id: "periodical", label: "报刊" },
-  { id: "book", label: "书籍" },
+const libraryTypes: Array<{ id: LibraryType; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
+  { id: "all", label: "全部", icon: "grid-outline" },
+  { id: "periodical", label: "报刊", icon: "newspaper-outline" },
+  { id: "book", label: "书籍", icon: "book-outline" },
 ];
 
 const newspaperBounds = {
@@ -114,9 +115,9 @@ export function LibraryScreen() {
   const busy = loading;
 
   return (
-    <SafeAreaView edges={["top"]} style={[styles.safe, { backgroundColor: theme.paper }]}>
-      <ScreenHeader title="资料库" />
-      <View accessibilityRole="tablist" style={[styles.types, { borderBottomColor: theme.rule }]}>
+    <SafeAreaView edges={["top"]} style={[styles.safe, { backgroundColor: theme.canvas }]}>
+      <ScreenHeader title="资料库" showAccount />
+      <View accessibilityRole="tablist" style={[styles.types, { borderBottomColor: theme.rule, backgroundColor: theme.paper }]}>
           {libraryTypes.map((item) => {
             const selected = item.id === type;
             return (
@@ -127,6 +128,7 @@ export function LibraryScreen() {
                 onPress={() => { setType(item.id); setQuery(""); }}
                 style={[styles.typeButton, selected && { borderBottomColor: theme.red, borderBottomWidth: 2 }]}
               >
+                <Ionicons name={item.icon} size={18} color={selected ? theme.red : theme.ink} />
                 <Text style={[styles.typeText, { color: selected ? theme.red : theme.muted, fontFamily: theme.sans }]}>{item.label}</Text>
               </Pressable>
             );
@@ -134,6 +136,7 @@ export function LibraryScreen() {
       </View>
 
       <View style={[styles.search, { borderColor: theme.ruleDark, backgroundColor: theme.paper }]}>
+        <Ionicons name="search-outline" size={18} color={theme.muted} />
         <TextInput
           value={query}
           onChangeText={setQuery}
@@ -163,7 +166,14 @@ export function LibraryScreen() {
                 onPickDate={item.publication.type === "newspaper" ? () => pickDate(item.publication) : undefined}
               />
             ) : (
-              <BookCoverCard book={item.book} title={item.book.title} onPress={() => openBook(item.book)} />
+              <BookCoverCard
+                book={item.book}
+                title={item.book.title}
+                subtitle={item.book.itemCount && item.book.itemCount > 1
+                  ? `${item.book.itemCount} 册 · 选择分册`
+                  : "单册 · 直接阅读"}
+                onPress={() => openBook(item.book)}
+              />
             )}
           </View>
         )}
@@ -208,14 +218,14 @@ export function LibraryScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  types: { height: 51, paddingHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", gap: 28 },
-  typeButton: { height: 51, alignItems: "center", justifyContent: "center", borderBottomColor: "transparent" },
-  typeText: { fontSize: 14, fontWeight: "800" },
-  search: { height: 46, marginHorizontal: 18, marginTop: 14, borderWidth: 1, justifyContent: "center" },
-  input: { height: 44, paddingHorizontal: 13, fontSize: 13 },
-  notice: { marginHorizontal: 18, marginTop: 12, borderWidth: StyleSheet.hairlineWidth, padding: 10, fontSize: 11, lineHeight: 17 },
-  list: { flexGrow: 1, paddingHorizontal: 18, paddingTop: 18, paddingBottom: 34 },
-  row: { gap: 13, marginBottom: 22 },
+  types: { height: 65, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row" },
+  typeButton: { height: 65, flex: 1, gap: 3, alignItems: "center", justifyContent: "center", borderBottomColor: "transparent" },
+  typeText: { fontSize: 12, lineHeight: 16, fontWeight: "800" },
+  search: { height: 53, marginHorizontal: 20, marginTop: 28, borderWidth: 1, paddingHorizontal: 13, flexDirection: "row", alignItems: "center", gap: 9 },
+  input: { height: 51, flex: 1, minWidth: 0, paddingVertical: 0, fontSize: 14 },
+  notice: { marginHorizontal: 20, marginTop: 12, borderLeftWidth: 2, padding: 10, fontSize: 11, lineHeight: 17 },
+  list: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 28, paddingBottom: 40 },
+  row: { gap: 16, marginBottom: 24 },
   cell: { flexGrow: 0 },
   loading: { paddingVertical: 18, alignItems: "center", gap: 8 },
   loadingText: { fontSize: 11, fontWeight: "700" },
