@@ -73,6 +73,8 @@ const LATEST_CHECK_INTERVAL_MS = 60_000;
 const PULL_REFRESH_THRESHOLD = 68;
 const PULL_REFRESH_MAX_DISTANCE = 104;
 const MINIMUM_REFRESH_FEEDBACK_MS = 700;
+const LATEST_CONFIRMATION_MS = 1_500;
+const DEFAULT_CONFIRMATION_MS = 2_800;
 
 function firstTimelineCursor(index: TimesTimelineIndex): TimelineCursor | null {
   const dateIndex = index.dates.findIndex((date) => timesTimelinePageCount(date) > 0);
@@ -268,7 +270,10 @@ export function TimesHomePage() {
 
   useEffect(() => {
     if (!refreshConfirmation) return;
-    const timeout = window.setTimeout(() => setRefreshConfirmation(""), 2_800);
+    const duration = refreshConfirmation === "已是最新"
+      ? LATEST_CONFIRMATION_MS
+      : DEFAULT_CONFIRMATION_MS;
+    const timeout = window.setTimeout(() => setRefreshConfirmation(""), duration);
     return () => window.clearTimeout(timeout);
   }, [refreshConfirmation]);
 
