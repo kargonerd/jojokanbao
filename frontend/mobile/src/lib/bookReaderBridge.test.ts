@@ -71,6 +71,7 @@ describe("book reader bridge", () => {
     expect(legacyResumeScript).toContain("var restoreChapterProgress = 0.42");
     expect(legacyResumeScript).toContain("Math.floor(restoreChapterProgress * spreadCount)");
     expect(startScript).toContain('document.addEventListener("contextmenu"');
+    expect(startScript).toContain('document.addEventListener("selectionchange"');
     expect(endScript).toContain("startAtEnd = true");
   });
 

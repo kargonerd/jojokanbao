@@ -511,6 +511,7 @@ export function createBookReaderBridgeScript(
       }
 
       document.addEventListener("mouseup", function () { window.setTimeout(reportSelection, 0); });
+      document.addEventListener("selectionchange", function () { window.setTimeout(reportSelection, 0); }, { passive: true });
       document.addEventListener("contextmenu", function (event) { event.preventDefault(); });
       if (!paged) {
         document.addEventListener("scroll", function () {
