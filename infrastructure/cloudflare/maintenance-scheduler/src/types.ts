@@ -4,13 +4,18 @@ export interface SchedulerEnv {
   GITHUB_OWNER: string;
   GITHUB_REPO: string;
   GITHUB_REF: string;
-  HEALTHCHECKS_SCHEDULER_URL?: string;
-  HEALTHCHECKS_TIMES_SCHEDULER_URL?: string;
-  HEALTHCHECKS_TIMES_PIPELINE_URL?: string;
-  HEALTHCHECKS_RMRB_SYNC_URL?: string;
+  HEALTHCHECKS_API_KEY?: string;
 }
 
-export type TaskHealthcheckBinding = `HEALTHCHECKS_${string}_URL`;
+export interface HealthcheckDefinition {
+  name: string;
+  slug: string;
+  schedule: string;
+  timeZone: string;
+  graceSeconds: number;
+  tags: string;
+  description: string;
+}
 
 export interface ScheduledSlot {
   id: string;
@@ -36,10 +41,20 @@ export interface ScheduledTask {
   skipWhileWorkflowActive: boolean;
   maxAttempts: number;
   retryDelayMinutes: number;
-  healthcheckBinding: TaskHealthcheckBinding;
+  monitoring: {
+    name: string;
+    graceSeconds: number;
+    tags: string;
+    description: string;
+  };
   inputs(context: TaskInputContext): Record<string, string>;
 }
 
-export function taskHealthcheckUrl(task: ScheduledTask, env: SchedulerEnv): string | undefined {
-  return env[task.healthcheckBinding];
+export function taskHealthcheck(task: ScheduledTask): HealthcheckDefinition {
+  return {
+    ...task.monitoring,
+    slug: task.id,
+    schedule: task.cron,
+    timeZone: task.timeZone,
+  };
 }

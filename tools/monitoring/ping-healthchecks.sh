@@ -3,6 +3,7 @@
 set -uo pipefail
 
 ping_url="${HEALTHCHECKS_PING_URL:-}"
+ping_key="${HEALTHCHECKS_PING_KEY:-}"
 signal="${HEALTHCHECKS_SIGNAL:-success}"
 task_id="${HEALTHCHECKS_TASK_ID:-unknown}"
 stage="${HEALTHCHECKS_STAGE:-scheduled-job}"
@@ -12,8 +13,16 @@ scheduled_at="${HEALTHCHECKS_SCHEDULED_AT:-}"
 slot_id="${HEALTHCHECKS_SLOT_ID:-}"
 run_url="${HEALTHCHECKS_RUN_URL:-}"
 
+if [ -n "$ping_key" ]; then
+  if ! [[ "$task_id" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+    echo "Invalid Healthchecks task id for project ping key: ${task_id}" >&2
+    exit 2
+  fi
+  ping_url="https://hc-ping.com/${ping_key}/${task_id}"
+fi
+
 if [ -z "$ping_url" ]; then
-  echo "::warning::Healthchecks ping URL is not configured for ${stage}."
+  echo "::warning::Healthchecks project ping key or legacy ping URL is not configured for ${stage}."
   exit 0
 fi
 

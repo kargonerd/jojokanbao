@@ -68,7 +68,7 @@ jobs:
       TIMES_RUNTIME_ROOT: ${{ github.workspace }}/.times-runtime
       JOJO_TIMES_PROXY_URI: ${{ secrets.JOJO_TIMES_PROXY_URI }}
       JOJO_TIMES_PROXY_SUBSCRIPTION: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION }}
-      HEALTHCHECKS_TIMES_PIPELINE_URL: ${{ secrets.HEALTHCHECKS_TIMES_PIPELINE_URL }}
+      HEALTHCHECKS_PING_KEY: ${{ secrets.HEALTHCHECKS_PING_KEY }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -376,7 +376,6 @@ jobs:
         if: ${{ always() && inputs.automatic && job.status != 'success' }}
         continue-on-error: true
         env:
-          HEALTHCHECKS_PING_URL: ${{ env.HEALTHCHECKS_TIMES_PIPELINE_URL }}
           HEALTHCHECKS_SIGNAL: fail
           HEALTHCHECKS_TASK_ID: times-capture
           HEALTHCHECKS_STAGE: times-capture

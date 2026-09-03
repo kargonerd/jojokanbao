@@ -1,9 +1,13 @@
 import { dispatchScheduledTask, type DispatchResult } from "./dispatch";
-import { pingHealthcheckBestEffort } from "./healthchecks";
+import {
+  provisionHealthcheckBestEffort,
+  reportHealthcheckBestEffort,
+} from "./healthchecks";
 import { resolveScheduledSlot } from "./schedule";
 import { SCHEDULED_TASKS } from "./tasks";
 import {
-  taskHealthcheckUrl,
+  taskHealthcheck,
+  type HealthcheckDefinition,
   type ScheduledTask,
   type SchedulerEnv,
 } from "./types";
@@ -19,9 +23,15 @@ interface TaskTickResult {
   dispatch?: DispatchResult;
 }
 
-function schedulerHealthcheckUrl(env: SchedulerEnv): string | undefined {
-  return env.HEALTHCHECKS_SCHEDULER_URL ?? env.HEALTHCHECKS_TIMES_SCHEDULER_URL;
-}
+const SCHEDULER_HEALTHCHECK = {
+  name: "JOJO · maintenance-scheduler",
+  slug: "maintenance-scheduler",
+  schedule: "* * * * *",
+  timeZone: "UTC",
+  graceSeconds: 3 * 60,
+  tags: "jojo production maintenance scheduler",
+  description: "Cloudflare one-minute maintenance scheduler heartbeat.",
+} satisfies HealthcheckDefinition;
 
 export async function handleScheduled(
   controller: ScheduledController,
@@ -46,6 +56,7 @@ export async function handleScheduled(
   );
 
   const reports: Array<Promise<void>> = [];
+  const reportedTasks = new Set<string>();
   let dueTasks = 0;
   let dispatchedTasks = 0;
   let failedTasks = 0;
@@ -64,17 +75,23 @@ export async function handleScheduled(
         failureType: "dispatch-failed",
         error,
       }));
-      reports.push(pingHealthcheckBestEffort(taskHealthcheckUrl(task, env), "fail", {
-        fetcher: options.fetcher,
-        payload: {
-          taskId: task.id,
-          stage: "scheduler-dispatch",
-          status: "failed",
-          failureType: "dispatch-failed",
-          observedAt,
-          error,
+      reportedTasks.add(task.id);
+      reports.push(reportHealthcheckBestEffort(
+        taskHealthcheck(task),
+        env.HEALTHCHECKS_API_KEY,
+        "fail",
+        {
+          fetcher: options.fetcher,
+          payload: {
+            taskId: task.id,
+            stage: "scheduler-dispatch",
+            status: "failed",
+            failureType: "dispatch-failed",
+            observedAt,
+            error,
+          },
         },
-      }));
+      ));
       return;
     }
 
@@ -83,28 +100,49 @@ export async function handleScheduled(
     if (result.value.dispatch.outcome !== "dispatched") return;
 
     dispatchedTasks += 1;
-    reports.push(pingHealthcheckBestEffort(taskHealthcheckUrl(task, env), "start", {
-      fetcher: options.fetcher,
-      payload: {
-        ...result.value.dispatch,
-        stage: "scheduler-dispatch",
-        status: "dispatched",
-        observedAt,
+    reportedTasks.add(task.id);
+    reports.push(reportHealthcheckBestEffort(
+      taskHealthcheck(task),
+      env.HEALTHCHECKS_API_KEY,
+      "start",
+      {
+        fetcher: options.fetcher,
+        payload: {
+          ...result.value.dispatch,
+          stage: "scheduler-dispatch",
+          status: "dispatched",
+          observedAt,
+        },
       },
-    }));
+    ));
   });
 
-  reports.push(pingHealthcheckBestEffort(schedulerHealthcheckUrl(env), "success", {
-    fetcher: options.fetcher,
-    payload: {
-      stage: "maintenance-scheduler",
-      status: "completed",
-      observedAt,
-      dueTasks,
-      dispatchedTasks,
-      failedTasks,
+  for (const task of tasks) {
+    if (!reportedTasks.has(task.id)) {
+      reports.push(provisionHealthcheckBestEffort(
+        taskHealthcheck(task),
+        env.HEALTHCHECKS_API_KEY,
+        { fetcher: options.fetcher },
+      ));
+    }
+  }
+
+  reports.push(reportHealthcheckBestEffort(
+    SCHEDULER_HEALTHCHECK,
+    env.HEALTHCHECKS_API_KEY,
+    "success",
+    {
+      fetcher: options.fetcher,
+      payload: {
+        stage: "maintenance-scheduler",
+        status: "completed",
+        observedAt,
+        dueTasks,
+        dispatchedTasks,
+        failedTasks,
+      },
     },
-  }));
+  ));
   await Promise.all(reports);
 
   console.log(JSON.stringify({

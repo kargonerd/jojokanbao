@@ -31,7 +31,7 @@ jobs:
     env:
       HF_TOKEN: ${{ secrets.HF_TIMES_RUNTIME_TOKEN }}
       HF_TIMES_RUNTIME_BUCKET: ${{ vars.HF_TIMES_RUNTIME_BUCKET || secrets.HF_TIMES_RUNTIME_BUCKET }}
-      HEALTHCHECKS_TIMES_PIPELINE_URL: ${{ secrets.HEALTHCHECKS_TIMES_PIPELINE_URL }}
+      HEALTHCHECKS_PING_KEY: ${{ secrets.HEALTHCHECKS_PING_KEY }}
       TIMES_CLEANUP_APPLY: ${{ github.event_name == 'schedule' || inputs.apply }}
       TIMES_CLEANUP_MAX_JOBS: ${{ inputs.max_delete_jobs || '100' }}
     steps:
@@ -91,8 +91,8 @@ jobs:
       - name: Alert on deleted unfinished jobs
         if: always()
         env:
-          HEALTHCHECKS_PING_URL: ${{ env.HEALTHCHECKS_TIMES_PIPELINE_URL }}
           HEALTHCHECKS_SIGNAL: fail
+          HEALTHCHECKS_TASK_ID: times-capture
           HEALTHCHECKS_STAGE: times-runtime-cleanup
           HEALTHCHECKS_STATUS: stale-unfinished-jobs
           HEALTHCHECKS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

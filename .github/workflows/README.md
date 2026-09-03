@@ -105,20 +105,16 @@ GitHub-hosted runners.
 
 ## Maintenance monitoring
 
-Healthchecks.io provides the external dead-man switch, with a Feishu webhook
-assigned to each check. The maintenance environment holds private ping URLs in
-these secrets:
+Healthchecks.io provides the external dead-man switch. The GitHub `maintenance`
+environment holds one project-level `HEALTHCHECKS_PING_KEY`; every scheduled
+workflow derives its check from the configured task id. The Cloudflare Worker
+holds one project-level `HEALTHCHECKS_API_KEY` and automatically creates or
+updates each task check, including its cron, timezone, grace period, metadata,
+and all existing project integrations. New tasks do not need a new check or
+secret; see the scheduler README for one-time provisioning and legacy-check
+migration.
 
-- `HEALTHCHECKS_TIMES_PIPELINE_URL` — shared by automatic Capture and Process;
-  Capture reports only failure, and Process reports the final pipeline outcome
-- `HEALTHCHECKS_RMRB_SYNC_URL` — Cloudflare reports accepted dispatches,
-  automatic RMRB runs attach their actual execution start as a log, and the
-  workflow reports its final outcome; manual runs do not affect the production
-  check
-
-The Cloudflare scheduler separately holds `HEALTHCHECKS_TIMES_SCHEDULER_URL`,
-`HEALTHCHECKS_TIMES_PIPELINE_URL`, and `HEALTHCHECKS_RMRB_SYNC_URL`; see its
-README for provisioning commands. Monitoring calls use
+Monitoring calls use
 `tools/monitoring/ping-healthchecks.sh`, attach task, slot, failure type, and
 GitHub run diagnostics, and are best effort so a monitoring outage cannot block
 data publication. A missing success ping still produces an alert after the

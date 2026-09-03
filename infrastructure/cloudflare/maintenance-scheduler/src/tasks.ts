@@ -12,7 +12,13 @@ export const SCHEDULED_TASKS = [
     skipWhileWorkflowActive: true,
     maxAttempts: 1,
     retryDelayMinutes: 0,
-    healthcheckBinding: "HEALTHCHECKS_TIMES_PIPELINE_URL",
+    monitoring: {
+      name: "JOJO · times-capture",
+      // Capture and Process can consume their full 35 + 40 minute budgets.
+      graceSeconds: 90 * 60,
+      tags: "jojo production maintenance times",
+      description: "Cloudflare dispatch through final Times Process completion.",
+    },
     inputs: ({ slot }) => ({
       automatic: "true",
       publish: "true",
@@ -32,7 +38,12 @@ export const SCHEDULED_TASKS = [
     skipWhileWorkflowActive: true,
     maxAttempts: 3,
     retryDelayMinutes: 15,
-    healthcheckBinding: "HEALTHCHECKS_RMRB_SYNC_URL",
+    monitoring: {
+      name: "JOJO · rmrb-sync",
+      graceSeconds: 45 * 60,
+      tags: "jojo production maintenance rmrb",
+      description: "Daily RMRB PDF dispatch and synchronization outcome.",
+    },
     inputs: ({ slot }) => ({
       automatic: "true",
       date: compactDateAt(slot.scheduledAtMs, "Asia/Shanghai"),
@@ -70,6 +81,9 @@ export function validateScheduledTasks(tasks: readonly ScheduledTask[] = SCHEDUL
     }
     if (!Number.isInteger(task.retryDelayMinutes) || task.retryDelayMinutes < 0) {
       throw new Error(`Scheduled task retry delay must be non-negative: ${task.id}`);
+    }
+    if (!Number.isInteger(task.monitoring.graceSeconds) || task.monitoring.graceSeconds < 60) {
+      throw new Error(`Scheduled task monitoring grace must be at least one minute: ${task.id}`);
     }
 
     // Parse every cron expression in CI even when the task is not due at the
