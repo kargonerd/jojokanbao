@@ -284,7 +284,7 @@ describe("news Delivery writer", () => {
     expect(manifest.metadata.articles.map((row) => row.id)).toEqual([keptId]);
   });
 
-  it("removes NYT live deep updates and moves a refreshed live parent to its new date", async () => {
+  it("removes NYT live parents and deep updates from retained delivery data", async () => {
     const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "jojo-news-nyt-live-workspace-"));
     const deliveryRoot = await mkdtemp(path.join(os.tmpdir(), "jojo-news-nyt-live-output-"));
     const nyt: SourceConfig = {
@@ -397,22 +397,19 @@ describe("news Delivery writer", () => {
     );
     expect(oldDay.articles).toEqual([]);
     const newDayObject = `content/timeline/dates/2026/08/${newDate}.jox`;
-    const newDay = await gunzipJoxJson<TimesTimelineDay>(
-      new Uint8Array(await readFile(path.join(deliveryRoot, ...newDayObject.split("/")))),
-      newDayObject,
-    );
-    expect(newDay.articles).toEqual([expect.objectContaining({ id: liveId, title: "Updated live coverage" })]);
+    await expect(readFile(path.join(deliveryRoot, ...newDayObject.split("/"))))
+      .rejects.toMatchObject({ code: "ENOENT" });
     const indexObject = "content/timeline/index.jox";
     const index = await gunzipJoxJson<TimesTimelineIndex>(
       new Uint8Array(await readFile(path.join(deliveryRoot, ...indexObject.split("/")))),
       indexObject,
     );
-    expect(index.dates.map((date) => date.date)).toEqual([newDate]);
+    expect(index.dates).toEqual([]);
     const sourceIndexObject = "content/newspapers/nyt/index.jox";
     const sourceIndex = await gunzipJoxJson<TimesSourceIndex>(
       new Uint8Array(await readFile(path.join(deliveryRoot, ...sourceIndexObject.split("/")))),
       sourceIndexObject,
     );
-    expect(sourceIndex.items.map((item) => item.itemKey)).toEqual([newDate]);
+    expect(sourceIndex.items).toEqual([]);
   });
 });
