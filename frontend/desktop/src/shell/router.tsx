@@ -20,20 +20,20 @@ import {
   PUBLICATION_NAMES,
   HomePage,
   AppLayout,
-  APP_NAVIGATION_ITEMS,
+  buildAppNavigationItems,
+  NotificationsPage,
   RagRoutes,
   SearchPage,
   SupportPage,
+  TimesRoutes,
+  TimesSourceSettingsPage,
   defaultArchiveIssuePath,
   refreshFeatureFlags,
   startAccountSessionSync,
-  type AppNavigationItem,
   useAccountSessionStore,
 } from '@jojo/web/desktop';
 import { SettingsPage } from './SettingsPage';
 
-const coreDesktopNavigation = APP_NAVIGATION_ITEMS.filter((item) => item.href !== '/support');
-const aboutDesktopNavigation = APP_NAVIGATION_ITEMS.filter((item) => item.href === '/support');
 const AccountConfirmation = lazy(() => import('@jojo/web/account-confirmation'));
 
 function DesktopRuntime() {
@@ -46,7 +46,8 @@ function DesktopRuntime() {
   }, [accountInitialized, userId]);
   useEffect(() => {
     if (accountInitialized) {
-      window.jojoDesktop?.setFeatureAvailability?.({ rag: Boolean(userId) });
+      const authenticated = Boolean(userId);
+      window.jojoDesktop?.setFeatureAvailability?.({ rag: authenticated, times: authenticated });
     }
   }, [accountInitialized, userId]);
   return null;
@@ -56,14 +57,10 @@ function DesktopRuntimeLayout() {
   return <><DesktopRuntime /><Outlet /></>;
 }
 
-function useDesktopNavigation(): readonly AppNavigationItem[] {
+function useDesktopNavigation() {
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
-  return [
-    ...coreDesktopNavigation,
-    ...(accountInitialized && userId ? [{ label: 'AI', href: '/rag', badge: 'Beta' }] : []),
-    ...aboutDesktopNavigation,
-  ];
+  return buildAppNavigationItems(accountInitialized && Boolean(userId));
 }
 
 function DesktopSettingsAction() {
@@ -180,8 +177,10 @@ export function createDesktopRoutes(): RouteObject[] {
               element: <div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage openResultsInNewTab={false} platformRedesign /></div>,
             },
             { path: 'support', element: <SupportPage platformRedesign /> },
+            { path: 'notifications', element: <NotificationsPage /> },
             { path: 'settings', element: <SettingsPage /> },
             { path: 'rag/*', element: <AuthenticatedRoute><RagRoutes /></AuthenticatedRoute> },
+            { path: 'times/*', element: <AuthenticatedRoute><TimesRoutes /></AuthenticatedRoute> },
           ],
         },
         {
@@ -194,6 +193,10 @@ export function createDesktopRoutes(): RouteObject[] {
         },
         { path: 'book/:notebookId/:sourceId', element: <BookReaderPage /> },
         { path: 'account', element: <DesktopAccountRoute /> },
+        {
+          path: 'account/times-sources',
+          element: <AuthenticatedRoute><DesktopAppLayout><TimesSourceSettingsPage /></DesktopAppLayout></AuthenticatedRoute>,
+        },
         {
           path: 'account/confirm',
           element: (

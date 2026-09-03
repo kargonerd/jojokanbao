@@ -48,7 +48,13 @@ test.describe('Desktop renderer', () => {
     await expect(page).toHaveURL(/\/account\?returnTo=/);
     await expect(page.getByRole('heading', { name: '登录暂不可用' })).toBeVisible();
     await page.goto('/times');
-    await expect(page.getByRole('heading', { name: '没有找到这个页面' })).toBeVisible();
+    await expect(page).toHaveURL(/\/account\?returnTo=/);
+    await expect(page.getByRole('heading', { name: '登录暂不可用' })).toBeVisible();
+    await page.goto('/account/times-sources');
+    await expect(page).toHaveURL(/\/account\?returnTo=/);
+    await expect(page.getByRole('heading', { name: '登录暂不可用' })).toBeVisible();
+    await page.goto('/notifications');
+    await expect(page.getByRole('heading', { name: '登录后查看通知' })).toBeVisible();
   });
 
   test('search uses the shared Web search page', async ({ page }) => {

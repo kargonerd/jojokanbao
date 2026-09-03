@@ -99,4 +99,30 @@ describe("Reuters publisher metadata", () => {
     ]);
     expect(images.some((image) => /^(?:javascript|data|blob):/iu.test(image.sourceUrl))).toBe(false);
   });
+
+  it("keeps a publisher-declared editorial image whose subject is a company logo", () => {
+    const image = {
+      type: "image",
+      url: "https://cloudfront.example.test/uber-logo.jpg",
+      resizer_url: "https://www.reuters.com/resizer/v2/uber-logo.jpg",
+      width: 3_000,
+      height: 2_000,
+      alt_text: "Illustration shows Uber logo",
+      caption: "Uber logo is seen in this editorial illustration.",
+      authors: "Reuters Photographer",
+    };
+    const html = `<script id="fusion-metadata">Fusion.globalContent=${JSON.stringify({
+      statusCode: 200,
+      result: { thumbnail: image, promo_items: { images: [image] } },
+    })};Fusion.contentCache={};</script>`;
+
+    expect(discoverArticleImages(html, "https://www.reuters.com/world/uber", reutersFetch, extractReutersImages)).toEqual([
+      expect.objectContaining({
+        sourceUrl: "https://www.reuters.com/resizer/v2/uber-logo.jpg?width=1920&quality=85",
+        role: "lead",
+        alt: "Illustration shows Uber logo",
+        publisherEditorial: true,
+      }),
+    ]);
+  });
 });

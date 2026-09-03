@@ -22,7 +22,7 @@ export function TimesExplanationPanel({
       <button type="button" aria-label="关闭 AI 解释" onClick={onClose} className="fixed inset-0 z-[79] cursor-default border-0 bg-[rgba(25,25,22,.28)]" />
       <aside aria-label="AI 解释" className="fixed inset-y-0 right-0 z-[80] flex w-full max-w-[440px] flex-col border-l border-rule bg-paper text-ink shadow-[-18px_0_44px_rgba(32,32,32,.18)]">
         <header className="flex items-center justify-between border-b-[3px] border-double border-rule px-6 py-5">
-          <div className="border-l-[3px] border-red pl-3"><span className="font-sans text-[10px] tracking-[.12em] text-muted">JOJO TIMES · BETA</span><h2 className="mt-1 text-2xl font-black text-red">AI 解释</h2></div>
+          <div className="border-l-[3px] border-red pl-3"><h2 className="text-2xl font-black text-red">AI 解释</h2></div>
           <button type="button" onClick={onClose} aria-label="关闭" className="border-0 bg-transparent text-3xl text-ink">×</button>
         </header>
         <blockquote className="m-6 border-y border-rule bg-[rgba(139,26,26,.035)] px-5 py-4 text-sm leading-7">“{anchor.quote}”</blockquote>
