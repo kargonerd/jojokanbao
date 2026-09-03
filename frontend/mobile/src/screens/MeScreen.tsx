@@ -19,6 +19,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MOBILE_ACCOUNT_CONFIGURED, useMobileAuthStore } from "../account/auth";
+import { shouldRefreshDialogViewport } from "../account/dialogViewport";
 import { getRegistrationValidationError } from "../account/registration";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionTitle } from "../components/SectionTitle";
@@ -202,9 +203,10 @@ export function MeScreen() {
 
   useEffect(() => {
     if (!loginVisible) return;
-    const windowIsLandscape = windowWidth > windowHeight;
-    const dialogIsLandscape = dialogViewport.width > dialogViewport.height;
-    if (windowIsLandscape === dialogIsLandscape) return;
+    // adjustResize changes only the window height while the keyboard animates.
+    // Treating width > height as orientation would mistake that transient frame
+    // for landscape and make the whole book shrink, jump, then rebound.
+    if (!shouldRefreshDialogViewport(dialogViewport.width, windowWidth)) return;
     if (IS_EINK_RELEASE || !openAnimationRef.current) {
       setDialogViewport({ width: windowWidth, height: windowHeight });
     }
@@ -266,9 +268,9 @@ export function MeScreen() {
         if (openAnimationRef.current !== animation) return;
         openAnimationRef.current = null;
         const latestSize = latestWindowSizeRef.current;
-        const latestIsLandscape = latestSize.width > latestSize.height;
-        const dialogIsLandscape = dialogViewport.width > dialogViewport.height;
-        if (latestIsLandscape !== dialogIsLandscape) setDialogViewport(latestSize);
+        if (shouldRefreshDialogViewport(dialogViewport.width, latestSize.width)) {
+          setDialogViewport(latestSize);
+        }
       });
     });
   };
@@ -540,9 +542,16 @@ export function MeScreen() {
         >
           <Pressable accessibilityLabel={accountMode === "register" ? "关闭注册" : accountMode === "recover" ? "关闭找回密码" : "关闭登录"} onPress={() => closeLogin()} style={StyleSheet.absoluteFill} />
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
             pointerEvents="box-none"
-            style={styles.dialogLayout}
+            style={[
+              styles.dialogLayout,
+              Platform.OS === "android" && {
+                flex: 0,
+                width: dialogWidth,
+                height: dialogHeight,
+              },
+            ]}
           >
             <View
               style={[
