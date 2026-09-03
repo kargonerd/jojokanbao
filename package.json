@@ -49,6 +49,7 @@
       "cheerio@1.2.0>undici": "8.10.0"
     },
     "patchedDependencies": {
+      "@react-native/gradle-plugin@0.83.10": "frontend/patches/@react-native__gradle-plugin@0.83.10.patch",
       "pdfjs-dist@5.7.284": "frontend/patches/pdfjs-dist@5.7.284.patch"
     }
   }

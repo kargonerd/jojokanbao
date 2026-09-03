@@ -504,6 +504,7 @@ export function MeScreen() {
             {([
               { section: "reading" as const, label: "阅读设置", icon: "book-outline" as const },
               { section: "interaction" as const, label: "交互设置", icon: "hand-left-outline" as const },
+              { section: "times" as const, label: "时事设置", icon: "newspaper-outline" as const },
               { section: "data" as const, label: "阅读数据", icon: "time-outline" as const },
               { section: "about" as const, label: "关于", icon: "information-circle-outline" as const },
             ]).map((item, index, items) => (

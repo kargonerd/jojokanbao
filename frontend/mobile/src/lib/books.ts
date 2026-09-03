@@ -20,6 +20,7 @@ export interface MobileBook {
   indexObject: string;
   type: "book" | "book-series";
   itemCount?: number;
+  aiEnabled?: boolean;
 }
 
 export interface MobileBookVolume {
@@ -104,6 +105,7 @@ export function selectPublishedBooks(entries: readonly JojoCatalogEntry[]): Mobi
       indexObject: entry.indexObject,
       type: entry.type,
       itemCount: entry.itemCount,
+      aiEnabled: entry.aiEnabled,
     }))
     .sort((left, right) => left.title.localeCompare(right.title, "zh-CN"));
 }

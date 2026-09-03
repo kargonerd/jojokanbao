@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import type { ArchivePublicationName } from "@jojo/content";
 import type { BookReadingMode } from "../lib/bookReaderBridge";
+import type { MobileBookAgentMessage } from "../lib/bookAgent";
 
 export type BookPaperColor = "ivory" | "white" | "dark";
 
@@ -41,6 +42,16 @@ export interface RecentBook {
   updatedAt: number;
 }
 
+export interface MobileAiConversation {
+  id: string;
+  ownerId: string;
+  title: string;
+  createdAt: number;
+  lastMessageAt: number;
+  selectedDatasetIds: string[];
+  messages: MobileBookAgentMessage[];
+}
+
 interface RememberIssueInput extends Omit<RecentIssue, "progress" | "updatedAt"> {}
 
 interface MobileState {
@@ -56,6 +67,9 @@ interface MobileState {
   recentIssues: RecentIssue[];
   recentBooks: RecentBook[];
   bookAnnotations: BookAnnotation[];
+  aiConversations: MobileAiConversation[];
+  timesLanguage: "zh-CN" | "original";
+  timesReadArticleIds: string[];
   setHapticsEnabled: (enabled: boolean) => void;
   setTextScale: (scale: MobileState["textScale"]) => void;
   setBookLineHeight: (lineHeight: MobileState["bookLineHeight"]) => void;
@@ -70,6 +84,10 @@ interface MobileState {
   addBookAnnotation: (annotation: BookAnnotationInput) => BookAnnotation;
   updateBookAnnotationNote: (id: string, note: string) => void;
   removeBookAnnotation: (id: string) => void;
+  upsertAiConversation: (conversation: MobileAiConversation) => void;
+  removeAiConversation: (id: string, ownerId: string) => void;
+  setTimesLanguage: (language: MobileState["timesLanguage"]) => void;
+  markTimesArticleRead: (articleId: string) => void;
   clearRecentIssues: () => void;
   clearRecentReading: () => void;
 }
@@ -89,6 +107,9 @@ export const useMobileStore = create<MobileState>()(
       recentIssues: [],
       recentBooks: [],
       bookAnnotations: [],
+      aiConversations: [],
+      timesLanguage: "zh-CN",
+      timesReadArticleIds: [],
       setHapticsEnabled: (hapticsEnabled) => set({ hapticsEnabled }),
       setTextScale: (textScale) => set({ textScale }),
       setBookLineHeight: (bookLineHeight) => set({ bookLineHeight }),
@@ -144,13 +165,35 @@ export const useMobileStore = create<MobileState>()(
       removeBookAnnotation: (id) => set((state) => ({
         bookAnnotations: state.bookAnnotations.filter((annotation) => annotation.id !== id),
       })),
+      upsertAiConversation: (conversation) => set((state) => ({
+        aiConversations: [
+          conversation,
+          ...state.aiConversations.filter((candidate) => (
+            candidate.id !== conversation.id || candidate.ownerId !== conversation.ownerId
+          )),
+        ]
+          .sort((left, right) => right.lastMessageAt - left.lastMessageAt)
+          .slice(0, 30),
+      })),
+      removeAiConversation: (id, ownerId) => set((state) => ({
+        aiConversations: state.aiConversations.filter((candidate) => (
+          candidate.id !== id || candidate.ownerId !== ownerId
+        )),
+      })),
+      setTimesLanguage: (timesLanguage) => set({ timesLanguage }),
+      markTimesArticleRead: (articleId) => set((state) => ({
+        timesReadArticleIds: [
+          ...state.timesReadArticleIds.filter((candidate) => candidate !== articleId),
+          articleId,
+        ].slice(-500),
+      })),
       clearRecentIssues: () => set({ recentIssues: [] }),
       clearRecentReading: () => set({ recentIssues: [], recentBooks: [] }),
     }),
     {
       name: "jojo-mobile-preferences-v1",
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: ({ hapticsEnabled, textScale, bookLineHeight, bookReadingMode, bookPaperColor, bookFirstLineIndent, keepScreenAwake, allowLandscape, leftTapNext, recentIssues, recentBooks, bookAnnotations }) => ({
+      partialize: ({ hapticsEnabled, textScale, bookLineHeight, bookReadingMode, bookPaperColor, bookFirstLineIndent, keepScreenAwake, allowLandscape, leftTapNext, recentIssues, recentBooks, bookAnnotations, aiConversations, timesLanguage, timesReadArticleIds }) => ({
         hapticsEnabled,
         textScale,
         bookLineHeight,
@@ -163,6 +206,9 @@ export const useMobileStore = create<MobileState>()(
         recentIssues,
         recentBooks,
         bookAnnotations,
+        aiConversations,
+        timesLanguage,
+        timesReadArticleIds,
       }),
     },
   ),

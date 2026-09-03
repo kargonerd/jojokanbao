@@ -13,9 +13,10 @@ describe("mobile book catalog", () => {
       { datasetId: "paper", type: "newspaper", title: "报纸", indexObject: "paper.jox", language: "zh" },
       { datasetId: "draft", type: "book", title: "草稿", indexObject: "draft.jox", language: "zh", publicationStatus: "draft" },
       { datasetId: "b", type: "book-series", title: "乙书", indexObject: "b.jox", language: "zh" },
-      { datasetId: "a", type: "book", title: "甲书", indexObject: "a.jox", language: "zh" },
+      { datasetId: "a", type: "book", title: "甲书", indexObject: "a.jox", language: "zh", aiEnabled: true },
     ] satisfies JojoCatalogEntry[];
     expect(selectPublishedBooks(entries).map((book) => book.datasetId)).toEqual(["a", "b"]);
+    expect(selectPublishedBooks(entries).find((book) => book.datasetId === "a")?.aiEnabled).toBe(true);
   });
 
   it("sorts published volumes by order and then title", () => {

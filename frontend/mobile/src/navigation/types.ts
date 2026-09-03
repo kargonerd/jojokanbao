@@ -24,12 +24,18 @@ export type RootStackParamList = {
     initialText?: string;
     returnToReference?: boolean;
   };
+  TimesDetail: {
+    issueDate: string;
+    newsId: string;
+  };
 };
 
-export type SettingsSection = "reading" | "interaction" | "data" | "about";
+export type SettingsSection = "reading" | "interaction" | "times" | "data" | "about";
 
 export type MainTabParamList = {
   Today: undefined;
   Library: undefined;
   Search: undefined;
+  AI: undefined;
+  Times: undefined;
 };

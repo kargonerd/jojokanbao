@@ -11,8 +11,11 @@ export interface MobileBookAgentRequest {
 }
 
 export interface MobileBookAgentReference {
+  citationId?: string;
   datasetId?: string;
   itemId?: string;
+  datasetTitle?: string;
+  itemTitle?: string;
   targetId?: string;
   anchorId?: string;
   title?: string;
@@ -32,12 +35,12 @@ function conversationId(): string {
   return `conv_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`.slice(0, 36);
 }
 
-async function mobileAccessToken(): Promise<string> {
+export async function mobileAccessToken(): Promise<string> {
   const { mobileAuthClient } = await import("../account/auth");
   const { data, error } = await mobileAuthClient.auth.getSession();
   if (error) throw error;
   const token = data.session?.access_token;
-  if (!token) throw new Error("请先在「我」中登录后使用书内 AI");
+  if (!token) throw new Error("请先登录后使用 AI");
   return token;
 }
 

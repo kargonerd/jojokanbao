@@ -70,10 +70,13 @@ export function SettingsScreen() {
   const recentIssues = useMobileStore((state) => state.recentIssues);
   const recentBooks = useMobileStore((state) => state.recentBooks);
   const clearRecentReading = useMobileStore((state) => state.clearRecentReading);
+  const timesLanguage = useMobileStore((state) => state.timesLanguage);
+  const setTimesLanguage = useMobileStore((state) => state.setTimesLanguage);
   const theme = mobileTheme;
   const titles: Record<SettingsSection, string> = {
     reading: "阅读设置",
     interaction: "交互设置",
+    times: "时事设置",
     data: "阅读数据",
     about: "关于",
   };
@@ -211,6 +214,42 @@ export function SettingsScreen() {
         </View>
         ) : null}
 
+        {!section || section === "times" ? (
+          <View style={!section ? styles.sectionGap : undefined}>
+            <SectionTitle title="时事设置" />
+            <View style={[styles.panel, { backgroundColor: theme.paper, borderColor: theme.rule }]}>
+              <View style={styles.scaleSection}>
+                <View style={styles.timesSettingCopy}>
+                  <Text numberOfLines={1} style={[styles.scaleTitle, styles.timesSettingTitle, { color: theme.ink, fontFamily: theme.serif }]}>外文内容</Text>
+                  <Text style={[styles.timesSettingHint, { color: theme.muted, fontFamily: theme.sans }]}>默认显示中文译文或出版方原文</Text>
+                </View>
+                <View style={styles.scaleRow}>
+                  {([
+                    { value: "zh-CN" as const, label: "中文" },
+                    { value: "original" as const, label: "原文" },
+                  ]).map((option) => {
+                    const selected = option.value === timesLanguage;
+                    return (
+                      <Pressable
+                        key={option.value}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        onPress={() => setTimesLanguage(option.value)}
+                        style={[
+                          styles.scaleButton,
+                          { borderColor: selected ? theme.red : theme.rule, backgroundColor: selected ? theme.red : theme.paper },
+                        ]}
+                      >
+                        <Text style={[styles.scaleButtonText, { color: selected ? theme.inverse : theme.ink, fontFamily: theme.sans }]}>{option.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            </View>
+          </View>
+        ) : null}
+
         {!section || section === "data" ? (
           <View style={!section ? styles.sectionGap : undefined}>
           <SectionTitle title="阅读数据" aside={`${recentIssues.length + recentBooks.length} 条`} />
@@ -261,6 +300,9 @@ const styles = StyleSheet.create({
   scaleSectionDivider: { borderBottomWidth: StyleSheet.hairlineWidth },
   scaleSectionTopDivider: { borderTopWidth: StyleSheet.hairlineWidth },
   scaleTitle: { width: 112, fontSize: 14, fontWeight: "800" },
+  timesSettingCopy: { width: 150, paddingRight: 10 },
+  timesSettingTitle: { width: "auto" },
+  timesSettingHint: { marginTop: 3, fontSize: 9, lineHeight: 14 },
   scaleRow: { flex: 1, flexDirection: "row", gap: 5 },
   scaleButton: { height: 34, flex: 1, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   scaleButtonText: { fontSize: 10, fontWeight: "900" },
