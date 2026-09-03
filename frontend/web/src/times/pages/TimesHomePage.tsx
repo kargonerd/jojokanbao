@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -27,6 +28,42 @@ function AllSourcesIcon({ className }: { className: string }) {
     <svg aria-hidden="true" viewBox="0 0 24 24" className={`${className} shrink-0 text-red`} fill="none" stroke="currentColor" strokeWidth="1.5">
       <path d="M3.75 3.75h6.5v6.5h-6.5zM13.75 3.75h6.5v6.5h-6.5zM3.75 13.75h6.5v6.5h-6.5zM13.75 13.75h6.5v6.5h-6.5z" />
     </svg>
+  );
+}
+
+function RefreshButton({
+  refreshing,
+  onRefresh,
+}: {
+  refreshing: boolean;
+  onRefresh(): void;
+}) {
+  const tooltipId = useId();
+  return (
+    <span className="relative flex shrink-0">
+      <button
+        type="button"
+        aria-label="拉取最新新闻"
+        aria-describedby={tooltipId}
+        aria-busy={refreshing}
+        title="拉取最新"
+        disabled={refreshing}
+        onClick={onRefresh}
+        className="peer group grid h-7 w-7 shrink-0 place-content-center border border-ink bg-paper text-ink transition-[color,transform,box-shadow] hover:-translate-y-0.5 hover:text-red hover:shadow-[2px_2px_0_var(--color-red)] focus:outline-none focus-visible:ring-2 focus-visible:ring-red disabled:translate-y-0 disabled:cursor-wait disabled:text-muted disabled:shadow-none"
+      >
+        <svg aria-hidden="true" viewBox="0 0 20 20" className={`h-3.5 w-3.5 ${refreshing ? "motion-safe:animate-spin" : "transition-transform group-hover:-rotate-12"}`} fill="none" stroke="currentColor" strokeWidth="1.7">
+          <path d="M16 6.5V2.8l-1.7 1.7A7 7 0 1 0 17 10" />
+          <path d="M16 2.8h-3.7" />
+        </svg>
+      </button>
+      <span
+        id={tooltipId}
+        role="tooltip"
+        className="pointer-events-none absolute right-0 top-[calc(100%+6px)] z-30 whitespace-nowrap border border-ink bg-ink px-2 py-1 font-sans text-[11px] font-bold text-paper opacity-0 transition-opacity peer-hover:opacity-100 peer-focus-visible:opacity-100"
+      >
+        拉取最新
+      </span>
+    </span>
   );
 }
 
@@ -430,6 +467,7 @@ export function TimesHomePage() {
         <header className="hidden h-10 shrink-0 items-center gap-2 border-b border-ink px-5 lg:flex">
           {selectedSource !== "all" && firstVisibleArticle ? <SourceLogo article={firstVisibleArticle} size="header" /> : null}
           <h1 className="min-w-0 flex-1 truncate text-base font-black leading-tight">{selectedSourceName}</h1>
+          <RefreshButton refreshing={refreshing} onRefresh={() => void refreshLatest()} />
         </header>
         <div className="flex h-11 w-full shrink-0 border-b border-ink bg-paper font-sans lg:hidden">
           <button

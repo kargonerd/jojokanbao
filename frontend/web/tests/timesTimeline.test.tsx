@@ -364,7 +364,7 @@ describe("Times timeline images", () => {
 
     await screen.findByText(article.title);
     const articleList = screen.getByRole("region", { name: "文章列表" });
-    expect(screen.queryByRole("button", { name: "拉取最新新闻" })).toBeNull();
+    expect(screen.getByRole("button", { name: "拉取最新新闻" })).toBeTruthy();
     await waitFor(() => {
       fireEvent(window, new Event("focus"));
       expect(timesMocks.timelineIndex.mock.calls.some(([refresh]) => refresh === true)).toBe(true);
@@ -431,6 +431,49 @@ describe("Times timeline images", () => {
       date === "2026-08-28" && page === 0 && refresh === true
     ))).toBe(true);
     expect(screen.getByText("已载入 1 条新的或更新的新闻")).toBeTruthy();
+  });
+
+  it("refreshes the timeline from the desktop refresh button", async () => {
+    const refreshedArticle = {
+      ...article,
+      id: "article-button-refreshed",
+      title: "A headline loaded by the refresh button",
+      publishedAt: "2026-08-28T01:00:00.000Z",
+      issueDate: "2026-08-28",
+      assets: [],
+    };
+    const initialIndex = {
+      formatVersion: "jojo-news-timeline-index/1",
+      updatedAt: "2026-08-27T05:00:00.000Z",
+      dates: [{ date: "2026-08-27", object: "dates/2026/08/2026-08-27.jox", articleCount: 1 }],
+      sources: [source],
+    };
+    const refreshedIndex = {
+      ...initialIndex,
+      updatedAt: "2026-08-28T01:01:00.000Z",
+      dates: [{ date: "2026-08-28", object: "dates/2026/08/2026-08-28.jox", articleCount: 1 }],
+    };
+    timesMocks.timelineIndex.mockResolvedValueOnce(initialIndex).mockResolvedValueOnce(refreshedIndex);
+    timesMocks.timelinePage.mockImplementation(async (date: string, page: number) => ({
+      formatVersion: "jojo-news-timeline-page/1",
+      date,
+      page,
+      updatedAt: date === "2026-08-28" ? refreshedIndex.updatedAt : initialIndex.updatedAt,
+      articles: date === "2026-08-28" ? [refreshedArticle] : [article],
+    }));
+
+    render(<MemoryRouter><TimesHomePage /></MemoryRouter>);
+
+    await screen.findByText(article.title);
+    fireEvent.click(screen.getByRole("button", { name: "拉取最新新闻" }));
+
+    await screen.findByText(refreshedArticle.title);
+    expect(timesMocks.timelineIndex.mock.calls.some(([refresh]) => refresh === true)).toBe(true);
+    expect(timesMocks.timelinePage.mock.calls.some(([date, page, refresh]) => (
+      date === "2026-08-28" && page === 0 && refresh === true
+    ))).toBe(true);
+    const articleList = screen.getByRole("region", { name: "文章列表" });
+    expect(within(articleList).getByRole("status").textContent).toContain("已载入 1 条新的或更新的新闻");
   });
 
   it("counts a publisher revision of an existing article as an update", async () => {
