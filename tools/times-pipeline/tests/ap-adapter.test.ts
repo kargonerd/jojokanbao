@@ -48,7 +48,7 @@ describe("AP source adapter", () => {
       publishedAt: "2026-09-02T14:12:37.000Z",
       updatedAt: "2026-09-02T14:43:57.000Z",
     });
-    expect(apFetch.revision).toBe("story-media-v4");
+    expect(apFetch.revision).toBe("story-media-v5-skip-liveblogs");
   });
 
   it("keeps story paragraphs that follow an inline AP newsletter module", () => {

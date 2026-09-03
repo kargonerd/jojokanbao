@@ -8,7 +8,7 @@ function acceptBloombergUrl(value: string): boolean {
     const url = new URL(value);
     if (!["bloomberg.com", "www.bloomberg.com"].includes(url.hostname.toLowerCase())) return true;
     const segments = url.pathname.toLowerCase().split("/").filter(Boolean);
-    return segments[0] !== "news" || segments[1] !== "audio";
+    return segments[0] !== "news" || !["audio", "live-blog"].includes(segments[1] ?? "");
   } catch {
     return true;
   }
