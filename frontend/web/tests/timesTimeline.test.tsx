@@ -429,6 +429,9 @@ describe("Times timeline images", () => {
     fireEvent.touchMove(listViewport, { touches: [{ clientY: 180 }] });
     fireEvent.touchEnd(listViewport);
 
+    expect(listViewport.getAttribute("aria-busy")).toBe("true");
+    expect(listViewport.querySelector("[data-times-pull-indicator]")?.className).toContain("opacity-100");
+
     await screen.findByText(refreshedArticle.title);
     expect(timesMocks.timelineIndex.mock.calls.some(([refresh]) => refresh === true)).toBe(true);
     expect(timesMocks.timelinePage.mock.calls.some(([date, page, refresh]) => (

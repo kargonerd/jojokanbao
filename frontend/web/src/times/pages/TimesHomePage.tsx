@@ -73,6 +73,7 @@ type LatestTimeline = { index: TimesTimelineIndex; firstPage: TimesTimelinePage 
 const LATEST_CHECK_INTERVAL_MS = 60_000;
 const PULL_REFRESH_THRESHOLD = 68;
 const PULL_REFRESH_MAX_DISTANCE = 104;
+const MINIMUM_REFRESH_FEEDBACK_MS = 700;
 
 function firstTimelineCursor(index: TimesTimelineIndex): TimelineCursor | null {
   const dateIndex = index.dates.findIndex((date) => timesTimelinePageCount(date) > 0);
@@ -239,14 +240,19 @@ export function TimesHomePage() {
     setRefreshStatus("正在刷新新闻…");
     setRefreshConfirmation("");
     setError(null);
+    const minimumFeedback = new Promise<void>((resolve) => {
+      window.setTimeout(resolve, MINIMUM_REFRESH_FEEDBACK_MS);
+    });
     try {
       const latest = await fetchLatestTimeline();
+      await minimumFeedback;
       if (generation !== timelineGeneration.current) return;
       const updateCount = updatedArticleCount(pages, latest.firstPage);
       applyLatestTimeline(latest, latest.firstPage
         ? updateCount > 0 ? `已载入 ${updateCount} 条新动态` : "已是最新"
         : "当前没有新闻", generation);
     } catch (reason) {
+      await minimumFeedback;
       if (generation === timelineGeneration.current) {
         setError(reason instanceof Error ? reason.message : "最新新闻刷新失败");
         setRefreshStatus("刷新失败");
@@ -386,7 +392,7 @@ export function TimesHomePage() {
   }, [disabledSources, pages, pendingLatest, selectedSource]);
 
   const showPullIndicator = refreshing || pullDistance > 0;
-  const shownPullDistance = refreshing ? 56 : pullDistance;
+  const shownPullDistance = refreshing ? 64 : pullDistance;
   const pullReady = pullDistance >= PULL_REFRESH_THRESHOLD;
 
   const firstVisibleArticle = visibleArticles[0];
@@ -508,14 +514,15 @@ export function TimesHomePage() {
               : refreshing ? refreshStatus : ""}
           </p>
           <div
+            data-times-pull-indicator
             aria-hidden="true"
             className={`pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center transition-[opacity,transform] duration-150 motion-reduce:transition-none ${showPullIndicator ? "opacity-100" : "opacity-0"}`}
-            style={{ transform: `translateY(${shownPullDistance - 44}px)` }}
+            style={{ transform: `translateY(${shownPullDistance - 40}px)` }}
           >
-            <span className="grid h-9 w-9 place-content-center border border-red bg-paper text-red shadow-[3px_3px_0_rgba(139,26,26,0.16)]">
+            <span className="grid h-10 w-10 place-content-center border border-ink bg-paper text-red shadow-[3px_3px_0_rgba(32,32,32,0.14)]">
               <svg
                 viewBox="0 0 20 20"
-                className={`h-4 w-4 ${refreshing ? "motion-safe:animate-spin" : "transition-transform duration-150 motion-reduce:transition-none"}`}
+                className={`h-5 w-5 ${refreshing ? "motion-safe:animate-spin" : "transition-transform duration-150 motion-reduce:transition-none"}`}
                 style={!refreshing ? { transform: `rotate(${pullReady ? 180 : 0}deg)` } : undefined}
                 fill="none"
                 stroke="currentColor"
