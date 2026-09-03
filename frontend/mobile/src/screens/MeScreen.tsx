@@ -14,6 +14,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  type TextInputProps,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -131,6 +132,78 @@ function VerificationCodeInput({
         onSubmitEditing={onSubmit}
         style={styles.codeHiddenInput}
       />
+    </View>
+  );
+}
+
+function PasswordInput({
+  accessibilityLabel,
+  autoComplete,
+  onChangeText,
+  onFocus,
+  onSubmitEditing,
+  placeholder,
+  resetWhenHidden,
+  returnKeyType,
+  textContentType,
+  theme,
+  value,
+}: {
+  accessibilityLabel: string;
+  autoComplete: TextInputProps["autoComplete"];
+  onChangeText: (value: string) => void;
+  onFocus?: TextInputProps["onFocus"];
+  onSubmitEditing?: TextInputProps["onSubmitEditing"];
+  placeholder: string;
+  resetWhenHidden: boolean;
+  returnKeyType?: TextInputProps["returnKeyType"];
+  textContentType?: TextInputProps["textContentType"];
+  theme: MobileTheme;
+  value: string;
+}) {
+  const [passwordVisible, setPasswordVisible] = useState(false);
+
+  useEffect(() => {
+    if (resetWhenHidden) {
+      setPasswordVisible(false);
+    }
+  }, [resetWhenHidden]);
+
+  return (
+    <View style={styles.passwordInputWrap}>
+      <TextInput
+        accessibilityLabel={accessibilityLabel}
+        value={value}
+        onChangeText={onChangeText}
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoComplete={autoComplete}
+        textContentType={textContentType}
+        secureTextEntry={!passwordVisible}
+        onFocus={onFocus}
+        returnKeyType={returnKeyType}
+        onSubmitEditing={onSubmitEditing}
+        placeholder={placeholder}
+        placeholderTextColor={theme.muted}
+        style={[
+          styles.input,
+          styles.passwordInput,
+          { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans },
+        ]}
+      />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={passwordVisible ? `隐藏${accessibilityLabel}` : `显示${accessibilityLabel}`}
+        accessibilityState={{ selected: passwordVisible }}
+        onPress={() => setPasswordVisible((visible) => !visible)}
+        style={({ pressed }) => [styles.passwordToggle, { opacity: pressed ? 0.55 : 1 }]}
+      >
+        <Ionicons
+          name={passwordVisible ? "eye-off-outline" : "eye-outline"}
+          size={20}
+          color={passwordVisible ? theme.red : theme.muted}
+        />
+      </Pressable>
     </View>
   );
 }
@@ -676,20 +749,18 @@ export function MeScreen() {
                             style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
                           />
                           <Text style={[styles.fieldLabel, styles.passwordLabel, { color: theme.ink, fontFamily: theme.sans }]}>密码</Text>
-                          <TextInput
+                          <PasswordInput
+                            accessibilityLabel="登录密码"
                             value={password}
                             onChangeText={(value) => { setPassword(value); setLocalError(""); clearFeedback(); }}
-                            autoCapitalize="none"
-                            autoCorrect={false}
                             autoComplete="current-password"
                             textContentType="password"
-                            secureTextEntry
                             onFocus={() => moveFormForKeyboard(true)}
                             returnKeyType="done"
                             onSubmitEditing={() => void handleSignIn()}
                             placeholder="输入密码"
-                            placeholderTextColor={theme.muted}
-                            style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
+                            resetWhenHidden={!loginVisible}
+                            theme={theme}
                           />
                           {localError || error || notice ? (
                             <Text accessibilityRole={localError || error ? "alert" : undefined} style={[styles.error, { color: localError || error ? theme.red : theme.muted, fontFamily: theme.sans }]}>{localError || error || notice}</Text>
@@ -748,34 +819,30 @@ export function MeScreen() {
                             style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
                           />
                           <Text style={[styles.fieldLabel, styles.passwordLabel, { color: theme.ink, fontFamily: theme.sans }]}>密码</Text>
-                          <TextInput
+                          <PasswordInput
+                            accessibilityLabel="注册密码"
                             value={registrationPassword}
                             onChangeText={(value) => { setRegistrationPassword(value); setLocalError(""); clearFeedback(); }}
-                            autoCapitalize="none"
-                            autoCorrect={false}
                             autoComplete="new-password"
                             textContentType="newPassword"
-                            secureTextEntry
                             onFocus={() => moveFormForKeyboard(true)}
                             returnKeyType="next"
                             placeholder="至少 8 位字符"
-                            placeholderTextColor={theme.muted}
-                            style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
+                            resetWhenHidden={!loginVisible}
+                            theme={theme}
                           />
                           <Text style={[styles.fieldLabel, styles.passwordLabel, { color: theme.ink, fontFamily: theme.sans }]}>再次输入密码</Text>
-                          <TextInput
+                          <PasswordInput
+                            accessibilityLabel="确认注册密码"
                             value={registrationPasswordConfirmation}
                             onChangeText={(value) => { setRegistrationPasswordConfirmation(value); setLocalError(""); clearFeedback(); }}
-                            autoCapitalize="none"
-                            autoCorrect={false}
                             autoComplete="new-password"
                             textContentType="newPassword"
-                            secureTextEntry
                             onFocus={() => moveFormForKeyboard(true)}
                             returnKeyType="next"
                             placeholder="重复输入密码"
-                            placeholderTextColor={theme.muted}
-                            style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
+                            resetWhenHidden={!loginVisible}
+                            theme={theme}
                           />
                           <Text style={[styles.fieldLabel, styles.passwordLabel, { color: theme.ink, fontFamily: theme.sans }]}>邀请码</Text>
                           <TextInput
@@ -839,24 +906,30 @@ export function MeScreen() {
                           ) : (
                             <>
                               <Text style={[styles.fieldLabel, { color: theme.ink, fontFamily: theme.sans }]}>新密码</Text>
-                              <TextInput
+                              <PasswordInput
+                                accessibilityLabel="新密码"
                                 value={recoveryPassword}
                                 onChangeText={(value) => { setRecoveryPassword(value); setLocalError(""); clearFeedback(); }}
                                 autoComplete="new-password"
                                 onFocus={() => moveFormForKeyboard(true)}
-                                secureTextEntry
-                                style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
+                                placeholder="至少 8 位字符"
+                                resetWhenHidden={!loginVisible}
+                                textContentType="newPassword"
+                                theme={theme}
                               />
                               <Text style={[styles.fieldLabel, styles.passwordLabel, { color: theme.ink, fontFamily: theme.sans }]}>再次输入新密码</Text>
-                              <TextInput
+                              <PasswordInput
+                                accessibilityLabel="确认新密码"
                                 value={recoveryPasswordConfirmation}
                                 onChangeText={(value) => { setRecoveryPasswordConfirmation(value); setLocalError(""); clearFeedback(); }}
                                 autoComplete="new-password"
                                 onFocus={() => moveFormForKeyboard(true)}
-                                secureTextEntry
                                 returnKeyType="done"
                                 onSubmitEditing={() => void handleRecovery()}
-                                style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
+                                placeholder="重复输入新密码"
+                                resetWhenHidden={!loginVisible}
+                                textContentType="newPassword"
+                                theme={theme}
                               />
                             </>
                           )}
@@ -1064,6 +1137,9 @@ const styles = StyleSheet.create({
   fieldLabel: { marginBottom: 7, fontSize: 12, fontWeight: "800" },
   passwordLabel: { marginTop: 15 },
   input: { height: 46, borderBottomWidth: 1, paddingHorizontal: 3, fontSize: 14 },
+  passwordInputWrap: { position: "relative" },
+  passwordInput: { paddingRight: 48 },
+  passwordToggle: { position: "absolute", right: 0, bottom: 0, width: 44, height: 46, alignItems: "center", justifyContent: "center" },
   codeEntry: { position: "relative", height: 58 },
   codeSlots: { ...StyleSheet.absoluteFillObject, flexDirection: "row", gap: 6 },
   codeSlot: { flex: 1, alignItems: "center", justifyContent: "center", borderWidth: 1 },
