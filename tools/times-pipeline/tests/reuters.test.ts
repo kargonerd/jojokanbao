@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { discoverArticleImages, type PageImageCandidate } from "../src/capture/page-images.js";
 import { attachAssetsToBody } from "../src/process/article.js";
-import { reutersFetch } from "../src/sources/reuters/fetch.js";
 import { extractReutersImages } from "../src/sources/reuters/images.js";
 import { extractReutersBody } from "../src/sources/reuters/process.js";
 import type { CapturedAsset } from "../src/types.js";
@@ -60,7 +59,7 @@ describe("Reuters publisher metadata", () => {
   });
 
   it("archives every uncropped gallery image with its caption and dimensions", () => {
-    const images = discoverArticleImages(page, "https://www.reuters.com/story", reutersFetch, extractReutersImages);
+    const images = discoverArticleImages(page, "https://www.reuters.com/story", extractReutersImages);
 
     expect(images).toHaveLength(4);
     expect(images.map((image) => image.sourceUrl)).toEqual(gallery.map((image) => `${image.resizer_url}?width=1920&quality=85`));
@@ -116,12 +115,11 @@ describe("Reuters publisher metadata", () => {
       result: { thumbnail: image, promo_items: { images: [image] } },
     })};Fusion.contentCache={};</script>`;
 
-    expect(discoverArticleImages(html, "https://www.reuters.com/world/uber", reutersFetch, extractReutersImages)).toEqual([
+    expect(discoverArticleImages(html, "https://www.reuters.com/world/uber", extractReutersImages)).toEqual([
       expect.objectContaining({
         sourceUrl: "https://www.reuters.com/resizer/v2/uber-logo.jpg?width=1920&quality=85",
         role: "lead",
         alt: "Illustration shows Uber logo",
-        publisherEditorial: true,
       }),
     ]);
   });

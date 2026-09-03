@@ -82,7 +82,7 @@ describe("AP source adapter", () => {
       <div class="CarouselOverlay-slidesColumn"><div class="CarouselSlide"><img alt="Duplicate overlay" data-flickity-lazyload="https://dims.apnews.com/overlay-copy.jpg"></div></div>
     </main>`;
 
-    const images = discoverArticleImages(html, "https://apnews.com/article/example", apFetch, extractApImages);
+    const images = discoverArticleImages(html, "https://apnews.com/article/example", extractApImages);
 
     expect(images).toEqual([
       expect.objectContaining({ sourceUrl: "https://dims.apnews.com/photo-one-1440.jpg", role: "lead", caption: "First AP photo" }),

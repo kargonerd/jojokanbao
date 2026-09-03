@@ -214,7 +214,6 @@ export function extractNytImages(html: string, pageUrl: string): PageImageCandid
       ...(width ? { width } : {}),
       ...(height ? { height } : {}),
       ...(presentation ? { presentation } : {}),
-      ...(isPublisherEditorial ? { publisherEditorial: true } : {}),
     });
   });
   return images;

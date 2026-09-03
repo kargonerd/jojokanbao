@@ -102,7 +102,6 @@ describe("DW article extraction", () => {
     const images = discoverArticleImages(
       html,
       "https://www.dw.com/en/example/a-123",
-      dwFetch,
       extractDwImages,
     );
 
@@ -137,7 +136,7 @@ describe("DW article extraction", () => {
     </div></article>`;
     const pageUrl = "https://www.dw.com/en/example/a-456";
     const body = extractDwBody(html, { minimumCharacters: 100, minimumParagraphs: 2 }, pageUrl);
-    const images = discoverArticleImages(html, pageUrl, dwFetch, extractDwImages);
+    const images = discoverArticleImages(html, pageUrl, extractDwImages);
 
     expect(body?.match(/<p>/gu)).toHaveLength(2);
     expect(images).toEqual([
