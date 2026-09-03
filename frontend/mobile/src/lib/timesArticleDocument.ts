@@ -64,9 +64,9 @@ export function createTimesArticleDocument(news: MobileTimesNewsItem, eInk = fal
     html,body{margin:0;background:var(--paper);color:var(--ink)}
     body{padding:26px 20px 54px;font-family:serif;font-size:17px;line-height:1.95;-webkit-text-size-adjust:100%;overflow-wrap:anywhere}
     article{width:100%;max-width:760px;margin:0 auto}
-    .meta{margin:0 0 14px;color:var(--muted);font-family:sans-serif;font-size:11px;font-weight:700;line-height:1.8;letter-spacing:.04em}
+    .meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:0 0 14px;color:var(--muted);font-family:sans-serif;font-size:11px;font-weight:700;line-height:1.8;letter-spacing:.04em}
     .source{color:var(--red);font-weight:900}
-    .translation{display:inline-block;margin-left:8px;border:1px solid var(--red);padding:0 5px;color:var(--red);font-size:9px;font-weight:900}
+    .translation{display:inline-block;margin:0;border:1px solid var(--red);padding:0 5px;color:var(--red);font-size:9px;font-weight:900;letter-spacing:0}
     h1{margin:0 0 28px;font-size:30px;line-height:1.3;font-weight:900;letter-spacing:-.02em}
     h2{margin:2em 0 .65em;font-size:23px;line-height:1.4} h3{margin:1.8em 0 .6em;font-size:20px}
     p{margin:1.05em 0;text-align:justify;text-indent:2em}
@@ -82,7 +82,7 @@ export function createTimesArticleDocument(news: MobileTimesNewsItem, eInk = fal
 </head>
 <body>
   <article id="article">
-    <p class="meta"><span class="source">${escapeHtml(timesSourceName(news.source))}</span> · 发布于 ${escapeHtml(exactTimesArticleTime(news.publishedAt))}${translationBadge}</p>
+    <p class="meta"><span><span class="source">${escapeHtml(timesSourceName(news.source))}</span> · 发布于 ${escapeHtml(exactTimesArticleTime(news.publishedAt))}</span>${translationBadge}</p>
     <h1>${escapeHtml(news.title)}</h1>
     <section id="article-body">${body}</section>
   </article>
@@ -105,6 +105,7 @@ export function createTimesArticleDocument(news: MobileTimesNewsItem, eInk = fal
         },90);
       }
       document.addEventListener('selectionchange',sendSelection,{passive:true});
+      document.addEventListener('contextmenu',function(event){event.preventDefault();});
       document.addEventListener('click',function(event){
         var link=event.target.closest&&event.target.closest('a[href]');
         if(!link)return;

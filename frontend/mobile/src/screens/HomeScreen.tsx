@@ -8,7 +8,7 @@ import { publicationImages } from "../components/PeriodicalCoverCard";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionTitle } from "../components/SectionTitle";
 import { IS_EINK_RELEASE } from "../config/appVariant";
-import { fuzzyBookTitleScore, loadMobileBookCover, loadMobileBooks, type MobileBook } from "../lib/books";
+import { fuzzyBookTitleScore, loadMobileBookCover, loadMobileBooks, resolveMobileBookOpenTarget, type MobileBook } from "../lib/books";
 import { impactHaptic } from "../lib/haptics";
 import type { MainTabParamList, RootStackParamList } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
@@ -120,9 +120,23 @@ export function HomeScreen() {
     })),
   ].sort((left, right) => right.updatedAt - left.updatedAt).slice(0, 4), [books, recentBooks, recentIssues]);
 
-  function openBook(book: MobileBook) {
+  async function openBook(book: MobileBook) {
     void impactHaptic(hapticsEnabled);
-    navigation.navigate("BookDetails", { book });
+    try {
+      const target = await resolveMobileBookOpenTarget(book);
+      if (target.screen === "BookReader") {
+        navigation.navigate("BookReader", {
+          datasetId: target.datasetId,
+          itemKey: target.itemKey,
+          title: target.title,
+          bookTitle: target.bookTitle,
+        });
+      } else {
+        navigation.navigate("BookDetails", { book: target.book });
+      }
+    } catch {
+      navigation.navigate("BookDetails", { book });
+    }
   }
 
   function submitSearch() {
@@ -171,7 +185,7 @@ export function HomeScreen() {
           {query.trim() ? (
             <View style={[styles.matches, { borderColor: theme.rule, backgroundColor: theme.paper }]}>
               {matches.map((book) => (
-                <Pressable key={book.datasetId} accessibilityRole="button" onPress={() => openBook(book)} style={[styles.match, { borderBottomColor: theme.rule }]}>
+                <Pressable key={book.datasetId} accessibilityRole="button" onPress={() => void openBook(book)} style={[styles.match, { borderBottomColor: theme.rule }]}>
                   <Text numberOfLines={1} style={[styles.matchTitle, { color: theme.ink, fontFamily: theme.serif }]}>{book.title}</Text>
                 </Pressable>
               ))}

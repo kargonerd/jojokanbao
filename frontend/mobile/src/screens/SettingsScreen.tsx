@@ -1,8 +1,10 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { ARCHIVE_WEB_ORIGIN } from "@jojo/content";
+import { ARCHIVE_WEB_ORIGIN, type TimesSourceRef } from "@jojo/content";
 import { useNavigation, useRoute, type NavigationProp, type RouteProp } from "@react-navigation/native";
 import { nativeApplicationVersion } from "expo-application";
+import { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Linking,
   Pressable,
@@ -17,17 +19,22 @@ import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionTitle } from "../components/SectionTitle";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import { selectionHaptic } from "../lib/haptics";
+import { mobileTimesApi, timesSourceName } from "../lib/times";
 import type { RootStackParamList, SettingsSection } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
 import { mobileTheme } from "../theme/tokens";
 
 function SettingRow({
   title,
+  description,
   value,
+  disabled = false,
   onValueChange,
 }: {
   title: string;
+  description?: string;
   value: boolean;
+  disabled?: boolean;
   onValueChange: (value: boolean) => void;
 }) {
   const theme = mobileTheme;
@@ -35,9 +42,11 @@ function SettingRow({
     <View style={[styles.settingRow, { borderBottomColor: theme.rule }]}>
       <View style={styles.settingCopy}>
         <Text style={[styles.settingTitle, { color: theme.ink, fontFamily: theme.serif }]}>{title}</Text>
+        {description ? <Text style={[styles.settingDescription, { color: theme.muted, fontFamily: theme.sans }]}>{description}</Text> : null}
       </View>
       <Switch
         value={value}
+        disabled={disabled}
         onValueChange={onValueChange}
         trackColor={{ false: theme.rule, true: theme.red }}
         thumbColor={theme.paper}
@@ -72,7 +81,17 @@ export function SettingsScreen() {
   const clearRecentReading = useMobileStore((state) => state.clearRecentReading);
   const timesLanguage = useMobileStore((state) => state.timesLanguage);
   const setTimesLanguage = useMobileStore((state) => state.setTimesLanguage);
+  const timesDisabledSourceIds = useMobileStore((state) => state.timesDisabledSourceIds);
+  const setTimesSourceEnabled = useMobileStore((state) => state.setTimesSourceEnabled);
+  const setAllTimesSourcesEnabled = useMobileStore((state) => state.setAllTimesSourcesEnabled);
+  const enableAllTimesSources = useMobileStore((state) => state.enableAllTimesSources);
+  const [timesSources, setTimesSources] = useState<TimesSourceRef[]>([]);
+  const [timesSourcesError, setTimesSourcesError] = useState("");
   const theme = mobileTheme;
+  const disabledTimesSources = useMemo(() => new Set(timesDisabledSourceIds), [timesDisabledSourceIds]);
+  const timesSourceIds = useMemo(() => timesSources.map((source) => source.id), [timesSources]);
+  const enabledTimesSourceCount = timesSources.filter((source) => !disabledTimesSources.has(source.id)).length;
+  const allTimesSourcesEnabled = Boolean(timesSources.length) && enabledTimesSourceCount === timesSources.length;
   const titles: Record<SettingsSection, string> = {
     reading: "阅读设置",
     interaction: "交互设置",
@@ -80,6 +99,22 @@ export function SettingsScreen() {
     data: "阅读数据",
     about: "关于",
   };
+
+  useEffect(() => {
+    if (section && section !== "times") return undefined;
+    let active = true;
+    setTimesSourcesError("");
+    void mobileTimesApi.timelineIndex()
+      .then((index) => { if (active) setTimesSources(index.sources); })
+      .catch((reason: unknown) => {
+        if (active) setTimesSourcesError(reason instanceof Error ? reason.message : "媒体列表暂时无法载入");
+      });
+    return () => { active = false; };
+  }, [section]);
+
+  useEffect(() => {
+    if (timesSources.length && enabledTimesSourceCount === 0) enableAllTimesSources();
+  }, [enableAllTimesSources, enabledTimesSourceCount, timesSources.length]);
 
   return (
     <SafeAreaView edges={["top"]} style={[styles.safe, { backgroundColor: theme.paper }]}>
@@ -246,6 +281,32 @@ export function SettingsScreen() {
                   })}
                 </View>
               </View>
+              <View style={[styles.sourceSettings, { borderTopColor: theme.rule }]}>
+                <SettingRow
+                  title="全部媒体"
+                  description={timesSources.length
+                    ? allTimesSourcesEnabled ? "所有来源均显示" : `已开启 ${enabledTimesSourceCount} / ${timesSources.length} 个`
+                    : "正在载入媒体列表…"}
+                  value={allTimesSourcesEnabled}
+                  disabled={timesSources.length <= 1}
+                  onValueChange={(enabled) => setAllTimesSourcesEnabled(enabled, timesSourceIds)}
+                />
+                {timesSources.map((source) => {
+                  const enabled = !disabledTimesSources.has(source.id);
+                  return (
+                    <SettingRow
+                      key={source.id}
+                      title={timesSourceName(source)}
+                      description={source.language === "zh-CN" ? "中文" : "外文"}
+                      value={enabled}
+                      disabled={enabled && enabledTimesSourceCount === 1}
+                      onValueChange={(nextEnabled) => setTimesSourceEnabled(source.id, nextEnabled, timesSourceIds)}
+                    />
+                  );
+                })}
+                {!timesSources.length && !timesSourcesError && !IS_EINK_RELEASE ? <ActivityIndicator color={theme.red} style={styles.sourceLoading} /> : null}
+                {timesSourcesError ? <Text accessibilityRole="alert" style={[styles.sourceError, { color: theme.red, fontFamily: theme.sans }]}>{timesSourcesError}</Text> : null}
+              </View>
             </View>
           </View>
         ) : null}
@@ -303,6 +364,7 @@ const styles = StyleSheet.create({
   settingRow: { minHeight: 62, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center" },
   settingCopy: { flex: 1, paddingRight: 12 },
   settingTitle: { fontSize: 14, fontWeight: "800" },
+  settingDescription: { marginTop: 3, fontSize: 9, lineHeight: 14, fontWeight: "700" },
   scaleSection: { minHeight: 66, flexDirection: "row", alignItems: "center" },
   scaleSectionDivider: { borderBottomWidth: StyleSheet.hairlineWidth },
   scaleSectionTopDivider: { borderTopWidth: StyleSheet.hairlineWidth },
@@ -310,6 +372,9 @@ const styles = StyleSheet.create({
   timesSettingCopy: { width: 150, paddingRight: 10 },
   timesSettingTitle: { width: "auto" },
   timesSettingHint: { marginTop: 3, fontSize: 9, lineHeight: 14 },
+  sourceSettings: { position: "relative", borderTopWidth: StyleSheet.hairlineWidth },
+  sourceLoading: { position: "absolute", top: 20, left: 116 },
+  sourceError: { paddingVertical: 14, fontSize: 10, lineHeight: 17, fontWeight: "800" },
   scaleRow: { flex: 1, flexDirection: "row", gap: 5 },
   scaleButton: { height: 34, flex: 1, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   scaleButtonText: { fontSize: 10, fontWeight: "900" },

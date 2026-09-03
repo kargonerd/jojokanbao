@@ -24,6 +24,7 @@ import { getAccountFormKeyboardLift, shouldRefreshDialogViewport } from "../acco
 import { getRegistrationValidationError } from "../account/registration";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionTitle } from "../components/SectionTitle";
+import { PersonalInvitationPanel } from "../components/PersonalInvitationPanel";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import type { RootStackParamList } from "../navigation/types";
 import { mobileTheme, type MobileTheme } from "../theme/tokens";
@@ -251,7 +252,6 @@ export function MeScreen() {
     sendPasswordReset,
     verifyPasswordResetCode,
     completePasswordRecovery,
-    signOut,
     clearFeedback,
   } = useMobileAuthStore();
   const dialogWidth = loginVisible ? dialogViewport.width : windowWidth;
@@ -568,19 +568,11 @@ export function MeScreen() {
               <Pressable
                 accessibilityRole="button"
                 onPress={() => navigation.navigate("AccountSecurity")}
-                style={({ pressed }) => [styles.accountEntry, { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.rule }, pressed && { backgroundColor: theme.paperSoft }]}
+                style={({ pressed }) => [styles.accountEntry, pressed && { backgroundColor: theme.paperSoft }]}
               >
                 <Ionicons name="shield-checkmark-outline" size={20} color={theme.ink} />
                 <Text style={[styles.accountEntryText, { color: theme.ink, fontFamily: theme.serif }]}>账号与安全</Text>
                 <Ionicons name="chevron-forward" size={17} color={theme.muted} />
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                disabled={busy}
-                onPress={() => void signOut().catch(() => undefined)}
-                style={({ pressed }) => [styles.signOutButton, { opacity: busy ? 0.45 : pressed ? 0.72 : 1 }]}
-              >
-                <Text style={[styles.signOutText, { color: theme.red, fontFamily: theme.sans }]}>{busy ? "退出中" : "退出登录"}</Text>
               </Pressable>
             </>
           ) : (
@@ -609,6 +601,40 @@ export function MeScreen() {
             </View>
           )}
         </View>
+
+        {user ? (
+          <>
+            <View style={styles.sectionGap}>
+              <SectionTitle title="我的" />
+              <View style={[styles.panel, { borderColor: theme.rule, backgroundColor: theme.paper }]}>
+                {([
+                  { route: "Notifications" as const, label: "通知", icon: "notifications-outline" as const },
+                  { route: "Bookshelf" as const, label: "我的书架", icon: "bookmark-outline" as const },
+                ]).map((item, index, items) => (
+                  <Pressable
+                    key={item.route}
+                    accessibilityRole="button"
+                    onPress={() => navigation.navigate(item.route)}
+                    style={({ pressed }) => [
+                      styles.settingsRow,
+                      index < items.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.rule },
+                      pressed && { backgroundColor: theme.paperSoft },
+                    ]}
+                  >
+                    <Ionicons name={item.icon} size={19} color={theme.ink} />
+                    <Text style={[styles.settingsText, { color: theme.ink, fontFamily: theme.serif }]}>{item.label}</Text>
+                    <Ionicons name="chevron-forward" size={17} color={theme.muted} />
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.sectionGap}>
+              <SectionTitle title="邀请码" />
+              <PersonalInvitationPanel userId={user.id} />
+            </View>
+          </>
+        ) : null}
 
         <View style={styles.sectionGap}>
           <SectionTitle title="设置" />
@@ -1096,8 +1122,6 @@ const styles = StyleSheet.create({
   infoRow: { minHeight: 62, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center" },
   infoLabel: { width: 84, fontSize: 11, fontWeight: "700" },
   infoValue: { flex: 1, textAlign: "right", fontSize: 14, fontWeight: "800" },
-  signOutButton: { minHeight: 54, alignItems: "center", justifyContent: "center" },
-  signOutText: { fontSize: 12, fontWeight: "900" },
   sectionGap: { marginTop: 26 },
   settingsRow: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 11 },
   settingsText: { flex: 1, fontSize: 14, fontWeight: "800" },

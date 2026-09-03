@@ -3,6 +3,7 @@ import {
   createBookReaderApplyAnnotationScript,
   createBookReaderBridgeScript,
   createBookReaderClearSelectionScript,
+  createBookReaderGoToScrollProgressScript,
   createBookReaderGoToSpreadScript,
   createBookReaderLocateTextScript,
   createBookReaderMeasureScript,
@@ -57,7 +58,7 @@ describe("book reader bridge", () => {
     const startScript = createBookReaderBridgeScript("start");
     const endScript = createBookReaderBridgeScript("end");
     expect(startScript).toContain('article.style.transform = "translate3d(" + (-offset)');
-    expect(startScript).not.toContain("window.scrollTo");
+    expect(startScript).toContain("window.__jojoReaderGoToScrollProgress");
     expect(startScript).toContain('turn(dx < 0 ? "next" : "previous")');
     expect(startScript).toContain("window.__jojoReaderGoToSpread");
     expect(startScript).toContain("revealElement(target)");
@@ -66,6 +67,7 @@ describe("book reader bridge", () => {
     expect(startScript).toContain("attachSearchBlockAnchors");
     expect(startScript).toContain('"jojo-search-block:" + targetId + ":" + blockNumber');
     expect(startScript).toContain("startAtEnd = false");
+    expect(startScript).toContain('document.addEventListener("contextmenu"');
     expect(endScript).toContain("startAtEnd = true");
   });
 
@@ -82,6 +84,8 @@ describe("book reader bridge", () => {
     );
     expect(createBookReaderGoToSpreadScript(-3)).toContain("(0)");
     expect(createBookReaderGoToSpreadScript(Number.NaN)).toContain("(0)");
+    expect(createBookReaderGoToScrollProgressScript(1.4)).toContain("(1)");
+    expect(createBookReaderGoToScrollProgressScript(-1)).toContain("(0)");
     expect(createBookReaderLocateTextScript('</script>正文')).toContain('<\\/script>正文');
     expect(createBookReaderMeasureScript()).toContain("__jojoReaderMeasurePages");
     expect(createBookReaderApplyAnnotationScript({ id: "a", start: 2, end: 5 })).toContain("__jojoReaderApplyAnnotation");

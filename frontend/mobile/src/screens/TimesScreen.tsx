@@ -140,6 +140,7 @@ export function TimesScreen() {
   const language = useMobileStore((state) => state.timesLanguage);
   const readIds = useMobileStore((state) => state.timesReadArticleIds);
   const markRead = useMobileStore((state) => state.markTimesArticleRead);
+  const disabledSourceIds = useMobileStore((state) => state.timesDisabledSourceIds);
   const theme = mobileTheme;
   const generation = useRef(0);
   const loadingMoreRef = useRef(false);
@@ -154,10 +155,15 @@ export function TimesScreen() {
   const [error, setError] = useState("");
 
   const readSet = useMemo(() => new Set(readIds), [readIds]);
+  const disabledSources = useMemo(() => new Set(disabledSourceIds), [disabledSourceIds]);
+  const enabledSources = useMemo(() => (
+    index?.sources.filter((source) => !disabledSources.has(source.id)) ?? []
+  ), [disabledSources, index?.sources]);
   const articles = useMemo(() => pages
     .flatMap((page) => page.articles)
+    .filter((article) => !disabledSources.has(article.source.id))
     .filter((article) => selectedSource === "all" || article.source.id === selectedSource)
-    .map((article) => presentMobileTimesArticle(article, language)), [language, pages, selectedSource]);
+    .map((article) => presentMobileTimesArticle(article, language)), [disabledSources, language, pages, selectedSource]);
   const selectedSourceItem = index?.sources.find((source) => source.id === selectedSource);
   const selectedSourceLabel = selectedSourceItem ? timesSourceName(selectedSourceItem) : "所有媒体";
 
@@ -191,6 +197,10 @@ export function TimesScreen() {
   useEffect(() => {
     if (user) void loadInitial(false);
   }, [loadInitial, user]);
+
+  useEffect(() => {
+    if (selectedSource !== "all" && disabledSources.has(selectedSource)) setSelectedSource("all");
+  }, [disabledSources, selectedSource]);
 
   const loadMore = useCallback(async () => {
     const cursor = nextCursor;
@@ -238,15 +248,6 @@ export function TimesScreen() {
           <Text style={[styles.filterAction, { color: theme.red, fontFamily: theme.sans }]}>筛选</Text>
           <Ionicons name="chevron-down" size={14} color={theme.red} />
         </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="拉取最新新闻"
-          disabled={refreshing}
-          onPress={() => void loadInitial(true)}
-          style={[styles.refreshButton, { borderLeftColor: theme.rule }]}
-        >
-          <Ionicons name="refresh" size={18} color={refreshing ? theme.muted : theme.red} />
-        </Pressable>
       </View>
 
       {loading ? (
@@ -272,8 +273,8 @@ export function TimesScreen() {
           overScrollMode={IS_EINK_RELEASE ? "never" : "always"}
           onEndReached={() => void loadMore()}
           onEndReachedThreshold={0.8}
-          refreshing={IS_EINK_RELEASE ? false : refreshing}
-          onRefresh={IS_EINK_RELEASE ? undefined : () => void loadInitial(true)}
+          refreshing={refreshing}
+          onRefresh={() => void loadInitial(true)}
           initialNumToRender={8}
           maxToRenderPerBatch={8}
           windowSize={7}
@@ -310,7 +311,7 @@ export function TimesScreen() {
               </Pressable>
             </View>
             <FlatList
-              data={[{ id: "all", name: "所有媒体", language: "" }, ...(index?.sources ?? [])]}
+              data={[{ id: "all", name: "所有媒体", language: "" }, ...enabledSources]}
               keyExtractor={(source) => source.id}
               renderItem={({ item }) => {
                 const selected = item.id === selectedSource;
@@ -341,7 +342,6 @@ const styles = StyleSheet.create({
   filterButton: { flex: 1, minWidth: 0, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 9 },
   filterLabel: { flex: 1, minWidth: 0, fontSize: 14, fontWeight: "900" },
   filterAction: { fontSize: 10, fontWeight: "900" },
-  refreshButton: { width: 50, borderLeftWidth: StyleSheet.hairlineWidth, alignItems: "center", justifyContent: "center" },
   loadingState: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   loadingStateText: { fontSize: 11 },
   timeline: { width: "100%", maxWidth: 760, alignSelf: "center" },

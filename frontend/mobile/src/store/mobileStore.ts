@@ -39,6 +39,9 @@ export interface RecentBook {
   title: string;
   subtitle: string;
   progress: number;
+  chapterId?: string;
+  spreadIndex?: number;
+  scrollProgress?: number;
   updatedAt: number;
 }
 
@@ -70,6 +73,7 @@ interface MobileState {
   aiConversations: MobileAiConversation[];
   timesLanguage: "zh-CN" | "original";
   timesReadArticleIds: string[];
+  timesDisabledSourceIds: string[];
   setHapticsEnabled: (enabled: boolean) => void;
   setTextScale: (scale: MobileState["textScale"]) => void;
   setBookLineHeight: (lineHeight: MobileState["bookLineHeight"]) => void;
@@ -87,6 +91,9 @@ interface MobileState {
   upsertAiConversation: (conversation: MobileAiConversation) => void;
   removeAiConversation: (id: string, ownerId: string) => void;
   setTimesLanguage: (language: MobileState["timesLanguage"]) => void;
+  setTimesSourceEnabled: (sourceId: string, enabled: boolean, availableSourceIds: string[]) => boolean;
+  setAllTimesSourcesEnabled: (enabled: boolean, availableSourceIds: string[]) => void;
+  enableAllTimesSources: () => void;
   markTimesArticleRead: (articleId: string) => void;
   clearRecentIssues: () => void;
   clearRecentReading: () => void;
@@ -110,6 +117,7 @@ export const useMobileStore = create<MobileState>()(
       aiConversations: [],
       timesLanguage: "zh-CN",
       timesReadArticleIds: [],
+      timesDisabledSourceIds: [],
       setHapticsEnabled: (hapticsEnabled) => set({ hapticsEnabled }),
       setTextScale: (textScale) => set({ textScale }),
       setBookLineHeight: (bookLineHeight) => set({ bookLineHeight }),
@@ -137,6 +145,12 @@ export const useMobileStore = create<MobileState>()(
         const entry: RecentBook = {
           ...book,
           progress: Math.max(0, Math.min(100, Math.round(book.progress || 0))),
+          spreadIndex: typeof book.spreadIndex === "number"
+            ? Math.max(0, Math.floor(book.spreadIndex))
+            : undefined,
+          scrollProgress: typeof book.scrollProgress === "number"
+            ? Math.max(0, Math.min(1, book.scrollProgress))
+            : undefined,
           updatedAt: Date.now(),
         };
         return {
@@ -181,6 +195,26 @@ export const useMobileStore = create<MobileState>()(
         )),
       })),
       setTimesLanguage: (timesLanguage) => set({ timesLanguage }),
+      setTimesSourceEnabled: (sourceId, enabled, availableSourceIds) => {
+        let changed = false;
+        set((state) => {
+          const disabled = new Set(state.timesDisabledSourceIds);
+          if (enabled) {
+            changed = disabled.delete(sourceId);
+          } else {
+            const enabledCount = availableSourceIds.filter((id) => !disabled.has(id)).length;
+            if (enabledCount <= 1 || disabled.has(sourceId)) return state;
+            disabled.add(sourceId);
+            changed = true;
+          }
+          return changed ? { timesDisabledSourceIds: [...disabled] } : state;
+        });
+        return changed;
+      },
+      setAllTimesSourcesEnabled: (enabled, availableSourceIds) => set({
+        timesDisabledSourceIds: enabled ? [] : availableSourceIds.slice(1),
+      }),
+      enableAllTimesSources: () => set({ timesDisabledSourceIds: [] }),
       markTimesArticleRead: (articleId) => set((state) => ({
         timesReadArticleIds: [
           ...state.timesReadArticleIds.filter((candidate) => candidate !== articleId),
@@ -193,7 +227,7 @@ export const useMobileStore = create<MobileState>()(
     {
       name: "jojo-mobile-preferences-v1",
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: ({ hapticsEnabled, textScale, bookLineHeight, bookReadingMode, bookPaperColor, bookFirstLineIndent, keepScreenAwake, allowLandscape, leftTapNext, recentIssues, recentBooks, bookAnnotations, aiConversations, timesLanguage, timesReadArticleIds }) => ({
+      partialize: ({ hapticsEnabled, textScale, bookLineHeight, bookReadingMode, bookPaperColor, bookFirstLineIndent, keepScreenAwake, allowLandscape, leftTapNext, recentIssues, recentBooks, bookAnnotations, aiConversations, timesLanguage, timesReadArticleIds, timesDisabledSourceIds }) => ({
         hapticsEnabled,
         textScale,
         bookLineHeight,
@@ -209,6 +243,7 @@ export const useMobileStore = create<MobileState>()(
         aiConversations,
         timesLanguage,
         timesReadArticleIds,
+        timesDisabledSourceIds,
       }),
     },
   ),

@@ -1,12 +1,15 @@
 import type { ArchivePublicationName } from "@jojo/content";
+import type { NavigatorScreenParams } from "@react-navigation/native";
 import type { MobileBook } from "../lib/books";
 
 export type RootStackParamList = {
-  Tabs: undefined;
+  Tabs: NavigatorScreenParams<MainTabParamList> | undefined;
   Account: undefined;
   Settings: { section?: SettingsSection } | undefined;
   OpenSourceLicenses: undefined;
   AccountSecurity: undefined;
+  Notifications: undefined;
+  Bookshelf: undefined;
   Reader: {
     publication: ArchivePublicationName;
     issueId: string;

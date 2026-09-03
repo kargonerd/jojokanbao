@@ -21,6 +21,8 @@ import { startMobileAuthSync, useMobileAuthStore } from "./src/account/auth";
 import { AiScreen } from "./src/screens/AiScreen";
 import { TimesScreen } from "./src/screens/TimesScreen";
 import { TimesDetailScreen } from "./src/screens/TimesDetailScreen";
+import { NotificationsScreen } from "./src/screens/NotificationsScreen";
+import { BookshelfScreen } from "./src/screens/BookshelfScreen";
 import { IS_EINK_RELEASE } from "./src/config/appVariant";
 import { mobileTheme } from "./src/theme/tokens";
 
@@ -153,6 +155,24 @@ export default function App() {
           <Stack.Screen
             name="Settings"
             component={SettingsScreen}
+            options={{
+              gestureEnabled: true,
+              fullScreenGestureEnabled: true,
+              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
+            }}
+          />
+          <Stack.Screen
+            name="Notifications"
+            component={NotificationsScreen}
+            options={{
+              gestureEnabled: true,
+              fullScreenGestureEnabled: true,
+              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
+            }}
+          />
+          <Stack.Screen
+            name="Bookshelf"
+            component={BookshelfScreen}
             options={{
               gestureEnabled: true,
               fullScreenGestureEnabled: true,

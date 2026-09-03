@@ -43,5 +43,7 @@ describe("mobile times article document", () => {
     expect(document).toContain("图片说明");
     expect(document).toContain("ReactNativeWebView.postMessage");
     expect(document).toContain("AI 翻译");
+    expect(document).toContain("contextmenu");
+    expect(document).not.toContain("margin-left:8px");
   });
 });

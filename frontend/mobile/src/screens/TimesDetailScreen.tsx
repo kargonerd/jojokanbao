@@ -1,5 +1,6 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import * as Clipboard from "expo-clipboard";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -171,6 +172,7 @@ export function TimesDetailScreen({ route, navigation }: Props) {
           originWhitelist={["about:*", "https://reader.jojokanbao.cn"]}
           onMessage={handleWebMessage}
           javaScriptEnabled
+          menuItems={[]}
           domStorageEnabled={false}
           cacheEnabled
           setSupportMultipleWindows={false}
@@ -183,6 +185,10 @@ export function TimesDetailScreen({ route, navigation }: Props) {
       {selection && !explanation ? (
         <View style={[styles.selectionBar, { borderColor: theme.ruleDark, backgroundColor: theme.paper }]}>
           <Text numberOfLines={1} style={[styles.selectionQuote, { color: theme.muted, fontFamily: theme.serif }]}>“{selection.quote}”</Text>
+          <Pressable accessibilityRole="button" onPress={() => { void Clipboard.setStringAsync(selection.quote); setSelection(null); }} style={styles.copyButton}>
+            <Ionicons name="copy-outline" size={16} color={theme.red} />
+            <Text style={[styles.copyButtonText, { color: theme.red, fontFamily: theme.sans }]}>复制</Text>
+          </Pressable>
           <Pressable accessibilityRole="button" onPress={startExplanation} style={[styles.explainButton, { backgroundColor: theme.red }]}>
             <Text style={[styles.explainButtonText, { color: theme.inverse, fontFamily: theme.sans }]}>AI 解释</Text>
           </Pressable>
@@ -240,6 +246,8 @@ const styles = StyleSheet.create({
   webView: { flex: 1 },
   selectionBar: { position: "absolute", right: 12, bottom: 14, left: 12, minHeight: 52, borderWidth: 1, paddingLeft: 13, flexDirection: "row", alignItems: "center", gap: 10 },
   selectionQuote: { flex: 1, minWidth: 0, fontSize: 11 },
+  copyButton: { height: 50, minWidth: 58, alignItems: "center", justifyContent: "center", gap: 2 },
+  copyButtonText: { fontSize: 9, fontWeight: "900" },
   explainButton: { height: 50, minWidth: 84, alignItems: "center", justifyContent: "center", paddingHorizontal: 14 },
   explainButtonText: { fontSize: 11, fontWeight: "900" },
   explanationRoot: { flex: 1, alignItems: "flex-end", backgroundColor: "rgba(0,0,0,.24)" },

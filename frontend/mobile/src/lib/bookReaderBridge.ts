@@ -12,6 +12,7 @@ export interface BookReaderPageMessage {
   pageEnd: number;
   pageCount: number;
   pagesPerSpread: number;
+  scrollProgress: number;
 }
 
 export interface BookReaderAnnotationMarker {
@@ -40,6 +41,11 @@ export type BookReaderMessage =
 export function createBookReaderGoToSpreadScript(index: number): string {
   const safeIndex = Math.max(0, Math.floor(Number.isFinite(index) ? index : 0));
   return `window.__jojoReaderGoToSpread && window.__jojoReaderGoToSpread(${safeIndex}); true;`;
+}
+
+export function createBookReaderGoToScrollProgressScript(progress: number): string {
+  const safeProgress = Math.max(0, Math.min(1, Number.isFinite(progress) ? progress : 0));
+  return `window.__jojoReaderGoToScrollProgress && window.__jojoReaderGoToScrollProgress(${safeProgress}); true;`;
 }
 
 export function createBookReaderMeasureScript(): string {
@@ -116,8 +122,12 @@ export function parseBookReaderMessage(value: string): BookReaderMessage | null 
       && typeof message.pageStart === "number"
       && typeof message.pageEnd === "number"
       && typeof message.pageCount === "number"
-      && typeof message.pagesPerSpread === "number") {
-      return message as BookReaderPageMessage;
+      && typeof message.pagesPerSpread === "number"
+      && (message.scrollProgress === undefined || typeof message.scrollProgress === "number")) {
+      return {
+        ...message,
+        scrollProgress: typeof message.scrollProgress === "number" ? message.scrollProgress : 0,
+      } as BookReaderPageMessage;
     }
   } catch {
     // Reader messages are optional UI events; malformed values are ignored.
@@ -129,6 +139,8 @@ export function createBookReaderBridgeScript(
   initialEdge: BookChapterEdge,
   leftTapNext = false,
   annotations: readonly BookReaderAnnotationMarker[] = [],
+  initialSpreadIndex?: number,
+  initialScrollProgress?: number,
 ): string {
   return `
     (function () {
@@ -144,6 +156,9 @@ export function createBookReaderBridgeScript(
       var touchStartY = 0;
       var lastSwipeAt = 0;
       var measureTimer = 0;
+      var scrollTimer = 0;
+      var restoreSpread = ${typeof initialSpreadIndex === "number" ? Math.max(0, Math.floor(initialSpreadIndex)) : "null"};
+      var restoreScrollProgress = ${typeof initialScrollProgress === "number" ? Math.max(0, Math.min(1, initialScrollProgress)) : "null"};
       var searchBlockSelector = ${jsonArgument(JOJO_BOOK_SEARCH_BLOCK_SELECTOR)};
 
       function attachSearchBlockAnchors() {
@@ -273,7 +288,25 @@ export function createBookReaderBridgeScript(
           pageStart: pageStart,
           pageEnd: Math.min(pageCount, pageStart + pagesPerSpread - 1),
           pageCount: pageCount,
-          pagesPerSpread: pagesPerSpread
+          pagesPerSpread: pagesPerSpread,
+          scrollProgress: 0
+        });
+      }
+
+      function reportScroll() {
+        var scrolling = document.scrollingElement || document.documentElement;
+        var maximum = Math.max(0, scrolling.scrollHeight - window.innerHeight);
+        var progress = maximum > 0 ? Math.max(0, Math.min(1, scrolling.scrollTop / maximum)) : 0;
+        post({
+          type: "reader-page",
+          paged: false,
+          spreadIndex: 0,
+          spreadCount: 1,
+          pageStart: 1,
+          pageEnd: 1,
+          pageCount: 1,
+          pagesPerSpread: 1,
+          scrollProgress: progress
         });
       }
 
@@ -306,7 +339,17 @@ export function createBookReaderBridgeScript(
 
       function measurePages() {
         if (!paged) {
-          post({ type: "reader-page", paged: false, spreadIndex: 0, spreadCount: 1, pageStart: 1, pageEnd: 1, pageCount: 1, pagesPerSpread: 1 });
+          if (restoreScrollProgress !== null) {
+            var progress = restoreScrollProgress;
+            restoreScrollProgress = null;
+            window.requestAnimationFrame(function () {
+              var scrolling = document.scrollingElement || document.documentElement;
+              window.scrollTo(0, Math.max(0, scrolling.scrollHeight - window.innerHeight) * progress);
+              reportScroll();
+            });
+          } else {
+            reportScroll();
+          }
           return;
         }
         var oldPageStart = currentSpread * pagesPerSpread;
@@ -324,6 +367,10 @@ export function createBookReaderBridgeScript(
         if (startAtEnd) {
           currentSpread = spreadCount - 1;
           startAtEnd = false;
+          restoreSpread = null;
+        } else if (restoreSpread !== null) {
+          currentSpread = Math.min(spreadCount - 1, restoreSpread);
+          restoreSpread = null;
         } else {
           currentSpread = Math.min(spreadCount - 1, Math.floor(oldPageStart / pagesPerSpread));
         }
@@ -349,6 +396,12 @@ export function createBookReaderBridgeScript(
       window.__jojoReaderGoToSpread = function (index) {
         if (!paged) return;
         showSpread(Number(index) || 0);
+      };
+      window.__jojoReaderGoToScrollProgress = function (progress) {
+        if (paged) return;
+        var scrolling = document.scrollingElement || document.documentElement;
+        window.scrollTo(0, Math.max(0, scrolling.scrollHeight - window.innerHeight) * Math.max(0, Math.min(1, Number(progress) || 0)));
+        reportScroll();
       };
 
       window.__jojoReaderApplyAnnotation = applyAnnotation;
@@ -452,6 +505,13 @@ export function createBookReaderBridgeScript(
       }
 
       document.addEventListener("mouseup", function () { window.setTimeout(reportSelection, 0); });
+      document.addEventListener("contextmenu", function (event) { event.preventDefault(); });
+      if (!paged) {
+        document.addEventListener("scroll", function () {
+          window.clearTimeout(scrollTimer);
+          scrollTimer = window.setTimeout(reportScroll, 90);
+        }, { passive: true });
+      }
 
       window.requestAnimationFrame(measurePages);
       window.setTimeout(measurePages, 240);

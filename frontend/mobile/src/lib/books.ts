@@ -31,6 +31,16 @@ export interface MobileBookVolume {
   manifestObject: string;
 }
 
+export type MobileBookOpenTarget =
+  | { screen: "BookDetails"; book: MobileBook }
+  | {
+      screen: "BookReader";
+      datasetId: string;
+      itemKey: string;
+      title: string;
+      bookTitle: string;
+    };
+
 export interface LoadedMobileBookItem {
   book: MobileBook;
   volume: MobileBookVolume;
@@ -150,6 +160,18 @@ export function loadMobileBookVolumes(book: MobileBook): Promise<MobileBookVolum
     volumePromises.set(book.datasetId, promise);
   }
   return promise;
+}
+
+export async function resolveMobileBookOpenTarget(book: MobileBook): Promise<MobileBookOpenTarget> {
+  const volumes = await loadMobileBookVolumes(book);
+  const onlyVolume = volumes.length === 1 ? volumes[0] : undefined;
+  return onlyVolume ? {
+    screen: "BookReader",
+    datasetId: book.datasetId,
+    itemKey: onlyVolume.itemKey,
+    title: onlyVolume.title,
+    bookTitle: book.title,
+  } : { screen: "BookDetails", book };
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
