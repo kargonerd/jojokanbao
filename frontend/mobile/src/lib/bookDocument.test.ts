@@ -42,6 +42,8 @@ describe("createBookDocument", () => {
     expect(html).toContain("column-count: 2");
     expect(html).toContain("column-fill: auto");
     expect(html).toContain("height: 100vh");
+    expect(html).toContain("padding: 5rem 2rem");
+    expect(html).toContain("padding: 5rem 4rem");
     expect(html).toContain("orientation: landscape");
     expect(html).toContain('data-reading-mode="paged"');
     expect(html).toContain('data-book-content data-target-id="chapter-1"');
@@ -65,6 +67,7 @@ describe("createBookDocument", () => {
     });
     expect(html).toContain('data-reading-mode="scroll"');
     expect(html).toContain("max-width: 52rem");
+    expect(html).toContain("padding: 5rem 1.35rem");
     expect(html).toContain("text-indent: 0");
     expect(html).not.toContain("column-count: 2");
     expect(html).not.toContain("height: 100vh");

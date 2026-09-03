@@ -37,6 +37,16 @@ const spineShadowBands = [
   "rgba(32,32,32,.13)",
 ] as const;
 
+const gutterShadowBands = [
+  "rgba(48,27,7,0)",
+  "rgba(48,27,7,.06)",
+  "rgba(48,27,7,.16)",
+  "rgba(48,27,7,.42)",
+  "rgba(42,22,6,.56)",
+  "rgba(255,251,226,.22)",
+  "rgba(48,27,7,0)",
+] as const;
+
 function PageSpineShadow() {
   return (
     <View pointerEvents="none" style={styles.pageSpineShadow}>
@@ -145,6 +155,7 @@ export function MeScreen() {
   const [dialogViewport, setDialogViewport] = useState(() => ({ width: windowWidth, height: windowHeight }));
   const closingRef = useRef(false);
   const openAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
+  const latestWindowSizeRef = useRef({ width: windowWidth, height: windowHeight });
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const cameraProgress = useRef(new Animated.Value(0)).current;
   const coverProgress = useRef(new Animated.Value(0)).current;
@@ -171,15 +182,33 @@ export function MeScreen() {
   const bookWidth = wideBook
     ? Math.min(976, dialogWidth - 112, (dialogHeight - 112) * (61 / 42))
     : dialogWidth * 1.8;
-  const bookHeight = wideBook ? bookWidth * (42 / 61) : Math.min(544, dialogHeight - 64);
+  // A portrait spread is deliberately wider than the viewport so the camera
+  // lands on the form page. Derive its height from one leaf, otherwise wide
+  // Android display modes turn the leaf into a shallow landscape rectangle.
+  const portraitLeafWidth = bookWidth / 2;
+  const bookHeight = wideBook
+    ? bookWidth * (42 / 61)
+    : Math.min(dialogHeight - 64, portraitLeafWidth / 0.7);
   const bookEndOffset = wideBook ? 0 : -bookWidth / 2 + dialogWidth * 0.05;
   const bookStartOffset = wideBook ? -bookWidth * 0.24 : bookEndOffset + dialogWidth * 0.03;
+  const coverHoldDuration = wideBook ? 500 : 580;
+  latestWindowSizeRef.current = { width: windowWidth, height: windowHeight };
 
   useEffect(() => {
     if (resendSeconds <= 0) return undefined;
     const timer = setInterval(() => setResendSeconds((seconds) => Math.max(0, seconds - 1)), 1000);
     return () => clearInterval(timer);
   }, [resendSeconds]);
+
+  useEffect(() => {
+    if (!loginVisible) return;
+    const windowIsLandscape = windowWidth > windowHeight;
+    const dialogIsLandscape = dialogViewport.width > dialogViewport.height;
+    if (windowIsLandscape === dialogIsLandscape) return;
+    if (IS_EINK_RELEASE || !openAnimationRef.current) {
+      setDialogViewport({ width: windowWidth, height: windowHeight });
+    }
+  }, [dialogViewport.height, dialogViewport.width, loginVisible, windowHeight, windowWidth]);
 
   const openAccount = (mode: AccountMode) => {
     closingRef.current = false;
@@ -208,6 +237,7 @@ export function MeScreen() {
     coverProgress.setValue(0);
     setLoginVisible(true);
     requestAnimationFrame(() => {
+      const coverDuration = wideBook ? 1240 : 1080;
       const animation = Animated.parallel([
         Animated.timing(backdropOpacity, {
           toValue: 1,
@@ -215,28 +245,30 @@ export function MeScreen() {
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
         }),
-        Animated.sequence([
-          Animated.delay(140),
-          Animated.timing(cameraProgress, {
-            toValue: 1,
-            duration: wideBook ? 1320 : 1120,
-            easing: Easing.bezier(0.38, 0.12, 0.12, 1),
-            useNativeDriver: true,
-          }),
-        ]),
-        Animated.sequence([
-          Animated.delay(wideBook ? 820 : 720),
-          Animated.timing(coverProgress, {
-            toValue: 1,
-            duration: wideBook ? 1240 : 1080,
-            easing: Easing.bezier(0.42, 0.1, 0.16, 1),
-            useNativeDriver: true,
-          }),
-        ]),
+        // Hold on the cover before scheduling both native-driven transforms.
+        Animated.timing(cameraProgress, {
+          toValue: 1,
+          delay: coverHoldDuration,
+          duration: wideBook ? 1320 : 1120,
+          easing: Easing.bezier(0.38, 0.12, 0.12, 1),
+          useNativeDriver: true,
+        }),
+        Animated.timing(coverProgress, {
+          toValue: 1,
+          delay: coverHoldDuration,
+          duration: coverDuration,
+          easing: Easing.bezier(0.42, 0.1, 0.16, 1),
+          useNativeDriver: true,
+        }),
       ]);
       openAnimationRef.current = animation;
       animation.start(() => {
-        if (openAnimationRef.current === animation) openAnimationRef.current = null;
+        if (openAnimationRef.current !== animation) return;
+        openAnimationRef.current = null;
+        const latestSize = latestWindowSizeRef.current;
+        const latestIsLandscape = latestSize.width > latestSize.height;
+        const dialogIsLandscape = dialogViewport.width > dialogViewport.height;
+        if (latestIsLandscape !== dialogIsLandscape) setDialogViewport(latestSize);
       });
     });
   };
@@ -258,37 +290,11 @@ export function MeScreen() {
     openAnimationRef.current?.stop();
     openAnimationRef.current = null;
     Keyboard.dismiss();
-    if (IS_EINK_RELEASE) {
-      setLoginVisible(false);
-      closingRef.current = false;
-      return;
-    }
-    Animated.parallel([
-      Animated.timing(coverProgress, {
-        toValue: 0,
-        duration: wideBook ? 720 : 620,
-        easing: Easing.bezier(0.5, 0, 0.72, 1),
-        useNativeDriver: true,
-      }),
-      Animated.timing(cameraProgress, {
-        toValue: 0,
-        duration: wideBook ? 760 : 660,
-        easing: Easing.inOut(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.sequence([
-        Animated.delay(wideBook ? 390 : 330),
-        Animated.timing(backdropOpacity, {
-          toValue: 0,
-          duration: 220,
-          easing: Easing.in(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]),
-    ]).start(() => {
-      setLoginVisible(false);
-      closingRef.current = false;
-    });
+    setLoginVisible(false);
+    backdropOpacity.setValue(0);
+    cameraProgress.setValue(0);
+    coverProgress.setValue(0);
+    closingRef.current = false;
   };
 
   const handleSignIn = async () => {
@@ -423,7 +429,7 @@ export function MeScreen() {
 
   return (
     <SafeAreaView edges={["top"]} style={[styles.safe, { backgroundColor: theme.paper }]}>
-      <ScreenHeader title="我" />
+      <ScreenHeader title="账号" onBack={() => navigation.goBack()} />
       <ScrollView
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[styles.content, { paddingBottom: 24 }]}
@@ -466,28 +472,29 @@ export function MeScreen() {
               </Pressable>
             </>
           ) : (
-            <>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="登录"
-                onPress={() => openAccount("login")}
-                style={({ pressed }) => [styles.accountEntry, { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.rule }, pressed && { backgroundColor: theme.paperSoft }]}
-              >
-                <Ionicons name="person-circle-outline" size={22} color={theme.ink} />
-                <Text style={[styles.accountEntryText, { color: theme.ink, fontFamily: theme.serif }]}>登录</Text>
-                <Ionicons name="chevron-forward" size={17} color={theme.muted} />
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="注册"
-                onPress={() => openAccount("register")}
-                style={({ pressed }) => [styles.accountEntry, pressed && { backgroundColor: theme.paperSoft }]}
-              >
-                <Ionicons name="person-add-outline" size={21} color={theme.ink} />
-                <Text style={[styles.accountEntryText, { color: theme.ink, fontFamily: theme.serif }]}>注册</Text>
-                <Ionicons name="chevron-forward" size={17} color={theme.muted} />
-              </Pressable>
-            </>
+            <View style={styles.readerEntry}>
+              <Text style={[styles.readerEntryStar, { color: theme.red }]}>★</Text>
+              <Text style={[styles.readerEntryTitle, { color: theme.ink, fontFamily: theme.serif }]}>读者入口</Text>
+              <Text style={[styles.readerEntryCopy, { color: theme.muted, fontFamily: theme.sans }]}>登录已有账号，或凭邀请码完成注册。</Text>
+              <View style={styles.readerEntryActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="登录"
+                  onPress={() => openAccount("login")}
+                  style={({ pressed }) => [styles.readerEntryButton, { borderColor: theme.red, backgroundColor: theme.red }, pressed && styles.readerEntryButtonPressed]}
+                >
+                  <Text style={[styles.readerEntryButtonText, { color: theme.inverse, fontFamily: theme.serif }]}>登录</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="注册"
+                  onPress={() => openAccount("register")}
+                  style={({ pressed }) => [styles.readerEntryButton, { borderColor: theme.red, backgroundColor: theme.paper }, pressed && styles.readerEntryButtonPressed]}
+                >
+                  <Text style={[styles.readerEntryButtonText, { color: theme.red, fontFamily: theme.serif }]}>注册</Text>
+                </Pressable>
+              </View>
+            </View>
           )}
         </View>
 
@@ -528,7 +535,7 @@ export function MeScreen() {
       >
         <Animated.View
           accessibilityViewIsModal
-          style={[styles.modalOverlay, { backgroundColor: IS_EINK_RELEASE ? "rgba(255,255,255,.96)" : "rgba(0,0,0,.48)", opacity: backdropOpacity }]}
+          style={[styles.modalOverlay, { backgroundColor: theme.paper, opacity: backdropOpacity }]}
         >
           <Pressable accessibilityLabel={accountMode === "register" ? "关闭注册" : accountMode === "recover" ? "关闭找回密码" : "关闭登录"} onPress={() => closeLogin()} style={StyleSheet.absoluteFill} />
           <KeyboardAvoidingView
@@ -559,22 +566,24 @@ export function MeScreen() {
                           outputRange: [bookStartOffset, bookEndOffset],
                         }),
                       },
+                      {
+                        rotateZ: cameraProgress.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [wideBook ? "-0.65deg" : "0deg", wideBook ? "-0.16deg" : "0deg"],
+                        }),
+                      },
+                      {
+                        scale: cameraProgress.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [wideBook ? 0.98 : 0.94, 1],
+                        }),
+                      },
                     ],
                   },
                 ]}
               >
                 <View style={[styles.rightCover, { backgroundColor: theme.red, borderColor: theme.redDark }]}>
                   <View style={[styles.rightPage, { backgroundColor: IS_EINK_RELEASE ? theme.paper : "#fff9e9", borderColor: theme.rule }]}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="关闭"
-                      disabled={busy}
-                      onPress={() => closeLogin()}
-                      hitSlop={12}
-                      style={styles.closeButton}
-                    >
-                      <Ionicons name="close" size={22} color={theme.ink} />
-                    </Pressable>
                     <ScrollView
                       bounces={false}
                       keyboardShouldPersistTaps="handled"
@@ -586,7 +595,7 @@ export function MeScreen() {
                         <Text style={[styles.bookNumber, { color: theme.red, fontFamily: theme.sans }]}>第 01 号</Text>
                       </View>
                       <View accessibilityRole="tablist" style={[styles.modeTabs, { borderBottomColor: theme.rule }]}>
-                        {(["login", "register", "recover"] as const).map((mode) => {
+                        {(["login", "register"] as const).map((mode) => {
                           const selected = accountMode === mode;
                           return (
                             <Pressable
@@ -597,7 +606,7 @@ export function MeScreen() {
                               onPress={() => changeAccountMode(mode)}
                               style={[styles.modeTab, selected && { borderBottomColor: theme.red }]}
                             >
-                              <Text style={[styles.modeTabText, { color: selected ? theme.red : theme.muted, fontFamily: theme.sans }]}>{mode === "login" ? "登录" : mode === "register" ? "注册" : "找回"}</Text>
+                              <Text style={[styles.modeTabText, { color: selected ? theme.red : theme.muted, fontFamily: theme.serif }]}>{mode === "login" ? "登录" : "注册"}</Text>
                             </Pressable>
                           );
                         })}
@@ -642,7 +651,7 @@ export function MeScreen() {
                             onPress={() => void handleSignIn()}
                             style={({ pressed }) => [styles.loginButton, { backgroundColor: theme.red, opacity: busy ? 0.45 : pressed ? 0.78 : 1 }]}
                           >
-                            <Text style={[styles.loginText, { color: theme.inverse, fontFamily: theme.sans }]}>{busy ? "登录中" : "登录"}</Text>
+                            <Text style={[styles.loginText, { color: theme.inverse, fontFamily: theme.serif }]}>{busy ? "正在登录…" : "登录"}</Text>
                           </Pressable>
                           <Pressable accessibilityRole="button" disabled={busy} onPress={() => changeAccountMode("recover")}>
                             <Text style={[styles.textAction, { color: theme.red, fontFamily: theme.sans }]}>忘记密码？</Text>
@@ -662,7 +671,7 @@ export function MeScreen() {
                             <Text accessibilityRole={localError || error ? "alert" : undefined} style={[styles.error, { color: localError || error ? theme.red : theme.muted, fontFamily: theme.sans }]}>{localError || error || notice}</Text>
                           ) : null}
                           <Pressable accessibilityRole="button" disabled={busy} onPress={() => void handleConfirmSignUp()} style={({ pressed }) => [styles.loginButton, { backgroundColor: theme.red, opacity: busy ? 0.45 : pressed ? 0.78 : 1 }]}>
-                            <Text style={[styles.loginText, { color: theme.inverse, fontFamily: theme.sans }]}>{busy ? "正在验证…" : "确认并完成注册"}</Text>
+                            <Text style={[styles.loginText, { color: theme.inverse, fontFamily: theme.serif }]}>{busy ? "正在验证…" : "确认并完成注册"}</Text>
                           </Pressable>
                           <Pressable accessibilityRole="button" disabled={busy || resendSeconds > 0} onPress={() => void resendCode()}>
                             <Text style={[styles.textAction, { color: theme.red, fontFamily: theme.sans }]}>{resendSeconds > 0 ? `${resendSeconds} 秒后可重发` : "重新发送验证码"}</Text>
@@ -738,7 +747,7 @@ export function MeScreen() {
                             onPress={() => void handleSignUp()}
                             style={({ pressed }) => [styles.loginButton, { backgroundColor: theme.red, opacity: busy ? 0.45 : pressed ? 0.78 : 1 }]}
                           >
-                            <Text style={[styles.loginText, { color: theme.inverse, fontFamily: theme.sans }]}>{busy ? "正在注册…" : "发送注册验证码"}</Text>
+                            <Text style={[styles.loginText, { color: theme.inverse, fontFamily: theme.serif }]}>{busy ? "正在注册…" : "发送注册验证码"}</Text>
                           </Pressable>
                         </View>
                       ) : (
@@ -797,17 +806,21 @@ export function MeScreen() {
                             <Text accessibilityRole={localError || error ? "alert" : undefined} style={[styles.error, { color: localError || error ? theme.red : theme.muted, fontFamily: theme.sans }]}>{localError || error || notice}</Text>
                           ) : null}
                           <Pressable accessibilityRole="button" disabled={busy} onPress={() => void handleRecovery()} style={({ pressed }) => [styles.loginButton, { backgroundColor: theme.red, opacity: busy ? 0.45 : pressed ? 0.78 : 1 }]}>
-                            <Text style={[styles.loginText, { color: theme.inverse, fontFamily: theme.sans }]}>{busy ? "处理中…" : recoveryStep === "email" ? "发送验证码" : recoveryStep === "code" ? "验证身份" : "保存新密码"}</Text>
+                            <Text style={[styles.loginText, { color: theme.inverse, fontFamily: theme.serif }]}>{busy ? "处理中…" : recoveryStep === "email" ? "发送验证码" : recoveryStep === "code" ? "验证身份" : "保存新密码"}</Text>
                           </Pressable>
                           {recoveryStep === "code" ? (
                             <Pressable accessibilityRole="button" disabled={busy || resendSeconds > 0} onPress={() => void resendCode()}>
                               <Text style={[styles.textAction, { color: theme.red, fontFamily: theme.sans }]}>{resendSeconds > 0 ? `${resendSeconds} 秒后可重发` : "重新发送验证码"}</Text>
                             </Pressable>
                           ) : null}
+                          <Pressable accessibilityRole="button" disabled={busy} onPress={() => changeAccountMode("login")}>
+                            <Text style={[styles.textAction, { color: theme.red, fontFamily: theme.sans }]}>返回登录</Text>
+                          </Pressable>
                         </View>
                       )}
                       <View style={[styles.bookFooter, { borderTopColor: theme.rule }]}>
-                        <Text style={[styles.bookFooterText, { color: theme.muted, fontFamily: theme.sans }]}>JOJO 看报</Text>
+                        <Text style={[styles.bookFooterText, { color: theme.muted, fontFamily: theme.sans }]}>登记日期：二〇二六年</Text>
+                        <Text style={[styles.bookFooterText, { color: theme.red, fontFamily: theme.sans }]}>JOJO 看报</Text>
                       </View>
                     </ScrollView>
                     <Animated.View
@@ -819,6 +832,12 @@ export function MeScreen() {
                             inputRange: [0, 0.18, 0.52, 0.86, 1],
                             outputRange: [0, 0.04, 0.24, 0.07, 0],
                           }),
+                          transform: [{
+                            scaleX: coverProgress.interpolate({
+                              inputRange: [0, 0.18, 0.48, 0.76, 1],
+                              outputRange: [0.18, 0.18, 1, 0.55, 0.15],
+                            }),
+                          }],
                         },
                       ]}
                     >
@@ -830,20 +849,29 @@ export function MeScreen() {
                 </View>
 
                 <Animated.View
+                  collapsable={false}
                   pointerEvents="none"
-                  renderToHardwareTextureAndroid
-                  needsOffscreenAlphaCompositing
                   style={[
                     styles.turningPage,
                     {
                       transform: [
-                        { perspective: wideBook ? 5200 : 3000 },
-                        { rotateY: coverProgress.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "-168deg"] }) },
+                        {
+                          // Android's 3D View renderer can drop a back face after
+                          // it crosses 90deg. Project the same rigid 168deg hinge
+                          // turn into 2D instead. Negative scale places this very
+                          // same leaf on the left; there is no resting-page swap.
+                          scaleX: coverProgress.interpolate({
+                            inputRange: [0, 0.125, 0.25, 0.375, 0.5, 0.5357, 0.625, 0.75, 0.875, 1],
+                            outputRange: [1, 0.934, 0.743, 0.454, 0.105, 0.001, -0.259, -0.588, -0.839, -0.978],
+                          }),
+                        },
                       ],
                     },
                   ]}
                 >
                   <Animated.View
+                    collapsable={false}
+                    renderToHardwareTextureAndroid
                     style={[
                       styles.turningFace,
                       styles.turningFront,
@@ -851,17 +879,33 @@ export function MeScreen() {
                         backgroundColor: theme.red,
                         borderColor: theme.redDark,
                         opacity: coverProgress.interpolate({
-                          inputRange: [0, 0.47, 0.53, 1],
+                          inputRange: [0, 0.522, 0.536, 1],
                           outputRange: [1, 1, 0, 0],
                         }),
                       },
                     ]}
                   >
-                    <View style={[styles.coverFrame, { borderColor: theme.inverse }]} />
-                    <Text style={[styles.coverStar, { color: theme.inverse }]}>★</Text>
-                    <Text style={[styles.coverTitle, { color: theme.inverse, fontFamily: theme.serif }]}>{accountMode === "register" ? "读者注册" : accountMode === "recover" ? "找回密码" : "读者登录"}</Text>
+                    <View style={[styles.coverFrame, { borderColor: "#ddb239" }]} />
+                    <Text style={[styles.coverMotto, { color: "#ddb239", fontFamily: theme.serif }]}>全世界无产者，联合起来！</Text>
+                    <Text style={[styles.coverStar, { color: "#ddb239" }]}>★</Text>
+                    <Text style={[styles.coverTitle, { color: "#ddb239", fontFamily: theme.serif }]}>{accountMode === "register" ? "读者注册" : accountMode === "recover" ? "找回密码" : "读者登录"}</Text>
+                    <Animated.View
+                      pointerEvents="none"
+                      style={[
+                        styles.turningEdge,
+                        {
+                          backgroundColor: theme.redDark,
+                          opacity: coverProgress.interpolate({
+                            inputRange: [0, 0.28, 0.5, 0.72, 1],
+                            outputRange: [0, 0.15, 0.72, 0.18, 0],
+                          }),
+                        },
+                      ]}
+                    />
                   </Animated.View>
                   <Animated.View
+                    collapsable={false}
+                    renderToHardwareTextureAndroid
                     style={[
                       styles.turningFace,
                       styles.turningBack,
@@ -869,7 +913,7 @@ export function MeScreen() {
                         backgroundColor: theme.red,
                         borderColor: theme.redDark,
                         opacity: coverProgress.interpolate({
-                          inputRange: [0, 0.47, 0.53, 1],
+                          inputRange: [0, 0.536, 0.55, 1],
                           outputRange: [0, 0, 1, 1],
                         }),
                       },
@@ -877,19 +921,6 @@ export function MeScreen() {
                   >
                     <QuotePage theme={theme} />
                   </Animated.View>
-                  <Animated.View
-                    pointerEvents="none"
-                    style={[
-                      styles.turningEdge,
-                      {
-                        backgroundColor: theme.redDark,
-                        opacity: coverProgress.interpolate({
-                          inputRange: [0, 0.28, 0.5, 0.72, 1],
-                          outputRange: [0, 0.15, 0.72, 0.18, 0],
-                        }),
-                      },
-                    ]}
-                  />
                 </Animated.View>
 
                 <Animated.View
@@ -898,10 +929,13 @@ export function MeScreen() {
                     styles.bookGutter,
                     {
                       opacity: cameraProgress.interpolate({ inputRange: [0, 0.72, 1], outputRange: [0, 0, 1] }),
-                      backgroundColor: theme.ruleDark,
                     },
                   ]}
-                />
+                >
+                  {gutterShadowBands.map((backgroundColor) => (
+                    <View key={backgroundColor} style={[styles.shadowBand, { backgroundColor }]} />
+                  ))}
+                </Animated.View>
 
               </Animated.View>
             </View>
@@ -920,6 +954,14 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 12, fontWeight: "700" },
   accountEntry: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: 11 },
   accountEntryText: { flex: 1, fontSize: 15, fontWeight: "800" },
+  readerEntry: { alignItems: "center", paddingHorizontal: 8, paddingVertical: 30 },
+  readerEntryStar: { fontSize: 28, lineHeight: 32 },
+  readerEntryTitle: { marginTop: 7, fontSize: 27, fontWeight: "900", letterSpacing: 4 },
+  readerEntryCopy: { marginTop: 13, textAlign: "center", fontSize: 11, lineHeight: 18, fontWeight: "700", letterSpacing: 0.5 },
+  readerEntryActions: { width: "100%", maxWidth: 360, marginTop: 22, flexDirection: "row", gap: 10 },
+  readerEntryButton: { flex: 1, minHeight: 46, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  readerEntryButtonPressed: { transform: [{ translateY: -2 }] },
+  readerEntryButtonText: { fontSize: 13, fontWeight: "900", letterSpacing: 2 },
   infoRow: { minHeight: 62, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center" },
   infoLabel: { width: 84, fontSize: 11, fontWeight: "700" },
   infoValue: { flex: 1, textAlign: "right", fontSize: 14, fontWeight: "800" },
@@ -938,28 +980,29 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: "50%",
     width: "50%",
-    borderWidth: 2,
+    borderWidth: 1,
     borderLeftWidth: 0,
-    paddingTop: 8,
-    paddingRight: 8,
-    paddingBottom: 10,
+    borderTopRightRadius: 15,
+    borderBottomRightRadius: 15,
+    paddingTop: 4,
+    paddingRight: 5,
+    paddingBottom: 6,
     elevation: 15,
   },
-  leftPage: { position: "relative", flex: 1, overflow: "hidden", borderWidth: 1, borderRightWidth: 0, padding: 22 },
-  rightPage: { flex: 1, borderWidth: 1, borderLeftWidth: 0, overflow: "hidden" },
-  bookGutter: { position: "absolute", zIndex: 40, top: 8, bottom: 10, left: "50%", width: 2, transform: [{ translateX: -1 }] },
-  rightPageTurnShadow: { position: "absolute", zIndex: 3, top: 0, bottom: 0, left: 0, width: 64, flexDirection: "row" },
+  leftPage: { position: "relative", flex: 1, overflow: "hidden", borderWidth: 1, borderRightWidth: 0, borderTopLeftRadius: 10, borderBottomLeftRadius: 10, padding: 22 },
+  rightPage: { flex: 1, borderWidth: 1, borderLeftWidth: 0, borderTopRightRadius: 10, borderBottomRightRadius: 10, overflow: "hidden" },
+  bookGutter: { position: "absolute", zIndex: 40, top: 4, bottom: 6, left: "50%", width: 14, flexDirection: "row", transform: [{ translateX: -7 }] },
+  rightPageTurnShadow: { position: "absolute", zIndex: 3, top: 0, bottom: 0, left: 0, width: 64, flexDirection: "row", transformOrigin: "left center" },
   pageSpineShadow: { position: "absolute", zIndex: 3, top: 0, right: 0, bottom: 0, width: 48, flexDirection: "row" },
   shadowBand: { flex: 1 },
-  closeButton: { position: "absolute", zIndex: 4, top: 13, right: 14, width: 34, height: 34, alignItems: "center", justifyContent: "center" },
-  dialogContent: { flexGrow: 1, paddingHorizontal: 26 },
-  bookHeader: { minHeight: 60, paddingRight: 42, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  dialogContent: { flexGrow: 1, paddingHorizontal: 20 },
+  bookHeader: { minHeight: 60, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   bookHeaderText: { fontSize: 10, fontWeight: "900", letterSpacing: 2 },
   bookNumber: { fontSize: 10, fontWeight: "900", letterSpacing: 1.5 },
   modeTabs: { height: 43, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row" },
   modeTab: { flex: 1, borderBottomWidth: 2, borderBottomColor: "transparent", alignItems: "center", justifyContent: "center" },
   modeTabText: { fontSize: 12, fontWeight: "900", letterSpacing: 2 },
-  form: { paddingVertical: 19 },
+  form: { flexGrow: 1, justifyContent: "center", paddingVertical: 19 },
   fieldLabel: { marginBottom: 7, fontSize: 12, fontWeight: "800" },
   passwordLabel: { marginTop: 15 },
   input: { height: 46, borderBottomWidth: 1, paddingHorizontal: 3, fontSize: 14 },
@@ -976,7 +1019,7 @@ const styles = StyleSheet.create({
   confirmation: { flex: 1, minHeight: 230, justifyContent: "center", paddingVertical: 30 },
   confirmationTitle: { fontSize: 24, fontWeight: "900", letterSpacing: 2 },
   confirmationText: { marginTop: 13, fontSize: 12, lineHeight: 21, fontWeight: "700" },
-  bookFooter: { minHeight: 42, marginTop: "auto", borderTopWidth: StyleSheet.hairlineWidth, alignItems: "flex-end", justifyContent: "center" },
+  bookFooter: { minHeight: 42, marginTop: "auto", borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   bookFooterText: { fontSize: 9, fontWeight: "800", letterSpacing: 1.2 },
   quoteFrame: { flex: 1, borderWidth: 1, padding: 24, alignItems: "center", justifyContent: "center" },
   quoteStar: { marginBottom: 28, fontSize: 34, lineHeight: 38 },
@@ -991,12 +1034,18 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: "50%",
     width: "50%",
+    // Keep the transformed leaf above the elevated book cover after it crosses
+    // 90deg. Without elevation Android draws the landed back face underneath.
     elevation: 18,
     transformOrigin: "left center",
   },
   turningFace: {
     ...StyleSheet.absoluteFillObject,
-    borderWidth: 2,
+    borderWidth: 1,
+    borderTopLeftRadius: 11,
+    borderBottomLeftRadius: 11,
+    borderTopRightRadius: 15,
+    borderBottomRightRadius: 15,
     overflow: "hidden",
     backfaceVisibility: "hidden",
   },
@@ -1005,14 +1054,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   turningBack: {
-    paddingTop: 8,
-    paddingBottom: 10,
-    paddingLeft: 8,
+    paddingTop: 4,
+    paddingBottom: 6,
+    paddingLeft: 5,
     backfaceVisibility: "visible",
-    transform: [{ rotateY: "180deg" }],
+    // The outer leaf uses a negative X scale after crossing the spine. Mirror
+    // its back once so the quote remains readable in the settled left page.
+    transform: [{ scaleX: -1 }],
   },
   turningEdge: { position: "absolute", zIndex: 5, top: 3, right: -2, bottom: 3, width: 3 },
-  coverFrame: { position: "absolute", top: 12, right: 12, bottom: 12, left: 12, borderWidth: StyleSheet.hairlineWidth, opacity: 0.42 },
-  coverStar: { marginBottom: 17, fontSize: 30 },
-  coverTitle: { fontSize: 26, fontWeight: "900", letterSpacing: 8 },
+  coverFrame: { position: "absolute", top: 14, right: 14, bottom: 14, left: 14, borderWidth: StyleSheet.hairlineWidth, opacity: 0.42 },
+  coverMotto: { position: "absolute", left: 10, width: 12, fontSize: 7, lineHeight: 11, opacity: 0.64 },
+  coverStar: { marginBottom: 32, fontSize: 34 },
+  coverTitle: { fontSize: 24, fontWeight: "900", letterSpacing: 7 },
 });

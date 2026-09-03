@@ -3,6 +3,7 @@ import type { MobileBook } from "../lib/books";
 
 export type RootStackParamList = {
   Tabs: undefined;
+  Account: undefined;
   Settings: { section?: SettingsSection } | undefined;
   AccountSecurity: undefined;
   Reader: {
@@ -31,5 +32,4 @@ export type MainTabParamList = {
   Today: undefined;
   Library: undefined;
   Search: undefined;
-  Me: undefined;
 };

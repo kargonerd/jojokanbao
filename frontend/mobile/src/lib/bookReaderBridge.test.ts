@@ -5,6 +5,7 @@ import {
   createBookReaderClearSelectionScript,
   createBookReaderGoToSpreadScript,
   createBookReaderLocateTextScript,
+  createBookReaderMeasureScript,
   createBookReaderRemoveAnnotationScript,
   createBookReaderRevealAnchorScript,
   parseBookReaderMessage,
@@ -82,6 +83,7 @@ describe("book reader bridge", () => {
     expect(createBookReaderGoToSpreadScript(-3)).toContain("(0)");
     expect(createBookReaderGoToSpreadScript(Number.NaN)).toContain("(0)");
     expect(createBookReaderLocateTextScript('</script>正文')).toContain('<\\/script>正文');
+    expect(createBookReaderMeasureScript()).toContain("__jojoReaderMeasurePages");
     expect(createBookReaderApplyAnnotationScript({ id: "a", start: 2, end: 5 })).toContain("__jojoReaderApplyAnnotation");
     expect(createBookReaderRemoveAnnotationScript("a")).toContain("__jojoReaderRemoveAnnotation");
     expect(createBookReaderClearSelectionScript()).toContain("__jojoReaderClearSelection");
