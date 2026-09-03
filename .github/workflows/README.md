@@ -80,13 +80,19 @@ Scheduled and manually operated data tasks remain independent workflows:
 
 - `maintenance-purge-archive-pdf-cache.yml`
 - `maintenance-sync-rmrb.yml`
-- `maintenance-times-capture.yml` — accepts the external ten-minute Cloudflare trigger, checks a three-hour discovery lookback for late URLs, captures the primary one-hour window plus unseen/retry pages and images, and publishes an immutable Raw job to the private HF Runtime Bucket
+- `maintenance-times-capture.yml` — accepts the external five-minute Cloudflare trigger, checks a three-hour discovery lookback for late URLs, captures the primary one-hour window plus unseen/retry pages and images, and publishes an immutable Raw job to the private HF Runtime Bucket
 - `maintenance-times-process.yml` — after an automatic Capture succeeds, stages an immutable Process generation, publishes B2 Delivery, then advances the committed Runtime pointer and job status
 - `maintenance-times-runtime-cleanup.yml` — applies the 14/30-day Runtime job retention policy with an exact-path deletion cap
 
 The `maintenance` environment stores `HF_TIMES_RUNTIME_TOKEN` as a secret and
 `HF_TIMES_RUNTIME_BUCKET` as a variable. The old Dataset credentials are not
-used by the ten-minute Runtime chain.
+used by the five-minute Runtime chain.
+
+CI also publishes a content-addressed `.times-runtime` cache containing the
+compiled Times CLI and production dependencies. Capture and Process restore
+that verified package directly; a cache miss falls back to a filtered install
+and build, while normal production runs do not repeat typechecking, tests, or
+compilation.
 
 The scheduler implementation and deployment instructions live in
 `infrastructure/cloudflare/times-scheduler`. Cloudflare only supplies the

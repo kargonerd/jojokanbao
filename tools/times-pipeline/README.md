@@ -117,8 +117,10 @@ times/
 `GITHUB_RUN_ID-GITHUB_RUN_ATTEMPT`，因此 Actions 重跑不会覆盖已有 Raw。Raw 和 marker 落盘后会尽力更新
 `capture-memory`；即使该记忆更新失败，已进入队列的 Raw 仍可处理，只是下一轮可能重复抓取少量文章。
 
-`processed-{sha256}.tar.gz` 是在发布 B2 前固化的不可变 Process 结果，包含最近八天处理闭包和本轮
-`process-result.json`。B2 失败或 runner 中断时，下一轮直接重放这一份结果，不再次调用翻译或解析。
+`processed-{sha256}.tar.gz` 是在发布 B2 前固化的不可变 Process 结果。完整 generation 包含最近八天处理闭包和
+本轮 `process-result.json`；后续 generation 默认只保存相对稳定基线的累计差量，并在 12 轮或差量超过完整状态
+60% 时自动压成新基线。恢复最多读取基线和差量两个归档。B2 失败或 runner 中断时，下一轮直接重放已固化结果，
+不再次调用翻译或解析。
 B2 全部提交并验证后，`process-memory.json` 才指向这个 generation；随后才推进 job 状态。首次没有
 Process memory 时发布会 fail closed，只允许人工指定 job 的一次 `bootstrap=true` 初始化，不能静默冷启动。
 单篇处理异常会把 job 标为 `partial` 并保留待重试文章。每个未完成 job 使用独立的 `pending/{id}.json`
@@ -131,7 +133,7 @@ Runtime job 状态只有 `ready`、`partial` 和 `done`。`done` job 保留 14 �
 清理报告中告警。每日 cleanup 默认 dry-run，自动 schedule 显式使用 apply，并且只允许删除
 `times/jobs/{id}` 下经过校验的 Raw、未提交 Process generation、pending marker 和 status marker；payload 始终先于 marker
 分阶段删除。没有 status 的上传中断残留保留 30 天，当前 `process-memory.json` 指向的 generation 永不作为
-孤儿删除。一次最多处理 100 个 job。
+孤儿删除；差量 generation 引用的基线也受到同样保护。一次最多处理 100 个 job。
 
 B2 只保存 Delivery：
 

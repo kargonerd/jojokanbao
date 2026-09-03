@@ -54,7 +54,7 @@ export interface DispatchOptions {
   scheduledTime?: number;
 }
 
-const SLOT_DURATION_MS = 10 * 60 * 1_000;
+const SLOT_DURATION_MS = 5 * 60 * 1_000;
 const AUTOMATIC_CAPTURE_TITLE = "Times capture [cloudflare-cron]";
 
 function requireValue(name: keyof SchedulerEnv, value: string | undefined): string {

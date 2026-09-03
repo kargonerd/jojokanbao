@@ -31,6 +31,11 @@ describe("Times Runtime workflows", () => {
     );
     expect(body).toContain("--action publish-memory");
     expect(body).toContain("--kind capture");
+    expect(body).toContain("Restore CI-verified Times runtime");
+    expect(body).toContain("Prepare Times runtime on cache miss");
+    expect(body).toContain('node "$TIMES_RUNTIME_ROOT/dist/src/capture-cli.js"');
+    expect(body).not.toContain("pnpm --filter @jojo/times-pipeline typecheck");
+    expect(body).not.toContain("pnpm --filter @jojo/times-pipeline test");
   });
 
   it("coalesces a Runtime batch, stages it before B2, and drains remaining work", async () => {
@@ -57,6 +62,17 @@ describe("Times Runtime workflows", () => {
     expect(body).toContain('--max-jobs "$TIMES_MAX_JOBS"');
     expect(body).toContain('--job-ids-file "$RUNNER_TEMP/runtime-job-ids.json"');
     expect(body).toContain("env.TIMES_BATCH_COMMITTED == 'true'");
+    expect(body).toContain("Restore CI-verified Times runtime");
+    expect(body).toContain("Prepare Times runtime on cache miss");
+    expect(body).toContain('node "$TIMES_RUNTIME_ROOT/dist/src/process-cli.js"');
+  });
+
+  it("builds and caches the Times runtime only in CI", async () => {
+    const body = await workflow("ci.yml");
+    expect(body).toContain("times_pipeline:");
+    expect(body).toContain("Restore Times runtime package");
+    expect(body).toContain("Ensure Times runtime build exists");
+    expect(body).toContain(".times-runtime");
   });
 
   it("runs cleanup separately with the same writer lock and an explicit apply flag", async () => {

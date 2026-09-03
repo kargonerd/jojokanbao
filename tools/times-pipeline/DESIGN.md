@@ -107,14 +107,15 @@ times/jobs/{GITHUB_RUN_ID}-{GITHUB_RUN_ATTEMPT}/status.json
 旧 `pending-jobs.json` 只作为迁移输入读取。`status.json` marker 才是任务权威，近期 pending marker
 上传中断时 selector 会扫描 status 并修复。partial job 按指数退避重试。Process 按 FIFO 每批最多合并
 四个 ready job，共用一次 Canonical、翻译和 Delivery；完成后继续触发 Process-only 轮次直至可处理队列排空。
-Capture memory 只保存各媒体 `state.json.gz`。每份 `processed-{sha256}.tar.gz` 保存保留窗口内的 Canonical 日期索引、
-被引用 article、翻译缓存、被引用 Raw asset 和本轮 Process result；`process-memory.json` 只是当前已完成
+Capture memory 只保存各媒体 `state.json.gz`。完整 `processed-{sha256}.tar.gz` 保存保留窗口内的 Canonical 日期索引、
+被引用 article、翻译缓存、被引用 Raw asset 和本轮 Process result；正常轮次保存相对稳定基线的累计差量，
+恢复始终最多读取基线和差量两个归档，并按深度/大小阈值定期压成新基线。`process-memory.json` 只是当前已完成
 generation 的小指针。首次空状态必须通过人工审核的显式 bootstrap，发布任务不得静默从空 memory 开始。
 
 `done` job 在 14 天后清理；`ready/partial` job 在 30 天后进入 dead-letter 清理并告警。清理只接受精确
 allowlist 路径，默认 dry-run、显式 apply，一次最多删除 100 个 job。Bucket 不依赖 Git commit、revision
 或目录级递归删除。上传中断产生且没有 status marker 的 payload 在 30 天后清理，但当前 Process memory
-指针引用的 generation 永远受到保护；payload 删除成功后才删除 status marker。
+指针引用的 generation 及其差量基线永远受到保护；payload 删除成功后才删除 status marker。
 
 ## 7. B2 契约与提交顺序
 

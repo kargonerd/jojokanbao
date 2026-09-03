@@ -234,7 +234,6 @@ export async function extractVerifiedArchive(
   const archive = path.resolve(archiveValue);
   const output = path.resolve(outputValue);
   const limits = assertRuntimeFileBudget(expectedFiles, "Runtime archive manifest", limitOverrides);
-  await verifyArchive(archive, expectedFiles, limits);
   const temporary = await mkdtemp(path.join(tmpdir(), "jojo-times-runtime-"));
   try {
     const expected = new Set(expectedFiles.map((entry) => archiveEntryPath(entry.path, "File", "Runtime archive manifest")));
@@ -247,6 +246,8 @@ export async function extractVerifiedArchive(
     }
     let entries = 0;
     let expandedBytes = 0;
+    const extractedPaths = new Set<string>();
+    let validationError: Error | undefined;
     await tar.extract({
       cwd: temporary,
       file: archive,
@@ -256,24 +257,39 @@ export async function extractVerifiedArchive(
       maxMetaEntrySize: RUNTIME_MAX_TAR_META_BYTES,
       maxDecompressionRatio: RUNTIME_MAX_TAR_DECOMPRESSION_RATIO,
       filter(entryPath, entry) {
-        const readEntry = entry as { size: number; type: string };
-        entries += 1;
-        if (entries > limits.maxEntries) throw new Error(`Runtime archive has more than ${limits.maxEntries} entries`);
-        const normalized = archiveEntryPath(entryPath, readEntry.type, "Runtime archive");
-        if (readEntry.type === "Directory") return expectedDirectories.has(normalized);
-        if (!regularArchiveEntry(readEntry.type) || !expected.has(normalized)) {
-          throw new Error(`Runtime archive changed after verification: ${normalized}`);
+        if (validationError) return false;
+        try {
+          const readEntry = entry as { size: number; type: string };
+          entries += 1;
+          if (entries > limits.maxEntries) throw new Error(`Runtime archive has more than ${limits.maxEntries} entries`);
+          const normalized = archiveEntryPath(entryPath, readEntry.type, "Runtime archive");
+          if (readEntry.type === "Directory") return expectedDirectories.has(normalized);
+          if (!regularArchiveEntry(readEntry.type) || !expected.has(normalized)) {
+            throw new Error(`Runtime archive contains an unexpected file: ${normalized}`);
+          }
+          if (extractedPaths.has(normalized)) {
+            throw new Error(`Runtime archive contains a duplicate entry: ${normalized}`);
+          }
+          extractedPaths.add(normalized);
+          if (!Number.isSafeInteger(readEntry.size) || readEntry.size < 0 || readEntry.size > limits.maxEntryBytes) {
+            throw new Error(`Runtime archive entry has an invalid or excessive size: ${normalized}`);
+          }
+          if (readEntry.size > limits.maxExpandedBytes - expandedBytes) {
+            throw new Error(`Runtime archive expands beyond ${limits.maxExpandedBytes} bytes`);
+          }
+          expandedBytes += readEntry.size;
+          return true;
+        } catch (error) {
+          validationError = error instanceof Error ? error : new Error(String(error));
+          return false;
         }
-        if (!Number.isSafeInteger(readEntry.size) || readEntry.size < 0 || readEntry.size > limits.maxEntryBytes) {
-          throw new Error(`Runtime archive entry has an invalid or excessive size: ${normalized}`);
-        }
-        if (readEntry.size > limits.maxExpandedBytes - expandedBytes) {
-          throw new Error(`Runtime archive expands beyond ${limits.maxExpandedBytes} bytes`);
-        }
-        expandedBytes += readEntry.size;
-        return true;
       },
     });
+    if (validationError) throw validationError;
+    if (extractedPaths.size !== expected.size) {
+      const missing = [...expected].find((entry) => !extractedPaths.has(entry));
+      throw new Error(`Runtime archive is missing ${missing ?? "an expected file"}`);
+    }
     const extracted = await describeFiles(temporary);
     if (extracted.length !== expectedFiles.length) throw new Error("Runtime archive extracted file count mismatch");
     const actualByPath = new Map(extracted.map((entry) => [entry.path, entry]));
@@ -287,12 +303,13 @@ export async function extractVerifiedArchive(
         throw new Error(`Runtime archive SHA-256 mismatch for ${expectedFile.path}`);
       }
     }
-    for (const file of expectedFiles) {
+    await mapConcurrent(expectedFiles, RUNTIME_FILE_HASH_CONCURRENCY, async (file) => {
       const source = path.join(temporary, ...file.path.split("/"));
       const target = path.join(output, ...file.path.split("/"));
       await mkdir(path.dirname(target), { recursive: true });
       await copyFile(source, target);
-    }
+      return true;
+    });
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
