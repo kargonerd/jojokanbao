@@ -173,6 +173,20 @@ describe("Runtime archive transport", () => {
 });
 
 describe("Runtime Bucket reads", () => {
+  it("allows a read-only Runtime root listing without weakening object paths", async () => {
+    const bucket = new HfRuntimeBucket("jojo/runtime", "token");
+    hfHub.listFiles.mockReturnValueOnce((async function* () {
+      yield { type: "file", path: "times/pending-jobs.json", size: 4 };
+      yield { type: "file", path: "times/pending/job-1.json", size: 5 };
+    })());
+
+    await expect(bucket.list("times")).resolves.toEqual([
+      { objectName: "times/pending-jobs.json", size: 4 },
+      { objectName: "times/pending/job-1.json", size: 5 },
+    ]);
+    await expect(bucket.readText("times")).rejects.toThrow("outside times/");
+  });
+
   it("caps declared and streamed bytes for downloads and text", async () => {
     const root = await temporaryRoot();
     const bucket = new HfRuntimeBucket("jojo/runtime", "token");

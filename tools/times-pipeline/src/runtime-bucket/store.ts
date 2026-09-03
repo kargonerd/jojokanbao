@@ -26,6 +26,14 @@ function runtimeObjectName(value: unknown): string {
   return objectName;
 }
 
+function runtimeListPrefix(value: unknown): string {
+  const prefix = safeRuntimePath(value, "Runtime Bucket list prefix").replace(/\/$/u, "");
+  if (prefix !== RUNTIME_PREFIX && !prefix.startsWith(`${RUNTIME_PREFIX}/`)) {
+    throw new Error(`Runtime Bucket list prefix is outside ${RUNTIME_PREFIX}/: ${prefix}`);
+  }
+  return prefix;
+}
+
 function statusCode(error: unknown): number | undefined {
   if (!error || typeof error !== "object") return undefined;
   const value = (error as { statusCode?: unknown; status?: unknown }).statusCode
@@ -171,7 +179,7 @@ export class HfRuntimeBucket implements RuntimeObjectStore {
   }
 
   async list(prefixValue: string): Promise<RuntimeObjectInfo[]> {
-    const prefix = runtimeObjectName(prefixValue).replace(/\/$/u, "");
+    const prefix = runtimeListPrefix(prefixValue);
     try {
       return await retryTransientHf(async () => {
         const objects: RuntimeObjectInfo[] = [];
