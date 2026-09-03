@@ -1,6 +1,6 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { ARCHIVE_WEB_ORIGIN } from "@jojo/content";
-import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
+import { useNavigation, useRoute, type NavigationProp, type RouteProp } from "@react-navigation/native";
 import { nativeApplicationVersion } from "expo-application";
 import {
   Alert,
@@ -48,7 +48,7 @@ function SettingRow({
 }
 
 export function SettingsScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, "Settings">>();
   const section = route.params?.section;
   const hapticsEnabled = useMobileStore((state) => state.hapticsEnabled);
@@ -281,6 +281,13 @@ export function SettingsScreen() {
               <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>在浏览器打开 JOJO 看报</Text>
               <Ionicons name="open-outline" size={17} color={theme.muted} />
             </Pressable>
+            <Pressable accessibilityRole="button" onPress={() => navigation.navigate("OpenSourceLicenses")} style={[styles.actionRow, { borderTopColor: theme.rule, borderTopWidth: StyleSheet.hairlineWidth }]}>
+              <View style={styles.settingCopy}>
+                <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>开源软件许可</Text>
+                <Text style={[styles.actionHint, { color: theme.muted, fontFamily: theme.sans }]}>查看本项目与第三方软件的许可信息</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={17} color={theme.muted} />
+            </Pressable>
           </View>
         </View>
         ) : null}
@@ -309,6 +316,7 @@ const styles = StyleSheet.create({
   sectionGap: { marginTop: 26 },
   actionRow: { minHeight: 58, flexDirection: "row", alignItems: "center" },
   actionText: { flex: 1, fontSize: 13, fontWeight: "800" },
+  actionHint: { marginTop: 3, fontSize: 9, lineHeight: 14, fontWeight: "700" },
   about: { minHeight: 58, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center" },
   aboutTitle: { flex: 1, fontSize: 13, fontWeight: "800" },
   aboutVersion: { fontSize: 10, fontWeight: "700" },

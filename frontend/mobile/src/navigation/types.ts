@@ -5,6 +5,7 @@ export type RootStackParamList = {
   Tabs: undefined;
   Account: undefined;
   Settings: { section?: SettingsSection } | undefined;
+  OpenSourceLicenses: undefined;
   AccountSecurity: undefined;
   Reader: {
     publication: ArchivePublicationName;

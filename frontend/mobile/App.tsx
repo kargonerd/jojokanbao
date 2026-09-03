@@ -14,6 +14,7 @@ import { LibraryScreen } from "./src/screens/LibraryScreen";
 import { ReaderScreen } from "./src/screens/ReaderScreen";
 import { SearchScreen } from "./src/screens/SearchScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
+import { OpenSourceLicensesScreen } from "./src/screens/OpenSourceLicensesScreen";
 import { MeScreen } from "./src/screens/MeScreen";
 import { AccountSecurityScreen } from "./src/screens/AccountSecurityScreen";
 import { startMobileAuthSync, useMobileAuthStore } from "./src/account/auth";
@@ -152,6 +153,15 @@ export default function App() {
           <Stack.Screen
             name="Settings"
             component={SettingsScreen}
+            options={{
+              gestureEnabled: true,
+              fullScreenGestureEnabled: true,
+              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
+            }}
+          />
+          <Stack.Screen
+            name="OpenSourceLicenses"
+            component={OpenSourceLicensesScreen}
             options={{
               gestureEnabled: true,
               fullScreenGestureEnabled: true,
