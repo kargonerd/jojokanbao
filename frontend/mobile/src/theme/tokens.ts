@@ -10,6 +10,7 @@ export interface MobileTheme {
   ruleDark: string;
   paper: string;
   paperSoft: string;
+  canvas: string;
   inverse: string;
   serif: string;
   sans: string;
@@ -29,6 +30,7 @@ export const editorialTheme: MobileTheme = {
   ruleDark: "#202020",
   paper: "#ffffff",
   paperSoft: "#f7f5f1",
+  canvas: "#f4f4f2",
   inverse: "#ffffff",
   serif,
   sans,
@@ -45,6 +47,7 @@ export const eInkTheme: MobileTheme = {
   rule: "#777777",
   ruleDark: "#000000",
   paperSoft: "#ffffff",
+  canvas: "#ffffff",
   inverse: "#ffffff",
   shadowColor: "transparent",
   eInk: true,

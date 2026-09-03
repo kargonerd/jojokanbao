@@ -1,10 +1,10 @@
-const GRID_HORIZONTAL_PADDING = 18;
-const GRID_GAP = 13;
+const GRID_HORIZONTAL_PADDING = 20;
+const GRID_GAP = 16;
 
 export function getLibraryColumnCount(viewportWidth: number): number {
   if (viewportWidth >= 1000) return 5;
-  if (viewportWidth >= 700) return 4;
-  return 3;
+  if (viewportWidth > 720) return 3;
+  return 2;
 }
 
 export function getLibraryCellWidth(viewportWidth: number, columnCount: number): number {

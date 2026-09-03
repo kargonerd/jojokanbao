@@ -101,11 +101,12 @@ export function SearchScreen() {
   }
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const beforeSearch = !submittedQuery && !loading && !error;
 
   return (
-    <SafeAreaView edges={["top"]} style={[styles.safe, { backgroundColor: theme.paper }]}>
-      <ScreenHeader title="搜索" />
-      <View style={styles.searchRow}>
+    <SafeAreaView edges={["top"]} style={[styles.safe, { backgroundColor: theme.canvas }]}>
+      <ScreenHeader title="搜索" showAccount />
+      <View style={[styles.searchArea, beforeSearch ? styles.searchAreaIdle : styles.searchAreaResults]}>
         <View style={[styles.searchBox, { borderColor: theme.ruleDark, backgroundColor: theme.paper }]}>
           <TextInput
             value={query}
@@ -116,22 +117,23 @@ export function SearchScreen() {
             returnKeyType="search"
             clearButtonMode="while-editing"
             autoCorrect={false}
+            autoFocus={beforeSearch}
             style={[styles.input, { color: theme.ink, fontFamily: theme.sans }]}
             accessibilityLabel="在JOJO看报上搜索"
           />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="搜索"
+            disabled={!query.trim() || loading}
+            onPress={() => void submit(1)}
+            style={({ pressed }) => [
+              styles.searchButton,
+              { backgroundColor: theme.red, opacity: pressed && !IS_EINK_RELEASE ? 0.78 : 1 },
+            ]}
+          >
+            <Text style={[styles.searchButtonText, { color: theme.inverse, fontFamily: theme.sans }]}>搜索</Text>
+          </Pressable>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="搜索"
-          disabled={!query.trim() || loading}
-          onPress={() => void submit(1)}
-          style={({ pressed }) => [
-            styles.searchButton,
-            { backgroundColor: theme.red, opacity: !query.trim() ? 0.45 : pressed ? 0.78 : 1 },
-          ]}
-        >
-          <Text style={[styles.searchButtonText, { color: theme.inverse, fontFamily: theme.sans }]}>搜索</Text>
-        </Pressable>
       </View>
 
       {loading ? (
@@ -194,28 +196,28 @@ export function SearchScreen() {
           keyboardShouldPersistTaps="handled"
           overScrollMode={IS_EINK_RELEASE ? "never" : "always"}
         />
-      ) : (
-        <View style={styles.intro} />
-      )}
+      ) : null}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  searchRow: { padding: 18, flexDirection: "row", gap: 8 },
-  searchBox: { height: 48, flex: 1, borderWidth: 1, justifyContent: "center" },
-  input: { height: 46, paddingHorizontal: 13, fontSize: 14 },
-  searchButton: { width: 66, height: 48, alignItems: "center", justifyContent: "center" },
-  searchButtonText: { fontSize: 13, fontWeight: "900" },
+  searchArea: { width: "100%", maxWidth: 680, alignSelf: "center", paddingHorizontal: 20 },
+  searchAreaIdle: { flex: 1, justifyContent: "center", paddingBottom: 58 },
+  searchAreaResults: { paddingTop: 20, paddingBottom: 20 },
+  searchBox: { minHeight: 59, borderWidth: 2, paddingLeft: 12, paddingRight: 8, flexDirection: "row", alignItems: "center", gap: 8 },
+  input: { height: 54, flex: 1, minWidth: 0, paddingVertical: 0, fontSize: 15 },
+  searchButton: { width: 70, height: 40, alignItems: "center", justifyContent: "center" },
+  searchButtonText: { fontSize: 12, fontWeight: "900" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   status: { fontSize: 12, fontWeight: "700" },
-  message: { margin: 18, borderWidth: 1, padding: 18 },
+  message: { marginHorizontal: 20, borderWidth: 1, padding: 18 },
   messageText: { fontSize: 12 },
   retry: { alignSelf: "flex-start", marginTop: 16, borderWidth: 1, paddingHorizontal: 18, paddingVertical: 10 },
   retryText: { fontSize: 12, fontWeight: "900" },
-  results: { paddingHorizontal: 18, paddingBottom: 34 },
-  emptyResults: { flexGrow: 1, padding: 18 },
+  results: { paddingHorizontal: 20, paddingBottom: 40 },
+  emptyResults: { flexGrow: 1, paddingHorizontal: 20 },
   resultCount: { paddingBottom: 10, fontSize: 11, fontWeight: "700" },
   result: { minHeight: 138, paddingVertical: 18, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", gap: 13 },
   resultIndex: { width: 30, alignSelf: "flex-start", paddingBottom: 5, borderBottomWidth: 2, fontSize: 11, fontWeight: "900" },
@@ -229,5 +231,4 @@ const styles = StyleSheet.create({
   pageText: { fontSize: 11, fontWeight: "800" },
   pageStatus: { fontSize: 10, fontWeight: "700" },
   emptyText: { marginTop: 60, textAlign: "center", fontSize: 14, lineHeight: 23 },
-  intro: { flex: 1 },
 });

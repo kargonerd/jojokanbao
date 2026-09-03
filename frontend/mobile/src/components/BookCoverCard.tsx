@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.82, transform: [{ translateY: -2 }] },
   cover: { width: "100%", aspectRatio: 0.7, borderWidth: StyleSheet.hairlineWidth, overflow: "hidden", alignItems: "center", justifyContent: "center", padding: 12 },
   featuredCover: { width: 220, flexShrink: 0 },
-  eInkCover: { filter: [{ grayscale: 1 }, { contrast: 1.15 }] },
+  eInkCover: { filter: "grayscale(1) contrast(1.15)" },
   image: { ...StyleSheet.absoluteFillObject, width: undefined, height: undefined },
   fallbackTitle: { fontSize: 15, lineHeight: 24, fontWeight: "900", textAlign: "center" },
   title: { marginTop: 8, minHeight: 38, fontSize: 13, lineHeight: 19, fontWeight: "900" },

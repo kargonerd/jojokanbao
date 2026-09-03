@@ -1,10 +1,11 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { DefaultTheme, NavigationContainer, useIsFocused, type Theme } from "@react-navigation/native";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { DefaultTheme, NavigationContainer, type Theme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useState, type ComponentProps, type ComponentType } from "react";
-import { BackHandler, InteractionManager, Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import { useEffect, useMemo, type ComponentProps } from "react";
+import { StyleSheet, View } from "react-native";
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import type { MainTabParamList, RootStackParamList } from "./src/navigation/types";
 import { HomeScreen } from "./src/screens/HomeScreen";
 import { BookDetailsScreen } from "./src/screens/BookDetailsScreen";
@@ -20,144 +21,78 @@ import { IS_EINK_RELEASE } from "./src/config/appVariant";
 import { mobileTheme } from "./src/theme/tokens";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+const Tabs = createBottomTabNavigator<MainTabParamList>();
 
 const tabIcons: Record<keyof MainTabParamList, ComponentProps<typeof Ionicons>["name"]> = {
-  Today: "today-outline",
+  Today: "home-outline",
   Library: "library-outline",
   Search: "search-outline",
-  Me: "person-outline",
 };
 
 const tabLabels: Record<keyof MainTabParamList, string> = {
-  Today: "今日",
+  Today: "首页",
   Library: "资料库",
   Search: "搜索",
-  Me: "我",
-};
-
-const tabPreloadOrder: Array<keyof MainTabParamList> = ["Library", "Search", "Me"];
-
-const tabScreens: Record<keyof MainTabParamList, ComponentType> = {
-  Today: HomeScreen,
-  Library: LibraryScreen,
-  Search: SearchScreen,
-  Me: MeScreen,
 };
 
 function MainTabs() {
   const theme = mobileTheme;
-  const tabsFocused = useIsFocused();
-  const [activeTab, setActiveTab] = useState<keyof MainTabParamList>("Today");
-  const [mountedTabs, setMountedTabs] = useState<Set<keyof MainTabParamList>>(() => new Set(["Today"]));
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-
-  useEffect(() => {
-    const interactionTasks: Array<{ cancel: () => void }> = [];
-    const timers = tabPreloadOrder.map((routeName, index) => setTimeout(() => {
-      const task = InteractionManager.runAfterInteractions(() => {
-        setMountedTabs((current) => {
-          if (current.has(routeName)) return current;
-          return new Set([...current, routeName]);
-        });
-      });
-      interactionTasks.push(task);
-    }, 650 + index * 320));
-
-    return () => {
-      timers.forEach(clearTimeout);
-      interactionTasks.forEach((task) => task.cancel());
-    };
-  }, []);
-
-  useEffect(() => {
-    const showSubscription = Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true));
-    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false));
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!tabsFocused) return undefined;
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (activeTab === "Today") return false;
-      setActiveTab("Today");
-      return true;
-    });
-    return () => subscription.remove();
-  }, [activeTab, tabsFocused]);
-
-  function selectTab(routeName: keyof MainTabParamList) {
-    setMountedTabs((current) => {
-      if (current.has(routeName)) return current;
-      return new Set([...current, routeName]);
-    });
-    setActiveTab(routeName);
-  }
+  const insets = useSafeAreaInsets();
 
   return (
-    <View style={[styles.tabsRoot, { backgroundColor: theme.paper }]}>
-      <View style={[styles.sceneHost, { bottom: keyboardVisible ? 0 : 60 }]}>
-        {(Object.keys(tabScreens) as Array<keyof MainTabParamList>).map((routeName) => {
-          if (!mountedTabs.has(routeName)) return null;
-          const Screen = tabScreens[routeName];
-          const selected = activeTab === routeName;
-          return (
-            <View
-              key={routeName}
-              collapsable={false}
-              importantForAccessibility={selected ? "auto" : "no-hide-descendants"}
-              pointerEvents={selected ? "auto" : "none"}
-              style={[styles.tabScene, { opacity: selected ? 1 : 0 }]}
-            >
-              <Screen />
-            </View>
-          );
-        })}
-      </View>
-      {!keyboardVisible ? (
-        <View accessibilityRole="tablist" style={[styles.tabBar, { backgroundColor: theme.paper, borderTopColor: theme.ruleDark }]}>
-          {(Object.keys(tabScreens) as Array<keyof MainTabParamList>).map((routeName) => {
-            const selected = activeTab === routeName;
-            const color = selected ? theme.red : theme.muted;
-            return (
-              <Pressable
-                key={routeName}
-                accessibilityRole="tab"
-                accessibilityState={{ selected }}
-                accessibilityLabel={tabLabels[routeName]}
-                onPress={() => selectTab(routeName)}
-                style={styles.tabButton}
-              >
-                <Ionicons name={tabIcons[routeName]} color={color} size={21} />
-                <Text style={[styles.tabLabel, { color, fontFamily: theme.sans }]}>{tabLabels[routeName]}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      ) : null}
-    </View>
+    <Tabs.Navigator
+      initialRouteName="Today"
+      backBehavior="initialRoute"
+      detachInactiveScreens
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        lazy: true,
+        freezeOnBlur: true,
+        animation: "none",
+        sceneStyle: { backgroundColor: theme.canvas },
+        tabBarHideOnKeyboard: true,
+        tabBarActiveTintColor: theme.red,
+        tabBarInactiveTintColor: theme.muted,
+        tabBarAllowFontScaling: false,
+        tabBarAccessibilityLabel: tabLabels[route.name],
+        tabBarLabel: tabLabels[route.name],
+        tabBarLabelStyle: [styles.tabLabel, { fontFamily: theme.sans }],
+        tabBarItemStyle: styles.tabButton,
+        tabBarStyle: [
+          styles.tabBar,
+          {
+            height: 56 + insets.bottom,
+            paddingBottom: insets.bottom,
+            backgroundColor: theme.paper,
+            borderTopColor: theme.ruleDark,
+          },
+        ],
+        tabBarIcon: ({ color, focused }) => (
+          <View style={styles.tabIcon}>
+            {focused ? <View style={[styles.tabIndicator, { backgroundColor: theme.red }]} /> : null}
+            <Ionicons name={tabIcons[route.name]} color={color} size={20} />
+          </View>
+        ),
+      })}
+    >
+      <Tabs.Screen name="Today" component={HomeScreen} />
+      <Tabs.Screen name="Library" component={LibraryScreen} />
+      <Tabs.Screen name="Search" component={SearchScreen} />
+    </Tabs.Navigator>
   );
 }
 
 const styles = StyleSheet.create({
-  tabsRoot: { flex: 1 },
-  sceneHost: { position: "absolute", top: 0, left: 0, right: 0 },
-  tabScene: { ...StyleSheet.absoluteFillObject },
   tabBar: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 60,
-    paddingTop: 5,
-    paddingBottom: 5,
+    paddingTop: 4,
     borderTopWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
+    elevation: 0,
+    shadowOpacity: 0,
   },
-  tabButton: { flex: 1, alignItems: "center", justifyContent: "center", gap: 1 },
-  tabLabel: { fontSize: 10, fontWeight: "700" },
+  tabButton: { minHeight: 56 },
+  tabIcon: { position: "relative", width: 28, height: 24, alignItems: "center", justifyContent: "center" },
+  tabIndicator: { position: "absolute", top: -8, width: 22, height: 3 },
+  tabLabel: { fontSize: 10, fontWeight: "800", letterSpacing: 0.4 },
 });
 
 export default function App() {
@@ -168,7 +103,7 @@ export default function App() {
     colors: {
       ...DefaultTheme.colors,
       primary: theme.red,
-      background: theme.paper,
+      background: theme.canvas,
       card: theme.paper,
       text: theme.ink,
       border: theme.rule,
@@ -184,6 +119,15 @@ export default function App() {
       <NavigationContainer theme={navigationTheme}>
         <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.paper } }}>
           <Stack.Screen name="Tabs" component={MainTabs} />
+          <Stack.Screen
+            name="Account"
+            component={MeScreen}
+            options={{
+              gestureEnabled: true,
+              fullScreenGestureEnabled: true,
+              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
+            }}
+          />
           <Stack.Screen
             name="AccountSecurity"
             component={AccountSecurityScreen}

@@ -4,4 +4,5 @@ export * from "./jox";
 export * from "./times";
 export * from "./types";
 export * from "./capabilities";
+export * from "./daily-quote";
 export * from "./validation";

@@ -42,6 +42,10 @@ export function createBookReaderGoToSpreadScript(index: number): string {
   return `window.__jojoReaderGoToSpread && window.__jojoReaderGoToSpread(${safeIndex}); true;`;
 }
 
+export function createBookReaderMeasureScript(): string {
+  return "window.__jojoReaderMeasurePages && window.__jojoReaderMeasurePages(); true;";
+}
+
 function jsonArgument(value: unknown): string {
   return JSON.stringify(value).replaceAll("</", "<\\/");
 }
@@ -330,6 +334,8 @@ export function createBookReaderBridgeScript(
         window.clearTimeout(measureTimer);
         measureTimer = window.setTimeout(measurePages, 80);
       }
+
+      window.__jojoReaderMeasurePages = scheduleMeasure;
 
       function turn(direction) {
         var next = currentSpread + (direction === "next" ? 1 : -1);
