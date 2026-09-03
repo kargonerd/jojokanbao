@@ -7,13 +7,19 @@ import {
   publishRuntimeJobStatus,
   readRuntimeJob,
   restoreRuntimeJob,
+  restoreRuntimeJobBatch,
   statusAfterSuccessfulDelivery,
   statusAfterRuntimeFailure,
 } from "./runtime-bucket/jobs.js";
 import { publishRuntimeMemory, restoreRuntimeMemory, type RuntimeMemoryKind } from "./runtime-bucket/memory.js";
 import { planRuntimeBucketCleanup, type RuntimeJobStatusSummary } from "./runtime-bucket/cleanup.js";
-import { parseRuntimeJobStatus } from "./runtime-bucket/types.js";
-import { enqueueRuntimeJob, selectRuntimeJob, updateRuntimeQueueAfterDelivery } from "./runtime-bucket/queue.js";
+import {
+  PENDING_JOB_PREFIX,
+  parseRuntimeJobStatus,
+  pendingJobObjectName,
+  safeJobId,
+} from "./runtime-bucket/types.js";
+import { enqueueRuntimeJob, selectRuntimeJob, selectRuntimeJobs, updateRuntimeQueueAfterDelivery } from "./runtime-bucket/queue.js";
 import {
   assertRuntimeProcessGenerationUncommitted,
   committedRuntimeProcessGeneration,
@@ -33,6 +39,16 @@ function memoryKind(args: Map<string, string>): RuntimeMemoryKind {
   const value = requiredArg(args, "kind");
   if (value !== "capture" && value !== "process") throw new Error("--kind must be capture or process");
   return value;
+}
+
+async function jobIdsFromFile(args: Map<string, string>): Promise<string[]> {
+  const value = JSON.parse(await readFile(path.resolve(requiredArg(args, "job-ids-file")), "utf8")) as unknown;
+  if (!Array.isArray(value) || value.length === 0 || value.length > 20) {
+    throw new Error("Runtime job ids file must contain an array of 1 to 20 job ids");
+  }
+  const jobIds = value.map((jobId) => safeJobId(jobId));
+  if (new Set(jobIds).size !== jobIds.length) throw new Error("Runtime job ids file contains duplicates");
+  return jobIds;
 }
 
 async function main(): Promise<void> {
@@ -77,6 +93,25 @@ async function main(): Promise<void> {
     process.stdout.write(`${JSON.stringify(status, null, 2)}\n`);
     return;
   }
+  if (action === "select-jobs") {
+    const preferredJobId = args.get("preferred-job-id");
+    const statuses = await selectRuntimeJobs({
+      store,
+      workDirectory,
+      ...(preferredJobId ? { preferredJobId } : {}),
+      exactPreferred: args.get("exact-job") === "true",
+      ...(args.get("max-jobs") ? { maxJobs: Number(args.get("max-jobs")) } : {}),
+    });
+    if (!statuses.length && args.get("allow-empty") !== "true") {
+      throw new Error("Runtime has no ready or retryable job");
+    }
+    process.stdout.write(`${JSON.stringify({
+      anchorJobId: statuses[0]?.jobId,
+      jobIds: statuses.map((status) => status.jobId),
+      jobs: statuses,
+    }, null, 2)}\n`);
+    return;
+  }
   if (action === "restore-job") {
     const status = await restoreRuntimeJob({
       store,
@@ -92,6 +127,15 @@ async function main(): Promise<void> {
       localRunManifest: path.join(output, ...status.runManifest.split("/")),
       pendingArticlesFile,
     }, null, 2)}\n`);
+    return;
+  }
+  if (action === "restore-jobs") {
+    process.stdout.write(`${JSON.stringify(await restoreRuntimeJobBatch({
+      store,
+      output,
+      workDirectory,
+      jobIds: await jobIdsFromFile(args),
+    }), null, 2)}\n`);
     return;
   }
   if (action === "publish-memory") {
@@ -128,6 +172,7 @@ async function main(): Promise<void> {
       output,
       workDirectory,
       status,
+      ...(args.get("job-ids-file") ? { jobIds: await jobIdsFromFile(args) } : {}),
       processResultFile: path.resolve(requiredArg(args, "process-result")),
       ...(args.get("retention-days") ? { retentionDays: Number(args.get("retention-days")) } : {}),
     });
@@ -152,6 +197,35 @@ async function main(): Promise<void> {
     await publishRuntimeJobStatus({ store, status: updated, workDirectory });
     await updateRuntimeQueueAfterDelivery({ store, status: updated, workDirectory });
     process.stdout.write(`${JSON.stringify(updated, null, 2)}\n`);
+    return;
+  }
+  if (action === "mark-jobs") {
+    const jobIds = await jobIdsFromFile(args);
+    const result = JSON.parse(await readFile(path.resolve(requiredArg(args, "process-result")), "utf8")) as unknown;
+    const anchor = await readRuntimeJob(store, jobIds[0]!);
+    if (!anchor) throw new Error(`Runtime job does not exist: ${jobIds[0]}`);
+    const stagedJobIds = anchor.stagedProcess?.jobIds ?? [anchor.jobId];
+    if (anchor.stagedProcess && JSON.stringify(stagedJobIds) !== JSON.stringify(jobIds)) {
+      throw new Error("Runtime staged Process batch does not match the jobs being marked");
+    }
+    const updatedById = new Map<string, ReturnType<typeof statusAfterSuccessfulDelivery>>();
+    // Commit the anchor status last so a partial marker-update failure keeps the
+    // staged batch discoverable and safely replayable.
+    for (const jobId of [...jobIds.slice(1), jobIds[0]!]) {
+      const status = await readRuntimeJob(store, jobId);
+      if (!status) throw new Error(`Runtime job does not exist: ${jobId}`);
+      const updated = status.state === "done" ? status : statusAfterSuccessfulDelivery(status, result);
+      if (status.state !== "done") await publishRuntimeJobStatus({ store, status: updated, workDirectory });
+      await updateRuntimeQueueAfterDelivery({ store, status: updated, workDirectory });
+      updatedById.set(jobId, updated);
+    }
+    const jobs = jobIds.map((jobId) => updatedById.get(jobId)!);
+    process.stdout.write(`${JSON.stringify({
+      anchorJobId: jobIds[0],
+      jobIds,
+      state: jobs.some((status) => status.state === "partial") ? "partial" : "done",
+      jobs,
+    }, null, 2)}\n`);
     return;
   }
   if (action === "defer-job") {
@@ -191,7 +265,11 @@ async function main(): Promise<void> {
     return;
   }
   if (action === "cleanup") {
-    const jobObjects = await store.list("times/jobs");
+    const [jobObjects, pendingObjects] = await Promise.all([
+      store.list("times/jobs"),
+      store.list(PENDING_JOB_PREFIX),
+    ]);
+    const pendingObjectNames = new Set(pendingObjects.map((object) => object.objectName));
     const statusObjects = jobObjects
       .filter((object) => /^times\/jobs\/[^/]+\/status\.json$/u.test(object.objectName));
     const committedProcess = await committedRuntimeProcessGeneration(store);
@@ -212,6 +290,9 @@ async function main(): Promise<void> {
         state: status.state,
         updatedAt: status.updatedAt,
         ...(status.stagedProcess ? { stagedProcessObject: status.stagedProcess.objectName } : {}),
+        ...(pendingObjectNames.has(pendingJobObjectName(status.jobId))
+          ? { pendingMarkerObject: pendingJobObjectName(status.jobId) }
+          : {}),
       });
     }
     const apply = args.get("apply") === "true";

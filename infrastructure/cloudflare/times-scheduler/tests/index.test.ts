@@ -8,7 +8,6 @@ const env: SchedulerEnv = {
   GITHUB_OWNER: "kargonerd",
   GITHUB_REPO: "jojokanbao",
   GITHUB_WORKFLOW: "maintenance-times-capture.yml",
-  GITHUB_PROCESS_WORKFLOW: "maintenance-times-process.yml",
   GITHUB_REF: "master",
   HEALTHCHECKS_TIMES_SCHEDULER_URL: "https://hc-ping.com/scheduler-id",
   HEALTHCHECKS_TIMES_PIPELINE_URL: "https://hc-ping.com/pipeline-id",

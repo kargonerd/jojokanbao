@@ -16,7 +16,7 @@ describe("Times Runtime workflows", () => {
   it("publishes Raw marker-last, then advances Capture memory without Dataset writes", async () => {
     const body = await workflow("maintenance-times-capture.yml");
     expect(body).toContain("name: Maintenance · Times Capture");
-    expect(body).toContain("group: times-runtime-writer");
+    expect(body).toContain("group: times-capture");
     expect(body).toContain("timeout-minutes: 35");
     expect(body).toContain("github.run_attempt");
     expect(body).toContain("HF_TIMES_RUNTIME_BUCKET");
@@ -33,10 +33,11 @@ describe("Times Runtime workflows", () => {
     expect(body).toContain("--kind capture");
   });
 
-  it("stages immutable Process output before B2, then advances its pointer and job", async () => {
+  it("coalesces a Runtime batch, stages it before B2, and drains remaining work", async () => {
     const body = await workflow("maintenance-times-process.yml");
     expect(body).toContain('workflows: ["Maintenance · Times Capture"]');
-    expect(body).toContain("group: times-runtime-writer");
+    expect(body).toContain("group: times-delivery-writer");
+    expect(body).toContain("actions: write");
     expect(body).toContain("timeout-minutes: 40");
     expect(body).toContain("github.event.workflow_run.run_attempt");
     expect(body).not.toContain("HF_TIMES_DATASET_REPO");
@@ -44,19 +45,23 @@ describe("Times Runtime workflows", () => {
     expect(body).toContain("capture_run_id is a dry-run artifact and cannot be published");
     expect(body).toContain("Process memory is missing; use one reviewed manual bootstrap run");
     ordered(body, [
-      "--action select-job",
+      "--action select-jobs",
       "--action restore-process",
-      "--action restore-job",
+      "--action restore-jobs",
       "--action stage-process",
       "Publish B2 Delivery in commit order",
       "--action promote-process",
-      "--action mark-job",
+      "--action mark-jobs",
+      "Continue draining Runtime jobs",
     ]);
+    expect(body).toContain('--max-jobs "$TIMES_MAX_JOBS"');
+    expect(body).toContain('--job-ids-file "$RUNNER_TEMP/runtime-job-ids.json"');
+    expect(body).toContain("env.TIMES_BATCH_COMMITTED == 'true'");
   });
 
   it("runs cleanup separately with the same writer lock and an explicit apply flag", async () => {
     const body = await workflow("maintenance-times-runtime-cleanup.yml");
-    expect(body).toContain("group: times-runtime-writer");
+    expect(body).toContain("group: times-delivery-writer");
     expect(body).toContain("--action cleanup");
     expect(body).toContain('--apply "$TIMES_CLEANUP_APPLY"');
     expect(body).toContain("--max-delete-jobs");

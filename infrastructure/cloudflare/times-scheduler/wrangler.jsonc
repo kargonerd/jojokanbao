@@ -14,7 +14,6 @@
     "GITHUB_OWNER": "kargonerd",
     "GITHUB_REPO": "jojokanbao",
     "GITHUB_WORKFLOW": "maintenance-times-capture.yml",
-    "GITHUB_PROCESS_WORKFLOW": "maintenance-times-process.yml",
     "GITHUB_REF": "master"
   },
   "secrets": {

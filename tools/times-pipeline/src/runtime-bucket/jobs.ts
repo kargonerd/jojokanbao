@@ -1,4 +1,5 @@
 import { gunzipSync } from "node:zlib";
+import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createArchive, describeFiles, extractVerifiedArchive, fileSha256 } from "./archive.js";
@@ -9,6 +10,7 @@ import {
   type RuntimeJobFailure,
   type RuntimeJobStatus,
   type RuntimeObjectStore,
+  safeJobId,
   safeRuntimePath,
   safeSourceId,
 } from "./types.js";
@@ -162,6 +164,68 @@ export async function restoreRuntimeJob(options: {
   if (digest !== status.raw.sha256) throw new Error("Runtime job Raw SHA-256 mismatch");
   await extractVerifiedArchive(archive, options.output, status.raw.files);
   return status;
+}
+
+export async function restoreRuntimeJobBatch(options: {
+  store: RuntimeObjectStore;
+  output: string;
+  jobIds: readonly string[];
+  workDirectory: string;
+}): Promise<{
+  anchorJobId: string;
+  jobIds: string[];
+  statuses: RuntimeJobStatus[];
+  localRunManifest: string;
+  pendingArticlesFile: string;
+  rawRevision: string;
+}> {
+  const jobIds = options.jobIds.map((jobId) => safeJobId(jobId));
+  if (jobIds.length === 0 || jobIds.length > 20 || new Set(jobIds).size !== jobIds.length) {
+    throw new Error("Runtime batch must contain 1 to 20 unique jobs");
+  }
+  const statuses: RuntimeJobStatus[] = [];
+  for (const jobId of jobIds) {
+    statuses.push(await restoreRuntimeJob({ ...options, jobId }));
+  }
+
+  const combinedSources: unknown[] = [];
+  // Newest manifests win the global article-id de-duplication in Process.
+  for (const status of statuses.toReversed()) {
+    const manifestFile = path.join(path.resolve(options.output), ...status.runManifest.split("/"));
+    const run = JSON.parse(await readFile(manifestFile, "utf8")) as RawRunManifest;
+    if (!Array.isArray(run.sources)) throw new Error(`Runtime job ${status.jobId} has an invalid Raw run manifest`);
+    combinedSources.push(...run.sources);
+  }
+
+  const anchorJobId = statuses[0]!.jobId;
+  const localRunManifest = path.resolve(options.workDirectory, `${anchorJobId}.batch-run.json`);
+  await mkdir(path.dirname(localRunManifest), { recursive: true });
+  await writeFile(localRunManifest, `${JSON.stringify({
+    formatVersion: "jojo-times-raw-run/1",
+    runId: `batch-${anchorJobId}`,
+    complete: true,
+    sources: combinedSources,
+  }, null, 2)}\n`);
+
+  const pending = new Map<string, RuntimeJobArticle>();
+  for (const status of statuses) {
+    for (const article of status.articles.pending) {
+      pending.set(`${article.sourceId}\0${article.articleId}`, article);
+    }
+  }
+  const pendingArticlesFile = path.resolve(options.workDirectory, `${anchorJobId}.batch-pending-articles.json`);
+  await writeFile(pendingArticlesFile, `${JSON.stringify([...pending.values()], null, 2)}\n`);
+  const rawRevision = `runtime-batch/${createHash("sha256")
+    .update(statuses.map((status) => `${status.jobId}:${status.raw.sha256}`).join("\n"))
+    .digest("hex")}`;
+  return {
+    anchorJobId,
+    jobIds,
+    statuses,
+    localRunManifest,
+    pendingArticlesFile,
+    rawRevision,
+  };
 }
 
 function resultArticleId(value: unknown): string | undefined {

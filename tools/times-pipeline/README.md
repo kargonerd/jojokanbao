@@ -104,7 +104,8 @@ checkpoint 或 canonical snapshot 等内部术语：
 times/
 ├─ capture-memory.tar.gz
 ├─ process-memory.json
-├─ pending-jobs.json
+├─ pending/{GITHUB_RUN_ID}-{GITHUB_RUN_ATTEMPT}.json
+├─ pending-jobs.json                         # 只读的旧队列迁移输入
 └─ jobs/{GITHUB_RUN_ID}-{GITHUB_RUN_ATTEMPT}/
    ├─ raw.tar
    ├─ processed-{sha256}.tar.gz
@@ -120,14 +121,15 @@ times/
 `process-result.json`。B2 失败或 runner 中断时，下一轮直接重放这一份结果，不再次调用翻译或解析。
 B2 全部提交并验证后，`process-memory.json` 才指向这个 generation；随后才推进 job 状态。首次没有
 Process memory 时发布会 fail closed，只允许人工指定 job 的一次 `bootstrap=true` 初始化，不能静默冷启动。
-单篇处理异常会把 job 标为
-`partial` 并保留待重试文章；`pending-jobs.json` 是可读的待处理队列，Process 崩溃后 job 仍在队列中，
-后续轮次直接复用 Raw。status marker 是权威来源，队列丢失、损坏或 enqueue 中断时会从所有 marker
-自动重建。抓取失败则由 Capture memory 中的短退避状态在新 job 中重新抓取。
+单篇处理异常会把 job 标为 `partial` 并保留待重试文章。每个未完成 job 使用独立的 `pending/{id}.json`
+标记，不再让 Capture 与 Process 并发改写同一份队列文件；旧 `pending-jobs.json` 只在迁移期读取。
+`status.json` 仍是权威来源，近期 marker 上传中断会从 status 自动修复。Process 每轮最多合并四个 FIFO job，
+只执行一次 Canonical、翻译和 B2 Delivery；若仍有可处理积压，会自动触发下一轮直到排空。抓取失败则由
+Capture memory 中的短退避状态在新 job 中重新抓取。
 
 Runtime job 状态只有 `ready`、`partial` 和 `done`。`done` job 保留 14 天；未完成 job 保留 30 天并在
 清理报告中告警。每日 cleanup 默认 dry-run，自动 schedule 显式使用 apply，并且只允许删除
-`times/jobs/{id}` 下经过校验的 Raw、未提交 Process generation 和 status marker；payload 始终先于 marker
+`times/jobs/{id}` 下经过校验的 Raw、未提交 Process generation、pending marker 和 status marker；payload 始终先于 marker
 分阶段删除。没有 status 的上传中断残留保留 30 天，当前 `process-memory.json` 指向的 generation 永不作为
 孤儿删除。一次最多处理 100 个 job。
 

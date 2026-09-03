@@ -22,6 +22,7 @@ export const PROCESS_RESULT = "runtime/process-result.json";
 interface ProcessGenerationManifest {
   formatVersion: "jojo-times-process-generation/1";
   jobId: string;
+  jobIds?: string[];
   createdAt: string;
   files: RuntimeFileDigest[];
 }
@@ -53,6 +54,17 @@ function parseFiles(value: unknown, label: string): RuntimeFileDigest[] {
   });
 }
 
+function parseBatchJobIds(value: unknown, anchorJobId: string, label: string): string[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 20) {
+    throw new Error(`${label} job ids are invalid`);
+  }
+  const jobIds = value.map((jobId) => safeJobId(jobId));
+  if (jobIds[0] !== anchorJobId || new Set(jobIds).size !== jobIds.length) {
+    throw new Error(`${label} job ids must be unique and start with the anchor job`);
+  }
+  return jobIds;
+}
+
 function parseGeneration(value: unknown, expectedJobId?: string): RuntimeProcessGeneration {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Process generation is invalid");
   const row = value as Record<string, unknown>;
@@ -68,12 +80,17 @@ function parseGeneration(value: unknown, expectedJobId?: string): RuntimeProcess
   if (!files.some((file) => file.path === PROCESS_RESULT) || !files.some((file) => file.path === PROCESS_MANIFEST)) {
     throw new Error("Process generation is missing its result or manifest");
   }
+  let jobIds: string[] | undefined;
+  if (row.jobIds !== undefined) {
+    jobIds = parseBatchJobIds(row.jobIds, jobId, "Process generation");
+  }
   return {
     objectName,
     createdAt: timestamp(row.createdAt, "Process generation createdAt"),
     size: row.size as number,
     sha256: row.sha256,
     files,
+    ...(jobIds ? { jobIds } : {}),
   };
 }
 
@@ -151,7 +168,7 @@ async function restoreGeneration(options: {
   workDirectory: string;
   jobId: string;
   generation: RuntimeProcessGeneration;
-}): Promise<void> {
+}): Promise<string[]> {
   const generation = parseGeneration(options.generation, options.jobId);
   const archive = path.resolve(options.workDirectory, `${options.jobId}.processed-download.tar.gz`);
   if (!await options.store.download(generation.objectName, archive, { maxBytes: generation.size })) {
@@ -160,10 +177,22 @@ async function restoreGeneration(options: {
   const digest = await fileSha256(archive);
   if (digest !== generation.sha256) throw new Error("Process generation SHA-256 mismatch");
   await extractVerifiedArchive(archive, options.output, generation.files);
-  const manifest = JSON.parse(await readFile(path.join(options.output, ...PROCESS_MANIFEST.split("/")), "utf8")) as ProcessGenerationManifest;
+  const manifestValue = JSON.parse(await readFile(path.join(options.output, ...PROCESS_MANIFEST.split("/")), "utf8")) as unknown;
+  if (!manifestValue || typeof manifestValue !== "object" || Array.isArray(manifestValue)) {
+    throw new Error("Process generation manifest is invalid");
+  }
+  const manifest = manifestValue as Record<string, unknown>;
   if (manifest.formatVersion !== "jojo-times-process-generation/1" || safeJobId(manifest.jobId) !== options.jobId) {
     throw new Error("Process generation manifest does not match the selected job");
   }
+  const generationJobIds = generation.jobIds ?? [options.jobId];
+  const manifestJobIds = manifest.jobIds === undefined
+    ? [options.jobId]
+    : parseBatchJobIds(manifest.jobIds, options.jobId, "Process generation manifest");
+  if (JSON.stringify(manifestJobIds) !== JSON.stringify(generationJobIds)) {
+    throw new Error("Process generation manifest does not match its batch jobs");
+  }
+  return generationJobIds;
 }
 
 export async function stageRuntimeProcess(options: {
@@ -171,6 +200,7 @@ export async function stageRuntimeProcess(options: {
   output: string;
   workDirectory: string;
   status: RuntimeJobStatus;
+  jobIds?: readonly string[];
   processResultFile: string;
   retentionDays?: number;
   now?: Date;
@@ -181,10 +211,15 @@ export async function stageRuntimeProcess(options: {
   await mkdir(path.dirname(resultTarget), { recursive: true });
   await copyFile(path.resolve(options.processResultFile), resultTarget);
   const now = options.now ?? new Date();
+  const jobIds = (options.jobIds ?? [options.status.jobId]).map((jobId) => safeJobId(jobId));
+  if (jobIds.length === 0 || jobIds.length > 20 || jobIds[0] !== options.status.jobId || new Set(jobIds).size !== jobIds.length) {
+    throw new Error("Process batch job ids must be unique and start with the anchor job");
+  }
   const files = await processGenerationFiles(output, now, options.retentionDays ?? 8);
   const manifest: ProcessGenerationManifest = {
     formatVersion: "jojo-times-process-generation/1",
     jobId: options.status.jobId,
+    jobIds,
     createdAt: now.toISOString(),
     files,
   };
@@ -224,6 +259,7 @@ export async function stageRuntimeProcess(options: {
         size: archive.size,
         sha256: archive.sha256,
         files: archiveFiles,
+        jobIds,
       },
     };
   } finally {
@@ -236,13 +272,14 @@ export async function restoreRuntimeProcess(options: {
   output: string;
   workDirectory: string;
   status: RuntimeJobStatus;
-}): Promise<{ restored: boolean; replay: boolean; basedOnJobId?: string; generatedAt?: string; processResultFile?: string }> {
+}): Promise<{ restored: boolean; replay: boolean; basedOnJobId?: string; jobIds?: string[]; generatedAt?: string; processResultFile?: string }> {
   if (options.status.stagedProcess) {
-    await restoreGeneration({ ...options, jobId: options.status.jobId, generation: options.status.stagedProcess });
+    const jobIds = await restoreGeneration({ ...options, jobId: options.status.jobId, generation: options.status.stagedProcess });
     return {
       restored: true,
       replay: true,
       basedOnJobId: options.status.jobId,
+      jobIds,
       generatedAt: options.status.stagedProcess.createdAt,
       processResultFile: path.join(path.resolve(options.output), ...PROCESS_RESULT.split("/")),
     };

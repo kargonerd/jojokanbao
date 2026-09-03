@@ -10,6 +10,7 @@ import {
   publishRuntimeJob,
   publishRuntimeJobStatus,
   restoreRuntimeJob,
+  restoreRuntimeJobBatch,
   statusAfterSuccessfulDelivery,
 } from "../src/runtime-bucket/jobs.js";
 import { publishRuntimeMemory, restoreRuntimeMemory } from "../src/runtime-bucket/memory.js";
@@ -18,7 +19,12 @@ import {
   restoreRuntimeProcess,
   stageRuntimeProcess,
 } from "../src/runtime-bucket/process-generation.js";
-import { enqueueRuntimeJob, selectRuntimeJob, updateRuntimeQueueAfterDelivery } from "../src/runtime-bucket/queue.js";
+import {
+  enqueueRuntimeJob,
+  selectRuntimeJob,
+  selectRuntimeJobs,
+  updateRuntimeQueueAfterDelivery,
+} from "../src/runtime-bucket/queue.js";
 import type { RuntimeObjectInfo, RuntimeObjectStore } from "../src/runtime-bucket/types.js";
 import type { Candidate, SourceCaptureManifest, SourceConfig } from "../src/types.js";
 
@@ -140,6 +146,85 @@ async function writeRawRound(
 }
 
 describe("Runtime Capture → Process → B2 continuity", () => {
+  it("coalesces three Capture jobs into one Process and Delivery transaction", async () => {
+    const source = JSON.parse(await readFile(path.resolve("src/sources/thepaper/source.json"), "utf8")) as SourceConfig;
+    const store = new IntegrationStore();
+    const work = await tempRoot("batch-work");
+    const readyJobs = [];
+    for (let round = 1; round <= 3; round += 1) {
+      const captureOutput = await tempRoot(`batch-capture-${round}`);
+      const { runManifest } = await writeRawRound(captureOutput, source, round);
+      const ready = await publishRuntimeJob({
+        store,
+        output: captureOutput,
+        runManifest,
+        jobId: `batch-round-${round}`,
+        workDirectory: work,
+        now: new Date(`2026-09-01T0${round}:02:00.000Z`),
+      });
+      await enqueueRuntimeJob({ store, status: ready, workDirectory: work });
+      readyJobs.push(ready);
+    }
+
+    const selected = await selectRuntimeJobs({ store, workDirectory: work, maxJobs: 4 });
+    expect(selected.map((status) => status.jobId)).toEqual([
+      "batch-round-1",
+      "batch-round-2",
+      "batch-round-3",
+    ]);
+    const processOutput = await tempRoot("batch-process");
+    const restored = await restoreRuntimeJobBatch({
+      store,
+      output: processOutput,
+      workDirectory: work,
+      jobIds: selected.map((status) => status.jobId),
+    });
+    const processed = await runProcess(new Map([
+      ["config", path.resolve("sources.v2.json")],
+      ["output", processOutput],
+      ["run-manifest", restored.localRunManifest],
+      ["raw-revision", restored.rawRevision],
+      ["article-ids-file", restored.pendingArticlesFile],
+      ["translate", "false"],
+    ]));
+    expect(processed.sources.flatMap((result) => result.articles.map((article) => article.articleId)).sort())
+      .toEqual(["thepaper:runtime-1", "thepaper:runtime-2", "thepaper:runtime-3"]);
+
+    const processResultFile = path.join(work, "batch-process-result.json");
+    await writeFile(processResultFile, `${JSON.stringify(processed)}\n`);
+    const staged = await stageRuntimeProcess({
+      store,
+      output: processOutput,
+      workDirectory: work,
+      status: readyJobs[0]!,
+      jobIds: restored.jobIds,
+      processResultFile,
+      now: new Date("2026-09-01T04:00:00.000Z"),
+    });
+    const replayOutput = await tempRoot("batch-replay");
+    expect(await restoreRuntimeProcess({ store, output: replayOutput, workDirectory: work, status: staged }))
+      .toMatchObject({ restored: true, replay: true, jobIds: restored.jobIds });
+
+    const deliveryRoot = await tempRoot("batch-delivery");
+    const delivery = await buildNewsDelivery({
+      workspaceRoot: processOutput,
+      deliveryRoot,
+      generatedAt: "2026-09-01T04:01:00.000Z",
+      sources: [source],
+      process: processed,
+    });
+    expect(delivery.articles).toBe(3);
+
+    for (const ready of readyJobs) {
+      const input = ready.jobId === staged.jobId ? staged : ready;
+      const done = statusAfterSuccessfulDelivery(input, processed, new Date("2026-09-01T04:02:00.000Z"));
+      expect(done.state).toBe("done");
+      await publishRuntimeJobStatus({ store, status: done, workDirectory: work });
+      await updateRuntimeQueueAfterDelivery({ store, status: done, workDirectory: work });
+    }
+    expect(await selectRuntimeJobs({ store, workDirectory: work, maxJobs: 4 })).toEqual([]);
+  }, 30_000);
+
   it("runs three isolated rounds without Dataset state or repeated Raw fetches", async () => {
     const source = JSON.parse(await readFile(path.resolve("src/sources/thepaper/source.json"), "utf8")) as SourceConfig;
     const store = new IntegrationStore();

@@ -7,7 +7,6 @@ const env: SchedulerEnv = {
   GITHUB_OWNER: "kargonerd",
   GITHUB_REPO: "jojokanbao",
   GITHUB_WORKFLOW: "maintenance-times-capture.yml",
-  GITHUB_PROCESS_WORKFLOW: "maintenance-times-process.yml",
   GITHUB_REF: "master",
 };
 
@@ -30,7 +29,6 @@ describe("dispatchTimesCapture", () => {
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(workflowRuns())
-      .mockResolvedValueOnce(workflowRuns(["completed"]))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
 
     const result = await dispatchTimesCapture(env, { fetcher, scheduledTime });
@@ -44,8 +42,8 @@ describe("dispatchTimesCapture", () => {
       outcome: "dispatched",
       status: 204,
     });
-    expect(fetcher).toHaveBeenCalledTimes(3);
-    const [url, init] = fetcher.mock.calls[2] ?? [];
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    const [url, init] = fetcher.mock.calls[1] ?? [];
     expect(url).toBe(
       "https://api.github.com/repos/kargonerd/jojokanbao/actions/workflows/maintenance-times-capture.yml/dispatches",
     );
@@ -62,11 +60,10 @@ describe("dispatchTimesCapture", () => {
     });
   });
 
-  it("skips dispatch while capture or process is active", async () => {
+  it("skips dispatch while capture is active without blocking on Process", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(workflowRuns(["in_progress"]))
-      .mockResolvedValueOnce(workflowRuns(["queued"]));
+      .mockResolvedValueOnce(workflowRuns(["in_progress"]));
 
     await expect(dispatchTimesCapture(env, { fetcher, scheduledTime })).resolves.toEqual({
       owner: "kargonerd",
@@ -76,9 +73,9 @@ describe("dispatchTimesCapture", () => {
       slotStartedAt: "2026-08-29T00:20:00.000Z",
       outcome: "skipped",
       reason: "active-workflows",
-      activeWorkflows: ["maintenance-times-capture.yml", "maintenance-times-process.yml"],
+      activeWorkflows: ["maintenance-times-capture.yml"],
     });
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it("skips a slot that already has an automatic capture run", async () => {
@@ -92,8 +89,7 @@ describe("dispatchTimesCapture", () => {
             created_at: "2026-08-29T00:20:53Z",
           },
         ]),
-      )
-      .mockResolvedValueOnce(workflowRuns(["completed"]));
+      );
 
     await expect(dispatchTimesCapture(env, { fetcher, scheduledTime })).resolves.toEqual({
       owner: "kargonerd",
@@ -104,7 +100,7 @@ describe("dispatchTimesCapture", () => {
       outcome: "skipped",
       reason: "slot-already-dispatched",
     });
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it("catches up after the previous slot finishes", async () => {
@@ -119,7 +115,6 @@ describe("dispatchTimesCapture", () => {
           },
         ]),
       )
-      .mockResolvedValueOnce(workflowRuns(["completed"]))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
 
     await expect(
@@ -128,7 +123,7 @@ describe("dispatchTimesCapture", () => {
         scheduledTime: Date.parse("2026-08-29T00:23:00Z"),
       }),
     ).resolves.toMatchObject({ outcome: "dispatched", slotStartedAt: "2026-08-29T00:20:00.000Z" });
-    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
   it("does not let a completed manual run consume the automatic slot", async () => {
@@ -143,7 +138,6 @@ describe("dispatchTimesCapture", () => {
           },
         ]),
       )
-      .mockResolvedValueOnce(workflowRuns())
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
 
     await expect(dispatchTimesCapture(env, { fetcher, scheduledTime })).resolves.toMatchObject({

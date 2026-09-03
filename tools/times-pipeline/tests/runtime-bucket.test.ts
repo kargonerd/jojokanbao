@@ -22,8 +22,14 @@ import {
   restoreRuntimeProcess,
   stageRuntimeProcess,
 } from "../src/runtime-bucket/process-generation.js";
-import { enqueueRuntimeJob, selectRuntimeJob, updateRuntimeQueueAfterDelivery } from "../src/runtime-bucket/queue.js";
 import {
+  enqueueRuntimeJob,
+  selectRuntimeJob,
+  selectRuntimeJobs,
+  updateRuntimeQueueAfterDelivery,
+} from "../src/runtime-bucket/queue.js";
+import {
+  pendingJobObjectName,
   PROCESS_MEMORY_OBJECT,
   type RuntimeJobStatus,
   type RuntimeObjectInfo,
@@ -291,7 +297,7 @@ describe("Runtime jobs", () => {
     expect(await selectRuntimeJob({ store, workDirectory: work, now: new Date("2026-09-01T10:30:00.000Z") })).toBeNull();
   });
 
-  it("rebuilds a missing or corrupt queue from authoritative status markers", async () => {
+  it("migrates a missing or corrupt legacy queue to per-job pending markers", async () => {
     const output = await temporaryRoot();
     const work = await temporaryRoot();
     const store = new MemoryStore();
@@ -301,8 +307,30 @@ describe("Runtime jobs", () => {
     expect((await selectRuntimeJob({ store, workDirectory: work }))?.jobId).toBe(status.jobId);
     store.objects.set("times/pending-jobs.json", Buffer.from("not-json"));
     expect((await selectRuntimeJob({ store, workDirectory: work }))?.jobId).toBe(status.jobId);
-    expect(JSON.parse(Buffer.from(store.objects.get("times/pending-jobs.json")!).toString("utf8")).jobs)
-      .toEqual([expect.objectContaining({ jobId: "orphan-ready" })]);
+    expect(store.objects.has(pendingJobObjectName("orphan-ready"))).toBe(true);
+    expect(Buffer.from(store.objects.get("times/pending-jobs.json")!).toString("utf8")).toBe("not-json");
+  });
+
+  it("selects several ready jobs in FIFO order without a shared queue write", async () => {
+    const work = await temporaryRoot();
+    const store = new MemoryStore();
+    for (const [index, jobId] of ["batch-3", "batch-1", "batch-2"].entries()) {
+      const output = await temporaryRoot();
+      const ready = await publishRuntimeJob({
+        store,
+        output,
+        runManifest: await rawFixture(output),
+        jobId,
+        workDirectory: work,
+        now: new Date(`2026-09-01T10:0${index}:00.000Z`),
+      });
+      await enqueueRuntimeJob({ store, status: ready, workDirectory: work });
+    }
+
+    const selected = await selectRuntimeJobs({ store, workDirectory: work, maxJobs: 2 });
+    expect(selected.map((status) => status.jobId)).toEqual(["batch-3", "batch-1"]);
+    expect(store.objects.has("times/pending-jobs.json")).toBe(false);
+    expect(selected.every((status) => store.objects.has(pendingJobObjectName(status.jobId)))).toBe(true);
   });
 
   it("backs off a whole-job Runtime failure so newer ready work can continue", async () => {
@@ -476,15 +504,22 @@ describe("Runtime memories", () => {
       output,
       workDirectory: work,
       status: ready,
+      jobIds: ["45", "46"],
       processResultFile: processResult,
       now: new Date("2026-09-01T12:00:00.000Z"),
       retentionDays: 8,
     });
     expect(staged.stagedProcess?.files.map((file) => file.path)).toContain(PROCESS_RESULT);
+    expect(staged.stagedProcess?.jobIds).toEqual(["45", "46"]);
     expect(statusAfterRuntimeFailure(staged, "B2 temporarily unavailable").state).toBe("ready");
     await publishRuntimeJobStatus({ store, status: staged, workDirectory: work });
     const replay = await restoreRuntimeProcess({ store, output: restored, workDirectory: work, status: staged });
-    expect(replay).toMatchObject({ restored: true, replay: true, basedOnJobId: "45" });
+    expect(replay).toMatchObject({
+      restored: true,
+      replay: true,
+      basedOnJobId: "45",
+      jobIds: ["45", "46"],
+    });
     expect(await readFile(path.join(restored, ...assetObject.split("/")), "utf8")).toBe("image");
     await expect(stat(path.join(restored, "canonical", "ap", "dates", "2026", "08", "2026-08-01.json.gz")))
       .rejects.toMatchObject({ code: "ENOENT" });

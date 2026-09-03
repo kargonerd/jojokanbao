@@ -26,13 +26,23 @@ on:
         type: boolean
         default: false
         required: true
+      max_jobs:
+        description: Maximum ready Runtime jobs to coalesce into one Delivery
+        type: string
+        default: "4"
+        required: true
+      drain:
+        description: Continue Process-only runs until no ready Runtime jobs remain
+        type: boolean
+        default: false
+        required: true
 
 permissions:
   contents: read
-  actions: read
+  actions: write
 
 concurrency:
-  group: times-runtime-writer
+  group: times-delivery-writer
   cancel-in-progress: false
 
 jobs:
@@ -64,6 +74,9 @@ jobs:
       TIMES_BOOTSTRAP: ${{ github.event_name == 'workflow_dispatch' && inputs.bootstrap || false }}
       TIMES_CAPTURE_RUN_ID: ${{ inputs.capture_run_id || '' }}
       TIMES_RUNTIME_JOB_ID: ${{ github.event_name == 'workflow_run' && format('{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || inputs.runtime_job_id || '' }}
+      TIMES_MAX_JOBS: ${{ inputs.max_jobs || '4' }}
+      TIMES_DRAIN: ${{ github.event_name == 'workflow_run' || inputs.drain || false }}
+      TIMES_GITHUB_REF: ${{ github.event.repository.default_branch || 'master' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -83,6 +96,10 @@ jobs:
           fi
           if [ "$TIMES_BOOTSTRAP" = 'true' ] && { [ "$TIMES_PUBLISH" != 'true' ] || [ -z "$TIMES_RUNTIME_JOB_ID" ] || [ -n "$TIMES_CAPTURE_RUN_ID" ]; }; then
             echo "bootstrap requires publish=true and an exact runtime_job_id" >&2
+            exit 1
+          fi
+          if ! [[ "$TIMES_MAX_JOBS" =~ ^[1-9][0-9]*$ ]] || (( TIMES_MAX_JOBS > 20 )); then
+            echo "max_jobs must be an integer from 1 to 20" >&2
             exit 1
           fi
 
@@ -113,24 +130,36 @@ jobs:
       - name: Build Times pipeline
         run: pnpm --filter @jojo/times-pipeline build
 
-      - name: Select the oldest ready or retryable Runtime job
+      - name: Select a FIFO batch of ready or retryable Runtime jobs
         if: env.TIMES_CAPTURE_RUN_ID == ''
         run: |
           args=(
-            --action select-job
+            --action select-jobs
             --bucket "$HF_TIMES_RUNTIME_BUCKET"
             --output "$RUNNER_TEMP/jojo-times"
             --work-directory "$RUNNER_TEMP/runtime"
-            --preferred-job-id "$TIMES_RUNTIME_JOB_ID"
+            --max-jobs "$TIMES_MAX_JOBS"
+            --allow-empty true
           )
+          if [ -n "$TIMES_RUNTIME_JOB_ID" ]; then
+            args+=(--preferred-job-id "$TIMES_RUNTIME_JOB_ID")
+          fi
           if [ "$GITHUB_EVENT_NAME" = 'workflow_dispatch' ] && [ -n "$TIMES_RUNTIME_JOB_ID" ]; then
             args+=(--exact-job true)
           fi
           node tools/times-pipeline/dist/src/runtime-cli.js "${args[@]}" > "$RUNNER_TEMP/runtime-job-selection.json"
-          node -e 'const fs=require("node:fs");const result=require(process.env.RUNNER_TEMP+"/runtime-job-selection.json");fs.appendFileSync(process.env.GITHUB_ENV,`TIMES_RUNTIME_JOB_ID=${result.jobId}\n`);console.log(`Selected queued Runtime job ${result.jobId} (${result.state})`)'
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const result = require(process.env.RUNNER_TEMP + "/runtime-job-selection.json");
+          fs.writeFileSync(process.env.RUNNER_TEMP + "/runtime-job-ids.json", JSON.stringify(result.jobIds));
+          fs.appendFileSync(process.env.GITHUB_ENV, `TIMES_RUNTIME_HAS_WORK=${result.jobIds.length > 0}\nTIMES_RUNTIME_JOB_ID=${result.anchorJobId || ""}\nTIMES_RUNTIME_JOB_COUNT=${result.jobIds.length}\n`);
+          console.log(result.jobIds.length
+            ? `Selected Runtime batch anchored at ${result.anchorJobId}: ${result.jobIds.join(", ")}`
+            : "No ready Runtime jobs; this Process trigger is already drained");
+          NODE
 
       - name: Restore committed or staged Process state
-        if: env.TIMES_CAPTURE_RUN_ID == ''
+        if: env.TIMES_CAPTURE_RUN_ID == '' && env.TIMES_RUNTIME_HAS_WORK == 'true'
         run: |
           node tools/times-pipeline/dist/src/runtime-cli.js \
             --action restore-process \
@@ -139,10 +168,21 @@ jobs:
             --work-directory "$RUNNER_TEMP/runtime" \
             --job-id "$TIMES_RUNTIME_JOB_ID" \
             > "$RUNNER_TEMP/process-memory-restore.json"
-          node -e 'const fs=require("node:fs");const result=require(process.env.RUNNER_TEMP+"/process-memory-restore.json");const rows=[`TIMES_PROCESS_REPLAY=${result.replay}`];if(result.generatedAt)rows.push(`TIMES_DELIVERY_GENERATED_AT=${result.generatedAt}`);if(result.processResultFile)rows.push(`TIMES_PROCESS_RESULT=${result.processResultFile}`);fs.appendFileSync(process.env.GITHUB_ENV,rows.join("\n")+"\n")'
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const result = require(process.env.RUNNER_TEMP + "/process-memory-restore.json");
+          const rows = [`TIMES_PROCESS_REPLAY=${result.replay}`];
+          if (result.generatedAt) rows.push(`TIMES_DELIVERY_GENERATED_AT=${result.generatedAt}`);
+          if (result.processResultFile) rows.push(`TIMES_PROCESS_RESULT=${result.processResultFile}`);
+          if (result.replay && result.jobIds) {
+            fs.writeFileSync(process.env.RUNNER_TEMP + "/runtime-job-ids.json", JSON.stringify(result.jobIds));
+            rows.push(`TIMES_RUNTIME_JOB_COUNT=${result.jobIds.length}`);
+          }
+          fs.appendFileSync(process.env.GITHUB_ENV, rows.join("\n") + "\n");
+          NODE
 
       - name: Require Process memory outside explicit bootstrap
-        if: env.TIMES_CAPTURE_RUN_ID == '' && env.TIMES_PUBLISH == 'true'
+        if: env.TIMES_CAPTURE_RUN_ID == '' && env.TIMES_RUNTIME_HAS_WORK == 'true' && env.TIMES_PUBLISH == 'true'
         run: |
           restored="$(node -p 'require(process.env.RUNNER_TEMP + "/process-memory-restore.json").restored')"
           if [ "$restored" != 'true' ] && [ "$TIMES_BOOTSTRAP" != 'true' ]; then
@@ -170,20 +210,20 @@ jobs:
           echo "TIMES_RUN_MANIFEST=$manifest" >> "$GITHUB_ENV"
           node -e 'const fs=require("node:fs");fs.writeFileSync(process.env.RUNNER_TEMP+"/capture-input-result.json",JSON.stringify({captureRunId:process.env.TIMES_CAPTURE_RUN_ID,runManifest:process.argv[1]},null,2)+"\n")' "$manifest"
 
-      - name: Download the selected Runtime job
-        if: env.TIMES_CAPTURE_RUN_ID == '' && env.TIMES_PROCESS_REPLAY != 'true'
+      - name: Download and merge the selected Runtime job batch
+        if: env.TIMES_CAPTURE_RUN_ID == '' && env.TIMES_RUNTIME_HAS_WORK == 'true' && env.TIMES_PROCESS_REPLAY != 'true'
         run: |
           node tools/times-pipeline/dist/src/runtime-cli.js \
-            --action restore-job \
+            --action restore-jobs \
             --bucket "$HF_TIMES_RUNTIME_BUCKET" \
             --output "$RUNNER_TEMP/jojo-times" \
             --work-directory "$RUNNER_TEMP/runtime" \
-            --job-id "$TIMES_RUNTIME_JOB_ID" \
+            --job-ids-file "$RUNNER_TEMP/runtime-job-ids.json" \
             > "$RUNNER_TEMP/runtime-job-input.json"
-          node -e 'const fs=require("node:fs");const result=require(process.env.RUNNER_TEMP+"/runtime-job-input.json");fs.appendFileSync(process.env.GITHUB_ENV,`TIMES_RAW_REVISION=runtime/${result.jobId}/${result.raw.sha256}\nTIMES_RUN_MANIFEST=${result.localRunManifest}\nTIMES_ARTICLE_IDS_FILE=${result.pendingArticlesFile}\n`);console.log(`Selected Runtime job ${result.jobId} (${result.state})`)'
+          node -e 'const fs=require("node:fs");const result=require(process.env.RUNNER_TEMP+"/runtime-job-input.json");fs.appendFileSync(process.env.GITHUB_ENV,`TIMES_RAW_REVISION=${result.rawRevision}\nTIMES_RUN_MANIFEST=${result.localRunManifest}\nTIMES_ARTICLE_IDS_FILE=${result.pendingArticlesFile}\n`);console.log(`Merged ${result.jobIds.length} Runtime jobs into batch ${result.anchorJobId}`)'
 
       - name: Build Canonical
-        if: env.TIMES_PROCESS_REPLAY != 'true'
+        if: (env.TIMES_CAPTURE_RUN_ID != '' || env.TIMES_RUNTIME_HAS_WORK == 'true') && env.TIMES_PROCESS_REPLAY != 'true'
         run: |
           args=(
             --config tools/times-pipeline/sources.v2.json
@@ -201,6 +241,7 @@ jobs:
           fi
 
       - name: Report Canonical coverage
+        if: env.TIMES_CAPTURE_RUN_ID != '' || env.TIMES_RUNTIME_HAS_WORK == 'true'
         run: |
           node - <<'NODE'
           const fs = require("node:fs");
@@ -218,7 +259,7 @@ jobs:
           NODE
 
       - name: Stage immutable Process generation before Delivery
-        if: env.TIMES_PUBLISH == 'true' && env.TIMES_PROCESS_REPLAY != 'true'
+        if: env.TIMES_RUNTIME_HAS_WORK == 'true' && env.TIMES_PUBLISH == 'true' && env.TIMES_PROCESS_REPLAY != 'true'
         run: |
           node tools/times-pipeline/dist/src/runtime-cli.js \
             --action stage-process \
@@ -226,13 +267,14 @@ jobs:
             --output "$RUNNER_TEMP/jojo-times" \
             --work-directory "$RUNNER_TEMP/runtime" \
             --job-id "$TIMES_RUNTIME_JOB_ID" \
+            --job-ids-file "$RUNNER_TEMP/runtime-job-ids.json" \
             --process-result "$TIMES_PROCESS_RESULT" \
             --retention-days 8 \
             > "$RUNNER_TEMP/process-generation-result.json"
           node -e 'const fs=require("node:fs");const result=require(process.env.RUNNER_TEMP+"/process-generation-result.json");fs.appendFileSync(process.env.GITHUB_ENV,`TIMES_DELIVERY_GENERATED_AT=${result.stagedProcess.createdAt}\n`)'
 
       - name: Configure B2 and restore mutable Delivery indexes
-        if: env.TIMES_PUBLISH == 'true'
+        if: env.TIMES_RUNTIME_HAS_WORK == 'true' && env.TIMES_PUBLISH == 'true'
         run: |
           rclone config create jojo-b2 b2 account "$B2_KEY_ID" key "$B2_APPLICATION_KEY" --non-interactive
           mkdir -p "$RUNNER_TEMP/previous-delivery"
@@ -271,6 +313,7 @@ jobs:
           done < "$RUNNER_TEMP/process-dates.txt"
 
       - name: Build per-source Delivery and global timeline
+        if: env.TIMES_CAPTURE_RUN_ID != '' || env.TIMES_RUNTIME_HAS_WORK == 'true'
         run: |
           node tools/times-pipeline/dist/src/delivery-cli.js \
             --config tools/times-pipeline/sources.v2.json \
@@ -282,7 +325,7 @@ jobs:
             > "$RUNNER_TEMP/delivery-result.json"
 
       - name: Publish B2 Delivery in commit order
-        if: env.TIMES_PUBLISH == 'true'
+        if: env.TIMES_RUNTIME_HAS_WORK == 'true' && env.TIMES_PUBLISH == 'true'
         run: |
           delivery="$RUNNER_TEMP/jojo-times-delivery"
           immutable_cache_control="$(node -p "encodeURIComponent('public, max-age=31536000, immutable')")"
@@ -317,7 +360,7 @@ jobs:
           echo "B2 serves the mutable timeline index with a 60-second cache policy."
 
       - name: Commit Process memory pointer after B2
-        if: env.TIMES_PUBLISH == 'true'
+        if: env.TIMES_RUNTIME_HAS_WORK == 'true' && env.TIMES_PUBLISH == 'true'
         run: |
           node tools/times-pipeline/dist/src/runtime-cli.js \
             --action promote-process \
@@ -327,17 +370,18 @@ jobs:
             --job-id "$TIMES_RUNTIME_JOB_ID" \
             > "$RUNNER_TEMP/process-memory-result.json"
 
-      - name: Mark Runtime job after successful delivery
-        if: env.TIMES_PUBLISH == 'true'
+      - name: Mark Runtime job batch after successful delivery
+        if: env.TIMES_RUNTIME_HAS_WORK == 'true' && env.TIMES_PUBLISH == 'true'
         run: |
           node tools/times-pipeline/dist/src/runtime-cli.js \
-            --action mark-job \
+            --action mark-jobs \
             --bucket "$HF_TIMES_RUNTIME_BUCKET" \
             --output "$RUNNER_TEMP/jojo-times" \
             --work-directory "$RUNNER_TEMP/runtime" \
-            --job-id "$TIMES_RUNTIME_JOB_ID" \
+            --job-ids-file "$RUNNER_TEMP/runtime-job-ids.json" \
             --process-result "$TIMES_PROCESS_RESULT" \
             > "$RUNNER_TEMP/runtime-job-result.json"
+          echo "TIMES_BATCH_COMMITTED=true" >> "$GITHUB_ENV"
 
       - name: Defer a failed Runtime job without blocking newer jobs
         if: failure() && env.TIMES_PUBLISH == 'true' && env.TIMES_CAPTURE_RUN_ID == '' && env.TIMES_RUNTIME_JOB_ID != ''
@@ -353,13 +397,38 @@ jobs:
             --reason-file "$RUNNER_TEMP/runtime-failure.txt"
 
       - name: Report a partial Runtime job as degraded
-        if: success() && env.TIMES_PUBLISH == 'true'
+        if: success() && env.TIMES_RUNTIME_HAS_WORK == 'true' && env.TIMES_PUBLISH == 'true'
         run: |
           state="$(node -p 'require(process.env.RUNNER_TEMP + "/runtime-job-result.json").state')"
           if [ "$state" = 'partial' ]; then
-            echo "Runtime job is partial and retains articles for retry" >&2
+            echo "Runtime batch is partial and retains articles for retry" >&2
             exit 1
           fi
+
+      - name: Detect remaining Runtime work
+        if: always() && env.TIMES_BATCH_COMMITTED == 'true' && env.TIMES_DRAIN == 'true'
+        run: |
+          node tools/times-pipeline/dist/src/runtime-cli.js \
+            --action select-jobs \
+            --bucket "$HF_TIMES_RUNTIME_BUCKET" \
+            --output "$RUNNER_TEMP/jojo-times" \
+            --work-directory "$RUNNER_TEMP/runtime" \
+            --max-jobs 1 \
+            --allow-empty true \
+            > "$RUNNER_TEMP/runtime-drain-selection.json"
+          node -e 'const fs=require("node:fs");const result=require(process.env.RUNNER_TEMP+"/runtime-drain-selection.json");fs.appendFileSync(process.env.GITHUB_ENV,`TIMES_QUEUE_REMAINS=${result.jobIds.length>0}\n`);console.log(result.jobIds.length?`Runtime work remains: ${result.jobIds[0]}`:"Runtime queue is drained")'
+
+      - name: Continue draining Runtime jobs
+        if: always() && env.TIMES_QUEUE_REMAINS == 'true' && env.TIMES_DRAIN == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run maintenance-times-process.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$TIMES_GITHUB_REF" \
+            -f publish=true \
+            -f drain=true \
+            -f max_jobs="$TIMES_MAX_JOBS"
 
       - name: Upload dry-run Canonical and Delivery artifact
         if: env.TIMES_PUBLISH != 'true'
