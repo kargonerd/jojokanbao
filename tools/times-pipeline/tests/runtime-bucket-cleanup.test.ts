@@ -70,6 +70,19 @@ describe("Runtime Bucket retention cleanup", () => {
     ]);
   });
 
+  it("deletes a per-job pending marker before its stale status", () => {
+    const plan = planRuntimeBucketCleanup([{
+      ...summary("ready-pending", "ready", "2026-07-01T00:00:00.000Z"),
+      pendingMarkerObject: "times/pending/ready-pending.json",
+    }], { now: NOW, apply: true });
+
+    expect(plan.objects).toEqual([
+      "times/jobs/ready-pending/raw.tar",
+      "times/pending/ready-pending.json",
+      "times/jobs/ready-pending/status.json",
+    ]);
+  });
+
   it("deletes an uncommitted Process payload before its job marker", () => {
     const plan = planRuntimeBucketCleanup([{
       ...summary("staged-old", "ready", "2026-07-01T00:00:00.000Z"),

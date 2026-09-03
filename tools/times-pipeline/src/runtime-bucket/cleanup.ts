@@ -1,5 +1,6 @@
 import {
   jobObjectNames,
+  pendingJobObjectName,
   parseProcessGenerationObjectName,
   safeJobId,
   type RuntimeJobState,
@@ -16,6 +17,7 @@ export interface RuntimeJobStatusSummary {
   state: RuntimeJobState;
   updatedAt: string;
   stagedProcessObject?: string;
+  pendingMarkerObject?: string;
 }
 
 export interface RuntimeBucketCleanupOptions {
@@ -147,6 +149,9 @@ export function planRuntimeBucketCleanup(
         throw new Error(`Unsafe Runtime staged Process object: ${String(summary.stagedProcessObject)}`);
       }
     }
+    if (summary.pendingMarkerObject !== undefined && summary.pendingMarkerObject !== pendingJobObjectName(jobId)) {
+      throw new Error(`Unsafe Runtime pending marker object: ${String(summary.pendingMarkerObject)}`);
+    }
     const retentionDays = state === "done" ? 14 : 30;
     if (now - updatedAt <= retentionDays * DAY_MS) continue;
     jobs.push({
@@ -160,6 +165,7 @@ export function planRuntimeBucketCleanup(
           .filter((objectName): objectName is string => (
             typeof objectName === "string" && !protectedPayloads.has(objectName)
           )),
+        ...(summary.pendingMarkerObject ? [summary.pendingMarkerObject] : []),
         objects.status,
       ],
     });

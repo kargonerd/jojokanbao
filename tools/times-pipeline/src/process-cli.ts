@@ -100,6 +100,7 @@ export async function runProcess(args: Map<string, string>): Promise<{
     : undefined;
   const results: ProcessSourceResult[] = [];
   const batches: ProcessBatch[] = [];
+  const seenArticleKeys = new Set<string>();
   for (const row of run.sources) {
     if ((row.status !== "ok" && row.status !== "empty") || !row.output?.manifest) continue;
     const source = sources.get(row.sourceId);
@@ -112,7 +113,13 @@ export async function runProcess(args: Map<string, string>): Promise<{
       .map((line) => processSourceCandidate(source.id, JSON.parse(line) as Candidate))
       .filter((candidate) => !selectedArticleKeys
         || selectedArticleKeys.has(`${source.id}\0${candidate.articleId}`)
-        || selectedArticleKeys.has(`\0${candidate.articleId}`));
+        || selectedArticleKeys.has(`\0${candidate.articleId}`))
+      .filter((candidate) => {
+        const key = `${source.id}\0${candidate.articleId}`;
+        if (seenArticleKeys.has(key)) return false;
+        seenArticleKeys.add(key);
+        return true;
+      });
     // Source-owned Canonical policies also migrate retained articles. Keep a
     // zero-candidate batch for those sources so a targeted retry cannot defer
     // an already-restored cleanup indefinitely.

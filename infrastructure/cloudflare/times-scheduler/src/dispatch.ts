@@ -3,7 +3,6 @@ export interface SchedulerEnv {
   GITHUB_OWNER: string;
   GITHUB_REPO: string;
   GITHUB_WORKFLOW: string;
-  GITHUB_PROCESS_WORKFLOW: string;
   GITHUB_REF: string;
   HEALTHCHECKS_TIMES_SCHEDULER_URL?: string;
   HEALTHCHECKS_TIMES_PIPELINE_URL?: string;
@@ -119,28 +118,16 @@ export async function dispatchTimesCapture(
   const owner = requireValue("GITHUB_OWNER", env.GITHUB_OWNER);
   const repo = requireValue("GITHUB_REPO", env.GITHUB_REPO);
   const workflow = requireValue("GITHUB_WORKFLOW", env.GITHUB_WORKFLOW);
-  const processWorkflow = requireValue("GITHUB_PROCESS_WORKFLOW", env.GITHUB_PROCESS_WORKFLOW);
   const ref = requireValue("GITHUB_REF", env.GITHUB_REF);
-  const workflowEndpoints = [workflow, processWorkflow].map((name) => ({
-    name,
-    endpoint: workflowEndpoint(owner, repo, name),
-  }));
+  const endpoint = workflowEndpoint(owner, repo, workflow);
   const headers = {
     Accept: "application/vnd.github+json",
     Authorization: `Bearer ${token}`,
     "User-Agent": "jojokanbao-times-scheduler",
     "X-GitHub-Api-Version": "2026-03-10",
   };
-  const workflowRuns = await Promise.all(
-    workflowEndpoints.map(async ({ endpoint, name }) => ({
-      name,
-      runs: await getWorkflowRuns(endpoint, name, headers, fetcher),
-    })),
-  );
-  const activeWorkflows = workflowRuns
-    .filter((item) => item.runs.some((run) => run.status !== "completed"))
-    .map((item) => item.name);
-  if (activeWorkflows.length > 0) {
+  const captureRuns = await getWorkflowRuns(endpoint, workflow, headers, fetcher);
+  if (captureRuns.some((run) => run.status !== "completed")) {
     return {
       owner,
       repo,
@@ -149,11 +136,10 @@ export async function dispatchTimesCapture(
       slotStartedAt,
       outcome: "skipped",
       reason: "active-workflows",
-      activeWorkflows,
+      activeWorkflows: [workflow],
     };
   }
 
-  const captureRuns = workflowRuns.find((item) => item.name === workflow)?.runs ?? [];
   if (captureRuns.some((run) => isRunInSlot(run, slotStartedAtMs))) {
     return {
       owner,
@@ -166,7 +152,7 @@ export async function dispatchTimesCapture(
     };
   }
 
-  const response = await fetcher(`${workflowEndpoints[0]?.endpoint}/dispatches`, {
+  const response = await fetcher(`${endpoint}/dispatches`, {
     method: "POST",
     headers: {
       ...headers,

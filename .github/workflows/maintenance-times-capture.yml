@@ -35,7 +35,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: times-runtime-writer
+  group: times-capture
   cancel-in-progress: false
 
 jobs:

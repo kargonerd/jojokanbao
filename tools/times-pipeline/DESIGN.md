@@ -94,7 +94,8 @@ BPC 请求若被站点拒绝，会在同一节点以新的原生 Brave profile �
 ~~~text
 times/capture-memory.tar.gz
 times/process-memory.json
-times/pending-jobs.json
+times/pending/{GITHUB_RUN_ID}-{GITHUB_RUN_ATTEMPT}.json
+times/pending-jobs.json # legacy read-only migration input
 times/jobs/{GITHUB_RUN_ID}-{GITHUB_RUN_ATTEMPT}/raw.tar
 times/jobs/{GITHUB_RUN_ID}-{GITHUB_RUN_ATTEMPT}/processed-{sha256}.tar.gz
 times/jobs/{GITHUB_RUN_ID}-{GITHUB_RUN_ATTEMPT}/status.json
@@ -102,8 +103,10 @@ times/jobs/{GITHUB_RUN_ID}-{GITHUB_RUN_ATTEMPT}/status.json
 
 `raw.tar` 是不可变 job payload；`status.json` 保存 archive/member 的 size 与 SHA-256，并作为 marker-last
 完成标记。状态为 `ready | partial | done`。Process 下载后逐成员校验，任何缺失或损坏都 fail closed。
-`pending-jobs.json` 是可重建的 FIFO 索引，`status.json` marker 才是任务权威；queue 丢失、损坏或 marker
-与 enqueue 之间中断时，selector 会扫描 marker 并重建。partial job 按指数退避重试。
+每个未完成 job 有独立 `pending/{id}.json` 标记，避免 Capture 与 Process 并行时竞争一个可变队列对象；
+旧 `pending-jobs.json` 只作为迁移输入读取。`status.json` marker 才是任务权威，近期 pending marker
+上传中断时 selector 会扫描 status 并修复。partial job 按指数退避重试。Process 按 FIFO 每批最多合并
+四个 ready job，共用一次 Canonical、翻译和 Delivery；完成后继续触发 Process-only 轮次直至可处理队列排空。
 Capture memory 只保存各媒体 `state.json.gz`。每份 `processed-{sha256}.tar.gz` 保存保留窗口内的 Canonical 日期索引、
 被引用 article、翻译缓存、被引用 Raw asset 和本轮 Process result；`process-memory.json` 只是当前已完成
 generation 的小指针。首次空状态必须通过人工审核的显式 bootstrap，发布任务不得静默从空 memory 开始。

@@ -5,11 +5,11 @@ not fetch or process articles. Each Cron Trigger calls GitHub's workflow
 dispatch API for `maintenance-times-capture.yml`; GitHub Actions then runs the
 existing Capture -> HF Raw -> Process -> HF Canonical/B2 Delivery chain.
 The Worker probes once per minute, but assigns each probe to a ten-minute time
-slot. Before dispatching, it checks both Capture and Process workflow runs. If
-either workflow is queued or running, that probe is skipped so the shared HF
-writer lock cannot accumulate a backlog or starve Process. A later probe in the
-same slot dispatches as soon as both workflows become idle. Once an automatic
-Capture run exists in the slot, the remaining probes skip it, so each slot is
+slot. Before dispatching, it checks only Capture workflow runs. Capture has its
+own single-writer lock, while Process uses a separate Delivery lock and drains
+immutable pending-job markers in FIFO batches. This lets the next Capture run
+alongside Process without racing on a shared queue. Once an automatic Capture
+run exists in the slot, the remaining probes skip it, so each slot is
 dispatched at most once.
 
 ## Security

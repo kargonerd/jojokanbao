@@ -2,6 +2,7 @@ export const RUNTIME_PREFIX = "times";
 export const CAPTURE_MEMORY_OBJECT = `${RUNTIME_PREFIX}/capture-memory.tar.gz`;
 export const PROCESS_MEMORY_OBJECT = `${RUNTIME_PREFIX}/process-memory.json`;
 export const PENDING_JOBS_OBJECT = `${RUNTIME_PREFIX}/pending-jobs.json`;
+export const PENDING_JOB_PREFIX = `${RUNTIME_PREFIX}/pending`;
 
 const MIB = 1024 * 1024;
 const GIB = 1024 * MIB;
@@ -58,6 +59,8 @@ export interface RuntimeProcessGeneration {
   size: number;
   sha256: string;
   files: RuntimeFileDigest[];
+  /** Ordered Runtime jobs committed by this generation. Absent on legacy single-job generations. */
+  jobIds?: string[];
 }
 
 export interface RuntimeJobStatus {
@@ -214,6 +217,10 @@ export function jobObjectNames(jobIdValue: unknown): { raw: string; status: stri
   };
 }
 
+export function pendingJobObjectName(jobIdValue: unknown): string {
+  return `${PENDING_JOB_PREFIX}/${safeJobId(jobIdValue)}.json`;
+}
+
 function exactTimestamp(value: unknown, label: string): string {
   if (typeof value !== "string" || Number.isNaN(Date.parse(value))) {
     throw new Error(`Invalid ${label}: ${String(value)}`);
@@ -354,6 +361,18 @@ export function parseRuntimeJobStatus(value: unknown): RuntimeJobStatus {
       size: runtimeObjectSize(staged.size, "Runtime staged Process archive size"),
       sha256: stagedSha256,
       files: stagedFiles,
+      ...(staged.jobIds === undefined ? {} : {
+        jobIds: (() => {
+          if (!Array.isArray(staged.jobIds) || staged.jobIds.length === 0 || staged.jobIds.length > 20) {
+            throw new Error("Runtime staged Process job ids are invalid");
+          }
+          const jobIds = staged.jobIds.map((value) => safeJobId(value));
+          if (jobIds[0] !== jobId || new Set(jobIds).size !== jobIds.length) {
+            throw new Error("Runtime staged Process job ids must be unique and start with the anchor job");
+          }
+          return jobIds;
+        })(),
+      }),
     };
   }
   return {
