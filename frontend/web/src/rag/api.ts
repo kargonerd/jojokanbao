@@ -1,4 +1,5 @@
 import { supportsJojoDatasetAi } from "@jojo/content";
+import { agentGatewayUrl } from "../api/agentGateway";
 import { loadCatalog, loadDataset } from "./content";
 import type {
   RagAnswerMetadata,
@@ -9,7 +10,11 @@ import type {
   RagSource,
 } from "./types";
 
-const AGENT_URL = "/gateway/ask";
+const AGENT_URL = agentGatewayUrl("/gateway/ask");
+const MAX_HISTORY_MESSAGES = 20;
+const MAX_HISTORY_CHARACTERS = 100_000;
+const MAX_USER_HISTORY_CHARACTERS = 10_000;
+const MAX_ASSISTANT_HISTORY_CHARACTERS = 20_000;
 
 export interface RagStreamActivity {
   phase: "connecting" | "thinking" | "searching" | "reading" | "writing";
@@ -57,6 +62,24 @@ function toolActivity(name: unknown, args: unknown, isError?: boolean): RagStrea
     default:
       return { phase: "thinking", message: "正在核对馆藏资料…" };
   }
+}
+
+function agentHistory(messages: RagMessage[]): Array<Pick<RagMessage, "role" | "content">> {
+  let remainingCharacters = MAX_HISTORY_CHARACTERS;
+  const newestFirst: Array<Pick<RagMessage, "role" | "content">> = [];
+  for (const message of messages.slice(-MAX_HISTORY_MESSAGES).reverse()) {
+    const content = message.content.replace(/\[cite:[A-Za-z0-9_-]+\]/g, "").trim();
+    if (!content) continue;
+    const messageLimit = message.role === "user"
+      ? MAX_USER_HISTORY_CHARACTERS
+      : MAX_ASSISTANT_HISTORY_CHARACTERS;
+    const boundedContent = content.slice(0, Math.min(messageLimit, remainingCharacters));
+    if (!boundedContent) break;
+    newestFirst.push({ role: message.role, content: boundedContent });
+    remainingCharacters -= boundedContent.length;
+    if (!remainingCharacters) break;
+  }
+  return newestFirst.reverse();
 }
 
 async function accessToken(): Promise<string> {
@@ -145,10 +168,7 @@ export function askStream(params: { datasetIds: string[]; scopeMode: "all" | "se
       },
       body: JSON.stringify({
         message: params.question,
-        history: (params.history ?? []).slice(-20).map((message) => ({
-          role: message.role,
-          content: message.content.replace(/\[cite:[A-Za-z0-9_-]+\]/g, ""),
-        })),
+        history: agentHistory(params.history ?? []),
         scope: {
           mode: params.scopeMode,
           datasetIds: params.datasetIds,
@@ -217,7 +237,7 @@ export function askStream(params: { datasetIds: string[]; scopeMode: "all" | "se
         }
       }
     }
-    finish();
+    throw new Error("回答连接意外中断，请重试");
   })().catch((error: unknown) => {
     if (error instanceof DOMException && error.name === "AbortError") return;
     settled = true;

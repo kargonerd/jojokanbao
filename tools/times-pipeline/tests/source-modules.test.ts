@@ -4,6 +4,7 @@ import {
   acceptSourceCandidate,
   acceptSourceUrl,
   processSourceCandidate,
+  sourceArticleTimestampsExtractor,
   sourceBodyExtractor,
   sourceFetchPolicy,
   sourceImageExtractor,
@@ -192,6 +193,8 @@ describe("native source modules", () => {
     expect(sourceBodyExtractor("reuters")).toBeTypeOf("function");
     expect(sourceImageExtractor("reuters")).toBeTypeOf("function");
     expect(sourceImageExtractor("ap")).toBeTypeOf("function");
+    expect(sourceArticleTimestampsExtractor("ap")).toBeTypeOf("function");
+    expect(sourceArticleTimestampsExtractor("reuters")).toBeUndefined();
     expect(sourceImageExtractor("cna")).toBeTypeOf("function");
     expect(sourceBodyExtractor("nyt")).toBeTypeOf("function");
     expect(sourceImageExtractor("nyt")).toBeTypeOf("function");
@@ -253,6 +256,9 @@ describe("native source modules", () => {
     expect(sourceUnavailablePageReason(source("cls", endpoint), input({
       title: "航拍画面",
       html: "<video></video>",
+    }))).toBe("UnsupportedMedia");
+    expect(sourceUnavailablePageReason(source("people", endpoint), input({
+      html: '<div id="rm_txt_zw"><div id="q_v_p-example"><div class="video-js"><video></video></div></div></div>',
     }))).toBe("UnsupportedMedia");
     expect(sourceUnavailablePageReason(source("xinhua", endpoint), input({
       html: '<div id="detailContent"><div class="pageVideo" video_src="movie.mp4"></div><p>新华社音视频部制作</p></div>',

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { discoverArticleImages } from "../src/capture/page-images.js";
 import { chinanewsFetch } from "../src/sources/chinanews/fetch.js";
-import { extractChinanewsImages } from "../src/sources/chinanews/images.js";
+import { acceptChinanewsCanonicalAsset, extractChinanewsImages } from "../src/sources/chinanews/images.js";
 import { extractChinanewsBody } from "../src/sources/chinanews/process.js";
+import type { CapturedAsset } from "../src/types.js";
 
 const articlePage = `
   <div id="cont_1_1_2">
@@ -45,6 +46,41 @@ describe("China News article boundaries", () => {
     expect(images.map((image) => image.sourceUrl)).toEqual([
       "https://www.chinanews.com.cn/images/flood-scene.jpg",
     ]);
+  });
+
+  it("does not let generic fallback reintroduce an inline publisher ad", () => {
+    const url = "https://www.chinanews.com.cn/cj/2026/09-02/10688570.shtml";
+    const html = `<div class="left_zw">
+      <p>中新网北京9月2日电，这是一段足够长的新闻正文，用于确认页面已经进入真实的文章内容区域。</p>
+      <p>第二段继续说明新闻事件，而不是任何广告或者推荐内容。</p>
+      <table class="adInContent"><tbody><tr><td>
+        <img src="/ad2008/U947P4T175D633F27513DT20260901095008.jpg" width="370" height="280" alt="境外消费广告">
+      </td></tr></tbody></table>
+    </div>`;
+
+    expect(extractChinanewsImages(html, url)).toEqual([]);
+    expect(discoverArticleImages(html, url, chinanewsFetch, extractChinanewsImages)).toEqual([]);
+  });
+
+  it("rejects a retained China News /ad2008 asset under the current Canonical policy", () => {
+    const asset = (sourceUrl: string): CapturedAsset => ({
+      id: "asset:test",
+      type: "image",
+      role: "content",
+      sourceUrl,
+      rawObject: "raw/chinanews/assets/test.jpg",
+      mediaType: "image/jpeg",
+      size: 32_000,
+      sha256: "df88276e1087e01022ed1413f07da9ad4bb0ced782990f40ca91fc316bea561b",
+    });
+
+    expect(acceptChinanewsCanonicalAsset(asset(
+      "https://www.chinanews.com.cn/ad2008/U947P4T175D633F27513DT20260901095008.jpg",
+    ))).toBe(false);
+    expect(acceptChinanewsCanonicalAsset(asset(
+      "https://image.chinanews.com/cspimp/2026/09-02/editorial.JPG",
+    ))).toBe(true);
+    expect(acceptChinanewsCanonicalAsset(asset("not a URL"))).toBe(true);
   });
 
   it("keeps a publisher-owned image-only live poster as the complete report", () => {

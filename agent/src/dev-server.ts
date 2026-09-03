@@ -5,10 +5,10 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRagAgentDefinition, createTimesAgentDefinition } from "./applications";
-import { PersistentCredentialStore, type CredentialFile } from "./credentials";
+import { JsonCredentialStore } from "./credentials";
 import { createEdgeOneAgentHandler } from "./edgeone/handler";
 import { createPlatformModelRuntime, resolvePlatformModelConfig, type AgentEnvironment } from "./models";
-import { loadLocalCodexCredential } from "./local-codex-credential";
+import { resolveLocalAgentAuthPath } from "./local-codex-credential";
 import { createRagTools } from "./rag-tools";
 
 const repositoryRoot = path.resolve(
@@ -125,12 +125,8 @@ async function writeResponse(response: Response, target: ServerResponse): Promis
 }
 
 const environment = await developmentEnvironment();
-const { credential, source } = await loadLocalCodexCredential(repositoryRoot, environment);
-let credentialFile: CredentialFile = { "openai-codex": credential };
-const credentialStore = new PersistentCredentialStore({
-  read: async () => credentialFile,
-  write: async (next) => { credentialFile = next; },
-});
+const credentialPath = resolveLocalAgentAuthPath(repositoryRoot, environment);
+const credentialStore = new JsonCredentialStore(credentialPath);
 const ragDefinition = createRagAgentDefinition();
 const timesDefinition = createTimesAgentDefinition();
 const createModelRuntime = () => createPlatformModelRuntime({
@@ -212,7 +208,7 @@ const server = createServer(async (request, response) => {
 server.listen(port, "127.0.0.1", () => {
   process.stdout.write([
     `JOJO local agents listening on http://127.0.0.1:${port} (/rag, /times)`,
-    `Codex OAuth: ${path.relative(repositoryRoot, source) || source}`,
+    `Codex OAuth: ${path.relative(repositoryRoot, credentialPath) || credentialPath}`,
     `Content CDN: ${environment.JOJO_CONTENT_CDN_BASE}`,
     "",
   ].join("\n"));

@@ -1,6 +1,7 @@
 import type {
   BrowserDiscoveryRuntime,
   Candidate,
+  CapturedAsset,
   DiscoveryEndpoint,
   DiscoveryResult,
   PageAvailabilityInput,
@@ -16,6 +17,16 @@ export type SourceAdapterEndpoint = Extract<DiscoveryEndpoint, { kind: "source-a
 
 export type StaleCanonicalRemovalReason = "stale-publisher-access-offer";
 
+export interface PublisherArticleTimestamps {
+  publishedAt: string;
+  updatedAt?: string;
+}
+
+export type PublisherArticleTimestampsExtractor = (
+  html: string,
+  pageUrl?: string,
+) => PublisherArticleTimestamps | undefined;
+
 /**
  * Source-owned classifier for content already persisted in Canonical. The
  * shared writer only invokes this after the current publisher extractor has
@@ -25,6 +36,14 @@ export type StaleCanonicalRemovalReason = "stale-publisher-access-offer";
 export type StaleCanonicalBodyClassifier = (
   previousBodyHtml: string,
 ) => StaleCanonicalRemovalReason | undefined;
+
+/**
+ * Source-owned validation for both newly captured and retained Canonical
+ * assets. Keeping this hook at the source boundary lets extraction-policy
+ * upgrades clean historical articles that are no longer present in the
+ * publisher's current discovery window.
+ */
+export type CanonicalAssetAcceptor = (asset: CapturedAsset) => boolean;
 
 export interface SourceModule {
   id: string;
@@ -41,9 +60,11 @@ export interface SourceModule {
   ) => Promise<DiscoveryResult>;
   fetch?: SourceFetchPolicy;
   capturePage?: (url: string, timeoutSeconds: number) => Promise<CapturedHtmlPage | undefined>;
+  extractTimestamps?: PublisherArticleTimestampsExtractor;
   extractBody?: ArticleBodyExtractor;
   classifyOriginalPageRejection?: OriginalPageRejectionClassifier;
   extractImages?: ArticleImageExtractor;
+  acceptCanonicalAsset?: CanonicalAssetAcceptor;
   classifyStaleCanonicalBody?: StaleCanonicalBodyClassifier;
   classifyUnavailable?(
     input: PageAvailabilityInput,

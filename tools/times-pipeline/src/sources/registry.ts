@@ -20,11 +20,16 @@ import { scmpSource } from "./scmp/index.js";
 import { thepaperSource } from "./thepaper/index.js";
 import { xinhuaSource } from "./xinhua/index.js";
 import { zaobaoSource } from "./zaobao/index.js";
-import type { SourceModule, StaleCanonicalBodyClassifier } from "./contracts.js";
+import type {
+  PublisherArticleTimestampsExtractor,
+  SourceModule,
+  StaleCanonicalBodyClassifier,
+} from "./contracts.js";
 import type { ArticleBodyExtractor, OriginalPageRejectionClassifier } from "../content/body.js";
 import type { ArticleImageExtractor } from "../capture/page-images.js";
 import type { CapturedHtmlPage } from "../capture/http.js";
 import type {
+  CapturedAsset,
   Candidate,
   DiscoveryResult,
   DiscoveryRuntime,
@@ -95,6 +100,12 @@ export function sourceBodyExtractor(sourceId: string): ArticleBodyExtractor | un
   return modules.get(sourceId)?.extractBody;
 }
 
+export function sourceArticleTimestampsExtractor(
+  sourceId: string,
+): PublisherArticleTimestampsExtractor | undefined {
+  return modules.get(sourceId)?.extractTimestamps;
+}
+
 export function sourceOriginalPageRejectionClassifier(
   sourceId: string,
 ): OriginalPageRejectionClassifier | undefined {
@@ -103,6 +114,12 @@ export function sourceOriginalPageRejectionClassifier(
 
 export function sourceImageExtractor(sourceId: string): ArticleImageExtractor | undefined {
   return modules.get(sourceId)?.extractImages;
+}
+
+export function sourceCanonicalAssetAcceptor(
+  sourceId: string,
+): ((asset: CapturedAsset) => boolean) | undefined {
+  return modules.get(sourceId)?.acceptCanonicalAsset;
 }
 
 export function sourceStaleCanonicalBodyClassifier(

@@ -82,6 +82,39 @@ describe("page capture orchestration", () => {
     ).map((value) => value.articleId)).toEqual(["policy-change"]);
   });
 
+  it("recaptures an article immediately when the publisher advances its update timestamp", () => {
+    const initial = {
+      ...article("ap:3e1a740c73ec7a122307b5cf", "ap", "2026-09-02T14:12:37.000Z"),
+      title: "Apple changes Lake Ontario name to 'Lake America'",
+      canonicalUrl: "https://apnews.com/article/apple-lake-ontario-america-google-example",
+      captureUrl: "https://apnews.com/article/apple-lake-ontario-america-google-example",
+      captureRevision: "semantic-html-media-v2+story-media-v3",
+    };
+    const state = new Map([["ap", {
+      formatVersion: "jojo-page-capture-state/1" as const,
+      articles: {
+        [initial.articleId]: {
+          fingerprint: articleFingerprint(initial),
+          lastAttempt: "2026-09-02T14:20:00.000Z",
+          rawPageObject: "raw/ap/pages/lake-ontario.json",
+          error: null,
+        },
+      },
+    }]]);
+    const updated = { ...initial, updatedAt: "2026-09-02T14:43:57.000Z" };
+
+    expect(pendingArticles(
+      [updated],
+      state,
+      {
+        now: new Date("2026-09-02T14:50:00.000Z"),
+        retentionDays: 7,
+        refreshHours: 168,
+        retryHours: 0.15,
+      },
+    ).map((value) => value.articleId)).toEqual([initial.articleId]);
+  });
+
   it("marks a retained, rediscovered FT page for recovery after the original-response terminal revision", () => {
     const articleId = "ft:71b02867f01a972879871068";
     const previous = {

@@ -26,8 +26,9 @@ reader.jojokanbao.cn                  agent-global.jojokanbao.cn
 - `/rag/health` 与 `/times/health` 不匹配 Middleware，可用于部署健康检查；它们只报告模型配置状态，不
   执行模型。
 - `/gateway/credentials` 仍是平台通用的凭据管理 Cloud Function，不返回凭据。当前只
-  注册 `agent/openai-codex`，以后由其他业务注册自己的 scope/provider 和校验器。加密
-  凭据固定覆盖同一条 Store message，不因 OAuth 刷新持续增长。
+  注册 `agent/openai-codex`，以后由其他业务注册自己的 scope/provider 和校验器。同一代
+  凭据的常规 OAuth 刷新固定覆盖该代 Store message；管理员主动换登录时才追加更高代
+  记录，读取始终选择最高代，避免旧请求在并发刷新后覆盖新登录。
 - Web 历史按账号保存在 IndexedDB，浏览器不自动清理；Mobile 当前面板的最近对话保留在
   客户端内存。两端每轮都附带最近 20 条上下文，问答服务不读取或写入聊天 Store。
 - 默认全馆提问时，Agent 先读取 `catalog.jox` 选最多 8 本候选书，再把这些书随附的
@@ -110,6 +111,24 @@ $env:JOJO_CREDENTIAL_SERVICE_URL="https://agent-global.jojokanbao.cn"
 $env:JOJO_OPERATOR_TOKEN="<与 Makers 项目一致>"
 pnpm push:credentials
 ```
+
+仓库根命令 `pnpm push:credentials` 会调用 `@jojo/agent` 的
+`credentials:push`。这不是把本地 OAuth 文件原样复制到 Store：部署端会在持久化前先
+刷新一次凭据，将新生成的 rotating refresh token 写入加密 Store，并由部署端接管该
+token。上传成功后，本地 `agent/auth.json` 中的 refresh token 已被消费，不能再用于本地
+Agent。若还要继续本地调试，必须再次执行 `pnpm --filter @jojo/agent auth:codex`，建立与
+部署端相互独立的本地登录；不要再上传这份本地凭据，除非有意替换部署端凭据。
+
+如果上传或 Agent 请求报告 `refresh_token_reused`，不要反复重试旧
+`agent/auth.json`。按以下顺序重新登录并上传：
+
+```powershell
+pnpm --filter @jojo/agent auth:codex
+pnpm --filter @jojo/agent credentials:push
+```
+
+第二步成功后，部署端已经拥有新 token；如仍需本地运行 Agent，再执行一次
+`pnpm --filter @jojo/agent auth:codex`，取得仅供本地使用的独立凭据。
 
 也可以启动 `pnpm dev:admin`，在本机 JOJO 管理台的 `/agent` 页面检查凭据来源并确认
 更新。管理台复用同一个 `JOJO_OPERATOR_TOKEN`，浏览器不读取 Token 或 OAuth 明文；

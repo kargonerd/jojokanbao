@@ -66,6 +66,62 @@ describe("askStream references", () => {
     });
   });
 
+  it("drops empty history and keeps messages within Agent limits", async () => {
+    const frame = (event: string, payload: unknown) => (
+      `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`
+    );
+    const fetchMock = vi.fn().mockResolvedValue(new Response(frame("done", {})));
+    globalThis.fetch = fetchMock as typeof fetch;
+    const oversizedHistory = Array.from({ length: 6 }, (_, index) => ({
+      role: "assistant" as const,
+      content: `${index}${"答".repeat(24_999)}`,
+    }));
+
+    await new Promise<void>((resolve, reject) => {
+      askStream({
+        datasetIds: ["book-a"],
+        scopeMode: "selected",
+        question: "继续",
+        history: [
+          { role: "assistant", content: "   " },
+          { role: "user", content: "问".repeat(12_000) },
+          ...oversizedHistory,
+        ],
+      }, () => undefined, () => resolve(), reject);
+    });
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const history = (JSON.parse(String(init.body)) as {
+      history: Array<{ role: string; content: string }>;
+    }).history;
+    expect(history).toHaveLength(5);
+    expect(history[0]?.content.startsWith("1")).toBe(true);
+    expect(history.every((message) => message.content.length === 20_000)).toBe(true);
+    expect(history.reduce((total, message) => total + message.content.length, 0)).toBe(100_000);
+  });
+
+  it("reports an interrupted stream instead of saving an empty assistant reply", async () => {
+    const frame = (event: string, payload: unknown) => (
+      `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`
+    );
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(
+      frame("status", { provider: "openai-codex", model: "test" }),
+      { headers: { "Content-Type": "text/event-stream" } },
+    )) as typeof fetch;
+    const onDone = vi.fn();
+
+    const error = await new Promise<string>((resolve) => {
+      askStream({
+        datasetIds: ["book-a"],
+        scopeMode: "selected",
+        question: "测试",
+      }, () => undefined, onDone, resolve);
+    });
+
+    expect(error).toBe("回答连接意外中断，请重试");
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
   it("keeps exact and chapter-level locations until the answer selects its citations", async () => {
     const anchored = {
       datasetId: "book-a",

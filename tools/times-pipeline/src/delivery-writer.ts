@@ -89,6 +89,12 @@ function bodyForDelivery(body: CanonicalArticle["body"], availableAssets: Readon
   return { ...body, value: $.html().trim() };
 }
 
+function articleSummary(body: CanonicalArticle["body"]): string | undefined {
+  const $ = load(removeParserArtifacts(body.value), undefined, false);
+  $("figure,figcaption").remove();
+  return plainText($.html()).slice(0, 300) || undefined;
+}
+
 async function deliveryArticle(
   workspaceRoot: string,
   deliveryRoot: string,
@@ -138,7 +144,7 @@ async function deliveryArticle(
   const opaque = createHash("sha256").update(clear).digest("hex");
   const articleObject = `${sourcePrefix}/articles/${opaque}.jox`;
   const info = await writeJoxJson(deliveryRoot, articleObject, fragment);
-  const summary = plainText(body.value).slice(0, 300) || undefined;
+  const summary = articleSummary(body);
   const translations = Object.fromEntries(await Promise.all(Object.entries(canonical.translations ?? {}).map(async ([language, translation]) => {
     const translatedBody = bodyForDelivery(translation.body, availableAssets);
     const translatedFragment: JojoFragment = {
@@ -150,7 +156,7 @@ async function deliveryArticle(
     const translatedOpaque = createHash("sha256").update(translatedClear).digest("hex");
     const translatedObject = `${sourcePrefix}/articles/${translatedOpaque}.jox`;
     await writeJoxJson(deliveryRoot, translatedObject, translatedFragment);
-    const translatedSummary = plainText(translatedBody.value).slice(0, 300) || undefined;
+    const translatedSummary = articleSummary(translatedBody);
     return [language, {
       language: translation.language,
       title: translation.title,
@@ -179,6 +185,7 @@ async function deliveryArticle(
       contentStatus: "full",
       url: canonical.canonicalUrl,
       publishedAt: canonical.publishedAt,
+      ...(canonical.updatedAt ? { updatedAt: canonical.updatedAt } : {}),
       issueDate,
       language: canonical.language,
       source: { id: canonical.source.id, name: canonical.source.name, language: canonical.language },

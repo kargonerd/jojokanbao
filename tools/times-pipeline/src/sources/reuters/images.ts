@@ -72,6 +72,7 @@ function imageCandidate(
   return {
     sourceUrl,
     role,
+    publisherEditorial: true,
     ...(alt ? { alt } : {}),
     ...(caption ? { caption } : {}),
     ...(credit ? { credit } : {}),

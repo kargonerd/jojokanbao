@@ -36,12 +36,17 @@ pnpm dev:admin
 首次启用功能开关管理时，需要在目标 Supabase 项目中执行已评审的迁移，并按
 `infrastructure/supabase/README.md` 将同一个 Operator Token 的摘要写入数据库。
 
-Agent 管理页面位于 `http://127.0.0.1:4174/agent`。本机 Flask 优先读取
-`JOJO_CODEX_AUTH_PATH` 或 `agent/auth.json`；两者不存在时读取当前用户的
-`~/.codex/auth.json`，只把转换后的 `openai-codex` OAuth 凭据直接发送到
-`JOJO_CREDENTIAL_SERVICE_URL`。浏览器只接收就绪状态、来源提示和有效期，
-不会收到 Operator Token、access token 或 refresh token。更新前必须确认部署端
-已配置同一个 `JOJO_OPERATOR_TOKEN`。
+Agent 管理页面位于 `http://127.0.0.1:4174/agent`。设置
+`JOJO_CODEX_AUTH_PATH` 或 `JOJO_AGENT_AUTH_PATH` 时，本机 Flask 只读取指定路径
+（两者同时设置时前者优先）；均未设置时只读取仓库内的 `agent/auth.json`。管理台不会回退读取当前用户的 `~/.codex/auth.json`，避免与
+Codex CLI 或其他本地会话共享 refresh token。可先运行
+`pnpm --filter @jojo/agent auth:codex` 生成专用文件，再由管理台把转换后的
+`openai-codex` OAuth 凭据直接发送到 `JOJO_CREDENTIAL_SERVICE_URL`。浏览器只接收
+就绪状态、来源提示和有效期，不会收到 Operator Token、access token 或 refresh token。
+管理台只接受顶层为 `openai-codex` 的 Agent OAuth 文件，不接受 Codex CLI 原生
+`tokens` 格式。更新前必须确认部署端已配置同一个 `JOJO_OPERATOR_TOKEN`。更新成功会
+把 rotating refresh token 的所有权交给部署端；该本地凭据不可重复上传，如需继续在
+本地运行 Agent，必须重新执行登录生成新的专用凭据。
 
 划线评论和审核依赖
 `infrastructure/supabase/migrations/202608180001_unified_annotations.sql`。部署迁移后，

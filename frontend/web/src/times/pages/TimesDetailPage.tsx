@@ -6,8 +6,10 @@ import type { TextAnchor } from "../../annotations/types";
 import { ReadingLoadingState } from "../../reading/ReadingLoadingState";
 import { explainTimesSelection, type TimesExplanationMetadata } from "../ai";
 import { timesApi, type TimesNewsItem } from "../api";
+import { exactArticleTime, publisherUpdatedAt } from "../articleTime";
 import { TimesExplanationPanel } from "../components/TimesExplanationPanel";
 import { TimesImageCarousel, type TimesCarouselItem } from "../components/TimesImageCarousel";
+import type { TimesForeignContentLanguage } from "../language";
 import { useTimesPreferencesStore } from "../preferencesStore";
 import { markTimesArticleRead } from "../readStore";
 import { timesSourceName } from "../sourceNames";
@@ -51,6 +53,7 @@ function materializeAssets(news: TimesNewsItem): ReactNode[] | null {
     trimLeadingPublisherWhitespace(paragraph);
   }
   const assets = new Map(news.assets.map((asset) => [asset.id, asset]));
+  const figureCaptions = new Map<string, string>();
   for (const figure of document.querySelectorAll<HTMLElement>("figure[data-asset-id]")) {
     const id = figure.dataset.assetId;
     const asset = id ? assets.get(id) : undefined;
@@ -70,6 +73,8 @@ function materializeAssets(news: TimesNewsItem): ReactNode[] | null {
       caption.textContent = asset.caption;
       figure.append(caption);
     }
+    const caption = figure.querySelector("figcaption")?.textContent?.replace(/\s+/gu, " ").trim();
+    if (caption) figureCaptions.set(asset.id, caption);
   }
   const figures = [...document.body.querySelectorAll<HTMLElement>(":scope > figure[data-asset-id]")];
   const bodyChildren = [...document.body.children];
@@ -97,7 +102,7 @@ function materializeAssets(news: TimesNewsItem): ReactNode[] | null {
     if (presentation?.type !== "carousel" || !url) continue;
     carouselGroups.set(presentation.id, [
       ...(carouselGroups.get(presentation.id) ?? []),
-      { asset, url },
+      { asset, url, ...(figureCaptions.get(asset.id) ? { caption: figureCaptions.get(asset.id) } : {}) },
     ]);
   }
   for (const items of carouselGroups.values()) {
@@ -124,10 +129,11 @@ function materializeAssets(news: TimesNewsItem): ReactNode[] | null {
       }
       const url = news.assetUrls?.[asset.id];
       if (!url) return null;
+      const caption = figureCaptions.get(asset.id) || asset.caption;
       return (
         <figure key={key} data-asset-id={asset.id}>
           <img src={url} alt={asset.alt || asset.caption || ""} loading="lazy" decoding="async" />
-          {asset.caption ? <figcaption>{asset.caption}</figcaption> : null}
+          {caption ? <figcaption>{caption}</figcaption> : null}
         </figure>
       );
     }
@@ -161,7 +167,14 @@ export function TimesDetailPage({
   const [news, setNews] = useState<TimesNewsItem | null>(null);
   const [error, setError] = useState<string | null>(null);
   const languagePreference = useTimesPreferencesStore((state) => state.foreignContentLanguage);
-  const setLanguagePreference = useTimesPreferencesStore((state) => state.setForeignContentLanguage);
+  const articleKey = `${issueDate}:${newsId}`;
+  const [languageOverride, setLanguageOverride] = useState<{
+    articleKey: string;
+    language: TimesForeignContentLanguage;
+  }>();
+  const requestedLanguage = languageOverride?.articleKey === articleKey
+    ? languageOverride.language
+    : languagePreference;
   const [explanation, setExplanation] = useState<{
     anchor: TextAnchor;
     answer: string;
@@ -171,6 +184,10 @@ export function TimesDetailPage({
   }>();
   const cancelExplanation = useRef<() => void>(() => {});
   const originalUrl = safeNewsUrl(news?.url);
+  const updatedAt = news ? publisherUpdatedAt(news) : undefined;
+  const translationUpdatePending = Boolean(
+    updatedAt && news?.usingTranslation && news.translations?.["zh-CN"]?.stale,
+  );
   const articleBody = useMemo(() => news ? materializeAssets(news) : null, [news]);
 
   useEffect(() => {
@@ -180,7 +197,7 @@ export function TimesDetailPage({
     setError(null);
     cancelExplanation.current();
     setExplanation(undefined);
-    void timesApi.getNews(issueDate, newsId, languagePreference).then((value) => {
+    void timesApi.getNews(issueDate, newsId, requestedLanguage).then((value) => {
       urls = Object.values(value.assetUrls ?? {});
       if (active) {
         setNews(value);
@@ -195,7 +212,7 @@ export function TimesDetailPage({
       cancelExplanation.current();
       for (const url of urls) URL.revokeObjectURL(url);
     };
-  }, [issueDate, languagePreference, markReadOnOpen, newsId]);
+  }, [issueDate, markReadOnOpen, newsId, requestedLanguage]);
 
   function startExplanation(anchor: TextAnchor): void {
     if (!news) return;
@@ -230,8 +247,16 @@ export function TimesDetailPage({
       {news ? (
         <article>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 font-sans">
-            <p className="m-0 text-[10px] font-black tracking-[0.12em] text-red">
-              {timesSourceName(news.source)} · {new Intl.DateTimeFormat("zh-CN", { dateStyle: "long", timeStyle: "short" }).format(new Date(news.publishedAt))}
+            <p className="m-0 min-w-0 max-w-full text-[10px] font-bold leading-5 tracking-[0.08em] text-muted">
+              <span className="font-black text-red">{timesSourceName(news.source)}</span>
+              <span aria-hidden="true"> · </span>
+              <span>发布于 <time dateTime={news.publishedAt}>{exactArticleTime(news.publishedAt)}</time></span>
+              {updatedAt ? (
+                <span className="font-black text-red">
+                  <span aria-hidden="true"> · </span>
+                  更新于 <time dateTime={updatedAt}>{exactArticleTime(updatedAt)}</time>
+                </span>
+              ) : null}
             </p>
             {news.usingTranslation ? (
               <span title="此内容由 AI 翻译" className="border border-red/40 px-1.5 py-0.5 text-[9px] font-black tracking-[0.1em] text-red">
@@ -241,13 +266,21 @@ export function TimesDetailPage({
             {news.translationAvailable ? (
               <button
                 type="button"
-                onClick={() => setLanguagePreference(news.usingTranslation ? "original" : "zh-CN")}
+                onClick={() => setLanguageOverride({
+                  articleKey,
+                  language: news.usingTranslation ? "original" : "zh-CN",
+                })}
                 className="border-b border-red text-[10px] font-bold text-red hover:text-ink"
               >
                 {news.usingTranslation ? "查看原文" : "查看中文译文"}
               </button>
             ) : null}
           </div>
+          {translationUpdatePending ? (
+            <p role="status" className="mt-3 border-l-2 border-red pl-3 font-sans text-xs leading-5 text-muted">
+              原文已更新，中文译文正在同步。
+            </p>
+          ) : null}
           <h1 className="mt-4 text-3xl font-black leading-tight xl:text-4xl">{news.title}</h1>
           <SelectableAnnotationArticle subject={{
             contentType: "newspaper",

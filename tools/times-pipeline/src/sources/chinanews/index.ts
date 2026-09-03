@@ -1,7 +1,7 @@
 import type { SourceModule } from "../contracts.js";
 import { discoverChinanews } from "./discover.js";
 import { chinanewsFetch } from "./fetch.js";
-import { extractChinanewsImages } from "./images.js";
+import { acceptChinanewsCanonicalAsset, extractChinanewsImages } from "./images.js";
 import { extractChinanewsBody } from "./process.js";
 
 export const chinanewsSource: SourceModule = {
@@ -13,4 +13,5 @@ export const chinanewsSource: SourceModule = {
   fetch: chinanewsFetch,
   extractBody: extractChinanewsBody,
   extractImages: extractChinanewsImages,
+  acceptCanonicalAsset: acceptChinanewsCanonicalAsset,
 };
