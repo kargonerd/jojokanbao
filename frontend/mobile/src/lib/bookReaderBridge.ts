@@ -141,6 +141,7 @@ export function createBookReaderBridgeScript(
   annotations: readonly BookReaderAnnotationMarker[] = [],
   initialSpreadIndex?: number,
   initialScrollProgress?: number,
+  initialChapterProgress?: number,
 ): string {
   return `
     (function () {
@@ -159,6 +160,7 @@ export function createBookReaderBridgeScript(
       var scrollTimer = 0;
       var restoreSpread = ${typeof initialSpreadIndex === "number" ? Math.max(0, Math.floor(initialSpreadIndex)) : "null"};
       var restoreScrollProgress = ${typeof initialScrollProgress === "number" ? Math.max(0, Math.min(1, initialScrollProgress)) : "null"};
+      var restoreChapterProgress = ${typeof initialChapterProgress === "number" ? Math.max(0, Math.min(1, initialChapterProgress)) : "null"};
       var searchBlockSelector = ${jsonArgument(JOJO_BOOK_SEARCH_BLOCK_SELECTOR)};
 
       function attachSearchBlockAnchors() {
@@ -339,9 +341,10 @@ export function createBookReaderBridgeScript(
 
       function measurePages() {
         if (!paged) {
-          if (restoreScrollProgress !== null) {
-            var progress = restoreScrollProgress;
+          if (restoreScrollProgress !== null || restoreChapterProgress !== null) {
+            var progress = restoreScrollProgress !== null ? restoreScrollProgress : restoreChapterProgress;
             restoreScrollProgress = null;
+            restoreChapterProgress = null;
             window.requestAnimationFrame(function () {
               var scrolling = document.scrollingElement || document.documentElement;
               window.scrollTo(0, Math.max(0, scrolling.scrollHeight - window.innerHeight) * progress);
@@ -371,6 +374,9 @@ export function createBookReaderBridgeScript(
         } else if (restoreSpread !== null) {
           currentSpread = Math.min(spreadCount - 1, restoreSpread);
           restoreSpread = null;
+        } else if (restoreChapterProgress !== null) {
+          currentSpread = Math.min(spreadCount - 1, Math.floor(restoreChapterProgress * spreadCount));
+          restoreChapterProgress = null;
         } else {
           currentSpread = Math.min(spreadCount - 1, Math.floor(oldPageStart / pagesPerSpread));
         }

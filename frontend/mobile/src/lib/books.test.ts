@@ -3,11 +3,19 @@ import { describe, expect, it } from "vitest";
 import {
   createMobileBookSearchResult,
   fuzzyBookTitleScore,
+  resolveLegacyBookResume,
   selectPublishedBooks,
   selectPublishedBookVolumes,
 } from "./books";
 
 describe("mobile book catalog", () => {
+  it("migrates a legacy whole-book percentage to a chapter position", () => {
+    const chapters = [{ id: "one" }, { id: "two" }, { id: "three" }, { id: "four" }];
+    expect(resolveLegacyBookResume(chapters, 63)).toEqual({ chapterId: "three", chapterProgress: 0.52 });
+    expect(resolveLegacyBookResume(chapters, 100)).toEqual({ chapterId: "four", chapterProgress: 1 });
+    expect(resolveLegacyBookResume(chapters, 0)).toBeUndefined();
+  });
+
   it("keeps only published books and series in title order", () => {
     const entries = [
       { datasetId: "paper", type: "newspaper", title: "报纸", indexObject: "paper.jox", language: "zh" },

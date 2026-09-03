@@ -67,6 +67,9 @@ describe("book reader bridge", () => {
     expect(startScript).toContain("attachSearchBlockAnchors");
     expect(startScript).toContain('"jojo-search-block:" + targetId + ":" + blockNumber');
     expect(startScript).toContain("startAtEnd = false");
+    const legacyResumeScript = createBookReaderBridgeScript("start", false, [], undefined, undefined, 0.42);
+    expect(legacyResumeScript).toContain("var restoreChapterProgress = 0.42");
+    expect(legacyResumeScript).toContain("Math.floor(restoreChapterProgress * spreadCount)");
     expect(startScript).toContain('document.addEventListener("contextmenu"');
     expect(endScript).toContain("startAtEnd = true");
   });

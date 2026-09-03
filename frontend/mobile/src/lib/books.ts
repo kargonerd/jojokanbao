@@ -41,6 +41,24 @@ export type MobileBookOpenTarget =
       bookTitle: string;
     };
 
+export interface LegacyBookResumeTarget {
+  chapterId: string;
+  chapterProgress: number;
+}
+
+export function resolveLegacyBookResume(
+  chapters: readonly { id: string }[],
+  progress: number,
+): LegacyBookResumeTarget | undefined {
+  if (!chapters.length || !Number.isFinite(progress) || progress <= 0) return undefined;
+  const bookPosition = Math.max(0, Math.min(1, progress / 100)) * chapters.length;
+  const chapterIndex = Math.min(chapters.length - 1, Math.floor(bookPosition));
+  return {
+    chapterId: chapters[chapterIndex]!.id,
+    chapterProgress: Math.max(0, Math.min(1, bookPosition - chapterIndex)),
+  };
+}
+
 export interface LoadedMobileBookItem {
   book: MobileBook;
   volume: MobileBookVolume;

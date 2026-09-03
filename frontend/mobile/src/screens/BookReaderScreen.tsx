@@ -36,6 +36,7 @@ import {
   loadMobileBookChapter,
   loadMobileBookItem,
   loadMobileBookVolumes,
+  resolveLegacyBookResume,
   resolveMobileAnnotationReference,
   searchMobileBook,
   type LoadedMobileBookChapter,
@@ -134,6 +135,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const [readerNotice, setReaderNotice] = useState("");
   const [onBookshelf, setOnBookshelf] = useState<boolean>();
   const [bookshelfBusy, setBookshelfBusy] = useState(false);
+  const [legacyResume, setLegacyResume] = useState<{ chapterId: string; chapterProgress: number }>();
 
   useEffect(() => {
     let active = true;
@@ -173,18 +175,24 @@ export function BookReaderScreen({ route, navigation }: Props) {
     setChapter(undefined);
     setLoading(true);
     setError("");
+    setLegacyResume(undefined);
     void loadMobileBookItem(datasetId, itemKey)
       .then((value) => {
         if (!active) return;
-        const savedChapterId = !initialChapterId && !initialAnchorId && !initialText
+        const savedBook = !initialChapterId && !initialAnchorId && !initialText
           ? useMobileStore.getState().recentBooks.find((candidate) => (
             candidate.datasetId === datasetId && candidate.itemKey === itemKey
-          ))?.chapterId
+          ))
           : undefined;
-        const firstChapter = value.manifest.content.chapters?.find((candidate) => candidate.id === (initialChapterId ?? savedChapterId))
-          ?? value.manifest.content.chapters?.[0];
+        const chapters = value.manifest.content.chapters ?? [];
+        const legacyTarget = savedBook && !savedBook.chapterId
+          ? resolveLegacyBookResume(chapters, savedBook.progress)
+          : undefined;
+        const firstChapter = chapters.find((candidate) => candidate.id === (initialChapterId ?? savedBook?.chapterId ?? legacyTarget?.chapterId))
+          ?? chapters[0];
         if (!firstChapter) throw new Error("书籍没有可读章节");
         setLoaded(value);
+        if (legacyTarget && legacyTarget.chapterId === firstChapter.id) setLegacyResume(legacyTarget);
         if (initialAnchorId || initialText) {
           pendingLocateRef.current = { chapterId: firstChapter.id, anchorId: initialAnchorId, text: initialText };
         }
@@ -248,7 +256,10 @@ export function BookReaderScreen({ route, navigation }: Props) {
     !initialChapterId && !initialAnchorId && !initialText && recentBook?.chapterId === activeChapterId
       ? recentBook.scrollProgress
       : undefined,
-  ), [activeChapterId, chapterAnnotations, chapterEntryEdge, initialAnchorId, initialChapterId, initialText, leftTapNext, recentBook?.chapterId, recentBook?.scrollProgress, recentBook?.spreadIndex]);
+    !initialChapterId && !initialAnchorId && !initialText && legacyResume?.chapterId === activeChapterId
+      ? legacyResume.chapterProgress
+      : undefined,
+  ), [activeChapterId, chapterAnnotations, chapterEntryEdge, initialAnchorId, initialChapterId, initialText, leftTapNext, legacyResume, recentBook?.chapterId, recentBook?.scrollProgress, recentBook?.spreadIndex]);
 
   useEffect(() => {
     if (!chapter || activeTool || selection || noteComposer || !chromeVisible) return;
@@ -325,6 +336,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
     }
     if (message.type === "reader-page") {
       setPageState(message);
+      if (legacyResume?.chapterId === activeChapterId) setLegacyResume(undefined);
       if (chapterEntryEdge === "end") setChapterEntryEdge("start");
       const chapterFraction = message.paged && message.pageCount > 0
         ? message.pageEnd / message.pageCount
