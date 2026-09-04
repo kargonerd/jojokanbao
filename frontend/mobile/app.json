@@ -2,13 +2,18 @@
   "expo": {
     "name": "JOJO看报",
     "slug": "mobile",
-    "version": "0.0.1-rc1",
+    "version": "0.0.1",
     "scheme": "jojokanbao",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "runtimeVersion": {
       "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/ce6a6762-1d7b-464e-9622-cf1591b4cb02",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
     },
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -17,6 +22,7 @@
     },
     "ios": {
       "bundleIdentifier": "com.luoxixi.jojokanbao",
+      "buildNumber": "1",
       "supportsTablet": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
@@ -24,6 +30,7 @@
     },
     "android": {
       "package": "com.luoxixi.jojokanbao",
+      "versionCode": 1,
       "predictiveBackGestureEnabled": false,
       "adaptiveIcon": {
         "backgroundColor": "#8b1a1a",

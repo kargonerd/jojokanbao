@@ -76,6 +76,8 @@ Supabase migrations 位于 `infrastructure/supabase/migrations`。邀请注册�
 ## 部署
 
 - Homepage workflow 构建 `frontend/homepage`。
+- 客户端下载、B2/CDN 对象布局、签名与自动更新见
+  [`docs/client-releases.md`](./docs/client-releases.md)。
 - Web workflow 构建 `frontend/web`。
 - `pnpm prepare:web-deploy` 将 Web、`backend` 和 EdgeOne 薄入口组装到
   `.edgeone/web-deploy`。

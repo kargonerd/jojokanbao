@@ -6,4 +6,5 @@ packages:
   - "infrastructure/cloudflare/*"
   - "tools/content-pipeline"
   - "tools/times-pipeline"
+  - "tools/release"
   - "tools/*/web"

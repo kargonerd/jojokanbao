@@ -19,6 +19,7 @@ import { AccountSecurityScreen } from "./src/screens/AccountSecurityScreen";
 import { startMobileAuthSync } from "./src/account/auth";
 import { IS_EINK_RELEASE } from "./src/config/appVariant";
 import { mobileTheme } from "./src/theme/tokens";
+import { AppUpdatePrompt } from "./src/components/AppUpdatePrompt";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<MainTabParamList>();
@@ -115,6 +116,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
+      <AppUpdatePrompt />
       <StatusBar style="dark" backgroundColor={theme.paper} />
       <NavigationContainer theme={navigationTheme}>
         <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.paper } }}>

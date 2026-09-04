@@ -1,0 +1,10 @@
+{
+  "name": "@jojo/release-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node --check create-release-catalog.mjs && node --check verify-release-cdn.mjs",
+    "test": "node --test *.test.mjs",
+    "typecheck": "node --check create-release-catalog.mjs && node --check verify-release-cdn.mjs"
+  }
+}

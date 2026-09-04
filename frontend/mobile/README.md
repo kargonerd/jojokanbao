@@ -58,13 +58,6 @@ eas build --platform android --profile development
 eas build --platform ios --profile development
 ```
 
-内部测试包（Android 为 APK）：
-
-```bash
-eas build --platform all --profile preview
-eas build --platform android --profile eink-preview
-```
-
 正式商店包：
 
 ```bash
@@ -83,18 +76,22 @@ eas build --platform android --profile eink-production
 
 首次启用前需要完成两项一次性配置：
 
-1. 分别交互运行一次 `eas build --platform android --profile preview` 和 `eas build --platform android --profile eink-preview`，为两个 Android 包名建立各自稳定的 keystore；
+1. 分别交互运行一次 `eas build --platform android --profile release` 和 `eas build --platform android --profile eink-release`，为两个 Android 包名建立各自稳定的 keystore；
 2. 在 GitHub Actions repository secrets 中添加有权访问本 EAS project 的 `EXPO_TOKEN`。
 
 发布示例：
 
 ```bash
-git tag mobile-v0.0.1-rc1
-git push origin mobile-v0.0.1-rc1
+git tag mobile-v0.0.1
+git push origin mobile-v0.0.1
 
-git tag mobile-eink-v0.0.1-rc1
-git push origin mobile-eink-v0.0.1-rc1
+git tag mobile-eink-v0.0.1
+git push origin mobile-eink-v0.0.1
 ```
+
+OTA 不维护 beta/preview 客户端。`Release · Mobile OTA Rollout` 只向
+`production-standard` 或 `production-eink` 发布，并强制新更新从部分用户开始；后续使用
+update group ID 放量到 100% 或回滚。
 
 正式发布后每个包名必须持续使用各自同一套 EAS Android 凭据，否则已安装用户无法覆盖升级。两个 GitHub Release workflow 都只构建 Android APK，不包含 iOS job。
 

@@ -10,6 +10,7 @@ import {
   resolveDesktopReaderOrigin,
 } from './agent-gateway.js';
 import { getDefaultWindowBounds, getRestorableWindowBounds } from './window-state.js';
+import { setupDesktopUpdater, stopDesktopUpdater } from './updater.js';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const brandIconPath = path.join(currentDir, '../dist/brand/jojo-kanbao-mark.png');
@@ -365,6 +366,10 @@ if (!hasSingleInstanceLock) {
     setupApplicationMenu();
     setupTray();
     await createWindow();
+    setupDesktopUpdater({
+      getMainWindow: () => mainWindow,
+      beforeInstall: () => { isQuitting = true; },
+    });
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) void createWindow();
@@ -380,6 +385,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  stopDesktopUpdater();
   tray?.destroy();
   tray = undefined;
 });

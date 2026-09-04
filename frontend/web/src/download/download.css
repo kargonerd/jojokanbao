@@ -1,0 +1,159 @@
+.client-download-page {
+  width: min(860px, calc(100% - 48px));
+  min-height: calc(100vh - 64px);
+  margin: 0 auto;
+  padding: clamp(28px, 5vh, 48px) 0 32px;
+  font-family: var(--font-sans);
+}
+
+.client-download-header {
+  margin-bottom: 26px;
+  text-align: center;
+}
+
+.client-download-header h1 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: clamp(28px, 4vw, 38px);
+  font-weight: 700;
+  letter-spacing: -.03em;
+}
+
+.client-download-header p {
+  margin: 10px 0 0;
+  color: var(--app-gray);
+  font-size: 13px;
+}
+
+.client-platform-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.client-platform {
+  display: flex;
+  min-height: 184px;
+  flex-direction: column;
+  align-items: center;
+  border: 1px solid var(--app-line);
+  padding: 18px 16px 16px;
+  background: var(--color-paper);
+  text-align: center;
+}
+
+.client-platform-icon {
+  display: grid;
+  width: 64px;
+  height: 64px;
+  place-items: center;
+  color: #30333a;
+  background: #f1f1ef;
+}
+
+.client-platform-icon svg {
+  width: 34px;
+  height: 34px;
+}
+
+.client-platform h2 {
+  margin: 12px 0 0;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.client-platform > small {
+  margin-top: 4px;
+  color: var(--app-gray);
+  font-size: 10px;
+}
+
+.client-platform-actions {
+  display: flex;
+  width: 100%;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 5px 12px;
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+.client-download-page .client-platform-actions a {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  border-bottom: 1px solid currentColor;
+  color: var(--color-red);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.6;
+}
+
+.client-download-page .client-platform-actions a:hover,
+.client-download-page .client-platform-actions a:focus-visible {
+  color: var(--color-ink);
+  outline: 0;
+}
+
+.client-platform-actions a small {
+  color: var(--app-gray);
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.client-platform-unavailable {
+  margin-top: auto;
+  padding-top: 12px;
+  color: #aaa7a1;
+  font-size: 11px;
+}
+
+.client-release-status {
+  margin: 16px 0 0;
+  color: var(--app-gray);
+  font-size: 11px;
+  text-align: center;
+}
+
+.client-download-footer {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 24px;
+  color: var(--app-gray);
+  font-size: 11px;
+}
+
+.client-download-page .client-download-footer a {
+  border-bottom: 1px solid transparent;
+}
+
+.client-download-page .client-download-footer a:hover,
+.client-download-page .client-download-footer a:focus-visible {
+  border-bottom-color: currentColor;
+  color: var(--color-red);
+  outline: 0;
+}
+
+@media (max-width: 760px) {
+  .client-download-page {
+    width: min(100% - 32px, 620px);
+    min-height: calc(100vh - 58px);
+    padding: 26px 0 32px;
+  }
+
+  .client-download-header { margin-bottom: 22px; }
+  .client-platform-grid { gap: 10px; }
+  .client-platform { min-height: 172px; padding: 16px 10px 14px; }
+  .client-platform-icon { width: 58px; height: 58px; }
+  .client-platform-icon svg { width: 31px; height: 31px; }
+  .client-platform h2 { margin-top: 10px; font-size: 14px; }
+  .client-platform-actions { flex-direction: column; align-items: center; gap: 5px; padding-top: 12px; }
+}
+
+@media (max-width: 520px) {
+  .client-download-page { width: calc(100% - 24px); }
+  .client-platform-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .client-platform { min-height: 166px; }
+}
