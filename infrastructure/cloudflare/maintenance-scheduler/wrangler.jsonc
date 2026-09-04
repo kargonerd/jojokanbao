@@ -1,8 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  // Keep the deployed service name so this change upgrades the existing
-  // Times clock in place instead of creating a second production trigger.
-  "name": "jojokanbao-times-scheduler",
+  "name": "jojokanbao-maintenance-scheduler",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-28",
   "workers_dev": false,

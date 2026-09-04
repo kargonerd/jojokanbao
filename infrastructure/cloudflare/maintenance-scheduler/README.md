@@ -56,10 +56,10 @@ On the first deployment, the Worker manages checks with the slugs
 other slugs, pause or remove them after confirming the managed checks are
 receiving pings, otherwise both old and new checks may alert.
 
-The deployed Worker service name intentionally remains
-`jojokanbao-times-scheduler`. This makes the first general-scheduler deployment
-replace the existing Times Worker and its Cron Trigger instead of creating a
-second clock.
+The Worker is deployed as `jojokanbao-maintenance-scheduler`. During the first
+migration, deploy and verify this Worker before deleting the legacy
+`jojokanbao-times-scheduler` service. A brief overlap is safe because task-slot
+deduplication prevents duplicate workflow execution.
 
 ## Verify and deploy
 
