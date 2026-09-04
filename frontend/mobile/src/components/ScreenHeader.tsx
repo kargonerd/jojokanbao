@@ -3,7 +3,9 @@ import { useNavigation, type NavigationProp } from "@react-navigation/native";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useMobileAuthStore } from "../account/auth";
 import { IS_EINK_RELEASE } from "../config/appVariant";
+import { impactHaptic } from "../lib/haptics";
 import type { RootStackParamList } from "../navigation/types";
+import { useMobileStore } from "../store/mobileStore";
 import { mobileTheme } from "../theme/tokens";
 
 export function ScreenHeader({ eyebrow, title, onBack, showAccount = false }: { eyebrow?: string; title: string; onBack?: () => void; showAccount?: boolean }) {
@@ -11,13 +13,23 @@ export function ScreenHeader({ eyebrow, title, onBack, showAccount = false }: { 
   const initialized = useMobileAuthStore((state) => state.initialized);
   const user = useMobileAuthStore((state) => state.user);
   const profile = useMobileAuthStore((state) => state.profile);
+  const hapticsEnabled = useMobileStore((state) => state.hapticsEnabled);
   const theme = mobileTheme;
   const accountLabel = !initialized ? "" : user ? profile?.display_name?.trim() || "账号" : "登录";
 
   return (
     <View style={[styles.header, { borderBottomColor: theme.ruleDark, backgroundColor: theme.paper }]}>
       {onBack ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="返回" hitSlop={8} onPress={onBack} style={styles.backButton}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="返回"
+          hitSlop={8}
+          onPress={() => {
+            void impactHaptic(hapticsEnabled);
+            onBack();
+          }}
+          style={styles.backButton}
+        >
           <Ionicons name="arrow-back" size={18} color={theme.red} />
           <Text style={[styles.backLabel, { color: theme.red, fontFamily: theme.sans }]}>返回</Text>
         </Pressable>
@@ -40,7 +52,10 @@ export function ScreenHeader({ eyebrow, title, onBack, showAccount = false }: { 
           accessibilityLabel={user ? `${accountLabel}，进入账号与设置` : "登录，进入账号"}
           disabled={!initialized}
           hitSlop={8}
-          onPress={() => navigation.navigate("Account")}
+          onPress={() => {
+            void impactHaptic(hapticsEnabled);
+            navigation.navigate("Account");
+          }}
           style={styles.accountButton}
         >
           <Text
