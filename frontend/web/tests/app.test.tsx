@@ -219,6 +219,7 @@ describe("JOJO Web navigation", () => {
     expect(screen.getByRole("heading", { name: "下载客户端" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Windows" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Android" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "iPhone · iPad" })).toBeNull();
     expect(within(screen.getByRole("navigation", { name: "主导航" })).queryByRole("link", { name: "客户端下载" })).toBeNull();
     expect(document.querySelector("[data-release-base]")?.getAttribute("data-release-base")).toBe("https://blacknews.jojokanbao.cn/releases");
     expect(screen.getByRole("button", { name: "返回上一页" })).toBeTruthy();

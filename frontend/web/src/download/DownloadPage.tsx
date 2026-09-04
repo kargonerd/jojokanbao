@@ -21,11 +21,10 @@ type ReleaseState = {
 };
 
 type PlatformOption = {
-  key: "windows" | "macos" | "linux" | "android" | "eink" | "ios";
+  key: "windows" | "macos" | "linux" | "android" | "eink";
   label: string;
   version?: string;
   artifacts: ReleaseArtifact[];
-  emptyLabel?: string;
 };
 
 function PlatformIcon({ type }: { type: PlatformOption["key"] }) {
@@ -56,7 +55,7 @@ function PlatformCard({ option, loading }: { option: PlatformOption; loading: bo
           </a>
         ))}
       </div> : <span className="client-platform-unavailable">
-        {loading ? "查询中" : option.emptyLabel ?? "即将提供"}
+        {loading ? "查询中" : "即将提供"}
       </span>}
     </section>
   );
@@ -87,12 +86,6 @@ function platformOptions(catalogs: ReleaseCatalog[]): PlatformOption[] {
       label: "墨水屏版",
       version: eink?.version,
       artifacts: eink?.artifacts ?? [],
-    },
-    {
-      key: "ios" as const,
-      label: "iPhone · iPad",
-      artifacts: [],
-      emptyLabel: "暂未上架",
     },
   ];
 }
