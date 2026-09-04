@@ -20,7 +20,7 @@ the environments that need different runners or dependencies:
 - pnpm/Turborepo workspaces
 - Web browser tests
 - Desktop renderer browser tests
-- Mobile iOS native Release compilation
+- Mobile iOS native Release compilation and Simulator launch smoke test
 - root-level Homepage content
 - Supabase migrations and the shared Auth contract
 - EdgeOne Python Cloud API tests

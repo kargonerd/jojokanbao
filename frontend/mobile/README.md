@@ -50,6 +50,7 @@ pnpm --filter @jojo/mobile build:eink
 ```
 
 `build` 生成 Android 与 iOS 的 production JS bundle，用来在 CI 中发现 Metro/跨包解析问题；商店原生包由 EAS 生成。
+PR CI 还会在 macOS runner 上编译 iOS Release、启动 iPhone Simulator、安装并运行 App 10 秒，同时保留首屏截图与进程日志。
 
 账号登录需要上述两个 Supabase 公共环境变量。本地构建前应写入 shell 环境；EAS 构建前应在对应 EAS environment 中创建同名变量。
 
