@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { LoadingSpinner } from "@jojo/ui";
 import { useAccountSessionStore } from "../account/session";
@@ -48,6 +48,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
   const [books, setBooks] = useState<RagNotebook[]>([]);
   const [sources, setSources] = useState<RagSource[]>([]);
   const [libraryQuery, setLibraryQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [shelfItems, setShelfItems] = useState<BookshelfEntry[]>([]);
   const [shelfBusyKey, setShelfBusyKey] = useState("");
   const [shelfError, setShelfError] = useState("");
@@ -162,6 +163,11 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
     setSearchParams(nextType === "all" ? {} : { type: nextType });
   }
 
+  function dismissSearchKeyboard() {
+    const input = searchInputRef.current;
+    if (input && document.activeElement === input) input.blur();
+  }
+
   function issuePath(entry: PeriodicalEntry): string {
     return `/archive/${entry.id}/${entry.defaultIssueId}`;
   }
@@ -274,7 +280,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
     return <Navigate to={`/account?returnTo=${encodeURIComponent(returnTo)}`} replace />;
   }
   return (
-    <main className="app-library">
+    <main className="app-library" onTouchMove={dismissSearchKeyboard}>
       <aside className="library-types" aria-label="资料类型">
         {availableLibraryTypes.map((item) => (
           <button
@@ -300,14 +306,21 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
           </div>
         )}
 
-        <form className="app-search-box library-filter" role="search" onSubmit={(event) => event.preventDefault()}>
+        <form className="app-search-box library-filter" role="search" onSubmit={(event) => {
+          event.preventDefault();
+          dismissSearchKeyboard();
+        }}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></svg>
           <label className="sr-only" htmlFor="library-filter-input">{datasetId ? "搜索本书分卷" : "搜索馆藏"}</label>
           <input
+            ref={searchInputRef}
             id="library-filter-input"
             type="search"
             value={libraryQuery}
             onChange={(event) => setLibraryQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") dismissSearchKeyboard();
+            }}
             placeholder={datasetId ? "搜索本书分卷" : includePeriodicals ? "搜索报刊或书名" : "搜索书名"}
           />
           {libraryQuery && <button type="button" onClick={() => setLibraryQuery("")} aria-label="清空馆藏搜索">清除</button>}

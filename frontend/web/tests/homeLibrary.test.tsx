@@ -441,6 +441,31 @@ describe("app library", () => {
     expect(screen.queryByRole("link", { name: /人民日报/ })).toBeNull();
   });
 
+  it("dismisses the library keyboard when the reader swipes or submits", async () => {
+    renderAt("/library");
+    await screen.findByRole("link", { name: /人民日报/ });
+
+    const input = screen.getByRole<HTMLInputElement>("searchbox", { name: "搜索馆藏" });
+    const form = input.closest("form");
+    const main = input.closest("main");
+    expect(form).toBeTruthy();
+    expect(main).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: "ma" } });
+    input.focus();
+    fireEvent.touchMove(main!);
+    expect(document.activeElement).not.toBe(input);
+    expect(input.value).toBe("ma");
+
+    input.focus();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(document.activeElement).not.toBe(input);
+
+    input.focus();
+    fireEvent.submit(form!);
+    expect(document.activeElement).not.toBe(input);
+  });
+
   it("records a periodical when it is opened from the library", async () => {
     renderAt("/library?type=periodical");
     const paper = await screen.findByRole("link", { name: /人民日报/ });
