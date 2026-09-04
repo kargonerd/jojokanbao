@@ -1,0 +1,193 @@
+name: Release · Mobile OTA Rollout
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Rollout operation
+        required: true
+        type: choice
+        options:
+          - publish
+          - adjust
+          - rollback
+      variant:
+        description: Client variant
+        required: true
+        type: choice
+        options:
+          - standard
+          - eink
+      rollout_percentage:
+        description: Initial or adjusted rollout percentage
+        required: true
+        default: "10"
+        type: choice
+        options:
+          - "5"
+          - "10"
+          - "25"
+          - "50"
+          - "100"
+      update_group_id:
+        description: Required when adjusting or rolling back an existing rollout
+        required: false
+        type: string
+      message:
+        description: Required for publish; optional rollback reason
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-ota-${{ inputs.variant }}
+  cancel-in-progress: false
+
+jobs:
+  rollout:
+    name: ${{ inputs.operation }} · ${{ inputs.variant }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      EXPO_PUBLIC_AGENT_API_URL: https://agent-global.jojokanbao.cn/rag
+      EXPO_PUBLIC_RELEASE_CDN_BASE: ${{ vars.DOWNLOAD_CDN_BASE || 'https://blacknews.jojokanbao.cn' }}/releases
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+
+      - name: Select production rollout
+        env:
+          INPUT_GROUP_ID: ${{ inputs.update_group_id }}
+          INPUT_OPERATION: ${{ inputs.operation }}
+          INPUT_PERCENTAGE: ${{ inputs.rollout_percentage }}
+          INPUT_VARIANT: ${{ inputs.variant }}
+          UPDATE_MESSAGE: ${{ inputs.message }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_TOKEN"
+          test -n "$EXPO_PUBLIC_SUPABASE_URL"
+          test -n "$EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
+
+          case "$INPUT_VARIANT" in
+            standard)
+              eas_channel=production-standard
+              eas_platform=all
+              ;;
+            eink)
+              eas_channel=production-eink
+              eas_platform=android
+              ;;
+            *) echo "Unsupported client variant" >&2; exit 1 ;;
+          esac
+
+          case "$INPUT_OPERATION" in
+            publish)
+              test -n "$UPDATE_MESSAGE"
+              if [[ "$INPUT_PERCENTAGE" == 100 ]]; then
+                echo "New OTA updates must begin as a partial rollout." >&2
+                exit 1
+              fi
+              ;;
+            adjust|rollback)
+              if [[ ! "$INPUT_GROUP_ID" =~ ^[0-9a-fA-F-]{36}$ ]]; then
+                echo "A valid EAS update group ID is required." >&2
+                exit 1
+              fi
+              ;;
+            *) echo "Unsupported rollout operation" >&2; exit 1 ;;
+          esac
+
+          printf 'APP_VARIANT=%s\n' "$INPUT_VARIANT" >> "$GITHUB_ENV"
+          printf 'EXPO_PUBLIC_APP_VARIANT=%s\n' "$INPUT_VARIANT" >> "$GITHUB_ENV"
+          printf 'EAS_UPDATE_CHANNEL=%s\n' "$eas_channel" >> "$GITHUB_ENV"
+          printf 'EAS_UPDATE_PLATFORM=%s\n' "$eas_platform" >> "$GITHUB_ENV"
+          printf 'ROLLOUT_PERCENTAGE=%s\n' "$INPUT_PERCENTAGE" >> "$GITHUB_ENV"
+          printf 'UPDATE_GROUP_ID=%s\n' "$INPUT_GROUP_ID" >> "$GITHUB_ENV"
+
+      - name: Install workspace dependencies
+        if: inputs.operation == 'publish'
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify update source
+        if: inputs.operation == 'publish'
+        run: |
+          pnpm --filter @jojo/mobile typecheck
+          pnpm --filter @jojo/mobile test
+          pnpm --filter @jojo/mobile build:${{ inputs.variant == 'eink' && 'eink' || 'android' }}
+
+      - name: Install pinned EAS CLI
+        run: npm install --global eas-cli@23.2.0
+
+      - name: Publish partial OTA rollout
+        if: inputs.operation == 'publish'
+        env:
+          UPDATE_MESSAGE: ${{ inputs.message }}
+        working-directory: frontend/mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/eas-update.json"
+          eas update \
+            --channel "$EAS_UPDATE_CHANNEL" \
+            --platform "$EAS_UPDATE_PLATFORM" \
+            --message "$UPDATE_MESSAGE" \
+            --environment production \
+            --rollout-percentage "$ROLLOUT_PERCENTAGE" \
+            --json \
+            --non-interactive | tee "$output"
+
+          group_id="$(jq -r '[.. | objects | .group? // empty][0] // empty' "$output")"
+          test -n "$group_id"
+          {
+            echo "### OTA rollout published"
+            echo "- Channel: $EAS_UPDATE_CHANNEL"
+            echo "- Initial rollout: $ROLLOUT_PERCENTAGE%"
+            echo "- Update group: $group_id"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Adjust rollout percentage
+        if: inputs.operation == 'adjust'
+        working-directory: frontend/mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          eas update:edit "$UPDATE_GROUP_ID" \
+            --rollout-percentage "$ROLLOUT_PERCENTAGE" \
+            --non-interactive
+          {
+            echo "### OTA rollout adjusted"
+            echo "- Update group: $UPDATE_GROUP_ID"
+            echo "- Rollout: $ROLLOUT_PERCENTAGE%"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Roll back rollout
+        if: inputs.operation == 'rollback'
+        env:
+          ROLLBACK_MESSAGE: ${{ inputs.message }}
+        working-directory: frontend/mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          reason="${ROLLBACK_MESSAGE:-Rollback from GitHub Actions}"
+          eas update:revert-update-rollout \
+            --group "$UPDATE_GROUP_ID" \
+            --message "$reason" \
+            --json \
+            --non-interactive
+          {
+            echo "### OTA rollout reverted"
+            echo "- Update group: $UPDATE_GROUP_ID"
+            echo "- Channel: $EAS_UPDATE_CHANNEL"
+          } >> "$GITHUB_STEP_SUMMARY"

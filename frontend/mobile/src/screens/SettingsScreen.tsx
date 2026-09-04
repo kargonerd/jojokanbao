@@ -1,10 +1,13 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { ARCHIVE_WEB_ORIGIN } from "@jojo/content";
-import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
+import { ARCHIVE_WEB_ORIGIN, type TimesSourceRef } from "@jojo/content";
+import { useNavigation, useRoute, type NavigationProp, type RouteProp } from "@react-navigation/native";
 import { nativeApplicationVersion } from "expo-application";
+import { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,18 +19,25 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionTitle } from "../components/SectionTitle";
 import { IS_EINK_RELEASE } from "../config/appVariant";
-import { selectionHaptic } from "../lib/haptics";
+import { checkNativeAppUpdate, openNativeAppUpdate } from "../lib/appUpdate";
+import { selectionHaptic, toggleHaptic } from "../lib/haptics";
+import { applyOtaUpdate, fetchOtaUpdate } from "../lib/otaUpdate";
+import { mobileTimesApi, timesSourceName } from "../lib/times";
 import type { RootStackParamList, SettingsSection } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
 import { mobileTheme } from "../theme/tokens";
 
 function SettingRow({
   title,
+  description,
   value,
+  disabled = false,
   onValueChange,
 }: {
   title: string;
+  description?: string;
   value: boolean;
+  disabled?: boolean;
   onValueChange: (value: boolean) => void;
 }) {
   const theme = mobileTheme;
@@ -35,9 +45,11 @@ function SettingRow({
     <View style={[styles.settingRow, { borderBottomColor: theme.rule }]}>
       <View style={styles.settingCopy}>
         <Text style={[styles.settingTitle, { color: theme.ink, fontFamily: theme.serif }]}>{title}</Text>
+        {description ? <Text style={[styles.settingDescription, { color: theme.muted, fontFamily: theme.sans }]}>{description}</Text> : null}
       </View>
       <Switch
         value={value}
+        disabled={disabled}
         onValueChange={onValueChange}
         trackColor={{ false: theme.rule, true: theme.red }}
         thumbColor={theme.paper}
@@ -48,7 +60,7 @@ function SettingRow({
 }
 
 export function SettingsScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, "Settings">>();
   const section = route.params?.section;
   const hapticsEnabled = useMobileStore((state) => state.hapticsEnabled);
@@ -70,13 +82,84 @@ export function SettingsScreen() {
   const recentIssues = useMobileStore((state) => state.recentIssues);
   const recentBooks = useMobileStore((state) => state.recentBooks);
   const clearRecentReading = useMobileStore((state) => state.clearRecentReading);
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState<string>();
+  const timesLanguage = useMobileStore((state) => state.timesLanguage);
+  const setTimesLanguage = useMobileStore((state) => state.setTimesLanguage);
+  const timesDisabledSourceIds = useMobileStore((state) => state.timesDisabledSourceIds);
+  const setTimesSourceEnabled = useMobileStore((state) => state.setTimesSourceEnabled);
+  const setAllTimesSourcesEnabled = useMobileStore((state) => state.setAllTimesSourcesEnabled);
+  const enableAllTimesSources = useMobileStore((state) => state.enableAllTimesSources);
+  const [timesSources, setTimesSources] = useState<TimesSourceRef[]>([]);
+  const [timesSourcesError, setTimesSourcesError] = useState("");
   const theme = mobileTheme;
+  const disabledTimesSources = useMemo(() => new Set(timesDisabledSourceIds), [timesDisabledSourceIds]);
+  const timesSourceIds = useMemo(() => timesSources.map((source) => source.id), [timesSources]);
+  const enabledTimesSourceCount = timesSources.filter((source) => !disabledTimesSources.has(source.id)).length;
+  const allTimesSourcesEnabled = Boolean(timesSources.length) && enabledTimesSourceCount === timesSources.length;
   const titles: Record<SettingsSection, string> = {
     reading: "阅读设置",
     interaction: "交互设置",
+    times: "时事设置",
     data: "阅读数据",
     about: "关于",
   };
+
+  const checkContentUpdate = async () => {
+    setUpdateBusy(true);
+    setUpdateMessage("正在检查内容更新…");
+    const result = await fetchOtaUpdate();
+    setUpdateBusy(false);
+    if (result === "ready") {
+      setUpdateMessage("内容更新已下载，重启后生效");
+      Alert.alert("内容更新已就绪", "现在重启 JOJO 看报即可使用新版本。", [
+        { text: "稍后", style: "cancel" },
+        { text: "立即重启", onPress: () => void applyOtaUpdate() },
+      ]);
+      return;
+    }
+    const messages = {
+      current: "当前内容已是最新版本",
+      disabled: "开发版未启用在线内容更新",
+      error: "检查失败，请稍后重试",
+    } as const;
+    setUpdateMessage(messages[result]);
+  };
+
+  const checkInstallerUpdate = async () => {
+    setUpdateBusy(true);
+    setUpdateMessage("正在检查客户端安装包…");
+    const catalog = await checkNativeAppUpdate();
+    setUpdateBusy(false);
+    if (!catalog) {
+      setUpdateMessage("暂无可用的新安装包");
+      return;
+    }
+    setUpdateMessage(`发现 ${catalog.version} 版本`);
+    const download = { text: "打开下载页", onPress: () => void openNativeAppUpdate(catalog) };
+    Alert.alert(
+      "发现客户端更新",
+      `${catalog.version}\n${catalog.notes || "已发布新的客户端安装包。"}`,
+      catalog.mandatory ? [download] : [{ text: "稍后", style: "cancel" }, download],
+      { cancelable: !catalog.mandatory },
+    );
+  };
+
+  useEffect(() => {
+    if (section && section !== "times") return undefined;
+    let active = true;
+    setTimesSourcesError("");
+    void mobileTimesApi.timelineIndex()
+      .then((index) => { if (active) setTimesSources(index.sources); })
+      .catch((reason: unknown) => {
+        if (active) setTimesSourcesError(reason instanceof Error ? reason.message : "媒体列表暂时无法载入");
+      });
+    return () => { active = false; };
+  }, [section]);
+
+  useEffect(() => {
+    if (timesSources.length && enabledTimesSourceCount === 0) enableAllTimesSources();
+  }, [enableAllTimesSources, enabledTimesSourceCount, timesSources.length]);
 
   return (
     <SafeAreaView edges={["top"]} style={[styles.safe, { backgroundColor: theme.paper }]}>
@@ -89,22 +172,34 @@ export function SettingsScreen() {
           <SettingRow
             title="阅读时不自动锁屏"
             value={keepScreenAwake}
-            onValueChange={setKeepScreenAwake}
+            onValueChange={(value) => {
+              setKeepScreenAwake(value);
+              void toggleHaptic(hapticsEnabled, value);
+            }}
           />
           <SettingRow
             title="阅读时允许横屏"
             value={allowLandscape}
-            onValueChange={setAllowLandscape}
+            onValueChange={(value) => {
+              setAllowLandscape(value);
+              void toggleHaptic(hapticsEnabled, value);
+            }}
           />
           <SettingRow
             title="正文首行缩进"
             value={bookFirstLineIndent}
-            onValueChange={setBookFirstLineIndent}
+            onValueChange={(value) => {
+              setBookFirstLineIndent(value);
+              void toggleHaptic(hapticsEnabled, value);
+            }}
           />
           <SettingRow
             title="点击左侧翻到下一页"
             value={leftTapNext}
-            onValueChange={setLeftTapNext}
+            onValueChange={(value) => {
+              setLeftTapNext(value);
+              void toggleHaptic(hapticsEnabled, value);
+            }}
           />
 
           <View style={[styles.scaleSection, styles.scaleSectionDivider, { borderBottomColor: theme.rule }]}>
@@ -201,14 +296,86 @@ export function SettingsScreen() {
           <View style={[styles.panel, { backgroundColor: theme.paper, borderColor: theme.rule }]}>
             <SettingRow
               title="触感反馈"
+              description="切换页面、翻页、打开内容与调整选项时提供触感"
               value={hapticsEnabled}
               onValueChange={(value) => {
                 setHapticsEnabled(value);
-                void selectionHaptic(value);
+                void toggleHaptic(hapticsEnabled || value, value);
               }}
             />
           </View>
         </View>
+        ) : null}
+
+        {!section || section === "times" ? (
+          <View style={!section ? styles.sectionGap : undefined}>
+            <SectionTitle title="时事设置" />
+            <View style={[styles.panel, { backgroundColor: theme.paper, borderColor: theme.rule }]}>
+              <View style={styles.scaleSection}>
+                <View style={styles.timesSettingCopy}>
+                  <Text numberOfLines={1} style={[styles.scaleTitle, styles.timesSettingTitle, { color: theme.ink, fontFamily: theme.serif }]}>外文内容</Text>
+                  <Text style={[styles.timesSettingHint, { color: theme.muted, fontFamily: theme.sans }]}>默认显示中文译文或出版方原文</Text>
+                </View>
+                <View style={styles.scaleRow}>
+                  {([
+                    { value: "zh-CN" as const, label: "中文" },
+                    { value: "original" as const, label: "原文" },
+                  ]).map((option) => {
+                    const selected = option.value === timesLanguage;
+                    return (
+                      <Pressable
+                        key={option.value}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        onPress={() => {
+                          setTimesLanguage(option.value);
+                          void selectionHaptic(hapticsEnabled);
+                        }}
+                        style={[
+                          styles.scaleButton,
+                          { borderColor: selected ? theme.red : theme.rule, backgroundColor: selected ? theme.red : theme.paper },
+                        ]}
+                      >
+                        <Text style={[styles.scaleButtonText, { color: selected ? theme.inverse : theme.ink, fontFamily: theme.sans }]}>{option.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+              <View style={[styles.sourceSettings, { borderTopColor: theme.rule }]}>
+                <SettingRow
+                  title="全部媒体"
+                  description={timesSources.length
+                    ? allTimesSourcesEnabled ? "所有来源均显示" : `已开启 ${enabledTimesSourceCount} / ${timesSources.length} 个`
+                    : "正在载入媒体列表…"}
+                  value={allTimesSourcesEnabled}
+                  disabled={timesSources.length <= 1}
+                  onValueChange={(enabled) => {
+                    setAllTimesSourcesEnabled(enabled, timesSourceIds);
+                    void toggleHaptic(hapticsEnabled, enabled);
+                  }}
+                />
+                {timesSources.map((source) => {
+                  const enabled = !disabledTimesSources.has(source.id);
+                  return (
+                    <SettingRow
+                      key={source.id}
+                      title={timesSourceName(source)}
+                      description={source.language === "zh-CN" ? "中文" : "外文"}
+                      value={enabled}
+                      disabled={enabled && enabledTimesSourceCount === 1}
+                      onValueChange={(nextEnabled) => {
+                        setTimesSourceEnabled(source.id, nextEnabled, timesSourceIds);
+                        void toggleHaptic(hapticsEnabled, nextEnabled);
+                      }}
+                    />
+                  );
+                })}
+                {!timesSources.length && !timesSourcesError && !IS_EINK_RELEASE ? <ActivityIndicator color={theme.red} style={styles.sourceLoading} /> : null}
+                {timesSourcesError ? <Text accessibilityRole="alert" style={[styles.sourceError, { color: theme.red, fontFamily: theme.sans }]}>{timesSourcesError}</Text> : null}
+              </View>
+            </View>
+          </View>
         ) : null}
 
         {!section || section === "data" ? (
@@ -236,11 +403,43 @@ export function SettingsScreen() {
           <View style={[styles.panel, { backgroundColor: theme.paper, borderColor: theme.rule }]}>
             <View style={[styles.about, { borderBottomColor: theme.rule }]}>
               <Text style={[styles.aboutTitle, { color: theme.ink, fontFamily: theme.serif }]}>JOJO 看报</Text>
-              <Text style={[styles.aboutVersion, { color: theme.muted, fontFamily: theme.sans }]}>{nativeApplicationVersion ?? "0.0.1-rc1"}</Text>
+              <Text style={[styles.aboutVersion, { color: theme.muted, fontFamily: theme.sans }]}>{nativeApplicationVersion ?? "0.0.1"}</Text>
             </View>
+            <Pressable
+              accessibilityRole="button"
+              disabled={updateBusy}
+              onPress={() => void checkContentUpdate()}
+              style={[styles.actionRow, styles.actionRowDivider, { borderBottomColor: theme.rule, opacity: updateBusy ? 0.5 : 1 }]}
+            >
+              <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>检查内容更新</Text>
+              <Ionicons name="refresh-outline" size={17} color={theme.muted} />
+            </Pressable>
+            {Platform.OS === "android" ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={updateBusy}
+                onPress={() => void checkInstallerUpdate()}
+                style={[styles.actionRow, styles.actionRowDivider, { borderBottomColor: theme.rule, opacity: updateBusy ? 0.5 : 1 }]}
+              >
+                <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>检查客户端版本</Text>
+                <Ionicons name="download-outline" size={17} color={theme.muted} />
+              </Pressable>
+            ) : null}
+            {updateMessage ? (
+              <Text style={[styles.updateMessage, { color: theme.muted, borderBottomColor: theme.rule, fontFamily: theme.sans }]}>
+                {updateMessage}
+              </Text>
+            ) : null}
             <Pressable onPress={() => void Linking.openURL(ARCHIVE_WEB_ORIGIN)} style={styles.actionRow}>
               <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>在浏览器打开 JOJO 看报</Text>
               <Ionicons name="open-outline" size={17} color={theme.muted} />
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={() => navigation.navigate("OpenSourceLicenses")} style={[styles.actionRow, { borderTopColor: theme.rule, borderTopWidth: StyleSheet.hairlineWidth }]}>
+              <View style={styles.settingCopy}>
+                <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>开源软件许可</Text>
+                <Text style={[styles.actionHint, { color: theme.muted, fontFamily: theme.sans }]}>查看本项目与第三方软件的许可信息</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={17} color={theme.muted} />
             </Pressable>
           </View>
         </View>
@@ -257,16 +456,26 @@ const styles = StyleSheet.create({
   settingRow: { minHeight: 62, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center" },
   settingCopy: { flex: 1, paddingRight: 12 },
   settingTitle: { fontSize: 14, fontWeight: "800" },
+  settingDescription: { marginTop: 3, fontSize: 9, lineHeight: 14, fontWeight: "700" },
   scaleSection: { minHeight: 66, flexDirection: "row", alignItems: "center" },
   scaleSectionDivider: { borderBottomWidth: StyleSheet.hairlineWidth },
   scaleSectionTopDivider: { borderTopWidth: StyleSheet.hairlineWidth },
   scaleTitle: { width: 112, fontSize: 14, fontWeight: "800" },
+  timesSettingCopy: { width: 150, paddingRight: 10 },
+  timesSettingTitle: { width: "auto" },
+  timesSettingHint: { marginTop: 3, fontSize: 9, lineHeight: 14 },
+  sourceSettings: { position: "relative", borderTopWidth: StyleSheet.hairlineWidth },
+  sourceLoading: { position: "absolute", top: 20, left: 116 },
+  sourceError: { paddingVertical: 14, fontSize: 10, lineHeight: 17, fontWeight: "800" },
   scaleRow: { flex: 1, flexDirection: "row", gap: 5 },
   scaleButton: { height: 34, flex: 1, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   scaleButtonText: { fontSize: 10, fontWeight: "900" },
   sectionGap: { marginTop: 26 },
   actionRow: { minHeight: 58, flexDirection: "row", alignItems: "center" },
+  actionRowDivider: { borderBottomWidth: StyleSheet.hairlineWidth },
   actionText: { flex: 1, fontSize: 13, fontWeight: "800" },
+  updateMessage: { minHeight: 42, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 12, fontSize: 11, lineHeight: 17 },
+  actionHint: { marginTop: 3, fontSize: 9, lineHeight: 14, fontWeight: "700" },
   about: { minHeight: 58, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center" },
   aboutTitle: { flex: 1, fontSize: 13, fontWeight: "800" },
   aboutVersion: { fontSize: 10, fontWeight: "700" },

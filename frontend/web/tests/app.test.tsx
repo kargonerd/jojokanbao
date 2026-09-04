@@ -212,6 +212,18 @@ describe("JOJO Web navigation", () => {
     expect(within(memberNavigation).getAllByRole("link").map((link) => link.textContent)).toEqual(["首页", "资料库", "搜索", "AI", "时事"]);
   });
 
+  it("opens the public client download page inside the Reader shell", () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 404 }));
+    renderAt("/download");
+
+    expect(screen.getByRole("heading", { name: "下载客户端" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Windows" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Android" })).toBeTruthy();
+    expect(within(screen.getByRole("navigation", { name: "主导航" })).queryByRole("link", { name: "客户端下载" })).toBeNull();
+    expect(document.querySelector("[data-release-base]")?.getAttribute("data-release-base")).toBe("https://blacknews.jojokanbao.cn/releases");
+    expect(screen.getByRole("button", { name: "返回上一页" })).toBeTruthy();
+  });
+
   it("shows the Beta badge beside mobile AI and Times page titles", () => {
     const navigationItems = buildAppNavigationItems(true);
     const view = render(
@@ -315,12 +327,21 @@ describe("Support page", () => {
       expect(screen.getByRole("heading", { name })).toBeTruthy();
     }
     expect(screen.queryByRole("link", { name: "打开旧版 JOJO 看报" })).toBeNull();
-    expect(screen.queryByText("开源项目")).toBeNull();
-    expect(screen.queryByRole("link", { name: "GitHub 查看源码" })).toBeNull();
+    expect(screen.getByRole("link", { name: /开源软件许可/ }).getAttribute("href")).toBe("/support/licenses");
     expect(screen.getByText("974380749")).toBeTruthy();
     expect(screen.getByRole("link", { name: /纪念毛主席诞辰132周年/ }).getAttribute("target")).toBe("_blank");
     expect(screen.getAllByRole("link", { name: "OneDrive下载" })).toHaveLength(5);
     expect(screen.getByRole("img", { name: "微信" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "支付宝" })).toBeTruthy();
+  });
+
+  it("shows the generated open-source software list and project license", async () => {
+    renderAt("/support/licenses");
+
+    expect(await screen.findByRole("heading", { name: "开源软件许可" }, { timeout: 5_000 })).toBeTruthy();
+    expect(screen.getByText(/Web 版/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "GitHub 查看源码" }).getAttribute("href")).toBe("https://github.com/kargonerd/jojokanbao");
+    expect(screen.getByRole("button", { name: /^react \d/ })).toBeTruthy();
+    expect(screen.getByText(/GNU AFFERO GENERAL PUBLIC LICENSE/)).toBeTruthy();
   });
 });

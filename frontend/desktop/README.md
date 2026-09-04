@@ -90,7 +90,10 @@ pnpm --filter @jojo/desktop dist:linux
 `pack` 生成可直接运行的 `release/win-unpacked/jojo-kanbao.exe`；`dist:win` 生成 NSIS
 安装包，macOS 生成 DMG/ZIP，Linux 生成 AppImage/DEB。产物都写入被 Git 忽略的
 `release/`。推送与 `package.json` 版本匹配的 `desktop-v*` tag 会自动构建三平台产物并
-发布 GitHub Release；首个版本使用 `desktop-v0.0.1-rc1`，带后缀的版本会标记为预发布。
+发布 GitHub Release；首个版本使用 `desktop-v0.0.1`。发行工作流不接受带 `-rc`、`-beta`
+等预发布后缀的版本。
 
-当前自动构建默认不签名，适合 RC 验证。正式对外发布前应配置 Windows 代码签名和
-Apple Developer ID/notarization，避免 SmartScreen 或 Gatekeeper 安全提示。
+当前自动构建默认不签名，首个稳定版会明确提示 Windows/macOS 的系统安全警告。Windows
+暂时关闭发布者签名校验后仍使用 HTTPS 更新源与 SHA-512 元数据校验；macOS 自动更新依赖
+代码签名，因此未签名阶段从官网下载新版。以后接入 Windows 代码签名和 Apple Developer
+ID/notarization 时，应同时恢复发布者签名校验和 macOS 应用内更新。

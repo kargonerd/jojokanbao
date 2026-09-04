@@ -18,6 +18,7 @@ export { PERIODICALS } from "./library/catalog";
 export { Layout as ArchiveLayout } from "./archive/components/Layout";
 export { SearchPage } from "./archive/pages/SearchPage";
 export { SupportPage } from "./archive/pages/SupportPage";
+export { OpenSourceLicensesPage, type OpenSourceLicenseData } from "./archive/pages/OpenSourceLicensesPage";
 export { ReaderPage as ArchiveReaderPage } from "./archive/pages/ReaderPage";
 export { PUBLICATIONS, PUBLICATION_NAMES } from "./archive/publications";
 export { defaultArchiveIssuePath } from "./routes";

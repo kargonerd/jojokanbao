@@ -7,6 +7,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
+import { mobileBookshelfContains, setMobileBookshelf } from "../account/accountData";
+import { useMobileAuthStore } from "../account/auth";
 import { ReaderEnvironment } from "../components/ReaderEnvironment";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import {
@@ -18,6 +20,7 @@ import {
   createBookReaderApplyAnnotationScript,
   createBookReaderBridgeScript,
   createBookReaderClearSelectionScript,
+  createBookReaderGoToScrollProgressScript,
   createBookReaderGoToSpreadScript,
   createBookReaderLocateTextScript,
   createBookReaderMeasureScript,
@@ -33,6 +36,7 @@ import {
   loadMobileBookChapter,
   loadMobileBookItem,
   loadMobileBookVolumes,
+  resolveLegacyBookResume,
   resolveMobileAnnotationReference,
   searchMobileBook,
   type LoadedMobileBookChapter,
@@ -48,7 +52,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "BookReader">;
 type ReaderTool = "toc" | "search" | "ai" | "progress" | "notes" | "text";
 type AiMessage = { role: "user" | "assistant"; content: string; references?: MobileBookAgentReference[] };
 type NoteComposer = { annotationId?: string; selection?: BookReaderSelectionMessage; quote: string };
-type PendingLocate = { chapterId: string; text?: string; anchorId?: string; spreadIndex?: number };
+type PendingLocate = { chapterId: string; text?: string; anchorId?: string; spreadIndex?: number; scrollProgress?: number };
 
 function readerTheme(color: BookPaperColor): MobileTheme {
   if (IS_EINK_RELEASE || color === "white") return mobileTheme;
@@ -86,8 +90,12 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const bookFirstLineIndent = useMobileStore((state) => state.bookFirstLineIndent);
   const setBookFirstLineIndent = useMobileStore((state) => state.setBookFirstLineIndent);
   const hapticsEnabled = useMobileStore((state) => state.hapticsEnabled);
+  const user = useMobileAuthStore((state) => state.user);
   const leftTapNext = useMobileStore((state) => state.leftTapNext);
   const rememberBook = useMobileStore((state) => state.rememberBook);
+  const recentBook = useMobileStore((state) => state.recentBooks.find((candidate) => (
+    candidate.datasetId === datasetId && candidate.itemKey === itemKey
+  )));
   const annotations = useMobileStore((state) => state.bookAnnotations);
   const addBookAnnotation = useMobileStore((state) => state.addBookAnnotation);
   const updateBookAnnotationNote = useMobileStore((state) => state.updateBookAnnotationNote);
@@ -125,6 +133,9 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const [tocQuery, setTocQuery] = useState("");
   const [expandedImageUri, setExpandedImageUri] = useState<string>();
   const [readerNotice, setReaderNotice] = useState("");
+  const [onBookshelf, setOnBookshelf] = useState<boolean>();
+  const [bookshelfBusy, setBookshelfBusy] = useState(false);
+  const [legacyResume, setLegacyResume] = useState<{ chapterId: string; chapterProgress: number }>();
 
   useEffect(() => {
     let active = true;
@@ -133,6 +144,18 @@ export function BookReaderScreen({ route, navigation }: Props) {
   }, []);
 
   useEffect(() => () => cancelAgentRef.current?.(), []);
+
+  useEffect(() => {
+    if (!loaded || !user) {
+      setOnBookshelf(undefined);
+      return undefined;
+    }
+    let active = true;
+    void mobileBookshelfContains(datasetId, loaded.volume.itemId)
+      .then((value) => { if (active) setOnBookshelf(value); })
+      .catch(() => { if (active) setOnBookshelf(undefined); });
+    return () => { active = false; };
+  }, [datasetId, loaded, user]);
 
   useEffect(() => {
     let active = true;
@@ -152,13 +175,24 @@ export function BookReaderScreen({ route, navigation }: Props) {
     setChapter(undefined);
     setLoading(true);
     setError("");
+    setLegacyResume(undefined);
     void loadMobileBookItem(datasetId, itemKey)
       .then((value) => {
         if (!active) return;
-        const firstChapter = value.manifest.content.chapters?.find((candidate) => candidate.id === initialChapterId)
-          ?? value.manifest.content.chapters?.[0];
+        const savedBook = !initialChapterId && !initialAnchorId && !initialText
+          ? useMobileStore.getState().recentBooks.find((candidate) => (
+            candidate.datasetId === datasetId && candidate.itemKey === itemKey
+          ))
+          : undefined;
+        const chapters = value.manifest.content.chapters ?? [];
+        const legacyTarget = savedBook && !savedBook.chapterId
+          ? resolveLegacyBookResume(chapters, savedBook.progress)
+          : undefined;
+        const firstChapter = chapters.find((candidate) => candidate.id === (initialChapterId ?? savedBook?.chapterId ?? legacyTarget?.chapterId))
+          ?? chapters[0];
         if (!firstChapter) throw new Error("书籍没有可读章节");
         setLoaded(value);
+        if (legacyTarget && legacyTarget.chapterId === firstChapter.id) setLegacyResume(legacyTarget);
         if (initialAnchorId || initialText) {
           pendingLocateRef.current = { chapterId: firstChapter.id, anchorId: initialAnchorId, text: initialText };
         }
@@ -193,7 +227,11 @@ export function BookReaderScreen({ route, navigation }: Props) {
     const query = tocQuery.normalize("NFKC").trim().toLocaleLowerCase();
     return query ? chapters.filter((candidate) => candidate.title.normalize("NFKC").toLocaleLowerCase().includes(query)) : chapters;
   }, [chapters, tocQuery]);
-  const chapterPageProgress = pageState?.paged && pageState.pageCount > 0 ? pageState.pageEnd / pageState.pageCount : 0;
+  const chapterPageProgress = pageState
+    ? pageState.paged && pageState.pageCount > 0
+      ? pageState.pageEnd / pageState.pageCount
+      : pageState.scrollProgress
+    : 0;
   const progress = chapters.length ? Math.min(100, Math.round(((activeIndex + chapterPageProgress) / chapters.length) * 100)) : 0;
   const readerStatus = bookReadingMode === "paged" && pageState?.paged
     ? `${pageState.pageStart}${pageState.pageEnd > pageState.pageStart ? `–${pageState.pageEnd}` : ""} / ${pageState.pageCount}`
@@ -212,11 +250,16 @@ export function BookReaderScreen({ route, navigation }: Props) {
     chapterEntryEdge,
     leftTapNext,
     chapterAnnotations.map(({ id, start, end }) => ({ id, start, end })),
-  ), [activeChapterId, chapterAnnotations, chapterEntryEdge, leftTapNext]);
-
-  useEffect(() => {
-    if (chapter) rememberBook({ datasetId, itemKey, title, subtitle: bookTitle, progress });
-  }, [bookTitle, chapter, datasetId, itemKey, progress, rememberBook, title]);
+    !initialChapterId && !initialAnchorId && !initialText && recentBook?.chapterId === activeChapterId
+      ? recentBook.spreadIndex
+      : undefined,
+    !initialChapterId && !initialAnchorId && !initialText && recentBook?.chapterId === activeChapterId
+      ? recentBook.scrollProgress
+      : undefined,
+    !initialChapterId && !initialAnchorId && !initialText && legacyResume?.chapterId === activeChapterId
+      ? legacyResume.chapterProgress
+      : undefined,
+  ), [activeChapterId, chapterAnnotations, chapterEntryEdge, initialAnchorId, initialChapterId, initialText, leftTapNext, legacyResume, recentBook?.chapterId, recentBook?.scrollProgress, recentBook?.spreadIndex]);
 
   useEffect(() => {
     if (!chapter || activeTool || selection || noteComposer || !chromeVisible) return;
@@ -293,7 +336,24 @@ export function BookReaderScreen({ route, navigation }: Props) {
     }
     if (message.type === "reader-page") {
       setPageState(message);
+      if (legacyResume?.chapterId === activeChapterId) setLegacyResume(undefined);
       if (chapterEntryEdge === "end") setChapterEntryEdge("start");
+      const chapterFraction = message.paged && message.pageCount > 0
+        ? message.pageEnd / message.pageCount
+        : message.scrollProgress;
+      const nextProgress = chapters.length
+        ? Math.min(100, Math.round(((activeIndex + chapterFraction) / chapters.length) * 100))
+        : 0;
+      rememberBook({
+        datasetId,
+        itemKey,
+        title,
+        subtitle: bookTitle,
+        progress: nextProgress,
+        chapterId: activeChapterId,
+        spreadIndex: message.paged ? message.spreadIndex : undefined,
+        scrollProgress: message.paged ? undefined : message.scrollProgress,
+      });
       return;
     }
     if (message.direction === "previous" && activeIndex > 0) chooseChapter(chapters[activeIndex - 1]!.id, "end");
@@ -341,6 +401,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
       if (pending.text) webViewRef.current?.injectJavaScript(createBookReaderLocateTextScript(pending.text));
       else if (pending.anchorId) webViewRef.current?.injectJavaScript(createBookReaderRevealAnchorScript(pending.anchorId));
       else if (typeof pending.spreadIndex === "number") webViewRef.current?.injectJavaScript(createBookReaderGoToSpreadScript(pending.spreadIndex));
+      else if (typeof pending.scrollProgress === "number") webViewRef.current?.injectJavaScript(createBookReaderGoToScrollProgressScript(pending.scrollProgress));
     }, 80);
   }
   function handleBack() {
@@ -494,6 +555,27 @@ export function BookReaderScreen({ route, navigation }: Props) {
     askAi(`请解释这段话：\n\n“${quote}”`);
   }
 
+  async function toggleBookshelf() {
+    if (!loaded || !user || bookshelfBusy || typeof onBookshelf !== "boolean") return;
+    const next = !onBookshelf;
+    setBookshelfBusy(true);
+    setReaderNotice("");
+    try {
+      await setMobileBookshelf({
+        datasetId,
+        itemId: loaded.volume.itemId,
+        title: loaded.volume.title,
+        added: next,
+      });
+      setOnBookshelf(next);
+      setReaderNotice(next ? "已加入我的书架" : "已移出我的书架");
+    } catch (reason) {
+      setReaderNotice(reason instanceof Error ? reason.message : "书架状态更新失败");
+    } finally {
+      setBookshelfBusy(false);
+    }
+  }
+
   const sheetBottom = insets.bottom + 64;
   return (
     <SafeAreaView edges={["top", "bottom"]} style={[styles.safe, { backgroundColor: theme.paper }]}>
@@ -506,6 +588,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
             source={{ html: document }}
             originWhitelist={["about:blank", "data:*"]}
             javaScriptEnabled
+            menuItems={[]}
             domStorageEnabled={false}
             cacheEnabled={false}
             injectedJavaScript={readerBridgeScript}
@@ -530,6 +613,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
         <View style={[styles.header, { top: insets.top, borderBottomColor: theme.ruleDark, backgroundColor: theme.paper }]}>
           <Pressable accessibilityRole="button" accessibilityLabel={referenceHistory.length || returnToReference ? "返回原文" : "返回书籍"} hitSlop={10} onPress={handleBack} style={[styles.iconButton, referenceHistory.length || returnToReference ? styles.referenceBack : null]}><Ionicons name="chevron-back" size={24} color={theme.ink} />{referenceHistory.length || returnToReference ? <Text style={[styles.referenceBackText, { color: theme.ink, fontFamily: theme.sans }]}>原文</Text> : null}</Pressable>
           <View style={styles.headerCopy}><Text numberOfLines={1} style={[styles.bookTitle, { color: theme.ink, fontFamily: theme.serif }]}>{title}</Text><Text numberOfLines={1} style={[styles.chapterTitle, { color: theme.muted, fontFamily: theme.sans }]}>{chapters[activeIndex]?.title ?? bookTitle}</Text></View>
+          {user ? <Pressable accessibilityRole="button" accessibilityLabel={onBookshelf ? "移出我的书架" : "加入我的书架"} disabled={bookshelfBusy || typeof onBookshelf !== "boolean"} onPress={() => void toggleBookshelf()} style={[styles.iconButton, { opacity: bookshelfBusy || typeof onBookshelf !== "boolean" ? 0.35 : 1 }]}><Ionicons name={onBookshelf ? "bookmark" : "bookmark-outline"} size={20} color={theme.red} /></Pressable> : null}
           <Text style={[styles.progress, { color: theme.red, fontFamily: theme.sans }]}>{readerStatus}</Text>
         </View>
 

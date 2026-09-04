@@ -61,16 +61,24 @@ external state:
 - `deploy-web.yml` automatically publishes relevant `master` changes to the
   public Beta Preview environment; release tags and manual Production runs
   publish the stable Web client
-- `release-desktop.yml` builds Desktop installers on Windows, macOS (Apple Silicon
-  and Intel), and Linux; `desktop-v*` tags publish the resulting files as a
-  GitHub Release, starting with `desktop-v0.0.1-rc1`, while manual runs retain
-  them as workflow artifacts
+- `release-desktop.yml` builds the initial unsigned Desktop installers on Windows, macOS
+  (Apple Silicon and Intel), and Linux; `desktop-v*` tags verify and publish the
+  files plus updater metadata below the B2 `releases/desktop/` prefix before
+  publishing the GitHub Release, while manual runs retain workflow artifacts.
+  Windows and macOS show their normal unsigned-app warnings; macOS application
+  updates remain manual until Developer ID signing and notarization are enabled
 - `release-mobile.yml` asks EAS Build for the signed standard Android APK;
-  `mobile-v*` tags publish the APK and SHA-256 checksum as a GitHub Release,
-  while manual runs retain the APK as a workflow artifact
+  `mobile-v*` tags publish the APK, catalog, and checksum below the B2
+  `releases/mobile/android/` prefix and as a GitHub Release
 - `release-mobile-eink.yml` asks EAS Build for a signed Android APK; `mobile-eink-v*`
-  tags publish the APK and SHA-256 checksum as a GitHub Release, while manual
-  runs retain the APK as a workflow artifact
+  tags use the independent `releases/mobile/android-eink/` prefix and release catalog
+- `release-mobile-ota.yml` publishes, adjusts, or rolls back percentage-based EAS
+  Update rollouts on the standard and e-ink production channels; native changes
+  still require a new APK
+
+All B2 release objects use the existing bucket but are isolated below `releases/`.
+Provisioning, cache rules, credentials, versioning, and rollback procedures are
+documented in [`docs/client-releases.md`](../../docs/client-releases.md).
 
 Internal local tools participate in CI but do not need a deployment workflow.
 

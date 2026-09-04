@@ -37,6 +37,8 @@
     "invite:create": "node tools/manage-signup-invites.mjs create",
     "invite:list": "node tools/manage-signup-invites.mjs list",
     "invite:revoke": "node tools/manage-signup-invites.mjs revoke",
+    "notices:generate": "node tools/licenses/generate-open-source-notices.mjs",
+    "notices:check": "node tools/licenses/generate-open-source-notices.mjs --check",
     "clean": "turbo clean && rm -rf node_modules"
   },
   "devDependencies": {
@@ -49,6 +51,7 @@
       "cheerio@1.2.0>undici": "8.10.0"
     },
     "patchedDependencies": {
+      "@react-native/gradle-plugin@0.83.10": "frontend/patches/@react-native__gradle-plugin@0.83.10.patch",
       "pdfjs-dist@5.7.284": "frontend/patches/pdfjs-dist@5.7.284.patch"
     }
   }

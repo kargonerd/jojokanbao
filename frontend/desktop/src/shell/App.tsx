@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RouterProvider } from 'react-router-dom';
 import { CloseChoiceDialog, type CloseChoice } from './CloseChoiceDialog';
 import { createDesktopRouter } from './router';
+import { UpdateNotice } from './UpdateNotice';
 
 export default function DesktopApp() {
   const router = useMemo(() => createDesktopRouter(), []);
@@ -25,6 +26,7 @@ export default function DesktopApp() {
     <>
       <RouterProvider router={router} />
       <CloseChoiceDialog open={closeChoiceOpen} onChoose={chooseClose} />
+      <UpdateNotice />
     </>
   );
 }

@@ -1,6 +1,6 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useNavigation, type NavigationProp } from "@react-navigation/native";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -14,14 +14,17 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  type TextInputProps,
   useWindowDimensions,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MOBILE_ACCOUNT_CONFIGURED, useMobileAuthStore } from "../account/auth";
+import { getAccountFormKeyboardLift, shouldRefreshDialogViewport } from "../account/dialogViewport";
 import { getRegistrationValidationError } from "../account/registration";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionTitle } from "../components/SectionTitle";
+import { PersonalInvitationPanel } from "../components/PersonalInvitationPanel";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import type { RootStackParamList } from "../navigation/types";
 import { mobileTheme, type MobileTheme } from "../theme/tokens";
@@ -80,11 +83,13 @@ function VerificationCodeInput({
   value,
   theme,
   onChange,
+  onFocus,
   onSubmit,
 }: {
   value: string;
   theme: MobileTheme;
   onChange: (value: string) => void;
+  onFocus: () => void;
   onSubmit: () => void;
 }) {
   const activeIndex = Math.min(value.length, 5);
@@ -123,10 +128,83 @@ function VerificationCodeInput({
         caretHidden
         keyboardType="number-pad"
         maxLength={6}
+        onFocus={onFocus}
         returnKeyType="done"
         onSubmitEditing={onSubmit}
         style={styles.codeHiddenInput}
       />
+    </View>
+  );
+}
+
+function PasswordInput({
+  accessibilityLabel,
+  autoComplete,
+  onChangeText,
+  onFocus,
+  onSubmitEditing,
+  placeholder,
+  resetWhenHidden,
+  returnKeyType,
+  textContentType,
+  theme,
+  value,
+}: {
+  accessibilityLabel: string;
+  autoComplete: TextInputProps["autoComplete"];
+  onChangeText: (value: string) => void;
+  onFocus?: TextInputProps["onFocus"];
+  onSubmitEditing?: TextInputProps["onSubmitEditing"];
+  placeholder: string;
+  resetWhenHidden: boolean;
+  returnKeyType?: TextInputProps["returnKeyType"];
+  textContentType?: TextInputProps["textContentType"];
+  theme: MobileTheme;
+  value: string;
+}) {
+  const [passwordVisible, setPasswordVisible] = useState(false);
+
+  useEffect(() => {
+    if (resetWhenHidden) {
+      setPasswordVisible(false);
+    }
+  }, [resetWhenHidden]);
+
+  return (
+    <View style={styles.passwordInputWrap}>
+      <TextInput
+        accessibilityLabel={accessibilityLabel}
+        value={value}
+        onChangeText={onChangeText}
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoComplete={autoComplete}
+        textContentType={textContentType}
+        secureTextEntry={!passwordVisible}
+        onFocus={onFocus}
+        returnKeyType={returnKeyType}
+        onSubmitEditing={onSubmitEditing}
+        placeholder={placeholder}
+        placeholderTextColor={theme.muted}
+        style={[
+          styles.input,
+          styles.passwordInput,
+          { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans },
+        ]}
+      />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={passwordVisible ? `隐藏${accessibilityLabel}` : `显示${accessibilityLabel}`}
+        accessibilityState={{ selected: passwordVisible }}
+        onPress={() => setPasswordVisible((visible) => !visible)}
+        style={({ pressed }) => [styles.passwordToggle, { opacity: pressed ? 0.55 : 1 }]}
+      >
+        <Ionicons
+          name={passwordVisible ? "eye-off-outline" : "eye-outline"}
+          size={20}
+          color={passwordVisible ? theme.red : theme.muted}
+        />
+      </Pressable>
     </View>
   );
 }
@@ -159,6 +237,7 @@ export function MeScreen() {
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const cameraProgress = useRef(new Animated.Value(0)).current;
   const coverProgress = useRef(new Animated.Value(0)).current;
+  const formLift = useRef(new Animated.Value(0)).current;
   const {
     initialized,
     user,
@@ -173,7 +252,6 @@ export function MeScreen() {
     sendPasswordReset,
     verifyPasswordResetCode,
     completePasswordRecovery,
-    signOut,
     clearFeedback,
   } = useMobileAuthStore();
   const dialogWidth = loginVisible ? dialogViewport.width : windowWidth;
@@ -192,7 +270,23 @@ export function MeScreen() {
   const bookEndOffset = wideBook ? 0 : -bookWidth / 2 + dialogWidth * 0.05;
   const bookStartOffset = wideBook ? -bookWidth * 0.24 : bookEndOffset + dialogWidth * 0.03;
   const coverHoldDuration = wideBook ? 500 : 580;
+  const formKeyboardLift = getAccountFormKeyboardLift(dialogWidth);
   latestWindowSizeRef.current = { width: windowWidth, height: windowHeight };
+
+  const moveFormForKeyboard = useCallback((visible: boolean) => {
+    const toValue = visible ? formKeyboardLift : 0;
+    formLift.stopAnimation();
+    if (IS_EINK_RELEASE) {
+      formLift.setValue(toValue);
+      return;
+    }
+    Animated.timing(formLift, {
+      toValue,
+      duration: visible ? 180 : 150,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [formKeyboardLift, formLift]);
 
   useEffect(() => {
     if (resendSeconds <= 0) return undefined;
@@ -202,13 +296,30 @@ export function MeScreen() {
 
   useEffect(() => {
     if (!loginVisible) return;
-    const windowIsLandscape = windowWidth > windowHeight;
-    const dialogIsLandscape = dialogViewport.width > dialogViewport.height;
-    if (windowIsLandscape === dialogIsLandscape) return;
+    // adjustResize changes only the window height while the keyboard animates.
+    // Treating width > height as orientation would mistake that transient frame
+    // for landscape and make the whole book shrink, jump, then rebound.
+    if (!shouldRefreshDialogViewport(dialogViewport.width, windowWidth)) return;
     if (IS_EINK_RELEASE || !openAnimationRef.current) {
       setDialogViewport({ width: windowWidth, height: windowHeight });
     }
   }, [dialogViewport.height, dialogViewport.width, loginVisible, windowHeight, windowWidth]);
+
+  useEffect(() => {
+    if (!loginVisible) {
+      formLift.setValue(0);
+      return undefined;
+    }
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSubscription = Keyboard.addListener(showEvent, () => moveFormForKeyboard(true));
+    const hideSubscription = Keyboard.addListener(hideEvent, () => moveFormForKeyboard(false));
+    if (Keyboard.isVisible()) moveFormForKeyboard(true);
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [formLift, loginVisible, moveFormForKeyboard]);
 
   const openAccount = (mode: AccountMode) => {
     closingRef.current = false;
@@ -217,6 +328,7 @@ export function MeScreen() {
     clearFeedback();
     setLocalError("");
     setAccountMode(mode);
+    formLift.setValue(0);
     // A translucent native Modal may briefly report a different window height
     // while it mounts. Freeze the pre-open viewport so the book stays on one
     // horizontal baseline throughout the entrance.
@@ -266,9 +378,9 @@ export function MeScreen() {
         if (openAnimationRef.current !== animation) return;
         openAnimationRef.current = null;
         const latestSize = latestWindowSizeRef.current;
-        const latestIsLandscape = latestSize.width > latestSize.height;
-        const dialogIsLandscape = dialogViewport.width > dialogViewport.height;
-        if (latestIsLandscape !== dialogIsLandscape) setDialogViewport(latestSize);
+        if (shouldRefreshDialogViewport(dialogViewport.width, latestSize.width)) {
+          setDialogViewport(latestSize);
+        }
       });
     });
   };
@@ -456,19 +568,11 @@ export function MeScreen() {
               <Pressable
                 accessibilityRole="button"
                 onPress={() => navigation.navigate("AccountSecurity")}
-                style={({ pressed }) => [styles.accountEntry, { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.rule }, pressed && { backgroundColor: theme.paperSoft }]}
+                style={({ pressed }) => [styles.accountEntry, pressed && { backgroundColor: theme.paperSoft }]}
               >
                 <Ionicons name="shield-checkmark-outline" size={20} color={theme.ink} />
                 <Text style={[styles.accountEntryText, { color: theme.ink, fontFamily: theme.serif }]}>账号与安全</Text>
                 <Ionicons name="chevron-forward" size={17} color={theme.muted} />
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                disabled={busy}
-                onPress={() => void signOut().catch(() => undefined)}
-                style={({ pressed }) => [styles.signOutButton, { opacity: busy ? 0.45 : pressed ? 0.72 : 1 }]}
-              >
-                <Text style={[styles.signOutText, { color: theme.red, fontFamily: theme.sans }]}>{busy ? "退出中" : "退出登录"}</Text>
               </Pressable>
             </>
           ) : (
@@ -498,12 +602,47 @@ export function MeScreen() {
           )}
         </View>
 
+        {user ? (
+          <>
+            <View style={styles.sectionGap}>
+              <SectionTitle title="我的" />
+              <View style={[styles.panel, { borderColor: theme.rule, backgroundColor: theme.paper }]}>
+                {([
+                  { route: "Notifications" as const, label: "通知", icon: "notifications-outline" as const },
+                  { route: "Bookshelf" as const, label: "我的书架", icon: "bookmark-outline" as const },
+                ]).map((item, index, items) => (
+                  <Pressable
+                    key={item.route}
+                    accessibilityRole="button"
+                    onPress={() => navigation.navigate(item.route)}
+                    style={({ pressed }) => [
+                      styles.settingsRow,
+                      index < items.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.rule },
+                      pressed && { backgroundColor: theme.paperSoft },
+                    ]}
+                  >
+                    <Ionicons name={item.icon} size={19} color={theme.ink} />
+                    <Text style={[styles.settingsText, { color: theme.ink, fontFamily: theme.serif }]}>{item.label}</Text>
+                    <Ionicons name="chevron-forward" size={17} color={theme.muted} />
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.sectionGap}>
+              <SectionTitle title="邀请码" />
+              <PersonalInvitationPanel userId={user.id} />
+            </View>
+          </>
+        ) : null}
+
         <View style={styles.sectionGap}>
           <SectionTitle title="设置" />
           <View style={[styles.panel, { borderColor: theme.rule, backgroundColor: theme.paper }]}>
             {([
               { section: "reading" as const, label: "阅读设置", icon: "book-outline" as const },
               { section: "interaction" as const, label: "交互设置", icon: "hand-left-outline" as const },
+              { section: "times" as const, label: "时事设置", icon: "newspaper-outline" as const },
               { section: "data" as const, label: "阅读数据", icon: "time-outline" as const },
               { section: "about" as const, label: "关于", icon: "information-circle-outline" as const },
             ]).map((item, index, items) => (
@@ -539,9 +678,16 @@ export function MeScreen() {
         >
           <Pressable accessibilityLabel={accountMode === "register" ? "关闭注册" : accountMode === "recover" ? "关闭找回密码" : "关闭登录"} onPress={() => closeLogin()} style={StyleSheet.absoluteFill} />
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
             pointerEvents="box-none"
-            style={styles.dialogLayout}
+            style={[
+              styles.dialogLayout,
+              Platform.OS === "android" && {
+                flex: 0,
+                width: dialogWidth,
+                height: dialogHeight,
+              },
+            ]}
           >
             <View
               style={[
@@ -612,7 +758,7 @@ export function MeScreen() {
                         })}
                       </View>
                       {accountMode === "login" ? (
-                        <View style={styles.form}>
+                        <Animated.View style={[styles.form, { transform: [{ translateY: formLift }] }]}>
                           <Text style={[styles.fieldLabel, { color: theme.ink, fontFamily: theme.sans }]}>邮箱</Text>
                           <TextInput
                             value={email}
@@ -622,25 +768,25 @@ export function MeScreen() {
                             autoComplete="email"
                             keyboardType="email-address"
                             textContentType="emailAddress"
+                            onFocus={() => moveFormForKeyboard(true)}
                             returnKeyType="next"
                             placeholder="name@example.com"
                             placeholderTextColor={theme.muted}
                             style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
                           />
                           <Text style={[styles.fieldLabel, styles.passwordLabel, { color: theme.ink, fontFamily: theme.sans }]}>密码</Text>
-                          <TextInput
+                          <PasswordInput
+                            accessibilityLabel="登录密码"
                             value={password}
                             onChangeText={(value) => { setPassword(value); setLocalError(""); clearFeedback(); }}
-                            autoCapitalize="none"
-                            autoCorrect={false}
                             autoComplete="current-password"
                             textContentType="password"
-                            secureTextEntry
+                            onFocus={() => moveFormForKeyboard(true)}
                             returnKeyType="done"
                             onSubmitEditing={() => void handleSignIn()}
                             placeholder="输入密码"
-                            placeholderTextColor={theme.muted}
-                            style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
+                            resetWhenHidden={!loginVisible}
+                            theme={theme}
                           />
                           {localError || error || notice ? (
                             <Text accessibilityRole={localError || error ? "alert" : undefined} style={[styles.error, { color: localError || error ? theme.red : theme.muted, fontFamily: theme.sans }]}>{localError || error || notice}</Text>
@@ -656,15 +802,16 @@ export function MeScreen() {
                           <Pressable accessibilityRole="button" disabled={busy} onPress={() => changeAccountMode("recover")}>
                             <Text style={[styles.textAction, { color: theme.red, fontFamily: theme.sans }]}>忘记密码？</Text>
                           </Pressable>
-                        </View>
+                        </Animated.View>
                       ) : accountMode === "register" && confirmationEmail ? (
-                        <View style={styles.form}>
+                        <Animated.View style={[styles.form, { transform: [{ translateY: formLift }] }]}>
                           <Text style={[styles.confirmationText, { color: theme.muted, fontFamily: theme.sans }]}>验证码已发送到 {confirmationEmail}</Text>
                           <Text style={[styles.fieldLabel, { color: theme.ink, fontFamily: theme.sans }]}>6 位验证码</Text>
                           <VerificationCodeInput
                             value={confirmationCode}
                             theme={theme}
                             onChange={(value) => { setConfirmationCode(value); setLocalError(""); clearFeedback(); }}
+                            onFocus={() => moveFormForKeyboard(true)}
                             onSubmit={() => void handleConfirmSignUp()}
                           />
                           {localError || error || notice ? (
@@ -679,9 +826,9 @@ export function MeScreen() {
                           <Pressable accessibilityRole="button" disabled={busy} onPress={() => { clearFeedback(); setLocalError(""); setConfirmationEmail(null); setConfirmationCode(""); }}>
                             <Text style={[styles.textAction, { color: theme.red, fontFamily: theme.sans }]}>修改注册信息</Text>
                           </Pressable>
-                        </View>
+                        </Animated.View>
                       ) : accountMode === "register" ? (
-                        <View style={styles.form}>
+                        <Animated.View style={[styles.form, { transform: [{ translateY: formLift }] }]}>
                           <Text style={[styles.fieldLabel, { color: theme.ink, fontFamily: theme.sans }]}>邮箱</Text>
                           <TextInput
                             value={registrationEmail}
@@ -691,38 +838,37 @@ export function MeScreen() {
                             autoComplete="email"
                             keyboardType="email-address"
                             textContentType="emailAddress"
+                            onFocus={() => moveFormForKeyboard(true)}
                             returnKeyType="next"
                             placeholder="name@example.com"
                             placeholderTextColor={theme.muted}
                             style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
                           />
                           <Text style={[styles.fieldLabel, styles.passwordLabel, { color: theme.ink, fontFamily: theme.sans }]}>密码</Text>
-                          <TextInput
+                          <PasswordInput
+                            accessibilityLabel="注册密码"
                             value={registrationPassword}
                             onChangeText={(value) => { setRegistrationPassword(value); setLocalError(""); clearFeedback(); }}
-                            autoCapitalize="none"
-                            autoCorrect={false}
                             autoComplete="new-password"
                             textContentType="newPassword"
-                            secureTextEntry
+                            onFocus={() => moveFormForKeyboard(true)}
                             returnKeyType="next"
                             placeholder="至少 8 位字符"
-                            placeholderTextColor={theme.muted}
-                            style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
+                            resetWhenHidden={!loginVisible}
+                            theme={theme}
                           />
                           <Text style={[styles.fieldLabel, styles.passwordLabel, { color: theme.ink, fontFamily: theme.sans }]}>再次输入密码</Text>
-                          <TextInput
+                          <PasswordInput
+                            accessibilityLabel="确认注册密码"
                             value={registrationPasswordConfirmation}
                             onChangeText={(value) => { setRegistrationPasswordConfirmation(value); setLocalError(""); clearFeedback(); }}
-                            autoCapitalize="none"
-                            autoCorrect={false}
                             autoComplete="new-password"
                             textContentType="newPassword"
-                            secureTextEntry
+                            onFocus={() => moveFormForKeyboard(true)}
                             returnKeyType="next"
                             placeholder="重复输入密码"
-                            placeholderTextColor={theme.muted}
-                            style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
+                            resetWhenHidden={!loginVisible}
+                            theme={theme}
                           />
                           <Text style={[styles.fieldLabel, styles.passwordLabel, { color: theme.ink, fontFamily: theme.sans }]}>邀请码</Text>
                           <TextInput
@@ -732,6 +878,7 @@ export function MeScreen() {
                             autoCorrect={false}
                             autoComplete="off"
                             maxLength={6}
+                            onFocus={() => moveFormForKeyboard(true)}
                             returnKeyType="done"
                             onSubmitEditing={() => void handleSignUp()}
                             placeholder="6 位邀请码"
@@ -749,9 +896,9 @@ export function MeScreen() {
                           >
                             <Text style={[styles.loginText, { color: theme.inverse, fontFamily: theme.serif }]}>{busy ? "正在注册…" : "发送注册验证码"}</Text>
                           </Pressable>
-                        </View>
+                        </Animated.View>
                       ) : (
-                        <View style={styles.form}>
+                        <Animated.View style={[styles.form, { transform: [{ translateY: formLift }] }]}>
                           <Text style={[styles.recoveryTitle, { color: theme.ink, fontFamily: theme.serif }]}>{recoveryStep === "password" ? "设置新密码" : "找回密码"}</Text>
                           <Text style={[styles.confirmationText, { color: theme.muted, fontFamily: theme.sans }]}>{recoveryStep === "email" ? "验证码会发送到你的注册邮箱。" : `正在验证 ${recoveryEmail}`}</Text>
                           {recoveryStep === "email" ? (
@@ -765,6 +912,7 @@ export function MeScreen() {
                                 autoComplete="email"
                                 keyboardType="email-address"
                                 textContentType="emailAddress"
+                                onFocus={() => moveFormForKeyboard(true)}
                                 placeholder="name@example.com"
                                 placeholderTextColor={theme.muted}
                                 style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
@@ -777,28 +925,37 @@ export function MeScreen() {
                                 value={recoveryCode}
                                 theme={theme}
                                 onChange={(value) => { setRecoveryCode(value); setLocalError(""); clearFeedback(); }}
+                                onFocus={() => moveFormForKeyboard(true)}
                                 onSubmit={() => void handleRecovery()}
                               />
                             </>
                           ) : (
                             <>
                               <Text style={[styles.fieldLabel, { color: theme.ink, fontFamily: theme.sans }]}>新密码</Text>
-                              <TextInput
+                              <PasswordInput
+                                accessibilityLabel="新密码"
                                 value={recoveryPassword}
                                 onChangeText={(value) => { setRecoveryPassword(value); setLocalError(""); clearFeedback(); }}
                                 autoComplete="new-password"
-                                secureTextEntry
-                                style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
+                                onFocus={() => moveFormForKeyboard(true)}
+                                placeholder="至少 8 位字符"
+                                resetWhenHidden={!loginVisible}
+                                textContentType="newPassword"
+                                theme={theme}
                               />
                               <Text style={[styles.fieldLabel, styles.passwordLabel, { color: theme.ink, fontFamily: theme.sans }]}>再次输入新密码</Text>
-                              <TextInput
+                              <PasswordInput
+                                accessibilityLabel="确认新密码"
                                 value={recoveryPasswordConfirmation}
                                 onChangeText={(value) => { setRecoveryPasswordConfirmation(value); setLocalError(""); clearFeedback(); }}
                                 autoComplete="new-password"
-                                secureTextEntry
+                                onFocus={() => moveFormForKeyboard(true)}
                                 returnKeyType="done"
                                 onSubmitEditing={() => void handleRecovery()}
-                                style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
+                                placeholder="重复输入新密码"
+                                resetWhenHidden={!loginVisible}
+                                textContentType="newPassword"
+                                theme={theme}
                               />
                             </>
                           )}
@@ -816,7 +973,7 @@ export function MeScreen() {
                           <Pressable accessibilityRole="button" disabled={busy} onPress={() => changeAccountMode("login")}>
                             <Text style={[styles.textAction, { color: theme.red, fontFamily: theme.sans }]}>返回登录</Text>
                           </Pressable>
-                        </View>
+                        </Animated.View>
                       )}
                       <View style={[styles.bookFooter, { borderTopColor: theme.rule }]}>
                         <Text style={[styles.bookFooterText, { color: theme.muted, fontFamily: theme.sans }]}>登记日期：二〇二六年</Text>
@@ -965,8 +1122,6 @@ const styles = StyleSheet.create({
   infoRow: { minHeight: 62, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center" },
   infoLabel: { width: 84, fontSize: 11, fontWeight: "700" },
   infoValue: { flex: 1, textAlign: "right", fontSize: 14, fontWeight: "800" },
-  signOutButton: { minHeight: 54, alignItems: "center", justifyContent: "center" },
-  signOutText: { fontSize: 12, fontWeight: "900" },
   sectionGap: { marginTop: 26 },
   settingsRow: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 11 },
   settingsText: { flex: 1, fontSize: 14, fontWeight: "800" },
@@ -1006,6 +1161,9 @@ const styles = StyleSheet.create({
   fieldLabel: { marginBottom: 7, fontSize: 12, fontWeight: "800" },
   passwordLabel: { marginTop: 15 },
   input: { height: 46, borderBottomWidth: 1, paddingHorizontal: 3, fontSize: 14 },
+  passwordInputWrap: { position: "relative" },
+  passwordInput: { paddingRight: 48 },
+  passwordToggle: { position: "absolute", right: 0, bottom: 0, width: 44, height: 46, alignItems: "center", justifyContent: "center" },
   codeEntry: { position: "relative", height: 58 },
   codeSlots: { ...StyleSheet.absoluteFillObject, flexDirection: "row", gap: 6 },
   codeSlot: { flex: 1, alignItems: "center", justifyContent: "center", borderWidth: 1 },
@@ -1042,14 +1200,15 @@ const styles = StyleSheet.create({
   turningFace: {
     ...StyleSheet.absoluteFillObject,
     borderWidth: 1,
-    borderTopLeftRadius: 11,
-    borderBottomLeftRadius: 11,
-    borderTopRightRadius: 15,
-    borderBottomRightRadius: 15,
     overflow: "hidden",
     backfaceVisibility: "hidden",
   },
   turningFront: {
+    borderLeftWidth: 0,
+    borderTopLeftRadius: 0,
+    borderBottomLeftRadius: 0,
+    borderTopRightRadius: 15,
+    borderBottomRightRadius: 15,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1057,6 +1216,11 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 6,
     paddingLeft: 5,
+    borderRightWidth: 0,
+    borderTopLeftRadius: 11,
+    borderBottomLeftRadius: 11,
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
     backfaceVisibility: "visible",
     // The outer leaf uses a negative X scale after crossing the spine. Mirror
     // its back once so the quote remains readable in the settled left page.

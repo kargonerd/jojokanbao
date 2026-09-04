@@ -18,6 +18,7 @@ import { refreshFeatureFlags } from "./featureFlags";
 import { AccountEntry } from "./account/AccountEntry";
 import { TimesSourceSettingsPage } from "./account/pages/TimesSourceSettingsPage";
 import { startAccountSessionSync, useAccountSessionStore } from "./account/session";
+import { DownloadPage } from "./download/DownloadPage";
 
 const AccountConfirmation = lazy(() => import("./account/AccountConfirmation"));
 const ReaderPage = lazy(() =>
@@ -28,6 +29,9 @@ const BookReaderPage = lazy(() =>
 );
 const RagRoutes = lazy(() => import("./rag/RagRoutes"));
 const TimesRoutes = lazy(() => import("./times/TimesRoutes"));
+const OpenSourceLicensesPage = lazy(() =>
+  import("./archive/pages/OpenSourceLicensesPage").then(({ OpenSourceLicensesPage }) => ({ default: OpenSourceLicensesPage })),
+);
 
 const legacyArchivePaths = [...PUBLICATION_NAMES, "search", "support"] as const;
 const redesignedArchivePaths = [...PUBLICATION_NAMES] as const;
@@ -93,6 +97,7 @@ function archiveRoute(platformRedesign: boolean) {
       ))}
       <Route path="search" element={<SearchPage platformRedesign={platformRedesign} />} />
       <Route path="support" element={<SupportPage platformRedesign={platformRedesign} />} />
+      <Route path="support/licenses" element={<LazyRoute><OpenSourceLicensesPage /></LazyRoute>} />
     </Route>
   );
 }
@@ -101,6 +106,7 @@ function LegacyRoutes() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to={ARCHIVE_ROOT} replace />} />
+      <Route path="/download" element={<AppLayout><DownloadPage /></AppLayout>} />
       {archiveRoute(false)}
       <Route path="/reader/*" element={<ArchiveRedirect stripPrefix="/reader" />} />
 
@@ -129,7 +135,9 @@ function RedesignedRoutes() {
           <Route path="library" element={<LibraryPage periodicals={PERIODICALS} />} />
           <Route path="library/:datasetId" element={<LibraryPage periodicals={PERIODICALS} />} />
           <Route path="search" element={<div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage platformRedesign /></div>} />
+          <Route path="download" element={<DownloadPage />} />
           <Route path="support" element={<SupportPage platformRedesign />} />
+          <Route path="support/licenses" element={<LazyRoute><OpenSourceLicensesPage /></LazyRoute>} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="rag/*" element={<AuthenticatedRoute><LazyRoute><RagRoutes /></LazyRoute></AuthenticatedRoute>} />
           <Route path="times/*" element={<AuthenticatedRoute><LazyRoute><TimesRoutes /></LazyRoute></AuthenticatedRoute>} />

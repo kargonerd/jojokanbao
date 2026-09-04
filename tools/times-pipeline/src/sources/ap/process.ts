@@ -28,6 +28,20 @@ function liveBlog(value: unknown): JsonObject | undefined {
   return undefined;
 }
 
+export function isApLiveBlogPage(html: string): boolean {
+  const document = load(html);
+  let found = false;
+  document('script[type="application/ld+json"]').each((_, element) => {
+    if (found) return;
+    try {
+      found = Boolean(liveBlog(JSON.parse(document(element).text())));
+    } catch {
+      // Continue with another publisher-owned JSON-LD block.
+    }
+  });
+  return found;
+}
+
 function newsArticle(value: unknown): JsonObject | undefined {
   if (Array.isArray(value)) {
     for (const item of value) {

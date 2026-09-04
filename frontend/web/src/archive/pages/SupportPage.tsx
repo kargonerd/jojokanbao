@@ -1,6 +1,7 @@
 import weixinImg from "../assets/weixin.png";
 import zfbImg from "../assets/zfb.png";
 import { rollout } from "../../rollout";
+import { Link } from "react-router-dom";
 
 const downloads = [
   { name: "人民日报", links: [
@@ -46,6 +47,16 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
             <a href="https://space.bilibili.com/571556400" target="_blank" rel="noreferrer" className="font-bold"> JOJO看报账号</a>
             下留言或私信反馈
           </p>
+          <Link
+            to={platformRedesign ? "/support/licenses" : "/archive/support/licenses"}
+            className="mt-5 flex min-h-14 items-center justify-between gap-5 border-y border-rule py-3 font-bold text-ink hover:text-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red"
+          >
+            <span>
+              <strong className="block font-serif">开源软件许可</strong>
+              <small className="mt-1 block font-sans text-xs text-muted">查看本项目与第三方软件的许可信息</small>
+            </span>
+            <span aria-hidden="true" className="font-serif text-red">→</span>
+          </Link>
 
           {/* 纪念缅怀 */}
           <h1 className="text-2xl font-bold tracking-wider text-ink border-t border-rule-dark border-b border-b-rule pt-2.5 pb-2.5 mt-7 mb-4">纪念缅怀</h1>

@@ -390,6 +390,12 @@ a.jojo-citation:hover {
   font-weight: 700;
 }
 
+.section-heading-links {
+  display: flex;
+  align-items: baseline;
+  gap: 22px;
+}
+
 .recent-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
