@@ -71,7 +71,7 @@ jobs:
             fi
           }
 
-          write_flag node '^(agent/|frontend/|infrastructure/cloudflare/|tools/(times-pipeline/|[^/]+/web/)|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(release-desktop|release-mobile(-eink)?|maintenance-times[^/]*)\.yml$)'
+          write_flag node '^(agent/|frontend/|infrastructure/cloudflare/|tools/(release/|times-pipeline/|[^/]+/web/)|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(release-desktop|release-mobile(-eink|-ota)?|maintenance-times[^/]*)\.yml$)'
           write_flag all_node '^(\.github/workflows/ci\.yml$|patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$)'
           write_flag desktop_e2e '^(frontend/(desktop|web|packages/(auth|content|pdf-viewer|ui)|tooling/tsconfig|patches)/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(ci|release-desktop)\.yml$)'
           write_flag web_e2e '^(frontend/(web|packages/(auth|pdf-viewer|ui)|tooling/tsconfig|patches)/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(ci|deploy-web)\.yml$)'

@@ -212,6 +212,18 @@ describe("JOJO Web navigation", () => {
     expect(within(memberNavigation).getAllByRole("link").map((link) => link.textContent)).toEqual(["首页", "资料库", "搜索", "AI", "时事"]);
   });
 
+  it("opens the public client download page inside the Reader shell", () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 404 }));
+    renderAt("/download");
+
+    expect(screen.getByRole("heading", { name: "下载客户端" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Windows" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Android" })).toBeTruthy();
+    expect(within(screen.getByRole("navigation", { name: "主导航" })).queryByRole("link", { name: "客户端下载" })).toBeNull();
+    expect(document.querySelector("[data-release-base]")?.getAttribute("data-release-base")).toBe("https://blacknews.jojokanbao.cn/releases");
+    expect(screen.getByRole("button", { name: "返回上一页" })).toBeTruthy();
+  });
+
   it("shows the Beta badge beside mobile AI and Times page titles", () => {
     const navigationItems = buildAppNavigationItems(true);
     const view = render(

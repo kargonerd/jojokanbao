@@ -1,7 +1,7 @@
 {
   "cli": {
     "version": ">= 18.5.0",
-    "appVersionSource": "local"
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -12,18 +12,9 @@
         "EXPO_PUBLIC_APP_VARIANT": "standard"
       }
     },
-    "preview": {
-      "distribution": "internal",
-      "env": {
-        "APP_VARIANT": "standard",
-        "EXPO_PUBLIC_APP_VARIANT": "standard"
-      },
-      "android": {
-        "buildType": "apk"
-      }
-    },
     "production": {
       "autoIncrement": true,
+      "channel": "production-standard",
       "env": {
         "APP_VARIANT": "standard",
         "EXPO_PUBLIC_APP_VARIANT": "standard"
@@ -32,24 +23,29 @@
         "buildType": "app-bundle"
       }
     },
-    "eink-preview": {
+    "release": {
+      "extends": "production",
       "distribution": "internal",
-      "env": {
-        "APP_VARIANT": "eink",
-        "EXPO_PUBLIC_APP_VARIANT": "eink"
-      },
       "android": {
         "buildType": "apk"
       }
     },
     "eink-production": {
       "autoIncrement": true,
+      "channel": "production-eink",
       "env": {
         "APP_VARIANT": "eink",
         "EXPO_PUBLIC_APP_VARIANT": "eink"
       },
       "android": {
         "buildType": "app-bundle"
+      }
+    },
+    "eink-release": {
+      "extends": "eink-production",
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
       }
     }
   },

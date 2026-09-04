@@ -8,6 +8,9 @@ const saveCloseBehavior = vi.fn();
 const getLaunchAtLogin = vi.fn();
 const saveLaunchAtLogin = vi.fn();
 const getAppInfo = vi.fn();
+const getUpdateState = vi.fn();
+const checkForUpdates = vi.fn();
+const installUpdate = vi.fn();
 
 afterEach(cleanup);
 
@@ -16,7 +19,15 @@ beforeEach(() => {
   saveCloseBehavior.mockReset().mockImplementation(async (value) => value);
   getLaunchAtLogin.mockReset().mockResolvedValue(false);
   saveLaunchAtLogin.mockReset().mockImplementation(async (value) => value);
-  getAppInfo.mockReset().mockResolvedValue({ version: '0.0.1-rc1', platform: 'win32', arch: 'x64' });
+  getAppInfo.mockReset().mockResolvedValue({ version: '0.0.1', platform: 'win32', arch: 'x64' });
+  getUpdateState.mockReset().mockResolvedValue({
+    supported: true,
+    phase: 'not-available',
+    currentVersion: '0.0.1',
+    message: '当前已是最新版本。',
+  });
+  checkForUpdates.mockReset().mockResolvedValue({ supported: true, phase: 'checking', currentVersion: '0.0.1', message: '正在检查新版本…' });
+  installUpdate.mockReset().mockResolvedValue(undefined);
   window.jojoDesktop = {
     appName: 'test',
     platform: 'win32',
@@ -25,6 +36,12 @@ beforeEach(() => {
       saveCloseBehavior,
       getLaunchAtLogin,
       saveLaunchAtLogin,
+    },
+    updates: {
+      getState: getUpdateState,
+      check: checkForUpdates,
+      install: installUpdate,
+      onState: () => () => undefined,
     },
     getAppInfo,
   };
@@ -39,7 +56,7 @@ describe('Desktop settings', () => {
     fireEvent.change(closeBehavior, { target: { value: 'quit' } });
     await waitFor(() => expect(saveCloseBehavior).toHaveBeenCalledWith('quit'));
     expect(screen.getByText('已保存')).toBeInTheDocument();
-    expect(screen.getByRole('contentinfo')).toHaveTextContent('版本 0.0.1-rc1');
+    expect(screen.getByRole('contentinfo')).toHaveTextContent('版本 0.0.1');
   });
 
   it('lets the user restore first-close prompting', async () => {
@@ -68,5 +85,14 @@ describe('Desktop settings', () => {
     await screen.findByRole('combobox', { name: '关闭窗口时' });
     expect(screen.queryByRole('checkbox', { name: '开机时启动' })).not.toBeInTheDocument();
     expect(getLaunchAtLogin).not.toHaveBeenCalled();
+  });
+
+  it('checks for application updates from settings', async () => {
+    render(<SettingsPage />);
+
+    const check = await screen.findByRole('button', { name: '检查更新' });
+    fireEvent.click(check);
+    await waitFor(() => expect(checkForUpdates).toHaveBeenCalledOnce());
+    expect(screen.getByText('当前已是最新版本。')).toBeInTheDocument();
   });
 });

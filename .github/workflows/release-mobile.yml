@@ -18,24 +18,40 @@ jobs:
     name: Validate release
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+    env:
+      B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+      B2_BUCKET: ${{ secrets.B2_BUCKET }}
+      B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - name: Validate tag and mobile configuration
+      - id: release
+        name: Validate tag and mobile configuration
         shell: bash
         run: |
           set -euo pipefail
           package_version="$(node -p "require('./frontend/mobile/package.json').version")"
           expo_version="$(node -p "require('./frontend/mobile/app.json').expo.version")"
           test "$package_version" = "$expo_version"
+          if [[ "$package_version" == *-* ]]; then
+            echo "Prerelease versions are not published; use a stable SemVer version." >&2
+            exit 1
+          fi
 
           if [[ "$GITHUB_REF" == refs/tags/mobile-v* ]]; then
             tag_version="${GITHUB_REF_NAME#mobile-v}"
-            if [[ "$tag_version" != "$package_version" && "$tag_version" != "$package_version"-* ]]; then
+            if [[ "$tag_version" != "$package_version" ]]; then
               echo "Tag $GITHUB_REF_NAME does not match mobile package version $package_version." >&2
               exit 1
             fi
+            test -n "$B2_KEY_ID"
+            test -n "$B2_APPLICATION_KEY"
+            test -n "$B2_BUCKET"
           fi
+
+          printf 'version=%s\n' "$package_version" >> "$GITHUB_OUTPUT"
 
           node <<'NODE'
           process.env.APP_VARIANT = "standard";
@@ -53,9 +69,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
+      EXPO_PUBLIC_AGENT_API_URL: https://agent-global.jojokanbao.cn/rag
+      EXPO_PUBLIC_RELEASE_CDN_BASE: ${{ vars.DOWNLOAD_CDN_BASE || 'https://blacknews.jojokanbao.cn' }}/releases
       EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
       EXPO_PUBLIC_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-      EXPO_PUBLIC_AGENT_API_URL: https://agent-global.jojokanbao.cn/rag
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -96,7 +113,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          build_json="$(eas build --platform android --profile preview --non-interactive --wait --json)"
+          build_json="$(eas build --platform android --profile release --non-interactive --wait --json)"
           printf '%s\n' "$build_json" > "$RUNNER_TEMP/eas-build.json"
           build_id="$(jq -er 'if type == "array" then .[0].id else .id end' "$RUNNER_TEMP/eas-build.json")"
 
@@ -117,26 +134,33 @@ jobs:
             echo "Refusing to publish a debuggable APK." >&2
             exit 1
           fi
+          version_code="$(sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" <<< "$badging" | head -n 1)"
+          test "$version_code" -gt 0
+          versioned_artifact_name="JOJO-Kanbao-${version}-b${version_code}.apk"
+          mv "release/$artifact_name" "release/$versioned_artifact_name"
+          artifact_name="$versioned_artifact_name"
+          jq -n --arg buildId "$build_id" --argjson buildNumber "$version_code" \
+            '{buildId: $buildId, buildNumber: $buildNumber}' > release/release-build.json
 
           printf 'build_id=%s\n' "$build_id" >> "$GITHUB_OUTPUT"
           printf 'artifact_name=%s\n' "$artifact_name" >> "$GITHUB_OUTPUT"
 
-      - name: Upload APK
+      - name: Upload APK and build metadata
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: mobile-android
           if-no-files-found: error
           retention-days: 14
-          path: frontend/mobile/release/*.apk
+          path: frontend/mobile/release/*
 
   release:
-    name: Publish GitHub Release
+    name: Publish APK, catalog, and GitHub Release
     if: startsWith(github.ref, 'refs/tags/mobile-v')
     needs:
       - validate
       - build
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:
@@ -148,22 +172,97 @@ jobs:
           name: mobile-android
           path: release
 
-      - name: Create checksum
+      - name: Prepare public release files
         shell: bash
         run: |
           set -euo pipefail
-          cd release
+          mkdir -p github-release
+          cp release/*.apk github-release/
+          cd github-release
           sha256sum ./*.apk > SHA256SUMS.txt
+          cd ..
+          build_number="$(jq -er '.buildNumber' release/release-build.json)"
+          node tools/release/create-release-catalog.mjs \
+            --product mobile \
+            --variant standard \
+            --channel stable \
+            --version "${{ needs.validate.outputs.version }}" \
+            --build-number "$build_number" \
+            --published-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --base-url "${{ vars.DOWNLOAD_CDN_BASE || 'https://blacknews.jojokanbao.cn' }}" \
+            --repository-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --tag "$GITHUB_REF_NAME" \
+            --input release \
+            --output mobile-catalog.json
 
-      - name: Publish release
+      - name: Create draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           release_version="${GITHUB_REF_NAME#mobile-v}"
-          release_flags=(--verify-tag --generate-notes --title "JOJO看报 Android ${release_version}")
-          if [[ "$release_version" == *-* ]]; then
-            release_flags+=(--prerelease)
+          release_flags=(--verify-tag --generate-notes --title "JOJO看报 Android ${release_version}" --draft)
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" github-release/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" github-release/* "${release_flags[@]}"
           fi
-          gh release create "$GITHUB_REF_NAME" release/* "${release_flags[@]}"
+
+      - name: Publish immutable APK to B2
+        env:
+          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y rclone
+          rclone config create jojo-b2 b2 account "$B2_KEY_ID" key "$B2_APPLICATION_KEY" --non-interactive
+          apk="$(find release -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          target="jojo-b2:$B2_BUCKET/releases/mobile/android/stable/$(basename "$apk")"
+          rclone copyto "$apk" "$target" --immutable
+
+      - name: Verify APK through CDN
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="$(jq -er '.artifacts[0].url' mobile-catalog.json)"
+          expected="$(jq -er '.artifacts[0].sha256' mobile-catalog.json)"
+          curl --fail --location --retry 5 --output "$RUNNER_TEMP/mobile.apk" "$url?release=$GITHUB_SHA"
+          actual="$(sha256sum "$RUNNER_TEMP/mobile.apk" | cut -d' ' -f1)"
+          test "$actual" = "$expected"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false
+
+      - name: Publish catalog pointers
+        env:
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="jojo-b2:$B2_BUCKET/releases/mobile/android/stable"
+          rclone copyto mobile-catalog.json "$target/catalog.json"
+          rclone copyto github-release/SHA256SUMS.txt "$target/SHA256SUMS.txt"
+
+      - name: Verify catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          catalog_url="${{ vars.DOWNLOAD_CDN_BASE || 'https://blacknews.jojokanbao.cn' }}/releases/mobile/android/stable/catalog.json?release=$GITHUB_SHA"
+          for attempt in $(seq 1 12); do
+            published_version="$(curl --fail --silent --show-error "$catalog_url" | jq -r '.version' || true)"
+            if [[ "$published_version" == "${{ needs.validate.outputs.version }}" ]]; then break; fi
+            test "$attempt" -lt 12
+            sleep 10
+          done
+          test "$published_version" = "${{ needs.validate.outputs.version }}"
+          node tools/release/verify-release-cdn.mjs \
+            --catalog "$catalog_url" \
+            --version "${{ needs.validate.outputs.version }}" \
+            --origin https://reader.jojokanbao.cn

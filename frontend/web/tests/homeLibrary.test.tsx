@@ -147,6 +147,7 @@ describe("app homepage", () => {
 
     expect(screen.getByRole("heading", { name: "继续阅读" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "我的书架" })).toBeNull();
+    expect(screen.getByRole("link", { name: "客户端" }).getAttribute("href")).toBe("/download");
     expect(screen.getByRole("link", { name: "我的书架" }).getAttribute("href")).toBe("/bookshelf");
     expect(shelfMocks.loadBookshelf).not.toHaveBeenCalled();
   });

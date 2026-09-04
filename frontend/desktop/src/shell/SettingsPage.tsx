@@ -22,6 +22,7 @@ export function SettingsPage() {
   const [closeMessage, setCloseMessage] = useState('');
   const [launchMessage, setLaunchMessage] = useState('');
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
+  const [updateState, setUpdateState] = useState<DesktopUpdateState>();
 
   useEffect(() => {
     const settings = window.jojoDesktop?.settings;
@@ -44,6 +45,13 @@ export function SettingsPage() {
         setLaunchBusy(false);
       });
   }, [launchAtLoginSupported]);
+
+  useEffect(() => {
+    const updates = window.jojoDesktop?.updates;
+    if (!updates) return;
+    void updates.getState().then(setUpdateState).catch(() => undefined);
+    return updates.onState(setUpdateState);
+  }, []);
 
   const updateCloseBehavior = async (value: CloseBehavior) => {
     const settings = window.jojoDesktop?.settings;
@@ -138,6 +146,28 @@ export function SettingsPage() {
             </span>
           </label>
         ) : null}
+      </section>
+
+      <section className="desktop-preference-list desktop-update-preference" aria-label="应用更新">
+        <div className="desktop-preference-row">
+          <div className="desktop-preference-copy">
+            <strong>应用更新</strong>
+            <small>{updateState?.message ?? '正在读取更新状态…'}</small>
+          </div>
+          <div className="desktop-preference-control">
+            {updateState?.phase === 'downloaded' ? (
+              <button type="button" onClick={() => void window.jojoDesktop?.updates?.install()}>重启安装</button>
+            ) : (
+              <button
+                type="button"
+                disabled={!updateState?.supported || updateState.phase === 'checking' || updateState.phase === 'downloading'}
+                onClick={() => void window.jojoDesktop?.updates?.check()}
+              >
+                {updateState?.phase === 'checking' ? '检查中…' : updateState?.phase === 'downloading' ? `下载 ${updateState.progress ?? 0}%` : '检查更新'}
+              </button>
+            )}
+          </div>
+        </div>
       </section>
 
       <footer className="desktop-settings-about" aria-label="关于 JOJO看报">

@@ -24,5 +24,15 @@ contextBridge.exposeInMainWorld('jojoDesktop', {
     saveCloseBehavior: (behavior) => ipcRenderer.invoke('jojo-settings:close-behavior:save', behavior),
     getLaunchAtLogin: () => ipcRenderer.invoke('jojo-settings:launch-at-login:get'),
     saveLaunchAtLogin: (enabled) => ipcRenderer.invoke('jojo-settings:launch-at-login:save', enabled)
+  },
+  updates: {
+    getState: () => ipcRenderer.invoke('jojo-updater:state:get'),
+    check: () => ipcRenderer.invoke('jojo-updater:check'),
+    install: () => ipcRenderer.invoke('jojo-updater:install'),
+    onState: (callback) => {
+      const listener = (_event, state) => callback(state);
+      ipcRenderer.on('jojo-updater:state', listener);
+      return () => ipcRenderer.removeListener('jojo-updater:state', listener);
+    }
   }
 });

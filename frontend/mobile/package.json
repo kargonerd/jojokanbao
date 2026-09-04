@@ -1,6 +1,6 @@
 {
   "name": "@jojo/mobile",
-  "version": "0.0.1-rc1",
+  "version": "0.0.1",
   "main": "index.ts",
   "scripts": {
     "start": "cross-env APP_VARIANT=standard EXPO_PUBLIC_APP_VARIANT=standard expo start",
@@ -39,6 +39,7 @@
     "expo-screen-orientation": "~55.0.20",
     "expo-status-bar": "55.0.6",
     "expo-system-ui": "~55.0.22",
+    "expo-updates": "~55.0.30",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-native": "0.83.10",

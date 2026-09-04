@@ -27,6 +27,7 @@ import { IS_EINK_RELEASE } from "./src/config/appVariant";
 import { selectionHaptic } from "./src/lib/haptics";
 import { useMobileStore } from "./src/store/mobileStore";
 import { mobileTheme } from "./src/theme/tokens";
+import { AppUpdatePrompt } from "./src/components/AppUpdatePrompt";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<MainTabParamList>();
@@ -136,6 +137,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
+      <AppUpdatePrompt />
       <StatusBar style="dark" backgroundColor={theme.paper} />
       <NavigationContainer theme={navigationTheme}>
         <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.paper } }}>

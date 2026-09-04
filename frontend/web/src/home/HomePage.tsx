@@ -169,7 +169,10 @@ export function HomePage({ periodicals = [] }: { periodicals?: readonly Periodic
       <section className="home-reading" aria-labelledby="recent-reading-title">
         <div className="section-heading">
           <h2 id="recent-reading-title">继续阅读</h2>
-          <Link to="/bookshelf">我的书架</Link>
+          <div className="section-heading-links">
+            <Link to="/download">客户端</Link>
+            <Link to="/bookshelf">我的书架</Link>
+          </div>
         </div>
         {recentItems.length > 0 ? (
           <div className="recent-grid">

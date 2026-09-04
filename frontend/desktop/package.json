@@ -1,6 +1,6 @@
 {
   "name": "@jojo/desktop",
-  "version": "0.0.1-rc1",
+  "version": "0.0.1",
   "description": "JOJO看报的阅读、AI 与时事桌面客户端",
   "author": {
     "name": "JOJO Platform Contributors",
@@ -61,6 +61,9 @@
     "vitest": "^3.0.0",
     "zustand": "^5.0.0"
   },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  },
   "build": {
     "appId": "cn.jojokanbao.desktop",
     "productName": "JOJO看报",
@@ -74,14 +77,22 @@
       "electron/**/*",
       "package.json"
     ],
+    "publish": {
+      "provider": "generic",
+      "channel": "latest",
+      "url": "${env.JOJO_RELEASE_CDN_BASE}/releases/desktop/stable/${os}-${arch}"
+    },
     "win": {
       "target": "nsis",
-      "icon": "electron/assets/icon.ico"
+      "icon": "electron/assets/icon.ico",
+      "verifyUpdateCodeSignature": true
     },
     "mac": {
       "target": ["dmg", "zip"],
       "category": "public.app-category.news",
-      "icon": "../web/public/brand/jojo-kanbao-mark.svg"
+      "icon": "../web/public/brand/jojo-kanbao-mark.svg",
+      "hardenedRuntime": true,
+      "notarize": true
     },
     "linux": {
       "target": ["AppImage", "deb"],
