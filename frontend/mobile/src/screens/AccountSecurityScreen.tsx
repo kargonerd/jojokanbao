@@ -348,6 +348,21 @@ export function AccountSecurityScreen() {
     ]);
   };
 
+  const confirmSignOut = () => {
+    Alert.alert("退出当前设备？", "只会退出这台设备，不会影响其他已登录设备。", [
+      { text: "取消", style: "cancel" },
+      {
+        text: "退出登录",
+        style: "destructive",
+        onPress: () => {
+          void signOut()
+            .then(() => navigation.goBack())
+            .catch(() => undefined);
+        },
+      },
+    ]);
+  };
+
   if (!user) {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: theme.paper }]}>
@@ -383,11 +398,7 @@ export function AccountSecurityScreen() {
             title="退出当前设备"
             description="不会影响其他已登录设备。"
             disabled={busy}
-            onPress={() => {
-              void signOut()
-                .then(() => navigation.goBack())
-                .catch(() => undefined);
-            }}
+            onPress={confirmSignOut}
           />
         </View>
 

@@ -35,6 +35,7 @@ import {
 import { SettingsPage } from './SettingsPage';
 
 const AccountConfirmation = lazy(() => import('@jojo/web/account-confirmation'));
+const OpenSourceLicensesRoute = lazy(() => import('./OpenSourceLicensesRoute'));
 
 function DesktopRuntime() {
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
@@ -177,6 +178,10 @@ export function createDesktopRoutes(): RouteObject[] {
               element: <div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage openResultsInNewTab={false} platformRedesign /></div>,
             },
             { path: 'support', element: <SupportPage platformRedesign /> },
+            {
+              path: 'support/licenses',
+              element: <Suspense fallback={null}><OpenSourceLicensesRoute /></Suspense>,
+            },
             { path: 'notifications', element: <NotificationsPage /> },
             { path: 'settings', element: <SettingsPage /> },
             { path: 'rag/*', element: <AuthenticatedRoute><RagRoutes /></AuthenticatedRoute> },

@@ -159,11 +159,12 @@ describe("native source modules", () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  it("maps DW articles and liveblogs while omitting videos", async () => {
+  it("maps DW articles while omitting liveblogs and videos", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ data: { content: {
       contentComposition: { informationSpaces: [{ main: [{ contents: [
         { id: 1, __typename: "Article", namedUrl: "/en/story/a-1", title: "Story", contentDate: "2026-08-25T10:00:00Z" },
         { id: 2, __typename: "Video", namedUrl: "/en/video/av-2", title: "Video", contentDate: "2026-08-25T10:00:00Z" },
+        { id: 3, __typename: "Liveblog", namedUrl: "/en/developing-story/live-3", title: "Updates", contentDate: "2026-08-25T10:00:00Z" },
       ] }] }] },
     } } }), { status: 200 })));
     const config = source("dw", {
@@ -276,6 +277,22 @@ describe("native source modules", () => {
     expect(sourceUnavailablePageReason(source("nyt", endpoint), input({
       html: "You have a preview view of this article while we are checking your access. Subscribe for all of The Times.",
     }))).toBeUndefined();
+    expect(sourceUnavailablePageReason(source("ap", endpoint), input({
+      hasFullBody: true,
+      html: '<script type="application/ld+json">{"@type":"LiveBlogPosting","liveBlogUpdate":[]}</script>',
+    }))).toBe("UnsupportedMedia");
+    expect(sourceUnavailablePageReason(source("ap", endpoint), input({
+      hasFullBody: true,
+      html: '<script type="application/ld+json">{"@type":"NewsArticle","headline":"A live music report"}</script>',
+    }))).toBeUndefined();
+    expect(sourceUnavailablePageReason(source("reuters", endpoint), input({
+      hasFullBody: true,
+      html: '<script id="fusion-metadata">Fusion.globalContent={"result":{"subtype":"live-blog","content_elements":[{"type":"live-blog"}]}};Fusion.contentCache={};</script>',
+    }))).toBe("UnsupportedMedia");
+    expect(sourceUnavailablePageReason(source("reuters", endpoint), input({
+      hasFullBody: true,
+      html: '<script id="fusion-metadata">Fusion.globalContent={"result":{"subtype":"story","title":"Saturday Night Live"}};Fusion.contentCache={};</script>',
+    }))).toBeUndefined();
   });
 
   it("keeps Xinhua image stories as image-led articles", () => {
@@ -321,7 +338,7 @@ describe("native source modules", () => {
     expect(acceptSourceCandidate("focus-taiwan", candidate)).toBe(false);
   });
 
-  it("keeps NYT live parents and excludes duplicate deep updates", () => {
+  it("excludes both NYT live parents and their deep updates", () => {
     const candidate = (canonicalUrl: string): Candidate => ({
       articleId: "nyt:test",
       sourceId: "nyt",
@@ -339,13 +356,13 @@ describe("native source modules", () => {
     const update = candidate("https://www.nytimes.com/live/2026/08/28/world/nepal-tibet-flash-floods/bharatpur-bodies-morgues");
     const article = candidate("https://www.nytimes.com/2026/08/28/world/asia/nepal-bodies-morgues.html");
 
-    expect(acceptSourceCandidate("nyt", parent)).toBe(true);
+    expect(acceptSourceCandidate("nyt", parent)).toBe(false);
     expect(acceptSourceCandidate("nyt", update)).toBe(false);
     expect(acceptSourceCandidate("nyt", article)).toBe(true);
     expect(processSourceCandidate("nyt", update)).toEqual(expect.objectContaining({ captureStatus: "duplicate" }));
   });
 
-  it("excludes Guardian audio pages while retaining written reports", () => {
+  it("excludes Guardian audio and live pages while retaining written reports", () => {
     expect(acceptSourceUrl(
       "guardian",
       "https://www.theguardian.com/australia-news/audio/2026/aug/31/full-story-podcast",
@@ -353,6 +370,14 @@ describe("native source modules", () => {
     expect(acceptSourceUrl(
       "guardian",
       "https://www.theguardian.com/world/2026/aug/31/written-report",
+    )).toBe(true);
+    expect(acceptSourceUrl(
+      "guardian",
+      "https://www.theguardian.com/politics/live/2026/sep/03/latest-news-updates",
+    )).toBe(false);
+    expect(acceptSourceUrl(
+      "guardian",
+      "https://www.theguardian.com/music/2026/aug/29/a-live-music-venue-is-closing",
     )).toBe(true);
   });
 
@@ -372,6 +397,33 @@ describe("native source modules", () => {
     expect(acceptSourceUrl(
       "bloomberg",
       "https://example.com/news/audio/2026-08-31/written-report",
+    )).toBe(true);
+    expect(acceptSourceUrl(
+      "bloomberg",
+      "https://www.bloomberg.com/news/live-blog/2026-09-03/ftse-100-live",
+    )).toBe(false);
+    expect(acceptSourceUrl(
+      "bloomberg",
+      "https://www.bloomberg.com/news/articles/2026-09-03/cnbc-cancels-some-daily-live-shows",
+    )).toBe(true);
+  });
+
+  it("excludes Al Jazeera and DW live URL formats without title heuristics", () => {
+    expect(acceptSourceUrl(
+      "aljazeera",
+      "https://www.aljazeera.com/news/liveblog/2026/9/3/iran-war-live",
+    )).toBe(false);
+    expect(acceptSourceUrl(
+      "aljazeera",
+      "https://www.aljazeera.com/news/2026/9/3/live-music-report",
+    )).toBe(true);
+    expect(acceptSourceUrl(
+      "dw",
+      "https://www.dw.com/en/germany-updates/live-78669282",
+    )).toBe(false);
+    expect(acceptSourceUrl(
+      "dw",
+      "https://www.dw.com/en/live-music-venue/a-78669282",
     )).toBe(true);
   });
 });

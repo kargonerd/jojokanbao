@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../auth";
 import { PersonalInvitationPanel } from "../components/PersonalInvitationPanel";
+import { PasswordInput } from "../components/PasswordInput";
 import { TimesLanguagePreference } from "../components/TimesLanguagePreference";
 
 interface AccountCenterPageProps {
@@ -216,7 +217,7 @@ export function AccountCenterPage({ userId, onForgotPassword }: AccountCenterPag
           {dialogFeedback && <p role="alert" className="mb-0 mt-5 border-l-4 border-red bg-[#fbf3f3] px-4 py-3 text-sm font-bold leading-6 text-red">{dialogFeedback}</p>}
 
           <form className="mt-6 grid gap-4" onSubmit={savePassword}>
-            <label className="grid gap-2 font-sans text-xs font-bold text-ink"><span>当前密码</span><input autoFocus type="password" autoComplete="current-password" value={currentPassword} disabled={busy} required onChange={(event) => setCurrentPassword(event.target.value)} className="min-h-11 border border-ink bg-paper px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red" /></label>
+            <label className="grid gap-2 font-sans text-xs font-bold text-ink"><span>当前密码</span><PasswordInput aria-label="当前密码" autoFocus autoComplete="current-password" value={currentPassword} disabled={busy} required showLabel="显示当前密码" hideLabel="隐藏当前密码" onChange={(event) => setCurrentPassword(event.target.value)} className="min-h-11 border border-ink bg-paper px-3 pr-12 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red" /></label>
             <button
               type="button"
               disabled={busy}
@@ -225,8 +226,8 @@ export function AccountCenterPage({ userId, onForgotPassword }: AccountCenterPag
             >
               忘记当前密码？通过邮箱验证码重设
             </button>
-            <label className="grid gap-2 font-sans text-xs font-bold text-ink"><span>新密码</span><input type="password" autoComplete="new-password" minLength={8} value={newPassword} disabled={busy} required onChange={(event) => setNewPassword(event.target.value)} className="min-h-11 border border-ink bg-paper px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red" /></label>
-            <label className="grid gap-2 font-sans text-xs font-bold text-ink"><span>再次输入新密码</span><input type="password" autoComplete="new-password" minLength={8} value={newPasswordConfirmation} disabled={busy} required onChange={(event) => setNewPasswordConfirmation(event.target.value)} className="min-h-11 border border-ink bg-paper px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red" /></label>
+            <label className="grid gap-2 font-sans text-xs font-bold text-ink"><span>新密码</span><PasswordInput aria-label="新密码" autoComplete="new-password" minLength={8} value={newPassword} disabled={busy} required showLabel="显示新密码" hideLabel="隐藏新密码" onChange={(event) => setNewPassword(event.target.value)} className="min-h-11 border border-ink bg-paper px-3 pr-12 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red" /></label>
+            <label className="grid gap-2 font-sans text-xs font-bold text-ink"><span>再次输入新密码</span><PasswordInput aria-label="再次输入新密码" autoComplete="new-password" minLength={8} value={newPasswordConfirmation} disabled={busy} required showLabel="显示确认新密码" hideLabel="隐藏确认新密码" onChange={(event) => setNewPasswordConfirmation(event.target.value)} className="min-h-11 border border-ink bg-paper px-3 pr-12 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red" /></label>
             <div className="mt-2 flex justify-end gap-3 border-t border-rule pt-5">
               <button type="button" disabled={busy} onClick={closeDialog} className={secondaryButtonClass}>取消</button>
               <button type="submit" disabled={busy} className={primaryButtonClass}>{busy ? "处理中…" : "保存新密码"}</button>
@@ -248,7 +249,7 @@ export function AccountCenterPage({ userId, onForgotPassword }: AccountCenterPag
           {dialogFeedback && <p role="alert" className="mb-0 mt-5 border-l-4 border-red bg-[#fbf3f3] px-4 py-3 text-sm font-bold leading-6 text-red">{dialogFeedback}</p>}
 
           <form className="mt-6 grid gap-4" onSubmit={removeAccount}>
-            <label className="grid gap-2 font-sans text-xs font-bold text-ink"><span>当前密码</span><input autoFocus type="password" autoComplete="current-password" value={deletePassword} disabled={busy} required onChange={(event) => setDeletePassword(event.target.value)} className="min-h-11 border border-ink bg-paper px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red" /></label>
+            <label className="grid gap-2 font-sans text-xs font-bold text-ink"><span>当前密码</span><PasswordInput aria-label="当前密码" autoFocus autoComplete="current-password" value={deletePassword} disabled={busy} required showLabel="显示当前密码" hideLabel="隐藏当前密码" onChange={(event) => setDeletePassword(event.target.value)} className="min-h-11 border border-ink bg-paper px-3 pr-12 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red" /></label>
             <label className="grid gap-2 font-sans text-xs font-bold text-ink"><span>输入“注销账号”确认</span><input type="text" autoComplete="off" value={deletePhrase} disabled={busy} required onChange={(event) => setDeletePhrase(event.target.value)} className="min-h-11 border border-ink bg-paper px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red" /></label>
             <div className="mt-2 flex justify-end gap-3 border-t border-rule pt-5">
               <button type="button" disabled={busy} onClick={closeDialog} className={secondaryButtonClass}>取消</button>

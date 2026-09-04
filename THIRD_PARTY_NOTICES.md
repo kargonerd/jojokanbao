@@ -11,11 +11,13 @@ Node.js 依赖由各 workspace 的 `package.json` 和根目录 `pnpm-lock.yaml` 
 包含 MIT、Apache-2.0、BSD、ISC、MPL-2.0、CC0、CC-BY-4.0、Python-2.0、
 BlueOak-1.0.0、Unlicense 及声明的多重许可证组合。
 
-可使用以下命令检查当前锁定版本的许可证：
+Web、Desktop、Android 与墨水屏版本的“开源软件许可”页面由锁定依赖自动生成，
+并随发布产物离线分发。可使用以下命令重新生成并检查清单：
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm licenses list
+pnpm notices:generate
+pnpm notices:check
 ```
 
 ### PDF.js

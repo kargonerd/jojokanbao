@@ -327,12 +327,21 @@ describe("Support page", () => {
       expect(screen.getByRole("heading", { name })).toBeTruthy();
     }
     expect(screen.queryByRole("link", { name: "打开旧版 JOJO 看报" })).toBeNull();
-    expect(screen.queryByText("开源项目")).toBeNull();
-    expect(screen.queryByRole("link", { name: "GitHub 查看源码" })).toBeNull();
+    expect(screen.getByRole("link", { name: /开源软件许可/ }).getAttribute("href")).toBe("/support/licenses");
     expect(screen.getByText("974380749")).toBeTruthy();
     expect(screen.getByRole("link", { name: /纪念毛主席诞辰132周年/ }).getAttribute("target")).toBe("_blank");
     expect(screen.getAllByRole("link", { name: "OneDrive下载" })).toHaveLength(5);
     expect(screen.getByRole("img", { name: "微信" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "支付宝" })).toBeTruthy();
+  });
+
+  it("shows the generated open-source software list and project license", async () => {
+    renderAt("/support/licenses");
+
+    expect(await screen.findByRole("heading", { name: "开源软件许可" }, { timeout: 5_000 })).toBeTruthy();
+    expect(screen.getByText(/Web 版/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "GitHub 查看源码" }).getAttribute("href")).toBe("https://github.com/kargonerd/jojokanbao");
+    expect(screen.getByRole("button", { name: /^react \d/ })).toBeTruthy();
+    expect(screen.getByText(/GNU AFFERO GENERAL PUBLIC LICENSE/)).toBeTruthy();
   });
 });

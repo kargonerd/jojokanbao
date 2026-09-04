@@ -29,6 +29,9 @@ const BookReaderPage = lazy(() =>
 );
 const RagRoutes = lazy(() => import("./rag/RagRoutes"));
 const TimesRoutes = lazy(() => import("./times/TimesRoutes"));
+const OpenSourceLicensesPage = lazy(() =>
+  import("./archive/pages/OpenSourceLicensesPage").then(({ OpenSourceLicensesPage }) => ({ default: OpenSourceLicensesPage })),
+);
 
 const legacyArchivePaths = [...PUBLICATION_NAMES, "search", "support"] as const;
 const redesignedArchivePaths = [...PUBLICATION_NAMES] as const;
@@ -94,6 +97,7 @@ function archiveRoute(platformRedesign: boolean) {
       ))}
       <Route path="search" element={<SearchPage platformRedesign={platformRedesign} />} />
       <Route path="support" element={<SupportPage platformRedesign={platformRedesign} />} />
+      <Route path="support/licenses" element={<LazyRoute><OpenSourceLicensesPage /></LazyRoute>} />
     </Route>
   );
 }
@@ -133,6 +137,7 @@ function RedesignedRoutes() {
           <Route path="search" element={<div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage platformRedesign /></div>} />
           <Route path="download" element={<DownloadPage />} />
           <Route path="support" element={<SupportPage platformRedesign />} />
+          <Route path="support/licenses" element={<LazyRoute><OpenSourceLicensesPage /></LazyRoute>} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="rag/*" element={<AuthenticatedRoute><LazyRoute><RagRoutes /></LazyRoute></AuthenticatedRoute>} />
           <Route path="times/*" element={<AuthenticatedRoute><LazyRoute><TimesRoutes /></LazyRoute></AuthenticatedRoute>} />

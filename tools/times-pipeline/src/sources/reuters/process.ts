@@ -2,6 +2,15 @@ import { semanticHtmlBlocks, type BodyQuality } from "../../content/paragraphs.j
 import type { Candidate } from "../../types.js";
 import { reutersFusionResult, reutersObject } from "./fusion.js";
 
+export function isReutersLiveBlogPage(html: string): boolean {
+  const result = reutersFusionResult(html);
+  if (result?.subtype === "live-blog") return true;
+  const primaryTag = reutersObject(result?.primary_tag);
+  if (primaryTag?.slug === "live-blog") return true;
+  const elements = Array.isArray(result?.content_elements) ? result.content_elements : [];
+  return elements.some((value) => reutersObject(value)?.type === "live-blog");
+}
+
 function escapeHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
