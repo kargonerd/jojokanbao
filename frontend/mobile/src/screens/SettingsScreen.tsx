@@ -18,7 +18,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionTitle } from "../components/SectionTitle";
 import { IS_EINK_RELEASE } from "../config/appVariant";
-import { selectionHaptic } from "../lib/haptics";
+import { selectionHaptic, toggleHaptic } from "../lib/haptics";
 import { mobileTimesApi, timesSourceName } from "../lib/times";
 import type { RootStackParamList, SettingsSection } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
@@ -127,22 +127,34 @@ export function SettingsScreen() {
           <SettingRow
             title="阅读时不自动锁屏"
             value={keepScreenAwake}
-            onValueChange={setKeepScreenAwake}
+            onValueChange={(value) => {
+              setKeepScreenAwake(value);
+              void toggleHaptic(hapticsEnabled, value);
+            }}
           />
           <SettingRow
             title="阅读时允许横屏"
             value={allowLandscape}
-            onValueChange={setAllowLandscape}
+            onValueChange={(value) => {
+              setAllowLandscape(value);
+              void toggleHaptic(hapticsEnabled, value);
+            }}
           />
           <SettingRow
             title="正文首行缩进"
             value={bookFirstLineIndent}
-            onValueChange={setBookFirstLineIndent}
+            onValueChange={(value) => {
+              setBookFirstLineIndent(value);
+              void toggleHaptic(hapticsEnabled, value);
+            }}
           />
           <SettingRow
             title="点击左侧翻到下一页"
             value={leftTapNext}
-            onValueChange={setLeftTapNext}
+            onValueChange={(value) => {
+              setLeftTapNext(value);
+              void toggleHaptic(hapticsEnabled, value);
+            }}
           />
 
           <View style={[styles.scaleSection, styles.scaleSectionDivider, { borderBottomColor: theme.rule }]}>
@@ -239,10 +251,11 @@ export function SettingsScreen() {
           <View style={[styles.panel, { backgroundColor: theme.paper, borderColor: theme.rule }]}>
             <SettingRow
               title="触感反馈"
+              description="切换页面、翻页、打开内容与调整选项时提供触感"
               value={hapticsEnabled}
               onValueChange={(value) => {
                 setHapticsEnabled(value);
-                void selectionHaptic(value);
+                void toggleHaptic(hapticsEnabled || value, value);
               }}
             />
           </View>
@@ -269,7 +282,10 @@ export function SettingsScreen() {
                         key={option.value}
                         accessibilityRole="button"
                         accessibilityState={{ selected }}
-                        onPress={() => setTimesLanguage(option.value)}
+                        onPress={() => {
+                          setTimesLanguage(option.value);
+                          void selectionHaptic(hapticsEnabled);
+                        }}
                         style={[
                           styles.scaleButton,
                           { borderColor: selected ? theme.red : theme.rule, backgroundColor: selected ? theme.red : theme.paper },
@@ -289,7 +305,10 @@ export function SettingsScreen() {
                     : "正在载入媒体列表…"}
                   value={allTimesSourcesEnabled}
                   disabled={timesSources.length <= 1}
-                  onValueChange={(enabled) => setAllTimesSourcesEnabled(enabled, timesSourceIds)}
+                  onValueChange={(enabled) => {
+                    setAllTimesSourcesEnabled(enabled, timesSourceIds);
+                    void toggleHaptic(hapticsEnabled, enabled);
+                  }}
                 />
                 {timesSources.map((source) => {
                   const enabled = !disabledTimesSources.has(source.id);
@@ -300,7 +319,10 @@ export function SettingsScreen() {
                       description={source.language === "zh-CN" ? "中文" : "外文"}
                       value={enabled}
                       disabled={enabled && enabledTimesSourceCount === 1}
-                      onValueChange={(nextEnabled) => setTimesSourceEnabled(source.id, nextEnabled, timesSourceIds)}
+                      onValueChange={(nextEnabled) => {
+                        setTimesSourceEnabled(source.id, nextEnabled, timesSourceIds);
+                        void toggleHaptic(hapticsEnabled, nextEnabled);
+                      }}
                     />
                   );
                 })}

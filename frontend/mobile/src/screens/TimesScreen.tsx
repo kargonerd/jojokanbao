@@ -17,6 +17,7 @@ import { useMobileAuthStore } from "../account/auth";
 import { AuthenticatedFeatureGate } from "../components/AuthenticatedFeatureGate";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { IS_EINK_RELEASE } from "../config/appVariant";
+import { impactHaptic, selectionHaptic } from "../lib/haptics";
 import {
   firstTimesTimelineCursor,
   leadTimesImage,
@@ -141,6 +142,7 @@ export function TimesScreen() {
   const readIds = useMobileStore((state) => state.timesReadArticleIds);
   const markRead = useMobileStore((state) => state.markTimesArticleRead);
   const disabledSourceIds = useMobileStore((state) => state.timesDisabledSourceIds);
+  const hapticsEnabled = useMobileStore((state) => state.hapticsEnabled);
   const theme = mobileTheme;
   const generation = useRef(0);
   const loadingMoreRef = useRef(false);
@@ -242,7 +244,14 @@ export function TimesScreen() {
     <SafeAreaView edges={["top"]} style={[styles.safe, { backgroundColor: theme.paper }]}>
       <ScreenHeader title="时事" showAccount />
       <View style={[styles.filterBar, { borderBottomColor: theme.ruleDark, backgroundColor: theme.paper }]}>
-        <Pressable accessibilityRole="button" onPress={() => setSourcePickerOpen(true)} style={styles.filterButton}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            void selectionHaptic(hapticsEnabled);
+            setSourcePickerOpen(true);
+          }}
+          style={styles.filterButton}
+        >
           {selectedSourceItem ? <SourceMark source={selectedSourceItem} compact /> : <Ionicons name="grid-outline" size={21} color={theme.red} />}
           <Text numberOfLines={1} style={[styles.filterLabel, { color: theme.ink, fontFamily: theme.serif }]}>{selectedSourceLabel}</Text>
           <Text style={[styles.filterAction, { color: theme.red, fontFamily: theme.sans }]}>筛选</Text>
@@ -264,6 +273,7 @@ export function TimesScreen() {
               article={item}
               read={readSet.has(item.id)}
               onPress={() => {
+                void impactHaptic(hapticsEnabled);
                 markRead(item.id);
                 navigation.navigate("TimesDetail", { issueDate: item.issueDate, newsId: item.id });
               }}
@@ -319,7 +329,11 @@ export function TimesScreen() {
                   <Pressable
                     accessibilityRole="button"
                     accessibilityState={{ selected }}
-                    onPress={() => { setSelectedSource(item.id); setSourcePickerOpen(false); }}
+                    onPress={() => {
+                      void selectionHaptic(hapticsEnabled);
+                      setSelectedSource(item.id);
+                      setSourcePickerOpen(false);
+                    }}
                     style={[styles.sourceRow, { borderBottomColor: theme.rule, borderLeftColor: selected ? theme.red : "transparent" }]}
                   >
                     {item.id === "all" ? <Ionicons name="grid-outline" size={22} color={theme.red} /> : <SourceMark source={item} compact />}

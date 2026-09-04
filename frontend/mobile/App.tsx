@@ -24,6 +24,8 @@ import { TimesDetailScreen } from "./src/screens/TimesDetailScreen";
 import { NotificationsScreen } from "./src/screens/NotificationsScreen";
 import { BookshelfScreen } from "./src/screens/BookshelfScreen";
 import { IS_EINK_RELEASE } from "./src/config/appVariant";
+import { selectionHaptic } from "./src/lib/haptics";
+import { useMobileStore } from "./src/store/mobileStore";
 import { mobileTheme } from "./src/theme/tokens";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -50,6 +52,7 @@ function MainTabs() {
   const insets = useSafeAreaInsets();
   const initialized = useMobileAuthStore((state) => state.initialized);
   const user = useMobileAuthStore((state) => state.user);
+  const hapticsEnabled = useMobileStore((state) => state.hapticsEnabled);
   const authenticated = initialized && Boolean(user);
 
   return (
@@ -57,6 +60,9 @@ function MainTabs() {
       initialRouteName="Today"
       backBehavior="initialRoute"
       detachInactiveScreens
+      screenListeners={{
+        tabPress: () => { void selectionHaptic(hapticsEnabled); },
+      }}
       screenOptions={({ route }) => ({
         headerShown: false,
         lazy: true,
