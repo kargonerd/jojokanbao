@@ -71,9 +71,14 @@ def remote_exists(day):
         stderr=subprocess.PIPE,
         text=True,
     )
-    if result.returncode != 0:
-        print(f"[2/8] File does not exist (returncode={result.returncode}).", flush=True)
+    if result.returncode == 3:
+        print("[2/8] File does not exist.", flush=True)
         return False
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()[:1000]
+        raise RuntimeError(
+            f"Failed to check {path} (returncode={result.returncode}): {detail}"
+        )
     stdout = result.stdout.strip().replace("\n", "").replace(" ", "")
     exists = stdout != "[]" and stdout != ""
     print(f"[2/8] File exists: {exists}", flush=True)

@@ -87,7 +87,9 @@ Internal local tools participate in CI but do not need a deployment workflow.
 Scheduled and manually operated data tasks remain independent workflows:
 
 - `maintenance-purge-archive-pdf-cache.yml`
-- `maintenance-sync-rmrb.yml`
+- `maintenance-sync-rmrb.yml` — accepts the external daily Cloudflare trigger,
+  receives an explicit Shanghai business date, and safely skips an object that
+  already exists
 - `maintenance-times-capture.yml` — accepts the external five-minute Cloudflare trigger, checks a three-hour discovery lookback for late URLs, captures the primary one-hour window plus unseen/retry pages and images, and publishes an immutable Raw job to the private HF Runtime Bucket
 - `maintenance-times-process.yml` — after an automatic Capture succeeds, stages an immutable Process generation, publishes B2 Delivery, then advances the committed Runtime pointer and job status
 - `maintenance-times-runtime-cleanup.yml` — applies the 14/30-day Runtime job retention policy with an exact-path deletion cap
@@ -102,29 +104,29 @@ that verified package directly; a cache miss falls back to a filtered install
 and build, while normal production runs do not repeat typechecking, tests, or
 compilation.
 
-The scheduler implementation and deployment instructions live in
-`infrastructure/cloudflare/times-scheduler`. Cloudflare only supplies the
-clock; browser capture and publication continue to run on GitHub-hosted
-runners.
+The shared scheduler implementation and deployment instructions live in
+`infrastructure/cloudflare/maintenance-scheduler`. One Cloudflare minute tick
+evaluates the versioned Times and RMRB task definitions. Cloudflare only
+supplies the clock, task-level dispatch policy, and dispatch monitoring;
+browser capture, PDF synchronization, and publication continue to run on
+GitHub-hosted runners.
 
 ## Maintenance monitoring
 
-Healthchecks.io provides the external dead-man switch, with a Feishu webhook
-assigned to each check. The maintenance environment holds private ping URLs in
-these secrets:
+Healthchecks.io provides the external dead-man switch. The GitHub `maintenance`
+environment holds one project-level `HEALTHCHECKS_PING_KEY`; every scheduled
+workflow derives its check from the configured task id. The Cloudflare Worker
+holds one project-level `HEALTHCHECKS_API_KEY` and automatically creates or
+updates each task check, including its cron, timezone, grace period, metadata,
+and all existing project integrations. New tasks do not need a new check or
+secret; see the scheduler README for one-time provisioning and legacy-check
+migration.
 
-- `HEALTHCHECKS_TIMES_PIPELINE_URL` — shared by automatic Capture and Process;
-  Capture reports only failure, and Process reports the final pipeline outcome
-- `HEALTHCHECKS_RMRB_SYNC_URL` — scheduled RMRB runs report start and final
-  outcome; manual runs do not affect the production check
-
-The Cloudflare scheduler separately holds
-`HEALTHCHECKS_TIMES_SCHEDULER_URL` and the same
-`HEALTHCHECKS_TIMES_PIPELINE_URL`; see its README for provisioning commands.
-Monitoring calls use `tools/monitoring/ping-healthchecks.sh`, attach the GitHub
-run URL as diagnostic text, and are best effort so a monitoring outage cannot
-block data publication. A missing success ping still produces an alert after
-the check's configured grace period.
+Monitoring calls use
+`tools/monitoring/ping-healthchecks.sh`, attach task, slot, failure type, and
+GitHub run diagnostics, and are best effort so a monitoring outage cannot block
+data publication. A missing success ping still produces an alert after the
+check's configured grace period.
 
 Do not add a feature-specific CI workflow. Add a package script or a focused
 job to `ci.yml`; create another workflow only when its trigger, permissions, or

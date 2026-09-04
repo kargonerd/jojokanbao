@@ -69,7 +69,7 @@ jobs:
       JOJO_TIMES_TRANSLATION_BATCH_TIMEOUT_MS: "1440000"
       JOJO_TIMES_TRANSLATION_CHUNK_CHARACTERS: "20000"
       JOJO_DELIVERY_REMOTE: jojo-b2:${{ secrets.B2_BUCKET }}
-      HEALTHCHECKS_TIMES_PIPELINE_URL: ${{ secrets.HEALTHCHECKS_TIMES_PIPELINE_URL }}
+      HEALTHCHECKS_PING_KEY: ${{ secrets.HEALTHCHECKS_PING_KEY }}
       TIMES_PUBLISH: ${{ github.event_name == 'workflow_run' || inputs.publish }}
       TIMES_BOOTSTRAP: ${{ github.event_name == 'workflow_dispatch' && inputs.bootstrap || false }}
       TIMES_CAPTURE_RUN_ID: ${{ inputs.capture_run_id || '' }}
@@ -504,9 +504,10 @@ jobs:
         if: ${{ always() && github.event_name == 'workflow_run' }}
         continue-on-error: true
         env:
-          HEALTHCHECKS_PING_URL: ${{ env.HEALTHCHECKS_TIMES_PIPELINE_URL }}
           HEALTHCHECKS_SIGNAL: ${{ job.status == 'success' && 'success' || 'fail' }}
+          HEALTHCHECKS_TASK_ID: times-capture
           HEALTHCHECKS_STAGE: times-process
           HEALTHCHECKS_STATUS: ${{ job.status }}
+          HEALTHCHECKS_FAILURE_TYPE: ${{ job.status == 'success' && '' || 'run-failed' }}
           HEALTHCHECKS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: bash tools/monitoring/ping-healthchecks.sh
