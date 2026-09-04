@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const updaterSource = readFileSync(resolve(process.cwd(), 'electron/updater.js'), 'utf8');
 const mainSource = readFileSync(resolve(process.cwd(), 'electron/main.js'), 'utf8');
+const packageConfig = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8'));
 
 describe('desktop updater wiring', () => {
   it('keeps updates in the main process and verifies the renderer sender', () => {
@@ -11,6 +12,7 @@ describe('desktop updater wiring', () => {
     expect(updaterSource).toContain("event.sender !== window.webContents");
     expect(updaterSource).toContain("autoUpdater.allowDowngrade = false");
     expect(updaterSource).toContain("autoUpdater.allowPrerelease = false");
+    expect(updaterSource).toContain("process.platform !== 'darwin'");
     expect(updaterSource).toContain("process.platform !== 'linux' || Boolean(process.env.APPIMAGE)");
     expect(updaterSource).toContain("autoUpdater.quitAndInstall(false, true)");
   });
@@ -19,5 +21,12 @@ describe('desktop updater wiring', () => {
     expect(mainSource).toContain('setupDesktopUpdater({');
     expect(mainSource).toContain('beforeInstall: () => { isQuitting = true; }');
     expect(mainSource).toContain('stopDesktopUpdater();');
+  });
+
+  it('packages the initial desktop release without platform signing', () => {
+    expect(packageConfig.build.win.verifyUpdateCodeSignature).toBe(false);
+    expect(packageConfig.build.mac.identity).toBeNull();
+    expect(packageConfig.build.mac.hardenedRuntime).toBe(false);
+    expect(packageConfig.build.mac.notarize).toBe(false);
   });
 });

@@ -21,16 +21,9 @@ jobs:
     outputs:
       version: ${{ steps.release.outputs.version }}
     env:
-      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
       B2_BUCKET: ${{ secrets.B2_BUCKET }}
       B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
-      MACOS_CSC_KEY_PASSWORD: ${{ secrets.MACOS_CSC_KEY_PASSWORD }}
-      MACOS_CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
-      WINDOWS_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
-      WINDOWS_CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -62,14 +55,6 @@ jobs:
             test -n "$B2_BUCKET"
           fi
 
-          test -n "$WINDOWS_CSC_LINK"
-          test -n "$WINDOWS_CSC_KEY_PASSWORD"
-          test -n "$MACOS_CSC_LINK"
-          test -n "$MACOS_CSC_KEY_PASSWORD"
-          test -n "$APPLE_ID"
-          test -n "$APPLE_APP_SPECIFIC_PASSWORD"
-          test -n "$APPLE_TEAM_ID"
-
           printf 'version=%s\n' "$package_version" >> "$GITHUB_OUTPUT"
 
   build:
@@ -85,32 +70,23 @@ jobs:
             os: windows-latest
             artifact: desktop-windows-x64
             feed: win-x64
-            signing: windows
             builder_args: --win nsis --x64
           - label: macOS Apple Silicon
             os: macos-latest
             artifact: desktop-macos-arm64
             feed: mac-arm64
-            signing: macos
             builder_args: --mac dmg zip --arm64
           - label: macOS Intel
             os: macos-15-intel
             artifact: desktop-macos-x64
             feed: mac-x64
-            signing: macos
             builder_args: --mac dmg zip --x64
           - label: Linux x64
             os: ubuntu-latest
             artifact: desktop-linux-x64
             feed: linux-x64
-            signing: none
             builder_args: --linux AppImage deb --x64
     env:
-      APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.signing == 'macos' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
-      APPLE_ID: ${{ matrix.signing == 'macos' && secrets.APPLE_ID || '' }}
-      APPLE_TEAM_ID: ${{ matrix.signing == 'macos' && secrets.APPLE_TEAM_ID || '' }}
-      CSC_KEY_PASSWORD: ${{ matrix.signing == 'windows' && secrets.WINDOWS_CSC_KEY_PASSWORD || matrix.signing == 'macos' && secrets.MACOS_CSC_KEY_PASSWORD || '' }}
-      CSC_LINK: ${{ matrix.signing == 'windows' && secrets.WINDOWS_CSC_LINK || matrix.signing == 'macos' && secrets.MACOS_CSC_LINK || '' }}
       JOJO_RELEASE_CDN_BASE: ${{ vars.DOWNLOAD_CDN_BASE || 'https://blacknews.jojokanbao.cn' }}
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
@@ -197,6 +173,7 @@ jobs:
           release_version="${GITHUB_REF_NAME#desktop-v}"
           release_flags=(--verify-tag --generate-notes --title "JOJO看报 Desktop ${release_version}")
           release_flags+=(--draft)
+          release_flags+=(--notes "⚠️ 当前桌面安装包尚未进行 Windows/macOS 代码签名。Windows 和 macOS 首次打开时会显示系统安全提示；macOS 暂不支持应用内自动更新，请从官网下载新版。")
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" github-release/* --clobber
           else

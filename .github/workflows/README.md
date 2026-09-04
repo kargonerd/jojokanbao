@@ -61,10 +61,12 @@ external state:
 - `deploy-web.yml` automatically publishes relevant `master` changes to the
   public Beta Preview environment; release tags and manual Production runs
   publish the stable Web client
-- `release-desktop.yml` builds signed Desktop installers on Windows, macOS
+- `release-desktop.yml` builds the initial unsigned Desktop installers on Windows, macOS
   (Apple Silicon and Intel), and Linux; `desktop-v*` tags verify and publish the
   files plus updater metadata below the B2 `releases/desktop/` prefix before
-  publishing the GitHub Release, while manual runs retain workflow artifacts
+  publishing the GitHub Release, while manual runs retain workflow artifacts.
+  Windows and macOS show their normal unsigned-app warnings; macOS application
+  updates remain manual until Developer ID signing and notarization are enabled
 - `release-mobile.yml` asks EAS Build for the signed standard Android APK;
   `mobile-v*` tags publish the APK, catalog, and checksum below the B2
   `releases/mobile/android/` prefix and as a GitHub Release
