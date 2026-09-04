@@ -11,6 +11,7 @@
 - AI Tab 与书籍阅读页的书内 AI 直接流式请求国际 Makers Agent；AI Tab 的历史对话按账号保存在本机，服务端不保存聊天历史。
 - 时事 Tab 直接读取 JOJO Delivery 时间线，使用原生虚拟列表、按页加载和按需图片解码；全文仅在详情页使用单个 WebView 排版，并支持译文切换、出版方原文与选中文本 AI 解释。
 - 标准版与 Android 墨水屏版是两个独立 release，不提供运行时切换。墨水版固定使用黑白高对比主题，关闭动画、过渡、阴影与列表回弹，并可与 Android 标准版同时安装；墨水版不发布 iOS。
+- iOS 与 Android 标准版共用领域和页面代码，但由原生栈分别承载导航、列表、安全区、键盘、日期选择与触感。iOS 使用 Hermes 和 React Native New Architecture；长列表保留原生虚拟化，并只在 Android 启用可能导致 iOS 行缺失的视图裁剪优化。
 
 ## 本地开发
 
@@ -43,6 +44,7 @@ EXPO_PUBLIC_TIMES_AGENT_API_URL=https://agent-global.jojokanbao.cn/times
 pnpm --filter @jojo/mobile typecheck
 pnpm --filter @jojo/mobile test
 pnpm --filter @jojo/mobile run doctor
+pnpm --filter @jojo/mobile validate:ios
 pnpm --filter @jojo/mobile build
 pnpm --filter @jojo/mobile build:eink
 ```
@@ -58,6 +60,9 @@ pnpm --filter @jojo/mobile build:eink
 ```bash
 eas build --platform android --profile development
 eas build --platform ios --profile development
+
+# 无需 Apple 签名的 production-like 模拟器包
+eas build --platform ios --profile ios-simulator
 ```
 
 正式商店包：
@@ -67,7 +72,26 @@ eas build --platform all --profile production
 eas build --platform android --profile eink-production
 ```
 
-标准版的 Android 包名与 iOS Bundle ID 为 `com.luoxixi.jojokanbao`，Android 墨水版包名为 `com.luoxixi.jojokanbao.eink`。两条 Android 发布线共用同一份代码和 EAS project，但各自使用独立商店应用标识；首次构建墨水版时需要为新包名生成凭据。更换证书、团队或 Expo 项目时，先执行 `eas init`/`eas credentials`，不要把签名文件提交到仓库。
+标准版的 Android 包名与 iOS Bundle ID 为 `com.luoxixi.jojokanbao`，Android 墨水版包名为 `com.luoxixi.jojokanbao.eink`。两条 Android 发布线共用同一份代码和 EAS project，但各自使用独立商店应用标识；首次构建墨水版时需要为新包名生成凭据。`app.json` 使用商店接受的纯数字 marketing version，`package.json` 可用 `-rc*` 标识仓库预发布；生产包使用 EAS 远端 build number/version code，避免 CI 重复上传相同构建号。更换证书、团队或 Expo 项目时，先执行 `eas init`/`eas credentials`，不要把签名文件提交到仓库。
+
+## TestFlight（iOS）
+
+`.github/workflows/release-mobile-ios.yml` 的手动运行只创建签名的 App Store archive；推送匹配 `frontend/mobile/package.json` 版本的 `mobile-ios-v*` tag 时，会构建并将同一个 EAS build 提交到 TestFlight，不会自动送 App Review。
+
+首次启用前需要完成以下一次性配置：
+
+1. 使用有权限的 Apple Developer 账号交互运行一次 `eas build --platform ios --profile production`，让 EAS 建立 Distribution Certificate 和 Provisioning Profile；
+2. 在 App Store Connect 创建应用记录，并在 GitHub Actions repository variable `IOS_ASC_APP_ID` 中保存其数字 Apple ID；
+3. 在 EAS 中保存 App Store Connect API Key，并确认 GitHub Actions repository secret `EXPO_TOKEN` 有权访问当前 EAS project。
+
+发布示例：
+
+```bash
+git tag mobile-ios-v0.0.1-rc1
+git push origin mobile-ios-v0.0.1-rc1
+```
+
+TestFlight 处理完成后仍需在 App Store Connect 中选择测试组；正式上架继续由人工选择已经验证的构建并提交 App Review。
 
 ## GitHub Release（Android）
 

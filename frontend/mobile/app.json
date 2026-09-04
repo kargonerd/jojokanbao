@@ -22,10 +22,11 @@
     },
     "ios": {
       "bundleIdentifier": "com.luoxixi.jojokanbao",
+      "icon": "./assets/icon-ios.png",
       "buildNumber": "1",
       "supportsTablet": true,
-      "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+      "config": {
+        "usesNonExemptEncryption": false
       }
     },
     "android": {

@@ -26,6 +26,7 @@ jobs:
       desktop_e2e: ${{ steps.filter.outputs.desktop_e2e }}
       head_sha: ${{ steps.filter.outputs.head_sha }}
       homepage_external: ${{ steps.filter.outputs.homepage_external }}
+      mobile_ios: ${{ steps.filter.outputs.mobile_ios }}
       node: ${{ steps.filter.outputs.node }}
       search_scf: ${{ steps.filter.outputs.search_scf }}
       times_pipeline: ${{ steps.filter.outputs.times_pipeline }}
@@ -71,11 +72,12 @@ jobs:
             fi
           }
 
-          write_flag node '^(agent/|frontend/|infrastructure/cloudflare/|tools/(ci/|monitoring/|release/|times-pipeline/|[^/]+/web/)|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(release-desktop|release-mobile(-eink|-ota)?|maintenance-times[^/]*|maintenance-sync-rmrb)\.yml$)'
+          write_flag node '^(agent/|frontend/|infrastructure/cloudflare/|tools/(ci/|monitoring/|release/|times-pipeline/|[^/]+/web/)|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(release-desktop|release-mobile(-eink|-ios|-ota)?|maintenance-times[^/]*|maintenance-sync-rmrb)\.yml$)'
           write_flag all_node '^(\.github/workflows/ci\.yml$|patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$)'
           write_flag desktop_e2e '^(frontend/(desktop|web|packages/(auth|content|pdf-viewer|ui)|tooling/tsconfig|patches)/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(ci|release-desktop)\.yml$)'
           write_flag web_e2e '^(frontend/(web|packages/(auth|pdf-viewer|ui)|tooling/tsconfig|patches)/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(ci|deploy-web)\.yml$)'
           write_flag homepage_external '^(content/blog/|\.github/workflows/deploy-homepage\.yml$)'
+          write_flag mobile_ios '^(frontend/mobile/|frontend/packages/(auth|content)/|frontend/tooling/tsconfig/|frontend/patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(ci|release-mobile-ios)\.yml$)'
           write_flag cloud_api '^(backend/|tools/times-pipeline/|infrastructure/edgeone/|\.github/workflows/(ci|deploy-web|maintenance-times[^/]*)\.yml$)'
           write_flag database '^(infrastructure/supabase/|\.github/workflows/ci\.yml$)'
           write_flag search_scf '^(infrastructure/tencent-scf/search/|\.github/workflows/(ci|release-search)\.yml$)'
@@ -177,6 +179,53 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @jojo/desktop exec playwright install chromium
       - run: xvfb-run --auto-servernum pnpm --filter @jojo/desktop test:e2e
+
+  mobile-ios:
+    name: Mobile iOS native build
+    needs: changes
+    if: needs.changes.outputs.mobile_ios == 'true' || needs.changes.outputs.all_node == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 25
+    env:
+      COCOAPODS_DISABLE_STATS: "true"
+      APP_VARIANT: standard
+      EXPO_PUBLIC_APP_VARIANT: standard
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      EXPO_PUBLIC_AGENT_API_URL: https://agent-global.jojokanbao.cn/rag
+      EXPO_PUBLIC_TIMES_AGENT_API_URL: https://agent-global.jojokanbao.cn/times
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate iOS native project
+        working-directory: frontend/mobile
+        run: pnpm exec expo prebuild --platform ios --no-install --clean
+
+      - name: Install iOS native dependencies
+        working-directory: frontend/mobile/ios
+        run: pod install
+
+      - name: Compile iOS Release for Simulator
+        working-directory: frontend/mobile
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace ios/JOJO.xcworkspace \
+            -scheme JOJO \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
 
   web-cross-browser:
     name: Web ${{ matrix.browser }}
@@ -366,6 +415,7 @@ jobs:
       - changes
       - cloud-api
       - desktop-e2e
+      - mobile-ios
       - node
       - search-scf
       - web-e2e

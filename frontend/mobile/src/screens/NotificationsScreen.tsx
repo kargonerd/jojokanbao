@@ -12,6 +12,7 @@ import {
 } from "../account/accountData";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { IS_EINK_RELEASE } from "../config/appVariant";
+import { REMOVE_CLIPPED_SUBVIEWS } from "../lib/nativePerformance";
 import type { RootStackParamList } from "../navigation/types";
 import { mobileTheme } from "../theme/tokens";
 
@@ -165,7 +166,7 @@ export function NotificationsScreen({ navigation }: Props) {
           initialNumToRender={10}
           maxToRenderPerBatch={10}
           windowSize={7}
-          removeClippedSubviews
+          removeClippedSubviews={REMOVE_CLIPPED_SUBVIEWS}
           contentContainerStyle={[styles.list, !items.length && styles.emptyList]}
           renderItem={({ item }) => {
             const target = safeTargetPath(item.targetPath);

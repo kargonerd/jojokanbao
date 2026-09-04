@@ -12,8 +12,25 @@
         "EXPO_PUBLIC_APP_VARIANT": "standard"
       }
     },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "APP_VARIANT": "standard",
+        "EXPO_PUBLIC_APP_VARIANT": "standard"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "ios-simulator": {
+      "extends": "preview",
+      "ios": {
+        "simulator": true
+      }
+    },
     "production": {
       "autoIncrement": true,
+      "distribution": "store",
       "channel": "production-standard",
       "env": {
         "JOJO_REQUIRE_ACCOUNT_CONFIG": "true",

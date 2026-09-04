@@ -1,0 +1,156 @@
+name: Release · Mobile iOS
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "mobile-ios-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-ios-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      IOS_ASC_APP_ID: ${{ vars.IOS_ASC_APP_ID }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Validate tag and iOS configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_version="$(node -p "require('./frontend/mobile/package.json').version")"
+          expo_version="$(node -p "require('./frontend/mobile/app.json').expo.version")"
+          if [[ "$package_version" != "$expo_version" && "$package_version" != "$expo_version"-* ]]; then
+            echo "Mobile package version $package_version does not match Expo version $expo_version." >&2
+            exit 1
+          fi
+
+          if [[ "$GITHUB_REF" == refs/tags/mobile-ios-v* ]]; then
+            test -n "$IOS_ASC_APP_ID"
+            tag_version="${GITHUB_REF_NAME#mobile-ios-v}"
+            if [[ "$tag_version" != "$package_version" && "$tag_version" != "$package_version"-* ]]; then
+              echo "Tag $GITHUB_REF_NAME does not match mobile package version $package_version." >&2
+              exit 1
+            fi
+          fi
+
+          node frontend/mobile/scripts/validate-ios.mjs
+
+  build:
+    name: Build signed iOS archive
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      build_id: ${{ steps.eas-build.outputs.build_id }}
+    env:
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      EXPO_PUBLIC_AGENT_API_URL: https://agent-global.jojokanbao.cn/rag
+      EXPO_PUBLIC_TIMES_AGENT_API_URL: https://agent-global.jojokanbao.cn/times
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+
+      - name: Check release configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_TOKEN"
+          test -n "$EXPO_PUBLIC_SUPABASE_URL"
+          test -n "$EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Verify mobile source
+        run: |
+          pnpm --filter @jojo/auth typecheck
+          pnpm --filter @jojo/auth test
+          pnpm --filter @jojo/content typecheck
+          pnpm --filter @jojo/content test
+          pnpm --filter @jojo/mobile typecheck
+          pnpm --filter @jojo/mobile test
+          pnpm --filter @jojo/mobile build:ios
+
+      - name: Install pinned EAS CLI
+        run: npm install --global eas-cli@18.5.0
+
+      - id: eas-build
+        name: Build signed App Store archive
+        working-directory: frontend/mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_json="$(eas build --platform ios --profile production --non-interactive --wait --json)"
+          printf '%s\n' "$build_json" > "$RUNNER_TEMP/eas-ios-build.json"
+          build_id="$(jq -er 'if type == "array" then .[0].id else .id end' "$RUNNER_TEMP/eas-ios-build.json")"
+          owner="$(node -p "require('./app.json').expo.owner")"
+          slug="$(node -p "require('./app.json').expo.slug")"
+          build_url="https://expo.dev/accounts/$owner/projects/$slug/builds/$build_id"
+
+          printf 'build_id=%s\n' "$build_id" >> "$GITHUB_OUTPUT"
+          printf '### iOS build\n\n- Build ID: `%s`\n- Details: %s\n' "$build_id" "$build_url" >> "$GITHUB_STEP_SUMMARY"
+
+  submit:
+    name: Submit to TestFlight
+    if: startsWith(github.ref, 'refs/tags/mobile-ios-v')
+    needs:
+      - validate
+      - build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      IOS_ASC_APP_ID: ${{ vars.IOS_ASC_APP_ID }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22.19.0
+
+      - name: Check submission configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_TOKEN"
+          test -n "$IOS_ASC_APP_ID"
+
+      - name: Configure App Store Connect app
+        working-directory: frontend/mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = "eas.json";
+          const config = JSON.parse(fs.readFileSync(path, "utf8"));
+          config.submit.production.ios = { ascAppId: process.env.IOS_ASC_APP_ID };
+          fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
+          NODE
+
+      - name: Install pinned EAS CLI
+        run: npm install --global eas-cli@18.5.0
+
+      - name: Upload to TestFlight
+        working-directory: frontend/mobile
+        run: eas submit --platform ios --profile production --id "${{ needs.build.outputs.build_id }}" --non-interactive --wait
+
+      - name: Record submission
+        run: printf '### TestFlight\n\nSubmitted EAS build `%s` to App Store Connect.\n' "${{ needs.build.outputs.build_id }}" >> "$GITHUB_STEP_SUMMARY"

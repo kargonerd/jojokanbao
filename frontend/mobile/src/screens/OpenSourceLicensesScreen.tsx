@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ScreenHeader } from "../components/ScreenHeader";
+import { REMOVE_CLIPPED_SUBVIEWS } from "../lib/nativePerformance";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import type { RootStackParamList } from "../navigation/types";
 import { mobileTheme } from "../theme/tokens";
@@ -107,7 +108,7 @@ export function OpenSourceLicensesScreen() {
         keyExtractor={(item) => item.id}
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
-        removeClippedSubviews
+        removeClippedSubviews={REMOVE_CLIPPED_SUBVIEWS}
         initialNumToRender={12}
         maxToRenderPerBatch={12}
         windowSize={7}

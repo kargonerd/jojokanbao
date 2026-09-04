@@ -1,6 +1,7 @@
 import DateTimePicker from "@react-native-community/datetimepicker";
 import type { ArchivePublicationSummary } from "@jojo/content";
 import { Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import { mobileTheme } from "../theme/tokens";
 
@@ -26,6 +27,7 @@ export function IssueDateModal({
   onConfirm,
 }: IssueDateModalProps) {
   const theme = mobileTheme;
+  const insets = useSafeAreaInsets();
   const available = isDateAvailable(value);
   return (
     <Modal
@@ -35,7 +37,13 @@ export function IssueDateModal({
       onRequestClose={onClose}
     >
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="关闭日期选择" />
-      <View style={[styles.sheet, { backgroundColor: theme.paper, borderColor: theme.ruleDark }]}>
+      <View
+        style={[styles.sheet, {
+          bottom: Math.max(20, insets.bottom + 12),
+          backgroundColor: theme.paper,
+          borderColor: theme.ruleDark,
+        }]}
+      >
         <Text style={[styles.eyebrow, { color: theme.red, fontFamily: theme.sans }]}>选择报纸日期</Text>
         <Text style={[styles.title, { color: theme.ink, fontFamily: theme.serif }]}>{publication?.title}</Text>
         <DateTimePicker
@@ -70,7 +78,7 @@ export function IssueDateModal({
 
 const styles = StyleSheet.create({
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,.36)" },
-  sheet: { position: "absolute", left: 16, right: 16, bottom: 20, borderWidth: 1, padding: 18 },
+  sheet: { position: "absolute", left: 16, right: 16, borderWidth: 1, padding: 18 },
   eyebrow: { fontSize: 10, fontWeight: "900", letterSpacing: 2.2 },
   title: { marginTop: 4, marginBottom: 10, fontSize: 24, fontWeight: "900" },
   actions: { marginTop: 12, flexDirection: "row", gap: 10 },

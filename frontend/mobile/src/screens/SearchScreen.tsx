@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import { impactHaptic } from "../lib/haptics";
+import { REMOVE_CLIPPED_SUBVIEWS } from "../lib/nativePerformance";
 import { searchArchive, type ArchiveSearchResult } from "../lib/search";
 import type { RootStackParamList } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
@@ -191,7 +192,7 @@ export function SearchScreen() {
           initialNumToRender={8}
           maxToRenderPerBatch={6}
           windowSize={7}
-          removeClippedSubviews
+          removeClippedSubviews={REMOVE_CLIPPED_SUBVIEWS}
           keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
           overScrollMode={IS_EINK_RELEASE ? "never" : "always"}

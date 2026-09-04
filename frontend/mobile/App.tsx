@@ -1,10 +1,10 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { DefaultTheme, NavigationContainer, type Theme } from "@react-navigation/native";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { createNativeStackNavigator, type NativeStackNavigationOptions } from "@react-navigation/native-stack";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, type ComponentProps } from "react";
-import { StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import type { MainTabParamList, RootStackParamList } from "./src/navigation/types";
 import { HomeScreen } from "./src/screens/HomeScreen";
@@ -31,6 +31,10 @@ import { AppUpdatePrompt } from "./src/components/AppUpdatePrompt";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<MainTabParamList>();
+const detailScreenOptions: NativeStackNavigationOptions = {
+  gestureEnabled: true,
+  animation: IS_EINK_RELEASE ? "none" : Platform.OS === "ios" ? "default" : "slide_from_right",
+};
 
 const tabIcons: Record<keyof MainTabParamList, ComponentProps<typeof Ionicons>["name"]> = {
   Today: "home-outline",
@@ -142,96 +146,18 @@ export default function App() {
       <NavigationContainer theme={navigationTheme}>
         <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.paper } }}>
           <Stack.Screen name="Tabs" component={MainTabs} />
-          <Stack.Screen
-            name="Account"
-            component={MeScreen}
-            options={{
-              gestureEnabled: true,
-              fullScreenGestureEnabled: true,
-              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
-            }}
-          />
-          <Stack.Screen
-            name="AccountSecurity"
-            component={AccountSecurityScreen}
-            options={{
-              gestureEnabled: true,
-              fullScreenGestureEnabled: true,
-              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
-            }}
-          />
-          <Stack.Screen
-            name="Settings"
-            component={SettingsScreen}
-            options={{
-              gestureEnabled: true,
-              fullScreenGestureEnabled: true,
-              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
-            }}
-          />
-          <Stack.Screen
-            name="Notifications"
-            component={NotificationsScreen}
-            options={{
-              gestureEnabled: true,
-              fullScreenGestureEnabled: true,
-              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
-            }}
-          />
-          <Stack.Screen
-            name="Bookshelf"
-            component={BookshelfScreen}
-            options={{
-              gestureEnabled: true,
-              fullScreenGestureEnabled: true,
-              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
-            }}
-          />
-          <Stack.Screen
-            name="OpenSourceLicenses"
-            component={OpenSourceLicensesScreen}
-            options={{
-              gestureEnabled: true,
-              fullScreenGestureEnabled: true,
-              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
-            }}
-          />
-          <Stack.Screen
-            name="Reader"
-            component={ReaderScreen}
-            options={{
-              gestureEnabled: true,
-              fullScreenGestureEnabled: true,
-              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
-            }}
-          />
-          <Stack.Screen
-            name="BookDetails"
-            component={BookDetailsScreen}
-            options={{
-              gestureEnabled: true,
-              fullScreenGestureEnabled: true,
-              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
-            }}
-          />
-          <Stack.Screen
-            name="BookReader"
-            component={BookReaderScreen}
-            options={{
-              gestureEnabled: true,
-              fullScreenGestureEnabled: true,
-              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
-            }}
-          />
-          <Stack.Screen
-            name="TimesDetail"
-            component={TimesDetailScreen}
-            options={{
-              gestureEnabled: true,
-              fullScreenGestureEnabled: true,
-              animation: IS_EINK_RELEASE ? "none" : "slide_from_right",
-            }}
-          />
+          <Stack.Group screenOptions={detailScreenOptions}>
+            <Stack.Screen name="Account" component={MeScreen} />
+            <Stack.Screen name="AccountSecurity" component={AccountSecurityScreen} />
+            <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="Notifications" component={NotificationsScreen} />
+            <Stack.Screen name="Bookshelf" component={BookshelfScreen} />
+            <Stack.Screen name="OpenSourceLicenses" component={OpenSourceLicensesScreen} />
+            <Stack.Screen name="Reader" component={ReaderScreen} />
+            <Stack.Screen name="BookDetails" component={BookDetailsScreen} />
+            <Stack.Screen name="BookReader" component={BookReaderScreen} />
+            <Stack.Screen name="TimesDetail" component={TimesDetailScreen} />
+          </Stack.Group>
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
