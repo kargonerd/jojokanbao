@@ -224,6 +224,34 @@ describe("JOJO Web navigation", () => {
     expect(screen.getByRole("button", { name: "返回上一页" })).toBeTruthy();
   });
 
+  it("removes the release status once a stable download is available", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({
+      schemaVersion: 1,
+      product: "mobile",
+      variant: "standard",
+      channel: "stable",
+      version: "0.0.1",
+      publishedAt: "2026-09-04T00:00:00Z",
+      releaseNotesUrl: "https://example.test/releases/mobile-v0.0.1",
+      sourceUrl: "https://example.test/source/mobile-v0.0.1",
+      artifacts: [{
+        id: "android-standard",
+        platform: "android",
+        arch: "universal",
+        format: "apk",
+        label: "Android 标准版",
+        url: "https://example.test/JOJO-Kanbao-0.0.1.apk",
+        size: 1024,
+        sha256: "a".repeat(64),
+      }],
+    }), { status: 200 }));
+    renderAt("/download");
+
+    expect(await screen.findByRole("link", { name: "Android 下载 APK" })).toBeTruthy();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByText("当前提供正式版")).toBeNull();
+  });
+
   it("shows the Beta badge beside mobile AI and Times page titles", () => {
     const navigationItems = buildAppNavigationItems(true);
     const view = render(
