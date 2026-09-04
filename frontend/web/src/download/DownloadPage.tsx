@@ -139,9 +139,11 @@ export function DownloadPage() {
 
       <PlatformGrid catalogs={releaseState.catalogs} loading={releaseState.status === "loading"} />
 
-      <p className="client-release-status" role="status">
-        {releaseState.status === "loading" ? "正在检查可用版本" : releaseState.status === "unavailable" ? "安装包尚未发布" : "当前提供正式版"}
-      </p>
+      {releaseState.status !== "ready" ? (
+        <p className="client-release-status" role="status">
+          {releaseState.status === "loading" ? "正在检查可用版本" : "安装包尚未发布"}
+        </p>
+      ) : null}
 
       <footer className="client-download-footer">
         <a href={GITHUB_RELEASES} target="_blank" rel="noreferrer">版本记录</a>
