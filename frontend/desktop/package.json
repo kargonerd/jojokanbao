@@ -85,14 +85,15 @@
     "win": {
       "target": "nsis",
       "icon": "electron/assets/icon.ico",
-      "verifyUpdateCodeSignature": true
+      "verifyUpdateCodeSignature": false
     },
     "mac": {
       "target": ["dmg", "zip"],
       "category": "public.app-category.news",
       "icon": "../web/public/brand/jojo-kanbao-mark.svg",
-      "hardenedRuntime": true,
-      "notarize": true
+      "identity": null,
+      "hardenedRuntime": false,
+      "notarize": false
     },
     "linux": {
       "target": ["AppImage", "deb"],

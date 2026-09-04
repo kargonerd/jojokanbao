@@ -37,15 +37,14 @@ jojo-newspaper/
 
 1. `blacknews.jojokanbao.cn` 继续指向同一个 B2 桶，URL 路径原样映射到桶内对象，不添加或
    删除 `releases/`。为 `/releases/` 增加独立缓存规则，不改变现有内容对象规则。
-2. 仅允许 `GET`、`HEAD` 和 Range 请求。对官网读取 `catalog.json` 返回
-   `Access-Control-Allow-Origin: https://reader.jojokanbao.cn`；预览站需要时加入明确的预览域名，不使用
-   带凭证的通配 CORS。
+2. 仅允许 `GET`、`HEAD` 和 Range 请求。当前公开下载 CDN 返回
+   `Access-Control-Allow-Origin: *`，允许 Reader Web 读取公开的 `catalog.json`；CORS 不授予上传权限。
 3. 对版本化安装包、`.blockmap` 和 `.zip` 使用一年缓存并标记 `immutable`。对
    `catalog.json`、`latest*.yml`、`SHA256SUMS.txt` 使用短缓存（建议 60 秒）并允许重新验证。
 4. 保留正确的 MIME 类型、`Content-Length`、`ETag` 和 Range 响应；APK 可使用
    `application/vnd.android.package-archive`。
-5. 为 GitHub Actions 创建只允许写入 `releases/` 前缀的 B2 Application Key。仓库继续使用
-   `B2_KEY_ID`、`B2_APPLICATION_KEY`、`B2_BUCKET` 三个 secret；`B2_BUCKET` 应指向现有内容桶。
+5. 客户端发行复用现有 `B2_KEY_ID`、`B2_APPLICATION_KEY`、`B2_BUCKET` 三个 secret；
+   `B2_BUCKET` 指向现有内容桶。发行脚本只把对象写到 `releases/` 前缀。
 6. B2 生命周期规则按前缀配置。不要让内容桶现有的清理规则匹配 `releases/`；至少保留当前和上一
    个可回滚版本。渠道指针不能设置为不可覆盖对象。
 
@@ -56,7 +55,8 @@ CDN 完成配置前，发行工作流会在“Verify … through CDN”步骤失
 
 | 客户端 | 更新内容 | 机制 | 用户确认 |
 | --- | --- | --- | --- |
-| Windows / macOS / Linux | 原生桌面包 | `electron-updater` 读取各平台 `latest*.yml` | 后台下载，安装前提示重启 |
+| Windows / Linux AppImage | 原生桌面包 | `electron-updater` 读取各平台 `latest*.yml` | 后台下载，安装前提示重启 |
+| macOS / Linux DEB | 原生桌面包 | 官网下载；macOS 签名上线后再启用应用内更新 | 系统安装流程确认 |
 | Android 标准版 / 墨水版 | JS 与静态资源 | EAS Update；按 runtime version 和渠道隔离 | 下次启动自动生效，也可在设置中手动检查 |
 | Android 标准版 / 墨水版 | 原生 APK | B2 `catalog.json` 比较单调递增的 `versionCode` | 打开 CDN 下载，仍由 Android 系统确认安装 |
 | iOS | JS 与静态资源 | EAS Update，同样受 runtime version 约束 | 下次启动自动生效 |
@@ -92,11 +92,9 @@ GitHub Actions secrets：
 
 - B2：`B2_KEY_ID`、`B2_APPLICATION_KEY`、`B2_BUCKET`
 - Expo：`EXPO_TOKEN`
-- Windows 签名：`WINDOWS_CSC_LINK`、`WINDOWS_CSC_KEY_PASSWORD`
-- macOS 签名与公证：`MACOS_CSC_LINK`、`MACOS_CSC_KEY_PASSWORD`、`APPLE_ID`、
-  `APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID`
-
-桌面工作流把签名凭据作为发行硬门槛。没有签名或 macOS 公证时不会生成可公开下载的包。
+首个桌面稳定版暂不配置 Windows 或 macOS 代码签名。GitHub Release 会明确标注未签名；Windows
+安装时会显示未知发布者提示，macOS 需要用户确认打开且暂不启用应用内自动更新。以后接入签名时，
+再增加证书 secrets、恢复 Windows 发布者签名校验，并启用 Apple Developer ID 公证。
 
 ## 发行流程
 
@@ -105,7 +103,7 @@ GitHub Actions secrets：
    发行工作流拒绝。
 3. 创建并推送对应 tag：`desktop-vX.Y.Z`、`mobile-vX.Y.Z` 或
    `mobile-eink-vX.Y.Z`。
-4. 工作流构建、签名、校验，将安装包写入 B2，公开 GitHub Release，再发布渠道指针。
+4. 工作流构建并校验安装包，将其写入 B2，公开 GitHub Release，再发布渠道指针。
 5. 检查 `https://reader.jojokanbao.cn/download`，并从真实设备完成一次升级验证。
 
 仅修改 JS/资源且不涉及原生兼容性时，手动运行 `Release · Mobile OTA Rollout`：选择

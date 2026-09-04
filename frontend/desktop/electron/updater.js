@@ -19,7 +19,14 @@ let handlersRegistered = false;
 let eventsRegistered = false;
 
 function updaterSupported() {
-  return app.isPackaged && (process.platform !== 'linux' || Boolean(process.env.APPIMAGE));
+  return app.isPackaged
+    && process.platform !== 'darwin'
+    && (process.platform !== 'linux' || Boolean(process.env.APPIMAGE));
+}
+
+function packagedUpdateMessage() {
+  if (process.platform === 'darwin') return '当前 macOS 版本未签名，请从官网下载更新。';
+  return 'Linux DEB 请从官网下载新安装包；AppImage 支持应用内更新。';
 }
 
 function publicError(error) {
@@ -40,7 +47,7 @@ async function checkForUpdates(manual = false) {
       supported: false,
       phase: 'idle',
       message: manual && app.isPackaged
-        ? 'Linux DEB 请从官网下载新安装包；AppImage 支持应用内更新。'
+        ? packagedUpdateMessage()
         : manual ? '开发预览不连接正式更新通道。' : state.message,
     });
   }
@@ -125,7 +132,7 @@ export function setupDesktopUpdater(options) {
     currentVersion: app.getVersion(),
     message: updaterSupported()
       ? '将在后台定期检查更新。'
-      : app.isPackaged ? 'Linux DEB 请从官网下载更新。' : state.message,
+      : app.isPackaged ? packagedUpdateMessage() : state.message,
   };
   registerUpdaterIpc();
   if (!updaterSupported()) return;
