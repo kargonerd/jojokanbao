@@ -19,4 +19,15 @@ describe("search box styles", () => {
     expect(sharedCss).not.toMatch(/^\s*input:not\(\[type="radio"\]\):not\(\[type="checkbox"\]\),/m);
     expect(shellCss).toMatch(/\.app-search-box input,[^{]*\{[^}]*border:\s*0;/s);
   });
+
+  it("keeps the mobile library controls compact while filtering", async () => {
+    const shellCss = await readFile(resolve(process.cwd(), "src/shell/styles.css"), "utf8");
+
+    expect(shellCss).toMatch(
+      /@media \(max-width: 720px\)[\s\S]*?\.app-library\s*\{[^}]*grid-template-rows:\s*auto auto;[^}]*align-content:\s*start;/,
+    );
+    expect(shellCss).toMatch(
+      /\.library-filter input::?-webkit-search-cancel-button\s*\{[^}]*appearance:\s*none;/,
+    );
+  });
 });

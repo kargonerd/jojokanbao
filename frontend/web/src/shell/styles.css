@@ -678,6 +678,11 @@ a.jojo-citation:hover {
 }
 .library-filter svg { width: 18px; height: 18px; fill: none; stroke: var(--app-gray); stroke-width: 1.7; }
 .library-filter button { border: 0; background: transparent; padding: 7px 8px; color: var(--color-red); font-size: .72rem; font-weight: 700; }
+.library-filter input::-webkit-search-cancel-button {
+  display: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
 
 .library-heading {
   display: flex;
@@ -947,7 +952,12 @@ a.jojo-citation:hover {
   .bookshelf-empty > span { width: 48px; height: 64px; }
   .bookshelf-empty > a,
   .bookshelf-empty > button { grid-column: 2; justify-self: start; }
-  .app-library { grid-template-columns: 1fr; min-height: calc(100vh - 58px); }
+  .app-library {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+    align-content: start;
+    min-height: calc(100vh - 58px);
+  }
   .library-types { display: grid; grid-template-columns: repeat(3, 1fr); padding: 0; border-right: 0; border-bottom: 1px solid var(--app-line); }
   .library-types button { display: flex; flex-direction: column; gap: 3px; border-bottom: 3px solid transparent; border-left: 0; padding: 9px 4px; text-align: center; }
   .library-types button:hover:not(:disabled), .library-types button.is-selected { border-bottom-color: var(--color-red); border-left-color: transparent; }
