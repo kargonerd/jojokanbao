@@ -1,3 +1,4 @@
+import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   createJojoAuthClient,
@@ -6,8 +7,9 @@ import {
 } from "@jojo/auth";
 import { AppState, Platform } from "react-native";
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const publishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+const accountConfig = Constants.expoConfig?.extra?.account;
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || accountConfig?.supabaseUrl;
+const publishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || accountConfig?.publishableKey;
 
 export const MOBILE_ACCOUNT_CONFIGURED = Boolean(supabaseUrl && publishableKey);
 

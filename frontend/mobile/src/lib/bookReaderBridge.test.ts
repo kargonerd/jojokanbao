@@ -1,3 +1,4 @@
+import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 import {
   createBookReaderApplyAnnotationScript,
@@ -13,6 +14,41 @@ import {
 } from "./bookReaderBridge";
 
 describe("book reader bridge", () => {
+  it("reports long-press selection immediately and clears it without a later stale toolbar", () => {
+    const messages: unknown[] = [];
+    const handlers = new Map<string, (event?: unknown) => void>();
+    const root = { contains: () => true };
+    const rect = { left: 20, top: 40, right: 70, bottom: 60 };
+    const selection = { isCollapsed: false, rangeCount: 1, toString() { return this.isCollapsed ? "" : "选中文字"; }, getRangeAt: () => ({ commonAncestorContainer: root, startContainer: root, startOffset: 0, toString: () => "选中文字", getBoundingClientRect: () => rect }) };
+    const document = {
+      body: { dataset: { readingMode: "scroll" } },
+      querySelector: (selector: string) => selector === "article" ? root : null,
+      addEventListener: (name: string, handler: (event?: unknown) => void) => handlers.set(name, handler),
+      createRange: () => ({ selectNodeContents() {}, setEnd() {}, toString: () => "" }),
+    };
+    const window = { innerWidth: 100, innerHeight: 100, getSelection: () => selection, ReactNativeWebView: { postMessage: (message: string) => messages.push(JSON.parse(message)) }, requestAnimationFrame() {}, setTimeout() {}, addEventListener() {} };
+    runInNewContext(createBookReaderBridgeScript("start", false), { document, window });
+    handlers.get("selectionchange")!();
+    expect(messages).toEqual([{ type: "reader-selection", text: "选中文字", start: 0, end: 4, rect, viewport: { width: 100, height: 100 } }]);
+    handlers.get("selectionchange")!();
+    expect(messages).toHaveLength(1);
+    rect.top = 20;
+    rect.bottom = 40;
+    handlers.get("selectionchange")!();
+    expect(messages).toHaveLength(2);
+    expect(messages.at(-1)).toMatchObject({ rect: { top: 20, bottom: 40 } });
+    handlers.get("touchstart")!({ changedTouches: [{ clientX: 50, clientY: 50 }] });
+    selection.isCollapsed = true;
+    handlers.get("selectionchange")!();
+    expect(messages.at(-1)).toEqual({ type: "reader-selection-clear" });
+    const click = { target: { closest: () => null }, clientX: 50, clientY: 50 };
+    handlers.get("click")!(click);
+    expect(messages).toHaveLength(3);
+    handlers.get("touchstart")!({ changedTouches: [{ clientX: 50, clientY: 50 }] });
+    handlers.get("click")!(click);
+    expect(messages.at(-1)).toEqual({ type: "reader-tap" });
+  });
+
   it("accepts page, tap and chapter-boundary messages", () => {
     expect(parseBookReaderMessage('{"type":"reader-tap"}')).toEqual({ type: "reader-tap" });
     expect(parseBookReaderMessage('{"type":"reader-boundary","direction":"next"}')).toEqual({

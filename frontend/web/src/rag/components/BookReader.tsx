@@ -9,6 +9,8 @@ import {
   useState,
 } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { IoCopyOutline, IoCreateOutline, IoSparklesOutline } from "react-icons/io5";
+import type { ReaderSelectionRect } from "@jojo/ui/reader-selection";
 import { AnnotationDiscussionPanel } from "../../annotations/AnnotationDiscussionPanel";
 import { CommentVisibilityControl } from "../../annotations/CommentVisibilityControl";
 import {
@@ -25,6 +27,8 @@ import { useRecentReadingStore } from "../../library/recentReadingStore";
 import type { RagAnswerMetadata, RagFocusContext, RagReference, RagSearchHit } from "../types";
 import { BookAiPanel } from "./BookAiPanel";
 import { BookSearchPanel } from "./BookSearchPanel";
+import { BookNavigationSheet } from "./BookNavigationSheet";
+import { BookSelectionPopover } from "./BookSelectionPopover";
 import "./BookReader.css";
 import {
   bookshelfContains,
@@ -99,9 +103,7 @@ interface ExpandedImage {
 interface ReaderTextSelection {
   text: string;
   anchor: TextAnchor;
-  left: number;
-  top: number;
-  above: boolean;
+  rect: ReaderSelectionRect;
 }
 
 interface PageMetrics {
@@ -209,7 +211,7 @@ export function BookReader({
   const [pageTransitioning, setPageTransitioning] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<HTMLDivElement>(null);
-  const tocPanelRef = useRef<HTMLElement>(null);
+  const tocPanelRef = useRef<HTMLDivElement>(null);
   const currentPageRef = useRef(0);
   const pendingPageRef = useRef<"start" | "end" | null>("start");
   const transitionTimerRef = useRef<number | undefined>(undefined);
@@ -586,7 +588,8 @@ export function BookReader({
     revealAnchor(anchorId);
   }
 
-  function captureTextSelection(): void {
+  const captureTextSelection = useCallback((): void => {
+    if (document.activeElement?.closest(".book-selection-tools")) return;
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.rangeCount) {
       setTextSelection(undefined);
@@ -600,17 +603,37 @@ export function BookReader({
     const anchor = root && textAnchorFromRange(root, range, 1_200);
     if (!insideReader || !anchor) return;
     const rect = range.getBoundingClientRect();
-    const toolbarHalfWidth = Math.min(128, Math.max(0, window.innerWidth / 2 - 8));
-    const above = rect.top > 110;
     setTextSelection({
       text: anchor.quote,
       anchor,
-      left: Math.min(window.innerWidth - toolbarHalfWidth, Math.max(toolbarHalfWidth, rect.left + rect.width / 2)),
-      top: above ? rect.top - 10 : rect.bottom + 10,
-      above,
+      rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
     });
     setThoughtOpen(false);
-  }
+  }, [mode]);
+
+  useEffect(() => {
+    const onContextMenu = (event: MouseEvent) => {
+      if (!(event.target instanceof Node) || !(flowRef.current?.contains(event.target) || scrollRef.current?.contains(event.target))) return;
+      event.preventDefault();
+      captureTextSelection();
+    };
+    document.addEventListener("selectionchange", captureTextSelection);
+    document.addEventListener("contextmenu", onContextMenu);
+    const reposition = () => {
+      const selection = window.getSelection();
+      if (!selection?.rangeCount || selection.isCollapsed) return;
+      const rect = selection.getRangeAt(0).getBoundingClientRect();
+      setTextSelection((current) => current ? { ...current, rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom } } : undefined);
+    };
+    document.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      document.removeEventListener("selectionchange", captureTextSelection);
+      document.removeEventListener("contextmenu", onContextMenu);
+      document.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [captureTextSelection]);
 
   function capturePointerTextSelection(): void {
     window.setTimeout(captureTextSelection, 0);
@@ -803,18 +826,20 @@ export function BookReader({
   const firstPhysicalPage = pageMetrics.page * pageMetrics.columnsPerSpread + 1;
   const lastPhysicalPage = Math.min(firstPhysicalPage + pageMetrics.columnsPerSpread - 1, pageMetrics.physicalPages);
 
+  const tocList = <div ref={tocPanelRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+    <ol className="m-0 list-none px-4 py-3">{(mobileViewport ? toc : filteredToc).map((item) => <li key={item.id}><button type="button" data-toc-active={activeChapterId === item.targetId ? "true" : undefined} onClick={() => chooseChapter(item.targetId)} style={{ paddingLeft: `${16 + item.depth * 16}px` }} className={`relative block w-full border-0 bg-transparent py-3 pr-4 text-left font-serif text-[13px] leading-relaxed cursor-pointer ${activeChapterId === item.targetId ? "font-bold text-red before:absolute before:inset-y-2 before:right-0 before:w-[2px] before:bg-red" : "text-current hover:text-red"}`}>{item.title}</button></li>)}</ol>
+    {filteredToc.length === 0 && !mobileViewport && <p className="px-7 py-10 text-center font-sans text-xs text-muted">没有匹配的目录项</p>}
+  </div>;
+
   const chapterNavigation = !contentLoading && <nav aria-label="章节导航" className="mt-20 grid grid-cols-2 border-t border-rule pt-8 font-sans text-xs [break-inside:avoid]">
     <button type="button" disabled={!previousChapter} onClick={() => chooseChapter(previousChapter?.id, "end")} className="border-0 bg-transparent py-4 pr-4 text-left text-current cursor-pointer disabled:cursor-default disabled:opacity-30"><span className="mb-1 block text-muted">上一节</span>{previousChapter?.title ?? "已经是第一节"}</button>
     <button type="button" disabled={!nextChapter} onClick={() => chooseChapter(nextChapter?.id)} className="border-0 border-l border-rule bg-transparent py-4 pl-4 text-right text-current cursor-pointer disabled:cursor-default disabled:opacity-30"><span className="mb-1 block text-muted">下一节</span>{nextChapter?.title ?? "已经是最后一节"}</button>
   </nav>;
 
-  return <div className={`h-screen overflow-hidden ${isDark ? "book-reader-dark" : ""} ${shellClass}`}>
-    {mobileViewport ? <nav data-book-toolbar data-reader-mobile-toolbar aria-label="阅读工具" className={`book-mobile-toolbar z-30 grid-cols-5 border-t backdrop-blur-md ${chromeClass}`}>
+  return <div className={`book-reader h-screen overflow-hidden ${isDark ? "book-reader-dark" : ""} ${shellClass}`}>
+    {mobileViewport ? <nav data-book-toolbar data-reader-mobile-toolbar aria-label="阅读工具" className={`book-mobile-toolbar z-30 grid-cols-4 border-t backdrop-blur-md ${chromeClass}`}>
       <button type="button" onClick={() => openPanel("toc")} className="book-mobile-tool" aria-label="打开目录" aria-pressed={tocOpen}>
         <ReaderToolIcon name="toc" /><span>目录</span>
-      </button>
-      <button type="button" onClick={() => openPanel("search")} className="book-mobile-tool" aria-label="搜索全书" aria-pressed={searchOpen}>
-        <ReaderToolIcon name="search" /><span>搜索</span>
       </button>
       <button type="button" onClick={openBookAi} className="book-mobile-tool" aria-label="打开书内 AI" aria-pressed={aiOpen}>
         <ReaderToolIcon name="ai" /><span>AI</span>
@@ -836,10 +861,15 @@ export function BookReader({
       {onDownload && <button type="button" onClick={onDownload} className={`${controlClass} mt-3`} aria-label="下载整本 EPUB" title="下载整本 EPUB"><svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 20h14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" /></svg></button>}
     </nav>}
 
-    {tocOpen && <>
+    {mobileViewport && (tocOpen || searchOpen) && <BookNavigationSheet tab={tocOpen ? "toc" : "search"} onTabChange={openPanel} onClose={() => { setTocOpen(false); setSearchOpen(false); }} panelClass={panelClass}>
+      {tocOpen ? tocList : <BookSearchPanel embedded bookTitle={bookTitle} panelClass={panelClass} onClose={() => setSearchOpen(false)} onJump={locateSearchResult} onSearch={onSearch} />}
+    </BookNavigationSheet>}
+
+    {!mobileViewport && tocOpen && <>
       <button type="button" aria-label="关闭目录" onClick={() => setTocOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" />
-      <aside ref={tocPanelRef} aria-label="目录面板" className={`fixed inset-y-0 right-0 z-50 w-full overflow-y-auto border-l shadow-[-18px_0_50px_rgba(0,0,0,.12)] sm:w-[min(88vw,420px)] ${panelClass}`}>
-        <div className={`sticky top-0 z-10 border-b px-7 py-6 ${panelClass}`}>
+      <aside aria-label="目录面板" className={`fixed inset-y-0 right-0 z-50 flex w-full flex-col overflow-hidden border-l shadow-[-18px_0_50px_rgba(0,0,0,.12)] sm:w-[min(88vw,420px)] ${panelClass}`}>
+        <div className={`z-10 shrink-0 border-b ${panelClass}`}>
+          <div className="px-6 py-5">
           <div className="flex items-start justify-between gap-4">
             <div><p className="m-0 font-sans text-[11px] tracking-[.22em] text-muted">目录</p><h2 className="mb-1 mt-2 text-xl leading-snug">{bookTitle}</h2><p className="m-0 font-sans text-xs text-muted">{logicalChapterCount ? `${logicalChapterCount} 章 · ` : ""}{characterCount.toLocaleString()} 字</p></div>
             <button type="button" onClick={() => setTocOpen(false)} className="border-0 bg-transparent text-2xl cursor-pointer text-current" aria-label="关闭目录">×</button>
@@ -848,13 +878,13 @@ export function BookReader({
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="m15.5 15.5 5 5" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
             <input value={tocQuery} onChange={(event) => setTocQuery(event.target.value)} placeholder="搜索目录" aria-label="搜索目录" className="book-toc-search min-w-0 flex-1 text-current placeholder:text-muted" />
           </label>
+          </div>
         </div>
-        <ol className="m-0 list-none px-4 py-5">{filteredToc.map((item) => <li key={item.id}><button type="button" data-toc-active={activeChapterId === item.targetId ? "true" : undefined} onClick={() => chooseChapter(item.targetId)} style={{ paddingLeft: `${16 + item.depth * 16}px` }} className={`relative block w-full border-0 bg-transparent py-2.5 pr-4 text-left font-serif text-[13px] leading-relaxed cursor-pointer ${activeChapterId === item.targetId ? "font-bold text-red before:absolute before:inset-y-2 before:right-0 before:w-[2px] before:bg-red" : "text-current hover:text-red"}`}>{item.title}</button></li>)}</ol>
-        {filteredToc.length === 0 && <p className="px-7 py-10 text-center font-sans text-xs text-muted">没有匹配的目录项</p>}
+        {tocList}
       </aside>
     </>}
 
-    {searchOpen && <><button type="button" aria-label="关闭全书搜索" onClick={() => setSearchOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookSearchPanel bookTitle={bookTitle} panelClass={panelClass} onClose={() => setSearchOpen(false)} onJump={locateSearchResult} onSearch={onSearch} /></>}
+    {!mobileViewport && searchOpen && <><button type="button" aria-label="关闭全书搜索" onClick={() => setSearchOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookSearchPanel bookTitle={bookTitle} panelClass={panelClass} onClose={() => setSearchOpen(false)} onJump={locateSearchResult} onSearch={onSearch} /></>}
 
     {agentAccess && aiOpen && <><button type="button" aria-label="关闭书内 AI" onClick={closeAiPanel} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookAiPanel key={`${aiQuestion || "book-ai"}:${aiInitialAnswer || ""}`} bookTitle={bookTitle} datasetId={datasetId} itemId={itemId} manifestObject={manifestObject} initialQuestion={aiQuestion} initialAnswer={aiInitialAnswer} initialReferences={aiInitialReferences} preparing={aiPreparing} explanationQuote={aiExplanationQuote} focus={aiFocus} panelClass={panelClass} onClose={closeAiPanel} onExplanationComplete={(quote: string, answer: string, references?: RagReference[], metadata?: RagAnswerMetadata) => {
       if (quote.length <= 2_000) void saveExplanation({
@@ -919,18 +949,18 @@ export function BookReader({
       </section>
     </>}
 
-    {textSelection && <div className={`book-selection-tools fixed z-[65] -translate-x-1/2 font-sans ${textSelection.above ? "-translate-y-full" : ""}`} style={{ left: textSelection.left, top: textSelection.top }}>
-      <div className={`flex border shadow-[3px_6px_20px_rgba(0,0,0,.18)] ${panelClass}`} role="toolbar" aria-label="选中文字工具">
-        <button type="button" onClick={() => void copySelection()} className="reader-selection-action">复制</button>
-        {annotationAccess && <><button type="button" disabled={annotationSaving} onClick={() => void underlineSelection()} className="reader-selection-action">划线</button>
-        <button type="button" disabled={annotationSaving} onClick={() => setThoughtOpen((value) => !value)} className="reader-selection-action">写想法</button></>}
-        <button type="button" onClick={() => agentAccess ? void explainSelection() : openBookAi()} className="reader-selection-action relative text-red" aria-label="AI 解释">AI 解释<span aria-hidden="true" className="absolute right-1 top-1 text-[6px] font-bold leading-none tracking-normal">Beta</span></button>
+    {textSelection && <BookSelectionPopover rect={textSelection.rect} width={annotationAccess ? 272 : 144}>
+      <div className="book-selection-actions" role="toolbar" aria-label="选中文字工具">
+        <button type="button" onClick={() => void copySelection()} className="reader-selection-action"><IoCopyOutline aria-hidden="true" /><span>复制</span></button>
+        {annotationAccess && <><button type="button" disabled={annotationSaving} onClick={() => void underlineSelection()} className="reader-selection-action"><span aria-hidden="true" className="book-selection-underline">A</span><span>划线</span></button>
+        <button type="button" disabled={annotationSaving} onClick={() => setThoughtOpen((value) => !value)} className="reader-selection-action"><IoCreateOutline aria-hidden="true" /><span>写想法</span></button></>}
+        <button type="button" onClick={() => agentAccess ? void explainSelection() : openBookAi()} className="reader-selection-action book-selection-ai" aria-label="AI 解释"><IoSparklesOutline aria-hidden="true" /><span>AI 解释</span></button>
       </div>
-      {thoughtOpen && <div className={`mt-1 w-72 border p-3 shadow-[3px_6px_20px_rgba(0,0,0,.16)] ${panelClass}`}>
+      {thoughtOpen && <div className={`book-selection-thought border p-3 ${panelClass}`}>
         <textarea autoFocus value={thought} onChange={(event) => setThought(event.target.value)} placeholder="写下此刻的想法……" rows={3} className="reader-thought-input block w-full resize-none border-0 border-b border-rule bg-transparent px-0 py-1 font-serif text-sm leading-6 text-current" />
         <div className="mt-2 flex items-center justify-between gap-3"><CommentVisibilityControl value={thoughtVisibility} onChange={setThoughtVisibility} disabled={annotationSaving} /><button type="button" disabled={annotationSaving || !thought.trim()} onClick={() => void saveThought()} className="border-0 bg-transparent p-0 text-xs font-bold text-red cursor-pointer disabled:opacity-30">{annotationSaving ? "保存中…" : "保存"}</button></div>
       </div>}
-    </div>}
+    </BookSelectionPopover>}
 
     {readerNotice && <button type="button" onClick={() => setReaderNotice("")} className={`fixed bottom-20 left-1/2 z-[66] -translate-x-1/2 border px-4 py-2 font-sans text-xs shadow-lg md:bottom-6 ${panelClass}`}>{readerNotice}</button>}
 
