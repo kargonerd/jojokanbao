@@ -81,7 +81,7 @@ deduplication prevents duplicate workflow execution.
 pnpm --filter @jojo/maintenance-scheduler typecheck
 pnpm --filter @jojo/maintenance-scheduler test
 pnpm --filter @jojo/maintenance-scheduler build
-pnpm --filter @jojo/maintenance-scheduler deploy
+pnpm --filter @jojo/maintenance-scheduler run deploy
 ```
 
 For the Times stage split, deploy the Worker registry before (or together with)
