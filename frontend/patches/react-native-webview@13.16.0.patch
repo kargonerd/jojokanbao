@@ -1,0 +1,22 @@
+diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
+index 80c68034b193a47bedb56ca527352de9548e8ac6..79ab75ff202d4d7e6b5b72e5200ce45552334ee7 100644
+--- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
+@@ -153,8 +153,17 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+       this.menuCustomItems = menuCustomItems;
+     }
+ 
++    @Override
++    public ActionMode startActionMode(ActionMode.Callback callback) {
++      if (menuCustomItems != null && menuCustomItems.isEmpty()) return null;
++      return super.startActionMode(callback);
++    }
++
+     @Override
+     public ActionMode startActionMode(ActionMode.Callback callback, int type) {
++      // An explicitly empty menu opts into the reader's JS selection toolbar.
++      // Do not create an Android ActionMode that can cover it or delay events.
++      if (menuCustomItems != null && menuCustomItems.isEmpty()) return null;
+       if(menuCustomItems == null ){
+         return super.startActionMode(callback, type);
+       }
