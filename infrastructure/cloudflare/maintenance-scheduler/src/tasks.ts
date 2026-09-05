@@ -47,6 +47,7 @@ export const SCHEDULED_TASKS = [
     retryDelayMinutes: 15,
     monitoring: {
       name: "JOJO · rmrb-sync",
+      alertPolicy: { executionFailures: 3 },
       graceSeconds: 45 * 60,
       tags: "jojo production maintenance rmrb",
       description: "Daily RMRB PDF dispatch and synchronization outcome.",
@@ -101,6 +102,14 @@ export function validateScheduledTasks(tasks: readonly ScheduledTask[] = SCHEDUL
         throw new Error(`Healthchecks grace must be at least one minute: ${check.slug}`);
       }
       checkIds.add(check.slug);
+    }
+    for (const policy of [task.monitoring.alertPolicy, ...(task.monitoring.stages ?? []).map((stage) => stage.alertPolicy)]) {
+      if (policy?.executionFailures !== undefined && (!Number.isInteger(policy.executionFailures) || policy.executionFailures < 1)) {
+        throw new Error(`Invalid execution failure threshold: ${task.id}`);
+      }
+      if (policy?.dispatchFailureSeconds !== undefined && (!Number.isInteger(policy.dispatchFailureSeconds) || policy.dispatchFailureSeconds < 60)) {
+        throw new Error(`Invalid dispatch failure duration: ${task.id}`);
+      }
     }
 
     // Parse every cron expression in CI even when the task is not due at the

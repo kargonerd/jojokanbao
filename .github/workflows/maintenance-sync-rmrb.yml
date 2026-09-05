@@ -50,6 +50,7 @@ jobs:
       TENCENTCLOUD_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
       TENCENTCLOUD_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
       HEALTHCHECKS_PING_KEY: ${{ secrets.HEALTHCHECKS_PING_KEY }}
+      HEALTHCHECKS_REPORT_MODE: buffered
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -57,6 +58,7 @@ jobs:
         if: ${{ inputs.automatic }}
         shell: bash
         run: |
+          source tools/monitoring/classify-permanent.sh
           if ! [[ "${{ inputs.date }}" =~ ^[0-9]{8}$ ]] \
             || [ -z "${{ inputs.scheduled_at }}" ] \
             || [ -z "${{ inputs.schedule_slot }}" ] \

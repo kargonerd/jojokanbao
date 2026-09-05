@@ -69,17 +69,20 @@ jobs:
       JOJO_TIMES_PROXY_URI: ${{ secrets.JOJO_TIMES_PROXY_URI }}
       JOJO_TIMES_PROXY_SUBSCRIPTION: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION }}
       HEALTHCHECKS_PING_KEY: ${{ secrets.HEALTHCHECKS_PING_KEY }}
+      HEALTHCHECKS_REPORT_MODE: buffered
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Validate external scheduler inputs
         if: inputs.automatic && (inputs.since_hours != '1' || inputs.sources != '' || inputs.proxy_rotation_attempts != '12' || inputs.publish != true)
         run: |
+          source tools/monitoring/classify-permanent.sh
           echo "Automatic runs must use since_hours=1, all sources, proxy_rotation_attempts=12, and publish=true" >&2
           exit 1
 
       - name: Validate capture inputs
         run: |
+          source tools/monitoring/classify-permanent.sh
           if ! [[ "$TIMES_DISCOVERY_HOURS" =~ ^[1-9][0-9]*$ ]] \
             || ! [[ "$TIMES_PROCESS_WINDOW_HOURS" =~ ^[1-9][0-9]*$ ]] \
             || (( TIMES_PROCESS_WINDOW_HOURS > TIMES_DISCOVERY_HOURS )); then
@@ -102,6 +105,7 @@ jobs:
       - name: Validate Runtime Bucket configuration
         if: env.TIMES_PUBLISH == 'true'
         run: |
+          source tools/monitoring/classify-permanent.sh
           test -n "$HF_TOKEN" || (echo "HF_TOKEN is not configured" >&2 && exit 1)
           test -n "$HF_TIMES_RUNTIME_BUCKET" || (echo "HF_TIMES_RUNTIME_BUCKET is not configured" >&2 && exit 1)
 

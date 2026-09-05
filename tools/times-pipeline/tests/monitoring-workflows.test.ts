@@ -16,6 +16,17 @@ function evaluate(expression: string, context: Record<string, unknown>) {
 }
 
 describe("maintenance outcome reporting", () => {
+  it.each([
+    ["maintenance-times-capture.yml", "capture"],
+    ["maintenance-times-process.yml", "process"],
+    ["maintenance-sync-rmrb.yml", "sync-rmrb"],
+  ])("buffers %s outcomes in the shared policy inbox without new credentials", (file, job) => {
+    const workflow = parse(readFileSync(new URL(`../../../.github/workflows/${file}`, import.meta.url), "utf8"));
+    expect(workflow.jobs[job].env.HEALTHCHECKS_REPORT_MODE).toBe("buffered");
+    expect(workflow.jobs[job].env.HEALTHCHECKS_PING_KEY).toBe("${{ secrets.HEALTHCHECKS_PING_KEY }}");
+    const validations = workflow.jobs[job].steps.filter((step: { name?: string }) => step.name?.startsWith("Validate"));
+    for (const step of validations) expect(step.run).toContain("source tools/monitoring/classify-permanent.sh");
+  });
   const process = reportStep("maintenance-times-process.yml", "process");
   const capture = reportStep("maintenance-times-capture.yml", "capture");
   it("keeps Capture and committed Process outcomes on separate managed checks", () => {
