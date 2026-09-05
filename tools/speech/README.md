@@ -60,7 +60,7 @@ python tools/dev-backend.py --b2
 
 ```powershell
 pnpm --filter @jojo/content-pipeline speech-plan --cdn https://blacknews.jojokanbao.cn --all-books --output <绝对路径/library-plan.json>
-python tools/speech/generate.py --plan <绝对路径/library-plan.json> --provider mimo --voice 白桦 --all --use-rclone --report .runtime/speech/library-report.json
+python tools/speech/generate.py --plan <绝对路径/library-plan.json> --provider mimo --voice 白桦 --all --concurrency 2 --use-rclone --report .runtime/speech/library-report.json
 ```
 
 这会产生 B2 写入和提供方调用；必须人工明确授权。中断后重复同一命令会复用已提交的段。
@@ -100,10 +100,22 @@ python tools/speech/generate.py --plan <plan.json> --use-rclone --report .runtim
 # 指定样本章节
 python tools/speech/generate.py --plan <plan.json> --use-rclone --chapter <chapter-id>
 # 确认样本后，手动全量跑一个声音
-python tools/speech/generate.py --plan <plan.json> --use-rclone --all --report .runtime/speech/full-report.json
+python tools/speech/generate.py --plan <plan.json> --use-rclone --all --concurrency 2 --report .runtime/speech/full-report.json
 ```
 
-工具使用与网页相同的分段器，串行合成，失败即记录并停止；重跑会检查 B2，跳过已成功段。
+工具使用与网页相同的分段器；`--concurrency` 仅接受 `1` 或 `2`，默认 `1` 保持串行。
+选择 `2` 时最多预取两段，不一次提交整本/全库；按原文顺序记录 offset，整章成功后才发布清单。
+遇到终止错误不再派发后续段，也不取消已经发出的合成：等待在途任务完成 B2 保存后停止。
+失败段之后已保存的预取音频可能尚未进入本次有序报告，但重跑仍会从 B2 命中，不需重新合成。
+
+同一离线批次的实际合成请求（含重试）最多 30 次/滚动分钟，缓存命中不占该预算。
+MiMo 仅对明确的 HTTP 429 最多重试两次，退避 5/10 秒；有效 `Retry-After` 更长时遵从它，
+若要求等待超过 60 秒则停止，不提前重试。读超时、其他 HTTP 错误和 B2 错误均不自动重试。
+该限制仅覆盖当前离线进程，不是账号全局限流；不要同时启动多个全库进程。
+按书调用 `generate()` 的包装器应在同一事件循环复用一个 `RequestLimiter`，通过 `limiter=` 传入，
+避免每本书重置速率预算。线上 API 的两段保护槽、缓存版本和请求协议不变。
+
+重跑会检查 B2，跳过已成功段；同一在途生成的 `shared` 结果计为缓存复用。
 本地 plan 含正文，请留在被 Git 忽略的 `.runtime/`；report 不含正文/凭据，每段成功后原子保存。
 报告包含独立音频总字节数、本次新生成字节数、总时长、缓存命中数及失败章节。
 章节清单、描述文件和 B2 版本存储的开销不计入 `uniqueBytes`，所以它不是桶账单总量。
@@ -141,6 +153,6 @@ MIMO_API_KEY=<secret>
 《1844年经济学哲学手稿》“编辑说明”，白桦音色，4 段：251.424 秒，MP3 合计
 1,508,544 字节（约 1.51 MB）。独立重跑全部 4 段命中 B2，新增 0 字节、合成调用 0 次。
 CDN 实测 MP3 返回 `audio/mpeg`，Range 返回 `206`，CORS 为 `*`。当前 CDN 覆盖源站
-缓存头为 `max-age=864000`（10 天），尚未修改该现有规则。没有开始全库合成。
+缓存头为 `max-age=864000`（10 天），尚未修改该现有规则。这是样本记录，不代表全库体积或当前生成进度。
 
 本工具不会部署 EdgeOne，也不会将尚未上线的 Times 添加到公开部署。
