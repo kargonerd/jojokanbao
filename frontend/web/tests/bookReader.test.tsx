@@ -70,6 +70,8 @@ describe("BookReader", () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 1200, writable: true });
     vi.stubGlobal("ResizeObserver", ResizeObserverMock);
     vi.stubGlobal("PointerEvent", MouseEvent);
+    Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value: function (this: HTMLDialogElement) { this.open = true; } });
+    Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value: function (this: HTMLDialogElement) { this.open = false; } });
     Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value: vi.fn() });
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
     Object.defineProperty(Range.prototype, "getBoundingClientRect", {
@@ -501,6 +503,11 @@ describe("BookReader", () => {
     fireEvent.pointerUp(container.querySelector("[data-book-page-flow]")!);
 
     fireEvent.click(await screen.findByRole("button", { name: "写想法" }));
+    expect(screen.queryByRole("toolbar", { name: "选中文字工具" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "写想法" }).querySelector("blockquote")?.textContent).toBe("这是正文。");
+    expect(screen.queryByRole("button", { name: "打开听本章播放器" })).toBeNull();
+    expect(window.getSelection()?.toString()).toBe("");
+    fireEvent(document, new Event("selectionchange"));
     fireEvent.change(screen.getByPlaceholderText("写下此刻的想法……"), { target: { value: "值得继续讨论" } });
     expect(screen.getByRole("radio", { name: "公开" }).getAttribute("aria-checked")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
@@ -512,6 +519,87 @@ describe("BookReader", () => {
       "public",
     ));
     expect(await screen.findByRole("complementary", { name: "划线详情" })).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: "写想法" })).toBeNull();
+  });
+
+  it.each([390, 1200])("hides listening controls while reader panels are open at %ipx", (width) => {
+    window.innerWidth = width;
+    const { container } = renderReader();
+    const launcher = screen.getByRole("button", { name: "打开听本章播放器" });
+    fireEvent.click(screen.getByRole("button", { name: "打开书内 AI" }));
+    expect(screen.queryByRole("button", { name: "打开听本章播放器" })).toBeNull();
+    expect(container.querySelector(".speech-player")?.hasAttribute("inert")).toBe(true);
+    fireEvent.click(screen.getAllByRole("button", { name: "关闭书内 AI" })[0]!);
+    expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBe(launcher);
+    fireEvent.click(screen.getByRole("button", { name: "打开目录" }));
+    expect(screen.queryByRole("button", { name: "打开听本章播放器" })).toBeNull();
+    fireEvent.click(screen.getAllByRole("button", { name: width < 768 ? "关闭书内导航" : "关闭目录" })[0]!);
+    expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBe(launcher);
+  });
+
+  it.each([390, 1200])("keeps the selected quote and draft independent of browser selection at %ipx", async (width) => {
+    window.innerWidth = width;
+    renderReader();
+    const paragraph = screen.getByText("这是正文。");
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+    fireEvent.click(await screen.findByRole("button", { name: "写想法" }));
+    const composer = screen.getByRole("dialog", { name: "写想法" });
+    const input = within(composer).getByRole("textbox", { name: "想法内容" });
+    expect(document.activeElement).toBe(input);
+    fireEvent.change(input, { target: { value: "不应该丢失的草稿" } });
+    fireEvent(document, new Event("selectionchange"));
+    fireEvent.scroll(document.querySelector("[data-book-reading-surface]")!);
+    fireEvent.resize(window);
+    expect(screen.queryByRole("toolbar", { name: "选中文字工具" })).toBeNull();
+    expect(composer.querySelector("blockquote")?.textContent).toBe("这是正文。");
+    expect((input as HTMLTextAreaElement).value).toBe("不应该丢失的草稿");
+    fireEvent.click(within(composer).getByRole("button", { name: "取消写想法" }));
+    expect(screen.queryByRole("dialog", { name: "写想法" })).toBeNull();
+    expect(screen.queryByRole("toolbar", { name: "选中文字工具" })).toBeNull();
+    expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
+    expect(annotationApi.createAnnotation).not.toHaveBeenCalled();
+  });
+
+  it("keeps the thought draft and shows save errors inside the composer", async () => {
+    annotationApi.createAnnotation.mockRejectedValueOnce(new Error("暂时无法保存"));
+    renderReader();
+    const range = document.createRange();
+    range.selectNodeContents(screen.getByText("这是正文。"));
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+    fireEvent.click(await screen.findByRole("button", { name: "写想法" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "想法内容" }), { target: { value: "只给自己看的想法" } });
+    fireEvent.click(screen.getByRole("radio", { name: "仅自己可见" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("暂时无法保存");
+    expect((screen.getByRole("textbox", { name: "想法内容" }) as HTMLTextAreaElement).value).toBe("只给自己看的想法");
+    expect(annotationApi.createAnnotation).toHaveBeenCalledWith(expect.any(Object), expect.objectContaining({ quote: "这是正文。" }), "只给自己看的想法", "private");
+    fireEvent(screen.getByRole("dialog", { name: "写想法" }), new Event("cancel", { cancelable: true }));
+    expect(screen.queryByRole("dialog", { name: "写想法" })).toBeNull();
+  });
+
+  it("keeps the composer in the visible viewport when the mobile keyboard opens", async () => {
+    window.innerWidth = 390;
+    const viewport = Object.assign(new EventTarget(), { height: 844, offsetTop: 0 });
+    vi.stubGlobal("visualViewport", viewport);
+    renderReader();
+    const range = document.createRange();
+    range.selectNodeContents(screen.getByText("这是正文。"));
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+    fireEvent.click(await screen.findByRole("button", { name: "写想法" }));
+    const composer = screen.getByRole("dialog", { name: "写想法" });
+    act(() => { viewport.height = 380; viewport.offsetTop = 48; viewport.dispatchEvent(new Event("resize")); });
+    expect(composer.style.height).toBe("380px");
+    expect(composer.style.top).toBe("48px");
+    expect(composer.querySelector("blockquote")?.textContent).toBe("这是正文。");
+    expect(screen.queryByRole("toolbar", { name: "选中文字工具" })).toBeNull();
   });
 
   it("saves a plain underline without opening the discussion panel", async () => {
@@ -614,6 +702,7 @@ describe("BookReader", () => {
 
     expect(screen.getByRole("complementary", { name: "书内 AI" })).toBeTruthy();
     expect(screen.getByRole("status").textContent).toContain("正在查找已有解释");
+    expect(screen.queryByRole("button", { name: "打开听本章播放器" })).toBeNull();
     expect(ragApi.askStream).not.toHaveBeenCalled();
 
     await act(async () => finishCacheLookup?.(undefined));

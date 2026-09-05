@@ -13,7 +13,6 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { IoCopyOutline, IoCreateOutline, IoSparklesOutline } from "react-icons/io5";
 import type { ReaderSelectionRect } from "@jojo/ui/reader-selection";
 import { AnnotationDiscussionPanel } from "../../annotations/AnnotationDiscussionPanel";
-import { CommentVisibilityControl } from "../../annotations/CommentVisibilityControl";
 import {
   clearReaderExplanationMarks,
   renderAnnotationMarks,
@@ -31,6 +30,7 @@ import { BookAiPanel } from "./BookAiPanel";
 import { BookSearchPanel } from "./BookSearchPanel";
 import { BookNavigationSheet } from "./BookNavigationSheet";
 import { BookSelectionPopover } from "./BookSelectionPopover";
+import { BookThoughtComposer } from "./BookThoughtComposer";
 import "./BookReader.css";
 import {
   bookshelfContains,
@@ -192,8 +192,9 @@ export function BookReader({
   const [tocQuery, setTocQuery] = useState("");
   const [toolPopover, setToolPopover] = useState<ReaderToolPopover>();
   const [textSelection, setTextSelection] = useState<ReaderTextSelection>();
-  const [thoughtOpen, setThoughtOpen] = useState(false);
+  const [thoughtSelection, setThoughtSelection] = useState<ReaderTextSelection>();
   const [thought, setThought] = useState("");
+  const [thoughtError, setThoughtError] = useState("");
   const [thoughtVisibility, setThoughtVisibility] = useState<AnnotationVisibility>("public");
   const [aiQuestion, setAiQuestion] = useState<string>();
   const [aiInitialAnswer, setAiInitialAnswer] = useState<string>();
@@ -239,6 +240,7 @@ export function BookReader({
   const annotationAccess = annotationsEnabled && Boolean(currentUserId);
   const annotations = useAnnotationThreads(annotationSubject, annotationAccess, currentUserId);
   const activeAnnotation = annotations.threads.find((thread) => thread.id === activeAnnotationId);
+  const readerOverlayOpen = aiOpen || tocOpen || searchOpen || Boolean(toolPopover || thoughtSelection || activeAnnotation || expandedImage);
   const previousChapter = chapters[activeChapterIndex - 1];
   const nextChapter = chapters[activeChapterIndex + 1];
   const bookProgress = chapters.length
@@ -328,7 +330,7 @@ export function BookReader({
       setAiOpen(false);
       setToolPopover(undefined);
       setTextSelection(undefined);
-      setThoughtOpen(false);
+      setThoughtSelection(undefined);
       setExpandedImage(undefined);
       setChromeHidden(false);
     };
@@ -354,6 +356,8 @@ export function BookReader({
     setReadingProgress(0);
     setPageMetrics((current) => ({ ...current, page: 0 }));
     setExpandedImage(undefined);
+    setTextSelection(undefined);
+    setThoughtSelection(undefined);
   }, [chapterKey]);
 
   useEffect(() => {
@@ -453,7 +457,7 @@ export function BookReader({
     setPageMetrics((current) => ({ ...current, page: bounded }));
     setReadingProgress(pageMetrics.spreads <= 1 ? 100 : Math.round((bounded / (pageMetrics.spreads - 1)) * 100));
     setTextSelection(undefined);
-    setThoughtOpen(false);
+    setThoughtSelection(undefined);
   }, [pageMetrics.spreads, pageMetrics.step]);
 
   const chooseChapter = useCallback((chapterId: string | undefined, destination: "start" | "end" = "start"): void => {
@@ -632,11 +636,11 @@ export function BookReader({
   }
 
   const captureTextSelection = useCallback((): void => {
+    if (readerOverlayOpen) return;
     if (document.activeElement?.closest(".book-selection-tools")) return;
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.rangeCount) {
       setTextSelection(undefined);
-      setThoughtOpen(false);
       return;
     }
     const range = selection.getRangeAt(0);
@@ -651,8 +655,7 @@ export function BookReader({
       anchor,
       rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
     });
-    setThoughtOpen(false);
-  }, [mode]);
+  }, [mode, readerOverlayOpen]);
 
   useEffect(() => {
     const onContextMenu = (event: MouseEvent) => {
@@ -685,7 +688,17 @@ export function BookReader({
   function clearSelection(): void {
     window.getSelection()?.removeAllRanges();
     setTextSelection(undefined);
-    setThoughtOpen(false);
+    setThoughtSelection(undefined);
+  }
+
+  function composeThought(): void {
+    if (!textSelection) return;
+    setThoughtSelection(textSelection);
+    setThought("");
+    setThoughtError("");
+    setThoughtVisibility("public");
+    setTextSelection(undefined);
+    window.getSelection()?.removeAllRanges();
   }
 
   async function copySelection(): Promise<void> {
@@ -724,17 +737,18 @@ export function BookReader({
   }
 
   async function saveThought(): Promise<void> {
-    if (!annotationsEnabled || !thought.trim() || annotationSaving) return;
-    const anchor = selectionAnchor();
+    if (!annotationAccess || !thought.trim() || annotationSaving) return;
+    const anchor = thoughtSelection?.anchor;
     if (!anchor) return;
     setAnnotationSaving(true);
+    setThoughtError("");
     try {
       const saved = await annotations.create(anchor, thought.trim(), thoughtVisibility);
       clearSelection();
       setActiveAnnotationId(saved.id);
       setThought("");
       setThoughtVisibility("public");
-    } catch (reason) { setReaderNotice(reason instanceof Error ? reason.message : String(reason)); }
+    } catch (reason) { setThoughtError(reason instanceof Error ? reason.message : String(reason)); }
     finally { setAnnotationSaving(false); }
   }
 
@@ -755,7 +769,7 @@ export function BookReader({
     setAiInitialReferences(undefined);
     const question = `请结合《${bookTitle}》的上下文解释这段话：\n\n“${quote}”`;
     setTextSelection(undefined);
-    setThoughtOpen(false);
+    setThoughtSelection(undefined);
     setAiPreparing(quote.length <= 2_000);
     openPanel("ai");
     if (quote.length > 2_000) {
@@ -810,7 +824,7 @@ export function BookReader({
     setAiOpen(panel === "ai");
     setToolPopover(undefined);
     setTextSelection(undefined);
-    setThoughtOpen(false);
+    setThoughtSelection(undefined);
   }
 
   function openTool(tool: ReaderToolPopover): void {
@@ -819,7 +833,7 @@ export function BookReader({
     setSearchOpen(false);
     setAiOpen(false);
     setTextSelection(undefined);
-    setThoughtOpen(false);
+    setThoughtSelection(undefined);
   }
 
   function locateSearchResult(hit: RagSearchHit, matchText: string): void {
@@ -834,7 +848,6 @@ export function BookReader({
     const range = reader.scrollHeight - reader.clientHeight;
     setReadingProgress(range <= 0 ? 100 : Math.min(100, Math.round((reader.scrollTop / range) * 100)));
     setTextSelection(undefined);
-    setThoughtOpen(false);
   }
 
   function openBookAi(): void {
@@ -892,7 +905,7 @@ export function BookReader({
     busy: bookshelfBusy,
     toggle: () => void toggleBookshelf(),
     speechLauncherTarget,
-    chromeHidden: mobileChromeHidden,
+    chromeHidden: mobileChromeHidden || readerOverlayOpen,
   }}><div data-reader-chrome-hidden={mobileChromeHidden || undefined} className={`book-reader book-reader-root h-screen overflow-hidden ${isDark ? "book-reader-dark" : ""} ${shellClass}`}>
     {mobileViewport ? <nav {...chromeProps} data-book-toolbar data-reader-mobile-toolbar aria-label="阅读工具" className={`book-mobile-toolbar z-30 grid-cols-4 border-t backdrop-blur-md ${chromeClass}`}>
       <button type="button" onClick={() => openPanel("toc")} className="book-mobile-tool" aria-label="打开目录" aria-pressed={tocOpen}>
@@ -1012,14 +1025,14 @@ export function BookReader({
       <div className="book-selection-actions" role="toolbar" aria-label="选中文字工具">
         <button type="button" onClick={() => void copySelection()} className="reader-selection-action"><IoCopyOutline aria-hidden="true" /><span>复制</span></button>
         {annotationAccess && <><button type="button" disabled={annotationSaving} onClick={() => void underlineSelection()} className="reader-selection-action"><span aria-hidden="true" className="book-selection-underline">A</span><span>划线</span></button>
-        <button type="button" disabled={annotationSaving} onClick={() => setThoughtOpen((value) => !value)} className="reader-selection-action"><IoCreateOutline aria-hidden="true" /><span>写想法</span></button></>}
+        <button type="button" disabled={annotationSaving} onClick={composeThought} className="reader-selection-action"><IoCreateOutline aria-hidden="true" /><span>写想法</span></button></>}
         <button type="button" onClick={() => agentAccess ? void explainSelection() : openBookAi()} className="reader-selection-action" aria-label="AI 解释"><IoSparklesOutline aria-hidden="true" /><span>AI 解释</span></button>
       </div>
-      {thoughtOpen && <div className={`book-selection-thought border p-3 ${panelClass}`}>
-        <textarea autoFocus value={thought} onChange={(event) => setThought(event.target.value)} placeholder="写下此刻的想法……" rows={3} className="reader-thought-input block w-full resize-none border-0 border-b border-rule bg-transparent px-0 py-1 font-serif text-sm leading-6 text-current" />
-        <div className="mt-2 flex items-center justify-between gap-3"><CommentVisibilityControl value={thoughtVisibility} onChange={setThoughtVisibility} disabled={annotationSaving} /><button type="button" disabled={annotationSaving || !thought.trim()} onClick={() => void saveThought()} className="border-0 bg-transparent p-0 text-xs font-bold text-red cursor-pointer disabled:opacity-30">{annotationSaving ? "保存中…" : "保存"}</button></div>
-      </div>}
     </BookSelectionPopover>}
+
+    {thoughtSelection && <BookThoughtComposer quote={thoughtSelection.text} value={thought} visibility={thoughtVisibility}
+      saving={annotationSaving} error={thoughtError} panelClass={panelClass} onChange={setThought} onVisibilityChange={setThoughtVisibility}
+      onSave={() => void saveThought()} onClose={clearSelection} />}
 
     {readerNotice && <button type="button" onClick={() => setReaderNotice("")} className={`fixed bottom-20 left-1/2 z-[66] -translate-x-1/2 border px-4 py-2 font-sans text-xs shadow-lg md:bottom-6 ${panelClass}`}>{readerNotice}</button>}
 
