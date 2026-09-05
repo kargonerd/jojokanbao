@@ -816,13 +816,13 @@ export function SpeechPlayer({
     document.body,
   ) : null;
 
-  const launcher = <section className={`speech-player${miniPlayerTarget ? " is-docked" : ""}`} aria-label={label}>
+  const launcher = <section className={`speech-player${miniPlayerTarget ? " is-docked" : ""}`} aria-label={label} aria-hidden={bookshelf?.chromeHidden || undefined} inert={bookshelf?.chromeHidden}>
     <button ref={launcherRef} type="button" className={`speech-player__launcher${active ? " is-playing" : ""}`} onClick={openPlayer} disabled={!playableSegments.length} aria-label={`打开${label}播放器`}>
       <span className="speech-player__launcher-mark">听</span>
     </button>
   </section>;
   const mini = sessionStarted && !panelOpen ? createPortal(
-    <section className={`speech-mini${bookshelf ? " is-reader" : ""}${miniPlayerTarget ? " is-docked" : ""}`} aria-label="迷你听读播放器" onKeyDown={(event) => event.stopPropagation()}>
+    <section className={`speech-mini${bookshelf ? " is-reader" : ""}${miniPlayerTarget ? " is-docked" : ""}`} aria-label="迷你听读播放器" aria-hidden={bookshelf?.chromeHidden || undefined} inert={bookshelf?.chromeHidden} onKeyDown={(event) => event.stopPropagation()}>
       {cover && <div className="speech-player__ambience speech-mini__ambience" aria-hidden="true"><img src={cover} alt="" /></div>}
       <div className="speech-mini__inner">
         <button ref={miniExpandRef} type="button" className="speech-mini__content" onClick={openPlayer} aria-label={`展开播放器：${displayTitle}`}>

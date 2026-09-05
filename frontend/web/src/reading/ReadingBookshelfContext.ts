@@ -6,6 +6,7 @@ export interface ReadingBookshelfControls {
   busy: boolean;
   toggle: () => void;
   speechLauncherTarget?: HTMLElement | null;
+  chromeHidden?: boolean;
 }
 
 export const ReadingBookshelfContext = createContext<ReadingBookshelfControls | null>(null);

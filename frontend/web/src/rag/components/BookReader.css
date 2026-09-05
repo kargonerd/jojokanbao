@@ -21,6 +21,12 @@
   --color-red: #d8786e;
 }
 
+/* Keep the reading surface in place when mobile chrome is dismissed. */
+.book-reader[data-reader-chrome-hidden="true"] [data-reader-chrome] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .book-mobile-toolbar {
   position: fixed;
   right: 0;

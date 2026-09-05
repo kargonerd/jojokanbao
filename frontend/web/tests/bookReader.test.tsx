@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BookReader } from "../src/rag/components/BookReader";
+import { SpeechPlayer } from "../src/reading/SpeechPlayer";
 import { useFeatureFlagStore } from "../src/featureFlags";
 import { useAccountSessionStore } from "../src/account/session";
 import { useRecentReadingStore } from "../src/library/recentReadingStore";
@@ -68,6 +69,7 @@ describe("BookReader", () => {
     ragApi.askStream.mockClear();
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 1200, writable: true });
     vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    vi.stubGlobal("PointerEvent", MouseEvent);
     Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value: vi.fn() });
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
     Object.defineProperty(Range.prototype, "getBoundingClientRect", {
@@ -79,6 +81,7 @@ describe("BookReader", () => {
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -113,6 +116,7 @@ describe("BookReader", () => {
           onLocate={vi.fn()}
           onInternalLink={onInternalLink}
           onSearch={vi.fn(async () => [])}
+          speechControl={<SpeechPlayer label="听本章" segments={["这是正文。"]} />}
         >
           <h1>第一章</h1>
           <p id="citation-target">这是正文。</p>
@@ -195,6 +199,86 @@ describe("BookReader", () => {
     expect(within(toolbar!).getByRole("button", { name: "阅读进度" })).toBeTruthy();
     expect(within(toolbar!).getByRole("button", { name: "显示设置" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "切换纸张纹理" })).toBeNull();
+  });
+
+  it.each(["scroll", "paged"])("toggles all mobile chrome with a body tap in %s mode without remounting the text", (mode) => {
+    window.innerWidth = 390;
+    window.localStorage.setItem("jojo-reader-mode", mode);
+    const { container } = renderReader();
+    const paragraph = screen.getByText("这是正文。");
+    const surface = container.querySelector("[data-book-reading-surface]");
+    expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
+
+    fireEvent.click(paragraph);
+    expect(screen.queryByRole("navigation", { name: "阅读工具" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "打开听本章播放器" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "返回上一页" })).toBeNull();
+    expect(container.querySelector("[data-reader-mobile-toolbar]")?.hasAttribute("inert")).toBe(true);
+    expect(container.querySelector("[data-book-reading-surface]")).toBe(surface);
+    expect(screen.getByText("这是正文。")).toBe(paragraph);
+    if (mode === "paged") expect(screen.queryByRole("button", { name: "下一页" })).toBeNull();
+
+    fireEvent.click(paragraph);
+    expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "返回上一页" })).toBeTruthy();
+    expect(container.querySelector("[data-reader-mobile-toolbar]")?.hasAttribute("inert")).toBe(false);
+  });
+
+  it.each(["move", "cancel", "scroll", "longpress"])("does not confuse a mobile %s gesture with a reader tap", (gesture) => {
+    window.innerWidth = 390;
+    const { container } = renderReader();
+    const paragraph = screen.getByText("这是正文。");
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1000);
+    fireEvent.pointerDown(paragraph, { clientX: 120, clientY: 160 });
+    if (gesture === "move") fireEvent.pointerMove(paragraph, { clientX: 121, clientY: 210 });
+    if (gesture === "cancel") fireEvent.pointerCancel(paragraph);
+    if (gesture === "scroll") fireEvent.scroll(container.querySelector("[data-book-reading-surface]")!);
+    if (gesture === "longpress") clock.mockReturnValue(1700);
+    fireEvent.pointerUp(paragraph);
+    fireEvent.click(paragraph);
+    expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
+
+    fireEvent.pointerDown(paragraph, { clientX: 120, clientY: 160 });
+    fireEvent.pointerUp(paragraph);
+    fireEvent.click(paragraph);
+    expect(screen.queryByRole("button", { name: "打开听本章播放器" })).toBeNull();
+  });
+
+  it("does not hide mobile chrome when selecting text or dismissing a selection", () => {
+    window.innerWidth = 390;
+    renderReader();
+    const paragraph = screen.getByText("这是正文。");
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+    fireEvent.click(paragraph);
+    expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
+    fireEvent.pointerDown(paragraph);
+    window.getSelection()?.removeAllRanges();
+    fireEvent(document, new Event("selectionchange"));
+    fireEvent.pointerUp(paragraph);
+    fireEvent.click(paragraph);
+    expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
+  });
+
+  it("preserves mobile links and image actions and restores chrome on desktop resize", () => {
+    window.innerWidth = 390;
+    renderReader();
+    fireEvent.click(screen.getByRole("link", { name: "[1]" }));
+    expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("img", { name: "测试插图" }));
+    expect(screen.getByRole("dialog", { name: "图片预览" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "关闭图片预览" }));
+    fireEvent.click(screen.getByText("这是正文。"));
+    expect(screen.queryByRole("button", { name: "打开听本章播放器" })).toBeNull();
+    window.innerWidth = 1200;
+    fireEvent(window, new Event("resize"));
+    expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
+    fireEvent.click(screen.getByText("这是正文。"));
+    expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
   });
 
   it("puts mobile typography, paper, texture, and reading mode in one display sheet", async () => {

@@ -259,6 +259,30 @@ describe("reader speech", () => {
     expect(document.body.dataset.speechMini).toBeUndefined();
   });
 
+  it("hides reader mini chrome without stopping or recreating audio", async () => {
+    const controls = { available: false, added: false, busy: false, toggle: () => undefined };
+    const player = <SpeechPlayer contentId="reader-chrome" segments={["测试正文"]} label="听本章" />;
+    const view = render(<ReadingBookshelfContext.Provider value={controls}>{player}</ReadingBookshelfContext.Provider>);
+    fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
+    await waitFor(() => expect(AudioMock.instances[0]?.play).toHaveBeenCalled());
+    const audio = AudioMock.instances[0]!;
+    fireEvent.click(screen.getByRole("button", { name: "收起听读播放器" }));
+    const pauses = audio.pause.mock.calls.length;
+
+    view.rerender(<ReadingBookshelfContext.Provider value={{ ...controls, chromeHidden: true }}>{player}</ReadingBookshelfContext.Provider>);
+    expect(screen.queryByRole("region", { name: "迷你听读播放器" })).toBeNull();
+    expect(document.querySelector(".speech-mini")?.hasAttribute("inert")).toBe(true);
+    expect(document.body.dataset.speechMini).toBe("reader");
+    expect(audio.pause).toHaveBeenCalledTimes(pauses);
+    expect(AudioMock.instances).toHaveLength(1);
+
+    view.rerender(<ReadingBookshelfContext.Provider value={controls}>{player}</ReadingBookshelfContext.Provider>);
+    expect(screen.getByRole("region", { name: "迷你听读播放器" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "暂停听读" })).toBeTruthy();
+    expect(audio.pause).toHaveBeenCalledTimes(pauses);
+  });
+
   it("docks the mini player in its host without moving the full player or restarting audio", async () => {
     function DockedPlayer() {
       const [target, setTarget] = useState<HTMLDivElement | null>(null);

@@ -1,5 +1,6 @@
 import {
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -210,6 +211,10 @@ export function BookReader({
   const [readingProgress, setReadingProgress] = useState(0);
   const [columnsPerSpread, setColumnsPerSpread] = useState(() => window.innerWidth >= 900 ? 2 : 1);
   const [mobileViewport, setMobileViewport] = useState(() => window.innerWidth < 768);
+  const [chromeHidden, setChromeHidden] = useState(false);
+  const mobileChromeHidden = mobileViewport && chromeHidden;
+  const chromeProps = { "data-reader-chrome": true, "aria-hidden": mobileChromeHidden || undefined, inert: mobileChromeHidden };
+  const readerTapRef = useRef<{ x: number; y: number; started: number; cancelled: boolean } | null>(null);
   const [speechLauncherTarget, setSpeechLauncherTarget] = useState<HTMLDivElement | null>(null);
   const [pageMetrics, setPageMetrics] = useState<PageMetrics>(DEFAULT_PAGE_METRICS);
   const [trailingBlankPage, setTrailingBlankPage] = useState(false);
@@ -325,6 +330,7 @@ export function BookReader({
       setTextSelection(undefined);
       setThoughtOpen(false);
       setExpandedImage(undefined);
+      setChromeHidden(false);
     };
     window.addEventListener("keydown", closePanels);
     return () => window.removeEventListener("keydown", closePanels);
@@ -334,6 +340,7 @@ export function BookReader({
     const updateViewport = (): void => {
       setColumnsPerSpread(window.innerWidth >= 900 ? 2 : 1);
       setMobileViewport(window.innerWidth < 768);
+      if (window.innerWidth >= 768) setChromeHidden(false);
     };
     window.addEventListener("resize", updateViewport);
     return () => window.removeEventListener("resize", updateViewport);
@@ -571,7 +578,31 @@ export function BookReader({
     return () => window.clearTimeout(timer);
   }, [contentLoading, focusAnchorId, focusText, mode, pageMetrics.step, revealElement]);
 
+  function startReaderTap(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (!mobileViewport) return;
+    if (event.isPrimary === false) {
+      cancelReaderTap();
+      return;
+    }
+    readerTapRef.current = {
+      x: event.clientX, y: event.clientY, started: Date.now(),
+      cancelled: Boolean(window.getSelection()?.toString()),
+    };
+  }
+
+  function moveReaderTap(event: ReactPointerEvent<HTMLDivElement>): void {
+    const tap = readerTapRef.current;
+    if (tap && Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > 10) tap.cancelled = true;
+  }
+
+  function cancelReaderTap(): void {
+    if (readerTapRef.current) readerTapRef.current.cancelled = true;
+  }
+
   function handleReaderClick(event: ReactMouseEvent<HTMLDivElement>): void {
+    const tap = readerTapRef.current;
+    readerTapRef.current = null;
+    if (mobileViewport && (tap?.cancelled || (tap && Date.now() - tap.started > 450))) return;
     const image = (event.target as Element).closest<HTMLImageElement>("img");
     if (image) {
       event.preventDefault();
@@ -579,7 +610,14 @@ export function BookReader({
       return;
     }
     const link = (event.target as HTMLElement).closest<HTMLAnchorElement>('a[href^="#"]');
-    if (!link) return;
+    if (!link) {
+      if (mobileViewport && event.detail < 2 && !window.getSelection()?.toString()
+        && !(event.target as Element).closest("a,button,input,textarea,select,label,[role='button'],[contenteditable='true']")
+        && !tocOpen && !searchOpen && !aiOpen && !toolPopover && !textSelection && !expandedImage) {
+        setChromeHidden((hidden) => !hidden);
+      }
+      return;
+    }
     const targetId = link.dataset.targetId;
     const anchorId = link.dataset.anchorId
       || decodeURIComponent(link.getAttribute("href")?.slice(1) || "");
@@ -790,6 +828,7 @@ export function BookReader({
   }
 
   function updateScrollProgress(): void {
+    cancelReaderTap();
     const reader = scrollRef.current;
     if (!reader) return;
     const range = reader.scrollHeight - reader.clientHeight;
@@ -853,8 +892,9 @@ export function BookReader({
     busy: bookshelfBusy,
     toggle: () => void toggleBookshelf(),
     speechLauncherTarget,
-  }}><div className={`book-reader book-reader-root h-screen overflow-hidden ${isDark ? "book-reader-dark" : ""} ${shellClass}`}>
-    {mobileViewport ? <nav data-book-toolbar data-reader-mobile-toolbar aria-label="阅读工具" className={`book-mobile-toolbar z-30 grid-cols-4 border-t backdrop-blur-md ${chromeClass}`}>
+    chromeHidden: mobileChromeHidden,
+  }}><div data-reader-chrome-hidden={mobileChromeHidden || undefined} className={`book-reader book-reader-root h-screen overflow-hidden ${isDark ? "book-reader-dark" : ""} ${shellClass}`}>
+    {mobileViewport ? <nav {...chromeProps} data-book-toolbar data-reader-mobile-toolbar aria-label="阅读工具" className={`book-mobile-toolbar z-30 grid-cols-4 border-t backdrop-blur-md ${chromeClass}`}>
       <button type="button" onClick={() => openPanel("toc")} className="book-mobile-tool" aria-label="打开目录" aria-pressed={tocOpen}>
         <ReaderToolIcon name="toc" /><span>目录</span>
       </button>
@@ -983,7 +1023,7 @@ export function BookReader({
 
     {readerNotice && <button type="button" onClick={() => setReaderNotice("")} className={`fixed bottom-20 left-1/2 z-[66] -translate-x-1/2 border px-4 py-2 font-sans text-xs shadow-lg md:bottom-6 ${panelClass}`}>{readerNotice}</button>}
 
-    <header className={`relative z-20 h-12 border-b backdrop-blur-md ${chromeClass}`}>
+    <header {...chromeProps} className={`relative z-20 h-12 border-b backdrop-blur-md ${chromeClass}`}>
       <div className="mx-auto flex h-full max-w-[1180px] items-center gap-3 px-4 font-sans text-xs md:px-10">
         <Link to={backHref} className="flex h-7 w-6 shrink-0 items-center justify-start text-current no-underline hover:text-red focus-visible:outline-2 focus-visible:outline-red" aria-label="返回上一页">
           <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true">
@@ -1022,7 +1062,7 @@ export function BookReader({
       </figure>
     </div>}
 
-    {mode === "scroll" ? <div ref={scrollRef} onScroll={updateScrollProgress} onClick={handleReaderClick} onPointerUp={capturePointerTextSelection} onKeyUp={captureTextSelection} className="h-[calc(100%-48px)] overflow-y-auto">
+    {mode === "scroll" ? <div ref={scrollRef} data-book-reading-surface onScroll={updateScrollProgress} onClick={handleReaderClick} onPointerDown={startReaderTap} onPointerMove={moveReaderTap} onPointerCancel={cancelReaderTap} onPointerUp={capturePointerTextSelection} onKeyUp={captureTextSelection} className="h-[calc(100%-48px)] overflow-y-auto">
       <main className="mx-auto max-w-[920px] px-0 py-0 md:px-5 md:py-8">
         <article className={`relative min-h-full border-0 px-6 pb-32 pt-10 shadow-none sm:px-12 md:min-h-[calc(100vh-96px)] md:border-x md:px-20 md:py-20 md:shadow-[0_16px_50px_rgba(32,32,28,.10)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#ddddd6]"}`} style={{ fontSize: `${fontSize}px`, lineHeight: 2.05 }}>
           <div className="mx-auto max-w-[730px]">{error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}{children}{chapterNavigation}</div>
@@ -1032,15 +1072,15 @@ export function BookReader({
       <div className="relative mx-auto h-full max-w-[1180px]">
         <article className={`relative h-full overflow-hidden border-0 px-6 pb-32 pt-10 shadow-none sm:px-10 md:border md:px-16 md:py-14 md:shadow-[0_16px_55px_rgba(32,32,28,.14)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#d8d8d1]"}`}>
           {columnsPerSpread === 2 && <div className={`pointer-events-none absolute inset-y-0 left-1/2 z-10 w-10 -translate-x-1/2 ${isDark ? "bg-[linear-gradient(90deg,transparent,rgba(0,0,0,.22),transparent)]" : "bg-[linear-gradient(90deg,transparent,rgba(77,75,66,.09),transparent)]"}`} aria-hidden="true" />}
-          <div ref={flowRef} data-book-page-flow onClick={handleReaderClick} onPointerUp={capturePointerTextSelection} onKeyUp={captureTextSelection} className={`relative h-full overflow-hidden [column-fill:auto] [&_img]:cursor-zoom-in [&_figure]:break-inside-avoid [&_h1]:[break-after:avoid-column] [&_h2]:[break-after:avoid-column] [&_li]:break-inside-avoid ${pageTransitioning ? "book-page-content-arrive" : ""}`} style={{ columnCount: columnsPerSpread, columnGap: columnsPerSpread === 2 ? "80px" : "48px", fontSize: `${fontSize}px`, lineHeight: 1.95 }}>
+          <div ref={flowRef} data-book-page-flow data-book-reading-surface onClick={handleReaderClick} onPointerDown={startReaderTap} onPointerMove={moveReaderTap} onPointerCancel={cancelReaderTap} onPointerUp={capturePointerTextSelection} onKeyUp={captureTextSelection} className={`relative h-full overflow-hidden [column-fill:auto] [&_img]:cursor-zoom-in [&_figure]:break-inside-avoid [&_h1]:[break-after:avoid-column] [&_h2]:[break-after:avoid-column] [&_li]:break-inside-avoid ${pageTransitioning ? "book-page-content-arrive" : ""}`} style={{ columnCount: columnsPerSpread, columnGap: columnsPerSpread === 2 ? "80px" : "48px", fontSize: `${fontSize}px`, lineHeight: 1.95 }}>
             {error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}{children}
             {trailingBlankPage && <span data-book-trailing-page className="book-page-trailing-blank" aria-hidden="true" />}
           </div>
         </article>
-        <button type="button" onClick={previousPage} disabled={pageTransitioning || (!previousChapter && pageMetrics.page === 0)} className={`book-page-turn-control absolute left-5 z-30 flex h-10 items-center justify-center gap-1 border px-3 font-sans text-xs shadow-[2px_4px_14px_rgba(0,0,0,.08)] cursor-pointer transition-colors disabled:cursor-default disabled:opacity-20 sm:left-8 ${panelClass}`} aria-label="上一页" title="上一页（←）"><span aria-hidden="true">‹</span> 上一页</button>
-        <button type="button" onClick={nextPage} disabled={pageTransitioning || (!nextChapter && pageMetrics.page >= pageMetrics.spreads - 1)} className={`book-page-turn-control absolute right-5 z-30 flex h-10 items-center justify-center gap-1 border px-3 font-sans text-xs shadow-[2px_4px_14px_rgba(0,0,0,.08)] cursor-pointer transition-colors disabled:cursor-default disabled:opacity-20 sm:right-8 ${panelClass}`} aria-label="下一页" title="下一页（→ 或空格）">下一页 <span aria-hidden="true">›</span></button>
+        <button {...chromeProps} type="button" onClick={previousPage} disabled={pageTransitioning || (!previousChapter && pageMetrics.page === 0)} className={`book-page-turn-control absolute left-5 z-30 flex h-10 items-center justify-center gap-1 border px-3 font-sans text-xs shadow-[2px_4px_14px_rgba(0,0,0,.08)] cursor-pointer transition-colors disabled:cursor-default disabled:opacity-20 sm:left-8 ${panelClass}`} aria-label="上一页" title="上一页（←）"><span aria-hidden="true">‹</span> 上一页</button>
+        <button {...chromeProps} type="button" onClick={nextPage} disabled={pageTransitioning || (!nextChapter && pageMetrics.page >= pageMetrics.spreads - 1)} className={`book-page-turn-control absolute right-5 z-30 flex h-10 items-center justify-center gap-1 border px-3 font-sans text-xs shadow-[2px_4px_14px_rgba(0,0,0,.08)] cursor-pointer transition-colors disabled:cursor-default disabled:opacity-20 sm:right-8 ${panelClass}`} aria-label="下一页" title="下一页（→ 或空格）">下一页 <span aria-hidden="true">›</span></button>
       </div>
-      <div className="book-page-number pointer-events-none absolute inset-x-0 flex items-center justify-center gap-4 font-sans text-[10px] text-muted">
+      <div {...chromeProps} className="book-page-number pointer-events-none absolute inset-x-0 flex items-center justify-center gap-4 font-sans text-[10px] text-muted">
         <span>{firstPhysicalPage === lastPhysicalPage ? firstPhysicalPage : `${firstPhysicalPage}–${lastPhysicalPage}`} / {pageMetrics.physicalPages} 页</span>
       </div>
     </main>}
