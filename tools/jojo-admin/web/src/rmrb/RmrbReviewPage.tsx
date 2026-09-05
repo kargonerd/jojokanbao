@@ -8,7 +8,6 @@ import {
   type RmrbSourceStatus,
   type RmrbStats,
   type RmrbSyncStatus,
-  type RmrbSyncTarget,
 } from "./api";
 
 const PAGE_SIZE = 40;
@@ -307,14 +306,13 @@ export function RmrbReviewPage() {
   }
 
   async function syncDecisions() {
-    const targets: RmrbSyncTarget[] = ["huggingface", "b2"];
-    if (syncBusy || !stats?.pendingPublication) return;
+    if (syncBusy || !publishCount) return;
     setSyncBusy(true);
     setSyncElapsed(0);
     setMessage("");
     try {
-      const result = await rmrbReviewApi.sync(targets);
-      setMessage(`已发布 ${result.publishedChanges.toLocaleString()} 条修订，HF 与 B2 已同步。`);
+      const result = await rmrbReviewApi.sync();
+      setMessage(`已发布 ${result.publishedChanges.toLocaleString()} 条修订，Canonical、Delivery 与搜索均已生效。`);
       const [latestSyncStatus, latestStats] = await Promise.all([
         rmrbReviewApi.syncStatus(),
         rmrbReviewApi.stats(),
@@ -330,24 +328,45 @@ export function RmrbReviewPage() {
 
   const start = total ? offset + 1 : 0;
   const end = Math.min(offset + items.length, total);
+  const publishCount = stats?.pendingPublication || syncStatus?.recoverableRelease?.count || 0;
   const publishReady = Boolean(
-    stats?.pendingPublication &&
-    syncStatus?.configured.huggingface &&
-    syncStatus?.configured.b2 &&
+    publishCount &&
+    syncStatus?.configured.canonical &&
+    syncStatus?.configured.delivery &&
+    syncStatus?.configured.search &&
+    syncStatus?.configured.activation &&
     !syncBusy,
   );
   const syncProgress = syncStatus?.progress;
+  const missingPublishStages = syncStatus
+    ? ([
+        ["canonical", "HF"],
+        ["delivery", "B2"],
+        ["search", "ES"],
+        ["activation", "COS"],
+      ] as const)
+        .filter(([stage]) => !syncStatus.configured[stage])
+        .map(([, label]) => label)
+    : [];
   const publishButtonLabel = (() => {
-    if (!syncBusy) return `发布 ${stats?.pendingPublication.toLocaleString() ?? "—"} 条修订`;
-    if (syncProgress?.phase === "huggingface") return "正在提交 HF…";
-    if (syncProgress?.phase === "b2") return "正在更新 B2…";
+    if (!syncBusy) {
+      return syncStatus?.recoverableRelease?.available && !stats?.pendingPublication
+        ? `继续发布 ${publishCount.toLocaleString()} 条修订`
+        : `发布 ${publishCount.toLocaleString()} 条修订`;
+    }
+    if (syncProgress?.phase === "canonical") return "正在提交 Canonical…";
+    if (syncProgress?.phase === "delivery") return "正在更新 Delivery…";
+    if (syncProgress?.phase === "search") return "正在更新搜索…";
+    if (syncProgress?.phase === "activation") return "正在激活搜索…";
     return "正在准备发布…";
   })();
   const publishHint = syncBusy
     ? `${syncProgress?.message || "正在启动发布任务"} · ${syncElapsed} 秒`
+    : publishCount && missingPublishStages.length
+      ? `缺少发布配置：${missingPublishStages.join("、")}`
     : syncProgress?.status === "succeeded"
       ? syncProgress.message
-      : "HF Canonical + B2 Delivery";
+      : "HF Canonical → B2 Delivery → ES Search → COS Activation";
 
   return (
     <>
@@ -395,7 +414,10 @@ export function RmrbReviewPage() {
           <p className="rmrb-review-summary">
             {sourceStatus?.status !== "ready"
               ? sourceStatus?.message || "正在连接 HF Canonical…"
-              : <>待复核 {stats?.pending.toLocaleString() ?? "—"} · 待发布 {stats?.pendingPublication.toLocaleString() ?? "—"}</>}
+              : <>
+                  待复核 {stats?.pending.toLocaleString() ?? "—"} · 待发布 {stats?.pendingPublication.toLocaleString() ?? "—"}
+                  {syncStatus?.recoverableRelease?.available ? ` · 可续跑 ${syncStatus.recoverableRelease.count.toLocaleString()}` : ""}
+                </>}
           </p>
           <div className="rmrb-review-list">
             {items.map((item, index) => (

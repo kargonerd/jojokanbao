@@ -34,12 +34,18 @@ directory used for the disposable SQLite cache and unpublished draft journal;
 it defaults to `tmp/rmrb-review`. The cache is keyed by the HF commit and can be
 deleted or rebuilt on another computer without copying any historical local
 source files. The review queue only needs article keys, titles, and synthesized
-PeopleData links; it does not load or expose local PDFs. These
-endpoints never update Elasticsearch. The top-right publish action updates both
-Hugging Face and B2 in one operation; local decision logs are not uploaded.
-Accepted rows enter a local pending-publication journal. Each successful target
-is cleared independently, and a row leaves the pending count only after both HF
-Canonical and B2 Delivery have succeeded.
+PeopleData links; it does not load or expose local PDFs. The top-right action is
+one fixed Canonical release, not independently selectable targets:
+
+```text
+HF Canonical -> B2 Delivery -> append-only ES -> COS search activation
+```
+
+HF is the only fact commit. Once it succeeds, retry resumes the remaining
+derived stages and never rolls Canonical back. ES inserts the deterministic new
+version before COS excludes the old version, so failure may briefly expose two
+versions but cannot hide the only valid version. A row leaves the pending count
+only after all four stages succeed.
 Hugging Face uses `RMRB_REVIEW_HF_REPO` (then
 `HF_DATASET_REPO`) and the CLI token or `HF_TOKEN`; B2 uses
 `RMRB_REVIEW_B2_REMOTE` (then `JOJO_DELIVERY_REMOTE`) through rclone.
@@ -49,6 +55,21 @@ immutable article fragments before mutable issue manifests and the collection
 index. Rejection is reserved for confirmed invalid, duplicate, or non-article
 catalog entries; after publication it is represented by the formal HF
 `rejected` article status and excluded from future review queues.
+
+`canonical_release.py` implements the reusable state machine and
+`search_publication.py` implements the generic append-only projection. COS
+`search-state.json` v2 stores exclusions, active logical-document heads, and
+processed Canonical revisions. Reader Search reads only the compatible
+`excludedIds` field; publishers use the additional fields to resume on another
+computer. Local release files and ES migrations are audit receipts, not online
+truth.
+
+The current four-stage receipt is mirrored to the same private bucket at
+`runtime/publishing/newspaper-rmrb.json`. It contains only article keys,
+payload hashes, the HF commit, and stage results—never article text or pasted
+image bytes. If the original workstation disappears after HF succeeds, another
+workstation reconstructs the derived inputs from that exact commit and exposes
+“继续发布”; a newer local draft cannot silently bypass the unfinished release.
 
 ## ES repair
 
@@ -69,10 +90,10 @@ Repairs and removals first create a deterministic JSON migration in
 new version and a removal appends a tombstone. Search builds its excluded ID
 set from applied migrations instead of scanning ES revision documents. Reader
 Search does not receive those migration files. After ES accepts a repair, the
-workbench automatically merges its applied exclusions into the single private
-COS object `runtime/search/search-state.json`. It reads the remote object first
-and takes a per-index union, so a second computer with no local migration
-history cannot erase earlier repairs. A failed COS publication is reported as
+workbench automatically merges its applied exclusions and active version heads
+into the single private COS object `runtime/search/search-state.json`. It reads
+the remote object first, so a second computer with no local migration history
+cannot erase or branch earlier repairs. A failed COS publication is reported as
 a partial success and can be retried through
 `POST /api/es-repair/publish-state` without appending another ES revision.
 Set `SEARCH_STATE_INDICES` to the comma-separated indexes actually served by
@@ -81,6 +102,8 @@ this prevents test indexes from entering the production search state.
 The Canonical synchronizer resolves the same applied migration chain before it
 compares a stable ID, so an already-repaired document is compared with its
 current repair rather than repeatedly conflicting with the original version.
+For an index listed in `SEARCH_STATE_INDICES`, it reads version heads from COS
+first and uses local Git migrations only to bootstrap an older v1 state.
 Operator-only fields such as the
 repair reason remain in the migration file and are not indexed in ES. Existing
 documents are never physically overwritten.

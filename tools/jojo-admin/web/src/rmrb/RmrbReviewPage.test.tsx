@@ -49,17 +49,18 @@ describe("RmrbReviewPage", () => {
           pendingPublication: 0,
           canonicalChanges: 1,
           publishedChanges: 1,
-          results: { huggingface: { commit: "abc" } },
+          releaseId: "release-one",
+          results: { canonical: { commit: "abc" } },
         }), { status: 200 });
       }
       if (url.endsWith("/sync")) {
         return new Response(JSON.stringify({
           success: true,
-          configured: { huggingface: true, b2: true },
-          state: { targets: {} },
+          configured: { canonical: true, delivery: true, search: true, activation: true },
+          state: {},
           progress: publishing ? {
             status: "running",
-            phase: "b2",
+            phase: "delivery",
             message: "正在更新 B2 Delivery（3/8）：manifest.jox",
             completed: 7,
             total: 12,
@@ -153,17 +154,17 @@ describe("RmrbReviewPage", () => {
     expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
   });
 
-  it("publishes all staged data to HF and B2 with one click", async () => {
+  it("publishes all staged data through the Canonical-derived pipeline", async () => {
     render(<RmrbReviewPage />);
     fireEvent.click(await screen.findByRole("button", { name: "发布 3 条修订" }));
     expect(await screen.findByText(/正在更新 B2 Delivery（3\/8）/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "正在更新 B2…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "正在更新 Delivery…" })).toBeDisabled();
     expect(screen.getByRole("progressbar", { name: "发布进度" })).toHaveAttribute("aria-valuenow", "73");
-    await screen.findByText("已发布 1 条修订，HF 与 B2 已同步。");
+    await screen.findByText("已发布 1 条修订，Canonical、Delivery 与搜索均已生效。");
 
     const fetchMock = vi.mocked(fetch);
     const syncCall = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
     expect(syncCall).toBeTruthy();
-    expect(JSON.parse(String(syncCall?.[1]?.body))).toEqual({ targets: ["huggingface", "b2"] });
+    expect(JSON.parse(String(syncCall?.[1]?.body))).toEqual({});
   });
 });

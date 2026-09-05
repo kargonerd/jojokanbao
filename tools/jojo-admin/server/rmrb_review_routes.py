@@ -23,15 +23,34 @@ from typing import Callable
 
 from flask import Blueprint, jsonify, request
 
+from canonical_release import CanonicalRelease, MirroredReleaseJournal, release_id
+from es_migrations import active_revision_heads
+from es_repair import KibanaConsoleClient, repair_config
+from es_sync import ensure_unified_mapping, newspaper_document, plain_text, stable_document_id
+from publish_search_state import (
+    load_remote_search_state,
+    load_remote_json_object,
+    publication_config,
+    upload_remote_search_state,
+    upload_remote_json_object,
+    validate_publication_target,
+)
 from rmrb_review_publish import (
     CanonicalPatch,
     DeliveryPatch,
-    accepted_hashes,
+    canonical_article_id,
     parse_key,
     prepare_canonical_patch,
     prepare_delivery_patch,
+    read_canonical_articles,
+    read_canonical_item,
 )
 from rmrb_review_source import remove_from_review_cache, review_source_manager
+from search_publication import (
+    AppendOnlySearchPublisher,
+    DesiredSearchDocument,
+    publish_search_activation,
+)
 
 
 rmrb_review_blueprint = Blueprint("rmrb_review", __name__)
@@ -53,7 +72,8 @@ WORKBENCH_DECISIONS = REVIEW_ROOT / "manual-review-decisions-workbench.jsonl"
 SYNC_ROOT = REVIEW_ROOT / "sync"
 SYNC_STATE = SYNC_ROOT / "review-sync-state.json"
 PUBLISH_ROOT = SYNC_ROOT / "publish"
-PUBLICATION_STATE = SYNC_ROOT / "publication-state.json"
+RELEASES_ROOT = SYNC_ROOT / "releases"
+RELEASE_REMOTE_KEY = "runtime/publishing/newspaper-rmrb.json"
 PENDING_PUBLICATION = REVIEW_ROOT / "manual-review-pending-publication.json"
 COPY_MARKER_RE = re.compile(r"[（(]\s*人民数据库资料\s*[）)]")
 IMAGE_DATA_RE = re.compile(r"^data:(image/(?:png|jpeg|webp|gif));base64,(.+)$", re.DOTALL)
@@ -190,7 +210,16 @@ def _write_sync_state(state: dict[str, object]) -> None:
     )
 
 
-def _hf_source_file(filename: str) -> Path:
+def _hf_revision() -> str:
+    from huggingface_hub import HfApi
+
+    return str(HfApi(token=_huggingface_token() or None).repo_info(
+        repo_id=_huggingface_repo(),
+        repo_type="dataset",
+    ).sha)
+
+
+def _hf_source_file(filename: str, revision: str | None = None) -> Path:
     from huggingface_hub import hf_hub_download
 
     return Path(hf_hub_download(
@@ -198,6 +227,7 @@ def _hf_source_file(filename: str) -> Path:
         filename=filename,
         repo_type="dataset",
         token=_huggingface_token() or None,
+        revision=revision or "main",
     ))
 
 
@@ -214,10 +244,11 @@ def _prepare_publication(
     decisions: dict[tuple[str, int, int], dict[str, object]],
     candidate_keys: set[tuple[str, int, int]] | None = None,
     issue_keys: set[tuple[str, int, int]] | None = None,
+    source_revision: str | None = None,
 ) -> CanonicalPatch:
     return prepare_canonical_patch(
         decisions,
-        _hf_source_file,
+        lambda name: _hf_source_file(name, source_revision),
         PUBLISH_ROOT / "canonical",
         candidate_keys,
         issue_keys,
@@ -235,23 +266,6 @@ def _prepare_delivery(
         _delivery_source_file,
         PUBLISH_ROOT / "delivery",
         candidate_keys,
-    )
-
-
-def _load_publication_state() -> dict[str, object]:
-    if not PUBLICATION_STATE.is_file():
-        return {"formatVersion": "jojo-rmrb-review-publication-state/1", "targets": {}}
-    try:
-        return json.loads(PUBLICATION_STATE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        logging.exception("Unable to read RMRB publication state %s", PUBLICATION_STATE)
-        return {"formatVersion": "jojo-rmrb-review-publication-state/1", "targets": {}}
-
-
-def _write_publication_state(state: dict[str, object]) -> None:
-    _atomic_write(
-        PUBLICATION_STATE,
-        (json.dumps(state, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8"),
     )
 
 
@@ -314,7 +328,6 @@ def _stage_publication(
         "decision": decision,
         "contentSha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
         "payloadSha256": _publication_payload_sha256(content, decision, image_rows),
-        "targets": ["huggingface", "b2"],
         "stagedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
     _write_pending_publication(items)
@@ -404,7 +417,11 @@ def _save_review_images(values: object) -> list[dict[str, object]]:
     return result
 
 
-def _sync_huggingface(canonical: CanonicalPatch) -> dict[str, object]:
+def _sync_huggingface(
+    canonical: CanonicalPatch,
+    parent_commit: str | None = None,
+    release_identifier: str | None = None,
+) -> dict[str, object]:
     token = _huggingface_token()
     if not token:
         raise RuntimeError("Hugging Face 未登录且 HF_TOKEN 未配置")
@@ -418,7 +435,7 @@ def _sync_huggingface(canonical: CanonicalPatch) -> dict[str, object]:
     if not operations:
         return {
             "repoId": repo_id,
-            "commit": None,
+            "commit": parent_commit or _hf_revision(),
             "publishedArticles": 0,
             "publishedObjects": 0,
         }
@@ -426,7 +443,12 @@ def _sync_huggingface(canonical: CanonicalPatch) -> dict[str, object]:
         repo_id=repo_id,
         repo_type="dataset",
         operations=operations,
-        commit_message=f"Publish {canonical.changed_article_count} reviewed RMRB articles",
+        commit_message=(
+            f"Publish RMRB {release_identifier} ({canonical.changed_article_count} articles)"
+            if release_identifier
+            else f"Publish {canonical.changed_article_count} reviewed RMRB articles"
+        ),
+        parent_commit=parent_commit,
     )
     return {
         "repoId": repo_id,
@@ -434,6 +456,175 @@ def _sync_huggingface(canonical: CanonicalPatch) -> dict[str, object]:
         "publishedArticles": canonical.changed_article_count,
         "publishedObjects": len(canonical.files),
     }
+
+
+def _search_index() -> str:
+    return (
+        os.environ.get("ES_SYNC_INDEX", "").strip()
+        or os.environ.get("ES_REPAIR_INDEX", "").strip()
+    )
+
+
+def _search_client(index: str) -> KibanaConsoleClient:
+    config = repair_config()
+    config["index"] = index
+    return KibanaConsoleClient(config)
+
+
+def _search_publication_config(index: str) -> dict[str, object]:
+    config = publication_config()
+    validate_publication_target(index, config)
+    return config
+
+
+def _rmrb_search_desired(
+    canonical: CanonicalPatch,
+    candidate_keys: set[tuple[str, int, int]],
+    revision: str,
+) -> list[DesiredSearchDocument]:
+    publication_title = str(canonical.dataset.get("title") or "人民日报")
+    result: list[DesiredSearchDocument] = []
+    by_year: dict[str, list[tuple[str, int, int]]] = {}
+    for key in candidate_keys:
+        by_year.setdefault(key[0][:4], []).append(key)
+    for year, keys in sorted(by_year.items()):
+        canonical_object = f"newspapers/rmrb/data/articles/{year}.jsonl.gz"
+        source = canonical.files.get(canonical_object) or _hf_source_file(
+            canonical_object,
+            revision,
+        )
+        rows = {
+            (str(row.get("date")), int(row.get("page") or 0), int(row.get("ordinal") or 0)): row
+            for row in read_canonical_articles(source)
+        }
+        for key in sorted(keys):
+            base_id = stable_document_id("newspaper", "rmrb", key[0], key[1], key[2])
+            row = rows.get(key)
+            if row is None:
+                raise ValueError(f"HF 年度分片中找不到搜索发布条目：{key}")
+            indexed = newspaper_document(
+                row,
+                publication_id="rmrb",
+                publication_title=publication_title,
+                canonical_object=canonical_object,
+            )
+            result.append(DesiredSearchDocument(
+                base_id=base_id,
+                document=indexed.document if indexed else None,
+            ))
+    return result
+
+
+def _decisions_from_canonical(
+    candidate_keys: set[tuple[str, int, int]],
+    revision: str,
+) -> dict[tuple[str, int, int], dict[str, object]]:
+    """Rebuild derived-stage inputs after Canonical already committed."""
+    result: dict[tuple[str, int, int], dict[str, object]] = {}
+    viewer_rows: dict[tuple[str, int, int], dict[str, object]] = {}
+    for year in sorted({key[0][:4] for key in candidate_keys}):
+        object_path = f"newspapers/rmrb/data/articles/{year}.jsonl.gz"
+        for row in read_canonical_articles(_hf_source_file(object_path, revision)):
+            key = (str(row.get("date")), int(row.get("page") or 0), int(row.get("ordinal") or 0))
+            if key in candidate_keys:
+                viewer_rows[key] = row
+    by_day: dict[str, list[tuple[str, int, int]]] = {}
+    for key in candidate_keys:
+        by_day.setdefault(key[0], []).append(key)
+    for day, keys in sorted(by_day.items()):
+        object_path = f"newspapers/rmrb/items/{day[:4]}/{day[5:7]}/{day}.json.gz"
+        item = read_canonical_item(_hf_source_file(object_path, revision))
+        articles = {
+            str(article.get("id")): article
+            for article in (item.get("content") or {}).get("articles") or []
+            if isinstance(article, dict)
+        }
+        assets = {
+            str(asset.get("id")): asset
+            for asset in item.get("assets") or []
+            if isinstance(asset, dict)
+        }
+        for key in keys:
+            article = articles.get(canonical_article_id(*key))
+            if article is None:
+                raise ValueError(f"HF commit {revision} 中找不到续跑条目：{key}")
+            state = str(article.get("contentState") or "")
+            viewer = viewer_rows.get(key)
+            if viewer is None:
+                raise ValueError(f"HF commit {revision} 的年度分片中找不到续跑条目：{key}")
+            content = str(viewer.get("content") or "").strip()
+            if state == "rejected":
+                decision = "reject"
+            elif state in {"available", "repaired", "image", "image-placeholder"} and content:
+                decision = "accept"
+            else:
+                raise ValueError(f"HF commit {revision} 中的条目尚未形成可发布状态：{key}")
+            images: list[dict[str, object]] = []
+            for asset_id in article.get("assetRefs") or []:
+                asset = assets.get(str(asset_id))
+                if asset is None or str(asset.get("type")) != "image":
+                    continue
+                asset_path = str(asset.get("path") or "")
+                if not asset_path:
+                    raise ValueError(f"HF commit {revision} 的图片缺少 path：{asset_id}")
+                source = _hf_source_file(f"newspapers/rmrb/{asset_path}", revision)
+                images.append({
+                    "path": str(source),
+                    "sha256": str(asset.get("sha256") or ""),
+                    "mediaType": str(asset.get("mediaType") or ""),
+                })
+            result[key] = {
+                "date": key[0],
+                "page": key[1],
+                "peopleDataOrdinal": key[2],
+                "title": str(article.get("title") or ""),
+                "decision": decision,
+                "content": content,
+                "images": images,
+                "reason": "从已提交 Canonical release 续跑",
+            }
+    return result
+
+
+def _remote_release(config: dict[str, object] | None = None) -> dict[str, object] | None:
+    value = load_remote_json_object(
+        RELEASE_REMOTE_KEY,
+        config or publication_config(),
+        missing_ok=True,
+    )
+    return value if isinstance(value, dict) else None
+
+
+def _upload_remote_release(value: dict[str, object], config: dict[str, object]) -> None:
+    last_error: Exception | None = None
+    for _attempt in range(3):
+        try:
+            upload_remote_json_object(RELEASE_REMOTE_KEY, value, config)
+            return
+        except Exception as error:
+            last_error = error
+    assert last_error is not None
+    raise last_error
+
+
+def _recoverable_release(value: dict[str, object] | None) -> bool:
+    if not value or value.get("status") == "succeeded":
+        return False
+    stages = value.get("stages")
+    canonical = stages.get("canonical") if isinstance(stages, dict) else None
+    return isinstance(canonical, dict) and canonical.get("status") == "succeeded"
+
+
+def _release_is_live(value: dict[str, object] | None, lease_seconds: int = 600) -> bool:
+    if not value or value.get("status") != "running":
+        return False
+    try:
+        updated = datetime.fromisoformat(str(value.get("updatedAt")))
+    except ValueError:
+        return False
+    if updated.tzinfo is None:
+        updated = updated.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - updated).total_seconds() < lease_seconds
 
 
 def _run_rclone_copyto(source: Path | str, destination: str) -> None:
@@ -660,31 +851,52 @@ def source_status_api():
 @rmrb_review_blueprint.get("/api/rmrb-review/sync")
 def sync_status_api():
     state = _load_sync_state()
+    progress = _sync_progress_snapshot()
+    es_config = repair_config()
+    search_index = _search_index()
+    search_ready = bool(
+        search_index
+        and all(es_config.get(key) for key in ("kibana_url", "username", "password", "space_id"))
+    )
+    try:
+        _search_publication_config(search_index)
+        activation_ready = bool(shutil.which("tccli"))
+    except ValueError:
+        activation_ready = False
+    remote_release = None
+    if activation_ready and progress.get("status") != "running":
+        try:
+            remote_release = _remote_release()
+        except Exception:
+            logging.exception("Unable to read remote Canonical release receipt")
+    recoverable = _recoverable_release(remote_release) and not _release_is_live(remote_release)
+    remote_desired = remote_release.get("desired") if recoverable and remote_release else {}
+    remote_items = remote_desired.get("items") if isinstance(remote_desired, dict) else {}
     return jsonify(
         {
             "success": True,
             "configured": {
-                "huggingface": bool(_huggingface_token() and _huggingface_repo()),
-                "b2": bool(shutil.which("rclone.exe") or shutil.which("rclone")),
+                "canonical": bool(_huggingface_token() and _huggingface_repo()),
+                "delivery": bool(shutil.which("rclone.exe") or shutil.which("rclone")),
+                "search": search_ready,
+                "activation": activation_ready,
             },
             "state": state,
-            "progress": _sync_progress_snapshot(),
+            "recoverableRelease": {
+                "available": recoverable,
+                "releaseId": remote_release.get("releaseId") if recoverable else None,
+                "count": len(remote_items) if isinstance(remote_items, dict) else 0,
+                "failedStage": remote_release.get("failedStage") if recoverable else None,
+            },
+            "progress": progress,
         }
     )
 
 
 @rmrb_review_blueprint.post("/api/rmrb-review/sync")
 def sync_api():
-    payload = request.get_json(silent=True) or {}
-    requested = payload.get("targets") or []
-    if not isinstance(requested, list):
-        return jsonify({"success": False, "error": "targets must be a list"}), 400
-    targets = list(dict.fromkeys(str(item).strip().lower() for item in requested))
-    allowed = {"huggingface", "b2"}
-    if not targets or any(item not in allowed for item in targets):
-        return jsonify({"success": False, "error": "select huggingface and/or b2"}), 400
     if not SYNC_LOCK.acquire(blocking=False):
-        return jsonify({"success": False, "error": "another review sync is running"}), 409
+        return jsonify({"success": False, "error": "已有 Canonical 发布正在运行"}), 409
     started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     _set_sync_progress(
         status="running",
@@ -698,181 +910,234 @@ def sync_api():
         publishedChanges=0,
     )
     try:
-        decisions = load_pending_decisions()
-        desired = accepted_hashes(decisions)
-        desired_sha256 = hashlib.sha256(
-            json.dumps(desired, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).hexdigest()
-        published_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        publication_state = _load_publication_state()
-        publication_targets = publication_state.setdefault("targets", {})
-        assert isinstance(publication_targets, dict)
-        pending_snapshot = _load_pending_publication()
-        _set_sync_progress(
-            message=f"正在核对 {len(pending_snapshot)} 条修订与 HF 正式数据",
-            percent=8,
-        )
-        hf_names = {
-            name for name, row in pending_snapshot.items()
-            if "huggingface" in (row.get("targets") or []) and "huggingface" in targets
-        }
-        b2_names = {
-            name for name, row in pending_snapshot.items()
-            if "b2" in (row.get("targets") or []) and "b2" in targets
-        }
-        canonical = _prepare_publication(
-            decisions,
-            {parse_key(name) for name in hf_names | b2_names},
-            {parse_key(name) for name in b2_names},
-        )
-        if "b2" in targets and canonical.changed_keys and "huggingface" not in targets:
+        local_pending = _load_pending_publication()
+        index = _search_index()
+        if not index:
+            if not local_pending:
+                _set_sync_progress(
+                    status="idle", phase="idle", message="没有待发布修订",
+                    finishedAt=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                )
+                return jsonify({"success": False, "error": "没有本机待发布修订；ES 未配置，无法检查远端续跑任务"}), 409
+            raise ValueError("ES_SYNC_INDEX 未配置")
+        if not _huggingface_token():
+            raise ValueError("Hugging Face 未登录且 HF_TOKEN 未配置")
+        if not (shutil.which("rclone.exe") or shutil.which("rclone")):
+            raise ValueError("未安装 rclone，无法发布 B2 Delivery")
+        if not shutil.which("tccli"):
+            raise ValueError("未安装 tccli，无法激活远端搜索状态")
+        search_settings = _search_publication_config(index)
+        remote_receipt = _remote_release(search_settings)
+        if _release_is_live(remote_receipt):
             _set_sync_progress(
-                status="failed",
-                phase="failed",
-                message="B2 依赖的 HF 正式数据尚未发布",
+                status="idle", phase="idle", message="另一台工作站正在发布",
                 finishedAt=datetime.now(timezone.utc).isoformat(timespec="seconds"),
             )
             return jsonify({
                 "success": False,
-                "error": "B2 修订依赖尚未发布的 HF Canonical；请同时选择 HF",
+                "error": f"另一台工作站正在执行 {remote_receipt.get('releaseId')}，请稍后刷新",
             }), 409
-        _set_sync_progress(
-            message=f"HF 正式数据已核对，正在生成 B2 Delivery",
-            percent=28,
-        )
-        delivery = _prepare_delivery(
-            decisions,
-            canonical,
-            {parse_key(name) for name in b2_names},
-        ) if "b2" in targets else None
-        hf_object_count = len(canonical.files) if "huggingface" in targets else 0
-        b2_object_count = len(delivery.files) if delivery is not None else 0
-        object_total = hf_object_count + b2_object_count
-        _set_sync_progress(
-            message=f"发布包已就绪，共 {object_total} 个远端对象",
-            completed=0,
-            total=object_total,
-            percent=35,
-        )
-        state = _load_sync_state()
-        target_state = state.setdefault("targets", {})
-        assert isinstance(target_state, dict)
-        results: dict[str, object] = {}
-        errors: dict[str, str] = {}
-        target_names = {"huggingface": hf_names, "b2": b2_names}
-        for target in targets:
-            if target == "b2" and "huggingface" in errors:
-                errors[target] = "HF Canonical 发布失败，已停止 B2 发布以避免数据分叉"
-                continue
-            try:
-                if target == "huggingface":
-                    _set_sync_progress(
-                        phase="huggingface",
-                        message=f"正在提交 HF Canonical（{hf_object_count} 个对象）",
-                        percent=40,
-                    )
-                    detail = _sync_huggingface(canonical)
-                    commit = str(detail.get("commit") or "")
-                    if commit:
-                        remove_from_review_cache(
-                            REVIEW_DB,
-                            {parse_key(name) for name in hf_names},
-                            commit,
-                        )
-                        review_source_manager.mark_published(commit)
-                    _set_sync_progress(
-                        completed=hf_object_count,
-                        message="HF Canonical 已提交，正在准备 B2",
-                        percent=65 if "b2" in targets else 95,
-                    )
-                else:
-                    def report_b2(completed: int, total: int, name: str) -> None:
-                        overall_completed = hf_object_count + completed
-                        object_name = name.rsplit("/", 1)[-1]
-                        percent = 68
-                        if object_total:
-                            percent = min(96, 40 + round(56 * overall_completed / object_total))
-                        _set_sync_progress(
-                            phase="b2",
-                            message=f"正在更新 B2 Delivery（{completed}/{total}）：{object_name}",
-                            completed=overall_completed,
-                            percent=percent,
-                        )
+        if _recoverable_release(remote_receipt):
+            assert remote_receipt is not None
+            desired_value = remote_receipt.get("desired")
+            if not isinstance(desired_value, dict) or not isinstance(desired_value.get("items"), dict):
+                raise ValueError("远端发布收据缺少 desired.items")
+            desired = desired_value
+            identifier = str(remote_receipt.get("releaseId") or "")
+            if not identifier or release_id(desired) != identifier:
+                raise ValueError("远端发布收据的 releaseId 校验失败")
+            if desired.get("repo") != _huggingface_repo() or desired.get("delivery") != _b2_remote():
+                raise ValueError("远端未完成发布的 HF/B2 目标与本机配置不一致")
+            if desired.get("searchIndex") != index:
+                raise ValueError("远端未完成发布的 ES 索引与本机配置不一致")
+            item_values = desired["items"]
+            pending_snapshot = {
+                str(name): dict(value)
+                for name, value in item_values.items()
+                if isinstance(name, str) and isinstance(value, dict)
+            }
+            candidate_keys = {parse_key(name) for name in pending_snapshot}
+            canonical_stage_state = remote_receipt["stages"]["canonical"]  # type: ignore[index]
+            source_revision = str(canonical_stage_state["result"]["commit"])
+            decisions = _decisions_from_canonical(candidate_keys, source_revision)
+            _set_sync_progress(
+                message=f"正在从 HF commit {source_revision[:12]} 续跑 {len(candidate_keys)} 条修订",
+                percent=8,
+            )
+        else:
+            decisions = load_pending_decisions()
+            pending_snapshot = local_pending
+            if not pending_snapshot:
+                _set_sync_progress(
+                    status="idle", phase="idle", message="没有待发布修订",
+                    finishedAt=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                )
+                return jsonify({"success": False, "error": "没有待发布或可续跑的修订"}), 409
+            missing_decisions = sorted(set(pending_snapshot) - {
+                _publication_key(key) for key in decisions
+            })
+            if missing_decisions:
+                raise ValueError("待发布日志缺少本地修订内容：" + ", ".join(missing_decisions[:5]))
+            desired = {
+                "repo": _huggingface_repo(),
+                "delivery": _b2_remote(),
+                "searchIndex": index,
+                "items": {
+                    name: {
+                        "decision": row.get("decision"),
+                        "payloadSha256": row.get("payloadSha256") or row.get("contentSha256"),
+                    }
+                    for name, row in sorted(pending_snapshot.items())
+                },
+            }
+            identifier = release_id(desired)
+            candidate_keys = {parse_key(name) for name in pending_snapshot}
+            source_revision = _hf_revision()
+            _set_sync_progress(
+                message=f"正在核对 {len(pending_snapshot)} 条修订与 HF Canonical",
+                percent=8,
+            )
 
-                    detail = _sync_b2(
-                        delivery or DeliveryPatch(PUBLISH_ROOT),
-                        report_b2,
-                    )
-                results[target] = detail
-                target_state[target] = {
-                    "publishedAt": published_at,
-                    "acceptedCount": len(desired),
-                    "desiredSha256": desired_sha256,
-                    **detail,
-                }
-                publication_targets[target] = {"accepted": desired}
-                _write_publication_state(publication_state)
-                with DECISION_LOCK:
-                    latest_pending = _load_pending_publication()
-                    for name in target_names[target]:
-                        current = latest_pending.get(name)
-                        snapshot = pending_snapshot.get(name)
-                        if current is None or snapshot is None:
-                            continue
-                        current_payload = current.get("payloadSha256") or current.get("contentSha256")
-                        snapshot_payload = snapshot.get("payloadSha256") or snapshot.get("contentSha256")
-                        if current_payload != snapshot_payload:
-                            continue
-                        if current.get("decision", "accept") != snapshot.get("decision", "accept"):
-                            continue
-                        remaining = [
-                            value for value in (current.get("targets") or [])
-                            if value != target
-                        ]
-                        if remaining:
-                            current["targets"] = remaining
-                        else:
-                            latest_pending.pop(name, None)
-                    _write_pending_publication(latest_pending)
-            except Exception as error:  # Each selected destination is independent.
-                logging.exception("Unable to sync RMRB reviews to %s", target)
-                errors[target] = str(error)
-        state["formatVersion"] = "jojo-rmrb-review-sync-state/1"
-        state["lastAttemptAt"] = published_at
+        canonical = _prepare_publication(
+            decisions,
+            candidate_keys,
+            candidate_keys,
+            source_revision,
+        )
+        search_client = _search_client(index)
+        ensure_unified_mapping(search_client, index)
+        remote_search_state = load_remote_search_state(search_settings)
+        delivery = _prepare_delivery(decisions, canonical, candidate_keys)
+        search_desired = _rmrb_search_desired(canonical, candidate_keys, source_revision)
+        _set_sync_progress(
+            message="发布计划已验证，准备提交 HF Canonical",
+            completed=0,
+            total=len(canonical.files) + len(delivery.files) + len(search_desired),
+            percent=10,
+        )
+
+        def canonical_stage(_state: dict[str, object]) -> dict[str, object]:
+            detail = _sync_huggingface(canonical, source_revision, identifier)
+            commit = str(detail.get("commit") or "")
+            if not commit:
+                raise RuntimeError("HF 未返回 Canonical commit")
+            remove_from_review_cache(REVIEW_DB, candidate_keys, commit)
+            review_source_manager.mark_published(commit)
+            return detail
+
+        def delivery_stage(_state: dict[str, object]) -> dict[str, object]:
+            def report(completed: int, total: int, name: str) -> None:
+                _set_sync_progress(
+                    phase="delivery",
+                    message=f"正在更新 B2 Delivery（{completed}/{total}）：{name.rsplit('/', 1)[-1]}",
+                    completed=completed,
+                    total=total,
+                    percent=min(54, 33 + round(21 * completed / max(total, 1))),
+                )
+
+            return _sync_b2(delivery, report)
+
+        def search_stage(state: dict[str, object]) -> dict[str, object]:
+            commit = str(
+                state["stages"]["canonical"]["result"]["commit"]  # type: ignore[index]
+            )
+            publisher = AppendOnlySearchPublisher(
+                search_client,
+                index,
+                remote_search_state,
+                fallback_heads=active_revision_heads(index),
+            )
+            return publisher.publish(
+                search_desired,
+                scope="newspaper:rmrb",
+                canonical_revision=commit,
+            )
+
+        def activation_stage(state: dict[str, object]) -> dict[str, object]:
+            publication = state["stages"]["search"]["result"]  # type: ignore[index]
+            return publish_search_activation(
+                publication,
+                loader=lambda: load_remote_search_state(search_settings),
+                uploader=lambda value: upload_remote_search_state(value, search_settings),
+            )
+
+        stage_labels = {
+            "canonical": "HF Canonical",
+            "delivery": "B2 Delivery",
+            "search": "ES Search",
+            "activation": "COS 搜索状态",
+        }
+
+        def report_stage(stage: str, message: str, percent: int) -> None:
+            _set_sync_progress(
+                phase=stage,
+                message=f"{stage_labels[stage]}：{message}",
+                percent=percent,
+            )
+
+        release = CanonicalRelease(
+            MirroredReleaseJournal(
+                RELEASES_ROOT / f"{identifier}.json",
+                remote_loader=lambda: _remote_release(search_settings),
+                remote_saver=lambda value: _upload_remote_release(value, search_settings),
+            ),
+            {
+                "canonical": canonical_stage,
+                "delivery": delivery_stage,
+                "search": search_stage,
+                "activation": activation_stage,
+            },
+            on_progress=report_stage,
+        ).run(
+            identifier=identifier,
+            scope="newspaper:rmrb",
+            desired=desired,
+        )
+
+        with DECISION_LOCK:
+            latest_pending = _load_pending_publication()
+            for name, snapshot in pending_snapshot.items():
+                current = latest_pending.get(name)
+                if current is None:
+                    continue
+                current_payload = current.get("payloadSha256") or current.get("contentSha256")
+                snapshot_payload = snapshot.get("payloadSha256") or snapshot.get("contentSha256")
+                if current_payload == snapshot_payload and current.get("decision") == snapshot.get("decision"):
+                    latest_pending.pop(name, None)
+            _write_pending_publication(latest_pending)
+
+        state = {
+            "formatVersion": "jojo-rmrb-review-sync-state/2",
+            "lastRelease": {
+                "releaseId": identifier,
+                "status": release["status"],
+                "finishedAt": release.get("finishedAt"),
+                "canonicalCommit": release["stages"]["canonical"]["result"].get("commit"),
+            },
+        }
         _write_sync_state(state)
+        results = {
+            name: release["stages"][name].get("result")
+            for name in ("canonical", "delivery", "search", "activation")
+        }
         response = {
-            "success": not errors,
+            "success": True,
+            "releaseId": identifier,
             "stagedCount": len(pending_snapshot),
             "pendingPublication": len(_load_pending_publication()),
             "canonicalChanges": canonical.changed_article_count,
-            "publishedChanges": max(
-                (int(detail.get("publishedArticles") or 0) for detail in results.values() if isinstance(detail, dict)),
-                default=0,
-            ),
+            "publishedChanges": len(pending_snapshot),
             "results": results,
-            "errors": errors,
         }
-        published_changes = int(response["publishedChanges"])
-        if errors:
-            _set_sync_progress(
-                status="failed",
-                phase="failed",
-                message="发布未全部完成：" + "；".join(errors.values()),
-                finishedAt=datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                publishedChanges=published_changes,
-            )
-        else:
-            _set_sync_progress(
-                status="succeeded",
-                phase="complete",
-                message=f"已发布 {published_changes} 条修订，HF 与 B2 均已完成",
-                completed=object_total,
-                total=object_total,
-                percent=100,
-                finishedAt=datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                publishedChanges=published_changes,
-            )
-        return jsonify(response), 200 if not errors else 502
+        _set_sync_progress(
+            status="succeeded",
+            phase="complete",
+            message=f"已发布 {len(pending_snapshot)} 条修订；Canonical、Delivery 与搜索均已生效",
+            percent=100,
+            finishedAt=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            publishedChanges=len(pending_snapshot),
+        )
+        return jsonify(response)
     except Exception as error:
         logging.exception("Unable to prepare RMRB review publication")
         _set_sync_progress(

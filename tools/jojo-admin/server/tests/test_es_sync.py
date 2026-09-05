@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -16,6 +17,7 @@ from es_sync import (
     news_document,
     newspaper_document,
     plain_text,
+    revision_heads_for_sync,
     stable_document_id,
 )
 
@@ -240,6 +242,19 @@ class FakeClient:
 
 
 class AppendOnlySyncTest(unittest.TestCase):
+    def test_full_sync_prefers_remote_heads_for_a_served_index(self):
+        with patch("es_migrations.active_revision_heads", return_value={"base": "local"}), patch(
+            "publish_search_state.publication_config",
+            return_value={"indices": ["production"]},
+        ), patch(
+            "publish_search_state.load_remote_search_state",
+            return_value={"heads": {"production": {"base": "remote"}}},
+        ):
+            self.assertEqual(
+                revision_heads_for_sync("production"),
+                {"base": "remote"},
+            )
+
     def test_mapping_accepts_only_the_strict_unified_contract(self):
         client = FakeClient(mapping=UNIFIED_MAPPING)
         result = ensure_unified_mapping(client, "test")

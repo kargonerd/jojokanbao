@@ -74,9 +74,19 @@ def _read_json_gz(path: Path) -> dict[str, Any]:
         return json.load(stream)
 
 
+def read_canonical_item(path: Path) -> dict[str, Any]:
+    """Read one gzipped Canonical Item for downstream projection builders."""
+    return _read_json_gz(path)
+
+
 def _read_jsonl_gz(path: Path) -> list[dict[str, Any]]:
     with gzip.open(path, "rt", encoding="utf-8") as stream:
         return [json.loads(line) for line in stream if line.strip()]
+
+
+def read_canonical_articles(path: Path) -> list[dict[str, Any]]:
+    """Read one annual Dataset Viewer shard for release recovery."""
+    return _read_jsonl_gz(path)
 
 
 def _stable_suffix(*parts: object, length: int = 16) -> str:
@@ -86,6 +96,11 @@ def _stable_suffix(*parts: object, length: int = 16) -> str:
 
 def _article_id(day: str, page: int, ordinal: int) -> str:
     return f"article:{_stable_suffix('rmrb', day, page, ordinal)}"
+
+
+def canonical_article_id(day: str, page: int, ordinal: int) -> str:
+    """Return the stable RMRB Canonical article identity."""
+    return _article_id(day, page, ordinal)
 
 
 def _accepted(decisions: dict[tuple[str, int, int], dict[str, object]]) -> dict[tuple[str, int, int], str]:

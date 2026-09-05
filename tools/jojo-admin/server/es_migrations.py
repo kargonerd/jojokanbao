@@ -144,13 +144,19 @@ def excluded_document_ids(
 def search_state_payload(
     indices: list[str],
     directory: Path = MIGRATIONS_DIR,
-) -> dict[str, dict[str, list[str]]]:
+) -> dict[str, Any]:
     """Build the complete remote state consumed by Reader Search."""
     return {
+        "formatVersion": "jojo-search-state/2",
         "excludedIds": {
             index: sorted(excluded_document_ids(index, directory))
             for index in sorted(set(indices))
-        }
+        },
+        "heads": {
+            index: active_revision_heads(index, directory)
+            for index in sorted(set(indices))
+        },
+        "canonicalRevisions": {},
     }
 
 
@@ -158,7 +164,7 @@ def write_search_state(
     path: Path,
     indices: list[str],
     directory: Path = MIGRATIONS_DIR,
-) -> dict[str, dict[str, list[str]]]:
+) -> dict[str, Any]:
     """Atomically write the one plain JSON object published to COS."""
     payload = search_state_payload(indices, directory)
     path.parent.mkdir(parents=True, exist_ok=True)
