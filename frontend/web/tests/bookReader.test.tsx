@@ -54,6 +54,7 @@ describe("BookReader", () => {
       initialized: true,
       revision: "reader-test",
       flags: {
+        "reader.speech": true,
         "library.bookshelf": true,
         "reader.annotations": true,
       },

@@ -255,6 +255,7 @@ export async function loadMobileBookItem(datasetId: string, itemKey: string): Pr
 export async function loadMobileBookChapter(
   loaded: LoadedMobileBookItem,
   chapterId: string,
+  includeAssets = true,
 ): Promise<LoadedMobileBookChapter> {
   const chapter = loaded.manifest.content.chapters?.find((candidate) => candidate.id === chapterId);
   if (!chapter) throw new Error("章节不存在");
@@ -264,6 +265,7 @@ export async function loadMobileBookChapter(
   if (fragment.itemId !== loaded.manifest.itemId || fragment.fragmentId !== chapter.id) {
     throw new Error("章节内容格式无效");
   }
+  if (!includeAssets) return { fragment, assetUrls: {} };
   const assetPairs = await Promise.all(fragment.assetRefs.map(async (assetId) => {
     const asset = loaded.manifest.assets.find((candidate) => candidate.id === assetId);
     if (!asset) return undefined;

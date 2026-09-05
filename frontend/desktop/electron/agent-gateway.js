@@ -9,6 +9,8 @@ const DESKTOP_AGENT_HOST = 'reader';
 const ROUTE_LIMITS = new Map([
   ['/gateway/ask', 64 * 1024],
   ['/gateway/times/explain', 6 * 1024 * 1024],
+  ['/api/v1/speech/providers', 0],
+  ['/api/v1/speech', 8 * 1024],
 ]);
 const FORWARDED_REQUEST_HEADERS = [
   'accept',
@@ -26,7 +28,7 @@ const FORWARDED_RESPONSE_HEADERS = [
 
 const CORS_HEADERS = {
   'access-control-allow-origin': '*',
-  'access-control-allow-methods': 'POST, OPTIONS',
+  'access-control-allow-methods': 'GET, POST, OPTIONS',
   'access-control-allow-headers': FORWARDED_REQUEST_HEADERS.join(', '),
 };
 
@@ -90,8 +92,10 @@ export async function handleDesktopAgentRequest(request, { fetch, readerOrigin }
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: responseHeaders() });
   }
-  if (request.method !== 'POST') {
-    return jsonError(405, 'Method not allowed', { allow: 'POST, OPTIONS' });
+  const method = incoming.pathname === '/api/v1/speech/providers' ? 'GET' : 'POST';
+  const speech = incoming.pathname.startsWith('/api/v1/speech');
+  if (request.method !== method) {
+    return jsonError(405, 'Method not allowed', { allow: `${method}, OPTIONS` });
   }
 
   const headers = new Headers();
@@ -106,13 +110,16 @@ export async function handleDesktopAgentRequest(request, { fetch, readerOrigin }
     const body = await request.arrayBuffer();
     if (body.byteLength > maxBytes) return jsonError(413, '问答内容过长');
     const upstream = await fetch(target, {
-      method: 'POST',
+      method,
       headers,
-      body,
+      body: method === 'POST' ? body : undefined,
       redirect: 'manual',
     });
     const contentType = upstream.headers.get('content-type')?.toLowerCase() ?? '';
-    if (upstream.ok && !contentType.includes('text/event-stream')) {
+    const validType = speech
+      ? contentType.startsWith('application/json') || (method === 'POST' && contentType.startsWith('audio/'))
+      : contentType.includes('text/event-stream');
+    if (upstream.ok && !validType) {
       await upstream.body?.cancel().catch(() => undefined);
       return jsonError(502, '问答服务入口返回了无效响应');
     }

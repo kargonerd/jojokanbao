@@ -40,7 +40,7 @@ describe("feature flag store", () => {
     await refreshFeatureFlags();
 
     expect(useFeatureFlagStore.getState().initialized).toBe(true);
-    expect(Object.values(useFeatureFlagStore.getState().flags)).toEqual([false, false]);
+    expect(Object.values(useFeatureFlagStore.getState().flags)).toEqual([false, false, false]);
   });
 
   it("keeps existing signed-in reading features available before the flag migration", async () => {
@@ -56,6 +56,7 @@ describe("feature flag store", () => {
     expect(useFeatureFlagStore.getState().flags).toEqual({
       "library.bookshelf": true,
       "reader.annotations": true,
+      "reader.speech": false,
     });
   });
 });

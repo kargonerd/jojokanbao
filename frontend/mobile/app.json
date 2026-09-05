@@ -2,7 +2,7 @@
   "expo": {
     "name": "JOJO看报",
     "slug": "mobile",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "scheme": "jojokanbao",
     "orientation": "default",
     "icon": "./assets/icon.png",
@@ -23,7 +23,7 @@
     "ios": {
       "bundleIdentifier": "com.luoxixi.jojokanbao",
       "icon": "./assets/icon-ios.png",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "supportsTablet": true,
       "config": {
         "usesNonExemptEncryption": false
@@ -31,7 +31,7 @@
     },
     "android": {
       "package": "com.luoxixi.jojokanbao",
-      "versionCode": 1,
+      "versionCode": 2,
       "predictiveBackGestureEnabled": false,
       "adaptiveIcon": {
         "backgroundColor": "#8b1a1a",
@@ -45,7 +45,8 @@
     },
     "plugins": [
       "@react-native-community/datetimepicker",
-      "expo-font"
+      "expo-font",
+      ["expo-audio", { "microphonePermission": false, "recordAudioAndroid": false, "enableBackgroundRecording": false, "enableBackgroundPlayback": true }]
     ],
     "extra": {
       "eas": {

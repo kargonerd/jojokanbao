@@ -61,8 +61,9 @@ async def speech(
 ) -> Response:
     try:
         # Frontend-only login restriction is intentional. Never expose provider keys.
-        async with asyncio.timeout(110):
-            audio, cache_status = await resolve_speech(request.provider, request.voice, request.text, settings)
+        audio, cache_status = await asyncio.wait_for(
+            resolve_speech(request.provider, request.voice, request.text, settings), timeout=110,
+        )
     except ApiError:
         raise
     except Exception as error:

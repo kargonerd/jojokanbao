@@ -1,6 +1,6 @@
 {
   "name": "@jojo/mobile",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "main": "index.ts",
   "scripts": {
     "start": "cross-env APP_VARIANT=standard EXPO_PUBLIC_APP_VARIANT=standard expo start",
@@ -33,6 +33,9 @@
     "@react-navigation/native-stack": "^7.14.6",
     "expo": "~55.0.31",
     "expo-application": "~55.0.19",
+    "expo-audio": "~55.0.18",
+    "expo-crypto": "~55.0.19",
+    "htmlparser2": "^10.0.0",
     "expo-brightness": "~55.0.17",
     "expo-clipboard": "~55.0.17",
     "expo-constants": "~55.0.17",
@@ -53,6 +56,8 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "react-test-renderer": "19.2.0",
+    "@types/react-test-renderer": "^19.1.0",
     "@types/react": "~19.2.2",
     "cross-env": "^10.0.0",
     "expo-doctor": "^1.20.2",

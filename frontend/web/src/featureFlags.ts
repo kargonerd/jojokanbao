@@ -4,6 +4,7 @@ import { accountSessionConfigured, useAccountSessionStore } from "./account/sess
 export const FEATURE_FLAG_KEYS = [
   "library.bookshelf",
   "reader.annotations",
+  "reader.speech",
 ] as const;
 
 export type FeatureFlagKey = typeof FEATURE_FLAG_KEYS[number];

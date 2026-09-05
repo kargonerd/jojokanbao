@@ -177,6 +177,7 @@ export function BookReader({
   const location = useLocation();
   const navigate = useNavigate();
   const annotationsEnabled = useFeatureFlag("reader.annotations");
+  const speechEnabled = useFeatureFlag("reader.speech");
   const rememberRecentReading = useRecentReadingStore((state) => state.remember);
   const currentUserId = useAccountSessionStore((state) => state.userId);
   const bookshelfEnabled = useFeatureFlag("library.bookshelf");
@@ -924,14 +925,14 @@ export function BookReader({
       <button type="button" onClick={() => openPanel("toc")} className={controlClass} aria-label="打开目录" title="目录">目录</button>
       <button type="button" onClick={() => openPanel("search")} className={controlClass} aria-label="搜索全书" title="搜索全书">搜索</button>
       <button type="button" onClick={openBookAi} className={`${controlClass} relative`} aria-label="打开书内 AI" title={agentAccess ? "书内 AI · Beta（实验功能）" : "登录后使用书内 AI"}>AI<span aria-hidden="true" className="absolute right-1.5 top-1.5 text-[6px] font-bold leading-none tracking-normal text-red">Beta</span></button>
-      {speechControl && <div ref={setSpeechLauncherTarget} className="h-12 w-12 shrink-0" />}
+      {speechEnabled && speechControl && <div ref={setSpeechLauncherTarget} className="h-12 w-12 shrink-0" />}
       <button type="button" onClick={() => openTool("font")} className={controlClass} aria-label="调整字号" title="字号">字号</button>
       <button type="button" onClick={() => openTool("color")} className={controlClass} aria-label="选择纸张颜色" title="纸张颜色"><span className={`h-4 w-4 border ${isDark ? "border-white/50 bg-[#202321]" : paperColor === "white" ? "border-[#aaa] bg-white" : "border-[#b8ad96] bg-[#fbfaf6]"}`} aria-hidden="true" /></button>
       <button type="button" aria-pressed={paperTexture} onClick={() => setPaperTexture((value) => !value)} className={`${controlClass} ${paperTexture ? "text-red" : ""}`} aria-label="切换纸张纹理" title={paperTexture ? "关闭纸张纹理" : "开启纸张纹理"}>纹理</button>
       <button type="button" data-reader-mode={mode} onClick={() => changeMode(mode === "paged" ? "scroll" : "paged")} className={controlClass} aria-label="切换阅读模式" title={mode === "paged" ? "切换为上下滚动" : "切换为双页阅读"}>{mode === "paged" ? "双页" : "滚动"}</button>
       {onDownload && <button type="button" onClick={onDownload} className={`${controlClass} mt-3`} aria-label="下载整本 EPUB" title="下载整本 EPUB"><svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 20h14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" /></svg></button>}
     </nav>}
-    {speechControl}
+    {speechEnabled && speechControl}
 
     {mobileViewport && (tocOpen || searchOpen) && <BookNavigationSheet tab={tocOpen ? "toc" : "search"} onTabChange={openPanel} onClose={() => { setTocOpen(false); setSearchOpen(false); }} panelClass={panelClass}>
       {tocOpen ? tocList : <BookSearchPanel embedded bookTitle={bookTitle} panelClass={panelClass} onClose={() => setSearchOpen(false)} onJump={locateSearchResult} onSearch={onSearch} />}

@@ -56,6 +56,29 @@ python tools/dev-backend.py --b2
 
 ## 手工预生成书籍
 
+全库（只读取已发布的 book / book-series，不含草稿）先生成清单，再执行单音色批处理：
+
+```powershell
+pnpm --filter @jojo/content-pipeline speech-plan --cdn https://blacknews.jojokanbao.cn --all-books --output <绝对路径/library-plan.json>
+python tools/speech/generate.py --plan <绝对路径/library-plan.json> --provider mimo --voice 白桦 --all --use-rclone --report .runtime/speech/library-report.json
+```
+
+这会产生 B2 写入和提供方调用；必须人工明确授权。中断后重复同一命令会复用已提交的段。
+
+## 前端灰度与客户端
+
+`reader.speech` 是 Web、Desktop、Android、iOS 和墨水屏 Android 共用的前端 flag，默认关闭。
+迁移 `202609050001_reader_speech_flag.sql` 只创建关闭规则；通过现有 feature flag 管理界面按用户灰度开启。
+缺少配置、评估失败均不开放听读。登录退出/flag 关闭后停止播放。
+它与 `JOJO_TTS_ENABLED` 不同：后者只控制后端能否生成新音频，不影响 CDN 已有音频。
+
+Desktop 复用网页播放器，通过固定白名单的 `jojo-agent://reader/api/v1/speech*` 访问 API。
+Mobile 使用 expo-audio 播放相同 CDN MP3，支持系统媒体控件、跨段进度、续听和定时关闭。
+API 默认 `https://beta.jojokanbao.cn`（可用 `EXPO_PUBLIC_READER_API_BASE` 配置公开入口，不能填密钥）。
+进度保存在本机 AsyncStorage，按用户/书籍隔离；不做跨设备同步。
+手机 0.0.2 新增原生音频模块，因此必须发布新安装包，不能向 0.0.1 下发仅 JS 的热更新。
+墨水屏版复用功能，但不使用背景模糊或动画。AI、笔记、选区和阅读工具打开时隐藏听读入口与 mini 播放器。
+
 优先从已经生成的 Canonical 目录生成计划（不会请求 TTS 或上传）：
 
 ```powershell

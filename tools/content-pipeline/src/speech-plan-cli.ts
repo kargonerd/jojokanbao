@@ -4,7 +4,7 @@ import path from "node:path";
 import { gunzipSync } from "node:zlib";
 import { parseArgs } from "node:util";
 import { load } from "cheerio";
-import { JoxClient, resolveJoxObject, speechSegments, SPEECH_EXCLUDED_ELEMENTS, SPEECH_BLOCK_ELEMENTS,
+import { JoxClient, asJojoCatalog, resolveJoxObject, speechSegments, SPEECH_EXCLUDED_ELEMENTS, SPEECH_BLOCK_ELEMENTS,
   type JojoCanonicalItem, type JojoDatasetIndex, type JojoItemManifest, type JojoFragment } from "@jojo/content";
 
 export function speechHtmlBlocks(html: string): string[] {
@@ -44,10 +44,9 @@ export async function buildSpeechPlan(root: string, dataset?: string) {
   return { formatVersion: "jojo-speech-plan/1", books };
 }
 
-export async function buildCdnSpeechPlan(cdn: string, dataset: string) {
+export async function buildCdnSpeechPlan(cdn: string, dataset: string, indexObject = `content/books/${dataset}/index.jox`) {
   if (!/^[a-zA-Z0-9_-]+$/u.test(dataset)) throw new Error("Invalid dataset ID");
   const client = new JoxClient(cdn);
-  const indexObject = `content/books/${dataset}/index.jox`;
   const index = await client.fetchJson<JojoDatasetIndex>(indexObject);
   if (index.publicationStatus === "draft") throw new Error("Dataset is not published");
   const books = [];
@@ -67,11 +66,25 @@ export async function buildCdnSpeechPlan(cdn: string, dataset: string) {
   return { formatVersion: "jojo-speech-plan/1", books };
 }
 
+export async function buildCdnLibrarySpeechPlan(cdn: string) {
+  const client = new JoxClient(cdn);
+  const catalog = asJojoCatalog(await client.fetchJson("catalog.jox", undefined, "no-store"));
+  const datasets = catalog.datasets.filter((entry) =>
+    (entry.type === "book" || entry.type === "book-series") && entry.publicationStatus !== "draft");
+  const books = [];
+  for (const [index, dataset] of datasets.entries()) {
+    const plan = await buildCdnSpeechPlan(cdn, dataset.datasetId, dataset.indexObject);
+    books.push(...plan.books);
+    console.log(`Planned dataset ${index + 1}/${datasets.length}: ${dataset.datasetId}`);
+  }
+  return { formatVersion: "jojo-speech-plan/1", books };
+}
+
 if (process.argv[1]?.endsWith("speech-plan-cli.ts")) {
-  const { values } = parseArgs({ options: { canonical: { type: "string" }, output: { type: "string" }, dataset: { type: "string" }, cdn: { type: "string" } } });
-  if (!values.output || (!values.canonical && !(values.cdn && values.dataset))) throw new Error("Use --canonical <canonical/books> or --cdn <base> --dataset <id>, and --output <plan.json>");
+  const { values } = parseArgs({ options: { canonical: { type: "string" }, output: { type: "string" }, dataset: { type: "string" }, cdn: { type: "string" }, "all-books": { type: "boolean" } } });
+  if (!values.output || (!values.canonical && !(values.cdn && (values.dataset || values["all-books"])))) throw new Error("Use --canonical <canonical/books> or --cdn <base> with --dataset <id> / --all-books, and --output <plan.json>");
   const plan = values.canonical ? await buildSpeechPlan(path.resolve(values.canonical), values.dataset)
-    : await buildCdnSpeechPlan(values.cdn!, values.dataset!);
+    : values["all-books"] ? await buildCdnLibrarySpeechPlan(values.cdn!) : await buildCdnSpeechPlan(values.cdn!, values.dataset!);
   if (!plan.books.length) throw new Error("No published books matched the input");
   await mkdir(path.dirname(path.resolve(values.output)), { recursive: true });
   await writeFile(values.output, JSON.stringify(plan));

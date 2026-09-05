@@ -6,6 +6,7 @@ import { DEFAULT_SPEECH_PROVIDERS, loadCachedSpeechDurations, loadSpeechProvider
 import "./SpeechPlayer.css";
 import { readSpeechProgress, saveSpeechProgress, speechFingerprint } from "./speechProgress";
 import { useAccountSessionStore } from "../account/session";
+import { useFeatureFlag } from "../featureFlags";
 
 type PlayerState = "idle" | "loading" | "playing" | "paused" | "complete" | "error";
 type SettingPanel = "sleep" | "voice" | "speed";
@@ -79,7 +80,12 @@ function formatTime(seconds: number): string {
     : `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
 }
 
-export function SpeechPlayer({
+export function SpeechPlayer(props: Parameters<typeof ActiveSpeechPlayer>[0]) {
+  const enabled = useFeatureFlag("reader.speech");
+  return enabled ? <ActiveSpeechPlayer {...props} /> : null;
+}
+
+function ActiveSpeechPlayer({
   segments,
   label,
   title,
