@@ -125,6 +125,88 @@
   font-size: 11px;
 }
 
+.web-app-install {
+  border: 1px solid var(--app-line);
+  border-top: 3px solid var(--color-red);
+  padding: clamp(24px, 5vw, 40px);
+  background: var(--color-paper);
+  scroll-margin-top: 80px;
+}
+
+.iphone-install-page { max-width: 620px; }
+
+.web-app-install header {
+  border-bottom: 1px solid var(--app-line);
+  padding-bottom: 28px;
+}
+
+.web-app-install h1 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: clamp(28px, 5vw, 36px);
+  font-weight: 700;
+  line-height: 1.35;
+  scroll-margin-top: 80px;
+}
+
+/* The heading receives focus on navigation for screen readers, but is not a control. */
+.web-app-install h1:focus { outline: none; }
+
+.iphone-install-device {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--color-red);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: .06em;
+}
+
+.web-app-install ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.web-app-install li {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 20px;
+  padding: 26px 0;
+}
+
+.web-app-install li + li { border-top: 1px solid var(--app-line); }
+.web-app-install li:last-child { padding-bottom: 0; }
+
+.iphone-install-number {
+  color: var(--color-red);
+  font-family: var(--font-serif);
+  font-size: 28px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.web-app-install h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.web-app-install p {
+  margin: 6px 0 0;
+  color: var(--app-gray);
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.web-app-standalone-only { display: none; }
+
+@media (display-mode: standalone) {
+  .web-app-browser-only { display: none; }
+  .web-app-standalone-only { display: block; }
+}
+
 .client-download-page .client-download-footer a {
   border-bottom: 1px solid transparent;
 }
@@ -156,4 +238,6 @@
   .client-download-page { width: calc(100% - 24px); }
   .client-platform-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .client-platform { min-height: 166px; }
+  .web-app-install { padding: 28px 24px; }
+  .web-app-install li { grid-template-columns: 32px minmax(0, 1fr); gap: 16px; padding: 24px 0; }
 }

@@ -12,6 +12,11 @@
   font-family: var(--font-sans);
 }
 
+.archive-shell {
+  height: 100vh;
+  height: 100dvh;
+}
+
 .app-shell a,
 .app-header a {
   color: inherit;
@@ -127,6 +132,26 @@ a.jojo-citation:hover {
 .app-mobile-navigation,
 .app-mobile-account-link,
 .app-mobile-back { display: none; }
+
+@media (min-width: 761px) {
+  .app-header.has-install-back .app-brand-lockup { display: none; }
+  .app-header.has-install-back .app-mobile-back {
+    display: inline-flex;
+    align-items: center;
+    justify-self: start;
+    gap: 6px;
+    border: 0;
+    padding: 8px 0;
+    color: var(--color-red);
+    background: transparent;
+    font: 700 14px/1.4 var(--font-sans);
+    cursor: pointer;
+  }
+  .app-header.has-install-back .app-mobile-back:focus-visible {
+    outline: 2px solid var(--color-red);
+    outline-offset: 3px;
+  }
+}
 .app-mobile-title-badge {
   position: absolute;
   top: -3px;

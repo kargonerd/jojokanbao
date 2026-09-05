@@ -212,17 +212,46 @@ describe("JOJO Web navigation", () => {
     expect(within(memberNavigation).getAllByRole("link").map((link) => link.textContent)).toEqual(["首页", "资料库", "搜索", "AI", "时事"]);
   });
 
-  it("opens the public client download page inside the Reader shell", () => {
+  it("opens the public client download page inside the Reader shell", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 404 }));
     renderAt("/download");
 
-    expect(screen.getByRole("heading", { name: "下载客户端" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "下载客户端" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Windows" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Android" })).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "iPhone · iPad" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "iPhone" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "网页版安装说明" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "在 iPhone 上添加到主屏幕" })).toBeNull();
     expect(within(screen.getByRole("navigation", { name: "主导航" })).queryByRole("link", { name: "客户端下载" })).toBeNull();
     expect(document.querySelector("[data-release-base]")?.getAttribute("data-release-base")).toBe("https://blacknews.jojokanbao.cn/releases");
     expect(screen.getByRole("button", { name: "返回上一页" })).toBeTruthy();
+
+    const installLink = screen.getByRole("link", { name: "添加到主屏幕" });
+    expect(installLink.getAttribute("href")).toBe("/download/iphone");
+    fireEvent.click(installLink);
+    expect(await screen.findByRole("heading", { name: /在 iPhone 上\s*添加到主屏幕/, level: 1 })).toBeTruthy();
+    expect(window.location.pathname).toBe("/download/iphone");
+    const guide = screen.getByRole("region", { name: /在 iPhone 上\s*添加到主屏幕/ });
+    expect(within(guide).getAllByRole("listitem")).toHaveLength(3);
+    expect(guide.textContent).not.toMatch(/Android|安卓|Chrome/);
+    expect(screen.queryByRole("heading", { name: "下载客户端" })).toBeNull();
+    expect(screen.queryByRole("link", { name: /返回下载页/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "返回上一页" }));
+    expect(await screen.findByRole("heading", { name: "下载客户端" })).toBeTruthy();
+    expect(window.location.pathname).toBe("/download");
+  });
+
+  it.each([false, true])("opens the iPhone guide directly with platformRedesign=%s", async (platformRedesign) => {
+    render(
+      <MemoryRouter initialEntries={["/download/iphone"]}>
+        <AppRoutes platformRedesign={platformRedesign} />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole("heading", { name: /在 iPhone 上\s*添加到主屏幕/, level: 1 })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /返回下载页/ })).toBeNull();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 404 }));
+    fireEvent.click(screen.getByRole("button", { name: "返回上一页" }));
+    expect(await screen.findByRole("heading", { name: "下载客户端" })).toBeTruthy();
   });
 
   it("removes the release status once a stable download is available", async () => {

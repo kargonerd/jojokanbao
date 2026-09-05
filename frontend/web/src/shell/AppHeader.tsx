@@ -27,6 +27,7 @@ const MOBILE_PRIMARY_HREFS = new Set(["/", "/library", "/search", "/rag", "/time
 function mobilePageTitle(pathname: string, navigationItems: readonly AppNavigationItem[]): string {
   const activeItem = navigationItems.find((item) => isActive(pathname, item.href));
   if (activeItem) return activeItem.label;
+  if (pathname === "/download/iphone") return "安装说明";
   if (pathname.startsWith("/archive/")) return "阅读";
   if (pathname.startsWith("/bookshelf")) return "我的书架";
   if (pathname.startsWith("/notifications")) return "通知";
@@ -85,11 +86,11 @@ export function AppHeader({
 
   const navigateBack = () => {
     if (location.key !== "default" && window.history.length > 1) navigate(-1);
-    else navigate("/", { replace: true });
+    else navigate(pathname === "/download/iphone" ? "/download" : "/", { replace: true });
   };
 
   return <>
-    <header className={`app-header${showMobileBack ? " has-mobile-back" : ""}`}>
+    <header className={`app-header${showMobileBack ? " has-mobile-back" : ""}${pathname === "/download/iphone" ? " has-install-back" : ""}`}>
       <div className="app-brand-lockup">
         <Link className="app-brand" to="/" aria-label="JOJO 看报首页">
           <img className="app-brand-full" src={`${brandBase}brand/jojo-kanbao-logo.png`} alt="" />

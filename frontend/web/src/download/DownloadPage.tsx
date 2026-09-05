@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { FaWindows } from "react-icons/fa";
 import { LuBookOpen } from "react-icons/lu";
 import { SiAndroid, SiApple, SiLinux } from "react-icons/si";
@@ -98,6 +99,15 @@ function PlatformGrid({ catalogs, loading }: {
     {platformOptions(catalogs).map((option) => (
       <PlatformCard key={option.key} option={option} loading={loading} />
     ))}
+    <section className="client-platform is-available">
+      <div className="client-platform-icon"><SiApple aria-hidden="true" /></div>
+      <h2>iPhone</h2>
+      <small>网页版</small>
+      <div className="client-platform-actions web-app-browser-only">
+        <Link to="/download/iphone">添加到主屏幕</Link>
+      </div>
+      <span className="client-platform-unavailable web-app-standalone-only">已在网页版中打开</span>
+    </section>
   </div>;
 }
 
@@ -130,11 +140,14 @@ export function DownloadPage() {
         <p>选择设备</p>
       </header>
 
-      <PlatformGrid catalogs={releaseState.catalogs} loading={releaseState.status === "loading"} />
+      <PlatformGrid
+        catalogs={releaseState.catalogs}
+        loading={releaseState.status === "loading"}
+      />
 
       {releaseState.status !== "ready" ? (
         <p className="client-release-status" role="status">
-          {releaseState.status === "loading" ? "正在检查可用版本" : "安装包尚未发布"}
+          {releaseState.status === "loading" ? "正在检查可用版本" : "客户端安装包暂不可用，仍可使用网页版。"}
         </p>
       ) : null}
 
