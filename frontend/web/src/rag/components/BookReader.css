@@ -561,23 +561,34 @@ mark[data-book-search-target] {
   .book-thought-composer__quote { max-height: 112px; }
 }
 
-.book-navigation-backdrop {
+.book-navigation-viewport {
   position: fixed;
-  inset: 0 0 calc(64px + env(safe-area-inset-bottom));
+  right: 0;
+  left: 0;
   z-index: 40;
+  pointer-events: none;
+}
+
+.book-navigation-backdrop {
+  position: absolute;
+  inset: 0 0 var(--book-navigation-bottom);
   border: 0;
   background: transparent;
+  pointer-events: auto;
 }
 
 .book-navigation-sheet {
-  position: fixed;
-  inset: auto 0 calc(64px + env(safe-area-inset-bottom));
+  position: absolute;
+  inset: auto 0 var(--book-navigation-bottom);
   z-index: 50;
   display: flex;
   flex-direction: column;
-  min-height: 120px;
-  max-height: calc(100dvh - 112px - env(safe-area-inset-bottom));
-  overflow: hidden;
+  min-height: 0;
+  max-height: calc(100% - 48px - var(--book-navigation-bottom));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  pointer-events: auto;
   box-shadow: 0 -12px 32px rgba(32, 32, 28, .08);
   animation: jojo-reader-sheet-in 180ms ease-out both;
 }
@@ -598,9 +609,11 @@ mark[data-book-search-target] {
 }
 
 .book-navigation-handle span { width: 36px; height: 3px; background: currentColor; opacity: .45; }
-.book-navigation-tabs { display: flex; flex-shrink: 0; gap: 4px; margin: 0 20px 8px; padding: 4px; background: color-mix(in srgb, currentColor 6%, transparent); }
+.book-navigation-toolbar { display: flex; flex-shrink: 0; align-items: center; gap: 8px; margin: 0 20px 8px; }
+.book-navigation-tabs { display: flex; flex: 1; min-width: 0; gap: 4px; padding: 4px; background: color-mix(in srgb, currentColor 6%, transparent); }
+.book-navigation-close { flex-shrink: 0; width: 44px; min-height: 44px; border: 0; padding: 0; background: transparent; color: inherit; font: 24px/1 var(--font-sans); }
 .book-navigation-tabs button { flex: 1; min-height: 42px; border: 0; padding: 8px; font: inherit; font-size: 14px; color: var(--color-muted); background: transparent; cursor: pointer; }
 .book-navigation-tabs button[aria-selected="true"] { color: var(--color-red); background: var(--color-paper); font-weight: 700; }
 .book-reader-dark .book-navigation-tabs button[aria-selected="true"] { background: #303431; }
-.book-navigation-handle:focus-visible, .book-navigation-tabs button:focus-visible { outline: 1px solid var(--color-red); outline-offset: -2px; }
+.book-navigation-handle:focus-visible, .book-navigation-tabs button:focus-visible, .book-navigation-close:focus-visible { outline: 1px solid var(--color-red); outline-offset: -2px; }
 @media (prefers-reduced-motion: reduce) { .book-navigation-sheet { animation: none; } }
