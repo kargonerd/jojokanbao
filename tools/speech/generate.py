@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT / "backend" / "src"))
 from app.core.config import Settings
 from app.speech.delivery import delivery_version, identity, resolve_speech, speech_store
 from app.speech.storage import PREFIX
+from offline import RequestLimiter, offline_provider, ordered_results
 
 
 def component(value: str) -> str:
@@ -37,7 +38,10 @@ def save_report(path: Path, report: dict) -> None:
     temporary.replace(path)
 
 
-async def generate(args, settings: Settings) -> dict:
+async def generate(args, settings: Settings, *, limiter: RequestLimiter | None = None) -> dict:
+    concurrency = getattr(args, "concurrency", 1)
+    if type(concurrency) is not int or concurrency not in (1, 2):
+        raise ValueError("concurrency must be 1 or 2")
     plan = json.loads(args.plan.read_text(encoding="utf-8"))
     if plan.get("formatVersion") != "jojo-speech-plan/1" or not plan.get("books"):
         raise ValueError("Invalid speech plan")
@@ -61,26 +65,37 @@ async def generate(args, settings: Settings) -> dict:
         raise ValueError("Manual publication requires JOJO_SPEECH_STORAGE=b2 (or --use-rclone)")
     store = speech_store(settings)
     seen = set()
+    seen_new = set()
+    stopped = asyncio.Event()
+    limiter = limiter or RequestLimiter()
+    async with offline_provider(args.provider, limiter, stopped):
+        return await generate_chapters(args, settings, selected, report, store, seen, seen_new, stopped, concurrency)
+
+
+async def generate_chapters(args, settings, selected, report, store, seen, seen_new, stopped, concurrency):
+    async def resolve(text):
+        return await resolve_speech(args.provider, args.voice, text, settings)
+
     for book, chapter in selected:
         chapter_report = {"datasetId": book["datasetId"], "itemKey": book["itemKey"], "chapterId": chapter["id"],
                           "status": "generating", "segments": [], "duration": 0}
         report["chapters"].append(chapter_report)
         try:
-            for text in chapter["segments"]:
-                # Sequential, intentionally low concurrency. A rerun reuses every completed part.
-                record, status = await resolve_speech(args.provider, args.voice, text, settings)
-                entry = {key: record[key] for key in ("key", "object", "duration", "bytes", "sha256")}
-                entry["offset"] = chapter_report["duration"]
-                chapter_report["segments"].append(entry)
-                chapter_report["duration"] += record["duration"]
-                report["durationSeconds"] += record["duration"]
-                report["cacheHits" if status == "hit" else "generated"] += 1
-                if record["object"] not in seen:
-                    seen.add(record["object"])
-                    report["uniqueBytes"] += record["bytes"]
-                    if status == "miss":
+            async with ordered_results(chapter["segments"], resolve, concurrency, stopped) as results:
+                async for record, status in results:
+                    entry = {key: record[key] for key in ("key", "object", "duration", "bytes", "sha256")}
+                    entry["offset"] = chapter_report["duration"]
+                    chapter_report["segments"].append(entry)
+                    chapter_report["duration"] += record["duration"]
+                    report["durationSeconds"] += record["duration"]
+                    report["cacheHits" if status in {"hit", "shared"} else "generated"] += 1
+                    if record["object"] not in seen:
+                        seen.add(record["object"])
+                        report["uniqueBytes"] += record["bytes"]
+                    if status == "miss" and record["object"] not in seen_new:
+                        seen_new.add(record["object"])
                         report["newBytes"] += record["bytes"]
-                save_report(args.report, report)
+                    save_report(args.report, report)
             revision = hashlib.sha256(json.dumps([entry["object"] for entry in chapter_report["segments"]]).encode()).hexdigest()
             voice_key = hashlib.sha256(f"{args.provider}:{args.voice}".encode()).hexdigest()[:16]
             manifest = {"formatVersion": "jojo-speech-chapter/1", "provider": args.provider, "voice": args.voice,
@@ -92,7 +107,7 @@ async def generate(args, settings: Settings) -> dict:
             await asyncio.to_thread(store.put_json, f"{prefix}/index.json", {"manifest": key})
             chapter_report.update(status="complete", manifest=key)
             print(f"Completed {len(report['chapters'])}/{len(selected)}; {chapter_report['duration']:.1f}s", flush=True)
-        except Exception as error:
+        except BaseException as error:
             # Never write upstream text, credentials, or exception repr into a report.
             chapter_report.update(status="failed", errorType=type(error).__name__)
             save_report(args.report, report)
@@ -110,6 +125,7 @@ if __name__ == "__main__":
     parser.add_argument("--provider", choices=["mimo", "edge"], default="mimo")
     parser.add_argument("--voice", default="白桦")
     parser.add_argument("--limit-chapters", type=int, default=1)
+    parser.add_argument("--concurrency", type=int, choices=(1, 2), default=1)
     parser.add_argument("--chapter")
     parser.add_argument("--all", action="store_true")
     parser.add_argument("--dry-run", action="store_true")

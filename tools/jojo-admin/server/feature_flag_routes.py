@@ -1,6 +1,7 @@
 """Local-only Feature Flag administration backed by JOJO_OPERATOR_TOKEN."""
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from flask import Blueprint, jsonify, request
@@ -22,7 +23,24 @@ class SupabaseFeatureFlagAdminClient(SupabaseOperatorRpcClient):
         return result if isinstance(result, list) else []
 
     def publish(self, payload: dict[str, Any]) -> dict[str, Any]:
-        result = self.rpc("operator_publish_feature_flag", payload)
+        current_payload = {"p_config": {}, **payload}
+        config = current_payload["p_config"]
+        if not isinstance(config, dict):
+            raise FeatureFlagAdminError("Feature Flag 配置必须是 JSON 对象")
+        try:
+            result = self.rpc("operator_publish_feature_flag", current_payload)
+        except FeatureFlagAdminError as error:
+            signature = re.search(r"\bpublic\.operator_publish_feature_flag\(([^)]*)\)", str(error))
+            expected = {"p_operator_token", "p_key", "p_rules", "p_config", "p_expected_revision", "p_reason", "p_request_id"}
+            # PGRST202 means dispatch failed before executing the RPC. Retry only
+            # this exact missing signature, never a timeout/permission/conflict.
+            if not (error.status_code == 404 and error.code == "PGRST202" and signature
+                    and {name.strip() for name in signature.group(1).split(",")} == expected):
+                raise
+            if config:
+                raise FeatureFlagAdminError("当前数据库不支持 Feature Flag 配置；非空配置未保存，请先更新数据库配置能力") from error
+            legacy_payload = {key: value for key, value in current_payload.items() if key != "p_config"}
+            result = self.rpc("operator_publish_feature_flag", legacy_payload)
         if not isinstance(result, dict):
             raise FeatureFlagAdminError("Feature Flag 服务返回了无效数据")
         return result
@@ -56,14 +74,14 @@ def search_feature_users():
 @feature_flags_blueprint.post("/api/features/publish")
 def publish_feature():
     body = request.get_json(silent=True) or {}
-    required = ("key", "rules", "config", "expectedRevision", "reason", "requestId")
+    required = ("key", "rules", "expectedRevision", "reason", "requestId")
     if any(name not in body for name in required):
         return jsonify({"success": False, "message": "发布参数不完整"}), 400
     try:
         flag = SupabaseFeatureFlagAdminClient().publish({
             "p_key": body["key"],
             "p_rules": body["rules"],
-            "p_config": body["config"],
+            "p_config": body.get("config", {}),
             "p_expected_revision": body["expectedRevision"],
             "p_reason": body["reason"],
             "p_request_id": body["requestId"],
