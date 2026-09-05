@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(35);
+select extensions.plan(36);
 
 select extensions.has_table('private', 'feature_flags', 'feature flag configuration uses one private table');
 select extensions.has_table('private', 'feature_flag_operator_secret', 'only the operator token digest has separate storage');
@@ -61,8 +61,14 @@ select extensions.throws_ok(
 
 select extensions.is(
   jsonb_array_length(public.operator_list_feature_flags(repeat('o', 32))),
-  2,
+  3,
   'the configured operator token can list flags'
+);
+
+select extensions.is(
+  (select enabled from private.feature_flag_evaluate('reader.speech', (select other_id from feature_flag_test_state), null)),
+  false,
+  'listening starts disabled even for authenticated readers'
 );
 
 select extensions.throws_ok(
