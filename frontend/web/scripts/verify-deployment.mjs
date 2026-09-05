@@ -18,7 +18,7 @@ const localEntry = /assets\/(index-[^"']+\.js)/.exec(localHtml)?.[1];
 const localAssets = await readdir(assetsUrl);
 const localWorkers = localAssets.filter((name) => name.startsWith("pdf.worker-"));
 const runtimeAssetDirs = ["pdfjs/cmaps", "pdfjs/wasm", "pdfjs/standard_fonts"];
-const spaRoutes = ["archive", "archive/rmrb/19761009", "reader/rmrb/19761009", "rmrb/19761009"];
+const spaRoutes = ["archive", "archive/rmrb/19761009", "reader/rmrb/19761009", "rmrb/19761009", "download", "download/iphone"];
 
 if (!localEntry || localWorkers.length !== 1) {
   throw new Error("Local Web build is missing its entry or unique PDF worker");

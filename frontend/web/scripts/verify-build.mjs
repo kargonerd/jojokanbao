@@ -37,6 +37,26 @@ try {
   const stylesheets = assetNames.filter((name) => name.endsWith(".css"));
   const javascriptFiles = assetNames.filter((name) => name.endsWith(".js"));
   const indexHtml = await readFile(new URL("index.html", distDir), "utf8");
+  const manifestPath = /<link\b[^>]*rel="manifest"[^>]*href="([^"]+)"/.exec(indexHtml)?.[1];
+  const appleIconPath = /<link\b[^>]*rel="apple-touch-icon"[^>]*href="([^"]+)"/.exec(indexHtml)?.[1];
+  if (!manifestPath || !appleIconPath) {
+    await fail("HTML is missing the web app manifest or Apple touch icon");
+  } else {
+    const manifest = JSON.parse(await readFile(new URL(manifestPath.slice(1), distDir), "utf8"));
+    if (manifest.display !== "standalone" || manifest.start_url !== "/" || manifest.scope !== "/" || manifest.id !== "/") {
+      await fail("web app must launch the existing root route in standalone mode with a stable root identity and scope");
+    }
+    const icons = [...manifest.icons, { src: appleIconPath, sizes: "180x180" }];
+    for (const icon of icons) {
+      const bytes = await readFile(new URL(icon.src.slice(1), distDir));
+      const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+      if (bytes.length < 24 || !bytes.subarray(0, 8).equals(signature)) {
+        await fail(`web app icon is not a PNG: ${icon.src}`);
+      } else if (`${bytes.readUInt32BE(16)}x${bytes.readUInt32BE(20)}` !== icon.sizes) {
+        await fail(`web app icon dimensions do not match the manifest: ${icon.src}`);
+      }
+    }
+  }
   const sitemap = await readFile(new URL("sitemap.xml", distDir), "utf8");
   const emittedReferences = [
     indexHtml,

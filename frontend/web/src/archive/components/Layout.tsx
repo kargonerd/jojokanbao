@@ -38,7 +38,7 @@ export function Layout({
   ];
   if (platformRedesign) {
     return (
-      <div className={["app-shell flex h-screen flex-col overflow-hidden", className].filter(Boolean).join(" ")}>
+      <div className={["app-shell archive-shell flex flex-col overflow-hidden", className].filter(Boolean).join(" ")}>
         <AppHeader actions={headerActions} navigationItems={navigationItems} />
         <main className="min-h-0 flex-1 overflow-hidden">
           <Outlet />
@@ -49,6 +49,7 @@ export function Layout({
 
   return (
     <AppShell
+      className="archive-shell"
       header={
         <NavBar
           items={navItems}
