@@ -24,6 +24,7 @@ import { useAnnotationThreads } from "../../annotations/useAnnotationThreads";
 import { useFeatureFlag } from "../../featureFlags";
 import { useAccountSessionStore } from "../../account/session";
 import { useRecentReadingStore } from "../../library/recentReadingStore";
+import { ReadingBookshelfContext } from "../../reading/ReadingBookshelfContext";
 import type { RagAnswerMetadata, RagFocusContext, RagReference, RagSearchHit } from "../types";
 import { BookAiPanel } from "./BookAiPanel";
 import { BookSearchPanel } from "./BookSearchPanel";
@@ -92,6 +93,7 @@ export interface BookReaderProps {
   onInternalLink?: (chapterId: string, anchorId?: string) => void;
   onSearch: (query: string) => Promise<RagSearchHit[]>;
   onDownload?: () => void;
+  speechControl?: ReactNode;
   children: ReactNode;
 }
 
@@ -168,6 +170,7 @@ export function BookReader({
   onInternalLink,
   onSearch,
   onDownload,
+  speechControl,
   children,
 }: BookReaderProps) {
   const location = useLocation();
@@ -200,12 +203,14 @@ export function BookReader({
   const [activeAnnotationId, setActiveAnnotationId] = useState<string>();
   const [annotationSaving, setAnnotationSaving] = useState(false);
   const [onBookshelf, setOnBookshelf] = useState(false);
+  const [bookshelfBusy, setBookshelfBusy] = useState(false);
   const [readerNotice, setReaderNotice] = useState("");
   const [popular, setPopular] = useState<ReusableExplanation[]>([]);
   const [expandedImage, setExpandedImage] = useState<ExpandedImage>();
   const [readingProgress, setReadingProgress] = useState(0);
   const [columnsPerSpread, setColumnsPerSpread] = useState(() => window.innerWidth >= 900 ? 2 : 1);
   const [mobileViewport, setMobileViewport] = useState(() => window.innerWidth < 768);
+  const [speechLauncherTarget, setSpeechLauncherTarget] = useState<HTMLDivElement | null>(null);
   const [pageMetrics, setPageMetrics] = useState<PageMetrics>(DEFAULT_PAGE_METRICS);
   const [trailingBlankPage, setTrailingBlankPage] = useState(false);
   const [pageTransitioning, setPageTransitioning] = useState(false);
@@ -747,12 +752,18 @@ export function BookReader({
   }
 
   async function toggleBookshelf(): Promise<void> {
-    if (!bookshelfEnabled) return;
+    if (!bookshelfEnabled || bookshelfBusy) return;
+    const nextValue = !onBookshelf;
+    setBookshelfBusy(true);
     try {
-      await setBookshelf({ datasetId, itemId, title: bookTitle, added: !onBookshelf });
-      setOnBookshelf(!onBookshelf);
-      setReaderNotice(onBookshelf ? "已从书架移除" : "已加入书架");
-    } catch (reason) { setReaderNotice(reason instanceof Error ? reason.message : String(reason)); }
+      await setBookshelf({ datasetId, itemId, title: bookTitle, added: nextValue });
+      setOnBookshelf(nextValue);
+      setReaderNotice(nextValue ? "已加入书架" : "已从书架移除");
+    } catch (reason) {
+      setReaderNotice(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBookshelfBusy(false);
+    }
   }
 
   function openPanel(panel: "toc" | "search" | "ai"): void {
@@ -836,7 +847,13 @@ export function BookReader({
     <button type="button" disabled={!nextChapter} onClick={() => chooseChapter(nextChapter?.id)} className="border-0 border-l border-rule bg-transparent py-4 pl-4 text-right text-current cursor-pointer disabled:cursor-default disabled:opacity-30"><span className="mb-1 block text-muted">下一节</span>{nextChapter?.title ?? "已经是最后一节"}</button>
   </nav>;
 
-  return <div className={`book-reader h-screen overflow-hidden ${isDark ? "book-reader-dark" : ""} ${shellClass}`}>
+  return <ReadingBookshelfContext.Provider value={{
+    available: bookshelfEnabled,
+    added: onBookshelf,
+    busy: bookshelfBusy,
+    toggle: () => void toggleBookshelf(),
+    speechLauncherTarget,
+  }}><div className={`book-reader book-reader-root h-screen overflow-hidden ${isDark ? "book-reader-dark" : ""} ${shellClass}`}>
     {mobileViewport ? <nav data-book-toolbar data-reader-mobile-toolbar aria-label="阅读工具" className={`book-mobile-toolbar z-30 grid-cols-4 border-t backdrop-blur-md ${chromeClass}`}>
       <button type="button" onClick={() => openPanel("toc")} className="book-mobile-tool" aria-label="打开目录" aria-pressed={tocOpen}>
         <ReaderToolIcon name="toc" /><span>目录</span>
@@ -854,12 +871,14 @@ export function BookReader({
       <button type="button" onClick={() => openPanel("toc")} className={controlClass} aria-label="打开目录" title="目录">目录</button>
       <button type="button" onClick={() => openPanel("search")} className={controlClass} aria-label="搜索全书" title="搜索全书">搜索</button>
       <button type="button" onClick={openBookAi} className={`${controlClass} relative`} aria-label="打开书内 AI" title={agentAccess ? "书内 AI · Beta（实验功能）" : "登录后使用书内 AI"}>AI<span aria-hidden="true" className="absolute right-1.5 top-1.5 text-[6px] font-bold leading-none tracking-normal text-red">Beta</span></button>
+      {speechControl && <div ref={setSpeechLauncherTarget} className="h-12 w-12 shrink-0" />}
       <button type="button" onClick={() => openTool("font")} className={controlClass} aria-label="调整字号" title="字号">字号</button>
       <button type="button" onClick={() => openTool("color")} className={controlClass} aria-label="选择纸张颜色" title="纸张颜色"><span className={`h-4 w-4 border ${isDark ? "border-white/50 bg-[#202321]" : paperColor === "white" ? "border-[#aaa] bg-white" : "border-[#b8ad96] bg-[#fbfaf6]"}`} aria-hidden="true" /></button>
       <button type="button" aria-pressed={paperTexture} onClick={() => setPaperTexture((value) => !value)} className={`${controlClass} ${paperTexture ? "text-red" : ""}`} aria-label="切换纸张纹理" title={paperTexture ? "关闭纸张纹理" : "开启纸张纹理"}>纹理</button>
       <button type="button" data-reader-mode={mode} onClick={() => changeMode(mode === "paged" ? "scroll" : "paged")} className={controlClass} aria-label="切换阅读模式" title={mode === "paged" ? "切换为上下滚动" : "切换为双页阅读"}>{mode === "paged" ? "双页" : "滚动"}</button>
       {onDownload && <button type="button" onClick={onDownload} className={`${controlClass} mt-3`} aria-label="下载整本 EPUB" title="下载整本 EPUB"><svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 20h14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" /></svg></button>}
     </nav>}
+    {speechControl}
 
     {mobileViewport && (tocOpen || searchOpen) && <BookNavigationSheet tab={tocOpen ? "toc" : "search"} onTabChange={openPanel} onClose={() => { setTocOpen(false); setSearchOpen(false); }} panelClass={panelClass}>
       {tocOpen ? tocList : <BookSearchPanel embedded bookTitle={bookTitle} panelClass={panelClass} onClose={() => setSearchOpen(false)} onJump={locateSearchResult} onSearch={onSearch} />}
@@ -975,6 +994,7 @@ export function BookReader({
         {bookshelfEnabled && <button
           type="button"
           aria-pressed={onBookshelf}
+          disabled={bookshelfBusy}
           aria-label={onBookshelf ? "移出书架" : "加入书架"}
           title={onBookshelf ? "移出书架" : "加入书架"}
           onClick={() => void toggleBookshelf()}
@@ -1024,5 +1044,5 @@ export function BookReader({
         <span>{firstPhysicalPage === lastPhysicalPage ? firstPhysicalPage : `${firstPhysicalPage}–${lastPhysicalPage}`} / {pageMetrics.physicalPages} 页</span>
       </div>
     </main>}
-  </div>;
+  </div></ReadingBookshelfContext.Provider>;
 }

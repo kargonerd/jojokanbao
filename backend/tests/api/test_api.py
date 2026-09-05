@@ -6,10 +6,11 @@ import httpx
 from fastapi.testclient import TestClient
 
 from app.core.auth import SupabaseAuthClient, get_current_user
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.core.errors import AuthenticationError, ConfigurationError
 from app.core.models import CurrentUser
 from app.main import app
+import app.speech.providers as speech_providers
 
 
 client = TestClient(app, raise_server_exceptions=False)
@@ -221,3 +222,43 @@ def test_settings_reject_invalid_environment_and_origin(monkeypatch) -> None:
         assert str(error) == "Invalid JOJO_ALLOWED_ORIGINS entry: reader.jojokanbao.cn/path"
     else:
         raise AssertionError("RuntimeError was not raised")
+
+
+def test_speech_returns_mpeg_audio(monkeypatch) -> None:
+    async def fake_synthesize_audio(text: str, voice: str) -> bytes:
+        assert text == "第一段 新闻正文"
+        assert voice == "zh-CN-YunyangNeural"
+        return b"ID3-test-audio"
+
+    monkeypatch.setattr(speech_providers, "synthesize_audio", fake_synthesize_audio)
+
+    response = client.post(
+        "/v1/speech",
+        json={"text": "  第一段\n新闻正文  ", "voice": "zh-CN-YunyangNeural"},
+    )
+
+    assert response.status_code == 200
+    assert response.content == b"ID3-test-audio"
+    assert response.headers["content-type"] == "audio/mpeg"
+    assert response.headers["x-speech-provider"] == "edge"
+
+
+def test_speech_rejects_unknown_voice() -> None:
+    response = client.post(
+        "/v1/speech",
+        json={"text": "正文", "voice": "zh-CN-UnknownNeural"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_request"
+
+
+def test_speech_can_be_disabled(monkeypatch) -> None:
+    app.dependency_overrides[get_settings] = lambda: settings(edge_tts_enabled=False)
+    try:
+        response = client.post("/v1/speech", json={"text": "正文"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "speech_not_enabled"
