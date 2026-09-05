@@ -25,8 +25,8 @@ function updaterSupported() {
 }
 
 function packagedUpdateMessage() {
-  if (process.platform === 'darwin') return '当前 macOS 版本未签名，请从官网下载更新。';
-  return 'Linux DEB 请从官网下载新安装包；AppImage 支持应用内更新。';
+  if (process.platform === 'darwin') return '请前往官网下载并安装最新版本。';
+  return '请前往官网下载并安装最新版本。AppImage 版支持自动更新。';
 }
 
 function publicError(error) {
@@ -72,7 +72,7 @@ function registerUpdaterEvents() {
     publish({ supported: true, phase: 'checking', message: '正在检查新版本…' });
   });
   autoUpdater.on('update-available', (info) => {
-    publish({ supported: true, phase: 'available', availableVersion: info.version, message: `发现 ${info.version}，准备下载…` });
+    publish({ supported: true, phase: 'available', availableVersion: info.version, message: `发现新版本 ${info.version}，准备下载…` });
   });
   autoUpdater.on('download-progress', (progress) => {
     publish({

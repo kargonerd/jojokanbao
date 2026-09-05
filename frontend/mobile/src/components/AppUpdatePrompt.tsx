@@ -15,8 +15,8 @@ export function AppUpdatePrompt() {
         if (!catalog.mandatory && await AsyncStorage.getItem(dismissedUpdateKey) === releaseKey) return;
         const download = { text: "下载更新", onPress: () => void openNativeAppUpdate(catalog) };
         Alert.alert(
-          `发现 JOJO 看报 ${catalog.version}`,
-          "安装包将从 JOJO 下载节点打开，并由 Android 系统确认安装。",
+          `发现新版本 ${catalog.version}`,
+          "下载完成后，打开安装包，按提示完成更新。",
           catalog.mandatory
             ? [download]
             : [
