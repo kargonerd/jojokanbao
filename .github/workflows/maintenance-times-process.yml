@@ -501,13 +501,20 @@ jobs:
           NODE
 
       - name: Report automatic Times pipeline outcome
-        if: ${{ always() && github.event_name == 'workflow_run' }}
+        # Drain continuations use workflow_dispatch and can replace a pending
+        # workflow_run. Report their outcomes too, but never clear an alert for
+        # a successful no-op that did not commit a Runtime batch.
+        if: >-
+          ${{ always() &&
+              (github.event_name == 'workflow_run' ||
+               (inputs.publish && inputs.drain && !inputs.bootstrap && !inputs.capture_run_id)) &&
+              (job.status != 'success' || env.TIMES_BATCH_COMMITTED == 'true') }}
         continue-on-error: true
         env:
           HEALTHCHECKS_SIGNAL: ${{ job.status == 'success' && 'success' || 'fail' }}
           HEALTHCHECKS_TASK_ID: times-capture
           HEALTHCHECKS_STAGE: times-process
           HEALTHCHECKS_STATUS: ${{ job.status }}
-          HEALTHCHECKS_FAILURE_TYPE: ${{ job.status == 'success' && '' || 'run-failed' }}
+          HEALTHCHECKS_FAILURE_TYPE: ${{ job.status != 'success' && 'run-failed' || '' }}
           HEALTHCHECKS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: bash tools/monitoring/ping-healthchecks.sh
