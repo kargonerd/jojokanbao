@@ -181,7 +181,8 @@ jobs:
   web-cross-browser:
     name: Web ${{ matrix.browser }}
     needs: changes
-    if: github.event_name == 'push' && needs.changes.outputs.web_e2e == 'true'
+    # Catch browser-specific regressions before merge, not only on master.
+    if: needs.changes.outputs.web_e2e == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:

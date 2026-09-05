@@ -53,6 +53,36 @@ test.describe("JOJO Web", () => {
     await expect(email).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   });
 
+  for (const path of ["/", "/library"]) {
+    for (const inputMethod of ["pointer", "keyboard"]) {
+      test(`search focus feedback at ${path} with ${inputMethod}`, async ({ page }) => {
+        await page.goto(path);
+        const searchBox = page.locator(".app-search-box");
+        const searchInput = searchBox.getByRole("searchbox");
+        await expect(searchInput).toBeVisible();
+        await expect(searchBox).toHaveCSS("box-shadow", "none");
+
+        if (inputMethod === "pointer") {
+          await searchInput.click();
+        } else {
+          // Leave the input, then enter it through real keyboard navigation.
+          await searchInput.focus();
+          await searchInput.press("Shift+Tab");
+          await expect(searchInput).not.toBeFocused();
+          await page.keyboard.press("Tab");
+        }
+
+        await expect(searchInput).toBeFocused();
+        await expect(searchInput).toHaveCSS("outline-style", "none");
+        await expect(searchInput).toHaveCSS("box-shadow", "none");
+        // The enclosing control supplies a visible focus indicator for both
+        // pointer and keyboard users; removing the inner ring must retain it.
+        await expect(searchBox).toHaveCSS("border-top-color", "rgb(139, 26, 26)");
+        await expect(searchBox).toHaveCSS("box-shadow", "rgba(139, 26, 26, 0.14) 4px 4px 0px 0px");
+      });
+    }
+  }
+
   test("legacy entry returns to the redesigned homepage", async ({ page }) => {
     await page.goto("/legacy");
     await expect(page).toHaveURL("/");

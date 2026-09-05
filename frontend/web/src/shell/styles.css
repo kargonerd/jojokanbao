@@ -316,6 +316,9 @@ a.jojo-citation:hover {
 }
 
 .app-search-box input { height: 40px; flex: 1; padding: 0; font-size: 1rem; }
+/* The enclosing :focus-within border/shadow supplies the focus indicator.
+   Override Tailwind's Firefox :-moz-focusring without changing other inputs. */
+.app-search-box input:focus { outline: none; }
 .home-book-search { position: relative; }
 .home-book-results {
   position: absolute;
