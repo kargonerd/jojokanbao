@@ -216,11 +216,11 @@ describe("account center", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送验证码" }));
     await waitFor(() => expect(account.auth.sendPasswordReset).toHaveBeenCalledWith("reader@example.com"));
 
-    fireEvent.change(screen.getByLabelText("6 位验证码"), { target: { value: "654321" } });
+    fireEvent.change(await screen.findByLabelText("6 位验证码"), { target: { value: "654321" } });
     fireEvent.click(screen.getByRole("button", { name: "验证身份" }));
     await waitFor(() => expect(account.auth.verifyPasswordResetCode).toHaveBeenCalledWith("reader@example.com", "654321"));
 
-    fireEvent.change(screen.getByLabelText("新密码"), { target: { value: "replacement-password" } });
+    fireEvent.change(await screen.findByLabelText("新密码"), { target: { value: "replacement-password" } });
     fireEvent.change(screen.getByLabelText("再次输入新密码"), { target: { value: "replacement-password" } });
     fireEvent.click(screen.getByRole("button", { name: "保存新密码" }));
     await waitFor(() => expect(account.auth.completePasswordRecovery).toHaveBeenCalledWith("replacement-password"));

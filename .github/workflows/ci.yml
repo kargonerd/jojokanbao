@@ -382,7 +382,8 @@ jobs:
           test -f .edgeone/web-deploy/index.html
           test -f .edgeone/web-deploy/cloud-functions/api/index.py
           test -f '.edgeone/web-deploy/cloud-functions/gateway/[[default]].ts'
-          test -f .edgeone/web-deploy/cloud-functions/app/main.py
+          test -f .edgeone/web-deploy/cloud-functions/app/application.py
+          test ! -e .edgeone/web-deploy/cloud-functions/app/main.py
           test -f .edgeone/web-deploy/cloud-functions/requirements.txt
           test -f .edgeone/web-deploy/middleware.ts
           test -f .edgeone/web-deploy/edgeone.json
