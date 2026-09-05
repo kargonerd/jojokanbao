@@ -177,15 +177,20 @@ describe("BookReader", () => {
     expect(screen.getByRole("slider", { name: "字号" }).className).toContain("book-reader-range");
   });
 
-  it("groups the mobile reader into five thumb-friendly primary tools", () => {
+  it("groups the mobile reader into four primary tools with search inside the directory", () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 390, writable: true });
     const { container } = renderReader();
     const toolbar = container.querySelector<HTMLElement>("[data-reader-mobile-toolbar]");
 
     expect(toolbar).not.toBeNull();
-    expect(within(toolbar!).getAllByRole("button")).toHaveLength(5);
+    expect(within(toolbar!).getAllByRole("button")).toHaveLength(4);
     expect(within(toolbar!).getByRole("button", { name: "打开目录" })).toBeTruthy();
-    expect(within(toolbar!).getByRole("button", { name: "搜索全书" })).toBeTruthy();
+    expect(within(toolbar!).queryByRole("button", { name: "搜索全书" })).toBeNull();
+    fireEvent.click(within(toolbar!).getByRole("button", { name: "打开目录" }));
+    fireEvent.click(screen.getByRole("tab", { name: "⌕ 搜本书" }));
+    expect(screen.getByRole("textbox", { name: "搜索全书正文" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "目录" }));
+    expect(screen.getByRole("complementary", { name: "目录面板" })).toBeTruthy();
     expect(within(toolbar!).getByRole("button", { name: "打开书内 AI" })).toBeTruthy();
     expect(within(toolbar!).getByRole("button", { name: "阅读进度" })).toBeTruthy();
     expect(within(toolbar!).getByRole("button", { name: "显示设置" })).toBeTruthy();
@@ -358,16 +363,30 @@ describe("BookReader", () => {
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
-    fireEvent.pointerUp(container.querySelector("[data-book-page-flow]")!);
+    fireEvent(document, new Event("selectionchange"));
 
     const toolbar = await screen.findByRole("toolbar", { name: "选中文字工具" });
     expect(toolbar.textContent).toContain("复制");
     expect(toolbar.textContent).toContain("划线");
     expect(toolbar.textContent).toContain("写想法");
     expect(within(toolbar).getAllByRole("button").every((button) => button.classList.contains("reader-selection-action"))).toBe(true);
-    expect(screen.getByRole("button", { name: "AI 解释" }).textContent).toContain("Beta");
+    expect(screen.getByRole("button", { name: "AI 解释" }).querySelector("svg")).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "复制" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("这是正文。"));
+    expect(screen.queryByRole("toolbar", { name: "选中文字工具" })).toBeNull();
+  });
+
+  it("suppresses the reader context menu and removes actions when selection collapses", () => {
+    renderReader();
+    const paragraph = screen.getByText("这是正文。");
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    expect(fireEvent.contextMenu(paragraph)).toBe(false);
+    expect(screen.getByRole("toolbar", { name: "选中文字工具" })).toBeTruthy();
+    window.getSelection()?.removeAllRanges();
+    fireEvent(document, new Event("selectionchange"));
     expect(screen.queryByRole("toolbar", { name: "选中文字工具" })).toBeNull();
   });
 
@@ -470,7 +489,7 @@ describe("BookReader", () => {
 
     const toolbar = await screen.findByRole("toolbar", { name: "选中文字工具" });
     expect(toolbar.textContent).toContain("复制");
-    expect(screen.getByRole("button", { name: "AI 解释" }).textContent).toContain("Beta");
+    expect(screen.getByRole("button", { name: "AI 解释" }).querySelector("svg")).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "AI 解释" }));
 
     await waitFor(() => expect(ragApi.askStream).toHaveBeenCalledWith(

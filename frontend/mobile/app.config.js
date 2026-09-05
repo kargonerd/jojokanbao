@@ -1,3 +1,5 @@
+const { resolveAccountConfig } = require("./account-config.cjs");
+
 const STANDARD_IDENTIFIER = "com.luoxixi.jojokanbao";
 const EINK_IDENTIFIER = `${STANDARD_IDENTIFIER}.eink`;
 
@@ -34,6 +36,7 @@ module.exports = ({ config }) => {
     },
     extra: {
       ...config.extra,
+      account: resolveAccountConfig(__dirname),
       appVariant: eInk ? "eink" : "standard",
     },
   };

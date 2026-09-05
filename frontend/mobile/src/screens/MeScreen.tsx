@@ -1,12 +1,11 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useNavigation, type NavigationProp } from "@react-navigation/native";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
   Easing,
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -20,7 +19,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MOBILE_ACCOUNT_CONFIGURED, useMobileAuthStore } from "../account/auth";
-import { getAccountFormKeyboardLift, shouldRefreshDialogViewport } from "../account/dialogViewport";
+import { shouldRefreshDialogViewport } from "../account/dialogViewport";
 import { getRegistrationValidationError } from "../account/registration";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionTitle } from "../components/SectionTitle";
@@ -89,7 +88,7 @@ function VerificationCodeInput({
   value: string;
   theme: MobileTheme;
   onChange: (value: string) => void;
-  onFocus: () => void;
+  onFocus?: () => void;
   onSubmit: () => void;
 }) {
   const activeIndex = Math.min(value.length, 5);
@@ -237,7 +236,8 @@ export function MeScreen() {
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const cameraProgress = useRef(new Animated.Value(0)).current;
   const coverProgress = useRef(new Animated.Value(0)).current;
-  const formLift = useRef(new Animated.Value(0)).current;
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [accountContentHeight, setAccountContentHeight] = useState(0);
   const {
     initialized,
     user,
@@ -264,29 +264,17 @@ export function MeScreen() {
   // lands on the form page. Derive its height from one leaf, otherwise wide
   // Android display modes turn the leaf into a shallow landscape rectangle.
   const portraitLeafWidth = bookWidth / 2;
-  const bookHeight = wideBook
+  const availableDialogHeight = Math.max(160, dialogHeight - keyboardHeight);
+  // Cover borders/padding (12) and page borders (2) sit outside the scroll area.
+  // Match that inset exactly so measuring a stretched page cannot grow the book.
+  const bookFrameHeight = 14;
+  const bookHeight = Math.min(availableDialogHeight - 32, Math.max(accountContentHeight + bookFrameHeight, wideBook
     ? bookWidth * (42 / 61)
-    : Math.min(dialogHeight - 64, portraitLeafWidth / 0.7);
+    : Math.min(dialogHeight - 64, portraitLeafWidth / 0.7)));
   const bookEndOffset = wideBook ? 0 : -bookWidth / 2 + dialogWidth * 0.05;
   const bookStartOffset = wideBook ? -bookWidth * 0.24 : bookEndOffset + dialogWidth * 0.03;
   const coverHoldDuration = wideBook ? 500 : 580;
-  const formKeyboardLift = getAccountFormKeyboardLift(dialogWidth);
   latestWindowSizeRef.current = { width: windowWidth, height: windowHeight };
-
-  const moveFormForKeyboard = useCallback((visible: boolean) => {
-    const toValue = visible ? formKeyboardLift : 0;
-    formLift.stopAnimation();
-    if (IS_EINK_RELEASE) {
-      formLift.setValue(toValue);
-      return;
-    }
-    Animated.timing(formLift, {
-      toValue,
-      duration: visible ? 180 : 150,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [formKeyboardLift, formLift]);
 
   useEffect(() => {
     if (resendSeconds <= 0) return undefined;
@@ -307,19 +295,16 @@ export function MeScreen() {
 
   useEffect(() => {
     if (!loginVisible) {
-      formLift.setValue(0);
-      return undefined;
+      setKeyboardHeight(0);
+      return;
     }
-    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSubscription = Keyboard.addListener(showEvent, () => moveFormForKeyboard(true));
-    const hideSubscription = Keyboard.addListener(hideEvent, () => moveFormForKeyboard(false));
-    if (Keyboard.isVisible()) moveFormForKeyboard(true);
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, [formLift, loginVisible, moveFormForKeyboard]);
+    const showSubscription = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow", (event) => {
+      setKeyboardHeight(event.endCoordinates.height);
+    });
+    const hideSubscription = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide", () => setKeyboardHeight(0));
+    setKeyboardHeight(Keyboard.metrics()?.height ?? 0);
+    return () => { showSubscription.remove(); hideSubscription.remove(); };
+  }, [loginVisible]);
 
   const openAccount = (mode: AccountMode) => {
     closingRef.current = false;
@@ -328,7 +313,8 @@ export function MeScreen() {
     clearFeedback();
     setLocalError("");
     setAccountMode(mode);
-    formLift.setValue(0);
+    setAccountContentHeight(0);
+    setKeyboardHeight(0);
     // A translucent native Modal may briefly report a different window height
     // while it mounts. Freeze the pre-open viewport so the book stays on one
     // horizontal baseline throughout the entrance.
@@ -389,6 +375,7 @@ export function MeScreen() {
     clearFeedback();
     setLocalError("");
     setAccountMode(mode);
+    setAccountContentHeight(0);
     if (mode === "recover") {
       setRecoveryStep("email");
       setRecoveryEmail(email.trim());
@@ -677,15 +664,14 @@ export function MeScreen() {
           style={[styles.modalOverlay, { backgroundColor: theme.paper, opacity: backdropOpacity }]}
         >
           <Pressable accessibilityLabel={accountMode === "register" ? "关闭注册" : accountMode === "recover" ? "关闭找回密码" : "关闭登录"} onPress={() => closeLogin()} style={StyleSheet.absoluteFill} />
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
+          <View
             pointerEvents="box-none"
             style={[
               styles.dialogLayout,
-              Platform.OS === "android" && {
+              {
                 flex: 0,
                 width: dialogWidth,
-                height: dialogHeight,
+                height: availableDialogHeight,
               },
             ]}
           >
@@ -731,10 +717,12 @@ export function MeScreen() {
                 <View style={[styles.rightCover, { backgroundColor: theme.red, borderColor: theme.redDark }]}>
                   <View style={[styles.rightPage, { backgroundColor: IS_EINK_RELEASE ? theme.paper : "#fff9e9", borderColor: theme.rule }]}>
                     <ScrollView
+                      style={{ flex: 1, minHeight: 0 }}
+                      onContentSizeChange={(_, height) => setAccountContentHeight(height)}
                       bounces={false}
                       keyboardShouldPersistTaps="handled"
                       showsVerticalScrollIndicator={false}
-                      contentContainerStyle={[styles.dialogContent, { minHeight: bookHeight - 18 }]}
+                      contentContainerStyle={[styles.dialogContent, { minHeight: bookHeight - bookFrameHeight }]}
                     >
                       <View style={[styles.bookHeader, { borderBottomColor: theme.ink }]}>
                         <Text style={[styles.bookHeaderText, { color: theme.ink, fontFamily: theme.sans }]}>读者登记</Text>
@@ -758,7 +746,7 @@ export function MeScreen() {
                         })}
                       </View>
                       {accountMode === "login" ? (
-                        <Animated.View style={[styles.form, { transform: [{ translateY: formLift }] }]}>
+                        <Animated.View style={styles.form}>
                           <Text style={[styles.fieldLabel, { color: theme.ink, fontFamily: theme.sans }]}>邮箱</Text>
                           <TextInput
                             value={email}
@@ -768,7 +756,6 @@ export function MeScreen() {
                             autoComplete="email"
                             keyboardType="email-address"
                             textContentType="emailAddress"
-                            onFocus={() => moveFormForKeyboard(true)}
                             returnKeyType="next"
                             placeholder="name@example.com"
                             placeholderTextColor={theme.muted}
@@ -781,7 +768,6 @@ export function MeScreen() {
                             onChangeText={(value) => { setPassword(value); setLocalError(""); clearFeedback(); }}
                             autoComplete="current-password"
                             textContentType="password"
-                            onFocus={() => moveFormForKeyboard(true)}
                             returnKeyType="done"
                             onSubmitEditing={() => void handleSignIn()}
                             placeholder="输入密码"
@@ -804,14 +790,13 @@ export function MeScreen() {
                           </Pressable>
                         </Animated.View>
                       ) : accountMode === "register" && confirmationEmail ? (
-                        <Animated.View style={[styles.form, { transform: [{ translateY: formLift }] }]}>
+                        <Animated.View style={styles.form}>
                           <Text style={[styles.confirmationText, { color: theme.muted, fontFamily: theme.sans }]}>验证码已发送到 {confirmationEmail}</Text>
                           <Text style={[styles.fieldLabel, { color: theme.ink, fontFamily: theme.sans }]}>6 位验证码</Text>
                           <VerificationCodeInput
                             value={confirmationCode}
                             theme={theme}
                             onChange={(value) => { setConfirmationCode(value); setLocalError(""); clearFeedback(); }}
-                            onFocus={() => moveFormForKeyboard(true)}
                             onSubmit={() => void handleConfirmSignUp()}
                           />
                           {localError || error || notice ? (
@@ -828,7 +813,7 @@ export function MeScreen() {
                           </Pressable>
                         </Animated.View>
                       ) : accountMode === "register" ? (
-                        <Animated.View style={[styles.form, { transform: [{ translateY: formLift }] }]}>
+                        <Animated.View style={styles.form}>
                           <Text style={[styles.fieldLabel, { color: theme.ink, fontFamily: theme.sans }]}>邮箱</Text>
                           <TextInput
                             value={registrationEmail}
@@ -838,7 +823,6 @@ export function MeScreen() {
                             autoComplete="email"
                             keyboardType="email-address"
                             textContentType="emailAddress"
-                            onFocus={() => moveFormForKeyboard(true)}
                             returnKeyType="next"
                             placeholder="name@example.com"
                             placeholderTextColor={theme.muted}
@@ -851,7 +835,6 @@ export function MeScreen() {
                             onChangeText={(value) => { setRegistrationPassword(value); setLocalError(""); clearFeedback(); }}
                             autoComplete="new-password"
                             textContentType="newPassword"
-                            onFocus={() => moveFormForKeyboard(true)}
                             returnKeyType="next"
                             placeholder="至少 8 位字符"
                             resetWhenHidden={!loginVisible}
@@ -864,7 +847,6 @@ export function MeScreen() {
                             onChangeText={(value) => { setRegistrationPasswordConfirmation(value); setLocalError(""); clearFeedback(); }}
                             autoComplete="new-password"
                             textContentType="newPassword"
-                            onFocus={() => moveFormForKeyboard(true)}
                             returnKeyType="next"
                             placeholder="重复输入密码"
                             resetWhenHidden={!loginVisible}
@@ -878,7 +860,6 @@ export function MeScreen() {
                             autoCorrect={false}
                             autoComplete="off"
                             maxLength={6}
-                            onFocus={() => moveFormForKeyboard(true)}
                             returnKeyType="done"
                             onSubmitEditing={() => void handleSignUp()}
                             placeholder="6 位邀请码"
@@ -898,7 +879,7 @@ export function MeScreen() {
                           </Pressable>
                         </Animated.View>
                       ) : (
-                        <Animated.View style={[styles.form, { transform: [{ translateY: formLift }] }]}>
+                        <Animated.View style={styles.form}>
                           <Text style={[styles.recoveryTitle, { color: theme.ink, fontFamily: theme.serif }]}>{recoveryStep === "password" ? "设置新密码" : "找回密码"}</Text>
                           <Text style={[styles.confirmationText, { color: theme.muted, fontFamily: theme.sans }]}>{recoveryStep === "email" ? "验证码会发送到你的注册邮箱。" : `正在验证 ${recoveryEmail}`}</Text>
                           {recoveryStep === "email" ? (
@@ -912,7 +893,6 @@ export function MeScreen() {
                                 autoComplete="email"
                                 keyboardType="email-address"
                                 textContentType="emailAddress"
-                                onFocus={() => moveFormForKeyboard(true)}
                                 placeholder="name@example.com"
                                 placeholderTextColor={theme.muted}
                                 style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
@@ -925,7 +905,6 @@ export function MeScreen() {
                                 value={recoveryCode}
                                 theme={theme}
                                 onChange={(value) => { setRecoveryCode(value); setLocalError(""); clearFeedback(); }}
-                                onFocus={() => moveFormForKeyboard(true)}
                                 onSubmit={() => void handleRecovery()}
                               />
                             </>
@@ -937,7 +916,6 @@ export function MeScreen() {
                                 value={recoveryPassword}
                                 onChangeText={(value) => { setRecoveryPassword(value); setLocalError(""); clearFeedback(); }}
                                 autoComplete="new-password"
-                                onFocus={() => moveFormForKeyboard(true)}
                                 placeholder="至少 8 位字符"
                                 resetWhenHidden={!loginVisible}
                                 textContentType="newPassword"
@@ -949,7 +927,6 @@ export function MeScreen() {
                                 value={recoveryPasswordConfirmation}
                                 onChangeText={(value) => { setRecoveryPasswordConfirmation(value); setLocalError(""); clearFeedback(); }}
                                 autoComplete="new-password"
-                                onFocus={() => moveFormForKeyboard(true)}
                                 returnKeyType="done"
                                 onSubmitEditing={() => void handleRecovery()}
                                 placeholder="重复输入新密码"
@@ -1096,7 +1073,7 @@ export function MeScreen() {
 
               </Animated.View>
             </View>
-          </KeyboardAvoidingView>
+          </View>
         </Animated.View>
       </Modal>
     </SafeAreaView>
@@ -1150,14 +1127,14 @@ const styles = StyleSheet.create({
   rightPageTurnShadow: { position: "absolute", zIndex: 3, top: 0, bottom: 0, left: 0, width: 64, flexDirection: "row", transformOrigin: "left center" },
   pageSpineShadow: { position: "absolute", zIndex: 3, top: 0, right: 0, bottom: 0, width: 48, flexDirection: "row" },
   shadowBand: { flex: 1 },
-  dialogContent: { flexGrow: 1, paddingHorizontal: 20 },
-  bookHeader: { minHeight: 60, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  dialogContent: { flexGrow: 1, paddingHorizontal: 20, paddingBottom: 20 },
+  bookHeader: { flexShrink: 0, minHeight: 60, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   bookHeaderText: { fontSize: 10, fontWeight: "900", letterSpacing: 2 },
   bookNumber: { fontSize: 10, fontWeight: "900", letterSpacing: 1.5 },
-  modeTabs: { height: 43, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row" },
+  modeTabs: { flexShrink: 0, minHeight: 43, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row" },
   modeTab: { flex: 1, borderBottomWidth: 2, borderBottomColor: "transparent", alignItems: "center", justifyContent: "center" },
   modeTabText: { fontSize: 12, fontWeight: "900", letterSpacing: 2 },
-  form: { flexGrow: 1, justifyContent: "center", paddingVertical: 19 },
+  form: { flexGrow: 1, flexShrink: 0, justifyContent: "flex-start", paddingVertical: 19 },
   fieldLabel: { marginBottom: 7, fontSize: 12, fontWeight: "800" },
   passwordLabel: { marginTop: 15 },
   input: { height: 46, borderBottomWidth: 1, paddingHorizontal: 3, fontSize: 14 },
@@ -1177,7 +1154,7 @@ const styles = StyleSheet.create({
   confirmation: { flex: 1, minHeight: 230, justifyContent: "center", paddingVertical: 30 },
   confirmationTitle: { fontSize: 24, fontWeight: "900", letterSpacing: 2 },
   confirmationText: { marginTop: 13, fontSize: 12, lineHeight: 21, fontWeight: "700" },
-  bookFooter: { minHeight: 42, marginTop: "auto", borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  bookFooter: { flexShrink: 0, minHeight: 42, marginTop: "auto", borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   bookFooterText: { fontSize: 9, fontWeight: "800", letterSpacing: 1.2 },
   quoteFrame: { flex: 1, borderWidth: 1, padding: 24, alignItems: "center", justifyContent: "center" },
   quoteStar: { marginBottom: 28, fontSize: 34, lineHeight: 38 },

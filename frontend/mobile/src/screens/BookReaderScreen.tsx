@@ -10,6 +10,8 @@ import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import { mobileBookshelfContains, setMobileBookshelf } from "../account/accountData";
 import { useMobileAuthStore } from "../account/auth";
 import { ReaderEnvironment } from "../components/ReaderEnvironment";
+import { ReaderNavigationSheet } from "../components/ReaderNavigationSheet";
+import { ReaderSelectionToolbar } from "../components/ReaderSelectionToolbar";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import {
   askMobileBookAgent,
@@ -114,6 +116,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const [retryToken, setRetryToken] = useState(0);
   const [progressRailWidth, setProgressRailWidth] = useState(1);
   const [selection, setSelection] = useState<BookReaderSelectionMessage>();
+  const [readerFrame, setReaderFrame] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [noteComposer, setNoteComposer] = useState<NoteComposer>();
   const [noteDraft, setNoteDraft] = useState("");
   const [activeAnnotationId, setActiveAnnotationId] = useState<string>();
@@ -130,7 +133,6 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const [aiLoading, setAiLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string>();
   const [referenceHistory, setReferenceHistory] = useState<Array<{ chapterId: string; spreadIndex: number }>>([]);
-  const [tocQuery, setTocQuery] = useState("");
   const [expandedImageUri, setExpandedImageUri] = useState<string>();
   const [readerNotice, setReaderNotice] = useState("");
   const [onBookshelf, setOnBookshelf] = useState<boolean>();
@@ -223,10 +225,6 @@ export function BookReaderScreen({ route, navigation }: Props) {
     annotation.datasetId === datasetId && annotation.itemKey === itemKey
   )), [annotations, datasetId, itemKey]);
   const chapterAnnotations = useMemo(() => bookAnnotations.filter((annotation) => annotation.chapterId === activeChapterId), [activeChapterId, bookAnnotations]);
-  const visibleChapters = useMemo(() => {
-    const query = tocQuery.normalize("NFKC").trim().toLocaleLowerCase();
-    return query ? chapters.filter((candidate) => candidate.title.normalize("NFKC").toLocaleLowerCase().includes(query)) : chapters;
-  }, [chapters, tocQuery]);
   const chapterPageProgress = pageState
     ? pageState.paged && pageState.pageCount > 0
       ? pageState.pageEnd / pageState.pageCount
@@ -283,11 +281,12 @@ export function BookReaderScreen({ route, navigation }: Props) {
   function handleReaderMessage(event: WebViewMessageEvent) {
     const message = parseBookReaderMessage(event.nativeEvent.data);
     if (!message) return;
+    if (message.type === "reader-selection-clear") { setSelection(undefined); return; }
     if (message.type === "reader-selection") {
       setSelection(message);
       setActiveTool(null);
-      setChromeVisible(true);
-      void selectionHaptic(hapticsEnabled);
+      setChromeVisible(false);
+      if (!selection || selection.start !== message.start || selection.end !== message.end) void selectionHaptic(hapticsEnabled);
       return;
     }
     if (message.type === "reader-annotation") {
@@ -580,7 +579,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   return (
     <SafeAreaView edges={["top", "bottom"]} style={[styles.safe, { backgroundColor: theme.paper }]}>
       <ReaderEnvironment />
-      <View style={[styles.reader, { backgroundColor: theme.paper }]}>
+      <View onLayout={(event) => setReaderFrame(event.nativeEvent.layout)} style={[styles.reader, { backgroundColor: theme.paper }]}>
         {chapter ? (
           <WebView
             ref={webViewRef}
@@ -617,10 +616,9 @@ export function BookReaderScreen({ route, navigation }: Props) {
           <Text style={[styles.progress, { color: theme.red, fontFamily: theme.sans }]}>{readerStatus}</Text>
         </View>
 
-        {activeTool === "toc" ? <View style={[styles.toolSheet, styles.fullSheet, { top: insets.top + 64, bottom: sheetBottom, borderColor: theme.ruleDark, backgroundColor: theme.paper }]}>
-          <SheetHeader title="目录" meta={tocQuery ? String(visibleChapters.length) : `${activeIndex + 1} / ${chapters.length}`} theme={theme} />
-          <View style={[styles.tocSearch, { borderBottomColor: theme.rule }]}><Ionicons name="search-outline" size={16} color={theme.muted} /><TextInput value={tocQuery} onChangeText={setTocQuery} placeholder="搜索目录" placeholderTextColor={theme.muted} style={[styles.tocSearchInput, { color: theme.ink, fontFamily: theme.serif }]} />{tocQuery ? <Pressable onPress={() => setTocQuery("")} hitSlop={8}><Ionicons name="close" size={17} color={theme.muted} /></Pressable> : null}</View>
-          <FlatList data={visibleChapters} keyExtractor={(item) => item.id} renderItem={({ item }) => {
+        {activeTool === "toc" || activeTool === "search" ? <ReaderNavigationSheet tab={activeTool} onTabChange={setActiveTool} onClose={() => setActiveTool(null)} top={insets.top + 64} bottom={sheetBottom} theme={theme}>
+          {activeTool === "toc" ? <>
+          <FlatList data={chapters} keyExtractor={(item) => item.id} renderItem={({ item }) => {
             const index = chapters.findIndex((candidate) => candidate.id === item.id);
             const selected = item.id === activeChapterId;
             return <Pressable accessibilityRole="button" accessibilityState={{ selected }} onPress={() => chooseChapter(item.id)} style={[styles.chapterRow, { borderBottomColor: theme.rule }, selected && { borderLeftColor: theme.red, borderLeftWidth: 3 }]}>
@@ -628,15 +626,14 @@ export function BookReaderScreen({ route, navigation }: Props) {
               <View style={styles.chapterCopy}><Text style={[styles.chapterRowTitle, { color: theme.ink, fontFamily: theme.serif }]}>{item.title}</Text>{selected ? <Text style={[styles.currentChapter, { color: theme.red, fontFamily: theme.sans }]}>当前阅读</Text> : null}</View>
             </Pressable>;
           }} getItemLayout={(_, index) => ({ length: 68, offset: 68 * index, index })} overScrollMode={IS_EINK_RELEASE ? "never" : "always"} />
-        </View> : null}
-
-        {activeTool === "search" ? <View style={[styles.toolSheet, styles.fullSheet, { top: insets.top + 64, bottom: sheetBottom, borderColor: theme.ruleDark, backgroundColor: theme.paper }]}>
-          <View style={[styles.searchHeader, { borderBottomColor: theme.rule }]}><Text style={[styles.sheetTitle, { color: theme.ink, fontFamily: theme.serif }]}>搜索</Text><View style={[styles.searchBox, { borderBottomColor: theme.ruleDark }]}><Ionicons name="search-outline" size={18} color={theme.muted} /><TextInput autoFocus value={searchQuery} onChangeText={setSearchQuery} onSubmitEditing={() => void submitSearch()} placeholder="搜索正文" placeholderTextColor={theme.muted} returnKeyType="search" style={[styles.searchInput, { color: theme.ink, fontFamily: theme.serif }]} /><Pressable disabled={!searchQuery.trim() || searching} onPress={() => void submitSearch()} hitSlop={8}><Text style={[styles.searchSubmit, { color: theme.red, opacity: !searchQuery.trim() || searching ? 0.35 : 1, fontFamily: theme.sans }]}>搜索</Text></Pressable></View></View>
+          </> : <>
+          <View style={{ paddingHorizontal: 20, paddingBottom: 12 }}><View style={[styles.searchBox, { borderBottomColor: theme.ruleDark }]}><Ionicons name="search-outline" size={18} color={theme.muted} /><TextInput autoFocus value={searchQuery} onChangeText={setSearchQuery} onSubmitEditing={() => void submitSearch()} placeholder="搜索正文" placeholderTextColor={theme.muted} returnKeyType="search" style={[styles.searchInput, { color: theme.ink, fontFamily: theme.serif }]} /><Pressable disabled={!searchQuery.trim() || searching} onPress={() => void submitSearch()} hitSlop={8}><Text style={[styles.searchSubmit, { color: theme.red, opacity: !searchQuery.trim() || searching ? 0.35 : 1, fontFamily: theme.sans }]}>搜索</Text></Pressable></View></View>
           {searching ? <PanelStatus label="正在搜索本书" theme={theme} loading /> : null}
           {searchError ? <PanelError message={searchError} theme={theme} /> : null}
           {!searching && searchSearched && searchResults.length === 0 ? <PanelStatus label={`本书没有找到“${searchQuery.trim()}”`} theme={theme} /> : null}
           <FlatList data={searchResults} keyExtractor={(item, index) => `${item.chapterId}:${index}`} keyboardDismissMode="on-drag" renderItem={({ item }) => <Pressable onPress={() => locateText(item.chapterId, item.match)} style={[styles.resultRow, { borderBottomColor: theme.rule }]}><Text style={[styles.resultTitle, { color: theme.red, fontFamily: theme.serif }]}>{item.chapterTitle}</Text><Text style={[styles.resultExcerpt, { color: theme.muted, fontFamily: theme.serif }]}>{item.leadingEllipsis ? "…" : ""}{item.before}<Text style={{ color: theme.ink, fontWeight: "900" }}>{item.match}</Text>{item.after}{item.trailingEllipsis ? "…" : ""}</Text></Pressable>} />
-        </View> : null}
+          </>}
+        </ReaderNavigationSheet> : null}
 
         {activeTool === "ai" ? <View style={[styles.toolSheet, styles.fullSheet, { top: insets.top + 64, bottom: sheetBottom, borderColor: theme.ruleDark, backgroundColor: theme.paper }]}>
           <AiPanelHeader
@@ -679,7 +676,6 @@ export function BookReaderScreen({ route, navigation }: Props) {
 
         <View style={[styles.toolbar, { bottom: insets.bottom, borderTopColor: theme.ruleDark, backgroundColor: theme.paper }]}>{([
           { id: "toc" as const, label: "目录", icon: "list-outline" as const },
-          { id: "search" as const, label: "搜索", icon: "search-outline" as const },
           { id: "ai" as const, label: "AI", icon: "sparkles-outline" as const },
           { id: "progress" as const, label: "进度", icon: "radio-button-on-outline" as const },
           { id: "notes" as const, label: "笔记", icon: "create-outline" as const },
@@ -687,7 +683,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
         ]).map((tool) => { const selected = activeTool === tool.id; return <Pressable key={tool.id} accessibilityRole="button" accessibilityState={{ selected, expanded: selected }} onPress={() => toggleTool(tool.id)} style={styles.toolButton}><Ionicons name={tool.icon} size={20} color={selected ? theme.red : theme.ink} /><Text style={[styles.toolText, { color: selected ? theme.red : theme.ink, fontFamily: theme.sans }]}>{tool.label}</Text></Pressable>; })}</View>
       </> : null}
 
-      {selection ? <View style={[styles.selectionBar, { bottom: sheetBottom, borderColor: theme.ruleDark, backgroundColor: theme.paper }]}><SelectionAction label="复制" icon="copy-outline" theme={theme} onPress={() => { void Clipboard.setStringAsync(selection.text); clearSelection(); }} /><SelectionAction label="划线" icon="remove-outline" theme={theme} onPress={underlineSelection} /><SelectionAction label="笔记" icon="create-outline" theme={theme} onPress={composeSelectionNote} /><SelectionAction label="AI" icon="sparkles-outline" theme={theme} onPress={explainSelection} /></View> : null}
+      {selection ? <ReaderSelectionToolbar selection={selection} frame={readerFrame} theme={theme} eInk={IS_EINK_RELEASE} onCopy={() => { void Clipboard.setStringAsync(selection.text); clearSelection(); }} onUnderline={underlineSelection} onThought={composeSelectionNote} onExplain={explainSelection} /> : null}
       {noteComposer ? <View style={[styles.noteComposer, { bottom: sheetBottom, borderColor: theme.ruleDark, backgroundColor: theme.paper }]}><Text numberOfLines={2} style={[styles.composerQuote, { color: theme.muted, borderLeftColor: theme.red, fontFamily: theme.serif }]}>{noteComposer.quote}</Text><TextInput autoFocus multiline value={noteDraft} onChangeText={setNoteDraft} placeholder="写想法" placeholderTextColor={theme.muted} style={[styles.noteInput, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.serif }]} /><View style={styles.composerActions}><Pressable onPress={() => { setNoteComposer(undefined); setNoteDraft(""); }}><Text style={[styles.composerButton, { color: theme.muted, fontFamily: theme.sans }]}>取消</Text></Pressable><Pressable disabled={!noteDraft.trim()} onPress={saveNote}><Text style={[styles.composerButton, { color: theme.red, opacity: noteDraft.trim() ? 1 : 0.35, fontFamily: theme.sans }]}>保存</Text></Pressable></View></View> : null}
       {readerNotice ? <Pressable onPress={() => setReaderNotice("")} style={[styles.readerNotice, { top: insets.top + 72, borderColor: theme.red, backgroundColor: theme.paper }]}><Text style={[styles.readerNoticeText, { color: theme.red, fontFamily: theme.sans }]}>{readerNotice}</Text></Pressable> : null}
       <Modal visible={Boolean(expandedImageUri)} transparent={false} animationType="fade" onRequestClose={() => setExpandedImageUri(undefined)}>
@@ -721,9 +717,6 @@ function ColorOption({ value, selected, onPress, theme }: { value: BookPaperColo
   const colors = value === "ivory" ? { paper: "#fbfaf6", ink: "#202020", label: "米白" } : value === "white" ? { paper: "#ffffff", ink: "#202020", label: "白色" } : { paper: "#202321", ink: "#deded8", label: "夜间" };
   return <Pressable accessibilityRole="button" accessibilityState={{ selected }} onPress={onPress} style={[styles.scaleButton, { borderColor: selected ? theme.red : theme.rule, backgroundColor: colors.paper }]}><Text style={[styles.scaleButtonText, { color: colors.ink, fontFamily: theme.sans }]}>{colors.label}</Text></Pressable>;
 }
-function SelectionAction({ label, icon, theme, onPress }: { label: string; icon: keyof typeof Ionicons.glyphMap; theme: MobileTheme; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={styles.selectionAction}><Ionicons name={icon} size={18} color={theme.ink} /><Text style={[styles.selectionActionText, { color: theme.ink, fontFamily: theme.sans }]}>{label}</Text></Pressable>;
-}
 function PanelStatus({ label, theme, loading = false }: { label: string; theme: MobileTheme; loading?: boolean }) {
   return <View style={styles.panelStatus}>{loading && !IS_EINK_RELEASE ? <ActivityIndicator size="small" color={theme.red} /> : null}<Text style={[styles.panelStatusText, { color: theme.muted, fontFamily: theme.sans }]}>{label}</Text></View>;
 }
@@ -745,7 +738,6 @@ const styles = StyleSheet.create({
   chapterStepper: { minHeight: 80, flexDirection: "row", alignItems: "center" }, stepButton: { width: 52, height: 52, alignItems: "center", justifyContent: "center" }, stepCopy: { flex: 1, alignItems: "center", paddingHorizontal: 10 }, stepTitle: { fontSize: 15, fontWeight: "900" }, stepMeta: { marginTop: 5, fontSize: 9, fontWeight: "700" }, pageProgress: { paddingTop: 16 }, progressRail: { height: 4, marginHorizontal: 10, justifyContent: "center" }, progressFill: { position: "absolute", left: 0, height: 4 }, progressThumb: { position: "absolute", width: 18, height: 18, marginLeft: -9 }, pageLabel: { marginTop: 15, textAlign: "center", fontSize: 10, fontWeight: "700" },
   settingGroup: { minHeight: 59, flexDirection: "row", alignItems: "center" }, settingsLabel: { width: 72, fontSize: 10, fontWeight: "800" }, scaleRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: 7 }, scaleButton: { flex: 1, height: 38, borderWidth: 1, alignItems: "center", justifyContent: "center" }, scaleButtonText: { fontSize: 10, fontWeight: "900" }, brightnessSlider: { flex: 1, height: 40 },
   chapterRow: { minHeight: 68, marginHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", paddingHorizontal: 12 }, chapterNumber: { width: 38, fontSize: 9, fontWeight: "700" }, chapterCopy: { flex: 1 }, chapterRowTitle: { flex: 1, fontSize: 14, fontWeight: "700", lineHeight: 21 }, currentChapter: { marginTop: 3, fontSize: 8, fontWeight: "900" },
-  selectionBar: { position: "absolute", zIndex: 7, alignSelf: "center", minWidth: 250, borderWidth: 1, flexDirection: "row", paddingHorizontal: 5 }, selectionAction: { minWidth: 60, height: 54, alignItems: "center", justifyContent: "center", gap: 3 }, selectionActionText: { fontSize: 9, fontWeight: "800" },
   noteComposer: { position: "absolute", zIndex: 8, left: 16, right: 16, borderWidth: 1, padding: 14 }, composerQuote: { borderLeftWidth: 2, paddingLeft: 9, fontSize: 11, lineHeight: 19 }, noteInput: { minHeight: 64, marginTop: 9, borderBottomWidth: 1, paddingVertical: 8, textAlignVertical: "top", fontSize: 13 }, composerActions: { marginTop: 11, flexDirection: "row", justifyContent: "flex-end", gap: 24 }, composerButton: { fontSize: 11, fontWeight: "900" },
   noteRow: { marginHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12, paddingVertical: 14 }, noteChapter: { fontSize: 9, fontWeight: "900" }, noteQuote: { marginTop: 6, fontSize: 13, lineHeight: 21 }, noteBody: { marginTop: 8, fontSize: 11, lineHeight: 19 }, noteActions: { marginTop: 10, flexDirection: "row", justifyContent: "flex-end", gap: 22 }, noteAction: { fontSize: 10, fontWeight: "900" },
   readerNotice: { position: "absolute", zIndex: 9, left: 18, right: 18, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 11 }, readerNoticeText: { fontSize: 11, fontWeight: "800", textAlign: "center" }, imageModal: { flex: 1 }, imageClose: { position: "absolute", zIndex: 2, top: 8, right: 8, width: 52, height: 52, alignItems: "center", justifyContent: "center" }, expandedImage: { flex: 1, width: "100%", height: "100%" },

@@ -193,7 +193,7 @@ export function createBookDocument({ fragment, assetUrls, textScale, lineHeight,
   sup[data-annotation-id] { margin: 0 .08em; font-family: sans-serif; font-size: .72em; line-height: 1; }
   [data-footnote-note] { border-left: 1px solid ${gutter}; padding-left: .75rem; }
   [data-book-jump-target] { outline: 2px solid ${accent}; outline-offset: 3px; background: ${highlight}; }
-  ::selection { background: ${highlight}; color: ${ink}; }
+  ::selection { background: ${eInk ? "#b8b8b8" : effectivePaperColor === "dark" ? "#765252" : "#e6c5c5"}; color: ${ink}; }
   mark[data-annotation-id] { border-bottom: 2px solid ${accent}; background: ${highlight}; color: inherit; }
   mark[data-search-target] { background: ${eInk ? "transparent" : "rgba(224, 174, 61, .28)"}; color: inherit; outline: 1px solid ${accent}; }
   h1, h2, h3, h4 { break-after: avoid-column; }

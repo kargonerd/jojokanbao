@@ -52,7 +52,8 @@
     },
     "patchedDependencies": {
       "@react-native/gradle-plugin@0.83.10": "frontend/patches/@react-native__gradle-plugin@0.83.10.patch",
-      "pdfjs-dist@5.7.284": "frontend/patches/pdfjs-dist@5.7.284.patch"
+      "pdfjs-dist@5.7.284": "frontend/patches/pdfjs-dist@5.7.284.patch",
+      "react-native-webview@13.16.0": "frontend/patches/react-native-webview@13.16.0.patch"
     }
   }
 }

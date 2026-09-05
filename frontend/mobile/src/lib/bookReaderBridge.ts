@@ -1,4 +1,5 @@
 import { JOJO_BOOK_SEARCH_BLOCK_SELECTOR } from "@jojo/content";
+import type { ReaderSelectionRect } from "@jojo/ui/reader-selection";
 
 export type BookReadingMode = "paged" | "scroll";
 export type BookChapterEdge = "start" | "end";
@@ -26,9 +27,12 @@ export interface BookReaderSelectionMessage {
   text: string;
   start: number;
   end: number;
+  rect?: ReaderSelectionRect;
+  viewport?: { width: number; height: number };
 }
 
 export type BookReaderMessage =
+  | { type: "reader-selection-clear" }
   | { type: "reader-tap" }
   | { type: "reader-boundary"; direction: "previous" | "next" }
   | { type: "reader-annotation"; id: string }
@@ -103,6 +107,7 @@ export function parseBookReaderMessage(value: string): BookReaderMessage | null 
       && message.annotationLabel) {
       return message as Extract<BookReaderMessage, { type: "reader-cross-reference" }>;
     }
+    if (message.type === "reader-selection-clear") return { type: "reader-selection-clear" };
     if (message.type === "reader-selection"
       && typeof message.text === "string"
       && message.text.trim()
@@ -110,7 +115,12 @@ export function parseBookReaderMessage(value: string): BookReaderMessage | null 
       && typeof message.end === "number"
       && message.start >= 0
       && message.end > message.start) {
-      return message as BookReaderSelectionMessage;
+      const { rect, viewport } = message;
+      const geometry = rect && viewport
+        && [rect.left, rect.top, rect.right, rect.bottom, viewport.width, viewport.height].every(Number.isFinite)
+        && rect.right > rect.left && rect.bottom > rect.top && viewport.width > 0 && viewport.height > 0
+        ? { rect, viewport } : {};
+      return { type: "reader-selection", text: message.text, start: message.start, end: message.end, ...geometry };
     }
     if (message.type === "reader-boundary" && (message.direction === "previous" || message.direction === "next")) {
       return { type: "reader-boundary", direction: message.direction };
@@ -155,6 +165,7 @@ export function createBookReaderBridgeScript(
       var pagesPerSpread = 1;
       var touchStartX = 0;
       var touchStartY = 0;
+      var selectionGesture = false;
       var lastSwipeAt = 0;
       var measureTimer = 0;
       var scrollTimer = 0;
@@ -243,10 +254,15 @@ export function createBookReaderBridgeScript(
         if (selection) selection.removeAllRanges();
       }
 
+      var lastSelection = "";
       function reportSelection() {
         var root = articleRoot();
         var selection = window.getSelection && window.getSelection();
-        if (!root || !selection || selection.rangeCount < 1 || selection.isCollapsed) return;
+        if (!root || !selection || selection.rangeCount < 1 || selection.isCollapsed) {
+          if (lastSelection) post({ type: "reader-selection-clear" });
+          lastSelection = "";
+          return;
+        }
         var range = selection.getRangeAt(0);
         if (!root.contains(range.commonAncestorContainer)) return;
         var raw = range.toString();
@@ -254,7 +270,16 @@ export function createBookReaderBridgeScript(
         var text = raw.trim().slice(0, 800);
         if (!text) return;
         var start = absoluteOffset(root, range.startContainer, range.startOffset) + leading;
-        post({ type: "reader-selection", text: text, start: start, end: start + text.length });
+        var bounds = range.getBoundingClientRect();
+        var visual = window.visualViewport;
+        var viewport = { width: visual ? visual.width : window.innerWidth, height: visual ? visual.height : window.innerHeight };
+        var offsetX = visual ? visual.offsetLeft : 0;
+        var offsetY = visual ? visual.offsetTop : 0;
+        var rect = { left: bounds.left - offsetX, top: bounds.top - offsetY, right: bounds.right - offsetX, bottom: bounds.bottom - offsetY };
+        var key = start + ":" + text + ":" + JSON.stringify(rect) + ":" + JSON.stringify(viewport);
+        if (key === lastSelection) return;
+        lastSelection = key;
+        post({ type: "reader-selection", text: text, start: start, end: start + text.length, rect: rect, viewport: viewport });
       }
 
       function ensureFooter() {
@@ -440,7 +465,17 @@ export function createBookReaderBridgeScript(
 
       initialAnnotations.slice().sort(function (a, b) { return b.start - a.start; }).forEach(applyAnnotation);
 
+      document.addEventListener("touchstart", function (event) {
+        selectionGesture = Boolean(window.getSelection && window.getSelection().toString());
+        var touch = event.changedTouches[0];
+        touchStartX = touch.clientX;
+        touchStartY = touch.clientY;
+      }, { passive: true });
+
       document.addEventListener("click", function (event) {
+        // Android collapses the selection before click. Consume that dismissal
+        // instead of also turning the page or opening a link underneath it.
+        if (selectionGesture) { selectionGesture = false; return; }
         var image = event.target && event.target.closest && event.target.closest("img");
         var asset = image && image.closest && image.closest("[data-asset-id]");
         if (image && asset) {
@@ -487,12 +522,8 @@ export function createBookReaderBridgeScript(
       });
 
       if (paged) {
-        document.addEventListener("touchstart", function (event) {
-          var touch = event.changedTouches[0];
-          touchStartX = touch.clientX;
-          touchStartY = touch.clientY;
-        }, { passive: true });
         document.addEventListener("touchend", function (event) {
+          if (selectionGesture || (window.getSelection && window.getSelection().toString())) { reportSelection(); return; }
           var touch = event.changedTouches[0];
           var dx = touch.clientX - touchStartX;
           var dy = touch.clientY - touchStartY;
@@ -511,12 +542,17 @@ export function createBookReaderBridgeScript(
       }
 
       document.addEventListener("mouseup", function () { window.setTimeout(reportSelection, 0); });
-      document.addEventListener("selectionchange", function () { window.setTimeout(reportSelection, 0); }, { passive: true });
-      document.addEventListener("contextmenu", function (event) { event.preventDefault(); });
+      document.addEventListener("selectionchange", reportSelection);
+      document.addEventListener("contextmenu", function (event) { event.preventDefault(); reportSelection(); });
+      window.addEventListener("resize", reportSelection);
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener("resize", reportSelection);
+        window.visualViewport.addEventListener("scroll", reportSelection);
+      }
       if (!paged) {
         document.addEventListener("scroll", function () {
           window.clearTimeout(scrollTimer);
-          scrollTimer = window.setTimeout(reportScroll, 90);
+          scrollTimer = window.setTimeout(function () { reportScroll(); reportSelection(); }, 90);
         }, { passive: true });
       }
 

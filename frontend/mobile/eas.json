@@ -16,6 +16,7 @@
       "autoIncrement": true,
       "channel": "production-standard",
       "env": {
+        "JOJO_REQUIRE_ACCOUNT_CONFIG": "true",
         "APP_VARIANT": "standard",
         "EXPO_PUBLIC_APP_VARIANT": "standard"
       },
@@ -34,6 +35,7 @@
       "autoIncrement": true,
       "channel": "production-eink",
       "env": {
+        "JOJO_REQUIRE_ACCOUNT_CONFIG": "true",
         "APP_VARIANT": "eink",
         "EXPO_PUBLIC_APP_VARIANT": "eink"
       },
