@@ -216,9 +216,16 @@ function buildSearchParams({
   return query;
 }
 
+function findBookDataset(result: SearchResult, bookDatasets: readonly SearchDatasetOption[]): SearchDatasetOption | undefined {
+  if (result.type !== "book") return undefined;
+  // The search index may still use legacy book-* IDs while delivery uses slugs.
+  return bookDatasets.find((dataset) => dataset.id === result.datasetId)
+    || bookDatasets.find((dataset) => dataset.label === result.source);
+}
+
 function unifiedResultPath(result: SearchResult, bookDatasets: readonly SearchDatasetOption[]): string {
   if (result.type === "book" && result.datasetId && result.itemId) {
-    const canonicalDatasetId = bookDatasets.find((dataset) => dataset.label === result.source)?.id
+    const canonicalDatasetId = findBookDataset(result, bookDatasets)?.id
       || result.datasetId;
     const itemPrefix = `${result.datasetId}:`;
     const itemKey = result.itemId.startsWith(itemPrefix)
@@ -280,13 +287,7 @@ export function SearchPage({
   const pageSize = 10;
   const paramsKey = params.toString();
   const requestedContentType = normalizeContentType(params.get("type"));
-  const requestedDatasetId = normalizeDatasetId(params.get("dataset"), requestedContentType);
-  const selectedBookSource = requestedContentType === "book" && requestedDatasetId
-    ? bookDatasets.find((dataset) => dataset.id === requestedDatasetId)?.label || ""
-    : "";
-  const bookDatasetIds = bookDatasets.map((dataset) => dataset.id);
-  const bookDatasetIdsKey = bookDatasetIds.join("\0");
-  const activeBookDatasetIdsKey = requestedContentType === "book" ? bookDatasetIdsKey : "";
+  const activeBookDatasetsKey = requestedContentType === "book" ? JSON.stringify(bookDatasets) : "";
   const bookSearchReady = requestedContentType !== "book" || bookCatalogReady;
   const latestAvailableDate = getLatestRmrbAvailableDate();
   const disableUnavailableDate = (date: string) => date < EARLIEST_AVAILABLE_DATE || date > latestAvailableDate;
@@ -361,7 +362,7 @@ export function SearchPage({
     }
 
     if (platformRedesign && nextContentType === "book" && (
-      bookDatasetIds.length === 0 || (nextDatasetId && !bookDatasets.some((dataset) => dataset.id === nextDatasetId))
+      bookDatasets.length === 0 || (nextDatasetId && !bookDatasets.some((dataset) => dataset.id === nextDatasetId))
     )) {
       requestIdRef.current += 1;
       setBeforeSearch(false);
@@ -392,6 +393,7 @@ export function SearchPage({
     const selectedBook = nextDatasetId && nextContentType === "book"
       ? bookDatasets.find((dataset) => dataset.id === nextDatasetId)
       : undefined;
+    const scopedBookDatasets = selectedBook ? [selectedBook] : bookDatasets;
     const unifiedTypes = selectedPeriodical
       ? [selectedPeriodical.type]
       : SEARCH_CONTENT_TYPE_BY_ID[nextContentType].types;
@@ -403,10 +405,8 @@ export function SearchPage({
           query: keyword,
           page: nextPage,
           size: pageSize,
-          ...(selectedBook
-            ? { sources: [selectedBook.label] }
-            : nextContentType === "book"
-              ? { datasetIds: bookDatasetIds }
+          ...(nextContentType === "book"
+            ? { sources: scopedBookDatasets.map((dataset) => dataset.label) }
             : nextContentType === "periodical"
               ? { datasetIds: periodicalDatasetIds }
               : {}),
@@ -445,9 +445,8 @@ export function SearchPage({
                 ellipsis: true,
               }
         ));
-        const allowedBookDatasetIds = new Set(bookDatasetIds);
         setResults(nextContentType === "book"
-          ? normalizedResults.filter((result) => allowedBookDatasetIds.has(result.datasetId))
+          ? normalizedResults.filter((result) => findBookDataset(result, scopedBookDatasets))
           : normalizedResults);
         setTotal(Math.max(0, Number(data.total)));
       })
@@ -462,7 +461,7 @@ export function SearchPage({
       });
 
     return () => controller.abort();
-  }, [activeBookDatasetIdsKey, bookSearchReady, paramsKey, platformRedesign, retryToken, selectedBookSource]);
+  }, [activeBookDatasetsKey, bookSearchReady, paramsKey, platformRedesign, retryToken]);
 
   function handleSearch() {
     const keyword = term.trim();

@@ -235,7 +235,7 @@ describe("SearchPage results", () => {
       query: "刘少奇",
       page: 1,
       size: 10,
-      datasetIds: ["liu-shaoqi", "mao-selected"],
+      sources: ["刘少奇论党的建设", "毛泽东选集"],
       types: ["book"],
     });
     expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).not.toHaveProperty("startDate");
@@ -265,7 +265,7 @@ describe("SearchPage results", () => {
 
     await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1));
     expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).toMatchObject({
-      datasetIds: ["liu-shaoqi", "mao-selected"],
+      sources: ["刘少奇论党的建设", "毛泽东选集"],
       types: ["book"],
     });
     const signedOutSelect = screen.getByRole("combobox", { name: "选择书籍" });
@@ -280,7 +280,7 @@ describe("SearchPage results", () => {
 
     await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1));
     expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).toMatchObject({
-      datasetIds: ["restricted-book", "liu-shaoqi", "mao-selected"],
+      sources: ["登录后可见书籍", "刘少奇论党的建设", "毛泽东选集"],
       types: ["book"],
     });
     const signedInSelect = screen.getByRole("combobox", { name: "选择书籍" });
@@ -297,6 +297,62 @@ describe("SearchPage results", () => {
       types: ["newspaper"],
     });
     expect(screen.getByRole("combobox", { name: "选择报刊" }).textContent).toContain("全部报刊");
+  });
+
+  it.each(["", "&dataset=mao-selected"])("resolves legacy book IDs against the visible catalog (%s)", async (scope) => {
+    vi.mocked(axios.post).mockResolvedValue({ data: { data: {
+      total: 1,
+      results: [{
+        type: "book",
+        datasetId: "book-c6e38e9293f6",
+        itemId: "book-c6e38e9293f6:volume-5",
+        title: "给刘少奇的信",
+        content: "刘少奇同志",
+        source: "毛泽东选集",
+        metadata: { itemTitle: "第五卷", chapterId: "chapter:453" },
+      }],
+    } } });
+
+    renderSearch(`/search?keyword=刘少奇&type=book${scope}`, true);
+
+    const heading = await screen.findByRole("heading", { name: "给刘少奇的信" });
+    expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).toEqual({
+      query: "刘少奇",
+      page: 1,
+      size: 10,
+      types: ["book"],
+      sources: scope ? ["毛泽东选集"] : ["刘少奇论党的建设", "毛泽东选集"],
+    });
+    expect(heading.closest("a")?.getAttribute("href")).toBe(
+      "/book/mao-selected/volume-5?chapter=chapter%3A453",
+    );
+    expect(screen.queryByText("没有找到相关结果")).toBeNull();
+  });
+
+  it("discards hits outside the visible book scope, including legacy IDs", async () => {
+    vi.mocked(axios.post).mockResolvedValue({ data: { data: {
+      total: 4,
+      results: [
+        { type: "book", datasetId: "mao-selected", itemId: "mao-selected:volume-1", source: "毛泽东选集", title: "公开结果" },
+        { type: "book", datasetId: "book-restricted", itemId: "book-restricted:book", source: "登录后可见书籍", title: "受限结果" },
+        { type: "book", datasetId: "book-draft", itemId: "book-draft:book", source: "未发布书籍", title: "草稿结果" },
+        { type: "book", datasetId: "book-unknown", itemId: "book-unknown:book", source: "未知书籍", title: "未知结果" },
+      ],
+    } } });
+
+    renderSearch("/search?keyword=刘少奇&type=book", true);
+
+    await screen.findByRole("heading", { name: "公开结果" });
+    expect(screen.queryByRole("heading", { name: "受限结果" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "草稿结果" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "未知结果" })).toBeNull();
+  });
+
+  it.each(["restricted-book", "draft-book", "unknown-book"])("does not search an unavailable book (%s)", async (datasetId) => {
+    renderSearch(`/search?keyword=刘少奇&type=book&dataset=${datasetId}`, true);
+
+    await screen.findByText("没有找到相关结果");
+    expect(axios.post).not.toHaveBeenCalled();
   });
 
   it("links book chapter hits back to the book reader", async () => {
