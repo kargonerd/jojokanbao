@@ -21,7 +21,6 @@ import { SectionTitle } from "../components/SectionTitle";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import { checkNativeAppUpdate, openNativeAppUpdate } from "../lib/appUpdate";
 import { selectionHaptic, toggleHaptic } from "../lib/haptics";
-import { applyOtaUpdate, fetchOtaUpdate } from "../lib/otaUpdate";
 import { mobileTimesApi, timesSourceName } from "../lib/times";
 import type { RootStackParamList, SettingsSection } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
@@ -105,41 +104,20 @@ export function SettingsScreen() {
     about: "关于",
   };
 
-  const checkContentUpdate = async () => {
-    setUpdateBusy(true);
-    setUpdateMessage("正在检查内容更新…");
-    const result = await fetchOtaUpdate();
-    setUpdateBusy(false);
-    if (result === "ready") {
-      setUpdateMessage("内容更新已下载，重启后生效");
-      Alert.alert("内容更新已就绪", "现在重启 JOJO 看报即可使用新版本。", [
-        { text: "稍后", style: "cancel" },
-        { text: "立即重启", onPress: () => void applyOtaUpdate() },
-      ]);
-      return;
-    }
-    const messages = {
-      current: "当前内容已是最新版本",
-      disabled: "开发版未启用在线内容更新",
-      error: "检查失败，请稍后重试",
-    } as const;
-    setUpdateMessage(messages[result]);
-  };
-
   const checkInstallerUpdate = async () => {
     setUpdateBusy(true);
-    setUpdateMessage("正在检查客户端安装包…");
+    setUpdateMessage("正在检查应用更新…");
     const catalog = await checkNativeAppUpdate();
     setUpdateBusy(false);
     if (!catalog) {
-      setUpdateMessage("暂无可用的新安装包");
+      setUpdateMessage("暂未发现可用更新");
       return;
     }
-    setUpdateMessage(`发现 ${catalog.version} 版本`);
-    const download = { text: "打开下载页", onPress: () => void openNativeAppUpdate(catalog) };
+    setUpdateMessage(`发现新版本 ${catalog.version}`);
+    const download = { text: "下载更新", onPress: () => void openNativeAppUpdate(catalog) };
     Alert.alert(
-      "发现客户端更新",
-      `${catalog.version}\n${catalog.notes || "已发布新的客户端安装包。"}`,
+      `发现新版本 ${catalog.version}`,
+      [catalog.notes, "下载完成后，打开安装包，按提示完成更新。"].filter(Boolean).join("\n\n"),
       catalog.mandatory ? [download] : [{ text: "稍后", style: "cancel" }, download],
       { cancelable: !catalog.mandatory },
     );
@@ -405,15 +383,6 @@ export function SettingsScreen() {
               <Text style={[styles.aboutTitle, { color: theme.ink, fontFamily: theme.serif }]}>JOJO 看报</Text>
               <Text style={[styles.aboutVersion, { color: theme.muted, fontFamily: theme.sans }]}>{nativeApplicationVersion ?? "0.0.1"}</Text>
             </View>
-            <Pressable
-              accessibilityRole="button"
-              disabled={updateBusy}
-              onPress={() => void checkContentUpdate()}
-              style={[styles.actionRow, styles.actionRowDivider, { borderBottomColor: theme.rule, opacity: updateBusy ? 0.5 : 1 }]}
-            >
-              <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>检查内容更新</Text>
-              <Ionicons name="refresh-outline" size={17} color={theme.muted} />
-            </Pressable>
             {Platform.OS === "android" ? (
               <Pressable
                 accessibilityRole="button"
@@ -421,7 +390,7 @@ export function SettingsScreen() {
                 onPress={() => void checkInstallerUpdate()}
                 style={[styles.actionRow, styles.actionRowDivider, { borderBottomColor: theme.rule, opacity: updateBusy ? 0.5 : 1 }]}
               >
-                <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>检查客户端版本</Text>
+                <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>检查应用更新</Text>
                 <Ionicons name="download-outline" size={17} color={theme.muted} />
               </Pressable>
             ) : null}
@@ -434,11 +403,13 @@ export function SettingsScreen() {
               <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>在浏览器打开 JOJO 看报</Text>
               <Ionicons name="open-outline" size={17} color={theme.muted} />
             </Pressable>
-            <Pressable accessibilityRole="button" onPress={() => navigation.navigate("OpenSourceLicenses")} style={[styles.actionRow, { borderTopColor: theme.rule, borderTopWidth: StyleSheet.hairlineWidth }]}>
-              <View style={styles.settingCopy}>
-                <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>开源软件许可</Text>
-                <Text style={[styles.actionHint, { color: theme.muted, fontFamily: theme.sans }]}>查看本项目与第三方软件的许可信息</Text>
-              </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityHint="查看本项目与第三方软件的许可信息"
+              onPress={() => navigation.navigate("OpenSourceLicenses")}
+              style={({ pressed }) => [styles.actionRow, styles.actionRowTopDivider, { borderTopColor: theme.rule, opacity: pressed ? 0.6 : 1 }]}
+            >
+              <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>开源软件许可</Text>
               <Ionicons name="chevron-forward" size={17} color={theme.muted} />
             </Pressable>
           </View>
@@ -473,9 +444,9 @@ const styles = StyleSheet.create({
   sectionGap: { marginTop: 26 },
   actionRow: { minHeight: 58, flexDirection: "row", alignItems: "center" },
   actionRowDivider: { borderBottomWidth: StyleSheet.hairlineWidth },
+  actionRowTopDivider: { borderTopWidth: StyleSheet.hairlineWidth },
   actionText: { flex: 1, fontSize: 13, fontWeight: "800" },
   updateMessage: { minHeight: 42, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 12, fontSize: 11, lineHeight: 17 },
-  actionHint: { marginTop: 3, fontSize: 9, lineHeight: 14, fontWeight: "700" },
   about: { minHeight: 58, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center" },
   aboutTitle: { flex: 1, fontSize: 13, fontWeight: "800" },
   aboutVersion: { fontSize: 10, fontWeight: "700" },
