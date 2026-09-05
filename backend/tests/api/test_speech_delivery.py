@@ -109,6 +109,39 @@ def test_storage_error_is_not_a_miss_and_does_not_spend_tts(monkeypatch):
         asyncio.run(delivery.resolve_speech("mimo", "白桦", "正文", settings))
 
 
+def test_saturated_synthesis_slots_return_429_without_calling_provider(monkeypatch):
+    settings = configured()
+    s3 = MemoryS3()
+    slots = asyncio.Semaphore(0)
+    real_wait_for = asyncio.wait_for
+    slot_waits = []
+
+    async def immediate_slot_timeout(awaitable, timeout):
+        if timeout == 2:
+            slot_waits.append(timeout)
+            # Exercise the runtime's real asyncio timeout type without waiting.
+            return await real_wait_for(awaitable, timeout=0)
+        return await real_wait_for(awaitable, timeout)
+
+    async def must_not_run(*args):
+        pytest.fail("A saturated queue must not call the provider")
+
+    monkeypatch.setattr(delivery, "speech_store", lambda _: B2SpeechStore(settings, s3))
+    monkeypatch.setattr(delivery, "synthesis_slots", lambda _: slots)
+    monkeypatch.setattr(asyncio, "wait_for", immediate_slot_timeout)
+    monkeypatch.setattr(PROVIDERS["mimo"], "synthesize", must_not_run)
+    app.dependency_overrides[get_settings] = lambda: settings
+    try:
+        with TestClient(app) as client:
+            response = client.post("/v1/speech", json={"provider": "mimo", "voice": "白桦", "text": "正文"})
+        assert response.status_code == 429
+        assert response.json()["error"]["code"] == "speech_rate_limited"
+        assert slot_waits == [2]
+        assert slots.locked() and not s3.writes and not delivery._pending
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_b2_route_returns_public_url_not_audio_or_auth_token(monkeypatch):
     settings = configured()
     s3 = MemoryS3()

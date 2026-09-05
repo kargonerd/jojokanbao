@@ -125,6 +125,12 @@ MiMo 仅对明确的 HTTP 429 最多重试两次，退避 5/10 秒；有效 `Ret
 
 ## 云端配置
 
+Web 部署先在 Linux/Python 3.10 构建 EdgeOne 的完整 `.edgeone` 产物，再做隔离运行验证。
+CLI 1.6.14 会把依赖内名为 `docs` 的目录一并删掉，但 `boto3.docs`、`botocore.docs` 是运行模块；
+`repair-python-bundle.py` 只从产物中同版本的官方 wheel 恢复这两个目录，不升级依赖。
+`verify-python-bundle.py` 检查实际入口、API、S3 客户端模型和 MP3 编码；失败则不发布。
+上传预构建的 `.edgeone`，避免服务端重新打包、再次误删。PR 也运行这套构建验收，但不部署。
+
 云函数不依赖 rclone、SQLite 持久化盘或 Supabase。需通过部署平台的私密环境变量配置：
 
 ```dotenv
