@@ -78,7 +78,7 @@ async def resolve_speech(provider_id: str, voice: str | None, text: str, setting
         slots = synthesis_slots(asyncio.get_running_loop())
         try:
             await asyncio.wait_for(slots.acquire(), timeout=2)
-        except TimeoutError as error:
+        except asyncio.TimeoutError as error:
             raise ApiError(429, "speech_rate_limited", "听读请求较多，请稍后再试") from error
         try:
             if store and (cached := await asyncio.to_thread(store.get, provider_id, key)):
