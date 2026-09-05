@@ -530,7 +530,6 @@ mark[data-book-search-target] {
 .book-selection-actions { display: flex; flex-shrink: 0; height: 64px; padding: 4px; background: #333333; color: #ffffff; }
 .book-selection-actions .reader-selection-action { display: flex; flex: 1; min-width: 0; height: auto; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border: 0; padding: 4px; color: #ffffff; background: transparent; font-size: 12px; font-weight: 500; line-height: 16px; white-space: nowrap; }
 .book-selection-actions svg { width: 22px; height: 22px; }
-.book-selection-actions .book-selection-ai { border-left: 1px solid #666666; }
 .book-selection-underline { height: 22px; font-family: Georgia, serif; font-size: 22px; line-height: 24px; text-decoration: underline; }
 .book-selection-actions .reader-selection-action:hover, .book-selection-actions .reader-selection-action:focus-visible { color: #ffffff; background: #555555; transform: none; box-shadow: none; }
 .book-selection-actions .reader-selection-action:focus-visible { outline: 1px solid #ffffff; outline-offset: -3px; }

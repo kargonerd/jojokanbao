@@ -1013,7 +1013,7 @@ export function BookReader({
         <button type="button" onClick={() => void copySelection()} className="reader-selection-action"><IoCopyOutline aria-hidden="true" /><span>复制</span></button>
         {annotationAccess && <><button type="button" disabled={annotationSaving} onClick={() => void underlineSelection()} className="reader-selection-action"><span aria-hidden="true" className="book-selection-underline">A</span><span>划线</span></button>
         <button type="button" disabled={annotationSaving} onClick={() => setThoughtOpen((value) => !value)} className="reader-selection-action"><IoCreateOutline aria-hidden="true" /><span>写想法</span></button></>}
-        <button type="button" onClick={() => agentAccess ? void explainSelection() : openBookAi()} className="reader-selection-action book-selection-ai" aria-label="AI 解释"><IoSparklesOutline aria-hidden="true" /><span>AI 解释</span></button>
+        <button type="button" onClick={() => agentAccess ? void explainSelection() : openBookAi()} className="reader-selection-action" aria-label="AI 解释"><IoSparklesOutline aria-hidden="true" /><span>AI 解释</span></button>
       </div>
       {thoughtOpen && <div className={`book-selection-thought border p-3 ${panelClass}`}>
         <textarea autoFocus value={thought} onChange={(event) => setThought(event.target.value)} placeholder="写下此刻的想法……" rows={3} className="reader-thought-input block w-full resize-none border-0 border-b border-rule bg-transparent px-0 py-1 font-serif text-sm leading-6 text-current" />
