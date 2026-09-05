@@ -18,12 +18,22 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import sysconfig
 import wave
 
 
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise RuntimeError(message)
+
+
+def is_generated_stdlib(name: str, origin: str) -> bool:
+    # CPython's Linux build configuration is standard library code, but is not
+    # listed in stdlib_module_names. Allow only this exact name and directory,
+    # not arbitrary modules under lib/python (which also contains site-packages).
+    getter = getattr(sysconfig, "_get_sysconfigdata_name", None)
+    return bool(getter and name == getter()
+                and Path(origin).resolve().parent == Path(sysconfig.get_path("stdlib")).resolve())
 
 
 def offline_environment() -> dict[str, str]:
@@ -134,7 +144,8 @@ def verify(bundle: Path) -> None:
             continue
         origin = getattr(module, "__file__", None)
         if origin:
-            require(Path(origin).resolve().is_relative_to(bundle), f"Runtime dependency {name} escaped the bundle")
+            require(Path(origin).resolve().is_relative_to(bundle) or is_generated_stdlib(name, origin),
+                    f"Runtime dependency {name} escaped the bundle")
     print(json.dumps({"status": "ok", "python": "3.10", "routes": "health/providers 200 JSON; times 404",
                       "b2": "offline client/model/docs/PUT verified", "mp3Bytes": len(audio.data)}))
 

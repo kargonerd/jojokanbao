@@ -63,3 +63,16 @@ def test_incomplete_wheel_is_rejected(tmp_path):
         archive.writestr("boto3/docs/__init__.py", "")
     with pytest.raises(ValueError, match="does not contain"):
         repair.restore_runtime_docs(tmp_path / "bundle", wheel, "boto3")
+
+
+def test_generated_stdlib_exception_does_not_allow_site_packages(tmp_path, monkeypatch):
+    verifier_spec = importlib.util.spec_from_file_location("python_bundle_verifier", ROOT / "infrastructure/edgeone/verify-python-bundle.py")
+    verifier = importlib.util.module_from_spec(verifier_spec)
+    verifier_spec.loader.exec_module(verifier)
+    name = "_sysconfigdata__linux_x86_64-linux-gnu"
+    monkeypatch.setattr(verifier.sysconfig, "_get_sysconfigdata_name", lambda: name, raising=False)
+    monkeypatch.setattr(verifier.sysconfig, "get_path", lambda _: str(tmp_path))
+    assert verifier.is_generated_stdlib(name, str(tmp_path / f"{name}.py"))
+    assert not verifier.is_generated_stdlib("unrelated", str(tmp_path / "unrelated.py"))
+    assert not verifier.is_generated_stdlib(name, str(tmp_path / "site-packages" / f"{name}.py"))
+    assert not verifier.is_generated_stdlib(name, str(tmp_path.parent / f"{name}.py"))
