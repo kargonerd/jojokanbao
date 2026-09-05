@@ -37,6 +37,25 @@ beforeEach(() => {
 });
 
 describe("HF snapshot selection", () => {
+  it("gives rate limits a bounded multi-minute cooldown", async () => {
+    vi.useFakeTimers();
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
+    const log = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    try {
+      const work = vi.fn().mockRejectedValue({ statusCode: 429 });
+      const started = Date.now();
+      const result = expect(retryTransientHf(work, { attempts: 8 })).rejects.toEqual({ statusCode: 429 });
+      await vi.runAllTimersAsync();
+      await result;
+      expect(work).toHaveBeenCalledTimes(8);
+      expect(Date.now() - started).toBe(310_000); // 10+20+40+60+60+60+60 seconds
+    } finally {
+      random.mockRestore();
+      log.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("addresses source state objects directly without scanning Raw history", () => {
     expect(rawStateObjects(["reuters", "ap", "reuters"])).toEqual([
       "raw/ap/state.json.gz",

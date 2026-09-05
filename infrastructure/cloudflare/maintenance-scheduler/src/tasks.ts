@@ -1,5 +1,5 @@
 import { compactDateAt, resolveScheduledSlot } from "./schedule";
-import type { ScheduledTask } from "./types";
+import { taskHealthcheck, taskStageHealthchecks, type ScheduledTask } from "./types";
 
 export const SCHEDULED_TASKS = [
   {
@@ -14,10 +14,17 @@ export const SCHEDULED_TASKS = [
     retryDelayMinutes: 0,
     monitoring: {
       name: "JOJO · times-capture",
-      // Capture and Process can consume their full 35 + 40 minute budgets.
-      graceSeconds: 90 * 60,
+      // Capture has a 35-minute budget, plus runner queue/catch-up time.
+      graceSeconds: 45 * 60,
       tags: "jojo production maintenance times",
-      description: "Cloudflare dispatch through final Times Process completion.",
+      description: "Cloudflare dispatch through durable Times Raw publication. Process reports separately.",
+      stages: [{
+        slug: "times-process",
+        name: "JOJO · times-process",
+        graceSeconds: 90 * 60,
+        tags: "jojo production maintenance times process",
+        description: "Committed Times Runtime batches after Canonical/B2 publication; includes drain continuations. No-op runs do not clear alerts.",
+      }],
     },
     inputs: ({ slot }) => ({
       automatic: "true",
@@ -64,6 +71,7 @@ export function scheduledTask(taskId: string): ScheduledTask {
 
 export function validateScheduledTasks(tasks: readonly ScheduledTask[] = SCHEDULED_TASKS): void {
   const ids = new Set<string>();
+  const checkIds = new Set<string>(["maintenance-scheduler"]);
   for (const task of tasks) {
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(task.id)) {
       throw new Error(`Scheduled task id must be kebab-case: ${task.id}`);
@@ -84,6 +92,15 @@ export function validateScheduledTasks(tasks: readonly ScheduledTask[] = SCHEDUL
     }
     if (!Number.isInteger(task.monitoring.graceSeconds) || task.monitoring.graceSeconds < 60) {
       throw new Error(`Scheduled task monitoring grace must be at least one minute: ${task.id}`);
+    }
+    for (const check of [taskHealthcheck(task), ...taskStageHealthchecks(task)]) {
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(check.slug) || checkIds.has(check.slug)) {
+        throw new Error(`Invalid or duplicate Healthchecks slug: ${check.slug}`);
+      }
+      if (!Number.isInteger(check.graceSeconds) || check.graceSeconds < 60) {
+        throw new Error(`Healthchecks grace must be at least one minute: ${check.slug}`);
+      }
+      checkIds.add(check.slug);
     }
 
     // Parse every cron expression in CI even when the task is not due at the

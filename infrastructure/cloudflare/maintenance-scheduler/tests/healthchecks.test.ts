@@ -19,6 +19,22 @@ const definition: HealthcheckDefinition = {
 };
 
 describe("ensureHealthcheck", () => {
+  it("coalesces warm-cache lookups and reconciles again after fifteen minutes", async () => {
+    vi.useFakeTimers();
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => Response.json({ ping_url: "https://hc-ping.com/ttl" }));
+    vi.stubGlobal("fetch", fetcher);
+    try {
+      const check = { ...definition, slug: "ttl-test" };
+      await Promise.all([ensureHealthcheck(check, "ttl-key"), ensureHealthcheck(check, "ttl-key")]);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(15 * 60_000);
+      await ensureHealthcheck(check, "ttl-key");
+      expect(fetcher).toHaveBeenCalledTimes(2);
+      await ensureHealthcheck(check, "changed-key");
+      expect(fetcher).toHaveBeenCalledTimes(3);
+    } finally { vi.unstubAllGlobals(); vi.useRealTimers(); }
+  });
+
   it("upserts a task check by slug from the task definition", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json({ ping_url: "https://hc-ping.com/project-key/rmrb-sync" }),

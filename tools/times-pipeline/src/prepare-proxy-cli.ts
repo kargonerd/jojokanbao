@@ -2,35 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs, requiredArg } from "./args.js";
 import { parseProxySubscription, serializeMihomoConfig } from "./proxy-config.js";
-
-const MAXIMUM_SUBSCRIPTION_BYTES = 20_000_000;
-
-async function downloadSubscription(url: string): Promise<string> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 45_000);
-  try {
-    const response = await fetch(url, {
-      headers: { "user-agent": "mihomo" },
-      signal: controller.signal,
-    });
-    if (!response.ok || !response.body) throw new Error();
-    const reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > MAXIMUM_SUBSCRIPTION_BYTES) throw new Error();
-      chunks.push(value);
-    }
-    return new TextDecoder().decode(Buffer.concat(chunks));
-  } catch {
-    throw new Error("Unable to download the configured proxy subscription");
-  } finally {
-    clearTimeout(timer);
-  }
-}
+import { downloadSubscription } from "./proxy-subscription.js";
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));

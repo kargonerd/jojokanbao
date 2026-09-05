@@ -7,6 +7,7 @@ import { resolveScheduledSlot } from "./schedule";
 import { SCHEDULED_TASKS } from "./tasks";
 import {
   taskHealthcheck,
+  taskStageHealthchecks,
   type HealthcheckDefinition,
   type ScheduledTask,
   type SchedulerEnv,
@@ -118,6 +119,10 @@ export async function handleScheduled(
   });
 
   for (const task of tasks) {
+    // Provision downstream monitors without reporting success on their behalf.
+    for (const check of taskStageHealthchecks(task)) {
+      reports.push(provisionHealthcheckBestEffort(check, env.HEALTHCHECKS_API_KEY, { fetcher: options.fetcher }));
+    }
     if (!reportedTasks.has(task.id)) {
       reports.push(provisionHealthcheckBestEffort(
         taskHealthcheck(task),

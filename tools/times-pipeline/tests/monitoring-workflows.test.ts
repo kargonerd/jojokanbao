@@ -17,6 +17,18 @@ function evaluate(expression: string, context: Record<string, unknown>) {
 
 describe("maintenance outcome reporting", () => {
   const process = reportStep("maintenance-times-process.yml", "process");
+  const capture = reportStep("maintenance-times-capture.yml", "capture");
+  it("keeps Capture and committed Process outcomes on separate managed checks", () => {
+    expect(capture.env.HEALTHCHECKS_TASK_ID).toBe("times-capture");
+    expect(process.env.HEALTHCHECKS_TASK_ID).toBe("times-process");
+  });
+
+  it.each([true, false])("only reports publishing automatic Capture runs (publish=%s)", (publish) => {
+    for (const automatic of [true, false]) {
+      expect(Boolean(evaluate(capture.if, { always: () => true, inputs: { automatic, publish } })))
+        .toBe(automatic && publish);
+    }
+  });
   it.each([
     ["workflow_run", {}, "success", true, true],
     ["workflow_run", {}, "success", false, false],
@@ -40,7 +52,7 @@ describe("maintenance outcome reporting", () => {
   });
 
   it.each(["success", "failure", "cancelled"])("labels %s outcomes consistently", (status) => {
-    for (const step of [process, reportStep("maintenance-sync-rmrb.yml", "sync-rmrb")]) {
+    for (const step of [capture, process, reportStep("maintenance-sync-rmrb.yml", "sync-rmrb")]) {
       expect(evaluate(step.env.HEALTHCHECKS_FAILURE_TYPE, { job: { status } }))
         .toBe(status === "success" ? "" : "run-failed");
     }

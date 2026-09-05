@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
 
 async function workflow(name: string): Promise<string> {
   return readFile(path.resolve("..", "..", ".github", "workflows", name), "utf8");
@@ -13,6 +14,38 @@ function ordered(body: string, values: string[]): void {
 }
 
 describe("Times Runtime workflows", () => {
+  it.each(["capture", "process", "runtime-cleanup"])("saves prepared %s runtime before business steps", async (name) => {
+    const body = await workflow(`maintenance-times-${name}.yml`);
+    ordered(body, ["Restore CI-verified Times runtime", "Prepare Times runtime on cache miss", "Save prepared Times runtime"]);
+    expect(body).toContain("actions/cache/restore@");
+    expect(body).toContain("actions/cache/save@");
+    expect(body).toContain("key: ${{ steps.times_runtime_cache.outputs.cache-primary-key }}");
+    expect(body).not.toContain("pnpm install --frozen-lockfile\n");
+  });
+
+  it("bounds browser dependencies separately from cached binaries and saves early", async () => {
+    const body = await workflow("maintenance-times-capture.yml");
+    const steps = parse(body).jobs.capture.steps as Array<{ name?: string; run?: string; "timeout-minutes"?: number; with?: { path?: string } }>;
+    const deps = steps.find((step) => step.name === "Install browser system dependencies")!;
+    expect(deps["timeout-minutes"]).toBe(5);
+    expect(deps.run).toContain("with-apt-timeouts.sh");
+    expect(deps.run).toContain("install-deps chromium");
+    expect(body).not.toContain("--with-deps");
+    ordered(body, ["Install pinned Brave", "Save prepared browser cache", "Capture all enabled sources"]);
+    const cache = steps.find((step) => step.name === "Save pinned Mihomo archive")!;
+    expect(cache.with?.path).toBe("${{ runner.temp }}/mihomo-cache");
+    ordered(body, ["Prepare pinned Mihomo binary", "Save pinned Mihomo archive", "Start pinned Mihomo for"]);
+  });
+
+  it("skips rclone installation for empty Process triggers and bounds apt", async () => {
+    const body = await workflow("maintenance-times-process.yml");
+    const step = parse(body).jobs.process.steps.find((step: { name?: string }) => step.name === "Install rclone for publication");
+    expect(step.if).toContain("env.TIMES_RUNTIME_HAS_WORK == 'true'");
+    expect(step["timeout-minutes"]).toBe(5);
+    expect(step.run).toContain("with-apt-timeouts.sh");
+    ordered(body, ["--action select-jobs", "Install rclone for publication"]);
+  });
+
   it("publishes Raw marker-last, then advances Capture memory without Dataset writes", async () => {
     const body = await workflow("maintenance-times-capture.yml");
     expect(body).toContain("name: Maintenance · Times Capture");
@@ -73,6 +106,11 @@ describe("Times Runtime workflows", () => {
     expect(body).toContain("Restore Times runtime package");
     expect(body).toContain("Ensure Times runtime build exists");
     expect(body).toContain(".times-runtime");
+    const steps = parse(body).jobs.node.steps;
+    const contracts = steps.find((step: { name?: string }) => step.name === "Check maintenance workflow contracts");
+    expect(contracts.if).toBe("needs.changes.outputs.times_pipeline == 'true'");
+    expect(contracts.run).toContain("tests/monitoring-workflows.test.ts");
+    expect(contracts.run).toContain("bash -n tools/ci/with-apt-timeouts.sh");
   });
 
   it("runs cleanup separately with the same writer lock and an explicit apply flag", async () => {

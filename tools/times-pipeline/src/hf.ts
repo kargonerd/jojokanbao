@@ -1,4 +1,4 @@
-import { datasetInfo, downloadFile, HubApiError, listFiles, uploadFiles } from "@huggingface/hub";
+import { datasetInfo, downloadFile, listFiles, uploadFiles } from "@huggingface/hub";
 import { gunzipSync } from "node:zlib";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -212,11 +212,11 @@ async function mapLimit<T, R>(values: readonly T[], concurrency: number, work: (
 interface HfRetryOptions {
   attempts?: number;
   delayMs?: number;
+  rateLimitDelayMs?: number;
   label?: string;
 }
 
 function hfStatusCode(error: unknown): number | undefined {
-  if (error instanceof HubApiError) return error.statusCode;
   if (!error || typeof error !== "object") return undefined;
   const value = (error as { statusCode?: unknown }).statusCode;
   return typeof value === "number" && Number.isInteger(value) ? value : undefined;
@@ -237,8 +237,12 @@ export async function retryTransientHf<T>(
 ): Promise<T> {
   const attempts = options.attempts ?? 4;
   const delayMs = options.delayMs ?? 1_000;
+  // The Hub SDK does not expose Retry-After. Give 429s a separate,
+  // bounded cooldown instead of exhausting all Bucket retries in 45 seconds.
+  const rateLimitDelayMs = options.rateLimitDelayMs ?? 10_000;
   if (!Number.isInteger(attempts) || attempts < 1) throw new Error("HF retry attempts must be a positive integer");
   if (!Number.isFinite(delayMs) || delayMs < 0) throw new Error("HF retry delay must be non-negative");
+  if (!Number.isFinite(rateLimitDelayMs) || rateLimitDelayMs < 0) throw new Error("HF rate limit delay must be non-negative");
   for (let attempt = 1;; attempt += 1) {
     try {
       return await work();
@@ -246,7 +250,10 @@ export async function retryTransientHf<T>(
       if (attempt >= attempts || !transientHfError(error)) throw error;
       const status = hfStatusCode(error);
       const reason = status ? `HTTP ${status}` : error instanceof Error ? error.name : "network error";
-      const waitMs = Math.min(delayMs * 2 ** (attempt - 1), 10_000);
+      const base = status === 429 ? rateLimitDelayMs : delayMs;
+      const cap = status === 429 ? 60_000 : 10_000;
+      // Add only positive jitter: never shorten the cooldown, never exceed cap.
+      const waitMs = Math.min(Math.round(base * 2 ** (attempt - 1) * (1 + Math.random() * 0.2)), cap);
       process.stderr.write(`[hf] ${options.label ?? "request"} returned ${reason}; retry ${attempt + 1}/${attempts} in ${waitMs}ms\n`);
       await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
     }
@@ -291,7 +298,7 @@ export class HfTimesDataset {
         return files;
       }, { label: `dataset tree ${root}` });
     } catch (error) {
-      if (error instanceof HubApiError && error.statusCode === 404) return new Set<string>();
+      if (hfStatusCode(error) === 404) return new Set<string>();
       throw error;
     }
   }

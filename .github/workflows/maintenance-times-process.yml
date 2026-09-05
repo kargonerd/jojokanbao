@@ -119,15 +119,9 @@ jobs:
           test -n "$B2_BUCKET" || (echo "B2_BUCKET is not configured" >&2 && exit 1)
           test -n "$GEMINI_API_KEYS$GEMINI_API_KEY" || (echo "GEMINI_API_KEYS or GEMINI_API_KEY is not configured" >&2 && exit 1)
 
-      - name: Install rclone for publication
-        if: env.TIMES_PUBLISH == 'true'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y rclone
-
       - name: Restore CI-verified Times runtime
         id: times_runtime_cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .times-runtime
           key: ${{ runner.os }}-times-pipeline-runtime-v1-${{ hashFiles('tools/times-pipeline/src/**/*.ts', 'tools/times-pipeline/tsconfig.json', 'tools/times-pipeline/package.json', 'frontend/packages/content/src/**/*.ts', 'frontend/packages/content/package.json', 'pnpm-lock.yaml') }}
@@ -138,6 +132,13 @@ jobs:
           pnpm install --frozen-lockfile --filter @jojo/times-pipeline...
           pnpm --filter @jojo/times-pipeline build
           pnpm --filter @jojo/times-pipeline --prod deploy "$TIMES_RUNTIME_ROOT"
+
+      - name: Save prepared Times runtime
+        if: steps.times_runtime_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .times-runtime
+          key: ${{ steps.times_runtime_cache.outputs.cache-primary-key }}
 
       - name: Select a FIFO batch of ready or retryable Runtime jobs
         if: env.TIMES_CAPTURE_RUN_ID == ''
@@ -166,6 +167,15 @@ jobs:
             ? `Selected Runtime batch anchored at ${result.anchorJobId}: ${result.jobIds.join(", ")}`
             : "No ready Runtime jobs; this Process trigger is already drained");
           NODE
+
+      - name: Install rclone for publication
+        if: env.TIMES_PUBLISH == 'true' && env.TIMES_RUNTIME_HAS_WORK == 'true'
+        timeout-minutes: 5
+        run: |
+          if ! command -v rclone >/dev/null; then
+            bash tools/ci/with-apt-timeouts.sh apt-get update
+            bash tools/ci/with-apt-timeouts.sh apt-get install -y --no-install-recommends rclone
+          fi
 
       - name: Restore committed or staged Process state
         if: env.TIMES_CAPTURE_RUN_ID == '' && env.TIMES_RUNTIME_HAS_WORK == 'true'
@@ -358,7 +368,7 @@ jobs:
             --checksum --header-upload "X-Bz-Info-b2-cache-control: $mutable_cache_control"
 
           origin_url="$(rclone link "$JOJO_DELIVERY_REMOTE/content/timeline/index.jox" --expire 5m)"
-          curl --silent --show-error --fail \
+          curl --silent --show-error --fail --connect-timeout 10 --max-time 30 \
             --dump-header "$RUNNER_TEMP/timeline-origin-headers.txt" \
             --output /dev/null \
             "$origin_url"
@@ -512,7 +522,7 @@ jobs:
         continue-on-error: true
         env:
           HEALTHCHECKS_SIGNAL: ${{ job.status == 'success' && 'success' || 'fail' }}
-          HEALTHCHECKS_TASK_ID: times-capture
+          HEALTHCHECKS_TASK_ID: times-process
           HEALTHCHECKS_STAGE: times-process
           HEALTHCHECKS_STATUS: ${{ job.status }}
           HEALTHCHECKS_FAILURE_TYPE: ${{ job.status != 'success' && 'run-failed' || '' }}

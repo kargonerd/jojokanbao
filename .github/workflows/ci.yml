@@ -71,7 +71,7 @@ jobs:
             fi
           }
 
-          write_flag node '^(agent/|frontend/|infrastructure/cloudflare/|tools/(release/|times-pipeline/|[^/]+/web/)|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(release-desktop|release-mobile(-eink|-ota)?|maintenance-times[^/]*)\.yml$)'
+          write_flag node '^(agent/|frontend/|infrastructure/cloudflare/|tools/(ci/|monitoring/|release/|times-pipeline/|[^/]+/web/)|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(release-desktop|release-mobile(-eink|-ota)?|maintenance-times[^/]*|maintenance-sync-rmrb)\.yml$)'
           write_flag all_node '^(\.github/workflows/ci\.yml$|patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$)'
           write_flag desktop_e2e '^(frontend/(desktop|web|packages/(auth|content|pdf-viewer|ui)|tooling/tsconfig|patches)/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(ci|release-desktop)\.yml$)'
           write_flag web_e2e '^(frontend/(web|packages/(auth|pdf-viewer|ui)|tooling/tsconfig|patches)/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(ci|deploy-web)\.yml$)'
@@ -79,7 +79,7 @@ jobs:
           write_flag cloud_api '^(backend/|tools/times-pipeline/|infrastructure/edgeone/|\.github/workflows/(ci|deploy-web|maintenance-times[^/]*)\.yml$)'
           write_flag database '^(infrastructure/supabase/|\.github/workflows/ci\.yml$)'
           write_flag search_scf '^(infrastructure/tencent-scf/search/|\.github/workflows/(ci|release-search)\.yml$)'
-          write_flag times_pipeline '^(tools/times-pipeline/|frontend/packages/content/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.github/workflows/(ci|maintenance-times[^/]*)\.yml$)'
+          write_flag times_pipeline '^(tools/(times-pipeline|ci|monitoring)/|frontend/packages/content/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.github/workflows/(ci|maintenance-times[^/]*|maintenance-sync-rmrb)\.yml$)'
 
   node:
     name: Node workspaces
@@ -119,6 +119,15 @@ jobs:
           TURBO_SCM_BASE: ${{ needs.changes.outputs.base_sha }}
           TURBO_SCM_HEAD: ${{ needs.changes.outputs.head_sha }}
         run: pnpm turbo run typecheck test build verify:build --affected
+
+      - name: Check maintenance workflow contracts
+        # Workflow/helper edits are outside the package's Turbo hash. Always
+        # execute these contracts explicitly, even when package tests are cached.
+        if: needs.changes.outputs.times_pipeline == 'true'
+        run: |
+          pnpm --filter @jojo/times-pipeline exec vitest run tests/runtime-workflows.test.ts tests/monitoring-workflows.test.ts tests/workflow-config.test.ts
+          bash -n tools/ci/with-apt-timeouts.sh
+          bash -n tools/monitoring/ping-healthchecks.sh
 
       - name: Ensure Times runtime build exists
         if: needs.changes.outputs.times_pipeline == 'true' && steps.times_runtime_cache.outputs.cache-hit != 'true'

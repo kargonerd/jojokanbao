@@ -15,6 +15,7 @@ interface CachedHealthcheck {
   apiKey: string;
   definition: string;
   pingUrl: Promise<string>;
+  expiresAt: number;
 }
 
 const HEALTHCHECKS_CHECKS_API = "https://healthchecks.io/api/v3/checks/";
@@ -90,7 +91,7 @@ export async function ensureHealthcheck(
 
   const serializedDefinition = JSON.stringify(definition);
   const cached = healthcheckCache.get(definition.slug);
-  if (cached?.apiKey === apiKey && cached.definition === serializedDefinition) {
+  if (cached?.apiKey === apiKey && cached.definition === serializedDefinition && cached.expiresAt > Date.now()) {
     return cached.pingUrl;
   }
 
@@ -105,6 +106,8 @@ export async function ensureHealthcheck(
     apiKey,
     definition: serializedDefinition,
     pingUrl,
+    // Reconcile checks after external edits/deletion even in a warm isolate.
+    expiresAt: Date.now() + 15 * 60_000,
   });
   return pingUrl;
 }

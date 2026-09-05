@@ -34,6 +34,20 @@ GitHub's `maintenance` environment holds one project ping key in
 `HEALTHCHECKS_PING_KEY`. Workflows construct the slug URL from that key and the
 task id, so adding another task never requires another Healthchecks secret.
 
+Tasks can also declare `monitoring.stages` for independently reported downstream
+stages. Stage slugs must be unique across all tasks and inherit the parent cron
+and timezone. The Worker provisions them but never reports success for them.
+Times uses `times-capture` (45-minute grace, successful durable Raw publication)
+and `times-process` (90-minute grace, committed Canonical/B2 batches, including
+drain continuations). A successful Capture cannot clear a Process failure;
+successful no-op Process runs cannot clear it either. These are stage liveness
+checks, not an SLA timer for every queued article. No extra key is needed.
+
+GitHub probe and dispatch requests each have a 10-second deadline. Dispatch
+POSTs are not blindly retried after timeout: the next minute checks GitHub's
+accepted runs first. Healthchecks definitions are cached for 15 minutes per
+Worker isolate, then reconciled again to recover from external edits/deletion.
+
 ## Security
 
 Use a fine-grained GitHub token restricted to the
@@ -52,7 +66,7 @@ the project's Ping Key, not a check UUID or full ping URL. The API key is the
 project's read-write Management API key and should remain Cloudflare-only.
 
 On the first deployment, the Worker manages checks with the slugs
-`maintenance-scheduler`, `times-capture`, and `rmrb-sync`. If legacy checks use
+`maintenance-scheduler`, `times-capture`, `times-process`, and `rmrb-sync`. If legacy checks use
 other slugs, pause or remove them after confirming the managed checks are
 receiving pings, otherwise both old and new checks may alert.
 
@@ -69,6 +83,13 @@ pnpm --filter @jojo/maintenance-scheduler test
 pnpm --filter @jojo/maintenance-scheduler build
 pnpm --filter @jojo/maintenance-scheduler deploy
 ```
+
+For the Times stage split, deploy the Worker registry before (or together with)
+merging the workflow change. Verify the `times-process` check has been created,
+then verify a publishing Process/drain run reports to it. A newly created check
+does not replace verification of an actual committed batch. Merging a PR alone
+updates GitHub workflows, **not** the deployed Worker; this repository currently
+requires the explicit deploy command above. Existing project secrets remain valid.
 
 The production Cron expression is `* * * * *` in UTC. Adding a scheduled job
 means adding one registry entry and adapting an existing workflow to the
