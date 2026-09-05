@@ -121,6 +121,8 @@ times/
 本轮 `process-result.json`；后续 generation 默认只保存相对稳定基线的累计差量，并在 12 轮或差量超过完整状态
 60% 时自动压成新基线。恢复最多读取基线和差量两个归档。B2 失败或 runner 中断时，下一轮直接重放已固化结果，
 不再次调用翻译或解析。
+归档内部仍保存现行 `canonical/{source}/...`，恢复后用于后续 Process；退役的仅是旧 HF Dataset 根目录下的
+同名 `canonical/` 副本，不能据此删除 Runtime Process 归档或本地构建中的 Canonical。
 B2 全部提交并验证后，`process-memory.json` 才指向这个 generation；随后才推进 job 状态。首次没有
 Process memory 时发布会 fail closed，只允许人工指定 job 的一次 `bootstrap=true` 初始化，不能静默冷启动。
 单篇处理异常会把 job 标为 `partial` 并保留待重试文章。每个未完成 job 使用独立的 `pending/{id}.json`
@@ -134,6 +136,8 @@ Runtime job 状态只有 `ready`、`partial` 和 `done`。`done` job 保留 14 �
 `times/jobs/{id}` 下经过校验的 Raw、未提交 Process generation、pending marker 和 status marker；payload 始终先于 marker
 分阶段删除。没有 status 的上传中断残留保留 30 天，当前 `process-memory.json` 指向的 generation 永不作为
 孤儿删除；差量 generation 引用的基线也受到同样保护。一次最多处理 100 个 job。
+Process 与 cleanup 共用 `times-delivery-writer` 互斥组，双方均设置 `queue: max`，让等待中的清理任务
+不会被后来的 Process 触发替换；最多排队 100 个任务，满队列时新增任务仍会被取消。
 
 B2 只保存 Delivery：
 
