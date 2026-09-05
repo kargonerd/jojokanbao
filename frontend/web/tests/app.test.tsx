@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -215,6 +215,8 @@ describe("JOJO Web navigation", () => {
   it("opens the public client download page inside the Reader shell", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 404 }));
     renderAt("/download");
+    // Wait for the real lazy module, not the DOM query's cold-transform deadline.
+    await act(async () => { await import("../src/download/DownloadPage"); });
 
     expect(await screen.findByRole("heading", { name: "下载客户端" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Windows" })).toBeTruthy();
@@ -229,6 +231,7 @@ describe("JOJO Web navigation", () => {
     const installLink = screen.getByRole("link", { name: "添加到主屏幕" });
     expect(installLink.getAttribute("href")).toBe("/download/iphone");
     fireEvent.click(installLink);
+    await act(async () => { await import("../src/download/IphoneInstallPage"); });
     expect(await screen.findByRole("heading", { name: /在 iPhone 上\s*添加到主屏幕/, level: 1 })).toBeTruthy();
     expect(window.location.pathname).toBe("/download/iphone");
     const guide = screen.getByRole("region", { name: /在 iPhone 上\s*添加到主屏幕/ });
@@ -247,10 +250,12 @@ describe("JOJO Web navigation", () => {
         <AppRoutes platformRedesign={platformRedesign} />
       </MemoryRouter>,
     );
+    await act(async () => { await import("../src/download/IphoneInstallPage"); });
     expect(await screen.findByRole("heading", { name: /在 iPhone 上\s*添加到主屏幕/, level: 1 })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /返回下载页/ })).toBeNull();
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 404 }));
     fireEvent.click(screen.getByRole("button", { name: "返回上一页" }));
+    await act(async () => { await import("../src/download/DownloadPage"); });
     expect(await screen.findByRole("heading", { name: "下载客户端" })).toBeTruthy();
   });
 
