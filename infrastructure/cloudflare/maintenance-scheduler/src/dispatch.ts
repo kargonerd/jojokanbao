@@ -32,6 +32,19 @@ export type DispatchResult = DispatchedResult | SkippedResult;
 
 type Fetcher = typeof fetch;
 
+export class DispatchError extends Error {
+  constructor(message: string, readonly permanent: boolean) { super(message); }
+}
+
+async function responseError(response: Response, message: string): Promise<DispatchError> {
+  const body = (await response.text()).slice(0, 1000);
+  const rateLimited = response.status === 429 || (response.status === 403 && (
+    response.headers.get("x-ratelimit-remaining") === "0" || response.headers.has("retry-after") || /rate limit|secondary limit|abuse/iu.test(body)
+  ));
+  const permanent = response.status >= 400 && response.status < 500 && ![408, 409, 425].includes(response.status) && !rateLimited;
+  return new DispatchError(`${message} with HTTP ${response.status}: ${body || response.statusText}`, permanent);
+}
+
 interface WorkflowRun {
   status?: string;
   conclusion?: string | null;
@@ -52,7 +65,7 @@ export interface DispatchOptions {
 function requireValue(name: string, value: string | undefined): string {
   const normalized = value?.trim();
   if (!normalized) {
-    throw new Error(`${name} is not configured`);
+    throw new DispatchError(`${name} is not configured`, true);
   }
   return normalized;
 }
@@ -78,10 +91,7 @@ async function getWorkflowRuns(
     signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) {
-    const responseBody = (await response.text()).slice(0, 1_000);
-    throw new Error(
-      `GitHub workflow activity check failed for ${workflow} with HTTP ${response.status}: ${responseBody || response.statusText}`,
-    );
+    throw await responseError(response, `GitHub workflow activity check failed for ${workflow}`);
   }
 
   const payload = (await response.json()) as WorkflowRunsResponse;
@@ -209,10 +219,7 @@ export async function dispatchScheduledTask(
   });
 
   if (!response.ok) {
-    const responseBody = (await response.text()).slice(0, 1_000);
-    throw new Error(
-      `GitHub workflow dispatch failed for ${task.id} with HTTP ${response.status}: ${responseBody || response.statusText}`,
-    );
+    throw await responseError(response, `GitHub workflow dispatch failed for ${task.id}`);
   }
 
   return {

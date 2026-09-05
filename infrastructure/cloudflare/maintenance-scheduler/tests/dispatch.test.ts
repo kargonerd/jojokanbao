@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { dispatchScheduledTask } from "../src/dispatch";
+import { DispatchError, dispatchScheduledTask } from "../src/dispatch";
 import { resolveScheduledSlot } from "../src/schedule";
 import { scheduledTask } from "../src/tasks";
 import type { SchedulerEnv } from "../src/types";
@@ -31,6 +31,27 @@ function options(taskId: string, observedAt: string, fetcher: typeof fetch) {
 }
 
 describe("dispatchScheduledTask", () => {
+  it.each([
+    [502, {}, "upstream error", false],
+    [429, {}, "slow down", false],
+    [403, { "x-ratelimit-remaining": "0" }, "rate limited", false],
+    [403, { "retry-after": "60" }, "slow down", false],
+    [403, {}, "secondary rate limit", false],
+    [401, {}, "bad credentials", true],
+    [403, {}, "permission denied", true],
+    [404, {}, "missing workflow", true],
+    [422, {}, "invalid inputs", true],
+  ])("classifies HTTP %s %j as permanent=%s without treating rate limits as auth failures", async (status, headers, body, permanent) => {
+    const task = scheduledTask("times-capture");
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status, headers: headers as HeadersInit }));
+    try {
+      await dispatchScheduledTask(task, env, options(task.id, "2026-08-29T00:20:00Z", fetcher));
+      expect.unreachable("expected dispatch failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(DispatchError);
+      expect(error).toMatchObject({ permanent });
+    }
+  });
   it("bounds both GitHub requests without blindly retrying an ambiguous dispatch", async () => {
     const task = scheduledTask("times-capture");
     const timeout = vi.spyOn(AbortSignal, "timeout");

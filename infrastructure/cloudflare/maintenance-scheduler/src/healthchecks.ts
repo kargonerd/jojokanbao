@@ -1,6 +1,6 @@
 import type { HealthcheckDefinition } from "./types";
 
-export type HealthcheckSignal = "success" | "start" | "fail";
+export type HealthcheckSignal = "success" | "start" | "fail" | "log";
 
 interface HealthchecksOptions {
   fetcher?: typeof fetch | undefined;

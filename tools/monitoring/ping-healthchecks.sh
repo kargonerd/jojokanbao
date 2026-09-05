@@ -47,6 +47,27 @@ scheduled_at=${scheduled_at}
 slot_id=${slot_id}
 run=${run_url}"
 
+# CF consumes outcomes and is the only up/down writer in buffered mode. Curl
+# retries reuse the execution identity and timestamp; log/no-op is not success.
+if [ "${HEALTHCHECKS_REPORT_MODE:-direct}" = 'buffered' ] && { [ "$signal" = 'success' ] || [ "$signal" = 'fail' ]; }; then
+  if ! [[ "${GITHUB_RUN_ID:-}" =~ ^[1-9][0-9]*$ ]] || ! [[ "${GITHUB_RUN_ATTEMPT:-}" =~ ^[1-9][0-9]*$ ]]; then
+    echo 'Buffered monitoring requires a GitHub run id and attempt' >&2
+    exit 2
+  fi
+  failure_class="${HEALTHCHECKS_FAILURE_CLASS:-unknown}"
+  case "$failure_class" in unknown|retryable|permanent) ;; *) echo 'Invalid monitoring failure class' >&2; exit 2 ;; esac
+  outcome='failure'
+  [ "$signal" != 'success' ] || outcome='success'
+  payload="monitor_event=v1
+event_time=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+run_id=${GITHUB_RUN_ID}
+run_attempt=${GITHUB_RUN_ATTEMPT}
+outcome=${outcome}
+failure_class=${failure_class}
+${payload}"
+  target="${ping_url%/}/log"
+fi
+
 curl --fail --silent --show-error \
   --max-time 10 \
   --retry 5 \

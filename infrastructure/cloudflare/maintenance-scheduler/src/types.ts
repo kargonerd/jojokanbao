@@ -1,10 +1,16 @@
 export interface SchedulerEnv {
-  [binding: string]: string | undefined;
   GITHUB_TOKEN: string;
   GITHUB_OWNER: string;
   GITHUB_REPO: string;
   GITHUB_REF: string;
   HEALTHCHECKS_API_KEY?: string;
+  MONITORS?: DurableObjectNamespace;
+}
+
+export interface AlertPolicy {
+  /** Consecutive distinct execution attempts, not repeated HTTP deliveries. */
+  executionFailures: number;
+  dispatchFailureSeconds: number;
 }
 
 export interface HealthcheckDefinition {
@@ -46,14 +52,15 @@ export interface ScheduledTask {
     graceSeconds: number;
     tags: string;
     description: string;
+    alertPolicy?: Partial<AlertPolicy>;
     // Independently reported downstream stages inherit this task's schedule.
-    stages?: Array<Omit<HealthcheckDefinition, "schedule" | "timeZone">>;
+    stages?: Array<Omit<HealthcheckDefinition, "schedule" | "timeZone"> & { alertPolicy?: Partial<AlertPolicy> }>;
   };
   inputs(context: TaskInputContext): Record<string, string>;
 }
 
 export function taskHealthcheck(task: ScheduledTask): HealthcheckDefinition {
-  const { stages: _stages, ...monitoring } = task.monitoring;
+  const { stages: _stages, alertPolicy: _policy, ...monitoring } = task.monitoring;
   return {
     ...monitoring,
     slug: task.id,
@@ -63,7 +70,7 @@ export function taskHealthcheck(task: ScheduledTask): HealthcheckDefinition {
 }
 
 export function taskStageHealthchecks(task: ScheduledTask): HealthcheckDefinition[] {
-  return (task.monitoring.stages ?? []).map((stage) => ({
+  return (task.monitoring.stages ?? []).map(({ alertPolicy: _policy, ...stage }) => ({
     ...stage,
     schedule: task.cron,
     timeZone: task.timeZone,

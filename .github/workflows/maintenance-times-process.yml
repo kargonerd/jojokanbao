@@ -70,6 +70,7 @@ jobs:
       JOJO_TIMES_TRANSLATION_CHUNK_CHARACTERS: "20000"
       JOJO_DELIVERY_REMOTE: jojo-b2:${{ secrets.B2_BUCKET }}
       HEALTHCHECKS_PING_KEY: ${{ secrets.HEALTHCHECKS_PING_KEY }}
+      HEALTHCHECKS_REPORT_MODE: buffered
       TIMES_PUBLISH: ${{ github.event_name == 'workflow_run' || inputs.publish }}
       TIMES_BOOTSTRAP: ${{ github.event_name == 'workflow_dispatch' && inputs.bootstrap || false }}
       TIMES_CAPTURE_RUN_ID: ${{ inputs.capture_run_id || '' }}
@@ -90,6 +91,7 @@ jobs:
 
       - name: Validate Process inputs
         run: |
+          source tools/monitoring/classify-permanent.sh
           test -z "$TIMES_CAPTURE_RUN_ID" || test -z "$TIMES_RUNTIME_JOB_ID" || (echo "capture_run_id and runtime_job_id are mutually exclusive" >&2 && exit 1)
           if [ -n "$TIMES_CAPTURE_RUN_ID" ] && [ "$TIMES_PUBLISH" = 'true' ]; then
             echo "capture_run_id is a dry-run artifact and cannot be published" >&2
@@ -107,12 +109,14 @@ jobs:
       - name: Validate Runtime Bucket input configuration
         if: env.TIMES_CAPTURE_RUN_ID == ''
         run: |
+          source tools/monitoring/classify-permanent.sh
           test -n "$HF_TOKEN" || (echo "HF_TOKEN is not configured" >&2 && exit 1)
           test -n "$HF_TIMES_RUNTIME_BUCKET" || (echo "HF_TIMES_RUNTIME_BUCKET is not configured" >&2 && exit 1)
 
       - name: Validate publication configuration
         if: env.TIMES_PUBLISH == 'true'
         run: |
+          source tools/monitoring/classify-permanent.sh
           test -z "$TIMES_CAPTURE_RUN_ID" || (echo "capture_run_id is available only for a non-publishing dry run" >&2 && exit 1)
           test -n "$B2_KEY_ID" || (echo "B2_KEY_ID is not configured" >&2 && exit 1)
           test -n "$B2_APPLICATION_KEY" || (echo "B2_APPLICATION_KEY is not configured" >&2 && exit 1)
@@ -203,6 +207,7 @@ jobs:
       - name: Require Process memory outside explicit bootstrap
         if: env.TIMES_CAPTURE_RUN_ID == '' && env.TIMES_RUNTIME_HAS_WORK == 'true' && env.TIMES_PUBLISH == 'true'
         run: |
+          source tools/monitoring/classify-permanent.sh
           restored="$(node -p 'require(process.env.RUNNER_TEMP + "/process-memory-restore.json").restored')"
           if [ "$restored" != 'true' ] && [ "$TIMES_BOOTSTRAP" != 'true' ]; then
             echo "Process memory is missing; use one reviewed manual bootstrap run instead of publishing a cold start" >&2
