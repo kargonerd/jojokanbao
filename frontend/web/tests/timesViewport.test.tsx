@@ -21,6 +21,7 @@ import { TimesDetailPage } from "../src/times/pages/TimesDetailPage";
 import { DEFAULT_SPEECH_PROVIDERS } from "../src/reading/speech";
 import { useTimesPreferencesStore } from "../src/times/preferencesStore";
 import { useAccountSessionStore } from "../src/account/session";
+import { useFeatureFlagStore } from "../src/featureFlags";
 
 const source = { id: "reuters", name: "Reuters", language: "en" };
 const article = {
@@ -39,6 +40,7 @@ const article = {
 };
 
 beforeEach(() => {
+  useFeatureFlagStore.setState((state) => ({ flags: { ...state.flags, "reader.speech": true } }));
   useAccountSessionStore.setState({ initialized: true, userId: "test-reader" });
   window.localStorage.clear();
   useTimesPreferencesStore.setState({

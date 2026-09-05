@@ -7,4 +7,3 @@ export * from "./capabilities";
 export * from "./daily-quote";
 export * from "./validation";
 export * from "./speech";
-export * from "./speech-client";

@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { SpeechCapabilities, SpeechSource } from "@jojo/content";
+import type { SpeechCapabilities, SpeechSource } from "@jojo/content/speech";
 import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
 import * as Crypto from "expo-crypto";
 import { useEffect, useRef, useState } from "react";

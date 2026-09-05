@@ -1,4 +1,5 @@
-import { createSpeechClient, speechSegments } from "@jojo/content";
+import { speechSegments } from "@jojo/content";
+import { createSpeechClient } from "@jojo/content/speech";
 import * as Crypto from "expo-crypto";
 import { Parser } from "htmlparser2";
 import { mobileSpeechAllowed } from "./featureFlag";
