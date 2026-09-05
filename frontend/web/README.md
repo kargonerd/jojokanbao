@@ -19,8 +19,11 @@
 安装后以独立窗口打开，启动地址为 `/`，继续遵循当前整站发布开关与账号权限。
 
 应用清单位于 `public/manifest.webmanifest`，图标由
-`public/brand/jojo-kanbao-mark.svg` 导出：Apple touch icon 为 180px，普通图标为
-192px / 512px；512px maskable 图标将标志缩至 320px 居中，保留系统裁切安全区。
+`public/brand/jojo-kanbao-mark.svg` 导出：保留猫咪与报纸，将圆形底色扩展为铺满画布的
+不透明酒红色背景，不预先裁圆角，避免系统裁切后出现白边。Apple touch icon 为
+`app-icon-180.png`，普通图标为 192px / 512px；512px maskable 图标将图案缩至
+410px 居中，背景仍铺满画布，保留系统裁切安全区。更换图片时同步更新资源文件名；
+已安装的旧图标需删除后从 Safari 重新添加。
 入口保留默认视口安全区与非透明状态栏，不启用 `viewport-fit=cover`。
 Archive 阅读外壳使用动态视口高度，兼容浏览器工具栏变化和独立窗口。
 
