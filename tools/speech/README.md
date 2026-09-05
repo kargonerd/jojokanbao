@@ -100,14 +100,16 @@ JOJO_SPEECH_S3_BUCKET=jojo-newspaper
 JOJO_SPEECH_S3_KEY_ID=<已有B2 key id>
 JOJO_SPEECH_S3_APPLICATION_KEY=<已有B2 application key>
 JOJO_SPEECH_CDN_BASE=https://blacknews.jojokanbao.cn
-JOJO_MIMO_TTS_ENABLED=true
+JOJO_TTS_ENABLED=true
 MIMO_API_KEY=<secret>
-JOJO_EDGE_TTS_ENABLED=true
 ```
 
 部署配置将 Python 超时设为 120 秒，API 等待上限 110 秒。MiMo HTTP 读取体积上限 16 MiB，
 交付编码音频上限 12 MiB，不等于进程峰值内存（JSON/Base64/编码仍有多份缓冲）。
-生产默认关闭合成 provider，明确开启后才允许新生成。已存音频可继续从 CDN 使用。
+`JOJO_TTS_ENABLED` 是唯一的新音频合成总开关，统一作用于 Edge/MiMo 和手工预生成工具。
+设为 `false` 时只复用已有缓存，不调用 TTS；设为 `true` 时允许生成缺失音频，MiMo 另需配置 Key。
+开发默认开启、生产默认关闭。配置在进程启动时读取，修改后需重启后端或重新部署。
+已存音频可继续从 CDN 使用，开关不改变音频地址或缓存哈希。
 不加后端登录/音频鉴权是产品选择：公开地址及合成接口都可能被绕过 UI 直接使用，
 2 段并发上限是单进程保护，不是账户总预算或防盗刷保障。
 

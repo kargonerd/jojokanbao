@@ -57,8 +57,7 @@ class Settings:
     supabase_url: str | None
     supabase_publishable_key: str | None
     auth_timeout_seconds: float
-    edge_tts_enabled: bool = True
-    mimo_tts_enabled: bool = True
+    tts_enabled: bool = True
     mimo_api_key: str | None = field(default=None, repr=False)
     speech_cache_path: str | None = None
     speech_storage: str = "local"
@@ -98,15 +97,10 @@ class Settings:
                 default=5.0,
                 name="JOJO_AUTH_TIMEOUT_SECONDS",
             ),
-            edge_tts_enabled=_boolean(
-                os.getenv("JOJO_EDGE_TTS_ENABLED"),
+            tts_enabled=_boolean(
+                os.getenv("JOJO_TTS_ENABLED"),
                 default=environment != "production",
-                name="JOJO_EDGE_TTS_ENABLED",
-            ),
-            mimo_tts_enabled=_boolean(
-                os.getenv("JOJO_MIMO_TTS_ENABLED"),
-                default=environment != "production",
-                name="JOJO_MIMO_TTS_ENABLED",
+                name="JOJO_TTS_ENABLED",
             ),
             mimo_api_key=(os.getenv("MIMO_API_KEY") or "").strip() or None,
             speech_storage=storage,

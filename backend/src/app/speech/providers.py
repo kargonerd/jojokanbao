@@ -50,7 +50,7 @@ class EdgeProvider:
     )
 
     def available(self, settings: Settings) -> bool:
-        return settings.edge_tts_enabled
+        return settings.tts_enabled
 
     async def synthesize(self, text: str, voice: str, settings: Settings) -> AudioResult:
         return AudioResult(await synthesize_audio(text, voice), "audio/mpeg", "mp3")
@@ -73,7 +73,7 @@ class MimoProvider:
         self.transport = transport
 
     def available(self, settings: Settings) -> bool:
-        return bool(settings.mimo_tts_enabled and settings.mimo_api_key)
+        return bool(settings.tts_enabled and settings.mimo_api_key)
 
     async def synthesize(self, text: str, voice: str, settings: Settings) -> AudioResult:
         async with httpx.AsyncClient(timeout=httpx.Timeout(90, connect=10), transport=self.transport) as client:

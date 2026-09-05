@@ -84,7 +84,7 @@ def test_route_reuses_audio_with_frontend_only_login_policy(tmp_path, monkeypatc
             assert second.headers["X-Speech-Cache"] == "hit"
             assert calls == 1
             from dataclasses import replace
-            settings = replace(settings, environment="production")
+            settings = replace(settings, environment="production", tts_enabled=False)
             assert client.post("/v1/speech", json=payload).status_code == 200
             assert calls == 1
     finally:

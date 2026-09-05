@@ -90,7 +90,7 @@ def test_two_users_and_a_new_instance_reuse_b2_and_only_one_provider_call(monkey
         results = await asyncio.gather(*(delivery.resolve_speech("mimo", "白桦", "同一段正文", settings) for _ in range(5)))
         assert calls == 1
         assert all(result[0]["url"] == results[0][0]["url"] for result in results)
-        disabled = replace(settings, mimo_tts_enabled=False, mimo_api_key=None)
+        disabled = replace(settings, tts_enabled=False, mimo_api_key=None)
         result, status = await delivery.resolve_speech("mimo", "白桦", "同一段正文", disabled)
         assert status == "hit" and result == results[0][0]
         assert calls == 1
@@ -153,12 +153,42 @@ def test_failed_audio_upload_does_not_publish_a_descriptor():
 
 
 def test_cached_voice_remains_selectable_when_synthesis_is_disabled():
-    app.dependency_overrides[get_settings] = lambda: replace(configured(), mimo_api_key=None, mimo_tts_enabled=False)
+    app.dependency_overrides[get_settings] = lambda: replace(configured(), mimo_api_key=None, tts_enabled=False)
     try:
         with TestClient(app) as client:
             result = client.get("/v1/speech/providers").json()
         assert result["defaultVoice"] == "白桦"
         mimo = next(provider for provider in result["providers"] if provider["id"] == "mimo")
         assert mimo["available"] is True and mimo["canGenerate"] is False
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.parametrize("provider,voice", [("edge", "zh-CN-XiaoxiaoNeural"), ("mimo", "白桦")])
+def test_master_switch_blocks_new_audio_but_keeps_b2_hits_with_credentials(monkeypatch, provider, voice):
+    settings = replace(configured(), tts_enabled=False)
+    s3 = MemoryS3()
+    store = B2SpeechStore(settings, s3)
+    key = delivery.identity(provider, voice, "已生成的正文")[2]
+    cached = store.put(provider, key, encode_delivery(wav_audio()))
+    writes_before = len(s3.writes)
+    monkeypatch.setattr(delivery, "speech_store", lambda _: store)
+
+    async def must_not_run(*args):
+        pytest.fail("Disabled synthesis must not contact either provider")
+
+    for adapter in PROVIDERS.values():
+        monkeypatch.setattr(adapter, "synthesize", must_not_run)
+    app.dependency_overrides[get_settings] = lambda: settings
+    try:
+        with TestClient(app) as client:
+            hit = client.post("/v1/speech", json={"provider": provider, "voice": voice, "text": "已生成的正文"})
+            miss = client.post("/v1/speech", json={"provider": provider, "voice": voice, "text": "尚未生成的正文"})
+            catalog = client.get("/v1/speech/providers").json()
+        assert hit.status_code == 200
+        assert hit.json()["url"] == cached["url"] and hit.json()["cache"] == "hit"
+        assert miss.status_code == 503 and miss.json()["error"]["code"] == "speech_not_enabled"
+        assert all(option["available"] and not option["canGenerate"] for option in catalog["providers"])
+        assert len(s3.writes) == writes_before
     finally:
         app.dependency_overrides.clear()

@@ -254,7 +254,7 @@ def test_speech_rejects_unknown_voice() -> None:
 
 
 def test_speech_can_be_disabled(monkeypatch) -> None:
-    app.dependency_overrides[get_settings] = lambda: settings(edge_tts_enabled=False)
+    app.dependency_overrides[get_settings] = lambda: settings(tts_enabled=False)
     try:
         response = client.post("/v1/speech", json={"text": "正文"})
     finally:
