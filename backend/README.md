@@ -4,7 +4,8 @@ JOJO 的统一 Python 后端。源码采用标准 `src` 布局，不依赖任何
 
 ```text
 src/app/
-  main.py       FastAPI 入口
+  main.py       本地 FastAPI 入口
+  application.py  共享 API 工厂（不单独注册云函数路由）
   core/         配置、认证、错误和 HTTP 中间件
   account/      已启用的账号 API
 tests/
@@ -60,6 +61,9 @@ pnpm test:backend
 
 ## 部署
 
-EdgeOne 薄入口位于 `infrastructure/edgeone/functions/api/index.py`。它只导入
-`app.main:app`。`pnpm prepare:web-deploy` 在部署时组装源码、依赖、平台入口和 Web
-静态产物。RAG 使用独立的 Node Agent 运行层，不随 Python API 部署。
+EdgeOne 薄入口位于 `infrastructure/edgeone/functions/api/index.py`，显式执行
+`app = create_app()`；平台根据顶层赋值识别框架入口，单纯导入 `app` 不会注册路由。
+平台剥离 `/api` 前缀，工厂内仍使用 `/v1` 路由。`pnpm prepare:web-deploy`
+组装源码、依赖、平台入口和 Web 静态产物，并排除本地 `app/main.py`，避免出现
+第二个 `/app/main` 入口。两端共用 `app.application:create_app`，不改变业务路由。
+RAG 使用独立的 Node Agent 运行层，不随 Python API 部署。

@@ -58,6 +58,22 @@ for (let attempt = 1; attempt <= attempts; attempt += 1) {
       throw new Error(`HTML references ${remoteEntry || "no entry"}; expected ${localEntry}`);
     }
 
+    // A successful SPA upload does not prove Python functions were registered.
+    // Both probes are read-only and must never synthesize audio during deploy.
+    for (const apiPath of ["/api/v1/health", "/api/v1/speech/providers"]) {
+      const apiUrl = new URL(apiPath, baseUrl);
+      apiUrl.searchParams.set("deploy", revision);
+      const apiResponse = await fetch(apiUrl, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
+      if (!apiResponse.ok || !/application\/json\b/i.test(apiResponse.headers.get("content-type") || "")) {
+        throw new Error(`${apiPath} must return API JSON, not an SPA fallback (HTTP ${apiResponse.status})`);
+      }
+      const api = await apiResponse.json();
+      if (apiPath.endsWith("/health") ? api?.service !== "jojokanbao-api" || api?.status !== "ok"
+        : !Array.isArray(api?.providers) || !api.providers.some((provider) => provider.id === "mimo")) {
+        throw new Error(`${apiPath} returned an unexpected API contract`);
+      }
+    }
+
     for (const route of spaRoutes) {
       const routeUrl = new URL(`/${route}`, baseUrl);
       routeUrl.searchParams.set("deploy", revision);
@@ -111,7 +127,7 @@ for (let attempt = 1; attempt <= attempts; attempt += 1) {
     }
 
     console.log(
-      `Web deployment verified: SPA routes, ${localEntry} -> ${expectedRuntimeChunk} -> ${expectedWorker}, and PDF runtime assets (${workerType})`,
+      `Web deployment verified: API health/speech providers, SPA routes, ${localEntry} -> ${expectedRuntimeChunk} -> ${expectedWorker}, and PDF runtime assets (${workerType})`,
     );
     process.exit(0);
   } catch (error) {

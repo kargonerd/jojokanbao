@@ -21,6 +21,8 @@ async function requireFile(filePath) {
 
 function includeFunctionFile(source) {
   const relative = path.relative(functionSource, source);
+  // Local ASGI entry only. Shipping it would register a second /app/main API.
+  if (relative === "main.py") return false;
   const segments = relative.split(path.sep);
   return !segments.some((segment) =>
     segment === "tests"
