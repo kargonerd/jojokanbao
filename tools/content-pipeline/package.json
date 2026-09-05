@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc --noEmit",
     "cli": "tsx src/cli.ts",
+    "speech-plan": "tsx src/speech-plan-cli.ts",
     "merge-delivery": "tsx src/merge-delivery-cli.ts",
     "validate": "tsx src/validate-cli.ts",
     "test": "vitest run",

@@ -8,6 +8,17 @@ import {
 } from '../../electron/agent-gateway.js';
 
 describe('desktop Agent gateway', () => {
+  it('allows only the speech GET/POST pair and accepts CDN descriptors', async () => {
+    const fetch = vi.fn().mockImplementation(async () => Response.json({ providers: [] }));
+    const options = { fetch, readerOrigin: 'https://beta.jojokanbao.cn' };
+    expect((await handleDesktopAgentRequest(new Request('jojo-agent://reader/api/v1/speech/providers'), options)).status).toBe(200);
+    expect(fetch.mock.calls[0]![1].method).toBe('GET');
+    expect(fetch.mock.calls[0]![1].body).toBeUndefined();
+    expect((await handleDesktopAgentRequest(new Request('jojo-agent://reader/api/v1/speech', { method: 'POST', body: '{"text":"正文"}' }), options)).status).toBe(200);
+    expect((await handleDesktopAgentRequest(new Request('jojo-agent://reader/api/v1/speech'), options)).status).toBe(405);
+    expect((await handleDesktopAgentRequest(new Request('jojo-agent://reader/api/v1/speech', { method: 'POST', body: 'x'.repeat(8193) }), options)).status).toBe(413);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
   it('registers a fetch-capable secure streaming scheme', () => {
     const registerSchemesAsPrivileged = vi.fn();
     registerDesktopAgentScheme({ registerSchemesAsPrivileged });

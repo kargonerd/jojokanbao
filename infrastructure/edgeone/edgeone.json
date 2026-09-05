@@ -3,7 +3,7 @@
   "cloudFunctions": {
     "mainlandRegions": ["ap-shanghai"],
     "python": {
-      "maxDuration": 30
+      "maxDuration": 120
     }
   }
 }

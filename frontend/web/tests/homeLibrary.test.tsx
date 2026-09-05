@@ -48,6 +48,7 @@ beforeEach(() => {
     initialized: true,
     revision: "test",
     flags: {
+      "reader.speech": false,
       "library.bookshelf": false,
       "reader.annotations": false,
     },

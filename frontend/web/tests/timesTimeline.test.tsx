@@ -233,6 +233,15 @@ describe("Times timeline images", () => {
 
   it("hides disabled media from the Times rail and timeline", async () => {
     const reutersArticle = { ...article, id: "article-two", title: "Reuters headline", source: secondSource, assets: [] };
+    timesMocks.getNews.mockResolvedValue({
+      ...reutersArticle,
+      content: "Reuters article body",
+      contentFormat: "text",
+      assetUrls: {},
+      originalLanguage: "en",
+      translationAvailable: false,
+      usingTranslation: false,
+    });
     timesMocks.timelineIndex.mockResolvedValue({
       formatVersion: "jojo-news-timeline-index/1",
       updatedAt: "2026-08-27T05:00:00.000Z",
@@ -250,7 +259,7 @@ describe("Times timeline images", () => {
 
     render(<MemoryRouter><TimesHomePage /></MemoryRouter>);
 
-    await screen.findByText("Reuters headline");
+    await within(screen.getByRole("region", { name: "文章列表" })).findByText("Reuters headline");
     expect(screen.queryByText(article.title)).toBeNull();
     expect(screen.queryByRole("button", { name: /AP News/ })).toBeNull();
   });

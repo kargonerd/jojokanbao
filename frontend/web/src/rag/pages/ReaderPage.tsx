@@ -12,6 +12,7 @@ import {
 import {
   downloadExport,
   loadAssetUrl,
+  loadBookCoverUrl,
   loadFragment,
   loadItem,
   searchLoadedBook,
@@ -19,6 +20,8 @@ import {
 } from "../content";
 import { readerReturnPathFromState, safeReaderReturnPath } from "../readerNavigation";
 import { ReadingLoadingState } from "../../reading/ReadingLoadingState";
+import { SpeechPlayer } from "../../reading/SpeechPlayer";
+import { speechSegments } from "../../reading/speech";
 import { BookReader } from "../components/BookReader";
 
 function flattenToc(nodes: JojoTocNode[] = [], depth = 0): Array<JojoTocNode & { depth: number }> {
@@ -212,6 +215,7 @@ export function ReaderPage() {
   const [fragment, setFragment] = useState<JojoFragment>();
   const [activeChapter, setActiveChapter] = useState("");
   const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
+  const [coverUrl, setCoverUrl] = useState("");
   const [focusText, setFocusText] = useState<{ text: string; token: number }>();
   const [focusAnchorId, setFocusAnchorId] = useState(requestedAnnotation);
   const [loading, setLoading] = useState(true);
@@ -251,6 +255,16 @@ export function ReaderPage() {
       setActiveChapter(requested?.id || value.manifest.content.chapters?.[0]?.id || "");
     }).catch((reason: Error) => setError(reason.message)).finally(() => setLoading(false));
   }, [datasetId, itemKey, requestedAnnotation, requestedChapter, requestedQuote]);
+
+  useEffect(() => {
+    if (!datasetId || !itemKey) return;
+    let active = true;
+    setCoverUrl("");
+    void loadBookCoverUrl(datasetId, itemKey).then((url) => {
+      if (active && url) setCoverUrl(url);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [datasetId, itemKey]);
 
   useEffect(() => {
     if (!loaded || !activeChapter) return;
@@ -315,6 +329,9 @@ export function ReaderPage() {
 
   const toc = useMemo(() => flattenToc(loaded?.manifest.content.toc), [loaded]);
   const html = useMemo(() => fragment ? renderedBody(fragment, assetUrls) : "", [assetUrls, fragment]);
+  const spokenChapter = useMemo(() => fragment
+    ? speechSegments(fragment.title, fragment.body.value, fragment.body.format)
+    : [], [fragment]);
   if (loading) return <ReadingLoadingState kind="book" status="正在打开书籍" fullscreen />;
   if (!loaded) return <div className="p-8 text-center text-muted">{error || "内容不存在"}</div>;
   const access = loaded.manifest.access ?? loaded.item.access ?? loaded.index.access ?? loaded.entry.access ?? "public";
@@ -367,6 +384,22 @@ export function ReaderPage() {
       setActiveChapter(chapterId);
     }}
     onSearch={(query) => searchLoadedBook(loaded, query)}
+    speechControl={<SpeechPlayer
+      contentId={`book:${loaded.manifest.datasetId}:${loaded.item.itemKey}`}
+      segments={spokenChapter}
+      label="听本章"
+      title={fragment?.title || chapters[activeChapterIndex]?.title}
+      collectionTitle={loaded.manifest.title}
+      artworkUrl={coverUrl || undefined}
+      queueItems={chapters.map((chapter) => ({ id: chapter.id, title: chapter.title }))}
+      activeQueueId={activeChapter}
+      onQueueItemChange={(chapterId) => {
+        setFragment(undefined);
+        setFocusText(undefined);
+        setFocusAnchorId("");
+        setActiveChapter(chapterId);
+      }}
+    />}
     onDownload={loaded.manifest.exports.some((item) => item.id === "export:epub")
       ? () => void downloadExport(loaded, "export:epub").catch((reason: Error) => setError(reason.message))
       : undefined}

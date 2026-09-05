@@ -609,7 +609,7 @@ export function TimesHomePage() {
         </div>
       </section>
 
-      <section className={`${showingMobileDetail ? "flex" : "hidden lg:flex"} min-h-0 flex-col bg-paper`} aria-label="文章正文">
+      <section className={`${showingMobileDetail ? "flex" : "hidden lg:flex"} min-h-0 min-w-0 flex-col bg-paper`} aria-label="文章正文">
         {activeIssueDate && activeNewsId ? (
           <TimesDetailPage issueDate={activeIssueDate} newsId={activeNewsId} embedded markReadOnOpen={showingMobileDetail} />
         ) : (

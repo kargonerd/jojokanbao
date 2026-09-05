@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -17,7 +17,11 @@ vi.mock("../src/times/api", () => ({
 }));
 
 import { TimesHomePage } from "../src/times/pages/TimesHomePage";
+import { TimesDetailPage } from "../src/times/pages/TimesDetailPage";
+import { DEFAULT_SPEECH_PROVIDERS } from "../src/reading/speech";
 import { useTimesPreferencesStore } from "../src/times/preferencesStore";
+import { useAccountSessionStore } from "../src/account/session";
+import { useFeatureFlagStore } from "../src/featureFlags";
 
 const source = { id: "reuters", name: "Reuters", language: "en" };
 const article = {
@@ -36,6 +40,8 @@ const article = {
 };
 
 beforeEach(() => {
+  useFeatureFlagStore.setState((state) => ({ flags: { ...state.flags, "reader.speech": true } }));
+  useAccountSessionStore.setState({ initialized: true, userId: "test-reader" });
   window.localStorage.clear();
   useTimesPreferencesStore.setState({
     foreignContentLanguage: "zh-CN",
@@ -73,9 +79,10 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
-describe("Times mobile viewport containment", () => {
+describe("Times viewport containment", () => {
   it("uses the dynamic viewport for the shell while retaining the legacy fallback", async () => {
     const shellCss = await readFile(resolve(process.cwd(), "src/shell/styles.css"), "utf8");
     const shellRule = shellCss.match(/\.app-shell\s*\{(?<body>[^}]*)\}/u)?.groups?.body ?? "";
@@ -92,5 +99,32 @@ describe("Times mobile viewport containment", () => {
 
     expect(listViewport).toBeTruthy();
     expect(listViewport?.classList.contains("overscroll-y-contain")).toBe(true);
+  });
+
+  it("places the embedded article mini player outside the article scroll area", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({
+      defaultProvider: "edge", requiresAuth: false, providers: DEFAULT_SPEECH_PROVIDERS,
+    })));
+    const { container } = render(<MemoryRouter>
+      <TimesDetailPage issueDate={article.issueDate} newsId={article.id} embedded />
+    </MemoryRouter>);
+    const launcher = await screen.findByRole("button", { name: "打开听新闻播放器" });
+    expect(container.querySelector("[data-times-speech-dock]")?.contains(launcher)).toBe(true);
+    await act(async () => { fireEvent.click(launcher); });
+    fireEvent.click(screen.getByRole("button", { name: "收起听读播放器" }));
+
+    const scrollArea = container.querySelector("[data-times-article-scroll]")!;
+    const dock = container.querySelector("[data-times-speech-dock]")!;
+    const mini = screen.getByRole("region", { name: "迷你听读播放器" });
+    expect(dock.contains(mini)).toBe(true);
+    expect(scrollArea.contains(mini)).toBe(false);
+    expect(scrollArea.nextElementSibling).toBe(dock);
+    expect(dock.classList.contains("shrink-0")).toBe(true);
+    expect(dock.classList.contains("relative")).toBe(true);
+    expect(dock.parentElement?.classList.contains("min-h-0")).toBe(true);
+    expect(document.body.dataset.speechMini).toBe("docked");
+    fireEvent.click(screen.getByRole("button", { name: "关闭迷你播放器" }));
+    expect(dock.contains(screen.getByRole("button", { name: "打开听新闻播放器" }))).toBe(true);
+    expect(screen.queryByRole("region", { name: "迷你听读播放器" })).toBeNull();
   });
 });

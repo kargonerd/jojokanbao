@@ -1,7 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as Clipboard from "expo-clipboard";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -15,6 +15,9 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import { ScreenHeader } from "../components/ScreenHeader";
+import { NativeSpeechPlayer } from "../reading/SpeechPlayer";
+import { mobileSpeechSegments } from "../reading/speech";
+import { SOURCE_LOGOS } from "../lib/sourceLogos";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import { createTimesArticleDocument } from "../lib/timesArticleDocument";
 import {
@@ -24,6 +27,7 @@ import {
 } from "../lib/timesAgent";
 import {
   mobileTimesApi,
+  leadTimesImage,
   safeTimesExternalUrl,
   type MobileTimesLanguage,
   type MobileTimesNewsItem,
@@ -79,6 +83,12 @@ export function TimesDetailScreen({ route, navigation }: Props) {
     [news],
   );
   const originalUrl = safeTimesExternalUrl(news?.url);
+  const leadImage = news ? leadTimesImage(news) : undefined;
+  const coverUri = leadImage ? news?.assetUrls?.[leadImage.id] : undefined;
+  const loadSpeechChapter = useCallback(async () => {
+    if (!news?.content) throw new Error("这篇新闻暂无可朗读的正文");
+    return { id: newsId, title: news.title, segments: mobileSpeechSegments(news.title, news.content, news.contentFormat ?? "text") };
+  }, [news, newsId]);
 
   function handleWebMessage(event: WebViewMessageEvent) {
     try {
@@ -103,6 +113,7 @@ export function TimesDetailScreen({ route, navigation }: Props) {
     if (!news || !selection) return;
     cancelExplanation.current?.();
     const anchor = selection;
+    setSelection(null);
     let answer = "";
     setExplanation({ anchor, answer: "", status: "正在准备…", error: "" });
     cancelExplanation.current = explainMobileTimesSelection(news, anchor, {
@@ -194,6 +205,8 @@ export function TimesDetailScreen({ route, navigation }: Props) {
           </Pressable>
         </View>
       ) : null}
+
+      {news?.content ? <NativeSpeechPlayer news documentId={`news:${newsId}:${requestedLanguage}`} title={news.title} chapterId={newsId} chapters={[{ id: newsId, title: news.title }]} loadChapter={loadSpeechChapter} hidden={Boolean(selection || explanation || loading)} cover={coverUri ? { uri: coverUri } : SOURCE_LOGOS[news.source.id]} onRead={() => undefined} /> : null}
 
       <Modal
         visible={Boolean(explanation)}

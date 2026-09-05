@@ -3,7 +3,7 @@ import Slider from "@react-native-community/slider";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as Brightness from "expo-brightness";
 import * as Clipboard from "expo-clipboard";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
@@ -12,6 +12,10 @@ import { useMobileAuthStore } from "../account/auth";
 import { ReaderEnvironment } from "../components/ReaderEnvironment";
 import { ReaderNavigationSheet } from "../components/ReaderNavigationSheet";
 import { ReaderSelectionToolbar } from "../components/ReaderSelectionToolbar";
+import { BookThoughtComposer } from "../components/BookThoughtComposer";
+import { NativeSpeechPlayer } from "../reading/SpeechPlayer";
+import { mobileSpeechSegments } from "../reading/speech";
+import { useSpeechFlagStore } from "../reading/featureFlag";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import {
   askMobileBookAgent,
@@ -36,6 +40,7 @@ import {
 } from "../lib/bookReaderBridge";
 import {
   loadMobileBookChapter,
+  loadMobileBookCover,
   loadMobileBookItem,
   loadMobileBookVolumes,
   resolveLegacyBookResume,
@@ -138,6 +143,19 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const [onBookshelf, setOnBookshelf] = useState<boolean>();
   const [bookshelfBusy, setBookshelfBusy] = useState(false);
   const [legacyResume, setLegacyResume] = useState<{ chapterId: string; chapterProgress: number }>();
+  const speechEnabled = useSpeechFlagStore((state) => state.enabled && state.userId === user?.id);
+  const [speechCover, setSpeechCover] = useState<string>();
+  useEffect(() => {
+    let active = true;
+    setSpeechCover(undefined);
+    if (loaded && speechEnabled) void loadMobileBookCover(loaded.book, itemKey).then((uri) => { if (active) setSpeechCover(uri); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [loaded, itemKey, speechEnabled]);
+  const loadSpeechChapter = useCallback(async (id: string) => {
+    if (!loaded) throw new Error("书籍尚未加载");
+    const { fragment } = await loadMobileBookChapter(loaded, id, false);
+    return { id, title: fragment.title, segments: mobileSpeechSegments(fragment.title, fragment.body.value, fragment.body.format) };
+  }, [loaded]);
 
   useEffect(() => {
     let active = true;
@@ -608,7 +626,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
         {!loading && error ? <View style={[styles.center, { backgroundColor: theme.paper }]}><Text accessibilityRole="alert" style={[styles.error, { color: theme.ink, fontFamily: theme.serif }]}>{error}</Text><Pressable onPress={() => setRetryToken((value) => value + 1)} style={[styles.retry, { borderColor: theme.red }]}><Text style={[styles.retryText, { color: theme.red, fontFamily: theme.sans }]}>重新加载</Text></Pressable></View> : null}
       </View>
 
-      {chromeVisible ? <>
+      {chromeVisible && !noteComposer ? <>
         <View style={[styles.header, { top: insets.top, borderBottomColor: theme.ruleDark, backgroundColor: theme.paper }]}>
           <Pressable accessibilityRole="button" accessibilityLabel={referenceHistory.length || returnToReference ? "返回原文" : "返回书籍"} hitSlop={10} onPress={handleBack} style={[styles.iconButton, referenceHistory.length || returnToReference ? styles.referenceBack : null]}><Ionicons name="chevron-back" size={24} color={theme.ink} />{referenceHistory.length || returnToReference ? <Text style={[styles.referenceBackText, { color: theme.ink, fontFamily: theme.sans }]}>原文</Text> : null}</Pressable>
           <View style={styles.headerCopy}><Text numberOfLines={1} style={[styles.bookTitle, { color: theme.ink, fontFamily: theme.serif }]}>{title}</Text><Text numberOfLines={1} style={[styles.chapterTitle, { color: theme.muted, fontFamily: theme.sans }]}>{chapters[activeIndex]?.title ?? bookTitle}</Text></View>
@@ -684,7 +702,8 @@ export function BookReaderScreen({ route, navigation }: Props) {
       </> : null}
 
       {selection ? <ReaderSelectionToolbar selection={selection} frame={readerFrame} theme={theme} eInk={IS_EINK_RELEASE} onCopy={() => { void Clipboard.setStringAsync(selection.text); clearSelection(); }} onUnderline={underlineSelection} onThought={composeSelectionNote} onExplain={explainSelection} /> : null}
-      {noteComposer ? <View style={[styles.noteComposer, { bottom: sheetBottom, borderColor: theme.ruleDark, backgroundColor: theme.paper }]}><Text numberOfLines={2} style={[styles.composerQuote, { color: theme.muted, borderLeftColor: theme.red, fontFamily: theme.serif }]}>{noteComposer.quote}</Text><TextInput autoFocus multiline value={noteDraft} onChangeText={setNoteDraft} placeholder="写想法" placeholderTextColor={theme.muted} style={[styles.noteInput, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.serif }]} /><View style={styles.composerActions}><Pressable onPress={() => { setNoteComposer(undefined); setNoteDraft(""); }}><Text style={[styles.composerButton, { color: theme.muted, fontFamily: theme.sans }]}>取消</Text></Pressable><Pressable disabled={!noteDraft.trim()} onPress={saveNote}><Text style={[styles.composerButton, { color: theme.red, opacity: noteDraft.trim() ? 1 : 0.35, fontFamily: theme.sans }]}>保存</Text></Pressable></View></View> : null}
+      <BookThoughtComposer quote={noteComposer?.quote} value={noteDraft} onChange={setNoteDraft} onCancel={() => { setNoteComposer(undefined); setNoteDraft(""); }} onSave={saveNote} theme={theme} />
+      {loaded && activeChapterId ? <NativeSpeechPlayer documentId={`book:${datasetId}:${itemKey}`} title={loaded.manifest.title} chapterId={activeChapterId} chapters={loaded.manifest.content.chapters ?? []} loadChapter={loadSpeechChapter} cover={speechCover ? { uri: speechCover } : undefined} hidden={!chromeVisible || Boolean(activeTool || selection || noteComposer || activeAnnotationId || expandedImageUri)} bottom={insets.bottom + 64} onRead={chooseChapter} onBookshelf={() => void toggleBookshelf()} onShelf={onBookshelf} bookshelfBusy={bookshelfBusy || typeof onBookshelf !== "boolean"} /> : null}
       {readerNotice ? <Pressable onPress={() => setReaderNotice("")} style={[styles.readerNotice, { top: insets.top + 72, borderColor: theme.red, backgroundColor: theme.paper }]}><Text style={[styles.readerNoticeText, { color: theme.red, fontFamily: theme.sans }]}>{readerNotice}</Text></Pressable> : null}
       <Modal visible={Boolean(expandedImageUri)} transparent={false} animationType="fade" onRequestClose={() => setExpandedImageUri(undefined)}>
         <SafeAreaView edges={["top", "bottom"]} style={[styles.imageModal, { backgroundColor: theme.paper }]}>

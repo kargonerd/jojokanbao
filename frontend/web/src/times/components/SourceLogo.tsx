@@ -28,8 +28,12 @@ const SOURCE_LOGO_OVERRIDES: Record<string, string> = {
 
 type TimesSource = TimesNewsItem["source"];
 
+export function sourceLogoUrl(source: TimesSource): string | undefined {
+  return SOURCE_LOGO_OVERRIDES[source.id];
+}
+
 function logoCandidates(source: TimesSource): string[] {
-  const override = SOURCE_LOGO_OVERRIDES[source.id];
+  const override = sourceLogoUrl(source);
   return override ? [override] : [];
 }
 

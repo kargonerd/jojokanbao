@@ -4,11 +4,14 @@ import { useParams } from "react-router-dom";
 import { SelectableAnnotationArticle } from "../../annotations/SelectableAnnotationArticle";
 import type { TextAnchor } from "../../annotations/types";
 import { ReadingLoadingState } from "../../reading/ReadingLoadingState";
+import { SpeechPlayer } from "../../reading/SpeechPlayer";
+import { speechSegments } from "../../reading/speech";
 import { explainTimesSelection, type TimesExplanationMetadata } from "../ai";
 import { timesApi, type TimesNewsItem } from "../api";
 import { exactArticleTime, publisherUpdatedAt } from "../articleTime";
 import { TimesExplanationPanel } from "../components/TimesExplanationPanel";
 import { TimesImageCarousel, type TimesCarouselItem } from "../components/TimesImageCarousel";
+import { sourceLogoUrl } from "../components/SourceLogo";
 import type { TimesForeignContentLanguage } from "../language";
 import { useTimesPreferencesStore } from "../preferencesStore";
 import { markTimesArticleRead } from "../readStore";
@@ -165,6 +168,7 @@ export function TimesDetailPage({
   const issueDate = providedIssueDate || params.issueDate || "";
   const newsId = providedNewsId || params.newsId || "";
   const [news, setNews] = useState<TimesNewsItem | null>(null);
+  const [miniPlayerTarget, setMiniPlayerTarget] = useState<HTMLDivElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const languagePreference = useTimesPreferencesStore((state) => state.foreignContentLanguage);
   const articleKey = `${issueDate}:${newsId}`;
@@ -189,6 +193,14 @@ export function TimesDetailPage({
     updatedAt && news?.usingTranslation && news.translations?.["zh-CN"]?.stale,
   );
   const articleBody = useMemo(() => news ? materializeAssets(news) : null, [news]);
+  const spokenArticle = useMemo(() => news
+    ? speechSegments(news.title, news.content || "", news.contentFormat || "text")
+    : [], [news]);
+  const speechArtworkUrl = useMemo(() => {
+    const images = news?.assets.filter((asset) => asset.type === "image" && news.assetUrls?.[asset.id]) ?? [];
+    const artwork = images.find((asset) => asset.role === "lead") ?? images[0];
+    return artwork ? news?.assetUrls?.[artwork.id] : undefined;
+  }, [news]);
 
   useEffect(() => {
     let active = true;
@@ -282,6 +294,17 @@ export function TimesDetailPage({
             </p>
           ) : null}
           <h1 className="mt-4 text-3xl font-black leading-tight xl:text-4xl">{news.title}</h1>
+          <SpeechPlayer
+            contentId={`news:${articleKey}`}
+            miniPlayerTarget={embedded ? miniPlayerTarget : null}
+            segments={spokenArticle}
+            label="听新闻"
+            title={news.title}
+            collectionTitle={timesSourceName(news.source)}
+            artworkUrl={speechArtworkUrl}
+            artworkFallbackUrl={sourceLogoUrl(news.source)}
+            defaultVoice="zh-CN-YunyangNeural"
+          />
           <SelectableAnnotationArticle subject={{
             contentType: "newspaper",
             contentId: news.id,
@@ -302,7 +325,10 @@ export function TimesDetailPage({
   );
 
   const page = embedded
-    ? <div className="min-h-0 flex-1 overflow-y-auto bg-paper">{content}</div>
+    ? <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-paper">
+        <div className="min-h-0 flex-1 overflow-y-auto lg:overscroll-y-contain" data-times-article-scroll>{content}</div>
+        <div ref={setMiniPlayerTarget} className="relative shrink-0" data-times-speech-dock />
+      </div>
     : <main className="min-h-[calc(100vh-64px)] bg-paper text-ink">{content}</main>;
   return <>{page}{explanation ? <TimesExplanationPanel {...explanation} onClose={closeExplanation} /> : null}</>;
 }

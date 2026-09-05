@@ -21,6 +21,12 @@
   --color-red: #d8786e;
 }
 
+/* Keep the reading surface in place when mobile chrome is dismissed. */
+.book-reader[data-reader-chrome-hidden="true"] [data-reader-chrome] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .book-mobile-toolbar {
   position: fixed;
   right: 0;
@@ -524,7 +530,6 @@ mark[data-book-search-target] {
 .book-selection-actions { display: flex; flex-shrink: 0; height: 64px; padding: 4px; background: #333333; color: #ffffff; }
 .book-selection-actions .reader-selection-action { display: flex; flex: 1; min-width: 0; height: auto; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border: 0; padding: 4px; color: #ffffff; background: transparent; font-size: 12px; font-weight: 500; line-height: 16px; white-space: nowrap; }
 .book-selection-actions svg { width: 22px; height: 22px; }
-.book-selection-actions .book-selection-ai { border-left: 1px solid #666666; }
 .book-selection-underline { height: 22px; font-family: Georgia, serif; font-size: 22px; line-height: 24px; text-decoration: underline; }
 .book-selection-actions .reader-selection-action:hover, .book-selection-actions .reader-selection-action:focus-visible { color: #ffffff; background: #555555; transform: none; box-shadow: none; }
 .book-selection-actions .reader-selection-action:focus-visible { outline: 1px solid #ffffff; outline-offset: -3px; }
@@ -532,7 +537,29 @@ mark[data-book-search-target] {
 .book-selection-arrow { position: absolute; width: 0; height: 0; margin-left: -7px; border-left: 7px solid transparent; border-right: 7px solid transparent; }
 .book-selection-tools[data-side="above"] .book-selection-arrow { top: 100%; border-top: 7px solid #333333; }
 .book-selection-tools[data-side="below"] .book-selection-arrow { bottom: 100%; border-bottom: 7px solid #333333; }
-.book-selection-thought { min-height: 0; max-height: 200px; overflow-y: auto; }
+.book-thought-dialog { position: fixed; inset: 0; width: 100%; max-width: none; max-height: none; margin: 0; border: 0; padding: 24px; background: transparent; color: inherit; box-sizing: border-box; }
+.book-thought-dialog[open] { display: flex; align-items: center; justify-content: center; }
+.book-thought-dialog::backdrop { background: rgb(0 0 0 / 24%); }
+.book-thought-composer { display: flex; flex-direction: column; gap: 20px; width: 520px; max-width: 100%; max-height: 100%; min-height: 0; border-width: 1px; border-style: solid; padding: 24px; font-family: var(--font-serif), serif; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; }
+.book-thought-composer__header, .book-thought-composer__footer { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; }
+.book-thought-composer__header h2 { margin: 0; font-size: 20px; font-weight: 600; }
+.book-thought-composer button { min-height: 40px; border: 0; padding: 8px; background: transparent; color: inherit; font-family: var(--font-sans), sans-serif; font-size: 13px; cursor: pointer; box-shadow: none; transform: none; }
+.book-thought-composer button:disabled { opacity: .4; cursor: default; }
+.book-thought-composer :focus-visible { outline: 2px solid var(--color-red); outline-offset: 3px; }
+.book-thought-composer__quote { flex-shrink: 0; max-height: 140px; max-height: min(140px, 22vh); margin: 0; border-left: 2px solid var(--color-red); padding: 2px 12px; overflow-y: auto; overscroll-behavior: contain; overflow-wrap: anywhere; font-size: 14px; line-height: 1.85; }
+.book-thought-composer textarea { flex: 1 0 96px; min-height: 96px; width: 100%; border: 0; border-bottom: 1px solid currentColor; border-color: inherit; padding: 8px 0; background: transparent; color: inherit; font: inherit; font-size: 16px; line-height: 1.8; resize: none; box-shadow: none; outline: none; }
+.book-thought-composer textarea:focus { border-bottom-color: var(--color-red); }
+.book-thought-composer__footer { flex-wrap: wrap; }
+.book-thought-composer__footer .annotation-visibility { flex-wrap: wrap; gap: 8px; }
+.book-thought-composer__footer .annotation-visibility__label { display: none; }
+.book-thought-composer button.book-thought-composer__save { margin-left: auto; min-width: 72px; padding: 10px 18px; background: var(--color-red); color: white; }
+.book-thought-composer__error { margin: 0; color: var(--color-red); font-size: 13px; }
+@media (max-width: 767px) {
+  .book-thought-dialog { padding: 0; }
+  .book-thought-dialog[open] { align-items: flex-end; }
+  .book-thought-composer { width: 100%; gap: 14px; padding: 18px 20px max(16px, env(safe-area-inset-bottom)); border-width: 1px 0 0; }
+  .book-thought-composer__quote { max-height: 112px; }
+}
 
 .book-navigation-backdrop {
   position: fixed;

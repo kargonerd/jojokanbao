@@ -27,3 +27,13 @@ class AuthServiceError(ApiError):
 class ConfigurationError(ApiError):
     def __init__(self, message: str = "Service authentication is not configured") -> None:
         super().__init__(503, "service_not_configured", message)
+
+
+class SpeechServiceError(ApiError):
+    def __init__(self, message: str = "Speech synthesis is temporarily unavailable") -> None:
+        super().__init__(502, "speech_service_unavailable", message)
+
+
+class SpeechUnavailableError(ApiError):
+    def __init__(self, message: str = "Speech synthesis is not enabled") -> None:
+        super().__init__(503, "speech_not_enabled", message)
