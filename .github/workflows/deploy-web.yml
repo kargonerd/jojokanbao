@@ -1,6 +1,12 @@
 name: Deploy · Web
 
 on:
+  # Validate the exact Linux deployment bundle before merging, without publishing.
+  pull_request:
+    paths:
+      - ".github/workflows/deploy-web.yml"
+      - "backend/**"
+      - "infrastructure/edgeone/**"
   push:
     branches:
       - master
@@ -39,22 +45,20 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-web-${{ github.event_name == 'workflow_dispatch' && inputs.environment || github.ref == 'refs/heads/master' && 'preview' || 'production' }}
+  group: deploy-web-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'workflow_dispatch' && inputs.environment || github.ref == 'refs/heads/master' && 'preview' || 'production' }}
   cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || github.ref == 'refs/heads/master' && 'preview' || 'production' }}
+    environment: ${{ github.event_name == 'pull_request' && 'preview' || github.event_name == 'workflow_dispatch' && inputs.environment || github.ref == 'refs/heads/master' && 'preview' || 'production' }}
     env:
-      EDGEONE_API_TOKEN: ${{ secrets.EDGEONE_API_TOKEN }}
       EDGEONE_PROJECT_NAME: ${{ vars.EDGEONE_PROJECT_NAME || 'jojo-reader' }}
-      EDGEONE_DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || github.ref == 'refs/heads/master' && 'preview' || 'production' }}
-      EDGEONE_UPLOAD_FROM_PATH: ./.edgeone/web-deploy/
+      EDGEONE_DEPLOY_ENV: ${{ github.event_name == 'pull_request' && 'preview' || github.event_name == 'workflow_dispatch' && inputs.environment || github.ref == 'refs/heads/master' && 'preview' || 'production' }}
       # Relevant master changes automatically publish the public Beta channel.
       # Production tags remain stable until its redesign flag is enabled.
-      VITE_ENABLE_PLATFORM_REDESIGN: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'preview') || (github.event_name == 'push' && github.ref == 'refs/heads/master')) && 'true' || vars.VITE_ENABLE_PLATFORM_REDESIGN || 'false' }}
-      VITE_RELEASE_CHANNEL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'preview') || (github.event_name == 'push' && github.ref == 'refs/heads/master')) && 'beta' || 'stable' }}
+      VITE_ENABLE_PLATFORM_REDESIGN: ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'preview') || (github.event_name == 'push' && github.ref == 'refs/heads/master')) && 'true' || vars.VITE_ENABLE_PLATFORM_REDESIGN || 'false' }}
+      VITE_RELEASE_CHANNEL: ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'preview') || (github.event_name == 'push' && github.ref == 'refs/heads/master')) && 'beta' || 'stable' }}
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
       VITE_CONTENT_CDN_BASE: ${{ vars.VITE_CONTENT_CDN_BASE || 'https://blacknews.jojokanbao.cn/' }}
@@ -69,6 +73,10 @@ jobs:
           node-version: 22.19.0
           cache: pnpm
 
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.10"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -81,25 +89,42 @@ jobs:
       - name: Prepare Web and Cloud API deployment
         run: pnpm prepare:web-deploy
 
-      - name: Prepare web deployment
+      - name: Build EdgeOne function bundles
+        working-directory: .edgeone/web-deploy
+        run: pnpm dlx edgeone@1.6.14 makers build
+
+      - name: Restore SDK runtime modules pruned by EdgeOne CLI
+        run: python infrastructure/edgeone/repair-python-bundle.py --bundle .edgeone/web-deploy/.edgeone/cloud-functions/api-python
+
+      - name: Verify isolated Python deployment runtime
+        run: python infrastructure/edgeone/verify-python-bundle.py --bundle .edgeone/web-deploy/.edgeone/cloud-functions/api-python
+
+      - name: Verify prebuilt Web and production middleware
         run: |
-          test -n "$EDGEONE_API_TOKEN" || (echo "EDGEONE_API_TOKEN is not configured" >&2 && exit 1)
-          find "$EDGEONE_UPLOAD_FROM_PATH" -name "*.map" -delete
+          cmp frontend/web/dist/index.html .edgeone/web-deploy/.edgeone/assets/index.html
+          node -e 'const fs=require("node:fs"),assert=require("node:assert/strict"); const root=".edgeone/web-deploy/.edgeone"; assert.equal(JSON.parse(fs.readFileSync(root+"/assets/.edgeone-assets-config.json")).needsFallback,true); const middleware=fs.readFileSync(root+"/edge-functions/index.js","utf8"); assert.ok(middleware.includes("X-Robots-Tag") && middleware.includes("noindex"),"Expected production Beta middleware");'
+
+      - name: Remove source maps from deployment artifacts
+        run: |
+          find .edgeone/web-deploy/.edgeone -name "*.map" -delete
 
       - name: Deploy to EdgeOne Makers
-        run: >-
-          pnpm dlx edgeone@1.6.14 makers deploy "$EDGEONE_UPLOAD_FROM_PATH"
-          --name "$EDGEONE_PROJECT_NAME"
-          --token "$EDGEONE_API_TOKEN"
-          --env "$EDGEONE_DEPLOY_ENV"
+        if: github.event_name != 'pull_request'
+        working-directory: .edgeone/web-deploy
+        env:
+          EDGEONE_API_TOKEN: ${{ secrets.EDGEONE_API_TOKEN }}
+        # Upload the verified Build Output, not raw sources which would be pruned again.
+        run: |
+          test -n "$EDGEONE_API_TOKEN" || (echo "EDGEONE_API_TOKEN is not configured" >&2 && exit 1)
+          pnpm dlx edgeone@1.6.14 makers deploy ./.edgeone/ --name "$EDGEONE_PROJECT_NAME" --token "$EDGEONE_API_TOKEN" --env "$EDGEONE_DEPLOY_ENV"
 
       - name: Verify deployed web assets
-        if: ${{ inputs.verify_base_url != '' || (env.EDGEONE_DEPLOY_ENV == 'preview' && vars.EDGEONE_BETA_BASE_URL != '') || (env.EDGEONE_DEPLOY_ENV == 'production' && vars.EDGEONE_READER_BASE_URL != '') }}
+        if: ${{ github.event_name != 'pull_request' && (inputs.verify_base_url != '' || (env.EDGEONE_DEPLOY_ENV == 'preview' && vars.EDGEONE_BETA_BASE_URL != '') || (env.EDGEONE_DEPLOY_ENV == 'production' && vars.EDGEONE_READER_BASE_URL != '')) }}
         env:
           READER_BASE_URL: ${{ inputs.verify_base_url || (env.EDGEONE_DEPLOY_ENV == 'preview' && vars.EDGEONE_BETA_BASE_URL) || vars.EDGEONE_READER_BASE_URL }}
           READER_DEPLOY_REVISION: ${{ github.sha }}
         run: node frontend/web/scripts/verify-deployment.mjs
 
       - name: Report deferred deployment verification
-        if: ${{ inputs.verify_base_url == '' && ((env.EDGEONE_DEPLOY_ENV == 'preview' && vars.EDGEONE_BETA_BASE_URL == '') || (env.EDGEONE_DEPLOY_ENV == 'production' && vars.EDGEONE_READER_BASE_URL == '')) }}
+        if: ${{ github.event_name != 'pull_request' && inputs.verify_base_url == '' && ((env.EDGEONE_DEPLOY_ENV == 'preview' && vars.EDGEONE_BETA_BASE_URL == '') || (env.EDGEONE_DEPLOY_ENV == 'production' && vars.EDGEONE_READER_BASE_URL == '')) }}
         run: echo "::notice::Deployment uploaded. Set the matching EDGEONE_BETA_BASE_URL or EDGEONE_READER_BASE_URL variable for automatic verification."
