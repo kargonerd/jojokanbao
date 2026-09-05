@@ -204,6 +204,56 @@ describe("BookReader", () => {
     expect(screen.queryByRole("button", { name: "切换纸张纹理" })).toBeNull();
   });
 
+  it("keeps book search usable as the keyboard opens, pans, and closes", async () => {
+    window.innerWidth = 390;
+    vi.stubGlobal("innerHeight", 844);
+    const viewport = Object.assign(new EventTarget(), { height: 844, offsetTop: 0 });
+    vi.stubGlobal("visualViewport", viewport);
+    renderReader();
+    fireEvent.click(screen.getByRole("button", { name: "打开目录" }));
+    fireEvent.click(screen.getByRole("tab", { name: "⌕ 搜本书" }));
+    const input = screen.getByRole<HTMLInputElement>("textbox", { name: "搜索全书正文" });
+    fireEvent.change(input, { target: { value: "正文" } });
+    expect(document.activeElement).toBe(input);
+
+    const sheet = screen.getByRole("complementary", { name: "全书搜索" });
+    const frame = sheet.parentElement!;
+    act(() => { viewport.height = 380; viewport.offsetTop = 48; viewport.dispatchEvent(new Event("resize")); });
+    expect(frame.style.height).toBe("380px");
+    expect(frame.style.top).toBe("48px");
+    act(() => { viewport.offsetTop = 80; viewport.dispatchEvent(new Event("scroll")); });
+    expect(frame.style.top).toBe("80px");
+    expect(input.value).toBe("正文");
+
+    fireEvent.submit(input.closest("form")!);
+    expect(document.activeElement).not.toBe(input);
+    expect(await screen.findByText("本书没有找到“正文”。")).toBeTruthy();
+    act(() => { viewport.height = 844; viewport.offsetTop = 0; viewport.dispatchEvent(new Event("resize")); });
+    expect(frame.style.height).toBe("844px");
+    expect(frame.style.top).toBe("0px");
+    expect(screen.getByRole("textbox", { name: "搜索全书正文" })).toBe(input);
+    expect(input.value).toBe("正文");
+    fireEvent.click(screen.getByRole("button", { name: "关闭书内导航" }));
+    expect(screen.queryByRole("complementary", { name: "全书搜索" })).toBeNull();
+  });
+
+  it("resizes book navigation without VisualViewport and removes its listeners on close", () => {
+    window.innerWidth = 390;
+    vi.stubGlobal("innerHeight", 844);
+    vi.stubGlobal("visualViewport", undefined);
+    const removeEventListener = vi.spyOn(window, "removeEventListener");
+    renderReader();
+    fireEvent.click(screen.getByRole("button", { name: "打开目录" }));
+    const frame = screen.getByRole("complementary", { name: "目录面板" }).parentElement!;
+    expect(frame.style.height).toBe("844px");
+    vi.stubGlobal("innerHeight", 380);
+    fireEvent(window, new Event("resize"));
+    expect(frame.style.height).toBe("380px");
+    expect(frame.style.top).toBe("0px");
+    fireEvent.click(screen.getByRole("button", { name: "关闭书内导航" }));
+    expect(removeEventListener).toHaveBeenCalledWith("resize", expect.any(Function));
+  });
+
   it.each(["scroll", "paged"])("toggles all mobile chrome with a body tap in %s mode without remounting the text", (mode) => {
     window.innerWidth = 390;
     window.localStorage.setItem("jojo-reader-mode", mode);

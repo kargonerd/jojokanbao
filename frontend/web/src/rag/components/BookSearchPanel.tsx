@@ -1,5 +1,5 @@
 import DOMPurify from "dompurify";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 import type { RagSearchHit } from "../types";
 
 interface BookSearchPanelProps {
@@ -29,11 +29,13 @@ export function BookSearchPanel({ bookTitle, embedded = false, panelClass, onClo
   const [searched, setSearched] = useState(false);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
 
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault();
     const value = query.trim();
     if (!value || searching) return;
+    if (embedded) inputRef.current?.blur();
     setSearching(true);
     setError("");
     try {
@@ -52,8 +54,8 @@ export function BookSearchPanel({ bookTitle, embedded = false, panelClass, onClo
       {!embedded && <div className="flex items-start justify-between gap-5"><div><p className="m-0 font-sans text-[11px] tracking-[.18em] text-red">全书搜索</p><h2 className="mb-0 mt-2 text-lg leading-snug">{bookTitle}</h2></div><button type="button" onClick={onClose} className="border-0 bg-transparent text-2xl text-current cursor-pointer" aria-label="关闭全书搜索">×</button></div>}
       <form onSubmit={(event) => void submit(event)} className={`${embedded ? "" : "mt-5"} flex items-center gap-3 border-b border-rule focus-within:border-red`}>
         <span aria-hidden="true" className="font-sans text-sm text-muted">⌕</span>
-        <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索正文" aria-label="搜索全书正文" className="book-toc-search min-w-0 flex-1 bg-transparent py-2 text-sm text-current" />
-        <button type="submit" disabled={!query.trim() || searching} className="border-0 bg-transparent p-0 font-sans text-xs font-bold text-red cursor-pointer disabled:opacity-30">搜索</button>
+        <input ref={inputRef} autoFocus enterKeyHint="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索正文" aria-label="搜索全书正文" className="book-toc-search min-w-0 flex-1 bg-transparent py-2 text-base text-current" />
+        <button type="submit" disabled={!query.trim() || searching} className="min-h-11 min-w-11 shrink-0 border-0 bg-transparent p-0 font-sans text-xs font-bold text-red cursor-pointer disabled:opacity-30">搜索</button>
       </form>
     </header>
     <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
