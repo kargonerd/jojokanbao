@@ -46,6 +46,17 @@ describe("Times Runtime workflows", () => {
     ordered(body, ["--action select-jobs", "Install rclone for publication"]);
   });
 
+  it("queues both Delivery writers without replacing pending cleanup or releasing their shared lock", async () => {
+    for (const name of ["maintenance-times-process.yml", "maintenance-times-runtime-cleanup.yml"]) {
+      const body = parse(await workflow(name)) as { concurrency: Record<string, unknown> };
+      expect(body.concurrency).toEqual({
+        group: "times-delivery-writer",
+        queue: "max",
+        "cancel-in-progress": false,
+      });
+    }
+  });
+
   it("publishes Raw marker-last, then advances Capture memory without Dataset writes", async () => {
     const body = await workflow("maintenance-times-capture.yml");
     expect(body).toContain("name: Maintenance · Times Capture");
