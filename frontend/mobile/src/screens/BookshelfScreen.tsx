@@ -7,6 +7,7 @@ import { BookCoverCard } from "../components/BookCoverCard";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import { loadMobileBooks, type MobileBook } from "../lib/books";
+import { REMOVE_CLIPPED_SUBVIEWS } from "../lib/nativePerformance";
 import { getLibraryCellWidth, getLibraryColumnCount } from "../lib/tabletLayout";
 import type { RootStackParamList } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
@@ -130,7 +131,7 @@ export function BookshelfScreen({ navigation }: Props) {
           initialNumToRender={columnCount * 3}
           maxToRenderPerBatch={columnCount * 3}
           windowSize={7}
-          removeClippedSubviews
+          removeClippedSubviews={REMOVE_CLIPPED_SUBVIEWS}
         />
       )}
     </SafeAreaView>

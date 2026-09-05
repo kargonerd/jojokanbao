@@ -11,12 +11,13 @@
     "web": "expo start --web",
     "build": "pnpm build:android && pnpm build:ios",
     "build:android": "cross-env APP_VARIANT=standard EXPO_PUBLIC_APP_VARIANT=standard expo export --platform android --output-dir dist/android",
-    "build:ios": "cross-env APP_VARIANT=standard EXPO_PUBLIC_APP_VARIANT=standard expo export --platform ios --output-dir dist/ios",
+    "build:ios": "node scripts/validate-ios.mjs && cross-env APP_VARIANT=standard EXPO_PUBLIC_APP_VARIANT=standard expo export --platform ios --output-dir dist/ios",
     "build:eink": "pnpm build:eink:android",
     "build:eink:android": "cross-env APP_VARIANT=eink EXPO_PUBLIC_APP_VARIANT=eink expo export --platform android --output-dir dist/eink-android",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "doctor": "expo-doctor"
+    "doctor": "expo-doctor",
+    "validate:ios": "node scripts/validate-ios.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~55.0.12",

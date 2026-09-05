@@ -20,6 +20,7 @@ the environments that need different runners or dependencies:
 - pnpm/Turborepo workspaces
 - Web browser tests
 - Desktop renderer browser tests
+- Mobile iOS native Release compilation and Simulator launch smoke test
 - root-level Homepage content
 - Supabase migrations and the shared Auth contract
 - EdgeOne Python Cloud API tests
@@ -70,6 +71,9 @@ external state:
 - `release-mobile.yml` asks EAS Build for the signed standard Android APK;
   `mobile-v*` tags publish the APK, catalog, and checksum below the B2
   `releases/mobile/android/` prefix and as a GitHub Release
+- `release-mobile-ios.yml` asks EAS Build for a signed App Store archive;
+  `mobile-ios-v*` tags submit that exact build to TestFlight, while manual runs
+  stop after the production archive is available on the EAS build dashboard
 - `release-mobile-eink.yml` asks EAS Build for a signed Android APK; `mobile-eink-v*`
   tags use the independent `releases/mobile/android-eink/` prefix and release catalog
 - `release-mobile-ota.yml` publishes, adjusts, or rolls back percentage-based EAS

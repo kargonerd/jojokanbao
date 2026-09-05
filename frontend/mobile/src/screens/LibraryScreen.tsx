@@ -23,6 +23,7 @@ import {
   type MobileBook,
 } from "../lib/books";
 import { impactHaptic } from "../lib/haptics";
+import { REMOVE_CLIPPED_SUBVIEWS } from "../lib/nativePerformance";
 import { getLibraryCellWidth, getLibraryColumnCount } from "../lib/tabletLayout";
 import type { RootStackParamList } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
@@ -205,7 +206,7 @@ export function LibraryScreen() {
         initialNumToRender={columnCount * 3}
         maxToRenderPerBatch={columnCount * 3}
         windowSize={7}
-        removeClippedSubviews
+        removeClippedSubviews={REMOVE_CLIPPED_SUBVIEWS}
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
         overScrollMode={IS_EINK_RELEASE ? "never" : "always"}

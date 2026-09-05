@@ -243,7 +243,9 @@ export function HomeScreen() {
             </Pressable>
           )) : (
             <View style={[styles.empty, { borderColor: theme.rule, backgroundColor: theme.paper }]}>
-              <Text style={[styles.emptyGlyph, { color: theme.red, fontFamily: theme.serif }]}>阅</Text>
+              <View style={[styles.emptyGlyphFrame, { borderColor: theme.ink }]}>
+                <Text style={[styles.emptyGlyph, { color: theme.red, fontFamily: theme.serif }]}>阅</Text>
+              </View>
               <View style={styles.emptyCopy}>
                 <Text style={[styles.emptyTitle, { color: theme.ink, fontFamily: theme.serif }]}>还没有阅读记录</Text>
                 <Text style={[styles.emptyText, { color: theme.muted, fontFamily: theme.sans }]}>从资料库打开一份报刊或书籍，下一次从这里接着读。</Text>
@@ -289,7 +291,8 @@ const styles = StyleSheet.create({
   progressTrack: { height: 2, marginTop: 8 },
   progressValue: { height: 2 },
   empty: { marginTop: 14, minHeight: 138, borderWidth: 1, padding: 16, flexDirection: "row", alignItems: "center", gap: 16 },
-  emptyGlyph: { width: 48, height: 58, borderWidth: 1, textAlign: "center", textAlignVertical: "center", fontSize: 20, fontWeight: "500" },
+  emptyGlyphFrame: { width: 48, height: 58, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  emptyGlyph: { fontSize: 20, lineHeight: 28, fontWeight: "500", textAlign: "center" },
   emptyCopy: { flex: 1 },
   emptyTitle: { fontSize: 15, fontWeight: "900" },
   emptyText: { marginTop: 4, fontSize: 11, lineHeight: 17 },

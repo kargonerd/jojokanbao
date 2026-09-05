@@ -18,6 +18,7 @@ import { AuthenticatedFeatureGate } from "../components/AuthenticatedFeatureGate
 import { ScreenHeader } from "../components/ScreenHeader";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import { impactHaptic, selectionHaptic } from "../lib/haptics";
+import { REMOVE_CLIPPED_SUBVIEWS } from "../lib/nativePerformance";
 import {
   firstTimesTimelineCursor,
   leadTimesImage,
@@ -288,7 +289,7 @@ export function TimesScreen() {
           initialNumToRender={8}
           maxToRenderPerBatch={8}
           windowSize={7}
-          removeClippedSubviews
+          removeClippedSubviews={REMOVE_CLIPPED_SUBVIEWS}
           ListEmptyComponent={!error ? <Text style={[styles.emptyText, { color: theme.muted, fontFamily: theme.serif }]}>暂无文章</Text> : null}
           ListFooterComponent={(
             <View style={styles.timelineFooter}>
