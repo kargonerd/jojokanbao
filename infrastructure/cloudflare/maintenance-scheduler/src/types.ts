@@ -46,15 +46,26 @@ export interface ScheduledTask {
     graceSeconds: number;
     tags: string;
     description: string;
+    // Independently reported downstream stages inherit this task's schedule.
+    stages?: Array<Omit<HealthcheckDefinition, "schedule" | "timeZone">>;
   };
   inputs(context: TaskInputContext): Record<string, string>;
 }
 
 export function taskHealthcheck(task: ScheduledTask): HealthcheckDefinition {
+  const { stages: _stages, ...monitoring } = task.monitoring;
   return {
-    ...task.monitoring,
+    ...monitoring,
     slug: task.id,
     schedule: task.cron,
     timeZone: task.timeZone,
   };
+}
+
+export function taskStageHealthchecks(task: ScheduledTask): HealthcheckDefinition[] {
+  return (task.monitoring.stages ?? []).map((stage) => ({
+    ...stage,
+    schedule: task.cron,
+    timeZone: task.timeZone,
+  }));
 }

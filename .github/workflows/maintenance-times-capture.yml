@@ -107,7 +107,7 @@ jobs:
 
       - name: Restore CI-verified Times runtime
         id: times_runtime_cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .times-runtime
           key: ${{ runner.os }}-times-pipeline-runtime-v1-${{ hashFiles('tools/times-pipeline/src/**/*.ts', 'tools/times-pipeline/tsconfig.json', 'tools/times-pipeline/package.json', 'frontend/packages/content/src/**/*.ts', 'frontend/packages/content/package.json', 'pnpm-lock.yaml') }}
@@ -118,6 +118,13 @@ jobs:
           pnpm install --frozen-lockfile --filter @jojo/times-pipeline...
           pnpm --filter @jojo/times-pipeline build
           pnpm --filter @jojo/times-pipeline --prod deploy "$TIMES_RUNTIME_ROOT"
+
+      - name: Save prepared Times runtime
+        if: steps.times_runtime_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .times-runtime
+          key: ${{ steps.times_runtime_cache.outputs.cache-primary-key }}
 
       - name: Restore Capture memory
         id: capture_memory_restore
@@ -130,19 +137,44 @@ jobs:
             --bucket "$HF_TIMES_RUNTIME_BUCKET" \
             --output "$RUNNER_TEMP/jojo-times"
 
-      - name: Start pinned Mihomo for a configured subscription
+      - name: Restore pinned Mihomo archive
+        id: mihomo_cache
         if: env.JOJO_TIMES_PROXY_SUBSCRIPTION != ''
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ runner.temp }}/mihomo-cache
+          key: mihomo-${{ runner.os }}-${{ runner.arch }}-1.19.30
+
+      - name: Prepare pinned Mihomo binary
+        if: env.JOJO_TIMES_PROXY_SUBSCRIPTION != ''
+        timeout-minutes: 4
         env:
           MIHOMO_VERSION: 1.19.30
           MIHOMO_SHA256: cf06ce2c7d1421bdbda14ee4a5b6046672dc35ebf8eecd8e77504ec3c0ed9a84
         run: |
-          mkdir -p "$RUNNER_TEMP/mihomo"
-          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 300 \
-            "https://github.com/MetaCubeX/mihomo/releases/download/v${MIHOMO_VERSION}/mihomo-linux-amd64-v${MIHOMO_VERSION}.gz" \
-            -o "$RUNNER_TEMP/mihomo/mihomo.gz"
-          echo "$MIHOMO_SHA256  $RUNNER_TEMP/mihomo/mihomo.gz" | sha256sum -c -
-          gzip -d "$RUNNER_TEMP/mihomo/mihomo.gz"
+          mkdir -p "$RUNNER_TEMP/mihomo" "$RUNNER_TEMP/mihomo-cache"
+          archive="$RUNNER_TEMP/mihomo-cache/mihomo.gz"
+          if ! test -f "$archive" || ! echo "$MIHOMO_SHA256  $archive" | sha256sum -c -; then
+            curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 --retry-max-time 180 --connect-timeout 20 --max-time 120 \
+              "https://github.com/MetaCubeX/mihomo/releases/download/v${MIHOMO_VERSION}/mihomo-linux-amd64-v${MIHOMO_VERSION}.gz" \
+              -o "$archive"
+          fi
+          echo "$MIHOMO_SHA256  $archive" | sha256sum -c -
+          gzip -dc "$archive" > "$RUNNER_TEMP/mihomo/mihomo"
           chmod 700 "$RUNNER_TEMP/mihomo/mihomo"
+
+      - name: Save pinned Mihomo archive
+        if: env.JOJO_TIMES_PROXY_SUBSCRIPTION != '' && steps.mihomo_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          # Never cache config.yaml, the subscription, or proxy runtime logs.
+          path: ${{ runner.temp }}/mihomo-cache
+          key: ${{ steps.mihomo_cache.outputs.cache-primary-key }}
+
+      - name: Start pinned Mihomo for a configured subscription
+        if: env.JOJO_TIMES_PROXY_SUBSCRIPTION != ''
+        timeout-minutes: 6
+        run: |
           node "$TIMES_RUNTIME_ROOT/dist/src/prepare-proxy-cli.js" --output "$RUNNER_TEMP/mihomo/config.yaml"
           nohup "$RUNNER_TEMP/mihomo/mihomo" -d "$RUNNER_TEMP/mihomo" -f "$RUNNER_TEMP/mihomo/config.yaml" \
             > "$RUNNER_TEMP/mihomo/runtime.log" 2>&1 &
@@ -168,18 +200,27 @@ jobs:
           echo "BPC_REVISION=$BPC_REVISION" >> "$GITHUB_ENV"
 
       - name: Restore pinned browser cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: browser_cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cache/ms-playwright
             ${{ runner.temp }}/brave-cache
           key: times-capture-browsers-${{ runner.os }}-${{ runner.arch }}-playwright-1.60.0-brave-1.93.138
 
-      - name: Install Chromium for page capture
+      - name: Install browser system dependencies
+        timeout-minutes: 5
         run: |
-          node "$TIMES_RUNTIME_ROOT/node_modules/playwright/cli.js" install --with-deps chromium
+          bash tools/ci/with-apt-timeouts.sh "$(command -v node)" \
+            "$TIMES_RUNTIME_ROOT/node_modules/playwright/cli.js" install-deps chromium
+
+      - name: Install Chromium for page capture
+        timeout-minutes: 5
+        run: |
+          node "$TIMES_RUNTIME_ROOT/node_modules/playwright/cli.js" install chromium
 
       - name: Install pinned Brave for Playwright
+        timeout-minutes: 5
         env:
           BRAVE_VERSION: 1.93.138
           BRAVE_SHA256: cf18b2d443f067241e13662484c4b9523f13ff089ba1fc27c88f67911586ac9f
@@ -203,6 +244,15 @@ jobs:
           test -x "$brave_path"
           "$brave_path" --version
           echo "JOJO_TIMES_BRAVE_PATH=$brave_path" >> "$GITHUB_ENV"
+
+      - name: Save prepared browser cache
+        if: steps.browser_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ${{ runner.temp }}/brave-cache
+          key: ${{ steps.browser_cache.outputs.cache-primary-key }}
 
       - name: Capture all enabled sources
         run: |
@@ -372,15 +422,15 @@ jobs:
           }
           NODE
 
-      - name: Report automatic Capture failure
-        if: ${{ always() && inputs.automatic && job.status != 'success' }}
+      - name: Report automatic Capture outcome
+        if: ${{ always() && inputs.automatic && inputs.publish }}
         continue-on-error: true
         env:
-          HEALTHCHECKS_SIGNAL: fail
+          HEALTHCHECKS_SIGNAL: ${{ job.status == 'success' && 'success' || 'fail' }}
           HEALTHCHECKS_TASK_ID: times-capture
           HEALTHCHECKS_STAGE: times-capture
           HEALTHCHECKS_STATUS: ${{ job.status }}
-          HEALTHCHECKS_FAILURE_TYPE: run-failed
+          HEALTHCHECKS_FAILURE_TYPE: ${{ job.status != 'success' && 'run-failed' || '' }}
           HEALTHCHECKS_SCHEDULED_AT: ${{ inputs.scheduled_at }}
           HEALTHCHECKS_SLOT_ID: ${{ inputs.schedule_slot }}
           HEALTHCHECKS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

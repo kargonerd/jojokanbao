@@ -161,12 +161,24 @@ Delivery 构建会合并旧 index，所以滚动历史不会在下一轮消失�
 
 ## GitHub Actions
 
-- maintenance-times-capture.yml：每十分钟完成发现、URL 去重、页面/图片抓取，上传一个 Runtime job，
+- maintenance-times-capture.yml：CF 每五分钟检查一次，空闲时完成发现、URL 去重、页面/图片抓取，上传一个 Runtime job，
   最后更新 Capture memory；
 - maintenance-times-process.yml：从 status marker 重建 FIFO，读取最早可运行 job 和已提交 Process memory，随后按
   Asset/Article → 媒体日期 → 媒体 index → 时间线日期 → 时间线 index → catalog 发布 B2；B2 成功后
   才推进 Process memory 指针和 job 状态；
 - maintenance-times-runtime-cleanup.yml：每日按 14/30 天保留规则清理已完成和 dead-letter job。
+
+三个工作流共用内容寻址的 `.times-runtime` 缓存，miss 时只安装本工具及其依赖。
+runtime、浏览器和 Mihomo 归档准备成功后立即保存缓存，不等待后续业务成功。
+浏览器缓存不包含 Ubuntu 系统依赖；apt 请求设置 20 秒网络超时和 2 次重试，
+安装步骤另设 5 分钟硬上限。Process 没有待处理任务时不安装 rclone。
+HF Bucket 的 429 使用 10–60 秒指数退避（8 次尝试，累计约 5 分钟等待，含抖动），
+下载重试覆盖 Blob 的完整流读取，仍保留字节上限、临时文件和原子替换。
+队列网络/恢复标记写入失败会明确失败，不再被误判为“没有任务”。
+
+监控按阶段区分：`times-capture` 只报告自动采集入库结果；`times-process` 只在
+真实批次完成提交后报成功，包含自动 drain，空跑不清除报警。它们共用项目 ping key，
+由 CF 任务配置自动创建检查，不需要新 secret。阶段心跳不等于每条文章的独立 SLA。
 
 手动运行默认 publish=false，只产生短期 artifact。代理订阅只从 Secret 读取；订阅 URL、节点名、
 Cookie、Authorization 和 BPC 内部状态不会进入 Raw、日志或 artifact。

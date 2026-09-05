@@ -235,6 +235,14 @@ export async function buildNewsDelivery(input: {
   previousSourceIndexes?: ReadonlyMap<string, TimesSourceIndex>;
   previousCatalog?: JojoCatalog;
 }): Promise<{ timelineIndexObject: string; articles: number; sources: number; dates: string[] }> {
+  // A committed Runtime batch can legitimately contain no new/changed dates.
+  // Publication still copies these roots before committing the indexes. Keep
+  // empty roots present so an unchanged batch (including staged replay) drains
+  // successfully without ignoring real rclone errors or deleting remote data.
+  await Promise.all([
+    mkdir(path.join(input.deliveryRoot, "content", "newspapers"), { recursive: true }),
+    mkdir(path.join(input.deliveryRoot, "content", "timeline", "dates"), { recursive: true }),
+  ]);
   const canonical = (await canonicalArticles(input.workspaceRoot, input.process))
     .filter((article) => acceptSourceUrl(article.source.id, article.canonicalUrl));
   const built = await Promise.all(canonical.map((article) => deliveryArticle(input.workspaceRoot, input.deliveryRoot, article)));

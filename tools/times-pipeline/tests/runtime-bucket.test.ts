@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { gzipSync } from "node:zlib";
-import { link, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { link, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -173,6 +173,33 @@ describe("Runtime archive transport", () => {
 });
 
 describe("Runtime Bucket reads", () => {
+  it("does not retry corrupt UTF-8 as a network TypeError", async () => {
+    const bucket = new HfRuntimeBucket("jojo/runtime", "token");
+    hfHub.downloadFile.mockResolvedValueOnce(new Blob([new Uint8Array([0xff])]));
+    await expect(bucket.readText("times/status.json")).rejects.toThrow("not valid UTF-8");
+    expect(hfHub.downloadFile).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["download", "readText"])("retries lazy Blob stream failures during %s", async (method) => {
+    const root = await temporaryRoot();
+    const file = path.join(root, "object.bin");
+    await writeFile(file, "old");
+    const bucket = new HfRuntimeBucket("jojo/runtime", "token");
+    hfHub.downloadFile.mockResolvedValueOnce({
+      size: 4,
+      stream: () => new ReadableStream({
+        start(controller) { controller.error(new TypeError("connection reset")); },
+      }),
+    }).mockResolvedValueOnce(new Blob(["done"]));
+    const result = method === "download"
+      ? await bucket.download("times/object.bin", file)
+      : await bucket.readText("times/object.bin");
+    expect(result).toBe(method === "download" ? true : "done");
+    expect(await readFile(file, "utf8")).toBe(method === "download" ? "done" : "old");
+    expect(await readdir(root)).toEqual(["object.bin"]);
+    expect(hfHub.downloadFile).toHaveBeenCalledTimes(2);
+  });
+
   it("allows a read-only Runtime root listing without weakening object paths", async () => {
     const bucket = new HfRuntimeBucket("jojo/runtime", "token");
     hfHub.listFiles.mockReturnValueOnce((async function* () {
@@ -210,6 +237,29 @@ describe("Runtime Bucket reads", () => {
 });
 
 describe("Runtime jobs", () => {
+  it("does not swallow transport failures as an empty queue", async () => {
+    const store = new MemoryStore();
+    store.objects.set("times/pending/unreadable.json", Buffer.from("{}"));
+    const original = store.readText.bind(store);
+    store.readText = async (objectName) => {
+      if (objectName === "times/jobs/unreadable/status.json") throw new Error("HTTP 429 exhausted");
+      return original(objectName);
+    };
+    await expect(selectRuntimeJobs({ store, workDirectory: await temporaryRoot() }))
+      .rejects.toThrow("HTTP 429 exhausted");
+  });
+
+  it("surfaces failed recovery marker writes and keeps the job retryable", async () => {
+    const store = new MemoryStore();
+    const output = await temporaryRoot();
+    const workDirectory = await temporaryRoot();
+    await publishRuntimeJob({ store, output, runManifest: await rawFixture(output), jobId: "recover", workDirectory });
+    store.failedUploads.add(pendingJobObjectName("recover"));
+    await expect(selectRuntimeJobs({ store, workDirectory })).rejects.toThrow("injected upload failure");
+    store.failedUploads.clear();
+    expect((await selectRuntimeJobs({ store, workDirectory })).map((job) => job.jobId)).toEqual(["recover"]);
+  });
+
   it("publishes Raw before the ready marker, restores exact bytes, and preserves retryable articles", async () => {
     const output = await temporaryRoot();
     const restored = await temporaryRoot();

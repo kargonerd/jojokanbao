@@ -104,6 +104,14 @@ that verified package directly; a cache miss falls back to a filtered install
 and build, while normal production runs do not repeat typechecking, tests, or
 compilation.
 
+Capture, Process, and Cleanup save a prepared runtime cache immediately, so a
+later business failure does not discard it. Browser and Mihomo binary caches
+are likewise saved before capture; proxy secrets/configuration are never cached.
+Browser OS dependencies are not covered by those caches: apt has bounded network
+retries and its install steps have five-minute deadlines. Empty Process runs skip
+rclone installation. Workflow contracts run explicitly in CI because YAML and
+shared shell helpers are outside Times' normal package-level Turbo cache key.
+
 The shared scheduler implementation and deployment instructions live in
 `infrastructure/cloudflare/maintenance-scheduler`. One Cloudflare minute tick
 evaluates the versioned Times and RMRB task definitions. Cloudflare only
@@ -127,6 +135,12 @@ Monitoring calls use
 GitHub run diagnostics, and are best effort so a monitoring outage cannot block
 data publication. A missing success ping still produces an alert after the
 check's configured grace period.
+
+Times separates `times-capture` (durable Raw publication) from `times-process`
+(committed Canonical/B2 batch). The latter includes drain continuations and never
+reports success for a no-op. The CF registry provisions both with the same project
+keys. Deploy registry changes explicitly when changing these monitor definitions;
+merging workflow YAML does not deploy the Worker.
 
 Do not add a feature-specific CI workflow. Add a package script or a focused
 job to `ci.yml`; create another workflow only when its trigger, permissions, or

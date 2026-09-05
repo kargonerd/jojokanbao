@@ -31,6 +31,29 @@ function options(taskId: string, observedAt: string, fetcher: typeof fetch) {
 }
 
 describe("dispatchScheduledTask", () => {
+  it("bounds both GitHub requests without blindly retrying an ambiguous dispatch", async () => {
+    const task = scheduledTask("times-capture");
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    try {
+      const fetcher = vi.fn<typeof fetch>()
+        .mockResolvedValueOnce(workflowRuns())
+        .mockRejectedValueOnce(new DOMException("timed out", "TimeoutError"));
+      await expect(dispatchScheduledTask(task, env, options(task.id, "2026-08-29T00:20:00.000Z", fetcher)))
+        .rejects.toThrow("timed out");
+      expect(fetcher).toHaveBeenCalledTimes(2);
+      expect(timeout.mock.calls).toEqual([[10_000], [10_000]]);
+      for (const [, init] of fetcher.mock.calls) expect(init?.signal).toBeInstanceOf(AbortSignal);
+    } finally { timeout.mockRestore(); }
+  });
+
+  it("fails closed when GitHub returns an invalid activity response", async () => {
+    const task = scheduledTask("times-capture");
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({}));
+    await expect(dispatchScheduledTask(task, env, options(task.id, "2026-08-29T00:20:00.000Z", fetcher)))
+      .rejects.toThrow("invalid runs");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it("dispatches Times with its existing automatic inputs and schedule metadata", async () => {
     const task = scheduledTask("times-capture");
     const fetcher = vi.fn<typeof fetch>()

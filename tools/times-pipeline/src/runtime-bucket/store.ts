@@ -71,11 +71,19 @@ async function* limitedBlobBody(blob: Blob, maxBytes: number, label: string): As
 
 async function limitedBlobText(blob: Blob, maxBytes: number, label: string): Promise<string> {
   const decoder = new TextDecoder("utf-8", { fatal: true });
+  const decode = (chunk?: Uint8Array): string => {
+    try {
+      return chunk ? decoder.decode(chunk, { stream: true }) : decoder.decode();
+    } catch {
+      // Decoder TypeErrors are corrupt content, not retryable fetch failures.
+      throw new Error(`${label} is not valid UTF-8`);
+    }
+  };
   let text = "";
   for await (const chunk of limitedBlobBody(blob, maxBytes, label)) {
-    text += decoder.decode(chunk, { stream: true });
+    text += decode(chunk);
   }
-  return text + decoder.decode();
+  return text + decode();
 }
 
 export class HfRuntimeBucket implements RuntimeObjectStore {
@@ -111,44 +119,48 @@ export class HfRuntimeBucket implements RuntimeObjectStore {
     const objectName = runtimeObjectName(objectNameValue);
     const localFile = path.resolve(localFileValue);
     const maxBytes = runtimeReadLimit(options, RUNTIME_MAX_DOWNLOAD_BYTES, "Runtime download byte limit");
-    let blob: Blob | null;
     try {
-      blob = await retryTransientHf(() => downloadFile({
-        repo: this.repo,
-        accessToken: this.accessToken,
-        path: objectName,
-      }), bucketRetry(`download Runtime Bucket ${objectName}`));
+      return await retryTransientHf(async () => {
+        const blob = await downloadFile({
+          repo: this.repo,
+          accessToken: this.accessToken,
+          path: objectName,
+        });
+        if (!blob) return false;
+        validateBlobSize(blob, maxBytes, `Runtime Bucket object ${objectName}`);
+        await mkdir(path.dirname(localFile), { recursive: true });
+        const temporary = path.join(path.dirname(localFile), `.${path.basename(localFile)}.${randomUUID()}.tmp`);
+        try {
+          // HF returns a lazy Blob. Retry includes consuming its network stream,
+          // with a fresh temporary file on each attempt and atomic publication.
+          await pipeline(
+            Readable.from(limitedBlobBody(blob, maxBytes, `Runtime Bucket object ${objectName}`)),
+            createWriteStream(temporary, { flags: "wx" }),
+          );
+          await rename(temporary, localFile);
+        } finally {
+          await rm(temporary, { force: true });
+        }
+        return true;
+      }, bucketRetry(`download Runtime Bucket ${objectName}`));
     } catch (error) {
       if (statusCode(error) === 404) return false;
       throw error;
     }
-    if (!blob) return false;
-    validateBlobSize(blob, maxBytes, `Runtime Bucket object ${objectName}`);
-    await mkdir(path.dirname(localFile), { recursive: true });
-    const temporary = path.join(path.dirname(localFile), `.${path.basename(localFile)}.${randomUUID()}.tmp`);
-    try {
-      await pipeline(
-        Readable.from(limitedBlobBody(blob, maxBytes, `Runtime Bucket object ${objectName}`)),
-        createWriteStream(temporary, { flags: "wx" }),
-      );
-      await rename(temporary, localFile);
-    } catch (error) {
-      await rm(temporary, { force: true });
-      throw error;
-    }
-    return true;
   }
 
   async readText(objectNameValue: string, options?: RuntimeReadOptions): Promise<string | null> {
     const objectName = runtimeObjectName(objectNameValue);
     const maxBytes = runtimeReadLimit(options, RUNTIME_MAX_TEXT_BYTES, "Runtime text byte limit");
     try {
-      const blob = await retryTransientHf(() => downloadFile({
-        repo: this.repo,
-        accessToken: this.accessToken,
-        path: objectName,
-      }), bucketRetry(`read Runtime Bucket ${objectName}`));
-      return blob ? limitedBlobText(blob, maxBytes, `Runtime Bucket text object ${objectName}`) : null;
+      return await retryTransientHf(async () => {
+        const blob = await downloadFile({
+          repo: this.repo,
+          accessToken: this.accessToken,
+          path: objectName,
+        });
+        return blob ? limitedBlobText(blob, maxBytes, `Runtime Bucket text object ${objectName}`) : null;
+      }, bucketRetry(`read Runtime Bucket ${objectName}`));
     } catch (error) {
       if (statusCode(error) === 404) return null;
       throw error;

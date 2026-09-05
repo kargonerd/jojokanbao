@@ -149,7 +149,7 @@ jobs:
           HEALTHCHECKS_TASK_ID: rmrb-sync
           HEALTHCHECKS_STAGE: rmrb-sync
           HEALTHCHECKS_STATUS: ${{ job.status }}
-          HEALTHCHECKS_FAILURE_TYPE: ${{ job.status == 'success' && '' || 'run-failed' }}
+          HEALTHCHECKS_FAILURE_TYPE: ${{ job.status != 'success' && 'run-failed' || '' }}
           HEALTHCHECKS_SCHEDULED_AT: ${{ inputs.scheduled_at }}
           HEALTHCHECKS_SLOT_ID: ${{ inputs.schedule_slot }}
           HEALTHCHECKS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

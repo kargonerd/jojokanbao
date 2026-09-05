@@ -73,7 +73,10 @@ async function getWorkflowRuns(
   headers: HeadersInit,
   fetcher: Fetcher,
 ): Promise<WorkflowRun[]> {
-  const response = await fetcher(`${endpoint}/runs?per_page=50`, { headers });
+  const response = await fetcher(`${endpoint}/runs?per_page=50`, {
+    headers,
+    signal: AbortSignal.timeout(10_000),
+  });
   if (!response.ok) {
     const responseBody = (await response.text()).slice(0, 1_000);
     throw new Error(
@@ -82,7 +85,10 @@ async function getWorkflowRuns(
   }
 
   const payload = (await response.json()) as WorkflowRunsResponse;
-  return payload.workflow_runs ?? [];
+  if (!Array.isArray(payload.workflow_runs)) {
+    throw new Error(`GitHub workflow activity check returned invalid runs for ${workflow}`);
+  }
+  return payload.workflow_runs;
 }
 
 function automaticRunsInSlot(
@@ -197,6 +203,9 @@ export async function dispatchScheduledTask(
       ref,
       inputs: task.inputs({ observedAt, slot: options.slot, taskId: task.id }),
     }),
+    // A timed-out POST may have been accepted. Reconcile runs on the next
+    // minute tick instead of blindly retrying and creating duplicate jobs.
+    signal: AbortSignal.timeout(10_000),
   });
 
   if (!response.ok) {

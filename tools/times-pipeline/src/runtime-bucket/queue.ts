@@ -4,6 +4,8 @@ import {
   PENDING_JOBS_OBJECT,
   RUNTIME_PREFIX,
   pendingJobObjectName,
+  jobObjectNames,
+  parseRuntimeJobStatus,
   type RuntimeJobStatus,
   type RuntimeObjectInfo,
   type RuntimeObjectStore,
@@ -111,14 +113,21 @@ async function activeStatusesSinceQueue(
   }
   const active: RuntimeJobStatus[] = [];
   for (const jobId of candidateIds) {
+    // Transport failures must not turn a non-empty queue into a successful
+    // no-op. Only malformed content is recoverable here.
+    const body = await store.readText(jobObjectNames(jobId).status);
+    if (body === null) continue;
+    let status: RuntimeJobStatus;
     try {
-      const status = await readRuntimeJob(store, jobId);
-      if (status && status.state !== "done") {
-        active.push(status);
-        if (!pendingIds.has(jobId)) await writePendingMarker(store, status, workDirectory);
-      }
+      status = parseRuntimeJobStatus(JSON.parse(body));
+      if (status.jobId !== jobId) throw new Error("Runtime job id does not match its object path");
     } catch (error) {
       process.stderr.write(`[runtime] ignoring malformed Runtime job ${jobId}: ${error instanceof Error ? error.message : String(error)}\n`);
+      continue;
+    }
+    if (status.state !== "done") {
+      active.push(status);
+      if (!pendingIds.has(jobId)) await writePendingMarker(store, status, workDirectory);
     }
   }
   return active;

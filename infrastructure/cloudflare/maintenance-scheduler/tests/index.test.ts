@@ -87,6 +87,11 @@ describe("handleScheduled", () => {
     const urls = fetcher.mock.calls.map(([input]) => requestUrl(input));
     expect(urls).toContain("https://hc-ping.com/maintenance-scheduler");
     expect(urls).toContain("https://hc-ping.com/times-capture/start");
+    expect(fetcher.mock.calls.some(([input, init]) =>
+      String(input) === "https://healthchecks.io/api/v3/checks/" &&
+      JSON.parse(String(init?.body)).slug === "times-process")).toBe(true);
+    expect(urls).not.toContain("https://hc-ping.com/times-process");
+    expect(urls).not.toContain("https://hc-ping.com/times-process/start");
   });
 
   it("isolates a task dispatch failure from other due tasks", async () => {

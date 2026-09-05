@@ -34,6 +34,7 @@ jobs:
       HEALTHCHECKS_PING_KEY: ${{ secrets.HEALTHCHECKS_PING_KEY }}
       TIMES_CLEANUP_APPLY: ${{ github.event_name == 'schedule' || inputs.apply }}
       TIMES_CLEANUP_MAX_JOBS: ${{ inputs.max_delete_jobs || '100' }}
+      TIMES_RUNTIME_ROOT: ${{ github.workspace }}/.times-runtime
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -50,14 +51,30 @@ jobs:
           test -n "$HF_TIMES_RUNTIME_BUCKET" || (echo "HF_TIMES_RUNTIME_BUCKET is not configured" >&2 && exit 1)
           [[ "$TIMES_CLEANUP_MAX_JOBS" =~ ^[1-9][0-9]*$ ]] || (echo "max_delete_jobs must be a positive integer" >&2 && exit 1)
 
-      - name: Install and build Times pipeline
+      - name: Restore CI-verified Times runtime
+        id: times_runtime_cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .times-runtime
+          key: ${{ runner.os }}-times-pipeline-runtime-v1-${{ hashFiles('tools/times-pipeline/src/**/*.ts', 'tools/times-pipeline/tsconfig.json', 'tools/times-pipeline/package.json', 'frontend/packages/content/src/**/*.ts', 'frontend/packages/content/package.json', 'pnpm-lock.yaml') }}
+
+      - name: Prepare Times runtime on cache miss
+        if: steps.times_runtime_cache.outputs.cache-hit != 'true'
         run: |
-          pnpm install --frozen-lockfile
+          pnpm install --frozen-lockfile --filter @jojo/times-pipeline...
           pnpm --filter @jojo/times-pipeline build
+          pnpm --filter @jojo/times-pipeline --prod deploy "$TIMES_RUNTIME_ROOT"
+
+      - name: Save prepared Times runtime
+        if: steps.times_runtime_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .times-runtime
+          key: ${{ steps.times_runtime_cache.outputs.cache-primary-key }}
 
       - name: Apply exact Runtime retention plan
         run: |
-          node tools/times-pipeline/dist/src/runtime-cli.js \
+          node "$TIMES_RUNTIME_ROOT/dist/src/runtime-cli.js" \
             --action cleanup \
             --bucket "$HF_TIMES_RUNTIME_BUCKET" \
             --output "$RUNNER_TEMP/jojo-times" \
@@ -92,7 +109,7 @@ jobs:
         if: always()
         env:
           HEALTHCHECKS_SIGNAL: fail
-          HEALTHCHECKS_TASK_ID: times-capture
+          HEALTHCHECKS_TASK_ID: times-process
           HEALTHCHECKS_STAGE: times-runtime-cleanup
           HEALTHCHECKS_STATUS: stale-unfinished-jobs
           HEALTHCHECKS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
