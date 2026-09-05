@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -32,6 +32,59 @@ const source: SourceConfig = {
 };
 
 describe("news Delivery writer", () => {
+  it.each([false, true])("creates publication roots for an unchanged batch without losing history (sources=%s)", async (hasSources) => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "jojo-empty-delivery-"));
+    try {
+      const previousTimeline: TimesTimelineIndex = {
+        formatVersion: "jojo-news-timeline-index/1",
+        updatedAt: "2026-09-05T03:56:00.000Z",
+        dates: [{ date: "2026-09-05", object: "dates/2026/09/2026-09-05.jox", articleCount: 7 }],
+        sources: [{ id: source.id, name: source.name, language: source.language }],
+      };
+      const previousSource: TimesSourceIndex = {
+        formatVersion: "jojo-delivery-index/1", revision: 1,
+        datasetId: "news-example", type: "newspaper", title: source.name, language: source.language,
+        source: { id: source.id, name: source.name, language: source.language },
+        updatedAt: previousTimeline.updatedAt,
+        items: [{ itemId: "example:2026-09-05", itemKey: "2026-09-05", type: "newspaper", order: 1,
+          title: "Existing day", manifestObject: "dates/2026/09/2026-09-05.jox" }],
+      };
+      const emptySource: CanonicalWriteResult = {
+        sourceId: source.id, dates: [], articles: [], files: [],
+        skippedWithoutFullText: 0, unchangedWithoutRefresh: 7, unchangedArticles: [], skippedArticles: [],
+      };
+      // Fresh output directories cover the original attempt and staged replay
+      // on another runner: neither can rely on directories from the last run.
+      for (const attempt of ["initial", "replay"]) {
+        const deliveryRoot = path.join(root, attempt);
+        const result = await buildNewsDelivery({
+          workspaceRoot: root, deliveryRoot, generatedAt: "2026-09-05T04:00:04.928Z",
+          sources: hasSources ? [source] : [], process: { sources: hasSources ? [emptySource] : [] },
+          previousTimelineIndex: previousTimeline,
+          previousSourceIndexes: new Map([[source.id, previousSource]]),
+        });
+        expect(result.articles).toBe(0);
+        expect(result.dates).toEqual([]);
+        for (const directory of ["content/newspapers", "content/timeline/dates"]) {
+          expect((await stat(path.join(deliveryRoot, directory))).isDirectory()).toBe(true);
+        }
+        expect(await readdir(path.join(deliveryRoot, "content/timeline/dates"))).toEqual([]);
+        const timeline = await gunzipJoxJson<TimesTimelineIndex>(
+          new Uint8Array(await readFile(path.join(deliveryRoot, result.timelineIndexObject))), result.timelineIndexObject,
+        );
+        expect(timeline.dates).toEqual(previousTimeline.dates);
+        if (hasSources) {
+          const object = "content/newspapers/example/index.jox";
+          const index = await gunzipJoxJson<TimesSourceIndex>(new Uint8Array(await readFile(path.join(deliveryRoot, object))), object);
+          expect(index.items).toEqual(previousSource.items);
+        }
+        expect((await stat(path.join(deliveryRoot, "catalog.jox"))).isFile()).toBe(true);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("publishes immutable media objects, per-source indexes and a global timeline without virtual Times", async () => {
     const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "jojo-news-delivery-workspace-"));
     const deliveryRoot = await mkdtemp(path.join(os.tmpdir(), "jojo-news-delivery-output-"));
