@@ -108,8 +108,14 @@ huggingface-cli whoami
 
 无人值守环境仍可使用 `HF_TOKEN=<write token>`，它会优先于 CLI 凭据。
 
-HF 发布结果显示为 **Marxism Dataset**。默认发布为公开 Dataset；首页和 `collections/` 使用中文书名导航；每本书
+HF 发布结果显示为 **Marxism Dataset**。默认发布为公开 Dataset；书籍目录位于 `books/`，`books/collections/` 使用中文书名导航；每本书
 提供人类可读的卷册页面、完整目录 JSON、Canonical Item 下载和按 Dataset 打包的媒体归档。
+
+书籍发布只管理 `books/`：按 Dataset ID 合并书目和搜索数据，保留未发布的书籍；仅清理本次重新发布书目目录内的旧文件。
+不会同步或删除仓库根目录、`raw/`、`newspapers/`、`canonical/`，也不会清理未登记的 `-r1` 等旁支目录。
+根目录 README 和 Dataset Viewer 配置由仓库维护，书籍入口不覆盖它们（书籍检索路径为 `books/data/search-documents.jsonl.gz`）。
+更新已有丛书必须导入整套卷册；缺卷、缺少 Item/媒体/搜索数据、路径冲突或跨 Dataset 合并均会拒绝发布，需先补齐构建或单独对账迁移。
+上传、目录索引和精确旧文件删除通过同一次原子提交发布，并校验父提交；出现并发冲突时重新发起发布，不会沿用旧清理计划重试。
 
 本地联调 Reader/Agent 的真实 ES 搜索时，可只启动轻量搜索入口：
 

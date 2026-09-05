@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import tarfile
+from tempfile import TemporaryDirectory
 from typing import Any, Callable
 
 from es_repair import _load_root_env
@@ -144,6 +145,45 @@ def _hf_slug(title: str, fallback: str) -> str:
     return value[:100] or fallback
 
 
+def _hf_component(value: Any) -> str:
+    """Only accept one portable path component, including on Windows staging."""
+    if not isinstance(value, str) or not value or value in {".", ".."} or re.search(r'[\\/:<>"|?*\x00-\x1f]', value):
+        raise RuntimeError(f"无效的 Hugging Face 路径段：{value!r}")
+    if value != value.rstrip(" ."):
+        raise RuntimeError(f"无效的 Hugging Face 路径段：{value!r}")
+    return value
+
+
+def _hf_collections(catalog: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Validate ownership before deriving any upload or deletion paths."""
+    if catalog.get("formatVersion") != "marxism-catalog/1" or not isinstance(catalog.get("collections"), list):
+        raise RuntimeError("Hugging Face 书籍 catalog 格式无效，停止发布")
+    result: dict[str, dict[str, Any]] = {}
+    paths: set[str] = set()
+    for collection in catalog["collections"]:
+        dataset_id = _hf_component(collection["datasetId"])
+        path = collection["path"]
+        if not isinstance(path, str) or not path.startswith("collections/"):
+            raise RuntimeError("Hugging Face 书籍目录必须位于 books/collections/")
+        _hf_component(path.removeprefix("collections/"))
+        if dataset_id in result or path.casefold() in paths:
+            raise RuntimeError("Hugging Face 书籍 catalog 含重复 ID 或目录")
+        paths.add(path.casefold())
+        item_keys: set[str] = set()
+        if not collection.get("items"):
+            raise RuntimeError(f"书籍 {dataset_id} 没有可发布的 Item")
+        for item in collection["items"]:
+            key = _hf_component(item["itemKey"])
+            if key.casefold() in item_keys or item.get("itemId") != f"{dataset_id}:{key}":
+                raise RuntimeError(f"书籍 {dataset_id} 的 Item ID 无效或重复")
+            item_keys.add(key.casefold())
+            for field, suffix in (("downloadPath", ".json.gz"), ("tocPath", ".toc.json"), ("pagePath", ".md")):
+                if item.get(field) != f"{path}/items/{key}{suffix}":
+                    raise RuntimeError(f"书籍 {dataset_id} 的 {field} 路径无效")
+        result[dataset_id] = collection
+    return result
+
+
 def _markdown_text(value: Any) -> str:
     return str(value or "").replace("|", "\\|").replace("\r", " ").replace("\n", " ").strip()
 
@@ -163,26 +203,36 @@ def _prepare_huggingface_snapshot(
     """Bundle media per Dataset so one HF publish does not issue ~10k API calls."""
     source = build_root / "huggingface"
     target = build_root / ".publish" / "huggingface"
+    if not source.is_dir():
+        raise RuntimeError("没有可发布的书籍构建目录")
+    resolved_target = target.resolve()
+    if not resolved_target.is_relative_to(build_root.resolve()) or resolved_target == build_root.resolve():
+        raise RuntimeError("Hugging Face staging 目录越出构建目录")
     source_files = sorted(
         path for path in source.rglob("*")
         if path.is_file() and ".cache" not in path.relative_to(source).parts
     )
-    fingerprint = hashlib.sha256(("human-readable-v3\n" + "\n".join(
-        f"{path.relative_to(source).as_posix()}:{path.stat().st_size}:{path.stat().st_mtime_ns}"
-        for path in source_files
+    fingerprint_files = [*source_files, *(
+        path for path in (build_root / "report.json", build_root / "search" / "documents.jsonl.gz")
+        if path.is_file()
+    )]
+    fingerprint = hashlib.sha256(("books-scoped-v4\n" + "\n".join(
+        f"{path.relative_to(build_root).as_posix()}:{path.stat().st_size}:{path.stat().st_mtime_ns}"
+        for path in fingerprint_files
     )).encode("utf-8")).hexdigest()
     state_path = build_root / ".publish" / "huggingface-state.json"
     if target.exists() and state_path.exists():
         try:
             state = json.loads(state_path.read_text(encoding="utf-8"))
-            if state.get("fingerprint") == fingerprint:
+            cached_files = {
+                path.relative_to(target).as_posix(): path.stat().st_size
+                for path in target.rglob("*") if path.is_file()
+            }
+            if state.get("fingerprint") == fingerprint and state.get("files") == cached_files:
                 return target, state["stats"]
         except (OSError, ValueError, KeyError):
             pass
 
-    resolved_target = target.resolve()
-    if not resolved_target.is_relative_to(build_root.resolve()):
-        raise RuntimeError("Hugging Face staging 目录越出构建目录")
     if target.exists():
         shutil.rmtree(target)
     target.mkdir(parents=True)
@@ -200,25 +250,44 @@ def _prepare_huggingface_snapshot(
     bundled_assets = 0
     for source_dataset in sorted(path for path in source.iterdir() if path.is_dir() and (path / "dataset.json").exists()):
         dataset = json.loads((source_dataset / "dataset.json").read_text(encoding="utf-8"))
-        dataset_id = str(dataset.get("datasetId") or source_dataset.name)
+        dataset_id = _hf_component(dataset.get("datasetId") or source_dataset.name)
         title = str(dataset.get("title") or dataset_id)
         slug = _hf_slug(title, dataset_id)
-        if slug in used_slugs:
+        if slug.casefold() in used_slugs:
             slug = f"{slug}-{dataset_id[-6:]}"
-        used_slugs.add(slug)
+        _hf_component(slug)
+        if slug.casefold() in used_slugs:
+            raise RuntimeError(f"书籍目录重名：{slug}")
+        used_slugs.add(slug.casefold())
         collection_directory = target / "collections" / slug
         items_directory = collection_directory / "items"
         items_directory.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source_dataset / "dataset.json", collection_directory / "dataset.json")
+        dataset["itemPath"] = "items/{itemKey}.json.gz"
+        dataset["items"] = [
+            {**summary, "path": f"items/{_hf_component(summary['itemKey'])}.json.gz"}
+            for summary in dataset.get("items") or []
+        ]
+        (collection_directory / "dataset.json").write_text(
+            json.dumps(dataset, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         copied += 1
         collection_items: list[dict[str, Any]] = []
         for summary in sorted(dataset.get("items") or [], key=lambda item: (item.get("order") or 0, item.get("title") or "")):
-            item_key = str(summary.get("itemKey") or "full-book")
+            item_key = _hf_component(summary["itemKey"])
             item_source = source_dataset / "data" / f"{item_key}.json.gz"
-            if not item_source.exists():
-                continue
+            if not item_source.is_file():
+                raise RuntimeError(f"书籍构建不完整，缺少 Item：{item_source}")
             with gzip.open(item_source, "rt", encoding="utf-8") as stream:
                 item = json.load(stream)
+            if item.get("datasetId") != dataset_id or item.get("itemId") != f"{dataset_id}:{item_key}":
+                raise RuntimeError(f"书籍 Item 身份与目录不符：{item_source}")
+            for asset in item.get("assets") or []:
+                asset_path = str(asset.get("path") or "")
+                if not asset_path.startswith("assets/"):
+                    raise RuntimeError(f"无效的书籍媒体路径：{asset_path}")
+                _hf_component(asset_path.removeprefix("assets/"))
+                if not (source_dataset / asset_path).is_file():
+                    raise RuntimeError(f"书籍构建不完整，缺少媒体：{asset_path}")
             item_download = items_directory / f"{item_key}.json.gz"
             shutil.copy2(item_source, item_download)
             chapters = item.get("content", {}).get("chapters") or []
@@ -313,13 +382,42 @@ def _prepare_huggingface_snapshot(
         "itemCount": sum(len(collection["items"]) for collection in collections),
         "collections": collections,
     }
+    if not _hf_collections(catalog):
+        raise RuntimeError("没有可发布的书籍，停止发布")
     (target / "catalog.json").write_text(json.dumps(catalog, ensure_ascii=False, indent=2), encoding="utf-8")
     search_documents = build_root / "search" / "documents.jsonl.gz"
     if search_documents.exists():
         (target / "data").mkdir(exist_ok=True)
         shutil.copy2(search_documents, target / "data" / "search-documents.jsonl.gz")
         copied += 1
-    root_readme = [
+    (target / "README.md").write_text(_hf_books_readme(catalog), encoding="utf-8")
+    (target / "ASSETS.md").write_text(
+        "# 媒体归档\n\n每个书目目录中的 `assets.tar` 保存该书全部媒体。解包后仍为 "
+        "`assets/<sha256>.<ext>`，与 Canonical Item 的 `assets[].path` 一致。浏览器在线读取的 "
+        "Jox 媒体继续由 B2/CDN 提供。\n",
+        encoding="utf-8",
+    )
+    copied += 3
+    stats = {
+        "sourceFiles": len(source_files),
+        "metadataFiles": copied,
+        "bundledAssets": bundled_assets,
+        "uploadFiles": sum(1 for path in target.rglob("*") if path.is_file()),
+    }
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        json.dumps({"fingerprint": fingerprint, "stats": stats, "files": {
+            path.relative_to(target).as_posix(): path.stat().st_size
+            for path in target.rglob("*") if path.is_file()
+        }}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return target, stats
+
+
+def _hf_books_readme(catalog: dict[str, Any]) -> str:
+    collections = catalog["collections"]
+    return "\n".join([
         "---", "pretty_name: Marxism Dataset", "language:", "- zh", "task_categories:",
         "- text-retrieval", "configs:", "- config_name: default", "  data_files:",
         "  - split: train", "    path: data/search-documents.jsonl.gz", "---", "",
@@ -336,27 +434,140 @@ def _prepare_huggingface_snapshot(
             f"{collection['type']} | {len(collection['items'])} |"
             for collection in collections
         ], "",
-    ]
-    (target / "README.md").write_text("\n".join(root_readme), encoding="utf-8")
-    (target / "ASSETS.md").write_text(
-        "# 媒体归档\n\n每个书目目录中的 `assets.tar` 保存该书全部媒体。解包后仍为 "
-        "`assets/<sha256>.<ext>`，与 Canonical Item 的 `assets[].path` 一致。浏览器在线读取的 "
-        "Jox 媒体继续由 B2/CDN 提供。\n",
-        encoding="utf-8",
-    )
-    copied += 3
-    stats = {
-        "sourceFiles": len(source_files),
-        "metadataFiles": copied,
-        "bundledAssets": bundled_assets,
-        "uploadFiles": sum(1 for path in target.rglob("*") if path.is_file()),
+    ])
+
+
+def _hf_book_files(api: Any, repo_id: str, revision: str) -> set[str]:
+    from huggingface_hub.errors import EntryNotFoundError
+
+    try:
+        # list_repo_tree is paginated; repo_info.siblings can be truncated on
+        # this shared repository. Never enumerate raw/ or newspapers/ here.
+        return {
+            row.path for row in api.list_repo_tree(
+                repo_id=repo_id, repo_type="dataset", revision=revision,
+                path_in_repo="books", recursive=True,
+            ) if getattr(row, "size", None) is not None
+        }
+    except EntryNotFoundError:
+        # A failed later pagination request must not turn existing books into
+        # an empty repository. Confirm absence using a non-recursive root tree.
+        if any(row.path == "books" for row in api.list_repo_tree(
+            repo_id=repo_id, repo_type="dataset", revision=revision, recursive=False,
+        )):
+            raise
+        return set()
+
+
+def _hf_book_commit_plan(
+    api: Any, repo_id: str, revision: str, snapshot: Path, build_root: Path, metadata: Path,
+) -> tuple[dict[str, Path], list[str], set[str]]:
+    """Merge complete book builds, owning only their catalogued collections."""
+    local_catalog = json.loads((snapshot / "catalog.json").read_text(encoding="utf-8"))
+    local = _hf_collections(local_catalog)
+    if not local:
+        raise RuntimeError("没有可发布的书籍，停止发布")
+    remote_files = _hf_book_files(api, repo_id, revision)
+
+    def download(key: str) -> Path:
+        return Path(api.hf_hub_download(
+            repo_id=repo_id, repo_type="dataset", revision=revision, filename=key,
+        ))
+
+    remote: dict[str, dict[str, Any]] = {}
+    if "books/catalog.json" in remote_files:
+        remote = _hf_collections(json.loads(download("books/catalog.json").read_text(encoding="utf-8")))
+    elif remote_files:
+        raise RuntimeError("远端 books/ 已有文件但缺少 catalog.json，停止发布以免覆盖未知数据")
+
+    report_path = build_root / "report.json"
+    report = json.loads(report_path.read_text(encoding="utf-8")) if report_path.exists() else {}
+    if set(report.get("supersededDatasetIds") or []) & remote.keys():
+        raise RuntimeError("此次构建包含跨书目合并，请先单独对账迁移旧书目；普通发布不删除其他 Dataset")
+
+    uploads: dict[str, Path] = {}
+    owned_prefixes: set[str] = set()
+    merged = dict(remote)
+    for dataset_id, collection in local.items():
+        previous = remote.get(dataset_id)
+        if previous:
+            missing_items = {item["itemKey"] for item in previous["items"]} - {
+                item["itemKey"] for item in collection["items"]
+            }
+            if missing_items:
+                raise RuntimeError(f"书籍 {dataset_id} 构建缺卷：{sorted(missing_items)}；请导入整套书后重试")
+        source_prefix = collection["path"]
+        # Keep an existing Dataset's stable directory even if its title changed.
+        destination = previous["path"] if previous else source_prefix
+        prefix = f"books/{destination}/"
+        if not previous and any(key.casefold().startswith(prefix.casefold()) for key in remote_files):
+            raise RuntimeError(f"书籍目录已被占用：{prefix}")
+        if previous:
+            owned_prefixes.add(prefix)
+        mapped_items = [
+            {**item, **{
+                field: destination + item[field][len(source_prefix):]
+                for field in ("downloadPath", "tocPath", "pagePath")
+            }} for item in collection["items"]
+        ]
+        merged[dataset_id] = {**collection, "path": destination, "items": mapped_items}
+        for path in sorted((snapshot / source_prefix).rglob("*")):
+            if path.is_file():
+                relative = path.relative_to(snapshot / source_prefix)
+                for part in relative.parts:
+                    _hf_component(part)
+                uploads[prefix + relative.as_posix()] = path
+        for item in mapped_items:
+            for field in ("downloadPath", "tocPath", "pagePath"):
+                if f"books/{item[field]}" not in uploads:
+                    raise RuntimeError(f"书籍快照不完整：{item[field]}")
+        if prefix + "dataset.json" not in uploads or prefix + "README.md" not in uploads:
+            raise RuntimeError(f"书籍快照缺少元数据：{dataset_id}")
+
+    collections = sorted(merged.values(), key=lambda row: str(row["title"]))
+    catalog = {
+        **local_catalog, "collections": collections, "collectionCount": len(collections),
+        "itemCount": sum(len(row["items"]) for row in collections),
     }
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(
-        json.dumps({"fingerprint": fingerprint, "stats": stats}, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    return target, stats
+    _hf_collections(catalog)  # Also detects collisions with untouched books.
+    metadata.mkdir(parents=True, exist_ok=True)
+    (metadata / "catalog.json").write_text(json.dumps(catalog, ensure_ascii=False, indent=2), encoding="utf-8")
+    (metadata / "README.md").write_text(_hf_books_readme(catalog), encoding="utf-8")
+    uploads["books/catalog.json"] = metadata / "catalog.json"
+    uploads["books/README.md"] = metadata / "README.md"
+    uploads["books/ASSETS.md"] = snapshot / "ASSETS.md"
+
+    search_key = "books/data/search-documents.jsonl.gz"
+    local_search = snapshot / "data" / "search-documents.jsonl.gz"
+    if not local_search.is_file():
+        raise RuntimeError("构建缺少书籍搜索数据，停止发布")
+    sources: list[tuple[Path, dict[str, dict[str, Any]], bool]] = []
+    if remote.keys() - local.keys():
+        if search_key not in remote_files:
+            raise RuntimeError("远端书籍搜索数据缺失，无法安全合并增量发布")
+        sources.append((download(search_key), remote, True))
+    sources.append((local_search, local, False))
+    merged_search = metadata / "search-documents.jsonl.gz"
+    with gzip.open(merged_search, "wt", encoding="utf-8") as output:
+        for source, owners, is_remote in sources:
+            item_ids = {item["itemId"]: dataset_id for dataset_id, row in owners.items() for item in row["items"]}
+            with gzip.open(source, "rt", encoding="utf-8") as stream:
+                for line in stream:
+                    if not line.strip():
+                        continue
+                    document = json.loads(line)
+                    dataset_id = document.get("datasetId")
+                    if dataset_id not in owners or item_ids.get(document.get("itemId")) != dataset_id:
+                        raise RuntimeError("书籍搜索数据与 catalog 身份不符，停止发布")
+                    if not is_remote or dataset_id not in local:
+                        output.write(json.dumps(document, ensure_ascii=False) + "\n")
+    uploads[search_key] = merged_search
+    # Literal file operations, never glob patterns or a whole books/ deletion.
+    stale = sorted(key for key in remote_files if key not in uploads and any(
+        key.startswith(prefix) for prefix in owned_prefixes
+    ))
+    expected = (remote_files - set(stale)) | uploads.keys()
+    return uploads, stale, expected
 
 
 def publish_huggingface(build_root: Path, on_log: Callable[[str], None]) -> dict[str, Any]:
@@ -365,8 +576,7 @@ def publish_huggingface(build_root: Path, on_log: Callable[[str], None]) -> dict
     # registration indefinitely. Prefer the resumable LFS bridge by default;
     # operators can opt back into Xet with HF_HUB_DISABLE_XET=0.
     os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
-    # Xet high-performance mode can regress throughput on machines with less
-    # than 64 GB of RAM. Keep Xet enabled, with high-performance as opt-in.
+    # High-performance mode remains opt-in when an operator enables Xet.
     os.environ.setdefault("HF_XET_HIGH_PERFORMANCE", "0")
     os.environ.setdefault("HF_XET_FIXED_UPLOAD_CONCURRENCY", "2")
     os.environ.setdefault("HF_XET_CLIENT_RETRY_MAX_DURATION", "1200s")
@@ -375,49 +585,48 @@ def publish_huggingface(build_root: Path, on_log: Callable[[str], None]) -> dict
     repo_id = os.getenv("HF_DATASET_REPO", "")
     if not token or not repo_id:
         raise RuntimeError("请先执行 huggingface-cli login，并设置 HF_DATASET_REPO")
-    from huggingface_hub import HfApi
+    from huggingface_hub import CommitOperationAdd, CommitOperationDelete, HfApi
 
+    snapshot, snapshot_stats = _prepare_huggingface_snapshot(build_root, on_log)
     api = HfApi(token=token)
     private = _huggingface_private()
     api.create_repo(repo_id=repo_id, repo_type="dataset", private=private, exist_ok=True)
-    on_log(f"开始上传{'私有' if private else '公开'} Hugging Face Dataset：{repo_id}")
-    snapshot, snapshot_stats = _prepare_huggingface_snapshot(build_root, on_log)
-    workers = max(1, int(os.getenv("HF_UPLOAD_WORKERS", "4")))
-    api.upload_large_folder(
-        folder_path=str(snapshot),
-        repo_id=repo_id,
-        repo_type="dataset",
-        private=private,
-        num_workers=workers,
-    )
     info = api.repo_info(repo_id=repo_id, repo_type="dataset")
     if bool(info.private) != private:
         expected = "私有" if private else "公开"
         raise RuntimeError(f"Hugging Face Dataset {repo_id} 不是预期的{expected}仓库，停止发布")
-    expected_files = {
-        path.relative_to(snapshot).as_posix()
-        for path in snapshot.rglob("*")
-        if path.is_file() and ".cache" not in path.relative_to(snapshot).parts
-    }
-    remote_files = set(api.list_repo_files(repo_id=repo_id, repo_type="dataset"))
-    stale_files = sorted(remote_files - expected_files - {".gitattributes"})
-    if stale_files:
-        on_log(f"清理 Hugging Face 中 {len(stale_files)} 个旧快照文件")
-        api.delete_files(
-            repo_id=repo_id,
-            repo_type="dataset",
-            delete_patterns=stale_files,
-            commit_message="Remove superseded JOJO canonical files",
+    if not isinstance(info.sha, str) or not info.sha:
+        raise RuntimeError("无法确定 Hugging Face 父提交，停止发布；请先初始化仓库")
+    # Each attempt gets isolated merged metadata; concurrent publishes must not
+    # rewrite files another request is still uploading.
+    with TemporaryDirectory(prefix="hf-commit-", dir=build_root / ".publish") as temp:
+        uploads, stale_files, expected_files = _hf_book_commit_plan(
+            api, repo_id, info.sha, snapshot, build_root, Path(temp),
         )
-        info = api.repo_info(repo_id=repo_id, repo_type="dataset")
-        remote_files = set(api.list_repo_files(repo_id=repo_id, repo_type="dataset"))
+        if any(not key.startswith("books/") for key in (*uploads, *stale_files)):
+            raise RuntimeError("Hugging Face 发布路径越出 books/，停止发布")
+        on_log(f"发布 Hugging Face books/：{len(uploads)} 个文件，清理本次书目内 {len(stale_files)} 个旧文件；保留其他目录")
+        # A single parent-guarded commit exposes catalog, search, payloads and
+        # exact deletions together. Conflicts never retry with stale metadata.
+        commit = api.create_commit(
+            repo_id=repo_id, repo_type="dataset", revision="main", parent_commit=info.sha,
+            operations=[
+                *(CommitOperationDelete(path_in_repo=key, is_folder=False) for key in stale_files),
+                *(CommitOperationAdd(path_in_repo=key, path_or_fileobj=path) for key, path in sorted(uploads.items())),
+            ],
+            commit_message="Publish JOJO books without changing other datasets",
+            num_threads=max(1, int(os.getenv("HF_UPLOAD_WORKERS", "4"))),
+        )
+    remote_files = _hf_book_files(api, repo_id, commit.oid)
     missing_files = sorted(expected_files - remote_files)
-    if missing_files:
-        raise RuntimeError(f"Hugging Face 上传缺少 {len(missing_files)} 个文件：{missing_files[:3]}")
+    if missing_files or set(stale_files) & remote_files:
+        raise RuntimeError(f"Hugging Face books/ 提交校验失败，缺少文件：{missing_files[:3]}")
     return {
         "repoId": repo_id,
         "private": private,
         "remoteFiles": len(remote_files),
-        "commit": f"https://huggingface.co/datasets/{repo_id}/commit/{info.sha}",
+        "deletedFiles": len(stale_files),
+        "scope": "books/",
+        "commit": f"https://huggingface.co/datasets/{repo_id}/commit/{commit.oid}",
         **snapshot_stats,
     }
