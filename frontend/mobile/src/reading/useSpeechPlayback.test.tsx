@@ -26,6 +26,17 @@ async function emit(values: Record<string, unknown> = {}) {
 async function play() { await act(async () => state.toggle()); await emit(); await emit({ playing: true }); }
 
 describe("native listening lifecycle", () => {
+  it("closing listening aborts prefetch, clears lock screen controls and keeps a resumable position", async () => {
+    await act(async () => state.open()); await play();
+    await emit({ playing: true, currentTime: 7 });
+    const signal = mocks.request.mock.calls[0]![2] as AbortSignal;
+    await act(async () => state.close());
+    expect(signal.aborted).toBe(true);
+    expect(mocks.player.setActiveForLockScreen).toHaveBeenLastCalledWith(false);
+    expect(mocks.player.replace).toHaveBeenLastCalledWith(null);
+    expect(state.elapsed).toBe(7);
+    expect(state.playing).toBe(false);
+  });
   beforeEach(async () => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     vi.clearAllMocks(); mocks.listeners.clear();
@@ -80,6 +91,23 @@ describe("native listening lifecycle", () => {
     expect(mocks.player.play).not.toHaveBeenCalled();
   });
 
+  it("pausing while the next chapter is loading cancels its autoplay", async () => {
+    await act(async () => state.open()); await play();
+    let complete!: (value: { id: string; title: string; segments: string[] }) => void;
+    const load = vi.spyOn(props, "loadChapter").mockImplementationOnce(() => new Promise((resolve) => { complete = resolve; }));
+    try {
+      await act(async () => { void state.selectChapter("c2", true); });
+      await act(async () => state.halt());
+      mocks.request.mockClear(); mocks.player.play.mockClear();
+      await act(async () => complete({ id: "c2", title: "第二章", segments: ["新的正文。"] }));
+      await emit();
+      expect(state.chapter?.id).toBe("c2");
+      expect(state.busy).toBe(false);
+      expect(mocks.request).not.toHaveBeenCalled();
+      expect(mocks.player.play).not.toHaveBeenCalled();
+    } finally { load.mockRestore(); }
+  });
+
   it("cancels pending synthesis on unmount and ignores its late response", async () => {
     let complete!: (value: { url: string; duration: number }) => void;
     mocks.request.mockImplementationOnce(() => new Promise((resolve) => { complete = resolve; }));
@@ -102,5 +130,37 @@ describe("native listening lifecycle", () => {
     await emit({ didJustFinish: true, currentTime: 20 });
     expect(state.chapter?.id).toBe("c1");
     expect(state.playing).toBe(false);
+  });
+
+  it("restarts the chapter from zero when replaying after its final segment finishes", async () => {
+    await act(async () => state.open());
+    await act(async () => state.selectChapter("c2")); await play();
+    await emit({ didJustFinish: true, currentTime: 20 }); await emit();
+    await emit({ playing: true, currentTime: 10 });
+    await emit({ didJustFinish: true, currentTime: 20 });
+    expect(state.elapsed).toBe(40);
+    mocks.player.play.mockClear();
+    await play();
+    expect(state.chapter?.id).toBe("c2");
+    expect(state.part).toBe(0);
+    expect(state.elapsed).toBe(0);
+    expect(mocks.player.seekTo).toHaveBeenLastCalledWith(0);
+    expect(mocks.player.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("can finish and advance again after seeking backwards within a completed segment", async () => {
+    await act(async () => state.open()); await play();
+    await emit({ didJustFinish: true, currentTime: 20 }); await emit();
+    await act(async () => state.setTimer("chapter"));
+    await emit({ playing: true, currentTime: 10 });
+    await emit({ didJustFinish: true, currentTime: 20 });
+    expect(state.chapter?.id).toBe("c1");
+    expect(state.timer).toBe(null);
+    await act(async () => state.seek(35));
+    await emit({ currentTime: 15 });
+    await act(async () => state.toggle());
+    await emit({ playing: true, currentTime: 15 });
+    await emit({ didJustFinish: true, currentTime: 20 });
+    expect(state.chapter?.id).toBe("c2");
   });
 });

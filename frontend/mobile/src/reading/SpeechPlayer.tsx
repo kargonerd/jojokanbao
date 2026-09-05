@@ -46,7 +46,7 @@ function ActiveSpeechPlayer(props: Props & { userId: string }) {
           <View style={styles.flex}><Text numberOfLines={1} style={styles.miniHeading}>{playback.chapter?.title || props.title}</Text><Text style={styles.subtle}>{playback.busy ? "正在准备音频…" : `${voiceLabel} · ${speechTime(playback.elapsed)}`}</Text></View>
         </Pressable>
         <IconButton icon={playback.playing ? "pause" : "play"} label={playback.playing ? "暂停听读" : "继续听读"} onPress={playback.toggle} />
-        <IconButton icon="close" label="关闭听读" onPress={() => { playback.halt(); setOpened(false); }} />
+        <IconButton icon="close" label="关闭听读" onPress={() => { playback.close(); setOpened(false); }} />
       </View>
     ) : <Pressable accessibilityRole="button" accessibilityLabel="打开听读播放器" onPress={open} style={[styles.launcher, { bottom: (props.bottom ?? 0) + 16, backgroundColor: theme.red }]}><Text style={styles.listen}>听</Text></Pressable> : null}
     <Modal visible={expanded && !props.hidden} animationType={theme.eInk ? "none" : "slide"} onRequestClose={() => sheet ? setSheet(null) : setExpanded(false)}>

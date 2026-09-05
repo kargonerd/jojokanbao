@@ -55,6 +55,16 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
     persist();
   }
 
+  function close() {
+    halt();
+    epoch.current++; operation.current++;
+    session.current.abort(); session.current = new AbortController();
+    sources.current.clear(); pending.current = undefined; activePart.current = undefined;
+    ready.current = false; mediaDeadline.current = 0;
+    player.replace(null); player.setActiveForLockScreen(false);
+    setBusy(false); setTimer(null);
+  }
+
   useEffect(() => {
     mounted.current = true;
     const listener = player.addListener("playbackStatusUpdate", (status) => {
@@ -132,7 +142,8 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
           cdnBase: caps.cdnBase, cacheVersion: provider.cacheVersion, provider: choice.provider,
         }).then((known) => { if (mounted.current && currentEpoch === epoch.current) setDurations((current) => ({ ...known, ...current })); });
       }
-      if (autoplay) await startPart(index, time);
+      // Pausing/closing while the chapter loads must cancel its captured autoplay.
+      if (autoplay && wanted.current) await startPart(index, time);
     } catch (reason) {
       if (!mounted.current || currentEpoch !== epoch.current) return;
       wanted.current = false; setBusy(false); setError(reason instanceof Error ? reason.message : "正文读取失败");
@@ -218,12 +229,17 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
     let remaining = Math.max(0, Math.min(duration - 0.1, value));
     let index = 0;
     while (index < lengths.length - 1 && remaining >= lengths[index]!) { remaining -= lengths[index]!; index++; }
-    if (ready.current && index === activePart.current) void player.seekTo(remaining).catch(() => setError("定位失败，请重试"));
+    if (ready.current && index === activePart.current) {
+      finishHandled.current = false;
+      void player.seekTo(remaining).catch(() => setError("定位失败，请重试"));
+    }
     else void startPart(index, remaining, playing || wanted.current);
   }
   function toggle() {
     if (playing || (busy && wanted.current)) { halt(); return; }
-    if (ready.current) { wanted.current = true; player.play(); }
+    // Native players remain at EOF after finishing; replay the chapter like Web.
+    if (ready.current && finishHandled.current) void startPart(0);
+    else if (ready.current) { wanted.current = true; player.play(); }
     else if (chapter) void startPart(part, seconds);
     else void open();
   }
@@ -233,7 +249,7 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
     persist();
   }
   return { chapter, capabilities, voice, part, rate, playing, busy, error, timer, elapsed, duration,
-    open, toggle, halt, seek, setTimer, changeRate, selectChapter,
+    open, toggle, halt, close, seek, setTimer, changeRate, selectChapter,
     changeVoice: (provider: string, value: string) => chapter && selectChapter(chapter.id, playing, undefined, { provider, voice: value }),
   };
 }

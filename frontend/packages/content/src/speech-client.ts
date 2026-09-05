@@ -38,7 +38,7 @@ export interface SpeechClientConfig {
 export function createSpeechClient(config: SpeechClientConfig) {
   async function loadSpeechProviders(signal?: AbortSignal): Promise<SpeechCapabilities> {
     if (!config.allowed()) throw new Error("请先登录并开通听读功能");
-    const response = await fetch(config.apiUrl("/api/v1/speech/providers"), { signal });
+    const response = await fetch(config.apiUrl("/api/v1/speech/providers"), { signal: signal ?? null });
     if (!response.ok) throw new Error("无法加载声音列表，请重试");
     const data: SpeechCapabilities = await response.json();
     if (!Array.isArray(data.providers) || !data.providers.every((provider) =>
@@ -89,7 +89,7 @@ export function createSpeechClient(config: SpeechClientConfig) {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     const response = await fetch(config.apiUrl("/api/v1/speech"), {
       method: "POST",
-      signal,
+      signal: signal ?? null,
       headers,
       body: JSON.stringify({ text, voice, provider: options.provider }),
     });
