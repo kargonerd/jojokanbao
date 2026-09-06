@@ -36,7 +36,12 @@ export interface LoadedItem extends LoadedDataset {
 }
 
 export function loadCatalog(): Promise<JojoCatalog> {
-  catalogPromise ??= client.fetchJson<JojoCatalog>("catalog.jox", undefined, "no-store").then(asJojoCatalog);
+  catalogPromise ??= client.fetchJson<JojoCatalog>("catalog.jox", undefined, "no-store")
+    .then(asJojoCatalog)
+    .catch((error: unknown) => {
+      catalogPromise = undefined;
+      throw error;
+    });
   return catalogPromise;
 }
 

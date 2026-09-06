@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useRef, type ReactNode } from "react";
+import { Fragment, useState, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import {
@@ -264,6 +264,7 @@ export function SearchPage({
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(parsePage(params.get("page")));
+  const [resultsPage, setResultsPage] = useState(page);
   const [sort, setSort] = useState(normalizeSort(params.get("sort")));
   const [startDate, setStartDate] = useState(params.get("startDate") || "");
   const [endDate, setEndDate] = useState(params.get("endDate") || "");
@@ -274,6 +275,8 @@ export function SearchPage({
   ));
   const [bookDatasets, setBookDatasets] = useState<SearchDatasetOption[]>([]);
   const [bookCatalogReady, setBookCatalogReady] = useState(false);
+  const [bookCatalogError, setBookCatalogError] = useState(false);
+  const [catalogRetryToken, setCatalogRetryToken] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [beforeSearch, setBeforeSearch] = useState(!params.get("keyword"));
@@ -283,17 +286,20 @@ export function SearchPage({
   const signedIn = Boolean(userId);
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollToResultsRef = useRef(false);
   const requestIdRef = useRef(0);
   const pageSize = 10;
   const paramsKey = params.toString();
   const requestedContentType = normalizeContentType(params.get("type"));
   const activeBookDatasetsKey = requestedContentType === "book" ? JSON.stringify(bookDatasets) : "";
   const bookSearchReady = requestedContentType !== "book" || bookCatalogReady;
+  const activeBookCatalogError = requestedContentType === "book" && bookCatalogError;
   const latestAvailableDate = getLatestRmrbAvailableDate();
   const disableUnavailableDate = (date: string) => date < EARLIEST_AVAILABLE_DATE || date > latestAvailableDate;
 
   useEffect(() => {
     if (!platformRedesign) return;
+    setBookCatalogError(false);
     if (!accountInitialized) {
       setBookDatasets([]);
       setBookCatalogReady(false);
@@ -314,13 +320,27 @@ export function SearchPage({
           .sort((left, right) => left.label.localeCompare(right.label, "zh-CN")));
       })
       .catch(() => {
-        if (active) setBookDatasets([]);
+        if (!active) return;
+        setBookDatasets([]);
+        setBookCatalogError(true);
       })
       .finally(() => {
         if (active) setBookCatalogReady(true);
       });
     return () => { active = false; };
-  }, [accountInitialized, platformRedesign, signedIn]);
+  }, [accountInitialized, catalogRetryToken, platformRedesign, signedIn]);
+
+  useEffect(() => {
+    const nextContentType = platformRedesign ? normalizeContentType(params.get("type")) : "periodical";
+    const option = SEARCH_CONTENT_TYPE_BY_ID[nextContentType];
+    setTerm((params.get("keyword") || "").trim());
+    setPage(parsePage(params.get("page")));
+    setSort(option.supportsSort ? normalizeSort(params.get("sort")) : "");
+    setStartDate(option.supportsDate ? params.get("startDate") || "" : "");
+    setEndDate(option.supportsDate ? params.get("endDate") || "" : "");
+    setContentType(nextContentType);
+    setDatasetId(platformRedesign ? normalizeDatasetId(params.get("dataset"), nextContentType) : "");
+  }, [paramsKey, platformRedesign]);
 
   useEffect(() => {
     const keyword = (params.get("keyword") || "").trim();
@@ -335,14 +355,6 @@ export function SearchPage({
     const nextStartDate = supportsDate ? params.get("startDate") || "" : "";
     const nextEndDate = supportsDate ? params.get("endDate") || "" : "";
 
-    setTerm(keyword);
-    setPage(nextPage);
-    setSort(nextSort);
-    setStartDate(nextStartDate);
-    setEndDate(nextEndDate);
-    setContentType(nextContentType);
-    setDatasetId(nextDatasetId);
-
     if (!keyword) {
       requestIdRef.current += 1;
       setBeforeSearch(true);
@@ -351,6 +363,16 @@ export function SearchPage({
       setError(null);
       setLoading(false);
       inputRef.current?.focus();
+      return;
+    }
+
+    if (platformRedesign && activeBookCatalogError) {
+      requestIdRef.current += 1;
+      setBeforeSearch(false);
+      setResults(null);
+      setTotal(0);
+      setError(null);
+      setLoading(false);
       return;
     }
 
@@ -400,8 +422,10 @@ export function SearchPage({
     const periodicalDatasetIds = nextDatasetId
       ? [nextDatasetId]
       : PERIODICAL_DATASETS.map((dataset) => dataset.id);
+    // Vite forwards local searches so development ports do not depend on the
+    // public search service's browser-origin allowlist.
     const request = platformRedesign
-      ? axios.post(CONTENT_SEARCH_API, {
+      ? axios.post(import.meta.env.DEV ? "/search-api/content/search" : CONTENT_SEARCH_API, {
           query: keyword,
           page: nextPage,
           size: pageSize,
@@ -419,7 +443,10 @@ export function SearchPage({
               }
             : {}),
         }, { signal: controller.signal })
-      : axios.get(ARCHIVE_SEARCH_API, { params: requestParams, signal: controller.signal });
+      : axios.get(import.meta.env.DEV ? "/search-api/search" : ARCHIVE_SEARCH_API, {
+          params: requestParams,
+          signal: controller.signal,
+        });
 
     void request
       .then((response) => {
@@ -448,6 +475,7 @@ export function SearchPage({
         setResults(nextContentType === "book"
           ? normalizedResults.filter((result) => findBookDataset(result, scopedBookDatasets))
           : normalizedResults);
+        setResultsPage(nextPage);
         setTotal(Math.max(0, Number(data.total)));
       })
       .catch(() => {
@@ -461,7 +489,15 @@ export function SearchPage({
       });
 
     return () => controller.abort();
-  }, [activeBookDatasetsKey, bookSearchReady, paramsKey, platformRedesign, retryToken]);
+  }, [activeBookDatasetsKey, activeBookCatalogError, bookSearchReady, paramsKey, platformRedesign, retryToken]);
+
+  useLayoutEffect(() => {
+    if (loading || !scrollToResultsRef.current) return;
+    scrollToResultsRef.current = false;
+    // Wait for the new result layout. Removing the pagination during loading
+    // can interrupt an in-flight smooth scroll in Firefox and WebKit.
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: "instant" });
+  }, [loading, results]);
 
   function handleSearch() {
     const keyword = term.trim();
@@ -480,6 +516,7 @@ export function SearchPage({
   }
 
   function handlePageChange(p: number) {
+    scrollToResultsRef.current = true;
     setPage(p);
     setParams(buildSearchParams({
       keyword: term,
@@ -489,7 +526,6 @@ export function SearchPage({
       endDate,
       ...(platformRedesign ? { contentType, datasetId } : {}),
     }));
-    scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function handleSortChange(nextSort: string) {
@@ -531,6 +567,7 @@ export function SearchPage({
       setStartDate("");
       setEndDate("");
     }
+    if (beforeSearch) return;
     setParams(buildSearchParams({
       keyword: term,
       page: 1,
@@ -562,6 +599,36 @@ export function SearchPage({
     { value: "", label: contentTypeOption.allLabel },
     ...datasetOptions.map((option) => ({ value: option.id, label: option.label })),
   ];
+  const searchPlaceholder = platformRedesign ? `检索${contentTypeOption.label}正文` : "在JOJO看报上搜索";
+  const catalogUnavailable = platformRedesign && contentType === "book" && bookCatalogError;
+  const catalogFailure = catalogUnavailable && (
+    <div role="alert" className="my-4 border border-red/40 px-4 py-5 text-center">
+      <p className="mb-3 text-sm font-bold text-red">书籍目录加载失败，请检查网络后重试。</p>
+      <Button onClick={() => setCatalogRetryToken((value) => value + 1)}>重新加载目录</Button>
+    </div>
+  );
+  const searchScopeSelector = (
+    <div className="search-scope">
+      <h1 className="search-scope-title">全文检索</h1>
+      <div className="search-scope-tabs" role="tablist" aria-label="检索对象">
+        {SEARCH_CONTENT_TYPES.map((option) => {
+          const selected = option.value === contentType;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              className="search-scope-tab"
+              onClick={() => handleContentTypeChange(option.value)}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   return (
     <div
@@ -569,64 +636,42 @@ export function SearchPage({
       data-search-scroll-container
       className={`h-full overflow-y-auto text-ink ${platformRedesign ? "app-search-page" : "bg-paper"}`}
     >
-      {loading && <LoadingSpinner text="搜索中" fullscreen />}
+      {loading && !platformRedesign && <LoadingSpinner text="搜索中" fullscreen />}
 
       {/* Centered search */}
       {beforeSearch && (
         <div className={platformRedesign
-          ? "flex min-h-[calc(100vh-64px)] items-center justify-center px-5"
+          ? "search-entry"
           : "fixed inset-0 z-10 flex items-center justify-center"}
         >
-          <div className="w-[90%] max-w-[640px]">
+          <div className={platformRedesign ? "search-entry-content" : "w-[90%] max-w-[640px]"}>
+            {platformRedesign && searchScopeSelector}
             <div className={platformRedesign
-              ? "app-search-box"
+              ? "app-search-box search-query"
               : "flex items-center gap-3 border-2 border-rule-dark bg-paper p-2 pl-4 transition-all focus-within:border-red focus-within:shadow-[4px_4px_0_rgba(139,26,26,.14)]"}
             >
-              <input ref={inputRef} value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearch()} placeholder="在JOJO看报上搜索" className="h-10 flex-1 border-0 bg-transparent p-0 text-base focus:border-0 focus:shadow-none" />
+              <input ref={inputRef} value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearch()} aria-label={platformRedesign ? "全文检索关键词" : undefined} placeholder={searchPlaceholder} className="h-10 min-w-0 flex-1 border-0 bg-transparent p-0 text-base focus:border-0 focus:shadow-none" />
               <Button onClick={handleSearch}>搜索</Button>
             </div>
+            {catalogFailure}
+            {platformRedesign && contentType === "book" && !bookCatalogReady && !bookCatalogError && (
+              <p role="status" className="mt-4 text-sm text-muted">正在加载书籍目录…</p>
+            )}
           </div>
         </div>
       )}
 
       {/* Results */}
       {!beforeSearch && (
-        <div className="max-w-[960px] mx-auto px-6 pb-12">
-          <div className="flex gap-3 py-5">
-            <input ref={inputRef} value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearch()} placeholder="在JOJO看报上搜索" className="flex-1 h-10 text-sm" />
+        <div className={`max-w-[960px] mx-auto px-6 pb-12 ${platformRedesign ? "search-results" : ""}`}>
+          {platformRedesign && searchScopeSelector}
+          <div className={platformRedesign ? "app-search-box search-query" : "flex gap-3 py-5"}>
+            <input ref={inputRef} value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearch()} aria-label={platformRedesign ? "全文检索关键词" : undefined} placeholder={searchPlaceholder} className="min-w-0 flex-1 h-10 text-sm" />
             <Button onClick={handleSearch}>搜索</Button>
           </div>
 
           {/* Filters */}
           <section className="mb-6 border-y border-rule bg-paper" aria-label="搜索筛选">
-            {platformRedesign && (
-              <div className="flex min-h-11 items-stretch border-b border-rule px-4">
-                <span className="mr-5 flex shrink-0 items-center font-sans text-[10px] font-black tracking-[0.18em] text-muted">
-                  搜索范围
-                </span>
-                <div className="flex items-stretch" role="tablist" aria-label="检索对象">
-                  {SEARCH_CONTENT_TYPES.map((option) => {
-                    const selected = option.value === contentType;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        role="tab"
-                        aria-selected={selected}
-                        className={`relative min-w-[84px] border-0 bg-transparent px-5 font-serif text-sm font-black tracking-[0.08em] transition-colors after:absolute after:inset-x-4 after:bottom-[-1px] after:h-0.5 after:origin-center after:transition-transform ${
-                          selected
-                            ? "text-red after:scale-x-100 after:bg-red"
-                            : "text-ink after:scale-x-0 after:bg-red hover:text-red"
-                        }`}
-                        onClick={() => handleContentTypeChange(option.value)}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
             <div className="flex flex-wrap items-center gap-3 px-4 py-3">
               {platformRedesign && (
                 <Select
@@ -669,6 +714,14 @@ export function SearchPage({
             </div>
           </section>
 
+          {catalogFailure}
+
+          {platformRedesign && loading && !catalogUnavailable && (
+            <p role="status" className="mb-4 border-l-2 border-red px-4 py-3 text-sm font-bold text-red">
+              {results?.length ? "搜索中，暂时保留上次结果…" : "搜索中…"}
+            </p>
+          )}
+
           {error && (
             <div role="alert" className="border border-red/40 px-4 py-5 text-center">
               <p className="mb-3 text-sm font-bold text-red">{error}</p>
@@ -676,16 +729,16 @@ export function SearchPage({
             </div>
           )}
 
-          {results && !error && (
-            <>
+          {results && !error && !catalogUnavailable && (
+            <section aria-label="搜索结果" aria-busy={platformRedesign ? loading : undefined}>
               {results.length === 0 ? (
-                <div className="py-20 text-center"><p className="text-muted font-bold">没有找到相关结果</p></div>
+                (!platformRedesign || !loading) && <div className="py-20 text-center"><p className="text-muted font-bold">没有找到相关结果</p></div>
               ) : (
                 <ol className="list-none m-0 p-0">
                   {results.map((r, i) => (
                     <li key={i} className="relative pl-14 py-5 border-t border-rule first:border-rule-dark">
                       <span className="absolute left-0 top-5 w-9 pb-1.5 border-b-2 border-red text-red text-[13px] font-bold tracking-wider">
-                        {String(i + 1 + (page - 1) * pageSize).padStart(2, "0")}
+                        {String(i + 1 + ((platformRedesign ? resultsPage : page) - 1) * pageSize).padStart(2, "0")}
                       </span>
                       <Link
                         to={unifiedResultPath(r, bookDatasets)}
@@ -710,8 +763,10 @@ export function SearchPage({
                   ))}
                 </ol>
               )}
-              <Pagination current={page} total={Math.ceil(total / pageSize)} onChange={handlePageChange} />
-            </>
+              {(!platformRedesign || !loading) && (
+                <Pagination current={page} total={Math.ceil(total / pageSize)} onChange={handlePageChange} />
+              )}
+            </section>
           )}
         </div>
       )}
