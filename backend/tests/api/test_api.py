@@ -234,7 +234,7 @@ def test_speech_returns_mpeg_audio(monkeypatch) -> None:
 
     response = client.post(
         "/v1/speech",
-        json={"text": "  第一段\n新闻正文  ", "voice": "zh-CN-YunyangNeural"},
+        json={"text": "  第一段\n新闻正文  ", "voice": "zh-CN-YunyangNeural", "provider": "edge"},
     )
 
     assert response.status_code == 200

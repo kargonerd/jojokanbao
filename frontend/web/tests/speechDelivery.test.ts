@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadCachedSpeechDurations, requestSpeech, speechKey, speechObjectBase } from "../src/reading/speech";
+import { loadCachedSpeechDurations, logicalSpeechVoice, requestSpeech, speechKey, speechObjectBase } from "../src/reading/speech";
 import { useAccountSessionStore } from "../src/account/session";
 import { useFeatureFlagStore } from "../src/featureFlags";
 
@@ -41,6 +41,20 @@ describe("public audio delivery", () => {
     expect(fetcher.mock.calls[1]![1].headers.Authorization).toBeUndefined();
   });
 
+  it("reuses a logical alias pointing at the existing MiMo MP3 without API synthesis", async () => {
+    const original = await descriptor();
+    const key = await speechKey("auto", "two-voices-v1", "male", "正文");
+    const record = { ...original, sourceKey: original.key, key, provider: "mimo", voice: "male" };
+    const fetcher = vi.fn(async () => Response.json(record));
+    vi.stubGlobal("fetch", fetcher);
+    expect(await requestSpeech("正文", "male", undefined, { ...options, provider: "auto", cacheVersion: "two-voices-v1" }))
+      .toEqual({ url: `${options.cdnBase}/${original.object}`, duration: original.duration });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(logicalSpeechVoice("冰糖")).toBe("female");
+    expect(logicalSpeechVoice("zh-CN-XiaoxiaoNeural")).toBe("female");
+    expect(logicalSpeechVoice("白桦")).toBe("male");
+  });
+
   it("does not fetch even a known public URL for a logged-out user", async () => {
     useAccountSessionStore.setState({ userId: null });
     const fetcher = vi.fn();
@@ -63,5 +77,23 @@ describe("public audio delivery", () => {
     expect(await loadCachedSpeechDurations(["正文", "尚未生成"], "白桦", new AbortController().signal, options)).toEqual({ 0: 12 });
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(fetcher.mock.calls.every(([url]) => url.startsWith(options.cdnBase))).toBe(true);
+  });
+
+  it("isolates news and replaces expired CDN metadata through the backend", async () => {
+    const original = await descriptor();
+    const record = { ...original, object: `${speechObjectBase("mimo", original.key, "news")}/${"a".repeat(64)}.mp3`, expiresAt: Date.now() / 1000 + 86400 };
+    const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ ...record, expiresAt: Date.now() / 1000 - 1 }))
+      .mockResolvedValueOnce(Response.json(record));
+    vi.stubGlobal("fetch", fetcher);
+    expect(await requestSpeech("正文", "白桦", undefined, { ...options, scope: "news" }))
+      .toEqual({ url: `${options.cdnBase}/${record.object}`, duration: 12 });
+    expect(fetcher.mock.calls[0]![0]).toContain("/news/segments/");
+    expect(JSON.parse(fetcher.mock.calls[1]![1].body).scope).toBe("news");
+  });
+
+  it("does not reuse book audio for news even when text and voice match", async () => {
+    const record = { ...await descriptor(), expiresAt: Date.now() / 1000 + 86400 };
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json(record)));
+    await expect(requestSpeech("正文", "白桦", undefined, { ...options, scope: "news" })).rejects.toThrow("无效音频地址");
   });
 });

@@ -99,7 +99,8 @@ def verify(bundle: Path) -> None:
                 if path.endswith("health"):
                     require(body.get("status") == "ok", "Health payload is invalid")
                 else:
-                    require({item["id"] for item in body["providers"]} == {"edge", "mimo"}, "Provider catalog is incomplete")
+                    require({item["id"] for item in body["providers"]} == {"auto"}, "Logical voice catalog is incomplete")
+                    require({voice["id"] for voice in body["providers"][0]["voices"]} == {"male", "female"}, "Expected two logical voices")
                     require(all(not item["canGenerate"] for item in body["providers"]), "Offline synthesis must be disabled")
             response = await client.get("/api/v1/times")
             require(response.status_code == 404, "JOJO Times must not be exposed by the production bundle")

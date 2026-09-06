@@ -75,7 +75,7 @@ def test_route_reuses_audio_with_frontend_only_login_policy(tmp_path, monkeypatc
     app.dependency_overrides[get_settings] = lambda: settings
     try:
         with TestClient(app) as client:
-            payload = {"text": "同一本书的正文", "voice": "zh-CN-XiaoxiaoNeural"}
+            payload = {"text": "同一本书的正文", "voice": "zh-CN-XiaoxiaoNeural", "provider": "edge"}
             first = client.post("/v1/speech", json=payload)
             second = client.post("/v1/speech", json=payload)
             assert first.status_code == second.status_code == 200

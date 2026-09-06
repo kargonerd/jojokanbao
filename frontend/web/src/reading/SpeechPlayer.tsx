@@ -2,7 +2,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState, type CSS
 import { createPortal } from "react-dom";
 import { Backward15Seconds, Forward15Seconds, Book, BookStack, Check, DashboardSpeed, Headset, List, NavArrowDown, PauseSolid, PlaySolid, SkipNextSolid, SkipPrevSolid, Timer, User, Xmark } from "iconoir-react";
 import { ReadingBookshelfContext } from "./ReadingBookshelfContext";
-import { DEFAULT_SPEECH_PROVIDERS, loadCachedSpeechDurations, loadSpeechProviders, requestSpeech, SPEECH_VOICES, type SpeechProvider, type SpeechVoice } from "./speech";
+import { DEFAULT_SPEECH_PROVIDERS, loadCachedSpeechDurations, loadSpeechProviders, logicalSpeechVoice, requestSpeech, SPEECH_VOICES, type SpeechProvider, type SpeechVoice } from "./speech";
 import "./SpeechPlayer.css";
 import { readSpeechProgress, saveSpeechProgress, speechFingerprint } from "./speechProgress";
 import { useAccountSessionStore } from "../account/session";
@@ -32,6 +32,10 @@ function storedVoice(storageKey: string, fallback: SpeechVoice): SpeechVoice {
 function storedSpeed(): number {
   const value = Number(readPreference(SPEED_STORAGE_KEY));
   return SPEEDS.includes(value as typeof SPEEDS[number]) ? value : 1;
+}
+
+function LoadingIndicator() {
+  return <span className="speech-loading" aria-hidden="true"><i /><i /><i /></span>;
 }
 
 function PlayIcon({ playing }: { playing: boolean }) {
@@ -97,7 +101,7 @@ function ActiveSpeechPlayer({
   queueItems,
   activeQueueId,
   onQueueItemChange,
-  defaultVoice = "zh-CN-XiaoxiaoNeural",
+  defaultVoice = "male",
 }: {
   segments: string[];
   label: string;
@@ -114,6 +118,7 @@ function ActiveSpeechPlayer({
 }) {
   const bookshelf = useContext(ReadingBookshelfContext);
   const userId = useAccountSessionStore((session) => session.userId);
+  const speechScope = contentId?.startsWith("news:") || label === "听新闻" ? "news" : "book";
   const contentKey = segments.map((value) => value.trim()).filter(Boolean).join("\u0000");
   const progressId = contentId || `${label}:${collectionTitle || title || ""}`;
   const fingerprint = useMemo(() => speechFingerprint(contentKey), [contentKey]);
@@ -123,7 +128,7 @@ function ActiveSpeechPlayer({
   const playableSegments = useMemo(() => contentKey ? contentKey.split("\u0000") : [], [contentKey]);
   const voiceStorageKey = `${VOICE_STORAGE_KEY}:${label}`;
   const [voice, setVoice] = useState<SpeechVoice>(() => storedVoice(voiceStorageKey, defaultVoice));
-  const [provider, setProvider] = useState("edge");
+  const [provider, setProvider] = useState("auto");
   const [providers, setProviders] = useState<SpeechProvider[]>(DEFAULT_SPEECH_PROVIDERS);
   const cacheVersion = providers.find((option) => option.id === provider)?.cacheVersion;
   const [cdnBase, setCdnBase] = useState<string | null>(null);
@@ -133,6 +138,12 @@ function ActiveSpeechPlayer({
   const [durations, setDurations] = useState<Record<number, number>>({});
   const [speed, setSpeed] = useState(storedSpeed);
   const [state, setState] = useState<PlayerState>("idle");
+  const [showLoading, setShowLoading] = useState(false);
+  useEffect(() => {
+    if (state !== "loading") { setShowLoading(false); return; }
+    const timer = window.setTimeout(() => setShowLoading(true), 300);
+    return () => window.clearTimeout(timer);
+  }, [state]);
   const [segmentIndex, setSegmentIndex] = useState(0);
   const [segmentProgress, setSegmentProgress] = useState(0);
   const [wantsPlayback, setWantsPlayback] = useState(false);
@@ -181,10 +192,13 @@ function ActiveSpeechPlayer({
       try {
         const saved = readSpeechProgress(progressId) ?? JSON.parse(readPreference(`${voiceStorageKey}:provider`) || "null") as { provider?: string; voice?: string } | null;
         const match = capabilities.providers.find((option) => option.id === saved?.provider && option.available);
-        if (match?.voices.some((option) => option.id === saved?.voice)) {
+        if (capabilities.defaultProvider === "auto") {
+          setProvider("auto");
+          setVoice(logicalSpeechVoice(saved?.voice));
+        } else if (match?.voices.some((option) => option.id === saved?.voice)) {
           setProvider(match.id);
           setVoice(saved!.voice!);
-        } else if (!saved && capabilities.defaultVoice) {
+        } else if (capabilities.defaultVoice) {
           setProvider(capabilities.defaultProvider);
           setVoice(capabilities.defaultVoice);
         }
@@ -237,7 +251,7 @@ function ActiveSpeechPlayer({
     const controller = new AbortController();
     controllersRef.current.add(controller);
     const pending = requestSpeech(text, selectedVoice, controller.signal, {
-      provider, cdnBase, cacheVersion,
+      provider, cdnBase, cacheVersion, scope: speechScope,
     })
       .then((blob) => {
         if (!(blob instanceof Blob)) {
@@ -268,7 +282,7 @@ function ActiveSpeechPlayer({
       }).catch(() => undefined);
     }
     return pending;
-  }, [provider, cdnBase, cacheVersion]);
+  }, [provider, cdnBase, cacheVersion, speechScope]);
 
   useEffect(() => {
     savePreference(voiceStorageKey, voice);
@@ -300,11 +314,11 @@ function ActiveSpeechPlayer({
   useEffect(() => {
     if (!sessionStarted || !capabilitiesReady || !userId || !cdnBase || !cacheVersion) return;
     const controller = new AbortController();
-    void loadCachedSpeechDurations(playableSegments, voice, controller.signal, { provider, cacheVersion, cdnBase })
+    void loadCachedSpeechDurations(playableSegments, voice, controller.signal, { provider, cacheVersion, cdnBase, scope: speechScope })
       .then((known) => { if (!controller.signal.aborted) setDurations((current) => ({ ...current, ...known })); })
       .catch(() => undefined); // Metadata warming must never prevent playback.
     return () => controller.abort();
-  }, [sessionStarted, capabilitiesReady, userId, cdnBase, cacheVersion, playableSegments, voice, provider]);
+  }, [sessionStarted, capabilitiesReady, userId, cdnBase, cacheVersion, playableSegments, voice, provider, speechScope]);
 
   useEffect(() => {
     if (!wantsPlayback || !capabilitiesReady || !userId || !playableSegments[segmentIndex]) return;
@@ -651,7 +665,7 @@ function ActiveSpeechPlayer({
   const durationTimeLabel = totalWeight ? formatTime(estimatedDuration) : "--:--";
   const active = state === "playing" || state === "loading";
   const status = error || (
-    state === "loading" ? "正在准备音频…"
+    state === "loading" ? (showLoading ? "加载中" : "")
       : state === "playing" ? "正在朗读"
         : state === "paused" ? "已暂停"
           : state === "complete" ? "本篇播放完成"
@@ -744,7 +758,7 @@ function ActiveSpeechPlayer({
             <div className="speech-player__transport">
               <button type="button" className="speech-player__transport-utility" onClick={closePlayer} aria-label="返回原文" title="返回原文"><SourceIcon /><span>原文</span></button>
               <button type="button" onClick={() => hasDocumentQueue ? jumpToQueueItem(activeQueueIndex - 1) : jumpToSegment(segmentIndex - 1)} disabled={hasDocumentQueue ? activeQueueIndex === 0 : segmentIndex === 0} aria-label={hasDocumentQueue ? "上一章" : "上一段"} title={hasDocumentQueue ? "上一章" : "上一段"}><StepIcon direction="previous" /></button>
-              <button type="button" className="speech-player__primary" onClick={togglePlayback} disabled={!playableSegments.length} aria-label={active ? "暂停听读" : state === "paused" ? "继续听读" : "开始听读"}><PlayIcon playing={active} /></button>
+              <button type="button" className="speech-player__primary" onClick={togglePlayback} disabled={!playableSegments.length} aria-label={state === "loading" ? "取消加载" : active ? "暂停听读" : state === "paused" ? "继续听读" : "开始听读"}>{showLoading ? <LoadingIndicator /> : <PlayIcon playing={active} />}</button>
               <button type="button" onClick={() => hasDocumentQueue ? jumpToQueueItem(activeQueueIndex + 1) : jumpToSegment(segmentIndex + 1)} disabled={hasDocumentQueue ? activeQueueIndex >= visibleQueue.length - 1 : segmentIndex >= playableSegments.length - 1} aria-label={hasDocumentQueue ? "下一章" : "下一段"} title={hasDocumentQueue ? "下一章" : "下一段"}><StepIcon direction="next" /></button>
               <button type="button" className="speech-player__transport-utility" onClick={showQueue} aria-label="打开章节列表" aria-expanded={queueOpen} aria-controls="speech-player-queue" title="打开章节列表"><QueueIcon /><span>{visibleQueue.length}{queueUnit}</span></button>
             </div>
@@ -805,7 +819,6 @@ function ActiveSpeechPlayer({
                     {provider === source.id && voice === option.id && <Check aria-hidden="true" />}
                   </button>))}
             </div>
-            <p className="speech-player__privacy-note">已有音频直接播放；尚未生成时，会将正文发送给所选声音服务合成。</p>
           </>}
           {settingPanel === "speed" && <div className="speech-player__sheet-options speech-player__sheet-options--speed" role="group" aria-label="语速选项">
             {SPEEDS.map((value) => <button
@@ -836,7 +849,7 @@ function ActiveSpeechPlayer({
           <span className="speech-mini__identity"><strong>{displayTitle}</strong><small>{state === "loading" || error ? status : `${collectionTitle || label} · ${selectedVoiceLabel}`}</small></span>
         </button>
         <span className="speech-mini__time">{elapsedTimeLabel} / {durationTimeLabel}</span>
-        <button type="button" className="speech-mini__play" onClick={togglePlayback} aria-label={active ? "暂停听读" : "继续听读"}><PlayIcon playing={active} /></button>
+        <button type="button" className="speech-mini__play" onClick={togglePlayback} aria-label={state === "loading" ? "取消加载" : active ? "暂停听读" : "继续听读"}>{showLoading ? <LoadingIndicator /> : <PlayIcon playing={active} />}</button>
         <button type="button" onClick={() => { openPlayer(); showQueue(); }} aria-label="打开章节列表"><QueueIcon /></button>
         <button type="button" onClick={dismissMini} aria-label="关闭迷你播放器"><CloseIcon /></button>
       </div>

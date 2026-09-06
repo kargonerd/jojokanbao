@@ -1,6 +1,6 @@
 {
   "name": "@jojo/mobile",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "main": "index.ts",
   "scripts": {
     "start": "cross-env APP_VARIANT=standard EXPO_PUBLIC_APP_VARIANT=standard expo start",

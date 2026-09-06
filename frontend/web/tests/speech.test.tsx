@@ -42,6 +42,34 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) =>
 }));
 
 describe("reader speech", () => {
+  it("uses a delayed compact loading indicator without synthesis implementation copy", async () => {
+    fetchMock.mockImplementation(async (input) => input === "/api/v1/speech/providers"
+      ? Response.json(capabilities) : new Promise<Response>(() => undefined));
+    const { container } = render(<SpeechPlayer label="听本章" segments={["测试正文。"]} />);
+    fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
+    fireEvent.click(await screen.findByRole("button", { name: "开始听读" }));
+    expect(screen.queryByText(/已有音频直接播放/u)).toBeNull();
+    expect(container.querySelector(".speech-loading")).toBeNull();
+    await waitFor(() => expect(document.querySelector(".speech-loading")).not.toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "取消加载" }));
+    await waitFor(() => expect(document.querySelector(".speech-loading")).toBeNull());
+  });
+
+  it("shows only logical voices and migrates the saved female choice", async () => {
+    window.localStorage.setItem("jojo-reader-speech-voice:听本章:provider", JSON.stringify({ provider: "mimo", voice: "冰糖" }));
+    fetchMock.mockImplementation(async (input) => input === "/api/v1/speech/providers"
+      ? Response.json({ defaultProvider: "auto", defaultVoice: "male", requiresAuth: false, providers: DEFAULT_SPEECH_PROVIDERS })
+      : new Response(new Blob(["audio"]), { headers: { "Content-Type": "audio/mpeg" } }));
+    render(<SpeechPlayer label="听本章" segments={["测试正文。"]} />);
+    fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "选择听读声音" }));
+    const choices = within(screen.getByRole("group", { name: "声音选项" }));
+    await waitFor(() => expect(choices.getByRole("button", { name: "女声" }).getAttribute("aria-pressed")).toBe("true"));
+    expect(choices.getAllByRole("button")).toHaveLength(2);
+    expect(choices.getByRole("button", { name: "男声" })).toBeTruthy();
+  });
+
   beforeEach(() => {
     useFeatureFlagStore.setState((state) => ({ flags: { ...state.flags, "reader.speech": true } }));
     useAccountSessionStore.setState({ initialized: true, userId: "test-reader" });
@@ -128,8 +156,8 @@ describe("reader speech", () => {
     const request = fetchMock.mock.calls.find(([input]) => input === "/api/v1/speech")![1]!;
     expect(JSON.parse(String(request.body))).toEqual({
       text: "标题",
-      voice: "zh-CN-XiaoxiaoNeural",
-      provider: "edge",
+      voice: "male",
+      provider: "auto",
     });
     expect((await screen.findAllByText("正在朗读")).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "暂停听读" })).toBeTruthy();

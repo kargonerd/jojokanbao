@@ -16,6 +16,8 @@ concurrency:
 jobs:
   validate:
     name: Validate release
+    # iOS signing / App Store release is intentionally disabled until explicitly enabled.
+    if: vars.ENABLE_IOS_RELEASE == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:

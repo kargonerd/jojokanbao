@@ -190,8 +190,8 @@ def test_cached_voice_remains_selectable_when_synthesis_is_disabled():
     try:
         with TestClient(app) as client:
             result = client.get("/v1/speech/providers").json()
-        assert result["defaultVoice"] == "白桦"
-        mimo = next(provider for provider in result["providers"] if provider["id"] == "mimo")
+        assert result["defaultVoice"] == "male"
+        mimo = next(provider for provider in result["providers"] if provider["id"] == "auto")
         assert mimo["available"] is True and mimo["canGenerate"] is False
     finally:
         app.dependency_overrides.clear()

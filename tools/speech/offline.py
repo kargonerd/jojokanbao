@@ -6,11 +6,36 @@ import math
 import time
 from collections import deque
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
+from dataclasses import replace
 from email.utils import parsedate_to_datetime
 
 import httpx
 
 from app.speech.providers import MimoProvider, PROVIDERS
+
+
+offline_account = ContextVar("offline_account", default=0)
+
+
+class AccountProvider:
+    """Route offline workers without changing shared storage settings/cache identity."""
+
+    def __init__(self, providers, keys, budgets=None):
+        self.providers, self.keys = providers, keys
+        self.budgets = budgets
+
+    def __getattr__(self, name):
+        return getattr(self.providers[0], name)
+
+    async def synthesize(self, text, voice, settings):
+        index = offline_account.get()
+        started = time.monotonic()
+        result = await self.providers[index].synthesize(
+            text, voice, replace(settings, mimo_api_key=self.keys[index]))
+        if self.budgets:
+            self.budgets[index].synthesis_seconds.append(time.monotonic() - started)
+        return result
 
 
 class BatchStopped(Exception):
@@ -39,14 +64,24 @@ class RequestLimiter:
     not an account-wide/distributed limit; leave headroom for online listeners.
     """
 
-    def __init__(self, *, clock=time.monotonic, sleep=asyncio.sleep):
+    def __init__(self, *, rpm=30, tpm=8_000_000, clock=time.monotonic, sleep=asyncio.sleep, smooth=False):
+        if not 1 <= rpm <= 80 or not 1 <= tpm <= 8_000_000:
+            raise ValueError("Offline rate budget exceeds reserved account headroom")
+        self.rpm, self.tpm = rpm, tpm
         self.clock = clock
         self.sleep = sleep
         self.requests = deque()
         self.cooldown_until = 0.0
         self.lock = asyncio.Lock()
+        self.tokens = deque()
+        self.sent = self.throttled = 0
+        self.interval = 60 / rpm if smooth else 0
+        self.next_request_at = 0.0
+        self.synthesis_seconds = deque(maxlen=100)
 
-    async def acquire(self, stopped: asyncio.Event) -> None:
+    async def acquire(self, stopped: asyncio.Event, tokens: int = 0) -> None:
+        if not 0 <= tokens <= self.tpm:
+            raise ValueError("One request exceeds token reservation budget")
         while True:
             async with self.lock:
                 if stopped.is_set():
@@ -54,15 +89,28 @@ class RequestLimiter:
                 now = self.clock()
                 while self.requests and self.requests[0] <= now - 60:
                     self.requests.popleft()
-                delay = max(0.0, self.cooldown_until - now)
-                if len(self.requests) >= 30:
+                while self.tokens and self.tokens[0][0] <= now - 60:
+                    self.tokens.popleft()
+                delay = max(0.0, self.cooldown_until - now, self.next_request_at - now)
+                if len(self.requests) >= self.rpm:
                     delay = max(delay, self.requests[0] + 60 - now)
+                used = sum(value for _, value in self.tokens)
+                for stamp, value in self.tokens:
+                    if used + tokens <= self.tpm:
+                        break
+                    delay = max(delay, stamp + 60 - now)
+                    used -= value
                 if delay <= 0:
                     self.requests.append(now)
+                    self.tokens.append((now, tokens))
+                    self.sent += 1
+                    # Do not accumulate burst credit after idle time or cooldown.
+                    self.next_request_at = now + self.interval
                     return
             await self.sleep(delay)
 
     def defer(self, seconds: float) -> None:
+        self.throttled += 1
         self.cooldown_until = max(self.cooldown_until, self.clock() + seconds)
 
 
@@ -104,7 +152,9 @@ class LimitedTransport(httpx.AsyncBaseTransport):
         # identical even if the original request stream was already consumed.
         body = await request.aread()
         for attempt in range(3):
-            await self.limiter.acquire(self.stopped)
+            # Conservative reservation, not measured billing: UTF-8 request bytes
+            # plus the model's documented 8K maximum output. Includes each retry.
+            await self.limiter.acquire(self.stopped, tokens=len(body) + 8192)
             replay = httpx.Request(request.method, request.url, headers=request.headers,
                                    content=body, extensions=request.extensions)
             response = await self.transport.handle_async_request(replay)
@@ -142,28 +192,36 @@ class LimitedProvider:
 
 
 @asynccontextmanager
-async def offline_provider(provider_id: str, limiter: RequestLimiter, stopped: asyncio.Event):
+async def offline_provider(provider_id: str, limiter: RequestLimiter, stopped: asyncio.Event, *, concurrency: int = 2,
+                           accounts=None):
     # Only used by the standalone offline tool. Do not run overlapping generate()
     # scopes in one process, or use this context in the online API.
     original = PROVIDERS[provider_id]
-    transport = None
+    transports = []
     if provider_id == "mimo":
-        transport = LimitedTransport(httpx.AsyncHTTPTransport(), limiter, stopped)
-        replacement = MimoProvider(transport=transport)
+        for budget in ([item[1] for item in accounts] if accounts else [limiter]):
+            transports.append(LimitedTransport(httpx.AsyncHTTPTransport(
+                limits=httpx.Limits(max_connections=100, max_keepalive_connections=64, keepalive_expiry=60)), budget, stopped))
+        providers = [MimoProvider(transport=item, max_response_bytes=None) for item in transports]
+        replacement = AccountProvider(providers, [item[0] for item in accounts], [item[1] for item in accounts]) if accounts else providers[0]
     else:
         replacement = LimitedProvider(original, limiter, stopped)
     PROVIDERS[provider_id] = replacement
+    from app.speech.delivery import offline_synthesis_slots, offline_pending_limit
+    slot_token = offline_synthesis_slots.set(asyncio.Semaphore(concurrency))
+    pending_token = offline_pending_limit.set(max(32, concurrency))
     try:
         yield
     finally:
         PROVIDERS[provider_id] = original
-        if transport is not None:
-            await finish_cleanup(transport.close())
+        offline_synthesis_slots.reset(slot_token)
+        offline_pending_limit.reset(pending_token)
+        await finish_cleanup(asyncio.gather(*(item.close() for item in transports)))
 
 
 @asynccontextmanager
 async def ordered_results(texts, resolve, concurrency: int, stopped: asyncio.Event):
-    """Prefetch at most two segments; report in order and drain on every exit."""
+    """Bound prefetch to the chosen offline concurrency; drain on every exit."""
     pending = deque()
     remaining = iter(texts)
 

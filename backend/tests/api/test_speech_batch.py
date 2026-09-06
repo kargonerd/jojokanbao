@@ -31,6 +31,17 @@ def configured():
                     speech_storage="b2", mimo_api_key="not-a-real-key")
 
 
+def test_offline_size_limit_opt_out_does_not_change_online_provider():
+    async def scenario():
+        original = PROVIDERS["mimo"]
+        assert original.max_response_bytes == 16 * 1024 * 1024
+        async with offline_provider("mimo", RequestLimiter(), asyncio.Event()):
+            assert PROVIDERS["mimo"].max_response_bytes is None
+        assert PROVIDERS["mimo"] is original
+        assert original.max_response_bytes == 16 * 1024 * 1024
+    asyncio.run(scenario())
+
+
 def options(tmp_path, texts, concurrency=2):
     plan = tmp_path / "plan.json"
     plan.write_text(json.dumps({"formatVersion": "jojo-speech-plan/1", "books": [
@@ -56,7 +67,7 @@ def isolated_batch(monkeypatch):
             writes.append((key, copy.deepcopy(value)))
 
     @asynccontextmanager
-    async def no_provider(*args):
+    async def no_provider(*args, **kwargs):
         yield
 
     monkeypatch.setattr(batch, "speech_store", lambda _: Store())
@@ -185,7 +196,7 @@ def test_cancellation_drains_before_returning(tmp_path, monkeypatch, isolated_ba
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("concurrency", [0, 3, -1, True, "2", 2.0, None])
+@pytest.mark.parametrize("concurrency", [0, 17, -1, True, "2", 2.0, None])
 def test_invalid_concurrency_fails_before_any_external_work(tmp_path, monkeypatch, concurrency):
     def forbidden(*args):
         pytest.fail("No storage or provider access is allowed")
@@ -211,6 +222,31 @@ class FakeClock:
         await asyncio.sleep(0)
 
 
+def test_smooth_limiter_spaces_requests_without_burst_credit():
+    async def scenario():
+        clock = FakeClock()
+        limiter = RequestLimiter(rpm=80, smooth=True, clock=clock.time, sleep=clock.sleep)
+        stopped = asyncio.Event()
+        stamps = []
+        for _ in range(82):
+            await limiter.acquire(stopped)
+            stamps.append(clock.now)
+        assert all(b - a >= .75 for a, b in zip(stamps, stamps[1:]))
+        assert len(limiter.requests) <= 80
+        clock.now += 120
+        await limiter.acquire(stopped)
+        await limiter.acquire(stopped)
+        assert clock.delays[-1] == .75
+        limiter.defer(7)
+        await limiter.acquire(stopped)
+        assert clock.delays[-1] == 7
+        stopped.set()
+        with pytest.raises(Exception) as caught:
+            await limiter.acquire(stopped)
+        assert type(caught.value).__name__ == "BatchStopped"
+    asyncio.run(scenario())
+
+
 def test_limiter_uses_one_rolling_budget_across_calls_and_retries():
     async def scenario():
         clock = FakeClock()
@@ -224,6 +260,32 @@ def test_limiter_uses_one_rolling_budget_across_calls_and_retries():
         await limiter.acquire(stopped)
         assert clock.delays == [60, 7]
 
+    asyncio.run(scenario())
+
+
+def test_token_reservation_and_offline_concurrency_keep_online_defaults():
+    from app.speech.delivery import offline_synthesis_slots, synthesis_slots
+
+    async def scenario():
+        clock = FakeClock()
+        limiter = RequestLimiter(rpm=60, tpm=100, clock=clock.time, sleep=clock.sleep)
+        stopped = asyncio.Event()
+        await limiter.acquire(stopped, tokens=60)
+        await limiter.acquire(stopped, tokens=60)
+        assert clock.delays == [60]
+        assert limiter.sent == 2
+        with pytest.raises(ValueError):
+            await limiter.acquire(stopped, tokens=101)
+        assert offline_synthesis_slots.get() is None
+        default = synthesis_slots(asyncio.get_running_loop())
+        async with offline_provider("mimo", limiter, stopped, concurrency=8):
+            slots = offline_synthesis_slots.get()
+            assert slots is not default
+            for _ in range(8):
+                await asyncio.wait_for(slots.acquire(), .1)
+            assert slots.locked()
+            assert not default.locked()
+        assert offline_synthesis_slots.get() is None
     asyncio.run(scenario())
 
 
@@ -344,7 +406,7 @@ def test_provider_scope_restores_original_on_failure(monkeypatch):
     async def scenario():
         original = PROVIDERS["mimo"]
         pool = httpx.MockTransport(lambda _: pytest.fail("No HTTP request expected"))
-        monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda: pool)
+        monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda **kwargs: pool)
         with pytest.raises(RuntimeError):
             async with offline_provider("mimo", RequestLimiter(), asyncio.Event()):
                 assert PROVIDERS["mimo"] is not original
@@ -378,7 +440,7 @@ def test_one_client_closing_does_not_close_another_inflight_synthesis(monkeypatc
             return httpx.Response(200, json={"choices": [{"message": {"audio": {"data": wav}}}]})
 
         pool = Pool(handler)
-        monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda: pool)
+        monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda **kwargs: pool)
         async with offline_provider("mimo", RequestLimiter(), asyncio.Event()):
             provider = PROVIDERS["mimo"]
             first = asyncio.create_task(provider.synthesize("a", "白桦", configured()))
@@ -424,7 +486,7 @@ def test_cancelled_generate_drains_pool_restores_provider_and_leaves_no_tasks(tm
                 pytest.fail("Cancelled chapter must not be published")
 
         pool = Pool(handler)
-        monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda: pool)
+        monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda **kwargs: pool)
         monkeypatch.setattr(batch, "speech_store", lambda _: Store())
         monkeypatch.setattr(batch, "resolve_speech", resolve)
         baseline = asyncio.all_tasks()
@@ -521,7 +583,7 @@ def test_pool_close_finishes_under_repeated_cancellation(monkeypatch, cancel_bod
                 self.closed = True
 
         pool = Pool(lambda _: pytest.fail("No HTTP request expected"))
-        monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda: pool)
+        monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda **kwargs: pool)
 
         async def scoped():
             async with offline_provider("mimo", RequestLimiter(), asyncio.Event()):

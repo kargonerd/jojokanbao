@@ -254,7 +254,7 @@ describe("BookReader", () => {
     expect(removeEventListener).toHaveBeenCalledWith("resize", expect.any(Function));
   });
 
-  it.each(["scroll", "paged"])("toggles all mobile chrome with a body tap in %s mode without remounting the text", (mode) => {
+  it.each(["scroll", "paged"])("toggles mobile tools but keeps the title visible in %s mode without remounting the text", (mode) => {
     window.innerWidth = 390;
     window.localStorage.setItem("jojo-reader-mode", mode);
     const { container } = renderReader();
@@ -262,20 +262,56 @@ describe("BookReader", () => {
     const surface = container.querySelector("[data-book-reading-surface]");
     expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
 
-    fireEvent.click(paragraph);
+    fireEvent.click(paragraph, { clientX: 195, detail: 1 });
     expect(screen.queryByRole("navigation", { name: "阅读工具" })).toBeNull();
     expect(screen.queryByRole("button", { name: "打开听本章播放器" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "返回上一页" })).toBeNull();
+    expect(screen.getByRole("link", { name: "返回上一页" })).toBeTruthy();
+    expect(within(container.querySelector("header")!).getByText("测试书")).toBeTruthy();
+    expect(container.querySelector("header")?.hasAttribute("data-reader-chrome")).toBe(false);
     expect(container.querySelector("[data-reader-mobile-toolbar]")?.hasAttribute("inert")).toBe(true);
     expect(container.querySelector("[data-book-reading-surface]")).toBe(surface);
     expect(screen.getByText("这是正文。")).toBe(paragraph);
     if (mode === "paged") expect(screen.queryByRole("button", { name: "下一页" })).toBeNull();
 
-    fireEvent.click(paragraph);
+    fireEvent.click(paragraph, { clientX: 195, detail: 1 });
     expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "返回上一页" })).toBeTruthy();
     expect(container.querySelector("[data-reader-mobile-toolbar]")?.hasAttribute("inert")).toBe(false);
+  });
+
+  it.each(["text", "margin"])("turns mobile pages by tapping the %s edges without page buttons", (target) => {
+    window.innerWidth = 390;
+    window.localStorage.setItem("jojo-reader-mode", "paged");
+    const onChapterChange = vi.fn();
+    const { container } = renderReader(onChapterChange);
+    const surface = target === "text" ? screen.getByText("这是正文。") : container.querySelector("article")!;
+    expect(screen.queryByRole("button", { name: "上一页", hidden: true })).toBeNull();
+    expect(screen.queryByRole("button", { name: "下一页", hidden: true })).toBeNull();
+    fireEvent.click(surface, { clientX: 20, detail: 1 });
+    expect(onChapterChange).not.toHaveBeenCalled();
+    fireEvent.click(surface, { clientX: 370, detail: 1 });
+    expect(onChapterChange).toHaveBeenCalledWith("chapter-2");
+    expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
+  });
+
+  it("turns to the previous chapter with a left-edge tap", () => {
+    window.innerWidth = 390;
+    window.localStorage.setItem("jojo-reader-mode", "paged");
+    const onChapterChange = vi.fn();
+    renderReader(onChapterChange, vi.fn(), undefined, false, "chapter-2");
+    fireEvent.click(screen.getByText("这是正文。"), { clientX: 20, detail: 1 });
+    expect(onChapterChange).toHaveBeenCalledWith("chapter-1");
+  });
+
+  it("toggles tools instead of turning chapters on a scroll-mode edge tap", () => {
+    window.innerWidth = 390;
+    window.localStorage.setItem("jojo-reader-mode", "scroll");
+    const onChapterChange = vi.fn();
+    renderReader(onChapterChange);
+    fireEvent.click(screen.getByText("这是正文。"), { clientX: 370, detail: 1 });
+    expect(onChapterChange).not.toHaveBeenCalled();
+    expect(screen.queryByRole("navigation", { name: "阅读工具" })).toBeNull();
   });
 
   it.each(["move", "cancel", "scroll", "longpress"])("does not confuse a mobile %s gesture with a reader tap", (gesture) => {
@@ -292,7 +328,7 @@ describe("BookReader", () => {
     fireEvent.click(paragraph);
     expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
 
-    fireEvent.pointerDown(paragraph, { clientX: 120, clientY: 160 });
+    fireEvent.pointerDown(paragraph, { clientX: 195, clientY: 160 });
     fireEvent.pointerUp(paragraph);
     fireEvent.click(paragraph);
     expect(screen.queryByRole("button", { name: "打开听本章播放器" })).toBeNull();

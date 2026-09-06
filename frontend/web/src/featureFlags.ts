@@ -90,6 +90,12 @@ export async function refreshFeatureFlags(): Promise<void> {
   }
 }
 
+export function isFeatureEnabled(key: FeatureFlagKey, flags = useFeatureFlagStore.getState().flags): boolean {
+  // Local voice previews must not change the remotely controlled release flag.
+  const speechPreview = import.meta.env.DEV && import.meta.env.MODE === "development" && key === "reader.speech";
+  return speechPreview || flags[key];
+}
+
 export function useFeatureFlag(key: FeatureFlagKey): boolean {
-  return useFeatureFlagStore((state) => state.flags[key]);
+  return useFeatureFlagStore((state) => isFeatureEnabled(key, state.flags));
 }
