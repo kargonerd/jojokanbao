@@ -5,6 +5,7 @@ packages:
   - "frontend/tooling/*"
   - "infrastructure/cloudflare/*"
   - "tools/content-pipeline"
+  - "tools/maintenance-scheduler"
   - "tools/times-pipeline"
   - "tools/release"
   - "tools/*/web"
