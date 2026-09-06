@@ -9,12 +9,15 @@ import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BookCoverCard } from "../components/BookCoverCard";
+import { BookshelfButton } from "../components/BookshelfButton";
+import { useBookshelf } from "../account/useBookshelf";
 import { PeriodicalCoverCard } from "../components/PeriodicalCoverCard";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import {
   fuzzyBookTitleScore,
   loadMobileBooks,
+  loadMobileBookVolumes,
   resolveMobileBookOpenTarget,
   type MobileBook,
 } from "../lib/books";
@@ -37,6 +40,7 @@ const libraryTypes: Array<{ id: LibraryType; label: string; icon: keyof typeof I
 ];
 
 export function LibraryScreen() {
+  const shelf = useBookshelf();
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const { width: viewportWidth } = useWindowDimensions();
   const hapticsEnabled = useMobileStore((state) => state.hapticsEnabled);
@@ -145,6 +149,7 @@ export function LibraryScreen() {
       </View>
 
       {error ? <Text accessibilityRole="alert" style={[styles.notice, { color: theme.red, borderColor: theme.rule, fontFamily: theme.sans }]}>{error}</Text> : null}
+      {shelf.error ? <Text accessibilityRole="alert" style={[styles.notice, { color: theme.red, borderColor: theme.rule, fontFamily: theme.sans }]}>{shelf.error}</Text> : null}
       <FlatList
         key={`library-${columnCount}`}
         data={items}
@@ -160,7 +165,7 @@ export function LibraryScreen() {
                 onOpen={() => openPeriodical(item.publication, item.publication.id === "rmrb" ? getLatestRmrbAvailableDate() : item.publication.defaultIssueId)}
               />
             ) : (
-              <BookCoverCard
+              <><BookCoverCard
                 book={item.book}
                 title={item.book.title}
                 subtitle={item.book.itemCount && item.book.itemCount > 1
@@ -168,6 +173,21 @@ export function LibraryScreen() {
                   : "单册 · 直接阅读"}
                 onPress={() => void openBook(item.book)}
               />
+              <BookshelfButton
+                label={item.book.itemCount && item.book.itemCount > 1 ? "选择分册" : undefined}
+                added={shelf.entries.some((entry) => entry.datasetId === item.book.datasetId)}
+                busy={shelf.busyKey === item.book.datasetId}
+                disabled={(item.book.itemCount ?? 0) <= 1 && (shelf.loading || Boolean(shelf.busyKey))}
+                onPress={() => {
+                  if (item.book.itemCount && item.book.itemCount > 1) { navigation.navigate("BookDetails", { book: item.book }); return; }
+                  void shelf.toggle(item.book.datasetId, async () => {
+                    const volumes = await loadMobileBookVolumes(item.book);
+                    if (volumes.length !== 1) { navigation.navigate("BookDetails", { book: item.book }); return; }
+                    const volume = volumes[0]!;
+                    return { datasetId: item.book.datasetId, itemId: volume.itemId, title: volume.title };
+                  });
+                }}
+              /></>
             )}
           </View>
         )}

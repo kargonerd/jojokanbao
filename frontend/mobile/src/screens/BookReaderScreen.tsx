@@ -13,6 +13,7 @@ import { ReaderEnvironment } from "../components/ReaderEnvironment";
 import { ReaderNavigationSheet } from "../components/ReaderNavigationSheet";
 import { ReaderSelectionToolbar } from "../components/ReaderSelectionToolbar";
 import { BookThoughtComposer } from "../components/BookThoughtComposer";
+import { BookshelfButton } from "../components/BookshelfButton";
 import { NativeSpeechPlayer } from "../reading/SpeechPlayer";
 import { mobileSpeechSegments } from "../reading/speech";
 import { useSpeechFlagStore } from "../reading/featureFlag";
@@ -171,9 +172,10 @@ export function BookReaderScreen({ route, navigation }: Props) {
       return undefined;
     }
     let active = true;
+    setOnBookshelf(undefined);
     void mobileBookshelfContains(datasetId, loaded.volume.itemId)
       .then((value) => { if (active) setOnBookshelf(value); })
-      .catch(() => { if (active) setOnBookshelf(undefined); });
+      .catch(() => { if (active) setReaderNotice("书架状态暂时无法读取，点击书架按钮重试。"); });
     return () => { active = false; };
   }, [datasetId, loaded, user]);
 
@@ -567,11 +569,12 @@ export function BookReaderScreen({ route, navigation }: Props) {
   }
 
   async function toggleBookshelf() {
-    if (!loaded || !user || bookshelfBusy || typeof onBookshelf !== "boolean") return;
-    const next = !onBookshelf;
+    if (!user) { navigation.navigate("Account"); return; }
+    if (!loaded || bookshelfBusy) return;
     setBookshelfBusy(true);
     setReaderNotice("");
     try {
+      const next = !(onBookshelf ?? await mobileBookshelfContains(datasetId, loaded.volume.itemId));
       await setMobileBookshelf({
         datasetId,
         itemId: loaded.volume.itemId,
@@ -624,7 +627,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
         <View style={[styles.header, { top: insets.top, borderBottomColor: theme.ruleDark, backgroundColor: theme.paper }]}>
           <Pressable accessibilityRole="button" accessibilityLabel={referenceHistory.length || returnToReference ? "返回原文" : "返回书籍"} hitSlop={10} onPress={handleBack} style={[styles.iconButton, referenceHistory.length || returnToReference ? styles.referenceBack : null]}><Ionicons name="chevron-back" size={24} color={theme.ink} />{referenceHistory.length || returnToReference ? <Text style={[styles.referenceBackText, { color: theme.ink, fontFamily: theme.sans }]}>原文</Text> : null}</Pressable>
           <View style={styles.headerCopy}><Text numberOfLines={1} style={[styles.bookTitle, { color: theme.ink, fontFamily: theme.serif }]}>{title}</Text><Text numberOfLines={1} style={[styles.chapterTitle, { color: theme.muted, fontFamily: theme.sans }]}>{chapters[activeIndex]?.title ?? bookTitle}</Text></View>
-          {user ? <Pressable accessibilityRole="button" accessibilityLabel={onBookshelf ? "移出我的书架" : "加入我的书架"} disabled={bookshelfBusy || typeof onBookshelf !== "boolean"} onPress={() => void toggleBookshelf()} style={[styles.iconButton, { opacity: bookshelfBusy || typeof onBookshelf !== "boolean" ? 0.35 : 1 }]}><Ionicons name={onBookshelf ? "bookmark" : "bookmark-outline"} size={20} color={theme.red} /></Pressable> : null}
+          <View><BookshelfButton added={onBookshelf} busy={bookshelfBusy} disabled={!loaded} onPress={() => void toggleBookshelf()} theme={theme} /></View>
           <Text style={[styles.progress, { color: theme.red, fontFamily: theme.sans }]}>{readerStatus}</Text>
         </View>
 
@@ -697,12 +700,15 @@ export function BookReaderScreen({ route, navigation }: Props) {
 
       {selection ? <ReaderSelectionToolbar selection={selection} frame={readerFrame} theme={theme} eInk={IS_EINK_RELEASE} onCopy={() => { void Clipboard.setStringAsync(selection.text); clearSelection(); }} onUnderline={underlineSelection} onThought={composeSelectionNote} onExplain={explainSelection} /> : null}
       <BookThoughtComposer quote={noteComposer?.quote} value={noteDraft} onChange={setNoteDraft} onCancel={() => { setNoteComposer(undefined); setNoteDraft(""); }} onSave={saveNote} theme={theme} />
-      {loaded && activeChapterId ? <NativeSpeechPlayer documentId={`book:${datasetId}:${itemKey}`} title={loaded.manifest.title} chapterId={activeChapterId} chapters={loaded.manifest.content.chapters ?? []} loadChapter={loadSpeechChapter} cover={speechCover ? { uri: speechCover } : undefined} hidden={!chromeVisible || Boolean(activeTool || selection || noteComposer || activeAnnotationId || expandedImageUri)} bottom={insets.bottom + 64} onRead={chooseChapter} onBookshelf={() => void toggleBookshelf()} onShelf={onBookshelf} bookshelfBusy={bookshelfBusy || typeof onBookshelf !== "boolean"} /> : null}
+      {loaded && activeChapterId ? <NativeSpeechPlayer documentId={`book:${datasetId}:${itemKey}`} title={loaded.manifest.title} chapterId={activeChapterId} chapters={loaded.manifest.content.chapters ?? []} loadChapter={loadSpeechChapter} cover={speechCover ? { uri: speechCover } : undefined} hidden={!chromeVisible || Boolean(activeTool || selection || noteComposer || activeAnnotationId || expandedImageUri)} bottom={insets.bottom + 64} onRead={chooseChapter} onBookshelf={() => void toggleBookshelf()} onShelf={onBookshelf} bookshelfBusy={bookshelfBusy} /> : null}
       {readerNotice ? <Pressable onPress={() => setReaderNotice("")} style={[styles.readerNotice, { top: insets.top + 72, borderColor: theme.red, backgroundColor: theme.paper }]}><Text style={[styles.readerNoticeText, { color: theme.red, fontFamily: theme.sans }]}>{readerNotice}</Text></Pressable> : null}
-      <Modal visible={Boolean(expandedImageUri)} transparent={false} animationType="fade" onRequestClose={() => setExpandedImageUri(undefined)}>
+      <Modal visible={Boolean(expandedImageUri)} transparent={false} animationType={IS_EINK_RELEASE ? "none" : "fade"} onRequestClose={() => setExpandedImageUri(undefined)}>
         <SafeAreaView edges={["top", "bottom"]} style={[styles.imageModal, { backgroundColor: theme.paper }]}>
-          <Pressable accessibilityRole="button" accessibilityLabel="关闭图片" onPress={() => setExpandedImageUri(undefined)} style={styles.imageClose}><Ionicons name="close" size={28} color={theme.ink} /></Pressable>
-          {expandedImageUri ? <Image source={{ uri: expandedImageUri }} resizeMode="contain" style={styles.expandedImage} /> : null}
+          <Pressable accessibilityRole="button" accessibilityLabel="关闭图片预览" accessibilityHint="点击图片或空白处返回阅读" onPress={() => setExpandedImageUri(undefined)} style={styles.imageModal}>
+            <View pointerEvents="none" style={styles.imageModal}>
+              {expandedImageUri ? <Image accessible={false} source={{ uri: expandedImageUri }} resizeMode="contain" style={styles.expandedImage} /> : null}
+            </View>
+          </Pressable>
         </SafeAreaView>
       </Modal>
     </SafeAreaView>
@@ -753,5 +759,5 @@ const styles = StyleSheet.create({
   chapterRow: { minHeight: 68, marginHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", paddingHorizontal: 12 }, chapterNumber: { width: 38, fontSize: 9, fontWeight: "700" }, chapterCopy: { flex: 1 }, chapterRowTitle: { flex: 1, fontSize: 14, fontWeight: "700", lineHeight: 21 }, currentChapter: { marginTop: 3, fontSize: 8, fontWeight: "900" },
   noteComposer: { position: "absolute", zIndex: 8, left: 16, right: 16, borderWidth: 1, padding: 14 }, composerQuote: { borderLeftWidth: 2, paddingLeft: 9, fontSize: 11, lineHeight: 19 }, noteInput: { minHeight: 64, marginTop: 9, borderBottomWidth: 1, paddingVertical: 8, textAlignVertical: "top", fontSize: 13 }, composerActions: { marginTop: 11, flexDirection: "row", justifyContent: "flex-end", gap: 24 }, composerButton: { fontSize: 11, fontWeight: "900" },
   noteRow: { marginHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12, paddingVertical: 14 }, noteChapter: { fontSize: 9, fontWeight: "900" }, noteQuote: { marginTop: 6, fontSize: 13, lineHeight: 21 }, noteBody: { marginTop: 8, fontSize: 11, lineHeight: 19 }, noteActions: { marginTop: 10, flexDirection: "row", justifyContent: "flex-end", gap: 22 }, noteAction: { fontSize: 10, fontWeight: "900" },
-  readerNotice: { position: "absolute", zIndex: 9, left: 18, right: 18, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 11 }, readerNoticeText: { fontSize: 11, fontWeight: "800", textAlign: "center" }, imageModal: { flex: 1 }, imageClose: { position: "absolute", zIndex: 2, top: 8, right: 8, width: 52, height: 52, alignItems: "center", justifyContent: "center" }, expandedImage: { flex: 1, width: "100%", height: "100%" },
+  readerNotice: { position: "absolute", zIndex: 9, left: 18, right: 18, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 11 }, readerNoticeText: { fontSize: 11, fontWeight: "800", textAlign: "center" }, imageModal: { flex: 1 }, expandedImage: { flex: 1, width: "100%", height: "100%" },
 });
