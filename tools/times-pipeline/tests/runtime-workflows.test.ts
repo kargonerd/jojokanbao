@@ -48,13 +48,47 @@ describe("Times Runtime workflows", () => {
 
   it("queues both Delivery writers without replacing pending cleanup or releasing their shared lock", async () => {
     for (const name of ["maintenance-times-process.yml", "maintenance-times-runtime-cleanup.yml"]) {
-      const body = parse(await workflow(name)) as { concurrency: Record<string, unknown> };
-      expect(body.concurrency).toEqual({
+      const body = parse(await workflow(name));
+      const job = body.jobs.process ?? body.jobs.cleanup;
+      expect(job.concurrency).toEqual({
         group: "times-delivery-writer",
         queue: "max",
         "cancel-in-progress": false,
       });
+      expect(body.concurrency?.group).not.toBe("times-delivery-writer");
     }
+  });
+
+  it("coalesces only interchangeable Process requests and keeps manual requests unique", async () => {
+    const body = parse(await workflow("maintenance-times-process.yml"));
+    expect(body.concurrency.queue).toBe("single");
+    expect(body.concurrency["cancel-in-progress"]).toBe(false);
+    const evaluate = (expression: string, github: object, inputs: object) => new Function(
+      "github", "inputs", "format", `return (${expression.slice(3, -2)});`,
+    )(github, inputs, (pattern: string, value: string | number) => pattern.replace("{0}", String(value)));
+    const defaults = { publish: false, drain: false, bootstrap: false, capture_run_id: "", runtime_job_id: "" };
+    const automaticCapture = { conclusion: "success", event: "workflow_dispatch", display_title: "Times capture [cloudflare-cron]" };
+    const cases = [
+      { event: "workflow_run", upstream: automaticCapture, inputs: {}, auto: true },
+      { event: "workflow_run", upstream: { ...automaticCapture, event: "schedule" }, inputs: {}, auto: true },
+      { event: "workflow_run", upstream: { ...automaticCapture, conclusion: "failure" }, inputs: {}, auto: false },
+      { event: "workflow_run", upstream: { ...automaticCapture, display_title: "manual dry run" }, inputs: {}, auto: false },
+      { event: "workflow_dispatch", inputs: { publish: true, drain: true }, auto: true },
+      { event: "workflow_dispatch", inputs: { publish: true, drain: false }, auto: false },
+      { event: "workflow_dispatch", inputs: { publish: false, drain: true }, auto: false },
+      { event: "workflow_dispatch", inputs: { publish: true, drain: true, runtime_job_id: "123-1" }, auto: false },
+      { event: "workflow_dispatch", inputs: { publish: true, drain: true, bootstrap: true }, auto: false },
+      { event: "workflow_dispatch", inputs: { capture_run_id: "123" }, auto: false },
+    ];
+    for (const [index, test] of cases.entries()) {
+      const github = { event_name: test.event, ref: "refs/heads/master", run_id: 100 + index, event: { workflow_run: test.upstream ?? {} } };
+      const inputs = { ...defaults, ...test.inputs };
+      expect(evaluate(body.concurrency.group, github, inputs)).toBe(test.auto ? "times-process-automatic-refs/heads/master" : `times-process-request-${100 + index}`);
+      if (test.auto) expect(evaluate(body.concurrency.group, { ...github, ref: "refs/heads/other" }, inputs)).toBe("times-process-automatic-refs/heads/other");
+      expect(evaluate(body["run-name"], github, inputs)).toBe(test.auto ? "Times process [automatic]" : `Times process [request ${100 + index}]`);
+    }
+    const drain = body.jobs.process.steps.find((step: { name?: string }) => step.name === "Continue draining Runtime jobs");
+    expect(drain.run.trim()).toBe("node tools/ci/continue-times-process.mjs");
   });
 
   it("publishes Raw marker-last, then advances Capture memory without Dataset writes", async () => {

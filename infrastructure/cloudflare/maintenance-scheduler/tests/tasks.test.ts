@@ -8,8 +8,21 @@ describe("scheduled task registry", () => {
     const task = scheduledTask("times-capture");
     expect(taskStageHealthchecks(task)).toEqual([expect.objectContaining({
       slug: "times-process", schedule: task.cron, timeZone: task.timeZone,
-    })]);
+    }), expect.objectContaining({ slug: "times-process-queue", schedule: "* * * * *", graceSeconds: 600 })]);
+    expect(taskStageHealthchecks(task)[1]).not.toHaveProperty("queue");
     expect(taskHealthcheck(task)).not.toHaveProperty("stages");
+  });
+
+  it.each([
+    { maxPendingRuns: 0 }, { maxPendingRuns: 100 }, { maxWaitSeconds: 0 },
+    { failureSeconds: 600 }, { workflows: [] }, { workflows: ["../escape.yml"] },
+    { workflows: ["same.yml", "same.yml"] },
+  ])("rejects invalid queue probe policy %j", (override) => {
+    const task = scheduledTask("times-capture");
+    const stage = task.monitoring.stages![1]!;
+    expect(() => validateScheduledTasks([{ ...task, monitoring: { ...task.monitoring, stages: [
+      { ...stage, queue: { ...stage.queue!, ...override } },
+    ] } }])).toThrow("Invalid queue monitoring policy");
   });
 
   it.each(["rmrb-sync", "maintenance-scheduler", "times-capture"])("rejects colliding monitor slug %s", (slug) => {
