@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import base64
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 import httpx
@@ -11,6 +11,7 @@ import httpx
 from ..core.config import Settings
 from ..core.errors import ApiError, SpeechServiceError
 from .service import synthesize_audio
+from .key_pool import key_pool, retry_after
 
 
 @dataclass(frozen=True)
@@ -56,6 +57,17 @@ class EdgeProvider:
         return AudioResult(await synthesize_audio(text, voice), "audio/mpeg", "mp3")
 
 
+class MimoUpstreamError(ApiError):
+    """Internal status for failover; never retain upstream bodies or credentials."""
+
+    def __init__(self, status: int, delay: float = 60):
+        super().__init__(429 if status == 429 else 502,
+                         "speech_rate_limited" if status == 429 else "speech_service_unavailable",
+                         "声音服务繁忙，请稍后重试" if status == 429 else "这个声音暂不可用，请稍后重试或切换其他声音")
+        self.upstream_status = status
+        self.retry_delay = delay
+
+
 class MimoProvider:
     id = "mimo"
     # Bump whenever the model, instruction, or audio format changes.
@@ -98,10 +110,8 @@ class MimoProvider:
                         raise SpeechServiceError("音频过大，请缩短朗读内容")
                     payload.extend(chunk)
         # Do not return upstream errors: they may contain credentials or input text.
-        if response.status_code == 429:
-            raise ApiError(429, "speech_rate_limited", "声音服务繁忙，请稍后重试")
-        if response.status_code in {401, 403}:
-            raise SpeechServiceError("这个声音暂不可用，请稍后重试或切换其他声音")
+        if response.status_code in {401, 403, 429}:
+            raise MimoUpstreamError(response.status_code, retry_after(response.headers.get("Retry-After")))
         response.raise_for_status()
         try:
             encoded = json.loads(payload)["choices"][0]["message"]["audio"]["data"]
@@ -115,4 +125,40 @@ class MimoProvider:
         return AudioResult(data, "audio/wav", "wav")
 
 
-PROVIDERS: dict[str, SpeechProvider] = {provider.id: provider for provider in (EdgeProvider(), MimoProvider())}
+class PooledMimoProvider(MimoProvider):
+    """Online only. Offline tools retain the single-key adapter and their own budgets."""
+
+    def available(self, settings: Settings) -> bool:
+        return bool(settings.tts_enabled and settings.mimo_keys)
+
+    async def synthesize(self, text: str, voice: str, settings: Settings) -> AudioResult:
+        pool = key_pool(settings.mimo_keys)
+        attempted: set[int] = set()
+        last_error: ApiError = ApiError(429, "speech_rate_limited", "声音服务繁忙，请稍后重试")
+        # Bound latency and upstream work; callers retain existing error handling.
+        for _ in range(min(3, len(settings.mimo_keys))):
+            selected = pool.acquire(attempted)
+            if selected is None:
+                break
+            index, key = selected
+            attempted.add(index)
+            try:
+                return await super().synthesize(text, voice, replace(settings, mimo_api_key=key, mimo_api_keys=()))
+            except (MimoUpstreamError, httpx.HTTPStatusError) as error:
+                status = error.upstream_status if isinstance(error, MimoUpstreamError) else error.response.status_code
+                failure = error if isinstance(error, MimoUpstreamError) else MimoUpstreamError(status)
+                if status not in {401, 403, 429} and status < 500:
+                    raise failure from None
+                pool.defer(index, failure.retry_delay if status == 429 else 300 if status in {401, 403} else 10)
+                last_error = failure
+            except httpx.TransportError:
+                # An ambiguous timeout may already have generated audio: don't
+                # multiply the same synthesis across keys on a network failure.
+                pool.defer(index, 10)
+                raise SpeechServiceError("声音服务连接中断，请稍后重试") from None
+            finally:
+                pool.release(index)
+        raise last_error
+
+
+PROVIDERS: dict[str, SpeechProvider] = {provider.id: provider for provider in (EdgeProvider(), PooledMimoProvider())}
