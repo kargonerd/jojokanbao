@@ -17,7 +17,7 @@ import type {
 } from "@jojo/content";
 import type { CanonicalArticle, CanonicalWriteResult } from "./process/canonical-writer.js";
 import { sha256 } from "./identity.js";
-import { acceptSourceUrl } from "./sources/registry.js";
+import { acceptSourceUrl, sourceDeliveryIdentity } from "./sources/registry.js";
 import { plainText, removeParserArtifacts } from "./text.js";
 import type { SourceConfig } from "./types.js";
 
@@ -200,7 +200,23 @@ async function deliveryArticle(
 function mergeArticles(previous: readonly TimesDeliveryArticle[], current: readonly TimesDeliveryArticle[]): TimesDeliveryArticle[] {
   const merged = new Map(previous.map((article) => [article.id, article]));
   for (const article of current) merged.set(article.id, article);
-  return [...merged.values()].sort((left, right) => right.publishedAt.localeCompare(left.publishedAt) || left.id.localeCompare(right.id));
+  const previousIds = new Set(previous.map((article) => article.id));
+  const publications = new Map<string, TimesDeliveryArticle>();
+  const revision = (article: TimesDeliveryArticle) => Date.parse(article.updatedAt ?? article.publishedAt) || 0;
+  for (const article of merged.values()) {
+    const identity = article.url ? sourceDeliveryIdentity(article.source.id, article.url) : undefined;
+    const key = JSON.stringify(identity ? ["publisher", article.source.id, identity] : ["article", article.source.id, article.id]);
+    const kept = publications.get(key);
+    // Pick a whole record so its ID, object and assets stay consistent. Prefer
+    // a newer publisher revision; ties retain an existing published identity
+    // (read state/deep links), then use a stable ID order for a new batch.
+    if (!kept || revision(article) > revision(kept)
+      || (revision(article) === revision(kept) && (
+        (previousIds.has(article.id) && !previousIds.has(kept.id))
+        || (previousIds.has(article.id) === previousIds.has(kept.id) && article.id.localeCompare(kept.id) < 0)
+      ))) publications.set(key, article);
+  }
+  return [...publications.values()].sort((left, right) => right.publishedAt.localeCompare(left.publishedAt) || left.id.localeCompare(right.id));
 }
 
 export const TIMES_TIMELINE_PAGE_SIZE = 50;
@@ -257,7 +273,9 @@ export async function buildNewsDelivery(input: {
       return (article.url !== null && article.url !== undefined && !acceptSourceUrl(article.source.id, article.url))
         || (replacement !== undefined && replacement.issueDate !== date);
     });
-    if (requiresCleanup && !currentByDate.has(date)) currentByDate.set(date, []);
+    // Also collapse legacy aliases on any restored/affected day, even when no
+    // new articles on that day were built. Do not rewrite unrelated history.
+    if ((requiresCleanup || mergeArticles(day.articles, []).length !== day.articles.length) && !currentByDate.has(date)) currentByDate.set(date, []);
   }
 
   const timelineRefs = new Map((input.previousTimelineIndex?.dates ?? []).map((date) => [date.date, date]));
@@ -427,7 +445,7 @@ export async function buildNewsDelivery(input: {
   await writeJoxJson(input.deliveryRoot, "catalog.jox", catalog);
   return {
     timelineIndexObject,
-    articles: built.length,
+    articles: [...mergedDays.values()].reduce((count, day) => count + day.articles.filter((article) => builtById.has(article.id)).length, 0),
     sources: input.sources.length,
     dates: [...currentByDate.keys()].sort(),
   };

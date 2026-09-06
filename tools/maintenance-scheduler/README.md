@@ -34,6 +34,14 @@ success. The independent queue check can recover only after a real healthy queue
 probe. External Healthchecks still detects a dead scheduler even if its database
 or function cannot run.
 
+Queue probes retry only GitHub's transient count/list inconsistencies (for
+example, `total_count: 1` with an empty `workflow_runs` during a status change).
+Only the inconsistent workflow/status is re-read, at most twice after 500 ms
+and 1500 ms, within the original shared 10-second budget. HTTP errors, malformed
+payloads, exhausted retries and timeouts remain fail-closed: no healthy ping or
+monitor-state advance. Diagnostics include counts and a sanitized request ID,
+never response bodies or credentials. Congestion/alert thresholds are unchanged.
+
 Catch-up windows are retained: Times 5 minutes, RMRB 180 minutes. This migration
 does not backfill every missed Times interval or change GitHub runner capacity.
 

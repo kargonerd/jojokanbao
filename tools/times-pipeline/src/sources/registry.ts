@@ -147,6 +147,10 @@ export function acceptSourceUrl(sourceId: string, url: string): boolean {
   return modules.get(sourceId)?.acceptUrl?.(url) ?? true;
 }
 
+export function sourceDeliveryIdentity(sourceId: string, url: string): string | undefined {
+  return modules.get(sourceId)?.deliveryIdentity?.(url);
+}
+
 export function processSourceCandidate(sourceId: string, candidate: Candidate): Candidate {
   return modules.get(sourceId)?.process?.(candidate) ?? candidate;
 }

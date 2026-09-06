@@ -128,9 +128,14 @@ function bodyValue(candidate: ProcessedCandidate): string | undefined {
 
 function canonicalContentHash(value: Pick<
   CanonicalArticle,
-  "title" | "publishedAt" | "updatedAt" | "body" | "assets" | "translations"
+  "articleId" | "title" | "publishedAt" | "updatedAt" | "body" | "assets" | "translations"
 >): string {
+  // This hash is also the object key. Identical content at different URLs must
+  // not overwrite another article's envelope before retained refs are checked.
+  // Legacy hashes remain readable; only new/refreshed/asset-migrated rows use
+  // the identity-scoped hash, without a bulk rewrite of retained articles.
   return sha256(JSON.stringify({
+    articleId: value.articleId,
     title: value.title,
     publishedAt: value.publishedAt,
     updatedAt: value.updatedAt,
