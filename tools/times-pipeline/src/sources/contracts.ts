@@ -71,6 +71,8 @@ export interface SourceModule {
     source: SourceConfig,
   ): UnavailablePageReason | undefined;
   acceptUrl?(url: string): boolean;
+  /** Publisher-owned alias key for Delivery lists only; never changes Raw IDs. */
+  deliveryIdentity?(url: string): string | undefined;
   accept?(candidate: Candidate): boolean;
   process?(candidate: Candidate): Candidate;
 }

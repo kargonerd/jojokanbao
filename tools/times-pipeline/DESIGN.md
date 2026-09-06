@@ -49,8 +49,17 @@ Process 前半段失败时复用同一 `raw.tar`，B2 阶段失败时复用同�
 articleId    = SHA-256(sourceId + normalized canonical URL)
 fingerprint  = SHA-256(capture URL + title + publishedAt)
 assetId      = SHA-256(image bytes)
-contentHash  = SHA-256(title + publishedAt + canonical body + asset hashes + translations)
+contentHash  = SHA-256(articleId + title + publishedAt + updatedAt + canonical body + asset hashes + translations)
 ~~~
+
+Canonical 的 contentHash 同时作为对象文件名，因此包含 articleId，防止不同 URL 的相同正文互相覆盖。
+2026-09-06 前的 content-only 哈希仍按已有日期索引读取；仅新写入、刷新或素材清理的文章使用新哈希，
+不批量改写历史文件，也不放宽保留文章的 ID/来源/哈希引用校验。
+
+存储身份和展示去重分开处理。媒体可提供 `deliveryIdentity`：目前中新网按其官方新闻 URL 中的日期和稿件号
+识别 `/gn/`、`/cj/`、`/gj/`、`/sh/` 栏目的同稿别名。受影响日期的媒体列表、timeline 及分页只展示一条，
+优先较新的媒体更新时间；时间相同时优先已发布的 ID，再按 ID 稳定选择。Raw/Canonical ID 和文件保留，
+不改重试任务标识，不按正文合并不同媒体/不同稿件，也不在本次发布中扫描改写无关历史日期。
 
 每个媒体的 state.json.gz 只决定 URL 是否已经成功抓取：成功页面在七天保留窗口内不重复抓，失败页面
 两小时后重试，标题或发布时间变化立即重抓。该状态不是产品数据。不存在全局页面数量上限。

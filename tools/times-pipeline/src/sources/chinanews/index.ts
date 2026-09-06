@@ -3,6 +3,7 @@ import { discoverChinanews } from "./discover.js";
 import { chinanewsFetch } from "./fetch.js";
 import { acceptChinanewsCanonicalAsset, extractChinanewsImages } from "./images.js";
 import { extractChinanewsBody } from "./process.js";
+import { chinanewsDeliveryIdentity } from "./identity.js";
 
 export const chinanewsSource: SourceModule = {
   id: "chinanews",
@@ -14,4 +15,5 @@ export const chinanewsSource: SourceModule = {
   extractBody: extractChinanewsBody,
   extractImages: extractChinanewsImages,
   acceptCanonicalAsset: acceptChinanewsCanonicalAsset,
+  deliveryIdentity: chinanewsDeliveryIdentity,
 };
