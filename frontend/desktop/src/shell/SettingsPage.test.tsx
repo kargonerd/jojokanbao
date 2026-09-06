@@ -91,6 +91,8 @@ describe('Desktop settings', () => {
     render(<SettingsPage />);
 
     const check = await screen.findByRole('button', { name: '检查更新' });
+    // The button exists before the native update-state promise has resolved.
+    await waitFor(() => expect(check).toBeEnabled());
     fireEvent.click(check);
     await waitFor(() => expect(checkForUpdates).toHaveBeenCalledOnce());
     expect(screen.getByText('当前已是最新版本。')).toBeInTheDocument();
