@@ -1,0 +1,146 @@
+import { type ComponentProps } from "react";
+import { act, create, type ReactTestRenderer } from "react-test-renderer";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BookReaderScreen } from "../screens/BookReaderScreen";
+import { NativeSpeechPlayer } from "./SpeechPlayer";
+
+const mocks = vi.hoisted(() => ({
+  eInk: false, focused: true, user: { id: "reader" } as { id: string } | null,
+  enabled: true,
+  state: { textScale: 1, bookLineHeight: 1.95, bookReadingMode: "paged", bookPaperColor: "white",
+    bookFirstLineIndent: true, hapticsEnabled: false, leftTapNext: false, recentBooks: [], bookAnnotations: [] },
+  playback: { open: vi.fn(), close: vi.fn(), toggle: vi.fn(), seek: vi.fn(), selectChapter: vi.fn(),
+    setTimer: vi.fn(), changeVoice: vi.fn(), changeRate: vi.fn(), playing: true, busy: false,
+    elapsed: 12, duration: 60, chapter: { id: "c1", title: "第一章" },
+    voice: { provider: "auto", voice: "male" }, rate: 1, timer: null, error: "", capabilities: undefined },
+}));
+vi.mock("react-native", async () => {
+  const { createElement } = await import("react");
+  return {
+    ActivityIndicator: "progress", Image: "img", Pressable: "button", ScrollView: "section",
+    Text: "span", TextInput: "input", View: "div", FlatList: "section",
+    Modal: ({ visible, children, ...props }: { visible: boolean; children: import("react").ReactNode }) =>
+      visible ? createElement("dialog", props, children) : null,
+    StyleSheet: { create: (styles: unknown) => styles, absoluteFillObject: {}, hairlineWidth: 1 },
+    Platform: { OS: "android", select: (values: { android: string }) => values.android },
+  };
+});
+vi.mock("@expo/vector-icons/Ionicons", () => ({ default: "i" }));
+vi.mock("@expo/vector-icons/MaterialCommunityIcons", () => ({ default: "i" }));
+vi.mock("@react-native-community/slider", () => ({ default: "input" }));
+vi.mock("@react-navigation/native", () => ({ useIsFocused: () => mocks.focused }));
+vi.mock("react-native-safe-area-context", () => ({ SafeAreaView: "main", useSafeAreaInsets: () => ({ top: 0, bottom: 12 }) }));
+vi.mock("react-native-webview", async () => {
+  const { createElement, forwardRef, useImperativeHandle } = await import("react");
+  return { WebView: forwardRef((props, ref) => {
+    useImperativeHandle(ref, () => ({ injectJavaScript: vi.fn() }));
+    return createElement("article", { ...props, testID: "reader-webview" });
+  }) };
+});
+vi.mock("expo-brightness", () => ({ getBrightnessAsync: async () => 0.6 }));
+vi.mock("expo-clipboard", () => ({ setStringAsync: vi.fn() }));
+vi.mock("../config/appVariant", () => ({ get IS_EINK_RELEASE() { return mocks.eInk; } }));
+vi.mock("../theme/tokens", async (importOriginal) => {
+  const themes = await importOriginal<typeof import("../theme/tokens")>();
+  return { ...themes, get mobileTheme() { return mocks.eInk ? themes.eInkTheme : themes.editorialTheme; } };
+});
+vi.mock("../account/auth", () => ({ useMobileAuthStore: (select: (state: { user: typeof mocks.user }) => unknown) => select({ user: mocks.user }) }));
+vi.mock("./featureFlag", () => ({ useSpeechFlagStore: (select?: (state: unknown) => unknown) => {
+  const state = { enabled: mocks.enabled, userId: "reader" }; return select ? select(state) : state;
+} }));
+vi.mock("./useSpeechPlayback", () => ({ useSpeechPlayback: () => mocks.playback }));
+vi.mock("./speech", () => ({ speechTime: (value: number) => String(value), mobileSpeechSegments: () => ["正文"] }));
+vi.mock("../account/accountData", () => ({ mobileBookshelfContains: async () => false, setMobileBookshelf: vi.fn() }));
+vi.mock("../components/ReaderEnvironment", () => ({ ReaderEnvironment: () => null }));
+vi.mock("../components/ReaderNavigationSheet", () => ({ ReaderNavigationSheet: () => null }));
+vi.mock("../components/ReaderSelectionToolbar", () => ({ ReaderSelectionToolbar: () => null }));
+vi.mock("../components/BookThoughtComposer", () => ({ BookThoughtComposer: () => null }));
+vi.mock("../lib/bookAgent", () => ({ askMobileBookAgent: vi.fn() }));
+vi.mock("../lib/bookDocument", () => ({ createBookDocument: () => "<p>正文</p>" }));
+vi.mock("../lib/books", () => ({
+  loadMobileBookItem: async () => ({ manifest: { title: "测试书", content: { chapters: [{ id: "c1", title: "第一章" }] } }, volume: { itemId: "book", title: "测试书" } }),
+  loadMobileBookChapter: async () => ({ fragment: { title: "第一章", body: { format: "html", value: "<p>正文</p>" } } }),
+  loadMobileBookCover: async () => undefined, resolveLegacyBookResume: () => undefined,
+}));
+vi.mock("../lib/haptics", () => ({ selectionHaptic: vi.fn() }));
+vi.mock("../store/mobileStore", () => ({ useMobileStore: Object.assign(
+  (select: (state: typeof mocks.state) => unknown) => select(mocks.state), { getState: () => mocks.state },
+) }));
+
+let view: ReactTestRenderer;
+async function press(label: string) {
+  await act(async () => view.root.findByProps({ accessibilityLabel: label }).props.onPress());
+}
+async function readerTap() {
+  await act(async () => view.root.findByProps({ testID: "reader-webview" }).props.onMessage({ nativeEvent: { data: JSON.stringify({ type: "reader-tap" }) } }));
+}
+async function tick() { await act(async () => { vi.advanceTimersByTime(4000); }); }
+async function renderReader() {
+  const props = { route: { params: { datasetId: "books", itemKey: "book", title: "测试书" } }, navigation: {} } as ComponentProps<typeof BookReaderScreen>;
+  await act(async () => { view = create(<BookReaderScreen {...props} />); });
+}
+
+beforeEach(() => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  vi.useFakeTimers(); vi.clearAllMocks();
+  mocks.eInk = false; mocks.focused = true; mocks.enabled = true; mocks.user = { id: "reader" };
+});
+afterEach(async () => { if (view) await act(async () => view.unmount()); vi.useRealTimers(); });
+
+describe.each([false, true])("reader listening visibility (eInk=%s)", (eInk) => {
+  beforeEach(() => { mocks.eInk = eInk; });
+  it("keeps the expanded player open beyond the former 3.2-second reader timeout", async () => {
+    await renderReader();
+    await press("打开听读播放器");
+    expect(view.root.findAllByType("dialog")).toHaveLength(1);
+    await tick();
+    expect(view.root.findAllByType("dialog")).toHaveLength(1);
+    expect(view.root.findAllByProps({ accessibilityLabel: "收起播放器" })).toHaveLength(1);
+    expect(mocks.playback.close).not.toHaveBeenCalled();
+  });
+
+  it("keeps mini visible until a reader tap, then restores it on the next tap without closing audio", async () => {
+    await renderReader(); await press("打开听读播放器"); await press("收起播放器");
+    await tick();
+    expect(view.root.findAllByProps({ accessibilityLabel: "展开听读播放器" })).toHaveLength(1);
+    await press("暂停听读"); expect(mocks.playback.toggle).toHaveBeenCalledOnce();
+    await readerTap();
+    expect(view.root.findAllByProps({ accessibilityLabel: "展开听读播放器" })).toHaveLength(0);
+    expect(mocks.playback.close).not.toHaveBeenCalled();
+    await tick();
+    expect(view.root.findAllByProps({ accessibilityLabel: "展开听读播放器" })).toHaveLength(0);
+    await readerTap(); await tick();
+    expect(view.root.findAllByProps({ accessibilityLabel: "展开听读播放器" })).toHaveLength(1);
+    await press("展开听读播放器"); await tick();
+    expect(view.root.findAllByType("dialog")).toHaveLength(1);
+    await press("收起播放器"); await press("关闭听读");
+    expect(mocks.playback.close).toHaveBeenCalledOnce();
+    expect(view.root.findAllByProps({ accessibilityLabel: "展开听读播放器" })).toHaveLength(0);
+  });
+
+  it("keeps the toolbar and launcher visible until a reader tap, not a timeout", async () => {
+    await renderReader(); await tick();
+    expect(view.root.findAllByProps({ accessibilityLabel: "打开听读播放器" })).toHaveLength(1);
+    expect(view.root.findAllByProps({ accessibilityLabel: "返回书籍" })).toHaveLength(1);
+    await readerTap();
+    expect(view.root.findAllByProps({ accessibilityLabel: "打开听读播放器" })).toHaveLength(0);
+    expect(view.root.findAllByProps({ accessibilityLabel: "返回书籍" })).toHaveLength(0);
+    await readerTap();
+    expect(view.root.findAllByProps({ accessibilityLabel: "打开听读播放器" })).toHaveLength(1);
+  });
+});
+
+it("keeps news listening visible and only yields to an explicit article overlay", async () => {
+  const props = { news: true, documentId: "news:one", title: "新闻", chapterId: "c1",
+    chapters: [{ id: "c1", title: "新闻" }], loadChapter: vi.fn(), onRead: vi.fn() };
+  await act(async () => { view = create(<NativeSpeechPlayer {...props} />); });
+  await press("打开听读播放器"); await tick();
+  expect(view.root.findAllByType("dialog")).toHaveLength(1);
+  await press("收起播放器"); await tick();
+  expect(view.root.findAllByProps({ accessibilityLabel: "展开听读播放器" })).toHaveLength(1);
+  await act(async () => view.update(<NativeSpeechPlayer {...props} hidden />));
+  expect(view.root.findAllByProps({ accessibilityLabel: "展开听读播放器" })).toHaveLength(0);
+  expect(mocks.playback.close).not.toHaveBeenCalled();
+  await act(async () => view.update(<NativeSpeechPlayer {...props} />));
+  expect(view.root.findAllByProps({ accessibilityLabel: "展开听读播放器" })).toHaveLength(1);
+});

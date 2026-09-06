@@ -134,6 +134,29 @@ describe("BookReader", () => {
     return { ...view, onChapterChange, onInternalLink };
   }
 
+  it.each([390, 1200])("does not auto-hide listening at viewport width %s; mobile mini follows explicit reader taps", async (width) => {
+    window.innerWidth = width;
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ defaultProvider: "auto", providers: [
+      { id: "auto", label: "朗读", available: true, voices: [{ id: "male", label: "男声" }] },
+    ] })));
+    renderReader();
+    fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    expect(screen.getByRole("dialog", { name: "听本章播放器" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "收起听读播放器" }));
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    expect(screen.getByRole("region", { name: "迷你听读播放器" })).toBeTruthy();
+    fireEvent.click(screen.getByText("这是正文。", { selector: "p" }), { clientX: width / 2, detail: 1 });
+    if (width < 768) {
+      expect(screen.queryByRole("region", { name: "迷你听读播放器" })).toBeNull();
+      await act(async () => { vi.advanceTimersByTime(5000); });
+      expect(screen.queryByRole("region", { name: "迷你听读播放器" })).toBeNull();
+      fireEvent.click(screen.getByText("这是正文。", { selector: "p" }), { clientX: width / 2, detail: 1 });
+    }
+    expect(screen.getByRole("region", { name: "迷你听读播放器" })).toBeTruthy();
+  });
+
   it("uses a real two-column paged layout on desktop by default", () => {
     const { container } = renderReader();
     const flow = container.querySelector<HTMLElement>("[data-book-page-flow]");
