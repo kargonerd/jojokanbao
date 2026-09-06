@@ -1,5 +1,33 @@
 import { expect, test } from "@playwright/test";
 
+for (const width of [390, 640, 768]) {
+  test(`date range and nested calendar stay usable at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.route("**/content/search**", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: { total: 0, results: [] } }),
+    }));
+    await page.goto("/search?keyword=测试&startDate=19660516&endDate=19761006");
+    await page.getByRole("button", { name: "日期范围：1966-05-16 — 1976-10-06" }).click();
+    const panel = page.getByRole("dialog", { name: "选择日期范围" });
+    await expect(panel).toBeVisible();
+    const panelBox = await panel.boundingBox();
+    expect(panelBox).not.toBeNull();
+    expect(panelBox!.x).toBeGreaterThanOrEqual(11);
+    expect(panelBox!.x + panelBox!.width).toBeLessThanOrEqual(width - 11);
+    await expect(panel.getByRole("button", { name: "应用", exact: true })).toBeInViewport();
+
+    await page.getByRole("button", { name: "结束日期：打开日历" }).click();
+    await expect(page.getByRole("button", { name: "上一年", exact: true })).toBeInViewport();
+    await expect(page.getByRole("button", { name: "下一年", exact: true })).toBeInViewport();
+    await page.getByRole("button", { name: "5", exact: true }).click();
+    await page.getByRole("button", { name: "应用", exact: true }).click();
+    await expect(panel).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "日期范围：1966-05-16 — 1976-10-05" })).toBeVisible();
+  });
+}
+
 test("search sort uses the editorial dropdown and sends the selected sort", async ({ page }) => {
   const requests: Array<Record<string, unknown>> = [];
   await page.route("**/content/search**", async (route) => {

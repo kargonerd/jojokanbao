@@ -352,7 +352,7 @@ describe("JOJO Web navigation", () => {
     fireEvent.click(within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "搜索" }));
 
     await waitFor(() => expect(window.location.pathname).toBe("/search"));
-    expect(screen.getByPlaceholderText("在JOJO看报上搜索")).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "全文检索关键词" })).toBeTruthy();
     expect(within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "搜索" }).className).toContain("is-active");
   });
 

@@ -456,6 +456,22 @@ describe("BookReader", () => {
     expect(onChapterChange).toHaveBeenCalledWith("chapter-2");
   });
 
+  it.each([390, 1200])("keeps the current chapter when it is selected again at %ipx", (width) => {
+    window.innerWidth = width;
+    const { onChapterChange } = renderReader();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开目录" }));
+    fireEvent.click(screen.getByRole("button", { name: "第一章" }));
+
+    expect(screen.queryByRole("complementary", { name: "目录面板" })).toBeNull();
+    expect(onChapterChange).not.toHaveBeenCalled();
+    expect(screen.getByText("这是正文。")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开目录" }));
+    fireEvent.click(screen.getByRole("button", { name: "第二章" }));
+    expect(onChapterChange).toHaveBeenCalledExactlyOnceWith("chapter-2");
+  });
+
   it("pads an odd number of physical pages so the final spread does not repeat a column", async () => {
     const clientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
     const scrollWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollWidth");

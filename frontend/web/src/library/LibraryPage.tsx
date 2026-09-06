@@ -54,7 +54,10 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
   const [shelfError, setShelfError] = useState("");
   const [loading, setLoading] = useState(true);
   const [sourceLoading, setSourceLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [catalogError, setCatalogError] = useState("");
+  const [sourceError, setSourceError] = useState("");
+  const [catalogRequest, setCatalogRequest] = useState(0);
+  const [sourceRequest, setSourceRequest] = useState(0);
   const remember = useRecentReadingStore((state) => state.remember);
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
@@ -67,24 +70,25 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
     ? libraryTypes
     : libraryTypes.filter((item) => item.id === "book");
   const returnToBeforeCollection = safeReaderReturnPath(searchParams.get("returnTo"));
+  const error = catalogError || (datasetId ? sourceError : "");
 
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setCatalogError("");
     void notebookApi.list()
       .then((items) => {
         if (!active) return;
         setBooks(items.filter((item) => item.type === "book" || item.type === "book-series"));
-        setError("");
       })
       .catch(() => {
-        if (active) setError(includePeriodicals ? "书籍目录暂时无法载入，报刊仍可正常使用。" : "书籍目录暂时无法载入，请稍后重试。");
+        if (active) setCatalogError(includePeriodicals ? "书籍目录暂时无法载入，报刊仍可正常使用。" : "书籍目录暂时无法载入，请稍后重试。");
       })
       .finally(() => {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [includePeriodicals]);
+  }, [includePeriodicals, catalogRequest]);
 
   useEffect(() => {
     if (!userId || !bookshelfEnabled) {
@@ -109,6 +113,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
   const selectedBookVisible = isContentVisible(selectedBook?.access, signedIn);
 
   useEffect(() => {
+    setSourceError("");
     if (!datasetId) {
       setSources([]);
       setSourceLoading(false);
@@ -151,13 +156,13 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
         }
       })
       .catch(() => {
-        if (active) setError("这套书的分卷目录暂时无法载入。");
+        if (active) setSourceError("这套书的分卷目录暂时无法载入。");
       })
       .finally(() => {
         if (active) setSourceLoading(false);
       });
     return () => { active = false; };
-  }, [accountInitialized, datasetId, loading, navigate, remember, returnToBeforeCollection, selectedBook, selectedBookVisible]);
+  }, [accountInitialized, datasetId, loading, navigate, remember, returnToBeforeCollection, selectedBook, selectedBookVisible, sourceRequest]);
 
   function selectType(nextType: LibraryType) {
     setSearchParams(nextType === "all" ? {} : { type: nextType });
@@ -326,8 +331,15 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
           {libraryQuery && <button type="button" onClick={() => setLibraryQuery("")} aria-label="清空馆藏搜索">清除</button>}
         </form>
 
-        {(error || shelfError) && <p className="library-notice" role="status">{error || shelfError}</p>}
-        {(loading || sourceLoading) && <div className="library-loading"><LoadingSpinner text="正在整理馆藏" /></div>}
+        {error && <div className="library-notice">
+          <p role="alert">{error}</p>
+          <button type="button" disabled={loading || sourceLoading} onClick={() => {
+            if (catalogError) setCatalogRequest((request) => request + 1);
+            else setSourceRequest((request) => request + 1);
+          }}>重新载入</button>
+        </div>}
+        {shelfError && <p className="library-notice" role="status">{shelfError}</p>}
+        {(loading || sourceLoading) && <div className="library-loading" role="status"><LoadingSpinner text="正在整理馆藏" /></div>}
 
         {!datasetId && (
           <div className="cover-grid">
@@ -405,7 +417,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
           </div>
         )}
 
-        {!loading && !sourceLoading && ((datasetId && visibleSources.length === 0) || (!datasetId && (!showPeriodicals || visiblePeriodicals.length === 0) && (!showBooks || visibleBooks.length === 0))) && (
+        {!loading && !sourceLoading && !error && ((datasetId && visibleSources.length === 0) || (!datasetId && (!showPeriodicals || visiblePeriodicals.length === 0) && (!showBooks || visibleBooks.length === 0))) && (
           <p className="library-empty">没有找到匹配的资料。</p>
         )}
       </section>

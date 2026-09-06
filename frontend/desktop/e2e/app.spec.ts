@@ -59,7 +59,7 @@ test.describe('Desktop renderer', () => {
 
   test('search uses the shared Web search page', async ({ page }) => {
     await page.goto('/search');
-    await expect(page.getByPlaceholder('在JOJO看报上搜索')).toBeVisible();
+    await expect(page.getByRole('textbox', { name: '全文检索关键词' })).toBeVisible();
     await expect(page.locator('[data-search-scroll-container]')).toHaveCSS('background-color', 'rgb(244, 244, 242)');
     await expect(page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '搜索' })).toHaveClass(/is-active/);
   });

@@ -5,6 +5,7 @@ import { resolve } from "path";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 import { pdfViewerStaticCopyTargets } from "@jojo/pdf-viewer/vite";
 import { resolveViteEnvironmentDirectory } from "../tooling/vite-worktree-env";
+import { createSearchProxy } from "../tooling/search-proxy";
 
 export default defineConfig(({ mode }) => ({
   envDir: resolveViteEnvironmentDirectory(resolve(__dirname, "../.."), mode),
@@ -19,7 +20,7 @@ export default defineConfig(({ mode }) => ({
     viteStaticCopy({ targets: [...pdfViewerStaticCopyTargets] }),
   ],
   resolve: { alias: { "@": resolve(__dirname, "src") } },
-  server: { port: 4173 },
+  server: { port: 4173, proxy: createSearchProxy() },
   build: {
     rollupOptions: {
       output: {
