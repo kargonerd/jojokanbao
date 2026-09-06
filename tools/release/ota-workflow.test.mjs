@@ -15,3 +15,12 @@ test("uses production-only percentage rollouts", async () => {
   assert.match(workflow, /New OTA updates must begin as a partial rollout/);
   assert.doesNotMatch(workflow, /preview-standard|preview-eink/);
 });
+
+test("keeps iOS archive and OTA publication disabled", async () => {
+  const ota = await readFile(workflowPath, "utf8");
+  assert.equal((ota.match(/eas_platform=android/g) ?? []).length, 2);
+  assert.doesNotMatch(ota, /eas_platform=(all|ios)/);
+  const ios = await readFile(new URL("../../.github/workflows/release-mobile-ios.yml", import.meta.url), "utf8");
+  assert.match(ios, /if: vars\.ENABLE_IOS_RELEASE == 'true'/);
+  assert.match(ios, /needs: validate/);
+});

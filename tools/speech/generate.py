@@ -35,13 +35,22 @@ def save_report(path: Path, report: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporary.replace(path)
+    # Windows readers/indexers can briefly deny replacement. Retry only the
+    # local rename, never regenerate or upload audio because a report is locked.
+    for attempt in range(10):
+        try:
+            temporary.replace(path)
+            break
+        except PermissionError:
+            if attempt == 9:
+                raise
+            time.sleep(min(.05 * 2 ** attempt, .5))
 
 
 async def generate(args, settings: Settings, *, limiter: RequestLimiter | None = None) -> dict:
     concurrency = getattr(args, "concurrency", 1)
-    if type(concurrency) is not int or concurrency not in (1, 2):
-        raise ValueError("concurrency must be 1 or 2")
+    if type(concurrency) is not int or not 1 <= concurrency <= 16:
+        raise ValueError("concurrency must be between 1 and 16")
     plan = json.loads(args.plan.read_text(encoding="utf-8"))
     if plan.get("formatVersion") != "jojo-speech-plan/1" or not plan.get("books"):
         raise ValueError("Invalid speech plan")
@@ -68,7 +77,7 @@ async def generate(args, settings: Settings, *, limiter: RequestLimiter | None =
     seen_new = set()
     stopped = asyncio.Event()
     limiter = limiter or RequestLimiter()
-    async with offline_provider(args.provider, limiter, stopped):
+    async with offline_provider(args.provider, limiter, stopped, concurrency=concurrency):
         return await generate_chapters(args, settings, selected, report, store, seen, seen_new, stopped, concurrency)
 
 
@@ -125,7 +134,7 @@ if __name__ == "__main__":
     parser.add_argument("--provider", choices=["mimo", "edge"], default="mimo")
     parser.add_argument("--voice", default="白桦")
     parser.add_argument("--limit-chapters", type=int, default=1)
-    parser.add_argument("--concurrency", type=int, choices=(1, 2), default=1)
+    parser.add_argument("--concurrency", type=int, choices=range(1, 17), default=1)
     parser.add_argument("--chapter")
     parser.add_argument("--all", action="store_true")
     parser.add_argument("--dry-run", action="store_true")

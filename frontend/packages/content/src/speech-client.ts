@@ -1,7 +1,6 @@
 export const SPEECH_VOICES = [
-  { id: "zh-CN-XiaoxiaoNeural", label: "女声 · 晓晓" },
-  { id: "zh-CN-YunxiNeural", label: "男声 · 云希" },
-  { id: "zh-CN-YunyangNeural", label: "新闻 · 云扬" },
+  { id: "male", label: "男声" },
+  { id: "female", label: "女声" },
 ] as const;
 
 export type SpeechVoice = string;
@@ -24,11 +23,17 @@ export interface SpeechCapabilities {
 }
 
 export const DEFAULT_SPEECH_PROVIDERS: SpeechProvider[] = [{
-  id: "edge", label: "Microsoft Edge", description: "在线朗读 · 非正式接口", available: true,
-  voices: SPEECH_VOICES.map((voice) => ({ id: voice.id, label: voice.label.split(" · ")[1]!, description: voice.label.split(" · ")[0]! })),
+  id: "auto", label: "在线朗读", description: "", available: true,
+  cacheVersion: "two-voices-v1",
+  voices: SPEECH_VOICES.map((voice) => ({ ...voice, description: "" })),
 }];
 
+export function logicalSpeechVoice(voice?: string): "male" | "female" {
+  return voice === "female" || ["冰糖", "茉莉", "zh-CN-XiaoxiaoNeural", "zh-CN-XiaoyiNeural"].includes(voice || "") ? "female" : "male";
+}
+
 export interface SpeechSource { url: string; duration: number }
+export type SpeechScope = "book" | "news";
 export interface SpeechClientConfig {
   allowed: () => boolean;
   apiUrl: (path: "/api/v1/speech" | "/api/v1/speech/providers") => string;
@@ -38,7 +43,7 @@ export interface SpeechClientConfig {
 export function createSpeechClient(config: SpeechClientConfig) {
   async function loadSpeechProviders(signal?: AbortSignal): Promise<SpeechCapabilities> {
     if (!config.allowed()) throw new Error("请先登录并开通听读功能");
-    const response = await fetch(config.apiUrl("/api/v1/speech/providers"), { signal: signal ?? null });
+    const response = await fetch(`${config.apiUrl("/api/v1/speech/providers")}?v=2`, { signal: signal ?? null });
     if (!response.ok) throw new Error("无法加载声音列表，请重试");
     const data: SpeechCapabilities = await response.json();
     if (!Array.isArray(data.providers) || !data.providers.every((provider) =>
@@ -67,20 +72,20 @@ export function createSpeechClient(config: SpeechClientConfig) {
     text: string,
     voice: SpeechVoice,
     signal?: AbortSignal,
-    options: { provider: string; cacheVersion?: string; cdnBase?: string | null } = { provider: "edge" },
+    options: { provider: string; cacheVersion?: string; cdnBase?: string | null; scope?: SpeechScope } = { provider: "auto" },
   ): Promise<Blob | SpeechSource> {
     // The product intentionally uses a soft client-side gate, not media authorization.
     if (!config.allowed()) throw new Error("请先登录并开通听读功能");
     if (options.cdnBase && options.cacheVersion) {
       const key = await speechKey(options.provider, options.cacheVersion, voice, text);
-      const base = `${options.cdnBase.replace(/\/$/u, "")}/${speechObjectBase(options.provider, key)}`;
+      const base = `${options.cdnBase.replace(/\/$/u, "")}/${speechObjectBase(options.provider, key, options.scope)}`;
       const cached = await fetchSpeechMetadata(`${base}.json`, signal).catch((error: unknown) => {
         if (signal?.aborted) throw error;
         return null;
       });
       if (cached?.ok) {
         const record: unknown = await cached.json().catch(() => null);
-        const source = validateSpeechSource(record, options.cdnBase, key);
+        const source = validateSpeechSource(record, options.cdnBase, key, options.scope);
         if (source) return source;
       }
       // The backend checks the authoritative B2 object again; CDN misses/errors do
@@ -91,7 +96,7 @@ export function createSpeechClient(config: SpeechClientConfig) {
       method: "POST",
       signal: signal ?? null,
       headers,
-      body: JSON.stringify({ text, voice, provider: options.provider }),
+      body: JSON.stringify({ text, voice, provider: options.provider, ...(options.scope === "news" ? { scope: "news" } : {}) }),
     });
     if (!response.ok) {
       const payload: unknown = await response.json().catch(() => null);
@@ -100,7 +105,7 @@ export function createSpeechClient(config: SpeechClientConfig) {
     const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
     if (contentType.startsWith("application/json") && options.cdnBase) {
       const key = options.cacheVersion ? await speechKey(options.provider, options.cacheVersion, voice, text) : undefined;
-      const source = validateSpeechSource(await response.json(), options.cdnBase, key);
+      const source = validateSpeechSource(await response.json(), options.cdnBase, key, options.scope);
       if (!source) throw new Error("语音服务返回了无效音频地址");
       return source;
     }
@@ -127,7 +132,7 @@ export function createSpeechClient(config: SpeechClientConfig) {
   /** Read-only metadata warming: never synthesizes missing parts. */
   async function loadCachedSpeechDurations(
     texts: string[], voice: string, signal: AbortSignal,
-    options: { provider: string; cacheVersion: string; cdnBase: string },
+    options: { provider: string; cacheVersion: string; cdnBase: string; scope?: SpeechScope },
   ): Promise<Record<number, number>> {
     if (!config.allowed()) return {};
     const known: Record<number, number> = {};
@@ -139,9 +144,9 @@ export function createSpeechClient(config: SpeechClientConfig) {
         const index = cursor++;
         const key = await speechKey(options.provider, options.cacheVersion, voice, texts[index]!);
         try {
-          const response = await fetchSpeechMetadata(`${options.cdnBase.replace(/\/$/u, "")}/${speechObjectBase(options.provider, key)}.json`, signal);
+          const response = await fetchSpeechMetadata(`${options.cdnBase.replace(/\/$/u, "")}/${speechObjectBase(options.provider, key, options.scope)}.json`, signal);
           if (!response.ok) continue;
-          const source = validateSpeechSource(await response.json(), options.cdnBase, key);
+          const source = validateSpeechSource(await response.json(), options.cdnBase, key, options.scope);
           if (source) known[index] = source.duration;
         } catch { if (signal.aborted) return; }
       }
@@ -158,17 +163,22 @@ export function createSpeechClient(config: SpeechClientConfig) {
   return { loadSpeechProviders, requestSpeech, loadCachedSpeechDurations, speechKey };
 }
 
-export function speechObjectBase(provider: string, key: string): string {
-  return `audio/speech/v1/segments/${provider}/${key.slice(0, 2)}/${key}`;
+export function speechObjectBase(provider: string, key: string, scope: SpeechScope = "book"): string {
+  return `audio/speech/v1/${scope === "news" ? "news/" : ""}segments/${provider}/${key.slice(0, 2)}/${key}`;
 }
 
-export function validateSpeechSource(value: unknown, cdn: string, key?: string): SpeechSource | null {
+export function validateSpeechSource(value: unknown, cdn: string, key?: string, scope: SpeechScope = "book"): SpeechSource | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
   if (record.formatVersion !== "jojo-speech-segment/1" || typeof record.key !== "string" || (key && record.key !== key)
-      || typeof record.object !== "string" || !/^audio\/speech\/v1\/segments\/(edge|mimo)\/[a-f0-9]{2}\/[a-f0-9]{64}\/[a-f0-9]{64}\.mp3$/u.test(record.object)
-      || !record.object.includes(`/${record.key}/`) || typeof record.duration !== "number"
+      || typeof record.object !== "string" || !/^audio\/speech\/v1\/(news\/)?segments\/(edge|mimo)\/[a-f0-9]{2}\/[a-f0-9]{64}\/[a-f0-9]{64}\.mp3$/u.test(record.object)
+      || !record.object.includes(`/${record.sourceKey ?? record.key}/`) || typeof record.duration !== "number"
       || !Number.isFinite(record.duration) || record.duration <= 0 || record.duration > 600) return null;
+  if (record.sourceKey !== undefined && (typeof record.sourceKey !== "string" || !/^[a-f0-9]{64}$/u.test(record.sourceKey)
+      || !["mimo", "edge"].includes(String(record.provider))
+      || !record.object.startsWith(`audio/speech/v1/${scope === "news" ? "news/" : ""}segments/${record.provider}/`))) return null;
+  if (record.object.startsWith("audio/speech/v1/news/") !== (scope === "news")) return null;
+  if (scope === "news" && (typeof record.expiresAt !== "number" || !Number.isFinite(record.expiresAt) || record.expiresAt * 1000 <= Date.now())) return null;
   const base = new URL(cdn.endsWith("/") ? cdn : `${cdn}/`);
   if (base.protocol !== "https:") return null;
   return { url: new URL(record.object, base).href, duration: record.duration };

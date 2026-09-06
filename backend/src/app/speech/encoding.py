@@ -21,8 +21,8 @@ class EncodedAudio:
     duration: float
 
 
-def encode_delivery(audio: AudioResult) -> EncodedAudio:
-    if not audio.data or len(audio.data) > MAX_AUDIO_BYTES:
+def encode_delivery(audio: AudioResult, *, max_bytes: int | None = MAX_AUDIO_BYTES) -> EncodedAudio:
+    if not audio.data or (max_bytes is not None and len(audio.data) > max_bytes):
         raise ValueError("Audio size exceeds limit")
     if audio.extension == "wav":
         with wave.open(io.BytesIO(audio.data), "rb") as wav:

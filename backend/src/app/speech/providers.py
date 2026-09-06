@@ -46,7 +46,6 @@ class EdgeProvider:
     description = "在线朗读 · 非正式接口"
     voices = (
         Voice("zh-CN-XiaoxiaoNeural", "晓晓", "普通话女声"),
-        Voice("zh-CN-YunxiNeural", "云希", "普通话男声"),
         Voice("zh-CN-YunyangNeural", "云扬", "新闻男声"),
     )
 
@@ -76,13 +75,14 @@ class MimoProvider:
     description = "MiMo-V2.5-TTS · 精品音色"
     voices = (
         Voice("冰糖", "冰糖", "普通话女声"),
-        Voice("茉莉", "茉莉", "普通话女声"),
-        Voice("苏打", "苏打", "普通话男声"),
         Voice("白桦", "白桦", "普通话男声"),
     )
 
-    def __init__(self, transport: httpx.AsyncBaseTransport | None = None) -> None:
+    def __init__(self, transport: httpx.AsyncBaseTransport | None = None, *,
+                 max_response_bytes: int | None = 16 * 1024 * 1024) -> None:
         self.transport = transport
+        # Only the standalone offline tool opts out. Never read this from an API request.
+        self.max_response_bytes = max_response_bytes
 
     def available(self, settings: Settings) -> bool:
         return bool(settings.tts_enabled and settings.mimo_api_key)
@@ -106,7 +106,7 @@ class MimoProvider:
                 # are classified below without returning their potentially sensitive text.
                 payload = bytearray()
                 async for chunk in response.aiter_bytes():
-                    if len(payload) + len(chunk) > 16 * 1024 * 1024:
+                    if self.max_response_bytes is not None and len(payload) + len(chunk) > self.max_response_bytes:
                         raise SpeechServiceError("音频过大，请缩短朗读内容")
                     payload.extend(chunk)
         # Do not return upstream errors: they may contain credentials or input text.
@@ -115,7 +115,7 @@ class MimoProvider:
         response.raise_for_status()
         try:
             encoded = json.loads(payload)["choices"][0]["message"]["audio"]["data"]
-            if not isinstance(encoded, str) or len(encoded) > 32 * 1024 * 1024:
+            if not isinstance(encoded, str):
                 raise ValueError("Invalid audio payload")
             data = base64.b64decode(encoded, validate=True)
             if data[:4] != b"RIFF" or data[8:12] != b"WAVE":

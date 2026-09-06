@@ -26,16 +26,25 @@ def client():
 
 
 def test_catalog_exposes_capabilities_not_credentials(client):
-    response = client.get("/v1/speech/providers")
+    response = client.get("/v1/speech/providers?v=2")
     assert response.status_code == 200
     assert "server-only-secret" not in response.text
-    assert [p["id"] for p in response.json()["providers"]] == ["edge", "mimo"]
-    assert response.json()["providers"][1]["available"] is True
+    assert [p["id"] for p in response.json()["providers"]] == ["auto"]
+    assert [v["id"] for v in response.json()["providers"][0]["voices"]] == ["male", "female"]
+
+
+def test_installed_clients_keep_physical_voice_keys(client):
+    catalog = client.get("/v1/speech/providers").json()
+    assert catalog["defaultProvider"] == "mimo"
+    assert catalog["defaultVoice"] == "白桦"
+    assert [v["id"] for v in catalog["providers"][0]["voices"]] == ["白桦", "冰糖"]
+    assert [v["label"] for v in catalog["providers"][0]["voices"]] == ["男声", "女声"]
+    assert "server-only-secret" not in json.dumps(catalog)
 
 
 def test_missing_key_marks_mimo_unavailable(client):
     app.dependency_overrides[get_settings] = lambda: configured()
-    assert client.get("/v1/speech/providers").json()["providers"][1]["available"] is False
+    assert client.get("/v1/speech/providers").json()["providers"][0]["available"] is True
     assert client.post("/v1/speech", json={"text": "朗读", "provider": "mimo"}).status_code == 503
 
 
@@ -61,6 +70,35 @@ def test_mimo_adapter_uses_documented_protocol():
         return httpx.Response(200, json={"choices": [{"message": {"audio": {"data": base64.b64encode(wav).decode()}}}]})
     result = asyncio.run(MimoProvider(httpx.MockTransport(upstream)).synthesize("原文", "冰糖", configured(mimo_api_key="server-only-secret")))
     assert result == AudioResult(wav, "audio/wav", "wav")
+
+
+def test_offline_can_accept_large_wav_while_online_keeps_16_mib_limit():
+    import io
+    import wave
+    from app.speech.encoding import encode_delivery
+
+    output = io.BytesIO()
+    with wave.open(output, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(24000)
+        wav.writeframes(b"\0\0" * (24000 * 280))
+    data = output.getvalue()
+    body = {"choices": [{"message": {"audio": {"data": base64.b64encode(data).decode()}}}]}
+    def upstream(request):
+        return httpx.Response(200, json=body)
+    online = MimoProvider(httpx.MockTransport(upstream))
+    assert online.max_response_bytes == 16 * 1024 * 1024
+    with pytest.raises(ApiError, match="音频过大"):
+        asyncio.run(online.synthesize("测试", "白桦", configured(mimo_api_key="test")))
+    offline = MimoProvider(httpx.MockTransport(upstream), max_response_bytes=None)
+    result = asyncio.run(offline.synthesize("测试", "白桦", configured(mimo_api_key="test")))
+    assert result.data == data
+    with pytest.raises(ValueError, match="size"):
+        encode_delivery(result)
+    encoded = encode_delivery(result, max_bytes=None)
+    assert 280 <= encoded.duration < 281
+    assert len(encoded.data) < len(data)
 
 
 @pytest.mark.parametrize("status,body,expected", [

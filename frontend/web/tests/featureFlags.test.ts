@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, renderHook } from "@testing-library/react";
 
 const rpc = vi.hoisted(() => vi.fn());
 
@@ -8,10 +9,15 @@ vi.mock("../src/account/session", async (importOriginal) => ({
 }));
 vi.mock("../src/account/auth", () => ({ authClient: { rpc } }));
 
-import { refreshFeatureFlags, useFeatureFlagStore } from "../src/featureFlags";
+import { refreshFeatureFlags, useFeatureFlag, useFeatureFlagStore } from "../src/featureFlags";
 import { useAccountSessionStore } from "../src/account/session";
 
 describe("feature flag store", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllEnvs();
+  });
+
   beforeEach(() => {
     window.localStorage.clear();
     rpc.mockReset();
@@ -41,6 +47,16 @@ describe("feature flag store", () => {
 
     expect(useFeatureFlagStore.getState().initialized).toBe(true);
     expect(Object.values(useFeatureFlagStore.getState().flags)).toEqual([false, false, false]);
+  });
+
+  it.each([true, false])("only previews speech in the local development server (DEV=%s)", async (dev) => {
+    vi.stubEnv("DEV", dev);
+    vi.stubEnv("MODE", "development");
+    rpc.mockResolvedValue({ data: [], error: null });
+    await refreshFeatureFlags();
+    const { result } = renderHook(() => ({ speech: useFeatureFlag("reader.speech"), bookshelf: useFeatureFlag("library.bookshelf") }));
+    expect(result.current).toEqual({ speech: dev, bookshelf: false });
+    expect(useFeatureFlagStore.getState().flags["reader.speech"]).toBe(false);
   });
 
   it("keeps existing signed-in reading features available before the flag migration", async () => {

@@ -185,13 +185,14 @@ def test_failed_audio_upload_does_not_publish_a_descriptor():
     assert not s3.objects
 
 
-def test_cached_voice_remains_selectable_when_synthesis_is_disabled():
+@pytest.mark.parametrize("version,voice,provider_id", [(1, "白桦", "mimo"), (2, "male", "auto")])
+def test_cached_voice_remains_selectable_when_synthesis_is_disabled(version, voice, provider_id):
     app.dependency_overrides[get_settings] = lambda: replace(configured(), mimo_api_key=None, tts_enabled=False)
     try:
         with TestClient(app) as client:
-            result = client.get("/v1/speech/providers").json()
-        assert result["defaultVoice"] == "白桦"
-        mimo = next(provider for provider in result["providers"] if provider["id"] == "mimo")
+            result = client.get(f"/v1/speech/providers?v={version}").json()
+        assert result["defaultVoice"] == voice
+        mimo = next(provider for provider in result["providers"] if provider["id"] == provider_id)
         assert mimo["available"] is True and mimo["canGenerate"] is False
     finally:
         app.dependency_overrides.clear()

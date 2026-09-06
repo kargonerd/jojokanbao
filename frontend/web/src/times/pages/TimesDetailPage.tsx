@@ -303,7 +303,7 @@ export function TimesDetailPage({
             collectionTitle={timesSourceName(news.source)}
             artworkUrl={speechArtworkUrl}
             artworkFallbackUrl={sourceLogoUrl(news.source)}
-            defaultVoice="zh-CN-YunyangNeural"
+            defaultVoice="male"
           />
           <SelectableAnnotationArticle subject={{
             contentType: "newspaper",

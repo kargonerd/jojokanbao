@@ -11,7 +11,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({ default: { getItem
 vi.mock("expo-audio", () => ({ useAudioPlayer: () => mocks.player, setAudioModeAsync: async () => undefined }));
 vi.mock("expo-crypto", async () => { const { createHash } = await import("node:crypto"); return { CryptoDigestAlgorithm: { SHA256: "sha256" }, digestStringAsync: async (_: string, text: string) => createHash("sha256").update(text).digest("hex") }; });
 vi.mock("./speech", () => ({ mobileSpeechClient: {
-  loadSpeechProviders: async () => ({ defaultProvider: "mimo", defaultVoice: "白桦", cdnBase: "https://blacknews.jojokanbao.cn", providers: [{ id: "mimo", cacheVersion: "test", available: true, voices: [{ id: "白桦" }, { id: "冰糖" }] }] }),
+  loadSpeechProviders: async () => ({ defaultProvider: "auto", defaultVoice: "male", cdnBase: "https://blacknews.jojokanbao.cn", providers: [{ id: "auto", cacheVersion: "test", available: true, voices: [{ id: "male" }, { id: "female" }] }] }),
   requestSpeech: mocks.request, loadCachedSpeechDurations: async () => ({ 0: 20, 1: 20 }),
 } }));
 

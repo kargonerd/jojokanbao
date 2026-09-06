@@ -83,7 +83,8 @@ jobs:
           case "$INPUT_VARIANT" in
             standard)
               eas_channel=production-standard
-              eas_platform=all
+              # iOS releases are currently disabled, including OTA updates.
+              eas_platform=android
               ;;
             eink)
               eas_channel=production-eink

@@ -3,7 +3,7 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import Slider from "@react-native-community/slider";
 import { useIsFocused } from "@react-navigation/native";
 import { useEffect, useState, type ComponentProps } from "react";
-import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View, type ImageSourcePropType } from "react-native";
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View, type ImageSourcePropType } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useMobileAuthStore } from "../account/auth";
 import { mobileTheme as theme } from "../theme/tokens";
@@ -43,9 +43,9 @@ function ActiveSpeechPlayer(props: Props & { userId: string }) {
         {props.cover && !theme.eInk ? art(true) : null}
         <Pressable accessibilityRole="button" accessibilityLabel="展开听读播放器" onPress={open} style={styles.miniTitle}>
           {props.cover ? <Image source={props.cover} style={styles.miniCover} /> : null}
-          <View style={styles.flex}><Text numberOfLines={1} style={styles.miniHeading}>{playback.chapter?.title || props.title}</Text><Text style={styles.subtle}>{playback.busy ? "正在准备音频…" : `${voiceLabel} · ${speechTime(playback.elapsed)}`}</Text></View>
+          <View style={styles.flex}><Text numberOfLines={1} style={styles.miniHeading}>{playback.chapter?.title || props.title}</Text><Text style={styles.subtle}>{playback.busy ? "加载中" : `${voiceLabel} · ${speechTime(playback.elapsed)}`}</Text></View>
         </Pressable>
-        <IconButton icon={playback.playing ? "pause" : "play"} label={playback.playing ? "暂停听读" : "继续听读"} onPress={playback.toggle} />
+        {playback.busy ? <View accessibilityLabel="加载中" style={styles.icon}>{theme.eInk ? <Text>…</Text> : <ActivityIndicator color={theme.ink} />}</View> : <IconButton icon={playback.playing ? "pause" : "play"} label={playback.playing ? "暂停听读" : "继续听读"} onPress={playback.toggle} />}
         <IconButton icon="close" label="关闭听读" onPress={() => { playback.close(); setOpened(false); }} />
       </View>
     ) : <Pressable accessibilityRole="button" accessibilityLabel="打开听读播放器" onPress={open} style={[styles.launcher, { bottom: (props.bottom ?? 0) + 16, backgroundColor: theme.red }]}><Text style={styles.listen}>听</Text></Pressable> : null}
@@ -70,12 +70,12 @@ function ActiveSpeechPlayer(props: Props & { userId: string }) {
             <Text style={styles.time}>{speechTime(playback.duration)}</Text>
             <SeekButton direction="forward" onPress={() => playback.seek(playback.elapsed + 15)} />
           </View>
-          <Text accessibilityLiveRegion="polite" style={[styles.status, playback.error ? { color: theme.red } : null]}>{playback.error || (playback.busy ? "正在准备音频…" : playback.playing ? "" : "")}</Text>
+          <Text accessibilityLiveRegion="polite" style={[styles.status, playback.error ? { color: theme.red } : null]}>{playback.error || (playback.busy ? "加载中" : "")}</Text>
           {playback.error ? <Pressable accessibilityRole="button" onPress={() => playback.chapter ? playback.toggle() : void playback.open()}><Text style={styles.retry}>重试</Text></Pressable> : null}
           <View style={styles.controls}>
             <Option icon="book-outline" label="原文" onPress={() => { setExpanded(false); props.onRead(playback.chapter?.id || props.chapterId); }} />
             <IconButton icon="play-skip-back" label="上一章" disabled={currentIndex <= 0} onPress={() => chapterStep(-1)} />
-            <Pressable accessibilityRole="button" accessibilityLabel={playback.playing ? "暂停听读" : "开始听读"} onPress={playback.toggle} style={[styles.play, { backgroundColor: theme.red }]}><Ionicons name={playback.playing ? "pause" : "play"} size={30} color={theme.inverse} /></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={playback.busy ? "加载中" : playback.playing ? "暂停听读" : "开始听读"} disabled={playback.busy} onPress={playback.toggle} style={[styles.play, { backgroundColor: theme.red }]}>{playback.busy ? theme.eInk ? <Text style={{ color: theme.inverse }}>加载中</Text> : <ActivityIndicator color={theme.inverse} /> : <Ionicons name={playback.playing ? "pause" : "play"} size={30} color={theme.inverse} />}</Pressable>
             <IconButton icon="play-skip-forward" label="下一章" disabled={currentIndex < 0 || currentIndex === props.chapters.length - 1} onPress={() => chapterStep(1)} />
             <Option icon="list-outline" label={props.news ? "目录" : `${props.chapters.length} 章`} onPress={() => setSheet("chapters")} />
           </View>

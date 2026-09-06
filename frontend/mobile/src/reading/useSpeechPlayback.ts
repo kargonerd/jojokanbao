@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { SpeechCapabilities, SpeechSource } from "@jojo/content/speech";
+import { logicalSpeechVoice } from "@jojo/content/speech";
 import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
 import * as Crypto from "expo-crypto";
 import { useEffect, useRef, useState } from "react";
@@ -17,7 +18,7 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
   const player = useAudioPlayer(null, { updateInterval: 500 });
   const [chapter, setChapter] = useState<SpeechChapter>();
   const [capabilities, setCapabilities] = useState<SpeechCapabilities>();
-  const [voice, setVoice] = useState({ provider: "mimo", voice: "白桦" });
+  const [voice, setVoice] = useState({ provider: "auto", voice: "male" });
   const [part, setPart] = useState(0);
   const [seconds, setSeconds] = useState(0);
   const [durations, setDurations] = useState<Record<number, number>>({});
@@ -140,6 +141,7 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       if (caps?.cdnBase && provider?.cacheVersion) {
         void mobileSpeechClient.loadCachedSpeechDurations(loaded.segments, choice.voice, session.current.signal, {
           cdnBase: caps.cdnBase, cacheVersion: provider.cacheVersion, provider: choice.provider,
+          scope: latest.current.props.documentId.startsWith("news:") ? "news" : "book",
         }).then((known) => { if (mounted.current && currentEpoch === epoch.current) setDurations((current) => ({ ...known, ...current })); });
       }
       // Pausing/closing while the chapter loads must cancel its captured autoplay.
@@ -161,7 +163,7 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       try { if (raw) saved = JSON.parse(raw) as Bookmark; } catch { /* corrupted local progress starts fresh */ }
       if (!mounted.current || currentEpoch !== epoch.current) return;
       const knownVoice = caps.providers.find((item) => item.id === saved?.provider)?.voices.some((item) => item.id === saved?.voice);
-      const choice = knownVoice && saved ? { provider: saved.provider, voice: saved.voice } : {
+      const choice = caps.defaultProvider === "auto" ? { provider: "auto", voice: logicalSpeechVoice(saved?.voice) } : knownVoice && saved ? { provider: saved.provider, voice: saved.voice } : {
         provider: caps.defaultProvider, voice: caps.defaultVoice || caps.providers.find((item) => item.id === caps.defaultProvider)?.voices[0]?.id || "白桦",
       };
       const speed = saved && Number.isFinite(saved.rate) && saved.rate >= 0.5 && saved.rate <= 2 ? saved.rate : 1;
@@ -180,6 +182,7 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       const provider = current.capabilities.providers.find((item) => item.id === current.voice.provider);
       promise = mobileSpeechClient.requestSpeech(current.chapter.segments[index]!, current.voice.voice, session.current.signal, {
         provider: current.voice.provider, cacheVersion: provider?.cacheVersion, cdnBase: current.capabilities.cdnBase,
+        scope: current.props.documentId.startsWith("news:") ? "news" : "book",
       }).then((value) => { if (!("url" in value)) throw new Error("手机听读需要 CDN 音频，请检查服务端存储配置"); return value; });
       sources.current.set(index, promise);
       void promise.catch(() => { if (sources.current.get(index) === promise) sources.current.delete(index); });

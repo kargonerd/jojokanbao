@@ -53,6 +53,10 @@ CDN 完成配置前，发行工作流会在“Verify … through CDN”步骤失
 
 ## 自动更新边界
 
+当前 iOS 原生发布和 OTA 发布均暂停：`release-mobile-ios.yml` 在 GitHub 中禁用，
+并额外要求 `ENABLE_IOS_RELEASE=true` 才能运行；标准版 OTA 仅发布 Android。
+以下 iOS 机制是后续启用签名与 App Store 配置后的设计，不表示当前已发布。
+
 | 客户端 | 更新内容 | 机制 | 用户确认 |
 | --- | --- | --- | --- |
 | Windows / Linux AppImage | 原生桌面包 | `electron-updater` 读取各平台 `latest*.yml` | 后台下载，安装前提示重启 |
