@@ -3,6 +3,25 @@ import { describe, expect, it } from "vitest";
 import { createTimesArticleDocument, sanitizeTimesArticleHtml } from "./timesArticleDocument";
 
 describe("mobile times article document", () => {
+  it.each([false, true])("limits paragraph indentation to the article body (eInk=%s)", (eInk) => {
+    const news: MobileTimesNewsItem = {
+      id: "nyt:layout", title: "新闻标题", contentStatus: "full",
+      publishedAt: "2026-09-06T15:19:00.000Z", issueDate: "20260906",
+      language: "zh-CN", originalLanguage: "en", translationAvailable: true, usingTranslation: true,
+      source: { id: "nyt", name: "The New York Times", language: "en" },
+      articleObject: "content/newspapers/nyt/articles/layout.jox",
+      contentFormat: "html", content: "<p>正文保留首行缩进。</p>", assets: [],
+    };
+    const document = createTimesArticleDocument(news, eInk);
+    const styles = document.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? "";
+    expect(styles).toMatch(/#article-body p\{[^}]*text-indent:2em/);
+    expect(styles).not.toMatch(/(?:^|\})\s*p\s*\{/);
+    expect(styles).toMatch(/\.meta\{[^}]*text-align:left/);
+    expect(styles).toMatch(/\.meta\{[^}]*text-indent:0/);
+    expect(document).toContain('<span class="source">The New York Times</span>');
+    expect(document).toContain('<span class="translation">AI 翻译</span>');
+  });
+
   it("removes executable publisher markup", () => {
     const safe = sanitizeTimesArticleHtml('<p onclick="steal()">正文</p><script>steal()</script><a href="javascript:steal()">链接</a>');
     expect(safe).toContain("正文");

@@ -64,12 +64,12 @@ export function createTimesArticleDocument(news: MobileTimesNewsItem, eInk = fal
     html,body{margin:0;background:var(--paper);color:var(--ink)}
     body{padding:26px 20px 54px;font-family:serif;font-size:17px;line-height:1.95;-webkit-text-size-adjust:100%;overflow-wrap:anywhere}
     article{width:100%;max-width:760px;margin:0 auto}
-    .meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:0 0 14px;color:var(--muted);font-family:sans-serif;font-size:11px;font-weight:700;line-height:1.8;letter-spacing:.04em}
+    .meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:0 0 14px;color:var(--muted);font-family:sans-serif;font-size:11px;font-weight:700;line-height:1.8;letter-spacing:.04em;text-align:left;text-indent:0}
     .source{color:var(--red);font-weight:900}
     .translation{display:inline-block;margin:0;border:1px solid var(--red);padding:0 5px;color:var(--red);font-size:9px;font-weight:900;letter-spacing:0}
     h1{margin:0 0 28px;font-size:30px;line-height:1.3;font-weight:900;letter-spacing:-.02em}
     h2{margin:2em 0 .65em;font-size:23px;line-height:1.4} h3{margin:1.8em 0 .6em;font-size:20px}
-    p{margin:1.05em 0;text-align:justify;text-indent:2em}
+    #article-body p{margin:1.05em 0;text-align:justify;text-indent:2em}
     blockquote{margin:1.5em 0;border-left:3px solid var(--red);padding-left:18px;color:var(--muted)}
     ul,ol{margin:1.2em 0;padding-left:1.6em} li{margin:.5em 0}
     figure{margin:2em 0} img{display:block;width:auto;max-width:100%;max-height:72vh;margin:0 auto;object-fit:contain}
