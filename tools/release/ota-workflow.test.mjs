@@ -16,6 +16,15 @@ test("uses production-only percentage rollouts", async () => {
   assert.doesNotMatch(workflow, /preview-standard|preview-eink/);
 });
 
+test("installs Expo config plugins for publish, adjust and rollback", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const install = workflow.split("- name: Install workspace dependencies")[1]?.split("- name:")[0];
+  assert.ok(install, "OTA operations must install Expo config plugin dependencies");
+  assert.match(install, /pnpm install --frozen-lockfile/);
+  assert.doesNotMatch(install, /^\s+if:/m);
+  assert.match(workflow, /- name: Verify update source\s+if: inputs\.operation == 'publish'/);
+});
+
 test("keeps iOS archive and OTA publication disabled", async () => {
   const ota = await readFile(workflowPath, "utf8");
   assert.equal((ota.match(/eas_platform=android/g) ?? []).length, 2);
