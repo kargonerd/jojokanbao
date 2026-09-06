@@ -463,10 +463,11 @@ export function BookReader({
 
   const chooseChapter = useCallback((chapterId: string | undefined, destination: "start" | "end" = "start"): void => {
     if (!chapterId) return;
+    setTocOpen(false);
+    if (chapterId === activeChapterId) return;
     pendingPageRef.current = destination;
     onChapterChange(chapterId);
-    setTocOpen(false);
-  }, [onChapterChange]);
+  }, [activeChapterId, onChapterChange]);
 
   function changeMode(value: BookReaderMode): void {
     if (value === mode) return;

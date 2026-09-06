@@ -111,7 +111,7 @@ test.describe('Real Electron client', () => {
       await expect(page.getByPlaceholder('搜索报刊或书名')).toBeVisible();
       await expect(page.getByRole('button', { name: '报刊' })).toBeVisible();
       await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '搜索' }).click();
-      await expect(page.getByPlaceholder('在JOJO看报上搜索')).toBeVisible();
+      await expect(page.getByRole('textbox', { name: '全文检索关键词' })).toBeVisible();
       await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '关于' }).click();
       await expect(page.getByRole('heading', { name: '关于 JOJO 看报' })).toBeVisible();
 

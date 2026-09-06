@@ -39,6 +39,65 @@ a.jojo-citation:hover {
   background: var(--app-canvas);
 }
 
+.search-entry {
+  display: grid;
+  min-height: 100%;
+  align-items: center;
+  justify-items: center;
+  padding: 32px 24px clamp(64px, 12vh, 112px);
+}
+
+.search-entry-content { width: 100%; max-width: 640px; }
+
+.search-scope {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 8px;
+}
+
+.search-scope-title {
+  order: 1;
+  flex: none;
+  margin: 0;
+  color: var(--app-gray);
+  font: 400 12px/1.5 var(--font-sans);
+}
+
+.search-scope-tabs { display: flex; gap: 24px; }
+
+.search-scope-tab {
+  position: relative;
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  padding: 0 4px 4px;
+  color: var(--app-gray);
+  background: transparent;
+  font: 700 16px/1.5 var(--font-serif);
+  cursor: pointer;
+}
+
+.search-scope-tab::after {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  left: 4px;
+  height: 2px;
+  background: transparent;
+  content: "";
+}
+
+.search-scope-tab[aria-selected="true"],
+.search-scope-tab:hover { color: var(--color-red); }
+.search-scope-tab[aria-selected="true"]::after { background: var(--color-red); }
+.search-scope-tab:focus-visible { outline: 2px solid var(--color-red); outline-offset: 2px; }
+
+.search-query > .btn { min-height: 44px; flex: none; padding-inline: 24px; }
+.search-results { padding-top: 24px; }
+.search-results > .search-query { margin-bottom: 20px; }
+
 .times-source-scroller {
   scrollbar-width: none;
 }
@@ -356,7 +415,8 @@ a.jojo-citation:hover {
   box-shadow: 4px 4px 0 rgba(32, 32, 32, .09);
   text-align: left;
 }
-.home-book-results button {
+.home-book-results button,
+.home-book-results a {
   display: flex;
   width: 100%;
   align-items: baseline;
@@ -369,9 +429,11 @@ a.jojo-citation:hover {
   color: var(--color-ink);
   text-align: left;
 }
-.home-book-results button:last-of-type { border-bottom: 0; }
+.home-book-results > :last-child { border-bottom: 0; }
 .home-book-results button:hover,
-.home-book-results button:focus-visible { background: #fffdf9; color: var(--color-red); }
+.home-book-results button:focus-visible,
+.home-book-results a:hover,
+.home-book-results a:focus-visible { background: #fffdf9; color: var(--color-red); }
 .home-book-results span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-book-results small { flex: none; color: var(--app-gray); }
 .home-book-results p { margin: 0; padding: 14px 15px; color: var(--app-gray); font-size: .85rem; }
@@ -836,6 +898,8 @@ a.jojo-citation:hover {
 .book-cover-gray { background: #a9aaa5; color: #222; }
 
 .library-notice { margin: -12px 0 24px; border-left: 2px solid var(--color-red); padding: 8px 12px; background: rgba(255,255,255,.7); color: var(--color-red); font-size: .78rem; }
+.library-notice p { margin: 0; }
+.library-notice button { min-height: 44px; border: 0; padding: 6px 0; background: transparent; color: var(--color-red); font: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .library-loading { display: flex; min-height: 180px; align-items: center; justify-content: center; }
 .library-empty { border-top: 1px solid var(--app-line); padding-top: 24px; color: var(--app-gray); }
 
@@ -856,6 +920,11 @@ a.jojo-citation:hover {
 }
 
 @media (max-width: 720px) {
+  .search-entry {
+    padding-inline: 20px;
+  }
+  .search-results { padding: 20px 20px 40px; }
+  .search-query > .btn { padding-inline: 18px; }
   .app-header {
     grid-template-columns: minmax(72px, 1fr) auto minmax(72px, 1fr);
     column-gap: 12px;
@@ -970,7 +1039,8 @@ a.jojo-citation:hover {
   .recent-grid { grid-template-columns: 1fr; }
   .recent-empty { grid-template-columns: 48px 1fr; padding: 16px; }
   .recent-empty > span { width: 42px; height: 52px; }
-  .recent-empty a { grid-column: 2; }
+  .recent-empty a,
+  .recent-empty button { grid-column: 2; justify-self: start; }
   .app-bookshelf { min-height: calc(100vh - 58px); padding: 22px 12px 48px; }
   .bookshelf-heading { align-items: flex-start; flex-direction: column; gap: 16px; }
   .bookshelf-title,
@@ -996,6 +1066,17 @@ a.jojo-citation:hover {
   .library-date { flex-direction: column; align-items: flex-start; }
   .library-search { margin-left: 0; }
   .cover-grid { grid-template-columns: repeat(2, minmax(100px, 1fr)); gap: 24px 16px; }
+  .cover-card > strong {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.5;
+    min-height: 3em;
+  }
+  .cover-card > small { font-size: .75rem; }
+  .shelf-toggle { min-width: 44px; min-height: 44px; padding: 8px; font-size: .75rem; }
 }
 
 @media (max-width: 430px) {

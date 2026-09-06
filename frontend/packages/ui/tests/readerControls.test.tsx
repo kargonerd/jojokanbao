@@ -177,6 +177,76 @@ describe("DatePicker reader interactions", () => {
 });
 
 describe("DateRangePicker shortcuts", () => {
+  it("keeps the desktop panel inside the viewport when opened, resized, or scrolled", () => {
+    let triggerLeft = 292;
+    const viewportWidth = vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(768);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const width = this.getAttribute("role") === "dialog"
+        ? Math.min(660, Number.parseFloat(this.style.maxWidth))
+        : 250;
+      return new DOMRect(triggerLeft, 200, width, 36);
+    });
+    render(<DateRangePicker startDate="" endDate="" onChange={() => {}} editable />);
+    fireEvent.click(screen.getByRole("button", { name: "日期范围：选择日期范围" }));
+    const panel = screen.getByRole("dialog", { name: "选择日期范围" });
+    const left = () => triggerLeft + Number.parseFloat(panel.style.getPropertyValue("--range-panel-offset"));
+    const right = () => left() + panel.getBoundingClientRect().width;
+
+    expect(left()).toBe(96);
+    expect(right()).toBe(756);
+
+    viewportWidth.mockReturnValue(640);
+    fireEvent.resize(window);
+    expect(left()).toBe(12);
+    expect(right()).toBe(628);
+
+    triggerLeft = 20;
+    fireEvent.scroll(document.body);
+    expect(left()).toBe(12);
+    expect(right()).toBe(628);
+
+    viewportWidth.mockReturnValue(1440);
+    fireEvent.resize(window);
+    expect(left()).toBe(triggerLeft);
+    expect(panel.getBoundingClientRect().width).toBe(660);
+  });
+
+  it("keeps the range open while choosing a date in the nested calendar", async () => {
+    const onChange = vi.fn();
+    render(<DateRangePicker startDate="19460101" endDate="19460120" onChange={onChange} editable />);
+    fireEvent.click(screen.getByRole("button", { name: "日期范围：1946-01-01 — 1946-01-20" }));
+    const calendarTrigger = screen.getByRole("button", { name: "结束日期：打开日历" });
+    fireEvent.mouseDown(calendarTrigger);
+    fireEvent.click(calendarTrigger);
+    const day = screen.getByRole("button", { name: "15" });
+    fireEvent.mouseDown(day);
+    fireEvent.click(day);
+
+    await waitFor(() => expect((screen.getByRole("textbox", { name: "结束日期" }) as HTMLInputElement).value).toBe("1946-01-15"));
+    expect(screen.getByRole("dialog", { name: "选择日期范围" })).toBeTruthy();
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "应用" }));
+    expect(onChange).toHaveBeenCalledWith({ startDate: "19460101", endDate: "19460115" });
+  });
+
+  it("dismisses outside clicks and Escape without applying a draft range", () => {
+    const onChange = vi.fn();
+    render(<DateRangePicker startDate="19460101" endDate="19460120" onChange={onChange} editable />);
+    const trigger = screen.getByRole("button", { name: "日期范围：1946-01-01 — 1946-01-20" });
+    fireEvent.click(trigger);
+    const endInput = screen.getByRole("textbox", { name: "结束日期" });
+    fireEvent.change(endInput, { target: { value: "1946-02-20" } });
+    fireEvent.keyDown(endInput, { key: "Enter" });
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("dialog", { name: "选择日期范围" })).toBeNull();
+
+    fireEvent.click(trigger);
+    expect((screen.getByRole("textbox", { name: "结束日期" }) as HTMLInputElement).value).toBe("1946-01-20");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "选择日期范围" })).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("exposes reusable range shortcuts and their selected state", () => {
     const onChange = vi.fn();
     const shortcuts = [

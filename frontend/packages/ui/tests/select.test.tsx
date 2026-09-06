@@ -20,6 +20,7 @@ describe("Select", () => {
     expect(trigger.textContent).toContain("全部书籍");
     fireEvent.click(trigger);
 
+    expect(document.activeElement).toBe(trigger);
     expect(screen.getByRole("listbox", { name: "选择书籍" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "全部书籍" }).getAttribute("aria-selected")).toBe("true");
     fireEvent.click(screen.getByRole("option", { name: "第一本书" }));

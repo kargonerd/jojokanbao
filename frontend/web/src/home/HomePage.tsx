@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { Button } from "@jojo/ui";
 import { useAccountSessionStore } from "../account/session";
 import { BookCover } from "../library/BookCover";
@@ -70,17 +70,20 @@ function recentBookDatasetId(item: RecentReadingItem): string | undefined {
 }
 
 export function HomePage({ periodicals = [] }: { periodicals?: readonly PeriodicalEntry[] }) {
-  const navigate = useNavigate();
   const location = useLocation();
   const [query, setQuery] = useState("");
   const [books, setBooks] = useState<RagNotebook[]>([]);
-  const [bookCatalogReady, setBookCatalogReady] = useState(false);
-  const [searchAttempted, setSearchAttempted] = useState(false);
+  const [catalogStatus, setCatalogStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [catalogRequest, setCatalogRequest] = useState(0);
+  const resultsRef = useRef<HTMLDivElement>(null);
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
   const signedIn = Boolean(userId);
   const storedRecentItems = useRecentReadingStore((state) => state.items);
   const includePeriodicals = periodicals.length > 0;
+  const recentBooksPending = !signedIn
+    && (!accountInitialized || catalogStatus !== "ready")
+    && storedRecentItems.some((item) => item.kind === "book");
   const visibleBooks = useMemo(
     () => books.filter((book) => isContentVisible(book.access, signedIn)),
     [books, signedIn],
@@ -89,7 +92,7 @@ export function HomePage({ periodicals = [] }: { periodicals?: readonly Periodic
     storedRecentItems.filter((item) => includePeriodicals || item.kind === "book"),
   ).filter((item) => {
     if (item.kind !== "book" || signedIn) return true;
-    if (!accountInitialized || !bookCatalogReady) return false;
+    if (!accountInitialized || catalogStatus !== "ready") return false;
     const datasetId = recentBookDatasetId(item);
     if (!datasetId) return true;
     const book = books.find((candidate) => candidate.id === datasetId);
@@ -99,13 +102,16 @@ export function HomePage({ periodicals = [] }: { periodicals?: readonly Periodic
 
   useEffect(() => {
     let active = true;
+    setCatalogStatus("loading");
     void notebookApi.list().then((items) => {
-      if (active) setBooks(items.filter((item) => item.type === "book" || item.type === "book-series"));
-    }).catch(() => undefined).finally(() => {
-      if (active) setBookCatalogReady(true);
+      if (!active) return;
+      setBooks(items.filter((item) => item.type === "book" || item.type === "book-series"));
+      setCatalogStatus("ready");
+    }).catch(() => {
+      if (active) setCatalogStatus("error");
     });
     return () => { active = false; };
-  }, []);
+  }, [catalogRequest]);
 
   const matches = useMemo(() => {
     if (!query.trim()) return [];
@@ -119,14 +125,7 @@ export function HomePage({ periodicals = [] }: { periodicals?: readonly Periodic
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (matches[0]) {
-      navigate(withReaderReturnTo(
-        `/library/${encodeURIComponent(matches[0].id)}`,
-        `${location.pathname}${location.search}`,
-      ));
-      return;
-    }
-    setSearchAttempted(true);
+    if (query.trim()) resultsRef.current?.focus();
   }
 
   return (
@@ -140,23 +139,30 @@ export function HomePage({ periodicals = [] }: { periodicals?: readonly Periodic
               id="app-home-search"
               type="search"
               value={query}
-              onChange={(event) => { setQuery(event.target.value); setSearchAttempted(false); }}
+              onChange={(event) => setQuery(event.target.value)}
               placeholder="搜索书名"
               autoComplete="off"
+              required
+              aria-controls="home-book-results"
             />
-            <Button type="submit">搜索</Button>
+            <Button type="submit">找书</Button>
           </form>
-          {query.trim() && (
-            <div className="home-book-results" role="listbox" aria-label="书名匹配结果">
-              {matches.map((book) => (
-                <button key={book.id} type="button" role="option" onClick={() => navigate(withReaderReturnTo(
-                  `/library/${encodeURIComponent(book.id)}`,
-                  `${location.pathname}${location.search}`,
-                ))}>
-                  <span>{book.title || book.name || "未命名书籍"}</span>
-                </button>
-              ))}
-              {matches.length === 0 && <p>{searchAttempted ? "没有匹配的书籍" : "没有找到相近书名"}</p>}
+          {(query.trim() || catalogStatus === "error") && (
+            <div id="home-book-results" ref={resultsRef} className="home-book-results" role="region" aria-label="书名匹配结果" tabIndex={-1}>
+              {catalogStatus === "loading" ? <p role="status">正在载入书籍目录…</p> : catalogStatus === "error" ? <>
+                <p role="alert">书籍目录暂时无法载入，请重试。</p>
+                <button type="button" onClick={() => setCatalogRequest((request) => request + 1)}>重新载入</button>
+              </> : <>
+                {matches.map((book) => (
+                  <Link key={book.id} to={withReaderReturnTo(
+                    `/library/${encodeURIComponent(book.id)}`,
+                    `${location.pathname}${location.search}`,
+                  )}>
+                    <span>{book.title || book.name || "未命名书籍"}</span>
+                  </Link>
+                ))}
+                {matches.length === 0 && <p role="status">没有找到相近书名，请换个书名关键词。</p>}
+              </>}
             </div>
           )}
         </div>
@@ -189,6 +195,15 @@ export function HomePage({ periodicals = [] }: { periodicals?: readonly Periodic
                 </div>
               </Link>
             ))}
+          </div>
+        ) : recentBooksPending ? (
+          <div className="recent-empty" role="status">
+            <span aria-hidden="true">阅</span>
+            <div>
+              <strong>{catalogStatus === "error" ? "暂时无法恢复阅读记录" : "正在恢复阅读记录…"}</strong>
+              <p>{catalogStatus === "error" ? "书籍目录暂时无法载入，重试后继续阅读。" : "正在确认书籍目录，请稍候。"}</p>
+            </div>
+            {catalogStatus === "error" && <Button onClick={() => setCatalogRequest((request) => request + 1)}>重试恢复</Button>}
           </div>
         ) : (
           <div className="recent-empty">

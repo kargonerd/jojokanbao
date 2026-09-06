@@ -239,7 +239,15 @@ describe("JOJO Web navigation", () => {
     expect(guide.textContent).not.toMatch(/Android|安卓|Chrome/);
     expect(screen.queryByRole("heading", { name: "下载客户端" })).toBeNull();
     expect(screen.queryByRole("link", { name: /返回下载页/ })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "返回上一页" }));
+    // Browser history traversal is asynchronous; let it finish before starting
+    // the DOM assertion's timeout on a busy CI runner.
+    await act(async () => {
+      const navigated = new Promise<Event>((resolve) => {
+        window.addEventListener("popstate", resolve, { once: true });
+      });
+      fireEvent.click(screen.getByRole("button", { name: "返回上一页" }));
+      await navigated;
+    });
     expect(await screen.findByRole("heading", { name: "下载客户端" })).toBeTruthy();
     expect(window.location.pathname).toBe("/download");
   });
@@ -352,7 +360,7 @@ describe("JOJO Web navigation", () => {
     fireEvent.click(within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "搜索" }));
 
     await waitFor(() => expect(window.location.pathname).toBe("/search"));
-    expect(screen.getByPlaceholderText("在JOJO看报上搜索")).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "全文检索关键词" })).toBeTruthy();
     expect(within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "搜索" }).className).toContain("is-active");
   });
 

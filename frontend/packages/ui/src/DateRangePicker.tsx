@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { DatePicker } from "./DatePicker";
 
 export interface DateRangeValue {
@@ -55,6 +55,7 @@ export function DateRangePicker({
   const [draftStartDate, setDraftStartDate] = useState(startDate);
   const [draftEndDate, setDraftEndDate] = useState(endDate);
   const ref = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const selectedShortcut = shortcuts.find((shortcut) => shortcut.startDate === startDate && shortcut.endDate === endDate);
   const hasValue = Boolean(startDate && endDate);
   const displayValue = hasValue ? `${formatDate(startDate)} — ${formatDate(endDate)}` : placeholder;
@@ -65,6 +66,33 @@ export function DateRangePicker({
     setDraftStartDate(startDate);
     setDraftEndDate(endDate);
   }, [startDate, endDate]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    const positionPanel = () => {
+      const trigger = ref.current;
+      const panel = panelRef.current;
+      if (!trigger || !panel) return;
+
+      const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+      const gutter = 12;
+      panel.style.maxWidth = `${Math.max(0, viewportWidth - gutter * 2)}px`;
+      const triggerLeft = trigger.getBoundingClientRect().left;
+      const panelWidth = panel.getBoundingClientRect().width;
+      const left = Math.max(gutter, Math.min(triggerLeft, viewportWidth - panelWidth - gutter));
+      panel.style.setProperty("--range-panel-offset", `${left - triggerLeft}px`);
+    };
+
+    positionPanel();
+    window.addEventListener("resize", positionPanel);
+    // The search results use their own scroll container.
+    window.addEventListener("scroll", positionPanel, true);
+    return () => {
+      window.removeEventListener("resize", positionPanel);
+      window.removeEventListener("scroll", positionPanel, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -141,9 +169,10 @@ export function DateRangePicker({
 
       {open && (
         <div
+          ref={panelRef}
           role="dialog"
           aria-label="选择日期范围"
-          className="fixed left-3 right-3 top-[96px] z-[100] border-2 border-red bg-paper shadow-[6px_6px_0_rgba(139,26,26,.14)] sm:absolute sm:left-0 sm:right-auto sm:top-full sm:mt-1 sm:w-[660px]"
+          className="fixed left-3 right-3 top-[96px] z-[100] border-2 border-red bg-paper shadow-[6px_6px_0_rgba(139,26,26,.14)] sm:absolute sm:left-[var(--range-panel-offset,0px)] sm:right-auto sm:top-full sm:mt-1 sm:w-[660px]"
         >
           <div className="flex flex-col sm:flex-row">
             {shortcuts.length > 0 && (
@@ -195,6 +224,7 @@ export function DateRangePicker({
                     disabledDate={disabledEndDate}
                     editable={editable}
                     ariaLabel={endLabel}
+                    className="sm:[&>div.fixed]:left-auto sm:[&>div.fixed]:right-0"
                   />
                 </label>
               </div>
