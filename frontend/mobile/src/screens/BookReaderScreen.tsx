@@ -277,12 +277,6 @@ export function BookReaderScreen({ route, navigation }: Props) {
       : undefined,
   ), [activeChapterId, chapterAnnotations, chapterEntryEdge, initialAnchorId, initialChapterId, initialText, leftTapNext, legacyResume, recentBook?.chapterId, recentBook?.scrollProgress, recentBook?.spreadIndex]);
 
-  useEffect(() => {
-    if (!chapter || activeTool || selection || noteComposer || !chromeVisible) return;
-    const timer = setTimeout(() => setChromeVisible(false), 3200);
-    return () => clearTimeout(timer);
-  }, [activeChapterId, activeTool, chapter, chromeVisible, noteComposer, selection]);
-
   function chooseChapter(chapterId: string, entryEdge: BookChapterEdge = "start") {
     setActiveTool(null);
     setChromeVisible(true);
