@@ -1,4 +1,13 @@
 name: Maintenance · Times Canonical and B2 Delivery
+run-name: >-
+  ${{ ((github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        (github.event.workflow_run.event == 'schedule' ||
+         (github.event.workflow_run.event == 'workflow_dispatch' &&
+          github.event.workflow_run.display_title == 'Times capture [cloudflare-cron]'))) ||
+       (github.event_name == 'workflow_dispatch' && inputs.publish && inputs.drain &&
+        !inputs.bootstrap && !inputs.capture_run_id && !inputs.runtime_job_id)) &&
+      'Times process [automatic]' || format('Times process [request {0}]', github.run_id) }}
 
 on:
   workflow_run:
@@ -42,13 +51,28 @@ permissions:
   actions: write
 
 concurrency:
-  group: times-delivery-writer
-  # Keep pending Cleanup runs when another Process trigger joins the writer queue.
-  queue: max
+  # Interchangeable wake-ups: one admitted workflow plus one replaceable pending
+  # request. Raw jobs remain durable; manual exact-job/dry-run requests are unique.
+  group: >-
+    ${{ ((github.event_name == 'workflow_run' &&
+          github.event.workflow_run.conclusion == 'success' &&
+          (github.event.workflow_run.event == 'schedule' ||
+           (github.event.workflow_run.event == 'workflow_dispatch' &&
+            github.event.workflow_run.display_title == 'Times capture [cloudflare-cron]'))) ||
+         (github.event_name == 'workflow_dispatch' && inputs.publish && inputs.drain &&
+          !inputs.bootstrap && !inputs.capture_run_id && !inputs.runtime_job_id)) &&
+        format('times-process-automatic-{0}', github.ref) || format('times-process-request-{0}', github.run_id) }}
+  queue: single
   cancel-in-progress: false
 
 jobs:
   process:
+    # Admission above is separate from the shared write lock. Cleanup keeps its
+    # FIFO place here and cannot be replaced by an automatic Process wake-up.
+    concurrency:
+      group: times-delivery-writer
+      queue: max
+      cancel-in-progress: false
     if: >-
       github.event_name != 'workflow_run' ||
       (github.event.workflow_run.conclusion == 'success' &&
@@ -449,12 +473,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh workflow run maintenance-times-process.yml \
-            --repo "$GITHUB_REPOSITORY" \
-            --ref "$TIMES_GITHUB_REF" \
-            -f publish=true \
-            -f drain=true \
-            -f max_jobs="$TIMES_MAX_JOBS"
+          node tools/ci/continue-times-process.mjs
 
       - name: Upload dry-run Canonical and Delivery artifact
         if: env.TIMES_PUBLISH != 'true'

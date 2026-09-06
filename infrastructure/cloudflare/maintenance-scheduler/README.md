@@ -85,6 +85,24 @@ drain continuations). A successful Capture cannot clear a Process failure;
 successful no-op Process runs cannot clear it either. These are stage liveness
 checks, not an SLA timer for every queued article. No extra key is needed.
 
+`monitoring.stages[].queue` adds a generic GitHub waiting-queue probe using the
+same Management key, integrations, and Durable Object binding. Configure the
+workflow filenames, `maxPendingRuns`, `maxWaitSeconds`, and `failureSeconds` in
+the registry. No workflow reporting code or per-check secret is needed.
+`times-process-queue` observes Process and Cleanup every minute: more than three
+waiting requests, or an oldest request older than 45 minutes, must persist for
+five minutes before one down transition. A fresh healthy queue probe recovers
+this check; successful publication does not. Its independent ten-minute grace
+detects a stopped probe without bypassing the five-minute congestion debounce.
+Probe/API failures do not become healthy observations; they also degrade the
+scheduler heartbeat. Business outcome thresholds are unchanged.
+
+Reads explicitly filter `pending`, `queued`, `waiting`, and `requested` runs,
+including environment/runner waits. Old waiting runs cannot disappear behind
+the latest page of completed runs. Each workflow uses four bounded requests;
+the total count detects an overflowing page without unbounded pagination.
+This measures GitHub waiting requests, not the age of articles in HF Runtime.
+
 GitHub probe and dispatch requests each have a 10-second deadline. Dispatch
 POSTs are not blindly retried after timeout: the next minute checks GitHub's
 accepted runs first. Healthchecks definitions are cached for 15 minutes per
@@ -108,7 +126,7 @@ the project's Ping Key, not a check UUID or full ping URL. The API key is the
 project's read-write Management API key and should remain Cloudflare-only.
 
 On the first deployment, the Worker manages checks with the slugs
-`maintenance-scheduler`, `times-capture`, `times-process`, and `rmrb-sync`. If legacy checks use
+`maintenance-scheduler`, `times-capture`, `times-process`, `times-process-queue`, and `rmrb-sync`. If legacy checks use
 other slugs, pause or remove them after confirming the managed checks are
 receiving pings, otherwise both old and new checks may alert.
 

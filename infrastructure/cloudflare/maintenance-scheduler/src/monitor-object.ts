@@ -2,7 +2,8 @@ import { ensureHealthcheck, pingHealthcheck } from "./healthchecks";
 import { checkUuid, listLoggedPings, parseExecution, readLoggedBody } from "./monitor-events";
 import { applyDispatch, applyExecution, DEFAULT_ALERT_POLICY, evaluateDeadline, initialState, markHistoryGap, nextDeadline, observeExpectedSlot, type DispatchObservation, type MonitorState } from "./monitor-policy";
 import { SCHEDULED_TASKS } from "./tasks";
-import { taskHealthcheck, taskStageHealthchecks, type AlertPolicy, type HealthcheckDefinition, type ScheduledTask, type SchedulerEnv } from "./types";
+import { tickQueueMonitor } from "./queue-monitor";
+import { taskHealthcheck, taskStageHealthchecks, type AlertPolicy, type HealthcheckDefinition, type QueuePolicy, type ScheduledTask, type SchedulerEnv } from "./types";
 
 export interface MonitorTick {
   slug: string;
@@ -12,11 +13,11 @@ export interface MonitorTick {
   expectedAt?: number;
 }
 
-export function configuredMonitor(slug: string): { check: HealthcheckDefinition; policy: AlertPolicy } {
+export function configuredMonitor(slug: string): { check: HealthcheckDefinition; policy: AlertPolicy; queue?: QueuePolicy | undefined } {
   for (const task of SCHEDULED_TASKS as readonly ScheduledTask[]) {
     if (task.id === slug) return { check: taskHealthcheck(task), policy: { ...DEFAULT_ALERT_POLICY, ...task.monitoring.alertPolicy } };
     const stage = task.monitoring.stages?.find((candidate) => candidate.slug === slug);
-    if (stage) return { check: taskStageHealthchecks(task).find((check) => check.slug === slug)!, policy: { ...DEFAULT_ALERT_POLICY, ...stage.alertPolicy } };
+    if (stage) return { check: taskStageHealthchecks(task).find((check) => check.slug === slug)!, policy: { ...DEFAULT_ALERT_POLICY, ...stage.alertPolicy }, queue: stage.queue };
   }
   throw new Error(`Unknown monitor: ${slug}`);
 }
@@ -40,11 +41,12 @@ export class MaintenanceMonitor {
   }
 
   async tick(tick: MonitorTick): Promise<{ cursor: number; down: boolean }> {
-    const { check, policy } = configuredMonitor(tick.slug);
+    const { check, policy, queue } = configuredMonitor(tick.slug);
     const key = this.env.HEALTHCHECKS_API_KEY;
     if (!key) throw new Error("Monitoring management key is missing");
     const pingUrl = await ensureHealthcheck(check, key);
     const uuid = checkUuid(pingUrl);
+    if (queue) return tickQueueMonitor(this.context.storage, this.env, queue, check.slug, pingUrl, uuid, tick.now);
     const previous = await this.context.storage.get<MonitorState>("monitor");
     const state = previous?.checkUuid === uuid ? structuredClone(previous) : initialState(check, uuid, tick.now);
     const pings = await listLoggedPings(uuid, key);

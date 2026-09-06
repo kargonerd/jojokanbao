@@ -24,6 +24,19 @@ export const SCHEDULED_TASKS = [
         graceSeconds: 90 * 60,
         tags: "jojo production maintenance times process",
         description: "Committed Times Runtime batches after Canonical/B2 publication; includes drain continuations. No-op runs do not clear alerts.",
+      }, {
+        slug: "times-process-queue",
+        name: "JOJO · times-process-queue",
+        schedule: "* * * * *",
+        graceSeconds: 10 * 60,
+        tags: "jojo production maintenance times queue",
+        description: "GitHub Process/Cleanup queue congestion, independent of successful publication. Alert after 5 minutes above 3 waiting requests or 45 minutes oldest wait.",
+        queue: {
+          workflows: ["maintenance-times-process.yml", "maintenance-times-runtime-cleanup.yml"],
+          maxPendingRuns: 3,
+          maxWaitSeconds: 45 * 60,
+          failureSeconds: 5 * 60,
+        },
       }],
     },
     inputs: ({ slot }) => ({
@@ -110,6 +123,21 @@ export function validateScheduledTasks(tasks: readonly ScheduledTask[] = SCHEDUL
       if (policy?.dispatchFailureSeconds !== undefined && (!Number.isInteger(policy.dispatchFailureSeconds) || policy.dispatchFailureSeconds < 60)) {
         throw new Error(`Invalid dispatch failure duration: ${task.id}`);
       }
+    }
+
+    for (const stage of task.monitoring.stages ?? []) {
+      if (stage.schedule && stage.schedule !== task.cron && !stage.queue) throw new Error(`Only queue probes override the stage schedule: ${stage.slug}`);
+      if (!stage.queue) continue;
+      const queue = stage.queue;
+      if (!queue.workflows.length || queue.workflows.length > 8 || new Set(queue.workflows).size !== queue.workflows.length ||
+          queue.workflows.some((name) => !/^[a-z0-9][a-z0-9-]*\.ya?ml$/u.test(name)) ||
+          !Number.isInteger(queue.maxPendingRuns) || queue.maxPendingRuns < 1 || queue.maxPendingRuns >= 100 ||
+          !Number.isInteger(queue.maxWaitSeconds) || queue.maxWaitSeconds < 60 ||
+          !Number.isInteger(queue.failureSeconds) || queue.failureSeconds < 60 ||
+          stage.graceSeconds <= queue.failureSeconds) {
+        throw new Error(`Invalid queue monitoring policy: ${stage.slug}`);
+      }
+      resolveScheduledSlot({ ...task, cron: stage.schedule ?? task.cron }, Date.parse("2026-01-02T12:34:00.000Z"));
     }
 
     // Parse every cron expression in CI even when the task is not due at the

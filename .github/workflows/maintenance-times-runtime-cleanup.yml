@@ -19,14 +19,13 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: times-delivery-writer
-  # Share the writer lock without replacing pending Process or Cleanup runs.
-  queue: max
-  cancel-in-progress: false
-
 jobs:
   cleanup:
+    concurrency:
+      group: times-delivery-writer
+      # Process admission is coalesced separately; never replace queued writers.
+      queue: max
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     environment: maintenance
     timeout-minutes: 15

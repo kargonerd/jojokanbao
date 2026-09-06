@@ -23,6 +23,13 @@ export interface HealthcheckDefinition {
   description: string;
 }
 
+export interface QueuePolicy {
+  workflows: string[];
+  maxPendingRuns: number;
+  maxWaitSeconds: number;
+  failureSeconds: number;
+}
+
 export interface ScheduledSlot {
   id: string;
   scheduledAtMs: number;
@@ -53,8 +60,13 @@ export interface ScheduledTask {
     tags: string;
     description: string;
     alertPolicy?: Partial<AlertPolicy>;
-    // Independently reported downstream stages inherit this task's schedule.
-    stages?: Array<Omit<HealthcheckDefinition, "schedule" | "timeZone"> & { alertPolicy?: Partial<AlertPolicy> }>;
+    // Execution stages inherit the task schedule. Queue probes have their own
+    // heartbeat schedule and do not consume business execution outcomes.
+    stages?: Array<Omit<HealthcheckDefinition, "schedule" | "timeZone"> & {
+      alertPolicy?: Partial<AlertPolicy>;
+      schedule?: string;
+      queue?: QueuePolicy;
+    }>;
   };
   inputs(context: TaskInputContext): Record<string, string>;
 }
@@ -70,9 +82,9 @@ export function taskHealthcheck(task: ScheduledTask): HealthcheckDefinition {
 }
 
 export function taskStageHealthchecks(task: ScheduledTask): HealthcheckDefinition[] {
-  return (task.monitoring.stages ?? []).map(({ alertPolicy: _policy, ...stage }) => ({
+  return (task.monitoring.stages ?? []).map(({ alertPolicy: _policy, queue: _queue, schedule, ...stage }) => ({
     ...stage,
-    schedule: task.cron,
+    schedule: schedule ?? task.cron,
     timeZone: task.timeZone,
   }));
 }

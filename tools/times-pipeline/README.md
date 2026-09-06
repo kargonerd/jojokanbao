@@ -136,8 +136,20 @@ Runtime job 状态只有 `ready`、`partial` 和 `done`。`done` job 保留 14 �
 `times/jobs/{id}` 下经过校验的 Raw、未提交 Process generation、pending marker 和 status marker；payload 始终先于 marker
 分阶段删除。没有 status 的上传中断残留保留 30 天，当前 `process-memory.json` 指向的 generation 永不作为
 孤儿删除；差量 generation 引用的基线也受到同样保护。一次最多处理 100 个 job。
-Process 与 cleanup 共用 `times-delivery-writer` 互斥组，双方均设置 `queue: max`，让等待中的清理任务
-不会被后来的 Process 触发替换；最多排队 100 个任务，满队列时新增任务仍会被取消。
+自动 Process 使用两层并发控制：workflow 层的 `times-process-automatic-{ref}` 对同一分支只保留一个执行中和一个待执行请求，
+后续重复唤醒替换待执行请求，不中断执行中的工作。真正的数据仍在 HF Runtime 的 FIFO 队列中，取消重复唤醒
+不会删除 Raw 或标记 job 完成。指定 `runtime_job_id`、bootstrap、dry-run 和非 drain 的手工请求使用独立组，
+不会参与自动请求合并。Process 发现剩余数据时先查询是否已有自动请求排队；有则复用，无则创建一次 continuation，
+API 并发竞态由 workflow 层的单待执行限制兜底。GitHub 中少量 `cancelled` 自动唤醒是正常合并，不是数据丢失。
+
+Process 与 cleanup 在 job 层共用 `times-delivery-writer`，双方均设置 `queue: max`、
+`cancel-in-progress: false`。自动请求只有通过外层合并后才进入这把锁，因此不会用大量重复请求填满共享队列，
+也不会替换等候中的 Cleanup。所有 B2 写入、Process memory 提交和清理仍串行。
+CF 独立监控 `times-process-queue`，与发布成功监控分开，规则见 maintenance-scheduler README。
+
+迁移时，已经排队的旧版本 workflow 不会自动获得新的外层并发组。合并后必须检查旧队列；可以让它自然消化，
+或经核实后合并尚未开始的自动唤醒。不得批量取消执行中的 writer、Cleanup、手工 exact-job/bootstrap/dry-run。
+不要通过改名共享锁或开启 `cancel-in-progress` 来跳过旧队列，否则会破坏单写入保护。
 
 B2 只保存 Delivery：
 

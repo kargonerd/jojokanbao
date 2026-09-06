@@ -32,7 +32,7 @@ describe("scheduler with shared alert policy", () => {
   it("observes downstream stages without synthesizing success or resetting /start", async () => {
     const options = fixture();
     await handleScheduled(controller, env, { ...options, tasks: [scheduledTask("times-capture")] });
-    expect(options.monitor.mock.calls.map(([tick]) => tick.slug)).toEqual(["times-capture", "times-process"]);
+    expect(options.monitor.mock.calls.map(([tick]) => tick.slug)).toEqual(["times-capture", "times-process", "times-process-queue"]);
     expect(options.monitor).toHaveBeenCalledWith(expect.objectContaining({ slug: "times-capture", dispatch: { kind: "accepted" } }));
     const urls = options.fetcher.mock.calls.map(([url]) => String(url));
     expect(urls).toContain("https://hc-ping.com/maintenance-scheduler");
@@ -54,6 +54,6 @@ describe("scheduler with shared alert policy", () => {
     const urls = options.fetcher.mock.calls.map(([url]) => String(url));
     expect(urls).toContain("https://hc-ping.com/maintenance-scheduler/log");
     expect(urls).not.toContain("https://hc-ping.com/maintenance-scheduler");
-    expect(options.monitor).toHaveBeenCalledTimes(3);
+    expect(options.monitor).toHaveBeenCalledTimes(4);
   });
 });
