@@ -19,7 +19,8 @@ export async function exportMigrationState(env: SchedulerEnv): Promise<void> {
     if (snapshot.queue) states[`monitor:${slug}:queue-monitor`] = snapshot.queue;
   }));
   const response = await fetch(`${endpoint.origin}/rest/v1/rpc/maintenance_scheduler_rpc`, {
-    method: "POST", redirect: "error", signal: AbortSignal.timeout(8000),
+    // workerd rejects redirect:"error"; manual also prevents credential forwarding.
+    method: "POST", redirect: "manual", signal: AbortSignal.timeout(8000),
     headers: { "Content-Type": "application/json", apikey: env.SUPABASE_PUBLISHABLE_KEY },
     body: JSON.stringify({ p_token: env.SCHEDULER_STATE_TOKEN, p_operation: "import", p_value: { states } }),
   });
