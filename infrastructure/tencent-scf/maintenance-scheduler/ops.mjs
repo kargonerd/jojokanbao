@@ -73,6 +73,17 @@ function environment(stateToken, mode) {
   return { Variables: Object.entries(values).map(([Key, Value]) => ({ Key, Value })) };
 }
 
+export function verifiedProbe(result) {
+  const value = JSON.parse(result.Result?.RetMsg ?? "null");
+  if (result.Result?.FunctionError || value?.errorCode || !Array.isArray(value?.connectivity)
+    || value.connectivity.length !== 2 || value.connectivity.some((check) => check.ok !== true)
+    || !["cloudflare", "tencent", "paused"].includes(value?.state?.backend)) {
+    // SCF can return HTTP success with a function exception inside RetMsg.
+    throw new Error(`Read-only probe failed${value?.stackTrace ? `: ${String(value.stackTrace).split("\n")[0]}` : ""}`);
+  }
+  return value;
+}
+
 async function main(action) {
   if (action === "status") {
     const info = await scf("GetFunction");
@@ -106,8 +117,7 @@ async function main(action) {
     console.log("Native one-minute timer created.");
   } else if (action === "probe") {
     const result = await scf("Invoke", { InvocationType: "RequestResponse", ClientContext: JSON.stringify({ mode: "probe" }), LogType: "None" });
-    if (result.Result?.FunctionError) throw new Error(`SCF probe failed: ${result.Result.FunctionError}`);
-    console.log(result.Result?.RetMsg ?? "No probe result");
+    console.log(JSON.stringify(verifiedProbe(result)));
   } else if (action === "arm") {
     const info = await scf("GetFunction");
     const vars = info.Environment.Variables.map((v) => v.Key === "SCHEDULER_MODE" ? { ...v, Value: "active" } : v);
