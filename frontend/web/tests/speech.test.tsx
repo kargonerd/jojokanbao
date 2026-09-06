@@ -35,7 +35,7 @@ const capabilities = { defaultProvider: "edge", requiresAuth: false, providers: 
   { id: "mimo", label: "小米 MiMo", description: "精品音色", available: true,
     voices: [{ id: "冰糖", label: "冰糖", description: "普通话女声" }] },
 ] };
-const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => input === "/api/v1/speech/providers"
+const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => input === "/api/v1/speech/providers?v=2"
   ? Response.json(capabilities) : new Response(new Blob(["audio"]), {
   status: 200,
   headers: { "Content-Type": "audio/mpeg" },
@@ -43,7 +43,7 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) =>
 
 describe("reader speech", () => {
   it("uses a delayed compact loading indicator without synthesis implementation copy", async () => {
-    fetchMock.mockImplementation(async (input) => input === "/api/v1/speech/providers"
+    fetchMock.mockImplementation(async (input) => input === "/api/v1/speech/providers?v=2"
       ? Response.json(capabilities) : new Promise<Response>(() => undefined));
     const { container } = render(<SpeechPlayer label="听本章" segments={["测试正文。"]} />);
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
@@ -57,7 +57,7 @@ describe("reader speech", () => {
 
   it("shows only logical voices and migrates the saved female choice", async () => {
     window.localStorage.setItem("jojo-reader-speech-voice:听本章:provider", JSON.stringify({ provider: "mimo", voice: "冰糖" }));
-    fetchMock.mockImplementation(async (input) => input === "/api/v1/speech/providers"
+    fetchMock.mockImplementation(async (input) => input === "/api/v1/speech/providers?v=2"
       ? Response.json({ defaultProvider: "auto", defaultVoice: "male", requiresAuth: false, providers: DEFAULT_SPEECH_PROVIDERS })
       : new Response(new Blob(["audio"]), { headers: { "Content-Type": "audio/mpeg" } }));
     render(<SpeechPlayer label="听本章" segments={["测试正文。"]} />);

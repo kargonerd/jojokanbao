@@ -26,11 +26,20 @@ def client():
 
 
 def test_catalog_exposes_capabilities_not_credentials(client):
-    response = client.get("/v1/speech/providers")
+    response = client.get("/v1/speech/providers?v=2")
     assert response.status_code == 200
     assert "server-only-secret" not in response.text
     assert [p["id"] for p in response.json()["providers"]] == ["auto"]
     assert [v["id"] for v in response.json()["providers"][0]["voices"]] == ["male", "female"]
+
+
+def test_installed_clients_keep_physical_voice_keys(client):
+    catalog = client.get("/v1/speech/providers").json()
+    assert catalog["defaultProvider"] == "mimo"
+    assert catalog["defaultVoice"] == "白桦"
+    assert [v["id"] for v in catalog["providers"][0]["voices"]] == ["白桦", "冰糖"]
+    assert [v["label"] for v in catalog["providers"][0]["voices"]] == ["男声", "女声"]
+    assert "server-only-secret" not in json.dumps(catalog)
 
 
 def test_missing_key_marks_mimo_unavailable(client):
