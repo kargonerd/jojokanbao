@@ -17,6 +17,7 @@ describe("one-way state handoff", () => {
       MONITORS:{idFromName:(name:string)=>name,get:()=>({fetch:snapshots})} } as unknown as SchedulerEnv;
     await handleScheduled({scheduledTime:Date.now(),cron:"* * * * *"} as ScheduledController,env);
     expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]![1]!.redirect).toBe("manual");
     expect(String(fetcher.mock.calls[0]![0])).toBe("https://testref.supabase.co/rest/v1/rpc/maintenance_scheduler_rpc");
     expect(JSON.parse(String(fetcher.mock.calls[0]![1]!.body)).p_value.states["monitor:times-process:monitor"]).toEqual({cursor:42,down:true});
   });

@@ -17,6 +17,9 @@ const bodies = new Map();
 const signals = [];
 const queueSignals = [];
 let queued = 4;
+let exporting = false;
+let importStatus = 200;
+const snapshots = [];
 function outcome(id, minute, signal) {
   const n = pings.length + 1;
   const date = new Date(start + minute * 60_000).toISOString();
@@ -27,9 +30,16 @@ const options = () => convertV4MiniflareOptions({
   name: "monitor-runtime-test", modules: true, scriptPath: fileURLToPath(new URL("../node_modules/.cache/monitor-test/index.js", import.meta.url)),
   compatibilityDate: "2026-08-28", cf: false, telemetry: { enabled: false }, resourcePersistencePath: temporary,
   durableObjects: { MONITORS: { className: "MaintenanceMonitor", useSQLite: true } },
-  bindings: { HEALTHCHECKS_API_KEY: "local-test-key", GITHUB_OWNER: "kargonerd", GITHUB_REPO: "jojokanbao", GITHUB_REF: "master", GITHUB_TOKEN: "local-test-token" },
+  bindings: { HEALTHCHECKS_API_KEY: "local-test-key", GITHUB_OWNER: "kargonerd", GITHUB_REPO: "jojokanbao", GITHUB_REF: "master", GITHUB_TOKEN: "local-test-token",
+    ...(exporting ? { SCHEDULER_BACKEND: "migration-export", SUPABASE_URL: "https://testref.supabase.co", SUPABASE_PUBLISHABLE_KEY: "local-public-key", SCHEDULER_STATE_TOKEN: "local-state-token" } : {}) },
   outboundService: async (request) => {
     const url = new URL(request.url);
+    if (exporting) {
+      assert.equal(url.href, "https://testref.supabase.co/rest/v1/rpc/maintenance_scheduler_rpc");
+      snapshots.push(await request.json());
+      return importStatus === 200 ? Response.json({ importedAt: "now" })
+        : new Response(null, { status: importStatus, headers: { Location: "https://unexpected.example/leak" } });
+    }
     if (url.origin === "https://api.github.com") {
       const runs = url.pathname.includes("maintenance-times-process.yml") && url.searchParams.get("status") === "pending"
         ? Array.from({ length: queued }, (_, id) => ({ id: id + 1, status: "pending", created_at: new Date(start).toISOString() })) : [];
@@ -83,7 +93,24 @@ try {
   queued = 0;
   assert.equal((await tick(9, "times-process-queue")).down, false);
   assert.deepEqual(queueSignals, ["start", "fail", "success"]);
+  const namespace = await mf.getDurableObjectNamespace("MONITORS");
+  const beforeExport = await (await namespace.get(namespace.idFromName("times-process")).fetch("https://monitor.internal/snapshot")).json();
+  await mf.dispose();
+  exporting = true;
+  mf = new Miniflare(options());
+  const worker = await mf.getWorker();
+  assert.equal((await worker.scheduled({ cron: "* * * * *", scheduledTime: new Date(start) })).outcome, "ok");
+  assert.equal(snapshots.length, 1);
+  assert.equal(snapshots[0].p_operation, "import");
+  assert.deepEqual(snapshots[0].p_value.states["monitor:times-process:monitor"], beforeExport.monitor);
+  // A redirect must neither forward the token nor be accepted as an import.
+  importStatus = 302;
+  assert.notEqual((await worker.scheduled({ cron: "* * * * *", scheduledTime: new Date(start) })).outcome, "ok");
+  assert.equal(snapshots.length, 2);
+  assert.deepEqual(signals, ["fail", "success"]);
+  assert.deepEqual(queueSignals, ["start", "fail", "success"]);
   console.log("SQLite/workerd monitoring restart, deduplication and recovery smoke passed.");
+  console.log("workerd migration exports exact state and rejects redirects without business calls.");
 } finally {
   await mf?.dispose();
   await rm(temporary, { recursive: true, force: true });
