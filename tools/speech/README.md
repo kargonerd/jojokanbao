@@ -142,8 +142,22 @@ JOJO_SPEECH_S3_KEY_ID=<已有B2 key id>
 JOJO_SPEECH_S3_APPLICATION_KEY=<已有B2 application key>
 JOJO_SPEECH_CDN_BASE=https://blacknews.jojokanbao.cn
 JOJO_TTS_ENABLED=true
-MIMO_API_KEY=<secret>
+MIMO_API_KEYS=["<key-1>","<key-2>"]
 ```
+
+`MIMO_API_KEYS` 是后端私密环境变量，值为 JSON 字符串数组；新增或删除 Key 只修改这个数组。
+空白 Key、非字符串及非法 JSON 会拒绝启动，重复 Key 会去重。数组存在时优先使用数组，
+`[]` 明确表示不使用 MiMo；仅未配置数组时兼容旧的 `MIMO_API_KEY`。
+不读取 `_2`、`_3` 等编号环境变量，也不自动接入 Token Plan。
+
+线上按在途请求数选择空闲 Key，同等负载轮换，冷启动随机起点，避免实例全部从第一把开始。
+429 按 `Retry-After` 冷却（未提供或无效时 60 秒），401/403 冷却 5 分钟，5xx 冷却 10 秒；
+明确拒绝后可尝试另一把，每次请求最多尝试 3 把，不等待整段冷却。
+网络超时或无效音频不跨 Key 重复合成；所有可用 Key 都不可用时返回现有错误协议。
+调度和冷却仅在单个云函数进程内生效，不是跨实例/跨本地批处理的全局 RPM/TPM 限流。
+同一账号的多个 Key 仍共用 MiMo 配额；正在运行的离线批处理预算不被线上配置重置。
+Key 不进入缓存哈希、音频地址、前端或日志，已有缓存无需重新生成。
+离线工具保留其原来的固定 Key 和独立预算，线上仍只有 2 个合成保护槽。
 
 部署配置将 Python 超时设为 120 秒，API 等待上限 110 秒。MiMo HTTP 读取体积上限 16 MiB，
 交付编码音频上限 12 MiB，不等于进程峰值内存（JSON/Base64/编码仍有多份缓冲）。

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -50,6 +51,18 @@ def _boolean(value: str | None, default: bool, name: str) -> bool:
     raise RuntimeError(f"{name} must be a boolean")
 
 
+def _mimo_api_keys(value: str | None) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    try:
+        keys = json.loads(value)
+    except (TypeError, ValueError):
+        raise RuntimeError("MIMO_API_KEYS must be a JSON array of non-empty strings") from None
+    if not isinstance(keys, list) or any(not isinstance(key, str) or not key.strip() for key in keys):
+        raise RuntimeError("MIMO_API_KEYS must be a JSON array of non-empty strings")
+    return tuple(dict.fromkeys(key.strip() for key in keys))
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     environment: str
@@ -59,6 +72,7 @@ class Settings:
     auth_timeout_seconds: float
     tts_enabled: bool = True
     mimo_api_key: str | None = field(default=None, repr=False)
+    mimo_api_keys: tuple[str, ...] = field(default=(), repr=False)
     speech_cache_path: str | None = None
     speech_storage: str = "local"
     speech_s3_endpoint: str | None = None
@@ -102,7 +116,9 @@ class Settings:
                 default=environment != "production",
                 name="JOJO_TTS_ENABLED",
             ),
-            mimo_api_key=(os.getenv("MIMO_API_KEY") or "").strip() or None,
+            mimo_api_key=((os.getenv("MIMO_API_KEY") or "").strip() or None)
+            if os.getenv("MIMO_API_KEYS") is None else None,
+            mimo_api_keys=_mimo_api_keys(os.getenv("MIMO_API_KEYS")),
             speech_storage=storage,
             speech_s3_endpoint=endpoint,
             speech_s3_region=os.getenv("JOJO_SPEECH_S3_REGION", "us-west-004"),
@@ -114,6 +130,12 @@ class Settings:
                 os.getenv("JOJO_SPEECH_CACHE_ENABLED"), environment != "test", "JOJO_SPEECH_CACHE_ENABLED",
             ) else None,
         )
+
+    @property
+    def mimo_keys(self) -> tuple[str, ...]:
+        """The array takes priority; the singular setting is a legacy fallback."""
+        keys = self.mimo_api_keys or (self.mimo_api_key,)
+        return tuple(dict.fromkeys(key.strip() for key in keys if key and key.strip()))
 
     def require_supabase(self) -> tuple[str, str]:
         if not self.supabase_url or not self.supabase_publishable_key:
