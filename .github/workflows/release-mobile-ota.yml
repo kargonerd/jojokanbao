@@ -118,7 +118,6 @@ jobs:
           printf 'UPDATE_GROUP_ID=%s\n' "$INPUT_GROUP_ID" >> "$GITHUB_ENV"
 
       - name: Install workspace dependencies
-        if: inputs.operation == 'publish'
         run: pnpm install --frozen-lockfile
 
       - name: Verify update source
