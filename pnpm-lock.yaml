@@ -530,6 +530,9 @@ importers:
 
   infrastructure/cloudflare/maintenance-scheduler:
     dependencies:
+      '@jojo/maintenance-core':
+        specifier: workspace:*
+        version: link:../../../tools/maintenance-scheduler
       croner:
         specifier: 10.0.1
         version: 10.0.1
@@ -635,6 +638,28 @@ importers:
       vitest:
         specifier: ^3.0.0
         version: 3.2.4(@types/debug@4.1.13)(@types/node@25.9.3)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.33.0)(terser@5.48.0)(tsx@4.23.12)(yaml@2.9.0)
+
+  tools/maintenance-scheduler:
+    dependencies:
+      croner:
+        specifier: 10.0.1
+        version: 10.0.1
+    devDependencies:
+      '@electric-sql/pglite':
+        specifier: 0.5.8
+        version: 0.5.8
+      '@types/node':
+        specifier: 24.3.0
+        version: 24.3.0
+      esbuild:
+        specifier: 0.27.7
+        version: 0.27.7
+      typescript:
+        specifier: 5.9.2
+        version: 5.9.2
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@24.3.0)(jiti@2.7.0)(jsdom@30.0.1(@noble/hashes@2.3.0))(lightningcss@1.33.0)(terser@5.48.0)(tsx@4.23.12)(yaml@2.9.0)
 
   tools/release: {}
 
@@ -1484,6 +1509,9 @@ packages:
   '@earendil-works/pi-telemetry@0.84.4':
     resolution: {integrity: sha512-8e2CuxM+ht+hedQXTZmi5JVl6/xDK9RpSDL2+MbITevKYQhMZ/z6lJOTFgox3HQyGxO8mOZEtYGVeQNaD4OzqA==}
     engines: {node: '>=22.19.0'}
+
+  '@electric-sql/pglite@0.5.8':
+    resolution: {integrity: sha512-n9tsbUOhwx2epK1V0ZG9Ar4SHWUju04dhmzZXiSBXwBoleOvIfals33NAaWgagQVAL4Rbvx/Ptsu3P+pA09f6Q==}
 
   '@electron/asar@3.4.1':
     resolution: {integrity: sha512-i4/rNPRS84t0vSRa2HorerGRXWyF4vThfHesw0dmcWHp+cspK743UanA0suA5Q5y8kzY2y6YKrvbIUn69BCAiA==}
@@ -9607,6 +9635,8 @@ snapshots:
       - zod
 
   '@earendil-works/pi-telemetry@0.84.4': {}
+
+  '@electric-sql/pglite@0.5.8': {}
 
   '@electron/asar@3.4.1':
     dependencies:

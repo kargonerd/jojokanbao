@@ -117,8 +117,9 @@ rclone installation. Workflow contracts run explicitly in CI because YAML and
 shared shell helpers are outside Times' normal package-level Turbo cache key.
 
 The shared scheduler implementation and deployment instructions live in
-`infrastructure/cloudflare/maintenance-scheduler`. One Cloudflare minute tick
-evaluates the versioned Times and RMRB task definitions. Cloudflare only
+`tools/maintenance-scheduler`, with deployment instructions in
+`infrastructure/tencent-scf/maintenance-scheduler`. One Tencent SCF minute tick
+evaluates the versioned Times and RMRB task definitions. The scheduler only
 supplies the clock, task-level dispatch policy, and dispatch monitoring;
 browser capture, PDF synchronization, and publication continue to run on
 GitHub-hosted runners.
@@ -127,7 +128,7 @@ GitHub-hosted runners.
 
 Healthchecks.io provides the external dead-man switch. The GitHub `maintenance`
 environment holds one project-level `HEALTHCHECKS_PING_KEY`; every scheduled
-workflow derives its check from the configured task id. The Cloudflare Worker
+workflow derives its check from the configured task id. The Tencent SCF function
 holds one project-level `HEALTHCHECKS_API_KEY` and automatically creates or
 updates each task check, including its cron, timezone, grace period, metadata,
 and all existing project integrations. New tasks do not need a new check or
@@ -142,9 +143,9 @@ check's configured grace period.
 
 Times separates `times-capture` (durable Raw publication) from `times-process`
 (committed Canonical/B2 batch). The latter includes drain continuations and never
-reports success for a no-op. The CF registry provisions both with the same project
+reports success for a no-op. The shared registry provisions both with the same project
 keys. Deploy registry changes explicitly when changing these monitor definitions;
-merging workflow YAML does not deploy the Worker.
+merging workflow YAML does not deploy the function.
 
 Do not add a feature-specific CI workflow. Add a package script or a focused
 job to `ci.yml`; create another workflow only when its trigger, permissions, or

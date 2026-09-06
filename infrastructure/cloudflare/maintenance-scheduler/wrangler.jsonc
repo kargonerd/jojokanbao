@@ -12,9 +12,10 @@
     "enabled": true
   },
   "triggers": {
-    "crons": ["* * * * *"]
+    "crons": []
   },
   "vars": {
+    "SCHEDULER_BACKEND": "disabled",
     "GITHUB_OWNER": "kargonerd",
     "GITHUB_REPO": "jojokanbao",
     "GITHUB_REF": "master"

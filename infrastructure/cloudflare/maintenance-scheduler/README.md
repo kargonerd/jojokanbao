@@ -1,5 +1,11 @@
 # Maintenance scheduler
 
+> Migration notice: shared logic now lives in `tools/maintenance-scheduler`;
+> the production target is `infrastructure/tencent-scf/maintenance-scheduler`.
+> This checked-in CF configuration is **disabled with no cron**. The following
+> describes the historical Worker and retained migration/rollback adapter; do
+> not follow its old deploy instructions to restore production blindly.
+
 This Cloudflare Worker is the shared clock for scheduled maintenance jobs. It
 does not execute product logic. A single one-minute Cron Trigger evaluates the
 versioned task registry in `src/tasks.ts`, checks the target GitHub workflow for
