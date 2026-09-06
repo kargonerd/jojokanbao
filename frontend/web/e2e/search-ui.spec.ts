@@ -66,6 +66,7 @@ test("search sort uses the editorial dropdown and sends the selected sort", asyn
   await expect.poll(() => requests.some((request) => request.sort === "timeDesc")).toBe(true);
 
   await sortSelect.click();
+  await expect(sortSelect).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(listbox).toHaveCount(0);
 

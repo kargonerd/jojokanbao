@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useRef, type ReactNode } from "react";
+import { Fragment, useState, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import {
@@ -286,6 +286,7 @@ export function SearchPage({
   const signedIn = Boolean(userId);
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollToResultsRef = useRef(false);
   const requestIdRef = useRef(0);
   const pageSize = 10;
   const paramsKey = params.toString();
@@ -490,6 +491,14 @@ export function SearchPage({
     return () => controller.abort();
   }, [activeBookDatasetsKey, activeBookCatalogError, bookSearchReady, paramsKey, platformRedesign, retryToken]);
 
+  useLayoutEffect(() => {
+    if (loading || !scrollToResultsRef.current) return;
+    scrollToResultsRef.current = false;
+    // Wait for the new result layout. Removing the pagination during loading
+    // can interrupt an in-flight smooth scroll in Firefox and WebKit.
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: "instant" });
+  }, [loading, results]);
+
   function handleSearch() {
     const keyword = term.trim();
     if (!keyword) return;
@@ -507,6 +516,7 @@ export function SearchPage({
   }
 
   function handlePageChange(p: number) {
+    scrollToResultsRef.current = true;
     setPage(p);
     setParams(buildSearchParams({
       keyword: term,
@@ -516,7 +526,6 @@ export function SearchPage({
       endDate,
       ...(platformRedesign ? { contentType, datasetId } : {}),
     }));
-    scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function handleSortChange(nextSort: string) {

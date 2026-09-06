@@ -78,7 +78,7 @@ test.describe('Desktop renderer', () => {
   test('shared base styles keep the sticky title bar opaque and controls intentional', async ({ page }) => {
     await page.goto('/');
     const header = page.locator('.app-header');
-    const searchButton = page.getByRole('button', { name: '搜索' });
+    const searchButton = page.getByRole('button', { name: '找书' });
 
     await expect(header).toHaveCSS('background-color', 'rgb(255, 255, 255)');
     await expect(searchButton).toHaveCSS('background-color', 'rgb(139, 26, 26)');

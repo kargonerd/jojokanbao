@@ -175,7 +175,9 @@ export function Select({
         aria-haspopup="listbox"
         aria-activedescendant={open && activeIndex >= 0 ? `${listboxId}-${activeIndex}` : undefined}
         disabled={disabled}
-        onClick={() => {
+        onClick={(event) => {
+          // WebKit does not consistently focus buttons on pointer clicks.
+          event.currentTarget.focus();
           setQuery("");
           setOpen((current) => !current);
         }}

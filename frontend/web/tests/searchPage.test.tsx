@@ -837,21 +837,29 @@ describe("SearchPage filters", () => {
 });
 
 describe("SearchPage pagination", () => {
-  it("requests the next page, numbers results from 11, updates URL, and scrolls to top", async () => {
+  it.each([false, true])("requests the next page and scrolls after rendering results with platformRedesign=%s", async (platformRedesign) => {
     vi.mocked(axios.get).mockImplementation((_url, config) => {
       const page = Number((config as { params: { page: number } }).params.page);
       return searchResponse([{ ...defaultResult, title: `第${page}页结果` }], 25);
     });
-    renderSearch("/search?keyword=历史");
+    vi.mocked(axios.post).mockImplementation((_url, data) => {
+      const page = Number((data as { page: number }).page);
+      return searchResponse([{ ...defaultResult, title: `第${page}页结果` }], 25);
+    });
+    renderSearch("/search?keyword=历史", platformRedesign);
     await screen.findByRole("heading", { name: "第1页结果" });
     const container = document.querySelector<HTMLElement>("[data-search-scroll-container]")!;
 
     fireEvent.click(screen.getByRole("button", { name: "›" }));
 
     await screen.findByRole("heading", { name: "第2页结果" });
-    expect(getLastRequestParams()).toEqual({ keyword: "历史", page: 2, size: 10 });
+    if (platformRedesign) {
+      expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).toMatchObject({ query: "历史", page: 2, size: 10 });
+    } else {
+      expect(getLastRequestParams()).toEqual({ keyword: "历史", page: 2, size: 10 });
+    }
     expect(screen.getByText("11")).toBeTruthy();
     expect(screen.getByTestId("location").textContent).toBe("/search?keyword=%E5%8E%86%E5%8F%B2&page=2");
-    expect(container.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
+    expect(container.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "instant" });
   });
 });
