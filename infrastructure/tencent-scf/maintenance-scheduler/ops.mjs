@@ -131,6 +131,20 @@ async function main(action) {
     await sql("insert into private.maintenance_scheduler_secret(singleton,token_digest) values (true,sha256(convert_to($1,'UTF8'))) on conflict(singleton) do nothing", [stateToken], false);
     console.log("State credential registered; backend remains unchanged.");
   } else if (action === "activate") {
+    const info = await scf("GetFunction");
+    if (info.Status !== "Active" || info.Environment?.Variables?.find((v) => v.Key === "SCHEDULER_MODE")?.Value !== "active") {
+      throw new Error("Activation refused: SCF must be healthy and armed first");
+    }
+    const probe = await scf("Invoke", { InvocationType: "RequestResponse", ClientContext: JSON.stringify({mode:"probe"}), LogType:"None" });
+    verifiedProbe(probe);
+    const key = info.Environment.Variables.find((v) => v.Key === "HEALTHCHECKS_API_KEY")?.Value;
+    const response = await fetch("https://healthchecks.io/api/v3/checks/", { headers:{"X-Api-Key":key}, redirect:"error", signal:AbortSignal.timeout(8000) });
+    if (!response.ok) throw new Error("Cannot verify the Healthchecks project");
+    const checks = (await response.json()).checks;
+    const snapshots = await sql("select key, value->>'checkUuid' as uuid from private.maintenance_scheduler_state where key in ('monitor:times-capture:monitor','monitor:times-process:monitor','monitor:rmrb-sync:monitor')");
+    if (snapshots.length !== 3 || snapshots.some((row) => !checks.some((check) => check.slug === row.key.split(':')[1] && check.uuid === row.uuid))) {
+      throw new Error("Activation refused: imported state does not match the configured Healthchecks project");
+    }
     const rows = await sql(`update private.maintenance_scheduler_control set backend='tencent', owner=null, lease_until=null, last_tick=null
       where singleton and backend='cloudflare' and imported_at > clock_timestamp()-interval '3 minutes'
       and (select count(*) from private.maintenance_scheduler_state where key in
