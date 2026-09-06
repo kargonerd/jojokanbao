@@ -91,17 +91,20 @@ def verify(bundle: Path) -> None:
 
     async def check_routes():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=wrapped), base_url="http://offline.invalid") as client:
-            for path in ("/v1/health", "/v1/speech/providers"):
+            for path in ("/v1/health", "/v1/speech/providers", "/v1/speech/providers?v=2"):
                 response = await client.get("/api" + path)
                 require(response.status_code == 200, f"{path} returned {response.status_code}, expected 200")
                 require(response.headers.get("content-type", "").startswith("application/json"), f"{path} is not JSON")
                 body = response.json()
                 if path.endswith("health"):
                     require(body.get("status") == "ok", "Health payload is invalid")
-                else:
+                elif path.endswith("?v=2"):
                     require({item["id"] for item in body["providers"]} == {"auto"}, "Logical voice catalog is incomplete")
                     require({voice["id"] for voice in body["providers"][0]["voices"]} == {"male", "female"}, "Expected two logical voices")
                     require(all(not item["canGenerate"] for item in body["providers"]), "Offline synthesis must be disabled")
+                else:
+                    require(body["defaultProvider"] in {"mimo", "edge"}, "Installed-client voice catalog is incompatible")
+                    require(len(body["providers"][0]["voices"]) == 2, "Expected two compatible physical voices")
             response = await client.get("/api/v1/times")
             require(response.status_code == 404, "JOJO Times must not be exposed by the production bundle")
 

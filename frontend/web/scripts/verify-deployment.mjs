@@ -60,7 +60,7 @@ for (let attempt = 1; attempt <= attempts; attempt += 1) {
 
     // A successful SPA upload does not prove Python functions were registered.
     // Both probes are read-only and must never synthesize audio during deploy.
-    for (const apiPath of ["/api/v1/health", "/api/v1/speech/providers"]) {
+    for (const apiPath of ["/api/v1/health", "/api/v1/speech/providers", "/api/v1/speech/providers?v=2"]) {
       const apiUrl = new URL(apiPath, baseUrl);
       apiUrl.searchParams.set("deploy", revision);
       const apiResponse = await fetch(apiUrl, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
@@ -68,8 +68,11 @@ for (let attempt = 1; attempt <= attempts; attempt += 1) {
         throw new Error(`${apiPath} must return API JSON, not an SPA fallback (HTTP ${apiResponse.status})`);
       }
       const api = await apiResponse.json();
-      if (apiPath.endsWith("/health") ? api?.service !== "jojokanbao-api" || api?.status !== "ok"
-        : !Array.isArray(api?.providers) || !api.providers.some((provider) => provider.id === "mimo")) {
+      const valid = apiPath.endsWith("/health") ? api?.service === "jojokanbao-api" && api?.status === "ok"
+        : apiPath.endsWith("?v=2") ? api?.defaultProvider === "auto"
+          && JSON.stringify(api?.providers?.[0]?.voices?.map((voice) => voice.id)) === '["male","female"]'
+        : ["mimo", "edge"].includes(api?.defaultProvider) && api?.providers?.[0]?.voices?.length === 2;
+      if (!valid) {
         throw new Error(`${apiPath} returned an unexpected API contract`);
       }
     }
