@@ -7,7 +7,10 @@ vi.mock("react-native", () => ({ Image: "img", Pressable: "button", ScrollView: 
   Platform: { select: (values: { android: string }) => values.android },
   StyleSheet: { create: (styles: unknown) => styles, hairlineWidth: 1, absoluteFillObject: {} } }));
 vi.mock("@expo/vector-icons/Ionicons", () => ({ default: "i" }));
-vi.mock("@react-navigation/native", () => ({ useNavigation: () => ({ navigate: mocks.navigate }) }));
+vi.mock("@react-navigation/native", async () => {
+  const { useEffect } = await import("react");
+  return { useNavigation: () => ({ navigate: mocks.navigate }), useFocusEffect: (callback: () => () => void) => useEffect(callback, [callback]) };
+});
 vi.mock("react-native-safe-area-context", () => ({ SafeAreaView: "main" }));
 vi.mock("../config/appVariant", () => ({ get IS_EINK_RELEASE() { return mocks.eInk; } }));
 vi.mock("../components/PeriodicalCoverCard", () => ({ publicationImages: {} }));

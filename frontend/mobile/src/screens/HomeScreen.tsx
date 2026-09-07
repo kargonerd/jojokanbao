@@ -8,8 +8,9 @@ import { publicationImages } from "../components/PeriodicalCoverCard";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionTitle } from "../components/SectionTitle";
 import { IS_EINK_RELEASE } from "../config/appVariant";
-import { cachedMobileBookCover, fuzzyBookTitleScore, loadMobileBookCover, loadMobileBooks, resolveMobileBookOpenTarget, type MobileBook } from "../lib/books";
+import { cachedMobileBookCover, fuzzyBookTitleScore, loadMobileBookCover, loadMobileBooks, type MobileBook } from "../lib/books";
 import { impactHaptic } from "../lib/haptics";
+import { useOpenBook } from "../lib/useOpenBook";
 import type { MainTabParamList, RootStackParamList } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
 import { mobileTheme } from "../theme/tokens";
@@ -66,6 +67,7 @@ function RecentReadingCover({
 
 export function HomeScreen() {
   const navigation = useNavigation<NavigationProp<RootStackParamList & MainTabParamList>>();
+  const { openBook: navigateToBook, openingBook } = useOpenBook();
   const hapticsEnabled = useMobileStore((state) => state.hapticsEnabled);
   const recentIssues = useMobileStore((state) => state.recentIssues);
   const recentBooks = useMobileStore((state) => state.recentBooks);
@@ -120,23 +122,9 @@ export function HomeScreen() {
     })),
   ].sort((left, right) => right.updatedAt - left.updatedAt).slice(0, 4), [books, recentBooks, recentIssues]);
 
-  async function openBook(book: MobileBook) {
+  function openBook(book: MobileBook) {
     void impactHaptic(hapticsEnabled);
-    try {
-      const target = await resolveMobileBookOpenTarget(book);
-      if (target.screen === "BookReader") {
-        navigation.navigate("BookReader", {
-          datasetId: target.datasetId,
-          itemKey: target.itemKey,
-          title: target.title,
-          bookTitle: target.bookTitle,
-        });
-      } else {
-        navigation.navigate("BookDetails", { book: target.book });
-      }
-    } catch {
-      navigation.navigate("BookDetails", { book });
-    }
+    void navigateToBook(book);
   }
 
   function submitSearch() {
@@ -194,6 +182,8 @@ export function HomeScreen() {
               ) : null}
             </View>
           ) : null}
+
+          {openingBook ? <Text accessibilityLiveRegion="polite" style={[styles.noMatch, { color: theme.red, fontFamily: theme.sans }]}>正在打开《{openingBook.title}》…</Text> : null}
 
           <View accessibilityRole="summary" style={[styles.quote, { borderTopColor: theme.rule }]}>
             <Text style={[styles.quoteText, { color: theme.ink, fontFamily: theme.serif }]}>“{quote.text}”</Text>

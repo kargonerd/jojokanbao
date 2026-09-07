@@ -40,12 +40,15 @@ function createStore(): ResourceCacheStore {
         new DataView(data.buffer).setFloat64(0, entry.expiresAt);
         data.set(entry.bytes, 8);
         file.write(data);
+        // File metadata getters cross into native synchronous I/O. Snapshot once
+        // per file, rather than reading modificationTime on every sort comparison.
         const files = directory.list().filter((value) => "size" in value && "bytes" in value)
-          .sort((a, b) => (b.modificationTime ?? 0) - (a.modificationTime ?? 0));
+          .map((cached) => ({ file: cached, size: cached.size ?? 0, modified: cached.modificationTime ?? 0 }))
+          .sort((a, b) => b.modified - a.modified);
         let total = 0;
         for (const [index, cached] of files.entries()) {
-          total += cached.size ?? 0;
-          if (index >= CONTENT_CACHE_ENTRIES || total > CONTENT_CACHE_BYTES) cached.delete();
+          total += cached.size;
+          if (index >= CONTENT_CACHE_ENTRIES || total > CONTENT_CACHE_BYTES) cached.file.delete();
         }
       });
       return writes;

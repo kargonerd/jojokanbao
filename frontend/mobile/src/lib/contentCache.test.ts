@@ -3,14 +3,15 @@ import { mobileContentCache } from "./contentCache";
 import { CONTENT_CACHE_BYTES } from "@jojo/content";
 
 const files = vi.hoisted(() => new Map<string, { bytes: Uint8Array; modified: number; size?: number }>());
+const metadataReads = vi.hoisted(() => ({ modified: 0, size: 0 }));
 vi.mock("expo-crypto", () => ({ CryptoDigestAlgorithm: { SHA256: "sha256" }, digestStringAsync: async (_: string, key: string) => key.replaceAll(/\W/g, "-") }));
 vi.mock("expo-file-system", () => {
   class File {
     uri: string;
     constructor(directory: Directory, key: string) { this.uri = `${directory.uri}/${key}`; }
     get exists() { return files.has(this.uri); }
-    get size() { return files.get(this.uri)?.size ?? files.get(this.uri)?.bytes.length ?? 0; }
-    get modificationTime() { return files.get(this.uri)?.modified ?? 0; }
+    get size() { metadataReads.size++; return files.get(this.uri)?.size ?? files.get(this.uri)?.bytes.length ?? 0; }
+    get modificationTime() { metadataReads.modified++; return files.get(this.uri)?.modified ?? 0; }
     bytes = async () => files.get(this.uri)!.bytes;
     write(bytes: Uint8Array) { files.set(this.uri, { bytes, modified: Date.now() }); }
     delete() { files.delete(this.uri); }
@@ -25,6 +26,19 @@ vi.mock("expo-file-system", () => {
 });
 
 describe("native public content disk cache", () => {
+  it("reads native metadata only once per file while sorting a populated cache", async () => {
+    files.clear();
+    for (let index = 0; index < 80; index++) {
+      files.set(`cache/jojo-public-content-v1/item-${index}`, {
+        bytes: new Uint8Array([index]), modified: (index * 37) % 80,
+      });
+    }
+    metadataReads.modified = 0; metadataReads.size = 0;
+    await mobileContentCache().set("new", { bytes: new Uint8Array([1]), expiresAt: Date.now() + 10000 });
+    expect(files.size).toBe(81);
+    expect(metadataReads).toEqual({ modified: 81, size: 81 });
+  });
+
   it("reads across consumers, removes expired files, and evicts only its own oversized cache", async () => {
     files.clear();
     const store = mobileContentCache();

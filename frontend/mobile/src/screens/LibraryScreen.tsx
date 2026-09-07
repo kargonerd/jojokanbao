@@ -18,11 +18,11 @@ import {
   fuzzyBookTitleScore,
   loadMobileBooks,
   loadMobileBookVolumes,
-  resolveMobileBookOpenTarget,
   type MobileBook,
 } from "../lib/books";
 import { impactHaptic } from "../lib/haptics";
 import { REMOVE_CLIPPED_SUBVIEWS } from "../lib/nativePerformance";
+import { useOpenBook } from "../lib/useOpenBook";
 import { getLibraryCellWidth, getLibraryColumnCount } from "../lib/tabletLayout";
 import type { RootStackParamList } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
@@ -42,6 +42,7 @@ const libraryTypes: Array<{ id: LibraryType; label: string; icon: keyof typeof I
 export function LibraryScreen() {
   const shelf = useBookshelf();
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
+  const { openBook: navigateToBook, openingBook } = useOpenBook();
   const { width: viewportWidth } = useWindowDimensions();
   const hapticsEnabled = useMobileStore((state) => state.hapticsEnabled);
   const theme = mobileTheme;
@@ -92,23 +93,9 @@ export function LibraryScreen() {
     navigation.navigate("Reader", { publication: publication.id, issueId });
   }
 
-  async function openBook(book: MobileBook) {
+  function openBook(book: MobileBook) {
     void impactHaptic(hapticsEnabled);
-    try {
-      const target = await resolveMobileBookOpenTarget(book);
-      if (target.screen === "BookReader") {
-        navigation.navigate("BookReader", {
-          datasetId: target.datasetId,
-          itemKey: target.itemKey,
-          title: target.title,
-          bookTitle: target.bookTitle,
-        });
-      } else {
-        navigation.navigate("BookDetails", { book: target.book });
-      }
-    } catch {
-      navigation.navigate("BookDetails", { book });
-    }
+    void navigateToBook(book);
   }
 
   const busy = loading;
@@ -168,6 +155,7 @@ export function LibraryScreen() {
               <><BookCoverCard
                 book={item.book}
                 title={item.book.title}
+                busy={openingBook?.datasetId === item.book.datasetId}
                 subtitle={item.book.itemCount && item.book.itemCount > 1
                   ? `${item.book.itemCount} 册 · 选择分册`
                   : "单册 · 直接阅读"}

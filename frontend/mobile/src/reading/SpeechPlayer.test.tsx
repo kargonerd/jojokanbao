@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   loadChapter: vi.fn(), prefetch: vi.fn(async (_loaded: unknown, _id: string, _signal: AbortSignal) => undefined),
   navigate: vi.fn(), shelfContains: vi.fn(async () => false), setShelf: vi.fn(async () => undefined),
   state: { textScale: 1, bookLineHeight: 1.95, bookReadingMode: "paged", bookPaperColor: "white",
-    bookFirstLineIndent: true, hapticsEnabled: false, leftTapNext: false, recentBooks: [], bookAnnotations: [] },
+    bookFirstLineIndent: true, hapticsEnabled: false, leftTapNext: false, recentBooks: [], bookAnnotations: [], rememberBook: vi.fn() },
   playback: { open: vi.fn(), close: vi.fn(), toggle: vi.fn(), seek: vi.fn(), selectChapter: vi.fn(),
     setTimer: vi.fn(), changeVoice: vi.fn(), changeRate: vi.fn(), playing: true, busy: false,
     elapsed: 12, duration: 60, chapter: { id: "c1", title: "第一章" },
@@ -25,12 +25,21 @@ vi.mock("react-native", async () => {
       visible ? createElement("dialog", props, children) : null,
     StyleSheet: { create: (styles: unknown) => styles, absoluteFillObject: {}, hairlineWidth: 1 },
     Platform: { OS: "android", select: (values: { android: string }) => values.android },
+    AppState: { addEventListener: () => ({ remove() {} }) },
   };
 });
 vi.mock("@expo/vector-icons/Ionicons", () => ({ default: "i" }));
 vi.mock("@expo/vector-icons/MaterialCommunityIcons", () => ({ default: "i" }));
 vi.mock("@react-native-community/slider", () => ({ default: "input" }));
-vi.mock("@react-navigation/native", () => ({ useIsFocused: () => mocks.focused }));
+vi.mock("@react-navigation/native", async () => {
+  const { useEffect } = await import("react");
+  return {
+    useIsFocused: () => mocks.focused,
+    useFocusEffect: (callback: () => () => void) => useEffect(() => {
+      if (mocks.focused) return callback();
+    }, [callback, mocks.focused]),
+  };
+});
 vi.mock("react-native-safe-area-context", () => ({ SafeAreaView: "main", useSafeAreaInsets: () => ({ top: 0, bottom: 12 }) }));
 vi.mock("react-native-webview", async () => {
   const { createElement, forwardRef, useImperativeHandle } = await import("react");
@@ -95,6 +104,25 @@ afterEach(async () => { if (view) await act(async () => view.unmount()); vi.useR
 
 describe.each([false, true])("reader listening visibility (eInk=%s)", (eInk) => {
   beforeEach(() => { mocks.eInk = eInk; });
+  it("updates page controls immediately while coalescing saved progress and flushes on exit", async () => {
+    await renderReader();
+    const page = async (spreadIndex: number) => act(async () => {
+      view.root.findByProps({ testID: "reader-webview" }).props.onMessage({ nativeEvent: { data: JSON.stringify({
+        type: "reader-page", paged: true, spreadIndex, spreadCount: 10,
+        pageStart: spreadIndex + 1, pageEnd: spreadIndex + 1, pageCount: 10, pagesPerSpread: 1, scrollProgress: 0,
+      }) } });
+    });
+    await page(1); await page(2); await page(3);
+    expect(mocks.state.rememberBook).not.toHaveBeenCalled();
+    expect(view.root.findAllByType("span").some((node) => JSON.stringify(node.props.children).includes("4 / 10"))).toBe(true);
+    await act(async () => { vi.advanceTimersByTime(650); });
+    expect(mocks.state.rememberBook).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ datasetId: "books", chapterId: "c1", spreadIndex: 3 }));
+    await page(4);
+    await act(async () => view.unmount());
+    expect(mocks.state.rememberBook).toHaveBeenCalledTimes(2);
+    expect(mocks.state.rememberBook).toHaveBeenLastCalledWith(expect.objectContaining({ chapterId: "c1", spreadIndex: 4 }));
+  });
+
   it("starts adjacent prefetch and ignores a late chapter response after navigating back", async () => {
     await renderReader();
     expect(mocks.prefetch).toHaveBeenCalledWith(expect.anything(), "c1", expect.any(AbortSignal));
