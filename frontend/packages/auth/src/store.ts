@@ -35,7 +35,18 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
   const loadProfile = (userId: string) => {
     const pending = pendingProfiles.get(userId);
     if (pending) return pending;
-    const promise = profiles.getOrCreate(userId);
+    const abort = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        reject({ code: "profile_request_timeout" });
+        abort.abort();
+      }, 12_000);
+    });
+    // Bound hydration even if the network or token refresh never settles, so a
+    // later foreground/manual retry is not trapped behind a stale promise.
+    const promise = Promise.race([profiles.getOrCreate(userId, abort.signal), timeout])
+      .finally(() => clearTimeout(timer));
     pendingProfiles.set(userId, promise);
     void promise.then(
       () => { if (pendingProfiles.get(userId) === promise) pendingProfiles.delete(userId); },
@@ -48,6 +59,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
     session: null,
     user: null,
     profile: null,
+    profileStatus: "idle",
     recoveryPending: false,
     initialized: false,
     busy: false,
@@ -62,7 +74,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
         const { data, error } = await client.auth.signInWithPassword({ email, password });
         if (error) throw error;
         const profile = data.user ? await loadProfile(data.user.id) : null;
-        set({ session: data.session, user: data.user, profile, busy: false });
+        set({ session: data.session, user: data.user, profile, profileStatus: profile ? "ready" : "idle", busy: false });
       } catch (error) {
         set({ busy: false, error: getAuthErrorMessage(error) });
         throw error;
@@ -112,6 +124,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
           session: data.session,
           user: data.user,
           profile,
+          profileStatus: profile ? "ready" : "idle",
           recoveryPending: false,
           busy: false,
           notice: "邮箱验证完成，账号已经启用。",
@@ -144,7 +157,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
         set({ busy: false, error: getAuthErrorMessage(error) });
         throw error;
       }
-      set({ session: null, user: null, profile: null, recoveryPending: false, busy: false });
+      set({ session: null, user: null, profile: null, profileStatus: "idle", recoveryPending: false, busy: false });
     },
 
     sendPasswordReset: async (email) => {
@@ -173,6 +186,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
           session: data.session,
           user: data.user,
           profile,
+          profileStatus: profile ? "ready" : "idle",
           recoveryPending: true,
           busy: false,
           notice: "验证码正确，请设置新密码。",
@@ -235,6 +249,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
           session: null,
           user: null,
           profile: null,
+          profileStatus: "idle",
           recoveryPending: false,
           busy: false,
           notice: "账号已经注销。",
@@ -248,10 +263,15 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
     refreshProfile: async () => {
       const user = get().user;
       if (!user) return;
+      const revision = sessionRevision;
+      set({ profileStatus: "loading" });
       try {
-        set({ profile: await loadProfile(user.id) });
+        const profile = await loadProfile(user.id);
+        if (revision !== sessionRevision || get().user?.id !== user.id) return;
+        set({ profile, profileStatus: "ready", error: null });
       } catch (error) {
-        set({ error: getAuthErrorMessage(error) });
+        if (revision !== sessionRevision || get().user?.id !== user.id) return;
+        set({ profileStatus: "error", error: getAuthErrorMessage(error) });
       }
     },
 
@@ -266,6 +286,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
         session: null,
         user: null,
         profile: null,
+        profileStatus: "idle",
         recoveryPending: false,
         initialized: true,
       });
@@ -277,15 +298,15 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
 
     // The persisted session is enough to establish identity. Profile hydration
     // is cosmetic and must not hold the whole application in an unknown state.
-    useAuthStore.setState({ session, user: session.user, profile, initialized: true });
+    useAuthStore.setState({ session, user: session.user, profile, profileStatus: profile ? "ready" : "loading", initialized: true });
     if (profile) return;
 
     void loadProfile(userId).then((nextProfile) => {
       if (revision !== sessionRevision || useAuthStore.getState().user?.id !== userId) return;
-      useAuthStore.setState({ profile: nextProfile, error: null });
+      useAuthStore.setState({ profile: nextProfile, profileStatus: "ready", error: null });
     }).catch((error) => {
       if (revision !== sessionRevision || useAuthStore.getState().user?.id !== userId) return;
-      useAuthStore.setState({ error: getAuthErrorMessage(error) });
+      useAuthStore.setState({ profileStatus: "error", error: getAuthErrorMessage(error) });
     });
   };
 

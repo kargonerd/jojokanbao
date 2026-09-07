@@ -1,4 +1,5 @@
 const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  profile_request_timeout: "读者代号暂时无法读取，请检查网络后重试。",
   anonymous_provider_disabled: "当前未开放匿名登录。",
   email_address_invalid: "邮箱地址格式不正确。",
   email_address_not_authorized: "当前邮件服务不能向这个地址发送确认邮件。",

@@ -44,7 +44,7 @@ function createClient() {
     functions: { invoke },
     from: vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({ maybeSingle }),
+        eq: vi.fn().mockReturnValue({ maybeSingle, abortSignal: vi.fn() }),
       }),
     }),
   } as unknown as JojoAuthClient;
@@ -69,6 +69,52 @@ function createClient() {
 }
 
 describe("createJojoAuthStore", () => {
+  it("allows retry after a stalled profile read, without clearing the session", async () => {
+    vi.useFakeTimers();
+    try {
+      const { client, maybeSingle, user } = createClient();
+      let resolveOld!: (value: { data: Profile; error: null }) => void;
+      maybeSingle.mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }));
+      const { useAuthStore } = createJojoAuthStore(client);
+      useAuthStore.setState({ user: user as never, initialized: true });
+      const firstRead = useAuthStore.getState().refreshProfile();
+      expect(useAuthStore.getState().profileStatus).toBe("loading");
+      await vi.advanceTimersByTimeAsync(12_000);
+      await firstRead;
+      expect(useAuthStore.getState()).toMatchObject({ user, profile: null, profileStatus: "error" });
+      await useAuthStore.getState().refreshProfile();
+      expect(useAuthStore.getState()).toMatchObject({ profile, profileStatus: "ready" });
+      expect(maybeSingle).toHaveBeenCalledTimes(2);
+      resolveOld({ data: { ...profile, display_name: "旧代号-ABC" }, error: null });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(useAuthStore.getState().profile).toEqual(profile);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not attach a pending profile refresh to a different account", async () => {
+    const { client, maybeSingle, user } = createClient();
+    let resolveRead!: (value: { data: Profile; error: null }) => void;
+    maybeSingle.mockReturnValueOnce(new Promise((resolve) => { resolveRead = resolve; }));
+    const { useAuthStore } = createJojoAuthStore(client);
+    useAuthStore.setState({ user: user as never, initialized: true });
+    const reading = useAuthStore.getState().refreshProfile();
+    useAuthStore.setState({ user: { ...user, id: "user-2" } as never, profileStatus: "idle" });
+    resolveRead({ data: profile, error: null });
+    await reading;
+    expect(useAuthStore.getState()).toMatchObject({ user: { id: "user-2" }, profile: null, profileStatus: "idle" });
+  });
+
+  it("keeps a previously loaded profile when a refresh fails", async () => {
+    const { client, maybeSingle, user } = createClient();
+    maybeSingle.mockResolvedValueOnce({ data: null, error: new Error("offline") });
+    const { useAuthStore } = createJojoAuthStore(client);
+    useAuthStore.setState({ user: user as never, profile });
+    await useAuthStore.getState().refreshProfile();
+    expect(useAuthStore.getState()).toMatchObject({ profile, profileStatus: "error" });
+  });
+
   it("restores identity before profile hydration and coalesces the initial profile read", async () => {
     let resolveProfile!: (value: { data: Profile; error: null }) => void;
     const delayedProfile = new Promise<{ data: Profile; error: null }>((resolve) => {
