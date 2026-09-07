@@ -22,6 +22,7 @@ import { MOBILE_ACCOUNT_CONFIGURED, useMobileAuthStore } from "../account/auth";
 import { shouldRefreshDialogViewport } from "../account/dialogViewport";
 import { getRegistrationValidationError } from "../account/registration";
 import { ScreenHeader } from "../components/ScreenHeader";
+import { ReaderCodeValue } from "../components/ReaderCodeValue";
 import { SectionTitle } from "../components/SectionTitle";
 import { PersonalInvitationPanel } from "../components/PersonalInvitationPanel";
 import { IS_EINK_RELEASE } from "../config/appVariant";
@@ -241,7 +242,6 @@ export function MeScreen() {
   const {
     initialized,
     user,
-    profile,
     busy,
     error,
     notice,
@@ -546,7 +546,7 @@ export function MeScreen() {
             <>
               <View style={[styles.infoRow, { borderBottomColor: theme.rule }]}>
                 <Text style={[styles.infoLabel, { color: theme.muted, fontFamily: theme.sans }]}>读者代号</Text>
-                <Text style={[styles.infoValue, { color: theme.ink, fontFamily: theme.serif }]}>{profile?.display_name || "代号待分配"}</Text>
+                <ReaderCodeValue style={[styles.infoValue, { color: theme.ink, fontFamily: theme.serif }]} />
               </View>
               <View style={[styles.infoRow, { borderBottomColor: theme.rule }]}>
                 <Text style={[styles.infoLabel, { color: theme.muted, fontFamily: theme.sans }]}>邮箱</Text>

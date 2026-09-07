@@ -1,7 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useNavigation, type NavigationProp } from "@react-navigation/native";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
-import { useMobileAuthStore } from "../account/auth";
+import { useMobileAuthStore, useMobileReaderName } from "../account/auth";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import { impactHaptic } from "../lib/haptics";
 import type { RootStackParamList } from "../navigation/types";
@@ -12,10 +12,10 @@ export function ScreenHeader({ eyebrow, title, onBack, showAccount = false }: { 
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const initialized = useMobileAuthStore((state) => state.initialized);
   const user = useMobileAuthStore((state) => state.user);
-  const profile = useMobileAuthStore((state) => state.profile);
+  const readerName = useMobileReaderName();
   const hapticsEnabled = useMobileStore((state) => state.hapticsEnabled);
   const theme = mobileTheme;
-  const accountLabel = !initialized ? "" : user ? profile?.display_name?.trim() || "账号" : "登录";
+  const accountLabel = !initialized ? "账号" : user ? readerName || "账号" : "登录";
 
   return (
     <View style={[styles.header, { borderBottomColor: theme.ruleDark, backgroundColor: theme.paper }]}>
@@ -34,13 +34,15 @@ export function ScreenHeader({ eyebrow, title, onBack, showAccount = false }: { 
           <Text style={[styles.backLabel, { color: theme.red, fontFamily: theme.sans }]}>返回</Text>
         </Pressable>
       ) : (
-        <Image
-          source={IS_EINK_RELEASE
-            ? require("../../assets/android-icon-monochrome.png")
-            : require("../../assets/brand-mark.png")}
-          style={[styles.mark, IS_EINK_RELEASE && styles.eInkMark, IS_EINK_RELEASE && { tintColor: theme.ink }]}
-          accessibilityIgnoresInvertColors
-        />
+        <View style={styles.leadingSlot}>
+          <Image
+            source={IS_EINK_RELEASE
+              ? require("../../assets/android-icon-monochrome.png")
+              : require("../../assets/brand-mark.png")}
+            style={[styles.mark, IS_EINK_RELEASE && styles.eInkMark, IS_EINK_RELEASE && { tintColor: theme.ink }]}
+            accessibilityIgnoresInvertColors
+          />
+        </View>
       )}
       <View style={styles.copy}>
         {eyebrow ? <Text style={[styles.eyebrow, { color: theme.red, fontFamily: theme.sans }]}>{eyebrow}</Text> : null}
@@ -86,8 +88,10 @@ const styles = StyleSheet.create({
   eyebrow: { fontSize: 8, fontWeight: "800", letterSpacing: 1.2 },
   title: { marginTop: 2, fontSize: 14, fontWeight: "900", letterSpacing: 1.1, textAlign: "center" },
   titleOnly: { marginTop: 0, fontSize: 15 },
-  mark: { width: 32, height: 32, marginLeft: 20, marginRight: 56 },
-  eInkMark: { width: 64, height: 64, marginLeft: 4, marginRight: 40 },
+  leadingSlot: { width: 108, height: 44, justifyContent: "center", alignItems: "flex-start" },
+  mark: { width: 32, height: 32 },
+  // The monochrome adaptive icon includes 16 units of transparent padding.
+  eInkMark: { width: 64, height: 64, marginLeft: -16 },
   accountButton: { width: 108, height: 44, alignItems: "flex-end", justifyContent: "center" },
   accountLabel: { width: 108, fontSize: 11, fontWeight: "800", letterSpacing: 0, textAlign: "right" },
   trailingSpacer: { width: 108 },

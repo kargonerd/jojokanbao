@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useMobileAuthStore } from "../account/auth";
 import { ScreenHeader } from "../components/ScreenHeader";
+import { ReaderCodeValue } from "../components/ReaderCodeValue";
 import type { RootStackParamList } from "../navigation/types";
 import { mobileTheme } from "../theme/tokens";
 
@@ -81,12 +82,12 @@ function Action({
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({ label, value }: { label: string; value: ReactNode }) {
   const theme = mobileTheme;
   return (
     <View style={[styles.infoRow, { borderTopColor: theme.rule }]}>
       <Text style={[styles.infoLabel, { color: theme.muted, fontFamily: theme.sans }]}>{label}</Text>
-      <Text selectable style={[styles.infoValue, { color: theme.ink, fontFamily: theme.serif }]}>{value}</Text>
+      {typeof value === "string" ? <Text selectable style={[styles.infoValue, { color: theme.ink, fontFamily: theme.serif }]}>{value}</Text> : value}
     </View>
   );
 }
@@ -185,7 +186,6 @@ export function AccountSecurityScreen() {
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const {
     user,
-    profile,
     busy,
     error,
     notice,
@@ -386,7 +386,7 @@ export function AccountSecurityScreen() {
 
         <View style={[styles.card, { borderColor: theme.ink }]}>
           <Text style={[styles.sectionTitle, { color: theme.ink, fontFamily: theme.serif }]}>账号资料</Text>
-          <InfoRow label="读者代号" value={profile?.display_name || "代号待分配"} />
+          <InfoRow label="读者代号" value={<ReaderCodeValue style={[styles.infoValue, { color: theme.ink, fontFamily: theme.serif }]} />} />
           <InfoRow label="登录邮箱" value={user.email || "—"} />
           <Text style={[styles.helper, { color: theme.muted, fontFamily: theme.sans }]}>读者代号和登录邮箱暂不可修改。</Text>
         </View>

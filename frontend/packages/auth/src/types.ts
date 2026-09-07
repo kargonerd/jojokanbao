@@ -70,6 +70,7 @@ export interface AuthState {
   session: Session | null;
   user: User | null;
   profile: Profile | null;
+  profileStatus: "idle" | "loading" | "ready" | "error";
   recoveryPending: boolean;
   initialized: boolean;
   busy: boolean;
