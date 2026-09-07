@@ -28,6 +28,7 @@ import {
 import {
   mobileTimesApi,
   leadTimesImage,
+  timesSourceName,
   safeTimesExternalUrl,
   type MobileTimesLanguage,
   type MobileTimesNewsItem,
@@ -206,7 +207,7 @@ export function TimesDetailScreen({ route, navigation }: Props) {
         </View>
       ) : null}
 
-      {news?.content ? <NativeSpeechPlayer news documentId={`news:${newsId}:${requestedLanguage}`} title={news.title} chapterId={newsId} chapters={[{ id: newsId, title: news.title }]} loadChapter={loadSpeechChapter} hidden={Boolean(selection || explanation || loading)} cover={coverUri ? { uri: coverUri } : SOURCE_LOGOS[news.source.id]} onRead={() => undefined} /> : null}
+      {news?.content ? <NativeSpeechPlayer news documentId={`news:${newsId}:${requestedLanguage}`} title={news.title} sourceName={timesSourceName(news.source)} chapterId={newsId} chapters={[{ id: newsId, title: news.title }]} loadChapter={loadSpeechChapter} hidden={Boolean(selection || explanation || loading)} cover={coverUri ? { uri: coverUri } : undefined} coverFallback={SOURCE_LOGOS[news.source.id]} onRead={() => undefined} /> : null}
 
       <Modal
         visible={Boolean(explanation)}

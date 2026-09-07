@@ -7,6 +7,7 @@ import { NativeSpeechPlayer } from "./SpeechPlayer";
 const mocks = vi.hoisted(() => ({
   eInk: false, focused: true, user: { id: "reader" } as { id: string } | null,
   enabled: true,
+  loadChapter: vi.fn(), prefetch: vi.fn(async (_loaded: unknown, _id: string, _signal: AbortSignal) => undefined),
   navigate: vi.fn(), shelfContains: vi.fn(async () => false), setShelf: vi.fn(async () => undefined),
   state: { textScale: 1, bookLineHeight: 1.95, bookReadingMode: "paged", bookPaperColor: "white",
     bookFirstLineIndent: true, hapticsEnabled: false, leftTapNext: false, recentBooks: [], bookAnnotations: [] },
@@ -59,9 +60,10 @@ vi.mock("../components/BookThoughtComposer", () => ({ BookThoughtComposer: () =>
 vi.mock("../lib/bookAgent", () => ({ askMobileBookAgent: vi.fn() }));
 vi.mock("../lib/bookDocument", () => ({ createBookDocument: () => "<p>正文</p>" }));
 vi.mock("../lib/books", () => ({
-  loadMobileBookItem: async () => ({ manifest: { title: "测试书", content: { chapters: [{ id: "c1", title: "第一章" }] } }, volume: { itemId: "book", title: "测试书" } }),
-  loadMobileBookChapter: async () => ({ assetUrls: { portrait: "data:image/png;base64,test" }, fragment: { title: "第一章", body: { format: "html", value: "<p>正文</p>" } } }),
+  loadMobileBookItem: async () => ({ manifest: { title: "测试书", content: { chapters: [{ id: "c1", title: "第一章" }, { id: "c2", title: "第二章" }] } }, volume: { itemId: "book", title: "测试书" } }),
+  loadMobileBookChapter: mocks.loadChapter,
   loadMobileBookCover: async () => undefined, resolveLegacyBookResume: () => undefined,
+  prefetchMobileBookChapters: mocks.prefetch,
 }));
 vi.mock("../lib/haptics", () => ({ selectionHaptic: vi.fn() }));
 vi.mock("../store/mobileStore", () => ({ useMobileStore: Object.assign(
@@ -86,11 +88,43 @@ beforeEach(() => {
   vi.useFakeTimers(); vi.clearAllMocks();
   mocks.eInk = false; mocks.focused = true; mocks.enabled = true; mocks.user = { id: "reader" };
   mocks.shelfContains.mockResolvedValue(false); mocks.setShelf.mockResolvedValue(undefined);
+  mocks.loadChapter.mockReset().mockImplementation(async (_loaded, id: string) => ({ assetUrls: { portrait: "data:image/png;base64,test" },
+    fragment: { fragmentId: id, title: id === "c1" ? "第一章" : "第二章", body: { format: "html", value: "<p>正文</p>" } } }));
 });
 afterEach(async () => { if (view) await act(async () => view.unmount()); vi.useRealTimers(); });
 
 describe.each([false, true])("reader listening visibility (eInk=%s)", (eInk) => {
   beforeEach(() => { mocks.eInk = eInk; });
+  it("starts adjacent prefetch and ignores a late chapter response after navigating back", async () => {
+    await renderReader();
+    expect(mocks.prefetch).toHaveBeenCalledWith(expect.anything(), "c1", expect.any(AbortSignal));
+    let finish!: (value: unknown) => void;
+    mocks.loadChapter.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const jump = async (id: string) => {
+      await act(async () => view.root.findByProps({ testID: "reader-webview" }).props.onMessage({ nativeEvent: {
+        data: JSON.stringify({ type: "reader-internal-link", chapterId: id }),
+      } }));
+    };
+    const message = view.root.findByProps({ testID: "reader-webview" }).props.onMessage;
+    await jump("c2");
+    expect(view.root.findAllByType("span").some((node) => node.props.children === "正在读取章节")).toBe(true);
+    const signal = mocks.loadChapter.mock.calls.at(-1)![3] as AbortSignal;
+    await act(async () => message({ nativeEvent: { data: JSON.stringify({ type: "reader-internal-link", chapterId: "c1" }) } }));
+    expect(signal.aborted).toBe(true);
+    await act(async () => finish({ assetUrls: {}, fragment: { fragmentId: "c2", title: "旧请求" } }));
+    expect(view.root.findAllByType("span").some((node) => node.props.children === "正在读取章节")).toBe(false);
+    expect(mocks.prefetch.mock.calls.at(-1)![1]).toBe("c1");
+  });
+
+  it("shows a recoverable error when Android discards the WebView process", async () => {
+    await renderReader();
+    await act(async () => view.root.findByProps({ testID: "reader-webview" }).props.onRenderProcessGone());
+    expect(view.root.findByProps({ accessibilityRole: "alert" }).props.children).toContain("系统回收");
+    const retry = view.root.findAllByType("button").find((node) => node.findAllByType("span").some((text) => text.props.children === "重新加载"));
+    await act(async () => retry!.props.onPress());
+    expect(view.root.findAllByProps({ accessibilityRole: "alert" })).toHaveLength(0);
+    expect(view.root.findAllByProps({ testID: "reader-webview" })).toHaveLength(1);
+  });
   it("offers a labelled bookshelf action without enabling listening, including login and retry", async () => {
     mocks.enabled = false;
     mocks.shelfContains.mockRejectedValueOnce(new Error("offline"));
@@ -177,4 +211,23 @@ it("keeps news listening visible and only yields to an explicit article overlay"
   expect(mocks.playback.close).not.toHaveBeenCalled();
   await act(async () => view.update(<NativeSpeechPlayer {...props} />));
   expect(view.root.findAllByProps({ accessibilityLabel: "展开听读播放器" })).toHaveLength(1);
+});
+
+it("uses the news photo first, then a small publisher mark and name without duplicating the headline", async () => {
+  const props = { news: true, documentId: "news:cover", title: "新闻标题", sourceName: "Reuters", chapterId: "c1",
+    cover: { uri: "https://example.test/photo.jpg" }, coverFallback: 42,
+    chapters: [{ id: "c1", title: "新闻标题" }], loadChapter: vi.fn(), onRead: vi.fn() };
+  await act(async () => { view = create(<NativeSpeechPlayer {...props} />); });
+  await press("打开听读播放器");
+  const foreground = () => view.root.findAllByType("img").find((node) => !node.props.blurRadius)!;
+  expect(foreground().props.source).toEqual(props.cover);
+  await act(async () => foreground().props.onError());
+  expect(foreground().props.source).toBe(42);
+  expect(foreground().props.resizeMode).toBe("contain");
+  expect(foreground().props.style).toMatchObject({ width: 24, height: 24 });
+  expect(view.root.findAllByType("span").filter((node) => node.props.children === "新闻标题")).toHaveLength(1);
+  expect(view.root.findAllByType("span").filter((node) => node.props.children === "Reuters")).toHaveLength(1);
+  await act(async () => foreground().props.onError());
+  expect(view.root.findAllByType("img")).toHaveLength(0);
+  expect(view.root.findAllByType("span").some((node) => node.props.children === "Reuters")).toBe(true);
 });

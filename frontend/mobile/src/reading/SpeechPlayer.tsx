@@ -13,6 +13,7 @@ import { useSpeechPlayback, type SpeechPlaybackProps } from "./useSpeechPlayback
 
 type Props = Omit<SpeechPlaybackProps, "userId"> & {
   hidden?: boolean; bottom?: number; cover?: ImageSourcePropType; news?: boolean;
+  coverFallback?: ImageSourcePropType; sourceName?: string;
   onRead: (chapterId: string) => void; onBookshelf?: () => void; onShelf?: boolean; bookshelfBusy?: boolean;
 };
 
@@ -30,19 +31,29 @@ function ActiveSpeechPlayer(props: Props & { userId: string }) {
   const [opened, setOpened] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [sheet, setSheet] = useState<"timer" | "voice" | "rate" | "chapters" | null>(null);
+  const [failedCovers, setFailedCovers] = useState<string[]>([]);
+  const cover = [props.cover, props.coverFallback].find((image) => image && !failedCovers.includes(JSON.stringify(image)));
+  const publisherCover = Boolean(props.news && (!cover || cover === props.coverFallback));
+  const rejectCover = () => cover && setFailedCovers((failed) => [...failed, JSON.stringify(cover)]);
   useEffect(() => { if (props.hidden) { setExpanded(false); setSheet(null); } }, [props.hidden]);
   const currentIndex = props.chapters.findIndex((item) => item.id === playback.chapter?.id);
   const voiceLabel = playback.capabilities?.providers.find((item) => item.id === playback.voice.provider)?.voices.find((item) => item.id === playback.voice.voice)?.label ?? playback.voice.voice;
   const background = theme.eInk ? theme.paper : "#f1ede6";
   function open() { setOpened(true); setExpanded(true); void playback.open(); }
   function chapterStep(step: number) { const next = props.chapters[currentIndex + step]; if (next) void playback.selectChapter(next.id, playback.playing); }
-  function art(backdrop = false) { return props.cover ? <Image accessible={false} source={props.cover} resizeMode={backdrop ? "cover" : props.news ? "cover" : "contain"} blurRadius={backdrop && !theme.eInk ? 32 : 0} style={backdrop ? styles.backdropImage : [styles.cover, props.news && styles.newsCover]} /> : <View style={[styles.fallbackCover, { backgroundColor: theme.paper }]}><Text style={styles.fallbackTitle}>{props.title}</Text></View>; }
+  function art(backdrop = false) {
+    if (!backdrop && publisherCover) return <View style={styles.publisherCover}>
+      {cover ? <Image accessible={false} source={cover} resizeMode="contain" onError={rejectCover} style={styles.publisherLogo} /> : null}
+      <Text style={styles.publisherName}>{props.sourceName || "JOJO 时事"}</Text>
+    </View>;
+    return cover ? <Image accessible={false} source={cover} resizeMode={backdrop || props.news ? "cover" : "contain"} onError={rejectCover} blurRadius={backdrop && !theme.eInk ? 32 : 0} style={backdrop ? styles.backdropImage : [styles.cover, props.news && styles.newsCover]} /> : <View style={[styles.fallbackCover, { backgroundColor: theme.paper }]}><Text style={styles.fallbackTitle}>{props.title}</Text></View>;
+  }
   return <>
     {!props.hidden && !expanded ? opened ? (
       <View style={[styles.mini, { bottom: props.bottom ?? 0, backgroundColor: background, borderColor: theme.rule }]}>
-        {props.cover && !theme.eInk ? art(true) : null}
+        {cover && !theme.eInk ? art(true) : null}
         <Pressable accessibilityRole="button" accessibilityLabel="展开听读播放器" onPress={open} style={styles.miniTitle}>
-          {props.cover ? <Image source={props.cover} style={styles.miniCover} /> : null}
+          {cover ? <Image source={cover} resizeMode="contain" onError={rejectCover} style={[styles.miniCover, publisherCover && styles.miniLogo]} /> : null}
           <View style={styles.flex}><Text numberOfLines={1} style={styles.miniHeading}>{playback.chapter?.title || props.title}</Text><Text style={styles.subtle}>{playback.busy ? "加载中" : `${voiceLabel} · ${speechTime(playback.elapsed)}`}</Text></View>
         </Pressable>
         {playback.busy ? <View accessibilityLabel="加载中" style={styles.icon}>{theme.eInk ? <Text>…</Text> : <ActivityIndicator color={theme.ink} />}</View> : <IconButton icon={playback.playing ? "pause" : "play"} label={playback.playing ? "暂停听读" : "继续听读"} onPress={playback.toggle} />}
@@ -51,12 +62,12 @@ function ActiveSpeechPlayer(props: Props & { userId: string }) {
     ) : <Pressable accessibilityRole="button" accessibilityLabel="打开听读播放器" onPress={open} style={[styles.launcher, { bottom: (props.bottom ?? 0) + 16, backgroundColor: theme.red }]}><Text style={styles.listen}>听</Text></Pressable> : null}
     <Modal visible={expanded && !props.hidden} animationType={theme.eInk ? "none" : "slide"} onRequestClose={() => sheet ? setSheet(null) : setExpanded(false)}>
       <SafeAreaView style={[styles.full, { backgroundColor: background }]}>
-        {props.cover && !theme.eInk ? art(true) : null}
+        {cover && !theme.eInk ? art(true) : null}
         <View style={styles.header}><IconButton icon="chevron-down" label="收起播放器" onPress={() => setExpanded(false)} /><Text style={styles.eyebrow}>{props.news ? "听新闻" : "听书"}</Text><View style={styles.icon} /></View>
         <ScrollView contentContainerStyle={styles.content}>
           {art()}
-          <Text style={styles.bookName}>{props.title}</Text>
-          <Text style={styles.chapterTitle}>{playback.chapter?.title || "准备听读"}</Text>
+          {!publisherCover ? <Text style={styles.bookName}>{props.news ? props.sourceName : props.title}</Text> : null}
+          <Text style={styles.chapterTitle}>{props.news ? props.title : playback.chapter?.title || "准备听读"}</Text>
           <View style={styles.options}>
             <Option icon="timer-outline" label={playback.timer ? "已设定时" : "定时关闭"} onPress={() => setSheet("timer")} />
             <Option icon="person-outline" label={voiceLabel} onPress={() => setSheet("voice")} />
@@ -108,6 +119,9 @@ const styles = StyleSheet.create({
   icon: { width: 44, height: 44, alignItems: "center", justifyContent: "center" }, eyebrow: { color: theme.muted, fontFamily: theme.sans, fontSize: 13 },
   content: { flexGrow: 1, alignItems: "center", paddingHorizontal: 16, paddingBottom: 32, paddingTop: 12, maxWidth: 620, width: "100%", alignSelf: "center" },
   cover: { width: 168, height: 234, marginVertical: 20 }, newsCover: { width: "90%", height: 210 },
+  publisherCover: { width: "90%", height: 210, marginVertical: 20, padding: 24, alignItems: "center", justifyContent: "center", gap: 18, backgroundColor: theme.paper },
+  publisherLogo: { width: 24, height: 24 }, publisherName: { fontFamily: theme.serif, fontSize: 23, lineHeight: 32, textAlign: "center", color: theme.ink },
+  miniLogo: { width: 24, height: 24, marginHorizontal: 5 },
   fallbackCover: { width: 168, minHeight: 200, borderWidth: 1, borderColor: theme.rule, padding: 22, marginVertical: 20, justifyContent: "center" }, fallbackTitle: { color: theme.red, fontFamily: theme.serif, fontSize: 24 },
   backdropImage: { ...StyleSheet.absoluteFillObject, opacity: 0.12 }, bookName: { color: theme.muted, fontFamily: theme.serif, fontSize: 12, marginTop: 6, textAlign: "center" },
   chapterTitle: { color: theme.ink, fontFamily: theme.serif, fontSize: 21, lineHeight: 32, marginTop: 10, textAlign: "center", paddingHorizontal: 10 },

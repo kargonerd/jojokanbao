@@ -15,6 +15,7 @@ import {
   loadBookCoverUrl,
   loadFragment,
   loadItem,
+  prefetchBookChapters,
   searchLoadedBook,
   type LoadedItem,
 } from "../content";
@@ -240,8 +241,10 @@ export function ReaderPage() {
 
   useEffect(() => {
     if (!datasetId || !itemKey) return;
+    let active = true;
     setLoading(true); setError("");
     loadItem(datasetId, itemKey).then((value) => {
+      if (!active) return;
       setLoaded(value);
       const requested = value.manifest.content.chapters?.find((chapter) => chapter.id === requestedChapter);
       setFocusAnchorId(requestedAnnotation);
@@ -253,7 +256,8 @@ export function ReaderPage() {
         ? { text: normalizedQuote.slice(0, 80), token: Date.now() }
         : undefined);
       setActiveChapter(requested?.id || value.manifest.content.chapters?.[0]?.id || "");
-    }).catch((reason: Error) => setError(reason.message)).finally(() => setLoading(false));
+    }).catch((reason: Error) => { if (active) setError(reason.message); }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [datasetId, itemKey, requestedAnnotation, requestedChapter, requestedQuote]);
 
   useEffect(() => {
@@ -269,10 +273,11 @@ export function ReaderPage() {
   useEffect(() => {
     if (!loaded || !activeChapter) return;
     let cancelled = false;
+    const controller = new AbortController();
     setFragment(undefined); setError("");
-    loadFragment(loaded, activeChapter).then(async (value) => {
+    loadFragment(loaded, activeChapter, controller.signal).then(async (value) => {
       const pairs = await Promise.all(value.assetRefs.map(async (assetId) => {
-        try { return [assetId, await loadAssetUrl(loaded, assetId)] as const; }
+        try { return [assetId, await loadAssetUrl(loaded, assetId, controller.signal)] as const; }
         catch { return undefined; }
       }));
       if (cancelled) {
@@ -284,11 +289,18 @@ export function ReaderPage() {
         return Object.fromEntries(pairs.filter((pair): pair is readonly [string, string] => Boolean(pair)));
       });
       setFragment(value);
-    }).catch((reason: Error) => setError(reason.message));
-    return () => { cancelled = true; };
+    }).catch((reason: Error) => { if (!cancelled) setError(reason.message); });
+    return () => { cancelled = true; controller.abort(); };
   }, [activeChapter, loaded]);
 
   useEffect(() => () => Object.values(assetUrls).forEach((url) => URL.revokeObjectURL(url)), [assetUrls]);
+
+  useEffect(() => {
+    if (!loaded || !fragment) return;
+    const controller = new AbortController();
+    void prefetchBookChapters(loaded, fragment.fragmentId, controller.signal);
+    return () => controller.abort();
+  }, [loaded, fragment]);
 
   async function followAnnotationReference(reference: AnnotationReference): Promise<void> {
     if (!loaded || !datasetId) return;

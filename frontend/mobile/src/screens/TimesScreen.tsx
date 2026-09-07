@@ -40,14 +40,12 @@ import { SOURCE_LOGOS } from "../lib/sourceLogos";
 function SourceMark({ source, compact = false }: { source: TimesSourceRef; compact?: boolean }) {
   const theme = mobileTheme;
   const logo = SOURCE_LOGOS[source.id];
-  const label = timesSourceName(source).replace(/\s+/gu, "").slice(0, 2).toLocaleUpperCase("zh-CN");
+  const cropped = source.id === "cls";
   return (
     <View style={[compact ? styles.sourceMarkCompact : styles.sourceMark, { backgroundColor: theme.paper }]}>
       {logo ? (
-        <Image source={logo} resizeMode="contain" style={styles.sourceLogo} />
-      ) : (
-        <Text numberOfLines={1} style={[compact ? styles.sourceMarkTextCompact : styles.sourceMarkText, { color: theme.red, fontFamily: theme.serif }]}>{label}</Text>
-      )}
+        <Image source={logo} resizeMode="contain" style={[styles.sourceLogo, cropped && { alignSelf: "flex-start", width: (compact ? 25 : 40) * 396 / 106 }]} />
+      ) : null}
     </View>
   );
 }
@@ -353,8 +351,6 @@ const styles = StyleSheet.create({
   sourceMark: { width: 40, height: 40, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   sourceMarkCompact: { width: 25, height: 25, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   sourceLogo: { width: "100%", height: "100%" },
-  sourceMarkText: { fontSize: 12, fontWeight: "900" },
-  sourceMarkTextCompact: { fontSize: 8, fontWeight: "900" },
   timelineImage: { width: 96, aspectRatio: 4 / 3, overflow: "hidden", alignSelf: "center" },
   timelineImageContent: { width: "100%", height: "100%" },
   readImage: { opacity: 0.55 },

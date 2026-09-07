@@ -1,9 +1,11 @@
 import { Blob as NodeBlob } from "node:buffer";
 import { gzipSync } from "node:zlib";
 import { transformJoxBytes } from "@jojo/content";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { timesApi } from "../src/times/api";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { presentTimesArticle } from "../src/times/language";
+
+let timesApi: typeof import("../src/times/api").timesApi;
+beforeEach(async () => { vi.resetModules(); ({ timesApi } = await import("../src/times/api")); });
 
 const indexObject = "content/timeline/index.jox";
 const dayObject = "content/timeline/dates/2026/08/2026-08-22.jox";
@@ -47,7 +49,7 @@ function joxResponse(objectKey: string, value: unknown): Response {
 
 function timelineFetch(includeArticle = false, articleAssetRefs = ["asset:image-one"]) {
   return vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
-    const url = String(input);
+    const url = new URL(String(input)).pathname;
     if (url.endsWith(indexObject)) return joxResponse(indexObject, index);
     if (url.endsWith(dayObject)) return joxResponse(dayObject, day);
     if (includeArticle && url.endsWith(articleObject)) {
@@ -77,7 +79,7 @@ describe("Times B2 CDN client", () => {
     vi.stubGlobal("fetch", fetchMock);
     await expect(timesApi.timelineDay("2026-08-22")).resolves.toMatchObject({ articles: [item] });
     expect(String(fetchMock.mock.calls[0]![0])).toBe(`https://blacknews.jojokanbao.cn/${indexObject}`);
-    expect(fetchMock.mock.calls[0]![1]).toEqual({ cache: "no-store" });
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({ cache: "no-store", signal: expect.any(AbortSignal) });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -251,7 +253,7 @@ describe("Times B2 CDN client", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(timesApi.assetObjectUrl(item.assets[0]!)).resolves.toBe("blob:jojo-timeline-image");
-    expect(String(fetchMock.mock.calls[0]![0])).toBe(`https://blacknews.jojokanbao.cn/${assetObject}`);
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(`https://blacknews.jojokanbao.cn/${assetObject}?v=image-one`);
     expect(createObjectURL).toHaveBeenCalledOnce();
   });
 

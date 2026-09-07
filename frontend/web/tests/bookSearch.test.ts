@@ -47,9 +47,18 @@ describe("static book search", () => {
     const results = await searchLoadedBook(loaded, "搜索");
 
     expect(loaded.client.fetchJson).toHaveBeenCalledOnce();
-    expect(loaded.client.fetchJson).toHaveBeenCalledWith("content/books/example/items/full-book/search/text.jox");
+    expect(loaded.client.fetchJson).toHaveBeenCalledWith("content/books/example/items/full-book/search/text.jox", undefined, "default", "search");
     expect(results).toHaveLength(1);
     expect(results[0]).toMatchObject({ targetId: "chapter:1", targetTitle: "第一章" });
     expect(results[0]!.highlights?.[0]).toContain("<mark>搜索</mark>");
+  });
+  it("retries after an offline search-index request instead of retaining the rejected promise", async () => {
+    const loaded = loadedBook({ format: "text", profile: "jojo-book-search/1", object: "search/retry.jox", size: 1, sha256: "retry" });
+    vi.mocked(loaded.client.fetchJson).mockRejectedValueOnce(new Error("offline"));
+    await expect(searchLoadedBook(loaded, "正文")).rejects.toThrow("offline");
+    vi.mocked(loaded.client.fetchJson).mockResolvedValueOnce({ formatVersion: "jojo-book-search/1", itemId: loaded.manifest.itemId,
+      blocks: [{ targetId: "chapter:1", order: 1, text: "正文" }] });
+    expect(await searchLoadedBook(loaded, "正文")).toHaveLength(1);
+    expect(loaded.client.fetchJson).toHaveBeenCalledTimes(2);
   });
 });

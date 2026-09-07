@@ -1,4 +1,5 @@
 import { gunzipSync, strFromU8 } from "fflate";
+import { abortable, ResourceCache } from "./resource-cache";
 
 const JOX_SALT = 0x4a4f5831; // "JOX1"
 
@@ -51,7 +52,7 @@ export class JoxClient {
   readonly baseUrl: URL;
   private readonly fetchFn: typeof fetch;
 
-  constructor(baseUrl: string | URL, fetchFn: typeof fetch = fetch) {
+  constructor(baseUrl: string | URL, fetchFn: typeof fetch = fetch, private cache?: ResourceCache) {
     const normalized = new URL(baseUrl);
     if (!normalized.pathname.endsWith("/")) normalized.pathname += "/";
     this.baseUrl = normalized;
@@ -69,27 +70,59 @@ export class JoxClient {
     objectKey: string,
     signal?: AbortSignal,
     cache: RequestCache = "default",
+    revision?: string,
+    timeoutMs = 20_000,
   ): Promise<Uint8Array> {
-    const response = await this.fetchFn(this.url(objectKey), { cache, ...(signal ? { signal } : {}) });
-    if (!response.ok) {
-      throw new Error(`Jox object returned HTTP ${response.status}: ${objectKey}`);
-    }
-    return new Uint8Array(await response.arrayBuffer());
+    if (signal?.aborted) throw new Error("读取已取消");
+    const url = this.url(objectKey);
+    if (revision) url.searchParams.set("v", revision);
+    const load = async () => {
+      const controller = new AbortController();
+      let timer: ReturnType<typeof setTimeout>;
+      const deadline = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => { controller.abort(); reject(new Error("内容加载超时，请检查网络后重试")); }, timeoutMs);
+      });
+      try {
+        return await Promise.race([deadline, (async () => {
+          // Mutable indices/manifests must revalidate once our short cache TTL
+          // expires, even if the CDN sends a multi-day browser max-age.
+          const response = await this.fetchFn(url, {
+            cache: this.cache && !revision && cache === "default" ? "no-cache" : cache,
+            signal: controller.signal,
+          });
+          if (!response.ok) throw new Error(`Jox object returned HTTP ${response.status}: ${objectKey}`);
+          return new Uint8Array(await response.arrayBuffer());
+        })()]);
+      } finally { clearTimeout(timer!); }
+    };
+    const task = this.cache && cache !== "no-store" && cache !== "reload"
+      ? this.cache.get(url.href, revision ? 7 * 86400_000 : 300_000, load) : load();
+    return abortable(task, signal);
   }
 
   async fetchJson<T>(
     objectKey: string,
     signal?: AbortSignal,
     cache: RequestCache = "default",
+    revision?: string,
   ): Promise<T> {
-    return gunzipJoxJson<T>(await this.fetchBytes(objectKey, signal, cache), objectKey);
+    const bytes = await this.fetchBytes(objectKey, signal, cache, revision);
+    try { return await gunzipJoxJson<T>(bytes, objectKey); }
+    catch (error) {
+      const key = this.url(objectKey);
+      if (revision) key.searchParams.set("v", revision);
+      await this.cache?.delete(key.href);
+      throw error;
+    }
   }
 
   async fetchDecodedBytes(
     objectKey: string,
     signal?: AbortSignal,
+    revision?: string,
+    timeoutMs?: number,
   ): Promise<Uint8Array> {
-    return transformJoxBytes(await this.fetchBytes(objectKey, signal), objectKey);
+    return transformJoxBytes(await this.fetchBytes(objectKey, signal, "default", revision, timeoutMs), objectKey);
   }
 }
 

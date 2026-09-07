@@ -125,6 +125,7 @@ function ActiveSpeechPlayer({
   const [failedArtwork, setFailedArtwork] = useState<string[]>([]);
   const cover = [artworkUrl, artworkFallbackUrl].find((url) => url && !failedArtwork.includes(url));
   const isNews = label === "听新闻";
+  const publisherCover = isNews && (!cover || cover === artworkFallbackUrl);
   const playableSegments = useMemo(() => contentKey ? contentKey.split("\u0000") : [], [contentKey]);
   const voiceStorageKey = `${VOICE_STORAGE_KEY}:${label}`;
   const [voice, setVoice] = useState<SpeechVoice>(() => storedVoice(voiceStorageKey, defaultVoice));
@@ -155,7 +156,7 @@ function ActiveSpeechPlayer({
   const [sleepAfterChapter, setSleepAfterChapter] = useState(false);
   const [error, setError] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const prefetchAudioRef = useRef<HTMLAudioElement | null>(null);
+  const prefetchAudioRef = useRef<{ key: string; audio: HTMLAudioElement } | null>(null);
   const sourceDurationsRef = useRef(new Map<string, number>());
   const saveAudioRef = useRef<((force: boolean) => void) | null>(null);
   const speedRef = useRef(speed);
@@ -225,6 +226,8 @@ function ActiveSpeechPlayer({
     audio.onloadedmetadata = null;
     audio.onerror = null;
     audio.pause();
+    audio.removeAttribute("src");
+    audio.load();
     audioRef.current = null;
   }, []);
 
@@ -284,6 +287,14 @@ function ActiveSpeechPlayer({
     return pending;
   }, [provider, cdnBase, cacheVersion, speechScope]);
 
+  // Segment transitions consume the buffered element. Only a session/voice/content
+  // change discards it; per-segment cleanup used to throw all this work away.
+  useEffect(() => () => {
+    const buffered = prefetchAudioRef.current;
+    prefetchAudioRef.current = null;
+    if (buffered) { buffered.audio.pause(); buffered.audio.removeAttribute("src"); buffered.audio.load(); }
+  }, [contentKey, voice, audioUrl, userId, sessionStarted]);
+
   useEffect(() => {
     savePreference(voiceStorageKey, voice);
   }, [voice, voiceStorageKey]);
@@ -329,7 +340,13 @@ function ActiveSpeechPlayer({
     setSegmentProgress((pendingSeekFractionRef.current ?? 0) * 100);
     void audioUrl(playableSegments[segmentIndex], voice).then(async (url) => {
       if (!active) return;
-      const audio = new Audio(url);
+      const key = `${provider}\0${voice}\0${playableSegments[segmentIndex]}`;
+      const buffered = prefetchAudioRef.current;
+      prefetchAudioRef.current = null;
+      const audio = buffered?.key === key ? buffered.audio : new Audio(url);
+      if (buffered && buffered.audio !== audio) {
+        buffered.audio.removeAttribute("src"); buffered.audio.load();
+      }
       const knownDuration = sourceDurationsRef.current.get(`${provider}\u0000${voice}\u0000${playableSegments[segmentIndex]}`);
       if (knownDuration) setDurations((known) => ({ ...known, [segmentIndex]: knownDuration }));
       audio.preload = "auto";
@@ -354,6 +371,8 @@ function ActiveSpeechPlayer({
         setSegmentProgress(pendingFraction * 100);
         pendingSeekFractionRef.current = null;
       };
+      // Metadata may have fired while this element was still preloading.
+      if (audio.readyState >= 1) audio.onloadedmetadata(new Event("loadedmetadata"));
       audio.ontimeupdate = () => {
         saveAudioRef.current?.(false);
         if (Number.isFinite(audio.duration) && audio.duration > 0) {
@@ -390,10 +409,10 @@ function ActiveSpeechPlayer({
       const next = playableSegments[segmentIndex + 1];
       if (next) void audioUrl(next, voice).then((nextUrl) => {
         if (!active) return;
-        const nextAudio = document.createElement("audio");
+        const nextAudio = new Audio(nextUrl);
         nextAudio.preload = "auto";
-        nextAudio.src = nextUrl;
-        prefetchAudioRef.current = nextAudio;
+        nextAudio.load();
+        prefetchAudioRef.current = { key: `${provider}\0${voice}\0${next}`, audio: nextAudio };
         const duration = sourceDurationsRef.current.get(`${provider}\u0000${voice}\u0000${next}`);
         if (duration) setDurations((known) => ({ ...known, [segmentIndex + 1]: duration }));
       }).catch(() => undefined);
@@ -405,8 +424,6 @@ function ActiveSpeechPlayer({
     });
     return () => {
       active = false;
-      if (prefetchAudioRef.current) prefetchAudioRef.current.src = "";
-      prefetchAudioRef.current = null;
       stopAudio();
     };
   }, [audioUrl, playableSegments, segmentIndex, stopAudio, voice, wantsPlayback, capabilitiesReady, userId]);
@@ -698,11 +715,12 @@ function ActiveSpeechPlayer({
 
         <main className="speech-player__panel">
           <section className="speech-player__now" aria-label="当前播放">
-              <div className={`speech-player__artwork${cover ? " has-image" : ""}${cover && cover === artworkFallbackUrl ? " is-logo" : ""}`} aria-hidden="true">
-                {cover ? <img src={cover} alt="" onError={() => setFailedArtwork((failed) => [...failed, cover])} /> : <><span>{collectionTitle || "JOJO 看报"}</span><b>{isNews ? "JOJO 时事" : displayTitle}</b></>}
+              <div className={`speech-player__artwork${cover ? " has-image" : ""}${publisherCover ? " is-logo" : ""}`} aria-hidden="true">
+                {cover ? <img src={cover} alt="" onError={() => setFailedArtwork((failed) => [...failed, cover])} /> : !publisherCover ? <><span>{collectionTitle || "JOJO 看报"}</span><b>{displayTitle}</b></> : null}
+                {publisherCover && <b>{collectionTitle || "JOJO 时事"}</b>}
               </div>
               <div className="speech-player__identity">
-                <p>{collectionTitle || (label === "听新闻" ? "JOJO 时事" : "JOJO 资料库")}</p>
+                {!publisherCover && <p>{collectionTitle || (label === "听新闻" ? "JOJO 时事" : "JOJO 资料库")}</p>}
                 <h2>{displayTitle}</h2>
               </div>
 
@@ -845,7 +863,7 @@ function ActiveSpeechPlayer({
       {cover && <div className="speech-player__ambience speech-mini__ambience" aria-hidden="true"><img src={cover} alt="" /></div>}
       <div className="speech-mini__inner">
         <button ref={miniExpandRef} type="button" className="speech-mini__content" onClick={openPlayer} aria-label={`展开播放器：${displayTitle}`}>
-          <span className={`speech-mini__cover${isNews ? " is-news" : ""}`}>{cover ? <img src={cover} alt="" onError={() => setFailedArtwork((failed) => [...failed, cover])} /> : <Headset aria-hidden="true" />}</span>
+          <span className={`speech-mini__cover${isNews ? " is-news" : ""}${publisherCover ? " is-logo" : ""}`}>{cover ? <img src={cover} alt="" onError={() => setFailedArtwork((failed) => [...failed, cover])} /> : <Headset aria-hidden="true" />}</span>
           <span className="speech-mini__identity"><strong>{displayTitle}</strong><small>{state === "loading" || error ? status : `${collectionTitle || label} · ${selectedVoiceLabel}`}</small></span>
         </button>
         <span className="speech-mini__time">{elapsedTimeLabel} / {durationTimeLabel}</span>

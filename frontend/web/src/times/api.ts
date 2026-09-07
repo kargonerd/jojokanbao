@@ -1,5 +1,7 @@
 import {
   JoxClient,
+  ResourceCache,
+  browserContentCache,
   resolveJoxObject,
   type JojoAssetDescriptor,
   type JojoFragment,
@@ -22,7 +24,7 @@ export const TIMES_TIMELINE_FALLBACK_PAGE_SIZE = 50;
 const MAX_CACHED_DAYS = 2;
 const MAX_CACHED_PAGES = 6;
 const MAX_CACHED_ARTICLES = TIMES_TIMELINE_FALLBACK_PAGE_SIZE * MAX_CACHED_PAGES;
-const client = new JoxClient(CONTENT_CDN, (input, init) => fetch(input, init));
+const client = new JoxClient(CONTENT_CDN, (input, init) => fetch(input, init), new ResourceCache(browserContentCache()));
 
 export type TimesNewsItem = TimesPresentedArticle & {
   content?: string | null;
@@ -119,7 +121,7 @@ async function assetObjectUrl(asset: JojoAssetDescriptor, signal?: AbortSignal):
 }
 
 async function assetObjectBlob(asset: JojoAssetDescriptor, signal?: AbortSignal): Promise<Blob> {
-  const bytes = await client.fetchDecodedBytes(safeAssetObject(asset.object), signal);
+  const bytes = await client.fetchDecodedBytes(safeAssetObject(asset.object), signal, asset.sha256);
   return new Blob([Uint8Array.from(bytes).buffer], { type: asset.mediaType });
 }
 
@@ -221,7 +223,9 @@ export const timesApi = {
     if (!item) throw new Error("新闻不存在");
     const translation = languagePreference === "zh-CN" ? preferredTimesTranslation(item) : undefined;
     const fetchFragment = async (object: string): Promise<JojoFragment> => {
-      const fragment = await client.fetchJson<JojoFragment>(safeArticleObject(object));
+      // Article/translation objects may be replaced at the same path. Persist
+      // versioned pictures, but keep the story fresh like the native client.
+      const fragment = await client.fetchJson<JojoFragment>(safeArticleObject(object), undefined, "no-store");
       if (fragment.formatVersion !== "jojo-fragment/1" || fragment.type !== "article" || fragment.fragmentId !== item.id) {
         throw new Error("时事文章对象格式无效");
       }

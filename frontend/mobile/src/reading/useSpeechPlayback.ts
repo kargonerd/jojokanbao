@@ -5,6 +5,7 @@ import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
 import * as Crypto from "expo-crypto";
 import { useEffect, useRef, useState } from "react";
 import { mobileSpeechClient } from "./speech";
+import { AudioPrefetch } from "./audioPrefetch";
 
 export interface SpeechChapter { id: string; title: string; segments: string[] }
 interface Bookmark { chapterId: string; fingerprint: string; part: number; seconds: number; provider: string; voice: string; rate: number }
@@ -38,6 +39,8 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
   const ready = useRef(false);
   const bookmark = useRef<Bookmark | undefined>(undefined);
   const sources = useRef(new Map<number, Promise<SpeechSource>>());
+  const prefetch = useRef(new AudioPrefetch());
+  const prefetchedUrls = useRef(new Map<number, string>());
   const pending = useRef<{ seconds: number; operation: number } | undefined>(undefined);
   const activePart = useRef<number | undefined>(undefined);
   const finishHandled = useRef(false);
@@ -57,13 +60,19 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
   }
 
   function close() {
-    halt();
+    wanted.current = false;
     epoch.current++; operation.current++;
     session.current.abort(); session.current = new AbortController();
     sources.current.clear(); pending.current = undefined; activePart.current = undefined;
+    prefetch.current.retain();
+    prefetchedUrls.current.clear();
     ready.current = false; mediaDeadline.current = 0;
-    player.replace(null); player.setActiveForLockScreen(false);
-    setBusy(false); setTimer(null);
+    // Android's Expo Audio replace() requires a non-null source. Keep the
+    // paused player for reopening; useAudioPlayer owns release on unmount.
+    try { player.pause(); } catch { /* navigation may already have released it */ }
+    try { player.setActiveForLockScreen(false); } catch { /* already released */ }
+    persist();
+    setPlaying(false); setBusy(false); setTimer(null); setError("");
   }
 
   useEffect(() => {
@@ -80,7 +89,7 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
           setBusy(false);
           player.setPlaybackRate(latest.current.rate);
           if (wanted.current) player.play();
-        }).catch(() => { if (mounted.current) { setError("音频定位失败，请重试"); setBusy(false); } });
+        }).catch(() => { if (mounted.current && load.operation === operation.current) { setError("音频定位失败，请重试"); setBusy(false); } });
       }
       if (!ready.current) return;
       const time = Number.isFinite(status.currentTime) ? status.currentTime : 0;
@@ -109,6 +118,7 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       mounted.current = false;
       epoch.current++; operation.current++;
       session.current.abort();
+      prefetch.current.retain();
       clearInterval(interval); listener.remove();
       functions.current.persist();
       // useAudioPlayer owns native release; do not release the same player twice.
@@ -122,6 +132,8 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
     operation.current++;
     session.current.abort(); session.current = new AbortController();
     sources.current.clear(); pending.current = undefined; activePart.current = undefined;
+    prefetch.current.retain();
+    prefetchedUrls.current.clear();
     ready.current = false; wanted.current = autoplay; player.pause(); setPlaying(false);
     mediaDeadline.current = 0; bookmark.current = undefined;
     setChapter(undefined); latest.current.chapter = undefined;
@@ -171,7 +183,7 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       setCapabilities(caps);
       const id = saved && props.chapters.some((item) => item.id === saved.chapterId) ? saved.chapterId : props.chapterId;
       await selectChapter(id, false, saved, choice, caps);
-    } catch (reason) { if (mounted.current) { setBusy(false); setError(reason instanceof Error ? reason.message : "听读暂时不可用"); } }
+    } catch (reason) { if (mounted.current && currentEpoch === epoch.current) { setBusy(false); setError(reason instanceof Error ? reason.message : "听读暂时不可用"); } }
   }
 
   async function source(index: number): Promise<SpeechSource> {
@@ -207,8 +219,20 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       setPart(index); setSeconds(time); setDurations((known) => ({ ...known, [index]: audio.duration }));
       if (bookmark.current) { bookmark.current.part = index; bookmark.current.seconds = time; }
       player.setActiveForLockScreen(true, { title: latest.current.chapter?.title, artist: props.title });
-      for (const key of sources.current.keys()) if (key !== index && key !== index + 1) sources.current.delete(key);
-      if (latest.current.chapter?.segments[index + 1]) void source(index + 1).catch(() => undefined);
+      for (const key of sources.current.keys()) if (key < index || key > index + 2) sources.current.delete(key);
+      for (const key of prefetchedUrls.current.keys()) if (key < index || key > index + 2) prefetchedUrls.current.delete(key);
+      const nextUrls = [...prefetchedUrls.current].filter(([key]) => key > index).map(([, url]) => url);
+      // Keep an already buffered current source until replace() consumes it.
+      prefetch.current.retain(audio.url, nextUrls);
+      for (const next of [index + 1, index + 2]) {
+        if (!latest.current.chapter?.segments[next]) continue;
+        void source(next).then((value) => {
+          if (!mounted.current || request !== operation.current) return;
+          prefetchedUrls.current.set(next, value.url);
+          if (!nextUrls.includes(value.url)) nextUrls.push(value.url);
+          prefetch.current.retain(audio.url, nextUrls);
+        }).catch(() => undefined);
+      }
     } catch (reason) {
       if (!mounted.current || request !== operation.current) return;
       wanted.current = false; setPlaying(false); setBusy(false); setError(reason instanceof Error ? reason.message : "播放失败，请重试");
