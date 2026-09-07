@@ -1,8 +1,8 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs, requiredArg } from "./args.js";
-import { parseProxySubscription, serializeMihomoConfig } from "./proxy-config.js";
-import { downloadSubscription } from "./proxy-subscription.js";
+import { commitHealthyProxyCache, prepareProxyConfiguration } from "./prepare-proxy.js";
+import { hfProxyCacheStore } from "./proxy-subscription-store.js";
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
@@ -10,10 +10,21 @@ async function main(): Promise<void> {
   const environmentName = args.get("subscription-env") ?? "JOJO_TIMES_PROXY_SUBSCRIPTION";
   const subscriptionUrl = process.env[environmentName]?.trim();
   if (!subscriptionUrl) throw new Error(`${environmentName} is not configured`);
-  const subscription = parseProxySubscription(await downloadSubscription(subscriptionUrl));
-  await mkdir(path.dirname(output), { recursive: true });
-  await writeFile(output, serializeMihomoConfig(subscription), { encoding: "utf8", mode: 0o600 });
-  process.stdout.write(`Prepared a temporary Mihomo configuration with ${subscription.proxies.length} nodes\n`);
+  const bucket = args.get("cache-bucket");
+  const secret = process.env.HF_TOKEN?.trim() ?? "";
+  const options = { url: subscriptionUrl, output,
+    ...(bucket ? { cache: { store: hfProxyCacheStore(bucket, secret), secret } } : {}) };
+  const action = args.get("action") ?? "prepare";
+  if (action === "commit-cache") {
+    await commitHealthyProxyCache(options);
+    return;
+  }
+  if (action !== "prepare") throw new Error("Unknown proxy preparation action");
+  const report = await prepareProxyConfiguration(options);
+  if (args.get("report")) {
+    await writeFile(path.resolve(args.get("report")!), `${JSON.stringify(report)}\n`, { mode: 0o600 });
+  }
+  process.stdout.write(`Prepared a temporary Mihomo configuration with ${report.nodes} nodes (${report.source})\n`);
 }
 
 main().catch((error: unknown) => {

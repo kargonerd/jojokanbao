@@ -59,6 +59,27 @@ describe("Times Runtime workflows", () => {
     }
   });
 
+  it("persists encrypted subscriptions only after a healthy proxy on master, outside Actions caches", async () => {
+    const body = await workflow("maintenance-times-capture.yml");
+    const steps = parse(body).jobs.capture.steps;
+    const start = steps.find((step: { name?: string }) => step.name === "Start pinned Mihomo for a configured subscription");
+    const save = steps.find((step: { name?: string }) => step.name === "Save healthy encrypted proxy subscription");
+    expect(start.run).toContain('--cache-bucket "$HF_TIMES_RUNTIME_BUCKET"');
+    expect(start.run).toContain('[ "$TIMES_PUBLISH" = "true" ]');
+    expect(start.run).toContain("curl --proxy http://127.0.0.1:7890");
+    expect(save.if).toContain("github.ref == 'refs/heads/master'");
+    expect(save.if).toContain("env.TIMES_PUBLISH == 'true'");
+    expect(save.if).not.toContain("always()");
+    expect(save["continue-on-error"]).toBe(true);
+    expect(save["timeout-minutes"]).toBe(1);
+    expect(save.run).toContain("--action commit-cache");
+    ordered(body, [start.name, save.name, "Capture all enabled sources"]);
+    expect(body).toContain("proxy.source === \"cache\"");
+    for (const step of steps.filter((step: { uses?: string }) => /actions\/(cache|upload-artifact)/.test(step.uses ?? ""))) {
+      expect(step.with?.path).not.toMatch(/config\.yaml|subscription|\/mihomo\s*$/m);
+    }
+  });
+
   it("coalesces only interchangeable Process requests and keeps manual requests unique", async () => {
     const body = parse(await workflow("maintenance-times-process.yml"));
     expect(body.concurrency.queue).toBe("single");

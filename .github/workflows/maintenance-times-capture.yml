@@ -179,7 +179,11 @@ jobs:
         if: env.JOJO_TIMES_PROXY_SUBSCRIPTION != ''
         timeout-minutes: 6
         run: |
-          node "$TIMES_RUNTIME_ROOT/dist/src/prepare-proxy-cli.js" --output "$RUNNER_TEMP/mihomo/config.yaml"
+          args=(--output "$RUNNER_TEMP/mihomo/config.yaml" --report "$RUNNER_TEMP/proxy-preparation.json")
+          if [ "$TIMES_PUBLISH" = "true" ]; then
+            args+=(--cache-bucket "$HF_TIMES_RUNTIME_BUCKET")
+          fi
+          node "$TIMES_RUNTIME_ROOT/dist/src/prepare-proxy-cli.js" "${args[@]}"
           nohup "$RUNNER_TEMP/mihomo/mihomo" -d "$RUNNER_TEMP/mihomo" -f "$RUNNER_TEMP/mihomo/config.yaml" \
             > "$RUNNER_TEMP/mihomo/runtime.log" 2>&1 &
           for attempt in $(seq 1 12); do
@@ -191,6 +195,18 @@ jobs:
           done
           echo "Mihomo did not expose a healthy local proxy" >&2
           exit 1
+
+      - name: Save healthy encrypted proxy subscription
+        if: env.JOJO_TIMES_PROXY_SUBSCRIPTION != '' && env.TIMES_PUBLISH == 'true' && github.ref == 'refs/heads/master'
+        continue-on-error: true
+        timeout-minutes: 1
+        run: |
+          # Commit only the live configuration that just passed the proxy probe.
+          # One encrypted Runtime object, never Actions cache/Raw/artifacts.
+          node "$TIMES_RUNTIME_ROOT/dist/src/prepare-proxy-cli.js" \
+            --action commit-cache \
+            --output "$RUNNER_TEMP/mihomo/config.yaml" \
+            --cache-bucket "$HF_TIMES_RUNTIME_BUCKET"
 
       - name: Verify pinned BPC extension
         env:
@@ -372,6 +388,13 @@ jobs:
           const fs = require("node:fs");
           const path = process.env.RUNNER_TEMP + "/capture-result.json";
           console.log("## Times Raw capture\n");
+          const proxyReportPath = process.env.RUNNER_TEMP + "/proxy-preparation.json";
+          if (fs.existsSync(proxyReportPath)) {
+            const proxy = JSON.parse(fs.readFileSync(proxyReportPath, "utf8"));
+            if (proxy.source === "cache") {
+              console.log(`- Warning: Proxy subscription download failed; using a previously healthy encrypted cache (${Math.floor(proxy.cacheAgeSeconds / 60)} minutes old, expires after 24 hours).`);
+            }
+          }
           if (!fs.existsSync(path)) {
             console.log("Capture result is missing.");
             process.exit(0);
