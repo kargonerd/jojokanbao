@@ -16,6 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView, type WebViewMessageEvent, type WebViewNavigation } from "react-native-webview";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import { ReaderEnvironment } from "../components/ReaderEnvironment";
+import { useReadingProgress } from "../reading/useReadingProgress";
 import { impactHaptic } from "../lib/haptics";
 import { parseArchiveReaderUrl, readerAppearanceScript, readerBootstrapScript } from "../lib/readerBridge";
 import type { RootStackParamList } from "../navigation/types";
@@ -38,6 +39,7 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
   const hapticsEnabled = useMobileStore((state) => state.hapticsEnabled);
   const textScale = useMobileStore((state) => state.textScale);
   const rememberIssue = useMobileStore((state) => state.rememberIssue);
+  const readingProgress = useReadingProgress(rememberIssue);
   const theme = mobileTheme;
   const [publication, setPublication] = useState(route.params.publication);
   const [issueId, setIssueId] = useState(route.params.issueId);
@@ -50,7 +52,6 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
     configuredReaderOrigin,
   ));
   const [loading, setLoading] = useState(true);
-  const [readerReady, setReaderReady] = useState(false);
   const publicationInfo = ARCHIVE_PUBLICATION_BY_ID[publication];
   const allowedHosts = useMemo(() => new Set([safeHost(configuredReaderOrigin), safeHost(ARCHIVE_CDN_ORIGIN)]), []);
 
@@ -66,21 +67,6 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
     return () => subscription.remove();
   }, [navigation]));
 
-  useEffect(() => {
-    if (!readerReady || totalPages <= 0) return;
-    const timer = setTimeout(() => {
-      rememberIssue({
-        publication,
-        issueId,
-        title: publicationInfo.title,
-        subtitle: formatArchiveIssueLabel(issueId),
-        currentPage,
-        totalPages,
-      });
-    }, 650);
-    return () => clearTimeout(timer);
-  }, [currentPage, issueId, publication, publicationInfo.title, readerReady, rememberIssue, totalPages]);
-
   function syncUrl(url: string | undefined) {
     if (!url) return;
     setCurrentUrl(url);
@@ -94,10 +80,24 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
     try {
       const message = JSON.parse(event.nativeEvent.data) as ReaderMessage;
       syncUrl(message.url);
-      if (message.type === "ready") setReaderReady(true);
       if (message.type === "page") {
         if (Number.isFinite(message.current)) setCurrentPage(Math.max(1, message.current));
         if (Number.isFinite(message.total)) setTotalPages(Math.max(0, message.total));
+        // A valid page report is sufficient even if Android misses the load/ready
+        // event, or starts a same-document navigation when the page hash changes.
+        if (Number.isFinite(message.current) && Number.isFinite(message.total) && message.total > 0) {
+          const parsed = message.url ? parseArchiveReaderUrl(message.url) : null;
+          const source = parsed && ARCHIVE_PUBLICATION_NAMES.includes(parsed.publication as ArchivePublicationName)
+            ? { publication: parsed.publication as ArchivePublicationName, issueId: parsed.issueId }
+            : { publication, issueId };
+          readingProgress.schedule({
+            ...source,
+            title: ARCHIVE_PUBLICATION_BY_ID[source.publication].title,
+            subtitle: formatArchiveIssueLabel(source.issueId),
+            currentPage: Math.max(1, message.current),
+            totalPages: message.total,
+          });
+        }
       }
     } catch {
       // Ignore messages that do not use the JOJO bridge contract.
@@ -148,7 +148,6 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
           onMessage={handleMessage}
           onNavigationStateChange={handleNavigationChange}
           onLoadStart={() => {
-            setReaderReady(false);
             setLoading(true);
           }}
           onLoadEnd={() => setLoading(false)}

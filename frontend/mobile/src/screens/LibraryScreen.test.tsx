@@ -4,6 +4,7 @@ import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LibraryScreen } from "./LibraryScreen";
 import { BookDetailsScreen } from "./BookDetailsScreen";
+import { BookCoverCard } from "../components/BookCoverCard";
 import type { MobileBook } from "../lib/books";
 
 const mocks = vi.hoisted(() => ({
@@ -14,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   loadShelf: vi.fn(async (): Promise<import("../account/accountData").MobileBookshelfEntry[]> => []),
   setShelf: vi.fn(async () => undefined),
   volumes: vi.fn(async () => [{ itemId: "test:full", itemKey: "full", title: "测试书", order: 0, manifestObject: "test.jox" }]),
+  openTarget: vi.fn(),
 }));
 
 vi.mock("react-native", async () => {
@@ -43,7 +45,7 @@ vi.mock("../config/appVariant", () => ({ get IS_EINK_RELEASE() { return mocks.eI
 vi.mock("../components/BookCoverCard", () => ({ BookCoverCard: "book-card" }));
 vi.mock("../components/PeriodicalCoverCard", () => ({ PeriodicalCoverCard: "article" }));
 vi.mock("../components/ScreenHeader", () => ({ ScreenHeader: "header" }));
-vi.mock("../lib/books", () => ({ loadMobileBooks: () => mocks.loadBooks(), loadMobileBookVolumes: mocks.volumes }));
+vi.mock("../lib/books", () => ({ loadMobileBooks: () => mocks.loadBooks(), loadMobileBookVolumes: mocks.volumes, resolveMobileBookOpenTarget: mocks.openTarget }));
 vi.mock("../lib/haptics", () => ({ impactHaptic: vi.fn() }));
 vi.mock("../store/mobileStore", () => ({
   useMobileStore: (select: (state: { hapticsEnabled: boolean }) => unknown) => select({ hapticsEnabled: false }),
@@ -98,6 +100,19 @@ describe.each([false, true])("library direct periodical entry (eInk=%s)", (eInk)
   async function press(label: string) {
     await act(async () => view!.root.findByProps({ accessibilityLabel: label }).props.onPress());
   }
+
+  it("keeps the pressed book visibly busy until its directory is ready", async () => {
+    let finish!: (value: { screen: "BookDetails"; book: MobileBook }) => void;
+    mocks.openTarget.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    mocks.loadBooks.mockResolvedValue([book]);
+    await act(async () => { view = create(<LibraryScreen />); });
+    await act(async () => view!.root.findByType(BookCoverCard).props.onPress());
+    expect(view!.root.findByType(BookCoverCard).props.busy).toBe(true);
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    await act(async () => finish({ screen: "BookDetails", book }));
+    expect(view!.root.findByType(BookCoverCard).props.busy).toBe(false);
+    expect(mocks.navigate).toHaveBeenCalledWith("BookDetails", { book });
+  });
 
   it("adds and removes a book from the library with one shelf read for the whole grid", async () => {
     mocks.loadBooks.mockResolvedValue([book]);

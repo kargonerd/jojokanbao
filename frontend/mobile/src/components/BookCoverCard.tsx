@@ -24,6 +24,7 @@ export const BookCoverCard = memo(function BookCoverCard({
   title,
   subtitle,
   layout = "grid",
+  busy = false,
   onPress,
 }: {
   book: MobileBook;
@@ -31,6 +32,7 @@ export const BookCoverCard = memo(function BookCoverCard({
   title: string;
   subtitle?: string;
   layout?: "grid" | "featured";
+  busy?: boolean;
   onPress: () => void;
 }) {
   const theme = mobileTheme;
@@ -51,6 +53,8 @@ export const BookCoverCard = memo(function BookCoverCard({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${title}${subtitle ? `，${subtitle}` : ""}`}
+      accessibilityState={{ busy, disabled: busy }}
+      disabled={busy}
       onPress={onPress}
       style={({ pressed }) => [styles.card, featured && styles.featuredCard, pressed && !IS_EINK_RELEASE && styles.pressed]}
     >
@@ -63,8 +67,8 @@ export const BookCoverCard = memo(function BookCoverCard({
       </View>
       <View style={featured ? styles.featuredCopy : undefined}>
         <Text numberOfLines={featured ? 3 : 2} style={[styles.title, featured && styles.featuredTitle, { color: theme.ink, fontFamily: theme.serif }]}>{title}</Text>
-        {subtitle ? (
-          <Text numberOfLines={1} style={[styles.subtitle, featured && styles.featuredSubtitle, { color: featured ? theme.red : theme.muted, borderColor: theme.red, fontFamily: theme.sans }]}>{subtitle}</Text>
+        {busy || subtitle ? (
+          <Text accessibilityLiveRegion="polite" numberOfLines={1} style={[styles.subtitle, featured && styles.featuredSubtitle, { color: featured || busy ? theme.red : theme.muted, borderColor: theme.red, fontFamily: theme.sans }]}>{busy ? "正在打开…" : subtitle}</Text>
         ) : null}
       </View>
     </Pressable>

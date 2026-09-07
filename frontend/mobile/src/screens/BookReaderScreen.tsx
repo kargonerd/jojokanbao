@@ -16,6 +16,7 @@ import { BookThoughtComposer } from "../components/BookThoughtComposer";
 import { BookshelfButton } from "../components/BookshelfButton";
 import { NativeSpeechPlayer } from "../reading/SpeechPlayer";
 import { mobileSpeechSegments } from "../reading/speech";
+import { useReadingProgress } from "../reading/useReadingProgress";
 import { useSpeechFlagStore } from "../reading/featureFlag";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import {
@@ -102,6 +103,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const user = useMobileAuthStore((state) => state.user);
   const leftTapNext = useMobileStore((state) => state.leftTapNext);
   const rememberBook = useMobileStore((state) => state.rememberBook);
+  const readingProgress = useReadingProgress(rememberBook);
   const recentBook = useMobileStore((state) => state.recentBooks.find((candidate) => (
     candidate.datasetId === datasetId && candidate.itemKey === itemKey
   )));
@@ -292,6 +294,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   ), [activeChapterId, chapterAnnotations, chapterEntryEdge, initialAnchorId, initialChapterId, initialText, leftTapNext, legacyResume, recentBook?.chapterId, recentBook?.scrollProgress, recentBook?.spreadIndex]);
 
   function chooseChapter(chapterId: string, entryEdge: BookChapterEdge = "start") {
+    readingProgress.flush();
     setActiveTool(null);
     setChromeVisible(true);
     setPageState(undefined);
@@ -369,7 +372,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
       const nextProgress = chapters.length
         ? Math.min(100, Math.round(((activeIndex + chapterFraction) / chapters.length) * 100))
         : 0;
-      rememberBook({
+      readingProgress.schedule({
         datasetId,
         itemKey,
         title,
@@ -386,6 +389,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   }
 
   function resetPage() {
+    readingProgress.flush();
     setChapterEntryEdge("start");
     setPageState(undefined);
   }
