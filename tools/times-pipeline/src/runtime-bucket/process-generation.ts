@@ -4,6 +4,7 @@ import path from "node:path";
 import { createArchive, describeFiles, extractVerifiedArchive, fileSha256 } from "./archive.js";
 import {
   PROCESS_MEMORY_OBJECT,
+  assertRuntimeFileBudget,
   parseProcessGenerationObjectName,
   parseRuntimeProcessGeneration,
   processGenerationObjectName,
@@ -174,12 +175,16 @@ async function restoreGeneration(options: {
   const generation = parseRuntimeProcessGeneration(options.generation, options.jobId);
   const restoreArchive = async (descriptor: RuntimeProcessArchive, label: string): Promise<void> => {
     const archive = path.resolve(options.workDirectory, `${options.jobId}.${label}-download.tar.gz`);
-    if (!await options.store.download(descriptor.objectName, archive, { maxBytes: descriptor.size })) {
-      throw new Error(`Process generation is missing: ${descriptor.objectName}`);
+    try {
+      if (!await options.store.download(descriptor.objectName, archive, { maxBytes: descriptor.size })) {
+        throw new Error(`Process generation is missing: ${descriptor.objectName}`);
+      }
+      const digest = await fileSha256(archive);
+      if (digest !== descriptor.sha256) throw new Error(`Process ${label} generation SHA-256 mismatch`);
+      await extractVerifiedArchive(archive, options.output, descriptor.files, { profile: "process" });
+    } finally {
+      await rm(archive, { force: true });
     }
-    const digest = await fileSha256(archive);
-    if (digest !== descriptor.sha256) throw new Error(`Process ${label} generation SHA-256 mismatch`);
-    await extractVerifiedArchive(archive, options.output, descriptor.files);
   };
 
   if (generation.base) await restoreArchive(generation.base, "base");
@@ -251,36 +256,62 @@ export async function stageRuntimeProcess(options: {
   }
   const stateFiles = await processGenerationFiles(output, now, options.retentionDays ?? 8);
   const previous = await committedRuntimeProcessGeneration(options.store);
-  const delta = deltaPlan(previous?.generation, stateFiles);
-  const files = delta?.files ?? stateFiles;
-  const manifest: ProcessGenerationManifest = {
-    formatVersion: delta ? "jojo-times-process-generation/2" : "jojo-times-process-generation/1",
-    jobId: options.status.jobId,
-    jobIds,
-    createdAt: now.toISOString(),
-    files,
-    ...(delta ? { base: delta.base, stateFiles, deltaDepth: delta.depth } : {}),
-  };
+  let delta = deltaPlan(previous?.generation, stateFiles);
   const manifestFile = path.join(output, ...PROCESS_MANIFEST.split("/"));
-  await writeFile(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
-  try {
+  const archiveFile = path.resolve(options.workDirectory, `${options.status.jobId}.processed.tar.gz`);
+  const existingArchiveFile = path.resolve(options.workDirectory, `${options.status.jobId}.processed-existing.tar.gz`);
+  const writeManifest = async (): Promise<RuntimeFileDigest[]> => {
+    const files = delta?.files ?? stateFiles;
+    const manifest: ProcessGenerationManifest = {
+      formatVersion: delta ? "jojo-times-process-generation/2" : "jojo-times-process-generation/1",
+      jobId: options.status.jobId,
+      jobIds,
+      createdAt: now.toISOString(),
+      files,
+      ...(delta ? { base: delta.base, stateFiles, deltaDepth: delta.depth } : {}),
+    };
+    await writeFile(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
     const manifestDigest = (await describeFiles(output, (file) => file === PROCESS_MANIFEST))[0];
     if (!manifestDigest) throw new Error("Process generation manifest was not written");
-    const archiveFiles = [...files, manifestDigest].sort((left, right) => left.path.localeCompare(right.path));
+    return [...files, manifestDigest].sort((left, right) => left.path.localeCompare(right.path));
+  };
+  try {
+    let archiveFiles = await writeManifest();
+    if (delta) {
+      try {
+        // Restore validates both layers, including overwritten/expired files
+        // and both manifests. Compact before staging an unrestorable delta.
+        assertRuntimeFileBudget([...delta.base.files, ...archiveFiles], "Runtime Process delta layers", { profile: "process" });
+      } catch {
+        delta = undefined;
+        archiveFiles = await writeManifest();
+      }
+    }
     const archive = await createArchive(
       output,
       archiveFiles,
-      path.resolve(options.workDirectory, `${options.status.jobId}.processed.tar.gz`),
+      archiveFile,
       true,
+      { profile: "process" },
     );
     const objectName = processGenerationObjectName(options.status.jobId, archive.sha256);
+    // Validate before any remote write; callers must never receive a generation
+    // that only fails validation later when publishing the job status.
+    const stagedProcess = parseRuntimeProcessGeneration({
+      objectName,
+      createdAt: now.toISOString(),
+      size: archive.size,
+      sha256: archive.sha256,
+      files: archiveFiles,
+      jobIds,
+      ...(delta ? { base: delta.base, stateFiles, deltaDepth: delta.depth } : {}),
+    }, options.status.jobId);
     const existing = await options.store.info(objectName);
     if (existing) {
       let exact = false;
       if (existing.size === archive.size) {
-        const downloaded = path.resolve(options.workDirectory, `${options.status.jobId}.processed-existing.tar.gz`);
-        exact = await options.store.download(objectName, downloaded, { maxBytes: archive.size })
-          && await fileSha256(downloaded) === archive.sha256;
+        exact = await options.store.download(objectName, existingArchiveFile, { maxBytes: archive.size })
+          && await fileSha256(existingArchiveFile) === archive.sha256;
       }
       if (!exact) {
         throw new Error(`Immutable Process generation already exists with different bytes: ${objectName}`);
@@ -291,18 +322,10 @@ export async function stageRuntimeProcess(options: {
     return {
       ...options.status,
       updatedAt: now.toISOString(),
-      stagedProcess: {
-        objectName,
-        createdAt: now.toISOString(),
-        size: archive.size,
-        sha256: archive.sha256,
-        files: archiveFiles,
-        jobIds,
-        ...(delta ? { base: delta.base, stateFiles, deltaDepth: delta.depth } : {}),
-      },
+      stagedProcess,
     };
   } finally {
-    await rm(manifestFile, { force: true });
+    await Promise.all([manifestFile, archiveFile, existingArchiveFile].map((file) => rm(file, { force: true })));
   }
 }
 

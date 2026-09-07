@@ -13,6 +13,9 @@ export const RUNTIME_MAX_TEXT_BYTES = 32 * MIB;
 export const RUNTIME_MAX_ARCHIVE_ENTRIES = 100_000;
 export const RUNTIME_MAX_ARCHIVE_ENTRY_BYTES = 64 * MIB;
 export const RUNTIME_MAX_ARCHIVE_EXPANDED_BYTES = 4 * GIB;
+// Process retains multiple days of article images; Raw remains bounded per job.
+export const PROCESS_MAX_ARCHIVE_EXPANDED_BYTES = 6 * GIB;
+export const PROCESS_MAX_DOWNLOAD_BYTES = 7 * GIB;
 export const RUNTIME_MAX_ARCHIVE_PATH_BYTES = 2 * 1024;
 export const RUNTIME_MAX_ARCHIVE_PATH_DEPTH = 32;
 export const RUNTIME_MAX_TAR_META_BYTES = 1 * MIB;
@@ -29,6 +32,8 @@ export interface RuntimeArchiveLimits {
   maxEntryBytes: number;
   maxExpandedBytes: number;
 }
+
+export type RuntimeArchiveOptions = Partial<RuntimeArchiveLimits> & { profile?: "process" };
 
 export const RUNTIME_ARCHIVE_LIMITS: Readonly<RuntimeArchiveLimits> = Object.freeze({
   maxEntries: RUNTIME_MAX_ARCHIVE_ENTRIES,
@@ -127,7 +132,9 @@ export function runtimeReadLimit(options: RuntimeReadOptions | undefined, hardLi
   return options?.maxBytes === undefined ? hardLimit : positiveLimit(options.maxBytes, hardLimit, label);
 }
 
-export function runtimeArchiveLimits(overrides?: Partial<RuntimeArchiveLimits>): RuntimeArchiveLimits {
+export function runtimeArchiveLimits(overrides?: RuntimeArchiveOptions): RuntimeArchiveLimits {
+  const maxExpandedBytes = overrides?.profile === "process"
+    ? PROCESS_MAX_ARCHIVE_EXPANDED_BYTES : RUNTIME_ARCHIVE_LIMITS.maxExpandedBytes;
   return {
     maxEntries: overrides?.maxEntries === undefined
       ? RUNTIME_ARCHIVE_LIMITS.maxEntries
@@ -136,15 +143,15 @@ export function runtimeArchiveLimits(overrides?: Partial<RuntimeArchiveLimits>):
       ? RUNTIME_ARCHIVE_LIMITS.maxEntryBytes
       : positiveLimit(overrides.maxEntryBytes, RUNTIME_ARCHIVE_LIMITS.maxEntryBytes, "Runtime archive per-file limit"),
     maxExpandedBytes: overrides?.maxExpandedBytes === undefined
-      ? RUNTIME_ARCHIVE_LIMITS.maxExpandedBytes
-      : positiveLimit(overrides.maxExpandedBytes, RUNTIME_ARCHIVE_LIMITS.maxExpandedBytes, "Runtime archive expanded-size limit"),
+      ? maxExpandedBytes
+      : positiveLimit(overrides.maxExpandedBytes, maxExpandedBytes, "Runtime archive expanded-size limit"),
   };
 }
 
 export function assertRuntimeFileBudget(
   files: readonly RuntimeFileDigest[],
   label: string,
-  overrides?: Partial<RuntimeArchiveLimits>,
+  overrides?: RuntimeArchiveOptions,
 ): RuntimeArchiveLimits {
   const limits = runtimeArchiveLimits(overrides);
   if (files.length > limits.maxEntries) {
@@ -200,6 +207,10 @@ export function safeRuntimePath(value: unknown, label = "Runtime path"): string 
 
 const PROCESS_GENERATION_OBJECT = /^times\/jobs\/([^/]+)\/processed-([a-f0-9]{64})\.tar\.gz$/u;
 
+export function runtimeObjectDownloadLimit(objectName: string): number {
+  return PROCESS_GENERATION_OBJECT.test(objectName) ? PROCESS_MAX_DOWNLOAD_BYTES : RUNTIME_MAX_DOWNLOAD_BYTES;
+}
+
 export function processGenerationObjectName(jobIdValue: unknown, sha256Value: unknown): string {
   const jobId = safeJobId(jobIdValue);
   const digest = sha256(sha256Value, "Process generation SHA-256");
@@ -247,7 +258,7 @@ function parseProcessFiles(value: unknown, label: string): RuntimeFileDigest[] {
       sha256: sha256(row.sha256, `${label} file SHA-256 ${index}`),
     };
   });
-  assertRuntimeFileBudget(files, `${label} manifest`);
+  assertRuntimeFileBudget(files, `${label} manifest`, { profile: "process" });
   return files;
 }
 
@@ -265,7 +276,7 @@ function parseProcessArchive(value: unknown, label: string, expectedJobId?: stri
   if (!paths.has(PROCESS_RESULT_OBJECT) || !paths.has(PROCESS_MANIFEST_OBJECT)) {
     throw new Error(`${label} archive is missing its result or memory manifest`);
   }
-  const size = runtimeObjectSize(row.size, `${label} archive size`);
+  const size = runtimeObjectSize(row.size, `${label} archive size`, PROCESS_MAX_DOWNLOAD_BYTES);
   if (size === 0) throw new Error(`${label} archive is empty`);
   return {
     objectName: parsedObject.objectName,
@@ -303,7 +314,7 @@ export function parseRuntimeProcessGeneration(value: unknown, expectedJobId?: st
     const base = parseProcessArchive(row.base, "Runtime Process delta base");
     if (base.objectName === archive.objectName) throw new Error("Runtime Process delta cannot reference itself as its base");
     const stateFiles = parseProcessFiles(row.stateFiles, "Runtime Process effective state");
-    assertRuntimeFileBudget([...base.files, ...archive.files], "Runtime Process delta layers");
+    assertRuntimeFileBudget([...base.files, ...archive.files], "Runtime Process delta layers", { profile: "process" });
     if (stateFiles.some((file) => file.path === PROCESS_MANIFEST_OBJECT)) {
       throw new Error("Runtime Process effective state cannot contain its synthetic memory manifest");
     }
@@ -370,10 +381,10 @@ function nonNegativeInteger(value: unknown, label: string): number {
   return value as number;
 }
 
-function runtimeObjectSize(value: unknown, label: string): number {
+function runtimeObjectSize(value: unknown, label: string, maxBytes = RUNTIME_MAX_DOWNLOAD_BYTES): number {
   const size = nonNegativeInteger(value, label);
-  if (size > RUNTIME_MAX_DOWNLOAD_BYTES) {
-    throw new Error(`${label} exceeds the Runtime download limit of ${RUNTIME_MAX_DOWNLOAD_BYTES} bytes`);
+  if (size > maxBytes) {
+    throw new Error(`${label} exceeds the Runtime download limit of ${maxBytes} bytes`);
   }
   return size;
 }

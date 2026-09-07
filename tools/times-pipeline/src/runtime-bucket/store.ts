@@ -8,13 +8,13 @@ import { pipeline } from "node:stream/promises";
 import { pathToFileURL } from "node:url";
 import { retryTransientHf } from "../hf.js";
 import {
-  RUNTIME_MAX_DOWNLOAD_BYTES,
   RUNTIME_MAX_TEXT_BYTES,
   RUNTIME_PREFIX,
   type RuntimeObjectInfo,
   type RuntimeObjectStore,
   type RuntimeReadOptions,
   runtimeReadLimit,
+  runtimeObjectDownloadLimit,
   safeRuntimePath,
 } from "./types.js";
 
@@ -118,7 +118,7 @@ export class HfRuntimeBucket implements RuntimeObjectStore {
   async download(objectNameValue: string, localFileValue: string, options?: RuntimeReadOptions): Promise<boolean> {
     const objectName = runtimeObjectName(objectNameValue);
     const localFile = path.resolve(localFileValue);
-    const maxBytes = runtimeReadLimit(options, RUNTIME_MAX_DOWNLOAD_BYTES, "Runtime download byte limit");
+    const maxBytes = runtimeReadLimit(options, runtimeObjectDownloadLimit(objectName), "Runtime download byte limit");
     try {
       return await retryTransientHf(async () => {
         const blob = await downloadFile({
