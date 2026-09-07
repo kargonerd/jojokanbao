@@ -1068,7 +1068,7 @@ export function BookReader({
               ? <path d="m23 9 1.75 1.75 3.25-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="square" />
               : <path d="M26 5v7M22.5 8.5h7" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" />}
           </svg>
-          <span className="hidden sm:inline">{onBookshelf ? "已在书架" : "加入书架"}</span>
+          <span>{onBookshelf ? "已在书架" : "加入书架"}</span>
         </button>}
         <span className="min-w-0 flex-1" aria-hidden="true" />
         <span className="hidden max-w-[42%] truncate text-muted md:block">{chapters[activeChapterIndex]?.title}</span>
@@ -1077,11 +1077,10 @@ export function BookReader({
     </header>
 
     {expandedImage && <div role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setExpandedImage(undefined)} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-5 md:p-10">
-      <button type="button" onClick={() => setExpandedImage(undefined)} className="absolute right-5 top-5 border border-white/40 bg-black/20 px-3 py-2 font-sans text-xs text-white hover:border-white" aria-label="关闭图片预览">关闭</button>
-      <figure className="m-0 flex max-h-full max-w-full flex-col items-center gap-3" onClick={(event) => event.stopPropagation()}>
-        <img src={expandedImage.src} alt={expandedImage.alt || "放大图片"} className="max-h-[88vh] max-w-[94vw] cursor-zoom-out object-contain shadow-[0_20px_70px_rgba(0,0,0,.35)]" />
-        {expandedImage.alt && expandedImage.alt !== "正文图片" && <figcaption className="font-sans text-xs text-white/75">{expandedImage.alt}</figcaption>}
-      </figure>
+      <button type="button" onClick={() => setExpandedImage(undefined)} className="flex h-full w-full cursor-zoom-out flex-col items-center justify-center gap-3 border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-white" aria-label="关闭图片预览">
+        <img src={expandedImage.src} alt={expandedImage.alt || "放大图片"} className="max-h-[80dvh] max-w-full cursor-zoom-out object-contain" />
+        {expandedImage.alt && expandedImage.alt !== "正文图片" && <span className="font-sans text-xs text-white/75">{expandedImage.alt}</span>}
+      </button>
     </div>}
 
     {mode === "scroll" ? <div ref={scrollRef} data-book-reading-surface onScroll={updateScrollProgress} onClick={handleReaderClick} onPointerDown={startReaderTap} onPointerMove={moveReaderTap} onPointerCancel={cancelReaderTap} onPointerUp={capturePointerTextSelection} onKeyUp={captureTextSelection} className="h-[calc(100%-48px)] overflow-y-auto">

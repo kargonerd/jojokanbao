@@ -1,10 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
   ARCHIVE_PUBLICATIONS,
-  dateToIssueId,
   getLatestRmrbAvailableDate,
-  isArchiveNewspaperIssueAvailable,
-  issueIdToDate,
   type ArchivePublicationSummary,
 } from "@jojo/content";
 import { useNavigation, type NavigationProp } from "@react-navigation/native";
@@ -12,13 +9,15 @@ import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BookCoverCard } from "../components/BookCoverCard";
-import { IssueDateModal } from "../components/IssueDateModal";
+import { BookshelfButton } from "../components/BookshelfButton";
+import { useBookshelf } from "../account/useBookshelf";
 import { PeriodicalCoverCard } from "../components/PeriodicalCoverCard";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import {
   fuzzyBookTitleScore,
   loadMobileBooks,
+  loadMobileBookVolumes,
   resolveMobileBookOpenTarget,
   type MobileBook,
 } from "../lib/books";
@@ -40,12 +39,8 @@ const libraryTypes: Array<{ id: LibraryType; label: string; icon: keyof typeof I
   { id: "book", label: "书籍", icon: "book-outline" },
 ];
 
-const newspaperBounds = {
-  rmrb: { min: "19460515", max: () => getLatestRmrbAvailableDate() },
-  ckxx: { min: "19570301", max: () => "19981231" },
-} as const;
-
 export function LibraryScreen() {
+  const shelf = useBookshelf();
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const { width: viewportWidth } = useWindowDimensions();
   const hapticsEnabled = useMobileStore((state) => state.hapticsEnabled);
@@ -55,8 +50,6 @@ export function LibraryScreen() {
   const [books, setBooks] = useState<MobileBook[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [datePublication, setDatePublication] = useState<ArchivePublicationSummary | null>(null);
-  const [selectedDate, setSelectedDate] = useState(issueIdToDate(getLatestRmrbAvailableDate()));
   const columnCount = getLibraryColumnCount(viewportWidth);
   const cellWidth = getLibraryCellWidth(viewportWidth, columnCount);
 
@@ -99,13 +92,6 @@ export function LibraryScreen() {
     navigation.navigate("Reader", { publication: publication.id, issueId });
   }
 
-  function pickDate(publication: ArchivePublicationSummary) {
-    if (publication.id !== "rmrb" && publication.id !== "ckxx") return;
-    const initial = publication.id === "rmrb" ? getLatestRmrbAvailableDate() : publication.defaultIssueId;
-    setSelectedDate(issueIdToDate(initial));
-    setDatePublication(publication);
-  }
-
   async function openBook(book: MobileBook) {
     void impactHaptic(hapticsEnabled);
     try {
@@ -125,9 +111,6 @@ export function LibraryScreen() {
     }
   }
 
-  const bounds = datePublication?.id === "rmrb" || datePublication?.id === "ckxx"
-    ? newspaperBounds[datePublication.id]
-    : newspaperBounds.rmrb;
   const busy = loading;
 
   return (
@@ -166,6 +149,7 @@ export function LibraryScreen() {
       </View>
 
       {error ? <Text accessibilityRole="alert" style={[styles.notice, { color: theme.red, borderColor: theme.rule, fontFamily: theme.sans }]}>{error}</Text> : null}
+      {shelf.error ? <Text accessibilityRole="alert" style={[styles.notice, { color: theme.red, borderColor: theme.rule, fontFamily: theme.sans }]}>{shelf.error}</Text> : null}
       <FlatList
         key={`library-${columnCount}`}
         data={items}
@@ -179,10 +163,9 @@ export function LibraryScreen() {
               <PeriodicalCoverCard
                 publication={item.publication}
                 onOpen={() => openPeriodical(item.publication, item.publication.id === "rmrb" ? getLatestRmrbAvailableDate() : item.publication.defaultIssueId)}
-                onPickDate={item.publication.type === "newspaper" ? () => pickDate(item.publication) : undefined}
               />
             ) : (
-              <BookCoverCard
+              <><BookCoverCard
                 book={item.book}
                 title={item.book.title}
                 subtitle={item.book.itemCount && item.book.itemCount > 1
@@ -190,6 +173,21 @@ export function LibraryScreen() {
                   : "单册 · 直接阅读"}
                 onPress={() => void openBook(item.book)}
               />
+              <BookshelfButton
+                label={item.book.itemCount && item.book.itemCount > 1 ? "选择分册" : undefined}
+                added={shelf.entries.some((entry) => entry.datasetId === item.book.datasetId)}
+                busy={shelf.busyKey === item.book.datasetId}
+                disabled={(item.book.itemCount ?? 0) <= 1 && (shelf.loading || Boolean(shelf.busyKey))}
+                onPress={() => {
+                  if (item.book.itemCount && item.book.itemCount > 1) { navigation.navigate("BookDetails", { book: item.book }); return; }
+                  void shelf.toggle(item.book.datasetId, async () => {
+                    const volumes = await loadMobileBookVolumes(item.book);
+                    if (volumes.length !== 1) { navigation.navigate("BookDetails", { book: item.book }); return; }
+                    const volume = volumes[0]!;
+                    return { datasetId: item.book.datasetId, itemId: volume.itemId, title: volume.title };
+                  });
+                }}
+              /></>
             )}
           </View>
         )}
@@ -210,23 +208,6 @@ export function LibraryScreen() {
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
         overScrollMode={IS_EINK_RELEASE ? "never" : "always"}
-      />
-      <IssueDateModal
-        publication={datePublication}
-        value={selectedDate}
-        minimumDate={issueIdToDate(bounds.min)}
-        maximumDate={issueIdToDate(bounds.max())}
-        isDateAvailable={(date) => datePublication?.id === "rmrb" || datePublication?.id === "ckxx"
-          ? isArchiveNewspaperIssueAvailable(datePublication.id, dateToIssueId(date))
-          : false}
-        onChange={setSelectedDate}
-        onClose={() => setDatePublication(null)}
-        onConfirm={() => {
-          if (!datePublication) return;
-          const publication = datePublication;
-          setDatePublication(null);
-          openPeriodical(publication, dateToIssueId(selectedDate));
-        }}
       />
     </SafeAreaView>
   );

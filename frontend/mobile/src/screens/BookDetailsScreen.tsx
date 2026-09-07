@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BookCoverCard } from "../components/BookCoverCard";
+import { BookshelfButton } from "../components/BookshelfButton";
+import { useBookshelf } from "../account/useBookshelf";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import { fuzzyBookTitleScore, loadMobileBookVolumes, type MobileBookVolume } from "../lib/books";
 import { impactHaptic } from "../lib/haptics";
@@ -15,6 +17,7 @@ import { mobileTheme } from "../theme/tokens";
 type Props = NativeStackScreenProps<RootStackParamList, "BookDetails">;
 
 export function BookDetailsScreen({ route, navigation }: Props) {
+  const shelf = useBookshelf();
   const { book } = route.params;
   const { width: viewportWidth } = useWindowDimensions();
   const theme = mobileTheme;
@@ -72,6 +75,7 @@ export function BookDetailsScreen({ route, navigation }: Props) {
         </View>
       ) : null}
       {error ? <Text accessibilityRole="alert" style={[styles.notice, { color: theme.red, borderColor: theme.rule, fontFamily: theme.sans }]}>{error}</Text> : null}
+      {shelf.error ? <Text accessibilityRole="alert" style={[styles.notice, { color: theme.red, borderColor: theme.rule, fontFamily: theme.sans }]}>{shelf.error}</Text> : null}
       <FlatList
         key={`volumes-${listColumnCount}`}
         data={visibleVolumes}
@@ -94,6 +98,12 @@ export function BookDetailsScreen({ route, navigation }: Props) {
                   bookTitle: book.title,
                 });
               }}
+            />
+            <BookshelfButton
+              added={shelf.entries.some((entry) => entry.datasetId === book.datasetId && entry.itemId === item.itemId)}
+              busy={shelf.busyKey === item.itemId}
+              disabled={shelf.loading || Boolean(shelf.busyKey)}
+              onPress={() => void shelf.toggle(item.itemId, async () => ({ datasetId: book.datasetId, itemId: item.itemId, title: item.title }))}
             />
           </View>
         )}

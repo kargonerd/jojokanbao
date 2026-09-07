@@ -557,12 +557,28 @@ describe("BookReader", () => {
     }
   });
 
-  it("opens book images in a dismissible full-screen preview", () => {
+  it.each([390, 1200])("dismisses image previews by tapping the image, backdrop or Escape at width %s", (width) => {
+    window.innerWidth = width;
+    // Both mobile web and the shared desktop reader use this preview.
     renderReader();
     fireEvent.click(screen.getByRole("img", { name: "测试插图" }));
-    expect(screen.getByRole("dialog", { name: "图片预览" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "关闭图片预览" }));
+    const preview = screen.getByRole("dialog", { name: "图片预览" });
+    expect(within(preview).queryByText("关闭")).toBeNull();
+    fireEvent.click(within(preview).getByRole("img", { name: "测试插图" }));
     expect(screen.queryByRole("dialog", { name: "图片预览" })).toBeNull();
+    fireEvent.click(screen.getByRole("img", { name: "测试插图" }));
+    fireEvent.click(screen.getByRole("dialog", { name: "图片预览" }));
+    expect(screen.queryByRole("dialog", { name: "图片预览" })).toBeNull();
+    fireEvent.click(screen.getByRole("img", { name: "测试插图" }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "图片预览" })).toBeNull();
+  });
+
+  it.each([390, 1200])("keeps an explicit bookshelf label at width %s", (width) => {
+    window.innerWidth = width;
+    renderReader();
+    const label = within(screen.getByRole("button", { name: "加入书架" })).getByText("加入书架");
+    expect(label.className).not.toContain("hidden");
   });
 
   it("shows contextual actions for selected text and copies without leaving the reader", async () => {

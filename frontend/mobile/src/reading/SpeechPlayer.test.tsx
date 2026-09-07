@@ -7,6 +7,7 @@ import { NativeSpeechPlayer } from "./SpeechPlayer";
 const mocks = vi.hoisted(() => ({
   eInk: false, focused: true, user: { id: "reader" } as { id: string } | null,
   enabled: true,
+  navigate: vi.fn(), shelfContains: vi.fn(async () => false), setShelf: vi.fn(async () => undefined),
   state: { textScale: 1, bookLineHeight: 1.95, bookReadingMode: "paged", bookPaperColor: "white",
     bookFirstLineIndent: true, hapticsEnabled: false, leftTapNext: false, recentBooks: [], bookAnnotations: [] },
   playback: { open: vi.fn(), close: vi.fn(), toggle: vi.fn(), seek: vi.fn(), selectChapter: vi.fn(),
@@ -50,7 +51,7 @@ vi.mock("./featureFlag", () => ({ useSpeechFlagStore: (select?: (state: unknown)
 } }));
 vi.mock("./useSpeechPlayback", () => ({ useSpeechPlayback: () => mocks.playback }));
 vi.mock("./speech", () => ({ speechTime: (value: number) => String(value), mobileSpeechSegments: () => ["正文"] }));
-vi.mock("../account/accountData", () => ({ mobileBookshelfContains: async () => false, setMobileBookshelf: vi.fn() }));
+vi.mock("../account/accountData", () => ({ mobileBookshelfContains: mocks.shelfContains, setMobileBookshelf: mocks.setShelf }));
 vi.mock("../components/ReaderEnvironment", () => ({ ReaderEnvironment: () => null }));
 vi.mock("../components/ReaderNavigationSheet", () => ({ ReaderNavigationSheet: () => null }));
 vi.mock("../components/ReaderSelectionToolbar", () => ({ ReaderSelectionToolbar: () => null }));
@@ -59,7 +60,7 @@ vi.mock("../lib/bookAgent", () => ({ askMobileBookAgent: vi.fn() }));
 vi.mock("../lib/bookDocument", () => ({ createBookDocument: () => "<p>正文</p>" }));
 vi.mock("../lib/books", () => ({
   loadMobileBookItem: async () => ({ manifest: { title: "测试书", content: { chapters: [{ id: "c1", title: "第一章" }] } }, volume: { itemId: "book", title: "测试书" } }),
-  loadMobileBookChapter: async () => ({ fragment: { title: "第一章", body: { format: "html", value: "<p>正文</p>" } } }),
+  loadMobileBookChapter: async () => ({ assetUrls: { portrait: "data:image/png;base64,test" }, fragment: { title: "第一章", body: { format: "html", value: "<p>正文</p>" } } }),
   loadMobileBookCover: async () => undefined, resolveLegacyBookResume: () => undefined,
 }));
 vi.mock("../lib/haptics", () => ({ selectionHaptic: vi.fn() }));
@@ -76,7 +77,7 @@ async function readerTap() {
 }
 async function tick() { await act(async () => { vi.advanceTimersByTime(4000); }); }
 async function renderReader() {
-  const props = { route: { params: { datasetId: "books", itemKey: "book", title: "测试书" } }, navigation: {} } as ComponentProps<typeof BookReaderScreen>;
+  const props = { route: { params: { datasetId: "books", itemKey: "book", title: "测试书" } }, navigation: { navigate: mocks.navigate } } as unknown as ComponentProps<typeof BookReaderScreen>;
   await act(async () => { view = create(<BookReaderScreen {...props} />); });
 }
 
@@ -84,11 +85,44 @@ beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.useFakeTimers(); vi.clearAllMocks();
   mocks.eInk = false; mocks.focused = true; mocks.enabled = true; mocks.user = { id: "reader" };
+  mocks.shelfContains.mockResolvedValue(false); mocks.setShelf.mockResolvedValue(undefined);
 });
 afterEach(async () => { if (view) await act(async () => view.unmount()); vi.useRealTimers(); });
 
 describe.each([false, true])("reader listening visibility (eInk=%s)", (eInk) => {
   beforeEach(() => { mocks.eInk = eInk; });
+  it("offers a labelled bookshelf action without enabling listening, including login and retry", async () => {
+    mocks.enabled = false;
+    mocks.shelfContains.mockRejectedValueOnce(new Error("offline"));
+    await renderReader();
+    const add = view.root.findByProps({ accessibilityLabel: "加入书架" });
+    expect(add.findAllByType("span").some((text) => text.props.children === "加入书架")).toBe(true);
+    await press("加入书架");
+    expect(mocks.setShelf).toHaveBeenCalledWith({ datasetId: "books", itemId: "book", title: "测试书", added: true });
+    await press("移出书架");
+    expect(mocks.setShelf).toHaveBeenLastCalledWith({ datasetId: "books", itemId: "book", title: "测试书", added: false });
+    mocks.user = null;
+    await act(async () => view.unmount());
+    await renderReader();
+    await press("加入书架");
+    expect(mocks.navigate).toHaveBeenCalledWith("Account");
+  });
+
+  it("closes image previews from the full image surface or Android back without changing reader chrome", async () => {
+    await renderReader();
+    const openImage = async () => act(async () => view.root.findByProps({ testID: "reader-webview" }).props.onMessage({ nativeEvent: { data: JSON.stringify({ type: "reader-image", assetId: "portrait" }) } }));
+    await openImage();
+    const surface = view.root.findByProps({ accessibilityLabel: "关闭图片预览" });
+    expect(surface.props.style).toMatchObject({ flex: 1 });
+    expect(surface.findByType("img").parent?.props.pointerEvents).toBe("none");
+    expect(surface.findAllByProps({ name: "close" })).toHaveLength(0);
+    await press("关闭图片预览");
+    expect(view.root.findAllByType("dialog")).toHaveLength(0);
+    expect(view.root.findAllByProps({ accessibilityLabel: "返回书籍" })).toHaveLength(1);
+    await openImage();
+    await act(async () => view.root.findByType("dialog").props.onRequestClose());
+    expect(view.root.findAllByType("dialog")).toHaveLength(0);
+  });
   it("keeps the expanded player open beyond the former 3.2-second reader timeout", async () => {
     await renderReader();
     await press("打开听读播放器");

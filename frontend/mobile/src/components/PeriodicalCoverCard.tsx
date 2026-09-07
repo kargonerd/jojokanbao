@@ -15,11 +15,9 @@ export const publicationImages: Record<ArchivePublicationName, ImageSourcePropTy
 export const PeriodicalCoverCard = memo(function PeriodicalCoverCard({
   publication,
   onOpen,
-  onPickDate,
 }: {
   publication: ArchivePublicationSummary;
   onOpen: () => void;
-  onPickDate?: () => void;
 }) {
   const theme = mobileTheme;
   return (
@@ -36,11 +34,6 @@ export const PeriodicalCoverCard = memo(function PeriodicalCoverCard({
         <Text numberOfLines={1} style={[styles.title, { color: theme.ink, fontFamily: theme.serif }]}>{publication.title}</Text>
         <Text numberOfLines={1} style={[styles.subtitle, { color: theme.muted, fontFamily: theme.sans }]}>{publication.kind} · {publication.years}</Text>
       </Pressable>
-      {onPickDate ? (
-        <Pressable accessibilityRole="button" accessibilityLabel={`选择${publication.title}日期`} onPress={onPickDate} hitSlop={6}>
-          <Text style={[styles.date, { color: theme.red, fontFamily: theme.sans }]}>选择日期</Text>
-        </Pressable>
-      ) : null}
     </View>
   );
 });
@@ -53,5 +46,4 @@ const styles = StyleSheet.create({
   eInkCover: { filter: "grayscale(1) contrast(1.25)" },
   title: { marginTop: 8, fontSize: 13, lineHeight: 18, fontWeight: "900" },
   subtitle: { marginTop: 2, fontSize: 9 },
-  date: { marginTop: 5, fontSize: 10, fontWeight: "800" },
 });
