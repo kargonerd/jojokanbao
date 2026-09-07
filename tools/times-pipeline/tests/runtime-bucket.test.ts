@@ -31,6 +31,13 @@ import {
 import {
   pendingJobObjectName,
   PROCESS_MEMORY_OBJECT,
+  PROCESS_MAX_ARCHIVE_EXPANDED_BYTES,
+  PROCESS_MAX_DOWNLOAD_BYTES,
+  RUNTIME_MAX_ARCHIVE_ENTRY_BYTES,
+  RUNTIME_MAX_ARCHIVE_EXPANDED_BYTES,
+  RUNTIME_MAX_DOWNLOAD_BYTES,
+  assertRuntimeFileBudget,
+  parseRuntimeProcessGeneration,
   type RuntimeJobStatus,
   type RuntimeObjectInfo,
   type RuntimeObjectStore,
@@ -128,6 +135,23 @@ async function rawFixture(root: string): Promise<string> {
 }
 
 describe("Runtime archive transport", () => {
+  it("gives Process a bounded multi-day budget without raising the Raw limits", () => {
+    const files = Array.from({ length: RUNTIME_MAX_ARCHIVE_EXPANDED_BYTES / RUNTIME_MAX_ARCHIVE_ENTRY_BYTES + 1 }, (_, index) => ({
+      path: `raw/ap/assets/${index}.jpg`, size: RUNTIME_MAX_ARCHIVE_ENTRY_BYTES, sha256: "a".repeat(64),
+    }));
+    expect(() => assertRuntimeFileBudget(files, "Raw")).toThrow(`beyond ${RUNTIME_MAX_ARCHIVE_EXPANDED_BYTES}`);
+    expect(() => assertRuntimeFileBudget(files, "Process", { profile: "process" })).not.toThrow();
+    expect(() => assertRuntimeFileBudget(files, "Raw", { maxExpandedBytes: PROCESS_MAX_ARCHIVE_EXPANDED_BYTES }))
+      .toThrow(`no greater than ${RUNTIME_MAX_ARCHIVE_EXPANDED_BYTES}`);
+    expect(() => assertRuntimeFileBudget(files, "Process", { profile: "process", maxExpandedBytes: PROCESS_MAX_ARCHIVE_EXPANDED_BYTES + 1 }))
+      .toThrow(`no greater than ${PROCESS_MAX_ARCHIVE_EXPANDED_BYTES}`);
+    const excessiveFiles = Array.from({ length: PROCESS_MAX_ARCHIVE_EXPANDED_BYTES / RUNTIME_MAX_ARCHIVE_ENTRY_BYTES + 1 }, (_, index) => ({
+      path: `raw/ap/assets/${index}.jpg`, size: RUNTIME_MAX_ARCHIVE_ENTRY_BYTES, sha256: "a".repeat(64),
+    }));
+    expect(() => assertRuntimeFileBudget(excessiveFiles, "Process", { profile: "process" }))
+      .toThrow(`beyond ${PROCESS_MAX_ARCHIVE_EXPANDED_BYTES}`);
+  });
+
   it("round-trips an exact file set and rejects unexpected archive entries", async () => {
     const source = await temporaryRoot();
     const output = await temporaryRoot();
@@ -173,6 +197,22 @@ describe("Runtime archive transport", () => {
 });
 
 describe("Runtime Bucket reads", () => {
+  it("allows the larger download budget only for content-addressed Process archives", async () => {
+    const root = await temporaryRoot();
+    const bucket = new HfRuntimeBucket("jojo/runtime", "token");
+    const objectName = `times/jobs/123/processed-${"a".repeat(64)}.tar.gz`;
+    hfHub.downloadFile.mockResolvedValueOnce(new Blob(["done"]));
+    await expect(bucket.download(objectName, path.join(root, "process.tar.gz"), { maxBytes: PROCESS_MAX_DOWNLOAD_BYTES }))
+      .resolves.toBe(true);
+    for (const other of ["times/jobs/123/raw.tar", "times/capture-memory.tar.gz", "times/jobs/123/processed-unverified.tar.gz"]) {
+      await expect(bucket.download(other, path.join(root, "other.tar"), { maxBytes: PROCESS_MAX_DOWNLOAD_BYTES }))
+        .rejects.toThrow(`no greater than ${RUNTIME_MAX_DOWNLOAD_BYTES}`);
+    }
+    await expect(bucket.download(objectName, path.join(root, "process.tar.gz"), { maxBytes: PROCESS_MAX_DOWNLOAD_BYTES + 1 }))
+      .rejects.toThrow(`no greater than ${PROCESS_MAX_DOWNLOAD_BYTES}`);
+    expect(hfHub.downloadFile).toHaveBeenCalledTimes(1);
+  });
+
   it("does not retry corrupt UTF-8 as a network TypeError", async () => {
     const bucket = new HfRuntimeBucket("jojo/runtime", "token");
     hfHub.downloadFile.mockResolvedValueOnce(new Blob([new Uint8Array([0xff])]));
@@ -576,11 +616,13 @@ describe("Runtime memories", () => {
       now: new Date("2026-09-01T12:00:00.000Z"),
       retentionDays: 8,
     });
+    await expect(stat(path.join(work, "45.processed.tar.gz"))).rejects.toMatchObject({ code: "ENOENT" });
     expect(staged.stagedProcess?.files.map((file) => file.path)).toContain(PROCESS_RESULT);
     expect(staged.stagedProcess?.jobIds).toEqual(["45", "46"]);
     expect(statusAfterRuntimeFailure(staged, "B2 temporarily unavailable").state).toBe("ready");
     await publishRuntimeJobStatus({ store, status: staged, workDirectory: work });
     const replay = await restoreRuntimeProcess({ store, output: restored, workDirectory: work, status: staged });
+    await expect(stat(path.join(work, "45.full-download.tar.gz"))).rejects.toMatchObject({ code: "ENOENT" });
     expect(replay).toMatchObject({
       restored: true,
       replay: true,
@@ -674,6 +716,7 @@ describe("Runtime memories", () => {
 
     const replayOutput = await temporaryRoot();
     await restoreRuntimeProcess({ store, output: replayOutput, workDirectory: work, status: second });
+    expect((await readdir(work)).filter((file) => file.endsWith("-download.tar.gz"))).toEqual([]);
     expect(await readFile(path.join(replayOutput, ...assetObject.split("/")))).toEqual(largeAsset);
     expect(await readFile(path.join(replayOutput, "canonical", "ap", "dataset.json"), "utf8")).toBe("{\"revision\":2}\n");
     await expect(stat(path.join(replayOutput, ...translationObject.split("/"))))
@@ -710,6 +753,63 @@ describe("Runtime memories", () => {
     await promoteRuntimeProcess({ store, status: third, workDirectory: work });
     expect(store.objects.has(baseObject)).toBe(true);
     expect(store.objects.has(secondObject)).toBe(false);
+  });
+
+  it("compacts before the base and delta manifest exceed the combined restore budget", async () => {
+    const output = await temporaryRoot();
+    const work = await temporaryRoot();
+    const store = new MemoryStore();
+    const runManifest = await rawFixture(output);
+    const ready = await publishRuntimeJob({ store, output, runManifest, jobId: "budget-1", workDirectory: work });
+    const dataset = path.join(output, "canonical", "ap", "dataset.json");
+    await mkdir(path.dirname(dataset), { recursive: true });
+    const datasetBody = JSON.stringify({ padding: randomBytes(20_000).toString("hex") });
+    await writeFile(dataset, datasetBody);
+    const processResultFile = path.join(work, "budget-result.json");
+    await writeFile(processResultFile, "{\"sources\":[]}\n");
+    const first = await stageRuntimeProcess({
+      store, output, workDirectory: work, status: ready, processResultFile,
+    });
+    await promoteRuntimeProcess({ store, status: first, workDirectory: work });
+
+    // Model a nearly full committed base with expired files absent from the
+    // current retained state, without allocating several GiB in this test.
+    const pointer = JSON.parse((await store.readText(PROCESS_MEMORY_OBJECT))!);
+    const base = parseRuntimeProcessGeneration(pointer.generation);
+    let remaining = PROCESS_MAX_ARCHIVE_EXPANDED_BYTES - 1024
+      - base.files.reduce((sum, file) => sum + file.size, 0);
+    for (let index = 0; remaining > 0; index += 1) {
+      const size = Math.min(remaining, RUNTIME_MAX_ARCHIVE_ENTRY_BYTES);
+      base.files.push({ path: `raw/ap/assets/expired-${index}.jpg`, size, sha256: "e".repeat(64) });
+      remaining -= size;
+    }
+    pointer.generation = parseRuntimeProcessGeneration(base);
+    const previousPointer = Buffer.from(JSON.stringify(pointer));
+    store.objects.set(PROCESS_MEMORY_OBJECT, previousPointer);
+    const secondReady = await publishRuntimeJob({ store, output, runManifest, jobId: "budget-2", workDirectory: work });
+    await writeFile(processResultFile, "{\"sources\":[{\"sourceId\":\"ap\"}]}\n");
+    const uploadsBeforeStage = store.uploads.length;
+    const second = await stageRuntimeProcess({
+      store, output, workDirectory: work, status: secondReady, jobIds: ["budget-2", "budget-3"], processResultFile,
+    });
+    expect(second.stagedProcess?.base).toBeUndefined();
+    expect(second.stagedProcess?.deltaDepth).toBeUndefined();
+    expect(second.stagedProcess?.stateFiles).toBeUndefined();
+    expect(store.uploads.slice(uploadsBeforeStage)).toEqual([second.stagedProcess!.objectName]);
+    expect(store.objects.get(PROCESS_MEMORY_OBJECT)).toEqual(previousPointer);
+    expect(store.objects.has(base.objectName)).toBe(true);
+    await publishRuntimeJobStatus({ store, status: second, workDirectory: work });
+
+    const restored = await temporaryRoot();
+    expect(await restoreRuntimeProcess({ store, output: restored, workDirectory: work, status: second }))
+      .toMatchObject({ restored: true, replay: true, jobIds: ["budget-2", "budget-3"] });
+    expect(await readFile(path.join(restored, "canonical", "ap", "dataset.json"), "utf8")).toBe(datasetBody);
+    expect(await readFile(path.join(restored, ...PROCESS_RESULT.split("/")), "utf8"))
+      .toBe(await readFile(processResultFile, "utf8"));
+
+    await promoteRuntimeProcess({ store, status: second, workDirectory: work });
+    expect(JSON.parse((await store.readText(PROCESS_MEMORY_OBJECT))!).generation.objectName).toBe(second.stagedProcess!.objectName);
+    expect(store.objects.has(base.objectName)).toBe(false);
   });
 
   it("never overwrites the committed generation during a partial-job retry", async () => {

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
+import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import * as tar from "tar";
@@ -11,7 +11,7 @@ import {
   RUNTIME_MAX_TAR_DECOMPRESSION_RATIO,
   RUNTIME_MAX_TAR_META_BYTES,
   assertRuntimeFileBudget,
-  type RuntimeArchiveLimits,
+  type RuntimeArchiveOptions,
   type RuntimeFileDigest,
   runtimeArchiveLimits,
   safeRuntimePath,
@@ -115,13 +115,14 @@ export async function createArchive(
   files: readonly RuntimeFileDigest[],
   archiveValue: string,
   gzip: boolean,
+  limitOverrides?: RuntimeArchiveOptions,
 ): Promise<{ file: string; size: number; sha256: string }> {
   if (files.length === 0) throw new Error("Runtime archive cannot be empty");
   const root = path.resolve(rootValue);
   const archive = path.resolve(archiveValue);
   const paths = files.map((entry) => archiveEntryPath(entry.path, "File", "Runtime archive manifest"));
   if (new Set(paths).size !== paths.length) throw new Error("Runtime archive contains duplicate paths");
-  assertRuntimeFileBudget(files, "Runtime archive manifest");
+  assertRuntimeFileBudget(files, "Runtime archive manifest", limitOverrides);
   await mapConcurrent(files, RUNTIME_FILE_HASH_CONCURRENCY, async (entry) => {
     const file = path.join(root, ...entry.path.split("/"));
     const metadata = await lstat(file);
@@ -152,7 +153,7 @@ export async function createArchive(
 export async function inspectArchive(
   archiveValue: string,
   label = "Runtime archive",
-  limitOverrides?: Partial<RuntimeArchiveLimits>,
+  limitOverrides?: RuntimeArchiveOptions,
 ): Promise<RuntimeArchiveEntry[]> {
   const archive = path.resolve(archiveValue);
   const limits = runtimeArchiveLimits(limitOverrides);
@@ -206,12 +207,12 @@ export async function inspectArchive(
 export async function verifyArchive(
   archiveValue: string,
   expectedFiles: readonly RuntimeFileDigest[],
-  limitOverrides?: Partial<RuntimeArchiveLimits>,
+  limitOverrides?: RuntimeArchiveOptions,
 ): Promise<void> {
   const limits = assertRuntimeFileBudget(expectedFiles, "Runtime archive manifest", limitOverrides);
   const expected = new Map(expectedFiles.map((entry) => [archiveEntryPath(entry.path, "File", "Runtime archive manifest"), entry]));
   if (expected.size !== expectedFiles.length) throw new Error("Runtime archive manifest contains duplicate paths");
-  const actualFiles = await inspectArchive(archiveValue, "Runtime archive", limits);
+  const actualFiles = await inspectArchive(archiveValue, "Runtime archive", { ...limitOverrides, ...limits });
   const seen = new Set<string>();
   for (const actual of actualFiles) {
     const expectedFile = expected.get(actual.path);
@@ -229,12 +230,17 @@ export async function extractVerifiedArchive(
   archiveValue: string,
   outputValue: string,
   expectedFiles: readonly RuntimeFileDigest[],
-  limitOverrides?: Partial<RuntimeArchiveLimits>,
+  limitOverrides?: RuntimeArchiveOptions,
 ): Promise<void> {
   const archive = path.resolve(archiveValue);
   const output = path.resolve(outputValue);
   const limits = assertRuntimeFileBudget(expectedFiles, "Runtime archive manifest", limitOverrides);
-  const temporary = await mkdtemp(path.join(tmpdir(), "jojo-times-runtime-"));
+  // Process uses the output filesystem so verified files can be moved into
+  // place without a second multi-GiB copy. Validation still precedes all writes
+  // to the output state.
+  const processRestore = limitOverrides?.profile === "process";
+  if (processRestore) await mkdir(path.dirname(output), { recursive: true });
+  const temporary = await mkdtemp(path.join(processRestore ? path.dirname(output) : tmpdir(), "jojo-times-runtime-"));
   try {
     const expected = new Set(expectedFiles.map((entry) => archiveEntryPath(entry.path, "File", "Runtime archive manifest")));
     const expectedDirectories = new Set<string>();
@@ -307,7 +313,8 @@ export async function extractVerifiedArchive(
       const source = path.join(temporary, ...file.path.split("/"));
       const target = path.join(output, ...file.path.split("/"));
       await mkdir(path.dirname(target), { recursive: true });
-      await copyFile(source, target);
+      if (processRestore) await rename(source, target);
+      else await copyFile(source, target);
       return true;
     });
   } finally {

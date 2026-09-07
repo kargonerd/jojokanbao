@@ -119,8 +119,11 @@ times/
 
 `processed-{sha256}.tar.gz` 是在发布 B2 前固化的不可变 Process 结果。完整 generation 包含最近八天处理闭包和
 本轮 `process-result.json`；后续 generation 默认只保存相对稳定基线的累计差量，并在 12 轮或差量超过完整状态
-60% 时自动压成新基线。恢复最多读取基线和差量两个归档。B2 失败或 runner 中断时，下一轮直接重放已固化结果，
+60% 时自动压成新基线；基线与差量（含双方清单）的总字节数或文件数将超过恢复上限时，也会提前合并。
+上传前验证最终 generation，完整基线仍须满足同一归档上限。恢复最多读取基线和差量两个归档。B2 失败或 runner 中断时，下一轮直接重放已固化结果，
 不再次调用翻译或解析。
+Process 多日状态使用独立的 6 GiB 展开预算（两层合计），内容寻址归档下载上限为 7 GiB；Raw 仍为 4 GiB 展开、5 GiB 下载。
+Process 恢复先在输出目录的同一文件系统校验，再移动到位，避免完整状态的第二份复制；下载归档和已上传的打包文件及时删除。
 归档内部仍保存现行 `canonical/{source}/...`，恢复后用于后续 Process；退役的仅是旧 HF Dataset 根目录下的
 同名 `canonical/` 副本，不能据此删除 Runtime Process 归档或本地构建中的 Canonical。
 B2 全部提交并验证后，`process-memory.json` 才指向这个 generation；随后才推进 job 状态。首次没有
