@@ -38,7 +38,7 @@ describe('Desktop shell routes', () => {
 
     expect(screen.getByRole('link', { name: '关于' })).toHaveClass('is-active');
     expect(screen.getByRole('heading', { name: '关于 JOJO 看报' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: '数据下载' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '版权说明' })).toBeInTheDocument();
   });
 
   it('exposes desktop preferences as a normal settings page', () => {

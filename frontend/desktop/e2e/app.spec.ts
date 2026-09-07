@@ -21,7 +21,7 @@ test.describe('Desktop renderer', () => {
 
     await expect(page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '关于' })).toHaveClass(/is-active/);
     await expect(page.getByRole('heading', { name: '关于 JOJO 看报' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: '数据下载' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '版权说明' })).toBeVisible();
   });
 
   test('account entry uses the same shared Web state', async ({ page }) => {

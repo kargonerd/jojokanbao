@@ -245,7 +245,7 @@ describe("app homepage", () => {
     renderAt("/support");
     expect(screen.getByRole("link", { name: "关于" }).className).toContain("is-active");
     expect(screen.getByRole("heading", { name: "关于 JOJO 看报" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "数据下载" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "版权说明" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "打开旧版 JOJO 看报" })).toBeNull();
     expect(screen.queryByRole("link", { name: "GitHub 查看源码" })).toBeNull();
   });

@@ -22,6 +22,7 @@ import {
   type JojoItemManifest,
 } from "@jojo/content";
 import { buildEpub } from "./epub";
+import { isCopyrightChapterTitle, removeCopyrightToc } from "./copyright-chapters";
 import { decodeEbookFile, isEbookPath } from "./ebook";
 import {
   groupBookTitle,
@@ -752,7 +753,13 @@ export async function buildContentPipeline(
       continue;
     }
     importedFiles += 1;
-    const semantic = decoded.chapters.map((chapter) => convertWereadChapter(chapter, diagnostics));
+    // Validate the complete source above before intentionally excluding front matter.
+    // Keep the existing IDs/order so bookmarks and merged volumes do not shift.
+    const removedCopyrightIds = new Set(decoded.chapters
+      .filter((chapter) => isCopyrightChapterTitle(chapter.title)).map((chapter) => chapter.id));
+    const semantic = decoded.chapters
+      .filter((chapter) => !removedCopyrightIds.has(chapter.id))
+      .map((chapter) => convertWereadChapter(chapter, diagnostics));
     let chapters = semantic.map((entry) => entry.chapter);
     const annotations = semantic.flatMap((entry) => entry.annotations);
     const assetCandidates = new Map<string, JojoCanonicalAsset>();
@@ -834,7 +841,7 @@ export async function buildContentPipeline(
     await copyFile(inspectedSource.path, rawTarget);
 
     const parts = buildParts(
-      decoded,
+      { ...decoded, toc: removeCopyrightToc(decoded.toc, removedCopyrightIds) },
       chapters,
       resolvedAssets,
       annotations,

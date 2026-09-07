@@ -105,7 +105,7 @@ test.describe("JOJO Web", () => {
     await expect(page.getByRole("heading", { name: "关于 JOJO 看报" })).toBeVisible();
     await expect(page.getByRole("link", { name: "打开旧版 JOJO 看报" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "GitHub 查看源码" })).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "数据下载" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "版权说明" })).toBeVisible();
   });
 
   test("legacy publication links redirect without losing the page hash", async ({ page }) => {

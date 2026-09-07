@@ -1,11 +1,13 @@
 import { access, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { gunzipSync } from "node:zlib";
 import JSZip from "jszip";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   gunzipJoxJson,
   resolveJoxObject,
+  transformJoxBytes,
   type JojoBookSearchIndex,
   type JojoCatalog,
   type JojoDatasetIndex,
@@ -45,8 +47,9 @@ describe("approved B2 layout", () => {
     const zip = new JSZip();
     zip.file("mimetype", "application/epub+zip");
     zip.file("META-INF/container.xml", `<?xml version="1.0"?><container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>`);
-    zip.file("OEBPS/content.opf", `<?xml version="1.0"?><package xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>测试书</dc:title><dc:creator>作者</dc:creator><dc:identifier>book-id</dc:identifier><dc:language>zh-CN</dc:language></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="c1" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c1"/></spine></package>`);
-    zip.file("OEBPS/nav.xhtml", `<html xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><ol><li><a href="chapter.xhtml">第一章</a></li></ol></nav></body></html>`);
+    zip.file("OEBPS/content.opf", `<?xml version="1.0"?><package xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>测试书</dc:title><dc:creator>作者</dc:creator><dc:identifier>book-id</dc:identifier><dc:language>zh-CN</dc:language></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="c0" href="copyright.xhtml" media-type="application/xhtml+xml"/><item id="c1" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c0"/><itemref idref="c1"/></spine></package>`);
+    zip.file("OEBPS/nav.xhtml", `<html xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><ol><li><a href="copyright.xhtml">版权信息</a></li><li><a href="chapter.xhtml">第一章</a></li></ol></nav></body></html>`);
+    zip.file("OEBPS/copyright.xhtml", `<html><body><h1>版权信息</h1><p>本书由出版社授权微信读书进行制作与发行</p><p>版权所有·侵权必究</p></body></html>`);
     zip.file("OEBPS/chapter.xhtml", `<html><body><h1>第一章</h1><p>正文</p></body></html>`);
     const source = path.join(sourceDirectory, "undefined.epub");
     await writeFile(source, await zip.generateAsync({ type: "uint8array" }));
@@ -102,6 +105,9 @@ describe("approved B2 layout", () => {
       object: "search/text.jox",
     });
     expect(manifest).toMatchObject({ publicationStatus: "published", access: "authenticated" });
+    expect(manifest.content.chapters).toHaveLength(1);
+    expect(JSON.stringify(manifest.content)).not.toContain("版权信息");
+    expect(manifest.metadata.authors).toEqual(["作者"]);
     const searchObject = resolveJoxObject(manifestObject, manifest.search!.object);
     const search = await gunzipJoxJson<JojoBookSearchIndex>(
       new Uint8Array(await readFile(path.join(output, "delivery", ...searchObject.split("/")))),
@@ -114,6 +120,17 @@ describe("approved B2 layout", () => {
     expect(search.blocks).toEqual(expect.arrayContaining([
       expect.objectContaining({ targetId: expect.any(String), text: "正文" }),
     ]));
+    const canonical = gunzipSync(await readFile(path.join(output, report.itemsBuilt[0]!.canonicalObject))).toString("utf8");
+    const hf = gunzipSync(await readFile(path.join(output, "huggingface/ce-shi-shu/data/full-book.json.gz"))).toString("utf8");
+    const searchDocuments = gunzipSync(await readFile(path.join(output, "search/documents.jsonl.gz"))).toString("utf8");
+    const exportObject = resolveJoxObject(manifestObject, manifest.exports[0]!.object);
+    const epub = await JSZip.loadAsync(transformJoxBytes(await readFile(path.join(output, "delivery", exportObject)), exportObject));
+    const xhtml = await Promise.all(epub.file(/\.xhtml$/).map((file) => file.async("string")));
+    for (const text of [canonical, hf, searchDocuments, JSON.stringify(search), xhtml.join("\n")]) {
+      expect(text).not.toMatch(/版权信息|授权微信读书|版权所有|侵权必究/);
+      expect(text).toContain("正文");
+    }
+    expect(await readFile(path.join(output, "raw/epub/测试书--book-id.epub"))).toEqual(await readFile(source));
     expect((await validatePipelineOutput(output)).errors).toEqual([]);
   });
 });

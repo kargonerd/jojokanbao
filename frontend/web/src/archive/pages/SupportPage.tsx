@@ -3,30 +3,6 @@ import zfbImg from "../assets/zfb.png";
 import { rollout } from "../../rollout";
 import { Link } from "react-router-dom";
 
-const downloads = [
-  { name: "人民日报", links: [
-    { label: "OneDrive下载", url: "https://1drv.ms/u/s!Aj2JC1hBTlqzh8AE964HD8Mc6HAzjQ?e=QO8bmf" },
-    { label: "OneDrive备用下载", url: "https://filesshare-my.sharepoint.com/:f:/g/personal/sun_filesshare_onmicrosoft_com/EsQTAcYn4WFHrqXY0YalQEIB1hin6BxrfKof5iq4JeC93w?e=h3vmfC" },
-    { label: "夸克网盘下载", url: "https://pan.quark.cn/s/e1bccf36d345" },
-  ]},
-  { name: "参考消息", links: [
-    { label: "OneDrive下载", url: "https://1drv.ms/u/s!Aj2JC1hBTlqzh8AD4aXgZxiLlXtAFQ?e=BQxZoZ" },
-    { label: "夸克网盘下载", url: "https://pan.quark.cn/s/60ad563e7939" },
-  ]},
-  { name: "红旗杂志", links: [
-    { label: "OneDrive下载", url: "https://1drv.ms/u/s!Aj2JC1hBTlqzh8AGcjcraz5iymoHbQ?e=nnw50i" },
-    { label: "夸克网盘下载", url: "https://pan.quark.cn/s/98470c9d1908" },
-  ]},
-  { name: "人民画报", links: [
-    { label: "OneDrive下载", url: "https://1drv.ms/f/s!Aj2JC1hBTlqzkud_9htgwD5G2zOCjg?e=iJ42bO" },
-    { label: "夸克网盘下载", url: "https://pan.quark.cn/s/eeb9d114304f" },
-  ]},
-  { name: "世界知识", links: [
-    { label: "OneDrive下载", url: "https://1drv.ms/f/s!Aj2JC1hBTlqzld1xkycRNnHRKXQqXw?e=eWSdrC" },
-    { label: "夸克网盘下载", url: "https://pan.quark.cn/s/68c2c60ab36b" },
-  ]},
-];
-
 export function SupportPage({ platformRedesign = rollout.platformRedesign }: { platformRedesign?: boolean }) {
   return (
     <div className={`h-full overflow-y-auto ${platformRedesign ? "bg-[var(--app-canvas)]" : "bg-paper"}`}>
@@ -69,22 +45,6 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
             </li>
           </ul>
 
-          {/* 数据下载 */}
-          <h1 className="text-2xl font-bold tracking-wider text-ink border-t border-rule-dark border-b border-b-rule pt-2.5 pb-2.5 mt-7 mb-4">数据下载</h1>
-          <div className="space-y-3">
-            {downloads.map((d) => (
-              <p key={d.name} className="leading-8 text-ink/80">
-                <strong className="text-red mr-1">{d.name}：</strong>
-                {d.links.map((link, i) => (
-                  <span key={link.url}>
-                    <a href={link.url} target="_blank" rel="noreferrer" className="font-bold">{link.label}</a>
-                    {i < d.links.length - 1 && <span className="mx-2 text-rule">|</span>}
-                  </span>
-                ))}
-              </p>
-            ))}
-          </div>
-
           {/* 捐助 */}
           <h1 className="text-2xl font-bold tracking-wider text-ink border-t border-rule-dark border-b border-b-rule pt-2.5 pb-2.5 mt-7 mb-4">捐助</h1>
           <p className="text-ink/80 leading-8">
@@ -95,6 +55,15 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
           <div className="flex flex-wrap gap-4 mt-4">
             <img src={weixinImg} alt="微信" className="max-w-[240px] border border-rule-dark" />
             <img src={zfbImg} alt="支付宝" className="max-w-[240px] border border-rule-dark" />
+          </div>
+
+          {/* 版权说明 */}
+          <h1 className="text-2xl font-bold tracking-wider text-ink border-t border-rule-dark border-b border-b-rule pt-2.5 pb-2.5 mt-7 mb-4">版权说明</h1>
+          <div className="space-y-3 text-ink/80 leading-8">
+            <p>本站部分内容为公开报刊书籍历史资料扫描整理，仅供个人学习、学术研究使用。</p>
+            <p>报刊书籍文字、图片、版式之著作权归原出版机构及相关著作权人所有。</p>
+            <p>若著作权人发现本站内容侵害自身合法权益，可提供权属证明联系本站，收到通知后我们将及时移除相关资料。</p>
+            <p>未经原权利人许可，请勿转载、复制、二次分发本站内书籍报刊等扫描资料。</p>
           </div>
         </div>
       </div>
