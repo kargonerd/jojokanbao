@@ -1,5 +1,8 @@
 import {
   JoxClient,
+  ResourceCache,
+  browserContentCache,
+  asJojoFragment,
   resolveJoxObject,
   searchJojoBookIndex,
   asJojoBookSearchIndex,
@@ -17,7 +20,7 @@ import {
 import type { RagSearchHit } from "./types";
 
 const CONTENT_CDN = import.meta.env.VITE_CONTENT_CDN_BASE || "https://blacknews.jojokanbao.cn/";
-const client = new JoxClient(CONTENT_CDN);
+const client = new JoxClient(CONTENT_CDN, fetch, new ResourceCache(browserContentCache()));
 let catalogPromise: Promise<JojoCatalog> | undefined;
 const bookSearchPromises = new Map<string, Promise<JojoBookSearchIndex>>();
 const bookCoverPromises = new Map<string, Promise<string | undefined>>();
@@ -60,23 +63,43 @@ export async function loadItem(datasetId: string, itemKey: string): Promise<Load
   if (!item) throw new Error("找不到对应的书籍");
   const manifestObject = resolveJoxObject(dataset.entry.indexObject, item.manifestObject);
   const manifest = asJojoItemManifest(
-    await dataset.client.fetchJson<JojoItemManifest>(manifestObject, undefined, "no-store"),
+    await dataset.client.fetchJson<JojoItemManifest>(manifestObject),
   );
   if (manifest.itemId !== item.itemId) throw new Error("书籍暂时无法读取");
   return { ...dataset, item, manifest, manifestObject };
 }
 
-export async function loadFragment(loaded: LoadedItem, chapterId: string): Promise<JojoFragment> {
+export async function loadFragment(loaded: LoadedItem, chapterId: string, signal?: AbortSignal): Promise<JojoFragment> {
   const chapter = loaded.manifest.content.chapters?.find((candidate) => candidate.id === chapterId);
   if (!chapter) throw new Error("章节不存在");
-  return loaded.client.fetchJson<JojoFragment>(resolveJoxObject(loaded.manifestObject, chapter.object));
+  const fragment = asJojoFragment(await loaded.client.fetchJson<JojoFragment>(resolveJoxObject(loaded.manifestObject, chapter.object), signal, "default", chapter.sha256));
+  if (fragment.itemId !== loaded.manifest.itemId || fragment.fragmentId !== chapter.id) throw new Error("章节内容不匹配");
+  return fragment;
 }
 
-export async function loadAssetUrl(loaded: LoadedItem, assetId: string): Promise<string> {
+export async function loadAssetUrl(loaded: LoadedItem, assetId: string, signal?: AbortSignal): Promise<string> {
   const asset = loaded.manifest.assets.find((candidate) => candidate.id === assetId);
   if (!asset) throw new Error(`资源不存在：${assetId}`);
-  const bytes = await loaded.client.fetchDecodedBytes(resolveJoxObject(loaded.manifestObject, asset.object));
+  const bytes = await loaded.client.fetchDecodedBytes(resolveJoxObject(loaded.manifestObject, asset.object), signal, asset.sha256);
   return URL.createObjectURL(new Blob([bytes.slice().buffer], { type: asset.mediaType }));
+}
+
+export async function prefetchBookChapters(loaded: LoadedItem, chapterId: string, signal: AbortSignal) {
+  const chapters = loaded.manifest.content.chapters ?? [];
+  const index = chapters.findIndex((chapter) => chapter.id === chapterId);
+  if (index < 0) return;
+  for (const chapter of [chapters[index + 1], chapters[index - 1]]) {
+    if (signal.aborted) return;
+    if (!chapter) continue;
+    try {
+      const fragment = await loadFragment(loaded, chapter.id, signal);
+      for (const id of fragment.assetRefs) {
+        if (signal.aborted) return;
+        const asset = loaded.manifest.assets.find((item) => item.id === id);
+        if (asset) await loaded.client.fetchBytes(resolveJoxObject(loaded.manifestObject, asset.object), signal, "default", asset.sha256).catch(() => undefined);
+      }
+    } catch { /* A failed prefetch never blocks the current chapter or a later retry. */ }
+  }
 }
 
 export function loadBookCoverUrl(datasetId: string, itemKey?: string): Promise<string | undefined> {
@@ -92,11 +115,11 @@ export function loadBookCoverUrl(datasetId: string, itemKey?: string): Promise<s
     if (!summary) return undefined;
     const manifestObject = resolveJoxObject(dataset.entry.indexObject, summary.manifestObject);
     const manifest = asJojoItemManifest(
-      await dataset.client.fetchJson<JojoItemManifest>(manifestObject, undefined, "no-store"),
+      await dataset.client.fetchJson<JojoItemManifest>(manifestObject),
     );
     const cover = manifest.assets.find((asset) => asset.type === "image" && asset.role === "cover");
     if (!cover) return undefined;
-    const bytes = await dataset.client.fetchDecodedBytes(resolveJoxObject(manifestObject, cover.object));
+    const bytes = await dataset.client.fetchDecodedBytes(resolveJoxObject(manifestObject, cover.object), undefined, cover.sha256);
     return URL.createObjectURL(new Blob([bytes.slice().buffer], { type: cover.mediaType }));
   })().catch((error: unknown) => {
     bookCoverPromises.delete(cacheKey);
@@ -109,7 +132,8 @@ export function loadBookCoverUrl(datasetId: string, itemKey?: string): Promise<s
 export async function downloadExport(loaded: LoadedItem, exportId: string): Promise<void> {
   const descriptor = loaded.manifest.exports.find((candidate) => candidate.id === exportId);
   if (!descriptor) throw new Error("导出文件不存在");
-  const bytes = await loaded.client.fetchDecodedBytes(resolveJoxObject(loaded.manifestObject, descriptor.object));
+  // A full-book export can be much larger than an interactive chapter or cover.
+  const bytes = await loaded.client.fetchDecodedBytes(resolveJoxObject(loaded.manifestObject, descriptor.object), undefined, descriptor.sha256, 120_000);
   const url = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: descriptor.mediaType }));
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -162,7 +186,8 @@ async function loadBookSearchIndex(loaded: LoadedItem): Promise<JojoBookSearchIn
   const key = `${loaded.manifest.itemId}\0${object}\0${descriptor.sha256}`;
   let promise = bookSearchPromises.get(key);
   if (!promise) {
-    promise = loaded.client.fetchJson<JojoBookSearchIndex>(object).then(asJojoBookSearchIndex);
+    promise = loaded.client.fetchJson<JojoBookSearchIndex>(object, undefined, "default", descriptor.sha256).then(asJojoBookSearchIndex)
+      .catch((error: unknown) => { if (bookSearchPromises.get(key) === promise) bookSearchPromises.delete(key); throw error; });
     bookSearchPromises.set(key, promise);
   }
   const index = await promise;

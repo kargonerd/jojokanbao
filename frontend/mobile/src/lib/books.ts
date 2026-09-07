@@ -1,5 +1,7 @@
 import {
   JoxClient,
+  ResourceCache,
+  abortable,
   asJojoCatalog,
   asJojoBookSearchIndex,
   asJojoDatasetIndex,
@@ -13,6 +15,7 @@ import {
   type JojoItemManifest,
   type JojoTocNode,
 } from "@jojo/content";
+import { mobileContentCache } from "./contentCache";
 
 export interface MobileBook {
   datasetId: string;
@@ -96,10 +99,11 @@ export interface ResolvedMobileAnnotationReference {
 
 const CONTENT_CDN = process.env.EXPO_PUBLIC_CONTENT_CDN_BASE?.trim()
   || "https://blacknews.jojokanbao.cn/";
-const client = new JoxClient(CONTENT_CDN);
+const client = new JoxClient(CONTENT_CDN, (input, init) => fetch(input, init), new ResourceCache(mobileContentCache()));
 let catalogPromise: Promise<MobileBook[]> | undefined;
 const volumePromises = new Map<string, Promise<MobileBookVolume[]>>();
 const coverPromises = new Map<string, Promise<string | undefined>>();
+const loadedCoverUris = new Map<string, string>();
 const searchIndexPromises = new Map<string, Promise<JojoBookSearchIndex>>();
 
 export function fuzzyBookTitleScore(title: string, query: string): number {
@@ -207,6 +211,10 @@ function bytesToBase64(bytes: Uint8Array): string {
   return output;
 }
 
+export function cachedMobileBookCover(book: MobileBook, itemKey?: string): string {
+  return loadedCoverUris.get(`${book.datasetId}:${itemKey ?? ""}`) ?? "";
+}
+
 export function loadMobileBookCover(book: MobileBook, itemKey?: string): Promise<string | undefined> {
   const cacheKey = `${book.datasetId}:${itemKey ?? ""}`;
   let promise = coverPromises.get(cacheKey);
@@ -219,14 +227,17 @@ export function loadMobileBookCover(book: MobileBook, itemKey?: string): Promise
       if (!volume) return undefined;
       const manifestObject = resolveJoxObject(book.indexObject, volume.manifestObject);
       const manifest = asJojoItemManifest(
-        await client.fetchJson<JojoItemManifest>(manifestObject, undefined, "no-store"),
+        await client.fetchJson<JojoItemManifest>(manifestObject),
       );
       const cover = manifest.assets.find((asset) => asset.type === "image" && asset.role === "cover");
       if (!cover) return undefined;
       const object = resolveJoxObject(manifestObject, cover.object);
-      const bytes = await client.fetchDecodedBytes(object);
+      const bytes = await client.fetchDecodedBytes(object, undefined, cover.sha256);
       return `data:${cover.mediaType};base64,${bytesToBase64(bytes)}`;
-    })().catch((error: unknown) => {
+    })().then((uri) => {
+      if (uri) loadedCoverUris.set(cacheKey, uri);
+      return uri;
+    }).catch((error: unknown) => {
       coverPromises.delete(cacheKey);
       throw error;
     });
@@ -235,16 +246,16 @@ export function loadMobileBookCover(book: MobileBook, itemKey?: string): Promise
   return promise;
 }
 
-export async function loadMobileBookItem(datasetId: string, itemKey: string): Promise<LoadedMobileBookItem> {
-  const books = await loadMobileBooks();
+export async function loadMobileBookItem(datasetId: string, itemKey: string, signal?: AbortSignal): Promise<LoadedMobileBookItem> {
+  const books = await abortable(loadMobileBooks(), signal);
   const book = books.find((candidate) => candidate.datasetId === datasetId);
   if (!book) throw new Error("书籍不存在");
-  const volumes = await loadMobileBookVolumes(book);
+  const volumes = await abortable(loadMobileBookVolumes(book), signal);
   const volume = volumes.find((candidate) => candidate.itemKey === itemKey || candidate.itemId === itemKey);
   if (!volume) throw new Error("分卷不存在");
   const manifestObject = resolveJoxObject(book.indexObject, volume.manifestObject);
   const manifest = asJojoItemManifest(
-    await client.fetchJson<unknown>(manifestObject, undefined, "no-store"),
+    await client.fetchJson<unknown>(manifestObject, signal),
   );
   if (manifest.datasetId !== datasetId || manifest.itemId !== volume.itemId) {
     throw new Error("书籍内容格式无效");
@@ -256,11 +267,13 @@ export async function loadMobileBookChapter(
   loaded: LoadedMobileBookItem,
   chapterId: string,
   includeAssets = true,
+  signal?: AbortSignal,
 ): Promise<LoadedMobileBookChapter> {
   const chapter = loaded.manifest.content.chapters?.find((candidate) => candidate.id === chapterId);
   if (!chapter) throw new Error("章节不存在");
   const fragment = asJojoFragment(await client.fetchJson<unknown>(
     resolveJoxObject(loaded.manifestObject, chapter.object),
+    signal, "default", chapter.sha256,
   ));
   if (fragment.itemId !== loaded.manifest.itemId || fragment.fragmentId !== chapter.id) {
     throw new Error("章节内容格式无效");
@@ -270,7 +283,7 @@ export async function loadMobileBookChapter(
     const asset = loaded.manifest.assets.find((candidate) => candidate.id === assetId);
     if (!asset) return undefined;
     try {
-      const bytes = await client.fetchDecodedBytes(resolveJoxObject(loaded.manifestObject, asset.object));
+      const bytes = await client.fetchDecodedBytes(resolveJoxObject(loaded.manifestObject, asset.object), signal, asset.sha256);
       return [assetId, `data:${asset.mediaType};base64,${bytesToBase64(bytes)}`] as const;
     } catch {
       return undefined;
@@ -281,6 +294,17 @@ export async function loadMobileBookChapter(
     if (pair) assetUrls[pair[0]] = pair[1];
   }
   return { fragment, assetUrls };
+}
+
+/** Warm only neighbouring chapters, not the whole book. Failures are retryable on demand. */
+export async function prefetchMobileBookChapters(loaded: LoadedMobileBookItem, chapterId: string, signal: AbortSignal) {
+  const chapters = loaded.manifest.content.chapters ?? [];
+  const index = chapters.findIndex((chapter) => chapter.id === chapterId);
+  if (index < 0) return;
+  for (const chapter of [chapters[index + 1], chapters[index - 1]]) {
+    if (signal.aborted) return;
+    if (chapter) await loadMobileBookChapter(loaded, chapter.id, true, signal).catch(() => undefined);
+  }
 }
 
 function flattenToc(nodes: readonly JojoTocNode[] = []): JojoTocNode[] {
@@ -383,7 +407,8 @@ async function loadMobileBookSearchIndex(loaded: LoadedMobileBookItem): Promise<
   const key = `${loaded.manifest.itemId}\0${object}\0${descriptor.sha256}`;
   let promise = searchIndexPromises.get(key);
   if (!promise) {
-    promise = client.fetchJson<unknown>(object).then(asJojoBookSearchIndex);
+    promise = client.fetchJson<unknown>(object, undefined, "default", descriptor.sha256).then(asJojoBookSearchIndex)
+      .catch((error: unknown) => { if (searchIndexPromises.get(key) === promise) searchIndexPromises.delete(key); throw error; });
     searchIndexPromises.set(key, promise);
   }
   const index = await promise;

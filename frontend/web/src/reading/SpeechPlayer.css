@@ -82,8 +82,8 @@
 .speech-player__artwork img { display: block; width: 100%; height: 100%; position: absolute; object-fit: contain; }
 .is-news .speech-player__artwork { aspect-ratio: 1; }
 .is-news .speech-player__artwork.has-image:not(.is-logo) img { object-fit: cover; }
-.speech-player__artwork.is-logo { background: rgb(255 255 255 / 65%); }
-.speech-player__artwork.is-logo img { padding: 20%; }
+.speech-player__artwork.is-logo { padding: 24px; align-items: center; gap: 18px; background: var(--speech-paper); color: var(--speech-ink); text-align: center; }
+.speech-player__artwork.is-logo img { position: static; width: 24px; height: 24px; }
 .speech-player__identity { grid-column: 2; width: 100%; text-align: left; margin-bottom: 28px; }
 .speech-player__identity p {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -275,6 +275,7 @@
 .speech-mini__cover { display: grid; place-items: center; height: 48px; width: 36px; background: #f4f1ed; flex-shrink: 0; }
 .speech-mini__cover.is-news { width: 48px; }
 .speech-mini__cover img { width: 100%; height: 100%; object-fit: contain; }
+.speech-mini__cover.is-logo img { width: 24px; height: 24px; }
 .speech-mini__identity { flex: 1; min-width: 0; }
 .speech-mini__identity strong, .speech-mini__identity small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .speech-mini__identity strong { font-size: 14px; font-weight: 600; color: #202020; }

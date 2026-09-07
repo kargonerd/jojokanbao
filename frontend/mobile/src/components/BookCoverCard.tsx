@@ -1,7 +1,7 @@
 import { memo, useEffect, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { IS_EINK_RELEASE } from "../config/appVariant";
-import { loadMobileBookCover, type MobileBook } from "../lib/books";
+import { cachedMobileBookCover, loadMobileBookCover, type MobileBook } from "../lib/books";
 import { mobileTheme } from "../theme/tokens";
 
 const coverTones = [
@@ -34,13 +34,13 @@ export const BookCoverCard = memo(function BookCoverCard({
   onPress: () => void;
 }) {
   const theme = mobileTheme;
-  const [imageUri, setImageUri] = useState("");
+  const [imageUri, setImageUri] = useState(() => cachedMobileBookCover(book, itemKey));
   const featured = layout === "featured";
   const tone = IS_EINK_RELEASE ? { background: theme.paper, foreground: theme.ink } : toneFor(`${book.datasetId}:${itemKey ?? ""}`);
 
   useEffect(() => {
     let active = true;
-    setImageUri("");
+    setImageUri(cachedMobileBookCover(book, itemKey));
     void loadMobileBookCover(book, itemKey)
       .then((uri) => { if (active && uri) setImageUri(uri); })
       .catch(() => undefined);

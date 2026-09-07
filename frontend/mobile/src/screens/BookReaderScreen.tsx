@@ -44,6 +44,7 @@ import {
   loadMobileBookCover,
   loadMobileBookItem,
   loadMobileBookVolumes,
+  prefetchMobileBookChapters,
   resolveLegacyBookResume,
   resolveMobileAnnotationReference,
   searchMobileBook,
@@ -113,7 +114,9 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const [loaded, setLoaded] = useState<LoadedMobileBookItem>();
   const [chapter, setChapter] = useState<LoadedMobileBookChapter>();
   const [activeChapterId, setActiveChapterId] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [itemLoading, setItemLoading] = useState(true);
+  const [chapterLoading, setChapterLoading] = useState(false);
+  const loading = itemLoading || chapterLoading;
   const [error, setError] = useState("");
   const [chromeVisible, setChromeVisible] = useState(true);
   const [activeTool, setActiveTool] = useState<ReaderTool | null>(null);
@@ -182,6 +185,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   useEffect(() => {
     let active = true;
     const routeBook = `${datasetId}\0${itemKey}`;
+    const controller = new AbortController();
     const bookChanged = aiBookRouteRef.current !== routeBook;
     aiBookRouteRef.current = routeBook;
     if (bookChanged) {
@@ -195,10 +199,10 @@ export function BookReaderScreen({ route, navigation }: Props) {
     }
     setLoaded(undefined);
     setChapter(undefined);
-    setLoading(true);
+    setItemLoading(true);
     setError("");
     setLegacyResume(undefined);
-    void loadMobileBookItem(datasetId, itemKey)
+    void loadMobileBookItem(datasetId, itemKey, controller.signal)
       .then((value) => {
         if (!active) return;
         const savedBook = !initialChapterId && !initialAnchorId && !initialText
@@ -221,23 +225,31 @@ export function BookReaderScreen({ route, navigation }: Props) {
         setActiveChapterId(firstChapter.id);
       })
       .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : "无法打开书籍"); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+      .finally(() => { if (active) setItemLoading(false); });
+    return () => { active = false; controller.abort(); };
   }, [datasetId, initialAnchorId, initialChapterId, initialText, itemKey, retryToken]);
 
   useEffect(() => {
-    if (!loaded || !activeChapterId) return;
+    if (!loaded || !activeChapterId) { setChapterLoading(false); return; }
     let active = true;
-    setLoading(true);
+    const controller = new AbortController();
+    setChapterLoading(true);
     setError("");
     setChapter(undefined);
     setSelection(undefined);
-    void loadMobileBookChapter(loaded, activeChapterId)
+    void loadMobileBookChapter(loaded, activeChapterId, true, controller.signal)
       .then((value) => { if (active) setChapter(value); })
       .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : "无法读取章节"); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+      .finally(() => { if (active) setChapterLoading(false); });
+    return () => { active = false; controller.abort(); };
   }, [activeChapterId, loaded, retryToken]);
+
+  useEffect(() => {
+    if (!loaded || !chapter) return;
+    const controller = new AbortController();
+    void prefetchMobileBookChapters(loaded, activeChapterId, controller.signal);
+    return () => controller.abort();
+  }, [loaded, chapter, activeChapterId]);
 
   const chapters = loaded?.manifest.content.chapters ?? [];
   const activeIndex = Math.max(0, chapters.findIndex((candidate) => candidate.id === activeChapterId));
@@ -607,6 +619,9 @@ export function BookReaderScreen({ route, navigation }: Props) {
             cacheEnabled={false}
             injectedJavaScript={readerBridgeScript}
             onLoadEnd={handleReaderLoaded}
+            onError={() => { setChapterLoading(false); setError("章节显示失败，请重新加载"); }}
+            onRenderProcessGone={() => { setChapterLoading(false); setError("阅读页面已被系统回收，请重新加载"); }}
+            onContentProcessDidTerminate={() => { setChapterLoading(false); setError("阅读页面已被系统回收，请重新加载"); }}
             onMessage={handleReaderMessage}
             onShouldStartLoadWithRequest={(request) => request.url === "about:blank" || request.url.startsWith("data:") || request.url.startsWith("#")}
             setSupportMultipleWindows={false}

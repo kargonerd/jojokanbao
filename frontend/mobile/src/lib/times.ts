@@ -1,5 +1,6 @@
 import {
   JoxClient,
+  ResourceCache,
   asJojoFragment,
   resolveJoxObject,
   type JojoAssetDescriptor,
@@ -10,6 +11,7 @@ import {
   type TimesTimelineIndex,
   type TimesTimelinePage,
 } from "@jojo/content";
+import { mobileContentCache } from "./contentCache";
 
 const CONTENT_CDN = process.env.EXPO_PUBLIC_CONTENT_CDN_BASE?.trim()
   || "https://blacknews.jojokanbao.cn/";
@@ -36,7 +38,7 @@ export type MobileTimesNewsItem = MobileTimesArticle & {
 
 export type TimesTimelineCursor = { dateIndex: number; page: number };
 
-const client = new JoxClient(CONTENT_CDN, (input, init) => fetch(input, init));
+const client = new JoxClient(CONTENT_CDN, (input, init) => fetch(input, init), new ResourceCache(mobileContentCache()));
 let indexPromise: Promise<TimesTimelineIndex> | undefined;
 const dayPromises = new Map<string, Promise<TimesTimelineDay>>();
 const pagePromises = new Map<string, Promise<TimesTimelinePage>>();
@@ -250,7 +252,7 @@ async function timelinePage(date: string, page: number, refresh = false): Promis
 }
 
 export async function loadTimesAssetBytes(asset: JojoAssetDescriptor, signal?: AbortSignal): Promise<Uint8Array> {
-  return client.fetchDecodedBytes(safeAssetObject(asset.object), signal);
+  return client.fetchDecodedBytes(safeAssetObject(asset.object), signal, asset.sha256);
 }
 
 export function loadTimesAssetDataUri(asset: JojoAssetDescriptor, signal?: AbortSignal): Promise<string> {

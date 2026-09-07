@@ -1,8 +1,13 @@
-export const SOURCE_LOGOS: Record<string, number> = {
+import type { TIMES_SOURCE_LOGOS } from "@jojo/content";
+
+// Metro requires static require() paths; the shared registry enforces full coverage.
+export const SOURCE_LOGOS: Record<keyof typeof TIMES_SOURCE_LOGOS, number> & Partial<Record<string, number>> = {
+  "agencia-brasil": require("../../../web/public/times/source-logos/agencia-brasil.png"),
   africanews: require("../../../web/public/times/source-logos/africanews.png"),
   aljazeera: require("../../../web/public/times/source-logos/aljazeera.png"),
   ap: require("../../../web/public/times/source-logos/ap.png"),
   axios: require("../../../web/public/times/source-logos/axios.png"),
+  bloomberg: require("../../../web/public/times/source-logos/bloomberg.png"),
   chinanews: require("../../../web/public/times/source-logos/chinanews.jpg"),
   cls: require("../../../web/public/times/source-logos/cls.png"),
   cna: require("../../../web/public/times/source-logos/cna.png"),

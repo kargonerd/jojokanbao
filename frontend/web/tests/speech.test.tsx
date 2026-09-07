@@ -18,6 +18,7 @@ class AudioMock extends EventTarget {
   onloadedmetadata: (() => void) | null = null;
   playbackRate = 1;
   preload = "";
+  readyState = 1;
   src: string;
 
   constructor(src: string) {
@@ -27,6 +28,8 @@ class AudioMock extends EventTarget {
   }
 
   pause = vi.fn();
+  load = vi.fn();
+  removeAttribute = vi.fn((attribute: string) => { if (attribute === "src") this.src = ""; });
   play = vi.fn(async () => { this.onloadedmetadata?.(); });
 }
 
@@ -42,6 +45,22 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) =>
 }));
 
 describe("reader speech", () => {
+  it("plays the preloaded audio element at the next segment and releases it on close", async () => {
+    render(<SpeechPlayer label="听本章" segments={["第一段。", "第二段。", "第三段。"]} />);
+    fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
+    await waitFor(() => expect(AudioMock.instances).toHaveLength(2));
+    const [first, second] = AudioMock.instances;
+    expect(second!.load).toHaveBeenCalledOnce();
+    expect(second!.play).not.toHaveBeenCalled();
+    act(() => first!.onended?.());
+    await waitFor(() => expect(second!.play).toHaveBeenCalledOnce());
+    expect(second!.src).not.toBe("");
+    await waitFor(() => expect(AudioMock.instances).toHaveLength(3));
+    fireEvent.click(screen.getByRole("button", { name: "收起听读播放器" }));
+    fireEvent.click(screen.getByRole("button", { name: "关闭迷你播放器" }));
+    expect(AudioMock.instances[2]!.src).toBe("");
+  });
   it("uses a delayed compact loading indicator without synthesis implementation copy", async () => {
     fetchMock.mockImplementation(async (input) => input === "/api/v1/speech/providers?v=2"
       ? Response.json(capabilities) : new Promise<Response>(() => undefined));
@@ -407,16 +426,18 @@ describe("reader speech", () => {
   });
 
   it("uses the news logo when the lead image fails", () => {
-    render(<SpeechPlayer segments={["新闻"]} label="听新闻" artworkUrl="/lead.jpg" artworkFallbackUrl="/logo.png" />);
+    render(<SpeechPlayer segments={["新闻"]} label="听新闻" collectionTitle="Reuters" artworkUrl="/lead.jpg" artworkFallbackUrl="/logo.png" />);
     fireEvent.click(screen.getByRole("button", { name: "打开听新闻播放器" }));
     const artwork = document.querySelector<HTMLImageElement>(".speech-player__artwork img")!;
     expect(artwork.getAttribute("src")).toBe("/lead.jpg");
     fireEvent.error(artwork);
     expect(artwork.getAttribute("src")).toBe("/logo.png");
+    expect(artwork.parentElement?.classList.contains("is-logo")).toBe(true);
+    expect(artwork.parentElement?.querySelector("b")?.textContent).toBe("Reuters");
     expect(document.querySelector(".speech-player__ambience img")?.getAttribute("src")).toBe("/logo.png");
     fireEvent.error(artwork);
     expect(document.querySelector(".speech-player__artwork img")).toBeNull();
-    expect(screen.getAllByText("JOJO 时事").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Reuters").length).toBeGreaterThan(0);
   });
 
   it("carries cover ambience into the mini player and follows its image fallback", () => {

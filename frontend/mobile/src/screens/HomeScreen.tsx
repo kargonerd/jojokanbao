@@ -8,7 +8,7 @@ import { publicationImages } from "../components/PeriodicalCoverCard";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionTitle } from "../components/SectionTitle";
 import { IS_EINK_RELEASE } from "../config/appVariant";
-import { fuzzyBookTitleScore, loadMobileBookCover, loadMobileBooks, resolveMobileBookOpenTarget, type MobileBook } from "../lib/books";
+import { cachedMobileBookCover, fuzzyBookTitleScore, loadMobileBookCover, loadMobileBooks, resolveMobileBookOpenTarget, type MobileBook } from "../lib/books";
 import { impactHaptic } from "../lib/haptics";
 import type { MainTabParamList, RootStackParamList } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
@@ -28,12 +28,12 @@ function RecentReadingCover({
   itemKey?: string;
 }) {
   const theme = mobileTheme;
-  const [imageUri, setImageUri] = useState("");
+  const [imageUri, setImageUri] = useState(() => book ? cachedMobileBookCover(book, itemKey) : "");
   const [coverMissing, setCoverMissing] = useState(false);
 
   useEffect(() => {
     let active = true;
-    setImageUri("");
+    setImageUri(book ? cachedMobileBookCover(book, itemKey) : "");
     setCoverMissing(false);
     if (kind !== "book" || !book) return () => { active = false; };
     void loadMobileBookCover(book, itemKey)
@@ -202,7 +202,7 @@ export function HomeScreen() {
         </View>
 
         <View style={styles.section}>
-          <SectionTitle title="继续阅读" aside="我的书架" onAsidePress={() => navigation.navigate("Library")} />
+          <SectionTitle title="继续阅读" aside="我的书架" onAsidePress={() => navigation.navigate("Bookshelf")} />
           {recentItems.length ? recentItems.map((item) => (
             <Pressable
               key={item.id}
