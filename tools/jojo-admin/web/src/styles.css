@@ -1102,6 +1102,10 @@ button {
 }
 .feature-config-strip input:focus-visible { position: relative; outline: 2px solid var(--color-red); outline-offset: 2px; }
 .feature-config-strip label b { display: grid; min-width: 38px; place-items: center; border: 1px solid #aaa197; border-bottom: 0; border-left: 0; color: var(--color-red); font-size: 11px; }
+.feature-ai-limits { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.feature-ai-limit-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.feature-ai-limit-fields small { color: #777067; letter-spacing: 0; }
+.feature-ai-limits > p { margin: 0; }
 .feature-history { margin-top: 22px; border: 1px solid #bdb4a8; border-left: 4px solid var(--color-red); background: #f5f1e9; }
 .feature-history > header { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; border-bottom: 1px solid #cfc7bc; padding: 13px 15px; }
 .feature-history > header div { display: grid; gap: 3px; }
@@ -1236,6 +1240,7 @@ button {
   .feature-index,
   .rule-fields { grid-template-columns: 1fr; }
   .feature-config-strip { grid-template-columns: 1fr; }
+  .feature-ai-limit-fields { grid-template-columns: 1fr; }
   .feature-history li { grid-template-columns: 38px minmax(0, 1fr); }
   .feature-history li > button,
   .feature-history li > em { grid-column: 2; justify-self: start; }
