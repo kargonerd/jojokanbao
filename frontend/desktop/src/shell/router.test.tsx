@@ -61,7 +61,7 @@ describe('Desktop shell routes', () => {
     expect(screen.getByRole('search').getAttribute('class')).toContain('library-filter');
   });
 
-  it('keeps the disabled Press workspace out of the desktop routes', () => {
+  it('shows not found for the removed Press route', () => {
     const router = createMemoryRouter(createDesktopRoutes(), { initialEntries: ['/press'] });
     render(<RouterProvider router={router} />);
 

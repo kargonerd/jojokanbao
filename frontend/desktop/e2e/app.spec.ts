@@ -108,7 +108,6 @@ test.describe('Desktop renderer', () => {
         value: {
           appName: 'jojo-desktop-e2e',
           platform: 'win32',
-          engine: { invoke: async () => ({ ok: true, value: null }) },
           onCloseChoiceRequested: (callback: () => void) => {
             requestCloseChoice = callback;
             return () => { requestCloseChoice = undefined; };

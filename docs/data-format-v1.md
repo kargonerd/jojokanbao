@@ -545,6 +545,10 @@ path: items/2026/2026-special-1.json.gz
 ```text
 p h1 h2 h3 h4 h5 h6 blockquote ol ul li
 strong em sup sub u s q a br hr figure figcaption span
+table caption thead tbody tfoot tr th td colgroup col
+math mrow mi mn mo mtext ms mspace mfrac msqrt mroot msub msup msubsup
+munder mover munderover mmultiscripts mprescripts none mtable mtr mtd mlabeledtr
+mstyle mpadded mphantom menclose semantics annotation
 ```
 
 允许属性：
@@ -555,6 +559,9 @@ data-role data-indent data-font data-size data-width data-break-before
 ```
 
 受控属性的取值如下：
+
+- 表格保留 `colspan`、`rowspan`、`scope` 和列的 `span`，避免丢失单元格关系。
+- MathML 保留基础排版属性（如 `display`、`mathvariant`、`stretchy`、`columnalign` 等），根元素可带 `xmlns` 与 `alttext`；`annotation` 仅保留 `encoding`。不支持 `annotation-xml`、脚本、事件或外部引用。Reader 使用浏览器原生 MathML，EPUB 导出会声明 `mathml` manifest 属性。
 
 - `data-align`：`left`、`center`、`right`，保留署期、署名、题记等对齐关系。
 - `data-indent`：当前只允许 `none`，表示原书明确不做首行缩进。

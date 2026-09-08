@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { gunzipSync } from "node:zlib";
 import JSZip from "jszip";
+import * as cheerio from "cheerio";
 import {
   asJojoCatalog,
   asJojoBookSearchIndex,
@@ -125,8 +126,43 @@ export async function validatePipelineOutput(rootDirectory: string): Promise<Val
       const canonical = JSON.parse(gunzipSync(await readFile(path.join(root, ...summary.canonicalObject.split("/")))).toString("utf8")) as JojoCanonicalItem;
       if (canonical.content.schema === "jojo-content/book/1") {
         const chapterIds = new Set(canonical.content.chapters.map((chapter) => chapter.id));
+        const chapterAnchors = new Map<string, Set<string>>();
+        const documents = canonical.content.chapters.map((chapter) => {
+          const $ = cheerio.load(chapter.body.value);
+          const anchors = $("[id]").map((_index, element) => $(element).attr("id")!).get();
+          if (new Set(anchors).size !== anchors.length) errors.push(`${summary.canonicalObject}: ${chapter.id} 有重复锚点`);
+          chapterAnchors.set(chapter.id, new Set(anchors));
+          return { chapter, $ };
+        });
         for (const target of tocTargets(canonical.content.toc)) {
           if (!chapterIds.has(target)) errors.push(`${summary.canonicalObject}: TOC target ${target} 不存在`);
+        }
+        const checkTocAnchors = (nodes: JojoTocNode[]): void => {
+          for (const node of nodes) {
+            if (node.targetId && node.anchorId && !chapterAnchors.get(node.targetId)?.has(node.anchorId)) {
+              errors.push(`${summary.canonicalObject}: TOC anchor ${node.targetId}#${node.anchorId} 不存在`);
+            }
+            checkTocAnchors(node.children ?? []);
+          }
+        };
+        checkTocAnchors(canonical.content.toc);
+        const assetIds = new Set(canonical.assets.map((asset) => asset.id));
+        const annotations = new Map(canonical.annotations.map((annotation) => [annotation.id, annotation]));
+        for (const { chapter, $ } of documents) {
+          $("a[data-target-id]").each((_index, element) => {
+            const target = $(element).attr("data-target-id")!;
+            const anchor = $(element).attr("data-anchor-id");
+            if (!chapterIds.has(target) || (anchor && !chapterAnchors.get(target)?.has(anchor))) {
+              errors.push(`${summary.canonicalObject}: ${chapter.id} 内链 ${target}#${anchor ?? ""} 不存在`);
+            }
+          });
+          $("[data-annotation-id]").each((_index, element) => {
+            const id = $(element).attr("data-annotation-id")!;
+            if (annotations.get(id)?.targetId !== chapter.id) errors.push(`${summary.canonicalObject}: ${chapter.id} 注释 ${id} 不存在或归属错误`);
+          });
+          for (const id of chapter.assetRefs) {
+            if (!assetIds.has(id)) errors.push(`${summary.canonicalObject}: ${chapter.id} 资源 ${id} 不存在`);
+          }
         }
       }
     }

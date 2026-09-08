@@ -85,6 +85,30 @@ class WorkspaceRoutesTest(unittest.TestCase):
         suffixes = [Path(value).suffix for value in create.call_args.args[0]]
         self.assertEqual(suffixes, [".epub", ".mobi"])
 
+    def test_content_upload_preserves_chinese_names_and_isolates_duplicate_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with (
+                patch("content_routes.RUNTIME", root),
+                patch("content_routes._new_job", return_value={"jobId": "test"}) as create,
+            ):
+                response = self.client.post("/api/content/import-files", data={
+                    "files": [
+                        (BytesIO(b"first"), "../朝花夕拾（鲁迅）.epub"),
+                        (BytesIO(b"second"), "C:\\fakepath\\朝花夕拾（鲁迅）.epub"),
+                        (BytesIO(b"reserved"), "CON.epub"),
+                    ],
+                }, content_type="multipart/form-data")
+
+            self.assertEqual(response.status_code, 200)
+            paths = [Path(value) for value in create.call_args.args[0]]
+            self.assertEqual([p.name for p in paths], [
+                "朝花夕拾（鲁迅）.epub", "朝花夕拾（鲁迅）.epub", "_CON.epub",
+            ])
+            self.assertEqual([p.read_bytes() for p in paths], [b"first", b"second", b"reserved"])
+            self.assertEqual(len(set(paths)), 3)
+            self.assertTrue(all(p.resolve().is_relative_to(root.resolve()) for p in paths))
+
     def test_progress_contract_exposes_results_for_react_workflow(self):
         task_id = "workspace-contract-test"
         staging = {

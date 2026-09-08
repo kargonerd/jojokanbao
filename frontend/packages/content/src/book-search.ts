@@ -3,7 +3,7 @@ import type {
   JojoBookSearchIndex,
 } from "./types.js";
 
-export const JOJO_BOOK_SEARCH_BLOCK_SELECTOR = "p,h1,h2,h3,h4,h5,h6,blockquote,li,figcaption";
+export const JOJO_BOOK_SEARCH_BLOCK_SELECTOR = "p,h1,h2,h3,h4,h5,h6,blockquote,li,figcaption,caption,th,td,math";
 
 /** Stable fallback used when the source paragraph or heading has no HTML id. */
 export function bookSearchBlockAnchorId(targetId: string, blockNumber: number): string {

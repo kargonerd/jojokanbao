@@ -5,6 +5,7 @@ import * as cheerio from "cheerio";
 import JSZip from "jszip";
 import type { JojoTocNode } from "@jojo/content";
 import type { DecodedWereadBook, DecodedWereadChapter } from "./models";
+import { isExternalEpubReference, loadEpubXml, resolveEpubReference as zipPath } from "./epub-xml";
 
 type SourceFormat = "epub" | "azw" | "mobi" | "prc";
 
@@ -47,21 +48,6 @@ function dataUrl(mediaType: string, bytes: Uint8Array): string {
   return `data:${mediaType};base64,${Buffer.from(bytes).toString("base64")}`;
 }
 
-function zipPath(baseFile: string, reference: string): { file: string; anchor?: string } {
-  const [rawFile, anchor] = reference.split("#", 2);
-  const decoded = decodeURIComponent(rawFile ?? "");
-  const file = path.posix.normalize(path.posix.join(path.posix.dirname(baseFile), decoded));
-  return { file: file.replace(/^\.\//, ""), ...(anchor ? { anchor: decodeURIComponent(anchor) } : {}) };
-}
-
-function epubLinkTarget(baseFile: string, reference: string): { file: string; anchor?: string } {
-  if (reference.startsWith("#")) {
-    const anchor = reference.slice(1);
-    return { file: baseFile, ...(anchor ? { anchor: decodeURIComponent(anchor) } : {}) };
-  }
-  return zipPath(baseFile, reference);
-}
-
 function xmlValue($: cheerio.CheerioAPI, localName: string): string {
   const match = $("*").filter((_index, element) => (
     element.type === "tag" && element.name.toLowerCase().split(":").at(-1) === localName.toLowerCase()
@@ -70,7 +56,7 @@ function xmlValue($: cheerio.CheerioAPI, localName: string): string {
 }
 
 function buildNestedToc(
-  entries: Array<{ id: string; title: string; level: number; targetId: string; anchorId?: string }>,
+  entries: Array<{ id: string; title: string; level: number; targetId?: string; anchorId?: string }>,
 ): JojoTocNode[] {
   const roots: JojoTocNode[] = [];
   const parents = new Map<number, JojoTocNode>();
@@ -79,7 +65,7 @@ function buildNestedToc(
       id: entry.id,
       order: index + 1,
       title: entry.title,
-      targetId: entry.targetId,
+      ...(entry.targetId ? { targetId: entry.targetId } : {}),
       ...(entry.anchorId ? { anchorId: entry.anchorId } : {}),
     };
     const parent = parents.get(entry.level - 1);
@@ -119,12 +105,12 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
   const zip = await JSZip.loadAsync(source);
   const containerXml = await zip.file("META-INF/container.xml")?.async("string");
   if (!containerXml) throw new Error("EPUB 缺少 META-INF/container.xml");
-  const container = cheerio.load(containerXml, { xmlMode: true });
+  const container = loadEpubXml(containerXml);
   const opfFile = container("rootfile").first().attr("full-path")?.replace(/^\.\//, "");
   if (!opfFile) throw new Error("EPUB container.xml 没有 OPF 路径");
   const opfXml = await zip.file(opfFile)?.async("string");
   if (!opfXml) throw new Error(`EPUB 缺少包文档 ${opfFile}`);
-  const $opf = cheerio.load(opfXml, { xmlMode: true });
+  const $opf = loadEpubXml(opfXml);
   const manifest = $opf("manifest > item").map((_index, element): EpubManifestEntry => {
     const current = $opf(element);
     const href = current.attr("href") ?? "";
@@ -137,32 +123,70 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
     };
   }).get();
   const byId = new Map(manifest.map((entry) => [entry.id, entry]));
-  const spine = $opf("spine > itemref").map((_index, element) => byId.get($opf(element).attr("idref") ?? ""))
-    .get().filter((entry): entry is EpubManifestEntry => Boolean(entry));
+  if (manifest.some((entry) => !entry.id || !entry.href) || byId.size !== manifest.length) {
+    throw new Error("EPUB manifest 有缺失或重复的 ID / 路径");
+  }
+  const spine = $opf("spine > itemref").map((_index, element) => {
+    const idref = $opf(element).attr("idref") ?? "";
+    const entry = byId.get(idref);
+    if (!entry) throw new Error(`EPUB spine 引用了不存在的 manifest ID：${idref}`);
+    if (!/^(?:application\/xhtml\+xml|text\/html)$/.test(entry.mediaType)) {
+      throw new Error(`EPUB spine 的正文格式暂不支持：${entry.file} (${entry.mediaType})`);
+    }
+    return entry;
+  }).get();
   if (spine.length === 0) throw new Error("EPUB spine 为空，没有可导入正文");
+  if (new Set(spine.map((entry) => entry.file)).size !== spine.length) throw new Error("EPUB spine 重复引用同一正文文件");
+  const encryptionXml = await zip.file("META-INF/encryption.xml")?.async("string");
+  if (encryptionXml) {
+    const $encryption = loadEpubXml(encryptionXml);
+    $encryption("*").each((_index, element) => {
+      if (!("name" in element) || element.name.split(":").at(-1) !== "CipherReference") return;
+      const uri = $encryption(element).attr("URI");
+      if (!uri) return;
+      const file = zipPath("container.xml", uri).file;
+      const entry = manifest.find((candidate) => candidate.file === file);
+      // Font obfuscation is common in otherwise unencrypted EPUBs; source
+      // fonts/CSS are not imported. Never try to decode encrypted book content.
+      if (entry && /^(?:application\/xhtml\+xml|text\/html|image\/|audio\/|video\/)/.test(entry.mediaType)) {
+        throw new Error(`EPUB 包含加密正文或媒体，无法导入：${file}`);
+      }
+    });
+  }
 
   const spineDocuments = new Map<string, string>();
   const missingSpineFiles = new Set<string>();
-  await Promise.all(spine.map(async (entry) => {
+  // Notes may be in the manifest without being part of the linear reading order.
+  await Promise.all(manifest.filter((entry) => /^(?:application\/xhtml\+xml|text\/html)$/.test(entry.mediaType)).map(async (entry) => {
     const raw = await zip.file(entry.file)?.async("string");
-    if (raw === undefined) missingSpineFiles.add(entry.file);
+    if (!raw?.trim()) {
+      if (spine.some((part) => part.file === entry.file)) missingSpineFiles.add(entry.file);
+    }
     else spineDocuments.set(entry.file, raw);
   }));
 
   const footnotes = new Map<string, EpubFootnoteDefinition>();
+  const richNoteFiles = new Set<string>();
   const footnoteOnlyFiles = new Set<string>();
   for (const [file, raw] of spineDocuments) {
-    const $document = cheerio.load(raw, { xmlMode: true });
+    const $document = loadEpubXml(raw);
     const isFootnote = (element: Parameters<typeof $document>[0]): boolean => {
       const current = $document(element);
       const epubTypes = (current.attr("epub:type") ?? current.attr("type") ?? "").split(/\s+/);
       const role = current.attr("role") ?? "";
-      return current.hasClass("footnote") || epubTypes.includes("footnote") || role === "doc-footnote";
+      return current.hasClass("footnote") || epubTypes.some((type) => ["footnote", "endnote", "rearnote"].includes(type))
+        || role.split(/\s+/).some((type) => ["doc-footnote", "doc-endnote"].includes(type));
     };
     $document("[id]").each((_index, element) => {
       const current = $document(element);
       const id = current.attr("id");
       if (!id || !isFootnote(element)) return;
+      // v1 annotation bodies are plain text. Keep rich notes as linked book
+      // content so diagrams, formulas and table cells are never flattened away.
+      if (current.find("img,svg,math,table,audio,video").length) {
+        richNoteFiles.add(file);
+        return;
+      }
       const bodySource = current.find("dd").first().length ? current.find("dd").first() : current;
       const clone = bodySource.clone();
       clone.find("a[href*='#back_'],a[epub\\:type='backlink'],a[role='doc-backlink']").remove();
@@ -171,10 +195,19 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
       const label = id.match(/(?:note|fn)[_-]?(\d+)$/i)?.[1];
       footnotes.set(`${file}#${id}`, { body, ...(label ? { label } : {}) });
     });
-    const bodyChildren = $document("body").children().toArray();
-    if (bodyChildren.length > 0 && bodyChildren.every((element) => isFootnote(element))) {
-      footnoteOnlyFiles.add(file);
-    }
+  }
+  for (const entry of spine) {
+    const raw = spineDocuments.get(entry.file);
+    if (!raw) continue;
+    const $ = loadEpubXml(raw);
+    $("a[href]").each((_index, element) => {
+      try {
+        const file = zipPath(entry.file, $(element).attr("href")!).file;
+        if (!richNoteFiles.has(file) || spine.some((part) => part.file === file)) return;
+        const noteEntry = manifest.find((part) => part.file === file);
+        if (noteEntry) spine.push(noteEntry);
+      } catch { /* Non-book links are handled during link normalization. */ }
+    });
   }
 
   const embedded = new Map<string, { mediaType: string; url: string }>();
@@ -187,25 +220,33 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
   const nav = manifest.find((entry) => entry.properties.includes("nav"));
   const ncx = manifest.find((entry) => entry.mediaType === "application/x-dtbncx+xml");
   const navTitles = new Map<string, string>();
-  const navigationEntries: Array<{ reference: string; title: string; level: number; sourceId: string }> = [];
+  const navigationEntries: Array<{ reference?: string; title: string; level: number; sourceId: string }> = [];
+  const navigationErrors: Array<Record<string, unknown>> = [];
+  let navigationBase = nav?.file ?? ncx?.file ?? opfFile;
+  const addNavigation = (reference: string | undefined, title: string, level: number): void => {
+    navigationEntries.push({ reference, title, level, sourceId: `nav-${navigationEntries.length + 1}` });
+    if (!reference) return;
+    try {
+      const targetFile = zipPath(navigationBase, reference).file;
+      if (!navTitles.has(targetFile)) navTitles.set(targetFile, title);
+    } catch {
+      // Report invalid targets together with missing files/anchors below.
+    }
+  };
   if (nav) {
     const navXml = await zip.file(nav.file)?.async("string");
     if (navXml) {
-      const $nav = cheerio.load(navXml, { xmlMode: true });
+      const $nav = loadEpubXml(navXml);
       const tocNav = $nav("nav").filter((_index, element) => (
         ($nav(element).attr("epub:type") ?? $nav(element).attr("type") ?? "").split(/\s+/).includes("toc")
       )).first();
       const walk = (list: ReturnType<typeof $nav>, level: number): void => {
-        list.children("li").each((index, element) => {
+        list.children("li").each((_index, element) => {
           const li = $nav(element);
-          const link = li.children("a[href]").first();
-          const reference = link.attr("href");
-          const title = link.text().replace(/\s+/g, " ").trim();
-          if (reference && title) {
-            navigationEntries.push({ reference, title, level, sourceId: `nav-${level}-${index + 1}-${shortHash(reference)}` });
-            const targetFile = zipPath(nav.file, reference).file;
-            if (!navTitles.has(targetFile)) navTitles.set(targetFile, title);
-          }
+          const label = li.children("a,span").first();
+          const reference = label.attr("href");
+          const title = label.text().replace(/\s+/g, " ").trim();
+          if (title) addNavigation(reference, title, level);
           const nested = li.children("ol").first();
           if (nested.length) walk(nested, level + 1);
         });
@@ -213,71 +254,90 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
       const firstList = tocNav.find("ol").first();
       if (firstList.length) walk(firstList, 1);
     }
-  } else if (ncx) {
+  }
+  if (!navigationEntries.some((entry) => entry.reference) && ncx) {
+    navigationBase = ncx.file;
+    navigationEntries.length = 0;
+    navTitles.clear();
     const ncxXml = await zip.file(ncx.file)?.async("string");
     if (ncxXml) {
-      const $ncx = cheerio.load(ncxXml, { xmlMode: true });
+      const $ncx = loadEpubXml(ncxXml);
       const walk = (points: ReturnType<typeof $ncx>, level: number): void => {
-        points.each((index, element) => {
+        points.each((_index, element) => {
           const point = $ncx(element);
           const reference = point.children("content").first().attr("src");
           const title = point.children("navLabel").first().text().replace(/\s+/g, " ").trim();
-          if (reference && title) {
-            navigationEntries.push({ reference, title, level, sourceId: point.attr("id") ?? `ncx-${level}-${index + 1}` });
-            const targetFile = zipPath(ncx.file, reference).file;
-            if (!navTitles.has(targetFile)) navTitles.set(targetFile, title);
-          }
+          if (reference && title) addNavigation(reference, title, level);
           walk(point.children("navPoint"), level + 1);
         });
       };
       walk($ncx("navMap").children("navPoint"), 1);
     }
   }
+  if ((nav || ncx) && !navigationEntries.some((entry) => entry.reference)) {
+    navigationErrors.push({ file: navigationBase, error: "EPUB 声明了目录文件，但没有可用目录" });
+  }
 
   const decodedSpine: DecodedEpubSpineEntry[] = [];
   const errors: Array<Record<string, unknown>> = [];
+  const assetErrors: Array<Record<string, unknown>> = [];
+  const usedFootnotes = new Set<string>();
   for (const [index, entry] of spine.entries()) {
     const raw = spineDocuments.get(entry.file);
     if (!raw) {
       errors.push({ file: entry.file, error: "spine 引用的文件不存在" });
       continue;
     }
-    if (footnoteOnlyFiles.has(entry.file)) continue;
-    const $ = cheerio.load(raw, { xmlMode: true });
+    const $ = loadEpubXml(raw);
     $("a[href]").each((_linkIndex, element) => {
       const current = $(element);
-      const reference = current.attr("href");
-      if (!reference || /^(?:https?:|mailto:|#)/i.test(reference)) return;
-      const resolved = zipPath(entry.file, reference);
+      const reference = current.attr("href")?.trim();
+      if (!reference || isExternalEpubReference(reference)) return;
+      let resolved: { file: string; anchor?: string };
+      try { resolved = zipPath(entry.file, reference); } catch { return; }
       const definition = resolved.anchor ? footnotes.get(`${resolved.file}#${resolved.anchor}`) : undefined;
       if (!definition) return;
-      const visibleLabel = current.text().replace(/\D+/g, "").trim();
+      usedFootnotes.add(`${resolved.file}#${resolved.anchor}`);
+      const visibleLabel = current.text().replace(/\s+/g, " ").trim().replace(/^[\[（(【]|[\]）)】]$/g, "");
       const marker = $("<span></span>")
         .attr("data-wr-footernote", definition.body)
         .attr("data-jojo-footnote-label", visibleLabel || definition.label || "");
       const wrapper = current.parent();
-      if (wrapper.is("sup") && wrapper.children().length === 1) wrapper.replaceWith(marker);
-      else current.replaceWith(marker);
+      const replaced = wrapper.is("sup") && wrapper.children().length === 1 ? wrapper : current;
+      if (replaced.attr("id")) marker.attr("id", replaced.attr("id")!);
+      replaced.replaceWith(marker);
     });
     $("img[src],audio[src],video[src],source[src]").each((_assetIndex, element) => {
       const current = $(element);
       const reference = current.attr("src");
-      if (!reference || /^(?:data:|https?:)/i.test(reference)) return;
-      const resolved = zipPath(entry.file, reference).file;
-      const asset = embedded.get(resolved);
-      if (asset) current.attr("src", asset.url);
+      if (!reference || isExternalEpubReference(reference)) return;
+      try {
+        const resolved = zipPath(entry.file, reference).file;
+        const asset = embedded.get(resolved);
+        if (asset) current.attr("src", asset.url);
+        else assetErrors.push({ file: entry.file, reference, error: "EPUB 内嵌资源不存在或未在 manifest 中声明" });
+      } catch {
+        assetErrors.push({ file: entry.file, reference, error: "EPUB 内嵌资源路径无效" });
+      }
     });
     $("image").each((_assetIndex, element) => {
       const current = $(element);
       const reference = current.attr("href") ?? current.attr("xlink:href");
-      if (!reference) return;
-      const asset = embedded.get(zipPath(entry.file, reference).file);
-      if (asset) current.replaceWith(`<img src="${asset.url}"/>`);
+      if (!reference || isExternalEpubReference(reference)) return;
+      try {
+        const asset = embedded.get(zipPath(entry.file, reference).file);
+        if (asset) current.replaceWith($("<img/>").attr("src", asset.url));
+        else assetErrors.push({ file: entry.file, reference, error: "EPUB 内嵌 SVG 图片资源不存在" });
+      } catch {
+        assetErrors.push({ file: entry.file, reference, error: "EPUB 内嵌 SVG 图片路径无效" });
+      }
     });
     const title = navTitles.get(entry.file)
       ?? $("h1,h2,h3,h4,h5,h6").first().text().replace(/\s+/g, " ").trim()
       ?? "";
-    const bodyHtml = $("body").length ? $("body").html() ?? "" : $.root().html() ?? "";
+    const body = $("body");
+    if (body.attr("id")) body.prepend($("<span></span>").attr("id", body.attr("id")!));
+    const bodyHtml = body.length ? body.html() ?? "" : $.root().html() ?? "";
     const mediaOnlyTitle = cleanText(bodyHtml).length === 0 && $("img,image,svg").length > 0
       ? (index === 0 ? "封面" : "插图")
       : "";
@@ -289,11 +349,35 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
     });
   }
 
+  // Only remove definitions actually converted to annotations. Unreferenced notes
+  // remain readable; a wrapper or heading around a notes-only file is harmless.
+  for (let index = decodedSpine.length - 1; index >= 0; index -= 1) {
+    const part = decodedSpine[index]!;
+    const $ = loadEpubXml(`<html><body>${part.bodyHtml}</body></html>`);
+    let removed = false;
+    $("[id]").each((_index, element) => {
+      if (!usedFootnotes.has(`${part.entry.file}#${$(element).attr("id")}`)) return;
+      $(element).remove();
+      removed = true;
+    });
+    const remainder = $("body").clone();
+    remainder.find("h1,h2,h3,h4,h5,h6,hr").remove();
+    if (removed && !remainder.text().trim() && !remainder.find("img,svg,audio,video,math").length) {
+      footnoteOnlyFiles.add(part.entry.file);
+      decodedSpine.splice(index, 1);
+    } else {
+      part.bodyHtml = $("body").html() ?? "";
+      part.content = `<html><body>${part.bodyHtml}</body></html>`;
+    }
+  }
+
   const spineIndexes = new Map(decodedSpine.map((chapter, index) => [chapter.entry.file, index]));
-  const navigationBase = nav?.file ?? ncx?.file ?? opfFile;
   const navigationTargetIndexes = [...new Set(navigationEntries.flatMap((entry) => {
-    const index = spineIndexes.get(zipPath(navigationBase, entry.reference).file);
-    return index === undefined ? [] : [index];
+    if (!entry.reference) return [];
+    try {
+      const index = spineIndexes.get(zipPath(navigationBase, entry.reference).file);
+      return index === undefined ? [] : [index];
+    } catch { return []; }
   }))].sort((left, right) => left - right);
   const shouldCoalesce = decodedSpine.length >= 24
     && navigationTargetIndexes.length >= 2
@@ -320,28 +404,34 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
 
   const internalLinkErrors: Array<Record<string, unknown>> = [];
   const sourceDocumentAnchors = new Map(decodedSpine.map((part) => {
-    const $ = cheerio.load(`<html><body>${part.bodyHtml}</body></html>`, { xmlMode: true });
+    const $ = loadEpubXml(`<html><body>${part.bodyHtml}</body></html>`);
     return [part.entry.file, new Set($("[id],a[name]").map((_index, element) => (
       $(element).attr("id") ?? $(element).attr("name") ?? ""
     )).get().filter(Boolean))] as const;
   }));
   let internalLinkCount = 0;
   let resolvedInternalLinkCount = 0;
+  const chapterAnchor = (file: string, anchor: string): string => shouldCoalesce
+    ? `epub-anchor-${shortHash(file)}-${anchor}` : anchor;
   for (const part of decodedSpine) {
-    const $ = cheerio.load(`<html><body>${part.bodyHtml}</body></html>`, { xmlMode: true });
+    const $ = loadEpubXml(`<html><body>${part.bodyHtml}</body></html>`);
     $("a[name]:not([id])").each((_index, element) => {
       const current = $(element);
       const name = current.attr("name");
       if (name) current.attr("id", name);
     });
+    if (shouldCoalesce) $("[id]").each((_index, element) => {
+      const current = $(element);
+      current.attr("id", chapterAnchor(part.entry.file, current.attr("id")!));
+    });
     $("a[href]").each((_index, element) => {
       const current = $(element);
       const reference = current.attr("href")?.trim();
-      if (!reference || /^(?:https?:|mailto:)/i.test(reference)) return;
+      if (!reference || isExternalEpubReference(reference)) return;
       internalLinkCount += 1;
       let resolved: { file: string; anchor?: string };
       try {
-        resolved = epubLinkTarget(part.entry.file, reference);
+        resolved = zipPath(part.entry.file, reference);
       } catch {
         internalLinkErrors.push({ file: part.entry.file, reference, error: "EPUB 内链编码无效" });
         return;
@@ -361,8 +451,8 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
         internalLinkErrors.push({ file: part.entry.file, reference, error: "EPUB 内链锚点不存在" });
         return;
       }
-      const anchorId = resolved.anchor
-        ?? (shouldCoalesce ? sourceAnchors.get(resolved.file) : undefined);
+      const anchorId = resolved.anchor ? chapterAnchor(resolved.file, resolved.anchor)
+        : (shouldCoalesce ? sourceAnchors.get(resolved.file) : undefined);
       current.attr("href", anchorId ? `#${anchorId}` : "#");
       current.attr("data-target-id", targetId);
       if (anchorId) current.attr("data-anchor-id", anchorId);
@@ -395,17 +485,27 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
     });
   });
   const tocEntries = navigationEntries.flatMap((entry) => {
-    const resolved = zipPath(navigationBase, entry.reference);
-    const targetId = chapterIds.get(resolved.file);
-    return targetId ? [{
+    const node: { id: string; title: string; level: number; targetId?: string; anchorId?: string } = {
       id: `toc:${entry.sourceId}`,
       title: entry.title,
       level: entry.level,
-      targetId,
-      ...(resolved.anchor
-        ? { anchorId: resolved.anchor }
-        : shouldCoalesce ? { anchorId: sourceAnchors.get(resolved.file) } : {}),
-    }] : [];
+    };
+    if (!entry.reference) return [node];
+    try {
+      const resolved = zipPath(navigationBase, entry.reference);
+      if (footnoteOnlyFiles.has(resolved.file)) return [];
+      const targetId = chapterIds.get(resolved.file);
+      if (!targetId || (resolved.anchor && !sourceDocumentAnchors.get(resolved.file)?.has(resolved.anchor))) {
+        navigationErrors.push({ file: navigationBase, reference: entry.reference, error: "EPUB 目录目标文件或锚点不存在" });
+      } else {
+        node.targetId = targetId;
+        node.anchorId = resolved.anchor ? chapterAnchor(resolved.file, resolved.anchor)
+          : shouldCoalesce ? sourceAnchors.get(resolved.file) : undefined;
+      }
+    } catch {
+      navigationErrors.push({ file: navigationBase, reference: entry.reference, error: "EPUB 目录路径无效" });
+    }
+    return [node];
   });
   const toc = tocEntries.length > 0
     ? buildNestedToc(tocEntries)
@@ -423,7 +523,9 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
   const suspiciousAuthor = !packageAuthor || /^(?:iphone|ipad|calibre|unknown|未知|佚名)$/i.test(packageAuthor.trim());
   const title = useFileTitle ? fileMetadata.title : packageTitle;
   const author = suspiciousAuthor && fileMetadata.author ? fileMetadata.author : packageAuthor;
-  const identifier = xmlValue($opf, "identifier") || `sha256:${sha256(source).slice(0, 24)}`;
+  const uniqueId = $opf("package").attr("unique-identifier");
+  const identifier = (uniqueId ? $opf("metadata > *").filter((_index, element) => $opf(element).attr("id") === uniqueId).text().trim() : "")
+    || xmlValue($opf, "identifier") || `sha256:${sha256(source).slice(0, 24)}`;
   const cover = manifest.find((entry) => entry.properties.includes("cover-image"))
     ?? byId.get($opf("meta[name='cover']").attr("content") ?? "");
   return {
@@ -433,6 +535,7 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
       packagePath: opfFile,
       internalLinks: internalLinkCount,
       resolvedInternalLinks: resolvedInternalLinkCount,
+      unresolvedAssets: assetErrors.length,
       ...(shouldCoalesce || footnoteOnlyFiles.size > 0
         ? { spineFiles: spine.length, logicalChapters: chapters.length, footnoteFiles: footnoteOnlyFiles.size }
         : {}),
@@ -457,7 +560,7 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
     diagnostics: {
       sourceTocItems: navigationEntries.length,
       declaredTocItems: navigationEntries.length,
-      missingTocItems: 0,
+      missingTocItems: navigationErrors.length,
       sourceChapterRecords: spine.length,
       expectedChapterRecords: spine.length,
       presentChapterRecords: spine.length - missingSpineFiles.size,
@@ -469,7 +572,7 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
       matchedChapterRecords: spine.length - missingSpineFiles.size,
       decodedChapterRecords: chapters.length,
       failedChapterRecords: errors.length,
-      errors: [...errors, ...internalLinkErrors],
+      errors: [...errors, ...internalLinkErrors, ...navigationErrors, ...assetErrors],
     },
   };
 }

@@ -9,6 +9,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
+import * as cheerio from "cheerio";
 import { gzipSync } from "node:zlib";
 import {
   transformJoxBytes,
@@ -701,7 +702,11 @@ export async function buildContentPipeline(
       diagnostics.push({
         level: options.allowPartial ? "warning" : "error",
         code: "source-toc-truncated",
-        message: `${decoded.title} 目录不完整：元数据声明 ${decoded.diagnostics.declaredTocItems} 项，`
+        message: decoded.sourceKind === "epub"
+          ? `${decoded.title} 有 ${decoded.diagnostics.missingTocItems} 处 EPUB 目录文件、目标或锚点无法解析：`
+            + decoded.diagnostics.errors.filter((entry) => String(entry.error).includes("目录"))
+              .slice(0, 3).map((entry) => `${String(entry.file)} → ${String(entry.reference ?? entry.error)}`).join("；")
+          : `${decoded.title} 目录不完整：元数据声明 ${decoded.diagnostics.declaredTocItems} 项，`
           + `导出文件只有 ${decoded.diagnostics.sourceTocItems} 项，缺少 ${decoded.diagnostics.missingTocItems} 项`,
         source: decoded.sourcePath,
       });
@@ -748,6 +753,18 @@ export async function buildContentPipeline(
       });
       sourceRejected ||= !options.allowPartial;
     }
+    const unresolvedAssets = Number(decoded.sourceDetails.unresolvedAssets ?? 0);
+    if (unresolvedAssets > 0 && options.fetchAssets !== false) {
+      diagnostics.push({
+        level: options.allowPartial ? "warning" : "error",
+        code: "epub-assets-unresolved",
+        message: `${decoded.title} 有 ${unresolvedAssets} 处 EPUB 内嵌资源无法解析：`
+          + decoded.diagnostics.errors.filter((entry) => String(entry.error).includes("资源"))
+            .slice(0, 3).map((entry) => `${String(entry.file)} → ${String(entry.reference)}`).join("；"),
+        source: decoded.sourcePath,
+      });
+      sourceRejected ||= !options.allowPartial;
+    }
     if (sourceRejected) {
       rejectedFiles += 1;
       continue;
@@ -759,7 +776,17 @@ export async function buildContentPipeline(
       .filter((chapter) => isCopyrightChapterTitle(chapter.title)).map((chapter) => chapter.id));
     const semantic = decoded.chapters
       .filter((chapter) => !removedCopyrightIds.has(chapter.id))
-      .map((chapter) => convertWereadChapter(chapter, diagnostics));
+      .map((chapter) => {
+        if (removedCopyrightIds.size && chapter.contentType === "application/xhtml+xml") {
+          const $ = cheerio.load(chapter.content, { xmlMode: true });
+          $("a[data-target-id]").each((_index, element) => {
+            const current = $(element);
+            if (removedCopyrightIds.has(current.attr("data-target-id")!)) current.replaceWith(current.contents());
+          });
+          chapter = { ...chapter, content: $.xml() };
+        }
+        return convertWereadChapter(chapter, diagnostics);
+      });
     let chapters = semantic.map((entry) => entry.chapter);
     const annotations = semantic.flatMap((entry) => entry.annotations);
     const assetCandidates = new Map<string, JojoCanonicalAsset>();

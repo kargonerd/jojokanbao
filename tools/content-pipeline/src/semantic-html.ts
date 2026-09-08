@@ -8,17 +8,26 @@ import type {
 } from "@jojo/content";
 import type { DecodedWereadChapter, PipelineDiagnostic } from "./models";
 
+const MATHML_TAGS = [
+  "math", "mrow", "mi", "mn", "mo", "mtext", "ms", "mspace", "mfrac", "msqrt", "mroot",
+  "msub", "msup", "msubsup", "munder", "mover", "munderover", "mmultiscripts", "mprescripts",
+  "none", "mtable", "mtr", "mtd", "mlabeledtr", "mstyle", "mpadded", "mphantom", "menclose",
+  "semantics", "annotation",
+];
+const TABLE_TAGS = ["table", "caption", "thead", "tbody", "tfoot", "tr", "th", "td", "colgroup", "col"];
 const ALLOWED_TAGS = [
   "p", "h1", "h2", "h3", "h4", "h5", "h6",
   "blockquote", "ol", "ul", "li", "strong", "em", "sup", "sub", "u", "s", "q",
   "a", "br", "hr", "figure", "figcaption", "span",
+  ...TABLE_TAGS, ...MATHML_TAGS,
 ];
 const NON_VOID_SEMANTIC_TAGS = [
   "p", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "ol", "ul", "li",
   "strong", "em", "sup", "sub", "u", "s", "q", "a", "figure", "figcaption", "span",
+  ...TABLE_TAGS.filter((tag) => tag !== "col"), ...MATHML_TAGS,
 ].join("|");
 
-const ALIGNABLE_TAGS = "p,h1,h2,h3,h4,h5,h6,blockquote,li,figure,figcaption";
+const ALIGNABLE_TAGS = "p,h1,h2,h3,h4,h5,h6,blockquote,li,figure,figcaption,th,td,caption";
 const SEMANTIC_ALIGNMENTS = new Set(["left", "center", "right"]);
 const NOTE_CLASSES = new Set(["content-k", "content-kt", "content-l"]);
 const NOTE_DEFINITION_CLASS = /^(?:content[-_](?:k|kt|l)|fncontent(?:[-_].*)?)$/i;
@@ -471,6 +480,14 @@ export function convertWereadChapter(
   // empty <title/> later becomes an unclosed HTML RCDATA element and escapes
   // the remainder of the chapter, so remove it here as well as <head>.
   $("script,iframe,style,link,meta,title,head").remove();
+  // Section/div/body wrappers are intentionally absent from the profile, but
+  // their IDs may be TOC or cross-chapter destinations. Preserve the location.
+  $("[id]").each((_index, element) => {
+    if (ALLOWED_TAGS.includes(element.name)) return;
+    const current = $(element);
+    current.before($("<span></span>").attr("id", current.attr("id")!));
+    current.removeAttr("id");
+  });
   const annotations: JojoAnnotation[] = [];
   const assets = new Map<string, JojoCanonicalAsset>();
   let numberedAnnotationCount = 0;
@@ -527,7 +544,9 @@ export function convertWereadChapter(
     // after the semantic marker instead of deleting it with the source node.
     const trailingContent = current.html() ?? "";
     if (trailingContent) current.after(trailingContent);
-    current.replaceWith(`<sup data-annotation-id="${id}"></sup>`);
+    const marker = $("<sup></sup>").attr("data-annotation-id", id);
+    if (current.attr("id")) marker.attr("id", current.attr("id")!);
+    current.replaceWith(marker);
   });
 
   annotations.push(...textualAnnotations($, source, diagnostics));
@@ -546,6 +565,7 @@ export function convertWereadChapter(
     }
     const id = `asset:image-${shortHash(sourceUrl)}`;
     const sourceInline = sourceClasses(current).some((className) => INLINE_IMAGE_CLASS.test(className))
+      || current.hasClass("jojo-inline-image")
       || current.attr("style")?.toLowerCase().includes("vertical-align") === true;
     // A small image inside a note definition belongs to that annotation body.
     // Annotation assets are not modelled in v1, so keep its useful alt text
@@ -705,6 +725,17 @@ export function convertWereadChapter(
       figure: ["data-asset-id"],
       span: ["data-asset-id"],
       sup: ["data-annotation-id"],
+      td: ["colspan", "rowspan"],
+      th: ["colspan", "rowspan", "scope"],
+      col: ["span"],
+      colgroup: ["span"],
+      ...Object.fromEntries(MATHML_TAGS.map((tag) => [tag, [
+        "display", "mathvariant", "stretchy", "fence", "separator", "form", "accent", "accentunder",
+        "columnalign", "rowalign", "columnspan", "rowspan", "linethickness", "notation",
+        "width", "height", "depth", "lspace", "rspace", "displaystyle", "scriptlevel",
+      ]])),
+      math: ["xmlns", "display", "alttext"],
+      annotation: ["encoding"],
     },
     allowedSchemes: ["http", "https", "mailto"],
     allowProtocolRelative: false,

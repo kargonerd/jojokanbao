@@ -123,7 +123,7 @@ describe('preload bridge', () => {
     expect(mainSource).toContain("loadFile(path.join(currentDir, '../dist/index.html'))");
   });
 
-  it('does not initialize the disabled Press engine and only registers the Agent gateway scheme', () => {
+  it('only registers the Agent gateway and has no document engine IPC', () => {
     const mainSource = readFileSync(new URL('../../electron/main.js', import.meta.url), 'utf8');
     const gatewaySource = readFileSync(new URL('../../electron/agent-gateway.js', import.meta.url), 'utf8');
 
@@ -135,7 +135,7 @@ describe('preload bridge', () => {
     expect(gatewaySource).not.toContain('jojo-pdf');
   });
 
-  it('does not expose a startup shortcut into the disabled Press flow', () => {
+  it('does not expose a startup shortcut into the removed Press flow', () => {
     const mainSource = readFileSync(new URL('../../electron/main.js', import.meta.url), 'utf8');
 
     expect(mainSource).not.toContain('JOJO_PRESS_AUTO_UPLOAD_TEST');

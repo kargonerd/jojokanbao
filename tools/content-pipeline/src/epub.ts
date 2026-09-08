@@ -22,15 +22,12 @@ function safeId(value: string): string {
   return value.replace(/[^A-Za-z0-9_.-]/g, "-");
 }
 
-function flattenToc(nodes: JojoTocNode[]): JojoTocNode[] {
-  return nodes.flatMap((node) => [node, ...flattenToc(node.children ?? [])]);
-}
-
 function chapterXhtml(
   chapter: JojoCanonicalChapter,
   annotations: JojoAnnotation[],
   assets: Map<string, JojoCanonicalAsset>,
   chapterNames: Map<string, string>,
+  language: string,
 ): string {
   let body = chapter.body.value;
   // Parse as HTML here so semantic empty containers such as span/figure are
@@ -42,9 +39,10 @@ function chapterXhtml(
     const targetFile = chapterNames.get(targetId);
     if (!targetFile) return;
     const anchorId = current.attr("data-anchor-id");
+    const fragment = anchorId ? `#${encodeURIComponent(anchorId)}` : "";
     const href = targetId === chapter.id
-      ? (anchorId ? `#${anchorId}` : "#")
-      : `${path.posix.basename(targetFile)}${anchorId ? `#${anchorId}` : ""}`;
+      ? (fragment || "#")
+      : `${path.posix.basename(targetFile)}${fragment}`;
     current.attr("href", href).removeAttr("data-target-id").removeAttr("data-anchor-id");
   });
   body = $links("body").html() ?? body;
@@ -72,24 +70,37 @@ function chapterXhtml(
     );
   }
   const chapterAnnotations = annotations.filter((annotation) => annotation.targetId === chapter.id);
-  for (const annotation of chapterAnnotations) {
-    const marker = new RegExp(`<sup\\s+data-annotation-id=["']${annotation.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']\\s*><\\/sup>`, "gi");
-    body = body.replace(marker, `<a epub:type="noteref" href="#${safeId(annotation.id)}">[${escapeXml(annotation.label ?? "注")}]</a>`);
-  }
   if (chapterAnnotations.length > 0) {
     body += `<hr/><section>${chapterAnnotations.map((annotation) => (
       `<aside epub:type="footnote" id="${safeId(annotation.id)}"><p>${escapeXml(annotation.body.value)}</p></aside>`
     )).join("")}</section>`;
   }
+  // Canonical bodies are HTML, while EPUB requires well-formed XHTML (including
+  // closed br/hr/img elements and XML-safe entities).
+  const $body = cheerio.load(`<html><body>${body}</body></html>`);
+  const annotationMap = new Map(chapterAnnotations.map((annotation) => [annotation.id, annotation]));
+  $body("sup[data-annotation-id]").each((_index, element) => {
+    const current = $body(element);
+    const annotation = annotationMap.get(current.attr("data-annotation-id")!);
+    if (!annotation) return;
+    const link = $body("<a></a>").attr("epub:type", "noteref")
+      .attr("href", `#${safeId(annotation.id)}`).text(`[${annotation.label ?? "注"}]`);
+    if (current.attr("id")) link.attr("id", current.attr("id")!);
+    current.replaceWith(link);
+  });
+  body = $body.html($body("body").contents().toArray(), { xml: true });
   return `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="zh-CN">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="${escapeXml(language)}">
 <head><meta charset="utf-8"/><title>${escapeXml(chapter.title)}</title><style>
 [data-align="left"]{text-align:left}
 [data-align="center"]{text-align:center;text-indent:0}
 [data-align="right"]{text-align:right;text-indent:0}
 [data-indent="none"]{text-indent:0}
 blockquote{margin:1em 1.5em;font-family:serif}
+table{width:100%;border-collapse:collapse;margin:1em 0;break-inside:avoid}
+th,td{border:1px solid #999;padding:.4em .6em;text-indent:0;text-align:left}
+math[display="block"]{margin:1em 0;max-width:100%;overflow-x:auto;text-indent:0}
 [data-role="poem"]{margin-left:2em;text-align:left;white-space:pre-wrap}
 [data-role="translation"]{opacity:.82}
 [data-role="note"]{font-size:.86em;line-height:1.7;text-indent:0}
@@ -137,24 +148,30 @@ export async function buildEpub(input: {
   );
   const assetMap = new Map(input.assets.map((asset) => [asset.id, asset]));
   for (const chapter of input.chapters) {
-    zip.file(`OEBPS/${chapterNames.get(chapter.id)!}`, chapterXhtml(chapter, input.annotations, assetMap, chapterNames));
+    zip.file(`OEBPS/${chapterNames.get(chapter.id)!}`, chapterXhtml(chapter, input.annotations, assetMap, chapterNames, input.language));
   }
   for (const asset of input.assets) {
     if (!asset.path || asset.type !== "image") continue;
     zip.file(`OEBPS/${asset.path}`, await readFile(path.join(input.canonicalDatasetDirectory, asset.path)));
   }
-  const tocEntries = flattenToc(input.toc)
-    .filter((node) => node.targetId && chapterNames.has(node.targetId))
-    .map((node) => `<li><a href="${chapterNames.get(node.targetId!)}${node.anchorId ? `#${escapeXml(node.anchorId)}` : ""}">${escapeXml(node.title)}</a></li>`)
-    .join("");
+  const renderToc = (nodes: JojoTocNode[]): string => nodes.map((node) => {
+    const file = node.targetId ? chapterNames.get(node.targetId) : undefined;
+    const children = renderToc(node.children ?? []);
+    if (!file && !children) return "";
+    const label = file
+      ? `<a href="${file}${node.anchorId ? `#${escapeXml(encodeURIComponent(node.anchorId))}` : ""}">${escapeXml(node.title)}</a>`
+      : `<span>${escapeXml(node.title)}</span>`;
+    return `<li>${label}${children ? `<ol>${children}</ol>` : ""}</li>`;
+  }).join("");
+  const tocEntries = renderToc(input.toc);
   zip.file("OEBPS/nav.xhtml", `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="${escapeXml(input.language)}">
 <head><meta charset="utf-8"/><title>目录</title></head><body><nav epub:type="toc"><h1>目录</h1><ol>${tocEntries}</ol></nav></body></html>`);
   const chapterManifest = input.chapters.map((chapter, index) => (
-    `<item id="chapter-${index + 1}" href="${chapterNames.get(chapter.id)}" media-type="application/xhtml+xml"/>`
+    `<item id="chapter-${index + 1}" href="${chapterNames.get(chapter.id)}" media-type="application/xhtml+xml"${/<math\b/i.test(chapter.body.value) ? ' properties="mathml"' : ""}/>`
   )).join("");
   const assetManifest = input.assets.filter((asset) => asset.path && asset.type === "image")
-    .map((asset, index) => `<item id="asset-${index + 1}" href="${escapeXml(asset.path)}" media-type="${escapeXml(asset.mediaType)}"/>`)
+    .map((asset, index) => `<item id="asset-${index + 1}" href="${escapeXml(asset.path)}" media-type="${escapeXml(asset.mediaType)}"${asset.role === "cover" ? ' properties="cover-image"' : ""}/>`)
     .join("");
   const spine = input.chapters.map((_chapter, index) => `<itemref idref="chapter-${index + 1}"/>`).join("");
   zip.file("OEBPS/content.opf", `<?xml version="1.0" encoding="utf-8"?>

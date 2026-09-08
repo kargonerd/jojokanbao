@@ -10,6 +10,23 @@ pnpm --filter @jojo/content-pipeline cli -- `
 pnpm --filter @jojo/content-pipeline validate -- "C:\path\to\build"
 ```
 
+单本 EPUB 也可使用 `--input "C:\path\to\book.epub"`，输出目录必须为空。
+PDF 先由外部制作工具转成 EPUB，再通过同一入口导入；JOJO 不再提供 Press 制作工作台。
+
+EPUB 导入支持 EPUB 2 NCX / EPUB 3 nav 多级目录、无链接的目录分组、中文和 URL 编码路径、
+包文档命名空间前缀、封面与内嵌图片。目录和正文内链保留精确锚点，合并碎片正文时会给
+各源文件的锚点加前缀，避免同名 ID 跳错位置。表格保留单元格与合并关系，基础 MathML
+公式进入阅读器、搜索和导出的 EPUB；不复刻出版社的完整 CSS 或固定版式。
+
+同页脚注、跨文件脚注以及 manifest 中的独立尾注文件都可转成 `annotations`。
+注号保留原标记（包括圈号、星号）；未引用的注释保留正文。含图片、表格或公式的复杂注释
+保持为可跳转的正文内容，因为 v1 注释弹窗使用纯文本，不能丢弃其中的结构或资源。
+
+默认拒绝正文缺失、失效目录/内链和缺失内嵌资源；错误详情写入 `report.json`。
+`--allow-partial` 可显式导入能够恢复的部分并保留 warning；`--no-assets` 表示主动只取文字。
+损坏的 ZIP、无效 spine 和加密正文会明确报错。无法可靠配对的纯文本注号保留原文并提示，
+不会猜测注释对应关系。`validate` 会核对产物校验和、目录/内链锚点、注释归属和资源引用。
+
 `--input-dir` 会递归扫描子目录，适合直接从 B2 Raw 的本地镜像重建完整馆藏。
 迁移或灾备重建时可以使用 `--asset-cache <旧 canonical 目录>`，按原始 `sourceUrl` 复用本地
 已下载媒体；缓存没有命中的资源仍会从来源地址获取。

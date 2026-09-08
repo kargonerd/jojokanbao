@@ -27,7 +27,6 @@
   },
   "devDependencies": {
     "@jojo/auth": "workspace:*",
-    "@jojo/content": "workspace:*",
     "@jojo/pdf-viewer": "workspace:*",
     "@jojo/tsconfig": "workspace:*",
     "@jojo/ui": "workspace:*",
@@ -36,21 +35,14 @@
     "@tailwindcss/vite": "^4.3.0",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.3.0",
-    "@types/adm-zip": "^0.5.7",
     "@types/node": "^25.6.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",
-    "adm-zip": "^0.5.16",
-    "axios": "^1.7.0",
-    "dompurify": "^3.4.12",
     "dotenv": "^17.4.0",
     "electron": "^35.1.0",
     "electron-builder": "^26.15.3",
     "jsdom": "^26.0.0",
-    "marked": "^15.0.0",
-    "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^5.7.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.0",
@@ -58,8 +50,7 @@
     "typescript": "^5.7.0",
     "vite": "^6.3.0",
     "vite-plugin-static-copy": "^3.4.0",
-    "vitest": "^3.0.0",
-    "zustand": "^5.0.0"
+    "vitest": "^3.0.0"
   },
   "dependencies": {
     "electron-updater": "^6.8.9"

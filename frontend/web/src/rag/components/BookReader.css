@@ -263,6 +263,30 @@ mark[data-reader-explanation] {
   font-size: .82em;
 }
 
+.prose-editorial table {
+  width: 100%;
+  margin: 1.2em 0;
+  border-collapse: collapse;
+  font-size: .9em;
+  break-inside: avoid;
+}
+
+.prose-editorial th,
+.prose-editorial td {
+  padding: .4em .6em;
+  border: 1px solid var(--color-rule, #d8d8d8);
+  text-align: left;
+  text-indent: 0;
+  overflow-wrap: anywhere;
+}
+
+.prose-editorial math[display="block"] {
+  margin: 1em 0;
+  max-width: 100%;
+  overflow-x: auto;
+  text-indent: 0;
+}
+
 .prose-editorial span[data-role="inline-image"] {
   display: inline-block;
   width: auto;

@@ -17,6 +17,20 @@ describe("content visibility compatibility", () => {
 });
 
 describe("RAG content Reader annotations", () => {
+  it("renders imported tables and MathML with searchable anchors", () => {
+    const fragment: JojoFragment = {
+      formatVersion: "jojo-fragment/1", itemId: "book:test", fragmentId: "chapter:math",
+      type: "chapter", order: 1, title: "数据", assetRefs: [], annotations: [],
+      body: { format: "html", profile: "jojo-semantic-html/1", value: '<table><tbody><tr><th>地区</th><td rowspan="2">华东</td></tr><tr><td>42</td></tr></tbody></table><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mfrac><mi>x</mi><mn>2</mn></mfrac></math>' },
+    };
+    const document = new DOMParser().parseFromString(renderedBody(fragment, {}), "text/html");
+    expect(document.querySelector("td")?.textContent).toBe("华东");
+    expect(document.querySelector("td")?.getAttribute("rowspan")).toBe("2");
+    expect(document.querySelector("td")?.id).toBe("jojo-search-block:chapter:math:2");
+    expect(document.querySelector("math mfrac mi")?.textContent).toBe("x");
+    expect(document.querySelector("math")?.id).toBe("jojo-search-block:chapter:math:4");
+  });
+
   it("keeps semantic source alignment for the book layout", () => {
     const fragment: JojoFragment = {
       formatVersion: "jojo-fragment/1",
