@@ -10,6 +10,7 @@ const auth = vi.hoisted(() => {
       initialized: true,
       user: null,
       recoveryPending: false,
+      recoveryEmail: null as string | null,
       busy: false,
       error: null,
       notice: null,
@@ -19,6 +20,7 @@ const auth = vi.hoisted(() => {
       confirmSignUp: vi.fn(),
       resendSignUpCode: vi.fn(),
       sendPasswordReset: vi.fn(),
+      cancelPasswordRecovery: vi.fn(),
       verifyPasswordResetCode: vi.fn(),
       completePasswordRecovery: vi.fn(),
     },
@@ -38,6 +40,8 @@ beforeEach(() => {
   auth.state.initialized = true;
   auth.state.user = null;
   auth.state.recoveryPending = false;
+  auth.state.recoveryEmail = null;
+  auth.state.cancelPasswordRecovery.mockReset();
   auth.state.busy = false;
   auth.state.error = null;
   auth.state.notice = null;
@@ -47,7 +51,7 @@ beforeEach(() => {
   auth.state.confirmSignUp.mockReset().mockResolvedValue(undefined);
   auth.state.resendSignUpCode.mockReset().mockResolvedValue(undefined);
   auth.state.sendPasswordReset.mockReset().mockResolvedValue(undefined);
-  auth.state.verifyPasswordResetCode.mockReset().mockResolvedValue(undefined);
+  auth.state.verifyPasswordResetCode.mockReset().mockImplementation(async () => { auth.state.recoveryPending = true; });
   auth.state.completePasswordRecovery.mockReset().mockResolvedValue(undefined);
   auth.startAuthSync.mockClear();
   auth.stopAuthSync.mockClear();

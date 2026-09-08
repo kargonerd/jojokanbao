@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({
   loadNotifications: vi.fn(),
   loadUnreadNotificationCount: vi.fn(),
   markNotificationRead: vi.fn(),
+  markNotificationsRead: vi.fn(),
 }));
 
 vi.mock("../src/notifications/api", () => api);
@@ -44,6 +45,7 @@ beforeEach(() => {
   api.loadNotifications.mockReset();
   api.loadUnreadNotificationCount.mockReset();
   api.markNotificationRead.mockReset();
+  api.markNotificationsRead.mockReset().mockResolvedValue(1);
   api.loadNotifications.mockResolvedValue([reply, earlierReply]);
   api.loadUnreadNotificationCount.mockResolvedValue(1);
   api.markNotificationRead.mockResolvedValue(1);
@@ -71,6 +73,7 @@ describe("generic notifications", () => {
     expect(screen.getAllByText("被划线的原文")).toHaveLength(2);
     expect(screen.getByLabelText("上次看到这里")).toBeTruthy();
     expect(screen.getAllByText("测试书籍")).toHaveLength(2);
+    api.loadUnreadNotificationCount.mockResolvedValue(0);
     fireEvent.click(link);
 
     expect(await screen.findByText("书籍目标")).toBeTruthy();

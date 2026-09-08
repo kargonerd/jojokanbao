@@ -30,6 +30,7 @@ function createClient() {
   });
 
   const client = {
+    createRecoveryClient: vi.fn(() => ({ auth: { setSession: vi.fn().mockResolvedValue({ error: null }), updateUser, signOut, dispose: vi.fn().mockResolvedValue(undefined) } })),
     auth: {
       signInWithPassword,
       signUp,
@@ -246,6 +247,142 @@ describe("createJojoAuthStore", () => {
     expect(updateUser).toHaveBeenCalledWith({ password: "new-strong-password" });
     expect(signOut).toHaveBeenCalledWith({ scope: "others" });
     expect(useAuthStore.getState().recoveryPending).toBe(false);
+  });
+
+  it.each([false, true])("keeps a failed recovery unverified with an existing session: %s", async (signedIn) => {
+    const fixture = createClient();
+    const { useAuthStore } = createJojoAuthStore(fixture.client);
+    if (signedIn) await useAuthStore.getState().signIn(fixture.user.email, "password");
+    let finishVerification!: (result: unknown) => void;
+    fixture.verifyOtp.mockReturnValueOnce(new Promise((resolve) => { finishVerification = resolve; }));
+    const verification = useAuthStore.getState().verifyPasswordResetCode("other@example.com", "000000");
+    const rejected = expect(verification).rejects.toMatchObject({ code: "otp_expired" });
+    expect(useAuthStore.getState()).toMatchObject({ recoveryPending: false, recoveryEmail: "other@example.com", busy: true });
+    finishVerification({ data: { user: null, session: null }, error: { code: "otp_expired" } });
+    await rejected;
+    expect(useAuthStore.getState()).toMatchObject({ recoveryPending: false, busy: false, user: signedIn ? fixture.user : null });
+    await expect(useAuthStore.getState().completePasswordRecovery("new-password")).rejects.toMatchObject({ code: "password_recovery_required" });
+    expect(fixture.updateUser).not.toHaveBeenCalled();
+
+    const otherUser = { ...fixture.user, id: "user-2", email: "other@example.com" };
+    const otherSession = { ...fixture.session, user: otherUser, access_token: "other-token" };
+    fixture.verifyOtp.mockResolvedValueOnce({ data: { user: otherUser, session: otherSession }, error: null });
+    fixture.getSession.mockResolvedValue({ data: { session: otherSession }, error: null });
+    await useAuthStore.getState().verifyPasswordResetCode(otherUser.email, "123456");
+    expect(useAuthStore.getState()).toMatchObject({ user: otherUser, recoveryPending: true, recoveryEmail: otherUser.email });
+    await useAuthStore.getState().completePasswordRecovery("new-password");
+    expect(fixture.updateUser).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a successful OTP response for a different email", async () => {
+    const { client, updateUser } = createClient();
+    const { useAuthStore } = createJojoAuthStore(client);
+    await expect(useAuthStore.getState().verifyPasswordResetCode("other@example.com", "123456")).rejects.toMatchObject({ code: "password_recovery_required" });
+    await expect(useAuthStore.getState().completePasswordRecovery("new-password")).rejects.toMatchObject({ code: "password_recovery_required" });
+    expect(updateUser).not.toHaveBeenCalled();
+  });
+
+  it.each(["cancel", "new-email", "sign-in", "session-switch"])("invalidates an earlier recovery on %s", async (transition) => {
+    const { client, getSession, session, updateUser } = createClient();
+    const { useAuthStore } = createJojoAuthStore(client);
+    await useAuthStore.getState().verifyPasswordResetCode("reader@example.com", "654321");
+    if (transition === "cancel") useAuthStore.getState().cancelPasswordRecovery();
+    if (transition === "new-email") await useAuthStore.getState().sendPasswordReset("other@example.com");
+    if (transition === "sign-in") await useAuthStore.getState().signIn("reader@example.com", "password");
+    // Detect a changed SDK session even before its auth callback reaches the store.
+    if (transition === "session-switch") getSession.mockResolvedValue({ data: { session: { ...session, access_token: "new-login-token" } }, error: null });
+    await expect(useAuthStore.getState().completePasswordRecovery("new-password")).rejects.toMatchObject({ code: "password_recovery_required" });
+    expect(updateUser).not.toHaveBeenCalled();
+    expect(useAuthStore.getState().recoveryPending).toBe(false);
+  });
+
+  it("does not restore a recovery that was cancelled while OTP verification was in flight", async () => {
+    const { client, verifyOtp, user, session } = createClient();
+    let finishVerification!: (result: unknown) => void;
+    verifyOtp.mockReturnValueOnce(new Promise((resolve) => { finishVerification = resolve; }));
+    const { useAuthStore } = createJojoAuthStore(client);
+    const verification = useAuthStore.getState().verifyPasswordResetCode(user.email, "123456");
+    const rejected = expect(verification).rejects.toMatchObject({ code: "password_recovery_required" });
+    useAuthStore.getState().cancelPasswordRecovery();
+    finishVerification({ data: { user, session }, error: null });
+    await rejected;
+    expect(useAuthStore.getState()).toMatchObject({ recoveryEmail: null, recoveryPending: false, busy: false, error: null });
+  });
+
+  it("retains verified recovery on token refresh, but clears it on sign-out", async () => {
+    const { client, session, getSession, onAuthStateChange, updateUser } = createClient();
+    const controller = createJojoAuthStore(client);
+    const stop = controller.startAuthSync();
+    await vi.waitFor(() => expect(controller.useAuthStore.getState().initialized).toBe(true));
+    await controller.useAuthStore.getState().verifyPasswordResetCode("reader@example.com", "123456");
+    const authEvent = onAuthStateChange.mock.calls[0]![0];
+    const refreshed = { ...session, access_token: "refreshed-token" };
+    getSession.mockResolvedValue({ data: { session: refreshed }, error: null });
+    authEvent("TOKEN_REFRESHED", refreshed);
+    await controller.useAuthStore.getState().completePasswordRecovery("new-password");
+    expect(updateUser).toHaveBeenCalledOnce();
+    await controller.useAuthStore.getState().sendPasswordReset("reader@example.com");
+    authEvent("SIGNED_OUT", null);
+    expect(controller.useAuthStore.getState()).toMatchObject({ recoveryEmail: null, recoveryPending: false });
+    stop();
+  });
+
+  it("does not let an older initial session overwrite a recovery auth callback", async () => {
+    const { client, getSession, onAuthStateChange, session } = createClient();
+    let finishInitial!: (result: unknown) => void;
+    getSession.mockReturnValueOnce(new Promise((resolve) => { finishInitial = resolve; }));
+    const controller = createJojoAuthStore(client);
+    const stop = controller.startAuthSync();
+    const recoveredSession = { ...session, user: { ...session.user, id: "user-2", email: "other@example.com" } };
+    onAuthStateChange.mock.calls[0]![0]("PASSWORD_RECOVERY", recoveredSession);
+    finishInitial({ data: { session }, error: null });
+    await Promise.resolve();
+    expect(controller.useAuthStore.getState().user).toEqual(recoveredSession.user);
+    expect(controller.useAuthStore.getState().recoveryPending).toBe(false);
+    stop();
+  });
+
+  it("invalidates an in-flight OTP when another tab signs in", async () => {
+    const { client, verifyOtp, user, session, getSession, onAuthStateChange } = createClient();
+    let finishVerification!: (result: unknown) => void;
+    verifyOtp.mockReturnValueOnce(new Promise((resolve) => { finishVerification = resolve; }));
+    const controller = createJojoAuthStore(client);
+    const stop = controller.startAuthSync();
+    await vi.waitFor(() => expect(controller.useAuthStore.getState().initialized).toBe(true));
+    const verification = controller.useAuthStore.getState().verifyPasswordResetCode(user.email, "123456");
+    const rejected = expect(verification).rejects.toMatchObject({ code: "password_recovery_required" });
+    onAuthStateChange.mock.calls[0]![0]("SIGNED_IN", { ...session, access_token: "another-login-token" });
+    // The late SDK callback/response must not resurrect the cancelled form.
+    onAuthStateChange.mock.calls[0]![0]("PASSWORD_RECOVERY", session);
+    getSession.mockResolvedValue({ data: { session }, error: null });
+    finishVerification({ data: { user, session }, error: null });
+    await rejected;
+    expect(controller.useAuthStore.getState()).toMatchObject({ recoveryEmail: null, recoveryPending: false, busy: false });
+    stop();
+  });
+
+  it.each(["session", "update", "logout"])("does not continue or show success after cancellation during %s", async (stage) => {
+    const { client } = createClient();
+    const setSession = vi.fn().mockResolvedValue({ error: null });
+    const updateUser = vi.fn().mockResolvedValue({ error: null });
+    const signOut = vi.fn().mockResolvedValue({ error: null });
+    const dispose = vi.fn().mockResolvedValue(undefined);
+    let finish!: (value: { error: null }) => void;
+    const delayed = stage === "session" ? setSession : stage === "update" ? updateUser : signOut;
+    delayed.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    vi.mocked(client.createRecoveryClient).mockReturnValue({ auth: { setSession, updateUser, signOut, dispose } } as never);
+    const { useAuthStore } = createJojoAuthStore(client);
+    await useAuthStore.getState().verifyPasswordResetCode("reader@example.com", "123456");
+    const saving = useAuthStore.getState().completePasswordRecovery("new-password");
+    const rejected = expect(saving).rejects.toMatchObject({ code: "password_recovery_required" });
+    await vi.waitFor(() => expect(delayed).toHaveBeenCalledOnce());
+    useAuthStore.getState().cancelPasswordRecovery();
+    finish({ error: null });
+    await rejected;
+    if (stage === "session") expect(updateUser).not.toHaveBeenCalled();
+    if (stage !== "logout") expect(signOut).not.toHaveBeenCalled();
+    expect(useAuthStore.getState()).toMatchObject({ recoveryPending: false, busy: false, notice: null });
+    expect(dispose).toHaveBeenCalledOnce();
   });
 
   it("reauthenticates before changing a password or deleting the account", async () => {

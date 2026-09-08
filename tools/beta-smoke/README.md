@@ -11,6 +11,11 @@ and one synthetic book ID. It uses actual password authentication and HTTP RPCs
 to test public/private visibility, reply notifications, authorization, reports,
 and moderation. It does not send confirmation emails or touch real books.
 
+Apply `202609080005_explicit_notification_read_batch.sql` before running this
+test. Notification checks also cover explicitly marking displayed IDs, duplicate
+and empty batches, ownership, and a new reply arriving after the displayed
+snapshot. That later reply must remain unread.
+
 Cleanup runs in `finally` and removes only this run's synthetic content,
 accounts, and invitation. Results and the unique cleanup marker are written to
 `.runtime/beta-smoke/`. If the process is interrupted or network access is lost,

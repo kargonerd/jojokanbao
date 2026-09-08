@@ -79,6 +79,18 @@ try {
   check('another reader cannot mark a notification read', await count(author) === 1);
   await rpc(author, 'mark_my_notification_read', { p_notification_id: notices[0].id });
   check('owner can mark notification read', await count(author) === 0);
+  await rpc(commenter, 'add_annotation_comment', { p_annotation_id: annotation.id, p_body: '批量已读测试一', p_parent_comment_id: publicComment.id });
+  const displayedNotice = (await notifications(author)).find(notice => !notice.readAt);
+  check('batch read fixture contains a displayed unread notification', Boolean(displayedNotice));
+  await rpc(commenter, 'add_annotation_comment', { p_annotation_id: annotation.id, p_body: '批量已读测试二', p_parent_comment_id: publicComment.id });
+  const beforeBatch = await count(author);
+  check('a later reply remains outside the displayed snapshot', beforeBatch === 2);
+  const batch = (user, ids, expected = true) => rpc(user, 'mark_my_notifications_read', { p_notification_ids: ids }, expected);
+  check('another reader cannot batch-mark the displayed notification', await batch(reporter, [displayedNotice.id]) === 0 && await count(author) === beforeBatch);
+  check('batch mark changes only the displayed notification once', await batch(author, [displayedNotice.id, displayedNotice.id]) === 1 && await count(author) === 1);
+  check('repeating a displayed batch is idempotent', await batch(author, [displayedNotice.id]) === 0 && await count(author) === 1);
+  check('empty batch never marks all unread notifications', await batch(author, []) === 0 && await count(author) === 1);
+  check('null batch is rejected without marking unseen notifications', !(await batch(author, null, false)).ok && await count(author) === 1);
   const report = await rpc(reporter, 'report_annotation_comment', { p_comment_id: publicComment.id, p_reason: 'other', p_details: '自动化测试，随后清理' });
   const pending = await rpc(null, 'operator_list_annotation_reports', { p_operator_token: env.JOJO_OPERATOR_TOKEN, p_status: 'pending' });
   check('operator queue contains the submitted report', pending.some(item => item.commentId === publicComment.id && item.reports.some(entry => entry.id === report.id)));

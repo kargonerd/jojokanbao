@@ -48,3 +48,13 @@ export async function markNotificationRead(notificationId?: string): Promise<num
   });
   return Number(resultOrThrow<number>(data, error, "通知状态更新失败")) || 0;
 }
+
+export async function markNotificationsRead(notificationIds: string[]): Promise<number> {
+  if (notificationIds.length === 0) return 0;
+  if (useMockNotifications) {
+    const { markMockNotificationRead } = await import("./mock");
+    return notificationIds.reduce((changed, id) => changed + markMockNotificationRead(id), 0);
+  }
+  const { data, error } = await rpc("mark_my_notifications_read", { p_notification_ids: notificationIds });
+  return Number(resultOrThrow<number>(data, error, "通知状态更新失败")) || 0;
+}
