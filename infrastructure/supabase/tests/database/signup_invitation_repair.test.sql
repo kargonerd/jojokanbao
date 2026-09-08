@@ -23,7 +23,23 @@ insert into private.signup_invitation_redemptions(invitation_id, user_id, email)
 select i.id, s.recorded_id, 'repair-recorded@example.invalid'
 from private.signup_invitations i cross join repair_test_state s where i.code = 'RPR333';
 
-\ir ../../migrations/202609080001_restore_signup_invitation_redemption.sql
+-- pg_prove mounts only the tests directory. Replay the exact applied migration
+-- from the CLI's history rather than depending on files outside that mount.
+create function pg_temp.replay_invitation_repair() returns void language plpgsql as $$
+declare statement text;
+begin
+  if not exists (select 1 from supabase_migrations.schema_migrations
+    where version = '202609080001' and cardinality(statements) > 0) then
+    raise exception 'Invitation repair migration history is missing';
+  end if;
+  for statement in select unnest(statements) from supabase_migrations.schema_migrations
+    where version = '202609080001'
+  loop
+    execute statement;
+  end loop;
+end;
+$$;
+do $$ begin perform pg_temp.replay_invitation_repair(); end $$;
 
 select extensions.is((select use_count from private.signup_invitations where code = 'RPR222'), 2,
   'historical accounts are counted even after their invitation expires');
@@ -37,7 +53,7 @@ select extensions.is((select raw_user_meta_data from auth.users where id = (sele
 select extensions.ok(exists(select 1 from pg_trigger where tgrelid = 'auth.users'::regclass
   and tgname = 'enforce_signup_invitation' and tgenabled = 'O'), 'the redemption trigger is enabled');
 
-\ir ../../migrations/202609080001_restore_signup_invitation_redemption.sql
+do $$ begin perform pg_temp.replay_invitation_repair(); end $$;
 
 select extensions.is((select sum(use_count)::bigint from private.signup_invitations where code in ('RPR222','RPR333')),
   5::bigint, 'running reconciliation again does not consume additional slots');
