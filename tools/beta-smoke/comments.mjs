@@ -81,7 +81,7 @@ try {
   check('owner can mark notification read', await count(author) === 0);
   const report = await rpc(reporter, 'report_annotation_comment', { p_comment_id: publicComment.id, p_reason: 'other', p_details: '自动化测试，随后清理' });
   const pending = await rpc(null, 'operator_list_annotation_reports', { p_operator_token: env.JOJO_OPERATOR_TOKEN, p_status: 'pending' });
-  check('operator queue contains the submitted report', pending.some(item => item.id === report.id));
+  check('operator queue contains the submitted report', pending.some(item => item.commentId === publicComment.id && item.reports.some(entry => entry.id === report.id)));
   const ownReport = await rpc(author, 'report_annotation_comment', { p_comment_id: publicComment.id, p_reason: 'spam' }, false);
   check('self reporting denied', !ownReport.ok);
   const denied = await rpc(null, 'operator_moderate_annotation_comment', {

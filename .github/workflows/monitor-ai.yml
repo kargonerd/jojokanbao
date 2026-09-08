@@ -24,6 +24,7 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22.19.0
+          package-manager-cache: false
       - run: node --test tools/ai-healthcheck/probe.test.mjs
 
   probe:
@@ -36,6 +37,7 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22.19.0
+          package-manager-cache: false
       - name: Verify authenticated model generation and report outcome
         run: node tools/ai-healthcheck/run.mjs
         env:
