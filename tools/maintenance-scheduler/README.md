@@ -42,8 +42,16 @@ payloads, exhausted retries and timeouts remain fail-closed: no healthy ping or
 monitor-state advance. Diagnostics include counts and a sanitized request ID,
 never response bodies or credentials. Congestion/alert thresholds are unchanged.
 
-Catch-up windows are retained: Times 5 minutes, RMRB 180 minutes. This migration
-does not backfill every missed Times interval or change GitHub runner capacity.
+Catch-up windows are Times 5 minutes, RMRB 180 minutes, and AI availability
+5 minutes. The scheduler does not backfill every missed interval or change
+GitHub runner capacity.
+
+AI availability runs `monitor-ai.yml` at minutes 17 and 47 of every UTC hour.
+Each slot permits one attempt; queued or running AI monitor workflows suppress
+another dispatch. The existing `jojo-ai-availability` Healthchecks check receives
+the workflow outcome through the shared monitor, with one execution failure
+triggering an alert and 30 minutes of grace. There is no extra SCF function or
+AI probe inside the scheduler. The workflow keeps its existing credentials.
 
 ## Add a task
 
