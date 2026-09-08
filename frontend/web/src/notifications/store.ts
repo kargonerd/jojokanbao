@@ -5,6 +5,7 @@ interface NotificationState {
   userId: string | null;
   unreadCount: number;
   loading: boolean;
+  refreshVersion: number;
   setUnreadCount: (count: number) => void;
   adjustUnreadCount: (change: number) => void;
 }
@@ -12,12 +13,13 @@ interface NotificationState {
 let requestId = 0;
 let countRevision = 0;
 let lastRequestAt: number | null = null;
-let inFlight: { userId: string; promise: Promise<void> } | null = null;
+let inFlight: { userId: string; revision: number; promise: Promise<void> } | null = null;
 
 export const useNotificationStore = create<NotificationState>((set) => ({
   userId: null,
   unreadCount: 0,
   loading: false,
+  refreshVersion: 0,
   setUnreadCount: (count) => {
     countRevision += 1;
     set({ unreadCount: Math.max(0, count) });
@@ -33,7 +35,7 @@ export function resetNotifications(): void {
   countRevision += 1;
   lastRequestAt = null;
   inFlight = null;
-  useNotificationStore.setState({ userId: null, unreadCount: 0, loading: false });
+  useNotificationStore.setState({ userId: null, unreadCount: 0, loading: false, refreshVersion: 0 });
 }
 
 export function unreadNotificationRefreshDelay(userId: string, intervalMs: number): number {
@@ -42,7 +44,16 @@ export function unreadNotificationRefreshDelay(userId: string, intervalMs: numbe
 }
 
 export function refreshUnreadNotifications(userId: string, minIntervalMs = 0): Promise<void> {
-  if (inFlight?.userId === userId) return inFlight.promise;
+  if (inFlight?.userId === userId) {
+    // A mutation invalidates an older count response. An explicit refresh must
+    // wait for that request and then obtain the remaining unread count.
+    if (minIntervalMs === 0 && inFlight.revision !== countRevision) {
+      return inFlight.promise.catch(() => undefined).then(() => {
+        if (useNotificationStore.getState().userId === userId) return refreshUnreadNotifications(userId);
+      });
+    }
+    return inFlight.promise;
+  }
   if (unreadNotificationRefreshDelay(userId, minIntervalMs) > 0) return Promise.resolve();
 
   const currentRequest = ++requestId;
@@ -57,9 +68,12 @@ export function refreshUnreadNotifications(userId: string, minIntervalMs = 0): P
     try {
       const unreadCount = await loadUnreadNotificationCount();
       // A reply may have been marked read while this request was in flight.
-      if (currentRequest === requestId && currentRevision === countRevision
-        && useNotificationStore.getState().userId === userId) {
-        useNotificationStore.setState({ unreadCount });
+      if (currentRequest === requestId && useNotificationStore.getState().userId === userId) {
+        useNotificationStore.setState((state) => ({
+          ...(currentRevision === countRevision ? { unreadCount } : {}),
+          // Inbox contents can change even when the unread count is unchanged.
+          refreshVersion: state.refreshVersion + 1,
+        }));
       }
     } finally {
       if (currentRequest === requestId) {
@@ -68,6 +82,6 @@ export function refreshUnreadNotifications(userId: string, minIntervalMs = 0): P
       }
     }
   })();
-  inFlight = { userId, promise };
+  inFlight = { userId, revision: currentRevision, promise };
   return promise;
 }

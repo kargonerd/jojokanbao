@@ -165,4 +165,17 @@ describe("unread notification polling", () => {
     await refresh;
     expect(useNotificationStore.getState().unreadCount).toBe(2);
   });
+
+  it("obtains a fresh remaining count when an explicit post-mutation refresh meets an older request", async () => {
+    let resolveOldCount!: (count: number) => void;
+    api.loadUnreadNotificationCount.mockReturnValueOnce(new Promise<number>((resolve) => { resolveOldCount = resolve; })).mockResolvedValueOnce(4);
+    const oldRequest = refreshUnreadNotifications("reader-1");
+    useNotificationStore.getState().setUnreadCount(2);
+    useNotificationStore.getState().adjustUnreadCount(-1);
+    const remainingCount = refreshUnreadNotifications("reader-1");
+    resolveOldCount(2);
+    await Promise.all([oldRequest, remainingCount]);
+    expect(api.loadUnreadNotificationCount).toHaveBeenCalledTimes(2);
+    expect(useNotificationStore.getState().unreadCount).toBe(4);
+  });
 });

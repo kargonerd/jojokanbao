@@ -23,12 +23,14 @@ export function AccountPage() {
   const returnTo = safeReturnPath(requestedReturnTo);
   const {
     user,
+    recoveryEmail: activeRecoveryEmail,
     recoveryPending,
     signIn,
     signUp,
     confirmSignUp,
     resendSignUpCode,
     sendPasswordReset,
+    cancelPasswordRecovery,
     verifyPasswordResetCode,
     completePasswordRecovery,
     busy,
@@ -36,8 +38,7 @@ export function AccountPage() {
     notice,
     clearFeedback,
   } = useAuthStore();
-  const startsInPasswordRecovery = Boolean(user && recoveryPending);
-  const [mode, setMode] = useState<AccountMode>(() => startsInPasswordRecovery ? "recover" : "login");
+  const [mode, setMode] = useState<AccountMode>(() => activeRecoveryEmail ? "recover" : "login");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [invitationCode, setInvitationCode] = useState("");
@@ -46,8 +47,8 @@ export function AccountPage() {
   const [registrationPasswordConfirmation, setRegistrationPasswordConfirmation] = useState("");
   const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
   const [confirmationCode, setConfirmationCode] = useState("");
-  const [recoveryStep, setRecoveryStep] = useState<RecoveryStep>(() => startsInPasswordRecovery ? "password" : "email");
-  const [recoveryEmail, setRecoveryEmail] = useState(() => startsInPasswordRecovery ? user?.email ?? "" : "");
+  const [recoveryStep, setRecoveryStep] = useState<RecoveryStep>(() => activeRecoveryEmail ? recoveryPending ? "password" : "code" : "email");
+  const [recoveryEmail, setRecoveryEmail] = useState(() => activeRecoveryEmail ?? "");
   const [recoveryCode, setRecoveryCode] = useState("");
   const [recoveryPassword, setRecoveryPassword] = useState("");
   const [recoveryPasswordConfirmation, setRecoveryPasswordConfirmation] = useState("");
@@ -63,13 +64,21 @@ export function AccountPage() {
   }, [resendSeconds]);
 
   useEffect(() => {
-    if (!recoveryPending) return;
+    if (!activeRecoveryEmail) {
+      setRecoveryStep((step) => step === "password" ? "email" : step);
+      return;
+    }
     setMode("recover");
-    setRecoveryStep("password");
-    if (user?.email) setRecoveryEmail(user.email);
-  }, [recoveryPending, user?.email]);
+    setRecoveryStep(recoveryPending ? "password" : "code");
+    setRecoveryEmail(activeRecoveryEmail);
+    if (!recoveryPending) {
+      setRecoveryPassword("");
+      setRecoveryPasswordConfirmation("");
+    }
+  }, [activeRecoveryEmail, recoveryPending]);
 
   const changeMode = (nextMode: AccountMode, recoveryAddress?: string) => {
+    cancelPasswordRecovery();
     clearFeedback();
     setLocalError(null);
     setMode(nextMode);
@@ -82,8 +91,8 @@ export function AccountPage() {
     }
   };
 
-  if (user && mode !== "recover" && !authTransitioning && hasReturnTo) return <Navigate to={returnTo} replace />;
-  if (user && mode !== "recover" && !authTransitioning) {
+  if (user && mode !== "recover" && !activeRecoveryEmail && !authTransitioning && hasReturnTo) return <Navigate to={returnTo} replace />;
+  if (user && mode !== "recover" && !activeRecoveryEmail && !authTransitioning) {
     return (
       <AccountCenterPage
         userId={user.id}
@@ -222,7 +231,7 @@ export function AccountPage() {
   };
 
   return (
-    <AccountBook mode={mode} busy={busy} open={mode === "recover" && Boolean(user)} onModeChange={changeMode}>
+    <AccountBook mode={mode} busy={busy} open={mode === "recover"} onModeChange={changeMode}>
       {mode === "login" ? (
         <LoginForm
           email={loginEmail}
@@ -264,7 +273,7 @@ export function AccountPage() {
         />
       ) : (
         <RecoveryForm
-          step={recoveryStep}
+          step={recoveryStep === "password" && !recoveryPending ? "code" : recoveryStep}
           email={recoveryEmail}
           code={recoveryCode}
           password={recoveryPassword}

@@ -9,6 +9,7 @@ const account = vi.hoisted(() => ({
   auth: {
     initialized: true,
     recoveryPending: false,
+    recoveryEmail: null as string | null,
     user: { id: "reader-1", email: "reader@example.com" } as {
       id: string;
       email: string;
@@ -26,6 +27,7 @@ const account = vi.hoisted(() => ({
     clearFeedback: vi.fn(),
     signOut: vi.fn(),
     sendPasswordReset: vi.fn(),
+    cancelPasswordRecovery: vi.fn(),
     verifyPasswordResetCode: vi.fn(),
     completePasswordRecovery: vi.fn(),
     changePassword: vi.fn(),
@@ -73,6 +75,8 @@ beforeEach(() => {
   useTimesPreferencesStore.setState({ foreignContentLanguage: "zh-CN", disabledSourceIds: [] });
   account.auth.user = { id: "reader-1", email: "reader@example.com" };
   account.auth.recoveryPending = false;
+  account.auth.recoveryEmail = null;
+  account.auth.cancelPasswordRecovery.mockReset();
   account.auth.profile.display_name = "雪豹-TGH";
   account.auth.busy = false;
   account.auth.error = null;
@@ -80,7 +84,7 @@ beforeEach(() => {
   account.auth.clearFeedback.mockClear();
   account.auth.signOut.mockReset().mockResolvedValue(undefined);
   account.auth.sendPasswordReset.mockReset().mockResolvedValue(undefined);
-  account.auth.verifyPasswordResetCode.mockReset().mockResolvedValue(undefined);
+  account.auth.verifyPasswordResetCode.mockReset().mockImplementation(async () => { account.auth.recoveryPending = true; });
   account.auth.completePasswordRecovery.mockReset().mockResolvedValue(undefined);
   account.auth.changePassword.mockReset().mockResolvedValue(undefined);
   account.auth.deleteAccount.mockReset().mockResolvedValue(undefined);
@@ -228,6 +232,7 @@ describe("account center", () => {
 
   it("restores the new-password form when a recovery session remounts the account page", () => {
     account.auth.recoveryPending = true;
+    account.auth.recoveryEmail = "reader@example.com";
 
     render(<MemoryRouter><AccountLogin /></MemoryRouter>);
 

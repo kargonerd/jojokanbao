@@ -1,8 +1,6 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment } from "react";
 import { Link } from "react-router-dom";
-import { useAccountSessionStore } from "../account/session";
-import { loadNotifications, markNotificationRead } from "./api";
-import { refreshUnreadNotifications, useNotificationStore } from "./store";
+import { useNotificationInbox } from "./useNotificationInbox";
 import type { UserNotification } from "./types";
 import "./notifications.css";
 
@@ -26,79 +24,7 @@ function safeLocalPath(value: string | null): string | null {
 }
 
 export function NotificationsPage() {
-  const userId = useAccountSessionStore((state) => state.userId);
-  const [items, setItems] = useState<UserNotification[]>([]);
-  const [loading, setLoading] = useState(Boolean(userId));
-  const [busy, setBusy] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
-  const [error, setError] = useState("");
-  const setUnreadCount = useNotificationStore((state) => state.setUnreadCount);
-  const adjustUnreadCount = useNotificationStore((state) => state.adjustUnreadCount);
-  const unreadCount = useNotificationStore((state) => state.unreadCount);
-  useEffect(() => {
-    if (!userId) {
-      setItems([]);
-      setLoading(false);
-      return;
-    }
-    let active = true;
-    setLoading(true);
-    setError("");
-    Promise.all([loadNotifications(), refreshUnreadNotifications(userId)])
-      .then(([loaded]) => {
-        if (!active) return;
-        setItems(loaded);
-        setHasMore(loaded.length === 50);
-      })
-      .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : String(reason)); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [userId]);
-
-  async function markAllRead() {
-    if (!unreadCount || busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      await markNotificationRead();
-      const now = new Date().toISOString();
-      setItems((current) => current.map((item) => item.readAt ? item : { ...item, readAt: now }));
-      setUnreadCount(0);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function loadMore() {
-    const lastItem = items.at(-1);
-    const before = lastItem ? { id: lastItem.id, createdAt: lastItem.createdAt } : undefined;
-    if (!before || busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      const loaded = await loadNotifications(50, before);
-      setItems((current) => [...current, ...loaded.filter((item) => !current.some((entry) => entry.id === item.id))]);
-      setHasMore(loaded.length === 50);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function markOneRead(item: UserNotification) {
-    if (item.readAt) return;
-    const now = new Date().toISOString();
-    setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, readAt: now } : entry));
-    adjustUnreadCount(-1);
-    void markNotificationRead(item.id).catch((reason) => {
-      setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, readAt: null } : entry));
-      adjustUnreadCount(1);
-      setError(reason instanceof Error ? reason.message : String(reason));
-    });
-  }
+  const { userId, unreadCount, items, loading, refreshing, busy, hasMore, error, loadMore, markPageRead, markOneRead } = useNotificationInbox();
 
   if (!userId) {
     return (
@@ -113,7 +39,7 @@ export function NotificationsPage() {
       <header className="notifications-heading">
         <div className="notifications-title"><h1>信箱</h1></div>
         <div className="notifications-summary"><span>{unreadCount ? <><b>{unreadCount}</b> 条新消息</> : "已经全部读完"}</span>
-        <button type="button" disabled={!unreadCount || busy} onClick={() => void markAllRead()}>{busy ? "处理中…" : "全部标为已读"}</button>
+        <button type="button" disabled={!items.some((item) => !item.readAt) || loading || busy} onClick={() => void markPageRead()}>{busy ? "处理中…" : "本页标为已读"}</button>
         </div>
       </header>
       {error ? <p className="notifications-error" role="alert">{error}</p> : null}
@@ -135,7 +61,7 @@ export function NotificationsPage() {
           </Fragment>;
         })}
       </ol>
-      {hasMore ? <button type="button" className="notifications-more" disabled={busy} onClick={() => void loadMore()}>{busy ? "正在读取…" : "加载更早通知"}</button> : null}
+      {hasMore ? <button type="button" className="notifications-more" disabled={busy || refreshing} onClick={() => void loadMore()}>{busy ? "正在读取…" : "加载更早通知"}</button> : null}
     </main>
   );
 }

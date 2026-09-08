@@ -71,6 +71,8 @@ export interface AuthState {
   user: User | null;
   profile: Profile | null;
   profileStatus: "idle" | "loading" | "ready" | "error";
+  recoveryEmail: string | null;
+  // True only after the recovery code has established the matching session.
   recoveryPending: boolean;
   initialized: boolean;
   busy: boolean;

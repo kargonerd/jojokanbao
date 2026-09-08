@@ -1,4 +1,4 @@
-import type { Session } from "@supabase/supabase-js";
+import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { create, type StoreApi, type UseBoundStore } from "zustand";
 import type { JojoAuthClient } from "./client";
 import { getAuthErrorMessage } from "./errors";
@@ -14,6 +14,7 @@ export interface AuthActions {
   resendSignUpCode: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
+  cancelPasswordRecovery: () => void;
   verifyPasswordResetCode: (email: string, code: string) => Promise<void>;
   completePasswordRecovery: (password: string) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
@@ -32,6 +33,15 @@ export interface JojoAuthController {
 export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController {
   const profiles = createProfileRepository(client);
   const pendingProfiles = new Map<string, ReturnType<typeof profiles.getOrCreate>>();
+  let recoveryRevision = 0;
+  // This guards the application's recovery flow; Supabase still enforces its
+  // own password-update authorization policy independently.
+  let verifiedRecovery: { userId: string; accessToken: string } | null = null;
+  const invalidateRecovery = () => {
+    verifiedRecovery = null;
+    return ++recoveryRevision;
+  };
+  const recoveryRequired = () => ({ code: "password_recovery_required" });
 
   const loadProfile = (userId: string) => {
     const pending = pendingProfiles.get(userId);
@@ -61,6 +71,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
     user: null,
     profile: null,
     profileStatus: "idle",
+    recoveryEmail: null,
     recoveryPending: false,
     initialized: false,
     busy: false,
@@ -69,7 +80,13 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
 
     clearFeedback: () => set({ error: null, notice: null }),
 
+    cancelPasswordRecovery: () => {
+      invalidateRecovery();
+      set({ recoveryEmail: null, recoveryPending: false, busy: false });
+    },
+
     signIn: async (email, password) => {
+      get().cancelPasswordRecovery();
       set({ busy: true, error: null, notice: null });
       try {
         const { data, error } = await client.auth.signInWithPassword({ email, password });
@@ -83,6 +100,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
     },
 
     signUp: async ({ email, password, invitationCode }) => {
+      get().cancelPasswordRecovery();
       set({ busy: true, error: null, notice: null });
       try {
         const { data, error } = await client.auth.signUp({
@@ -112,6 +130,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
     },
 
     confirmSignUp: async (email, code) => {
+      get().cancelPasswordRecovery();
       set({ busy: true, error: null, notice: null });
       try {
         const { data, error } = await client.auth.verifyOtp({
@@ -152,6 +171,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
     },
 
     signOut: async () => {
+      get().cancelPasswordRecovery();
       set({ busy: true, error: null, notice: null });
       const { error } = await client.auth.signOut({ scope: "local" });
       if (error) {
@@ -162,19 +182,24 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
     },
 
     sendPasswordReset: async (email) => {
-      set({ busy: true, error: null, notice: null });
+      const revision = invalidateRecovery();
+      set({ busy: true, recoveryPending: false, recoveryEmail: null, error: null, notice: null });
       try {
         const { error } = await client.auth.resetPasswordForEmail(email.trim());
         if (error) throw error;
-        set({ busy: false, notice: "如果该邮箱已注册，你会收到一封重置密码邮件。" });
+        if (revision !== recoveryRevision) throw recoveryRequired();
+        set({ busy: false, recoveryEmail: email.trim(), notice: "如果该邮箱已注册，你会收到一封重置密码邮件。" });
       } catch (error) {
-        set({ busy: false, error: getAuthErrorMessage(error) });
+        if (revision === recoveryRevision) set({ busy: false, error: getAuthErrorMessage(error) });
         throw error;
       }
     },
 
     verifyPasswordResetCode: async (email, code) => {
-      set({ busy: true, recoveryPending: true, error: null, notice: null });
+      const revision = invalidateRecovery();
+      // Keep the recovery route through auth callbacks/remounts, without
+      // treating an in-flight request as permission to show the password form.
+      set({ busy: true, recoveryEmail: email.trim(), recoveryPending: false, error: null, notice: null });
       try {
         const { data, error } = await client.auth.verifyOtp({
           email: email.trim(),
@@ -182,37 +207,67 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
           type: "recovery",
         });
         if (error) throw error;
-        const profile = data.user ? await loadProfile(data.user.id) : null;
+        const session = data.session;
+        if (!session || !data.user || session.user.id !== data.user.id
+          || session.user.email?.toLowerCase() !== email.trim().toLowerCase()) throw recoveryRequired();
+        const current = await client.auth.getSession();
+        if (current.error) throw current.error;
+        if (revision !== recoveryRevision || current.data.session?.access_token !== session.access_token) throw recoveryRequired();
+        verifiedRecovery = { userId: session.user.id, accessToken: session.access_token };
+        syncSession(session);
         set({
-          session: data.session,
-          user: data.user,
-          profile,
-          profileStatus: profile ? "ready" : "idle",
           recoveryPending: true,
           busy: false,
           notice: "验证码正确，请设置新密码。",
         });
       } catch (error) {
-        set({ busy: false, recoveryPending: false, error: getAuthErrorMessage(error) });
+        if (revision === recoveryRevision) {
+          verifiedRecovery = null;
+          set({ busy: false, recoveryPending: false, error: getAuthErrorMessage(error) });
+        }
         throw error;
       }
     },
 
     completePasswordRecovery: async (password) => {
+      const revision = recoveryRevision;
+      let recoveryClient: ReturnType<JojoAuthClient["createRecoveryClient"]> | undefined;
       set({ busy: true, error: null, notice: null });
       try {
-        const { error } = await client.auth.updateUser({ password });
+        const recovery = verifiedRecovery;
+        const current = await client.auth.getSession();
+        if (current.error) throw current.error;
+        if (revision !== recoveryRevision) throw recoveryRequired();
+        if (!recovery || recovery !== verifiedRecovery || !get().recoveryPending
+          || get().user?.id !== recovery.userId
+          || current.data.session?.user.id !== recovery.userId
+          || current.data.session.access_token !== recovery.accessToken) {
+          verifiedRecovery = null;
+          set({ recoveryPending: false });
+          throw recoveryRequired();
+        }
+        recoveryClient = client.createRecoveryClient();
+        const { error: sessionError } = await recoveryClient.auth.setSession(current.data.session);
+        if (sessionError) throw sessionError;
+        if (revision !== recoveryRevision || recovery !== verifiedRecovery) throw recoveryRequired();
+        const { error } = await recoveryClient.auth.updateUser({ password });
         if (error) throw error;
-        const { error: signOutError } = await client.auth.signOut({ scope: "others" });
+        if (revision !== recoveryRevision || recovery !== verifiedRecovery) throw recoveryRequired();
+        const { error: signOutError } = await recoveryClient.auth.signOut({ scope: "others" });
         if (signOutError) throw signOutError;
-        set({ recoveryPending: false, busy: false, notice: "密码已更新，其他设备的登录已经退出。" });
+        if (revision !== recoveryRevision || recovery !== verifiedRecovery) throw recoveryRequired();
+        invalidateRecovery();
+        set({ recoveryEmail: null, recoveryPending: false, busy: false, notice: "密码已更新，其他设备的登录已经退出。" });
       } catch (error) {
-        set({ busy: false, error: getAuthErrorMessage(error) });
+        if (revision === recoveryRevision) set({ busy: false, error: getAuthErrorMessage(error) });
         throw error;
+      } finally {
+        await recoveryClient?.auth.dispose();
       }
     },
 
     changePassword: async (currentPassword, newPassword) => {
+      get().cancelPasswordRecovery();
       const email = get().user?.email;
       if (!email) throw new Error("Not authenticated");
       set({ busy: true, error: null, notice: null });
@@ -234,6 +289,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
     },
 
     deleteAccount: async (currentPassword) => {
+      get().cancelPasswordRecovery();
       const email = get().user?.email;
       if (!email) throw new Error("Not authenticated");
       set({ busy: true, error: null, notice: null });
@@ -280,8 +336,20 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
 
   let sessionRevision = 0;
 
-  const syncSession = (session: Session | null) => {
+  const syncSession = (session: Session | null, event?: AuthChangeEvent) => {
     const revision = ++sessionRevision;
+    const current = useAuthStore.getState();
+    if (event === "SIGNED_IN" && current.recoveryEmail && session?.access_token !== current.session?.access_token) {
+      current.cancelPasswordRecovery();
+    }
+    if (verifiedRecovery && (session?.user.id !== verifiedRecovery.userId
+      || (session.access_token !== verifiedRecovery.accessToken && event !== "TOKEN_REFRESHED"))) {
+      invalidateRecovery();
+      useAuthStore.setState({ recoveryPending: false, busy: false, error: getAuthErrorMessage(recoveryRequired()) });
+    } else if (verifiedRecovery && session && event === "TOKEN_REFRESHED") {
+      verifiedRecovery.accessToken = session.access_token;
+    }
+    if (event === "SIGNED_OUT") useAuthStore.getState().cancelPasswordRecovery();
     if (!session?.user) {
       useAuthStore.setState({
         session: null,
@@ -294,7 +362,6 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
       return;
     }
     const userId = session.user.id;
-    const current = useAuthStore.getState();
     const profile = current.user?.id === userId ? current.profile : null;
 
     // The persisted session is enough to establish identity. Profile hydration
@@ -318,8 +385,9 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
     syncConsumers += 1;
     if (!stopSharedSync) {
       let active = true;
+      const initialRevision = sessionRevision;
       void client.auth.getSession().then(({ data, error }) => {
-        if (!active) return;
+        if (!active || initialRevision !== sessionRevision) return;
         if (error) {
           useAuthStore.setState({ initialized: true, error: getAuthErrorMessage(error) });
           return;
@@ -327,8 +395,8 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
         syncSession(data.session);
       });
 
-      const { data } = client.auth.onAuthStateChange((_event, session) => {
-        if (active) syncSession(session);
+      const { data } = client.auth.onAuthStateChange((event, session) => {
+        if (active) syncSession(session, event);
       });
       stopSharedSync = () => {
         active = false;

@@ -9,7 +9,9 @@ export interface AuthClientOptions {
   detectSessionInUrl?: boolean;
 }
 
-export type JojoAuthClient = SupabaseClient<Database>;
+export type JojoAuthClient = SupabaseClient<Database> & {
+  createRecoveryClient: () => Pick<SupabaseClient<Database>, "auth">;
+};
 
 export function createJojoAuthClient({
   supabaseUrl,
@@ -22,7 +24,7 @@ export function createJojoAuthClient({
     throw new Error("Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY.");
   }
 
-  return createClient<Database>(supabaseUrl, publishableKey, {
+  const client = createClient<Database>(supabaseUrl, publishableKey, {
     auth: {
       storageKey,
       storage,
@@ -31,5 +33,17 @@ export function createJojoAuthClient({
       detectSessionInUrl,
       flowType: "pkce",
     },
+  });
+  return Object.assign(client, {
+    // Password recovery writes must retain the verified session even when
+    // another tab changes the application's persisted login concurrently.
+    createRecoveryClient: () => createClient<Database>(supabaseUrl, publishableKey, {
+      auth: {
+        storageKey: `${storageKey}-password-recovery`,
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    }),
   });
 }
