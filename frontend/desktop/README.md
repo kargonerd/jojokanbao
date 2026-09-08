@@ -2,7 +2,7 @@
 
 `@jojo/desktop` 是 JOJO看报新版 Web 体验的 Electron 客户端。Renderer 直接复用 Web 的
 `AppLayout`、`AppHeader`、首页、资料库、搜索、报刊/书籍阅读器、AI 和 Account；
-旧版 Archive 首页、暂时关闭的 JOJO Times（时事）与尚待重做的 Press 不进入桌面导航或 renderer 构建。
+旧版 Archive 首页不进入桌面导航或 renderer 构建。
 
 当前目录边界：
 
@@ -12,32 +12,17 @@
   preload 的运行时边界，不维护同名 TypeScript 或 ESM 副本。
 - `e2e/`：Playwright 端到端测试。
 - `tests/`：不依赖真实桌面运行时的应用级测试。
-- `scripts/`：仅供 Desktop 本地开发使用的 Electron/TypeScript engine 启动器。
+- `scripts/`：仅供 Desktop 本地开发使用的 Vite/Electron 启动器。
 - `src/main.tsx`：统一 Desktop Shell 的 React renderer 入口。
 - `src/shell/`：桌面运行时适配和顶层模块路由，不实现第二套 UI 框架。
-- `src/press/`：暂未启用的 Press 源码，当前不会进入路由或 renderer 构建。
 - `../web/src/desktop.ts`：从新版 Web 向 Desktop 暴露的稳定模块入口。
 - `../web/src/desktop.css`：完整的跨运行时样式入口，统一加载 UI token、基础控件样式，
   并为 Web 业务模块生成 Tailwind utilities；Desktop 不单独复制页面样式。
 - `src/electron.d.ts`：renderer 使用的 preload bridge 类型。
 - `src/test-setup.ts`：renderer 测试环境配置。
-- `engine/`：Press 使用的 Desktop 专属 TypeScript engine。
 
-Engine 保持按运行职责拆分的扁平结构：
-
-- `application.ts`：不依赖传输协议的业务命令入口。
-- `project-repository.ts`：项目文档与识别状态的文件持久化。
-- `mineru-service.ts`：MinerU 上传、轮询、产物保存和超长 PDF 分片。
-- `export-service.ts`：Markdown、HTML、EPUB 和 jojo-rag 导出。
-- `model.ts`、`validation.ts`：领域类型、清理规则和命令输入校验。
-
-测试与实现文件同目录放置，方便确认每项本地引擎能力的覆盖范围。MinerU
-原始压缩包和规范化后的 `content_list.json` 保存在项目 `artifacts/` 下；超过
-600 页的 PDF 会按 300 页分片识别，并在合并时恢复原始页码。
-
-Press 的 engine、页面与测试代码暂时保留，供下一轮体验重做；当前生产构建不会注册
-Press 路由、菜单和快捷键，也不会暴露 PDF 选择、MinerU 或 Engine IPC，不会启动 Worker
-或打包其 renderer 资源。Renderer 始终无法访问 Node.js、`ipcRenderer` 或任意本地文件路径。
+书籍制作使用外部工具；EPUB 通过 [`tools/content-pipeline`](../../tools/content-pipeline/README.md)
+导入统一馆藏，桌面端复用 Web 阅读器。Renderer 无法访问 Node.js、`ipcRenderer` 或任意本地文件路径。
 
 Desktop 顶层路由：
 

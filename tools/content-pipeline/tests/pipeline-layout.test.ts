@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { gunzipSync } from "node:zlib";
 import JSZip from "jszip";
+import * as cheerio from "cheerio";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   gunzipJoxJson,
@@ -126,7 +127,7 @@ describe("approved B2 layout", () => {
     const exportObject = resolveJoxObject(manifestObject, manifest.exports[0]!.object);
     const epub = await JSZip.loadAsync(transformJoxBytes(await readFile(path.join(output, "delivery", exportObject)), exportObject));
     const xhtml = await Promise.all(epub.file(/\.xhtml$/).map((file) => file.async("string")));
-    for (const text of [canonical, hf, searchDocuments, JSON.stringify(search), xhtml.join("\n")]) {
+    for (const text of [canonical, hf, searchDocuments, JSON.stringify(search), xhtml.map((html) => cheerio.load(html, { xmlMode: true }).text()).join("\n")]) {
       expect(text).not.toMatch(/版权信息|授权微信读书|版权所有|侵权必究/);
       expect(text).toContain("正文");
     }

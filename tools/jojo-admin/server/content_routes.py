@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import threading
@@ -101,7 +102,7 @@ def _new_job(input_paths: list[str], fetch_assets: bool, publication_status: str
 
 
 def _build(job_id: str) -> None:
-    job = _set(job_id, status="building", phase="inspect", message="正在检查微信读书 JSON")
+    job = _set(job_id, status="building", phase="inspect", message="正在检查电子书源文件")
     pnpm = shutil.which("pnpm.cmd") or shutil.which("pnpm") or "pnpm"
     command = [pnpm, "--filter", "@jojo/content-pipeline", "cli"]
     for input_path in job["inputPaths"]:
@@ -231,16 +232,21 @@ def import_files():
     upload_root.mkdir(parents=True, exist_ok=True)
     input_paths = []
     for index, file in enumerate(files, 1):
-        suffix = Path(file.filename or "").suffix.lower()
+        filename = (file.filename or "").replace("\\", "/").rsplit("/", 1)[-1]
+        filename = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", filename).rstrip(" .")
+        suffix = Path(filename).suffix.lower()
         if suffix not in SUPPORTED_SOURCE_SUFFIXES:
             continue
-        target = upload_root / f"{index:04d}{suffix}"
+        if re.match(r"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)", filename, re.I):
+            filename = f"_{filename}"
+        # Keep the name for metadata fallback; isolate duplicate names per upload.
+        target = upload_root / f"{index:04d}" / filename
+        target.parent.mkdir(parents=True, exist_ok=True)
         file.save(target)
         input_paths.append(str(target))
     if not input_paths:
         shutil.rmtree(RUNTIME / job_id, ignore_errors=True)
         return jsonify({"success": False, "message": "只支持 JSON、EPUB、AZW、MOBI 和 PRC 文件"}), 400
-    # _new_job allocates its own durable identifier; uploaded files remain valid inputs.
     return jsonify({"success": True, "job": _new_job(
         input_paths,
         request.form.get("fetchAssets", "true").lower() != "false",

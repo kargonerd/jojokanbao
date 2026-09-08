@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -8,17 +8,6 @@ import { config as loadEnv } from 'dotenv';
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.resolve(currentDir, '..');
 loadEnv({ path: path.join(desktopRoot, '.env'), override: false, quiet: true });
-
-const compile = spawnSync(
-  process.execPath,
-  [
-    path.join(desktopRoot, 'node_modules', 'typescript', 'bin', 'tsc'),
-    '-p',
-    path.join(desktopRoot, 'tsconfig.engine.json'),
-  ],
-  { cwd: desktopRoot, stdio: 'inherit', shell: false },
-);
-if (compile.status !== 0) process.exit(compile.status ?? 1);
 
 const children = [];
 const spawnChild = (command, args, options = {}) => {

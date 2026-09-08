@@ -36,7 +36,6 @@ backend/**/node_modules/
 backend/**/dist/
 backend/**/build/
 backend/**/__pycache__/
-frontend/desktop/engine/.runtime/
 frontend/desktop/release/
 references/**/node_modules/
 references/**/dist/
@@ -44,7 +43,6 @@ references/**/.next/
 references/**/__pycache__/
 frontend/desktop/*diagnostic*.png
 frontend/desktop/*alignment*.png
-press-proofread*.png
 tmp/
 tools/data-workbench/server/.runtime/
 .review/

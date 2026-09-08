@@ -545,6 +545,10 @@ path: items/2026/2026-special-1.json.gz
 ```text
 p h1 h2 h3 h4 h5 h6 blockquote ol ul li
 strong em sup sub u s q a br hr figure figcaption span
+table caption thead tbody tfoot tr th td colgroup col
+math mrow mi mn mo mtext ms mspace mfrac msqrt mroot msub msup msubsup
+munder mover munderover mmultiscripts mprescripts none mtable mtr mtd mlabeledtr
+mstyle mpadded mphantom menclose semantics annotation
 ```
 
 允许属性：
@@ -555,6 +559,9 @@ data-role data-indent data-font data-size data-width data-break-before
 ```
 
 受控属性的取值如下：
+
+- 表格保留 `colspan`、`rowspan`、`scope` 和列的 `span`，避免丢失单元格关系。
+- MathML 保留基础排版属性（如 `display`、`mathvariant`、`stretchy`、`columnalign` 等），根元素可带 `xmlns` 与 `alttext`；`annotation` 仅保留 `encoding`。不支持 `annotation-xml`、脚本、事件或外部引用。Reader 使用浏览器原生 MathML，EPUB 导出会声明 `mathml` manifest 属性。
 
 - `data-align`：`left`、`center`、`right`，保留署期、署名、题记等对齐关系。
 - `data-indent`：当前只允许 `none`，表示原书明确不做首行缩进。
@@ -567,7 +574,12 @@ data-role data-indent data-font data-size data-width data-break-before
 
 块级图片使用 `figure[data-asset-id]`，图片说明放在其 `figcaption` 中。嵌在文字或公式中的小图使用空的 `span[data-asset-id][data-role="inline-image"]`，不得提升为独立插图。真实文件统一由 Item 的 `assets` 描述。
 
-导入器应把来源 class 转换为上述 HTML 元素和受控属性，不把来源 class、内联 CSS 或厂商命名写进规范数据。例如粗体转为 `strong`、上下标转为 `sup`/`sub`、块引文转为 `blockquote`、图片说明转为 `figcaption`，并把封面、全幅图、表格图、书信、署名和显式分页转换成对应的受控语义。脚注定义及其正文标记应转换为 Item 的 `annotations`，不得只保留来源内部链接。禁止脚本、iframe、style、class、事件属性、外部 CSS 和 `javascript:` URL。
+导入器应把来源 class 转换为上述 HTML 元素和受控属性，不把来源 class、内联 CSS 或厂商命名写进规范数据。例如粗体转为 `strong`、上下标转为 `sup`/`sub`、块引文转为 `blockquote`、图片说明转为 `figcaption`，并把封面、全幅图、表格图、书信、署名和显式分页转换成对应的受控语义。
+
+能够可靠配对的纯文本脚注定义及其正文标记转换为 Item 的 `annotations`，保留原注号和标记锚点。
+v1 注释正文使用纯文本；含图片、表格或公式的复杂注释保持为可跳转的正文内容，保留结构与资源。
+未引用的注释保留正文；无法可靠配对的纯文本注号原样保留并输出诊断。
+禁止脚本、iframe、style、class、事件属性、外部 CSS 和 `javascript:` URL。
 
 ## 5. Delivery
 
@@ -809,8 +821,11 @@ Hugging Face Canonical 可同时保存用于 Dataset Viewer 的 `data/search-doc
 书籍导入器支持：
 
 - 微信读书 WRX JSON。
-- EPUB。
+- EPUB 2（NCX）和 EPUB 3（nav），包含多级目录、中文及 URL 编码路径、命名空间前缀和包内图片。
 - 无 DRM 的 MOBI 6/7：`.azw`、`.mobi`、`.prc`。
+
+EPUB 由管理台 `/content` 或 Content Pipeline 命令行导入，两者共用同一管线。
+PDF 书籍先通过外部工具转换为 EPUB；Press 已移除。导入器保留内容语义，不复刻出版社的完整 CSS 或固定版式。
 
 导入器必须校验：
 
@@ -818,12 +833,17 @@ Hugging Face Canonical 可同时保存用于 Dataset Viewer 的 `data/search-doc
 - TOC 中应有正文的条目是否都有章节记录。
 - 所有章节分片是否能够解码。
 - TOC 的 `targetId` 是否指向真实章节。
+- EPUB spine 是否引用有效且可解码的正文文件，目录与正文内链的目标和锚点是否存在。
+- 合并碎片章节后是否出现重复锚点；启用资源导入时，正文引用的包内资源是否存在。
 - Annotation 的 `targetId` 和可选 `anchorId` 是否有效。
 - Asset/Export 的大小和 SHA-256 是否匹配。
 - Delivery Manifest、Fragment 和搜索指针是否可解析。
 - `search/text.jox` 的 Item 身份、章节目标、大小和 SHA-256 是否正确。
 
-默认发现缺章或解码失败时拒绝导入；只有显式 `--allow-partial` 才允许部分导入。同一来源 ID 存在多个导出时，优先保留目录与正文更完整的版本。
+默认发现缺章、解码失败、失效的 EPUB 目录/内链或缺失内嵌资源时拒绝导入，并在 `report.json` 中记录详情。
+只有命令行显式 `--allow-partial` 才允许可恢复的部分导入并保留 warning；损坏 ZIP、无效 spine 和加密正文仍会报错。
+`--no-assets` 表示主动只取文字。同一来源 ID 存在多个导出时，优先保留目录与正文更完整的版本。
+导入能力、注释处理和限制详见 [Content Pipeline](../tools/content-pipeline/README.md)。
 
 命令：
 
