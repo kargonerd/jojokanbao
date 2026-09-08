@@ -1,6 +1,11 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("JOJO Web", () => {
+  test.beforeEach(async ({ page }) => {
+    // Keep ordinary homepage checks independent of the seasonal opening.
+    await page.clock.setFixedTime(new Date("2026-10-01T00:00:00+08:00"));
+  });
+
   test("serves PDF.js runtime assets from the Reader origin", async ({ request }) => {
     for (const asset of [
       "/assets/pdfjs/cmaps/Adobe-CNS1-UCS2.bcmap",

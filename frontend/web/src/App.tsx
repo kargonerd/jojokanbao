@@ -20,6 +20,9 @@ import { TimesSourceSettingsPage } from "./account/pages/TimesSourceSettingsPage
 import { startAccountSessionSync, useAccountSessionStore } from "./account/session";
 
 const AccountConfirmation = lazy(() => import("./account/AccountConfirmation"));
+const LaunchCommemoration = lazy(() =>
+  import("./home/LaunchCommemoration").then(({ LaunchCommemoration }) => ({ default: LaunchCommemoration })),
+);
 const DownloadPage = lazy(() =>
   import("./download/DownloadPage").then(({ DownloadPage }) => ({ default: DownloadPage })),
 );
@@ -136,7 +139,7 @@ function RedesignedRoutes() {
         <Route path="/login" element={<Navigate to="/account" replace />} />
 
         <Route element={<AppLayout />}>
-          <Route index element={<HomePage periodicals={PERIODICALS} />} />
+          <Route index element={<><HomePage periodicals={PERIODICALS} /><LazyRoute><LaunchCommemoration /></LazyRoute></>} />
           <Route path="bookshelf" element={<BookshelfPage />} />
           <Route path="library" element={<LibraryPage periodicals={PERIODICALS} />} />
           <Route path="library/:datasetId" element={<LibraryPage periodicals={PERIODICALS} />} />
