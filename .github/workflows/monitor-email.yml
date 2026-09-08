@@ -1,0 +1,71 @@
+name: Monitor · Email Delivery
+run-name: >-
+  ${{ inputs.automatic && 'Email delivery [scheduler]' || 'Email delivery [manual]' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      automatic:
+        description: Internal flag for the existing Tencent SCF scheduler
+        type: boolean
+        default: false
+        required: true
+      scheduled_at:
+        description: Scheduled slot time supplied by the scheduler
+        type: string
+        default: ""
+      schedule_slot:
+        description: Stable scheduler slot id
+        type: string
+        default: ""
+      verify_transport:
+        description: Send one verification email to the dedicated Resend test address
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - 'tools/email-healthcheck/**'
+      - '.github/workflows/monitor-email.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: email-delivery-${{ github.event_name == 'pull_request' && github.event.number || 'live' }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22.19.0
+          package-manager-cache: false
+      - run: node --test tools/email-healthcheck/*.test.mjs
+
+  probe:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22.19.0
+          package-manager-cache: false
+      - name: Observe delivery and report without email content
+        run: node tools/email-healthcheck/run.mjs
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          RESEND_MONITOR_API_KEY: ${{ secrets.RESEND_MONITOR_API_KEY }}
+          JOJO_EMAIL_MONITOR_ADDRESS: ${{ secrets.JOJO_EMAIL_MONITOR_ADDRESS }}
+          JOJO_EMAIL_SENDER: ${{ vars.JOJO_EMAIL_SENDER }}
+          JOJO_EMAIL_HEALTHCHECK_PING_URL: ${{ secrets.JOJO_EMAIL_HEALTHCHECK_PING_URL }}
+          JOJO_EMAIL_AUTOMATIC: ${{ inputs.automatic }}
+          JOJO_EMAIL_SCHEDULED_AT: ${{ inputs.scheduled_at }}
+          JOJO_EMAIL_SCHEDULE_SLOT: ${{ inputs.schedule_slot }}
+          JOJO_EMAIL_VERIFY_TRANSPORT: ${{ inputs.verify_transport }}

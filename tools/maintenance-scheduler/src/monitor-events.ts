@@ -28,13 +28,25 @@ export async function listLoggedPings(uuid: string, apiKey: string, fetcher: typ
   return ordered;
 }
 
-export async function readLoggedBody(uuid: string, n: number, apiKey: string, fetcher: typeof fetch = fetch): Promise<string> {
+export async function readLoggedBody(uuid: string, n: number, apiKey: string, fetcher: typeof fetch = fetch, maxBytes = 8192): Promise<string> {
   // Never follow a body_url from an API payload with our project credential.
   const response = await read(`${API}/${uuid}/pings/${n}/body`, apiKey, fetcher);
-  if (Number(response.headers.get("content-length")) > 8192) throw new Error("Monitoring event body is too large");
-  const body = await response.text();
-  if (body.length > 8192) throw new Error("Monitoring event body is too large");
-  return body;
+  if (Number(response.headers.get("content-length")) > maxBytes) throw new Error("Monitoring event body is too large");
+  const reader = response.body?.getReader();
+  if (!reader) return "";
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let body = "";
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      bytes += chunk.value.byteLength;
+      if (bytes > maxBytes) throw new Error("Monitoring event body is too large");
+      body += decoder.decode(chunk.value, { stream: true });
+    }
+    return body + decoder.decode();
+  } finally { await reader.cancel().catch(() => undefined); }
 }
 
 function parseLegacyAiSuccess(body: string, receivedAt: number): ExecutionEvent | undefined {

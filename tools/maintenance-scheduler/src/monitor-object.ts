@@ -3,6 +3,8 @@ import { checkUuid, listLoggedPings, parseExecution, readLoggedBody } from "./mo
 import { applyDispatch, applyExecution, DEFAULT_ALERT_POLICY, evaluateDeadline, initialState, markHistoryGap, nextDeadline, observeExpectedSlot, type DispatchObservation, type MonitorState } from "./monitor-policy";
 import { SCHEDULED_TASKS } from "./tasks";
 import { tickQueueMonitor } from "./queue-monitor";
+import { EMAIL_MONITOR_SLUG } from "./email-events";
+import { tickEmailMonitor } from "./email-monitor";
 import { taskHealthcheck, taskStageHealthchecks, type AlertPolicy, type HealthcheckDefinition, type QueuePolicy, type ScheduledTask, type SchedulerEnv, type StateStore } from "./types";
 
 export interface MonitorTick {
@@ -46,6 +48,7 @@ export class TaskMonitor {
     if (!key) throw new Error("Monitoring management key is missing");
     const pingUrl = await ensureHealthcheck(check, key);
     const uuid = checkUuid(pingUrl);
+    if (check.slug === EMAIL_MONITOR_SLUG) return tickEmailMonitor(this.context.storage, check, key, pingUrl, uuid, tick);
     if (queue) return tickQueueMonitor(this.context.storage, this.env, queue, check.slug, pingUrl, uuid, tick.now);
     const previous = await this.context.storage.get<MonitorState>("monitor");
     const state = previous?.checkUuid === uuid ? structuredClone(previous) : initialState(check, uuid, tick.now);
