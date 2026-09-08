@@ -69,6 +69,37 @@ function createClient() {
 }
 
 describe("createJojoAuthStore", () => {
+  it.each(["qq.com@123456789", "mail.qq@9876543210", "reader@host.123", "reader@@qq.com"])(
+    "rejects an incomplete or reversed signup email before requesting delivery: %s", async (email) => {
+      const { client, signUp, resend } = createClient();
+      const { useAuthStore } = createJojoAuthStore(client);
+      await expect(useAuthStore.getState().signUp({ email, password: "password", invitationCode: "ABC123" })).rejects.toMatchObject({ code: "email_address_invalid" });
+      expect(signUp).not.toHaveBeenCalled();
+      expect(useAuthStore.getState()).toMatchObject({ busy: false, notice: null });
+      expect(useAuthStore.getState().error).toContain("@ 前后的内容");
+      await expect(useAuthStore.getState().resendSignUpCode(email)).rejects.toMatchObject({ code: "email_address_invalid" });
+      expect(resend).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["reader@qq.com", "first.last+beta@custom.example.org", "reader@xn--fiqs8s.example"])(
+    "allows complete email domains and trims whitespace: %s", async (email) => {
+      const { client, signUp } = createClient();
+      const { useAuthStore } = createJojoAuthStore(client);
+      await useAuthStore.getState().signUp({ email: ` ${email} `, password: "password", invitationCode: "ABC123" });
+      expect(signUp).toHaveBeenCalledWith(expect.objectContaining({ email }));
+    },
+  );
+
+  it("keeps signup editable after a delivery failure", async () => {
+    const { client, signUp } = createClient();
+    const failure = { status: 500, code: "unexpected_failure", message: "Error sending confirmation email" };
+    signUp.mockResolvedValueOnce({ data: { user: null, session: null }, error: failure });
+    const { useAuthStore } = createJojoAuthStore(client);
+    await expect(useAuthStore.getState().signUp({ email: "reader@example.com", password: "password", invitationCode: "ABC123" })).rejects.toEqual(failure);
+    expect(useAuthStore.getState()).toMatchObject({ busy: false, user: null, notice: null });
+    expect(useAuthStore.getState().error).toContain("请先检查邮箱地址");
+  });
   it("allows retry after a stalled profile read, without clearing the session", async () => {
     vi.useFakeTimers();
     try {

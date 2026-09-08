@@ -2,6 +2,7 @@ import type { Session } from "@supabase/supabase-js";
 import { create, type StoreApi, type UseBoundStore } from "zustand";
 import type { JojoAuthClient } from "./client";
 import { getAuthErrorMessage } from "./errors";
+import { validateRegistrationEmail } from "./email";
 import { createProfileRepository } from "./profile";
 import type { AuthState, SignUpInput } from "./types";
 
@@ -85,7 +86,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
       set({ busy: true, error: null, notice: null });
       try {
         const { data, error } = await client.auth.signUp({
-          email,
+          email: validateRegistrationEmail(email),
           password,
           options: {
             data: { invitation_code: invitationCode.trim() },
@@ -140,7 +141,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
       try {
         const { error } = await client.auth.resend({
           type: "signup",
-          email: email.trim(),
+          email: validateRegistrationEmail(email),
         });
         if (error) throw error;
         set({ busy: false, notice: "新的验证码已经发送。" });

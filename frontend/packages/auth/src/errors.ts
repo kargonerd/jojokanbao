@@ -1,7 +1,7 @@
 const AUTH_ERROR_MESSAGES: Record<string, string> = {
   profile_request_timeout: "读者代号暂时无法读取，请检查网络后重试。",
   anonymous_provider_disabled: "当前未开放匿名登录。",
-  email_address_invalid: "邮箱地址格式不正确。",
+  email_address_invalid: "邮箱地址格式不正确，请检查 @ 前后的内容，例如 name@qq.com。",
   email_address_not_authorized: "当前邮件服务不能向这个地址发送确认邮件。",
   email_exists: "这个邮箱已经注册，请直接登录。",
   email_not_confirmed: "请先输入邮件中的验证码，完成邮箱验证。",
@@ -25,6 +25,15 @@ export function getAuthErrorMessage(error: unknown): string {
   }
 
   const message = candidate.message?.toLowerCase() ?? "";
+  if (message.includes("invalid recipient") || message.includes("recipient address rejected")) {
+    return "这个邮箱无法接收验证邮件，请检查邮箱地址，或换一个邮箱后重试。";
+  }
+  // Auth hides the underlying SMTP rejection from browsers. A send failure
+  // can also be a provider outage, so guide the reader without claiming that
+  // every HTTP 500 means their address is invalid.
+  if (/error sending (confirmation|recovery|magic link|invite|email change) (email|mail)/.test(message)) {
+    return "验证邮件发送失败，请先检查邮箱地址是否填写正确（例如 name@qq.com）；确认无误后稍后重试。";
+  }
   if (message.includes("invalid login credentials")) return "邮箱或密码不正确。";
   if (message.includes("email not confirmed")) return "请先输入邮件中的验证码，完成邮箱验证。";
   if (message.includes("token has expired") || message.includes("otp expired")) {
