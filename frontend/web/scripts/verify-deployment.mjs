@@ -7,7 +7,9 @@ const baseUrl = process.env.READER_BASE_URL;
 const revision = process.env.READER_DEPLOY_REVISION || Date.now().toString(36);
 const distUrl = new URL("../dist/", import.meta.url);
 const assetsUrl = new URL("assets/", distUrl);
-const attempts = 10;
+// Give EdgeOne/CDN propagation three minutes of retry waits, in addition to requests.
+const attempts = 19;
+const retryDelayMs = 10_000;
 
 if (!baseUrl) {
   throw new Error("READER_BASE_URL is required");
@@ -135,7 +137,10 @@ for (let attempt = 1; attempt <= attempts; attempt += 1) {
     process.exit(0);
   } catch (error) {
     lastError = error instanceof Error ? error : new Error(String(error));
-    if (attempt < attempts) await delay(3_000);
+    if (attempt < attempts) {
+      console.warn(`Web deployment verification attempt ${attempt}/${attempts} failed: ${lastError.message}; retrying in ${retryDelayMs / 1_000}s`);
+      await delay(retryDelayMs);
+    }
   }
 }
 
