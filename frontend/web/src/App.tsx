@@ -8,6 +8,7 @@ import { PUBLICATIONS, PUBLICATION_NAMES } from "./archive/publications";
 import { NotFoundPage } from "./NotFoundPage";
 import { AppLayout } from "./shell/AppLayout";
 import { HomePage } from "./home/HomePage";
+import { LaunchCommemoration } from "./home/LaunchCommemoration";
 import { BookshelfPage } from "./library/BookshelfPage";
 import { LibraryPage } from "./library/LibraryPage";
 import { NotificationsPage } from "./notifications/NotificationsPage";
@@ -136,7 +137,7 @@ function RedesignedRoutes() {
         <Route path="/login" element={<Navigate to="/account" replace />} />
 
         <Route element={<AppLayout />}>
-          <Route index element={<HomePage periodicals={PERIODICALS} />} />
+          <Route index element={<><HomePage periodicals={PERIODICALS} /><LaunchCommemoration /></>} />
           <Route path="bookshelf" element={<BookshelfPage />} />
           <Route path="library" element={<LibraryPage periodicals={PERIODICALS} />} />
           <Route path="library/:datasetId" element={<LibraryPage periodicals={PERIODICALS} />} />
