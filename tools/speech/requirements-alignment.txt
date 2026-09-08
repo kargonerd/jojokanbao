@@ -1,8 +1,0 @@
-# Offline only. Do not add these model dependencies to the API deployment.
-funasr==1.4.14
-torch==2.5.0
-torchaudio==2.5.0
-numpy==1.26.4
-librosa==0.11.0
-soundfile==0.14.0
-cn2an==0.5.24

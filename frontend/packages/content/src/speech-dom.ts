@@ -5,7 +5,7 @@ export function createSpeechReader(root: HTMLElement, viewport: () => { left: nu
   const doc = root.ownerDocument;
   let activeRange: Range | null = null;
   let overlay: HTMLDivElement | null = null;
-  let location: { segments: string[]; index: number; range?: { start: number; end: number } } | null = null;
+  let location: { segments: string[]; index: number } | null = null;
   function snapshot() {
     const nodes: Array<{ node: Text; start: number; offsets: number[] }> = [];
     let text = "";
@@ -61,18 +61,14 @@ export function createSpeechReader(root: HTMLElement, viewport: () => { left: nu
       overlay.appendChild(mark);
     }
   }
-  function show(segments: string[], index: number, reveal?: (range: Range) => void, range?: { start: number; end: number }) {
-    location = { segments, index, range };
+  function show(segments: string[], index: number, reveal?: (range: Range) => void) {
+    location = { segments, index };
     const { text, nodes } = snapshot();
     let cursor = 0, start = -1;
     for (let i = 0; i <= index; i++) {
       const value = (segments[i] ?? "").replace(/\s/gu, "");
       start = value ? text.indexOf(value, cursor) : -1;
       if (start >= 0) cursor = start + value.length;
-    }
-    if (start >= 0 && range) {
-      if (!Number.isInteger(range.start) || !Number.isInteger(range.end) || range.start < 0 || range.end <= range.start || range.end > cursor - start) start = -1;
-      else { cursor = start + range.end; start += range.start; }
     }
     activeRange = null;
     if (start >= 0) {
@@ -90,7 +86,7 @@ export function createSpeechReader(root: HTMLElement, viewport: () => { left: nu
   doc.addEventListener("scroll", paint, true);
   doc.defaultView?.addEventListener("resize", paint);
   const Observer = doc.defaultView?.MutationObserver;
-  const observer = Observer ? new Observer(() => { if (location) show(location.segments, location.index, undefined, location.range); }) : null;
+  const observer = Observer ? new Observer(() => { if (location) show(location.segments, location.index); }) : null;
   observer?.observe(root, { childList: true, subtree: true, characterData: true });
   return { read, show, paint, clear() { location = null; activeRange = null; overlay?.remove(); overlay = null; }, destroy() {
     location = null; observer?.disconnect();

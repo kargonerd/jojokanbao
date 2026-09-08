@@ -2,7 +2,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import Slider from "@react-native-community/slider";
 import { useIsFocused } from "@react-navigation/native";
-import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { useEffect, useRef, useState, type ComponentProps } from "react";
 import type { SpeechLocation } from "@jojo/content";
 import { speechVoiceLabel } from "@jojo/content/speech";
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View, type ImageSourcePropType } from "react-native";
@@ -43,11 +43,10 @@ function ActiveSpeechPlayer(props: Props & { userId: string }) {
   const voiceLabel = speechVoiceLabel(playback.voice.voice, playback.voice.provider, playback.capabilities?.providers);
   const locationCallback = useRef(props.onSpeechLocation);
   locationCallback.current = props.onSpeechLocation;
-  const speechRange = useMemo(() => playback.cue ? { start: playback.cue.startOffset, end: playback.cue.endOffset } : undefined, [playback.cue]);
   useEffect(() => {
     locationCallback.current?.(opened && !expanded && playback.chapter
-      ? { chapterId: playback.chapter.id, segments: playback.chapter.segments, index: playback.part, ...(speechRange && { range: speechRange }) } : null, playback.playing);
-  }, [opened, expanded, playback.chapter, playback.part, playback.playing, speechRange]);
+      ? { chapterId: playback.chapter.id, segments: playback.chapter.segments, index: playback.part } : null, playback.playing);
+  }, [opened, expanded, playback.chapter, playback.part, playback.playing]);
   useEffect(() => () => locationCallback.current?.(null, false), []);
   const background = theme.eInk ? theme.paper : "#f1ede6";
   function open() { setOpened(true); setExpanded(true); void playback.open(); }
@@ -96,7 +95,7 @@ function ActiveSpeechPlayer(props: Props & { userId: string }) {
           {playback.error ? <Pressable accessibilityRole="button" onPress={() => playback.chapter ? playback.toggle() : void playback.open()}><Text style={styles.retry}>重试</Text></Pressable> : null}
           <View style={styles.controls}>
             <Option icon="book-outline" label="原文" onPress={() => { setExpanded(false); props.onRead(playback.chapter?.id || props.chapterId,
-              playback.chapter ? { chapterId: playback.chapter.id, segments: playback.chapter.segments, index: playback.part, ...(speechRange && { range: speechRange }) } : undefined); }} />
+              playback.chapter ? { chapterId: playback.chapter.id, segments: playback.chapter.segments, index: playback.part } : undefined); }} />
             <IconButton icon="play-skip-back" label="上一章" disabled={currentIndex <= 0} onPress={() => chapterStep(-1)} />
             <Pressable accessibilityRole="button" accessibilityLabel={playback.busy ? "加载中" : playback.playing ? "暂停听读" : "开始听读"} disabled={playback.busy} onPress={playback.toggle} style={[styles.play, { backgroundColor: theme.red }]}>{playback.busy ? theme.eInk ? <Text style={{ color: theme.inverse }}>加载中</Text> : <ActivityIndicator color={theme.inverse} /> : <Ionicons name={playback.playing ? "pause" : "play"} size={30} color={theme.inverse} />}</Pressable>
             <IconButton icon="play-skip-forward" label="下一章" disabled={currentIndex < 0 || currentIndex === props.chapters.length - 1} onPress={() => chapterStep(1)} />

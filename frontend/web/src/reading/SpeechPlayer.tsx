@@ -1,10 +1,10 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { speechFromReadingPosition } from "@jojo/content";
-import { speechVoiceLabel, speechCueAt, type SpeechCue } from "@jojo/content/speech";
+import { speechVoiceLabel } from "@jojo/content/speech";
 import { Backward15Seconds, Forward15Seconds, Book, BookStack, Check, DashboardSpeed, Headset, List, NavArrowDown, PauseSolid, PlaySolid, SkipNextSolid, SkipPrevSolid, Timer, User, Xmark } from "iconoir-react";
 import { ReadingBookshelfContext } from "./ReadingBookshelfContext";
-import { DEFAULT_SPEECH_PROVIDERS, loadCachedSpeechDurations, loadSpeechCues, loadSpeechProviders, logicalSpeechVoice, requestSpeech, SPEECH_VOICES, type SpeechProvider, type SpeechVoice } from "./speech";
+import { DEFAULT_SPEECH_PROVIDERS, loadCachedSpeechDurations, loadSpeechProviders, logicalSpeechVoice, requestSpeech, SPEECH_VOICES, type SpeechProvider, type SpeechVoice } from "./speech";
 import "./SpeechPlayer.css";
 import { readSpeechProgress, saveSpeechProgress, speechFingerprint } from "./speechProgress";
 import { useAccountSessionStore } from "../account/session";
@@ -162,7 +162,6 @@ function ActiveSpeechPlayer({
   const [providersError, setProvidersError] = useState("");
   const [providersRevision, setProvidersRevision] = useState(0);
   const [durations, setDurations] = useState<Record<number, number>>({});
-  const [sourceCues, setSourceCues] = useState<Record<string, SpeechCue[]>>({});
   const [speed, setSpeed] = useState(storedSpeed);
   const [state, setState] = useState<PlayerState>("idle");
   const [showLoading, setShowLoading] = useState(false);
@@ -287,11 +286,6 @@ function ActiveSpeechPlayer({
       .then((blob) => {
         if ("url" in blob) {
           sourceDurationsRef.current.set(key, blob.duration);
-          const timingController = new AbortController();
-          controllersRef.current.add(timingController);
-          void loadSpeechCues(blob, text, timingController.signal).then((cues) => {
-            if (cues && mountedRef.current && !timingController.signal.aborted) setSourceCues((known) => ({ ...Object.fromEntries(Object.entries(known).slice(-11)), [key]: cues }));
-          }).finally(() => controllersRef.current.delete(timingController));
           return blob.url;
         }
         const url = URL.createObjectURL(blob);
@@ -506,13 +500,11 @@ function ActiveSpeechPlayer({
 
   const showSpeechRef = useRef(bookshelf?.showSpeechLocation);
   showSpeechRef.current = bookshelf?.showSpeechLocation;
-  const activeCue = speechCueAt(sourceCues[`${provider}\u0000${voice}\u0000${playableSegments[segmentIndex]}`], (durations[segmentIndex] ?? 0) * segmentProgress / 100);
-  const speechRange = useMemo(() => activeCue ? { start: activeCue.startOffset, end: activeCue.endOffset } : undefined, [activeCue]);
   useEffect(() => {
     showSpeechRef.current?.(sessionStarted && !panelOpen && activeQueueId
-      ? { chapterId: activeQueueId, segments: playableSegments, index: segmentIndex, ...(speechRange && { range: speechRange }) } : null,
+      ? { chapterId: activeQueueId, segments: playableSegments, index: segmentIndex } : null,
     state === "playing");
-  }, [sessionStarted, panelOpen, activeQueueId, playableSegments, segmentIndex, state, speechRange]);
+  }, [sessionStarted, panelOpen, activeQueueId, playableSegments, segmentIndex, state]);
   useEffect(() => () => showSpeechRef.current?.(null), []);
 
   useEffect(() => {
@@ -830,7 +822,7 @@ function ActiveSpeechPlayer({
             <div className="speech-player__transport">
               <button type="button" className="speech-player__transport-utility" onClick={() => {
                 closePlayer();
-                if (activeQueueId) bookshelf?.showSpeechLocation?.({ chapterId: activeQueueId, segments: playableSegments, index: segmentIndex, ...(speechRange && { range: speechRange }) }, true);
+                if (activeQueueId) bookshelf?.showSpeechLocation?.({ chapterId: activeQueueId, segments: playableSegments, index: segmentIndex }, true);
               }} aria-label="返回原文" title="返回原文"><SourceIcon /><span>原文</span></button>
               <button type="button" onClick={() => hasDocumentQueue ? jumpToQueueItem(activeQueueIndex - 1) : jumpToSegment(segmentIndex - 1)} disabled={hasDocumentQueue ? activeQueueIndex === 0 : segmentIndex === 0} aria-label={hasDocumentQueue ? "上一章" : "上一段"} title={hasDocumentQueue ? "上一章" : "上一段"}><StepIcon direction="previous" /></button>
               <button type="button" className="speech-player__primary" onClick={togglePlayback} disabled={!playableSegments.length} aria-label={state === "loading" ? "取消加载" : active ? "暂停听读" : state === "paused" ? "继续听读" : "开始听读"}>{showLoading ? <LoadingIndicator /> : <PlayIcon playing={active} />}</button>

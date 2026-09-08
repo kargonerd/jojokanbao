@@ -16,4 +16,4 @@ const client = createSpeechClient({
   },
 });
 
-export const { loadSpeechProviders, requestSpeech, loadCachedSpeechDurations, loadSpeechCues, speechKey } = client;
+export const { loadSpeechProviders, requestSpeech, loadCachedSpeechDurations, speechKey } = client;

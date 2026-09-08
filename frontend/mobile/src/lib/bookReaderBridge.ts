@@ -242,7 +242,7 @@ export function createBookReaderBridgeScript(
           if (!rect) return;
           if (paged) showSpread(Math.floor((Math.max(0, rect.left + currentSpread * window.innerWidth) + 1) / Math.max(1, window.innerWidth)));
           else if (rect.top < 80 || rect.bottom > window.innerHeight - 128) window.scrollTo(0, window.scrollY + rect.top - 80);
-        } : undefined, location.range);
+        } : undefined);
       };
 
       function textNodes(root) {

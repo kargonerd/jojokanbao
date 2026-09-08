@@ -1,6 +1,6 @@
 /** Offsets count non-whitespace characters in the readable DOM text. */
 export interface SpeechReadingPosition { text: string; offset: number }
-export interface SpeechLocation { chapterId: string; segments: string[]; index: number; range?: { start: number; end: number } }
+export interface SpeechLocation { chapterId: string; segments: string[]; index: number }
 
 export function compactSpeechText(text: string): string { return text.replace(/\s/gu, ""); }
 

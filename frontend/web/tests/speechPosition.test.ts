@@ -13,6 +13,7 @@ describe.each(["web", "native WebView"])("%s speech text mapping", (platform) =>
     const factory: typeof createSpeechReader = platform === "web" ? createSpeechReader : new Function(`return ${SPEECH_READER_FACTORY}`)();
     const rect = (left: number, top: number) => new DOMRect(left, top, 24, 24);
     Object.defineProperty(Range.prototype, "getClientRects", { configurable: true, value: function (this: Range) {
+      if (this.startContainer !== this.endContainer) return [rect(0, -100), rect(0, 10)];
       const value = this.startContainer.textContent ?? "";
       return [rect(0, value === "标题" || value === "旧页。" || this.startContainer.parentElement?.tagName === "B" ? -100 : 10)];
     } });
@@ -29,10 +30,8 @@ describe.each(["web", "native WebView"])("%s speech text mapping", (platform) =>
     expect(root.innerHTML).toBe(original);
     expect(document.querySelector("[data-speech-highlight] span")).not.toBeNull();
     reveal.mockClear();
-    reader.show(["标题", "旧页。", "重复。重复。最后。"], 2, reveal, { start: 3, end: 6 });
-    const sentenceRange = reveal.mock.calls[0]![0] as Range;
-    expect(sentenceRange.toString()).toBe("重复。");
-    expect(sentenceRange.startContainer.parentElement?.tagName).toBe("P");
+    reader.show(["标题", "旧页。", "重复。重复。最后。"], 2, reveal);
+    expect((reveal.mock.calls[0]![0] as Range).toString()).toBe("重复。重复。最后。");
     root.innerHTML = original.replace("重复。最后。", '<mark data-annotation-id="new">重复。</mark>最后。');
     await new Promise<void>((resolve) => queueMicrotask(resolve));
     expect(document.querySelector("[data-speech-highlight] span")).not.toBeNull();

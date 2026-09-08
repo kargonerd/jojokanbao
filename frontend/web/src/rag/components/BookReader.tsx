@@ -507,7 +507,7 @@ export function BookReader({
         }
       }
       revealSpeechRef.current = false;
-    } : undefined, speechLocation.range);
+    } : undefined);
   }, [speechLocation, activeChapterId, chapterKey, mode, contentLoading, goToPage, pageMetrics.step, fontSize]);
 
   function changeMode(value: BookReaderMode): void {

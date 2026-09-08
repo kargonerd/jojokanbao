@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { speechFromReadingPosition, type SpeechReadingPosition } from "@jojo/content";
 import type { SpeechCapabilities, SpeechSource } from "@jojo/content/speech";
-import { logicalSpeechVoice, speechCueAt, type SpeechCue } from "@jojo/content/speech";
+import { logicalSpeechVoice } from "@jojo/content/speech";
 import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
 import * as Crypto from "expo-crypto";
 import { useEffect, useRef, useState } from "react";
@@ -18,14 +18,13 @@ export interface SpeechPlaybackProps {
 }
 
 export function useSpeechPlayback(props: SpeechPlaybackProps) {
-  const player = useAudioPlayer(null, { updateInterval: 100 });
+  const player = useAudioPlayer(null, { updateInterval: 500 });
   const [chapter, setChapter] = useState<SpeechChapter>();
   const [capabilities, setCapabilities] = useState<SpeechCapabilities>();
   const [voice, setVoice] = useState({ provider: "auto", voice: "male" });
   const [part, setPart] = useState(0);
   const [seconds, setSeconds] = useState(0);
   const [durations, setDurations] = useState<Record<number, number>>({});
-  const [cues, setCues] = useState<Record<number, SpeechCue[]>>({});
   const [rate, setRate] = useState(1);
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -141,7 +140,7 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
     ready.current = false; wanted.current = autoplay; player.pause(); setPlaying(false);
     mediaDeadline.current = 0; bookmark.current = undefined;
     setChapter(undefined); latest.current.chapter = undefined;
-    setBusy(true); setError(""); setDurations({}); setCues({}); setVoice(choice);
+    setBusy(true); setError(""); setDurations({}); setVoice(choice);
     try {
       const original = retainedChapter ?? await latest.current.props.loadChapter(id);
       const entry = speechFromReadingPosition(original.segments, position);
@@ -207,9 +206,6 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
         scope: current.props.documentId.startsWith("news:") ? "news" : "book",
       }).then((value) => {
         if (!("url" in value)) throw new Error("手机听读需要 CDN 音频，请检查服务端存储配置");
-        void mobileSpeechClient.loadSpeechCues(value, current.chapter!.segments[index]!, signal).then((timing) => {
-          if (timing && mounted.current && !signal.aborted) setCues((known) => ({ ...known, [index]: timing }));
-        });
         return value;
       });
       sources.current.set(index, promise);
@@ -291,7 +287,7 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
     if (bookmark.current) bookmark.current.rate = value;
     persist();
   }
-  return { chapter, capabilities, voice, part, rate, playing, busy, error, timer, elapsed, duration, cue: speechCueAt(cues[part], seconds),
+  return { chapter, capabilities, voice, part, rate, playing, busy, error, timer, elapsed, duration,
     open, toggle, halt, close, seek, setTimer, changeRate, selectChapter,
     changeVoice: (provider: string, value: string) => chapter && selectChapter(chapter.id, playing, bookmark.current, { provider, voice: value }, capabilities, undefined, chapter),
   };
