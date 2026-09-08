@@ -14,7 +14,7 @@ describe("publication catalog invariants", () => {
       type: publication.type,
       defaultId: publication.defaultId,
     }))).toEqual([
-      { key: "rmrb", label: "人民日报", type: "newspaper", defaultId: "19761009" },
+      { key: "rmrb", label: "人民日报", type: "newspaper", defaultId: "19760910" },
       { key: "ckxx", label: "参考消息", type: "newspaper", defaultId: "19760910" },
       { key: "hq", label: "红旗", type: "magazine", defaultId: "196419" },
       { key: "rmhb", label: "人民画报", type: "magazine", defaultId: "197292" },

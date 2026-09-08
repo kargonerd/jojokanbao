@@ -263,7 +263,7 @@ function hasRmrbPageOutline(id: string): boolean {
 
 export const PUBLICATIONS: Record<PublicationName, PublicationConfig> = {
   rmrb: {
-    name: "rmrb", label: "人民日报", type: "newspaper", defaultId: "19761009",
+    name: "rmrb", label: "人民日报", type: "newspaper", defaultId: "19760910",
     resolutionControl: true,
     // Audited against representative local issues for every year. Some 2011
     // and 2012 issues still contain only production codes; the reader applies

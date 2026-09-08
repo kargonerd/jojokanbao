@@ -83,7 +83,7 @@ describe("JOJO Web routes and Archive homepage", () => {
 
   it("redirects every publication root to its documented default issue", async () => {
     const defaults: Array<[string, string]> = [
-      ["/archive/rmrb", "/archive/rmrb/19761009"],
+      ["/archive/rmrb", "/archive/rmrb/19760910"],
       ["/archive/ckxx", "/archive/ckxx/19760910"],
       ["/archive/hq", "/archive/hq/196419"],
       ["/archive/rmhb", "/archive/rmhb/197292"],
