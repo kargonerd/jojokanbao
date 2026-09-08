@@ -486,12 +486,12 @@ export function BookReader({
     if (!surface || !root || contentLoading) return;
     const reader = createSpeechReader(root, () => surface.getBoundingClientRect(), SPEECH_EXCLUDED_ELEMENTS);
     speechReaderRef.current = reader;
-    return () => { reader.destroy(); speechReaderRef.current = null; };
+    return () => { speechReaderRef.current = null; };
   }, [mode, contentLoading, chapterKey]);
   useEffect(() => {
     const reader = speechReaderRef.current;
     if (!reader) return;
-    if (!speechLocation || speechLocation.chapterId !== activeChapterId) { reader.clear(); return; }
+    if (!speechLocation || speechLocation.chapterId !== activeChapterId) return;
     const reveal = revealSpeechRef.current;
     reader.show(speechLocation.segments, speechLocation.index, reveal ? (range) => {
       const rect = range.getClientRects()[0];

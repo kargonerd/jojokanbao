@@ -6,7 +6,7 @@ import { speechFromReadingPosition } from "@jojo/content";
 afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks(); });
 
 describe.each(["web", "native WebView"])("%s speech text mapping", (platform) => {
-  it("captures the first visible character and highlights the actual repeated passage without changing annotation offsets", async () => {
+  it("captures and reveals the actual repeated passage without highlighting or changing annotation offsets", async () => {
     const root = document.createElement("article");
     root.innerHTML = '<h1>标题</h1><p>旧页。<sup>1</sup></p><p><b>重复。</b>重复。最后。</p><figure>略过</figure>';
     document.body.appendChild(root);
@@ -28,16 +28,18 @@ describe.each(["web", "native WebView"])("%s speech text mapping", (platform) =>
     expect(range.toString()).toBe("重复。");
     expect(range.startContainer.parentElement?.tagName).toBe("P");
     expect(root.innerHTML).toBe(original);
-    expect(document.querySelector("[data-speech-highlight] span")).not.toBeNull();
+    expect(document.querySelector("[data-speech-highlight]")).toBeNull();
     reveal.mockClear();
     reader.show(["标题", "旧页。", "重复。重复。最后。"], 2, reveal);
     expect((reveal.mock.calls[0]![0] as Range).toString()).toBe("重复。重复。最后。");
     root.innerHTML = original.replace("重复。最后。", '<mark data-annotation-id="new">重复。</mark>最后。');
     await new Promise<void>((resolve) => queueMicrotask(resolve));
-    expect(document.querySelector("[data-speech-highlight] span")).not.toBeNull();
+    reveal.mockClear();
+    reader.show(["标题", "旧页。", "重复。重复。最后。"], 2, reveal);
+    expect((reveal.mock.calls[0]![0] as Range).toString()).toBe("重复。重复。最后。");
     expect(root.querySelector("mark")?.textContent).toBe("重复。");
-    reader.clear();
+    document.dispatchEvent(new Event("scroll"));
+    window.dispatchEvent(new Event("resize"));
     expect(document.querySelector("[data-speech-highlight]")).toBeNull();
-    reader.destroy();
   });
 });
