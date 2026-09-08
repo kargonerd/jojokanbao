@@ -10,6 +10,13 @@ const conditionLabels: Record<FeatureConditionType, string> = {
   global: "所有访问者",
 };
 
+const AI_USAGE_LIMITS_KEY = "ai.usage_limits";
+const aiLimitFields = [
+  { key: "requestsPerMinute", label: "每分钟请求上限", min: 1, max: 60, defaultValue: 3, unit: "次" },
+  { key: "requestsPerDay", label: "每日请求上限", min: 1, max: 10_000, defaultValue: 100, unit: "次" },
+  { key: "maxRunSeconds", label: "单次生成时限", min: 30, max: 600, defaultValue: 300, unit: "秒" },
+] as const;
+
 function newRule(conditionType: FeatureConditionType): FeatureFlagRule {
   return {
     name: conditionLabels[conditionType],
@@ -53,8 +60,15 @@ function editableRules(rules: FeatureFlagRule[]): FeatureFlagRule[] {
   }));
 }
 
-function editableConfig(config: Record<string, unknown> | null | undefined): Record<string, unknown> {
-  return structuredClone(config ?? {});
+function editableConfig(config: Record<string, unknown> | null | undefined, key: string): Record<string, unknown> {
+  const defaults = key === AI_USAGE_LIMITS_KEY
+    ? Object.fromEntries(aiLimitFields.map((field) => [field.key, field.defaultValue]))
+    : {};
+  return { ...defaults, ...structuredClone(config ?? {}) };
+}
+
+function validAiLimit(value: unknown, field: typeof aiLimitFields[number]): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= field.min && value <= field.max;
 }
 
 function annotationThreshold(config: Record<string, unknown>): number {
@@ -81,7 +95,7 @@ export function FeatureFlagsPage() {
       setFlags(next);
       setSelectedKey(initial?.key ?? "");
       setDraftRules(initial ? editableRules(initial.rules) : []);
-      setDraftConfig(initial ? editableConfig(initial.config) : {});
+      setDraftConfig(initial ? editableConfig(initial.config, initial.key) : {});
       setLoadError("");
     }).catch((error: unknown) => {
       if (active) setLoadError(error instanceof Error ? error.message : "无法读取功能开关");
@@ -92,11 +106,14 @@ export function FeatureFlagsPage() {
   }, []);
 
   const selected = flags.find((flag) => flag.key === selectedKey);
+  const isAiUsageLimits = selected?.key === AI_USAGE_LIMITS_KEY;
+  const invalidAiLimit = isAiUsageLimits ? aiLimitFields.find((field) => !validAiLimit(draftConfig[field.key], field)) : undefined;
+  const configError = invalidAiLimit ? `${invalidAiLimit.label}请填写 ${invalidAiLimit.min}–${invalidAiLimit.max} 之间的整数。` : "";
 
   function selectFlag(flag: FeatureFlagDefinition) {
     setSelectedKey(flag.key);
     setDraftRules(editableRules(flag.rules));
-    setDraftConfig(editableConfig(flag.config));
+    setDraftConfig(editableConfig(flag.config, flag.key));
     setReason("");
     setNotice("");
   }
@@ -124,11 +141,11 @@ export function FeatureFlagsPage() {
   }
 
   async function publish() {
-    if (!selected || reason.trim().length < 3) return;
+    if (!selected || reason.trim().length < 3 || configError) return;
     setSaving(true);
     setNotice("");
     setLoadError("");
-    const rules = draftRules.map((rule) => ({
+    const rules = isAiUsageLimits ? selected.rules : draftRules.map((rule) => ({
       ...rule,
       percentage: rule.conditionType === "percentage" ? Math.round(rule.percentage || 1) : null,
       bucketBy: rule.conditionType === "percentage" ? rule.bucketBy || "user" : null,
@@ -146,7 +163,7 @@ export function FeatureFlagsPage() {
       });
       setFlags((items) => items.map((item) => item.key === updated.key ? updated : item));
       setDraftRules(editableRules(updated.rules));
-      setDraftConfig(editableConfig(updated.config));
+      setDraftConfig(editableConfig(updated.config, updated.key));
       setNotice(`已发布 revision ${updated.revision}`);
       setReason("");
     } catch (error) {
@@ -170,7 +187,7 @@ export function FeatureFlagsPage() {
       });
       setFlags((items) => items.map((item) => item.key === updated.key ? updated : item));
       setDraftRules(editableRules(updated.rules));
-      setDraftConfig(editableConfig(updated.config));
+      setDraftConfig(editableConfig(updated.config, updated.key));
       setReason("");
       setNotice(`已回滚到 revision ${targetRevision}，当前为 revision ${updated.revision}`);
     } catch (error) {
@@ -197,14 +214,14 @@ export function FeatureFlagsPage() {
       <PageTopbar
         eyebrow="RUNTIME CONTROL / 运行控制"
         title="功能开关"
-        description="规则从上到下执行，命中第一条后立即停止。"
+        description={isAiUsageLimits ? "AI 使用限额统一对所有账号生效。" : "规则从上到下执行，命中第一条后立即停止。"}
         aside={<span className="local-badge"><i />本机 Operator</span>}
       />
       <main className="feature-workspace">
         <aside className="feature-index" aria-label="功能开关列表">
           {flags.map((flag) => (
             <button key={flag.key} type="button" className={flag.key === selectedKey ? "active" : ""} onClick={() => selectFlag(flag)}>
-              <b>{flag.key}</b><span>{flag.rules.length} 条规则 · r{flag.revision}</span>
+              <b>{flag.key}</b><span>{flag.key === AI_USAGE_LIMITS_KEY ? "全局限额" : `${flag.rules.length} 条规则`} · r{flag.revision}</span>
             </button>
           ))}
         </aside>
@@ -238,8 +255,45 @@ export function FeatureFlagsPage() {
                 </label>
               </section>
             )}
+            {isAiUsageLimits && (
+              <section className="feature-config-strip feature-ai-limits" aria-labelledby="ai-usage-limits-title">
+                <div>
+                  <p className="eyebrow">AI USAGE / 使用限额</p>
+                  <h3 id="ai-usage-limits-title">AI 使用限额</h3>
+                  <span>始终对所有账号生效。同一账号同时只能生成 1 条回答；每日额度在北京时间零点重置。</span>
+                </div>
+                <div className="feature-ai-limit-fields">
+                  {aiLimitFields.map((field) => {
+                    const value = draftConfig[field.key];
+                    return (
+                      <label key={field.key}>
+                        <span>{field.label}</span>
+                        <div>
+                          <input
+                            aria-label={field.label}
+                            aria-invalid={!validAiLimit(value, field)}
+                            type="number"
+                            min={field.min}
+                            max={field.max}
+                            step="1"
+                            value={typeof value === "number" || typeof value === "string" ? value : ""}
+                            onChange={(event) => {
+                              const nextValue = event.target.value === "" ? "" : Number(event.target.value);
+                              setDraftConfig((current) => ({ ...current, [field.key]: nextValue }));
+                            }}
+                          />
+                          <b>{field.unit}</b>
+                        </div>
+                        <small>{field.min}–{field.max} {field.unit}</small>
+                      </label>
+                    );
+                  })}
+                </div>
+                {configError && <p className="content-error" role="alert">{configError}</p>}
+              </section>
+            )}
             <section className="feature-history" aria-label="修改记录">
-              <header><div><b>修改记录</b><span>回滚会恢复当时的规则和配置，并生成新的 revision。</span></div><small>{selected.history.length} 个版本</small></header>
+              <header><div><b>修改记录</b><span>{isAiUsageLimits ? "回滚会恢复当时的限额配置，并生成新的 revision。" : "回滚会恢复当时的规则和配置，并生成新的 revision。"}</span></div><small>{selected.history.length} 个版本</small></header>
               <ol>
                 {[...selected.history].reverse().map((entry) => {
                   const current = entry.revision === selected.revision;
@@ -255,7 +309,7 @@ export function FeatureFlagsPage() {
                 })}
               </ol>
             </section>
-            <div className="rule-add-bar">
+            {!isAiUsageLimits && <><div className="rule-add-bar">
               <span>添加规则</span>
               {(["users", "percentage", "authenticated", "global"] as const).map((kind) => <button key={kind} type="button" onClick={() => addRule(kind)}>+ {conditionLabels[kind]}</button>)}
             </div>
@@ -270,10 +324,10 @@ export function FeatureFlagsPage() {
                   onDelete={() => setDraftRules((rules) => rules.filter((_, position) => position !== index))}
                 />
               ))}
-            </div>
+            </div></>}
             <footer className="feature-publish">
-              <label>发布原因<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="说明为什么修改这组规则" /></label>
-              <button className="primary-button" type="button" disabled={saving || reason.trim().length < 3} onClick={() => void publish()}>{saving ? "发布中…" : "发布更改"}</button>
+              <label>发布原因<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={isAiUsageLimits ? "说明为什么调整 AI 限额" : "说明为什么修改这组规则"} /></label>
+              <button className="primary-button" type="button" disabled={saving || reason.trim().length < 3 || Boolean(configError)} onClick={() => void publish()}>{saving ? "发布中…" : "发布更改"}</button>
               {notice && <p role="status">{notice}</p>}
               {loadError && <p className="content-error" role="alert">{loadError}</p>}
             </footer>

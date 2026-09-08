@@ -61,7 +61,7 @@ select extensions.throws_ok(
 
 select extensions.is(
   jsonb_array_length(public.operator_list_feature_flags(repeat('o', 32))),
-  3,
+  4,
   'the configured operator token can list flags'
 );
 

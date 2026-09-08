@@ -1,5 +1,5 @@
 // Explicit hosted quota smoke test. Calls Supabase only; never requests a model.
-// Run after migration 202609080003 is applied:
+// Run after migrations 202609080003 and 202609080004 are applied:
 //   node tools/beta-smoke/ai-usage.mjs [env-directory]
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -62,13 +62,22 @@ const deniedOperator = result => [401, 403].includes(result.status) && result.da
 try {
   const [schema] = await query(env, `select
     exists(select 1 from supabase_migrations.schema_migrations where version = '202609080003') as migration_recorded,
+    exists(select 1 from supabase_migrations.schema_migrations where version = '202609080004') as feature_config_migration_recorded,
+    to_regclass('private.agent_usage_policy') is null as old_policy_removed,
+    to_regclass('private.agent_usage_state') is not null as usage_state_retained,
     to_regprocedure('public.acquire_agent_usage(text,uuid,uuid)') is not null as acquire_rpc,
     to_regprocedure('public.release_agent_usage(text,uuid,uuid)') is not null as release_rpc`);
-  check('usage migration and RPCs are present', Object.values(schema).every(value => value === true));
-  [policy] = await query(env, `select requests_per_minute, requests_per_day, max_run_seconds
-    from private.agent_usage_policy where singleton`);
-  assert.ok(Number.isInteger(policy?.requests_per_minute) && policy.requests_per_minute >= 1 && policy.requests_per_minute <= 60);
-  assert.ok(policy.requests_per_day > policy.requests_per_minute && policy.requests_per_day >= 3,
+  check('usage migrations and RPCs are present, with state retained and the old policy table removed', Object.values(schema).every(value => value === true));
+  const currentFlag = await request(env, 'rest/v1/rpc/operator_get_feature_flag', {
+    body: { p_operator_token: env.JOJO_OPERATOR_TOKEN, p_key: 'ai.usage_limits' },
+  });
+  assert.ok(currentFlag.ok && currentFlag.data?.key === 'ai.usage_limits', 'The operator can read the usage-limit feature flag');
+  policy = currentFlag.data.config;
+  check('usage limits are stored as valid feature configuration',
+    Number.isInteger(policy?.requestsPerMinute) && policy.requestsPerMinute >= 1 && policy.requestsPerMinute <= 60
+    && Number.isInteger(policy.requestsPerDay) && policy.requestsPerDay >= 1 && policy.requestsPerDay <= 10000
+    && Number.isInteger(policy.maxRunSeconds) && policy.maxRunSeconds >= 30 && policy.maxRunSeconds <= 600);
+  assert.ok(policy.requestsPerDay > policy.requestsPerMinute && policy.requestsPerDay >= 3,
     'The daily policy must allow the minute-limit and expired-lease scenarios');
   const adminKey = await getAdminKey(env);
   fixturesStarted = true;
@@ -110,33 +119,33 @@ try {
   check('the other concurrent call has a retry delay', blocked?.allowed === false && blocked.reason === 'concurrent' && blocked.retryAfter > 0);
   const firstState = await state();
   check('concurrent rejection does not consume allowance', firstState.day_count === 1 && firstState.recent_requests.length === 1 && firstState.active_request_id === requestIds[winner]);
-  check('the response carries the configured generation deadline', results[winner].maxRunSeconds === policy.max_run_seconds);
+  check('the response carries the configured generation deadline', results[winner].maxRunSeconds === policy.maxRunSeconds);
   await release(requestIds[winner]);
   check('release clears the lease without refunding admitted usage', (await state()).active_request_id === null && (await state()).day_count === 1);
 
   // With the launch policy this admits requests two and three, then rejects the
   // fourth within the rolling minute. No policy settings are changed.
-  for (let admitted = 1; admitted < policy.requests_per_minute; admitted++) {
+  for (let admitted = 1; admitted < policy.requestsPerMinute; admitted++) {
     const id = randomUUID();
     check(`request ${admitted + 1} is admitted after release`, (await acquire(id)).allowed === true);
     await release(id);
   }
   const beforeMinute = await state();
   const minute = await acquire(randomUUID());
-  check('the next request exceeds the configured rolling-minute limit', minute.allowed === false && minute.reason === 'minute' && minute.limit === policy.requests_per_minute && minute.retryAfter > 0 && minute.retryAfter <= 60);
+  check('the next request exceeds the configured rolling-minute limit', minute.allowed === false && minute.reason === 'minute' && minute.limit === policy.requestsPerMinute && minute.retryAfter > 0 && minute.retryAfter <= 60);
   assert.deepEqual(await state(), beforeMinute, 'Minute rejection must not change counters or leases');
   passed.push('minute rejection does not consume allowance');
 
   await setFixtureState(`usage_day = (clock_timestamp() at time zone 'Asia/Shanghai')::date,
-    day_count = ${Number(policy.requests_per_day)}, recent_requests = '{}', active_request_id = null, active_until = null`);
+    day_count = ${Number(policy.requestsPerDay)}, recent_requests = '{}', active_request_id = null, active_until = null`);
   const beforeDaily = await state();
   const daily = await acquire(randomUUID());
-  check('the daily limit rejects with a delay until Shanghai midnight', daily.allowed === false && daily.reason === 'daily' && daily.limit === policy.requests_per_day && daily.retryAfter > 0 && daily.retryAfter <= 86400);
+  check('the daily limit rejects with a delay until Shanghai midnight', daily.allowed === false && daily.reason === 'daily' && daily.limit === policy.requestsPerDay && daily.retryAfter > 0 && daily.retryAfter <= 86400);
   assert.deepEqual(await state(), beforeDaily, 'Daily rejection must not change counters or leases');
   passed.push('daily rejection does not consume allowance');
 
   await setFixtureState(`usage_day = (clock_timestamp() at time zone 'Asia/Shanghai')::date - 1,
-    day_count = ${Number(policy.requests_per_day)}, recent_requests = '{}', active_request_id = null, active_until = null`);
+    day_count = ${Number(policy.requestsPerDay)}, recent_requests = '{}', active_request_id = null, active_until = null`);
   const newDayId = randomUUID();
   check('a full allowance from yesterday permits a new request today', (await acquire(newDayId)).allowed === true);
   const [newDay] = await query(env, `select day_count,
