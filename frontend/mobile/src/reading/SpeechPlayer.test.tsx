@@ -105,7 +105,7 @@ afterEach(async () => { if (view) await act(async () => view.unmount()); vi.useR
 
 describe.each([false, true])("reader listening visibility (eInk=%s)", (eInk) => {
   beforeEach(() => { mocks.eInk = eInk; });
-  it("highlights a complete audio segment in mini mode and retains it when paused", async () => {
+  it("reports the current speech location in mini mode and retains it when paused", async () => {
     const onSpeechLocation = vi.fn();
     const onRead = vi.fn();
     const content = () => <NativeSpeechPlayer documentId="book" title="测试书" chapterId="c1"

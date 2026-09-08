@@ -234,7 +234,7 @@ export function createBookReaderBridgeScript(
       };
       window.__jojoReaderSpeechHighlight = function (location, reveal) {
         if (!ensureSpeechReader()) return;
-        if (!location) { speechReader.clear(); return; }
+        if (!location) return;
         if (document.querySelector("[data-book-content]")?.getAttribute("data-target-id") !== location.chapterId) return;
         speechBottomInset = 128;
         speechReader.show(location.segments, location.index, reveal ? function (range) {
@@ -388,7 +388,6 @@ export function createBookReaderBridgeScript(
         }
         updateFooter();
         reportPage();
-        if (speechReader) speechReader.paint();
       }
 
       function revealElement(target) {

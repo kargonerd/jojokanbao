@@ -45,7 +45,7 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) =>
 }));
 
 describe("reader speech", () => {
-  it("keeps the whole segment highlighted until the audio advances and preserves it on pause", async () => {
+  it("reports the current speech location when audio advances and preserves it on pause", async () => {
     const segments = ["第一段。这里还有一句。", "第二段。接着朗读。"];
     const showSpeechLocation = vi.fn();
     render(<ReadingBookshelfContext.Provider value={{ available: false, added: false, busy: false, toggle: vi.fn(), getSpeechPosition: () => null, showSpeechLocation }}>

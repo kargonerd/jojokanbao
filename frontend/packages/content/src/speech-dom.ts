@@ -1,11 +1,8 @@
 import { SPEECH_EXCLUDED_ELEMENTS } from "./speech";
 
-/** Self-contained for injection into the native book WebView. No DOM text mutations. */
+/** Read and reveal spoken text without visual highlights or DOM text mutations. Self-contained for native WebView injection. */
 export function createSpeechReader(root: HTMLElement, viewport: () => { left: number; top: number; right: number; bottom: number }, excluded: string) {
   const doc = root.ownerDocument;
-  let activeRange: Range | null = null;
-  let overlay: HTMLDivElement | null = null;
-  let location: { segments: string[]; index: number } | null = null;
   function snapshot() {
     const nodes: Array<{ node: Text; start: number; offsets: number[] }> = [];
     let text = "";
@@ -42,27 +39,8 @@ export function createSpeechReader(root: HTMLElement, viewport: () => { left: nu
     }
     return { text, offset: 0 };
   }
-  function paint() {
-    overlay?.replaceChildren();
-    if (!activeRange || !root.isConnected) return;
-    const bounds = viewport();
-    if (!overlay) {
-      overlay = doc.createElement("div");
-      overlay.setAttribute("data-speech-highlight", "");
-      overlay.setAttribute("aria-hidden", "true");
-      overlay.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:20;";
-      doc.body.appendChild(overlay);
-    }
-    for (const rect of Array.from(activeRange.getClientRects())) {
-      if (!visible(rect, bounds)) continue;
-      const mark = doc.createElement("span");
-      const left = Math.max(rect.left, bounds.left), top = Math.max(rect.top, bounds.top);
-      mark.style.cssText = `position:absolute;left:${left}px;top:${top}px;width:${Math.min(rect.right, bounds.right) - left}px;height:${Math.min(rect.bottom, bounds.bottom) - top}px;background:rgba(180,100,40,.22);border-bottom:2px solid #8b1a1a;box-sizing:border-box;`;
-      overlay.appendChild(mark);
-    }
-  }
   function show(segments: string[], index: number, reveal?: (range: Range) => void) {
-    location = { segments, index };
+    if (!reveal) return;
     const { text, nodes } = snapshot();
     let cursor = 0, start = -1;
     for (let i = 0; i <= index; i++) {
@@ -70,30 +48,18 @@ export function createSpeechReader(root: HTMLElement, viewport: () => { left: nu
       start = value ? text.indexOf(value, cursor) : -1;
       if (start >= 0) cursor = start + value.length;
     }
-    activeRange = null;
     if (start >= 0) {
       const first = nodes.find((item) => item.start + item.offsets.length > start);
       const last = nodes.find((item) => item.start + item.offsets.length >= cursor);
       if (first && last) {
-        activeRange = doc.createRange();
+        const activeRange = doc.createRange();
         activeRange.setStart(first.node, first.offsets[start - first.start]!);
         activeRange.setEnd(last.node, last.offsets[cursor - last.start - 1]! + 1);
-        reveal?.(activeRange);
+        reveal(activeRange);
       }
     }
-    paint();
   }
-  doc.addEventListener("scroll", paint, true);
-  doc.defaultView?.addEventListener("resize", paint);
-  const Observer = doc.defaultView?.MutationObserver;
-  const observer = Observer ? new Observer(() => { if (location) show(location.segments, location.index); }) : null;
-  observer?.observe(root, { childList: true, subtree: true, characterData: true });
-  return { read, show, paint, clear() { location = null; activeRange = null; overlay?.remove(); overlay = null; }, destroy() {
-    location = null; observer?.disconnect();
-    activeRange = null; overlay?.remove(); overlay = null;
-    doc.removeEventListener("scroll", paint, true);
-    doc.defaultView?.removeEventListener("resize", paint);
-  } };
+  return { read, show };
 }
 
 export { SPEECH_EXCLUDED_ELEMENTS };
