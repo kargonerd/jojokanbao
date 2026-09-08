@@ -79,10 +79,46 @@ export async function probe(env, fetcher = fetch) {
 
 export async function runHealthcheck(env, fetcher = fetch) {
   if (!env.JOJO_AI_HEALTHCHECK_PING_URL) throw new Error('healthcheck_ping_missing');
+  const mode = env.HEALTHCHECKS_REPORT_MODE ?? 'direct';
+  if (!['direct', 'buffered'].includes(mode)) throw new Error('healthcheck_report_mode_invalid');
+  let run;
+  if (mode === 'buffered') {
+    const identity = [env.GITHUB_SERVER_URL, env.GITHUB_REPOSITORY, env.GITHUB_RUN_ID, env.GITHUB_RUN_ATTEMPT];
+    if (identity.some(value => typeof value !== 'string' || /\s/.test(value))
+      || env.GITHUB_SERVER_URL !== 'https://github.com'
+      || !/^[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+$/.test(env.GITHUB_REPOSITORY ?? '')
+      || ['.', '..'].includes(env.GITHUB_REPOSITORY?.split('/')[1])
+      || !/^[1-9][0-9]*$/.test(env.GITHUB_RUN_ID ?? '')
+      || !/^[1-9][0-9]*$/.test(env.GITHUB_RUN_ATTEMPT ?? '')) {
+      throw new Error('monitor_execution_identity_invalid');
+    }
+    run = `${env.GITHUB_SERVER_URL}/${env.GITHUB_REPOSITORY}/actions/runs/${env.GITHUB_RUN_ID}`;
+  }
   const ping = async (suffix, result) => {
-    const response = await fetcher(`${env.JOJO_AI_HEALTHCHECK_PING_URL.replace(/\/$/, '')}${suffix}`, {
-      method: 'POST', body: JSON.stringify(result), signal: AbortSignal.timeout(10_000),
-    });
+    let body = JSON.stringify(result);
+    if (mode === 'buffered') {
+      const permanent = /^(?:monitor_credentials_missing|provider_not_configured|provider_auth_failed|monitor_login_http_(?:400|401|403))$/.test(result.reason ?? '');
+      body = Object.entries({
+        monitor_event: 'v1',
+        event_time: new Date().toISOString(),
+        run_id: env.GITHUB_RUN_ID,
+        run_attempt: env.GITHUB_RUN_ATTEMPT,
+        outcome: result.ok ? 'success' : 'failure',
+        failure_class: result.ok ? 'unknown' : permanent ? 'permanent' : 'retryable',
+        task: 'jojo-ai-availability',
+        failure_type: result.reason ?? '',
+        run,
+      }).map(([key, value]) => `${key}=${value}`).join('\n');
+      suffix = '/log';
+    }
+    let response;
+    try {
+      response = await fetcher(`${env.JOJO_AI_HEALTHCHECK_PING_URL.replace(/\/$/, '')}${suffix}`, {
+        method: 'POST', body, signal: AbortSignal.timeout(10_000),
+      });
+    } catch {
+      throw new Error('healthcheck_ping_failed');
+    }
     if (!response.ok) throw new Error(`healthcheck_ping_http_${response.status}`);
   };
   let result;
@@ -90,7 +126,9 @@ export async function runHealthcheck(env, fetcher = fetch) {
     result = await probe(env, fetcher);
   } catch (error) {
     // Only structured categories leave the process; never log prompts or tokens.
-    const reason = /^[a-z_]+(?:\d+)?$/.test(error.message) ? error.message : 'probe_network_or_protocol_error';
+    const message = error instanceof Error ? error.message : '';
+    const reason = /^(?:monitor_credentials_missing|provider_not_configured|monitor_session_missing|invalid_stream_type|probe_response_too_large|quota_exhausted|provider_auth_failed|generation_failed|incomplete_generation|(?:health|monitor_login|monitor_logout|agent)_http_[1-5][0-9]{2})$/.test(message)
+      ? message : 'probe_network_or_protocol_error';
     await ping('/fail', { ok: false, reason });
     throw new Error(reason);
   }

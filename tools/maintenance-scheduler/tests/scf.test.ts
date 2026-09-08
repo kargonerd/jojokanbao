@@ -19,6 +19,15 @@ describe("SCF entry", () => {
     expect(await handleScfEvent({ Type: "Timer", Time: new Date(now-180_000).toISOString() }, { ...env, SCHEDULER_MODE: "active" }, now)).toEqual({ skipped: "stale-tick" });
     expect(fetcher).not.toHaveBeenCalled();
   });
+  it("includes the AI half-hour slot in the default shadow registry without HTTP calls", async () => {
+    const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher); vi.spyOn(console, "log").mockImplementation(() => {});
+    const aiTick = Date.parse("2026-09-08T05:18:33Z");
+    expect(await handleScfEvent({ Type: "Timer", Time: new Date(aiTick).toISOString() }, env, aiTick)).toEqual({ mode: "shadow", due: [
+      { task: "times-capture", slot: "times-capture:2026-09-08T05:15:00.000Z" },
+      { task: "jojo-ai-availability", slot: "jojo-ai-availability:2026-09-08T05:17:00.000Z" },
+    ] });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
   it("an inactive backend cannot dispatch or report a heartbeat", async () => {
     const fetcher = vi.fn<typeof fetch>(async () => Response.json({ claimed: false, reason: "inactive" }));
     vi.stubGlobal("fetch", fetcher); vi.spyOn(console, "log").mockImplementation(() => {});

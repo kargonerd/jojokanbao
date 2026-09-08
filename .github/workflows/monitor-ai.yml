@@ -1,9 +1,25 @@
 name: Monitor · AI Availability
+run-name: >-
+  ${{ inputs.automatic && 'AI availability [scheduler]' || 'AI availability [manual]' }}
 
 on:
-  schedule:
-    - cron: '17,47 * * * *'
   workflow_dispatch:
+    inputs:
+      automatic:
+        description: Internal flag for the existing Tencent SCF scheduler
+        type: boolean
+        default: false
+        required: true
+      scheduled_at:
+        description: Scheduled slot time supplied by the scheduler
+        type: string
+        default: ""
+        required: false
+      schedule_slot:
+        description: Stable scheduler slot id
+        type: string
+        default: ""
+        required: false
   pull_request:
     paths:
       - 'tools/ai-healthcheck/**'
@@ -28,7 +44,7 @@ jobs:
       - run: node --test tools/ai-healthcheck/probe.test.mjs
 
   probe:
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 4
@@ -46,3 +62,4 @@ jobs:
           JOJO_AI_MONITOR_EMAIL: ${{ secrets.JOJO_AI_MONITOR_EMAIL }}
           JOJO_AI_MONITOR_PASSWORD: ${{ secrets.JOJO_AI_MONITOR_PASSWORD }}
           JOJO_AI_HEALTHCHECK_PING_URL: ${{ secrets.JOJO_AI_HEALTHCHECK_PING_URL }}
+          HEALTHCHECKS_REPORT_MODE: buffered
