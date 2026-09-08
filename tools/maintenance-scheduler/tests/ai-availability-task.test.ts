@@ -97,7 +97,7 @@ describe("AI availability scheduled task", () => {
     expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith("/dispatches"))).toHaveLength(1);
   });
 
-  it("observes all five monitors concurrently even when the AI task is not due", async () => {
+  it("observes all six monitors concurrently even when the AI task is not due", async () => {
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     let finishMonitors!: () => void;
@@ -106,7 +106,7 @@ describe("AI availability scheduled task", () => {
     const fetcher = vi.fn<typeof fetch>(async (input) => String(input).endsWith("/dispatches")
       ? new Response(null, { status: 204 }) : Response.json({ workflow_runs: [] }));
     const tick = handleScheduled({ scheduledTime: Date.parse("2026-09-08T05:23:00Z"), cron: "* * * * *" }, env, { fetcher, monitor });
-    await vi.waitFor(() => expect(monitor).toHaveBeenCalledTimes(5));
+    await vi.waitFor(() => expect(monitor).toHaveBeenCalledTimes(6));
     expect(monitor).toHaveBeenCalledWith(expect.objectContaining({ slug: task.id, dispatch: { kind: "idle" }, bodyBudget: 8 }));
     expect(fetcher.mock.calls.some(([url]) => String(url).includes("monitor-ai.yml"))).toBe(false);
     finishMonitors();

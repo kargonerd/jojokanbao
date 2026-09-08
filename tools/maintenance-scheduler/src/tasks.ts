@@ -96,6 +96,25 @@ export const SCHEDULED_TASKS = [
       schedule_slot: slot.id,
     }),
   },
+  {
+    id: "jojo-email-delivery",
+    cron: "8,23,38,53 * * * *",
+    timeZone: "UTC",
+    catchupWindowMinutes: 5,
+    workflow: "monitor-email.yml",
+    automaticRunTitle: "Email delivery [scheduler]",
+    skipWhileWorkflowActive: true,
+    maxAttempts: 1,
+    retryDelayMinutes: 0,
+    monitoring: {
+      name: "JOJO · Email delivery",
+      alertPolicy: { executionFailures: 1 },
+      graceSeconds: 20 * 60,
+      tags: "jojo production email",
+      description: "Read-only Resend observations and four-hour Supabase SMTP delivery verification. Empty scans never resolve a delivery incident.",
+    },
+    inputs: ({ slot }) => ({ automatic: "true", scheduled_at: slot.scheduledAt, schedule_slot: slot.id }),
+  },
 ] satisfies ScheduledTask[];
 
 export function scheduledTask(taskId: string): ScheduledTask {

@@ -242,6 +242,109 @@ Authenticated browser clients cannot update them. A future reviewed migration
 may introduce reader-controlled renaming without weakening the current
 default.
 
+## Database backup and recovery plan
+
+2026-09-08 22:20（北京时间）的只读核查确认：项目使用 Free 计划、PostgreSQL
+17.6.1.147；备份 API 没有列出可选恢复点，PITR 未启用，本机两份仓库也没有找到
+实际数据备份。因此目前**没有经过确认、可以使用的恢复点**；这不代表平台内部
+从未保留备份。以下是待执行的自建方案，本轮没有导出数据或创建备份任务。
+[Supabase 官方建议 Free 项目定期自行导出并异地保存](https://supabase.com/docs/guides/platform/backups)。
+
+### 首次备份怎么做
+
+1. 在 Dashboard 的 Connect 面板取得数据库连接信息，默认选 **Session pooler
+   的 5432 端口**；网络支持 IPv6 时也可用直连。需要数据库登录密码，浏览器
+   Publishable Key、Service Role Key 和 Management API Token 都不能代替它。
+   连接串只放在本机私密配置或任务 Secrets 中，不粘贴到聊天、命令历史或日志。
+   使用现有密码；没有密码时先找回凭据，不为备份直接重置生产密码。
+2. 准备 PostgreSQL **17** 的 `pg_dump`、`psql`，以及与 CI 一致的 Supabase CLI
+   `2.114.0` 和 Docker。CLI 在容器中执行导出，实际容器的 `pg_dump` 版本也要
+   核对；不要用 16 或更早版本导出这个 17 项目。
+   [PostgreSQL 版本兼容说明](https://www.postgresql.org/docs/17/app-pgdump.html#APP-PGDUMP-NOTES)。
+3. 在仓库以外、仅操作者可读写的目录创建一份带时间戳的备份。将连接串和目录
+   在本机分别注入 `JOJO_BACKUP_DB_URL`、`JOJO_BACKUP_DIR`，从 `infrastructure/`
+   **逐条**执行下面的 PowerShell 命令；任一命令退出码非零就停止，本次不能
+   记为成功。备份期间避免部署数据库迁移，角色、结构和迁移历史导出需属于
+   同一版本；业务数据集中由一次 `--data-only` 导出取得一致快照。
+
+```powershell
+pnpm dlx supabase@2.114.0 db dump --db-url "$env:JOJO_BACKUP_DB_URL" --role-only --file "$env:JOJO_BACKUP_DIR/roles.sql"
+pnpm dlx supabase@2.114.0 db dump --db-url "$env:JOJO_BACKUP_DB_URL" --file "$env:JOJO_BACKUP_DIR/schema.sql"
+pnpm dlx supabase@2.114.0 db dump --db-url "$env:JOJO_BACKUP_DB_URL" --data-only --use-copy -x "storage.buckets_vectors" -x "storage.vector_indexes" --file "$env:JOJO_BACKUP_DIR/data.sql"
+pnpm dlx supabase@2.114.0 db dump --db-url "$env:JOJO_BACKUP_DB_URL" --schema supabase_migrations --file "$env:JOJO_BACKUP_DIR/history_schema.sql"
+pnpm dlx supabase@2.114.0 db dump --db-url "$env:JOJO_BACKUP_DB_URL" --schema supabase_migrations --data-only --use-copy --file "$env:JOJO_BACKUP_DIR/history_data.sql"
+```
+
+普通 `db dump` 只有结构，不包含数据或自定义角色；只导出 `public` 也会漏掉
+账号和 `private` 业务状态。首次执行时核对导出表清单确实覆盖 `auth.users`、
+`auth.identities`、所有现用 `public` / `private` 业务表及 Storage 元数据；仅检查
+表名和数量，不把 SQL 数据行打印到日志。`auth.users` 包含密码哈希，也属于敏感
+数据。[CLI 导出选项](https://supabase.com/docs/reference/cli/supabase-db-dump)。
+
+还需与这五个文件放在同一份加密备份中的内容：
+
+| 内容 | 本项目需要覆盖的对象 |
+| --- | --- |
+| `auth_storage_custom.sql` | `auth.users` 上的建档、邀请码核销/清理触发器，以及 `storage.objects` 上的头像权限策略 |
+| Storage 对象副本 | 头像等实际文件及对象路径清单；数据库导出只有元数据 |
+| 恢复清单 | 导出开始/结束时间、工具版本、Git commit、迁移版本、表/对象数量、各文件 SHA-256、对应部署配置版本 |
+
+Auth/Storage 的托管结构由目标 Supabase 提供，自定义修改要另外恢复。按
+[官方备份与恢复流程](https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore)
+在**空迁移基线的临时 Supabase 工作目录**生成 `auth,storage` 的结构差异，人工
+核对后保存为 `auth_storage_custom.sql`。不能直接把当前仓库上的空 diff 当作
+“没有自定义对象”：这些对象已经写在迁移中，可能与远端相同。不要在恢复时把
+全部历史迁移再执行一遍；其中含邀请码回填等数据修改。
+
+部署配置可从本仓库的 `config.toml`、`templates/`、`functions/` 恢复；SMTP、
+服务端密钥及用到的加密根密钥由独立凭据库保管，不因 SQL 导出而自动备份。
+自定义数据库 `LOGIN` 角色的密码需另行配置；这与 Auth 用户的密码哈希不同。
+若实际启用了 Vault/列加密，执行前还须完成官方流程中的加密根密钥保全步骤。
+
+### 存在哪里，多久备份一次
+
+先将上述文件压缩并加密，再存入**仓库以外的私有存储**，另留一份本机加密副本。
+例如使用 `age` 公钥加密：任务只持有加密公钥，解密私钥由操作者单独保管并留有
+离线副本。上传后核对文件校验值，并实际下载、解密一次；明文工作目录不留作归档。
+
+本仓库是公开仓库，备份不得进入 Git、Release、Actions artifact/cache、公开
+日志或现有内容 CDN，即使已经加密也不把它们当备份存储。已有私有存储是否适合
+复用，还需核对访问权限、容量和可恢复性；当前没有确认好的备份目的地。
+
+建议先完成一次人工备份及恢复演练，再安排北京时间每日 03:00 备份，保留最近
+7 份日备份和 4 份周备份，重要数据库变更前额外留一份。每日方案在正常运行时
+最多仍可能损失约 24 小时数据。备份失败或超过 26 小时没有成功备份时才告警；
+成功必须包含完整导出、加密、上传校验，不能只看任务退出码。后续自动化可复用
+[现有 SCF 调度器与 GitHub Actions](../../tools/maintenance-scheduler/README.md)，
+数据库导出在任务运行器执行，不塞进 SCF 的 55 秒执行窗口；当前尚未接入。
+
+### 怎样确认能恢复
+
+首次备份后、以后每月以及重要 Auth/数据库结构变更后，在隔离的 Supabase
+测试环境演练。目标为空项目，只预置兼容的 PostgreSQL 17 和 Supabase 托管结构，
+不要先应用本项目迁移；关闭真实邮件及外部任务，不覆盖生产项目。按官方步骤
+恢复角色、结构、数据、迁移历史及
+自定义 Auth/Storage 对象；导入数据时在同一事务中暂设
+`session_replication_role = replica`，避免重复触发建档和邀请码核销，使用
+`psql -X --single-transaction --set ON_ERROR_STOP=on`，任一错误即回滚。
+导入前按 CLI 文档处理目标 `public` 的默认授权，恢复后核对 RLS 和 RPC 权限。
+
+演练至少核对账号/资料数量及关联、已知测试账号登录、邀请码核销、书架/划线/
+评论/通知、功能开关与 AI 限额状态、头像文件和权限。确认业务数据不会跨账号
+可见，记录恢复耗时和备份时间点；通过这一轮才把文件标记为“已验证恢复点”。
+
+### 费用和当前缺项
+
+`pg_dump` / Supabase CLI 本身不需要购买备份许可，自建逻辑备份也不要求升级
+Supabase 计划。[PostgreSQL 许可](https://www.postgresql.org/about/licence/)。
+现有公开仓库的标准 GitHub 托管运行器可以免费执行任务；私有存储、流量、SCF
+或其他运行器的超额用量，以及云端恢复演练环境可能产生费用，应先核对现有额度。
+[GitHub Actions 计费说明](https://docs.github.com/en/billing/concepts/product-billing/github-actions)。
+Supabase 托管每日恢复点和 PITR 属于另选的付费能力，不是这个方案的前提。
+
+开始执行前还需补齐数据库凭据、工具、私有存储目的地和加密密钥。当前仅有本方案；
+没有购买升级、导出用户数据、上传备份、创建自动任务或执行恢复。
+
 ## Database tests
 
 Invitation permissions, lifecycle behavior, and generated profile names are
