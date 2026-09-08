@@ -44,6 +44,35 @@ async function emit(values: Record<string, unknown> = {}) {
 async function play() { await act(async () => state.toggle()); await emit(); await emit({ playing: true }); }
 
 describe("native listening lifecycle", () => {
+  it("uses the current reading sentence on entry and preserves playback after browsing and changing voice", async () => {
+    await act(async () => view.unmount());
+    const position = vi.fn(async () => ({ text: "第一章前页。当前句子。接着朗读。", offset: 7 }));
+    const loadChapter = vi.fn(async (id: string) => ({ id, title: id, segments: ["第一章", "前页。当前句子。接着朗读。"] }));
+    let readingChapter = "c1";
+    function ReadingHarness() { state = useSpeechPlayback({ ...props, chapterId: readingChapter, getReadingPosition: position, loadChapter }); return null; }
+    await act(async () => { view = create(<ReadingHarness />); });
+    await act(async () => state.open()); await play();
+    expect(mocks.request.mock.calls[0]![0]).toBe("接着朗读。");
+    await emit({ playing: true, currentTime: 7 });
+    await act(async () => state.halt());
+    readingChapter = "c2";
+    await act(async () => view.update(<ReadingHarness />));
+    await act(async () => state.toggle());
+    expect(state.chapter?.id).toBe("c1");
+    expect(loadChapter).toHaveBeenCalledOnce();
+    expect(mocks.player.replace).toHaveBeenCalledTimes(1);
+    expect(position).toHaveBeenCalledOnce();
+    await emit({ playing: true, currentTime: 7 });
+    await act(async () => state.changeVoice("auto", "female"));
+    await emit();
+    expect(mocks.player.seekTo).toHaveBeenLastCalledWith(7);
+    expect(mocks.request.mock.calls.at(-1)![0]).toBe("接着朗读。");
+    await act(async () => state.close());
+    await act(async () => state.open());
+    expect(position).toHaveBeenCalledTimes(2);
+    expect(state.chapter?.id).toBe("c2");
+  });
+
   it("closing listening aborts prefetch, clears lock screen controls and keeps a resumable position", async () => {
     await act(async () => state.open()); await play();
     await emit({ playing: true, currentTime: 7 });

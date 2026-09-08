@@ -1,4 +1,7 @@
 import { JOJO_BOOK_SEARCH_BLOCK_SELECTOR } from "@jojo/content";
+import type { SpeechLocation, SpeechReadingPosition } from "@jojo/content";
+import { SPEECH_EXCLUDED_ELEMENTS } from "@jojo/content";
+import { SPEECH_READER_FACTORY } from "@jojo/content/speech-dom-script";
 import type { ReaderSelectionRect } from "@jojo/ui/reader-selection";
 
 export type BookReadingMode = "paged" | "scroll";
@@ -32,6 +35,7 @@ export interface BookReaderSelectionMessage {
 }
 
 export type BookReaderMessage =
+  | { type: "reader-speech-position"; requestId: number; position: SpeechReadingPosition }
   | { type: "reader-selection-clear" }
   | { type: "reader-tap" }
   | { type: "reader-boundary"; direction: "previous" | "next" }
@@ -60,6 +64,14 @@ function jsonArgument(value: unknown): string {
   return JSON.stringify(value).replaceAll("</", "<\\/");
 }
 
+export function createBookReaderSpeechPositionScript(requestId: number): string {
+  return `window.__jojoReaderSpeechPosition && window.__jojoReaderSpeechPosition(${jsonArgument(requestId)}); true;`;
+}
+
+export function createBookReaderSpeechHighlightScript(location: SpeechLocation | null, reveal = false): string {
+  return `window.__jojoReaderSpeechHighlight && window.__jojoReaderSpeechHighlight(${jsonArgument(location)}, ${reveal}); true;`;
+}
+
 export function createBookReaderLocateTextScript(text: string): string {
   return `window.__jojoReaderLocateText && window.__jojoReaderLocateText(${jsonArgument(text)}); true;`;
 }
@@ -83,6 +95,11 @@ export function createBookReaderClearSelectionScript(): string {
 export function parseBookReaderMessage(value: string): BookReaderMessage | null {
   try {
     const message = JSON.parse(value) as Partial<BookReaderMessage>;
+    if (message.type === "reader-speech-position" && Number.isInteger(message.requestId)
+      && typeof message.position?.text === "string" && Number.isInteger(message.position.offset)
+      && message.position.offset >= 0 && message.position.offset <= message.position.text.length) {
+      return message as Extract<BookReaderMessage, { type: "reader-speech-position" }>;
+    }
     if (message.type === "reader-tap") return { type: "reader-tap" };
     if (message.type === "reader-annotation" && typeof message.id === "string" && message.id) {
       return { type: "reader-annotation", id: message.id };
@@ -202,6 +219,31 @@ export function createBookReaderBridgeScript(
       function articleRoot() {
         return document.querySelector("article");
       }
+
+      var speechReader = null;
+      var speechBottomInset = 80;
+      function ensureSpeechReader() {
+        if (!speechReader && articleRoot()) speechReader = ${SPEECH_READER_FACTORY}(articleRoot(), function () {
+          return { left: 0, top: 64, right: window.innerWidth, bottom: window.innerHeight - speechBottomInset };
+        }, ${jsonArgument(SPEECH_EXCLUDED_ELEMENTS)});
+        return speechReader;
+      }
+      window.__jojoReaderSpeechPosition = function (requestId) {
+        speechBottomInset = 80;
+        if (ensureSpeechReader()) post({ type: "reader-speech-position", requestId: requestId, position: speechReader.read() });
+      };
+      window.__jojoReaderSpeechHighlight = function (location, reveal) {
+        if (!ensureSpeechReader()) return;
+        if (!location) { speechReader.clear(); return; }
+        if (document.querySelector("[data-book-content]")?.getAttribute("data-target-id") !== location.chapterId) return;
+        speechBottomInset = 128;
+        speechReader.show(location.segments, location.index, reveal ? function (range) {
+          var rect = range.getClientRects()[0];
+          if (!rect) return;
+          if (paged) showSpread(Math.floor((Math.max(0, rect.left + currentSpread * window.innerWidth) + 1) / Math.max(1, window.innerWidth)));
+          else if (rect.top < 80 || rect.bottom > window.innerHeight - 128) window.scrollTo(0, window.scrollY + rect.top - 80);
+        } : undefined);
+      };
 
       function textNodes(root) {
         var nodes = [];
@@ -346,6 +388,7 @@ export function createBookReaderBridgeScript(
         }
         updateFooter();
         reportPage();
+        if (speechReader) speechReader.paint();
       }
 
       function revealElement(target) {

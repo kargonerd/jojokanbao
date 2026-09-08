@@ -1,5 +1,7 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
+import { speechFromReadingPosition } from "@jojo/content";
+import { speechVoiceLabel } from "@jojo/content/speech";
 import { Backward15Seconds, Forward15Seconds, Book, BookStack, Check, DashboardSpeed, Headset, List, NavArrowDown, PauseSolid, PlaySolid, SkipNextSolid, SkipPrevSolid, Timer, User, Xmark } from "iconoir-react";
 import { ReadingBookshelfContext } from "./ReadingBookshelfContext";
 import { DEFAULT_SPEECH_PROVIDERS, loadCachedSpeechDurations, loadSpeechProviders, logicalSpeechVoice, requestSpeech, SPEECH_VOICES, type SpeechProvider, type SpeechVoice } from "./speech";
@@ -90,17 +92,18 @@ export function SpeechPlayer(props: Parameters<typeof ActiveSpeechPlayer>[0]) {
 }
 
 function ActiveSpeechPlayer({
-  segments,
+  segments: readingSegments,
   label,
-  title,
+  title: readingTitle,
   collectionTitle,
   artworkUrl,
   artworkFallbackUrl,
   contentId,
   miniPlayerTarget,
   queueItems,
-  activeQueueId,
-  onQueueItemChange,
+  activeQueueId: readingQueueId,
+  onQueueItemChange: changeReadingQueue,
+  loadQueueItem,
   defaultVoice = "male",
 }: {
   segments: string[];
@@ -114,9 +117,31 @@ function ActiveSpeechPlayer({
   queueItems?: Array<{ id: string; title: string }>;
   activeQueueId?: string;
   onQueueItemChange?: (id: string) => void;
+  loadQueueItem?: (id: string) => Promise<{ title: string; segments: string[] }>;
   defaultVoice?: SpeechVoice;
 }) {
   const bookshelf = useContext(ReadingBookshelfContext);
+  const [listening, setListening] = useState<{ id?: string; title?: string; segments: string[]; index: number } | null>(null);
+  const segments = listening?.segments ?? readingSegments;
+  const title = listening?.title ?? readingTitle;
+  const activeQueueId = listening?.id ?? readingQueueId;
+  const queueLoadRef = useRef(0);
+  const onQueueItemChange = loadQueueItem ? (id: string) => {
+    const request = ++queueLoadRef.current;
+    pendingSeekFractionRef.current = segmentProgress / 100;
+    stopAudio();
+    setWantsPlayback(false);
+    setState("loading");
+    void loadQueueItem(id).then((chapter) => {
+      if (!mountedRef.current || request !== queueLoadRef.current) return;
+      setListening({ id, ...chapter, index: 0 });
+    }).catch((reason: unknown) => {
+      if (!mountedRef.current || request !== queueLoadRef.current) return;
+      resumeAfterContentChangeRef.current = false;
+      setState("error");
+      setError(reason instanceof Error ? reason.message : "章节加载失败，请重试");
+    });
+  } : changeReadingQueue;
   const userId = useAccountSessionStore((session) => session.userId);
   const speechScope = contentId?.startsWith("news:") || label === "听新闻" ? "news" : "book";
   const contentKey = segments.map((value) => value.trim()).filter(Boolean).join("\u0000");
@@ -238,6 +263,8 @@ function ActiveSpeechPlayer({
     setState("idle");
     setPanelOpen(false);
     setSessionStarted(false);
+    setListening(null);
+    queueLoadRef.current++;
     setCapabilitiesReady(false);
     controllersRef.current.forEach((controller) => controller.abort());
     cacheRef.current.clear();
@@ -257,7 +284,7 @@ function ActiveSpeechPlayer({
       provider, cdnBase, cacheVersion, scope: speechScope,
     })
       .then((blob) => {
-        if (!(blob instanceof Blob)) {
+        if ("url" in blob) {
           sourceDurationsRef.current.set(key, blob.duration);
           return blob.url;
         }
@@ -310,8 +337,8 @@ function ActiveSpeechPlayer({
     setWantsPlayback(false);
     setState("idle");
     const saved = readSpeechProgress(progressId);
-    const resume = !resumeAfterContentChangeRef.current && saved?.chapterId === activeQueueId && saved?.fingerprint === fingerprint && saved.segmentIndex < playableSegments.length ? saved : undefined;
-    setSegmentIndex(resume?.segmentIndex ?? 0);
+    const resume = !listening && !resumeAfterContentChangeRef.current && saved?.chapterId === activeQueueId && saved?.fingerprint === fingerprint && saved.segmentIndex < playableSegments.length ? saved : undefined;
+    setSegmentIndex(resume?.segmentIndex ?? listening?.index ?? 0);
     setSegmentProgress((resume?.fraction ?? 0) * 100);
     pendingSeekFractionRef.current = resume?.fraction ?? null;
     setError("");
@@ -320,7 +347,7 @@ function ActiveSpeechPlayer({
       setWantsPlayback(true);
     }
     setDurations({});
-  }, [contentKey, progressId, activeQueueId, stopAudio]);
+  }, [contentKey, progressId, activeQueueId, stopAudio, listening]);
 
   useEffect(() => {
     if (!sessionStarted || !capabilitiesReady || !userId || !cdnBase || !cacheVersion) return;
@@ -471,6 +498,15 @@ function ActiveSpeechPlayer({
     return () => { delete document.body.dataset.speechMini; };
   }, [sessionStarted, panelOpen, Boolean(bookshelf), miniPlayerTarget]);
 
+  const showSpeechRef = useRef(bookshelf?.showSpeechLocation);
+  showSpeechRef.current = bookshelf?.showSpeechLocation;
+  useEffect(() => {
+    showSpeechRef.current?.(sessionStarted && !panelOpen && activeQueueId
+      ? { chapterId: activeQueueId, segments: playableSegments, index: segmentIndex } : null,
+    state === "playing");
+  }, [sessionStarted, panelOpen, activeQueueId, playableSegments, segmentIndex, state]);
+  useEffect(() => () => showSpeechRef.current?.(null), []);
+
   useEffect(() => {
     if (!settingPanel) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -530,6 +566,8 @@ function ActiveSpeechPlayer({
       return;
     }
     if (state === "loading") {
+      queueLoadRef.current++;
+      resumeAfterContentChangeRef.current = false;
       setWantsPlayback(false);
       setState("paused");
       return;
@@ -563,9 +601,14 @@ function ActiveSpeechPlayer({
       return;
     }
     if (!sessionStarted) {
-      const saved = readSpeechProgress(progressId);
-      if (saved?.chapterId && saved.chapterId !== activeQueueId && queueItems?.some((item) => item.id === saved.chapterId)) {
-        onQueueItemChange?.(saved.chapterId);
+      if (bookshelf?.getSpeechPosition) {
+        setListening({ id: readingQueueId, title: readingTitle,
+          ...speechFromReadingPosition(readingSegments, bookshelf.getSpeechPosition()) });
+      } else {
+        const saved = readSpeechProgress(progressId);
+        if (saved?.chapterId && saved.chapterId !== activeQueueId && queueItems?.some((item) => item.id === saved.chapterId)) {
+          onQueueItemChange?.(saved.chapterId);
+        }
       }
     }
     setSessionStarted(true);
@@ -573,11 +616,14 @@ function ActiveSpeechPlayer({
   }
 
   function dismissMini(): void {
+    queueLoadRef.current++;
+    resumeAfterContentChangeRef.current = false;
     pendingSeekFractionRef.current = segmentProgress / 100;
     stopAudio();
     setWantsPlayback(false);
     setState("paused");
     setSessionStarted(false);
+    setListening(null);
     launcherRef.current?.focus();
   }
 
@@ -686,14 +732,14 @@ function ActiveSpeechPlayer({
       : state === "playing" ? "正在朗读"
         : state === "paused" ? "已暂停"
           : state === "complete" ? "本篇播放完成"
-            : segmentIndex > 0 || segmentProgress > 0 ? "从上次听到的位置继续" : "准备播放"
+            : segmentIndex > 0 || segmentProgress > 0 ? (listening ? "从阅读位置开始" : "从上次听到的位置继续") : "准备播放"
   );
   const displayTitle = title || playableSegments[0] || label;
   const visibleQueue = hasDocumentQueue
     ? queueItems!
     : playableSegments.map((segment, index) => ({ id: String(index), title: index === 0 ? displayTitle : segment }));
   const queueUnit = hasDocumentQueue ? "章" : "段";
-  const selectedVoiceLabel = providers.find((option) => option.id === provider)?.voices.find((option) => option.id === voice)?.label ?? "选择声音";
+  const selectedVoiceLabel = speechVoiceLabel(voice, provider, providers);
   const sleepLabel = sleepAfterChapter ? (hasDocumentQueue ? "本章结束" : "本篇结束") : sleepMinutes ? `${sleepMinutes} 分钟` : "关闭";
   const settingTitle = settingPanel === "sleep" ? "定时关闭" : settingPanel === "voice" ? "选择声音" : "语速设置";
 
@@ -774,7 +820,10 @@ function ActiveSpeechPlayer({
             <p aria-live="polite" className={`speech-player__status${error ? " speech-player__error" : ""}`}>{status}</p>
 
             <div className="speech-player__transport">
-              <button type="button" className="speech-player__transport-utility" onClick={closePlayer} aria-label="返回原文" title="返回原文"><SourceIcon /><span>原文</span></button>
+              <button type="button" className="speech-player__transport-utility" onClick={() => {
+                closePlayer();
+                if (activeQueueId) bookshelf?.showSpeechLocation?.({ chapterId: activeQueueId, segments: playableSegments, index: segmentIndex }, true);
+              }} aria-label="返回原文" title="返回原文"><SourceIcon /><span>原文</span></button>
               <button type="button" onClick={() => hasDocumentQueue ? jumpToQueueItem(activeQueueIndex - 1) : jumpToSegment(segmentIndex - 1)} disabled={hasDocumentQueue ? activeQueueIndex === 0 : segmentIndex === 0} aria-label={hasDocumentQueue ? "上一章" : "上一段"} title={hasDocumentQueue ? "上一章" : "上一段"}><StepIcon direction="previous" /></button>
               <button type="button" className="speech-player__primary" onClick={togglePlayback} disabled={!playableSegments.length} aria-label={state === "loading" ? "取消加载" : active ? "暂停听读" : state === "paused" ? "继续听读" : "开始听读"}>{showLoading ? <LoadingIndicator /> : <PlayIcon playing={active} />}</button>
               <button type="button" onClick={() => hasDocumentQueue ? jumpToQueueItem(activeQueueIndex + 1) : jumpToSegment(segmentIndex + 1)} disabled={hasDocumentQueue ? activeQueueIndex >= visibleQueue.length - 1 : segmentIndex >= playableSegments.length - 1} aria-label={hasDocumentQueue ? "下一章" : "下一段"} title={hasDocumentQueue ? "下一章" : "下一段"}><StepIcon direction="next" /></button>

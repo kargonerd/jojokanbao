@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
     bookFirstLineIndent: true, hapticsEnabled: false, leftTapNext: false, recentBooks: [], bookAnnotations: [], rememberBook: vi.fn() },
   playback: { open: vi.fn(), close: vi.fn(), toggle: vi.fn(), seek: vi.fn(), selectChapter: vi.fn(),
     setTimer: vi.fn(), changeVoice: vi.fn(), changeRate: vi.fn(), playing: true, busy: false,
-    elapsed: 12, duration: 60, chapter: { id: "c1", title: "第一章" },
+    elapsed: 12, duration: 60, part: 0, chapter: { id: "c1", title: "第一章", segments: ["第一段。这里还有一句。", "第二段。接着朗读。"] },
     voice: { provider: "auto", voice: "male" }, rate: 1, timer: null, error: "", capabilities: undefined },
 }));
 vi.mock("react-native", async () => {
@@ -96,6 +96,7 @@ beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.useFakeTimers(); vi.clearAllMocks();
   mocks.eInk = false; mocks.focused = true; mocks.enabled = true; mocks.user = { id: "reader" };
+  mocks.playback.part = 0; mocks.playback.playing = true; mocks.playback.elapsed = 12;
   mocks.shelfContains.mockResolvedValue(false); mocks.setShelf.mockResolvedValue(undefined);
   mocks.loadChapter.mockReset().mockImplementation(async (_loaded, id: string) => ({ assetUrls: { portrait: "data:image/png;base64,test" },
     fragment: { fragmentId: id, title: id === "c1" ? "第一章" : "第二章", body: { format: "html", value: "<p>正文</p>" } } }));
@@ -104,6 +105,31 @@ afterEach(async () => { if (view) await act(async () => view.unmount()); vi.useR
 
 describe.each([false, true])("reader listening visibility (eInk=%s)", (eInk) => {
   beforeEach(() => { mocks.eInk = eInk; });
+  it("highlights a complete audio segment in mini mode and retains it when paused", async () => {
+    const onSpeechLocation = vi.fn();
+    const onRead = vi.fn();
+    const content = () => <NativeSpeechPlayer documentId="book" title="测试书" chapterId="c1"
+      chapters={[{ id: "c1", title: "第一章" }]} loadChapter={mocks.loadChapter} onRead={onRead} onSpeechLocation={onSpeechLocation} />;
+    await act(async () => { view = create(content()); });
+    await press("打开听读播放器");
+    expect(onSpeechLocation).toHaveBeenLastCalledWith(null, true);
+    await press("收起播放器");
+    const location = { chapterId: "c1", segments: mocks.playback.chapter.segments, index: 0 };
+    expect(onSpeechLocation).toHaveBeenLastCalledWith(location, true);
+    const updates = onSpeechLocation.mock.calls.length;
+    mocks.playback.elapsed = 18;
+    await act(async () => view.update(content()));
+    expect(onSpeechLocation).toHaveBeenCalledTimes(updates);
+    mocks.playback.playing = false;
+    await act(async () => view.update(content()));
+    expect(onSpeechLocation).toHaveBeenLastCalledWith(location, false);
+    mocks.playback.part = 1; mocks.playback.playing = true;
+    await act(async () => view.update(content()));
+    expect(onSpeechLocation).toHaveBeenLastCalledWith({ ...location, index: 1 }, true);
+    await press("关闭听读");
+    expect(onSpeechLocation).toHaveBeenLastCalledWith(null, true);
+  });
+
   it("updates page controls immediately while coalescing saved progress and flushes on exit", async () => {
     await renderReader();
     const page = async (spreadIndex: number) => act(async () => {
@@ -232,6 +258,8 @@ it("keeps news listening visible and only yields to an explicit article overlay"
   await act(async () => { view = create(<NativeSpeechPlayer {...props} />); });
   await press("打开听读播放器"); await tick();
   expect(view.root.findAllByType("dialog")).toHaveLength(1);
+  expect(view.root.findAllByType("span").some((node) => node.props.children === "男声")).toBe(true);
+  expect(view.root.findAllByType("span").some((node) => node.props.children === "male")).toBe(false);
   await press("收起播放器"); await tick();
   expect(view.root.findAllByProps({ accessibilityLabel: "展开听读播放器" })).toHaveLength(1);
   await act(async () => view.update(<NativeSpeechPlayer {...props} hidden />));

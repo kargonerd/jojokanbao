@@ -5,6 +5,11 @@ export const SPEECH_VOICES = [
 
 export type SpeechVoice = string;
 
+export function speechVoiceLabel(voice: string, provider: string, providers: readonly SpeechProvider[] = []): string {
+  return providers.find((item) => item.id === provider)?.voices.find((item) => item.id === voice)?.label
+    ?? SPEECH_VOICES.find((item) => item.id === voice)?.label ?? "选择声音";
+}
+
 export interface SpeechProvider {
   id: string;
   label: string;
@@ -158,7 +163,6 @@ export function createSpeechClient(config: SpeechClientConfig) {
     const data = JSON.stringify([provider, version, voice, text.replace(/\s+/gu, " ").trim()]);
     return config.digest(data);
   }
-
 
   return { loadSpeechProviders, requestSpeech, loadCachedSpeechDurations, speechKey };
 }
