@@ -47,6 +47,11 @@ Reporting failure also fails the workflow; it cannot silently become a healthy
 result. Missing successful executions remain covered by the monitor's schedule
 and grace deadline. Runner queueing or a scheduler outage can still delay work.
 
+During deployment handoff, the consumer also recognizes the old AI probe's exact
+successful direct-ping JSON, scoped to this check and deduplicated by probe ID.
+It reconciles internal recovery without echoing success, so a later failure can
+alert again. Arbitrary JSON, failed JSON, and log-only pings cannot recover it.
+
 For an explicit local run, omitting the report mode (or setting `direct`) keeps
 the original direct success/failure reporting and does not require GitHub run
 identity. Production workflow dispatches always use buffered reporting.
