@@ -265,6 +265,7 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
   }
 
   async function loadManifest(object: string, signal?: AbortSignal): Promise<JojoItemManifest> {
+    object = resolveManifestObject(object);
     const cached = manifestCache.get(object);
     if (cached) return cached;
     const manifest = asJojoItemManifest(
@@ -280,6 +281,13 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
     item: JojoDatasetItemSummary,
   ): string {
     return safeObjectKey(resolveJoxObject(dataset.indexObject, item.manifestObject));
+  }
+
+  function allowedItem(dataset: LoadedDataset, item: JojoDatasetItemSummary): boolean {
+    return item.publicationStatus !== "draft"
+      && (!scope.itemIds?.length || scope.itemIds.includes(item.itemId))
+      && (!scope.manifestObjects?.length
+        || scope.manifestObjects.includes(itemManifestObject(dataset, item)));
   }
 
   function uniqueStrings(values: string[] | undefined, limit = 100): string[] {
@@ -366,7 +374,7 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
           datasetId: dataset.entry.datasetId,
           title: dataset.entry.title,
           items: dataset.index.items
-            .filter((item) => item.publicationStatus !== "draft")
+            .filter((item) => allowedItem(dataset, item))
             .map((item) => ({
               itemId: item.itemId,
               itemKey: item.itemKey,
@@ -537,14 +545,12 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
       }
 
       const requestedItemIds = new Set(uniqueStrings(args.itemIds, 16));
-      const scopedItemIds = new Set(scope.itemIds ?? []);
       const datasets = await Promise.all(
         candidates.ids.map((datasetId) => loadDataset(datasetId, signal)),
       );
       const targets = datasets.flatMap((dataset) => dataset.index.items
-        .filter((item) => item.publicationStatus !== "draft")
+        .filter((item) => allowedItem(dataset, item))
         .filter((item) => !requestedItemIds.size || requestedItemIds.has(item.itemId))
-        .filter((item) => !scopedItemIds.size || scopedItemIds.has(item.itemId))
         .map((item) => ({
           dataset,
           item,
@@ -691,8 +697,24 @@ export function createRagTools(options: RagToolOptions): AgentTool[] {
     async execute(_callId, args, signal) {
       const object = safeObjectKey(args.fragmentObject);
       enforceDatasetObjectScope(object, scope);
+      let selectedManifest: JojoItemManifest | undefined;
+      if (scope.manifestObjects?.length) {
+        for (const manifestObject of scope.manifestObjects) {
+          const manifest = await loadManifest(manifestObject, signal);
+          if ((manifest.content.chapters ?? []).some((chapter) => (
+            resolveJoxObject(manifestObject, chapter.object) === object
+          ))) {
+            selectedManifest = manifest;
+            break;
+          }
+        }
+        if (!selectedManifest) throw new Error("该章节不在用户选择范围内");
+      }
       const fragment = asJojoFragment(await jox.fetchJson<JojoFragment>(object, signal));
       if (scope.itemIds?.length && !scope.itemIds.includes(fragment.itemId)) throw new Error("该 Item 不在用户选择范围内");
+      if (selectedManifest && fragment.itemId !== selectedManifest.itemId) {
+        throw new Error("当前章节与所选书籍不匹配");
+      }
       const text = textBody(fragment);
       const maxChars = Math.max(500, Math.min(20_000, Math.floor(args.maxChars ?? 12_000)));
       return result({

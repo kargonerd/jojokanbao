@@ -60,6 +60,18 @@ The JOJO Console Flask server reads the plaintext token from the repository
 `.env` and sends it only to the protected operator RPC. The Vite client receives
 neither the token nor its digest. Keep the console bound to `127.0.0.1`.
 
+The config-aware operator console requires migration
+`202608290002_annotation_threshold_feature_config.sql` as well as the original
+feature-flag migration. It moves the existing annotation public threshold into
+`private.feature_flags.config`, preserves the effective value in historical
+revisions, and replaces the publish RPC with the config-aware signature.
+Apply the whole migration and record its version in the same transaction;
+adding only the column leaves publishing and rollback incomplete. Check pending
+migrations before applying a missing older version to an existing project, and
+do not reapply a migration already recorded as complete. The migration preserves
+all current rollout rules and revisions. After application, run the
+[feature configuration smoke test](../../tools/beta-smoke/README.md#feature-configuration).
+
 The database also enforces redemption with a trigger. Therefore new user
 creation fails closed if somebody disables or bypasses the hosted hook.
 Existing users are unaffected.

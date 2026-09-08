@@ -63,6 +63,11 @@ export interface AuthorizedAgentUser {
   id: string;
 }
 
+export interface AgentUsageLease {
+  maxRunSeconds: number;
+  release(): Promise<void>;
+}
+
 export interface CreateEdgeOneAgentHandlerOptions {
   agentId?: string;
   systemPrompt?: string | ((context: EdgeOneAgentContext) => string);
@@ -77,6 +82,10 @@ export interface CreateEdgeOneAgentHandlerOptions {
   createModelRuntime?: (
     context: EdgeOneAgentContext,
   ) => PlatformModelRuntime | Promise<PlatformModelRuntime>;
+  acquireUsage?: (
+    context: EdgeOneAgentContext,
+    user: AuthorizedAgentUser,
+  ) => Promise<AgentUsageLease>;
 }
 
 export interface AgentRequestBody {

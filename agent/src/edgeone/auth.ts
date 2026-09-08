@@ -7,6 +7,8 @@ export class AgentHttpError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly code?: string,
+    readonly retryAfter?: number,
   ) {
     super(message);
     this.name = "AgentHttpError";

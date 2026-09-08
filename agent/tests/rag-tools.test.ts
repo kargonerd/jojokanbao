@@ -1,13 +1,114 @@
 import { gzipSync } from "node:zlib";
 import { transformJoxBytes } from "@jojo/content";
 import { describe, expect, it, vi } from "vitest";
-import { createRagTools } from "../src/rag-tools";
+import { createRagTools, type RagScope } from "../src/rag-tools";
 
 function jox(value: unknown, key: string): Uint8Array {
   return transformJoxBytes(gzipSync(JSON.stringify(value)), key);
 }
 
+function seriesFixture(scope: RagScope) {
+  const indexObject = "content/books/series/index.jox";
+  const itemIds = ["series:one", "series:two", "series:draft"];
+  const manifestObjects = itemIds.map((id) => `content/books/series/items/${id.split(":")[1]}/manifest.jox`);
+  const fragmentObjects = manifestObjects.map((object) => object.replace("manifest.jox", "chapter.jox"));
+  const objects = new Map<string, Uint8Array>();
+  const add = (object: string, value: unknown) => objects.set(`https://cdn.test/${object}`, jox(value, object));
+  add("catalog.jox", {
+    formatVersion: "jojo-catalog/1", revision: 1, updatedAt: "2026-09-08T00:00:00.000Z",
+    datasets: [{
+      datasetId: "series", type: "book-series", title: "分卷测试", language: "zh-CN",
+      itemCount: 3, indexObject, aiEnabled: true, publicationStatus: "published",
+    }],
+  });
+  add(indexObject, {
+    formatVersion: "jojo-delivery-index/1", revision: 1, datasetId: "series",
+    type: "book-series", title: "分卷测试", language: "zh-CN", aiEnabled: true,
+    items: itemIds.map((itemId, index) => ({
+      itemId, itemKey: itemId.split(":")[1], type: "book", order: index + 1,
+      title: `第 ${index + 1} 卷`, manifestObject: manifestObjects[index]!.slice("content/books/series/".length),
+      publicationStatus: index === 2 ? "draft" : "published",
+    })),
+  });
+  itemIds.forEach((itemId, index) => {
+    add(manifestObjects[index]!, {
+      formatVersion: "jojo-item-manifest/1", revision: 1, itemId, datasetId: "series",
+      type: "book", title: `第 ${index + 1} 卷`, language: "zh-CN", metadata: {},
+      content: {
+        schema: "jojo-content/book/1",
+        chapters: [{ id: "chapter:1", order: 1, title: "正文", characterCount: 5, object: "chapter.jox", size: 100, sha256: "chapter" }],
+      },
+      contentStats: { chapterCount: 1, characterCount: 5 }, assets: [], exports: [],
+      search: { format: "text", profile: "jojo-book-search/1", object: "search.jox", size: 100, sha256: "search" },
+    });
+    add(manifestObjects[index]!.replace("manifest.jox", "search.jox"), {
+      formatVersion: "jojo-book-search/1", itemId,
+      blocks: [{ targetId: "chapter:1", order: 1, text: `苹果 第 ${index + 1} 卷` }],
+    });
+    add(fragmentObjects[index]!, {
+      formatVersion: "jojo-fragment/1", itemId, fragmentId: "chapter:1", type: "chapter", order: 1, title: "正文",
+      body: { format: "text", value: `苹果 第 ${index + 1} 卷` }, assetRefs: [], annotations: [],
+    });
+  });
+  const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+    const bytes = objects.get(String(input));
+    return bytes ? new Response(bytes.slice().buffer) : new Response(null, { status: 404 });
+  });
+  const tools = createRagTools({ contentCdnBase: "https://cdn.test/", scope, fetchFn: fetchFn as typeof fetch });
+  return { tool: (name: string) => tools.find((tool) => tool.name === name)!, fetchFn, itemIds, manifestObjects, fragmentObjects };
+}
+
 describe("RAG content tools", () => {
+  it.each([
+    { itemIds: ["series:one"] },
+    { manifestObjects: ["content/books/series/items/one/manifest.jox"] },
+    { itemIds: ["series:one"], manifestObjects: ["content/books/series/items/one/manifest.jox"] },
+  ])("lists and searches only the selected volume for scope %j", async (selection) => {
+    const { tool, fetchFn, itemIds, manifestObjects, fragmentObjects } = seriesFixture({
+      mode: "selected", datasetIds: ["series"], ...selection,
+    });
+    const listed = await tool("list_book_items").execute("list", {}, undefined);
+    expect(listed.details).toMatchObject({ datasets: [{ items: [{ itemId: itemIds[0], manifestObject: manifestObjects[0] }] }] });
+    expect((listed.details as { datasets: { items: unknown[] }[] }).datasets[0]!.items).toHaveLength(1);
+
+    const searched = await tool("search_content").execute("search", {
+      query: "苹果", itemIds,
+    }, undefined);
+    expect(searched.details).toMatchObject({
+      total: 1, searchedItemCount: 1,
+      hits: [{ itemId: itemIds[0], manifestObject: manifestObjects[0], fragmentObject: fragmentObjects[0] }],
+    });
+    const outsideSearch = await tool("search_content").execute("search-outside", {
+      query: "苹果", itemIds: [itemIds[1]],
+    }, undefined);
+    expect(outsideSearch.details).toMatchObject({ total: 0, searchedItemCount: 0, hits: [] });
+    expect(fetchFn.mock.calls.some(([url]) => String(url).includes("/two/") || String(url).includes("/draft/"))).toBe(false);
+
+    const read = await tool("read_fragment").execute("read", { fragmentObject: fragmentObjects[0] }, undefined);
+    expect(read.details).toMatchObject({ itemId: itemIds[0], text: "苹果 第 1 卷" });
+    for (const name of ["inspect_item", "list_item_toc"]) {
+      await expect(tool(name).execute(name, { manifestObject: manifestObjects[1] }, undefined)).rejects.toThrow("不在用户选择范围内");
+    }
+    await expect(tool("read_fragment").execute("read-outside", {
+      fragmentObject: fragmentObjects[1],
+    }, undefined)).rejects.toThrow("不在用户选择范围内");
+    if (selection.manifestObjects) {
+      await expect(tool("search_selected_item").execute("selected-outside", {
+        query: "苹果", manifestObject: manifestObjects[1],
+      }, undefined)).rejects.toThrow("不在用户选择范围内");
+      expect(fetchFn.mock.calls.some(([url]) => String(url).includes("/two/"))).toBe(false);
+    }
+  });
+
+  it("keeps all published volumes available when the whole dataset is selected", async () => {
+    const { tool } = seriesFixture({ mode: "selected", datasetIds: ["series"] });
+    const listed = await tool("list_book_items").execute("list", {}, undefined);
+    expect((listed.details as { datasets: { items: { itemId: string }[] }[] }).datasets[0]!.items.map((item) => item.itemId))
+      .toEqual(["series:one", "series:two"]);
+    const searched = await tool("search_content").execute("search", { query: "苹果" }, undefined);
+    expect(searched.details).toMatchObject({ total: 2, searchedItemCount: 2 });
+  });
+
   it("enforces the selected scope and scans a full Item outside model context", async () => {
     const catalogObject = "catalog.jox";
     const datasetIndexObject = "content/books/book-a/index.jox";
