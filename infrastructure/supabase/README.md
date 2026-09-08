@@ -183,11 +183,19 @@ The database CI job runs the same commands. Tests verify browser-role
 permissions, administrator and personal generation, code rotation, durable
 revocation, account deletion, and atomic Auth redemption.
 
-The checked-in Auth configuration limits combined sign-in and signup requests
-to 10 per five minutes per IP address. Before making account registration
-public, also enable CAPTCHA in Supabase Bot and Abuse Protection and wire its
-token into the signup form. CAPTCHA requires a provider site key and secret, so
-it is intentionally a rollout setting rather than a repository default.
+The checked-in Auth configuration requires at least eight characters for new
+passwords, including signup, password changes, and recovery. Existing accounts
+can still sign in with a shorter password. Keep the hosted Auth password minimum
+in sync with this setting after the change is reviewed and merged.
+
+Registration remains invitation-only at launch. The Auth configuration limits
+combined sign-in and signup requests to 10 per five minutes per IP address;
+the database validates and atomically redeems invitations. CAPTCHA remains
+disabled for this rollout. Before opening registration without invitations,
+configure a CAPTCHA provider and support its token in every affected client
+flow (including sign-in and recovery), and adapt the AI monitor's password
+login. CAPTCHA requires a provider site key and secret, so it is intentionally
+a rollout setting rather than a repository default.
 
 ## Email verification and recovery
 

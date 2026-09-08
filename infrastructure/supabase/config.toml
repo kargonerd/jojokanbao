@@ -9,6 +9,7 @@ additional_redirect_urls = [
   "https://jojokanbao.cn/account",
 ]
 enable_signup = true
+minimum_password_length = 8
 
 [auth.rate_limit]
 email_sent = 100
