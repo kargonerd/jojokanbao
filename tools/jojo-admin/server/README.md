@@ -25,6 +25,18 @@ Flask on port 5000. The lower-level `dev:admin-api` and
 `dev:admin-web` commands remain available when only one side needs
 debugging.
 
+## Book imports
+
+The `/content` page accepts EPUB, WeRead WRX JSON, and DRM-free MOBI 6/7 through
+`POST /api/content/import-files` or `POST /api/content/import-paths`. Both routes
+invoke `@jojo/content-pipeline` with strict import defaults and expose job progress
+and diagnostics. Browser uploads retain their original sanitized filenames, including
+Chinese names, in separate directories so duplicate names cannot overwrite each other.
+See the [management workflow](../README.md) and
+[Content Pipeline reference](../../content-pipeline/README.md) for supported formats,
+validation rules, and the separate publication step. PDF book conversion uses external
+tools; the `/pdf` publication workflow is independent of the removed Press feature.
+
 ## RMRB missing-content review
 
 The `/rmrb-review` React route rebuilds its queue from the compact missing-row

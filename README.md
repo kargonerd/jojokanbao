@@ -8,7 +8,7 @@ JOJO 看报的完整产品代码，包括 Web、官网、桌面端、移动端�
 frontend/
   web/                 统一 Web 客户端
   homepage/            官网和博客
-  desktop/             Electron 客户端与专属 engine
+  desktop/             Electron 客户端与窗口、系统能力
   mobile/              移动端
   packages/            前端共享 ui、auth、pdf-viewer
 backend/
@@ -24,6 +24,10 @@ content/blog/          博客内容
 ```
 
 详细边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
+
+书籍通过 [JOJO 管理台](./tools/jojo-admin/README.md) 的 `/content` 页面或
+[Content Pipeline](./tools/content-pipeline/README.md) 导入 EPUB。PDF 书籍先使用外部工具
+转换成 EPUB，再导入；Press 书籍制作工作台已移除。
 
 ## 开发
 

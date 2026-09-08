@@ -15,7 +15,7 @@ content/        博客等内容源
 
 - `frontend/web`：Archive、Account、RAG、JOJO Times 共用的浏览器运行时；`shell`、`home`、`library` 分别承载应用外壳、首页和资料库。
 - `frontend/homepage`：官网与博客静态站点。
-- `frontend/desktop`：Electron 桌面产品；`engine/` 是 Desktop 专属的 TypeScript 本地引擎。
+- `frontend/desktop`：Electron 桌面产品，复用 Web 页面与阅读器；`electron/` 承载主进程、preload 和窗口、系统能力。
 - `frontend/mobile`：移动端客户端。
 - `frontend/packages/ui`：React 组件以及通过 `@jojo/ui/styles` 导出的 CSS 设计系统。
 - `frontend/packages/auth`、`pdf-viewer`：前端共享能力。
@@ -72,6 +72,7 @@ EdgeOne 专有入口位于 `infrastructure/edgeone/functions`，只导入
 ## Tools and infrastructure
 
 - `tools/jojo-admin`：本机 JOJO 管理台。
+- `tools/content-pipeline`：书籍导入与构建工具，接收 EPUB、微信读书 WRX JSON 和无 DRM 的 MOBI 6/7，生成统一 Canonical 与 Delivery；管理台 `/content` 调用同一管线。
 - `tools/archive-pdf`：Archive PDF 人工操作与发布工具。
 - `tools/times-pipeline`：Times 新闻源采集、Raw/Canonical 构建及 B2 Delivery 发布工具。
 - `infrastructure/supabase`：数据库 migrations。
@@ -80,6 +81,8 @@ EdgeOne 专有入口位于 `infrastructure/edgeone/functions`，只导入
 
 书籍、报纸和杂志的统一规范数据、B2/CDN 交付对象以及 Jox 边界见
 [`docs/data-format-v1.md`](./docs/data-format-v1.md)。
+PDF 书籍先用外部工具转换为 EPUB，再通过
+[`tools/content-pipeline`](./tools/content-pipeline/README.md) 导入；桌面端不再维护 Press 制作工作台或书籍处理引擎。
 
 依赖只在真实复用后抽取。前端共享代码放在 `frontend/packages`；Python 代码当前不建立
 推测性的共享包。

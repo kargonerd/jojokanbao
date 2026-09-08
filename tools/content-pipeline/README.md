@@ -12,6 +12,9 @@ pnpm --filter @jojo/content-pipeline validate -- "C:\path\to\build"
 
 单本 EPUB 也可使用 `--input "C:\path\to\book.epub"`，输出目录必须为空。
 PDF 先由外部制作工具转成 EPUB，再通过同一入口导入；JOJO 不再提供 Press 制作工作台。
+图形界面使用 [JOJO 管理台](../jojo-admin/README.md) 的 `/content` 页面，可选择本机路径或
+上传 EPUB，查看任务诊断后再发布。管理台调用同一管线，上传时保留中文文件名并隔离同名文件；
+输出目录、部分导入等高级选项使用命令行。
 
 EPUB 导入支持 EPUB 2 NCX / EPUB 3 nav 多级目录、无链接的目录分组、中文和 URL 编码路径、
 包文档命名空间前缀、封面与内嵌图片。目录和正文内链保留精确锚点，合并碎片正文时会给
@@ -53,7 +56,8 @@ Delivery `catalog.jox` 的 Dataset 条目使用 `aiEnabled` 声明是否能够�
 部分 EPUB 会把一章拆成大量很小的 spine 文件；当这种碎片特征足够明确时，导入器按 EPUB
 目录边界合并为逻辑章节，同时为原目录目标保留正文锚点。OPF 作者等元数据明显无效时，才会
 从规范的电子书文件名回退，原值保留在来源扩展信息中供审计。
-EPUB 跨 XHTML 的脚注链接会转换为 Item 内的 `annotations`，脚注文件不再生成伪章节；目录
+EPUB 跨 XHTML 的纯文本脚注链接会转换为 Item 内的 `annotations`；只包含已转换注释的文件不再生成伪章节，
+含未引用注释或复杂注释的正文继续保留。目录
 章节等正文内链会解析为稳定的章节 ID 和正文锚点，并记录识别数、成功数及无法解析的具体目标。
 Reader 不依赖 EPUB 文件名即可精确跨章节跳转。`Image` 等
 无意义图片替代文字不会显示为图注。

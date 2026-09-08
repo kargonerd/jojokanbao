@@ -5,11 +5,24 @@ append-only Elasticsearch repairs, feature flags, and Agent operations.
 
 The product UI and internal package are both named **JOJO 管理台**, covering content operations, search maintenance,
 and runtime feature rules. `/content` is the JOJO v1 content importer and publisher. It accepts local
-WeRead JSON paths or browser-selected files, shows background job progress and
-diagnostics, then publishes Canonical data to Hugging Face, Delivery objects to
-B2, and rebuildable search documents to Elasticsearch.
+WeRead WRX JSON, EPUB, and DRM-free MOBI 6/7 (`.azw`, `.mobi`, `.prc`) through local
+paths or browser-selected files. It runs the same [Content Pipeline](../content-pipeline/README.md),
+shows background job progress and diagnostics, then publishes Canonical data to
+Hugging Face and Delivery objects to B2. Elasticsearch is updated separately by
+the unified ES sync described below.
 By default, a WeRead source is rejected when its declared TOC is truncated,
 TOC chapter responses are missing, or any response cannot be decoded.
+EPUB imports also reject missing spine content, invalid navigation/internal links,
+and missing embedded resources when asset import is enabled. Corrupt ZIPs, invalid
+spines, and encrypted content produce explicit errors. Unpaired plain-text note
+markers remain in the text with warnings; rich notes remain linked content.
+
+浏览器导入入口为 `http://127.0.0.1:4174/content`（`pnpm dev:admin`）或
+`http://127.0.0.1:5000/content`（`server/start.bat`）。上传会保留中文文件名供元数据回退，
+同名文件分目录暂存。任务生成后先查看诊断，再选择发布目标；导入本身不会自动发布。
+管理台默认严格导入，不提供部分导入开关；确需恢复部分内容时使用 Content Pipeline 的
+`--allow-partial` 并检查 `report.json`。关闭资源导入表示主动只取文字。
+PDF 书籍先通过外部工具转换为 EPUB；Press 已移除，现有 `/pdf` 报刊 PDF 工作流继续独立使用。
 
 ## Structure
 
