@@ -17,7 +17,7 @@ export interface ArchivePublicationSummary {
 }
 
 export const ARCHIVE_PUBLICATIONS = [
-  { id: "rmrb", title: "人民日报", englishTitle: "PEOPLE'S DAILY", years: "1946 — 至今", kind: "报纸", type: "newspaper", defaultIssueId: "19761009" },
+  { id: "rmrb", title: "人民日报", englishTitle: "PEOPLE'S DAILY", years: "1946 — 至今", kind: "报纸", type: "newspaper", defaultIssueId: "19760910" },
   { id: "ckxx", title: "参考消息", englishTitle: "REFERENCE NEWS", years: "1957 — 1998", kind: "报纸", type: "newspaper", defaultIssueId: "19760910" },
   { id: "hq", title: "红旗", englishTitle: "RED FLAG", years: "1958 — 1988", kind: "杂志", type: "magazine", defaultIssueId: "196419" },
   { id: "rmhb", title: "人民画报", englishTitle: "CHINA PICTORIAL", years: "1950 — 1976", kind: "杂志", type: "magazine", defaultIssueId: "197292" },

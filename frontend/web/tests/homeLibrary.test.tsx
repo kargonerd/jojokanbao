@@ -541,12 +541,12 @@ describe("app library", () => {
     const paper = await screen.findByRole("link", { name: /人民日报/ });
     fireEvent.click(paper);
 
-    await waitFor(() => expect(window.location.pathname).toBe("/archive/rmrb/19761009"));
+    await waitFor(() => expect(window.location.pathname).toBe("/archive/rmrb/19760910"));
     expect(useRecentReadingStore.getState().items[0]).toMatchObject({
       id: "periodical:rmrb",
       publicationId: "rmrb",
       title: "人民日报",
-      href: "/archive/rmrb/19761009",
+      href: "/archive/rmrb/19760910",
     });
   });
 
