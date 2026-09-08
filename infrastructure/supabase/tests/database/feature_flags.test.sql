@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(36);
+select extensions.plan(40);
 
 select extensions.has_table('private', 'feature_flags', 'feature flag configuration uses one private table');
 select extensions.has_table('private', 'feature_flag_operator_secret', 'only the operator token digest has separate storage');
@@ -88,6 +88,43 @@ select extensions.is(
   public.operator_get_feature_flag(repeat('o', 32), 'reader.annotations')->'config'->>'publicMarkThreshold',
   '2',
   'the protected runtime read returns the annotation public threshold'
+);
+
+select extensions.throws_ok(
+  $$select public.operator_publish_feature_flag(
+    'wrong-token', 'reader.annotations', '[]'::jsonb, '{}'::jsonb, 1, 'Invalid token', null
+  )$$,
+  '42501',
+  'Feature flag operator token is invalid',
+  'the config-aware publish RPC still requires the operator token'
+);
+
+select extensions.throws_ok(
+  $$select public.operator_publish_feature_flag(
+    repeat('o', 32), 'reader.annotations',
+    '[{"name":"Default","conditionType":"global","serve":false,"enabled":true,"isFallback":true}]'::jsonb,
+    '[]'::jsonb, 1, 'Invalid config shape', null
+  )$$,
+  '22023',
+  'Feature flag config must be a JSON object',
+  'publishing rejects an array config before changing the flag'
+);
+
+select extensions.throws_ok(
+  $$select public.operator_publish_feature_flag(
+    repeat('o', 32), 'reader.annotations',
+    '[{"name":"Default","conditionType":"global","serve":false,"enabled":true,"isFallback":true}]'::jsonb,
+    jsonb_build_object('oversized', repeat('x', 16384)), 1, 'Oversized config', null
+  )$$,
+  '22023',
+  'Feature flag config is too large',
+  'publishing rejects oversized config before changing the flag'
+);
+
+select extensions.ok(
+  not pg_catalog.has_function_privilege('anon', 'private.feature_flag_config_integer(text,text[],integer,integer,integer)', 'execute')
+  and not pg_catalog.has_function_privilege('authenticated', 'private.feature_flag_config_integer(text,text[],integer,integer,integer)', 'execute'),
+  'browser roles cannot read arbitrary private feature config through the integer helper'
 );
 
 select extensions.is(

@@ -65,6 +65,27 @@ JOJO_OPERATOR_TOKEN=<at least 32 random characters>
 
 Agent 默认使用 Luna，推理强度固定为 `low`，优先控制 MVP 阶段的订阅额度消耗。
 
+## AI 使用限额
+
+所有需要模型生成的 Agent 请求共享账号限额：同时 1 条、滚动一分钟 3 次、
+北京时间每天 100 次。单次执行最多 300 秒。缓存读取不经过 Agent，不扣生成次数。
+开始处理的请求计数；取消或失败不退次数，以免反复启动模型绕过限制。被限额拦截
+的请求不计数，返回 HTTP 429、明确的中文原因和 `Retry-After`，不会初始化模型。
+
+计数与运行租约保存在 Supabase `private.agent_usage_state`，通过账号行锁在不同
+Agent 实例之间串行准入；不同设备和会话也共享同一个账号额度。停止、完成、异常
+均释放对应请求的租约。执行超时会取消模型，租约额外留 30 秒清理宽限，进程崩溃
+后也不会永久锁住账号。状态仅存计数和时间，不保存问题或回答，注销账号时自动删除。
+
+发布前先应用 `202609080003_agent_usage_limits.sql`。Agent 使用既有
+`JOJO_OPERATOR_TOKEN` 调用配额 RPC，该值必须与 Supabase 功能开关运维密钥摘要
+匹配；无需把 service-role 密钥放入 Agent。配额服务不可用时拒绝开始新生成。
+`/rag/health` 只检查模型配置，发布后还必须验证实际认证请求和配额 RPC。
+
+管理员可在数据库中调整单行 `private.agent_usage_policy` 的
+`requests_per_minute`、`requests_per_day`、`max_run_seconds`，新请求立即读取；
+不要将这些值放在客户端。监控账号遵循同一规则，每 30 分钟一次的日常探测约 48 次/天。
+
 ## Trace
 
 JOJO 使用的 Pi Agent 不在 Makers 自动适配框架列表中，因此 Handler 会通过

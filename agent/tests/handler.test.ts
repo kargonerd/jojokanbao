@@ -8,9 +8,16 @@ import {
 } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 import {
-  createEdgeOneAgentHandler,
+  createEdgeOneAgentHandler as createHandler,
   type EdgeOneTracer,
 } from "../src";
+
+// Handler scenarios below use the real Pi runtime with an isolated quota lease.
+// Distributed reservation and rejection are covered in usage.test.ts.
+const createEdgeOneAgentHandler = (options: Parameters<typeof createHandler>[0]) => createHandler({
+  acquireUsage: async () => ({ maxRunSeconds: 300, release: async () => {} }),
+  ...options,
+});
 
 describe("createEdgeOneAgentHandler", () => {
   it("streams a real Pi Agent run", async () => {
