@@ -11,7 +11,7 @@ export interface ExecutionEvent {
   at: number;
   outcome: "success" | "failure";
   permanent: boolean;
-  run: string;
+  run?: string;
 }
 
 export type DispatchObservation =
@@ -94,7 +94,7 @@ export function applyExecution(state: MonitorState, check: HealthcheckDefinition
     state.down = false;
     delete state.incidentAt;
     // Only a real, fresh execution outcome can advance the external heartbeat.
-    state.pending = { signal: "success", reason: "execution-succeeded", at: event.at, run: event.run };
+    state.pending = { signal: "success", reason: "execution-succeeded", at: event.at, ...(event.run ? { run: event.run } : {}) };
   } else {
     state.executionFailures += 1;
     if (event.permanent || state.executionFailures >= policy.executionFailures) {

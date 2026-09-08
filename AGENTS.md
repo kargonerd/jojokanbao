@@ -42,6 +42,15 @@ pnpm test:backend
 - Desktop 专属本地业务能力使用 TypeScript；Electron 主进程与 preload 入口位于 `frontend/desktop/electron`。
 - 后端公共和 JOJO Times 依赖由 `backend/requirements*.txt` 管理。
 
+## 运行配置约定
+
+- 新增配置前，先查找并复用已有配置存储、读取函数和管理入口。限额、阈值、超时等少量运行参数，优先放入 `private.feature_flags.config`，不为一组参数单独建立 `*_settings` 或 `*_policy` 表。
+- 同一功能的参数归入已有 flag；独立功能可新增有明确业务含义的 key。`rules` 表达启用范围，`config` 表达参数，两者是否关联由业务明确规定；不能通过规则开关意外关闭必须执行的限额。
+- 管理入口复用 JOJO 管理台的功能开关页面，以及现有 Operator 发布、版本冲突检查、修改历史和回滚能力；保留未修改的规则与配置字段。
+- 写入端校验参数类型和范围，读取端明确默认值、边界及生效时机。配置表不存密钥，也不存用户计数、并发租约、任务状态等运行数据；后者使用各自的状态存储。
+- 合并旧配置时用新迁移保留线上实际值，不用默认值覆盖；保持业务状态和历史，切换读取路径后再删除冗余表。确需独立配置表时，在 PR 中说明现有机制无法满足的具体需求。
+- 具体边界、现有配置示例和接入步骤见 [运行配置复用](infrastructure/supabase/README.md#runtime-configuration-reuse)。
+
 ## Agent 约定
 
 - Agent 是单一 `@jojo/agent` 包，通用运行层位于 `agent/src`，使用

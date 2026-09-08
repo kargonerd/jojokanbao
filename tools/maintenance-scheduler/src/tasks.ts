@@ -73,6 +73,29 @@ export const SCHEDULED_TASKS = [
       schedule_slot: slot.id,
     }),
   },
+  {
+    id: "jojo-ai-availability",
+    cron: "17,47 * * * *",
+    timeZone: "UTC",
+    catchupWindowMinutes: 5,
+    workflow: "monitor-ai.yml",
+    automaticRunTitle: "AI availability [scheduler]",
+    skipWhileWorkflowActive: true,
+    maxAttempts: 1,
+    retryDelayMinutes: 0,
+    monitoring: {
+      name: "JOJO · AI availability",
+      alertPolicy: { executionFailures: 1 },
+      graceSeconds: 1800,
+      tags: "jojo production ai",
+      description: "Authenticated AI availability probe through a complete SSE generation. Reuses the existing AI availability check.",
+    },
+    inputs: ({ slot }) => ({
+      automatic: "true",
+      scheduled_at: slot.scheduledAt,
+      schedule_slot: slot.id,
+    }),
+  },
 ] satisfies ScheduledTask[];
 
 export function scheduledTask(taskId: string): ScheduledTask {

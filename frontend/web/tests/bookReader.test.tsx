@@ -79,6 +79,7 @@ describe("BookReader", () => {
       configurable: true,
       value: () => ({ left: 240, right: 420, top: 220, bottom: 250, width: 180, height: 30, x: 240, y: 220, toJSON: () => ({}) }),
     });
+    Object.defineProperty(Range.prototype, "getClientRects", { configurable: true, value: () => [] });
   });
 
   afterEach(() => {

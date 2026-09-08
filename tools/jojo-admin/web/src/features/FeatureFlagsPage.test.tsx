@@ -84,6 +84,17 @@ const annotationFlag = {
   }],
 };
 
+const aiUsageFlag = {
+  ...flag,
+  key: "ai.usage_limits",
+  description: "AI 使用限额",
+  config: { requestsPerMinute: 3, requestsPerDay: 100, maxRunSeconds: 300 },
+  rules: flag.rules.map((rule, index) => ({
+    ...rule,
+    startsAt: index === 0 ? "2026-08-16T01:30:45.123Z" : null,
+  })),
+};
+
 describe("FeatureFlagsPage", () => {
   beforeEach(() => {
     api.list.mockReset();
@@ -168,6 +179,103 @@ describe("FeatureFlagsPage", () => {
       config: { publicMarkThreshold: 5 },
       expectedRevision: 1,
     })));
+  });
+
+  it("shows AI limits and history without offering rollout or disable controls", async () => {
+    api.list.mockResolvedValue([annotationFlag, aiUsageFlag]);
+    render(<FeatureFlagsPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /ai\.usage_limits/ }));
+    expect(screen.getByRole("spinbutton", { name: "每分钟请求上限" })).toHaveValue(3);
+    expect(screen.getByRole("spinbutton", { name: "每日请求上限" })).toHaveValue(100);
+    expect(screen.getByRole("spinbutton", { name: "单次生成时限" })).toHaveValue(300);
+    expect(screen.getByText(/始终对所有账号生效.*同时只能生成 1 条回答.*北京时间零点重置/)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "修改记录" })).toBeInTheDocument();
+    expect(screen.queryByText("添加规则")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "OFF" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("规则 1 名称")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /reader\.annotations/ }));
+    expect(screen.getByRole("spinbutton", { name: "划线公开阈值" })).toHaveValue(2);
+    expect(screen.getByText("添加规则")).toBeInTheDocument();
+    expect(screen.getByLabelText("规则 1 名称")).toBeEnabled();
+  });
+
+  it("publishes AI limits while preserving the stored rules and other configuration", async () => {
+    api.list.mockResolvedValue([{ ...aiUsageFlag, config: { ...aiUsageFlag.config, reserved: "retain" } }]);
+    api.publish.mockResolvedValue({ ...aiUsageFlag, revision: 8 });
+    render(<FeatureFlagsPage />);
+
+    fireEvent.change(await screen.findByRole("spinbutton", { name: "每分钟请求上限" }), { target: { value: "6" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "每日请求上限" }), { target: { value: "200" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "单次生成时限" }), { target: { value: "240" } });
+    fireEvent.change(screen.getByLabelText("发布原因"), { target: { value: "调整 AI 限额" } });
+    fireEvent.click(screen.getByRole("button", { name: "发布更改" }));
+
+    await waitFor(() => expect(api.publish).toHaveBeenCalledWith(expect.objectContaining({
+      key: "ai.usage_limits",
+      rules: aiUsageFlag.rules,
+      config: { requestsPerMinute: 6, requestsPerDay: 200, maxRunSeconds: 240, reserved: "retain" },
+      expectedRevision: 7,
+      reason: "调整 AI 限额",
+    })));
+    expect(await screen.findByText("已发布 revision 8")).toBeInTheDocument();
+  });
+
+  it("provides complete defaults when the AI configuration is empty", async () => {
+    api.list.mockResolvedValue([{ ...aiUsageFlag, config: {} }]);
+    api.publish.mockResolvedValue({ ...aiUsageFlag, revision: 8 });
+    render(<FeatureFlagsPage />);
+
+    expect(await screen.findByRole("spinbutton", { name: "每分钟请求上限" })).toHaveValue(3);
+    expect(screen.getByRole("spinbutton", { name: "每日请求上限" })).toHaveValue(100);
+    expect(screen.getByRole("spinbutton", { name: "单次生成时限" })).toHaveValue(300);
+    fireEvent.change(screen.getByLabelText("发布原因"), { target: { value: "发布默认限额" } });
+    fireEvent.click(screen.getByRole("button", { name: "发布更改" }));
+    await waitFor(() => expect(api.publish).toHaveBeenCalledWith(expect.objectContaining({ config: aiUsageFlag.config })));
+  });
+
+  it.each([
+    ["每分钟请求上限", "0"],
+    ["每分钟请求上限", "61"],
+    ["每分钟请求上限", "1.5"],
+    ["每日请求上限", "0"],
+    ["每日请求上限", "10001"],
+    ["单次生成时限", "29"],
+    ["单次生成时限", "601"],
+    ["单次生成时限", ""],
+  ])("rejects an invalid AI limit: %s = %s", async (label, value) => {
+    api.list.mockResolvedValue([aiUsageFlag]);
+    render(<FeatureFlagsPage />);
+
+    fireEvent.change(await screen.findByRole("spinbutton", { name: label }), { target: { value } });
+    fireEvent.change(screen.getByLabelText("发布原因"), { target: { value: "调整 AI 限额" } });
+    expect(screen.getByRole("alert")).toHaveTextContent(`${label}请填写`);
+    expect(screen.getByRole("button", { name: "发布更改" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "发布更改" }));
+    expect(api.publish).not.toHaveBeenCalled();
+  });
+
+  it("restores AI configuration inputs after rolling back a historical version", async () => {
+    api.list.mockResolvedValue([aiUsageFlag]);
+    api.rollback.mockResolvedValue({
+      ...aiUsageFlag,
+      revision: 8,
+      config: { requestsPerMinute: 1, requestsPerDay: 50, maxRunSeconds: 120 },
+    });
+    render(<FeatureFlagsPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "回滚到 revision 6" }));
+    await waitFor(() => expect(api.rollback).toHaveBeenCalledWith(expect.objectContaining({
+      key: "ai.usage_limits",
+      targetRevision: 6,
+      expectedRevision: 7,
+    })));
+    expect(await screen.findByText("已回滚到 revision 6，当前为 revision 8")).toBeInTheDocument();
+    expect(screen.getByRole("spinbutton", { name: "每分钟请求上限" })).toHaveValue(1);
+    expect(screen.getByRole("spinbutton", { name: "每日请求上限" })).toHaveValue(50);
+    expect(screen.getByRole("spinbutton", { name: "单次生成时限" })).toHaveValue(120);
+    expect(screen.queryByText("添加规则")).not.toBeInTheDocument();
   });
 
   it("shows a useful local configuration error", async () => {

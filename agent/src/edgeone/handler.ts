@@ -14,7 +14,9 @@ import type {
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { AgentHttpError, authorizeSupabaseUser } from "./auth";
 import { createEdgeOneCredentialStore } from "./credential-store";
+import { acquireAgentUsage } from "./usage";
 import type {
+  AgentUsageLease,
   AgentRequestBody,
   AuthorizedAgentUser,
   CreateEdgeOneAgentHandlerOptions,
@@ -402,9 +404,31 @@ export function createEdgeOneAgentHandler(
     let body: AgentRequestBody;
     let user: AuthorizedAgentUser;
     let runtime: PlatformModelRuntime;
+    let lease: AgentUsageLease | undefined;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    let deadlineExpired = false;
+    const cancellation = new AbortController();
+    const signal = context.request.signal
+      ? AbortSignal.any([context.request.signal, cancellation.signal]) : cancellation.signal;
+    context = { ...context, request: { ...context.request, signal } };
+    const releaseUsage = async () => {
+      clearTimeout(deadline);
+      const current = lease;
+      lease = undefined;
+      try {
+        await current?.release();
+      } catch {
+        context.tracer?.setAttributes?.({ "agent.usage_release_failed": true });
+      }
+    };
     try {
       body = requestBody(context.request.body);
       user = await (options.authorize ?? authorizeSupabaseUser)(context);
+      lease = await (options.acquireUsage ?? acquireAgentUsage)(context, user);
+      deadline = setTimeout(() => {
+        deadlineExpired = true;
+        cancellation.abort(new Error("AI 回答生成超时，请稍后重试。"));
+      }, lease.maxRunSeconds * 1_000);
       runtime = await (
         options.createModelRuntime?.(context)
         ?? defaultModelRuntime(context)
@@ -419,8 +443,12 @@ export function createEdgeOneAgentHandler(
         throw new AgentHttpError(503, "current model does not support image input");
       }
     } catch (error) {
+      await releaseUsage();
       if (error instanceof AgentHttpError) {
-        return jsonResponse(error.status, { error: error.message });
+        return Response.json({ error: error.message, ...(error.code ? { code: error.code } : {}) }, {
+          status: error.status,
+          headers: error.retryAfter ? { "Retry-After": String(error.retryAfter) } : undefined,
+        });
       }
       return jsonResponse(503, {
         error: error instanceof Error ? error.message : "问答服务配置失败",
@@ -433,6 +461,7 @@ export function createEdgeOneAgentHandler(
     try {
       tools = tracedTools(await options.tools?.(context, user, body) ?? [], context.tracer);
     } catch {
+      await releaseUsage();
       return jsonResponse(503, { error: "馆藏问答工具暂时不可用" });
     }
     const environment = context.env ?? process.env;
@@ -445,14 +474,19 @@ export function createEdgeOneAgentHandler(
       "agent.image_count": body.images?.length ?? 0,
     });
 
+    let streamCancelled = false;
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
+        const emit = (event: string, data: unknown) => {
+          if (!streamCancelled) controller.enqueue(sseFrame(event, data));
+        };
         try {
-          controller.enqueue(sseFrame("status", {
+          signal.throwIfAborted();
+          emit("status", {
             provider: runtime.config.provider,
             model: runtime.config.model,
             conversationId,
-          }));
+          });
           const result = await traced(
             context.tracer,
             `jojo.${options.agentId || "rag"}_agent`,
@@ -477,7 +511,7 @@ export function createEdgeOneAgentHandler(
                 ),
                 maxLengthContinuations: options.agentId === "times" ? 1 : 0,
                 onEvent(event) {
-                  controller.enqueue(sseFrame(event.type, eventPayload(event)));
+                  emit(event.type, eventPayload(event));
                 },
               });
               span.setAttributes?.({
@@ -503,23 +537,33 @@ export function createEdgeOneAgentHandler(
               "agent.image_count": body.images?.length ?? 0,
             },
           );
-          controller.enqueue(sseFrame("done", {
+          if (deadlineExpired) throw new Error("AI 回答生成超时，请稍后重试。");
+          // Clients enable the next question as soon as they see a terminal
+          // frame, so release before publishing it rather than on stream close.
+          await releaseUsage();
+          emit("done", {
             conversationId,
             stopReason: result.stopReason,
             usage: result.usage,
-          }));
+          });
         } catch (error) {
-          controller.enqueue(sseFrame("error", {
-            message: error instanceof Error ? error.message : "回答生成失败",
+          await releaseUsage();
+          emit("error", {
+            message: deadlineExpired ? "AI 回答生成超时，请稍后重试。" : error instanceof Error ? error.message : "回答生成失败",
             name: error instanceof Error ? error.name : "Error",
-          }));
-          controller.enqueue(sseFrame("done", {
+          });
+          emit("done", {
             conversationId,
             stopped: context.request.signal?.aborted ?? false,
-          }));
+          });
         } finally {
-          controller.close();
+          await releaseUsage();
+          if (!streamCancelled) controller.close();
         }
+      },
+      cancel() {
+        streamCancelled = true;
+        cancellation.abort();
       },
     });
 

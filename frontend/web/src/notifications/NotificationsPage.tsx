@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAccountSessionStore } from "../account/session";
-import { loadNotifications, loadUnreadNotificationCount, markNotificationRead } from "./api";
-import { useNotificationStore } from "./store";
+import { loadNotifications, markNotificationRead } from "./api";
+import { refreshUnreadNotifications, useNotificationStore } from "./store";
 import type { UserNotification } from "./types";
 import "./notifications.css";
 
@@ -44,17 +44,16 @@ export function NotificationsPage() {
     let active = true;
     setLoading(true);
     setError("");
-    Promise.all([loadNotifications(), loadUnreadNotificationCount()])
-      .then(([loaded, count]) => {
+    Promise.all([loadNotifications(), refreshUnreadNotifications(userId)])
+      .then(([loaded]) => {
         if (!active) return;
         setItems(loaded);
         setHasMore(loaded.length === 50);
-        setUnreadCount(count);
       })
       .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : String(reason)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [setUnreadCount, userId]);
+  }, [userId]);
 
   async function markAllRead() {
     if (!unreadCount || busy) return;

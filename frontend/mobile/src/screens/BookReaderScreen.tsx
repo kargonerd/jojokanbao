@@ -1,4 +1,5 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
+import type { SpeechLocation, SpeechReadingPosition } from "@jojo/content";
 import Slider from "@react-native-community/slider";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as Brightness from "expo-brightness";
@@ -34,6 +35,8 @@ import {
   createBookReaderMeasureScript,
   createBookReaderRemoveAnnotationScript,
   createBookReaderRevealAnchorScript,
+  createBookReaderSpeechPositionScript,
+  createBookReaderSpeechHighlightScript,
   parseBookReaderMessage,
   type BookChapterEdge,
   type BookReaderPageMessage,
@@ -151,6 +154,38 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const [legacyResume, setLegacyResume] = useState<{ chapterId: string; chapterProgress: number }>();
   const speechEnabled = useSpeechFlagStore((state) => state.enabled && state.userId === user?.id);
   const [speechCover, setSpeechCover] = useState<string>();
+  const speechPositionSequence = useRef(0);
+  const readingChapterRef = useRef(activeChapterId);
+  readingChapterRef.current = activeChapterId;
+  const readerReadyChapterRef = useRef("");
+  const pendingSpeechPosition = useRef<{ id: number; resolve: (value: SpeechReadingPosition) => void; reject: () => void } | null>(null);
+  const speechLocationRef = useRef<{ location: SpeechLocation; reveal: boolean } | null>(null);
+  const getSpeechPosition = useCallback(() => new Promise<SpeechReadingPosition>((resolve, reject) => {
+    if (readerReadyChapterRef.current !== readingChapterRef.current) { reject(new Error("阅读位置尚未就绪，请稍后重试")); return; }
+    pendingSpeechPosition.current?.reject();
+    const id = ++speechPositionSequence.current;
+    const timer = setTimeout(() => {
+      if (pendingSpeechPosition.current?.id === id) pendingSpeechPosition.current.reject();
+    }, 3000);
+    pendingSpeechPosition.current = { id,
+      resolve: (value) => { clearTimeout(timer); pendingSpeechPosition.current = null; resolve(value); },
+      reject: () => { clearTimeout(timer); pendingSpeechPosition.current = null; reject(new Error("阅读位置尚未就绪，请稍后重试")); },
+    };
+    webViewRef.current?.injectJavaScript(createBookReaderSpeechPositionScript(id));
+  }), []);
+  useEffect(() => () => pendingSpeechPosition.current?.reject(), [activeChapterId]);
+  function showSpeechLocation(location: SpeechLocation | null, reveal = false) {
+    const pendingReveal = speechLocationRef.current?.location.chapterId === location?.chapterId && speechLocationRef.current?.reveal;
+    speechLocationRef.current = location ? { location, reveal: reveal || Boolean(pendingReveal) } : null;
+    if (location && location.chapterId !== activeChapterId) {
+      webViewRef.current?.injectJavaScript(createBookReaderSpeechHighlightScript(null));
+      if (reveal) chooseChapter(location.chapterId);
+      return;
+    }
+    if (chapterLoading || readerReadyChapterRef.current !== activeChapterId || chapter?.fragment.fragmentId !== activeChapterId) return;
+    webViewRef.current?.injectJavaScript(createBookReaderSpeechHighlightScript(location, reveal || Boolean(pendingReveal)));
+    if (speechLocationRef.current) speechLocationRef.current.reveal = false;
+  }
   useEffect(() => {
     let active = true;
     setSpeechCover(undefined);
@@ -310,6 +345,10 @@ export function BookReaderScreen({ route, navigation }: Props) {
   function handleReaderMessage(event: WebViewMessageEvent) {
     const message = parseBookReaderMessage(event.nativeEvent.data);
     if (!message) return;
+    if (message.type === "reader-speech-position") {
+      if (pendingSpeechPosition.current?.id === message.requestId) pendingSpeechPosition.current.resolve(message.position);
+      return;
+    }
     if (message.type === "reader-selection-clear") { setSelection(undefined); return; }
     if (message.type === "reader-selection") {
       setSelection(message);
@@ -422,7 +461,16 @@ export function BookReaderScreen({ route, navigation }: Props) {
     chooseChapter(chapterId);
   }
   function handleReaderLoaded() {
+    if (readingChapterRef.current !== activeChapterId || chapter?.fragment.fragmentId !== activeChapterId) return;
+    readerReadyChapterRef.current = activeChapterId;
     webViewRef.current?.injectJavaScript(createBookReaderMeasureScript());
+    setTimeout(() => {
+      const speech = speechLocationRef.current;
+      if (readingChapterRef.current === activeChapterId && speech?.location.chapterId === activeChapterId) {
+        webViewRef.current?.injectJavaScript(createBookReaderSpeechHighlightScript(speech.location, speech.reveal));
+        speech.reveal = false;
+      }
+    }, 160);
     const pending = pendingLocateRef.current;
     if (!pending || pending.chapterId !== activeChapterId) return;
     pendingLocateRef.current = undefined;
@@ -622,6 +670,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
             domStorageEnabled={false}
             cacheEnabled={false}
             injectedJavaScript={readerBridgeScript}
+            onLoadStart={() => { readerReadyChapterRef.current = ""; }}
             onLoadEnd={handleReaderLoaded}
             onError={() => { setChapterLoading(false); setError("章节显示失败，请重新加载"); }}
             onRenderProcessGone={() => { setChapterLoading(false); setError("阅读页面已被系统回收，请重新加载"); }}
@@ -719,7 +768,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
 
       {selection ? <ReaderSelectionToolbar selection={selection} frame={readerFrame} theme={theme} eInk={IS_EINK_RELEASE} onCopy={() => { void Clipboard.setStringAsync(selection.text); clearSelection(); }} onUnderline={underlineSelection} onThought={composeSelectionNote} onExplain={explainSelection} /> : null}
       <BookThoughtComposer quote={noteComposer?.quote} value={noteDraft} onChange={setNoteDraft} onCancel={() => { setNoteComposer(undefined); setNoteDraft(""); }} onSave={saveNote} theme={theme} />
-      {loaded && activeChapterId ? <NativeSpeechPlayer documentId={`book:${datasetId}:${itemKey}`} title={loaded.manifest.title} chapterId={activeChapterId} chapters={loaded.manifest.content.chapters ?? []} loadChapter={loadSpeechChapter} cover={speechCover ? { uri: speechCover } : undefined} hidden={!chromeVisible || Boolean(activeTool || selection || noteComposer || activeAnnotationId || expandedImageUri)} bottom={insets.bottom + 64} onRead={chooseChapter} onBookshelf={() => void toggleBookshelf()} onShelf={onBookshelf} bookshelfBusy={bookshelfBusy} /> : null}
+      {loaded && activeChapterId ? <NativeSpeechPlayer documentId={`book:${datasetId}:${itemKey}`} title={loaded.manifest.title} chapterId={activeChapterId} chapters={loaded.manifest.content.chapters ?? []} loadChapter={loadSpeechChapter} getReadingPosition={getSpeechPosition} onSpeechLocation={showSpeechLocation} cover={speechCover ? { uri: speechCover } : undefined} hidden={!chromeVisible || Boolean(activeTool || selection || noteComposer || activeAnnotationId || expandedImageUri)} bottom={insets.bottom + 64} onRead={(id, location) => location ? showSpeechLocation(location, true) : chooseChapter(id)} onBookshelf={() => void toggleBookshelf()} onShelf={onBookshelf} bookshelfBusy={bookshelfBusy} /> : null}
       {readerNotice ? <Pressable onPress={() => setReaderNotice("")} style={[styles.readerNotice, { top: insets.top + 72, borderColor: theme.red, backgroundColor: theme.paper }]}><Text style={[styles.readerNoticeText, { color: theme.red, fontFamily: theme.sans }]}>{readerNotice}</Text></Pressable> : null}
       <Modal visible={Boolean(expandedImageUri)} transparent={false} animationType={IS_EINK_RELEASE ? "none" : "fade"} onRequestClose={() => setExpandedImageUri(undefined)}>
         <SafeAreaView edges={["top", "bottom"]} style={[styles.imageModal, { backgroundColor: theme.paper }]}>

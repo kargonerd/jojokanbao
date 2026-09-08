@@ -54,6 +54,6 @@ describe("scheduler with shared alert policy", () => {
     const urls = options.fetcher.mock.calls.map(([url]) => String(url));
     expect(urls).toContain("https://hc-ping.com/maintenance-scheduler/log");
     expect(urls).not.toContain("https://hc-ping.com/maintenance-scheduler");
-    expect(options.monitor).toHaveBeenCalledTimes(4);
+    expect(options.monitor).toHaveBeenCalledTimes(5);
   });
 });

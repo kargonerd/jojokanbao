@@ -405,6 +405,10 @@ export function ReaderPage() {
       artworkUrl={coverUrl || undefined}
       queueItems={chapters.map((chapter) => ({ id: chapter.id, title: chapter.title }))}
       activeQueueId={activeChapter}
+      loadQueueItem={async (chapterId) => {
+        const chapter = await loadFragment(loaded, chapterId);
+        return { title: chapter.title, segments: speechSegments(chapter.title, chapter.body.value, chapter.body.format) };
+      }}
       onQueueItemChange={(chapterId) => {
         setFragment(undefined);
         setFocusText(undefined);
