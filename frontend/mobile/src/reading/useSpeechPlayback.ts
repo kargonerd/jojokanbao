@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { speechFromReadingPosition, type SpeechReadingPosition } from "@jojo/content";
 import type { SpeechCapabilities, SpeechSource } from "@jojo/content/speech";
-import { logicalSpeechVoice } from "@jojo/content/speech";
+import { logicalSpeechVoice, speechCueAt, type SpeechCue } from "@jojo/content/speech";
 import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
 import * as Crypto from "expo-crypto";
 import { useEffect, useRef, useState } from "react";
@@ -13,16 +14,18 @@ export interface SpeechPlaybackProps {
   documentId: string; userId: string; title: string; chapterId: string;
   chapters: Array<{ id: string; title: string }>;
   loadChapter: (id: string) => Promise<SpeechChapter>;
+  getReadingPosition?: () => Promise<SpeechReadingPosition | null>;
 }
 
 export function useSpeechPlayback(props: SpeechPlaybackProps) {
-  const player = useAudioPlayer(null, { updateInterval: 500 });
+  const player = useAudioPlayer(null, { updateInterval: 100 });
   const [chapter, setChapter] = useState<SpeechChapter>();
   const [capabilities, setCapabilities] = useState<SpeechCapabilities>();
   const [voice, setVoice] = useState({ provider: "auto", voice: "male" });
   const [part, setPart] = useState(0);
   const [seconds, setSeconds] = useState(0);
   const [durations, setDurations] = useState<Record<number, number>>({});
+  const [cues, setCues] = useState<Record<number, SpeechCue[]>>({});
   const [rate, setRate] = useState(1);
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -73,6 +76,7 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
     try { player.setActiveForLockScreen(false); } catch { /* already released */ }
     persist();
     setPlaying(false); setBusy(false); setTimer(null); setError("");
+    if (latest.current.props.getReadingPosition) { setChapter(undefined); latest.current.chapter = undefined; }
   }
 
   useEffect(() => {
@@ -126,7 +130,7 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
     };
   }, [player, storageKey]);
 
-  async function selectChapter(id: string, autoplay = false, saved?: Bookmark, choice = latest.current.voice, caps = latest.current.capabilities) {
+  async function selectChapter(id: string, autoplay = false, saved?: Bookmark, choice = latest.current.voice, caps = latest.current.capabilities, position?: SpeechReadingPosition | null, retainedChapter?: SpeechChapter) {
     persist();
     const currentEpoch = ++epoch.current;
     operation.current++;
@@ -137,14 +141,16 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
     ready.current = false; wanted.current = autoplay; player.pause(); setPlaying(false);
     mediaDeadline.current = 0; bookmark.current = undefined;
     setChapter(undefined); latest.current.chapter = undefined;
-    setBusy(true); setError(""); setDurations({}); setVoice(choice);
+    setBusy(true); setError(""); setDurations({}); setCues({}); setVoice(choice);
     try {
-      const loaded = await latest.current.props.loadChapter(id);
+      const original = retainedChapter ?? await latest.current.props.loadChapter(id);
+      const entry = speechFromReadingPosition(original.segments, position);
+      const loaded = { ...original, segments: entry.segments };
       const fingerprint = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, JSON.stringify(loaded.segments));
       if (!mounted.current || currentEpoch !== epoch.current) return;
       if (!loaded.segments.length) throw new Error("本章暂无可朗读的正文");
       const resume = saved?.fingerprint === fingerprint && Number.isInteger(saved.part) && saved.part >= 0 && saved.part < loaded.segments.length && Number.isFinite(saved.seconds);
-      const index = resume ? saved.part : 0;
+      const index = resume ? saved.part : entry.index;
       const time = resume ? Math.max(0, saved.seconds) : 0;
       bookmark.current = { chapterId: id, fingerprint, part: index, seconds: time, ...choice, rate: latest.current.rate };
       latest.current = { ...latest.current, chapter: loaded, voice: choice, capabilities: caps, part: index, seconds: time };
@@ -167,8 +173,11 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
   async function open() {
     if (latest.current.chapter && latest.current.capabilities) return;
     setBusy(true); setError("");
-    const currentEpoch = epoch.current;
+    const currentEpoch = ++epoch.current;
+    const reading = latest.current.props;
     try {
+      const position = await reading.getReadingPosition?.();
+      if (!mounted.current || currentEpoch !== epoch.current) return;
       const caps = await mobileSpeechClient.loadSpeechProviders(session.current.signal);
       const raw = await AsyncStorage.getItem(storageKey).catch(() => null);
       let saved: Bookmark | undefined;
@@ -181,8 +190,8 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       const speed = saved && Number.isFinite(saved.rate) && saved.rate >= 0.5 && saved.rate <= 2 ? saved.rate : 1;
       setRate(speed); latest.current.rate = speed;
       setCapabilities(caps);
-      const id = saved && props.chapters.some((item) => item.id === saved.chapterId) ? saved.chapterId : props.chapterId;
-      await selectChapter(id, false, saved, choice, caps);
+      const id = !reading.getReadingPosition && saved && reading.chapters.some((item) => item.id === saved.chapterId) ? saved.chapterId : reading.chapterId;
+      await selectChapter(id, false, reading.getReadingPosition ? undefined : saved, choice, caps, position);
     } catch (reason) { if (mounted.current && currentEpoch === epoch.current) { setBusy(false); setError(reason instanceof Error ? reason.message : "听读暂时不可用"); } }
   }
 
@@ -192,10 +201,17 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
     let promise = sources.current.get(index);
     if (!promise) {
       const provider = current.capabilities.providers.find((item) => item.id === current.voice.provider);
-      promise = mobileSpeechClient.requestSpeech(current.chapter.segments[index]!, current.voice.voice, session.current.signal, {
+      const signal = session.current.signal;
+      promise = mobileSpeechClient.requestSpeech(current.chapter.segments[index]!, current.voice.voice, signal, {
         provider: current.voice.provider, cacheVersion: provider?.cacheVersion, cdnBase: current.capabilities.cdnBase,
         scope: current.props.documentId.startsWith("news:") ? "news" : "book",
-      }).then((value) => { if (!("url" in value)) throw new Error("手机听读需要 CDN 音频，请检查服务端存储配置"); return value; });
+      }).then((value) => {
+        if (!("url" in value)) throw new Error("手机听读需要 CDN 音频，请检查服务端存储配置");
+        void mobileSpeechClient.loadSpeechCues(value, current.chapter!.segments[index]!, signal).then((timing) => {
+          if (timing && mounted.current && !signal.aborted) setCues((known) => ({ ...known, [index]: timing }));
+        });
+        return value;
+      });
       sources.current.set(index, promise);
       void promise.catch(() => { if (sources.current.get(index) === promise) sources.current.delete(index); });
     }
@@ -275,8 +291,8 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
     if (bookmark.current) bookmark.current.rate = value;
     persist();
   }
-  return { chapter, capabilities, voice, part, rate, playing, busy, error, timer, elapsed, duration,
+  return { chapter, capabilities, voice, part, rate, playing, busy, error, timer, elapsed, duration, cue: speechCueAt(cues[part], seconds),
     open, toggle, halt, close, seek, setTimer, changeRate, selectChapter,
-    changeVoice: (provider: string, value: string) => chapter && selectChapter(chapter.id, playing, undefined, { provider, voice: value }),
+    changeVoice: (provider: string, value: string) => chapter && selectChapter(chapter.id, playing, bookmark.current, { provider, voice: value }, capabilities, undefined, chapter),
   };
 }

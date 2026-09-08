@@ -1,9 +1,17 @@
+import { validateSpeechCues, type SpeechCue } from "./speech-timing";
+export { speechCueAt, type SpeechCue } from "./speech-timing";
+
 export const SPEECH_VOICES = [
   { id: "male", label: "男声" },
   { id: "female", label: "女声" },
 ] as const;
 
 export type SpeechVoice = string;
+
+export function speechVoiceLabel(voice: string, provider: string, providers: readonly SpeechProvider[] = []): string {
+  return providers.find((item) => item.id === provider)?.voices.find((item) => item.id === voice)?.label
+    ?? SPEECH_VOICES.find((item) => item.id === voice)?.label ?? "选择声音";
+}
 
 export interface SpeechProvider {
   id: string;
@@ -159,8 +167,25 @@ export function createSpeechClient(config: SpeechClientConfig) {
     return config.digest(data);
   }
 
+  /** Optional sidecar: callers load this independently so absent timings never delay audio. */
+  async function loadSpeechCues(source: SpeechSource, text: string, signal: AbortSignal): Promise<SpeechCue[] | null> {
+    if (!config.allowed() || signal.aborted) return null;
+    try {
+      const url = new URL(source.url);
+      const hash = /\/([a-f0-9]{64})\.mp3$/u.exec(url.pathname)?.[1];
+      if (url.protocol !== "https:" || !hash) return null;
+      url.pathname = url.pathname.replace(/\.mp3$/u, ".sentences-v1.json");
+      const response = await fetchSpeechMetadata(url.href, signal);
+      if (!response.ok) return null;
+      const raw = await response.text();
+      if (raw.length > 64_000 || signal.aborted) return null;
+      const digest = await config.digest(text.replace(/\s+/gu, " ").trim());
+      return validateSpeechCues(JSON.parse(raw), hash, digest, text.replace(/\s/gu, "").length, source.duration);
+    } catch { return null; }
+  }
 
-  return { loadSpeechProviders, requestSpeech, loadCachedSpeechDurations, speechKey };
+
+  return { loadSpeechProviders, requestSpeech, loadCachedSpeechDurations, loadSpeechCues, speechKey };
 }
 
 export function speechObjectBase(provider: string, key: string, scope: SpeechScope = "book"): string {

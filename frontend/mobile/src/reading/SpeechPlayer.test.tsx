@@ -232,6 +232,8 @@ it("keeps news listening visible and only yields to an explicit article overlay"
   await act(async () => { view = create(<NativeSpeechPlayer {...props} />); });
   await press("打开听读播放器"); await tick();
   expect(view.root.findAllByType("dialog")).toHaveLength(1);
+  expect(view.root.findAllByType("span").some((node) => node.props.children === "男声")).toBe(true);
+  expect(view.root.findAllByType("span").some((node) => node.props.children === "male")).toBe(false);
   await press("收起播放器"); await tick();
   expect(view.root.findAllByProps({ accessibilityLabel: "展开听读播放器" })).toHaveLength(1);
   await act(async () => view.update(<NativeSpeechPlayer {...props} hidden />));

@@ -7,9 +7,12 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./speech": "./src/speech-client.ts"
+    "./speech": "./src/speech-client.ts",
+    "./speech-dom": "./src/speech-dom.ts",
+    "./speech-dom-script": "./src/speech-dom.generated.ts"
   },
   "scripts": {
+    "generate:speech-reader": "node scripts/generate-speech-reader.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

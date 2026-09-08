@@ -11,6 +11,8 @@ import {
 } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { IoCopyOutline, IoCreateOutline, IoSparklesOutline } from "react-icons/io5";
+import type { SpeechLocation } from "@jojo/content";
+import { createSpeechReader, SPEECH_EXCLUDED_ELEMENTS } from "@jojo/content/speech-dom";
 import type { ReaderSelectionRect } from "@jojo/ui/reader-selection";
 import { AnnotationDiscussionPanel } from "../../annotations/AnnotationDiscussionPanel";
 import {
@@ -469,6 +471,45 @@ export function BookReader({
     onChapterChange(chapterId);
   }, [activeChapterId, onChapterChange]);
 
+  const speechReaderRef = useRef<ReturnType<typeof createSpeechReader> | null>(null);
+  const [speechLocation, setSpeechLocation] = useState<SpeechLocation | null>(null);
+  const revealSpeechRef = useRef(false);
+  const getSpeechPosition = useCallback(() => speechReaderRef.current?.read() ?? null, []);
+  const showSpeechLocation = useCallback((value: SpeechLocation | null, reveal = false) => {
+    if (reveal || !value) revealSpeechRef.current = reveal;
+    setSpeechLocation(value);
+    if (value && reveal) chooseChapter(value.chapterId);
+  }, [chooseChapter]);
+  useEffect(() => {
+    const surface = mode === "paged" ? flowRef.current : scrollRef.current;
+    const root = surface?.querySelector<HTMLElement>("[data-speech-content]");
+    if (!surface || !root || contentLoading) return;
+    const reader = createSpeechReader(root, () => surface.getBoundingClientRect(), SPEECH_EXCLUDED_ELEMENTS);
+    speechReaderRef.current = reader;
+    return () => { reader.destroy(); speechReaderRef.current = null; };
+  }, [mode, contentLoading, chapterKey]);
+  useEffect(() => {
+    const reader = speechReaderRef.current;
+    if (!reader) return;
+    if (!speechLocation || speechLocation.chapterId !== activeChapterId) { reader.clear(); return; }
+    const reveal = revealSpeechRef.current;
+    reader.show(speechLocation.segments, speechLocation.index, reveal ? (range) => {
+      const rect = range.getClientRects()[0];
+      if (!rect) return;
+      if (mode === "paged" && flowRef.current && pageMetrics.step > 0) {
+        const flow = flowRef.current;
+        goToPage(Math.floor((rect.left - flow.getBoundingClientRect().left + flow.scrollLeft + 1) / pageMetrics.step), "auto");
+      } else if (scrollRef.current) {
+        const scroll = scrollRef.current;
+        const bounds = scroll.getBoundingClientRect();
+        if (rect.top < bounds.top + 24 || rect.bottom > bounds.bottom - 80) {
+          scroll.scrollTo({ top: scroll.scrollTop + rect.top - bounds.top - 24, behavior: "auto" });
+        }
+      }
+      revealSpeechRef.current = false;
+    } : undefined, speechLocation.range);
+  }, [speechLocation, activeChapterId, chapterKey, mode, contentLoading, goToPage, pageMetrics.step, fontSize]);
+
   function changeMode(value: BookReaderMode): void {
     if (value === mode) return;
     pendingPageRef.current = "start";
@@ -914,6 +955,8 @@ export function BookReader({
     busy: bookshelfBusy,
     toggle: () => void toggleBookshelf(),
     speechLauncherTarget,
+    getSpeechPosition,
+    showSpeechLocation,
     chromeHidden: mobileChromeHidden || readerOverlayOpen,
   }}><div data-reader-chrome-hidden={mobileChromeHidden || undefined} className={`book-reader book-reader-root h-screen overflow-hidden ${isDark ? "book-reader-dark" : ""} ${shellClass}`}>
     {mobileViewport ? <nav {...chromeProps} data-book-toolbar data-reader-mobile-toolbar aria-label="阅读工具" className={`book-mobile-toolbar z-30 grid-cols-4 border-t backdrop-blur-md ${chromeClass}`}>
@@ -1086,7 +1129,7 @@ export function BookReader({
     {mode === "scroll" ? <div ref={scrollRef} data-book-reading-surface onScroll={updateScrollProgress} onClick={handleReaderClick} onPointerDown={startReaderTap} onPointerMove={moveReaderTap} onPointerCancel={cancelReaderTap} onPointerUp={capturePointerTextSelection} onKeyUp={captureTextSelection} className="h-[calc(100%-48px)] overflow-y-auto">
       <main className="mx-auto max-w-[920px] px-0 py-0 md:px-5 md:py-8">
         <article className={`relative min-h-full border-0 px-6 pb-32 pt-10 shadow-none sm:px-12 md:min-h-[calc(100vh-96px)] md:border-x md:px-20 md:py-20 md:shadow-[0_16px_50px_rgba(32,32,28,.10)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#ddddd6]"}`} style={{ fontSize: `${fontSize}px`, lineHeight: 2.05 }}>
-          <div className="mx-auto max-w-[730px]">{error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}{children}{chapterNavigation}</div>
+          <div className="mx-auto max-w-[730px]">{error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}<div data-speech-content>{children}</div>{chapterNavigation}</div>
         </article>
       </main>
     </div> : <main className="relative h-[calc(100%-48px)] px-0 py-0 md:px-20 md:py-6">
@@ -1094,7 +1137,7 @@ export function BookReader({
         <article onClick={handleReaderClick} onPointerDown={startReaderTap} onPointerMove={moveReaderTap} onPointerCancel={cancelReaderTap} onPointerUp={capturePointerTextSelection} onKeyUp={captureTextSelection} className={`relative h-full overflow-hidden border-0 px-6 pb-32 pt-10 shadow-none sm:px-10 md:border md:px-16 md:py-14 md:shadow-[0_16px_55px_rgba(32,32,28,.14)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#d8d8d1]"}`}>
           {columnsPerSpread === 2 && <div className={`pointer-events-none absolute inset-y-0 left-1/2 z-10 w-10 -translate-x-1/2 ${isDark ? "bg-[linear-gradient(90deg,transparent,rgba(0,0,0,.22),transparent)]" : "bg-[linear-gradient(90deg,transparent,rgba(77,75,66,.09),transparent)]"}`} aria-hidden="true" />}
           <div ref={flowRef} data-book-page-flow data-book-reading-surface className={`relative h-full overflow-hidden [column-fill:auto] [&_img]:cursor-zoom-in [&_figure]:break-inside-avoid [&_h1]:[break-after:avoid-column] [&_h2]:[break-after:avoid-column] [&_li]:break-inside-avoid ${pageTransitioning ? "book-page-content-arrive" : ""}`} style={{ columnCount: columnsPerSpread, columnGap: columnsPerSpread === 2 ? "80px" : "48px", fontSize: `${fontSize}px`, lineHeight: 1.95 }}>
-            {error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}{children}
+            {error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}<div data-speech-content style={{ display: "contents" }}>{children}</div>
             {trailingBlankPage && <span data-book-trailing-page className="book-page-trailing-blank" aria-hidden="true" />}
           </div>
         </article>

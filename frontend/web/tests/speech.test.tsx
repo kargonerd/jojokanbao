@@ -45,6 +45,87 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) =>
 }));
 
 describe("reader speech", () => {
+  it("moves the mini highlight at recorded sentence times and preserves it on pause", async () => {
+    const { createHash, webcrypto } = await import("node:crypto");
+    vi.stubGlobal("crypto", webcrypto);
+    const text = "第一句。第二句。";
+    const key = createHash("sha256").update(JSON.stringify(["auto", "two-voices-v1", "male", text])).digest("hex");
+    const audioHash = "a".repeat(64);
+    const record = { formatVersion: "jojo-speech-segment/1", key, sourceKey: key, provider: "mimo", duration: 10,
+      object: `audio/speech/v1/segments/mimo/${key.slice(0, 2)}/${key}/${audioHash}.mp3` };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("providers")) return Response.json({ defaultProvider: "auto", cdnBase: "https://cdn.example", providers: DEFAULT_SPEECH_PROVIDERS });
+      if (url.endsWith(".sentences-v1.json")) return Response.json({ formatVersion: "jojo-speech-sentences/1", audioSha256: audioHash,
+        textSha256: createHash("sha256").update(text).digest("hex"), cues: [
+          { start: 0.2, end: 4, startOffset: 0, endOffset: 4 }, { start: 5, end: 9.5, startOffset: 4, endOffset: 8 },
+        ] });
+      return Response.json(record);
+    }));
+    const showSpeechLocation = vi.fn();
+    render(<ReadingBookshelfContext.Provider value={{ available: false, added: false, busy: false, toggle: vi.fn(), getSpeechPosition: () => null, showSpeechLocation }}>
+      <SpeechPlayer label="听本章" segments={[text]} activeQueueId="one" />
+    </ReadingBookshelfContext.Provider>);
+    fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
+    await waitFor(() => expect(AudioMock.instances[0]?.play).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "收起听读播放器" }));
+    await waitFor(() => expect(showSpeechLocation).toHaveBeenLastCalledWith(expect.objectContaining({ range: { start: 0, end: 4 } }), true));
+    act(() => { AudioMock.instances[0]!.currentTime = 5.1; AudioMock.instances[0]!.ontimeupdate?.(); });
+    await waitFor(() => expect(showSpeechLocation).toHaveBeenLastCalledWith(expect.objectContaining({ range: { start: 4, end: 8 } }), true));
+    fireEvent.click(screen.getByRole("button", { name: "暂停听读" }));
+    expect(showSpeechLocation).toHaveBeenLastCalledWith(expect.objectContaining({ range: { start: 4, end: 8 } }), false);
+  });
+  it("loads the next listening chapter independently of the chapter being browsed", async () => {
+    const browse = vi.fn();
+    const loadQueueItem = vi.fn(async () => ({ title: "第二章", segments: ["第二章的正文。"] }));
+    const controls = { available: false, added: false, busy: false, toggle: vi.fn(), getSpeechPosition: () => null };
+    const view = render(<ReadingBookshelfContext.Provider value={controls}><SpeechPlayer
+      label="听本章" title="第一章" segments={["第一章的正文。"]} activeQueueId="one"
+      queueItems={[{ id: "one", title: "第一章" }, { id: "two", title: "第二章" }]}
+      loadQueueItem={loadQueueItem} onQueueItemChange={browse} /></ReadingBookshelfContext.Provider>);
+    fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
+    await waitFor(() => expect(AudioMock.instances[0]?.play).toHaveBeenCalled());
+    act(() => AudioMock.instances[0]!.onended?.());
+    await waitFor(() => expect(AudioMock.instances[1]?.play).toHaveBeenCalled());
+    expect(loadQueueItem).toHaveBeenCalledWith("two");
+    expect(browse).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "第二章" })).toBeTruthy();
+    view.unmount();
+  });
+
+  it("starts at the reading position, then resumes the same audio after browsing another chapter", async () => {
+    const getSpeechPosition = vi.fn(() => ({ text: "第一章前页。当前句子。接着朗读。", offset: 7 }));
+    const showSpeechLocation = vi.fn();
+    const controls = { available: false, added: false, busy: false, toggle: vi.fn(), getSpeechPosition, showSpeechLocation };
+    const queues = [{ id: "one", title: "第一章" }, { id: "two", title: "第二章" }];
+    const loadQueueItem = vi.fn(async () => ({ title: "第二章", segments: ["别章正文。"] }));
+    const content = (id: string, segments: string[]) => <ReadingBookshelfContext.Provider value={controls}>
+      <SpeechPlayer contentId="position-book" label="听本章" segments={segments} title={id === "one" ? "第一章" : "第二章"}
+        activeQueueId={id} queueItems={queues} loadQueueItem={loadQueueItem} />
+    </ReadingBookshelfContext.Provider>;
+    const view = render(content("one", ["第一章", "前页。当前句子。接着朗读。"]));
+    fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
+    await waitFor(() => expect(AudioMock.instances[0]?.play).toHaveBeenCalled());
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/v1/speech").map(([, init]) => JSON.parse(String(init!.body)).text)).toEqual(["接着朗读。"]);
+    const audio = AudioMock.instances[0]!;
+    act(() => { audio.currentTime = 4; audio.ontimeupdate?.(); });
+    fireEvent.click(screen.getByRole("button", { name: "暂停听读" }));
+    fireEvent.click(screen.getByRole("button", { name: "收起听读播放器" }));
+    view.rerender(content("two", ["第二章", "别章正文。"]));
+    fireEvent.click(screen.getByRole("button", { name: "继续听读" }));
+    await waitFor(() => expect(audio.play).toHaveBeenCalledTimes(2));
+    expect(audio.currentTime).toBe(4);
+    expect(AudioMock.instances).toHaveLength(1);
+    expect(getSpeechPosition).toHaveBeenCalledOnce();
+    await waitFor(() => expect(showSpeechLocation).toHaveBeenLastCalledWith(expect.objectContaining({ chapterId: "one", index: 2 }), true));
+    fireEvent.click(screen.getByRole("button", { name: "展开播放器：第一章" }));
+    fireEvent.click(screen.getByRole("button", { name: "返回原文" }));
+    expect(showSpeechLocation).toHaveBeenLastCalledWith(expect.objectContaining({ chapterId: "one", index: 2 }), true);
+  });
+
   it("plays the preloaded audio element at the next segment and releases it on close", async () => {
     render(<SpeechPlayer label="听本章" segments={["第一段。", "第二段。", "第三段。"]} />);
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
