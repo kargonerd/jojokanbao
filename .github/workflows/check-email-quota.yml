@@ -1,0 +1,28 @@
+name: Check · Email Quota Monitor
+on:
+  pull_request:
+    paths:
+      - 'tools/email-quota/**'
+      - 'infrastructure/tencent-scf/email-quota/**'
+      - '.github/workflows/check-email-quota.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'tools/email-quota/**'
+      - 'infrastructure/tencent-scf/email-quota/**'
+      - '.github/workflows/check-email-quota.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: 22.19.0
+      - run: pnpm install --frozen-lockfile --filter @jojo/maintenance-core
+      - run: node --test tools/email-quota/*.test.mjs
+      - run: node infrastructure/tencent-scf/email-quota/build.mjs
+      - run: node --check infrastructure/tencent-scf/email-quota/ops.mjs

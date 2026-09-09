@@ -1,0 +1,15 @@
+import { createRequire } from 'node:module';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+const here = fileURLToPath(new URL('.', import.meta.url));
+const require = createRequire(new URL('../../../tools/maintenance-scheduler/package.json', import.meta.url));
+const { build } = require('esbuild');
+await mkdir(`${here}/dist`, { recursive: true });
+await build({ entryPoints: [`${here}/index.mjs`], outfile: `${here}/dist/index.js`, platform: 'node', target: 'node20', format: 'cjs', bundle: true, legalComments: 'none' });
+const bytes = await readFile(`${here}/dist/index.js`);
+const metadata = { gitCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: here, encoding: 'utf8' }).trim(), sourceSha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length };
+await writeFile(`${here}/dist/build-info.json`, JSON.stringify(metadata));
+execFileSync('python', ['-m', 'zipfile', '-c', 'function.zip', 'index.js', 'build-info.json'], { cwd: `${here}/dist` });
+console.log(JSON.stringify(metadata));

@@ -12,6 +12,7 @@ const conditionLabels: Record<FeatureConditionType, string> = {
 
 const AI_USAGE_LIMITS_KEY = "ai.usage_limits";
 const SIGNUP_KEY = "auth.signup";
+const EMAIL_QUOTA_KEY = "ops.email_quota";
 const aiLimitFields = [
   { key: "requestsPerMinute", label: "每分钟请求上限", min: 1, max: 60, defaultValue: 3, unit: "次" },
   { key: "requestsPerDay", label: "每日请求上限", min: 1, max: 10_000, defaultValue: 100, unit: "次" },
@@ -64,7 +65,8 @@ function editableRules(rules: FeatureFlagRule[]): FeatureFlagRule[] {
 function editableConfig(config: Record<string, unknown> | null | undefined, key: string): Record<string, unknown> {
   const defaults = key === AI_USAGE_LIMITS_KEY
     ? Object.fromEntries(aiLimitFields.map((field) => [field.key, field.defaultValue]))
-    : key === SIGNUP_KEY ? { invitationRequired: true } : {};
+    : key === SIGNUP_KEY ? { invitationRequired: true }
+    : key === EMAIL_QUOTA_KEY ? { warningPercent: 80, criticalPercent: 90 } : {};
   return { ...defaults, ...structuredClone(config ?? {}) };
 }
 
@@ -109,9 +111,14 @@ export function FeatureFlagsPage() {
   const selected = flags.find((flag) => flag.key === selectedKey);
   const isAiUsageLimits = selected?.key === AI_USAGE_LIMITS_KEY;
   const isSignup = selected?.key === SIGNUP_KEY;
-  const configOnly = isAiUsageLimits || isSignup;
+  const isEmailQuota = selected?.key === EMAIL_QUOTA_KEY;
+  const configOnly = isAiUsageLimits || isSignup || isEmailQuota;
   const invalidAiLimit = isAiUsageLimits ? aiLimitFields.find((field) => !validAiLimit(draftConfig[field.key], field)) : undefined;
-  const configError = invalidAiLimit ? `${invalidAiLimit.label}请填写 ${invalidAiLimit.min}–${invalidAiLimit.max} 之间的整数。` : "";
+  const quotaValid = typeof draftConfig.warningPercent === "number" && Number.isInteger(draftConfig.warningPercent)
+    && typeof draftConfig.criticalPercent === "number" && Number.isInteger(draftConfig.criticalPercent)
+    && draftConfig.warningPercent >= 1 && draftConfig.warningPercent < draftConfig.criticalPercent && draftConfig.criticalPercent <= 99;
+  const configError = invalidAiLimit ? `${invalidAiLimit.label}请填写 ${invalidAiLimit.min}–${invalidAiLimit.max} 之间的整数。`
+    : isEmailQuota && !quotaValid ? "请填写 1–99 之间的整数，且预警阈值小于紧急阈值。" : "";
 
   function selectFlag(flag: FeatureFlagDefinition) {
     setSelectedKey(flag.key);
@@ -217,14 +224,14 @@ export function FeatureFlagsPage() {
       <PageTopbar
         eyebrow="RUNTIME CONTROL / 运行控制"
         title="功能开关"
-        description={isSignup ? "注册设置统一对所有新账号生效。" : isAiUsageLimits ? "AI 使用限额统一对所有账号生效。" : "规则从上到下执行，命中第一条后立即停止。"}
+        description={isEmailQuota ? "邮件额度阈值在下一次半小时检查时生效。" : isSignup ? "注册设置统一对所有新账号生效。" : isAiUsageLimits ? "AI 使用限额统一对所有账号生效。" : "规则从上到下执行，命中第一条后立即停止。"}
         aside={<span className="local-badge"><i />本机 Operator</span>}
       />
       <main className="feature-workspace">
         <aside className="feature-index" aria-label="功能开关列表">
           {flags.map((flag) => (
             <button key={flag.key} type="button" className={flag.key === selectedKey ? "active" : ""} onClick={() => selectFlag(flag)}>
-              <b>{flag.key}</b><span>{flag.key === SIGNUP_KEY ? "注册设置" : flag.key === AI_USAGE_LIMITS_KEY ? "全局限额" : `${flag.rules.length} 条规则`} · r{flag.revision}</span>
+              <b>{flag.key}</b><span>{flag.key === EMAIL_QUOTA_KEY ? "邮件额度" : flag.key === SIGNUP_KEY ? "注册设置" : flag.key === AI_USAGE_LIMITS_KEY ? "全局限额" : `${flag.rules.length} 条规则`} · r{flag.revision}</span>
             </button>
           ))}
         </aside>
@@ -272,6 +279,28 @@ export function FeatureFlagsPage() {
                     onChange={(event) => setDraftConfig((current) => ({ ...current, invitationRequired: event.target.checked }))}
                   />
                 </label>
+              </section>
+            )}
+            {isEmailQuota && (
+              <section className="feature-config-strip feature-ai-limits" aria-labelledby="email-quota-title">
+                <div>
+                  <h3 id="email-quota-title">邮件额度告警</h3>
+                  <span>每 30 分钟检查日/月用量；额度耗尽固定在 100% 提醒。修改后下次检查生效。</span>
+                </div>
+                <div className="feature-ai-limit-fields">
+                  {([{ key: "warningPercent", label: "预警阈值" }, { key: "criticalPercent", label: "紧急阈值" }] as const).map((field) => (
+                    <label key={field.key}>
+                      <span>{field.label}</span>
+                      <div>
+                        <input aria-label={field.label} aria-invalid={!quotaValid} type="number" min="1" max="99" step="1"
+                          value={typeof draftConfig[field.key] === "number" || typeof draftConfig[field.key] === "string" ? draftConfig[field.key] as number | string : ""}
+                          onChange={(event) => setDraftConfig((current) => ({ ...current, [field.key]: event.target.value === "" ? "" : Number(event.target.value) }))} />
+                        <b>%</b>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                {configError && <p className="content-error" role="alert">{configError}</p>}
               </section>
             )}
             {isAiUsageLimits && (

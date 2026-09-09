@@ -220,6 +220,23 @@ describe("FeatureFlagsPage", () => {
     expect(screen.getByLabelText("规则 1 名称")).toBeEnabled();
   });
 
+  it("publishes quota thresholds with revision control and retains unrelated config and rules", async () => {
+    const flag = { ...aiUsageFlag, key: "ops.email_quota", config: { warningPercent: 80, criticalPercent: 90, reserved: "retain" } };
+    api.list.mockResolvedValue([flag]);
+    api.publish.mockResolvedValue({ ...flag, revision: 8 });
+    render(<FeatureFlagsPage />);
+    fireEvent.change(await screen.findByRole("spinbutton", { name: "预警阈值" }), { target: { value: "95" } });
+    fireEvent.change(screen.getByLabelText("发布原因"), { target: { value: "调整邮件预警" } });
+    expect(screen.getByRole("button", { name: "发布更改" })).toBeDisabled();
+    fireEvent.change(screen.getByRole("spinbutton", { name: "预警阈值" }), { target: { value: "75" } });
+    fireEvent.click(screen.getByRole("button", { name: "发布更改" }));
+    await waitFor(() => expect(api.publish).toHaveBeenCalledWith(expect.objectContaining({
+      key: "ops.email_quota", rules: flag.rules, expectedRevision: flag.revision,
+      config: { warningPercent: 75, criticalPercent: 90, reserved: "retain" },
+    })));
+    expect(screen.queryByText("添加规则")).not.toBeInTheDocument();
+  });
+
   it("publishes AI limits while preserving the stored rules and other configuration", async () => {
     api.list.mockResolvedValue([{ ...aiUsageFlag, config: { ...aiUsageFlag.config, reserved: "retain" } }]);
     api.publish.mockResolvedValue({ ...aiUsageFlag, revision: 8 });
