@@ -38,3 +38,7 @@ CI 配置、客户端配置、Xcode、macOS 和 runner 镜像版本；不使用�
 构建的步骤，也不影响不涉及移动端的 PR。
 模拟器成功启动后复用已采集的截图和日志，仅失败时在收尾中补采诊断，避免重复
 运行较慢的 `simctl` 诊断命令。
+
+Firefox/WebKit 任务安装 Playwright 依赖前，移除临时 runner 中不使用的 Chrome
+软件源，避免它的索引校验错误阻塞 Ubuntu 系统库安装。包校验仍由 APT 正常执行，
+浏览器由 Playwright 下载。这个清理与 [GitHub runner 镜像的处理方式](https://github.com/actions/runner-images/blob/main/images/ubuntu/scripts/build/install-google-chrome.sh)一致。

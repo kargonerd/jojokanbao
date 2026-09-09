@@ -277,6 +277,10 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+      # Playwright supplies these browsers; their libraries come from Ubuntu.
+      # A stale Chrome vendor index must not block Firefox/WebKit installation.
+      - name: Remove unused Chrome apt source
+        run: sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
       - run: pnpm --filter @jojo/web exec playwright install --with-deps ${{ matrix.browser }}
       - run: pnpm --filter @jojo/web exec playwright test --browser=${{ matrix.browser }} --workers=1
 
