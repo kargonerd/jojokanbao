@@ -88,6 +88,7 @@ describe("Times Runtime workflows", () => {
     expect(script).toBeDefined();
     const files = new Map([
       ["/runner/proxy-preparation.json", JSON.stringify({ source: "cache", nodes: 1, cacheAgeSeconds: 7200,
+        subscriptionIndex: 2, subscriptionCount: 2, rotationOffset: fallback ? 1 : 0,
         ...(fallback ? { failure: { kind: "network", retryable: true } } : {}) })],
       ["/runner/capture-result.json", JSON.stringify({ runId: "capture", results: [] })],
     ]);
@@ -101,7 +102,9 @@ describe("Times Runtime workflows", () => {
       console: { log: (line: string) => lines.push(line) },
     }, { timeout: 1000 });
     const summary = lines.join("\n");
+    expect(summary).toContain("Proxy subscription: 2/2; alternating each Capture run");
     if (fallback) {
+      expect(summary).toContain("Preferred proxy subscription was unavailable; switched to the other subscription");
       expect(summary).toContain("Warning: Proxy subscription refresh failed");
       expect(summary).toContain("expires after 24 hours");
     } else {

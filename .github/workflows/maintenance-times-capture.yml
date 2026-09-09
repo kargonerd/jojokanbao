@@ -68,6 +68,7 @@ jobs:
       TIMES_RUNTIME_ROOT: ${{ github.workspace }}/.times-runtime
       JOJO_TIMES_PROXY_URI: ${{ secrets.JOJO_TIMES_PROXY_URI }}
       JOJO_TIMES_PROXY_SUBSCRIPTION: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION }}
+      JOJO_TIMES_PROXY_SUBSCRIPTION_2: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION_2 }}
       HEALTHCHECKS_PING_KEY: ${{ secrets.HEALTHCHECKS_PING_KEY }}
       HEALTHCHECKS_REPORT_MODE: buffered
     steps:
@@ -177,23 +178,37 @@ jobs:
 
       - name: Start pinned Mihomo for a configured subscription
         if: env.JOJO_TIMES_PROXY_SUBSCRIPTION != ''
-        timeout-minutes: 6
+        timeout-minutes: 12
         run: |
           args=(--output "$RUNNER_TEMP/mihomo/config.yaml" --report "$RUNNER_TEMP/proxy-preparation.json")
           if [ "$TIMES_PUBLISH" = "true" ]; then
             args+=(--cache-bucket "$HF_TIMES_RUNTIME_BUCKET")
           fi
-          node "$TIMES_RUNTIME_ROOT/dist/src/prepare-proxy-cli.js" "${args[@]}"
-          nohup "$RUNNER_TEMP/mihomo/mihomo" -d "$RUNNER_TEMP/mihomo" -f "$RUNNER_TEMP/mihomo/config.yaml" \
-            > "$RUNNER_TEMP/mihomo/runtime.log" 2>&1 &
-          for attempt in $(seq 1 12); do
-            if curl --proxy http://127.0.0.1:7890 --max-time 8 -fsS -o /dev/null https://www.gstatic.com/generate_204; then
-              echo "JOJO_TIMES_PROXY_URI=http://127.0.0.1:7890" >> "$GITHUB_ENV"
-              exit 0
+          for rotation_offset in 0 1; do
+            if [ "$rotation_offset" = "1" ] && { [ -z "$JOJO_TIMES_PROXY_SUBSCRIPTION_2" ] || [ "$JOJO_TIMES_PROXY_SUBSCRIPTION_2" = "$JOJO_TIMES_PROXY_SUBSCRIPTION" ]; }; then
+              break
             fi
-            sleep 2
+            if ! node "$TIMES_RUNTIME_ROOT/dist/src/prepare-proxy-cli.js" "${args[@]}" --rotation-offset "$rotation_offset"; then
+              echo "Proxy subscription preparation failed; trying the next configured subscription" >&2
+              continue
+            fi
+            nohup "$RUNNER_TEMP/mihomo/mihomo" -d "$RUNNER_TEMP/mihomo" -f "$RUNNER_TEMP/mihomo/config.yaml" \
+              > "$RUNNER_TEMP/mihomo/runtime.log" 2>&1 &
+            mihomo_pid=$!
+            for attempt in $(seq 1 12); do
+              if ! kill -0 "$mihomo_pid" 2>/dev/null; then break; fi
+              if curl --proxy http://127.0.0.1:7890 --max-time 8 -fsS -o /dev/null https://www.gstatic.com/generate_204; then
+                echo "JOJO_TIMES_PROXY_URI=http://127.0.0.1:7890" >> "$GITHUB_ENV"
+                echo "TIMES_PROXY_ROTATION_OFFSET=$rotation_offset" >> "$GITHUB_ENV"
+                exit 0
+              fi
+              sleep 2
+            done
+            kill "$mihomo_pid" 2>/dev/null || true
+            wait "$mihomo_pid" 2>/dev/null || true
+            echo "Proxy health check failed; trying the next configured subscription" >&2
           done
-          echo "Mihomo did not expose a healthy local proxy" >&2
+          echo "No configured subscription exposed a healthy local proxy" >&2
           exit 1
 
       - name: Save healthy encrypted proxy subscription
@@ -202,9 +217,10 @@ jobs:
         timeout-minutes: 1
         run: |
           # Commit only the live configuration that just passed the proxy probe.
-          # One encrypted Runtime object, never Actions cache/Raw/artifacts.
+          # One encrypted Runtime object per subscription, never Actions cache/Raw/artifacts.
           node "$TIMES_RUNTIME_ROOT/dist/src/prepare-proxy-cli.js" \
             --action commit-cache \
+            --rotation-offset "$TIMES_PROXY_ROTATION_OFFSET" \
             --output "$RUNNER_TEMP/mihomo/config.yaml" \
             --cache-bucket "$HF_TIMES_RUNTIME_BUCKET"
 
@@ -391,6 +407,10 @@ jobs:
           const proxyReportPath = process.env.RUNNER_TEMP + "/proxy-preparation.json";
           if (fs.existsSync(proxyReportPath)) {
             const proxy = JSON.parse(fs.readFileSync(proxyReportPath, "utf8"));
+            if (proxy.subscriptionCount > 1) {
+              console.log(`- Proxy subscription: ${proxy.subscriptionIndex}/${proxy.subscriptionCount}; alternating each Capture run, each refreshed every 12 hours.`);
+              if (proxy.rotationOffset > 0) console.log("- Warning: Preferred proxy subscription was unavailable; switched to the other subscription.");
+            }
             if (proxy.source === "cache") {
               if (proxy.failure) {
                 console.log(`- Warning: Proxy subscription refresh failed; using a previously healthy encrypted cache (${Math.floor(proxy.cacheAgeSeconds / 60)} minutes old, expires after 24 hours).`);

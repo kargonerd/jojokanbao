@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:cr
 import { MAXIMUM_SUBSCRIPTION_BYTES } from "./proxy-subscription.js";
 
 export const PROXY_CACHE_OBJECT = "times/proxy/last-known-good.v1.json";
+export const PROXY_CACHE_SECONDARY_OBJECT = "times/proxy/last-known-good-secondary.v1.json";
 export const PROXY_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
 export const PROXY_CACHE_REFRESH_MS = 12 * 60 * 60 * 1_000;
 export const PROXY_CACHE_MAX_BYTES = 28_000_000;

@@ -1,5 +1,5 @@
 import { downloadFile, uploadFiles } from "@huggingface/hub";
-import { PROXY_CACHE_MAX_BYTES, PROXY_CACHE_OBJECT, type ProxyCacheStore } from "./proxy-subscription-cache.js";
+import { PROXY_CACHE_MAX_BYTES, PROXY_CACHE_OBJECT, PROXY_CACHE_SECONDARY_OBJECT, type ProxyCacheStore } from "./proxy-subscription-cache.js";
 
 const CACHE_IO_TIMEOUT_MS = 20_000;
 
@@ -26,14 +26,16 @@ async function bounded<T>(operation: (fetcher: typeof fetch, signal: AbortSignal
   }
 }
 
-export function hfProxyCacheStore(bucket: string, accessToken: string): ProxyCacheStore {
+export function hfProxyCacheStore(bucket: string, accessToken: string, slot: 0 | 1 = 0): ProxyCacheStore {
   const name = bucket.trim().replace(/^buckets\//u, "");
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(name) || !accessToken.trim()) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(name) || !accessToken.trim()
+    || (slot !== 0 && slot !== 1)) {
     throw new Error("Proxy subscription cache configuration is invalid");
   }
   const repo = { type: "bucket" as const, name };
+  const cacheObject = slot === 0 ? PROXY_CACHE_OBJECT : PROXY_CACHE_SECONDARY_OBJECT;
   const read = async (fetcher: typeof fetch): Promise<string | null> => {
-    const blob = await downloadFile({ repo, accessToken, path: PROXY_CACHE_OBJECT, fetch: fetcher, xet: false });
+    const blob = await downloadFile({ repo, accessToken, path: cacheObject, fetch: fetcher, xet: false });
     if (!blob) return null;
     if (!Number.isSafeInteger(blob.size) || blob.size < 0 || blob.size > PROXY_CACHE_MAX_BYTES) throw new Error();
     const reader = blob.stream().getReader();
@@ -59,7 +61,7 @@ export function hfProxyCacheStore(bucket: string, accessToken: string): ProxyCac
     write: (encrypted) => bounded(async (fetcher, signal) => {
       if (Buffer.byteLength(encrypted) > PROXY_CACHE_MAX_BYTES) throw new Error();
       await uploadFiles({ repo, accessToken,
-        files: [{ path: PROXY_CACHE_OBJECT, content: new Blob([encrypted]) }],
+        files: [{ path: cacheObject, content: new Blob([encrypted]) }],
         fetch: fetcher, abortSignal: signal, useWebWorkers: false, useXet: true,
       });
       // Bucket batch uploads can report per-file failures without rejecting.

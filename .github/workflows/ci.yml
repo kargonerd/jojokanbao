@@ -137,7 +137,7 @@ jobs:
         # execute these contracts explicitly, even when package tests are cached.
         if: needs.changes.outputs.times_pipeline == 'true'
         run: |
-          pnpm --filter @jojo/times-pipeline exec vitest run tests/runtime-workflows.test.ts tests/monitoring-workflows.test.ts tests/workflow-config.test.ts tests/process-continuation.test.mjs
+          pnpm --filter @jojo/times-pipeline exec vitest run tests/runtime-workflows.test.ts tests/proxy-subscription-workflow.test.ts tests/monitoring-workflows.test.ts tests/workflow-config.test.ts tests/process-continuation.test.mjs
           bash -n tools/ci/with-apt-timeouts.sh
           bash -n tools/monitoring/ping-healthchecks.sh
           bash -n tools/monitoring/classify-permanent.sh
