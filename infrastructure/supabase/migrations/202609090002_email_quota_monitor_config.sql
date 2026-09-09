@@ -21,7 +21,7 @@ begin
       raise invalid_parameter_value using message = 'Email quota limits must be positive integers';
     end if;
     field_value := (new.config->>field_name)::numeric;
-    if trunc(field_value) <> field_value or field_value < 1 or field_value > case when field_name='dailyLimit' then 1000000 else 100000000 end then
+    if trunc(field_value) <> field_value or field_value < 1 or field_value > (case when field_name='dailyLimit' then 1000000 else 100000000 end) then
       raise invalid_parameter_value using message = 'Email quota limits are out of range';
     end if;
   end loop;

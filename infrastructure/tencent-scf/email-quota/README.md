@@ -28,8 +28,18 @@ node infrastructure/tencent-scf/email-quota/ops.mjs timer
 node infrastructure/tencent-scf/email-quota/ops.mjs status
 ```
 
-`provision` copies the existing delivery check's channels. It does not add
-recipients or send a test notification. `create` fails if the function exists;
+Before provisioning, create a Healthchecks webhook integration named
+`feishu-email-quota` using the same existing Feishu destination and the template
+below for both up/down events. `$BODY_JSON` must remain unquoted so Healthchecks
+escapes embedded JSON safely. Only quota checks bind to this template; existing
+monitor messages are unaffected.
+
+```json
+{"msg_type":"post","content":{"post":{"zh_cn":{"title":$NAME_JSON,"content":[[{"tag":"text","text":"状态：$STATUS；时间：$NOW"}],[{"tag":"text","text":$BODY_JSON}]]}}}}
+```
+
+`provision` reuses the delivery check's email integration and the dedicated quota
+Feishu template. It does not add recipients or send a test notification. `create` fails if the function exists;
 `deploy` only updates code, preserving environment/timer. `probe` is read-only.
 Enable the timer only after a successful real probe in the explicitly configured source mode, current quota state
 check and notification-channel verification. Observe a natural timer invocation;

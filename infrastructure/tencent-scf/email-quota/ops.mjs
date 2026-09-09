@@ -18,7 +18,7 @@ async function active() {
   throw new Error('Quota function activation timed out');
 }
 async function healthchecks(method, path = '', body) {
-  const response = await fetch(`https://healthchecks.io/api/v3/checks/${path}`, {
+  const response = await fetch(`https://healthchecks.io/api/v3/${path === 'channels/' ? path : `checks/${path}`}`, {
     method, redirect: 'error', signal: AbortSignal.timeout(8000),
     headers: { 'X-Api-Key': key(), 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}),
   });
@@ -27,8 +27,12 @@ async function healthchecks(method, path = '', body) {
 }
 export async function provision() {
   const current = await healthchecks('GET');
-  const channels = current.checks?.find((check) => check.slug === 'jojo-email-delivery')?.channels;
-  if (!channels) throw new Error('Existing email alert channels are missing');
+  const existingIds = current.checks?.find((check) => check.slug === 'jojo-email-delivery')?.channels?.split(',');
+  const integrations = (await healthchecks('GET', 'channels/')).channels;
+  const email = integrations?.filter((channel) => channel.kind === 'email' && existingIds?.includes(channel.id));
+  const feishu = integrations?.filter((channel) => channel.kind === 'webhook' && channel.name === 'feishu-email-quota');
+  if (!email?.length || feishu?.length !== 1) throw new Error('Existing email or dedicated quota Feishu template is missing');
+  const channels = [...email, ...feishu].map((channel) => channel.id).join(',');
   const definitions = [{ slug: SLUG, name: 'JOJO · 邮件额度检查', schedule: SCHEDULE, tz: 'UTC', grace: 600,
     desc: '独立 SCF 每 30 分钟读取 Resend 用量。当前使用邮件记录估算；采集失败或未按时运行时报警。' },
   ...PERIODS.flatMap((period) => LEVELS.map((level) => ({
