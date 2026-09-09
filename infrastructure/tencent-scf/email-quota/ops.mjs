@@ -74,7 +74,11 @@ export async function main(action) {
   } else if (action === 'timer') {
     const existing = await call('ListTriggers');
     if (existing.Triggers?.length) {
-      if (existing.Triggers.length !== 1 || existing.Triggers[0].TriggerName !== 'email-quota-half-hour' || existing.Triggers[0].TriggerDesc !== TRIGGER) throw new Error('Unexpected quota timer');
+      // ListTriggers wraps the cron in JSON and returns Enable as 0/1,
+      // unlike CreateTrigger's plain expression and OPEN/CLOSE parameters.
+      const timer = existing.Triggers[0];
+      let cron; try { cron = JSON.parse(timer.TriggerDesc).cron; } catch { throw new Error('Invalid quota timer description'); }
+      if (existing.Triggers.length !== 1 || timer.TriggerName !== 'email-quota-half-hour' || cron !== TRIGGER || timer.Enable !== 1) throw new Error('Unexpected or disabled quota timer');
       console.log('Half-hour timer already configured.'); return;
     }
     await call('CreateTrigger', { TriggerName: 'email-quota-half-hour', Type: 'timer', TriggerDesc: TRIGGER, Enable: 'OPEN' });
