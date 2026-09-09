@@ -36,13 +36,29 @@ export async function prepareProxyConfiguration(options: ProxyPreparationOptions
   const now = options.now ?? Date.now;
   // Never accidentally commit a previous invocation's candidate after failure or fallback.
   await rm(candidatePath(output), { force: true });
+  let encrypted: string | null = null;
+  if (cache) {
+    try {
+      encrypted = await cache.store.read();
+      const cached = decryptProxyCache(encrypted, cache.secret, url, now());
+      if (now() - cached.fetchedAt < PROXY_CACHE_REFRESH_MS) {
+        const subscription = parseProxySubscription(cached.config);
+        await privateFile(output, serializeMihomoConfig(subscription));
+        const report: ProxyPreparationReport = { source: "cache", nodes: subscription.proxies.length,
+          cacheAgeSeconds: Math.floor((now() - cached.fetchedAt) / 1_000) };
+        log(`subscription_cache_hit ${JSON.stringify(report)}`);
+        return report;
+      }
+    } catch { /* Missing or unusable optional cache must not block a live refresh. */ }
+  }
   let text: string;
   try {
     text = await (options.download ?? downloadSubscription)(url);
   } catch (error) {
     if (!(error instanceof SubscriptionDownloadError) || !error.failure.retryable || !cache) throw error;
     try {
-      const cached = decryptProxyCache(await cache.store.read(), cache.secret, url, now());
+      // Recheck the original expiry after download retries; cache use never renews it.
+      const cached = decryptProxyCache(encrypted, cache.secret, url, now());
       const subscription = parseProxySubscription(cached.config);
       await privateFile(output, serializeMihomoConfig(subscription));
       const report: ProxyPreparationReport = { source: "cache", nodes: subscription.proxies.length,
@@ -76,7 +92,7 @@ export async function commitHealthyProxyCache(options: ProxyPreparationOptions):
   const candidate = candidatePath(output);
   try {
     const info = await stat(candidate).catch(() => null);
-    if (!info) return; // Cached fallbacks never extend their own expiry.
+    if (!info) return; // Cache hits and fallbacks never extend their own expiry.
     if (info.size > PROXY_CACHE_MAX_BYTES) throw new Error();
     const encrypted = await readFile(candidate, "utf8");
     const now = (options.now ?? Date.now)();

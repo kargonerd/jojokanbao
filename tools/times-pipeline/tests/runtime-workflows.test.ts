@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
@@ -77,6 +78,35 @@ describe("Times Runtime workflows", () => {
     expect(body).toContain("proxy.source === \"cache\"");
     for (const step of steps.filter((step: { uses?: string }) => /actions\/(cache|upload-artifact)/.test(step.uses ?? ""))) {
       expect(step.with?.path).not.toMatch(/config\.yaml|subscription|\/mihomo\s*$/m);
+    }
+  });
+
+  it.each([false, true])("reports normal cache reuse separately from failed refresh fallback (%s)", async (fallback) => {
+    const body = parse(await workflow("maintenance-times-capture.yml"));
+    const step = body.jobs.capture.steps.find((step: { name?: string }) => step.name === "Publish capture summary");
+    const script = step.run.match(/^node[^\n]*\n([\s\S]*)\nNODE\s*$/)?.[1];
+    expect(script).toBeDefined();
+    const files = new Map([
+      ["/runner/proxy-preparation.json", JSON.stringify({ source: "cache", nodes: 1, cacheAgeSeconds: 7200,
+        ...(fallback ? { failure: { kind: "network", retryable: true } } : {}) })],
+      ["/runner/capture-result.json", JSON.stringify({ runId: "capture", results: [] })],
+    ]);
+    const lines: string[] = [];
+    runInNewContext(script, {
+      require: (name: string) => {
+        expect(name).toBe("node:fs");
+        return { existsSync: (file: string) => files.has(file), readFileSync: (file: string) => files.get(file) };
+      },
+      process: { env: { RUNNER_TEMP: "/runner" } },
+      console: { log: (line: string) => lines.push(line) },
+    }, { timeout: 1000 });
+    const summary = lines.join("\n");
+    if (fallback) {
+      expect(summary).toContain("Warning: Proxy subscription refresh failed");
+      expect(summary).toContain("expires after 24 hours");
+    } else {
+      expect(summary).toContain("refresh every 12 hours");
+      expect(summary).not.toContain("Warning:");
     }
   });
 
