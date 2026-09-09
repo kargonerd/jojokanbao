@@ -107,6 +107,25 @@ describe("FeatureFlagsPage", () => {
 
   afterEach(cleanup);
 
+  it("restores invitation signup while preserving existing rules and unrelated config", async () => {
+    const signupFlag = { ...aiUsageFlag, key: "auth.signup", description: "注册设置", config: { invitationRequired: false, reserved: "retain" } };
+    api.list.mockResolvedValue([signupFlag]);
+    api.publish.mockResolvedValue({ ...signupFlag, revision: 8, config: { ...signupFlag.config, invitationRequired: true } });
+    render(<FeatureFlagsPage />);
+    const checkbox = await screen.findByRole("checkbox", { name: "注册需要邀请码" });
+    expect(checkbox).not.toBeChecked();
+    expect(screen.queryByText("添加规则")).not.toBeInTheDocument();
+    fireEvent.click(checkbox);
+    fireEvent.change(screen.getByPlaceholderText("说明为什么调整注册设置"), { target: { value: "恢复邀请码注册" } });
+    fireEvent.click(screen.getByRole("button", { name: "发布更改" }));
+    await waitFor(() => expect(api.publish).toHaveBeenCalledWith(expect.objectContaining({
+      key: "auth.signup", rules: signupFlag.rules,
+      config: { invitationRequired: true, reserved: "retain" }, expectedRevision: 7, reason: "恢复邀请码注册",
+    })));
+    expect(await screen.findByText("已发布 revision 8")).toBeInTheDocument();
+    expect(checkbox).toBeChecked();
+  });
+
   it("opens the local operator editor without a browser login", async () => {
     render(<FeatureFlagsPage />);
 

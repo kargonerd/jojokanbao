@@ -253,7 +253,12 @@ export function MeScreen() {
     verifyPasswordResetCode,
     completePasswordRecovery,
     clearFeedback,
+    signupInvitationRequired,
+    refreshSignupPolicy,
   } = useMobileAuthStore();
+  useEffect(() => {
+    if (MOBILE_ACCOUNT_CONFIGURED) void refreshSignupPolicy();
+  }, [accountMode, loginVisible, refreshSignupPolicy]);
   const dialogWidth = loginVisible ? dialogViewport.width : windowWidth;
   const dialogHeight = loginVisible ? dialogViewport.height : windowHeight;
   const wideBook = dialogWidth > 880;
@@ -428,7 +433,7 @@ export function MeScreen() {
       setLocalError("请输入邮箱。");
       return;
     }
-    const validationError = getRegistrationValidationError(invitationCode, registrationPassword);
+    const validationError = getRegistrationValidationError(invitationCode, registrationPassword, signupInvitationRequired);
     if (validationError) {
       setLocalError(validationError);
       return;
@@ -439,7 +444,7 @@ export function MeScreen() {
     }
     try {
       const requiresConfirmation = await signUp({
-        invitationCode: invitationCode.trim(),
+        ...(signupInvitationRequired ? { invitationCode: invitationCode.trim() } : {}),
         email: normalizedEmail,
         password: registrationPassword,
       });
@@ -453,6 +458,7 @@ export function MeScreen() {
         closeLogin(true);
       }
     } catch {
+      void refreshSignupPolicy();
       // The shared auth store exposes a localized error below.
     }
   };
@@ -566,7 +572,7 @@ export function MeScreen() {
             <View style={styles.readerEntry}>
               <Text style={[styles.readerEntryStar, { color: theme.red }]}>★</Text>
               <Text style={[styles.readerEntryTitle, { color: theme.ink, fontFamily: theme.serif }]}>读者入口</Text>
-              <Text style={[styles.readerEntryCopy, { color: theme.muted, fontFamily: theme.sans }]}>登录已有账号，或凭邀请码完成注册。</Text>
+              <Text style={[styles.readerEntryCopy, { color: theme.muted, fontFamily: theme.sans }]}>登录已有账号，或使用邮箱完成注册。</Text>
               <View style={styles.readerEntryActions}>
                 <Pressable
                   accessibilityRole="button"
@@ -852,6 +858,7 @@ export function MeScreen() {
                             resetWhenHidden={!loginVisible}
                             theme={theme}
                           />
+                          {signupInvitationRequired && <>
                           <Text style={[styles.fieldLabel, styles.passwordLabel, { color: theme.ink, fontFamily: theme.sans }]}>邀请码</Text>
                           <TextInput
                             value={invitationCode}
@@ -866,6 +873,7 @@ export function MeScreen() {
                             placeholderTextColor={theme.muted}
                             style={[styles.input, { color: theme.ink, borderBottomColor: theme.ruleDark, fontFamily: theme.sans }]}
                           />
+                          </>}
                           {localError || error || notice ? (
                             <Text accessibilityRole={localError || error ? "alert" : undefined} style={[styles.error, { color: localError || error ? theme.red : theme.muted, fontFamily: theme.sans }]}>{localError || error || notice}</Text>
                           ) : null}

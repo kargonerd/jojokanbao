@@ -11,6 +11,7 @@ const conditionLabels: Record<FeatureConditionType, string> = {
 };
 
 const AI_USAGE_LIMITS_KEY = "ai.usage_limits";
+const SIGNUP_KEY = "auth.signup";
 const aiLimitFields = [
   { key: "requestsPerMinute", label: "每分钟请求上限", min: 1, max: 60, defaultValue: 3, unit: "次" },
   { key: "requestsPerDay", label: "每日请求上限", min: 1, max: 10_000, defaultValue: 100, unit: "次" },
@@ -63,7 +64,7 @@ function editableRules(rules: FeatureFlagRule[]): FeatureFlagRule[] {
 function editableConfig(config: Record<string, unknown> | null | undefined, key: string): Record<string, unknown> {
   const defaults = key === AI_USAGE_LIMITS_KEY
     ? Object.fromEntries(aiLimitFields.map((field) => [field.key, field.defaultValue]))
-    : {};
+    : key === SIGNUP_KEY ? { invitationRequired: true } : {};
   return { ...defaults, ...structuredClone(config ?? {}) };
 }
 
@@ -107,6 +108,8 @@ export function FeatureFlagsPage() {
 
   const selected = flags.find((flag) => flag.key === selectedKey);
   const isAiUsageLimits = selected?.key === AI_USAGE_LIMITS_KEY;
+  const isSignup = selected?.key === SIGNUP_KEY;
+  const configOnly = isAiUsageLimits || isSignup;
   const invalidAiLimit = isAiUsageLimits ? aiLimitFields.find((field) => !validAiLimit(draftConfig[field.key], field)) : undefined;
   const configError = invalidAiLimit ? `${invalidAiLimit.label}请填写 ${invalidAiLimit.min}–${invalidAiLimit.max} 之间的整数。` : "";
 
@@ -145,7 +148,7 @@ export function FeatureFlagsPage() {
     setSaving(true);
     setNotice("");
     setLoadError("");
-    const rules = isAiUsageLimits ? selected.rules : draftRules.map((rule) => ({
+    const rules = configOnly ? selected.rules : draftRules.map((rule) => ({
       ...rule,
       percentage: rule.conditionType === "percentage" ? Math.round(rule.percentage || 1) : null,
       bucketBy: rule.conditionType === "percentage" ? rule.bucketBy || "user" : null,
@@ -214,14 +217,14 @@ export function FeatureFlagsPage() {
       <PageTopbar
         eyebrow="RUNTIME CONTROL / 运行控制"
         title="功能开关"
-        description={isAiUsageLimits ? "AI 使用限额统一对所有账号生效。" : "规则从上到下执行，命中第一条后立即停止。"}
+        description={isSignup ? "注册设置统一对所有新账号生效。" : isAiUsageLimits ? "AI 使用限额统一对所有账号生效。" : "规则从上到下执行，命中第一条后立即停止。"}
         aside={<span className="local-badge"><i />本机 Operator</span>}
       />
       <main className="feature-workspace">
         <aside className="feature-index" aria-label="功能开关列表">
           {flags.map((flag) => (
             <button key={flag.key} type="button" className={flag.key === selectedKey ? "active" : ""} onClick={() => selectFlag(flag)}>
-              <b>{flag.key}</b><span>{flag.key === AI_USAGE_LIMITS_KEY ? "全局限额" : `${flag.rules.length} 条规则`} · r{flag.revision}</span>
+              <b>{flag.key}</b><span>{flag.key === SIGNUP_KEY ? "注册设置" : flag.key === AI_USAGE_LIMITS_KEY ? "全局限额" : `${flag.rules.length} 条规则`} · r{flag.revision}</span>
             </button>
           ))}
         </aside>
@@ -252,6 +255,22 @@ export function FeatureFlagsPage() {
                     />
                     <b>人</b>
                   </div>
+                </label>
+              </section>
+            )}
+            {isSignup && (
+              <section className="feature-config-strip" aria-labelledby="signup-settings-title">
+                <div>
+                  <h3 id="signup-settings-title">注册设置</h3>
+                  <span>关闭后可直接使用邮箱注册；重新开启即可恢复邀请码要求。已有邀请码及使用记录保留。</span>
+                </div>
+                <label>
+                  <span>注册需要邀请码</span>
+                  <input
+                    type="checkbox"
+                    checked={draftConfig.invitationRequired !== false}
+                    onChange={(event) => setDraftConfig((current) => ({ ...current, invitationRequired: event.target.checked }))}
+                  />
                 </label>
               </section>
             )}
@@ -309,7 +328,7 @@ export function FeatureFlagsPage() {
                 })}
               </ol>
             </section>
-            {!isAiUsageLimits && <><div className="rule-add-bar">
+            {!configOnly && <><div className="rule-add-bar">
               <span>添加规则</span>
               {(["users", "percentage", "authenticated", "global"] as const).map((kind) => <button key={kind} type="button" onClick={() => addRule(kind)}>+ {conditionLabels[kind]}</button>)}
             </div>
@@ -326,7 +345,7 @@ export function FeatureFlagsPage() {
               ))}
             </div></>}
             <footer className="feature-publish">
-              <label>发布原因<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={isAiUsageLimits ? "说明为什么调整 AI 限额" : "说明为什么修改这组规则"} /></label>
+              <label>发布原因<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={isSignup ? "说明为什么调整注册设置" : isAiUsageLimits ? "说明为什么调整 AI 限额" : "说明为什么修改这组规则"} /></label>
               <button className="primary-button" type="button" disabled={saving || reason.trim().length < 3 || Boolean(configError)} onClick={() => void publish()}>{saving ? "发布中…" : "发布更改"}</button>
               {notice && <p role="status">{notice}</p>}
               {loadError && <p className="content-error" role="alert">{loadError}</p>}

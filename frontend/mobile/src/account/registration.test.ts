@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { getRegistrationValidationError } from "./registration";
 
 describe("mobile account registration", () => {
+  it("allows open signup without a code while retaining password validation", () => {
+    expect(getRegistrationValidationError("", "12345678", false)).toBeNull();
+    expect(getRegistrationValidationError("stale", "12345678", false)).toBeNull();
+    expect(getRegistrationValidationError("", "1234567", false)).toBe("密码至少需要 8 位字符。");
+  });
   it("accepts the same invitation alphabet as the web registration form", () => {
     expect(getRegistrationValidationError("A2BC9Z", "12345678")).toBeNull();
     expect(getRegistrationValidationError(" a2bc9z ", "12345678")).toBeNull();

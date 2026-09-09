@@ -7,6 +7,7 @@ import { createProfileRepository } from "./profile";
 import type { AuthState, SignUpInput } from "./types";
 
 export interface AuthActions {
+  refreshSignupPolicy: () => Promise<void>;
   clearFeedback: () => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (input: SignUpInput) => Promise<boolean>;
@@ -34,6 +35,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
   const profiles = createProfileRepository(client);
   const pendingProfiles = new Map<string, ReturnType<typeof profiles.getOrCreate>>();
   let recoveryRevision = 0;
+  let signupPolicyRequest: AbortController | undefined;
   // This guards the application's recovery flow; Supabase still enforces its
   // own password-update authorization policy independently.
   let verifiedRecovery: { userId: string; accessToken: string } | null = null;
@@ -67,6 +69,7 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
   };
 
   const useAuthStore = create<AuthStore>((set, get) => ({
+    signupInvitationRequired: true,
     session: null,
     user: null,
     profile: null,
@@ -77,6 +80,23 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
     busy: false,
     error: null,
     notice: null,
+
+    refreshSignupPolicy: async () => {
+      signupPolicyRequest?.abort();
+      const request = new AbortController();
+      signupPolicyRequest = request;
+      const timer = setTimeout(() => request.abort(), 10_000);
+      try {
+        const { data, error } = await client.rpc("signup_invitation_required").abortSignal(request.signal);
+        if (error) throw error;
+        if (signupPolicyRequest === request) set({ signupInvitationRequired: data !== false });
+      } catch {
+        // Older deployments and unavailable configuration retain invitation signup.
+        if (signupPolicyRequest === request) set({ signupInvitationRequired: true });
+      } finally {
+        clearTimeout(timer);
+      }
+    },
 
     clearFeedback: () => set({ error: null, notice: null }),
 
@@ -106,9 +126,9 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
         const { data, error } = await client.auth.signUp({
           email: validateRegistrationEmail(email),
           password,
-          options: {
-            data: { invitation_code: invitationCode.trim() },
-          },
+          ...(invitationCode?.trim() ? {
+            options: { data: { invitation_code: invitationCode.trim() } },
+          } : {}),
         });
         if (error) throw error;
 

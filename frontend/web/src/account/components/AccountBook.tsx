@@ -108,7 +108,7 @@ export function AccountBook({
       <section className="login-book-entry" aria-labelledby="login-book-title">
         <span className="login-book-entry__star" aria-hidden="true">★</span>
         <h1 id="login-book-title">读者入口</h1>
-        <p>登录已有账号，或凭邀请码完成注册。</p>
+        <p>登录已有账号，或使用邮箱完成注册。</p>
         <div className="login-book-entry__actions">
           <button type="button" disabled={busy} onClick={() => openAccount("login")}>登录</button>
           <button type="button" disabled={busy} onClick={() => openAccount("register")}>注册</button>
