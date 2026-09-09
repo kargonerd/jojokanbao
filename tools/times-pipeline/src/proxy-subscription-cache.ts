@@ -1,12 +1,17 @@
-import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes } from "node:crypto";
 import { MAXIMUM_SUBSCRIPTION_BYTES } from "./proxy-subscription.js";
 
-export const PROXY_CACHE_OBJECT = "times/proxy/last-known-good.v1.json";
-export const PROXY_CACHE_SECONDARY_OBJECT = "times/proxy/last-known-good-secondary.v1.json";
 export const PROXY_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
 export const PROXY_CACHE_REFRESH_MS = 12 * 60 * 60 * 1_000;
 export const PROXY_CACHE_MAX_BYTES = 28_000_000;
 const CONTEXT = "jojo-times-proxy-cache/v1";
+
+/** Stable across list reordering; never expose URLs or publicly computable URL hashes. */
+export function proxyCacheObject(url: string, secret: string): string {
+  if (!url.trim() || !secret.trim()) throw new ProxyCacheRejected("invalid");
+  const id = createHmac("sha256", secret).update("jojo-times-proxy-cache-object/v1\0").update(url).digest("hex");
+  return `times/proxy/subscriptions/${id}.v1.json`;
+}
 
 export interface ProxyCacheStore {
   read(): Promise<string | null>;
@@ -32,7 +37,7 @@ export class ProxyCacheRejected extends Error {
 function key(secret: string, url: string): Buffer {
   if (!secret.trim() || !url.trim()) throw new ProxyCacheRejected("invalid");
   // Existing HF token supplies the secret; changing it OR the subscription URL
-  // invalidates the ciphertext. No secret or URL fingerprint is persisted.
+  // invalidates the ciphertext. No secret or raw URL is persisted.
   return Buffer.from(hkdfSync("sha256", secret, url, CONTEXT, 32));
 }
 

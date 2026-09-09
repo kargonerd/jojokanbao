@@ -68,7 +68,6 @@ jobs:
       TIMES_RUNTIME_ROOT: ${{ github.workspace }}/.times-runtime
       JOJO_TIMES_PROXY_URI: ${{ secrets.JOJO_TIMES_PROXY_URI }}
       JOJO_TIMES_PROXY_SUBSCRIPTION: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION }}
-      JOJO_TIMES_PROXY_SUBSCRIPTION_2: ${{ secrets.JOJO_TIMES_PROXY_SUBSCRIPTION_2 }}
       HEALTHCHECKS_PING_KEY: ${{ secrets.HEALTHCHECKS_PING_KEY }}
       HEALTHCHECKS_REPORT_MODE: buffered
     steps:
@@ -184,10 +183,8 @@ jobs:
           if [ "$TIMES_PUBLISH" = "true" ]; then
             args+=(--cache-bucket "$HF_TIMES_RUNTIME_BUCKET")
           fi
-          for rotation_offset in 0 1; do
-            if [ "$rotation_offset" = "1" ] && { [ -z "$JOJO_TIMES_PROXY_SUBSCRIPTION_2" ] || [ "$JOJO_TIMES_PROXY_SUBSCRIPTION_2" = "$JOJO_TIMES_PROXY_SUBSCRIPTION" ]; }; then
-              break
-            fi
+          subscription_count=$(node "$TIMES_RUNTIME_ROOT/dist/src/prepare-proxy-cli.js" --action count)
+          for ((rotation_offset = 0; rotation_offset < subscription_count; rotation_offset++)); do
             if ! node "$TIMES_RUNTIME_ROOT/dist/src/prepare-proxy-cli.js" "${args[@]}" --rotation-offset "$rotation_offset"; then
               echo "Proxy subscription preparation failed; trying the next configured subscription" >&2
               continue
@@ -408,8 +405,8 @@ jobs:
           if (fs.existsSync(proxyReportPath)) {
             const proxy = JSON.parse(fs.readFileSync(proxyReportPath, "utf8"));
             if (proxy.subscriptionCount > 1) {
-              console.log(`- Proxy subscription: ${proxy.subscriptionIndex}/${proxy.subscriptionCount}; alternating each Capture run, each refreshed every 12 hours.`);
-              if (proxy.rotationOffset > 0) console.log("- Warning: Preferred proxy subscription was unavailable; switched to the other subscription.");
+              console.log(`- Proxy subscription: ${proxy.subscriptionIndex}/${proxy.subscriptionCount}; rotating each Capture run, each refreshed every 12 hours.`);
+              if (proxy.rotationOffset > 0) console.log("- Warning: Preferred proxy subscription was unavailable; switched to a subsequent subscription.");
             }
             if (proxy.source === "cache") {
               if (proxy.failure) {
