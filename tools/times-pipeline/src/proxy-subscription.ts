@@ -77,7 +77,8 @@ export async function downloadSubscription(url: string, options: {
     let response: Response | undefined;
     try {
       response = await (options.fetcher ?? fetch)(url, {
-        headers: { "user-agent": "mihomo" },
+        // Subscription services use the Clash client name to select YAML output.
+        headers: { "user-agent": "ClashMeta" },
         signal: controller.signal,
       });
       if (!response.ok) throw new SubscriptionHttpError(response.status);

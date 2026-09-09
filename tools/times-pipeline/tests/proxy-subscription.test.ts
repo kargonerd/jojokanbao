@@ -1,9 +1,23 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { parseProxySubscription } from "../src/proxy-config.js";
 import { downloadSubscription, SubscriptionDownloadError, subscriptionFailure } from "../src/proxy-subscription.js";
 
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe("proxy subscription transport", () => {
+  it("negotiates Clash YAML from services that otherwise return encoded node links", async () => {
+    const fetcher = vi.fn<typeof fetch>(async (_url, init) => {
+      const client = new Headers(init?.headers).get("user-agent") ?? "";
+      return new Response(/clash/i.test(client)
+        ? "proxies:\n  - { name: node-a, type: socks5, server: example.test, port: 1080 }\n"
+        : Buffer.from("socks5://example.test:1080#node-a").toString("base64"));
+    });
+    const text = await downloadSubscription("https://private.example/secret", { fetcher });
+    expect(parseProxySubscription(text).proxies).toEqual([
+      { name: "node-a", type: "socks5", server: "example.test", port: 1080 },
+    ]);
+  });
+
   it("retries network and server failures without logging credentials", async () => {
     const log = vi.spyOn(process.stderr, "write").mockReturnValue(true);
     const fetcher = vi.fn<typeof fetch>()
