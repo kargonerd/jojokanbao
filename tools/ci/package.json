@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test *.test.mjs",
-    "typecheck": "node --check affected.mjs"
+    "typecheck": "node --check affected.mjs && node --check ios-cache-key.mjs"
   },
   "dependencies": {
     "yaml": "2.9.0"
