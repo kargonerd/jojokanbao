@@ -1,12 +1,27 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { hfProxyCacheStore } from "../src/proxy-subscription-store.js";
-import { PROXY_CACHE_MAX_BYTES, PROXY_CACHE_OBJECT } from "../src/proxy-subscription-cache.js";
+import { PROXY_CACHE_MAX_BYTES, PROXY_CACHE_OBJECT, PROXY_CACHE_SECONDARY_OBJECT } from "../src/proxy-subscription-cache.js";
 
 const hub = vi.hoisted(() => ({ downloadFile: vi.fn(), uploadFiles: vi.fn() }));
 vi.mock("@huggingface/hub", () => hub);
 afterEach(() => { vi.resetAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe("bounded encrypted subscription Runtime storage", () => {
+  it("isolates provider caches in fixed slots without putting subscription identifiers in storage paths", async () => {
+    const stored = new Map<string, Blob>();
+    hub.downloadFile.mockImplementation(async ({ path }: { path: string }) => stored.get(path) ?? null);
+    hub.uploadFiles.mockImplementation(async ({ files }: { files: Array<{ path: string; content: Blob }> }) => {
+      for (const file of files) stored.set(file.path, file.content);
+    });
+    const first = hfProxyCacheStore("jojo/runtime", "private-token");
+    const second = hfProxyCacheStore("jojo/runtime", "private-token", 1);
+    await first.write("primary ciphertext");
+    await second.write("secondary ciphertext");
+    expect(await first.read()).toBe("primary ciphertext");
+    expect(await second.read()).toBe("secondary ciphertext");
+    expect([...stored.keys()]).toEqual([PROXY_CACHE_OBJECT, PROXY_CACHE_SECONDARY_OBJECT]);
+  });
+
   it("reads bounded data, tolerates a missing object and writes only the fixed cache slot", async () => {
     const store = hfProxyCacheStore("jojo/runtime", "private-token");
     hub.downloadFile.mockResolvedValueOnce(null).mockResolvedValueOnce(new Blob(["encrypted"]));
