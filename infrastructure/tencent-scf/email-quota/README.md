@@ -33,6 +33,9 @@ Before provisioning, create a Healthchecks webhook integration named
 below for both up/down events. `$BODY_JSON` must remain unquoted so Healthchecks
 escapes embedded JSON safely. Only quota checks bind to this template; existing
 monitor messages are unaffected.
+Healthchecks initially assigns a newly created integration to existing checks;
+remove that new binding from those checks immediately, preserving all their
+previous channel bindings, before running `provision` for the quota checks.
 
 ```json
 {"msg_type":"post","content":{"post":{"zh_cn":{"title":$NAME_JSON,"content":[[{"tag":"text","text":"状态：$STATUS；时间：$NOW"}],[{"tag":"text","text":$BODY_JSON}]]}}}}
