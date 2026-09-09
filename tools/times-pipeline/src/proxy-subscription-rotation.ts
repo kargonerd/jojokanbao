@@ -9,6 +9,15 @@ export function parseProxySubscriptionUrls(value: string): string[] {
   } catch { throw new Error("Proxy subscriptions must be a non-empty JSON array of URL strings"); }
 }
 
+/** GitHub masks the whole JSON secret; explicitly mask its individual values too. */
+export function maskProxySubscriptionUrls(urls: readonly string[]): void {
+  if (process.env.GITHUB_ACTIONS !== "true") return;
+  for (const url of urls) {
+    const escaped = url.replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A");
+    process.stdout.write(`::add-mask::${escaped}\n`);
+  }
+}
+
 export function selectProxySubscription(options: {
   urls: readonly string[];
   runNumber?: string | undefined;

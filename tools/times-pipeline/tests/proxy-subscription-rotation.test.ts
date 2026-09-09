@@ -1,11 +1,25 @@
-import { describe, expect, it } from "vitest";
-import { parseProxySubscriptionUrls, selectProxySubscription } from "../src/proxy-subscription-rotation.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { maskProxySubscriptionUrls, parseProxySubscriptionUrls, selectProxySubscription } from "../src/proxy-subscription-rotation.js";
+
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 const primary = "https://one.example/sub?private-token";
 const secondary = "https://two.example/sub?other-private-token";
 const third = "https://three.example/sub?third-private-token";
 
 describe("subscription array configuration", () => {
+  it("registers each array value for Actions masking and escapes workflow command data", () => {
+    const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+    vi.stubEnv("GITHUB_ACTIONS", "false");
+    maskProxySubscriptionUrls([primary]);
+    expect(stdout).not.toHaveBeenCalled();
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    maskProxySubscriptionUrls([primary, "https://two.example/%token\r\n::warning::text"]);
+    expect(stdout.mock.calls.map((call) => call[0])).toEqual([
+      `::add-mask::${primary}\n`, "::add-mask::https://two.example/%25token%0D%0A::warning::text\n",
+    ]);
+  });
+
   it("trims and deduplicates URLs while preserving list order, with legacy single-URL compatibility", () => {
     expect(parseProxySubscriptionUrls(JSON.stringify([primary, ` ${secondary} `, primary, third])))
       .toEqual([primary, secondary, third]);

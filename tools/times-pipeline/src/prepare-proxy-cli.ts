@@ -3,7 +3,7 @@ import path from "node:path";
 import { parseArgs, requiredArg } from "./args.js";
 import { commitHealthyProxyCache, prepareProxyConfiguration } from "./prepare-proxy.js";
 import { hfProxyCacheStore } from "./proxy-subscription-store.js";
-import { parseProxySubscriptionUrls, selectProxySubscription } from "./proxy-subscription-rotation.js";
+import { maskProxySubscriptionUrls, parseProxySubscriptionUrls, selectProxySubscription } from "./proxy-subscription-rotation.js";
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
@@ -16,6 +16,7 @@ async function main(): Promise<void> {
     process.stdout.write(`${urls.length}\n`);
     return;
   }
+  maskProxySubscriptionUrls(urls);
   if (action !== "prepare" && action !== "commit-cache") throw new Error("Unknown proxy preparation action");
   const output = path.resolve(requiredArg(args, "output"));
   const selected = selectProxySubscription({ urls, runNumber: process.env.GITHUB_RUN_NUMBER,

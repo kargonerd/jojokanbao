@@ -206,6 +206,7 @@ Cookie、Authorization 和 BPC 内部状态不会进入 Raw、日志或 artifact
 `["https://provider-a.example/sub", "https://provider-b.example/sub", "https://provider-c.example/sub"]`。
 增加订阅只需追加数组元素，无需新增 Secret 或修改工作流。URL 去除首尾空白并按原顺序去重；空数组、
 空元素和非字符串元素会被拒绝。兼容旧的单 URL 格式，便于迁移。
+Actions 中还会逐项注册 URL 日志遮罩，避免仅遮住完整 JSON 而遗漏单个订阅链接。
 按 Capture 的 `GITHUB_RUN_NUMBER` 循环选择数组中的首选订阅（正常调度每 5 分钟一轮，重跑同一轮
 保持原顺序）；某个订阅准备失败或 Mihomo 健康检查未通过时，同一轮按顺序尝试后续订阅，最多遍历
 一圈，启动阶段总上限为 12 分钟。每轮正常只使用一个订阅，节点选择及采集重试沿用该订阅现有逻辑；
