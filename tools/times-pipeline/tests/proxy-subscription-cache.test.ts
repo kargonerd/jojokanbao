@@ -68,7 +68,7 @@ describe("last-known-healthy subscription preparation", () => {
   it("stages ciphertext only, publishes only after health confirmation, and keeps files private", async () => {
     const options = await setup();
     expect(await prepareProxyConfiguration(options)).toEqual({ source: "live", nodes: 1 });
-    expect(options.cache.store.read).not.toHaveBeenCalled();
+    expect(options.cache.store.read).toHaveBeenCalledTimes(1);
     expect(options.cache.store.write).not.toHaveBeenCalled();
     const staged = await readFile(`${options.output}.last-known-good.enc.json`, "utf8");
     expect(staged).not.toMatch(/private|node-password|subscription-secret/);
@@ -79,12 +79,36 @@ describe("last-known-healthy subscription preparation", () => {
     await expect(stat(`${options.output}.last-known-good.enc.json`)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("uses healthy cache after transient failure, records safe degradation, and never renews its lifetime", async () => {
-    const encrypted = encryptProxyCache({ config: CONFIG, fetchedAt: NOW - 3_600_000 }, SECRET, URL);
+  it.each([0, 5 * 60_000, 12 * 60 * 60_000 - 1])("reuses a healthy %i ms old cache without downloading or renewing it", async (age) => {
+    const encrypted = encryptProxyCache({ config: CONFIG, fetchedAt: NOW - age }, SECRET, URL);
+    const options = await setup(encrypted);
+    expect(await prepareProxyConfiguration(options)).toEqual({ source: "cache", nodes: 1,
+      cacheAgeSeconds: Math.floor(age / 1_000) });
+    expect(options.download).not.toHaveBeenCalled();
+    expect(options.cache.store.read).toHaveBeenCalledTimes(1);
+    expect(await readFile(options.output, "utf8")).toBe(CONFIG);
+    await commitHealthyProxyCache(options);
+    expect(options.cache.store.write).not.toHaveBeenCalled();
+    expect(await options.cache.store.read()).toBe(encrypted);
+    await expect(stat(`${options.output}.last-known-good.enc.json`)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(JSON.stringify(vi.mocked(process.stderr.write).mock.calls)).not.toMatch(/private|password|subscription-secret/);
+  });
+
+  it("downloads directly when caching is not enabled", async () => {
+    const { cache: _cache, ...options } = await setup();
+    expect(await prepareProxyConfiguration(options)).toEqual({ source: "live", nodes: 1 });
+    expect(options.download).toHaveBeenCalledTimes(1);
+    await expect(stat(`${options.output}.last-known-good.enc.json`)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("uses stale healthy cache after transient refresh failure, records degradation, and never renews its lifetime", async () => {
+    const encrypted = encryptProxyCache({ config: CONFIG, fetchedAt: NOW - PROXY_CACHE_REFRESH_MS }, SECRET, URL);
     const options = await setup(encrypted);
     options.download.mockRejectedValue(networkFailure());
-    expect(await prepareProxyConfiguration(options)).toEqual({ source: "cache", nodes: 1, cacheAgeSeconds: 3600,
+    expect(await prepareProxyConfiguration(options)).toEqual({ source: "cache", nodes: 1, cacheAgeSeconds: 12 * 60 * 60,
       failure: { kind: "network", networkCodes: ["ENOTFOUND"], retryable: true } });
+    expect(options.download).toHaveBeenCalledTimes(1);
+    expect(options.cache.store.read).toHaveBeenCalledTimes(1);
     await commitHealthyProxyCache(options);
     expect(options.cache.store.write).not.toHaveBeenCalled();
     expect(await options.cache.store.read()).toBe(encrypted);
@@ -93,20 +117,51 @@ describe("last-known-healthy subscription preparation", () => {
     await expect(prepareProxyConfiguration(options)).rejects.toThrow("Unable to download");
   });
 
-  it.each([401, 403, 404])("never falls back or accesses cached credentials after HTTP %s", async (httpStatus) => {
-    const options = await setup(encryptProxyCache({ config: CONFIG, fetchedAt: NOW }, SECRET, URL));
+  it("rechecks the 24-hour expiry after a slow failed refresh", async () => {
+    const options = await setup(encryptProxyCache({ config: CONFIG, fetchedAt: NOW - PROXY_CACHE_MAX_AGE_MS + 1 }, SECRET, URL));
+    let now = NOW;
+    options.now = () => now;
+    options.download.mockImplementation(async () => {
+      now += 1;
+      throw networkFailure();
+    });
+    await expect(prepareProxyConfiguration(options)).rejects.toThrow("Unable to download");
+    expect(options.cache.store.read).toHaveBeenCalledTimes(1);
+    await expect(stat(options.output)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it.each([401, 403, 404])("does not serve stale cache after refresh returns HTTP %s", async (httpStatus) => {
+    const options = await setup(encryptProxyCache({ config: CONFIG, fetchedAt: NOW - PROXY_CACHE_REFRESH_MS }, SECRET, URL));
     options.download.mockRejectedValue(new SubscriptionDownloadError({ kind: "http", httpStatus, networkCodes: [], retryable: false }));
     await expect(prepareProxyConfiguration(options)).rejects.toThrow("Unable to download");
-    expect(options.cache.store.read).not.toHaveBeenCalled();
+    expect(options.cache.store.read).toHaveBeenCalledTimes(1);
+    expect(options.cache.store.write).not.toHaveBeenCalled();
+    await expect(stat(options.output)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it.each(["{bad yaml", "proxies: []", "<html>error</html>", "proxies:\n  - name: JOJO-TIMES-AUTO"])
   ("does not fall back on a malformed live response: %s", async (yaml) => {
-    const options = await setup();
+    const options = await setup(encryptProxyCache({ config: CONFIG, fetchedAt: NOW - PROXY_CACHE_REFRESH_MS }, SECRET, URL));
     options.download.mockResolvedValue(yaml);
     await expect(prepareProxyConfiguration(options)).rejects.toThrow();
-    expect(options.cache.store.read).not.toHaveBeenCalled();
+    expect(options.cache.store.read).toHaveBeenCalledTimes(1);
     expect(options.cache.store.write).not.toHaveBeenCalled();
+    await expect(stat(options.output)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it.each(["missing", "broken", "expired", "wrong-url", "wrong-secret", "empty-nodes"])
+  ("downloads immediately when cache is %s", async (kind) => {
+    const entry = kind === "missing" ? null : kind === "broken" ? "broken"
+      : encryptProxyCache({ config: kind === "empty-nodes" ? "proxies: []" : CONFIG,
+        fetchedAt: kind === "expired" ? NOW - PROXY_CACHE_MAX_AGE_MS : NOW },
+      kind === "wrong-secret" ? `${SECRET}-other` : SECRET, kind === "wrong-url" ? `${URL}-other` : URL);
+    const options = await setup(entry);
+    expect(await prepareProxyConfiguration(options)).toEqual({ source: "live", nodes: 1 });
+    expect(options.download).toHaveBeenCalledTimes(1);
+    expect(options.cache.store.write).not.toHaveBeenCalled();
+    expect(await readFile(options.output, "utf8")).toBe(CONFIG);
+    await commitHealthyProxyCache(options);
+    expect(options.cache.store.write).toHaveBeenCalledTimes(1);
   });
 
   it.each([null, "broken", "expired", "wrong-url", "empty-nodes"])("fails closed with an unusable %s cache", async (kind) => {
@@ -128,19 +183,31 @@ describe("last-known-healthy subscription preparation", () => {
     expect(JSON.stringify(vi.mocked(process.stderr.write).mock.calls)).not.toMatch(/private|secret|Authorization/);
   });
 
-  it("refreshes unchanged content at most hourly but immediately saves changed healthy content", async () => {
-    const options = await setup(encryptProxyCache({ config: CONFIG, fetchedAt: NOW - 1 }, SECRET, URL));
+  it("refreshes unchanged and changed content only after each 12-hour interval and a successful probe", async () => {
+    const options = await setup(encryptProxyCache({ config: CONFIG, fetchedAt: NOW }, SECRET, URL));
     await prepareProxyConfiguration(options);
     await commitHealthyProxyCache(options);
+    expect(options.download).not.toHaveBeenCalled();
     expect(options.cache.store.write).not.toHaveBeenCalled();
-    options.now = () => NOW + PROXY_CACHE_REFRESH_MS;
-    await prepareProxyConfiguration(options);
+    options.now = () => NOW + 12 * 60 * 60_000;
+    expect(await prepareProxyConfiguration(options)).toEqual({ source: "live", nodes: 1 });
+    expect(options.download).toHaveBeenCalledTimes(1);
+    expect(options.cache.store.write).not.toHaveBeenCalled();
     await commitHealthyProxyCache(options);
     expect(options.cache.store.write).toHaveBeenCalledTimes(1);
+    expect(decryptProxyCache(await options.cache.store.read(), SECRET, URL, options.now()).fetchedAt).toBe(options.now());
     options.download.mockResolvedValue(YAML.replace("node-password", "new-password"));
+    options.now = () => NOW + 12 * 60 * 60_000 + 5 * 60_000;
     await prepareProxyConfiguration(options);
     await commitHealthyProxyCache(options);
+    expect(options.download).toHaveBeenCalledTimes(1);
+    expect(options.cache.store.write).toHaveBeenCalledTimes(1);
+    options.now = () => NOW + 24 * 60 * 60_000;
+    await prepareProxyConfiguration(options);
+    await commitHealthyProxyCache(options);
+    expect(options.download).toHaveBeenCalledTimes(2);
     expect(options.cache.store.write).toHaveBeenCalledTimes(2);
+    expect(await readFile(options.output, "utf8")).toContain("new-password");
   });
 
   it("never commits a stale candidate after failed preparation or a modified untested configuration", async () => {

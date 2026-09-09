@@ -392,7 +392,11 @@ jobs:
           if (fs.existsSync(proxyReportPath)) {
             const proxy = JSON.parse(fs.readFileSync(proxyReportPath, "utf8"));
             if (proxy.source === "cache") {
-              console.log(`- Warning: Proxy subscription download failed; using a previously healthy encrypted cache (${Math.floor(proxy.cacheAgeSeconds / 60)} minutes old, expires after 24 hours).`);
+              if (proxy.failure) {
+                console.log(`- Warning: Proxy subscription refresh failed; using a previously healthy encrypted cache (${Math.floor(proxy.cacheAgeSeconds / 60)} minutes old, expires after 24 hours).`);
+              } else {
+                console.log(`- Proxy subscription: reused healthy encrypted cache (${Math.floor(proxy.cacheAgeSeconds / 60)} minutes old; refresh every 12 hours).`);
+              }
             }
           }
           if (!fs.existsSync(path)) {
