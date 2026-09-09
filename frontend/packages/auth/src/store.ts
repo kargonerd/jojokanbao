@@ -31,7 +31,10 @@ export interface JojoAuthController {
   startAuthSync: () => () => void;
 }
 
-export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController {
+export function createJojoAuthStore(
+  client: JojoAuthClient,
+  options: { readPersistedSession?: () => Promise<Session | null> } = {},
+): JojoAuthController {
   const profiles = createProfileRepository(client);
   const pendingProfiles = new Map<string, ReturnType<typeof profiles.getOrCreate>>();
   let recoveryRevision = 0;
@@ -405,18 +408,46 @@ export function createJojoAuthStore(client: JojoAuthClient): JojoAuthController 
     syncConsumers += 1;
     if (!stopSharedSync) {
       let active = true;
-      const initialRevision = sessionRevision;
+      let bootstrapRevision = 0;
+      let bootstrapSessionRevision = sessionRevision;
+      const restorePersistedSession = (clearMissing = false) => {
+        const revision = bootstrapRevision;
+        void options.readPersistedSession?.().then((session) => {
+          if (!active || revision !== bootstrapRevision || bootstrapSessionRevision !== sessionRevision) return;
+          // Native identity can render from the SDK's existing storage while
+          // expired-token refresh is offline. Server requests still use the SDK.
+          if (session || clearMissing) {
+            syncSession(session);
+            bootstrapSessionRevision = sessionRevision;
+          }
+        }).catch(() => {
+          if (active && revision === bootstrapRevision) useAuthStore.setState({ initialized: true });
+        });
+      };
+      restorePersistedSession();
+      const initialRevision = bootstrapRevision;
       void client.auth.getSession().then(({ data, error }) => {
-        if (!active || initialRevision !== sessionRevision) return;
+        if (!active || initialRevision !== bootstrapRevision || bootstrapSessionRevision !== sessionRevision) return;
         if (error) {
           useAuthStore.setState({ initialized: true, error: getAuthErrorMessage(error) });
           return;
         }
+        bootstrapRevision++;
         syncSession(data.session);
+      }).catch((error: unknown) => {
+        if (active && initialRevision === bootstrapRevision) {
+          useAuthStore.setState({ initialized: true, error: getAuthErrorMessage(error) });
+        }
       });
 
       const { data } = client.auth.onAuthStateChange((event, session) => {
-        if (active) syncSession(session, event);
+        if (!active) return;
+        bootstrapRevision++;
+        bootstrapSessionRevision = sessionRevision;
+        // Supabase also emits INITIAL_SESSION(null) after a retryable network
+        // failure. Check its storage before treating that as a signed-out user.
+        if (event === "INITIAL_SESSION" && !session && options.readPersistedSession) restorePersistedSession(true);
+        else syncSession(session, event);
       });
       stopSharedSync = () => {
         active = false;

@@ -57,6 +57,7 @@ import {
   type MobileBookSearchResult,
 } from "../lib/books";
 import { selectionHaptic } from "../lib/haptics";
+import { useRetryOnFailure } from "../lib/useRetryOnFailure";
 import type { RootStackParamList } from "../navigation/types";
 import { useMobileStore, type BookAnnotation, type BookPaperColor } from "../store/mobileStore";
 import { mobileTheme, type MobileTheme } from "../theme/tokens";
@@ -128,6 +129,12 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const [pageState, setPageState] = useState<BookReaderPageMessage>();
   const [chapterEntryEdge, setChapterEntryEdge] = useState<BookChapterEdge>("start");
   const [retryToken, setRetryToken] = useState(0);
+  const [chapterRetryToken, setChapterRetryToken] = useState(0);
+  function retryReading() {
+    if (loaded) setChapterRetryToken((value) => value + 1);
+    else setRetryToken((value) => value + 1);
+  }
+  useRetryOnFailure(Boolean(error) && !loading, retryReading);
   const [progressRailWidth, setProgressRailWidth] = useState(1);
   const [selection, setSelection] = useState<BookReaderSelectionMessage>();
   const [readerFrame, setReaderFrame] = useState({ x: 0, y: 0, width: 0, height: 0 });
@@ -279,7 +286,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
       .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : "无法读取章节"); })
       .finally(() => { if (active) setChapterLoading(false); });
     return () => { active = false; controller.abort(); };
-  }, [activeChapterId, loaded, retryToken]);
+  }, [activeChapterId, loaded, chapterRetryToken]);
 
   useEffect(() => {
     if (!loaded || !chapter) return;
@@ -688,7 +695,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
           />
         ) : null}
         {loading ? <View pointerEvents="none" style={[styles.center, { backgroundColor: theme.paper }]}>{IS_EINK_RELEASE ? null : <ActivityIndicator color={theme.red} />}<Text style={[styles.status, { color: theme.muted, fontFamily: theme.sans }]}>正在读取章节</Text></View> : null}
-        {!loading && error ? <View style={[styles.center, { backgroundColor: theme.paper }]}><Text accessibilityRole="alert" style={[styles.error, { color: theme.ink, fontFamily: theme.serif }]}>{error}</Text><Pressable onPress={() => setRetryToken((value) => value + 1)} style={[styles.retry, { borderColor: theme.red }]}><Text style={[styles.retryText, { color: theme.red, fontFamily: theme.sans }]}>重新加载</Text></Pressable></View> : null}
+        {!loading && error ? <View style={[styles.center, { backgroundColor: theme.paper }]}><Text accessibilityRole="alert" style={[styles.error, { color: theme.ink, fontFamily: theme.serif }]}>{error}</Text><Pressable onPress={retryReading} style={[styles.retry, { borderColor: theme.red }]}><Text style={[styles.retryText, { color: theme.red, fontFamily: theme.sans }]}>重新加载</Text></Pressable></View> : null}
       </View>
 
       {chromeVisible && !noteComposer ? <>

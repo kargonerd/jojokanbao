@@ -38,7 +38,10 @@ export type MobileTimesNewsItem = MobileTimesArticle & {
 
 export type TimesTimelineCursor = { dateIndex: number; page: number };
 
-const client = new JoxClient(CONTENT_CDN, (input, init) => fetch(input, init), new ResourceCache(mobileContentCache()));
+const contentStore = mobileContentCache();
+const client = new JoxClient(CONTENT_CDN, (input, init) => fetch(input, init),
+  new ResourceCache(contentStore, undefined, { staleWhileRevalidate: true }));
+const newsCache = new ResourceCache(contentStore, undefined, { staleWhileRevalidate: true });
 let indexPromise: Promise<TimesTimelineIndex> | undefined;
 const dayPromises = new Map<string, Promise<TimesTimelineDay>>();
 const pagePromises = new Map<string, Promise<TimesTimelinePage>>();
@@ -183,7 +186,7 @@ export function nextTimesTimelineCursor(
 
 async function timelineIndex(refresh = false): Promise<TimesTimelineIndex> {
   if (refresh || !indexPromise) {
-    indexPromise = client.fetchJson<TimesTimelineIndex>(TIMELINE_INDEX_OBJECT, undefined, "no-store")
+    indexPromise = client.fetchJson<TimesTimelineIndex>(TIMELINE_INDEX_OBJECT, undefined, refresh ? "reload" : "default")
       .then(asTimelineIndex);
   }
   try {
@@ -194,14 +197,14 @@ async function timelineIndex(refresh = false): Promise<TimesTimelineIndex> {
   }
 }
 
-async function timelineDay(date: string, refresh = false): Promise<TimesTimelineDay> {
-  const index = await timelineIndex();
+async function timelineDay(date: string, refresh = false, snapshotIndex?: TimesTimelineIndex): Promise<TimesTimelineDay> {
+  const index = snapshotIndex ?? await timelineIndex();
   const ref = index.dates.find((candidate) => candidate.date === date);
   if (!ref) throw new Error(`没有 ${date} 的时事数据`);
   let promise = refresh ? undefined : cachedPromise(dayPromises, date);
   if (!promise) {
     const object = resolveJoxObject(TIMELINE_INDEX_OBJECT, ref.object);
-    promise = client.fetchJson<TimesTimelineDay>(object, undefined, "no-store")
+    promise = client.fetchJson<TimesTimelineDay>(object, undefined, refresh ? "reload" : "default")
       .then((value) => asTimelineDay(value, date));
     retainPromise(dayPromises, date, promise, MAX_CACHED_DAYS);
   }
@@ -213,15 +216,15 @@ async function timelineDay(date: string, refresh = false): Promise<TimesTimeline
   }
 }
 
-async function timelinePage(date: string, page: number, refresh = false): Promise<TimesTimelinePage> {
+async function timelinePage(date: string, page: number, refresh = false, snapshotIndex?: TimesTimelineIndex): Promise<TimesTimelinePage> {
   if (!Number.isInteger(page) || page < 0) throw new Error("时事页码无效");
-  const index = await timelineIndex();
+  const index = snapshotIndex ?? await timelineIndex();
   const ref = index.dates.find((candidate) => candidate.date === date);
   if (!ref) throw new Error(`没有 ${date} 的时事数据`);
   if (page >= timesTimelinePageCount(ref)) throw new Error(`没有 ${date} 的第 ${page + 1} 页时事数据`);
   const pageRef = ref.pages?.[page];
   if (!pageRef) {
-    const day = await timelineDay(date, refresh);
+    const day = await timelineDay(date, refresh, index);
     const offset = page * TIMES_TIMELINE_FALLBACK_PAGE_SIZE;
     const result: TimesTimelinePage = {
       formatVersion: "jojo-news-timeline-page/1",
@@ -233,11 +236,11 @@ async function timelinePage(date: string, page: number, refresh = false): Promis
     rememberArticles(result.articles);
     return result;
   }
-  const key = `${date}:${page}`;
+  const key = `${date}:${page}:${index.updatedAt}`;
   let promise = refresh ? undefined : cachedPromise(pagePromises, key);
   if (!promise) {
     const object = resolveJoxObject(TIMELINE_INDEX_OBJECT, pageRef.object);
-    promise = client.fetchJson<TimesTimelinePage>(object, undefined, "no-store")
+    promise = client.fetchJson<TimesTimelinePage>(object, undefined, refresh ? "reload" : "default")
       .then((value) => asTimelinePage(value, date, page));
     retainPromise(pagePromises, key, promise, MAX_CACHED_PAGES);
   }
@@ -273,10 +276,53 @@ export function leadTimesImage(article: Pick<TimesDeliveryArticle, "assets">): J
     ?? article.assets.find((asset) => asset.type === "image");
 }
 
+export interface MobileTimesFeed { index: TimesTimelineIndex; pages: TimesTimelinePage[] }
+const FEED_KEY = "jojo:times-feed:latest";
+let savedFeed: MobileTimesFeed | undefined;
+
+async function cachedTimeline(): Promise<MobileTimesFeed | undefined> {
+  if (savedFeed) return savedFeed;
+  try {
+    const stored = await contentStore?.get(FEED_KEY);
+    if (!stored) return undefined;
+    const value = JSON.parse(new TextDecoder().decode(stored.bytes)) as MobileTimesFeed;
+    asTimelineIndex(value.index);
+    if (!Array.isArray(value.pages)) return undefined;
+    for (const page of value.pages) asTimelinePage(page, page.date, page.page);
+    savedFeed ??= value;
+    rememberArticles(savedFeed.pages.flatMap((page) => page.articles));
+    return savedFeed;
+  } catch { return undefined; }
+}
+
+function saveTimeline(feed: MobileTimesFeed) {
+  if (savedFeed && savedFeed.index.updatedAt > feed.index.updatedAt) return;
+  savedFeed = { index: feed.index, pages: feed.pages.slice(0, MAX_CACHED_PAGES) };
+  rememberArticles(feed.pages.flatMap((page) => page.articles));
+  void contentStore?.set(FEED_KEY, { bytes: new TextEncoder().encode(JSON.stringify(savedFeed)), expiresAt: Date.now() + 300_000 })
+    .catch(() => undefined);
+}
+
+async function latestTimeline(refresh = false): Promise<MobileTimesFeed> {
+  const index = await timelineIndex(refresh);
+  const first = firstTimesTimelineCursor(index);
+  const date = first ? index.dates[first.dateIndex] : undefined;
+  const page = first && date ? await timelinePage(date.date, first.page, refresh, index) : undefined;
+  return { index, pages: page ? [page] : [] };
+}
+
+export function updatedTimesArticleCount(pages: TimesTimelinePage[], latest: TimesDeliveryArticle[]): number {
+  const current = new Map(pages.flatMap((page) => page.articles).map((article) => [article.id, article]));
+  return latest.filter((article) => !current.has(article.id) || current.get(article.id)?.updatedAt !== article.updatedAt).length;
+}
+
 export const mobileTimesApi = {
   timelineIndex,
   timelineDay,
   timelinePage,
+  cachedTimeline,
+  saveTimeline,
+  latestTimeline,
   loadAssetDataUri: loadTimesAssetDataUri,
   loadAssetBytes: loadTimesAssetBytes,
 
@@ -293,45 +339,49 @@ export const mobileTimesApi = {
     newsId: string,
     languagePreference: MobileTimesLanguage = "zh-CN",
   ): Promise<MobileTimesNewsItem> {
-    const cached = articleMetadata.get(newsId);
-    const item = cached?.issueDate === issueDate
-      ? cached
-      : (await timelineDay(issueDate)).articles.find((candidate) => candidate.id === newsId);
-    if (!item) throw new Error("新闻不存在");
-    const translation = languagePreference === "zh-CN" ? preferredTimesTranslation(item) : undefined;
-    const fetchFragment = async (object: string) => {
-      const fragment = asJojoFragment(await client.fetchJson<unknown>(safeArticleObject(object), undefined, "no-store"));
-      if (fragment.type !== "article" || fragment.fragmentId !== item.id) {
-        throw new Error("时事文章对象格式无效");
-      }
-      return fragment;
-    };
-    let fragment;
-    let usingTranslation = Boolean(translation);
-    try {
-      fragment = await fetchFragment(translation?.articleObject ?? item.articleObject);
-    } catch (error) {
-      if (!translation) throw error;
-      fragment = await fetchFragment(item.articleObject);
-      usingTranslation = false;
-    }
-    const referencedAssetIds = new Set(fragment.assetRefs);
-    const assets = item.assets.filter((asset) => referencedAssetIds.has(asset.id));
-    const pairs = await Promise.all(assets.map(async (asset) => {
+    const bytes = await newsCache.get(`jojo:times-detail:${issueDate}:${newsId}:${languagePreference}`, 300_000, async () => {
+      await cachedTimeline();
+      const cached = articleMetadata.get(newsId);
+      const item = cached?.issueDate === issueDate
+        ? cached
+        : (await timelineDay(issueDate)).articles.find((candidate) => candidate.id === newsId);
+      if (!item) throw new Error("新闻不存在");
+      const translation = languagePreference === "zh-CN" ? preferredTimesTranslation(item) : undefined;
+      const fetchFragment = async (object: string) => {
+        const fragment = asJojoFragment(await client.fetchJson<unknown>(safeArticleObject(object)));
+        if (fragment.type !== "article" || fragment.fragmentId !== item.id) {
+          throw new Error("时事文章对象格式无效");
+        }
+        return fragment;
+      };
+      let fragment;
+      let usingTranslation = Boolean(translation);
       try {
-        return [asset.id, await loadTimesAssetDataUri(asset)] as const;
-      } catch {
-        return undefined;
+        fragment = await fetchFragment(translation?.articleObject ?? item.articleObject);
+      } catch (error) {
+        if (!translation) throw error;
+        fragment = await fetchFragment(item.articleObject);
+        usingTranslation = false;
       }
-    }));
-    return {
-      ...presentMobileTimesArticle(item, usingTranslation ? "zh-CN" : "original"),
-      ...(!usingTranslation && translation ? { title: fragment.title, summary: null, language: item.source.language } : {}),
-      assets,
-      content: fragment.body.value,
-      contentFormat: fragment.body.format,
-      assetUrls: Object.fromEntries(pairs.filter((pair): pair is readonly [string, string] => Boolean(pair))),
-    };
+      const referencedAssetIds = new Set(fragment.assetRefs);
+      const assets = item.assets.filter((asset) => referencedAssetIds.has(asset.id));
+      const pairs = await Promise.all(assets.map(async (asset) => {
+        try {
+          return [asset.id, await loadTimesAssetDataUri(asset)] as const;
+        } catch {
+          return undefined;
+        }
+      }));
+      return new TextEncoder().encode(JSON.stringify({
+        ...presentMobileTimesArticle(item, usingTranslation ? "zh-CN" : "original"),
+        ...(!usingTranslation && translation ? { title: fragment.title, summary: null, language: item.source.language } : {}),
+        assets,
+        content: fragment.body.value,
+        contentFormat: fragment.body.format,
+        assetUrls: Object.fromEntries(pairs.filter((pair): pair is readonly [string, string] => Boolean(pair))),
+      }));
+    });
+    return JSON.parse(new TextDecoder().decode(bytes)) as MobileTimesNewsItem;
   },
 };
 

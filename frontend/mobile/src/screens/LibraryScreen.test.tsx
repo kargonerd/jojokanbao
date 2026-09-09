@@ -4,6 +4,7 @@ import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LibraryScreen } from "./LibraryScreen";
 import { BookDetailsScreen } from "./BookDetailsScreen";
+import { BookshelfScreen } from "./BookshelfScreen";
 import { BookCoverCard } from "../components/BookCoverCard";
 import type { MobileBook } from "../lib/books";
 
@@ -12,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   user: { id: "reader" } as { id: string } | null,
   loadBooks: vi.fn(async (): Promise<MobileBook[]> => []),
-  loadShelf: vi.fn(async (): Promise<import("../account/accountData").MobileBookshelfEntry[]> => []),
+  loadShelf: vi.fn(async (_options?: import("../account/bookshelfCache").BookshelfLoadOptions): Promise<import("../account/accountData").MobileBookshelfEntry[]> => []),
   setShelf: vi.fn(async () => undefined),
   volumes: vi.fn(async () => [{ itemId: "test:full", itemKey: "full", title: "测试书", order: 0, manifestObject: "test.jox" }]),
   openTarget: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock("react-native", async () => {
   return {
     ActivityIndicator: "progress", Pressable: "button", Text: "span", TextInput: "input", View: "div",
     Modal: "dialog",
+    AppState: { currentState: "active", addEventListener: () => ({ remove() {} }) },
     FlatList: ({ data, renderItem, keyExtractor }: {
       data: unknown[]; renderItem: (info: { item: unknown }) => ReactNode; keyExtractor: (item: unknown) => string;
     }) => createElement("section", null, data.map((item) =>
@@ -48,10 +50,33 @@ vi.mock("../components/ScreenHeader", () => ({ ScreenHeader: "header" }));
 vi.mock("../lib/books", () => ({ loadMobileBooks: () => mocks.loadBooks(), loadMobileBookVolumes: mocks.volumes, resolveMobileBookOpenTarget: mocks.openTarget }));
 vi.mock("../lib/haptics", () => ({ impactHaptic: vi.fn() }));
 vi.mock("../store/mobileStore", () => ({
-  useMobileStore: (select: (state: { hapticsEnabled: boolean }) => unknown) => select({ hapticsEnabled: false }),
+  useMobileStore: (select: (state: { hapticsEnabled: boolean; recentBooks: unknown[] }) => unknown) => select({ hapticsEnabled: false, recentBooks: [] }),
 }));
 
 let view: ReactTestRenderer | undefined;
+describe("offline bookshelf screen", () => {
+  it("shows cached entries and requests their covers by ID before the catalog is available", async () => {
+    mocks.loadBooks.mockReturnValueOnce(new Promise(() => undefined));
+    mocks.loadShelf.mockResolvedValue([{ datasetId: "book", itemId: "book:full", title: "本地书籍" }]);
+    const props = { navigation: { navigate: mocks.navigate, goBack() {} } } as unknown as ComponentProps<typeof BookshelfScreen>;
+    await act(async () => { view = create(<BookshelfScreen {...props} />); });
+    const card = view!.root.findByType(BookCoverCard);
+    expect(card.props).toMatchObject({ book: "book", itemKey: "book:full", title: "本地书籍" });
+    await act(async () => card.props.onPress());
+    expect(mocks.navigate).toHaveBeenCalledWith("BookReader", expect.objectContaining({ datasetId: "book", itemKey: "book:full" }));
+  });
+
+  it("keeps the shelf visible after a background synchronization error", async () => {
+    let callbacks: import("../account/bookshelfCache").BookshelfLoadOptions | undefined;
+    mocks.loadShelf.mockImplementationOnce(async (options) => { callbacks = options; return [{ datasetId: "book", itemId: "book:full", title: "本地书籍" }]; });
+    const props = { navigation: { navigate: mocks.navigate, goBack() {} } } as unknown as ComponentProps<typeof BookshelfScreen>;
+    await act(async () => { view = create(<BookshelfScreen {...props} />); });
+    await act(async () => callbacks?.onError?.(new Error("offline")));
+    expect(view!.root.findByType(BookCoverCard).props.title).toBe("本地书籍");
+    await act(async () => callbacks?.onUpdate?.([]));
+    expect(view!.root.findAllByType(BookCoverCard)).toHaveLength(0);
+  });
+});
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.clearAllMocks();

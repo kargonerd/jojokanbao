@@ -1,7 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import type { TimesTimelineIndex, TimesTimelinePage, TimesSourceRef } from "@jojo/content";
+import type { TimesSourceRef } from "@jojo/content";
 import { useNavigation, type NavigationProp } from "@react-navigation/native";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -20,22 +20,22 @@ import { IS_EINK_RELEASE } from "../config/appVariant";
 import { impactHaptic, selectionHaptic } from "../lib/haptics";
 import { REMOVE_CLIPPED_SUBVIEWS } from "../lib/nativePerformance";
 import {
-  firstTimesTimelineCursor,
   leadTimesImage,
   mobileTimesApi,
-  nextTimesTimelineCursor,
   presentMobileTimesArticle,
   publisherTimesUpdatedAt,
   relativeTimesArticleTime,
   timesSourceName,
   type MobileTimesArticle,
-  type TimesTimelineCursor,
+  updatedTimesArticleCount,
 } from "../lib/times";
 import type { MainTabParamList, RootStackParamList } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
 import { mobileTheme } from "../theme/tokens";
 
 import { SOURCE_LOGOS } from "../lib/sourceLogos";
+import { useTimesFeed } from "../lib/useTimesFeed";
+import { useRetryOnFailure } from "../lib/useRetryOnFailure";
 
 function SourceMark({ source, compact = false }: { source: TimesSourceRef; compact?: boolean }) {
   const theme = mobileTheme;
@@ -55,6 +55,8 @@ function TimelineImage({ article, read }: { article: MobileTimesArticle; read: b
   const theme = mobileTheme;
   const [uri, setUri] = useState("");
   const [failed, setFailed] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
+  useRetryOnFailure(failed, () => setRetryToken((value) => value + 1));
 
   useEffect(() => {
     if (!asset) return;
@@ -62,10 +64,10 @@ function TimelineImage({ article, read }: { article: MobileTimesArticle; read: b
     setUri("");
     setFailed(false);
     void mobileTimesApi.loadAssetDataUri(asset, controller.signal)
-      .then(setUri)
+      .then((value) => { if (!controller.signal.aborted) setUri(value); })
       .catch(() => { if (!controller.signal.aborted) setFailed(true); });
     return () => controller.abort();
-  }, [asset]);
+  }, [asset, retryToken]);
 
   if (!asset || failed) return null;
   return (
@@ -122,87 +124,33 @@ export function TimesScreen() {
   const disabledSourceIds = useMobileStore((state) => state.timesDisabledSourceIds);
   const hapticsEnabled = useMobileStore((state) => state.hapticsEnabled);
   const theme = mobileTheme;
-  const generation = useRef(0);
-  const loadingMoreRef = useRef(false);
-  const [index, setIndex] = useState<TimesTimelineIndex | null>(null);
-  const [pages, setPages] = useState<TimesTimelinePage[]>([]);
-  const [nextCursor, setNextCursor] = useState<TimesTimelineCursor | null>(null);
+  const { index, pages, pendingLatest, nextCursor, loading, loadingMore, refreshing, error, refresh, loadMore, applyLatest } = useTimesFeed(user?.id);
+  const listRef = useRef<FlatList<MobileTimesArticle>>(null);
   const [selectedSource, setSelectedSource] = useState("all");
   const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState("");
 
   const readSet = useMemo(() => new Set(readIds), [readIds]);
   const disabledSources = useMemo(() => new Set(disabledSourceIds), [disabledSourceIds]);
   const enabledSources = useMemo(() => (
     index?.sources.filter((source) => !disabledSources.has(source.id)) ?? []
   ), [disabledSources, index?.sources]);
-  const articles = useMemo(() => pages
-    .flatMap((page) => page.articles)
+  const articles = useMemo(() => [...new Map(pages
+    .flatMap((page) => page.articles).map((article) => [article.id, article])).values()]
     .filter((article) => !disabledSources.has(article.source.id))
     .filter((article) => selectedSource === "all" || article.source.id === selectedSource)
     .map((article) => presentMobileTimesArticle(article, language)), [disabledSources, language, pages, selectedSource]);
   const selectedSourceItem = index?.sources.find((source) => source.id === selectedSource);
   const selectedSourceLabel = selectedSourceItem ? timesSourceName(selectedSourceItem) : "所有媒体";
 
-  const loadInitial = useCallback(async (refresh: boolean) => {
-    const currentGeneration = ++generation.current;
-    if (refresh) setRefreshing(true);
-    else setLoading(true);
-    setError("");
-    try {
-      if (refresh) mobileTimesApi.invalidate();
-      const loadedIndex = await mobileTimesApi.timelineIndex(refresh);
-      const first = firstTimesTimelineCursor(loadedIndex);
-      const date = first ? loadedIndex.dates[first.dateIndex] : undefined;
-      const page = first && date ? await mobileTimesApi.timelinePage(date.date, first.page, refresh) : null;
-      if (currentGeneration !== generation.current) return;
-      setIndex(loadedIndex);
-      setPages(page ? [page] : []);
-      setNextCursor(first ? nextTimesTimelineCursor(loadedIndex, first) : null);
-    } catch (reason) {
-      if (currentGeneration === generation.current) {
-        setError(reason instanceof Error ? reason.message : "时事数据暂时不可用");
-      }
-    } finally {
-      if (currentGeneration === generation.current) {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (user) void loadInitial(false);
-  }, [loadInitial, user]);
-
   useEffect(() => {
     if (selectedSource !== "all" && disabledSources.has(selectedSource)) setSelectedSource("all");
   }, [disabledSources, selectedSource]);
 
-  const loadMore = useCallback(async () => {
-    const cursor = nextCursor;
-    if (!index || !cursor || loadingMoreRef.current || refreshing) return;
-    const date = index.dates[cursor.dateIndex];
-    if (!date) return;
-    loadingMoreRef.current = true;
-    setLoadingMore(true);
-    setError("");
-    try {
-      const page = await mobileTimesApi.timelinePage(date.date, cursor.page);
-      setPages((current) => current.some((candidate) => candidate.date === page.date && candidate.page === page.page)
-        ? current
-        : [...current, page]);
-      setNextCursor(nextTimesTimelineCursor(index, cursor));
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "时间线加载失败");
-    } finally {
-      loadingMoreRef.current = false;
-      setLoadingMore(false);
-    }
-  }, [index, nextCursor, refreshing]);
+  const pendingUpdateCount = useMemo(() => updatedTimesArticleCount(pages,
+    (pendingLatest?.pages.flatMap((page) => page.articles) ?? [])
+      .filter((article) => !disabledSources.has(article.source.id))
+      .filter((article) => selectedSource === "all" || article.source.id === selectedSource)),
+  [pages, pendingLatest, disabledSources, selectedSource]);
 
   if (!initialized || !user) {
     return (
@@ -237,6 +185,13 @@ export function TimesScreen() {
         </Pressable>
       </View>
 
+      {pendingUpdateCount > 0 ? (
+        <Pressable accessibilityRole="button" accessibilityLabel={`查看 ${pendingUpdateCount} 条新动态`}
+          onPress={() => { applyLatest(); listRef.current?.scrollToOffset({ offset: 0, animated: !IS_EINK_RELEASE }); }}
+          style={[styles.updatesBanner, { backgroundColor: theme.paper, borderBottomColor: theme.red }]}>
+          <Text accessibilityLiveRegion="polite" style={[styles.updatesText, { color: theme.red, fontFamily: theme.sans }]}>查看 {pendingUpdateCount} 条新动态 ↑</Text>
+        </Pressable>
+      ) : null}
       {loading ? (
         <View style={styles.loadingState}>
           {!IS_EINK_RELEASE ? <ActivityIndicator color={theme.red} /> : null}
@@ -244,6 +199,7 @@ export function TimesScreen() {
         </View>
       ) : (
         <FlatList
+          ref={listRef}
           data={articles}
           keyExtractor={(article) => article.id}
           renderItem={({ item }) => (
@@ -262,7 +218,7 @@ export function TimesScreen() {
           onEndReached={() => void loadMore()}
           onEndReachedThreshold={0.8}
           refreshing={refreshing}
-          onRefresh={() => void loadInitial(true)}
+          onRefresh={() => void refresh()}
           initialNumToRender={8}
           maxToRenderPerBatch={8}
           windowSize={7}
@@ -272,7 +228,7 @@ export function TimesScreen() {
             <View style={styles.timelineFooter}>
               {loadingMore ? <Text style={[styles.footerText, { color: theme.muted, fontFamily: theme.sans }]}>正在加载更多…</Text> : null}
               {error ? (
-                <Pressable accessibilityRole="button" onPress={() => nextCursor ? void loadMore() : void loadInitial(false)} style={[styles.retry, { borderColor: theme.red }]}>
+                <Pressable accessibilityRole="button" onPress={() => nextCursor ? void loadMore() : void refresh()} style={[styles.retry, { borderColor: theme.red }]}>
                   <Text style={[styles.retryText, { color: theme.red, fontFamily: theme.sans }]}>{error} · 点击重试</Text>
                 </Pressable>
               ) : null}
@@ -334,6 +290,8 @@ const styles = StyleSheet.create({
   filterButton: { flex: 1, minWidth: 0, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 9 },
   filterLabel: { flex: 1, minWidth: 0, fontSize: 14, fontWeight: "900" },
   filterAction: { fontSize: 10, fontWeight: "900" },
+  updatesBanner: { minHeight: 40, justifyContent: "center", alignItems: "center", borderBottomWidth: StyleSheet.hairlineWidth },
+  updatesText: { fontSize: 12, fontWeight: "800" },
   loadingState: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   loadingStateText: { fontSize: 11 },
   timeline: { width: "100%", maxWidth: 760, alignSelf: "center" },

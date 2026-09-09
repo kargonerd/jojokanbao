@@ -99,7 +99,10 @@ export interface ResolvedMobileAnnotationReference {
 
 const CONTENT_CDN = process.env.EXPO_PUBLIC_CONTENT_CDN_BASE?.trim()
   || "https://blacknews.jojokanbao.cn/";
-const client = new JoxClient(CONTENT_CDN, (input, init) => fetch(input, init), new ResourceCache(mobileContentCache()));
+const contentStore = mobileContentCache();
+const client = new JoxClient(CONTENT_CDN, (input, init) => fetch(input, init),
+  new ResourceCache(contentStore, undefined, { staleWhileRevalidate: true }));
+const coverCache = new ResourceCache(contentStore, undefined, { staleWhileRevalidate: true });
 let catalogPromise: Promise<MobileBook[]> | undefined;
 const volumePromises = new Map<string, Promise<MobileBookVolume[]>>();
 const coverPromises = new Map<string, Promise<string | undefined>>();
@@ -156,7 +159,7 @@ export function selectPublishedBookVolumes(items: readonly JojoDatasetItemSummar
 }
 
 export function loadMobileBooks(): Promise<MobileBook[]> {
-  catalogPromise ??= client.fetchJson<unknown>("catalog.jox", undefined, "no-store")
+  catalogPromise ??= client.fetchJson<unknown>("catalog.jox")
     .then(asJojoCatalog)
     .then((catalog) => selectPublishedBooks(catalog.datasets))
     .catch((error: unknown) => {
@@ -211,30 +214,40 @@ function bytesToBase64(bytes: Uint8Array): string {
   return output;
 }
 
-export function cachedMobileBookCover(book: MobileBook, itemKey?: string): string {
-  return loadedCoverUris.get(`${book.datasetId}:${itemKey ?? ""}`) ?? "";
+export function cachedMobileBookCover(book: MobileBook | string, itemKey?: string): string {
+  return loadedCoverUris.get(`${typeof book === "string" ? book : book.datasetId}:${itemKey ?? ""}`) ?? "";
 }
 
-export function loadMobileBookCover(book: MobileBook, itemKey?: string): Promise<string | undefined> {
-  const cacheKey = `${book.datasetId}:${itemKey ?? ""}`;
+export function loadMobileBookCover(source: MobileBook | string, itemKey?: string): Promise<string | undefined> {
+  const datasetId = typeof source === "string" ? source : source.datasetId;
+  const cacheKey = `${datasetId}:${itemKey ?? ""}`;
   let promise = coverPromises.get(cacheKey);
   if (!promise) {
-    promise = (async () => {
+    promise = coverCache.get(`jojo:book-cover:${cacheKey}`, 7 * 86400_000, async () => {
+      const book = typeof source === "string" ? (await loadMobileBooks()).find((item) => item.datasetId === source) : source;
+      if (!book) throw new Error("书籍目录暂时无法载入");
       const volumes = await loadMobileBookVolumes(book);
       const volume = itemKey
         ? volumes.find((candidate) => candidate.itemKey === itemKey || candidate.itemId === itemKey)
         : volumes[0];
-      if (!volume) return undefined;
+      if (!volume) return new Uint8Array();
       const manifestObject = resolveJoxObject(book.indexObject, volume.manifestObject);
       const manifest = asJojoItemManifest(
         await client.fetchJson<JojoItemManifest>(manifestObject),
       );
       const cover = manifest.assets.find((asset) => asset.type === "image" && asset.role === "cover");
-      if (!cover) return undefined;
+      if (!cover) return new Uint8Array();
       const object = resolveJoxObject(manifestObject, cover.object);
       const bytes = await client.fetchDecodedBytes(object, undefined, cover.sha256);
-      return `data:${cover.mediaType};base64,${bytesToBase64(bytes)}`;
-    })().then((uri) => {
+      const encoded = new TextEncoder().encode(`data:${cover.mediaType};base64,${bytesToBase64(bytes)}`);
+      // Reading history uses itemKey; the account bookshelf uses itemId.
+      for (const key of new Set([volume.itemKey, volume.itemId, itemKey ?? ""])) {
+        void contentStore?.set(`jojo:book-cover:${datasetId}:${key}`, {
+          bytes: encoded, expiresAt: Date.now() + 7 * 86400_000,
+        }).catch(() => undefined);
+      }
+      return encoded;
+    }).then((bytes) => new TextDecoder().decode(bytes) || undefined).then((uri) => {
       if (uri) loadedCoverUris.set(cacheKey, uri);
       return uri;
     }).catch((error: unknown) => {

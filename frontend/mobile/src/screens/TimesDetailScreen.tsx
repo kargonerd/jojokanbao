@@ -36,6 +36,7 @@ import {
 import type { RootStackParamList } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
 import { mobileTheme } from "../theme/tokens";
+import { useRetryOnFailure } from "../lib/useRetryOnFailure";
 
 type Props = NativeStackScreenProps<RootStackParamList, "TimesDetail">;
 
@@ -60,6 +61,8 @@ export function TimesDetailScreen({ route, navigation }: Props) {
   const [news, setNews] = useState<MobileTimesNewsItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [retryToken, setRetryToken] = useState(0);
+  useRetryOnFailure(Boolean(error) && !loading, () => setRetryToken((value) => value + 1));
   const [selection, setSelection] = useState<MobileTimesTextAnchor | null>(null);
   const [explanation, setExplanation] = useState<ExplanationState | null>(null);
 
@@ -77,7 +80,7 @@ export function TimesDetailScreen({ route, navigation }: Props) {
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [issueDate, newsId, requestedLanguage]);
+  }, [issueDate, newsId, requestedLanguage, retryToken]);
 
   const document = useMemo(
     () => news ? createTimesArticleDocument(news, IS_EINK_RELEASE) : "",

@@ -53,7 +53,7 @@ const tabLabels: Record<keyof MainTabParamList, string> = {
   Times: "时事",
 };
 
-function MainTabs() {
+export function MainTabs() {
   const theme = mobileTheme;
   const insets = useSafeAreaInsets();
   const initialized = useMobileAuthStore((state) => state.initialized);

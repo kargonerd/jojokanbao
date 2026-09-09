@@ -3,6 +3,7 @@ import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import { cachedMobileBookCover, loadMobileBookCover, type MobileBook } from "../lib/books";
 import { mobileTheme } from "../theme/tokens";
+import { useRetryOnFailure } from "../lib/useRetryOnFailure";
 
 const coverTones = [
   { background: "#8b1a1a", foreground: "#ffffff" },
@@ -27,7 +28,7 @@ export const BookCoverCard = memo(function BookCoverCard({
   busy = false,
   onPress,
 }: {
-  book: MobileBook;
+  book: MobileBook | string;
   itemKey?: string;
   title: string;
   subtitle?: string;
@@ -37,17 +38,21 @@ export const BookCoverCard = memo(function BookCoverCard({
 }) {
   const theme = mobileTheme;
   const [imageUri, setImageUri] = useState(() => cachedMobileBookCover(book, itemKey));
+  const [failed, setFailed] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
+  useRetryOnFailure(failed, () => setRetryToken((value) => value + 1));
   const featured = layout === "featured";
-  const tone = IS_EINK_RELEASE ? { background: theme.paper, foreground: theme.ink } : toneFor(`${book.datasetId}:${itemKey ?? ""}`);
+  const tone = IS_EINK_RELEASE ? { background: theme.paper, foreground: theme.ink } : toneFor(`${typeof book === "string" ? book : book.datasetId}:${itemKey ?? ""}`);
 
   useEffect(() => {
     let active = true;
     setImageUri(cachedMobileBookCover(book, itemKey));
+    setFailed(false);
     void loadMobileBookCover(book, itemKey)
       .then((uri) => { if (active && uri) setImageUri(uri); })
-      .catch(() => undefined);
+      .catch(() => { if (active) setFailed(true); });
     return () => { active = false; };
-  }, [book, itemKey]);
+  }, [book, itemKey, retryToken]);
 
   return (
     <Pressable

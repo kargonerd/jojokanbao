@@ -13,9 +13,14 @@ export const CONTENT_CACHE_ENTRIES = 384;
 export class ResourceCache {
   private entries = new Map<string, ResourceCacheEntry>();
   private pending = new Map<string, Promise<Uint8Array>>();
+  private refreshes = new Map<string, Promise<Uint8Array>>();
   private bytes = 0;
 
-  constructor(private store?: ResourceCacheStore, private maxBytes = 16 * 1024 * 1024) {}
+  constructor(
+    private store?: ResourceCacheStore,
+    private maxBytes = 16 * 1024 * 1024,
+    private options: { staleWhileRevalidate?: boolean } = {},
+  ) {}
 
   async delete(key: string) {
     const entry = this.entries.get(key);
@@ -26,10 +31,9 @@ export class ResourceCache {
   get(key: string, ttl: number, load: () => Promise<Uint8Array>): Promise<Uint8Array> {
     const cached = this.entries.get(key);
     if (cached) {
-      this.entries.delete(key);
-      this.bytes -= cached.bytes.length;
-      if (cached.expiresAt > Date.now()) {
+      if (cached.expiresAt > Date.now() || this.options.staleWhileRevalidate) {
         this.remember(key, cached);
+        if (cached.expiresAt <= Date.now()) void this.refresh(key, ttl, load).catch(() => undefined);
         return Promise.resolve(cached.bytes);
       }
     }
@@ -37,18 +41,34 @@ export class ResourceCache {
     if (pending) return pending;
     const task = (async () => {
       const stored = await this.store?.get(key).catch(() => undefined);
-      const entry = stored && stored.expiresAt > Date.now()
-        ? stored : { bytes: await load(), expiresAt: Date.now() + ttl };
-      this.remember(key, entry);
-      // Cache writes must not delay rendering or break reading when storage is full.
-      if (entry !== stored) void this.store?.set(key, entry).catch(() => undefined);
-      return entry.bytes;
+      if (stored && (stored.expiresAt > Date.now() || this.options.staleWhileRevalidate)) {
+        this.remember(key, stored);
+        if (stored.expiresAt <= Date.now()) void this.refresh(key, ttl, load).catch(() => undefined);
+        return stored.bytes;
+      }
+      return this.refresh(key, ttl, load);
     })().finally(() => this.pending.delete(key));
     this.pending.set(key, task);
     return task;
   }
 
+  refresh(key: string, ttl: number, load: () => Promise<Uint8Array>): Promise<Uint8Array> {
+    const pending = this.refreshes.get(key);
+    if (pending) return pending;
+    const task = Promise.resolve().then(load).then((bytes) => {
+      const entry = { bytes, expiresAt: Date.now() + ttl };
+      this.remember(key, entry);
+      // Cache writes must not delay rendering or break reading when storage is full.
+      void this.store?.set(key, entry).catch(() => undefined);
+      return bytes;
+    }).finally(() => this.refreshes.delete(key));
+    this.refreshes.set(key, task);
+    return task;
+  }
+
   private remember(key: string, entry: ResourceCacheEntry) {
+    const previous = this.entries.get(key);
+    if (previous) { this.bytes -= previous.bytes.length; this.entries.delete(key); }
     if (entry.bytes.length > this.maxBytes) return;
     this.entries.set(key, entry);
     this.bytes += entry.bytes.length;

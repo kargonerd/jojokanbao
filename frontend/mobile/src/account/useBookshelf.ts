@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from "react";
 import type { RootStackParamList } from "../navigation/types";
 import { loadMobileBookshelf, setMobileBookshelf, type MobileBookshelfEntry } from "./accountData";
 import { useMobileAuthStore } from "./auth";
+import { useRetryOnFailure } from "../lib/useRetryOnFailure";
 
 // One shelf request per focused screen, not one request for every book card.
 export function useBookshelf() {
@@ -14,20 +15,28 @@ export function useBookshelf() {
   const [busyKey, setBusyKey] = useState("");
   const generation = useRef(0);
   const busy = useRef(false);
+  const owner = useRef(userId);
+  const [retryToken, setRetryToken] = useState(0);
+  const reload = () => setRetryToken((value) => value + 1);
+  useRetryOnFailure(Boolean(error) && !loading && !busyKey, reload);
 
   useFocusEffect(useCallback(() => {
     const request = ++generation.current;
-    setEntries([]);
+    if (owner.current !== userId) setEntries([]);
+    owner.current = userId;
     setError("");
     setLoading(Boolean(userId));
     setBusyKey("");
     busy.current = false;
-    if (userId) void loadMobileBookshelf()
+    if (userId) void loadMobileBookshelf({
+      onUpdate: (items) => { if (request === generation.current) { setEntries(items); setError(""); } },
+      onError: () => { if (request === generation.current) setError("书架暂时无法同步，继续显示本地内容。"); },
+    })
       .then((items) => { if (request === generation.current) setEntries(items); })
       .catch(() => { if (request === generation.current) setError("书架状态暂时无法读取，点击书架按钮重试。"); })
       .finally(() => { if (request === generation.current) setLoading(false); });
     return () => { generation.current++; };
-  }, [userId]));
+  }, [userId, retryToken]));
 
   async function toggle(key: string, resolveEntry: () => Promise<MobileBookshelfEntry | undefined>) {
     if (!userId) { navigation.navigate("Account"); return; }
@@ -38,7 +47,7 @@ export function useBookshelf() {
     const needsReload = Boolean(error);
     setError("");
     try {
-      const current = needsReload ? await loadMobileBookshelf() : entries;
+      const current = needsReload ? await loadMobileBookshelf({ refresh: true }) : entries;
       const entry = await resolveEntry();
       if (!entry || request !== generation.current) return;
       const matches = (item: MobileBookshelfEntry) => item.datasetId === entry.datasetId && item.itemId === entry.itemId;
@@ -52,5 +61,5 @@ export function useBookshelf() {
     }
   }
 
-  return { entries, loading, error, busyKey, toggle };
+  return { entries: owner.current === userId ? entries : [], loading, error, busyKey, toggle, reload };
 }

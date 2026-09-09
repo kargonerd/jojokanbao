@@ -1,8 +1,9 @@
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { loadMobileBookshelf, setMobileBookshelf, type MobileBookshelfEntry } from "../account/accountData";
+import type { MobileBookshelfEntry } from "../account/accountData";
+import { useBookshelf } from "../account/useBookshelf";
 import { BookCoverCard } from "../components/BookCoverCard";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { IS_EINK_RELEASE } from "../config/appVariant";
@@ -12,6 +13,7 @@ import { getLibraryCellWidth, getLibraryColumnCount } from "../lib/tabletLayout"
 import type { RootStackParamList } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
 import { mobileTheme } from "../theme/tokens";
+import { useRetryOnFailure } from "../lib/useRetryOnFailure";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Bookshelf">;
 
@@ -21,56 +23,33 @@ export function BookshelfScreen({ navigation }: Props) {
   const theme = mobileTheme;
   const { width } = useWindowDimensions();
   const recentBooks = useMobileStore((state) => state.recentBooks);
-  const [entries, setEntries] = useState<MobileBookshelfEntry[]>([]);
+  const { entries, loading, error, busyKey, toggle, reload } = useBookshelf();
   const [books, setBooks] = useState<MobileBook[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [busyKey, setBusyKey] = useState("");
-  const [error, setError] = useState("");
+  const [booksFailed, setBooksFailed] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
+  useRetryOnFailure(booksFailed, () => setRetryToken((value) => value + 1));
   const columnCount = getLibraryColumnCount(width);
   const cellWidth = getLibraryCellWidth(width, columnCount);
 
-  const load = useCallback(async (refresh = false) => {
-    if (refresh) setRefreshing(true);
-    else setLoading(true);
-    setError("");
-    try {
-      const [loadedEntries, loadedBooks] = await Promise.all([loadMobileBookshelf(), loadMobileBooks()]);
-      setEntries(loadedEntries);
-      setBooks(loadedBooks);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "书架暂时无法载入");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    let active = true;
+    setBooksFailed(false);
+    void loadMobileBooks().then((items) => { if (active) setBooks(items); })
+      .catch(() => { if (active) setBooksFailed(true); });
+    return () => { active = false; };
+  }, [retryToken]);
 
   const items = useMemo<ShelfItem[]>(() => entries.map((entry) => ({
     ...entry,
     book: books.find((book) => book.datasetId === entry.datasetId),
   })), [books, entries]);
 
-  const remove = async (item: MobileBookshelfEntry) => {
-    const key = `${item.datasetId}:${item.itemId}`;
-    setBusyKey(key);
-    setError("");
-    try {
-      await setMobileBookshelf({ ...item, added: false });
-      setEntries((current) => current.filter((entry) => `${entry.datasetId}:${entry.itemId}` !== key));
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "暂时无法移出书架");
-    } finally {
-      setBusyKey("");
-    }
-  };
+  const remove = (item: MobileBookshelfEntry) => toggle(`${item.datasetId}:${item.itemId}`, async () => item);
 
   return (
     <SafeAreaView edges={["top"]} style={[styles.safe, { backgroundColor: theme.canvas }]}>
       <ScreenHeader title="我的书架" onBack={() => navigation.goBack()} />
-      {loading ? (
+      {loading && !entries.length ? (
         <View style={styles.center}>
           {!IS_EINK_RELEASE ? <ActivityIndicator color={theme.red} /> : null}
           <Text style={[styles.centerText, { color: theme.muted, fontFamily: theme.sans }]}>正在整理书架…</Text>
@@ -81,8 +60,8 @@ export function BookshelfScreen({ navigation }: Props) {
           data={items}
           numColumns={columnCount}
           keyExtractor={(item) => `${item.datasetId}:${item.itemId}`}
-          refreshing={refreshing}
-          onRefresh={() => void load(true)}
+          refreshing={loading}
+          onRefresh={() => { reload(); setRetryToken((value) => value + 1); }}
           columnWrapperStyle={styles.row}
           contentContainerStyle={[styles.list, !items.length && styles.emptyList]}
           renderItem={({ item }) => {
@@ -90,27 +69,18 @@ export function BookshelfScreen({ navigation }: Props) {
             const recent = recentBooks.find((entry) => entry.datasetId === item.datasetId && entry.itemKey === item.itemId);
             return (
               <View style={[styles.cell, { width: cellWidth }]}>
-                {item.book ? (
-                  <BookCoverCard
-                    book={item.book}
-                    itemKey={item.itemId}
-                    title={item.title}
-                    subtitle={recent?.progress ? `继续阅读 · ${recent.progress}%` : "开始阅读"}
-                    onPress={() => navigation.navigate("BookReader", {
-                      datasetId: item.datasetId,
-                      itemKey: item.itemId,
-                      title: item.title,
-                      bookTitle: item.book?.title ?? item.title,
-                    })}
-                  />
-                ) : (
-                  <Pressable
-                    onPress={() => navigation.navigate("BookReader", { datasetId: item.datasetId, itemKey: item.itemId, title: item.title, bookTitle: item.title })}
-                    style={[styles.fallback, { borderColor: theme.rule, backgroundColor: theme.paper }]}
-                  >
-                    <Text style={[styles.fallbackTitle, { color: theme.ink, fontFamily: theme.serif }]}>{item.title}</Text>
-                  </Pressable>
-                )}
+                <BookCoverCard
+                  book={item.book ?? item.datasetId}
+                  itemKey={item.itemId}
+                  title={item.title}
+                  subtitle={recent?.progress ? `继续阅读 · ${recent.progress}%` : "开始阅读"}
+                  onPress={() => navigation.navigate("BookReader", {
+                    datasetId: item.datasetId,
+                    itemKey: item.itemId,
+                    title: item.title,
+                    bookTitle: item.book?.title ?? item.title,
+                  })}
+                />
                 <Pressable disabled={busyKey === key} onPress={() => void remove(item)} style={styles.removeButton}>
                   <Text style={[styles.removeText, { color: theme.red, opacity: busyKey === key ? 0.4 : 1, fontFamily: theme.sans }]}>{busyKey === key ? "正在移出…" : "移出书架"}</Text>
                 </Pressable>
@@ -148,8 +118,6 @@ const styles = StyleSheet.create({
   cell: { flexGrow: 0 },
   removeButton: { minHeight: 34, alignItems: "flex-start", justifyContent: "center" },
   removeText: { fontSize: 9, fontWeight: "900" },
-  fallback: { aspectRatio: 0.7, borderWidth: StyleSheet.hairlineWidth, padding: 14, alignItems: "center", justifyContent: "center" },
-  fallbackTitle: { fontSize: 15, lineHeight: 24, fontWeight: "900", textAlign: "center" },
   notice: { marginBottom: 18, borderLeftWidth: 2, padding: 10, fontSize: 10, lineHeight: 17, fontWeight: "800" },
   empty: { alignItems: "center", paddingHorizontal: 24 },
   emptyMark: { fontSize: 50, fontWeight: "900" },

@@ -95,8 +95,10 @@ export class JoxClient {
         })()]);
       } finally { clearTimeout(timer!); }
     };
-    const task = this.cache && cache !== "no-store" && cache !== "reload"
-      ? this.cache.get(url.href, revision ? 7 * 86400_000 : 300_000, load) : load();
+    const ttl = revision ? 7 * 86400_000 : 300_000;
+    const task = this.cache && cache !== "no-store"
+      ? cache === "reload" ? this.cache.refresh(url.href, ttl, load) : this.cache.get(url.href, ttl, load)
+      : load();
     return abortable(task, signal);
   }
 

@@ -7,6 +7,7 @@ import {
 } from "@jojo/auth";
 import { AppState, Platform } from "react-native";
 import { createReaderIdentityCache } from "./readerIdentity";
+import { MOBILE_AUTH_STORAGE_KEY, readMobilePersistedSession } from "./persistedSession";
 
 const accountConfig = Constants.expoConfig?.extra?.account;
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || accountConfig?.supabaseUrl;
@@ -17,7 +18,7 @@ export const MOBILE_ACCOUNT_CONFIGURED = Boolean(supabaseUrl && publishableKey);
 export const mobileAuthClient = createJojoAuthClient({
   supabaseUrl: supabaseUrl || "https://invalid.invalid",
   publishableKey: publishableKey || "missing",
-  storageKey: "jojo-mobile-auth-session",
+  storageKey: MOBILE_AUTH_STORAGE_KEY,
   storage: AsyncStorage,
   detectSessionInUrl: false,
 });
@@ -25,7 +26,9 @@ export const mobileAuthClient = createJojoAuthClient({
 export const mobilePersonalInvitationRepository =
   createPersonalInvitationRepository(mobileAuthClient);
 
-const controller = createJojoAuthStore(mobileAuthClient);
+const controller = createJojoAuthStore(mobileAuthClient, {
+  readPersistedSession: () => readMobilePersistedSession(AsyncStorage),
+});
 
 export const useMobileAuthStore = controller.useAuthStore;
 const readerIdentity = createReaderIdentityCache(useMobileAuthStore, AsyncStorage);
