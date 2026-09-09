@@ -25,6 +25,8 @@ const account = vi.hoisted(() => ({
     error: null as string | null,
     notice: null as string | null,
     clearFeedback: vi.fn(),
+    signupInvitationRequired: true,
+    refreshSignupPolicy: vi.fn().mockResolvedValue(undefined),
     signOut: vi.fn(),
     sendPasswordReset: vi.fn(),
     cancelPasswordRecovery: vi.fn(),

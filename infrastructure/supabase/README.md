@@ -72,9 +72,32 @@ do not reapply a migration already recorded as complete. The migration preserves
 all current rollout rules and revisions. After application, run the
 [feature configuration smoke test](../../tools/beta-smoke/README.md#feature-configuration).
 
-The database also enforces redemption with a trigger. Therefore new user
-creation fails closed if somebody disables or bypasses the hosted hook.
-Existing users are unaffected.
+The database also enforces the signup policy with a trigger. When invitations
+are required, new user creation fails closed if somebody disables or bypasses
+the hosted hook. Existing users are unaffected.
+
+### Temporarily open registration
+
+Migration `202609090001_optional_signup_invitations.sql` temporarily opens email
+registration using `auth.signup.config.invitationRequired = false`. The Auth
+hook and redemption trigger remain installed and read the same setting for
+each new account. Open registration ignores submitted invitation codes and
+does not consume allocations or change existing redemption history. Email
+confirmation and password requirements remain enabled.
+
+To restore invitations, open JOJO 管理台 → 功能开关 → `auth.signup` → 注册设置,
+enable **注册需要邀请码**, enter a reason, and publish. This reuses Operator
+authorization, revision conflict checks, history, and rollback. The setting
+applies to all new accounts independently of rollout rules. The migration
+records the former required state as revision 1 and the open state as revision 2.
+
+`public.signup_invitation_required()` exposes only this boolean to clients.
+Web/Desktop and Mobile refresh it when the account page or registration form
+opens, and after a failed registration. Backend checks always read the current
+setting. Missing/invalid configuration or an unavailable policy RPC retains
+the invitation requirement. Writes require a boolean. Apply the database
+migration before releasing the updated clients; already installed Mobile or
+Desktop versions retain their old form until updated.
 
 The Auth config explicitly preserves the hosted one-minute email request
 interval, 100-email-per-hour project allowance, six-digit OTP setting, TOTP
@@ -104,7 +127,7 @@ Auth user. Never expose `SUPABASE_SERVICE_ROLE_KEY` to any frontend environment.
 
 The trigger applies to every new Auth user, including users created from the
 Supabase dashboard and OAuth identities. Keep those signup paths disabled
-unless they are updated to supply an invitation. An invitation is redeemed
+while invitations are required unless they supply an invitation. An invitation is redeemed
 when the Auth user is created, before the reader confirms their email.
 
 ## Runtime configuration reuse
@@ -137,6 +160,7 @@ JOJO 管理台。新增配置前先查已有 key、读取函数和编辑界面�
 
 | Flag key | Config 字段 | 默认值与范围 |
 | --- | --- | --- |
+| `auth.signup` | `invitationRequired` | 布尔值；缺失时默认 true，本次迁移设为 false |
 | `reader.annotations` | `publicMarkThreshold` | 默认 2；整数 1–100 |
 | `ai.usage_limits` | `requestsPerMinute` | 默认 3；整数 1–60 |
 | `ai.usage_limits` | `requestsPerDay` | 默认 100；整数 1–10,000 |

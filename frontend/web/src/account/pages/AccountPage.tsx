@@ -37,8 +37,13 @@ export function AccountPage() {
     error,
     notice,
     clearFeedback,
+    signupInvitationRequired,
+    refreshSignupPolicy,
   } = useAuthStore();
   const [mode, setMode] = useState<AccountMode>(() => activeRecoveryEmail ? "recover" : "login");
+  useEffect(() => {
+    void refreshSignupPolicy();
+  }, [mode, refreshSignupPolicy]);
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [invitationCode, setInvitationCode] = useState("");
@@ -118,7 +123,7 @@ export function AccountPage() {
     setLocalError(null);
     const code = invitationCode.trim();
     const email = registrationEmail.trim();
-    if (!/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{6}$/i.test(code)) {
+    if (signupInvitationRequired && !/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{6}$/i.test(code)) {
       setLocalError("请输入正确的 6 位邀请码。");
       return;
     }
@@ -134,7 +139,7 @@ export function AccountPage() {
     try {
       setAuthTransitioning(true);
       const requiresConfirmation = await signUp({
-        invitationCode: code,
+        ...(signupInvitationRequired ? { invitationCode: code } : {}),
         email,
         password: registrationPassword,
       });
@@ -148,6 +153,7 @@ export function AccountPage() {
       }
     } catch {
       setAuthTransitioning(false);
+      void refreshSignupPolicy();
       // The shared auth store exposes a localized error.
     }
   };
@@ -246,6 +252,7 @@ export function AccountPage() {
         />
       ) : mode === "register" ? (
         <RegisterForm
+          invitationRequired={signupInvitationRequired}
           invitationCode={invitationCode}
           email={registrationEmail}
           password={registrationPassword}

@@ -1,4 +1,6 @@
 begin;
+update private.feature_flags set config = config || '{"invitationRequired":true}'::jsonb
+where key = 'auth.signup';
 create extension if not exists pgtap with schema extensions;
 select extensions.plan(4);
 create temporary table metadata_cleanup_state as

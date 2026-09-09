@@ -70,6 +70,46 @@ function createClient() {
 }
 
 describe("createJojoAuthStore", () => {
+  it.each([undefined, "", "   "])("registers without invitation metadata when no code is supplied: %s", async (invitationCode) => {
+    const { client, signUp } = createClient();
+    const { useAuthStore } = createJojoAuthStore(client);
+    expect(await useAuthStore.getState().signUp({ email: "reader@example.com", password: "password", invitationCode })).toBe(true);
+    expect(signUp).toHaveBeenCalledWith({ email: "reader@example.com", password: "password" });
+  });
+
+  it("reads open signup, restores invitations, and falls back safely for an older server", async () => {
+    const { client } = createClient();
+    const abortSignal = vi.fn()
+      .mockResolvedValueOnce({ data: false, error: null })
+      .mockResolvedValueOnce({ data: true, error: null })
+      .mockResolvedValueOnce({ data: null, error: { code: "PGRST202" } });
+    const rpc = vi.fn(() => ({ abortSignal }));
+    client.rpc = rpc as unknown as JojoAuthClient["rpc"];
+    const { useAuthStore } = createJojoAuthStore(client);
+    await useAuthStore.getState().refreshSignupPolicy();
+    expect(rpc).toHaveBeenCalledWith("signup_invitation_required");
+    expect(useAuthStore.getState().signupInvitationRequired).toBe(false);
+    await useAuthStore.getState().refreshSignupPolicy();
+    expect(useAuthStore.getState().signupInvitationRequired).toBe(true);
+    useAuthStore.setState({ signupInvitationRequired: false });
+    await useAuthStore.getState().refreshSignupPolicy();
+    expect(useAuthStore.getState().signupInvitationRequired).toBe(true);
+  });
+
+  it("ignores a stale open-signup response after invitations have been restored", async () => {
+    const { client } = createClient();
+    let resolveOld!: (value: unknown) => void;
+    const abortSignal = vi.fn()
+      .mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }))
+      .mockResolvedValueOnce({ data: true, error: null });
+    client.rpc = vi.fn(() => ({ abortSignal })) as unknown as JojoAuthClient["rpc"];
+    const { useAuthStore } = createJojoAuthStore(client);
+    const oldRequest = useAuthStore.getState().refreshSignupPolicy();
+    await useAuthStore.getState().refreshSignupPolicy();
+    resolveOld({ data: false, error: null });
+    await oldRequest;
+    expect(useAuthStore.getState().signupInvitationRequired).toBe(true);
+  });
   it.each(["qq.com@123456789", "mail.qq@9876543210", "reader@host.123", "reader@@qq.com"])(
     "rejects an incomplete or reversed signup email before requesting delivery: %s", async (email) => {
       const { client, signUp, resend } = createClient();

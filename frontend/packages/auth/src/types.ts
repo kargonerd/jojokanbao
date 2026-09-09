@@ -48,6 +48,10 @@ export type Database = {
     };
     Views: { [_ in never]: never };
     Functions: {
+      signup_invitation_required: {
+        Args: Record<PropertyKey, never>;
+        Returns: boolean;
+      };
       get_my_feature_flags: {
         Args: { p_keys: string[]; p_visitor_id: string | null };
         Returns: Array<{ flag_key: string; enabled: boolean; revision: number }>;
@@ -67,6 +71,7 @@ export type Database = {
 };
 
 export interface AuthState {
+  signupInvitationRequired: boolean;
   session: Session | null;
   user: User | null;
   profile: Profile | null;
@@ -83,5 +88,5 @@ export interface AuthState {
 export interface SignUpInput {
   email: string;
   password: string;
-  invitationCode: string;
+  invitationCode?: string;
 }

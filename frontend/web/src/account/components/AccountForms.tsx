@@ -138,6 +138,7 @@ export function LoginForm({
 }
 
 interface RegisterFormProps extends FeedbackProps {
+  invitationRequired: boolean;
   invitationCode: string;
   email: string;
   password: string;
@@ -158,6 +159,7 @@ interface RegisterFormProps extends FeedbackProps {
 }
 
 export function RegisterForm({
+  invitationRequired,
   invitationCode,
   email,
   password,
@@ -259,7 +261,7 @@ export function RegisterForm({
           onChange={(event) => onPasswordConfirmationChange(event.target.value)}
         />
       </label>
-      <label>
+      {invitationRequired && <label>
         <span>邀请码</span>
         <input
           type="text"
@@ -274,7 +276,7 @@ export function RegisterForm({
           required
           onChange={(event) => onInvitationCodeChange(event.target.value)}
         />
-      </label>
+      </label>}
       <button type="submit" disabled={busy}>
         {busy ? "正在注册…" : "发送注册验证码"}
       </button>

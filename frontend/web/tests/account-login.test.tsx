@@ -15,6 +15,8 @@ const auth = vi.hoisted(() => {
       error: null,
       notice: null,
       clearFeedback: vi.fn(),
+      signupInvitationRequired: true,
+      refreshSignupPolicy: vi.fn().mockResolvedValue(undefined),
       signIn: vi.fn(),
       signUp: vi.fn(),
       confirmSignUp: vi.fn(),
@@ -38,6 +40,8 @@ vi.mock("@/account/auth", () => ({
 
 beforeEach(() => {
   auth.state.initialized = true;
+  auth.state.signupInvitationRequired = true;
+  auth.state.refreshSignupPolicy.mockClear();
   auth.state.user = null;
   auth.state.recoveryPending = false;
   auth.state.recoveryEmail = null;
@@ -171,7 +175,8 @@ describe("account access", () => {
     expect(dialog.hasAttribute("open")).toBe(false);
   });
 
-  it("confirms invitation registration without flashing the account center, then returns home", async () => {
+  it.each([true, false])("confirms registration with invitation required = %s, then returns home", async (invitationRequired) => {
+    auth.state.signupInvitationRequired = invitationRequired;
     let finishConfirmation!: () => void;
     auth.state.confirmSignUp.mockImplementation(() => new Promise<void>((resolve) => {
       finishConfirmation = resolve;
@@ -187,9 +192,11 @@ describe("account access", () => {
     const view = render(accountRoutes());
 
     fireEvent.click(screen.getByRole("button", { name: "注册" }));
-    fireEvent.change(screen.getByLabelText("邀请码"), {
-      target: { value: " K7MP4X " },
-    });
+    if (invitationRequired) {
+      fireEvent.change(screen.getByLabelText("邀请码"), { target: { value: " K7MP4X " } });
+    } else {
+      expect(screen.queryByLabelText("邀请码")).toBeNull();
+    }
     fireEvent.change(screen.getByLabelText("邮箱"), {
       target: { value: " reader@example.com " },
     });
@@ -202,7 +209,7 @@ describe("account access", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送注册验证码" }));
 
     await waitFor(() => expect(auth.state.signUp).toHaveBeenCalledWith({
-      invitationCode: "K7MP4X",
+      ...(invitationRequired ? { invitationCode: "K7MP4X" } : {}),
       email: "reader@example.com",
       password: "strong-password",
     }));
