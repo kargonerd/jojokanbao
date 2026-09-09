@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(23);
+select extensions.plan(24);
 
 create temporary table signup_policy_test_state as
 select extensions.gen_random_uuid() as open_id,
@@ -18,12 +18,14 @@ select extensions.is(public.signup_invitation_required(), false, 'anonymous clie
 reset role;
 select extensions.ok(not pg_catalog.has_table_privilege('anon', 'private.feature_flags', 'select'),
   'public policy access does not expose raw configuration');
-set local role supabase_auth_admin;
+-- Supabase's test connection cannot SET ROLE to its managed Auth administrator.
+-- Check that role's actual grant separately from exercising the hook behavior.
+select extensions.ok(pg_catalog.has_function_privilege('supabase_auth_admin',
+  'public.signup_invitation_required()', 'execute'), 'the Auth hook role can read the signup policy');
 select extensions.is(public.hook_require_signup_invitation('{"user":{"email":"open@example.invalid"}}'),
-  '{}'::jsonb, 'the real Auth hook role permits signup without a code');
+  '{}'::jsonb, 'the Auth hook permits signup without a code');
 select extensions.is(public.hook_require_signup_invitation('{"user":{"email":"open@example.invalid","user_metadata":{"invitation_code":"invalid"}}}'),
   '{}'::jsonb, 'open signup ignores invalid codes from older clients');
-reset role;
 
 insert into auth.users(id, email, raw_user_meta_data)
 select open_id, 'policy-open@example.invalid', '{"keep":"yes"}'::jsonb from signup_policy_test_state
