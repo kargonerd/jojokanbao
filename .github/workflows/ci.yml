@@ -166,7 +166,7 @@ jobs:
     runs-on: macos-latest
     # A Maven outage may require the pinned source fallback. Leave time for
     # the simulator smoke test after that slower compile finishes.
-    timeout-minutes: 35
+    timeout-minutes: 45
     env:
       COCOAPODS_DISABLE_STATS: "true"
       APP_VARIANT: standard
