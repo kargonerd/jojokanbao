@@ -1,5 +1,5 @@
 import { downloadFile, uploadFiles } from "@huggingface/hub";
-import { PROXY_CACHE_MAX_BYTES, PROXY_CACHE_OBJECT, PROXY_CACHE_SECONDARY_OBJECT, type ProxyCacheStore } from "./proxy-subscription-cache.js";
+import { PROXY_CACHE_MAX_BYTES, proxyCacheObject, type ProxyCacheStore } from "./proxy-subscription-cache.js";
 
 const CACHE_IO_TIMEOUT_MS = 20_000;
 
@@ -26,14 +26,14 @@ async function bounded<T>(operation: (fetcher: typeof fetch, signal: AbortSignal
   }
 }
 
-export function hfProxyCacheStore(bucket: string, accessToken: string, slot: 0 | 1 = 0): ProxyCacheStore {
+export function hfProxyCacheStore(bucket: string, accessToken: string, subscriptionUrl: string): ProxyCacheStore {
   const name = bucket.trim().replace(/^buckets\//u, "");
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(name) || !accessToken.trim()
-    || (slot !== 0 && slot !== 1)) {
+    || !subscriptionUrl.trim()) {
     throw new Error("Proxy subscription cache configuration is invalid");
   }
   const repo = { type: "bucket" as const, name };
-  const cacheObject = slot === 0 ? PROXY_CACHE_OBJECT : PROXY_CACHE_SECONDARY_OBJECT;
+  const cacheObject = proxyCacheObject(subscriptionUrl, accessToken);
   const read = async (fetcher: typeof fetch): Promise<string | null> => {
     const blob = await downloadFile({ repo, accessToken, path: cacheObject, fetch: fetcher, xet: false });
     if (!blob) return null;

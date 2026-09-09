@@ -104,9 +104,9 @@ describe("Times Runtime workflows", () => {
       console: { log: (line: string) => lines.push(line) },
     }, { timeout: 1000 });
     const summary = lines.join("\n");
-    expect(summary).toContain("Proxy subscription: 2/2; alternating each Capture run");
+    expect(summary).toContain("Proxy subscription: 2/2; rotating each Capture run");
     if (fallback) {
-      expect(summary).toContain("Preferred proxy subscription was unavailable; switched to the other subscription");
+      expect(summary).toContain("Preferred proxy subscription was unavailable; switched to a subsequent subscription");
       expect(summary).toContain("Warning: Proxy subscription refresh failed");
       expect(summary).toContain("expires after 24 hours");
     } else {
@@ -230,17 +230,20 @@ afterEach(async () => {
 
 describe("Capture subscription failover shell", () => {
   it.each([
-    { failure: "none", secondary: "https://two.example/sub", selected: 0, prepared: [0] },
-    { failure: "prepare-first", secondary: "https://two.example/sub", selected: 1, prepared: [0, 1] },
-    { failure: "probe-first", secondary: "https://two.example/sub", selected: 1, prepared: [0, 1] },
-    { failure: "prepare-all", secondary: "https://two.example/sub", selected: null, prepared: [0, 1] },
-    { failure: "probe-all", secondary: "https://two.example/sub", selected: null, prepared: [0, 1] },
-    { failure: "prepare-all", secondary: "", selected: null, prepared: [0] },
-    { failure: "prepare-all", secondary: "https://one.example/sub", selected: null, prepared: [0] },
-  ])("handles $failure with secondary '$secondary'", async ({ failure, secondary, selected, prepared }) => {
+    { failure: "none", count: 2, selected: 0, prepared: [0] },
+    { failure: "prepare-first", count: 2, selected: 1, prepared: [0, 1] },
+    { failure: "probe-first", count: 2, selected: 1, prepared: [0, 1] },
+    { failure: "prepare-all", count: 2, selected: null, prepared: [0, 1] },
+    { failure: "probe-all", count: 3, selected: null, prepared: [0, 1, 2] },
+    { failure: "prepare-all", count: 1, selected: null, prepared: [0] },
+    { failure: "prepare-first-two", count: 3, selected: 2, prepared: [0, 1, 2] },
+    { failure: "probe-first-two", count: 4, selected: 2, prepared: [0, 1, 2] },
+    { failure: "count", count: 0, selected: null, prepared: [] },
+  ])("handles $failure with $count subscriptions", async ({ failure, count, selected, prepared }) => {
     const body = parse(await readFile(path.resolve("..", "..", ".github/workflows/maintenance-times-capture.yml"), "utf8"));
     const start = body.jobs.capture.steps.find((step: { name?: string }) => step.name === "Start pinned Mihomo for a configured subscription");
     const save = body.jobs.capture.steps.find((step: { name?: string }) => step.name === "Save healthy encrypted proxy subscription");
+    expect(body.jobs.capture.env).not.toHaveProperty("JOJO_TIMES_PROXY_SUBSCRIPTION_2");
     const directory = await mkdtemp(path.join(os.tmpdir(), "jojo-proxy-workflow-"));
     directories.push(directory);
     await mkdir(path.join(directory, "mihomo"));
@@ -258,8 +261,14 @@ node() {
     shift
   done
   printf '%s:%s\\n' "$action" "$offset" >> "$TEST_EVENTS"
+  if [ "$action" = "count" ]; then
+    if [ "$TEST_FAILURE" = "count" ]; then return 1; fi
+    echo "$TEST_COUNT"
+    return 0
+  fi
   if [ "$action" = "prepare" ]; then
     if [ "$TEST_FAILURE" = "prepare-all" ] || { [ "$TEST_FAILURE" = "prepare-first" ] && [ "$offset" = "0" ]; }; then return 1; fi
+    if [ "$TEST_FAILURE" = "prepare-first-two" ] && [ "$offset" -lt 2 ]; then return 1; fi
   fi
 }
 nohup() { return 0; }
@@ -268,17 +277,18 @@ wait() { return 0; }
 sleep() { return 0; }
 curl() {
   if [ "$TEST_FAILURE" = "probe-all" ] || { [ "$TEST_FAILURE" = "probe-first" ] && [ "$rotation_offset" = "0" ]; }; then return 1; fi
+  if [ "$TEST_FAILURE" = "probe-first-two" ] && [ "$rotation_offset" -lt 2 ]; then return 1; fi
 }
 `;
     const env = { ...process.env, RUNNER_TEMP: root, TIMES_RUNTIME_ROOT: root, GITHUB_ENV: `${root}/github.env`,
       HF_TIMES_RUNTIME_BUCKET: "test/runtime", TIMES_PUBLISH: "true",
-      JOJO_TIMES_PROXY_SUBSCRIPTION: "https://one.example/sub", JOJO_TIMES_PROXY_SUBSCRIPTION_2: secondary,
-      TEST_EVENTS: `${root}/events`, TEST_FAILURE: failure };
+      JOJO_TIMES_PROXY_SUBSCRIPTION: JSON.stringify(Array.from({ length: count }, (_, index) => `https://provider-${index}.example/sub`)),
+      TEST_EVENTS: `${root}/events`, TEST_FAILURE: failure, TEST_COUNT: String(count) };
     const result = spawnSync(bash, ["-c", `set -euo pipefail\n${stubs}\n${start.run}`], { env, encoding: "utf8", timeout: 10_000 });
     expect(result.error).toBeUndefined();
     expect(result.status, result.stderr).toBe(selected === null ? 1 : 0);
     const events = await readFile(`${root}/events`, "utf8");
-    expect(events.match(/prepare:\d/g)).toEqual(prepared.map((offset) => `prepare:${offset}`));
+    expect(events.match(/prepare:\d+/g) ?? []).toEqual(prepared.map((offset) => `prepare:${offset}`));
     if (failure.startsWith("probe")) expect(events).toContain("stopped");
     if (selected === null) {
       await expect(readFile(env.GITHUB_ENV, "utf8")).rejects.toMatchObject({ code: "ENOENT" });

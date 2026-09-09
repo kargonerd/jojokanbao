@@ -202,18 +202,23 @@ HF Bucket 的 429 使用 10–60 秒指数退避（8 次尝试，累计约 5 分
 手动运行默认 publish=false，只产生短期 artifact。代理订阅只从 Secret 读取；订阅 URL、节点名、
 Cookie、Authorization 和 BPC 内部状态不会进入 Raw、日志或 artifact。
 
-`maintenance` 环境的 `JOJO_TIMES_PROXY_SUBSCRIPTION` 为订阅 1，可选的
-`JOJO_TIMES_PROXY_SUBSCRIPTION_2` 为订阅 2。按 Capture 的 `GITHUB_RUN_NUMBER` 奇偶交替优先使用
-两个订阅（正常调度每 5 分钟一轮，重跑同一轮保持原顺序）；某个订阅准备失败或 Mihomo 健康检查
-未通过时，同一轮自动尝试另一个。仅配置一个订阅或两个 URL 相同时保留单订阅行为。
-每轮正常只使用一个订阅，节点选择及采集重试沿用该订阅现有逻辑；交替分担采集轮次，不保证流量各占一半。
+`maintenance` 环境的单个 `JOJO_TIMES_PROXY_SUBSCRIPTION` Secret 保存非空 JSON 字符串数组，例如
+`["https://provider-a.example/sub", "https://provider-b.example/sub", "https://provider-c.example/sub"]`。
+增加订阅只需追加数组元素，无需新增 Secret 或修改工作流。URL 去除首尾空白并按原顺序去重；空数组、
+空元素和非字符串元素会被拒绝。兼容旧的单 URL 格式，便于迁移。
+按 Capture 的 `GITHUB_RUN_NUMBER` 循环选择数组中的首选订阅（正常调度每 5 分钟一轮，重跑同一轮
+保持原顺序）；某个订阅准备失败或 Mihomo 健康检查未通过时，同一轮按顺序尝试后续订阅，最多遍历
+一圈，启动阶段总上限为 12 分钟。每轮正常只使用一个订阅，节点选择及采集重试沿用该订阅现有逻辑；
+按轮次分担采集，不保证各订阅实际流量相等。
 
 代理订阅下载失败会记录脱敏诊断：HTTP 状态码、白名单网络错误码、尝试次数和是否可重试，
 不打印 URL、响应正文、原始异常消息或请求头。临时网络错误、408/429/5xx 最多尝试 3 次；
 401/403/404、证书校验失败、无效 YAML 或空节点列表不会用旧缓存掩盖配置/鉴权问题。
-发布型 Capture 可复用 Runtime Bucket 的 `times/proxy/last-known-good.v1.json`（订阅 1）和
-`times/proxy/last-known-good-secondary.v1.json`（订阅 2）：AES-256-GCM
+发布型 Capture 可复用 Runtime Bucket 的 `times/proxy/subscriptions/<opaque-id>.v1.json`：AES-256-GCM
 加密，密钥由现有 `HF_TOKEN` 和订阅 URL 经 HKDF 派生，无需新增 secret。任何一项变更都会使旧缓存失效。
+对象 ID 由 `HF_TOKEN` 对订阅 URL 做带独立上下文的 HMAC 派生，不暴露 URL 或可公开计算的 URL 摘要。
+缓存跟随订阅地址而非数组下标；数组重排、增删其他订阅不会使已有订阅缓存失效。由旧固定对象迁移后，
+首次选中各订阅时重新获取并建立独立缓存，之后沿用 12 小时刷新周期。
 每个订阅独立计算 12 小时刷新周期。发布型 Capture 优先复用选中订阅获取时间不足 12 小时的健康缓存，
 不请求订阅服务；满 12 小时后首次选中该订阅时才重新下载。首次运行、缓存缺失/不可用、订阅 URL
 或 HF Token 变更时立即下载；未启用缓存的手动
