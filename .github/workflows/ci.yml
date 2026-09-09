@@ -164,7 +164,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.mobile_ios == 'true'
     runs-on: macos-latest
-    timeout-minutes: 25
+    # A Maven outage may require the pinned source fallback. Leave time for
+    # the simulator smoke test after that slower compile finishes.
+    timeout-minutes: 35
     env:
       COCOAPODS_DISABLE_STATS: "true"
       APP_VARIANT: standard
