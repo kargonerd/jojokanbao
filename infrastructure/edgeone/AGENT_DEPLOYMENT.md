@@ -80,6 +80,8 @@ Reader/Web/Mobile 不单独配置模型。本地开发则在根目录 `.env.loca
 部署端自动刷新过期 access token 并回写加密 Store。Google 未轮换 refresh token 时保留原值。
 Antigravity 使用固定版本 `pi-antigravity@0.7.2` 及仓库补丁；生成包携带同一补丁和可选 peer
 配置。JOJO 本地登录入口和 `auth.json` 不包含在部署源码中。
+国际 Agent 的 `edgeone.json` 显式指定 pnpm 安装命令：Makers 默认的 `npm install`
+不会应用 `pnpm.patchedDependencies`。部署包现场生成且没有锁文件，所以安装时显式关闭 frozen lockfile。
 
 ## AI 使用限额
 
