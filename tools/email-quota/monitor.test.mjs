@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { handle, parseUsage, parsePolicy, signals, run, SLUG, PERIODS, LEVELS } from './monitor.mjs';
+import { handle, parseUsage, parsePolicy, parseSource, recordUsage, signals, run, SLUG, PERIODS, LEVELS } from './monitor.mjs';
 const now = Date.parse('2026-09-09T12:00:00Z');
 const env = { RESEND_QUOTA_API_KEY: 're_test', HEALTHCHECKS_API_KEY: 'test', SUPABASE_URL: 'https://test.supabase.co', SUPABASE_PUBLISHABLE_KEY: 'test' };
 const usage = (daily = 43, monthly = 64) => ({ object: 'usage', generated_at: new Date(now).toISOString(), emails: {
   daily: { used: daily, limit: 100, resets_at: '2026-09-10T00:00:00Z' }, monthly: { used: monthly, limit: 3000, resets_at: '2026-10-01T00:00:00Z' },
 } });
-const policy = { warningPercent: 80, criticalPercent: 90 };
+const policy = { warningPercent: 80, criticalPercent: 90, usageSource: 'usage_api' };
 function fixture() {
   const slugs = [SLUG, ...PERIODS.flatMap((p) => LEVELS.map((l) => `${SLUG}-${p}-${l}`))];
   const checks = slugs.map((slug, i) => ({ slug, status: 'up', ping_url: `https://hc-ping.com/00000000-0000-0000-0000-${String(i).padStart(12, '0')}` }));
@@ -14,6 +14,7 @@ function fixture() {
   data.fetcher = async (url, init = {}) => {
     data.seen.push({ url, init });
     if (url === 'https://api.resend.com/usage') return Response.json(data.raw, { status: data.usageStatus });
+    if (url.startsWith('https://api.resend.com/emails')) return Response.json({ object: 'list', has_more: false, data: [] }, { status: data.usageStatus });
     if (url.includes('/rpc/')) return Response.json(data.config);
     if (url === 'https://healthchecks.io/api/v3/checks/') return Response.json({ checks });
     if (url.startsWith('https://healthchecks.io/')) {
@@ -96,4 +97,47 @@ test('timer replays and wrong triggers do not call external services', async () 
     { Type: 'Timer', Time: new Date(now).toISOString(), TriggerName: 'other' }]) {
     assert.equal((await handle(event, env, { now, fetcher })).skipped, 'invalid_or_stale_timer');
   }
+});
+
+test('record mode counts all recipients and inbound/test mail; monthly estimate never invents a reset date', async () => {
+  const item = { id: '12345678-0000-0000-0000-000000000001', created_at: '2026-09-09 11:59:00.000000+00',
+    to: ['delivered@test.invalid','delivered@resend.dev'], cc: ['cc@test.invalid'], bcc: ['bcc@test.invalid'] };
+  const config = parseSource({ usageSource: 'records', dailyLimit: 100, monthlyLimit: 3000 });
+  const result = await recordUsage(env, config, now, async (url) => Response.json({ object: 'list', has_more: false, data: url.includes('/receiving') ? [{ id: item.id, created_at: item.created_at }] : [item] }));
+  assert.equal(result.periods.daily.used, 5);
+  assert.equal(result.periods.monthly.used, 205);
+  assert.equal(result.periods.monthly.resetsAt, null);
+  assert.equal(result.periods.monthly.estimated, true);
+});
+test('partial or duplicate record scans fail instead of treating an undercount as healthy', async () => {
+  const config = parseSource({ usageSource: 'records', dailyLimit: 100, monthlyLimit: 3000 });
+  await assert.rejects(recordUsage(env, config, now, async () => Response.json({ object: 'list', has_more: true, data: [] })), /resend_scan_invalid/);
+  const item = { id: '12345678-0000-0000-0000-000000000001', created_at: new Date(now).toISOString(), to: ['x@test.invalid'], cc: [], bcc: [] };
+  await assert.rejects(recordUsage(env, config, now, async () => Response.json({ object: 'list', has_more: false, data: [item, item] })), /resend_scan_invalid/);
+});
+
+test('real Resend null CC/BCC, UTC day boundaries and pagination are handled', async () => {
+  const rows = [
+    { id: '12345678-0000-0000-0000-000000000001', created_at: '2026-09-09 00:00:00.000000+00', to: ['x@test.invalid'], cc: null, bcc: null },
+    { id: '12345678-0000-0000-0000-000000000002', created_at: '2026-09-08 23:59:59.999999+00', to: ['x@test.invalid'], cc: null, bcc: null },
+  ];
+  const result = await recordUsage(env, { dailyLimit: 100, monthlyLimit: 3000 }, now, async (url) => Response.json({ object: 'list',
+    has_more: !url.includes('receiving') && !url.includes('after='), data: url.includes('receiving') ? [] : [url.includes('after=') ? rows[1] : rows[0]] }));
+  assert.equal(result.periods.daily.used, 1); assert.equal(result.periods.monthly.observed, 2);
+});
+
+test('record source uses configured limits, labels estimates, and retains incidents on scan failures', async () => {
+  const f = fixture(); f.config = { ...policy, usageSource: 'records', dailyLimit: 100, monthlyLimit: 250 };
+  const probe = await run(env, { now, fetcher: f.fetcher, probe: true });
+  assert.equal(probe.source, 'resend_records_estimate');
+  assert.deepEqual(probe.alerts, [{ period: 'monthly', level: 'warning' }]);
+  assert.equal(f.writes.length, 0);
+  for (let i = 0; i < 2; i++) assert.equal((await run(env, { now, fetcher: f.fetcher })).ok, true);
+  assert.equal(f.transitions.filter((r) => r.down).length, 1);
+  assert.ok(f.writes.find((r) => r.slug.endsWith('monthly-warning')).body.message.includes('估算'));
+  f.usageStatus = 403; f.writes.length = 0;
+  assert.equal((await run(env, { now, fetcher: f.fetcher })).error, 'resend_http_403');
+  assert.deepEqual(f.writes.map(({ slug, down }) => ({ slug, down })), [{ slug: SLUG, down: true }]);
+  assert.equal(f.checks.find((r) => r.slug.endsWith('monthly-warning')).status, 'down');
+  assert.ok(!f.seen.some((r) => r.url.endsWith('/usage')));
 });

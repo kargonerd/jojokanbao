@@ -232,7 +232,7 @@ describe("FeatureFlagsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "发布更改" }));
     await waitFor(() => expect(api.publish).toHaveBeenCalledWith(expect.objectContaining({
       key: "ops.email_quota", rules: flag.rules, expectedRevision: flag.revision,
-      config: { warningPercent: 75, criticalPercent: 90, reserved: "retain" },
+      config: { warningPercent: 75, criticalPercent: 90, reserved: "retain", usageSource: "records", dailyLimit: 100, monthlyLimit: 3000 },
     })));
     expect(screen.queryByText("添加规则")).not.toBeInTheDocument();
   });

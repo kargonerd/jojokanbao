@@ -30,14 +30,14 @@ export async function provision() {
   const channels = current.checks?.find((check) => check.slug === 'jojo-email-delivery')?.channels;
   if (!channels) throw new Error('Existing email alert channels are missing');
   const definitions = [{ slug: SLUG, name: 'JOJO · 邮件额度检查', schedule: SCHEDULE, tz: 'UTC', grace: 600,
-    desc: '独立 SCF 每 30 分钟读取 Resend 用量。采集失败或未按时运行时报警。' },
+    desc: '独立 SCF 每 30 分钟读取 Resend 用量。当前使用邮件记录估算；采集失败或未按时运行时报警。' },
   ...PERIODS.flatMap((period) => LEVELS.map((level) => ({
     slug: `${SLUG}-${period}-${level}`,
-    name: `JOJO · ${period === 'daily' ? '日' : '月'}邮件额度${{ warning: '预警', critical: '紧急', exhausted: '耗尽' }[level]}`,
+    name: `JOJO · ${period === 'daily' ? '日' : '月'}邮件额度${{ warning: '预警', critical: '紧急', exhausted: '100%阈值' }[level]}`,
     // These checks represent conditions, not the collector's heartbeat. Only
     // the separate half-hour check reports a missed invocation.
     timeout: 31_536_000, grace: 3600,
-    desc: '额度状态告警；预警/紧急默认 80%/90%，耗尽为 100%。冷启动和重复调用使用 Healthchecks 状态去重。重置或升级后解除。详情见最近事件。',
+    desc: '默认 80%/90%/100% 阈值。当前日用量按记录估算，月用量按最近31天记录加两天日额度保守估算，可能提前提醒；估算达到100%不代表实际耗尽。状态转换去重。详情见最近事件。',
   })))];
   for (const definition of definitions) await healthchecks('POST', '', { ...definition, methods: 'POST', channels, tags: 'jojo production email quota', unique: ['slug'] });
   console.log(JSON.stringify({ checksConfigured: definitions.map(({ slug }) => slug), channelsReused: true }));

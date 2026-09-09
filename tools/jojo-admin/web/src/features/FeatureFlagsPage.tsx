@@ -66,7 +66,7 @@ function editableConfig(config: Record<string, unknown> | null | undefined, key:
   const defaults = key === AI_USAGE_LIMITS_KEY
     ? Object.fromEntries(aiLimitFields.map((field) => [field.key, field.defaultValue]))
     : key === SIGNUP_KEY ? { invitationRequired: true }
-    : key === EMAIL_QUOTA_KEY ? { warningPercent: 80, criticalPercent: 90 } : {};
+    : key === EMAIL_QUOTA_KEY ? { warningPercent: 80, criticalPercent: 90, usageSource: "records", dailyLimit: 100, monthlyLimit: 3000 } : {};
   return { ...defaults, ...structuredClone(config ?? {}) };
 }
 
@@ -117,8 +117,12 @@ export function FeatureFlagsPage() {
   const quotaValid = typeof draftConfig.warningPercent === "number" && Number.isInteger(draftConfig.warningPercent)
     && typeof draftConfig.criticalPercent === "number" && Number.isInteger(draftConfig.criticalPercent)
     && draftConfig.warningPercent >= 1 && draftConfig.warningPercent < draftConfig.criticalPercent && draftConfig.criticalPercent <= 99;
+  const quotaSourceValid = ["records", "usage_api"].includes(String(draftConfig.usageSource))
+    && typeof draftConfig.dailyLimit === "number" && Number.isInteger(draftConfig.dailyLimit) && draftConfig.dailyLimit >= 1 && draftConfig.dailyLimit <= 1000000
+    && typeof draftConfig.monthlyLimit === "number" && Number.isInteger(draftConfig.monthlyLimit) && draftConfig.monthlyLimit >= 1 && draftConfig.monthlyLimit <= 100000000;
   const configError = invalidAiLimit ? `${invalidAiLimit.label}请填写 ${invalidAiLimit.min}–${invalidAiLimit.max} 之间的整数。`
-    : isEmailQuota && !quotaValid ? "请填写 1–99 之间的整数，且预警阈值小于紧急阈值。" : "";
+    : isEmailQuota && !quotaValid ? "请填写 1–99 之间的整数，且预警阈值小于紧急阈值。"
+    : isEmailQuota && !quotaSourceValid ? "请选择用量来源，日上限填写 1–1000000、月上限填写 1–100000000 之间的整数。" : "";
 
   function selectFlag(flag: FeatureFlagDefinition) {
     setSelectedKey(flag.key);
@@ -286,8 +290,21 @@ export function FeatureFlagsPage() {
                 <div>
                   <h3 id="email-quota-title">邮件额度告警</h3>
                   <span>每 30 分钟检查日/月用量；额度耗尽固定在 100% 提醒。修改后下次检查生效。</span>
+                  <p>记录模式的月用量按最近 31 天记录加两天日额度保守估算，可能提前提醒，无法确认真实账期重置。更换套餐后请更新额度；官方接口模式使用接口返回的额度。</p>
                 </div>
                 <div className="feature-ai-limit-fields">
+                  <label><span>用量来源</span>
+                    <select aria-label="用量来源" value={String(draftConfig.usageSource)} onChange={(event) => setDraftConfig((current) => ({ ...current, usageSource: event.target.value }))}>
+                      <option value="records">邮件记录估算</option><option value="usage_api">官方额度接口（需开通）</option>
+                    </select>
+                  </label>
+                  {([{ key: "dailyLimit", label: "套餐日额度", max: 1000000 }, { key: "monthlyLimit", label: "套餐月额度", max: 100000000 }] as const).map((field) => (
+                    <label key={field.key}><span>{field.label}</span>
+                      <input aria-label={field.label} type="number" min="1" max={field.max} step="1"
+                        value={typeof draftConfig[field.key] === "number" || typeof draftConfig[field.key] === "string" ? draftConfig[field.key] as number | string : ""}
+                        onChange={(event) => setDraftConfig((current) => ({ ...current, [field.key]: event.target.value === "" ? "" : Number(event.target.value) }))} />
+                    </label>
+                  ))}
                   {([{ key: "warningPercent", label: "预警阈值" }, { key: "criticalPercent", label: "紧急阈值" }] as const).map((field) => (
                     <label key={field.key}>
                       <span>{field.label}</span>

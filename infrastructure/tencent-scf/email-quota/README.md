@@ -14,7 +14,7 @@ Runtime gets `RESEND_QUOTA_API_KEY`, `HEALTHCHECKS_API_KEY`, `SUPABASE_URL`,
 `SUPABASE_PUBLISHABLE_KEY`; no management, service-role or Operator token.
 
 Use a dedicated Resend key. Resend currently requires full-access keys for reads;
-the code only calls GET /usage. Keep it separate from Supabase SMTP and GitHub's
+the code only reads usage or list metadata. Keep it separate from Supabase SMTP and GitHub's
 delivery-monitor key. API credentials are stored in SCF configuration, never flags.
 
 ```sh
@@ -31,9 +31,14 @@ node infrastructure/tencent-scf/email-quota/ops.mjs status
 `provision` copies the existing delivery check's channels. It does not add
 recipients or send a test notification. `create` fails if the function exists;
 `deploy` only updates code, preserving environment/timer. `probe` is read-only.
-Enable the timer only after a successful real usage probe, current quota state
+Enable the timer only after a successful real probe in the explicitly configured source mode, current quota state
 check and notification-channel verification. Observe a natural timer invocation;
 an Active SCF status alone is not acceptance. Preserve a redacted deployment receipt.
+
+Current mode is `records`: `/usage` returned 404 for this account. The daily
+record count matched the dashboard (43); monthly calendar records (89) differed
+from the dashboard (64), so do not infer a calendar billing cycle. The monthly
+alert uses a labeled conservative 31-day estimate, never an invented reset date.
 
 For a code rollback, deploy the previous verified package to this function only.
 Disable its timer and pause its seven Healthchecks checks before intentionally

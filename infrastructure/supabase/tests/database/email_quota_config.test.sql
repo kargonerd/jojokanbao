@@ -1,12 +1,15 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(8);
-select extensions.is(public.get_email_quota_monitor_config(), '{"warningPercent":80,"criticalPercent":90}'::jsonb, 'default email quota thresholds');
+select extensions.plan(11);
+select extensions.is(public.get_email_quota_monitor_config(), '{"warningPercent":80,"criticalPercent":90,"usageSource":"records","dailyLimit":100,"monthlyLimit":3000}'::jsonb, 'default email quota thresholds');
 select extensions.throws_ok($$update private.feature_flags set config='{"warningPercent":90,"criticalPercent":80}' where key='ops.email_quota'$$, '22023', 'Email quota thresholds require 1 <= warning < critical <= 99', 'reject inverted thresholds');
 select extensions.throws_ok($$update private.feature_flags set config='{"warningPercent":"80","criticalPercent":90}' where key='ops.email_quota'$$, '22023', 'Email quota thresholds must be integer percentages', 'reject string threshold');
 select extensions.throws_ok($$update private.feature_flags set config='{"warningPercent":80.5,"criticalPercent":90}' where key='ops.email_quota'$$, '22023', 'Email quota thresholds require 1 <= warning < critical <= 99', 'reject fractional threshold');
+select extensions.throws_ok($$update private.feature_flags set config=config || '{"usageSource":"unknown"}' where key='ops.email_quota'$$, '22023', 'Email quota source must be records or usage_api', 'reject unknown data source');
+select extensions.throws_ok($$update private.feature_flags set config=config || '{"dailyLimit":0}' where key='ops.email_quota'$$, '22023', 'Email quota limits are out of range', 'reject zero daily limit');
+select extensions.throws_ok($$update private.feature_flags set config=config || '{"monthlyLimit":"3000"}' where key='ops.email_quota'$$, '22023', 'Email quota limits must be positive integers', 'reject string monthly limit');
 update private.feature_flags set config = config || '{"warningPercent":70,"criticalPercent":85,"unrelated":true}' where key='ops.email_quota';
-select extensions.is(public.get_email_quota_monitor_config(), '{"warningPercent":70,"criticalPercent":85}'::jsonb, 'reader returns only threshold values');
+select extensions.is(public.get_email_quota_monitor_config(), '{"warningPercent":70,"criticalPercent":85,"usageSource":"records","dailyLimit":100,"monthlyLimit":3000}'::jsonb, 'reader returns only supported policy values');
 update private.feature_flags set rules='[]' where key='ops.email_quota';
 select extensions.is(public.get_email_quota_monitor_config()->>'warningPercent', '70', 'rules never disable monitoring');
 select extensions.ok(pg_catalog.has_function_privilege('anon', 'public.get_email_quota_monitor_config()', 'execute'), 'public non-sensitive policy reader');

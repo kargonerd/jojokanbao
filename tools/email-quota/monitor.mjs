@@ -6,6 +6,7 @@ export const SCHEDULE = '0,30 * * * *';
 export const TRIGGER = '0 0,30 * * * * *';
 export const SLUG = 'jojo-email-quota';
 const MAX_BYTES = 64 * 1024;
+const DAY = 86_400_000;
 const fail = (code) => new Error(code);
 const safe = (error) => /^[a-z][a-z0-9_]{0,79}$/.test(error?.message ?? '') ? error.message : 'quota_monitor_failed';
 
@@ -60,6 +61,63 @@ export function parsePolicy(raw) {
   return { warning: raw.warningPercent, critical: raw.criticalPercent, exhausted: 100 };
 }
 
+export function parseSource(raw) {
+  if (raw?.usageSource === 'usage_api') return { mode: 'usage_api' };
+  if (raw?.usageSource !== 'records' || !Number.isSafeInteger(raw.dailyLimit) || raw.dailyLimit < 1 || raw.dailyLimit > 1000000
+    || !Number.isSafeInteger(raw.monthlyLimit) || raw.monthlyLimit < 1 || raw.monthlyLimit > 100000000) throw fail('quota_source_config_invalid');
+  return { mode: 'records', dailyLimit: raw.dailyLimit, monthlyLimit: raw.monthlyLimit };
+}
+
+export async function recordUsage(env, config, now, fetcher = fetch) {
+  const dayStart = Math.floor(now / DAY) * DAY;
+  const windowStart = now - 31 * DAY;
+  const started = Date.now();
+  const headers = { Authorization: `Bearer ${env.RESEND_QUOTA_API_KEY}`, 'User-Agent': 'JOJO-email-quota-monitor' };
+  async function count(endpoint, inbound) {
+    const seen = new Set(); let cursor; let previous = Infinity; let daily = 0; let window = 0;
+    for (let i = 0; i < 40; i++) {
+      if (Date.now() - started > 20_000) throw fail('resend_scan_timeout');
+      if (i) await new Promise((done) => setTimeout(done, 250));
+      const page = await json(`https://api.resend.com${endpoint}?limit=100${cursor ? `&after=${cursor}` : ''}`, { headers }, 'resend', fetcher);
+      if (page.object !== 'list' || !Array.isArray(page.data) || page.data.length > 100 || typeof page.has_more !== 'boolean'
+        || page.has_more && !page.data.length) throw fail('resend_scan_invalid');
+      let boundary = false;
+      for (const item of page.data) {
+        const at = typeof item.created_at === 'string' ? Date.parse(item.created_at.replace(' ', 'T').replace(/([+-]\d{2})$/, '$1:00')) : NaN;
+        if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(item.id ?? '') || seen.has(item.id)
+          || !Number.isFinite(at) || at > now + 60000 || at > previous) throw fail('resend_scan_invalid');
+        previous = at; seen.add(item.id); cursor = item.id;
+        if (at < windowStart) { boundary = true; continue; }
+        let recipients = 1;
+        if (!inbound) {
+          const cc = item.cc === null ? [] : item.cc; const bcc = item.bcc === null ? [] : item.bcc;
+          if (!Array.isArray(item.to) || !item.to.length || !Array.isArray(cc) || !Array.isArray(bcc)) throw fail('resend_recipients_invalid');
+          recipients = item.to.length + cc.length + bcc.length;
+          if (recipients > 100 || [...item.to, ...cc, ...bcc].some((v) => typeof v !== 'string' || !v.includes('@'))) throw fail('resend_recipients_invalid');
+        }
+        // Include synthetic, failed and pending records conservatively. Never
+        // count API rows as billing units when they have multiple recipients.
+        window += recipients;
+        if (at >= dayStart) daily += recipients;
+      }
+      if (boundary || !page.has_more) return { daily, window };
+    }
+    throw fail('resend_scan_incomplete');
+  }
+  const reads = await Promise.allSettled([count('/emails', false), count('/emails/receiving', true)]);
+  for (const result of reads) if (result.status === 'rejected') throw result.reason;
+  const daily = reads.reduce((n, result) => n + result.value.daily, 0);
+  const observed = reads.reduce((n, result) => n + result.value.window, 0);
+  // Free retention is 30 days. The missing part of a 31-day window can cross
+  // two UTC quota days. Add two configured daily caps as a conservative margin.
+  // This is explicitly an estimate, not Resend's billing counter or reset date.
+  const reserve = 2 * config.dailyLimit;
+  return { generatedAt: new Date(now).toISOString(), periods: {
+    daily: { used: daily, limit: config.dailyLimit, resetsAt: new Date(dayStart + DAY).toISOString(), estimated: true },
+    monthly: { used: observed + reserve, observed, reserve, windowDays: 31, limit: config.monthlyLimit, resetsAt: null, estimated: true },
+  } };
+}
+
 export function signals(usage, policy) {
   return PERIODS.flatMap((period) => LEVELS.map((level) => {
     const value = usage.periods[period];
@@ -101,7 +159,7 @@ async function ping(check, down, payload, fetcher) {
 }
 
 async function reportDecision(check, decision, summary, env, fetcher) {
-  if (check.status === 'down' && decision.down) {
+  if (check.status === 'down' && decision.down && decision.resetsAt !== null) {
     // A new quota period can already exceed a threshold at the first sample.
     // Read the last decision from Healthchecks instead of relying on /tmp state.
     const uuid = check.ping_url.split('/').at(-1);
@@ -119,7 +177,7 @@ async function reportDecision(check, decision, summary, env, fetcher) {
     }
   }
   await ping(check, decision.down, {
-    ...summary, ...decision, message: `${decision.period === 'daily' ? '日' : '月'}邮件额度 ${decision.used}/${decision.limit ?? '不限'}，剩余 ${decision.remaining ?? '不限'}；阈值 ${decision.threshold}%；重置 ${decision.resetsAt}`,
+    ...summary, ...decision, message: `${decision.period === 'daily' ? '日' : '月'}邮件用量${decision.estimated ? '（估算）' : ''} ${decision.used}/${decision.limit ?? '不限'}，${decision.estimated ? '估算余量' : '剩余'} ${decision.remaining ?? '不限'}；阈值 ${decision.threshold}%；重置 ${decision.resetsAt ?? '未知，以 Resend 后台为准'}${decision.reserve ? `；最近31天记录 ${decision.observed} + 保守余量 ${decision.reserve}` : ''}`,
   }, fetcher);
 }
 
@@ -128,15 +186,17 @@ export async function run(env, { fetcher = fetch, now = Date.now(), probe = fals
   try {
     const configUrl = checkedEnv(env);
     const responses = await Promise.allSettled([
-      json('https://api.resend.com/usage', { headers: { Authorization: `Bearer ${env.RESEND_QUOTA_API_KEY}`, 'User-Agent': 'JOJO-email-quota-monitor' } }, 'resend', fetcher),
       json(configUrl, { method: 'POST', headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, 'Content-Type': 'application/json' }, body: '{}' }, 'quota_config', fetcher),
       checks(env, fetcher),
     ]);
-    if (responses[2].status === 'fulfilled') registered = responses[2].value;
+    if (responses[1].status === 'fulfilled') registered = responses[1].value;
     for (const response of responses) if (response.status === 'rejected') throw response.reason;
-    const usage = parseUsage(responses[0].value, now);
-    const decisions = signals(usage, parsePolicy(responses[1].value));
-    const summary = { source: 'resend_usage_api', generatedAt: usage.generatedAt, observedAt: new Date(now).toISOString(), periods: usage.periods };
+    const policy = parsePolicy(responses[0].value);
+    const source = parseSource(responses[0].value);
+    const usage = source.mode === 'records' ? await recordUsage(env, source, now, fetcher)
+      : parseUsage(await json('https://api.resend.com/usage', { headers: { Authorization: `Bearer ${env.RESEND_QUOTA_API_KEY}`, 'User-Agent': 'JOJO-email-quota-monitor' } }, 'resend', fetcher), now);
+    const decisions = signals(usage, policy);
+    const summary = { source: source.mode === 'records' ? 'resend_records_estimate' : 'resend_usage_api', generatedAt: usage.generatedAt, observedAt: new Date(now).toISOString(), periods: usage.periods };
     if (!probe) {
       const writes = await Promise.allSettled(decisions.map((decision) => reportDecision(registered.get(decision.slug), decision, summary, env, fetcher)));
       if (writes.some((result) => result.status === 'rejected')) throw fail('quota_alert_delivery_failed');
