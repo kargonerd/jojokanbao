@@ -47,13 +47,23 @@
     "turbo": "^2.4.0"
   },
   "pnpm": {
+    "packageExtensions": {
+      "pi-antigravity@0.7.2": {
+        "peerDependenciesMeta": {
+          "@earendil-works/pi-coding-agent": {
+            "optional": true
+          }
+        }
+      }
+    },
     "overrides": {
       "cheerio@1.2.0>undici": "8.10.0"
     },
     "patchedDependencies": {
       "@react-native/gradle-plugin@0.83.10": "frontend/patches/@react-native__gradle-plugin@0.83.10.patch",
       "pdfjs-dist@5.7.284": "frontend/patches/pdfjs-dist@5.7.284.patch",
-      "react-native-webview@13.16.0": "frontend/patches/react-native-webview@13.16.0.patch"
+      "react-native-webview@13.16.0": "frontend/patches/react-native-webview@13.16.0.patch",
+      "pi-antigravity@0.7.2": "agent/patches/pi-antigravity@0.7.2.patch"
     }
   }
 }

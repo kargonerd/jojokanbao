@@ -11,6 +11,7 @@ vi.mock("./api", () => ({ agentAdminApi: api }));
 import { AgentAdminPage } from "./AgentAdminPage";
 
 const readyStatus = {
+  provider: "openai-codex",
   operatorConfigured: true,
   serviceConfigured: true,
   targetOrigin: "https://agent.example.com",
@@ -79,5 +80,34 @@ describe("AgentAdminPage", () => {
     expect(await screen.findByText("需要先准备 Agent 专用 Codex OAuth")).toBeInTheDocument();
     expect(screen.getByText("pnpm --filter @jojo/agent auth:codex")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "更新 Agent 凭据" })).toBeDisabled();
+  });
+
+  it("selects and uploads Antigravity independently, including an expired access token", async () => {
+    api.status.mockImplementation(async (provider) => ({ ...readyStatus, provider,
+      credential: { ...readyStatus.credential, expired: provider === "antigravity" } }));
+    api.pushCredential.mockResolvedValue({ targetOrigin: "https://agent.example.com", pushedAt: "2026-08-16T04:00:00.000Z" });
+    render(<AgentAdminPage />);
+    await screen.findByText("本机就绪");
+    fireEvent.change(screen.getByRole("combobox", { name: "OAuth Provider" }), { target: { value: "antigravity" } });
+    await screen.findByText("Access token 已过期");
+    expect(api.status).toHaveBeenLastCalledWith("antigravity");
+    fireEvent.click(screen.getByRole("button", { name: "更新 Agent 凭据" }));
+    expect(screen.queryByText(/上传会消费本地 rotating refresh token/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "确认更新" }));
+    await waitFor(() => expect(api.pushCredential).toHaveBeenCalledWith("antigravity"));
+  });
+
+  it("ignores a stale status response after changing providers", async () => {
+    let finishCodex!: (value: typeof readyStatus) => void;
+    api.status.mockImplementation((provider) => provider === "openai-codex"
+      ? new Promise((resolve) => { finishCodex = resolve; })
+      : Promise.resolve({ ...readyStatus, provider, canPush: false,
+        credential: { ...readyStatus.credential, available: false, error: "Antigravity missing" } }));
+    render(<AgentAdminPage />);
+    fireEvent.change(screen.getByRole("combobox", { name: "OAuth Provider" }), { target: { value: "antigravity" } });
+    await screen.findByText("Antigravity missing");
+    finishCodex(readyStatus);
+    await waitFor(() => expect(screen.getByRole("button", { name: "更新 Agent 凭据" })).toBeDisabled());
+    expect(screen.getByText("pnpm --filter @jojo/agent auth:antigravity")).toBeInTheDocument();
   });
 });

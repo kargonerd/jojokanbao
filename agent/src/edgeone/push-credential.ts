@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { parseCredentialFile } from "../credentials";
+import { isAgentProvider, resolvePlatformModelConfig } from "../models";
 
 const deploymentUrl = process.env.JOJO_CREDENTIAL_SERVICE_URL?.trim();
 const operatorToken = process.env.JOJO_OPERATOR_TOKEN?.trim();
@@ -13,10 +14,13 @@ if (!deploymentUrl || !operatorToken) {
 const authPath = process.env.JOJO_CODEX_AUTH_PATH?.trim()
   || process.env.JOJO_AGENT_AUTH_PATH?.trim()
   || fileURLToPath(new URL("../../auth.json", import.meta.url));
+const provider = process.argv.slice(2).filter((arg) => arg !== "--")[0]
+  ?? resolvePlatformModelConfig(process.env).provider;
+if (!isAgentProvider(provider)) throw new Error(`Unsupported Agent provider: ${provider}`);
 const credentials = parseCredentialFile(await readFile(authPath, "utf8"));
-const codex = credentials["openai-codex"];
-if (codex?.type !== "oauth") {
-  throw new Error(`No openai-codex OAuth credential found in ${authPath}`);
+const credential = credentials[provider];
+if (credential?.type !== "oauth") {
+  throw new Error(`No ${provider} OAuth credential found in ${authPath}`);
 }
 
 const target = new URL("/gateway/credentials", deploymentUrl);
@@ -32,8 +36,8 @@ const response = await fetch(target, {
   },
   body: JSON.stringify({
     scope: "agent",
-    provider: "openai-codex",
-    credential: codex,
+    provider,
+    credential,
   }),
 });
 if (!response.ok) {
@@ -43,4 +47,4 @@ if (!response.ok) {
   );
 }
 
-process.stdout.write(`Credential uploaded to ${target.origin}\n`);
+process.stdout.write(`${provider} credential uploaded to ${target.origin}\n`);

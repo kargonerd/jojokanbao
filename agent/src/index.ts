@@ -17,6 +17,7 @@ export {
 export {
   DEFAULT_CODEX_MODEL,
   DEFAULT_CODEX_REASONING,
+  SUPPORTED_AGENT_PROVIDERS,
   createPlatformModelRuntime,
   createPlatformModels,
   modelRuntimeStream,
@@ -37,6 +38,7 @@ export type {
 } from "./credentials";
 export type {
   AgentEnvironment,
+  AgentProvider,
   PlatformModelConfig,
   PlatformModelRuntime,
 } from "./models";

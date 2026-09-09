@@ -29,7 +29,7 @@ const runtime = await createPlatformModelRuntime({
 
 if (!runtime.configured) {
   throw new Error(
-    `${config.provider}/${config.model} is not configured. Run auth:codex first.`,
+    `${config.provider}/${config.model} is not configured. Run auth:${config.provider === "antigravity" ? "antigravity" : "codex"} first.`,
   );
 }
 

@@ -2,11 +2,14 @@ import { credentialGeneration, parseCredentialFile } from "../credentials";
 import {
   openAICodexRefreshErrorCode,
   refreshOpenAICodexCredential,
+  isAgentProvider,
+  type AgentProvider,
   type AgentEnvironment,
 } from "../models";
 import { createEdgeOneCredentialStore } from "./credential-store";
 import type { EdgeOneMessageStore } from "./types";
 import type { OAuthCredential } from "@earendil-works/pi-ai";
+import { AntigravityRefreshError, antigravityProjectId, refreshAntigravityCredential } from "../antigravity/auth";
 
 const MAX_CREDENTIAL_BYTES = 64 * 1024;
 
@@ -23,6 +26,7 @@ export interface CreateCredentialAdminHandlerOptions {
   claimCredential?: (
     credential: OAuthCredential,
     signal?: AbortSignal,
+    provider?: AgentProvider,
   ) => Promise<OAuthCredential>;
 }
 
@@ -126,7 +130,7 @@ export function createCredentialAdminHandler(
         return jsonResponse(413, { error: "Credential payload is too large" });
       }
       upload = parseUpload(JSON.parse(body));
-      if (upload.scope !== "agent" || upload.provider !== "openai-codex") {
+      if (upload.scope !== "agent" || !isAgentProvider(upload.provider)) {
         return jsonResponse(400, {
           error: "Credential scope or provider is not supported",
         });
@@ -134,11 +138,13 @@ export function createCredentialAdminHandler(
       credential = parseCredentialFile({
         [upload.provider]: upload.credential,
       })[upload.provider];
-      if (credential?.type !== "oauth") {
+      if (credential?.type !== "oauth" || !credential.access.trim() || !credential.refresh.trim()
+        || !Number.isFinite(credential.expires) || credential.expires < 0) {
         return jsonResponse(400, {
-          error: "A valid openai-codex OAuth credential is required",
+          error: `A valid ${upload.provider} OAuth credential is required`,
         });
       }
+      if (upload.provider === "antigravity") antigravityProjectId(credential);
     } catch {
       return jsonResponse(400, { error: "Credential payload is invalid" });
     }
@@ -151,10 +157,12 @@ export function createCredentialAdminHandler(
       // to the uploaded token, so it must not be mistaken for a recoverable
       // race on the currently deployed credential.
       const claimed = await (
-        options.claimCredential ?? refreshOpenAICodexCredential
+        options.claimCredential ?? (upload.provider === "antigravity"
+          ? refreshAntigravityCredential : refreshOpenAICodexCredential)
       )(
         credential,
         context.request.signal,
+        upload.provider as AgentProvider,
       );
       await credentials.modify(upload.provider, async (current) => {
         return {
@@ -167,6 +175,9 @@ export function createCredentialAdminHandler(
         headers: { "Cache-Control": "no-store" },
       });
     } catch (error) {
+      if (error instanceof AntigravityRefreshError) {
+        return jsonResponse(502, { error: "Antigravity OAuth login could not be verified; retry or sign in again if authorization was revoked" });
+      }
       const refreshError = openAICodexRefreshErrorCode(error);
       if (refreshError === "refresh_token_reused") {
         return jsonResponse(409, {

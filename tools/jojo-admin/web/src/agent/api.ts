@@ -1,6 +1,9 @@
 import { apiGet, apiPost } from "../lib/api";
 
+export type AgentProvider = "openai-codex" | "antigravity";
+
 export interface AgentCredentialStatus {
+  provider: AgentProvider;
   operatorConfigured: boolean;
   serviceConfigured: boolean;
   targetOrigin: string | null;
@@ -17,17 +20,17 @@ export interface AgentCredentialStatus {
 }
 
 export const agentAdminApi = {
-  status: async () => {
+  status: async (provider: AgentProvider) => {
     const result = await apiGet<{ success: true; status: AgentCredentialStatus }>(
-      "/api/agent/credentials/status",
+      `/api/agent/credentials/status?provider=${encodeURIComponent(provider)}`,
     );
     return result.status;
   },
-  pushCredential: async () => {
+  pushCredential: async (provider: AgentProvider) => {
     const result = await apiPost<{
       success: true;
       result: { targetOrigin: string; pushedAt: string };
-    }>("/api/agent/credentials/push");
+    }>("/api/agent/credentials/push", { provider });
     return result.result;
   },
 };

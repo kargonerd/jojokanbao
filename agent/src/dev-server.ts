@@ -188,7 +188,7 @@ const server = createServer(async (request, response) => {
         },
       });
     } else if (["/health", "/rag/health", "/times/health"].includes(url.pathname)) {
-      result = Response.json({ ok: true, model: resolvePlatformModelConfig(environment).model });
+      result = Response.json({ ok: true, ...resolvePlatformModelConfig(environment) });
     } else {
       result = Response.json({ error: "Not found" }, { status: 404 });
     }
@@ -208,7 +208,7 @@ const server = createServer(async (request, response) => {
 server.listen(port, "127.0.0.1", () => {
   process.stdout.write([
     `JOJO local agents listening on http://127.0.0.1:${port} (/rag, /times)`,
-    `Codex OAuth: ${path.relative(repositoryRoot, credentialPath) || credentialPath}`,
+    `Agent OAuth: ${path.relative(repositoryRoot, credentialPath) || credentialPath}`,
     `Content CDN: ${environment.JOJO_CONTENT_CDN_BASE}`,
     "",
   ].join("\n"));

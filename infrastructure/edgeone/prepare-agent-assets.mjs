@@ -13,6 +13,7 @@ function includeSourceFile(source) {
   }
   return !segments.some((segment) =>
     segment === "node_modules"
+    || segment === ".antigravity-patch"
     || segment === ".turbo"
     || segment === "tests"
     || segment === "auth.json"
@@ -21,6 +22,8 @@ function includeSourceFile(source) {
     || segment === "tsconfig.json"
     || segment === "smoke.ts"
     || segment === "push-credential.ts"
+    || segment === "login.ts"
+    || segment === "verify.ts"
     || segment.endsWith(".tmp")
   );
 }
@@ -92,6 +95,18 @@ export function agentDeploymentPackage(name) {
     engines: { node: ">=22.19.0" },
     dependencies: {
       "@jojo/agent": "file:packages/agent",
+    },
+    pnpm: {
+      packageExtensions: {
+        "pi-antigravity@0.7.2": {
+          peerDependenciesMeta: {
+            "@earendil-works/pi-coding-agent": { optional: true },
+          },
+        },
+      },
+      patchedDependencies: {
+        "pi-antigravity@0.7.2": "packages/agent/patches/pi-antigravity@0.7.2.patch",
+      },
     },
   };
 }

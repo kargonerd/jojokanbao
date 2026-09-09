@@ -58,13 +58,19 @@ Agent 管理页面位于 `http://127.0.0.1:4174/agent`。设置
 `JOJO_CODEX_AUTH_PATH` 或 `JOJO_AGENT_AUTH_PATH` 时，本机 Flask 只读取指定路径
 （两者同时设置时前者优先）；均未设置时只读取仓库内的 `agent/auth.json`。管理台不会回退读取当前用户的 `~/.codex/auth.json`，避免与
 Codex CLI 或其他本地会话共享 refresh token。可先运行
-`pnpm --filter @jojo/agent auth:codex` 生成专用文件，再由管理台把转换后的
-`openai-codex` OAuth 凭据直接发送到 `JOJO_CREDENTIAL_SERVICE_URL`。浏览器只接收
+`pnpm --filter @jojo/agent auth:codex` 或 `pnpm --filter @jojo/agent auth:antigravity`
+生成专用文件，再由管理台选择 provider，将其 OAuth 凭据直接发送到
+`JOJO_CREDENTIAL_SERVICE_URL`。浏览器只接收
 就绪状态、来源提示和有效期，不会收到 Operator Token、access token 或 refresh token。
-管理台只接受顶层为 `openai-codex` 的 Agent OAuth 文件，不接受 Codex CLI 原生
-`tokens` 格式。更新前必须确认部署端已配置同一个 `JOJO_OPERATOR_TOKEN`。更新成功会
+管理台接受顶层为 `openai-codex` / `antigravity` 的 Agent OAuth 文件，
+Antigravity 必须包含 `projectId`；不接受 Codex CLI 原生
+`tokens` 格式。更新前必须确认部署端已配置同一个 `JOJO_OPERATOR_TOKEN`。Codex 更新成功会
 把 rotating refresh token 的所有权交给部署端；该本地凭据不可重复上传，如需继续在
 本地运行 Agent，必须重新执行登录生成新的专用凭据。
+Antigravity 使用独立加密命名空间，更新时保留项目 ID，不替换 Codex 凭据。
+上传允许 access token 过期的完整凭据，由部署端使用 refresh token 验证并刷新。
+管理台的 provider 选择决定上传对象；实际运行时切换在 Agent 环境设置
+`JOJO_AGENT_PROVIDER`，并清空 `JOJO_AGENT_MODEL` 使用该 provider 默认模型或指定兼容模型。
 
 划线评论和审核依赖
 `infrastructure/supabase/migrations/202608180001_unified_annotations.sql`。部署迁移后，

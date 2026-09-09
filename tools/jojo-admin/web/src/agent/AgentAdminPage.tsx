@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { OperationDialog } from "../components/OperationDialog";
 import { PageTopbar } from "../components/PageTopbar";
-import { agentAdminApi, type AgentCredentialStatus } from "./api";
+import { agentAdminApi, type AgentCredentialStatus, type AgentProvider } from "./api";
 
 function readableTime(value: string | null): string {
   if (!value) return "未知";
@@ -12,6 +12,10 @@ function readableTime(value: string | null): string {
 }
 
 export function AgentAdminPage() {
+  const [provider, setProvider] = useState<AgentProvider>("openai-codex");
+  const label = provider === "openai-codex" ? "Codex" : "Antigravity";
+  const loginCommand = `pnpm --filter @jojo/agent auth:${provider === "openai-codex" ? "codex" : "antigravity"}`;
+  const loadRevision = useRef(0);
   const [status, setStatus] = useState<AgentCredentialStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [pushing, setPushing] = useState(false);
@@ -19,21 +23,27 @@ export function AgentAdminPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  async function load() {
+  const load = useCallback(async () => {
+    const revision = ++loadRevision.current;
     setLoading(true);
+    setStatus(null);
     try {
-      setStatus(await agentAdminApi.status());
+      const next = await agentAdminApi.status(provider);
+      if (revision !== loadRevision.current) return;
+      setStatus(next);
       setError("");
     } catch (reason) {
+      if (revision !== loadRevision.current) return;
       setError(reason instanceof Error ? reason.message : "无法读取 Agent 管理状态");
     } finally {
-      setLoading(false);
+      if (revision === loadRevision.current) setLoading(false);
     }
-  }
+  }, [provider]);
 
   useEffect(() => {
     void load();
-  }, []);
+    return () => { loadRevision.current += 1; };
+  }, [load]);
 
   async function pushCredential() {
     setConfirming(false);
@@ -41,7 +51,7 @@ export function AgentAdminPage() {
     setError("");
     setNotice("");
     try {
-      const result = await agentAdminApi.pushCredential();
+      const result = await agentAdminApi.pushCredential(provider);
       setNotice(`已更新 ${result.targetOrigin} · ${readableTime(result.pushedAt)}`);
       await load();
     } catch (reason) {
@@ -56,7 +66,7 @@ export function AgentAdminPage() {
       <PageTopbar
         eyebrow="AGENT OPERATIONS / AGENT 运维"
         title="Agent 管理"
-        description="管理 Agent 使用的专用 Codex OAuth 凭据。密钥与凭据只在本机服务和部署端之间传输。"
+        description="管理 Agent 使用的 Codex 和 Antigravity OAuth 凭据。密钥与凭据只在本机服务和部署端之间传输。"
         aside={
           <span className={`agent-state-badge ${status?.canPush ? "ready" : "blocked"}`}>
             <i />
@@ -65,10 +75,22 @@ export function AgentAdminPage() {
         }
       />
       <main className="agent-admin">
+        <label>
+          OAuth Provider
+          <select aria-label="OAuth Provider" value={provider} disabled={pushing || confirming} onChange={(event) => {
+            setProvider(event.target.value as AgentProvider);
+            setStatus(null);
+            setNotice("");
+            setError("");
+          }}>
+            <option value="openai-codex">Codex</option>
+            <option value="antigravity">Antigravity</option>
+          </select>
+        </label>
         <section className="agent-transfer" aria-label="Agent 凭据传输路径">
           <article>
             <span className="agent-transfer-code">LOCAL / 01</span>
-            <h2>Codex OAuth</h2>
+            <h2>{label} OAuth</h2>
             <p>{status?.credential.sourceLabel || "正在检查本机凭据"}</p>
             <code>{status?.credential.pathHint || "—"}</code>
             <b className={status?.credential.available ? "ok" : "bad"}>
@@ -83,7 +105,7 @@ export function AgentAdminPage() {
           <article>
             <span className="agent-transfer-code">REMOTE / 02</span>
             <h2>已部署 Agent</h2>
-            <p>只写入 openai-codex，不返回已有凭据。</p>
+            <p>写入 {provider} 的凭据。</p>
             <code>{status?.targetOrigin || "—"}</code>
             <b className={status?.serviceConfigured ? "ok" : "bad"}>
               {status?.serviceConfigured ? "服务地址有效" : "服务地址未配置"}
@@ -105,31 +127,31 @@ export function AgentAdminPage() {
             <div><dt>Operator Token</dt><dd><i className={status?.operatorConfigured ? "ok" : "bad"} />{status?.operatorConfigured ? "本机已加载" : "未配置"}</dd></div>
             <div><dt>凭据类型</dt><dd>{status?.credential.type || "—"}</dd></div>
             <div><dt>凭据有效期</dt><dd className={status?.credential.expired ? "bad-text" : ""}>{status?.credential.expiresAt ? readableTime(status.credential.expiresAt) : "—"}</dd></div>
-            <div><dt>写入范围</dt><dd><code>agent / openai-codex</code></dd></div>
+            <div><dt>写入范围</dt><dd><code>agent / {provider}</code></dd></div>
           </dl>
 
           {!loading && status && !status.credential.available && (
             <div className="agent-guidance">
-              <strong>需要先准备 Agent 专用 Codex OAuth</strong>
+              <strong>需要先准备 Agent 专用 {label} OAuth</strong>
               <p>{status.credential.error}</p>
-              <code>pnpm --filter @jojo/agent auth:codex</code>
+              <code>{loginCommand}</code>
             </div>
           )}
           {!loading && status?.credential.expired && (
             <div className="agent-guidance">
-              <strong>Agent 专用凭据已经过期</strong>
-              <p>重新完成 Codex 登录后再更新 Agent。</p>
+              <strong>Access token 已过期</strong>
+              <p>上传时会使用 refresh token 验证并刷新；若登录已失效，请运行 {loginCommand}。</p>
             </div>
           )}
           {error && <p className="content-error" role="alert">{error}</p>}
           {notice && <p className="agent-success" role="status">{notice}</p>}
 
           <footer>
-            <p>更新会替换部署端当前的 Codex OAuth 凭据，不影响 Feature Flag 配置。</p>
+            <p>更新会替换部署端的 {label} OAuth 凭据。运行时切换需在 Agent 环境设置 JOJO_AGENT_PROVIDER={provider}，并清空 JOJO_AGENT_MODEL 使用默认模型或填写该 provider 的模型。</p>
             <button
               className="primary-button"
               type="button"
-              disabled={!status?.canPush || pushing || status.credential.expired}
+              disabled={loading || !status?.canPush || pushing}
               onClick={() => setConfirming(true)}
             >
               {pushing ? "正在更新…" : "更新 Agent 凭据"}
@@ -142,10 +164,12 @@ export function AgentAdminPage() {
         open={confirming}
         kicker="AGENT CREDENTIAL UPDATE"
         title="确认更新 Agent 凭据"
-        message="Agent 专用 Codex OAuth 将通过受保护接口写入部署端，并替换当前凭据。上传会消费本地 rotating refresh token；如需继续在本地运行 Agent，请重新登录。界面不会读取或展示凭据内容。"
+        message={provider === "openai-codex"
+          ? "Agent 专用 Codex OAuth 将通过受保护接口写入部署端，并替换当前凭据。上传会消费本地 rotating refresh token；如需继续在本地运行 Agent，请重新登录。界面不会读取或展示凭据内容。"
+          : "Agent 专用 Antigravity OAuth 将通过受保护接口验证并写入部署端，替换该 provider 的凭据。"}
         details={[
           { label: "目标", value: status?.targetOrigin || "—" },
-          { label: "范围", value: "agent / openai-codex" },
+          { label: "范围", value: `agent / ${provider}` },
           { label: "认证", value: "JOJO_OPERATOR_TOKEN" },
         ]}
         confirmLabel="确认更新"
