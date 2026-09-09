@@ -1,0 +1,201 @@
+diff --git a/src/auth/oauth.ts b/src/auth/oauth.ts
+index 62d7d7e0761ce35660edc738c5159aa5982b7231..622af15416b0f3d3138debc9c74f06b40abeff83 100644
+--- a/src/auth/oauth.ts
++++ b/src/auth/oauth.ts
+@@ -1,5 +1,5 @@
+ import { createHash, randomBytes } from "node:crypto";
+-import { createServer, type Server } from "node:http";
++import type { Server } from "node:http";
+ import type { OAuthCredentials, OAuthLoginCallbacks } from "@earendil-works/pi-ai";
+ import { defaultProjectId, loadCodeAssist } from "../client/client.js";
+ import { escapeHtml, antigravityEnv } from "../utils/util.js";
+@@ -9,7 +9,7 @@ import type { AntigravityOAuthCredentials, CallbackServer } from "../types/types
+ export const REDIRECT_URI = "http://localhost:51121/oauth-callback";
+ export const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+ export const TOKEN_URL = "https://oauth2.googleapis.com/token";
+-export const OAUTH_CALLBACK_TIMEOUT_MS = 5 * 60 * 1000;
++export const OAUTH_CALLBACK_TIMEOUT_MS = 15 * 60 * 1000;
+ export const SCOPES = [
+   "https://www.googleapis.com/auth/aicode",
+   "https://www.googleapis.com/auth/cloud-platform",
+@@ -76,6 +76,7 @@ async function getUserEmail(token: string): Promise<string | undefined> {
+   try {
+     const res = await fetch("https://www.googleapis.com/oauth2/v1/userinfo?alt=json", {
+       headers: { Authorization: `Bearer ${token}` },
++      signal: AbortSignal.timeout(15_000),
+     });
+     if (!res.ok) return undefined;
+     const data = (await res.json()) as { email?: string };
+@@ -92,7 +93,8 @@ function closeServerGracefully(server: Server): void {
+   server.close();
+ }
+ 
+-function startCallbackServer(expectedState: string): Promise<CallbackServer> {
++async function startCallbackServer(expectedState: string): Promise<CallbackServer> {
++  const { createServer } = await import("node:http");
+   return new Promise((resolve, reject) => {
+     let settled = false;
+     let timeout: ReturnType<typeof setTimeout> | undefined;
+@@ -127,6 +129,12 @@ function startCallbackServer(expectedState: string): Promise<CallbackServer> {
+       const error = url.searchParams.get("error");
+       const code = url.searchParams.get("code");
+       const state = url.searchParams.get("state");
++      // A stale browser tab must not cancel the active login flow.
++      if (state !== expectedState) {
++        res.writeHead(400, oauthCallbackHeaders());
++        res.end("This callback belongs to an expired login. Use the newest authorization link.");
++        return;
++      }
+       if (error) {
+         const safe = escapeHtml(error.slice(0, 200));
+         res.writeHead(400, oauthCallbackHeaders());
+@@ -137,13 +145,6 @@ function startCallbackServer(expectedState: string): Promise<CallbackServer> {
+       if (!code || !state) {
+         res.writeHead(400, oauthCallbackHeaders());
+         res.end("Antigravity authentication failed: missing code or state.");
+-        finish(() => rejectCode(new Error("Missing code or state in OAuth callback")));
+-        return;
+-      }
+-      if (state !== expectedState) {
+-        res.writeHead(400, oauthCallbackHeaders());
+-        res.end("Antigravity authentication failed: invalid state.");
+-        finish(() => rejectCode(new Error("OAuth state mismatch")));
+         return;
+       }
+ 
+@@ -348,7 +349,11 @@ export async function loginAntigravity(
+     });
+     if (returnedState !== state) throw new Error("OAuth state mismatch");
+ 
++    callbacks.onProgress?.("Google callback received; exchanging authorization code.");
+     const tokenResponse = await fetch(TOKEN_URL, {
++      signal: callbacks.signal
++        ? AbortSignal.any([callbacks.signal, AbortSignal.timeout(30_000)])
++        : AbortSignal.timeout(30_000),
+       method: "POST",
+       headers: { "Content-Type": "application/x-www-form-urlencoded" },
+       body: new URLSearchParams({
+@@ -376,6 +381,7 @@ export async function loginAntigravity(
+       );
+     }
+ 
++    callbacks.onProgress?.("Google tokens received; loading account project.");
+     const [email, discoveredProject] = await Promise.all([
+       getUserEmail(tokenData.access_token),
+       loadCodeAssist(tokenData.access_token),
+@@ -394,8 +400,10 @@ export async function loginAntigravity(
+ 
+ export async function refreshAntigravityToken(
+   credentials: OAuthCredentials,
++  signal?: AbortSignal,
+ ): Promise<AntigravityOAuthCredentials> {
+   const response = await fetch(TOKEN_URL, {
++    signal,
+     method: "POST",
+     headers: { "Content-Type": "application/x-www-form-urlencoded" },
+     body: new URLSearchParams({
+diff --git a/src/client/client.ts b/src/client/client.ts
+index d4056180ce2e3eeab2cb83e72fb8c9b87b746350..b824610bf136c1df82ddacacbc4b188208123643 100644
+--- a/src/client/client.ts
++++ b/src/client/client.ts
+@@ -38,8 +38,8 @@ const inFlightModelLookups = new Map<string, Promise<DynamicModelInfo | undefine
+ /** UUID-shaped stable id from a seed (account email preferred over cwd). */
+ export function stableProjectId(seed: string): string {
+   const bytes = createHash("sha1").update(`antigravity:${seed}`).digest().subarray(0, 16);
+-  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
++  bytes[6] = (bytes[6]! & 0x0f) | 0x50;
++  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+   const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+ }
+diff --git a/src/models/discovery.ts b/src/models/discovery.ts
+index dac3d1628a76efc166fef99b62f1e9a703083fe9..1c84bcdae8a27aafe8ca46ed017a1b147ead5f1e 100644
+--- a/src/models/discovery.ts
++++ b/src/models/discovery.ts
+@@ -5,7 +5,7 @@ import type {
+   ModelsStoreEntry,
+   RefreshModelsContext,
+ } from "@earendil-works/pi-ai";
+-import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
++import type { ProviderModelConfig } from "./model-config.js";
+ import { getApiKey } from "../auth/index.js";
+ import { DEFAULT_ENDPOINT, fetchAvailableModelsCatalog, parseApiKey } from "../client/index.js";
+ import { ANTIGRAVITY_API } from "../types/types.js";
+diff --git a/src/models/grouping.ts b/src/models/grouping.ts
+index e36e7aebf795859d89009ca570fef6f97e873bdf..f8a471723f4df9e0e428abb2550f7eaf294ae322 100644
+--- a/src/models/grouping.ts
++++ b/src/models/grouping.ts
+@@ -1,4 +1,4 @@
+-import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
++import type { ProviderModelConfig } from "./model-config.js";
+ import { ThinkingEffort } from "../types/enums.js";
+ import type { AntigravityRouting, ModelInfoRaw } from "../types/types.js";
+ 
+diff --git a/src/models/model-config.ts b/src/models/model-config.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..abe55c456cf79dccfd4957402c64b2aa60ecc878
+--- /dev/null
++++ b/src/models/model-config.ts
+@@ -0,0 +1,4 @@
++import type { Api, Model } from "@earendil-works/pi-ai";
++
++// The core provider modules only need model metadata, not the coding-agent CLI.
++export type ProviderModelConfig = Omit<Model<Api>, "api" | "provider" | "baseUrl">;
+diff --git a/src/models/models.ts b/src/models/models.ts
+index bfde359e9aef8ac5c08590356c0663c09dfdd9e8..a2f41cffe5e36af926618d99b0a8d2f124dae466 100644
+--- a/src/models/models.ts
++++ b/src/models/models.ts
+@@ -1,4 +1,4 @@
+-import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
++import type { ProviderModelConfig } from "./model-config.js";
+ import type { AntigravityRouting, ThinkingWire } from "../types/types.js";
+ import { ThinkingEffort } from "../types/enums.js";
+ import type { AntigravityCatalog } from "./grouping.js";
+@@ -141,6 +141,9 @@ export const RUNTIME_MAX_OUTPUT_TOKENS: Record<string, number> = {
+   "gemini-3.1-pro-low": 65535,
+   "gemini-3.1-pro-high": 65535,
+   "gemini-pro-agent": 65535,
++  // The Antigravity endpoint accepts 65,535 for Flash-Lite; 65,536 returns 400.
++  "gemini-3.1-flash-lite": 65535,
++  "gemini-3.5-flash-lite": 65535,
+   "claude-opus-4-6": 64000,
+   "claude-opus-4-6-thinking": 64000,
+   "claude-sonnet-4-6": 64000,
+diff --git a/src/stream/stream.ts b/src/stream/stream.ts
+index fcdf06b33bd9253175ad5a22449479c171c30fda..f71b2d8e7d2c85622e15c2fe410a4413ec8ee558 100644
+--- a/src/stream/stream.ts
++++ b/src/stream/stream.ts
+@@ -110,7 +110,7 @@ function geminiRequiresThoughtSignature(runtimeModel: string): boolean {
+   if (!runtimeModel.startsWith("gemini-")) return false;
+   const match = runtimeModel.match(/^gemini-(\d+)/);
+   if (match) {
+-    const major = Number.parseInt(match[1], 10);
++    const major = Number.parseInt(match[1]!, 10);
+     return major >= 3;
+   }
+   return true;
+@@ -121,7 +121,7 @@ function parseImageData(raw: string, explicitMime?: string): { data: string; mim
+   if (match) {
+     return {
+       mimeType: explicitMime || match[1] || "image/png",
+-      data: match[2].trim(),
++      data: match[2]!.trim(),
+     };
+   }
+   return {
+diff --git a/src/utils/util.ts b/src/utils/util.ts
+index f8cc0dd1ba75515540b548465169b7fe0ffdef54..cb10399b25cc8c7da0b43e42a306fa3147f9968d 100644
+--- a/src/utils/util.ts
++++ b/src/utils/util.ts
+@@ -37,8 +37,8 @@ export function nowRequestId(): string {
+ /** Deterministic RFC 4122 v5 UUID from seed (survives restarts for the same session seed). */
+ export function stableUuid(seed: string): string {
+   const bytes = createHash("sha1").update(seed).digest().subarray(0, 16);
+-  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
++  bytes[6] = (bytes[6]! & 0x0f) | 0x50;
++  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+   const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+ }

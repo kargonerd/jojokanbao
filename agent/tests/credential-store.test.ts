@@ -42,6 +42,44 @@ function key(byte: number): Uint8Array {
 }
 
 describe("EdgeOneEncryptedCredentialPersistence", () => {
+  it("keeps provider snapshots independent during overlapping refreshes", async () => {
+    const namespaces = new Map<string, MemoryMessageStore>();
+    const namespace = (id: string) => {
+      if (!namespaces.has(id)) namespaces.set(id, new MemoryMessageStore());
+      return namespaces.get(id)!;
+    };
+    const store = {
+      getMessages: async (input: { conversationId: string; limit?: number; order?: "asc" | "desc" }) => namespace(input.conversationId).getMessages(input),
+      appendMessage: async (input: { conversationId: string; content: unknown }) => namespace(input.conversationId).appendMessage(input),
+      updateMessage: async (input: { conversationId: string; messageId: string; content?: unknown }) => namespace(input.conversationId).updateMessage(input),
+    };
+    const env = { JOJO_CREDENTIAL_ENCRYPTION_KEY: Buffer.from(key(8)).toString("base64") };
+    const first = createEdgeOneCredentialStore(env, store);
+    const second = createEdgeOneCredentialStore(env, store);
+    await Promise.all([first.modify("openai-codex", async () => ({ type: "oauth", access: "codex", refresh: "codex-refresh", expires: 1, generation: 7 })),
+      second.modify("antigravity", async () => ({ type: "oauth", access: "google", refresh: "google-refresh", expires: 1, projectId: "project-one", generation: 1 }))]);
+    let release!: () => void;
+    let started!: () => void;
+    const barrier = new Promise<void>((resolve) => { release = resolve; });
+    const pending = new Promise<void>((resolve) => { started = resolve; });
+    const refreshing = first.modify("openai-codex", async (current) => {
+      started();
+      await barrier;
+      return { ...current!, access: "fresh-codex" };
+    });
+    await pending;
+    await second.modify("antigravity", async (current) => ({ ...current!, access: "new-google", generation: 2 }));
+    release();
+    await refreshing;
+    const reader = createEdgeOneCredentialStore(env, store);
+    await expect(reader.read("openai-codex")).resolves.toMatchObject({ access: "fresh-codex", generation: 7 });
+    await expect(reader.read("antigravity")).resolves.toMatchObject({ access: "new-google", generation: 2, projectId: "project-one" });
+    expect(namespaces.size).toBe(2);
+    expect(namespaces.has("jojo-platform-credentials-v1")).toBe(true);
+    expect(await reader.list()).toHaveLength(2);
+    expect(JSON.stringify([...namespaces.values()].map((entry) => entry.values))).not.toContain("google-refresh");
+  });
+
   it("uses the deployed encryption key without storing plaintext tokens", async () => {
     const store = new MemoryMessageStore();
     const credentials = createEdgeOneCredentialStore(

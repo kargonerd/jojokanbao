@@ -14,11 +14,19 @@ import {
   streamSimple as streamOpenAICodexSimple,
 } from "@earendil-works/pi-ai/api/openai-codex-responses";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
+import { antigravityProvider, DEFAULT_ANTIGRAVITY_MODEL } from "./antigravity/provider";
+
+export const SUPPORTED_AGENT_PROVIDERS = ["openai-codex", "antigravity"] as const;
+export type AgentProvider = typeof SUPPORTED_AGENT_PROVIDERS[number];
+
+export function isAgentProvider(value: string): value is AgentProvider {
+  return SUPPORTED_AGENT_PROVIDERS.some((provider) => provider === value);
+}
 
 export type AgentEnvironment = Readonly<Record<string, string | undefined>>;
 
 export interface PlatformModelConfig {
-  provider: "openai-codex";
+  provider: AgentProvider;
   model: string;
 }
 
@@ -149,9 +157,12 @@ function edgeCompatibleOpenAICodexProvider(): Provider<"openai-codex-responses">
 export function resolvePlatformModelConfig(
   environment: AgentEnvironment,
 ): PlatformModelConfig {
+  const provider = environment.JOJO_AGENT_PROVIDER?.trim() || "openai-codex";
+  if (!isAgentProvider(provider)) throw new Error(`Unsupported JOJO_AGENT_PROVIDER: ${provider}`);
   return {
-    provider: "openai-codex",
-    model: environment.JOJO_AGENT_MODEL?.trim() || DEFAULT_CODEX_MODEL,
+    provider,
+    model: environment.JOJO_AGENT_MODEL?.trim()
+      || (provider === "antigravity" ? DEFAULT_ANTIGRAVITY_MODEL : DEFAULT_CODEX_MODEL),
   };
 }
 
@@ -169,6 +180,7 @@ export function createPlatformModels(options: {
     authContext,
   });
   models.setProvider(edgeCompatibleOpenAICodexProvider());
+  models.setProvider(antigravityProvider());
   return models;
 }
 
@@ -178,13 +190,23 @@ export async function createPlatformModelRuntime(options: {
   environment?: AgentEnvironment;
 }): Promise<PlatformModelRuntime> {
   const models = createPlatformModels(options);
-  const model = models.getModel(options.config.provider, options.config.model);
+  const auth = await models.checkAuth(options.config.provider);
+  let model = models.getModel(options.config.provider, options.config.model);
+  if (!model && auth && options.config.provider === "antigravity") {
+    const refreshed = await models.refresh({
+      providers: ["antigravity"],
+      force: true,
+      signal: AbortSignal.timeout(30_000),
+    });
+    const error = refreshed.errors.get("antigravity");
+    if (error) throw error;
+    model = models.getModel(options.config.provider, options.config.model);
+  }
   if (!model) {
     throw new Error(
       `Pi model catalog does not contain ${options.config.provider}/${options.config.model}`,
     );
   }
-  const auth = await models.checkAuth(options.config.provider);
   return {
     config: options.config,
     models,

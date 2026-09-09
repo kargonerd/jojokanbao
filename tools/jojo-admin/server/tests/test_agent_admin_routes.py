@@ -183,3 +183,52 @@ def test_routes_do_not_require_browser_login():
 
     assert response.status_code == 200
     assert response.get_json()["status"]["canPush"] is True
+
+
+def test_antigravity_push_preserves_project_and_never_returns_tokens(tmp_path):
+    auth_path = tmp_path / "agent" / "auth.json"
+    write_agent_auth(auth_path)
+    content = json.loads(auth_path.read_text())
+    content["antigravity"] = {
+        "type": "oauth", "access": "google-access-secret", "refresh": "google-refresh-secret",
+        "expires": 0, "projectId": "project-one",
+    }
+    auth_path.write_text(json.dumps(content))
+    transport = FakeTransport()
+    with patch("agent_admin_routes.ROOT", tmp_path), patch.dict(os.environ, configured_env()):
+        admin = AgentCredentialAdmin(provider="antigravity", transport=transport)
+        status = admin.status()
+        admin.push()
+    assert status["provider"] == "antigravity"
+    assert status["canPush"] is True
+    assert status["credential"]["expired"] is True
+    assert "google-access-secret" not in json.dumps(status)
+    assert "google-refresh-secret" not in json.dumps(status)
+    payload = transport.calls[0][1]["json"]
+    assert payload["provider"] == "antigravity"
+    assert payload["credential"]["projectId"] == "project-one"
+    assert payload["credential"]["refresh"] == "google-refresh-secret"
+
+
+def test_antigravity_rejects_missing_project(tmp_path):
+    auth_path = tmp_path / "agent" / "auth.json"
+    write_agent_auth(auth_path)
+    content = json.loads(auth_path.read_text())
+    content["antigravity"] = content["openai-codex"]
+    auth_path.write_text(json.dumps(content))
+    with patch("agent_admin_routes.ROOT", tmp_path), patch.dict(os.environ, configured_env()):
+        status = AgentCredentialAdmin(provider="antigravity").status()
+    assert status["canPush"] is False
+    assert "projectId" in status["credential"]["error"]
+
+
+def test_routes_forward_selected_provider_and_reject_unknown_provider():
+    client = app.test_client()
+    with patch("agent_admin_routes.AgentCredentialAdmin") as admin_class:
+        admin_class.return_value.status.return_value = {"canPush": True}
+        client.get("/api/agent/credentials/status?provider=antigravity")
+        admin_class.assert_called_with(provider="antigravity")
+        admin_class.return_value.push.return_value = {"pushedAt": "now"}
+        client.post("/api/agent/credentials/push", json={"provider": "antigravity"})
+        admin_class.assert_called_with(provider="antigravity")
+    assert client.get("/api/agent/credentials/status?provider=unknown").status_code == 400

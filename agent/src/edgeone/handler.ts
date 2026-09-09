@@ -1,5 +1,6 @@
 import {
   DEFAULT_CODEX_REASONING,
+  SUPPORTED_AGENT_PROVIDERS,
   createPlatformModelRuntime,
   modelRuntimeStream,
   resolvePlatformModelConfig,
@@ -580,7 +581,7 @@ export function createEdgeOneAgentHealthHandler() {
         provider: runtime.config.provider,
         model: runtime.config.model,
         configured: runtime.configured,
-        supportedProviders: ["openai-codex"],
+        supportedProviders: SUPPORTED_AGENT_PROVIDERS,
       });
     } catch (error) {
       if (error instanceof AgentHttpError) {

@@ -23,6 +23,22 @@ describe("resolvePlatformModelConfig", () => {
       model: "gpt-5.6-codex",
     });
   });
+
+  it("switches providers with independent defaults and rejects unknown providers", () => {
+    expect(resolvePlatformModelConfig({ JOJO_AGENT_PROVIDER: " antigravity " })).toEqual({
+      provider: "antigravity", model: "gemini-3.5-flash-lite",
+    });
+    expect(resolvePlatformModelConfig({ JOJO_AGENT_PROVIDER: "antigravity", JOJO_AGENT_MODEL: "claude-sonnet-4-6" }).model)
+      .toBe("claude-sonnet-4-6");
+    expect(() => resolvePlatformModelConfig({ JOJO_AGENT_PROVIDER: "typo" })).toThrow("Unsupported JOJO_AGENT_PROVIDER");
+  });
+
+  it("rejects a model belonging to the other provider", async () => {
+    await expect(createPlatformModelRuntime({
+      config: resolvePlatformModelConfig({ JOJO_AGENT_PROVIDER: "antigravity", JOJO_AGENT_MODEL: "gpt-5.6-luna" }),
+      environment: {},
+    })).rejects.toThrow("Pi model catalog does not contain");
+  });
 });
 
 describe("createPlatformModelRuntime", () => {

@@ -1,24 +1,86 @@
 # @jojo/agent
 
-JOJO 看报的通用 Pi Agent 运行层。当前阶段只接入 Codex OAuth。
+JOJO 看报的通用 Pi Agent 运行层，支持 Codex OAuth 和 Antigravity OAuth。
 
 ```text
 pi-ai
-└── Codex OAuth、模型目录和流式请求
+└── Codex OAuth、模型目录、消息转换和流式请求
 
 pi-agent-core / Agent
 └── 消息状态、Agent Loop、工具执行、事件和取消
 
 @jojo/agent
-└── JOJO 事件格式、预算、token/cost 和 Codex 模型配置
+└── JOJO 事件格式、预算、token/cost、Provider 切换和 Antigravity 适配
 
 applications.ts / rag-tools.ts
 └── RAG 提示词，以及搜索、读片段、按需扫描整本三个工具
 ```
 
 这里使用 `pi-agent-core` 的高层 `Agent`，不使用 `pi-coding-agent`，也不自行
-实现模型与工具之间的循环。其他模型后续统一通过 Makers Models 接入，不在本
-阶段预埋直接 Provider。
+实现模型与工具之间的循环。当前 Pi 0.84.4 已无内置 Antigravity；`src/antigravity`
+通过 `pi-antigravity` 包适配 OAuth、模型目录及 Cloud Code Assist SSE。
+其他模型后续统一通过 Makers Models 接入。
+
+## Provider 切换
+
+`JOJO_AGENT_PROVIDER` 支持 `openai-codex`（默认）和 `antigravity`。
+`JOJO_AGENT_MODEL` 留空时分别使用 `gpt-5.6-luna` 和 `gemini-3.5-flash-lite`。
+切换 provider 时清空旧的 model 覆盖，或指定该 provider 的模型；错误组合会直接报错。
+本地 `pnpm dev:agent` 从仓库根目录 `.env`、`.env.local` 读取配置，进程环境变量优先级最高；
+修改后重启服务。部署端在国际 Agent 的 EdgeOne Makers 项目环境变量中修改，再重新部署。
+管理台的 provider 下拉框只决定上传哪套凭据，不切换运行模型。
+
+```dotenv
+JOJO_AGENT_PROVIDER=antigravity
+JOJO_AGENT_MODEL=gemini-3.5-flash-lite
+```
+
+`smoke`、`rag:smoke` 等 CLI 验证命令读取当前终端环境变量，不自动加载根目录 `.env.local`。
+
+```powershell
+pnpm --filter @jojo/agent auth:antigravity
+pnpm --filter @jojo/agent verify:antigravity
+$env:JOJO_AGENT_PROVIDER="antigravity"
+$env:JOJO_AGENT_MODEL=""
+pnpm --filter @jojo/agent smoke -- "用一句话介绍你自己"
+
+# 切回 Codex
+$env:JOJO_AGENT_PROVIDER="openai-codex"
+$env:JOJO_AGENT_MODEL=""
+```
+
+Antigravity 登录命令输出 Google 授权网址，在本机浏览器打开后自动接收回调
+（`127.0.0.1:51121`），校验 OAuth state/PKCE 并发现账号项目，再把凭据与 `projectId`
+写入 `agent/auth.json`（支持现有 `JOJO_AGENT_AUTH_PATH` / `JOJO_CODEX_AUTH_PATH`）。
+账号需已在 Antigravity 完成启用；项目发现和回退规则由上游包处理。
+同一文件可以同时保留两套凭据。登录入口只在本地 CLI 使用，不打包进部署产物。
+登录监听等待 15 分钟，期间需保持命令运行。若回跳 `localhost:51121` 显示拒绝连接，
+先检查命令是否已退出；超时后重新运行 `auth:antigravity` 并使用新链接，旧链接无法续用。
+
+接入固定版本 [pi-antigravity 0.7.2](https://pi.dev/packages/pi-antigravity)，复用其 OAuth、
+模型发现和流式工具协议。默认模型为 `gemini-3.5-flash-lite`，也可配置 `gemini-3.1-pro`、`claude-sonnet-4-6`、
+`claude-opus-4-6` 等；实际权限、模型和配额取决于账号。成本是包提供的模型估算，不是订阅账单。
+已知模型直接请求；配置目录中尚无的模型时，会先执行认证后的模型发现。
+
+Pi 在每次请求前检查有效期；过期时刷新并回写凭据。Google 未返回新的 refresh token 时保留
+原值，刷新失败也不会删除已有凭据。撤销授权或账号受限仍需人工处理。该包是社区非官方集成。
+
+`agent/patches/pi-antigravity@0.7.2.patch` 适配核心模型类型、严格 TypeScript 检查和
+刷新取消信号，并延迟加载本地 HTTP 登录监听器。登录补丁延长等待时间、忽略旧回调，并为
+令牌兑换增加超时与阶段提示。3.1 / 3.5 Flash-Lite 的输出上限设为已验证的 65,535，避免服务端拒绝 65,536。
+核心模块不依赖 `pi-coding-agent`；
+根包和生成的部署包均将该可选 peer 排除。升级包时需同步复核补丁和内部导入路径。
+
+上传指定 provider（不改变运行时 provider）：
+
+```powershell
+pnpm --filter @jojo/agent credentials:push -- antigravity
+pnpm --filter @jojo/agent credentials:push -- openai-codex
+```
+
+不传参数时按 `JOJO_AGENT_PROVIDER` 选择。部署端先刷新并校验上传的 OAuth，再写入
+现有加密 Store。两家 provider 使用独立命名空间，Codex 继续读取原有存储地址，
+避免相互刷新时覆盖凭据。管理台 `/agent` 也可选择上传的 provider。
 
 ## 本地登录与验证
 
@@ -47,7 +109,7 @@ pnpm --filter @jojo/agent credentials:push
 
 上传后若仍需本地运行，再单独执行一次 `auth:codex`。
 
-默认使用 `gpt-5.6-luna`，推理强度固定为 `low`。模型可以覆盖：
+Codex 默认使用 `gpt-5.6-luna`，推理强度固定为 `low`。模型可以覆盖：
 
 ```powershell
 $env:JOJO_AGENT_MODEL="gpt-5.6-terra"

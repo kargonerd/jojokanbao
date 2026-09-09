@@ -26,7 +26,7 @@ reader.jojokanbao.cn                  agent-global.jojokanbao.cn
 - `/rag/health` 与 `/times/health` 不匹配 Middleware，可用于部署健康检查；它们只报告模型配置状态，不
   执行模型。
 - `/gateway/credentials` 仍是平台通用的凭据管理 Cloud Function，不返回凭据。当前只
-  注册 `agent/openai-codex`，以后由其他业务注册自己的 scope/provider 和校验器。同一代
+  注册 `agent/openai-codex` 和 `agent/antigravity`。两家使用独立加密命名空间。同一代
   凭据的常规 OAuth 刷新固定覆盖该代 Store message；管理员主动换登录时才追加更高代
   记录，读取始终选择最高代，避免旧请求在并发刷新后覆盖新登录。
 - Web 历史按账号保存在 IndexedDB，浏览器不自动清理；Mobile 当前面板的最近对话保留在
@@ -57,6 +57,7 @@ JOJO_TIMES_AGENT_URL=https://agent-global.jojokanbao.cn/times
 VITE_SUPABASE_URL=https://PROJECT.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=...
 JOJO_AUTH_TIMEOUT_SECONDS=5
+JOJO_AGENT_PROVIDER=openai-codex
 JOJO_AGENT_MODEL=gpt-5.6-luna
 
 JOJO_CREDENTIAL_ENCRYPTION_KEY=<32-byte random key encoded as base64>
@@ -64,6 +65,21 @@ JOJO_OPERATOR_TOKEN=<at least 32 random characters>
 ```
 
 Agent 默认使用 Luna，推理强度固定为 `low`，优先控制 MVP 阶段的订阅额度消耗。
+
+切换 Antigravity 时，在国际 Agent 的 EdgeOne Makers 项目环境变量中设置：
+
+```dotenv
+JOJO_AGENT_PROVIDER=antigravity
+JOJO_AGENT_MODEL=gemini-3.5-flash-lite
+```
+
+`JOJO_AGENT_MODEL` 留空也会选择该默认模型。修改后重新部署国际 Agent；
+Reader/Web/Mobile 不单独配置模型。本地开发则在根目录 `.env.local` 修改并重启 `pnpm dev:agent`。
+先运行 `pnpm --filter @jojo/agent auth:antigravity`，再运行
+`pnpm --filter @jojo/agent credentials:push -- antigravity` 上传；上传本身不切换运行 provider。
+部署端自动刷新过期 access token 并回写加密 Store。Google 未轮换 refresh token 时保留原值。
+Antigravity 使用固定版本 `pi-antigravity@0.7.2` 及仓库补丁；生成包携带同一补丁和可选 peer
+配置。JOJO 本地登录入口和 `auth.json` 不包含在部署源码中。
 
 ## AI 使用限额
 

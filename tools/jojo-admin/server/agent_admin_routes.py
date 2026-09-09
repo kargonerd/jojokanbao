@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,7 +10,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import requests
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -41,7 +42,12 @@ class AgentCredentialAdmin:
         self,
         *,
         transport: Any = requests,
+        provider: str = "openai-codex",
     ) -> None:
+        if not isinstance(provider, str) or provider not in {"openai-codex", "antigravity"}:
+            raise AgentAdminError("不支持的 Agent provider")
+        self.provider = provider
+        self.provider_label = "Codex" if provider == "openai-codex" else "Antigravity"
         _load_root_env()
         self.transport = transport
         self.operator_token = os.getenv("JOJO_OPERATOR_TOKEN", "").strip()
@@ -74,30 +80,38 @@ class AgentCredentialAdmin:
 
     def _credential(self) -> dict[str, Any]:
         if not self.auth_path.exists():
-            raise AgentAdminError("没有找到 Agent 专用 Codex OAuth 凭据")
+            raise AgentAdminError(f"没有找到 Agent 专用 {self.provider_label} OAuth 凭据")
         try:
             content = json.loads(self.auth_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
-            raise AgentAdminError("Agent 专用 Codex OAuth 凭据无法读取") from error
+            raise AgentAdminError(f"Agent 专用 {self.provider_label} OAuth 凭据无法读取") from error
 
-        pi_credential = content.get("openai-codex") if isinstance(content, dict) else None
+        pi_credential = content.get(self.provider) if isinstance(content, dict) else None
         if not isinstance(pi_credential, dict) or pi_credential.get("type") != "oauth":
-            raise AgentAdminError("Agent 专用凭据必须使用 openai-codex OAuth 格式")
+            raise AgentAdminError(f"Agent 专用凭据必须使用 {self.provider} OAuth 格式")
         access = pi_credential.get("access")
         refresh = pi_credential.get("refresh")
         expires = pi_credential.get("expires")
 
-        if not isinstance(access, str) or not access:
-            raise AgentAdminError("Agent 专用凭据中没有 Codex access token")
-        if not isinstance(refresh, str) or not refresh:
-            raise AgentAdminError("Agent 专用凭据中没有 Codex refresh token")
-        if not isinstance(expires, (int, float)):
-            raise AgentAdminError("Agent 专用 Codex 凭据缺少有效期")
+        if not isinstance(access, str) or not access.strip():
+            raise AgentAdminError(f"Agent 专用凭据中没有 {self.provider_label} access token")
+        if not isinstance(refresh, str) or not refresh.strip():
+            raise AgentAdminError(f"Agent 专用凭据中没有 {self.provider_label} refresh token")
+        if (isinstance(expires, bool) or not isinstance(expires, (int, float))
+                or not math.isfinite(expires) or not 0 <= expires <= 253_402_300_799_000):
+            raise AgentAdminError(f"Agent 专用 {self.provider_label} 凭据缺少有效期")
+        metadata = {}
+        if self.provider == "antigravity":
+            project_id = pi_credential.get("projectId")
+            if not isinstance(project_id, str) or not project_id.strip():
+                raise AgentAdminError("Antigravity OAuth 凭据缺少 projectId，请重新登录")
+            metadata["projectId"] = project_id
         return {
             "type": "oauth",
             "access": access,
             "refresh": refresh,
             "expires": int(expires),
+            **metadata,
         }
 
     def status(self) -> dict[str, Any]:
@@ -121,6 +135,7 @@ class AgentCredentialAdmin:
             parsed.scheme == "https" or parsed.hostname in {"localhost", "127.0.0.1"}
         )
         return {
+            "provider": self.provider,
             "operatorConfigured": operator_configured,
             "serviceConfigured": service_configured,
             "targetOrigin": f"{parsed.scheme}://{parsed.netloc}" if parsed.netloc else None,
@@ -150,7 +165,7 @@ class AgentCredentialAdmin:
                 },
                 json={
                     "scope": "agent",
-                    "provider": "openai-codex",
+                    "provider": self.provider,
                     "credential": credential,
                 },
                 timeout=20,
@@ -169,13 +184,20 @@ class AgentCredentialAdmin:
 
 @agent_admin_blueprint.get("/api/agent/credentials/status")
 def agent_credential_status():
-    return jsonify({"success": True, "status": AgentCredentialAdmin().status()})
+    try:
+        admin = AgentCredentialAdmin(provider=request.args.get("provider", "openai-codex"))
+        return jsonify({"success": True, "status": admin.status()})
+    except AgentAdminError as error:
+        return jsonify({"success": False, "message": str(error)}), 400
 
 
 @agent_admin_blueprint.post("/api/agent/credentials/push")
 def push_agent_credential():
     try:
-        result = AgentCredentialAdmin().push()
+        body = request.get_json(silent=True) or {}
+        if not isinstance(body, dict):
+            return jsonify({"success": False, "message": "请求格式无效"}), 400
+        result = AgentCredentialAdmin(provider=body.get("provider", "openai-codex")).push()
         return jsonify({"success": True, "result": result})
     except AgentAdminError as error:
         return jsonify({"success": False, "message": str(error)}), 502

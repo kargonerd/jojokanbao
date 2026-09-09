@@ -19,6 +19,37 @@ function request(body: unknown, token = OPERATOR_TOKEN): Request {
 }
 
 describe("createCredentialAdminHandler", () => {
+  it("validates and refreshes Antigravity with Google while preserving the Codex credential", async () => {
+    let stored: CredentialFile = { "openai-codex": { type: "oauth", access: "codex", refresh: "codex-refresh", expires: 500 } };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ access_token: "fresh-google", expires_in: 3_600 }));
+    try {
+      const handle = createCredentialAdminHandler({
+        createCredentialStore: () => new PersistentCredentialStore({ read: async () => stored, write: async (next) => { stored = next; } }),
+      });
+      const response = await handle({ env: { JOJO_OPERATOR_TOKEN: OPERATOR_TOKEN }, request: request({
+        scope: "agent", provider: "antigravity",
+        credential: { type: "oauth", access: "old-google", refresh: "google-refresh", expires: 0, projectId: "project-one" },
+      }) });
+      expect(response.status).toBe(204);
+      expect(fetchMock.mock.calls[0]![0]).toBe("https://oauth2.googleapis.com/token");
+      expect(stored["antigravity"]).toMatchObject({ access: "fresh-google", refresh: "google-refresh", projectId: "project-one", generation: 1 });
+      expect(stored["openai-codex"]).toMatchObject({ access: "codex", refresh: "codex-refresh" });
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("rejects Antigravity credentials without projectId before touching storage", async () => {
+    const createCredentialStore = vi.fn();
+    const response = await createCredentialAdminHandler({ createCredentialStore })({
+      env: { JOJO_OPERATOR_TOKEN: OPERATOR_TOKEN }, request: request({
+        scope: "agent", provider: "antigravity", credential: { type: "oauth", access: "access", refresh: "refresh", expires: 0 },
+      }),
+    });
+    expect(response.status).toBe(400);
+    expect(createCredentialStore).not.toHaveBeenCalled();
+  });
+
   it("stores the uploaded Codex OAuth credential without returning it", async () => {
     let stored: CredentialFile = {};
     const credentials = new PersistentCredentialStore({

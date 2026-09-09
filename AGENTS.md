@@ -56,7 +56,8 @@ pnpm test:backend
 - Agent 是单一 `@jojo/agent` 包，通用运行层位于 `agent/src`，使用
   `pi-agent-core/Agent`，不使用
   `pi-coding-agent`，也不自行实现 Agent Loop。
-- 当前只接入 Codex OAuth；其他模型后续通过 Makers Models 统一接入。
+- 当前接入 Codex OAuth 和 Antigravity OAuth，通过 `JOJO_AGENT_PROVIDER` 选择；
+  其他模型后续通过 Makers Models 统一接入。
 - EdgeOne 的认证、SSE 和加密凭证持久化位于 `agent/src/edgeone`。
 - RAG、JOJO Times 等产品只注入提示词和业务工具。
 - Codex Makers Agent 只部署到不含中国大陆的独立项目；入口仅放在

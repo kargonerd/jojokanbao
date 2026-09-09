@@ -9,9 +9,12 @@ import {
 } from "../credentials";
 import {
   openAICodexRefreshErrorCode,
+  SUPPORTED_AGENT_PROVIDERS,
+  isAgentProvider,
   type AgentEnvironment,
 } from "../models";
 import type { EdgeOneMessageStore } from "./types";
+import type { CredentialStore } from "@earendil-works/pi-ai";
 
 const CREDENTIAL_CONVERSATION_ID = "jojo-platform-credentials-v1";
 const CREDENTIAL_HISTORY_LIMIT = 20;
@@ -108,11 +111,12 @@ export class EdgeOneEncryptedCredentialPersistence implements CredentialPersiste
   constructor(
     private readonly store: EdgeOneMessageStore,
     private readonly rawKey: Uint8Array,
+    private readonly conversationId = CREDENTIAL_CONVERSATION_ID,
   ) {}
 
   async read(): Promise<unknown | undefined> {
     const messages = await this.store.getMessages({
-      conversationId: CREDENTIAL_CONVERSATION_ID,
+      conversationId: this.conversationId,
       limit: CREDENTIAL_HISTORY_LIMIT,
       order: "desc",
     });
@@ -149,7 +153,7 @@ export class EdgeOneEncryptedCredentialPersistence implements CredentialPersiste
     const messageId = this.messageIdsByGeneration.get(generation);
     if (generation <= this.highestGeneration && messageId && this.store.updateMessage) {
       await this.store.updateMessage({
-        conversationId: CREDENTIAL_CONVERSATION_ID,
+        conversationId: this.conversationId,
         messageId,
         content,
         metadata,
@@ -157,7 +161,7 @@ export class EdgeOneEncryptedCredentialPersistence implements CredentialPersiste
       return;
     }
     const appendedMessageId = await this.store.appendMessage({
-      conversationId: CREDENTIAL_CONVERSATION_ID,
+      conversationId: this.conversationId,
       role: "system",
       content,
       metadata,
@@ -203,15 +207,36 @@ export class EdgeOneEncryptedCredentialPersistence implements CredentialPersiste
 export function createEdgeOneCredentialStore(
   environment: AgentEnvironment,
   store: EdgeOneMessageStore | undefined,
-) {
+): CredentialStore {
   if (!store) {
     throw new Error("问答凭证存储暂时不可用");
   }
-  const persistence = new EdgeOneEncryptedCredentialPersistence(
-    store,
-    encryptionKey(environment.JOJO_CREDENTIAL_ENCRYPTION_KEY),
-  );
-  return new PersistentCredentialStore(persistence, {
-    coordinationKey: CREDENTIAL_CONVERSATION_ID,
-  });
+  const rawKey = encryptionKey(environment.JOJO_CREDENTIAL_ENCRYPTION_KEY);
+  const stores = new Map<string, PersistentCredentialStore>();
+  const forProvider = (provider: string) => {
+    if (!isAgentProvider(provider)) throw new Error(`Unsupported credential provider: ${provider}`);
+    let credentials = stores.get(provider);
+    if (!credentials) {
+      // Keep deployed Codex credentials at their existing address. Other
+      // providers get independent snapshots so cross-isolate refreshes cannot
+      // overwrite each other's credentials or administrator generations.
+      const namespace = provider === "openai-codex"
+        ? CREDENTIAL_CONVERSATION_ID : `${CREDENTIAL_CONVERSATION_ID}-${provider}`;
+      credentials = new PersistentCredentialStore(
+        new EdgeOneEncryptedCredentialPersistence(store, rawKey, namespace),
+        { coordinationKey: namespace },
+      );
+      stores.set(provider, credentials);
+    }
+    return credentials;
+  };
+  return {
+    read: (provider, options) => forProvider(provider).read(provider, options),
+    modify: (provider, fn, options) => forProvider(provider).modify(provider, fn, options),
+    delete: (provider, options) => forProvider(provider).delete(provider, options),
+    list: async (options) => (await Promise.all(SUPPORTED_AGENT_PROVIDERS.map(async (provider) => {
+      const credential = await forProvider(provider).read(provider, options);
+      return credential ? [{ providerId: provider, type: credential.type }] : [];
+    }))).flat(),
+  };
 }
