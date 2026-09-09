@@ -10,6 +10,21 @@ import {
 afterEach(() => vi.useRealTimers());
 
 describe("Jox transport", () => {
+  it("persists a forced refresh and keeps the prior cached bytes when refreshing fails", async () => {
+    const entries = new Map<string, import("../src").ResourceCacheEntry>();
+    const store = { get: async (key: string) => entries.get(key),
+      set: async (key: string, value: import("../src").ResourceCacheEntry) => { entries.set(key, value); },
+      delete: async (key: string) => { entries.delete(key); } };
+    const fetcher = vi.fn().mockResolvedValueOnce(new Response(new Uint8Array([1])))
+      .mockResolvedValueOnce(new Response(new Uint8Array([2]))).mockRejectedValue(new Error("offline"));
+    const client = new JoxClient("https://cdn.example", fetcher, new ResourceCache(store));
+    await client.fetchBytes("index.jox");
+    expect(await client.fetchBytes("index.jox", undefined, "reload")).toEqual(new Uint8Array([2]));
+    await expect(client.fetchBytes("index.jox", undefined, "reload")).rejects.toThrow("offline");
+    const restarted = new JoxClient("https://cdn.example", fetcher, new ResourceCache(store));
+    expect(await restarted.fetchBytes("index.jox")).toEqual(new Uint8Array([2]));
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
   it("times out stalled response bodies and retries instead of caching a pending promise forever", async () => {
     vi.useFakeTimers();
     const fetcher = vi.fn(async () => ({ ok: true, arrayBuffer: () => new Promise<ArrayBuffer>(() => undefined) }) as Response);

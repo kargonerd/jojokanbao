@@ -1,4 +1,6 @@
-import { mobileAuthClient } from "./auth";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { mobileAuthClient, useMobileAuthStore } from "./auth";
+import { createBookshelfCache, type BookshelfLoadOptions } from "./bookshelfCache";
 
 export interface MobileNotification {
   id: string;
@@ -70,13 +72,13 @@ export async function markMobileNotificationRead(notificationId?: string): Promi
   return Number(requiredResult<number>(data, error, "通知状态更新失败")) || 0;
 }
 
-export async function loadMobileBookshelf(): Promise<MobileBookshelfEntry[]> {
-  const userId = await currentUserId();
+async function loadRemoteBookshelf(userId: string, signal: AbortSignal): Promise<MobileBookshelfEntry[]> {
   const { data, error } = await accountClient()
     .from("reader_bookshelf")
     .select("dataset_id,item_id,title")
     .eq("user_id", userId)
-    .order("added_at", { ascending: false });
+    .order("added_at", { ascending: false })
+    .abortSignal(signal);
   if (error) throw new Error("书架暂时无法载入");
   return (data ?? []).map((row: { dataset_id: string; item_id: string; title: string }) => ({
     datasetId: row.dataset_id,
@@ -86,20 +88,12 @@ export async function loadMobileBookshelf(): Promise<MobileBookshelfEntry[]> {
 }
 
 export async function mobileBookshelfContains(datasetId: string, itemId: string): Promise<boolean> {
-  const userId = await currentUserId();
-  const { data, error } = await accountClient()
-    .from("reader_bookshelf")
-    .select("item_id")
-    .eq("user_id", userId)
-    .eq("dataset_id", datasetId)
-    .eq("item_id", itemId)
-    .maybeSingle();
-  if (error) throw new Error("书架状态暂时无法读取");
-  return Boolean(data);
+  return (await loadMobileBookshelf()).some((item) => item.datasetId === datasetId && item.itemId === itemId);
 }
 
-export async function setMobileBookshelf(input: MobileBookshelfEntry & { added: boolean }): Promise<void> {
+async function writeRemoteBookshelf(expectedUserId: string, input: MobileBookshelfEntry & { added: boolean }): Promise<void> {
   const userId = await currentUserId();
+  if (userId !== expectedUserId) throw new Error("账号已切换");
   if (input.added) {
     const { error } = await accountClient().from("reader_bookshelf").upsert({
       user_id: userId,
@@ -118,3 +112,13 @@ export async function setMobileBookshelf(input: MobileBookshelfEntry & { added: 
     .eq("item_id", input.itemId);
   if (error) throw new Error("暂时无法移出书架");
 }
+
+const bookshelf = createBookshelfCache({
+  userId: () => useMobileAuthStore.getState().user?.id,
+  storage: AsyncStorage,
+  loadRemote: loadRemoteBookshelf,
+  writeRemote: writeRemoteBookshelf,
+});
+
+export function loadMobileBookshelf(options?: BookshelfLoadOptions) { return bookshelf.load(options); }
+export function setMobileBookshelf(input: MobileBookshelfEntry & { added: boolean }) { return bookshelf.set(input); }

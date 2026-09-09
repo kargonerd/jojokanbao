@@ -9,6 +9,7 @@ import { useBookshelf } from "../account/useBookshelf";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import { fuzzyBookTitleScore, loadMobileBookVolumes, type MobileBookVolume } from "../lib/books";
 import { impactHaptic } from "../lib/haptics";
+import { useRetryOnFailure } from "../lib/useRetryOnFailure";
 import { getLibraryCellWidth, getLibraryColumnCount } from "../lib/tabletLayout";
 import type { RootStackParamList } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
@@ -26,6 +27,8 @@ export function BookDetailsScreen({ route, navigation }: Props) {
   const [volumes, setVolumes] = useState<MobileBookVolume[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [retryToken, setRetryToken] = useState(0);
+  useRetryOnFailure(Boolean(error) && !loading, () => setRetryToken((value) => value + 1));
   const columnCount = getLibraryColumnCount(viewportWidth);
   const cellWidth = getLibraryCellWidth(viewportWidth, columnCount);
 
@@ -41,7 +44,7 @@ export function BookDetailsScreen({ route, navigation }: Props) {
       .catch(() => { if (active) setError("这套书的分卷目录暂时无法载入。"); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [book]);
+  }, [book, retryToken]);
 
   const visibleVolumes = useMemo(() => volumes.filter((volume) => (
     !query.trim() || Number.isFinite(fuzzyBookTitleScore(volume.title, query))

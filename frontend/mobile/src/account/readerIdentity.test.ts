@@ -18,6 +18,16 @@ function setup(cached: string | null = null) {
 }
 
 describe("reader identity cache", () => {
+  it("does not erase the saved name before a slow offline session is restored", async () => {
+    const { auth, storage, identity } = setup(JSON.stringify({ userId: user.id, displayName: profile.display_name }));
+    auth.setState({ user: null });
+    const stop = identity.start();
+    await Promise.resolve();
+    expect(storage.removeItem).not.toHaveBeenCalled();
+    auth.setState({ user: user as never });
+    await vi.waitFor(() => expect(identity.useIdentityStore.getState().displayName).toBe(profile.display_name));
+    stop();
+  });
   it("restores the same reader's label while the network profile is unavailable", async () => {
     const { auth, storage, identity } = setup(JSON.stringify({ userId: user.id, displayName: profile.display_name }));
     const stop = identity.start();

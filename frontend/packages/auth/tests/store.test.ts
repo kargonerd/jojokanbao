@@ -225,6 +225,76 @@ describe("createJojoAuthStore", () => {
     expect(unsubscribe).toHaveBeenCalledOnce();
   });
 
+  it("restores native identity while refresh is stalled and keeps it through an offline INITIAL_SESSION", async () => {
+    const { client, getSession, onAuthStateChange, session, user } = createClient();
+    getSession.mockReturnValue(new Promise(() => undefined));
+    const readPersistedSession = vi.fn().mockResolvedValue(session);
+    const controller = createJojoAuthStore(client, { readPersistedSession });
+    const stop = controller.startAuthSync();
+    await vi.waitFor(() => expect(controller.useAuthStore.getState()).toMatchObject({ user, initialized: true }));
+    onAuthStateChange.mock.calls[0]![0]("INITIAL_SESSION", null);
+    await vi.waitFor(() => expect(readPersistedSession).toHaveBeenCalledTimes(2));
+    expect(controller.useAuthStore.getState().user).toEqual(user);
+    const refreshed = { ...session, access_token: "refreshed" };
+    onAuthStateChange.mock.calls[0]![0]("TOKEN_REFRESHED", refreshed);
+    expect(controller.useAuthStore.getState().session?.access_token).toBe("refreshed");
+    onAuthStateChange.mock.calls[0]![0]("SIGNED_OUT", null);
+    expect(controller.useAuthStore.getState().user).toBeNull();
+    stop();
+  });
+
+  it.each(["SIGNED_OUT", "SIGNED_IN", "stop"])("ignores a delayed native cache read after %s", async (event) => {
+    const { client, getSession, onAuthStateChange, session } = createClient();
+    getSession.mockReturnValue(new Promise(() => undefined));
+    let finish!: (value: typeof session) => void;
+    const controller = createJojoAuthStore(client, {
+      readPersistedSession: () => new Promise((resolve) => { finish = resolve as typeof finish; }),
+    });
+    const stop = controller.startAuthSync();
+    const other = { ...session, user: { ...session.user, id: "other" } };
+    if (event === "stop") stop();
+    else onAuthStateChange.mock.calls[0]![0](event, event === "SIGNED_OUT" ? null : other);
+    finish(session);
+    await Promise.resolve();
+    expect(controller.useAuthStore.getState().user?.id ?? null).toBe(event === "SIGNED_IN" ? "other" : null);
+    stop();
+  });
+
+  it("lets a successful session check override an expired native cache", async () => {
+    const { client, getSession, session } = createClient();
+    let finish!: (value: unknown) => void;
+    getSession.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const controller = createJojoAuthStore(client, { readPersistedSession: vi.fn().mockResolvedValue(session) });
+    const stop = controller.startAuthSync();
+    await vi.waitFor(() => expect(controller.useAuthStore.getState().user?.id).toBe(session.user.id));
+    finish({ data: { session: null }, error: null });
+    await vi.waitFor(() => expect(controller.useAuthStore.getState().user).toBeNull());
+    stop();
+  });
+
+  it("handles a rejected session check without clearing cached identity", async () => {
+    const { client, getSession, session } = createClient();
+    getSession.mockRejectedValueOnce(new Error("Failed to fetch"));
+    const controller = createJojoAuthStore(client, { readPersistedSession: vi.fn().mockResolvedValue(session) });
+    const stop = controller.startAuthSync();
+    await vi.waitFor(() => expect(controller.useAuthStore.getState()).toMatchObject({ initialized: true, user: session.user }));
+    stop();
+  });
+
+  it("does not overwrite an explicitly verified session with a late bootstrap read", async () => {
+    const { client, getSession, session } = createClient();
+    let finish!: (value: unknown) => void;
+    getSession.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const controller = createJojoAuthStore(client, { readPersistedSession: vi.fn().mockResolvedValue(session) });
+    const stop = controller.startAuthSync();
+    await vi.waitFor(() => expect(controller.useAuthStore.getState().user).toEqual(session.user));
+    await controller.useAuthStore.getState().verifyPasswordResetCode("reader@example.com", "123456");
+    finish({ data: { session: null }, error: null });
+    await Promise.resolve();
+    expect(controller.useAuthStore.getState()).toMatchObject({ user: session.user, recoveryPending: true });
+    stop();
+  });
+
   it("signs in and maps invalid credentials", async () => {
     const { client, signInWithPassword, user } = createClient();
     const { useAuthStore } = createJojoAuthStore(client);

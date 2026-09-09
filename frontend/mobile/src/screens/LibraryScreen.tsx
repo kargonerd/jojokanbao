@@ -23,6 +23,7 @@ import {
 import { impactHaptic } from "../lib/haptics";
 import { REMOVE_CLIPPED_SUBVIEWS } from "../lib/nativePerformance";
 import { useOpenBook } from "../lib/useOpenBook";
+import { useRetryOnFailure } from "../lib/useRetryOnFailure";
 import { getLibraryCellWidth, getLibraryColumnCount } from "../lib/tabletLayout";
 import type { RootStackParamList } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
@@ -51,6 +52,8 @@ export function LibraryScreen() {
   const [books, setBooks] = useState<MobileBook[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [retryToken, setRetryToken] = useState(0);
+  useRetryOnFailure(Boolean(error) && !loading, () => setRetryToken((value) => value + 1));
   const columnCount = getLibraryColumnCount(viewportWidth);
   const cellWidth = getLibraryCellWidth(viewportWidth, columnCount);
 
@@ -70,7 +73,7 @@ export function LibraryScreen() {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, []);
+  }, [retryToken]);
 
   const items = useMemo<LibraryItem[]>(() => {
     const matches = (title: string) => !query.trim() || Number.isFinite(fuzzyBookTitleScore(title, query));

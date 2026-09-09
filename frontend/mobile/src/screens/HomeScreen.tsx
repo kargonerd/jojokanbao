@@ -11,6 +11,7 @@ import { IS_EINK_RELEASE } from "../config/appVariant";
 import { cachedMobileBookCover, fuzzyBookTitleScore, loadMobileBookCover, loadMobileBooks, type MobileBook } from "../lib/books";
 import { impactHaptic } from "../lib/haptics";
 import { useOpenBook } from "../lib/useOpenBook";
+import { useRetryOnFailure } from "../lib/useRetryOnFailure";
 import type { MainTabParamList, RootStackParamList } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
 import { mobileTheme } from "../theme/tokens";
@@ -20,32 +21,39 @@ function RecentReadingCover({
   title,
   publication,
   book,
+  datasetId,
   itemKey,
 }: {
   kind: "book" | "periodical";
   title: string;
   publication?: ArchivePublicationName;
   book?: MobileBook;
+  datasetId?: string;
   itemKey?: string;
 }) {
   const theme = mobileTheme;
-  const [imageUri, setImageUri] = useState(() => book ? cachedMobileBookCover(book, itemKey) : "");
+  const coverSource = book ?? datasetId;
+  const [imageUri, setImageUri] = useState(() => coverSource ? cachedMobileBookCover(coverSource, itemKey) : "");
   const [coverMissing, setCoverMissing] = useState(false);
+  const [coverFailed, setCoverFailed] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
+  useRetryOnFailure(coverFailed, () => setRetryToken((value) => value + 1));
 
   useEffect(() => {
     let active = true;
-    setImageUri(book ? cachedMobileBookCover(book, itemKey) : "");
+    setImageUri(coverSource ? cachedMobileBookCover(coverSource, itemKey) : "");
     setCoverMissing(false);
-    if (kind !== "book" || !book) return () => { active = false; };
-    void loadMobileBookCover(book, itemKey)
+    setCoverFailed(false);
+    if (kind !== "book" || !coverSource) return () => { active = false; };
+    void loadMobileBookCover(coverSource, itemKey)
       .then((uri) => {
         if (!active) return;
         if (uri) setImageUri(uri);
         else setCoverMissing(true);
       })
-      .catch(() => { if (active) setCoverMissing(true); });
+      .catch(() => { if (active) { setCoverMissing(true); setCoverFailed(true); } });
     return () => { active = false; };
-  }, [book, itemKey, kind]);
+  }, [coverSource, itemKey, kind, retryToken]);
 
   if (kind === "periodical" && publication) {
     return (
@@ -58,7 +66,7 @@ function RecentReadingCover({
     <View style={[styles.recentCover, IS_EINK_RELEASE && styles.eInkCover, { borderColor: theme.rule, backgroundColor: theme.paperSoft }]}>
       {imageUri ? (
         <Image source={{ uri: imageUri }} resizeMode="cover" style={styles.recentCoverImage} accessibilityIgnoresInvertColors />
-      ) : coverMissing ? (
+      ) : coverMissing || !book ? (
         <Text numberOfLines={4} style={[styles.recentCoverFallback, { color: theme.ink, fontFamily: theme.serif }]}>{title}</Text>
       ) : null}
     </View>
@@ -75,17 +83,21 @@ export function HomeScreen() {
   const [query, setQuery] = useState("");
   const [books, setBooks] = useState<MobileBook[]>([]);
   const [loadingBooks, setLoadingBooks] = useState(true);
+  const [booksFailed, setBooksFailed] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
+  useRetryOnFailure(booksFailed && !loadingBooks, () => setRetryToken((value) => value + 1));
   const [searchAttempted, setSearchAttempted] = useState(false);
   const quote = useMemo(() => dailyQuote(), []);
 
   useEffect(() => {
     let active = true;
+    setLoadingBooks(true);
     void loadMobileBooks()
-      .then((items) => { if (active) setBooks(items); })
-      .catch(() => undefined)
+      .then((items) => { if (active) { setBooks(items); setBooksFailed(false); } })
+      .catch(() => { if (active) setBooksFailed(true); })
       .finally(() => { if (active) setLoadingBooks(false); });
     return () => { active = false; };
-  }, []);
+  }, [retryToken]);
 
   const matches = useMemo(() => {
     if (!query.trim()) return [];
@@ -178,7 +190,7 @@ export function HomeScreen() {
                 </Pressable>
               ))}
               {matches.length === 0 && !loadingBooks ? (
-                <Text style={[styles.noMatch, { color: theme.muted, fontFamily: theme.sans }]}>{searchAttempted ? "没有匹配的书籍" : "没有找到相近书名"}</Text>
+                <Text style={[styles.noMatch, { color: theme.muted, fontFamily: theme.sans }]}>{booksFailed ? "书籍目录暂时无法载入，正在自动重试。" : searchAttempted ? "没有匹配的书籍" : "没有找到相近书名"}</Text>
               ) : null}
             </View>
           ) : null}
@@ -220,6 +232,7 @@ export function HomeScreen() {
                 title={item.title}
                 publication={item.kind === "periodical" ? item.publication : undefined}
                 book={item.kind === "book" ? item.book : undefined}
+                datasetId={item.kind === "book" ? item.datasetId : undefined}
                 itemKey={item.kind === "book" ? item.itemKey : undefined}
               />
               <View style={styles.recentCopy}>

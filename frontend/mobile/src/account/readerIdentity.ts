@@ -32,6 +32,7 @@ export function createReaderIdentityCache(auth: JojoAuthStore, storage: Storage)
       const userId = user?.id ?? null;
       const name = profile?.id === userId ? normalizeName(profile?.display_name) : null;
       if (userId !== currentUserId) {
+        const previousUserId = currentUserId;
         currentUserId = userId;
         const readRevision = ++revision;
         useIdentityStore.setState({ userId, displayName: null });
@@ -42,7 +43,7 @@ export function createReaderIdentityCache(auth: JojoAuthStore, storage: Storage)
             if (cached?.userId !== userId || useIdentityStore.getState().displayName) return;
             useIdentityStore.setState({ displayName: normalizeName(cached.displayName) });
           }).catch(() => undefined);
-        } else {
+        } else if (previousUserId) {
           persist(() => storage.removeItem(CACHE_KEY));
         }
       }
