@@ -534,6 +534,12 @@ importers:
         specifier: 4.127.0
         version: 4.127.0(@cloudflare/workers-types@5.20260827.1)
 
+  tools/ci:
+    dependencies:
+      yaml:
+        specifier: 2.9.0
+        version: 2.9.0
+
   tools/content-pipeline:
     dependencies:
       '@jojo/content':

@@ -1,0 +1,12 @@
+{
+  "name": "@jojo/ci",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test *.test.mjs",
+    "typecheck": "node --check affected.mjs"
+  },
+  "dependencies": {
+    "yaml": "2.9.0"
+  }
+}

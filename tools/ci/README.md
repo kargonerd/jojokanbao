@@ -1,0 +1,24 @@
+# CI 影响范围
+
+`affected.mjs` 比较 CI 的 base/head 提交，输出各检查的开关。PR 仍验证
+GitHub 的合并结果，`build-and-test`、`e2e` 和分支保护保持不变。
+
+- Node 检查继续使用原来的路径规则；根 `package.json` 或锁文件变化仍检查所有 Node 工作区。
+- iOS、Web 和 Desktop 额外比较各自的 pnpm 依赖图，包括间接依赖、可选依赖、peer 版本、补丁和共享工作区。
+- 只有其他产品使用的依赖或补丁变化时，跳过无关端的原生构建和浏览器测试。
+- 根构建脚本、Node/pnpm 配置、CI 本身或未识别的锁文件格式变化时，回退到完整检查。手动运行 CI 也执行完整检查。
+- `changes` 筛选安装 `@jojo/ci` 工具，并先运行分类器测试；解析失败不能让 CI 误报通过。
+
+```sh
+pnpm --filter @jojo/ci test
+# 用历史提交验证范围；输出只含路径和检查开关。
+EVENT_BASE_SHA=<base> EVENT_HEAD_SHA=<head> node tools/ci/affected.mjs
+```
+
+回放 Antigravity PR #276（`10735e78^1` → `10735e78`），Node、Cloud API 和
+Times 检查保留，iOS/Web/Desktop 检查跳过。原先两次 PR CI 分别耗时 7 分 5 秒、
+19 分 8 秒，iOS 是最长任务；其中第二次 Node 检查耗时 3 分 58 秒。
+新规则可移除这类 PR 的 iOS 等待时间，实际总耗时仍取决于 runner 和其他检查。
+
+iOS 真正受影响时仍执行完整 Release 编译和模拟器启动验证。本次只调整检查范围，
+不缓存生成的 Xcode 工程、编译产物或测试结果。
