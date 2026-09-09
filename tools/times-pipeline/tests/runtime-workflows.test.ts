@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { runInNewContext } from "node:vm";
@@ -226,6 +226,45 @@ describe("Times Runtime workflows", () => {
 const directories: string[] = [];
 afterEach(async () => {
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
+});
+
+// Exercise real APT source resolution on the same hosted Ubuntu image as Times.
+// --print-uris performs no downloads or package installations.
+describe.skipIf(process.platform !== "linux" || process.env.GITHUB_ACTIONS !== "true")("Hosted Ubuntu APT scope", () => {
+  const helper = path.resolve("..", "ci", "with-apt-timeouts.sh");
+
+  async function runnerTemp(): Promise<string> {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "jojo apt test-"));
+    directories.push(directory);
+    return directory;
+  }
+
+  it("resolves only Ubuntu indexes, excluding unrelated runner repositories", async () => {
+    const directory = await runnerTemp();
+    const result = spawnSync("bash", [helper, "apt-get", "--print-uris", "update"], {
+      env: { ...process.env, RUNNER_TEMP: directory }, encoding: "utf8", timeout: 15_000,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stderr).toBe(0);
+    const uris = result.stdout.split("\n").filter((line) => line.startsWith("'"));
+    expect(uris.length).toBeGreaterThan(0);
+    for (const uri of uris) {
+      expect(uri).toMatch(/^'(?:mirror\+file:\/etc\/apt\/apt-mirrors\.txt\/|https?:\/\/(?:[a-z.]+\.)?ubuntu\.com\/ubuntu\/)/);
+    }
+    expect(await readdir(directory)).toEqual([]);
+  });
+
+  it.each([0, 42])("preserves exit code %s and removes the temporary configuration", async (code) => {
+    const directory = await runnerTemp();
+    const result = spawnSync("bash", [helper, "bash", "-c", 'test -s "$APT_CONFIG" || exit 99; printf "%s\\n" "$APT_CONFIG"; exit "$1"', "--", String(code)], {
+      env: { ...process.env, RUNNER_TEMP: directory }, encoding: "utf8", timeout: 15_000,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stderr).toBe(code);
+    expect(path.dirname(result.stdout.trim())).toBe(directory);
+    expect(path.basename(result.stdout.trim())).toMatch(/^jojo-apt\./);
+    expect(await readdir(directory)).toEqual([]);
+  });
 });
 
 describe("Capture subscription failover shell", () => {
