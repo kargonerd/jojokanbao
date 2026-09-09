@@ -20,5 +20,7 @@ Times 检查保留，iOS/Web/Desktop 检查跳过。原先两次 PR CI 分别耗
 19 分 8 秒，iOS 是最长任务；其中第二次 Node 检查耗时 3 分 58 秒。
 新规则可移除这类 PR 的 iOS 等待时间，实际总耗时仍取决于 runner 和其他检查。
 
-iOS 真正受影响时仍执行完整 Release 编译和模拟器启动验证。本次只调整检查范围，
+iOS 真正受影响时仍执行 Release 编译和模拟器启动验证。CI 的 `xcodebuild`
+通过 `ARCHS="$(uname -m)"` 只编译当前 runner 可运行的模拟器架构，避免重复编译
+ARM 和 Intel 两套产物。正式 iOS 发布工作流使用原有设备构建配置。
 不缓存生成的 Xcode 工程、编译产物或测试结果。

@@ -195,6 +195,8 @@ jobs:
 
       - name: Compile iOS Release for Simulator
         working-directory: frontend/mobile
+        # The smoke test uses this runner's simulator, so it needs only the
+        # host architecture, not a universal arm64 + x86_64 simulator binary.
         run: |
           set -o pipefail
           xcodebuild \
@@ -204,6 +206,7 @@ jobs:
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/jojo-derived-data" \
+            ARCHS="$(uname -m)" \
             CODE_SIGNING_ALLOWED=NO \
             build
 
