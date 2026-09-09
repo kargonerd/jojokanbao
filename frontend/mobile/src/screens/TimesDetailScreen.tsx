@@ -238,8 +238,8 @@ export function TimesDetailScreen({ route, navigation }: Props) {
                 {explanation.status ? <Text style={[styles.explanationStatus, { color: theme.red, fontFamily: theme.sans }]}>{explanation.status}</Text> : null}
                 {explanation.answer ? <Text selectable style={[styles.explanationAnswer, { color: theme.ink, fontFamily: theme.serif }]}>{visibleExplanation(explanation.answer)}</Text> : null}
                 {explanation.error ? <Text style={[styles.explanationError, { color: theme.red, fontFamily: theme.sans }]}>{explanation.error}</Text> : null}
-                {explanation.metadata ? (
-                  <Text style={[styles.explanationMeta, { color: theme.muted, borderTopColor: theme.rule, fontFamily: theme.sans }]}>已结合 {explanation.metadata.imageCount} 张随文图片</Text>
+                {explanation.metadata?.model ? (
+                  <Text style={[styles.explanationMeta, { color: theme.muted, borderTopColor: theme.rule, fontFamily: theme.sans }]}>{explanation.metadata.model}</Text>
                 ) : null}
               </ScrollView>
             ) : null}

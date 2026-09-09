@@ -69,7 +69,7 @@ function promptFor(news: MobileTimesNewsItem, anchor: MobileTimesTextAnchor, ass
   const imageNotes = assets.map((asset, index) => (
     `图片 ${index + 1}：${concise(asset.caption || asset.alt, 240) || "无图片说明"}`
   )).join("\n");
-  return `请解释下面新闻中选中的内容。
+  return `请用通俗的话解释选中文字是什么或是什么意思，补充理解它所需的背景，并说明它与当前语境的关系。
 
 标题：${concise(news.title, 500)}
 来源：${concise(timesSourceName(news.source), 200)}
@@ -84,7 +84,7 @@ ${concise(anchor.quote, 3_000)}
 文章正文摘录：
 ${concise(plainTimesArticleText(news.content || "", news.contentFormat), 3_500)}
 
-${imageNotes ? `随文图片说明（图片本身也已作为视觉输入附上）：\n${imageNotes}` : "这篇文章没有可用的随文图片输入。"}`.slice(0, 9_800);
+${imageNotes ? `可选的随文图片上下文（仅在解释选中文字确实需要视觉信息时参考）：\n${imageNotes}` : ""}`.trimEnd().slice(0, 9_800);
 }
 
 async function prepareImages(news: MobileTimesNewsItem, signal: AbortSignal) {
@@ -111,14 +111,12 @@ export function explainMobileTimesSelection(
 ): () => void {
   const controller = new AbortController();
   void (async () => {
-    callbacks.onStatus("正在准备正文和随文图片…");
+    callbacks.onStatus("正在准备阅读上下文…");
     const [token, prepared] = await Promise.all([
       mobileAccessToken(),
       prepareImages(news, controller.signal),
     ]);
-    callbacks.onStatus(prepared.images.length
-      ? `正在结合 ${prepared.images.length} 张随文图片分析…`
-      : "正在结合文章上下文分析…");
+    callbacks.onStatus("正在结合文章上下文理解选中文字…");
     const response = await fetch(TIMES_AGENT_URL, {
       method: "POST",
       headers: {
@@ -148,7 +146,7 @@ export function explainMobileTimesSelection(
       if (eventName === "status") {
         if (typeof event.provider === "string") metadata.provider = event.provider;
         if (typeof event.model === "string") metadata.model = event.model;
-        callbacks.onStatus("正在理解选中文字与图片…");
+        callbacks.onStatus("正在理解选中文字…");
       } else if (eventName === "text_delta" && typeof event.delta === "string") {
         callbacks.onStatus("正在生成解释…");
         answer += event.delta;

@@ -36,7 +36,7 @@ export function TimesExplanationPanel({
             />
           ) : null}
         </div>
-        {metadata ? <footer className="border-t border-rule px-6 py-3 font-sans text-[9px] text-muted">{metadata.imageCount ? `已结合 ${metadata.imageCount} 张随文图片` : "本次仅使用文字上下文"}{metadata.model ? ` · ${metadata.model}` : ""}</footer> : null}
+        {metadata?.model ? <footer className="border-t border-rule px-6 py-3 font-sans text-[9px] text-muted">{metadata.model}</footer> : null}
       </aside>
     </>
   );
