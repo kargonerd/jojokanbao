@@ -24,3 +24,8 @@ iOS 真正受影响时仍执行 Release 编译和模拟器启动验证。CI 的 
 通过 `ARCHS="$(uname -m)"` 只编译当前 runner 可运行的模拟器架构，避免重复编译
 ARM 和 Intel 两套产物。正式 iOS 发布工作流使用原有设备构建配置。
 不缓存生成的 Xcode 工程、编译产物或测试结果。
+
+`react-native@0.83.10` 补丁为 Hermes 下载检查增加有限重试。预编译仓库仍不可用时，
+从 SDK 自带 `.hermesversion` / `.hermesv1version` 指定的标签构建，避免自动拉取
+不兼容的开发分支；缺少固定标签时明确失败。iOS 任务在安装 Pods 前运行
+`hermes-source.test.rb`，直接验证已安装补丁的正常下载、故障回退和显式版本覆盖。

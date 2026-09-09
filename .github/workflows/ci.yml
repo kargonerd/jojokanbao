@@ -189,6 +189,9 @@ jobs:
         working-directory: frontend/mobile
         run: pnpm exec expo prebuild --platform ios --no-install --clean
 
+      - name: Verify pinned Hermes fallback
+        run: ruby tools/ci/hermes-source.test.rb
+
       - name: Install iOS native dependencies
         working-directory: frontend/mobile/ios
         run: pod install
