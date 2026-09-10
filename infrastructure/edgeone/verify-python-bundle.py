@@ -106,7 +106,7 @@ def verify(bundle: Path) -> None:
                     require(body["defaultProvider"] in {"mimo", "edge"}, "Installed-client voice catalog is incompatible")
                     require(len(body["providers"][0]["voices"]) == 2, "Expected two compatible physical voices")
             response = await client.get("/api/v1/times")
-                require(response.status_code == 404, "JOJO Times must not be exposed by the production bundle")
+            require(response.status_code == 404, "JOJO Times must not be exposed by the production bundle")
 
     async def check_streaming_runtime():
         require(any(getattr(route, "path", None) == "/v1/speech/stream/" for route in application.routes),
