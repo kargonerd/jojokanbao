@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { MAX_EXPLANATION_QUESTION_LENGTH, type ExplanationConversation } from "@jojo/ui/reader-explanation";
 import type { TextAnchor } from "../../annotations/types";
 import { renderMarkdown } from "../../rag/utils/markdown";
@@ -13,6 +13,7 @@ type Props = ExplanationConversation<TextAnchor, TimesExplanationMetadata> & {
 
 export function TimesExplanationPanel({ anchor, turns, onClose, onRetry, onAsk, onStop }: Props) {
   const [draft, setDraft] = useState("");
+  const [viewport, setViewport] = useState({ top: 0, height: window.innerHeight });
   const panel = useRef<HTMLElement>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const followAnswer = useRef(true);
@@ -21,6 +22,21 @@ export function TimesExplanationPanel({ anchor, turns, onClose, onRetry, onAsk, 
   const last = turns.at(-1);
   const busy = last?.phase === "pending";
   const metadata = [...turns].reverse().find((turn) => turn.metadata)?.metadata;
+
+  // Match the book reader's composer when a phone keyboard shrinks the visible viewport.
+  useLayoutEffect(() => {
+    const visual = window.visualViewport;
+    const measure = () => setViewport({ top: visual?.offsetTop ?? 0, height: visual?.height ?? window.innerHeight });
+    measure();
+    visual?.addEventListener("resize", measure);
+    visual?.addEventListener("scroll", measure);
+    window.addEventListener("resize", measure);
+    return () => {
+      visual?.removeEventListener("resize", measure);
+      visual?.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
 
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null;
@@ -40,7 +56,7 @@ export function TimesExplanationPanel({ anchor, turns, onClose, onRetry, onAsk, 
 
   return <>
     <button type="button" aria-label="关闭 AI 解释" tabIndex={-1} onClick={onClose} className="fixed inset-0 z-[79] cursor-default border-0 bg-[rgba(25,25,22,.28)]" />
-    <aside ref={panel} role="dialog" aria-modal="true" aria-label="AI 解释" tabIndex={-1}
+    <aside ref={panel} role="dialog" aria-modal="true" aria-label="AI 解释" tabIndex={-1} style={{ top: viewport.top, height: viewport.height }}
       onKeyDown={(event) => {
         if (event.key === "Escape" && !event.nativeEvent.isComposing) { event.stopPropagation(); close.current(); }
         if (event.key !== "Tab") return;

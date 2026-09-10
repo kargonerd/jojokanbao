@@ -1,14 +1,30 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TimesExplanationPanel } from "../src/times/components/TimesExplanationPanel";
 import type { ExplanationTurn } from "@jojo/ui/reader-explanation";
 import type { TimesExplanationMetadata } from "../src/times/ai";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const turn = (values: Partial<ExplanationTurn<TimesExplanationMetadata>> = {}): ExplanationTurn<TimesExplanationMetadata> => ({ question: "", answer: "", status: "", error: "", phase: "complete", ...values });
 const props = () => ({ anchor: { quote: "ECB", prefix: "", suffix: "", startOffset: 0, endOffset: 3 }, conversationId: "test", onClose: vi.fn(), onRetry: vi.fn(), onAsk: vi.fn(() => true), onStop: vi.fn() });
 
 describe("TimesExplanationPanel", () => {
+  it("keeps the composer above a phone keyboard as the visible viewport moves", () => {
+    const visual = Object.assign(new EventTarget(), { height: 844, offsetTop: 0 });
+    vi.stubGlobal("visualViewport", visual);
+    render(<TimesExplanationPanel {...props()} turns={[turn({ answer: "解释" })]} />);
+    const panel = screen.getByRole("dialog");
+    expect(panel.style.height).toBe("844px");
+    act(() => {
+      visual.height = 460;
+      visual.offsetTop = 24;
+      visual.dispatchEvent(new Event("resize"));
+    });
+    expect(panel.style.height).toBe("460px");
+    expect(panel.style.top).toBe("24px");
+    act(() => { visual.offsetTop = 40; visual.dispatchEvent(new Event("scroll")); });
+    expect(panel.style.top).toBe("40px");
+  });
   it("animates each turn, preserves the previous answer and offers stop / retry", () => {
     const callbacks = props();
     const first = turn({ answer: "欧洲中央银行", metadata: { model: "gemini", imageCount: 0 } });
