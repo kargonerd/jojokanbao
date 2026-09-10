@@ -21,6 +21,34 @@ class EncodedAudio:
     duration: float
 
 
+class PcmMp3Encoder:
+    """Incremental encoding with the same delivery settings as existing WAVs."""
+
+    def __init__(self, sample_rate: int = 24000):
+        self.encoder = lameenc.Encoder()
+        self.encoder.set_bit_rate(48)
+        self.encoder.set_in_sample_rate(sample_rate)
+        self.encoder.set_channels(1)
+        self.encoder.set_quality(2)
+        self.encoder.silence()
+        self.pending = b""
+        self.received = 0
+
+    def encode(self, pcm: bytes) -> bytes:
+        self.received += len(pcm)
+        if self.received > MAX_AUDIO_BYTES:
+            raise ValueError("Audio size exceeds limit")
+        pcm = self.pending + pcm
+        length = len(pcm) // 2 * 2
+        self.pending = pcm[length:]
+        return bytes(self.encoder.encode(pcm[:length])) if length else b""
+
+    def finish(self) -> bytes:
+        if self.pending or not self.received:
+            raise ValueError("Incomplete PCM16 audio")
+        return bytes(self.encoder.flush())
+
+
 def encode_delivery(audio: AudioResult, *, max_bytes: int | None = MAX_AUDIO_BYTES) -> EncodedAudio:
     if not audio.data or (max_bytes is not None and len(audio.data) > max_bytes):
         raise ValueError("Audio size exceeds limit")

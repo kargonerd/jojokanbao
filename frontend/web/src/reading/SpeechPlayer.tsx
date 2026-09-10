@@ -157,6 +157,7 @@ function ActiveSpeechPlayer({
   const [provider, setProvider] = useState("auto");
   const [providers, setProviders] = useState<SpeechProvider[]>(DEFAULT_SPEECH_PROVIDERS);
   const cacheVersion = providers.find((option) => option.id === provider)?.cacheVersion;
+  const streamingAvailable = providers.find((option) => option.id === provider)?.streaming === true;
   const [cdnBase, setCdnBase] = useState<string | null>(null);
   const [capabilitiesReady, setCapabilitiesReady] = useState(false);
   const [providersError, setProvidersError] = useState("");
@@ -164,6 +165,7 @@ function ActiveSpeechPlayer({
   const [durations, setDurations] = useState<Record<number, number>>({});
   const [speed, setSpeed] = useState(storedSpeed);
   const [state, setState] = useState<PlayerState>("idle");
+  const [playbackRevision, setPlaybackRevision] = useState(0);
   const [showLoading, setShowLoading] = useState(false);
   useEffect(() => {
     if (state !== "loading") { setShowLoading(false); return; }
@@ -183,6 +185,8 @@ function ActiveSpeechPlayer({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const prefetchAudioRef = useRef<{ key: string; audio: HTMLAudioElement } | null>(null);
   const sourceDurationsRef = useRef(new Map<string, number>());
+  const sourceExpiryRef = useRef(new Map<string, number>());
+  const streamSourcesRef = useRef(new Set<string>());
   const saveAudioRef = useRef<((force: boolean) => void) | null>(null);
   const speedRef = useRef(speed);
   const cacheRef = useRef(new Map<string, Promise<string>>());
@@ -192,6 +196,8 @@ function ActiveSpeechPlayer({
   const sleepTimerRef = useRef<number | undefined>(undefined);
   const resumeAfterContentChangeRef = useRef(false);
   const pendingSeekFractionRef = useRef<number | null>(null);
+  const pendingSeekSecondsRef = useRef<number | null>(null);
+  const pauseAfterSeekRef = useRef(false);
   const queueRef = useRef<HTMLElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const sheetRef = useRef<HTMLElement | null>(null);
@@ -249,6 +255,7 @@ function ActiveSpeechPlayer({
     audio.onended = null;
     audio.ontimeupdate = null;
     audio.onloadedmetadata = null;
+    audio.ondurationchange = null;
     audio.onerror = null;
     audio.pause();
     audio.removeAttribute("src");
@@ -270,8 +277,9 @@ function ActiveSpeechPlayer({
     cacheRef.current.clear();
   }, [userId, stopAudio]);
 
-  const audioUrl = useCallback((text: string, selectedVoice: SpeechVoice): Promise<string> => {
+  const audioUrl = useCallback((text: string, selectedVoice: SpeechVoice, streaming = false): Promise<string> => {
     const key = `${provider}\u0000${selectedVoice}\u0000${text}`;
+    if ((sourceExpiryRef.current.get(key) ?? Infinity) <= Date.now() / 1000 + 30) cacheRef.current.delete(key);
     const cached = cacheRef.current.get(key);
     if (cached) {
       cacheRef.current.delete(key);
@@ -281,11 +289,15 @@ function ActiveSpeechPlayer({
     const controller = new AbortController();
     controllersRef.current.add(controller);
     const pending = requestSpeech(text, selectedVoice, controller.signal, {
-      provider, cdnBase, cacheVersion, scope: speechScope,
+      provider, cdnBase, cacheVersion, scope: speechScope, streaming: streaming && streamingAvailable,
     })
       .then((blob) => {
         if ("url" in blob) {
-          sourceDurationsRef.current.set(key, blob.duration);
+          if (blob.duration > 0) sourceDurationsRef.current.set(key, blob.duration);
+          if (blob.expiresAt) sourceExpiryRef.current.set(key, blob.expiresAt);
+          else sourceExpiryRef.current.delete(key);
+          if (blob.streaming) streamSourcesRef.current.add(key);
+          else streamSourcesRef.current.delete(key);
           return blob.url;
         }
         const url = URL.createObjectURL(blob);
@@ -307,12 +319,15 @@ function ActiveSpeechPlayer({
       const oldest = cacheRef.current.keys().next().value!;
       const stale = cacheRef.current.get(oldest)!;
       cacheRef.current.delete(oldest);
+      sourceDurationsRef.current.delete(oldest);
+      sourceExpiryRef.current.delete(oldest);
+      streamSourcesRef.current.delete(oldest);
       void stale.then((url) => {
         if (objectUrlsRef.current.delete(url)) URL.revokeObjectURL(url);
       }).catch(() => undefined);
     }
     return pending;
-  }, [provider, cdnBase, cacheVersion, speechScope]);
+  }, [provider, cdnBase, cacheVersion, speechScope, streamingAvailable]);
 
   // Segment transitions consume the buffered element. Only a session/voice/content
   // change discards it; per-segment cleanup used to throw all this work away.
@@ -341,6 +356,8 @@ function ActiveSpeechPlayer({
     setSegmentIndex(resume?.segmentIndex ?? listening?.index ?? 0);
     setSegmentProgress((resume?.fraction ?? 0) * 100);
     pendingSeekFractionRef.current = resume?.fraction ?? null;
+    pendingSeekSecondsRef.current = null;
+    pauseAfterSeekRef.current = false;
     setError("");
     if (resumeAfterContentChangeRef.current && playableSegments.length) {
       resumeAfterContentChangeRef.current = false;
@@ -365,7 +382,7 @@ function ActiveSpeechPlayer({
     setState("loading");
     setError("");
     setSegmentProgress((pendingSeekFractionRef.current ?? 0) * 100);
-    void audioUrl(playableSegments[segmentIndex], voice).then(async (url) => {
+    void audioUrl(playableSegments[segmentIndex], voice, !pendingSeekFractionRef.current && pendingSeekSecondsRef.current === null).then(async (url) => {
       if (!active) return;
       const key = `${provider}\0${voice}\0${playableSegments[segmentIndex]}`;
       const buffered = prefetchAudioRef.current;
@@ -393,18 +410,28 @@ function ActiveSpeechPlayer({
           setDurations((known) => ({ ...known, [segmentIndex]: audio.duration }));
         }
         const pendingFraction = pendingSeekFractionRef.current;
+        const pendingSeconds = pendingSeekSecondsRef.current;
+        if (pendingSeconds !== null && Number.isFinite(audio.duration) && audio.duration > 0) {
+          audio.currentTime = Math.max(0, Math.min(pendingSeconds, audio.duration - 0.05));
+          setSegmentProgress(audio.currentTime / audio.duration * 100);
+          pendingSeekSecondsRef.current = null;
+          pendingSeekFractionRef.current = null;
+          return;
+        }
         if (pendingFraction === null || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
         audio.currentTime = pendingFraction * audio.duration;
         setSegmentProgress(pendingFraction * 100);
         pendingSeekFractionRef.current = null;
       };
+      // Progressive MP3 has an unknown duration until enough data arrives.
+      audio.ondurationchange = audio.onloadedmetadata;
       // Metadata may have fired while this element was still preloading.
       if (audio.readyState >= 1) audio.onloadedmetadata(new Event("loadedmetadata"));
       audio.ontimeupdate = () => {
         saveAudioRef.current?.(false);
-        if (Number.isFinite(audio.duration) && audio.duration > 0) {
-          setSegmentProgress(Math.min(100, (audio.currentTime / audio.duration) * 100));
-        }
+        const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration
+          : knownDuration || Math.max(1, playableSegments[segmentIndex]!.length / 4.2);
+        setSegmentProgress(Math.min(100, (audio.currentTime / duration) * 100));
       };
       audio.onended = () => {
         const { sleepAfterChapter, hasDocumentQueue, queueItems, activeQueueIndex, onQueueItemChange } = playbackContextRef.current;
@@ -425,14 +452,21 @@ function ActiveSpeechPlayer({
         }
       };
       audio.onerror = () => {
+        cacheRef.current.delete(key);
         setWantsPlayback(false);
         setState("error");
         setError("音频播放失败，请重试");
       };
       audioRef.current = audio;
-      setState("playing");
+      if (pauseAfterSeekRef.current) {
+        pauseAfterSeekRef.current = false;
+        audio.load();
+        setState("paused");
+        return;
+      }
       await audio.play();
       if (!active) return;
+      setState("playing");
       const next = playableSegments[segmentIndex + 1];
       if (next) void audioUrl(next, voice).then((nextUrl) => {
         if (!active) return;
@@ -453,7 +487,7 @@ function ActiveSpeechPlayer({
       active = false;
       stopAudio();
     };
-  }, [audioUrl, playableSegments, segmentIndex, stopAudio, voice, wantsPlayback, capabilitiesReady, userId]);
+  }, [audioUrl, playableSegments, segmentIndex, stopAudio, voice, wantsPlayback, capabilitiesReady, userId, playbackRevision]);
 
   useEffect(() => {
     if (!panelOpen) return;
@@ -682,8 +716,24 @@ function ActiveSpeechPlayer({
 
   function skip(seconds: number): void {
     const audio = audioRef.current;
-    if (!audio || !Number.isFinite(audio.duration)) return;
+    if (!audio) return;
+    if (streamSourcesRef.current.has(`${provider}\0${voice}\0${playableSegments[segmentIndex]}`)) {
+      seekCompletedAudio(audio.currentTime + seconds);
+      return;
+    }
+    if (!Number.isFinite(audio.duration)) return;
     audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + seconds));
+  }
+
+  function seekCompletedAudio(seconds: number): void {
+    // A progressive media connection cannot serve byte ranges. Resolve its
+    // complete cached MP3 when seeking, preserving whether playback was paused.
+    cacheRef.current.delete(`${provider}\0${voice}\0${playableSegments[segmentIndex]}`);
+    pendingSeekSecondsRef.current = Math.max(0, seconds);
+    pendingSeekFractionRef.current = null;
+    pauseAfterSeekRef.current = state === "paused";
+    setWantsPlayback(true);
+    setPlaybackRevision((value) => value + 1);
   }
 
   function seekChapter(value: number): void {
@@ -701,6 +751,10 @@ function ActiveSpeechPlayer({
     }
     const targetFraction = Math.max(0, Math.min(1, (targetWeight - traversed) / segmentWeights[targetIndex]!));
     const audio = audioRef.current;
+    if (targetIndex === segmentIndex && streamSourcesRef.current.has(`${provider}\0${voice}\0${playableSegments[segmentIndex]}`)) {
+      seekCompletedAudio(targetWeight - traversed);
+      return;
+    }
     if (targetIndex === segmentIndex && audio && Number.isFinite(audio.duration) && audio.duration > 0) {
       audio.currentTime = targetFraction * audio.duration;
       setSegmentProgress(targetFraction * 100);
