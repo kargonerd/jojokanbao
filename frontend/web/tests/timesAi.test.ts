@@ -114,6 +114,39 @@ describe("Times AI explanation", () => {
     expect(error).toContain("连接意外中断");
   });
 
+  it("sends a follow-up with prior turns, reading context and archived images", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('event: text_delta\ndata: {"delta":"回答。<!-- JOJO_TIMES_COMPLETE -->"}\n\nevent: done\ndata: {"stopReason":"stop"}\n\n'));
+    vi.stubGlobal("fetch", fetchMock);
+    const history = [{ role: "user" as const, content: "请解释红色曲线" }, { role: "assistant" as const, content: "曲线反映油价。" }];
+    await new Promise<void>((resolve, reject) => {
+      explainTimesSelection(news, anchor, { onStatus: vi.fn(), onChunk: vi.fn(), onDone: () => resolve(), onError: reject },
+        { question: "为什么会上升？", history, conversationId: "times_followup" });
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
+    expect(body.history).toEqual(history);
+    expect(body.message).toContain("红色曲线");
+    expect(body.message).toContain("Headline");
+    expect(body.message).toContain("为什么会上升？");
+    expect(body.images).toEqual([{ mimeType: "image/png", data: "AQID" }]);
+    expect(new Headers(fetchMock.mock.calls[0]![1].headers).get("makers-conversation-id")).toBe("times_followup");
+  });
+
+  it("does not send after cancellation while authentication is pending", async () => {
+    let finishLogin!: (value: unknown) => void;
+    mocks.getSession.mockReturnValue(new Promise((resolve) => { finishLogin = resolve; }));
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const callbacks = { onStatus: vi.fn(), onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() };
+    const cancel = explainTimesSelection({ ...news, assets: [] }, anchor, callbacks);
+    await vi.waitFor(() => expect(finishLogin).toBeTypeOf("function"));
+    cancel();
+    finishLogin({ data: { session: { access_token: "reader-token" } }, error: null });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(callbacks.onDone).not.toHaveBeenCalled();
+    expect(callbacks.onError).not.toHaveBeenCalled();
+  });
+
   it("does not label a token-limited partial answer as complete", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response([
       'event: text_delta\ndata: {"delta":"说到一半"}',

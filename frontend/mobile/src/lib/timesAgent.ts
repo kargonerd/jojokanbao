@@ -1,4 +1,5 @@
 import type { JojoAssetDescriptor } from "@jojo/content";
+import { readerExplanationRequest, type ExplanationRequest } from "@jojo/ui/reader-explanation";
 import { fetch } from "expo/fetch";
 import { mobileAccessToken, parseAgentSseFrames } from "./bookAgent";
 import {
@@ -109,6 +110,7 @@ export function explainMobileTimesSelection(
   news: MobileTimesNewsItem,
   anchor: MobileTimesTextAnchor,
   callbacks: MobileTimesAgentCallbacks,
+  request: ExplanationRequest = {},
 ): () => void {
   const controller = new AbortController();
   void (async () => {
@@ -125,10 +127,10 @@ export function explainMobileTimesSelection(
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
         Accept: "text/event-stream",
-        "Makers-Conversation-Id": `times_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`,
+        "Makers-Conversation-Id": request.conversationId || `times_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`,
       },
       body: JSON.stringify({
-        message: promptFor(news, anchor, prepared.assets),
+        ...readerExplanationRequest(promptFor(news, anchor, prepared.assets), request),
         ...(prepared.images.length ? { images: prepared.images } : {}),
       }),
       signal: controller.signal,

@@ -8,7 +8,6 @@ import {
   Linking,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -16,6 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import { ScreenHeader } from "../components/ScreenHeader";
+import { TimesExplanationPanel } from "../components/TimesExplanationPanel";
 import { ReaderSelectionToolbar } from "../components/ReaderSelectionToolbar";
 import { NativeSpeechPlayer } from "../reading/SpeechPlayer";
 import { mobileSpeechSegments } from "../reading/speech";
@@ -39,31 +39,19 @@ import type { RootStackParamList } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
 import { mobileTheme } from "../theme/tokens";
 import { useRetryOnFailure } from "../lib/useRetryOnFailure";
+import { useReaderExplanation } from "../lib/useReaderExplanation";
 
 type Props = NativeStackScreenProps<RootStackParamList, "TimesDetail">;
-
-type ExplanationState = {
-  anchor: MobileTimesTextAnchor;
-  answer: string;
-  status: string;
-  error: string;
-  metadata?: MobileTimesExplanationMetadata;
-};
 
 type ArticleSelection = MobileTimesTextAnchor & {
   rect?: ReaderSelectionRect;
   viewport?: { width: number; height: number };
 };
 
-function visibleExplanation(value: string): string {
-  return value.replace("<!-- JOJO_TIMES_COMPLETE -->", "").trim();
-}
-
 export function TimesDetailScreen({ route, navigation }: Props) {
   const { issueDate, newsId } = route.params;
   const defaultLanguage = useMobileStore((state) => state.timesLanguage);
   const theme = mobileTheme;
-  const cancelExplanation = useRef<(() => void) | undefined>(undefined);
   const webViewRef = useRef<WebView>(null);
   const [readerFrame, setReaderFrame] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [expandedImage, setExpandedImage] = useState<{ url: string; caption: string } | null>(null);
@@ -74,17 +62,17 @@ export function TimesDetailScreen({ route, navigation }: Props) {
   const [retryToken, setRetryToken] = useState(0);
   useRetryOnFailure(Boolean(error) && !loading, () => setRetryToken((value) => value + 1));
   const [selection, setSelection] = useState<ArticleSelection | null>(null);
-  const [explanation, setExplanation] = useState<ExplanationState | null>(null);
-
-  useEffect(() => () => cancelExplanation.current?.(), []);
+  const explanationChat = useReaderExplanation<MobileTimesTextAnchor, MobileTimesExplanationMetadata>(
+    (anchor, callbacks, request) => explainMobileTimesSelection(news!, anchor, callbacks, request),
+    `${issueDate}:${newsId}:${requestedLanguage}:${retryToken}`,
+  );
+  const explanation = explanationChat.conversation;
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setError("");
     setSelection(null);
-    cancelExplanation.current?.();
-    setExplanation(null);
     setExpandedImage(null);
     void mobileTimesApi.getNews(issueDate, newsId, requestedLanguage)
       .then((value) => { if (active) setNews(value); })
@@ -143,33 +131,10 @@ export function TimesDetailScreen({ route, navigation }: Props) {
     webViewRef.current?.injectJavaScript("window.getSelection()?.removeAllRanges(); true;");
   }
 
-  function startExplanation(anchor: MobileTimesTextAnchor | null = selection) {
-    if (!news || !anchor) return;
-    cancelExplanation.current?.();
+  function startExplanation() {
+    if (!news || !selection) return;
     clearSelection();
-    let answer = "";
-    setExplanation({ anchor, answer: "", status: "正在准备…", error: "" });
-    cancelExplanation.current = explainMobileTimesSelection(news, anchor, {
-      onStatus: (status) => setExplanation((current) => current ? { ...current, status } : current),
-      onChunk: (chunk) => {
-        answer += chunk;
-        setExplanation((current) => current ? { ...current, answer } : current);
-      },
-      onDone: (metadata, completed) => {
-        setExplanation((current) => current ? { ...current, answer: completed, status: "", metadata } : current);
-        cancelExplanation.current = undefined;
-      },
-      onError: (message) => {
-        setExplanation((current) => current ? { ...current, status: "", error: message } : current);
-        cancelExplanation.current = undefined;
-      },
-    });
-  }
-
-  function closeExplanation() {
-    cancelExplanation.current?.();
-    cancelExplanation.current = undefined;
-    setExplanation(null);
+    explanationChat.start(selection);
   }
 
   return (
@@ -250,41 +215,11 @@ export function TimesDetailScreen({ route, navigation }: Props) {
         visible={Boolean(explanation)}
         transparent
         animationType={IS_EINK_RELEASE ? "none" : "slide"}
-        onRequestClose={closeExplanation}
+        onRequestClose={explanationChat.close}
         statusBarTranslucent
       >
-        <View style={styles.explanationRoot}>
-          <Pressable accessibilityRole="button" accessibilityLabel="关闭 AI 解释" onPress={closeExplanation} style={styles.explanationBackdrop} />
-          <SafeAreaView edges={["top", "bottom"]} style={[styles.explanationPanel, { backgroundColor: theme.paper, borderColor: theme.ruleDark }]}>
-            <View style={[styles.explanationHeader, { borderBottomColor: theme.ruleDark }]}>
-              <View style={[styles.explanationHeadingRule, { borderLeftColor: theme.red }]}>
-                <Text style={[styles.explanationTitle, { color: theme.red, fontFamily: theme.serif }]}>AI 解释</Text>
-              </View>
-              <Pressable accessibilityRole="button" accessibilityLabel="关闭" onPress={closeExplanation} hitSlop={8}>
-                <Ionicons name="close" size={24} color={theme.red} />
-              </Pressable>
-            </View>
-            {explanation ? (
-              <ScrollView contentContainerStyle={styles.explanationContent} overScrollMode={IS_EINK_RELEASE ? "never" : "always"}>
-                <View style={[styles.quoteBox, { borderLeftColor: theme.ruleDark }]}>
-                  <Text selectable style={[styles.quoteText, { color: theme.muted, fontFamily: theme.serif }]}>{explanation.anchor.quote}</Text>
-                </View>
-                {explanation.status ? <View accessibilityRole="progressbar" accessibilityLabel={explanation.status} style={styles.explanationProgress}>
-                  {!IS_EINK_RELEASE ? <ActivityIndicator color={theme.red} /> : null}
-                  <Text style={[styles.explanationStatus, { color: theme.red, fontFamily: theme.sans }]}>{explanation.status}</Text>
-                </View> : null}
-                {explanation.answer ? <Text selectable style={[styles.explanationAnswer, { color: theme.ink, fontFamily: theme.serif }]}>{visibleExplanation(explanation.answer)}</Text> : null}
-                {explanation.error ? <View>
-                  <Text accessibilityRole="alert" style={[styles.explanationError, { color: theme.red, fontFamily: theme.sans }]}>{explanation.error}</Text>
-                  <Pressable accessibilityRole="button" onPress={() => startExplanation(explanation.anchor)}><Text style={[styles.retryText, { color: theme.red, fontFamily: theme.sans }]}>重新解释</Text></Pressable>
-                </View> : null}
-                {explanation.metadata ? (
-                  <Text style={[styles.explanationMeta, { color: theme.muted, borderTopColor: theme.rule, fontFamily: theme.sans }]}>已结合 {explanation.metadata.imageCount} 张随文图片</Text>
-                ) : null}
-              </ScrollView>
-            ) : null}
-          </SafeAreaView>
-        </View>
+        {explanation ? <TimesExplanationPanel key={explanation.conversationId} {...explanation}
+          onClose={explanationChat.close} onRetry={explanationChat.retry} onAsk={explanationChat.ask} onStop={explanationChat.stop} /> : null}
       </Modal>
     </SafeAreaView>
   );
@@ -302,18 +237,4 @@ const styles = StyleSheet.create({
   retryText: { marginTop: 16, fontSize: 11, fontWeight: "900" },
   webView: { flex: 1 },
   imageCaption: { padding: 16, fontSize: 12, lineHeight: 20, textAlign: "center" },
-  explanationRoot: { flex: 1, alignItems: "flex-end", backgroundColor: "rgba(0,0,0,.24)" },
-  explanationBackdrop: { ...StyleSheet.absoluteFillObject },
-  explanationPanel: { width: "100%", maxWidth: 460, height: "100%", borderLeftWidth: 1 },
-  explanationHeader: { height: 64, borderBottomWidth: 1, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  explanationHeadingRule: { borderLeftWidth: 3, paddingLeft: 12 },
-  explanationTitle: { fontSize: 23, fontWeight: "900" },
-  explanationContent: { padding: 20, paddingBottom: 48 },
-  quoteBox: { borderLeftWidth: 2, paddingLeft: 13 },
-  quoteText: { fontSize: 12, lineHeight: 21 },
-  explanationProgress: { marginTop: 22, flexDirection: "row", alignItems: "center", gap: 10 },
-  explanationStatus: { flex: 1, fontSize: 10, lineHeight: 18, fontWeight: "900" },
-  explanationAnswer: { marginTop: 20, fontSize: 16, lineHeight: 29 },
-  explanationError: { marginTop: 20, fontSize: 12, lineHeight: 21, fontWeight: "700" },
-  explanationMeta: { marginTop: 24, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, fontSize: 9 },
 });

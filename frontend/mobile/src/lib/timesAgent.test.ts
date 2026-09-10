@@ -75,4 +75,20 @@ describe("mobile times agent", () => {
     expect(result).toBe(error);
     expect(onDone).not.toHaveBeenCalled();
   });
+
+  it("sends follow-up history and retains the original news and quote", async () => {
+    streamingFetch.mockResolvedValue(new Response('event: text_delta\ndata: {"delta":"后续解释。<!-- JOJO_TIMES_COMPLETE -->"}\n\nevent: done\ndata: {"stopReason":"stop"}\n\n'));
+    const history = [{ role: "user" as const, content: "解释正文" }, { role: "assistant" as const, content: "这是背景。" }];
+    await new Promise<void>((resolve, reject) => {
+      explainMobileTimesSelection(news, { quote: "新闻正文" }, { onStatus: vi.fn(), onChunk: vi.fn(), onDone: () => resolve(), onError: reject },
+        { question: "再举个例子", history, conversationId: "times_followup" });
+    });
+    const init = streamingFetch.mock.calls[0]![1];
+    const body = JSON.parse(init.body);
+    expect(body.history).toEqual(history);
+    expect(body.message).toContain("测试新闻");
+    expect(body.message).toContain("新闻正文");
+    expect(body.message).toContain("再举个例子");
+    expect(new Headers(init.headers).get("makers-conversation-id")).toBe("times_followup");
+  });
 });
