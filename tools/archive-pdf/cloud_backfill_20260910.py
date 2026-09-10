@@ -1,5 +1,5 @@
 """Publish the reviewed 2026-07-19..2026-09-10 RMRB backfill from cloud storage."""
-import base64,concurrent.futures,copy,gzip,hashlib,json,os,subprocess,sys
+import base64,concurrent.futures,copy,gzip,hashlib,json,os,shutil,subprocess,sys
 from pathlib import Path
 import boto3,numpy as np
 from botocore.config import Config
@@ -14,7 +14,8 @@ bucket=os.environ.get('B2_BUCKET') or 'jojo-newspaper'
 assert bucket=='jojo-newspaper'
 s3=boto3.client('s3',endpoint_url='https://s3.us-west-004.backblazeb2.com',region_name='us-west-004',
     aws_access_key_id=os.environ['B2_KEY_ID'],aws_secret_access_key=os.environ['B2_APPLICATION_KEY'],
-    config=Config(connect_timeout=15,read_timeout=120,retries={'max_attempts':5},max_pool_connections=32))
+    config=Config(connect_timeout=15,read_timeout=120,retries={'max_attempts':5},max_pool_connections=32,
+                  request_checksum_calculation='when_required',response_checksum_validation='when_required'))
 hf=HfApi(token=os.environ['HF_TOKEN']);repo='luoxiaozhuang/marxism-dataset'
 assert hf.repo_info(repo,repo_type='dataset',expand=['sha']).sha==plan['parent'],'Canonical changed; refresh the plan'
 
@@ -52,7 +53,9 @@ def prepare(row):
     protected=folder/'protected.pdf';decoded=folder/'decoded.pdf';pdf=folder/'linearized.pdf'
     s3.download_file(bucket,'RMRB/2026/'+day.replace('-','')+'.pdf',str(protected),Config=TransferConfig(max_concurrency=2))
     assert protected.stat().st_size==row['sourceSize']
-    subprocess.run(['node','tools/archive-pdf/protect.mjs','decode',str(protected),str(decoded)],check=True,capture_output=True)
+    with protected.open('rb') as stream:plain=stream.read(5)==b'%PDF-'
+    if plain:shutil.copyfile(protected,decoded)
+    else:subprocess.run(['node','tools/archive-pdf/protect.mjs','decode',str(protected),str(decoded)],check=True,capture_output=True)
     with decoded.open('rb') as stream:assert hashlib.file_digest(stream,'sha256').hexdigest()==row['sourceSha256']
     result=subprocess.run(['qpdf','--linearize',str(decoded),str(pdf)],capture_output=True,text=True)
     assert result.returncode in (0,3),result.stderr
