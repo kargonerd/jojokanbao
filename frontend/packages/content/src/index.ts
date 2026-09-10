@@ -1,4 +1,5 @@
 export * from "./archive";
+export * from "./archive-delivery";
 export * from "./book-search";
 export * from "./jox";
 export * from "./resource-cache";

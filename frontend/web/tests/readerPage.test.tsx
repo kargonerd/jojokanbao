@@ -5,6 +5,21 @@ import { ReaderPage } from "../src/archive/pages/ReaderPage";
 import type { PublicationName } from "../src/archive/publications";
 import { useRecentReadingStore } from "../src/library/recentReadingStore";
 
+function deliveredPdf(name: string, issue: string) {
+  if (!issue) return { url: "", protectedPdf: true, joxObjectKey: undefined };
+  const day = issue.replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3");
+  const path = issue.length === 8 ? `${issue.slice(0, 4)}/${issue.slice(4, 6)}/${day}` : `${issue.slice(0, 4)}/${issue}`;
+  const joxObjectKey = `content/newspapers/${name}/items/${path}/assets/issue.pdf.jox`;
+  return { url: `https://blacknews.jojokanbao.cn/${joxObjectKey}?v=hash`, protectedPdf: true, joxObjectKey };
+}
+
+vi.mock("../src/archive/useArchivePdf", () => ({
+  useArchivePdf: (name: string, issue: string) => {
+    const pdf = deliveredPdf(name, issue);
+    return { source: issue ? { url: pdf.url, objectKey: pdf.joxObjectKey } : null, loading: false, error: null };
+  },
+}));
+
 const pdfMocks = vi.hoisted(() => ({
   fetchPdfDownloadBytes: vi.fn(),
   usePdfDocument: vi.fn(),
@@ -156,10 +171,7 @@ describe("ReaderPage document states", () => {
   it("derives a newspaper URL from the route and renders document metadata", () => {
     renderReader("/rmrb/19761009");
 
-    expect(pdfMocks.usePdfDocument).toHaveBeenCalledWith({
-      url: "https://blacknews.jojokanbao.cn/RMRB/1976/19761009.pdf",
-      protectedPdf: "auto",
-    });
+    expect(pdfMocks.usePdfDocument).toHaveBeenCalledWith(deliveredPdf("rmrb", "19761009"));
     expect(document.querySelector<HTMLElement>("[data-reader-scroll-container]")!.style.scrollPaddingTop).toBe("77px");
     expect(screen.getByText("人民日报 - 19761009")).toBeTruthy();
     expect(screen.getByRole("button", { name: "1976年10月09日" })).toBeTruthy();
@@ -186,7 +198,7 @@ describe("ReaderPage document states", () => {
     setPdfState({ document: null, numPages: 0 });
     renderReader("/rmrb/not-a-date");
 
-    expect(pdfMocks.usePdfDocument).toHaveBeenCalledWith({ url: "", protectedPdf: "auto" });
+    expect(pdfMocks.usePdfDocument).toHaveBeenCalledWith(deliveredPdf("rmrb", ""));
     expect(screen.queryByTestId("pdf-viewer")).toBeNull();
     expect(screen.queryByRole("button", { name: "下载 PDF" })).toBeNull();
     expect(screen.getByRole("button", { name: "选择日期" })).toBeTruthy();
@@ -197,12 +209,12 @@ describe("ReaderPage document states", () => {
   it("rejects impossible dates and unavailable magazine issues without a PDF request", () => {
     setPdfState({ document: null, numPages: 0 });
     const invalidDate = renderReader("/rmrb/19760231");
-    expect(pdfMocks.usePdfDocument).toHaveBeenLastCalledWith({ url: "", protectedPdf: "auto" });
+    expect(pdfMocks.usePdfDocument).toHaveBeenLastCalledWith(deliveredPdf("rmrb", ""));
     expect(screen.getByText("链接中的日期不是有效日期。")).toBeTruthy();
     invalidDate.unmount();
 
     renderReader("/hq/196499", { type: "magazine", name: "hq" });
-    expect(pdfMocks.usePdfDocument).toHaveBeenLastCalledWith({ url: "", protectedPdf: "auto" });
+    expect(pdfMocks.usePdfDocument).toHaveBeenLastCalledWith(deliveredPdf("rmrb", ""));
     expect(screen.getByText("该年份没有对应的杂志期数。")).toBeTruthy();
   });
 
@@ -272,10 +284,7 @@ describe("ReaderPage newspaper navigation", () => {
     fireEvent.click(screen.getByRole("button", { name: "8" }));
 
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/archive/rmrb/19761008"));
-    expect(pdfMocks.usePdfDocument).toHaveBeenLastCalledWith({
-      url: "https://blacknews.jojokanbao.cn/RMRB/1976/19761008.pdf",
-      protectedPdf: "auto",
-    });
+    expect(pdfMocks.usePdfDocument).toHaveBeenLastCalledWith(deliveredPdf("rmrb", "19761008"));
   });
 
   it("returns to the page before the reader after changing dates", async () => {
@@ -319,10 +328,7 @@ describe("ReaderPage magazine navigation", () => {
 
     fireEvent.click(screen.getByRole("option", { name: "增刊1" }));
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/archive/hq/196491"));
-    expect(pdfMocks.usePdfDocument).toHaveBeenLastCalledWith({
-      url: "https://blacknews.jojokanbao.cn/HQ/1964/196491.pdf",
-      protectedPdf: "auto",
-    });
+    expect(pdfMocks.usePdfDocument).toHaveBeenLastCalledWith(deliveredPdf("hq", "196491"));
   });
 
   it("closes the issue list with Escape and an outside click", () => {
@@ -599,8 +605,8 @@ describe("ReaderPage toolbar interactions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "下载 PDF" }));
     await waitFor(() => expect(pdfMocks.fetchPdfDownloadBytes).toHaveBeenCalledWith(
-      "https://blacknews.jojokanbao.cn/RMRB/1976/19761009.pdf",
-      "auto",
+      deliveredPdf("rmrb", "19761009").url,
+      true,
       expect.objectContaining({ onDownloadProgress: expect.any(Function) }),
     ));
     expect(URL.createObjectURL).toHaveBeenCalledWith(expect.objectContaining({ type: "application/pdf" }));

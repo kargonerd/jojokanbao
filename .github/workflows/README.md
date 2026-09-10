@@ -94,8 +94,9 @@ Scheduled and manually operated data tasks remain independent workflows:
 
 - `maintenance-purge-archive-pdf-cache.yml`
 - `maintenance-sync-rmrb.yml` — accepts the external daily Cloudflare trigger,
-  receives an explicit Shanghai business date, and safely skips an object that
-  already exists
+  receives an explicit Shanghai business date, catches up missing daily PDFs,
+  and publishes HF Canonical followed by B2 Jox media/manifests/index. It verifies
+  CDN ranges and skips issues whose Canonical and Delivery PDF are complete.
 - `maintenance-times-capture.yml` — accepts the external five-minute Cloudflare trigger, checks a three-hour discovery lookback for late URLs, captures the primary one-hour window plus unseen/retry pages and images, and publishes an immutable Raw job to the private HF Runtime Bucket
 - `maintenance-times-process.yml` — after an automatic Capture succeeds, stages an immutable Process generation, publishes B2 Delivery, then advances the committed Runtime pointer and job status
 - `maintenance-times-runtime-cleanup.yml` — applies the 14/30-day Runtime job retention policy with an exact-path deletion cap

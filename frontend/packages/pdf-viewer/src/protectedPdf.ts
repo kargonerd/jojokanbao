@@ -1,4 +1,5 @@
 import { PDFDataRangeTransport } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { transformJoxBytes } from "@jojo/content";
 
 const PDF_MAGIC = "%PDF-";
 export const DEFAULT_PDF_RANGE_CHUNK_SIZE = 256 * 1024;
@@ -9,6 +10,8 @@ const MASK_SEED = 0x4a4f4a4f; // "JOJO"
 export type ProtectedPdfMode = boolean | "auto";
 
 export interface ProtectedPdfFetchOptions {
+  /** Delivery object key, without CDN prefix or revision query, for Jox PDFs. */
+  joxObjectKey?: string;
   fetchFn?: typeof fetch;
   headers?: HeadersInit;
   rangeChunkSize?: number;
@@ -161,7 +164,11 @@ function removeRangeHeader(headers: HeadersInit | undefined): HeadersInit | unde
   return result;
 }
 
-function decodeFullPdf(bytes: Uint8Array, mode: ProtectedPdfMode): PdfDownloadBytes {
+function decodeProtectedChunk(bytes: Uint8Array, offset: number, options: ProtectedPdfFetchOptions): Uint8Array {
+  return options.joxObjectKey ? transformJoxBytes(bytes, options.joxObjectKey, offset) : applyPdfByteMask(bytes, offset);
+}
+
+function decodeFullPdf(bytes: Uint8Array, mode: ProtectedPdfMode, options: ProtectedPdfFetchOptions): PdfDownloadBytes {
   if (hasPdfMagic(bytes)) {
     if (mode === true) {
       throw new Error("Expected a protected PDF, but the CDN returned a plain PDF");
@@ -173,7 +180,7 @@ function decodeFullPdf(bytes: Uint8Array, mode: ProtectedPdfMode): PdfDownloadBy
     throw new Error("Expected a plain PDF, but the CDN returned a protected PDF");
   }
 
-  const decoded = applyPdfByteMask(bytes, 0);
+  const decoded = decodeProtectedChunk(bytes, 0, options);
   if (!hasPdfMagic(decoded)) {
     throw new Error("CDN file is neither a plain PDF nor a JOJO protected PDF");
   }
@@ -197,7 +204,7 @@ async function fetchFullPdf(
     throw new Error(`PDF request failed with HTTP ${response.status}`);
   }
 
-  return decodeFullPdf(new Uint8Array(await response.arrayBuffer()), mode);
+  return decodeFullPdf(new Uint8Array(await response.arrayBuffer()), mode, options);
 }
 
 function shouldFallBackToFullFetch(error: unknown, signal?: AbortSignal): boolean {
@@ -385,7 +392,7 @@ abstract class HttpPdfRangeTransport extends PDFDataRangeTransport {
 
 export class ProtectedPdfRangeTransport extends HttpPdfRangeTransport {
   protected transformChunk(bytes: Uint8Array, begin: number): Uint8Array {
-    return applyPdfByteMask(bytes, begin);
+    return decodeProtectedChunk(bytes, begin, this.options);
   }
 }
 
@@ -433,7 +440,7 @@ export async function resolvePdfSource(
     throw new Error("Expected a plain PDF, but the CDN returned a protected PDF");
   }
 
-  const initialData = applyPdfByteMask(new Uint8Array(initialRange.bytes), 0);
+  const initialData = decodeProtectedChunk(new Uint8Array(initialRange.bytes), 0, options);
   if (!hasPdfMagic(initialData)) {
     throw new Error("CDN file is neither a plain PDF nor a JOJO protected PDF");
   }
@@ -488,7 +495,7 @@ export async function fetchPdfDownloadBytes(
     throw new Error("Expected a plain PDF, but the CDN returned a protected PDF");
   }
 
-  const initialData = applyPdfByteMask(new Uint8Array(initialRange.bytes), 0);
+  const initialData = decodeProtectedChunk(new Uint8Array(initialRange.bytes), 0, options);
   if (!hasPdfMagic(initialData)) {
     throw new Error("CDN file is neither a plain PDF nor a JOJO protected PDF");
   }
@@ -501,7 +508,7 @@ export async function fetchPdfDownloadBytes(
       rangeChunkSize,
       options,
       signal,
-      applyPdfByteMask,
+      (bytes, begin) => decodeProtectedChunk(bytes, begin, options),
       downloadConcurrency,
     ),
     protected: true,
