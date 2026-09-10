@@ -1,5 +1,42 @@
 import { test, expect, type Page } from "@playwright/test";
 
+import { gzipSync } from "node:zlib";
+import { transformJoxBytes } from "@jojo/content";
+
+function pdfUrl(publication: string, issue: string): string {
+  const day = issue.replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3");
+  const path = issue.length === 8 ? `${issue.slice(0, 4)}/${issue.slice(4, 6)}/${day}` : `${issue.slice(0, 4)}/${issue}`;
+  return `https://blacknews.jojokanbao.cn/content/newspapers/${publication}/items/${path}/assets/issue.pdf.jox?v=fixture`;
+}
+
+const pdfPattern = "https://blacknews.jojokanbao.cn/**/*.pdf.jox*";
+function encodePdfRange(url: string, bytes: Buffer, offset = 0): Buffer {
+  return Buffer.from(transformJoxBytes(bytes, new URL(url).pathname.slice(1), offset));
+}
+
+test.beforeEach(async ({ page }) => {
+  // Metadata fixtures use the same Jox encoding and manifest indirection as production.
+  await page.route(/https:\/\/blacknews\.jojokanbao\.cn\/(catalog|content\/newspapers\/.*\/(index|manifest))\.jox$/, async (route) => {
+    const key = new URL(route.request().url()).pathname.slice(1);
+    const publication = key.split("/")[2] ?? "rmrb";
+    let value: unknown;
+    if (key === "catalog.jox") {
+      value = { formatVersion: "jojo-catalog/1", datasets: ["rmrb", "ckxx", "hq", "rmhb", "sjzs"].map(datasetId => ({ datasetId, indexObject: `content/newspapers/${datasetId}/index.jox` })) };
+    } else if (key.endsWith("/index.jox")) {
+      value = { formatVersion: "jojo-delivery-index/1", datasetId: publication,
+        itemPath: "items/{YYYY}/{MM}/{YYYY-MM-DD}/manifest.jox",
+        items: ["196419", "196491", "197292", "196513"].map(itemKey => ({ itemKey, manifestObject: `items/${itemKey.slice(0, 4)}/${itemKey}/manifest.jox` })),
+      };
+    } else {
+      const issue = key.split("/").at(-2);
+      value = { formatVersion: "jojo-item-manifest/1", datasetId: publication, itemId: `${publication}:${issue}`,
+        assets: [{ type: "pdf", role: "issue-pdf", mediaType: "application/pdf", object: "assets/issue.pdf.jox", sha256: "fixture" }],
+      };
+    }
+    await route.fulfill({ contentType: "application/octet-stream", body: Buffer.from(transformJoxBytes(gzipSync(JSON.stringify(value)), key)), headers: { "Access-Control-Allow-Origin": "*" } });
+  });
+});
+
 const PAGE_COUNT = 6;
 const RANGE_CHUNK_SIZE = 256 * 1024;
 
@@ -88,7 +125,7 @@ function makeDemandLoadedPdf(pagePaddingLength = 300_000): Buffer {
 }
 
 async function servePdfRanges(page: Page, pdf: Buffer): Promise<void> {
-  await page.route("https://blacknews.jojokanbao.cn/**/*.pdf", async (route) => {
+  await page.route(pdfPattern, async (route) => {
     const range = route.request().headers().range;
     const match = range ? /^bytes=(\d+)-(\d+)$/.exec(range) : null;
     if (!match) {
@@ -107,7 +144,7 @@ async function servePdfRanges(page: Page, pdf: Buffer): Promise<void> {
         "Content-Range": `bytes ${begin}-${end}/${pdf.length}`,
         "Content-Type": "application/pdf",
       },
-      body: pdf.subarray(begin, end + 1),
+      body: encodePdfRange(route.request().url(), pdf.subarray(begin, end + 1), begin),
     });
   });
 }
@@ -118,7 +155,7 @@ test("reader shows the first page before all PDF ranges return", async ({ page }
   const requests: Array<{ begin: number; end: number }> = [];
   let fullRequestSeen = false;
 
-  await page.route("https://blacknews.jojokanbao.cn/RMRB/1976/19761009.pdf", async (route) => {
+  await page.route(pdfUrl("rmrb", "19761009"), async (route) => {
     const range = route.request().headers().range;
     const match = range ? /^bytes=(\d+)-(\d+)$/.exec(range) : null;
     if (!match) {
@@ -146,7 +183,7 @@ test("reader shows the first page before all PDF ranges return", async ({ page }
         "Content-Range": `bytes ${begin}-${end}/${pdf.length}`,
         "Content-Type": "application/pdf",
       },
-      body: pdf.subarray(begin, end + 1),
+      body: encodePdfRange(route.request().url(), pdf.subarray(begin, end + 1), begin),
     });
   });
 
@@ -167,7 +204,7 @@ test("reader falls back to a full PDF when the browser rejects Range transport",
   let rangeRequests = 0;
   let fullRequests = 0;
 
-  await page.route("https://blacknews.jojokanbao.cn/RMRB/1976/19761009.pdf", async (route) => {
+  await page.route(pdfUrl("rmrb", "19761009"), async (route) => {
     if (route.request().headers().range) {
       rangeRequests += 1;
       await route.abort("failed");
@@ -182,7 +219,7 @@ test("reader falls back to a full PDF when the browser rejects Range transport",
         "Content-Length": String(pdf.length),
         "Content-Type": "application/pdf",
       },
-      body: pdf,
+      body: encodePdfRange(route.request().url(), pdf),
     });
   });
 
@@ -198,29 +235,29 @@ test("reader falls back to a full PDF when the browser rejects Range transport",
 
 test("switching from a newspaper to a magazine never requests a stale mixed document id", async ({ page }) => {
   const pdfRequests: string[] = [];
-  await page.route("https://blacknews.jojokanbao.cn/**/*.pdf", async (route) => {
+  await page.route(pdfPattern, async (route) => {
     pdfRequests.push(route.request().url());
     await route.fulfill({ status: 404, body: "Not needed for route URL regression" });
   });
 
   await page.goto("/rmrb/19761009", { waitUntil: "domcontentloaded" });
-  await expect.poll(() => pdfRequests.some((url) => url.endsWith("/RMRB/1976/19761009.pdf"))).toBe(true);
+  await expect.poll(() => pdfRequests.some((url) => url === pdfUrl("rmrb", "19761009"))).toBe(true);
 
   await page.evaluate(() => {
     window.history.pushState({}, "", "/archive/hq/196419");
     window.dispatchEvent(new PopStateEvent("popstate"));
   });
   await expect(page).toHaveURL(/\/hq\/196419$/);
-  await expect.poll(() => pdfRequests.some((url) => url.includes("/HQ/"))).toBe(true);
+  await expect.poll(() => pdfRequests.some((url) => url.includes("/newspapers/hq/"))).toBe(true);
 
-  expect(pdfRequests.filter((url) => url.includes("/HQ/"))).toEqual([
-    "https://blacknews.jojokanbao.cn/HQ/1964/196419.pdf",
+  expect(pdfRequests.filter((url) => url.includes("/newspapers/hq/"))).toEqual([
+    pdfUrl("hq", "196419"),
   ]);
   expect(pdfRequests.some((url) => url.endsWith("/HQ/1976/1976100901.pdf"))).toBe(false);
 });
 
 test("reader explains a server that ignores Range without hiding navigation controls", async ({ page }) => {
-  await page.route("https://blacknews.jojokanbao.cn/**/*.pdf", async (route) => {
+  await page.route(pdfPattern, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/pdf",
@@ -237,7 +274,7 @@ test("reader explains a server that ignores Range without hiding navigation cont
 
 test("date and issue controls produce exact publication URLs", async ({ page }) => {
   const requests: string[] = [];
-  await page.route("https://blacknews.jojokanbao.cn/**/*.pdf", async (route) => {
+  await page.route(pdfPattern, async (route) => {
     requests.push(route.request().url());
     await route.fulfill({ status: 404, body: "UI navigation only" });
   });
@@ -246,13 +283,13 @@ test("date and issue controls produce exact publication URLs", async ({ page }) 
   await page.getByRole("button", { name: "1976年10月09日" }).click();
   await page.getByRole("button", { name: "8", exact: true }).click();
   await expect(page).toHaveURL(/\/rmrb\/19761008$/);
-  await expect.poll(() => requests.some((url) => url.endsWith("/RMRB/1976/19761008.pdf"))).toBe(true);
+  await expect.poll(() => requests.some((url) => url === pdfUrl("rmrb", "19761008"))).toBe(true);
 
   await page.goto("/hq/196419", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "第19期" }).click();
   await page.getByRole("option", { name: "增刊1" }).click();
   await expect(page).toHaveURL(/\/hq\/196491$/);
-  await expect.poll(() => requests.some((url) => url.endsWith("/HQ/1964/196491.pdf"))).toBe(true);
+  await expect.poll(() => requests.some((url) => url === pdfUrl("hq", "196491"))).toBe(true);
   expect(requests.some((url) => url.includes("/HQ/1976/1976100901.pdf"))).toBe(false);
 });
 
@@ -274,7 +311,7 @@ test("browser download restores a readable PDF with the issue filename", async (
 
 test("reader controls close consistently and keep the app navigation", async ({ page }) => {
   const pdf = makeDemandLoadedPdf(1_000);
-  await page.route("https://blacknews.jojokanbao.cn/**/*.pdf", async (route) => {
+  await page.route(pdfPattern, async (route) => {
     const range = route.request().headers().range;
     const match = range ? /^bytes=(\d+)-(\d+)$/.exec(range) : null;
     if (!match) {
@@ -293,7 +330,7 @@ test("reader controls close consistently and keep the app navigation", async ({ 
         "Content-Range": `bytes ${begin}-${end}/${pdf.length}`,
         "Content-Type": "application/pdf",
       },
-      body: pdf.subarray(begin, end + 1),
+      body: encodePdfRange(route.request().url(), pdf.subarray(begin, end + 1), begin),
     });
   });
   await page.goto("/hq/196419", { waitUntil: "domcontentloaded" });
@@ -338,7 +375,7 @@ test("mobile PDF slots omit text layers, keep their page ratio, and evict distan
     Object.defineProperty(Navigator.prototype, "maxTouchPoints", { configurable: true, get: () => 5 });
   });
   const pdf = makeDemandLoadedPdf(1_000);
-  await page.route("https://blacknews.jojokanbao.cn/**/*.pdf", async (route) => {
+  await page.route(pdfPattern, async (route) => {
     const range = route.request().headers().range;
     const match = range ? /^bytes=(\d+)-(\d+)$/.exec(range) : null;
     if (!match) {
@@ -357,7 +394,7 @@ test("mobile PDF slots omit text layers, keep their page ratio, and evict distan
         "Content-Range": `bytes ${begin}-${end}/${pdf.length}`,
         "Content-Type": "application/pdf",
       },
-      body: pdf.subarray(begin, end + 1),
+      body: encodePdfRange(route.request().url(), pdf.subarray(begin, end + 1), begin),
     });
   });
 
@@ -444,7 +481,7 @@ test("mobile PDF slots omit text layers, keep their page ratio, and evict distan
 
 test("PDF region zooms in place, pans, and exits without a floating lens", async ({ page, browserName }) => {
   const pdf = makeDemandLoadedPdf(1_000);
-  await page.route("https://blacknews.jojokanbao.cn/**/*.pdf", async (route) => {
+  await page.route(pdfPattern, async (route) => {
     const range = route.request().headers().range;
     const match = range ? /^bytes=(\d+)-(\d+)$/.exec(range) : null;
     if (!match) {
@@ -463,7 +500,7 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
         "Content-Range": `bytes ${begin}-${end}/${pdf.length}`,
         "Content-Type": "application/pdf",
       },
-      body: pdf.subarray(begin, end + 1),
+      body: encodePdfRange(route.request().url(), pdf.subarray(begin, end + 1), begin),
     });
   });
 

@@ -372,6 +372,9 @@ importers:
 
   frontend/packages/pdf-viewer:
     dependencies:
+      '@jojo/content':
+        specifier: workspace:*
+        version: link:../content
       pdfjs-dist:
         specifier: ^5.7.0
         version: 5.7.284(patch_hash=zahbskxuqcrzag4gobt5x7k26i)
