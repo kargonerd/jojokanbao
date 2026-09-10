@@ -38,10 +38,15 @@ export function materializeTimesArticleAssets(news: MobileTimesNewsItem): string
   for (const asset of news.assets) {
     const url = news.assetUrls?.[asset.id];
     if (!url || asset.type !== "image") continue;
-    const figurePattern = new RegExp(`(<figure\\b[^>]*data-asset-id=(['"])${escapeRegExp(asset.id)}\\2[^>]*>)`, "gi");
+    const figurePattern = new RegExp(`(<figure\\b[^>]*data-asset-id=(['"])${escapeRegExp(asset.id)}\\2[^>]*>)([\\s\\S]*?)(<\\/figure\\s*>)`, "gi");
     const image = `<img src="${escapeHtml(url)}" alt="${escapeHtml(asset.alt || asset.caption || "")}" loading="lazy" decoding="async">`;
     const caption = asset.caption ? `<figcaption>${escapeHtml(asset.caption)}</figcaption>` : "";
-    content = content.replace(figurePattern, (opening) => `${opening}${image}${caption}`);
+    content = content.replace(figurePattern, (_match, opening: string, _quote: string, inner: string, closing: string) => {
+      // The fragment owns the active language's caption; asset metadata is
+      // the original-language fallback only when no figure caption exists.
+      const body = inner.replace(/<img\b[^>]*>/gi, "");
+      return `${opening}${image}${body}${/<figcaption\b/i.test(body) ? "" : caption}${closing}`;
+    });
   }
   return content;
 }
@@ -72,7 +77,7 @@ export function createTimesArticleDocument(news: MobileTimesNewsItem, eInk = fal
     #article-body p{margin:1.05em 0;text-align:justify;text-indent:2em}
     blockquote{margin:1.5em 0;border-left:3px solid var(--red);padding-left:18px;color:var(--muted)}
     ul,ol{margin:1.2em 0;padding-left:1.6em} li{margin:.5em 0}
-    figure{margin:2em 0} img{display:block;width:auto;max-width:100%;max-height:72vh;margin:0 auto;object-fit:contain}
+    figure{margin:2em 0} img{display:block;width:auto;max-width:100%;max-height:72vh;margin:0 auto;object-fit:contain;cursor:zoom-in}
     figcaption{margin-top:9px;color:var(--muted);font-family:sans-serif;font-size:12px;line-height:1.6;text-align:center}
     a{color:var(--red);font-weight:800;text-decoration:none;border-bottom:1px solid var(--red)}
     hr{height:1px;margin:2em 0;border:0;background:var(--rule)}
@@ -94,19 +99,33 @@ export function createTimesArticleDocument(news: MobileTimesNewsItem, eInk = fal
         timer=setTimeout(function(){
           var selection=window.getSelection();
           var quote=selection&&selection.toString().replace(/\\s+/g,' ').trim();
-          if(!quote){window.ReactNativeWebView.postMessage(JSON.stringify({type:'selection',quote:''}));return;}
-          var text=document.getElementById('article-body').innerText.replace(/\\s+/g,' ').trim();
-          var index=text.indexOf(quote);
+          var root=document.getElementById('article-body');
+          if(!quote||!selection.rangeCount||!root.contains(selection.getRangeAt(0).commonAncestorContainer)){window.ReactNativeWebView.postMessage(JSON.stringify({type:'selection',quote:''}));return;}
+          var range=selection.getRangeAt(0);
+          var rect=range.getBoundingClientRect();
+          var before=range.cloneRange();before.selectNodeContents(root);before.setEnd(range.startContainer,range.startOffset);
+          var after=range.cloneRange();after.selectNodeContents(root);after.setStart(range.endContainer,range.endOffset);
           window.ReactNativeWebView.postMessage(JSON.stringify({
             type:'selection',quote:quote.slice(0,3000),
-            prefix:index>=0?text.slice(Math.max(0,index-900),index):'',
-            suffix:index>=0?text.slice(index+quote.length,index+quote.length+900):''
+            prefix:before.toString().replace(/\\s+/g,' ').slice(-900),
+            suffix:after.toString().replace(/\\s+/g,' ').slice(0,900),
+            rect:{left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom},
+            viewport:{width:window.innerWidth,height:window.innerHeight}
           }));
         },90);
       }
       document.addEventListener('selectionchange',sendSelection,{passive:true});
+      window.addEventListener('scroll',sendSelection,{passive:true});
+      window.addEventListener('resize',sendSelection,{passive:true});
       document.addEventListener('contextmenu',function(event){event.preventDefault();});
       document.addEventListener('click',function(event){
+        var image=event.target.closest&&event.target.closest('figure[data-asset-id] img');
+        if(image){
+          event.preventDefault();
+          var figure=image.closest('figure');
+          window.ReactNativeWebView.postMessage(JSON.stringify({type:'image',assetId:figure.getAttribute('data-asset-id'),caption:figure.querySelector('figcaption')?.textContent||image.alt}));
+          return;
+        }
         var link=event.target.closest&&event.target.closest('a[href]');
         if(!link)return;
         event.preventDefault();
@@ -116,4 +135,11 @@ export function createTimesArticleDocument(news: MobileTimesNewsItem, eInk = fal
   </script>
 </body>
 </html>`;
+}
+
+export function createTimesImageDocument(url: string, caption: string): string {
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline'">
+    <style>html,body{margin:0;background:#fff}body{min-height:100vh;display:flex;align-items:center;justify-content:center}img{width:100%;height:auto;object-fit:contain}</style>
+    </head><body><img src="${escapeHtml(url)}" alt="${escapeHtml(caption)}"></body></html>`;
 }

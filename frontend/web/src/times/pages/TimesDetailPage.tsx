@@ -10,6 +10,7 @@ import { explainTimesSelection, type TimesExplanationMetadata } from "../ai";
 import { timesApi, type TimesNewsItem } from "../api";
 import { exactArticleTime, publisherUpdatedAt } from "../articleTime";
 import { TimesExplanationPanel } from "../components/TimesExplanationPanel";
+import { TimesArticleImage } from "../components/TimesArticleImage";
 import { TimesImageCarousel, type TimesCarouselItem } from "../components/TimesImageCarousel";
 import { sourceLogoUrl } from "../components/SourceLogo";
 import type { TimesForeignContentLanguage } from "../language";
@@ -135,7 +136,7 @@ function materializeAssets(news: TimesNewsItem): ReactNode[] | null {
       const caption = figureCaptions.get(asset.id) || asset.caption;
       return (
         <figure key={key} data-asset-id={asset.id}>
-          <img src={url} alt={asset.alt || asset.caption || ""} loading="lazy" decoding="async" />
+          <TimesArticleImage src={url} alt={asset.alt || caption || ""} caption={caption || undefined} />
           {caption ? <figcaption>{caption}</figcaption> : null}
         </figure>
       );
@@ -238,7 +239,7 @@ export function TimesDetailPage({
         setExplanation((current) => current ? { ...current, answer: current.answer + text } : current);
       },
       onDone(metadata, answer) {
-        setExplanation((current) => current ? { ...current, answer, status: "解释完成", metadata } : current);
+        setExplanation((current) => current ? { ...current, answer, status: "", metadata } : current);
       },
       onError(message) {
         setExplanation((current) => current ? { ...current, status: "", error: message } : current);
@@ -330,5 +331,5 @@ export function TimesDetailPage({
         <div ref={setMiniPlayerTarget} className="relative shrink-0" data-times-speech-dock />
       </div>
     : <main className="min-h-[calc(100vh-64px)] bg-paper text-ink">{content}</main>;
-  return <>{page}{explanation ? <TimesExplanationPanel {...explanation} onClose={closeExplanation} /> : null}</>;
+  return <>{page}{explanation ? <TimesExplanationPanel {...explanation} onClose={closeExplanation} onRetry={() => startExplanation(explanation.anchor)} /> : null}</>;
 }
