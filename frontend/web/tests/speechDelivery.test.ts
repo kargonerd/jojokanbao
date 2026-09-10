@@ -17,6 +17,29 @@ describe("public audio delivery", () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
+  it("returns a progressive URL without downloading the audio and still reuses cached MP3s", async () => {
+    const ticket = "a".repeat(100);
+    const expiresAt = Date.now() / 1000 + 900;
+    const fetcher = vi.fn().mockResolvedValueOnce(new Response(null, { status: 404 }))
+      .mockResolvedValueOnce(Response.json({ formatVersion: "jojo-speech-stream/1", ticket, expiresAt }));
+    vi.stubGlobal("fetch", fetcher);
+    expect(await requestSpeech("正文", "白桦", undefined, { ...options, streaming: true })).toEqual({
+      url: `/api/v1/speech/stream/?ticket=${ticket}`, duration: 0, streaming: true, expiresAt,
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[1]![0]).toBe("/api/v1/speech?stream=true");
+    fetcher.mockReset().mockResolvedValue(Response.json(await descriptor()));
+    const cached = await requestSpeech("正文", "白桦", undefined, { ...options, streaming: true });
+    expect(cached).toMatchObject({ duration: 12 });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it.each(["https://attacker.invalid/audio.mp3", "bad", "x".repeat(8193)])("rejects malformed stream tickets", async (ticket) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(new Response(null, { status: 404 }))
+      .mockResolvedValueOnce(Response.json({ formatVersion: "jojo-speech-stream/1", ticket, expiresAt: Date.now() / 1000 + 900 })));
+    await expect(requestSpeech("正文", "白桦", undefined, { ...options, streaming: true })).rejects.toThrow("无效音频地址");
+  });
+
   it("uses the identical canonical hash as Python, including Unicode", async () => {
     expect(await speechKey("mimo", "test-v1", "白桦", "正文")).toBe("db63c26368279d6f69fc1dbd51d89369c2135bd0f67410a55251d38df7f955f8");
     expect(await speechKey("mimo", "test-v1", "白桦", " a\n b ")).toBe(await speechKey("mimo", "test-v1", "白桦", "a b"));

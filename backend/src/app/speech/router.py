@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Literal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from ..core.config import Settings, get_settings
@@ -13,6 +14,7 @@ from ..core.errors import ApiError, SpeechServiceError
 from .delivery import resolve_speech, delivery_version
 from .providers import PROVIDERS
 from .voices import VOICES
+from . import streaming
 
 
 logger = logging.getLogger("jojo.platform_api.speech")
@@ -61,6 +63,7 @@ async def speech_providers(settings: Settings = Depends(get_settings), v: int = 
             "id": "auto", "label": "在线朗读", "description": "",
             "available": settings.tts_enabled or settings.speech_storage == "b2",
             "canGenerate": settings.tts_enabled,
+            "streaming": streaming.available(settings),
             "cacheVersion": delivery_version("auto"),
             "voices": [{"id": "male", "label": "男声", "description": ""},
                        {"id": "female", "label": "女声", "description": ""}],
@@ -72,7 +75,11 @@ async def speech_providers(settings: Settings = Depends(get_settings), v: int = 
 async def speech(
     request: SpeechRequest,
     settings: Settings = Depends(get_settings),
+    stream: bool = Query(False),
 ) -> Response:
+    if stream and request.provider in {"auto", "mimo"} and streaming.available(settings):
+        return JSONResponse(streaming.issue_ticket(request.provider, request.voice, request.text, request.scope, settings),
+                            headers={"Cache-Control": "no-store"})
     try:
         # Frontend-only login restriction is intentional. Never expose provider keys.
         audio, cache_status = await asyncio.wait_for(
@@ -94,3 +101,43 @@ async def speech(
             "X-Speech-Cache": cache_status,
         },
     )
+
+
+@router.get("/speech/stream", include_in_schema=False)
+async def speech_stream_redirect(ticket: str = Query(min_length=1, max_length=8192)) -> Response:
+    return RedirectResponse(f"stream/?ticket={quote(ticket, safe='')}", status_code=307,
+                            headers={"Cache-Control": "no-store"})
+
+
+# EdgeOne's ASGI wrapper buffers GETs without a trailing slash while probing
+# for a 404/slash retry. This canonical slash is required for progressive audio.
+@router.get("/speech/stream/")
+async def speech_stream(ticket: str = Query(min_length=1, max_length=8192), settings: Settings = Depends(get_settings)) -> Response:
+    request = SpeechRequest.model_validate(streaming.read_ticket(ticket, settings))
+    chunks = streaming.stream_audio(request.provider, request.voice, request.text, settings, scope=request.scope)
+    # Resolve cache hits and early failures before committing an audio status.
+    try:
+        first = await asyncio.wait_for(anext(chunks), timeout=110)
+    except ApiError:
+        await chunks.aclose()
+        raise
+    except Exception:
+        await chunks.aclose()
+        raise SpeechServiceError("语音生成失败，请重试或切换其他声音") from None
+    if isinstance(first, dict):
+        await chunks.aclose()
+        return RedirectResponse(first["url"], status_code=307, headers={"Cache-Control": "no-store"})
+
+    async def body():
+        try:
+            yield first
+            async for chunk in chunks:
+                yield chunk
+        finally:
+            await chunks.aclose()
+
+    return StreamingResponse(body(), media_type="audio/mpeg", headers={
+        "Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no",
+        "Content-Disposition": 'inline; filename="speech.mp3"',
+        "Accept-Ranges": "none",
+    })
