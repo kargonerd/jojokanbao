@@ -119,7 +119,7 @@ export function createSpeechClient(config: SpeechClientConfig) {
         }
         // Construct the media URL ourselves. Audio elements and native players
         // can consume a progressive GET without downloading a complete Blob.
-        return { url: `${endpoint}/stream?ticket=${encodeURIComponent(stream.ticket)}`, duration: 0,
+        return { url: `${endpoint}/stream/?ticket=${encodeURIComponent(stream.ticket)}`, duration: 0,
           streaming: true, expiresAt: stream.expiresAt };
       }
       const key = options.cacheVersion ? await speechKey(options.provider, options.cacheVersion, voice, text) : undefined;

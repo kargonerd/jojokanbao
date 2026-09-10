@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Literal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
@@ -102,7 +103,15 @@ async def speech(
     )
 
 
-@router.get("/speech/stream")
+@router.get("/speech/stream", include_in_schema=False)
+async def speech_stream_redirect(ticket: str = Query(min_length=1, max_length=8192)) -> Response:
+    return RedirectResponse(f"stream/?ticket={quote(ticket, safe='')}", status_code=307,
+                            headers={"Cache-Control": "no-store"})
+
+
+# EdgeOne's ASGI wrapper buffers GETs without a trailing slash while probing
+# for a 404/slash retry. This canonical slash is required for progressive audio.
+@router.get("/speech/stream/")
 async def speech_stream(ticket: str = Query(min_length=1, max_length=8192), settings: Settings = Depends(get_settings)) -> Response:
     request = SpeechRequest.model_validate(streaming.read_ticket(ticket, settings))
     chunks = streaming.stream_audio(request.provider, request.voice, request.text, settings, scope=request.scope)

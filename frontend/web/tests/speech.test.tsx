@@ -25,7 +25,7 @@ class AudioMock extends EventTarget {
   constructor(src: string) {
     super();
     this.src = src;
-    if (src.includes("/speech/stream?")) this.duration = Infinity;
+    if (src.includes("/speech/stream/?")) this.duration = Infinity;
     AudioMock.instances.push(this);
   }
 

@@ -24,7 +24,7 @@ describe("public audio delivery", () => {
       .mockResolvedValueOnce(Response.json({ formatVersion: "jojo-speech-stream/1", ticket, expiresAt }));
     vi.stubGlobal("fetch", fetcher);
     expect(await requestSpeech("正文", "白桦", undefined, { ...options, streaming: true })).toEqual({
-      url: `/api/v1/speech/stream?ticket=${ticket}`, duration: 0, streaming: true, expiresAt,
+      url: `/api/v1/speech/stream/?ticket=${ticket}`, duration: 0, streaming: true, expiresAt,
     });
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(fetcher.mock.calls[1]![0]).toBe("/api/v1/speech?stream=true");

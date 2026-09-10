@@ -106,9 +106,40 @@ def verify(bundle: Path) -> None:
                     require(body["defaultProvider"] in {"mimo", "edge"}, "Installed-client voice catalog is incompatible")
                     require(len(body["providers"][0]["voices"]) == 2, "Expected two compatible physical voices")
             response = await client.get("/api/v1/times")
-            require(response.status_code == 404, "JOJO Times must not be exposed by the production bundle")
+                require(response.status_code == 404, "JOJO Times must not be exposed by the production bundle")
+
+    async def check_streaming_runtime():
+        require(any(getattr(route, "path", None) == "/v1/speech/stream/" for route in application.routes),
+                "Missing canonical trailing-slash speech stream route")
+        first = asyncio.Event()
+        finish = asyncio.Event()
+
+        async def source(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"audio/mpeg")]})
+            await send({"type": "http.response.body", "body": b"first", "more_body": True})
+            await finish.wait()
+            await send({"type": "http.response.body", "body": b"last", "more_body": False})
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(message):
+            if message.get("body") == b"first":
+                first.set()
+
+        task = asyncio.create_task(runtime.ASGIPathStripMiddleware(source, "/api")({
+            "type": "http", "method": "GET", "path": "/api/v1/speech/stream/",
+            "raw_path": b"/api/v1/speech/stream/", "headers": [], "query_string": b"",
+        }, receive, send))
+        try:
+            await asyncio.wait_for(first.wait(), 1)
+            require(not task.done(), "Stream completed before its final chunk was released")
+        finally:
+            finish.set()
+            await task
 
     asyncio.run(check_routes())
+    asyncio.run(check_streaming_runtime())
 
     from app.core.config import Settings
     from app.speech.encoding import encode_delivery

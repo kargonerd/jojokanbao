@@ -185,12 +185,14 @@ def test_ticket_is_encrypted_expiring_and_no_synthesis_until_media_get(monkeypat
             assert not calls and not store.client.writes
             assert b"private" not in base64.urlsafe_b64decode(ticket) and "私有正文" not in response.text and "secret" not in response.text
             assert streaming.read_ticket(ticket, configured())["text"] == "私有正文"
-            assert client.get("/v1/speech/stream", params={"ticket": ticket[:-8] + "abcdefgh"}).status_code == 410
-            audio = client.get("/v1/speech/stream", params={"ticket": ticket})
+            redirect = client.get("/v1/speech/stream", params={"ticket": ticket}, follow_redirects=False)
+            assert redirect.status_code == 307 and redirect.headers["location"].startswith("stream/?ticket=") and not calls
+            assert client.get("/v1/speech/stream/", params={"ticket": ticket[:-8] + "abcdefgh"}).status_code == 410
+            audio = client.get("/v1/speech/stream/", params={"ticket": ticket})
             assert audio.status_code == 200 and audio.headers["content-type"] == "audio/mpeg"
             assert audio.headers["x-accel-buffering"] == "no" and "content-length" not in audio.headers
             assert encode_delivery(AudioResult(audio.content, "audio/mpeg", "mp3")).duration > 0
-            assert client.get("/v1/speech/stream", params={"ticket": ticket}, follow_redirects=False).status_code == 307
+            assert client.get("/v1/speech/stream/", params={"ticket": ticket}, follow_redirects=False).status_code == 307
             assert calls == [True]
         expired = streaming.ticket_cipher(configured()).encrypt_at_time(b'{}', 1).decode()
         with pytest.raises(ApiError):
