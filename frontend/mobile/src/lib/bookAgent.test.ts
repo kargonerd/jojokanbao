@@ -40,7 +40,8 @@ describe("mobile book agent stream", () => {
       'event: text_delta\ndata: {"delta":"回答"}\n\nevent: done\ndata: {}\n\n',
       { headers: { "Content-Type": "text/event-stream" } },
     ));
-    vi.stubGlobal("fetch", fetchMock);
+    const nativeFetch = vi.fn().mockResolvedValue({ ok: true, body: undefined });
+    vi.stubGlobal("fetch", nativeFetch);
 
     await new Promise<void>((resolve, reject) => {
       askMobileBookAgent({
@@ -57,6 +58,8 @@ describe("mobile book agent stream", () => {
     });
 
     const [target, init] = fetchMock.mock.calls[0]!;
+    expect(nativeFetch).not.toHaveBeenCalled();
+    expect(new Headers(init.headers).get("accept")).toBe("text/event-stream");
     expect(String(target)).toBe("https://agent-global.jojokanbao.cn/rag");
     expect(new Headers(init.headers).get("authorization")).toBe("Bearer mobile-token");
     expect(JSON.parse(String(init.body))).toMatchObject({

@@ -1,3 +1,4 @@
+import { fetch } from "expo/fetch";
 import {
   mobileAccessToken,
   parseAgentSseFrames,
@@ -142,6 +143,7 @@ export function askMobileLibraryAgent(
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
+        Accept: "text/event-stream",
         "Makers-Conversation-Id": activeConversationId,
       },
       body: JSON.stringify({
