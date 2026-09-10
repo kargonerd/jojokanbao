@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  archivePdfUrl,
   archiveWebIssueUrl,
   dateToIssueId,
   formatArchiveIssueLabel,
@@ -12,10 +11,7 @@ import {
 } from "../src/archive";
 
 describe("archive shared domain", () => {
-  it("builds revisioned protected-PDF and reader URLs", () => {
-    expect(archivePdfUrl("rmrb", "20260521")).toBe(
-      "https://blacknews.jojokanbao.cn/RMRB/2026/20260521-r1.pdf",
-    );
+  it("builds reader URLs", () => {
     expect(archiveWebIssueUrl("rmrb", "19660701", 5)).toBe(
       "https://reader.jojokanbao.cn/archive/rmrb/19660701#page-5",
     );
