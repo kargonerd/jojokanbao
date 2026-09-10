@@ -116,6 +116,12 @@ JOJO 使用的 Pi Agent 不在 Makers 自动适配框架列表中，因此 Handl
 请求；`pnpm dev:rag-agent` 的本地请求不会出现在云端控制台。若使用
 `edgeone makers dev`，本地 Trace 在 `http://localhost:8088/agent-metrics` 查看。
 
+AI 可用性监控账号可附带出口诊断：通过管理员控制的
+`app_metadata.account_purpose = 'ai_availability_monitor'` 启用，在同一次模型请求的
+Agent 进程内并行查询两个固定的 IP 服务，最多等待 3 秒。Trace 中的
+`agent.egress.*` 与 `agent.process_id` 可关联成功和失败请求；普通用户不执行诊断。
+启用步骤、输出字段和判读边界见 [AI 监控说明](../../tools/ai-healthcheck/README.md#egress-diagnostics)。
+
 `JOJO_CREDENTIAL_ENCRYPTION_KEY` 用于把平台托管凭据以 AES-256-GCM 形式写入
 Makers 内置 Store。Agent 的 `context.store` 与 Cloud Function 的
 `context.agent.store` 访问同一份数据。`JOJO_OPERATOR_TOKEN` 用于平台运维操作，

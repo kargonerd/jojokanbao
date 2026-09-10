@@ -1,19 +1,62 @@
 import { randomUUID } from 'node:crypto';
+import { isIP } from 'node:net';
+
+export class ProbeFailure extends Error {
+  constructor(reason, details = {}) {
+    super(reason);
+    this.details = details;
+  }
+}
+
+function sanitizedEgress(value) {
+  if (!value || typeof value !== 'object'
+    || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(value.processId ?? '')
+    || typeof value.observedAt !== 'string' || value.observedAt.length !== 24 || !Number.isFinite(Date.parse(value.observedAt))
+    || !Number.isSafeInteger(value.durationMs) || value.durationMs < 0 || value.durationMs > 60_000
+    || !Array.isArray(value.observations) || value.observations.length !== 2) return undefined;
+  const observations = [];
+  for (const item of value.observations) {
+    if (!item || !['ipify', 'cloudflare'].includes(item.source)
+      || observations.some(previous => previous.source === item.source)
+      || !['ok', 'timeout', 'aborted', 'http_error', 'invalid_response', 'network_error'].includes(item.status)) return undefined;
+    const observation = { source: item.source, status: item.status };
+    if (item.status === 'ok') {
+      if (typeof item.ip !== 'string' || !isIP(item.ip) || item.family !== isIP(item.ip)) return undefined;
+      Object.assign(observation, { ip: item.ip, family: item.family });
+      if (item.source === 'cloudflare' && typeof item.country === 'string' && /^[A-Z]{2}$/.test(item.country)) observation.country = item.country;
+    } else if (item.status === 'http_error' && Number.isInteger(item.httpStatus) && item.httpStatus >= 100 && item.httpStatus <= 599) {
+      observation.httpStatus = item.httpStatus;
+    }
+    observations.push(observation);
+  }
+  return { processId: value.processId, observedAt: value.observedAt, durationMs: value.durationMs, observations };
+}
 
 export function inspectCompletion(sse) {
   let text = '';
   let completed = false;
   let tokens = 0;
+  let failureReason;
+  let egress;
   for (const frame of sse.split(/\r?\n\r?\n/)) {
     const event = frame.match(/^event:\s*(.+)$/m)?.[1]?.trim();
     const payload = frame.split(/\r?\n/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trim()).join('\n');
     if (!event || !payload) continue;
-    const data = JSON.parse(payload);
+    let data;
+    try { data = JSON.parse(payload); } catch (error) {
+      if (event === 'diagnostics') continue;
+      throw error;
+    }
+    if (event === 'diagnostics') {
+      egress = sanitizedEgress(data?.egress) ?? egress;
+      continue;
+    }
     if (event === 'error') {
       const message = String(data.message ?? '').toLowerCase();
-      const reason = /usage limit|quota|rate.limit/.test(message) ? 'quota_exhausted'
+      const reason = /user location is not supported/.test(message) ? 'provider_region_unsupported'
+        : /usage limit|quota|rate.limit/.test(message) ? 'quota_exhausted'
         : /refresh|oauth|unauthorized|401/.test(message) ? 'provider_auth_failed' : 'generation_failed';
-      throw new Error(reason);
+      failureReason ??= reason;
     }
     if (event === 'text_delta') text += String(data.delta ?? '');
     if (event === 'done') {
@@ -21,8 +64,10 @@ export function inspectCompletion(sse) {
       tokens = data.usage?.totalTokens ?? 0;
     }
   }
-  if (!completed || !text.trim()) throw new Error('incomplete_generation');
-  return { tokens };
+  const details = egress ? { egress } : {};
+  if (failureReason) throw new ProbeFailure(failureReason, details);
+  if (!completed || !text.trim()) throw new ProbeFailure('incomplete_generation', details);
+  return { tokens, ...details };
 }
 
 export async function probe(env, fetcher = fetch) {
@@ -68,6 +113,10 @@ export async function probe(env, fetcher = fetch) {
       await reader.cancel().catch(() => {});
     }
     return { ok: true, conversationId, durationMs: Date.now() - started, ...inspectCompletion(sse) };
+  } catch (error) {
+    const details = { conversationId, durationMs: Date.now() - started,
+      ...(error instanceof ProbeFailure ? error.details : {}) };
+    throw new ProbeFailure(error instanceof Error ? error.message : '', details);
   } finally {
     // Revoke only this probe's session, never another user's or another run's.
     const logout = await fetcher(`${auth}/auth/v1/logout?scope=local`, {
@@ -107,6 +156,7 @@ export async function runHealthcheck(env, fetcher = fetch) {
         failure_class: result.ok ? 'unknown' : permanent ? 'permanent' : 'retryable',
         task: 'jojo-ai-availability',
         failure_type: result.reason ?? '',
+        ...(result.conversationId ? { conversation_id: result.conversationId } : {}),
         run,
       }).map(([key, value]) => `${key}=${value}`).join('\n');
       suffix = '/log';
@@ -127,10 +177,11 @@ export async function runHealthcheck(env, fetcher = fetch) {
   } catch (error) {
     // Only structured categories leave the process; never log prompts or tokens.
     const message = error instanceof Error ? error.message : '';
-    const reason = /^(?:monitor_credentials_missing|provider_not_configured|monitor_session_missing|invalid_stream_type|probe_response_too_large|quota_exhausted|provider_auth_failed|generation_failed|incomplete_generation|(?:health|monitor_login|monitor_logout|agent)_http_[1-5][0-9]{2})$/.test(message)
+    const reason = /^(?:monitor_credentials_missing|provider_not_configured|monitor_session_missing|invalid_stream_type|probe_response_too_large|quota_exhausted|provider_auth_failed|provider_region_unsupported|generation_failed|incomplete_generation|(?:health|monitor_login|monitor_logout|agent)_http_[1-5][0-9]{2})$/.test(message)
       ? message : 'probe_network_or_protocol_error';
-    await ping('/fail', { ok: false, reason });
-    throw new Error(reason);
+    const details = error instanceof ProbeFailure ? error.details : {};
+    await ping('/fail', { ok: false, reason, ...details });
+    throw new ProbeFailure(reason, details);
   }
   await ping('', result);
   return result;

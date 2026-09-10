@@ -61,6 +61,7 @@ export interface EdgeOneAgentContext {
 
 export interface AuthorizedAgentUser {
   id: string;
+  isAvailabilityMonitor?: boolean;
 }
 
 export interface AgentUsageLease {

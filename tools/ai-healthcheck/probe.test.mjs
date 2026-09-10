@@ -12,6 +12,34 @@ test('HTTP 200 error streams identify quota and credential outages', () => {
   assert.throws(() => inspectCompletion(frame('error', { message: 'The usage limit has been reached' }) + frame('done', {})), /quota_exhausted/);
   assert.throws(() => inspectCompletion(frame('error', { message: 'OAuth refresh failed 401 refresh_token_reused' })), /provider_auth_failed/);
 });
+
+const egress = {
+  processId: '00000000-0000-4000-8000-000000000001',
+  observedAt: '2026-09-10T00:00:00.000Z', durationMs: 10,
+  observations: [
+    { source: 'ipify', status: 'ok', ip: '2001:db8::1', family: 6 },
+    { source: 'cloudflare', status: 'ok', ip: '192.0.2.1', family: 4, country: 'SG' },
+  ],
+};
+
+test('diagnostics survive a location rejection and strip unexpected fields', () => {
+  const diagnostics = frame('diagnostics', { egress: { ...egress, token: 'private-token',
+    observations: egress.observations.map(item => ({ ...item, raw: 'private-body' })) } });
+  assert.deepEqual(inspectCompletion(diagnostics + frame('text_delta', { delta: 'OK' })
+    + frame('done', { stopReason: 'stop' })), { tokens: 0, egress });
+  assert.throws(() => inspectCompletion(frame('error', { message: 'Antigravity API error (400): User location is not supported for the API use.' }) + diagnostics),
+    error => error.message === 'provider_region_unsupported' && assert.deepEqual(error.details, { egress }) === undefined);
+});
+
+test('missing, timed out, or malformed diagnostics cannot mark successful generation down', () => {
+  const success = frame('text_delta', { delta: 'OK' }) + frame('done', { stopReason: 'stop' });
+  const failed = { ...egress, observations: egress.observations.map(({ source }) => ({ source, status: 'timeout' })) };
+  assert.deepEqual(inspectCompletion(frame('diagnostics', { egress: failed }) + success), { tokens: 0, egress: failed });
+  for (const payload of ['not-json', JSON.stringify({ egress: { ...egress, processId: 'private-secret' } }),
+    JSON.stringify({ egress: { ...egress, observations: [{ ...egress.observations[0], ip: 'private-secret' }] } })]) {
+    assert.deepEqual(inspectCompletion(`event: diagnostics\ndata: ${payload}\n\n` + success), { tokens: 0 });
+  }
+});
 test('recoverable tool errors do not falsely mark a completed answer unavailable', () => {
   assert.deepEqual(inspectCompletion(frame('tool_end', { isError: true }) + frame('text_delta', { delta: 'OK' }) + frame('done', { stopReason: 'stop' })), { tokens: 0 });
 });
@@ -113,6 +141,23 @@ test('buffered failures log sanitized execution categories after logging out', a
       assert.doesNotMatch(report.options.body, /private-provider-token|private-session-token|partial private text/);
     });
   }
+});
+
+test('location failures keep the conversation and egress in CLI output with a valid buffered failure event', async () => {
+  const { calls, fetcher } = fakeMonitor({ sse: frame('diagnostics', { egress })
+    + frame('error', { message: 'User location is not supported for the API use. private-provider-token' }) });
+  await assert.rejects(runHealthcheck(monitorEnv, fetcher), error => {
+    assert.equal(error.message, 'provider_region_unsupported');
+    assert.deepEqual(error.details.egress, egress);
+    assert.match(error.details.conversationId, /^jojo-ai-health-[a-f0-9]{20}$/);
+    assert.doesNotMatch(JSON.stringify(error.details), /private-provider-token/);
+    return true;
+  });
+  const report = calls.at(-1).options.body;
+  assert.equal(parseExecution(report, 'jojo-ai-availability', Date.now()).outcome, 'failure');
+  assert.match(report, /failure_type=provider_region_unsupported\n/);
+  assert.match(report, /conversation_id=jojo-ai-health-[a-f0-9]{20}\n/);
+  assert.doesNotMatch(report, /private-provider-token/);
 });
 
 test('failed session cleanup cannot publish a successful buffered execution', async () => {
