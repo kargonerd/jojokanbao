@@ -1,7 +1,8 @@
 import { positionReaderSelection, type ReaderSelectionRect } from "@jojo/ui/reader-selection";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import "./ReaderSelectionPopover.css";
 
-export function BookSelectionPopover({ rect, width, children }: { rect: ReaderSelectionRect; width: number; children: ReactNode }) {
+export function ReaderSelectionPopover({ rect, width, children }: { rect: ReaderSelectionRect; width: number; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [layout, setLayout] = useState({ width, height: 64, left: 0, top: 48, right: window.innerWidth, bottom: window.innerHeight - 16 });
   useLayoutEffect(() => {

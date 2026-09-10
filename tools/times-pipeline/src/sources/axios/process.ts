@@ -1,15 +1,11 @@
 import { load, type CheerioAPI } from "cheerio";
 import { semanticHtmlBlocks, type BodyQuality } from "../../content/paragraphs.js";
+import { AXIOS_BODY_SELECTOR as BODY_SELECTOR, AXIOS_EXCLUDED_SELECTOR } from "./selectors.js";
 
 type DocumentElement = ReturnType<CheerioAPI>[number];
 
 const BLOCK_SELECTOR = "p, h2, h3, h4, blockquote, ul, ol, pre, hr";
-const BODY_SELECTOR = ".gtm-story-text, [data-testid='story-body']";
-const EXCLUDED_SELECTOR = [
-  "figure", "figcaption", "aside", "[class*='author']", "[class*='byline']", "[class*='share']",
-  "[class*='preferred']", "[class*='promo']", "[class*='recommend']", "[class*='related']", "[class*='advert']",
-  "[data-testid*='author']", "[data-testid*='share']", "[data-testid*='recommend']",
-].join(",");
+const EXCLUDED_SELECTOR = `figure,figcaption,${AXIOS_EXCLUDED_SELECTOR}`;
 const PUBLISHER_PROMO = /^(?:Add Axios as your preferred source|see more of our stories on Google\.?$)/iu;
 
 function normalizedText(value: string): string {

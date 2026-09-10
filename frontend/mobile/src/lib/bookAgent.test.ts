@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getSession = vi.hoisted(() => vi.fn());
+const streamingFetch = vi.hoisted(() => vi.fn());
+vi.mock("expo/fetch", () => ({ fetch: streamingFetch }));
 
 vi.mock("../account/auth", () => ({
   mobileAuthClient: { auth: { getSession } },
@@ -14,6 +16,7 @@ import {
 describe("mobile book agent stream", () => {
   beforeEach(() => {
     getSession.mockReset();
+    streamingFetch.mockReset();
     getSession.mockResolvedValue({
       data: { session: { access_token: "mobile-token" } },
       error: null,
@@ -33,7 +36,7 @@ describe("mobile book agent stream", () => {
   });
 
   it("sends recent client history with the streamed question", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(
+    const fetchMock = streamingFetch.mockResolvedValue(new Response(
       'event: text_delta\ndata: {"delta":"回答"}\n\nevent: done\ndata: {}\n\n',
       { headers: { "Content-Type": "text/event-stream" } },
     ));

@@ -1,6 +1,6 @@
 import type { MobileTimesNewsItem } from "./times";
 import { describe, expect, it } from "vitest";
-import { createTimesArticleDocument, sanitizeTimesArticleHtml } from "./timesArticleDocument";
+import { createTimesArticleDocument, materializeTimesArticleAssets, sanitizeTimesArticleHtml } from "./timesArticleDocument";
 
 describe("mobile times article document", () => {
   it.each([false, true])("limits paragraph indentation to the article body (eInk=%s)", (eInk) => {
@@ -64,5 +64,13 @@ describe("mobile times article document", () => {
     expect(document).toContain("AI 翻译");
     expect(document).toContain("contextmenu");
     expect(document).not.toContain("margin-left:8px");
+    const translated = materializeTimesArticleAssets({ ...news,
+      content: '<figure data-asset-id="lead"><figcaption>翻译后的图注</figcaption></figure>',
+      assets: [{ ...news.assets[0]!, caption: "Original English caption" }],
+    });
+    expect(translated.match(/<figcaption>/g)).toHaveLength(1);
+    expect(translated).toContain("<figcaption>翻译后的图注</figcaption>");
+    expect(translated).not.toContain("<figcaption>Original English caption</figcaption>");
+    expect(materializeTimesArticleAssets({ ...news, content: translated, assets: [{ ...news.assets[0]!, caption: "Original English caption" }] })).toBe(translated);
   });
 });

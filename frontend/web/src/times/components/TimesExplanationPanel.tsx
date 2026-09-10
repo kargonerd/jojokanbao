@@ -9,6 +9,7 @@ export function TimesExplanationPanel({
   error,
   metadata,
   onClose,
+  onRetry,
 }: {
   anchor: TextAnchor;
   answer: string;
@@ -16,6 +17,7 @@ export function TimesExplanationPanel({
   error: string;
   metadata?: TimesExplanationMetadata;
   onClose(): void;
+  onRetry?(): void;
 }) {
   return (
     <>
@@ -27,8 +29,12 @@ export function TimesExplanationPanel({
         </header>
         <blockquote className="m-6 border-y border-rule bg-[rgba(139,26,26,.035)] px-5 py-4 text-sm leading-7">“{anchor.quote}”</blockquote>
         <div aria-live="polite" className="min-h-0 flex-1 overflow-y-auto px-6 pb-8">
-          {status ? <p className="mb-4 font-sans text-[11px] font-bold text-muted">{status}</p> : null}
+          {status ? <div role="status" className="mb-4 flex items-center gap-3 font-sans text-[11px] font-bold text-muted">
+            {!error && !metadata ? <span aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin border-2 border-red/20 border-t-red motion-reduce:animate-none" /> : null}
+            <span>{status}</span>
+          </div> : null}
           {error ? <p role="alert" className="border-l-2 border-red pl-4 text-sm leading-7 text-red">{error}</p> : null}
+          {error && onRetry ? <button type="button" onClick={onRetry} className="mt-3 border-b border-red font-sans text-xs font-bold text-red">重新解释</button> : null}
           {answer ? (
             <div
               className="text-[15px] leading-7 [&_blockquote]:my-5 [&_blockquote]:border-l-2 [&_blockquote]:border-red [&_blockquote]:pl-4 [&_li]:my-2 [&_ol]:my-4 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-4 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_strong]:font-black [&_ul]:my-4 [&_ul]:list-disc [&_ul]:pl-5"

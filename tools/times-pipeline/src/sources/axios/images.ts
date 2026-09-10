@@ -1,9 +1,8 @@
 import { load, type CheerioAPI } from "cheerio";
 import type { PageImageCandidate } from "../../capture/page-images.js";
 import { semanticHtmlBlocks } from "../../content/paragraphs.js";
+import { AXIOS_BODY_SELECTOR as BODY_SELECTOR, AXIOS_EXCLUDED_SELECTOR as EXCLUDED_SELECTOR } from "./selectors.js";
 
-const EXCLUDED_SELECTOR = "aside,nav,footer,[class*='author'],[class*='byline'],[class*='share'],[class*='preferred'],[class*='promo'],[class*='recommend'],[class*='related'],[class*='advert']";
-const BODY_SELECTOR = ".gtm-story-text, [data-testid='story-body']";
 const PUBLISHER_PROMO = /^(?:Add Axios as your preferred source|see more of our stories on Google\.?$)/iu;
 
 function normalizedText(value: string): string {
@@ -62,8 +61,10 @@ function priorBodyBlocks(document: CheerioAPI, body: ReturnType<CheerioAPI>, ima
 
 export function extractAxiosImages(html: string, pageUrl: string): PageImageCandidate[] {
   const document = load(html);
-  const article = document("main article").first().length ? document("main article").first() : document("article").first();
   const body = document(BODY_SELECTOR).first();
+  // The current publisher uses a story_view div, with the lead figure next
+  // to story-body. Scope to that story so related cards cannot become assets.
+  const article = body.closest("[data-vars-event-name='story_view'], article");
   if (!article.length || !body.length) return [];
   const bodyDescendants = new Set(body.find("*").toArray());
   const results: PageImageCandidate[] = [];

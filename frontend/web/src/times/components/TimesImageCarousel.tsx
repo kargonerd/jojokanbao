@@ -1,5 +1,6 @@
 import type { JojoAssetDescriptor } from "@jojo/content";
 import { useRef, useState, type KeyboardEvent, type TouchEvent } from "react";
+import { TimesArticleImage } from "./TimesArticleImage";
 
 export interface TimesCarouselItem {
   asset: JojoAssetDescriptor;
@@ -61,12 +62,12 @@ export function TimesImageCarousel({ id, items }: { id: string; items: TimesCaro
       onTouchEnd={onTouchEnd}
     >
       <div className="relative flex min-h-[220px] items-center justify-center overflow-hidden sm:min-h-[300px]">
-        <img
+        <TimesArticleImage
           key={current.asset.id}
           src={current.url}
           alt={current.asset.alt || current.asset.caption || ""}
           loading={index === 0 ? "eager" : "lazy"}
-          decoding="async"
+          caption={description}
           className="mx-auto max-h-[72vh] w-full object-contain"
         />
         <span aria-live="polite" className="absolute left-3 top-3 bg-ink/80 px-2 py-1 font-sans text-[10px] font-black tabular-nums tracking-[0.08em] text-paper sm:left-4 sm:top-4">

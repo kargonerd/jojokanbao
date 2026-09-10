@@ -1,6 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as Clipboard from "expo-clipboard";
+import type { ReaderSelectionRect } from "@jojo/ui/reader-selection";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -15,11 +16,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import { ScreenHeader } from "../components/ScreenHeader";
+import { ReaderSelectionToolbar } from "../components/ReaderSelectionToolbar";
 import { NativeSpeechPlayer } from "../reading/SpeechPlayer";
 import { mobileSpeechSegments } from "../reading/speech";
 import { SOURCE_LOGOS } from "../lib/sourceLogos";
 import { IS_EINK_RELEASE } from "../config/appVariant";
-import { createTimesArticleDocument } from "../lib/timesArticleDocument";
+import { createTimesArticleDocument, createTimesImageDocument } from "../lib/timesArticleDocument";
 import {
   explainMobileTimesSelection,
   type MobileTimesExplanationMetadata,
@@ -48,6 +50,11 @@ type ExplanationState = {
   metadata?: MobileTimesExplanationMetadata;
 };
 
+type ArticleSelection = MobileTimesTextAnchor & {
+  rect?: ReaderSelectionRect;
+  viewport?: { width: number; height: number };
+};
+
 function visibleExplanation(value: string): string {
   return value.replace("<!-- JOJO_TIMES_COMPLETE -->", "").trim();
 }
@@ -57,13 +64,16 @@ export function TimesDetailScreen({ route, navigation }: Props) {
   const defaultLanguage = useMobileStore((state) => state.timesLanguage);
   const theme = mobileTheme;
   const cancelExplanation = useRef<(() => void) | undefined>(undefined);
+  const webViewRef = useRef<WebView>(null);
+  const [readerFrame, setReaderFrame] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const [expandedImage, setExpandedImage] = useState<{ url: string; caption: string } | null>(null);
   const [requestedLanguage, setRequestedLanguage] = useState<MobileTimesLanguage>(defaultLanguage);
   const [news, setNews] = useState<MobileTimesNewsItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [retryToken, setRetryToken] = useState(0);
   useRetryOnFailure(Boolean(error) && !loading, () => setRetryToken((value) => value + 1));
-  const [selection, setSelection] = useState<MobileTimesTextAnchor | null>(null);
+  const [selection, setSelection] = useState<ArticleSelection | null>(null);
   const [explanation, setExplanation] = useState<ExplanationState | null>(null);
 
   useEffect(() => () => cancelExplanation.current?.(), []);
@@ -73,6 +83,9 @@ export function TimesDetailScreen({ route, navigation }: Props) {
     setLoading(true);
     setError("");
     setSelection(null);
+    cancelExplanation.current?.();
+    setExplanation(null);
+    setExpandedImage(null);
     void mobileTimesApi.getNews(issueDate, newsId, requestedLanguage)
       .then((value) => { if (active) setNews(value); })
       .catch((reason: unknown) => {
@@ -99,11 +112,23 @@ export function TimesDetailScreen({ route, navigation }: Props) {
       const payload = JSON.parse(event.nativeEvent.data) as Record<string, unknown>;
       if (payload.type === "selection") {
         const quote = typeof payload.quote === "string" ? payload.quote.trim() : "";
+        const rect = payload.rect as ReaderSelectionRect | undefined;
+        const viewport = payload.viewport as ArticleSelection["viewport"];
+        const validGeometry = rect && viewport && [rect.left, rect.right, rect.top, rect.bottom, viewport.width, viewport.height].every(Number.isFinite)
+          && viewport.width > 0 && viewport.height > 0;
         setSelection(quote ? {
           quote,
           prefix: typeof payload.prefix === "string" ? payload.prefix : undefined,
           suffix: typeof payload.suffix === "string" ? payload.suffix : undefined,
+          ...(validGeometry ? { rect, viewport } : {}),
         } : null);
+      } else if (payload.type === "image" && typeof payload.assetId === "string") {
+        const asset = news?.assets.find((item) => item.id === payload.assetId && item.type === "image");
+        const url = asset ? news?.assetUrls?.[asset.id] : undefined;
+        if (asset && url) {
+          clearSelection();
+          setExpandedImage({ url, caption: typeof payload.caption === "string" ? payload.caption : asset.caption || asset.alt || "" });
+        }
       } else if (payload.type === "link" && typeof payload.url === "string") {
         const url = safeTimesExternalUrl(payload.url);
         if (url) void Linking.openURL(url);
@@ -113,11 +138,15 @@ export function TimesDetailScreen({ route, navigation }: Props) {
     }
   }
 
-  function startExplanation() {
-    if (!news || !selection) return;
-    cancelExplanation.current?.();
-    const anchor = selection;
+  function clearSelection() {
     setSelection(null);
+    webViewRef.current?.injectJavaScript("window.getSelection()?.removeAllRanges(); true;");
+  }
+
+  function startExplanation(anchor: MobileTimesTextAnchor | null = selection) {
+    if (!news || !anchor) return;
+    cancelExplanation.current?.();
+    clearSelection();
     let answer = "";
     setExplanation({ anchor, answer: "", status: "正在准备…", error: "" });
     cancelExplanation.current = explainMobileTimesSelection(news, anchor, {
@@ -182,35 +211,40 @@ export function TimesDetailScreen({ route, navigation }: Props) {
           </View>
         </View>
       ) : news ? (
-        <WebView
-          source={{ html: document, baseUrl: "https://reader.jojokanbao.cn/" }}
-          originWhitelist={["about:*", "https://reader.jojokanbao.cn"]}
-          onMessage={handleWebMessage}
-          javaScriptEnabled
-          menuItems={[]}
-          domStorageEnabled={false}
-          cacheEnabled
-          setSupportMultipleWindows={false}
-          allowsBackForwardNavigationGestures={false}
-          overScrollMode={IS_EINK_RELEASE ? "never" : "always"}
-          style={[styles.webView, { backgroundColor: theme.paper }]}
-        />
-      ) : null}
-
-      {selection && !explanation ? (
-        <View style={[styles.selectionBar, { borderColor: theme.ruleDark, backgroundColor: theme.paper }]}>
-          <Text numberOfLines={1} style={[styles.selectionQuote, { color: theme.muted, fontFamily: theme.serif }]}>“{selection.quote}”</Text>
-          <Pressable accessibilityRole="button" onPress={() => { void Clipboard.setStringAsync(selection.quote); setSelection(null); }} style={styles.copyButton}>
-            <Ionicons name="copy-outline" size={16} color={theme.red} />
-            <Text style={[styles.copyButtonText, { color: theme.red, fontFamily: theme.sans }]}>复制</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" onPress={startExplanation} style={[styles.explainButton, { backgroundColor: theme.red }]}>
-            <Text style={[styles.explainButtonText, { color: theme.inverse, fontFamily: theme.sans }]}>AI 解释</Text>
-          </Pressable>
+        <View style={styles.webView} onLayout={(event) => setReaderFrame(event.nativeEvent.layout)}>
+          <WebView
+            ref={webViewRef}
+            source={{ html: document, baseUrl: "https://reader.jojokanbao.cn/" }}
+            originWhitelist={["about:*", "https://reader.jojokanbao.cn"]}
+            onMessage={handleWebMessage}
+            javaScriptEnabled
+            menuItems={[]}
+            domStorageEnabled={false}
+            cacheEnabled
+            setSupportMultipleWindows={false}
+            allowsBackForwardNavigationGestures={false}
+            overScrollMode={IS_EINK_RELEASE ? "never" : "always"}
+            style={[styles.webView, { backgroundColor: theme.paper }]}
+          />
         </View>
       ) : null}
 
-      {news?.content ? <NativeSpeechPlayer news documentId={`news:${newsId}:${requestedLanguage}`} title={news.title} sourceName={timesSourceName(news.source)} chapterId={newsId} chapters={[{ id: newsId, title: news.title }]} loadChapter={loadSpeechChapter} hidden={Boolean(selection || explanation || loading)} cover={coverUri ? { uri: coverUri } : undefined} coverFallback={SOURCE_LOGOS[news.source.id]} onRead={() => undefined} /> : null}
+      {selection && !explanation ? (
+        <ReaderSelectionToolbar selection={selection} frame={readerFrame} theme={theme} eInk={IS_EINK_RELEASE}
+          onCopy={() => { void Clipboard.setStringAsync(selection.quote); clearSelection(); }} onExplain={() => startExplanation()} />
+      ) : null}
+
+      {news?.content ? <NativeSpeechPlayer news documentId={`news:${newsId}:${requestedLanguage}`} title={news.title} sourceName={timesSourceName(news.source)} chapterId={newsId} chapters={[{ id: newsId, title: news.title }]} loadChapter={loadSpeechChapter} hidden={Boolean(selection || explanation || expandedImage || loading)} cover={coverUri ? { uri: coverUri } : undefined} coverFallback={SOURCE_LOGOS[news.source.id]} onRead={() => undefined} /> : null}
+
+      <Modal visible={Boolean(expandedImage)} animationType={IS_EINK_RELEASE ? "none" : "fade"} onRequestClose={() => setExpandedImage(null)}>
+        <SafeAreaView edges={["top", "bottom"]} style={[styles.safe, { backgroundColor: theme.paper }]}>
+          <ScreenHeader title="图片预览" onBack={() => setExpandedImage(null)} />
+          {expandedImage ? <>
+            <WebView source={{ html: createTimesImageDocument(expandedImage.url, expandedImage.caption) }} javaScriptEnabled={false} domStorageEnabled={false} setBuiltInZoomControls setDisplayZoomControls={false} style={styles.webView} />
+            {expandedImage.caption ? <Text style={[styles.imageCaption, { color: theme.muted, fontFamily: theme.sans }]}>{expandedImage.caption}</Text> : null}
+          </> : null}
+        </SafeAreaView>
+      </Modal>
 
       <Modal
         visible={Boolean(explanation)}
@@ -235,9 +269,15 @@ export function TimesDetailScreen({ route, navigation }: Props) {
                 <View style={[styles.quoteBox, { borderLeftColor: theme.ruleDark }]}>
                   <Text selectable style={[styles.quoteText, { color: theme.muted, fontFamily: theme.serif }]}>{explanation.anchor.quote}</Text>
                 </View>
-                {explanation.status ? <Text style={[styles.explanationStatus, { color: theme.red, fontFamily: theme.sans }]}>{explanation.status}</Text> : null}
+                {explanation.status ? <View accessibilityRole="progressbar" accessibilityLabel={explanation.status} style={styles.explanationProgress}>
+                  {!IS_EINK_RELEASE ? <ActivityIndicator color={theme.red} /> : null}
+                  <Text style={[styles.explanationStatus, { color: theme.red, fontFamily: theme.sans }]}>{explanation.status}</Text>
+                </View> : null}
                 {explanation.answer ? <Text selectable style={[styles.explanationAnswer, { color: theme.ink, fontFamily: theme.serif }]}>{visibleExplanation(explanation.answer)}</Text> : null}
-                {explanation.error ? <Text style={[styles.explanationError, { color: theme.red, fontFamily: theme.sans }]}>{explanation.error}</Text> : null}
+                {explanation.error ? <View>
+                  <Text accessibilityRole="alert" style={[styles.explanationError, { color: theme.red, fontFamily: theme.sans }]}>{explanation.error}</Text>
+                  <Pressable accessibilityRole="button" onPress={() => startExplanation(explanation.anchor)}><Text style={[styles.retryText, { color: theme.red, fontFamily: theme.sans }]}>重新解释</Text></Pressable>
+                </View> : null}
                 {explanation.metadata ? (
                   <Text style={[styles.explanationMeta, { color: theme.muted, borderTopColor: theme.rule, fontFamily: theme.sans }]}>已结合 {explanation.metadata.imageCount} 张随文图片</Text>
                 ) : null}
@@ -261,12 +301,7 @@ const styles = StyleSheet.create({
   errorText: { fontSize: 12, lineHeight: 20 },
   retryText: { marginTop: 16, fontSize: 11, fontWeight: "900" },
   webView: { flex: 1 },
-  selectionBar: { position: "absolute", right: 12, bottom: 14, left: 12, minHeight: 52, borderWidth: 1, paddingLeft: 13, flexDirection: "row", alignItems: "center", gap: 10 },
-  selectionQuote: { flex: 1, minWidth: 0, fontSize: 11 },
-  copyButton: { height: 50, minWidth: 58, alignItems: "center", justifyContent: "center", gap: 2 },
-  copyButtonText: { fontSize: 9, fontWeight: "900" },
-  explainButton: { height: 50, minWidth: 84, alignItems: "center", justifyContent: "center", paddingHorizontal: 14 },
-  explainButtonText: { fontSize: 11, fontWeight: "900" },
+  imageCaption: { padding: 16, fontSize: 12, lineHeight: 20, textAlign: "center" },
   explanationRoot: { flex: 1, alignItems: "flex-end", backgroundColor: "rgba(0,0,0,.24)" },
   explanationBackdrop: { ...StyleSheet.absoluteFillObject },
   explanationPanel: { width: "100%", maxWidth: 460, height: "100%", borderLeftWidth: 1 },
@@ -276,7 +311,8 @@ const styles = StyleSheet.create({
   explanationContent: { padding: 20, paddingBottom: 48 },
   quoteBox: { borderLeftWidth: 2, paddingLeft: 13 },
   quoteText: { fontSize: 12, lineHeight: 21 },
-  explanationStatus: { marginTop: 22, fontSize: 10, lineHeight: 18, fontWeight: "900" },
+  explanationProgress: { marginTop: 22, flexDirection: "row", alignItems: "center", gap: 10 },
+  explanationStatus: { flex: 1, fontSize: 10, lineHeight: 18, fontWeight: "900" },
   explanationAnswer: { marginTop: 20, fontSize: 16, lineHeight: 29 },
   explanationError: { marginTop: 20, fontSize: 12, lineHeight: 21, fontWeight: "700" },
   explanationMeta: { marginTop: 24, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, fontSize: 9 },

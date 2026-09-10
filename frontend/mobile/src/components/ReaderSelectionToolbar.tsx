@@ -1,22 +1,22 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { positionReaderSelection } from "@jojo/ui/reader-selection";
+import { positionReaderSelection, type ReaderSelectionRect } from "@jojo/ui/reader-selection";
 import { Pressable, StyleSheet, Text, View, type LayoutRectangle } from "react-native";
-import type { BookReaderSelectionMessage } from "../lib/bookReaderBridge";
 import type { MobileTheme } from "../theme/tokens";
 
 const TOOLBAR_HEIGHT = 64;
 
 export function ReaderSelectionToolbar({ selection, frame, theme, eInk, onCopy, onUnderline, onThought, onExplain }: {
-  selection: BookReaderSelectionMessage;
+  selection: { rect?: ReaderSelectionRect; viewport?: { width: number; height: number } };
   frame: LayoutRectangle;
   theme: MobileTheme;
   eInk: boolean;
   onCopy: () => void;
-  onUnderline: () => void;
-  onThought: () => void;
+  onUnderline?: () => void;
+  onThought?: () => void;
   onExplain: () => void;
 }) {
-  if (!selection.rect || !selection.viewport || !frame.width || !frame.height) return null;
+  if (!selection.rect || !selection.viewport || selection.viewport.width <= 0 || selection.viewport.height <= 0 || !frame.width || !frame.height) return null;
+  const actionCount = 2 + Number(Boolean(onUnderline)) + Number(Boolean(onThought));
   const scaleX = frame.width / selection.viewport.width;
   const scaleY = frame.height / selection.viewport.height;
   const rect = {
@@ -25,7 +25,7 @@ export function ReaderSelectionToolbar({ selection, frame, theme, eInk, onCopy, 
     top: frame.y + selection.rect.top * scaleY,
     bottom: frame.y + selection.rect.bottom * scaleY,
   };
-  const position = positionReaderSelection(rect, { left: frame.x, top: frame.y, right: frame.x + frame.width, bottom: frame.y + frame.height }, { width: 288, height: TOOLBAR_HEIGHT });
+  const position = positionReaderSelection(rect, { left: frame.x, top: frame.y, right: frame.x + frame.width, bottom: frame.y + frame.height }, { width: actionCount * 72, height: TOOLBAR_HEIGHT });
   if (!position) return null;
   const backgroundColor = eInk ? "#202020" : "#333333";
   const actions = [
@@ -36,7 +36,7 @@ export function ReaderSelectionToolbar({ selection, frame, theme, eInk, onCopy, 
   ] as const;
   return <View style={[styles.container, { left: position.left, top: position.top, width: position.width }]}>
     <View style={[styles.actions, { backgroundColor }, !eInk && styles.shadow]}>
-      {actions.map((action) => <Pressable key={action.label} accessibilityRole="button" accessibilityLabel={action.label} onPress={action.onPress} style={({ pressed }) => [styles.action, pressed && { backgroundColor: "#555555" }]}>
+      {actions.filter((action) => action.onPress).map((action) => <Pressable key={action.label} accessibilityRole="button" accessibilityLabel={action.label} onPress={action.onPress} style={({ pressed }) => [styles.action, pressed && { backgroundColor: "#555555" }]}>
         {action.icon ? <Ionicons name={action.icon} size={22} color="#ffffff" /> : <Text aria-hidden style={styles.underline}>A</Text>}
         <Text style={[styles.label, { fontFamily: theme.sans }]}>{action.label}</Text>
       </Pressable>)}
