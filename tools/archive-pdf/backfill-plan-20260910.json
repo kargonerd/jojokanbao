@@ -1,0 +1,5989 @@
+{
+  "parent": "ebdd192791d31d55462cb247a14a0874cd8ceb53",
+  "dataset": "newspapers/rmrb/dataset.json",
+  "index": "content/newspapers/rmrb/index.jox",
+  "issues": [
+    {
+      "date": "2026-07-20",
+      "item": "newspapers/rmrb/items/2026/07/2026-07-20.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/07/2026-07-20.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/07/2026-07-20/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-07-20",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-20",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260720"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-20",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-cd35123d81067714",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-20 原报",
+            "size": 48361301,
+            "sha256": "cd35123d81067714b1fb0051abe3c6185cd8151192141f45e00eaa2a16572239",
+            "path": "assets/pdfs/2026/07/2026-07-20.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260720",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T12:54:36.275217+00:00"
+        },
+        "revision": 2
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-07-20",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-20",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260720"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-20",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-cd35123d81067714",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-20 原报",
+            "size": 48361301,
+            "sha256": "cd35123d81067714b1fb0051abe3c6185cd8151192141f45e00eaa2a16572239",
+            "object": "assets/cd35123d81067714b1fb0051abe3c6185cd8151192141f45e00eaa2a16572239.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "7cba574eb7969e2e58d2ce6b3b2b91c85a621a41c1159a22d10fe461305efb6b",
+      "sourceSize": 48361301
+    },
+    {
+      "date": "2026-07-21",
+      "item": "newspapers/rmrb/items/2026/07/2026-07-21.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/07/2026-07-21.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/07/2026-07-21/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-07-21",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-21",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260721"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-21",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-3cca9840932e57c2",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-21 原报",
+            "size": 48900317,
+            "sha256": "3cca9840932e57c2c362064480f42a00d2bc9427f938ea7987fc08ca36d8383f",
+            "path": "assets/pdfs/2026/07/2026-07-21.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260721",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:00:07.997631+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-07-21",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-21",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260721"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-21",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-3cca9840932e57c2",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-21 原报",
+            "size": 48900317,
+            "sha256": "3cca9840932e57c2c362064480f42a00d2bc9427f938ea7987fc08ca36d8383f",
+            "object": "assets/3cca9840932e57c2c362064480f42a00d2bc9427f938ea7987fc08ca36d8383f.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "78c6adcfbeb81d48679a2d428a10cad4a14f2a397c7f34169edc906b569a63df",
+      "sourceSize": 48900317
+    },
+    {
+      "date": "2026-07-22",
+      "item": "newspapers/rmrb/items/2026/07/2026-07-22.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/07/2026-07-22.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/07/2026-07-22/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-07-22",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-22",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260722"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-22",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-9ad46c89ab55a558",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-22 原报",
+            "size": 40071127,
+            "sha256": "9ad46c89ab55a558541438bf43b96548d68bebdbade2ebd7b180d1ce936430b6",
+            "path": "assets/pdfs/2026/07/2026-07-22.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260722",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:00:10.628444+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-07-22",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-22",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260722"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-22",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-9ad46c89ab55a558",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-22 原报",
+            "size": 40071127,
+            "sha256": "9ad46c89ab55a558541438bf43b96548d68bebdbade2ebd7b180d1ce936430b6",
+            "object": "assets/9ad46c89ab55a558541438bf43b96548d68bebdbade2ebd7b180d1ce936430b6.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "fafe621f266bcc8f813572cd1c29cbd32259367d1599156d3891c77a4a9daea3",
+      "sourceSize": 40071127
+    },
+    {
+      "date": "2026-07-23",
+      "item": "newspapers/rmrb/items/2026/07/2026-07-23.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/07/2026-07-23.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/07/2026-07-23/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-07-23",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-23",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260723"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-23",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-22658f9d2a96abbc",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-23 原报",
+            "size": 53442197,
+            "sha256": "22658f9d2a96abbcc46147ef51e385a1753f37413466ea0d11034e65d313c65c",
+            "path": "assets/pdfs/2026/07/2026-07-23.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260723",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:00:13.433534+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-07-23",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-23",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260723"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-23",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-22658f9d2a96abbc",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-23 原报",
+            "size": 53442197,
+            "sha256": "22658f9d2a96abbcc46147ef51e385a1753f37413466ea0d11034e65d313c65c",
+            "object": "assets/22658f9d2a96abbcc46147ef51e385a1753f37413466ea0d11034e65d313c65c.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "92411efff4c6c3ce8aada140d9fd9213a191c5e21d043abf03af84694ad4a20c",
+      "sourceSize": 53442197
+    },
+    {
+      "date": "2026-07-24",
+      "item": "newspapers/rmrb/items/2026/07/2026-07-24.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/07/2026-07-24.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/07/2026-07-24/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-07-24",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-24",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260724"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-24",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-2494af1091d52122",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-24 原报",
+            "size": 41228632,
+            "sha256": "2494af1091d52122dded8a67cbecd06d1e4f83fcaa2df75813e34d68203f03b5",
+            "path": "assets/pdfs/2026/07/2026-07-24.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260724",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:00:16.575849+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-07-24",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-24",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260724"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-24",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-2494af1091d52122",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-24 原报",
+            "size": 41228632,
+            "sha256": "2494af1091d52122dded8a67cbecd06d1e4f83fcaa2df75813e34d68203f03b5",
+            "object": "assets/2494af1091d52122dded8a67cbecd06d1e4f83fcaa2df75813e34d68203f03b5.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "0725b8aa95156d09ad414b2bade50b0f4eb0e6dd07f22700502e8741d17686cd",
+      "sourceSize": 41228632
+    },
+    {
+      "date": "2026-07-25",
+      "item": "newspapers/rmrb/items/2026/07/2026-07-25.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/07/2026-07-25.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/07/2026-07-25/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-07-25",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-25",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260725"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-25",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-a0881580a14111ab",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-25 原报",
+            "size": 12169821,
+            "sha256": "a0881580a14111abd2a107fd2e35bed0143cf3f35a223b8965de51323bd17bc6",
+            "path": "assets/pdfs/2026/07/2026-07-25.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260725",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:00:19.463554+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-07-25",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-25",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260725"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-25",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-a0881580a14111ab",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-25 原报",
+            "size": 12169821,
+            "sha256": "a0881580a14111abd2a107fd2e35bed0143cf3f35a223b8965de51323bd17bc6",
+            "object": "assets/a0881580a14111abd2a107fd2e35bed0143cf3f35a223b8965de51323bd17bc6.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "8d8c558b4887dd1936e10ecb2d415232e1411c10ed8f735711f39bbb587fba8d",
+      "sourceSize": 12169821
+    },
+    {
+      "date": "2026-07-26",
+      "item": "newspapers/rmrb/items/2026/07/2026-07-26.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/07/2026-07-26.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/07/2026-07-26/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-07-26",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-26",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260726"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-26",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-fc0f75db3dd1c265",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-26 原报",
+            "size": 17689653,
+            "sha256": "fc0f75db3dd1c265d545b219ca23c55226048316d957dbaa2d747d2088f776f6",
+            "path": "assets/pdfs/2026/07/2026-07-26.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260726",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:00:21.696174+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-07-26",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-26",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260726"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-26",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-fc0f75db3dd1c265",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-26 原报",
+            "size": 17689653,
+            "sha256": "fc0f75db3dd1c265d545b219ca23c55226048316d957dbaa2d747d2088f776f6",
+            "object": "assets/fc0f75db3dd1c265d545b219ca23c55226048316d957dbaa2d747d2088f776f6.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "4ddb3802ff57ed8dc21c30878aa7e9a1533ff707a11513cab50fbf8b22bbac2a",
+      "sourceSize": 17689653
+    },
+    {
+      "date": "2026-07-27",
+      "item": "newspapers/rmrb/items/2026/07/2026-07-27.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/07/2026-07-27.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/07/2026-07-27/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-07-27",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-27",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260727"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-27",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-53cf96caac9f0b9d",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-27 原报",
+            "size": 35005626,
+            "sha256": "53cf96caac9f0b9d32aa1b427d0805b0d668d9a65eea5315d4da094c5c2d4fda",
+            "path": "assets/pdfs/2026/07/2026-07-27.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260727",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:00:23.986390+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-07-27",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-27",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260727"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-27",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-53cf96caac9f0b9d",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-27 原报",
+            "size": 35005626,
+            "sha256": "53cf96caac9f0b9d32aa1b427d0805b0d668d9a65eea5315d4da094c5c2d4fda",
+            "object": "assets/53cf96caac9f0b9d32aa1b427d0805b0d668d9a65eea5315d4da094c5c2d4fda.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "405a2cd0e5dbbdd50aee3a48fd6859194a9d9d8acd4e7f13a60ac503a4798fb3",
+      "sourceSize": 35005626
+    },
+    {
+      "date": "2026-07-28",
+      "item": "newspapers/rmrb/items/2026/07/2026-07-28.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/07/2026-07-28.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/07/2026-07-28/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-07-28",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-28",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260728"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-28",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-06e4ad7f118c5fdf",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-28 原报",
+            "size": 45721434,
+            "sha256": "06e4ad7f118c5fdf6fd09613d48664e4213b88e3565a3dd58b9ee5310d668e75",
+            "path": "assets/pdfs/2026/07/2026-07-28.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260728",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:00:26.527814+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-07-28",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-28",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260728"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-28",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-06e4ad7f118c5fdf",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-28 原报",
+            "size": 45721434,
+            "sha256": "06e4ad7f118c5fdf6fd09613d48664e4213b88e3565a3dd58b9ee5310d668e75",
+            "object": "assets/06e4ad7f118c5fdf6fd09613d48664e4213b88e3565a3dd58b9ee5310d668e75.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "b697698feb3327114c0103b10d3e1656d4c24bcc6004c2aa8d25188a96f4f31d",
+      "sourceSize": 45721434
+    },
+    {
+      "date": "2026-07-29",
+      "item": "newspapers/rmrb/items/2026/07/2026-07-29.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/07/2026-07-29.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/07/2026-07-29/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-07-29",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-29",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260729"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-29",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-90d5074f538dbe5f",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-29 原报",
+            "size": 45741076,
+            "sha256": "90d5074f538dbe5f17220aa7fdf3a173f14902b60a3561e5447b49dfdb63bd73",
+            "path": "assets/pdfs/2026/07/2026-07-29.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260729",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:01:03.525673+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-07-29",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-29",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260729"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-29",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-90d5074f538dbe5f",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-29 原报",
+            "size": 45741076,
+            "sha256": "90d5074f538dbe5f17220aa7fdf3a173f14902b60a3561e5447b49dfdb63bd73",
+            "object": "assets/90d5074f538dbe5f17220aa7fdf3a173f14902b60a3561e5447b49dfdb63bd73.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "86421061cd5f6392a336f8ab1febc48ddba418ea465ffa0c3ac3eeca8b350f22",
+      "sourceSize": 45741076
+    },
+    {
+      "date": "2026-07-30",
+      "item": "newspapers/rmrb/items/2026/07/2026-07-30.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/07/2026-07-30.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/07/2026-07-30/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-07-30",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-30",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260730"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-30",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-2fe0775fbc203072",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-30 原报",
+            "size": 39396330,
+            "sha256": "2fe0775fbc20307208529e01fa7470e9567545152c0f03545b00ed5509a6c07d",
+            "path": "assets/pdfs/2026/07/2026-07-30.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260730",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:01:06.263126+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-07-30",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-30",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260730"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-30",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-2fe0775fbc203072",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-30 原报",
+            "size": 39396330,
+            "sha256": "2fe0775fbc20307208529e01fa7470e9567545152c0f03545b00ed5509a6c07d",
+            "object": "assets/2fe0775fbc20307208529e01fa7470e9567545152c0f03545b00ed5509a6c07d.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "6a991e61c29af9c96ab131f5ed1ad7d3e1d619c73e1577aa82ebdebb1a3bd1fd",
+      "sourceSize": 39396330
+    },
+    {
+      "date": "2026-07-31",
+      "item": "newspapers/rmrb/items/2026/07/2026-07-31.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/07/2026-07-31.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/07/2026-07-31/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-07-31",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-31",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260731"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-31",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-3656ffcf6bb68707",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-31 原报",
+            "size": 42931938,
+            "sha256": "3656ffcf6bb68707d689d753d4f4e709da850a201eb0ea3ee5e6b569ae75c4b3",
+            "path": "assets/pdfs/2026/07/2026-07-31.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260731",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:01:07.800879+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-07-31",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-07-31",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260731"
+        },
+        "metadata": {
+          "publishedDate": "2026-07-31",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-3656ffcf6bb68707",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-07-31 原报",
+            "size": 42931938,
+            "sha256": "3656ffcf6bb68707d689d753d4f4e709da850a201eb0ea3ee5e6b569ae75c4b3",
+            "object": "assets/3656ffcf6bb68707d689d753d4f4e709da850a201eb0ea3ee5e6b569ae75c4b3.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "f7f00e100ddfab6e97cfb45530176c00b525a3823003cf8e0f7f02af8fd7a47b",
+      "sourceSize": 42931938
+    },
+    {
+      "date": "2026-08-01",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-01.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-01.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-01/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-01",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-01",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260801"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-01",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-5cfc2396ab633162",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-01 原报",
+            "size": 9358110,
+            "sha256": "5cfc2396ab6331627afb467d3dc3a49afd1084ae1564884a22da8bee1bf61b28",
+            "path": "assets/pdfs/2026/08/2026-08-01.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260801",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:01:09.279541+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-01",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-01",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260801"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-01",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-5cfc2396ab633162",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-01 原报",
+            "size": 9358110,
+            "sha256": "5cfc2396ab6331627afb467d3dc3a49afd1084ae1564884a22da8bee1bf61b28",
+            "object": "assets/5cfc2396ab6331627afb467d3dc3a49afd1084ae1564884a22da8bee1bf61b28.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "5dcc033ef143f71894b94aa66e449f3dd3888508f4447e87809e1e2f5d6a93b9",
+      "sourceSize": 9358110
+    },
+    {
+      "date": "2026-08-02",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-02.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-02.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-02/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-02",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-02",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260802"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-02",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-65c0a6290a252fb8",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-02 原报",
+            "size": 13229493,
+            "sha256": "65c0a6290a252fb8c64e7d60655779802fb76a7db4cc7e258bd5eb664bbb27e8",
+            "path": "assets/pdfs/2026/08/2026-08-02.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260802",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:01:11.207072+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-02",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-02",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260802"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-02",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-65c0a6290a252fb8",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-02 原报",
+            "size": 13229493,
+            "sha256": "65c0a6290a252fb8c64e7d60655779802fb76a7db4cc7e258bd5eb664bbb27e8",
+            "object": "assets/65c0a6290a252fb8c64e7d60655779802fb76a7db4cc7e258bd5eb664bbb27e8.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "792499a69e13bf366934ad87e4b57c869d0f36db2ed9a1ef64bc93277f94f00d",
+      "sourceSize": 13229493
+    },
+    {
+      "date": "2026-08-03",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-03.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-03.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-03/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-03",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-03",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260803"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-03",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-c1ef6d9d4395be51",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-03 原报",
+            "size": 51253291,
+            "sha256": "c1ef6d9d4395be51484a2ea72df60f5c1fa7622a4bc33324c0a2c88efb6ae00d",
+            "path": "assets/pdfs/2026/08/2026-08-03.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260803",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:01:13.177035+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-03",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-03",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260803"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-03",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-c1ef6d9d4395be51",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-03 原报",
+            "size": 51253291,
+            "sha256": "c1ef6d9d4395be51484a2ea72df60f5c1fa7622a4bc33324c0a2c88efb6ae00d",
+            "object": "assets/c1ef6d9d4395be51484a2ea72df60f5c1fa7622a4bc33324c0a2c88efb6ae00d.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "96b060d0d9697613009a3fe133fcbc01b6f546a5b5dc5f940e5d005bde20b9db",
+      "sourceSize": 51253291
+    },
+    {
+      "date": "2026-08-04",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-04.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-04.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-04/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-04",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-04",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260804"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-04",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-f800015dc6321962",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-04 原报",
+            "size": 44212047,
+            "sha256": "f800015dc632196252f4280ddd2eeeb0455c97cb22449b9816aadfc56ab8fff9",
+            "path": "assets/pdfs/2026/08/2026-08-04.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260804",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:01:15.771003+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-04",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-04",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260804"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-04",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-f800015dc6321962",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-04 原报",
+            "size": 44212047,
+            "sha256": "f800015dc632196252f4280ddd2eeeb0455c97cb22449b9816aadfc56ab8fff9",
+            "object": "assets/f800015dc632196252f4280ddd2eeeb0455c97cb22449b9816aadfc56ab8fff9.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "d73a1369c08ee3b2a1c362dbae72750e964766e3d406a45b1697d68685778899",
+      "sourceSize": 44212047
+    },
+    {
+      "date": "2026-08-05",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-05.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-05.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-05/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-05",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-05",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260805"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-05",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-2fcf3ab66592abb0",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-05 原报",
+            "size": 76739548,
+            "sha256": "2fcf3ab66592abb0df14a77a2ce76fb205046a45171659a4cab7180667504910",
+            "path": "assets/pdfs/2026/08/2026-08-05.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260805",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:02:04.611687+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-05",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-05",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260805"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-05",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-2fcf3ab66592abb0",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-05 原报",
+            "size": 76739548,
+            "sha256": "2fcf3ab66592abb0df14a77a2ce76fb205046a45171659a4cab7180667504910",
+            "object": "assets/2fcf3ab66592abb0df14a77a2ce76fb205046a45171659a4cab7180667504910.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "ecdde9d6ff22ff96bd1acafc8ede70c85c654118ce9e94ff483f769b82181255",
+      "sourceSize": 76739548
+    },
+    {
+      "date": "2026-08-06",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-06.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-06.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-06/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-06",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-06",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260806"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-06",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-1a34bf90543e5603",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-06 原报",
+            "size": 42092168,
+            "sha256": "1a34bf90543e56037650191d96b67ecaa826b282d46eb794d77dea82c54de8d9",
+            "path": "assets/pdfs/2026/08/2026-08-06.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260806",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:02:08.323393+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-06",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-06",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260806"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-06",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-1a34bf90543e5603",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-06 原报",
+            "size": 42092168,
+            "sha256": "1a34bf90543e56037650191d96b67ecaa826b282d46eb794d77dea82c54de8d9",
+            "object": "assets/1a34bf90543e56037650191d96b67ecaa826b282d46eb794d77dea82c54de8d9.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "d24c7adac7ac2dbe27749a5fba9bc119c5012a174626cd15faf320cf0a08495b",
+      "sourceSize": 42092168
+    },
+    {
+      "date": "2026-08-07",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-07.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-07.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-07/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-07",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-07",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260807"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-07",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-be04fe4655ad02f1",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-07 原报",
+            "size": 57564504,
+            "sha256": "be04fe4655ad02f1670e8794c10da73cbe70bc5911500dd76322a190e5a89799",
+            "path": "assets/pdfs/2026/08/2026-08-07.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260807",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:02:10.827864+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-07",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-07",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260807"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-07",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-be04fe4655ad02f1",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-07 原报",
+            "size": 57564504,
+            "sha256": "be04fe4655ad02f1670e8794c10da73cbe70bc5911500dd76322a190e5a89799",
+            "object": "assets/be04fe4655ad02f1670e8794c10da73cbe70bc5911500dd76322a190e5a89799.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "95ec2b0d9f2715f837183b0e641ed67f326f283c7686e2c509688868f30a4937",
+      "sourceSize": 57564504
+    },
+    {
+      "date": "2026-08-08",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-08.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-08.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-08/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-08",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-08",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260808"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-08",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-44e6238e9e5fcdec",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-08 原报",
+            "size": 29248470,
+            "sha256": "44e6238e9e5fcdec5650932c09e884632f857806c13388437b049a471653c861",
+            "path": "assets/pdfs/2026/08/2026-08-08.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260808",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:02:20.820811+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-08",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-08",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260808"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-08",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-44e6238e9e5fcdec",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-08 原报",
+            "size": 29248470,
+            "sha256": "44e6238e9e5fcdec5650932c09e884632f857806c13388437b049a471653c861",
+            "object": "assets/44e6238e9e5fcdec5650932c09e884632f857806c13388437b049a471653c861.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "7404f50dac2ec970f4cf8bda610110f4ca9d518ad548ccbd8a73c29b7e3a350b",
+      "sourceSize": 29248470
+    },
+    {
+      "date": "2026-08-09",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-09.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-09.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-09/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-09",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-09",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260809"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-09",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-0bb8a5efc4a4099a",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-09 原报",
+            "size": 13136648,
+            "sha256": "0bb8a5efc4a4099ae7fba8d96a4debac06d4583dd89129d55bc0ed11cae7d7e1",
+            "path": "assets/pdfs/2026/08/2026-08-09.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260809",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:02:23.133381+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-09",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-09",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260809"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-09",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-0bb8a5efc4a4099a",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-09 原报",
+            "size": 13136648,
+            "sha256": "0bb8a5efc4a4099ae7fba8d96a4debac06d4583dd89129d55bc0ed11cae7d7e1",
+            "object": "assets/0bb8a5efc4a4099ae7fba8d96a4debac06d4583dd89129d55bc0ed11cae7d7e1.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "8389d59094242ed322d09a45edceaa5a46af5674ad88c4cd3281b28e38965b8a",
+      "sourceSize": 13136648
+    },
+    {
+      "date": "2026-08-10",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-10.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-10.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-10/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-10",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-10",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260810"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-10",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-07924c4507a347ff",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-10 原报",
+            "size": 48334184,
+            "sha256": "07924c4507a347fffceeee1869048d1258ebc7892438d95fe1f9177521f3b1d0",
+            "path": "assets/pdfs/2026/08/2026-08-10.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260810",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:02:38.510843+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-10",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-10",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260810"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-10",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-07924c4507a347ff",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-10 原报",
+            "size": 48334184,
+            "sha256": "07924c4507a347fffceeee1869048d1258ebc7892438d95fe1f9177521f3b1d0",
+            "object": "assets/07924c4507a347fffceeee1869048d1258ebc7892438d95fe1f9177521f3b1d0.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "8b4fc5b3c33eca460f50a6bcc2dc16d26c8b9b6bb5a665d348899a264d04caab",
+      "sourceSize": 48334184
+    },
+    {
+      "date": "2026-08-11",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-11.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-11.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-11/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-11",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-11",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260811"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-11",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-a7d5d84dd4bf631b",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-11 原报",
+            "size": 62204311,
+            "sha256": "a7d5d84dd4bf631b9899c4f8cbd127919983a90713c7925da4971835742ca54c",
+            "path": "assets/pdfs/2026/08/2026-08-11.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260811",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:03:14.248035+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-11",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-11",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260811"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-11",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-a7d5d84dd4bf631b",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-11 原报",
+            "size": 62204311,
+            "sha256": "a7d5d84dd4bf631b9899c4f8cbd127919983a90713c7925da4971835742ca54c",
+            "object": "assets/a7d5d84dd4bf631b9899c4f8cbd127919983a90713c7925da4971835742ca54c.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "e5b76d5319eb998a9257cbef938dae46f2f1fc090a37233682539b7bc88dbaf6",
+      "sourceSize": 62204311
+    },
+    {
+      "date": "2026-08-12",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-12.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-12.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-12/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-12",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-12",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260812"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-12",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-e0b927a4b7a39337",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-12 原报",
+            "size": 41491674,
+            "sha256": "e0b927a4b7a393372378021820fe2569d95113ddd2166fb92f152622f2af4c04",
+            "path": "assets/pdfs/2026/08/2026-08-12.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260812",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:03:17.291531+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-12",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-12",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260812"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-12",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-e0b927a4b7a39337",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-12 原报",
+            "size": 41491674,
+            "sha256": "e0b927a4b7a393372378021820fe2569d95113ddd2166fb92f152622f2af4c04",
+            "object": "assets/e0b927a4b7a393372378021820fe2569d95113ddd2166fb92f152622f2af4c04.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "bcce77b51ce4f03cde14de64660fc51ecb2e46b7aaeae65469a527a1a83a704f",
+      "sourceSize": 41491674
+    },
+    {
+      "date": "2026-08-13",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-13.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-13.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-13/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-13",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-13",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260813"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-13",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-c98102b60485beed",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-13 原报",
+            "size": 54119716,
+            "sha256": "c98102b60485beed92d256007dd3fe5e57e55011788d2dd2cde407cf10e5e84e",
+            "path": "assets/pdfs/2026/08/2026-08-13.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260813",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:03:52.121898+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-13",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-13",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260813"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-13",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-c98102b60485beed",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-13 原报",
+            "size": 54119716,
+            "sha256": "c98102b60485beed92d256007dd3fe5e57e55011788d2dd2cde407cf10e5e84e",
+            "object": "assets/c98102b60485beed92d256007dd3fe5e57e55011788d2dd2cde407cf10e5e84e.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "ccc5f93751b132ef62c1a2d52dae2523855596cbe852e0f62f4271bdc5c45064",
+      "sourceSize": 54119716
+    },
+    {
+      "date": "2026-08-14",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-14.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-14.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-14/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-14",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-14",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260814"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-14",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-fe47180956c0c3d6",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-14 原报",
+            "size": 37784998,
+            "sha256": "fe47180956c0c3d64e68a92a5d788a68fef84d7961c8d240599d5a7f38cb273f",
+            "path": "assets/pdfs/2026/08/2026-08-14.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260814",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:03:55.379888+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-14",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-14",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260814"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-14",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-fe47180956c0c3d6",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-14 原报",
+            "size": 37784998,
+            "sha256": "fe47180956c0c3d64e68a92a5d788a68fef84d7961c8d240599d5a7f38cb273f",
+            "object": "assets/fe47180956c0c3d64e68a92a5d788a68fef84d7961c8d240599d5a7f38cb273f.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "c7b4400285933942655f67912460b5ed2fa7220241758b0004b756f0f7670da6",
+      "sourceSize": 37784998
+    },
+    {
+      "date": "2026-08-15",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-15.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-15.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-15/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-15",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-15",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260815"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-15",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-524dc6f14918eaf4",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-15 原报",
+            "size": 12454340,
+            "sha256": "524dc6f14918eaf477f8c5e76a71ce596d90e8e24dd7d170195cc2809c21da98",
+            "path": "assets/pdfs/2026/08/2026-08-15.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260815",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:03:57.798544+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-15",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-15",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260815"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-15",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-524dc6f14918eaf4",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-15 原报",
+            "size": 12454340,
+            "sha256": "524dc6f14918eaf477f8c5e76a71ce596d90e8e24dd7d170195cc2809c21da98",
+            "object": "assets/524dc6f14918eaf477f8c5e76a71ce596d90e8e24dd7d170195cc2809c21da98.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "57616c8eff9a4b53f8c12e5ec87e1799aff316e35fc935f31f8ee53f1ced9a60",
+      "sourceSize": 12454340
+    },
+    {
+      "date": "2026-08-16",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-16.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-16.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-16/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-16",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-16",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260816"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-16",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-d23fd69b2f458502",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-16 原报",
+            "size": 16631434,
+            "sha256": "d23fd69b2f458502e5ac17638d9006e7b70df0e5a1934780b3b08c448947df84",
+            "path": "assets/pdfs/2026/08/2026-08-16.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260816",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:03:59.898805+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-16",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-16",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260816"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-16",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-d23fd69b2f458502",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-16 原报",
+            "size": 16631434,
+            "sha256": "d23fd69b2f458502e5ac17638d9006e7b70df0e5a1934780b3b08c448947df84",
+            "object": "assets/d23fd69b2f458502e5ac17638d9006e7b70df0e5a1934780b3b08c448947df84.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "0506153e42d83f5cad8c6eb721b31e86519827e7db429e09d38c997683cf45eb",
+      "sourceSize": 16631434
+    },
+    {
+      "date": "2026-08-17",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-17.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-17.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-17/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-17",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-17",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260817"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-17",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-3a00ca191cbf7358",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-17 原报",
+            "size": 42955168,
+            "sha256": "3a00ca191cbf7358946e176d58b368a93d787ace688c47df86db1d867bbb5086",
+            "path": "assets/pdfs/2026/08/2026-08-17.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260817",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:04:25.902268+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-17",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-17",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260817"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-17",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-3a00ca191cbf7358",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-17 原报",
+            "size": 42955168,
+            "sha256": "3a00ca191cbf7358946e176d58b368a93d787ace688c47df86db1d867bbb5086",
+            "object": "assets/3a00ca191cbf7358946e176d58b368a93d787ace688c47df86db1d867bbb5086.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "796189212197b0bdbe1efe00b2890ab9108330911b8c055320a4951041809e2c",
+      "sourceSize": 42955168
+    },
+    {
+      "date": "2026-08-18",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-18.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-18.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-18/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-18",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-18",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260818"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-18",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-4e40fa134fa90476",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-18 原报",
+            "size": 51970068,
+            "sha256": "4e40fa134fa904768a8f128760be03603193b822f1e28546da51d2e18d64e2f2",
+            "path": "assets/pdfs/2026/08/2026-08-18.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260818",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:04:55.542246+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-18",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-18",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260818"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-18",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-4e40fa134fa90476",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-18 原报",
+            "size": 51970068,
+            "sha256": "4e40fa134fa904768a8f128760be03603193b822f1e28546da51d2e18d64e2f2",
+            "object": "assets/4e40fa134fa904768a8f128760be03603193b822f1e28546da51d2e18d64e2f2.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "e92c369ed1a21089d71e8b2187170262c367e1005660568d023c30f4e15ead86",
+      "sourceSize": 51970068
+    },
+    {
+      "date": "2026-08-19",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-19.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-19.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-19/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-19",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-19",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260819"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-19",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-a0d933dcc4148a3d",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-19 原报",
+            "size": 36061720,
+            "sha256": "a0d933dcc4148a3d49623f1932a3159813de0c77fd5d8f5729e9b1a4f64e0d82",
+            "path": "assets/pdfs/2026/08/2026-08-19.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260819",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:04:57.996752+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-19",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-19",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260819"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-19",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-a0d933dcc4148a3d",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-19 原报",
+            "size": 36061720,
+            "sha256": "a0d933dcc4148a3d49623f1932a3159813de0c77fd5d8f5729e9b1a4f64e0d82",
+            "object": "assets/a0d933dcc4148a3d49623f1932a3159813de0c77fd5d8f5729e9b1a4f64e0d82.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "084863c896d0a70b2691aa5a923d15de049ea65d082a7ec7bff5fbbba3b5b57a",
+      "sourceSize": 36061720
+    },
+    {
+      "date": "2026-08-20",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-20.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-20.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-20/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-20",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-20",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260820"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-20",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-731c127da07ac834",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-20 原报",
+            "size": 43378662,
+            "sha256": "731c127da07ac8347599b9e6d3fe16f85c744a08c7b1430e75b58ecd6d9e4b3b",
+            "path": "assets/pdfs/2026/08/2026-08-20.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260820",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:05:02.559331+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-20",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-20",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260820"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-20",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-731c127da07ac834",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-20 原报",
+            "size": 43378662,
+            "sha256": "731c127da07ac8347599b9e6d3fe16f85c744a08c7b1430e75b58ecd6d9e4b3b",
+            "object": "assets/731c127da07ac8347599b9e6d3fe16f85c744a08c7b1430e75b58ecd6d9e4b3b.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "e8675b0532fbeade7f3cc261bfc1f5f6c96955e1a326359343e652bdc9f8120c",
+      "sourceSize": 43378662
+    },
+    {
+      "date": "2026-08-21",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-21.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-21.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-21/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-21",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-21",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260821"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-21",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-2d51b757c80875e2",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-21 原报",
+            "size": 50602029,
+            "sha256": "2d51b757c80875e2a09f05d0fedd47a6eece89c92c22bd443786a36ad311e1d9",
+            "path": "assets/pdfs/2026/08/2026-08-21.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260821",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:05:57.278213+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-21",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-21",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260821"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-21",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-2d51b757c80875e2",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-21 原报",
+            "size": 50602029,
+            "sha256": "2d51b757c80875e2a09f05d0fedd47a6eece89c92c22bd443786a36ad311e1d9",
+            "object": "assets/2d51b757c80875e2a09f05d0fedd47a6eece89c92c22bd443786a36ad311e1d9.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "b162261eccf3e51e79c7652a2ef00f3f385ad4354bc359d55b32fbd7e8f440c3",
+      "sourceSize": 50602029
+    },
+    {
+      "date": "2026-08-22",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-22.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-22.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-22/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-22",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-22",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260822"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-22",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-74161d3a8f6c187e",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-22 原报",
+            "size": 15698207,
+            "sha256": "74161d3a8f6c187ed64e33332cc07c4ec2ed14e707b6aeb0776e6a3254fe7a22",
+            "path": "assets/pdfs/2026/08/2026-08-22.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260822",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:06:00.174801+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-22",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-22",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260822"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-22",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-74161d3a8f6c187e",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-22 原报",
+            "size": 15698207,
+            "sha256": "74161d3a8f6c187ed64e33332cc07c4ec2ed14e707b6aeb0776e6a3254fe7a22",
+            "object": "assets/74161d3a8f6c187ed64e33332cc07c4ec2ed14e707b6aeb0776e6a3254fe7a22.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "34063e5973d86f82700325d3ac783887c5bc1d9ff4101f44e94efae1500e68a9",
+      "sourceSize": 15698207
+    },
+    {
+      "date": "2026-08-23",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-23.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-23.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-23/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-23",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-23",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260823"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-23",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-dc5761cec2f2866e",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-23 原报",
+            "size": 10075561,
+            "sha256": "dc5761cec2f2866ebe433f0fe14b414bdd0d76cb4af69baf77c792d9b72071b0",
+            "path": "assets/pdfs/2026/08/2026-08-23.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260823",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:06:02.232649+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-23",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-23",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260823"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-23",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-dc5761cec2f2866e",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-23 原报",
+            "size": 10075561,
+            "sha256": "dc5761cec2f2866ebe433f0fe14b414bdd0d76cb4af69baf77c792d9b72071b0",
+            "object": "assets/dc5761cec2f2866ebe433f0fe14b414bdd0d76cb4af69baf77c792d9b72071b0.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "9163965ca841543fcbc6413ba6e261f340ae976fd1f0ba27537876f82c2b831d",
+      "sourceSize": 10075561
+    },
+    {
+      "date": "2026-08-24",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-24.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-24.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-24/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-24",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-24",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260824"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-24",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-97c4288599d964c6",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-24 原报",
+            "size": 44469648,
+            "sha256": "97c4288599d964c67fe4a322fe53622e4b3539b994f129ab4478a4e57ad84b6d",
+            "path": "assets/pdfs/2026/08/2026-08-24.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260824",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:06:07.080259+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-24",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-24",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260824"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-24",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-97c4288599d964c6",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-24 原报",
+            "size": 44469648,
+            "sha256": "97c4288599d964c67fe4a322fe53622e4b3539b994f129ab4478a4e57ad84b6d",
+            "object": "assets/97c4288599d964c67fe4a322fe53622e4b3539b994f129ab4478a4e57ad84b6d.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "3eb79270464c3905859896af72b445a775afc6cec977abc75f89fdf53c644d97",
+      "sourceSize": 44469648
+    },
+    {
+      "date": "2026-08-25",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-25.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-25.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-25/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-25",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-25",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260825"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-25",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-fffbfa528e7b3fd4",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-25 原报",
+            "size": 39452477,
+            "sha256": "fffbfa528e7b3fd481107a8c3a4d61396a5168c56ca39ad5ea43a630d9ffd541",
+            "path": "assets/pdfs/2026/08/2026-08-25.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260825",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:06:09.888103+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-25",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-25",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260825"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-25",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-fffbfa528e7b3fd4",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-25 原报",
+            "size": 39452477,
+            "sha256": "fffbfa528e7b3fd481107a8c3a4d61396a5168c56ca39ad5ea43a630d9ffd541",
+            "object": "assets/fffbfa528e7b3fd481107a8c3a4d61396a5168c56ca39ad5ea43a630d9ffd541.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "f1ac13b91ff25d2de46610de023439d3d6b64f5dce3e090f876e47384db18843",
+      "sourceSize": 39452477
+    },
+    {
+      "date": "2026-08-26",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-26.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-26.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-26/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-26",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-26",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260826"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-26",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-61080cc2f960e429",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-26 原报",
+            "size": 42213118,
+            "sha256": "61080cc2f960e4294e9403c83d1aa79766629f3e2f3a14cd3a9476d51cd90a8d",
+            "path": "assets/pdfs/2026/08/2026-08-26.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260826",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:06:12.243504+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-26",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-26",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260826"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-26",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-61080cc2f960e429",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-26 原报",
+            "size": 42213118,
+            "sha256": "61080cc2f960e4294e9403c83d1aa79766629f3e2f3a14cd3a9476d51cd90a8d",
+            "object": "assets/61080cc2f960e4294e9403c83d1aa79766629f3e2f3a14cd3a9476d51cd90a8d.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "0a3e9b2443f347ddc5b1e56eb42ab592deba2f5764252fbb1af031d3bdf68beb",
+      "sourceSize": 42213118
+    },
+    {
+      "date": "2026-08-27",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-27.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-27.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-27/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-27",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-27",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260827"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-27",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-cff478553778fdf5",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-27 原报",
+            "size": 34228991,
+            "sha256": "cff478553778fdf5fd597e16d19bad91bf5cefcc4edc4a0c5574c59433df5ce9",
+            "path": "assets/pdfs/2026/08/2026-08-27.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260827",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:06:49.559391+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-27",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-27",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260827"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-27",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-cff478553778fdf5",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-27 原报",
+            "size": 34228991,
+            "sha256": "cff478553778fdf5fd597e16d19bad91bf5cefcc4edc4a0c5574c59433df5ce9",
+            "object": "assets/cff478553778fdf5fd597e16d19bad91bf5cefcc4edc4a0c5574c59433df5ce9.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "4dcc792c05bd88182c1558b831c54f937ef61eb701b8cfcc594f3d7ddeee55c8",
+      "sourceSize": 34228991
+    },
+    {
+      "date": "2026-08-28",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-28.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-28.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-28/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-28",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-28",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260828"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-28",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-007a46a525dd3099",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-28 原报",
+            "size": 49837174,
+            "sha256": "007a46a525dd3099121e366b390f85d87ab1b544e01dcfec2bdf52d9c20d9d84",
+            "path": "assets/pdfs/2026/08/2026-08-28.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260828",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:07:27.785758+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-28",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-28",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260828"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-28",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-007a46a525dd3099",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-28 原报",
+            "size": 49837174,
+            "sha256": "007a46a525dd3099121e366b390f85d87ab1b544e01dcfec2bdf52d9c20d9d84",
+            "object": "assets/007a46a525dd3099121e366b390f85d87ab1b544e01dcfec2bdf52d9c20d9d84.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "e524e3ddf44eb72490e005b18d1fe205912531eaa76efabef76fb27be00c207a",
+      "sourceSize": 49837174
+    },
+    {
+      "date": "2026-08-29",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-29.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-29.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-29/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-29",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-29",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260829"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-29",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-8cbafd2707dd8dd2",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-29 原报",
+            "size": 7251176,
+            "sha256": "8cbafd2707dd8dd21911619d817ed424522d285da124ba26164ab7399a0e94dc",
+            "path": "assets/pdfs/2026/08/2026-08-29.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260829",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:07:30.682620+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-29",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-29",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260829"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-29",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-8cbafd2707dd8dd2",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-29 原报",
+            "size": 7251176,
+            "sha256": "8cbafd2707dd8dd21911619d817ed424522d285da124ba26164ab7399a0e94dc",
+            "object": "assets/8cbafd2707dd8dd21911619d817ed424522d285da124ba26164ab7399a0e94dc.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "1fd1ed83b57241165268734e5d510a56803d05b6c2551c07d309a6ee9ad33999",
+      "sourceSize": 7251176
+    },
+    {
+      "date": "2026-08-30",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-30.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-30.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-30/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-30",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-30",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260830"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-30",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-3c2fab41d930f290",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-30 原报",
+            "size": 10023417,
+            "sha256": "3c2fab41d930f290f575eb00c22c620db103428a4f0baa8f80d6f09a77964aed",
+            "path": "assets/pdfs/2026/08/2026-08-30.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260830",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:07:32.719949+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-30",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-30",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260830"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-30",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-3c2fab41d930f290",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-30 原报",
+            "size": 10023417,
+            "sha256": "3c2fab41d930f290f575eb00c22c620db103428a4f0baa8f80d6f09a77964aed",
+            "object": "assets/3c2fab41d930f290f575eb00c22c620db103428a4f0baa8f80d6f09a77964aed.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "9c388f45bda898b62adbdd52ad54c7a6efe50c3ba624006ca47ebd521693b06b",
+      "sourceSize": 10023417
+    },
+    {
+      "date": "2026-08-31",
+      "item": "newspapers/rmrb/items/2026/08/2026-08-31.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/08/2026-08-31.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/08/2026-08-31/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-08-31",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-31",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260831"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-31",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-c443d3dcb5b288ae",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-31 原报",
+            "size": 35571597,
+            "sha256": "c443d3dcb5b288aeb137065ada3d2ef69de8f676690ee86e021da60ab788355e",
+            "path": "assets/pdfs/2026/08/2026-08-31.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260831",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:07:35.539641+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-08-31",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-08-31",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260831"
+        },
+        "metadata": {
+          "publishedDate": "2026-08-31",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-c443d3dcb5b288ae",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-08-31 原报",
+            "size": 35571597,
+            "sha256": "c443d3dcb5b288aeb137065ada3d2ef69de8f676690ee86e021da60ab788355e",
+            "object": "assets/c443d3dcb5b288aeb137065ada3d2ef69de8f676690ee86e021da60ab788355e.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "083f35a1c68146ca3158e2dcf3c8363f7885accba4dffdf956e371f7954495a8",
+      "sourceSize": 35571597
+    },
+    {
+      "date": "2026-09-01",
+      "item": "newspapers/rmrb/items/2026/09/2026-09-01.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/09/2026-09-01.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/09/2026-09-01/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-09-01",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-09-01",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260901"
+        },
+        "metadata": {
+          "publishedDate": "2026-09-01",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-e9b0df16962ba9ed",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-09-01 原报",
+            "size": 36845600,
+            "sha256": "e9b0df16962ba9edc7398925c900cbf7c21ba283b10ca306a66e7bb945e56538",
+            "path": "assets/pdfs/2026/09/2026-09-01.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260901",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:07:38.580764+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-09-01",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-09-01",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260901"
+        },
+        "metadata": {
+          "publishedDate": "2026-09-01",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-e9b0df16962ba9ed",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-09-01 原报",
+            "size": 36845600,
+            "sha256": "e9b0df16962ba9edc7398925c900cbf7c21ba283b10ca306a66e7bb945e56538",
+            "object": "assets/e9b0df16962ba9edc7398925c900cbf7c21ba283b10ca306a66e7bb945e56538.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "b6b3904ef7de109b6dd412a4012b194e1a00ede343721f5b0eeda7c6852367ce",
+      "sourceSize": 36845600
+    },
+    {
+      "date": "2026-09-02",
+      "item": "newspapers/rmrb/items/2026/09/2026-09-02.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/09/2026-09-02.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/09/2026-09-02/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-09-02",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-09-02",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260902"
+        },
+        "metadata": {
+          "publishedDate": "2026-09-02",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-b52283062bd8f87a",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-09-02 原报",
+            "size": 36166878,
+            "sha256": "b52283062bd8f87a05cc0a71f7a833deda10b8363684eda991629c251a45f96c",
+            "path": "assets/pdfs/2026/09/2026-09-02.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260902",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:07:59.832059+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-09-02",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-09-02",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260902"
+        },
+        "metadata": {
+          "publishedDate": "2026-09-02",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-b52283062bd8f87a",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-09-02 原报",
+            "size": 36166878,
+            "sha256": "b52283062bd8f87a05cc0a71f7a833deda10b8363684eda991629c251a45f96c",
+            "object": "assets/b52283062bd8f87a05cc0a71f7a833deda10b8363684eda991629c251a45f96c.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "6bfcd41873dae2a070e2ac2ab4606bf23d9e05118026bd054d6a6aae43907d59",
+      "sourceSize": 36166878
+    },
+    {
+      "date": "2026-09-03",
+      "item": "newspapers/rmrb/items/2026/09/2026-09-03.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/09/2026-09-03.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/09/2026-09-03/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-09-03",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-09-03",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260903"
+        },
+        "metadata": {
+          "publishedDate": "2026-09-03",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-13a48b97c68e6970",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-09-03 原报",
+            "size": 37004050,
+            "sha256": "13a48b97c68e697024ffdbc6a0c07761e6d73fc555f516ee42bc967e2d352cde",
+            "path": "assets/pdfs/2026/09/2026-09-03.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260903",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:08:06.780184+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-09-03",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-09-03",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260903"
+        },
+        "metadata": {
+          "publishedDate": "2026-09-03",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-13a48b97c68e6970",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-09-03 原报",
+            "size": 37004050,
+            "sha256": "13a48b97c68e697024ffdbc6a0c07761e6d73fc555f516ee42bc967e2d352cde",
+            "object": "assets/13a48b97c68e697024ffdbc6a0c07761e6d73fc555f516ee42bc967e2d352cde.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "83dca67e90103e4262b059eef15760f022f0ee477e8812309780527cbe009dda",
+      "sourceSize": 37004050
+    },
+    {
+      "date": "2026-09-04",
+      "item": "newspapers/rmrb/items/2026/09/2026-09-04.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/09/2026-09-04.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/09/2026-09-04/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-09-04",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-09-04",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260904"
+        },
+        "metadata": {
+          "publishedDate": "2026-09-04",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-563471fa6672e72b",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-09-04 原报",
+            "size": 41282259,
+            "sha256": "563471fa6672e72b7326a1ac12158fd012f1d0dd3d9bab86e51fb032a1a87f53",
+            "path": "assets/pdfs/2026/09/2026-09-04.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260904",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:08:30.135436+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-09-04",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-09-04",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260904"
+        },
+        "metadata": {
+          "publishedDate": "2026-09-04",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-563471fa6672e72b",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-09-04 原报",
+            "size": 41282259,
+            "sha256": "563471fa6672e72b7326a1ac12158fd012f1d0dd3d9bab86e51fb032a1a87f53",
+            "object": "assets/563471fa6672e72b7326a1ac12158fd012f1d0dd3d9bab86e51fb032a1a87f53.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "d9c1e1695c0e6ef85fb165ab3cbbd2847dd8ab63bfac84f9dbb9f34bb0c0064d",
+      "sourceSize": 41282259
+    },
+    {
+      "date": "2026-09-05",
+      "item": "newspapers/rmrb/items/2026/09/2026-09-05.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/09/2026-09-05.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/09/2026-09-05/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-09-05",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-09-05",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260905"
+        },
+        "metadata": {
+          "publishedDate": "2026-09-05",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-aef19c874eecda82",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-09-05 原报",
+            "size": 15631930,
+            "sha256": "aef19c874eecda828681ce77b81c2e1447ae69d20a283dc3da2c95afd00bcc55",
+            "path": "assets/pdfs/2026/09/2026-09-05.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260905",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:08:32.585694+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-09-05",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-09-05",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260905"
+        },
+        "metadata": {
+          "publishedDate": "2026-09-05",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-aef19c874eecda82",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-09-05 原报",
+            "size": 15631930,
+            "sha256": "aef19c874eecda828681ce77b81c2e1447ae69d20a283dc3da2c95afd00bcc55",
+            "object": "assets/aef19c874eecda828681ce77b81c2e1447ae69d20a283dc3da2c95afd00bcc55.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "f788831a869f6e08b45e2987d38ba6bfdb4760677cb71bed5addccabddfbea48",
+      "sourceSize": 15631930
+    },
+    {
+      "date": "2026-09-06",
+      "item": "newspapers/rmrb/items/2026/09/2026-09-06.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/09/2026-09-06.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/09/2026-09-06/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-09-06",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-09-06",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260906"
+        },
+        "metadata": {
+          "publishedDate": "2026-09-06",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-86b4c651a8561732",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-09-06 原报",
+            "size": 11560662,
+            "sha256": "86b4c651a8561732cc840e02df9a53835a7f0af11147820ad50b796defaaa451",
+            "path": "assets/pdfs/2026/09/2026-09-06.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260906",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:08:34.657117+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-09-06",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-09-06",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260906"
+        },
+        "metadata": {
+          "publishedDate": "2026-09-06",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-86b4c651a8561732",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-09-06 原报",
+            "size": 11560662,
+            "sha256": "86b4c651a8561732cc840e02df9a53835a7f0af11147820ad50b796defaaa451",
+            "object": "assets/86b4c651a8561732cc840e02df9a53835a7f0af11147820ad50b796defaaa451.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "ce660e0c8715ffb67067f5298707b71430bf7599de5dfb9cc1e40ee68d5c2b52",
+      "sourceSize": 11560662
+    },
+    {
+      "date": "2026-09-07",
+      "item": "newspapers/rmrb/items/2026/09/2026-09-07.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/09/2026-09-07.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/09/2026-09-07/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-09-07",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-09-07",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260907"
+        },
+        "metadata": {
+          "publishedDate": "2026-09-07",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-8755788ef9752997",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-09-07 原报",
+            "size": 73134667,
+            "sha256": "8755788ef9752997474a0f2f4275c3389197bc0ae2a2397361451c1353dff23b",
+            "path": "assets/pdfs/2026/09/2026-09-07.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260907",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:10:00.287474+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-09-07",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-09-07",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260907"
+        },
+        "metadata": {
+          "publishedDate": "2026-09-07",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-8755788ef9752997",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-09-07 原报",
+            "size": 73134667,
+            "sha256": "8755788ef9752997474a0f2f4275c3389197bc0ae2a2397361451c1353dff23b",
+            "object": "assets/8755788ef9752997474a0f2f4275c3389197bc0ae2a2397361451c1353dff23b.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "027e5da606e4f6705b5eaaaf1431b14cf4a3edd03124a8b4710344576be2a89a",
+      "sourceSize": 73134667
+    },
+    {
+      "date": "2026-09-08",
+      "item": "newspapers/rmrb/items/2026/09/2026-09-08.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/09/2026-09-08.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/09/2026-09-08/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-09-08",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-09-08",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260908"
+        },
+        "metadata": {
+          "publishedDate": "2026-09-08",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-5aaf518538ef2377",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-09-08 原报",
+            "size": 40673453,
+            "sha256": "5aaf518538ef23775aa673965c268fc825de4005c1873753b478692f28e8ded2",
+            "path": "assets/pdfs/2026/09/2026-09-08.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260908",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:10:03.152918+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-09-08",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-09-08",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260908"
+        },
+        "metadata": {
+          "publishedDate": "2026-09-08",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-5aaf518538ef2377",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-09-08 原报",
+            "size": 40673453,
+            "sha256": "5aaf518538ef23775aa673965c268fc825de4005c1873753b478692f28e8ded2",
+            "object": "assets/5aaf518538ef23775aa673965c268fc825de4005c1873753b478692f28e8ded2.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "52b39f0f4a60d5089e81eb78f34b85ecd306c03e9d7b8f1531ef5e6512a98d86",
+      "sourceSize": 40673453
+    },
+    {
+      "date": "2026-09-09",
+      "item": "newspapers/rmrb/items/2026/09/2026-09-09.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/09/2026-09-09.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/09/2026-09-09/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-09-09",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-09-09",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260909"
+        },
+        "metadata": {
+          "publishedDate": "2026-09-09",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-bc587824d72bde0d",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-09-09 原报",
+            "size": 47377290,
+            "sha256": "bc587824d72bde0d72afe554e87fcf2aa709699655310e885c6b745dbb995a2b",
+            "path": "assets/pdfs/2026/09/2026-09-09.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260909",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:10:05.552583+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-09-09",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-09-09",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260909"
+        },
+        "metadata": {
+          "publishedDate": "2026-09-09",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-bc587824d72bde0d",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-09-09 原报",
+            "size": 47377290,
+            "sha256": "bc587824d72bde0d72afe554e87fcf2aa709699655310e885c6b745dbb995a2b",
+            "object": "assets/bc587824d72bde0d72afe554e87fcf2aa709699655310e885c6b745dbb995a2b.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "414661786fdf1f6425530a5d8b535c8655b008232b3d75fa58e3fa0d7181cfe8",
+      "sourceSize": 47377290
+    },
+    {
+      "date": "2026-09-10",
+      "item": "newspapers/rmrb/items/2026/09/2026-09-10.json.gz",
+      "pdf": "newspapers/rmrb/assets/pdfs/2026/09/2026-09-10.pdf",
+      "manifest": "content/newspapers/rmrb/items/2026/09/2026-09-10/manifest.jox",
+      "itemValue": {
+        "formatVersion": "jojo-item/1",
+        "itemId": "rmrb:2026-09-10",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-09-10",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260910"
+        },
+        "metadata": {
+          "publishedDate": "2026-09-10",
+          "issueNumber": null
+        },
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "pages": [],
+          "articles": [],
+          "placements": []
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-f137ae88e90248ef",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-09-10 原报",
+            "size": 29467711,
+            "sha256": "f137ae88e90248efa37d8bf9974938d6ca50cedb222490f5d6382d70cc34a56f",
+            "path": "assets/pdfs/2026/09/2026-09-10.pdf"
+          }
+        ],
+        "annotations": [],
+        "extensions": {},
+        "provenance": {
+          "source": "archive-pdf",
+          "sourceId": "20260910",
+          "sourceFormat": "pdf",
+          "importer": "tools/archive-pdf/sync_rmrb.py",
+          "importedAt": "2026-09-10T13:10:08.148284+00:00"
+        },
+        "revision": 1
+      },
+      "manifestValue": {
+        "itemId": "rmrb:2026-09-10",
+        "datasetId": "rmrb",
+        "type": "newspaper",
+        "title": "人民日报 2026-09-10",
+        "language": "zh-CN",
+        "publicationStatus": "published",
+        "access": "public",
+        "identifiers": {
+          "peopleDataDate": "20260910"
+        },
+        "metadata": {
+          "publishedDate": "2026-09-10",
+          "issueNumber": null
+        },
+        "formatVersion": "jojo-item-manifest/1",
+        "revision": 1,
+        "content": {
+          "schema": "jojo-content/newspaper/1",
+          "articles": []
+        },
+        "contentStats": {
+          "articleCount": 0,
+          "availableArticleCount": 0,
+          "missingArticleCount": 0,
+          "characterCount": 0
+        },
+        "availability": {
+          "text": "missing",
+          "pdf": "available"
+        },
+        "assets": [
+          {
+            "id": "asset:issue-pdf-f137ae88e90248ef",
+            "type": "pdf",
+            "role": "issue-pdf",
+            "mediaType": "application/pdf",
+            "title": "人民日报 2026-09-10 原报",
+            "size": 29467711,
+            "sha256": "f137ae88e90248efa37d8bf9974938d6ca50cedb222490f5d6382d70cc34a56f",
+            "object": "assets/f137ae88e90248efa37d8bf9974938d6ca50cedb222490f5d6382d70cc34a56f.pdf.jox"
+          }
+        ],
+        "exports": []
+      },
+      "sourceSha256": "d0bfd1cb77b2daa4ba4ee313d2a9acbb60bde372d610e357e55189584fad9018",
+      "sourceSize": 29467711
+    }
+  ],
+  "completed": [
+    {
+      "date": "2026-07-19",
+      "asset": "content/newspapers/rmrb/items/2026/07/2026-07-19/assets/fcf7410e15d8f044aec7612a1616da1d62301cda643e4d9fc6b355253e1b84a0.pdf.jox",
+      "manifest": "content/newspapers/rmrb/items/2026/07/2026-07-19/manifest.jox",
+      "index": "content/newspapers/rmrb/index.jox",
+      "canonicalFiles": [
+        "newspapers/rmrb/dataset.json",
+        "newspapers/rmrb/items/2026/07/2026-07-19.json.gz",
+        "newspapers/rmrb/assets/pdfs/2026/07/2026-07-19.pdf"
+      ],
+      "deliveryFiles": [
+        "content/newspapers/rmrb/items/2026/07/2026-07-19/assets/fcf7410e15d8f044aec7612a1616da1d62301cda643e4d9fc6b355253e1b84a0.pdf.jox",
+        "content/newspapers/rmrb/items/2026/07/2026-07-19/manifest.jox",
+        "content/newspapers/rmrb/index.jox"
+      ],
+      "published": true,
+      "size": 10939621,
+      "sha256": "fcf7410e15d8f044aec7612a1616da1d62301cda643e4d9fc6b355253e1b84a0",
+      "rangeProof": {
+        "0": "255044462d312e340a25bff7a2fe0a3830362030206f626a0a3c3c202f4c696e656172697a65642031202f4c203130393339363231202f48205b203236353520",
+        "65536": "815960149e5d0179d00781a5f48e56df7494a13eed05823f617a07eda3ff82c6d0f23e617f2e3ac6aa37060d80aef4a6c05549195bf7a1cf0f439e55637f0e3caff423e045a57bfc0b6ddfef78ff13c8f6df06cf80cf2c4c9c860442da0e107bc8aec4155a4b13ca6b407c8deb2fee5d6bdecaaea295bc068a401cbda7555279"
+      }
+    }
+  ],
+  "baselines": {
+    "content/newspapers/rmrb/index.jox": "jioHo7Q1xoFCFFxtijfYarO7/X+g7eF/rPzOUUQZwzvXZsGXEcGYjWTUQlXQJ1i8S1zpYIzQggmw9YuqatijpUBmX+vrgjdj55Rg3fXYUwNwPmlewADvWcwQNCljpl3vrjOcGjUjqbXzBYSEixqDXjLdZl7uo4j0oDTeH0ynfBlbicvUIkUfqnil4LW28n9fIbVyJ+ZJ25DbFzHg/+aGGwvEbb1kMQZv0yqgOAU1N/EhUyhhZLWC7WHnUuJxaNndKybGrJj1btXIRf1R0MLpZG+DPoyJIy14LSUAfm/+7c3eHmNOXn+MPszIKdot7DvPLS38wnnicZcp2dDkpKnlH2FmG4V5RyuONH0WENgl1+L1LMgwpUhVYbgvKlRd68yrI+XA24nkLeQFv4eE0vg5mt/wDq/VlT9JW1y9AKhtntMrFazzs2xiYhX2jsRE3JZBQ8XQB4NXzym9E1aZ8nKe7tzMBKPMyWAG5gZ7gQ8rANvDSJJFc6Lwv9QvheVFGhuV5QXaRJWYWsorJfisOp/WwzXDUhixhQemY2P7628+QkRGfhX6gW8ZNoqkKQWeLF33MMhgXuL/Q17/vrJlIOwNQd1Om9l/P9NvRN7oszyVx2YA6BY0RWHbczFiibKFVjwNEF/90U+jWmbOkcRSh6sgCrnu2X+M+/cuGuR40sXPm16MCKACQbdcNO4XccXqV50BPu7AtuZ1HtQzIlF8C9a0+7K4RajPnp+7TDUC1XotuC9b0iwLT1tSqbA6QAOHN202bPyMSKt0pofeC9C1G6nUpEAu1Acm9qbu7dsCLs8RRAmtHbrTSdDpRRjNFIhluo7/UrSgJApAEATo9hFGLkiARCSgb5bDJN8ml002F4wL9jYxAqOce1LrHecRvbCKAthYD8Y22r1//auEQGTQKVckjZiE8gK6FE/pGCNieUs0onogG91yDcu1Eyk2qBe1WqliTTw7PgHDII8NN4AQubARmatPUPwh+1Ltt4HKggLstJKW5EHZ5nkOLv7HZ1Eft2E=",
+    "content/newspapers/rmrb/items/2026/07/2026-07-20/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/07/2026-07-21/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/07/2026-07-22/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/07/2026-07-23/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/07/2026-07-24/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/07/2026-07-25/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/07/2026-07-26/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/07/2026-07-27/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/07/2026-07-28/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/07/2026-07-29/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/07/2026-07-30/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/07/2026-07-31/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-01/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-02/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-03/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-04/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-05/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-06/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-07/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-08/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-09/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-10/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-11/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-12/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-13/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-14/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-15/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-16/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-17/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-18/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-19/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-20/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-21/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-22/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-23/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-24/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-25/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-26/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-27/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-28/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-29/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-30/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/08/2026-08-31/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/09/2026-09-01/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/09/2026-09-02/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/09/2026-09-03/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/09/2026-09-04/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/09/2026-09-05/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/09/2026-09-06/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/09/2026-09-07/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/09/2026-09-08/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/09/2026-09-09/manifest.jox": null,
+    "content/newspapers/rmrb/items/2026/09/2026-09-10/manifest.jox": null
+  },
+  "datasetValue": {
+    "formatVersion": "jojo-dataset/1",
+    "datasetId": "rmrb",
+    "type": "newspaper",
+    "title": "人民日报",
+    "language": "zh-CN",
+    "publicationStatus": "published",
+    "access": "public",
+    "description": "以人民数据目录为权威目录、合并本地正文与人工修订，并配套整期 PDF 的人民日报数据集。",
+    "itemPath": "items/{YYYY}/{MM}/{YYYY-MM-DD}.json.gz",
+    "availability": {
+      "formatVersion": "jojo-periodical-availability/1",
+      "text": {
+        "format": "adaptive-calendar/1",
+        "startDate": "1946-05-15",
+        "endDate": "2026-09-10",
+        "default": "available",
+        "years": {
+          "1946": {
+            "exclude": {
+              "ranges": [
+                [
+                  "06-28",
+                  "06-30"
+                ]
+              ],
+              "dates": [
+                "07-08",
+                "09-02"
+              ]
+            }
+          },
+          "1947": {
+            "exclude": {
+              "ranges": [
+                [
+                  "01-02",
+                  "01-04"
+                ]
+              ],
+              "dates": [
+                "01-23",
+                "05-16",
+                "07-02",
+                "09-02"
+              ]
+            }
+          },
+          "1948": {
+            "exclude": {
+              "ranges": [
+                [
+                  "01-02",
+                  "01-04"
+                ]
+              ],
+              "dates": [
+                "02-10",
+                "05-16",
+                "09-02"
+              ]
+            }
+          },
+          "1949": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "01-30",
+                "05-02",
+                "07-08",
+                "10-07"
+              ]
+            }
+          },
+          "1950": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "02-18",
+                "02-19",
+                "05-02"
+              ]
+            }
+          },
+          "1951": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "02-06",
+                "05-02"
+              ]
+            }
+          },
+          "1952": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "01-27",
+                "01-28",
+                "05-02"
+              ]
+            }
+          },
+          "1953": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "02-15",
+                "05-02",
+                "10-02"
+              ]
+            }
+          },
+          "1954": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "02-03",
+                "05-02"
+              ]
+            }
+          },
+          "2022": {
+            "exclude": {
+              "dates": [
+                "01-27",
+                "02-05",
+                "02-10",
+                "03-05",
+                "03-07",
+                "03-13",
+                "03-31",
+                "04-02",
+                "04-04",
+                "04-09",
+                "07-24",
+                "08-13",
+                "08-14"
+              ]
+            }
+          },
+          "2023": {
+            "exclude": {
+              "dates": [
+                "02-04",
+                "02-12",
+                "02-15",
+                "03-02",
+                "12-20",
+                "12-31"
+              ]
+            }
+          },
+          "2024": {
+            "exclude": {
+              "dates": [
+                "01-19",
+                "12-31"
+              ]
+            }
+          },
+          "2026": {
+            "include": {}
+          }
+        }
+      },
+      "pdf": {
+        "format": "adaptive-calendar/1",
+        "startDate": "1946-05-15",
+        "endDate": "2026-09-10",
+        "default": "available",
+        "years": {
+          "1946": {
+            "exclude": {
+              "ranges": [
+                [
+                  "06-28",
+                  "06-30"
+                ]
+              ],
+              "dates": [
+                "07-08",
+                "09-02"
+              ]
+            }
+          },
+          "1947": {
+            "exclude": {
+              "ranges": [
+                [
+                  "01-02",
+                  "01-04"
+                ]
+              ],
+              "dates": [
+                "01-23",
+                "05-16",
+                "07-02",
+                "09-02"
+              ]
+            }
+          },
+          "1948": {
+            "exclude": {
+              "ranges": [
+                [
+                  "01-02",
+                  "01-04"
+                ]
+              ],
+              "dates": [
+                "02-10",
+                "05-16",
+                "09-02"
+              ]
+            }
+          },
+          "1949": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "01-30",
+                "05-02",
+                "07-08",
+                "10-07"
+              ]
+            }
+          },
+          "1950": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "02-18",
+                "02-19",
+                "05-02"
+              ]
+            }
+          },
+          "1951": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "02-06",
+                "05-02"
+              ]
+            }
+          },
+          "1952": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "01-27",
+                "01-28",
+                "05-02"
+              ]
+            }
+          },
+          "1953": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "02-15",
+                "05-02",
+                "10-02"
+              ]
+            }
+          },
+          "1954": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "02-03",
+                "05-02"
+              ]
+            }
+          },
+          "2003": {
+            "exclude": {
+              "ranges": [
+                [
+                  "04-17",
+                  "04-19"
+                ],
+                [
+                  "04-24",
+                  "04-30"
+                ]
+              ],
+              "dates": [
+                "04-21",
+                "04-22"
+              ]
+            }
+          },
+          "2004": {
+            "exclude": {
+              "dates": [
+                "12-06"
+              ]
+            }
+          },
+          "2007": {
+            "exclude": {
+              "dates": [
+                "01-01"
+              ]
+            }
+          },
+          "2010": {
+            "exclude": {
+              "ranges": [
+                [
+                  "06-11",
+                  "06-30"
+                ]
+              ],
+              "dates": [
+                "12-24",
+                "12-25"
+              ]
+            }
+          },
+          "2011": {
+            "exclude": {
+              "dates": [
+                "10-30"
+              ]
+            }
+          },
+          "2012": {
+            "exclude": {
+              "dates": [
+                "05-24"
+              ]
+            }
+          },
+          "2013": {
+            "include": {}
+          },
+          "2014": {
+            "exclude": {
+              "ranges": [
+                [
+                  "01-01",
+                  "01-10"
+                ]
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "indexValue": {
+    "formatVersion": "jojo-delivery-index/1",
+    "revision": 56,
+    "datasetId": "rmrb",
+    "type": "newspaper",
+    "title": "人民日报",
+    "language": "zh-CN",
+    "description": "以人民数据目录为权威目录、合并本地正文与人工修订，并配套整期 PDF 的人民日报数据集。",
+    "publicationStatus": "published",
+    "access": "public",
+    "itemPath": "items/{YYYY}/{MM}/{YYYY-MM-DD}/manifest.jox",
+    "availability": {
+      "formatVersion": "jojo-periodical-availability/1",
+      "text": {
+        "format": "adaptive-calendar/1",
+        "startDate": "1946-05-15",
+        "endDate": "2026-09-10",
+        "default": "available",
+        "years": {
+          "1946": {
+            "exclude": {
+              "ranges": [
+                [
+                  "06-28",
+                  "06-30"
+                ]
+              ],
+              "dates": [
+                "07-08",
+                "09-02"
+              ]
+            }
+          },
+          "1947": {
+            "exclude": {
+              "ranges": [
+                [
+                  "01-02",
+                  "01-04"
+                ]
+              ],
+              "dates": [
+                "01-23",
+                "05-16",
+                "07-02",
+                "09-02"
+              ]
+            }
+          },
+          "1948": {
+            "exclude": {
+              "ranges": [
+                [
+                  "01-02",
+                  "01-04"
+                ]
+              ],
+              "dates": [
+                "02-10",
+                "05-16",
+                "09-02"
+              ]
+            }
+          },
+          "1949": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "01-30",
+                "05-02",
+                "07-08",
+                "10-07"
+              ]
+            }
+          },
+          "1950": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "02-18",
+                "02-19",
+                "05-02"
+              ]
+            }
+          },
+          "1951": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "02-06",
+                "05-02"
+              ]
+            }
+          },
+          "1952": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "01-27",
+                "01-28",
+                "05-02"
+              ]
+            }
+          },
+          "1953": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "02-15",
+                "05-02",
+                "10-02"
+              ]
+            }
+          },
+          "1954": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "02-03",
+                "05-02"
+              ]
+            }
+          },
+          "2022": {
+            "exclude": {
+              "dates": [
+                "01-27",
+                "02-05",
+                "02-10",
+                "03-05",
+                "03-07",
+                "03-13",
+                "03-31",
+                "04-02",
+                "04-04",
+                "04-09",
+                "07-24",
+                "08-13",
+                "08-14"
+              ]
+            }
+          },
+          "2023": {
+            "exclude": {
+              "dates": [
+                "02-04",
+                "02-12",
+                "02-15",
+                "03-02",
+                "12-20",
+                "12-31"
+              ]
+            }
+          },
+          "2024": {
+            "exclude": {
+              "dates": [
+                "01-19",
+                "12-31"
+              ]
+            }
+          },
+          "2026": {
+            "include": {}
+          }
+        }
+      },
+      "pdf": {
+        "format": "adaptive-calendar/1",
+        "startDate": "1946-05-15",
+        "endDate": "2026-09-10",
+        "default": "available",
+        "years": {
+          "1946": {
+            "exclude": {
+              "ranges": [
+                [
+                  "06-28",
+                  "06-30"
+                ]
+              ],
+              "dates": [
+                "07-08",
+                "09-02"
+              ]
+            }
+          },
+          "1947": {
+            "exclude": {
+              "ranges": [
+                [
+                  "01-02",
+                  "01-04"
+                ]
+              ],
+              "dates": [
+                "01-23",
+                "05-16",
+                "07-02",
+                "09-02"
+              ]
+            }
+          },
+          "1948": {
+            "exclude": {
+              "ranges": [
+                [
+                  "01-02",
+                  "01-04"
+                ]
+              ],
+              "dates": [
+                "02-10",
+                "05-16",
+                "09-02"
+              ]
+            }
+          },
+          "1949": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "01-30",
+                "05-02",
+                "07-08",
+                "10-07"
+              ]
+            }
+          },
+          "1950": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "02-18",
+                "02-19",
+                "05-02"
+              ]
+            }
+          },
+          "1951": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "02-06",
+                "05-02"
+              ]
+            }
+          },
+          "1952": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "01-27",
+                "01-28",
+                "05-02"
+              ]
+            }
+          },
+          "1953": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "02-15",
+                "05-02",
+                "10-02"
+              ]
+            }
+          },
+          "1954": {
+            "exclude": {
+              "dates": [
+                "01-02",
+                "02-03",
+                "05-02"
+              ]
+            }
+          },
+          "2003": {
+            "exclude": {
+              "ranges": [
+                [
+                  "04-17",
+                  "04-19"
+                ],
+                [
+                  "04-24",
+                  "04-30"
+                ]
+              ],
+              "dates": [
+                "04-21",
+                "04-22"
+              ]
+            }
+          },
+          "2004": {
+            "exclude": {
+              "dates": [
+                "12-06"
+              ]
+            }
+          },
+          "2007": {
+            "exclude": {
+              "dates": [
+                "01-01"
+              ]
+            }
+          },
+          "2010": {
+            "exclude": {
+              "ranges": [
+                [
+                  "06-11",
+                  "06-30"
+                ]
+              ],
+              "dates": [
+                "12-24",
+                "12-25"
+              ]
+            }
+          },
+          "2011": {
+            "exclude": {
+              "dates": [
+                "10-30"
+              ]
+            }
+          },
+          "2012": {
+            "exclude": {
+              "dates": [
+                "05-24"
+              ]
+            }
+          },
+          "2013": {
+            "include": {}
+          },
+          "2014": {
+            "exclude": {
+              "ranges": [
+                [
+                  "01-01",
+                  "01-10"
+                ]
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}
