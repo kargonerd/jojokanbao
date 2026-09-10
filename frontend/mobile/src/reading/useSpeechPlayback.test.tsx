@@ -29,7 +29,7 @@ vi.mock("../account/auth", () => ({ useMobileAuthStore: (select: (state: unknown
 vi.mock("./featureFlag", () => ({ useSpeechFlagStore: () => ({ userId: "reader", enabled: true }) }));
 vi.mock("expo-crypto", async () => { const { createHash } = await import("node:crypto"); return { CryptoDigestAlgorithm: { SHA256: "sha256" }, digestStringAsync: async (_: string, text: string) => createHash("sha256").update(text).digest("hex") }; });
 vi.mock("./speech", () => ({ speechTime: (value: number) => String(value), mobileSpeechClient: {
-  loadSpeechProviders: async () => ({ defaultProvider: "auto", defaultVoice: "male", cdnBase: "https://blacknews.jojokanbao.cn", providers: [{ id: "auto", cacheVersion: "test", available: true, voices: [{ id: "male" }, { id: "female" }] }] }),
+  loadSpeechProviders: async () => ({ defaultProvider: "auto", defaultVoice: "male", cdnBase: "https://blacknews.jojokanbao.cn", providers: [{ id: "auto", cacheVersion: "test", available: true, streaming: true, voices: [{ id: "male" }, { id: "female" }] }] }),
   requestSpeech: mocks.request, loadCachedSpeechDurations: async () => ({ 0: 20, 1: 20 }),
 } }));
 
@@ -44,6 +44,33 @@ async function emit(values: Record<string, unknown> = {}) {
 async function play() { await act(async () => state.toggle()); await emit(); await emit({ playing: true }); }
 
 describe("native listening lifecycle", () => {
+  it("starts unknown-duration streaming audio without seeking or letting prefetch compete for startup", async () => {
+    const url = "https://beta.jojokanbao.cn/api/v1/speech/stream?ticket=test";
+    mocks.request.mockResolvedValueOnce({ url, duration: 0, streaming: true });
+    await act(async () => state.open());
+    await act(async () => state.toggle());
+    expect(mocks.request).toHaveBeenCalledOnce();
+    expect(mocks.request.mock.calls[0]![3]).toMatchObject({ streaming: true });
+    expect(mocks.player.replace).toHaveBeenCalledWith({ uri: url });
+    await emit({ duration: 0 });
+    expect(mocks.player.seekTo).not.toHaveBeenCalled();
+    expect(mocks.player.play).toHaveBeenCalledOnce();
+    expect(state.duration).toBeGreaterThan(0);
+    expect(mocks.request.mock.calls[1]![3]).toMatchObject({ streaming: false });
+    await emit({ duration: 0, playing: true, currentTime: 3 });
+    await act(async () => state.halt());
+    await act(async () => state.toggle());
+    expect(mocks.player.replace).toHaveBeenCalledOnce();
+    expect(state.elapsed).toBe(3);
+    await emit({ duration: 12, playing: true, currentTime: 4 });
+    expect(state.duration).toBe(32);
+    await act(async () => state.halt());
+    await act(async () => state.seek(8));
+    expect(mocks.request.mock.calls.at(-1)![3]).toMatchObject({ streaming: false });
+    await emit({ duration: 20 });
+    expect(mocks.player.seekTo).toHaveBeenLastCalledWith(8);
+    expect(state.playing).toBe(false);
+  });
   it("uses the current reading sentence on entry and preserves playback after browsing and changing voice", async () => {
     await act(async () => view.unmount());
     const position = vi.fn(async () => ({ text: "第一章前页。当前句子。接着朗读。", offset: 7 }));
