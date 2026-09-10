@@ -6,10 +6,10 @@ import { ReaderSelectionToolbar } from "../components/ReaderSelectionToolbar";
 import type { explainMobileTimesSelection } from "../lib/timesAgent";
 
 const mocks = vi.hoisted(() => ({ getNews: vi.fn(), explain: vi.fn(), cancel: vi.fn(), inject: vi.fn(), copy: vi.fn(), eink: false }));
-vi.mock("react-native", () => ({ ActivityIndicator: "progress", Pressable: "button", Text: "span", View: "div", ScrollView: "section",
+vi.mock("react-native", () => ({ ActivityIndicator: "progress", Pressable: "button", Text: "span", TextInput: "textarea", KeyboardAvoidingView: "keyboard-avoid", View: "div", ScrollView: "section",
   Modal: ({ visible, children }: { visible: boolean; children: ReactNode }) => visible ? children : null,
   Linking: { openURL: vi.fn() }, StyleSheet: { create: (value: unknown) => value, hairlineWidth: 1 },
-  Platform: { select: (value: { android: string }) => value.android } }));
+  Platform: { OS: "android", select: (value: { android: string }) => value.android } }));
 vi.mock("react-native-webview", async () => {
   const { forwardRef, useImperativeHandle, createElement } = await import("react");
   return { WebView: forwardRef((props: Record<string, unknown>, ref) => {
@@ -87,5 +87,29 @@ describe("Times reading interactions", () => {
     expect(preview.props.source.html).not.toContain("English caption");
     await act(async () => view.root.findByProps({ title: "图片预览" }).props.onBack());
     expect(view.root.findAllByType("webview")).toHaveLength(1);
+  });
+
+  it("keeps the first explanation while following up, and retries only the failed question", async () => {
+    await message(selection);
+    await act(async () => view.root.findByProps({ accessibilityLabel: "AI 解释" }).props.onPress());
+    const initial = mocks.explain.mock.calls[0]![2] as Parameters<typeof explainMobileTimesSelection>[2];
+    await act(async () => initial.onDone({ model: "gemini", imageCount: 0 }, "这是一种原油。"));
+    expect(view.root.findByType("keyboard-avoid" as never).props.behavior).toBe("height");
+    await act(async () => view.root.findByProps({ accessibilityLabel: "继续提问" }).props.onChangeText("它为什么更贵？"));
+    await act(async () => view.root.findByProps({ accessibilityLabel: "发送追问" }).props.onPress());
+    const request = mocks.explain.mock.calls[1]![3];
+    expect(request).toMatchObject({ question: "它为什么更贵？", history: [
+      { role: "user", content: "请解释选中文字。" }, { role: "assistant", content: "这是一种原油。" },
+    ] });
+    expect(view.root.findAllByType("span").some((node) => node.props.children === "这是一种原油。")).toBe(true);
+    expect(view.root.findByProps({ accessibilityLabel: "继续提问" }).props.value).toBe("");
+    const followup = mocks.explain.mock.calls[1]![2] as Parameters<typeof explainMobileTimesSelection>[2];
+    await act(async () => followup.onError("连接失败"));
+    const retry = view.root.findAllByType("button").find((node) => node.findAllByType("span").some((text) => text.props.children === "重试回答"))!;
+    await act(async () => retry.props.onPress());
+    expect(mocks.explain.mock.calls[2]![3]).toEqual(request);
+    await act(async () => view.root.findAllByType("button").find((node) => node.findAllByType("span").some((text) => text.props.children === "停止生成"))!.props.onPress());
+    expect(view.root.findAllByProps({ accessibilityRole: "progressbar" })).toHaveLength(0);
+    expect(view.root.findAllByType("span").some((node) => node.props.children === "已停止生成")).toBe(true);
   });
 });

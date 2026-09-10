@@ -390,6 +390,10 @@ importers:
         version: 5.9.3
 
   frontend/packages/ui:
+    dependencies:
+      zustand:
+        specifier: ^5.0.0
+        version: 5.0.13(@types/react@19.2.18)(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6))
     devDependencies:
       '@jojo/tsconfig':
         specifier: workspace:*
@@ -17673,6 +17677,12 @@ snapshots:
   zustand@5.0.13(@types/react@19.2.15)(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6)):
     optionalDependencies:
       '@types/react': 19.2.15
+      react: 19.2.6
+      use-sync-external-store: 1.6.0(react@19.2.6)
+
+  zustand@5.0.13(@types/react@19.2.18)(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6)):
+    optionalDependencies:
+      '@types/react': 19.2.18
       react: 19.2.6
       use-sync-external-store: 1.6.0(react@19.2.6)
 

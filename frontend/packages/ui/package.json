@@ -7,6 +7,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./reader-selection": "./src/reader-selection.ts",
+    "./reader-explanation": "./src/reader-explanation.ts",
     "./styles": "./styles/index.css",
     "./styles/base": "./styles/base.css"
   },
@@ -17,6 +18,9 @@
   "peerDependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
+  },
+  "dependencies": {
+    "zustand": "^5.0.0"
   },
   "devDependencies": {
     "@jojo/tsconfig": "workspace:*",
