@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SpeechPlayer } from "../src/reading/SpeechPlayer";
 import { ReadingBookshelfContext } from "../src/reading/ReadingBookshelfContext";
-import { DEFAULT_SPEECH_PROVIDERS, speechSegments, splitSpeechText } from "../src/reading/speech";
+import { DEFAULT_SPEECH_PROVIDERS, speechSegments, splitSpeechText, speechKey, speechObjectBase } from "../src/reading/speech";
 import { readSpeechProgress, saveSpeechProgress, speechFingerprint } from "../src/reading/speechProgress";
 import { useAccountSessionStore } from "../src/account/session";
 import { useFeatureFlagStore } from "../src/featureFlags";
@@ -16,6 +16,7 @@ class AudioMock extends EventTarget {
   onerror: (() => void) | null = null;
   ontimeupdate: (() => void) | null = null;
   onloadedmetadata: (() => void) | null = null;
+  ondurationchange: (() => void) | null = null;
   playbackRate = 1;
   preload = "";
   readyState = 1;
@@ -24,6 +25,7 @@ class AudioMock extends EventTarget {
   constructor(src: string) {
     super();
     this.src = src;
+    if (src.includes("/speech/stream?")) this.duration = Infinity;
     AudioMock.instances.push(this);
   }
 
@@ -45,6 +47,40 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) =>
 }));
 
 describe("reader speech", () => {
+  it("plays an unknown-duration stream and resolves complete audio for a paused seek", async () => {
+    const text = "这是一段需要流式播放的正文。";
+    const key = await speechKey("mimo", "stream-test", "白桦", text);
+    const requests: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input); requests.push(url);
+      if (url.includes("/providers")) return Response.json({ defaultProvider: "mimo", defaultVoice: "白桦", cdnBase: "https://speech-test.example", providers: [{
+        id: "mimo", available: true, streaming: true, cacheVersion: "stream-test", voices: [{ id: "白桦", label: "男声" }],
+      }] });
+      if (url.endsWith("?stream=true")) return Response.json({ formatVersion: "jojo-speech-stream/1", ticket: "a".repeat(100), expiresAt: Date.now() / 1000 + 900 });
+      if (url === "/api/v1/speech") return Response.json({ formatVersion: "jojo-speech-segment/1", key,
+        object: `${speechObjectBase("mimo", key)}/${"b".repeat(64)}.mp3`, duration: 10 });
+      return new Response(null, { status: 404 });
+    }));
+    render(<SpeechPlayer segments={[text]} label="听本章" />);
+    fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
+    await waitFor(() => expect(AudioMock.instances[0]?.play).toHaveBeenCalled());
+    expect(AudioMock.instances[0]!.duration).toBe(Infinity);
+    act(() => { AudioMock.instances[0]!.currentTime = 3; AudioMock.instances[0]!.ontimeupdate?.(); });
+    fireEvent.click(screen.getByRole("button", { name: "暂停听读" }));
+    fireEvent.click(screen.getByRole("button", { name: "继续听读" }));
+    await waitFor(() => expect(AudioMock.instances[0]!.play).toHaveBeenCalledTimes(2));
+    expect(AudioMock.instances).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "暂停听读" }));
+    fireEvent.click(screen.getByRole("button", { name: "前进15秒" }));
+    await waitFor(() => expect(AudioMock.instances).toHaveLength(2));
+    expect(requests.filter((url) => url.endsWith("?stream=true"))).toHaveLength(1);
+    expect(requests).toContain("/api/v1/speech");
+    expect(AudioMock.instances[1]!.currentTime).toBeCloseTo(9.95);
+    expect(AudioMock.instances[1]!.play).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "继续听读" }));
+    await waitFor(() => expect(AudioMock.instances[1]!.play).toHaveBeenCalled());
+  });
   it("reports the current speech location when audio advances and preserves it on pause", async () => {
     const segments = ["第一段。这里还有一句。", "第二段。接着朗读。"];
     const showSpeechLocation = vi.fn();
