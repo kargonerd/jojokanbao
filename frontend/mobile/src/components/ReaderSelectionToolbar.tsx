@@ -18,7 +18,7 @@ export function ReaderSelectionToolbar({ selection, frame, theme, eInk, onCopy, 
   if (!selection.rect || !selection.viewport || selection.viewport.width <= 0 || selection.viewport.height <= 0 || !frame.width || !frame.height) return null;
   const actionCount = 2 + Number(Boolean(onUnderline)) + Number(Boolean(onThought)) + Number(Boolean(onClip));
   const columns = actionCount > 4 ? 3 : actionCount;
-  const toolbarHeight = actionCount > 4 ? 112 : 60;
+  const toolbarHeight = actionCount > 4 ? 112 : 64;
   const scaleX = frame.width / selection.viewport.width;
   const scaleY = frame.height / selection.viewport.height;
   const rect = {
@@ -39,7 +39,7 @@ export function ReaderSelectionToolbar({ selection, frame, theme, eInk, onCopy, 
   ] as const;
   return <View style={[styles.container, { left: position.left, top: position.top, width: position.width }]}>
     <View style={[styles.actions, { backgroundColor, height: toolbarHeight }, !eInk && styles.shadow]}>
-      {actions.filter((action) => action.onPress).map((action) => <Pressable key={action.label} accessibilityRole="button" accessibilityLabel={action.label} onPress={action.onPress} style={({ pressed }) => [styles.action, { width: `${100 / columns}%` }, pressed && { backgroundColor: "#555555" }]}>
+      {actions.filter((action) => action.onPress).map((action) => <Pressable key={action.label} accessibilityRole="button" accessibilityLabel={action.label} onPress={action.onPress} style={({ pressed }) => [styles.action, { width: `${100 / columns}%`, height: actionCount > 4 ? 52 : 56 }, pressed && { backgroundColor: "#555555" }]}>
         {action.icon ? <Ionicons name={action.icon} size={22} color="#ffffff" /> : <Text aria-hidden style={styles.underline}>A</Text>}
         <Text style={[styles.label, { fontFamily: theme.sans }]}>{action.label}</Text>
       </Pressable>)}
