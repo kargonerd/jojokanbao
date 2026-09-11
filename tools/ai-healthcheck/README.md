@@ -6,7 +6,7 @@ independent of an operator's computer. The probe checks `/rag/health`, signs int
 confirmed Supabase account, requests a short answer from the production `/rag`
 route, and requires nonempty text plus a normal SSE completion. An SSE `error`
 is a failure even when HTTP is 200; recovered tool errors alone are not failures.
-The probe has a 60-second total deadline and a 64 KB response limit. It creates
+Generation has a 60-second total deadline and a 64 KB response limit. It creates
 no bookshelf items, explanations, comments, or notifications and revokes its
 own login session after each run.
 
@@ -14,6 +14,32 @@ The monitor account has `raw_user_meta_data.account_purpose =
 'ai_availability_monitor'`. Exclude it from reader adoption and active-user
 reports. Conversation IDs start with `jojo-ai-health-`; exclude them from real
 reader conversation counts. Each probe uses a small amount of model quota.
+
+## Session cleanup and transient failures
+
+After generation, the probe revokes only its own session with `scope=local`.
+Logout uses at most three attempts within a separate ten-second total budget,
+with a three-second per-attempt deadline and 250/500 ms backoff. Only network
+failures, timeouts, and HTTP 408/409/429/500/502/503/504 are retried. Retrying never
+signs in again, refreshes a token, or makes another model request. Redirects are
+not followed. A 403 explicitly identifying `session_not_found` confirms that
+the session is already gone; other 401/403 responses remain cleanup failures.
+
+The JSON output includes `generationOk` and `cleanup` separately. Cleanup records
+its total duration, each attempt's HTTP status or network/timeout category, and validated
+Supabase request ID / Cloudflare Ray ID when supplied. Error responses are read
+up to 4 KiB within the attempt deadline, retaining only recognized Auth error
+codes and response format. Raw bodies, error messages, and arbitrary header
+values are never logged, even when a proxy echoes credentials. Non-JSON, invalid,
+oversized, or unreadable bodies cannot prevent a retry.
+
+If logout recovers, a completed generation reports success. If logout remains
+unsuccessful, the execution still fails to surface the unresolved session, but
+`generationOk=true` identifies successful model generation. If both fail, the
+model failure remains the primary reason, preserving its conversation ID and
+egress diagnostics; cleanup failure is additional context. Buffered events
+include `generation_ok`, `cleanup_ok`, `cleanup_attempts`, and
+`cleanup_failure_type`, while per-attempt diagnostics remain in the run's JSON.
 
 ## Egress diagnostics
 

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
+import { revokeMonitorSession } from './logout.mjs';
 
 export class ProbeFailure extends Error {
   constructor(reason, details = {}) {
@@ -91,6 +92,8 @@ export async function probe(env, fetcher = fetch) {
   if (!login.ok) throw new Error(`monitor_login_http_${login.status}`);
   const session = await login.json();
   if (!session.access_token) throw new Error('monitor_session_missing');
+  let result;
+  let failure;
   try {
     const response = await fetcher(`${base}/rag`, {
       method: 'POST', headers: { ...headers, Authorization: `Bearer ${session.access_token}` }, signal,
@@ -112,18 +115,21 @@ export async function probe(env, fetcher = fetch) {
     } finally {
       await reader.cancel().catch(() => {});
     }
-    return { ok: true, conversationId, durationMs: Date.now() - started, ...inspectCompletion(sse) };
+    result = { conversationId, durationMs: Date.now() - started, ...inspectCompletion(sse) };
   } catch (error) {
-    const details = { conversationId, durationMs: Date.now() - started,
+    const details = { conversationId, durationMs: Date.now() - started, generationOk: false,
       ...(error instanceof ProbeFailure ? error.details : {}) };
-    throw new ProbeFailure(error instanceof Error ? error.message : '', details);
-  } finally {
-    // Revoke only this probe's session, never another user's or another run's.
-    const logout = await fetcher(`${auth}/auth/v1/logout?scope=local`, {
-      method: 'POST', headers: { apikey: key, Authorization: `Bearer ${session.access_token}` }, signal: AbortSignal.timeout(10_000),
-    });
-    if (!logout.ok) throw new Error(`monitor_logout_http_${logout.status}`);
+    failure = new ProbeFailure(error instanceof Error ? error.message : '', details);
   }
+  const cleanup = await revokeMonitorSession(`${auth}/auth/v1/logout?scope=local`,
+    { apikey: key, Authorization: `Bearer ${session.access_token}` }, fetcher);
+  if (failure) {
+    failure.details.cleanup = cleanup;
+    throw failure;
+  }
+  const details = { ...result, generationOk: true, cleanup };
+  if (!cleanup.ok) throw new ProbeFailure(cleanup.reason, details);
+  return { ok: true, ...details };
 }
 
 export async function runHealthcheck(env, fetcher = fetch) {
@@ -157,6 +163,9 @@ export async function runHealthcheck(env, fetcher = fetch) {
         task: 'jojo-ai-availability',
         failure_type: result.reason ?? '',
         ...(result.conversationId ? { conversation_id: result.conversationId } : {}),
+        ...(typeof result.generationOk === 'boolean' ? { generation_ok: result.generationOk } : {}),
+        ...(result.cleanup ? { cleanup_ok: result.cleanup.ok, cleanup_attempts: result.cleanup.attempts.length,
+          cleanup_failure_type: result.cleanup.reason ?? '' } : {}),
         run,
       }).map(([key, value]) => `${key}=${value}`).join('\n');
       suffix = '/log';
@@ -177,7 +186,7 @@ export async function runHealthcheck(env, fetcher = fetch) {
   } catch (error) {
     // Only structured categories leave the process; never log prompts or tokens.
     const message = error instanceof Error ? error.message : '';
-    const reason = /^(?:monitor_credentials_missing|provider_not_configured|monitor_session_missing|invalid_stream_type|probe_response_too_large|quota_exhausted|provider_auth_failed|provider_region_unsupported|generation_failed|incomplete_generation|(?:health|monitor_login|monitor_logout|agent)_http_[1-5][0-9]{2})$/.test(message)
+    const reason = /^(?:monitor_credentials_missing|provider_not_configured|monitor_session_missing|monitor_logout_(?:timeout|network_error)|invalid_stream_type|probe_response_too_large|quota_exhausted|provider_auth_failed|provider_region_unsupported|generation_failed|incomplete_generation|(?:health|monitor_login|monitor_logout|agent)_http_[1-5][0-9]{2})$/.test(message)
       ? message : 'probe_network_or_protocol_error';
     const details = error instanceof ProbeFailure ? error.details : {};
     await ping('/fail', { ok: false, reason, ...details });
