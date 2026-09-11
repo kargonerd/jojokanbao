@@ -396,7 +396,7 @@ describe("JOJO Web navigation", () => {
 });
 
 describe("Support page", () => {
-  it("keeps feedback, memorial, donation, copyright, and OneDrive download sections available", () => {
+  it("keeps feedback, memorial, donation, copyright, and cloud download sections available", () => {
     renderAt("/archive/support");
 
     for (const name of ["关于 JOJO 看报", "纪念缅怀", "捐助", "版权说明", "数据下载"]) {
@@ -409,7 +409,7 @@ describe("Support page", () => {
     expect(screen.getAllByRole("heading").at(-1)?.textContent).toBe("数据下载");
     expect(screen.getAllByRole("link", { name: "OneDrive下载" })).toHaveLength(5);
     expect(screen.getByRole("link", { name: "OneDrive备用下载" }).getAttribute("target")).toBe("_blank");
-    expect(screen.queryByRole("link", { name: /夸克网盘/ })).toBeNull();
+    expect(screen.getAllByRole("link", { name: "夸克网盘下载" })).toHaveLength(5);
     expect(screen.getByRole("img", { name: "微信" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "支付宝" })).toBeTruthy();
   });
