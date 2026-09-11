@@ -32,10 +32,7 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
         }>
 
           {/* 关于与反馈 */}
-          <h1 className={platformRedesign
-            ? "mb-4 border-b border-b-rule pb-3 text-2xl font-bold tracking-wider text-ink"
-            : "text-2xl font-bold tracking-wider text-ink border-t border-rule-dark border-b border-b-rule pt-2.5 pb-2.5 mb-4"
-          }>{platformRedesign ? "关于 JOJO 看报" : "反馈"}</h1>
+          <h1 className="mb-4 text-2xl font-bold tracking-wider text-ink">{platformRedesign ? "关于 JOJO 看报" : "反馈"}</h1>
           <p className="text-ink/80 leading-8">
             网站为业余时间开发制作，因此较为粗糙，如果网站有任何问题，或者希望对网站提出建议，可以进入QQ群:
             <strong className="text-red"> 974380749 </strong> 进行反馈，也可以在B站
@@ -44,9 +41,9 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
           </p>
 
           {/* 纪念缅怀 */}
-          <h1 className="text-2xl font-bold tracking-wider text-ink border-t border-rule-dark border-b border-b-rule pt-2.5 pb-2.5 mt-7 mb-4">纪念缅怀</h1>
+          <h1 className="text-2xl font-bold tracking-wider text-ink mt-10 mb-4">纪念缅怀</h1>
           <ul className="list-none p-0 m-0">
-            <li className="py-2.5 border-b border-rule">
+            <li>
               <a href="https://redstar.jojokanbao.cn" target="_blank" rel="noreferrer" className="font-bold flex items-center gap-1.5">
                 <svg className="w-4 h-4 text-red" viewBox="0 0 20 20" fill="currentColor"><path d="M10 1l2.39 4.84 5.34.78-3.87 3.77.91 5.32L10 13.27l-4.77 2.51.91-5.32L2.27 6.69l5.34-.78L10 1z"/></svg>
                 纪念毛主席诞辰132周年（2025）
@@ -55,7 +52,7 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
           </ul>
 
           {/* 捐助 */}
-          <h1 className="text-2xl font-bold tracking-wider text-ink border-t border-rule-dark border-b border-b-rule pt-2.5 pb-2.5 mt-7 mb-4">捐助</h1>
+          <h1 className="text-2xl font-bold tracking-wider text-ink mt-10 mb-4">捐助</h1>
           <p className="text-ink/80 leading-8">
             如果网站对您有帮助，您可以通过捐助支持我们，所有捐助都将用于维护本网站，所有捐助记录将在
             <a href="https://docs.qq.com/sheet/DZlhxZUdmalFBUUFQ?tab=BB08J2" target="_blank" rel="noreferrer" className="font-bold"> JOJO看报捐助列表</a>
@@ -67,7 +64,7 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
           </div>
 
           {/* 版权说明 */}
-          <h1 className="text-2xl font-bold tracking-wider text-ink border-t border-rule-dark border-b border-b-rule pt-2.5 pb-2.5 mt-7 mb-4">版权说明</h1>
+          <h1 className="text-2xl font-bold tracking-wider text-ink mt-10 mb-4">版权说明</h1>
           <div className="space-y-3 text-ink/80 leading-8">
             <p>本站部分内容为公开报刊书籍历史资料扫描整理，仅供个人学习、学术研究使用。</p>
             <p>报刊书籍文字、图片、版式之著作权归原出版机构及相关著作权人所有。</p>
@@ -76,7 +73,7 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
           </div>
 
           {/* 数据下载 */}
-          <h1 className="text-2xl font-bold tracking-wider text-ink border-t border-rule-dark border-b border-b-rule pt-2.5 pb-2.5 mt-7 mb-4">数据下载</h1>
+          <h1 className="text-2xl font-bold tracking-wider text-ink mt-10 mb-4">数据下载</h1>
           <div className="space-y-3">
             {downloads.map((d) => (
               <p key={d.name} className="leading-8 text-ink/80">
@@ -93,7 +90,7 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
 
           <Link
             to={platformRedesign ? "/support/licenses" : "/archive/support/licenses"}
-            className="mt-5 flex min-h-14 items-center justify-between gap-5 border-y border-rule py-3 font-bold text-ink hover:text-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red"
+            className="mt-8 flex min-h-14 items-center justify-between gap-5 border-t border-rule pt-5 font-bold text-ink hover:text-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red"
           >
             <span>
               <strong className="block font-serif">开源软件许可</strong>
