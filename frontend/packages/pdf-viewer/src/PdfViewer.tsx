@@ -150,6 +150,7 @@ export function PdfViewer({
   const lastSearchFocusRef = useRef("");
   const pendingSearchPageRef = useRef<number | null>(null);
   const searchKey = searchTarget ? JSON.stringify([searchTarget.page, searchTarget.query, searchTarget.quote, searchTarget.activeIndex, searchTarget.focusToken, searchTarget.outline]) : "";
+  const textSearchTarget = searchTarget?.outline ? undefined : searchTarget;
 
   useLayoutEffect(() => {
     const page = searchTarget?.page;
@@ -179,15 +180,17 @@ export function PdfViewer({
         window.scrollTo({ top: Math.max(0, window.scrollY + top - 16) });
       }
       lastSearchFocusRef.current = searchKey;
+      pendingSearchPageRef.current = null;
       onSearchResult?.({ status: "outline", matches: 0 });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [document, searchKey, pageAspectRatios, onSearchResult, scrollContainerRef]);
 
   const handleSearchResult = useCallback((result: PdfSearchResult, active: HTMLElement | null) => {
+    if (searchTarget?.outline) return;
     pendingSearchPageRef.current = null;
     onSearchResult?.(result);
-    if (searchTarget?.outline || !active || lastSearchFocusRef.current === searchKey) return;
+    if (!active || lastSearchFocusRef.current === searchKey) return;
     lastSearchFocusRef.current = searchKey;
     window.requestAnimationFrame(() => {
       if (!active.isConnected) return;
@@ -636,10 +639,10 @@ export function PdfViewer({
                 quality={quality}
                 renderZoom={pageNumber === currentPageRef.current ? renderZoom : 1}
                 layoutZoom={effectiveZoom}
-                enableTextLayer={pageNumber === searchTarget?.page || (textLayerEnabled && (
+                enableTextLayer={pageNumber === textSearchTarget?.page || (textLayerEnabled && (
                   !constrainedResidency || pageNumber === activeTextLayerPage
                 ))}
-                searchTarget={pageNumber === searchTarget?.page ? searchTarget : undefined}
+                searchTarget={pageNumber === textSearchTarget?.page ? textSearchTarget : undefined}
                 onSearchResult={handleSearchResult}
                 showLoading={!suppressPageLoading}
                 onPageMetrics={handlePageMetrics}
