@@ -46,6 +46,17 @@ export async function resolvePdfOutlineDestination(
     if (!Number.isFinite(top) || top < 0 || top > 1
       || (left !== undefined && (!Number.isFinite(left) || left < 0 || left > 1))) return location;
     location.position = { top, ...(left !== undefined ? { left } : {}) };
+    if (mode === "FitR" && hasLeft && [destination[3], destination[4]].every((value) => typeof value === "number" && Number.isFinite(value))) {
+      const [otherX, otherY] = viewport.convertToViewportPoint(destination[4], destination[3]);
+      const region = {
+        left: Math.min(x, otherX) / viewport.width,
+        top: Math.min(y, otherY) / viewport.height,
+        right: Math.max(x, otherX) / viewport.width,
+        bottom: Math.max(y, otherY) / viewport.height,
+      };
+      if (Object.values(region).every((value) => Number.isFinite(value) && value >= 0 && value <= 1)
+        && region.right > region.left && region.bottom > region.top) location.position = region;
+    }
     return location;
   } catch {
     return null;

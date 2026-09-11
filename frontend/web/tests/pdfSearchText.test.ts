@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { findPdfSearchRanges, paintPdfSearchRanges } from "../../packages/pdf-viewer/src/searchText";
+import { findPdfSearchRanges, paintPdfSearchRanges, selectPdfOutlineTitleRanges } from "../../packages/pdf-viewer/src/searchText";
 
 function layer(...parts: string[]): HTMLElement {
   const root = document.createElement("div");
@@ -65,5 +65,90 @@ describe("PDF text location", () => {
     const highlight = paintPdfSearchRanges(root, findPdfSearchRanges(root, "铁路").ranges, 0);
     expect(highlight.active).toBeNull();
     expect(root.childElementCount).toBe(0);
+  });
+});
+
+describe("bookmark title highlights", () => {
+  function matches(rectangles: number[][][], scale = 1) {
+    const root = layer(...rectangles.map(() => "教育者要先受教育。"), "正文内容");
+    const { ranges } = findPdfSearchRanges(root, "教育", "教育者要先受教育");
+    vi.spyOn(root, "getBoundingClientRect").mockReturnValue({ left: 100, top: 200, width: 1000 * scale, height: 1400 * scale } as DOMRect);
+    ranges.forEach((range, index) => {
+      Object.defineProperty(range, "getClientRects", { value: () => rectangles[index]!.map(([x, y, w, h]) => ({
+        left: 100 + x! * scale, top: 200 + y! * scale,
+        right: 100 + (x! + w!) * scale, bottom: 200 + (y! + h!) * scale,
+        width: w! * scale, height: h! * scale,
+      })) });
+      vi.spyOn(root.children[index]!, "getBoundingClientRect").mockImplementation(() => range.getClientRects()[0] as DOMRect);
+    });
+    vi.spyOn(root.lastElementChild!, "getBoundingClientRect").mockReturnValue({ left: 100 + 600 * scale, top: 200 + 650 * scale,
+      right: 100 + 608 * scale, bottom: 200 + 690 * scale, width: 8 * scale, height: 40 * scale } as DOMRect);
+    return { root, ranges };
+  }
+
+  it.each([1, 2.5])("marks only the title beside the bookmark, independent of OCR order and zoom (%s)", (scale) => {
+    const { root, ranges } = matches([[[570, 580, 8, 8]], [[910, 590, 18, 18]]], scale);
+    const selected = selectPdfOutlineTitleRanges(root, ranges, { left: .91, top: 580 / 1400 });
+    expect(selected).toEqual([ranges[1]]);
+    const highlight = paintPdfSearchRanges(root, selected, 0);
+    expect(root.querySelectorAll(".pdf-search-highlight")).toHaveLength(1);
+    expect(highlight.active?.style.left).toBe("91%");
+    highlight.cleanup();
+  });
+
+  it("compares the first character instead of a box spanning wrapped body columns", () => {
+    const { root, ranges } = matches([
+      [[580, 705, 8, 8], [570, 579, 8, 65]],
+      [[910, 590, 18, 18], [910, 608, 18, 125]],
+    ]);
+    expect(selectPdfOutlineTitleRanges(root, ranges, { top: 580 / 1400 })).toEqual([ranges[1]]);
+  });
+
+  it("keeps all measured characters of one wrapped title", () => {
+    const { root, ranges } = matches([[[910, 590, 18, 72], [890, 590, 18, 72]], [[570, 590, 8, 65]]]);
+    const selected = selectPdfOutlineTitleRanges(root, ranges, { left: .91, top: 580 / 1400 });
+    expect(selected).toEqual([ranges[0]]);
+    const highlight = paintPdfSearchRanges(root, selected, 0);
+    expect(root.querySelectorAll(".pdf-search-highlight")).toHaveLength(2);
+    highlight.cleanup();
+  });
+
+  it("does not mark a distant body occurrence when OCR omitted the title", () => {
+    const { root, ranges } = matches([[[570, 590, 8, 65]]]);
+    expect(selectPdfOutlineTitleRanges(root, ranges, { left: .91, top: 580 / 1400 })).toEqual([]);
+    expect(selectPdfOutlineTitleRanges(root, [], { left: .91, top: 580 / 1400 })).toEqual([]);
+  });
+
+  it("does not guess between equally close text for a bookmark without a horizontal position", () => {
+    const { root, ranges } = matches([[[570, 590, 8, 65]], [[910, 590, 18, 144]]]);
+    expect(selectPdfOutlineTitleRanges(root, ranges, { top: 580 / 1400 })).toEqual([]);
+  });
+
+  it("ignores invisible text and unmeasured pages", () => {
+    const { root, ranges } = matches([[[910, 590, 0, 0]]]);
+    expect(selectPdfOutlineTitleRanges(root, ranges, { left: .91, top: 580 / 1400 })).toEqual([]);
+    vi.mocked(root.getBoundingClientRect).mockReturnValue({ width: 0, height: 0 } as DOMRect);
+    expect(selectPdfOutlineTitleRanges(root, ranges, { left: .91, top: 580 / 1400 })).toEqual([]);
+  });
+
+  it.each([1, 2.5])("uses a FitR article box and headline type size for the actual vertical layout (%s)", (scale) => {
+    const { root, ranges } = matches([[[584, 706, 7.4, 7.4], [574, 579, 7.4, 56]], [[911, 592, 17.8, 17.8], [911, 610, 17.8, 125]]], scale);
+    const selected = selectPdfOutlineTitleRanges(root, ranges, { top: .393, left: .5015, right: .93, bottom: .674 });
+    expect(selected).toEqual([ranges[1]]);
+    const highlight = paintPdfSearchRanges(root, selected, 0);
+    expect(root.querySelectorAll(".pdf-search-highlight")).toHaveLength(2);
+    expect(highlight.active?.style.left).toBe("91.1%");
+    highlight.cleanup();
+  });
+
+  it("does not substitute body text when the FitR headline is missing", () => {
+    const { root, ranges } = matches([[[574, 579, 7.4, 56]]]);
+    expect(selectPdfOutlineTitleRanges(root, ranges, { top: .393, left: .5015, right: .93, bottom: .674 })).toEqual([]);
+  });
+
+  it("excludes headings outside the article and rejects ambiguous headings inside it", () => {
+    const { root, ranges } = matches([[[400, 592, 18, 144]], [[911, 592, 18, 144]], [[870, 592, 18, 144]]]);
+    expect(selectPdfOutlineTitleRanges(root, ranges.slice(0, 1), { top: .393, left: .5015, right: .93, bottom: .674 })).toEqual([]);
+    expect(selectPdfOutlineTitleRanges(root, ranges, { top: .393, left: .5015, right: .93, bottom: .674 })).toEqual([]);
   });
 });

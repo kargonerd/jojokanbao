@@ -1,6 +1,8 @@
 export interface PdfOutlinePosition {
   top: number;
   left?: number;
+  right?: number;
+  bottom?: number;
 }
 
 export interface PdfSearchTarget {
@@ -65,6 +67,61 @@ export function findPdfSearchRanges(layer: HTMLElement, query: string, quote?: s
     start = text.indexOf(needle, start + needle.length);
   }
   return { result: { status: "found", matches: ranges.length }, ranges };
+}
+
+/** A bookmark identifies one title, even when its words also appear in the body. */
+export function selectPdfOutlineTitleRanges(
+  container: HTMLElement,
+  ranges: Range[],
+  position: PdfOutlinePosition,
+  layer: HTMLElement = container,
+): Range[] {
+  const bounds = container.getBoundingClientRect();
+  if (!(bounds.width > 0 && bounds.height > 0)) return [];
+  if (position.left !== undefined && position.right !== undefined && position.bottom !== undefined) {
+    // FitR bookmarks frame the article, not necessarily the title's start.
+    // In vertical newspapers its headline may be on the far right of the box.
+    const inside = (rect: DOMRect) => (rect.left - bounds.left) / bounds.width >= position.left! - .005
+      && (rect.right - bounds.left) / bounds.width <= position.right! + .005
+      && (rect.top - bounds.top) / bounds.height >= position.top - .005
+      && (rect.bottom - bounds.top) / bounds.height <= position.bottom! + .005;
+    const bodySizes = Array.from(layer.querySelectorAll("span"))
+      .filter((span) => span.textContent?.trim() && !span.querySelector("span"))
+      .map((span) => span.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 && rect.height > 0 && inside(rect))
+      .map((rect) => Math.min(rect.width, rect.height)).sort((a, b) => a - b);
+    const bodySize = bodySizes[Math.floor(bodySizes.length / 2)];
+    if (!bodySize) return [];
+    const titles = ranges.flatMap((range) => {
+      const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+      if (!rects.length || !rects.every(inside)) return [];
+      const size = Math.min(rects[0]!.width, rects[0]!.height);
+      return size >= bodySize * 1.2 ? [{ range, size }] : [];
+    }).sort((a, b) => b.size - a.size);
+    // A body occurrence alone must not stand in for an OCR-missing headline.
+    if (!titles[0] || (titles[1] && titles[0].size < titles[1].size * 1.2)) return [];
+    return [titles[0].range];
+  }
+  const x = position.left === undefined ? undefined : bounds.left + position.left * bounds.width;
+  const y = bounds.top + position.top * bounds.height;
+  const candidates = ranges.flatMap((range) => {
+    // Use the start of the title, not a union box spanning wrapped lines or
+    // vertical columns. Body text can wrap back above its first character.
+    const first = Array.from(range.getClientRects()).find((rect) => rect.width > 0 && rect.height > 0);
+    if (!first) return [];
+    const dy = Math.max(first.top - y, y - first.bottom, 0) / bounds.height;
+    const dx = x === undefined ? 0 : Math.max(first.left - x, x - first.right, 0) / bounds.width;
+    // Allow small bookmark/OCR padding, but never search elsewhere on the page
+    // for a substitute when the actual title is missing from the text layer.
+    if (dx > .03 || dy > .03) return [];
+    return [{ range, distance: Math.hypot(dx, dy) }];
+  }).sort((a, b) => a.distance - b.distance);
+  const closest = candidates[0];
+  if (!closest) return [];
+  // FitH bookmarks have no horizontal coordinate. If two candidates are
+  // equally close, retain the location without guessing which one to mark.
+  if (candidates[1] && candidates[1].distance - closest.distance < .002) return [];
+  return [closest.range];
 }
 
 /** Rectangles come from rendered PDF text only; scan images have no fallback boxes. */

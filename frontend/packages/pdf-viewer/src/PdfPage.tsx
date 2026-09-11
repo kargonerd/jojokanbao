@@ -2,7 +2,7 @@ import { useRef, useEffect, useState } from "react";
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from "pdfjs-dist";
 import { TextLayer } from "pdfjs-dist/legacy/build/pdf.mjs";
 import "./textLayer.css";
-import { findPdfSearchRanges, paintPdfSearchRanges, type PdfSearchTarget, type PdfSearchResult } from "./searchText";
+import { findPdfSearchRanges, paintPdfSearchRanges, selectPdfOutlineTitleRanges, type PdfSearchTarget, type PdfSearchResult } from "./searchText";
 import { bindPdfTextLayerSelection } from "./textLayerSelection";
 
 export const MAX_PDF_CANVAS_PIXELS = 32_000_000;
@@ -467,12 +467,15 @@ export function PdfPage({
     const layer = textLayerRef.current;
     const container = containerRef.current;
     if (!searchTarget || !layer || !container || !textLayerVersion || !enableTextLayer) return;
-    const { result, ranges } = findPdfSearchRanges(layer, searchTarget.query, searchTarget.quote);
+    const found = findPdfSearchRanges(layer, searchTarget.query, searchTarget.quote);
+    const ranges = searchTarget.outline
+      ? selectPdfOutlineTitleRanges(container, found.ranges, searchTarget.outline, layer)
+      : found.ranges;
     const activeIndex = Math.max(0, Math.min(searchTarget.activeIndex ?? 0, ranges.length - 1));
     const { active, cleanup } = paintPdfSearchRanges(container, ranges, activeIndex);
-    callbacksRef.current.onSearchResult?.(result, active);
+    if (!searchTarget.outline) callbacksRef.current.onSearchResult?.(found.result, active);
     return cleanup;
-  }, [textLayerVersion, enableTextLayer, layoutZoom, searchTarget?.query, searchTarget?.quote, searchTarget?.activeIndex, searchTarget?.focusToken]);
+  }, [textLayerVersion, enableTextLayer, layoutZoom, searchTarget?.query, searchTarget?.quote, searchTarget?.activeIndex, searchTarget?.focusToken, searchTarget?.outline?.top, searchTarget?.outline?.left, searchTarget?.outline?.right, searchTarget?.outline?.bottom]);
 
   return (
     <div ref={containerRef} id={id} data-pdf-page-content className={`relative h-full overflow-hidden ${className}`}>

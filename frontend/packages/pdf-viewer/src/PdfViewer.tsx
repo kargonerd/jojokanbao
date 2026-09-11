@@ -150,7 +150,6 @@ export function PdfViewer({
   const lastSearchFocusRef = useRef("");
   const pendingSearchPageRef = useRef<number | null>(null);
   const searchKey = searchTarget ? JSON.stringify([searchTarget.page, searchTarget.query, searchTarget.quote, searchTarget.activeIndex, searchTarget.focusToken, searchTarget.outline]) : "";
-  const textSearchTarget = searchTarget?.outline ? undefined : searchTarget;
 
   useLayoutEffect(() => {
     const page = searchTarget?.page;
@@ -639,10 +638,10 @@ export function PdfViewer({
                 quality={quality}
                 renderZoom={pageNumber === currentPageRef.current ? renderZoom : 1}
                 layoutZoom={effectiveZoom}
-                enableTextLayer={pageNumber === textSearchTarget?.page || (textLayerEnabled && (
+                enableTextLayer={pageNumber === searchTarget?.page || (textLayerEnabled && (
                   !constrainedResidency || pageNumber === activeTextLayerPage
                 ))}
-                searchTarget={pageNumber === textSearchTarget?.page ? textSearchTarget : undefined}
+                searchTarget={pageNumber === searchTarget?.page ? searchTarget : undefined}
                 onSearchResult={handleSearchResult}
                 showLoading={!suppressPageLoading}
                 onPageMetrics={handlePageMetrics}

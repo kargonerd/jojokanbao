@@ -21,7 +21,7 @@ describe("PDF outline locations", () => {
     [[1, { name: "XYZ" }, 100, 700, null], { top: .3, left: .1 }],
     [[1, { name: "FitH" }, 700], { top: .3 }],
     [[1, { name: "FitBH" }, 700], { top: .3 }],
-    [[1, { name: "FitR" }, 100, 200, 400, 700], { top: .3, left: .1 }],
+    [[1, { name: "FitR" }, 100, 200, 400, 700], { top: .3, left: .1, right: .4, bottom: .8 }],
   ])("resolves explicit PDF coordinates %j", async (dest, position) => {
     expect(await resolvePdfOutlineDestination(pdf() as unknown as PDFDocumentProxy, dest as unknown[])).toEqual({ page: 2, position });
   });

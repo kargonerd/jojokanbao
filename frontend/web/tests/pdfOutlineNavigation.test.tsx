@@ -50,7 +50,7 @@ function setup() {
 }
 
 describe("outline-first PDF positioning", () => {
-  it.each([true, false])("finishes at the bookmark without searching or forcing a text layer (text enabled: %s)", async (enableTextLayer) => {
+  it.each([true, false])("positions at the bookmark and limits later highlighting to its title (text enabled: %s)", async (enableTextLayer) => {
     const { scroll, host, pdf } = setup();
     const onSearchResult = vi.fn();
     const view = render(<PdfViewer document={pdf} initialPage={2} enableTextLayer={enableTextLayer} scrollContainerRef={{ current: scroll }}
@@ -58,8 +58,8 @@ describe("outline-first PDF positioning", () => {
     await waitFor(() => expect(onSearchResult).toHaveBeenCalledWith({ status: "outline", matches: 0 }));
     expect(scroll.scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 1624 });
     expect(host.querySelector("[data-pdf-viewer]")?.getAttribute("data-search-location")).toBe("outline");
-    expect(mocks.pages.get(2)!.searchTarget).toBeUndefined();
-    expect(mocks.pages.get(2)!.enableTextLayer).toBe(enableTextLayer);
+    expect(mocks.pages.get(2)!.searchTarget).toEqual({ page: 2, query: "", quote: "完整标题", outline: { top: .25 } });
+    expect(mocks.pages.get(2)!.enableTextLayer).toBe(true);
     vi.mocked(scroll.scrollTo).mockClear();
     act(() => mocks.pages.get(2)!.onSearchResult?.({ status: "found", matches: 2 }, view.getByTestId("hit-2")));
     act(() => mocks.pages.get(2)!.onSearchResult?.({ status: "no-text", matches: 0 }, null));
@@ -78,7 +78,7 @@ describe("outline-first PDF positioning", () => {
     expect(host.querySelector("[data-pdf-viewer]")?.getAttribute("data-search-location")).toBe("text");
   });
 
-  it("removes the page text search when switching to a bookmark on the same page", async () => {
+  it("restricts an existing page text search to the bookmark when switching on the same page", async () => {
     const { scroll, host, pdf } = setup();
     const onSearchResult = vi.fn();
     const target = { page: 2, query: "", quote: "完整标题" };
@@ -88,6 +88,6 @@ describe("outline-first PDF positioning", () => {
     view.rerender(<PdfViewer document={pdf} initialPage={2} scrollContainerRef={{ current: scroll }}
       searchTarget={{ ...target, outline: { top: .25 } }} onSearchResult={onSearchResult} />);
     await waitFor(() => expect(onSearchResult).toHaveBeenCalledWith({ status: "outline", matches: 0 }));
-    expect(mocks.pages.get(2)!.searchTarget).toBeUndefined();
+    expect(mocks.pages.get(2)!.searchTarget).toEqual({ ...target, outline: { top: .25 } });
   });
 });
