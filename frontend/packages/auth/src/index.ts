@@ -8,3 +8,4 @@ export type { AuthActions, AuthStore, JojoAuthController, JojoAuthStore } from "
 export type { PersonalInvitation, PersonalInvitationStatus } from "./types";
 export type { AuthState, Database, Json, Profile, SignUpInput } from "./types";
 export * from "./scrapbook";
+export * from "./corrections";

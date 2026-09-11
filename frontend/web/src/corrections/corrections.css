@@ -1,0 +1,26 @@
+.correction-trigger { color: var(--color-red, #8b1a1a); background: transparent; border: 1px solid currentColor; padding: 7px 12px; font: inherit; cursor: pointer; }
+.correction-backdrop { position: fixed; inset: 0; z-index: 10020; display: flex; align-items: center; justify-content: center; padding: 20px; background: #0007; }
+.correction-dialog { width: 560px; max-width: 100%; max-height: calc(100dvh - 40px); overflow: auto; overscroll-behavior: contain; background: var(--color-paper, #fff); color: var(--color-ink, #202020); border: 2px solid var(--color-red, #8b1a1a); padding: 24px; font-family: inherit; outline: none; }
+.correction-dialog header, .correction-dialog footer, .correction-history article > div { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.correction-dialog header { border-bottom: 1px solid #ccc; padding-bottom: 16px; }
+.correction-dialog header span, .correction-hint, .correction-history time { color: #666; font-size: 12px; }
+.correction-dialog h2 { font-size: 24px; margin: 4px 0 0; }
+.correction-dialog h3 { font-size: 20px; }
+.correction-dialog p { line-height: 1.7; overflow-wrap: anywhere; }
+.correction-source { display: grid; gap: 4px; font-size: 14px; }
+.correction-source span { color: #666; }
+.correction-dialog label { display: grid; gap: 8px; margin: 16px 0; font-size: 14px; }
+.correction-dialog select, .correction-dialog textarea { background: var(--color-paper, #fff); color: inherit; border: 1px solid #aaa; border-radius: 0; padding: 10px; font: inherit; width: 100%; box-sizing: border-box; }
+.correction-dialog textarea { resize: vertical; }
+.correction-dialog button { border: 1px solid #aaa; border-radius: 0; padding: 8px 16px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.correction-dialog button:disabled { opacity: .5; cursor: default; }
+.correction-dialog button[type="submit"], .correction-success button { color: #fff; border-color: var(--color-red, #8b1a1a); background: var(--color-red, #8b1a1a); }
+.correction-dialog button:enabled:hover, .correction-trigger:hover { transform: translateY(-2px); box-shadow: 2px 2px 0 var(--color-red, #8b1a1a); }
+.correction-dialog a, .correction-error, .correction-success h3, .correction-history b { color: var(--color-red, #8b1a1a); }
+.correction-dialog footer { justify-content: flex-end; margin-top: 16px; }
+.correction-success { padding-block: 8px; }
+.correction-history { border-top: 1px solid #ccc; margin-top: 24px; padding-top: 16px; font-size: 13px; }
+.correction-history summary { cursor: pointer; }
+.correction-history article { padding: 16px 0; border-bottom: 1px solid #ddd; }
+.correction-reply { background: #f7f5f1; padding: 10px; }
+@media (max-width: 600px) { .correction-backdrop { padding: 12px; } .correction-dialog { padding: 18px; max-height: calc(100dvh - 24px); } }

@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView, type WebViewMessageEvent, type WebViewNavigation } from "react-native-webview";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import { ScrapbookButton } from "../scrapbook/ScrapbookButton";
+import { ContentCorrectionButton } from "../corrections/ContentCorrectionButton";
 import { ReaderEnvironment } from "../components/ReaderEnvironment";
 import { useReadingProgress } from "../reading/useReadingProgress";
 import { impactHaptic } from "../lib/haptics";
@@ -156,6 +157,7 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
 
       {readerTools && <View style={{ padding: 16, borderBottomWidth: 1, borderColor: theme.rule }}>
         <ScrapbookButton source={materialSource} quote={clippingQuote} onLogin={() => navigation.navigate("Account")} />
+        <ContentCorrectionButton source={{ ...materialSource, quote: clippingQuote }} onLogin={() => navigation.navigate("Account")} />
         <Pressable accessibilityRole="button" onPress={() => navigation.navigate("Scrapbook")}><Text style={{ color: theme.red, paddingVertical: 12 }}>打开剪报本</Text></Pressable>
       </View>}
       <View style={styles.webShell}>

@@ -16,6 +16,7 @@ import { ReaderSelectionToolbar } from "../components/ReaderSelectionToolbar";
 import { BookThoughtComposer } from "../components/BookThoughtComposer";
 import { BookshelfButton } from "../components/BookshelfButton";
 import { ScrapbookButton, ScrapbookCapture } from "../scrapbook/ScrapbookButton";
+import { ContentCorrectionButton, ContentCorrectionDialog } from "../corrections/ContentCorrectionButton";
 import { NativeSpeechPlayer } from "../reading/SpeechPlayer";
 import { mobileSpeechSegments } from "../reading/speech";
 import { useReadingProgress } from "../reading/useReadingProgress";
@@ -137,7 +138,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   }
   useRetryOnFailure(Boolean(error) && !loading, retryReading);
   const [progressRailWidth, setProgressRailWidth] = useState(1);
-  const [selectionMaterial, setSelectionMaterial] = useState<{ kind: "clip"; quote: string }>();
+  const [selectionMaterial, setSelectionMaterial] = useState<{ kind: "clip" | "correction"; quote: string }>();
   const [selection, setSelection] = useState<BookReaderSelectionMessage>();
   const [readerFrame, setReaderFrame] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [noteComposer, setNoteComposer] = useState<NoteComposer>();
@@ -447,7 +448,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   function chooseFirstLineIndent(value: boolean) { resetPage(); setBookFirstLineIndent(value); void selectionHaptic(hapticsEnabled); }
   function chooseReadingMode(value: BookReadingMode) { resetPage(); setBookReadingMode(value); void selectionHaptic(hapticsEnabled); }
   function choosePaperColor(value: BookPaperColor) { resetPage(); setBookPaperColor(value); void selectionHaptic(hapticsEnabled); }
-  function captureMaterial(kind: "clip") {
+  function captureMaterial(kind: "clip" | "correction") {
     if (!user && kind === "clip") { navigation.navigate("Account"); return; }
     setSelectionMaterial({ kind, quote: selection?.text || "" });
     clearSelection();
@@ -775,6 +776,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
           <SheetHeader title="更多" meta="" theme={theme} />
           <Pressable accessibilityRole="button" onPress={() => setActiveTool("text")}><Text style={{ color: theme.red, paddingVertical: 14 }}>文字与显示设置</Text></Pressable>
           <ScrapbookButton source={materialSource} onLogin={() => navigation.navigate("Account")} textStyle={{ color: theme.red }} />
+          <ContentCorrectionButton source={materialSource} onLogin={() => navigation.navigate("Account")} theme={theme} />
           <Pressable accessibilityRole="button" onPress={() => navigation.navigate("Scrapbook")}><Text style={{ color: theme.red, paddingVertical: 14 }}>打开剪报本</Text></Pressable>
         </ScrollView></View> : null}
         {activeTool === "text" ? <View style={[styles.toolSheet, styles.displaySheet, { top: insets.top + 64, bottom: sheetBottom, borderColor: theme.ruleDark, backgroundColor: theme.paper }]}><ScrollView contentContainerStyle={styles.displayContent}>
@@ -795,8 +797,9 @@ export function BookReaderScreen({ route, navigation }: Props) {
         ]).map((tool) => { const selected = activeTool === tool.id; return <Pressable key={tool.id} accessibilityRole="button" accessibilityState={{ selected, expanded: selected }} onPress={() => toggleTool(tool.id)} style={styles.toolButton}><Ionicons name={tool.icon} size={20} color={selected ? theme.red : theme.ink} /><Text style={[styles.toolText, { color: selected ? theme.red : theme.ink, fontFamily: theme.sans }]}>{tool.label}</Text></Pressable>; })}</View>
       </> : null}
 
-      {selection ? <ReaderSelectionToolbar selection={selection} frame={readerFrame} theme={theme} eInk={IS_EINK_RELEASE} onCopy={() => { void Clipboard.setStringAsync(selection.text); clearSelection(); }} onUnderline={underlineSelection} onThought={composeSelectionNote} onExplain={explainSelection} onClip={() => captureMaterial("clip")} /> : null}
+      {selection ? <ReaderSelectionToolbar selection={selection} frame={readerFrame} theme={theme} eInk={IS_EINK_RELEASE} onCopy={() => { void Clipboard.setStringAsync(selection.text); clearSelection(); }} onUnderline={underlineSelection} onThought={composeSelectionNote} onExplain={explainSelection} onClip={() => captureMaterial("clip")} onCorrect={() => captureMaterial("correction")} /> : null}
       {selectionMaterial?.kind === "clip" && <ScrapbookCapture source={selectedMaterialSource} quote={selectionMaterial.quote} onSaved={() => setReaderNotice("已保存到剪报本")} onClose={() => setSelectionMaterial(undefined)} />}
+      {selectionMaterial?.kind === "correction" && <ContentCorrectionDialog source={selectedMaterialSource} theme={theme} onLogin={() => { setSelectionMaterial(undefined); navigation.navigate("Account"); }} onClose={() => setSelectionMaterial(undefined)} />}
       <BookThoughtComposer quote={noteComposer?.quote} value={noteDraft} onChange={setNoteDraft} onCancel={() => { setNoteComposer(undefined); setNoteDraft(""); }} onSave={saveNote} theme={theme} />
       {loaded && activeChapterId ? <NativeSpeechPlayer documentId={`book:${datasetId}:${itemKey}`} title={loaded.manifest.title} chapterId={activeChapterId} chapters={loaded.manifest.content.chapters ?? []} loadChapter={loadSpeechChapter} getReadingPosition={getSpeechPosition} onSpeechLocation={showSpeechLocation} cover={speechCover ? { uri: speechCover } : undefined} hidden={!chromeVisible || Boolean(activeTool || selection || noteComposer || activeAnnotationId || expandedImageUri || selectionMaterial)} bottom={insets.bottom + 64} onRead={(id, location) => location ? showSpeechLocation(location, true) : chooseChapter(id)} onBookshelf={() => void toggleBookshelf()} onShelf={onBookshelf} bookshelfBusy={bookshelfBusy} /> : null}
       {readerNotice ? <Pressable onPress={() => setReaderNotice("")} style={[styles.readerNotice, { top: insets.top + 72, borderColor: theme.red, backgroundColor: theme.paper }]}><Text style={[styles.readerNoticeText, { color: theme.red, fontFamily: theme.sans }]}>{readerNotice}</Text></Pressable> : null}
