@@ -72,15 +72,12 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
               </p>
               <div className="flex flex-wrap gap-4 mt-4">
                 <figure className="m-0 w-full max-w-[240px]">
-                  <figcaption className="mb-2 font-bold text-ink">微信捐助</figcaption>
                   <img src={weixinImg} alt="微信捐助收款码" width={296} height={296} className="block w-full border border-rule-dark" />
                 </figure>
                 <figure className="m-0 w-full max-w-[240px]">
-                  <figcaption className="mb-2 font-bold text-ink">支付宝捐助</figcaption>
                   <img src={zfbImg} alt="支付宝捐助收款码" width={296} height={296} className="block w-full border border-rule-dark" />
                 </figure>
               </div>
-              <p className="mt-4 text-sm leading-6 text-muted">手机上可保存收款码，或截图后在微信、支付宝中从相册识别。</p>
             </div>
           </section>
 

@@ -35,13 +35,9 @@ export function SupportScreen() {
           <Text style={[styles.body, { color: theme.ink, fontFamily: theme.serif }]}>
             如果 JOJO 看报对您有帮助，欢迎自愿捐助，支持网站与 APP 的持续维护。
           </Text>
-          <Text style={[styles.hint, { color: theme.muted, fontFamily: theme.sans }]}>
-            截图保存下方收款码，再在微信或支付宝的扫一扫中从相册识别。
-          </Text>
           <View style={styles.codes}>
             {paymentCodes.map(({ label, source }) => (
               <View key={label} style={styles.code}>
-                <Text style={[styles.codeLabel, { color: theme.ink, fontFamily: theme.serif }]}>{label}</Text>
                 <Image
                   source={source}
                   accessibilityLabel={`${label}收款码`}
@@ -72,7 +68,6 @@ const styles = StyleSheet.create({
   hint: { marginTop: 12, fontSize: 12, lineHeight: 21 },
   codes: { marginTop: 24, flexDirection: "row", flexWrap: "wrap", gap: 24 },
   code: { width: "100%", maxWidth: 240 },
-  codeLabel: { marginBottom: 10, fontSize: 15, fontWeight: "800" },
   codeImage: { width: "100%" },
   records: { alignSelf: "flex-start", minHeight: 44, justifyContent: "center", marginTop: 12, paddingHorizontal: 16, borderWidth: 1 },
   recordsText: { fontSize: 13, fontWeight: "800" },
