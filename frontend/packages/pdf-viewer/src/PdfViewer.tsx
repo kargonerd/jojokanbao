@@ -149,7 +149,7 @@ export function PdfViewer({
   const textLayerEnabled = enableTextLayer && !touchInput;
   const lastSearchFocusRef = useRef("");
   const pendingSearchPageRef = useRef<number | null>(null);
-  const searchKey = searchTarget ? JSON.stringify([searchTarget.page, searchTarget.query, searchTarget.quote, searchTarget.activeIndex, searchTarget.focusToken]) : "";
+  const searchKey = searchTarget ? JSON.stringify([searchTarget.page, searchTarget.query, searchTarget.quote, searchTarget.activeIndex, searchTarget.focusToken, searchTarget.outline]) : "";
 
   useLayoutEffect(() => {
     const page = searchTarget?.page;
@@ -158,10 +158,36 @@ export function PdfViewer({
 
   useEffect(() => { lastSearchFocusRef.current = ""; }, [document]);
 
+  useEffect(() => {
+    const position = searchTarget?.outline;
+    if (!position || !pageAspectRatios.has(searchTarget.page) || lastSearchFocusRef.current === searchKey) return;
+    const page = containerRef.current?.querySelector<HTMLElement>(`[data-page="${searchTarget.page}"]`);
+    if (!page) return;
+    const frame = window.requestAnimationFrame(() => {
+      if (!page.isConnected || lastSearchFocusRef.current === searchKey) return;
+      const root = scrollContainerRef?.current;
+      const rect = page.getBoundingClientRect();
+      const controlsHeight = root?.querySelector("[data-reader-controls]")?.getBoundingClientRect().height ?? 0;
+      const top = rect.top + rect.height * position.top;
+      if (root) {
+        const bounds = root.getBoundingClientRect();
+        root.scrollTo({
+          top: Math.max(0, root.scrollTop + top - bounds.top - controlsHeight - 16),
+          ...(position.left !== undefined ? { left: Math.max(0, root.scrollLeft + rect.left + rect.width * position.left - bounds.left - root.clientWidth / 2) } : {}),
+        });
+      } else {
+        window.scrollTo({ top: Math.max(0, window.scrollY + top - 16) });
+      }
+      lastSearchFocusRef.current = searchKey;
+      onSearchResult?.({ status: "outline", matches: 0 });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [document, searchKey, pageAspectRatios, onSearchResult, scrollContainerRef]);
+
   const handleSearchResult = useCallback((result: PdfSearchResult, active: HTMLElement | null) => {
     pendingSearchPageRef.current = null;
     onSearchResult?.(result);
-    if (!active || lastSearchFocusRef.current === searchKey) return;
+    if (searchTarget?.outline || !active || lastSearchFocusRef.current === searchKey) return;
     lastSearchFocusRef.current = searchKey;
     window.requestAnimationFrame(() => {
       if (!active.isConnected) return;
@@ -174,7 +200,7 @@ export function PdfViewer({
         left: Math.max(0, root.scrollLeft + rect.left - bounds.left - root.clientWidth / 2),
       });
     });
-  }, [onSearchResult, scrollContainerRef, searchKey]);
+  }, [onSearchResult, scrollContainerRef, searchKey, searchTarget?.outline]);
 
   const scheduleTextLayerForPage = useCallback((pageNumber: number) => {
     if (!textLayerEnabled || !constrainedResidency) return;
@@ -557,6 +583,7 @@ export function PdfViewer({
       data-pdf-viewer
       data-zoom={effectiveZoom}
       data-render-zoom={renderZoom}
+      data-search-location={searchTarget ? (searchTarget.outline ? "outline" : "text") : undefined}
       data-touch-input={touchInput}
       className={`relative w-full ${className}`}
     >

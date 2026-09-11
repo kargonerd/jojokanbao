@@ -22,3 +22,4 @@ export {
 } from "./protectedPdf";
 
 export type { PdfSearchTarget, PdfSearchResult } from "./searchText";
+export { findPdfOutlineLocation, resolvePdfOutlineDestination, type PdfOutlineItem, type PdfOutlineLocation } from "./outline";

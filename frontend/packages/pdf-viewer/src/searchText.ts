@@ -1,19 +1,25 @@
+export interface PdfOutlinePosition {
+  top: number;
+  left?: number;
+}
+
 export interface PdfSearchTarget {
   page: number;
   query: string;
   quote?: string;
   activeIndex?: number;
   focusToken?: number;
+  outline?: PdfOutlinePosition;
 }
 
 export interface PdfSearchResult {
-  status: "found" | "no-text" | "not-found" | "unavailable";
+  status: "outline" | "found" | "no-text" | "not-found" | "unavailable";
   matches: number;
 }
 
 interface TextPosition { node: Text; start: number; end: number }
 
-function normalize(value: string): string {
+export function normalizePdfSearchText(value: string): string {
   return value.normalize("NFKC").toLocaleLowerCase().replace(/[\s\u00ad\u200b]/gu, "");
 }
 
@@ -30,7 +36,7 @@ export function findPdfSearchRanges(layer: HTMLElement, query: string, quote?: s
     const node = current as Text;
     let offset = 0;
     for (const character of node.data) {
-      const normalized = normalize(character);
+      const normalized = normalizePdfSearchText(character);
       for (let index = 0; index < normalized.length; index += 1) {
         positions.push({ node, start: offset, end: offset + character.length });
       }
@@ -42,7 +48,7 @@ export function findPdfSearchRanges(layer: HTMLElement, query: string, quote?: s
   if (!text) return { result: { status: "no-text", matches: 0 }, ranges: [] };
   // A supplied title/excerpt is authoritative; a broader query could match
   // an unrelated article on the same page. Empty targets also fail closed.
-  const needle = normalize(quote ?? query);
+  const needle = normalizePdfSearchText(quote ?? query);
   if (!needle || !text.includes(needle)) return { result: { status: "not-found", matches: 0 }, ranges: [] };
 
   const ranges: Range[] = [];
