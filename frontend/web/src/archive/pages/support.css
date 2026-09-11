@@ -1,0 +1,30 @@
+/* Keep link affordances stronger than the AppShell's inherited link reset. */
+.support-page a.support-link,
+.support-page a.support-license-link {
+  color: var(--color-red);
+}
+
+.support-page a.support-link,
+.support-page a.support-license-link strong {
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+
+.support-page a.support-link:hover,
+.support-page a.support-license-link:hover {
+  color: var(--color-red-dark);
+}
+
+.support-page a.support-link:hover,
+.support-page a.support-link:focus-visible,
+.support-page a.support-license-link:hover strong,
+.support-page a.support-license-link:focus-visible strong {
+  text-decoration-thickness: 2px;
+}
+
+.support-page a.support-link:focus-visible,
+.support-page a.support-license-link:focus-visible {
+  outline: 2px solid var(--color-red);
+  outline-offset: 4px;
+}
