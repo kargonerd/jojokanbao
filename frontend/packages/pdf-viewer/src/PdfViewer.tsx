@@ -95,12 +95,14 @@ function selectResidentPages(
   pages: Iterable<number>,
   currentPage: number,
   constrained: boolean,
+  pendingSearchPage: number | null = null,
 ): Set<number> {
-  const candidates = [...new Set([...pages, currentPage])].filter((page) => page > 0);
+  const candidates = [...new Set([...pages, currentPage, pendingSearchPage ?? 0])].filter((page) => page > 0);
   if (!constrained || candidates.length <= MAX_CONSTRAINED_RESIDENT_PAGES) return new Set(candidates);
 
   candidates.sort((left, right) => (
-    Math.abs(left - currentPage) - Math.abs(right - currentPage) || left - right
+    Number(right === pendingSearchPage) - Number(left === pendingSearchPage)
+    || Math.abs(left - currentPage) - Math.abs(right - currentPage) || left - right
   ));
   return new Set(candidates.slice(0, MAX_CONSTRAINED_RESIDENT_PAGES));
 }
@@ -146,11 +148,18 @@ export function PdfViewer({
   const [activeTextLayerPage, setActiveTextLayerPage] = useState<number | null>(normalizedInitialPage);
   const textLayerEnabled = enableTextLayer && !touchInput;
   const lastSearchFocusRef = useRef("");
+  const pendingSearchPageRef = useRef<number | null>(null);
   const searchKey = searchTarget ? JSON.stringify([searchTarget.page, searchTarget.query, searchTarget.quote, searchTarget.activeIndex, searchTarget.focusToken]) : "";
+
+  useLayoutEffect(() => {
+    const page = searchTarget?.page;
+    pendingSearchPageRef.current = page && page >= 1 && page <= document.numPages ? page : null;
+  }, [document, searchKey]);
 
   useEffect(() => { lastSearchFocusRef.current = ""; }, [document]);
 
   const handleSearchResult = useCallback((result: PdfSearchResult, active: HTMLElement | null) => {
+    pendingSearchPageRef.current = null;
     onSearchResult?.(result);
     if (!active || lastSearchFocusRef.current === searchKey) return;
     lastSearchFocusRef.current = searchKey;
@@ -270,6 +279,7 @@ export function PdfViewer({
           pagesInRange,
           currentPageRef.current,
           constrainedResidency,
+          pendingSearchPageRef.current,
         ));
       },
       {
@@ -325,7 +335,7 @@ export function PdfViewer({
           setLoadedPages((previous) => {
             const next = new Set(previous).add(pageNumber);
             if (!pagesInLoadRangeRef.current.has(previousPage)) next.delete(previousPage);
-            return selectResidentPages(next, pageNumber, constrainedResidency);
+            return selectResidentPages(next, pageNumber, constrainedResidency, pendingSearchPageRef.current);
           });
           scheduleTextLayerForPage(pageNumber);
           onPageChange(pageNumber);

@@ -665,43 +665,47 @@ describe("ReaderPage toolbar interactions", () => {
 
 
 describe("search result location", () => {
-  it("retains the search page and return filters while the visible page changes", () => {
+  it("shows only a temporary locating indicator and preserves highlighting after it disappears", () => {
     renderReader("/archive/rmrb/19660701?query=铁路&quote=铁路通车&searchPage=3&returnTo=%2Fsearch%3Fkeyword%3D铁路%26page%3D2#page-3");
-    expect(latestViewerProps().searchTarget).toMatchObject({ page: 3, query: "", quote: "铁路通车", activeIndex: 0 });
-    expect(screen.getByRole("link", { name: "返回搜索结果" }).getAttribute("href")).toBe("/search?keyword=铁路&page=2");
+    const target = { page: 3, query: "", quote: "铁路通车" };
+    expect(latestViewerProps().searchTarget).toEqual(target);
+    expect(screen.getByRole("status", { name: "正在定位" }).textContent).toBe("正在定位…");
+    expect(screen.queryByRole("link", { name: "返回搜索结果" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "模拟看到第5页" }));
-    expect(latestViewerProps().searchTarget).toMatchObject({ page: 3 });
+    expect(latestViewerProps().searchTarget).toEqual(target);
     act(() => (latestViewerProps().onSearchResult as (value: unknown) => void)({ status: "found", matches: 2 }));
-    fireEvent.click(screen.getByRole("button", { name: "下一处" }));
-    expect(latestViewerProps().searchTarget).toMatchObject({ activeIndex: 1, focusToken: 1 });
-    fireEvent.click(screen.getByRole("button", { name: "上一处" }));
-    expect(latestViewerProps().searchTarget).toMatchObject({ activeIndex: 0, focusToken: 2 });
-  });
-  it("explains missing text without claiming a scan can be located and lets readers dismiss highlights", () => {
-    renderReader("/archive/rmrb/19660701?query=铁路&title=铁路通车&searchPage=3#page-3");
-    act(() => (latestViewerProps().onSearchResult as (value: unknown) => void)({ status: "no-text", matches: 0 }));
-    expect(screen.getByText(/此页没有可定位的文字层/)).toBeTruthy();
+    expect(screen.queryByRole("status", { name: "正在定位" })).toBeNull();
+    expect(screen.queryByText(/已定位/)).toBeNull();
     expect(screen.queryByRole("button", { name: "下一处" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "关闭原文定位" }));
-    expect(latestViewerProps().searchTarget).toBeUndefined();
+    expect(screen.queryByRole("button", { name: "上一处" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "关闭原文定位" })).toBeNull();
+    expect(latestViewerProps().searchTarget).toEqual(target);
+  });
+  it.each(["no-text", "not-found", "unavailable"])("ends the loading indicator on %s without leaving a persistent banner", (status) => {
+    renderReader("/archive/rmrb/19660701?query=铁路&title=铁路通车&searchPage=3#page-3");
+    expect(screen.getByRole("status", { name: "正在定位" })).toBeTruthy();
+    act(() => (latestViewerProps().onSearchResult as (value: unknown) => void)({ status, matches: 0 }));
+    expect(screen.queryByRole("status", { name: "正在定位" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "下一处" })).toBeNull();
     expect(screen.queryByRole("complementary", { name: "原文定位" })).toBeNull();
   });
-  it("does not expose external return destinations", () => {
-    renderReader("/archive/rmrb/19660701?query=铁路&returnTo=%2F%2Fother.test");
-    expect(screen.queryByRole("link", { name: "返回搜索结果" })).toBeNull();
+  it("ends locating when the target page fails to render", () => {
+    renderReader("/archive/rmrb/19660701?query=铁路&title=铁路通车&searchPage=3#page-3");
+    act(() => (latestViewerProps().onPageError as (page: number, error: Error) => void)(3, new Error("render failed")));
+    expect(screen.queryByRole("status", { name: "正在定位" })).toBeNull();
   });
-  it("keeps the complete title and reports an unmatched title without keyword navigation", () => {
+  it("keeps the complete title without keyword navigation", () => {
     const title = `${"铁路".repeat(100)}建设的新进展`;
     renderReader(`/archive/rmrb/19660701?query=铁路&title=${encodeURIComponent(title)}&searchPage=3#page-3`);
     expect(latestViewerProps().searchTarget).toMatchObject({ page: 3, query: "", quote: title });
     act(() => (latestViewerProps().onSearchResult as (value: unknown) => void)({ status: "not-found", matches: 0 }));
-    expect(screen.getByText(/未找到完整标题/)).toBeTruthy();
+    expect(screen.queryByRole("status", { name: "正在定位" })).toBeNull();
     expect(screen.queryByRole("button", { name: "下一处" })).toBeNull();
     expect(screen.queryByRole("button", { name: "回到命中位置" })).toBeNull();
   });
   it("does not use a search keyword as a title when the title is missing", () => {
     renderReader("/archive/rmrb/19660701?query=铁路&title=&searchPage=3#page-3");
-    expect(latestViewerProps().searchTarget).toMatchObject({ query: "", quote: "" });
-    expect(screen.getByText(/链接缺少完整标题/)).toBeTruthy();
+    expect(latestViewerProps().searchTarget).toBeUndefined();
+    expect(screen.queryByRole("status", { name: "正在定位" })).toBeNull();
   });
 });

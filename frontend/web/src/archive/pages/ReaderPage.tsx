@@ -1,4 +1,4 @@
-import { Link, useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { fetchPdfDownloadBytes, PdfViewer, usePdfDocument, type PdfSearchResult } from "@jojo/pdf-viewer";
 import { formatArchiveIssueLabel } from "@jojo/content";
@@ -228,14 +228,9 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const searchTitle = searchParams.has("title") ? searchParams.get("title")!.trim()
     : searchQuery ? searchQuote : undefined;
   const searchText = searchTitle ?? searchQuote;
-  const searchReturnTo = searchParams.get("returnTo") || "";
-  const safeSearchReturnTo = searchReturnTo.startsWith("/") && !searchReturnTo.startsWith("//")
-    && !/[\\\r\n]/u.test(searchReturnTo) ? searchReturnTo : "";
-  const [searchDismissed, setSearchDismissed] = useState(false);
   const [searchResult, setSearchResult] = useState<PdfSearchResult | null>(null);
-  const [searchIndex, setSearchIndex] = useState(0);
-  const [searchFocusToken, setSearchFocusToken] = useState(0);
-  const searchActive = Boolean((searchQuery || searchText) && !searchDismissed);
+  const searchActive = Boolean(searchText);
+  const requestedSearchPage = Number(searchParams.get("searchPage"));
   const config = PUBLICATIONS[name];
 
   // Route params are the source of truth. Deriving these synchronously avoids
@@ -290,10 +285,8 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const downloadFilename = `${name}-${routeId}.pdf`;
 
   useEffect(() => {
-    setSearchDismissed(false);
     setSearchResult(null);
-    setSearchIndex(0);
-  }, [pdfUrl, searchQuery, searchText]);
+  }, [pdfUrl, searchQuery, searchText, requestedSearchPage]);
 
   useEffect(() => {
     if (!routeId) return;
@@ -381,7 +374,6 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     [getHashPageNum, routeId, routeLocation.key],
   );
   const initialPage = hashPage >= 1 && (numPages === 0 || hashPage <= numPages) ? hashPage : 1;
-  const requestedSearchPage = Number(searchParams.get("searchPage"));
   const searchPage = Number.isSafeInteger(requestedSearchPage) && requestedSearchPage > 0
     && (numPages === 0 || requestedSearchPage <= numPages) ? requestedSearchPage : initialPage;
   const initialPageKey = pdfUrl ? `${pdfUrl}#${initialPage}` : "";
@@ -908,34 +900,11 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
         </Toolbar>
       )}
 
-      {searchActive && !routeError && !error ? (
-        <aside className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-rule bg-paper px-4 py-3 text-xs" aria-label="原文定位">
-          <p className="m-0 min-w-0 flex-1 leading-6 text-ink" role="status">
-            {!searchText ? `已到第 ${searchPage} 页；链接缺少完整标题，无法精确定位。` :
-              !searchResult ? `正在第 ${searchPage} 页定位“${searchText}”` :
-              searchResult.status === "found" ? `已定位“${searchText}” · 第 ${searchPage} 页 · ${searchIndex + 1} / ${searchResult.matches} 处` :
-              searchResult.status === "no-text" ? `已到第 ${searchPage} 页；此页没有可定位的文字层，请对照搜索摘录查看版面。` :
-              searchResult.status === "not-found" ? `已到第 ${searchPage} 页；未找到${searchTitle !== undefined ? "完整标题" : "完整摘录"}，请对照原文查看。` :
-              `已到第 ${searchPage} 页；暂时无法定位文字。`}
-          </p>
-          {searchResult && searchResult.status !== "found" && <span className="max-w-full break-words text-muted">查找：{searchText || searchQuery}</span>}
-          {searchResult?.status === "found" ? (
-            <div className="flex items-center gap-3">
-              {searchResult.matches > 1 ? <button type="button" className="text-red" onClick={() => {
-                setSearchIndex((index) => (index + searchResult.matches - 1) % searchResult.matches);
-                setSearchFocusToken((token) => token + 1);
-                goToPage(searchPage);
-              }}>上一处</button> : null}
-              <button type="button" className="text-red" onClick={() => {
-                setSearchIndex((index) => (index + 1) % searchResult.matches);
-                setSearchFocusToken((token) => token + 1);
-                goToPage(searchPage);
-              }}>{searchResult.matches > 1 ? "下一处" : "回到命中位置"}</button>
-            </div>
-          ) : null}
-          {safeSearchReturnTo ? <Link to={safeSearchReturnTo} className="font-bold text-red no-underline">{searchQuery ? "返回搜索结果" : "返回"}</Link> : null}
-          <button type="button" className="text-muted" onClick={() => setSearchDismissed(true)} aria-label="关闭原文定位">关闭</button>
-        </aside>
+      {searchActive && !searchResult && !routeError && !error ? (
+        <div className="pointer-events-none absolute right-4 top-full mt-3 flex items-center gap-2 border border-rule bg-paper px-3 py-2 text-xs text-muted" role="status" aria-label="正在定位">
+          <span className="h-1.5 w-1.5 bg-red animate-pulse motion-reduce:animate-none" aria-hidden="true" />
+          正在定位…
+        </div>
       ) : null}
 
       </div>
@@ -962,7 +931,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             onPageError={handleInitialPageError}
             enableTextLayer={config.enableTextLayer ?? true}
             suppressPageLoading={showInitialLoading}
-            searchTarget={searchActive ? { page: searchPage, query: "", quote: searchText, activeIndex: searchIndex, focusToken: searchFocusToken } : undefined}
+            searchTarget={searchActive ? { page: searchPage, query: "", quote: searchText } : undefined}
             onSearchResult={setSearchResult}
           />
         )}

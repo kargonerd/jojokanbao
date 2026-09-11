@@ -77,14 +77,15 @@
   top: 0;
 }
 
-.pdf-search-highlight {
+.pdf-search-highlights {
   position: absolute;
+  inset: 0;
   pointer-events: none;
   z-index: 3;
-  background: rgba(255, 200, 48, .42);
-  mix-blend-mode: multiply;
+  /* Match text selection: composite once so overlapping OCR boxes stay light. */
+  opacity: 0.25;
 }
-.pdf-search-highlight-active {
-  outline: 2px solid #8b1a1a;
-  background: rgba(255, 200, 48, .58);
+.pdf-search-highlight {
+  position: absolute;
+  background: var(--color-red, #8b1a1a);
 }

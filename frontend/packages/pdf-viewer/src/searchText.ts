@@ -68,6 +68,9 @@ export function paintPdfSearchRanges(container: HTMLElement, ranges: Range[], ac
 } {
   const bounds = container.getBoundingClientRect();
   const markers: HTMLElement[] = [];
+  const highlightLayer = container.ownerDocument.createElement("div");
+  highlightLayer.className = "pdf-search-highlights";
+  highlightLayer.setAttribute("aria-hidden", "true");
   let active: HTMLElement | null = null;
   if (bounds.width > 0 && bounds.height > 0) {
     ranges.forEach((range, index) => {
@@ -82,11 +85,12 @@ export function paintPdfSearchRanges(container: HTMLElement, ranges: Range[], ac
           width: `${100 * rect.width / bounds.width}%`,
           height: `${100 * rect.height / bounds.height}%`,
         });
-        container.append(marker);
+        highlightLayer.append(marker);
         markers.push(marker);
         if (index === activeIndex && !active) active = marker;
       }
     });
   }
-  return { active, cleanup: () => markers.forEach((marker) => marker.remove()) };
+  if (markers.length) container.append(highlightLayer);
+  return { active, cleanup: () => highlightLayer.remove() };
 }
