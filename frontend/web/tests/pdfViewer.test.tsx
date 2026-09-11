@@ -678,3 +678,21 @@ describe("PdfViewer demand loading", () => {
     scrollContainer.remove();
   });
 });
+
+
+describe("PDF search on touch devices", () => {
+  it("enables text only for the requested search page even when normal text layers are disabled", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(pointer: coarse)" }));
+    const { document } = createDocument(3);
+    const host = window.document.createElement("div");
+    window.document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<PdfViewer document={document} initialPage={2} enableTextLayer={false} searchTarget={{ page: 2, query: "铁路" }} />));
+    expect(host.querySelector('[data-page="2"] [data-pdf-text-layer]')).not.toBeNull();
+    expect(host.querySelector('[data-page="1"] [data-pdf-text-layer]')).toBeNull();
+    await act(async () => root.render(<PdfViewer document={document} initialPage={3} enableTextLayer={false} searchTarget={{ page: 2, query: "铁路" }} />));
+    expect(host.querySelector('[data-page="2"] [data-pdf-text-layer]')).not.toBeNull();
+    await act(async () => root.unmount());
+    host.remove();
+  });
+});

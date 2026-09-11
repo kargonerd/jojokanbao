@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReaderPage } from "../src/archive/pages/ReaderPage";
@@ -521,7 +521,7 @@ describe("ReaderPage toolbar interactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
     const pageInput = screen.getByRole("spinbutton") as HTMLInputElement;
     const reader = document.querySelector<HTMLElement>("[data-reader-scroll-container]")!;
-    const toolbar = reader.querySelector<HTMLElement>("[data-reader-toolbar]")!;
+    const toolbar = reader.querySelector<HTMLElement>("[data-reader-controls]")!;
     const page = document.querySelector<HTMLElement>("#page-4")!;
     Object.defineProperty(reader, "scrollTop", { configurable: true, writable: true, value: 100 });
     vi.spyOn(reader, "getBoundingClientRect").mockReturnValue({ top: 56 } as DOMRect);
@@ -545,7 +545,7 @@ describe("ReaderPage toolbar interactions", () => {
   it("realigns a deep-linked page after its final PDF dimensions are known", async () => {
     renderReader("/rmrb/19761009#page-5");
     const reader = document.querySelector<HTMLElement>("[data-reader-scroll-container]")!;
-    const toolbar = reader.querySelector<HTMLElement>("[data-reader-toolbar]")!;
+    const toolbar = reader.querySelector<HTMLElement>("[data-reader-controls]")!;
     const page = document.querySelector<HTMLElement>("#page-5")!;
     Object.defineProperty(reader, "scrollTop", { configurable: true, writable: true, value: 7200 });
     vi.spyOn(reader, "getBoundingClientRect").mockReturnValue({ top: 56 } as DOMRect);
@@ -660,5 +660,34 @@ describe("ReaderPage toolbar interactions", () => {
     container.scrollTop = 200;
     fireEvent.scroll(container);
     expect(screen.queryByRole("button", { name: "回到顶部" })).toBeNull();
+  });
+});
+
+
+describe("search result location", () => {
+  it("retains the search page and return filters while the visible page changes", () => {
+    renderReader("/archive/rmrb/19660701?query=铁路&quote=铁路通车&searchPage=3&returnTo=%2Fsearch%3Fkeyword%3D铁路%26page%3D2#page-3");
+    expect(latestViewerProps().searchTarget).toMatchObject({ page: 3, query: "铁路", quote: "铁路通车", activeIndex: 0 });
+    expect(screen.getByRole("link", { name: "返回搜索结果" }).getAttribute("href")).toBe("/search?keyword=铁路&page=2");
+    fireEvent.click(screen.getByRole("button", { name: "模拟看到第5页" }));
+    expect(latestViewerProps().searchTarget).toMatchObject({ page: 3 });
+    act(() => (latestViewerProps().onSearchResult as (value: unknown) => void)({ status: "found", matches: 2 }));
+    fireEvent.click(screen.getByRole("button", { name: "下一处" }));
+    expect(latestViewerProps().searchTarget).toMatchObject({ activeIndex: 1, focusToken: 1 });
+    fireEvent.click(screen.getByRole("button", { name: "上一处" }));
+    expect(latestViewerProps().searchTarget).toMatchObject({ activeIndex: 0, focusToken: 2 });
+  });
+  it("explains missing text without claiming a scan can be located and lets readers dismiss highlights", () => {
+    renderReader("/archive/rmrb/19660701?query=铁路&searchPage=3#page-3");
+    act(() => (latestViewerProps().onSearchResult as (value: unknown) => void)({ status: "no-text", matches: 0 }));
+    expect(screen.getByText(/此页没有可定位的文字层/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "下一处" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "关闭原文定位" }));
+    expect(latestViewerProps().searchTarget).toBeUndefined();
+    expect(screen.queryByRole("complementary", { name: "原文定位" })).toBeNull();
+  });
+  it("does not expose external return destinations", () => {
+    renderReader("/archive/rmrb/19660701?query=铁路&returnTo=%2F%2Fother.test");
+    expect(screen.queryByRole("link", { name: "返回搜索结果" })).toBeNull();
   });
 });

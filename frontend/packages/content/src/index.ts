@@ -1,6 +1,7 @@
 export * from "./archive";
 export * from "./archive-delivery";
 export * from "./book-search";
+export * from "./search-location";
 export * from "./jox";
 export * from "./resource-cache";
 export * from "./browser-content-cache";

@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { PdfPage } from "./PdfPage";
+import type { PdfSearchTarget, PdfSearchResult } from "./searchText";
 
 interface PdfViewerProps {
   document: PDFDocumentProxy;
@@ -27,6 +28,8 @@ interface PdfViewerProps {
   onPageError?: (page: number, error: Error) => void;
   enableTextLayer?: boolean;
   suppressPageLoading?: boolean;
+  searchTarget?: PdfSearchTarget;
+  onSearchResult?: (result: PdfSearchResult) => void;
 }
 
 interface VisiblePage {
@@ -118,6 +121,8 @@ export function PdfViewer({
   onPageError,
   enableTextLayer = true,
   suppressPageLoading = false,
+  searchTarget,
+  onSearchResult,
 }: PdfViewerProps) {
   const normalizedInitialPage = clampPage(initialPage, document.numPages);
   const [loadedPages, setLoadedPages] = useState<Set<number>>(() => new Set([normalizedInitialPage]));
@@ -140,6 +145,27 @@ export function PdfViewer({
   const [constrainedResidency] = useState(() => shouldConstrainPageResidency(touchInput));
   const [activeTextLayerPage, setActiveTextLayerPage] = useState<number | null>(normalizedInitialPage);
   const textLayerEnabled = enableTextLayer && !touchInput;
+  const lastSearchFocusRef = useRef("");
+  const searchKey = searchTarget ? JSON.stringify([searchTarget.page, searchTarget.query, searchTarget.quote, searchTarget.activeIndex, searchTarget.focusToken]) : "";
+
+  useEffect(() => { lastSearchFocusRef.current = ""; }, [document]);
+
+  const handleSearchResult = useCallback((result: PdfSearchResult, active: HTMLElement | null) => {
+    onSearchResult?.(result);
+    if (!active || lastSearchFocusRef.current === searchKey) return;
+    lastSearchFocusRef.current = searchKey;
+    window.requestAnimationFrame(() => {
+      if (!active.isConnected) return;
+      const root = scrollContainerRef?.current;
+      if (!root) { active.scrollIntoView({ block: "center", inline: "center" }); return; }
+      const rect = active.getBoundingClientRect();
+      const bounds = root.getBoundingClientRect();
+      root.scrollTo({
+        top: Math.max(0, root.scrollTop + rect.top - bounds.top - root.clientHeight / 2),
+        left: Math.max(0, root.scrollLeft + rect.left - bounds.left - root.clientWidth / 2),
+      });
+    });
+  }, [onSearchResult, scrollContainerRef, searchKey]);
 
   const scheduleTextLayerForPage = useCallback((pageNumber: number) => {
     if (!textLayerEnabled || !constrainedResidency) return;
@@ -219,6 +245,13 @@ export function PdfViewer({
     }
     setActiveTextLayerPage(pageNumber);
   }, [document, document.numPages, initialPage]);
+
+  useEffect(() => {
+    if (searchTarget && searchTarget.page >= 1 && searchTarget.page <= document.numPages) {
+      addPage(searchTarget.page);
+    }
+  }, [addPage, document, document.numPages, initialPage, searchTarget?.page, searchTarget?.query, searchTarget?.quote, searchTarget?.activeIndex, searchTarget?.focusToken]);
+
 
   useEffect(() => {
     const container = containerRef.current;
@@ -566,9 +599,11 @@ export function PdfViewer({
                 quality={quality}
                 renderZoom={pageNumber === currentPageRef.current ? renderZoom : 1}
                 layoutZoom={effectiveZoom}
-                enableTextLayer={textLayerEnabled && (
+                enableTextLayer={pageNumber === searchTarget?.page || (textLayerEnabled && (
                   !constrainedResidency || pageNumber === activeTextLayerPage
-                )}
+                ))}
+                searchTarget={pageNumber === searchTarget?.page ? searchTarget : undefined}
+                onSearchResult={handleSearchResult}
                 showLoading={!suppressPageLoading}
                 onPageMetrics={handlePageMetrics}
                 onRendered={onPageRendered}

@@ -20,3 +20,5 @@ export {
   type ProtectedPdfMode,
   type ProtectedPdfSource,
 } from "./protectedPdf";
+
+export type { PdfSearchTarget, PdfSearchResult } from "./searchText";

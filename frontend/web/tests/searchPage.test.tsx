@@ -373,7 +373,13 @@ describe("SearchPage results", () => {
       endDate: "1966-07-31",
     }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(heading.querySelector("strong")?.textContent).toBe("历史");
-    expect(heading.closest("a")?.getAttribute("href")).toBe("/archive/rmrb/19660701#page-5");
+    const resultUrl = new URL(heading.closest("a")!.getAttribute("href")!, "https://reader.test");
+    expect(resultUrl.pathname).toBe("/archive/rmrb/19660701");
+    expect(resultUrl.hash).toBe("#page-5");
+    expect(resultUrl.searchParams.get("query")).toBe("历史");
+    expect(resultUrl.searchParams.get("quote")).toBe("革命历史文献");
+    expect(resultUrl.searchParams.get("searchPage")).toBe("5");
+    expect(resultUrl.searchParams.get("returnTo")).toBe("/search?keyword=历史&page=2&sort=timeDesc&startDate=19660701&endDate=19660731");
     expect(screen.getByText("重点内容").className).toContain("search-highlight");
     expect(screen.getByText("11")).toBeTruthy();
   });
@@ -489,9 +495,11 @@ describe("SearchPage results", () => {
       types: ["book"],
       sources: scope ? ["毛泽东选集"] : ["刘少奇论党的建设", "毛泽东选集"],
     });
-    expect(heading.closest("a")?.getAttribute("href")).toBe(
-      "/book/mao-selected/volume-5?chapter=chapter%3A453",
-    );
+    const resultUrl = new URL(heading.closest("a")!.getAttribute("href")!, "https://reader.test");
+    expect(resultUrl.pathname).toBe("/book/mao-selected/volume-5");
+    expect(resultUrl.searchParams.get("chapter")).toBe("chapter:453");
+    expect(resultUrl.searchParams.get("quote")).toBe("刘少奇同志");
+    expect(resultUrl.searchParams.get("returnTo")).toBe(`/search?keyword=刘少奇&type=book${scope}`);
     expect(screen.queryByText("没有找到相关结果")).toBeNull();
   });
 
@@ -543,9 +551,11 @@ describe("SearchPage results", () => {
     expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).not.toHaveProperty("sort");
     expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).not.toHaveProperty("startDate");
     expect(screen.queryByRole("combobox", { name: "排序" })).toBeNull();
-    expect(heading.closest("a")?.getAttribute("href")).toBe(
-      "/book/mao-selected/volume-1?chapter=chapter-8",
-    );
+    const resultUrl = new URL(heading.closest("a")!.getAttribute("href")!, "https://reader.test");
+    expect(resultUrl.pathname).toBe("/book/mao-selected/volume-1");
+    expect(resultUrl.searchParams.get("chapter")).toBe("chapter-8");
+    expect(resultUrl.searchParams.get("quote")).toBe("书籍正文");
+    expect(resultUrl.searchParams.get("query")).toBe("修养");
     expect(screen.getByText("第一卷")).toBeTruthy();
     expect(screen.getByText("毛泽东选集", { selector: ".tag" })).toBeTruthy();
   });
@@ -566,7 +576,11 @@ describe("SearchPage results", () => {
 
     expect(heading.querySelector("strong")?.textContent).toBe("历史");
     expect(heading.querySelector("strong")?.className).toContain("search-highlight");
-    expect(resultLink.getAttribute("href")).toBe("/archive/rmrb/19660701#page-5");
+    const resultUrl = new URL(resultLink.getAttribute("href")!, "https://reader.test");
+    expect(resultUrl.pathname).toBe("/archive/rmrb/19660701");
+    expect(resultUrl.hash).toBe("#page-5");
+    expect(resultUrl.searchParams.get("query")).toBe("历史");
+    expect(resultUrl.searchParams.get("returnTo")).toBe("/search?keyword=历史");
     expect(resultLink.getAttribute("target")).toBe("_blank");
     expect(screen.getByText("人民日报")).toBeTruthy();
     expect(screen.getByText("1966-07-01")).toBeTruthy();

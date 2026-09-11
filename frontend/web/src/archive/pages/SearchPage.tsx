@@ -1,5 +1,5 @@
 import { Fragment, useState, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import {
   ARCHIVE_PUBLICATIONS,
@@ -7,6 +7,8 @@ import {
   ARCHIVE_PUBLICATION_NAMES,
   ARCHIVE_SEARCH_API,
   CONTENT_SEARCH_API,
+  searchResultQuote,
+  withSearchLocation,
   type ArchivePublicationName,
 } from "@jojo/content";
 import { Button, Tag, Pagination, LoadingSpinner, DateRangePicker, Select, type DateRangeValue } from "@jojo/ui";
@@ -260,6 +262,7 @@ export function SearchPage({
   openResultsInNewTab?: boolean;
 }) {
   const [params, setParams] = useSearchParams();
+  const location = useLocation();
   const [term, setTerm] = useState(params.get("keyword") || "");
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [total, setTotal] = useState(0);
@@ -741,7 +744,12 @@ export function SearchPage({
                         {String(i + 1 + ((platformRedesign ? resultsPage : page) - 1) * pageSize).padStart(2, "0")}
                       </span>
                       <Link
-                        to={unifiedResultPath(r, bookDatasets)}
+                        to={withSearchLocation(unifiedResultPath(r, bookDatasets), {
+                          query: params.get("keyword") || "",
+                          quote: searchResultQuote(r.type === "book" ? (r.preview || r.content) : r.title, params.get("keyword") || ""),
+                          page: r.type === "book" ? undefined : r.page,
+                          returnTo: `${location.pathname}${location.search}`,
+                        })}
                         target={openResultsInNewTab ? "_blank" : undefined}
                         rel={openResultsInNewTab ? "noreferrer" : undefined}
                       >

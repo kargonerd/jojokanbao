@@ -5,6 +5,7 @@ import {
   ARCHIVE_PUBLICATION_NAMES,
   ARCHIVE_WEB_ORIGIN,
   archiveWebIssueUrl,
+  withSearchLocation,
   formatArchiveIssueLabel,
   type ArchivePublicationName,
 } from "@jojo/content";
@@ -45,12 +46,12 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
   const [issueId, setIssueId] = useState(route.params.issueId);
   const [currentPage, setCurrentPage] = useState(Math.max(1, route.params.page || 1));
   const [totalPages, setTotalPages] = useState(0);
-  const [currentUrl, setCurrentUrl] = useState(() => archiveWebIssueUrl(
+  const [currentUrl, setCurrentUrl] = useState(() => withSearchLocation(archiveWebIssueUrl(
     route.params.publication,
     route.params.issueId,
     route.params.page,
     configuredReaderOrigin,
-  ));
+  ), { query: route.params.searchQuery || "", quote: route.params.searchQuote, page: route.params.searchQuery ? route.params.page : undefined }));
   const [loading, setLoading] = useState(true);
   const publicationInfo = ARCHIVE_PUBLICATION_BY_ID[publication];
   const allowedHosts = useMemo(() => new Set([safeHost(configuredReaderOrigin), safeHost(ARCHIVE_CDN_ORIGIN)]), []);

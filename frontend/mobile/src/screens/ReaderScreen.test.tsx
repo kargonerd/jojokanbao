@@ -46,9 +46,9 @@ beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.useFakeTimers(); vi.clearAllMocks();
 });
-async function renderReader() {
+async function renderReader(params: Record<string, unknown> = {}) {
   const props = {
-    route: { params: { publication: "rmrb", issueId: "20260906" } },
+    route: { params: { publication: "rmrb", issueId: "20260906", ...params } },
     navigation: { goBack: vi.fn() },
   } as unknown as ComponentProps<typeof ReaderScreen>;
   await act(async () => { view = create(<ReaderScreen {...props} />); });
@@ -84,4 +84,15 @@ describe.each([false, true])("PDF progress (eInk=%s)", (eInk) => {
       publication: "ckxx", issueId: "19980101", title: "参考消息", currentPage: 4, totalPages: 6,
     }));
   });
+});
+
+
+it("passes a native search hit into the embedded reader without losing the PDF page", async () => {
+  await renderReader({ page: 3, searchQuery: "铁路", searchQuote: "铁路通车" });
+  const url = new URL(webview().props.source.uri);
+  expect(url.pathname).toBe("/archive/rmrb/20260906");
+  expect(url.hash).toBe("#page-3");
+  expect(url.searchParams.get("query")).toBe("铁路");
+  expect(url.searchParams.get("quote")).toBe("铁路通车");
+  expect(url.searchParams.get("searchPage")).toBe("3");
 });

@@ -76,3 +76,15 @@
 .textLayer.selecting .endOfContent {
   top: 0;
 }
+
+.pdf-search-highlight {
+  position: absolute;
+  pointer-events: none;
+  z-index: 3;
+  background: rgba(255, 200, 48, .42);
+  mix-blend-mode: multiply;
+}
+.pdf-search-highlight-active {
+  outline: 2px solid #8b1a1a;
+  background: rgba(255, 200, 48, .58);
+}

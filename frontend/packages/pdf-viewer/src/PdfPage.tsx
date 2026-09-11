@@ -2,6 +2,7 @@ import { useRef, useEffect, useState } from "react";
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from "pdfjs-dist";
 import { TextLayer } from "pdfjs-dist/legacy/build/pdf.mjs";
 import "./textLayer.css";
+import { findPdfSearchRanges, paintPdfSearchRanges, type PdfSearchTarget, type PdfSearchResult } from "./searchText";
 import { bindPdfTextLayerSelection } from "./textLayerSelection";
 
 export const MAX_PDF_CANVAS_PIXELS = 32_000_000;
@@ -34,6 +35,8 @@ interface PdfPageProps {
   layoutZoom?: number;
   enableTextLayer?: boolean;
   showLoading?: boolean;
+  searchTarget?: PdfSearchTarget;
+  onSearchResult?: (result: PdfSearchResult, active: HTMLElement | null) => void;
   className?: string;
   onRendered?: (pageNumber: number) => void;
   onPageMetrics?: (pageNumber: number, metrics: PdfPageMetrics) => void;
@@ -195,6 +198,8 @@ export function PdfPage({
   layoutZoom = 1,
   enableTextLayer = true,
   showLoading = true,
+  searchTarget,
+  onSearchResult,
   className = "",
   onRendered,
   onPageMetrics,
@@ -205,6 +210,7 @@ export function PdfPage({
   const textLayerRef = useRef<HTMLDivElement>(null);
   const [rendering, setRendering] = useState(true);
   const [canvasReady, setCanvasReady] = useState(false);
+  const [textLayerVersion, setTextLayerVersion] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
   const [displayMetrics, setDisplayMetrics] = useState<PdfPageMetrics | null>(null);
   const renderTask = useRef<RenderTask | null>(null);
@@ -212,12 +218,12 @@ export function PdfPage({
   const textLayerSelectionCleanup = useRef<(() => void) | null>(null);
   const hasRenderedRef = useRef(false);
   const layoutZoomRef = useRef(Math.max(layoutZoom, 1));
-  const callbacksRef = useRef({ onRendered, onPageMetrics, onError });
+  const callbacksRef = useRef({ onRendered, onPageMetrics, onError, onSearchResult });
   layoutZoomRef.current = Math.max(layoutZoom, 1);
 
   useEffect(() => {
-    callbacksRef.current = { onRendered, onPageMetrics, onError };
-  }, [onError, onPageMetrics, onRendered]);
+    callbacksRef.current = { onRendered, onPageMetrics, onError, onSearchResult };
+  }, [onError, onPageMetrics, onRendered, onSearchResult]);
 
   useEffect(() => () => {
     const canvas = canvasRef.current;
@@ -435,9 +441,11 @@ export function PdfPage({
         endOfContent.className = "endOfContent";
         textLayerContainer.append(endOfContent);
         textLayerSelectionCleanup.current = bindPdfTextLayerSelection(textLayerContainer, endOfContent);
+        setTextLayerVersion((version) => version + 1);
       } catch (error) {
         if (disposed || (error as { name?: string })?.name === "AbortException") return;
         textLayerContainer.replaceChildren();
+        if (searchTarget) callbacksRef.current.onSearchResult?.({ status: "unavailable", matches: 0 }, null);
       }
     };
 
@@ -454,6 +462,17 @@ export function PdfPage({
       textLayerContainer.style.removeProperty("--scale-round-y");
     };
   }, [canvasReady, containerWidth, displayMetrics, document, enableTextLayer, pageNumber]);
+
+  useEffect(() => {
+    const layer = textLayerRef.current;
+    const container = containerRef.current;
+    if (!searchTarget || !layer || !container || !textLayerVersion || !enableTextLayer) return;
+    const { result, ranges } = findPdfSearchRanges(layer, searchTarget.query, searchTarget.quote);
+    const activeIndex = Math.max(0, Math.min(searchTarget.activeIndex ?? 0, ranges.length - 1));
+    const { active, cleanup } = paintPdfSearchRanges(container, ranges, activeIndex);
+    callbacksRef.current.onSearchResult?.(result, active);
+    return cleanup;
+  }, [textLayerVersion, enableTextLayer, layoutZoom, searchTarget?.query, searchTarget?.quote, searchTarget?.activeIndex, searchTarget?.focusToken]);
 
   return (
     <div ref={containerRef} id={id} data-pdf-page-content className={`relative h-full overflow-hidden ${className}`}>
