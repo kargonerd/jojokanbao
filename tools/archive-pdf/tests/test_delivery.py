@@ -7,6 +7,7 @@ import unittest
 from datetime import date
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import unquote
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from delivery import DATASET, INDEX, Delivery, add_pdf_date, issue_keys, prepare_issue, publish_issue
@@ -79,6 +80,21 @@ class DeliveryTests(unittest.TestCase):
         with patch("delivery.subprocess.run", return_value=response) as run:
             self.assertIsNone(Delivery("test:bucket", self.root).read("missing/manifest.jox"))
             run.assert_called_once()
+
+    def test_upload_cache_metadata_obeys_b2_percent_encoding(self):
+        for immutable, cache in ((False, "public, max-age=0, must-revalidate"),
+                                 (True, "public, max-age=31536000, immutable")):
+            with self.subTest(immutable=immutable), patch("delivery.subprocess.run") as run:
+                Delivery("test:bucket", self.root).publish("content/test.jox", self.pdf, immutable=immutable)
+                args = run.call_args.args[0]
+                headers = dict(args[i + 1].split(": ", 1) for i, arg in enumerate(args) if arg == "--header-upload")
+                encoded = headers["X-Bz-Info-b2-cache-control"]
+                # B2 rejects raw commas/spaces/equals signs before storing the value.
+                self.assertRegex(encoded, r"^(?:[A-Za-z0-9_.~-]|%[0-9A-F]{2})+$")
+                self.assertEqual(unquote(encoded), cache)
+                self.assertEqual(headers["Cache-Control"], cache)
+                self.assertEqual("--immutable" in args, immutable)
+                self.assertEqual("--checksum" in args, immutable)
 
     def test_preserves_reviewed_articles_and_unrelated_metadata(self):
         item_key, _, manifest_key = issue_keys(self.day)

@@ -14,6 +14,7 @@ import subprocess
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "content-pipeline"))
 from jojo_format import _adaptive_calendar, _available_dates, _decode_jox, _write_jox, _write_jox_file
@@ -137,10 +138,11 @@ class Delivery:
 
     def publish(self, key: str, path: Path, *, immutable: bool = False):
         cache = IMMUTABLE_CACHE if immutable else MUTABLE_CACHE
-        # rclone's native B2 backend needs the B2 metadata spelling as well.
+        # Native B2 requires percent-encoded X-Bz-Info values. rclone passes
+        # --header-upload through unchanged; plain commas cause HTTP 400.
         subprocess.run(["rclone", "copyto", str(path), f"{self.remote}/{key}",
                         "--header-upload", f"Cache-Control: {cache}",
-                        "--header-upload", f"X-Bz-Info-b2-cache-control: {cache}",
+                        "--header-upload", f"X-Bz-Info-b2-cache-control: {quote(cache, safe='')}",
                         "--retries", "5", "--low-level-retries", "10",
                         *(["--immutable", "--checksum"] if immutable else [])], check=True)
 
