@@ -293,6 +293,83 @@ test("date and issue controls produce exact publication URLs", async ({ page }) 
   expect(requests.some((url) => url.includes("/HQ/1976/1976100901.pdf"))).toBe(false);
 });
 
+test("right-clicking a PDF page exposes the canvas and preserves selected-text actions", async ({ page }) => {
+  await servePdfRanges(page, makeDemandLoadedPdf(1_000));
+  await page.goto("/rmrb/19761009", { waitUntil: "domcontentloaded" });
+  const text = page.locator("#page-1 [data-pdf-text-layer] span").first();
+  await expect(text).toHaveText("Page 1 selectable text");
+  await page.evaluate(() => {
+    document.addEventListener("contextmenu", (event) => {
+      const target = event.target as HTMLElement;
+      document.body.dataset.contextTarget = target.tagName;
+      document.body.dataset.contextPage = target.closest("[data-page]")?.getAttribute("data-page") ?? "";
+      document.body.dataset.contextPrevented = String(event.defaultPrevented);
+      document.body.dataset.contextX = String(event.clientX);
+      document.body.dataset.contextY = String(event.clientY);
+      // The application must leave the event native. Only the test suppresses
+      // the OS menu: WebKit's headless menu otherwise consumes later mouse input.
+      event.preventDefault();
+    });
+  });
+
+  await text.click({ button: "right" });
+  await expect(page.locator("body")).toHaveAttribute("data-context-target", "CANVAS");
+  await expect(page.locator("body")).toHaveAttribute("data-context-page", "1");
+  await expect(page.locator("body")).toHaveAttribute("data-context-prevented", "false");
+  // Native copy/save actions hit-test again later, when a menu item is chosen.
+  // Checking contextmenu.target alone misses an overlay restored too early.
+  const imageAtCommandTime = await page.evaluate(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const x = Number(document.body.dataset.contextX);
+    const y = Number(document.body.dataset.contextY);
+    const target = document.elementFromPoint(x, y);
+    const canvas = target instanceof HTMLCanvasElement ? target : null;
+    return { tag: target?.tagName, image: canvas?.toDataURL("image/png"), width: canvas?.width, height: canvas?.height };
+  });
+  expect(imageAtCommandTime.tag).toBe("CANVAS");
+  const png = Buffer.from(imageAtCommandTime.image!.split(",")[1]!, "base64");
+  expect(png.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  expect(png.readUInt32BE(16)).toBe(imageAtCommandTime.width);
+  expect(png.readUInt32BE(20)).toBe(imageAtCommandTime.height);
+  // After dismissing the menu, dragging at the same pointer position works
+  // without first moving the mouse to restore the overlay.
+  await page.keyboard.press("Escape");
+  const samePositionBounds = (await text.boundingBox())!;
+  await page.mouse.down();
+  await page.mouse.move(samePositionBounds.x + samePositionBounds.width - 1, samePositionBounds.y + samePositionBounds.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => document.getSelection()?.toString())).not.toBe("");
+  await page.evaluate(() => document.getSelection()?.removeAllRanges());
+  await text.click({ button: "right" });
+  await page.keyboard.press("Escape");
+  const overlay = page.locator("#page-1 [data-pdf-text-layer-scale]");
+  await expect(overlay).toHaveCSS("pointer-events", "auto");
+
+  // A normal left-button drag still selects text after the native image menu.
+  const bounds = await text.boundingBox();
+  if (!bounds) throw new Error("PDF text is not visible");
+  await page.mouse.move(bounds.x + 1, bounds.y + bounds.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width - 1, bounds.y + bounds.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => document.getSelection()?.toString())).toContain("Page 1 selectable text");
+
+  await text.click({ button: "right" });
+  await expect(page.locator("body")).toHaveAttribute("data-context-target", "SPAN");
+  await expect(page.locator("body")).toHaveAttribute("data-context-prevented", "false");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => page.evaluate(() => document.getSelection()?.toString())).toContain("Page 1 selectable text");
+
+  // Clearing selection brings back the image menu, including at enlarged zoom.
+  await page.evaluate(() => document.getSelection()?.removeAllRanges());
+  await page.getByRole("button", { name: "开启区域缩放" }).click();
+  await expect(page.locator("[data-pdf-viewer]")).toHaveAttribute("data-zoom", "1.5");
+  await text.click({ button: "right" });
+  await expect(page.locator("body")).toHaveAttribute("data-context-target", "CANVAS");
+  await page.keyboard.press("Escape");
+  await expect(overlay).toHaveCSS("pointer-events", "auto");
+});
+
 test("browser download restores a readable PDF with the issue filename", async ({ page }) => {
   const pdf = makeDemandLoadedPdf(1_000);
   await servePdfRanges(page, pdf);
