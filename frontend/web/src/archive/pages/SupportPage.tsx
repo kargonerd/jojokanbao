@@ -1,7 +1,8 @@
+import { useLayoutEffect } from "react";
 import weixinImg from "../assets/weixin.png";
 import zfbImg from "../assets/zfb.png";
 import { rollout } from "../../rollout";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 const downloads = [
   { name: "人民日报", links: [
@@ -23,6 +24,19 @@ const downloads = [
 ];
 
 export function SupportPage({ platformRedesign = rollout.platformRedesign }: { platformRedesign?: boolean }) {
+  const { hash } = useLocation();
+
+  useLayoutEffect(() => {
+    if (!hash) return;
+    let sectionId: string;
+    try {
+      sectionId = decodeURIComponent(hash.slice(1));
+    } catch {
+      return;
+    }
+    document.getElementById(sectionId)?.scrollIntoView({ block: "start" });
+  }, [hash]);
+
   return (
     <div className={`h-full overflow-y-auto ${platformRedesign ? "bg-[var(--app-canvas)]" : "bg-paper"}`}>
       <div className="max-w-[960px] mx-auto px-5 py-7 md:px-10">
@@ -32,7 +46,7 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
         }>
 
           {/* 关于与反馈 */}
-          <h1 className="mb-4 text-2xl font-bold tracking-wider text-ink">{platformRedesign ? "关于 JOJO 看报" : "反馈"}</h1>
+          <h1 id="关于" className="mb-4 scroll-mt-20 text-2xl font-bold tracking-wider text-ink">{platformRedesign ? "关于 JOJO 看报" : "反馈"}</h1>
           <p className="text-ink/80 leading-8">
             网站为业余时间开发制作，因此较为粗糙，如果网站有任何问题，或者希望对网站提出建议，可以进入QQ群:
             <strong className="text-red"> 974380749 </strong> 进行反馈，也可以在B站
@@ -41,7 +55,7 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
           </p>
 
           {/* 纪念缅怀 */}
-          <h1 className="text-2xl font-bold tracking-wider text-ink mt-10 mb-4">纪念缅怀</h1>
+          <h1 id="纪念缅怀" className="scroll-mt-20 text-2xl font-bold tracking-wider text-ink mt-10 mb-4">纪念缅怀</h1>
           <ul className="list-none p-0 m-0">
             <li>
               <a href="https://redstar.jojokanbao.cn" target="_blank" rel="noreferrer" className="font-bold flex items-center gap-1.5">
@@ -52,19 +66,19 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
           </ul>
 
           {/* 捐助 */}
-          <h1 className="text-2xl font-bold tracking-wider text-ink mt-10 mb-4">捐助</h1>
+          <h1 id="捐助" className="scroll-mt-20 text-2xl font-bold tracking-wider text-ink mt-10 mb-4">捐助</h1>
           <p className="text-ink/80 leading-8">
             如果网站对您有帮助，您可以通过捐助支持我们，所有捐助都将用于维护本网站，所有捐助记录将在
             <a href="https://docs.qq.com/sheet/DZlhxZUdmalFBUUFQ?tab=BB08J2" target="_blank" rel="noreferrer" className="font-bold"> JOJO看报捐助列表</a>
             中公示
           </p>
           <div className="flex flex-wrap gap-4 mt-4">
-            <img src={weixinImg} alt="微信" className="max-w-[240px] border border-rule-dark" />
-            <img src={zfbImg} alt="支付宝" className="max-w-[240px] border border-rule-dark" />
+            <img src={weixinImg} alt="微信" width={296} height={296} className="max-w-[240px] border border-rule-dark" />
+            <img src={zfbImg} alt="支付宝" width={296} height={296} className="max-w-[240px] border border-rule-dark" />
           </div>
 
           {/* 版权说明 */}
-          <h1 className="text-2xl font-bold tracking-wider text-ink mt-10 mb-4">版权说明</h1>
+          <h1 id="版权说明" className="scroll-mt-20 text-2xl font-bold tracking-wider text-ink mt-10 mb-4">版权说明</h1>
           <div className="space-y-3 text-ink/80 leading-8">
             <p>本站部分内容为公开报刊书籍历史资料扫描整理，仅供个人学习、学术研究使用。</p>
             <p>报刊书籍文字、图片、版式之著作权归原出版机构及相关著作权人所有。</p>
@@ -73,7 +87,7 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
           </div>
 
           {/* 数据下载 */}
-          <h1 className="text-2xl font-bold tracking-wider text-ink mt-10 mb-4">数据下载</h1>
+          <h1 id="数据下载" className="scroll-mt-20 text-2xl font-bold tracking-wider text-ink mt-10 mb-4">数据下载</h1>
           <div className="space-y-3">
             {downloads.map((d) => (
               <p key={d.name} className="leading-8 text-ink/80">
@@ -89,8 +103,9 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
           </div>
 
           <Link
+            id="开源软件许可"
             to={platformRedesign ? "/support/licenses" : "/archive/support/licenses"}
-            className="mt-8 flex min-h-14 items-center justify-between gap-5 border-t border-rule pt-5 font-bold text-ink hover:text-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red"
+            className="mt-8 flex min-h-14 scroll-mt-20 items-center justify-between gap-5 border-t border-rule pt-5 font-bold text-ink hover:text-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red"
           >
             <span>
               <strong className="block font-serif">开源软件许可</strong>
