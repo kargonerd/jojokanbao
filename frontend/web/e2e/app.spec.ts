@@ -115,17 +115,16 @@ test.describe("JOJO Web", () => {
     const quarkLinks = page.getByRole("link", { name: "夸克网盘下载", exact: true });
     await expect(quarkLinks).toHaveCount(5);
     for (const link of [page.getByRole("link", { name: "JOJO看报账号", exact: true }), quarkLinks.first()]) {
-      await expect(link).toHaveCSS("color", "rgb(32, 32, 32)");
+      await expect(link).toHaveCSS("color", "rgb(139, 26, 26)");
       await expect(link).toHaveCSS("text-decoration-line", "underline");
     }
     const license = page.getByRole("link", { name: /开源软件许可/ });
-    await expect(license).toHaveCSS("color", "rgb(32, 32, 32)");
+    await expect(license).toHaveCSS("color", "rgb(139, 26, 26)");
     await expect(license.locator("strong")).toHaveCSS("text-decoration-line", "underline");
     await license.focus();
     await license.press("Shift+Tab");
     await page.keyboard.press("Tab");
     await expect(license).toBeFocused();
-    await expect(license).toHaveCSS("color", "rgb(139, 26, 26)");
     await expect(license).toHaveCSS("outline-style", "solid");
     await expect(license).toHaveCSS("outline-width", "2px");
   });

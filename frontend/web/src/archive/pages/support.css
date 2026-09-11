@@ -1,7 +1,7 @@
 /* Keep link affordances stronger than the AppShell's inherited link reset. */
 .support-page a.support-link,
 .support-page a.support-license-link {
-  color: var(--color-ink);
+  color: var(--color-red);
 }
 
 .support-page a.support-link,
@@ -12,10 +12,8 @@
 }
 
 .support-page a.support-link:hover,
-.support-page a.support-link:focus-visible,
-.support-page a.support-license-link:hover,
-.support-page a.support-license-link:focus-visible {
-  color: var(--color-red);
+.support-page a.support-license-link:hover {
+  color: var(--color-red-dark);
 }
 
 .support-page a.support-link:hover,
