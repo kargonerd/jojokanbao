@@ -115,7 +115,10 @@ Capture, Process, and Cleanup save a prepared runtime cache immediately, so a
 later business failure does not discard it. Browser and Mihomo binary caches
 are likewise saved before capture; proxy secrets/configuration are never cached.
 Browser OS dependencies are not covered by those caches: apt has bounded network
-retries and its install steps have five-minute deadlines. Empty Process runs skip
+retries and its install steps have five-minute deadlines. Times scopes apt to the
+hosted Ubuntu runner's `ubuntu.sources`, retaining official mirror failover and
+integrity checks while excluding unrelated Chrome/Microsoft repositories. The
+runner's source files remain unchanged. Empty Process runs skip
 rclone installation. Workflow contracts run explicitly in CI because YAML and
 shared shell helpers are outside Times' normal package-level Turbo cache key.
 
