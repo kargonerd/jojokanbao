@@ -82,7 +82,7 @@ export function BookshelfPage() {
     <main className="app-bookshelf">
       <header className="bookshelf-heading">
         <div className="bookshelf-title"><h1>书架</h1></div>
-        <div className="bookshelf-summary"><Link to="/library?type=book">去资料库选书</Link></div>
+        <div className="bookshelf-summary"><Link to="/scrapbook">剪报本</Link><Link to="/library?type=book">去资料库选书</Link></div>
       </header>
 
       {error && items.length > 0 ? <p className="bookshelf-notice" role="status">{error}</p> : null}

@@ -16,6 +16,7 @@ import { ActivityIndicator, BackHandler, Linking, Pressable, Share, StyleSheet, 
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView, type WebViewMessageEvent, type WebViewNavigation } from "react-native-webview";
 import { IS_EINK_RELEASE } from "../config/appVariant";
+import { ScrapbookButton } from "../scrapbook/ScrapbookButton";
 import { ReaderEnvironment } from "../components/ReaderEnvironment";
 import { useReadingProgress } from "../reading/useReadingProgress";
 import { impactHaptic } from "../lib/haptics";
@@ -27,7 +28,8 @@ import { mobileTheme } from "../theme/tokens";
 type ReaderScreenProps = NativeStackScreenProps<RootStackParamList, "Reader">;
 type ReaderMessage =
   | { type: "page"; current: number; total: number; url?: string }
-  | { type: "ready" | "url"; url?: string };
+  | { type: "ready" | "url"; url?: string }
+  | { type: "selection"; text: string; url?: string };
 
 const configuredReaderOrigin = process.env.EXPO_PUBLIC_READER_BASE?.trim() || ARCHIVE_WEB_ORIGIN;
 
@@ -53,6 +55,8 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
     configuredReaderOrigin,
   ), { query: route.params.searchQuery || "", title: route.params.searchTitle, quote: route.params.searchQuote, page: route.params.searchQuery ? route.params.page : undefined }));
   const [loading, setLoading] = useState(true);
+  const [readerTools, setReaderTools] = useState(false);
+  const [clippingQuote, setClippingQuote] = useState("");
   const publicationInfo = ARCHIVE_PUBLICATION_BY_ID[publication];
   const allowedHosts = useMemo(() => new Set([safeHost(configuredReaderOrigin), safeHost(ARCHIVE_CDN_ORIGIN)]), []);
 
@@ -80,6 +84,7 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
   function handleMessage(event: WebViewMessageEvent) {
     try {
       const message = JSON.parse(event.nativeEvent.data) as ReaderMessage;
+      if (message.type === "selection") { setClippingQuote(typeof message.text === "string" ? message.text.slice(0, 6000) : ""); return; }
       syncUrl(message.url);
       if (message.type === "page") {
         if (Number.isFinite(message.current)) setCurrentPage(Math.max(1, message.current));
@@ -119,6 +124,11 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
     });
   }
 
+  const materialSource = {
+    contentType: publicationInfo.type, contentId: `${publication}:${issueId}`, contentTitle: publicationInfo.title,
+    sectionId: `page-${currentPage}`, locationLabel: `${formatArchiveIssueLabel(issueId)} 第 ${currentPage} 页`,
+    contentUrl: `/archive/${publication}/${issueId}#page-${currentPage}`,
+  };
   return (
     <SafeAreaView edges={["top", "bottom"]} style={[styles.safe, { backgroundColor: theme.paper }]}>
       <ReaderEnvironment />
@@ -135,11 +145,19 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
         <Pressable accessibilityRole="button" accessibilityLabel="分享本期" hitSlop={8} onPress={() => void shareIssue()} style={styles.iconButton}>
           <Ionicons name="share-outline" size={21} color={theme.ink} />
         </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="更多阅读工具" hitSlop={8} onPress={() => {
+          setReaderTools((value) => !value); setClippingQuote("");
+          webViewRef.current?.injectJavaScript(`window.ReactNativeWebView.postMessage(JSON.stringify({type:"selection",text:(window.getSelection()?.toString()||"").slice(0,6000)}));true;`);
+        }} style={styles.iconButton}><Ionicons name="ellipsis-horizontal" size={20} color={theme.ink} /></Pressable>
         <Pressable accessibilityRole="link" accessibilityLabel="在浏览器中打开" hitSlop={8} onPress={() => void Linking.openURL(currentUrl)} style={styles.iconButton}>
           <Ionicons name="open-outline" size={20} color={theme.ink} />
         </Pressable>
       </View>
 
+      {readerTools && <View style={{ padding: 16, borderBottomWidth: 1, borderColor: theme.rule }}>
+        <ScrapbookButton source={materialSource} quote={clippingQuote} onLogin={() => navigation.navigate("Account")} />
+        <Pressable accessibilityRole="button" onPress={() => navigation.navigate("Scrapbook")}><Text style={{ color: theme.red, paddingVertical: 12 }}>打开剪报本</Text></Pressable>
+      </View>}
       <View style={styles.webShell}>
         <WebView
           ref={webViewRef}

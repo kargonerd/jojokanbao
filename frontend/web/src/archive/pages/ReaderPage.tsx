@@ -6,6 +6,8 @@ import { EmptyState, DatePicker, Toolbar, YearPicker } from "@jojo/ui";
 import { PUBLICATIONS, type PublicationName } from "../publications";
 import { archiveIssuePath } from "../../routes";
 import { useRecentReadingStore } from "../../library/recentReadingStore";
+import { ScrapbookButton } from "../../scrapbook/ScrapbookButton";
+import { rollout } from "../../rollout";
 import { ReadingLoadingState } from "../../reading/ReadingLoadingState";
 import { useArchivePdf } from "../useArchivePdf";
 
@@ -643,6 +645,11 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       ? `下载中 ${downloadProgress}%`
       : "下载中"
     : "下载 PDF";
+  const materialSource = {
+    contentType: type, contentId: `${name}:${routeId}`, contentTitle: config.label,
+    sectionId: `page-${currentPage}`, locationLabel: `${formatArchiveIssueLabel(routeId)} 第 ${currentPage} 页`,
+    contentUrl: `${archiveIssuePath(name, routeId)}#page-${currentPage}`,
+  };
   const toolbarActions = pdfUrl ? (
     <div ref={settingsRef} className="relative ml-auto flex shrink-0 items-center justify-end gap-1 sm:gap-2">
       <button
@@ -736,6 +743,10 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       ) : null}
       {settingsOpen && (
         <div className="absolute right-0 top-10 z-[90] w-[min(220px,calc(100vw-24px))] border border-rule-dark bg-paper p-3 space-y-4 shadow-[4px_4px_0_rgba(139,26,26,.14)] sm:p-4">
+          {rollout.platformRedesign && <div className="reader-material-actions border-b border-rule pb-3">
+            <ScrapbookButton source={materialSource} />
+            <Link to="/scrapbook">打开剪报本</Link>
+          </div>}
           <div>
             <label className="block text-xs font-bold text-muted mb-2 tracking-wide">页面跳转</label>
             <div className="flex gap-2">

@@ -603,6 +603,7 @@ export function MeScreen() {
                 {([
                   { route: "Notifications" as const, label: "通知", icon: "notifications-outline" as const },
                   { route: "Bookshelf" as const, label: "我的书架", icon: "bookmark-outline" as const },
+                  { route: "Scrapbook" as const, label: "剪报本", icon: "file-tray-full-outline" as const },
                 ]).map((item, index, items) => (
                   <Pressable
                     key={item.route}

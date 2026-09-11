@@ -29,3 +29,5 @@ export { AccountEntry } from "./account/AccountEntry";
 export { TimesSourceSettingsPage } from "./account/pages/TimesSourceSettingsPage";
 export { NotificationsPage } from "./notifications/NotificationsPage";
 export { default as TimesRoutes } from "./times/TimesRoutes";
+
+export { ScrapbookPage } from "./scrapbook/ScrapbookPage";

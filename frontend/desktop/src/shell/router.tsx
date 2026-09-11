@@ -13,6 +13,7 @@ import {
   ArchiveReaderPage,
   AccountEntry,
   BookshelfPage,
+  ScrapbookPage,
   BookReaderPage,
   LibraryPage,
   PERIODICALS,
@@ -171,6 +172,7 @@ export function createDesktopRoutes(): RouteObject[] {
           children: [
             { index: true, element: <HomePage periodicals={PERIODICALS} /> },
             { path: 'bookshelf', element: <BookshelfPage /> },
+            { path: 'scrapbook', element: <ScrapbookPage /> },
             { path: 'library', element: <LibraryPage periodicals={PERIODICALS} /> },
             { path: 'library/:datasetId', element: <LibraryPage periodicals={PERIODICALS} /> },
             {

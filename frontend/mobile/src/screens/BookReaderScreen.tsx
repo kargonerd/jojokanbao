@@ -15,6 +15,7 @@ import { ReaderNavigationSheet } from "../components/ReaderNavigationSheet";
 import { ReaderSelectionToolbar } from "../components/ReaderSelectionToolbar";
 import { BookThoughtComposer } from "../components/BookThoughtComposer";
 import { BookshelfButton } from "../components/BookshelfButton";
+import { ScrapbookButton, ScrapbookCapture } from "../scrapbook/ScrapbookButton";
 import { NativeSpeechPlayer } from "../reading/SpeechPlayer";
 import { mobileSpeechSegments } from "../reading/speech";
 import { useReadingProgress } from "../reading/useReadingProgress";
@@ -63,7 +64,7 @@ import { useMobileStore, type BookAnnotation, type BookPaperColor } from "../sto
 import { mobileTheme, type MobileTheme } from "../theme/tokens";
 
 type Props = NativeStackScreenProps<RootStackParamList, "BookReader">;
-type ReaderTool = "toc" | "search" | "ai" | "progress" | "notes" | "text";
+type ReaderTool = "toc" | "search" | "ai" | "progress" | "notes" | "text" | "more";
 type AiMessage = { role: "user" | "assistant"; content: string; references?: MobileBookAgentReference[] };
 type NoteComposer = { annotationId?: string; selection?: BookReaderSelectionMessage; quote: string };
 type PendingLocate = { chapterId: string; text?: string; anchorId?: string; spreadIndex?: number; scrollProgress?: number };
@@ -136,6 +137,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   }
   useRetryOnFailure(Boolean(error) && !loading, retryReading);
   const [progressRailWidth, setProgressRailWidth] = useState(1);
+  const [selectionMaterial, setSelectionMaterial] = useState<{ kind: "clip"; quote: string }>();
   const [selection, setSelection] = useState<BookReaderSelectionMessage>();
   const [readerFrame, setReaderFrame] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [noteComposer, setNoteComposer] = useState<NoteComposer>();
@@ -241,6 +243,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
       setAiLoading(false);
       setConversationId(undefined);
     }
+    setSelectionMaterial(undefined);
     setLoaded(undefined);
     setChapter(undefined);
     setItemLoading(true);
@@ -271,7 +274,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
       .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : "无法打开书籍"); })
       .finally(() => { if (active) setItemLoading(false); });
     return () => { active = false; controller.abort(); };
-  }, [datasetId, initialAnchorId, initialChapterId, initialText, itemKey, retryToken]);
+  }, [datasetId, initialAnchorId, initialChapterId, initialText, itemKey, retryToken, user?.id]);
 
   useEffect(() => {
     if (!loaded || !activeChapterId) { setChapterLoading(false); return; }
@@ -444,6 +447,11 @@ export function BookReaderScreen({ route, navigation }: Props) {
   function chooseFirstLineIndent(value: boolean) { resetPage(); setBookFirstLineIndent(value); void selectionHaptic(hapticsEnabled); }
   function chooseReadingMode(value: BookReadingMode) { resetPage(); setBookReadingMode(value); void selectionHaptic(hapticsEnabled); }
   function choosePaperColor(value: BookPaperColor) { resetPage(); setBookPaperColor(value); void selectionHaptic(hapticsEnabled); }
+  function captureMaterial(kind: "clip") {
+    if (!user && kind === "clip") { navigation.navigate("Account"); return; }
+    setSelectionMaterial({ kind, quote: selection?.text || "" });
+    clearSelection();
+  }
   function toggleTool(tool: ReaderTool) {
     setChromeVisible(true);
     setNoteComposer(undefined);
@@ -662,6 +670,14 @@ export function BookReaderScreen({ route, navigation }: Props) {
   }
 
   const sheetBottom = insets.bottom + 64;
+  const materialSource = {
+    contentType: "book" as const, contentId: loaded?.manifest.itemId || `${datasetId}:${itemKey}`, contentTitle: title,
+    sectionId: activeChapterId || initialChapterId || "book", locationLabel: chapters.find((item) => item.id === activeChapterId)?.title || "正文",
+    contentUrl: `/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(itemKey)}?chapter=${encodeURIComponent(activeChapterId)}`,
+  };
+  const selectedMaterialSource = { ...materialSource, quote: selectionMaterial?.quote,
+    contentUrl: materialSource.contentUrl + (selectionMaterial?.quote ? `&quote=${encodeURIComponent(selectionMaterial.quote.slice(0, 160))}` : "") };
+
   return (
     <SafeAreaView edges={["top", "bottom"]} style={[styles.safe, { backgroundColor: theme.paper }]}>
       <ReaderEnvironment />
@@ -755,6 +771,12 @@ export function BookReaderScreen({ route, navigation }: Props) {
           <FlatList data={bookAnnotations} keyExtractor={(item) => item.id} renderItem={({ item }) => <Pressable onPress={() => locateText(item.chapterId, item.quote)} style={[styles.noteRow, { borderBottomColor: theme.rule }, activeAnnotationId === item.id && { borderLeftColor: theme.red, borderLeftWidth: 3 }]}><Text style={[styles.noteChapter, { color: theme.red, fontFamily: theme.sans }]}>{item.chapterTitle}</Text><Text numberOfLines={3} style={[styles.noteQuote, { color: theme.ink, fontFamily: theme.serif }]}>{item.quote}</Text>{item.note ? <Text style={[styles.noteBody, { color: theme.muted, fontFamily: theme.serif }]}>{item.note}</Text> : null}<View style={styles.noteActions}><Pressable onPress={() => { setNoteComposer({ annotationId: item.id, quote: item.quote }); setNoteDraft(item.note ?? ""); }} hitSlop={8}><Text style={[styles.noteAction, { color: theme.red, fontFamily: theme.sans }]}>编辑</Text></Pressable><Pressable onPress={() => deleteAnnotation(item)} hitSlop={8}><Text style={[styles.noteAction, { color: theme.muted, fontFamily: theme.sans }]}>删除</Text></Pressable></View></Pressable>} />
         </View> : null}
 
+        {activeTool === "more" ? <View style={[styles.toolSheet, styles.displaySheet, { top: insets.top + 64, bottom: sheetBottom, borderColor: theme.ruleDark, backgroundColor: theme.paper }]}><ScrollView contentContainerStyle={styles.displayContent}>
+          <SheetHeader title="更多" meta="" theme={theme} />
+          <Pressable accessibilityRole="button" onPress={() => setActiveTool("text")}><Text style={{ color: theme.red, paddingVertical: 14 }}>文字与显示设置</Text></Pressable>
+          <ScrapbookButton source={materialSource} onLogin={() => navigation.navigate("Account")} textStyle={{ color: theme.red }} />
+          <Pressable accessibilityRole="button" onPress={() => navigation.navigate("Scrapbook")}><Text style={{ color: theme.red, paddingVertical: 14 }}>打开剪报本</Text></Pressable>
+        </ScrollView></View> : null}
         {activeTool === "text" ? <View style={[styles.toolSheet, styles.displaySheet, { top: insets.top + 64, bottom: sheetBottom, borderColor: theme.ruleDark, backgroundColor: theme.paper }]}><ScrollView contentContainerStyle={styles.displayContent}>
           <SettingGroup label="亮度" theme={theme}><Ionicons name="sunny-outline" size={17} color={theme.muted} /><Slider accessibilityLabel="屏幕亮度" minimumValue={0.05} maximumValue={1} value={brightness} onValueChange={setBrightness} onSlidingComplete={(value) => { void Brightness.setBrightnessAsync(value); }} minimumTrackTintColor={theme.red} maximumTrackTintColor={theme.rule} thumbTintColor={theme.red} style={styles.brightnessSlider} /><Ionicons name="sunny" size={19} color={theme.ink} /></SettingGroup>
           {!IS_EINK_RELEASE ? <SettingGroup label="颜色" theme={theme}>{(["ivory", "white", "dark"] as const).map((value) => <ColorOption key={value} value={value} selected={bookPaperColor === value} onPress={() => choosePaperColor(value)} theme={theme} />)}</SettingGroup> : null}
@@ -769,13 +791,14 @@ export function BookReaderScreen({ route, navigation }: Props) {
           { id: "ai" as const, label: "AI", icon: "sparkles-outline" as const },
           { id: "progress" as const, label: "进度", icon: "radio-button-on-outline" as const },
           { id: "notes" as const, label: "笔记", icon: "create-outline" as const },
-          { id: "text" as const, label: "文字", icon: "text-outline" as const },
+          { id: "more" as const, label: "更多", icon: "ellipsis-horizontal" as const },
         ]).map((tool) => { const selected = activeTool === tool.id; return <Pressable key={tool.id} accessibilityRole="button" accessibilityState={{ selected, expanded: selected }} onPress={() => toggleTool(tool.id)} style={styles.toolButton}><Ionicons name={tool.icon} size={20} color={selected ? theme.red : theme.ink} /><Text style={[styles.toolText, { color: selected ? theme.red : theme.ink, fontFamily: theme.sans }]}>{tool.label}</Text></Pressable>; })}</View>
       </> : null}
 
-      {selection ? <ReaderSelectionToolbar selection={selection} frame={readerFrame} theme={theme} eInk={IS_EINK_RELEASE} onCopy={() => { void Clipboard.setStringAsync(selection.text); clearSelection(); }} onUnderline={underlineSelection} onThought={composeSelectionNote} onExplain={explainSelection} /> : null}
+      {selection ? <ReaderSelectionToolbar selection={selection} frame={readerFrame} theme={theme} eInk={IS_EINK_RELEASE} onCopy={() => { void Clipboard.setStringAsync(selection.text); clearSelection(); }} onUnderline={underlineSelection} onThought={composeSelectionNote} onExplain={explainSelection} onClip={() => captureMaterial("clip")} /> : null}
+      {selectionMaterial?.kind === "clip" && <ScrapbookCapture source={selectedMaterialSource} quote={selectionMaterial.quote} onSaved={() => setReaderNotice("已保存到剪报本")} onClose={() => setSelectionMaterial(undefined)} />}
       <BookThoughtComposer quote={noteComposer?.quote} value={noteDraft} onChange={setNoteDraft} onCancel={() => { setNoteComposer(undefined); setNoteDraft(""); }} onSave={saveNote} theme={theme} />
-      {loaded && activeChapterId ? <NativeSpeechPlayer documentId={`book:${datasetId}:${itemKey}`} title={loaded.manifest.title} chapterId={activeChapterId} chapters={loaded.manifest.content.chapters ?? []} loadChapter={loadSpeechChapter} getReadingPosition={getSpeechPosition} onSpeechLocation={showSpeechLocation} cover={speechCover ? { uri: speechCover } : undefined} hidden={!chromeVisible || Boolean(activeTool || selection || noteComposer || activeAnnotationId || expandedImageUri)} bottom={insets.bottom + 64} onRead={(id, location) => location ? showSpeechLocation(location, true) : chooseChapter(id)} onBookshelf={() => void toggleBookshelf()} onShelf={onBookshelf} bookshelfBusy={bookshelfBusy} /> : null}
+      {loaded && activeChapterId ? <NativeSpeechPlayer documentId={`book:${datasetId}:${itemKey}`} title={loaded.manifest.title} chapterId={activeChapterId} chapters={loaded.manifest.content.chapters ?? []} loadChapter={loadSpeechChapter} getReadingPosition={getSpeechPosition} onSpeechLocation={showSpeechLocation} cover={speechCover ? { uri: speechCover } : undefined} hidden={!chromeVisible || Boolean(activeTool || selection || noteComposer || activeAnnotationId || expandedImageUri || selectionMaterial)} bottom={insets.bottom + 64} onRead={(id, location) => location ? showSpeechLocation(location, true) : chooseChapter(id)} onBookshelf={() => void toggleBookshelf()} onShelf={onBookshelf} bookshelfBusy={bookshelfBusy} /> : null}
       {readerNotice ? <Pressable onPress={() => setReaderNotice("")} style={[styles.readerNotice, { top: insets.top + 72, borderColor: theme.red, backgroundColor: theme.paper }]}><Text style={[styles.readerNoticeText, { color: theme.red, fontFamily: theme.sans }]}>{readerNotice}</Text></Pressable> : null}
       <Modal visible={Boolean(expandedImageUri)} transparent={false} animationType={IS_EINK_RELEASE ? "none" : "fade"} onRequestClose={() => setExpandedImageUri(undefined)}>
         <SafeAreaView edges={["top", "bottom"]} style={[styles.imageModal, { backgroundColor: theme.paper }]}>

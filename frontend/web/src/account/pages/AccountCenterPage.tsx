@@ -153,6 +153,7 @@ export function AccountCenterPage({ userId, onForgotPassword }: AccountCenterPag
             <nav aria-label="我的快捷入口" className="divide-y divide-rule border-y border-rule">
               <Link to="/notifications" className={accountLinkClass}><span>通知</span><span aria-hidden="true">→</span></Link>
               <Link to="/bookshelf" className={accountLinkClass}><span>我的书架</span><span aria-hidden="true">→</span></Link>
+              <Link to="/scrapbook" className={accountLinkClass}><span>剪报本</span><span aria-hidden="true">→</span></Link>
               <Link to="/support" className={accountLinkClass}><span>关于 JOJO 看报</span><span aria-hidden="true">→</span></Link>
             </nav>
           </section>
