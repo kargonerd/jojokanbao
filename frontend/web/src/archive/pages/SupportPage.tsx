@@ -3,6 +3,25 @@ import zfbImg from "../assets/zfb.png";
 import { rollout } from "../../rollout";
 import { Link } from "react-router-dom";
 
+const downloads = [
+  { name: "人民日报", links: [
+    { label: "OneDrive下载", url: "https://1drv.ms/u/s!Aj2JC1hBTlqzh8AE964HD8Mc6HAzjQ?e=QO8bmf" },
+    { label: "OneDrive备用下载", url: "https://filesshare-my.sharepoint.com/:f:/g/personal/sun_filesshare_onmicrosoft_com/EsQTAcYn4WFHrqXY0YalQEIB1hin6BxrfKof5iq4JeC93w?e=h3vmfC" },
+  ]},
+  { name: "参考消息", links: [
+    { label: "OneDrive下载", url: "https://1drv.ms/u/s!Aj2JC1hBTlqzh8AD4aXgZxiLlXtAFQ?e=BQxZoZ" },
+  ]},
+  { name: "红旗杂志", links: [
+    { label: "OneDrive下载", url: "https://1drv.ms/u/s!Aj2JC1hBTlqzh8AGcjcraz5iymoHbQ?e=nnw50i" },
+  ]},
+  { name: "人民画报", links: [
+    { label: "OneDrive下载", url: "https://1drv.ms/f/s!Aj2JC1hBTlqzkud_9htgwD5G2zOCjg?e=iJ42bO" },
+  ]},
+  { name: "世界知识", links: [
+    { label: "OneDrive下载", url: "https://1drv.ms/f/s!Aj2JC1hBTlqzld1xkycRNnHRKXQqXw?e=eWSdrC" },
+  ]},
+];
+
 export function SupportPage({ platformRedesign = rollout.platformRedesign }: { platformRedesign?: boolean }) {
   return (
     <div className={`h-full overflow-y-auto ${platformRedesign ? "bg-[var(--app-canvas)]" : "bg-paper"}`}>
@@ -23,16 +42,6 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
             <a href="https://space.bilibili.com/571556400" target="_blank" rel="noreferrer" className="font-bold"> JOJO看报账号</a>
             下留言或私信反馈
           </p>
-          <Link
-            to={platformRedesign ? "/support/licenses" : "/archive/support/licenses"}
-            className="mt-5 flex min-h-14 items-center justify-between gap-5 border-y border-rule py-3 font-bold text-ink hover:text-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red"
-          >
-            <span>
-              <strong className="block font-serif">开源软件许可</strong>
-              <small className="mt-1 block font-sans text-xs text-muted">查看本项目与第三方软件的许可信息</small>
-            </span>
-            <span aria-hidden="true" className="font-serif text-red">→</span>
-          </Link>
 
           {/* 纪念缅怀 */}
           <h1 className="text-2xl font-bold tracking-wider text-ink border-t border-rule-dark border-b border-b-rule pt-2.5 pb-2.5 mt-7 mb-4">纪念缅怀</h1>
@@ -65,6 +74,33 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
             <p>若著作权人发现本站内容侵害自身合法权益，可提供权属证明联系本站，收到通知后我们将及时移除相关资料。</p>
             <p>未经原权利人许可，请勿转载、复制、二次分发本站内书籍报刊等扫描资料。</p>
           </div>
+
+          {/* 数据下载 */}
+          <h1 className="text-2xl font-bold tracking-wider text-ink border-t border-rule-dark border-b border-b-rule pt-2.5 pb-2.5 mt-7 mb-4">数据下载</h1>
+          <div className="space-y-3">
+            {downloads.map((d) => (
+              <p key={d.name} className="leading-8 text-ink/80">
+                <strong className="text-red mr-1">{d.name}：</strong>
+                {d.links.map((link, i) => (
+                  <span key={link.url}>
+                    <a href={link.url} target="_blank" rel="noreferrer" className="font-bold">{link.label}</a>
+                    {i < d.links.length - 1 && <span className="mx-2 text-rule">|</span>}
+                  </span>
+                ))}
+              </p>
+            ))}
+          </div>
+
+          <Link
+            to={platformRedesign ? "/support/licenses" : "/archive/support/licenses"}
+            className="mt-5 flex min-h-14 items-center justify-between gap-5 border-y border-rule py-3 font-bold text-ink hover:text-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red"
+          >
+            <span>
+              <strong className="block font-serif">开源软件许可</strong>
+              <small className="mt-1 block font-sans text-xs text-muted">查看本项目与第三方软件的许可信息</small>
+            </span>
+            <span aria-hidden="true" className="font-serif text-red">→</span>
+          </Link>
         </div>
       </div>
     </div>
