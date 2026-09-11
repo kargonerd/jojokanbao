@@ -43,8 +43,9 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
   const sources = useRef(new Map<number, Promise<SpeechSource>>());
   const prefetch = useRef(new AudioPrefetch());
   const prefetchedUrls = useRef(new Map<number, string>());
-  const pending = useRef<{ seconds: number; operation: number } | undefined>(undefined);
+  const pending = useRef<{ seconds: number; operation: number; url: string } | undefined>(undefined);
   const activePart = useRef<number | undefined>(undefined);
+  const activeStreaming = useRef(false);
   const finishHandled = useRef(false);
   const mediaDeadline = useRef(0);
   const functions = useRef({ next: () => {}, persist: () => {} });
@@ -85,13 +86,18 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       if (status.isLoaded && pending.current) {
         const load = pending.current;
         pending.current = undefined;
-        void player.seekTo(Math.min(load.seconds, Math.max(0, status.duration - 0.05))).then(() => {
+        // A progressive stream initially has no duration and may not be
+        // seekable. Starting at zero must not wait for (or restart) the file.
+        const seek = load.seconds > 0 || (Number.isFinite(status.duration) && status.duration > 0)
+          ? player.seekTo(Math.min(load.seconds, Math.max(0, status.duration - 0.05))) : Promise.resolve();
+        void seek.then(() => {
           if (!mounted.current || load.operation !== operation.current) return;
           ready.current = true;
           mediaDeadline.current = 0;
           setBusy(false);
           player.setPlaybackRate(latest.current.rate);
           if (wanted.current) player.play();
+          prefetchNext(activePart.current!, load.operation, load.url);
         }).catch(() => { if (mounted.current && load.operation === operation.current) { setError("音频定位失败，请重试"); setBusy(false); } });
       }
       if (!ready.current) return;
@@ -99,7 +105,7 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       setSeconds(time);
       setPlaying(status.playing);
       if (bookmark.current) bookmark.current.seconds = time;
-      if (status.duration > 0) setDurations((known) => known[activePart.current!] === status.duration ? known : { ...known, [activePart.current!]: status.duration });
+      if (Number.isFinite(status.duration) && status.duration > 0) setDurations((known) => known[activePart.current!] === status.duration ? known : { ...known, [activePart.current!]: status.duration });
       if (status.didJustFinish && !finishHandled.current) {
         finishHandled.current = true;
         functions.current.next();
@@ -110,6 +116,7 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       if (++ticks % 5 === 0) functions.current.persist();
       if (mediaDeadline.current && Date.now() >= mediaDeadline.current) {
         mediaDeadline.current = 0; pending.current = undefined; operation.current++;
+        if (activePart.current !== undefined) sources.current.delete(activePart.current);
         wanted.current = false; player.pause(); setPlaying(false); setBusy(false); setError("音频加载超时，请重试");
       }
       const deadline = latest.current.timer;
@@ -194,7 +201,7 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
     } catch (reason) { if (mounted.current && currentEpoch === epoch.current) { setBusy(false); setError(reason instanceof Error ? reason.message : "听读暂时不可用"); } }
   }
 
-  async function source(index: number): Promise<SpeechSource> {
+  async function source(index: number, streaming = false): Promise<SpeechSource> {
     const current = latest.current;
     if (!current.capabilities?.cdnBase || !current.chapter?.segments[index]) throw new Error("请先配置云端音频存储");
     let promise = sources.current.get(index);
@@ -204,6 +211,7 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       promise = mobileSpeechClient.requestSpeech(current.chapter.segments[index]!, current.voice.voice, signal, {
         provider: current.voice.provider, cacheVersion: provider?.cacheVersion, cdnBase: current.capabilities.cdnBase,
         scope: current.props.documentId.startsWith("news:") ? "news" : "book",
+        streaming: streaming && provider?.streaming === true,
       }).then((value) => {
         if (!("url" in value)) throw new Error("手机听读需要 CDN 音频，请检查服务端存储配置");
         return value;
@@ -211,24 +219,31 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       sources.current.set(index, promise);
       void promise.catch(() => { if (sources.current.get(index) === promise) sources.current.delete(index); });
     }
-    return promise;
+    const value = await promise;
+    if ((!streaming && value.streaming) || (value.expiresAt && value.expiresAt <= Date.now() / 1000 + 30)) {
+      sources.current.delete(index);
+      return source(index, streaming);
+    }
+    return value;
   }
 
-  async function startPart(index: number, time = 0, play = true) {
+  async function startPart(index: number, time = 0, play = true, complete = false) {
     const request = ++operation.current;
     wanted.current = play; ready.current = false; activePart.current = undefined; pending.current = undefined;
     mediaDeadline.current = 0;
     player.pause(); setBusy(true); setError("");
     try {
       await setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: true, interruptionMode: "doNotMix" });
-      const audio = await source(index);
+      const audio = await source(index, time === 0 && !complete);
       if (!mounted.current || request !== operation.current) return;
       finishHandled.current = false;
       player.replace({ uri: audio.url });
       mediaDeadline.current = Date.now() + 30000;
       activePart.current = index;
-      pending.current = { seconds: time, operation: request };
-      setPart(index); setSeconds(time); setDurations((known) => ({ ...known, [index]: audio.duration }));
+      activeStreaming.current = audio.streaming === true;
+      pending.current = { seconds: time, operation: request, url: audio.url };
+      setPart(index); setSeconds(time);
+      if (audio.duration > 0) setDurations((known) => ({ ...known, [index]: audio.duration }));
       if (bookmark.current) { bookmark.current.part = index; bookmark.current.seconds = time; }
       player.setActiveForLockScreen(true, { title: latest.current.chapter?.title, artist: props.title });
       for (const key of sources.current.keys()) if (key < index || key > index + 2) sources.current.delete(key);
@@ -236,18 +251,24 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       const nextUrls = [...prefetchedUrls.current].filter(([key]) => key > index).map(([, url]) => url);
       // Keep an already buffered current source until replace() consumes it.
       prefetch.current.retain(audio.url, nextUrls);
-      for (const next of [index + 1, index + 2]) {
-        if (!latest.current.chapter?.segments[next]) continue;
-        void source(next).then((value) => {
-          if (!mounted.current || request !== operation.current) return;
-          prefetchedUrls.current.set(next, value.url);
-          if (!nextUrls.includes(value.url)) nextUrls.push(value.url);
-          prefetch.current.retain(audio.url, nextUrls);
-        }).catch(() => undefined);
-      }
     } catch (reason) {
       if (!mounted.current || request !== operation.current) return;
       wanted.current = false; setPlaying(false); setBusy(false); setError(reason instanceof Error ? reason.message : "播放失败，请重试");
+    }
+  }
+
+  function prefetchNext(index: number, request: number, url: string) {
+    // Start background synthesis only after the foreground stream is ready;
+    // otherwise the two prefetches can occupy both server slots before it.
+    const nextUrls = [...prefetchedUrls.current].filter(([key]) => key > index).map(([, value]) => value);
+    for (const next of [index + 1, index + 2]) {
+      if (!latest.current.chapter?.segments[next]) continue;
+      void source(next).then((value) => {
+        if (!mounted.current || request !== operation.current) return;
+        prefetchedUrls.current.set(next, value.url);
+        if (!nextUrls.includes(value.url)) nextUrls.push(value.url);
+        prefetch.current.retain(url, nextUrls);
+      }).catch(() => undefined);
     }
   }
 
@@ -268,11 +289,11 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
     let remaining = Math.max(0, Math.min(duration - 0.1, value));
     let index = 0;
     while (index < lengths.length - 1 && remaining >= lengths[index]!) { remaining -= lengths[index]!; index++; }
-    if (ready.current && index === activePart.current) {
+    if (ready.current && index === activePart.current && !activeStreaming.current) {
       finishHandled.current = false;
       void player.seekTo(remaining).catch(() => setError("定位失败，请重试"));
     }
-    else void startPart(index, remaining, playing || wanted.current);
+    else void startPart(index, remaining, playing || wanted.current, true);
   }
   function toggle() {
     if (playing || (busy && wanted.current)) { halt(); return; }

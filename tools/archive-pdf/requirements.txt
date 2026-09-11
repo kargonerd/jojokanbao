@@ -1,0 +1,4 @@
+requests>=2.32,<3
+PyPDF2>=3,<4
+huggingface_hub>=0.34,<2
+tzdata>=2025.2

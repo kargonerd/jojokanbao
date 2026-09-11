@@ -1,12 +1,13 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { fetchPdfDownloadBytes, PdfViewer, usePdfDocument } from "@jojo/pdf-viewer";
-import { archivePdfUrl, formatArchiveIssueLabel } from "@jojo/content";
+import { formatArchiveIssueLabel } from "@jojo/content";
 import { EmptyState, DatePicker, Toolbar, YearPicker } from "@jojo/ui";
 import { PUBLICATIONS, type PublicationName } from "../publications";
 import { archiveIssuePath } from "../../routes";
 import { useRecentReadingStore } from "../../library/recentReadingStore";
 import { ReadingLoadingState } from "../../reading/ReadingLoadingState";
+import { useArchivePdf } from "../useArchivePdf";
 
 const PAGE_SCROLL_GAP = 16;
 const READER_TOOLBAR_MAX_HEIGHT = 61;
@@ -262,8 +263,14 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const shareResetTimer = useRef<number | null>(null);
   const alignedInitialPageRef = useRef<string | null>(null);
 
-  const pdfUrl = routeId ? archivePdfUrl(name, routeId) : "";
-  const { document: pdfDoc, loading, error, numPages } = usePdfDocument({ url: pdfUrl, protectedPdf: "auto" });
+  const archivePdf = useArchivePdf(name, routeId);
+  const pdfUrl = archivePdf.source?.url ?? "";
+  const joxObjectKey = archivePdf.source?.objectKey;
+  const { document: pdfDoc, loading: pdfLoading, error: pdfError, numPages } = usePdfDocument({
+    url: pdfUrl, protectedPdf: true, joxObjectKey,
+  });
+  const loading = archivePdf.loading || pdfLoading;
+  const error = archivePdf.error || pdfError;
   const downloadFilename = `${name}-${routeId}.pdf`;
 
   useEffect(() => {
@@ -445,7 +452,8 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     setDownloading(true);
     setDownloadProgress(0);
     try {
-      const { bytes } = await fetchPdfDownloadBytes(pdfUrl, "auto", {
+      const { bytes } = await fetchPdfDownloadBytes(pdfUrl, true, {
+        joxObjectKey,
         onDownloadProgress: (loadedBytes, totalBytes) => {
           setDownloadProgress(Math.min(100, Math.round((loadedBytes / totalBytes) * 100)));
         },

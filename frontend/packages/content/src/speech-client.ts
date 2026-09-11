@@ -16,6 +16,7 @@ export interface SpeechProvider {
   description: string;
   available: boolean;
   cacheVersion?: string;
+  streaming?: boolean;
   voices: Array<{ id: string; label: string; description: string }>;
 }
 
@@ -37,7 +38,7 @@ export function logicalSpeechVoice(voice?: string): "male" | "female" {
   return voice === "female" || ["冰糖", "茉莉", "zh-CN-XiaoxiaoNeural", "zh-CN-XiaoyiNeural"].includes(voice || "") ? "female" : "male";
 }
 
-export interface SpeechSource { url: string; duration: number }
+export interface SpeechSource { url: string; duration: number; streaming?: boolean; expiresAt?: number }
 export type SpeechScope = "book" | "news";
 export interface SpeechClientConfig {
   allowed: () => boolean;
@@ -77,27 +78,27 @@ export function createSpeechClient(config: SpeechClientConfig) {
     text: string,
     voice: SpeechVoice,
     signal?: AbortSignal,
-    options: { provider: string; cacheVersion?: string; cdnBase?: string | null; scope?: SpeechScope } = { provider: "auto" },
+    options: { provider: string; cacheVersion?: string; cdnBase?: string | null; scope?: SpeechScope; streaming?: boolean } = { provider: "auto" },
   ): Promise<Blob | SpeechSource> {
     // The product intentionally uses a soft client-side gate, not media authorization.
     if (!config.allowed()) throw new Error("请先登录并开通听读功能");
     if (options.cdnBase && options.cacheVersion) {
       const key = await speechKey(options.provider, options.cacheVersion, voice, text);
       const base = `${options.cdnBase.replace(/\/$/u, "")}/${speechObjectBase(options.provider, key, options.scope)}`;
-      const cached = await fetchSpeechMetadata(`${base}.json`, signal).catch((error: unknown) => {
+      const cached = await fetchSpeechMetadata(`${base}.json`, signal, 1500).catch((error: unknown) => {
         if (signal?.aborted) throw error;
         return null;
       });
       if (cached?.ok) {
-        const record: unknown = await cached.json().catch(() => null);
-        const source = validateSpeechSource(record, options.cdnBase, key, options.scope);
+        const source = validateSpeechSource(cached.record, options.cdnBase, key, options.scope);
         if (source) return source;
       }
       // The backend checks the authoritative B2 object again; CDN misses/errors do
       // not themselves authorize duplicate synthesis.
     }
     const headers: Record<string, string> = { "Content-Type": "application/json" };
-    const response = await fetch(config.apiUrl("/api/v1/speech"), {
+    const endpoint = config.apiUrl("/api/v1/speech");
+    const response = await fetch(`${endpoint}${options.streaming ? "?stream=true" : ""}`, {
       method: "POST",
       signal: signal ?? null,
       headers,
@@ -109,8 +110,20 @@ export function createSpeechClient(config: SpeechClientConfig) {
     }
     const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
     if (contentType.startsWith("application/json") && options.cdnBase) {
+      const record: unknown = await response.json();
+      if (options.streaming && record && typeof record === "object" && "formatVersion" in record && record.formatVersion === "jojo-speech-stream/1") {
+        const stream = record as { ticket?: unknown; expiresAt?: unknown };
+        if (typeof stream.ticket !== "string" || !/^[A-Za-z0-9_=-]{80,8192}$/u.test(stream.ticket) ||
+          typeof stream.expiresAt !== "number" || !Number.isFinite(stream.expiresAt) || stream.expiresAt <= Date.now() / 1000) {
+          throw new Error("语音服务返回了无效音频地址");
+        }
+        // Construct the media URL ourselves. Audio elements and native players
+        // can consume a progressive GET without downloading a complete Blob.
+        return { url: `${endpoint}/stream/?ticket=${encodeURIComponent(stream.ticket)}`, duration: 0,
+          streaming: true, expiresAt: stream.expiresAt };
+      }
       const key = options.cacheVersion ? await speechKey(options.provider, options.cacheVersion, voice, text) : undefined;
-      const source = validateSpeechSource(await response.json(), options.cdnBase, key, options.scope);
+      const source = validateSpeechSource(record, options.cdnBase, key, options.scope);
       if (!source) throw new Error("语音服务返回了无效音频地址");
       return source;
     }
@@ -120,14 +133,17 @@ export function createSpeechClient(config: SpeechClientConfig) {
 
 
 
-  async function fetchSpeechMetadata(url: string, signal?: AbortSignal): Promise<Response> {
+  async function fetchSpeechMetadata(url: string, signal?: AbortSignal, timeoutMs = 6000): Promise<{ ok: boolean; record: unknown }> {
     const controller = new AbortController();
     const abort = () => controller.abort();
     if (signal?.aborted) controller.abort();
     else signal?.addEventListener("abort", abort, { once: true });
-    const timeout = setTimeout(abort, 6000);
+    const timeout = setTimeout(abort, timeoutMs);
     try {
-      return await fetch(url, { signal: controller.signal });
+      const response = await fetch(url, { signal: controller.signal });
+      // Keep the deadline active until the small metadata body has arrived.
+      const record: unknown = response.ok ? await response.json().catch(() => null) : null;
+      return { ok: response.ok, record };
     } finally {
       clearTimeout(timeout);
       signal?.removeEventListener("abort", abort);
@@ -151,7 +167,7 @@ export function createSpeechClient(config: SpeechClientConfig) {
         try {
           const response = await fetchSpeechMetadata(`${options.cdnBase.replace(/\/$/u, "")}/${speechObjectBase(options.provider, key, options.scope)}.json`, signal);
           if (!response.ok) continue;
-          const source = validateSpeechSource(await response.json(), options.cdnBase, key, options.scope);
+          const source = validateSpeechSource(response.record, options.cdnBase, key, options.scope);
           if (source) known[index] = source.duration;
         } catch { if (signal.aborted) return; }
       }

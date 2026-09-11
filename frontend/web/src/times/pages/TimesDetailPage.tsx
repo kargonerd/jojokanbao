@@ -1,5 +1,6 @@
 import DOMPurify from "dompurify";
-import { createElement, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createElement, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useReaderExplanation } from "../../reading/useReaderExplanation";
 import { useParams } from "react-router-dom";
 import { SelectableAnnotationArticle } from "../../annotations/SelectableAnnotationArticle";
 import type { TextAnchor } from "../../annotations/types";
@@ -10,6 +11,7 @@ import { explainTimesSelection, type TimesExplanationMetadata } from "../ai";
 import { timesApi, type TimesNewsItem } from "../api";
 import { exactArticleTime, publisherUpdatedAt } from "../articleTime";
 import { TimesExplanationPanel } from "../components/TimesExplanationPanel";
+import { TimesArticleImage } from "../components/TimesArticleImage";
 import { TimesImageCarousel, type TimesCarouselItem } from "../components/TimesImageCarousel";
 import { sourceLogoUrl } from "../components/SourceLogo";
 import type { TimesForeignContentLanguage } from "../language";
@@ -135,7 +137,7 @@ function materializeAssets(news: TimesNewsItem): ReactNode[] | null {
       const caption = figureCaptions.get(asset.id) || asset.caption;
       return (
         <figure key={key} data-asset-id={asset.id}>
-          <img src={url} alt={asset.alt || asset.caption || ""} loading="lazy" decoding="async" />
+          <TimesArticleImage src={url} alt={asset.alt || caption || ""} caption={caption || undefined} />
           {caption ? <figcaption>{caption}</figcaption> : null}
         </figure>
       );
@@ -179,14 +181,11 @@ export function TimesDetailPage({
   const requestedLanguage = languageOverride?.articleKey === articleKey
     ? languageOverride.language
     : languagePreference;
-  const [explanation, setExplanation] = useState<{
-    anchor: TextAnchor;
-    answer: string;
-    status: string;
-    error: string;
-    metadata?: TimesExplanationMetadata;
-  }>();
-  const cancelExplanation = useRef<() => void>(() => {});
+  const explanationChat = useReaderExplanation<TextAnchor, TimesExplanationMetadata>(
+    (anchor, callbacks, request) => explainTimesSelection(news!, anchor, callbacks, request),
+    `${articleKey}:${requestedLanguage}`,
+  );
+  const explanation = explanationChat.conversation;
   const originalUrl = safeNewsUrl(news?.url);
   const updatedAt = news ? publisherUpdatedAt(news) : undefined;
   const translationUpdatePending = Boolean(
@@ -207,8 +206,6 @@ export function TimesDetailPage({
     let urls: string[] = [];
     setNews(null);
     setError(null);
-    cancelExplanation.current();
-    setExplanation(undefined);
     void timesApi.getNews(issueDate, newsId, requestedLanguage).then((value) => {
       urls = Object.values(value.assetUrls ?? {});
       if (active) {
@@ -221,35 +218,13 @@ export function TimesDetailPage({
     });
     return () => {
       active = false;
-      cancelExplanation.current();
       for (const url of urls) URL.revokeObjectURL(url);
     };
   }, [issueDate, markReadOnOpen, newsId, requestedLanguage]);
 
   function startExplanation(anchor: TextAnchor): void {
     if (!news) return;
-    cancelExplanation.current();
-    setExplanation({ anchor, answer: "", status: "正在准备…", error: "" });
-    cancelExplanation.current = explainTimesSelection(news, anchor, {
-      onStatus(status) {
-        setExplanation((current) => current ? { ...current, status } : current);
-      },
-      onChunk(text) {
-        setExplanation((current) => current ? { ...current, answer: current.answer + text } : current);
-      },
-      onDone(metadata, answer) {
-        setExplanation((current) => current ? { ...current, answer, status: "解释完成", metadata } : current);
-      },
-      onError(message) {
-        setExplanation((current) => current ? { ...current, status: "", error: message } : current);
-      },
-    });
-  }
-
-  function closeExplanation(): void {
-    cancelExplanation.current();
-    cancelExplanation.current = () => {};
-    setExplanation(undefined);
+    explanationChat.start(anchor);
   }
 
   const content = (
@@ -330,5 +305,6 @@ export function TimesDetailPage({
         <div ref={setMiniPlayerTarget} className="relative shrink-0" data-times-speech-dock />
       </div>
     : <main className="min-h-[calc(100vh-64px)] bg-paper text-ink">{content}</main>;
-  return <>{page}{explanation ? <TimesExplanationPanel {...explanation} onClose={closeExplanation} /> : null}</>;
+  return <>{page}{explanation ? <TimesExplanationPanel key={explanation.conversationId} {...explanation}
+    onClose={explanationChat.close} onRetry={explanationChat.retry} onAsk={explanationChat.ask} onStop={explanationChat.stop} /> : null}</>;
 }

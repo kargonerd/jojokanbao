@@ -1,20 +1,20 @@
-from datetime import date
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 import argparse
-import hashlib
+import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 
 import requests
 from PyPDF2 import PdfMerger
+from delivery import DATASET, INDEX, Delivery, HuggingFace, issue_keys, prepare_issue, publish_issue
 
 
 B2_BUCKET = os.environ.get("B2_BUCKET", "jojo-newspaper")
 B2_REMOTE = os.environ.get("B2_REMOTE", "jojo-b2")
-CACHE_CONTROL = "public, max-age=315360000, immutable"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.79 Safari/537.36",
 }
@@ -36,53 +36,15 @@ def capture(args, allow_warning=False):
 
 
 def configure_rclone():
-    if not os.environ.get("B2_KEY_ID") or not os.environ.get("B2_APPLICATION_KEY"):
-        raise RuntimeError("B2_KEY_ID and B2_APPLICATION_KEY are required")
-
-    print("[1/8] Configuring rclone...", flush=True)
-    run(
-        [
-            "rclone",
-            "config",
-            "create",
-            B2_REMOTE,
-            "b2",
-            "account",
-            os.environ["B2_KEY_ID"],
-            "key",
-            os.environ["B2_APPLICATION_KEY"],
-            "--non-interactive",
-        ]
-    )
-    print("[1/8] rclone configured.", flush=True)
+    if os.environ.get("B2_KEY_ID") and os.environ.get("B2_APPLICATION_KEY"):
+        # Do not log the credential-bearing command.
+        subprocess.run(["rclone", "config", "create", B2_REMOTE, "b2", "account",
+                        os.environ["B2_KEY_ID"], "key", os.environ["B2_APPLICATION_KEY"],
+                        "--non-interactive"], check=True, stdout=subprocess.DEVNULL)
 
 
-def remote_path(day):
-    compact = day.strftime("%Y%m%d")
-    return f"{B2_REMOTE}:{B2_BUCKET}/RMRB/{day:%Y}/{compact}.pdf"
-
-
-def remote_exists(day):
-    path = remote_path(day)
-    print(f"[2/8] Checking if {path} exists...", flush=True)
-    result = subprocess.run(
-        ["rclone", "lsjson", path],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    if result.returncode == 3:
-        print("[2/8] File does not exist.", flush=True)
-        return False
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout).strip()[:1000]
-        raise RuntimeError(
-            f"Failed to check {path} (returncode={result.returncode}): {detail}"
-        )
-    stdout = result.stdout.strip().replace("\n", "").replace(" ", "")
-    exists = stdout != "[]" and stdout != ""
-    print(f"[2/8] File exists: {exists}", flush=True)
-    return exists
+def delivery_remote():
+    return os.environ.get("JOJO_DELIVERY_REMOTE") or f"{B2_REMOTE}:{B2_BUCKET}"
 
 
 def get_text(session, url):
@@ -109,7 +71,7 @@ def new_layout_urls(session, day):
             urls.append(pdf_url)
             print(f"[3/8] Page {page:02d}: {pdf_url}", flush=True)
         else:
-            print(f"[3/8] Page {page:02d}: no PDF found", flush=True)
+            raise RuntimeError(f"Page {page:02d} has no PDF; refusing to publish an incomplete issue")
     return urls
 
 
@@ -122,7 +84,7 @@ def download_pdf(session, url, output):
         try:
             response = session.get(url, headers=HEADERS, timeout=60)
             response.raise_for_status()
-            if len(response.content) > 1000:
+            if len(response.content) > 1000 and response.content.startswith(b"%PDF-"):
                 output.write_bytes(response.content)
                 print(f"[4/8] Downloaded {output.name} ({len(response.content)} bytes)", flush=True)
                 return
@@ -157,107 +119,124 @@ def linearize_pdf(source, output):
     print(f"[6/8] Linearized to {output.name} ({output.stat().st_size} bytes)", flush=True)
 
 
-def file_sha256(path):
-    digest = hashlib.sha256()
-    with path.open("rb") as file:
-        for chunk in iter(lambda: file.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.digest()
-
-
-def protect_pdf(source, output):
-    print(f"[7/8] Protecting {source.name}...", flush=True)
-    decoded = output.with_suffix(".verified.pdf")
-    try:
-        run(["node", str(PROTECT_SCRIPT), "encode", str(source), str(output)])
-
-        if output.stat().st_size != source.stat().st_size:
-            raise RuntimeError("Protected PDF size changed, so byte ranges would no longer align")
-        with output.open("rb") as file:
-            if file.read(5) == b"%PDF-":
-                raise RuntimeError("Protected PDF still exposes a plain PDF header")
-
-        run(["node", str(PROTECT_SCRIPT), "decode", str(output), str(decoded)])
-        if file_sha256(decoded) != file_sha256(source):
-            raise RuntimeError("Protected PDF did not decode back to the linearized source")
-
-        check = capture(["qpdf", "--check-linearization", str(decoded)], allow_warning=True)
-        check_output = f"{check.stdout or ''}\n{check.stderr or ''}"
-        if "no linearization errors" not in check_output:
-            raise RuntimeError(f"Decoded PDF failed qpdf linearization check: {output}")
-    finally:
-        decoded.unlink(missing_ok=True)
-
-    print(f"[7/8] Protected and verified {output.name} ({output.stat().st_size} bytes)", flush=True)
-
-
-def upload_pdf(day, protected_pdf):
-    print(f"[8/8] Uploading to {remote_path(day)}...", flush=True)
-    run(
-        [
-            "rclone",
-            "copyto",
-            str(protected_pdf),
-            remote_path(day),
-            "--header-upload",
-            f"Cache-Control: {CACHE_CONTROL}",
-            "--retries",
-            "5",
-            "--low-level-retries",
-            "10",
-        ]
-    )
-    print("[8/8] Upload complete.", flush=True)
-
-
-def sync_day(day, force=False):
-    configure_rclone()
-    exists = remote_exists(day)
-    if exists and not force:
-        print(f"{remote_path(day)} already exists, skip", flush=True)
-        return
-    if exists:
-        print(f"Force enabled: overwriting {remote_path(day)}", flush=True)
-
-    compact = day.strftime("%Y%m%d")
-    day_dir = WORK_DIR / compact
+def obtain_pdf(day, day_dir, canonical, delivery, *, reuse_legacy=False, refresh=False):
+    item_key, pdf_key, _ = issue_keys(day)
+    existing = canonical.read(item_key)
+    if existing and not refresh:
+        asset = next((a for a in existing.get("assets", []) if a.get("type") == "pdf"), None)
+        if asset:
+            path = canonical.file("newspapers/rmrb/" + asset["path"])
+            if path:
+                return path
+    if reuse_legacy:
+        # Migration input only; no reader or publisher writes this old prefix.
+        compact = day.strftime("%Y%m%d")
+        old_key = f"RMRB/{day:%Y}/{compact}.pdf"
+        old_pdf = delivery.file(old_key)
+        if old_pdf:
+            decoded = day_dir / f"{compact}.source.pdf"
+            if old_pdf.read_bytes()[:5] == b"%PDF-":
+                return old_pdf
+            run(["node", str(PROTECT_SCRIPT), "decode", str(old_pdf), str(decoded)])
+            return decoded
     parts_dir = day_dir / "parts"
-    merged_pdf = day_dir / f"{compact}.pdf"
-    linearized_pdf = day_dir / f"{compact}.linearized.pdf"
-    protected_pdf = day_dir / f"{compact}.protected.pdf"
-    shutil.rmtree(day_dir, ignore_errors=True)
     parts_dir.mkdir(parents=True, exist_ok=True)
+    with requests.Session() as session:
+        urls = get_page_urls(session, day)
+        if not urls:
+            raise RuntimeError(f"No RMRB pages found for {day}")
+        parts = []
+        for index, url in enumerate(urls, start=1):
+            part = parts_dir / f"{index:02d}.pdf"
+            download_pdf(session, url, part)
+            parts.append(part)
+    merged = day_dir / "merged.pdf"
+    merged.unlink(missing_ok=True)
+    merge_pdfs(parts, merged)
+    return merged
 
-    session = requests.Session()
-    urls = get_page_urls(session, day)
-    if not urls:
-        raise RuntimeError(f"No RMRB pages found for {compact}")
 
-    parts = []
-    for index, url in enumerate(urls, start=1):
-        part = parts_dir / f"rmrb{compact}{index:02d}.pdf"
-        download_pdf(session, url, part)
-        parts.append(part)
+def sync_day(day, force=False, *, dry_run=False, reuse_legacy=False):
+    day_dir = WORK_DIR / day.strftime("%Y%m%d")
+    day_dir.mkdir(parents=True, exist_ok=True)
+    canonical = HuggingFace()
+    delivery = Delivery(delivery_remote(), day_dir)
+    _, _, manifest_key = issue_keys(day)
+    manifest = delivery.read(manifest_key)
+    index = delivery.read(INDEX)
+    if manifest and not force:
+        pdf = next((a for a in manifest.get("assets", []) if a.get("type") == "pdf"), None)
+        canonical_item = canonical.read(issue_keys(day)[0])
+        canonical_pdf = next((a for a in (canonical_item or {}).get("assets", []) if a.get("type") == "pdf"), None)
+        if pdf and canonical_pdf and pdf.get("sha256") == canonical_pdf.get("sha256"):
+            from jojo_format import _available_dates
+            if day.isoformat() in _available_dates((index or {})["availability"]["pdf"]):
+                # Verify the media exists as well; interrupted metadata-only copies aren't complete.
+                key = manifest_key.removesuffix("manifest.jox") + pdf["object"]
+                check = subprocess.run(["rclone", "lsjson", f"{delivery.remote}/{key}", "--stat"], capture_output=True)
+                if check.returncode == 0 and json.loads(check.stdout).get("Size") == pdf["size"]:
+                    print(f"{day}: already published in Delivery", flush=True)
+                    return {"date": day.isoformat(), "asset": key, "manifest": manifest_key, "index": INDEX, "published": True}
+                if check.returncode not in (0, 3, 4):
+                    raise RuntimeError(f"Unable to check published PDF: {check.stderr.decode(errors='replace')[:500]}")
+    source = obtain_pdf(day, day_dir, canonical, delivery, reuse_legacy=reuse_legacy and not force, refresh=force)
+    linearized = day_dir / "linearized.pdf"
+    linearized.unlink(missing_ok=True)
+    linearize_pdf(source, linearized)
+    plan = prepare_issue(day, linearized, canonical, delivery, day_dir)
+    if not dry_run:
+        publish_issue(day, plan, canonical, delivery)
+    report = {"date": day.isoformat(), "asset": plan["asset"], "manifest": plan["manifest"], "index": INDEX,
+              "canonicalFiles": list(plan["canonical"]), "deliveryFiles": list(plan["delivery"]), "published": not dry_run}
+    (day_dir / "publication.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    print(f"{day}: {'staged' if dry_run else 'published'} Canonical and Delivery", flush=True)
+    return report
 
-    merge_pdfs(parts, merged_pdf)
-    linearize_pdf(merged_pdf, linearized_pdf)
-    protect_pdf(linearized_pdf, protected_pdf)
-    upload_pdf(day, protected_pdf)
-    shutil.rmtree(day_dir, ignore_errors=True)
-    print(f"Done! {compact} synced successfully.", flush=True)
+
+def compact_date(value):
+    if not re.fullmatch(r"\d{8}", value):
+        raise argparse.ArgumentTypeError("Date must be YYYYMMDD")
+    try:
+        return date.fromisoformat(f"{value[:4]}-{value[4:6]}-{value[6:8]}")
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Fetch, linearize, protect, and upload one RMRB daily PDF to B2.")
-    parser.add_argument("--date", help="Date as YYYYMMDD. Default: today in runner timezone.")
-    parser.add_argument("--force", action="store_true", help="Overwrite the remote PDF if it already exists.")
+    parser = argparse.ArgumentParser(description="Publish RMRB PDF to HF Canonical and B2 Jox Delivery.")
+    parser.add_argument("--date", type=compact_date, default=datetime.now(ZoneInfo("Asia/Shanghai")).date())
+    parser.add_argument("--start-date", type=compact_date, help="Backfill an inclusive date range ending at --date.")
+    parser.add_argument("--catch-up", action="store_true", help="Resume from the Delivery PDF calendar's last date.")
+    parser.add_argument("--reuse-legacy", action="store_true", help="Use old B2 PDFs as migration input when Canonical lacks them.")
+    parser.add_argument("--force", action="store_true", help="Refresh the source PDF and publish a new immutable asset.")
+    parser.add_argument("--dry-run", action="store_true", help="Stage exact publication files locally without uploading.")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
-    target_day = date.today() if not args.date else date.fromisoformat(f"{args.date[:4]}-{args.date[4:6]}-{args.date[6:8]}")
-    sync_day(target_day, force=args.force)
+    configure_rclone()
+    first = args.start_date or args.date
+    if args.catch_up:
+        index = Delivery(delivery_remote(), WORK_DIR / "index").read(INDEX)
+        if not index:
+            raise RuntimeError("Published RMRB Delivery index is required")
+        first = min(first, date.fromisoformat(index["availability"]["pdf"]["endDate"]) + timedelta(days=1))
+    if first > args.date:
+        raise ValueError("--start-date must not be after --date")
+    reports = []
+    WORK_DIR.mkdir(parents=True, exist_ok=True)
+    report_path = WORK_DIR / "publication.json"
+    report_path.write_text("[]\n", encoding="utf-8")
+    day = first
+    while day <= args.date:
+        report = sync_day(day, force=args.force, dry_run=args.dry_run, reuse_legacy=args.reuse_legacy)
+        if report:
+            reports.append(report)
+            report_path.write_text(json.dumps(reports, indent=2) + "\n", encoding="utf-8")
+        day += timedelta(days=1)
+    WORK_DIR.mkdir(parents=True, exist_ok=True)
+    (WORK_DIR / "publication.json").write_text(json.dumps(reports, indent=2) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

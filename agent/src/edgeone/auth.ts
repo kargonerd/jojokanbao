@@ -72,9 +72,18 @@ export async function authorizeSupabaseUser(
   if (!response.ok) {
     throw new AgentHttpError(503, "Authentication service unavailable");
   }
-  const payload = await response.json() as { id?: unknown };
+  const payload = await response.json() as {
+    id?: unknown;
+    app_metadata?: { account_purpose?: unknown };
+  };
   if (typeof payload.id !== "string" || !payload.id) {
     throw new AgentHttpError(503, "Authentication service returned invalid data");
   }
-  return { id: payload.id };
+  // Only administrators can set app_metadata. User-editable metadata and
+  // conversation ID prefixes must never grant access to network diagnostics.
+  return {
+    id: payload.id,
+    ...(payload.app_metadata?.account_purpose === "ai_availability_monitor"
+      ? { isAvailabilityMonitor: true } : {}),
+  };
 }

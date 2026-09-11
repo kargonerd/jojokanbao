@@ -1,4 +1,6 @@
 import type { JojoAssetDescriptor } from "@jojo/content";
+import { readerExplanationRequest, type ExplanationRequest } from "@jojo/ui/reader-explanation";
+import { fetch } from "expo/fetch";
 import { mobileAccessToken, parseAgentSseFrames } from "./bookAgent";
 import {
   loadTimesAssetBytes,
@@ -108,26 +110,27 @@ export function explainMobileTimesSelection(
   news: MobileTimesNewsItem,
   anchor: MobileTimesTextAnchor,
   callbacks: MobileTimesAgentCallbacks,
+  request: ExplanationRequest = {},
 ): () => void {
   const controller = new AbortController();
   void (async () => {
-    callbacks.onStatus("正在准备正文和随文图片…");
+    callbacks.onStatus("正在准备阅读上下文…");
     const [token, prepared] = await Promise.all([
       mobileAccessToken(),
       prepareImages(news, controller.signal),
     ]);
-    callbacks.onStatus(prepared.images.length
-      ? `正在结合 ${prepared.images.length} 张随文图片分析…`
-      : "正在结合文章上下文分析…");
+    if (controller.signal.aborted) return;
+    callbacks.onStatus("正在结合文章上下文理解选中文字…");
     const response = await fetch(TIMES_AGENT_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
-        "Makers-Conversation-Id": `times_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`,
+        Accept: "text/event-stream",
+        "Makers-Conversation-Id": request.conversationId || `times_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`,
       },
       body: JSON.stringify({
-        message: promptFor(news, anchor, prepared.assets),
+        ...readerExplanationRequest(promptFor(news, anchor, prepared.assets), request),
         ...(prepared.images.length ? { images: prepared.images } : {}),
       }),
       signal: controller.signal,
@@ -145,10 +148,11 @@ export function explainMobileTimesSelection(
     let answer = "";
     let receivedDone = false;
     const consume = (eventName: string, event: Record<string, unknown>) => {
+      if (controller.signal.aborted || receivedDone) return;
       if (eventName === "status") {
         if (typeof event.provider === "string") metadata.provider = event.provider;
         if (typeof event.model === "string") metadata.model = event.model;
-        callbacks.onStatus("正在理解选中文字与图片…");
+        callbacks.onStatus("正在理解选中文字…");
       } else if (eventName === "text_delta" && typeof event.delta === "string") {
         callbacks.onStatus("正在生成解释…");
         answer += event.delta;
@@ -160,17 +164,22 @@ export function explainMobileTimesSelection(
         receivedDone = true;
       }
     };
-    while (!receivedDone) {
-      const result = await reader.read();
-      if (result.done) break;
-      buffer += decoder.decode(result.value, { stream: true });
-      buffer = parseAgentSseFrames(buffer, consume);
+    try {
+      while (!receivedDone) {
+        const result = await reader.read();
+        if (result.done) break;
+        buffer += decoder.decode(result.value, { stream: true });
+        buffer = parseAgentSseFrames(buffer, consume);
+      }
+      buffer += decoder.decode();
+      if (buffer.trim()) parseAgentSseFrames(`${buffer}\n\n`, consume);
+      const completed = completedAnswer(answer);
+      if (!receivedDone || !completed) throw new Error("AI 解释似乎没有生成完整，请重试");
+      if (!controller.signal.aborted) callbacks.onDone(metadata, completed);
+    } finally {
+      await reader.cancel().catch(() => undefined);
+      reader.releaseLock();
     }
-    buffer += decoder.decode();
-    if (buffer.trim()) parseAgentSseFrames(`${buffer}\n\n`, consume);
-    const completed = completedAnswer(answer);
-    if (!receivedDone || !completed) throw new Error("AI 解释似乎没有生成完整，请重试");
-    callbacks.onDone(metadata, completed);
   })().catch((error: unknown) => {
     if (controller.signal.aborted) return;
     const message = error instanceof Error ? error.message : String(error);

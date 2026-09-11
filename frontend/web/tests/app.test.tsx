@@ -17,6 +17,10 @@ vi.mock("@jojo/pdf-viewer", () => ({
   usePdfDocument: appPdfMocks.usePdfDocument,
 }));
 
+vi.mock("../src/archive/useArchivePdf", () => ({
+  useArchivePdf: () => ({ source: { url: "https://cdn.test/content/issue.pdf.jox?v=hash", objectKey: "content/issue.pdf.jox" }, loading: false, error: null }),
+}));
+
 vi.mock("../src/rag/pages/ReaderPage", () => ({
   ReaderPage: () => <h1>书籍阅读器</h1>,
 }));
@@ -105,8 +109,9 @@ describe("JOJO Web routes and Archive homepage", () => {
     expect(window.location.search).toBe("?from=bookmark");
     expect(window.location.hash).toBe("#page-5");
     await waitFor(() => expect(appPdfMocks.usePdfDocument).toHaveBeenLastCalledWith({
-      url: "https://blacknews.jojokanbao.cn/RMRB/1976/19761009.pdf",
-      protectedPdf: "auto",
+      url: "https://cdn.test/content/issue.pdf.jox?v=hash",
+      protectedPdf: true,
+      joxObjectKey: "content/issue.pdf.jox",
     }));
   });
 

@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getSession = vi.hoisted(() => vi.fn());
+const streamingFetch = vi.hoisted(() => vi.fn());
+vi.mock("expo/fetch", () => ({ fetch: streamingFetch }));
 
 vi.mock("../account/auth", () => ({
   mobileAuthClient: { auth: { getSession } },
@@ -11,6 +13,7 @@ import { askMobileLibraryAgent, boundedMobileAgentHistory, mobileAgentToolActivi
 describe("mobile library agent", () => {
   beforeEach(() => {
     getSession.mockReset();
+    streamingFetch.mockReset();
     getSession.mockResolvedValue({ data: { session: { access_token: "mobile-token" } }, error: null });
   });
 
@@ -37,13 +40,14 @@ describe("mobile library agent", () => {
   });
 
   it("streams an all-library question and keeps only cited references", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response([
+    const fetchMock = streamingFetch.mockResolvedValue(new Response([
       'event: tool_end\ndata: {"name":"search_content","references":[{"citationId":"ref_1","itemId":"one"},{"citationId":"ref_2","itemId":"two"}]}',
       'event: text_delta\ndata: {"delta":"回答[cite:ref_2]"}',
       'event: done\ndata: {}',
       "",
     ].join("\n\n"), { headers: { "Content-Type": "text/event-stream" } }));
-    vi.stubGlobal("fetch", fetchMock);
+    const nativeFetch = vi.fn().mockResolvedValue({ ok: true, body: undefined });
+    vi.stubGlobal("fetch", nativeFetch);
 
     const result = await new Promise<{ id: string; references: Array<{ citationId?: string }> }>((resolve, reject) => {
       askMobileLibraryAgent({
@@ -58,6 +62,8 @@ describe("mobile library agent", () => {
     });
 
     const [, init] = fetchMock.mock.calls[0]!;
+    expect(nativeFetch).not.toHaveBeenCalled();
+    expect(new Headers(init.headers).get("accept")).toBe("text/event-stream");
     expect(JSON.parse(String(init.body))).toMatchObject({
       message: "比较两本书",
       scope: { mode: "all", datasetIds: ["book-a", "book-b"] },

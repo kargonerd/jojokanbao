@@ -16,6 +16,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { AgentHttpError, authorizeSupabaseUser } from "./auth";
 import { createEdgeOneCredentialStore } from "./credential-store";
 import { acquireAgentUsage } from "./usage";
+import { collectEgressDiagnostics, egressTraceAttributes } from "./egress";
 import type {
   AgentUsageLease,
   AgentRequestBody,
@@ -492,41 +493,55 @@ export function createEdgeOneAgentHandler(
             context.tracer,
             `jojo.${options.agentId || "rag"}_agent`,
             async (span) => {
-              const output = await runPlatformAgent({
-                systemPrompt: systemPrompt(options, context),
-                prompt: requestPrompt(body),
-                history,
-                sessionId: conversationId,
-                tools,
-                model: runtime.model,
-                stream: modelRuntimeStream(runtime),
-                signal: context.request.signal,
-                reasoning: DEFAULT_CODEX_REASONING,
-                maxTurns: positiveEnvironmentInteger(
-                  environment.JOJO_AGENT_MAX_TURNS,
-                  8,
-                ),
-                maxToolCalls: positiveEnvironmentInteger(
-                  environment.JOJO_AGENT_MAX_TOOL_CALLS,
-                  20,
-                ),
-                maxLengthContinuations: options.agentId === "times" ? 1 : 0,
-                onEvent(event) {
-                  emit(event.type, eventPayload(event));
-                },
-              });
-              span.setAttributes?.({
-                "agent.status": "ok",
-                "agent.turns": output.turns,
-                "agent.tool_calls": output.toolCalls,
-                "agent.duration_ms": output.durationMs,
-                "agent.stop_reason": output.stopReason,
-                "llm.token_count.total": output.usage.totalTokens,
-                "llm.token_count.prompt": output.usage.inputTokens,
-                "llm.token_count.completion": output.usage.outputTokens,
-                "llm.token_count.reasoning": output.usage.reasoningTokens ?? 0,
-              });
-              return output;
+              const diagnostics = user.isAvailabilityMonitor
+                ? collectEgressDiagnostics(signal) : undefined;
+              try {
+                const output = await runPlatformAgent({
+                  systemPrompt: systemPrompt(options, context),
+                  prompt: requestPrompt(body),
+                  history,
+                  sessionId: conversationId,
+                  tools,
+                  model: runtime.model,
+                  stream: modelRuntimeStream(runtime),
+                  signal: context.request.signal,
+                  reasoning: DEFAULT_CODEX_REASONING,
+                  maxTurns: positiveEnvironmentInteger(
+                    environment.JOJO_AGENT_MAX_TURNS,
+                    8,
+                  ),
+                  maxToolCalls: positiveEnvironmentInteger(
+                    environment.JOJO_AGENT_MAX_TOOL_CALLS,
+                    20,
+                  ),
+                  maxLengthContinuations: options.agentId === "times" ? 1 : 0,
+                  onEvent(event) {
+                    emit(event.type, eventPayload(event));
+                  },
+                });
+                span.setAttributes?.({
+                  "agent.status": "ok",
+                  "agent.turns": output.turns,
+                  "agent.tool_calls": output.toolCalls,
+                  "agent.duration_ms": output.durationMs,
+                  "agent.stop_reason": output.stopReason,
+                  "llm.token_count.total": output.usage.totalTokens,
+                  "llm.token_count.prompt": output.usage.inputTokens,
+                  "llm.token_count.completion": output.usage.outputTokens,
+                  "llm.token_count.reasoning": output.usage.reasoningTokens ?? 0,
+                });
+                return output;
+              } finally {
+                if (diagnostics) {
+                  // Only the monitor receives this frame. Failure of diagnostics
+                  // or the trace backend must not replace the model's outcome.
+                  try {
+                    const egress = await diagnostics;
+                    emit("diagnostics", { egress });
+                    span.setAttributes?.(egressTraceAttributes(egress));
+                  } catch { /* Best-effort diagnostics. */ }
+                }
+              }
             },
             {
               "openinference.span.kind": "AGENT",

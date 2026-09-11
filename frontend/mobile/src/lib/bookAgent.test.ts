@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getSession = vi.hoisted(() => vi.fn());
+const streamingFetch = vi.hoisted(() => vi.fn());
+vi.mock("expo/fetch", () => ({ fetch: streamingFetch }));
 
 vi.mock("../account/auth", () => ({
   mobileAuthClient: { auth: { getSession } },
@@ -14,6 +16,7 @@ import {
 describe("mobile book agent stream", () => {
   beforeEach(() => {
     getSession.mockReset();
+    streamingFetch.mockReset();
     getSession.mockResolvedValue({
       data: { session: { access_token: "mobile-token" } },
       error: null,
@@ -33,11 +36,12 @@ describe("mobile book agent stream", () => {
   });
 
   it("sends recent client history with the streamed question", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(
+    const fetchMock = streamingFetch.mockResolvedValue(new Response(
       'event: text_delta\ndata: {"delta":"回答"}\n\nevent: done\ndata: {}\n\n',
       { headers: { "Content-Type": "text/event-stream" } },
     ));
-    vi.stubGlobal("fetch", fetchMock);
+    const nativeFetch = vi.fn().mockResolvedValue({ ok: true, body: undefined });
+    vi.stubGlobal("fetch", nativeFetch);
 
     await new Promise<void>((resolve, reject) => {
       askMobileBookAgent({
@@ -54,6 +58,8 @@ describe("mobile book agent stream", () => {
     });
 
     const [target, init] = fetchMock.mock.calls[0]!;
+    expect(nativeFetch).not.toHaveBeenCalled();
+    expect(new Headers(init.headers).get("accept")).toBe("text/event-stream");
     expect(String(target)).toBe("https://agent-global.jojokanbao.cn/rag");
     expect(new Headers(init.headers).get("authorization")).toBe("Bearer mobile-token");
     expect(JSON.parse(String(init.body))).toMatchObject({

@@ -29,6 +29,7 @@ interface UsePdfDocumentOptions {
   wasmUrl?: string;
   standardFontDataUrl?: string;
   protectedPdf?: ProtectedPdfMode;
+  joxObjectKey?: string;
   rangeChunkSize?: number;
 }
 
@@ -53,6 +54,7 @@ export function usePdfDocument({
   wasmUrl = WASM_URL,
   standardFontDataUrl = STANDARD_FONT_URL,
   protectedPdf = "auto",
+  joxObjectKey,
   rangeChunkSize = DEFAULT_PDF_RANGE_CHUNK_SIZE,
 }: UsePdfDocumentOptions): PdfDocumentState {
   const [state, setState] = useState<PdfDocumentInternalState>({
@@ -96,6 +98,7 @@ export function usePdfDocument({
       };
 
       const source = await resolvePdfSource(url, protectedPdf, {
+        joxObjectKey,
         rangeChunkSize,
         onRangeError: fail,
       }, initialRequest.signal);
@@ -134,7 +137,7 @@ export function usePdfDocument({
       abortSource?.abort();
       task?.destroy().catch(() => {});
     };
-  }, [url, cMapUrl, wasmUrl, standardFontDataUrl, protectedPdf, rangeChunkSize]);
+  }, [url, cMapUrl, wasmUrl, standardFontDataUrl, protectedPdf, joxObjectKey, rangeChunkSize]);
 
   if (state.sourceUrl !== url) {
     return { document: null, numPages: 0, loading: Boolean(url), error: null };
