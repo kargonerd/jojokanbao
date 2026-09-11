@@ -6,6 +6,7 @@
 
 - 首页、资料库、搜索、AI、时事、账号、设置与阅读记录均为原生 React Native 界面。账号入口与手机 Web 一样位于右上角，并使用与 Web 共用的 `@jojo/auth` 登录状态。
 - 报刊目录、期号格式、CDN/搜索地址与特殊 PDF 文件规则来自 `@jojo/content`，Web 和 Mobile 共用一份领域代码。
+- 搜索结果可在列表中展开、收起文章全文，原版 PDF 使用独立入口打开。账号设置的“关于”页提供反馈渠道、唯一的“支持 JOJO 看报”捐助入口和版权说明，与 Web 共用 `@jojo/content` 中的公开项目信息及收款码。
 - 阅读页复用 `reader.jojokanbao.cn` 的 PDF.js 阅读内核，通过轻量 WebView bridge 同步页码和阅读记录。线上 PDF 带 JOJO 字节掩码保护；这种方式可以继续使用 Range 分段加载，避免在手机内存中一次性解密整份大 PDF。
 - 原生栈负责 iOS 侧滑返回、Android 系统返回、系统分享、安全区、触感反馈、日期选择和底部导航。
 - AI Tab 与书籍阅读页的书内 AI 直接流式请求国际 Makers Agent；AI Tab 的历史对话按账号保存在本机，服务端不保存聊天历史。

@@ -1,7 +1,8 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { ARCHIVE_WEB_ORIGIN, type TimesSourceRef } from "@jojo/content";
+import { ARCHIVE_WEB_ORIGIN, FEEDBACK_BILIBILI_URL, FEEDBACK_QQ_GROUP, PROJECT_COPYRIGHT_NOTICES, type TimesSourceRef } from "@jojo/content";
 import { useNavigation, useRoute, type NavigationProp, type RouteProp } from "@react-navigation/native";
 import { nativeApplicationVersion } from "expo-application";
+import * as Clipboard from "expo-clipboard";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -83,6 +84,7 @@ export function SettingsScreen() {
   const clearRecentReading = useMobileStore((state) => state.clearRecentReading);
   const [updateBusy, setUpdateBusy] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string>();
+  const [feedbackNotice, setFeedbackNotice] = useState("");
   const timesLanguage = useMobileStore((state) => state.timesLanguage);
   const setTimesLanguage = useMobileStore((state) => state.setTimesLanguage);
   const timesDisabledSourceIds = useMobileStore((state) => state.timesDisabledSourceIds);
@@ -122,6 +124,25 @@ export function SettingsScreen() {
       { cancelable: !catalog.mandatory },
     );
   };
+
+  async function copyFeedbackGroup() {
+    setFeedbackNotice("");
+    try {
+      await Clipboard.setStringAsync(FEEDBACK_QQ_GROUP);
+      setFeedbackNotice("群号已复制，可在 QQ 中搜索并申请加入。");
+    } catch {
+      setFeedbackNotice("复制失败，可长按群号手动复制。");
+    }
+  }
+
+  async function openFeedbackPage() {
+    setFeedbackNotice("");
+    try {
+      await Linking.openURL(FEEDBACK_BILIBILI_URL);
+    } catch {
+      setFeedbackNotice("无法打开 B 站，请稍后重试，或在 B 站搜索 JOJO看报。");
+    }
+  }
 
   useEffect(() => {
     if (section && section !== "times") return undefined;
@@ -403,15 +424,48 @@ export function SettingsScreen() {
               <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>在浏览器打开 JOJO 看报</Text>
               <Ionicons name="open-outline" size={17} color={theme.muted} />
             </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityHint="查看本项目与第三方软件的许可信息"
-              onPress={() => navigation.navigate("OpenSourceLicenses")}
-              style={({ pressed }) => [styles.actionRow, styles.actionRowTopDivider, { borderTopColor: theme.rule, opacity: pressed ? 0.6 : 1 }]}
-            >
-              <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>开源软件许可</Text>
-              <Ionicons name="chevron-forward" size={17} color={theme.muted} />
-            </Pressable>
+          </View>
+
+          <View style={styles.sectionGap}>
+            <SectionTitle title="反馈" />
+            <View style={[styles.panel, { backgroundColor: theme.paper, borderColor: theme.rule }]}>
+              <Text style={[styles.aboutParagraph, { color: theme.ink, fontFamily: theme.serif }]}>
+                使用中遇到问题，或有功能建议，可以加入 QQ 群反馈，也可以在 B 站 JOJO看报账号下留言或私信。
+              </Text>
+              <View style={[styles.feedbackGroup, { borderTopColor: theme.rule }]}>
+                <Text selectable style={[styles.actionText, { color: theme.ink, fontFamily: theme.sans }]}>QQ群：{FEEDBACK_QQ_GROUP}</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel="复制反馈群号" onPress={() => void copyFeedbackGroup()} style={styles.copyGroupButton}>
+                  <Text style={[styles.copyGroupText, { color: theme.red, fontFamily: theme.sans }]}>复制群号</Text>
+                </Pressable>
+              </View>
+              <Pressable accessibilityRole="link" onPress={() => void openFeedbackPage()} style={[styles.actionRow, styles.actionRowTopDivider, { borderTopColor: theme.rule }]}>
+                <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>在 B 站留言或私信</Text>
+                <Ionicons name="open-outline" size={17} color={theme.muted} />
+              </Pressable>
+              {feedbackNotice ? <Text accessibilityLiveRegion="polite" style={[styles.feedbackNotice, { color: theme.muted, fontFamily: theme.sans }]}>{feedbackNotice}</Text> : null}
+              <Pressable accessibilityRole="button" onPress={() => navigation.navigate("Support")} style={[styles.actionRow, styles.actionRowTopDivider, { borderTopColor: theme.rule }]}>
+                <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>支持 JOJO 看报</Text>
+                <Ionicons name="heart-outline" size={17} color={theme.muted} />
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.sectionGap}>
+            <SectionTitle title="版权说明" />
+            <View style={[styles.panel, { backgroundColor: theme.paper, borderColor: theme.rule }]}>
+              {PROJECT_COPYRIGHT_NOTICES.map((paragraph) => (
+                <Text key={paragraph} selectable style={[styles.aboutParagraph, { color: theme.ink, fontFamily: theme.serif }]}>{paragraph}</Text>
+              ))}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityHint="查看本项目与第三方软件的许可信息"
+                onPress={() => navigation.navigate("OpenSourceLicenses")}
+                style={({ pressed }) => [styles.actionRow, styles.actionRowTopDivider, { borderTopColor: theme.rule, opacity: pressed ? 0.6 : 1 }]}
+              >
+                <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>开源软件许可</Text>
+                <Ionicons name="chevron-forward" size={17} color={theme.muted} />
+              </Pressable>
+            </View>
           </View>
         </View>
         ) : null}
@@ -450,4 +504,9 @@ const styles = StyleSheet.create({
   about: { minHeight: 58, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center" },
   aboutTitle: { flex: 1, fontSize: 13, fontWeight: "800" },
   aboutVersion: { fontSize: 10, fontWeight: "700" },
+  aboutParagraph: { paddingVertical: 12, fontSize: 14, lineHeight: 24 },
+  feedbackGroup: { minHeight: 58, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 12 },
+  copyGroupButton: { minHeight: 44, paddingHorizontal: 4, justifyContent: "center" },
+  copyGroupText: { fontSize: 12, fontWeight: "800" },
+  feedbackNotice: { paddingBottom: 12, fontSize: 12, lineHeight: 20 },
 });

@@ -1,6 +1,7 @@
 import { useLayoutEffect } from "react";
-import weixinImg from "../assets/weixin.png";
-import zfbImg from "../assets/zfb.png";
+import { DONATION_RECORDS_URL, FEEDBACK_BILIBILI_URL, FEEDBACK_QQ_GROUP, PROJECT_COPYRIGHT_NOTICES } from "@jojo/content";
+import weixinImg from "../../../../packages/content/assets/support/weixin.png";
+import zfbImg from "../../../../packages/content/assets/support/zfb.png";
 import { rollout } from "../../rollout";
 import { Link, useLocation } from "react-router-dom";
 import "./support.css";
@@ -55,13 +56,36 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
           <h1 id="关于" className="mb-4 scroll-mt-20 text-2xl font-bold tracking-wider text-ink">{platformRedesign ? "关于 JOJO 看报" : "反馈"}</h1>
           <p className="text-ink/80 leading-8">
             网站为业余时间开发制作，因此较为粗糙，如果网站有任何问题，或者希望对网站提出建议，可以进入QQ群:
-            <strong className="text-red"> 974380749 </strong> 进行反馈，也可以在B站
-            <a href="https://space.bilibili.com/571556400" target="_blank" rel="noreferrer" className="support-link font-bold"> JOJO看报账号</a>
+            <strong className="text-red"> {FEEDBACK_QQ_GROUP} </strong> 进行反馈，也可以在B站
+            <a href={FEEDBACK_BILIBILI_URL} target="_blank" rel="noreferrer" className="support-link font-bold"> JOJO看报账号</a>
             下留言或私信反馈
           </p>
 
+          <section aria-labelledby="捐助">
+            <h2 id="捐助" className="scroll-mt-20 text-2xl font-bold tracking-wider text-ink border-t border-rule mt-8 pt-5 mb-4">捐助</h2>
+            <div>
+              <p className="text-ink/80 leading-8">
+                如果 JOJO 看报对您有帮助，欢迎自愿捐助，支持网站与 APP 的持续维护。
+                所有捐助记录将在
+                <a href={DONATION_RECORDS_URL} target="_blank" rel="noreferrer" className="support-link font-bold"> JOJO看报捐助列表</a>
+                中公示。
+              </p>
+              <div className="flex flex-wrap gap-4 mt-4">
+                <figure className="m-0 w-full max-w-[240px]">
+                  <figcaption className="mb-2 font-bold text-ink">微信捐助</figcaption>
+                  <img src={weixinImg} alt="微信捐助收款码" width={296} height={296} className="block w-full border border-rule-dark" />
+                </figure>
+                <figure className="m-0 w-full max-w-[240px]">
+                  <figcaption className="mb-2 font-bold text-ink">支付宝捐助</figcaption>
+                  <img src={zfbImg} alt="支付宝捐助收款码" width={296} height={296} className="block w-full border border-rule-dark" />
+                </figure>
+              </div>
+              <p className="mt-4 text-sm leading-6 text-muted">手机上可保存收款码，或截图后在微信、支付宝中从相册识别。</p>
+            </div>
+          </section>
+
           {/* 纪念缅怀 */}
-          <h1 id="纪念缅怀" className="scroll-mt-20 text-2xl font-bold tracking-wider text-ink mt-10 mb-4">纪念缅怀</h1>
+          <h2 id="纪念缅怀" className="scroll-mt-20 text-2xl font-bold tracking-wider text-ink border-t border-rule mt-8 pt-5 mb-4">纪念缅怀</h2>
           <ul className="list-none p-0 m-0">
             <li>
               <a href="https://redstar.jojokanbao.cn" target="_blank" rel="noreferrer" className="support-link font-bold inline-flex items-center gap-1.5">
@@ -71,29 +95,14 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
             </li>
           </ul>
 
-          {/* 捐助 */}
-          <h1 id="捐助" className="scroll-mt-20 text-2xl font-bold tracking-wider text-ink mt-10 mb-4">捐助</h1>
-          <p className="text-ink/80 leading-8">
-            如果网站对您有帮助，您可以通过捐助支持我们，所有捐助都将用于维护本网站，所有捐助记录将在
-            <a href="https://docs.qq.com/sheet/DZlhxZUdmalFBUUFQ?tab=BB08J2" target="_blank" rel="noreferrer" className="support-link font-bold"> JOJO看报捐助列表</a>
-            中公示
-          </p>
-          <div className="flex flex-wrap gap-4 mt-4">
-            <img src={weixinImg} alt="微信" width={296} height={296} className="max-w-[240px] border border-rule-dark" />
-            <img src={zfbImg} alt="支付宝" width={296} height={296} className="max-w-[240px] border border-rule-dark" />
-          </div>
-
           {/* 版权说明 */}
-          <h1 id="版权说明" className="scroll-mt-20 text-2xl font-bold tracking-wider text-ink mt-10 mb-4">版权说明</h1>
+          <h2 id="版权说明" className="scroll-mt-20 text-2xl font-bold tracking-wider text-ink border-t border-rule mt-8 pt-5 mb-4">版权说明</h2>
           <div className="space-y-3 text-ink/80 leading-8">
-            <p>本站部分内容为公开报刊书籍历史资料扫描整理，仅供个人学习、学术研究使用。</p>
-            <p>报刊书籍文字、图片、版式之著作权归原出版机构及相关著作权人所有。</p>
-            <p>若著作权人发现本站内容侵害自身合法权益，可提供权属证明联系本站，收到通知后我们将及时移除相关资料。</p>
-            <p>未经原权利人许可，请勿转载、复制、二次分发本站内书籍报刊等扫描资料。</p>
+            {PROJECT_COPYRIGHT_NOTICES.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
           </div>
 
           {/* 数据下载 */}
-          <h1 id="数据下载" className="scroll-mt-20 text-2xl font-bold tracking-wider text-ink mt-10 mb-4">数据下载</h1>
+          <h2 id="数据下载" className="scroll-mt-20 text-2xl font-bold tracking-wider text-ink border-t border-rule mt-8 pt-5 mb-4">数据下载</h2>
           <div className="space-y-3">
             {downloads.map((d) => (
               <p key={d.name} className="leading-8 text-ink/80">

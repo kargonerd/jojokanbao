@@ -14,6 +14,7 @@ import { LibraryScreen } from "./src/screens/LibraryScreen";
 import { ReaderScreen } from "./src/screens/ReaderScreen";
 import { SearchScreen } from "./src/screens/SearchScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
+import { SupportScreen } from "./src/screens/SupportScreen";
 import { OpenSourceLicensesScreen } from "./src/screens/OpenSourceLicensesScreen";
 import { MeScreen } from "./src/screens/MeScreen";
 import { AccountSecurityScreen } from "./src/screens/AccountSecurityScreen";
@@ -155,6 +156,7 @@ export default function App() {
             <Stack.Screen name="Notifications" component={NotificationsScreen} />
             <Stack.Screen name="Bookshelf" component={BookshelfScreen} />
             <Stack.Screen name="OpenSourceLicenses" component={OpenSourceLicensesScreen} />
+            <Stack.Screen name="Support" component={SupportScreen} />
             <Stack.Screen name="Reader" component={ReaderScreen} />
             <Stack.Screen name="BookDetails" component={BookDetailsScreen} />
             <Stack.Screen name="BookReader" component={BookReaderScreen} />
