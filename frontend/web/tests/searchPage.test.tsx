@@ -377,11 +377,24 @@ describe("SearchPage results", () => {
     expect(resultUrl.pathname).toBe("/archive/rmrb/19660701");
     expect(resultUrl.hash).toBe("#page-5");
     expect(resultUrl.searchParams.get("query")).toBe("历史");
-    expect(resultUrl.searchParams.get("quote")).toBe("革命历史文献");
+    expect(resultUrl.searchParams.get("title")).toBe("革命历史文献");
+    expect(resultUrl.searchParams.has("quote")).toBe(false);
     expect(resultUrl.searchParams.get("searchPage")).toBe("5");
     expect(resultUrl.searchParams.get("returnTo")).toBe("/search?keyword=历史&page=2&sort=timeDesc&startDate=19660701&endDate=19660731");
     expect(screen.getByText("重点内容").className).toContain("search-highlight");
     expect(screen.getByText("11")).toBeTruthy();
+  });
+
+  it("links the full source title even when search returns only a highlighted title fragment", async () => {
+    const fullTitle = `${"历史文献".repeat(50)}……完整标题`;
+    vi.mocked(axios.post).mockResolvedValue({ data: { data: { total: 1, results: [{
+      type: "newspaper", datasetId: "rmrb", itemId: "rmrb:1966-07-01", date: "1966-07-01",
+      title: fullTitle, titleHighlights: ["<mark>历史</mark>文献……"], metadata: { page: 5 },
+    }] } } });
+    renderSearch("/search?keyword=历史", true);
+    const heading = await screen.findByRole("heading", { name: /历史\s*文献……/ });
+    const url = new URL(heading.closest("a")!.getAttribute("href")!, "https://reader.test");
+    expect(url.searchParams.get("title")).toBe(fullTitle);
   });
 
   it("applies the two-level periodical and book scope filters", async () => {

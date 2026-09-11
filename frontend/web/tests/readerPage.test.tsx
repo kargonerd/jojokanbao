@@ -667,7 +667,7 @@ describe("ReaderPage toolbar interactions", () => {
 describe("search result location", () => {
   it("retains the search page and return filters while the visible page changes", () => {
     renderReader("/archive/rmrb/19660701?query=铁路&quote=铁路通车&searchPage=3&returnTo=%2Fsearch%3Fkeyword%3D铁路%26page%3D2#page-3");
-    expect(latestViewerProps().searchTarget).toMatchObject({ page: 3, query: "铁路", quote: "铁路通车", activeIndex: 0 });
+    expect(latestViewerProps().searchTarget).toMatchObject({ page: 3, query: "", quote: "铁路通车", activeIndex: 0 });
     expect(screen.getByRole("link", { name: "返回搜索结果" }).getAttribute("href")).toBe("/search?keyword=铁路&page=2");
     fireEvent.click(screen.getByRole("button", { name: "模拟看到第5页" }));
     expect(latestViewerProps().searchTarget).toMatchObject({ page: 3 });
@@ -678,7 +678,7 @@ describe("search result location", () => {
     expect(latestViewerProps().searchTarget).toMatchObject({ activeIndex: 0, focusToken: 2 });
   });
   it("explains missing text without claiming a scan can be located and lets readers dismiss highlights", () => {
-    renderReader("/archive/rmrb/19660701?query=铁路&searchPage=3#page-3");
+    renderReader("/archive/rmrb/19660701?query=铁路&title=铁路通车&searchPage=3#page-3");
     act(() => (latestViewerProps().onSearchResult as (value: unknown) => void)({ status: "no-text", matches: 0 }));
     expect(screen.getByText(/此页没有可定位的文字层/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "下一处" })).toBeNull();
@@ -689,5 +689,19 @@ describe("search result location", () => {
   it("does not expose external return destinations", () => {
     renderReader("/archive/rmrb/19660701?query=铁路&returnTo=%2F%2Fother.test");
     expect(screen.queryByRole("link", { name: "返回搜索结果" })).toBeNull();
+  });
+  it("keeps the complete title and reports an unmatched title without keyword navigation", () => {
+    const title = `${"铁路".repeat(100)}建设的新进展`;
+    renderReader(`/archive/rmrb/19660701?query=铁路&title=${encodeURIComponent(title)}&searchPage=3#page-3`);
+    expect(latestViewerProps().searchTarget).toMatchObject({ page: 3, query: "", quote: title });
+    act(() => (latestViewerProps().onSearchResult as (value: unknown) => void)({ status: "not-found", matches: 0 }));
+    expect(screen.getByText(/未找到完整标题/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "下一处" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "回到命中位置" })).toBeNull();
+  });
+  it("does not use a search keyword as a title when the title is missing", () => {
+    renderReader("/archive/rmrb/19660701?query=铁路&title=&searchPage=3#page-3");
+    expect(latestViewerProps().searchTarget).toMatchObject({ query: "", quote: "" });
+    expect(screen.getByText(/链接缺少完整标题/)).toBeTruthy();
   });
 });

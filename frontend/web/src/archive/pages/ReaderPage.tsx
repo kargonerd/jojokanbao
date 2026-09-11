@@ -223,7 +223,11 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const [searchParams] = useSearchParams();
   const routeLocation = useLocation();
   const searchQuery = (searchParams.get("query") || "").trim().slice(0, 200);
-  const searchQuote = (searchParams.get("quote") || "").trim().slice(0, 160);
+  const searchQuote = (searchParams.get("quote") || "").trim();
+  // Older search links used quote for the title. Quote-only links are excerpts.
+  const searchTitle = searchParams.has("title") ? searchParams.get("title")!.trim()
+    : searchQuery ? searchQuote : undefined;
+  const searchText = searchTitle ?? searchQuote;
   const searchReturnTo = searchParams.get("returnTo") || "";
   const safeSearchReturnTo = searchReturnTo.startsWith("/") && !searchReturnTo.startsWith("//")
     && !/[\\\r\n]/u.test(searchReturnTo) ? searchReturnTo : "";
@@ -231,7 +235,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const [searchResult, setSearchResult] = useState<PdfSearchResult | null>(null);
   const [searchIndex, setSearchIndex] = useState(0);
   const [searchFocusToken, setSearchFocusToken] = useState(0);
-  const searchActive = Boolean((searchQuery || searchQuote) && !searchDismissed);
+  const searchActive = Boolean((searchQuery || searchText) && !searchDismissed);
   const config = PUBLICATIONS[name];
 
   // Route params are the source of truth. Deriving these synchronously avoids
@@ -289,7 +293,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     setSearchDismissed(false);
     setSearchResult(null);
     setSearchIndex(0);
-  }, [pdfUrl, searchQuery, searchQuote]);
+  }, [pdfUrl, searchQuery, searchText]);
 
   useEffect(() => {
     if (!routeId) return;
@@ -907,13 +911,14 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       {searchActive && !routeError && !error ? (
         <aside className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-rule bg-paper px-4 py-3 text-xs" aria-label="原文定位">
           <p className="m-0 min-w-0 flex-1 leading-6 text-ink" role="status">
-            {!searchResult ? `正在第 ${searchPage} 页定位“${searchQuery || searchQuote}”` :
-              searchResult.status === "found" ? `已定位“${searchQuery || searchQuote}” · 第 ${searchPage} 页 · ${searchIndex + 1} / ${searchResult.matches} 处` :
+            {!searchText ? `已到第 ${searchPage} 页；链接缺少完整标题，无法精确定位。` :
+              !searchResult ? `正在第 ${searchPage} 页定位“${searchText}”` :
+              searchResult.status === "found" ? `已定位“${searchText}” · 第 ${searchPage} 页 · ${searchIndex + 1} / ${searchResult.matches} 处` :
               searchResult.status === "no-text" ? `已到第 ${searchPage} 页；此页没有可定位的文字层，请对照搜索摘录查看版面。` :
-              searchResult.status === "not-found" ? `已到第 ${searchPage} 页；未在文字层匹配到摘录，可能与搜索文字有差异。` :
+              searchResult.status === "not-found" ? `已到第 ${searchPage} 页；未找到${searchTitle !== undefined ? "完整标题" : "完整摘录"}，请对照原文查看。` :
               `已到第 ${searchPage} 页；暂时无法定位文字。`}
           </p>
-          {searchResult && searchResult.status !== "found" && <span className="max-w-full break-words text-muted">查找：{searchQuote || searchQuery}{searchQuote && searchQuery && searchQuote !== searchQuery ? `（关键词：${searchQuery}）` : ""}</span>}
+          {searchResult && searchResult.status !== "found" && <span className="max-w-full break-words text-muted">查找：{searchText || searchQuery}</span>}
           {searchResult?.status === "found" ? (
             <div className="flex items-center gap-3">
               {searchResult.matches > 1 ? <button type="button" className="text-red" onClick={() => {
@@ -957,7 +962,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             onPageError={handleInitialPageError}
             enableTextLayer={config.enableTextLayer ?? true}
             suppressPageLoading={showInitialLoading}
-            searchTarget={searchActive ? { page: searchPage, query: searchQuery, quote: searchQuote, activeIndex: searchIndex, focusToken: searchFocusToken } : undefined}
+            searchTarget={searchActive ? { page: searchPage, query: "", quote: searchText, activeIndex: searchIndex, focusToken: searchFocusToken } : undefined}
             onSearchResult={setSearchResult}
           />
         )}

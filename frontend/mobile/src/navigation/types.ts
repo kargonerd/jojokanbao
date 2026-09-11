@@ -15,6 +15,7 @@ export type RootStackParamList = {
     issueId: string;
     page?: number;
     searchQuery?: string;
+    searchTitle?: string;
     searchQuote?: string;
   };
   BookDetails: {

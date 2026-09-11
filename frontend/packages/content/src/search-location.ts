@@ -1,3 +1,8 @@
+/** Preserve the complete article title, including punctuation and long titles. */
+export function searchResultTitle(value: string): string {
+  return value.replace(/@\/?highlight@|<\/?mark>/gu, "").replace(/\s+/gu, " ").trim();
+}
+
 /** A short, contiguous excerpt: never concatenate separate search snippets. */
 export function searchResultQuote(value: string, query: string): string {
   const firstSnippet = value.split(/\n\s*…\s*\n|\.\.\.|…/u).find((part) => (
@@ -11,8 +16,9 @@ export function searchResultQuote(value: string, query: string): string {
 }
 
 /** Append search context before an existing page hash. */
-export function withSearchLocation(path: string, { query, quote, page, returnTo }: {
+export function withSearchLocation(path: string, { query, title, quote, page, returnTo }: {
   query: string;
+  title?: string;
   quote?: string;
   page?: number;
   returnTo?: string;
@@ -21,6 +27,8 @@ export function withSearchLocation(path: string, { query, quote, page, returnTo 
   const [pathname = "", existingQuery] = beforeHash.split("?", 2);
   const params = new URLSearchParams(existingQuery);
   if (query.trim()) params.set("query", query.trim().slice(0, 200));
+  // An empty title is explicit: the reader must never substitute the query.
+  if (title !== undefined) params.set("title", title.trim());
   if (quote?.trim()) params.set("quote", quote.trim().slice(0, 160));
   if (page && Number.isSafeInteger(page) && page > 0) params.set("searchPage", String(page));
   if (returnTo?.startsWith("/") && !returnTo.startsWith("//") && !returnTo.includes("\\")) params.set("returnTo", returnTo);

@@ -22,10 +22,19 @@ describe("PDF text location", () => {
     expect(found.ranges[0]!.startOffset).toBe(2);
     expect(found.ranges[0]!.endOffset).toBe(2);
   });
-  it("prefers an article excerpt and falls back to query if OCR differs", () => {
+  it("matches the complete title and never falls back to words in other articles", () => {
     const root = layer("铁路通车。铁路运输。");
     expect(findPdfSearchRanges(root, "铁路", "铁路运输").ranges[0]!.toString()).toBe("铁路运输");
-    expect(findPdfSearchRanges(root, "铁路", "旧版标题").result.matches).toBe(2);
+    const missing = findPdfSearchRanges(root, "铁路", "铁路运输改革");
+    expect(missing.result).toEqual({ status: "not-found", matches: 0 });
+    expect(missing.ranges).toEqual([]);
+    expect(findPdfSearchRanges(root, "铁路", "").ranges).toEqual([]);
+  });
+  it("matches the full title across PDF spans without accepting missing characters", () => {
+    const root = layer("教育事业。教\n育者", "要先受", "教育。教育改革。");
+    expect(findPdfSearchRanges(root, "教育", "教育者要先受教育").ranges.map((range) => range.toString()))
+      .toEqual(["教\n育者要先受教育"]);
+    expect(findPdfSearchRanges(layer("教育者先受教育。教育。"), "教育", "教育者要先受教育").ranges).toEqual([]);
   });
   it("normalizes full width text and ligatures without corrupting ranges", () => {
     const root = layer("ＡＢＣ ﬃ");

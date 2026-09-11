@@ -8,6 +8,7 @@ import {
   ARCHIVE_SEARCH_API,
   CONTENT_SEARCH_API,
   searchResultQuote,
+  searchResultTitle,
   withSearchLocation,
   type ArchivePublicationName,
 } from "@jojo/content";
@@ -39,6 +40,7 @@ interface SearchDatasetOption {
 
 interface SearchResult {
   title: string;
+  fullTitle?: string;
   content: string;
   preview?: string;
   date: string;
@@ -173,6 +175,7 @@ function normalizeUnifiedResult(result: UnifiedSearchResult): SearchResult {
     : [];
   return {
     title: convertUnifiedHighlight(titleHighlights[0] ?? String(result.title ?? "")),
+    fullTitle: String(result.title ?? ""),
     content: String(result.content ?? ""),
     preview: contentHighlights.length > 0
       ? convertUnifiedHighlight(contentHighlights.join("\n…\n"))
@@ -746,7 +749,8 @@ export function SearchPage({
                       <Link
                         to={withSearchLocation(unifiedResultPath(r, bookDatasets), {
                           query: params.get("keyword") || "",
-                          quote: searchResultQuote(r.type === "book" ? (r.preview || r.content) : r.title, params.get("keyword") || ""),
+                          title: r.type === "book" ? undefined : searchResultTitle(r.fullTitle ?? r.title),
+                          quote: r.type === "book" ? searchResultQuote(r.preview || r.content, params.get("keyword") || "") : undefined,
                           page: r.type === "book" ? undefined : r.page,
                           returnTo: `${location.pathname}${location.search}`,
                         })}

@@ -96,3 +96,12 @@ it("passes a native search hit into the embedded reader without losing the PDF p
   expect(url.searchParams.get("quote")).toBe("铁路通车");
   expect(url.searchParams.get("searchPage")).toBe("3");
 });
+
+it("preserves the complete long article title from native search in the embedded reader", async () => {
+  const title = `${"教育".repeat(100)}者要先受教育……`;
+  await renderReader({ page: 2, searchQuery: "教育", searchTitle: title });
+  const url = new URL(webview().props.source.uri);
+  expect(url.searchParams.get("title")).toBe(title);
+  expect(url.searchParams.has("quote")).toBe(false);
+  expect(url.hash).toBe("#page-2");
+});

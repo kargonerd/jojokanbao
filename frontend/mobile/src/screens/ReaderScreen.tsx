@@ -51,7 +51,7 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
     route.params.issueId,
     route.params.page,
     configuredReaderOrigin,
-  ), { query: route.params.searchQuery || "", quote: route.params.searchQuote, page: route.params.searchQuery ? route.params.page : undefined }));
+  ), { query: route.params.searchQuery || "", title: route.params.searchTitle, quote: route.params.searchQuote, page: route.params.searchQuery ? route.params.page : undefined }));
   const [loading, setLoading] = useState(true);
   const publicationInfo = ARCHIVE_PUBLICATION_BY_ID[publication];
   const allowedHosts = useMemo(() => new Set([safeHost(configuredReaderOrigin), safeHost(ARCHIVE_CDN_ORIGIN)]), []);

@@ -40,9 +40,10 @@ export function findPdfSearchRanges(layer: HTMLElement, query: string, quote?: s
     current = walker.nextNode();
   }
   if (!text) return { result: { status: "no-text", matches: 0 }, ranges: [] };
-  const candidates = [...new Set([normalize(quote ?? ""), normalize(query)].filter(Boolean))];
-  const needle = candidates.find((candidate) => text.includes(candidate));
-  if (!needle) return { result: { status: "not-found", matches: 0 }, ranges: [] };
+  // A supplied title/excerpt is authoritative; a broader query could match
+  // an unrelated article on the same page. Empty targets also fail closed.
+  const needle = normalize(quote ?? query);
+  if (!needle || !text.includes(needle)) return { result: { status: "not-found", matches: 0 }, ranges: [] };
 
   const ranges: Range[] = [];
   let start = text.indexOf(needle);

@@ -1,4 +1,4 @@
-import { searchResultQuote } from "@jojo/content";
+import { searchResultTitle } from "@jojo/content";
 import { useNavigation, type NavigationProp } from "@react-navigation/native";
 import { memo, useEffect, useRef, useState } from "react";
 import {
@@ -165,7 +165,7 @@ export function SearchScreen() {
                 issueId: item.date.replaceAll("-", ""),
                 page: item.page || undefined,
                 searchQuery: submittedQuery,
-                searchQuote: searchResultQuote(item.title, submittedQuery),
+                searchTitle: searchResultTitle(item.title),
               })}
             />
           )}
