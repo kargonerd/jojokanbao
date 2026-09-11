@@ -97,7 +97,7 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
           <div className="space-y-3">
             {downloads.map((d) => (
               <p key={d.name} className="leading-8 text-ink/80">
-                <strong className="text-red mr-1">{d.name}：</strong>
+                <strong className="text-ink mr-1">{d.name}：</strong>
                 {d.links.map((link, i) => (
                   <span key={link.url} className="inline-block">
                     <a href={link.url} target="_blank" rel="noreferrer" className="support-link font-bold">{link.label}</a>
