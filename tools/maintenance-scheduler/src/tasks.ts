@@ -111,7 +111,7 @@ export const SCHEDULED_TASKS = [
       alertPolicy: { executionFailures: 1 },
       graceSeconds: 20 * 60,
       tags: "jojo production email",
-      description: "Read-only Resend observations and four-hour Supabase SMTP delivery verification. Empty scans never resolve a delivery incident.",
+      description: "Read-only Resend observations: alert at 3 distinct abnormal business emails (unresolved delays plus terminal failures from messages created in 30 minutes). Independent four-hour SMTP verification.",
     },
     inputs: ({ slot }) => ({ automatic: "true", scheduled_at: slot.scheduledAt, schedule_slot: slot.id }),
   },
