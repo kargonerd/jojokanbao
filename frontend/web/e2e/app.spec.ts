@@ -113,6 +113,35 @@ test.describe("JOJO Web", () => {
     await expect(page.getByRole("heading", { name: "版权说明" })).toBeVisible();
   });
 
+  for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) {
+    test(`support section links scroll into view at ${viewport.width}px`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      for (const path of ["/support", "/archive/support"]) {
+        const copyrightUrl = `${path}#${encodeURIComponent("版权说明")}`;
+        const copyright = page.getByRole("heading", { name: "版权说明", exact: true });
+
+        await page.goto(copyrightUrl);
+        await expect(copyright).toBeInViewport({ ratio: 1 });
+        expect((await copyright.boundingBox())!.y).toBeGreaterThanOrEqual(64);
+
+        await page.reload();
+        await expect(copyright).toBeInViewport({ ratio: 1 });
+
+        await page.goto(`${path}#${encodeURIComponent("纪念缅怀")}`);
+        await expect(page.getByRole("heading", { name: "纪念缅怀", exact: true })).toBeInViewport({ ratio: 1 });
+        await page.goBack();
+        await expect(copyright).toBeInViewport({ ratio: 1 });
+      }
+    });
+  }
+
+  test("support page tolerates unknown and malformed fragments", async ({ page }) => {
+    for (const hash of ["#unknown-section", "#%E0%A4%A"]) {
+      await page.goto(`/support${hash}`);
+      await expect(page.getByRole("heading", { name: "关于 JOJO 看报", exact: true })).toBeVisible();
+    }
+  });
+
   test("legacy publication links redirect without losing the page hash", async ({ page }) => {
     await page.goto("/rmrb/19761009#page-5");
     await expect(page).toHaveURL(/\/archive\/rmrb\/19761009#page-5$/);
