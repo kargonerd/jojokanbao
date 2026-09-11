@@ -4,6 +4,7 @@ import { TextLayer } from "pdfjs-dist/legacy/build/pdf.mjs";
 import "./textLayer.css";
 import { findPdfSearchRanges, paintPdfSearchRanges, selectPdfOutlineTitleRanges, type PdfSearchTarget, type PdfSearchResult } from "./searchText";
 import { bindPdfTextLayerSelection } from "./textLayerSelection";
+import { bindPageImageContextMenu } from "./pageImageContextMenu";
 
 export const MAX_PDF_CANVAS_PIXELS = 32_000_000;
 export const MAX_PDF_CANVAS_DIMENSION = 8_192;
@@ -208,6 +209,7 @@ export function PdfPage({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
+  const textLayerOverlayRef = useRef<HTMLDivElement>(null);
   const [rendering, setRendering] = useState(true);
   const [canvasReady, setCanvasReady] = useState(false);
   const [textLayerVersion, setTextLayerVersion] = useState(0);
@@ -220,6 +222,13 @@ export function PdfPage({
   const layoutZoomRef = useRef(Math.max(layoutZoom, 1));
   const callbacksRef = useRef({ onRendered, onPageMetrics, onError, onSearchResult });
   layoutZoomRef.current = Math.max(layoutZoom, 1);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const overlay = textLayerOverlayRef.current;
+    if (!enableTextLayer || !canvasReady || !container || !overlay) return;
+    return bindPageImageContextMenu(container, overlay);
+  }, [canvasReady, enableTextLayer]);
 
   useEffect(() => {
     callbacksRef.current = { onRendered, onPageMetrics, onError, onSearchResult };
@@ -482,6 +491,7 @@ export function PdfPage({
       <canvas ref={canvasRef} className="block w-full h-auto" data-pdf-render-zoom={renderZoom ?? 1} />
       {enableTextLayer ? (
         <div
+          ref={textLayerOverlayRef}
           className="absolute left-0 top-0 origin-top-left will-change-transform"
           style={{
             width: `${100 / Math.max(layoutZoom, 1)}%`,

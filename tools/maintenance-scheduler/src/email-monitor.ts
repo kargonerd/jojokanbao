@@ -1,5 +1,5 @@
 import { EMAIL_BODY_LIMIT, parseEmailObservation } from "./email-events";
-import { applyEmailDispatch, applyEmailObservation, evaluateEmailState, initialEmailState, type EmailMonitorState } from "./email-policy";
+import { applyEmailDispatch, applyEmailObservation, countEmailAnomalies, EMAIL_POLICY, evaluateEmailState, initialEmailState, type EmailMonitorState } from "./email-policy";
 import { pingHealthcheck } from "./healthchecks";
 import { listLoggedPings, readLoggedBody } from "./monitor-events";
 import type { MonitorTick } from "./monitor-object";
@@ -44,6 +44,7 @@ export async function tickEmailMonitor(storage: StateStore, check: HealthcheckDe
     return { cursor: state.cursor, down: state.down };
   }
   evaluateEmailState(state, tick.now);
+  const abnormalMessages = countEmailAnomalies(state, state.lastObservationAt);
   await storage.put("monitor", state);
   if (state.pending) {
     const pending = state.pending;
@@ -51,7 +52,8 @@ export async function tickEmailMonitor(storage: StateStore, check: HealthcheckDe
       taskId: check.slug, stage: check.slug, status: state.status, failureType: pending.signal === "fail" ? pending.reason : "",
       observedAt: new Date(pending.at).toISOString(), collector: state.collector.incident ? "down" : state.collector.lastSuccessAt ? "up" : "unknown",
       transport: state.transport.incident ? "down" : state.transport.lastSuccessAt ? "verified" : "unknown",
-      delivery: state.delivery.incident ? "down" : state.delivery.lastSuccessAt ? "verified" : "unknown",
+      delivery: state.delivery.incident ? "down" : abnormalMessages ? "degraded" : state.delivery.lastSuccessAt ? "verified" : "unknown",
+      abnormalMessages, alertThreshold: EMAIL_POLICY.failureThreshold,
       ...(pending.run ? { run: pending.run } : {}),
     } });
     delete state.pending;
@@ -59,6 +61,7 @@ export async function tickEmailMonitor(storage: StateStore, check: HealthcheckDe
   }
   console.log(JSON.stringify({ event: "maintenance_email_monitor_tick", taskId: check.slug, cursor: state.cursor, down: state.down,
     status: state.status, collectorHealthy: !state.collector.incident && state.collector.lastSuccessAt > 0,
-    transportVerifiedAt: state.transport.lastSuccessAt || null, trackedMessages: state.messages.length }));
+    transportVerifiedAt: state.transport.lastSuccessAt || null, trackedMessages: state.messages.length,
+    abnormalMessages, alertThreshold: EMAIL_POLICY.failureThreshold }));
   return { cursor: state.cursor, down: state.down };
 }

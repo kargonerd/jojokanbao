@@ -95,16 +95,16 @@ describe('email producer and scheduler consumer protocol', () => {
 
   it('keeps a delivery failure down across duplicate and later empty scans', async () => {
     const state = initialEmailState(check, uuid(999), NOW);
-    const failed = await observe({ records: [message(1, 'failed')] });
+    const failed = await observe({ records: [message(1, 'failed'), message(4, 'bounced'), message(5, 'suppressed')] });
     applyEmailObservation(state, check, failed.observation);
-    expect(state).toMatchObject({ status: 'down', delivery: { incident: { reason: 'email_failed' } } });
+    expect(state).toMatchObject({ status: 'down', delivery: { incident: { reason: 'email_failure_threshold' } } });
     const snapshot = JSON.stringify(state);
     applyEmailObservation(state, check, failed.observation);
     expect(JSON.stringify(state)).toBe(snapshot);
     vi.setSystemTime(NOW + 60_000);
     const empty = await observe({ runId: '124' });
     applyEmailObservation(state, check, empty.observation);
-    expect(state).toMatchObject({ status: 'down', delivery: { incident: { reason: 'email_failed' } } });
+    expect(state).toMatchObject({ status: 'down', delivery: { incident: { reason: 'email_failure_threshold' } } });
   });
 
   it('accepts the actual failed transport event including its message ID', async () => {
@@ -123,13 +123,13 @@ describe('email producer and scheduler consumer protocol', () => {
     applyEmailObservation(state, check, healthy.observation);
     expect(state.status).toBe('up');
     vi.setSystemTime(NOW + 60_000);
-    const partial = await observe({ records: [message(1, 'failed', NOW - 86_400_000 + 90_000)], partialStatus: 429, runId: '124' });
-    expect(partial.observation).toMatchObject({ scanComplete: false, scanError: 'resend_http_429', messages: [{ id: uuid(1), status: 'failed' }] });
+    const partial = await observe({ records: [message(1, 'failed'), message(4, 'bounced'), message(5, 'suppressed')], partialStatus: 429, runId: '124' });
+    expect(partial.observation).toMatchObject({ scanComplete: false, scanError: 'resend_http_429', messages: [{ id: uuid(1), status: 'failed' }, { id: uuid(4), status: 'bounced' }, { id: uuid(5), status: 'suppressed' }] });
     applyEmailObservation(state, check, partial.observation);
     vi.setSystemTime(NOW + 120_000);
     const empty = await observe({ runId: '125' });
     applyEmailObservation(state, check, empty.observation);
-    expect(state).toMatchObject({ status: 'down', delivery: { incident: { reason: 'email_failed' } } });
+    expect(state).toMatchObject({ status: 'down', delivery: { incident: { reason: 'email_failure_threshold' } } });
   });
 
   it('keeps a transport failure through an empty scan and recovers with fresh verified delivery', async () => {
@@ -147,43 +147,43 @@ describe('email producer and scheduler consumer protocol', () => {
     expect(state.transport.incident).toBeUndefined();
   });
 
-  it('requires a new business delivery to recover a business failure, not synthetic or old mail', async () => {
+  it('does not let successful synthetic or unrelated business mail hide three current anomalies', async () => {
     const state = initialEmailState(check, uuid(999), NOW);
-    const failed = await observe({ records: [message(1, 'failed')] });
+    const failed = await observe({ records: [message(1, 'failed'), message(4, 'bounced'), message(5, 'suppressed')] });
     applyEmailObservation(state, check, failed.observation);
     vi.setSystemTime(NOW + 60_000);
     const synthetic = await observe({ transportStatus: 'delivered', runId: '124' });
     expect(synthetic.observation.messages).toEqual([]);
     applyEmailObservation(state, check, synthetic.observation);
-    expect(state).toMatchObject({ status: 'down', delivery: { incident: { reason: 'email_failed' } } });
+    expect(state).toMatchObject({ status: 'down', delivery: { incident: { reason: 'email_failure_threshold' } } });
     vi.setSystemTime(NOW + 120_000);
     const oldDelivery = await observe({ records: [message(2, 'delivered', NOW - 1000)], runId: '125' });
     applyEmailObservation(state, check, oldDelivery.observation);
-    expect(state).toMatchObject({ status: 'down', delivery: { incident: { reason: 'email_failed' } } });
+    expect(state).toMatchObject({ status: 'down', delivery: { incident: { reason: 'email_failure_threshold' } } });
     vi.setSystemTime(NOW + 180_000);
-    const newDelivery = await observe({ records: [message(3, 'delivered', NOW + 120_000)], runId: '126' });
+    const newDelivery = await observe({ records: [message(1, 'delivered', NOW - 1000)], runId: '126' });
     applyEmailObservation(state, check, newDelivery.observation);
     expect(state).toMatchObject({ status: 'up', pending: { signal: 'success' } });
     expect(state.delivery.incident).toBeUndefined();
   });
 
-  it('retains an unresolved delayed email through empty scans until that email is delivered', async () => {
+  it('retains three delayed emails through empty and partial scans, then recovers below the threshold', async () => {
     const state = initialEmailState(check, uuid(999), NOW);
     const createdAt = NOW - 11 * 60_000;
-    const delayed = await observe({ records: [message(1, 'sent', createdAt)] });
+    const delayed = await observe({ records: [message(1, 'sent', createdAt), message(2, 'delivery_delayed', createdAt), message(3, 'queued', createdAt)] });
     applyEmailObservation(state, check, delayed.observation);
-    expect(state).toMatchObject({ status: 'down', pending: { signal: 'fail', reason: 'email_delivery_delayed' } });
+    expect(state).toMatchObject({ status: 'down', pending: { signal: 'fail', reason: 'email_failure_threshold' } });
     vi.setSystemTime(NOW + 60_000);
     const synthetic = await observe({ transportStatus: 'delivered', runId: '124' });
     applyEmailObservation(state, check, synthetic.observation);
-    expect(state).toMatchObject({ status: 'down', pending: { signal: 'fail', reason: 'email_delivery_delayed' } });
+    expect(state).toMatchObject({ status: 'down', pending: { signal: 'fail', reason: 'email_failure_threshold' } });
     vi.setSystemTime(NOW + 120_000);
     const partialDelivery = await observe({ records: [message(1, 'delivered', createdAt)], partialStatus: 429, runId: '125' });
     applyEmailObservation(state, check, partialDelivery.observation);
     vi.setSystemTime(NOW + 180_000);
     const empty = await observe({ runId: '126' });
     applyEmailObservation(state, check, empty.observation);
-    expect(state).toMatchObject({ status: 'down', pending: { signal: 'fail', reason: 'email_delivery_delayed' } });
+    expect(state).toMatchObject({ status: 'down', pending: { signal: 'fail', reason: 'email_failure_threshold' } });
     vi.setSystemTime(NOW + 240_000);
     const resolved = await observe({ records: [message(1, 'delivered', createdAt)], runId: '127' });
     applyEmailObservation(state, check, resolved.observation);
