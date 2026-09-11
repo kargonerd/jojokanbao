@@ -14,6 +14,9 @@ export type RootStackParamList = {
     publication: ArchivePublicationName;
     issueId: string;
     page?: number;
+    searchQuery?: string;
+    searchTitle?: string;
+    searchQuote?: string;
   };
   BookDetails: {
     book: MobileBook;

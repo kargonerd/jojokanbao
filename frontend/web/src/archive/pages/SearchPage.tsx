@@ -1,5 +1,5 @@
 import { Fragment, useState, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import {
   ARCHIVE_PUBLICATIONS,
@@ -7,6 +7,9 @@ import {
   ARCHIVE_PUBLICATION_NAMES,
   ARCHIVE_SEARCH_API,
   CONTENT_SEARCH_API,
+  searchResultQuote,
+  searchResultTitle,
+  withSearchLocation,
   type ArchivePublicationName,
 } from "@jojo/content";
 import { Button, Tag, Pagination, LoadingSpinner, DateRangePicker, Select, type DateRangeValue } from "@jojo/ui";
@@ -37,6 +40,7 @@ interface SearchDatasetOption {
 
 interface SearchResult {
   title: string;
+  fullTitle?: string;
   content: string;
   preview?: string;
   date: string;
@@ -171,6 +175,7 @@ function normalizeUnifiedResult(result: UnifiedSearchResult): SearchResult {
     : [];
   return {
     title: convertUnifiedHighlight(titleHighlights[0] ?? String(result.title ?? "")),
+    fullTitle: String(result.title ?? ""),
     content: String(result.content ?? ""),
     preview: contentHighlights.length > 0
       ? convertUnifiedHighlight(contentHighlights.join("\n…\n"))
@@ -260,6 +265,7 @@ export function SearchPage({
   openResultsInNewTab?: boolean;
 }) {
   const [params, setParams] = useSearchParams();
+  const location = useLocation();
   const [term, setTerm] = useState(params.get("keyword") || "");
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [total, setTotal] = useState(0);
@@ -741,7 +747,13 @@ export function SearchPage({
                         {String(i + 1 + ((platformRedesign ? resultsPage : page) - 1) * pageSize).padStart(2, "0")}
                       </span>
                       <Link
-                        to={unifiedResultPath(r, bookDatasets)}
+                        to={withSearchLocation(unifiedResultPath(r, bookDatasets), {
+                          query: params.get("keyword") || "",
+                          title: r.type === "book" ? undefined : searchResultTitle(r.fullTitle ?? r.title),
+                          quote: r.type === "book" ? searchResultQuote(r.preview || r.content, params.get("keyword") || "") : undefined,
+                          page: r.type === "book" ? undefined : r.page,
+                          returnTo: `${location.pathname}${location.search}`,
+                        })}
                         target={openResultsInNewTab ? "_blank" : undefined}
                         rel={openResultsInNewTab ? "noreferrer" : undefined}
                       >

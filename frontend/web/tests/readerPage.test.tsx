@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReaderPage } from "../src/archive/pages/ReaderPage";
@@ -26,7 +26,8 @@ const pdfMocks = vi.hoisted(() => ({
   viewerProps: [] as Array<Record<string, unknown>>,
 }));
 
-vi.mock("@jojo/pdf-viewer", () => ({
+vi.mock("@jojo/pdf-viewer", async () => ({
+  ...await import("../../packages/pdf-viewer/src/outline"),
   fetchPdfDownloadBytes: pdfMocks.fetchPdfDownloadBytes,
   usePdfDocument: pdfMocks.usePdfDocument,
   PdfViewer: (props: Record<string, unknown>) => {
@@ -130,8 +131,10 @@ beforeEach(() => {
   readyDocument.getPageIndex.mockReset().mockResolvedValue(0);
   readyDocument.getPage.mockReset().mockResolvedValue({
     getViewport: () => ({
+      width: 1_000,
       height: 1_000,
-      convertToViewportPoint: (_x: number, y: number) => [0, 1_000 - y],
+      rotation: 0,
+      convertToViewportPoint: (x: number, y: number) => [x, 1_000 - y],
     }),
   });
   vi.stubGlobal("alert", vi.fn());
@@ -521,7 +524,7 @@ describe("ReaderPage toolbar interactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
     const pageInput = screen.getByRole("spinbutton") as HTMLInputElement;
     const reader = document.querySelector<HTMLElement>("[data-reader-scroll-container]")!;
-    const toolbar = reader.querySelector<HTMLElement>("[data-reader-toolbar]")!;
+    const toolbar = reader.querySelector<HTMLElement>("[data-reader-controls]")!;
     const page = document.querySelector<HTMLElement>("#page-4")!;
     Object.defineProperty(reader, "scrollTop", { configurable: true, writable: true, value: 100 });
     vi.spyOn(reader, "getBoundingClientRect").mockReturnValue({ top: 56 } as DOMRect);
@@ -545,7 +548,7 @@ describe("ReaderPage toolbar interactions", () => {
   it("realigns a deep-linked page after its final PDF dimensions are known", async () => {
     renderReader("/rmrb/19761009#page-5");
     const reader = document.querySelector<HTMLElement>("[data-reader-scroll-container]")!;
-    const toolbar = reader.querySelector<HTMLElement>("[data-reader-toolbar]")!;
+    const toolbar = reader.querySelector<HTMLElement>("[data-reader-controls]")!;
     const page = document.querySelector<HTMLElement>("#page-5")!;
     Object.defineProperty(reader, "scrollTop", { configurable: true, writable: true, value: 7200 });
     vi.spyOn(reader, "getBoundingClientRect").mockReturnValue({ top: 56 } as DOMRect);
@@ -660,5 +663,84 @@ describe("ReaderPage toolbar interactions", () => {
     container.scrollTop = 200;
     fireEvent.scroll(container);
     expect(screen.queryByRole("button", { name: "回到顶部" })).toBeNull();
+  });
+});
+
+
+describe("search result location", () => {
+  it("waits for a matching article bookmark before enabling text location", async () => {
+    let resolveDestination!: (dest: unknown[]) => void;
+    readyDocument.getOutline.mockResolvedValue([{ title: "第二版", dest: null, items: [
+      { title: "教 育者\n要先受教育", dest: "article", items: [] },
+    ] }]);
+    readyDocument.getDestination.mockReturnValue(new Promise((resolve) => { resolveDestination = resolve; }));
+    renderReader("/archive/rmrb/19651212?query=教育&title=教育者要先受教育&searchPage=2#page-1");
+    await waitFor(() => expect(readyDocument.getDestination).toHaveBeenCalledWith("article"));
+    expect(latestViewerProps().initialPage).toBe(2);
+    expect(latestViewerProps().searchTarget).toBeUndefined();
+    expect(screen.getByRole("status", { name: "正在定位" })).toBeTruthy();
+    await act(async () => resolveDestination([1, { name: "XYZ" }, 100, 700, null]));
+    expect(latestViewerProps().searchTarget).toEqual({ page: 2, query: "", quote: "教育者要先受教育", outline: { top: .3, left: .1 } });
+    expect(readyDocument.getOutline).toHaveBeenCalledTimes(1);
+    act(() => (latestViewerProps().onSearchResult as (value: unknown) => void)({ status: "outline", matches: 0 }));
+    expect(screen.queryByRole("status", { name: "正在定位" })).toBeNull();
+    const scrollContainer = document.querySelector<HTMLElement>("[data-reader-scroll-container]")!;
+    vi.mocked(scrollContainer.scrollTo).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "模拟初始页渲染完成" }));
+    expect(scrollContainer.scrollTo).not.toHaveBeenCalled();
+  });
+
+  it.each(["missing", "failed", "page-only"])("falls back to complete-title text when the outline is %s", async (kind) => {
+    if (kind === "failed") readyDocument.getOutline.mockRejectedValue(new Error("outline unavailable"));
+    if (kind === "page-only") readyDocument.getOutline.mockResolvedValue([{ title: "第二版", dest: null, items: [
+      { title: "教育者要先受教育", dest: [1, { name: "Fit" }], items: [] },
+    ] }]);
+    renderReader("/archive/rmrb/19651212?query=教育&title=教育者要先受教育&searchPage=2#page-2");
+    await waitFor(() => expect(latestViewerProps().searchTarget).toEqual({ page: 2, query: "", quote: "教育者要先受教育" }));
+  });
+
+  it("shows only a temporary locating indicator and preserves highlighting after it disappears", async () => {
+    renderReader("/archive/rmrb/19660701?query=铁路&quote=铁路通车&searchPage=3&returnTo=%2Fsearch%3Fkeyword%3D铁路%26page%3D2#page-3");
+    const target = { page: 3, query: "", quote: "铁路通车" };
+    await waitFor(() => expect(latestViewerProps().searchTarget).toEqual(target));
+    expect(screen.getByRole("status", { name: "正在定位" }).textContent).toBe("正在定位…");
+    expect(screen.queryByRole("link", { name: "返回搜索结果" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "模拟看到第5页" }));
+    expect(latestViewerProps().searchTarget).toEqual(target);
+    act(() => (latestViewerProps().onSearchResult as (value: unknown) => void)({ status: "found", matches: 2 }));
+    expect(screen.queryByRole("status", { name: "正在定位" })).toBeNull();
+    expect(screen.queryByText(/已定位/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "下一处" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "上一处" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "关闭原文定位" })).toBeNull();
+    expect(latestViewerProps().searchTarget).toEqual(target);
+  });
+  it.each(["outline", "no-text", "not-found", "unavailable"])("ends the loading indicator on %s without leaving a persistent banner", async (status) => {
+    renderReader("/archive/rmrb/19660701?query=铁路&title=铁路通车&searchPage=3#page-3");
+    await waitFor(() => expect(latestViewerProps().searchTarget).toBeTruthy());
+    expect(screen.getByRole("status", { name: "正在定位" })).toBeTruthy();
+    act(() => (latestViewerProps().onSearchResult as (value: unknown) => void)({ status, matches: 0 }));
+    expect(screen.queryByRole("status", { name: "正在定位" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "下一处" })).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "原文定位" })).toBeNull();
+  });
+  it("ends locating when the target page fails to render", () => {
+    renderReader("/archive/rmrb/19660701?query=铁路&title=铁路通车&searchPage=3#page-3");
+    act(() => (latestViewerProps().onPageError as (page: number, error: Error) => void)(3, new Error("render failed")));
+    expect(screen.queryByRole("status", { name: "正在定位" })).toBeNull();
+  });
+  it("keeps the complete title without keyword navigation", async () => {
+    const title = `${"铁路".repeat(100)}建设的新进展`;
+    renderReader(`/archive/rmrb/19660701?query=铁路&title=${encodeURIComponent(title)}&searchPage=3#page-3`);
+    await waitFor(() => expect(latestViewerProps().searchTarget).toMatchObject({ page: 3, query: "", quote: title }));
+    act(() => (latestViewerProps().onSearchResult as (value: unknown) => void)({ status: "not-found", matches: 0 }));
+    expect(screen.queryByRole("status", { name: "正在定位" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "下一处" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "回到命中位置" })).toBeNull();
+  });
+  it("does not use a search keyword as a title when the title is missing", () => {
+    renderReader("/archive/rmrb/19660701?query=铁路&title=&searchPage=3#page-3");
+    expect(latestViewerProps().searchTarget).toBeUndefined();
+    expect(screen.queryByRole("status", { name: "正在定位" })).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { fetchPdfDownloadBytes, PdfViewer, usePdfDocument } from "@jojo/pdf-viewer";
+import { fetchPdfDownloadBytes, findPdfOutlineLocation, resolvePdfOutlineDestination, PdfViewer, usePdfDocument, type PdfOutlineItem, type PdfOutlineLocation, type PdfSearchResult } from "@jojo/pdf-viewer";
 import { formatArchiveIssueLabel } from "@jojo/content";
 import { EmptyState, DatePicker, Toolbar, YearPicker } from "@jojo/ui";
 import { PUBLICATIONS, type PublicationName } from "../publications";
@@ -67,12 +67,6 @@ function OutlineIcon() {
       <circle cx="2.5" cy="13" r=".75" fill="currentColor" stroke="none" />
     </svg>
   );
-}
-
-interface PdfOutlineItem {
-  title: string;
-  dest: string | unknown[] | null;
-  items: PdfOutlineItem[];
 }
 
 const PAGE_OUTLINE_TITLE = /^第\s*([〇零一二三四五六七八九十百\d０-９]+)\s*版(?:([（(:：\s].*))?$/u;
@@ -220,6 +214,17 @@ interface ReaderPageProps {
 export function ReaderPage({ type, name }: ReaderPageProps) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const routeLocation = useLocation();
+  const searchQuery = (searchParams.get("query") || "").trim().slice(0, 200);
+  const searchQuote = (searchParams.get("quote") || "").trim();
+  // Older search links used quote for the title. Quote-only links are excerpts.
+  const searchTitle = searchParams.has("title") ? searchParams.get("title")!.trim()
+    : searchQuery ? searchQuote : undefined;
+  const searchText = searchTitle ?? searchQuote;
+  const [searchResult, setSearchResult] = useState<PdfSearchResult | null>(null);
+  const searchActive = Boolean(searchText);
+  const requestedSearchPage = Number(searchParams.get("searchPage"));
   const config = PUBLICATIONS[name];
 
   // Route params are the source of truth. Deriving these synchronously avoids
@@ -245,7 +250,8 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [outlineOpen, setOutlineOpen] = useState(false);
-  const [outlineItems, setOutlineItems] = useState<PdfOutlineItem[]>([]);
+  const [outlineState, setOutlineState] = useState<{ document: object; items: PdfOutlineItem[] } | null>(null);
+  const [searchOutline, setSearchOutline] = useState<{ document: object; key: string; location: PdfOutlineLocation | null } | null>(null);
   const [renderedInitialPageKey, setRenderedInitialPageKey] = useState("");
   const [seqDropdownOpen, setSeqDropdownOpen] = useState(false);
   const [jumpToPageNum, setJumpToPageNum] = useState(1);
@@ -272,6 +278,11 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const loading = archivePdf.loading || pdfLoading;
   const error = archivePdf.error || pdfError;
   const downloadFilename = `${name}-${routeId}.pdf`;
+  const outlineItems = outlineState?.document === pdfDoc ? outlineState.items : [];
+
+  useEffect(() => {
+    setSearchResult(null);
+  }, [pdfUrl, searchQuery, searchText, requestedSearchPage]);
 
   useEffect(() => {
     if (!routeId) return;
@@ -299,7 +310,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     const page = document.querySelector<HTMLElement>(`#page-${pageNum}`);
     if (!scrollContainer || !page) return;
 
-    const toolbar = scrollContainer.querySelector<HTMLElement>("[data-reader-toolbar]");
+    const toolbar = scrollContainer.querySelector<HTMLElement>("[data-reader-controls]");
     const containerTop = scrollContainer.getBoundingClientRect().top;
     const pageRect = page.getBoundingClientRect();
     const pageTop = pageRect.top;
@@ -312,7 +323,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
 
   useEffect(() => {
     setOutlineOpen(false);
-    setOutlineItems([]);
+    setOutlineState(null);
     if (!pdfDoc || !config.pageOutlineAvailable?.(routeId)) return;
 
     let disposed = false;
@@ -320,9 +331,9 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       .then((items) => {
         if (disposed) return;
         const nextItems = pageOutlineItems((items ?? []) as PdfOutlineItem[]);
-        if (nextItems.length > 0) setOutlineItems(nextItems);
+        setOutlineState({ document: pdfDoc, items: nextItems });
       })
-      .catch(() => {});
+      .catch(() => { if (!disposed) setOutlineState({ document: pdfDoc, items: [] }); });
 
     return () => {
       disposed = true;
@@ -353,12 +364,29 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     return () => window.removeEventListener("hashchange", handler);
   }, [getHashPageNum, goToPage, numPages]);
 
-  // Determine initial page from hash (for PdfViewer to render first)
+  // Search links keep their target edition even if reading changed the visible-page hash.
   const hashPage = useMemo(
     () => (typeof window !== "undefined" ? getHashPageNum() : 0),
-    [getHashPageNum, routeId],
+    [getHashPageNum, routeId, routeLocation.key],
   );
-  const initialPage = hashPage >= 1 && (numPages === 0 || hashPage <= numPages) ? hashPage : 1;
+  const hashInitialPage = hashPage >= 1 && (numPages === 0 || hashPage <= numPages) ? hashPage : 1;
+  const searchPage = Number.isSafeInteger(requestedSearchPage) && requestedSearchPage > 0
+    && (numPages === 0 || requestedSearchPage <= numPages) ? requestedSearchPage : hashInitialPage;
+  const initialPage = searchActive ? searchPage : hashInitialPage;
+  const outlineSearchKey = JSON.stringify([pdfUrl, searchTitle, searchPage]);
+  const checkSearchOutline = Boolean(searchTitle && config.pageOutlineAvailable?.(routeId));
+  const outlineSearchReady = !checkSearchOutline
+    || (searchOutline?.document === pdfDoc && searchOutline.key === outlineSearchKey);
+  const outlinePosition = checkSearchOutline && outlineSearchReady ? searchOutline?.location?.position : undefined;
+
+  useEffect(() => {
+    if (!pdfDoc || !checkSearchOutline || outlineState?.document !== pdfDoc) return;
+    let disposed = false;
+    void findPdfOutlineLocation(pdfDoc, outlineState.items, searchTitle!, searchPage).then((location) => {
+      if (!disposed) setSearchOutline({ document: pdfDoc, key: outlineSearchKey, location });
+    });
+    return () => { disposed = true; };
+  }, [pdfDoc, checkSearchOutline, outlineState, searchTitle, searchPage, outlineSearchKey]);
   const initialPageKey = pdfUrl ? `${pdfUrl}#${initialPage}` : "";
   const waitingForInitialPage = Boolean(pdfDoc && renderedInitialPageKey !== initialPageKey);
   const showInitialLoading = loading || waitingForInitialPage;
@@ -382,12 +410,14 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     if (alignedInitialPageRef.current === alignmentKey) return;
 
     alignedInitialPageRef.current = alignmentKey;
-    window.requestAnimationFrame(() => goToPage(pageNumber));
-  }, [goToPage, initialPage, pdfUrl]);
+    // The viewer positions an outline hit using its measured page geometry.
+    if (!outlinePosition) window.requestAnimationFrame(() => goToPage(pageNumber));
+  }, [goToPage, initialPage, pdfUrl, outlinePosition]);
 
   const handleInitialPageError = useCallback((pageNumber: number) => {
     if (pageNumber === initialPage) setRenderedInitialPageKey(`${pdfUrl}#${initialPage}`);
-  }, [initialPage, pdfUrl]);
+    if (searchActive && pageNumber === searchPage) setSearchResult({ status: "unavailable", matches: 0 });
+  }, [initialPage, pdfUrl, searchActive, searchPage]);
 
   // ─── Navigation handlers ───
   const handleSeqChange = (newSeq: number) => {
@@ -406,44 +436,13 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
 
   const handleOutlineSelect = async (item: PdfOutlineItem) => {
     if (!pdfDoc || item.dest === null) return;
-
-    try {
-      const destination = typeof item.dest === "string"
-        ? await pdfDoc.getDestination(item.dest)
-        : item.dest;
-      if (!destination?.length) return;
-
-      const pageRef = destination[0];
-      const pageIndex = Number.isInteger(pageRef)
-        ? Number(pageRef)
-        : await pdfDoc.getPageIndex(pageRef as Parameters<typeof pdfDoc.getPageIndex>[0]);
-      const pageNumber = pageIndex + 1;
-      if (pageNumber < 1 || pageNumber > numPages) return;
-
-      let pageOffsetRatio = 0;
-      const mode = (destination[1] as { name?: string } | undefined)?.name;
-      const pdfTop = mode === "XYZ"
-        ? destination[3]
-        : mode === "FitH" || mode === "FitBH"
-          ? destination[2]
-          : mode === "FitR"
-            ? destination[5]
-            : null;
-      if (typeof pdfTop === "number") {
-        const page = await pdfDoc.getPage(pageNumber);
-        const viewport = page.getViewport({ scale: 1 });
-        const [, viewportTop] = viewport.convertToViewportPoint(0, pdfTop);
-        pageOffsetRatio = viewportTop / Math.max(viewport.height, 1);
-      }
-
-      setOutlineOpen(false);
-      setCurrentPage(pageNumber);
-      setJumpToPageNum(pageNumber);
-      goToPage(pageNumber, pageOffsetRatio);
-      replacePageHash(pageNumber);
-    } catch {
-      // Malformed destinations are ignored without breaking the reader.
-    }
+    const location = await resolvePdfOutlineDestination(pdfDoc, item.dest);
+    if (!location) return;
+    setOutlineOpen(false);
+    setCurrentPage(location.page);
+    setJumpToPageNum(location.page);
+    goToPage(location.page, location.position?.top ?? 0);
+    replacePageHash(location.page);
   };
 
   const handleDownload = async () => {
@@ -778,6 +777,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       {/* SEO hidden heading */}
       <h1 className="hidden">{config?.label || name} - {id}</h1>
 
+      <div className="sticky top-0 z-[80]" data-reader-controls>
       {/* Toolbar: Magazine mode */}
       {type === "magazine" ? (
         <Toolbar sticky data-reader-toolbar>
@@ -881,6 +881,15 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
         </Toolbar>
       )}
 
+      {searchActive && !searchResult && !routeError && !error ? (
+        <div className="pointer-events-none absolute right-4 top-full mt-3 flex items-center gap-2 border border-rule bg-paper px-3 py-2 text-xs text-muted" role="status" aria-label="正在定位">
+          <span className="h-1.5 w-1.5 bg-red animate-pulse motion-reduce:animate-none" aria-hidden="true" />
+          正在定位…
+        </div>
+      ) : null}
+
+      </div>
+
       {/* Content */}
       <div className="px-4 py-4">
         {routeError && <EmptyState title="阅读链接无效" description={routeError} />}
@@ -903,6 +912,8 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             onPageError={handleInitialPageError}
             enableTextLayer={config.enableTextLayer ?? true}
             suppressPageLoading={showInitialLoading}
+            searchTarget={searchActive && outlineSearchReady ? { page: searchPage, query: "", quote: searchText, ...(outlinePosition ? { outline: outlinePosition } : {}) } : undefined}
+            onSearchResult={setSearchResult}
           />
         )}
       </div>
