@@ -5,6 +5,7 @@ import type { MobileBook } from "../lib/books";
 export type RootStackParamList = {
   Tabs: NavigatorScreenParams<MainTabParamList> | undefined;
   Account: undefined;
+  Support: undefined;
   Settings: { section?: SettingsSection } | undefined;
   OpenSourceLicenses: undefined;
   AccountSecurity: undefined;

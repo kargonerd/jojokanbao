@@ -399,9 +399,9 @@ describe("Support page", () => {
   it("keeps feedback, memorial, donation, copyright, and cloud download sections available", () => {
     renderAt("/archive/support");
 
-    for (const name of ["关于 JOJO 看报", "纪念缅怀", "捐助", "版权说明", "数据下载"]) {
-      expect(screen.getByRole("heading", { name })).toBeTruthy();
-    }
+    expect(screen.getAllByRole("heading").map((heading) => heading.textContent)).toEqual([
+      "关于 JOJO 看报", "捐助", "纪念缅怀", "版权说明", "数据下载",
+    ]);
     expect(screen.queryByRole("link", { name: "打开旧版 JOJO 看报" })).toBeNull();
     expect(screen.getByRole("link", { name: /开源软件许可/ }).getAttribute("href")).toBe("/support/licenses");
     expect(screen.getByText("974380749")).toBeTruthy();
@@ -410,8 +410,8 @@ describe("Support page", () => {
     expect(screen.getAllByRole("link", { name: "OneDrive下载" })).toHaveLength(5);
     expect(screen.getByRole("link", { name: "OneDrive备用下载" }).getAttribute("target")).toBe("_blank");
     expect(screen.getAllByRole("link", { name: "夸克网盘下载" })).toHaveLength(5);
-    expect(screen.getByRole("img", { name: "微信" })).toBeTruthy();
-    expect(screen.getByRole("img", { name: "支付宝" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "微信捐助收款码" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "支付宝捐助收款码" })).toBeTruthy();
   });
 
   it("shows the generated open-source software list and project license", async () => {
