@@ -52,11 +52,11 @@ export type RmrbSourceStatus = {
   error: string | null;
 };
 
-export type RmrbSyncTarget = "huggingface" | "b2";
+export type RmrbPublishStage = "canonical" | "delivery" | "search" | "activation";
 
 export type RmrbSyncProgress = {
   status: "idle" | "running" | "succeeded" | "failed";
-  phase: "idle" | "preparing" | "huggingface" | "b2" | "complete" | "failed";
+  phase: "idle" | "preparing" | RmrbPublishStage | "complete" | "failed";
   message: string;
   completed: number;
   total: number;
@@ -69,13 +69,20 @@ export type RmrbSyncProgress = {
 
 export type RmrbSyncStatus = {
   success: true;
-  configured: Record<RmrbSyncTarget, boolean>;
+  configured: Record<RmrbPublishStage, boolean>;
   state: {
-    targets?: Partial<Record<RmrbSyncTarget, {
-      publishedAt: string;
-      acceptedCount: number;
-      desiredSha256: string;
-    }>>;
+    lastRelease?: {
+      releaseId: string;
+      status: string;
+      finishedAt?: string;
+      canonicalCommit?: string;
+    };
+  };
+  recoverableRelease?: {
+    available: boolean;
+    releaseId: string | null;
+    count: number;
+    failedStage: string | null;
   };
   progress: RmrbSyncProgress;
 };
@@ -86,7 +93,8 @@ export type RmrbSyncResult = {
   pendingPublication: number;
   canonicalChanges: number;
   publishedChanges: number;
-  results: Partial<Record<RmrbSyncTarget, object>>;
+  releaseId: string;
+  results: Partial<Record<RmrbPublishStage, object>>;
 };
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -117,11 +125,11 @@ export const rmrbReviewApi = {
   syncStatus() {
     return requestJson<RmrbSyncStatus>("/api/rmrb-review/sync");
   },
-  sync(targets: RmrbSyncTarget[]) {
+  sync() {
     return requestJson<RmrbSyncResult>("/api/rmrb-review/sync", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ targets }),
+      body: JSON.stringify({}),
     });
   },
   decide(

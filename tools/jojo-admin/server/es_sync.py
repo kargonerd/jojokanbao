@@ -712,6 +712,31 @@ def _limited(rows: Iterable[IndexedDocument], limit: int | None) -> Iterator[Ind
         yield row
 
 
+def revision_heads_for_sync(index: str) -> dict[str, str | None]:
+    """Resolve current heads from COS, with local migrations as bootstrap."""
+    from es_migrations import active_revision_heads
+    from publish_search_state import load_remote_search_state, publication_config
+
+    heads = active_revision_heads(index)
+    settings = publication_config()
+    if index not in settings["indices"]:
+        return heads
+    remote = load_remote_search_state(settings)
+    remote_heads = remote.get("heads") if isinstance(remote, dict) else None
+    values = remote_heads.get(index) if isinstance(remote_heads, dict) else None
+    if values is None:
+        return heads
+    if not isinstance(values, dict):
+        raise ValueError(f"远端 search-state 的 heads.{index} 不是对象")
+    for base_id, active_id in values.items():
+        if not isinstance(base_id, str) or (
+            active_id is not None and not isinstance(active_id, str)
+        ):
+            raise ValueError(f"远端 search-state 的 heads.{index} 格式错误")
+    heads.update(values)
+    return heads
+
+
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument("--repo", default=os.getenv("ES_SYNC_HF_REPO", DEFAULT_HF_REPO))
@@ -796,6 +821,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.index,
         batch_size=args.batch_size,
         max_batch_bytes=max(1, args.max_batch_mb) * 1024 * 1024,
+        revision_heads=revision_heads_for_sync(args.index),
     )
     result = sync.run(
         combined,

@@ -194,10 +194,18 @@ class RepairLogicTest(unittest.TestCase):
 
             self.assertEqual(
                 search_state_payload(["news", "other"], directory),
-                {"excludedIds": {
-                    "news": ["base-id", delete["id"], repair["id"]],
-                    "other": [],
-                }},
+                {
+                    "formatVersion": "jojo-search-state/2",
+                    "excludedIds": {
+                        "news": ["base-id", delete["id"], repair["id"]],
+                        "other": [],
+                    },
+                    "heads": {
+                        "news": {"base-id": None, repair["id"]: None},
+                        "other": {},
+                    },
+                    "canonicalRevisions": {},
+                },
             )
             output = directory / "runtime" / "search-state.json"
             write_search_state(output, ["news", "other"], directory)
@@ -269,7 +277,12 @@ class RepairLogicTest(unittest.TestCase):
         )
         self.assertEqual(
             merged,
-            {"excludedIds": {"news": ["local-new", "remote-old"]}},
+            {
+                "formatVersion": "jojo-search-state/2",
+                "excludedIds": {"news": ["local-new", "remote-old"]},
+                "heads": {},
+                "canonicalRevisions": {},
+            },
         )
 
     def test_publish_preserves_remote_repairs_from_another_workstation(self):
@@ -305,7 +318,12 @@ class RepairLogicTest(unittest.TestCase):
 
             self.assertEqual(
                 uploaded,
-                [{"excludedIds": {"news": ["local-old", "remote-old"]}}],
+                [{
+                    "formatVersion": "jojo-search-state/2",
+                    "excludedIds": {"news": ["local-old", "remote-old"]},
+                    "heads": {"news": {"local-old": migration["id"]}},
+                    "canonicalRevisions": {},
+                }],
             )
             self.assertEqual(result["excluded"], 2)
 

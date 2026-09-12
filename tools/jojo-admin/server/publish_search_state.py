@@ -51,18 +51,92 @@ def merge_search_state(
     remote: dict[str, Any],
     local: dict[str, Any],
     indices: list[str],
-) -> dict[str, dict[str, list[str]]]:
+) -> dict[str, Any]:
     """Merge monotonically so a stale workstation cannot erase old repairs."""
     remote_excluded = _validated_excluded_ids(remote)
     local_excluded = _validated_excluded_ids(local)
-    return {
+    configured = set(indices)
+    result: dict[str, Any] = {
+        "formatVersion": "jojo-search-state/2",
         "excludedIds": {
             index: sorted(
                 set(remote_excluded.get(index, [])) | set(local_excluded.get(index, []))
             )
             for index in sorted(set(indices))
-        }
+        },
+        "heads": {
+            str(index): dict(values)
+            for index, values in (remote.get("heads") or {}).items()
+            if index in configured and isinstance(values, dict)
+        },
+        "canonicalRevisions": {
+            str(index): dict(values)
+            for index, values in (remote.get("canonicalRevisions") or {}).items()
+            if index in configured and isinstance(values, dict)
+        },
     }
+    remote_heads = result["heads"]
+    remote_excluded_sets = {
+        index: set(values) for index, values in remote_excluded.items()
+    }
+    for index, local_values in (local.get("heads") or {}).items():
+        if index not in configured or not isinstance(local_values, dict):
+            continue
+        merged = remote_heads.setdefault(index, {})
+        for base_id, local_head in local_values.items():
+            if base_id not in merged or merged[base_id] == local_head:
+                merged[base_id] = local_head
+                continue
+            remote_head = merged[base_id]
+            # A complete local chain maps the current remote head to the next
+            # head. A stale workstation instead points at an ID already
+            # excluded remotely and must never roll the head backward.
+            if remote_head in local_values and local_values[remote_head] == local_head:
+                merged[base_id] = local_head
+            elif local_head in remote_excluded_sets.get(index, set()):
+                continue
+            else:
+                raise ValueError(f"search-state 版本头冲突：{index}/{base_id}")
+    return result
+
+
+def load_remote_search_state(config: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Load the one remote search activation object."""
+    return _download_remote_state(config or publication_config())
+
+
+def upload_remote_search_state(
+    payload: dict[str, Any],
+    config: dict[str, Any] | None = None,
+) -> None:
+    """Publish an already validated search activation object."""
+    _upload_state(config or publication_config(), payload)
+
+
+def load_remote_json_object(
+    key: str,
+    config: dict[str, Any] | None = None,
+    *,
+    missing_ok: bool = False,
+) -> dict[str, Any] | None:
+    """Load another small JSON control object from the configured COS bucket."""
+    settings = {**(config or publication_config()), "key": key.strip().lstrip("/")}
+    try:
+        return _download_remote_state(settings)
+    except subprocess.CalledProcessError:
+        if missing_ok:
+            return None
+        raise
+
+
+def upload_remote_json_object(
+    key: str,
+    payload: dict[str, Any],
+    config: dict[str, Any] | None = None,
+) -> None:
+    """Write another small JSON control object to the configured COS bucket."""
+    settings = {**(config or publication_config()), "key": key.strip().lstrip("/")}
+    _upload_state(settings, payload)
 
 
 def publish_applied_search_state(
