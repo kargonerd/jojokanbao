@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   addAnnotationComment,
   createAnnotation,
+  deleteMyAnnotationMark,
   loadAnnotationThreads,
   reportAnnotationComment,
   setAnnotationCommentLike,
@@ -32,7 +33,7 @@ function compatibleThread(
   return {
     ...thread,
     comments: sortAnnotationComments(thread.comments),
-    underlineCount: Math.max(1, Math.trunc(thread.underlineCount ?? 1)),
+    underlineCount: Math.max(0, Math.trunc(thread.underlineCount ?? 1)),
     underlinedByMe,
     publiclyVisible: hasAggregateFields ? Boolean(thread.publiclyVisible) : false,
   };
@@ -97,6 +98,19 @@ export function useAnnotationThreads(subject: AnnotationSubject, enabled: boolea
   }, [refresh]);
 
   const actions = useMemo(() => ({
+    async removeMark(annotationId: string) {
+      const changed = await deleteMyAnnotationMark(annotationId);
+      if (activeScopeKey.current === scopeKey) {
+        requestId.current++;
+        setLoading(false);
+        setError("");
+        const normalized = changed ? compatibleThread(changed, currentUserId) : undefined;
+        setThreads((current) => current.flatMap((thread) => thread.id === annotationId
+          ? normalized ? [normalized] : []
+          : [thread]));
+      }
+      return changed;
+    },
     async create(anchor: TextAnchor, initialComment?: string, visibility: AnnotationVisibility = "public") {
       const actionSubjectKey = subjectKey;
       const created = await createAnnotation(stableSubject, anchor, initialComment, visibility);

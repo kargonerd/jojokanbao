@@ -102,3 +102,8 @@ export async function setAnnotationCommentLike(commentId: string, liked: boolean
   });
   return resultOrThrow<AnnotationCommentLike>(data, error);
 }
+
+export async function deleteMyAnnotationMark(annotationId: string): Promise<AnnotationThread | null> {
+  const { data, error } = await rpc("delete_my_annotation_mark", { p_annotation_id: annotationId });
+  return resultOrThrow<{ thread: AnnotationThread | null }>(data, error).thread;
+}

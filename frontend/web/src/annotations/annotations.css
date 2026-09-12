@@ -15,6 +15,10 @@
   background: rgba(139, 26, 26, .06);
   outline: 0;
 }
+.content-annotation-mark:not([data-underlined-by-me="true"]) {
+  text-decoration-style: dotted;
+  text-decoration-color: var(--color-muted, #777);
+}
 .reader-selection-action { min-width: 52px; height: 38px; border: 0; border-right: 1px solid var(--color-rule); color: inherit; background: transparent; font-size: 11px; cursor: pointer; }
 .reader-selection-action:last-child { border-right: 0; }
 .reader-selection-action:hover,
@@ -117,3 +121,7 @@
   .annotation-composer { padding-inline: 18px; }
   .annotation-composer__toolbar { align-items: flex-end; }
 }
+.annotation-delete-mark { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; border: 0; padding: 4px 0; background: transparent; color: var(--color-red); font: inherit; cursor: pointer; }
+.annotation-delete-mark svg { width: 18px; height: 18px; }
+.annotation-delete-mark:disabled { opacity: .45; cursor: wait; }
+.annotation-mark-notice { margin: 0; padding: 10px 12px; background: #333; color: #fff; font: 12px/1.5 var(--font-sans), sans-serif; }

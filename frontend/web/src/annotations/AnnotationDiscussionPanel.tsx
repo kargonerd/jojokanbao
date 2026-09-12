@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { CommentVisibilityControl } from "./CommentVisibilityControl";
+import { DeleteUnderlineIcon } from "./AnnotationMarkPopover";
 import { ANNOTATION_REPORT_LABELS, sortAnnotationComments, type AnnotationReportReason, type AnnotationThread, type AnnotationVisibility } from "./types";
 import "./annotations.css";
 
@@ -10,13 +11,14 @@ interface AnnotationDiscussionPanelProps {
   onComment: (body: string, parentCommentId?: string, visibility?: AnnotationVisibility) => Promise<unknown>;
   onReport: (commentId: string, reason: AnnotationReportReason, details?: string) => Promise<unknown>;
   onLike: (commentId: string, liked: boolean) => Promise<unknown>;
+  onDeleteMark?: () => Promise<unknown>;
 }
 
 function displayTime(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
-export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onComment, onReport, onLike }: AnnotationDiscussionPanelProps) {
+export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onComment, onReport, onLike, onDeleteMark }: AnnotationDiscussionPanelProps) {
   const [draft, setDraft] = useState("");
   const [visibility, setVisibility] = useState<AnnotationVisibility>("public");
   const [replyTo, setReplyTo] = useState<string>();
@@ -28,7 +30,25 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
   const pendingLikes = useRef(new Set<string>());
   const [liking, setLiking] = useState<Set<string>>(new Set());
   const reply = thread.comments.find((comment) => comment.id === replyTo);
-  const underlineCount = Math.max(1, Math.trunc(thread.underlineCount ?? 1));
+  const underlineCount = Math.max(0, Math.trunc(thread.underlineCount ?? 1));
+  const deleting = useRef(false);
+  const [removing, setRemoving] = useState(false);
+
+  async function removeMark() {
+    if (!onDeleteMark || !thread.underlinedByMe || deleting.current) return;
+    deleting.current = true;
+    setRemoving(true);
+    setNotice("");
+    try {
+      await onDeleteMark();
+      setNotice("已删除划线，想法已保留。");
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : "删除失败，请重试。");
+    } finally {
+      deleting.current = false;
+      setRemoving(false);
+    }
+  }
 
   async function changeLike(commentId: string, liked: boolean) {
     if (pendingLikes.current.has(commentId)) return;
@@ -90,6 +110,7 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
         <blockquote>{thread.quote}</blockquote>
         <div className="annotation-panel__meta">
           <b><i aria-hidden="true" />{underlineCount} 人划线</b>
+          {thread.underlinedByMe && onDeleteMark ? <button type="button" className="annotation-delete-mark" disabled={removing} onClick={() => void removeMark()}><DeleteUnderlineIcon />{removing ? "删除中…" : "删除划线"}</button> : null}
         </div>
       </section>
 

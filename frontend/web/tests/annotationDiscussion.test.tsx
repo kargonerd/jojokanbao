@@ -32,6 +32,21 @@ const thread = {
 };
 
 describe("AnnotationDiscussionPanel", () => {
+  it("deletes my underline once, then keeps public thoughts and the real zero count", async () => {
+    let finish!: () => void;
+    const onDeleteMark = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    const props = { thread: { ...thread, underlinedByMe: true, underlineCount: 1 }, currentUserId: "user-1", onClose: vi.fn(), onComment: vi.fn(), onReport: vi.fn(), onLike: vi.fn(), onDeleteMark };
+    const { rerender } = render(<AnnotationDiscussionPanel {...props} />);
+    const button = screen.getByRole("button", { name: "删除划线" });
+    fireEvent.click(button); fireEvent.click(button);
+    expect(onDeleteMark).toHaveBeenCalledTimes(1);
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => { finish(); });
+    rerender(<AnnotationDiscussionPanel {...props} thread={{ ...thread, underlinedByMe: false, underlineCount: 0 }} />);
+    expect(screen.queryByRole("button", { name: "删除划线" })).toBeNull();
+    expect(screen.getByText("0 人划线")).toBeTruthy();
+    expect(screen.getByText("第一条评论")).toBeTruthy();
+  });
   it("sorts public thoughts and replies by likes with stable chronological ties", () => {
     const comment = thread.comments[0]!;
     const comments = [

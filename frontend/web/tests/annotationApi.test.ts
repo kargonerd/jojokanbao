@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { addAnnotationComment, createAnnotation, setAnnotationCommentLike } from "../src/annotations/api";
+import { addAnnotationComment, createAnnotation, deleteMyAnnotationMark, setAnnotationCommentLike } from "../src/annotations/api";
 
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
 
@@ -24,6 +24,13 @@ const anchor = {
 };
 
 describe("annotation API compatibility", () => {
+  it("deletes the authenticated reader's mark and accepts a no-longer-visible thread", async () => {
+    rpc.mockResolvedValue({ data: { thread: null }, error: null });
+    await expect(deleteMyAnnotationMark("annotation:one")).resolves.toBeNull();
+    expect(rpc).toHaveBeenLastCalledWith("delete_my_annotation_mark", { p_annotation_id: "annotation:one" });
+    rpc.mockResolvedValue({ data: null, error: { message: "删除失败" } });
+    await expect(deleteMyAnnotationMark("annotation:one")).rejects.toThrow("删除失败");
+  });
   beforeEach(() => {
     rpc.mockReset();
     rpc.mockResolvedValue({ data: { id: "annotation:one" }, error: null });
