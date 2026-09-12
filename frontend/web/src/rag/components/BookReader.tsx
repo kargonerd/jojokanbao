@@ -15,6 +15,7 @@ import type { SpeechLocation } from "@jojo/content";
 import { createSpeechReader, SPEECH_EXCLUDED_ELEMENTS } from "@jojo/content/speech-dom";
 import type { ReaderSelectionRect } from "@jojo/ui/reader-selection";
 import { AnnotationDiscussionPanel } from "../../annotations/AnnotationDiscussionPanel";
+import { AnnotationMarkPopover } from "../../annotations/AnnotationMarkPopover";
 import {
   clearReaderExplanationMarks,
   renderAnnotationMarks,
@@ -206,6 +207,7 @@ export function BookReader({
   const [aiExplanationQuote, setAiExplanationQuote] = useState<string>();
   const [aiFocus, setAiFocus] = useState<RagFocusContext>();
   const [activeAnnotationId, setActiveAnnotationId] = useState<string>();
+  const [selectedMark, setSelectedMark] = useState<{ id: string; rect: ReaderSelectionRect }>();
   const [annotationSaving, setAnnotationSaving] = useState(false);
   const [onBookshelf, setOnBookshelf] = useState(false);
   const [bookshelfBusy, setBookshelfBusy] = useState(false);
@@ -249,12 +251,18 @@ export function BookReader({
   const annotationAccess = annotationsEnabled && Boolean(currentUserId);
   const annotations = useAnnotationThreads(annotationSubject, annotationAccess, currentUserId);
   const activeAnnotation = annotations.threads.find((thread) => thread.id === activeAnnotationId);
-  const readerOverlayOpen = aiOpen || tocOpen || searchOpen || Boolean(toolPopover || thoughtSelection || activeAnnotation || expandedImage);
+  const ownMark = annotations.threads.find((thread) => thread.id === selectedMark?.id && thread.underlinedByMe);
+  const readerOverlayOpen = aiOpen || tocOpen || searchOpen || Boolean(toolPopover || thoughtSelection || activeAnnotation || ownMark || expandedImage);
   const previousChapter = chapters[activeChapterIndex - 1];
   const nextChapter = chapters[activeChapterIndex + 1];
   const bookProgress = chapters.length
     ? Math.min(100, Math.round(((activeChapterIndex + readingProgress / 100) / chapters.length) * 100))
     : 0;
+
+  useEffect(() => {
+    setSelectedMark(undefined);
+    setActiveAnnotationId(undefined);
+  }, [chapterKey, currentUserId, mode]);
 
   useEffect(() => {
     if (contentLoading || !activeChapterId || resumePositionRef.current?.chapterId === activeChapterId) return;
@@ -400,7 +408,17 @@ export function BookReader({
   useEffect(() => {
     const root = mode === "paged" ? flowRef.current : scrollRef.current;
     if (!root || contentLoading) return;
-    renderAnnotationMarks(root, annotations.threads, setActiveAnnotationId);
+    renderAnnotationMarks(root, annotations.threads, (id, rect) => {
+      if (!window.getSelection()?.isCollapsed) return;
+      setTextSelection(undefined);
+      if (annotations.threads.find((thread) => thread.id === id)?.underlinedByMe) {
+        setActiveAnnotationId(undefined);
+        setSelectedMark({ id, rect });
+      } else {
+        setSelectedMark(undefined);
+        setActiveAnnotationId(id);
+      }
+    });
   }, [annotations.threads, contentLoading, mode, pageMetrics.step]);
 
   useEffect(() => {
@@ -1047,12 +1065,20 @@ export function BookReader({
       }).catch(() => undefined);
     }} /></>}
 
+    {ownMark && selectedMark && annotationAccess ? <AnnotationMarkPopover key={ownMark.id}
+      thread={ownMark} rect={selectedMark.rect} onClose={() => setSelectedMark((current) => current?.id === ownMark.id ? undefined : current)}
+      onDelete={() => annotations.removeMark(ownMark.id)}
+      onDiscuss={() => { setActiveAnnotationId(ownMark.id); setSelectedMark(undefined); }}
+    /> : null}
+
     {activeAnnotation && currentUserId ? <AnnotationDiscussionPanel key={activeAnnotation.id}
       thread={activeAnnotation}
       currentUserId={currentUserId}
       onClose={() => setActiveAnnotationId(undefined)}
       onComment={(body, parentCommentId, visibility) => annotations.comment(activeAnnotation.id, body, parentCommentId, visibility)}
       onReport={(commentId, reason, details) => annotations.report(activeAnnotation.id, commentId, reason, details)}
+      onLike={(commentId, liked) => annotations.like(activeAnnotation.id, commentId, liked)}
+      onDeleteMark={() => annotations.removeMark(activeAnnotation.id)}
     /> : null}
 
     {toolPopover && <>

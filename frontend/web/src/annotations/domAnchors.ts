@@ -1,4 +1,7 @@
 import type { AnnotationThread, TextAnchor } from "./types";
+import type { ReaderSelectionRect } from "@jojo/ui/reader-selection";
+
+type OpenAnnotation = (id: string, rect: ReaderSelectionRect) => void;
 
 const MARK_SELECTOR = "mark[data-content-annotation]";
 const EXPLANATION_MARK_SELECTOR = "mark[data-reader-explanation]";
@@ -125,12 +128,12 @@ export function clearAnnotationMarks(root: HTMLElement): void {
   root.normalize();
 }
 
-function wrapTextSlice(node: Text, start: number, end: number, thread: AnnotationThread, onOpen: (id: string) => void): void {
+function wrapTextSlice(node: Text, start: number, end: number, thread: AnnotationThread, onOpen: OpenAnnotation): void {
   if (end <= start) return;
   const selected = start > 0 ? node.splitText(start) : node;
   if (end - start < selected.data.length) selected.splitText(end - start);
   const mark = document.createElement("mark");
-  const underlineCount = Math.max(1, Math.trunc(thread.underlineCount ?? 1));
+  const underlineCount = Math.max(0, Math.trunc(thread.underlineCount ?? 1));
   mark.dataset.contentAnnotation = thread.id;
   mark.dataset.underlineCount = String(underlineCount);
   if (thread.underlinedByMe) mark.dataset.underlinedByMe = "true";
@@ -139,7 +142,7 @@ function wrapTextSlice(node: Text, start: number, end: number, thread: Annotatio
   mark.tabIndex = 0;
   mark.setAttribute("role", "button");
   mark.setAttribute("aria-label", `查看这处划线，${underlineCount} 人划线`);
-  const open = () => onOpen(thread.id);
+  const open = () => onOpen(thread.id, mark.getBoundingClientRect());
   mark.addEventListener("click", (event) => {
     event.stopPropagation();
     open();
@@ -216,7 +219,7 @@ export function renderReaderExplanationMarks(
 export function renderAnnotationMarks(
   root: HTMLElement,
   threads: AnnotationThread[],
-  onOpen: (id: string) => void,
+  onOpen: OpenAnnotation,
 ): number {
   clearAnnotationMarks(root);
   let rendered = 0;

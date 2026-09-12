@@ -13,6 +13,7 @@ const annotationApi = vi.hoisted(() => ({
   createAnnotation: vi.fn(),
   addAnnotationComment: vi.fn(),
   reportAnnotationComment: vi.fn(),
+  deleteMyAnnotationMark: vi.fn(),
 }));
 const readerDataApi = vi.hoisted(() => ({
   bookshelfContains: vi.fn(async () => false),
@@ -756,7 +757,7 @@ describe("BookReader", () => {
     expect(screen.queryByRole("toolbar", { name: "选中文字工具" })).toBeNull();
   });
 
-  it("saves a plain underline without opening the discussion panel", async () => {
+  it("saves a plain underline and deletes it through the mark toolbar", async () => {
     annotationApi.createAnnotation.mockResolvedValue({
       id: "annotation-underline-1",
       contentType: "book",
@@ -792,6 +793,14 @@ describe("BookReader", () => {
     ));
     expect(screen.queryByRole("complementary", { name: "划线详情" })).toBeNull();
     expect(screen.getByText("已划线")).toBeTruthy();
+    annotationApi.deleteMyAnnotationMark.mockResolvedValue(null);
+    const mark = await screen.findByRole("button", { name: "查看这处划线，1 人划线" });
+    vi.spyOn(mark, "getBoundingClientRect").mockReturnValue(new DOMRect(240, 220, 180, 30));
+    fireEvent.click(mark);
+    const toolbar = screen.getByRole("toolbar", { name: "划线工具" });
+    fireEvent.click(within(toolbar).getByRole("button", { name: "删除划线" }));
+    await waitFor(() => expect(container.querySelector("mark[data-content-annotation]")).toBeNull());
+    expect(annotationApi.deleteMyAnnotationMark).toHaveBeenLastCalledWith("annotation-underline-1");
   });
 
   it("keeps AI available while hiding bookshelf and annotation writes when their flags are off", async () => {
