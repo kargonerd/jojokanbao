@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   eInk: false, focused: true, user: { id: "reader" } as { id: string } | null,
   enabled: true,
   loadChapter: vi.fn(), prefetch: vi.fn(async (_loaded: unknown, _id: string, _signal: AbortSignal) => undefined),
-  navigate: vi.fn(), shelfContains: vi.fn(async () => false), setShelf: vi.fn(async () => undefined),
+  navigate: vi.fn(), injectJavaScript: vi.fn(), shelfContains: vi.fn(async () => false), setShelf: vi.fn(async () => undefined),
   state: { textScale: 1, bookLineHeight: 1.95, bookReadingMode: "paged", bookPaperColor: "white",
     bookFirstLineIndent: true, hapticsEnabled: false, leftTapNext: false, recentBooks: [], bookAnnotations: [], rememberBook: vi.fn() },
   playback: { open: vi.fn(), close: vi.fn(), toggle: vi.fn(), seek: vi.fn(), selectChapter: vi.fn(),
@@ -44,7 +44,7 @@ vi.mock("react-native-safe-area-context", () => ({ SafeAreaView: "main", useSafe
 vi.mock("react-native-webview", async () => {
   const { createElement, forwardRef, useImperativeHandle } = await import("react");
   return { WebView: forwardRef((props, ref) => {
-    useImperativeHandle(ref, () => ({ injectJavaScript: vi.fn() }));
+    useImperativeHandle(ref, () => ({ injectJavaScript: mocks.injectJavaScript }));
     return createElement("article", { ...props, testID: "reader-webview" });
   }) };
 });
@@ -69,7 +69,7 @@ vi.mock("../components/BookThoughtComposer", () => ({ BookThoughtComposer: () =>
 // Listening integration does not initialize native offline storage.
 vi.mock("../offline/books", () => ({ useMobileOfflineBooksStore: (select: (state: { identityVersion: number }) => unknown) => select({ identityVersion: 0 }) }));
 vi.mock("../lib/bookAgent", () => ({ askMobileBookAgent: vi.fn() }));
-vi.mock("../lib/bookDocument", () => ({ createBookDocument: () => "<p>正文</p>" }));
+vi.mock("../lib/bookDocument", () => ({ createBookDocument: () => "<html><body><article>正文</article></body></html>" }));
 vi.mock("../lib/books", () => ({
   loadMobileBookItem: async () => ({ manifest: { title: "测试书", content: { chapters: [{ id: "c1", title: "第一章" }, { id: "c2", title: "第二章" }] } }, volume: { itemId: "book", title: "测试书" } }),
   loadMobileBookChapter: mocks.loadChapter,
@@ -107,6 +107,38 @@ afterEach(async () => { if (view) await act(async () => view.unmount()); vi.useR
 
 describe.each([false, true])("reader listening visibility (eInk=%s)", (eInk) => {
   beforeEach(() => { mocks.eInk = eInk; });
+  it("boots inside the document, keeps its source stable, and reports a missing bridge instead of a frozen page", async () => {
+    await renderReader();
+    const reader = () => view.root.findByProps({ testID: "reader-webview" });
+    const source = reader().props.source;
+    expect(source.html).toContain("<script>");
+    expect(source.html).toContain("reader-ready");
+    await readerTap();
+    expect(reader().props.source).toBe(source);
+    await act(async () => reader().props.onLoadEnd());
+    expect(mocks.injectJavaScript).toHaveBeenCalledWith(expect.stringContaining("__jojoBookReaderInitialized"));
+    await act(async () => { vi.advanceTimersByTime(3000); });
+    expect(view.root.findByProps({ accessibilityRole: "alert" }).props.children).toContain("阅读交互未能启动");
+  });
+
+  it("accepts the current document's ready acknowledgement and keeps chrome hidden across chapters", async () => {
+    await renderReader();
+    const message = async (data: unknown) => act(async () => {
+      view.root.findByProps({ testID: "reader-webview" }).props.onMessage({ nativeEvent: { data: JSON.stringify(data) } });
+    });
+    await act(async () => view.root.findByProps({ testID: "reader-webview" }).props.onLoadEnd());
+    await message({ type: "reader-ready", chapterId: "c1" });
+    await act(async () => { vi.advanceTimersByTime(3000); });
+    expect(view.root.findAllByProps({ accessibilityRole: "alert" })).toHaveLength(0);
+    await readerTap();
+    expect(view.root.findAllByProps({ accessibilityLabel: "返回书籍" })).toHaveLength(0);
+    await message({ type: "reader-boundary", direction: "next" });
+    expect(mocks.loadChapter).toHaveBeenLastCalledWith(expect.anything(), "c2", true, expect.any(AbortSignal));
+    expect(view.root.findAllByProps({ accessibilityLabel: "返回书籍" })).toHaveLength(0);
+    await readerTap();
+    expect(view.root.findAllByProps({ accessibilityLabel: "返回书籍" })).toHaveLength(1);
+  });
+
   it("reports the current speech location in mini mode and retains it when paused", async () => {
     const onSpeechLocation = vi.fn();
     const onRead = vi.fn();
