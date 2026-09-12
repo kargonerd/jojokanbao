@@ -48,7 +48,11 @@ capture_diagnostics() {
 
 cleanup() {
   local -r exit_code=$?
-  capture_diagnostics
+  # Successful runs already captured a screenshot and logs below. Collect
+  # diagnostics here only on failure so cleanup does not repeat slow simctl IO.
+  if [[ "$exit_code" -ne 0 ]]; then
+    capture_diagnostics
+  fi
   if [[ "$launched" == true ]]; then
     xcrun simctl terminate "$simulator_id" "$expected_bundle_id" >/dev/null 2>&1 || true
   fi

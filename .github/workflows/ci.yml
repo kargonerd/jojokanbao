@@ -38,54 +38,22 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22.19.0
+
+      # Only the small lockfile parser is needed here; no application install.
+      - run: pnpm install --filter @jojo/ci --frozen-lockfile --ignore-scripts
+      - run: pnpm --filter @jojo/ci test
+
       - id: filter
-        name: Classify changed paths
+        name: Classify changed paths and dependency graphs
         env:
           EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          base_sha="$EVENT_BASE_SHA"
-          head_sha="$EVENT_HEAD_SHA"
-
-          if [[ -z "$base_sha" || "$base_sha" =~ ^0+$ ]] \
-            || ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
-            base_sha="$(git rev-parse "${head_sha}^" 2>/dev/null || git rev-list --max-parents=0 "$head_sha")"
-          fi
-
-          changed_files="$(git diff --name-only "$base_sha" "$head_sha")"
-          printf '%s\n' "$changed_files"
-          printf 'base_sha=%s\n' "$base_sha" >> "$GITHUB_OUTPUT"
-          printf 'head_sha=%s\n' "$head_sha" >> "$GITHUB_OUTPUT"
-
-          matches() {
-            grep -Eq "$1" <<< "$changed_files"
-          }
-
-          write_flag() {
-            local name="$1"
-            local pattern="$2"
-            if matches "$pattern"; then
-              printf '%s=true\n' "$name" >> "$GITHUB_OUTPUT"
-            else
-              printf '%s=false\n' "$name" >> "$GITHUB_OUTPUT"
-            fi
-          }
-
-          write_flag archive_pdf '^(tools/(archive-pdf/|content-pipeline/jojo_format.py|jojo-admin/server/rmrb_review_publish.py)|.github/workflows/(ci|maintenance-sync-rmrb)\.yml$)'
-          write_flag node '^(agent/|frontend/|infrastructure/(cloudflare/|tencent-scf/maintenance-scheduler/)|tools/(ci/|monitoring/|maintenance-scheduler/|release/|times-pipeline/|[^/]+/web/)|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(release-desktop|release-mobile(-eink|-ios|-ota)?|maintenance-times[^/]*|maintenance-sync-rmrb)\.yml$)'
-          write_flag maintenance_scheduler '^(tools/maintenance-scheduler/|infrastructure/(cloudflare/maintenance-scheduler/|tencent-scf/maintenance-scheduler/|supabase/migrations/202609060001_maintenance_scheduler_state.sql)|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.github/workflows/ci\.yml$)'
-          write_flag all_node '^(\.github/workflows/ci\.yml$|patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$)'
-          write_flag desktop_e2e '^(frontend/(desktop|web|packages/(auth|content|pdf-viewer|ui)|tooling/tsconfig|patches)/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(ci|release-desktop)\.yml$)'
-          write_flag web_e2e '^(frontend/(web|packages/(auth|pdf-viewer|ui)|tooling/tsconfig|patches)/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(ci|deploy-web)\.yml$)'
-          write_flag homepage_external '^(content/blog/|\.github/workflows/deploy-homepage\.yml$)'
-          write_flag mobile_ios '^(frontend/mobile/|frontend/packages/(auth|content)/|frontend/tooling/tsconfig/|frontend/patches/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github/workflows/(ci|release-mobile-ios)\.yml$)'
-          write_flag cloud_api '^(backend/|tools/times-pipeline/|infrastructure/edgeone/|\.github/workflows/(ci|deploy-web|maintenance-times[^/]*)\.yml$)'
-          write_flag database '^(infrastructure/supabase/|\.github/workflows/ci\.yml$)'
-          write_flag search_scf '^(infrastructure/tencent-scf/search/|\.github/workflows/(ci|release-search)\.yml$)'
-          write_flag times_pipeline '^(tools/(times-pipeline|ci|monitoring)/|frontend/packages/content/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.github/workflows/(ci|maintenance-times[^/]*|maintenance-sync-rmrb)\.yml$)'
+        run: node tools/ci/affected.mjs
 
   archive_pdf:
     name: Archive Delivery publication
@@ -210,9 +178,11 @@ jobs:
   mobile-ios:
     name: Mobile iOS native build
     needs: changes
-    if: needs.changes.outputs.mobile_ios == 'true' || needs.changes.outputs.all_node == 'true'
+    if: needs.changes.outputs.mobile_ios == 'true'
     runs-on: macos-latest
-    timeout-minutes: 25
+    # A Maven outage may require the pinned source fallback. Leave time for
+    # the simulator smoke test after that slower compile finishes.
+    timeout-minutes: 45
     env:
       COCOAPODS_DISABLE_STATS: "true"
       APP_VARIANT: standard
@@ -231,18 +201,38 @@ jobs:
           node-version: 22.19.0
           cache: pnpm
 
+      - name: Fingerprint iOS toolchain and client configuration
+        id: ios_cache_context
+        run: node tools/ci/ios-cache-key.mjs
+
+      # Evaluate source globs before installation/prebuild creates generated files.
+      - name: Restore compiled iOS app
+        id: ios_app_cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ runner.temp }}/jojo-derived-data/Build/Products/Release-iphonesimulator/JOJO.app
+          key: ${{ runner.os }}-${{ runner.arch }}-ios-app-v1-${{ steps.ios_cache_context.outputs.toolchain }}-${{ steps.ios_cache_context.outputs.config }}-${{ hashFiles('frontend/mobile/**', 'frontend/packages/**', 'frontend/tooling/**', 'frontend/patches/**', 'tools/ci/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'turbo.json', '.npmrc', '.pnpmfile.cjs', '.gitattributes', '.gitignore', '.github/workflows/ci.yml') }}
+
       - run: pnpm install --frozen-lockfile
 
       - name: Generate iOS native project
+        if: steps.ios_app_cache.outputs.cache-hit != 'true'
         working-directory: frontend/mobile
         run: pnpm exec expo prebuild --platform ios --no-install --clean
 
+      - name: Verify pinned Hermes fallback
+        run: ruby tools/ci/hermes-source.test.rb
+
       - name: Install iOS native dependencies
+        if: steps.ios_app_cache.outputs.cache-hit != 'true'
         working-directory: frontend/mobile/ios
         run: pod install
 
       - name: Compile iOS Release for Simulator
+        if: steps.ios_app_cache.outputs.cache-hit != 'true'
         working-directory: frontend/mobile
+        # The smoke test uses this runner's simulator, so it needs only the
+        # host architecture, not a universal arm64 + x86_64 simulator binary.
         run: |
           set -o pipefail
           xcodebuild \
@@ -252,8 +242,18 @@ jobs:
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/jojo-derived-data" \
+            ARCHS="$(uname -m)" \
             CODE_SIGNING_ALLOWED=NO \
             build
+
+      # Save before the simulator step so a launch timeout need not recompile.
+      - name: Save compiled iOS app
+        if: steps.ios_app_cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ runner.temp }}/jojo-derived-data/Build/Products/Release-iphonesimulator/JOJO.app
+          key: ${{ steps.ios_app_cache.outputs.cache-primary-key }}
 
       - name: Launch Release app in iOS Simulator
         working-directory: frontend/mobile
@@ -293,6 +293,10 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+      # Playwright supplies these browsers; their libraries come from Ubuntu.
+      # A stale Chrome vendor index must not block Firefox/WebKit installation.
+      - name: Remove unused Chrome apt source
+        run: sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
       - run: pnpm --filter @jojo/web exec playwright install --with-deps ${{ matrix.browser }}
       - run: pnpm --filter @jojo/web exec playwright test --browser=${{ matrix.browser }} --workers=1
 

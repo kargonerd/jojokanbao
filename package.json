@@ -63,7 +63,8 @@
       "@react-native/gradle-plugin@0.83.10": "frontend/patches/@react-native__gradle-plugin@0.83.10.patch",
       "pdfjs-dist@5.7.284": "frontend/patches/pdfjs-dist@5.7.284.patch",
       "react-native-webview@13.16.0": "frontend/patches/react-native-webview@13.16.0.patch",
-      "pi-antigravity@0.7.2": "agent/patches/pi-antigravity@0.7.2.patch"
+      "pi-antigravity@0.7.2": "agent/patches/pi-antigravity@0.7.2.patch",
+      "react-native@0.83.10": "frontend/patches/react-native@0.83.10.patch"
     }
   }
 }
