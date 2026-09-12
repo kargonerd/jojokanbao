@@ -107,6 +107,32 @@ describe("FeatureFlagsPage", () => {
 
   afterEach(cleanup);
 
+  it("shows PostHog ownership and rolls back only config while preserving legacy rules", async () => {
+    const migrated = { ...annotationFlag, rolloutProvider: "posthog", revision: 2,
+      config: { publicMarkThreshold: 5, reserved: "keep" },
+      history: [...annotationFlag.history, { ...annotationFlag.history[0], revision: 2, config: { publicMarkThreshold: 5, reserved: "keep" } }],
+    };
+    api.list.mockResolvedValue([migrated]);
+    api.publish.mockResolvedValue({ ...migrated, revision: 3, config: { publicMarkThreshold: 2 } });
+    render(<FeatureFlagsPage />);
+    expect(await screen.findByText("在 PostHog 管理开放范围")).toBeInTheDocument();
+    expect(screen.queryByText("添加规则")).not.toBeInTheDocument();
+    expect(screen.getByRole("spinbutton", { name: "划线公开阈值" })).toHaveValue(5);
+    fireEvent.click(screen.getByRole("button", { name: "回滚配置到 revision 1" }));
+    await waitFor(() => expect(api.publish).toHaveBeenCalledWith(expect.objectContaining({
+      key: "reader.annotations", expectedRevision: 2, rules: migrated.rules, config: { publicMarkThreshold: 2 },
+    })));
+    expect(api.rollback).not.toHaveBeenCalled();
+  });
+
+  it("keeps migrated rollout history read-only when there are no runtime parameters", async () => {
+    api.list.mockResolvedValue([{ ...flag, key: "reader.speech", rolloutProvider: "posthog" }]);
+    render(<FeatureFlagsPage />);
+    await screen.findByText("在 PostHog 管理开放范围");
+    expect(screen.queryByRole("button", { name: "发布更改" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /回滚/ })).not.toBeInTheDocument();
+  });
+
   it("restores invitation signup while preserving existing rules and unrelated config", async () => {
     const signupFlag = { ...aiUsageFlag, key: "auth.signup", description: "注册设置", config: { invitationRequired: false, reserved: "retain" } };
     api.list.mockResolvedValue([signupFlag]);

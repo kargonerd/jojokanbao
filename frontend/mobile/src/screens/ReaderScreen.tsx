@@ -1,4 +1,5 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { createReadingAttempt } from "@jojo/analytics";
 import {
   ARCHIVE_CDN_ORIGIN,
   ARCHIVE_PUBLICATION_BY_ID,
@@ -54,6 +55,12 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
   ), { query: route.params.searchQuery || "", title: route.params.searchTitle, quote: route.params.searchQuote, page: route.params.searchQuery ? route.params.page : undefined }));
   const [loading, setLoading] = useState(true);
   const publicationInfo = ARCHIVE_PUBLICATION_BY_ID[publication];
+  const readingAttempt = useRef({ key: `${publication}:${issueId}`, attempt: createReadingAttempt("periodical", `${publication}:${issueId}`) });
+  function attemptFor(publicationName: string, id: string) {
+    const key = `${publicationName}:${id}`;
+    if (readingAttempt.current.key !== key) readingAttempt.current = { key, attempt: createReadingAttempt("periodical", key) };
+    return readingAttempt.current.attempt;
+  }
   const allowedHosts = useMemo(() => new Set([safeHost(configuredReaderOrigin), safeHost(ARCHIVE_CDN_ORIGIN)]), []);
 
   useEffect(() => {
@@ -75,6 +82,7 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
     if (!parsed || !ARCHIVE_PUBLICATION_NAMES.includes(parsed.publication as ArchivePublicationName)) return;
     setPublication(parsed.publication as ArchivePublicationName);
     setIssueId(parsed.issueId);
+    attemptFor(parsed.publication, parsed.issueId);
   }
 
   function handleMessage(event: WebViewMessageEvent) {
@@ -91,6 +99,7 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
           const source = parsed && ARCHIVE_PUBLICATION_NAMES.includes(parsed.publication as ArchivePublicationName)
             ? { publication: parsed.publication as ArchivePublicationName, issueId: parsed.issueId }
             : { publication, issueId };
+          attemptFor(source.publication, source.issueId).loaded();
           readingProgress.schedule({
             ...source,
             title: ARCHIVE_PUBLICATION_BY_ID[source.publication].title,
@@ -152,6 +161,8 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
             setLoading(true);
           }}
           onLoadEnd={() => setLoading(false)}
+          onError={() => attemptFor(publication, issueId).failed()}
+          onHttpError={() => attemptFor(publication, issueId).failed()}
           onShouldStartLoadWithRequest={(request) => {
             if (request.url === "about:blank") return true;
             const host = safeHost(request.url);

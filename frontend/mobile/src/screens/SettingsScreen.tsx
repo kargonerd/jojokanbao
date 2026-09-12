@@ -63,6 +63,8 @@ export function SettingsScreen() {
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, "Settings">>();
   const section = route.params?.section;
+  const analyticsEnabled = useMobileStore((state) => state.analyticsEnabled);
+  const setAnalyticsEnabled = useMobileStore((state) => state.setAnalyticsEnabled);
   const hapticsEnabled = useMobileStore((state) => state.hapticsEnabled);
   const setHapticsEnabled = useMobileStore((state) => state.setHapticsEnabled);
   const textScale = useMobileStore((state) => state.textScale);
@@ -380,6 +382,9 @@ export function SettingsScreen() {
         {!section || section === "data" ? (
           <View style={!section ? styles.sectionGap : undefined}>
           <SectionTitle title="阅读数据" aside={`${recentIssues.length + recentBooks.length} 条`} />
+          <SettingRow title="帮助改善 JOJO 看报"
+            description="分享使用次数、版本和故障信息；不收集搜索原文、批注或 AI 对话，不录制操作。"
+            value={analyticsEnabled} onValueChange={setAnalyticsEnabled} />
           <View style={[styles.panel, { backgroundColor: theme.paper, borderColor: theme.rule }]}>
             <Pressable
               onPress={() => Alert.alert("清除阅读记录？", undefined, [

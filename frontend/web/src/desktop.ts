@@ -4,11 +4,14 @@ enableDesktopOfflineBooks();
 
 export {
   refreshFeatureFlags,
+  startFeatureFlagSync,
   useFeatureFlag,
   useFeatureFlagStore,
   type FeatureFlagKey,
 } from "./featureFlags";
 export { startAccountSessionSync, useAccountSessionStore } from "./account/session";
+export { AnalyticsRuntime } from "./analytics/AnalyticsRuntime";
+export { AnalyticsPreference } from "./analytics/AnalyticsPreference";
 export { HomePage } from "./home/HomePage";
 export {
   APP_NAVIGATION_ITEMS,

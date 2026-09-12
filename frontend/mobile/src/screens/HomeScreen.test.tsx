@@ -1,6 +1,7 @@
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HomeScreen } from "./HomeScreen";
+vi.mock("../reading/featureFlag", () => ({ useMobileFeatureFlag: () => true }));
 
 const mocks = vi.hoisted(() => ({ navigate: vi.fn(), eInk: false, loadBooks: vi.fn(), loadCover: vi.fn() }));
 vi.mock("react-native", () => ({ Image: "img", Pressable: "button", ScrollView: "section", Text: "span", TextInput: "input", View: "div",

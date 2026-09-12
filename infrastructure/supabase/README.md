@@ -130,6 +130,23 @@ Supabase dashboard and OAuth identities. Keep those signup paths disabled
 while invitations are required unless they supply an invitation. An invitation is redeemed
 when the Auth user is created, before the reader confirms their email.
 
+## PostHog product rollouts
+
+`202609110001_posthog_product_flags.sql` moves the three client rollout gates
+(`library.bookshelf`, `reader.annotations`, `reader.speech`) to PostHog. Export
+live rules/config/history from the updated local admin before cutover and follow
+[the PostHog migration guide](../../docs/posthog.md#feature-flags-迁移与回退).
+
+PostHog rejects dots in flag keys. Its matching keys are `library_bookshelf`,
+`reader_annotations`, and `reader_speech`; the client adapter maps these to the
+unchanged application/database keys above.
+
+The migration preserves every flag row. These three SQL gates require login;
+existing ownership, visibility and quota checks remain server enforced. Old
+clients still evaluate the preserved Supabase rules. Runtime parameters remain
+in `private.feature_flags.config` with Operator revision/history/rollback.
+Do not enable the PostHog client provider until the project and database are ready.
+
 ## Runtime configuration reuse
 
 少量、由管理员调整的运行参数优先复用 `private.feature_flags.config` 和现有

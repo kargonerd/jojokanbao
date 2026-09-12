@@ -59,7 +59,7 @@ describe("JOJO Web routes and Archive homepage", () => {
         <AppRoutes platformRedesign={false} />
       </MemoryRouter>,
     );
-    expect(screen.getByRole("heading", { name: "反馈" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "反馈" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "关于 JOJO 看报" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "返回旧版" })).toBeNull();
   });

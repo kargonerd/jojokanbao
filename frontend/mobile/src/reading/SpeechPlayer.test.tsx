@@ -56,7 +56,7 @@ vi.mock("../theme/tokens", async (importOriginal) => {
   return { ...themes, get mobileTheme() { return mocks.eInk ? themes.eInkTheme : themes.editorialTheme; } };
 });
 vi.mock("../account/auth", () => ({ useMobileAuthStore: (select: (state: { user: typeof mocks.user }) => unknown) => select({ user: mocks.user }) }));
-vi.mock("./featureFlag", () => ({ useSpeechFlagStore: (select?: (state: unknown) => unknown) => {
+vi.mock("./featureFlag", () => ({ useMobileFeatureFlag: () => true, useSpeechFlagStore: (select?: (state: unknown) => unknown) => {
   const state = { enabled: mocks.enabled, userId: "reader" }; return select ? select(state) : state;
 } }));
 vi.mock("./useSpeechPlayback", () => ({ useSpeechPlayback: () => mocks.playback }));

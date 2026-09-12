@@ -238,7 +238,7 @@ describe("app homepage", () => {
     expect(await screen.findByText("书架还是空的")).toBeTruthy();
   });
 
-  it("keeps search and feedback inside the new app navigation", () => {
+  it("keeps search and feedback inside the new app navigation", async () => {
     const searchView = renderAt("/search");
     expect(within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "搜索" }).className).toContain("is-active");
     expect(screen.getByRole("textbox", { name: "全文检索关键词" })).toBeTruthy();
@@ -247,7 +247,7 @@ describe("app homepage", () => {
 
     renderAt("/support");
     expect(screen.getByRole("link", { name: "关于" }).className).toContain("is-active");
-    expect(screen.getByRole("heading", { name: "关于 JOJO 看报" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "关于 JOJO 看报" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "版权说明" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "打开旧版 JOJO 看报" })).toBeNull();
     expect(screen.queryByRole("link", { name: "GitHub 查看源码" })).toBeNull();

@@ -1,8 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { analytics } from '@jojo/analytics';
 
 export function UpdateNotice() {
   const [state, setState] = useState<DesktopUpdateState>();
   const [dismissedVersion, setDismissedVersion] = useState<string>();
+  const reported = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (!state) return;
+    const event = state.phase === 'available' ? 'update_available'
+      : state.phase === 'downloaded' ? 'update_downloaded'
+      : state.phase === 'error' ? 'update_failed' : undefined;
+    const key = `${event}:${state.availableVersion ?? ''}`;
+    if (event && !reported.current.has(key)) {
+      reported.current.add(key);
+      analytics.track(event, { available_version: state.availableVersion ?? 'unknown' });
+    }
+  }, [state]);
 
   useEffect(() => {
     const updates = window.jojoDesktop?.updates;

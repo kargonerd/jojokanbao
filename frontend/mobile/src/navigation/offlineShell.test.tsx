@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createReaderIdentityCache } from "../account/readerIdentity";
 import { MainTabs } from "../../App";
 import { ScreenHeader } from "../components/ScreenHeader";
+vi.mock("../analytics/runtime", () => ({ initializeMobileAnalytics: async () => undefined }));
 
 const mocks = vi.hoisted(() => ({ auth: undefined as unknown as JojoAuthStore,
   identity: undefined as unknown as ReturnType<typeof createReaderIdentityCache> }));

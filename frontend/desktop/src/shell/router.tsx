@@ -10,6 +10,7 @@ import {
 } from 'react-router-dom';
 import {
   ArchiveLayout,
+  AnalyticsRuntime,
   ArchiveReaderPage,
   AccountEntry,
   BookshelfPage,
@@ -29,7 +30,7 @@ import {
   TimesRoutes,
   TimesSourceSettingsPage,
   defaultArchiveIssuePath,
-  refreshFeatureFlags,
+  startFeatureFlagSync,
   startAccountSessionSync,
   useAccountSessionStore,
 } from '@jojo/web/desktop';
@@ -43,9 +44,7 @@ function DesktopRuntime() {
   const userId = useAccountSessionStore((state) => state.userId);
 
   useEffect(() => { startOfflineAccountSync(); return startAccountSessionSync(); }, []);
-  useEffect(() => {
-    if (accountInitialized) void refreshFeatureFlags();
-  }, [accountInitialized, userId]);
+  useEffect(() => startFeatureFlagSync(), []);
   useEffect(() => {
     if (accountInitialized) {
       const authenticated = Boolean(userId);
@@ -56,7 +55,7 @@ function DesktopRuntime() {
 }
 
 function DesktopRuntimeLayout() {
-  return <><DesktopRuntime /><Outlet /></>;
+  return <><DesktopRuntime /><AnalyticsRuntime /><Outlet /></>;
 }
 
 function useDesktopNavigation() {

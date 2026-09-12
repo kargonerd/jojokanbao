@@ -15,6 +15,7 @@ import { useRetryOnFailure } from "../lib/useRetryOnFailure";
 import type { MainTabParamList, RootStackParamList } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
 import { mobileTheme } from "../theme/tokens";
+import { useMobileFeatureFlag } from "../reading/featureFlag";
 
 function RecentReadingCover({
   kind,
@@ -74,6 +75,7 @@ function RecentReadingCover({
 }
 
 export function HomeScreen() {
+  const bookshelfEnabled = useMobileFeatureFlag("library.bookshelf");
   const navigation = useNavigation<NavigationProp<RootStackParamList & MainTabParamList>>();
   const { openBook: navigateToBook, openingBook } = useOpenBook();
   const hapticsEnabled = useMobileStore((state) => state.hapticsEnabled);
@@ -204,7 +206,7 @@ export function HomeScreen() {
         </View>
 
         <View style={styles.section}>
-          <SectionTitle title="继续阅读" aside="我的书架" onAsidePress={() => navigation.navigate("Bookshelf")} />
+          <SectionTitle title="继续阅读" aside={bookshelfEnabled ? "我的书架" : undefined} onAsidePress={() => navigation.navigate("Bookshelf")} />
           {recentItems.length ? recentItems.map((item) => (
             <Pressable
               key={item.id}

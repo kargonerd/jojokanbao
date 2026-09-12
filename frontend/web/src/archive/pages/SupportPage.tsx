@@ -5,6 +5,7 @@ import zfbImg from "../../../../packages/content/assets/support/zfb.png";
 import { rollout } from "../../rollout";
 import { Link, useLocation } from "react-router-dom";
 import "./support.css";
+import { AnalyticsPreference } from "../../analytics/AnalyticsPreference";
 
 const downloads = [
   { name: "人民日报", links: [
@@ -125,6 +126,7 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
             </span>
             <span aria-hidden="true" className="font-serif text-red">→</span>
           </Link>
+          <AnalyticsPreference />
         </div>
       </div>
     </div>

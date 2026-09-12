@@ -1,4 +1,5 @@
 import DOMPurify from "dompurify";
+import { useReadingAnalytics } from "../../analytics/useReadingAnalytics";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { LoadingSpinner } from "@jojo/ui";
@@ -338,9 +339,10 @@ export function ReaderPage() {
   const spokenChapter = useMemo(() => fragment
     ? speechSegments(fragment.title, fragment.body.value, fragment.body.format)
     : [], [fragment]);
+  const access = loaded && (loaded.manifest.access ?? loaded.item.access ?? loaded.index.access ?? loaded.entry.access ?? "public");
+  useReadingAnalytics("book", `${datasetId}:${itemKey}`, Boolean(loaded && fragment && !loading && (access !== "authenticated" || (readerIdentityReady && Boolean(readerUserId)))), Boolean(error));
   if (loading) return <ReadingLoadingState kind="book" status="正在打开书籍" fullscreen />;
   if (!loaded) return <div className="p-8 text-center text-muted">{error || "内容不存在"}</div>;
-  const access = loaded.manifest.access ?? loaded.item.access ?? loaded.index.access ?? loaded.entry.access ?? "public";
   if (access === "authenticated" && (!readerIdentityReady || !readerUserId)) {
     if (!readerIdentityReady) return <LoadingSpinner text="正在确认登录状态" fullscreen />;
     const returnTo = `${window.location.pathname}${window.location.search}`;
