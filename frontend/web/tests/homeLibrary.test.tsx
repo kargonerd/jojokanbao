@@ -125,6 +125,8 @@ describe("app homepage", () => {
 
   it("shows a truthful empty state until something has been opened", async () => {
     renderAt("/");
+    // Settle the real lazy route import before checking its rendered state.
+    await act(async () => { await vi.dynamicImportSettled(); });
 
     expect(await screen.findByText("还没有阅读记录")).toBeTruthy();
     expect(screen.queryByText("今日一读")).toBeNull();
