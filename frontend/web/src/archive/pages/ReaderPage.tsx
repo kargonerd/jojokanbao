@@ -1,4 +1,4 @@
-import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
+import { Link, useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { fetchPdfDownloadBytes, findPdfOutlineLocation, resolvePdfOutlineDestination, PdfViewer, usePdfDocument, type PdfOutlineItem, type PdfOutlineLocation, type PdfSearchResult } from "@jojo/pdf-viewer";
 import { formatArchiveIssueLabel } from "@jojo/content";
