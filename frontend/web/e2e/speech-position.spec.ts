@@ -1,16 +1,34 @@
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import ts from "typescript";
 import * as content from "@jojo/content";
 import { SPEECH_READER_FACTORY } from "@jojo/content/speech-dom-script";
 import { speechFromReadingPosition, speechSegments, SPEECH_EXCLUDED_ELEMENTS } from "@jojo/content";
 // Compile the native CommonJS package at this boundary; the browser executes its actual injected script.
+const continuousSource = ts.transpileModule(readFileSync(new URL("../../mobile/src/lib/continuousBookScroll.ts", import.meta.url), "utf8"), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+}).outputText;
+const nativeContinuous = {} as typeof import("../../mobile/src/lib/continuousBookScroll");
+new Function("exports", continuousSource)(nativeContinuous);
 const nativeSource = ts.transpileModule(readFileSync(new URL("../../mobile/src/lib/bookReaderBridge.ts", import.meta.url), "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
 const nativeBridge = {} as typeof import("../../mobile/src/lib/bookReaderBridge");
-new Function("require", "exports", nativeSource)((id: string) => id === "@jojo/content" ? content : { SPEECH_READER_FACTORY }, nativeBridge);
+new Function("require", "exports", nativeSource)((id: string) => {
+  if (id === "@jojo/content") return content;
+  if (id === "@jojo/content/speech-dom-script") return { SPEECH_READER_FACTORY };
+  if (id === "./continuousBookScroll") return nativeContinuous;
+  throw new Error(`Unsupported native bridge dependency: ${id}`);
+}, nativeBridge);
 const { createBookReaderBridgeScript, createBookReaderGoToSpreadScript, createBookReaderSpeechHighlightScript, createBookReaderSpeechPositionScript } = nativeBridge;
+const documentSource = ts.transpileModule(readFileSync(new URL("../../mobile/src/lib/bookDocument.ts", import.meta.url), "utf8"), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+}).outputText;
+const nativeDocument = {} as typeof import("../../mobile/src/lib/bookDocument");
+new Function("exports", "require", documentSource)(nativeDocument,
+  createRequire(new URL("../../mobile/src/lib/bookDocument.ts", import.meta.url)));
+const { createBookDocument } = nativeDocument;
 
 for (const mode of ["paged", "scroll"] as const) {
   test(`listening reveals visible text without highlighting in actual ${mode} layout`, async ({ page }) => {
@@ -55,7 +73,13 @@ test("native book bridge returns to the spoken passage without highlighting", as
   await page.setViewportSize({ width: 390, height: 700 });
   const paragraphs = Array.from({ length: 60 }, (_, i) => `第${i + 1}段。这是手机阅读器中的正文，用来验证翻页后的听书位置。暂停时可以自由翻页，再播放继续原来的音频。`);
   const segments = speechSegments("第一章", paragraphs.join("\n\n"), "text");
-  await page.setContent(`<style>*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden}article{width:100vw;height:100vh;padding:80px 32px;column-count:1;column-fill:auto;column-gap:64px;overflow:visible;font:20px/40px serif;transform:translate3d(0,0,0)}p{margin:0 0 20px}</style><body data-reading-mode="paged"><article><h1>第一章</h1><div data-book-content data-target-id="c1">${paragraphs.map((text) => `<p>${text}</p>`).join("")}</div></article></body>`);
+  await page.setContent(createBookDocument({
+    fragment: { formatVersion: "jojo-fragment/1", itemId: "test", fragmentId: "c1", type: "chapter", order: 1, title: "第一章",
+      body: { format: "html", value: paragraphs.map((text) => `<p>${text}</p>`).join("") }, assetRefs: [], annotations: [] },
+    assetUrls: {}, textScale: 1.25, lineHeight: 2, firstLineIndent: true,
+    eInk: false, readingMode: "paged", paperColor: "ivory",
+  }));
+  await expect(page.locator("article")).toHaveAttribute("data-reader-chapter-id", "c1");
   await page.addScriptTag({ content: "window.readerMessages=[];window.ReactNativeWebView={postMessage: function(value){window.readerMessages.push(JSON.parse(value));}};" });
   await page.addScriptTag({ content: createBookReaderBridgeScript("start") });
   await expect.poll(() => page.evaluate(() => (window as unknown as { readerMessages: Array<{ spreadCount?: number }> }).readerMessages.some((message) => (message.spreadCount ?? 0) > 3))).toBe(true);

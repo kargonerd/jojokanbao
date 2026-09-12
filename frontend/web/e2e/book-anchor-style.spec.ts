@@ -9,7 +9,7 @@ const nativeSource = ts.transpileModule(readFileSync(new URL("../../mobile/src/l
 const nativeDocument = {} as typeof import("../../mobile/src/lib/bookDocument");
 new Function("exports", "require", nativeSource)(nativeDocument,
   createRequire(new URL("../../mobile/src/lib/bookDocument.ts", import.meta.url)));
-const { createBookDocument } = nativeDocument;
+const { bookChapterAnchorId, createBookDocument } = nativeDocument;
 
 const uiCss = readFileSync(new URL("../../packages/ui/styles/index.css", import.meta.url), "utf8");
 const readerCss = readFileSync(new URL("../src/rag/components/BookReader.css", import.meta.url), "utf8");
@@ -43,10 +43,14 @@ test("native chapter heading keeps its note link without printing the title twic
   }));
   await expect(page.locator("h1")).toHaveCount(1);
   await expect(page.locator("h1")).toHaveText(`${title}[1]`);
-  await page.locator("#ref1").click();
-  await expect(page).toHaveURL(/#note1$/);
-  await page.locator('#note1 a').click();
-  await expect(page).toHaveURL(/#ref1$/);
+  const reference = page.locator('[data-reader-anchor-id="ref1"]');
+  const note = page.locator('[data-reader-anchor-id="note1"]');
+  await expect(reference).toHaveAttribute("id", bookChapterAnchorId("chapter:726", "ref1"));
+  await expect(note).toHaveAttribute("id", bookChapterAnchorId("chapter:726", "note1"));
+  await reference.click();
+  await expect.poll(() => page.evaluate(() => decodeURIComponent(location.hash.slice(1)))).toBe(bookChapterAnchorId("chapter:726", "note1"));
+  await note.locator("a").click();
+  await expect.poll(() => page.evaluate(() => decodeURIComponent(location.hash.slice(1)))).toBe(bookChapterAnchorId("chapter:726", "ref1"));
 });
 
 for (const ink of ["#202020", "#eeeeee"]) {
@@ -70,7 +74,14 @@ for (const paperColor of ["ivory", "dark"] as const) {
       eInk: false, readingMode: "scroll", paperColor,
     }));
     const color = await page.locator("article").evaluate((el) => getComputedStyle(el).color);
-    await expect(page.locator("#page16")).toHaveCSS("color", color);
-    expect(await page.locator("#real-link").evaluate((el) => getComputedStyle(el).color)).not.toBe(color);
+    const pageAnchor = page.locator('[data-reader-anchor-id="page16"]');
+    const pageLink = page.locator('[data-reader-anchor-id="real-link"]');
+    await expect(pageAnchor).toHaveAttribute("id", bookChapterAnchorId("chapter:1", "page16"));
+    await expect(pageAnchor).toHaveCSS("color", color);
+    await pageAnchor.hover();
+    await expect(pageAnchor).toHaveCSS("color", color);
+    expect(await pageLink.evaluate((el) => getComputedStyle(el).color)).not.toBe(color);
+    await pageLink.click();
+    await expect.poll(() => page.evaluate(() => decodeURIComponent(location.hash.slice(1)))).toBe(bookChapterAnchorId("chapter:1", "page16"));
   });
 }

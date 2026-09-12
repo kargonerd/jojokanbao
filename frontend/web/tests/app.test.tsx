@@ -64,10 +64,10 @@ describe("JOJO Web routes and Archive homepage", () => {
     expect(screen.queryByRole("heading", { name: "返回旧版" })).toBeNull();
   });
 
-  it("renders the new reading-first homepage at the site root", () => {
+  it("renders the new reading-first homepage at the site root", async () => {
     renderAt("/");
 
-    expect(screen.getByRole("heading", { name: "今天读什么？" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "今天读什么？" })).toBeTruthy();
     expect(within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "资料库" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Agent" })).toBeNull();
   });
@@ -76,13 +76,13 @@ describe("JOJO Web routes and Archive homepage", () => {
     renderAt("/legacy");
 
     await waitFor(() => expect(window.location.pathname).toBe("/"));
-    expect(screen.getByRole("heading", { name: "今天读什么？" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "今天读什么？" })).toBeTruthy();
   });
 
   it("moves the Archive index to the redesigned library", async () => {
     renderAt("/archive");
     await waitFor(() => expect(window.location.pathname).toBe("/library"));
-    expect(screen.getByRole("region", { name: "馆藏列表" })).toBeTruthy();
+    expect(await screen.findByRole("region", { name: "馆藏列表" })).toBeTruthy();
   });
 
   it("redirects every publication root to its documented default issue", async () => {
@@ -391,7 +391,7 @@ describe("JOJO Web navigation", () => {
     fireEvent.click(screen.getByRole("link", { name: "JOJO 看报首页" }));
 
     await waitFor(() => expect(window.location.pathname).toBe("/"));
-    expect(screen.getByRole("heading", { name: "今天读什么？" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "今天读什么？" })).toBeTruthy();
   });
 });
 
