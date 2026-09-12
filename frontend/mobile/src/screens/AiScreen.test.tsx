@@ -34,8 +34,9 @@ vi.mock("../store/mobileStore", () => ({ useMobileStore: (select: (state: unknow
 
 let view: ReactTestRenderer;
 function button(label: string) {
-  return view.root.findAllByType("button").find((node) => node.props.accessibilityLabel === label
-    || node.findAllByType("span").some((child) => child.props.children === label))!;
+  const buttons = view.root.findAllByType("button");
+  return (buttons.find((node) => node.props.accessibilityLabel === label)
+    ?? buttons.find((node) => node.findAllByType("span").some((child) => child.props.children === label)))!;
 }
 beforeEach(async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -50,17 +51,16 @@ beforeEach(async () => {
 afterEach(async () => { await act(async () => view.unmount()); vi.unstubAllGlobals(); });
 
 it("selects People's Daily, persists the scope, and opens newspaper citations in the archive reader", async () => {
-  await act(async () => button("选择资料，当前全部书籍").props.onPress());
+  await act(async () => button("选择资料，当前全部报刊 + 书籍").props.onPress());
   expect(button("甲书")).toBeDefined();
   await act(async () => button("报刊").props.onPress());
   expect(button("甲书")).toBeUndefined();
   expect(button("人民日报")).toBeDefined();
   expect(button("参考消息")).toBeUndefined();
-  await act(async () => button("人民日报").props.onPress());
   await act(async () => button("关闭").props.onPress());
   await act(async () => view.root.findByType("input").props.onChangeText("黄河报道"));
   await act(async () => button("发送").props.onPress());
-  expect(mocks.ask.mock.calls[0]?.[0]).toMatchObject({ contentType: "periodical", datasetIds: ["rmrb"], scopeMode: "selected" });
+  expect(mocks.ask.mock.calls[0]?.[0]).toMatchObject({ contentType: "periodical", datasetIds: ["rmrb"], scopeMode: "all" });
   expect(mocks.volumes).not.toHaveBeenCalled();
   const callbacks = mocks.ask.mock.calls[0]?.[1];
   await act(async () => {
@@ -72,10 +72,50 @@ it("selects People's Daily, persists the scope, and opens newspaper citations in
     .some((child) => Array.isArray(child.props.children) && child.props.children.includes("关注黄河")));
   await act(async () => referenceButton!.props.onPress());
   expect(mocks.navigate).toHaveBeenCalledWith("Reader", { publication: "rmrb", issueId: "19990625", page: 5, searchTitle: "关注黄河" });
-  await act(async () => button("选择资料，当前仅《人民日报》").props.onPress());
+  await act(async () => button("选择资料，当前报刊 · 人民日报").props.onPress());
   await act(async () => button("书籍").props.onPress());
   await act(async () => button("关闭").props.onPress());
   await act(async () => button("历史对话").props.onPress());
   await act(async () => button("黄河报道").props.onPress());
-  expect(button("选择资料，当前仅《人民日报》")).toBeDefined();
+  expect(button("选择资料，当前报刊 · 人民日报")).toBeDefined();
+  await act(async () => button("新对话").props.onPress());
+  expect(button("选择资料，当前全部报刊 + 书籍")).toBeDefined();
+});
+
+it("sends all books and periodicals by default and restores the combined conversation", async () => {
+  expect(button("选择资料，当前全部报刊 + 书籍")).toBeDefined();
+  await act(async () => view.root.findByType("input").props.onChangeText("调查研究"));
+  await act(async () => button("发送").props.onPress());
+  expect(mocks.ask.mock.calls[0]?.[0]).toMatchObject({ contentType: "all", datasetIds: ["rmrb", "book-a"], scopeMode: "all" });
+  expect(mocks.volumes).not.toHaveBeenCalled();
+  await act(async () => {
+    mocks.ask.mock.calls[0]?.[1].onChunk("馆藏回答");
+    mocks.ask.mock.calls[0]?.[1].onDone("conv-all", []);
+  });
+  expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({ contentType: "all", scopeMode: "all", selectedDatasetIds: ["rmrb", "book-a"] }));
+  await act(async () => button("选择资料，当前全部报刊 + 书籍").props.onPress());
+  await act(async () => button("报刊").props.onPress());
+  await act(async () => button("关闭").props.onPress());
+  await act(async () => button("历史对话").props.onPress());
+  await act(async () => button("调查研究").props.onPress());
+  expect(button("选择资料，当前全部报刊 + 书籍")).toBeDefined();
+});
+
+it("cascades select all to every checkbox and prevents sending an empty selection", async () => {
+  await act(async () => view.root.findByType("input").props.onChangeText("调查研究"));
+  await act(async () => button("选择资料，当前全部报刊 + 书籍").props.onPress());
+  expect(button("人民日报").props.accessibilityState.checked).toBe(true);
+  expect(button("甲书").props.accessibilityState.checked).toBe(true);
+  await act(async () => button("全部报刊 + 书籍").props.onPress());
+  expect(button("人民日报").props.accessibilityState.checked).toBe(false);
+  expect(button("甲书").props.accessibilityState.checked).toBe(false);
+  expect(button("选择资料，当前未选择资料")).toBeDefined();
+  expect(button("发送").props.disabled).toBe(true);
+  await act(async () => button("发送").props.onPress());
+  expect(mocks.ask).not.toHaveBeenCalled();
+  await act(async () => button("甲书").props.onPress());
+  expect(button("全部报刊 + 书籍").props.accessibilityState.checked).toBe("mixed");
+  await act(async () => button("全部报刊 + 书籍").props.onPress());
+  expect(button("人民日报").props.accessibilityState.checked).toBe(true);
+  expect(button("甲书").props.accessibilityState.checked).toBe(true);
 });

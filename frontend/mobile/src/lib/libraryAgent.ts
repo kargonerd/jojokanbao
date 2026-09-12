@@ -12,7 +12,7 @@ const MAX_HISTORY_MESSAGES = 20;
 const MAX_HISTORY_CHARACTERS = 100_000;
 
 export interface MobileLibraryAgentRequest {
-  contentType?: "book" | "periodical";
+  contentType?: "all" | "book" | "periodical";
   question: string;
   datasetIds: string[];
   scopeMode: "all" | "selected";

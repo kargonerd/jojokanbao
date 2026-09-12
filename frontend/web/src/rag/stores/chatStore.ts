@@ -4,7 +4,7 @@ import {
   notebookApi,
 } from "../api";
 import { localConversationApi } from "../local-conversations";
-import { scopeNotebooks, type RagContentType } from "../scope";
+import { allSourcesSelected, scopeNotebooks, type RagContentType } from "../scope";
 import type {
   RagConversationSummary,
   RagMessage,
@@ -13,7 +13,7 @@ import type {
 
 const LAST_CONVERSATION_KEY = "rag-last-conversation";
 
-function freshScope(datasetIds: string[], contentType: RagContentType = "book") {
+function freshScope(datasetIds: string[], contentType: RagContentType = "all") {
   return {
     contentType,
     selectedNotebookIds: datasetIds,
@@ -50,7 +50,7 @@ interface ChatState {
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
-  contentType: "book",
+  contentType: "all",
   notebooks: [],
   selectedNotebookIds: [],
   messages: [],
@@ -70,7 +70,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set({
         notebooks,
         loading: false,
-        ...freshScope([]),
+        ...freshScope(scopeNotebooks(notebooks, "all").map((item) => item.id)),
       });
       await get().loadConversations();
       const savedConversation = localStorage.getItem(LAST_CONVERSATION_KEY);
@@ -112,14 +112,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
     try {
       const detail = await localConversationApi.get(conversationId);
-      const contentType = detail.conversation.scope?.contentType === "periodical" ? "periodical" : "book";
+      const contentType = detail.conversation.scope?.contentType ?? "book";
       const available = new Set(scopeNotebooks(get().notebooks, contentType).map((item) => item.id));
       const scoped = (detail.conversation.scope?.datasetIds ?? [])
         .filter((id) => available.has(id));
       localStorage.setItem(LAST_CONVERSATION_KEY, conversationId);
       set({
         contentType,
-        selectedNotebookIds: detail.conversation.scope?.mode === "all" ? [] : scoped,
+        selectedNotebookIds: detail.conversation.scope?.mode === "all"
+          || (!detail.conversation.scope?.mode && !detail.conversation.scope?.datasetIds?.length)
+          ? [...available] : scoped,
         messages: detail.messages,
         conversationId,
         streamContent: "",
@@ -148,7 +150,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         historyLoading: false,
         ...(deletingActive
           ? {
-            ...freshScope([]),
+            ...freshScope(scopeNotebooks(state.notebooks, "all").map((item) => item.id)),
           }
           : {}),
       }));
@@ -161,13 +163,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (get().streaming || get().historyLoading) return;
     if (id && !scopeNotebooks(get().notebooks, get().contentType).some((item) => item.id === id)) return;
     localStorage.removeItem(LAST_CONVERSATION_KEY);
-    set(freshScope(id ? [id] : [], get().contentType));
+    const availableIds = scopeNotebooks(get().notebooks, get().contentType).map((item) => item.id);
+    set(freshScope(id ? [id] : allSourcesSelected(availableIds, get().selectedNotebookIds) ? [] : availableIds, get().contentType));
   },
 
   selectContentType: (contentType) => {
     if (get().streaming || get().historyLoading || contentType === get().contentType) return;
     localStorage.removeItem(LAST_CONVERSATION_KEY);
-    set(freshScope([], contentType));
+    set(freshScope(scopeNotebooks(get().notebooks, contentType).map((item) => item.id), contentType));
   },
 
   toggleNotebook: (id) => {
@@ -194,9 +197,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       historyLoading,
     } = get();
     const trimmedQuestion = question.trim();
-    const datasetIds = selectedNotebookIds.length
-      ? selectedNotebookIds
-      : scopeNotebooks(notebooks, contentType).map((notebook) => notebook.id);
+    const availableIds = scopeNotebooks(notebooks, contentType).map((notebook) => notebook.id);
+    const datasetIds = selectedNotebookIds.filter((id) => availableIds.includes(id));
+    const scopeMode = allSourcesSelected(availableIds, datasetIds) ? "all" : "selected";
     if (!trimmedQuestion || !datasetIds.length || streaming || historyLoading) return;
     const newMessages = [
       ...messages,
@@ -230,7 +233,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         {
           contentType,
           datasetIds,
-          scopeMode: selectedNotebookIds.length ? "selected" : "all",
+          scopeMode,
           question: trimmedQuestion,
           conversationId: conversationId || undefined,
           itemIds,
@@ -267,7 +270,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             messageCount: final.length,
             scope: {
               contentType,
-              mode: selectedNotebookIds.length ? "selected" : "all",
+              mode: scopeMode,
               datasetIds,
               ...(itemIds ? { itemIds } : {}),
               ...(manifestObjects ? { manifestObjects } : {}),
@@ -299,6 +302,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   clearConversation: () => {
     if (get().streaming || get().historyLoading) return;
     localStorage.removeItem(LAST_CONVERSATION_KEY);
-    set(freshScope([], get().contentType));
+    set(freshScope(scopeNotebooks(get().notebooks, "all").map((item) => item.id)));
   },
 }));

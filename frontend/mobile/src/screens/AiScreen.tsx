@@ -26,6 +26,10 @@ import type { MainTabParamList, RootStackParamList } from "../navigation/types";
 import { useMobileStore, type MobileAiConversation } from "../store/mobileStore";
 import { mobileTheme } from "../theme/tokens";
 
+const periodicalItems = JOJO_AI_PERIODICAL_IDS.map((datasetId) => ({
+  datasetId, title: ARCHIVE_PUBLICATION_BY_ID[datasetId].title,
+}));
+
 function readableAiText(value: string): string {
   return value
     .replace(/\[cite:[A-Za-z0-9_-]+\]/g, "")
@@ -124,10 +128,10 @@ export function AiScreen() {
   const listRef = useRef<FlatList<MobileBookAgentMessage>>(null);
   const cancelRef = useRef<(() => void) | undefined>(undefined);
   const [books, setBooks] = useState<MobileBook[]>([]);
-  const [contentType, setContentType] = useState<"book" | "periodical">("book");
+  const [contentType, setContentType] = useState<"all" | "book" | "periodical">("all");
   const [loadingBooks, setLoadingBooks] = useState(false);
   const [booksError, setBooksError] = useState("");
-  const [selectedDatasetIds, setSelectedDatasetIds] = useState<string[]>([]);
+  const [selectedDatasetIds, setSelectedDatasetIds] = useState<string[]>([...JOJO_AI_PERIODICAL_IDS]);
   const [messages, setMessages] = useState<MobileBookAgentMessage[]>([]);
   const [conversationId, setConversationId] = useState("");
   const [input, setInput] = useState("");
@@ -143,24 +147,26 @@ export function AiScreen() {
     () => savedConversations.filter((conversation) => conversation.ownerId === ownerId),
     [ownerId, savedConversations],
   );
-  const scopeItems = useMemo(() => contentType === "book" ? books : JOJO_AI_PERIODICAL_IDS.map((datasetId) => ({
-    datasetId, title: ARCHIVE_PUBLICATION_BY_ID[datasetId].title,
-  })), [books, contentType]);
+  const allScopeItems = useMemo(() => [...periodicalItems, ...books], [books]);
+  const scopeItems = contentType === "all" ? allScopeItems : contentType === "book" ? books : periodicalItems;
+  const allSelected = scopeItems.length > 0 && scopeItems.every((item) => selectedDatasetIds.includes(item.datasetId));
   const selectedTitles = selectedDatasetIds.flatMap((id) => {
     const book = scopeItems.find((candidate) => candidate.datasetId === id);
     return book ? [book.title] : [];
   });
   const scopeLabel = selectedTitles.length === 0
-    ? (contentType === "book" ? "全部书籍" : "报刊 · 人民日报")
-    : selectedTitles.length === 1
-      ? `仅《${selectedTitles[0]}》`
-      : `限定 ${selectedTitles.length} ${contentType === "book" ? "本书" : "种报刊"}`;
+    ? "未选择资料"
+    : allSelected
+      ? (contentType === "all" ? "全部报刊 + 书籍" : contentType === "book" ? "全部书籍" : "报刊 · 人民日报")
+      : selectedTitles.length === 1
+        ? `仅《${selectedTitles[0]}》`
+        : `限定 ${selectedTitles.length} ${contentType === "all" ? "份资料" : contentType === "book" ? "本书" : "种报刊"}`;
   const visibleBooks = useMemo(() => {
     const needle = scopeQuery.trim().toLocaleLowerCase("zh-CN");
     return needle ? scopeItems.filter((item) => item.title.toLocaleLowerCase("zh-CN").includes(needle)) : scopeItems;
   }, [scopeItems, scopeQuery]);
   const hasThread = messages.length > 0 || streaming || Boolean(error);
-  const canSend = Boolean(input.trim() && scopeItems.length && !loadingBooks && !streaming);
+  const canSend = Boolean(input.trim() && selectedTitles.length && !loadingBooks && !streaming);
 
   useEffect(() => () => cancelRef.current?.(), []);
 
@@ -171,7 +177,12 @@ export function AiScreen() {
     setBooksError("");
     void loadMobileBooks()
       .then((items) => {
-        if (active) setBooks(items.filter((item) => item.aiEnabled === true));
+        if (active) {
+          const enabledBooks = items.filter((item) => item.aiEnabled === true);
+          setBooks(enabledBooks);
+          setContentType("all");
+          setSelectedDatasetIds([...JOJO_AI_PERIODICAL_IDS, ...enabledBooks.map((item) => item.datasetId)]);
+        }
       })
       .catch((reason: unknown) => {
         if (active) setBooksError(reason instanceof Error ? reason.message : "书目加载失败");
@@ -191,7 +202,10 @@ export function AiScreen() {
     setStreamContent("");
     setStreamStatus("");
     setError("");
-    if (resetScope) setSelectedDatasetIds([]);
+    if (resetScope) {
+      setContentType("all");
+      setSelectedDatasetIds(allScopeItems.map((item) => item.datasetId));
+    }
   }
 
   function chooseScope(next: string[]) {
@@ -205,7 +219,11 @@ export function AiScreen() {
     setContentType(conversation.contentType ?? "book");
     setConversationId(conversation.id);
     setMessages(conversation.messages);
-    setSelectedDatasetIds(conversation.selectedDatasetIds);
+    const restoredType = conversation.contentType ?? "book";
+    const available = restoredType === "all" ? allScopeItems : restoredType === "book" ? books : periodicalItems;
+    setSelectedDatasetIds(conversation.scopeMode === "all" || !conversation.selectedDatasetIds.length
+      ? available.map((item) => item.datasetId)
+      : conversation.selectedDatasetIds.filter((id) => available.some((item) => item.datasetId === id)));
     setStreamContent("");
     setStreamStatus("");
     setError("");
@@ -237,7 +255,8 @@ export function AiScreen() {
   function sendMessage() {
     const question = input.trim();
     if (!question || !canSend || !ownerId) return;
-    const datasetIds = selectedDatasetIds.length ? selectedDatasetIds : scopeItems.map((item) => item.datasetId);
+    const datasetIds = selectedDatasetIds.filter((id) => scopeItems.some((item) => item.datasetId === id));
+    const scopeMode = allSelected ? "all" : "selected";
     const previousMessages = messages;
     const nextMessages = [...messages, { role: "user" as const, content: question }];
     setInput("");
@@ -269,7 +288,7 @@ export function AiScreen() {
         contentType,
         question,
         datasetIds,
-        scopeMode: selectedDatasetIds.length ? "selected" : "all",
+        scopeMode,
         conversationId: conversationId || undefined,
         history: previousMessages,
         itemIds,
@@ -289,6 +308,7 @@ export function AiScreen() {
           const previous = conversations.find((candidate) => candidate.id === nextConversationId);
           upsertConversation({
             contentType,
+            scopeMode,
             id: nextConversationId,
             ownerId,
             title: completedMessages.find((message) => message.role === "user")?.content.slice(0, 80) || "新对话",
@@ -386,7 +406,7 @@ export function AiScreen() {
           </Pressable>
         </View>
 
-        {booksError && contentType === "book" ? (
+        {booksError && contentType !== "periodical" ? (
           <View style={[styles.errorBox, { borderColor: theme.red, backgroundColor: theme.paper }]}>
             <Text style={[styles.errorText, { color: theme.red, fontFamily: theme.sans }]}>{booksError}</Text>
           </View>
@@ -485,24 +505,24 @@ export function AiScreen() {
 
       <Sheet visible={scopeOpen} title="选择资料" onClose={() => setScopeOpen(false)}>
         <View style={styles.scopeSheetContent}>
-          {contentType === "book" && <Text style={[styles.scopeHelp, { color: theme.muted, fontFamily: theme.sans }]}>不选时查询全部书籍，可以多选。</Text>}
           <View style={{ flexDirection: "row", marginTop: 12 }}>
-            {(["book", "periodical"] as const).map((type) => (
+            {(["all", "book", "periodical"] as const).map((type) => (
               <Pressable
                 key={type}
                 accessibilityRole="button"
-                accessibilityLabel={type === "book" ? "书籍" : "报刊"}
+                accessibilityLabel={type === "all" ? "全部" : type === "book" ? "书籍" : "报刊"}
                 accessibilityState={{ selected: contentType === type }}
                 disabled={streaming}
                 onPress={() => {
                   if (streaming || contentType === type) return;
-                  chooseScope([]);
+                  const available = type === "all" ? allScopeItems : type === "book" ? books : periodicalItems;
+                  chooseScope(available.map((item) => item.datasetId));
                   setContentType(type);
                   setScopeQuery("");
                 }}
                 style={{ flex: 1, padding: 12, alignItems: "center", borderBottomWidth: 2, borderBottomColor: contentType === type ? theme.red : theme.rule }}
               >
-                <Text style={{ color: contentType === type ? theme.red : theme.muted, fontFamily: theme.sans, fontWeight: "800" }}>{type === "book" ? "书籍" : "报刊"}</Text>
+                <Text style={{ color: contentType === type ? theme.red : theme.muted, fontFamily: theme.sans, fontWeight: "800" }}>{type === "all" ? "全部" : type === "book" ? "书籍" : "报刊"}</Text>
               </Pressable>
             ))}
           </View>
@@ -511,30 +531,34 @@ export function AiScreen() {
             <TextInput
               value={scopeQuery}
               onChangeText={setScopeQuery}
-              placeholder={contentType === "book" ? "输入书名筛选" : "输入报刊名筛选"}
+              placeholder={contentType === "all" ? "输入书名或报刊名筛选" : contentType === "book" ? "输入书名筛选" : "输入报刊名筛选"}
               placeholderTextColor={theme.muted}
               style={[styles.scopeSearchInput, { color: theme.ink, fontFamily: theme.sans }]}
             />
           </View>
           <FlatList
-            data={[{ datasetId: "", title: contentType === "book" ? "全部书籍" : "全部报刊" }, ...visibleBooks]}
+            data={[{ datasetId: "", title: contentType === "all" ? "全部报刊 + 书籍" : contentType === "book" ? "全部书籍" : "全部报刊" }, ...visibleBooks]}
             keyExtractor={(item) => item.datasetId || "all"}
             keyboardShouldPersistTaps="handled"
             renderItem={({ item }) => {
-              const selected = item.datasetId ? selectedDatasetIds.includes(item.datasetId) : selectedDatasetIds.length === 0;
+              const selected = item.datasetId ? selectedDatasetIds.includes(item.datasetId) : allSelected;
+              const partial = !item.datasetId && selectedTitles.length > 0 && !allSelected;
               return (
                 <Pressable
+                  accessibilityRole="checkbox"
+                  accessibilityLabel={item.title}
+                  accessibilityState={{ checked: partial ? "mixed" : selected }}
                   disabled={streaming}
                   onPress={() => {
-                    if (!item.datasetId) chooseScope([]);
+                    if (!item.datasetId) chooseScope(allSelected ? [] : scopeItems.map((candidate) => candidate.datasetId));
                     else chooseScope(selected
                       ? selectedDatasetIds.filter((id) => id !== item.datasetId)
                       : [...selectedDatasetIds, item.datasetId]);
                   }}
-                  style={[styles.scopeRow, { borderBottomColor: theme.rule, borderLeftColor: selected ? theme.red : "transparent" }]}
+                  style={[styles.scopeRow, { borderBottomColor: theme.rule, borderLeftColor: selected || partial ? theme.red : "transparent" }]}
                 >
-                  <View style={[styles.checkbox, { borderColor: selected ? theme.red : theme.ruleDark, backgroundColor: selected ? theme.red : theme.paper }]}>
-                    {selected ? <Ionicons name="checkmark" size={11} color={theme.inverse} /> : null}
+                  <View style={[styles.checkbox, { borderColor: selected || partial ? theme.red : theme.ruleDark, backgroundColor: selected || partial ? theme.red : theme.paper }]}>
+                    {selected || partial ? <Ionicons name={partial ? "remove" : "checkmark"} size={11} color={theme.inverse} /> : null}
                   </View>
                   <Text style={[styles.scopeBookTitle, { color: selected ? theme.red : theme.ink, fontFamily: theme.serif }]}>{item.title}</Text>
                 </Pressable>
