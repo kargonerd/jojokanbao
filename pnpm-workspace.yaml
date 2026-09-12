@@ -7,6 +7,7 @@ packages:
   - "tools/content-pipeline"
   - "tools/ci"
   - "tools/maintenance-scheduler"
+  - "tools/posthog"
   - "tools/times-pipeline"
   - "tools/release"
   - "tools/*/web"

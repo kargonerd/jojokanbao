@@ -1,4 +1,6 @@
 begin;
+-- Arrange invitation-required fixtures through the legacy configuration source.
+update private.feature_flags set config_provider = 'supabase' where key = 'auth.signup';
 update private.feature_flags set config = config || '{"invitationRequired":true}'::jsonb
 where key = 'auth.signup';
 create extension if not exists pgtap with schema extensions;

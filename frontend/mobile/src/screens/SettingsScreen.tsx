@@ -1,6 +1,7 @@
 import { LIBRARY_SOURCES, DEFAULT_LIBRARY_SOURCES, isLibrarySourceEnabled } from "@jojo/content";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { FEEDBACK_BILIBILI_URL, FEEDBACK_QQ_GROUP, PROJECT_COPYRIGHT_NOTICES, type TimesSourceRef } from "@jojo/content";
+import { FEEDBACK_BILIBILI_URL, PROJECT_COPYRIGHT_NOTICES, type TimesSourceRef } from "@jojo/content";
+import { useSupportConfig } from "../config/supportConfig";
 import { useNavigation, useRoute, type NavigationProp, type RouteProp } from "@react-navigation/native";
 import * as Clipboard from "expo-clipboard";
 import { useEffect, useMemo, useState } from "react";
@@ -62,6 +63,7 @@ function SettingRow({
 }
 
 export function SettingsScreen() {
+  const { qqGroup } = useSupportConfig();
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, "Settings">>();
   const section = route.params?.section;
@@ -136,7 +138,7 @@ export function SettingsScreen() {
   async function copyFeedbackGroup() {
     setGroupNotice("");
     try {
-      await Clipboard.setStringAsync(FEEDBACK_QQ_GROUP);
+      await Clipboard.setStringAsync(qqGroup);
       setGroupNotice("群号已复制，可在 QQ 中搜索并申请加入。");
     } catch {
       setGroupNotice("复制失败，可长按群号手动复制。");
@@ -445,7 +447,7 @@ export function SettingsScreen() {
               </Text>
               <View>
                 <View style={[styles.feedbackGroup, { borderTopColor: theme.rule }]}>
-                  <Text selectable style={[styles.actionText, { color: theme.ink, fontFamily: theme.sans }]}>QQ群：{FEEDBACK_QQ_GROUP}</Text>
+                  <Text selectable style={[styles.actionText, { color: theme.ink, fontFamily: theme.sans }]}>QQ群：{qqGroup}</Text>
                   <Pressable accessibilityRole="button" accessibilityLabel="复制反馈群号" onPress={() => void copyFeedbackGroup()} style={styles.copyGroupButton}>
                     <Text style={[styles.copyGroupText, { color: theme.red, fontFamily: theme.sans }]}>复制群号</Text>
                   </Pressable>

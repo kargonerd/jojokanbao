@@ -1,4 +1,6 @@
 begin;
+-- Preserve coverage of the fallback Operator editor; PostHog rejects this writer after migration.
+update private.feature_flags set config_provider = 'supabase';
 
 create extension if not exists pgtap with schema extensions;
 select extensions.plan(40);

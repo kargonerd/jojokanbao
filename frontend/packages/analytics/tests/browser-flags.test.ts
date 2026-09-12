@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PostHog } from "posthog-js";
-import { openBrowserFlagSession } from "../src/browser-flags";
+import { openBrowserFlagSession, openBrowserConfigSession } from "../src/browser-flags";
 import type { FlagSession } from "../src/flags";
 
-const sessions: FlagSession[] = [];
+const sessions: Array<Pick<FlagSession, "dispose">> = [];
 let requests: Array<{ url: string; callback?: (response: { statusCode: number; json?: unknown }) => void }>;
 beforeEach(() => {
   localStorage.clear();
@@ -19,7 +19,7 @@ async function open(userId = "reader-a", token = "phc_flags_test") {
   sessions.push(session);
   return session;
 }
-async function respond(session: FlagSession, statusCode: number, json?: unknown) {
+async function respond(session: Pick<FlagSession, "refresh">, statusCode: number, json?: unknown) {
   requests.length = 0;
   session.refresh();
   await vi.waitFor(() => expect(requests.some((request) => request.url.includes("/flags/"))).toBe(true));
@@ -28,6 +28,29 @@ async function respond(session: FlagSession, statusCode: number, json?: unknown)
 }
 
 describe("installed browser flag SDK", () => {
+  it("reads a guest JSON payload and restores it across restart without collecting events", async () => {
+    const options = {token: "phc_config_test", key: "support_config"};
+    localStorage.setItem("jojo.analytics.enabled.v1", "false");
+    const session = await openBrowserConfigSession(options);
+    sessions.push(session);
+    const listener = vi.fn();
+    const unsubscribe = session.subscribe(listener);
+    await respond(session, 200, {errorsWhileComputingFlags: false, flags: {
+      support_config: {key: "support_config", enabled: true, variant: null,
+        metadata: {id: 10, version: 1, payload: '{"qqGroup":"123456789"}'}}
+    }});
+    expect(listener).toHaveBeenLastCalledWith({qqGroup: "123456789"});
+    expect(requests.find(request => request.url.includes("/flags/"))).toMatchObject({
+      data: {distinct_id: "jojo-public-config", person_properties: {signed_in: false}}
+    });
+    unsubscribe(); session.dispose();
+    const restarted = await openBrowserConfigSession(options);
+    sessions.push(restarted);
+    expect(restarted.cached()).toEqual({qqGroup: "123456789"});
+    await respond(restarted, 0);
+    expect(restarted.cached()).toEqual({qqGroup: "123456789"});
+    expect(requests.every(request => request.url.includes("/flags/"))).toBe(true);
+  });
   it("persists across restart, survives offline and isolates accounts and projects even with analytics opted out", async () => {
     localStorage.setItem("jojo.analytics.enabled.v1", "false");
     localStorage.setItem("__ph_opt_in_out_phc_flags_test", "0");

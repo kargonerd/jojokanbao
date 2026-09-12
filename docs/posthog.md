@@ -87,7 +87,7 @@ SDK 参考：[JavaScript 配置](https://posthog.com/docs/libraries/js/config)�
 
 PostHog 创建接口不接受点号，SDK 返回值由共享适配器映射回原有业务 key。已创建远端开关：[云书架](https://us.posthog.com/project/604535/feature_flags/879931)、[共享批注](https://us.posthog.com/project/604535/feature_flags/879932)、[听读](https://us.posthog.com/project/604535/feature_flags/879933)。前两项 `signed_in=true` 时为 true、false 时为 false；听读按旧系统的实际全局开放规则返回 true，但客户端仍只为登录用户读取这些开关。未改变旧数据库的规则与 revision。
 
-原生书籍阅读器的本地离线划线、笔记原本没有远程开关，继续保存在本机，不纳入共享批注开关。部署回退开关 `VITE_ENABLE_PLATFORM_REDESIGN`、服务端 TTS 开关，以及 `auth.signup`、`ai.usage_limits`、`ops.email_quota` 等运行控制仍使用现有机制。`reader.annotations.config.publicMarkThreshold` 也继续由数据库读取；规则开关不能关闭限额或改变公开阈值。
+原生书籍阅读器的本地离线划线、笔记原本没有远程开关，继续保存在本机，不纳入共享批注开关。部署回退开关 `VITE_ENABLE_PLATFORM_REDESIGN`、服务端 TTS 开关仍使用现有机制。注册、AI 限额、邮件额度和公开批注阈值的参数按下节迁移到独立的 PostHog Remote config；服务端继续读取数据库缓存执行校验，产品规则开关不能关闭限额或改变公开阈值。
 
 客户端恢复登录身份后，加载该账号的 SDK 本地缓存，并立即后台刷新，不等待 `/flags/` 返回再显示应用。Web/Desktop 使用 localStorage，原生端使用 AsyncStorage。账号和 PostHog 项目各有独立缓存；切换账号立即采用新账号缓存或默认值，晚到响应不能写入另一账号。仅登录用户加载这三个产品开关，跨端使用同一内部用户 UUID 作为 distinct ID，并传递 `signed_in=true`、`account_id=<UUID>` 供规则定向；不发送邮箱或昵称。
 
@@ -103,7 +103,7 @@ PostHog 规则已经配置，但数据库迁移和正式发布尚未完成，**�
 
 1. 先运行本次更新的 JOJO 管理台（尚未迁移的数据库仍显示原规则编辑器），进入功能开关页，刷新并点击「导出当前快照」，保存线上真实 `rules/config/history/revision`，期间暂停调整旧规则。不要从迁移文件的默认值推断当前线上开放范围。
 2. 在 PostHog 配置上表三个使用下划线的 Boolean flags（当前项目已创建，不要重复建）。按导出快照配置允许范围，指定用户可按传入的 `account_id` 定向。仓库初始规则是书架/共享批注对登录用户开放、听读关闭，**实际迁移以快照为准**。旧系统有“首条命中、允许/拒绝、起止时间”等语义，不能直接把每条规则当作 PostHog 的 OR 条件；逐项核对。两者百分比分桶算法不同，相同百分比不保证同一批用户，需保留精确名单或接受重新分桶。
-3. 在测试项目/测试数据库完成下方验收，然后应用 `202609110001_posthog_product_flags.sql` 。迁移不改动任何现有规则、参数、版本或历史。管理台通过数据库快照中的 `rolloutProvider` 标记迁移状态，隐藏这三个 key 的规则编辑；批注阈值仍通过原 Operator 发布、检查版本冲突、记录历史和回滚配置，保留旧规则。
+3. 在测试项目/测试数据库完成下方验收，然后应用 `202609110001_posthog_product_flags.sql`。迁移不改动任何现有规则、参数、版本或历史。管理台通过数据库快照中的 `rolloutProvider` 标记迁移状态，隐藏这三个 key 的规则编辑。再应用下一节的运行参数迁移后，批注阈值也改在 PostHog 编辑，原 Operator 同步保留数据库版本与历史。
 4. 配置 GitHub Variable `FEATURE_FLAG_PROVIDER=posthog` 并发布 Web/Desktop/原生客户端；本地生产构建使用 `VITE_FEATURE_FLAG_PROVIDER=posthog`。EAS 对应环境也单独设置 `EXPO_PUBLIC_FEATURE_FLAG_PROVIDER=posthog`，与 Token/Host 使用同一环境。不要只配置 GitHub 而遗漏 EAS 云构建。官网没有这三个业务开关。
 5. 新版本只读 PostHog，不在失败时转读 Supabase；离线时保留 SDK 缓存。旧版本仍能调用 `get_my_feature_flags` 读取原有规则，因此迁移未删除旧表和 RPC。旧版本也不会收到 PostHog 的新开放范围，需发布更新。
 
@@ -117,9 +117,37 @@ PostHog 规则已经配置，但数据库迁移和正式发布尚未完成，**�
 
 ## 小型远程配置
 
-[PostHog Remote config](https://posthog.com/docs/feature-flags/remote-config) 可以下发 JSON。普通 flag 的 payload 可以随命中规则或变体变化，Remote config 则用于统一下发配置；客户端通过 SDK 的 `getFeatureFlagPayload` 读取。适合展示条数、界面文案、刷新间隔等允许缓存的小参数。当前适配器只读取上述三个布尔开关，尚未接入 payload 或迁移运行参数。
+[PostHog Remote config](https://posthog.com/docs/feature-flags/remote-config) 统一下发 JSON，独立于三个产品 Boolean flags。2026-09-12 已重新导出全部线上 flag 到本机 `.runtime/posthog/runtime-config-before-migration.json`，按所有非空 `config` 的实际值创建以下配置，并通过公开 `/flags/?v=2` 逐项核对 payload：
 
-若加入这类配置，应给每个字段设置默认值、类型与范围校验，复用账号/项目隔离缓存及后台刷新。客户端收到的普通 payload 属于公开配置，不能放密钥。AI 配额、邮件限额、共享批注公开阈值等由服务端执行的参数目前仍使用原有配置、版本检查及历史；不能只把值移到客户端缓存就认为服务端也会生效。
+| Remote config | 迁移时实际值 | 读取位置 |
+| --- | --- | --- |
+| [`auth_signup_config`](https://us.posthog.com/project/604535/feature_flags/881155) | `invitationRequired: false` | 注册与 Auth 校验 |
+| [`reader_annotations_config`](https://us.posthog.com/project/604535/feature_flags/881157) | `publicMarkThreshold: 2` | 服务端共享批注公开阈值 |
+| [`ai_usage_limits_config`](https://us.posthog.com/project/604535/feature_flags/881154) | 每分钟 3 次、每天 100 次、单次 300 秒 | 服务端 AI 准入 |
+| [`ops_email_quota_config`](https://us.posthog.com/project/604535/feature_flags/881156) | `warningPercent:80, criticalPercent:90, usageSource:"records", dailyLimit:100, monthlyLimit:3000` | 既有邮件额度检查 |
+| [`support_config`](https://us.posthog.com/project/604535/feature_flags/881158) | `{"qqGroup":"974380749"}` | Web/Desktop 支持页、Mobile 设置页 |
+
+前四份配置的 PostHog key 是原业务 key 将点换成下划线，再加 `_config`；不要把它们放到产品开关的 true/false 变体中。所有配置保持全局启用，禁止存密钥、用户计数、并发租约或任务状态。删除/关闭配置不表示取消限额。
+
+**服务端路径：** `tools/posthog/sync-runtime-config.mjs` 读取公开 flag payload，与 Operator 当前快照一起校验，通过一次 `operator_sync_posthog_configs` 事务写入现有 `private.feature_flags.config`。没有新配置表，业务请求不访问 PostHog。同步使用原有 Operator 鉴权、revision 冲突检查和发布历史；保留旧规则、未修改的配置字段、已有历史、计数和执行中的租约。迁移只增加来源/远端版本/同步时间元数据，不覆盖当前参数。首次同步必须与当前数据库值一致，若导出后线上又发生修改，会拒绝绑定，需重新核对 PostHog 配置。
+
+字段类型、整数范围和阈值关系在导入程序及数据库两处验证。任一配置缺失、关闭、非法或出现版本冲突时，整个批次失败，继续使用上次有效值。远端 flag ID 首次绑定后不能静默替换；版本必须单调递增，同版本不同内容拒绝更新。同版本同内容重试只更新时间，不重复写历史；在 PostHog 回滚参数会以新的远端版本及数据库 revision 记录。
+
+`.github/workflows/sync-runtime-config.yml` 每 5 分钟计划同步一次，仅在 master 且 `POSTHOG_RUNTIME_CONFIG_SYNC_ENABLED=true` 时运行。GitHub 定时任务可能延迟或漏跑，不能保证 5 分钟内生效。服务端保留最后有效缓存，没有强制过期；参数在成功同步后的下一次业务读取生效，邮件额度仍在下一次半小时检查读取。JOJO 管理台按 `configProvider=posthog` 显示只读配置、最后同步时间及历史，修改和回滚均在 PostHog 完成，数据库拒绝旧编辑入口修改这些配置。
+
+**QQ群号路径：** 两端 SDK 通过 `getFeatureFlagPayload("support_config")` 读取，无需登录，也不受统计 opt-out 或 Boolean flag provider 影响。群号必须是 5–12 位数字字符串，首位非零；显示和复制使用同一值。首次无缓存时使用 `974380749`；随后按项目保存已验证的 localStorage/AsyncStorage 缓存，即使 SDK 无法加载也能恢复。支持/设置页打开时异步刷新，停留前台每 5 分钟刷新，恢复前台刷新间隔至少 30 秒；Web/Desktop 恢复联网也刷新。无效响应不会覆盖有效缓存。公开配置 SDK 不发送采集事件。
+
+### 运行参数切换步骤
+
+1. 重新导出实际值并核对上表五份 PostHog 配置。保持现有服务端参数不变，不能用默认值覆盖后来调整的配置。
+2. 合并包含同步工作流的代码。顺序应用 `202609110001_posthog_product_flags.sql`、`202609120001_posthog_runtime_config.sql`，使用更新后的管理台读取 `configProvider` 和当前值。
+3. GitHub 已配置公开 `POSTHOG_PROJECT_TOKEN/API_HOST` 和原有 Supabase Variables；同步所需 `JOJO_OPERATOR_TOKEN` 保存为 GitHub Secret，客户端只包含公开项目 Token。不要把 Operator Token 放到 PostHog payload 或 `VITE_` / `EXPO_PUBLIC_` 变量。
+4. 在已有凭据的受控环境运行 `node tools/posthog/sync-runtime-config.mjs` 做首次同步，预期 `checked=4, changed=[]`。回读四份配置的同步时间、远端版本，以及业务读取值。脚本只读取进程环境，不自动加载 `.env`。再设置 `POSTHOG_RUNTIME_CONFIG_SYNC_ENABLED=true`，执行一次工作流并检查结果。
+5. 发布客户端后验证QQ群号和离线缓存。验证限额执行、邀请码注册、共享批注阈值，以及原有监控正常工作；产品 Boolean flags 的 provider 按上一节单独切换。
+
+停止同步时将 `POSTHOG_RUNTIME_CONFIG_SYNC_ENABLED` 设为 false，现有服务端值继续生效。若要恢复数据库编辑源，用新的回退迁移将四行 `config_provider` 改为 `supabase`，保留当前 config、规则和历史；不要删除配置行或恢复初始默认值。
+
+**当前状态：远端五份配置已创建并读回验证；迁移、同步工作流和客户端接入代码已完成，但生产数据库尚未应用本次两份迁移，自动同步尚未启用，客户端尚未发布。** 本地 12 项导入/PostgreSQL 测试覆盖值保留、首次绑定、幂等重试、非法配置、旧版本、事务回滚及真实 AI 准入函数；SDK 测试覆盖断网缓存和无事件采集。Auth 基础设施及 pgcrypto 入口为测试替身，不能代替生产切换验收。
 
 ## GitHub Actions 监控
 

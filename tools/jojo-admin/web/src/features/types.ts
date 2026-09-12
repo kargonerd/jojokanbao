@@ -17,6 +17,9 @@ export interface FeatureFlagRule {
 
 export interface FeatureFlagDefinition {
   rolloutProvider?: "supabase" | "posthog";
+  configProvider?: "supabase" | "posthog";
+  configRemoteVersion?: number;
+  configSyncedAt?: string | null;
   key: string;
   description: string;
   revision: number;

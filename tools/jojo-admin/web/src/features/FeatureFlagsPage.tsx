@@ -122,8 +122,9 @@ export function FeatureFlagsPage() {
   const isSignup = selected?.key === SIGNUP_KEY;
   const isEmailQuota = selected?.key === EMAIL_QUOTA_KEY;
   const managedInPostHog = selected?.rolloutProvider === "posthog";
-  const configOnly = isAiUsageLimits || isSignup || isEmailQuota || managedInPostHog;
-  const editable = !managedInPostHog || selected?.key === "reader.annotations";
+  const configInPostHog = selected?.configProvider === "posthog";
+  const configOnly = isAiUsageLimits || isSignup || isEmailQuota || managedInPostHog || configInPostHog;
+  const editable = !configInPostHog && (!managedInPostHog || selected?.key === "reader.annotations");
   const invalidAiLimit = isAiUsageLimits ? aiLimitFields.find((field) => !validAiLimit(draftConfig[field.key], field)) : undefined;
   const quotaValid = typeof draftConfig.warningPercent === "number" && Number.isInteger(draftConfig.warningPercent)
     && typeof draftConfig.criticalPercent === "number" && Number.isInteger(draftConfig.criticalPercent)
@@ -247,7 +248,7 @@ export function FeatureFlagsPage() {
       <PageTopbar
         eyebrow="RUNTIME CONTROL / 运行控制"
         title="功能开关"
-        description={managedInPostHog ? "功能开放范围由 PostHog 管理，运行参数仍在这里发布。" : isEmailQuota ? "邮件额度阈值在下一次半小时检查时生效。" : isSignup ? "注册设置统一对所有新账号生效。" : isAiUsageLimits ? "AI 使用限额统一对所有账号生效。" : "规则从上到下执行，命中第一条后立即停止。"}
+        description={configInPostHog ? "运行参数在 PostHog 修改；这里显示服务端最近同步的配置与历史。" : managedInPostHog ? "功能开放范围由 PostHog 管理，运行参数仍在这里发布。" : isEmailQuota ? "邮件额度阈值在下一次半小时检查时生效。" : isSignup ? "注册设置统一对所有新账号生效。" : isAiUsageLimits ? "AI 使用限额统一对所有账号生效。" : "规则从上到下执行，命中第一条后立即停止。"}
         aside={<><button type="button" onClick={() => exportFlagSnapshot(flags)}>导出当前快照</button><span className="local-badge"><i />本机 Operator</span></>}
       />
       <main className="feature-workspace">
@@ -264,9 +265,15 @@ export function FeatureFlagsPage() {
             {managedInPostHog && <section className="feature-config-strip"><div>
               <h3>在 PostHog 管理开放范围</h3>
               <p>在项目的 Feature flags 中编辑 <code>{selected.key.replace(/\./g, "_")}</code>。客户端先读缓存，再后台刷新。</p>
-              <p>这里保留原有规则与修改记录，供旧版客户端兼容和迁移核对；此处发布和回滚只修改运行参数。</p>
+              <p>这里保留原有规则与修改记录，供旧版客户端兼容和迁移核对。</p>
             </div></section>}
-            {selected.key === "reader.annotations" && (
+            {configInPostHog && <section className="feature-config-strip"><div>
+              <h3>在 PostHog 管理运行参数</h3>
+              <p>编辑 Remote config <code>{selected.key.replace(/\./g, "_")}_config</code> 的 JSON。回滚也在 PostHog 完成，同步后记录为新版本。</p>
+              <p>最近同步：{selected.configSyncedAt ? publishedAt(selected.configSyncedAt) : "尚未完成首次同步"} · PostHog 版本 {selected.configRemoteVersion ?? 0}</p>
+              <pre>{JSON.stringify(selected.config, null, 2)}</pre>
+            </div></section>}
+            {!configInPostHog && selected.key === "reader.annotations" && (
               <section className="feature-config-strip" aria-labelledby="annotation-threshold-title">
                 <div>
                   <p className="eyebrow">PUBLIC DISPLAY / 公开展示</p>
@@ -293,7 +300,7 @@ export function FeatureFlagsPage() {
                 </label>
               </section>
             )}
-            {isSignup && (
+            {!configInPostHog && isSignup && (
               <section className="feature-config-strip" aria-labelledby="signup-settings-title">
                 <div>
                   <h3 id="signup-settings-title">注册设置</h3>
@@ -309,7 +316,7 @@ export function FeatureFlagsPage() {
                 </label>
               </section>
             )}
-            {isEmailQuota && (
+            {!configInPostHog && isEmailQuota && (
               <section className="feature-config-strip feature-ai-limits" aria-labelledby="email-quota-title">
                 <div>
                   <h3 id="email-quota-title">邮件额度告警</h3>
@@ -344,7 +351,7 @@ export function FeatureFlagsPage() {
                 {configError && <p className="content-error" role="alert">{configError}</p>}
               </section>
             )}
-            {isAiUsageLimits && (
+            {!configInPostHog && isAiUsageLimits && (
               <section className="feature-config-strip feature-ai-limits" aria-labelledby="ai-usage-limits-title">
                 <div>
                   <p className="eyebrow">AI USAGE / 使用限额</p>
@@ -382,7 +389,7 @@ export function FeatureFlagsPage() {
               </section>
             )}
             <section className="feature-history" aria-label="修改记录">
-              <header><div><b>修改记录</b><span>{managedInPostHog ? "保留迁移前记录；回滚配置不会改变 PostHog 或旧版客户端的开放规则。" : isAiUsageLimits ? "回滚会恢复当时的限额配置，并生成新的 revision。" : "回滚会恢复当时的规则和配置，并生成新的 revision。"}</span></div><small>{selected.history.length} 个版本</small></header>
+              <header><div><b>修改记录</b><span>{configInPostHog ? "保留原有历史和 PostHog 同步记录；请在 PostHog 回滚配置。" : managedInPostHog ? "保留迁移前记录；回滚配置不会改变 PostHog 或旧版客户端的开放规则。" : isAiUsageLimits ? "回滚会恢复当时的限额配置，并生成新的 revision。" : "回滚会恢复当时的规则和配置，并生成新的 revision。"}</span></div><small>{selected.history.length} 个版本</small></header>
               <ol>
                 {[...selected.history].reverse().map((entry) => {
                   const current = entry.revision === selected.revision;

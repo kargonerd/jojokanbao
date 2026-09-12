@@ -44,6 +44,7 @@ pnpm test:backend
 
 ## 运行配置约定
 
+- 已迁移的 `auth.signup`、`reader.annotations`、`ai.usage_limits`、`ops.email_quota` 参数在 PostHog Remote config 管理，现有数据库 `config` 保留为服务端缓存和审计记录。同步由 `tools/posthog` 执行；管理台按 `configProvider` 只读展示。QQ群号使用公开的 `support_config`。接入和切换步骤见 `docs/posthog.md`。
 - 新增配置前，先查找并复用已有配置存储、读取函数和管理入口。限额、阈值、超时等少量运行参数，优先放入 `private.feature_flags.config`，不为一组参数单独建立 `*_settings` 或 `*_policy` 表。
 - 同一功能的参数归入已有 flag；独立功能可新增有明确业务含义的 key。`rules` 表达启用范围，`config` 表达参数，两者是否关联由业务明确规定；不能通过规则开关意外关闭必须执行的限额。
 - 管理入口复用 JOJO 管理台的功能开关页面，以及现有 Operator 发布、版本冲突检查、修改历史和回滚能力；保留未修改的规则与配置字段。

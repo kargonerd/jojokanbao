@@ -1,4 +1,6 @@
 begin;
+-- Exercise legacy policy publication; server policy reads are shared with the PostHog cache.
+update private.feature_flags set config_provider = 'supabase' where key = 'auth.signup';
 create extension if not exists pgtap with schema extensions;
 select extensions.plan(24);
 
