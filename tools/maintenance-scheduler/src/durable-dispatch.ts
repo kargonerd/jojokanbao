@@ -13,6 +13,15 @@ export async function durableDispatch(
 ): Promise<DispatchResult> {
   const previous = await storage.get<Delivery>(task.id);
   const sameSlot = previous?.slot === options.slot.id;
+  // One-attempt tasks have no retry decision left after an accepted POST.
+  // Their monitor still requires a real workflow outcome to report success.
+  if (sameSlot && previous.state === "accepted" && task.maxAttempts === 1) {
+    return {
+      taskId: task.id, owner: env.GITHUB_OWNER, repo: env.GITHUB_REPO, ref: env.GITHUB_REF,
+      workflow: task.workflow, slotId: options.slot.id, slotStartedAt: options.slot.scheduledAt,
+      slotEndsAt: options.slot.endsAt, outcome: "skipped", reason: "slot-already-dispatched", attempts: 1,
+    };
+  }
   // A 2xx accepted run may not be visible in GitHub's list yet. For retryable
   // daily tasks wait for list visibility; do not rely on time elapsed alone.
   let reconcileOnly = !!sameSlot && ["sending", "accepted"].includes(previous.state);

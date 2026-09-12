@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleScheduled } from "../src/index";
 import type { MonitorTick } from "../src/monitor-object";
 import { scheduledTask } from "../src/tasks";
+import { nextDeadline } from "../src/monitor-policy";
+import { SCHEDULER_HEALTHCHECK } from "../../../../tools/maintenance-scheduler/src/index";
 import type { SchedulerEnv } from "../src/types";
 
 const env: SchedulerEnv = { GITHUB_TOKEN: "test", GITHUB_OWNER: "kargonerd", GITHUB_REPO: "jojokanbao", GITHUB_REF: "master", HEALTHCHECKS_API_KEY: "test-key" };
@@ -55,5 +57,17 @@ describe("scheduler with shared alert policy", () => {
     expect(urls).toContain("https://hc-ping.com/maintenance-scheduler/log");
     expect(urls).not.toContain("https://hc-ping.com/maintenance-scheduler");
     expect(options.monitor).toHaveBeenCalledTimes(6);
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('"taskId":"times-capture"'));
+  });
+
+  it.each([
+    ["2026-09-11T17:58:04Z", "2026-09-11T18:02:06Z"],
+    ["2026-09-12T00:29:05Z", "2026-09-12T00:33:05Z"],
+  ])("tolerates the recovered heartbeat gap starting at %s but retains a finite outage deadline", (lastSuccess, recovered) => {
+    const recovery = Date.parse(recovered);
+    expect(nextDeadline({ ...SCHEDULER_HEALTHCHECK, graceSeconds: 180 }, Date.parse(lastSuccess))).toBeLessThan(recovery);
+    const deadline = nextDeadline(SCHEDULER_HEALTHCHECK, Date.parse(lastSuccess));
+    expect(deadline).toBeGreaterThan(recovery);
+    expect(deadline - Date.parse(lastSuccess)).toBeLessThanOrEqual(6 * 60_000);
   });
 });
