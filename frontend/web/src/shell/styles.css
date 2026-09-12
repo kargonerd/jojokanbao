@@ -2,6 +2,7 @@
   --app-canvas: #f4f4f2;
   --app-line: #ddd9d2;
   --app-gray: #706d69;
+  --app-bottom-navigation-height: 0px;
 }
 
 .app-shell {
@@ -920,6 +921,9 @@ a.jojo-citation:hover {
 }
 
 @media (max-width: 720px) {
+  .app-shell:has(> .app-mobile-navigation) {
+    --app-bottom-navigation-height: calc(56px + env(safe-area-inset-bottom));
+  }
   .search-entry {
     padding-inline: 20px;
   }
@@ -989,7 +993,7 @@ a.jojo-citation:hover {
     display: grid;
     grid-auto-flow: column;
     grid-auto-columns: minmax(0, 1fr);
-    height: calc(56px + env(safe-area-inset-bottom));
+    height: var(--app-bottom-navigation-height);
     padding: 0 max(8px, env(safe-area-inset-left)) env(safe-area-inset-bottom) max(8px, env(safe-area-inset-right));
     border-top: 1px solid var(--app-line);
     background: rgba(255, 255, 255, .98);
@@ -1029,7 +1033,7 @@ a.jojo-citation:hover {
   }
   .app-shell > .app-mobile-navigation + * {
     box-sizing: border-box;
-    padding-bottom: calc(56px + env(safe-area-inset-bottom));
+    padding-bottom: var(--app-bottom-navigation-height);
   }
   .app-login { font-size: .78rem; }
   .app-home { min-height: calc(100vh - 58px); padding: 38px 20px 40px; }

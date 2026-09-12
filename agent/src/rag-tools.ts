@@ -21,8 +21,10 @@ import {
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
 import { addCitationIds } from "./citations";
+import { createPeriodicalTools } from "./periodical-tools";
 
 export interface RagScope {
+  contentType?: "book" | "periodical";
   mode?: "all" | "selected";
   datasetIds?: string[];
   itemIds?: string[];
@@ -196,6 +198,7 @@ function itemToc(manifest: JojoItemManifest, manifestObject: string): AgentTocEn
 }
 
 export function createRagTools(options: RagToolOptions): AgentTool[] {
+  if (options.scope?.contentType === "periodical") return createPeriodicalTools(options);
   const fetchFn = options.fetchFn ?? fetch;
   const jox = new JoxClient(options.contentCdnBase, fetchFn);
   const scope = options.scope ?? {};

@@ -125,7 +125,7 @@ async function writeResponse(response: Response, target: ServerResponse): Promis
 }
 
 const environment = await developmentEnvironment();
-const credentialPath = resolveLocalAgentAuthPath(repositoryRoot, environment);
+const credentialPath = resolveLocalAgentAuthPath(repositoryRoot, environment, developmentEnvironmentDirectory());
 const credentialStore = new JsonCredentialStore(credentialPath);
 const ragDefinition = createRagAgentDefinition();
 const timesDefinition = createTimesAgentDefinition();
