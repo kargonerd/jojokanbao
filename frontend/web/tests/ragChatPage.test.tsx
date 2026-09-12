@@ -58,6 +58,7 @@ describe("RAG chat page", () => {
     render(<ChatPage />);
     await screen.findByRole("textbox", { name: "输入问题" });
     fireEvent.click(screen.getByRole("button", { name: "书籍" }));
+    fireEvent.click(screen.getByRole("button", { name: "全部书籍 默认范围" }));
 
     const first = screen.getByRole("button", { name: "甲书" });
     const second = screen.getByRole("button", { name: "乙书" });
@@ -66,7 +67,7 @@ describe("RAG chat page", () => {
 
     expect(first.getAttribute("aria-pressed")).toBe("true");
     expect(second.getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByLabelText("选择资料，当前限定 2 本书")).toBeTruthy();
+    expect(screen.getByLabelText("选择资料，当前全部书籍")).toBeTruthy();
     expect(screen.getByRole("button", { name: "完成" })).toBeTruthy();
   });
 
@@ -103,13 +104,36 @@ describe("RAG chat page", () => {
   it("allows mixed selection and resets new conversations to all sources", async () => {
     render(<ChatPage />);
     await screen.findByRole("textbox", { name: "输入问题" });
-    fireEvent.click(screen.getByRole("button", { name: "人民日报" }));
-    fireEvent.click(screen.getByRole("button", { name: "甲书" }));
+    fireEvent.click(screen.getByRole("button", { name: "乙书" }));
     expect(screen.getByLabelText("选择资料，当前限定 2 份资料")).toBeTruthy();
     expect(useChatStore.getState().selectedNotebookIds).toEqual(["rmrb", "book-a"]);
     fireEvent.click(screen.getByRole("button", { name: "报刊" }));
     fireEvent.click(screen.getAllByRole("button", { name: /新对话/ })[0]!);
     expect(screen.getByLabelText("选择资料，当前全部报刊 + 书籍")).toBeTruthy();
+  });
+
+  it("checks every source with select all, clears every source on deselection, and blocks empty questions", async () => {
+    render(<ChatPage />);
+    await screen.findByRole("textbox", { name: "输入问题" });
+    const all = screen.getByRole("button", { name: "全部报刊 + 书籍 默认范围" });
+    const paper = screen.getByRole("button", { name: "人民日报" });
+    const book = screen.getByRole("button", { name: "甲书" });
+    expect(paper.getAttribute("aria-pressed")).toBe("true");
+    expect(book.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(all);
+    expect(all.getAttribute("aria-pressed")).toBe("false");
+    expect(paper.getAttribute("aria-pressed")).toBe("false");
+    expect(book.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByLabelText("选择资料，当前未选择资料")).toBeTruthy();
+    fireEvent.change(screen.getByRole("textbox", { name: "输入问题" }), { target: { value: "调查研究" } });
+    expect(screen.getByRole("button", { name: "发送" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(book);
+    expect(all.getAttribute("aria-pressed")).toBe("mixed");
+    expect(screen.getByRole("button", { name: "发送" }).hasAttribute("disabled")).toBe(false);
+    fireEvent.change(screen.getByRole("searchbox", { name: "筛选资料" }), { target: { value: "甲" } });
+    fireEvent.click(all);
+    expect(all.getAttribute("aria-pressed")).toBe("true");
+    expect(useChatStore.getState().selectedNotebookIds).toEqual(["rmrb", "book-a", "book-b"]);
   });
 
   it("locks the composer while a historical conversation is loading", async () => {

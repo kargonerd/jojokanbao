@@ -3,7 +3,7 @@ import { AppShell } from "@jojo/ui";
 import { AiExperimentalNotice } from "../components/AiBetaNotice";
 import { ReferenceButtons } from "../components/ReferenceButtons";
 import { useChatStore } from "../stores/chatStore";
-import { ALL_RAG_SOURCES_LABEL, scopeNotebooks } from "../scope";
+import { ALL_RAG_SOURCES_LABEL, allSourcesSelected, scopeNotebooks } from "../scope";
 import { formatChatMarkdown } from "../utils/markdown";
 
 function conversationDate(timestamp?: number): string {
@@ -129,6 +129,8 @@ function ScopeSelector({ onClose }: { onClose?: () => void }) {
   const [query, setQuery] = useState("");
   const sourceLabel = contentType === "all" ? "资料" : contentType === "book" ? "书籍" : "报刊";
   const disabled = streaming || historyLoading;
+  const allSelected = allSourcesSelected(scopeNotebooks(notebooks, contentType).map((item) => item.id), selectedNotebookIds);
+  const partiallySelected = selectedNotebookIds.length > 0 && !allSelected;
   const visibleNotebooks = useMemo(() => {
     const candidates = scopeNotebooks(notebooks, contentType);
     const normalized = query.trim().toLocaleLowerCase("zh-CN");
@@ -143,7 +145,6 @@ function ScopeSelector({ onClose }: { onClose?: () => void }) {
       <div className="mb-3 flex items-start justify-between gap-4">
         <div>
           <h2 className="m-0 text-sm font-bold text-ink">选择资料</h2>
-          {contentType === "book" && <p className="mb-0 mt-1.5 font-sans text-[11px] leading-5 text-muted">不选时查询全部书籍，可以多选。</p>}
         </div>
         <button
           type="button"
@@ -181,16 +182,16 @@ function ScopeSelector({ onClose }: { onClose?: () => void }) {
       <div className="mt-3 max-h-44 overflow-y-auto border-t border-rule pt-2">
         <button
           type="button"
-          aria-pressed={selectedNotebookIds.length === 0}
+          aria-pressed={partiallySelected ? "mixed" : allSelected}
           disabled={disabled}
           onClick={() => selectNotebook(null)}
-          className={`group mb-1 grid w-full grid-cols-[18px_minmax(0,1fr)] items-start gap-2 border-0 border-l-2 px-3 py-2.5 text-left transition-colors ${selectedNotebookIds.length === 0 ? "border-red bg-red/5 text-red" : "border-transparent bg-transparent text-ink hover:border-rule hover:bg-[#f5f4f1]"}`}
+          className={`group mb-1 grid w-full grid-cols-[18px_minmax(0,1fr)] items-start gap-2 border-0 border-l-2 px-3 py-2.5 text-left transition-colors ${allSelected || partiallySelected ? "border-red bg-red/5 text-red" : "border-transparent bg-transparent text-ink hover:border-rule hover:bg-[#f5f4f1]"}`}
         >
           <span
             aria-hidden="true"
-            className={`mt-0.5 grid h-[14px] w-[14px] place-items-center border text-[9px] leading-none ${selectedNotebookIds.length === 0 ? "border-red bg-red text-white" : "border-[#aaa7a0] text-transparent group-hover:border-red"}`}
+            className={`mt-0.5 grid h-[14px] w-[14px] place-items-center border text-[9px] leading-none ${allSelected || partiallySelected ? "border-red bg-red text-white" : "border-[#aaa7a0] text-transparent group-hover:border-red"}`}
           >
-            {selectedNotebookIds.length === 0 ? "✓" : "·"}
+            {allSelected ? "✓" : partiallySelected ? "−" : "·"}
           </span>
           <span>
             <strong className="block text-xs leading-5">{contentType === "all" ? ALL_RAG_SOURCES_LABEL : `全部${sourceLabel}`}</strong>
@@ -270,11 +271,13 @@ export function ChatPage() {
     return notebook?.title || notebook?.name || "";
   }).filter(Boolean);
   const scopeLabel = selectedTitles.length === 0
-    ? (contentType === "all" ? ALL_RAG_SOURCES_LABEL : contentType === "book" ? "全部书籍" : "报刊 · 人民日报")
-    : selectedTitles.length === 1
-      ? `仅《${selectedTitles[0]}》`
-      : `限定 ${selectedTitles.length} ${contentType === "all" ? "份资料" : contentType === "book" ? "本书" : "种报刊"}`;
-  const canSend = Boolean(input.trim() && availableNotebooks.length && !loading && !historyLoading && !streaming);
+    ? "未选择资料"
+    : allSourcesSelected(availableNotebooks.map((item) => item.id), selectedNotebookIds)
+      ? (contentType === "all" ? ALL_RAG_SOURCES_LABEL : contentType === "book" ? "全部书籍" : "报刊 · 人民日报")
+      : selectedTitles.length === 1
+        ? `仅《${selectedTitles[0]}》`
+        : `限定 ${selectedTitles.length} ${contentType === "all" ? "份资料" : contentType === "book" ? "本书" : "种报刊"}`;
+  const canSend = Boolean(input.trim() && selectedTitles.length && !loading && !historyLoading && !streaming);
   const hasThread = Boolean(conversationId) || messages.length > 0 || streaming || Boolean(error);
   const handleSend = () => {
     if (!canSend) return;
