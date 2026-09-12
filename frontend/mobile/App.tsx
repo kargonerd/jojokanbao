@@ -23,6 +23,7 @@ import { AiScreen } from "./src/screens/AiScreen";
 import { TimesScreen } from "./src/screens/TimesScreen";
 import { TimesDetailScreen } from "./src/screens/TimesDetailScreen";
 import { NotificationsScreen } from "./src/screens/NotificationsScreen";
+import { startMobileOfflineAccountSync } from "./src/offline/books";
 import { BookshelfScreen } from "./src/screens/BookshelfScreen";
 import { IS_EINK_RELEASE } from "./src/config/appVariant";
 import { selectionHaptic } from "./src/lib/haptics";
@@ -139,7 +140,7 @@ export default function App() {
     },
   }), [theme]);
 
-  useEffect(() => startMobileAuthSync(), []);
+  useEffect(() => { startMobileOfflineAccountSync(); return startMobileAuthSync(); }, []);
   useEffect(() => startSpeechFlagSync(), []);
 
   return (

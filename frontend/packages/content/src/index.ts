@@ -13,4 +13,7 @@ export * from "./capabilities";
 export * from "./daily-quote";
 export * from "./validation";
 export * from "./speech";
+export * from "./offline-books";
+export * from "./book-assets";
+export * from "./offline-identity";
 export * from "./speech-position";

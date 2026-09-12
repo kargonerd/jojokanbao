@@ -24,6 +24,7 @@ content/blog/          博客内容
 ```
 
 详细边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
+客户端书籍离线阅读见 [docs/offline-books.md](./docs/offline-books.md)。
 
 书籍通过 [JOJO 管理台](./tools/jojo-admin/README.md) 的 `/content` 页面或
 [Content Pipeline](./tools/content-pipeline/README.md) 导入 EPUB。PDF 书籍先使用外部工具

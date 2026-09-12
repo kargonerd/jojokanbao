@@ -8,6 +8,9 @@ import { readerReturnState } from "../rag/readerNavigation";
 import { BookCover } from "./BookCover";
 import { bookCoverTone } from "./bookCatalog";
 import { useRecentReadingStore } from "./recentReadingStore";
+import { OfflineBookControl } from "../offline/OfflineBookControl";
+import { startOfflineAccountSync, useOfflineBooksStore } from "../offline/books";
+import { supportsOfflineBooks } from "../offline/platform";
 
 function entryKey(entry: BookshelfEntry): string {
   return `${entry.datasetId}:${entry.itemId}`;
@@ -20,11 +23,18 @@ export function BookshelfPage() {
   const flagsInitialized = useFeatureFlagStore((state) => state.initialized);
   const bookshelfEnabled = useFeatureFlag("library.bookshelf");
   const recentItems = useRecentReadingStore((state) => state.items);
+  const offlineEnabled = supportsOfflineBooks();
+  const offlineRecords = useOfflineBooksStore((state) => state.books);
+  const offlineLoading = useOfflineBooksStore((state) => state.loading);
+  const offlineError = useOfflineBooksStore((state) => state.error);
   const [items, setItems] = useState<BookshelfEntry[]>([]);
+  const [itemsOwner, setItemsOwner] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [busyKey, setBusyKey] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => { if (offlineEnabled) startOfflineAccountSync(); }, [offlineEnabled]);
 
   useEffect(() => {
     if (!accountInitialized || !flagsInitialized || !userId || !bookshelfEnabled) {
@@ -39,16 +49,16 @@ export function BookshelfPage() {
     setError("");
     void loadBookshelf()
       .then((entries) => {
-        if (active) setItems(entries);
+        if (active) { setItems(entries); setItemsOwner(userId); }
       })
       .catch(() => {
-        if (active) setError("书架暂时无法载入，请稍后重试。");
+        if (active) setError(offlineEnabled ? "云端书架暂时无法同步，已下载的书可以继续阅读。" : "书架暂时无法载入，请稍后重试。");
       })
       .finally(() => {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [accountInitialized, bookshelfEnabled, flagsInitialized, reloadKey, userId]);
+  }, [accountInitialized, bookshelfEnabled, flagsInitialized, offlineEnabled, reloadKey, userId]);
 
   async function removeItem(entry: BookshelfEntry) {
     const key = entryKey(entry);
@@ -64,7 +74,15 @@ export function BookshelfPage() {
     }
   }
 
-  const status = !accountInitialized || (Boolean(userId) && !flagsInitialized)
+  // A downloaded book must survive a failed cloud request or an offline cold start.
+  const cloudItems = userId && userId === itemsOwner && bookshelfEnabled ? items : [];
+  const visibleItems = [...cloudItems];
+  if (offlineEnabled) for (const record of offlineRecords) {
+    if (!visibleItems.some((item) => item.datasetId === record.entry.datasetId && (item.itemId === record.item.itemId || item.itemId === record.item.itemKey))) {
+      visibleItems.push({ datasetId: record.entry.datasetId, itemId: record.item.itemKey, title: record.item.title });
+    }
+  }
+  const status = visibleItems.length > 0 ? "ready" : !accountInitialized || (Boolean(userId) && !flagsInitialized) || (offlineEnabled && offlineLoading)
     ? "checking"
     : !userId
       ? "signed-out"
@@ -85,7 +103,8 @@ export function BookshelfPage() {
         <div className="bookshelf-summary"><Link to="/library?type=book">去资料库选书</Link></div>
       </header>
 
-      {error && items.length > 0 ? <p className="bookshelf-notice" role="status">{error}</p> : null}
+      {error && visibleItems.length > 0 ? <p className="bookshelf-notice" role="status">{error}</p> : null}
+      {offlineEnabled && offlineError ? <p className="bookshelf-notice" role="alert">{offlineError}</p> : null}
 
       {status === "checking" || status === "loading" ? (
         <div className="bookshelf-loading"><LoadingSpinner text={status === "checking" ? "正在确认书架权限" : "正在整理书架"} /></div>
@@ -115,7 +134,7 @@ export function BookshelfPage() {
         </section>
       ) : (
         <section className="bookshelf-grid" aria-label="收藏的书">
-          {items.map((item) => {
+          {visibleItems.map((item) => {
             const key = entryKey(item);
             const recent = recentItems.find((candidate) => candidate.kind === "book" && candidate.datasetId === item.datasetId && candidate.itemKey === item.itemId);
             return (
@@ -134,14 +153,17 @@ export function BookshelfPage() {
                   <strong>{item.title}</strong>
                   <small>{recent && recent.progress > 0 ? `继续阅读 · ${Math.round(recent.progress)}%` : "开始阅读"}</small>
                 </Link>
-                <button
+                <div className="bookshelf-card-actions">
+                {offlineEnabled && <OfflineBookControl datasetId={item.datasetId} itemKey={item.itemId} title={item.title} />}
+                {cloudItems.some((entry) => entryKey(entry) === key) && <button
                   type="button"
                   disabled={busyKey === key}
                   onClick={() => void removeItem(item)}
                   aria-label={`移出书架：${item.title}`}
                 >
                   {busyKey === key ? "正在移出…" : "移出"}
-                </button>
+                </button>}
+                </div>
               </article>
             );
           })}
