@@ -1,3 +1,4 @@
+import { Scissor } from "iconoir-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { withSearchLocation } from "@jojo/content";
@@ -91,7 +92,7 @@ export function ScrapbookPage() {
   }
   function submit(event: FormEvent) { event.preventDefault(); setSearch(query.trim()); }
   return <main className="scrapbook-page">
-    <header className="scrapbook-heading"><div><h1>剪报本</h1><p>摘录、笔记与它们的原文出处。</p></div>{userId && <button type="button" disabled={busy || loading || !entries.length} onClick={() => void exportClippings()}>导出 Markdown</button>}</header>
+    <header className="scrapbook-heading"><div><h1><Scissor aria-hidden="true" width={26} height={26} style={{ display: "inline-block", verticalAlign: "-3px", marginRight: 6 }} />剪报本</h1><p>摘录、笔记与它们的原文出处。</p></div>{userId && <button type="button" disabled={busy || loading || !entries.length} onClick={() => void exportClippings()}>导出 Markdown</button>}</header>
     {!initialized ? <p role="status">正在读取账号…</p> : !userId ? <section className="scrapbook-empty"><h2>登录后保存你的剪报</h2><p>阅读时选中文字，或从阅读器的更多菜单中加入剪报本。</p><Link to="/account?returnTo=%2Fscrapbook">登录</Link></section> : <>
       <form className="scrapbook-filters" onSubmit={submit}><label className="sr-only" htmlFor="clipping-search">搜索剪报</label><input id="clipping-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索摘录、笔记和书名" /><button type="submit">搜索</button><label><span className="sr-only">筛选专题</span><select value={JSON.stringify(collection)} onChange={(event) => setCollection(JSON.parse(event.target.value) as string | null)}><option value="null">全部专题</option><option value={JSON.stringify("")}>未分类</option>{collections.map((name) => <option key={name} value={JSON.stringify(name)}>{name}</option>)}</select></label></form>
       {error && <p role="alert" className="clipping-error">{error} <button type="button" disabled={loading} onClick={() => void reload()}>重试</button></p>}

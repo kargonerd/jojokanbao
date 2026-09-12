@@ -1,3 +1,4 @@
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { useLayoutEffect, useRef, useState } from "react";
 import { Pressable, Text, type StyleProp, type ViewStyle, type TextStyle } from "react-native";
 import type { ScrapbookDraft, ScrapbookSource } from "@jojo/auth";
@@ -55,7 +56,7 @@ export function ScrapbookButton({ source, quote = "", onLogin, label = "加入�
     <Pressable accessibilityRole="button" style={style} onPress={() => {
       if (!userId) { onLogin(); return; }
       setSavedOwner(undefined); setSnapshot({ ownerId: userId, source: { ...source }, quote });
-    }}><Text style={[{ color: mobileTheme.red, paddingVertical: 10, fontFamily: mobileTheme.serif }, textStyle]}>{saved ? "已加入剪报本" : label}</Text></Pressable>
+    }}><Text style={[{ color: mobileTheme.red, paddingVertical: 10, fontFamily: mobileTheme.serif }, textStyle]}><Ionicons name="cut-outline" size={15} color={mobileTheme.red} /> {saved ? "已加入剪报本" : label}</Text></Pressable>
     {snapshot && snapshot.ownerId === userId && <ScrapbookCapture source={snapshot.source} quote={snapshot.quote} onClose={() => setSnapshot(undefined)} onSaved={() => { if (useMobileAuthStore.getState().user?.id === snapshot.ownerId) setSavedOwner(snapshot.ownerId); }} />}
   </>;
 }

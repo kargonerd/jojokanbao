@@ -1,3 +1,4 @@
+import { Scissor } from "iconoir-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type { ScrapbookDraft, ScrapbookSource } from "@jojo/auth";
@@ -63,9 +64,9 @@ export function ScrapbookButton({ source, quote = "", className, label = "加入
   const [savedOwner, setSavedOwner] = useState<string>();
   const saved = Boolean(userId) && savedOwner === userId;
   useLayoutEffect(() => { setSnapshot(undefined); setSavedOwner(undefined); }, [userId, source.contentUrl, quote]);
-  if (!userId) return <Link className={className} to={`/account?returnTo=${encodeURIComponent(location.pathname + location.search + location.hash)}`}>{label}</Link>;
+  if (!userId) return <Link className={className} to={`/account?returnTo=${encodeURIComponent(location.pathname + location.search + location.hash)}`}><Scissor aria-hidden="true" width={16} height={16} style={{ display: "inline-block", verticalAlign: "-3px", marginRight: 6 }} />{label}</Link>;
   return <>
-    <button type="button" className={className} onPointerDown={(event) => event.preventDefault()} onClick={() => { setSavedOwner(undefined); setSnapshot({ ownerId: userId, source: { ...source }, quote: quote || window.getSelection()?.toString().trim() || "" }); }}>{saved ? "已加入剪报本" : label}</button>
+    <button type="button" className={className} onPointerDown={(event) => event.preventDefault()} onClick={() => { setSavedOwner(undefined); setSnapshot({ ownerId: userId, source: { ...source }, quote: quote || window.getSelection()?.toString().trim() || "" }); }}><Scissor aria-hidden="true" width={16} height={16} style={{ display: "inline-block", verticalAlign: "-3px", marginRight: 6 }} />{saved ? "已加入剪报本" : label}</button>
     {saved && <span role="status" className="sr-only">已保存到剪报本</span>}
     {snapshot?.ownerId === userId && <ScrapbookCapture source={snapshot.source} quote={snapshot.quote} onClose={() => setSnapshot(undefined)} onSaved={() => { if (useAccountSessionStore.getState().userId === snapshot.ownerId) setSavedOwner(snapshot.ownerId); }} />}
   </>;

@@ -1,3 +1,4 @@
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -71,7 +72,7 @@ export function ScrapbookScreen({ navigation }: NativeStackScreenProps<RootStack
     finally { if (useMobileAuthStore.getState().user?.id === owner) setBusy(false); }
   }
   return <SafeAreaView style={styles.root} edges={["top", "bottom"]}>
-    <View style={styles.header}><Pressable accessibilityRole="button" onPress={() => navigation.goBack()}><Text style={styles.action}>返回</Text></Pressable><Text accessibilityRole="header" style={styles.heading}>剪报本</Text><Pressable accessibilityRole="button" disabled={busy || !entries.length} onPress={() => void share()}><Text style={styles.action}>导出</Text></Pressable></View>
+    <View style={styles.header}><Pressable accessibilityRole="button" onPress={() => navigation.goBack()}><Text style={styles.action}>返回</Text></Pressable><Text accessibilityRole="header" style={styles.heading}><Ionicons name="cut-outline" size={22} color={theme.red} /> 剪报本</Text><Pressable accessibilityRole="button" disabled={busy || !entries.length} onPress={() => void share()}><Text style={styles.action}>导出</Text></Pressable></View>
     {!userId ? <View style={styles.empty}><Text style={styles.body}>登录后保存摘录和笔记，并在其他设备查看。</Text><Pressable onPress={() => navigation.navigate("Account")}><Text style={styles.action}>登录</Text></Pressable></View> : <FlatList
       data={entries} keyExtractor={(entry) => entry.id} refreshing={loading} onRefresh={() => void reload()} keyboardShouldPersistTaps="handled"
       contentContainerStyle={styles.list}

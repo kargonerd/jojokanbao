@@ -1,3 +1,4 @@
+import Ionicons from "@expo/vector-icons/Ionicons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
@@ -49,7 +50,7 @@ export function BookshelfScreen({ navigation }: Props) {
   return (
     <SafeAreaView edges={["top"]} style={[styles.safe, { backgroundColor: theme.canvas }]}>
       <ScreenHeader title="我的书架" onBack={() => navigation.goBack()} />
-      <View style={{ flexDirection: "row", gap: 24, paddingHorizontal: 20, paddingVertical: 12 }}><Pressable accessibilityRole="button" onPress={() => navigation.navigate("Scrapbook")}><Text style={{ color: theme.red }}>剪报本</Text></Pressable></View>
+      <View style={{ flexDirection: "row", gap: 24, paddingHorizontal: 20, paddingVertical: 12 }}><Pressable accessibilityRole="button" onPress={() => navigation.navigate("Scrapbook")}><Text style={{ color: theme.red }}><Ionicons name="cut-outline" size={16} color={theme.red} /> 剪报本</Text></Pressable></View>
       {loading && !entries.length ? (
         <View style={styles.center}>
           {!IS_EINK_RELEASE ? <ActivityIndicator color={theme.red} /> : null}
