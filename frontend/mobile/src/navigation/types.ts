@@ -11,6 +11,7 @@ export type RootStackParamList = {
   AccountSecurity: undefined;
   Notifications: undefined;
   Bookshelf: undefined;
+  Scrapbook: undefined;
   Reader: {
     publication: ArchivePublicationName;
     issueId: string;

@@ -30,6 +30,7 @@ vi.mock("react-native-webview", async () => {
 });
 vi.mock("../config/appVariant", () => ({ get IS_EINK_RELEASE() { return mocks.eInk; } }));
 vi.mock("../components/ReaderEnvironment", () => ({ ReaderEnvironment: () => null }));
+vi.mock("../scrapbook/ScrapbookButton", () => ({ ScrapbookButton: () => null }));
 vi.mock("../lib/haptics", () => ({ impactHaptic: vi.fn() }));
 vi.mock("../store/mobileStore", () => ({
   useMobileStore: (select: (state: typeof mocks.state) => unknown) => select(mocks.state),

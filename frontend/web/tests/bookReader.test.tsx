@@ -224,7 +224,10 @@ describe("BookReader", () => {
     expect(screen.getByRole("complementary", { name: "目录面板" })).toBeTruthy();
     expect(within(toolbar!).getByRole("button", { name: "打开书内 AI" })).toBeTruthy();
     expect(within(toolbar!).getByRole("button", { name: "阅读进度" })).toBeTruthy();
-    expect(within(toolbar!).getByRole("button", { name: "显示设置" })).toBeTruthy();
+    expect(within(toolbar!).getByRole("button", { name: "更多阅读工具" })).toBeTruthy();
+    fireEvent.click(within(toolbar!).getByRole("button", { name: "更多阅读工具" }));
+    expect(screen.getByRole("button", { name: "显示设置" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "加入剪报本" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "切换纸张纹理" })).toBeNull();
   });
 
@@ -398,6 +401,7 @@ describe("BookReader", () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 390, writable: true });
     renderReader();
 
+    fireEvent.click(screen.getByRole("button", { name: "更多阅读工具" }));
     fireEvent.click(screen.getByRole("button", { name: "显示设置" }));
     expect(screen.getByRole("region", { name: "显示设置面板" })).toBeTruthy();
     expect(screen.getByRole("slider", { name: "字号" })).toBeTruthy();

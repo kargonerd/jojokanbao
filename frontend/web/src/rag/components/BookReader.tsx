@@ -34,6 +34,7 @@ import { BookNavigationSheet } from "./BookNavigationSheet";
 import { ReaderSelectionPopover } from "../../reading/ReaderSelectionPopover";
 import { BookThoughtComposer } from "./BookThoughtComposer";
 import "./BookReader.css";
+import { ScrapbookButton, ScrapbookCapture } from "../../scrapbook/ScrapbookButton";
 import {
   bookshelfContains,
   popularExplanations,
@@ -45,7 +46,7 @@ import {
 
 export type BookReaderPaperColor = "ivory" | "white" | "dark";
 export type BookReaderMode = "paged" | "scroll";
-type ReaderToolPopover = "font" | "color" | "display" | "progress";
+type ReaderToolPopover = "font" | "color" | "display" | "progress" | "materials";
 type ReaderToolIconName = "toc" | "search" | "ai" | "progress" | "display";
 
 function ReaderToolIcon({ name }: { name: ReaderToolIconName }) {
@@ -194,7 +195,9 @@ export function BookReader({
   const [aiOpen, setAiOpen] = useState(false);
   const [tocQuery, setTocQuery] = useState("");
   const [toolPopover, setToolPopover] = useState<ReaderToolPopover>();
+  const [selectionMaterial, setSelectionMaterial] = useState<{ kind: "clip"; quote: string }>();
   const [textSelection, setTextSelection] = useState<ReaderTextSelection>();
+  useLayoutEffect(() => { setSelectionMaterial(undefined); }, [currentUserId, chapterKey]);
   const [thoughtSelection, setThoughtSelection] = useState<ReaderTextSelection>();
   const [thought, setThought] = useState("");
   const [thoughtError, setThoughtError] = useState("");
@@ -243,7 +246,7 @@ export function BookReader({
   const annotationAccess = annotationsEnabled && Boolean(currentUserId);
   const annotations = useAnnotationThreads(annotationSubject, annotationAccess, currentUserId);
   const activeAnnotation = annotations.threads.find((thread) => thread.id === activeAnnotationId);
-  const readerOverlayOpen = aiOpen || tocOpen || searchOpen || Boolean(toolPopover || thoughtSelection || activeAnnotation || expandedImage);
+  const readerOverlayOpen = aiOpen || tocOpen || searchOpen || Boolean(toolPopover || thoughtSelection || activeAnnotation || expandedImage || selectionMaterial);
   const previousChapter = chapters[activeChapterIndex - 1];
   const nextChapter = chapters[activeChapterIndex + 1];
   const bookProgress = chapters.length
@@ -741,6 +744,15 @@ export function BookReader({
     setThoughtSelection(undefined);
   }
 
+  function captureMaterial(kind: "clip"): void {
+    if (!currentUserId && kind === "clip") {
+      navigate(`/account?returnTo=${encodeURIComponent(location.pathname + location.search + location.hash)}`);
+      return;
+    }
+    setSelectionMaterial({ kind, quote: textSelection?.text || "" });
+    clearSelection();
+  }
+
   function composeThought(): void {
     if (!textSelection) return;
     setThoughtSelection(textSelection);
@@ -949,6 +961,14 @@ export function BookReader({
     <button type="button" disabled={!nextChapter} onClick={() => chooseChapter(nextChapter?.id)} className="border-0 border-l border-rule bg-transparent py-4 pl-4 text-right text-current cursor-pointer disabled:cursor-default disabled:opacity-30"><span className="mb-1 block text-muted">下一节</span>{nextChapter?.title ?? "已经是最后一节"}</button>
   </nav>;
 
+  const materialSource = {
+    contentType: "book" as const, contentId: itemId, contentTitle: bookTitle,
+    sectionId: activeChapterId, locationLabel: activeChapterTitle || "正文",
+    contentUrl: `/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(itemKey)}?chapter=${encodeURIComponent(activeChapterId)}`,
+  };
+  const selectedMaterialSource = { ...materialSource, quote: selectionMaterial?.quote,
+    contentUrl: materialSource.contentUrl + (selectionMaterial?.quote ? `&quote=${encodeURIComponent(selectionMaterial.quote.slice(0, 160))}` : "") };
+
   return <ReadingBookshelfContext.Provider value={{
     available: bookshelfEnabled,
     added: onBookshelf,
@@ -969,8 +989,8 @@ export function BookReader({
       <button type="button" onClick={() => openTool("progress")} className="book-mobile-tool" aria-label="阅读进度" aria-pressed={toolPopover === "progress"}>
         <ReaderToolIcon name="progress" /><span>{bookProgress}%</span>
       </button>
-      <button type="button" onClick={() => openTool("display")} className="book-mobile-tool" aria-label="显示设置" aria-pressed={toolPopover === "display"}>
-        <ReaderToolIcon name="display" /><span>显示</span>
+      <button type="button" onClick={() => openTool("materials")} className="book-mobile-tool" aria-label="更多阅读工具" aria-pressed={toolPopover === "materials"}>
+        <span aria-hidden="true">•••</span><span>更多</span>
       </button>
     </nav> : <nav data-book-toolbar aria-label="阅读工具" className={`fixed bottom-auto left-auto right-5 top-1/2 z-30 flex -translate-y-1/2 flex-col gap-2 overflow-visible border-0 p-0 backdrop-blur-md ${chromeClass}`}>
       <button type="button" onClick={() => openPanel("toc")} className={controlClass} aria-label="打开目录" title="目录">目录</button>
@@ -981,6 +1001,7 @@ export function BookReader({
       <button type="button" onClick={() => openTool("color")} className={controlClass} aria-label="选择纸张颜色" title="纸张颜色"><span className={`h-4 w-4 border ${isDark ? "border-white/50 bg-[#202321]" : paperColor === "white" ? "border-[#aaa] bg-white" : "border-[#b8ad96] bg-[#fbfaf6]"}`} aria-hidden="true" /></button>
       <button type="button" aria-pressed={paperTexture} onClick={() => setPaperTexture((value) => !value)} className={`${controlClass} ${paperTexture ? "text-red" : ""}`} aria-label="切换纸张纹理" title={paperTexture ? "关闭纸张纹理" : "开启纸张纹理"}>纹理</button>
       <button type="button" data-reader-mode={mode} onClick={() => changeMode(mode === "paged" ? "scroll" : "paged")} className={controlClass} aria-label="切换阅读模式" title={mode === "paged" ? "切换为上下滚动" : "切换为双页阅读"}>{mode === "paged" ? "双页" : "滚动"}</button>
+      <button type="button" onClick={() => openTool("materials")} className={controlClass} aria-label="更多阅读工具">更多</button>
       {onDownload && <button type="button" onClick={onDownload} className={`${controlClass} mt-3`} aria-label="下载整本 EPUB" title="下载整本 EPUB"><svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 20h14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" /></svg></button>}
     </nav>}
     {speechEnabled && speechControl}
@@ -1034,12 +1055,16 @@ export function BookReader({
 
     {toolPopover && <>
       <button type="button" aria-label="关闭阅读工具" onClick={() => setToolPopover(undefined)} className={`fixed inset-0 z-20 border-0 cursor-default ${mobileViewport ? "bg-black/15" : "bg-transparent"}`} />
-      <section className={`${mobileViewport ? "book-mobile-sheet fixed inset-x-0 z-40 border-t px-5 pb-5 pt-3 shadow-[0_-16px_45px_rgba(0,0,0,.16)]" : "fixed bottom-auto left-auto right-20 top-1/2 z-40 w-64 -translate-y-1/2 border p-4 shadow-[6px_10px_30px_rgba(0,0,0,.14)]"} ${panelClass}`} aria-label={toolPopover === "font" ? "字号工具" : toolPopover === "color" ? "纸张颜色工具" : toolPopover === "progress" ? "阅读进度面板" : "显示设置面板"}>
+      <section className={`${mobileViewport ? "book-mobile-sheet fixed inset-x-0 z-40 border-t px-5 pb-5 pt-3 shadow-[0_-16px_45px_rgba(0,0,0,.16)]" : "fixed bottom-auto left-auto right-20 top-1/2 z-40 w-64 -translate-y-1/2 border p-4 shadow-[6px_10px_30px_rgba(0,0,0,.14)]"} ${panelClass}`} aria-label={toolPopover === "materials" ? "更多阅读工具" : toolPopover === "font" ? "字号工具" : toolPopover === "color" ? "纸张颜色工具" : toolPopover === "progress" ? "阅读进度面板" : "显示设置面板"}>
         {mobileViewport && <div className="mb-3 flex items-center justify-between border-b border-rule pb-3">
-          <div><p className="m-0 font-sans text-[10px] font-bold tracking-[.18em] text-red">阅读工具</p><h2 className="mb-0 mt-1 font-serif text-lg">{toolPopover === "progress" ? "阅读进度" : "显示设置"}</h2></div>
+          <div><p className="m-0 font-sans text-[10px] font-bold tracking-[.18em] text-red">阅读工具</p><h2 className="mb-0 mt-1 font-serif text-lg">{toolPopover === "materials" ? "更多" : toolPopover === "progress" ? "阅读进度" : "显示设置"}</h2></div>
           <button type="button" onClick={() => setToolPopover(undefined)} className="flex h-10 w-10 items-center justify-center border-0 bg-transparent text-2xl text-current" aria-label="关闭阅读工具">×</button>
         </div>}
-        {toolPopover === "progress" ? <div className="pb-2">
+        {toolPopover === "materials" ? <div className="reader-material-actions">
+          <button type="button" onClick={() => openTool("display")}>显示设置</button>
+          <ScrapbookButton source={materialSource} />
+          <Link to="/scrapbook">打开剪报本</Link>
+        </div> : toolPopover === "progress" ? <div className="pb-2">
           <div className="mb-5 grid grid-cols-2 divide-x divide-rule border-y border-rule py-4 text-center font-sans">
             <div><strong className="block font-serif text-2xl font-semibold text-red">{bookProgress}%</strong><span className="mt-1 block text-[11px] text-muted">全书进度</span></div>
             <div><strong className="block font-serif text-base font-semibold">{mode === "paged" ? `${firstPhysicalPage}${firstPhysicalPage === lastPhysicalPage ? "" : `–${lastPhysicalPage}`} / ${pageMetrics.physicalPages} 页` : `本章 ${readingProgress}%`}</strong><span className="mt-2 block max-w-[15rem] truncate px-3 text-[11px] text-muted">{chapters[activeChapterIndex]?.title || "正文"}</span></div>
@@ -1073,15 +1098,17 @@ export function BookReader({
       </section>
     </>}
 
-    {textSelection && <ReaderSelectionPopover rect={textSelection.rect} width={annotationAccess ? 288 : 144}>
+    {textSelection && <ReaderSelectionPopover rect={textSelection.rect} width={annotationAccess ? 336 : 272}>
       <div className="book-selection-actions" role="toolbar" aria-label="选中文字工具">
         <button type="button" onClick={() => void copySelection()} className="reader-selection-action"><IoCopyOutline aria-hidden="true" /><span>复制</span></button>
         {annotationAccess && <><button type="button" disabled={annotationSaving} onClick={() => void underlineSelection()} className="reader-selection-action"><span aria-hidden="true" className="book-selection-underline">A</span><span>划线</span></button>
         <button type="button" disabled={annotationSaving} onClick={composeThought} className="reader-selection-action"><IoCreateOutline aria-hidden="true" /><span>写想法</span></button></>}
+        <button type="button" onClick={() => captureMaterial("clip")} className="reader-selection-action"><IoCreateOutline aria-hidden="true" /><span>剪报</span></button>
         <button type="button" onClick={() => agentAccess ? void explainSelection() : openBookAi()} className="reader-selection-action" aria-label="AI 解释"><IoSparklesOutline aria-hidden="true" /><span>AI 解释</span></button>
       </div>
     </ReaderSelectionPopover>}
 
+    {selectionMaterial?.kind === "clip" && <ScrapbookCapture source={selectedMaterialSource} quote={selectionMaterial.quote} onSaved={() => setReaderNotice("已保存到剪报本")} onClose={() => setSelectionMaterial(undefined)} />}
     {thoughtSelection && <BookThoughtComposer quote={thoughtSelection.text} value={thought} visibility={thoughtVisibility}
       saving={annotationSaving} error={thoughtError} panelClass={panelClass} onChange={setThought} onVisibilityChange={setThoughtVisibility}
       onSave={() => void saveThought()} onClose={clearSelection} />}

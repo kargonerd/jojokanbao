@@ -8,9 +8,7 @@ import { PUBLICATIONS, PUBLICATION_NAMES } from "./archive/publications";
 import { NotFoundPage } from "./NotFoundPage";
 import { AppLayout } from "./shell/AppLayout";
 import { HomePage } from "./home/HomePage";
-import { BookshelfPage } from "./library/BookshelfPage";
 import { LibraryPage } from "./library/LibraryPage";
-import { NotificationsPage } from "./notifications/NotificationsPage";
 import { PERIODICALS } from "./library/catalog";
 import { rollout } from "./rollout";
 import { ARCHIVE_ROOT, defaultArchiveIssuePath } from "./routes";
@@ -18,6 +16,10 @@ import { refreshFeatureFlags } from "./featureFlags";
 import { AccountEntry } from "./account/AccountEntry";
 import { TimesSourceSettingsPage } from "./account/pages/TimesSourceSettingsPage";
 import { startAccountSessionSync, useAccountSessionStore } from "./account/session";
+
+import { BookshelfPage } from "./library/BookshelfPage";
+import { NotificationsPage } from "./notifications/NotificationsPage";
+const ScrapbookPage = lazy(() => import("./scrapbook/ScrapbookPage").then((module) => ({ default: module.ScrapbookPage })));
 
 const AccountConfirmation = lazy(() => import("./account/AccountConfirmation"));
 const LaunchCommemoration = lazy(() =>
@@ -141,6 +143,7 @@ function RedesignedRoutes() {
         <Route element={<AppLayout />}>
           <Route index element={<><HomePage periodicals={PERIODICALS} /><LazyRoute><LaunchCommemoration /></LazyRoute></>} />
           <Route path="bookshelf" element={<BookshelfPage />} />
+          <Route path="scrapbook" element={<LazyRoute><ScrapbookPage /></LazyRoute>} />
           <Route path="library" element={<LibraryPage periodicals={PERIODICALS} />} />
           <Route path="library/:datasetId" element={<LibraryPage periodicals={PERIODICALS} />} />
           <Route path="search" element={<div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage platformRedesign /></div>} />

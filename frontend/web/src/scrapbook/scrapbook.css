@@ -1,0 +1,35 @@
+.scrapbook-page { width: min(100%, 960px); margin: auto; padding: 32px 24px 64px; color: var(--color-ink, #202020); }
+.scrapbook-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-bottom: 24px; border-bottom: 2px solid #8b1a1a; }
+.scrapbook-heading h1 { margin: 0; font-size: 30px; }
+.scrapbook-heading p, .clipping-source { color: #666; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.scrapbook-page button, .clipping-editor button { border: 1px solid #b9b4b0; background: transparent; padding: 8px 14px; cursor: pointer; font: inherit; }
+.scrapbook-page button:hover:not(:disabled), .clipping-editor button:hover:not(:disabled) { border-color: #8b1a1a; box-shadow: 2px 2px 0 #8b1a1a; transform: translateY(-2px); }
+.scrapbook-page button:disabled, .clipping-editor button:disabled { opacity: .5; cursor: default; }
+.scrapbook-page :focus-visible, .clipping-editor :focus-visible { outline: 2px solid #8b1a1a; outline-offset: 3px; }
+.scrapbook-filters { display: flex; flex-wrap: wrap; gap: 10px; padding: 24px 0; }
+.scrapbook-filters input { flex: 1; min-width: 160px; }
+.scrapbook-filters input, .scrapbook-filters select, .clipping-editor input, .clipping-editor textarea { border: 1px solid #b9b4b0; background: #fff; color: #202020; padding: 10px 12px; font: inherit; border-radius: 0; }
+.scrapbook-list { display: grid; gap: 0; }
+.clipping-card { border-bottom: 1px solid #d5d1cc; padding: 24px 0; }
+.clipping-card header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+.clipping-card h2 { font-size: 20px; margin: 0; }
+.clipping-collection { font-size: 12px; color: #8b1a1a; }
+.clipping-card blockquote { margin: 20px 0; padding-left: 18px; border-left: 3px solid #8b1a1a; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.9; max-height: 24rem; overflow: auto; }
+.clipping-note { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; }
+.clipping-card footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 20px; font-size: 13px; }
+.clipping-card a, .scrapbook-empty a { color: #8b1a1a; text-decoration: underline; text-underline-offset: 4px; }
+.clipping-editor { background: #fff; color: #202020; padding: 24px; border: 1px solid #b9b4b0; border-top: 3px solid #8b1a1a; max-height: 88dvh; overflow: auto; }
+.clipping-editor header { display: flex; justify-content: space-between; gap: 16px; align-items: center; }
+.clipping-editor h2 { margin: 0; font-size: 22px; }
+.clipping-editor form { display: grid; gap: 16px; }
+.clipping-editor label { display: grid; gap: 8px; font-size: 14px; }
+.clipping-editor textarea { resize: vertical; width: 100%; line-height: 1.7; }
+.clipping-editor footer { display: flex; justify-content: flex-end; }
+.clipping-editor .clipping-primary { background: #8b1a1a; border-color: #8b1a1a; color: #fff; }
+.clipping-error { color: #8b1a1a; line-height: 1.7; }
+.scrapbook-empty { padding: 48px 0; line-height: 1.8; }
+.reader-material-actions { display: grid; gap: 10px; margin-top: 16px; }
+.reader-material-actions > button, .reader-material-actions > a { min-height: 40px; text-align: left; border: 1px solid currentColor; padding: 8px 12px; background: transparent; color: inherit; }
+.book-selection-actions { flex-wrap: wrap; }
+@media (max-width: 600px) { .scrapbook-page { padding: 24px 16px; } .scrapbook-heading { align-items: flex-start; flex-direction: column; gap: 12px; } .clipping-editor { padding: 18px; } }
+@media (prefers-reduced-motion: reduce) { .scrapbook-page button:hover:not(:disabled), .clipping-editor button:hover:not(:disabled) { transform: none; } }

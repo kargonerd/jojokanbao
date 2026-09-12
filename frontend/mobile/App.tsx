@@ -23,6 +23,7 @@ import { AiScreen } from "./src/screens/AiScreen";
 import { TimesScreen } from "./src/screens/TimesScreen";
 import { TimesDetailScreen } from "./src/screens/TimesDetailScreen";
 import { NotificationsScreen } from "./src/screens/NotificationsScreen";
+import { ScrapbookScreen } from "./src/scrapbook/ScrapbookScreen";
 import { BookshelfScreen } from "./src/screens/BookshelfScreen";
 import { IS_EINK_RELEASE } from "./src/config/appVariant";
 import { selectionHaptic } from "./src/lib/haptics";
@@ -155,6 +156,7 @@ export default function App() {
             <Stack.Screen name="Settings" component={SettingsScreen} />
             <Stack.Screen name="Notifications" component={NotificationsScreen} />
             <Stack.Screen name="Bookshelf" component={BookshelfScreen} />
+            <Stack.Screen name="Scrapbook" component={ScrapbookScreen} />
             <Stack.Screen name="OpenSourceLicenses" component={OpenSourceLicensesScreen} />
             <Stack.Screen name="Support" component={SupportScreen} />
             <Stack.Screen name="Reader" component={ReaderScreen} />

@@ -66,6 +66,9 @@ vi.mock("../components/ReaderEnvironment", () => ({ ReaderEnvironment: () => nul
 vi.mock("../components/ReaderNavigationSheet", () => ({ ReaderNavigationSheet: () => null }));
 vi.mock("../components/ReaderSelectionToolbar", () => ({ ReaderSelectionToolbar: () => null }));
 vi.mock("../components/BookThoughtComposer", () => ({ BookThoughtComposer: () => null }));
+// Material tools have their own tests; listening integration does not initialize
+// their Supabase repositories.
+vi.mock("../scrapbook/ScrapbookButton", () => ({ ScrapbookButton: () => null, ScrapbookCapture: () => null }));
 vi.mock("../lib/bookAgent", () => ({ askMobileBookAgent: vi.fn() }));
 vi.mock("../lib/bookDocument", () => ({ createBookDocument: () => "<p>正文</p>" }));
 vi.mock("../lib/books", () => ({
