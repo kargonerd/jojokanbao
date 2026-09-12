@@ -264,6 +264,27 @@ export function ChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamContent, streamStatus]);
+  useEffect(() => {
+    const dismissOutside = (event: PointerEvent) => {
+      const details = scopeDetailsRef.current;
+      if (details?.open && event.target instanceof Node && !details.contains(event.target)) {
+        details.open = false;
+      }
+    };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      const details = scopeDetailsRef.current;
+      if (event.key === "Escape" && details?.open) {
+        details.open = false;
+        details.querySelector("summary")?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", dismissOutside, true);
+    document.addEventListener("keydown", dismissOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOutside, true);
+      document.removeEventListener("keydown", dismissOnEscape);
+    };
+  }, []);
 
   const contentType = selectedContentType(selectedNotebookIds);
   const availableNotebooks = scopeNotebooks(notebooks, "all");
