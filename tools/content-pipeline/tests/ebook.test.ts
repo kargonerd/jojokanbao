@@ -78,6 +78,53 @@ describe("Kindle PalmDOC decoding", () => {
     }
   });
 
+  it("preserves prose, captions, anchors and nested images in legacy EPUB placeholders", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jojo-legacy-epub-test-"));
+    try {
+      await writeFile(path.join(directory, "image.png"), Uint8Array.from([137, 80, 78, 71]));
+      const body = `<p>开头</p><figure id="outer" data-asset-id="asset:image" data-width="70">
+        <figcaption id="caption">图一</figcaption><p id="prose">图片后的正文 &amp; 符号</p>
+        <figure id="inner" data-asset-id="asset:image"><p>第二张图后的正文</p></figure>
+        混排文字<figcaption id="late-caption">后置说明</figcaption><p>末段</p></figure>
+        <p>甲<span id="inline" data-asset-id="asset:image"></span>乙<span data-asset-id="asset:image">保留子节点</span></p>
+        <p><a id="note-wrapper" href="#old-note"><sup id="note-ref" data-annotation-id="annotation:1">尾随正文</sup></a></p>
+        <a href="#prose">返回正文</a><sup data-annotation-id="missing">(0)</sup><a href="#annotation:1">再见原注</a>`;
+      const bytes = await buildEpub({
+        itemId: "book:legacy", title: "旧数据", author: "", language: "zh-CN",
+        chapters: [{ id: "chapter:1", order: 1, title: "第一章", assetRefs: ["asset:image"],
+          body: { format: "html", profile: "jojo-semantic-html/1", value: body } }],
+        toc: [{ id: "toc:1", order: 1, title: "正文", targetId: "chapter:1", anchorId: "prose" }],
+        annotations: [{ id: "annotation:1", targetId: "chapter:1", kind: "footnote", label: "1", body: { format: "text", value: "注释正文" } }],
+        assets: [{ id: "asset:image", type: "image", mediaType: "image/png", path: "image.png", size: 4, sha256: "test" }],
+        canonicalDatasetDirectory: directory,
+      });
+      const zip = await JSZip.loadAsync(bytes);
+      const xhtml = await zip.file("OEBPS/chapters/chapter-0001.xhtml")!.async("string");
+      const $ = cheerio.load(xhtml, { xmlMode: true });
+      expect($("img")).toHaveLength(4);
+      expect($("figure p, figure figure")).toHaveLength(0);
+      expect($("#outer > figcaption").text()).toBe("图一");
+      expect($("p#late-caption").text()).toBe("后置说明");
+      expect($("#inline").prop("tagName")).toBe("IMG");
+      expect($("a a")).toHaveLength(0);
+      expect($("#note-wrapper").prop("tagName")).toBe("SPAN");
+      expect($("#note-ref").attr("href")).toBe("#annotation-1");
+      expect($('a[href="#annotation-1"]').map((_, e) => $(e).text()).get()).toEqual(["[1]", "再见原注"]);
+      expect($('a[href="#prose"]').text()).toBe("返回正文");
+      expect($('sup[data-annotation-id="missing"]').text()).toBe("(0)");
+      $("body > h1").first().remove();
+      $('a[epub\\:type="noteref"], aside[epub\\:type="footnote"]').remove();
+      expect($("body").text().replace(/\s/g, "")).toBe(cheerio.load(body)("body").text().replace(/\s/g, ""));
+      // Reading systems parse the serialized result again: HTML recovery must
+      // not move or drop any of the retained text or image nodes.
+      const reparsed = cheerio.load(xhtml);
+      expect(reparsed("img")).toHaveLength(4);
+      expect(reparsed("body").text().replace(/\s/g, "")).toContain("图一图片后的正文&符号第二张图后的正文混排文字后置说明末段");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("imports an EPUB spine, navigation, and embedded image", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jojo-epub-test-"));
     try {

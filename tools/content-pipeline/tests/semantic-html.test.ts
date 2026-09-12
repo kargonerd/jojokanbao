@@ -1,7 +1,51 @@
 import { describe, expect, it } from "vitest";
+import * as cheerio from "cheerio";
 import { convertWereadChapter } from "../src";
 
 describe("WeRead semantic HTML", () => {
+  it("keeps editorial stars on prose containing references instead of moving the prose into a note", () => {
+    const result = convertWereadChapter({
+      id: "chapter:star-prose", sourceCid: "star-prose", sourceFiles: [], title: "国内危机", order: 1, level: 1,
+      contentType: "application/xhtml+xml",
+      content: '<html><body><h1>国内危机</h1><p>**兰开夏郡12月15日。正文<a id="ref" href="#note"><sup>[1]</sup></a>应当在这里。</p><p id="note">注释说明。</p><p>*4月4日寄自莱茵。消息正文。</p></body></html>',
+    }, []);
+    const $ = cheerio.load(result.chapter.body.value);
+    expect($("p").first().text()).toBe("**兰开夏郡12月15日。正文[1]应当在这里。");
+    expect($("#ref").attr("href")).toBe("#note");
+    expect(result.annotations).toEqual([]);
+    expect($("p").last().text()).toBe("*4月4日寄自莱茵。消息正文。");
+  });
+  it("keeps adjacent div endnotes in separate paragraphs with their return links", () => {
+    const result = convertWereadChapter({
+      id: "chapter:div-notes", sourceCid: "div-notes", sourceFiles: [],
+      title: "谈话", order: 1, level: 1, contentType: "application/xhtml+xml",
+      content: `<html><body><p>正文<a id="ref1" href="#note1">[1]</a>继续<a id="ref2" href="#note2">[2]</a></p>
+        <p>注释</p><div><a id="note1" href="#ref1">[1]</a>第一条说明。</div>
+        <div><a id="note2" href="#ref2">[2]</a>第二条<strong>说明</strong>。</div></body></html>`,
+    }, []);
+    const $ = cheerio.load(result.chapter.body.value);
+    expect($('p[data-role="note"]').map((_index, e) => $(e).text()).get()).toEqual(["[1]第一条说明。", "[2]第二条说明。"]);
+    expect($("#note1").parent().attr("data-indent")).toBe("none");
+    expect($("#note2").attr("href")).toBe("#ref2");
+    expect($("#ref2").attr("href")).toBe("#note2");
+    expect($("#note2").parent().find("strong").text()).toBe("说明");
+    expect(result.annotations).toEqual([]);
+  });
+
+  it("preserves leaf div paragraphs without nesting existing blocks or treating numbered links as notes", () => {
+    const result = convertWereadChapter({
+      id: "chapter:div-paragraphs", sourceCid: "div-paragraphs", sourceFiles: [],
+      title: "段落", order: 1, level: 1, contentType: "application/xhtml+xml",
+      content: `<html><body><div><h2>小标题</h2><div style="text-align:right">第一段。</div><div>第二段。</div>
+        <p>已有段落。</p><div><a id="index" href="#destination">[1]</a>普通目录。</div></div></body></html>`,
+    }, []);
+    const $ = cheerio.load(result.chapter.body.value);
+    expect($("p").map((_index, e) => $(e).text()).get()).toEqual(["第一段。", "第二段。", "已有段落。", "[1]普通目录。"]);
+    expect($("p").first().attr("data-align")).toBe("right");
+    expect($("h2").text()).toBe("小标题");
+    expect($("p p, p h2, [data-role='note']")).toHaveLength(0);
+  });
+
   it("removes source CSS and scripts while preserving semantic content", () => {
     const diagnostics: Parameters<typeof convertWereadChapter>[1] = [];
     const result = convertWereadChapter({
@@ -276,6 +320,47 @@ describe("WeRead semantic HTML", () => {
     expect(result.chapter.body.value).toContain("<p>不能丢失的正文</p>");
     expect(result.chapter.body.value).toContain("<p>第二段</p>");
     expect(diagnostics).toEqual([]);
+  });
+
+  it("separates repeated anchors in concatenated bodies and preserves local links", () => {
+    const result = convertWereadChapter({
+      id: "chapter:joined", sourceCid: "joined", sourceFiles: [], title: "合并章", order: 1, level: 1,
+      contentType: "application/xhtml+xml",
+      content: `<html><body id="cid"><h1 id="section">标题页</h1><h2 id="section">标题副行</h2><a href="#section">标题链接</a></body></html>
+        <html><body id="cid"><p id="section">完整正文</p><p id="jojo-body-2-section">保留原有 ID</p>
+        <a href="#section">正文链接</a><a href="#cid">本页开头</a>
+        <a data-target-id="chapter:other" data-anchor-id="section">跨章链接</a></body></html>`,
+    }, []);
+    const $ = cheerio.load(result.chapter.body.value);
+    const ids = $("[id]").map((_index, element) => $(element).attr("id")!).get();
+    expect(new Set(ids).size).toBe(ids.length);
+    expect($("a").eq(0).attr("href")).toBe("#section");
+    expect($("a").eq(1).attr("href")).toBe("#jojo-body-2-section-2");
+    expect($("#jojo-body-2-section-2").text()).toBe("完整正文");
+    expect($("a").eq(2).attr("href")).toBe("#jojo-body-2-cid");
+    expect($("a").eq(3).attr("data-anchor-id")).toBe("section");
+  });
+
+  it("keeps page destinations neutral without swallowing text or stripping real links", () => {
+    const result = convertWereadChapter({
+      id: "chapter:pages", sourceCid: "pages", sourceFiles: [], title: "页码锚点", order: 1, level: 1,
+      contentType: "application/xhtml+xml",
+      content: `<html><body><p>因为有矛盾存<a id="page16"></a>在。</p>
+        <p><a id="page17"/>后续正文。</p><p><a id="section">定位范围内的正文。</a></p>
+        <a href="#page16">回到页码</a><a href="https://example.com">外部链接</a>
+        <a data-target-id="chapter:other" data-anchor-id="section">跨章链接</a></body></html>`,
+    }, []);
+    const $ = cheerio.load(result.chapter.body.value);
+    expect($("#page16").prop("tagName")).toBe("SPAN");
+    expect($("#page16").text()).toBe("");
+    expect($("#page17").text()).toBe("");
+    expect($("p").eq(0).text()).toBe("因为有矛盾存在。");
+    expect($("p").eq(1).text()).toBe("后续正文。");
+    expect($("#section").prop("tagName")).toBe("SPAN");
+    expect($("#section").text()).toBe("定位范围内的正文。");
+    expect($("a[href='#page16']").text()).toBe("回到页码");
+    expect($("a[href='https://example.com']").text()).toBe("外部链接");
+    expect($("a[data-target-id='chapter:other']").text()).toBe("跨章链接");
   });
 
   it("does not create nested superscripts when source markup is already semantic", () => {

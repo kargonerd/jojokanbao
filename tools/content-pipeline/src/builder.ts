@@ -40,6 +40,7 @@ import type {
 } from "./models";
 import { bookSearchIndex, chapterSearchDocuments, type JojoSearchDocument } from "./search";
 import { convertWereadChapter, htmlToText } from "./semantic-html";
+import { downgradeUnresolvedInternalLinks } from "./internal-links";
 import { decodeWereadFile, inspectWereadCompleteness, isWereadExport } from "./weread";
 
 export interface BuildPipelineOptions {
@@ -745,13 +746,12 @@ export async function buildContentPipeline(
         .map((entry) => `${String(entry.file ?? "未知文件")} → ${String(entry.reference ?? "未知目标")}`)
         .join("；");
       diagnostics.push({
-        level: options.allowPartial ? "warning" : "error",
+        level: "warning",
         code: "internal-links-unresolved",
         message: `${decoded.title} 有 ${internalLinks - resolvedInternalLinks}/${internalLinks} 条正文内链无法精确解析`
-          + `${examples ? `（${examples}）` : ""}`,
+          + `，已保留文字并取消跳转${examples ? `（${examples}）` : ""}`,
         source: decoded.sourcePath,
       });
-      sourceRejected ||= !options.allowPartial;
     }
     const unresolvedAssets = Number(decoded.sourceDetails.unresolvedAssets ?? 0);
     if (unresolvedAssets > 0 && options.fetchAssets !== false) {
@@ -918,6 +918,17 @@ export async function buildContentPipeline(
     left.datasetTitle.localeCompare(right.datasetTitle, "zh-CN") || left.itemOrder - right.itemOrder
   ))) {
       options.onProgress?.({ phase: "build-item", itemId: part.itemId, title: part.itemTitle });
+      const links = downgradeUnresolvedInternalLinks(part.chapters, part.annotations);
+      part.chapters = links.chapters;
+      for (const link of links.unresolved) {
+        diagnostics.push({
+          level: "warning",
+          code: "internal-link-downgraded",
+          message: `${link.chapterId}：${link.label} 的跳转目标 ${link.reference} 不存在，已保留文字并取消跳转`,
+          source: part.source.sourcePath,
+          itemId: part.itemId,
+        });
+      }
       const result = await buildItem(part, roots, publicationStatus, access);
       builtItems.push(result.summary);
       allSearch.push(...result.search);

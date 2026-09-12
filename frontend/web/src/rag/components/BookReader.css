@@ -157,6 +157,11 @@
   text-align: left;
 }
 
+.prose-editorial a:not([href]):not([data-target-id]):not([data-anchor-id]) {
+  color: inherit;
+  text-decoration: inherit;
+}
+
 .prose-editorial [data-align="center"] {
   text-align: center;
   text-indent: 0;
