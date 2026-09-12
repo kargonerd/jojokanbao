@@ -1,5 +1,6 @@
 import type {
   AnnotationComment,
+  AnnotationCommentLike,
   AnnotationReportReason,
   AnnotationSubject,
   AnnotationThread,
@@ -35,6 +36,7 @@ interface BookAnnotationCache {
   contentId: string;
   chapters: Map<string, { request: Promise<AnnotationThread[]>; expiresAt: number }>;
   annotationSections: Map<string, string>;
+  commentSections: Map<string, string>;
 }
 
 function subjectParams(subject: AnnotationSubject) {
@@ -97,6 +99,13 @@ export function createAnnotationApi({ rpc, getCurrentUserId, currentPath = () =>
     }
   }
 
+  function invalidateBookAnnotationLike(commentId: string) {
+    for (const cache of bookAnnotationCaches.values()) {
+      const sectionId = cache.commentSections.get(commentId);
+      if (sectionId) cache.chapters.delete(sectionId);
+    }
+  }
+
   function personalBookNotes(threads: AnnotationThread[], currentUserId: string): AnnotationThread[] {
     return threads.flatMap((thread) => {
       const comments = thread.comments.filter((comment) => comment.authorId === currentUserId);
@@ -120,7 +129,7 @@ export function createAnnotationApi({ rpc, getCurrentUserId, currentPath = () =>
     if (options.refresh) bookAnnotationCaches.delete(cacheKey);
     let cache = bookAnnotationCaches.get(cacheKey);
     if (!cache) {
-      cache = { contentId, chapters: new Map(), annotationSections: new Map() };
+      cache = { contentId, chapters: new Map(), annotationSections: new Map(), commentSections: new Map() };
       // Bound retained books, while keeping every chapter of an open book reusable.
       if (bookAnnotationCaches.size >= 8) bookAnnotationCaches.delete(bookAnnotationCaches.keys().next().value!);
       bookAnnotationCaches.set(cacheKey, cache);
@@ -152,7 +161,13 @@ export function createAnnotationApi({ rpc, getCurrentUserId, currentPath = () =>
             for (const [annotationId, chapterId] of bookCache.annotationSections) {
               if (chapterId === sectionId) bookCache.annotationSections.delete(annotationId);
             }
-            for (const thread of threads) bookCache.annotationSections.set(thread.id, sectionId);
+            for (const [commentId, chapterId] of bookCache.commentSections) {
+              if (chapterId === sectionId) bookCache.commentSections.delete(commentId);
+            }
+            for (const thread of threads) {
+              bookCache.annotationSections.set(thread.id, sectionId);
+              for (const comment of thread.comments) bookCache.commentSections.set(comment.id, sectionId);
+            }
           }
           return personalBookNotes(threads, currentUserId);
         })();
@@ -161,6 +176,9 @@ export function createAnnotationApi({ rpc, getCurrentUserId, currentPath = () =>
           bookCache.chapters.delete(oldestSection);
           for (const [annotationId, chapterId] of bookCache.annotationSections) {
             if (chapterId === oldestSection) bookCache.annotationSections.delete(annotationId);
+          }
+          for (const [commentId, chapterId] of bookCache.commentSections) {
+            if (chapterId === oldestSection) bookCache.commentSections.delete(commentId);
           }
         }
         bookCache.chapters.set(sectionId, { request, expiresAt: Number.POSITIVE_INFINITY });
@@ -246,5 +264,23 @@ export function createAnnotationApi({ rpc, getCurrentUserId, currentPath = () =>
     }, expectedUserId);
   }
 
-  return { loadAnnotationThreads, loadMyBookAnnotations, createAnnotation, addAnnotationComment, reportAnnotationComment };
+  async function setAnnotationCommentLike(commentId: string, liked: boolean, expectedUserId?: string): Promise<AnnotationCommentLike> {
+    return forCurrentReader(async (userId) => {
+      const { data, error } = await rpc("set_annotation_comment_like", { p_comment_id: commentId, p_liked: liked }, userId);
+      const result = resultOrThrow<AnnotationCommentLike>(data, error);
+      invalidateBookAnnotationLike(commentId);
+      return result;
+    }, expectedUserId);
+  }
+
+  async function deleteMyAnnotationMark(annotationId: string, expectedUserId?: string): Promise<AnnotationThread | null> {
+    return forCurrentReader(async (userId) => {
+      const { data, error } = await rpc("delete_my_annotation_mark", { p_annotation_id: annotationId }, userId);
+      const result = resultOrThrow<{ thread: AnnotationThread | null }>(data, error);
+      invalidateBookAnnotationComment(annotationId);
+      return result.thread;
+    }, expectedUserId);
+  }
+
+  return { loadAnnotationThreads, loadMyBookAnnotations, createAnnotation, addAnnotationComment, reportAnnotationComment, setAnnotationCommentLike, deleteMyAnnotationMark };
 }

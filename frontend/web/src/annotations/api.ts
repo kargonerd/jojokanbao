@@ -34,4 +34,6 @@ export const {
   createAnnotation,
   addAnnotationComment,
   reportAnnotationComment,
+  setAnnotationCommentLike,
+  deleteMyAnnotationMark,
 } = api;

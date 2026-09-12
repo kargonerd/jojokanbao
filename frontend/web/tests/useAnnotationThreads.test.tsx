@@ -8,6 +8,8 @@ const annotationApi = vi.hoisted(() => ({
   createAnnotation: vi.fn(),
   addAnnotationComment: vi.fn(),
   reportAnnotationComment: vi.fn(),
+  setAnnotationCommentLike: vi.fn(),
+  deleteMyAnnotationMark: vi.fn(),
 }));
 
 vi.mock("../src/annotations/api", () => annotationApi);
@@ -43,6 +45,77 @@ afterEach(() => {
 });
 
 describe("useAnnotationThreads", () => {
+  it("removes a private anchor and prevents a stale load from restoring it", async () => {
+    const base = thread("chapter-1");
+    annotationApi.loadAnnotationThreads.mockResolvedValueOnce([base]);
+    annotationApi.deleteMyAnnotationMark.mockResolvedValue(null);
+    const { result } = renderHook(() => useAnnotationThreads(subject("chapter-1"), true, "user-1"));
+    await waitFor(() => expect(result.current.threads).toHaveLength(1));
+    let finish!: (value: AnnotationThread[]) => void;
+    annotationApi.loadAnnotationThreads.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    let pending!: Promise<void>;
+    act(() => { pending = result.current.refresh(); });
+    await act(async () => { await result.current.removeMark(base.id); });
+    expect(annotationApi.deleteMyAnnotationMark).toHaveBeenCalledWith(base.id, "user-1");
+    await act(async () => { finish([base]); await pending; });
+    expect(result.current.threads).toEqual([]);
+  });
+
+  it("keeps public discussion with zero marks and preserves state on deletion failure", async () => {
+    const base = { ...thread("chapter-1"), underlineCount: 1, underlinedByMe: true, publiclyVisible: true };
+    annotationApi.loadAnnotationThreads.mockResolvedValue([base]);
+    annotationApi.deleteMyAnnotationMark.mockRejectedValueOnce(new Error("offline"));
+    const { result } = renderHook(() => useAnnotationThreads(subject("chapter-1"), true, "user-1"));
+    await waitFor(() => expect(result.current.threads).toHaveLength(1));
+    await act(async () => { await expect(result.current.removeMark(base.id)).rejects.toThrow("offline"); });
+    expect(result.current.threads[0]?.underlinedByMe).toBe(true);
+    annotationApi.deleteMyAnnotationMark.mockResolvedValue({ ...base, underlineCount: 0, underlinedByMe: false });
+    await act(async () => { await result.current.removeMark(base.id); });
+    expect(result.current.threads[0]).toMatchObject({ underlineCount: 0, underlinedByMe: false });
+  });
+
+  it("ignores deletion responses after changing account", async () => {
+    const base = { ...thread("chapter-1"), underlineCount: 2, underlinedByMe: true, publiclyVisible: true };
+    annotationApi.loadAnnotationThreads.mockResolvedValue([base]);
+    let finish!: (value: null) => void;
+    annotationApi.deleteMyAnnotationMark.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const { result, rerender } = renderHook(({ user }) => useAnnotationThreads(subject("chapter-1"), true, user), { initialProps: { user: "user-1" } });
+    await waitFor(() => expect(result.current.threads).toHaveLength(1));
+    let pending!: Promise<unknown>;
+    act(() => { pending = result.current.removeMark(base.id).catch((error: unknown) => error); });
+    rerender({ user: "user-2" });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => { finish(null); expect(await pending).toBeInstanceOf(Error); });
+    expect(result.current.threads[0]?.underlinedByMe).toBe(true);
+  });
+  it("applies server counts and reorders after a like", async () => {
+    const base = thread("chapter-1");
+    const comment = { id: "c1", annotationId: base.id, parentCommentId: null, authorId: "user-1", authorName: "读者", body: "想法", visibility: "public" as const, createdAt: base.createdAt, reportedByMe: false };
+    annotationApi.loadAnnotationThreads.mockResolvedValue([{ ...base, comments: [comment, { ...comment, id: "c2", likeCount: 1 }] }]);
+    annotationApi.setAnnotationCommentLike.mockResolvedValue({ id: "c1", likeCount: 2, likedByMe: true });
+    const { result } = renderHook(() => useAnnotationThreads(subject("chapter-1"), true, "user-1"));
+    await waitFor(() => expect(result.current.threads[0]?.comments[0]?.id).toBe("c2"));
+    await act(async () => { await result.current.like(base.id, "c1", true); });
+    expect(annotationApi.setAnnotationCommentLike).toHaveBeenCalledWith("c1", true, "user-1");
+    expect(result.current.threads[0]?.comments[0]).toMatchObject({ id: "c1", likeCount: 2, likedByMe: true });
+  });
+
+  it("ignores a previous account's late like response", async () => {
+    let finish!: (value: unknown) => void;
+    const base = { ...thread("chapter-1"), underlineCount: 2, underlinedByMe: false, publiclyVisible: true,
+      comments: [{ id: "c1", annotationId: "annotation-chapter-1", parentCommentId: null, authorId: "user-1", authorName: "读者", body: "想法", visibility: "public" as const, createdAt: "2026-08-18T10:00:00Z", reportedByMe: false, likedByMe: false, likeCount: 0 }] };
+    annotationApi.loadAnnotationThreads.mockResolvedValue([base]);
+    annotationApi.setAnnotationCommentLike.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const { result, rerender } = renderHook(({ user }) => useAnnotationThreads(subject("chapter-1"), true, user), { initialProps: { user: "user-1" } });
+    await waitFor(() => expect(result.current.threads).toHaveLength(1));
+    let pending!: Promise<unknown>;
+    act(() => { pending = result.current.like(base.id, "c1", true).catch((error: unknown) => error); });
+    rerender({ user: "user-2" });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => { finish({ id: "c1", likeCount: 1, likedByMe: true }); expect(await pending).toBeInstanceOf(Error); });
+    expect(result.current.threads[0]?.comments[0]?.likedByMe).toBe(false);
+  });
+
   it("pins reads, thoughts, replies, and reports to the current account", async () => {
     const entry = thread("chapter-1");
     const comment = { id: "comment-1", annotationId: entry.id, parentCommentId: null, authorId: "user-1", authorName: "读者", body: "私密想法", visibility: "private" as const, createdAt: entry.createdAt, reportedByMe: false };
@@ -86,6 +159,8 @@ describe("useAnnotationThreads", () => {
     await expect(previousActions.report(firstEntry.id, "comment-1", "spam")).rejects.toThrow("登录状态已变化");
     expect(annotationApi.addAnnotationComment).not.toHaveBeenCalled();
     expect(annotationApi.reportAnnotationComment).not.toHaveBeenCalled();
+    expect(annotationApi.setAnnotationCommentLike).not.toHaveBeenCalled();
+    expect(annotationApi.deleteMyAnnotationMark).not.toHaveBeenCalled();
     await act(async () => { resolveWrite(firstEntry); resolveSecond([secondEntry]); });
     expect(await pendingWrite).toBeInstanceOf(Error);
     expect(result.current.threads.map((entry) => entry.id)).toEqual(["second-account"]);
@@ -103,6 +178,8 @@ describe("useAnnotationThreads", () => {
       await expect(actions.create(entry)).rejects.toThrow("登录状态已变化");
       await expect(actions.comment(entry.id, "想法")).rejects.toThrow("登录状态已变化");
       await expect(actions.report(entry.id, "comment-1", "spam")).rejects.toThrow("登录状态已变化");
+      await expect(actions.like(entry.id, "comment-1", true)).rejects.toThrow("登录状态已变化");
+      await expect(actions.removeMark(entry.id)).rejects.toThrow("登录状态已变化");
     };
     await verifyBlocked(result.current);
     rerender({ enabled: true, userId: null });
@@ -118,6 +195,8 @@ describe("useAnnotationThreads", () => {
     expect(annotationApi.createAnnotation).not.toHaveBeenCalled();
     expect(annotationApi.addAnnotationComment).not.toHaveBeenCalled();
     expect(annotationApi.reportAnnotationComment).not.toHaveBeenCalled();
+    expect(annotationApi.setAnnotationCommentLike).not.toHaveBeenCalled();
+    expect(annotationApi.deleteMyAnnotationMark).not.toHaveBeenCalled();
   });
 
   it("ignores a slow response from the previously selected chapter", async () => {

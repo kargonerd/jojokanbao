@@ -16,6 +16,7 @@ import { bookProgressPercent, bookProgressLocation, estimatedReadingMinutes, for
 import { createSpeechReader, SPEECH_EXCLUDED_ELEMENTS } from "@jojo/content/speech-dom";
 import type { ReaderSelectionRect } from "@jojo/ui/reader-selection";
 import { AnnotationDiscussionPanel } from "../../annotations/AnnotationDiscussionPanel";
+import { AnnotationMarkPopover } from "../../annotations/AnnotationMarkPopover";
 import {
   clearReaderExplanationMarks,
   renderAnnotationMarks,
@@ -223,6 +224,7 @@ export function BookReader({
   const [aiFocus, setAiFocus] = useState<RagFocusContext>();
   const [activeAnnotationId, setActiveAnnotationId] = useState<string>();
   const [discussionChapterId, setDiscussionChapterId] = useState<string>();
+  const [selectedMark, setSelectedMark] = useState<{ id: string; rect: ReaderSelectionRect }>();
   const [annotationSaving, setAnnotationSaving] = useState(false);
   const [onBookshelf, setOnBookshelf] = useState(false);
   const [bookshelfBusy, setBookshelfBusy] = useState(false);
@@ -267,7 +269,7 @@ export function BookReader({
   const aiPreparationRef = useRef(0);
 
   const activeChapterIndex = Math.max(0, chapters.findIndex((chapter) => chapter.id === activeChapterId));
-  const annotationChapterId = thoughtSelection?.chapterId || textSelection?.chapterId || (activeAnnotationId && discussionChapterId) || activeChapterId;
+  const annotationChapterId = thoughtSelection?.chapterId || textSelection?.chapterId || ((activeAnnotationId || selectedMark) && discussionChapterId) || activeChapterId;
   const annotationSubject = useMemo(() => ({
     contentType: "book" as const,
     contentId: `${datasetId}:${itemId}`,
@@ -305,7 +307,8 @@ export function BookReader({
   const annotationAccess = annotationsEnabled && Boolean(currentUserId);
   const annotations = useAnnotationThreads(annotationSubject, annotationAccess, currentUserId);
   const activeAnnotation = annotations.threads.find((thread) => thread.id === activeAnnotationId);
-  const readerOverlayOpen = aiOpen || tocOpen || searchOpen || Boolean(toolPopover || thoughtSelection || activeAnnotation || expandedImage);
+  const ownMark = annotations.threads.find((thread) => thread.id === selectedMark?.id && thread.underlinedByMe);
+  const readerOverlayOpen = aiOpen || tocOpen || searchOpen || Boolean(toolPopover || thoughtSelection || activeAnnotation || ownMark || expandedImage);
   const previousChapter = chapters[activeChapterIndex - 1];
   const nextChapter = chapters[activeChapterIndex + 1];
   const exactBookProgress = bookProgressPercent(chapters, activeChapterId, readingProgress);
@@ -332,6 +335,11 @@ export function BookReader({
       .finally(() => { if (active) setNotesLoading(false); });
     return () => { active = false; controller.abort(); };
   }, [annotationAccess, currentUserId, datasetId, itemId, toolPopover, annotations.threads, annotationSectionIds, notesRevision]);
+
+  useEffect(() => {
+    setSelectedMark(undefined);
+    setActiveAnnotationId(undefined);
+  }, [chapterKey, currentUserId, mode]);
 
   useEffect(() => {
     if (contentLoading || !activeChapterId || resumePositionRef.current?.chapterId === activeChapterId) return;
@@ -525,9 +533,17 @@ export function BookReader({
   useEffect(() => {
     const root = chapterRoot(annotationChapterId);
     if (!root || contentLoading) return;
-    renderAnnotationMarks(root, annotations.threads.filter((thread) => thread.sectionId === annotationChapterId), (id) => {
+    renderAnnotationMarks(root, annotations.threads.filter((thread) => thread.sectionId === annotationChapterId), (id, rect) => {
+      if (!window.getSelection()?.isCollapsed) return;
       setDiscussionChapterId(annotationChapterId);
-      setActiveAnnotationId(id);
+      setTextSelection(undefined);
+      if (annotations.threads.find((thread) => thread.id === id)?.underlinedByMe) {
+        setActiveAnnotationId(undefined);
+        setSelectedMark({ id, rect });
+      } else {
+        setSelectedMark(undefined);
+        setActiveAnnotationId(id);
+      }
     });
   }, [annotations.threads, annotationChapterId, contentLoading, chapterRoot, pageMetrics.step, positionRevision]);
 
@@ -1190,12 +1206,20 @@ export function BookReader({
       if (quote.length <= 2_000) void saveExplanation({ datasetId, itemId, chapterId: aiFocus?.chapterId ?? activeChapterId, quote, prefix: aiFocus?.prefix, suffix: aiFocus?.suffix, answer, references, metadata }).catch(() => undefined);
     }} /></BookNavigationSheet>}
 
+    {ownMark && selectedMark && annotationAccess ? <AnnotationMarkPopover key={ownMark.id}
+      thread={ownMark} rect={selectedMark.rect} onClose={() => setSelectedMark((current) => current?.id === ownMark.id ? undefined : current)}
+      onDelete={() => annotations.removeMark(ownMark.id)}
+      onDiscuss={() => { setActiveAnnotationId(ownMark.id); setSelectedMark(undefined); }}
+    /> : null}
+
     {activeAnnotation && currentUserId ? <AnnotationDiscussionPanel key={activeAnnotation.id}
       thread={activeAnnotation}
       currentUserId={currentUserId}
       onClose={() => setActiveAnnotationId(undefined)}
       onComment={(body, parentCommentId, visibility) => annotations.comment(activeAnnotation.id, body, parentCommentId, visibility)}
       onReport={(commentId, reason, details) => annotations.report(activeAnnotation.id, commentId, reason, details)}
+      onLike={(commentId, liked) => annotations.like(activeAnnotation.id, commentId, liked)}
+      onDeleteMark={() => annotations.removeMark(activeAnnotation.id)}
     /> : null}
 
     {toolPopover && <BookNavigationSheet mobile={mobileViewport} key={toolPopover} compact={toolPopover !== "notes"} title={toolPopover === "progress" ? "阅读进度" : toolPopover === "notes" ? "阅读笔记" : "文字设置"} label={toolPopover === "progress" ? "阅读进度面板" : toolPopover === "notes" ? "阅读笔记面板" : "文字设置面板"} onClose={() => { setToolPopover(undefined); setProgressPreview(undefined); }} panelClass={panelClass}>

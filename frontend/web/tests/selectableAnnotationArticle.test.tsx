@@ -3,16 +3,50 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SelectableAnnotationArticle } from "../src/annotations/SelectableAnnotationArticle";
 import { useFeatureFlagStore } from "../src/featureFlags";
 import { useAccountSessionStore } from "../src/account/session";
+import type { AnnotationThread } from "../src/annotations/types";
 
 const annotationApi = vi.hoisted(() => ({
-  loadAnnotationThreads: vi.fn(async () => []),
+  loadAnnotationThreads: vi.fn<() => Promise<AnnotationThread[]>>(async () => []),
   createAnnotation: vi.fn(),
   addAnnotationComment: vi.fn(),
   reportAnnotationComment: vi.fn(),
+  deleteMyAnnotationMark: vi.fn(),
+  setAnnotationCommentLike: vi.fn(),
 }));
 vi.mock("../src/annotations/api", () => annotationApi);
 
 describe("SelectableAnnotationArticle", () => {
+  const ownThread: AnnotationThread = {
+    id: "annotation-news-1", contentType: "newspaper", contentId: "news-1", sectionId: "body", contentTitle: "新闻标题",
+    authorId: "another-reader", authorName: "先划线的人", quote: "报刊正文", prefix: "", suffix: "", startOffset: 0, endOffset: 4,
+    createdAt: "2026-08-18T10:00:00Z", comments: [], underlineCount: 1, underlinedByMe: true, publiclyVisible: false,
+  };
+
+  it("deletes only my mark from its floating toolbar and removes the underline", async () => {
+    annotationApi.loadAnnotationThreads.mockResolvedValue([ownThread]);
+    annotationApi.deleteMyAnnotationMark.mockRejectedValueOnce(new Error("网络连接失败")).mockResolvedValueOnce(null);
+    const { container } = render(<SelectableAnnotationArticle subject={ownThread}><p>报刊正文</p></SelectableAnnotationArticle>);
+    const mark = await screen.findByRole("button", { name: "查看这处划线，1 人划线" });
+    vi.spyOn(mark, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 150, 100, 20));
+    fireEvent.click(mark);
+    const toolbar = screen.getByRole("toolbar", { name: "划线工具" });
+    expect(within(toolbar).getByRole("button", { name: "复制" })).toBeTruthy();
+    fireEvent.click(within(toolbar).getByRole("button", { name: "删除划线" }));
+    expect(await screen.findByText("网络连接失败")).toBeTruthy();
+    expect(container.querySelector("mark[data-underlined-by-me]")).toBeTruthy();
+    fireEvent.click(within(toolbar).getByRole("button", { name: "删除划线" }));
+    await waitFor(() => expect(container.querySelector("mark")).toBeNull());
+    expect(screen.getByText("报刊正文")).toBeTruthy();
+    expect(annotationApi.deleteMyAnnotationMark).toHaveBeenLastCalledWith(ownThread.id, "user-1");
+  });
+
+  it("does not offer deletion for another reader's public underline", async () => {
+    annotationApi.loadAnnotationThreads.mockResolvedValue([{ ...ownThread, authorId: "user-1", underlinedByMe: false, publiclyVisible: true }]);
+    render(<SelectableAnnotationArticle subject={ownThread}><p>报刊正文</p></SelectableAnnotationArticle>);
+    fireEvent.click(await screen.findByRole("button", { name: "查看这处划线，1 人划线" }));
+    expect(screen.getByRole("complementary", { name: "划线详情" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "删除划线" })).toBeNull();
+  });
   beforeEach(() => {
     vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
     useFeatureFlagStore.setState({ initialized: true, revision: "test", flags: { "reader.speech": false, "library.bookshelf": false, "reader.annotations": true } });

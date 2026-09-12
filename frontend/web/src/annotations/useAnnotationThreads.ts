@@ -2,9 +2,12 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import {
   addAnnotationComment,
   createAnnotation,
+  deleteMyAnnotationMark,
   loadAnnotationThreads,
   reportAnnotationComment,
+  setAnnotationCommentLike,
 } from "./api";
+import { sortAnnotationComments } from "./types";
 import type {
   AnnotationReportReason,
   AnnotationSubject,
@@ -31,7 +34,8 @@ function compatibleThread(
   if (!hasAggregateFields && !underlinedByMe) return undefined;
   return {
     ...thread,
-    underlineCount: Math.max(1, Math.trunc(thread.underlineCount ?? 1)),
+    comments: sortAnnotationComments(thread.comments),
+    underlineCount: Math.max(0, Math.trunc(thread.underlineCount ?? 1)),
     underlinedByMe,
     publiclyVisible: hasAggregateFields ? Boolean(thread.publiclyVisible) : false,
   };
@@ -96,10 +100,12 @@ export function useAnnotationThreads(subject: AnnotationSubject, enabled: boolea
       return currentUserId;
     };
     const updateThreads = (update: (threads: AnnotationThread[]) => AnnotationThread[]) => {
+      // A read that started before a successful mutation must not restore stale data.
+      requestId.current += 1;
       setState((current) => {
         if (!isCurrent()) return current;
         const previous = current.context === context ? current : { context, threads: [], loading: false, error: "" };
-        return { ...previous, threads: update(previous.threads) };
+        return { ...previous, threads: update(previous.threads), loading: false, error: "" };
       });
     };
     return {
@@ -118,9 +124,30 @@ export function useAnnotationThreads(subject: AnnotationSubject, enabled: boolea
         const created = await addAnnotationComment(annotationId, body, parentCommentId, visibility, expectedUserId);
         requireCurrentUser();
         updateThreads((threads) => threads.map((thread) => thread.id === annotationId
-          ? { ...thread, comments: [...thread.comments, created] }
+          ? { ...thread, comments: sortAnnotationComments([...thread.comments, created]) }
           : thread));
         return created;
+      },
+      async removeMark(annotationId: string) {
+        const expectedUserId = requireCurrentUser();
+        const changed = await deleteMyAnnotationMark(annotationId, expectedUserId);
+        requireCurrentUser();
+        const normalized = changed ? compatibleThread(changed, currentUserId) : undefined;
+        updateThreads((threads) => threads.flatMap((thread) => thread.id === annotationId
+          ? normalized ? [normalized] : []
+          : [thread]));
+        return changed;
+      },
+      async like(annotationId: string, commentId: string, liked: boolean) {
+        const expectedUserId = requireCurrentUser();
+        const changed = await setAnnotationCommentLike(commentId, liked, expectedUserId);
+        requireCurrentUser();
+        updateThreads((threads) => threads.map((thread) => thread.id === annotationId
+          ? { ...thread, comments: sortAnnotationComments(thread.comments.map((comment) => comment.id === commentId
+            ? { ...comment, likeCount: changed.likeCount, likedByMe: changed.likedByMe }
+            : comment)) }
+          : thread));
+        return changed;
       },
       async report(annotationId: string, commentId: string, reason: AnnotationReportReason, details?: string) {
         const expectedUserId = requireCurrentUser();

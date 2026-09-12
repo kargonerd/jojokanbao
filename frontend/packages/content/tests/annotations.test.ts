@@ -35,6 +35,44 @@ function setup() {
 }
 
 describe("shared annotation API", () => {
+  it.each(["like", "delete"] as const)("invalidates only the affected cached chapter after a successful %s", async (operation) => {
+    const { api, rpc } = setup();
+    const entry = { ...thread("one"), comments: [{
+      id: "comment", annotationId: "one", parentCommentId: null, authorId: "reader:a", authorName: "读者",
+      body: "公开想法", visibility: "public" as const, createdAt: "2026-09-12T00:00:00Z", reportedByMe: false,
+      likeCount: 0, likedByMe: false,
+    }] };
+    const untouched = { ...thread("two"), sectionId: "chapter:two" };
+    let updated = false;
+    let fail = true;
+    rpc.mockImplementation(async (name, params) => {
+      if (name === "get_annotation_threads") {
+        return { data: params.p_section_id === "chapter:two" ? [untouched]
+          : !updated ? [entry] : operation === "delete" ? []
+            : [{ ...entry, comments: [{ ...entry.comments[0]!, likeCount: 1, likedByMe: true }] }], error: null };
+      }
+      if (fail) return { data: null, error: { message: "offline" } };
+      updated = true;
+      return { data: operation === "delete" ? { thread: null } : { id: "comment", likeCount: 1, likedByMe: true }, error: null };
+    });
+    const read = () => api.loadMyBookAnnotations("book:one", ["chapter:one", "chapter:two"], "reader:a");
+    const mutate = () => operation === "delete" ? api.deleteMyAnnotationMark("one", "reader:a")
+      : api.setAnnotationCommentLike("comment", true, "reader:a");
+    expect(await read()).toEqual([entry, untouched]);
+    await expect(mutate()).rejects.toThrow("offline");
+    expect(await read()).toEqual([entry, untouched]);
+    expect(rpc.mock.calls.filter(([name]) => name === "get_annotation_threads")).toHaveLength(2);
+    fail = false;
+    await mutate();
+    expect(rpc).toHaveBeenLastCalledWith(operation === "delete" ? "delete_my_annotation_mark" : "set_annotation_comment_like",
+      operation === "delete" ? { p_annotation_id: "one" } : { p_comment_id: "comment", p_liked: true }, "reader:a");
+    const notes = await read();
+    expect(notes.find((note) => note.id === "two")).toEqual(untouched);
+    if (operation === "delete") expect(notes.map((note) => note.id)).toEqual(["two"]);
+    else expect(notes[0]?.comments[0]).toMatchObject({ likeCount: 1, likedByMe: true });
+    expect(rpc.mock.calls.filter(([name]) => name === "get_annotation_threads")).toHaveLength(3);
+  });
+
   it("sends private visibility explicitly and preserves public RPC compatibility", async () => {
     const { api, rpc } = setup();
     await api.createAnnotation(subject, anchor, "  私密想法  ", "private");
@@ -63,18 +101,22 @@ describe("shared annotation API", () => {
     expect(rpc.mock.calls[0]?.[1]).toHaveProperty("p_initial_comment_visibility", "private");
   });
 
-  it.each(["discussion", "create", "comment", "report"] as const)("rejects a stale %s response after switching accounts", async (operation) => {
+  it.each(["discussion", "create", "comment", "report", "like", "delete"] as const)("rejects a stale %s response after switching accounts", async (operation) => {
     const { api, rpc, getCurrentUserId } = setup();
     const pending = deferred<RpcResult>();
     rpc.mockReturnValue(pending.promise);
     const request = operation === "discussion" ? api.loadAnnotationThreads(subject)
       : operation === "create" ? api.createAnnotation(subject, anchor)
         : operation === "comment" ? api.addAnnotationComment("one", "回复")
-          : api.reportAnnotationComment("comment", "spam");
+          : operation === "like" ? api.setAnnotationCommentLike("comment", true)
+            : operation === "delete" ? api.deleteMyAnnotationMark("one")
+              : api.reportAnnotationComment("comment", "spam");
     const rejected = expect(request).rejects.toThrow("登录状态已变化");
     await vi.waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
     getCurrentUserId.mockResolvedValue("reader:b");
-    pending.resolve({ data: operation === "discussion" ? [thread("a-private")] : thread("a-private"), error: null });
+    pending.resolve({ data: operation === "discussion" ? [thread("a-private")]
+      : operation === "delete" ? { thread: thread("a-private") }
+        : operation === "like" ? { id: "comment", likeCount: 1, likedByMe: true } : thread("a-private"), error: null });
     await rejected;
   });
 
@@ -179,6 +221,8 @@ describe("shared annotation API", () => {
     await expect(api.createAnnotation(subject, anchor)).rejects.toThrow("请先登录");
     await expect(api.addAnnotationComment("one", "回复")).rejects.toThrow("请先登录");
     await expect(api.reportAnnotationComment("comment", "other")).rejects.toThrow("请先登录");
+    await expect(api.setAnnotationCommentLike("comment", true)).rejects.toThrow("请先登录");
+    await expect(api.deleteMyAnnotationMark("one")).rejects.toThrow("请先登录");
     expect(await api.loadMyBookAnnotations("book:one", ["chapter:one"], null)).toEqual([]);
     expect(rpc).not.toHaveBeenCalled();
   });
@@ -190,6 +234,8 @@ describe("shared annotation API", () => {
     await expect(api.addAnnotationComment("one", "旧回复", undefined, "private", "reader:a")).rejects.toThrow("登录状态已变化");
     await expect(api.reportAnnotationComment("comment", "spam", undefined, "reader:a")).rejects.toThrow("登录状态已变化");
     await expect(api.loadAnnotationThreads(subject, "reader:a")).rejects.toThrow("登录状态已变化");
+    await expect(api.setAnnotationCommentLike("comment", true, "reader:a")).rejects.toThrow("登录状态已变化");
+    await expect(api.deleteMyAnnotationMark("one", "reader:a")).rejects.toThrow("登录状态已变化");
     expect(rpc).not.toHaveBeenCalled();
   });
 
