@@ -1,18 +1,8 @@
 import { create } from "zustand";
 import { accountSessionConfigured, useAccountSessionStore } from "./account/session";
+import { disabledFlags, FeatureFlagRuntime, FLAG_REFRESH_INTERVAL_MS, FEATURE_FLAG_KEYS, type FeatureFlagKey, type FeatureFlagValues } from "@jojo/analytics/flags";
 
-export const FEATURE_FLAG_KEYS = [
-  "library.bookshelf",
-  "reader.annotations",
-  "reader.speech",
-] as const;
-
-export type FeatureFlagKey = typeof FEATURE_FLAG_KEYS[number];
-type FeatureFlagValues = Record<FeatureFlagKey, boolean>;
-
-const disabledFlags = (): FeatureFlagValues => Object.fromEntries(
-  FEATURE_FLAG_KEYS.map((key) => [key, false]),
-) as FeatureFlagValues;
+export { FEATURE_FLAG_KEYS, type FeatureFlagKey };
 
 function migrationCompatibilityFlags(): FeatureFlagValues {
   const flags = disabledFlags();
@@ -55,9 +45,43 @@ export const useFeatureFlagStore = create<FeatureFlagState>(() => ({
 }));
 
 let refreshSequence = 0;
+const postHogFlags = new FeatureFlagRuntime(async (userId) => {
+  const { openBrowserFlagSession } = await import("@jojo/analytics/browser-flags");
+  return openBrowserFlagSession({ userId, token: import.meta.env.VITE_POSTHOG_TOKEN, host: import.meta.env.VITE_POSTHOG_HOST });
+}, (flags) => useFeatureFlagStore.setState({ initialized: true, revision: "posthog", flags }));
+
+const usesPostHog = () => import.meta.env.VITE_FEATURE_FLAG_PROVIDER === "posthog";
+
+export function startFeatureFlagSync(): () => void {
+  const refresh = () => {
+    if (useAccountSessionStore.getState().initialized) void refreshFeatureFlags();
+  };
+  const stopAuth = useAccountSessionStore.subscribe((state, previous) => {
+    if (state.initialized !== previous.initialized || state.userId !== previous.userId) refresh();
+  });
+  const foreground = () => { if (document.visibilityState === "visible") refresh(); };
+  window.addEventListener("focus", foreground);
+  document.addEventListener("visibilitychange", foreground);
+  window.addEventListener("online", refresh);
+  const interval = window.setInterval(foreground, FLAG_REFRESH_INTERVAL_MS);
+  refresh();
+  return () => {
+    stopAuth();
+    window.removeEventListener("focus", foreground);
+    document.removeEventListener("visibilitychange", foreground);
+    window.removeEventListener("online", refresh);
+    window.clearInterval(interval);
+    refreshSequence++;
+    postHogFlags.stop();
+  };
+}
 
 export async function refreshFeatureFlags(): Promise<void> {
   const sequence = ++refreshSequence;
+  if (usesPostHog()) {
+    await postHogFlags.setUser(accountSessionConfigured ? useAccountSessionStore.getState().userId : null);
+    return;
+  }
   useFeatureFlagStore.setState({ initialized: false });
   if (!accountSessionConfigured) {
     useFeatureFlagStore.setState({ initialized: true, revision: "local-unconfigured", flags: disabledFlags() });

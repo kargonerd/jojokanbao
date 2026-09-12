@@ -16,6 +16,7 @@ export interface FeatureFlagRule {
 }
 
 export interface FeatureFlagDefinition {
+  rolloutProvider?: "supabase" | "posthog";
   key: string;
   description: string;
   revision: number;

@@ -1,4 +1,11 @@
 import '@testing-library/jest-dom/vitest';
+import type { TestingLibraryMatchers } from '@testing-library/jest-dom/matchers';
+
+// Resolve matcher types against this workspace's Vitest, even when pnpm shares
+// jest-dom with packages using a different Vitest peer dependency.
+declare module 'vitest' {
+  interface Assertion<T = any> extends TestingLibraryMatchers<any, T> {}
+}
 
 class MockDOMMatrix {
   a = 1;

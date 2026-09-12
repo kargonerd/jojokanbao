@@ -1,6 +1,7 @@
 import { libraryBookPolicy, isLibrarySourceEnabled } from "@jojo/content";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { bookProgressPercent, bookProgressLocation, estimatedReadingMinutes, formatReadingTime, type SpeechLocation, type SpeechReadingPosition } from "@jojo/content";
+import { createReadingAttempt } from "@jojo/analytics";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useIsFocused } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
@@ -27,7 +28,7 @@ import { useMobileOfflineBooksStore } from "../offline/books";
 import { useReadingProgress } from "../reading/useReadingProgress";
 import { NativeSpeechPlayer } from "../reading/SpeechPlayer";
 import { mobileSpeechSegments } from "../reading/speech";
-import { useSpeechFlagStore } from "../reading/featureFlag";
+import { useMobileFeatureFlag, useSpeechFlagStore } from "../reading/featureFlag";
 import { useBookReadingTime } from "../reading/useBookReadingTime";
 import { useReaderBrightness } from "../reading/useReaderBrightness";
 import { bookTocEntries, type BookTocEntry } from "../lib/bookToc";
@@ -152,6 +153,8 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const [chapterLoading, setChapterLoading] = useState(false);
   const loading = itemLoading || chapterLoading;
   const [error, setError] = useState("");
+  const readingAttempt = useMemo(() => createReadingAttempt("book", `${datasetId}:${itemKey}`), [datasetId, itemKey]);
+  useEffect(() => { if (error) readingAttempt.failed(); }, [error, readingAttempt]);
   const [chromeVisible, setChromeVisible] = useState(true);
   const [activeTool, setActiveTool] = useState<ReaderTool | null>(null);
   const [notesView, setNotesView] = useState<"mine" | "public">("mine");
@@ -204,6 +207,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const { brightness, changeBrightness } = useReaderBrightness(setReaderNotice);
   const [onBookshelf, setOnBookshelf] = useState<boolean>();
   const [bookshelfBusy, setBookshelfBusy] = useState(false);
+  const bookshelfEnabled = useMobileFeatureFlag("library.bookshelf");
   const [legacyResume, setLegacyResume] = useState<{ chapterId: string; chapterProgress: number }>();
   const readerReadyChapterRef = useRef("");
   const readingChapterRef = useRef(activeChapterId);
@@ -279,7 +283,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   useEffect(() => () => cancelAgentRef.current?.(), []);
 
   useEffect(() => {
-    if (!loaded || !user) {
+    if (!loaded || !user || !bookshelfEnabled) {
       setOnBookshelf(undefined);
       return undefined;
     }
@@ -289,7 +293,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
       .then((value) => { if (active) setOnBookshelf(value); })
       .catch(() => { if (active) setReaderNotice("书架状态暂时无法读取，点击书架按钮重试。"); });
     return () => { active = false; };
-  }, [datasetId, loaded, user]);
+  }, [datasetId, loaded, user, bookshelfEnabled]);
 
   useEffect(() => {
     let active = true;
@@ -960,6 +964,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   }
 
   async function toggleBookshelf() {
+    if (!bookshelfEnabled) return;
     if (!user) { navigation.navigate("Account"); return; }
     if (!loaded || bookshelfBusy) return;
     setBookshelfBusy(true);
@@ -1001,6 +1006,9 @@ export function BookReaderScreen({ route, navigation }: Props) {
             cacheEnabled={false}
             onLoadStart={() => { readerReadyChapterRef.current = ""; pendingSpeechPosition.current?.reject(); }}
             onInitializationError={() => { setChapterLoading(false); setError("阅读页面未能就绪，请重新加载"); }}
+            onLoad={() => {
+              if (readingChapterRef.current === activeChapterId && chapter?.fragment.fragmentId === activeChapterId) readingAttempt.loaded();
+            }}
             onError={() => { setChapterLoading(false); setError("章节显示失败，请重新加载"); }}
             onRenderProcessGone={() => { setChapterLoading(false); setError("阅读页面已被系统回收，请重新加载"); }}
             onContentProcessDidTerminate={() => { setChapterLoading(false); setError("阅读页面已被系统回收，请重新加载"); }}

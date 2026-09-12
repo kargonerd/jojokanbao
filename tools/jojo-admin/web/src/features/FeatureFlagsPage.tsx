@@ -13,6 +13,15 @@ const conditionLabels: Record<FeatureConditionType, string> = {
 const AI_USAGE_LIMITS_KEY = "ai.usage_limits";
 const SIGNUP_KEY = "auth.signup";
 const EMAIL_QUOTA_KEY = "ops.email_quota";
+function exportFlagSnapshot(flags: FeatureFlagDefinition[]) {
+  const exportedAt = new Date().toISOString();
+  const url = URL.createObjectURL(new Blob([JSON.stringify({ exportedAt, flags }, null, 2)], { type: "application/json" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `jojo-feature-flags-${exportedAt.slice(0, 10)}.json`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 const aiLimitFields = [
   { key: "requestsPerMinute", label: "每分钟请求上限", min: 1, max: 60, defaultValue: 3, unit: "次" },
   { key: "requestsPerDay", label: "每日请求上限", min: 1, max: 10_000, defaultValue: 100, unit: "次" },
@@ -112,7 +121,9 @@ export function FeatureFlagsPage() {
   const isAiUsageLimits = selected?.key === AI_USAGE_LIMITS_KEY;
   const isSignup = selected?.key === SIGNUP_KEY;
   const isEmailQuota = selected?.key === EMAIL_QUOTA_KEY;
-  const configOnly = isAiUsageLimits || isSignup || isEmailQuota;
+  const managedInPostHog = selected?.rolloutProvider === "posthog";
+  const configOnly = isAiUsageLimits || isSignup || isEmailQuota || managedInPostHog;
+  const editable = !managedInPostHog || selected?.key === "reader.annotations";
   const invalidAiLimit = isAiUsageLimits ? aiLimitFields.find((field) => !validAiLimit(draftConfig[field.key], field)) : undefined;
   const quotaValid = typeof draftConfig.warningPercent === "number" && Number.isInteger(draftConfig.warningPercent)
     && typeof draftConfig.criticalPercent === "number" && Number.isInteger(draftConfig.criticalPercent)
@@ -193,7 +204,15 @@ export function FeatureFlagsPage() {
     setNotice("");
     setLoadError("");
     try {
-      const updated = await featureFlagApi.rollback({
+      const historicalConfig = selected.history.find((entry) => entry.revision === targetRevision)?.config;
+      const updated = managedInPostHog ? await featureFlagApi.publish({
+        key: selected.key,
+        rules: selected.rules,
+        config: historicalConfig ?? selected.config,
+        expectedRevision: selected.revision,
+        reason: `恢复 revision ${targetRevision} 的运行配置`,
+        requestId: crypto.randomUUID(),
+      }) : await featureFlagApi.rollback({
         key: selected.key,
         targetRevision,
         expectedRevision: selected.revision,
@@ -228,20 +247,25 @@ export function FeatureFlagsPage() {
       <PageTopbar
         eyebrow="RUNTIME CONTROL / 运行控制"
         title="功能开关"
-        description={isEmailQuota ? "邮件额度阈值在下一次半小时检查时生效。" : isSignup ? "注册设置统一对所有新账号生效。" : isAiUsageLimits ? "AI 使用限额统一对所有账号生效。" : "规则从上到下执行，命中第一条后立即停止。"}
-        aside={<span className="local-badge"><i />本机 Operator</span>}
+        description={managedInPostHog ? "功能开放范围由 PostHog 管理，运行参数仍在这里发布。" : isEmailQuota ? "邮件额度阈值在下一次半小时检查时生效。" : isSignup ? "注册设置统一对所有新账号生效。" : isAiUsageLimits ? "AI 使用限额统一对所有账号生效。" : "规则从上到下执行，命中第一条后立即停止。"}
+        aside={<><button type="button" onClick={() => exportFlagSnapshot(flags)}>导出当前快照</button><span className="local-badge"><i />本机 Operator</span></>}
       />
       <main className="feature-workspace">
         <aside className="feature-index" aria-label="功能开关列表">
           {flags.map((flag) => (
             <button key={flag.key} type="button" className={flag.key === selectedKey ? "active" : ""} onClick={() => selectFlag(flag)}>
-              <b>{flag.key}</b><span>{flag.key === EMAIL_QUOTA_KEY ? "邮件额度" : flag.key === SIGNUP_KEY ? "注册设置" : flag.key === AI_USAGE_LIMITS_KEY ? "全局限额" : `${flag.rules.length} 条规则`} · r{flag.revision}</span>
+              <b>{flag.key}</b><span>{flag.rolloutProvider === "posthog" ? "PostHog" : flag.key === EMAIL_QUOTA_KEY ? "邮件额度" : flag.key === SIGNUP_KEY ? "注册设置" : flag.key === AI_USAGE_LIMITS_KEY ? "全局限额" : `${flag.rules.length} 条规则`} · r{flag.revision}</span>
             </button>
           ))}
         </aside>
         {selected && (
           <section className="feature-editor">
             <header><div><p className="eyebrow">{selected.key}</p><h2>{selected.description}</h2></div><div className="feature-revision" title="由本机 Operator 修改"><b>revision {selected.revision}</b><span>{publishedAt(selected.updatedAt)}</span></div></header>
+            {managedInPostHog && <section className="feature-config-strip"><div>
+              <h3>在 PostHog 管理开放范围</h3>
+              <p>在项目的 Feature flags 中编辑 <code>{selected.key.replace(/\./g, "_")}</code>。客户端先读缓存，再后台刷新。</p>
+              <p>这里保留原有规则与修改记录，供旧版客户端兼容和迁移核对；此处发布和回滚只修改运行参数。</p>
+            </div></section>}
             {selected.key === "reader.annotations" && (
               <section className="feature-config-strip" aria-labelledby="annotation-threshold-title">
                 <div>
@@ -358,7 +382,7 @@ export function FeatureFlagsPage() {
               </section>
             )}
             <section className="feature-history" aria-label="修改记录">
-              <header><div><b>修改记录</b><span>{isAiUsageLimits ? "回滚会恢复当时的限额配置，并生成新的 revision。" : "回滚会恢复当时的规则和配置，并生成新的 revision。"}</span></div><small>{selected.history.length} 个版本</small></header>
+              <header><div><b>修改记录</b><span>{managedInPostHog ? "保留迁移前记录；回滚配置不会改变 PostHog 或旧版客户端的开放规则。" : isAiUsageLimits ? "回滚会恢复当时的限额配置，并生成新的 revision。" : "回滚会恢复当时的规则和配置，并生成新的 revision。"}</span></div><small>{selected.history.length} 个版本</small></header>
               <ol>
                 {[...selected.history].reverse().map((entry) => {
                   const current = entry.revision === selected.revision;
@@ -368,7 +392,7 @@ export function FeatureFlagsPage() {
                       <div><b>{entry.reason}</b><span>{publishedAt(entry.updatedAt)}</span></div>
                       {current
                         ? <em>当前版本</em>
-                        : <button type="button" disabled={saving} onClick={() => void rollback(entry.revision)}>回滚到 revision {entry.revision}</button>}
+                        : editable && <button type="button" disabled={saving} onClick={() => void rollback(entry.revision)}>{managedInPostHog ? "回滚配置到" : "回滚到"} revision {entry.revision}</button>}
                     </li>
                   );
                 })}
@@ -390,12 +414,12 @@ export function FeatureFlagsPage() {
                 />
               ))}
             </div></>}
-            <footer className="feature-publish">
+            {editable && <footer className="feature-publish">
               <label>发布原因<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={isSignup ? "说明为什么调整注册设置" : isAiUsageLimits ? "说明为什么调整 AI 限额" : "说明为什么修改这组规则"} /></label>
               <button className="primary-button" type="button" disabled={saving || reason.trim().length < 3 || Boolean(configError)} onClick={() => void publish()}>{saving ? "发布中…" : "发布更改"}</button>
               {notice && <p role="status">{notice}</p>}
               {loadError && <p className="content-error" role="alert">{loadError}</p>}
-            </footer>
+            </footer>}
           </section>
         )}
       </main>

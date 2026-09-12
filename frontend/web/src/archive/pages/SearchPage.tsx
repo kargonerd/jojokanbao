@@ -1,6 +1,7 @@
 import { Fragment, useState, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import axios from "axios";
+import { analytics } from "@jojo/analytics";
 import {
   ARCHIVE_PUBLICATIONS,
   ARCHIVE_PUBLICATION_BY_ID,
@@ -403,6 +404,9 @@ export function SearchPage({
 
     const controller = new AbortController();
     const requestId = ++requestIdRef.current;
+    const searchStarted = Date.now();
+    const searchProperties = { content_type: nextContentType, page: nextPage };
+    analytics.track("search_started", searchProperties);
     const requestParams: Record<string, string | number> = { keyword, page: nextPage, size: pageSize };
     if (nextSort) requestParams.sort = nextSort;
     if (nextStartDate && nextEndDate) {
@@ -482,10 +486,12 @@ export function SearchPage({
           ? normalizedResults.filter((result) => findBookDataset(result, scopedBookDatasets))
           : normalizedResults);
         setResultsPage(nextPage);
+        analytics.track("search_completed", { ...searchProperties, result_count: Math.max(0, Number(data.total)), duration_ms: Date.now() - searchStarted });
         setTotal(Math.max(0, Number(data.total)));
       })
       .catch(() => {
         if (controller.signal.aborted || requestId !== requestIdRef.current) return;
+        analytics.track("search_failed", { ...searchProperties, duration_ms: Date.now() - searchStarted });
         setResults(null);
         setTotal(0);
         setError("搜索失败，请检查网络后重试。");

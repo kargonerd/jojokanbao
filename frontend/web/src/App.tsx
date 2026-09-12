@@ -4,7 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import { Layout } from "./archive/components/Layout";
 import { HomePage as ArchiveHomePage } from "./archive/pages/HomePage";
 import { SearchPage } from "./archive/pages/SearchPage";
-import { DonationPage, SupportPage } from "./archive/pages/SupportPage";
+import { DonationPage } from "./archive/pages/SupportPage";
 import { PUBLICATIONS, PUBLICATION_NAMES } from "./archive/publications";
 import { NotFoundPage } from "./NotFoundPage";
 import { AppLayout } from "./shell/AppLayout";
@@ -12,10 +12,11 @@ import { NotificationsPage } from "./notifications/NotificationsPage";
 import { PERIODICALS } from "./library/catalog";
 import { rollout } from "./rollout";
 import { ARCHIVE_ROOT, defaultArchiveIssuePath } from "./routes";
-import { refreshFeatureFlags } from "./featureFlags";
+import { startFeatureFlagSync } from "./featureFlags";
 import { AccountEntry } from "./account/AccountEntry";
 import { TimesSourceSettingsPage } from "./account/pages/TimesSourceSettingsPage";
 import { startAccountSessionSync, useAccountSessionStore } from "./account/session";
+import { AnalyticsRuntime } from "./analytics/AnalyticsRuntime";
 
 const AccountConfirmation = lazy(() => import("./account/AccountConfirmation"));
 // Load the title search dictionary only on routes that search the book catalog.
@@ -28,6 +29,9 @@ const LibraryPage = lazy(() =>
 // Keep the client download adapter out of the Web entry bundle.
 const BookshelfPage = lazy(() =>
   import("./library/BookshelfPage").then(({ BookshelfPage }) => ({ default: BookshelfPage })),
+);
+const SupportPage = lazy(() =>
+  import("./archive/pages/SupportPage").then(({ SupportPage }) => ({ default: SupportPage })),
 );
 const LaunchCommemoration = lazy(() =>
   import("./home/LaunchCommemoration").then(({ LaunchCommemoration }) => ({ default: LaunchCommemoration })),
@@ -64,13 +68,11 @@ function LazyRoute({ children }: { children: ReactNode }) {
   return <Suspense fallback={null}>{children}</Suspense>;
 }
 
-function RuntimeBootstrap() {
-  const accountInitialized = useAccountSessionStore((state) => state.initialized);
-  const userId = useAccountSessionStore((state) => state.userId);
+function RuntimeBootstrap({ platformRedesign }: { platformRedesign: boolean }) {
   useEffect(() => startAccountSessionSync(), []);
   useEffect(() => {
-    if (accountInitialized) void refreshFeatureFlags();
-  }, [accountInitialized, userId]);
+    if (platformRedesign) return startFeatureFlagSync();
+  }, [platformRedesign]);
   return null;
 }
 
@@ -113,7 +115,7 @@ function archiveRoute(platformRedesign: boolean) {
         </Fragment>
       ))}
       <Route path="search" element={<SearchPage platformRedesign={platformRedesign} />} />
-      <Route path="support" element={<SupportPage platformRedesign={platformRedesign} />} />
+      <Route path="support" element={<LazyRoute><SupportPage platformRedesign={platformRedesign} /></LazyRoute>} />
       <Route path="support/licenses" element={<LazyRoute><OpenSourceLicensesPage /></LazyRoute>} />
     </Route>
   );
@@ -140,7 +142,6 @@ function LegacyRoutes() {
 function RedesignedRoutes() {
   return (
     <>
-      <RuntimeBootstrap />
       <Routes>
         <Route path="/account" element={<AccountRoute />} />
         <Route path="/account/library" element={<AppLayout><LibrarySettingsPage /></AppLayout>} />
@@ -156,7 +157,7 @@ function RedesignedRoutes() {
           <Route path="search" element={<div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage platformRedesign /></div>} />
           <Route path="download" element={<LazyRoute><DownloadPage /></LazyRoute>} />
           <Route path="download/iphone" element={<LazyRoute><IphoneInstallPage /></LazyRoute>} />
-          <Route path="support" element={<SupportPage platformRedesign />} />
+          <Route path="support" element={<LazyRoute><SupportPage platformRedesign /></LazyRoute>} />
           <Route path="donate" element={<DonationPage />} />
           <Route path="support/licenses" element={<LazyRoute><OpenSourceLicensesPage /></LazyRoute>} />
           <Route path="notifications" element={<NotificationsPage />} />
@@ -180,7 +181,7 @@ function RedesignedRoutes() {
 }
 
 export function AppRoutes({ platformRedesign = rollout.platformRedesign }: { platformRedesign?: boolean }) {
-  return platformRedesign ? <RedesignedRoutes /> : <LegacyRoutes />;
+  return <><RuntimeBootstrap platformRedesign={platformRedesign} /><AnalyticsRuntime />{platformRedesign ? <RedesignedRoutes /> : <LegacyRoutes />}</>;
 }
 
 export function App() {
